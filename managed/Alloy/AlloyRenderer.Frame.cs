@@ -86,8 +86,9 @@ public sealed unsafe partial class AlloyRenderer
         if (Programs._progFailed || _batchUnavailable) { DbNoDraw("program failed or multidraw unavailable"); return false; }   // EndFrame revokes + disarms; never pay the bracket for nothing
         // Checked BEFORE anything stamps OwnGen: BuildBatches marks parts as drawn, which is only honest while
         // the issue phase cannot fail. Missing entry points are the one way it could.
-        if (Gl.MultiDrawElementsBaseVertex == null || Gl.BindBufferBase == null || Gl.GetUniformBlockIndex == null
-            || !StreamRing.EntryPoints)
+        bool vk = Renderer.OnVulkan;
+        if (!vk && (Gl.MultiDrawElementsBaseVertex == null || Gl.BindBufferBase == null || Gl.GetUniformBlockIndex == null
+            || !StreamRing.EntryPoints))
         {
             // #263: the verdict froze before this frame, so nothing re-reads DrawCapable. Say it here or the
             // world goes bare with no line at all.
@@ -209,7 +210,8 @@ public sealed unsafe partial class AlloyRenderer
 
         FrameZones.Add(FrameZones.Zone.Setup, tSetup, FrameZones.Ticks(FrameZones.Zone.Pose) - pose0);
         long tEnter = FrameZones.Now;
-        if (!GlContextService.Enter()) { NoFrameBehindUs("the 4.6 context could not be made current"); DbNoDraw("the 4.6 context could not be made current"); return false; }
+        // a Vulkan frame issues no GL, so it opens no 4.6 bracket
+        if (!vk && !GlContextService.Enter()) { NoFrameBehindUs("the 4.6 context could not be made current"); DbNoDraw("the 4.6 context could not be made current"); return false; }
         FrameZones.Add(FrameZones.Zone.Enter, tEnter);
         GpuCheckpoint("the previous frame's GPU work is complete at this bracket's entry");
         Step("deferred bracket work: texture deletes, uploads and handle mints");
@@ -225,8 +227,12 @@ public sealed unsafe partial class AlloyRenderer
         FrameZones.Add(FrameZones.Zone.Own, tOwn);
         long tPrep = FrameZones.Now, lights0 = FrameZones.Ticks(FrameZones.Zone.Lights);
         Step("EnsureProgram");
-        if (!Programs.EnsureProgram()) { DbNoDraw("the world program did not build"); GlContextService.Leave(); return false; }
-        BindTarget();
+        if (vk) Programs.DecideBindlessVk();
+        else
+        {
+            if (!Programs.EnsureProgram()) { DbNoDraw("the world program did not build"); LeaveBracket(); return false; }
+            BindTarget();
+        }
         // ORDER: ahead of the preamble below, which sets the viewport and PassState's toggles again over it
         Step("content prewarm");
         if (!Renderer.OnVulkan) ContentPrewarm.Pump(_log);   // it warms GL programs, which a Vulkan frame never draws
@@ -242,17 +248,15 @@ public sealed unsafe partial class AlloyRenderer
             // leaves them holding another camera's binning (or, before the first dispatch, undefined
             // BufferData contents), and a lit part would then sample arbitrary light indices.
             lightingOn = AlloyLights.Build(view, p00, p11, near, far, viewport[2], viewport[3], tally: true)
-                         && Programs._progLit46 != 0;
+                         && (vk || Programs._progLit46 != 0);
             FrameZones.Add(FrameZones.Zone.Lights, tLights);
         }
-        Gl.Viewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+        if (!vk) GlPreamble(viewport, srgb);
         // #292: cull ON is the engine's default -- Scene::RenderDrawBucket @0x46d060 leaves
         // Enable(CULL_FACE) + SetCullFace(BACK) behind on every exit, and that is the state its
         // sub-list 0 (everything not marked `twosided`) draws in. The batch loops override it per batch;
-        // this states the default the passes with no batch of their own inherit.
-        new PassState(depth: true, depthWrite: true, cull: true, srgb: srgb).Apply();
+        // this states the default the passes with no batch of their own inherit (GlPreamble).
         _blendOn = false;
-        Gl.ActiveTexture(Gl.TEXTURE0);
         Counters._lastPixels = viewport[2] * viewport[3];
         // #129: built HERE, not at the pass, because staging has to know. A water part staged for a pass
         // whose program never built would be stamped as owned (and so suppressed in the engine's walk)
@@ -265,7 +269,7 @@ public sealed unsafe partial class AlloyRenderer
         // lit program, or a build that refused) would leave the water program reading undefined
         // BufferData contents -- an unbounded per-fragment light loop, not a dim sea.
         Step("the water program");
-        _waterArmed = FrameSnapshot.Usable && lightingOn && Programs.EnsureWaterProgram();
+        _waterArmed = FrameSnapshot.Usable && lightingOn && (vk || Programs.EnsureWaterProgram());
         FrameZones.Add(FrameZones.Zone.Prep, tPrep, FrameZones.Ticks(FrameZones.Zone.Lights) - lights0);
         // #139/#132: from here to PassId.PostProcess the colour passes draw into an RGBA16F target with a
         // depth attachment of Alloy's own, and everything they write is LINEAR. Asked BEFORE anything is
@@ -276,7 +280,7 @@ public sealed unsafe partial class AlloyRenderer
         Step("PostChain.Begin");
         bool postOk = PostChain.Begin(viewport, engClear);
         FrameZones.Add(FrameZones.Zone.Post, tPostBegin);
-        if (!postOk) { DbNoDraw("PostChain.Begin refused"); GlContextService.Leave(); return false; }
+        if (!postOk) { DbNoDraw("PostChain.Begin refused"); LeaveBracket(); return false; }
         long tPump = FrameZones.Now;
         Step("the arena pumps");
         GpuFrameStart();
@@ -294,7 +298,7 @@ public sealed unsafe partial class AlloyRenderer
         // staged -- so the two modes' dumps are of the same thing and can be diffed line for line.
         FrameDiffDump();
         CreatureParityDump();   // CX-120: the composed body, per node, in both layers' one line format
-        if (groups <= 0) { DbNoDraw("BuildBatches produced no batch"); Gl.BindVertexArray(0); GlContextService.Leave(); return false; }
+        if (groups <= 0) { DbNoDraw("BuildBatches produced no batch"); LeaveBracket(); return false; }
         long tUp = FrameZones.Now;
         Step("the record and handle upload");
         // The MAIN view's render size and unjittered camera, noted before anything stages: every native stage's pass,
@@ -309,8 +313,8 @@ public sealed unsafe partial class AlloyRenderer
         StaleAuditTick();
         if (!drawsUp)
         {
-            PaintStreamFailures(display);
-            Gl.BindVertexArray(0); GlContextService.Leave(); return false;
+            if (!vk) PaintStreamFailures(display);
+            LeaveBracket(); return false;
         }
         // #308 follow-up: the shadow bracket already uploaded this frame's block; re-orphaning it
         // here would throw away the very pose the bake just sampled from.
@@ -339,11 +343,15 @@ public sealed unsafe partial class AlloyRenderer
         // #287: pixels per unit of world radius at unit depth, the LOD test's one input. Zero when
         // this pass has no perspective projection, and the test then stands down.
         float lodScale = _lodScale;
-        // #303: the spheres go up whatever the cull mode -- the shadow gather reads the same buffer.
-        fixed (Sphere* sph = _dSph)
-            CullPass.UploadSpheres(sph, _recOwnCap + MaxSkyDraws);
-        fixed (Sphere* cs = _dCastSph)
-            CasterGather.UploadCasterSpheres(cs, _recOwnCap + MaxSkyDraws);
+        // #303: the spheres go up whatever the cull mode -- the shadow gather reads the same buffer. Vulkan stages
+        // both arrays itself.
+        if (!Renderer.OnVulkan)
+        {
+            fixed (Sphere* sph = _dSph)
+                CullPass.UploadSpheres(sph, _recOwnCap + MaxSkyDraws);
+            fixed (Sphere* cs = _dCastSph)
+                CasterGather.UploadCasterSpheres(cs, _recOwnCap + MaxSkyDraws);
+        }
         if (Renderer.OnVulkan)
             // the camera the Vulkan frame draws through, so the pyramid tests against the depth it reduces
             CullPassVk.Stage(_capturing ? 0 : groups, cullDraws, _dSrc, _dSph, _recOwnCap + MaxSkyDraws,
@@ -779,7 +787,7 @@ public sealed unsafe partial class AlloyRenderer
             _passCpu[(int)id] += self;
         }
         long tTail = FrameZones.Now;
-        PaintStreamFailures(display);
+        if (!onVulkan) PaintStreamFailures(display);
         GpuSpanEnd();
         _passTail += FrameZones.Now - tTail;
         FrameZones.Add(FrameZones.Zone.Passes, tPasses,
@@ -788,9 +796,25 @@ public sealed unsafe partial class AlloyRenderer
                        + FrameZones.Ticks(FrameZones.Zone.Post) - post0
                        + FrameZones.Ticks(FrameZones.Zone.Probe) - probe0
                        + FrameZones.Ticks(FrameZones.Zone.Lightmap) - lm0);
-        Gl.BindVertexArray(0);
         GpuCheckpoint("the world pass is complete on the GPU");
+        LeaveBracket();
+    }
+
+    /// <summary>Close the world frame's 4.6 bracket with no VAO left bound; a Vulkan frame opened none.</summary>
+    private static void LeaveBracket()
+    {
+        if (Renderer.OnVulkan) return;
+        Gl.BindVertexArray(0);
         GlContextService.Leave();
+    }
+
+    /// <summary>GL's world-frame state ahead of the passes: the render viewport, the engine's default depth and cull
+    /// state, texture unit 0.</summary>
+    private static void GlPreamble(int* viewport, bool srgb)
+    {
+        Gl.Viewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+        new PassState(depth: true, depthWrite: true, cull: true, srgb: srgb).Apply();
+        Gl.ActiveTexture(Gl.TEXTURE0);
     }
 
     /// <summary>The colour bracket's step trace: world frames it still names, and the frame it is naming.</summary>
@@ -815,7 +839,7 @@ public sealed unsafe partial class AlloyRenderer
             s.FramesLeft--; s.Frame = _frameSeq;
         }
         // wait for the GPU at every traced step: a driver reset then ends the log AT the faulting stage
-        if (Gl.Finish != null) Gl.Finish();
+        if (!Renderer.OnVulkan && Gl.Finish != null) Gl.Finish();
         (int now, int peak) = BindlessLedger.ResidentCount;
         _log?.Always($"AlloyRenderer: [gldebug] frame {_frameSeq}: {what} ({now} handles resident, peak {peak})");
     }
@@ -827,7 +851,7 @@ public sealed unsafe partial class AlloyRenderer
     /// ends at the last stage the GPU finished rather than at the last line the CPU queued.</summary>
     private static void GpuCheckpoint(string what)
     {
-        if (!GlContextService.Debug || Gl.Finish == null) return;
+        if (!GlContextService.Debug || Renderer.OnVulkan || Gl.Finish == null) return;
         Gl.Finish();
         (int now, int peak) = BindlessLedger.ResidentCount;
         _log?.Always($"AlloyRenderer: [gldebug] frame {_frameSeq}: {what} ({now} handles resident, peak {peak})");

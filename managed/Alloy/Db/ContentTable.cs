@@ -195,12 +195,12 @@ internal static unsafe class ContentTable
     }
 
     /// <summary>Re-read every row's palette handles off its recipe, fill every row whose layout moved, push what changed
-    /// and bind the block, in Alloy's bracket. A map lands asynchronously and a pair's lanes are known only once its
-    /// program built, so this is a per-frame walk of at most <see cref="MaxRows"/> rows. Bound on EVERY frame -- an
-    /// unbound binding is an undefined read.</summary>
+    /// and bind the block, in Alloy's bracket (on Vulkan the walk only). A map lands asynchronously and a pair's lanes
+    /// are known only once its program built, so this is a per-frame walk of at most <see cref="MaxRows"/> rows. Bound
+    /// on EVERY frame -- an unbound binding is an undefined read.</summary>
     internal static void Upload()
     {
-        if (Gl.CreateBuffers == null || Gl.NamedBufferData == null) return;
+        if (!Renderer.OnVulkan && (Gl.CreateBuffers == null || Gl.NamedBufferData == null)) return;
         lock (_lock) UploadLocked();
     }
 
@@ -241,6 +241,7 @@ internal static unsafe class ContentTable
                 if (moved) Touch(r);
             }
         }
+        if (Renderer.OnVulkan) { s.DirtyLo = int.MaxValue; s.DirtyHi = -1; return; }   // the Vulkan frame takes the rows through Snapshot
         int want = s.AnyRow ? MaxRows : 1;
         if (s.Ssbo == 0 || want != s.Sized)
         {

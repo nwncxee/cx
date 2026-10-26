@@ -252,10 +252,18 @@ internal static unsafe class PltColors
         => (uint)slot < (uint)Records && _words.Length != 0 ? _words[slot * WordsPerRecord + word] : 0;
 
     /// <summary>Push the records written since the last call and bind the block. In Alloy's bracket; uploads
-    /// only the touched span, so a still scene costs one bind.</summary>
+    /// only the touched span, so a still scene costs one bind. On Vulkan it only counts a send for that frame.</summary>
     internal static void Upload()
     {
         if (_words.Length == 0) return;
+        if (Renderer.OnVulkan)
+        {
+            // the Vulkan frame re-sends Sent whole when Sends moves
+            int w = _everPlt ? _words.Length : WordsPerRecord;
+            if (w != _sized || _dirtyHi >= _dirtyLo) { _sized = w; Mirror(0, w); _uploads++; }
+            _dirtyLo = int.MaxValue; _dirtyHi = -1;
+            return;
+        }
         if (Gl.CreateBuffers == null || Gl.NamedBufferData == null) return;
         // The block is bound on EVERY frame, in both modes. cx_plt.glsl is part of the lit stage either way,
         // and an unbound shader-storage binding is an undefined read: one stray bit in the flag word would

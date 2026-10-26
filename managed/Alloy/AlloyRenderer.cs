@@ -285,8 +285,9 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         // Drain never runs in those states, so a revoke there would hold the whole owned set for the session.
         GlContextService.InBracket = static () =>
         {
-            // First in the bracket: what the GPU has finished with goes back before this frame allocates.
-            GpuGraveyard.Drain(GlContextService.Presents);
+            // First in the bracket: what the GPU has finished with goes back before this frame allocates. A Vulkan
+            // world frame runs this with no context, and the health bracket drains the GL names it leaves.
+            if (GlContextService.Current46) GpuGraveyard.Drain(GlContextService.Presents);
             OwnedTextures.Drain(); SampleVram();
             LightmapBake.ReleaseIdle();
             // CX-117: the registry's uploads and bindless mints, the master palette's upload and the

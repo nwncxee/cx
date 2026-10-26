@@ -185,7 +185,12 @@ public sealed unsafe class GlContextService : IExtenderService
         if (!_tried) { _tried = true; try { Create(); } catch (Exception e) { Fail($"EXCEPTION {e.Message}"); } }
         _periodFrames++;
         bool foreign = _entered, done = _workRan;
-        if (Available && !_heldElsewhere && WorkDue && Enter()) { RunInBracketHere(); Leave(); }
+        // a Vulkan world frame runs the work with no context, so a retired GL name may still be owed its delete
+        if (Available && !_heldElsewhere && (WorkDue || GpuGraveyard.Pending > 0) && Enter())
+        {
+            if (WorkDue) RunInBracketHere(); else GpuGraveyard.Drain(Presents);
+            Leave();
+        }
         if (Inside)
         {
             if (++_leaks == 1)

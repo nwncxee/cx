@@ -80,6 +80,14 @@ public sealed unsafe partial class AlloyRenderer
     private static void ReadTarget(out Target t)
     {
         t = default;
+        if (Renderer.OnVulkan)
+        {
+            // no GL: the camera's own view size, which is the world viewport the engine sets (origin 0), linear
+            t.Vp2 = (int)FrameInputs.CamViewW; t.Vp3 = (int)FrameInputs.CamViewH;
+            if ((t.Vp2 <= 0 || t.Vp3 <= 0) && GuiPass.Screen(out int sw, out int sh)) { t.Vp2 = sw; t.Vp3 = sh; }
+            ReadClear(ref t);
+            return;
+        }
         int* vp = stackalloc int[4];
         Gl.GetIntegerv(Gl.VIEWPORT, vp);
         t.Vp0 = vp[0]; t.Vp1 = vp[1]; t.Vp2 = vp[2]; t.Vp3 = vp[3];

@@ -48,7 +48,7 @@ internal static unsafe class PresentTarget
     internal static int Height => _s.H;
 
     /// <summary>Size the present colour image to the default framebuffer, once per frame, before anything
-    /// binds it, and under <c>alloy.backend vk</c> Vulkan's composite with it. In the 4.6 context.</summary>
+    /// binds it -- in the 4.6 context; under <c>alloy.backend vk</c> Vulkan's composite instead, with no GL.</summary>
     internal static void Ensure(int w, int h)
     {
         PresentState s = _s;
@@ -57,8 +57,13 @@ internal static unsafe class PresentTarget
         // a real resize rather than rebuilding a texture per flush for the rest of the session.
         if (w == s.W && h == s.H) return;
         s.W = w; s.H = h;
-        if (Renderer.OnVulkan && (_log == null || AlloyDevice.Vulkan(_log) is not VkBackend vk || !vk.Resize(w, h)))
-            AlloyGate.Fail($"Vulkan's {w}x{h} composite image was refused (logged above)");
+        if (Renderer.OnVulkan)
+        {
+            if (_log == null || AlloyDevice.Vulkan(_log) is not VkBackend vk || !vk.Resize(w, h))
+                AlloyGate.Fail($"Vulkan's {w}x{h} composite image was refused (logged above)");
+            else if (!s.Announced) { s.Announced = true; _log.Info($"PresentTarget: Vulkan composites into its own {w}x{h} image and presents it"); }
+            return;
+        }
         // RGBA8: this holds the FINISHED, display-space frame -- the composite has already encoded and dithered it,
         // so anything wider would store precision the default framebuffer cannot take.
         RenderTarget.AllocColor(ref s.Tex, false, w, h, Gl.NEAREST);
@@ -73,10 +78,8 @@ internal static unsafe class PresentTarget
         else if (!s.Announced)
         {
             s.Announced = true;
-            _log?.Info(Renderer.OnVulkan
-                ? $"PresentTarget: Vulkan composites into its own {w}x{h} image and presents it"
-                : $"PresentTarget: Alloy composites into a {w}x{h} texture and the ENGINE context blits it "
-                  + "to the default framebuffer -- one present path on every OS");
+            _log?.Info($"PresentTarget: Alloy composites into a {w}x{h} texture and the ENGINE context blits it "
+                     + "to the default framebuffer -- one present path on every OS");
         }
     }
 

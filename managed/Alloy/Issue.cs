@@ -257,7 +257,7 @@ internal static unsafe class Issue
     /// next frame's caster bake reads it when the shadow bracket did not pose.</summary>
     internal static void UploadBones()
     {
-        if (_skinning) UploadBoneBlock(ref _boneBuf, _boneStage, BindBones);
+        if (_skinning && !Renderer.OnVulkan) UploadBoneBlock(ref _boneBuf, _boneStage, BindBones);   // Vulkan copies the stage itself
     }
 
     /// <summary>One bone block, <c>_boneSlots</c> palettes from <paramref name="stage"/>, onto

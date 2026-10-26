@@ -39,7 +39,7 @@ internal static unsafe partial class GrassField
     }
 
     /// <summary>The material's BLADE cell bits, classifying its atlas when it is new. Cold on a miss: one
-    /// level-0 readback per atlas upload, which allocates.</summary>
+    /// level-0 read per atlas upload (GL's readback, or the engine's own copy on Vulkan), which allocates.</summary>
     private static int Classified(int m, int tid, CAurGrassInfo info)
     {
         byte* resref = (byte*)System.Runtime.CompilerServices.Unsafe.AsPointer(ref info.Name);
@@ -50,18 +50,27 @@ internal static unsafe partial class GrassField
         if (tid == 0) return 0;   // not uploaded yet: a card this frame (which skips it too), asked again next
         c = new Cls { Tid = tid, Name = name, Done = true };
         int w = 0, h = 0;
-        Gl.GetTextureLevelParameteriv((uint)tid, 0, Gl.TEXTURE_WIDTH, &w);
-        Gl.GetTextureLevelParameteriv((uint)tid, 0, Gl.TEXTURE_HEIGHT, &h);
-        if (w < 8 || h < 8 || (long)w * h > 4L << 20)
+        byte[]? px = null;
+        IntPtr tex = IntPtr.Zero;
+        // Vulkan reads the engine's own decoded copy; GL reads the uploaded level back
+        if (Renderer.OnVulkan)
+            px = TexScan.TopRgba(tex = _aurGet(resref, IntPtr.Zero, null, null, 0, 0), out w, out h);
+        else
         {
-            _log?.Info($"[grass] material {m} tid {tid}: atlas unreadable ({w}x{h}) -- drawn as cards");
+            Gl.GetTextureLevelParameteriv((uint)tid, 0, Gl.TEXTURE_WIDTH, &w);
+            Gl.GetTextureLevelParameteriv((uint)tid, 0, Gl.TEXTURE_HEIGHT, &h);
+        }
+        if (w < 8 || h < 8 || (long)w * h > 4L << 20 || (Renderer.OnVulkan && px == null))
+        {
+            _log?.Info($"[grass] material {m} tid {tid}: atlas unreadable ({w}x{h}"
+                     + (Renderer.OnVulkan ? $", the engine's copy: {TexScan.Describe(tex)}" : "") + ") -- drawn as cards");
             return 0;
         }
-        var px = new byte[w * h * 4];
+        px ??= new byte[w * h * 4];
         Span<GrassAtlas.Cell> cells = stackalloc GrassAtlas.Cell[4];
         fixed (byte* p = px)
         {
-            Gl.GetTextureImage((uint)tid, 0, Gl.RGBA, Gl.UNSIGNED_BYTE, px.Length, p);
+            if (!Renderer.OnVulkan) Gl.GetTextureImage((uint)tid, 0, Gl.RGBA, Gl.UNSIGNED_BYTE, px.Length, p);
             GrassAtlas.Classify(p, w, h, cells);
         }
         for (int k = 0; k < 4; k++)

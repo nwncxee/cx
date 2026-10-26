@@ -60,6 +60,12 @@ internal static unsafe class PltGpuCheck
     /// texture is there, read back on a later frame. Never waits.</summary>
     internal static void Tick()
     {
+        if (Renderer.OnVulkan && _phase is Phase.Armed or Phase.Rendered)
+        {
+            _phase = Phase.Done;
+            _log?.Always("PltGpuCheck: NOT RUN on Vulkan -- its resolve draw and read-back are GL's; the GPU resolve is not checked");
+            return;
+        }
         switch (_phase)
         {
             case Phase.Armed: Render(); break;

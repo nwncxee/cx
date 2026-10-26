@@ -212,14 +212,21 @@ internal static unsafe class PostChain
     /// Alloy world stages compile with <c>GAMMA_CORRECTION 1</c> whatever the engine's is. Unresolved reads as "on".</summary>
     internal static bool GammaOff() => _gammaParam != null && _gammaParam(GammaParam) == 0;
 
-    /// <summary>Point the Alloy colour passes at the HDR target for this pass; a false answer stands the whole
-    /// Alloy frame down to vanilla, so this is asked BEFORE anything is staged. The target's starting content
-    /// comes from the engine's clear COLOUR rather than a blit of its buffer: a blit would copy a
-    /// display-space value into a linear target, wrong by a gamma wherever an area clears to non-black.</summary>
+    /// <summary>Point the Alloy colour passes at the HDR target for this pass (on Vulkan, only note the clear); a false
+    /// answer stands the whole Alloy frame down to vanilla, so this is asked BEFORE anything is staged. The target
+    /// starts as the engine's clear COLOUR rather than a blit of its buffer: a blit would copy a display-space value
+    /// into a linear target, wrong by a gamma wherever an area clears to non-black.</summary>
     internal static bool Begin(int* viewport, float* clearRgba)
     {
         Armed = false;
         if (!_on || _down.Failed) return false;
+        if (Renderer.OnVulkan)
+        {
+            // the Vulkan frame clears its own HDR target to this colour (VkPasses)
+            _lastClear = new Vector3(clearRgba[0], clearRgba[1], clearRgba[2]);
+            Armed = true;
+            return true;
+        }
         // BlitFramebuffer is in the list for the sampled depth copies (SceneDepth, FrameSnapshot) and for
         // the present hand-back, which is how the finished frame reaches the screen at all.
         if (Gl.ClearColor == null || Gl.Clear == null || Gl.GenFramebuffers == null

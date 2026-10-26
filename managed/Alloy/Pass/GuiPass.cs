@@ -571,6 +571,7 @@ internal static unsafe class GuiPass
     /// build it in the 4.6 context, then take the screen back into it.</summary>
     private static void Resize(int w, int h)
     {
+        if (Renderer.OnVulkan) { PresentTarget.Ensure(w, h); return; }
         if (!GlContextService.Enter()) return;
         PresentTarget.Ensure(w, h);
         GlContextService.Leave();
