@@ -27,7 +27,7 @@ internal static unsafe partial class PostStack
         public readonly StageVk[] Stages = NewStages();
         public ImageId A, B, Vel, Hist0, Hist1;
         public int W, H, VelW, VelH, HistW, HistH, Cur;
-        public bool HistValid;
+        public bool HistValid, Up;
         public GuiVkProg? Motion, Taa;
         public bool MotionTried, TaaTried;
         public int MInvVp = -1, MPrevVp = -1, MSize = -1, MJitter = -1;
@@ -72,7 +72,7 @@ internal static unsafe partial class PostStack
         int live = 0;
         string missing = "";
         bool taa = false;
-        if (Post.Stack.V && _gspI != null && Pair(vk, s, dw, dh, log))
+        if (Post.Stack.V && _gspI != null)
             for (int i = 0; i < _stages.Length; i++)
             {
                 Stage st = _stages[i];
@@ -81,7 +81,7 @@ internal static unsafe partial class PostStack
                 StageVk v = s.Stages[i];
                 if (!v.Tried) Build(vk, st, v, log);
                 if (v.P == null) continue;
-                if (st.Name == "taa" && !TaaReady(vk, s, viewport, vp, vpClean, depth, cl, log)) continue;
+                if (st.Name == "taa" && !TaaReady(vk, s, viewport, dw, dh, vp, vpClean, depth, cl, log)) continue;
                 taa |= st.Name == "taa";
                 live |= 1 << i;
             }
@@ -92,8 +92,11 @@ internal static unsafe partial class PostStack
                 log.Always($"PostStack: NOT DRAWN on Vulkan, and switched on -- the {missing} stage(s); the frame resolves without them");
         }
         Rect rect = new(display[0], display[1], dw, dh);
+        // upsampling, as GL's Begin decides it: the pair and every stage but the last at render size
+        s.Up = taa && PostChain.TaaUpsample && (viewport[2] != dw || viewport[3] != dh);
+        if (live != 0 && !Pair(vk, s, s.Up ? viewport[2] : dw, s.Up ? viewport[3] : dh, log)) { live = 0; taa = false; }
         if (live == 0) return PostChainVk.Record(vk, cl, hdr, depth, vk.Composite, true, viewport, display, log);
-        int* full = stackalloc int[4] { 0, 0, dw, dh };
+        int* full = stackalloc int[4] { 0, 0, s.W, s.H };
         if (!PostChainVk.Record(vk, cl, hdr, depth, s.A, false, viewport, full, log)) return false;
         ImageId read = s.A, write = s.B;
         int left = System.Numerics.BitOperations.PopCount((uint)live);
@@ -110,7 +113,7 @@ internal static unsafe partial class PostStack
             if (st.Value != null) VkUniformShim.Set(v.Param, st.Value());
             if (st == _fbpost) FbPostStage.WriteVk(in v.Fb, last ? display : full);
             int at = PostChainVk.Close(cl, v.P!);
-            PostChainVk.Draw(cl, v.P!, PostChainVk.FormatOf(into), PostChainVk.Blend.None, into, LoadOp.Clear, last ? rect : new Rect(0, 0, dw, dh),
+            PostChainVk.Draw(cl, v.P!, PostChainVk.FormatOf(into), PostChainVk.Blend.None, into, LoadOp.Clear, last ? rect : new Rect(0, 0, s.W, s.H),
                              at, new PostChainVk.Inputs(read, default, depth, hist), log);
             (read, write) = (write, read);
         }
@@ -151,7 +154,7 @@ internal static unsafe partial class PostStack
         if (v.P == null) log.Always($"PostStack: the {st.Name} stage did not build on Vulkan (logged above) -- it sits the session out");
     }
 
-    /// <summary>The stack's two half-float images at the display size.</summary>
+    /// <summary>The stack's two half-float images: the display size, or the render size when upsampling.</summary>
     private static bool Pair(VkBackend vk, StackVkState s, int w, int h, ExtenderLog log)
     {
         if (!s.A.IsNull && s.W == w && s.H == h) return true;
@@ -165,10 +168,11 @@ internal static unsafe partial class PostStack
         return false;
     }
 
-    /// <summary>The taa stage's inputs this frame: its programs, the history pair at the display size, and the camera
-    /// velocity painted off the finished depth. False sits the stage out (the frame resolves without it).</summary>
-    private static bool TaaReady(VkBackend vk, StackVkState s, int* viewport, Matrix4x4* vp, Matrix4x4* vpClean,
-                                 ImageId depth, CommandList cl, ExtenderLog log)
+    /// <summary>The taa stage's inputs this frame: its programs, the history pair at the display size
+    /// (<paramref name="dw"/> x <paramref name="dh"/>), and the camera velocity painted off the finished depth. False
+    /// sits the stage out (the frame resolves without it).</summary>
+    private static bool TaaReady(VkBackend vk, StackVkState s, int* viewport, int dw, int dh, Matrix4x4* vp,
+                                 Matrix4x4* vpClean, ImageId depth, CommandList cl, ExtenderLog log)
     {
         if (!s.TaaTried)
         {
@@ -195,12 +199,12 @@ internal static unsafe partial class PostStack
             s.VelW = w; s.VelH = h;
             if (s.Vel.IsNull) return false;
         }
-        if (s.Hist0.IsNull || s.HistW != s.W || s.HistH != s.H)
+        if (s.Hist0.IsNull || s.HistW != dw || s.HistH != dh)
         {
             vk.Destroy(s.Hist0); vk.Destroy(s.Hist1);
-            s.Hist0 = PostChainVk.Target(vk, s.W, s.H, "vk taa history 0");
-            s.Hist1 = PostChainVk.Target(vk, s.W, s.H, "vk taa history 1");
-            s.HistW = s.W; s.HistH = s.H;
+            s.Hist0 = PostChainVk.Target(vk, dw, dh, "vk taa history 0");
+            s.Hist1 = PostChainVk.Target(vk, dw, dh, "vk taa history 1");
+            s.HistW = dw; s.HistH = dh;
             s.HistValid = false;
             if (s.Hist0.IsNull || s.Hist1.IsNull) { s.Hist0 = default; return false; }
         }
@@ -225,10 +229,10 @@ internal static unsafe partial class PostStack
         ImageId read = s.Cur == 0 ? s.Hist0 : s.Hist1, write = s.Cur == 0 ? s.Hist1 : s.Hist0;
         PostChainVk.Open(s.Taa!);
         VkUniformShim.Set(s.TBlend, s.HistValid ? PostChain.TaaBlend : 1f);
-        VkUniformShim.Set(s.TUpsample, 0);
+        VkUniformShim.Set(s.TUpsample, s.Up ? 1 : 0);
         VkUniformShim.Set(s.TJitterPx, [PostChain.JitterX * 0.5f * s.W, PostChain.JitterY * 0.5f * s.H]);
         int at = PostChainVk.Close(cl, s.Taa!);
-        PostChainVk.Draw(cl, s.Taa!, Format.Rgba16F, PostChainVk.Blend.None, write, LoadOp.DontCare, new Rect(0, 0, s.W, s.H), at,
+        PostChainVk.Draw(cl, s.Taa!, Format.Rgba16F, PostChainVk.Blend.None, write, LoadOp.DontCare, new Rect(0, 0, s.HistW, s.HistH), at,
                          new PostChainVk.Inputs(cur, default, depth, read, s.Vel, HistLinear: true), log);
         s.Cur ^= 1;
         s.HistValid = true;
