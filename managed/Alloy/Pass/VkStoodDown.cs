@@ -23,10 +23,7 @@ internal static class VkStoodDown
 
     /// <summary>A row per unported colour- or shadow-bracket pass. <see cref="SelfCheck"/> holds this list against
     /// <see cref="FrameGraph.Passes"/>, so neither a new pass nor a ported one can drift away from it.</summary>
-    private static readonly Pass[] Passes =
-    [
-        new(PassId.CoverageOwned, "alloy.a2c (alpha-to-coverage foliage)", "cutouts take the hard alpha test"),
-    ];
+    private static readonly Pass[] Passes = [];
 
     /// <summary>A row per stood-down term. <see cref="SelfCheck"/> holds this list against
     /// <see cref="VkParity.StoodDown"/>, so the two cannot drift.</summary>
@@ -40,7 +37,6 @@ internal static class VkStoodDown
         PassId.RainCover or PassId.WeatherOwned => Weather.Enabled.V,
         PassId.SkyMap => SkyView.Wanted,
         PassId.FogVolume => VolumetricFog.Enabled.V,
-        PassId.CoverageOwned => Renderer.A2c.V > 0,
         PassId.GrassOwned => Grass.Enabled.V,
         PassId.Reflections => Lighting.Ssr.V,
         PassId.FbCopy or PassId.WaterOwned => Water.Enabled.V,

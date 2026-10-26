@@ -97,6 +97,8 @@ public struct PipelineDesc
     public DepthState Depth;
     public BlendSet Blend;
     public AttachmentFormats Targets;
+    /// <summary>Coverage from the first colour output's alpha, over <see cref="AttachmentFormats.Samples"/> samples.</summary>
+    public bool AlphaToCoverage;
     public string Label;
 }
 

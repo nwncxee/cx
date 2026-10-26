@@ -87,7 +87,10 @@ internal sealed unsafe partial class VkBackend
             frontFace = Winding(d.Raster.FrontCw),
             depthBiasEnable = d.Raster.DepthBias, lineWidth = 1,
         };
-        var ms = new VkPipelineMultisampleStateCreateInfo { rasterizationSamples = VkSampleCountFlags.Count1 };
+        var ms = new VkPipelineMultisampleStateCreateInfo
+        {
+            rasterizationSamples = (VkSampleCountFlags)Math.Max(d.Targets.Samples, 1), alphaToCoverageEnable = d.AlphaToCoverage,
+        };
         var ds = new VkPipelineDepthStencilStateCreateInfo
         {
             depthTestEnable = d.Depth.Test, depthWriteEnable = d.Depth.Write, depthCompareOp = Compare(d.Depth.Compare),

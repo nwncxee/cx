@@ -123,7 +123,7 @@ public sealed unsafe partial class AlloyRenderer
     private const int ColourTargets = 7;
 
     /// <summary>Which attachment set a pipeline draws into.</summary>
-    private enum VkTargets : byte { Prepass, Colour, Forward, Decal, Mask, Velocity, ColourRefl, Probe, Oit, ForwardDepth }
+    private enum VkTargets : byte { Prepass, Colour, Forward, Decal, Mask, Velocity, ColourRefl, Probe, Oit, ForwardDepth, Cover }
 
     /// <summary>The seven per-batch values, in <c>VkGlsl.Push</c>'s order.</summary>
     [StructLayout(LayoutKind.Sequential)]
@@ -619,7 +619,8 @@ public sealed unsafe partial class AlloyRenderer
     /// blend-mode indices), made on first ask. Null id when the device refused it.</summary>
     private static PipelineId VkPipeline(VkProg p, int fmt, VkTargets targets, int blend)
     {
-        long key = fmt | (long)targets << 4 | (long)blend << 8;
+        int samples = targets == VkTargets.Cover ? _vkCover.Samples : 1;
+        long key = fmt | (long)targets << 4 | (long)blend << 8 | (long)samples << 24;
         if (p.Pipes.TryGetValue(key, out PipelineId id)) return id;
         VkColourState s = _vkc;
         var d = new PipelineDesc
@@ -629,10 +630,11 @@ public sealed unsafe partial class AlloyRenderer
             Label = $"vk {p.Label} {(MeshArena.Fmt)fmt} {targets} blend {blend}",
         };
         d.Targets.Depth = Format.D32F;
-        d.Targets.Samples = 1;
+        d.Targets.Samples = samples;
         if (targets == VkTargets.Prepass) { d.Targets.ColorCount = PrepassTargets; d.Targets.Colors[1] = Format.R32Ui; }
         else if (targets == VkTargets.Decal) { d.Targets.Depth = Format.Unknown; VkDecalBlend(ref d); }
         else if (targets == VkTargets.Forward) { d.Targets.ColorCount = 1; d.Targets.Colors[0] = Format.Rgba16F; }
+        else if (targets == VkTargets.Cover) { d.Targets.ColorCount = 1; d.Targets.Colors[0] = Format.Rgba16F; d.AlphaToCoverage = true; }
         // the depth the blended class lays after the OIT resolve, inside the forward pass: its colour masked off
         else if (targets == VkTargets.ForwardDepth)
         {

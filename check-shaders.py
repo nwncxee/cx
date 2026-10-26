@@ -573,6 +573,7 @@ def programs(g):
         "clustered lit (decal layer writer)": (g["cx_ownlit_vs"], g["cx_ownlit_fs"].replace("#version 460 core\n", "#version 460 core\n#define CX_DECAL_WRITE 1\n", 1)),
         "coverage layer seed": (g["cx_fullscreen_v"], g["cx_a2cseed_f"]),
         "coverage layer depth": (g["cx_fullscreen_v"], g["cx_a2cdepth_f"]),
+        "coverage layer resolve": (g["cx_fullscreen_v"], g["cx_a2cres_f"]),
         "post bloom downsample": (g["cx_post_vs"], g["cx_bloomdn_fs"]),
         "post bloom upsample": (g["cx_post_vs"], g["cx_bloomup_fs"]),
         "post resolve": (g["cx_post_vs"], g["cx_resolve_fs"]),

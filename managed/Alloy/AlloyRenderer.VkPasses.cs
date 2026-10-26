@@ -90,7 +90,9 @@ public sealed unsafe partial class AlloyRenderer
         var plain = new VkRange(_depthEqual, true, false, false, colour, gbuf, VkDecalFold);
         ok &= VkIssueClass(side, ref b, 0, _gCutoutStart, plain, vp, viewport, near, far, indirect);
         ok &= VkIssueClass(side, ref b, _gCutoutStart, _gA2cStart, plain, vp, viewport, near, far, indirect);
-        ok &= VkIssue(side, ref b, _gA2cStart, _gOpaqueEnd, plain with { MatchDepth = false }, vp, viewport, near, far, indirect);
+        // the coverage tail waits for its layer whenever one arms; otherwise it draws here, cut
+        bool cover = VkCoverArm(vk, vp, viewport, log);
+        if (!cover) ok &= VkIssue(side, ref b, _gA2cStart, _gOpaqueEnd, plain with { MatchDepth = false }, vp, viewport, near, far, indirect);
         bool washes = _gOpaqueEnd < _gBlendEnd;
         if (washes) ok &= VkIssue(side, ref b, _gOpaqueEnd, _gBlendEnd, plain with { MatchDepth = false, Interior = true }, vp, viewport, near, far, indirect);
         if (!ok) return false;
@@ -120,6 +122,8 @@ public sealed unsafe partial class AlloyRenderer
         // ...and then ADR 0029's two dispatches, at the graph's own place: after the cutout pass and the sky,
         // before the blended one. A sky pixel has no G-buffer record, so the walk leaves it alone.
         VkDeferred(vk, cl, vp, view, proj, viewport, near, far, indirect ? CullPassVk.Slots(CullPassVk.PhaseColour) : s.Slots, log);
+        // the coverage layer at the graph's own place: seeded from the frame the deferred walk just lit
+        if (cover && !VkCoverPass(cl, s, vp, viewport, near, far, indirect, log)) return false;
         // the grass class where GL's graph has it: after the deferred lights it is lit beside, before the blended one
         if (!VkGrassPass(vk, cl, s, vp, viewport, near, far, lightingOn, log)) return false;
         // the reflections at the graph's own place: after the deferred walk, before the blended class
@@ -425,7 +429,7 @@ public sealed unsafe partial class AlloyRenderer
             CompareOp func = equal ? CompareOp.Equal : split && r.SplitRan && !r.Interior ? CompareOp.Less : CompareOp.LessEqual;
             bool test = !(blend && wash && !Renderer.WashTest.V);
             var depth = new DepthState(test, !equal && r.DepthMask, func);
-            push.AlphaCut = AlloyClasses.Discard(cls);
+            push.AlphaCut = r.Targets == VkTargets.Cover ? CoverageLayer.Cut : AlloyClasses.Discard(cls);
             // the batch's own AO membership, measured by the prepass exactly as the GL issue loop reads it
             push.SsaoOn = lit && SsaoPassVk.Live && !_capturing && !s.Oit ? Issue.AoWhy(g) : 0;
             push.AoDirect = push.SsaoOn > 0 ? SsaoPass.Direct : 0f;

@@ -168,6 +168,7 @@ internal sealed unsafe partial class GlDevice : IDevice
     {
         if (!OnThread("CreatePipeline")) return default;
         string what = d.Label ?? "pipeline";
+        if (d.AlphaToCoverage) return Refused<PipelineId>($"{what}: alpha-to-coverage is not on the GL backend");
         uint prog;
         if (!d.Cs.IsNull)
         {
