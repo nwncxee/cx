@@ -189,7 +189,8 @@ public sealed unsafe partial class AlloyRenderer
 
         // the resolve grades a far pixel by its world ray, off the camera the dome drew through
         if (!_capturing && (_skyN == 0 || !Matrix4x4.Invert(vp, out SkyInvVp))) SkyInvVp = default;
-        Matrix4x4 vpJ = vp, vpC = vpClean;
+        Matrix4x4 vpJ = vp, vpC = vpClean, pj = proj;
+        ToonStage.SetProj(&pj);
         if (!PostStack.RecordVk(vk, cl, s.Hdr, s.Depth, &vpJ, &vpC, viewport, display, log)) return false;
         VkHighlightComposite(cl, composite, display, log);
         // the probe last: this frame's lit stages read the cube as it stood, and its faces reuse the frame's side list

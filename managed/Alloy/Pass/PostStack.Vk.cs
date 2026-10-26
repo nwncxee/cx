@@ -17,6 +17,9 @@ internal static unsafe partial class PostStack
         public int Dither = -1, Param = -1;
         /// <summary>The hosted chain's own terms; unused by every other stage.</summary>
         public FbPostStage.VkLocs Fb;
+        /// <summary>The toon stage's terms, and the aa stage's <c>uRt</c>; unused by every other stage.</summary>
+        public ToonStage.VkLocs Toon;
+        public int Rt = -1;
     }
 
     /// <summary>The stack on one device, replaced whole with the device: the stages, the ping-pong pair, the velocity
@@ -34,6 +37,8 @@ internal static unsafe partial class PostStack
         public int TBlend = -1, TJitterPx = -1, TUpsample = -1;
         /// <summary>The live stages Vulkan cannot draw yet, as last said; null before the first frame.</summary>
         public string? Missing;
+        /// <summary>The stages drawn, one bit per stage, as last said; -1 before the first frame.</summary>
+        public int Said = -1;
     }
 
     private static StackVkState _vk = new();
@@ -45,9 +50,9 @@ internal static unsafe partial class PostStack
         return a;
     }
 
-    /// <summary>The stages Vulkan draws: the plain ones, and the taa stage with its own resolve. The toon, hosted-chain
-    /// and SMAA stages draw passes of their own that are not on Vulkan yet.</summary>
-    private static bool OnVulkan(Stage st) => st.Name is "gamma" or "sharpen" or "vibrance" or "taa"
+    /// <summary>The stages Vulkan draws: the plain ones, toon, the taa stage with its own resolve and the aa stage with
+    /// its edge and weight passes. A hosted chain that runs the engine's native stages is not on Vulkan.</summary>
+    private static bool OnVulkan(Stage st) => st.Name is "gamma" or "toon" or "sharpen" or "vibrance" or "taa" or "aa"
                                               || st == _fbpost && !FbPostStage.HostsNative;
 
     /// <summary>The TAA history on Vulkan starts over: the next resolve takes the current frame whole.</summary>
@@ -82,6 +87,7 @@ internal static unsafe partial class PostStack
                 if (!v.Tried) Build(vk, st, v, log);
                 if (v.P == null) continue;
                 if (st.Name == "taa" && !TaaReady(vk, s, viewport, dw, dh, vp, vpClean, depth, cl, log)) continue;
+                if (st.Name == "aa" && !SmaaStage.ReadyVk(vk, dw, dh, log)) continue;
                 taa |= st.Name == "taa";
                 live |= 1 << i;
             }
@@ -90,6 +96,14 @@ internal static unsafe partial class PostStack
             s.Missing = missing;
             if (missing.Length > 0)
                 log.Always($"PostStack: NOT DRAWN on Vulkan, and switched on -- the {missing} stage(s); the frame resolves without them");
+        }
+        if (live != s.Said)
+        {
+            s.Said = live;
+            string names = "";
+            for (int i = 0; i < _stages.Length; i++)
+                if ((live & 1 << i) != 0) names += (names.Length == 0 ? "" : ", ") + _stages[i].Name;
+            log.Info($"PostStack: drawn on Vulkan -- {(names.Length == 0 ? "no stage, the resolve alone" : names)}");
         }
         Rect rect = new(display[0], display[1], dw, dh);
         // upsampling, as GL's Begin decides it: the pair and every stage but the last at render size
@@ -108,13 +122,17 @@ internal static unsafe partial class PostStack
             bool last = --left == 0;
             ImageId into = last ? vk.Composite : write;
             ImageId hist = st.Name == "taa" ? TaaResolve(cl, s, read, depth, log) : default;
+            bool aa = st.Name == "aa";
+            if (aa) SmaaStage.PassesVk(cl, read, log);
             PostChainVk.Open(v.P!);
             VkUniformShim.Set(v.Dither, last ? PostChain.DitherLsb : 0f);
             if (st.Value != null) VkUniformShim.Set(v.Param, st.Value());
             if (st == _fbpost) FbPostStage.WriteVk(in v.Fb, last ? display : full);
+            if (st.Name == "toon") ToonStage.WriteVk(in v.Toon);
+            if (aa) SmaaStage.WriteVk(v.Rt);
             int at = PostChainVk.Close(cl, v.P!);
             PostChainVk.Draw(cl, v.P!, PostChainVk.FormatOf(into), PostChainVk.Blend.None, into, LoadOp.Clear, last ? rect : new Rect(0, 0, s.W, s.H),
-                             at, new PostChainVk.Inputs(read, default, depth, hist), log);
+                             at, new PostChainVk.Inputs(read, default, depth, hist, Weights: aa ? SmaaStage.VkWeights : default), log);
             (read, write) = (write, read);
         }
         if (taa) MotionVectors.RollHistory();
@@ -150,6 +168,8 @@ internal static unsafe partial class PostStack
             v.Dither = p.Loc("uDither");
             v.Param = st.Param == null ? -1 : p.Loc(st.Param);
             if (st == _fbpost) v.Fb = FbPostStage.LocateVk();
+            if (st.Name == "toon") v.Toon = ToonStage.LocateVk(p);
+            v.Rt = p.Loc("uRt");
         }, log);
         if (v.P == null) log.Always($"PostStack: the {st.Name} stage did not build on Vulkan (logged above) -- it sits the session out");
     }

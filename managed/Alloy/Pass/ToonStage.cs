@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using CX.Framework;
 using CX.Graphics;
+using CX.Graphics.Rhi;
 
 namespace CX.Alloy;
 
@@ -75,15 +76,44 @@ internal static unsafe class ToonStage
             g.LocColorThresh = GlProgram.Loc(prog, "uColorThresh");
             g.LocHardness = GlProgram.Loc(prog, "uHardness");
         }
-        float hardness = Hardness;
+        (float ink, float depth, float colour, float hard) = Dials();
         Gl.UseProgram(prog);
         fixed (Matrix4x4* p = &_proj) Gl.UniformMatrix4fv(g.LocProj, 1, 0, (float*)p);
         Gl.Uniform1f(g.LocBands, Post.ToonBands.V);
-        Gl.Uniform1f(g.LocInk, hardness <= 0f ? 0f : Post.ToonInk.V);
+        Gl.Uniform1f(g.LocInk, ink);
         Gl.Uniform1f(g.LocEdge, Post.ToonEdge.V);
-        Gl.Uniform1f(g.LocDepthThresh, MathF.Max(DepthEdge, 1e-4f));
-        Gl.Uniform1f(g.LocColorThresh, MathF.Max(ColorEdge, 1e-4f));
-        Gl.Uniform1f(g.LocHardness, Math.Clamp(hardness, 0f, 1f));
+        Gl.Uniform1f(g.LocDepthThresh, depth);
+        Gl.Uniform1f(g.LocColorThresh, colour);
+        Gl.Uniform1f(g.LocHardness, hard);
+    }
+
+    /// <summary>The ink, the two thresholds and the hardness as the stage reads them, off the sliders this frame.</summary>
+    private static (float Ink, float Depth, float Colour, float Hard) Dials()
+    {
+        float hardness = Hardness;
+        return (hardness <= 0f ? 0f : Post.ToonInk.V, MathF.Max(DepthEdge, 1e-4f), MathF.Max(ColorEdge, 1e-4f),
+                Math.Clamp(hardness, 0f, 1f));
+    }
+
+    /// <summary>The stage's terms on its Vulkan program, -1 where the program does not read one.</summary>
+    internal readonly record struct VkLocs(int Proj, int Bands, int Ink, int Edge, int DepthThresh, int ColorThresh, int Hardness);
+
+    /// <summary>...resolved inside the shim's resolve of that program.</summary>
+    internal static VkLocs LocateVk(GuiVkProg p)
+        => new(p.Loc("uProj"), p.Loc("uBands"), p.Loc("uInk"), p.Loc("uEdge"), p.Loc("uDepthThresh"), p.Loc("uColorThresh"),
+               p.Loc("uHardness"));
+
+    /// <summary><see cref="Prepare"/>'s terms into the open capture of the Vulkan stage. Hot: allocates nothing.</summary>
+    internal static void WriteVk(in VkLocs l)
+    {
+        (float ink, float depth, float colour, float hard) = Dials();
+        VkUniformShim.Set(l.Proj, _proj);
+        VkUniformShim.Set(l.Bands, Post.ToonBands.V);
+        VkUniformShim.Set(l.Ink, ink);
+        VkUniformShim.Set(l.Edge, Post.ToonEdge.V);
+        VkUniformShim.Set(l.DepthThresh, depth);
+        VkUniformShim.Set(l.ColorThresh, colour);
+        VkUniformShim.Set(l.Hardness, hard);
     }
 
     /// <summary>The stage text. Display space in, display space out; the size comes off the depth texture
