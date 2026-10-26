@@ -267,6 +267,7 @@ internal static unsafe partial class LightmapBake
     internal static void CompileNotice()
     {
         int now = GlContextService.Presents;
+        if (Renderer.OnVulkan) { CompileNoticeVk(now); return; }
         if (!Held && _edgePresent != now || _noticeAt == now || !GlContextService.Inside || TextRig.Atlas == null) return;
         // CX-100: under the engine's load screen the frozen screen is the notice; a CX backdrop would be a second one.
         if (LoadScreen.PanelUp) return;
@@ -284,6 +285,18 @@ internal static unsafe partial class LightmapBake
         Gl.Viewport(vp[0], vp[1], vp[2], vp[3]);   // GLRender::SetViewPort caches no GL state, so the raw value is all it had
         if (GlContextService.Resume(bracket)) _log?.Info($"LightmapBake: a shader compile {(Held ? "under the hold" : "on an area's first frame")} -- \"Compiling shaders\" is on screen until it finishes");
         else { UiHostService.Owe(); _log?.Always("LightmapBake: the 4.6 context REFUSED re-entry after the compile notice -- this frame's Alloy GL runs on the engine's context"); }
+    }
+
+    /// <summary><see cref="CompileNotice"/> on Vulkan: the backdrop recorded over the composite and presented by Vulkan at
+    /// once, ahead of the compile. No GL bracket to step out of; the frame's own present follows as usual.</summary>
+    private static void CompileNoticeVk(int now)
+    {
+        if (!Held && _edgePresent != now || _noticeAt == now || TextRig.Atlas == null || LoadScreen.PanelUp) return;
+        if (TextRig.ViewportW <= 0 || TextRig.ViewportH <= 0) return;
+        _noticeAt = now; _captionPhase = -1;
+        LoadScreen.Notice("Compiling shaders…", "Only once: the result is saved for next time");
+        if (ScreenOwner.PresentVulkanNow())
+            _log?.Info($"LightmapBake: a shader compile {(Held ? "under the hold" : "on an area's first frame")} -- \"Compiling shaders\" is on screen (Vulkan) until it finishes");
     }
 
     /// <summary>Pages with no rect still queued, probing or packing.</summary>

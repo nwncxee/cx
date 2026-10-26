@@ -136,6 +136,11 @@ internal static unsafe class ScreenOwner
         return true;
     }
 
+    /// <summary>Vulkan presents the composite now, outside the frame's own present: a notice put up ahead of a blocking
+    /// compile. False (logged by the device) when it could not.</summary>
+    internal static bool PresentVulkanNow()
+        => _log != null && AlloyDevice.Vulkan(_log) is VkBackend vk && vk.Present(_interval != null ? _interval() : 1, _log);
+
     internal static string Stats() => _origClear == null ? "screen: engine (not armed)"
         // The clear colour is on the line because it IS the void: every pixel the world does not cover ends up
         // this colour, and nothing else in a session reports it.

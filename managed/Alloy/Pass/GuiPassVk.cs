@@ -69,7 +69,10 @@ internal static unsafe partial class GuiPassVk
         /// <summary>Stream layouts by (format, stride); a format the table cannot lay out has none.</summary>
         public readonly Dictionary<long, VertexLayoutId> Stream = new(8);
         public readonly View[] Views = new View[NuiModelDoll.MaxViews];
-        public CommandList? Cmds;
+        public CommandList? Cmds, Now;
+        /// <summary>A flush is recording: <see cref="ReplayNow"/> must not reuse its lists and arena.</summary>
+        public bool Busy;
+        public bool NowSaid;
         public CommandList? Side;
         public long Drawn, Skipped, NoLayout, NoTexture, Submits, Dropped;
         /// <summary>CX's own windows' programs and buffers.</summary>
@@ -127,15 +130,21 @@ internal static unsafe partial class GuiPassVk
         s.Black = clearBlack;
         // the latch is taken whichever way it falls: on the A/B the GL half must not clear again, over black
         s.ClearOwed = GuiPass.TakeFrameClear() || clearBlack;
-        if (!Stage(vk, log)) return false;
-        CommandList cl = s.Cmds!;
-        cl.Reset();
-        Uploads(cl);
-        bool ok = Record(vk, cl, from, mid, log)
-                  && (!windows || Windows(vk, cl, CX.Ui.UiLayer.BelowNui, log))
-                  && Record(vk, cl, mid, to, log)
-                  && (!windows || Windows(vk, cl, CX.Ui.UiLayer.AboveNui, log))
-                  && Submit(vk, cl, log);
+        bool ok;
+        s.Busy = true;
+        try
+        {
+            if (!Stage(vk, log)) return false;
+            CommandList cl = s.Cmds!;
+            cl.Reset();
+            Uploads(cl);
+            ok = Record(vk, cl, from, mid, log)
+                 && (!windows || Windows(vk, cl, CX.Ui.UiLayer.BelowNui, log))
+                 && Record(vk, cl, mid, to, log)
+                 && (!windows || Windows(vk, cl, CX.Ui.UiLayer.AboveNui, log))
+                 && Submit(vk, cl, log);
+        }
+        finally { s.Busy = false; }
         if (ok && !s.Live)
         {
             s.Live = true;

@@ -45,6 +45,7 @@ public static unsafe partial class VulkanToolchain
     {
         string cached = Path.Combine(ProgramBinary.CacheDir, $"vk-{CacheKey(source, kind):x16}.spv");
         if (Cached(cached) is { } hit) { error = ""; return hit; }
+        CX.Alloy.LightmapBake.CompileNotice();
         byte[]? spirv = CompileFresh(source, name, kind, out error);
         if (spirv != null)
             try { Directory.CreateDirectory(ProgramBinary.CacheDir); File.WriteAllBytes(cached, spirv); }
