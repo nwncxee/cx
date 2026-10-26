@@ -443,7 +443,7 @@ internal static unsafe class Issue
                     Gl.Uniform1f(L.AoCutout, Ao.Cutout.V);
                     Gl.Uniform1f(L.AlphaMip, Renderer.CutMip.V);
                     OitPass.Upload(L.Oit, L.OitDim, _oitOn);
-                    Gl.Uniform1i(L.LightRecOn, _lightRec && !VkParity.Active ? 1 : 0);
+                    Gl.Uniform1i(L.LightRecOn, _lightRec ? 1 : 0);
                     Gl.Uniform1i(L.Capture, _capturing ? (_planar ? 2 : 1) : 0);
                     Gl.Uniform1f(L.MirrorZ, _mirrorZ);
                     LightmapBake.BindForDraw(L.LmPages, L.LmMovers);

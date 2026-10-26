@@ -130,6 +130,9 @@ public sealed unsafe partial class AlloyRenderer
         // the layer's readers are done with the blended range: additive takes it as GL does after DecalLayer.End
         VkRange add = fwd with { DepthMask = false, Decal = DecalLayer.ModeNone };
         ok &= VkIssue(side, ref b, _gOpaqueEnd, _gBlendEnd, fwd, vp, viewport, near, far, indirect);
+        // the record is the blended class's alone: every later lit bind uploads the gate off again
+        s.LightRec = false;
+        b.Prog = null;
         // ADR 0011 PassId.FbCopy: the one snapshot of everything drawn so far, which only water reads. Without
         // water the additive class closes the same pass; with it the pass ends so the copy can be recorded
         bool water = _gWaterEnd > _gBlendEnd && !_capturing;
@@ -191,8 +194,10 @@ public sealed unsafe partial class AlloyRenderer
     /// first declares one -- and whether a draw came before it -- is not something to depend on.</summary>
     private static void VkHandOverReads(CommandList cl, VkColourState s)
     {
-        Span<ImageId> arm = stackalloc ImageId[2];
+        Span<ImageId> arm = stackalloc ImageId[3];
         int n = 0;
+        s.LightRec = _vkdef.Wrote && !_capturing && Lighting.LightRec.V;
+        if (s.LightRec) arm[n++] = _vkdef.LightRec;
         if (SsaoPassVk.Live) arm[n++] = SsaoPassVk.Visibility;
         if (!s.DepthRead.IsNull) arm[n++] = s.DepthRead;
         cl.ReadImages(arm[..n]);

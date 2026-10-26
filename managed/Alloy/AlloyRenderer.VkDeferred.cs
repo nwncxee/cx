@@ -44,6 +44,8 @@ public sealed unsafe partial class AlloyRenderer
     {
         public VkBackend? Dev;
         public bool Failed, Live;
+        /// <summary>This frame's walk wrote <see cref="LightRec"/>.</summary>
+        public bool Wrote;
         /// <summary>The shipped walk, the film pass, the record writer, and the walk's in-loop-tap variant --
         /// built on the first frame an "every light" escape asks for it (<c>shadow.cap 0</c>).</summary>
         public VkDefStage? Walk, Film, Shadow, InLoop;
@@ -79,6 +81,7 @@ public sealed unsafe partial class AlloyRenderer
         VkDeferredState d = _vkdef;
         if (d.Dev != vk) _vkdef = d = new VkDeferredState { Dev = vk };
         VkColourState s = _vkc;
+        d.Wrote = false;
         int w = viewport[2], h = viewport[3];
         // GbufWritten is this frame's own verdict on light.deferred, the viz modes and the projection: with no
         // G-buffer there is nothing for the walk to shade
@@ -126,6 +129,7 @@ public sealed unsafe partial class AlloyRenderer
         cl.SetPipeline(walk.Pipe);
         VkDefBindSet(cl, walk, s.Hdr, d.LightRec, looseWalk, pass, slots);
         cl.Dispatch((w + VkDefGroup - 1) / VkDefGroup, (h + VkDefGroup - 1) / VkDefGroup);
+        d.Wrote = true;
         if (film)
         {
             // the film's highlights on top: a linear term of the same pixel, so a second read-modify-write is exact

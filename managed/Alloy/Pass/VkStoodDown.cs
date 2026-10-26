@@ -32,7 +32,6 @@ internal static class VkStoodDown
     /// <see cref="VkParity.StoodDown"/>, so the two cannot drift.</summary>
     private static readonly Term[] Terms =
     [
-        new("uLightRecOn", "light.deferred (the blended class's light record)", "blended parts take the forward walk"),
         new("uMirrorZ", "light.ssrplanar (the planar reflection)", "the screen-space trace has no mirror under it"),
         new("uOit", "alloy.oit (order-free transparency)", "the blended class draws in its sorted order"),
     ];
@@ -56,7 +55,6 @@ internal static class VkStoodDown
     /// <summary>Is the feature behind term <paramref name="name"/> switched on?</summary>
     private static bool On(string name) => name switch
     {
-        "uLightRecOn" => Lighting.Deferred.V,
         "uMirrorZ" => Lighting.SsrPlanar.V,
         "uOit" => Renderer.Oit.V > 0,
         _ => false,

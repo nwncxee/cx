@@ -95,6 +95,8 @@ public sealed unsafe partial class AlloyRenderer
         public long Drawn, Skipped;
         /// <summary>This frame's colour pass wrote the G-buffer.</summary>
         public bool GbufWritten;
+        /// <summary>The blended range is being issued and this frame's deferred walk wrote the light record it reads.</summary>
+        public bool LightRec;
         /// <summary>The shadow terms a lit bind was handed have been said once.</summary>
         public bool ShadowSaid;
         /// <summary>A CPU multi-draw's index-buffer byte offsets as element indices, per call.</summary>
@@ -343,6 +345,7 @@ public sealed unsafe partial class AlloyRenderer
                     VkUniformShim.Set(L.SsaoHalf, SsaoPassVk.Half ? 1 : 0);
                     VkUniformShim.Set(L.AlphaMip, Renderer.CutMip.V);
                     VkUniformShim.Set(L.MirrorZ, _mirrorZ);
+                    VkUniformShim.Set(L.LightRecOn, s.LightRec ? 1 : 0);
                     VkUniformShim.Set(L.Capture, _capturing ? _planar ? 2 : 1 : 0);
                     UploadFeatureTerms(L.Feat, viewport);
                     BindPass(L.CubeCount, viewport, near, far);
@@ -580,6 +583,7 @@ public sealed unsafe partial class AlloyRenderer
             return new ImageBinding(o.Binding, map,
                 o.Type.EndsWith("Shadow", StringComparison.Ordinal) ? s.Shadow : s.Raw);
         // the visibility estimate, fetched by texel in the lit stage
+        if (o.Name == "uLightRec" && s.LightRec) return new ImageBinding(o.Binding, _vkdef.LightRec);
         if (o.Name == "uSsao" && SsaoPassVk.Live) return new ImageBinding(o.Binding, SsaoPassVk.Visibility);
         // ...and the depth it was computed from: the attachment itself for the decal writer, whose pass is outside
         // the colour one, and the sampled copy for every stage inside it, which may not read its own attachment
