@@ -25,14 +25,15 @@ public sealed unsafe partial class AlloyRenderer
     internal static ImageId VkStandIn2D => _vkc.Tex2D;
 
     /// <summary>The caster map a lit stage's shadow sampler names, or the null id for a declaration that is not one:
-    /// the sun cascades and the light cubes, each with its moving-caster mirror, and the two the sun's blocker search
-    /// reads unfiltered. The depth agent binds the same images through <c>CasterPass.Vk*Map</c>.</summary>
+    /// the sun cascades and the light cubes, each with its moving-caster mirror, and the four the blocker search
+    /// reads unfiltered -- one left on the stand-in reads depth 1.0, finds no blocker and takes the hard tap where
+    /// GL spreads a disc. The deferred walk binds the same images through <c>CasterPass.Vk*Map</c>.</summary>
     private static ImageId VkShadowMap(string name) => name switch
     {
         "uSunShadow" or "uSunShadowRaw" => CasterPass.VkCascadeMap,
         "uSunDynShadow" or "uSunDynShadowRaw" => CasterPass.VkSunDynMap,
-        "uLocalShadow" => CasterPass.VkCubeMap,
-        "uLocalDynShadow" => CasterPass.VkCubeDynMap,
+        "uLocalShadow" or "uLocalShadowRaw" => CasterPass.VkCubeMap,
+        "uLocalDynShadow" or "uLocalDynShadowRaw" => CasterPass.VkCubeDynMap,
         _ => default,
     };
 

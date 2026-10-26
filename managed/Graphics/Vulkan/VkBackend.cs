@@ -207,6 +207,16 @@ internal sealed unsafe partial class VkBackend : IDevice
         return null;
     }
 
+    /// <summary>Does the device carry <c>shaderOutputViewportIndex</c>? Its only use here is to make enabling
+    /// <c>VK_EXT_shader_viewport_index_layer</c> legal, which the specification allows only alongside it.</summary>
+    private bool ViewportIndex(VkPhysicalDevice d)
+    {
+        var f12 = new VkPhysicalDeviceVulkan12Features();
+        var f2 = new VkPhysicalDeviceFeatures2 { pNext = &f12 };
+        _vki.vkGetPhysicalDeviceFeatures2(d, &f2);
+        return f12.shaderOutputViewportIndex;
+    }
+
     /// <summary>major.minor.patch: the version's own formatting leads with the variant field.</summary>
     private static string Version(VkVersion v) => $"{v.Major}.{v.Minor}.{v.Patch}";
 
@@ -258,7 +268,11 @@ internal sealed unsafe partial class VkBackend : IDevice
         {
             pNext = &f11, drawIndirectCount = true, runtimeDescriptorArray = true, descriptorBindingPartiallyBound = true,
             descriptorBindingVariableDescriptorCount = true, shaderSampledImageArrayNonUniformIndexing = true,
-            descriptorBindingSampledImageUpdateAfterBind = true, shaderOutputLayer = true,
+            descriptorBindingSampledImageUpdateAfterBind = true,
+            // the caster bake's vertex stages write gl_Layer. glslang may spell that as 1.2's own ShaderLayer or
+            // as the EXT capability, so both features go on and the extension joins them where the device still
+            // advertises it -- enabling it with only one of the pair is what the spec forbids.
+            shaderOutputLayer = true, shaderOutputViewportIndex = ViewportIndex(phys),
         };
         var f13 = new VkPhysicalDeviceVulkan13Features { pNext = &f12, dynamicRendering = true, synchronization2 = true };
         var feats = new VkPhysicalDeviceFeatures2 { pNext = &f13 };
@@ -273,14 +287,16 @@ internal sealed unsafe partial class VkBackend : IDevice
         feats.features.geometryShader = true;
         ReadOnlySpan<byte> mem = Win ? "VK_KHR_external_memory_win32\0"u8 : "VK_KHR_external_memory_fd\0"u8;
         ReadOnlySpan<byte> sem = Win ? "VK_KHR_external_semaphore_win32\0"u8 : "VK_KHR_external_semaphore_fd\0"u8;
+        bool layerExt = ViewportIndex(phys) && HasExt(_vki, phys, "VK_EXT_shader_viewport_index_layer\0"u8);
         VkDevice device;
         fixed (byte* m = mem) fixed (byte* s = sem) fixed (byte* c = "VK_EXT_depth_clip_control\0"u8)
+        fixed (byte* vl = "VK_EXT_shader_viewport_index_layer\0"u8)
         {
-            byte** exts = stackalloc byte*[3] { m, s, c };
+            byte** exts = stackalloc byte*[4] { m, s, c, vl };
             var dci = new VkDeviceCreateInfo
             {
                 pNext = &feats, queueCreateInfoCount = 1, pQueueCreateInfos = &qci,
-                enabledExtensionCount = 3, ppEnabledExtensionNames = exts,
+                enabledExtensionCount = layerExt ? 4u : 3u, ppEnabledExtensionNames = exts,
             };
             Check(_vki.vkCreateDevice(phys, &dci, null, out device), "vkCreateDevice");
         }
