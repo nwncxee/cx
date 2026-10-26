@@ -203,10 +203,10 @@ internal static unsafe class PostChainVk
     /// <summary>The frame's post uniforms start over; once per Vulkan frame, ahead of the first post draw.</summary>
     internal static void BeginFrame() => _s.UboUsed = 0;
 
-    /// <summary>Post program <paramref name="label"/> from its two stages' GL text, translated and compiled. Null
-    /// (logged) when a step refused.</summary>
+    /// <summary>Post program <paramref name="label"/> from its two stages' GL text, its sizing tokens expanded as GL's
+    /// compile expands them, translated and compiled. Null (logged) when a step refused.</summary>
     internal static GuiVkProg? Program(VkBackend vk, string vs, string fs, string label, Action<GuiVkProg> locate, ExtenderLog log)
-        => GuiVkProg.Build(vk, vs, fs, Units, $"post {label}", locate, log);
+        => GuiVkProg.Build(vk, ShaderResource.Tokens(vs), ShaderResource.Tokens(fs), Units, $"post {label}", locate, log);
 
     /// <summary><paramref name="p"/>'s pipeline into one <paramref name="f"/> attachment, adding under
     /// <paramref name="add"/>; made on first ask, a null id (logged once) when the device refused it.</summary>
