@@ -79,7 +79,6 @@ public sealed unsafe partial class AlloyRenderer
             Weather.WriteVk(in s.L[k], kind, &v, &pr, _eyePos, lit);
         }
         finally { VkUniformShim.EndCapture(); }
-        foreach (string name in VkParity.StoodDown) VkZero(p, name);
         int loose = VkArena(p.Block), pass = VkArenaPass();
         if (loose < 0 || pass < 0) return false;
         VkBindSet(side, p, c, loose, pass, c.Slots, 0);
@@ -106,7 +105,6 @@ public sealed unsafe partial class AlloyRenderer
         }
         finally { VkUniformShim.EndCapture(); }
         if (n == 0) return true;
-        foreach (string name in VkParity.StoodDown) VkZero(p, name);
         int loose = VkArena(p.Block), pass = VkArenaPass();
         if (loose < 0 || pass < 0) return false;
         side.SetPipeline(s.Pipe[VkSplashProg]);

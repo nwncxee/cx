@@ -603,8 +603,8 @@ def programs(g):
         "grass scatter": (g["cx_grass_c"],),
         "hi-Z reduce (from depth)": (g["cx_hiz_c"].replace("#version 460 core\n", "#version 460 core\n#define CX_HIZ_FIRST 1\n", 1),),
         "hi-Z reduce (mip to mip)": (g["cx_hiz_c"],),
-        **{f"A/B read-back ({t} x{n})": (g["cx_parity_c"].replace("#version 460 core\n", f"#version 460 core\n{d}#define CX_PARITY_WORDS {n}\n", 1),)
-           for t, d, n in (("float", "", 1), ("float", "", 2), ("uint", "#define CX_PARITY_UINT 1\n", 1), ("uint", "#define CX_PARITY_UINT 1\n", 4))},
+        **{f"read-back ({t} x{n})": (g["cx_readback_c"].replace("#version 460 core\n", f"#version 460 core\n{d}#define CX_READBACK_WORDS {n}\n", 1),)
+           for t, d, n in (("float", "", 1), ("float", "", 2), ("uint", "#define CX_READBACK_UINT 1\n", 1), ("uint", "#define CX_READBACK_UINT 1\n", 4))},
         "grass blades": (g["cx_gblade_vs"], g["cx_gblade_fs"]),
         "grass blade depth": (g["cx_gblade_vs"], g["cx_gblade_df"]),
         # CX-48: the velocity arm of each grass path -- GrassField.Motion's define, in the same place

@@ -177,7 +177,7 @@ public sealed unsafe partial class AlloyRenderer
         VkUniformShim.Set(s.NearFar, [near, far]);
         VkUniformShim.Set(p.Viz, _capturing ? 0 : _lightViz);
         VkUniformShim.Set(s.EnvOk, s.EnvLive ? 1 : 0);
-        VkUniformShim.Set(s.Splash, Weather.SplashRate(_capturing || VkParity.Active));
+        VkUniformShim.Set(s.Splash, Weather.SplashRate(_capturing));
         UploadFeatureTerms(p.F, viewport);
         BindPass(s.CubeCount, viewport, near, far);
     }
@@ -226,7 +226,7 @@ public sealed unsafe partial class AlloyRenderer
             "...with texture(), not texelFetch, so both halves are filtered and the copy's sampler must be linear");
         check.Expect(head.Contains("uniform sampler2D uNoise;") && head.Contains("uniform int uEnvOk;"),
             "the wave field is the engine's noise texture and the env term is a switch, not a black texel");
-        check.Expect(Weather.RippleLib.Contains("uniform float uSplash;") && Array.IndexOf(VkParity.StoodDown, "uSplash") < 0,
+        check.Expect(Weather.RippleLib.Contains("uniform float uSplash;"),
             "the rain impact rings on Vulkan: the water's rate is set and the ripple tile is bound by name");
         log.Info(check.Ok ? "AlloyRenderer.VkWaterSelfCheck: passed" : "AlloyRenderer.VkWaterSelfCheck: FAILED");
     }

@@ -61,7 +61,7 @@ public sealed unsafe partial class AlloyRenderer
         // the runtime block is where the engine keeps the one position that tracks them.
         float playerZ = _runtime == null ? 0f : Rt.PlayerPos.Z;
         SceneFog.Upload(loc, playerZ, _capturing);
-        FogVolume.Upload(loc.VFog, loc.VFogVp, _capturing || VkParity.Active);
+        FogVolume.Upload(loc.VFog, loc.VFogVp, _capturing);
     }
 
     /// <summary>Feed one program the engine's own live world state -- the same five values its own shaders
@@ -200,7 +200,6 @@ public sealed unsafe partial class AlloyRenderer
         byte* b = PassBegin();
         FillPassBlock((PassBlock*)b);
         if (!AlloyLights.FillDraw(b, viewport, near, far)) PassBindsBorrowed++;
-        if (VkParity.Active) VkParity.StandDownPass(new Span<byte>(b, PassBytes), 0f);
         FlushPassBlock();
         BindSunMaps();
         BindCubeMaps();

@@ -36,7 +36,7 @@ public sealed unsafe partial class AlloyRenderer
     internal static ImageId VkFogVolume => _vkFog.Built ? _vkFog.Total : default;
 
     /// <summary>The volume into <paramref name="cl"/>, ahead of the first stage that fogs. Nothing (every reader on the
-    /// ramp) when the mode is off, the view is a capture or the A/B frame's, or a stage was refused.</summary>
+    /// ramp) when the mode is off, the view is a capture, or a stage was refused.</summary>
     private static void VkFogPass(VkBackend vk, CommandList cl, in Matrix4x4 view, in Matrix4x4 vpClean, int* viewport,
                                   float near, float far, bool main, bool lightingOn, ExtenderLog log)
     {
@@ -44,7 +44,7 @@ public sealed unsafe partial class AlloyRenderer
         if (s.Dev != vk) _vkFog = s = new VkFogState { Dev = vk };
         s.Built = false;
         FogVolume.NotBuilt();
-        if (!VolumetricFog.Enabled.V || VkParity.Active || !VkFogEnsure(vk, s, log)) return;
+        if (!VolumetricFog.Enabled.V || !VkFogEnsure(vk, s, log)) return;
         if (!FogVolume.Prepare(view, vpClean, viewport, far, main && !_capturing, lightingOn, out FogVolume.Terms t)) return;
         if (!VkFogVolumes(vk, s, t.W, t.H, t.D, log)) return;
         bool a = FogVolume.CurrentIsA;

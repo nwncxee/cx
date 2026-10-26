@@ -207,7 +207,7 @@ internal static unsafe class GuiPass
         int w = *_screenW, h = *_screenH;
         bool sized = PresentTarget.Width == w && PresentTarget.Height == h;
         // after the world's bracket a Vulkan flush needs no GL, and re-entering costs two context switches (~2.7 ms)
-        if (Renderer.OnVulkan && sized && PresentTarget.Composed && !GuiParity.Takes(windows))
+        if (Renderer.OnVulkan && sized && PresentTarget.Composed)
             return VulkanFlush(from, mid, to, windows, false);
         if (sized) PresentTarget.TakeBack();
         else Resize(w, h);
@@ -217,17 +217,13 @@ internal static unsafe class GuiPass
         // menu, skipping it left the mesh arena's VAO unbuilt and the texture registry's uploads unrun.
         GlContextService.RunInBracketHere(); Db.MeshArena.Pump();
         CX.Services.Nui.NuiModelView.Pump();
-        bool ab = GuiParity.Takes(windows);
-        if (Renderer.OnVulkan && !ab) return VulkanFlush(from, mid, to, windows, true);
-        if (ab) GuiParity.DrawVulkan(from, mid, to, _log);
+        if (Renderer.OnVulkan) return VulkanFlush(from, mid, to, windows, true);
         if (to > from) Upload();
         bool gpuTimed = CX.Services.Perf.FrameProbe.GpuBegin();
         long modelSpan = 0;
         uint baseFbo = Target();
         Preamble(baseFbo);
-        // CX's own windows are this replay on either backend, so the A/B leaves them out of both halves: what it
-        // compares is the captured GUI, which is the part that moved.
-        bool win = windows && !GuiParity.Active;
+        bool win = windows;
         Issue(from, mid, baseFbo, ref modelSpan);
         if (win) { Windows(CX.Ui.UiLayer.BelowNui, baseFbo); Preamble(baseFbo); }
         Issue(mid, to, baseFbo, ref modelSpan);
@@ -240,7 +236,6 @@ internal static unsafe class GuiPass
         Gl.Disable(Gl.CULL_FACE);
         Gl.Enable(Gl.DEPTH_TEST);
         Gl.DepthMask(1);
-        GuiParity.ReadGlAndReport(_log);   // the A/B's GL half: the composite, in the context it was imported into
         Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
         if (gpuTimed) CX.Services.Perf.FrameProbe.GpuEnd();
         GlContextService.Leave();

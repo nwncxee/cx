@@ -29,13 +29,13 @@ public sealed unsafe partial class AlloyRenderer
 
     private static VkOitState _vkOit = new();
 
-    /// <summary>Does the blended range go through the pair this frame? GL's gate -- something blended, no capture, not
-    /// the A/B frame, <see cref="OitPass.OrderFree"/> -- and the pair and resolve made at the render size.</summary>
+    /// <summary>Does the blended range go through the pair this frame? GL's gate -- something blended, no capture,
+    /// <see cref="OitPass.OrderFree"/> -- and the pair and resolve made at the render size.</summary>
     private static bool VkOitArm(VkBackend vk, int w, int h, ExtenderLog log)
     {
         VkOitState o = _vkOit;
         if (o.Dev != vk) _vkOit = o = new VkOitState { Dev = vk };
-        if (_gBlendEnd <= _gOpaqueEnd || _capturing || VkParity.Active || !OitPass.OrderFree) return false;
+        if (_gBlendEnd <= _gOpaqueEnd || _capturing || !OitPass.OrderFree) return false;
         if (!o.Tried)
         {
             o.Tried = true;

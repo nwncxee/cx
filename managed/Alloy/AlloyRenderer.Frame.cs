@@ -78,7 +78,6 @@ public sealed unsafe partial class AlloyRenderer
         // may have sat that frame out, and every skinned part would draw a stale (or bind) pose.
         bool posedByShadow = PosedByShadow;
         PosedByShadow = false;
-        VkParity.BeginFrame(_capturing);
         // #129: last pass's snapshot is not this pass's. Revoked first thing, so every path out of here that
         // never reaches PassId.FbCopy leaves Alloy water disarmed -- and BucketGate's bucket-6 gate reads
         // the same flag, so water is simply not drawn on exactly those passes (#285: a hole, not vanilla).
@@ -169,8 +168,8 @@ public sealed unsafe partial class AlloyRenderer
         // cull see the same jittered camera; the velocity pass takes it back out. Zero with TAA off.
         float jx = 0f, jy = 0f;
         Matrix4x4 vpClean = view * proj;
-        // the A/B's two halves draw unjittered, and so does a Vulkan frame whose TAA resolve did not build
-        if (PostChain.TaaOn && !_capturing && !VkParity.Active && !(Renderer.OnVulkan && PostStack.TaaVkFailed))
+        // a Vulkan frame whose TAA resolve did not build draws unjittered
+        if (PostChain.TaaOn && !_capturing && !(Renderer.OnVulkan && PostStack.TaaVkFailed))
         {
             PostChain.Jitter(_frameSeq, PostChain.RenderSize(t.Vp2), PostChain.RenderSize(t.Vp3), out jx, out jy);
             proj.M31 += jx * proj.M34; proj.M32 += jy * proj.M34;
@@ -349,8 +348,8 @@ public sealed unsafe partial class AlloyRenderer
             // the camera the Vulkan frame draws through, so the pyramid tests against the depth it reduces
             CullPassVk.Stage(_capturing ? 0 : groups, cullDraws, _dSrc, _dSph, _recOwnCap + MaxSkyDraws,
                              lodScale, _gOpaqueEnd, _eyePos, &vp);
-        // Under alloy.backend vk GL's lists have no reader but the A/B's GL half.
-        if (!Renderer.OnVulkan || VkParity.Active) fixed (CullSrcRec* src = _dSrc)
+        // Under alloy.backend vk GL's lists have no reader.
+        if (!Renderer.OnVulkan) fixed (CullSrcRec* src = _dSrc)
             // A probe capture draws the same batches six more times from six other cameras, so its
             // faces cannot ride a list culled for THIS one -- passing zero groups stands the cull
             // down for the whole pass rather than leaving a stale list armed behind it.
@@ -386,8 +385,6 @@ public sealed unsafe partial class AlloyRenderer
         int* viewport = stackalloc int[4];
         if (!BeginOwnedFrame(display, viewport, out OwnedFrame f)) return;
         bool onVulkan = Renderer.OnVulkan;
-        bool ab = VkParity.Active;
-        long batches0 = Counters._batches, draws0 = Counters._draws;
         if (onVulkan)
         {
             long tVk = FrameZones.Now;
@@ -398,9 +395,6 @@ public sealed unsafe partial class AlloyRenderer
                             f.Perspective, f.Groups);
             FrameZones.Add(FrameZones.Zone.Vulkan, tVk);
         }
-        long batches1 = Counters._batches, draws1 = Counters._draws;
-        // the Vulkan frame's flip leaves framebuffer 0 bound, and the A/B's GL half draws next
-        if (ab) ReenterColourFrame(viewport, f.Srgb, cull: true);
         Matrix4x4 view = f.View, proj = f.Proj, vp = f.Vp, vpClean = f.VpClean;
         float jx = f.Jx, jy = f.Jy, near = f.Near, far = f.Far, p00 = f.P00, p11 = f.P11;
         bool perspective = f.Perspective, lightingOn = f.LightingOn, srgb = f.Srgb;
@@ -418,7 +412,7 @@ public sealed unsafe partial class AlloyRenderer
         bool motionRan = false;
         foreach ((PassId id, Bracket bracket) in FrameGraph.Passes)
         {
-            if (bracket != Bracket.Colour || onVulkan && !(ab && VkParity.GlPass(id))) continue;
+            if (bracket != Bracket.Colour || onVulkan) continue;
             Step(PassName(id));
             long tId = FrameZones.Now;
             long kid0 = PassChildTicks;
@@ -495,7 +489,7 @@ public sealed unsafe partial class AlloyRenderer
                                    && viewport[0] == 0 && viewport[1] == 0);
                     GpuEnd(GpuTerm.Decals);
                     // CX-51: the reflection records ride the colour pass from here to Reflections
-                    if (perspective && !_capturing && !ab) Ssr.Begin(viewport);
+                    if (perspective && !_capturing) Ssr.Begin(viewport);
                     // CX-188: ...and the G-buffer rides the opaque and cutout passes, which are the only two
                     // the CX_DEFERRED twin draws in. A stale G0 is a lit pixel, so the clear is unconditional
                     // for the frames the twin may draw in; the lanes are indexed by gl_FragCoord, which an
@@ -589,7 +583,7 @@ public sealed unsafe partial class AlloyRenderer
                     // no depth written during it, no layer can hide another; the depth vanilla writes for
                     // this class is laid once the composite is down.
                     // /alloy oit 2 (#490) sorts per pixel through linked lists on the same bracket.
-                    if (_gBlendEnd > _gOpaqueEnd && !_capturing && !ab && OitPass.Begin(PostChain.DepthTex, viewport))
+                    if (_gBlendEnd > _gOpaqueEnd && !_capturing && OitPass.Begin(PostChain.DepthTex, viewport))
                     {
                         Issue._oitOn = true;
                         // the accumulation alone draws with whatever a diagnostic has pointed the lit slots at
@@ -784,9 +778,6 @@ public sealed unsafe partial class AlloyRenderer
             if (self < 0) { _passSelfNeg++; self = 0; }
             _passCpu[(int)id] += self;
         }
-        if (ab) VkParity.ReadGlAndReport($"Vulkan issued {batches1 - batches0} batches ({draws1 - draws0} draws), GL "
-                                         + $"{Counters._batches - batches1} ({Counters._draws - draws1}); GL's cull kept {CullPass.KeptNow()}; {VkTextures.SamplerParity()}", viewport, PostChain.HdrTex, PostChain.DepthTex, GBuffer.Tex(0), GBuffer.Tex(1), GBuffer.Tex(2), GBuffer.Written,
-                                         SsaoPass.LiveTex, SsaoPass.Live);
         long tTail = FrameZones.Now;
         PaintStreamFailures(display);
         GpuSpanEnd();
@@ -1223,7 +1214,7 @@ public sealed unsafe partial class AlloyRenderer
     private static void CutoutOwnedPass(int opaqueEnd, Matrix4x4* vp, int* viewport, float near, float far)
     {
         // CX-189: the coverage tail waits for its own layer whenever one can arm; a capture draws it here, cut
-        _a2cHeld = !_capturing && _gA2cStart < opaqueEnd && CoverageLayer.Armed && !VkParity.Active;
+        _a2cHeld = !_capturing && _gA2cStart < opaqueEnd && CoverageLayer.Armed;
         if (!_capturing && !_a2cHeld) CoverageLayer.Idle();
         Gl.DepthMask(1);
         Gl.DepthFunc(Gl.LEQUAL);

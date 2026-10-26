@@ -30,8 +30,7 @@ internal static unsafe partial class Particles
     /// The particles placed; 0 = nothing to draw. ponytail: a CPU sort, a few thousand keys a frame at most.</summary>
     internal static int StageVk(Matrix4x4* view, bool lightingOn, out Vector3 eye, out bool lit, out int groups)
     {
-        // the A/B frame's GL half advances the clock for both halves
-        if (!VkParity.Active) _frame++;
+        _frame++;
         eye = default; lit = false; groups = 0;
         if (_off || !Enabled.V || _orderN == 0) return 0;
         int at = Build(view, lightingOn, false, out eye, out lit, out groups);

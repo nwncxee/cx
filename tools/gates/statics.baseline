@@ -1,9 +1,9 @@
 12 managed/Alloy/Ablation.cs
-11 managed/Alloy/AlloyRenderer.Batches.cs
+10 managed/Alloy/AlloyRenderer.Batches.cs
 23 managed/Alloy/AlloyRenderer.Bench.cs
 4 managed/Alloy/AlloyRenderer.Bones.cs
-30 managed/Alloy/AlloyRenderer.cs
-5 managed/Alloy/AlloyRenderer.Device.cs
+29 managed/Alloy/AlloyRenderer.cs
+4 managed/Alloy/AlloyRenderer.Device.cs
 8 managed/Alloy/AlloyRenderer.Frame.cs
 75 managed/Alloy/AlloyRenderer.Metrics.cs
 22 managed/Alloy/AlloyRenderer.Motion.cs
@@ -19,8 +19,8 @@
 20 managed/Alloy/Db/DbAnim.Behavior.cs
 26 managed/Alloy/Db/DbAnim.cs
 7 managed/Alloy/Db/DbAnim.Dyn.cs
-10 managed/Alloy/Db/DbAnim.Events.cs
-9 managed/Alloy/Db/DbAnim.Lod.cs
+1 managed/Alloy/Db/DbAnim.Events.cs
+6 managed/Alloy/Db/DbAnim.Lod.cs
 1 managed/Alloy/Db/DbAnim.LookAt.cs
 1 managed/Alloy/Db/DbAnim.Parts.cs
 5 managed/Alloy/Db/DbAnim.Pose.cs
@@ -110,7 +110,7 @@
 15 managed/Alloy/OwnedTextures.Cache.cs
 15 managed/Alloy/OwnedTextures.cs
 3 managed/Alloy/OwnedTextures.Cube.cs
-9 managed/Alloy/OwnedTextures.Plt.cs
+3 managed/Alloy/OwnedTextures.Plt.cs
 5 managed/Alloy/OwnedTextures.Retire.cs
 25 managed/Alloy/OwnedTextures.Transcode.cs
 2 managed/Alloy/OwnedTextures.Upload.cs
@@ -120,7 +120,7 @@
 12 managed/Alloy/Pass/Beams.Db.cs
 18 managed/Alloy/Pass/CasterGather.cs
 10 managed/Alloy/Pass/CasterPass.Cover.cs
-25 managed/Alloy/Pass/CasterPass.cs
+24 managed/Alloy/Pass/CasterPass.cs
 18 managed/Alloy/Pass/CasterPass.Cube.cs
 52 managed/Alloy/Pass/CasterPass.List.cs
 4 managed/Alloy/Pass/CasterPass.Mask.cs
@@ -158,7 +158,7 @@
 10 managed/Alloy/Pass/OitPass.cs
 5 managed/Alloy/Pass/PairDebt.cs
 21 managed/Alloy/Pass/PairShadows.cs
-45 managed/Alloy/Pass/Particles.cs
+44 managed/Alloy/Pass/Particles.cs
 7 managed/Alloy/Pass/PostChain.cs
 14 managed/Alloy/Pass/PostStack.cs
 2 managed/Alloy/Pass/SceneDepth.cs
@@ -201,7 +201,6 @@
 3 managed/Alloy/Scene/AlloyRenderer.Slots.cs
 38 managed/Alloy/Scene/AlloyRenderer.Table.cs
 24 managed/Alloy/Scene/AlloyWind.cs
-12 managed/Alloy/Scene/CycleTextures.cs
 63 managed/Alloy/Scene/EmitterSim.cs
 1 managed/Alloy/Scene/EmitterSim.Move.cs
 1 managed/Alloy/Scene/EmitterSim.Source.cs
@@ -209,7 +208,7 @@
 1 managed/Alloy/Scene/FrameDelta.cs
 5 managed/Alloy/Scene/FrameDump.cs
 10 managed/Alloy/Scene/GuiCapture.cs
-7 managed/Alloy/Scene/PartTable.cs
+4 managed/Alloy/Scene/PartTable.cs
 8 managed/Alloy/Scene/PlaceableHold.cs
 20 managed/Alloy/Scene/SceneInputs.cs
 12 managed/Alloy/ScreenOwner.cs
@@ -243,17 +242,16 @@
 15 managed/Alloy/TexStream.cs
 2 managed/Services/Anim/CrossfadeService.cs
 2 managed/Services/Anim/Diagonal.cs
-8 managed/Services/Anim/DriveEase.cs
 1 managed/Services/Anim/Follow.cs
-4 managed/Services/Anim/Footfall.cs
+3 managed/Services/Anim/Footfall.cs
 4 managed/Services/Anim/FootPlacement.cs
 3 managed/Services/Anim/KeyCurves.cs
 1 managed/Services/Anim/Mass.cs
 1 managed/Services/Anim/PoseMath.cs
 2 managed/Services/Anim/PoseRig.cs
 17 managed/Services/Anim/PoseService.cs
-2 managed/Services/Anim/Settle.cs
-5 managed/Services/Anim/Stride.cs
+1 managed/Services/Anim/Settle.cs
+2 managed/Services/Anim/Stride.cs
 1 managed/Services/Anim/Transition.cs
 6 managed/Services/Anim/UpperBody.cs
 9 managed/Services/Camera/ActionFeedback.cs
@@ -277,7 +275,7 @@
 3 managed/Services/Chat/Core/Window/ChatAnim.cs
 6 managed/Services/Chat/Core/Window/ChatWindow.cs
 4 managed/Services/Chat/PromptCommandService.cs
-7 managed/Services/Chat/Render/ChatRenderer.cs
+6 managed/Services/Chat/Render/ChatRenderer.cs
 5 managed/Services/Chat/Render/WindowRenderer.cs
 10 managed/Services/CombatText/CombatTextService.cs
 1 managed/Services/CrashReport.cs
@@ -293,7 +291,7 @@
 4 managed/Services/Inventory/InventoryService.Gold.cs
 1 managed/Services/Inventory/InventoryWindow.cs
 3 managed/Services/Nameplate/NameplateNative.cs
-27 managed/Services/Nameplate/NameplateService.cs
+26 managed/Services/Nameplate/NameplateService.cs
 4 managed/Services/Nui/KiwiOptimizeHook.cs
 25 managed/Services/Nui/NuiItemIcons.cs
 14 managed/Services/Nui/NuiLayoutErrors.cs

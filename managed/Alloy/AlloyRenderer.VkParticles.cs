@@ -134,7 +134,6 @@ public sealed unsafe partial class AlloyRenderer
             }
         }
         finally { VkUniformShim.EndCapture(); }
-        foreach (string name in VkParity.StoodDown) VkZero(p, name);
         return VkArena(p.Block);
     }
 

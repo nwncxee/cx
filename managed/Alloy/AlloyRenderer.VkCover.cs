@@ -31,14 +31,14 @@ public sealed unsafe partial class AlloyRenderer
 
     private static VkCoverState _vkCover = new();
 
-    /// <summary>Does the coverage tail wait for the layer this frame? GL's gate -- a tail, no capture, not the A/B frame,
-    /// the layer armed -- with the targets made at the render size. False leaves the tail in the cutout pass, cut.</summary>
+    /// <summary>Does the coverage tail wait for the layer this frame? GL's gate -- a tail, no capture, the layer armed --
+    /// with the targets made at the render size. False leaves the tail in the cutout pass, cut.</summary>
     private static bool VkCoverArm(VkBackend vk, in Matrix4x4 vp, int* viewport, ExtenderLog log)
     {
         VkCoverState c = _vkCover;
         if (c.Dev != vk) _vkCover = c = new VkCoverState { Dev = vk };
         c.Armed = false;
-        if (_capturing || VkParity.Active) return false;
+        if (_capturing) return false;
         if (_gA2cStart >= _gOpaqueEnd || !CoverageLayer.Armed)
         {
             if (!c.Col.IsNull && ++c.Idling >= CoverIdleFrames) VkCoverRelease(vk, c);

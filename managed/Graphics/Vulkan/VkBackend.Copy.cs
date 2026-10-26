@@ -110,7 +110,7 @@ internal sealed unsafe partial class VkBackend
         return true;
     }
 
-    /// <summary>The copy stage's local size, as <c>cx_parity_c.glsl</c> declares it.</summary>
+    /// <summary>The copy stage's local size, as <c>cx_readback_c.glsl</c> declares it.</summary>
     private const int CopyCheckGroup = 8;
     /// <summary>The fixture's size: a 4x4 source, copied as a 2x2 block and blitted as a 2:1 reduction.</summary>
     private const int CopyCheckSize = 4;
@@ -169,11 +169,11 @@ internal sealed unsafe partial class VkBackend
         => CreateImage(new ImageDesc(ImageKind.Tex2D, Format.R32F, w, h, 1, 1, 1, 1,
                                      ImageUse.Sampled | ImageUse.CopySrc | ImageUse.CopyDst, label));
 
-    /// <summary>The one-word float copy stage <see cref="CX.Alloy.VkParity"/> reads its lanes with.</summary>
+    /// <summary>The one-word float copy stage of <c>cx_readback_c.glsl</c>.</summary>
     private PipelineId CopyChecker(out ShaderId cs)
     {
         const string Version = "#version 460 core\n";
-        string src = CX.Alloy.ShaderSource.Get("cx_parity_c.glsl").Replace(Version, Version + "#define CX_PARITY_WORDS 1\n");
+        string src = CX.Alloy.ShaderSource.Get("cx_readback_c.glsl").Replace(Version, Version + "#define CX_READBACK_WORDS 1\n");
         cs = CreateShader(new ShaderDesc(ShaderStage.Compute, null, src, "vk copy check reader"));
         var d = new PipelineDesc { Cs = cs, Label = "vk copy check reader" };
         return CreatePipeline(in d);
@@ -185,7 +185,7 @@ internal sealed unsafe partial class VkBackend
     {
         cl.Reset();
         cl.SetPipeline(copier);
-        cl.BindSet(0, new BindSet(default, [new BufferBinding(CX.Alloy.SsboSlots.ParityOut, buf)], [new ImageBinding(0, img)], default));
+        cl.BindSet(0, new BindSet(default, [new BufferBinding(CX.Alloy.SsboSlots.ReadbackOut, buf)], [new ImageBinding(0, img)], default));
         cl.Dispatch((w + CopyCheckGroup - 1) / CopyCheckGroup, (h + CopyCheckGroup - 1) / CopyCheckGroup);
         return Submit(cl) && ReadBack(buf, MemoryMarshal.AsBytes(into.AsSpan(0, w * h)));
     }

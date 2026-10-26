@@ -48,7 +48,7 @@ internal static class Renderer
     /// LOD option says: a cfg-only off switch for debugging, not a player choice.</summary>
     internal static readonly Knob<bool> AuthoredLod;
     internal static readonly Knob<int> Viz, Threads, Cull, HlChan, OitViz;
-    internal static readonly KnobButton Consts, FrameDumpBtn, ShaderDump, Snap, VkAb;
+    internal static readonly KnobButton Consts, FrameDumpBtn, ShaderDump, Snap;
     // ---- CX-120 seam-scene ----
     /// <summary>ADR 0028 section 5's render thread. Boot, and default OFF until the live harness clears it:
     /// what it moves is Alloy's whole GL context to a second thread, and the things that still reach the
@@ -249,7 +249,6 @@ internal static class Renderer
                  help: "Hold the camera still: steps the GPU-cost settings, measures each, restores them, logs a [bench] table.");
         ShaderDump = G.Button("shaderdump", "shaderdump", ShaderStages.DumpToLog, Tier.ChatOnly);
         Snap = G.Button("snap", "snap", FrameTap.Arm, Tier.ChatOnly);
-        VkAb = G.Button("vkab", "vkab", VkParity.Arm, Tier.ChatOnly);
         // CX-89: every visible door's fade alpha against mindooralpha -- the instrument for "doors still
         // take a click", which no screenshot shows.
         // CX-118: chain the engine's own Scene::HitCheck to measure what a vanilla cast costs and to print

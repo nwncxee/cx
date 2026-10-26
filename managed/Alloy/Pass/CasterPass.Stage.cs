@@ -244,7 +244,7 @@ public sealed unsafe partial class CasterPass
                 // frames, so an A/B frame re-uploads its source whole
                 bool stood = _gN == 0
                              || (!Renderer.OnVulkan || VkGatherBegin(_gN, src, changed))
-                                && (Renderer.OnVulkan && !AbBake || CasterGather.Begin(_gN, _gGroups, src, changed || Renderer.OnVulkan));
+                                && (Renderer.OnVulkan || CasterGather.Begin(_gN, _gGroups, src, changed || Renderer.OnVulkan));
                 _gDrawN = stood ? _gN : 0;
                 if (stood) { _submitMasked += _gMasked; StageDynamicSource(); }
                 else CasterGather.StandDynamic();
@@ -345,7 +345,7 @@ public sealed unsafe partial class CasterPass
         {
             // an A/B frame publishes to BOTH, so each backend's bake selects out of the one staging
             bool onVk = !Renderer.OnVulkan || VkGatherBegin(n, src, true);
-            bool onGl = Renderer.OnVulkan && !AbBake || CasterGather.Begin(n, _gGroups, src, true);
+            bool onGl = Renderer.OnVulkan || CasterGather.Begin(n, _gGroups, src, true);
             ok = onVk && onGl;
         }
         if (ok) { _gDrawN = n; _submitMasked += maskedN; StageDynamicSource(); }

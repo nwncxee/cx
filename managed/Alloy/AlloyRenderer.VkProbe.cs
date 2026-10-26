@@ -35,9 +35,8 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>Arena a capture may need: six faces of opaque binds. Less than this left, the capture waits a frame.</summary>
     private const int VkProbeArenaNeed = 1 << 20;
 
-    /// <summary>Do this pass's lit stages read the probe? Not while capturing it (the planar mirror does, as on GL), and not
-    /// in the A/B frame, whose GL half has no cube.</summary>
-    private static bool VkProbeLive => (!_capturing || _planar) && !VkParity.Active && EnvProbe.Ready && !_vkProbe.Tex.IsNull;
+    /// <summary>Do this pass's lit stages read the probe? Not while capturing it (the planar mirror does, as on GL).</summary>
+    private static bool VkProbeLive => (!_capturing || _planar) && EnvProbe.Ready && !_vkProbe.Tex.IsNull;
 
     /// <summary>The probe's mip count as the pass block carries it: 0 = no probe for this pass.</summary>
     private static float VkProbeMips => VkProbeLive ? _vkProbe.Mips : 0f;
@@ -60,7 +59,7 @@ public sealed unsafe partial class AlloyRenderer
             _vkProbe = s = new VkProbeState { Dev = vk };
             EnvProbe.Revoke();
         }
-        if (!lightingOn || VkParity.Active || s.Failed || ArenaCap - c.ArenaUsed < VkProbeArenaNeed) return;
+        if (!lightingOn || s.Failed || ArenaCap - c.ArenaUsed < VkProbeArenaNeed) return;
         bool domeArrived = EnvProbe.Ready && !_probeDome && _skyN > 0;
         if (!domeArrived && !EnvProbe.Wanted(_eyePos, _frameSeq)) return;
         if (!ProbeLightSettled() || !EnvProbe.LightsSettled(AlloyLights.LastLightCount)) return;

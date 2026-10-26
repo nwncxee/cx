@@ -278,7 +278,7 @@ public sealed unsafe partial class CasterPass
         // on Vulkan the views are only QUEUED here: the colour frame flushes them once its own uploads have
         // published the buffers the bake's binds name. An A/B frame falls through as well, so GL bakes the same
         // queue into its own arrays and the comparison reads real maps on each side.
-        if (Renderer.OnVulkan) { _vk.Queued = n; if (!AbBake) return true; }
+        if (Renderer.OnVulkan) { _vk.Queued = n; return true; }
         // distinct targets in first-seen order -- at most four exist (sun static/dynamic, cube static/pool).
         // A fifth-plus target would be a queue writer this flush does not know about; failing the flush
         // (publish nothing, blanket next frame) is the honest answer, not silently never baking it.

@@ -269,10 +269,6 @@ public sealed unsafe partial class AlloyRenderer
             }
         }
         finally { VkUniformShim.EndCapture(); }
-        // the terms whose resources are not on Vulkan yet read as absent: no cube, no lightmap page
-        foreach (string name in VkParity.StoodDown)
-            if (st.Names.TryGetValue(name, out int i))
-                st.Block.AsSpan(st.Members[i].Offset, Math.Min(st.Members[i].Bytes, st.Block.Length - st.Members[i].Offset)).Clear();
         loose = VkArena(st.Block);
         if (pass < 0) pass = VkArenaPass();
         return loose >= 0 && pass >= 0;

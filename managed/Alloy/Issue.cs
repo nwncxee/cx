@@ -418,11 +418,10 @@ internal static unsafe class Issue
                     Gl.Uniform1i(Programs._watViz, viz);
                     Gl.Uniform1i(Programs._watEnvOk, FrameSnapshot.EnvOk);
                     Gl.Uniform1i(Programs._watCapture, _capturing ? 1 : 0);
-                    Gl.Uniform1f(Programs._watSplash, Weather.SplashRate(_capturing || VkParity.Active));
+                    Gl.Uniform1f(Programs._watSplash, Weather.SplashRate(_capturing));
                     Weather.BindRipple();
                     UploadFeatureTerms(Programs._watFeat, viewport);
                     BindPass(Programs._watCubeCount, viewport, near, far);
-                    VkParity.GlStandDown();
                     // The cascade and cube binds each left their own unit current for a moment; the copy
                     // pair and the noise texture have to be back on their units before the first water draw
                     // samples them.
@@ -457,9 +456,9 @@ internal static unsafe class Issue
                     Gl.Uniform1i(L.SsaoHalf, SsaoPass.Half ? 1 : 0);
                     Gl.Uniform2f(L.LightOcc, Lighting.HiddenLights.V ? 1f : 0f, GlossyRough);
                     UploadMaterialModel(L.Material);
-                    Weather.UploadLit(L.Weather, L.WeatherLook, L.CoverVp, L.CoverLayer, L.SnowLook, L.SnowLight, L.SnowPom, L.WxEdge, L.WxRun, L.WxCache, _capturing || VkParity.Active);
+                    Weather.UploadLit(L.Weather, L.WeatherLook, L.CoverVp, L.CoverLayer, L.SnowLook, L.SnowLight, L.SnowPom, L.WxEdge, L.WxRun, L.WxCache, _capturing);
                     // Not in the probe capture: CxAmbientShape reads the probe back, so the term would land twice.
-                    SkyView.UploadLit(L.SkyVp, L.SkyTerm, _capturing && !_planar || VkParity.Active);
+                    SkyView.UploadLit(L.SkyVp, L.SkyTerm, _capturing && !_planar);
                     Weather.BindEsm(L.CoverEsm, _oitOn || lists);
                     Weather.UploadMap(L.WxMapXf, L.WxMapP, _capturing);
                     // The master PLT palette on its own unit; a no-op until a master palette exists.
@@ -468,7 +467,6 @@ internal static unsafe class Issue
                     // a reader that trusted an earlier bind would read the particle index block.
                     Db.ContentTable.Bind();
                     if (content) ContentPrograms.BindExtras(wantProg);
-                    VkParity.GlStandDown();
                     litBase = L.Base; litCut = L.Cut; litOitGob = L.OitGob; boundOitGob = -1;
                     litSsaoOn = L.SsaoOn; litAoDirect = L.AoDirect;
                     boundSsao = -1;

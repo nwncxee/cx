@@ -24,9 +24,6 @@ public sealed unsafe partial class AlloyRenderer
         /// <summary>One translated program per hosted content stage, by resref; null for one that did not build
         /// or whose stage is native (logged once, then the dome sits out).</summary>
         public readonly Dictionary<string, VkProg?> Hosted = new(StringComparer.Ordinal);
-        /// <summary>Which of this frame's staged sky draws Vulkan drew: the A/B's GL half skips the rest, so the
-        /// two frames hold the same sky.</summary>
-        public readonly bool[] Drew = new bool[MaxSkyDraws];
         public bool Live;
         /// <summary>Domes that sat the frame out: a format the arena has not uploaded to Vulkan, a refused pipeline,
         /// a full arena, or a stage Vulkan does not host. Named in the LIVE line.</summary>
@@ -35,9 +32,6 @@ public sealed unsafe partial class AlloyRenderer
 
     private static VkSkyState _vkSky = new();
 
-    /// <summary>Did the Vulkan frame draw staged sky draw <paramref name="i"/>? False for one it could not, which
-    /// the A/B's GL half skips so neither frame has a dome the other lacks.</summary>
-    internal static bool VkSkyDrew(int i) => (uint)i < (uint)MaxSkyDraws && _vkSky.Drew[i];
 
     /// <summary>The sky dome into <paramref name="cl"/>: its own pass over the scene colour and depth -- or layer
     /// <paramref name="layer"/> of <paramref name="into"/> over <paramref name="depth"/>, a probe face -- depth test on and
@@ -47,7 +41,6 @@ public sealed unsafe partial class AlloyRenderer
     {
         if (_vkSky.Dev != vk) _vkSky = new VkSkyState { Dev = vk };
         VkSkyState k = _vkSky;
-        Array.Clear(k.Drew);
         if (_skyN == 0) return true;
         CommandList side = s.Side!;
         side.Reset();
@@ -81,7 +74,6 @@ public sealed unsafe partial class AlloyRenderer
             first[0] = (int)(_dOff[slot] / sizeof(ushort));
             baseVertex[0] = _dBase[slot];
             side.DrawIndexedMulti(count, first, baseVertex);
-            k.Drew[i] = true;
             drawn++;
             Counters._batches++;
             Counters._draws++;
@@ -181,7 +173,6 @@ public sealed unsafe partial class AlloyRenderer
             UploadFeatureTerms(p.F, viewport);
         }
         finally { VkUniformShim.EndCapture(); }
-        foreach (string name in VkParity.StoodDown) VkZero(p, name);
         int loose = VkArena(p.Block);
         if (loose < 0 || (p.ReadsEngine && VkEngine() < 0)) return false;
         Span<int> tex = _skTex[i];

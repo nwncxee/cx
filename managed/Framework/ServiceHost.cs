@@ -77,8 +77,6 @@ public static class ServiceHost
         CX.Alloy.AlloyRenderer.VkDeferredSelfCheck(log);   // ...and the deferred path's three compute stages, on bindings the host binds
         CX.Graphics.ProgramBinary.SelfCheck(log);   // the program-binary cache key: every stage's text, its type, the driver
         CX.Rhi.RhiSelfCheck.Run(log);   // handles, the command arena's round trip and growth, format traits
-        CX.Alloy.VkParity.SelfCheck(log);   // the Vulkan A/B's comparator, against hand-worked differences
-        CX.Alloy.VkStoodDown.SelfCheck(log);   // every term Vulkan stands down has a row saying what is not drawn
         CX.Alloy.AlloyRenderer.VkDecalSelfCheck(log);   // the Vulkan decal layer's targets, blends and clear against GL's
         CX.Alloy.AlloyRenderer.VkWaterSelfCheck(log);   // the Vulkan water class's snapshot pair and its filtered reads
         CX.Alloy.GrassField.VkSelfCheck(log);   // the Vulkan grass stages read the scatter's records by instance, not a vertex stream
@@ -98,7 +96,6 @@ public static class ServiceHost
         CX.Ui.LoadScreen.SelfCheck(log);   // the two load sources as one monotonic bar
         CX.Alloy.GuiContent.SelfCheck(log);   // the engine's content-stage prologue, m_texture, the pair key
         CX.Alloy.GuiPassVk.SelfCheck(log);   // the GUI and content programs translate for Vulkan, their blocks at the laid-out offsets
-        CX.Alloy.GuiParity.SelfCheck(log);   // the GUI A/B's comparator, against hand-worked differences
         foreach (IExtenderService service in all)
         {
             try { service.Initialize(log, hooks); }

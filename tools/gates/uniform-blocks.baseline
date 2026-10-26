@@ -8,7 +8,6 @@
 33 managed/Alloy/Issue.cs
 15 managed/Alloy/Pass/AlloyLights.cs
 6 managed/Alloy/Pass/Beams.Db.cs
-19 managed/Alloy/Pass/CasterGather.cs
 4 managed/Alloy/Pass/CasterPass.Content.cs
 6 managed/Alloy/Pass/CasterPass.Stage.cs
 5 managed/Alloy/Pass/CasterPass.Target.cs

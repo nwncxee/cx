@@ -68,7 +68,7 @@ public sealed unsafe partial class CasterPass
     /// Vulkan filters its own from the bake count (<see cref="CoverBakes"/>); GL's runs there only for the A/B's half.</summary>
     private static void CoverFiltered()
     {
-        if (!_coverNew || Renderer.OnVulkan && !AbBake) return;
+        if (!_coverNew || Renderer.OnVulkan) return;
         _coverNew = false;
         if (!CoverFresh) return;
         if (Weather.WaterRoof.V)

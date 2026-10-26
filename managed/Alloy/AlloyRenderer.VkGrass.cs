@@ -175,7 +175,6 @@ public sealed unsafe partial class AlloyRenderer
             else VkUniformShim.Set(v.L.Segments, GrassField.VkSegments(farBlades));
         }
         finally { VkUniformShim.EndCapture(); }
-        foreach (string name in VkParity.StoodDown) VkZero(p, name);
         return VkArena(p.Block);
     }
 

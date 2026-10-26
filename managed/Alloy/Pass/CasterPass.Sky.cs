@@ -45,8 +45,7 @@ public sealed unsafe partial class CasterPass
     {
         // Every early-out here LEAVES the held map alone; SkyFresh is what decides whether the lit stage may
         // read it, so nothing below can cost a frame its term.
-        // an A/B frame's GL half bakes the queue into GL's own targets, and has no sky view of its own: the map is held
-        if (!sun || !SkyView.Wanted || Renderer.OnVulkan && AbBake) return;
+        if (!sun || !SkyView.Wanted) return;
         SkyFit fit = SkyMath.Fit(FrameInputs.AreaExtent, SkyView.MapSize);
         if (fit.IsNone) return;
         // The static set grows as parts enrol, so the caster generation IS "the geometry changed" -- and the

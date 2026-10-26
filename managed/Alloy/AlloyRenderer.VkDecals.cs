@@ -96,7 +96,6 @@ public sealed unsafe partial class AlloyRenderer
             if (!_gLit[g]) { s.Skipped += _gLen[g]; continue; }
             if (!VkBatch(side, ref b, d.Prog!, g, VkTargets.Decal, 0, depth, VkRaster(g, false), slots, 0, ref push,
                          vp, viewport, near, far, CullPassVk.PhaseColour, indirect)) continue;
-            // counted as GL's own decal pass counts them, so the A/B line's two batch tallies are of one thing
             Counters._batches++;
             Counters._draws += _gLen[g];
         }

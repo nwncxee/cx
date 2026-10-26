@@ -64,7 +64,6 @@ internal static class VulkanFrame
         }
         Matrix4x4 vpN = vp, projN = proj;
         UiScene.NoteVk(&vpN, &projN, viewport, AlloyRenderer.VkSceneDepth);
-        AlloyRenderer.VkParityRead(vk);
         CasterPass.VkProbe(vk, log);
         AlloyRenderer.VkFrameTap(vk);
         if (++_s.Frames % CacheSavePeriod == 0) vk.SavePipelineCache();
@@ -72,7 +71,6 @@ internal static class VulkanFrame
             log.Always($"VulkanFrame: [vkgpu] {ms:F2} ms GPU per frame over {n} frames (bake, cull, prepass, hi-Z, AO, "
                      + "decals, G-buffer, opaque, cutout, sky, the deferred dispatches, blended)");
         PostChain.Painted();
-        VkStoodDown.Note(log);
         if (!_s.Live)
         {
             _s.Live = true;

@@ -74,8 +74,7 @@ internal static unsafe class PresentTarget
         {
             s.Announced = true;
             _log?.Info(Renderer.OnVulkan
-                ? $"PresentTarget: Vulkan composites into its own {w}x{h} image and presents it; the GL texture of that "
-                  + "size is the A/B's GL half alone"
+                ? $"PresentTarget: Vulkan composites into its own {w}x{h} image and presents it"
                 : $"PresentTarget: Alloy composites into a {w}x{h} texture and the ENGINE context blits it "
                   + "to the default framebuffer -- one present path on every OS");
         }
@@ -178,15 +177,6 @@ internal static unsafe class PresentTarget
         s.TakeBacks++;
         Gl.DrainErrors(4);
         ScreenOwner.RestoreEngineFbo();
-    }
-
-    /// <summary>The GL image cleared to opaque black, for the A/B's GL half to draw over the background its Vulkan half
-    /// drew over. In the 4.6 context.</summary>
-    internal static void ClearBlack()
-    {
-        if (_s.Tex == 0 || Gl.ClearTexImage == null) return;
-        uint black = 0xff000000;   // not-an-offset: opaque black as RGBA8 bytes
-        Gl.ClearTexImage(_s.Tex, 0, Gl.RGBA, Gl.UNSIGNED_BYTE, &black);
     }
 
     /// <summary>What the present path cost this session, in blits. One hand-back per GUI flush is the floor; a

@@ -43,9 +43,6 @@ public sealed unsafe partial class CasterPass
         public VkBackend? Dev;
         /// <summary>A program or target was refused: the bake stands down for the session, loudly.</summary>
         public bool Failed, Live, ContentSaid, OverflowSaid, NoTargetSaid;
-        /// <summary>This frame is the whole-frame A/B, so GL bakes its own maps beside the Vulkan ones and the
-        /// comparison has real cascades and cubes on each side. Cleared the moment GL's half refuses.</summary>
-        public bool Ab;
         /// <summary>The bracket's uploads, appended by the colour frame ahead of its own passes.</summary>
         public CommandList? Cmds;
         /// <summary>Views the bracket queued for the colour frame to flush; 0 = nothing to bake.</summary>
@@ -73,36 +70,6 @@ public sealed unsafe partial class CasterPass
 
     /// <summary>Is the Vulkan bake armed? Nothing stands it down but a refusal, so the layered path is the only one.</summary>
     private static bool VkArmed => !_vk.Failed && _vk.Plain != null;
-
-    /// <summary>GL bakes beside Vulkan this frame, for the A/B's sake.</summary>
-    private static bool AbBake => _vk.Ab;
-
-    /// <summary>Arm GL's half of an A/B frame: its programs, its gather and its layered path, beside the Vulkan
-    /// bake's. A refusal drops the GL half of the comparison rather than the frame's bake.</summary>
-    private static void VkAbArm()
-    {
-        if (!VkParity.Active) { _vk.Ab = false; return; }
-        _vk.Ab = EnsureCommon() && CasterGather.Ensure();
-        if (_vk.Ab) { EnsureLayered(); _vk.Ab = _gl.ProgLayer != 0; }
-        if (!_vk.Ab)
-        {
-            VkParity.Refuse("GL's half of the caster bake did not arm, so its lit stage would read a cascade "
-                          + "count over maps nothing wrote");
-            return;
-        }
-        // GL's arrays are made THIS frame and hold no bake, while the Vulkan ones are warm: a comparison of two
-        // bake histories is not a comparison of two renderers, so the A/B frame re-bakes every view on both
-        _invalidate = true;
-    }
-
-    /// <summary>GL's own depth arrays for an A/B frame, made beside the Vulkan ones.</summary>
-    private static void VkAbTargets(bool sun, bool cubes)
-    {
-        if (!_vk.Ab) return;
-        if (!(sun && !EnsureSun() || cubes && !EnsureCubes())) return;
-        _vk.Ab = false;
-        VkParity.Refuse("GL's own depth arrays for the A/B frame were refused (logged above)");
-    }
 
     /// <summary>The bracket's uploads for the colour frame to append, or null when it recorded none.</summary>
     internal static CommandList? VkBracket => _vk.Cmds is { Length: > 0 } c ? c : null;
@@ -178,10 +145,10 @@ public sealed unsafe partial class CasterPass
     private static bool VkGatherBegin(int drawN, CasterSrcRec* src, bool changed)
         => _vk.Cmds != null && _vk.Dev is VkBackend vk && CasterGatherVk.Begin(vk, _vk.Cmds, drawN, _gGroups, src, changed);
 
-    /// <summary>The frame's dynamic source on whichever backend bakes it -- on both for an A/B frame.</summary>
+    /// <summary>The frame's dynamic source on whichever backend bakes it.</summary>
     private static bool VkDynamicSource(int m, CasterSrcRec* dst)
     {
-        bool gl = (!Renderer.OnVulkan || AbBake) && CasterGather.DynamicSource(m, dst);
+        bool gl = !Renderer.OnVulkan && CasterGather.DynamicSource(m, dst);
         if (!Renderer.OnVulkan) return gl;
         return _vk.Cmds != null && _vk.Dev is VkBackend vk && CasterGatherVk.DynamicSource(vk, _vk.Cmds, m, dst);
     }
@@ -189,7 +156,7 @@ public sealed unsafe partial class CasterPass
     /// <summary>No dynamic source this frame, on whichever backend bakes it.</summary>
     private static void StandDynamicSource()
     {
-        if (!Renderer.OnVulkan || AbBake) CasterGather.StandDynamic();
+        if (!Renderer.OnVulkan) CasterGather.StandDynamic();
         if (Renderer.OnVulkan) CasterGatherVk.StandDynamic();
     }
 

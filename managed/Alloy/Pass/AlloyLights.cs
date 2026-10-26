@@ -617,9 +617,8 @@ internal static unsafe class AlloyLights
                 // #674: the static bit rides the same lane, +CX_LIGHT_STATIC; the shader decodes w >= 128.
                 if (FrameInputs.AreaLightStatic[i] && !FrameInputs.AreaLightAmbient[i]) d.Slot += LightStatic + LightSetStride * (FrameInputs.AreaLightSetIndex[i] + 1);
             }
-            // on Vulkan the records go up through the Vulkan recorder's own copy of this staging; GL's buffer is
-            // the A/B half's alone
-            if (!Renderer.OnVulkan || VkParity.Active)
+            // on Vulkan the records go up through the Vulkan recorder's own copy of this staging
+            if (!Renderer.OnVulkan)
                 Gl.NamedBufferSubData(_gl.BufLights, IntPtr.Zero, (IntPtr)(n * 8 * sizeof(float)), s);
         }
         _gl.Uploaded = n;
@@ -687,8 +686,8 @@ internal static unsafe class AlloyLights
             PadX = 2f / Math.Max(vpW, 1), PadY = 2f / Math.Max(vpH, 1), Ran = true,
         };
         // the Vulkan frame records this build itself, from the terms just staged: GL's own dispatch would bin the
-        // same lights into a table nothing there reads. The A/B frame wants both, and runs both.
-        if (Renderer.OnVulkan && !VkParity.Active) return true;
+        // same lights into a table nothing there reads.
+        if (Renderer.OnVulkan) return true;
 
         int slot = _queryAt;
         bool timing = _gl.Query[slot] != 0 && !(slot == 0 ? _gl.QueryPending0 : _gl.QueryPending1);

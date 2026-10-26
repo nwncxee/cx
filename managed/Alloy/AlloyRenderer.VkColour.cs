@@ -357,12 +357,11 @@ public sealed unsafe partial class AlloyRenderer
                     VkUniformShim.Set(L.DecalZ, [DecalLayer.Z0, DecalLayer.Z1]);
                     VkUniformShim.Set(L.LightOcc, [Lighting.HiddenLights.V ? 1f : 0f, GlossyRough]);
                     UploadMaterialModel(L.Material);
-                    // the A/B frame's GL half reads no weather (Issue's own gate), so neither does this one
-                    bool wxOff = _capturing || VkParity.Active;
+                    bool wxOff = _capturing;
                     Weather.UploadLit(L.Weather, L.WeatherLook, L.CoverVp, L.CoverLayer, L.SnowLook, L.SnowLight, L.SnowPom, L.WxEdge, L.WxRun, L.WxCache, wxOff);
                     Weather.BindEsm(L.CoverEsm, s.Oit);
                     Weather.UploadMap(L.WxMapXf, L.WxMapP, wxOff);
-                    SkyView.UploadLitVk(L.SkyVp, L.SkyTerm, VkSkyMap, _capturing && !_planar || VkParity.Active);
+                    SkyView.UploadLitVk(L.SkyVp, L.SkyTerm, VkSkyMap, _capturing && !_planar);
                     VkUniformShim.Set(L.LmPages, LightmapBake.VkLivePages);
                     VkUniformShim.Set(L.LmMovers, LightmapBake.MoverMode);
                 }
@@ -380,7 +379,6 @@ public sealed unsafe partial class AlloyRenderer
         finally { VkUniformShim.EndCapture(); }
         // the terms whose resources are not on Vulkan yet read as absent: no cube, no lightmap, no sky map, no weather,
         // no fog volume -- every one gates on the value it is zeroed to
-        foreach (string name in VkParity.StoodDown) VkZero(p, name);
         VkShadowSay(p);
         int loose = VkArena(p.Block);
         // the water stage is not the lit table's, but it reads the pass block's sun, ambient and fog as the lit stage does
@@ -490,15 +488,9 @@ public sealed unsafe partial class AlloyRenderer
     {
         if (_passStage == null) return -1;
         int at = VkArena(new ReadOnlySpan<byte>(_passStage, PassBytes));
-        if (at >= 0) VkParity.StandDownPass(_vkc.ArenaBytes.AsSpan(at, PassBytes), VkProbeMips);
+        // the probe as Vulkan holds it, 0 mips for none, in place of GL's cube
+        if (at >= 0) MemoryMarshal.Write(_vkc.ArenaBytes.AsSpan(at + PbProbeMips, sizeof(float)), VkProbeMips);
         return at;
-    }
-
-    /// <summary>The A/B's Vulkan half, after the frame's submit: its scene targets read back.</summary>
-    internal static void VkParityRead(VkBackend vk)
-    {
-        VkColourState s = _vkc;
-        VkParity.ReadVulkan(vk, s.Hdr, s.Depth, s.G0, s.G1, s.G2, s.GbufWritten, SsaoPassVk.Visibility, SsaoPassVk.Live, s.W, s.H);
     }
 
     /// <summary>A snap frame's Vulkan half, after the frame's submit: the finished scene colour beside the set.</summary>

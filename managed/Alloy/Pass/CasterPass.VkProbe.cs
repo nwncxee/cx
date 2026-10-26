@@ -123,7 +123,7 @@ public sealed unsafe partial class CasterPass
         cl.Reset();
         cl.CopyImage(new CopyImageCmd(img, new ImageRegion(0, 0, 0, layer), r.Img, new ImageRegion(0, 0, 0, 0), size, size, 1));
         cl.SetPipeline(r.Pipe);
-        cl.BindSet(0, new BindSet(default, [new BufferBinding(SsboSlots.ParityOut, r.Buf)],
+        cl.BindSet(0, new BindSet(default, [new BufferBinding(SsboSlots.ReadbackOut, r.Buf)],
                                   [new ImageBinding(0, r.Img)], default));
         cl.Dispatch((size + 7) / 8, (size + 7) / 8);
         words = new uint[(long)size * size];
@@ -137,7 +137,7 @@ public sealed unsafe partial class CasterPass
         int size = Math.Max(r.CubeSize, r.SunSize);
         if (size <= 0) return false;
         const string Version = "#version 460 core\n";
-        string src = ShaderSource.Get("cx_parity_c.glsl").Replace(Version, Version + "#define CX_PARITY_WORDS 1\n");
+        string src = ShaderSource.Get("cx_readback_c.glsl").Replace(Version, Version + "#define CX_READBACK_WORDS 1\n");
         var d = new PipelineDesc { Cs = vk.CreateShader(new ShaderDesc(ShaderStage.Compute, null, src, "caster bake reading")),
                                    Label = "caster bake reading" };
         r.Pipe = vk.CreatePipeline(in d);

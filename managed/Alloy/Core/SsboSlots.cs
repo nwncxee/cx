@@ -34,7 +34,7 @@ internal static class SsboSlots
                         CullSrc = 8, CullSphere = 9, CullCmd = 10, CullOut = 11, CullCount = 12, CullKey = 13, CullRej = 14,
                         GatherSrc = 8, GatherCmd = 10, GatherCount = 11, CastSphere = 12,
                         GrassFaces = 8, GrassPatches = 9, GrassOut = 10, GrassCmd = 11,
-                        HaloVis = 9, ParityOut = 8;
+                        HaloVis = 9, ReadbackOut = 8;
     /// <summary>The probe's SH output, which its dispatch unbinds after: the particle index point, whose every
     /// reader rebinds it, so the unbind cannot strand a lighting program.</summary>
     internal const uint ProbeSh = 15;
@@ -60,7 +60,7 @@ internal static class SsboSlots
         ["CxParticleBuf"] = ParticleRecs, ["CxParticleIdx"] = ParticleIdx,
         ["CxSpanBuf"] = ParticleSpans, ["CxGroupBuf"] = ParticleGroups,
         ["CxCullSrc"] = CullSrc, ["CxCullSphere"] = CullSphere, ["CxCullCmd"] = CullCmd, ["CxCullOutIdx"] = CullOut,
-        ["CxCullCount"] = CullCount, ["CxCullKey"] = CullKey, ["CxCullRej"] = CullRej, ["CxParityOut"] = ParityOut,
+        ["CxCullCount"] = CullCount, ["CxCullKey"] = CullKey, ["CxCullRej"] = CullRej, ["CxReadbackOut"] = ReadbackOut,
         ["CxGatherSrc"] = GatherSrc, ["CxGatherCmd"] = GatherCmd, ["CxGatherCount"] = GatherCount, ["CxCastSphere"] = CastSphere,
         ["CxGrassFaces"] = GrassFaces, ["CxGrassPatches"] = GrassPatches, ["CxGrassOut"] = GrassOut, ["CxGrassCmd"] = GrassCmd, ["CxGrassInst"] = GrassInst,
         ["CxHaloBuf"] = Halos, ["CxHaloVis"] = HaloVis, ["CxHiliteGlowBuf"] = Glow, ["CxTrigBuf"] = Trig, ["CxGuiBuf"] = Gui,

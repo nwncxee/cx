@@ -184,9 +184,7 @@ internal static unsafe class SsaoPass
         if (!g.Built) EnsurePrograms(dev);
         bool half = Wanted;
         if (g.Failed || !EnsureTargets(dev, viewport[2], viewport[3], half)) return false;
-        // the A/B frame takes the estimate whole: the Vulkan recorder has no velocity target to reproject through
-        bool temporal = Ao.Temporal.V > 0f && !g.ProgTemporal.IsNull && MotionVectors.Painted && MotionVectors.Tex != 0
-                        && !VkParity.Active;
+        bool temporal = Ao.Temporal.V > 0f && !g.ProgTemporal.IsNull && MotionVectors.Painted && MotionVectors.Tex != 0;
         ImageId depth = Borrowed(dev, ref g.Depth, ref g.DepthName, depthTex, "frame depth");
         ImageId vel = temporal ? Borrowed(dev, ref g.Vel, ref g.VelName, MotionVectors.Tex, "velocity") : default;
         float w = g.W, h = g.H;

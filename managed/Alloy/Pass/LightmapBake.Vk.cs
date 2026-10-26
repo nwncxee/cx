@@ -63,12 +63,12 @@ internal static unsafe partial class LightmapBake
 
     /// <summary>The record buffer the Vulkan lit and deferred stages read on <see cref="BindChart"/>; null before the
     /// first upload, and in the A/B's frames, whose GL half has no records to read.</summary>
-    internal static BufferId VkChart => _vkb.ChartFilled && !VkParity.Active ? _vkb.Chart : default;
+    internal static BufferId VkChart => _vkb.ChartFilled ? _vkb.Chart : default;
 
     /// <summary><c>uLmPages</c> for a Vulkan lit bind: the resident layers when the lightmap reads this frame, else 0.
     /// The A/B's frames read none, as GL's half does.</summary>
     internal static int VkLivePages
-        => Enabled && !FrameInputs.Blind && _vkb.Layers > 0 && _vkb.ChartFilled && !VkParity.Active ? _vkb.Layers : 0;
+        => Enabled && !FrameInputs.Blind && _vkb.Layers > 0 && _vkb.ChartFilled ? _vkb.Layers : 0;
 
     /// <summary>The page array a lit stage's sampler <paramref name="name"/> reads, and its sampler; null for any other name.</summary>
     internal static ImageId VkPage(string name, out SamplerId sampler)
