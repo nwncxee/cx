@@ -106,6 +106,7 @@ internal static unsafe class Issue
     internal static bool UploadDraws()
     {
         int cap = _recOwnCap + MaxSkyDraws;
+        if (Renderer.OnVulkan) return VkHandOff(cap);
         bool grew = false;
         if (_drawBuf == 0) { uint b; Gl.CreateBuffers(1, &b); _drawBuf = b; }
         if (cap > _recCapGpu)
@@ -142,6 +143,18 @@ internal static unsafe class Issue
         // ...and the one array that IS per draw and per pass, rewritten whole every pass: the ring's shape.
         fixed (int* p = _dSlot)
             return StreamRing.Stream(StreamRing.Site.DrawSlots, BindDrawIdx, p, (long)_drawN * sizeof(int), out _slotRange);
+    }
+
+    /// <summary><see cref="UploadDraws"/> on Vulkan: no GL record table, handle table or stream ring -- the moved
+    /// records go to the Vulkan table's dirty list, which uploads them in its own frame.</summary>
+    private static bool VkHandOff(int cap)
+    {
+        bool whole = _recDirtyAll || cap > _recCapGpu;
+        if (cap > _recCapGpu) _recCapGpu = cap;
+        StaleMirrorRecords(cap, whole, _recDirty, _recDirtyN);
+        VkNoteDirty(_recDirty, Math.Min(_recDirtyN, _recDirty.Length), whole);
+        _recDirtyN = 0; _recDirtyAll = false; _texHDirty = false;
+        return true;
     }
 
     /// <summary>One period's record-table uploads: the whole ones by reason, the bytes the whole record and handle
@@ -224,7 +237,7 @@ internal static unsafe class Issue
     /// not still be there. Leaves the dirty list for the colour bracket, which uploads the records too.</summary>
     internal static void UploadHandlesForBake()
     {
-        if (!_bindless) return;
+        if (!_bindless || Renderer.OnVulkan) return;
         int cap = _recOwnCap + MaxSkyDraws;
         // capacity growth with no moved handle (an area's new records all resolve to 0 over rows already 0)
         // leaves the dirty flag clear and the GPU table one area short: the bake would read past its end

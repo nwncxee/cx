@@ -729,7 +729,8 @@ public static unsafe partial class MeshArena
     {
         // The CPU half runs wherever the caller is: frees and the readers' snapshot touch no GL.
         lock (_gate) { if (DrainFrees()) Publish(); }
-        if (Gl.CreateBuffers == null) return;
+        bool vk = Renderer.OnVulkan;
+        if (!vk && Gl.CreateBuffers == null) return;
         // The GL half may ONLY run with Alloy's 4.6 context current. Buffers are share-listed with the
         // engine's context, but a VERTEX ARRAY OBJECT is a container and is never shared -- so a VAO built
         // on the game thread at the present boundary (where the ENGINE's context is current) is a name the
@@ -759,12 +760,12 @@ public static unsafe partial class MeshArena
                 compact = _sect[f].Dead > MaxVerts / 4 || (_sect[f].Full && _sect[f].Dead > 0);
             if (compact) { Compact(); changed = true; }
 
-            for (int f = 0; f < Formats; f++)
+            for (int f = 0; f < Formats && !vk; f++)
             {
                 Section s = _sect[f];
                 if (s.Used > 0 && s.Uploaded != s.Used) UploadVerts(s, StrideOf[f]);
             }
-            if (_iUsed > 0 && _iUploaded != _iUsed) UploadIndices();
+            if (!vk && _iUsed > 0 && _iUploaded != _iUsed) UploadIndices();
             // CX-120 seam-anim: the dangly and animmesh ranges whose vertices moved on the game thread
             // (MeshArena.Dyn.cs). Inside the same bracket and under the same lock as every other upload.
             PumpVk();
@@ -772,10 +773,11 @@ public static unsafe partial class MeshArena
             for (int f = 0; f < Formats; f++)
             {
                 Section s = _sect[f];
-                if (s.Vao == 0 && s.Vbo != 0 && _ebo != 0) { BuildVao(s, (Fmt)f); changed = true; }
+                if (vk) { uint t = VkReadyName((Fmt)f); if (s.Vao != t) { s.Vao = t; changed = true; } }
+                else if (s.Vao == 0 && s.Vbo != 0 && _ebo != 0) { BuildVao(s, (Fmt)f); changed = true; }
             }
             if (changed) Publish();
-            if (changed) Dump();
+            if (changed && !vk) Dump();
         }
     }
 

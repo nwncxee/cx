@@ -97,15 +97,28 @@ public static unsafe partial class MeshArena
         v.IUploaded = _iUsed;
     }
 
-    /// <summary>A dynamic range's moved vertices into Vulkan's copy, beside GL's (<see cref="DynUpload"/>).</summary>
-    private static void DynUploadVk(in Range rr, int stride)
+    /// <summary>A dynamic range's moved vertices into Vulkan's copy (<see cref="DynUpload"/>); false when the
+    /// range's section has not reached the device yet, whose append upload carries the bytes anyway.</summary>
+    private static bool DynUploadVk(in Range rr, int stride)
     {
         VkArenaState v = _vk;
         int f = (int)rr.Format;
-        if (v.Dev == null || v.Vbo[f].IsNull || v.Uploaded[f] < rr.Base + rr.NV) return;
+        if (v.Dev == null || v.Vbo[f].IsNull || v.Uploaded[f] < rr.Base + rr.NV) return false;
         v.Dev.Upload(v.Vbo[f], (long)rr.Base * stride * 4,
                      MemoryMarshal.AsBytes(_sect[f].Mirror.AsSpan((int)((long)rr.Base * stride), rr.NV * stride)));
+        return true;
     }
+
+    /// <summary>The name a format publishes in place of a GL VAO on Vulkan: nonzero once the device holds its vertices
+    /// and the shared indices, so every reader's "uploaded yet" gate reads the same. No GL object stands behind it.</summary>
+    private static uint VkReadyName(Fmt f)
+    {
+        VkArenaState v = _vk;
+        return v.Vbo[(int)f].IsNull || v.Ebo.IsNull || v.Uploaded[(int)f] == 0 ? 0u : VkReadyBase + (uint)f;
+    }
+
+    /// <summary>The first of <see cref="VkReadyName"/>'s names, far above any name GL hands out.</summary>
+    private const uint VkReadyBase = 1u << 30;
 
     /// <summary>A compaction rewrote the mirrors in place: Vulkan's copies go back up whole at the next pump.</summary>
     private static void VkCompacted()
