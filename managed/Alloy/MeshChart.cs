@@ -536,6 +536,10 @@ internal static unsafe partial class MeshChart
         => _table.TryGetValue(KeyOf(slot, item), out Entry e) && e.Done && e.Refused == Refusal.None
            ? CX.Alloy.Db.MeshArenaDraw.VaoOf(e.Range) : 0u;
 
+    /// <summary>The arena range an entry's charted mesh sits in, for its format on Vulkan; -1 = no chart.</summary>
+    internal static int RangeOf(int slot, int item)
+        => _table.TryGetValue(KeyOf(slot, item), out Entry e) && e.Done && e.Refused == Refusal.None ? e.Range : -1;
+
     /// <summary>Is a DB entry's chart still of the mesh its arena range holds? The key is the range INDEX, and an
     /// area hop recycles indices: until the new tenant is re-offered, the old entry would hand its draws the
     /// previous tenant's charted geometry -- a whole roof drawn from another tile's mesh, lightmap on only.</summary>

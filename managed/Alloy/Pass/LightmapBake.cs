@@ -38,7 +38,7 @@ internal static unsafe partial class LightmapBake
     /// <summary>The compressed planes' formats.</summary>
     private const uint FormatA = Gl.COMPRESSED_RGB_BPTC_UNSIGNED_FLOAT, FormatB = Gl.COMPRESSED_RGBA_BPTC_UNORM;
     /// <summary>The encoder's work group side, in blocks (<c>cx_bakeenc_c</c>'s <c>local_size</c>).</summary>
-    private const int EncGroup = 8;
+    internal const int EncGroup = 8;
     /// <summary>One resident page over its three planes, in MiB.</summary>
     private const int PageMiB = (int)((long)PageSize * PageSize * TexelBytes >> 20);
     private const int MaxRects = 1 << 16;
@@ -351,6 +351,7 @@ internal static unsafe partial class LightmapBake
 
     private static void UploadRecords()
     {
+        if (Renderer.OnVulkan) { VkUploadRecords(); return; }
         if (_gl.BufChart == 0)
         {
             uint b; Gl.CreateBuffers(1, &b); if (b == 0) return;
@@ -373,6 +374,14 @@ internal static unsafe partial class LightmapBake
     {
         int bytes = w * h * TexelBytes, plane = w * h;
         if (bytes <= 0 || rects.Count == 0) return;
+        if (Renderer.OnVulkan)
+        {
+            VkQueueReadback(page, x0, y0, w, h);
+            if (!_vkb.ReadQueued) return;
+            _ux0 = x0; _uy0 = y0; _uw = w; _uh = h; _uPage = page;
+            _pendingRead.Clear(); _pendingRead.AddRange(rects);
+            return;
+        }
         if (_gl.Pbo == 0) { uint b; Gl.CreateBuffers(1, &b); _gl.Pbo = b; if (b == 0) return; }
         if (bytes > _gl.PboBytes) { Gl.NamedBufferData(_gl.Pbo, (IntPtr)bytes, null, Gl.STREAM_READ); _gl.PboBytes = bytes; }
         Gl.BindBuffer(Gl.PIXEL_PACK_BUFFER, _gl.Pbo);
@@ -407,7 +416,7 @@ internal static unsafe partial class LightmapBake
     private static int _uBuf;
     /// <summary>No readback is in flight at all: no fence pending, no copy still draining the map, and no
     /// landing stashed behind one.</summary>
-    private static bool ReadbackIdle => _gl.Fence == IntPtr.Zero && _uMap == null && _defW == 0;
+    private static bool ReadbackIdle => !Fenced && !Draining && _defW == 0;
 
     /// <summary>A page landed while a readback was still draining: its region waits here and is queued the
     /// moment the PBO is free, so the slicing never turns a landing into a cache miss. One slot -- a second
@@ -441,10 +450,10 @@ internal static unsafe partial class LightmapBake
     /// page (<see cref="StashValid"/>).</summary>
     private static void IssueStashed()
     {
-        if (_defW == 0 || _gl.Fence != IntPtr.Zero || _uMap != null) return;
+        if (_defW == 0 || Fenced || Draining) return;
         if (StashValid() == 0) { _defW = 0; return; }
         QueueReadback(_defPage, _defX0, _defY0, _defW, _defH, _defRects);
-        if (_gl.Fence == IntPtr.Zero) _uncached += _defRects.Count;
+        if (!Fenced) _uncached += _defRects.Count;
         _defW = 0; _defRects.Clear();
     }
 
@@ -452,17 +461,25 @@ internal static unsafe partial class LightmapBake
     /// slice budget takes, then sliced per rect and handed to the cache thread. Polled, never waited on.</summary>
     private static void CollectReadback()
     {
-        if (_uMap != null) { CopySlice(); return; }
-        if (_gl.Fence == IntPtr.Zero) return;
-        uint st = Gl.ClientWaitSync(_gl.Fence, 0, 0);
-        if (st != Gl.ALREADY_SIGNALED && st != Gl.CONDITION_SATISFIED) return;
-        Gl.DeleteSync(_gl.Fence); _gl.Fence = IntPtr.Zero;
+        if (Draining) { CopySlice(); return; }
+        if (!Fenced) return;
+        if (Renderer.OnVulkan)
+        {
+            if (!VkReadDone()) return;
+            _vkb.ReadQueued = false;
+        }
+        else
+        {
+            uint st = Gl.ClientWaitSync(_gl.Fence, 0, 0);
+            if (st != Gl.ALREADY_SIGNALED && st != Gl.CONDITION_SATISFIED) return;
+            Gl.DeleteSync(_gl.Fence); _gl.Fence = IntPtr.Zero;
+        }
         long total = (long)_uw * _uh * TexelBytes;
         int b = -1;
         for (int i = 0; i < ReadBufs && b < 0; i++) if (_cache.Busy[i] == 0) b = i;
         if (b < 0) { _uncached += _pendingRead.Count; _pendingRead.Clear(); _uSnap = false; return; }
-        byte* p = (byte*)Gl.MapNamedBufferRange(_gl.Pbo, IntPtr.Zero, (IntPtr)total, Gl.MAP_READ_BIT);
-        if (p == null) { _uncached += _pendingRead.Count; _pendingRead.Clear(); _uSnap = false; return; }
+        byte* p = Renderer.OnVulkan ? null : (byte*)Gl.MapNamedBufferRange(_gl.Pbo, IntPtr.Zero, (IntPtr)total, Gl.MAP_READ_BIT);
+        if (p == null && !Renderer.OnVulkan) { _uncached += _pendingRead.Count; _pendingRead.Clear(); _uSnap = false; return; }
         // uninitialized and pinned: the zeroing of a 96 MiB array is pure cost when every byte is about to be
         // overwritten, and a buffer this size handed to the cache thread has no business being relocatable
         // uninitialized: zeroing an array whose every byte is about to be overwritten is pure cost. NOT pinned
@@ -470,7 +487,7 @@ internal static unsafe partial class LightmapBake
         // would leave holes there for the session.
         if (_readBufs[b] == null || _readBufs[b]!.Length < total)
             _readBufs[b] = GC.AllocateUninitializedArray<byte>((int)Math.Max(total, 1 << 20));
-        _uMap = p; _uDone = 0; _uBuf = b;
+        _uMap = p; _vkb.Draining = Renderer.OnVulkan; _uDone = 0; _uBuf = b;
         CopySlice();
     }
 
@@ -486,10 +503,15 @@ internal static unsafe partial class LightmapBake
     {
         long total = (long)_uw * _uh * TexelBytes;
         long end = SliceEnd(_uDone, total, CopyPer(Hold));
-        new ReadOnlySpan<byte>(_uMap, (int)total)[(int)_uDone..(int)end].CopyTo(_readBufs[_uBuf].AsSpan((int)_uDone));
+        if (_vkb.Draining)
+        {
+            if (!VkReadSlice(_uDone, end)) { _vkb.Draining = false; _uncached += _pendingRead.Count; _pendingRead.Clear(); _uSnap = false; return; }
+        }
+        else new ReadOnlySpan<byte>(_uMap, (int)total)[(int)_uDone..(int)end].CopyTo(_readBufs[_uBuf].AsSpan((int)_uDone));
         _uDone = end;
         if (_uDone < total) return;
-        if (Gl.UnmapNamedBuffer != null) Gl.UnmapNamedBuffer(_gl.Pbo);
+        if (_vkb.Draining) _vkb.Draining = false;
+        else if (Gl.UnmapNamedBuffer != null) Gl.UnmapNamedBuffer(_gl.Pbo);
         _uMap = null;
         var table = new BakeCache.Entry[_pendingRead.Count];   // cold: one per page bake
         for (int k = 0; k < _pendingRead.Count; k++)
@@ -507,9 +529,9 @@ internal static unsafe partial class LightmapBake
     private static void AbortReadback(bool gl)
     {
         if (_defW > 0) { _uncached += _defRects.Count; _defW = 0; _defRects.Clear(); }
-        if (_uMap == null) return;
-        if (gl && Gl.UnmapNamedBuffer != null) Gl.UnmapNamedBuffer(_gl.Pbo);
-        _uMap = null; _uDone = 0; _uncached += _pendingRead.Count;
+        if (!Draining) return;
+        if (gl && _uMap != null && Gl.UnmapNamedBuffer != null) Gl.UnmapNamedBuffer(_gl.Pbo);
+        _uMap = null; _vkb.Draining = false; _uDone = 0; _uncached += _pendingRead.Count;
     }
 
     /// <summary>Once per area: every term of the key, so two sessions' logs say which one moved when the
@@ -569,9 +591,11 @@ internal static unsafe partial class LightmapBake
             CellOf(r, out int cx, out int cy, out int cw, out int ch);
             int ux = x - Gutter, uy = y - Gutter;
             uploaded += (long)cw * ch * TexelBytes;
-            strided = true;
-            Gl.PixelStorei(Gl.UNPACK_ROW_LENGTH, uw);
+            if (Renderer.OnVulkan) VkUpload(data, r.Page, cx, cy, cw, ch, ux, uy, uw, uh);
+            else
             {
+                strided = true;
+                Gl.PixelStorei(Gl.UNPACK_ROW_LENGTH, uw);
                 // ponytail: a block row a call; UNPACK_COMPRESSED_BLOCK_* would take the cell in one if this shows
                 for (int by = 0; by < ch; by += Block)
                 {
@@ -717,7 +741,7 @@ internal static unsafe partial class LightmapBake
         => !Lightmap.G.Master!.V ? "" : _noLoadEdge ? "bake OFF: CNWCArea::LoadArea did not resolve, so nothing can close the static set"
          : _down.Failed ? $"bake FAILED: {_down.Reason}"
          : (LoadRefusals > 0 ? $"bake: {LoadRefusals} area load(s) the engine refused; " : "bake: ")
-           + $"pages {PagesUsed}/{_gl.Layers}, {_landed} rects landed ({_landedHits} from cache), {_pending} pending, {_pastCap} past the cap; "
+           + $"pages {PagesUsed}/{Layers}, {_landed} rects landed ({_landedHits} from cache), {_pending} pending, {_pastCap} past the cap; "
            + $"static lights {CensusStatic} dynamic {CensusDynamic}";
 
     /// <summary>One clause of the Alloy period line.</summary>
@@ -725,7 +749,7 @@ internal static unsafe partial class LightmapBake
     {
         if (!Enabled || (_rectN == 0 && CensusStatic == 0)) { PhaseReset(); return ""; }
         frames = Math.Max(frames, 1);
-        string s = $"lightmap pages {PagesUsed}/{_gl.Layers}, bakes {_landed} landed ({_landedHits} cached) / {_pending} pending / {_refused + _pastCap} refused"
+        string s = $"lightmap pages {PagesUsed}/{Layers}, bakes {_landed} landed ({_landedHits} cached) / {_pending} pending / {_refused + _pastCap} refused"
                    + (_pastCap > 0 ? $" ({_pastCap} past the cap)" : "") + $", static {CensusStatic} of {CensusStatic + CensusDynamic} lights skipped on baked surfaces"
                    + (_pageMsN > 0 ? $", {_pageMs / _pageMsN:F0} ms wall per page" : "")
                    + (_gl.QBake.Measured ? $", {_gl.QBake.Avg / 1e6:F2} ms GPU per light step (~{_gl.QBake.Avg / 1e6 * _bakeSteps / Math.Max(_pageMsN, 1):F0} ms per page)" : "")
@@ -754,7 +778,7 @@ internal static unsafe partial class LightmapBake
         Span<int> per = stackalloc int[MaxTiers]; per.Clear();
         for (int ri = 0; ri < _rectN; ri++) if (_rects[ri].State == RState.Landed) per[_rects[ri].Tier]++;
         int fine = 0, basePages = 0;
-        for (int p = 0; p < _gl.Layers; p++) { if (_pageClass[p] == ClassFine) fine++; else if (_pageClass[p] == ClassBase) basePages++; }
+        for (int p = 0; p < Layers; p++) { if (_pageClass[p] == ClassFine) fine++; else if (_pageClass[p] == ClassBase) basePages++; }
         var sb = new System.Text.StringBuilder(", tiers");
         for (int t = 0; t <= Baseline; t++) sb.Append(t == 0 ? " " : " / ").Append(per[t]);
         sb.Append($" rects landed, pages {basePages} baseline + {fine} fine");

@@ -38,8 +38,9 @@ public static class Formats
 [Flags]
 public enum BufferUse : byte { None = 0, Vertex = 1, Index = 2, Storage = 4, Uniform = 8, Indirect = 16, CopySrc = 32, CopyDst = 64 }
 
-/// <summary>Where a buffer lives: device-only, or written from the CPU with <c>UpdateBuffer</c>.</summary>
-public enum MemoryKind : byte { Device, Upload }
+/// <summary>Where a buffer lives: device-only, written from the CPU with <c>UpdateBuffer</c>, or host-visible for a
+/// copy the CPU reads back once its submit has finished.</summary>
+public enum MemoryKind : byte { Device, Upload, Readback }
 
 /// <summary>A buffer to create.</summary>
 public readonly record struct BufferDesc(long Bytes, BufferUse Use, MemoryKind Memory, string Label);

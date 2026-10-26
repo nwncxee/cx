@@ -44,6 +44,8 @@ public sealed unsafe partial class AlloyRenderer
         if (!VkRecordShadow(vk, cl, log)) return false;
         // the weather's surface maps off the cover layer the bake just landed, ahead of every stage that reads them
         VkWeatherSurface(vk, cl, log);
+        // the lightmap's slot: its static cubes were queued by the shadow bracket and baked by the flush just above
+        if (lightingOn) LightmapBake.VkRun(vk, cl, _capturing, _frameSeq);
         bool indirect = CullPassVk.Ran;
         int viz = _capturing ? 0 : _lightViz;
         bool gbuf = lightingOn && perspective && Lighting.Deferred.V && (viz == 0 || viz == VizLightFrom);

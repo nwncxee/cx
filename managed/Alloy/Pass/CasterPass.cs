@@ -356,6 +356,8 @@ public sealed unsafe partial class CasterPass : IExtenderService
                     break;
             }
         }
+        // the lightmap bake's static cubes for this frame's light steps, queued with the frame's own views
+        if (onVk && _gStaged) LightmapBake.VkQueueCubes();
         // #307: the queued stale views flush in one layered pass per target, HERE -- the publish arrays the
         // passes wrote above assumed the bakes land. A failed flush publishes nothing for the frame instead:
         // the receiver samples no maps (a one-frame blink, never a lie) and the blanket re-bakes from scratch.

@@ -20,7 +20,8 @@ internal sealed unsafe partial class VkBackend
     /// <summary>A copy waiting for the next submit: staged bytes into a buffer range, into one mip and layer of an
     /// image, or (<see cref="Mips"/>) an image's chain blitted down from its base level.</summary>
     private readonly record struct PendingCopy(ImageId Image, BufferId Buffer, int Mip, int Layer, long DstOffset,
-                                               VkBuffer Src, ulong SrcOffset, ulong Bytes, bool Mips);
+                                               VkBuffer Src, ulong SrcOffset, ulong Bytes, bool Mips,
+                                               int X = 0, int Y = 0, int W = 0, int H = 0, int RowTexels = 0);
 
     /// <summary>Uploads made between submits: their staging and their copies, recorded at the head of the next
     /// submit; a chunk goes back to <see cref="Pool"/> after it and is reused once that submit is past.
@@ -300,9 +301,10 @@ internal sealed unsafe partial class VkBackend
             u.Touched.Add(p.Image.Value);
             var r = new VkBufferImageCopy
             {
-                bufferOffset = p.SrcOffset,
+                bufferOffset = p.SrcOffset, bufferRowLength = (uint)p.RowTexels,
                 imageSubresource = new VkImageSubresourceLayers { aspectMask = Aspect(img.Desc.Fmt), mipLevel = (uint)p.Mip, baseArrayLayer = (uint)p.Layer, layerCount = 1 },
-                imageExtent = new VkExtent3D
+                imageOffset = new VkOffset3D { x = p.X, y = p.Y },
+                imageExtent = p.W > 0 ? new VkExtent3D { width = (uint)p.W, height = (uint)p.H, depth = 1 } : new VkExtent3D
                 {
                     width = (uint)Math.Max(img.Desc.W >> p.Mip, 1), height = (uint)Math.Max(img.Desc.H >> p.Mip, 1),
                     depth = img.Desc.Kind == ImageKind.Tex3D ? (uint)Math.Max(img.Desc.D >> p.Mip, 1) : 1,

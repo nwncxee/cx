@@ -22,7 +22,7 @@ public sealed unsafe partial class CasterPass
 {
     /// <summary>Which depth array a queued view bakes into. The queue keys on a GL name, which Vulkan has none of;
     /// this is the key both flushes read, resolved from that name at the one place a view is queued.</summary>
-    private enum CasterMap : byte { SunStatic, SunDyn, Cubes, CubeDyn, Sky, Other }
+    private enum CasterMap : byte { SunStatic, SunDyn, Cubes, CubeDyn, Sky, Bake, Other }
 
     /// <summary>One translated depth program: its modules, the pipelines it has made by state key, and the offsets
     /// of the three loose members a masked stage reads out of its own block.</summary>
@@ -50,7 +50,9 @@ public sealed unsafe partial class CasterPass
         public CommandList? Cmds;
         /// <summary>Views the bracket queued for the colour frame to flush; 0 = nothing to bake.</summary>
         public int Queued;
-        public ImageId Cascades, SunDyn, Cubes, CubeDyn, Sky;
+        public ImageId Cascades, SunDyn, Cubes, CubeDyn, Sky, Bake;
+        /// <summary>The lightmap bake's scratch cubes: the count and face size it last asked for, and what the array was made at.</summary>
+        public int BakeWant, BakeSizeWant, BakeSize, BakeCubes;
         /// <summary>The size and layer count each array was made at: a knob change remakes it.</summary>
         public int SunSize, SunLayers, DynSize, DynLayers, CubeSize, CubePages, CubeDynSize, CubeDynPages, SkySize, SkyLayers;
         public VkCastProg? Plain, Mask, MaskH;
@@ -329,7 +331,7 @@ public sealed unsafe partial class CasterPass
     private static void VkHandOver(CommandList cl)
     {
         var s = _vk;
-        ReadOnlySpan<ImageId> maps = [s.Cascades, s.SunDyn, s.Cubes, s.CubeDyn, s.Sky];
+        ReadOnlySpan<ImageId> maps = [s.Cascades, s.SunDyn, s.Cubes, s.CubeDyn, s.Sky, s.Bake];
         cl.ReadImages(maps);
     }
 
@@ -498,6 +500,27 @@ public sealed unsafe partial class CasterPass
         return id;
     }
 
+    /// <summary>The lightmap bake's scratch cubes on Vulkan, as the last flush left them; null before the first.</summary>
+    internal static ImageId VkBakeCubes => _vk.Bake;
+
+    /// <summary>Queue one light step's static cube for the lightmap bake on Vulkan: the six faces of the static set
+    /// from <paramref name="pos"/> into slot <paramref name="slot"/> of the bake's own <paramref name="cubes"/>-cube
+    /// array, flushed with the frame's views at full detail, as <see cref="BakeStaticCube"/> renders GL's. False = not
+    /// queued (nothing staged, a reach inside the near plane, or the queue full).</summary>
+    internal static bool VkBakeCube(int slot, int cubes, int size, Vector3 pos, float near, float far)
+    {
+        near = MathF.Max(near, CubeNear);
+        if (!_gStaged || !VkArmed || !(far > near)) return false;
+        _vk.BakeWant = cubes; _vk.BakeSizeWant = size;
+        for (int f = 0; f < CubeFaces; f++)
+        {
+            Matrix4x4 vp = ShadowMath.PointLightFaceViewProj(pos, f, near, far);
+            if (!RenderView(CasterMap.Bake, 0, size, slot * CubeFaces + f, &vp, ShadowMath.CubeFaceForward(f), pos, far, 0f, true,
+                            CasterGather.SetStatic, false, false)) return false;
+        }
+        return true;
+    }
+
     /// <summary>The image behind a queued view's target key, made at the size and layer count the knobs ask for.</summary>
     private static ImageId VkMapOf(CasterMap map)
     {
@@ -514,6 +537,8 @@ public sealed unsafe partial class CasterPass
             CasterMap.CubeDyn => VkArray(ref s.CubeDyn, ref s.CubeDynSize, ref s.CubeDynPages, ImageKind.CubeArray,
                                          _cubeDynSize, _cubeDynPages, "vk mover cubes"),
             CasterMap.Sky => VkArray(ref s.Sky, ref s.SkySize, ref s.SkyLayers, ImageKind.Tex2DArray, SkyView.MapSize, 1, "vk sky view"),
+            CasterMap.Bake => VkArray(ref s.Bake, ref s.BakeSize, ref s.BakeCubes, ImageKind.CubeArray, s.BakeSizeWant, s.BakeWant,
+                                      "vk lightmap bake cubes"),
             _ => default,
         };
     }

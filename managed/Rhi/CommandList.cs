@@ -11,7 +11,7 @@ public enum Op : byte
     End, BeginRenderPass, EndRenderPass, SetPipeline, SetViewport, SetScissor, SetDepthBias, BindSet,
     BindIndexBuffer, Draw, DrawIndexed, DrawIndexedIndirect, Dispatch, CopyImage, BlitImage, UpdateBuffer, ZeroBuffer,
     PushConstants, BindVertexBuffer, DrawIndexedMulti, SetDepthState, SetRasterState, SetDepthRange, ReadImages,
-    DrawIndirect,
+    DrawIndirect, CopyImageToBuffer,
 }
 
 /// <summary>An index element's width.</summary>
@@ -57,6 +57,9 @@ public readonly record struct BlitImageCmd(ImageId Src, Rect From, ImageId Dst, 
 public readonly record struct UpdateBufferCmd(BufferId Buffer, long Offset, int Bytes);
 /// <summary><see cref="Op.ZeroBuffer"/>: <see cref="Bytes"/> zero bytes from <see cref="Offset"/>, 0 meaning to the end.</summary>
 public readonly record struct ZeroBufferCmd(BufferId Buffer, long Offset, long Bytes);
+/// <summary><see cref="Op.CopyImageToBuffer"/>: a <see cref="W"/> x <see cref="H"/> block of one mip and layer into a
+/// buffer at <see cref="Offset"/>, tightly packed (block rows for a compressed format).</summary>
+public readonly record struct CopyToBufferCmd(ImageId Src, ImageRegion From, int W, int H, BufferId Dst, long Offset);
 /// <summary><see cref="Op.ReadImages"/>'s header; the ids follow it. <see cref="Access"/> says which read the
 /// hand-over is for: a sampled texture, or a storage image, which wants a layout of its own.</summary>
 public readonly record struct ReadImagesCmd(int Images, Access Access);
@@ -222,6 +225,7 @@ public sealed class CommandList
 
     public void CopyImage(in CopyImageCmd c) { Head(Op.CopyImage); Put(c); Sent(); }
     public void BlitImage(in BlitImageCmd c) { Head(Op.BlitImage); Put(c); Sent(); }
+    public void CopyImageToBuffer(in CopyToBufferCmd c) { Head(Op.CopyImageToBuffer); Put(c); Sent(); }
 
     /// <summary>Write <paramref name="src"/> into <paramref name="b"/> at <paramref name="offset"/>; the bytes are copied now.</summary>
     public void UpdateBuffer(BufferId b, long offset, ReadOnlySpan<byte> src)

@@ -82,7 +82,7 @@ internal static unsafe class VkParity
     /// <summary>The lit stage's loose terms whose resources are not on Vulkan: Vulkan binds them at zero. GL's A/B frame
     /// reaches the same zero at each term's own source, keyed on <see cref="Active"/>.</summary>
     internal static readonly string[] StoodDown =
-        ["uLmPages", "uLightRecOn", "uCapture", "uOit"];
+        ["uLightRecOn", "uCapture", "uOit"];
 
     /// <summary>The pass block's receivers with no map on Vulkan, switched off in a staged block: no probe. The sun
     /// cascades stand: the A/B frame bakes on both backends, so both sides read the same count over their own maps.</summary>

@@ -162,7 +162,7 @@ internal static unsafe partial class LightmapBake
         End();
         float first = _firstLandT == 0 ? -1f : (_firstLandT - _holdT0) / (float)Stopwatch.Frequency;
         _log?.Info($"LightmapBake: hold released after {s:F1} s ({why}) -- first bake at {(first < 0 ? "never" : $"{first:F1} s")}, "
-                 + $"{_landed} rects landed ({_landedHits} cached) / {_pending} pending, pages {_gl.Layers}, set {(_closed ? $"closed at walk {_walks}" : "OPEN")} "
+                 + $"{_landed} rects landed ({_landedHits} cached) / {_pending} pending, pages {Layers}, set {(_closed ? $"closed at walk {_walks}" : "OPEN")} "
                  + $"SetHash {SetHash:x16}, "
                  + $"charts {MeshChart.Done}/{MeshChart.Offered}, {_sharedEnrols} enrols shared a standing rect; census at the close static={_closeStatic} dynamic={_closeDynamic}, now static {CensusStatic} dynamic {CensusDynamic}"
                  + stages + AreaStats());
