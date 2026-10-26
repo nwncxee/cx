@@ -57,14 +57,18 @@ internal static unsafe class PostChainVk
     {
         ["uSrc"] = TextureSlots.PostHdr, ["uHdr"] = TextureSlots.PostHdr, ["uCur"] = TextureSlots.PostHdr,
         ["uBloom"] = TextureSlots.PostBloom, ["uDepth"] = TextureSlots.PostDepth, ["uOverlay"] = TextureSlots.PostOverlay,
-        ["uHist"] = TextureSlots.AaEdges, ["uVel"] = TextureSlots.AaArea,
+        ["uHist"] = TextureSlots.AaEdges, ["uVel"] = TextureSlots.AaArea, ["uMask"] = TextureSlots.PostHdr,
     };
 
     /// <summary>What a post draw samples, by the role its declaration names: <c>uSrc</c>/<c>uHdr</c>/<c>uCur</c>
     /// read <see cref="Src"/>, then <c>uBloom</c>, <c>uDepth</c>, <c>uHist</c>, <c>uVel</c>; any other sampler, or a
     /// null image, takes a stand-in.</summary>
     internal readonly record struct Inputs(ImageId Src, ImageId Bloom = default, ImageId Depth = default,
-                                           ImageId Hist = default, ImageId Vel = default, bool HistLinear = false);
+                                           ImageId Hist = default, ImageId Vel = default, bool HistLinear = false,
+                                           ImageId Mask = default);
+
+    /// <summary>How a post draw meets its target: replacing it, adding to it, or alpha-over it.</summary>
+    internal enum Blend : byte { None, Add, Over }
 
     /// <summary>Bloom, then the resolve of <paramref name="hdr"/> into <paramref name="into"/> at
     /// <paramref name="rect"/>, dithered only when it is the frame's last write. False (logged) when a program or
@@ -97,7 +101,7 @@ internal static unsafe class PostChainVk
         VkUniformShim.Set(r.Dither, last ? PostChain.DitherLsb : 0f);
         VkUniformShim.Set(r.Viz, Post.Viz.V == PostChain.VizMotion ? 0 : Post.Viz.V);
         int at = Close(cl, s.Resolve!);
-        Draw(cl, s.Resolve!, FormatOf(into), false, into, LoadOp.Clear, new Rect(rect[0], rect[1], rect[2], rect[3]), at,
+        Draw(cl, s.Resolve!, FormatOf(into), Blend.None, into, LoadOp.Clear, new Rect(rect[0], rect[1], rect[2], rect[3]), at,
              new Inputs(hdr, bloom ? s.Bloom[0] : default, depth), log);
         if (!s.Said)
         {
@@ -122,7 +126,7 @@ internal static unsafe class PostChainVk
             VkUniformShim.Set(d.Texel, [1f / sw, 1f / sh]);
             VkUniformShim.Set(d.Thresh, [Post.Threshold.V, MathF.Max(Post.Knee.V, 1e-4f)]);
             int at = Close(cl, s.Down!);
-            Draw(cl, s.Down!, Format.Rgba16F, false, s.Bloom[i], LoadOp.DontCare, new Rect(0, 0, LevelW(s, i), LevelH(s, i)),
+            Draw(cl, s.Down!, Format.Rgba16F, Blend.None, s.Bloom[i], LoadOp.DontCare, new Rect(0, 0, LevelW(s, i), LevelH(s, i)),
                  at, new Inputs(i == 0 ? hdr : s.Bloom[i - 1]), null);
         }
         for (int i = s.Levels - 1; i > 0; i--)
@@ -131,7 +135,7 @@ internal static unsafe class PostChainVk
             VkUniformShim.Set(u.Lod, 0);
             VkUniformShim.Set(u.Texel, [1f / LevelW(s, i), 1f / LevelH(s, i)]);
             int at = Close(cl, s.Up!);
-            Draw(cl, s.Up!, Format.Rgba16F, true, s.Bloom[i - 1], LoadOp.Load, new Rect(0, 0, LevelW(s, i - 1), LevelH(s, i - 1)),
+            Draw(cl, s.Up!, Format.Rgba16F, Blend.Add, s.Bloom[i - 1], LoadOp.Load, new Rect(0, 0, LevelW(s, i - 1), LevelH(s, i - 1)),
                  at, new Inputs(s.Bloom[i]), null);
         }
     }
@@ -144,7 +148,7 @@ internal static unsafe class PostChainVk
     /// <summary>One full-screen triangle of <paramref name="p"/> into <paramref name="into"/> at <paramref name="vp"/>,
     /// its loose block at <paramref name="at"/>, sampling <paramref name="t"/>. Nothing (logged) when the device
     /// refused the pipeline.</summary>
-    internal static void Draw(CommandList cl, GuiVkProg p, Format f, bool add, ImageId into, LoadOp load, Rect vp, int at,
+    internal static void Draw(CommandList cl, GuiVkProg p, Format f, Blend add, ImageId into, LoadOp load, Rect vp, int at,
                               in Inputs t, ExtenderLog? log)
     {
         PipelineId pipe = Pipe(p, f, add, log);
@@ -162,6 +166,7 @@ internal static unsafe class PostChainVk
                 "uDepth" => (t.Depth, s.Nearest),
                 "uHist" => (t.Hist, t.HistLinear ? s.Linear : s.Nearest),
                 "uVel" => (t.Vel, s.Linear),
+                "uMask" => (t.Mask, s.Linear),
                 _ => (default(ImageId), s.Linear),
             };
             if (i.IsNull) i = o.Type == "sampler3D" ? AlloyRenderer.VkStandIn3D : AlloyRenderer.VkStandIn2D;
@@ -210,15 +215,17 @@ internal static unsafe class PostChainVk
 
     /// <summary><paramref name="p"/>'s pipeline into one <paramref name="f"/> attachment, adding under
     /// <paramref name="add"/>; made on first ask, a null id (logged once) when the device refused it.</summary>
-    private static PipelineId Pipe(GuiVkProg p, Format f, bool add, ExtenderLog? log)
+    private static PipelineId Pipe(GuiVkProg p, Format f, Blend add, ExtenderLog? log)
     {
-        long key = (long)f | (add ? 1L << 32 : 0);
+        long key = (long)f | (long)add << 32;
         if (p.Pipes.TryGetValue(key, out PipelineId id)) return id;
-        var d = new PipelineDesc { Vs = p.Vs, Fs = p.Fs, Label = $"vk {p.Label} {f}{(add ? " add" : "")}" };
+        var d = new PipelineDesc { Vs = p.Vs, Fs = p.Fs, Label = $"vk {p.Label} {f} {add}" };
         d.Targets.ColorCount = 1;
         d.Targets.Colors[0] = f;
         d.Targets.Samples = 1;
-        if (add) d.Blend[0] = new AttachmentBlend(true, BlendFactor.One, BlendFactor.One, BlendFactor.One, BlendFactor.One);
+        if (add == Blend.Add) d.Blend[0] = new AttachmentBlend(true, BlendFactor.One, BlendFactor.One, BlendFactor.One, BlendFactor.One);
+        else if (add == Blend.Over)
+            d.Blend[0] = new AttachmentBlend(true, BlendFactor.SrcAlpha, BlendFactor.OneMinusSrcAlpha, BlendFactor.SrcAlpha, BlendFactor.OneMinusSrcAlpha);
         id = _s.Dev!.CreatePipeline(in d);
         if (id.IsNull) log?.Always($"PostChainVk: the device REFUSED pipeline {d.Label} (logged above) -- that post draw sits out");
         p.Pipes[key] = id;

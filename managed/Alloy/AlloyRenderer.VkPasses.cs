@@ -145,12 +145,14 @@ public sealed unsafe partial class AlloyRenderer
         if (!VkBeamPass(vk, cl, s, view, proj, viewport, log)) return false;
         if (!VkParticlePass(vk, cl, s, view, proj, viewport, near, far, lightingOn, log)) return false;
         if (!VkHaloPass(vk, cl, s, view, proj, viewport, log)) return false;
+        if (!VkHighlightMask(vk, cl, s, vp, viewport, near, far, groups, log)) return false;
         VkIdPaint(vk, cl, s, log);
 
         // the resolve grades a far pixel by its world ray, off the camera the dome drew through
         if (!_capturing && (_skyN == 0 || !Matrix4x4.Invert(vp, out SkyInvVp))) SkyInvVp = default;
         Matrix4x4 vpJ = vp, vpC = vpClean;
         if (!PostStack.RecordVk(vk, cl, s.Hdr, s.Depth, &vpJ, &vpC, viewport, display, log)) return false;
+        VkHighlightComposite(cl, composite, display, log);
         if (!s.Live)
         {
             s.Live = true;

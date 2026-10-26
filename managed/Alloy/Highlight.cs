@@ -15,7 +15,7 @@ namespace CX.Alloy;
 /// <c>Scene::DoHighlightGob</c> glow quads, the highlighted object is redrawn flat -- a <see cref="FillAlpha"/>
 /// fill plus a thick, smooth silhouette outline -- right after <see cref="PostChain"/>'s composite, and two
 /// draws deep whatever the highlight count: one RGBA mask, then one fullscreen dilation blend over it.</summary>
-internal static unsafe class Highlight
+internal static unsafe partial class Highlight
 {
 
     /// <summary>Ceilings: highlighted ROOT gobs per frame, and (roots + attached children) in total.
@@ -137,13 +137,13 @@ internal static unsafe class Highlight
     /// <summary>The root's highlight colour at full coverage, over <see cref="DepthVs"/> -- the vertex
     /// stage is reused verbatim so the mask's biased LEQUAL test sits against exactly the positions the
     /// colour pass wrote depth from.</summary>
-    private static string HighlightMaskFs => ShaderSource.Get("cx_hilitemask_f.glsl");
+    internal static string HighlightMaskFs => ShaderSource.Get("cx_hilitemask_f.glsl");
 
     /// <summary>The composite: fill where the mask has coverage (its bilinear edge antialiases the rim, and
     /// rgb rides the same fetch so per-object colours cost nothing), outline where a ring-tap dilation of
     /// the coverage lands OUTSIDE it, coloured by the taps' own coverage-weighted rgb. Coverage through
     /// smoothstep is what makes the outline read as one thick soft stroke rather than an aliased wireframe.</summary>
-    private static string HighlightCompFs => ShaderSource.Get("cx_hilitecomp_f.glsl");
+    internal static string HighlightCompFs => ShaderSource.Get("cx_hilitecomp_f.glsl");
 
     private static bool EnsureHighlightPrograms()
     {

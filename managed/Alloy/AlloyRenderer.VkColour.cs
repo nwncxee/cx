@@ -115,7 +115,7 @@ public sealed unsafe partial class AlloyRenderer
     private const int ColourTargets = 7;
 
     /// <summary>Which attachment set a pipeline draws into.</summary>
-    private enum VkTargets : byte { Prepass, Colour, Forward, Decal }
+    private enum VkTargets : byte { Prepass, Colour, Forward, Decal, Mask }
 
     /// <summary>The seven per-batch values, in <c>VkGlsl.Push</c>'s order.</summary>
     [StructLayout(LayoutKind.Sequential)]
@@ -588,6 +588,7 @@ public sealed unsafe partial class AlloyRenderer
         if (targets == VkTargets.Prepass) { d.Targets.ColorCount = PrepassTargets; d.Targets.Colors[1] = Format.R32Ui; }
         else if (targets == VkTargets.Decal) { d.Targets.Depth = Format.Unknown; VkDecalBlend(ref d); }
         else if (targets == VkTargets.Forward) { d.Targets.ColorCount = 1; d.Targets.Colors[0] = Format.Rgba16F; }
+        else if (targets == VkTargets.Mask) { d.Targets.ColorCount = 1; d.Targets.Colors[0] = Format.Rgba8; }
         else if (targets == VkTargets.Colour)
         {
             d.Targets.ColorCount = ColourTargets;

@@ -105,7 +105,7 @@ internal static unsafe partial class PostStack
             VkUniformShim.Set(v.Dither, last ? PostChain.DitherLsb : 0f);
             if (st.Value != null) VkUniformShim.Set(v.Param, st.Value());
             int at = PostChainVk.Close(cl, v.P!);
-            PostChainVk.Draw(cl, v.P!, PostChainVk.FormatOf(into), false, into, LoadOp.Clear, last ? rect : new Rect(0, 0, dw, dh),
+            PostChainVk.Draw(cl, v.P!, PostChainVk.FormatOf(into), PostChainVk.Blend.None, into, LoadOp.Clear, last ? rect : new Rect(0, 0, dw, dh),
                              at, new PostChainVk.Inputs(read, default, depth, hist), log);
             (read, write) = (write, read);
         }
@@ -196,7 +196,7 @@ internal static unsafe partial class PostStack
         VkUniformShim.Set(s.MSize, [(float)w, h]);
         VkUniformShim.Set(s.MJitter, [PostChain.JitterX, PostChain.JitterY]);
         int at = PostChainVk.Close(cl, s.Motion);
-        PostChainVk.Draw(cl, s.Motion, Format.Rg16F, false, s.Vel, LoadOp.DontCare, new Rect(0, 0, w, h), at,
+        PostChainVk.Draw(cl, s.Motion, Format.Rg16F, PostChainVk.Blend.None, s.Vel, LoadOp.DontCare, new Rect(0, 0, w, h), at,
                          new PostChainVk.Inputs(default, default, depth), log);
         return true;
     }
@@ -211,7 +211,7 @@ internal static unsafe partial class PostStack
         VkUniformShim.Set(s.TUpsample, 0);
         VkUniformShim.Set(s.TJitterPx, [PostChain.JitterX * 0.5f * s.W, PostChain.JitterY * 0.5f * s.H]);
         int at = PostChainVk.Close(cl, s.Taa!);
-        PostChainVk.Draw(cl, s.Taa!, Format.Rgba16F, false, write, LoadOp.DontCare, new Rect(0, 0, s.W, s.H), at,
+        PostChainVk.Draw(cl, s.Taa!, Format.Rgba16F, PostChainVk.Blend.None, write, LoadOp.DontCare, new Rect(0, 0, s.W, s.H), at,
                          new PostChainVk.Inputs(cur, default, depth, read, s.Vel, HistLinear: true), log);
         s.Cur ^= 1;
         s.HistValid = true;

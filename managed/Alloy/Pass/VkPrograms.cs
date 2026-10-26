@@ -15,7 +15,7 @@ internal static class VkPrograms
     /// <summary>The programs the Vulkan batch pass draws through. <see cref="Id.Decal"/> and <see cref="Id.Water"/>
     /// are not among <see cref="All"/>: like GL's, each is optional, built at its own pass's first frame, and a
     /// refusal stands that pass down rather than failing the frame.</summary>
-    internal enum Id { Fullbright, Lit, LitDeferred, Depth, DepthKey, DepthFeat, Decal, Water }
+    internal enum Id { Fullbright, Lit, LitDeferred, Depth, DepthKey, DepthFeat, Decal, Water, HighlightMask }
 
     internal static readonly Id[] All = [Id.Fullbright, Id.Lit, Id.LitDeferred, Id.Depth, Id.DepthKey, Id.DepthFeat];
 
@@ -73,6 +73,8 @@ internal static class VkPrograms
                                 log, what, out string v, out string f);
                 return (Final(v, log, what, true), Final(f, log, what, true));
             }
+            case Id.HighlightMask:
+                return (Final(AlloyRenderer.DepthVs, log, what, true), Final(Highlight.HighlightMaskFs, log, what, true));
             case Id.Depth:
                 return (Final(AlloyRenderer.DepthVs, log, what, true), Final(AlloyRenderer.DepthFs, log, what, true));
             case Id.DepthKey:
