@@ -21,6 +21,12 @@ public static unsafe class Native
     /// <summary>Bytes for one CExoString buffer the engine fills: sizeof is 16, and 16 more of slack.</summary>
     public const int ExoScratch = 32;
 
+    /// <summary>The bytes of <paramref name="n"/> records of <typeparamref name="T"/> at <paramref name="p"/>: the
+    /// one place a typed pointer and a count become a span, so a caller hands over records it has named rather than
+    /// a length it worked out itself.</summary>
+    public static ReadOnlySpan<byte> Records<T>(T* p, int n) where T : unmanaged
+        => System.Runtime.InteropServices.MemoryMarshal.AsBytes(new ReadOnlySpan<T>(p, n));
+
     /// <summary>
     /// Build a CExoString on the native heap from a C# string, as <see cref="EngineBytes"/> encodes it.
     /// The layout is opaque: we zero an over-sized buffer and let the client's own InitFromCharArray

@@ -62,15 +62,6 @@ public sealed unsafe partial class CasterPass
         public int Baked, Chunks;
         /// <summary>A bit per <see cref="CasterMap"/> already announced: each target says its first flush once.</summary>
         public int Said;
-        /// <summary>The cold reading of what the bake wrote (<c>CasterPass.VkProbe</c>): the layers and sizes it
-        /// looks at, the list the layered draw consumed, and its own scratch resources.</summary>
-        public bool ProbeDone;
-        public int ProbeWant, ProbeCubeLayer, ProbeSunLayer, ProbeCubeSize, ProbeSunSize, ProbeViews;
-        public int ProbeGroups, ProbeStart, ProbeLen;
-        public BufferId ProbeCmd, ProbeCnt, ProbeViewTbl, ProbeBuf;
-        public ImageId ProbeImg;
-        public PipelineId ProbePipe;
-        public CommandList? ProbeList;
     }
 
     private static CasterVkState _vk = new();

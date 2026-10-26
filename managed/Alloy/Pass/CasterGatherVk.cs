@@ -113,8 +113,8 @@ internal static unsafe partial class CasterGatherVk
         Grow(vk, ref s.Cull, ref s.CullCap, bytes, BufferUse.Storage, "gather cull bounds");
         Grow(vk, ref s.Cast, ref s.CastCap, bytes, BufferUse.Storage, "gather caster bounds");
         if (s.Cull.IsNull || s.Cast.IsNull) return;
-        cl.UpdateBuffer(s.Cull, 0, new ReadOnlySpan<byte>(cull, (int)bytes));
-        cl.UpdateBuffer(s.Cast, 0, new ReadOnlySpan<byte>(cast, (int)bytes));
+        cl.UpdateBuffer(s.Cull, 0, Native.Records(cull, slots));
+        cl.UpdateBuffer(s.Cast, 0, Native.Records(cast, slots));
     }
 
     /// <summary>Publish one frame's staging into <paramref name="cl"/>, as <see cref="CasterGather.Begin"/> does:
@@ -132,7 +132,7 @@ internal static unsafe partial class CasterGatherVk
         if (s.Src.IsNull) return false;
         if (grow || s.SrcDirty)
         {
-            cl.UpdateBuffer(s.Src, 0, new ReadOnlySpan<byte>(src, (int)bytes));
+            cl.UpdateBuffer(s.Src, 0, Native.Records(src, drawN));
             s.SrcDirty = false;
             CasterGather.Uploads++;
         }
@@ -161,7 +161,7 @@ internal static unsafe partial class CasterGatherVk
         long bytes = (long)drawN * sizeof(CasterSrcRec);
         Grow(vk, ref s.DynSrc, ref s.DynSrcCap, bytes, BufferUse.Storage, "gather dynamic source");
         if (s.DynSrc.IsNull) return false;
-        cl.UpdateBuffer(s.DynSrc, 0, new ReadOnlySpan<byte>(src, (int)bytes));
+        cl.UpdateBuffer(s.DynSrc, 0, Native.Records(src, drawN));
         s.DynDrawN = drawN;
         return true;
     }
@@ -206,7 +206,7 @@ internal static unsafe partial class CasterGatherVk
         long viewBytes = (long)viewN * sizeof(CasterViewRec);
         Grow(vk, ref s.ViewTbl, ref s.ViewCap, (long)wide * sizeof(CasterViewRec), BufferUse.Storage, "gather view table");
         if (s.ViewTbl.IsNull) return false;
-        cl.UpdateBuffer(s.ViewTbl, 0, new ReadOnlySpan<byte>(views, (int)viewBytes));
+        cl.UpdateBuffer(s.ViewTbl, 0, Native.Records(views, viewN));
 
         s.LyAt = (s.LyAt + 1) % Rotation;
         long cmds = (long)s.DrawN * wide;
