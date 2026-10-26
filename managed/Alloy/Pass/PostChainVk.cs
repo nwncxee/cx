@@ -63,10 +63,10 @@ internal static unsafe class PostChainVk
 
     /// <summary>What a post draw samples, by the role its declaration names: <c>uSrc</c>/<c>uHdr</c>/<c>uCur</c>
     /// read <see cref="Src"/>, then <c>uBloom</c>, <c>uDepth</c>, <c>uHist</c>, <c>uVel</c>; any other sampler, or a
-    /// null image, takes a stand-in.</summary>
+    /// null image, takes a stand-in. <see cref="Storage"/> is the one storage buffer a draw may read.</summary>
     internal readonly record struct Inputs(ImageId Src, ImageId Bloom = default, ImageId Depth = default,
                                            ImageId Hist = default, ImageId Vel = default, bool HistLinear = false,
-                                           ImageId Mask = default);
+                                           ImageId Mask = default, BufferBinding Storage = default);
 
     /// <summary>How a post draw meets its target: replacing it, adding to it, or alpha-over it.</summary>
     internal enum Blend : byte { None, Add, Over }
@@ -165,7 +165,7 @@ internal static unsafe class PostChainVk
                 "texFBDepth" => (t.Depth, s.Nearest),
                 "texUnitNoise" => (VkTextures.Image(FrameSnapshot.NoiseTid), s.Repeat),
                 "uBloom" => (t.Bloom, s.Linear),
-                "uDepth" => (t.Depth, s.Nearest),
+                "uDepth" or "uTrigDepth" => (t.Depth, s.Nearest),
                 "uHist" => (t.Hist, t.HistLinear ? s.Linear : s.Nearest),
                 "uVel" => (t.Vel, s.Linear),
                 "uMask" => (t.Mask, s.Linear),
@@ -180,7 +180,8 @@ internal static unsafe class PostChainVk
         cl.BeginRenderPass(new RenderPassDesc(colors));
         cl.SetPipeline(pipe);
         cl.SetViewport(vp.X, vp.Y, vp.W, vp.H);
-        cl.BindSet(0, new BindSet(ubo, default, img[..n], default));
+        ReadOnlySpan<BufferBinding> sto = t.Storage.Buffer.IsNull ? default : [t.Storage];
+        cl.BindSet(0, new BindSet(ubo, sto, img[..n], default));
         cl.Draw(3);
         cl.EndRenderPass();
     }
