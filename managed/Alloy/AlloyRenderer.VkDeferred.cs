@@ -132,9 +132,11 @@ public sealed unsafe partial class AlloyRenderer
         if (!d.Live)
         {
             d.Live = true;
+            int cubes = CasterPass.CubesFresh ? CasterPass.CubeCount : 0;
             log.Always($"AlloyRenderer: the Vulkan deferred path is LIVE -- {b.LightCount} point lights walked per tile "
                      + $"over the G-buffer, visibility record {rw}x{rh}" + (film ? ", film highlights on top" : "")
-                     + "; no cube or cascade map is on Vulkan yet, so every light here is unshadowed");
+                     + (cubes > 0 ? $"; {cubes} shadow cube(s) on the record's lanes"
+                                  : "; no cube map was baked for this frame, so every light here is unshadowed"));
         }
     }
 
