@@ -352,7 +352,8 @@ internal sealed unsafe partial class VkBackend : IDevice
         _pipeLayout = pl;
         _nearest = Sampler(new SamplerDesc(Filter.Nearest, Filter.Nearest, MipMode.None, Wrap.Clamp));
         MakeBindlessZero();
-        Caps = new DeviceCaps((int)l.maxImageDimension2D, (int)l.maxImageArrayLayers, (int)l.maxColorAttachments, 1,
+        Caps = new DeviceCaps((int)l.maxImageDimension2D, (int)l.maxImageArrayLayers, (int)l.maxColorAttachments,
+            MaxCount(l.framebufferColorSampleCounts & l.framebufferDepthSampleCounts),
             (int)l.maxPerStageDescriptorSampledImages, (int)l.maxDescriptorSetSampledImages,
             (int)l.maxPerStageDescriptorStorageBuffers, (int)l.maxPerStageDescriptorStorageBuffers,
             (int)l.minUniformBufferOffsetAlignment, (int)l.minStorageBufferOffsetAlignment, has.samplerAnisotropy ? l.maxSamplerAnisotropy : 1f);

@@ -29,6 +29,8 @@ internal static unsafe class CoverageLayer
     {
         public uint Fbo, ResolveFbo, Col, Dep, ProgSeed, ProgDepth;
         public int W, H, Samples;
+        /// <summary>The Vulkan layer's sample count, for <see cref="Stats"/>.</summary>
+        public int VkSamples;
         /// <summary>The driver's sample ceiling, queried once per context.</summary>
         public int MaxSamples;
         public int USeedHdr = -1, USeedDepth = -1, UDepthMs = -1, UDepthN = -1;
@@ -54,6 +56,19 @@ internal static unsafe class CoverageLayer
     internal static bool Masked { get; private set; }
 
     internal static void Attach(ExtenderLog log) => _log = log;
+
+    /// <summary>The colour layer's resolve, which only the Vulkan layer draws: GL blits.</summary>
+    internal static string ResolveFs => ShaderSource.Get("cx_a2cres_f.glsl");
+    /// <summary>The seed and the depth write-back, shared by both backends.</summary>
+    internal static string SeedFs => ShaderSource.Get("cx_a2cseed_f.glsl");
+    internal static string DepthFs => ShaderSource.Get("cx_a2cdepth_f.glsl");
+
+    /// <summary>One Vulkan run, counted into <see cref="Stats"/> as GL's <see cref="Begin"/> counts its own.</summary>
+    internal static void CountVk(int samples, long pixels, long frameArea)
+    {
+        _gl.VkSamples = samples;
+        _runs++; _pixels += pixels; _frameArea += frameArea;
+    }
 
     /// <summary>Context loss: every name went with the context.</summary>
     internal static void Forget()
@@ -204,7 +219,7 @@ internal static unsafe class CoverageLayer
         _runs = 0; _pixels = 0; _frameArea = 0; _released = 0;
         if (_down.Failed) return $"a2c STOOD DOWN ({_down.Reason})";
         if (n == 0) return Renderer.A2c.V < 2 ? "a2c off" : rel > 0 ? "a2c idle, targets released" : "a2c idle";
-        return $"a2c {(float)n / System.Math.Max(frames, 1):F2} runs/frame, {_gl.Samples}x{(Masked ? " masked" : "")}, " +
+        return $"a2c {(float)n / System.Math.Max(frames, 1):F2} runs/frame, {(Renderer.OnVulkan ? _gl.VkSamples : _gl.Samples)}x{(Masked ? " masked" : "")}, " +
                $"scissor {100.0 * px / System.Math.Max(area, 1):F1}% of the frame";
     }
 }

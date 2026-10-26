@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 using System.Collections.Generic;
 using CX.Rhi;
 using Vortice.Vulkan;
@@ -104,7 +105,10 @@ internal sealed unsafe partial class VkBackend
     public ImageId CreateImage(in ImageDesc d)
     {
         if (!OnThread("CreateImage")) return default;
-        if (d.Samples > 1 || Of(d.Fmt) == VkFormat.Undefined || d.W <= 0 || d.H <= 0 || d.Mips < 1 || d.Layers < 1)
+        bool ms = d.Samples > 1;
+        if (ms && (d.Kind != ImageKind.Tex2D || d.Mips != 1 || d.Layers != 1 || (d.Use & ImageUse.Storage) != 0 || d.Samples > Caps.MaxSamples
+                   || !BitOperations.IsPow2(d.Samples))
+            || Of(d.Fmt) == VkFormat.Undefined || d.W <= 0 || d.H <= 0 || d.Mips < 1 || d.Layers < 1)
             return Refused<ImageId>($"image {d.Label}: {d.Kind} {d.Fmt} {d.W}x{d.H} x{d.Samples} with {d.Mips} mips, {d.Layers} layers");
         VkImageCreateInfo ici = ImageInfo(d, null);
         var aci = new VmaAllocationCreateInfo { usage = VmaMemoryUsage.AutoPreferDevice };
@@ -125,7 +129,7 @@ internal sealed unsafe partial class VkBackend
             flags = cube ? VkImageCreateFlags.CubeCompatible : VkImageCreateFlags.None, format = Of(d.Fmt),
             extent = new VkExtent3D { width = (uint)d.W, height = (uint)d.H, depth = d.Kind == ImageKind.Tex3D ? (uint)Math.Max(d.D, 1) : 1 },
             mipLevels = (uint)d.Mips, arrayLayers = (uint)(d.Kind == ImageKind.Tex3D ? 1 : cube ? d.Layers * 6 : d.Layers),
-            samples = VkSampleCountFlags.Count1, tiling = VkImageTiling.Optimal,
+            samples = (VkSampleCountFlags)Math.Max(d.Samples, 1), tiling = VkImageTiling.Optimal,
             usage = Usage(d.Use, d.Fmt), sharingMode = VkSharingMode.Exclusive, initialLayout = VkImageLayout.Undefined,
         };
     }
@@ -198,6 +202,13 @@ internal sealed unsafe partial class VkBackend
     }
 
     /// <summary>Array layers an image holds, counting a cube's six faces each.</summary>
+    /// <summary>The largest sample count in <paramref name="counts"/>, at most 8 -- what a multisampled target may ask for.</summary>
+    private static int MaxCount(VkSampleCountFlags counts)
+    {
+        uint c = (uint)counts & 15u;
+        return c == 0 ? 1 : 1 << BitOperations.Log2(c);
+    }
+
     private static int Layers(in ImageDesc d)
         => d.Kind == ImageKind.Tex3D ? 1 : d.Kind is ImageKind.Cube or ImageKind.CubeArray ? d.Layers * 6 : d.Layers;
 
