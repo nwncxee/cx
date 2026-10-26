@@ -22,6 +22,11 @@ internal sealed class GuiVkProg
     public VkOpaque[] Opaques = [];
     /// <summary>Pipelines by <see cref="GuiPassVk"/>'s state key.</summary>
     public readonly Dictionary<long, PipelineId> Pipes = new();
+    /// <summary>The native stage a post program is built from (-1: none), its declarations that are that stage's
+    /// images, and where its frame uniforms sit.</summary>
+    public int Stage = -1;
+    public CX.Alloy.StageResources.VkBind[] StageBinds = [];
+    public CX.Alloy.FrameLoc StageFrame;
 
     /// <summary>The fake GL program names the GUI path's shims resolve under: past every range
     /// <see cref="AlloyRenderer"/>'s own programs reserve.</summary>

@@ -63,6 +63,7 @@ internal static unsafe partial class StageResources
 
     private static VkResState _vk = new();
 
+
     /// <summary>Fake GL program names a pass's loose block resolves under, past every other Vulkan shim range.</summary>
     private const uint VkShimBase = VkUniformShim.ProgramBase + (1u << 24);   // not-an-offset: a reserved name range
 
@@ -391,6 +392,9 @@ internal static unsafe partial class StageResources
             if (o.Set != 0) continue;
             switch (o.Kind)
             {
+                // a loose block the compiler dropped is in no module: nothing to bind
+                case VkBindKind.UniformBlock when o.Binding != UboSlots.Engine && q.Block.Length == 0:
+                    break;
                 case VkBindKind.UniformBlock:
                     BufferId arena;
                     int len, at = o.Binding == UboSlots.Engine ? AlloyRenderer.VkStageEngine(cl, out arena, out len)

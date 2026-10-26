@@ -50,10 +50,10 @@ internal static unsafe partial class PostStack
         return a;
     }
 
-    /// <summary>The stages Vulkan draws: the plain ones, toon, the taa stage with its own resolve and the aa stage with
-    /// its edge and weight passes. A hosted chain that runs the engine's native stages is not on Vulkan.</summary>
+    /// <summary>The stages Vulkan draws: the plain ones, toon, the taa stage with its own resolve, the aa stage with
+    /// its edge and weight passes, and the hosted chain -- its native version included.</summary>
     private static bool OnVulkan(Stage st) => st.Name is "gamma" or "toon" or "sharpen" or "vibrance" or "taa" or "aa"
-                                              || st == _fbpost && !FbPostStage.HostsNative;
+                                              || st == _fbpost;
 
     /// <summary>The TAA history on Vulkan starts over: the next resolve takes the current frame whole.</summary>
     internal static void ResetVk() => _vk.HistValid = false;
@@ -128,6 +128,11 @@ internal static unsafe partial class PostStack
             VkUniformShim.Set(v.Dither, last ? PostChain.DitherLsb : 0f);
             if (st.Value != null) VkUniformShim.Set(v.Param, st.Value());
             if (st == _fbpost) FbPostStage.WriteVk(in v.Fb, last ? display : full);
+            if (v.P!.Stage >= 0)
+            {
+                StageResources.Use(v.P.Stage);
+                StageResources.VkUploadFrame(v.P.StageFrame, v.P.Stage, -1, main: true);
+            }
             if (st.Name == "toon") ToonStage.WriteVk(in v.Toon);
             if (aa) SmaaStage.WriteVk(v.Rt);
             int at = PostChainVk.Close(cl, v.P!);
@@ -152,7 +157,7 @@ internal static unsafe partial class PostStack
             FbPostStage.Arm(Mask(), Quality());
             raw = FbPostStage.Hosting(raw, log);
             string spliced = VanillaShader.Splice(raw, log, "PostStack fbpost");
-            if (spliced == raw || FbPostStage.HostsNative) return;
+            if (spliced == raw) return;
             raw = spliced;
         }
         GlProgram.Texts(PostChain.ShdPostVs, ShaderStages.Source(PostChain.ShdPostVs), st.Resref, raw,
@@ -170,7 +175,13 @@ internal static unsafe partial class PostStack
             if (st == _fbpost) v.Fb = FbPostStage.LocateVk();
             if (st.Name == "toon") v.Toon = ToonStage.LocateVk(p);
             v.Rt = p.Loc("uRt");
-        }, log);
+        }, log, st == _fbpost ? FbPostStage.NativeId : -1);
+        if (v.P == null && st == _fbpost && FbPostStage.HostsNative)
+        {
+            FbPostStage.RefuseNative("its Vulkan post program did not build (logged above)", log);
+            v.Tried = false;
+            return;
+        }
         if (v.P == null) log.Always($"PostStack: the {st.Name} stage did not build on Vulkan (logged above) -- it sits the session out");
     }
 

@@ -88,6 +88,9 @@ internal static unsafe class FbPostStage
     /// <summary>Is the program being built from the chain's native stage? Its host then builds the wrapper as given.</summary>
     internal static bool HostsNative => _gl.Native >= 0;
 
+    /// <summary>The native stage the program is built from, -1 for the chain itself.</summary>
+    internal static int NativeId => _gl.Native;
+
     /// <summary>The native stage's program would not do: latched (said by <see cref="StageResources.Fail"/>), so the
     /// next <see cref="Hosting"/> hands back the chain itself.</summary>
     internal static void RefuseNative(string why, ExtenderLog? log)
