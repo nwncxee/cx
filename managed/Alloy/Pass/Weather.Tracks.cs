@@ -160,6 +160,7 @@ internal static unsafe partial class Weather
     {
         // allocated here, on the first snowy lit bind, never inside the footstep hook
         if (_track == null && Tracks.V && _snow > TrackMinSnow) _track = new TrackTexel[TrackSize * TrackSize];
+        if (Renderer.OnVulkan) return;
         if (_track == null || !EnsureTrack()) { Bind(TrackUnit, 0); return; }
         if (_gl.TrackAll || _trackHi >= _trackLo) Upload();
         Bind(TrackUnit, _gl.TrackTex);
@@ -226,7 +227,7 @@ internal static unsafe partial class Weather
     private static void TrackReset()
     {
         if (_track != null) Array.Clear(_track);
-        _gl.TrackAll = true; _trackLo = int.MaxValue; _trackHi = int.MinValue;
+        _gl.TrackAll = true; _vks.TrackAll = true; _trackLo = int.MaxValue; _trackHi = int.MinValue;
         _trackEpoch = Stopwatch.GetTimestamp();
         Array.Fill(_foot, new Vector4(0f, 0f, 0f, float.NegativeInfinity));
     }

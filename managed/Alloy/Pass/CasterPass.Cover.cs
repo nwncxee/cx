@@ -16,9 +16,11 @@ public sealed unsafe partial class CasterPass
 
     /// <summary>World -&gt; the cover view's clip space, as the layer was rendered. Zero when not fresh.</summary>
     internal static Matrix4x4 CoverVp;
+    /// <summary>The map's side: the sun array's.</summary>
+    internal static int CoverMapSize => _mapSize;
     /// <summary>The sun-array layer holding the map (the cascade count).</summary>
     internal static int CoverLayer => _cascades;
-    internal static bool CoverFresh => _coverStamp == _frameSeq && _gl.CascadeTex != 0;
+    internal static bool CoverFresh => _coverStamp == _frameSeq && (Renderer.OnVulkan ? !_vk.Cascades.IsNull : _gl.CascadeTex != 0);
     /// <summary>The world point the latched cover fit is centred on -- R2's wetness map dispatches over the
     /// map rect this window covers, and takes its z as the height its forward projection starts from.</summary>
     internal static Vector3 CoverCentre => _coverC;
@@ -34,7 +36,7 @@ public sealed unsafe partial class CasterPass
     /// exterior gate -- the array only exists past it, and an interior has no sky to fall from.</summary>
     private static void CoverPass(Vector3 focus, bool sun)
     {
-        if (!sun || !Weather.CoverWanted || !EnsureSun()) { CoverVp = default; return; }
+        if (!sun || !Weather.CoverWanted || !(Renderer.OnVulkan ? VkArmed : EnsureSun())) { CoverVp = default; return; }
         Vector3 dir = Weather.CoverDir;
         float radius = Weather.CoverRange.V, margin = radius;
         float slack = radius * CoverSlack;
@@ -59,13 +61,14 @@ public sealed unsafe partial class CasterPass
 
     private static void CoverRelease() { _coverBaked = false; _coverCValid = false; _coverNew = false; CoverVp = default; Weather.EsmRelease(); }
 
-    /// <summary>After the layered flush landed this frame's bakes: a new cover map gets its filtered copy (Weather.Esm).</summary>
     /// <summary>The cover-edge knob moved: filter the held bake again at its new width.</summary>
     internal static void RefilterCover() { if (_coverBaked) _coverNew = true; }
 
+    /// <summary>After the layered flush landed this frame's bakes: a new cover map gets its filtered copy (Weather.Esm).
+    /// Vulkan filters its own from the bake count (<see cref="CoverBakes"/>); GL's runs there only for the A/B's half.</summary>
     private static void CoverFiltered()
     {
-        if (!_coverNew) return;
+        if (!_coverNew || Renderer.OnVulkan && !AbBake) return;
         _coverNew = false;
         if (!CoverFresh) return;
         if (Weather.WaterRoof.V)

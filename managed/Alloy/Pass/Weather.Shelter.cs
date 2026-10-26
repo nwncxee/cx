@@ -98,7 +98,7 @@ internal static unsafe partial class Weather
     /// <summary>Per lit / grass program bind: whether the cache belongs to the cover view the stage is reading.</summary>
     private static void UploadCache(int locCache, bool cover)
     {
-        if (locCache >= 0) Gl.Uniform1f(locCache, cover && ShelterCache.V && _gl.ShelValid ? 1f : 0f);
+        if (locCache >= 0) Gl.Uniform1f(locCache, cover && ShelterCache.V && ShelOk ? 1f : 0f);
         Bind(ShelterUnit, _gl.ShelValid ? _gl.ShelTex : 0);
     }
 
@@ -109,13 +109,14 @@ internal static unsafe partial class Weather
 
     private static void Bind(uint unit, uint tex)
     {
+        if (Renderer.OnVulkan) return;
         Gl.ActiveTexture(Gl.TEXTURE0 + unit);
         Gl.BindTexture(Gl.TEXTURE_2D, tex);
         Gl.ActiveTexture(Gl.TEXTURE0);
     }
 
     /// <summary>The cover bake is gone (area edge, flush failure): so is the cache baked from it.</summary>
-    private static void ShelterRelease() => _gl.ShelValid = false;
+    private static void ShelterRelease() { _gl.ShelValid = false; _vks.ShelValid = false; }
 
     private static bool EnsurePrograms()
     {
@@ -162,5 +163,5 @@ internal static unsafe partial class Weather
         return true;
     }
 
-    private static string ShelterStats() => $", shelter cache {(_gl.ShelValid ? $"{_gl.ShelSize}^2" : "none")} ({_shelBakes} bakes), ripple tiles {_ripBakes}";
+    private static string ShelterStats() => $", shelter cache {(ShelOk ? Renderer.OnVulkan ? "held" : $"{_gl.ShelSize}^2" : "none")} ({_shelBakes} bakes), ripple tiles {_ripBakes}";
 }

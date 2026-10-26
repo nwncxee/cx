@@ -33,10 +33,7 @@ internal static unsafe partial class Weather
         if (!EnsureEsm(array, layer, size)) return;
         int* save = stackalloc int[1], vpSave = stackalloc int[4]; Gl.GetIntegerv(Gl.FRAMEBUFFER_BINDING, save); Gl.GetIntegerv(Gl.VIEWPORT, vpSave);
         int prog; Gl.GetIntegerv(Gl.CURRENT_PROGRAM, &prog);
-        // depth units: the cover view spans CoverDepthRadii x radius; the feather is half the knob each side
-        float spread = EsmMinSpreadM / (CoverDepthRadii * radius);
-        _esmC = spread * spread;
-        _esmBias = EsmBiasM / (CoverDepthRadii * radius);
+        EsmTerms(radius);
         float half = CoverSoft.V * 0.25f / radius;   // half the knob, in uv (the fit is 2 x radius across)
         new PassState(depth: false, depthWrite: false).Apply();
         Gl.ColorMask(1, 1, 1, 1);
@@ -77,8 +74,8 @@ internal static unsafe partial class Weather
     /// the hard compare.</summary>
     internal static void BindEsm(int locParams, bool oit)
     {
-        bool on = !oit && _gl.EsmValid && Cover.V && CasterPass.CoverFresh;
-        if (!oit)
+        bool on = !oit && EsmOk && Cover.V && CasterPass.CoverFresh;
+        if (!oit && !Renderer.OnVulkan)
         {
             Gl.ActiveTexture(Gl.TEXTURE0 + TextureSlots.CoverEsm);
             Gl.BindTexture(Gl.TEXTURE_2D, on ? _gl.EsmTex1 : 0);
@@ -88,12 +85,15 @@ internal static unsafe partial class Weather
     }
 
     /// <summary>The cover map is gone with its bake (area edge, flush failure): so is the filtered copy.</summary>
-    internal static void EsmRelease() { _gl.EsmValid = false; ShelterRelease(); }
+    internal static void EsmRelease() { _gl.EsmValid = false; _vks.EsmValid = false; _vks.FilteredBake = -1; ShelterRelease(); }
 
     /// <summary>The cover layer as PLAIN depth -- the same <c>glTextureView</c> the filter reads,
     /// compare mode off -- or 0 while there is none. The splash pass reconstructs each impact's landing
     /// point from it; the compare sampler the drop stage uses cannot be read for a depth, only tested.</summary>
     internal static uint CoverDepthView => _gl.EsmValid ? _gl.EsmView : 0;
+
+    /// <summary>A plain-depth copy of this cover bake is held, on whichever backend draws.</summary>
+    private static bool CoverDepthOk => Renderer.OnVulkan ? _vks.EsmValid : CoverDepthView != 0;
 
     private static bool EnsureEsm(uint array, int layer, int size)
     {

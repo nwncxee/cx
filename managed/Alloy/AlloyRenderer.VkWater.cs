@@ -35,7 +35,7 @@ public sealed unsafe partial class AlloyRenderer
         /// matrices past its view-projection.</summary>
         public Matrix4x4 View, Proj;
         /// <summary>The stage's own locations, past the ones a plain program's build resolves.</summary>
-        public int ViewLoc = -1, ProjLoc = -1, NearFar = -1, EnvOk = -1, CubeCount = -1;
+        public int ViewLoc = -1, ProjLoc = -1, NearFar = -1, EnvOk = -1, CubeCount = -1, Splash = -1;
     }
 
     private static VkWaterState _vkWater = new();
@@ -160,6 +160,7 @@ public sealed unsafe partial class AlloyRenderer
             s.ProjLoc = GlProgram.Loc(name, "uProj");
             s.NearFar = GlProgram.Loc(name, "uNearFar");
             s.EnvOk = GlProgram.Loc(name, "uEnvOk");
+            s.Splash = GlProgram.Loc(name, "uSplash");
             s.CubeCount = GlProgram.Loc(name, "uLocalCubes");
         });
     }
@@ -176,6 +177,7 @@ public sealed unsafe partial class AlloyRenderer
         VkUniformShim.Set(s.NearFar, [near, far]);
         VkUniformShim.Set(p.Viz, _capturing ? 0 : _lightViz);
         VkUniformShim.Set(s.EnvOk, s.EnvLive ? 1 : 0);
+        VkUniformShim.Set(s.Splash, Weather.SplashRate(_capturing || VkParity.Active));
         UploadFeatureTerms(p.F, viewport);
         BindPass(s.CubeCount, viewport, near, far);
     }
@@ -224,8 +226,8 @@ public sealed unsafe partial class AlloyRenderer
             "...with texture(), not texelFetch, so both halves are filtered and the copy's sampler must be linear");
         check.Expect(head.Contains("uniform sampler2D uNoise;") && head.Contains("uniform int uEnvOk;"),
             "the wave field is the engine's noise texture and the env term is a switch, not a black texel");
-        check.Expect(Array.IndexOf(VkParity.StoodDown, "uSplash") >= 0,
-            "the rain impact is stood down on Vulkan: its ripple tile is Weather's own target, not an engine texture");
+        check.Expect(Weather.RippleLib.Contains("uniform float uSplash;") && Array.IndexOf(VkParity.StoodDown, "uSplash") < 0,
+            "the rain impact rings on Vulkan: the water's rate is set and the ripple tile is bound by name");
         log.Info(check.Ok ? "AlloyRenderer.VkWaterSelfCheck: passed" : "AlloyRenderer.VkWaterSelfCheck: FAILED");
     }
 }

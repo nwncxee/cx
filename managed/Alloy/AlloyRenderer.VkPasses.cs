@@ -42,6 +42,8 @@ public sealed unsafe partial class AlloyRenderer
         s.Drawn = s.Skipped = 0;
         if (!VkUploads(vk, cl)) return false;
         if (!VkRecordShadow(cl)) return false;
+        // the weather's surface maps off the cover layer the bake just landed, ahead of every stage that reads them
+        VkWeatherSurface(vk, cl, log);
         bool indirect = CullPassVk.Ran;
         int viz = _capturing ? 0 : _lightViz;
         bool gbuf = lightingOn && perspective && Lighting.Deferred.V && (viz == 0 || viz == VizLightFrom);

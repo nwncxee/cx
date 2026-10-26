@@ -42,7 +42,7 @@ internal static unsafe partial class Weather
     private const float SplashVelMax = 20f;
     private static int _splashes;
 
-    private struct SpLoc { public int View, Proj, Eye, Lit, P, C, V, CoverDepth, CoverVp, CoverVpInv, Depth, Tint, Alpha, Rain, Foot, FootW, WxMapXf, WxMapP; }
+    internal struct SpLoc { public int View, Proj, Eye, Lit, P, C, V, CoverDepth, CoverVp, CoverVpInv, Depth, Tint, Alpha, Rain, Foot, FootW, WxMapXf, WxMapP; }
 
     private static void DeclareSplashKnobs()
     {
@@ -57,7 +57,7 @@ internal static unsafe partial class Weather
 
     /// <summary>Crowns to draw this frame: rain only, and only while there is a cover map to read the landing
     /// points out of. 0 = the pass sits out.</summary>
-    private static int SplashCount() => Cover.V && CasterPass.CoverFresh && CoverDepthView != 0 ? SplashWanted() : 0;
+    private static int SplashCount() => Cover.V && CasterPass.CoverFresh && CoverDepthOk ? SplashWanted() : 0;
 
     /// <summary>The crowns the knobs and the weather ask for, before the cover map gets its veto: rain only,
     /// at the impacts knob under the shared instance budget. Split out so the self-check can drive it without
