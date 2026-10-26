@@ -50,8 +50,8 @@ internal static unsafe partial class GuiPassVk
             _ => new ImageBinding(o.Binding, s.StandIn, s.Nearest),
         } with { Slot = o.Binding };
 
-    /// <summary>GL texture name <paramref name="tex"/>'s Vulkan image: a CX font atlas, a model view's target, or an
-    /// owned texture's mirror. A name with none takes the stand-in, counted -- its part then draws untextured rather
+    /// <summary>GL texture name <paramref name="tex"/>'s Vulkan image: a CX font atlas, a model view's target, an
+    /// owned texture's mirror, or an engine texture's copy. A name with none takes the stand-in, counted -- its part then draws untextured rather
     /// than against whatever descriptor the slot held.</summary>
     private static ImageBinding Texture(GuiVkState s, int tex)
     {
@@ -59,6 +59,8 @@ internal static unsafe partial class GuiPassVk
         if (TextAtlas.VkImage(tex) is { IsNull: false } atlas) return new ImageBinding(0, atlas, TextAtlas.VkSampler);
         if (ViewImage(tex) is { IsNull: false } view) return new ImageBinding(0, view, s.Linear);
         if (VkTextures.Image(tex) is { IsNull: false } own) return new ImageBinding(0, own, VkTextures.SamplerId(tex));
+        if (s.Dev != null && MirrorEngine(s.Dev, tex, KnobGroup.Log) && VkTextures.Image(tex) is { IsNull: false } copy)
+            return new ImageBinding(0, copy, VkTextures.SamplerId(tex));
         s.NoTexture++;
         return new ImageBinding(0, s.StandIn, s.Nearest);
     }

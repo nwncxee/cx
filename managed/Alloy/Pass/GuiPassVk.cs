@@ -103,7 +103,7 @@ internal static unsafe partial class GuiPassVk
          + (_s.Dropped == 0 ? "" : $", {_s.Dropped} submit(s) REFUSED (those frames' GUI NOT DRAWN)")
          + (_s.Skipped == 0 ? "" : $", {_s.Skipped} skipped")
          + (_s.NoLayout == 0 ? "" : $", {_s.NoLayout} with no vertex layout (NOT DRAWN)")
-         + (_s.NoTexture == 0 ? "" : $", {_s.NoTexture} on the stand-in texture");
+         + (_s.NoTexture == 0 ? "" : $", {_s.NoTexture} on the stand-in texture") + EngineStats();
 
     /// <summary>The flush: layers <paramref name="from"/>..<paramref name="mid"/>, CX's below-NUI windows, layers
     /// <paramref name="mid"/>..<paramref name="to"/>, the above-NUI windows, in one submit. <paramref name="into"/> is
@@ -135,6 +135,7 @@ internal static unsafe partial class GuiPassVk
         try
         {
             if (!Stage(vk, log)) return false;
+            DrainEngine();
             CommandList cl = s.Cmds!;
             cl.Reset();
             Uploads(cl);
