@@ -185,8 +185,10 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
   fails. A pass migrated onto the seam (`managed/Rhi/`, `CX.Rhi`; the GL backend in `managed/Graphics/Rhi/`) records
   into a `CommandList` and drops out of the baseline, so GL cannot grow back into it.
 - `selfcheck.sh`: inside a `*SelfCheck*` file or a `SelfCheck` method, an `Expect` that cannot fail fails --
-  a compile-time-constant condition, a `const` compared to its own kind of literal, or the same text on both
-  sides of `==`/`!=` -- and so does a hand-written `SKIPPED` log line.
+  a compile-time-constant condition, a `const` compared to its own kind of literal (over `==` `!=` `<` `>`
+  `<=` `>=`, the const named bare or as `Type.CONST` from any file), or the same text on both sides of a
+  comparison -- and so does a hand-written `SKIPPED` log line. The const-against-literal shape's standing
+  instances are `selfcheck.baseline`, which may only shrink; every other shape fails outright.
 
   **The independent-oracle rule.** A self-check's expected value comes from an independent oracle: a
   hand-written literal, golden data or a fixture, or a second artifact (the embedded GLSL text, a build

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using CX.Framework;
@@ -88,6 +89,10 @@ internal static unsafe class VkUniformShim
 
     /// <inheritdoc cref="Set(int, int)"/>
     internal static void Set(int loc, float v) => Put(loc, 0, v);
+
+    /// <summary>A matrix into the open capture, its sixteen lanes in the order the struct stores them -- which is
+    /// the order <c>glUniformMatrix4fv</c> takes them in. Its size comes from the type, so no caller counts lanes.</summary>
+    internal static void Set(int loc, in Matrix4x4 m) => Put(loc, 0, m);
 
     /// <summary>Lanes of one element (a vec2, a vec3, a mat4) into the open capture.</summary>
     internal static void Set(int loc, ReadOnlySpan<float> lanes)
