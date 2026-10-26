@@ -204,7 +204,7 @@ public sealed unsafe partial class AlloyRenderer
         FlushPassBlock();
         BindSunMaps();
         BindCubeMaps();
-        Gl.Uniform1i(locCubes, CasterPass.CubesFresh && !VkParity.Active ? CasterPass.CubeCount : 0);
+        Gl.Uniform1i(locCubes, CasterPass.CubesFresh ? CasterPass.CubeCount : 0);
     }
 
     /// <summary>The staging block, zeroed, for a caller that fills it itself (the lightmap bake's one light).</summary>

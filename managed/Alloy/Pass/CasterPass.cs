@@ -313,6 +313,9 @@ public sealed unsafe partial class CasterPass : IExtenderService
         _qN = 0;
         // the Vulkan bake's own recording for this frame, which the colour frame appends ahead of its passes
         bool onVk = Renderer.OnVulkan && VkBegin(_log!);
+        // ...and GL's half of an A/B frame beside it: VkParity's frame starts at this bracket, so the one
+        // question the comparison needs -- is this the A/B frame? -- is answerable here
+        if (Renderer.OnVulkan) VkAbArm();
         ReceiverFrame();
         if (sun || (_cubeLights > 0 && FrameInputs.LocalLightCount > 0) || (sun && Weather.CoverWanted) || LightmapBake.WantsGather)
         {
@@ -336,11 +339,14 @@ public sealed unsafe partial class CasterPass : IExtenderService
             {
                 case PassId.SunCascades:
                     // on Vulkan the arrays are the bake's own, made at the first view that names one
-                    if (sun && (Renderer.OnVulkan ? onVk : EnsureSun())) SunPass(focus);
+                    if (!sun) break;
+                    VkAbTargets(sun: true, cubes: false);
+                    if (Renderer.OnVulkan ? onVk : EnsureSun()) SunPass(focus);
                     break;
                 case PassId.LocalLightCubes:
-                    if (_cubeLights > 0 && FrameInputs.LocalLightCount > 0 && (Renderer.OnVulkan ? onVk : EnsureCubes()))
-                        CubePass(focus);
+                    if (_cubeLights <= 0 || FrameInputs.LocalLightCount <= 0) break;
+                    VkAbTargets(sun: false, cubes: true);
+                    if (Renderer.OnVulkan ? onVk : EnsureCubes()) CubePass(focus);
                     break;
                 case PassId.RainCover:
                     CoverPass(focus, sun);
@@ -362,7 +368,9 @@ public sealed unsafe partial class CasterPass : IExtenderService
             PairShadows.Stand();   // the pair tiles never landed either: no light may be read as paired this frame
             _invalidate = true; _sunScanned = false; _cubeScanned = false;
         }
-        else if (_gStaged && _gl.Fbo != 0)
+        // ...and the grass shadows GL's own bake adds, which the Vulkan bake has no twin for yet: an A/B frame
+        // leaves them out, or GL's lit colour would carry a shadow Vulkan's cannot
+        else if (_gStaged && _gl.Fbo != 0 && !VkParity.Active)
         {   // #196: the combined (no-split) static layer, or the dynamic mirror -- never both, or the frozen
             // static copy and the live one compose into a double shadow
             Gl.Enable(Gl.DEPTH_CLAMP);
