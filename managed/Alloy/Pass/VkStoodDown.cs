@@ -33,7 +33,6 @@ internal static class VkStoodDown
     private static readonly Term[] Terms =
     [
         new("uMirrorZ", "light.ssrplanar (the planar reflection)", "the screen-space trace has no mirror under it"),
-        new("uOit", "alloy.oit (order-free transparency)", "the blended class draws in its sorted order"),
     ];
 
     /// <summary>Is the feature behind <paramref name="id"/> switched on?</summary>
@@ -56,7 +55,6 @@ internal static class VkStoodDown
     private static bool On(string name) => name switch
     {
         "uMirrorZ" => Lighting.SsrPlanar.V,
-        "uOit" => Renderer.Oit.V > 0,
         _ => false,
     };
 

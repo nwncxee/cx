@@ -97,6 +97,10 @@ public sealed unsafe partial class AlloyRenderer
         public bool GbufWritten;
         /// <summary>The blended range is being issued and this frame's deferred walk wrote the light record it reads.</summary>
         public bool LightRec;
+        /// <summary>The OIT accumulation is being issued: the lit and unlit stages write the weighted pair (<c>uOit</c> 1).</summary>
+        public bool Oit;
+        /// <summary>The blended batches this frame's accumulation stepped over, for the pass after the resolve.</summary>
+        public int OitOut;
         /// <summary>The shadow terms a lit bind was handed have been said once.</summary>
         public bool ShadowSaid;
         /// <summary>A CPU multi-draw's index-buffer byte offsets as element indices, per call.</summary>
@@ -119,7 +123,7 @@ public sealed unsafe partial class AlloyRenderer
     private const int ColourTargets = 7;
 
     /// <summary>Which attachment set a pipeline draws into.</summary>
-    private enum VkTargets : byte { Prepass, Colour, Forward, Decal, Mask, Velocity, ColourRefl, Probe }
+    private enum VkTargets : byte { Prepass, Colour, Forward, Decal, Mask, Velocity, ColourRefl, Probe, Oit, ForwardDepth }
 
     /// <summary>The seven per-batch values, in <c>VkGlsl.Push</c>'s order.</summary>
     [StructLayout(LayoutKind.Sequential)]
@@ -346,6 +350,7 @@ public sealed unsafe partial class AlloyRenderer
                     VkUniformShim.Set(L.AlphaMip, Renderer.CutMip.V);
                     VkUniformShim.Set(L.MirrorZ, _mirrorZ);
                     VkUniformShim.Set(L.LightRecOn, s.LightRec ? 1 : 0);
+                    VkUniformShim.Set(L.Oit, s.Oit ? 1 : 0);
                     VkUniformShim.Set(L.Capture, _capturing ? _planar ? 2 : 1 : 0);
                     UploadFeatureTerms(L.Feat, viewport);
                     BindPass(L.CubeCount, viewport, near, far);
@@ -355,7 +360,7 @@ public sealed unsafe partial class AlloyRenderer
                     // the A/B frame's GL half reads no weather (Issue's own gate), so neither does this one
                     bool wxOff = _capturing || VkParity.Active;
                     Weather.UploadLit(L.Weather, L.WeatherLook, L.CoverVp, L.CoverLayer, L.SnowLook, L.SnowLight, L.SnowPom, L.WxEdge, L.WxRun, L.WxCache, wxOff);
-                    Weather.BindEsm(L.CoverEsm, false);
+                    Weather.BindEsm(L.CoverEsm, s.Oit);
                     Weather.UploadMap(L.WxMapXf, L.WxMapP, wxOff);
                     SkyView.UploadLitVk(L.SkyVp, L.SkyTerm, VkSkyMap, _capturing && !_planar || VkParity.Active);
                     VkUniformShim.Set(L.LmPages, LightmapBake.VkLivePages);
@@ -367,6 +372,7 @@ public sealed unsafe partial class AlloyRenderer
                     VkUniformShim.Set(p.AlphaMip, Renderer.CutMip.V);
                     VkUniformShim.Set(p.Viz, viz);
                     VkUniformShim.Set(p.Tint, [1f, 1f, 1f]);
+                    VkUniformShim.Set(p.Oit, s.Oit ? 1 : 0);
                     UploadFeatureTerms(p.F, viewport);
                 }
             }
@@ -627,6 +633,22 @@ public sealed unsafe partial class AlloyRenderer
         if (targets == VkTargets.Prepass) { d.Targets.ColorCount = PrepassTargets; d.Targets.Colors[1] = Format.R32Ui; }
         else if (targets == VkTargets.Decal) { d.Targets.Depth = Format.Unknown; VkDecalBlend(ref d); }
         else if (targets == VkTargets.Forward) { d.Targets.ColorCount = 1; d.Targets.Colors[0] = Format.Rgba16F; }
+        // the depth the blended class lays after the OIT resolve, inside the forward pass: its colour masked off
+        else if (targets == VkTargets.ForwardDepth)
+        {
+            d.Targets.ColorCount = 1;
+            d.Targets.Colors[0] = Format.Rgba16F;
+            d.Blend[0] = new AttachmentBlend(Masked: ColorMask.All);
+        }
+        // OitPass's pair, as its Begin sets the per-buffer blend: accumulation adds, revealage multiplies by 1 - a
+        else if (targets == VkTargets.Oit)
+        {
+            d.Targets.ColorCount = 2;
+            d.Targets.Colors[0] = Format.Rgba32F;
+            d.Targets.Colors[1] = Format.R16F;
+            d.Blend[0] = new AttachmentBlend(true, BlendFactor.One, BlendFactor.One, BlendFactor.One, BlendFactor.One);
+            d.Blend[1] = new AttachmentBlend(true, BlendFactor.Zero, BlendFactor.OneMinusSrcColor, BlendFactor.Zero, BlendFactor.OneMinusSrcColor);
+        }
         // a probe face: alpha is the lit stage's 1 / distance, which every other stage leaves at the clear's "far"
         else if (targets == VkTargets.Probe)
         {

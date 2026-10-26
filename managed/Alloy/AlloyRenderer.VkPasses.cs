@@ -25,7 +25,11 @@ public sealed unsafe partial class AlloyRenderer
     /// split washes' interiors having run, the attachment set, and what its lit draws do with the decal layer
     /// (<see cref="DecalLayer.ModeFold"/> for a surface pass, <see cref="DecalLayer.ModeSkip"/> for the blended one).</summary>
     private readonly record struct VkRange(bool MatchDepth, bool DepthMask, bool Interior, bool SplitRan, VkTargets Targets,
-                                           bool Gbuf, int Decal = DecalLayer.ModeNone);
+                                           bool Gbuf, int Decal = DecalLayer.ModeNone, VkOitPart Oit = VkOitPart.All);
+
+    /// <summary>Which blended batches a range draws under OIT: all of them, the accumulation's (counting the rest), or
+    /// only the ones that sat it out (<see cref="Issue.SitsOitOut"/>).</summary>
+    private enum VkOitPart : byte { All, Accum, Hosted }
 
     /// <summary>The colour bracket into <paramref name="cl"/> after the cull: uploads, the depth prepass, the opaque,
     /// cutout and wash-interior pass into the scene colour and G-buffer, the blended and additive pass, then the post chain
@@ -121,6 +125,7 @@ public sealed unsafe partial class AlloyRenderer
         // the reflections at the graph's own place: after the deferred walk, before the blended class
         VkSsrRun(cl, view, proj, viewport, near, far, log);
 
+        bool oit = VkOitArm(vk, w, h, log);
         side.Reset();
         arena0 = s.ArenaUsed;
         b = new VkBound { Fmt = -1, Tex = -1 };
@@ -129,7 +134,25 @@ public sealed unsafe partial class AlloyRenderer
         var fwd = new VkRange(false, true, false, washes, VkTargets.Forward, false, VkDecalSkip);
         // the layer's readers are done with the blended range: additive takes it as GL does after DecalLayer.End
         VkRange add = fwd with { DepthMask = false, Decal = DecalLayer.ModeNone };
-        ok &= VkIssue(side, ref b, _gOpaqueEnd, _gBlendEnd, fwd, vp, viewport, near, far, indirect);
+        if (oit)
+        {
+            s.Oit = true;
+            s.OitOut = 0;
+            ok &= VkIssue(side, ref b, _gOpaqueEnd, _gBlendEnd, fwd with { DepthMask = false, Targets = VkTargets.Oit, Oit = VkOitPart.Accum },
+                          vp, viewport, near, far, indirect);
+            s.Oit = false;
+            if (!ok) return false;
+            VkOitFlush(cl, side, s, arena0);
+            if (!VkOitResolve(cl, side, s, w, h, log)) return false;
+            side.Reset();
+            arena0 = s.ArenaUsed;
+            b = new VkBound { Fmt = -1, Tex = -1 };
+            VkPassStart(side, w, h);
+            // what the accumulation stepped over, the plain-blend way with vanilla's depth write, then the class's depth
+            if (s.OitOut > 0) ok &= VkIssue(side, ref b, _gOpaqueEnd, _gBlendEnd, fwd with { Oit = VkOitPart.Hosted }, vp, viewport, near, far, indirect);
+            VkBlendDepth(side, ref b, vp, viewport, near, far, indirect);
+        }
+        else ok &= VkIssue(side, ref b, _gOpaqueEnd, _gBlendEnd, fwd, vp, viewport, near, far, indirect);
         // the record is the blended class's alone: every later lit bind uploads the gate off again
         s.LightRec = false;
         b.Prog = null;
@@ -386,6 +409,8 @@ public sealed unsafe partial class AlloyRenderer
             bool lit = _gLit[g];
             bool content = Issue.HostedBody(lit, _gFeat[g]);
             bool oitOut = Issue.SitsOitOut(content, _gSrc[g], _gDst[g]);
+            if (r.Oit == VkOitPart.Accum && oitOut) { s.OitOut++; continue; }
+            if (r.Oit == VkOitPart.Hosted && !oitOut) continue;
             bool split = _gWash[g] == WashSplit && lit && g >= _gOpaqueEnd && (!oitOut || content && _gSrc[g] == 0 && _gDst[g] == 1);
             if (r.Interior && !split) continue;
             bool deferred = lit && r.Gbuf && (!content || ContentPrograms.HasDeferred(_gFeat[g])) && (viz == 0 || viz == VizLightFrom)
@@ -393,7 +418,7 @@ public sealed unsafe partial class AlloyRenderer
             VkProg p = (content ? VkContent(_gFeat[g], deferred ? ContentVariant.Deferred : ContentVariant.Forward) : null)
                        ?? s.Progs[(int)(lit ? deferred ? VkPrograms.Id.LitDeferred : VkPrograms.Id.Lit : VkPrograms.Id.Fullbright)]!;
             bool blend = AlloyClasses.Blends(cls) && !r.Interior;
-            int blendKey = blend ? 1 + Math.Min((int)_gSrc[g], 7) * 8 + Math.Min((int)_gDst[g], 7) : 0;
+            int blendKey = blend && r.Oit != VkOitPart.Accum ? 1 + Math.Min((int)_gSrc[g], 7) * 8 + Math.Min((int)_gDst[g], 7) : 0;
             bool equal = r.MatchDepth && _gPrepassed[g];
             bool wash = _gWash[g] != 0 && !equal;
             CompareOp func = equal ? CompareOp.Equal : split && r.SplitRan && !r.Interior ? CompareOp.Less : CompareOp.LessEqual;
@@ -401,7 +426,7 @@ public sealed unsafe partial class AlloyRenderer
             var depth = new DepthState(test, !equal && r.DepthMask, func);
             push.AlphaCut = AlloyClasses.Discard(cls);
             // the batch's own AO membership, measured by the prepass exactly as the GL issue loop reads it
-            push.SsaoOn = lit && SsaoPassVk.Live && !_capturing ? Issue.AoWhy(g) : 0;
+            push.SsaoOn = lit && SsaoPassVk.Live && !_capturing && !s.Oit ? Issue.AoWhy(g) : 0;
             push.AoDirect = push.SsaoOn > 0 ? SsaoPass.Direct : 0f;
             // CX-273: fold the layer (a surface pass), or drop a decal batch's fragments it already took
             push.Decal = r.Decal == DecalLayer.ModeSkip && !_gDecal[g] ? DecalLayer.ModeNone : r.Decal;

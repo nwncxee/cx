@@ -109,8 +109,9 @@ internal static unsafe class OitPass
     internal static bool OrderFree => !_gl.Failed && Mode != 0 && Gl.BlendFunci != null && Gl.DrawBuffers != null;
 
     /// <summary>Will the list resolve composite each object id once this frame, as far as the route can tell? Mode 2
-    /// with its node pool; the weighted modes and the sorted pass let an object's overlapping parts thicken it.</summary>
-    internal static bool Dedupes => OrderFree && Mode == 2 && ListsArmed && !_gl.ListsFailed;
+    /// with its node pool; the weighted modes and the sorted pass let an object's overlapping parts thicken it, as does
+    /// Vulkan, which has no lists.</summary>
+    internal static bool Dedupes => OrderFree && Mode == 2 && ListsArmed && !_gl.ListsFailed && !Renderer.OnVulkan;
 
     /// <summary>Open the accumulation pair for the blended range. False = draw the old way this frame.</summary>
     internal static bool Begin(uint depthTex, int* viewport)
