@@ -34,6 +34,28 @@ internal readonly struct MovieRows
     /// row's alignment padding need not exist, so a copy must not reach for it.</summary>
     internal long Bytes => Ok ? (long)Pitch * (Height - 1) + (long)Width * Bpp : 0;
 
+    /// <summary>The host rows <paramref name="src"/> (this shape's pitch) as tight RGBA8 in <paramref name="o"/>, alpha
+    /// opaque: 3- and 4-byte pixels copied, 565 expanded to the full byte range.</summary>
+    internal void Widen(ReadOnlySpan<byte> src, Span<byte> o)
+    {
+        for (int y = 0; y < Height; y++)
+        {
+            ReadOnlySpan<byte> row = src.Slice(y * Pitch, Width * Bpp);
+            int d = y * Width * 4;
+            for (int x = 0; x < Width; x++, d += 4)
+            {
+                if (Bpp == 4) { o[d] = row[x * 4]; o[d + 1] = row[x * 4 + 1]; o[d + 2] = row[x * 4 + 2]; }
+                else if (Bpp == 3) { o[d] = row[x * 3]; o[d + 1] = row[x * 3 + 1]; o[d + 2] = row[x * 3 + 2]; }
+                else
+                {
+                    int v = row[x * 2] | row[x * 2 + 1] << 8;
+                    o[d] = (byte)((v >> 11) * 255 / 31); o[d + 1] = (byte)((v >> 5 & 63) * 255 / 63); o[d + 2] = (byte)((v & 31) * 255 / 31);
+                }
+                o[d + 3] = 255;
+            }
+        }
+    }
+
     /// <summary>Selector values that pick a depth or float pair instead of the byte path. Declined rather
     /// than transcribed: the movie funnel passes 0, 1 or 9, and nothing else reaches it.</summary>
     private static bool NotMovie(int selector) => selector is 10 or 11 or 16 or 17;
@@ -79,6 +101,9 @@ internal static unsafe class MovieFrame
         internal uint Tex;
         internal int TexW, TexH;
         internal bool Refused, SaidLive;
+        /// <summary>The staged frame widened to RGBA8 for Vulkan, which takes no 3-byte or 565 image to sample.</summary>
+        internal byte[] Rgba = [];
+        internal bool SaidLiveVk;
     }
 
     private static MovieFrameState _s = new();
@@ -167,6 +192,30 @@ internal static unsafe class MovieFrame
                      + "Alloy texture in Alloy's context; the engine's own movie texture is no longer sampled");
         }
         return s.Tex;
+    }
+
+    /// <summary>The staged rows as tight RGBA8 for a Vulkan upload, the same refusals as <see cref="Upload"/>; empty
+    /// means the engine's own quad draws this frame and the reason was said once. Allocates only when the frame grows.</summary>
+    internal static ReadOnlySpan<byte> RgbaVk(int frameW, int frameH)
+    {
+        MovieFrameState s = _s;
+        if (s.Refused || s.Log == null) return default;
+        if (s.Orig == null) { Refuse("GLRender::DirectCreateSubTexture is not hooked"); return default; }
+        MovieRows r = s.Staged;
+        if (!r.Ok) return default;
+        if (r.Width != frameW || r.Height != frameH)
+        { Refuse($"the staged frame is {r.Width}x{r.Height} and ShowFrame asked for {frameW}x{frameH}"); return default; }
+        int n = r.Width * r.Height;
+        if (s.Rgba.Length < n * 4) s.Rgba = new byte[n * 4];
+        byte[] o = s.Rgba;
+        r.Widen(new ReadOnlySpan<byte>(s.Rows, (int)r.Bytes), o);
+        if (!s.SaidLiveVk)
+        {
+            s.SaidLiveVk = true;
+            s.Log.Info($"MovieFrame: LIVE on Vulkan -- the movie frame comes from the decode, {r.Width}x{r.Height} rows at pitch "
+                     + $"{r.Pitch}, {r.Bpp} byte(s) a pixel widened to RGBA8 and uploaded into a Vulkan image");
+        }
+        return new ReadOnlySpan<byte>(o, 0, n * 4);
     }
 
     /// <summary>Alloy's movie texture at the decoded frame's exact size -- no power-of-two pad, which is why

@@ -150,5 +150,15 @@ public sealed unsafe partial class MovieService
         // 4. A refused shape measures nothing: a pitch off a Bpp of 0 would divide the frame into no rows.
         MovieRows no = MovieRows.Of(10, 0, 320, 240, 4);
         check.Expect(no.Pitch == 0 && no.Bytes == 0, "a refused upload has no pitch and no size");
+
+        // 5. The Vulkan widening against hand-packed pixels: 565 red/green/blue maxima and a mid grey, then RGB with
+        //    a row's alignment padding skipped (0xEE is padding and must not appear).
+        Span<byte> o = stackalloc byte[16];
+        MovieRows.Of(9, 0, 4, 1, 4).Widen([0x00, 0xF8, 0xE0, 0x07, 0x1F, 0x00, 0x10, 0x84], o);
+        check.Expect(o.SequenceEqual((ReadOnlySpan<byte>)[255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 131, 129, 131, 255]),
+                     $"565 widens to full-range RGBA8 (got {Convert.ToHexString(o)})");
+        MovieRows.Of(1, 1, 1, 2, 4).Widen([1, 2, 3, 0xEE, 4, 5, 6], o[..8]);
+        check.Expect(o[..8].SequenceEqual((ReadOnlySpan<byte>)[1, 2, 3, 255, 4, 5, 6, 255]),
+                     $"RGB rows widen past their alignment padding (got {Convert.ToHexString(o[..8])})");
     }
 }
