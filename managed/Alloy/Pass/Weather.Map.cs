@@ -67,7 +67,7 @@ internal static unsafe partial class Weather
     internal static int ReflK => Enabled.V && !_off && !FrameInputs.Interior && _wet > 0f && FilmLights.V > 0 ? FilmLights.V : 0;
 
     /// <summary>The map is allocated, belongs to the current area and is fit to read.</summary>
-    internal static bool MapLive => _gl.MapTex != 0 && _gl.MapSize > 0 && _mapArea == FrameInputs.AreaPtr
+    internal static bool MapLive => MapHeld && _mapArea == FrameInputs.AreaPtr
                                     && !_mapClear && Map.V && !_off && !FrameInputs.Interior;
 
     /// <summary>The metres a point may stand under the latched surface and still count as open to the sky.
@@ -79,7 +79,7 @@ internal static unsafe partial class Weather
     internal static void UploadMap(int locXf, int locP, bool capturing)
     {
         bool on = MapLive && !capturing && Enabled.V;
-        if (Gl.BindTexture != null)
+        if (Gl.BindTexture != null && !Renderer.OnVulkan)
         {
             Gl.ActiveTexture(Gl.TEXTURE0 + TextureSlots.WetMap);
             Gl.BindTexture(Gl.TEXTURE_2D, on ? _gl.MapTex : 0);
@@ -371,6 +371,6 @@ internal static unsafe partial class Weather
           "the kernel radius follows the cover-edge knob, floors at a cover texel, and the tap knob cannot outrun the loop");
     }
 
-    private static string MapStats() => !Map.V ? ", map off" : _gl.MapFailed ? ", map UNAVAILABLE"
-        : MapLive ? $", map {_gl.MapSize}^2 @{_mapTpm:F2}/m ({_mapTicksDone} ticks / {_mapScatters} latches)" : ", map idle";
+    private static string MapStats() => !Map.V ? ", map off" : (Renderer.OnVulkan ? _vks.MapFailed : _gl.MapFailed) ? ", map UNAVAILABLE"
+        : MapLive ? $", map {(Renderer.OnVulkan ? _vks.MapSize : _gl.MapSize)}^2 @{_mapTpm:F2}/m ({_mapTicksDone} ticks / {_mapScatters} latches)" : ", map idle";
 }

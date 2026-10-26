@@ -10,18 +10,20 @@ namespace CX.Alloy;
 /// <summary>
 /// Falling rain and snow (<see cref="PassId.WeatherOwned"/>) on Vulkan: <see cref="Weather"/>'s instanced streaks and
 /// flakes through the same stages GL compiles, premultiplied over the scene colour, faded against a depth copy. Lit by
-/// the pass block's sun and ambient; no cover map, drip, splash or wetness map is on Vulkan yet.
+/// the pass block's sun and ambient, stopped under cover by the sun array's cover layer; the roof drips are rain's
+/// program again, kept only under a lip.
 /// </summary>
 public sealed unsafe partial class AlloyRenderer
 {
-    /// <summary>The rain and snow programs on one device.</summary>
+    /// <summary>The rain, snow and splash programs on one device.</summary>
     private sealed class VkWxState
     {
         public VkBackend? Dev;
-        public readonly VkProg?[] Prog = new VkProg?[2];
-        public readonly PipelineId[] Pipe = new PipelineId[2];
+        public readonly VkProg?[] Prog = new VkProg?[3];
+        public readonly PipelineId[] Pipe = new PipelineId[3];
         public readonly Weather.Loc[] L = new Weather.Loc[2];
-        public readonly bool[] Tried = new bool[2];
+        public Weather.SpLoc Sp;
+        public readonly bool[] Tried = new bool[3];
         public CommandList? Side;
         public bool Live;
     }
@@ -35,17 +37,38 @@ public sealed unsafe partial class AlloyRenderer
         VkWxState s = _vkWx;
         if (s.Dev != vk) _vkWx = s = new VkWxState { Dev = vk };
         if (_capturing || c.DepthRead.IsNull) return true;
-        int count = Weather.StageVk(AreaWind(), out bool snow);
+        int count = Weather.StageVk(AreaWind(), out bool snow, out int drips);
         int k = snow ? 1 : 0;
-        if (count == 0 || !VkWxEnsure(vk, s, k, log)) return true;
+        if (count < 0) return true;
+        bool fall = count > 0 && VkWxEnsure(vk, s, k, log), drip = drips > 0 && VkWxEnsure(vk, s, 0, log);
         cl.CopyImage(new CopyImageCmd(c.Depth, new ImageRegion(0, 0, 0, 0), c.DepthRead, new ImageRegion(0, 0, 0, 0), c.W, c.H, 1));
         ReadOnlySpan<ImageId> read = [c.DepthRead];
         cl.ReadImages(read);
-        VkProg p = s.Prog[k]!;
         CommandList side = s.Side!;
         side.Reset();
         int arena0 = c.ArenaUsed;
         side.SetViewport(0, 0, viewport[2], viewport[3]);
+        bool lit = lightingOn && AlloyLights.Ready;
+        if (fall && !VkWxDraw(side, s, c, k, snow ? 2 : 1, count, view, proj, viewport, near, far, lit)) return false;
+        if (drip && !VkWxDraw(side, s, c, 0, 3, drips, view, proj, viewport, near, far, lit)) return false;
+        if (VkWxEnsure(vk, s, VkSplashProg, log) && !VkSplashDraw(side, s, c, view, proj, viewport, near, far, lit)) return false;
+        ReadOnlySpan<ColorAttachment> colors = [new(c.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default)];
+        VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, 1f)));
+        if (!s.Live)
+        {
+            s.Live = true;
+            log.Always($"AlloyRenderer: the Vulkan {(snow ? "snow" : "rain")} is LIVE -- {count} instance(s) and {drips} drip(s), "
+                     + "stopped under the cover map");
+        }
+        return true;
+    }
+
+    /// <summary>One instanced draw of <paramref name="kind"/> (1 rain, 2 snow, 3 drips) through program
+    /// <paramref name="k"/>, its own loose block; false only when the arena is full.</summary>
+    private static bool VkWxDraw(CommandList side, VkWxState s, VkColourState c, int k, int kind, int count, in Matrix4x4 view,
+                                 in Matrix4x4 proj, int* viewport, float near, float far, bool lit)
+    {
+        VkProg p = s.Prog[k]!;
         side.SetPipeline(s.Pipe[k]);
         Matrix4x4 v = view, pr = proj;
         Array.Clear(p.Block);
@@ -53,7 +76,7 @@ public sealed unsafe partial class AlloyRenderer
         try
         {
             BindPass(p.L.CubeCount, viewport, near, far);
-            Weather.WriteVk(in s.L[k], snow, &v, &pr, _eyePos, lightingOn && AlloyLights.Ready);
+            Weather.WriteVk(in s.L[k], kind, &v, &pr, _eyePos, lit);
         }
         finally { VkUniformShim.EndCapture(); }
         foreach (string name in VkParity.StoodDown) VkZero(p, name);
@@ -61,36 +84,58 @@ public sealed unsafe partial class AlloyRenderer
         if (loose < 0 || pass < 0) return false;
         VkBindSet(side, p, c, loose, pass, c.Slots, 0);
         side.Draw(4, count, 0, 0);
-        ReadOnlySpan<ColorAttachment> colors = [new(c.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default)];
-        VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, 1f)));
-        if (!s.Live)
-        {
-            s.Live = true;
-            log.Always($"AlloyRenderer: the Vulkan {(snow ? "snow" : "rain")} is LIVE -- {count} instance(s); no cover map, drips, "
-                     + "splashes or wetness map on Vulkan yet");
-        }
         return true;
     }
 
-    /// <summary>Program <paramref name="k"/> (0 rain, 1 snow) and its premultiplied pipeline, made once per device.</summary>
+    /// <summary>The splash program's slot in <see cref="VkWxState"/>, past rain's and snow's.</summary>
+    private const int VkSplashProg = 2;
+
+    /// <summary>The rain and footfall crowns, through the splash program; false only when the arena is full.</summary>
+    private static bool VkSplashDraw(CommandList side, VkWxState s, VkColourState c, in Matrix4x4 view, in Matrix4x4 proj,
+                                     int* viewport, float near, float far, bool lit)
+    {
+        VkProg p = s.Prog[VkSplashProg]!;
+        Matrix4x4 v = view, pr = proj;
+        int n;
+        Array.Clear(p.Block);
+        VkUniformShim.Capture(p.Members, p.Block);
+        try
+        {
+            BindPass(p.L.CubeCount, viewport, near, far);
+            n = Weather.WriteSplashVk(in s.Sp, &v, &pr, viewport, _eyePos, lit);
+        }
+        finally { VkUniformShim.EndCapture(); }
+        if (n == 0) return true;
+        foreach (string name in VkParity.StoodDown) VkZero(p, name);
+        int loose = VkArena(p.Block), pass = VkArenaPass();
+        if (loose < 0 || pass < 0) return false;
+        side.SetPipeline(s.Pipe[VkSplashProg]);
+        VkBindSet(side, p, c, loose, pass, c.Slots, 0);
+        side.Draw(4, n, 0, 0);
+        return true;
+    }
+
+    /// <summary>Program <paramref name="k"/> (0 rain, 1 snow, 2 splash) and its premultiplied pipeline, made once per device.</summary>
     private static bool VkWxEnsure(VkBackend vk, VkWxState s, int k, ExtenderLog log)
     {
         if (s.Tried[k]) return s.Prog[k] != null;
         s.Tried[k] = true;
         s.Side ??= new CommandList("vulkan weather", 1 << 14, log);
         uint name = VkUniformShim.ProgramBase + 51 + (uint)k;   // not-an-offset: the weather programs' shim names
-        (string vs, string fs) = Weather.VkTexts(k == 1, log);
+        (string vs, string fs) = k == VkSplashProg ? Weather.VkSplashTexts(log) : Weather.VkTexts(k == 1, log);
+        string label = k == VkSplashProg ? "splash" : k == 1 ? "snow" : "rain";
         var units = new System.Collections.Generic.Dictionary<string, uint>(VkPrograms.Units) { ["uCover"] = TextureSlots.CoverEsm };
         VkProgramText t = VkGlsl.Translate(ShaderResource.Tokens(vs), ShaderResource.Tokens(fs), units, glDepth: false);
-        VkProg? p = VkBuild(vk, t, k == 1 ? "snow" : "rain", true, name, log);
+        VkProg? p = VkBuild(vk, t, label, true, name, log);
         if (p != null)
         {
             VkWxState w = s;
-            VkUniformShim.Resolve(p.Names, () => w.L[k] = Weather.VkLocs(name));
+            if (k == VkSplashProg) VkUniformShim.Resolve(p.Names, () => w.Sp = Weather.VkSplashLocs(name));
+            else VkUniformShim.Resolve(p.Names, () => w.L[k] = Weather.VkLocs(name));
             var d = new PipelineDesc
             {
                 Vs = p.Vs, Fs = p.Fs, Topo = Topology.TriangleStrip, Raster = new RasterState(CullMode.None),
-                Depth = new DepthState(true, false, CompareOp.LessEqual), Label = $"vk {(k == 1 ? "snow" : "rain")}",
+                Depth = new DepthState(true, false, CompareOp.LessEqual), Label = $"vk {label}",
             };
             d.Targets.ColorCount = 1;
             d.Targets.Colors[0] = Format.Rgba16F;
@@ -101,7 +146,9 @@ public sealed unsafe partial class AlloyRenderer
             if (s.Pipe[k].IsNull) p = null;
         }
         s.Prog[k] = p;
-        if (p == null) log.Always("AlloyRenderer: the Vulkan weather program was REFUSED (logged above) -- nothing falls on Vulkan this session");
+        if (p == null)
+            log.Always(k == VkSplashProg ? "AlloyRenderer: the Vulkan splash program was REFUSED (logged above) -- no rain impacts on Vulkan this session"
+                                         : "AlloyRenderer: the Vulkan weather program was REFUSED (logged above) -- nothing falls on Vulkan this session");
         return p != null;
     }
 }

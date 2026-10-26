@@ -348,7 +348,11 @@ public sealed unsafe partial class AlloyRenderer
                     VkUniformShim.Set(L.DecalZ, [DecalLayer.Z0, DecalLayer.Z1]);
                     VkUniformShim.Set(L.LightOcc, [Lighting.HiddenLights.V ? 1f : 0f, GlossyRough]);
                     UploadMaterialModel(L.Material);
-                    Weather.UploadLit(L.Weather, L.WeatherLook, L.CoverVp, L.CoverLayer, L.SnowLook, L.SnowLight, L.SnowPom, L.WxEdge, L.WxRun, L.WxCache, false);
+                    // the A/B frame's GL half reads no weather (Issue's own gate), so neither does this one
+                    bool wxOff = _capturing || VkParity.Active;
+                    Weather.UploadLit(L.Weather, L.WeatherLook, L.CoverVp, L.CoverLayer, L.SnowLook, L.SnowLight, L.SnowPom, L.WxEdge, L.WxRun, L.WxCache, wxOff);
+                    Weather.BindEsm(L.CoverEsm, false);
+                    Weather.UploadMap(L.WxMapXf, L.WxMapP, wxOff);
                     SkyView.UploadLitVk(L.SkyVp, L.SkyTerm, VkSkyMap, _capturing && !_planar || VkParity.Active);
                 }
                 else
@@ -577,6 +581,7 @@ public sealed unsafe partial class AlloyRenderer
         if (o.Name == "uSceneDepth" && !VkDecalDepth.IsNull) return new ImageBinding(o.Binding, VkDecalDepth);
         if (o.Name == "uVFogVol" && !VkFogVolume.IsNull) return new ImageBinding(o.Binding, VkFogVolume, s.Linear);
         if (o.Name == "uSkyMap" && !VkSkyMap.IsNull) return new ImageBinding(o.Binding, VkSkyMap, s.Linear);
+        if (VkWxSampled(o.Name, out ImageId wx, out SamplerId wxs)) return new ImageBinding(o.Binding, wx, wxs);
         if (VkIsWaterTex(o.Name) && VkWaterTex(o.Name) is { IsNull: false } wat)
             return new ImageBinding(o.Binding, wat, VkWaterSampler(o.Name));
         if (o.Name == "uSceneDepth" && !s.DepthRead.IsNull) return new ImageBinding(o.Binding, s.DepthRead);

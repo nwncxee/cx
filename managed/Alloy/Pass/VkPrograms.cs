@@ -35,6 +35,7 @@ internal static class VkPrograms
             ["uProbe"] = EnvProbe.ProbeUnit,
             ["uOitDepth"] = TextureSlots.OitDepth,
             ["uCoverEsm"] = TextureSlots.CoverEsm,
+            ["uCoverDepth"] = TextureSlots.CoverDepth,
             ["uSsao"] = TextureSlots.Ssao,
             ["uSceneDepth"] = TextureSlots.SsaoDepth,
             ["uVfHist"] = TextureSlots.VFog,

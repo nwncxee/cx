@@ -33,7 +33,7 @@ public sealed unsafe partial class AlloyRenderer
     /// GL spreads a disc. The deferred walk binds the same images through <c>CasterPass.Vk*Map</c>.</summary>
     private static ImageId VkShadowMap(string name) => name switch
     {
-        "uSunShadow" or "uSunShadowRaw" => CasterPass.VkCascadeMap,
+        "uSunShadow" or "uSunShadowRaw" or "uCover" => CasterPass.VkCascadeMap,
         "uSunDynShadow" or "uSunDynShadowRaw" => CasterPass.VkSunDynMap,
         "uLocalShadow" or "uLocalShadowRaw" => CasterPass.VkCubeMap,
         "uLocalDynShadow" or "uLocalDynShadowRaw" => CasterPass.VkCubeDynMap,

@@ -25,7 +25,6 @@ internal static class VkStoodDown
     /// <see cref="FrameGraph.Passes"/>, so neither a new pass nor a ported one can drift away from it.</summary>
     private static readonly Pass[] Passes =
     [
-        new(PassId.RainCover, "weather (the rain cover map)", "nothing shelters from the rain"),
         new(PassId.CoverageOwned, "alloy.a2c (alpha-to-coverage foliage)", "cutouts take the hard alpha test"),
         new(PassId.ProbeCapture, "light.probe / lightmap (the probe capture and the bake)", "neither is captured"),
     ];
@@ -35,11 +34,9 @@ internal static class VkStoodDown
     private static readonly Term[] Terms =
     [
         new("uLmPages", "lightmap (baked static lighting)", "every surface takes the live rig"),
-        new("uWeather", "weather (wetness, snow and puddles)", "every surface stays dry"),
         new("uLightRecOn", "light.deferred (the blended class's light record)", "blended parts take the forward walk"),
         new("uCapture", "light.probe (the environment probe and the planar reflection)", "no captured reflection"),
         new("uOit", "alloy.oit (order-free transparency)", "the blended class draws in its sorted order"),
-        new("uSplash", "weather (rain impacts on water)", "the water takes no ripples"),
     ];
 
     /// <summary>Is the feature behind <paramref name="id"/> switched on?</summary>
@@ -63,11 +60,9 @@ internal static class VkStoodDown
     private static bool On(string name) => name switch
     {
         "uLmPages" => Lightmap.G.Master!.V,
-        "uWeather" => Weather.Enabled.V,
         "uLightRecOn" => Lighting.Deferred.V,
         "uCapture" => Lighting.Probe.V,
         "uOit" => Renderer.Oit.V > 0,
-        "uSplash" => Weather.Enabled.V,
         _ => false,
     };
 
