@@ -206,6 +206,7 @@ public sealed unsafe class UiHostService : IExtenderService
             if (pin >= 0) _log?.Info($"UiHostService: main thread pin={pin} -> {(Affinity.PinThis(pin) ? "pinned" : "REFUSED")} (was on cpu {Affinity.CurrentCpu})");
         }
         ResizeTick(window);
+        CX.Graphics.SdlWindow.Note(window);
         FrameRegistry.Global.Run(FramePhase.Start);
         // When Alloy renders, the 2D UI is drawn BY its frame, after the view list: that frame runs at PrePresent --
         // after this point -- and would otherwise overwrite everything drawn here, which is what made CX's chat

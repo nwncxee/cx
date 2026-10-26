@@ -100,7 +100,8 @@ internal static unsafe class GuiPass
         // never here. TextAtlas.Upload is 4.5 DSA (glCreateTextures/glTextureStorage2D) and its sweep is
         // glDeleteTextures; this site runs ahead of GlContextService's bracket, i.e. in the ENGINE's 3.3 core
         // context, which is not the context those names belong to (review #1).
-        if (TextAtlas.Due && GlContextService.Enter()) { TextAtlas.Pump(); GlContextService.Leave(); }
+        if (TextAtlas.Due && Renderer.OnVulkan) TextAtlas.Pump();   // a Vulkan atlas is a Vulkan image: no context
+        else if (TextAtlas.Due && GlContextService.Enter()) { TextAtlas.Pump(); GlContextService.Leave(); }
         // NUI's layers wait for SeamDraw's flush, which puts them over the panels; flushed here, its frame clear
         // erased them.
         _frameColour = false;
@@ -214,9 +215,13 @@ internal static unsafe class GuiPass
     {
         int w = *_screenW, h = *_screenH;
         bool sized = PresentTarget.Width == w && PresentTarget.Height == h;
-        // after the world's bracket a Vulkan flush needs no GL, and re-entering costs two context switches (~2.7 ms)
-        if (Renderer.OnVulkan && sized && PresentTarget.Composed)
-            return VulkanFlush(from, mid, to, windows, false);
+        if (Renderer.OnVulkan)
+        {
+            // a Vulkan flush issues no GL: the deferred work and the arena pump are Vulkan's too, so no bracket opens
+            if (!sized) PresentTarget.Ensure(w, h);
+            if (!PresentTarget.Composed) { if (GlContextService.WorkDue) GlContextService.RunInBracketHere(); Db.MeshArena.Pump(); }
+            return VulkanFlush(from, mid, to, windows);
+        }
         if (sized) PresentTarget.TakeBack();
         else Resize(w, h);
         if (!GlContextService.Enter()) return false;
@@ -224,7 +229,6 @@ internal static unsafe class GuiPass
         // GlContextService's own health bracket down for the frame, so the deferred work runs here: at the main
         // menu, skipping it left the mesh arena's VAO unbuilt and the texture registry's uploads unrun.
         GlContextService.RunInBracketHere(); Db.MeshArena.Pump();
-        if (Renderer.OnVulkan) return VulkanFlush(from, mid, to, windows, true);
         CX.Services.Nui.NuiModelView.Pump();
         if (to > from) Upload();
         bool gpuTimed = CX.Services.Perf.FrameProbe.GpuBegin();
@@ -253,14 +257,12 @@ internal static unsafe class GuiPass
         return true;
     }
 
-    /// <summary>The flush under <c>alloy.backend vk</c>: <see cref="GuiPassVk"/> records and submits it, and this
-    /// closes the bracket when <paramref name="bracket"/> says the flush opened one.</summary>
-    private static bool VulkanFlush(int from, int mid, int to, bool windows, bool bracket)
+    /// <summary>The flush under <c>alloy.backend vk</c>: <see cref="GuiPassVk"/> records and submits it, with no GL.</summary>
+    private static bool VulkanFlush(int from, int mid, int to, bool windows)
     {
         // every flush, the world frame's included: the model views' texture work is Vulkan's here and needs no bracket
         CX.Services.Nui.NuiModelView.Pump();
         bool ok = _log != null && GuiPassVk.Flush(from, mid, to, windows, _log);
-        if (bracket) GlContextService.Leave();
         PresentTarget.HandBack();
         if (!ok) return false;
         _flushes++;
@@ -581,7 +583,6 @@ internal static unsafe class GuiPass
     /// build it in the 4.6 context, then take the screen back into it.</summary>
     private static void Resize(int w, int h)
     {
-        if (Renderer.OnVulkan) { PresentTarget.Ensure(w, h); return; }
         if (!GlContextService.Enter()) return;
         PresentTarget.Ensure(w, h);
         GlContextService.Leave();

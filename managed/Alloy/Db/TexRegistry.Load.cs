@@ -582,12 +582,12 @@ internal static unsafe partial class TexRegistry
 
     private static float _anisoMax;
 
-    /// <summary>The player's Game Options anisotropy, clamped to the driver's ceiling: the level
-    /// <c>GLRender::SetTextureAnisotropicFiltering</c> @0x5ca100 gives every linear mipmapped texture.
-    /// ponytail: taken at upload/mint; a level changed mid-area reaches textures loaded after it (the engine
-    /// refreshes all on change), re-mint every slot if that matters.</summary>
+    /// <summary>The player's Game Options anisotropy, clamped to the driver's ceiling (Vulkan's sampler creation
+    /// clamps to the device's): the level <c>GLRender::SetTextureAnisotropicFiltering</c> @0x5ca100 gives every linear
+    /// mipmapped texture. ponytail: taken at upload/mint; a mid-area change reaches textures loaded after it.</summary>
     internal static int Aniso()
     {
+        if (Renderer.OnVulkan) return (int)Math.Max(StockConfig.Aniso, 1);
         if (_anisoMax == 0f && Gl.GetFloatv != null) { float v; Gl.GetFloatv(Gl.MAX_TEXTURE_MAX_ANISOTROPY, &v); _anisoMax = MathF.Max(v, 1f); }
         return (int)Math.Clamp(StockConfig.Aniso, 1, (long)MathF.Max(_anisoMax, 1f));
     }

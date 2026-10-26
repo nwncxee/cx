@@ -106,7 +106,7 @@ internal static unsafe partial class OwnedTextures
                 _log?.Always($"OwnedTextures: {dds.Format} {dds.W}x{dds.H} REFUSED by the driver (0x{err:x}) -- the engine's same-sized upload stands and draws as garbage");
         }
         if (err == 0 && dst != 0) { why = Decline.None; return dst; }
-        if (dst != 0) { VkTextures.Forget(dst); Gl.DeleteTextures(1, &dst); }
+        if (dst != 0) { VkTextures.Forget(dst); if (!Renderer.OnVulkan) Gl.DeleteTextures(1, &dst); }
         return 0;
     }
 

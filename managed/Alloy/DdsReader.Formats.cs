@@ -80,6 +80,14 @@ internal static unsafe partial class DdsReader
     /// enum. A format refused here is refused at the getter.</summary>
     private static void Probe()
     {
+        if (_probed < 0 && Renderer.OnVulkan)
+        {
+            // the device was refused without textureCompressionBC, which carries every BC format in the probe list
+            _probed = 0;
+            foreach (Fmt f in (ReadOnlySpan<Fmt>)[Fmt.Bc2, Fmt.Bc4S, Fmt.Bc5S, Fmt.Bc6U, Fmt.Bc6S, Fmt.Bc7]) _probed |= 1 << (int)f;
+            _log?.Info("DdsReader: [formats] Vulkan -- BC2/4/5/6H/7 sampled natively (textureCompressionBC, required of the device)");
+            return;
+        }
         if (_probed >= 0 || !GlContextService.Available || !AlloyRenderer.VramProbed || Gl.GetInternalformativ == null) return;
         _probed = 0;
         var line = new System.Text.StringBuilder("DdsReader: [formats]");
