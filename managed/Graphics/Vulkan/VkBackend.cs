@@ -313,15 +313,19 @@ internal sealed unsafe partial class VkBackend : IDevice
         feats.features.fragmentStoresAndAtomics = has.fragmentStoresAndAtomics;
         feats.features.geometryShader = true;
         bool layerExt = ViewportIndex(phys) && HasExt(_vki, phys, "VK_EXT_shader_viewport_index_layer\0"u8);
+        _memBudget = HasExt(_vki, phys, "VK_EXT_memory_budget\0"u8);
         VkDevice device;
         fixed (byte* sw = SwapchainExt) fixed (byte* c = "VK_EXT_depth_clip_control\0"u8)
-        fixed (byte* vl = "VK_EXT_shader_viewport_index_layer\0"u8)
+        fixed (byte* vl = "VK_EXT_shader_viewport_index_layer\0"u8) fixed (byte* mb = "VK_EXT_memory_budget\0"u8)
         {
-            byte** exts = stackalloc byte*[3] { sw, c, vl };
+            byte** exts = stackalloc byte*[4] { sw, c, null, null };
+            uint n = 2;
+            if (layerExt) exts[n++] = vl;
+            if (_memBudget) exts[n++] = mb;
             var dci = new VkDeviceCreateInfo
             {
                 pNext = &feats, queueCreateInfoCount = 1, pQueueCreateInfos = &qci,
-                enabledExtensionCount = layerExt ? 3u : 2u, ppEnabledExtensionNames = exts,
+                enabledExtensionCount = n, ppEnabledExtensionNames = exts,
             };
             Check(_vki.vkCreateDevice(phys, &dci, null, out device), "vkCreateDevice");
         }
@@ -361,6 +365,28 @@ internal sealed unsafe partial class VkBackend : IDevice
         log.Always($"VkBackend: LIVE -- {Caps}, {_bindlessCap} bindless textures; Vulkan presents the frame itself");
     }
 
+    /// <summary>The device takes VK_EXT_memory_budget, so <see cref="DeviceLocalKib"/> reads the driver's own figures.</summary>
+    private bool _memBudget;
+    /// <inheritdoc cref="_memBudget"/>
+    public bool MemoryBudget => _memBudget;
+
+    /// <summary>The device-local heaps' size and what is left of their budget, KiB: the driver's with VK_EXT_memory_budget,
+    /// else the allocator's estimate over its own blocks. Any thread that owns the device.</summary>
+    public void DeviceLocalKib(out long freeKib, out long totalKib)
+    {
+        freeKib = 0; totalKib = 0;
+        VkPhysicalDeviceMemoryProperties mp;
+        _vki.vkGetPhysicalDeviceMemoryProperties(_phys, &mp);
+        VmaBudget* b = stackalloc VmaBudget[(int)VK_MAX_MEMORY_HEAPS];
+        Vma.vmaGetHeapBudgets(_vma, b);
+        for (int i = 0; i < mp.memoryHeapCount; i++)
+        {
+            if ((mp.memoryHeaps[i].flags & VkMemoryHeapFlags.DeviceLocal) == 0) continue;
+            totalKib += (long)(mp.memoryHeaps[i].size / 1024);
+            if (b[i].budget > b[i].usage) freeKib += (long)((b[i].budget - b[i].usage) / 1024);
+        }
+    }
+
     private VmaAllocator CreateAllocator(VkInstance inst)
     {
         // VMA resolves the rest of Vulkan itself from the two loaders it is handed
@@ -374,6 +400,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         var ci = new VmaAllocatorCreateInfo
         {
             physicalDevice = _phys, device = _device, instance = inst, vulkanApiVersion = ApiFloor, pVulkanFunctions = &fns,
+            flags = _memBudget ? VmaAllocatorCreateFlags.EXTMemoryBudget : VmaAllocatorCreateFlags.None,
         };
         Check(Vma.vmaCreateAllocator(&ci, out VmaAllocator a), "vmaCreateAllocator");
         return a;

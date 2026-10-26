@@ -293,7 +293,7 @@ public sealed unsafe partial class CasterPass : IExtenderService
         // Normally a depth bump: the world view's bracket is open (ADR 0032), and a real switch here means
         // the view's own Enter was refused -- _ctxTicks on the period line is what says which.
         long tCtx = System.Diagnostics.Stopwatch.GetTimestamp();
-        bool entered = GlContextService.Enter();
+        bool entered = Renderer.OnVulkan || GlContextService.Enter();   // the Vulkan bake issues no GL
         _ctxTicks += System.Diagnostics.Stopwatch.GetTimestamp() - tCtx;
         if (!entered) { AlloyRenderer.PosedByShadow = false; return; }
         AlloyRenderer.Step("shadow bracket: the pose upload");
@@ -387,9 +387,12 @@ public sealed unsafe partial class CasterPass : IExtenderService
         if (_gl.QShadowOn) { _gl.QShadow.End(Gl.TIME_ELAPSED); _gl.QShadowOn = false; }
         LastShadowMs = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000f / System.Diagnostics.Stopwatch.Frequency;
         _viewSum += LastViews;
-        Gl.Disable(Gl.DEPTH_CLAMP);
-        tCtx = System.Diagnostics.Stopwatch.GetTimestamp();
-        GlContextService.Leave();
+        if (!Renderer.OnVulkan)
+        {
+            Gl.Disable(Gl.DEPTH_CLAMP);
+            tCtx = System.Diagnostics.Stopwatch.GetTimestamp();
+            GlContextService.Leave();
+        }
         _ctxTicks += System.Diagnostics.Stopwatch.GetTimestamp() - tCtx;
         _ctxFrames++;
     }

@@ -96,7 +96,7 @@ public sealed unsafe partial class AlloyRenderer
         FrameZones.Add(FrameZones.Zone.Lwalk, tLights);
         LatchFrameTarget();   // per-CONTEXT GL state: it has to be read before the switch below
         // A refused Enter is not handled here -- each pass inside refuses on its own Enter and says why.
-        bool oneBracket = GlContextService.Enter();
+        bool oneBracket = !Renderer.OnVulkan && GlContextService.Enter();   // a Vulkan view issues no GL
         try { DbDrawView(scene, camera, in h); }
         finally { if (oneBracket) GlContextService.Leave(); }
         // The world frame is in the present image now. With the GUI Alloy's, its flush draws over it there and

@@ -737,7 +737,7 @@ public static unsafe partial class MeshArena
         // 4.6 context does not know, and every draw that binds it rasterises nothing. That is exactly what
         // DB mode hit: the feed pumps at the boundary, the VAO was built there, `s.Vao != 0` from then on,
         // and the in-bracket pump never rebuilt it. Deferred and SAID, never done in the wrong context.
-        if (!GlContextService.Inside)
+        if (!vk && !GlContextService.Inside)
         {
             _glDeferred++;
             if (!_saidDeferred)

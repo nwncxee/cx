@@ -193,16 +193,20 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>This pass's shared scene terms into the <c>CxPass</c> block, then the shadow maps onto their
     /// units and the program's own <c>uLocalCubes</c>. Called at each program switch; the block goes up only
     /// when the refill differs from what is bound, so every switch after a pass's first costs a fill and a
-    /// compare and no GL uniform traffic.</summary>
+    /// compare and no GL uniform traffic. On Vulkan only the staging fill runs.</summary>
     internal static void BindPass(int locCubes, int* viewport, float near, float far)
     {
         PassBinds++;
         byte* b = PassBegin();
         FillPassBlock((PassBlock*)b);
         if (!AlloyLights.FillDraw(b, viewport, near, far)) PassBindsBorrowed++;
-        FlushPassBlock();
-        BindSunMaps();
-        BindCubeMaps();
+        // a Vulkan pass reads the staged block and binds its own shadow maps
+        if (!Renderer.OnVulkan)
+        {
+            FlushPassBlock();
+            BindSunMaps();
+            BindCubeMaps();
+        }
         Gl.Uniform1i(locCubes, CasterPass.CubesFresh ? CasterPass.CubeCount : 0);
     }
 
@@ -281,17 +285,17 @@ public sealed unsafe partial class AlloyRenderer
         _rxAreaDif = blk->Diffuse;
         _rxAreaDir = blk->Dir;
 
-        if (!_rawProbed) ProbeRawSampler();
+        if (!_rawProbed && !Renderer.OnVulkan) ProbeRawSampler();
         blk->LocalFloor = AlloyLights.ShadowFloor;
         // Source radius (0 = no raw view, no search), temporal phase (golden-ratio turns per frame, 0
         // with no taa to integrate it), disc taps; w = the view depth past which no cube is read (0 = none)
-        blk->LocalPcss = new Vector4(_rawSampler != 0 ? AlloyLights.ShadowSource : 0f,
+        blk->LocalPcss = new Vector4(RawSearch ? AlloyLights.ShadowSource : 0f,
                 PostStack.TaaLive ? (_frameSeq * 0.618034f) % 1f : 0f, Shadows.Taps.V, AlloyLights.ShadowDist);
         // CX-49: the sun's own source size, as penumbra texels per unit of stored cascade depth -- the same
         // "no raw view, no search" gate the cubes take, and the same temporal phase and tap count out of
         // uLocalPcss above. A caller that fills the block itself (the lightmap bake) leaves it zero, which
         // the receiver reads as the fixed four-tap cross.
-        blk->SunPenum = _rawSampler != 0 ? CasterPass.SunPenumbraScale : 0f;
+        blk->SunPenum = RawSearch ? CasterPass.SunPenumbraScale : 0f;
         blk->SearchTaps = Shadows.Search.V;
         // Pixels -> world radius per unit view depth, so the shader compares its disc against the
         // screen without knowing the projection. 0 (no perspective this pass) = the disc everywhere.
@@ -377,6 +381,8 @@ public sealed unsafe partial class AlloyRenderer
     /// objects, and the search stands down; asked once.</summary>
     private static uint _rawSampler;
     private static bool _rawProbed;
+    /// <summary>The blocker search has its raw views: GL's sampler object, or Vulkan, whose bake binds its own.</summary>
+    private static bool RawSearch => _rawSampler != 0 || Renderer.OnVulkan;
     private static void ProbeRawSampler()
     {
         _rawProbed = true;

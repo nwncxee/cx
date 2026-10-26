@@ -505,7 +505,7 @@ internal static unsafe partial class TexRegistry
             uint dead;
             lock (_lock) { if (_graveyard.Count == 0) break; dead = _graveyard.Dequeue(); }
             // The handle went non-resident above, but the frames in flight were submitted holding it.
-            GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, dead);
+            if (!Renderer.OnVulkan) GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, dead);   // a Vulkan name has no GL object
             VkTextures.Forget(dead);
         }
         long fastBytes = 0;

@@ -62,7 +62,8 @@ public static unsafe partial class MeshArena
     /// when it outgrew the old (which dies after the frames in flight). Inside <see cref="Pump"/>, under the lock.</summary>
     private static void PumpVk()
     {
-        if (!Renderer.OnVulkan || _log == null || AlloyDevice.Vulkan(_log) is not VkBackend vk) return;
+        // never makes the device: a pump at boot runs before GL can name the GPU the device is picked by
+        if (!Renderer.OnVulkan || AlloyDevice.VulkanMade is not VkBackend vk) return;
         if (_vk.Dev != vk) _vk = new VkArenaState { Dev = vk };
         VkArenaState v = _vk;
         for (int f = 0; f < Formats; f++)

@@ -135,6 +135,8 @@ internal static unsafe class SkyView
     /// </summary>
     internal static void UploadLit(int locVp, int locTerm, bool capturing)
     {
+        // a Vulkan stage's host borrows this setter inside a capture; the binder puts the map on uSkyMap
+        if (Renderer.OnVulkan) { UploadLitVk(locVp, locTerm, AlloyRenderer.VkSkyMap, capturing); return; }
         bool on = Wanted && _gl.Valid && CasterPass.SkyFresh && !capturing;
         if (locVp >= 0 || locTerm >= 0)
         {

@@ -545,8 +545,9 @@ internal static unsafe class AlloyLights
     internal static int LastLightCount;
     internal static float LastBuildMs;
 
-    /// <summary>True once the rig is usable: compute + SSBO entry points resolved and the program linked.</summary>
-    internal static bool Ready => _gl.Prog != 0 && !_failed;
+    /// <summary>True once the rig is usable: compute + SSBO entry points resolved and the program linked; on Vulkan,
+    /// whose frame builds its own, always.</summary>
+    internal static bool Ready => (Renderer.OnVulkan || _gl.Prog != 0) && !_failed;
 
     /// <summary>Records the light SSBO holds this frame -- the <c>uLightCount</c> any pass that culls
     /// <c>uLights</c> for itself (the deferred pass's per-tile list) has to walk.</summary>
@@ -597,7 +598,7 @@ internal static unsafe class AlloyLights
         _tallyFrame = frame % TallyEvery == 0;
         int n = FrameInputs.LightCount;
         if (n * 8 > _stage.Length) _stage = new float[n * 8];
-        if (n > _gl.SsboLights) GrowLightBuffer(n);
+        if (n > _gl.SsboLights && !Renderer.OnVulkan) GrowLightBuffer(n);
         float rmin = float.MaxValue, rmax = 0f, rsum = 0f;
         Span<AreaLightRec> recs = System.Runtime.InteropServices.MemoryMarshal.Cast<float, AreaLightRec>(_stage.AsSpan());
         fixed (float* s = _stage)
@@ -894,6 +895,7 @@ internal static unsafe class AlloyLights
 
     private static bool Ensure()
     {
+        if (Renderer.OnVulkan) return true;   // the Vulkan frame holds its own light buffers and records the build
         if (_gl.Prog != 0) return true;
         if (_failed) return false;
         if (Gl.DispatchCompute == null || Gl.MemoryBarrier == null || Gl.BindBufferBase == null

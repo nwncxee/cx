@@ -136,6 +136,8 @@ internal static unsafe partial class StageResources
         public readonly Stage?[] Stages = new Stage[MaxStages];
         public int Count;
         public bool SaidFull;
+        /// <summary>A Vulkan frame has said once that it runs no native stage's passes.</summary>
+        public bool SaidVk;
         public readonly List<Rec> Recs = [];
         /// <summary>The next texture unit an image half takes, and the driver's combined-unit count (0: not asked).</summary>
         public uint NextUnit = TextureSlots.ResourceBase;

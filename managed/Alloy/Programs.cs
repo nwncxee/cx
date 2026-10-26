@@ -214,6 +214,17 @@ internal static unsafe class Programs
                  + "module's resource chain");
     }
 
+    /// <summary>The bindless decision for a Vulkan session, whose descriptor table is bindless on every device: the
+    /// knob alone (<c>alloy.bindless off</c> still binds per batch), with no GL probe.</summary>
+    internal static void DecideBindlessVk()
+    {
+        if (_bindlessProbed) return;
+        _bindlessProbed = true;
+        _bindless = Renderer.Bindless.Boot != 0;
+        _log?.Info(_bindless ? "AlloyRenderer: Vulkan's bindless table armed -- lit batches merge across textures"
+                             : "AlloyRenderer: bindless texturing vetoed (alloy.bindless off) -- per-batch texture binds on Vulkan");
+    }
+
     internal static bool EnsureProgram()
     {
         if (_spliceStale) DropSpliced();

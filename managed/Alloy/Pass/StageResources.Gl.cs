@@ -264,13 +264,23 @@ internal static unsafe partial class StageResources
 
     /// <summary>The frame's head, main view only, before the first draw pass: every live stage's images made at the
     /// sizes this view asks for (its <c>once</c> passes run over a remake), then -- for each stage a host drew last
-    /// frame or staged this one -- its history swapped and its frame passes run in declaration order.</summary>
+    /// frame or staged this one -- its history swapped and its frame passes run in declaration order. None on Vulkan.</summary>
     internal static void RunFrame(int* viewport, ExtenderLog? log)
     {
         var g = _gl;
         int f = AlloyRenderer.FrameSeq;
         if (g.Count == 0 || g.HeadSeq == f) return;
         g.HeadSeq = f;
+        if (Renderer.OnVulkan)
+        {
+            if (!g.SaidVk)
+            {
+                g.SaidVk = true;
+                log?.Always($"StageResources: {g.Count} native stage(s) declared and NONE RUN on Vulkan -- their images and passes "
+                          + "are GL's until StageResources ports, so a module's cx_fog colour and cx_overlay are not applied");
+            }
+            return;
+        }
         bool any = false;
         for (int i = 0; i < g.Count; i++)
         {
