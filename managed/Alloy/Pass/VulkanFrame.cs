@@ -63,6 +63,7 @@ internal static class VulkanFrame
             return;
         }
         AlloyRenderer.VkParityRead(vk);
+        CasterPass.VkProbe(vk, log);
         AlloyRenderer.VkFrameTap(vk);
         if (++_s.Frames % CacheSavePeriod == 0) vk.SavePipelineCache();
         if (_s.Frames % GpuPeriod == 0 && vk.TakeGpuMs(out int n) is var ms && n > 0)

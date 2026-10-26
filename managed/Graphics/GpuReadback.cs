@@ -59,6 +59,18 @@ public unsafe struct GpuReadback
         Gl.BindBuffer(Gl.PIXEL_PACK_BUFFER, 0);
     }
 
+    /// <summary>One layer of a depth array or cube array straight into <paramref name="into"/>, stalling for it.
+    /// Cold only: a synchronous read waits out the queued frame (docs/no-glgetbuffersubdata). False = the driver
+    /// has no entry point for it.</summary>
+    public static bool DepthLayer(uint tex, int layer, int w, int h, float[] into)
+    {
+        if (Gl.GetTextureSubImage == null || into.Length < (long)w * h) return false;
+        Gl.BindBuffer(Gl.PIXEL_PACK_BUFFER, 0);
+        fixed (float* p = into)
+            Gl.GetTextureSubImage(tex, 0, 0, 0, layer, w, h, 1, Gl.DEPTH_COMPONENT, Gl.FLOAT, into.Length * sizeof(float), p);
+        return true;
+    }
+
     /// <summary>Fence slot <paramref name="slot"/> behind the copies just issued into it.</summary>
     public void Fence(int slot)
     {

@@ -62,6 +62,15 @@ public sealed unsafe partial class CasterPass
         public int Baked, Chunks;
         /// <summary>A bit per <see cref="CasterMap"/> already announced: each target says its first flush once.</summary>
         public int Said;
+        /// <summary>The cold reading of what the bake wrote (<c>CasterPass.VkProbe</c>): the layers and sizes it
+        /// looks at, the list the layered draw consumed, and its own scratch resources.</summary>
+        public bool ProbeDone;
+        public int ProbeWant, ProbeCubeLayer, ProbeSunLayer, ProbeCubeSize, ProbeSunSize, ProbeViews;
+        public int ProbeGroups, ProbeStart, ProbeLen;
+        public BufferId ProbeCmd, ProbeCnt, ProbeViewTbl, ProbeBuf;
+        public ImageId ProbeImg;
+        public PipelineId ProbePipe;
+        public CommandList? ProbeList;
     }
 
     private static CasterVkState _vk = new();
@@ -339,7 +348,7 @@ public sealed unsafe partial class CasterPass
     {
         ImageId img = VkMapOf(map);
         if (img.IsNull) return false;
-        int size = 0, views = 0;
+        int size = 0, views = 0, lastLayer = 0;
         bool clamp = map is CasterMap.SunStatic or CasterMap.SunDyn;
         for (int k = 0; k < n; k++)
         {
@@ -350,6 +359,7 @@ public sealed unsafe partial class CasterPass
             cl.BeginRenderPass(new RenderPassDesc(default, new DepthAttachment(img, 0, _qLayer[k], LoadOp.Clear, StoreOp.Store, 1f)));
             cl.EndRenderPass();
             _vk.Baked++;
+            if (views == 0) lastLayer = _qLayer[k];   // the chunk's FIRST layer: the reading wants a baked one
             views++;
         }
         if ((_vk.Said & (1 << (int)map)) == 0)
@@ -371,6 +381,7 @@ public sealed unsafe partial class CasterPass
             fixed (CasterViewRec* vs = _viewStage)
                 ok = CasterGatherVk.DispatchLayer(vk, cl, vs, vn, sets == 1 << CasterGather.SetDynamic, chunk);
             if (!ok) return false;
+            VkProbeNote(map, lastLayer, vn, size);
             cl.BeginRenderPass(new RenderPassDesc(default, new DepthAttachment(img, 0, -1, LoadOp.Load, StoreOp.Store, 1f)));
             cl.SetViewport(0, 0, size, size);
             if (!MeshArena.VkEbo.IsNull) cl.BindIndexBuffer(MeshArena.VkEbo, IndexType.U16, 0);
