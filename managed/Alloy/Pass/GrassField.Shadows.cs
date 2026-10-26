@@ -97,13 +97,12 @@ internal static unsafe partial class GrassField
     }
 
     /// <summary>Ground truth for the cast layer: an 8-bit PGM (near = bright), read back through
-    /// glGetTextureSubImage. Cold, once per command.</summary>
+    /// <see cref="GpuReadback.DepthLayer"/>. Cold, once per command.</summary>
     private static void DumpLayer(uint tex, int layer, int size)
     {
-        if (Gl.GetTextureSubImage == null) { _log?.Info("GrassField: no glGetTextureSubImage -- no dump"); return; }
         var depth = new float[size * size];
-        fixed (float* p = depth)
-            Gl.GetTextureSubImage(tex, 0, 0, 0, layer, size, size, 1, Gl.DEPTH_COMPONENT, Gl.FLOAT, size * size * 4, p);
+        if (!GpuReadback.DepthLayer(tex, layer, size, size, depth))
+        { _log?.Info("GrassField: this driver reads back no depth layer -- no dump"); return; }
         float min = 1f, max = 0f; int near = 0;
         foreach (float d in depth) { if (d < min) min = d; if (d > max) max = d; if (d < 0.999f) near++; }
         string path = Native.ConfigPath($"cx_grass_shadow_{_dumpN++}.pgm");

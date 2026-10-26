@@ -17,6 +17,30 @@ namespace CX.Alloy;
 /// </summary>
 public sealed unsafe partial class CasterPass
 {
+    /// <summary>Everything the reading owns: what it noted from the frame's flush, and the scratch it reads
+    /// through. Its own owner rather than the bake's -- a once-a-session diagnostic that outlived its answer
+    /// should leave nothing behind in the pass's state.</summary>
+    private sealed class ProbeState
+    {
+        /// <summary>The reading has been taken; it is never taken twice.</summary>
+        public bool Done;
+        /// <summary>A bit per array the flush has noted: both are wanted before the reading is worth taking.</summary>
+        public int Want;
+        /// <summary>The layer and size of each array the reading looks at, and the chunk's view count.</summary>
+        public int CubeLayer, SunLayer, CubeSize, SunSize, Views;
+        /// <summary>The batch table the noted chunk drew from.</summary>
+        public int Groups, Start, Len;
+        /// <summary>The list that chunk's layered draw consumed.</summary>
+        public BufferId Cmd, Cnt, ViewTbl;
+        /// <summary>The reading's own scratch: a 2D copy of one layer, the buffer it lands in, and the stage between.</summary>
+        public BufferId Buf;
+        public ImageId Img;
+        public PipelineId Pipe;
+        public CommandList? List;
+    }
+
+    private static ProbeState _probe = new();
+
     /// <summary>Commands the reading copies back: enough to see a batch's first draws and their packed views.</summary>
     private const int ProbeCmds = 16;
 
@@ -25,18 +49,19 @@ public sealed unsafe partial class CasterPass
     private static void VkProbeNote(CasterMap map, int layer, int vn, int size)
     {
         var s = _vk;
-        if (s.ProbeDone || s.Dev == null) return;
-        if (map == CasterMap.Cubes) { s.ProbeCubeLayer = layer; s.ProbeViews = vn; s.ProbeCubeSize = size; }
-        else if (map == CasterMap.SunStatic) { s.ProbeSunLayer = layer; s.ProbeSunSize = size; }
+        var r = _probe;
+        if (r.Done || s.Dev == null) return;
+        if (map == CasterMap.Cubes) { r.CubeLayer = layer; r.Views = vn; r.CubeSize = size; }
+        else if (map == CasterMap.SunStatic) { r.SunLayer = layer; r.SunSize = size; }
         if (map is CasterMap.Cubes or CasterMap.SunStatic)
         {
-            s.ProbeCmd = CasterGatherVk.LayerCommands;
-            s.ProbeCnt = CasterGatherVk.LayerCounts;
-            s.ProbeViewTbl = CasterGatherVk.Views;
-            s.ProbeGroups = _gGroups;
-            s.ProbeStart = _gGroups > 0 ? _gStart[0] : 0;
-            s.ProbeLen = _gGroups > 0 ? _gLen[0] : 0;
-            s.ProbeWant |= map == CasterMap.Cubes ? 1 : 2;
+            r.Cmd = CasterGatherVk.LayerCommands;
+            r.Cnt = CasterGatherVk.LayerCounts;
+            r.ViewTbl = CasterGatherVk.Views;
+            r.Groups = _gGroups;
+            r.Start = _gGroups > 0 ? _gStart[0] : 0;
+            r.Len = _gGroups > 0 ? _gLen[0] : 0;
+            r.Want |= map == CasterMap.Cubes ? 1 : 2;
         }
     }
 
@@ -45,18 +70,19 @@ public sealed unsafe partial class CasterPass
     internal static void VkProbe(VkBackend vk, ExtenderLog log)
     {
         var s = _vk;
-        if (s.ProbeDone || s.Dev != vk || s.ProbeWant != 3 || s.Cubes.IsNull || s.Cascades.IsNull) return;
+        var r = _probe;
+        if (r.Done || s.Dev != vk || r.Want != 3 || s.Cubes.IsNull || s.Cascades.IsNull) return;
         // the comparison wants GL's own bake of the same face beside Vulkan's, which only an A/B frame runs
         if (_gl.CubeTex == 0) return;
-        s.ProbeDone = true;
+        r.Done = true;
         if (!VkProbeMake(vk, log)) return;
-        string cube = VkProbeLayer(vk, s.Cubes, s.ProbeCubeLayer, s.ProbeCubeSize, "cube");
-        string sun = VkProbeLayer(vk, s.Cascades, s.ProbeSunLayer, s.ProbeSunSize, "cascade");
+        string cube = VkProbeLayer(vk, s.Cubes, r.CubeLayer, r.CubeSize, "cube");
+        string sun = VkProbeLayer(vk, s.Cascades, r.SunLayer, r.SunSize, "cascade");
         log.Always($"CasterPass: [vkbake] {cube}; {sun}; {VkProbeDraws(vk)}");
         // the sun array beside it: both bakes run on an A/B frame, so the cascade is the control that says
         // whether a difference in the cube faces is the two bakes disagreeing or this reading's own copy
-        log.Always($"CasterPass: [vkbake] {VkProbeAgainstGl(vk, s.Cubes, _gl.CubeTex, s.ProbeCubeLayer, s.ProbeCubeSize, "cube")}");
-        log.Always($"CasterPass: [vkbake] {VkProbeAgainstGl(vk, s.Cascades, _gl.CascadeTex, s.ProbeSunLayer, s.ProbeSunSize, "cascade")}");
+        log.Always($"CasterPass: [vkbake] {VkProbeAgainstGl(vk, s.Cubes, _gl.CubeTex, r.CubeLayer, r.CubeSize, "cube")}");
+        log.Always($"CasterPass: [vkbake] {VkProbeAgainstGl(vk, s.Cascades, _gl.CascadeTex, r.SunLayer, r.SunSize, "cascade")}");
     }
 
     /// <summary>GL's own bake of the layer the reading looked at, beside Vulkan's, texel for texel. Both arrays
@@ -92,35 +118,35 @@ public sealed unsafe partial class CasterPass
     /// <summary>One layer of <paramref name="img"/> into <paramref name="words"/>, as <see cref="VkProbeLayer"/> reads it.</summary>
     private static bool VkProbeRead(VkBackend vk, ImageId img, int layer, int size, out uint[] words)
     {
-        var s = _vk;
-        CommandList cl = s.ProbeList!;
+        var r = _probe;
+        CommandList cl = r.List!;
         cl.Reset();
-        cl.CopyImage(new CopyImageCmd(img, new ImageRegion(0, 0, 0, layer), s.ProbeImg, new ImageRegion(0, 0, 0, 0), size, size, 1));
-        cl.SetPipeline(s.ProbePipe);
-        cl.BindSet(0, new BindSet(default, [new BufferBinding(SsboSlots.ParityOut, s.ProbeBuf)],
-                                  [new ImageBinding(0, s.ProbeImg)], default));
+        cl.CopyImage(new CopyImageCmd(img, new ImageRegion(0, 0, 0, layer), r.Img, new ImageRegion(0, 0, 0, 0), size, size, 1));
+        cl.SetPipeline(r.Pipe);
+        cl.BindSet(0, new BindSet(default, [new BufferBinding(SsboSlots.ParityOut, r.Buf)],
+                                  [new ImageBinding(0, r.Img)], default));
         cl.Dispatch((size + 7) / 8, (size + 7) / 8);
         words = new uint[(long)size * size];
-        return vk.Submit(cl) && vk.ReadBack(s.ProbeBuf, MemoryMarshal.AsBytes(words.AsSpan()));
+        return vk.Submit(cl) && vk.ReadBack(r.Buf, MemoryMarshal.AsBytes(words.AsSpan()));
     }
 
     /// <summary>The copy stage, its scratch image at the widest layer either array has, and the read-back buffer.</summary>
     private static bool VkProbeMake(VkBackend vk, ExtenderLog log)
     {
-        var s = _vk;
-        int size = Math.Max(s.ProbeCubeSize, s.ProbeSunSize);
+        var r = _probe;
+        int size = Math.Max(r.CubeSize, r.SunSize);
         if (size <= 0) return false;
         const string Version = "#version 460 core\n";
         string src = ShaderSource.Get("cx_parity_c.glsl").Replace(Version, Version + "#define CX_PARITY_WORDS 1\n");
         var d = new PipelineDesc { Cs = vk.CreateShader(new ShaderDesc(ShaderStage.Compute, null, src, "caster bake reading")),
                                    Label = "caster bake reading" };
-        s.ProbePipe = vk.CreatePipeline(in d);
-        s.ProbeImg = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.D32F, size, size, 1, 1, 1, 1,
+        r.Pipe = vk.CreatePipeline(in d);
+        r.Img = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.D32F, size, size, 1, 1, 1, 1,
                                                   ImageUse.Sampled | ImageUse.CopyDst | ImageUse.CopySrc, "caster bake reading"));
-        s.ProbeBuf = vk.CreateBuffer(new BufferDesc((long)size * size * sizeof(uint),
+        r.Buf = vk.CreateBuffer(new BufferDesc((long)size * size * sizeof(uint),
                                                     BufferUse.Storage | BufferUse.CopySrc, MemoryKind.Device, "caster bake reading"));
-        s.ProbeList = new CommandList("caster bake reading", 4096, log);
-        if (!s.ProbePipe.IsNull && !s.ProbeImg.IsNull && !s.ProbeBuf.IsNull) return true;
+        r.List = new CommandList("caster bake reading", 4096, log);
+        if (!r.Pipe.IsNull && !r.Img.IsNull && !r.Buf.IsNull) return true;
         log.Always("CasterPass: [vkbake] the reading's own resources were REFUSED (logged above)");
         return false;
     }
@@ -129,7 +155,7 @@ public sealed unsafe partial class CasterPass
     /// a depth under the clear (an occluder), and the nearest one. All at the clear means nothing rasterized.</summary>
     private static string VkProbeLayer(VkBackend vk, ImageId img, int layer, int size, string what)
     {
-        var s = _vk;
+        var r = _probe;
         if (size <= 0) return $"{what} layer {layer}: not baked";
         if (!VkProbeRead(vk, img, layer, size, out uint[] words)) return $"{what} layer {layer}: did not read back";
         long under = 0, zero = 0;
@@ -152,18 +178,18 @@ public sealed unsafe partial class CasterPass
     /// and its first commands, each command's packed view index beside its instance count.</summary>
     private static string VkProbeDraws(VkBackend vk)
     {
-        var s = _vk;
-        if (s.ProbeCmd.IsNull || s.ProbeCnt.IsNull) return "no draw list was noted";
-        var counts = new uint[Math.Max(s.ProbeGroups + CasterGather.CountExtra, 1)];
+        var r = _probe;
+        if (r.Cmd.IsNull || r.Cnt.IsNull) return "no draw list was noted";
+        var counts = new uint[Math.Max(r.Groups + CasterGather.CountExtra, 1)];
         var cmds = new DrawCmdRec[ProbeCmds];
         var views = new CasterViewRec[1];
-        bool ok = vk.ReadBack(s.ProbeCnt, MemoryMarshal.AsBytes(counts.AsSpan()))
-               && vk.ReadBack(s.ProbeCmd, MemoryMarshal.AsBytes(cmds.AsSpan()))
-               && (s.ProbeViewTbl.IsNull || vk.ReadBack(s.ProbeViewTbl, MemoryMarshal.AsBytes(views.AsSpan())));
+        bool ok = vk.ReadBack(r.Cnt, MemoryMarshal.AsBytes(counts.AsSpan()))
+               && vk.ReadBack(r.Cmd, MemoryMarshal.AsBytes(cmds.AsSpan()))
+               && (r.ViewTbl.IsNull || vk.ReadBack(r.ViewTbl, MemoryMarshal.AsBytes(views.AsSpan())));
         if (!ok) return "the draw list did not read back";
         var sb = new System.Text.StringBuilder();
-        sb.Append($"{s.ProbeViews} view(s), batch 0 start {s.ProbeStart} len {s.ProbeLen}, survivors ");
-        for (int g = 0; g < Math.Min(s.ProbeGroups, 4); g++) sb.Append(counts[g]).Append(' ');
+        sb.Append($"{r.Views} view(s), batch 0 start {r.Start} len {r.Len}, survivors ");
+        for (int g = 0; g < Math.Min(r.Groups, 4); g++) sb.Append(counts[g]).Append(' ');
         sb.Append("| view 0 vp.m41..44 ")
           .Append($"({views[0].Vp.M41:F2},{views[0].Vp.M42:F2},{views[0].Vp.M43:F2},{views[0].Vp.M44:F2})")
           .Append($" layer {views[0].Layer:F0} point {views[0].Point:F0} set {views[0].Set:F0}");
