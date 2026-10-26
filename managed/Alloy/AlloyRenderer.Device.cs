@@ -5,6 +5,7 @@ using CX.Alloy.Db;
 using CX.Engine;
 using CX.Framework;
 using CX.Graphics;
+using CX.Graphics.Rhi;
 
 namespace CX.Alloy;
 
@@ -52,6 +53,7 @@ public sealed unsafe partial class AlloyRenderer
     /// <c>GL_ATI_meminfo</c>'s query is an array whose FIRST element is the free pool.</summary>
     internal static void SampleVram()
     {
+        if (Renderer.OnVulkan) { SampleVramVk(); return; }
         if (!_vramProbed) ProbeVram();
         if (_vramExt == null) return;
         int* v = stackalloc int[4] { 0, 0, 0, 0 };
@@ -64,6 +66,20 @@ public sealed unsafe partial class AlloyRenderer
                        + $"({_vram.FreeKib / 1024}MiB free): the card is oversubscribed, and a pass that reads an evicted "
                        + "texture runs several times slower -- frame times are not comparable to a session that fits");
         _vram.EvictedKib = evicted;
+    }
+
+    /// <summary><see cref="SampleVram"/> on Vulkan: the device-local heaps' budget, the driver's own figure where the device
+    /// takes VK_EXT_memory_budget. No GL.</summary>
+    private static void SampleVramVk()
+    {
+        if (_log == null || AlloyDevice.VulkanMade is not VkBackend vk) return;
+        vk.DeviceLocalKib(out long free, out long total);
+        _vram.FreeKib = (int)Math.Min(free, int.MaxValue);
+        if (_vramProbed) return;
+        _vramProbed = true;
+        _vramExt = vk.MemoryBudget ? "VK_EXT_memory_budget" : "the Vulkan allocator's estimate (no VK_EXT_memory_budget)";
+        _vramTotalKib = (int)Math.Min(total, int.MaxValue);
+        _log.Info($"AlloyRenderer: [vram] {_vramExt}, {_vramTotalKib / 1024}MiB device-local, {_vram.FreeKib / 1024}MiB free");
     }
 
     /// <summary>The device's memory figures as last sampled, KiB.</summary>
@@ -81,6 +97,7 @@ public sealed unsafe partial class AlloyRenderer
     /// the probe or without a memory query.</summary>
     internal static long VramFreeKibNow()
     {
+        if (Renderer.OnVulkan) { SampleVramVk(); return _vramExt == null ? -1 : _vram.FreeKib; }
         if (!_vramProbed || _vramExt == null) return -1;
         int* v = stackalloc int[4] { 0, 0, 0, 0 };
         Gl.GetIntegerv(_vramNvx ? GpuMemCurrentNvx : TexFreeMemoryAti, v);

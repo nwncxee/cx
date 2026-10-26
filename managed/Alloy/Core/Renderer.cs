@@ -227,8 +227,9 @@ internal static class Renderer
         DepthEqual = G.Toggle("depthequal", "depthequal", true, Tier.ChatOnly);
         IdTarget = G.Toggle("idtarget", "idtarget", true, Tier.ChatOnly, changed: AlloyRenderer.InvalidateRecords);
         BlendDepth = G.Toggle("blenddepth", "blenddepth", true, Tier.ChatOnly);
-        GpuMeter = G.Toggle("gpumeter", "gpumeter", true, Tier.ChatOnly, changed: () => GpuQuery.Enabled = GpuMeter!.V);
-        GpuQuery.Enabled = GpuMeter.V;
+        // the GL meters time GL work, of which a Vulkan session has none
+        GpuMeter = G.Toggle("gpumeter", "gpumeter", true, Tier.ChatOnly, changed: () => GpuQuery.Enabled = GpuMeter!.V && !OnVulkan);
+        GpuQuery.Enabled = GpuMeter.V && !OnVulkan;
         VisList = G.Toggle("vislist", "vislist", true, Tier.ChatOnly, changed: AlloyRenderer.InvalidateRecords);
         WashTest = G.Toggle("washtest", "washtest", true, Tier.ChatOnly, changed: AlloyRenderer.InvalidateRecords);
         OitViz = G.Slider("oitviz", "oitviz", 0, 5, 1, 0, tier: Tier.ChatOnly);

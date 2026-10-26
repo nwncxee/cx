@@ -27,6 +27,9 @@ internal static class AlloyDevice
         return s.Device;
     }
 
+    /// <summary>The Vulkan backend if a frame has made it already; never makes one.</summary>
+    internal static VkBackend? VulkanMade => _s.Vk;
+
     /// <summary>The Vulkan backend under <c>alloy.backend vk</c>, null otherwise or when it refused (logged).</summary>
     internal static VkBackend? Vulkan(ExtenderLog log)
     {
