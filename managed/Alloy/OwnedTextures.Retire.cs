@@ -34,6 +34,8 @@ internal static unsafe partial class OwnedTextures
     [UnmanagedCallersOnly]
     private static void OnDeleteTextures(uint n, uint* names)
     {
+        if (Renderer.OnVulkan && names != null)
+            for (uint i = 0; i < n; i++) GuiPassVk.ForgetEngine(names[i]);
         if (Budget() > 0 && names != null && n > 0 && n <= 4096)
         {
             // ADR 0023: names the engine holds that are OURS (a warm build handed them out) must survive its

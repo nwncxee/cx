@@ -19,12 +19,12 @@ internal static class VkTextures
     private readonly record struct Entry(ImageId Image, BindlessHandle Handle, SamplerDesc Sampler, SamplerId SamplerId, long Bytes);
 
     /// <summary>The next Vulkan-only name; outlives a device, so a name is never handed out twice in a session.</summary>
-    private sealed class NameState { public int Next = FirstName - 1; }
+    private sealed class NameState { public int Next = (int)FirstName - 1; }
 
     private static readonly NameState _names = new();
 
     /// <summary>The first Vulkan-only name: far past any name GL hands out, so the two ranges never meet.</summary>
-    private const int FirstName = 0x40000000;   // not-an-offset: a texture-name range
+    internal const uint FirstName = 0x40000000;   // not-an-offset: a texture-name range
 
     /// <summary>One device's mirror, replaced whole with the device (context loss drops both).</summary>
     private sealed class VkTexState
