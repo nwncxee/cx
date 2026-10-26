@@ -85,7 +85,7 @@ internal static unsafe partial class OwnedTextures
         if (lw > MaxTexSize() || lh > MaxTexSize()) { why = Decline.Oversize; return 0; }
         bool mip = (t.GetMipMap() & MipByte) != 0;
         Sampler s = EngineSampler(t.GetClamp(), t.GetFilter() != 0, mip);
-        Gl.DrainErrors(8);   // the verdict is ours to read, so nobody else's error may be sitting here
+        if (!Renderer.OnVulkan) Gl.DrainErrors(8);   // the verdict is ours to read, so nobody else's error may be sitting here
         uint dst;
         DdsReader.Info dds = default;
         bool ddsFormat = img != null && DdsReader.Lookup(img, out dds) && !DdsReader.EngineUploads(dds.Format);
@@ -98,7 +98,7 @@ internal static unsafe partial class OwnedTextures
         }
         else
             dst = UploadRaw(t, img, cell, w, h, bpp, s, mip);
-        err = Gl.GetError();
+        err = Renderer.OnVulkan ? 0 : Gl.GetError();
         if (ddsFormat && dst != 0)
         {
             if (err == 0) _ddsFormatUploads++;
@@ -144,6 +144,12 @@ internal static unsafe partial class OwnedTextures
         if (!RawFormat(bpp, out uint sized, out uint fmt, out uint type) || nx <= 0 || ny <= 0) return 0;
         int cw = w / nx, ch = h / ny;
         if (cw <= 0 || ch <= 0 || cell < 0 || cell >= nx * ny) return 0;
+        if (Renderer.OnVulkan)
+        {
+            uint n = VkTextures.NewName();
+            MirrorRaw(n, img, w, (cell % nx) * cw, (cell / nx) * ch, cw, ch, bpp, s, mip);
+            return VkTextures.Has(n) ? n : 0;
+        }
         uint dst = Storage(Gl.TEXTURE_2D, mip ? EngineLevels(cw, ch) : 1, sized, cw, ch, s, bpp == 1);
         if (dst == 0) return 0;
         MirrorRaw(dst, img, w, (cell % nx) * cw, (cell / nx) * ch, cw, ch, bpp, s, mip);
@@ -167,6 +173,12 @@ internal static unsafe partial class OwnedTextures
         int cw = Math.Max(w / nx, 1), ch = Math.Max(h / ny, 1);
         if (cw > MaxTexSize() || ch > MaxTexSize()) return 0;
         Sampler s = EngineSampler(t.GetClamp(), t.GetFilter() != 0, mip: false);
+        if (Renderer.OnVulkan)
+        {
+            uint n = VkTextures.NewName();
+            MirrorSolid(n, cw, ch, 0, VkSampler(s));
+            return VkTextures.Has(n) ? n : 0;
+        }
         uint dst = Storage(Gl.TEXTURE_2D, 1, Gl.RGBA8, cw, ch, s, red: false);
         if (dst != 0) MirrorSolid(dst, cw, ch, 0, VkSampler(s));
         return dst == 0 ? 0 : GlTexture.KeepZeroed(dst, Gl.RGBA, Gl.UNSIGNED_BYTE);
@@ -179,6 +191,12 @@ internal static unsafe partial class OwnedTextures
         uint fmt = EngineFormat(t.GetCompressionFormat());
         if (fmt == 0) return 0;
         int levels = mip ? EngineLevels(w, h) : 1;
+        if (Renderer.OnVulkan)
+        {
+            uint n = VkTextures.NewName();
+            MirrorCompressed(n, t, fmt, w, h, levels, s, red);
+            return VkTextures.Has(n) ? n : 0;
+        }
         uint dst = Storage(Gl.TEXTURE_2D, levels, fmt, w, h, s, red);
         if (dst == 0) return 0;
         var u = Unpack.NoBuffer();
@@ -198,6 +216,12 @@ internal static unsafe partial class OwnedTextures
     {
         uint fmt = DdsReader.GlFormat(i.Format);
         int levels = mip ? Math.Min(Math.Max(i.Levels, 1), EngineLevels(i.W, i.H)) : 1;
+        if (Renderer.OnVulkan)
+        {
+            uint n = VkTextures.NewName();
+            MirrorDds(n, chain, i, levels, s, red);
+            return VkTextures.Has(n) ? n : 0;
+        }
         uint dst = Storage(Gl.TEXTURE_2D, levels, fmt, i.W, i.H, s, red);
         if (dst == 0) return 0;
         var u = Unpack.NoBuffer();

@@ -84,8 +84,8 @@ internal static unsafe partial class TextAtlas
     {
         // Not an error on the frames before the 4.6 context is up: the pending list is re-pumped every
         // frame and the upload lands as soon as the entry points resolve. Only a wait that never ends is said.
-        if (Gl.CreateTextures == null || Gl.TextureStorage2D == null || Gl.TextureSubImage2D == null
-            || Gl.TextureParameteri == null)
+        if (!Renderer.OnVulkan && (Gl.CreateTextures == null || Gl.TextureStorage2D == null || Gl.TextureSubImage2D == null
+            || Gl.TextureParameteri == null))
         {
             if (++p.Waited == GiveUpFrames)
                 _log?.Always("TextAtlas: the DSA texture entry points never resolved -- CX fonts do NOT DRAW");
@@ -99,16 +99,8 @@ internal static unsafe partial class TextAtlas
                 _log?.Always("TextAtlas: the Vulkan device never came up on this thread -- CX fonts do NOT DRAW");
             return false;
         }
-        uint t;
-        Gl.CreateTextures(Gl.TEXTURE_2D, 1, &t);
+        uint t = Renderer.OnVulkan ? VkTextures.NewName() : UploadGl(p);
         if (t == 0) return false;
-        Gl.TextureStorage2D(t, 1, Gl.RGBA8, p.Width, p.Height);
-        Gl.TextureSubImage2D(t, 0, 0, 0, p.Width, p.Height, Gl.RGBA, Gl.UNSIGNED_BYTE, (void*)p.Pixels);
-        // The engine's own font sampling: nearest on both filters, no mips. Anything else moves glyph pixels.
-        Gl.TextureParameteri(t, Gl.TEXTURE_MIN_FILTER, (int)Gl.NEAREST);
-        Gl.TextureParameteri(t, Gl.TEXTURE_MAG_FILTER, (int)Gl.NEAREST);
-        Gl.TextureParameteri(t, Gl.TEXTURE_WRAP_S, (int)Gl.CLAMP_TO_EDGE);
-        Gl.TextureParameteri(t, Gl.TEXTURE_WRAP_T, (int)Gl.CLAMP_TO_EDGE);
         p.Font.Atlas = t;
         MirrorVk(t, p);
         Marshal.FreeHGlobal(p.Pixels);
@@ -116,6 +108,22 @@ internal static unsafe partial class TextAtlas
         Uploaded++;
         _log?.Info($"TextAtlas: \"{p.Font.Name}\" uploaded, {p.Width}x{p.Height} RGBA8 nearest (texture {t})");
         return true;
+    }
+
+    /// <summary>The atlas into a new GL texture with the engine's font sampling; 0 when the driver gave no name.</summary>
+    private static uint UploadGl(TextFontBake.PendingAtlas p)
+    {
+        uint t;
+        Gl.CreateTextures(Gl.TEXTURE_2D, 1, &t);
+        if (t == 0) return 0;
+        Gl.TextureStorage2D(t, 1, Gl.RGBA8, p.Width, p.Height);
+        Gl.TextureSubImage2D(t, 0, 0, 0, p.Width, p.Height, Gl.RGBA, Gl.UNSIGNED_BYTE, (void*)p.Pixels);
+        // The engine's own font sampling: nearest on both filters, no mips. Anything else moves glyph pixels.
+        Gl.TextureParameteri(t, Gl.TEXTURE_MIN_FILTER, (int)Gl.NEAREST);
+        Gl.TextureParameteri(t, Gl.TEXTURE_MAG_FILTER, (int)Gl.NEAREST);
+        Gl.TextureParameteri(t, Gl.TEXTURE_WRAP_S, (int)Gl.CLAMP_TO_EDGE);
+        Gl.TextureParameteri(t, Gl.TEXTURE_WRAP_T, (int)Gl.CLAMP_TO_EDGE);
+        return t;
     }
 
     /// <summary>The context went: every atlas name is gone with it, so every font is re-baked on its next ask

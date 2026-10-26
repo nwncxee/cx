@@ -15,18 +15,13 @@ internal static unsafe partial class OwnedTextures
     internal static int WhiteTid()
     {
         if (_standIn.White != 0) return (int)_standIn.White;
-        if (!GlContextService.Available) return 0;
-        uint t;
-        Gl.CreateTextures(Gl.TEXTURE_2D, 1, &t);
-        if (t == 0) return 0;
         uint white = 0xFFFFFFFF;
-        Gl.TextureStorage2D(t, 1, Gl.RGBA8, 1, 1);
-        Gl.TextureSubImage2D(t, 0, 0, 0, 1, 1, Gl.RGBA, Gl.UNSIGNED_BYTE, &white);
-        Gl.TextureParameteri(t, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
-        Gl.TextureParameteri(t, Gl.TEXTURE_MAG_FILTER, Gl.NEAREST);
+        uint t = Renderer.OnVulkan ? VkTextures.NewName() : Solid(white);
+        if (t == 0) return 0;
+        MirrorSolid(t, 1, 1, white, NearestSampler);
+        if (Renderer.OnVulkan && !VkTextures.Has(t)) return 0;
         _owned.Add(t);
         _standIn.White = t;
-        MirrorSolid(t, 1, 1, white, NearestSampler);
         _log?.Info($"OwnedTextures: minted the white null-texture stand-in (tid {t}) -- a diffuse with no GL id now draws as vanilla draws it");
         return (int)t;
     }
@@ -37,19 +32,27 @@ internal static unsafe partial class OwnedTextures
     internal static int NullTid()
     {
         if (_standIn.Black != 0) return (int)_standIn.Black;
+        uint t = Renderer.OnVulkan ? VkTextures.NewName() : Solid(0);
+        if (t == 0) return 0;
+        MirrorSolid(t, 1, 1, 0, NearestSampler);
+        if (Renderer.OnVulkan && !VkTextures.Has(t)) return 0;
+        _owned.Add(t);
+        _standIn.Black = t;
+        return (int)t;
+    }
+
+    /// <summary>One nearest-filtered RGBA8 texel <paramref name="rgba"/> in GL; 0 with no context or no name.</summary>
+    private static uint Solid(uint rgba)
+    {
         if (!GlContextService.Available) return 0;
         uint t;
         Gl.CreateTextures(Gl.TEXTURE_2D, 1, &t);
         if (t == 0) return 0;
-        uint zero = 0;
         Gl.TextureStorage2D(t, 1, Gl.RGBA8, 1, 1);
-        Gl.TextureSubImage2D(t, 0, 0, 0, 1, 1, Gl.RGBA, Gl.UNSIGNED_BYTE, &zero);
+        Gl.TextureSubImage2D(t, 0, 0, 0, 1, 1, Gl.RGBA, Gl.UNSIGNED_BYTE, &rgba);
         Gl.TextureParameteri(t, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
         Gl.TextureParameteri(t, Gl.TEXTURE_MAG_FILTER, Gl.NEAREST);
-        _owned.Add(t);
-        _standIn.Black = t;
-        MirrorSolid(t, 1, 1, zero, NearestSampler);
-        return (int)t;
+        return t;
     }
 
     /// <summary>The <see cref="WhiteTid"/> and <see cref="NullTid"/> names, 0 until minted. Dropped (never

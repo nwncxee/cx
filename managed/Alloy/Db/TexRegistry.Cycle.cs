@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using CX.Framework;
 using CX.Graphics;
+using CX.Graphics.Rhi;
+using CX.Rhi;
 
 namespace CX.Alloy.Db;
 
@@ -133,7 +135,7 @@ internal static unsafe partial class TexRegistry
         long now = System.Diagnostics.Stopwatch.GetTimestamp();
         float dt = _cycleLast == 0 ? 0f : (now - _cycleLast) / (float)System.Diagnostics.Stopwatch.Frequency;
         _cycleLast = now;
-        if (_cycling.Count == 0 || Gl.TextureSubImage2D == null) return;
+        if (_cycling.Count == 0 || !Renderer.OnVulkan && Gl.TextureSubImage2D == null) return;
         for (int k = _cycling.Count - 1; k >= 0; k--)
         {
             int i = _cycling[k];
@@ -154,6 +156,15 @@ internal static unsafe partial class TexRegistry
     private static void UploadCell(uint name, Cycle c)
     {
         int x = c.Frame % c.NumX * c.CellW, y = c.Frame / c.NumX * c.CellH;
+        if (Renderer.OnVulkan)
+        {
+            ImageId img = VkTextures.Image((int)name);
+            if (img.IsNull || VkTextures.Device(_log) is not VkBackend vk) return;
+            byte[] px;
+            fixed (byte* sheet = c.Pixels) px = VkTextures.Pack(sheet, c.FullW, x, y, c.CellW, c.CellH, c.Px, nibbles: false, out _);
+            if (vk.Upload(img, 0, 0, px) && c.Mip) vk.GenerateMips(img);
+            return;
+        }
         int svAlign, svRow;
         Gl.GetIntegerv(Gl.UNPACK_ALIGNMENT, &svAlign);
         Gl.GetIntegerv(Gl.UNPACK_ROW_LENGTH, &svRow);

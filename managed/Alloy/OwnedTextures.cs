@@ -420,6 +420,7 @@ internal static unsafe partial class OwnedTextures
     /// widths). Accounting only -- a driver that answers nothing costs a zero, not a refusal.</summary>
     private static long Measure(uint tex)
     {
+        if (Renderer.OnVulkan) return VkTextures.Bytes(tex);
         long total = 0;
         for (int level = 0; level < MaxLevels; level++)
         {

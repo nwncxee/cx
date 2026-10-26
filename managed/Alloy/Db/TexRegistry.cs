@@ -472,7 +472,7 @@ internal static unsafe partial class TexRegistry
     /// <see cref="AlloyRenderer.ZeroHandle"/> must not run on the game thread beside a staging.</summary>
     private static void ZeroDyingHandles()
     {
-        bool gl = GlContextService.Current46 && Gl.MakeTextureHandleNonResidentARB != null;
+        bool gl = !Renderer.OnVulkan && GlContextService.Current46 && Gl.MakeTextureHandleNonResidentARB != null;
         while (true)
         {
             ulong v;

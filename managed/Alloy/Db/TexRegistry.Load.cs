@@ -550,20 +550,23 @@ internal static unsafe partial class TexRegistry
             bool clamp, nearest, mip;
             lock (_lock) { name = _name[i]; clamp = _clamp[i]; nearest = _nearest[i]; mip = _mipmap[i]; }
             if (name == 0) continue;
-            uint target = Gl.GetTextureHandleARB != null ? CloneLevels(name) : name;
+            uint target = Renderer.OnVulkan ? VkTextures.NewName() : Gl.GetTextureHandleARB != null ? CloneLevels(name) : name;
             if (target == 0)
             {
                 if (LoudOnce("clone")) _log?.Always($"TexRegistry: the sampler change on \"{_resref[i]}\" could not copy the texture -- it keeps the state it was minted with");
                 continue;
             }
-            int wrap = clamp ? Gl.CLAMP_TO_EDGE : Gl.REPEAT;
-            Gl.TextureParameteri(target, Gl.TEXTURE_WRAP_S, wrap);
-            Gl.TextureParameteri(target, Gl.TEXTURE_WRAP_T, wrap);
-            Gl.TextureParameteri(target, Gl.TEXTURE_MAG_FILTER, nearest ? Gl.NEAREST : Gl.LINEAR);
-            Gl.TextureParameteri(target, Gl.TEXTURE_MIN_FILTER,
-                !mip ? (nearest ? Gl.NEAREST : Gl.LINEAR)
-                     : nearest ? Gl.NEAREST_MIPMAP_NEAREST : Gl.LINEAR_MIPMAP_LINEAR);
-            Gl.TextureParameteri(target, Gl.TEXTURE_MAX_ANISOTROPY, mip && !nearest ? Aniso() : 1);
+            if (!Renderer.OnVulkan)
+            {
+                int wrap = clamp ? Gl.CLAMP_TO_EDGE : Gl.REPEAT;
+                Gl.TextureParameteri(target, Gl.TEXTURE_WRAP_S, wrap);
+                Gl.TextureParameteri(target, Gl.TEXTURE_WRAP_T, wrap);
+                Gl.TextureParameteri(target, Gl.TEXTURE_MAG_FILTER, nearest ? Gl.NEAREST : Gl.LINEAR);
+                Gl.TextureParameteri(target, Gl.TEXTURE_MIN_FILTER,
+                    !mip ? (nearest ? Gl.NEAREST : Gl.LINEAR)
+                         : nearest ? Gl.NEAREST_MIPMAP_NEAREST : Gl.LINEAR_MIPMAP_LINEAR);
+                Gl.TextureParameteri(target, Gl.TEXTURE_MAX_ANISOTROPY, mip && !nearest ? Aniso() : 1);
+            }
             ulong fresh;
             lock (_lock)
             {
@@ -664,6 +667,14 @@ internal static unsafe partial class TexRegistry
     private static uint Upload(Job j, out string? why)
     {
         why = null;
+        if (Renderer.OnVulkan)
+        {
+            uint n = VkTextures.NewName();
+            MirrorJob(n, j);
+            if (VkTextures.Has(n)) return n;
+            why = $"Vulkan refused a {j.W}x{j.H} {j.Levels}-level 0x{j.GlFmt:x} image";
+            return 0;
+        }
         if (Gl.CreateTextures == null || Gl.TextureStorage2D == null) { why = "no GL 4.5 direct state access"; return 0; }
         uint dst; Gl.CreateTextures(Gl.TEXTURE_2D, 1, &dst);
         if (dst == 0) { why = "glCreateTextures returned no name"; return 0; }
@@ -883,6 +894,7 @@ internal static unsafe partial class TexRegistry
     private static ulong MintHandle(uint name, string resref)
     {
         if (name == 0) return 0;
+        if (Renderer.OnVulkan) return VkTextures.HandleOf(name);
         if (Gl.GetTextureHandleARB == null || Gl.MakeTextureHandleResidentARB == null) return 0;
         ulong v = Gl.GetTextureHandleARB(name);
         if (v == 0)
@@ -893,7 +905,6 @@ internal static unsafe partial class TexRegistry
             return 0;
         }
         Gl.MakeTextureHandleResidentARB(v);
-        VkTextures.NoteHandle(v, (int)name);
         return v;
     }
 

@@ -37,7 +37,7 @@ internal static unsafe partial class OwnedTextures
     /// draws; the pre-context one is still recorded, because it is what owes <see cref="RefreshPreContext"/>.</summary>
     private static bool AdoptCube(IntPtr tex, int cell)
     {
-        if (!_armed || !AurTex.IsBasic(tex)) return false;
+        if (!_armed || Renderer.OnVulkan || !AurTex.IsBasic(tex)) return false;
         var b = new CAurTextureBasic(tex);
         uint* cells = (uint*)b.CellNames;
         int n = b.NumX * b.NumY;

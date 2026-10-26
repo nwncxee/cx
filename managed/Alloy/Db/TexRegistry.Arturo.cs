@@ -124,7 +124,7 @@ internal static unsafe partial class TexRegistry
     private sealed class ArturoState
     {
         public long Last, Warps;
-        public int Unbuilt, Flat, Huge;
+        public int Unbuilt, Flat, Huge, Vk;
         /// <summary>The warp program and the turn table, both per context; <see cref="Why"/> is set and said
         /// once when the device would not give us either, and every ripple then draws unwarped.</summary>
         public uint Prog, Turn;
@@ -235,6 +235,8 @@ internal static unsafe partial class TexRegistry
         // `distort`, so vanilla has no ripple here either.
         if (j.Arturo.Distort == 0) { _artState.Flat++; return; }
         if (j.Ripple == null) { _artState.Unbuilt++; return; }
+        // ponytail: the warp is a GL compute pass; on Vulkan the texture draws its source image, said in the note
+        if (Renderer.OnVulkan) { _artState.Vk++; return; }
         lock (_lock)
         {
             if ((_gen[j.Slot] & 0xFFF) != j.Gen) return;
@@ -500,6 +502,7 @@ internal static unsafe partial class TexRegistry
         return $", {live} rippling ({_artState.Warps} GPU warps)"
              + (_artState.Why != null ? $", ARTURO RIPPLES STAND DOWN ({_artState.Why})" : "")
              + (_artState.Unbuilt > 0 ? $", {_artState.Unbuilt} ARTURO TEXTURE(S) NOT ANIMATED (compressed, or not a power of two)" : "")
+             + (_artState.Vk > 0 ? $", {_artState.Vk} ARTURO TEXTURE(S) NOT ANIMATED ON VULKAN (the warp is not ported)" : "")
              + (_artState.Huge > 0 ? $", {_artState.Huge} ARTURO GRID(S) CLAMPED to {ArturoGridMax}" : "")
              + (_artState.Flat > 0 ? $", {_artState.Flat} arturo without distort (vanilla draws those flat too)" : "");
     }

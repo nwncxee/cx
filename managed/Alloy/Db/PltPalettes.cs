@@ -131,6 +131,14 @@ internal static unsafe class PltPalettes
             }
             return;
         }
+        if (Renderer.OnVulkan)
+        {
+            // Vulkan sends the bytes through Sent; the name is the identity a GUI draw names the palette by
+            if (_tex == 0) _tex = VkTextures.NewName();
+            _dirty = false;
+            _uploads++;
+            return;
+        }
         if (Gl.CreateTextures == null || Gl.TextureStorage2D == null) return;
         GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, _tex); _tex = 0;
         uint t; Gl.CreateTextures(Gl.TEXTURE_2D, 1, &t);
@@ -171,7 +179,7 @@ internal static unsafe class PltPalettes
     /// <summary>Bind the master palette for a pass that resolves PLTs. Nothing else uses the unit.</summary>
     internal static void Bind()
     {
-        if (_tex != 0 && Gl.BindTextureUnit != null) Gl.BindTextureUnit(Unit, _tex);
+        if (_tex != 0 && !Renderer.OnVulkan && Gl.BindTextureUnit != null) Gl.BindTextureUnit(Unit, _tex);
     }
 
     /// <summary>Load the engine's seven defaults. Alloy mode calls this where the engine's own init does.

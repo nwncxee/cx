@@ -28,6 +28,12 @@ public sealed unsafe partial class AlloyRenderer
         if (OwnedTextures.Armed && !OwnedTextures.IsOwned(tid)) return 0;
         if (Probe(tid, out int hit, out int free)) return _hVal[hit];
         if (free < 0) return 0;                        // table full: no handle, caller falls back
+        if (Renderer.OnVulkan)
+        {
+            ulong vk = VkTextures.HandleOf((uint)tid);
+            _hTid[free] = tid; _hVal[free] = vk; _hRes[free] = false;
+            return vk;
+        }
         ulong v = Gl.GetTextureHandleARB((uint)tid);
         if (Diag._handleDiagLeft > 0) HandleDiag(tid, v);
         // A failed mint is NOT cached. It used to be, and the enrollment wipe retried it within a second;
@@ -36,7 +42,6 @@ public sealed unsafe partial class AlloyRenderer
         Gl.MakeTextureHandleResidentARB(v);
         FrameZones.Count(FrameZones.Ev.Mint);
         _hTid[free] = tid; _hVal[free] = v; _hRes[free] = true;
-        VkTextures.NoteHandle(v, tid);
         return v;
     }
 

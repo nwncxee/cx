@@ -170,8 +170,25 @@ internal static unsafe partial class OwnedTextures
     private static void Upload(TransJob job)
     {
         if (job.Ctx != _transCtx || !_res.TryGetValue(job.Key, out Entry e) || e.Owned != job.Src) { _transStale++; return; }
+        uint dst = Renderer.OnVulkan ? VkTextures.NewName() : UploadGl(job);
+        if (dst == 0) return;
+        // The funnel's scan belongs to the RESOURCE, not to the name: the swap retires the scanned name, so
+        // without this a transcoded cutout reads as unscanned and the caster pass stops testing its alpha.
+        bool scanned = _stats.TryGetValue(job.Src, out Stat st);
+        MirrorTranscode(job.Src, dst, job.Bc3, job.Levels, job.Lw, job.Lh, job.Off, job.Blocks);
+        if (Renderer.OnVulkan && !VkTextures.Has(dst)) { _transFailed++; return; }
+        Replace(job.Key, job.Etid, dst, job.Compressed);
+        if (scanned) _stats[dst] = st; else _stats.Remove(dst);
+        FrameZones.Count(FrameZones.Ev.Transcode);
+        _transDone++;
+        _censusTrans++; _censusSaved += job.Bytes > job.Compressed ? job.Bytes - job.Compressed : 0;
+    }
+
+    /// <summary>The job's BCn chain into a new GL texture under the raw upload's sampler; 0 (counted) when refused.</summary>
+    private static uint UploadGl(TransJob job)
+    {
         uint dst; Gl.CreateTextures(Gl.TEXTURE_2D, 1, &dst);
-        if (dst == 0) { _transFailed++; return; }
+        if (dst == 0) { _transFailed++; return 0; }
         // DSA uploads still read through PIXEL_UNPACK_BUFFER, so the engine's (if any) steps aside.
         int svUnpackBuf; Gl.GetIntegerv(Gl.PIXEL_UNPACK_BUFFER_BINDING, &svUnpackBuf);
         if (svUnpackBuf != 0) Gl.BindBuffer(Gl.PIXEL_UNPACK_BUFFER, 0);
@@ -199,17 +216,9 @@ internal static unsafe partial class OwnedTextures
                 _bcn = false;
                 _log?.Info($"OwnedTextures: BCn transcode DISABLED -- {_bcnFails} driver refusals (last 0x{err:x}); uploads stay raw until the next context");
             }
-            return;
+            return 0;
         }
-        // The funnel's scan belongs to the RESOURCE, not to the name: the swap retires the scanned name, so
-        // without this a transcoded cutout reads as unscanned and the caster pass stops testing its alpha.
-        bool scanned = _stats.TryGetValue(job.Src, out Stat st);
-        MirrorTranscode(job.Src, dst, job.Bc3, job.Levels, job.Lw, job.Lh, job.Off, job.Blocks);
-        Replace(job.Key, job.Etid, dst, job.Compressed);
-        if (scanned) _stats[dst] = st; else _stats.Remove(dst);
-        FrameZones.Count(FrameZones.Ev.Transcode);
-        _transDone++;
-        _censusTrans++; _censusSaved += job.Bytes > job.Compressed ? job.Bytes - job.Compressed : 0;
+        return dst;
     }
 
     internal static string TranscodeNote()
