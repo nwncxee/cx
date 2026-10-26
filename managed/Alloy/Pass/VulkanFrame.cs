@@ -32,7 +32,7 @@ internal static class VulkanFrame
 
     /// <summary>Render this frame into the composite. A frame that cannot -- no backend, no composite, a refused
     /// submit -- fails Alloy loudly: the screen would otherwise hold a stale frame.</summary>
-    internal static unsafe void Run(ExtenderLog? log, in Matrix4x4 vp, in Matrix4x4 view, in Matrix4x4 proj,
+    internal static unsafe void Run(ExtenderLog? log, in Matrix4x4 vp, in Matrix4x4 vpClean, in Matrix4x4 view, in Matrix4x4 proj,
                                     int* viewport, int* display, float near, float far,
                                     bool lightingOn, bool perspective, int groups)
     {
@@ -50,7 +50,7 @@ internal static class VulkanFrame
             AlloyGate.Fail("the Vulkan cull did not record (logged above) -- Alloy has no visibility test");
             return;
         }
-        if (!AlloyRenderer.VkRecordFrame(vk, cl, vk.Composite, vp, view, proj, viewport, display, near, far,
+        if (!AlloyRenderer.VkRecordFrame(vk, cl, vk.Composite, vp, vpClean, view, proj, viewport, display, near, far,
                                          lightingOn, perspective, groups, log))
         {
             AlloyGate.Fail("the Vulkan colour bracket did not record (logged above)");

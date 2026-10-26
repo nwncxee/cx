@@ -36,7 +36,7 @@ internal static unsafe class TaaStage
 
     /// <summary>History invalid: the next resolve takes the current frame whole. World edge (area transition)
     /// and every /post taa 1.</summary>
-    internal static void Reset() => _gl.Valid = false;
+    internal static void Reset() { _gl.Valid = false; PostStack.ResetVk(); }
 
     /// <summary>Context loss: forget every GL name.</summary>
     internal static void Forget()

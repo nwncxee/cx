@@ -24,6 +24,9 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The transparent-black 2D stand-in, for a sampler whose texture did not resolve.</summary>
     internal static ImageId VkStandIn2D => _vkc.Tex2D;
 
+    /// <summary>...and the 3D one.</summary>
+    internal static ImageId VkStandIn3D => _vkc.Tex3D;
+
     /// <summary>The caster map a lit stage's shadow sampler names, or the null id for a declaration that is not one:
     /// the sun cascades and the light cubes, each with its moving-caster mirror, and the four the blocker search
     /// reads unfiltered -- one left on the stand-in reads depth 1.0, finds no blocker and takes the hard tap where

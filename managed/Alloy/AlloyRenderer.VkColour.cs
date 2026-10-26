@@ -89,8 +89,6 @@ public sealed unsafe partial class AlloyRenderer
         /// rather than a blend of four, which is what GL's own sampler object strips the arrays down to.</summary>
         public SamplerId Raw;
         public CommandList? Side;
-        public PipelineId Encode;
-        public ShaderId EncodeVs, EncodeFs;
         public uint WhiteIndex, NullIndex;
         public long Drawn, Skipped;
         /// <summary>This frame's colour pass wrote the G-buffer.</summary>
@@ -221,7 +219,6 @@ public sealed unsafe partial class AlloyRenderer
             log.Always("AlloyRenderer: the Vulkan colour pass's constant resources were REFUSED (logged above)");
             return false;
         }
-        if (!VkMakeEncode(vk, s, log)) return false;
         log.Info($"AlloyRenderer: the Vulkan colour programs are built -- {VkPrograms.All.Length} programs, {MeshArena.Formats} arena layouts");
         return true;
     }

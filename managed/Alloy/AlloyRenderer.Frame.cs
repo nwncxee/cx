@@ -169,8 +169,8 @@ public sealed unsafe partial class AlloyRenderer
         // cull see the same jittered camera; the velocity pass takes it back out. Zero with TAA off.
         float jx = 0f, jy = 0f;
         Matrix4x4 vpClean = view * proj;
-        // the Vulkan frame has no TAA resolve to take the jitter back out, so it and the A/B's GL half draw unjittered
-        if (PostChain.TaaOn && !_capturing && !VkParity.Active && !Renderer.OnVulkan)
+        // the A/B's two halves draw unjittered, and so does a Vulkan frame whose TAA resolve did not build
+        if (PostChain.TaaOn && !_capturing && !VkParity.Active && !(Renderer.OnVulkan && PostStack.TaaVkFailed))
         {
             PostChain.Jitter(_frameSeq, PostChain.RenderSize(t.Vp2), PostChain.RenderSize(t.Vp3), out jx, out jy);
             proj.M31 += jx * proj.M34; proj.M32 += jy * proj.M34;
@@ -348,7 +348,7 @@ public sealed unsafe partial class AlloyRenderer
         if (Renderer.OnVulkan)
             // the camera the Vulkan frame draws through, so the pyramid tests against the depth it reduces
             CullPassVk.Stage(_capturing ? 0 : groups, cullDraws, _dSrc, _dSph, _recOwnCap + MaxSkyDraws,
-                             lodScale, _gOpaqueEnd, _eyePos, &vpClean);
+                             lodScale, _gOpaqueEnd, _eyePos, &vp);
         // Under alloy.backend vk GL's lists have no reader but the A/B's GL half.
         if (!Renderer.OnVulkan || VkParity.Active) fixed (CullSrcRec* src = _dSrc)
             // A probe capture draws the same batches six more times from six other cameras, so its
@@ -388,13 +388,12 @@ public sealed unsafe partial class AlloyRenderer
         bool onVulkan = Renderer.OnVulkan;
         bool ab = VkParity.Active;
         long batches0 = Counters._batches, draws0 = Counters._draws;
-        // no TAA resolves the Vulkan frame yet, so it draws through the unjittered camera
         if (onVulkan)
         {
             long tVk = FrameZones.Now;
             // CX-273: the decal tests' view-depth terms, which on GL the decal pass itself publishes
             DecalLayer.SetCamera(in f.Proj);
-            VulkanFrame.Run(_log, f.VpClean, f.View, f.Proj, viewport, display, f.Near, f.Far, f.LightingOn,
+            VulkanFrame.Run(_log, f.Vp, f.VpClean, f.View, f.Proj, viewport, display, f.Near, f.Far, f.LightingOn,
                             f.Perspective, f.Groups);
             FrameZones.Add(FrameZones.Zone.Vulkan, tVk);
         }

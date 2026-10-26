@@ -28,9 +28,9 @@ public sealed unsafe partial class AlloyRenderer
                                            bool Gbuf, int Decal = DecalLayer.ModeNone);
 
     /// <summary>The colour bracket into <paramref name="cl"/> after the cull: uploads, the depth prepass, the opaque,
-    /// cutout and wash-interior pass into the scene colour and G-buffer, the blended and additive pass, then the scene
-    /// colour encoded into <paramref name="composite"/>. False (logged) when the device refused something.</summary>
-    internal static bool VkRecordFrame(VkBackend vk, CommandList cl, ImageId composite, in Matrix4x4 vp,
+    /// cutout and wash-interior pass into the scene colour and G-buffer, the blended and additive pass, then the post chain
+    /// and stack into <paramref name="composite"/>. False (logged) when the device refused something.</summary>
+    internal static bool VkRecordFrame(VkBackend vk, CommandList cl, ImageId composite, in Matrix4x4 vp, in Matrix4x4 vpClean,
                                        in Matrix4x4 view, in Matrix4x4 proj, int* viewport, int* display, float near,
                                        float far, bool lightingOn, bool perspective, int groups, ExtenderLog log)
     {
@@ -125,7 +125,10 @@ public sealed unsafe partial class AlloyRenderer
 
         VkIdPaint(vk, cl, s, log);
 
-        VkEncode(cl, s, composite, display);
+        // the resolve grades a far pixel by its world ray, off the camera the dome drew through
+        if (!_capturing && (_skyN == 0 || !Matrix4x4.Invert(vp, out SkyInvVp))) SkyInvVp = default;
+        Matrix4x4 vpJ = vp, vpC = vpClean;
+        if (!PostStack.RecordVk(vk, cl, s.Hdr, s.Depth, &vpJ, &vpC, viewport, display, log)) return false;
         if (!s.Live)
         {
             s.Live = true;
@@ -407,44 +410,5 @@ public sealed unsafe partial class AlloyRenderer
         }
         s.Drawn += len;
         return true;
-    }
-
-    /// <summary>The encode into the composite: the linear scene colour to display space through the engine's gamma, at
-    /// the display rectangle. ponytail: the post chain's place until it ports -- no tonemap, no TAA, no bloom.</summary>
-    private static bool VkMakeEncode(VkBackend vk, VkColourState s, ExtenderLog log)
-    {
-        const string vs = "#version 460\nlayout(location = 0) out vec2 vUv;\nvoid main()\n{\n"
-                        + "    vec2 p = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2);\n    vUv = p;\n"
-                        + "    gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);\n}\n";
-        string fs = "#version 460\nlayout(binding = 0) uniform sampler2D uHdr;\nlayout(location = 0) in vec2 vUv;\n"
-                  + "layout(location = 0) out vec4 oColor;\nvoid main()\n{\n"
-                  + "    vec3 c = pow(clamp(texture(uHdr, vUv).rgb, 0.0, 1.0), vec3(1.0 / "
-                  + AlloyLights.SrgbGamma.ToString("F4", System.Globalization.CultureInfo.InvariantCulture) + "));\n"
-                  + "    oColor = vec4(c, 1.0);\n}\n";
-        s.EncodeVs = vk.CreateShader(new ShaderDesc(ShaderStage.Vertex, null, vs, "vk encode vs"));
-        s.EncodeFs = vk.CreateShader(new ShaderDesc(ShaderStage.Fragment, null, fs, "vk encode fs"));
-        var d = new PipelineDesc { Vs = s.EncodeVs, Fs = s.EncodeFs, Label = "vk encode" };
-        d.Targets.ColorCount = 1;
-        d.Targets.Colors[0] = Format.Rgba8;
-        d.Targets.Samples = 1;
-        s.Encode = vk.CreatePipeline(in d);
-        if (s.Encode.IsNull) log.Always("AlloyRenderer: the Vulkan encode pipeline was REFUSED (logged above)");
-        return !s.Encode.IsNull;
-    }
-
-    private static void VkEncode(CommandList cl, VkColourState s, ImageId composite, int* display)
-    {
-        // the scene colour was an attachment until here; hand it over before this pass begins
-        ReadOnlySpan<ImageId> hdr = [s.Hdr];
-        cl.ReadImages(hdr);
-        Span<ColorAttachment> colors = stackalloc ColorAttachment[1];
-        colors[0] = new ColorAttachment(composite, 0, 0, LoadOp.Clear, StoreOp.Store, new Vector4(0f, 0f, 0f, 1f));
-        cl.BeginRenderPass(new RenderPassDesc(colors));
-        cl.SetPipeline(s.Encode);
-        cl.SetViewport(display[0], display[1], display[2], display[3]);
-        ReadOnlySpan<ImageBinding> tex = [new(0, s.Hdr, s.Linear)];
-        cl.BindSet(0, new BindSet(default, default, tex, default));
-        cl.Draw(3);
-        cl.EndRenderPass();
     }
 }

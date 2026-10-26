@@ -11,7 +11,7 @@ namespace CX.Alloy;
 /// own <c>fsfbpostpr</c> chain ran on. Each stage reads the previous output and the LAST draws into the
 /// engine's target; a stage that does not build is dropped with a log line, the frame resolving without it.
 /// </summary>
-internal static unsafe class PostStack
+internal static unsafe partial class PostStack
 {
     /// <summary><c>GetGlobalShaderParami(2)</c>: the client's post-effect option mask, <c>#define
     /// POSTPROCESSING_TYPES_ENABLED</c> in every stock shader preamble (LoadAndCompileSingleShader).</summary>

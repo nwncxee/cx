@@ -151,6 +151,18 @@ internal static unsafe class MotionVectors
         _runs++;
     }
 
+    /// <summary>The camera history's half of <see cref="Run"/>, for the Vulkan frame's own velocity pass: this frame
+    /// queued for <see cref="RollHistory"/>, and last frame's camera returned.</summary>
+    internal static Matrix4x4 NoteVk(Matrix4x4* vpClean, int frameSeq)
+    {
+        if (!_hist.HasPrev) { _hist.PrevVp = *vpClean; _hist.HasPrev = true; }
+        NoteField(AlloyRenderer.TimeOfDay, frameSeq);
+        if (frameSeq != _camSeq) NoteCamera(vpClean, frameSeq);
+        _hist.PendingPrev = *vpClean; _hist.PendingSeq = frameSeq;
+        _runs++;
+        return _hist.PrevVp;
+    }
+
     /// <summary>Open the velocity target for the mover sweep, with the frame depth attached so LEQUAL
     /// keeps every mover fragment on its own surface. False when there is no target to draw into.</summary>
     internal static bool BeginMovers(uint depthTex, int* viewport)
