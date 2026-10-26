@@ -71,7 +71,8 @@ internal static unsafe class VkParity
     internal static bool GlPass(PassId id)
         => id is PassId.DepthPrepass or PassId.AmbientOcclusion or PassId.OpaqueOwned or PassId.SkyOwned
                or PassId.CutoutOwned or PassId.DeferredLights or PassId.BlendedOwned or PassId.FbCopy
-               or PassId.WaterOwned or PassId.AdditiveOwned or PassId.ParticlesOwned;
+               or PassId.WaterOwned or PassId.AdditiveOwned or PassId.BeamsOwned
+               or PassId.ParticlesOwned or PassId.HalosOwned;
 
     /// <summary>The shadow-bracket passes Vulkan bakes rather than GL -- <see cref="GlPass"/>'s counterpart for the
     /// bracket the A/B does not compare lane by lane.</summary>

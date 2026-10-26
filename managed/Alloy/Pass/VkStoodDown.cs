@@ -31,8 +31,6 @@ internal static class VkStoodDown
         new(PassId.CoverageOwned, "alloy.a2c (alpha-to-coverage foliage)", "cutouts take the hard alpha test"),
         new(PassId.GrassOwned, "grass", "no blades over the ground"),
         new(PassId.Reflections, "light.ssr (screen-space reflections)", "surfaces keep the probe alone"),
-        new(PassId.BeamsOwned, "effects.beams (light shafts)", "no shafts"),
-        new(PassId.HalosOwned, "effects.halos (light halos)", "no halo around a light"),
         new(PassId.WeatherOwned, "weather (rain and snow)", "nothing falls"),
         new(PassId.ProbeCapture, "light.probe / lightmap (the probe capture and the bake)", "neither is captured"),
         new(PassId.PostProcess, "post (bloom, tonemap, the camera velocity)", "the scene reaches the screen unprocessed"),

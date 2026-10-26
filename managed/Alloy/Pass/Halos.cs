@@ -12,7 +12,7 @@ namespace CX.Alloy;
 /// the line from the screen centre through the light. Population and layout are vanilla's, re-decided each frame
 /// at the enrol slot (<see cref="Flares"/>); an element draws its own texture, and where none is resident the
 /// procedural halo profile a hak can override. Vanilla's near-plane quad becomes a billboard of world size.</summary>
-internal static unsafe class Halos
+internal static unsafe partial class Halos
 {
     internal const string ShdHaloVs = "cx_halo_vs", ShdHaloFs = "cx_halo_fs";
     /// <summary>The occlusion probe, one invocation per halo. Not an overridable stage: it produces a
