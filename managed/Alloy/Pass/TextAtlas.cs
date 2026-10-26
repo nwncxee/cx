@@ -32,8 +32,8 @@ internal static unsafe partial class TextAtlas
     internal static bool Due => TextFontBake.Pending.Count > 0 || TextFonts.Orphans.Count > 0;
 
     /// <summary>Drain the bake queue. Cold: it runs on the frames right after a font is first named, and does
-    /// nothing at all on every other frame. Must be called inside Alloy's bracket: the uploads are 4.5 DSA
-    /// and the sweep deletes GL names, so the engine's 3.3 context is the wrong one for both.</summary>
+    /// nothing at all on every other frame. On GL it must be called inside Alloy's bracket (4.5 DSA uploads,
+    /// GL deletes); on Vulkan it touches only Vulkan images and needs no context.</summary>
     internal static void Pump()
     {
         Sweep();
@@ -73,7 +73,7 @@ internal static unsafe partial class TextAtlas
         for (int i = 0; i < orphans.Count; i++)
         {
             if (orphans[i] == 0) continue;
-            GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, orphans[i]);
+            if (!Renderer.OnVulkan) GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, orphans[i]);   // a Vulkan name has no GL object
             Forget(orphans[i]);
             Deleted++;
         }

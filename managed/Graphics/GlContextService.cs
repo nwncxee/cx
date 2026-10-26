@@ -130,12 +130,6 @@ public sealed unsafe class GlContextService : IExtenderService
     [DllImport("opengl32.dll")] private static extern int wglDeleteContext(IntPtr ctx);
     [DllImport("opengl32.dll")] private static extern IntPtr wglGetProcAddress(string name);
     [DllImport("gdi32.dll")] private static extern int SwapBuffers(IntPtr hdc);
-    [DllImport("user32.dll")] private static extern IntPtr WindowFromDC(IntPtr hdc);
-
-    /// <summary>The window both contexts draw to, as a Vulkan surface names it: the X display and window, or on Windows
-    /// the device context's window (no display). Zeros before the 4.6 context exists.</summary>
-    internal static (IntPtr Display, IntPtr Window) Window
-        => Win ? (IntPtr.Zero, _drw == IntPtr.Zero ? IntPtr.Zero : WindowFromDC(_drw)) : (_dpy, _drw);
 
     private static readonly bool Win = OperatingSystem.IsWindows();
 
@@ -185,8 +179,9 @@ public sealed unsafe class GlContextService : IExtenderService
         if (!_tried) { _tried = true; try { Create(); } catch (Exception e) { Fail($"EXCEPTION {e.Message}"); } }
         _periodFrames++;
         bool foreign = _entered, done = _workRan;
-        // a Vulkan world frame runs the work with no context, so a retired GL name may still be owed its delete
-        if (Available && !_heldElsewhere && (WorkDue || GpuGraveyard.Pending > 0) && Enter())
+        // a Vulkan session owns no GL object and its deferred work issues no GL: it runs here with no bracket
+        if (CX.Alloy.Renderer.OnVulkan) { if (WorkDue) RunInBracketHere(); }
+        else if (Available && !_heldElsewhere && (WorkDue || GpuGraveyard.Pending > 0) && Enter())
         {
             if (WorkDue) RunInBracketHere(); else GpuGraveyard.Drain(Presents);
             Leave();
@@ -700,10 +695,9 @@ public sealed unsafe class GlContextService : IExtenderService
         _heldElsewhere = false;
     }
 
-    /// <summary>Run <see cref="InBracket"/> on the thread that already holds the 4.6 context -- the work that
-    /// needs A context but not the Alloy pass (texture retires, the texture registry's drain, the arena pump,
-    /// the palette and glyph-atlas builds). With a render thread the game thread's bracket never opens, so
-    /// this is the ONE declaration that the frame's deferred work ran. A caller must hold the context.</summary>
+    /// <summary>Run <see cref="InBracket"/>, the frame's deferred work (texture retires, the registry's drain, the
+    /// palette and glyph-atlas builds), and declare it ran -- the ONE such declaration, render thread included. A GL
+    /// caller must hold the 4.6 context; under Vulkan the work issues no GL and needs none.</summary>
     public static void RunInBracketHere()
     {
         Action? work = InBracket;

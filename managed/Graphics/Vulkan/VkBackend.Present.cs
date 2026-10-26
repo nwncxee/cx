@@ -157,11 +157,10 @@ internal sealed unsafe partial class VkBackend
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr GetModuleHandleW(string? name);
 
-    /// <summary>The surface over the window GL's contexts draw to; null when made, else why not.</summary>
+    /// <summary>The surface over the game's window; null when made, else why not.</summary>
     private string? MakeSurface()
     {
-        (IntPtr dpy, IntPtr win) = GlContextService.Window;
-        if (win == IntPtr.Zero) return "the 4.6 context names no window";
+        if (SdlWindow.Native(out IntPtr dpy, out IntPtr win) is string no) return no;
         VkSurfaceKHR surface;
         VkResult r;
         if (Win)

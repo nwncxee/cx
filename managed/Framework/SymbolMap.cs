@@ -681,6 +681,12 @@ internal static unsafe class SymbolMap
     /// from it. C linkage.</summary>
     [Fn("int()")]
     public const string SdlGlGetSwapInterval = "SDL_GL_GetSwapInterval";
+    /// <summary>The SDL version the client links, which <c>SDL_GetWindowWMInfo</c> requires its caller to stamp. C linkage.</summary>
+    [Fn("void(byte* ver)")]
+    public const string SdlGetVersion = "SDL_GetVersion";
+    /// <summary>The window's native handles (X display + window, or the HWND): what a Vulkan surface is made over. C linkage.</summary>
+    [Fn("int(IntPtr window, byte* info)")]
+    public const string SdlGetWindowWmInfo = "SDL_GetWindowWMInfo";
     /// <summary><c>RenderInterface::Clear(uint mask)</c> @0x45d2a0 -- every engine clear (the frame's
     /// <c>Clear(3)</c> in <c>Update</c>, each GUI view's <c>Clear(2)</c>, snapshots) funnels through this static thunk
     /// to <c>GLRender::Clear</c>. Bits: 1 colour, 2 depth+stencil, 4 stencil.</summary>
@@ -2942,6 +2948,8 @@ internal static unsafe class SymbolMap
         [StatusBarSetStatus] = Nm("?SetStatus@CGuiStatusBar@@QEAAXM@Z"),
         [SdlGlSwapWindow] = Nm("SDL_GL_SwapWindow"),
         [SdlGlGetSwapInterval] = Nm("SDL_GL_GetSwapInterval"),
+        [SdlGetVersion] = Nm("SDL_GetVersion"),
+        [SdlGetWindowWmInfo] = Nm("SDL_GetWindowWMInfo"),
         [RiClear] = Nm("?Clear@RenderInterface@@SAXI@Z"),
         [RiSetClearColor] = Nm("?SetClearColor@RenderInterface@@SAXMMMM@Z"),
         [GlDefaultFramebuffer] = Nm("?cm_nDefaultFramebuffer@GLRender@@0IA"),

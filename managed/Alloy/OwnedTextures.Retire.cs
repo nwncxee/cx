@@ -179,7 +179,7 @@ internal static unsafe partial class OwnedTextures
             else AlloyRenderer.ForgetHandle(name);
             Forget(name);
             VkTextures.Forget(name);
-            if (delete && Gl.DeleteTextures != null) Gl.DeleteTextures(1, &name);
+            if (delete && !Renderer.OnVulkan && Gl.DeleteTextures != null) Gl.DeleteTextures(1, &name);   // a Vulkan name has no GL object
         }
         due.Clear();
         _log?.Info($"OwnedTextures: {(delete ? "released" : "retired (kept alive)")} {n} owned textures (engine names retired so far: {_retired})");

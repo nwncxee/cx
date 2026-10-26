@@ -105,8 +105,7 @@ internal sealed unsafe partial class VkBackend : IDevice
 
     public DeviceCaps Caps { get; }
 
-    /// <summary>Why the backend cannot run here, as a constant string, or null when it can. Asked once, from the
-    /// verdict, with the ENGINE's context current: the interop extensions and the device UUID are the driver's.</summary>
+    /// <summary>Why the backend cannot run here, or null when it can. Asked once, from the verdict.</summary>
     internal static string? Refusal(ExtenderLog log)
     {
         if (_probe.Refusal == null)
@@ -114,19 +113,18 @@ internal sealed unsafe partial class VkBackend : IDevice
             _probe.Refusal = Open(log, out VkInstance inst, out _, out _, out _) ?? "";
             if (inst.IsNotNull) new VkInstanceApi(in inst).vkDestroyInstance();
             log.Always(_probe.Refusal.Length == 0
-                ? "VkBackend: probe PASSED -- a Vulkan 1.3 device shares GL's UUID and can present to a window"
+                ? "VkBackend: probe PASSED -- a Vulkan 1.3 device can run the backend and present to a window"
                 : $"VkBackend: probe REFUSED -- {_probe.Refusal}");
         }
         return _probe.Refusal.Length == 0 ? null : _probe.Refusal;
     }
 
-    /// <summary>The instance and the physical device GL runs on, or why not. The instance is returned live
-    /// (null on the first refusals) for the caller to keep or destroy.</summary>
+    /// <summary>The instance and the best device that can run the backend -- discrete before integrated -- or why
+    /// none can. The instance is returned live (null on the first refusals) for the caller to keep or destroy.</summary>
     private static string? Open(ExtenderLog log, out VkInstance inst, out VkPhysicalDevice phys, out uint family,
                                 out VkPhysicalDeviceFeatures feats)
     {
         inst = default; phys = default; family = 0; feats = default;
-        if (GlInterop.Refusal() is string gl) return gl;
         foreach (string leaf in VulkanToolchain.Libraries)
             if (!VulkanToolchain.Load(leaf)) return "the staged shaderc or VMA library did not load from the install folder";
         if (!_probe.LoaderUp)
@@ -155,40 +153,56 @@ internal sealed unsafe partial class VkBackend : IDevice
         if (n == 0) return "the Vulkan loader lists no device";
         VkPhysicalDevice* list = stackalloc VkPhysicalDevice[(int)n];
         vki.vkEnumeratePhysicalDevices(&n, list);
-        string why = "no Vulkan device has GL's device UUID";
+        string? why = null;
+        int best = -1;
         for (int i = 0; i < n; i++)
         {
-            var id = new VkPhysicalDeviceIDProperties();
-            var props = new VkPhysicalDeviceProperties2 { pNext = &id };
-            vki.vkGetPhysicalDeviceProperties2(list[i], &props);
-            if (!GlInterop.OnDevice(new ReadOnlySpan<byte>(id.deviceUUID, GlInterop.UUID_SIZE_EXT))) continue;
-            if (props.properties.apiVersion < ApiFloor) return "the Vulkan device GL runs on is below Vulkan 1.3";
-            if (!HasExt(vki, list[i], "VK_EXT_depth_clip_control\0"u8))
-                return "the Vulkan device lacks VK_EXT_depth_clip_control (GL's -1..1 clip depth)";
-            if (!HasExt(vki, list[i], SwapchainExt)) return "the Vulkan device lacks VK_KHR_swapchain";
-            var clip = new VkPhysicalDeviceDepthClipControlFeaturesEXT();
-            var f11 = new VkPhysicalDeviceVulkan11Features { pNext = &clip };
-            var f12 = new VkPhysicalDeviceVulkan12Features { pNext = &f11 };
-            var f13 = new VkPhysicalDeviceVulkan13Features { pNext = &f12 };
-            var f2 = new VkPhysicalDeviceFeatures2 { pNext = &f13 };
-            vki.vkGetPhysicalDeviceFeatures2(list[i], &f2);
-            if (!f13.dynamicRendering || !f13.synchronization2) return "the Vulkan device lacks dynamic rendering or synchronization2";
-            if (Lacks(in f2.features, in f11, in f12) is string lack) return $"the Vulkan device lacks {lack}";
-            if (!clip.depthClipControl) return "the Vulkan device lacks depthClipControl";
-            uint qn = 0;
-            vki.vkGetPhysicalDeviceQueueFamilyProperties(list[i], &qn, null);
-            VkQueueFamilyProperties* q = stackalloc VkQueueFamilyProperties[(int)qn];
-            vki.vkGetPhysicalDeviceQueueFamilyProperties(list[i], &qn, q);
-            for (uint k = 0; k < qn; k++)
-            {
-                if ((q[k].queueFlags & (VkQueueFlags.Graphics | VkQueueFlags.Compute)) != (VkQueueFlags.Graphics | VkQueueFlags.Compute)) continue;
-                phys = list[i]; family = k; feats = f2.features;
-                log.Info($"VkBackend: device '{new string((sbyte*)props.properties.deviceName)}' Vulkan {Version(props.properties.apiVersion)}, queue family {k}");
-                return null;
-            }
-            why = "the Vulkan device GL runs on has no graphics+compute queue";
+            string? no = Suits(vki, list[i], out uint k, out VkPhysicalDeviceFeatures f, out VkPhysicalDeviceProperties props);
+            if (no != null) { why ??= $"'{new string((sbyte*)props.deviceName)}' {no}"; continue; }
+            int rank = Rank(props.deviceType);
+            if (rank <= best) continue;
+            best = rank; phys = list[i]; family = k; feats = f;
+            log.Info($"VkBackend: device '{new string((sbyte*)props.deviceName)}' ({props.deviceType}) Vulkan {Version(props.apiVersion)}, queue family {k}");
         }
-        return why;
+        return best >= 0 ? null : why ?? "the Vulkan loader lists no usable device";
+    }
+
+    /// <summary>A device kind's preference: a discrete GPU over an integrated one over anything else.</summary>
+    private static int Rank(VkPhysicalDeviceType t)
+        => t switch { VkPhysicalDeviceType.DiscreteGpu => 3, VkPhysicalDeviceType.IntegratedGpu => 2, VkPhysicalDeviceType.VirtualGpu => 1, _ => 0 };
+
+    /// <summary>Why <paramref name="d"/> cannot run the backend, or null with its graphics+compute queue family, features
+    /// and properties.</summary>
+    private static string? Suits(VkInstanceApi vki, VkPhysicalDevice d, out uint family, out VkPhysicalDeviceFeatures feats,
+                                 out VkPhysicalDeviceProperties props)
+    {
+        family = 0; feats = default;
+        var p2 = new VkPhysicalDeviceProperties2();
+        vki.vkGetPhysicalDeviceProperties2(d, &p2);
+        props = p2.properties;
+        if (props.apiVersion < ApiFloor) return "is below Vulkan 1.3";
+        if (!HasExt(vki, d, "VK_EXT_depth_clip_control\0"u8)) return "lacks VK_EXT_depth_clip_control (GL's -1..1 clip depth)";
+        if (!HasExt(vki, d, SwapchainExt)) return "lacks VK_KHR_swapchain";
+        var clip = new VkPhysicalDeviceDepthClipControlFeaturesEXT();
+        var f11 = new VkPhysicalDeviceVulkan11Features { pNext = &clip };
+        var f12 = new VkPhysicalDeviceVulkan12Features { pNext = &f11 };
+        var f13 = new VkPhysicalDeviceVulkan13Features { pNext = &f12 };
+        var f2 = new VkPhysicalDeviceFeatures2 { pNext = &f13 };
+        vki.vkGetPhysicalDeviceFeatures2(d, &f2);
+        if (!f13.dynamicRendering || !f13.synchronization2) return "lacks dynamic rendering or synchronization2";
+        if (Lacks(in f2.features, in f11, in f12) is string lack) return $"lacks {lack}";
+        if (!clip.depthClipControl) return "lacks depthClipControl";
+        uint qn = 0;
+        vki.vkGetPhysicalDeviceQueueFamilyProperties(d, &qn, null);
+        VkQueueFamilyProperties* q = stackalloc VkQueueFamilyProperties[(int)qn];
+        vki.vkGetPhysicalDeviceQueueFamilyProperties(d, &qn, q);
+        for (uint k = 0; k < qn; k++)
+        {
+            if ((q[k].queueFlags & (VkQueueFlags.Graphics | VkQueueFlags.Compute)) != (VkQueueFlags.Graphics | VkQueueFlags.Compute)) continue;
+            family = k; feats = f2.features;
+            return null;
+        }
+        return "has no graphics+compute queue";
     }
 
     /// <summary>The first feature the batch pass needs that the device does not have, or null: draw parameters for the

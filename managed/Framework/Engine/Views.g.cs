@@ -146,6 +146,8 @@ global using unsafe SceneRenderOnlyGobsFn = delegate* unmanaged<nint, void>;
 global using unsafe StatusBarSetStatusFn = delegate* unmanaged<nint, float, void>;
 global using unsafe SdlGlSwapWindowFn = delegate* unmanaged<nint, void>;
 global using unsafe SdlGlGetSwapIntervalFn = delegate* unmanaged<int>;
+global using unsafe SdlGetVersionFn = delegate* unmanaged<byte*, void>;
+global using unsafe SdlGetWindowWmInfoFn = delegate* unmanaged<nint, byte*, int>;
 global using unsafe RiClearFn = delegate* unmanaged<uint, void>;
 global using unsafe RiSetClearColorFn = delegate* unmanaged<float, float, float, float, void>;
 global using unsafe RiDeleteTexturesFn = delegate* unmanaged<uint, uint*, void>;
@@ -4459,6 +4461,14 @@ public static unsafe class EngineFn
     private static bool _SdlGlGetSwapIntervalDone;
     /// <inheritdoc cref="SymbolMap.SdlGlGetSwapInterval"/>
     public static SdlGlGetSwapIntervalFn SdlGlGetSwapInterval => (SdlGlGetSwapIntervalFn)(_SdlGlGetSwapIntervalDone ? _SdlGlGetSwapInterval : Resolve(ref _SdlGlGetSwapInterval, ref _SdlGlGetSwapIntervalDone, SymbolMap.SdlGlGetSwapInterval));
+    private static IntPtr _SdlGetVersion;
+    private static bool _SdlGetVersionDone;
+    /// <inheritdoc cref="SymbolMap.SdlGetVersion"/>
+    public static SdlGetVersionFn SdlGetVersion => (SdlGetVersionFn)(_SdlGetVersionDone ? _SdlGetVersion : Resolve(ref _SdlGetVersion, ref _SdlGetVersionDone, SymbolMap.SdlGetVersion));
+    private static IntPtr _SdlGetWindowWmInfo;
+    private static bool _SdlGetWindowWmInfoDone;
+    /// <inheritdoc cref="SymbolMap.SdlGetWindowWmInfo"/>
+    public static SdlGetWindowWmInfoFn SdlGetWindowWmInfo => (SdlGetWindowWmInfoFn)(_SdlGetWindowWmInfoDone ? _SdlGetWindowWmInfo : Resolve(ref _SdlGetWindowWmInfo, ref _SdlGetWindowWmInfoDone, SymbolMap.SdlGetWindowWmInfo));
     private static IntPtr _RiClear;
     private static bool _RiClearDone;
     /// <inheritdoc cref="SymbolMap.RiClear"/>
@@ -6536,6 +6546,18 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.SdlGlGetSwapInterval"/>; returns the slot holding the next layer, or null.</summary>
     public static SdlGlGetSwapIntervalFn* ChainSdlGlGetSwapInterval(this HookService h, SdlGlGetSwapIntervalFn handler, int priority) =>
         (SdlGlGetSwapIntervalFn*)h.Chain(SymbolMap.SdlGlGetSwapInterval, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.SdlGetVersion"/>; returns the original, or null.</summary>
+    public static SdlGetVersionFn InstallSdlGetVersion(this HookService h, SdlGetVersionFn handler) =>
+        (SdlGetVersionFn)h.Install(SymbolMap.SdlGetVersion, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.SdlGetVersion"/>; returns the slot holding the next layer, or null.</summary>
+    public static SdlGetVersionFn* ChainSdlGetVersion(this HookService h, SdlGetVersionFn handler, int priority) =>
+        (SdlGetVersionFn*)h.Chain(SymbolMap.SdlGetVersion, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.SdlGetWindowWmInfo"/>; returns the original, or null.</summary>
+    public static SdlGetWindowWmInfoFn InstallSdlGetWindowWmInfo(this HookService h, SdlGetWindowWmInfoFn handler) =>
+        (SdlGetWindowWmInfoFn)h.Install(SymbolMap.SdlGetWindowWmInfo, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.SdlGetWindowWmInfo"/>; returns the slot holding the next layer, or null.</summary>
+    public static SdlGetWindowWmInfoFn* ChainSdlGetWindowWmInfo(this HookService h, SdlGetWindowWmInfoFn handler, int priority) =>
+        (SdlGetWindowWmInfoFn*)h.Chain(SymbolMap.SdlGetWindowWmInfo, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.RiClear"/>; returns the original, or null.</summary>
     public static RiClearFn InstallRiClear(this HookService h, RiClearFn handler) =>
         (RiClearFn)h.Install(SymbolMap.RiClear, (IntPtr)handler);
