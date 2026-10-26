@@ -103,6 +103,9 @@ internal static unsafe partial class LightmapBake
     /// <summary>The page finish in flight: texel rows of its union encoded so far.</summary>
     private sealed class EncodeState { public int Row; }
     private static readonly EncodeState _enc = new();
+    /// <summary>Frames the next page has waited for the static caster set, and the most casters it waited on.</summary>
+    private sealed class HeldWaitState { public int Frames, Peak; }
+    private static readonly HeldWaitState _held = new();
     /// <summary>Texel rows of a union one encode dispatch covers: about 3 ms of a full-width union on a
     /// mid-range card. The background takes one band a frame, the hold as many as its steps allow.</summary>
     private const int EncodeRows = 128;
@@ -134,6 +137,8 @@ internal static unsafe partial class LightmapBake
     {
         // a queued rect is a pending one: with none pending, the scan below is 20-30k rects for nothing, every frame
         if (_pending == 0 || _frame - _queuedAt < (Hold ? HoldSettleFrames : SettleFrames)) return false;
+        // the bake renders the STATIC caster set: a caster still waiting out the mover hold (every one on a fresh load) is not in it yet
+        if (CasterPass.HeldStill > 0) { _held.Frames++; _held.Peak = Math.Max(_held.Peak, CasterPass.HeldStill); return false; }
         int page = int.MaxValue;
         for (int ri = 0; ri < _rectN; ri++)
             if (_rects[ri].State == RState.Queued && _rects[ri].Page < page) page = _rects[ri].Page;
@@ -177,8 +182,10 @@ internal static unsafe partial class LightmapBake
             }
         if (_logLeft > 0) _log?.Info($"LightmapBake: page {page} bake begins -- {_bakeRects.Count} rects, {_bakeLights.Count} static lights, "
                                      + $"{crowded} rects touched by more than {Channels} (their weaker lights' creature shadows are the live estimate)"
+                                     + (_held.Frames > 0 ? $", after {_held.Frames} frame(s) waiting for up to {_held.Peak} casters to join the static set" : "")
                                      + (_knownLogged ? "" : "; known differences on baked surfaces: no static specular beyond the one directional lobe, non-Static placeables cast no shadow from static lights, a fixed-disc penumbra where the live loop runs PCSS"));
         _knownLogged = true;
+        _held.Frames = 0; _held.Peak = 0;
         return true;
     }
 
