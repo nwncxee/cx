@@ -70,21 +70,25 @@ internal static unsafe class VkParity
     internal static readonly string[] StoodDown =
         ["uLmPages", "uSkyTerm", "uWeather", "uVFog", "uLightRecOn", "uCapture", "uOit"];
 
-    /// <summary>The lit terms Vulkan reads for real but the A/B FRAME cannot compare: the shadow bracket runs ahead of
-    /// <see cref="BeginFrame"/>, so it cannot know the frame is an A/B and bakes on one backend only -- GL's half
-    /// would then sample maps nothing wrote. Zeroed on both sides for that one frame.</summary>
-    internal static readonly string[] StoodDownAb = ["uLocalCubes"];
-
-    /// <summary>The pass block's receivers with no map on Vulkan, switched off in a staged block: no probe, and -- on
-    /// an A/B frame alone, for <see cref="StoodDownAb"/>'s reason -- no sun cascade either.</summary>
+    /// <summary>The pass block's receivers with no map on Vulkan, switched off in a staged block: no probe. The sun
+    /// cascades stand: the A/B frame bakes on both backends, so both sides read the same count over their own maps.</summary>
     internal static void StandDownPass(Span<byte> block)
     {
-        if (Active) MemoryMarshal.Write(block[AlloyRenderer.PbSunCascades..], 0);
         MemoryMarshal.Write(block[AlloyRenderer.PbProbeMips..], 0f);
     }
 
     /// <summary>This frame is the A/B: GL draws its Vulkan passes beside Vulkan's, and the two are compared.</summary>
     internal static bool Active => _s.Active;
+
+    /// <summary>Give this frame's A/B up before anything draws, saying why: a comparison one side cannot make is
+    /// worth less than no comparison. The next <c>/alloy vkab</c> arms another.</summary>
+    internal static void Refuse(string why)
+    {
+        if (!_s.Active) return;
+        _s.Active = false;
+        _s.Vk = null;
+        _s.Log?.Always($"[vkab] REFUSED -- {why}");
+    }
 
     internal static void Attach(ExtenderLog log) => _s.Log = log;
 
@@ -97,10 +101,13 @@ internal static unsafe class VkParity
                                          : "[vkab] REFUSED -- the A/B compares the Vulkan frame, and alloy.backend is not vk");
     }
 
-    /// <summary>At the frame's head: an armed A/B becomes this frame's, once.</summary>
+    /// <summary>At the frame's head: an armed A/B becomes this frame's, once. The SHADOW bracket calls this
+    /// first, ahead of the colour build, so the bake knows it is an A/B frame and runs on both backends; the
+    /// colour build's own call is then the no-op that keeps a frame with no bracket working as before.</summary>
     internal static void BeginFrame(bool capturing)
     {
         var s = _s;
+        if (s.Active) return;
         s.Active = s.Armed && Renderer.OnVulkan && !capturing;
         if (s.Active) s.Armed = false;
         s.Vk = null;

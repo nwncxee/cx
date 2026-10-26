@@ -338,7 +338,12 @@ public sealed unsafe partial class CasterPass
         _gGroups = g + 1; _gCreatures = creatures; _gN = n; _gMasked = maskedN;
         bool ok;
         fixed (CasterSrcRec* src = _gSrc)
-            ok = Renderer.OnVulkan ? VkGatherBegin(n, src) : CasterGather.Begin(n, _gGroups, src, true);
+        {
+            // an A/B frame publishes to BOTH, so each backend's bake selects out of the one staging
+            bool onVk = !Renderer.OnVulkan || VkGatherBegin(n, src);
+            bool onGl = Renderer.OnVulkan && !AbBake || CasterGather.Begin(n, _gGroups, src, true);
+            ok = onVk && onGl;
+        }
         if (ok) { _gDrawN = n; _submitMasked += maskedN; StageDynamicSource(); }
         else StandDynamicSource();
         return ok;

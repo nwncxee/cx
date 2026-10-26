@@ -370,7 +370,6 @@ public sealed unsafe partial class AlloyRenderer
         // the terms whose resources are not on Vulkan yet read as absent: no cube, no lightmap, no sky map, no weather,
         // no fog volume -- every one gates on the value it is zeroed to
         foreach (string name in VkParity.StoodDown) VkZero(p, name);
-        if (VkParity.Active) foreach (string name in VkParity.StoodDownAb) VkZero(p, name);
         int loose = VkArena(p.Block);
         int pass = lit ? VkArenaPass() : -1;
         if (loose < 0 || (lit && pass < 0) || (p.ReadsEngine && VkEngine() < 0)) return false;

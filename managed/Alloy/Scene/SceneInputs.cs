@@ -290,6 +290,9 @@ public sealed unsafe class SceneInputs : IExtenderService
     {
         _dbCamera = camera;
         if (!_enabled || _passDoneThisFrame) return;
+        // the A/B frame begins HERE, ahead of the bake: the bracket below bakes on both backends when it is one,
+        // so the comparison has real cascades and cubes on each side
+        VkParity.BeginFrame(false);
         if (_stage < 2) { _passDoneThisFrame = true; return; }
         ShadowFocus();
         if (_stage < 3) { _passDoneThisFrame = true; return; }
