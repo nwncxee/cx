@@ -101,11 +101,6 @@ internal static unsafe class VkUniformShim
         if (!p.IsEmpty) MemoryMarshal.AsBytes(lanes).CopyTo(p);
     }
 
-    /// <summary>A matrix member into the open capture: the type says how many floats it is, so no caller counts
-    /// them and no pointer is spanned.</summary>
-    internal static void Set(int loc, in System.Numerics.Matrix4x4 m)
-        => Set(loc, MemoryMarshal.Cast<System.Numerics.Matrix4x4, float>(new ReadOnlySpan<System.Numerics.Matrix4x4>(in m)));
-
     /// <summary>One float per ELEMENT of an array member, at that member's own stride: std140 pads every element of
     /// a float array to 16 bytes, so a contiguous copy would put all but the first in the padding.</summary>
     internal static void SetEach(int loc, ReadOnlySpan<float> elements)
