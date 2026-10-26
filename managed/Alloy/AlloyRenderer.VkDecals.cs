@@ -48,6 +48,16 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The scene depth the writer samples, the null id outside its pass.</summary>
     private static ImageId VkDecalDepth => _vkDecals.Writing ? _vkDecals.Depth : default;
 
+    /// <summary>Hand the pair the colour pass binds as storage images over, outside every render pass. Its first
+    /// bind of one lands wherever the first program that DECLARES it is bound, which may be after a draw by one
+    /// that does not -- and there a barrier cannot go. Unconditional: the stand-ins a frame without decals binds
+    /// are never written at all, so they reach their first bind undefined.</summary>
+    private static void VkDecalHandOver(CommandList cl, VkColourState s)
+    {
+        ReadOnlySpan<ImageId> pair = [VkDecalImage(false, s), VkDecalImage(true, s)];
+        cl.ReadImages(pair, Access.StorageRead);
+    }
+
     /// <summary>What a surface pass's lit draws push: fold the layer in, or nothing when there is no layer.</summary>
     private static int VkDecalFold => _vkDecals.Live ? DecalLayer.ModeFold : DecalLayer.ModeNone;
 

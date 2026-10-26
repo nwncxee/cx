@@ -84,6 +84,9 @@ public sealed unsafe partial class AlloyRenderer
         VkIdState s = _vkIds;
         if (!s.Armed || _lightViz != IdTarget.VizMode || _capturing) return;
         if (!VkIdVizMade(vk, s, log)) return;
+        // the prepass wrote it as a target: hand it over before the paint's pass begins, where a barrier can go
+        ReadOnlySpan<ImageId> target = [s.Tex];
+        cl.ReadImages(target);
         Span<ColorAttachment> colors = stackalloc ColorAttachment[1];
         colors[0] = new ColorAttachment(c.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default);
         cl.BeginRenderPass(new RenderPassDesc(colors));

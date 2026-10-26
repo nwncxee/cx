@@ -56,8 +56,9 @@ public readonly record struct BlitImageCmd(ImageId Src, Rect From, ImageId Dst, 
 public readonly record struct UpdateBufferCmd(BufferId Buffer, long Offset, int Bytes);
 /// <summary><see cref="Op.ZeroBuffer"/>: <see cref="Bytes"/> zero bytes from <see cref="Offset"/>, 0 meaning to the end.</summary>
 public readonly record struct ZeroBufferCmd(BufferId Buffer, long Offset, long Bytes);
-/// <summary><see cref="Op.ReadImages"/>'s header; the ids follow it.</summary>
-public readonly record struct ReadImagesCmd(int Images);
+/// <summary><see cref="Op.ReadImages"/>'s header; the ids follow it. <see cref="Access"/> says which read the
+/// hand-over is for: a sampled texture, or a storage image, which wants a layout of its own.</summary>
+public readonly record struct ReadImagesCmd(int Images, Access Access);
 
 /// <summary>One pass's recorded commands: an 8-byte opcode word and a fixed record per command, spans copied in
 /// after it, in one reused byte arena. Recording allocates nothing once the arena reaches the pass's high water;
@@ -201,14 +202,14 @@ public sealed class CommandList
 
     public void Dispatch(int x, int y = 1, int z = 1) { Head(Op.Dispatch); Put(new DispatchCmd(x, y, z)); Sent(); }
 
-    /// <summary>Every image in <paramref name="images"/> is read as a sampled texture from here on: a pass that
-    /// wrote one as a target hands it over outside any render pass, so a later bind of it needs no barrier where
-    /// the backend cannot place one. A no-op where layouts are not a thing.</summary>
-    public void ReadImages(ReadOnlySpan<ImageId> images)
+    /// <summary>Every image in <paramref name="images"/> is read as <paramref name="access"/> from here on: a pass
+    /// that wrote one as a target hands it over outside any render pass, so a later bind of it needs no barrier
+    /// where the backend cannot place one. A no-op where layouts are not a thing.</summary>
+    public void ReadImages(ReadOnlySpan<ImageId> images, Access access = Access.SampledRead)
     {
         if (images.IsEmpty) return;
         Head(Op.ReadImages);
-        Put(new ReadImagesCmd(images.Length));
+        Put(new ReadImagesCmd(images.Length, access));
         Put(images);
         Sent();
     }

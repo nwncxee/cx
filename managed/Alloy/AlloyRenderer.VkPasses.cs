@@ -76,7 +76,7 @@ public sealed unsafe partial class AlloyRenderer
         int arena0 = s.ArenaUsed;
         var b = new VkBound { Fmt = -1, Tex = -1 };
         VkPassStart(side, w, h);
-        VkArmSampled(side, s);
+        VkHandOverReads(cl, s);
         bool ok = true;
         var plain = new VkRange(_depthEqual, true, false, false, colour, gbuf, VkDecalFold);
         ok &= VkIssueClass(side, ref b, 0, _gCutoutStart, plain, vp, viewport, near, far, indirect);
@@ -111,7 +111,7 @@ public sealed unsafe partial class AlloyRenderer
         arena0 = s.ArenaUsed;
         b = new VkBound { Fmt = -1, Tex = -1 };
         VkPassStart(side, w, h);
-        VkArmSampled(side, s);
+        VkHandOverReads(cl, s);
         var fwd = new VkRange(false, true, false, washes, VkTargets.Forward, false, VkDecalSkip);
         ok &= VkIssue(side, ref b, _gOpaqueEnd, _gBlendEnd, fwd, vp, viewport, near, far, indirect);
         // the layer's readers are done with the blended range: additive takes it as GL does after DecalLayer.End
@@ -142,16 +142,17 @@ public sealed unsafe partial class AlloyRenderer
         side.SetDepthBias(Issue.WashOffsetFactor, Issue.WashOffsetUnits);
     }
 
-    /// <summary>Name the images an earlier pass of this frame WROTE and the draws here sample, ahead of the first
-    /// draw: a bind inside a begun render pass cannot move an image into its read layout, and whether the first
-    /// program of the pass happens to declare them is not something to depend on.</summary>
-    private static void VkArmSampled(CommandList side, VkColourState s)
+    /// <summary>Hand over every image an earlier pass of this frame WROTE and the draws here read, OUTSIDE the pass:
+    /// a bind inside a begun render pass cannot move an image into its read layout, and which program of the pass
+    /// first declares one -- and whether a draw came before it -- is not something to depend on.</summary>
+    private static void VkHandOverReads(CommandList cl, VkColourState s)
     {
-        Span<ImageBinding> arm = stackalloc ImageBinding[2];
+        Span<ImageId> arm = stackalloc ImageId[2];
         int n = 0;
-        if (SsaoPassVk.Live) arm[n++] = new ImageBinding(TextureSlots.Ssao, SsaoPassVk.Visibility);
-        if (!s.DepthRead.IsNull) arm[n++] = new ImageBinding(TextureSlots.SsaoDepth, s.DepthRead);
-        if (n > 0) side.BindSet(0, new BindSet(default, default, arm[..n], default));
+        if (SsaoPassVk.Live) arm[n++] = SsaoPassVk.Visibility;
+        if (!s.DepthRead.IsNull) arm[n++] = s.DepthRead;
+        cl.ReadImages(arm[..n]);
+        VkDecalHandOver(cl, s);
     }
 
     /// <summary>The arena bytes the pass's binds gathered, uploaded ahead of it, then the pass and its draws.</summary>
@@ -431,6 +432,9 @@ public sealed unsafe partial class AlloyRenderer
 
     private static void VkEncode(CommandList cl, VkColourState s, ImageId composite, int* display)
     {
+        // the scene colour was an attachment until here; hand it over before this pass begins
+        ReadOnlySpan<ImageId> hdr = [s.Hdr];
+        cl.ReadImages(hdr);
         Span<ColorAttachment> colors = stackalloc ColorAttachment[1];
         colors[0] = new ColorAttachment(composite, 0, 0, LoadOp.Clear, StoreOp.Store, new Vector4(0f, 0f, 0f, 1f));
         cl.BeginRenderPass(new RenderPassDesc(colors));

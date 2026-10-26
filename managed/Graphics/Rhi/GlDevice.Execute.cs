@@ -322,7 +322,7 @@ internal sealed unsafe partial class GlDevice
 
     private static bool Dispatch(DispatchCmd d) { Gl.DispatchCompute((uint)d.X, (uint)d.Y, (uint)d.Z); return true; }
 
-    /// <summary>The sampled hand-over a Vulkan pass needs: nothing to do here, the ids are read past.</summary>
+    /// <summary>The hand-over a Vulkan pass needs: nothing to do here, the ids are read past.</summary>
     private static bool Read(ReadImagesCmd h, ref CommandReader r)
     {
         r.Span<ImageId>(h.Images);
