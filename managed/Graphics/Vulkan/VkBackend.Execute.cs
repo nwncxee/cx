@@ -121,6 +121,7 @@ internal sealed unsafe partial class VkBackend
                 Op.BindVertexBuffer => VertexBuffer(r.Read<VertexBufferCmd>()),
                 Op.DrawIndexedMulti => DrawMulti(r.Read<MultiDrawCmd>(), ref r),
                 Op.DrawIndexedIndirect => Indirect(r.Read<IndirectCmd>()),
+                Op.DrawIndirect => IndirectArrays(r.Read<IndirectCmd>()),
                 Op.SetDepthState => Depth(r.Read<DepthState>()),
                 Op.SetRasterState => Raster(r.Read<RasterState>()),
                 Op.ReadImages => Readable(r.Read<ReadImagesCmd>(), ref r),
@@ -303,6 +304,17 @@ internal sealed unsafe partial class VkBackend
         _vkd.vkCmdDrawIndexedIndirectCount(_cmd, cmds.Buffer, (ulong)c.Offset, count.Buffer, (ulong)c.CountOffset, (uint)c.MaxDraws, IndirectStride);
         return true;
     }
+
+    private bool IndirectArrays(IndirectCmd c)
+    {
+        if (!EnsureRendering()) return false;
+        if (!_buffers.TryGet(c.Commands.Value, out VkBuf cmds)) return Fault("DrawIndirect: stale command buffer");
+        if (c.MaxDraws > 0) _vkd.vkCmdDrawIndirect(_cmd, cmds.Buffer, (ulong)c.Offset, (uint)c.MaxDraws, ArraysStride);
+        return true;
+    }
+
+    /// <summary>A <c>VkDrawIndirectCommand</c>'s size: four words.</summary>
+    private const uint ArraysStride = 16;
 
     private bool Viewport(Rect v)
     {

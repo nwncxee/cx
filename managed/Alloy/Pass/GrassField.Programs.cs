@@ -43,7 +43,7 @@ internal static unsafe partial class GrassField
 
     private static GrassGlState _gl = new();
 
-    private struct Loc
+    internal struct Loc
     {
         public int Look, Segments, Width, Probe;
         public int WxMapXf, WxMapP;   // R2: the area wetness map's fit and look
@@ -55,14 +55,14 @@ internal static unsafe partial class GrassField
         public int SunTex, SunDynTex, CubeTex, CubeCount, CubeDynTex;   // CX-43: the rest of the receiver rides CxPass
     }
     /// <summary>The scatter's uniforms.</summary>
-    private struct ScatterLoc { public int Planes, Eye, Lod, Fade, SnowThin, Clamp, PushTex, PushWindow, Near, Clump, CardKeep, BladeCap; }
+    internal struct ScatterLoc { public int Planes, Eye, Lod, Fade, SnowThin, Clamp, PushTex, PushWindow, Near, Clump, CardKeep, BladeCap; }
 
     // ---- GL resources ------------------------------------------------------------------------
 
     private static bool EnsureBuffers()
     {
         if (_gl.Vao != 0) return true;
-        _faces ??= new GrassFace[MaxFaces];
+        EnsureCpu();
 
         // The card template: two crossed quads in blade-local space. x/y span [-0.5, 0.5] (one quad along x,
         // one along y), z runs 0 at the root to 1 at the tip, and the UVs are the 0..1 of one atlas cell.
@@ -123,16 +123,6 @@ internal static unsafe partial class GrassField
         // The displacement field. LINEAR so the push varies smoothly between texels (a nearest-sampled one
         // makes blades snap between neighbouring directions as a creature walks), CLAMP_TO_EDGE so a blade
         // just outside the window reads the border rather than wrapping to the far side of it.
-        if (_push == null)
-        {
-            _push = new byte[PushRes * PushRes * PushChannels];
-            _pushClear = new byte[_push.Length];
-            for (int i = 0; i < _pushClear.Length; i += PushChannels)
-            { _pushClear[i] = 128; _pushClear[i + 1] = 128; }
-            // Neutral from the start: the rebuild only undoes the rectangle the last list wrote, so anything
-            // it never wrote has to already be neutral rather than zero (which is a full push toward -x, -y).
-            Array.Copy(_pushClear, _push, _push.Length);
-        }
         uint tex;
         Gl.CreateTextures(Gl.TEXTURE_2D, 1, &tex);
         if (tex != 0)
@@ -142,6 +132,20 @@ internal static unsafe partial class GrassField
             _gl.PushTex = tex;
         }
         return true;
+    }
+
+    /// <summary>The CPU halves both backends draw from: the resident faces and the push field, allocated once.</summary>
+    private static void EnsureCpu()
+    {
+        _faces ??= new GrassFace[MaxFaces];
+        if (_push != null) return;
+        _push = new byte[PushRes * PushRes * PushChannels];
+        _pushClear = new byte[_push.Length];
+        for (int i = 0; i < _pushClear.Length; i += PushChannels)
+        { _pushClear[i] = 128; _pushClear[i + 1] = 128; }
+        // Neutral from the start: the rebuild only undoes the rectangle the last list wrote, so anything
+        // it never wrote has to already be neutral rather than zero (which is a full push toward -x, -y).
+        Array.Copy(_pushClear, _push, _push.Length);
     }
 
     /// <summary>The composed embedded fragment stage -- what an override REPLACES. Named so
@@ -242,7 +246,13 @@ internal static unsafe partial class GrassField
         uint c = GlProgram.Compute(ScatterCs, _log, "GrassField scatter");
         if (c == 0) return _down.Fail(_log, "the grass scatter program is unavailable", "grass falls back to the engine's own draw");
         _gl.ProgScatter = c;
-        _gl.LocS = new ScatterLoc
+        _gl.LocS = ScatterLocs(c);
+        return true;
+    }
+
+    /// <summary>The scatter's locations in program <paramref name="c"/>.</summary>
+    internal static ScatterLoc ScatterLocs(uint c)
+        => new ScatterLoc
         {
             Planes = GlProgram.Loc(c, "uPlanes"), Eye = GlProgram.Loc(c, "uEyePos"), Lod = GlProgram.Loc(c, "uLod"),
             Fade = GlProgram.Loc(c, "uFade"), SnowThin = GlProgram.Loc(c, "uSnowThin"), Clamp = GlProgram.Loc(c, "uClamp"),
@@ -250,8 +260,6 @@ internal static unsafe partial class GrassField
             Near = GlProgram.Loc(c, "uNear"), Clump = GlProgram.Loc(c, "uClump"), CardKeep = GlProgram.Loc(c, "uCardKeep"),
             BladeCap = GlProgram.Loc(c, "uBladeCap"),
         };
-        return true;
-    }
 
     /// <summary>The card path's velocity program: the SAME vertex text the colour pass draws with (an
     /// override's own sway included) and the depth stage's coverage decision, both with their velocity arm
@@ -289,7 +297,7 @@ internal static unsafe partial class GrassField
 
     internal static string ScatterCs => ShaderSource.Get("cx_grass_c.glsl");
 
-    private static Loc Locate(uint prog)
+    internal static Loc Locate(uint prog)
         => new Loc
         {
             Vp = GlProgram.Loc(prog, "uVP"), Eye = GlProgram.Loc(prog, "uEyePos"), Frame = GlProgram.Loc(prog, "uFrame"),

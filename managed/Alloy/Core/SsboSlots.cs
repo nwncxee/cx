@@ -26,6 +26,9 @@ internal static class SsboSlots
     /// <summary>Above the rig, for a pass whose program also reads it.</summary>
     internal const uint LightStats = 14, DeferredStats = 14, PairStats = 14, GrassMats = 14,
                         ParticleRecs = 14, ParticleIdx = 15;
+    /// <summary>The grass scatter's records as the Vulkan grass stages read them by instance, above the rig and the
+    /// material table they read beside it.</summary>
+    internal const uint GrassInst = 15;
     /// <summary>Compute scratch that reads no rig.</summary>
     internal const uint ParticleSpans = 8, ParticleGroups = 9,
                         CullSrc = 8, CullSphere = 9, CullCmd = 10, CullOut = 11, CullCount = 12, CullKey = 13, CullRej = 14,
@@ -59,7 +62,7 @@ internal static class SsboSlots
         ["CxCullSrc"] = CullSrc, ["CxCullSphere"] = CullSphere, ["CxCullCmd"] = CullCmd, ["CxCullOutIdx"] = CullOut,
         ["CxCullCount"] = CullCount, ["CxCullKey"] = CullKey, ["CxCullRej"] = CullRej, ["CxParityOut"] = ParityOut,
         ["CxGatherSrc"] = GatherSrc, ["CxGatherCmd"] = GatherCmd, ["CxGatherCount"] = GatherCount, ["CxCastSphere"] = CastSphere,
-        ["CxGrassFaces"] = GrassFaces, ["CxGrassPatches"] = GrassPatches, ["CxGrassOut"] = GrassOut, ["CxGrassCmd"] = GrassCmd,
+        ["CxGrassFaces"] = GrassFaces, ["CxGrassPatches"] = GrassPatches, ["CxGrassOut"] = GrassOut, ["CxGrassCmd"] = GrassCmd, ["CxGrassInst"] = GrassInst,
         ["CxHaloBuf"] = Halos, ["CxHaloVis"] = HaloVis, ["CxHiliteGlowBuf"] = Glow, ["CxTrigBuf"] = Trig, ["CxGuiBuf"] = Gui,
         ["CxProbeShOut"] = ProbeSh, ["CxBonePrevBuf"] = BonesPrev, ["CxDanglyPrevBuf"] = DanglyPrev,
         ["CxContentBuf"] = Content, ["CxUiCmdBuf"] = UiCmds,

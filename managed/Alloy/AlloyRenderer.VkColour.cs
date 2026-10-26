@@ -494,9 +494,11 @@ public sealed unsafe partial class AlloyRenderer
     }
 
     /// <summary>The program's set 0: each declaration it makes, bound to its real resource where that is on Vulkan and to
-    /// the stand-in of its kind otherwise. <paramref name="tex"/> is the batch's bound diffuse (GL name), 0 for none.</summary>
+    /// the stand-in of its kind otherwise. <paramref name="tex"/> is the batch's bound diffuse (GL name), 0 for none;
+    /// <paramref name="storage"/> and <paramref name="sampledOwn"/> are the caller's buffers and images by binding.</summary>
     private static void VkBindSet(CommandList cl, VkProg p, VkColourState s, int loose, int pass, BufferId slots, int tex,
-                                  ReadOnlySpan<int> extra = default, ReadOnlySpan<BufferBinding> storage = default)
+                                  ReadOnlySpan<int> extra = default, ReadOnlySpan<BufferBinding> storage = default,
+                                  ReadOnlySpan<ImageBinding> sampledOwn = default)
     {
         Span<BufferBinding> ubo = stackalloc BufferBinding[12];
         Span<BufferBinding> ssbo = stackalloc BufferBinding[16];
@@ -515,11 +517,11 @@ public sealed unsafe partial class AlloyRenderer
                               : engine >= 0 ? new BufferBinding(o.Binding, s.Arena, engine, sizeof(EngineBlock))
                               : new BufferBinding(o.Binding, s.ZeroUbo);
                     break;
-                case VkBindKind.StorageBlock when o.Binding == Db.ContentTable.Binding && !s.ContentRows.IsNull:
-                    ssbo[ns++] = new BufferBinding(o.Binding, s.ContentRows, 0, s.ContentSentN);
-                    break;
                 case VkBindKind.StorageBlock when Bound(storage, o.Binding) is { } own:
                     ssbo[ns++] = own;
+                    break;
+                case VkBindKind.StorageBlock when o.Binding == Db.ContentTable.Binding && !s.ContentRows.IsNull:
+                    ssbo[ns++] = new BufferBinding(o.Binding, s.ContentRows, 0, s.ContentSentN);
                     break;
                 case VkBindKind.StorageBlock:
                     ssbo[ns++] = new BufferBinding(o.Binding, o.Binding switch
@@ -533,11 +535,18 @@ public sealed unsafe partial class AlloyRenderer
                     images[ni++] = new ImageBinding(o.Binding, VkDecalImage(o.Name == "uDecalSurf", s), default, 0);
                     break;
                 default:
-                    sampled[nt++] = VkSampled(o, s, tex, extra);
+                    sampled[nt++] = Own(sampledOwn, o.Binding) ?? VkSampled(o, s, tex, extra);
                     break;
             }
         }
         cl.BindSet(0, new BindSet(ubo[..nu], ssbo[..ns], sampled[..nt], images[..ni]));
+    }
+
+    /// <summary>The caller's own image for sampled binding <paramref name="slot"/>, or null.</summary>
+    private static ImageBinding? Own(ReadOnlySpan<ImageBinding> own, uint slot)
+    {
+        foreach (ImageBinding b in own) if (b.Slot == slot) return b;
+        return null;
     }
 
     /// <summary>The caller's own buffer for storage binding <paramref name="slot"/>, or null.</summary>

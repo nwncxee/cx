@@ -112,6 +112,8 @@ public sealed unsafe partial class AlloyRenderer
         // ...and then ADR 0029's two dispatches, at the graph's own place: after the cutout pass and the sky,
         // before the blended one. A sky pixel has no G-buffer record, so the walk leaves it alone.
         VkDeferred(vk, cl, vp, view, proj, viewport, near, far, indirect ? CullPassVk.Slots(CullPassVk.PhaseColour) : s.Slots, log);
+        // the grass class where GL's graph has it: after the deferred lights it is lit beside, before the blended one
+        if (!VkGrassPass(vk, cl, s, vp, viewport, near, far, lightingOn, log)) return false;
         // the reflections at the graph's own place: after the deferred walk, before the blended class
         VkSsrRun(cl, view, proj, viewport, near, far, log);
 

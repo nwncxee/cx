@@ -71,7 +71,7 @@ internal static unsafe partial class GrassField
     /// instead of laying a trail, and one radius for every gob, there being no bounding sphere mapped.</summary>
     private static void BuildPush()
     {
-        if (_gl.PushTex == 0 || _push == null) return;
+        if (_push == null) return;
         _pushFrames++;
         _pushers = 0; _cullers = 0; _reticles = 0;
         _pushOut = 0; _pushNoGeom = 0; _pushIdle = 0; _pushWalkedNow = 0;
@@ -90,13 +90,16 @@ internal static unsafe partial class GrassField
         // 256KB upload. With `push` at 0 the list is empty, and an empty list that repeats is the same skip.
         EnsureMask();
         bool over = WalkPushers(collect: true);
-        if (!over && _gl.PushSynced && _pushNowN == _gl.PushWasN && SamePushers(_pushNowN))
+        // without a GL texture the field alone is the truth, and it is always consistent
+        bool synced = _gl.PushTex == 0 || _gl.PushSynced;
+        if (!over && synced && _pushNowN == _gl.PushWasN && SamePushers(_pushNowN))
         { _pushSkips++; return; }
 
         // Only what the LAST list wrote needs undoing; the rest of the field is still the neutral template it
         // was allocated as. An overflow (or a texture whose storage has never been written) takes the whole
         // field instead -- correct, counted, and never the silent half-measure.
-        bool full = over || !_gl.PushSynced;
+        bool full = over || !synced;
+        _vkg.PushGen++;
         int cx0 = full ? 0 : _pushRx0, cy0 = full ? 0 : _pushRy0;
         int cx1 = full ? PushRes - 1 : _pushRx1, cy1 = full ? PushRes - 1 : _pushRy1;
         ClearPush(_push, cx0, cy0, cx1, cy1);
@@ -266,7 +269,7 @@ internal static unsafe partial class GrassField
     /// rows of a sub-rectangle are <see cref="PushRes"/> apart in <see cref="_push"/>, not adjacent.</summary>
     private static void UploadPush(int x0, int y0, int x1, int y1)
     {
-        if (_push == null || x1 < x0 || y1 < y0) return;
+        if (_push == null || _gl.PushTex == 0 || x1 < x0 || y1 < y0) return;
         int w = x1 - x0 + 1, h = y1 - y0 + 1;
         bool strided = w != PushRes;
         if (strided) Gl.PixelStorei(Gl.UNPACK_ROW_LENGTH, PushRes);
