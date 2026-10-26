@@ -23,6 +23,10 @@ internal static unsafe class VkParity
         public uint[] Colour = [], Depth = [], G0 = [], G1 = [], G2 = [];
         /// <summary>The side wrote its G-buffer this frame; otherwise no G-buffer lane is compared.</summary>
         public bool Gbuf;
+        /// <summary>The visibility estimate as one float a texel, and whether the side wrote one: the AO pass's own
+        /// output, so the G-buffer's transfer weights are not the only place its difference can be read.</summary>
+        public uint[] Ao = [];
+        public bool HasAo;
     }
 
     /// <summary>What differed, in texels: geometry one side drew and the other did not, depth past <see cref="DepthTol"/>
@@ -47,7 +51,10 @@ internal static unsafe class VkParity
 
     private static ParityState _s = new();
 
-    private const int ColourWords = 2, DepthWords = 1, G01Words = 4, G2Words = 1;
+    private const int ColourWords = 2, DepthWords = 1, G01Words = 4, G2Words = 1, AoWords = 1;
+    /// <summary>A visibility texel is an R8 UNORM, so a step is this much: a difference under one step is the two
+    /// targets rounding the same estimate apart, and the mean is what says whether anything else is going on.</summary>
+    private const float AoStep = 1f / 255f;
     /// <summary>The copy stage's local size, as <c>cx_parity_c.glsl</c> declares it.</summary>
     private const int Group = 8;
     /// <summary>Window depth two invariant clip expressions on one GPU may still differ by: two compilers contract
@@ -123,7 +130,8 @@ internal static unsafe class VkParity
 
     /// <summary>The Vulkan frame's targets, after its submit: each lane copied into words and read back. False (logged)
     /// when the device refused it: the frame stays stood down and reports nothing.</summary>
-    internal static bool ReadVulkan(VkBackend vk, ImageId hdr, ImageId depth, ImageId g0, ImageId g1, ImageId g2, bool gbuf, int w, int h)
+    internal static bool ReadVulkan(VkBackend vk, ImageId hdr, ImageId depth, ImageId g0, ImageId g1, ImageId g2, bool gbuf,
+                                    ImageId ao, bool hasAo, int w, int h)
     {
         if (!_s.Active) return true;
         bool built = Ensure(vk);
@@ -135,10 +143,11 @@ internal static unsafe class VkParity
             s.Log?.Always("[vkab] REFUSED -- the Vulkan copy stages did not build (logged above)");
             return false;
         }
-        var l = new Lanes { Gbuf = gbuf };
+        var l = new Lanes { Gbuf = gbuf, HasAo = hasAo && !ao.IsNull };
         bool ok = Copy(vk, hdr, s.Float2, ColourWords, w, h, out l.Colour) && Copy(vk, depth, s.Float1, DepthWords, w, h, out l.Depth)
                   && (!gbuf || Copy(vk, g0, s.Uint4, G01Words, w, h, out l.G0) && Copy(vk, g1, s.Uint4, G01Words, w, h, out l.G1)
-                               && Copy(vk, g2, s.Uint1, G2Words, w, h, out l.G2));
+                               && Copy(vk, g2, s.Uint1, G2Words, w, h, out l.G2))
+                  && (!l.HasAo || Copy(vk, ao, s.Float1, AoWords, w, h, out l.Ao));
         if (!ok)
         {
             s.Log.Always("[vkab] REFUSED -- a Vulkan lane did not read back (logged above)");
@@ -158,7 +167,8 @@ internal static unsafe class VkParity
 
     /// <summary>GL's targets after its A/B passes, then the comparison: logged, with GL's and Vulkan's colour and the diff
     /// mask written beside <see cref="FrameTap"/>'s sets.</summary>
-    internal static void ReadGlAndReport(string issued, int* viewport, uint hdr, uint depth, uint g0, uint g1, uint g2, bool gbuf)
+    internal static void ReadGlAndReport(string issued, int* viewport, uint hdr, uint depth, uint g0, uint g1, uint g2, bool gbuf,
+                                         uint ao, bool hasAo)
     {
         var s = _s;
         if (!s.Active) return;
@@ -184,8 +194,11 @@ internal static unsafe class VkParity
             if (a == null || b == null || e == null) gl.Gbuf = false;
             else { gl.G0 = a; gl.G1 = b; gl.G2 = e; }
         }
+        if (hasAo && ao != 0 && s.Vk.HasAo && GlParity.Read(ao, Gl.RED, Gl.FLOAT, x, y, w, h, AoWords) is { } v)
+        { gl.Ao = v; gl.HasAo = true; }
         var mask = new byte[(long)w * h];
         Counts n = Compare(gl, s.Vk, w, h, mask);
+        issued += "; " + AoNote(gl, s.Vk);
         if (n.Gbuf) issued += $"; G0 {Words(gl.G0, s.Vk.G0, gl.G0, s.Vk.G0)}; G1 {Words(gl.G1, s.Vk.G1, gl.G0, s.Vk.G0)}";
         string set = $"{s.Seq}_vkab";
         try
@@ -200,6 +213,29 @@ internal static unsafe class VkParity
         s.Log.Always($"[vkab] {set} {w}x{h}: {Report(n)}; images {FrameTap.Dir}/{set}_{{gl,vk}}.pfm and _diff.ppm "
                    + $"(red = drawn on one side only, orange = depth, yellow = G-buffer, blue = colour); {issued}");
         s.Vk = null;
+    }
+
+    /// <summary>The two visibility estimates held against each other: the share of texels that differ at all, the share
+    /// past one R8 step, and the mean and worst absolute difference. The G-buffer's transfer weights carry this term
+    /// through a shared-exponent pack, where any difference rewrites every bit, so this is where its SIZE is readable.</summary>
+    internal static string AoNote(Lanes gl, Lanes vk)
+    {
+        if (!gl.HasAo || !vk.HasAo || gl.Ao.Length != vk.Ao.Length || gl.Ao.Length == 0) return "AO not compared (a side wrote none)";
+        long any = 0, wide = 0;
+        double sum = 0;
+        float max = 0;
+        for (long i = 0; i < gl.Ao.LongLength; i++)
+        {
+            float d = MathF.Abs(BitConverter.UInt32BitsToSingle(gl.Ao[i]) - BitConverter.UInt32BitsToSingle(vk.Ao[i]));
+            if (d > 0f) any++;
+            if (d > 1.5f * AoStep) wide++;
+            sum += d;
+            max = MathF.Max(max, d);
+        }
+        double n = gl.Ao.LongLength;
+        var c = System.Globalization.CultureInfo.InvariantCulture;
+        return $"AO off {(100.0 * any / n).ToString("0.##", c)}% of texels ({(100.0 * wide / n).ToString("0.##", c)}% past one "
+             + $"R8 step), mean |d| {(sum / n).ToString("0.#####", c)}, worst {max.ToString("0.###", c)}";
     }
 
     /// <summary>The counts as the log line says them: each as a share of the texels, the gaps named.</summary>

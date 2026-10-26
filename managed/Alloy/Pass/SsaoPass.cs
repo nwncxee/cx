@@ -97,6 +97,10 @@ internal static unsafe class SsaoPass
     /// <summary>True from this frame's pass until the next: the lit stage may read the texture.</summary>
     internal static bool Live { get; private set; }
 
+    /// <summary>The visibility texture the lit stage reads this frame, for a reader that compares it with another
+    /// renderer's (the A/B); 0 when the pass did not run.</summary>
+    internal static uint LiveTex => _gl.LiveOut;
+
     /// <summary>The lit stage's <c>uAoDirect</c>, read at every lit program bind.</summary>
     internal static float Direct => Ao.Direct.V;
     /// <summary><c>post.halfres</c>: the pass runs at half the frame's extent (a quarter of the pixels) and

@@ -492,7 +492,7 @@ public sealed unsafe partial class AlloyRenderer
     internal static void VkParityRead(VkBackend vk)
     {
         VkColourState s = _vkc;
-        VkParity.ReadVulkan(vk, s.Hdr, s.Depth, s.G0, s.G1, s.G2, s.GbufWritten, s.W, s.H);
+        VkParity.ReadVulkan(vk, s.Hdr, s.Depth, s.G0, s.G1, s.G2, s.GbufWritten, SsaoPassVk.Visibility, SsaoPassVk.Live, s.W, s.H);
     }
 
     /// <summary>A snap frame's Vulkan half, after the frame's submit: the finished scene colour beside the set.</summary>

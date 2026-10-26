@@ -96,6 +96,18 @@ internal static unsafe class VkUniformShim
         if (!p.IsEmpty) MemoryMarshal.AsBytes(lanes).CopyTo(p);
     }
 
+    /// <summary>One float per ELEMENT of an array member, at that member's own stride: std140 pads every element of
+    /// a float array to 16 bytes, so a contiguous copy would put all but the first in the padding.</summary>
+    internal static void SetEach(int loc, ReadOnlySpan<float> elements)
+    {
+        for (int e = 0; e < elements.Length; e++)
+        {
+            Span<byte> p = At(loc, e, sizeof(float));
+            if (p.IsEmpty) return;
+            MemoryMarshal.Write(p, in elements[e]);
+        }
+    }
+
     /// <summary>Integer lanes of one element (an ivec2, an ivec4) into the open capture.</summary>
     internal static void Set(int loc, ReadOnlySpan<int> lanes)
     {

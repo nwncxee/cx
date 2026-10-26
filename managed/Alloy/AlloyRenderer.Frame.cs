@@ -785,7 +785,8 @@ public sealed unsafe partial class AlloyRenderer
             _passCpu[(int)id] += self;
         }
         if (ab) VkParity.ReadGlAndReport($"Vulkan issued {batches1 - batches0} batches ({draws1 - draws0} draws), GL "
-                                         + $"{Counters._batches - batches1} ({Counters._draws - draws1}); GL's cull kept {CullPass.KeptNow()}; {VkTextures.SamplerParity()}", viewport, PostChain.HdrTex, PostChain.DepthTex, GBuffer.Tex(0), GBuffer.Tex(1), GBuffer.Tex(2), GBuffer.Written);
+                                         + $"{Counters._batches - batches1} ({Counters._draws - draws1}); GL's cull kept {CullPass.KeptNow()}; {VkTextures.SamplerParity()}", viewport, PostChain.HdrTex, PostChain.DepthTex, GBuffer.Tex(0), GBuffer.Tex(1), GBuffer.Tex(2), GBuffer.Written,
+                                         SsaoPass.LiveTex, SsaoPass.Live);
         long tTail = FrameZones.Now;
         PaintStreamFailures(display);
         GpuSpanEnd();
