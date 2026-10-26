@@ -92,7 +92,9 @@ internal static unsafe partial class GuiPassVk
             Open(cl, ref pass, ref b, screen, s.Depth, PresentTarget.Width, PresentTarget.Height, true, true, clear);
             Close(cl, ref pass);
         }
-        uint curTarget = 0;
+        // No target yet, which 0 does NOT mean here: 0 is the screen, so the first layer must open its pass. GL
+        // binds the base framebuffer before the loop instead, which is why its own latch starts at 0.
+        uint curTarget = uint.MaxValue;
         bool released = false;
         int li = from, solve = 0, runStart = 0, runEnd = 0;
         while (li < to || solve != 0)
@@ -142,7 +144,9 @@ internal static unsafe partial class GuiPassVk
                         v.Drawn = true;
                     }
                 }
-                else Open(cl, ref pass, ref b, screen, s.Depth, PresentTarget.Width, PresentTarget.Height, false, false);
+                // A screen pass clears the depth only where the layer asks, as GL's loop does; a model view's own
+                // depth is cleared with its colour above.
+                else Open(cl, ref pass, ref b, screen, s.Depth, PresentTarget.Width, PresentTarget.Height, l.Clear, false);
                 reopen = false;
             }
             else if (released) continue;

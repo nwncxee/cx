@@ -33,7 +33,7 @@ internal static unsafe partial class GuiPassVk
     private sealed class GuiVkState
     {
         public VkBackend? Dev;
-        public bool Failed, Live, OffThreadSaid, PrimSaid, BlendSaid, TexSaid, SolveSaid;
+        public bool Failed, Live, OffThreadSaid, PrimSaid, BlendSaid, SolveSaid, DropSaid;
         /// <summary>Alloy's own GUI program and the two loose terms it reads per flush.</summary>
         public GuiVkProg? Prog;
         public int BoneStart = -1, Gamma = -1;
@@ -72,7 +72,7 @@ internal static unsafe partial class GuiPassVk
         public readonly View[] Views = new View[NuiModelDoll.MaxViews];
         public CommandList? Cmds;
         public CommandList? Side;
-        public long Drawn, Skipped, NoLayout, NoTexture, Submits;
+        public long Drawn, Skipped, NoLayout, NoTexture, Submits, Dropped;
 
         public GuiVkState() { for (int i = 0; i < Views.Length; i++) Views[i] = new View(); }
     }
@@ -96,6 +96,7 @@ internal static unsafe partial class GuiPassVk
     /// <summary>What the GUI path cost this session, for the status line.</summary>
     internal static string Stats()
         => _s.Dev == null ? "" : $"gui vk: {_s.Submits} submits, {_s.Drawn} draws"
+         + (_s.Dropped == 0 ? "" : $", {_s.Dropped} submit(s) REFUSED (those frames' GUI NOT DRAWN)")
          + (_s.Skipped == 0 ? "" : $", {_s.Skipped} skipped")
          + (_s.NoLayout == 0 ? "" : $", {_s.NoLayout} with no vertex layout (NOT DRAWN)")
          + (_s.NoTexture == 0 ? "" : $", {_s.NoTexture} on the stand-in texture");
@@ -164,7 +165,17 @@ internal static unsafe partial class GuiPassVk
         cl.Reset();
         if (first) Uploads(cl);
         if (!Record(vk, cl, from, to, log)) return false;
-        if (!vk.Submit(cl)) { log.Always("GuiPassVk: the GUI submit was REFUSED (logged above) -- this frame's GUI is NOT DRAWN"); return false; }
+        if (!vk.Submit(cl))
+        {
+            if (!s.DropSaid)
+            {
+                s.DropSaid = true;
+                log.Always("GuiPassVk: the GUI submit was REFUSED (logged above) -- that frame's GUI is NOT DRAWN, "
+                         + "and further refusals are only counted (/alloy)");
+            }
+            s.Dropped++;
+            return false;
+        }
         s.Submits++;
         return true;
     }
@@ -255,15 +266,15 @@ internal static unsafe partial class GuiPassVk
         AlloyGate.Fail($"the interface could not be drawn on Vulkan ({why})");
     }
 
-    /// <summary>The mesh arena's layout for the GUI program, which also feeds the two locations a content stage may
-    /// declare that no Alloy stage does -- the engine's <c>vColor</c> and <c>vCustomColor</c> -- from the arena's
-    /// vertex-paint word, so Vulkan has an attribute for every input a GUI stage reads.</summary>
+    /// <summary>The mesh arena's layout for the GUI path, which also feeds the one location a content stage may
+    /// declare that no Alloy stage does -- the engine's <c>vCustomColor</c> -- from the vertex-paint word, because
+    /// Vulkan has no attribute for an input nothing feeds. <see cref="GuiPass.LocColor"/> is the lightmap chart's
+    /// location here and stays it, as GL's own arena vertex array leaves it.</summary>
     private static VertexLayoutDesc ArenaLayout(MeshArena.Fmt f)
     {
         VertexLayoutDesc d = MeshArena.VkLayout(f);
         var attribs = new List<VertexAttrib>(d.Attribs);
         VertexAttrib paint = attribs.Find(a => a.Location == AlloyRenderer.LocPaint);
-        attribs.Add(paint with { Location = GuiPass.LocColor });
         attribs.Add(paint with { Location = GuiContent.UnusedLoc });
         return d with { Attribs = attribs.ToArray(), Label = $"gui arena {f}" };
     }

@@ -37,8 +37,12 @@ internal static unsafe class GuiParity
     /// Vulkan copy stage two half pairs.</summary>
     private const int Channels = 4, GlWords = 1, VkWords = 2;
 
-    /// <summary>Is this flush the A/B? While it is, the GUI flush draws on both renderers.</summary>
+    /// <summary>Is an A/B waiting, or running on this flush? The GL half reads this to leave CX's windows out.</summary>
     internal static bool Active => _s.Armed;
+
+    /// <summary>Is this the flush the A/B runs on? The frame's closing flush, the one that carries the windows:
+    /// it holds the panels, NUI and the overlay views, where an earlier flush would compare a corner.</summary>
+    internal static bool Takes(bool windows) => _s.Armed && windows;
 
     /// <summary>The next GUI flush is an A/B; <paramref name="seq"/> names the set it writes beside
     /// <see cref="FrameTap"/>'s.</summary>
@@ -49,7 +53,8 @@ internal static unsafe class GuiParity
         _s.Armed = Renderer.OnVulkan;
         _s.Vk = null;
         if (Renderer.OnVulkan)
-            log?.Always("[vkabgui] armed -- the next GUI flush draws on both renderers over a cleared background");
+            log?.Always("[vkabgui] armed -- the next GUI flush draws on both renderers over a cleared background; "
+                      + "CX's own windows sit out of both halves, being the one GL replay either backend makes");
     }
 
     /// <summary>Vulkan's half, from inside the 4.6 bracket before GL's flush: the GUI into a scratch image over
@@ -88,9 +93,9 @@ internal static unsafe class GuiParity
     internal static void ReadGlAndReport(ExtenderLog? log)
     {
         ParityState s = _s;
-        if (!s.Armed) return;
+        if (!s.Armed || s.Vk == null) return;   // a flush the A/B did not take leaves it armed for the closing one
         s.Armed = false;
-        if (s.Vk == null || log == null) return;
+        if (log == null) return;
         int w = s.W, h = s.H;
         uint[]? gl = GlParity.Read(PresentTarget.Tex, Gl.RGBA, Gl.UNSIGNED_BYTE, 0, 0, w, h, GlWords);
         if (gl == null || PresentTarget.Width != w || PresentTarget.Height != h)

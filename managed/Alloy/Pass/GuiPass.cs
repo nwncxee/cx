@@ -213,17 +213,21 @@ internal static unsafe class GuiPass
         // menu, skipping it left the mesh arena's VAO unbuilt and the texture registry's uploads unrun.
         GlContextService.RunInBracketHere(); Db.MeshArena.Pump();
         CX.Services.Nui.NuiModelView.Pump();
-        if (Renderer.OnVulkan && !GuiParity.Active) return VulkanFlush(from, mid, to, windows);
-        if (Renderer.OnVulkan) GuiParity.DrawVulkan(from, mid, to, _log);
+        bool ab = GuiParity.Takes(windows);
+        if (Renderer.OnVulkan && !ab) return VulkanFlush(from, mid, to, windows);
+        if (ab) GuiParity.DrawVulkan(from, mid, to, _log);
         if (to > from) Upload();
         bool gpuTimed = CX.Services.Perf.FrameProbe.GpuBegin();
         long modelSpan = 0;
         uint baseFbo = Target();
         Preamble(baseFbo);
+        // CX's own windows are this replay on either backend, so the A/B leaves them out of both halves: what it
+        // compares is the captured GUI, which is the part that moved.
+        bool win = windows && !GuiParity.Active;
         Issue(from, mid, baseFbo, ref modelSpan);
-        if (windows) { Windows(CX.Ui.UiLayer.BelowNui, baseFbo); Preamble(baseFbo); }
+        if (win) { Windows(CX.Ui.UiLayer.BelowNui, baseFbo); Preamble(baseFbo); }
         Issue(mid, to, baseFbo, ref modelSpan);
-        if (windows) Windows(CX.Ui.UiLayer.AboveNui, baseFbo);
+        if (win) Windows(CX.Ui.UiLayer.AboveNui, baseFbo);
         CX.Services.Perf.FrameProbe.Lap(ref modelSpan, false);
         Gl.BindVertexArray(0);
         Gl.DepthRange(0.0, 1.0);
