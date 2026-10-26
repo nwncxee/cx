@@ -37,23 +37,36 @@ internal static unsafe partial class GuiPassVk
     /// composite and submitted at once, as GL's immediate replay draws it. False (said once) when the device is not on
     /// this thread or a flush is recording.</summary>
     internal static bool ReplayNow(UiDrawList l, ExtenderLog log)
+        => TakeNow(log, out VkBackend? vk, out CommandList? cl) && Windows(vk!, cl!, l, NowList, log) && vk!.Submit(cl!);
+
+    /// <summary>Both layers of CX's recorded windows over the composite at once: a frame whose GUI flush could not
+    /// draw still shows them, as GL replays them in the engine's context.</summary>
+    internal static bool ReplayLayersNow(ExtenderLog log)
+        => TakeNow(log, out VkBackend? vk, out CommandList? cl)
+           && Windows(vk!, cl!, CX.Ui.UiLayer.BelowNui, log) && Windows(vk!, cl!, CX.Ui.UiLayer.AboveNui, log) && vk!.Submit(cl!);
+
+    /// <summary>The immediate list, reset, outside any flush; false (said once) when the Vulkan GUI cannot take a draw now.</summary>
+    private static bool TakeNow(ExtenderLog log, out VkBackend? vk, out CommandList? cl)
     {
-        if (AlloyDevice.Vulkan(log) is not VkBackend vk || !vk.OnOwnThread || _s.Busy || !Ensure(vk, log))
+        cl = null;
+        vk = AlloyDevice.Vulkan(log);
+        if (vk == null || !vk.OnOwnThread || _s.Busy || !Ensure(vk, log))
         {
             if (!_s.NowSaid)
             {
                 _s.NowSaid = true;
-                log.Always("GuiPassVk: an immediate UI draw (the loading screen's lines or the compile notice) came while the "
-                         + "Vulkan GUI could not take it -- that draw is NOT SHOWN; further ones are not said");
+                log.Always("GuiPassVk: an immediate UI draw (the loading screen's lines, the compile notice or CX's windows on "
+                         + "a frame whose GUI flush failed) came while the Vulkan GUI could not take it -- that draw is NOT "
+                         + "SHOWN; further ones are not said");
             }
             return false;
         }
         GuiVkState s = _s;
         s.Into = default;
         s.ArenaUsed = 0;
-        CommandList cl = s.Now ??= new CommandList("vulkan ui now", 1 << 14, log);
+        cl = s.Now ??= new CommandList("vulkan ui now", 1 << 14, log);
         cl.Reset();
-        return Windows(vk, cl, l, NowList, log) && vk.Submit(cl);
+        return true;
     }
 
     /// <summary>The replay's blend, GL's <c>BlendFunc(SRC_ALPHA, ONE_MINUS_SRC_ALPHA)</c>, as a <see cref="Pipeline"/> key.</summary>

@@ -8,9 +8,9 @@ using CX.Graphics.Rhi;
 namespace CX.Alloy;
 
 /// <summary>Alloy owns the screen's clears and its present once the GUI is Alloy's and no engine-drawn world
-/// needs the engine's own. The engine's screen clears are swallowed at <c>RenderInterface::Clear</c> when they
-/// target the default framebuffer -- one aimed at an engine framebuffer object passes; the present is
-/// <c>SDL_GL_SwapWindow</c> from here, or under <c>alloy.backend vk</c> Vulkan's own, then <c>ResetRenderStates</c>.</summary>
+/// needs the engine's own -- and under <c>alloy.backend vk</c> always, once the window is known: Vulkan presents every
+/// frame and GL's swap never runs. The engine's screen clears are swallowed at <c>RenderInterface::Clear</c> when they
+/// target the default framebuffer; the present is <c>SDL_GL_SwapWindow</c> or Vulkan's, then <c>ResetRenderStates</c>.</summary>
 internal static unsafe class ScreenOwner
 {
     private static ExtenderLog? _log;
@@ -25,14 +25,10 @@ internal static unsafe class ScreenOwner
 
     private static readonly FboCacheState _cache = new();
 
-    /// <summary>This frame's screen is GL's under <c>alloy.backend vk</c> -- the engine drew a movie frame itself -- so
-    /// the GL swap presents it; and the Vulkan present count.</summary>
-    private sealed class VkPresentState { public bool GlScreen; public long Presents, GlFrames; }
+    /// <summary>The Vulkan present count, and whether a refused present has been said.</summary>
+    private sealed class VkPresentState { public long Presents, Refused; }
 
     private static readonly VkPresentState _vk = new();
-
-    /// <summary>The engine drew this frame's screen in GL (a movie Alloy did not take): the GL swap presents it, even on Vulkan.</summary>
-    internal static void GlDrewScreen() => _vk.GlScreen = true;
     private static long _swallowed, _passed, _presents;
     private static bool _said;
 
@@ -74,9 +70,11 @@ internal static unsafe class ScreenOwner
     }
 
     /// <summary>Is the screen Alloy's this frame? The GUI is Alloy's and the world, if there is one, is too -- a
-    /// vanilla world frame (an Incapable verdict) draws through the engine's own clears.</summary>
-    internal static bool Owned => _origClear != null && _swap != null && GuiPass.Capturing
-                                  && (AlloyGate.Alloy || AlloyGate.Stand == AlloyStand.Idle);
+    /// vanilla world frame (an Incapable verdict) draws through the engine's own clears. Under Vulkan, whenever the
+    /// window is known: nothing the engine draws in GL reaches the screen there.</summary>
+    internal static bool Owned => _origClear != null && _swap != null
+                                  && (Renderer.OnVulkan ? GlContextService.Available
+                                                        : GuiPass.Capturing && (AlloyGate.Alloy || AlloyGate.Stand == AlloyStand.Idle));
 
     [UnmanagedCallersOnly]
     private static void OnClear(uint mask)
@@ -99,10 +97,7 @@ internal static unsafe class ScreenOwner
     internal static bool Present(IntPtr window)
     {
         if (!Owned) return false;
-        bool glScreen = _vk.GlScreen;
-        _vk.GlScreen = false;
-        if (Renderer.OnVulkan && !glScreen) return PresentVulkan();
-        if (glScreen) _vk.GlFrames++;
+        if (Renderer.OnVulkan) return PresentVulkan();
         Gl.BindFramebuffer(Gl.FRAMEBUFFER, *_defaultFbo);
         _swap(window);
         _reset();
@@ -117,13 +112,15 @@ internal static unsafe class ScreenOwner
     }
 
     /// <summary>Vulkan's present of the composite, then the engine's state reset the swap was wrapped in. A refusal
-    /// fails Alloy loudly and the engine's swap shows this frame.</summary>
+    /// fails Alloy loudly and nothing is presented: GL's swap would show a back buffer nothing on Vulkan drew.</summary>
     private static bool PresentVulkan()
     {
         if (_log == null || AlloyDevice.Vulkan(_log) is not VkBackend vk || !vk.Present(_interval != null ? _interval() : 1, _log))
         {
-            AlloyGate.Fail("Vulkan could not present the frame to the window (logged above)");
-            return false;
+            AlloyGate.Fail("Vulkan could not present the frame to the window (logged above) -- the window keeps its last frame");
+            _vk.Refused++;
+            _reset();
+            return true;
         }
         _reset();
         _vk.Presents++;
@@ -145,6 +142,6 @@ internal static unsafe class ScreenOwner
         // The clear colour is on the line because it IS the void: every pixel the world does not cover ends up
         // this colour, and nothing else in a session reports it.
         : $"screen: {(Owned ? "Alloy" : "engine")} -- {_presents} Alloy GL presents, {_vk.Presents} Vulkan presents"
-        + (_vk.GlFrames == 0 ? "" : $" ({_vk.GlFrames} engine-drawn frames on GL's swap)") + $", {_swallowed} engine clears swallowed, "
+        + (_vk.Refused == 0 ? "" : $" ({_vk.Refused} REFUSED, nothing shown)") + $", {_swallowed} engine clears swallowed, "
         + $"{_passed} passed, clear=({ClearRgba[0]:F3},{ClearRgba[1]:F3},{ClearRgba[2]:F3})";
 }
