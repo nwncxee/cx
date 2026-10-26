@@ -142,7 +142,8 @@ public sealed unsafe partial class CasterPass
     /// most recent frame tick. That one test covers every way the maps go stale at once: an interior (no sun
     /// -&gt; no render), a vanilla stretch (the pass is gated on <see cref="AlloyGate.Alloy"/>, so the toggle
     /// reverts sun shadows on the very next frame), and a disarm.</summary>
-    internal static bool CascadesFresh => CascadeCount > 0 && _gl.CascadeTex != 0 && _cascadeStamp == _frameSeq;
+    internal static bool CascadesFresh
+        => CascadeCount > 0 && (Renderer.OnVulkan ? !_vk.Cascades.IsNull : _gl.CascadeTex != 0) && _cascadeStamp == _frameSeq;
 
     /// <summary>How far every cascade's fit reaches TOWARD the light, past its own extent: the full max
     /// shadow distance for all of them, NOT each one's radius. A caster only has to be up-sun of a fragment
@@ -230,7 +231,7 @@ public sealed unsafe partial class CasterPass
                 if (split) _sunStaticL[i]++;
                 if (split && DegradeCounts(invalidate, keyChanged, staticEvt)) _sunWinBaked[i]++;
                 ChargeBake(WhySun, invalidate, keyChanged);
-                bool viewOk = RenderView(_gl.DepthTex, _mapSize, i, &vp,
+                bool viewOk = RenderView(CasterMap.SunStatic, _gl.DepthTex, _mapSize, i, &vp,
                                          dir, c, radius, margin, point: false,
                                          set: combined ? CasterGather.SetAll : CasterGather.SetStatic);
                 // A cascade that stalled holds last frame's depth under this frame's key, and the cascades
@@ -278,7 +279,7 @@ public sealed unsafe partial class CasterPass
                 // The cadence ladder: a far cascade's dynamic layer holds one frame under the same fit.
                 else if (i >= _sunFull && !invalidate && !_rxForce && _sunDynValid[i] && _sunDynVp[i] == vp && ((_frameSeq + i) & 1) != 0)
                 { SunDynMask[i] = 1f; _sunDynSkipped++; }
-                else if (RenderView(_gl.SunDynTex, _mapSize, i, &vp, dir, c, radius, margin, point: false,
+                else if (RenderView(CasterMap.SunDyn, _gl.SunDynTex, _mapSize, i, &vp, dir, c, radius, margin, point: false,
                                     set: CasterGather.SetDynamic, receiver: true))
                 { SunDynMask[i] = 1f; _sunDynBakedViews++; _sunDynValid[i] = true; _sunDynVp[i] = vp; _sunDynRebaked[i] = grass; }
                 else _sunDynValid[i] = false;

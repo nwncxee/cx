@@ -502,7 +502,7 @@ internal static unsafe class Issue
                     Gl.Uniform1f(litAoDirect, ssao > 0 ? SsaoPass.Direct : 0f);
                 }
                 // CX-273: fold the layer (the opaque pass), or drop a decal batch's fragments it already took
-                int dm = VkParity.Active ? 0 : decalMode == DecalLayer.ModeFold ? 1 : decalMode == DecalLayer.ModeSkip && _gDecal[g] ? 2 : 0;
+                int dm = decalMode == DecalLayer.ModeFold ? 1 : decalMode == DecalLayer.ModeSkip && _gDecal[g] ? 2 : 0;
                 if (dm != boundDecal) { Gl.Uniform1i(litDecal, dm); boundDecal = dm; }
                 int sm = interior ? 1 : 0;
                 if (sm != boundSolid) { Gl.Uniform1i(litSolid, sm); boundSolid = sm; }

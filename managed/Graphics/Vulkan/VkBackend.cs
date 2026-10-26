@@ -23,6 +23,9 @@ internal sealed unsafe partial class VkBackend : IDevice
         public VkImageView View;
         /// <summary>One view per mip, made the first time a mip is bound alone (a storage write down a chain).</summary>
         public VkImageView[]? MipViews;
+        /// <summary>One single-layer 2D view per layer of an array or cube array, made the first time that layer is
+        /// attached alone (the caster bake's per-layer clear).</summary>
+        public VkImageView[]? LayerViews;
         public ImageDesc Desc;
         public VkImageLayout Layout;
         /// <summary>The recording that last noted this image's layout for its undo (<see cref="Remember"/>).</summary>
@@ -185,11 +188,13 @@ internal sealed unsafe partial class VkBackend : IDevice
 
     /// <summary>The first feature the batch pass needs that the device does not have, or null: draw parameters for the
     /// draw index, indirect counts for the cull's lists, descriptor indexing for bindless textures, BC textures, cube
-    /// arrays, and robust buffer access so a stand-in buffer shorter than a stage's reach reads zeros.</summary>
+    /// arrays, robust buffer access so a stand-in buffer shorter than a stage's reach reads zeros, and a vertex stage's
+    /// <c>gl_Layer</c> for the caster bake, which renders every stale view of one array in one layered pass.</summary>
     private static string? Lacks(in VkPhysicalDeviceFeatures f, in VkPhysicalDeviceVulkan11Features f11, in VkPhysicalDeviceVulkan12Features f12)
     {
         if (!f11.shaderDrawParameters) return "shaderDrawParameters";
         if (!f12.drawIndirectCount) return "drawIndirectCount";
+        if (!f12.shaderOutputLayer) return "shaderOutputLayer (the caster bake's layered pass)";
         if (!f12.runtimeDescriptorArray || !f12.descriptorBindingPartiallyBound || !f12.descriptorBindingVariableDescriptorCount
             || !f12.shaderSampledImageArrayNonUniformIndexing || !f12.descriptorBindingSampledImageUpdateAfterBind)
             return "the descriptor indexing bindless textures need";
@@ -253,7 +258,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         {
             pNext = &f11, drawIndirectCount = true, runtimeDescriptorArray = true, descriptorBindingPartiallyBound = true,
             descriptorBindingVariableDescriptorCount = true, shaderSampledImageArrayNonUniformIndexing = true,
-            descriptorBindingSampledImageUpdateAfterBind = true,
+            descriptorBindingSampledImageUpdateAfterBind = true, shaderOutputLayer = true,
         };
         var f13 = new VkPhysicalDeviceVulkan13Features { pNext = &f12, dynamicRendering = true, synchronization2 = true };
         var feats = new VkPhysicalDeviceFeatures2 { pNext = &f13 };
@@ -559,6 +564,7 @@ internal sealed unsafe partial class VkBackend : IDevice
     {
         _vkd.vkDestroyImageView(g.View);
         if (g.MipViews != null) foreach (VkImageView v in g.MipViews) if (v.IsNotNull) _vkd.vkDestroyImageView(v);
+        if (g.LayerViews != null) foreach (VkImageView v in g.LayerViews) if (v.IsNotNull) _vkd.vkDestroyImageView(v);
         if (g.Ext == null) { Vma.vmaDestroyImage(_vma, g.Image, g.Alloc); return; }
         _vkd.vkDestroyImage(g.Image);
         _vkd.vkFreeMemory(g.Ext.Memory);

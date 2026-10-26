@@ -22,8 +22,10 @@ public sealed unsafe partial class AlloyRenderer
     }
 
     /// <summary>How one range of batches draws: the depth rule it inherits, whether it is the wash interiors' pass, the
-    /// split washes' interiors having run, and the attachment set.</summary>
-    private readonly record struct VkRange(bool MatchDepth, bool DepthMask, bool Interior, bool SplitRan, VkTargets Targets, bool Gbuf);
+    /// split washes' interiors having run, the attachment set, and what its lit draws do with the decal layer
+    /// (<see cref="DecalLayer.ModeFold"/> for a surface pass, <see cref="DecalLayer.ModeSkip"/> for the blended one).</summary>
+    private readonly record struct VkRange(bool MatchDepth, bool DepthMask, bool Interior, bool SplitRan, VkTargets Targets,
+                                           bool Gbuf, int Decal = DecalLayer.ModeNone);
 
     /// <summary>The colour bracket into <paramref name="cl"/> after the cull: uploads, the depth prepass, the opaque,
     /// cutout and wash-interior pass into the scene colour and G-buffer, the blended and additive pass, then the scene
@@ -39,12 +41,14 @@ public sealed unsafe partial class AlloyRenderer
         s.EngineAt = -1;
         s.Drawn = s.Skipped = 0;
         if (!VkUploads(vk, cl)) return false;
+        if (!VkRecordShadow(cl)) return false;
         bool indirect = CullPassVk.Ran;
         int viz = _capturing ? 0 : _lightViz;
         bool gbuf = lightingOn && perspective && Lighting.Deferred.V && (viz == 0 || viz == VizLightFrom);
         VkTargets colour = gbuf ? VkTargets.Colour : VkTargets.Forward;
         s.GbufWritten = gbuf;
 
+        VkIdBegin(vk, w, h, log);
         if (!VkPrepass(cl, s, _gOpaqueEnd, vp, viewport, near, far, indirect, CullPassVk.PhasePrepass)) return false;
         if (indirect && _depthPrepass)
         {
@@ -61,6 +65,11 @@ public sealed unsafe partial class AlloyRenderer
         if (_depthPrepass)
             cl.CopyImage(new CopyImageCmd(s.Depth, new ImageRegion(0, 0, 0, 0), s.DepthRead, new ImageRegion(0, 0, 0, 0), w, h, 1));
         fixed (Matrix4x4* pr = &proj) SsaoPassVk.Record(vk, cl, s.DepthRead, _depthPrepass, pr, viewport, log);
+        // CX-273: the ground decals into their layer, off the list the cull just compacted and against the prepass
+        // depth, before the first surface that folds them in is drawn
+        if (!VkDecalPass(vk, cl, _gOpaqueEnd, DecalEnd(), vp, viewport, near, far,
+                         lightingOn && perspective && !_capturing && _depthPrepass && viewport[0] == 0 && viewport[1] == 0,
+                         indirect, log)) return false;
 
         CommandList side = s.Side!;
         side.Reset();
@@ -69,7 +78,7 @@ public sealed unsafe partial class AlloyRenderer
         VkPassStart(side, w, h);
         VkArmSampled(side, s);
         bool ok = true;
-        var plain = new VkRange(_depthEqual, true, false, false, colour, gbuf);
+        var plain = new VkRange(_depthEqual, true, false, false, colour, gbuf, VkDecalFold);
         ok &= VkIssueClass(side, ref b, 0, _gCutoutStart, plain, vp, viewport, near, far, indirect);
         ok &= VkIssueClass(side, ref b, _gCutoutStart, _gA2cStart, plain, vp, viewport, near, far, indirect);
         ok &= VkIssue(side, ref b, _gA2cStart, _gOpaqueEnd, plain with { MatchDepth = false }, vp, viewport, near, far, indirect);
@@ -91,7 +100,11 @@ public sealed unsafe partial class AlloyRenderer
         }
         VkFlushPass(cl, side, arena0, new RenderPassDesc(colors[..n], new DepthAttachment(s.Depth, 0, 0, LoadOp.Load, StoreOp.Store, 1f)));
 
-        // ADR 0029's two dispatches, at the graph's own place: after the cutout pass, before the blended one
+        // the sky after the G-buffer writers rather than between them as GL's graph has it: the dome draws only
+        // where nothing wrote depth, so a cutout drawn before it covers exactly the pixels it would have covered
+        if (!VkRecordSky(vk, cl, s, vp, viewport, log)) return false;
+        // ...and then ADR 0029's two dispatches, at the graph's own place: after the cutout pass and the sky,
+        // before the blended one. A sky pixel has no G-buffer record, so the walk leaves it alone.
         VkDeferred(vk, cl, vp, view, proj, viewport, near, far, indirect ? CullPassVk.Slots(CullPassVk.PhaseColour) : s.Slots, log);
 
         side.Reset();
@@ -99,12 +112,16 @@ public sealed unsafe partial class AlloyRenderer
         b = new VkBound { Fmt = -1, Tex = -1 };
         VkPassStart(side, w, h);
         VkArmSampled(side, s);
-        var fwd = new VkRange(false, true, false, washes, VkTargets.Forward, false);
+        var fwd = new VkRange(false, true, false, washes, VkTargets.Forward, false, VkDecalSkip);
         ok &= VkIssue(side, ref b, _gOpaqueEnd, _gBlendEnd, fwd, vp, viewport, near, far, indirect);
-        ok &= VkIssue(side, ref b, _gWaterEnd, groups, fwd with { DepthMask = false }, vp, viewport, near, far, indirect);
+        // the layer's readers are done with the blended range: additive takes it as GL does after DecalLayer.End
+        ok &= VkIssue(side, ref b, _gWaterEnd, groups, fwd with { DepthMask = false, Decal = DecalLayer.ModeNone },
+                      vp, viewport, near, far, indirect);
         if (!ok) return false;
         colors[0] = new ColorAttachment(s.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default);
         VkFlushPass(cl, side, arena0, new RenderPassDesc(colors[..1], new DepthAttachment(s.Depth, 0, 0, LoadOp.Load, StoreOp.Store, 1f)));
+
+        VkIdPaint(vk, cl, s, log);
 
         VkEncode(cl, s, composite, display);
         if (!s.Live)
@@ -283,7 +300,12 @@ public sealed unsafe partial class AlloyRenderer
                 _gPrepassed[g] = true;
             }
         }
-        VkFlushPass(cl, side, arena0, new RenderPassDesc(default, new DepthAttachment(s.Depth, 0, 0, retest ? LoadOp.Load : LoadOp.Clear, StoreOp.Store, 1f)));
+        // #493: the vis-ID attachment rides these draws on slot 1, slot 0 routed nowhere, as GL's draw-buffer
+        // list has it; cleared on the first phase and loaded by the retest, which lands on the same image
+        Span<ColorAttachment> ids = stackalloc ColorAttachment[PrepassTargets];
+        var rp = new RenderPassDesc(VkIdAttachments(ids, !retest),
+                                    new DepthAttachment(s.Depth, 0, 0, retest ? LoadOp.Load : LoadOp.Clear, StoreOp.Store, 1f));
+        VkFlushPass(cl, side, arena0, in rp);
         return true;
     }
 
@@ -331,6 +353,8 @@ public sealed unsafe partial class AlloyRenderer
             // the batch's own AO membership, measured by the prepass exactly as the GL issue loop reads it
             push.SsaoOn = lit && SsaoPassVk.Live && !_capturing ? Issue.AoWhy(g) : 0;
             push.AoDirect = push.SsaoOn > 0 ? SsaoPass.Direct : 0f;
+            // CX-273: fold the layer (a surface pass), or drop a decal batch's fragments it already took
+            push.Decal = r.Decal == DecalLayer.ModeSkip && !_gDecal[g] ? DecalLayer.ModeNone : r.Decal;
             if (!VkBatch(side, ref b, p, g, r.Targets, blendKey, depth, VkRaster(g, wash), slots, lit ? 0 : _gTex[g], ref push,
                          vp, viewport, near, far, CullPassVk.PhaseColour, indirect)) continue;
             Counters._batches++;

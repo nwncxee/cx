@@ -10,7 +10,7 @@ public enum Op : byte
 {
     End, BeginRenderPass, EndRenderPass, SetPipeline, SetViewport, SetScissor, SetDepthBias, BindSet,
     BindIndexBuffer, Draw, DrawIndexed, DrawIndexedIndirect, Dispatch, CopyImage, BlitImage, UpdateBuffer, ZeroBuffer,
-    PushConstants, BindVertexBuffer, DrawIndexedMulti, SetDepthState, SetRasterState,
+    PushConstants, BindVertexBuffer, DrawIndexedMulti, SetDepthState, SetRasterState, SetDepthRange, ReadImages,
 }
 
 /// <summary>An index element's width.</summary>
@@ -26,6 +26,8 @@ public readonly record struct ImageRegion(int Mip, int X, int Y, int Z);
 public readonly record struct RenderPassCmd(int Colors, bool HasDepth, DepthAttachment Depth);
 /// <summary><see cref="Op.SetDepthBias"/>'s constants.</summary>
 public readonly record struct DepthBiasCmd(float Factor, float Units);
+/// <summary><see cref="Op.SetDepthRange"/>: the window-depth range the viewport maps clip z into.</summary>
+public readonly record struct DepthRangeCmd(float Min, float Max);
 /// <summary><see cref="Op.BindSet"/>'s header; the four binding arrays follow it in field order.</summary>
 public readonly record struct BindSetCmd(int Set, int Uniforms, int Storage, int Sampled, int StorageImages);
 /// <summary><see cref="Op.BindIndexBuffer"/>.</summary>
@@ -54,6 +56,8 @@ public readonly record struct BlitImageCmd(ImageId Src, Rect From, ImageId Dst, 
 public readonly record struct UpdateBufferCmd(BufferId Buffer, long Offset, int Bytes);
 /// <summary><see cref="Op.ZeroBuffer"/>: <see cref="Bytes"/> zero bytes from <see cref="Offset"/>, 0 meaning to the end.</summary>
 public readonly record struct ZeroBufferCmd(BufferId Buffer, long Offset, long Bytes);
+/// <summary><see cref="Op.ReadImages"/>'s header; the ids follow it.</summary>
+public readonly record struct ReadImagesCmd(int Images);
 
 /// <summary>One pass's recorded commands: an 8-byte opcode word and a fixed record per command, spans copied in
 /// after it, in one reused byte arena. Recording allocates nothing once the arena reaches the pass's high water;
@@ -123,6 +127,11 @@ public sealed class CommandList
     public void SetScissor(int x, int y, int w, int h) { Head(Op.SetScissor); Put(new Rect(x, y, w, h)); Sent(); }
     public void SetDepthBias(float factor, float units) { Head(Op.SetDepthBias); Put(new DepthBiasCmd(factor, units)); Sent(); }
 
+    /// <summary>The window-depth range the viewport maps clip z into, for the draws after it: a collapsed range
+    /// (<c>1, 1</c>) is how a dome at the camera tests only where nothing has been drawn. Every render pass
+    /// starts at <c>0, 1</c>, so one that narrows the range narrows it for itself alone.</summary>
+    public void SetDepthRange(float min, float max) { Head(Op.SetDepthRange); Put(new DepthRangeCmd(min, max)); Sent(); }
+
     /// <summary>Bind <paramref name="b"/> as descriptor set <paramref name="set"/>; the spans are copied.</summary>
     public void BindSet(int set, in BindSet b)
     {
@@ -191,6 +200,18 @@ public sealed class CommandList
     }
 
     public void Dispatch(int x, int y = 1, int z = 1) { Head(Op.Dispatch); Put(new DispatchCmd(x, y, z)); Sent(); }
+
+    /// <summary>Every image in <paramref name="images"/> is read as a sampled texture from here on: a pass that
+    /// wrote one as a target hands it over outside any render pass, so a later bind of it needs no barrier where
+    /// the backend cannot place one. A no-op where layouts are not a thing.</summary>
+    public void ReadImages(ReadOnlySpan<ImageId> images)
+    {
+        if (images.IsEmpty) return;
+        Head(Op.ReadImages);
+        Put(new ReadImagesCmd(images.Length));
+        Put(images);
+        Sent();
+    }
 
     public void CopyImage(in CopyImageCmd c) { Head(Op.CopyImage); Put(c); Sent(); }
     public void BlitImage(in BlitImageCmd c) { Head(Op.BlitImage); Put(c); Sent(); }

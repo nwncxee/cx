@@ -308,13 +308,17 @@ public sealed unsafe partial class CasterPass : IExtenderService
         // uniform block and a dispatch. Stand it down first: a frame that does not stage must not leave the
         // last frame's records armed, which would bake a world that has since moved.
         CasterGather.Stand();
+        CasterGatherVk.Stand();
         _gStaged = false;
         _qN = 0;
+        // the Vulkan bake's own recording for this frame, which the colour frame appends ahead of its passes
+        bool onVk = Renderer.OnVulkan && VkBegin(_log!);
         ReceiverFrame();
         if (sun || (_cubeLights > 0 && FrameInputs.LocalLightCount > 0) || (sun && Weather.CoverWanted) || LightmapBake.WantsGather)
         {
             AlloyRenderer.Step("shadow bracket: caster programs and the gather staging");
-            if (EnsureCommon() && CasterGather.Ensure()) { EnsureLayered(); EnsureHandleMask(); _gStaged = GatherStage(); }
+            if (Renderer.OnVulkan) { if (onVk) { EnsureHandleMask(); _gStaged = GatherStage(); } }
+            else if (EnsureCommon() && CasterGather.Ensure()) { EnsureLayered(); EnsureHandleMask(); _gStaged = GatherStage(); }
             // #303: the compute dispatch is the ONLY selection path. A program that can never build would
             // otherwise idle here forever with the engine's stencil shadows already suppressed.
             else if (CasterGather.Failed) Disarm("the caster gather dispatch failed to build");
@@ -331,10 +335,12 @@ public sealed unsafe partial class CasterPass : IExtenderService
             switch (id)
             {
                 case PassId.SunCascades:
-                    if (sun && EnsureSun()) SunPass(focus);
+                    // on Vulkan the arrays are the bake's own, made at the first view that names one
+                    if (sun && (Renderer.OnVulkan ? onVk : EnsureSun())) SunPass(focus);
                     break;
                 case PassId.LocalLightCubes:
-                    if (_cubeLights > 0 && FrameInputs.LocalLightCount > 0 && EnsureCubes()) CubePass(focus);
+                    if (_cubeLights > 0 && FrameInputs.LocalLightCount > 0 && (Renderer.OnVulkan ? onVk : EnsureCubes()))
+                        CubePass(focus);
                     break;
                 case PassId.RainCover:
                     CoverPass(focus, sun);

@@ -27,7 +27,7 @@ internal static class UboSlots
 
     /// <summary>A pass's own terms, on the first shared point: one block per pass, read by every program that
     /// pass runs and rebound before each of its dispatches.</summary>
-    internal const uint Cull = 3, Deferred = 3, Ssao = 3;
+    internal const uint Cull = 3, Deferred = 3, Ssao = 3, Gather = 3;
 
     /// <summary>Vulkan only: the block a translated stage's loose uniforms are gathered into (<c>VkGlsl</c>). No
     /// embedded text declares it; the colour pass binds it with each program, so it shares no point with a pass's
@@ -47,6 +47,7 @@ internal static class UboSlots
         ["CxDeferred"] = (Deferred, ["cx_defblk.glsl", "cx_deferred_cs.glsl"]),
         ["CxSsao"] = (Ssao, ["cx_ssaolib.glsl", "cx_ssao_f.glsl", "cx_ssao_fs.glsl", "cx_ssaoblur_f.glsl",
                              "cx_ssaoblur_fs.glsl", "cx_ssaotemp_f.glsl"]),
+        ["CxGather"] = (Gather, ["cx_gatherblk.glsl", "CasterGather.GatherCs", "CasterGather.LayerCs"]),
     };
 
     private static readonly Regex Decl = new(@"layout\(std140,\s*binding\s*=\s*(\d+)\)\s*uniform\s+(\w+)");
@@ -92,6 +93,7 @@ internal static class UboSlots
         CullBlock.Pin(check);
         DeferredBlock.Pin(check);
         SsaoBlock.Pin(check);
+        GatherBlock.Pin(check);
         // ...and the override guard's own predicate, against hand-written texts: an override of a stage that
         // reads the block is refused for a member left loose, the SAME text is left alone as an override of a
         // stage whose member was always loose, a stale block body is refused, and the shipped stages pass.

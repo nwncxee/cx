@@ -41,6 +41,9 @@ public sealed unsafe partial class AlloyRenderer
         public LitLoc L;
         public FeatLoc F;
         public int Vp = -1, Tex = -1, Viz = -1, AlphaMip = -1, Tint = -1, SkyFog = -1, Oit = -1, OitDim = -1;
+        /// <summary>The sky wrapper's two: the engine's inverse view (its translation column alone) and the
+        /// constant colour a content stage reads instead of the record's alpha. -1 on every other program.</summary>
+        public int ViewInv = -1, Global = -1;
         public readonly Dictionary<long, PipelineId> Pipes = new();
     }
 
@@ -106,7 +109,7 @@ public sealed unsafe partial class AlloyRenderer
     private const int ColourTargets = 7;
 
     /// <summary>Which attachment set a pipeline draws into.</summary>
-    private enum VkTargets : byte { Prepass, Colour, Forward }
+    private enum VkTargets : byte { Prepass, Colour, Forward, Decal }
 
     /// <summary>The seven per-batch values, in <c>VkGlsl.Push</c>'s order.</summary>
     [StructLayout(LayoutKind.Sequential)]
@@ -231,7 +234,7 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>Named program <paramref name="id"/>, built by <see cref="VkBuild(VkBackend, VkProgramText, string, bool, uint, ExtenderLog)"/>.</summary>
     private static VkProg? VkBuild(VkBackend vk, VkPrograms.Id id, ExtenderLog log)
     {
-        bool lit = id is VkPrograms.Id.Lit or VkPrograms.Id.LitDeferred;
+        bool lit = id is VkPrograms.Id.Lit or VkPrograms.Id.LitDeferred or VkPrograms.Id.Decal;
         VkProg? p = VkBuild(vk, VkPrograms.Text(id, log), $"{id}", lit, VkUniformShim.ProgramBase + (uint)id, log);
         if (p != null) { p.Id = id; p.Deferred = id == VkPrograms.Id.LitDeferred; }
         return p;
@@ -316,6 +319,7 @@ public sealed unsafe partial class AlloyRenderer
                 p.Vp = GlProgram.Loc(name, "uVP"); p.Tex = GlProgram.Loc(name, "uTex"); p.Viz = GlProgram.Loc(name, "uViz");
                 p.AlphaMip = GlProgram.Loc(name, "uAlphaMip"); p.Tint = GlProgram.Loc(name, "uTint");
                 p.SkyFog = GlProgram.Loc(name, "uSkyFog"); p.Oit = GlProgram.Loc(name, "uOit"); p.OitDim = GlProgram.Loc(name, "uOitDim");
+                p.ViewInv = GlProgram.Loc(name, "uViewInv"); p.Global = GlProgram.Loc(name, "globalColor");
                 p.F = Programs.FeatLocs(name);
             }
         });
@@ -366,6 +370,7 @@ public sealed unsafe partial class AlloyRenderer
         // the terms whose resources are not on Vulkan yet read as absent: no cube, no lightmap, no sky map, no weather,
         // no fog volume -- every one gates on the value it is zeroed to
         foreach (string name in VkParity.StoodDown) VkZero(p, name);
+        if (VkParity.Active) foreach (string name in VkParity.StoodDownAb) VkZero(p, name);
         int loose = VkArena(p.Block);
         int pass = lit ? VkArenaPass() : -1;
         if (loose < 0 || (lit && pass < 0) || (p.ReadsEngine && VkEngine() < 0)) return false;
@@ -466,9 +471,17 @@ public sealed unsafe partial class AlloyRenderer
         VkParity.ReadVulkan(vk, s.Hdr, s.Depth, s.G0, s.G1, s.G2, s.GbufWritten, s.W, s.H);
     }
 
+    /// <summary>A snap frame's Vulkan half, after the frame's submit: the finished scene colour beside the set.</summary>
+    internal static void VkFrameTap(VkBackend vk)
+    {
+        VkColourState s = _vkc;
+        FrameTap.TakeVk(vk, s.Hdr, s.W, s.H);
+    }
+
     /// <summary>The program's set 0: each declaration it makes, bound to its real resource where that is on Vulkan and to
     /// the stand-in of its kind otherwise. <paramref name="tex"/> is the batch's bound diffuse (GL name), 0 for none.</summary>
-    private static void VkBindSet(CommandList cl, VkProg p, VkColourState s, int loose, int pass, BufferId slots, int tex)
+    private static void VkBindSet(CommandList cl, VkProg p, VkColourState s, int loose, int pass, BufferId slots, int tex,
+                                  ReadOnlySpan<int> extra = default)
     {
         Span<BufferBinding> ubo = stackalloc BufferBinding[12];
         Span<BufferBinding> ssbo = stackalloc BufferBinding[16];
@@ -499,24 +512,34 @@ public sealed unsafe partial class AlloyRenderer
                     });
                     break;
                 case VkBindKind.StorageImage:
-                    images[ni++] = new ImageBinding(o.Binding, o.Name == "uDecalSurf" ? s.DecalSurf : s.DecalLayer, default, 0);
+                    images[ni++] = new ImageBinding(o.Binding, VkDecalImage(o.Name == "uDecalSurf", s), default, 0);
                     break;
                 default:
-                    sampled[nt++] = VkSampled(o, s, tex);
+                    sampled[nt++] = VkSampled(o, s, tex, extra);
                     break;
             }
         }
         cl.BindSet(0, new BindSet(ubo[..nu], ssbo[..ns], sampled[..nt], images[..ni]));
     }
 
-    /// <summary>A sampler declaration's binding: the batch's diffuse for a bound <c>uTex</c>, else the stand-in of its type.</summary>
-    private static ImageBinding VkSampled(in VkOpaque o, VkColourState s, int tex)
+    /// <summary>A sampler declaration's binding: the batch's diffuse for a bound <c>uTex</c>, an engine unit out of
+    /// <paramref name="extra"/> (unit 1 first) for a <c>texUnit</c><i>n</i> a hosted stage declares, else the stand-in
+    /// of its type.</summary>
+    private static ImageBinding VkSampled(in VkOpaque o, VkColourState s, int tex, ReadOnlySpan<int> extra = default)
     {
+        if (o.Name.Length == "texUnit1".Length && o.Name.StartsWith("texUnit", StringComparison.Ordinal)
+            && o.Name[7] - '1' is var u && (uint)u < (uint)extra.Length && extra[u] != 0 && !VkTextures.Image(extra[u]).IsNull)
+            return new ImageBinding(o.Binding, VkTextures.Image(extra[u]), VkTextures.SamplerId(extra[u]));
         if (o.Name == "uTex" && tex != 0 && !VkTextures.Image(tex).IsNull)
             return new ImageBinding(o.Binding, VkTextures.Image(tex), VkTextures.SamplerId(tex));
         if (o.Name == "uPltPal" && !s.Palette.IsNull) return new ImageBinding(o.Binding, s.Palette);
-        // the visibility estimate and the depth it was computed from, both fetched by texel in the lit stage
+        if (VkShadowMap(o.Name) is { IsNull: false } map)
+            return new ImageBinding(o.Binding, map, o.Type.EndsWith("Shadow", StringComparison.Ordinal) ? s.Shadow : s.Linear);
+        // the visibility estimate, fetched by texel in the lit stage
         if (o.Name == "uSsao" && SsaoPassVk.Live) return new ImageBinding(o.Binding, SsaoPassVk.Visibility);
+        // ...and the depth it was computed from: the attachment itself for the decal writer, whose pass is outside
+        // the colour one, and the sampled copy for every stage inside it, which may not read its own attachment
+        if (o.Name == "uSceneDepth" && !VkDecalDepth.IsNull) return new ImageBinding(o.Binding, VkDecalDepth);
         if (o.Name == "uSceneDepth" && !s.DepthRead.IsNull) return new ImageBinding(o.Binding, s.DepthRead);
         return o.Type switch
         {
@@ -547,7 +570,9 @@ public sealed unsafe partial class AlloyRenderer
         };
         d.Targets.Depth = Format.D32F;
         d.Targets.Samples = 1;
-        if (targets == VkTargets.Forward) { d.Targets.ColorCount = 1; d.Targets.Colors[0] = Format.Rgba16F; }
+        if (targets == VkTargets.Prepass) { d.Targets.ColorCount = PrepassTargets; d.Targets.Colors[1] = Format.R32Ui; }
+        else if (targets == VkTargets.Decal) { d.Targets.Depth = Format.Unknown; VkDecalBlend(ref d); }
+        else if (targets == VkTargets.Forward) { d.Targets.ColorCount = 1; d.Targets.Colors[0] = Format.Rgba16F; }
         else if (targets == VkTargets.Colour)
         {
             d.Targets.ColorCount = ColourTargets;

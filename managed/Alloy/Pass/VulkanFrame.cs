@@ -63,17 +63,20 @@ internal static class VulkanFrame
             return;
         }
         AlloyRenderer.VkParityRead(vk);
+        AlloyRenderer.VkFrameTap(vk);
         if (++_s.Frames % CacheSavePeriod == 0) vk.SavePipelineCache();
         if (_s.Frames % GpuPeriod == 0 && vk.TakeGpuMs(out int n) is var ms && n > 0)
-            log.Always($"VulkanFrame: [vkgpu] {ms:F2} ms GPU per frame over {n} frames (cull, prepass, hi-Z, AO, "
-                     + "G-buffer, opaque, cutout, the deferred dispatches, blended)");
+            log.Always($"VulkanFrame: [vkgpu] {ms:F2} ms GPU per frame over {n} frames (bake, cull, prepass, hi-Z, AO, "
+                     + "decals, G-buffer, opaque, cutout, sky, the deferred dispatches, blended)");
         PresentTarget.Flip(vk.Flip());
         PostChain.Painted();
+        VkStoodDown.Note(log);
         if (!_s.Live)
         {
             _s.Live = true;
-            log.Always("VulkanFrame: LIVE -- Vulkan culls, draws the prepass, the AO estimate, the G-buffer, the opaque, "
-                     + "cutout and blended batches and the deferred point lights, and the engine's context presents the composite");
+            log.Always("VulkanFrame: LIVE -- Vulkan bakes the shadow maps, culls, draws the prepass with its vis-ID "
+                     + "target, the AO estimate, the decal layer, the G-buffer, the sky and the opaque, cutout and blended "
+                     + "batches, and shades the deferred point lights; the engine's context presents the composite");
         }
     }
 }
