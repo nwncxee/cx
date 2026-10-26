@@ -31,10 +31,12 @@ public sealed unsafe partial class AlloyRenderer
         public VkDefLoc L;
     }
 
-    /// <summary>The loose terms the shared lighting libraries still declare, plus the shadow stage's own five.</summary>
+    /// <summary>Where each loose term this path's stages read sits in its own block, resolved once at build: the
+    /// shared lighting libraries' four, the shadow record writer's five, and the froxel build's own.</summary>
     private struct VkDefLoc
     {
         public int Cubes, Material, LightOcc, LmMovers, Rect, InvVp, Proj, ShSize, ShRes;
+        public int View, Grid, ProjXY, Z, LightCount, Reach, LightFloor, BinCap, Atten, Hot, ReflK, Rel, Pad, Tally, DynPage;
     }
 
     /// <summary>The deferred path's resources on one device, replaced whole with the device.</summary>
@@ -92,12 +94,11 @@ public sealed unsafe partial class AlloyRenderer
         ReadOnlySpan<byte> rig = MemoryMarshal.AsBytes(AlloyLights.Staged);
         if (!VkDefLights(vk, cl, rig, log)) return;
 
-        int arena0 = s.ArenaUsed, pass = -1, looseSh, looseWalk, looseFilm = 0;
-        fixed (Matrix4x4* pp = &proj)
-            if (!VkDefBlocks(d.Shadow!, true, viewport, near, far, &invVp, pp, rw, rh, div, out looseSh, ref pass)
-                || !VkDefBlocks(walk, false, viewport, near, far, &invVp, pp, rw, rh, div, out looseWalk, ref pass)
-                || film && !VkDefBlocks(d.Film!, false, viewport, near, far, &invVp, pp, rw, rh, div, out looseFilm, ref pass))
-                return;
+        int arena0 = s.ArenaUsed, pass = -1, looseFilm = 0;
+        if (!VkDefBlocks(d.Shadow!, true, viewport, near, far, in invVp, in proj, rw, rh, div, out int looseSh, ref pass)
+            || !VkDefBlocks(walk, false, viewport, near, far, in invVp, in proj, rw, rh, div, out int looseWalk, ref pass)
+            || film && !VkDefBlocks(d.Film!, false, viewport, near, far, in invVp, in proj, rw, rh, div, out looseFilm, ref pass))
+            return;
 
         ref DeferredBlock b = ref d.Blk;
         b.Rect = new Int4(viewport[0], viewport[1], w, h);
@@ -241,7 +242,7 @@ public sealed unsafe partial class AlloyRenderer
     /// frame's arena -- GL's own setters through the shim, as a colour bind captures them, with every term whose
     /// map is not on Vulkan left at zero. False (logged by the arena) when the arena is full.</summary>
     private static bool VkDefBlocks(VkDefStage st, bool shadow, int* viewport, float near, float far,
-                                    Matrix4x4* invVp, Matrix4x4* proj, int rw, int rh, int div, out int loose, ref int pass)
+                                    in Matrix4x4 invVp, in Matrix4x4 proj, int rw, int rh, int div, out int loose, ref int pass)
     {
         Array.Clear(st.Block);
         VkUniformShim.Capture(st.Members, st.Block);
@@ -256,9 +257,9 @@ public sealed unsafe partial class AlloyRenderer
             if (shadow)
             {
                 // the record writer's own five, which are loose there rather than a block of their own
-                VkUniformShim.Set(st.L.Rect, new ReadOnlySpan<int>(viewport, 4));
-                VkUniformShim.Set(st.L.InvVp, new ReadOnlySpan<float>((float*)invVp, 16));
-                VkUniformShim.Set(st.L.Proj, new ReadOnlySpan<float>((float*)proj, 16));
+                VkUniformShim.Set(st.L.Rect, (ReadOnlySpan<int>)[viewport[0], viewport[1], viewport[2], viewport[3]]);
+                VkUniformShim.Set(st.L.InvVp, in invVp);
+                VkUniformShim.Set(st.L.Proj, in proj);
                 VkUniformShim.Set(st.L.ShSize, (ReadOnlySpan<int>)[rw, rh]);
                 VkUniformShim.Set(st.L.ShRes, div);
             }
@@ -395,6 +396,21 @@ public sealed unsafe partial class AlloyRenderer
             st.L.Proj = GlProgram.Loc(VkUniformShim.ProgramBase, "uProj");
             st.L.ShSize = GlProgram.Loc(VkUniformShim.ProgramBase, "uShSize");
             st.L.ShRes = GlProgram.Loc(VkUniformShim.ProgramBase, "uShRes");
+            st.L.View = GlProgram.Loc(VkUniformShim.ProgramBase, "uView");
+            st.L.Grid = GlProgram.Loc(VkUniformShim.ProgramBase, "uGrid");
+            st.L.ProjXY = GlProgram.Loc(VkUniformShim.ProgramBase, "uProjXY");
+            st.L.Z = GlProgram.Loc(VkUniformShim.ProgramBase, "uZ");
+            st.L.LightCount = GlProgram.Loc(VkUniformShim.ProgramBase, "uLightCount");
+            st.L.Reach = GlProgram.Loc(VkUniformShim.ProgramBase, "uReach");
+            st.L.LightFloor = GlProgram.Loc(VkUniformShim.ProgramBase, "uLightFloor");
+            st.L.BinCap = GlProgram.Loc(VkUniformShim.ProgramBase, "uBinCap");
+            st.L.Atten = GlProgram.Loc(VkUniformShim.ProgramBase, "uAtten");
+            st.L.Hot = GlProgram.Loc(VkUniformShim.ProgramBase, "uHot");
+            st.L.ReflK = GlProgram.Loc(VkUniformShim.ProgramBase, "uReflK");
+            st.L.Rel = GlProgram.Loc(VkUniformShim.ProgramBase, "uRel");
+            st.L.Pad = GlProgram.Loc(VkUniformShim.ProgramBase, "uPad");
+            st.L.Tally = GlProgram.Loc(VkUniformShim.ProgramBase, "uTally");
+            st.L.DynPage = GlProgram.Loc(VkUniformShim.ProgramBase, "uDynPage");
         });
         log.Info($"AlloyRenderer: {label} is built -- {st.Members.Length} loose members, {st.Opaques.Length} declarations");
         return st;

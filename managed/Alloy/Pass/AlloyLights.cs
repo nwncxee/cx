@@ -617,7 +617,10 @@ internal static unsafe class AlloyLights
                 // #674: the static bit rides the same lane, +CX_LIGHT_STATIC; the shader decodes w >= 128.
                 if (FrameInputs.AreaLightStatic[i] && !FrameInputs.AreaLightAmbient[i]) d.Slot += LightStatic + LightSetStride * (FrameInputs.AreaLightSetIndex[i] + 1);
             }
-            Gl.NamedBufferSubData(_gl.BufLights, IntPtr.Zero, (IntPtr)(n * 8 * sizeof(float)), s);
+            // on Vulkan the records go up through the Vulkan recorder's own copy of this staging; GL's buffer is
+            // the A/B half's alone
+            if (!Renderer.OnVulkan || VkParity.Active)
+                Gl.NamedBufferSubData(_gl.BufLights, IntPtr.Zero, (IntPtr)(n * 8 * sizeof(float)), s);
         }
         _gl.Uploaded = n;
         LastLightCount = n;
@@ -669,34 +672,12 @@ internal static unsafe class AlloyLights
         if (near < MinNear) near = MinNear;
         if (far <= near) return false;
 
-        int slot = _queryAt;
-        bool timing = _gl.Query[slot] != 0 && !(slot == 0 ? _gl.QueryPending0 : _gl.QueryPending1);
-        if (timing) Gl.BeginQuery(Gl.TIME_ELAPSED, _gl.Query[slot]);
-
-        Gl.UseProgram(_gl.Prog);
-        Gl.Uniform3i(_gl.LocGrid, GridX, GridY, GridZ);
-        fixed (Matrix4x4* vm = &view) Gl.UniformMatrix4fv(_gl.LocView, 1, 0, (float*)vm);
-        Gl.Uniform2f(_gl.LocProjXY, p00, p11);
-        Gl.Uniform2f(_gl.LocZ, near, far);
-        Gl.Uniform1i(_gl.LocCount, _gl.Uploaded);
-        Gl.Uniform1f(_gl.LocReach, _binReach);
-        Gl.Uniform1i(_gl.LocBinCap, _binCap);
-        Gl.Uniform2f(_gl.LocBinAtten, _atten.X, _atten.Y);
-        // the hot partition reads the same mover spheres and dyn pages the lit stage will, so they go up first
-        fixed (float* dp = CasterPass.CubeDynPage) Gl.Uniform1fv(_gl.LocDynPage, CasterPass.MaxCubes, dp);
-        Gl.Uniform2f(_gl.LocHot, Lightmap.Movers.V ? 1f : 0f, Shadows.CubeDist.V);
-        // R4: 0 unless a water film can exist this frame, and then the build is what it always was
-        Gl.Uniform1i(_gl.LocReflK, Weather.ReflK);
         // a viewport under one pixel per tile breaks the tile-to-NDC mapping the bounds rest on: no bounds then
         bool boundsOk = vpW >= GridX && vpH >= GridY;
         _builtW = vpW; _builtH = vpH; _builtNear = near; _builtFar = far;
-        Gl.Uniform2f(_gl.LocRel, boundsOk ? _rel : 0f, ReachUniform);
         // CX-188 budget: light.floor and the master gain, so the build's per-light reach cut is the lit stage's
         // -- conservatively: cx_lightbuild's ReachCut takes the sRGB luma and skips uDayDim, both of which make
         // its lum LARGER than the walk's, so the build can only ever bin a light the walk then windows out.
-        Gl.Uniform2f(_gl.LocFloor, LightFloor, _gain);
-        Gl.Uniform2f(_gl.LocPad, 2f / Math.Max(vpW, 1), 2f / Math.Max(vpH, 1));
-        Gl.Uniform1i(_gl.LocTally, tally && _tallyFrame ? 1 : 0);
         _gl.Terms = new BuildTerms
         {
             View = view, GridX = GridX, GridY = GridY, GridZ = GridZ, LightCount = _gl.Uploaded, BinCap = _binCap,
@@ -705,6 +686,32 @@ internal static unsafe class AlloyLights
             HotX = Lightmap.Movers.V ? 1f : 0f, HotY = Shadows.CubeDist.V, RelX = boundsOk ? _rel : 0f, RelY = ReachUniform,
             PadX = 2f / Math.Max(vpW, 1), PadY = 2f / Math.Max(vpH, 1), Ran = true,
         };
+        // the Vulkan frame records this build itself, from the terms just staged: GL's own dispatch would bin the
+        // same lights into a table nothing there reads. The A/B frame wants both, and runs both.
+        if (Renderer.OnVulkan && !VkParity.Active) return true;
+
+        int slot = _queryAt;
+        bool timing = _gl.Query[slot] != 0 && !(slot == 0 ? _gl.QueryPending0 : _gl.QueryPending1);
+        if (timing) Gl.BeginQuery(Gl.TIME_ELAPSED, _gl.Query[slot]);
+
+        ref BuildTerms t = ref _gl.Terms;
+        Gl.UseProgram(_gl.Prog);
+        Gl.Uniform3i(_gl.LocGrid, t.GridX, t.GridY, t.GridZ);
+        fixed (Matrix4x4* vm = &t.View) Gl.UniformMatrix4fv(_gl.LocView, 1, 0, (float*)vm);
+        Gl.Uniform2f(_gl.LocProjXY, t.ProjX, t.ProjY);
+        Gl.Uniform2f(_gl.LocZ, t.Near, t.Far);
+        Gl.Uniform1i(_gl.LocCount, t.LightCount);
+        Gl.Uniform1f(_gl.LocReach, t.Reach);
+        Gl.Uniform1i(_gl.LocBinCap, t.BinCap);
+        Gl.Uniform2f(_gl.LocBinAtten, t.AttenX, t.AttenY);
+        // the hot partition reads the same mover spheres and dyn pages the lit stage will, so they go up first
+        fixed (float* dp = CasterPass.CubeDynPage) Gl.Uniform1fv(_gl.LocDynPage, CasterPass.MaxCubes, dp);
+        Gl.Uniform2f(_gl.LocHot, t.HotX, t.HotY);
+        Gl.Uniform1i(_gl.LocReflK, t.ReflK);
+        Gl.Uniform2f(_gl.LocRel, t.RelX, t.RelY);
+        Gl.Uniform2f(_gl.LocFloor, t.Floor, t.Gain);
+        Gl.Uniform2f(_gl.LocPad, t.PadX, t.PadY);
+        Gl.Uniform1i(_gl.LocTally, t.Tally);
         UploadMovers();
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindLights, _gl.BufLights);
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindCounts, _gl.BufCounts);

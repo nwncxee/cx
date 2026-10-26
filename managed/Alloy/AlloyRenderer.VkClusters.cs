@@ -66,23 +66,23 @@ public sealed unsafe partial class AlloyRenderer
         VkUniformShim.Capture(st.Members, st.Block);
         try
         {
-            VkUniformShim.Set(VkClusterLoc(st, "uView"), new ReadOnlySpan<float>(&t.View, 16));
-            VkUniformShim.Set(VkClusterLoc(st, "uGrid"), (ReadOnlySpan<int>)[t.GridX, t.GridY, t.GridZ]);
-            VkUniformShim.Set(VkClusterLoc(st, "uProjXY"), (ReadOnlySpan<float>)[t.ProjX, t.ProjY]);
-            VkUniformShim.Set(VkClusterLoc(st, "uZ"), (ReadOnlySpan<float>)[t.Near, t.Far]);
-            VkUniformShim.Set(VkClusterLoc(st, "uLightCount"), t.LightCount);
-            VkUniformShim.Set(VkClusterLoc(st, "uReach"), t.Reach);
-            VkUniformShim.Set(VkClusterLoc(st, "uLightFloor"), (ReadOnlySpan<float>)[t.Floor, t.Gain]);
-            VkUniformShim.Set(VkClusterLoc(st, "uBinCap"), t.BinCap);
-            VkUniformShim.Set(VkClusterLoc(st, "uAtten"), (ReadOnlySpan<float>)[t.AttenX, t.AttenY]);
-            VkUniformShim.Set(VkClusterLoc(st, "uHot"), (ReadOnlySpan<float>)[t.HotX, t.HotY]);
-            VkUniformShim.Set(VkClusterLoc(st, "uReflK"), t.ReflK);
-            VkUniformShim.Set(VkClusterLoc(st, "uRel"), (ReadOnlySpan<float>)[t.RelX, t.RelY]);
-            VkUniformShim.Set(VkClusterLoc(st, "uPad"), (ReadOnlySpan<float>)[t.PadX, t.PadY]);
-            VkUniformShim.Set(VkClusterLoc(st, "uTally"), t.Tally);
+            VkUniformShim.Set(st.L.View, in t.View);
+            VkUniformShim.Set(st.L.Grid, (ReadOnlySpan<int>)[t.GridX, t.GridY, t.GridZ]);
+            VkUniformShim.Set(st.L.ProjXY, (ReadOnlySpan<float>)[t.ProjX, t.ProjY]);
+            VkUniformShim.Set(st.L.Z, (ReadOnlySpan<float>)[t.Near, t.Far]);
+            VkUniformShim.Set(st.L.LightCount, t.LightCount);
+            VkUniformShim.Set(st.L.Reach, t.Reach);
+            VkUniformShim.Set(st.L.LightFloor, (ReadOnlySpan<float>)[t.Floor, t.Gain]);
+            VkUniformShim.Set(st.L.BinCap, t.BinCap);
+            VkUniformShim.Set(st.L.Atten, (ReadOnlySpan<float>)[t.AttenX, t.AttenY]);
+            VkUniformShim.Set(st.L.Hot, (ReadOnlySpan<float>)[t.HotX, t.HotY]);
+            VkUniformShim.Set(st.L.ReflK, t.ReflK);
+            VkUniformShim.Set(st.L.Rel, (ReadOnlySpan<float>)[t.RelX, t.RelY]);
+            VkUniformShim.Set(st.L.Pad, (ReadOnlySpan<float>)[t.PadX, t.PadY]);
+            VkUniformShim.Set(st.L.Tally, t.Tally);
             // the dyn-page table the hot partition reads, one float a cube slot -- an ARRAY member, so each element
             // goes at the block's own stride rather than packed against its neighbour
-            VkUniformShim.SetEach(VkClusterLoc(st, "uDynPage"), CasterPass.CubeDynPage.AsSpan(0, CasterPass.MaxCubes));
+            VkUniformShim.SetEach(st.L.DynPage, CasterPass.CubeDynPage.AsSpan(0, CasterPass.MaxCubes));
         }
         finally { VkUniformShim.EndCapture(); }
         int loose = VkArena(st.Block);
@@ -106,10 +106,6 @@ public sealed unsafe partial class AlloyRenderer
                      + $"{t.LightCount} lights, the list the deferred record writer picks its shadow candidates from");
         }
     }
-
-    /// <summary>Member <paramref name="name"/>'s index in <paramref name="st"/>'s loose block, or -1 -- which the
-    /// shim counts as a dropped write rather than writing somewhere else.</summary>
-    private static int VkClusterLoc(VkDefStage st, string name) => st.Names.TryGetValue(name, out int i) ? i : -1;
 
     /// <summary>The stage and the three buffers, made once per device. The table is zeroed when new: a reader that
     /// runs before the first build would otherwise take stale memory as a light count in the millions.</summary>
