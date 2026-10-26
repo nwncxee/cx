@@ -324,7 +324,7 @@ internal static unsafe partial class GuiPassVk
         vk.Destroy(v.Colour); vk.Destroy(v.Depth); vk.Destroy(v.Black); vk.Destroy(v.White);
         v.Tex = tex; v.W = w; v.H = h;
         v.Colour = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, ViewFormat, w, h, 1, 1, 1, 1,
-                                                ImageUse.ColorTarget | ImageUse.Sampled, $"vk gui model view {k}"));
+                                                ImageUse.ColorTarget | ImageUse.Sampled | ImageUse.CopyDst, $"vk gui model view {k}"));
         v.Depth = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, DepthFormat, w, h, 1, 1, 1, 1, ImageUse.DepthTarget, $"vk gui model view {k} depth"));
         v.Black = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, ViewFormat, w, h, 1, 1, 1, 1,
                                                ImageUse.ColorTarget | ImageUse.Sampled, $"vk gui model view {k} over black"));
@@ -334,6 +334,17 @@ internal static unsafe partial class GuiPassVk
             log.Always($"GuiPassVk: the Vulkan model view target {w}x{h} for GL texture {tex} was REFUSED (logged above) -- that view is NOT DRAWN");
         else log.Info($"GuiPassVk: model view target {w}x{h} on texture {tex}: a Vulkan image of its own");
         return v;
+    }
+
+    /// <summary>Stand-in pixels (<paramref name="w"/> x <paramref name="h"/> RGBA) into model view texture
+    /// <paramref name="tex"/>'s colour image, which a panel samples until the doll draws over it. Device thread.</summary>
+    internal static void ViewStandin(uint tex, uint[] px, int w, int h, ExtenderLog log)
+    {
+        if (AlloyDevice.Vulkan(log) is not VkBackend vk || px.Length != w * h) return;
+        View v = ViewOf(vk, tex, w, h, log);
+        if (v.Colour.IsNull) return;
+        if (!vk.Upload(v.Colour, 0, 0, System.Runtime.InteropServices.MemoryMarshal.AsBytes(px.AsSpan())))
+            log.Always($"GuiPassVk: the stand-in for model view texture {tex} was REFUSED (logged above) -- it shows blank");
     }
 
     /// <summary>The Vulkan image standing in for model view texture <paramref name="tex"/>, null id for any other

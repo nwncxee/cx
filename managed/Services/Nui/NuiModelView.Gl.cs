@@ -34,6 +34,7 @@ internal static unsafe partial class NuiModelView
 
     private static void Run(ViewState s, TexJob j)
     {
+        if (CX.Alloy.Renderer.OnVulkan) { RunVk(s, j); return; }
         if (s.Log == null || !Gl.Init(s.Log)) return;
         int prev;
         Gl.GetIntegerv(Gl.TEXTURE_BINDING_2D, &prev);
@@ -60,6 +61,21 @@ internal static unsafe partial class NuiModelView
                 break;
         }
         Gl.BindTexture(Gl.TEXTURE_2D, (uint)prev);
+    }
+
+    /// <summary><see cref="Run"/> under Vulkan: a view's texture is a name the Vulkan GUI keys its own image by, so making
+    /// one mints a name, a delete has nothing to free, and a stand-in is uploaded into that image.</summary>
+    private static void RunVk(ViewState s, TexJob j)
+    {
+        switch (j.Op)
+        {
+            case TexOp.Make:
+                if (j.View is { Gone: false } v) v.OwnTex = CX.Alloy.VkTextures.NewName();
+                break;
+            case TexOp.Standin:
+                if (j.Px != null && s.Log != null) CX.Alloy.GuiPassVk.ViewStandin(j.Tex, j.Px, j.W, j.H, s.Log);
+                break;
+        }
     }
 
     /// <summary>A stand-in's pixels into texture <c>j.Tex</c>, the unpack state put back as it was.</summary>

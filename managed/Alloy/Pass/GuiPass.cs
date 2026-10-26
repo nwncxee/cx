@@ -224,8 +224,8 @@ internal static unsafe class GuiPass
         // GlContextService's own health bracket down for the frame, so the deferred work runs here: at the main
         // menu, skipping it left the mesh arena's VAO unbuilt and the texture registry's uploads unrun.
         GlContextService.RunInBracketHere(); Db.MeshArena.Pump();
-        CX.Services.Nui.NuiModelView.Pump();
         if (Renderer.OnVulkan) return VulkanFlush(from, mid, to, windows, true);
+        CX.Services.Nui.NuiModelView.Pump();
         if (to > from) Upload();
         bool gpuTimed = CX.Services.Perf.FrameProbe.GpuBegin();
         long modelSpan = 0;
@@ -257,6 +257,8 @@ internal static unsafe class GuiPass
     /// closes the bracket when <paramref name="bracket"/> says the flush opened one.</summary>
     private static bool VulkanFlush(int from, int mid, int to, bool windows, bool bracket)
     {
+        // every flush, the world frame's included: the model views' texture work is Vulkan's here and needs no bracket
+        CX.Services.Nui.NuiModelView.Pump();
         bool ok = _log != null && GuiPassVk.Flush(from, mid, to, windows, _log);
         if (bracket) GlContextService.Leave();
         PresentTarget.HandBack();
