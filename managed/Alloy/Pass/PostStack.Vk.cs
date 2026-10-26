@@ -214,6 +214,7 @@ internal static unsafe partial class PostStack
         int at = PostChainVk.Close(cl, s.Motion);
         PostChainVk.Draw(cl, s.Motion, Format.Rg16F, PostChainVk.Blend.None, s.Vel, LoadOp.DontCare, new Rect(0, 0, w, h), at,
                          new PostChainVk.Inputs(default, default, depth), log);
+        AlloyRenderer.VkMoverMotion(vk, cl, s.Vel, w, h, vp, prev, log);
         return true;
     }
 

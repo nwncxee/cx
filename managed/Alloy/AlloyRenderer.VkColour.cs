@@ -115,7 +115,7 @@ public sealed unsafe partial class AlloyRenderer
     private const int ColourTargets = 7;
 
     /// <summary>Which attachment set a pipeline draws into.</summary>
-    private enum VkTargets : byte { Prepass, Colour, Forward, Decal, Mask }
+    private enum VkTargets : byte { Prepass, Colour, Forward, Decal, Mask, Velocity }
 
     /// <summary>The seven per-batch values, in <c>VkGlsl.Push</c>'s order.</summary>
     [StructLayout(LayoutKind.Sequential)]
@@ -493,7 +493,7 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The program's set 0: each declaration it makes, bound to its real resource where that is on Vulkan and to
     /// the stand-in of its kind otherwise. <paramref name="tex"/> is the batch's bound diffuse (GL name), 0 for none.</summary>
     private static void VkBindSet(CommandList cl, VkProg p, VkColourState s, int loose, int pass, BufferId slots, int tex,
-                                  ReadOnlySpan<int> extra = default)
+                                  ReadOnlySpan<int> extra = default, ReadOnlySpan<BufferBinding> storage = default)
     {
         Span<BufferBinding> ubo = stackalloc BufferBinding[12];
         Span<BufferBinding> ssbo = stackalloc BufferBinding[16];
@@ -515,6 +515,9 @@ public sealed unsafe partial class AlloyRenderer
                 case VkBindKind.StorageBlock when o.Binding == Db.ContentTable.Binding && !s.ContentRows.IsNull:
                     ssbo[ns++] = new BufferBinding(o.Binding, s.ContentRows, 0, s.ContentSentN);
                     break;
+                case VkBindKind.StorageBlock when Bound(storage, o.Binding) is { } own:
+                    ssbo[ns++] = own;
+                    break;
                 case VkBindKind.StorageBlock:
                     ssbo[ns++] = new BufferBinding(o.Binding, o.Binding switch
                     {
@@ -532,6 +535,13 @@ public sealed unsafe partial class AlloyRenderer
             }
         }
         cl.BindSet(0, new BindSet(ubo[..nu], ssbo[..ns], sampled[..nt], images[..ni]));
+    }
+
+    /// <summary>The caller's own buffer for storage binding <paramref name="slot"/>, or null.</summary>
+    private static BufferBinding? Bound(ReadOnlySpan<BufferBinding> storage, uint slot)
+    {
+        foreach (BufferBinding b in storage) if (b.Slot == slot) return b;
+        return null;
     }
 
     /// <summary>A sampler declaration's binding: the batch's diffuse for a bound <c>uTex</c>, an engine unit out of
@@ -590,6 +600,7 @@ public sealed unsafe partial class AlloyRenderer
         else if (targets == VkTargets.Decal) { d.Targets.Depth = Format.Unknown; VkDecalBlend(ref d); }
         else if (targets == VkTargets.Forward) { d.Targets.ColorCount = 1; d.Targets.Colors[0] = Format.Rgba16F; }
         else if (targets == VkTargets.Mask) { d.Targets.ColorCount = 1; d.Targets.Colors[0] = Format.Rgba8; }
+        else if (targets == VkTargets.Velocity) { d.Targets.ColorCount = 1; d.Targets.Colors[0] = Format.Rg16F; }
         else if (targets == VkTargets.Colour)
         {
             d.Targets.ColorCount = ColourTargets;
