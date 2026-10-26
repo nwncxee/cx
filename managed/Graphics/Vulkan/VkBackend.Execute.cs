@@ -388,8 +388,11 @@ internal sealed unsafe partial class VkBackend
     {
         ReadOnlySpan<ImageId> ids = r.Span<ImageId>(h.Images);
         if (_inPass) return Fault("ReadImages inside a render pass -- the hand-over is a barrier, which a pass forbids");
+        // the layout a bind of that kind wants, so the bind itself finds the image already in it
+        VkImageLayout to = h.Access is Access.StorageRead or Access.StorageWrite
+            ? VkImageLayout.General : VkImageLayout.ShaderReadOnlyOptimal;
         foreach (ImageId id in ids)
-            if (!id.IsNull && _images.TryGet(id.Value, out VkImg img)) Transition(img, VkImageLayout.ShaderReadOnlyOptimal);
+            if (!id.IsNull && _images.TryGet(id.Value, out VkImg img)) Transition(img, to);
         return true;
     }
 
