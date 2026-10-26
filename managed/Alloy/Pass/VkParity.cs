@@ -69,7 +69,7 @@ internal static unsafe class VkParity
 
     /// <summary>The colour-bracket passes GL runs in the A/B frame: the ones on Vulkan.</summary>
     internal static bool GlPass(PassId id)
-        => id is PassId.DepthPrepass or PassId.AmbientOcclusion or PassId.OpaqueOwned or PassId.SkyOwned
+        => id is PassId.DepthPrepass or PassId.AmbientOcclusion or PassId.FogVolume or PassId.OpaqueOwned or PassId.SkyOwned
                or PassId.CutoutOwned or PassId.DeferredLights or PassId.BlendedOwned or PassId.FbCopy
                or PassId.WaterOwned or PassId.AdditiveOwned or PassId.BeamsOwned
                or PassId.ParticlesOwned or PassId.HalosOwned;
@@ -81,7 +81,7 @@ internal static unsafe class VkParity
     /// <summary>The lit stage's loose terms whose resources are not on Vulkan: Vulkan binds them at zero. GL's A/B frame
     /// reaches the same zero at each term's own source, keyed on <see cref="Active"/>.</summary>
     internal static readonly string[] StoodDown =
-        ["uLmPages", "uSkyTerm", "uWeather", "uVFog", "uLightRecOn", "uCapture", "uOit", "uSplash"];
+        ["uLmPages", "uSkyTerm", "uWeather", "uLightRecOn", "uCapture", "uOit", "uSplash"];
 
     /// <summary>The pass block's receivers with no map on Vulkan, switched off in a staged block: no probe. The sun
     /// cascades stand: the A/B frame bakes on both backends, so both sides read the same count over their own maps.</summary>

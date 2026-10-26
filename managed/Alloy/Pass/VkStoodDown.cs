@@ -27,7 +27,6 @@ internal static class VkStoodDown
     [
         new(PassId.RainCover, "weather (the rain cover map)", "nothing shelters from the rain"),
         new(PassId.SkyMap, "light.sky (the sky-visibility bake)", "the area's one ambient reaches everywhere"),
-        new(PassId.FogVolume, "vfog (volumetric fog)", "every stage fogs on the distance ramp"),
         new(PassId.CoverageOwned, "alloy.a2c (alpha-to-coverage foliage)", "cutouts take the hard alpha test"),
         new(PassId.GrassOwned, "grass", "no blades over the ground"),
         new(PassId.Reflections, "light.ssr (screen-space reflections)", "surfaces keep the probe alone"),
@@ -44,7 +43,6 @@ internal static class VkStoodDown
         new("uLmPages", "lightmap (baked static lighting)", "every surface takes the live rig"),
         new("uSkyTerm", "light.sky (the sky-visibility term)", "the area's one ambient reaches everywhere"),
         new("uWeather", "weather (wetness, snow and puddles)", "every surface stays dry"),
-        new("uVFog", "vfog (volumetric fog)", "every stage fogs on the distance ramp"),
         new("uLightRecOn", "light.deferred (the blended class's light record)", "blended parts take the forward walk"),
         new("uCapture", "light.probe (the environment probe and the planar reflection)", "no captured reflection"),
         new("uOit", "alloy.oit (order-free transparency)", "the blended class draws in its sorted order"),
@@ -76,7 +74,6 @@ internal static class VkStoodDown
         "uLmPages" => Lightmap.G.Master!.V,
         "uSkyTerm" => SkyView.Wanted,
         "uWeather" => Weather.Enabled.V,
-        "uVFog" => VolumetricFog.Enabled.V,
         "uLightRecOn" => Lighting.Deferred.V,
         "uCapture" => Lighting.Probe.V,
         "uOit" => Renderer.Oit.V > 0,

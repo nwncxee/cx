@@ -37,6 +37,7 @@ internal static class VkPrograms
             ["uCoverEsm"] = TextureSlots.CoverEsm,
             ["uSsao"] = TextureSlots.Ssao,
             ["uSceneDepth"] = TextureSlots.SsaoDepth,
+            ["uVfHist"] = TextureSlots.VFog,
             ["uFbColor"] = FrameSnapshot.ColorUnit,
             ["uFbDepth"] = FrameSnapshot.DepthUnit,
             ["uNoise"] = FrameSnapshot.NoiseUnit,

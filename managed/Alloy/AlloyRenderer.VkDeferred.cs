@@ -277,7 +277,8 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>One compute stage's set 0: every declaration it makes, on its real resource where that is on
     /// Vulkan and on the stand-in of its kind otherwise. <paramref name="img0"/> and <paramref name="img1"/> are
     /// the two stores the stage writes, in its own declaration order.</summary>
-    private static void VkDefBindSet(CommandList cl, VkDefStage st, ImageId img0, ImageId img1, int loose, int pass, BufferId slots)
+    private static void VkDefBindSet(CommandList cl, VkDefStage st, ImageId img0, ImageId img1, int loose, int pass, BufferId slots,
+                                     ImageId hist = default)
     {
         VkColourState s = _vkc;
         VkDeferredState d = _vkdef;
@@ -323,6 +324,7 @@ public sealed unsafe partial class AlloyRenderer
                         TextureSlots.GbufDepth => new ImageBinding(o.Binding, s.Depth),
                         TextureSlots.ShadowVis => new ImageBinding(o.Binding, d.ShVis),
                         TextureSlots.ShadowKey => new ImageBinding(o.Binding, d.ShKey),
+                        _ when o.Name == "uVfHist" && !hist.IsNull => new ImageBinding(o.Binding, hist, s.Linear),
                         _ => VkSampled(o, s, 0),
                     };
                     break;

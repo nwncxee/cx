@@ -103,8 +103,10 @@ public sealed unsafe partial class AlloyRenderer
         // the sky after the G-buffer writers rather than between them as GL's graph has it: the dome draws only
         // where nothing wrote depth, so a cutout drawn before it covers exactly the pixels it would have covered
         if (!VkRecordSky(vk, cl, s, vp, viewport, log)) return false;
-        // the froxel table both deferred stages read, from this frame's own build
+        // the froxel table both deferred stages and the fog's local lights read, from this frame's own build, then the
+        // fog volume: after the G-buffer writers, which the deferred walk fogs, and before every stage that fogs itself
         VkClusterBuild(vk, cl, log);
+        VkFogPass(vk, cl, view, vpClean, viewport, near, far, perspective, lightingOn, log);
         // ...and then ADR 0029's two dispatches, at the graph's own place: after the cutout pass and the sky,
         // before the blended one. A sky pixel has no G-buffer record, so the walk leaves it alone.
         VkDeferred(vk, cl, vp, view, proj, viewport, near, far, indirect ? CullPassVk.Slots(CullPassVk.PhaseColour) : s.Slots, log);

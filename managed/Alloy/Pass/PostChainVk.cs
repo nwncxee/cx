@@ -17,7 +17,7 @@ internal static unsafe class PostChainVk
     /// <summary>The resolve's loose terms.</summary>
     private sealed class ResolveLocs
     {
-        public int SkyRaw = -1, SkyBand = -1, InvVp = -1, Eye = -1, VFog = -1, SkyBare = -1, OverlayOn = -1;
+        public int SkyRaw = -1, SkyBand = -1, InvVp = -1, Eye = -1, VFog = -1, VFogVp = -1, SkyBare = -1, OverlayOn = -1;
         public int Strength = -1, Mode = -1, Knee = -1, Exposure = -1, AcesMix = -1, Dither = -1, Viz = -1;
     }
 
@@ -89,8 +89,7 @@ internal static unsafe class PostChainVk
         VkUniformShim.Set(r.SkyBand, FrameInputs.FogOn && invVp != default ? SceneFog.SkyBand : 0f);
         VkUniformShim.Set(r.InvVp, invVp);
         VkUniformShim.Set(r.Eye, [eye.X, eye.Y, eye.Z]);
-        // the volumetric fog is not on Vulkan, so the resolve takes the band
-        VkUniformShim.Set(r.VFog, [0f, 0f, 0f, 0f]);
+        FogVolume.Upload(r.VFog, r.VFogVp, capture: false);
         VkUniformShim.Set(r.SkyBare, invVp == default ? 1 : 0);
         VkUniformShim.Set(r.OverlayOn, 0);
         VkUniformShim.Set(r.Strength, bloom ? Post.Bloom.V : 0f);
@@ -167,6 +166,7 @@ internal static unsafe class PostChainVk
                 "uHist" => (t.Hist, t.HistLinear ? s.Linear : s.Nearest),
                 "uVel" => (t.Vel, s.Linear),
                 "uMask" => (t.Mask, s.Linear),
+                "uVFogVol" => (AlloyRenderer.VkFogVolume, s.Linear),
                 _ => (default(ImageId), s.Linear),
             };
             if (i.IsNull) i = o.Type == "sampler3D" ? AlloyRenderer.VkStandIn3D : AlloyRenderer.VkStandIn2D;
@@ -256,7 +256,7 @@ internal static unsafe class PostChainVk
         {
             ResolveLocs r = s.R;
             r.SkyRaw = p.Loc("uSkyRaw"); r.SkyBand = p.Loc("uSkyBand"); r.InvVp = p.Loc("uInvVP"); r.Eye = p.Loc("uEyePos");
-            r.VFog = p.Loc("uVFog"); r.SkyBare = p.Loc("uSkyBare"); r.OverlayOn = p.Loc("uOverlayOn");
+            r.VFog = p.Loc("uVFog"); r.VFogVp = p.Loc("uVFogVp"); r.SkyBare = p.Loc("uSkyBare"); r.OverlayOn = p.Loc("uOverlayOn");
             r.Strength = p.Loc("uStrength"); r.Mode = p.Loc("uMode"); r.Knee = p.Loc("uKnee"); r.Exposure = p.Loc("uExposure");
             r.AcesMix = p.Loc("uAcesMix"); r.Dither = p.Loc("uDither"); r.Viz = p.Loc("uViz");
         }, log);

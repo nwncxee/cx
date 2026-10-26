@@ -553,6 +553,7 @@ public sealed unsafe partial class AlloyRenderer
         // ...and the depth it was computed from: the attachment itself for the decal writer, whose pass is outside
         // the colour one, and the sampled copy for every stage inside it, which may not read its own attachment
         if (o.Name == "uSceneDepth" && !VkDecalDepth.IsNull) return new ImageBinding(o.Binding, VkDecalDepth);
+        if (o.Name == "uVFogVol" && !VkFogVolume.IsNull) return new ImageBinding(o.Binding, VkFogVolume, s.Linear);
         if (VkIsWaterTex(o.Name) && VkWaterTex(o.Name) is { IsNull: false } wat)
             return new ImageBinding(o.Binding, wat, VkWaterSampler(o.Name));
         if (o.Name == "uSceneDepth" && !s.DepthRead.IsNull) return new ImageBinding(o.Binding, s.DepthRead);
