@@ -393,6 +393,7 @@ public sealed unsafe partial class AlloyRenderer
             long tVk = FrameZones.Now;
             // CX-273: the decal tests' view-depth terms, which on GL the decal pass itself publishes
             DecalLayer.SetCamera(in f.Proj);
+            VkFrameCamera(in f.View, in f.Proj);
             VulkanFrame.Run(_log, f.Vp, f.VpClean, f.View, f.Proj, viewport, display, f.Near, f.Far, f.LightingOn,
                             f.Perspective, f.Groups);
             FrameZones.Add(FrameZones.Zone.Vulkan, tVk);

@@ -115,13 +115,32 @@ public sealed unsafe partial class AlloyRenderer
         VkPassStart(side, w, h);
         VkHandOverReads(cl, s);
         var fwd = new VkRange(false, true, false, washes, VkTargets.Forward, false, VkDecalSkip);
-        ok &= VkIssue(side, ref b, _gOpaqueEnd, _gBlendEnd, fwd, vp, viewport, near, far, indirect);
         // the layer's readers are done with the blended range: additive takes it as GL does after DecalLayer.End
-        ok &= VkIssue(side, ref b, _gWaterEnd, groups, fwd with { DepthMask = false, Decal = DecalLayer.ModeNone },
-                      vp, viewport, near, far, indirect);
+        VkRange add = fwd with { DepthMask = false, Decal = DecalLayer.ModeNone };
+        ok &= VkIssue(side, ref b, _gOpaqueEnd, _gBlendEnd, fwd, vp, viewport, near, far, indirect);
+        // ADR 0011 PassId.FbCopy: the one snapshot of everything drawn so far, which only water reads. Without
+        // water the additive class closes the same pass; with it the pass ends so the copy can be recorded
+        bool water = _gWaterEnd > _gBlendEnd && !_capturing;
+        if (!water) ok &= VkIssue(side, ref b, _gWaterEnd, groups, add, vp, viewport, near, far, indirect);
         if (!ok) return false;
         colors[0] = new ColorAttachment(s.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default);
-        VkFlushPass(cl, side, arena0, new RenderPassDesc(colors[..1], new DepthAttachment(s.Depth, 0, 0, LoadOp.Load, StoreOp.Store, 1f)));
+        var forward = new RenderPassDesc(colors[..1], new DepthAttachment(s.Depth, 0, 0, LoadOp.Load, StoreOp.Store, 1f));
+        VkFlushPass(cl, side, arena0, in forward);
+        if (water)
+        {
+            VkWaterCopy(vk, cl, w, h, log);
+            side.Reset();
+            arena0 = s.ArenaUsed;
+            b = new VkBound { Fmt = -1, Tex = -1 };
+            VkPassStart(side, w, h);
+            ok &= VkWaterIssue(side, ref b, _gBlendEnd, _gWaterEnd, vp, viewport, near, far, indirect);
+            ok &= VkIssue(side, ref b, _gWaterEnd, groups, add, vp, viewport, near, far, indirect);
+            if (!ok) return false;
+            ReadOnlySpan<ImageId> snap = [_vkWater.Col, _vkWater.Dep];
+            if (_vkWater.Ready) cl.ReadImages(snap);
+            VkFlushPass(cl, side, arena0, in forward);
+            VkWaterDone();
+        }
 
         VkIdPaint(vk, cl, s, log);
 

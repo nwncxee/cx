@@ -28,6 +28,10 @@ internal static unsafe class FrameSnapshot
     /// <see cref="TextureSlots.WaterNoise"/> independently landed on.</summary>
     private const string NoiseResref = "solid_noise";
 
+    /// <summary>The engine's noise texture as the resman has it now, re-resolved per ask for <see cref="Bind"/>'s
+    /// reason: a <c>CAurTexture*</c> is borrowed and an area transition frees it.</summary>
+    internal static int NoiseTid => CX.Framework.AurTex.Tid(CX.Framework.AurTex.FindByName(NoiseResref));
+
     /// <summary>The unit the SCENE's environment map binds on -- the reflection vanilla's water
     /// carries.</summary>
     internal const uint EnvUnit = TextureSlots.WaterEnv;

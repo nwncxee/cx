@@ -31,8 +31,6 @@ internal static class VkStoodDown
         new(PassId.CoverageOwned, "alloy.a2c (alpha-to-coverage foliage)", "cutouts take the hard alpha test"),
         new(PassId.GrassOwned, "grass", "no blades over the ground"),
         new(PassId.Reflections, "light.ssr (screen-space reflections)", "surfaces keep the probe alone"),
-        new(PassId.FbCopy, "water (the frame copy water marches)", "nothing is copied for it"),
-        new(PassId.WaterOwned, "water", "no water surface is drawn at all"),
         new(PassId.BeamsOwned, "effects.beams (light shafts)", "no shafts"),
         new(PassId.ParticlesOwned, "particles", "no sparks, smoke or spell effects"),
         new(PassId.HalosOwned, "effects.halos (light halos)", "no halo around a light"),
@@ -53,6 +51,7 @@ internal static class VkStoodDown
         new("uLightRecOn", "light.deferred (the blended class's light record)", "blended parts take the forward walk"),
         new("uCapture", "light.probe (the environment probe and the planar reflection)", "no captured reflection"),
         new("uOit", "alloy.oit (order-free transparency)", "the blended class draws in its sorted order"),
+        new("uSplash", "weather (rain impacts on water)", "the water takes no ripples"),
     ];
 
     /// <summary>Is the feature behind <paramref name="id"/> switched on? The post chain has no master knob -- it always
@@ -84,6 +83,7 @@ internal static class VkStoodDown
         "uLightRecOn" => Lighting.Deferred.V,
         "uCapture" => Lighting.Probe.V,
         "uOit" => Renderer.Oit.V > 0,
+        "uSplash" => Weather.Enabled.V,
         _ => false,
     };
 

@@ -12,10 +12,10 @@ namespace CX.Alloy;
 /// <see cref="VkGlsl"/>. Built without GL: Vulkan always takes the bindless path and the sky-visibility unit.</summary>
 internal static class VkPrograms
 {
-    /// <summary>The programs the Vulkan batch pass draws through. <see cref="Id.Decal"/> is not one of
-    /// <see cref="All"/>: like GL's, it is optional, built at the decal pass's first frame, and its refusal stands
-    /// that pass down rather than failing the frame.</summary>
-    internal enum Id { Fullbright, Lit, LitDeferred, Depth, DepthKey, DepthFeat, Decal }
+    /// <summary>The programs the Vulkan batch pass draws through. <see cref="Id.Decal"/> and <see cref="Id.Water"/>
+    /// are not among <see cref="All"/>: like GL's, each is optional, built at its own pass's first frame, and a
+    /// refusal stands that pass down rather than failing the frame.</summary>
+    internal enum Id { Fullbright, Lit, LitDeferred, Depth, DepthKey, DepthFeat, Decal, Water }
 
     internal static readonly Id[] All = [Id.Fullbright, Id.Lit, Id.LitDeferred, Id.Depth, Id.DepthKey, Id.DepthFeat];
 
@@ -37,6 +37,10 @@ internal static class VkPrograms
             ["uCoverEsm"] = TextureSlots.CoverEsm,
             ["uSsao"] = TextureSlots.Ssao,
             ["uSceneDepth"] = TextureSlots.SsaoDepth,
+            ["uFbColor"] = FrameSnapshot.ColorUnit,
+            ["uFbDepth"] = FrameSnapshot.DepthUnit,
+            ["uNoise"] = FrameSnapshot.NoiseUnit,
+            ["uEnvMap"] = FrameSnapshot.EnvUnit,
         };
         for (int i = 0; i < TextureSlots.MapCount; i++) u[TextureSlots.MapSamplers[i]] = TextureSlots.MapBase + (uint)i;
         return u;
@@ -61,6 +65,13 @@ internal static class VkPrograms
                 if (id == Id.LitDeferred) f = Programs.WithDeferred(f);
                 else if (id == Id.Decal) f = ShaderStages.WithDefine(f, "CX_DECAL_WRITE 1");
                 return (Final(v, log, what, false), Final(f, log, what, false));
+            }
+            case Id.Water:
+            {
+                GlProgram.Texts(AlloyRenderer.ShdWaterVs, ShaderStages.Source(AlloyRenderer.ShdWaterVs),
+                                AlloyRenderer.ShdWaterFs, ShaderStages.Source(AlloyRenderer.ShdWaterFs),
+                                log, what, out string v, out string f);
+                return (Final(v, log, what, true), Final(f, log, what, true));
             }
             case Id.Depth:
                 return (Final(AlloyRenderer.DepthVs, log, what, true), Final(AlloyRenderer.DepthFs, log, what, true));

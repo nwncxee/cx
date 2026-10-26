@@ -331,7 +331,8 @@ public sealed unsafe partial class AlloyRenderer
         {
             fixed (Matrix4x4* m = &vp)
             {
-                if (lit)
+                if (p.Id == VkPrograms.Id.Water) VkWaterTerms(p, in vp, viewport, near, far);
+                else if (lit)
                 {
                     ref LitLoc L = ref p.L;
                     VkUniformShim.Set(L.Vp, new ReadOnlySpan<float>(m, 16));
@@ -363,8 +364,10 @@ public sealed unsafe partial class AlloyRenderer
         foreach (string name in VkParity.StoodDown) VkZero(p, name);
         VkShadowSay(p);
         int loose = VkArena(p.Block);
-        int pass = lit ? VkArenaPass() : -1;
-        if (loose < 0 || (lit && pass < 0) || (p.ReadsEngine && VkEngine() < 0)) return false;
+        // the water stage is not the lit table's, but it reads the pass block's sun, ambient and fog as the lit stage does
+        bool passed = lit || p.Id == VkPrograms.Id.Water;
+        int pass = passed ? VkArenaPass() : -1;
+        if (loose < 0 || (passed && pass < 0) || (p.ReadsEngine && VkEngine() < 0)) return false;
         VkBindSet(cl, p, s, loose, pass, slots, tex);
         return true;
     }
@@ -550,6 +553,8 @@ public sealed unsafe partial class AlloyRenderer
         // ...and the depth it was computed from: the attachment itself for the decal writer, whose pass is outside
         // the colour one, and the sampled copy for every stage inside it, which may not read its own attachment
         if (o.Name == "uSceneDepth" && !VkDecalDepth.IsNull) return new ImageBinding(o.Binding, VkDecalDepth);
+        if (VkIsWaterTex(o.Name) && VkWaterTex(o.Name) is { IsNull: false } wat)
+            return new ImageBinding(o.Binding, wat, VkWaterSampler(o.Name));
         if (o.Name == "uSceneDepth" && !s.DepthRead.IsNull) return new ImageBinding(o.Binding, s.DepthRead);
         return o.Type switch
         {
