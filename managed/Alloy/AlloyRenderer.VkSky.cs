@@ -163,20 +163,16 @@ public sealed unsafe partial class AlloyRenderer
         VkUniformShim.Capture(p.Members, p.Block);
         try
         {
-            fixed (Matrix4x4* m = &vp)
-            {
-                VkUniformShim.Set(p.Vp, new ReadOnlySpan<float>(m, 16));
-                VkUniformShim.Set(p.AlphaMip, Renderer.CutMip.V);
-                VkUniformShim.Set(p.Viz, _capturing ? 0 : _lightViz);
-                Vector3 t = _skTint[i];
-                VkUniformShim.Set(p.Tint, [t.X, t.Y, t.Z]);
-                VkUniformShim.Set(p.SkyFog, SceneFog.SkyBand);
-                VkUniformShim.Set(p.Global, [t.X, t.Y, t.Z, _skAlpha[i]]);
-                // stock's sky reads the inverse view's translation column alone, so the eye position is the whole of it
-                Matrix4x4 viewInv = Matrix4x4.CreateTranslation(_eyePos);
-                VkUniformShim.Set(p.ViewInv, new ReadOnlySpan<float>(&viewInv, 16));
-                UploadFeatureTerms(p.F, viewport);
-            }
+            VkUniformShim.Set(p.Vp, in vp);
+            VkUniformShim.Set(p.AlphaMip, Renderer.CutMip.V);
+            VkUniformShim.Set(p.Viz, _capturing ? 0 : _lightViz);
+            Vector3 t = _skTint[i];
+            VkUniformShim.Set(p.Tint, [t.X, t.Y, t.Z]);
+            VkUniformShim.Set(p.SkyFog, SceneFog.SkyBand);
+            VkUniformShim.Set(p.Global, [t.X, t.Y, t.Z, _skAlpha[i]]);
+            // stock's sky reads the inverse view's translation column alone, so the eye position is the whole of it
+            VkUniformShim.Set(p.ViewInv, Matrix4x4.CreateTranslation(_eyePos));
+            UploadFeatureTerms(p.F, viewport);
         }
         finally { VkUniformShim.EndCapture(); }
         foreach (string name in VkParity.StoodDown) VkZero(p, name);

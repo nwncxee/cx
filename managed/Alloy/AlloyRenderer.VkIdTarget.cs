@@ -25,6 +25,8 @@ public sealed unsafe partial class AlloyRenderer
         public bool Armed;
         public PipelineId Viz;
         public ShaderId VizVs, VizFs;
+        /// <summary>The viz was built once and refused: it is not tried again, and says nothing more.</summary>
+        public bool VizRefused;
         public SamplerId Nearest;
     }
 
@@ -102,7 +104,7 @@ public sealed unsafe partial class AlloyRenderer
     private static bool VkIdVizMade(VkBackend vk, VkIdState s, ExtenderLog log)
     {
         if (!s.Viz.IsNull) return true;
-        if (!s.VizVs.IsNull) return false;                     // built once and refused: stay quiet
+        if (s.VizRefused) return false;
         var units = new Dictionary<string, uint>(StringComparer.Ordinal) { ["uId"] = 0 };
         VkProgramText t = VkGlsl.Translate(ShaderSource.Get("cx_fullscreen_v.glsl"), IdTarget.VizFs, units, glDepth: false);
         string ve = "", fe = "";
@@ -110,7 +112,7 @@ public sealed unsafe partial class AlloyRenderer
         byte[]? fs = t.Error == null ? CX.Graphics.VulkanToolchain.Compile(VkBackend.Translate(t.Fs), "vk id viz fs", ShaderKind.FragmentShader, out fe) : null;
         if (vs == null || fs == null)
         {
-            s.VizVs = vk.CreateShader(ShaderStage.Vertex, [], "vk id viz refused");   // a non-null latch, nothing else
+            s.VizRefused = true;
             log.Always($"AlloyRenderer: the Vulkan vis-ID viz did not build -- {t.Error ?? (vs == null ? ve : fe)}; /alloy viz 40 paints nothing");
             return false;
         }
@@ -122,7 +124,8 @@ public sealed unsafe partial class AlloyRenderer
         d.Targets.Colors[0] = Format.Rgba16F;
         d.Targets.Samples = 1;
         s.Viz = vk.CreatePipeline(in d);
-        if (s.Viz.IsNull) log.Always("AlloyRenderer: the Vulkan vis-ID viz pipeline was REFUSED -- /alloy viz 40 paints nothing");
+        s.VizRefused = s.Viz.IsNull;
+        if (s.VizRefused) log.Always("AlloyRenderer: the Vulkan vis-ID viz pipeline was REFUSED -- /alloy viz 40 paints nothing");
         return !s.Viz.IsNull;
     }
 

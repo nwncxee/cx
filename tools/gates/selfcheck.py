@@ -5,11 +5,14 @@ Scope: every `*SelfCheck*.cs` under managed/, plus the body of any method elsewh
 contains "SelfCheck". Inside that scope four shapes are refused:
 
   1. an Expect(...) whose condition is a compile-time constant (literal arithmetic only);
-  2. an Expect(...) comparing a `const` declared in the same file against a plain literal;
-  3. an Expect(...) whose two operands across == / != are syntactically identical;
+  2. an Expect(...) comparing a `const` against a plain literal, over == != < > <= >=. The const may be
+     named bare (declared in the same file) or as Type.CONST (declared anywhere under managed/);
+  3. an Expect(...) whose two operands across a comparison are syntactically identical;
   4. a hand-written "SKIPPED" log line -- a skip goes through Checker.Skip, which counts it.
 
-`-v` lists each hit with its file and line. Exit 1 when anything is refused.
+`-v` lists each hit with its file and line. Exit 1 when a shape other than 2 is refused; the standing
+instances of 2 are a shrink-only baseline instead (`--census` feeds ratchet.sh), so one may be removed
+but never added.
 """
 import re
 import sys
@@ -182,26 +185,64 @@ def split_top(expr: str, ops):
     return spans
 
 
+GENERIC_INNER = re.compile(r"^[A-Za-z0-9_,.\[\]\?\s]*$")
+COMPARES = ("==", "!=", "<=", ">=", "<", ">")
+
+
+def angles(expr: str) -> str:
+    """A copy of expr with generic argument lists blanked, offsets kept: `Std140.BlockBytes<Block>() == 208`
+    carries two angle brackets that are not comparisons, and reading them as such loses the == beside them."""
+    out = list(expr)
+    i = 0
+    while i < len(expr):
+        if expr[i] == "<" and i and (expr[i - 1].isalnum() or expr[i - 1] == "_"):
+            depth, j, stop = 0, i, False
+            while j < len(expr):
+                if expr[j] == "<":
+                    depth += 1
+                elif expr[j] == ">":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                elif expr[j] in "();{}":
+                    stop = True
+                    break
+                j += 1
+            if not stop and j < len(expr) and GENERIC_INNER.match(expr[i + 1:j]):
+                for k in range(i, j + 1):
+                    out[k] = " "
+                i = j + 1
+                continue
+        i += 1
+    return "".join(out)
+
+
 def comparison(part: str):
-    """The offset of the single top-level == / != in part, else None."""
-    found = None
+    """The offset and text of the single top-level comparison in part, else (None, None). A second one means
+    the operands cannot be cut out unambiguously, so the part is left alone."""
+    found, op = None, None
+    bare = angles(part)
     depth, i = 0, 0
-    while i < len(part):
-        c = part[i]
+    while i < len(bare):
+        c = bare[i]
         if c in "([{":
             depth += 1
         elif c in ")]}":
             depth -= 1
-        elif depth == 0 and part[i:i + 2] in ("==", "!="):
-            if found is not None:
-                return None
-            found = i
-            i += 2
+        elif depth == 0:
+            for cand in COMPARES:
+                if bare.startswith(cand, i):
+                    if found is not None:
+                        return None, None
+                    found, op = i, cand
+                    i += len(cand)
+                    break
+            else:
+                i += 1
+                continue
             continue
-        elif depth == 0 and c in "<>=!" and part[i:i + 2] not in ("==", "!=") and part[i + 1:i + 2] == "=":
-            return None       # <= or >=: not an equality compare
         i += 1
-    return found
+    return found, op
 
 
 def consts(masked: str):
@@ -221,7 +262,30 @@ def consts(masked: str):
     return out
 
 
-def scan(path: Path):
+TYPE_DECL = re.compile(r"\b(?:class|struct|record|interface)\s+([A-Za-z_][A-Za-z0-9_]*)")
+
+
+def qualified_consts():
+    """Every class-level const under managed/, keyed Type.CONST. Qualified only: a bare name is resolved
+    against the file that declares it, because two files may well name a const the same thing."""
+    table = {}
+    for path in sorted(MANAGED.rglob("*.cs")):
+        if path.name == "Views.g.cs":
+            continue
+        src = path.read_text(encoding="utf-8", errors="replace")
+        if " const " not in src:
+            continue
+        masked = mask(src)
+        local = consts(masked)
+        if not local:
+            continue
+        for t in set(TYPE_DECL.findall(masked)):
+            for name, init in local.items():
+                table.setdefault(f"{t}.{name}", init)
+    return table
+
+
+def scan(path: Path, qualified=None):
     src = path.read_text(encoding="utf-8", errors="replace")
     # Cheap pre-filter before the character walk: nothing to say about a file with no self-check in it,
     # or one whose self-check asserts nothing and logs no skip.
@@ -233,7 +297,8 @@ def scan(path: Path):
     regs = regions(path, masked)
     if not regs:
         return []
-    decl = consts(masked)
+    decl = dict(qualified or {})
+    decl.update(consts(masked))
     hits = []
 
     def line_of(off):
@@ -252,26 +317,27 @@ def scan(path: Path):
             if not tokens(flat):
                 # `Expect(false, ...)` is a deliberate unconditional failure, not an assertion.
                 if flat != "false":
-                    hits.append((line_of(at), "a compile-time constant condition", flat))
+                    hits.append((line_of(at), "a compile-time constant condition", flat, "hard"))
                 continue
             for a0, a1 in split_top(cond, ("&&", "||")):
-                eq = comparison(cond[a0:a1])
+                eq, op = comparison(cond[a0:a1])
                 if eq is None:
                     continue
                 # Cut the two operands out of the string-bearing copy: two calls that differ only in a
                 # string argument look identical once the strings are blanked.
                 base = at + a0
                 lt = "".join(literal[base:base + eq].split())
-                rt = "".join(literal[base + eq + 2:at + a1].split())
+                rt = "".join(literal[base + eq + len(op):at + a1].split())
                 ln, rn = lt.strip("()"), rt.strip("()")
                 if not ln or not rn:
                     continue
+                shown = f"{lt} {op} {rt}"
                 if ln == rn:
-                    hits.append((line_of(at), "both operands of == / != are the same text", f"{lt} == {rt}"))
+                    hits.append((line_of(at), f"both operands of {op} are the same text", shown, "hard"))
                     continue
                 for a, b in ((ln, rn), (rn, ln)):
                     if a in decl and is_literal(b):
-                        hits.append((line_of(at), f"the const {a} against its own kind of literal", f"{lt} == {rt}"))
+                        hits.append((line_of(at), f"the const {a} against its own kind of literal", shown, "const"))
                         break
         for m in re.finditer(r"\.(?:Always|Info|Warn|Error)\s*\(", window):
             stmt_end = window.find(";", m.end())
@@ -279,22 +345,36 @@ def scan(path: Path):
             if "SKIPPED" in stmt:
                 hits.append((line_of(lo + m.start()),
                              "a hand-written SKIPPED log -- use Checker.Skip so the skip is counted",
-                             " ".join(stmt.split())[:90]))
+                             " ".join(stmt.split())[:90], "hard"))
     return hits
 
 
 def main():
+    """Default: report every hit and fail on any but the const-against-literal shape, whose standing
+    instances are a shrink-only census instead (`--census`, fed to ratchet.sh by selfcheck.sh)."""
     verbose = "-v" in sys.argv
-    total = 0
+    census = "--census" in sys.argv
+    hard, counts = 0, {}
+    qualified = qualified_consts()
     for path in sorted(MANAGED.rglob("*.cs")):
         if path.name == "Views.g.cs":
             continue
-        for line, why, text in scan(path):
-            total += 1
-            rel = path.relative_to(ROOT)
-            print(f"  {rel}:{line}: {why}" + (f"\n      {text}" if verbose else ""), file=sys.stderr)
-    if total:
-        print(f"!! selfcheck: {total} assertion(s) that cannot fail, or an uncounted skip (CX-200).", file=sys.stderr)
+        rel = path.relative_to(ROOT)
+        for line, why, text, kind in scan(path, qualified):
+            if kind == "const":
+                counts[str(rel)] = counts.get(str(rel), 0) + 1
+                if census:
+                    continue
+            else:
+                hard += 1
+            if not census:
+                print(f"  {rel}:{line}: {why}" + (f"\n      {text}" if verbose else ""), file=sys.stderr)
+    if census:
+        for name in sorted(counts):
+            print(f"{counts[name]} {name}")
+        return 0
+    if hard:
+        print(f"!! selfcheck: {hard} assertion(s) that cannot fail, or an uncounted skip (CX-200).", file=sys.stderr)
         print("!! A self-check's expected value comes from an INDEPENDENT oracle: a hand-written literal,", file=sys.stderr)
         print("!! golden data, or a second artifact (GLSL text, a build .tsv, engine bytes). Never from the", file=sys.stderr)
         print("!! code under test, a copy of it, or the declaration it restates.", file=sys.stderr)

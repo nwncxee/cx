@@ -102,9 +102,8 @@ public sealed unsafe partial class AlloyRenderer
         }
         d.Writing = false;
         Span<ColorAttachment> colors = stackalloc ColorAttachment[DecalTargets];
-        colors[0] = new ColorAttachment(d.Layer, 0, 0, LoadOp.Clear, StoreOp.Store, new Vector4(0f, 0f, 0f, 1f));
-        colors[1] = new ColorAttachment(d.Surf, 0, 0, LoadOp.Clear, StoreOp.Store,
-                                        new Vector4(1f, DecalLayer.NoDecal, 0f, 0f));
+        colors[0] = new ColorAttachment(d.Layer, 0, 0, LoadOp.Clear, StoreOp.Store, VkDecalClear(surf: false));
+        colors[1] = new ColorAttachment(d.Surf, 0, 0, LoadOp.Clear, StoreOp.Store, VkDecalClear(surf: true));
         VkFlushPass(cl, side, arena0, new RenderPassDesc(colors));
         if (!d.Logged)
         {
@@ -154,6 +153,12 @@ public sealed unsafe partial class AlloyRenderer
         => vk.CreateImage(new ImageDesc(ImageKind.Tex2D, f, w, h, 1, 1, 1, 1,
                                         ImageUse.ColorTarget | ImageUse.Storage, label));
 
+    /// <summary>One attachment's clear, as GL's two <c>ClearBufferfv</c> calls set them: the layer to transparent
+    /// black, nothing taken yet, and the pair to a window depth of 1 with no decal depth behind it -- a surface at
+    /// the far end of the range, which <c>CxDecalOn</c> refuses before it reads anything else.</summary>
+    private static Vector4 VkDecalClear(bool surf)
+        => surf ? new Vector4(1f, DecalLayer.NoDecal, 0f, 0f) : new Vector4(0f, 0f, 0f, 1f);
+
     /// <summary>The decal pass's blends, as GL sets them: the albedo over-blends into the layer, and the surface
     /// pair takes a MIN, which keeps the nearest decal's depth beside the one prepass depth every writer stamps.</summary>
     private static void VkDecalBlend(ref PipelineDesc d)
@@ -184,8 +189,12 @@ public sealed unsafe partial class AlloyRenderer
             "the albedo layer over-blends: ONE, ONE_MINUS_SRC_ALPHA, with ZERO, ONE_MINUS_SRC_ALPHA on alpha");
         check.Expect(d.Blend[1].Enable && d.Blend[1].Op == BlendOp.Min,
             "the surface pair takes a MIN, so every writer's shared prepass depth and the nearest decal's depth survive");
-        check.Expect(DecalLayer.NoDecal > 1e20f,
-            $"the surface pair clears its decal depth past any surface ({DecalLayer.NoDecal})");
+        check.Expect(VkDecalClear(surf: false) == new Vector4(0f, 0f, 0f, 1f),
+            $"the albedo layer clears to transparent black -- no pixel has a decal yet (got {VkDecalClear(surf: false)})");
+        check.Expect(VkDecalClear(surf: true).X == 1f
+                     && ShaderSource.Get("cx_ownlit_head.glsl").Contains("if (!(z > 0.0 && z < 1.0)) return false;"),
+            "the surface pair clears its window depth to the 1.0 CxDecalOn refuses outright, so a pixel no writer "
+            + $"reached folds nothing (got {VkDecalClear(surf: true).X})");
         check.Expect(ShaderSource.Get("cx_oitout.glsl").Contains("layout(location = 1) out vec2 oDecalSurf;"),
             "the writer's second output is the surface pair on location 1, the attachment this pass puts there");
         log.Info(check.Ok ? "AlloyRenderer.VkDecalSelfCheck: passed" : "AlloyRenderer.VkDecalSelfCheck: FAILED");
