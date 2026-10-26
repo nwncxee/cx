@@ -204,7 +204,7 @@ internal static unsafe partial class CasterGatherVk
         // a chunk already dispatched against would leave that dispatch naming a dead id in the same recording
         int wide = Math.Max(maxViews, viewN);
         long viewBytes = (long)viewN * sizeof(CasterViewRec);
-        Grow(vk, ref s.ViewTbl, ref s.ViewCap, (long)wide * sizeof(CasterViewRec), BufferUse.Storage, "gather view table");
+        Grow(vk, ref s.ViewTbl, ref s.ViewCap, (long)wide * sizeof(CasterViewRec), BufferUse.Storage | BufferUse.CopySrc, "gather view table");
         if (s.ViewTbl.IsNull) return false;
         cl.UpdateBuffer(s.ViewTbl, 0, Native.Records(views, viewN));
 
