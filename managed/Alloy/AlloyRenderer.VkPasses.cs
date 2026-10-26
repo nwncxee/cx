@@ -41,11 +41,12 @@ public sealed unsafe partial class AlloyRenderer
         s.EngineAt = -1;
         s.Drawn = s.Skipped = 0;
         if (!VkUploads(vk, cl)) return false;
-        if (!VkRecordShadow(cl)) return false;
+        if (!VkRecordShadow(vk, cl, log)) return false;
         bool indirect = CullPassVk.Ran;
         int viz = _capturing ? 0 : _lightViz;
         bool gbuf = lightingOn && perspective && Lighting.Deferred.V && (viz == 0 || viz == VizLightFrom);
-        VkTargets colour = gbuf ? VkTargets.Colour : VkTargets.Forward;
+        bool refl = VkSsrArm(vk, w, h, gbuf, viz, log);
+        VkTargets colour = gbuf ? refl ? VkTargets.ColourRefl : VkTargets.Colour : VkTargets.Forward;
         s.GbufWritten = gbuf;
 
         VkIdBegin(vk, w, h, log);
@@ -97,6 +98,7 @@ public sealed unsafe partial class AlloyRenderer
             colors[GbufFirst] = new ColorAttachment(s.G0, 0, 0, LoadOp.Clear, StoreOp.Store, default);
             colors[GbufFirst + 1] = new ColorAttachment(s.G1, 0, 0, LoadOp.DontCare, StoreOp.Store, default);
             colors[GbufFirst + 2] = new ColorAttachment(s.G2, 0, 0, LoadOp.DontCare, StoreOp.Store, default);
+            if (refl) VkSsrAttachments(colors);
         }
         VkFlushPass(cl, side, arena0, new RenderPassDesc(colors[..n], new DepthAttachment(s.Depth, 0, 0, LoadOp.Load, StoreOp.Store, 1f)));
 
@@ -110,6 +112,8 @@ public sealed unsafe partial class AlloyRenderer
         // ...and then ADR 0029's two dispatches, at the graph's own place: after the cutout pass and the sky,
         // before the blended one. A sky pixel has no G-buffer record, so the walk leaves it alone.
         VkDeferred(vk, cl, vp, view, proj, viewport, near, far, indirect ? CullPassVk.Slots(CullPassVk.PhaseColour) : s.Slots, log);
+        // the reflections at the graph's own place: after the deferred walk, before the blended class
+        VkSsrRun(cl, view, proj, viewport, near, far, log);
 
         side.Reset();
         arena0 = s.ArenaUsed;

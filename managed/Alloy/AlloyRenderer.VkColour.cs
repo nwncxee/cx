@@ -28,6 +28,8 @@ public sealed unsafe partial class AlloyRenderer
         public bool Lit;
         /// <summary>Writes the G-buffer rather than the scene colour: the deferred lit program and every deferred twin.</summary>
         public bool Deferred;
+        /// <summary>Writes the reflection record (<c>oReflN</c>/<c>oReflW</c>); every other program leaves the pair alone.</summary>
+        public bool Refl;
         /// <summary>A content pair's program: its feature id and the pair's build generation it came from; 0 otherwise.</summary>
         public int Feat, Epoch;
         public string Label = "";
@@ -115,7 +117,7 @@ public sealed unsafe partial class AlloyRenderer
     private const int ColourTargets = 7;
 
     /// <summary>Which attachment set a pipeline draws into.</summary>
-    private enum VkTargets : byte { Prepass, Colour, Forward, Decal, Mask, Velocity }
+    private enum VkTargets : byte { Prepass, Colour, Forward, Decal, Mask, Velocity, ColourRefl }
 
     /// <summary>The seven per-batch values, in <c>VkGlsl.Push</c>'s order.</summary>
     [StructLayout(LayoutKind.Sequential)]
@@ -295,7 +297,7 @@ public sealed unsafe partial class AlloyRenderer
         byte[]? vs = VulkanToolchain.Compile(VkBackend.Translate(t.Vs), $"vk {label} vs", ShaderKind.VertexShader, out string ve);
         byte[]? fs = VulkanToolchain.Compile(VkBackend.Translate(t.Fs), $"vk {label} fs", ShaderKind.FragmentShader, out string fe);
         if (vs == null || fs == null) { log.Always($"AlloyRenderer: the Vulkan {label} program did not compile -- {(vs == null ? ve : fe)}"); return null; }
-        var p = new VkProg { Lit = lit, Label = label, Opaques = t.Opaques.ToArray() };
+        var p = new VkProg { Lit = lit, Label = label, Opaques = t.Opaques.ToArray(), Refl = t.Fs.Contains("oReflN", StringComparison.Ordinal) };
         p.ReadsEngine = Array.Exists(p.Opaques, o => o.Set == 0 && o.Kind == VkBindKind.UniformBlock && o.Binding == UboSlots.Engine);
         p.Vs = vk.CreateShader(ShaderStage.Vertex, vs, $"vk {label} vs");
         p.Fs = vk.CreateShader(ShaderStage.Fragment, fs, $"vk {label} fs");
@@ -347,6 +349,7 @@ public sealed unsafe partial class AlloyRenderer
                     VkUniformShim.Set(L.LightOcc, [Lighting.HiddenLights.V ? 1f : 0f, GlossyRough]);
                     UploadMaterialModel(L.Material);
                     Weather.UploadLit(L.Weather, L.WeatherLook, L.CoverVp, L.CoverLayer, L.SnowLook, L.SnowLight, L.SnowPom, L.WxEdge, L.WxRun, L.WxCache, false);
+                    SkyView.UploadLitVk(L.SkyVp, L.SkyTerm, VkSkyMap, _capturing && !_planar || VkParity.Active);
                 }
                 else
                 {
@@ -564,6 +567,7 @@ public sealed unsafe partial class AlloyRenderer
         // the colour one, and the sampled copy for every stage inside it, which may not read its own attachment
         if (o.Name == "uSceneDepth" && !VkDecalDepth.IsNull) return new ImageBinding(o.Binding, VkDecalDepth);
         if (o.Name == "uVFogVol" && !VkFogVolume.IsNull) return new ImageBinding(o.Binding, VkFogVolume, s.Linear);
+        if (o.Name == "uSkyMap" && !VkSkyMap.IsNull) return new ImageBinding(o.Binding, VkSkyMap, s.Linear);
         if (VkIsWaterTex(o.Name) && VkWaterTex(o.Name) is { IsNull: false } wat)
             return new ImageBinding(o.Binding, wat, VkWaterSampler(o.Name));
         if (o.Name == "uSceneDepth" && !s.DepthRead.IsNull) return new ImageBinding(o.Binding, s.DepthRead);
@@ -601,7 +605,7 @@ public sealed unsafe partial class AlloyRenderer
         else if (targets == VkTargets.Forward) { d.Targets.ColorCount = 1; d.Targets.Colors[0] = Format.Rgba16F; }
         else if (targets == VkTargets.Mask) { d.Targets.ColorCount = 1; d.Targets.Colors[0] = Format.Rgba8; }
         else if (targets == VkTargets.Velocity) { d.Targets.ColorCount = 1; d.Targets.Colors[0] = Format.Rg16F; }
-        else if (targets == VkTargets.Colour)
+        else if (targets is VkTargets.Colour or VkTargets.ColourRefl)
         {
             d.Targets.ColorCount = ColourTargets;
             d.Targets.Colors[0] = Format.Rgba16F;
@@ -610,6 +614,12 @@ public sealed unsafe partial class AlloyRenderer
             d.Targets.Colors[GbufFirst + 2] = Format.R32Ui;
             bool twin = p.Deferred;
             for (int i = GbufFirst; i < ColourTargets; i++) d.Blend[i] = new AttachmentBlend(Masked: twin ? ColorMask.None : ColorMask.All);
+            if (targets == VkTargets.ColourRefl)
+            {
+                d.Targets.Colors[SsrRecFirst] = Format.Rgba16F;
+                d.Targets.Colors[SsrRecFirst + 1] = Format.R11G11B10F;
+                for (int i = SsrRecFirst; i < SsrRecFirst + 2; i++) d.Blend[i] = new AttachmentBlend(Masked: p.Refl ? ColorMask.None : ColorMask.All);
+            }
         }
         if (blend != 0 && targets != VkTargets.Prepass)
         {

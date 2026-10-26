@@ -52,9 +52,11 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The bake the shadow bracket recorded aside, between the frame's uploads and its first colour pass: it
     /// reads the records, bones and handles <see cref="VkUploads"/> just staged, so the maps are baked from what the
     /// colour bracket will draw with and sampled inside the same submit.</summary>
-    private static bool VkRecordShadow(CommandList cl)
+    private static bool VkRecordShadow(VkBackend vk, CommandList cl, ExtenderLog log)
     {
         if (CasterPass.VkBracket is { } bake) cl.Append(bake);
-        return CasterPass.VkFlush(cl);
+        if (!CasterPass.VkFlush(cl)) return false;
+        if (CasterPass.VkSkyTake(out ImageId sky, out SkyFit fit)) VkSkyBake(vk, cl, sky, in fit, log);
+        return true;
     }
 }

@@ -22,7 +22,7 @@ public sealed unsafe partial class CasterPass
 {
     /// <summary>Which depth array a queued view bakes into. The queue keys on a GL name, which Vulkan has none of;
     /// this is the key both flushes read, resolved from that name at the one place a view is queued.</summary>
-    private enum CasterMap : byte { SunStatic, SunDyn, Cubes, CubeDyn, Other }
+    private enum CasterMap : byte { SunStatic, SunDyn, Cubes, CubeDyn, Sky, Other }
 
     /// <summary>One translated depth program: its modules, the pipelines it has made by state key, and the offsets
     /// of the three loose members a masked stage reads out of its own block.</summary>
@@ -50,9 +50,9 @@ public sealed unsafe partial class CasterPass
         public CommandList? Cmds;
         /// <summary>Views the bracket queued for the colour frame to flush; 0 = nothing to bake.</summary>
         public int Queued;
-        public ImageId Cascades, SunDyn, Cubes, CubeDyn;
+        public ImageId Cascades, SunDyn, Cubes, CubeDyn, Sky;
         /// <summary>The size and layer count each array was made at: a knob change remakes it.</summary>
-        public int SunSize, SunLayers, DynSize, DynLayers, CubeSize, CubePages, CubeDynSize, CubeDynPages;
+        public int SunSize, SunLayers, DynSize, DynLayers, CubeSize, CubePages, CubeDynSize, CubeDynPages, SkySize, SkyLayers;
         public VkCastProg? Plain, Mask, MaskH;
         /// <summary>The three cut kinds' loose blocks, one after another at the device's alignment.</summary>
         public BufferId Cuts;
@@ -120,7 +120,7 @@ public sealed unsafe partial class CasterPass
         VkHandOver(cl);
         if (ok) return true;
         _layerFlushFails++;
-        CascadeCount = 0; CubeCount = 0;
+        CascadeCount = 0; CubeCount = 0; SkyRelease();
         Array.Clear(SunDynMask); Array.Clear(CubeDynPage);
         _invalidate = true; _sunScanned = false; _cubeScanned = false;
         return false;
@@ -329,7 +329,7 @@ public sealed unsafe partial class CasterPass
     private static void VkHandOver(CommandList cl)
     {
         var s = _vk;
-        ReadOnlySpan<ImageId> maps = [s.Cascades, s.SunDyn, s.Cubes, s.CubeDyn];
+        ReadOnlySpan<ImageId> maps = [s.Cascades, s.SunDyn, s.Cubes, s.CubeDyn, s.Sky];
         cl.ReadImages(maps);
     }
 
@@ -340,7 +340,7 @@ public sealed unsafe partial class CasterPass
         ImageId img = VkMapOf(map);
         if (img.IsNull) return false;
         int size = 0, views = 0, lastLayer = 0;
-        bool clamp = map is CasterMap.SunStatic or CasterMap.SunDyn;
+        bool clamp = map is CasterMap.SunStatic or CasterMap.SunDyn or CasterMap.Sky;
         for (int k = 0; k < n; k++)
         {
             if (_qMap[k] != map) continue;
@@ -513,6 +513,7 @@ public sealed unsafe partial class CasterPass
                                        _cubeSize, _cubeLights, "vk light cubes"),
             CasterMap.CubeDyn => VkArray(ref s.CubeDyn, ref s.CubeDynSize, ref s.CubeDynPages, ImageKind.CubeArray,
                                          _cubeDynSize, _cubeDynPages, "vk mover cubes"),
+            CasterMap.Sky => VkArray(ref s.Sky, ref s.SkySize, ref s.SkyLayers, ImageKind.Tex2DArray, SkyView.MapSize, 1, "vk sky view"),
             _ => default,
         };
     }

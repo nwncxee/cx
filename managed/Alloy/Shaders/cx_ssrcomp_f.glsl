@@ -5,7 +5,8 @@
 #include "cx_ssrrec.glsl"
 layout(location = 0) out vec4 frag;
 uniform sampler2D uSrc;      // the trace: rgb = (screen - probe) x trust, a = the traced pixel's 1 / view depth (0 = none)
-uniform sampler2D uRecN, uRecW;
+uniform sampler2D uRecN;
+uniform sampler2D uRecW;
 uniform sampler2D uHiZ;      // level 0: 1 / view depth per full-res pixel
 uniform float uCap;          // the roughness cap
 uniform int uViz;
