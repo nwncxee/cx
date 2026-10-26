@@ -12,8 +12,8 @@ namespace CX.Alloy;
 /// <summary>
 /// The sky dome on Vulkan: the same staged sky list <c>SkyOwnedPass</c> draws, in its own render pass over the scene
 /// colour with the window-depth range collapsed to 1, so a dome parked at the camera survives only where nothing
-/// wrote depth. A dome whose material names its own fragment stage draws that stage, translated; one whose stage runs
-/// as a NATIVE stage sits the frame out, loudly, until <c>StageResources</c> ports.
+/// wrote depth. A dome whose material names its own fragment stage draws that stage, translated -- its native version
+/// where the module ships one, reading that stage's Vulkan images.
 /// </summary>
 public sealed unsafe partial class AlloyRenderer
 {
@@ -21,8 +21,8 @@ public sealed unsafe partial class AlloyRenderer
     private sealed class VkSkyState
     {
         public VkBackend? Dev;
-        /// <summary>One translated program per hosted content stage, by resref; null for one that did not build
-        /// or whose stage is native (logged once, then the dome sits out).</summary>
+        /// <summary>One translated program per hosted content stage, by resref (the native one's under its own); null for
+        /// one that did not build (logged once, then the dome sits out).</summary>
         public readonly Dictionary<string, VkProg?> Hosted = new(StringComparer.Ordinal);
         public bool Live;
         /// <summary>Domes that sat the frame out: a format the arena has not uploaded to Vulkan, a refused pipeline,
@@ -93,23 +93,29 @@ public sealed unsafe partial class AlloyRenderer
     }
 
     /// <summary>Hosted sky program <paramref name="prog"/> (a GL name) translated for Vulkan, built the first time a
-    /// dome asks; null when <see cref="SkyStage"/> does not hold it, its stage is native, or Vulkan refused it --
-    /// said once per stage, and that dome then sits the frame out exactly as GL's refusal does.</summary>
+    /// dome asks; null when <see cref="SkyStage"/> does not hold it or Vulkan refused it -- said once per stage, and that
+    /// dome then sits the frame out exactly as GL's refusal does. A refused native program stands its stage down.</summary>
     private static VkProg? VkSkyHosted(VkSkyState k, uint prog, ExtenderLog log)
     {
-        if (!SkyStage.Hosted(prog, out string resref, out bool native)) return null;
-        if (k.Hosted.TryGetValue(resref, out VkProg? hit)) return hit;
+        if (!SkyStage.Hosted(prog, out string resref, out bool native, out int stage)) return null;
+        string key = native ? StageResources.Prefix + resref : resref;
+        if (k.Hosted.TryGetValue(key, out VkProg? hit)) return hit;
         VkProg? p = null;
-        if (native)
-            log.Always($"AlloyRenderer: the Vulkan sky does NOT DRAW {resref} -- it runs as a native stage, whose "
-                     + "images and compute passes are GL's until StageResources ports");
-        else if (VkPrograms.SkyText(resref, log) is { } t && _vkSky.Dev is { } dev)
+        if (native && StageResources.Live(stage) && VkPrograms.SkyNativeText(resref, stage, log) is { } nt && _vkSky.Dev is { } nd)
+        {
+            p = VkBuild(nd, nt, $"sky {key}", lit: false, ContentShimBase + SkyShimBase + (uint)k.Hosted.Count, log);
+            if (p != null) VkStageAttach(p, stage, -1);
+            else StageResources.Fail(stage, "its Vulkan sky program did not build (logged above)", log);
+            log.Always(p != null ? $"AlloyRenderer: the Vulkan sky hosts {key} -- the native stage, its images and passes on Vulkan"
+                                 : $"AlloyRenderer: the Vulkan sky program for {key} did not build -- the dome sits out until the sky replants {resref}");
+        }
+        else if (!native && VkPrograms.SkyText(resref, log) is { } t && _vkSky.Dev is { } dev)
         {
             p = VkBuild(dev, t, $"sky {resref}", lit: false, ContentShimBase + SkyShimBase + (uint)k.Hosted.Count, log);
             log.Always(p != null ? $"AlloyRenderer: the Vulkan sky hosts {resref} -- the dome draws the content's own stage"
                                  : $"AlloyRenderer: the Vulkan sky program for {resref} did not build (logged above) -- the dome is NOT DRAWN");
         }
-        k.Hosted[resref] = p;
+        k.Hosted[key] = p;
         return p;
     }
 
@@ -171,6 +177,7 @@ public sealed unsafe partial class AlloyRenderer
             // stock's sky reads the inverse view's translation column alone, so the eye position is the whole of it
             VkUniformShim.Set(p.ViewInv, Matrix4x4.CreateTranslation(_eyePos));
             UploadFeatureTerms(p.F, viewport);
+            VkStageFrame(p);
         }
         finally { VkUniformShim.EndCapture(); }
         int loose = VkArena(p.Block);

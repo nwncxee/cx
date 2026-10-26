@@ -360,8 +360,9 @@ internal sealed unsafe partial class VkBackend
                 srcSubresource = new VkImageSubresourceLayers { aspectMask = VkImageAspectFlags.Color, mipLevel = (uint)(m - 1), layerCount = layers },
                 dstSubresource = new VkImageSubresourceLayers { aspectMask = VkImageAspectFlags.Color, mipLevel = (uint)m, layerCount = layers },
             };
-            b.srcOffsets[1] = new VkOffset3D { x = Math.Max(img.Desc.W >> (m - 1), 1), y = Math.Max(img.Desc.H >> (m - 1), 1), z = 1 };
-            b.dstOffsets[1] = new VkOffset3D { x = Math.Max(img.Desc.W >> m, 1), y = Math.Max(img.Desc.H >> m, 1), z = 1 };
+            bool vol = img.Desc.Kind == ImageKind.Tex3D;
+            b.srcOffsets[1] = new VkOffset3D { x = Math.Max(img.Desc.W >> (m - 1), 1), y = Math.Max(img.Desc.H >> (m - 1), 1), z = vol ? Math.Max(img.Desc.D >> (m - 1), 1) : 1 };
+            b.dstOffsets[1] = new VkOffset3D { x = Math.Max(img.Desc.W >> m, 1), y = Math.Max(img.Desc.H >> m, 1), z = vol ? Math.Max(img.Desc.D >> m, 1) : 1 };
             _vkd.vkCmdBlitImage(_cmd, img.Image, VkImageLayout.TransferSrcOptimal, img.Image, VkImageLayout.TransferDstOptimal, 1, &b, VkFilter.Linear);
             MipBarrier(img, m - 1, VkImageLayout.TransferSrcOptimal, VkImageLayout.TransferDstOptimal);
         }

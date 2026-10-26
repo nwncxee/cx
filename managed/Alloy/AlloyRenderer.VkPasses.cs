@@ -45,6 +45,7 @@ public sealed unsafe partial class AlloyRenderer
         s.EngineAt = -1;
         s.Drawn = s.Skipped = 0;
         if (!VkUploads(vk, cl)) return false;
+        StageResources.VkRun(vk, cl, viewport, _capturing, log);
         if (!VkRecordShadow(vk, cl, log)) return false;
         // the weather's surface maps off the cover layer the bake just landed, ahead of every stage that reads them
         VkWeatherSurface(vk, cl, log);

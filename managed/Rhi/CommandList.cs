@@ -11,7 +11,7 @@ public enum Op : byte
     End, BeginRenderPass, EndRenderPass, SetPipeline, SetViewport, SetScissor, SetDepthBias, BindSet,
     BindIndexBuffer, Draw, DrawIndexed, DrawIndexedIndirect, Dispatch, CopyImage, BlitImage, UpdateBuffer, ZeroBuffer,
     PushConstants, BindVertexBuffer, DrawIndexedMulti, SetDepthState, SetRasterState, SetDepthRange, ReadImages,
-    DrawIndirect, CopyImageToBuffer,
+    DrawIndirect, CopyImageToBuffer, ClearImage, GenerateMips,
 }
 
 /// <summary>An index element's width.</summary>
@@ -223,6 +223,11 @@ public sealed class CommandList
         Sent();
     }
 
+    /// <summary>Every mip and layer of <paramref name="i"/> set to zero, outside a pass; the image needs <c>CopyDst</c>.</summary>
+    public void ClearImage(ImageId i) { Head(Op.ClearImage); Put(i); Sent(); }
+    /// <summary><paramref name="i"/>'s mips past the base filled from it by linear blits, outside a pass; the image needs
+    /// <c>CopySrc</c> and <c>CopyDst</c>.</summary>
+    public void GenerateMips(ImageId i) { Head(Op.GenerateMips); Put(i); Sent(); }
     public void CopyImage(in CopyImageCmd c) { Head(Op.CopyImage); Put(c); Sent(); }
     public void BlitImage(in BlitImageCmd c) { Head(Op.BlitImage); Put(c); Sent(); }
     public void CopyImageToBuffer(in CopyToBufferCmd c) { Head(Op.CopyImageToBuffer); Put(c); Sent(); }

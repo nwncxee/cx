@@ -108,12 +108,30 @@ internal static class VkPrograms
 
     /// <summary>Content pair <paramref name="feat"/>'s <paramref name="v"/> program translated for Vulkan, from the text
     /// its GL program compiled (library swaps, then the hosted splice); null when that variant is not built on GL.</summary>
-    internal static VkProgramText? ContentText(int feat, ContentVariant v, ExtenderLog? log)
+    internal static VkProgramText? ContentText(int feat, ContentVariant v, int nativeVs, int nativeFs, ExtenderLog? log)
     {
         if (ContentPrograms.Texts(feat, v) is not { } t) return null;
         string what = $"VkPrograms content {feat} {v}";
-        return VkGlsl.Translate(Final(GlProgram.Lib(t.Vs, log, what), log, what, true),
-                                Final(GlProgram.Lib(t.Fs, log, what), log, what, true), Units, glDepth: false);
+        string vs = Final(GlProgram.Lib(t.Vs, log, what), log, what, true), fs = Final(GlProgram.Lib(t.Fs, log, what), log, what, true);
+        if (StageResources.VkUnits(Units, vs + "\n" + fs, nativeVs, nativeFs, StageResources.DrawImgUnits, out string why) is not { } units)
+        {
+            StageResources.Fail(nativeVs, why, log);
+            StageResources.Fail(nativeFs, why, log);
+            return new VkProgramText { Error = why };
+        }
+        return VkGlsl.Translate(vs, fs, units, glDepth: false);
+    }
+
+    /// <summary>The hosted sky's NATIVE program for content stage <paramref name="resref"/> on native stage
+    /// <paramref name="stage"/>, its stage images given bindings of their own; null when the text is not in the chain.</summary>
+    internal static VkProgramText? SkyNativeText(string resref, int stage, ExtenderLog? log)
+    {
+        if (!SkyStage.Texts(StageResources.Prefix + resref, native: true, out var pair, out _)) return null;
+        string what = $"VkPrograms sky {StageResources.Prefix}{resref}";
+        string vs = Final(GlProgram.Lib(pair.Vs, log, what), log, what, true), fs = Final(GlProgram.Lib(pair.Fs, log, what), log, what, true);
+        if (StageResources.VkUnits(Units, vs + "\n" + fs, stage, -1, StageResources.DrawImgUnits, out string why) is not { } units)
+            return new VkProgramText { Error = why };
+        return VkGlsl.Translate(vs, fs, units, glDepth: false);
     }
 
     /// <summary>The hosted sky's program for content stage <paramref name="resref"/>, translated for Vulkan from the

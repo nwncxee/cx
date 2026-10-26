@@ -47,6 +47,13 @@ public sealed unsafe partial class AlloyRenderer
         /// constant colour a content stage reads instead of the record's alpha. -1 on every other program.</summary>
         public int ViewInv = -1, Global = -1;
         public readonly Dictionary<long, PipelineId> Pipes = new();
+        /// <summary>The fake GL program name its locations resolve under.</summary>
+        public uint ShimName;
+        /// <summary>The native stages it is built from (-1: none), its declarations that are their images, and where
+        /// their frame uniforms sit (<see cref="VkStageAttach"/>).</summary>
+        public int StageA = -1, StageB = -1;
+        public StageResources.VkBind[] StageBinds = [];
+        public FrameLoc StageFrame;
     }
 
     /// <summary>The colour bracket's resources on one device, replaced whole with the device.</summary>
@@ -271,18 +278,14 @@ public sealed unsafe partial class AlloyRenderer
             return p;
         if (_log == null || s.Dev == null) return null;
         string label = $"content {feat} {v}";
-        if (ContentPrograms.Native(feat))
-        {
-            _log.Always($"AlloyRenderer: Vulkan {label} NOT RUN -- a half runs as a native stage, whose images and passes are GL's "
-                      + "until that stage's pass ports; its parts draw the plain program");
-            p = null;
-        }
-        else if (VkPrograms.ContentText(feat, v, _log) is not { } t) p = null;
+        (int na, int nb) = ContentPrograms.NativeStages(feat);
+        if (VkPrograms.ContentText(feat, v, na, nb, _log) is not { } t) p = null;
         else
         {
             // every variant of a pair is the lit stage's text, so every one takes the lit table
             p = VkBuild(s.Dev, t, label, true, ContentShimBase + (uint)key, _log);
             if (p == null) _log.Always($"AlloyRenderer: Vulkan {label} NOT RUN (logged above) -- its parts draw the plain program");
+            else if (na >= 0 || nb >= 0) VkStageAttach(p, na, nb);
         }
         if (p != null)
         {
@@ -303,7 +306,7 @@ public sealed unsafe partial class AlloyRenderer
         byte[]? vs = VulkanToolchain.Compile(VkBackend.Translate(t.Vs), $"vk {label} vs", ShaderKind.VertexShader, out string ve);
         byte[]? fs = VulkanToolchain.Compile(VkBackend.Translate(t.Fs), $"vk {label} fs", ShaderKind.FragmentShader, out string fe);
         if (vs == null || fs == null) { log.Always($"AlloyRenderer: the Vulkan {label} program did not compile -- {(vs == null ? ve : fe)}"); return null; }
-        var p = new VkProg { Lit = lit, Label = label, Opaques = t.Opaques.ToArray(), Refl = t.Fs.Contains("oReflN", StringComparison.Ordinal) };
+        var p = new VkProg { Lit = lit, Label = label, Opaques = t.Opaques.ToArray(), Refl = t.Fs.Contains("oReflN", StringComparison.Ordinal), ShimName = name };
         p.ReadsEngine = Array.Exists(p.Opaques, o => o.Set == 0 && o.Kind == VkBindKind.UniformBlock && o.Binding == UboSlots.Engine);
         p.Vs = vk.CreateShader(ShaderStage.Vertex, vs, $"vk {label} vs");
         p.Fs = vk.CreateShader(ShaderStage.Fragment, fs, $"vk {label} fs");
@@ -375,6 +378,7 @@ public sealed unsafe partial class AlloyRenderer
                     UploadFeatureTerms(p.F, viewport);
                 }
             }
+            VkStageFrame(p);
         }
         finally { VkUniformShim.EndCapture(); }
         // the terms whose resources are not on Vulkan yet read as absent: no cube, no lightmap, no sky map, no weather,
@@ -541,10 +545,12 @@ public sealed unsafe partial class AlloyRenderer
                     });
                     break;
                 case VkBindKind.StorageImage:
-                    images[ni++] = new ImageBinding(o.Binding, VkDecalImage(o.Name == "uDecalSurf", s), default, 0);
+                    images[ni++] = StageResources.VkImageFor(p.StageBinds, o.Binding, true)
+                                   ?? new ImageBinding(o.Binding, VkDecalImage(o.Name == "uDecalSurf", s), default, 0);
                     break;
                 default:
-                    sampled[nt++] = Own(sampledOwn, o.Binding) ?? VkSampled(o, s, tex, extra);
+                    sampled[nt++] = Own(sampledOwn, o.Binding) ?? StageResources.VkImageFor(p.StageBinds, o.Binding, false)
+                                    ?? VkSampled(o, s, tex, extra);
                     break;
             }
         }

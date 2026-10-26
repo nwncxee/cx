@@ -94,7 +94,7 @@ internal static unsafe class PostChainVk
         VkUniformShim.Set(r.Eye, [eye.X, eye.Y, eye.Z]);
         FogVolume.Upload(r.VFog, r.VFogVp, capture: false);
         VkUniformShim.Set(r.SkyBare, invVp == default ? 1 : 0);
-        VkUniformShim.Set(r.OverlayOn, 0);
+        VkUniformShim.Set(r.OverlayOn, StageResources.VkOverlay.IsNull ? 0 : 1);
         VkUniformShim.Set(r.Strength, bloom ? Post.Bloom.V : 0f);
         VkUniformShim.Set(r.Mode, Post.Tonemap.V);
         VkUniformShim.Set(r.Knee, Post.TmKnee.V);
@@ -156,11 +156,16 @@ internal static unsafe class PostChainVk
         PipelineId pipe = Pipe(p, f, add, log);
         if (pipe.IsNull) return;
         PostVkState s = _s;
-        Span<ImageBinding> img = stackalloc ImageBinding[8];
-        int n = 0;
+        Span<ImageBinding> img = stackalloc ImageBinding[8 + (int)StageResources.DrawImgUnits];
+        Span<ImageBinding> sti = stackalloc ImageBinding[(int)StageResources.DrawImgUnits];
+        int n = 0, ns = 0;
         foreach (VkOpaque o in p.Opaques)
         {
-            if (o.Set != 0 || o.Kind != VkBindKind.Sampled || n == img.Length) continue;
+            if (o.Set != 0) continue;
+            if (o.Kind == VkBindKind.StorageImage && ns < sti.Length && StageResources.VkImageFor(p.StageBinds, o.Binding, true) is { } w)
+                sti[ns++] = w;
+            if (o.Kind != VkBindKind.Sampled || n == img.Length) continue;
+            if (StageResources.VkImageFor(p.StageBinds, o.Binding, false) is { } own) { img[n++] = own; continue; }
             (ImageId i, SamplerId smp) = o.Name switch
             {
                 "uSrc" or "uHdr" or "uCur" or "texFBColor" => (t.Src, s.Linear),
@@ -176,6 +181,7 @@ internal static unsafe class PostChainVk
                 "uSearch" => (t.Search, s.Nearest),
                 "uBlend" => (t.Weights, s.Linear),
                 "uVFogVol" => (AlloyRenderer.VkFogVolume, s.Linear),
+                "uOverlay" => (StageResources.VkOverlay, s.Linear),
                 _ => (default(ImageId), s.Linear),
             };
             if (i.IsNull) i = o.Type == "sampler3D" ? AlloyRenderer.VkStandIn3D : AlloyRenderer.VkStandIn2D;
@@ -187,7 +193,7 @@ internal static unsafe class PostChainVk
         cl.SetPipeline(pipe);
         cl.SetViewport(vp.X, vp.Y, vp.W, vp.H);
         ReadOnlySpan<BufferBinding> sto = t.Storage.Buffer.IsNull ? default : [t.Storage];
-        cl.BindSet(0, new BindSet(ubo, sto, img[..n], default));
+        cl.BindSet(0, new BindSet(ubo, sto, img[..n], sti[..ns]));
         cl.Draw(3);
         cl.EndRenderPass();
     }
@@ -220,11 +226,22 @@ internal static unsafe class PostChainVk
 
     /// <summary>Post program <paramref name="label"/> from its two stages' GL text, its sizing tokens expanded as GL's
     /// compile expands them, translated and compiled. Null (logged) when a step refused.</summary>
-    internal static GuiVkProg? Program(VkBackend vk, string vs, string fs, string label, Action<GuiVkProg> locate, ExtenderLog log)
+    internal static GuiVkProg? Program(VkBackend vk, string vs, string fs, string label, Action<GuiVkProg> locate, ExtenderLog log,
+                                       int stage = -1)
     {
         vs = ShaderResource.Tokens(vs);
         fs = ShaderResource.Tokens(fs);
-        return GuiVkProg.Build(vk, vs, fs, UnitsFor(fs), $"post {label}", locate, log);
+        if (StageResources.VkUnits(UnitsFor(fs), fs, stage, -1, StageResources.DrawImgUnits, out string why) is not { } units)
+        {
+            log.Always($"PostChainVk: post {label} -- {why}");
+            return null;
+        }
+        GuiVkProg? p = GuiVkProg.Build(vk, vs, fs, units, $"post {label}", locate, log);
+        if (p == null || stage < 0) return p;
+        p.Stage = stage;
+        p.StageBinds = StageResources.VkBinds(p.Opaques, stage, -1, draw: true);
+        VkUniformShim.Resolve(p.Names, () => p.StageFrame = FrameLoc.Locate(0));
+        return p;
     }
 
     /// <summary>The first unit a content stage's own unbound sampler takes: past every unit Alloy names.</summary>

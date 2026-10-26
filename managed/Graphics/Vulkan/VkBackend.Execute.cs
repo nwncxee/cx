@@ -128,6 +128,8 @@ internal sealed unsafe partial class VkBackend
                 Op.CopyImage => CopyImg(r.Read<CopyImageCmd>()),
                 Op.BlitImage => BlitImg(r.Read<BlitImageCmd>()),
                 Op.CopyImageToBuffer => CopyToBuf(r.Read<CopyToBufferCmd>()),
+                Op.ClearImage => ClearImg(r.Read<ImageId>()),
+                Op.GenerateMips => MipsImg(r.Read<ImageId>()),
                 _ => Fault($"{op} is not on the Vulkan backend yet"),
             };
             if (!ok) return false;
