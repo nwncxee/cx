@@ -129,9 +129,9 @@ internal static unsafe partial class GuiPassVk
         s.ClearOwed = GuiPass.TakeFrameClear() || clearBlack;
         if (!Stage(vk, log)) return false;
         bool ok = Run(vk, from, mid, true, log);
-        if (windows) GuiPass.WindowsOn(CX.Ui.UiLayer.BelowNui, PresentTarget.Fbo46);
+        if (windows) GuiPass.Windows(CX.Ui.UiLayer.BelowNui, PresentTarget.Fbo46);
         ok &= Run(vk, mid, to, false, log);
-        if (windows) GuiPass.WindowsOn(CX.Ui.UiLayer.AboveNui, PresentTarget.Fbo46);
+        if (windows) GuiPass.Windows(CX.Ui.UiLayer.AboveNui, PresentTarget.Fbo46);
         if (ok && !s.Live)
         {
             s.Live = true;

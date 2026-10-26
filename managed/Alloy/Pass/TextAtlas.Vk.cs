@@ -25,6 +25,9 @@ internal static unsafe partial class TextAtlas
     /// mips, clamped. Anything else moves glyph pixels.</summary>
     private static SamplerDesc NearestClamp => new(Filter.Nearest, Filter.Nearest, MipMode.None, Wrap.Clamp);
 
+    /// <summary>Bytes a baked atlas texel takes, which <see cref="Upload"/> hands GL as <c>RGBA</c>.</summary>
+    private const int RgbaBytes = 4;
+
     /// <summary>Font atlas <paramref name="gl"/> as a Vulkan image, null id when it has no mirror.</summary>
     internal static ImageId VkImage(int gl) => _vk.ByName.TryGetValue((uint)gl, out ImageId i) ? i : default;
 
@@ -52,7 +55,7 @@ internal static unsafe partial class TextAtlas
             VkTextures.Refuse($"the font atlas \"{p.Font.Name}\" {p.Width}x{p.Height}");
             return;
         }
-        vk.Upload(img, 0, 0, new ReadOnlySpan<byte>((void*)p.Pixels, p.Width * p.Height * 4));
+        vk.Upload(img, 0, 0, Native.Bytes(p.Pixels, p.Width * p.Height * RgbaBytes));
         Forget(gl);
         s.ByName[gl] = img;
         _log.Info($"TextAtlas: \"{p.Font.Name}\" mirrored on Vulkan as a {p.Width}x{p.Height} RGBA8 image under GL name {gl}");

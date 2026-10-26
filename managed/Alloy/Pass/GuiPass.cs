@@ -283,10 +283,7 @@ internal static unsafe class GuiPass
     /// <summary>One layer of CX's recorded windows over the whole screen: display space, after the world's composite,
     /// so no tonemap or TAA history touches it. The replay is GL's on either backend, which is why the Vulkan flush
     /// calls it between its own submits -- the composite image is GL's again after each.</summary>
-    internal static void WindowsOn(CX.Ui.UiLayer layer, uint baseFbo) => Windows(layer, baseFbo);
-
-    /// <inheritdoc cref="WindowsOn"/>
-    private static void Windows(CX.Ui.UiLayer layer, uint baseFbo)
+    internal static void Windows(CX.Ui.UiLayer layer, uint baseFbo)
     {
         CX.Ui.UiDrawList l = CX.Ui.UiHostService.Windows(layer);
         if (l.CmdN == 0) return;
@@ -344,7 +341,7 @@ internal static unsafe class GuiPass
                 // A released view's texture may be a reused GL name: draw nothing into it.
                 released = curTarget != 0 && owner == null;
                 if (released) continue;
-                if (curTarget != 0 && GuiModelSolve.Wanted(li - 1, to, owner, out runEnd))
+                if (curTarget != 0 && GuiModelSolve.Wanted(li - 1, to, owner, true, out runEnd))
                 {
                     solve = 1; runStart = li - 1;
                     Gl.BindFramebuffer(Gl.FRAMEBUFFER, ModelTarget(GuiModelSolve.Scratch(0, l.W, l.H), l.W, l.H, SlotOf(curTarget)));

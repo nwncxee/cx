@@ -52,6 +52,11 @@ public static unsafe class Native
         return r;
     }
 
+    /// <summary><paramref name="bytes"/> bytes of unmanaged memory at <paramref name="at"/>, as a span to read. The
+    /// one place outside this file that names a raw address as memory; the caller owns the lifetime.</summary>
+    public static ReadOnlySpan<byte> Bytes(IntPtr at, int bytes)
+        => at == IntPtr.Zero || bytes <= 0 ? default : new ReadOnlySpan<byte>((byte*)at, bytes);
+
     /// <summary>Copy a native <paramref name="w"/> x <paramref name="h"/> byte image, rows packed, into a sheet
     /// <paramref name="stride"/> bytes wide at (<paramref name="x"/>, <paramref name="y"/>).</summary>
     public static void CopyRows(IntPtr src, int w, int h, Span<byte> dst, int stride, int x, int y)
