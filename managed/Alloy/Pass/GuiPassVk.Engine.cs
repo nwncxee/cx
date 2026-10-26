@@ -22,33 +22,39 @@ internal static unsafe partial class GuiPassVk
     /// <summary>The largest engine texture copied, per side: NUI's images and nuklear's font atlas sit far below it.</summary>
     private const int EngineTexMax = 8192;
 
-    /// <summary>An engine-made GL texture a GUI draw names -- nuklear's font atlas, a NUI image -- copied once into a
-    /// Vulkan image under its GL name, which <see cref="VkTextures"/> then resolves. False (said once per name) when
-    /// the name holds no 2D image. ponytail: a synchronous readback in the 4.6 context, once per new name; the
-    /// upgrade is taking the engine's uploads at their source once the GL context goes.</summary>
+    /// <summary>An engine-made texture a GUI draw names -- nuklear's font atlas, a NUI image -- copied once into a
+    /// Vulkan image under its name, which <see cref="VkTextures"/> then resolves: from the upload <see cref="NullGl"/>
+    /// kept when the session has no GL, else read back in the 4.6 context. False (said once per name) when the name
+    /// holds no 2D image. A re-upload or delete drops the copy (<see cref="ForgetEngine"/>), so the next flush copies anew.</summary>
     private static bool MirrorEngine(VkBackend vk, int tex, ExtenderLog? log)
     {
         EngineTexState e = _engineTex;
-        if (tex <= 0 || (uint)tex >= VkTextures.FirstName || e.Missing.Contains(tex) || !GlContextService.Enter()) return false;
+        if (tex <= 0 || (uint)tex >= VkTextures.FirstName || e.Missing.Contains(tex)) return false;
         uint name = (uint)tex;
         byte[]? px;
         int w, h, min, mag, ws, wt;
-        try { px = GlTexture.ReadRgba8(name, EngineTexMax, out w, out h, out min, out mag, out ws, out wt); }
-        finally { GlContextService.Leave(); }
+        if (NullGl.Active) px = NullGl.TakeTexture(name, out w, out h, out min, out mag, out ws, out wt);
+        else
+        {
+            if (!GlContextService.Enter()) return false;
+            try { px = GlTexture.ReadRgba8(name, EngineTexMax, out w, out h, out min, out mag, out ws, out wt); }
+            finally { GlContextService.Leave(); }
+        }
         if (px == null) return Missing(e, tex, $"holds no 2D image Vulkan can take ({w}x{h})", log);
         SamplerDesc sd = VkTextures.Sampler(min, mag, ws, wt, aniso: false) with { Mip = MipMode.None };
         ImageId img = VkTextures.Create(vk, name, Format.Rgba8, w, h, 1, false, sd, $"engine tex {name}");
         if (img.IsNull || !vk.Upload(img, 0, 0, px)) return Missing(e, tex, "was refused its Vulkan image (logged above)", log);
         if (e.Copied++ == 0)
-            log?.Always($"GuiPassVk: engine GL textures the GUI samples (nuklear's font atlas, NUI's images) are copied "
-                      + $"into Vulkan images, once per name -- the first, {name}, at {w}x{h}");
+            log?.Always($"GuiPassVk: engine textures the GUI samples (nuklear's font atlas, NUI's images) are copied "
+                      + $"into Vulkan images, once per name and upload ({(NullGl.Active ? "from the uploads the engine made with no GL" : "read back from GL")}) "
+                      + $"-- the first, {name}, at {w}x{h}");
         return true;
     }
 
     private static bool Missing(EngineTexState e, int tex, string why, ExtenderLog? log)
     {
         e.Missing.Add(tex);
-        log?.Always($"GuiPassVk: engine GL texture {tex} {why} -- its GUI draws take the transparent stand-in on Vulkan");
+        log?.Always($"GuiPassVk: engine texture {tex} {why} -- its GUI draws take the transparent stand-in on Vulkan");
         return false;
     }
 

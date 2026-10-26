@@ -687,6 +687,30 @@ internal static unsafe class SymbolMap
     /// <summary>The window's native handles (X display + window, or the HWND): what a Vulkan surface is made over. C linkage.</summary>
     [Fn("int(IntPtr window, byte* info)")]
     public const string SdlGetWindowWmInfo = "SDL_GetWindowWMInfo";
+    /// <summary><c>SDL_CreateWindow</c>, called once from <c>main</c> with <c>SDL_WINDOW_OPENGL</c> set: a Vulkan
+    /// session swaps that flag for <c>SDL_WINDOW_VULKAN</c> here, so no GL library or context is ever made. C linkage.</summary>
+    [Fn("IntPtr(byte* title, int x, int y, int w, int h, uint flags)")]
+    public const string SdlCreateWindow = "SDL_CreateWindow";
+    /// <summary><c>SDL_GL_CreateContext</c>, called once from <c>main</c> right after the window: a Vulkan session
+    /// answers it with a token and no context. C linkage.</summary>
+    [Fn("IntPtr(IntPtr window)")]
+    public const string SdlGlCreateContext = "SDL_GL_CreateContext";
+    /// <summary><c>SDL_GL_SetSwapInterval</c>: the engine's vsync choice, which a Vulkan session keeps for its own
+    /// present instead of handing it to a GL context that does not exist. C linkage.</summary>
+    [Fn("int(int interval)")]
+    public const string SdlGlSetSwapInterval = "SDL_GL_SetSwapInterval";
+    /// <summary><c>SDL_GL_GetDrawableSize</c>, which nuklear's GL backend reads: answered from the window's Vulkan
+    /// drawable in a session with no GL. C linkage.</summary>
+    [Fn("void(IntPtr window, int* w, int* h)")]
+    public const string SdlGlGetDrawableSize = "SDL_GL_GetDrawableSize";
+    /// <inheritdoc cref="SdlGlGetDrawableSize"/>
+    [Fn("void(IntPtr window, int* w, int* h)")]
+    public const string SdlVulkanGetDrawableSize = "SDL_Vulkan_GetDrawableSize";
+    /// <summary><c>RenderInterface::ReadPixelsFromBuffer(fb, x, y, w, h, format, dst)</c> @0x45d260 -- the static thunk
+    /// <c>AurSnapshot</c> (screenshots) and <c>AurSaveGameSnapshot</c> (save thumbnails) read the frame through; with no
+    /// GL the pixels come from Vulkan's composite.</summary>
+    [Fn("void(uint fb, int x, int y, int w, int h, int format, byte* dst)")]
+    public const string RiReadPixelsFromBuffer = "_ZN15RenderInterface20ReadPixelsFromBufferEjiiiiN6Aurora20AuroraTextureFormatsEPv";
     /// <summary><c>RenderInterface::Clear(uint mask)</c> @0x45d2a0 -- every engine clear (the frame's
     /// <c>Clear(3)</c> in <c>Update</c>, each GUI view's <c>Clear(2)</c>, snapshots) funnels through this static thunk
     /// to <c>GLRender::Clear</c>. Bits: 1 colour, 2 depth+stencil, 4 stencil.</summary>
@@ -2950,6 +2974,12 @@ internal static unsafe class SymbolMap
         [SdlGlGetSwapInterval] = Nm("SDL_GL_GetSwapInterval"),
         [SdlGetVersion] = Nm("SDL_GetVersion"),
         [SdlGetWindowWmInfo] = Nm("SDL_GetWindowWMInfo"),
+        [SdlCreateWindow] = Nm("SDL_CreateWindow"),
+        [SdlGlCreateContext] = Nm("SDL_GL_CreateContext"),
+        [SdlGlSetSwapInterval] = Nm("SDL_GL_SetSwapInterval"),
+        [SdlGlGetDrawableSize] = Nm("SDL_GL_GetDrawableSize"),
+        [SdlVulkanGetDrawableSize] = Nm("SDL_Vulkan_GetDrawableSize"),
+        [RiReadPixelsFromBuffer] = Nm("?ReadPixelsFromBuffer@RenderInterface@@SAXIHHHHW4AuroraTextureFormats@Aurora@@PEAX@Z"),
         [RiClear] = Nm("?Clear@RenderInterface@@SAXI@Z"),
         [RiSetClearColor] = Nm("?SetClearColor@RenderInterface@@SAXMMMM@Z"),
         [GlDefaultFramebuffer] = Nm("?cm_nDefaultFramebuffer@GLRender@@0IA"),

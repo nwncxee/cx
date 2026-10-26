@@ -174,7 +174,7 @@ public sealed unsafe class KnobPanelService : IExtenderService
     /// closes it; an ESC-menu sub-panel or the hidden HUD only hides it.</summary>
     private static void Draw()
     {
-        if (_log == null || !Gl.Init(_log)) return;
+        if (_log == null || !(NullGl.Active || Gl.Init(_log))) return;
         bool inModule = GameGate.InModule, atMenu = GameGate.AtMainMenu;
         bool left = (_wasInModule && !inModule) || (_wasAtMenu && !atMenu);
         _wasInModule = inModule; _wasAtMenu = atMenu;

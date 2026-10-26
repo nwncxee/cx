@@ -55,6 +55,9 @@ __declspec(dllimport) DWORD  WINAPI GetModuleFileNameW(HANDLE, unsigned short *,
 __declspec(dllimport) HANDLE WINAPI LoadLibraryExW(const unsigned short *, HANDLE, DWORD);
 __declspec(dllimport) void * WINAPI GetProcAddress(HANDLE, const char *);
 __declspec(dllimport) BOOL   WINAPI VirtualProtect(LPVOID, SIZE_T, DWORD, DWORD *);
+__declspec(dllimport) HANDLE WINAPI CreateEventW(LPVOID, BOOL, BOOL, const unsigned short *);
+__declspec(dllimport) BOOL   WINAPI SetEvent(HANDLE);
+__declspec(dllimport) DWORD  WINAPI WaitForSingleObject(HANDLE, DWORD);
 #define LOAD_WITH_ALTERED_SEARCH_PATH 0x8   /* resolve the DLL's own imports from its directory */
 #define PAGE_READWRITE 0x04
 extern char __ImageBase;                     /* this module, as the linker places it */
@@ -129,6 +132,33 @@ int cx_openal_redirect(void **module, const char **why)
     return cx_openal_patched;
 }
 
+/// The game's main thread waits at SDL_Init until CxInit has run: the managed extender starts on its own thread (below),
+/// and the hooks it installs on SDL_CreateWindow and SDL_GL_CreateContext -- the choice of a session with no GL context --
+/// must be in place before main reaches them. funchook is linked into this image for the managed side; one more
+/// instance here patches only SDL_Init, which nothing else hooks. A timeout lets the game go on if CxInit never returns.
+extern void *funchook_create(void);
+extern int funchook_prepare(void *fh, void **target, void *hook);
+extern int funchook_install(void *fh, int flags);
+
+#define CX_READY_TIMEOUT_MS 30000
+static HANDLE cx_ready;
+static int (*cx_sdl_init)(unsigned int);
+
+static int cx_sdl_init_gate(unsigned int flags)
+{
+    if (cx_ready) WaitForSingleObject(cx_ready, CX_READY_TIMEOUT_MS);
+    return cx_sdl_init(flags);
+}
+
+static void cx_gate_sdl_init(void)
+{
+    cx_sdl_init = (int (*)(unsigned int))GetProcAddress(GetModuleHandleW(0), "SDL_Init");
+    cx_ready = CreateEventW(0, 1, 0, 0);
+    void *fh = cx_ready && cx_sdl_init ? funchook_create() : 0;
+    if (!fh || funchook_prepare(fh, (void **)&cx_sdl_init, (void *)cx_sdl_init_gate) != 0 || funchook_install(fh, 0) != 0)
+        cx_ready = 0;
+}
+
 static DWORD WINAPI cx_start(LPVOID unused)
 {
     (void) unused;
@@ -136,12 +166,14 @@ static DWORD WINAPI cx_start(LPVOID unused)
     // DLL_PROCESS_ATTACH without risking a loader-lock deadlock. A thread created there does not run
     // until the loader releases, which is also after the image's own DllMain has started the runtime.
     CxInit();
+    if (cx_ready) SetEvent(cx_ready);
     return 0;
 }
 
 static int cx_boot(void)
 {
     cx_redirect_openal();
+    cx_gate_sdl_init();
     HANDLE t = CreateThread(0, 0, cx_start, 0, 0, 0);
     if (t) CloseHandle(t);
     return 0;

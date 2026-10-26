@@ -55,7 +55,20 @@ internal sealed unsafe partial class VkBackend : IDevice
     {
         public string? Refusal;
         public bool LoaderUp;
+        /// <summary>The device the last <see cref="Open"/> chose: its PCI vendor id and name.</summary>
+        public uint VendorId;
+        public string Device = "";
     }
+
+    /// <summary>The chosen device's vendor, as GL names it -- what an engine with no GL context is told it runs on.</summary>
+    internal static string ProbedVendor => _probe.VendorId switch
+    {
+        0x10DE => "NVIDIA Corporation", 0x1002 => "AMD", 0x8086 => "Intel", 0 => "",
+        uint id => $"Vulkan vendor 0x{id:x4}",
+    };
+
+    /// <summary>The chosen device's name, empty before a probe.</summary>
+    internal static string ProbedDevice => _probe.Device;
 
     private static readonly ProbeState _probe = new();
     private static readonly bool Win = OperatingSystem.IsWindows();
@@ -162,6 +175,7 @@ internal sealed unsafe partial class VkBackend : IDevice
             int rank = Rank(props.deviceType);
             if (rank <= best) continue;
             best = rank; phys = list[i]; family = k; feats = f;
+            _probe.VendorId = props.vendorID; _probe.Device = new string((sbyte*)props.deviceName);
             log.Info($"VkBackend: device '{new string((sbyte*)props.deviceName)}' ({props.deviceType}) Vulkan {Version(props.apiVersion)}, queue family {k}");
         }
         return best >= 0 ? null : why ?? "the Vulkan loader lists no usable device";

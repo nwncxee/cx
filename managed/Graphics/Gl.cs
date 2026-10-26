@@ -560,6 +560,13 @@ public static unsafe class Gl
     {
         if (_ready) return true;
         if (_failed) return false;
+        if (NullGl.Active)
+        {
+            _failed = true;
+            log.Always("Gl: a GL entry point was asked for in a session with NO GL context -- refused for the session; the "
+                     + "asker's GL path does not run. First asker:\n" + Environment.StackTrace);
+            return false;
+        }
         _getProc = (delegate* unmanaged<byte*, IntPtr>)Native.Sym(SymbolMap.SdlGlGetProcAddress);
         if (_getProc == null) { log.Info("Gl: SDL_GL_GetProcAddress unresolved"); _failed = true; return false; }
 
