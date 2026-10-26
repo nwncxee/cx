@@ -227,7 +227,7 @@ public sealed unsafe partial class AlloyRenderer
         FrameZones.Add(FrameZones.Zone.Own, tOwn);
         long tPrep = FrameZones.Now, lights0 = FrameZones.Ticks(FrameZones.Zone.Lights);
         Step("EnsureProgram");
-        if (vk) Programs.DecideBindlessVk();
+        if (vk) { Programs.DecideBindlessVk(); ContentPrograms.EnsureWanted(); }
         else
         {
             if (!Programs.EnsureProgram()) { DbNoDraw("the world program did not build"); LeaveBracket(); return false; }

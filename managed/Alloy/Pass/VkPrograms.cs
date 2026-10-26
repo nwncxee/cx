@@ -145,6 +145,18 @@ internal static class VkPrograms
                                 Final(GlProgram.Lib(pair.Fs, log, what), log, what, true), Units, glDepth: false);
     }
 
+    /// <summary>The lit pair a content pair is spliced from on Vulkan: <see cref="LitTexts"/>, the text GL's lit
+    /// build compiles.</summary>
+    internal static (string Vs, string Fs) LitPair(ExtenderLog? log) => LitTexts(log, "VkPrograms content lit pair");
+
+    /// <summary>Run the vanilla splice over a content pair's spliced texts, as <see cref="ContentText"/> will: it
+    /// translates the pair's halves, and the build reads its facts off that translation.</summary>
+    internal static void Splice(string vs, string fs, ExtenderLog? log, string what)
+    {
+        Final(GlProgram.Lib(vs, log, what), log, what, true);
+        Final(GlProgram.Lib(fs, log, what), log, what, true);
+    }
+
     /// <summary>The lit pair after the stage overrides and library swaps, before the splice: what GL's lit build and
     /// its twins start from.</summary>
     private static (string Vs, string Fs) LitTexts(ExtenderLog? log, string what)
