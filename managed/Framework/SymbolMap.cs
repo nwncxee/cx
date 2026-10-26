@@ -677,6 +677,10 @@ internal static unsafe class SymbolMap
     /// <c>BindDefaultFramebuffer</c> and <c>ResetRenderStates</c>. Alloy's present calls it directly. C linkage.</summary>
     [Fn("void(IntPtr window)")]
     public const string SdlGlSwapWindow = "SDL_GL_SwapWindow";
+    /// <summary>SDL's swap interval as the engine set it (0 off, 1 vsync, -1 adaptive): Vulkan's present picks its mode
+    /// from it. C linkage.</summary>
+    [Fn("int()")]
+    public const string SdlGlGetSwapInterval = "SDL_GL_GetSwapInterval";
     /// <summary><c>RenderInterface::Clear(uint mask)</c> @0x45d2a0 -- every engine clear (the frame's
     /// <c>Clear(3)</c> in <c>Update</c>, each GUI view's <c>Clear(2)</c>, snapshots) funnels through this static thunk
     /// to <c>GLRender::Clear</c>. Bits: 1 colour, 2 depth+stencil, 4 stencil.</summary>
@@ -2937,6 +2941,7 @@ internal static unsafe class SymbolMap
         [ScreenHeight] = Nm("?g_nScreenHeight@@3HA"),
         [StatusBarSetStatus] = Nm("?SetStatus@CGuiStatusBar@@QEAAXM@Z"),
         [SdlGlSwapWindow] = Nm("SDL_GL_SwapWindow"),
+        [SdlGlGetSwapInterval] = Nm("SDL_GL_GetSwapInterval"),
         [RiClear] = Nm("?Clear@RenderInterface@@SAXI@Z"),
         [RiSetClearColor] = Nm("?SetClearColor@RenderInterface@@SAXMMMM@Z"),
         [GlDefaultFramebuffer] = Nm("?cm_nDefaultFramebuffer@GLRender@@0IA"),

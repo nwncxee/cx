@@ -10,10 +10,9 @@ using NuiModelDoll = CX.Services.Nui.NuiModelDoll;
 namespace CX.Alloy;
 
 /// <summary>
-/// The GUI path on Vulkan, under <c>alloy.backend vk</c>: the layers <see cref="GuiCapture"/> listed are recorded into
-/// the <see cref="CX.Rhi"/> command list and drawn into the composite image the engine presents -- the same image GL
-/// Alloy's <see cref="GuiPass"/> draws into, over the same depth stacking, so the engine's context blits a composite
-/// that already holds the GUI. One flush is one submit per window run; nothing is shared with GL between them.
+/// The GUI path on Vulkan, under <c>alloy.backend vk</c>: the layers <see cref="GuiCapture"/> listed and CX's own
+/// windows either side of NUI are recorded into the <see cref="CX.Rhi"/> command list and drawn into the composite
+/// Vulkan presents, over the same depth stacking GL Alloy's <see cref="GuiPass"/> uses. One flush is one submit.
 /// </summary>
 internal static unsafe partial class GuiPassVk
 {
@@ -73,6 +72,8 @@ internal static unsafe partial class GuiPassVk
         public CommandList? Cmds;
         public CommandList? Side;
         public long Drawn, Skipped, NoLayout, NoTexture, Submits, Dropped;
+        /// <summary>CX's own windows' programs and buffers.</summary>
+        public readonly WinState Win = new();
 
         public GuiVkState() { for (int i = 0; i < Views.Length; i++) Views[i] = new View(); }
     }
@@ -101,10 +102,9 @@ internal static unsafe partial class GuiPassVk
          + (_s.NoLayout == 0 ? "" : $", {_s.NoLayout} with no vertex layout (NOT DRAWN)")
          + (_s.NoTexture == 0 ? "" : $", {_s.NoTexture} on the stand-in texture");
 
-    /// <summary>The flush's Vulkan half: layers <paramref name="from"/>..<paramref name="mid"/>, CX's below-NUI windows
-    /// replayed by GL, layers <paramref name="mid"/>..<paramref name="to"/>, the above-NUI windows -- one submit per
-    /// run, in the 4.6 bracket because the replay and the hand-back are GL's. <paramref name="into"/> is null for the
-    /// composite the engine presents; <paramref name="clearBlack"/> clears it first, which is the A/B's.</summary>
+    /// <summary>The flush: layers <paramref name="from"/>..<paramref name="mid"/>, CX's below-NUI windows, layers
+    /// <paramref name="mid"/>..<paramref name="to"/>, the above-NUI windows, in one submit. <paramref name="into"/> is
+    /// null for the composite Vulkan presents; <paramref name="clearBlack"/> clears it first, which is the A/B's.</summary>
     internal static bool Flush(int from, int mid, int to, bool windows, ExtenderLog log, ImageId into = default, bool clearBlack = false)
     {
         if (AlloyDevice.Vulkan(log) is not VkBackend vk) return false;
@@ -128,43 +128,27 @@ internal static unsafe partial class GuiPassVk
         // the latch is taken whichever way it falls: on the A/B the GL half must not clear again, over black
         s.ClearOwed = GuiPass.TakeFrameClear() || clearBlack;
         if (!Stage(vk, log)) return false;
-        bool ok = Run(vk, from, mid, true, log);
-        if (windows) GuiPass.Windows(CX.Ui.UiLayer.BelowNui, PresentTarget.Fbo46);
-        ok &= Run(vk, mid, to, false, log);
-        if (windows) GuiPass.Windows(CX.Ui.UiLayer.AboveNui, PresentTarget.Fbo46);
+        CommandList cl = s.Cmds!;
+        cl.Reset();
+        Uploads(cl);
+        bool ok = Record(vk, cl, from, mid, log)
+                  && (!windows || Windows(vk, cl, CX.Ui.UiLayer.BelowNui, log))
+                  && Record(vk, cl, mid, to, log)
+                  && (!windows || Windows(vk, cl, CX.Ui.UiLayer.AboveNui, log))
+                  && Submit(vk, cl, log);
         if (ok && !s.Live)
         {
             s.Live = true;
-            log.Always($"GuiPassVk: LIVE -- Vulkan draws the GUI into the composite the engine presents "
+            log.Always($"GuiPassVk: LIVE -- Vulkan draws the GUI and CX's windows into the composite it presents "
                      + $"({GuiCapture.LayerN} scene(s), {GuiCapture.DrawN} draw(s) this flush)");
         }
         return ok;
     }
 
-    /// <summary>The composite cleared to opaque black in a submit of its own, for the A/B's GL half to draw over --
-    /// the background its Vulkan half drew over. False (logged) when the device refused it.</summary>
-    internal static bool ClearComposite(VkBackend vk, ExtenderLog log)
+    /// <summary>The flush's one submit; a refusal is said once and counted after.</summary>
+    private static bool Submit(VkBackend vk, CommandList cl, ExtenderLog log)
     {
         GuiVkState s = _s;
-        if (s.Cmds == null || vk.CompositeFront.IsNull) return false;
-        CommandList cl = s.Cmds;
-        cl.Reset();
-        Span<ColorAttachment> colors = stackalloc ColorAttachment[1];
-        colors[0] = new ColorAttachment(vk.CompositeFront, 0, 0, LoadOp.Clear, StoreOp.Store, new System.Numerics.Vector4(0f, 0f, 0f, 1f));
-        cl.BeginRenderPass(new RenderPassDesc(colors));
-        cl.EndRenderPass();
-        return vk.Submit(cl);
-    }
-
-    /// <summary>One run of layers: the uploads it owes, the layers recorded, one submit. True with nothing to draw.</summary>
-    private static bool Run(VkBackend vk, int from, int to, bool first, ExtenderLog log)
-    {
-        GuiVkState s = _s;
-        if (to <= from && !first) return true;
-        CommandList cl = s.Cmds!;
-        cl.Reset();
-        if (first) Uploads(cl);
-        if (!Record(vk, cl, from, to, log)) return false;
         if (!vk.Submit(cl))
         {
             if (!s.DropSaid)

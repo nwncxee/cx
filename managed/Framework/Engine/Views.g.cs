@@ -145,6 +145,7 @@ global using unsafe RiBindBufferFn = delegate* unmanaged<uint, uint, void>;
 global using unsafe SceneRenderOnlyGobsFn = delegate* unmanaged<nint, void>;
 global using unsafe StatusBarSetStatusFn = delegate* unmanaged<nint, float, void>;
 global using unsafe SdlGlSwapWindowFn = delegate* unmanaged<nint, void>;
+global using unsafe SdlGlGetSwapIntervalFn = delegate* unmanaged<int>;
 global using unsafe RiClearFn = delegate* unmanaged<uint, void>;
 global using unsafe RiSetClearColorFn = delegate* unmanaged<float, float, float, float, void>;
 global using unsafe RiDeleteTexturesFn = delegate* unmanaged<uint, uint*, void>;
@@ -4454,6 +4455,10 @@ public static unsafe class EngineFn
     private static bool _SdlGlSwapWindowDone;
     /// <inheritdoc cref="SymbolMap.SdlGlSwapWindow"/>
     public static SdlGlSwapWindowFn SdlGlSwapWindow => (SdlGlSwapWindowFn)(_SdlGlSwapWindowDone ? _SdlGlSwapWindow : Resolve(ref _SdlGlSwapWindow, ref _SdlGlSwapWindowDone, SymbolMap.SdlGlSwapWindow));
+    private static IntPtr _SdlGlGetSwapInterval;
+    private static bool _SdlGlGetSwapIntervalDone;
+    /// <inheritdoc cref="SymbolMap.SdlGlGetSwapInterval"/>
+    public static SdlGlGetSwapIntervalFn SdlGlGetSwapInterval => (SdlGlGetSwapIntervalFn)(_SdlGlGetSwapIntervalDone ? _SdlGlGetSwapInterval : Resolve(ref _SdlGlGetSwapInterval, ref _SdlGlGetSwapIntervalDone, SymbolMap.SdlGlGetSwapInterval));
     private static IntPtr _RiClear;
     private static bool _RiClearDone;
     /// <inheritdoc cref="SymbolMap.RiClear"/>
@@ -6525,6 +6530,12 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.SdlGlSwapWindow"/>; returns the slot holding the next layer, or null.</summary>
     public static SdlGlSwapWindowFn* ChainSdlGlSwapWindow(this HookService h, SdlGlSwapWindowFn handler, int priority) =>
         (SdlGlSwapWindowFn*)h.Chain(SymbolMap.SdlGlSwapWindow, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.SdlGlGetSwapInterval"/>; returns the original, or null.</summary>
+    public static SdlGlGetSwapIntervalFn InstallSdlGlGetSwapInterval(this HookService h, SdlGlGetSwapIntervalFn handler) =>
+        (SdlGlGetSwapIntervalFn)h.Install(SymbolMap.SdlGlGetSwapInterval, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.SdlGlGetSwapInterval"/>; returns the slot holding the next layer, or null.</summary>
+    public static SdlGlGetSwapIntervalFn* ChainSdlGlGetSwapInterval(this HookService h, SdlGlGetSwapIntervalFn handler, int priority) =>
+        (SdlGlGetSwapIntervalFn*)h.Chain(SymbolMap.SdlGlGetSwapInterval, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.RiClear"/>; returns the original, or null.</summary>
     public static RiClearFn InstallRiClear(this HookService h, RiClearFn handler) =>
         (RiClearFn)h.Install(SymbolMap.RiClear, (IntPtr)handler);

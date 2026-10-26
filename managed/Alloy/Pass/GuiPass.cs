@@ -205,7 +205,11 @@ internal static unsafe class GuiPass
     private static bool Draw(int from, int mid, int to, bool windows)
     {
         int w = *_screenW, h = *_screenH;
-        if (PresentTarget.Width == w && PresentTarget.Height == h) PresentTarget.TakeBack();
+        bool sized = PresentTarget.Width == w && PresentTarget.Height == h;
+        // after the world's bracket a Vulkan flush needs no GL, and re-entering costs two context switches (~2.7 ms)
+        if (Renderer.OnVulkan && sized && PresentTarget.Composed && !GuiParity.Takes(windows))
+            return VulkanFlush(from, mid, to, windows, false);
+        if (sized) PresentTarget.TakeBack();
         else Resize(w, h);
         if (!GlContextService.Enter()) return false;
         // On a frame with no world, THIS is the only 4.6 bracket there is -- and entering it stands
@@ -214,7 +218,7 @@ internal static unsafe class GuiPass
         GlContextService.RunInBracketHere(); Db.MeshArena.Pump();
         CX.Services.Nui.NuiModelView.Pump();
         bool ab = GuiParity.Takes(windows);
-        if (Renderer.OnVulkan && !ab) return VulkanFlush(from, mid, to, windows);
+        if (Renderer.OnVulkan && !ab) return VulkanFlush(from, mid, to, windows, true);
         if (ab) GuiParity.DrawVulkan(from, mid, to, _log);
         if (to > from) Upload();
         bool gpuTimed = CX.Services.Perf.FrameProbe.GpuBegin();
@@ -247,11 +251,11 @@ internal static unsafe class GuiPass
     }
 
     /// <summary>The flush under <c>alloy.backend vk</c>: <see cref="GuiPassVk"/> records and submits it, and this
-    /// closes the bracket and hands the composite back as the GL path does.</summary>
-    private static bool VulkanFlush(int from, int mid, int to, bool windows)
+    /// closes the bracket when <paramref name="bracket"/> says the flush opened one.</summary>
+    private static bool VulkanFlush(int from, int mid, int to, bool windows, bool bracket)
     {
         bool ok = _log != null && GuiPassVk.Flush(from, mid, to, windows, _log);
-        GlContextService.Leave();
+        if (bracket) GlContextService.Leave();
         PresentTarget.HandBack();
         if (!ok) return false;
         _flushes++;
@@ -281,8 +285,7 @@ internal static unsafe class GuiPass
     }
 
     /// <summary>One layer of CX's recorded windows over the whole screen: display space, after the world's composite,
-    /// so no tonemap or TAA history touches it. The replay is GL's on either backend, which is why the Vulkan flush
-    /// calls it between its own submits -- the composite image is GL's again after each.</summary>
+    /// so no tonemap or TAA history touches it. GL Alloy's; the Vulkan flush records its own (<c>GuiPassVk.Windows</c>).</summary>
     internal static void Windows(CX.Ui.UiLayer layer, uint baseFbo)
     {
         CX.Ui.UiDrawList l = CX.Ui.UiHostService.Windows(layer);
@@ -583,6 +586,7 @@ internal static unsafe class GuiPass
     internal static void ContextLost()
     {
         CX.Ui.TextRig.ContextLost();   // the windows' VAO and programs went with it
+        CX.Ui.TextRig.VkContextLost();
         UiScene.ContextLost();
         TextAtlas.ContextLost();   // CX-119: every font atlas went with the context
         GuiModelSolve.ContextLost();

@@ -124,6 +124,7 @@ public sealed unsafe partial class MovieService : IExtenderService
         ScreenOwner.EngineFrame = true;
         if (_orig != null) _orig(p.Self, p.FrameW, p.FrameH, p.TexW, p.TexH);
         ScreenOwner.EngineFrame = false;
+        ScreenOwner.GlDrewScreen();
     }
 
     // ---- the draw ----

@@ -78,7 +78,7 @@ internal static unsafe partial class GuiPassVk
     private static bool Record(VkBackend vk, CommandList cl, int from, int to, ExtenderLog log)
     {
         GuiVkState s = _s;
-        ImageId screen = s.Into.IsNull ? vk.CompositeFront : s.Into;
+        ImageId screen = s.Into.IsNull ? vk.Composite : s.Into;
         if (screen.IsNull || s.Depth.IsNull) return false;
         var pass = new Pass();
         var b = new Bound();

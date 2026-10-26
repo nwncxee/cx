@@ -10,7 +10,7 @@ namespace CX.Alloy;
 /// <summary>
 /// The GUI's half of the whole-frame A/B (<c>/alloy vkab</c>, which arms this beside <see cref="VkParity"/>): one flush
 /// drawn by both renderers over the same cleared background -- Vulkan into a scratch image of the composite's shape, GL
-/// into the composite itself -- then the two read back and compared texel for texel. The frame it runs on shows the GUI
+/// into its own present texture -- then the two read back and compared texel for texel. The frame it runs on shows the GUI
 /// over black, which is the price of comparing the GUI's own output rather than the world's underneath it.
 /// </summary>
 internal static unsafe class GuiParity
@@ -54,11 +54,11 @@ internal static unsafe class GuiParity
         _s.Vk = null;
         if (Renderer.OnVulkan)
             log?.Always("[vkabgui] armed -- the next GUI flush draws on both renderers over a cleared background; "
-                      + "CX's own windows sit out of both halves, being the one GL replay either backend makes");
+                      + "CX's own windows sit out of both halves");
     }
 
     /// <summary>Vulkan's half, from inside the 4.6 bracket before GL's flush: the GUI into a scratch image over
-    /// opaque black, read back, and the composite cleared to the same black so GL's half starts where Vulkan's did.
+    /// opaque black, read back, and GL's present texture cleared to the same black so GL's half starts where Vulkan's did.
     /// A refusal disarms (logged): GL then draws the flush alone and nothing is reported.</summary>
     internal static void DrawVulkan(int from, int mid, int to, ExtenderLog? log)
     {
@@ -83,12 +83,10 @@ internal static unsafe class GuiParity
         if (!GuiPassVk.Flush(from, mid, to, false, log, s.Scratch, true)) { Refuse("the Vulkan GUI flush did not record"); return; }
         if (!VkParity.ReadColour(vk, s.Scratch, w, h, out uint[] words)) { Refuse("the Vulkan scratch did not read back"); return; }
         s.Vk = words;
-        // GL's half starts from the same background: the composite, which the world frame or the last flush left
-        // painted, cleared to the opaque black the Vulkan half drew over
-        if (!GuiPassVk.ClearComposite(vk, log)) Refuse("the composite was not cleared for GL's half");
+        PresentTarget.ClearBlack();
     }
 
-    /// <summary>GL's half after its flush, from inside the 4.6 bracket: the composite read back, the two compared and
+    /// <summary>GL's half after its flush, from inside the 4.6 bracket: its present texture read back, the two compared and
     /// the line logged. A no-op on every flush but the A/B's.</summary>
     internal static void ReadGlAndReport(ExtenderLog? log)
     {

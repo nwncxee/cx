@@ -137,6 +137,12 @@ internal static unsafe class VkUniformShim
         }
     }
 
+    /// <summary>One int per ELEMENT of an array member, at that member's own stride (16 bytes under std140).</summary>
+    internal static void SetEach(int loc, ReadOnlySpan<int> elements)
+    {
+        fixed (int* v = elements) Puts(loc, elements.Length, 1, v);
+    }
+
     /// <summary>Integer lanes of one element (an ivec2, an ivec4) into the open capture.</summary>
     internal static void Set(int loc, ReadOnlySpan<int> lanes)
     {

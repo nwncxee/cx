@@ -3,25 +3,36 @@ using System.Runtime.InteropServices;
 using CX.Engine;
 using CX.Framework;
 using CX.Graphics;
+using CX.Graphics.Rhi;
 
 namespace CX.Alloy;
 
 /// <summary>Alloy owns the screen's clears and its present once the GUI is Alloy's and no engine-drawn world
 /// needs the engine's own. The engine's screen clears are swallowed at <c>RenderInterface::Clear</c> when they
 /// target the default framebuffer -- one aimed at an engine framebuffer object passes; the present is
-/// <c>SDL_GL_SwapWindow</c> from here, between the bind and <c>ResetRenderStates</c> the engine wraps it in.</summary>
+/// <c>SDL_GL_SwapWindow</c> from here, or under <c>alloy.backend vk</c> Vulkan's own, then <c>ResetRenderStates</c>.</summary>
 internal static unsafe class ScreenOwner
 {
     private static ExtenderLog? _log;
     private static RiClearFn _origClear;
     private static RiSetClearColorFn _origClearColor;
     private static SdlGlSwapWindowFn _swap;
+    private static SdlGlGetSwapIntervalFn _interval;
     private static RiResetRenderStatesFn _reset;
     private static uint* _defaultFbo;
     /// <summary><c>GLRender::BindFramebuffer</c>'s two binding caches, resolved at install; null where one did not.</summary>
     private sealed unsafe class FboCacheState { public uint* Draw, Read; }
 
     private static readonly FboCacheState _cache = new();
+
+    /// <summary>This frame's screen is GL's under <c>alloy.backend vk</c> -- the engine drew a movie frame itself -- so
+    /// the GL swap presents it; and the Vulkan present count.</summary>
+    private sealed class VkPresentState { public bool GlScreen; public long Presents, GlFrames; }
+
+    private static readonly VkPresentState _vk = new();
+
+    /// <summary>The engine drew this frame's screen in GL (a movie Alloy did not take): the GL swap presents it, even on Vulkan.</summary>
+    internal static void GlDrewScreen() => _vk.GlScreen = true;
     private static long _swallowed, _passed, _presents;
     private static bool _said;
 
@@ -45,6 +56,7 @@ internal static unsafe class ScreenOwner
     {
         _log = log;
         _swap = EngineFn.SdlGlSwapWindow;
+        _interval = EngineFn.SdlGlGetSwapInterval;
         _reset = EngineFn.RiResetRenderStates;
         _defaultFbo = (uint*)Native.Sym(SymbolMap.GlDefaultFramebuffer);
         _cache.Draw = (uint*)Native.Sym(SymbolMap.GlDrawFramebufferBound);
@@ -87,6 +99,10 @@ internal static unsafe class ScreenOwner
     internal static bool Present(IntPtr window)
     {
         if (!Owned) return false;
+        bool glScreen = _vk.GlScreen;
+        _vk.GlScreen = false;
+        if (Renderer.OnVulkan && !glScreen) return PresentVulkan();
+        if (glScreen) _vk.GlFrames++;
         Gl.BindFramebuffer(Gl.FRAMEBUFFER, *_defaultFbo);
         _swap(window);
         _reset();
@@ -100,9 +116,30 @@ internal static unsafe class ScreenOwner
         return true;
     }
 
+    /// <summary>Vulkan's present of the composite, then the engine's state reset the swap was wrapped in. A refusal
+    /// fails Alloy loudly and the engine's swap shows this frame.</summary>
+    private static bool PresentVulkan()
+    {
+        if (_log == null || AlloyDevice.Vulkan(_log) is not VkBackend vk || !vk.Present(_interval != null ? _interval() : 1, _log))
+        {
+            AlloyGate.Fail("Vulkan could not present the frame to the window (logged above)");
+            return false;
+        }
+        _reset();
+        _vk.Presents++;
+        if (!_said)
+        {
+            _said = true;
+            _log.Info("ScreenOwner: LIVE -- Vulkan presents the frame and Alloy swallows the screen clears; the engine's "
+                    + "GLRender::SwapBuffers, its default-framebuffer clears and the GL swap no longer run");
+        }
+        return true;
+    }
+
     internal static string Stats() => _origClear == null ? "screen: engine (not armed)"
         // The clear colour is on the line because it IS the void: every pixel the world does not cover ends up
         // this colour, and nothing else in a session reports it.
-        : $"screen: {(Owned ? "Alloy" : "engine")} -- {_presents} Alloy presents, {_swallowed} engine clears swallowed, "
+        : $"screen: {(Owned ? "Alloy" : "engine")} -- {_presents} Alloy GL presents, {_vk.Presents} Vulkan presents"
+        + (_vk.GlFrames == 0 ? "" : $" ({_vk.GlFrames} engine-drawn frames on GL's swap)") + $", {_swallowed} engine clears swallowed, "
         + $"{_passed} passed, clear=({ClearRgba[0]:F3},{ClearRgba[1]:F3},{ClearRgba[2]:F3})";
 }

@@ -1,41 +1,15 @@
 using CX.Framework;
 using CX.Graphics;
+using CX.Graphics.Rhi;
 
 namespace CX.Alloy;
 
-/// <summary>Where Alloy's frame lands, on every OS: Alloy composites into a TEXTURE and the ENGINE's context
-/// blits that texture to the real default framebuffer after the bracket -- each side over its own framebuffer
-/// OBJECT, which is not shared. Under WGL the two contexts address back buffers that fall out of phase across
-/// a swap; under GLX they name one drawable, and this is the way in for a frame GL never drew.</summary>
+/// <summary>Where GL Alloy's frame lands: a TEXTURE the ENGINE's context blits to the real default framebuffer after
+/// the bracket, each side over its own framebuffer object (WGL's two contexts address back buffers that fall out of
+/// phase across a swap). Under <c>alloy.backend vk</c> it sizes Vulkan's composite beside it, and Vulkan presents that
+/// itself: nothing here reaches the screen.</summary>
 internal static unsafe class PresentTarget
 {
-    /// <summary>Where the composite image's storage comes from -- the one seam the present path has: GL storage this
-    /// context allocates, or under <c>alloy.backend vk</c> the Vulkan backend's exported pair, which
-    /// <see cref="Flip"/> alternates. Nothing else about the hand-back changes.</summary>
-    internal interface ISource
-    {
-        /// <summary>Size the composite image to <paramref name="w"/> x <paramref name="h"/> and return the GL
-        /// texture name the engine's context blits from, 0 where it could not be made. Releases the old
-        /// <paramref name="tex"/>.</summary>
-        uint Resize(uint tex, int w, int h);
-        /// <summary>Release <paramref name="tex"/>: the image is not wanted, and this owns its storage.</summary>
-        void Release(uint tex);
-    }
-
-    /// <summary>The GL source: an RGBA8 colour texture in the 4.6 context.</summary>
-    private sealed class GlSource : ISource
-    {
-        public uint Resize(uint tex, int w, int h)
-        {
-            // RGBA8: this holds the FINISHED, display-space frame -- the composite has already encoded and
-            // dithered it, so anything wider would store precision the default framebuffer cannot take.
-            RenderTarget.AllocColor(ref tex, false, w, h, Gl.NEAREST);
-            return tex;
-        }
-        /// <summary>The present image the engine may still be blitting from: retired, not deleted here.</summary>
-        public void Release(uint tex) => GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, tex);
-    }
-
     /// <summary>The present path's own state: the image, one framebuffer object per context, the size, and
     /// whether the world frame has composited into the image since the last hand-back.</summary>
     private sealed class PresentState
@@ -48,9 +22,6 @@ internal static unsafe class PresentTarget
 
     private static PresentState _s = new();
     private static ExtenderLog? _log;
-    private static readonly ISource GlStorage = new GlSource();
-    /// <summary>The composite image's source, decided here and nowhere else; null = the Vulkan backend refused (logged).</summary>
-    private static ISource? Source => !Renderer.OnVulkan ? GlStorage : _log == null ? null : AlloyDevice.Vulkan(_log);
 
     /// <summary>Is framebuffer 0 in the 4.6 context the buffer the engine presents? Under GLX both contexts
     /// name one drawable, so it is; under WGL each holds its own back buffer, so it is not -- which is what
@@ -77,7 +48,7 @@ internal static unsafe class PresentTarget
     internal static int Height => _s.H;
 
     /// <summary>Size the present colour image to the default framebuffer, once per frame, before anything
-    /// binds it. In the 4.6 context.</summary>
+    /// binds it, and under <c>alloy.backend vk</c> Vulkan's composite with it. In the 4.6 context.</summary>
     internal static void Ensure(int w, int h)
     {
         PresentState s = _s;
@@ -86,22 +57,27 @@ internal static unsafe class PresentTarget
         // a real resize rather than rebuilding a texture per flush for the rest of the session.
         if (w == s.W && h == s.H) return;
         s.W = w; s.H = h;
-        ISource? src = Source;
-        s.Tex = src?.Resize(s.Tex, w, h) ?? 0;
+        if (Renderer.OnVulkan && (_log == null || AlloyDevice.Vulkan(_log) is not VkBackend vk || !vk.Resize(w, h)))
+            AlloyGate.Fail($"Vulkan's {w}x{h} composite image was refused (logged above)");
+        // RGBA8: this holds the FINISHED, display-space frame -- the composite has already encoded and dithered it,
+        // so anything wider would store precision the default framebuffer cannot take.
+        RenderTarget.AllocColor(ref s.Tex, false, w, h, Gl.NEAREST);
         if (s.Tex == 0) { Refuse("the composite image could not be allocated"); return; }
         if (s.Fbo46 == 0) { uint f; Gl.GenFramebuffers(1, &f); s.Fbo46 = f; }
         uint status = Attach();
         if (status != Gl.FRAMEBUFFER_COMPLETE)
         {
-            src!.Release(s.Tex); s.Tex = 0;
+            GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, s.Tex); s.Tex = 0;
             Refuse($"the present framebuffer is incomplete (0x{status:x})");
         }
         else if (!s.Announced)
         {
             s.Announced = true;
-            _log?.Info($"PresentTarget: Alloy composites into a {w}x{h} texture and the ENGINE context blits it "
-                     + "to the default framebuffer -- one present path on every OS"
-                     + (Renderer.OnVulkan ? "; the texture is the front of Vulkan's double-buffered pair" : ""));
+            _log?.Info(Renderer.OnVulkan
+                ? $"PresentTarget: Vulkan composites into its own {w}x{h} image and presents it; the GL texture of that "
+                  + "size is the A/B's GL half alone"
+                : $"PresentTarget: Alloy composites into a {w}x{h} texture and the ENGINE context blits it "
+                  + "to the default framebuffer -- one present path on every OS");
         }
     }
 
@@ -114,16 +90,6 @@ internal static unsafe class PresentTarget
         uint status = Gl.CheckFramebufferStatus(Gl.FRAMEBUFFER);
         Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
         return status;
-    }
-
-    /// <summary>The Vulkan frame rendered the back image and GL has waited on it: <paramref name="tex"/> is the present
-    /// image now. In the 4.6 context, inside the bracket.</summary>
-    internal static void Flip(uint tex)
-    {
-        PresentState s = _s;
-        if (tex == 0 || s.Fbo46 == 0) return;
-        s.Tex = tex;
-        Attach();
     }
 
     /// <summary>There is no composite image. The framebuffer object goes with it, so <see cref="Fbo46"/> stops
@@ -159,12 +125,16 @@ internal static unsafe class PresentTarget
     /// instead of taking the stale screen back over it.</summary>
     internal static void MarkComposed() => _s.Composed = true;
 
+    /// <summary>Has the world composited this frame? Its bracket then ran the frame's deferred GL work already.</summary>
+    internal static bool Composed => _s.Composed;
+
     /// <summary>Blit the finished frame into the real default framebuffer. MUST run in the ENGINE's context,
     /// after the bracket has closed: that is the whole point, and calling it inside the bracket reintroduces
     /// the bug it exists to fix. This blit is what the composite costs; <c>general.frametimes</c> times it.</summary>
     internal static void HandBack()
     {
         PresentState s = _s;
+        if (Renderer.OnVulkan) { s.Composed = false; return; }
         if (s.Tex == 0 || s.Fbo46 == 0) return;
         if (s.FboEng == 0) { uint f; Gl.GenFramebuffers(1, &f); s.FboEng = f; }
         Gl.BindFramebuffer(Gl.READ_FRAMEBUFFER, s.FboEng);
@@ -199,7 +169,7 @@ internal static unsafe class PresentTarget
     internal static void TakeBack()
     {
         PresentState s = _s;
-        if (s.Tex == 0 || s.Composed) return;
+        if (s.Tex == 0 || s.Composed || Renderer.OnVulkan) return;
         if (s.FboEng == 0) { uint f; Gl.GenFramebuffers(1, &f); s.FboEng = f; }
         Gl.BindFramebuffer(Gl.DRAW_FRAMEBUFFER, s.FboEng);
         Gl.FramebufferTexture2D(Gl.DRAW_FRAMEBUFFER, Gl.COLOR_ATTACHMENT0, Gl.TEXTURE_2D, s.Tex, 0);
@@ -208,6 +178,15 @@ internal static unsafe class PresentTarget
         s.TakeBacks++;
         Gl.DrainErrors(4);
         ScreenOwner.RestoreEngineFbo();
+    }
+
+    /// <summary>The GL image cleared to opaque black, for the A/B's GL half to draw over the background its Vulkan half
+    /// drew over. In the 4.6 context.</summary>
+    internal static void ClearBlack()
+    {
+        if (_s.Tex == 0 || Gl.ClearTexImage == null) return;
+        uint black = 0xff000000;   // not-an-offset: opaque black as RGBA8 bytes
+        Gl.ClearTexImage(_s.Tex, 0, Gl.RGBA, Gl.UNSIGNED_BYTE, &black);
     }
 
     /// <summary>What the present path cost this session, in blits. One hand-back per GUI flush is the floor; a

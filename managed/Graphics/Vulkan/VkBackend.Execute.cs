@@ -8,8 +8,8 @@ namespace CX.Graphics.Rhi;
 
 internal sealed unsafe partial class VkBackend
 {
-    /// <summary>Queue family indices with a meaning of their own (vulkan_core.h).</summary>
-    private const uint QueueFamilyIgnored = ~0u, QueueFamilyExternal = ~1u;
+    /// <summary>The queue family index that means "no ownership transfer" (vulkan_core.h).</summary>
+    private const uint QueueFamilyIgnored = ~0u;
     /// <summary>vkCmdUpdateBuffer's ceiling on one write.</summary>
     private const int MaxInlineUpdate = 65536;
     /// <summary>A slot's first staging buffer: past every block of constants, so only a scene-sized table grows it.</summary>
@@ -30,10 +30,13 @@ internal sealed unsafe partial class VkBackend
     private VkCommandBuffer _cmd;
     private Slot? _slot;
 
-    /// <summary>Record <paramref name="list"/> into one command buffer and run it. A composite image it touches is
-    /// taken from GL for the submit: Vulkan waits on GL's release (signalled now if GL still held it), renders, and
-    /// signals, and GL waits before anything of its own reads the image. No submit waits on a semaphore nobody signalled.</summary>
-    public bool Submit(CommandList list)
+    /// <summary>Record <paramref name="list"/> into one command buffer and run it.</summary>
+    public bool Submit(CommandList list) => Submit(list, -1);
+
+    /// <summary><see cref="Submit(CommandList)"/>, and with <paramref name="swap"/> at or past 0 the composite's blit
+    /// onto that acquired swapchain image after the list: the submit waits on the slot's acquire and signals the
+    /// image's ready semaphore, which the present waits on.</summary>
+    private bool Submit(CommandList list, int swap)
     {
         if (!OnThread("Submit")) return false;
         int slot = (int)(_submits % Slots);
@@ -62,56 +65,32 @@ internal sealed unsafe partial class VkBackend
         bool ok = Record(list.TakePending());
         if (_rendering) _vkd.vkCmdEndRendering(_cmd);
         _inPass = _rendering = false;
-        VkImg? c0 = Composite(0), c1 = Composite(1);
-        Exported? a = c0?.Ext is { Taken: true } e0 ? e0 : null, b = c1?.Ext is { Taken: true } e1 ? e1 : null;
-        if (a != null) Release(c0!);
-        if (b != null) Release(c1!);
+        if (ok && swap >= 0) ok = RecordPresent(swap);
         TimeEnd(slot, ok);
         _vkd.vkEndCommandBuffer(_cmd);
         if (!ok)
         {
-            // nothing ran, so no recorded barrier did: every image is back in the layout it entered with, GL keeps the
-            // composite, and the uploads this recording flushed wait for the next one
-            for (int i = _undo.Count - 1; i >= 0; i--)
-            {
-                (VkImg g, VkImageLayout layout, bool held) = _undo[i];
-                g.Layout = layout;
-                if (g.Ext != null) g.Ext.Taken = held;
-            }
+            // nothing ran, so no recorded barrier did: every image is back in the layout it entered with, and the
+            // uploads this recording flushed wait for the next one
+            for (int i = _undo.Count - 1; i >= 0; i--) _undo[i].Img.Layout = _undo[i].Layout;
             _undo.Clear();
             _upload.Touched.Clear();
             return false;
         }
         CommitUploads();
 
-        VkSemaphore* wait = stackalloc VkSemaphore[2];
-        VkSemaphore* signal = stackalloc VkSemaphore[2];
-        VkPipelineStageFlags* stages = stackalloc VkPipelineStageFlags[2] { VkPipelineStageFlags.AllCommands, VkPipelineStageFlags.AllCommands };
-        uint n = 0;
-        ReadOnlySpan<Exported?> taken = [a, b];
-        foreach (Exported? e in taken)
-        {
-            if (e == null) continue;
-            if (e.Handover.Take()) GlHand(e, release: true);
-            wait[n] = e.GlDone;
-            signal[n++] = e.VkDone;
-        }
+        uint n = swap >= 0 ? 1u : 0u;
+        VkSemaphore wait = n == 0 ? default : _acquired[slot], signal = n == 0 ? default : _swap.Ready[swap];
+        VkPipelineStageFlags stages = VkPipelineStageFlags.Transfer;
         VkCommandBuffer cb = _cmd;
         var si = new VkSubmitInfo
         {
-            waitSemaphoreCount = n, pWaitSemaphores = wait, pWaitDstStageMask = stages,
-            commandBufferCount = 1, pCommandBuffers = &cb, signalSemaphoreCount = n, pSignalSemaphores = signal,
+            waitSemaphoreCount = n, pWaitSemaphores = &wait, pWaitDstStageMask = &stages,
+            commandBufferCount = 1, pCommandBuffers = &cb, signalSemaphoreCount = n, pSignalSemaphores = &signal,
         };
         _vkd.vkResetFences(1, &fence);
         if (_vkd.vkQueueSubmit(_queue, 1, &si, fence) != VkResult.Success)
-            return Fault("vkQueueSubmit refused the frame -- a GL release is now unmatched and the device is unusable");
-        foreach (Exported? e in taken)
-        {
-            if (e == null) continue;
-            GlHand(e, release: false);
-            e.Handover.Returned();
-            e.Taken = false;
-        }
+            return Fault("vkQueueSubmit refused the frame -- the device is unusable");
         _submits++;
         DrainDead();
         return true;
@@ -402,7 +381,7 @@ internal sealed unsafe partial class VkBackend
         bool storage = type == VkDescriptorType.StorageImage;
         VkImageLayout want = storage ? VkImageLayout.General : VkImageLayout.ShaderReadOnlyOptimal;
         if (!_rendering) Transition(img, want);
-        else if (img.Layout != want || img.Ext is { Taken: false })
+        else if (img.Layout != want)
             return Fault($"bind set: slot {s.Slot}'s image needs a barrier inside a begun render pass -- bind before the first draw");
         VkSampler sampler = _nearest;
         if (!storage && !s.Sampler.IsNull && !_samplers.TryGet(s.Sampler.Value, out sampler)) return Fault($"bind set: stale sampler on slot {s.Slot}");
@@ -583,46 +562,35 @@ internal sealed unsafe partial class VkBackend
         _vkd.vkCmdPipelineBarrier2(_cmd, &di);
     }
 
-    /// <summary>Move <paramref name="img"/> into <paramref name="to"/>. A composite image's first use in a submit also
-    /// takes it from GL (the external queue family), whose release left it in the shader-read layout.</summary>
+    /// <summary>Move <paramref name="img"/> into <paramref name="to"/>.</summary>
     private void Transition(VkImg img, VkImageLayout to)
     {
         Remember(img);
-        bool take = img.Ext is { Taken: false };
-        if (take) { img.Ext!.Taken = true; img.Layout = VkImageLayout.ShaderReadOnlyOptimal; }
-        else if (img.Layout == to && to == VkImageLayout.ShaderReadOnlyOptimal) return;
-        Barrier(img, to, take ? QueueFamilyExternal : QueueFamilyIgnored, take ? _family : QueueFamilyIgnored);
+        if (img.Layout == to && to == VkImageLayout.ShaderReadOnlyOptimal) return;
+        Barrier(img, to);
         img.Layout = to;
     }
 
-    /// <summary>Hand a composite image back to GL in the layout GL's wait names.</summary>
-    private void Release(VkImg img)
-    {
-        Remember(img);
-        Barrier(img, VkImageLayout.ShaderReadOnlyOptimal, _family, QueueFamilyExternal);
-        img.Layout = VkImageLayout.ShaderReadOnlyOptimal;
-    }
-
-    /// <summary>Note <paramref name="img"/>'s layout and hand-over as this recording found them, once per recording, so a
-    /// refused recording -- whose barriers never run -- puts them back.</summary>
+    /// <summary>Note <paramref name="img"/>'s layout as this recording found it, once per recording, so a refused
+    /// recording -- whose barriers never run -- puts it back.</summary>
     private void Remember(VkImg img)
     {
         if (img.UndoAt == _recording) return;
         img.UndoAt = _recording;
-        _undo.Add((img, img.Layout, img.Ext?.Taken ?? false));
+        _undo.Add((img, img.Layout));
     }
 
-    /// <summary>The current recording's count, and each image it changed with the layout and hand-over it found.</summary>
+    /// <summary>The current recording's count, and each image it changed with the layout it found.</summary>
     private long _recording;
-    private readonly List<(VkImg Img, VkImageLayout Layout, bool Taken)> _undo = new();
+    private readonly List<(VkImg Img, VkImageLayout Layout)> _undo = new();
 
-    private void Barrier(VkImg img, VkImageLayout to, uint srcFamily, uint dstFamily)
+    private void Barrier(VkImg img, VkImageLayout to)
     {
         var b = new VkImageMemoryBarrier2
         {
             srcStageMask = VkPipelineStageFlags2.AllCommands, srcAccessMask = VkAccessFlags2.MemoryWrite,
             dstStageMask = VkPipelineStageFlags2.AllCommands, dstAccessMask = VkAccessFlags2.MemoryRead | VkAccessFlags2.MemoryWrite,
-            oldLayout = img.Layout, newLayout = to, srcQueueFamilyIndex = srcFamily, dstQueueFamilyIndex = dstFamily,
+            oldLayout = img.Layout, newLayout = to, srcQueueFamilyIndex = QueueFamilyIgnored, dstQueueFamilyIndex = QueueFamilyIgnored,
             image = img.Image,
             subresourceRange = new VkImageSubresourceRange
             {

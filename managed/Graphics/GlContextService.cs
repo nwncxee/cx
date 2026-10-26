@@ -130,6 +130,12 @@ public sealed unsafe class GlContextService : IExtenderService
     [DllImport("opengl32.dll")] private static extern int wglDeleteContext(IntPtr ctx);
     [DllImport("opengl32.dll")] private static extern IntPtr wglGetProcAddress(string name);
     [DllImport("gdi32.dll")] private static extern int SwapBuffers(IntPtr hdc);
+    [DllImport("user32.dll")] private static extern IntPtr WindowFromDC(IntPtr hdc);
+
+    /// <summary>The window both contexts draw to, as a Vulkan surface names it: the X display and window, or on Windows
+    /// the device context's window (no display). Zeros before the 4.6 context exists.</summary>
+    internal static (IntPtr Display, IntPtr Window) Window
+        => Win ? (IntPtr.Zero, _drw == IntPtr.Zero ? IntPtr.Zero : WindowFromDC(_drw)) : (_dpy, _drw);
 
     private static readonly bool Win = OperatingSystem.IsWindows();
 

@@ -103,6 +103,9 @@ public sealed unsafe partial class AlloyRenderer
 
     private static VkColourState _vkc = new();
 
+    /// <summary>The Vulkan frame's scene depth, which CX's windows test their world anchors against; null id before one.</summary>
+    internal static ImageId VkSceneDepth => _vkc.Depth;
+
     /// <summary>The per-frame uniform arena: every bind's pass block and loose block in a frame, at the device's offset
     /// alignment. Past it a frame refuses (logged) rather than reallocating under a list that names the old buffer.</summary>
     private const int ArenaCap = 4 << 20;
