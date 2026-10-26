@@ -200,7 +200,7 @@ public sealed unsafe partial class AlloyRenderer
         byte* b = PassBegin();
         FillPassBlock((PassBlock*)b);
         if (!AlloyLights.FillDraw(b, viewport, near, far)) PassBindsBorrowed++;
-        if (VkParity.Active) VkParity.StandDownPass(new Span<byte>(b, PassBytes));
+        if (VkParity.Active) VkParity.StandDownPass(new Span<byte>(b, PassBytes), 0f);
         FlushPassBlock();
         BindSunMaps();
         BindCubeMaps();

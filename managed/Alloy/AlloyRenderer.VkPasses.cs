@@ -164,12 +164,14 @@ public sealed unsafe partial class AlloyRenderer
         Matrix4x4 vpJ = vp, vpC = vpClean;
         if (!PostStack.RecordVk(vk, cl, s.Hdr, s.Depth, &vpJ, &vpC, viewport, display, log)) return false;
         VkHighlightComposite(cl, composite, display, log);
+        // the probe last: this frame's lit stages read the cube as it stood, and its faces reuse the frame's side list
+        VkProbeCapture(vk, cl, s, far, lightingOn && perspective, log);
         if (!s.Live)
         {
             s.Live = true;
             log.Always($"AlloyRenderer: the Vulkan colour bracket is LIVE -- {s.Drawn} draws, {s.Skipped} skipped "
                      + "(water, and any batch whose mesh or pipeline is not on Vulkan yet); lit by the sun, ambient, the "
-                     + "AO estimate and the deferred point lights, with no shadow map or probe until those passes port");
+                     + "AO estimate, the deferred point lights, the shadow maps and the probe");
         }
         return true;
     }
