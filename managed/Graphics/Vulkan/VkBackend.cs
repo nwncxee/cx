@@ -77,10 +77,11 @@ internal sealed unsafe partial class VkBackend : IDevice
     private static readonly VkVersion ApiFloor = VkVersion.Version_1_3;
     private const int LoggedFaults = 16;
     /// <summary>Submits in flight before one waits on a fence: a frame submits its world, its GUI and its present, so
-    /// four keeps a whole frame of overlap.</summary>
-    private const int Slots = 4;
-    /// <summary>Submits a freed object waits out: past the slot ring.</summary>
-    private const int DeadAfter = GpuGraveyard.FramesInFlight * 2;
+    /// six lets the CPU run two frames ahead, as a GL driver queues them; one missed vblank then costs no frame.</summary>
+    private const int Slots = 6;
+    /// <summary>Submits a freed object waits out: the last fence waited before the free must cover its submit, so past
+    /// the slot ring by at least one.</summary>
+    private const int DeadAfter = Slots + 2;
     /// <summary>Descriptor sets one submit may bind; a full pool refuses the bind, logged.</summary>
     private const uint SetsPerSubmit = 4096;
     /// <summary>The one set's shape: each kind of binding, its count, at its <see cref="VulkanToolchain"/> base.</summary>

@@ -65,10 +65,12 @@ internal sealed unsafe partial class VkBackend
         int slot = (int)(_submits % Slots);
         VkFence fence = _slots[slot].Fence;
         // the acquire below signals this slot's semaphore, which the slot's last submit may still be waiting on
-        if (_vkd.vkWaitForFences(1, &fence, true, FenceTimeoutNs) != VkResult.Success)
+        if (WaitFence(fence) != VkResult.Success)
             return Fault("Present: the previous submit on this slot never finished");
         uint idx = 0;
+        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         VkResult r = _vkd.vkAcquireNextImageKHR(_swap.Chain, FenceTimeoutNs, _acquired[slot], default, &idx);
+        _acquireTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
         if (r == VkResult.ErrorOutOfDateKHR)
         {
             _swap.Stale = true;

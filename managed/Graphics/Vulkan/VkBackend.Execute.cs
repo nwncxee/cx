@@ -42,7 +42,7 @@ internal sealed unsafe partial class VkBackend
         int slot = (int)(_submits % Slots);
         Slot s = _slots[slot];
         VkFence fence = s.Fence;
-        VkResult waited = _vkd.vkWaitForFences(1, &fence, true, FenceTimeoutNs);
+        VkResult waited = WaitFence(fence);
         if (waited != VkResult.Success)
             return Fault(waited == VkResult.ErrorDeviceLost
                 ? "the device was LOST running the previous submit on this slot -- a GPU fault in a recorded pass"

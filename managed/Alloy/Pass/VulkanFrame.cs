@@ -68,8 +68,12 @@ internal static class VulkanFrame
         AlloyRenderer.VkFrameTap(vk);
         if (++_s.Frames % CacheSavePeriod == 0) vk.SavePipelineCache();
         if (_s.Frames % GpuPeriod == 0 && vk.TakeGpuMs(out int n) is var ms && n > 0)
+        {
+            vk.TakeWaitMs(out double fence, out double acquire);
             log.Always($"VulkanFrame: [vkgpu] {ms:F2} ms GPU per frame over {n} frames (bake, cull, prepass, hi-Z, AO, "
-                     + "decals, G-buffer, opaque, cutout, sky, the deferred dispatches, blended)");
+                     + $"decals, G-buffer, opaque, cutout, sky, the deferred dispatches, blended); the CPU waited "
+                     + $"{fence / GpuPeriod:F2} ms/frame on submit fences and {acquire / GpuPeriod:F2} ms/frame on the swapchain acquire");
+        }
         PostChain.Painted();
         if (!_s.Live)
         {
