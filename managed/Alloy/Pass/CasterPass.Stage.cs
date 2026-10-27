@@ -346,69 +346,6 @@ public sealed unsafe partial class CasterPass
         return ok;
     }
 
-    /// <summary>Bake one view without a per-view walk. The dispatch selects out of this frame's staging
-    /// and writes the commands; the CPU issues one indirect-count draw per batch and never learns how many
-    /// survived.</summary>
-    private static bool GatherSubmit(uint tex, int size, int layer, Matrix4x4* vp,
-                                     Vector3 lightDir, Vector3 focus, float reach, float margin, bool point,
-                                     float lodR1, float lodR2, int set, bool receiver)
-    {
-        // PRE-cull figures: the survivors are the GPU's, and asking would be the readback this pass exists
-        // to not do -- the latent sample on the period line is what reports them.
-        _submitCreatures = _gCreatures;
-        if (!BeginTarget(tex, size, layer)) return false;
-        CasterGather.Dispatch(focus, lightDir, reach, reach + margin, point, lodR1, lodR2, set, receiver,
-                              dynSrc: set == CasterGather.SetDynamic);
-        // unit 0 is where the cutout stage samples; nothing else in this bracket moves the active unit
-        Gl.ActiveTexture(Gl.TEXTURE0);
-        int boundVao = -1, boundMode = -1, boundTex = -1;
-        int boundCut = -1;
-        // ponytail: every view issues one indirect-count draw per GLOBAL batch. SL2 removes the batches the
-        // view's SET provably empties -- the set flag is the CPU's own word, so that much needs no readback --
-        // and what is left is the batches whose count the CULL may have left at zero, which the CPU cannot
-        // know without the readback this pass exists to not do. Fewer batches (the staging key) is the lever
-        // for those.
-        int sets = 1 << set;
-        for (int g = 0; g < _gGroups; g++)
-        {
-            if (BatchIdle(g, sets)) { _mdiSkipped++; continue; }
-            int cut0 = _gTex[g], mode = StageOf(g);
-            if (mode != boundMode)
-            {
-                boundMode = mode;
-                if (mode >= ContentMode) { BindContentCaster(mode - ContentMode, layered: false, vp, size); boundCut = -1; }
-                else
-                {
-                    Gl.UseProgram(mode == 0 ? _gl.Prog : mode == 1 ? _gl.ProgMask : _gl.ProgMaskH);
-                    Gl.UniformMatrix4fv(mode == 0 ? _gl.LocVp : mode == 1 ? _gl.LocMaskVp : _gl.LocMaskHVp, 1, 0, (float*)vp);
-                    if (mode == 1) Gl.Uniform1i(_gl.LocMaskTex, 0);
-                    boundCut = -1;
-                }
-            }
-            if (mode >= ContentMode && (int)_gCut[g] != boundCut)
-            {
-                boundCut = (int)_gCut[g];
-                ContentCasterCut(mode - ContentMode, false, _gCut[g]);
-            }
-            else if (mode != 0 && mode < ContentMode && (int)_gCut[g] != boundCut)
-            {
-                CasterCut kind = _gCut[g]; boundCut = (int)kind;
-                Gl.Uniform1f(mode == 1 ? _gl.LocMaskCut : _gl.LocMaskHCut, Threshold(kind));
-                Gl.Uniform1f(mode == 1 ? _gl.LocMaskMip : _gl.LocMaskHMip, Renderer.CutMip.V);
-                Gl.Uniform1i(mode == 1 ? _gl.LocMaskDither : _gl.LocMaskHDither, DitherFor(kind));
-                Gl.Uniform1i(mode == 1 ? _gl.LocMaskEnv : _gl.LocMaskHEnv, kind == CasterCut.EnvAlpha ? 1 : 0);
-            }
-            if (mode == 1 && cut0 != boundTex) { Gl.BindTexture(Gl.TEXTURE_2D, (uint)cut0); boundTex = cut0; }
-            if (_gVao[g] != boundVao) { Gl.BindVertexArray(AlloyRenderer.CasterVao(_gVao[g])); boundVao = _gVao[g]; }
-            CasterGather.Draw(BatchMode(g), g, _gStart[g], _gLen[g]);
-            _mdiCalls++;
-        }
-        CasterGather.End();
-        Gl.BindVertexArray(0);
-        Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
-        return true;
-    }
-
     /// <summary>The period's triangles baked per detail level, per sampled view -- the bake's twin of
     /// <c>MeshLod.Drew</c>, off the gather's own latent count sample. Empty where no view was sampled, so a
     /// driver without the readback entry points loses the figure and nothing else.</summary>

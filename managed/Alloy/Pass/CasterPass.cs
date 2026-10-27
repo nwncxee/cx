@@ -391,7 +391,7 @@ public sealed unsafe partial class CasterPass : IExtenderService
     private static void Lifecycle()
     {
         if (!GlContextService.Available) Release("4.6 context lost");
-        if (_was.Available && !GlContextService.Available) { ContextLost(); CasterGather.ContextLost(); }
+        if (_was.Available && !GlContextService.Available) ContextLost();
         _was.Available = GlContextService.Available;
         bool inModule = GameGate.InModule;
         if (_was.InModule && !inModule) Release("module unload");

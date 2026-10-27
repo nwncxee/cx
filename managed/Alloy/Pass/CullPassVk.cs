@@ -215,7 +215,7 @@ internal static class CullPassVk
     /// <summary><c>alloy.cull</c> asks for the occlusion test.</summary>
     private static bool Occludes => CullPass.Mode >= CullPass.ModeHiZ;
 
-    /// <summary>One phase's dispatches into <paramref name="cl"/>, as <see cref="CullPass.Dispatch"/> sets them: the
+    /// <summary>One phase's dispatches into <paramref name="cl"/>: the
     /// prepass tests the prior pyramid in its own clip space and marks its rejects, the retest reads those marks,
     /// and the retest and colour sets test this frame's pyramid when there is one and <paramref name="occlude"/>.</summary>
     private static void Phase(CommandList cl, int p, int groups, ref CullBlock b, bool occlude)
@@ -260,7 +260,7 @@ internal static class CullPassVk
     }
 
     /// <summary>The max-depth pyramid from <paramref name="depth"/> (<paramref name="w"/> x <paramref name="h"/>, drawn
-    /// under the staged view-projection) into <paramref name="cl"/>, as <see cref="CullPass.BuildHiZ"/> builds it: half
+    /// under the staged view-projection) into <paramref name="cl"/>: half
     /// size, each texel the max of the 3x3 under it. It is this frame's for the retest and colour sets and next frame's
     /// stale one for its prepass. Nothing when the cull did not run or hi-Z is off.</summary>
     internal static void BuildHiZ(VkBackend vk, CommandList cl, ImageId depth, int w, int h)

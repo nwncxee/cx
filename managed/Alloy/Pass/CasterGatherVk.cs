@@ -51,7 +51,7 @@ internal static unsafe partial class CasterGatherVk
     /// <summary>The dynamic source is standing for this frame.</summary>
     internal static bool DynamicReady => _s.DynDrawN > 0 && !_s.DynSrc.IsNull;
 
-    /// <summary>Forget the frame's staging, as <see cref="CasterGather.Stand"/> does: a frame that stages nothing
+    /// <summary>Forget the frame's staging: a frame that stages nothing
     /// bakes empty views rather than the previous frame's world.</summary>
     internal static void Stand() { _s.DrawN = 0; _s.DynDrawN = 0; }
 
@@ -117,7 +117,7 @@ internal static unsafe partial class CasterGatherVk
         cl.UpdateBuffer(s.Cast, 0, Native.Records(cast, slots));
     }
 
-    /// <summary>Publish one frame's staging into <paramref name="cl"/>, as <see cref="CasterGather.Begin"/> does:
+    /// <summary>Publish one frame's staging into <paramref name="cl"/>:
     /// the source buffer is persistent and a frame whose caller reports no changed bytes sends nothing.</summary>
     internal static bool Begin(VkBackend vk, CommandList cl, int drawN, int groups, CasterSrcRec* src, bool changed)
     {
@@ -170,7 +170,7 @@ internal static unsafe partial class CasterGatherVk
     /// and the per-detail-level triangle tallies.</summary>
     private static long CountBytes(int groups) => (long)(groups + CasterGather.CountExtra) * sizeof(uint);
 
-    /// <summary>Select one view's casters into <paramref name="cl"/>, as <see cref="CasterGather.Dispatch"/> does.</summary>
+    /// <summary>Select one view's casters into <paramref name="cl"/>.</summary>
     internal static void Dispatch(CommandList cl, Vector3 focus, Vector3 dir, float reach, float along, bool point,
                                  float lodR1, float lodR2, int set, bool receiver, bool dynSrc)
     {
@@ -190,7 +190,7 @@ internal static unsafe partial class CasterGatherVk
     }
 
     /// <summary>Select every queued view's casters in ONE dispatch into <paramref name="cl"/>, as
-    /// <see cref="CasterGather.DispatchLayer"/> does: the chunk's view table goes up, the command buffer is sized
+    /// does: the chunk's view table goes up, the command buffer is sized
     /// draws x views, and a survivor's <c>baseInstance</c> packs its view index above the ownership slot.</summary>
     internal static bool DispatchLayer(VkBackend vk, CommandList cl, CasterViewRec* views, int viewN, bool dynSrc,
                                       int maxViews = 0, int cull = -1)

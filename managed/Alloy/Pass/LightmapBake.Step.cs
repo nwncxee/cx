@@ -93,27 +93,6 @@ internal static unsafe partial class LightmapBake
     /// mid-range card. The background takes one band a frame, the hold as many as its steps allow.</summary>
     private const int EncodeRows = 128;
 
-    /// <summary>One (page, light) step of the bake, or a band of the page's finish when its lights are done.
-    /// False = nothing more this frame (no queued rect, the scratch cube could not be rendered, or the
-    /// background's one encode band went out).</summary>
-    private static bool Step()
-    {
-        if (_bakePage < 0 && !BeginPage()) return false;
-        if (_bakeLight < _bakeLights.Count)
-        {
-            int l = _bakeLights[_bakeLight];
-            Vector4 pr = _setPosR[l];
-            var pos = new Vector3(pr.X, pr.Y, pr.Z);
-            // the cube starts at the self-shadow skip radius: a brazier's bowl sits right under its light
-            // node and blocked every steep ray, a dark disc round each one that only grazing rays escaped
-            if (!CasterPass.BakeStaticCube(_gl.Cube, _cubeSize, pos, BakeNear, pr.W)) { _bakeSkips++; return false; }
-            BakeLight(l, pos, pr.W);
-            _bakeLight++; _bakeSteps++;
-            return true;
-        }
-        return FinishPage();
-    }
-
     /// <summary>Open the lowest page holding queued rects: its rect list, the static lights reaching any of
     /// them, the scratch cleared and every rect's coverage laid down.</summary>
     private static bool BeginPage()
@@ -140,7 +119,7 @@ internal static unsafe partial class LightmapBake
         float near = CasterPass.CubeNearPlane;
         for (int l = 0; l < _setN; l++)
         {
-            // a reach inside the cube's near plane can never be baked: BakeStaticCube refuses it every frame and the page wedges
+            // a reach inside the cube's near plane can never be baked: the cube bake refuses it every frame and the page wedges
             if (!(_setPosR[l].W > near)) continue;
             for (int k = 0; k < _bakeRects.Count; k++)
             {
@@ -258,58 +237,9 @@ internal static unsafe partial class LightmapBake
 
     /// <summary>One light over the page: the bake program takes the light and its scratch cube exactly the
     /// way the lit stage takes a cube slot (slot 0 of a one-cube array), and every rect it reaches adds.</summary>
-    /// <summary>The scratch cube's near plane: the live receiver's self-shadow skip radius (<c>shadow.near</c>
-    /// x <c>light.radius</c>), so the geometry a light node sits in casts nothing in the bake.</summary>
+    /// <summary>The cube bake's near plane: the self-shadow skip radius, so a brazier's bowl does not block
+    /// every steep ray from its own light node.</summary>
     private static float BakeNear => AlloyLights.ShadowNearWorld;
-
-    private static void BakeLight(int l, Vector3 pos, float far)
-    {
-        bool q = _gl.QBake.Begin(Gl.TIME_ELAPSED);
-        BindScratch();
-        new PassState(depth: true, depthWrite: true, blend: true, cull: false, srgb: false, blendSrc: Gl.ONE, blendDst: Gl.ONE).Apply();
-        Gl.DepthFunc(Gl.GREATER);
-        Gl.UseProgram(_gl.ProgBake);
-        AlloyLights.BindForDraw();
-        Gl.Uniform1i(_bMode, 1);
-        Gl.Uniform1f(_bDepth, (float)(_bakeLight + 1) / BakeDepthSteps * 2f - 1f);
-        Vector3 c = _setCol[l];
-        Gl.Uniform4f(_bLight, pos.X, pos.Y, pos.Z, far);
-        Gl.Uniform3f(_bColor, c.X, c.Y, c.Z);
-        BindNullCubes();
-        Gl.ActiveTexture(Gl.TEXTURE0 + AlloyRenderer.CubeUnit); Gl.BindTexture(Gl.TEXTURE_CUBE_MAP_ARRAY, _gl.Cube);
-        Gl.ActiveTexture(Gl.TEXTURE0);
-        Gl.Uniform1i(_bCubeCount, 1);
-        // CX-43: the scratch cube as slot 0 of the pass block; the colour pass's next bind puts its own back.
-        byte* b = AlloyRenderer.PassBegin();
-        int* vp = stackalloc int[4] { 0, 0, PageSize, PageSize };
-        AlloyLights.FillDraw(b, vp, 1f, 100f);
-        var blk = (PassBlock*)b;
-        blk->Light[0] = new Vector4(pos.X, pos.Y, pos.Z, far);
-        blk->LocalPlane = new Vector2(MathF.Max(BakeNear, CasterPass.CubeNearPlane), 1f / _cubeSize);
-        // the disc everywhere (no screen to stand it down against), the near skip, no cap; PCSS off:
-        // the bake has no raw view of its cube -- a fixed disc at the softness knob. ponytail: bind the
-        // scratch cube through the raw sampler too if the bake's penumbra ever needs to match the live one.
-        blk->LocalSoft = new Vector4(AlloyLights.ShadowSoft, AlloyLights.ShadowNearWorld, 0f, 0f);
-        blk->LocalFloor = AlloyLights.ShadowFloor;
-        blk->LocalPcss = new Vector4(0f, 0f, Shadows.Taps.V, 0f);
-        blk->Fade[0].Value = 1f;
-        AlloyRenderer.FlushPassBlock();
-        uint vao = 0;
-        for (int k = 0; k < _bakeRects.Count; k++)
-        {
-            ref Rect r = ref _rects[_bakeRects[k]];
-            if (!Touches(l, r.C, r.R)) continue;
-            Gl.Uniform1i(_bChan, _bakePicks[k].ChannelOf(l));
-            DrawRect(_bakeRects[k], ref vao);
-        }
-        Gl.BindVertexArray(0);
-        Gl.DepthFunc(Gl.LEQUAL);   // every later pass assumes LEQUAL (#364)
-        Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
-        // the frame's own cube array back on the unit the lit programs expect it on
-        Gl.ActiveTexture(Gl.TEXTURE0 + AlloyRenderer.CubeUnit); Gl.BindTexture(Gl.TEXTURE_CUBE_MAP_ARRAY, CasterPass.CubeTex);
-        Gl.ActiveTexture(Gl.TEXTURE0);
-        if (q) _gl.QBake.End(Gl.TIME_ELAPSED);
-    }
 
     /// <summary>The page's final pass, a band of <see cref="EncodeRows"/> a call: the scratch planes encode to
     /// BC6H/BC7 blocks for A and B, C goes straight into the layer; after the last band each baked rect's cell

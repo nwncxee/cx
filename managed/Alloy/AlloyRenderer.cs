@@ -246,7 +246,6 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         // the record contract every path submits from are ours and depend on no engine symbol, so a build
         // that never arms still reports whether the arithmetic it ships is right.
         StaticSelfCheck(log);
-        CullPass.Init(log);
         StreamRing.Init(log);
         // Up here with the other unconditional checks: the queue schedules the same way on every client.
         GpuGraveyard.Init(log);
@@ -473,7 +472,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// <c>_litFailed</c> are NOT cleared: a stage that could not build is a fact about the source.</summary>
     internal static void ContextLost()
     {
-        Programs._prog46 = 0; Programs._progLit46 = 0; Programs._progLitList = 0; Programs._progLitDef = 0; Programs.ForgetDecal(delete: false); Programs._progLitMask = 0; Programs._progDepth = 0; Programs._progDepthKey = 0; Programs._progDepthFeat = 0; Programs._progWater = 0;
+        Programs._prog46 = 0; Programs._progLit46 = 0; Programs._progLitDef = 0; Programs.ForgetDecal(delete: false); Programs._progDepth = 0; Programs._progDepthKey = 0; Programs._progDepthFeat = 0; Programs._progWater = 0;
         Ablation.Forget(delete: false);
         TriggerHighlight.ContextLost();
         _drawBuf = 0; _texHBuf = 0; _boneBuf = 0;
@@ -493,7 +492,6 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         // #257: and so is the target latch -- every name in it belongs to the context that just went.
         ForgetTarget();
         DepthResource.Revoke();
-        CullPass.ContextLost();
         PresentTarget.ContextLost();   // #456: names only -- the images died with the context
         GuiPass.ContextLost();
         _nullSunShadow = 0; _nullCubeShadow = 0;
@@ -548,7 +546,6 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         if (++Counters._frames < period) return;
         Diag._loggedOnce = true;
         PeriodReport();
-        CullPass.ResetStats();
         Counters._frames = 0; Counters._draws = 0; Counters._batches = 0; Counters._revokes = 0; Counters._enrolls = 0;
         Counters._twoSidedDraws = 0; Counters._cullCuts = 0;
         Array.Clear(Counters._cutBy); Array.Clear(Counters._cutByBlend);

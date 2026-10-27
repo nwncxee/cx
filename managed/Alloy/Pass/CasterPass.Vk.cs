@@ -140,7 +140,7 @@ public sealed unsafe partial class CasterPass
         return true;
     }
 
-    /// <summary>Stage the frame's caster source for the Vulkan gather, as <see cref="CasterGather.Begin"/> does for
+    /// <summary>Stage the frame's caster source for the Vulkan gather: the
     /// GL's. Called from the one staging walk, so both backends select out of the same records.</summary>
     private static bool VkGatherBegin(int drawN, CasterSrcRec* src, bool changed)
         => _vk.Cmds != null && _vk.Dev is VkBackend vk && CasterGatherVk.Begin(vk, _vk.Cmds, drawN, _gGroups, src, changed);
@@ -347,7 +347,7 @@ public sealed unsafe partial class CasterPass
         return true;
     }
 
-    /// <summary>The layered pass's batch loop, <see cref="DrawLayered"/>'s walk: the program, its cut block and the
+    /// <summary>The layered pass's batch loop: the program, its cut block and the
     /// batch's mask bound only where they changed, then one indirect-count draw per batch for all the chunk's views.</summary>
     private static void VkDrawLayered(CommandList cl, int vn, int sets, bool clamp)
     {
@@ -467,7 +467,7 @@ public sealed unsafe partial class CasterPass
 
     /// <summary>Queue one light step's static cube for the lightmap bake on Vulkan: the six faces of the static set
     /// from <paramref name="pos"/> into slot <paramref name="slot"/> of the bake's own <paramref name="cubes"/>-cube
-    /// array, flushed with the frame's views at full detail, as <see cref="BakeStaticCube"/> renders GL's. False = not
+    /// array, flushed with the frame's views at full detail. False = not
     /// queued (nothing staged, a reach inside the near plane, or the queue full).</summary>
     internal static bool VkBakeCube(int slot, int cubes, int size, Vector3 pos, float near, float far)
     {
