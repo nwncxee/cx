@@ -56,7 +56,6 @@ internal sealed unsafe partial class VkBackend
         // a uniform block's GL point lands at 48 + point, a storage block's at 64 + point, a sampler on its unit
         Stage(check, "cx_ssao_fs", ShaderKind.FragmentShader, [0, 51]);
         Stage(check, "cx_ssaoblur_fs", ShaderKind.FragmentShader, [0, 1, 51]);
-        Stage(check, "cx_ssaotemp_f", ShaderKind.FragmentShader, [0, 1, 2, 3, 51]);
         Stage(check, "cx_cull_c", ShaderKind.ComputeShader, [12, 51, 72, 73, 74, 75, 76, 77, 78]);
         Stage(check, "cx_cullsort_c", ShaderKind.ComputeShader, [51, 72, 74, 75, 77]);
         check.Expect(CX.Alloy.ShaderSource.Get("cx_cull_c.glsl").Contains($"layout(binding = {CX.Alloy.CullPass.PyramidUnit}) uniform sampler2D uPyramid;"),

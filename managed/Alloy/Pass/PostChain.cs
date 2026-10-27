@@ -129,7 +129,7 @@ internal static unsafe class PostChain
     internal static string Describe() =>
         $"hdr {(_on ? "on" : "off")}  bloom {Post.Bloom.V:F3}{(StockConfig.HdrBloom ? "" : " (OFF: stock HDR/Bloom option)")}  threshold {Post.Threshold.V:F2}  knee {Post.Knee.V:F2}  " +
         $"exposure {Post.Exposure.V:F2}  tonemap {Post.Tonemap.Format()}  acesmix {Post.AcesMix.V:F2}  tmknee {Post.TmKnee.V:F2}  " +
-        $"dither {Post.Dither.V:F2}  scale {_scale:F2} ({(_gl.W > 0 ? $"{_gl.W}x{_gl.H} render, " : "")}lod bias {LodBias:F2})  motion {(Post.Motion.V ? "on" : "off")}  taa {(Post.Taa.V ? "on" : "off")} (taablend {Post.TaaBlend.V:F2}, taasharp {Post.TaaSharp.V:F2}, taau {(Post.Taau.V ? 1 : 0)}, ao temporal {Ao.Temporal.V:F2})  halfres {(Post.HalfRes.V ? "on" : "off")}"
+        $"dither {Post.Dither.V:F2}  scale {_scale:F2} ({(_gl.W > 0 ? $"{_gl.W}x{_gl.H} render, " : "")}lod bias {LodBias:F2})  motion {(Post.Motion.V ? "on" : "off")}  taa {(Post.Taa.V ? "on" : "off")} (taablend {Post.TaaBlend.V:F2}, taasharp {Post.TaaSharp.V:F2}, taau {(Post.Taau.V ? 1 : 0)})  halfres {(Post.HalfRes.V ? "on" : "off")}"
         + (Post.Viz.V > 0 ? $"  VIZ {Post.Viz.V}" : "")
         + (Post.ClearViz.V ? "  CLEARVIZ (target cleared magenta)" : "")
         + " | " + PostStack.Describe();
@@ -148,9 +148,9 @@ internal static unsafe class PostChain
     /// then averages, and a coarser mip would throw it away. 0 at 1.0, so the default is pixel-identical.</summary>
     internal static float LodBias => MathF.Min(MathF.Log2(_scale), 0f);
 
-    /// <summary>Whether the motion-vector pass runs this frame -- armed, the viz that paints it, or a
-    /// consumer (TAA, temporal GTAO) that reprojects through it.</summary>
-    internal static bool MotionWanted => Post.Motion.V || Post.Viz.V == VizMotion || TaaOn || SsaoPass.TemporalWanted;
+    /// <summary>Whether the motion-vector pass runs this frame -- armed, the viz that paints it, or the
+    /// accumulator that reprojects through it.</summary>
+    internal static bool MotionWanted => Post.Motion.V || Post.Viz.V == VizMotion || TaaOn;
     /// <summary>TAA is on and its stage can build -- the gate the jitter and the accumulator share, so
     /// a stage that failed to build never leaves the jitter running with nothing to average it.</summary>
     internal static bool TaaOn => Post.Taa.V && !TaaStage.Failed && !MotionVectors.Failed;
@@ -572,8 +572,8 @@ internal static unsafe class PostChain
         int vz = Post.Viz.V;
         try
         {
-            check.Expect(Post.G.Get("hdr") == null && Post.G.Get("scale") == null && Post.G.Get("aotemporal") == null,
-              "hdr, scale and aotemporal are not post knobs: hdr is the Renderer's boot setting, the other two are alloy.scale and ao.temporal");
+            check.Expect(Post.G.Get("hdr") == null && Post.G.Get("scale") == null,
+              "hdr and scale are not post knobs: hdr is the Renderer's boot setting and the render scale is alloy.scale");
             check.Expect(Post.Tonemap.RungValue(Quality.Shipped) == TonemapAces && Post.Tonemap.RangeText() == "shoulder, aces, neutral",
               "the tonemap knob stores the operator index and formats its name");
             check.Expect(Post.Tonemap.TryParse("shoulder", out int tm) && tm == TonemapShoulder && Post.Tonemap.TryParse("0", out tm) && tm == TonemapShoulder

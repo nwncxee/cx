@@ -678,7 +678,7 @@ so it adds no submenu content.
 | ao.strength | Strength | S | 0.5–4 step 0.1 · 2.2 | U | L | — | Multiplied by the game's AO intensity slider. |
 | ao.dirs | Slices | S | 1–8 · 1 | A | L | — | Directions each pixel searches for nearby surfaces. More is smoother and slower. Ladders on `quality.ao`. |
 | ao.steps | Steps | S | 1–8 · 3 | A | L | — | Samples along each direction. More reaches further out accurately, and costs that much more. Ladders on `quality.ao`. |
-| ao.direct / cutout / temporal / maxpx / blur / on | — | T, S | as declared | C | L | — | the direct term, cutout coverage, temporal accumulation, the screen-radius cap (ladders on `quality.ao`), the blur and the bypass |
+| ao.direct / cutout / maxpx / blur / on | — | T, S | as declared | C | L | — | the direct term, cutout coverage, the screen-radius cap (ladders on `quality.ao`), the blur and the bypass |
 | lightmap.enabled | Baked static lighting | T | on | **C** | L | — | cfg-only: static geometry gets its lights baked into a lightmap as the area loads, and the frame stops re-shading it. Off is the live light loop. |
 | lightmap.density | Lightmap density | S | 2–32 px/m · 8 | A | L | — | Lightmap texels per metre of world. Each instance's rectangle is capped at a quarter page; a change re-bakes the area. |
 | lightmap.movers | Creature shadows from baked lights | T | on | A | L | — | A creature standing under a baked light casts its shadow on the baked surface. Off is cheaper. |

@@ -123,3 +123,6 @@ alloy\.(backend|renderthread|rhiimmediate|gpumeter)\b	CX-313
 # The per-pixel linked-list transparency mode (alloy.oit 2) and the two SSBO points its head table and node pool
 # claimed: nothing allocated them and the resolve never selected them. The weighted pair is the one composite.
 \bOitHeads\b|\bOitNodes\b|\bCxOitHeads\b|\bCxOitNodes\b|per-pixel linked lists	GL sweep 4
+# The GL SSAO pass: its temporal accumulator reprojected through a velocity target the Vulkan estimate has
+# none of, so the knob that weighted the history and the accumulator's own stage went with it.
+\bao\.temporal\b|\bSsaoPass\.(Run|BindForDraw|TemporalWanted|DropHistory)\b|\bcx_ssaotemp_f\b	GL sweep 5

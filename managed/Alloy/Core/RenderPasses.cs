@@ -330,10 +330,8 @@ internal static class RenderPasses
             Name = "ao",
             Attach = SsaoPass.Attach,
             SelfCheck = l => SsaoPass.SelfCheck(l),
-            ContextLost = SsaoPass.Forget,
-            // #390: the visibility history is another area's after a transition.
-            Revoke = SsaoPass.Revoke,
-            Stats = SsaoPass.Stats,
+            // No ContextLost: everything the estimate owns is the Vulkan device's, replaced whole with it.
+            Stats = SsaoPassVk.Stats,
         }, log);
         r.Register(new PassLifecycle
         {

@@ -53,8 +53,7 @@ internal static class Post
                         changed: TaaStage.Reset);
         // Never a ladder rung: it only looks clean under TAA, and a feature must look right with TAA off.
         HalfRes = G.Toggle("halfres", "Half-resolution ambient occlusion", false, Tier.ChatOnly,
-                           help: "Ambient occlusion is computed at a quarter of the pixels and upsampled. Needs temporal anti-aliasing to look clean.",
-                           changed: SsaoPass.DropHistory);
+                           help: "Ambient occlusion is computed at a quarter of the pixels and upsampled. Needs temporal anti-aliasing to look clean.");
         Stack = G.Toggle("stack", "Game post-effects", true, Tier.ChatOnly,
                          help: "The stock framebuffer effects (gamma, sharpen, vibrance, SMAA, toon…) on the Alloy frame.");
         FbPost = G.Toggle("fbpost", "Hosted content post", true, Tier.ChatOnly);

@@ -46,7 +46,7 @@ internal static class UboSlots
         ["CxCull"] = (Cull, ["cx_cullblk.glsl", "cx_cull_c.glsl", "cx_cullsort_c.glsl"]),
         ["CxDeferred"] = (Deferred, ["cx_defblk.glsl", "cx_deferred_cs.glsl"]),
         ["CxSsao"] = (Ssao, ["cx_ssaolib.glsl", "cx_ssao_f.glsl", "cx_ssao_fs.glsl", "cx_ssaoblur_f.glsl",
-                             "cx_ssaoblur_fs.glsl", "cx_ssaotemp_f.glsl"]),
+                             "cx_ssaoblur_fs.glsl"]),
         ["CxGather"] = (Gather, ["cx_gatherblk.glsl", "CasterGather.GatherCs", "CasterGather.LayerCs"]),
     };
 
@@ -104,7 +104,7 @@ internal static class UboSlots
           "...and the same text passes for cx_defshadow_cs, whose own uInvVp was never a block member");
         check.Expect(!ShaderContract.BlocksSafe(def, def.Replace("int uTiles;", "int uTileN;", StringComparison.Ordinal)),
           "...and so is a block whose body is not the library's");
-        foreach (string stage in new[] { "cx_ssao_f.glsl", "cx_ssaoblur_f.glsl", "cx_ssaotemp_f.glsl",
+        foreach (string stage in new[] { "cx_ssao_f.glsl", "cx_ssaoblur_f.glsl",
                                          "cx_cull_c.glsl", "cx_cullsort_c.glsl", "cx_deferred_cs.glsl" })
             check.Expect(ShaderContract.BlocksSafe(ShaderSource.Get(stage), ShaderSource.Get(stage)),
               $"the shipped {stage} passes the guard");

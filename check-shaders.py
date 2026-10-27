@@ -581,7 +581,6 @@ def programs(g):
         "weather rain": (g["cx_weather_vs"], g["cx_rain_fs"]),
         "weather snow": (g["cx_weather_vs"], g["cx_snow_fs"]),
         "weather splash": (g["cx_splash_vs"], g["cx_splash_fs"]),
-        "ssao temporal": (g["cx_fullscreen_v"], g["cx_ssaotemp_f"]),
         "motion vectors": (g["cx_fullscreen_v"], g["cx_motioncam_f"]),
         "mover motion": (g["cx_motion_v"], g["cx_motion_f"]),
         "taa resolve": (g["cx_fullscreen_v"], g["cx_taa_f"]),

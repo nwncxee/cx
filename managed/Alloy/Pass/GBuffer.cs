@@ -64,7 +64,7 @@ internal static unsafe class GBuffer
 
     /// <summary>Bind the three G-buffer targets, the frame's depth and the lightmap record buffer the slot lane
     /// indexes, for a compute pass to read. The depth is read while attached: a dispatch touches no framebuffer,
-    /// so there is no feedback loop, and the lit stage samples it at the same time (<c>SsaoPass.BindForDraw</c>).</summary>
+    /// so there is no feedback loop, and the lit stage samples it at the same time.</summary>
     internal static void BindForCompute()
     {
         BindUnit(TextureSlots.Gbuf0, _gl.Tex0);

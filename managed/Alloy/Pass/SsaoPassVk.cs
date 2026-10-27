@@ -24,12 +24,24 @@ internal static unsafe class SsaoPassVk
         /// <summary>The raw estimate and the blurred one; the raw stage writes <see cref="Out"/> itself when
         /// there is no blur, so the lit stage reads one name either way.</summary>
         public ImageId Raw, Out;
-        public int W, H, SrcW, SrcH;
+        public int W, H, SrcW, SrcH, Runs;
         public bool Failed, Said;
         public SsaoBlock Blk;
     }
 
     private static SsaoVkState _s = new();
+
+    /// <summary>Did the device refuse this pass? The SSAO video option is then inert.</summary>
+    internal static bool Failed => _s.Failed;
+
+    /// <summary>The <c>[alloy]</c> period term: how often the estimate ran, and at what extent.</summary>
+    internal static string Stats(int frames)
+    {
+        SsaoVkState s = _s;
+        int n = s.Runs; s.Runs = 0;
+        return s.Failed ? "ao FAILED" : n == 0 ? "ao idle"
+             : $"ao {(float)n / MathF.Max(frames, 1):F2} runs/frame at {s.W}x{s.H}{(Half ? $" (half of {s.SrcW}x{s.SrcH})" : "")}";
+    }
 
     /// <summary>This frame's visibility is in <see cref="Visibility"/>: the lit stage may read it.</summary>
     internal static bool Live { get; private set; }
@@ -80,6 +92,7 @@ internal static unsafe class SsaoPassVk
         if (blur) Stage(cl, s.Out, s.ProgBlur, vp, ubo, [new(SsaoPass.SlotDepth, depth), new(SsaoPass.SlotSrc, s.Raw)]);
         Half = half;
         Live = true;
+        s.Runs++;
         if (!s.Said)
         {
             s.Said = true;
