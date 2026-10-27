@@ -502,8 +502,6 @@ internal static unsafe partial class GrassField
         Gl.ActiveTexture(Gl.TEXTURE0 + TextureSlots.GrassGround);
         Gl.BindTexture(Gl.TEXTURE_2D, FrameSnapshot.ColorTex);
         Gl.ActiveTexture(Gl.TEXTURE0);
-        // CX-51: a blade reflects the probe as the ground around it does
-        AlloyRenderer.BindProbe();
         AlloyRenderer.GpuBegin(AlloyRenderer.GpuTerm.Grass);
         // Procedural blades: opaque, depth-writing, two-sided, and no discard -- early-Z rejects the field's own
         // overdraw with no prepass.

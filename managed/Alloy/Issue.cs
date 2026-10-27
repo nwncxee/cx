@@ -287,14 +287,13 @@ internal static unsafe class Issue
         uint boundFunc = Gl.LEQUAL;
         bool boundTest = true;
         bool boundOffset = false;
-        int boundOitGob = -1;
         // #292: face culling, per batch. -1 rather than a guess at the preamble's state: the sky, grass,
         // particle and beam passes all leave their own culling behind them, and a probe capture re-enters
         // this loop six more times, so the first batch of every entry issues the call rather than trusting
         // what someone else set.
         int boundCull = -1;
         float boundCut = float.NaN;   // per PROGRAM: reset on every UseProgram below
-        int litBase = -1, litCut = -1, litOitGob = -1; // the bound lit program's, whichever of the two it is
+        int litBase = -1, litCut = -1;   // the bound lit program's, whichever of the two it is
         int litSsaoOn = -1, litAoDirect = -1;
         // CX-273: the decal layer's mode for this loop, and the bound lit program's uDecal (-1 = not yet sent)
         int decalMode = DecalLayer.Mode, litDecal = -1, boundDecal = -1;
@@ -304,7 +303,7 @@ internal static unsafe class Issue
         if (boundProg is 1 or 4 or 5 or 6 or 8 || ContentPrograms.IsProg(boundProg))
         {
             ref LitLoc H = ref LitLocOf(boundProg);
-            litBase = H.Base; litCut = H.Cut; litOitGob = H.OitGob;
+            litBase = H.Base; litCut = H.Cut;
             litSsaoOn = H.SsaoOn; litAoDirect = H.AoDirect; litDecal = H.Decal; litSolid = H.Solid;
         }
         // #379 follow-up: SSAO is per BATCH, not per program bind. The visibility buffer is computed from
@@ -332,19 +331,16 @@ internal static unsafe class Issue
             bool split = _gWash[g] == WashSplit && lit && g >= _gOpaqueEnd
                          && (!oitOut || content && _gSrc[g] == AuroraSrcAlpha && _gDst[g] == AuroraOneMinusSrcAlpha);
             if (interior && !split) continue;
-            bool lists = lit && !water && !content && _oitOn && OitPass.Linked;   // the append twin, bracket only
             // CX-188 (ADR 0029): the DEFERRED twin (5) takes the opaque and cutout lit batches of the main
             // view -- the only draws whose pixels the deferred compute pass reads. Everything else keeps the
             // forward loop: a capture or the mirror (no G-buffer to read back), any /alloy viz but the
             // light-source one (so every debug view stays truthful), a content pair with no twin, and the blended range through the OIT twin.
-            bool deferred = lit && !water && (!content || ContentPrograms.HasDeferred(_gFeat[g])) && !lists
+            bool deferred = lit && !water && (!content || ContentPrograms.HasDeferred(_gFeat[g]))
                             && (viz == 0 || viz == AlloyRenderer.VizLightFrom) && !_capturing
-                            && (g < _gOpaqueEnd || interior) && DeferredLights.Active && !_forwardOnly;
-            // CX-189: the coverage layer draws forward, through the mask variant when it shapes its own samples
+                            && (g < _gOpaqueEnd || interior) && DeferredLights.Active;
             int wantProg = decalWrite && lit ? 8 : water ? 2
                          : content ? ContentPrograms.ProgId(_gFeat[g], deferred)
-                         : lists ? 4 : deferred ? 5
-                         : lit ? (_coverPass && CoverageLayer.Masked ? 6 : 1) : 0;
+                         : deferred ? 5 : lit ? 1 : 0;
             if (boundProg != wantProg)
             {
                 boundProg = wantProg;
@@ -380,23 +376,19 @@ internal static unsafe class Issue
                     ref LitLoc L = ref LitLocOf(wantProg);
                     Gl.UseProgram(wantProg == 8 ? Programs.ProgDecal
                                   : content ? ContentPrograms.Program(wantProg)
-                                  : lists ? Programs._progLitList
-                                  : deferred ? Programs._progLitDef : wantProg == 6 ? Programs._progLitMask : Programs._progLit46);
-                    if (wantProg == 6) Gl.Uniform1i(Programs._litMaskSamples, CoverageLayer.Samples);
+                                  : deferred ? Programs._progLitDef : Programs._progLit46);
                     Gl.Uniform1i(L.Tex, 0);
                     fixed (Matrix4x4* vpm = &vp) Gl.UniformMatrix4fv(L.Vp, 1, 0, (float*)vpm);
                     AlloyLights.BindForDraw();
                     Gl.Uniform1i(L.Viz, viz);
                     Gl.Uniform1f(L.AoCutout, Ao.Cutout.V);
                     Gl.Uniform1f(L.AlphaMip, Renderer.CutMip.V);
-                    OitPass.Upload(L.Oit, L.OitDim, _oitOn);
                     Gl.Uniform1i(L.LightRecOn, _lightRec ? 1 : 0);
                     Gl.Uniform1i(L.Capture, _capturing ? (_planar ? 2 : 1) : 0);
                     Gl.Uniform1f(L.MirrorZ, _mirrorZ);
                     LightmapBake.BindForDraw(L.LmPages, L.LmMovers);
                     UploadFeatureTerms(L.Feat, viewport);
                     BindPass(L.CubeCount, viewport, near, far);
-                    BindProbe();
                     // not inside the OIT bracket: the scene depth is that framebuffer's depth attachment there, and
                     // no blended batch reads SSAO (AoBlended) -- a bound, attached depth is a driver decompress
                     SsaoPass.BindForDraw(SsaoPass.Live && !_capturing && !_oitOn, PostChain.DepthTex, depthToo: wantProg == 8);
@@ -407,7 +399,7 @@ internal static unsafe class Issue
                     Weather.UploadLit(L.Weather, L.WeatherLook, L.CoverVp, L.CoverLayer, L.SnowLook, L.SnowLight, L.SnowPom, L.WxEdge, L.WxRun, L.WxCache, _capturing);
                     // Not in the probe capture: CxAmbientShape reads the probe back, so the term would land twice.
                     SkyView.UploadLit(L.SkyVp, L.SkyTerm, _capturing && !_planar);
-                    Weather.BindEsm(L.CoverEsm, _oitOn || lists);
+                    Weather.BindEsm(L.CoverEsm, _oitOn);
                     Weather.UploadMap(L.WxMapXf, L.WxMapP, _capturing);
                     // The master PLT palette on its own unit; a no-op until a master palette exists.
                     Db.PltPalettes.Bind();
@@ -415,7 +407,7 @@ internal static unsafe class Issue
                     // a reader that trusted an earlier bind would read the particle index block.
                     Db.ContentTable.Bind();
                     if (content) ContentPrograms.BindExtras(wantProg);
-                    litBase = L.Base; litCut = L.Cut; litOitGob = L.OitGob; boundOitGob = -1;
+                    litBase = L.Base; litCut = L.Cut;
                     litSsaoOn = L.SsaoOn; litAoDirect = L.AoDirect;
                     boundSsao = -1;
                     litDecal = L.Decal; boundDecal = -1;
@@ -430,7 +422,6 @@ internal static unsafe class Issue
                     Gl.Uniform1f(Programs._locSkyFog, 0f);
                     Gl.Uniform1f(Programs._locAlphaMip, Renderer.CutMip.V);
                     Gl.Uniform1i(Programs._locViz, viz);
-                    OitPass.Upload(Programs._locOit, Programs._locOitDim, _oitOn); boundOitGob = -1;
                     fixed (Matrix4x4* vpm = &vp) Gl.UniformMatrix4fv(Programs._locVp, 1, 0, (float*)vpm);
                     UploadFeatureTerms(Programs._locFeat, viewport);
                 }
@@ -455,7 +446,7 @@ internal static unsafe class Issue
                 if (sm != boundSolid) { Gl.Uniform1i(litSolid, sm); boundSolid = sm; }
             }
             // the decal layer takes the whole graded edge: its 0.2 discard is what drew the edge as a band
-            float cut = _coverPass ? CoverageLayer.Cut : decalWrite ? -1f : AlloyClasses.Discard(_gCls[g]);
+            float cut = decalWrite ? -1f : AlloyClasses.Discard(_gCls[g]);
             if (cut != boundCut) { Gl.Uniform1f(water ? Programs._watCut : lit ? litCut : Programs._locCut, cut); boundCut = cut; }
             // ...and the blend state, per batch, because the opaque PASS now mixes both: a plain opaque batch
             // and a cutout batch both draw with GL_BLEND off (AlloyClasses.Blends); a blended batch takes the
@@ -466,7 +457,7 @@ internal static unsafe class Issue
                 boundBlend = blend;
                 if (blend) Gl.Enable(Gl.BLEND); else Gl.Disable(Gl.BLEND);
             }
-            // Under OIT the pair is per draw buffer and set once by OitPass.Begin; glBlendFunc would clobber both.
+            // Under OIT the pair is per draw buffer and set by the pass itself; glBlendFunc would clobber both.
             if (blend && !_oitOn && !decalWrite)
             {
                 uint src = BlendGl(_gSrc[g]), dst = BlendGl(_gDst[g]);
@@ -492,11 +483,6 @@ internal static unsafe class Issue
                 if (wash && Gl.PolygonOffset != null) { Gl.PolygonOffset(WashOffsetFactor, WashOffsetUnits); Gl.Enable(Gl.POLYGON_OFFSET_FILL); }
                 else Gl.Disable(Gl.POLYGON_OFFSET_FILL);
                 boundOffset = wash;
-            }
-            if (_oitOn)
-            {
-                int gid = OitPass.GobId(_gGob[g]);
-                if (gid != boundOitGob) { Gl.Uniform1i(lit ? litOitGob : Programs._locOitGob, gid); boundOitGob = gid; }
             }
             BindBatchState(g, ref boundCull, ref boundVao);
             // #153: a merged lit batch spans many textures; its samplers come off the handle block per draw,
@@ -555,13 +541,6 @@ internal static unsafe class Issue
                         : ref (which == 6 ? ref Programs._litM
                              : ref (which == 8 ? ref Programs.DecalLoc : ref Programs._lit))));
     }
-
-    /// <summary>The batches being issued are <see cref="CoverageLayer"/>'s, cut at the layer's threshold rather
-    /// than the class's (and through the mask variant when it is on). Set around the layer's one issue call.</summary>
-    internal static bool _coverPass;
-    /// <summary>The batches draw after the deferred pass (the coverage tail, layered or not), so never through
-    /// the deferred twin -- its point lights would go to a G-buffer nobody reads any more.</summary>
-    internal static bool _forwardOnly;
 
     /// <summary>The blended class's lit fragments may take the deferred pass's light record (set by the frame
     /// around the blended pass only, with the record bound on <see cref="TextureSlots.LightRec"/>).</summary>

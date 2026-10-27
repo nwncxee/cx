@@ -200,7 +200,7 @@ internal static unsafe class Programs
         if (_progLitMask != 0) Gl.DeleteProgram(_progLitMask);
         _progLitMask = 0; _maskFailed = false;
         if (_progWater != 0) Gl.DeleteProgram(_progWater);
-        _progLit46 = 0; _progLitList = 0; _progLitDef = 0; _progWater = 0; OitPass.ListsArmed = false;
+        _progLit46 = 0; _progLitList = 0; _progLitDef = 0; _progWater = 0;
         Ablation.Forget(delete: true);
         _litFailed = false; _waterFailed = false;
         GrassField.DropProgram();
@@ -495,7 +495,6 @@ internal static unsafe class Programs
         _progLitList = pl;
         if (pl != 0) _litL = LitLocs(pl);
         else _log?.Info("AlloyRenderer: lit OIT-lists twin unavailable -- /alloy oit 2 resolves the weighted way");
-        OitPass.ListsArmed = pl != 0;
         // CX-188 (ADR 0029): the DEFERRED twin, from the same final text. A content override of cx_ownlit_fs
         // (or of a library inside it) that never calls CxGbufWrite cannot be one -- there is no half-deferred
         // frame, so the whole pass stands down with the override named.

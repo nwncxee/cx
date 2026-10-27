@@ -627,7 +627,6 @@ def programs(g):
         "highlight glow": (g["cx_hiliteglow_v"], g["cx_hiliteglow_f"]),
         "halo occlusion probe": (g["cx_haloocc_c"],),
         "oit resolve": (g["cx_fullscreen_v"], g["cx_oitresolve_f"]),
-        "oit clear": (g["cx_fullscreen_v"], g["cx_oitclear_f"]),
         "light beams (scene database)": (g["cx_beamdb_v"], g["cx_beam_f"]),
         "lightmap bake": (g["cx_bake_v"], g["cx_bake_f"]),
         "lightmap encoder": (g["cx_bakeenc_c"],),
