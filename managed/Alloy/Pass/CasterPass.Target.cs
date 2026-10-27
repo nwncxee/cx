@@ -12,14 +12,10 @@ namespace CX.Alloy;
 /// layered queue's flush, and the teardown every context loss runs.</summary>
 public sealed unsafe partial class CasterPass
 {
-    /// <summary>What the pass still carries per context: the masked depth program the vanilla renderer's
-    /// chain built, and the bracket's GPU timer. <see cref="ContextLost"/> replaces it, so nothing from a dead
-    /// context survives as a field nobody remembered to zero.</summary>
+    /// <summary>What the pass still carries per context: the bracket's GPU timer. <see cref="ContextLost"/>
+    /// replaces it, so nothing from a dead context survives as a field nobody remembered to zero.</summary>
     private sealed class CasterGlState
     {
-        /// <summary>The masked (alpha-tested) depth program on the vanilla renderer's chain. Zero = it could not
-        /// build, and masked casters then stay out of every bake.</summary>
-        public uint ProgMask;
         /// <summary>GPU time of the whole shadow bracket; the CPU stopwatch only sees submission.</summary>
         public GpuQuery QShadow;
     }

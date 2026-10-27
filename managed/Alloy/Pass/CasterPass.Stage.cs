@@ -282,9 +282,9 @@ public sealed unsafe partial class CasterPass
             // CX-303: ...and so is a content pair's caster, whose twin computes the pair's own coverage.
             bool content = _liveContent[i] != 0;
             bool cover = drawTex != 0 && (_liveCut[i] == CasterCut.Coverage || content);
-            int masked = drawTex != 0 && _gl.ProgMask != 0 && _maskMode != 0
+            int masked = drawTex != 0 && _vk.Mask != null && _maskMode != 0
                          && (cover || glass || (db ? dbHoles > 0f : TexHasAlpha(drawTex))) ? drawTex : 0;
-            if (masked == 0 && _liveTex[i] != 0 && _gl.ProgMask == 0) _maskNoProg++;
+            if (masked == 0 && _liveTex[i] != 0 && _vk.Mask == null) _maskNoProg++;
             // The mask MODE is decided here, in the key, not at the draw: a masked texture the mode draws
             // solid merges into its (VAO, prim) batch instead of costing one indirect call per view per
             // texture. The knobs bump _listVer so a change re-stages.
