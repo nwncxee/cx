@@ -23,7 +23,7 @@ internal static unsafe partial class Highlight
     /// <summary>Record draws the Vulkan mask takes a frame; past it a highlighted crowd's last parts go unmasked.</summary>
     private const int MaxHlDraws = 4096;
 
-    /// <summary>The outline's draws on Vulkan, gathered as <see cref="OutlineHighlightPass"/> gathers them: every
+    /// <summary>The outline's draws on Vulkan, gathered off the staged batches: every
     /// highlighted root the source hook claimed and its attached children, matched against the staged batches up to
     /// the blended class's end. A content pair's own depth twin is not on Vulkan, so its parts are not masked; a root
     /// with no masked draw takes no highlight here (the glow is GL's). The draws gathered.</summary>
