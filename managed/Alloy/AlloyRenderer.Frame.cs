@@ -79,7 +79,7 @@ public sealed unsafe partial class AlloyRenderer
         // the same flag, so water is simply not drawn on exactly those passes (#285: a hole, not vanilla).
         FrameSnapshot.Revoke();
         if (StreamRing.Refused) _batchUnavailable = true;   // CX-45: the ring failed the renderer (AlloyGate.Fail) when it was refused
-        if (Programs._progFailed || _batchUnavailable) { DbNoDraw("program failed or multidraw unavailable"); return false; }   // EndFrame revokes + disarms; never pay the bracket for nothing
+        if (_batchUnavailable) { DbNoDraw("multidraw unavailable"); return false; }   // EndFrame revokes + disarms; never pay the bracket for nothing
         // Checked BEFORE anything stamps OwnGen: BuildBatches marks parts as drawn, which is only honest while
         // the issue phase cannot fail. Missing entry points are the one way it could.
         // #257/ADR 0032: LatchFrameTarget read this in the ENGINE's context before the view's bracket opened.
@@ -179,18 +179,18 @@ public sealed unsafe partial class AlloyRenderer
         // draw, and in DB mode the engine draws nothing: Alloy's own stages decide lighting. Same shape as the
         // RenderSinglePass window: an engine state consulted in a mode where the engine has no state.
         // CX-120: say WHY the rig stood down, once. "unlit-pass N" names the symptom; these are the terms.
-        if (!_saidLitTerms && (!perspective || _litCount == 0 || !_lighting || Programs._litFailed))
+        if (!_saidLitTerms && (!perspective || _litCount == 0 || !_lighting))
         {
             _saidLitTerms = true;
             _log?.Always($"AlloyRenderer: [db] the lighting rig stood down -- perspective={perspective} "
                        + $"p00={p00:F4} p11={p11:F4} near={near:F3} far={far:F3} litCount={_litCount} "
-                       + $"lighting={_lighting} litFailed={Programs._litFailed} "
+                       + $"lighting={_lighting} "
                        + $"proj.M11={proj.M11:F4} proj.M22={proj.M22:F4} proj.M34={proj.M34:F4} "
                        + $"proj.M33={proj.M33:F4} proj.M43={proj.M43:F4} fovy={AlloyCamera.WorldView.Fovy:F3} "
                        + $"vp={AlloyCamera.WorldView.W}x{AlloyCamera.WorldView.H}. Every lit part is skipped "
                        + "while this holds, which is an empty world.");
         }
-        bool lightingOn = _litCount > 0 && _lighting && !Programs._litFailed && perspective;
+        bool lightingOn = _litCount > 0 && _lighting && perspective;
 
         FrameZones.Add(FrameZones.Zone.Setup, tSetup, FrameZones.Ticks(FrameZones.Zone.Pose) - pose0);
         long tEnter = FrameZones.Now;
