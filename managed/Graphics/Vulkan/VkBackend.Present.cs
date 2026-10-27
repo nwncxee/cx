@@ -283,6 +283,16 @@ internal sealed unsafe partial class VkBackend
         _swap.Surface = default;
     }
 
+    /// <summary>The window is being destroyed: the swapchain and the surface over it go now, while its display is still
+    /// open, rather than in the driver's exit handler after SDL has closed it. A later present makes them again.</summary>
+    internal void ReleaseWindow()
+    {
+        if (!OnThread("releasing the window") || _swap.Surface.IsNull) return;
+        _vkd.vkDeviceWaitIdle();
+        DropSwapchain();
+        _log.Always($"VkBackend: the window is going -- its swapchain and surface released after {_swap.Presents} present(s)");
+    }
+
     /// <summary>Presents so far, for the status line.</summary>
     internal long Presents => _swap.Presents;
 }

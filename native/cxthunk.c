@@ -108,3 +108,46 @@ void cx_crash(void)
     volatile int *volatile p = 0;
     *p = 0;
 }
+
+#ifndef _WIN32
+#include <signal.h>
+#include <unistd.h>
+
+/// CrashReporter_Linux::InternalCrashHandler(int): the engine's signal handler. It writes the report with stdio and
+/// shows a dialog, so a crash during the client's exit (display closed, stdio half torn down) crashes inside it again,
+/// and the process then spins or wedges instead of ending. Here a second entry, or any entry once the client is
+/// quitting, says so on stderr and ends the process; the first crash of a running client still gets its report.
+typedef void (*cx_crash_handler_fn)(int sig);
+static cx_crash_handler_fn cx_crash_handler_orig;
+static volatile sig_atomic_t cx_crash_depth, cx_quitting;
+
+static void cx_crash_say(const char *what, int sig)
+{
+    static const char head[] = "NWNCX:EE: signal ", tail[] = " -- the process exits here instead of re-entering the "
+                                                            "engine's crash handler\n";
+    char num[4] = { (char)('0' + sig / 10 % 10), (char)('0' + sig % 10), ' ', 0 };
+    (void)!write(2, head, sizeof head - 1);
+    (void)!write(2, sig >= 10 ? num : num + 1, sig >= 10 ? 3 : 2);
+    (void)!write(2, what, strlen(what));
+    (void)!write(2, tail, sizeof tail - 1);
+}
+
+static void cx_crash_handler(int sig)
+{
+    if (cx_crash_depth++ > 0) { cx_crash_say("inside the crash handler", sig); _exit(128 + sig); }
+    if (cx_quitting) { cx_crash_say("while the client was quitting", sig); _exit(128 + sig); }
+    cx_crash_handler_orig(sig);
+}
+
+void *cx_crash_handler_thunk(void) { return (void *)cx_crash_handler; }
+
+void cx_crash_handler_set_orig(cx_crash_handler_fn orig) { cx_crash_handler_orig = orig; }
+
+/// The client has begun quitting (its window is going): from here a crash ends the process at once.
+void cx_crash_quitting(void) { cx_quitting = 1; }
+#else
+// Windows: the engine crashes through its unhandled-exception filter, not this handler; the managed side never calls these.
+void *cx_crash_handler_thunk(void) { return 0; }
+void cx_crash_handler_set_orig(void (*orig)(int)) { (void)orig; }
+void cx_crash_quitting(void) { }
+#endif
