@@ -691,6 +691,10 @@ internal static unsafe class SymbolMap
     /// session swaps that flag for <c>SDL_WINDOW_VULKAN</c> here, so no GL library or context is ever made. C linkage.</summary>
     [Fn("IntPtr(byte* title, int x, int y, int w, int h, uint flags)")]
     public const string SdlCreateWindow = "SDL_CreateWindow";
+    /// <summary><c>RenderInterface::Shutdown(int)</c> @0x45d2b0, called once from <c>main</c> after the frame loop ends,
+    /// before the services stop and SDL quits: the client is quitting, and nothing is drawn after it.</summary>
+    [Fn("void(int final)")]
+    public const string RiShutdown = "_ZN15RenderInterface8ShutdownEi";
     /// <summary><c>SDL_GL_CreateContext</c>, called once from <c>main</c> right after the window: a Vulkan session
     /// answers it with a token and no context. C linkage.</summary>
     [Fn("IntPtr(IntPtr window)")]
@@ -1782,6 +1786,11 @@ internal static unsafe class SymbolMap
     /// Copies both strings.</summary>
     [Fn("void(byte* key, byte* value, bool append)")]
     public const string CrashHandlerExpose = "_Z18CrashHandlerExposePKcS0_b";
+    /// <summary><c>CrashReporter_Linux::InternalCrashHandler(int)</c> @0xf07580: the engine's signal handler. A crash inside
+    /// it, or any crash once the client is quitting, re-enters it; hooked only through native/cxthunk.c, which exits
+    /// the process there instead of letting it spin.</summary>
+    [Fn("void(int sig)")]
+    public const string CrashHandlerLinux = "_ZN19CrashReporter_Linux20InternalCrashHandlerEi";
     /// <summary><c>kiwi::impl::SolverImpl::createRow(Constraint const&amp;, Tag&amp;)</c> @0x85eb40 (Windows rva 0x340e00):
     /// the constraint rewritten over the tableau's parametric symbols, returned as a <c>unique_ptr&lt;Row&gt;</c> BY
     /// VALUE -- Itanium <c>(sret, this, constraint, tag)</c>, Win64 <c>(this, sret, constraint, tag)</c>. It throws
@@ -2975,6 +2984,8 @@ internal static unsafe class SymbolMap
         [SdlGetVersion] = Nm("SDL_GetVersion"),
         [SdlGetWindowWmInfo] = Nm("SDL_GetWindowWMInfo"),
         [SdlCreateWindow] = Nm("SDL_CreateWindow"),
+        [RiShutdown] = Nm("?Shutdown@RenderInterface@@SAXH@Z"),
+        [CrashHandlerLinux] = LinuxOnly("a signal handler: the Windows client crashes through its unhandled-exception filter instead"),
         [SdlGlCreateContext] = Nm("SDL_GL_CreateContext"),
         [SdlGlSetSwapInterval] = Nm("SDL_GL_SetSwapInterval"),
         [SdlGlGetDrawableSize] = Nm("SDL_GL_GetDrawableSize"),

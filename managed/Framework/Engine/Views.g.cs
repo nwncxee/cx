@@ -149,6 +149,7 @@ global using unsafe SdlGlGetSwapIntervalFn = delegate* unmanaged<int>;
 global using unsafe SdlGetVersionFn = delegate* unmanaged<byte*, void>;
 global using unsafe SdlGetWindowWmInfoFn = delegate* unmanaged<nint, byte*, int>;
 global using unsafe SdlCreateWindowFn = delegate* unmanaged<byte*, int, int, int, int, uint, nint>;
+global using unsafe RiShutdownFn = delegate* unmanaged<int, void>;
 global using unsafe SdlGlCreateContextFn = delegate* unmanaged<nint, nint>;
 global using unsafe SdlGlSetSwapIntervalFn = delegate* unmanaged<int, int>;
 global using unsafe SdlGlGetDrawableSizeFn = delegate* unmanaged<nint, int*, int*, void>;
@@ -301,6 +302,7 @@ global using unsafe KiwiSubstituteFn = delegate* unmanaged<nint, nint, nint, voi
 global using unsafe KiwiOptimizeFn = delegate* unmanaged<nint, nint, void>;
 global using unsafe ReportCrashToUserFn = delegate* unmanaged<nint, byte*, byte*, void>;
 global using unsafe CrashHandlerExposeFn = delegate* unmanaged<byte*, byte*, bool, void>;
+global using unsafe CrashHandlerLinuxFn = delegate* unmanaged<int, void>;
 global using unsafe NuiHandleErrorFn = delegate* unmanaged<nint, nint, nint, void>;
 global using unsafe NuiJsonWindowCtorFn = delegate* unmanaged<nint, int, nint, nint, nint>;
 global using unsafe NuiJsonWindowUpdateFn = delegate* unmanaged<nint, void>;
@@ -4479,6 +4481,10 @@ public static unsafe class EngineFn
     private static bool _SdlCreateWindowDone;
     /// <inheritdoc cref="SymbolMap.SdlCreateWindow"/>
     public static SdlCreateWindowFn SdlCreateWindow => (SdlCreateWindowFn)(_SdlCreateWindowDone ? _SdlCreateWindow : Resolve(ref _SdlCreateWindow, ref _SdlCreateWindowDone, SymbolMap.SdlCreateWindow));
+    private static IntPtr _RiShutdown;
+    private static bool _RiShutdownDone;
+    /// <inheritdoc cref="SymbolMap.RiShutdown"/>
+    public static RiShutdownFn RiShutdown => (RiShutdownFn)(_RiShutdownDone ? _RiShutdown : Resolve(ref _RiShutdown, ref _RiShutdownDone, SymbolMap.RiShutdown));
     private static IntPtr _SdlGlCreateContext;
     private static bool _SdlGlCreateContextDone;
     /// <inheritdoc cref="SymbolMap.SdlGlCreateContext"/>
@@ -5096,6 +5102,10 @@ public static unsafe class EngineFn
     private static bool _CrashHandlerExposeDone;
     /// <inheritdoc cref="SymbolMap.CrashHandlerExpose"/>
     public static CrashHandlerExposeFn CrashHandlerExpose => (CrashHandlerExposeFn)(_CrashHandlerExposeDone ? _CrashHandlerExpose : Resolve(ref _CrashHandlerExpose, ref _CrashHandlerExposeDone, SymbolMap.CrashHandlerExpose));
+    private static IntPtr _CrashHandlerLinux;
+    private static bool _CrashHandlerLinuxDone;
+    /// <inheritdoc cref="SymbolMap.CrashHandlerLinux"/>
+    public static CrashHandlerLinuxFn CrashHandlerLinux => (CrashHandlerLinuxFn)(_CrashHandlerLinuxDone ? _CrashHandlerLinux : Resolve(ref _CrashHandlerLinux, ref _CrashHandlerLinuxDone, SymbolMap.CrashHandlerLinux));
     private static IntPtr _KiwiCreateRow;
     private static bool _KiwiCreateRowDone;
     /// <inheritdoc cref="SymbolMap.KiwiCreateRow"/>
@@ -6594,6 +6604,12 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.SdlCreateWindow"/>; returns the slot holding the next layer, or null.</summary>
     public static SdlCreateWindowFn* ChainSdlCreateWindow(this HookService h, SdlCreateWindowFn handler, int priority) =>
         (SdlCreateWindowFn*)h.Chain(SymbolMap.SdlCreateWindow, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.RiShutdown"/>; returns the original, or null.</summary>
+    public static RiShutdownFn InstallRiShutdown(this HookService h, RiShutdownFn handler) =>
+        (RiShutdownFn)h.Install(SymbolMap.RiShutdown, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.RiShutdown"/>; returns the slot holding the next layer, or null.</summary>
+    public static RiShutdownFn* ChainRiShutdown(this HookService h, RiShutdownFn handler, int priority) =>
+        (RiShutdownFn*)h.Chain(SymbolMap.RiShutdown, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.SdlGlCreateContext"/>; returns the original, or null.</summary>
     public static SdlGlCreateContextFn InstallSdlGlCreateContext(this HookService h, SdlGlCreateContextFn handler) =>
         (SdlGlCreateContextFn)h.Install(SymbolMap.SdlGlCreateContext, (IntPtr)handler);
@@ -7506,6 +7522,12 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.CrashHandlerExpose"/>; returns the slot holding the next layer, or null.</summary>
     public static CrashHandlerExposeFn* ChainCrashHandlerExpose(this HookService h, CrashHandlerExposeFn handler, int priority) =>
         (CrashHandlerExposeFn*)h.Chain(SymbolMap.CrashHandlerExpose, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.CrashHandlerLinux"/>; returns the original, or null.</summary>
+    public static CrashHandlerLinuxFn InstallCrashHandlerLinux(this HookService h, CrashHandlerLinuxFn handler) =>
+        (CrashHandlerLinuxFn)h.Install(SymbolMap.CrashHandlerLinux, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.CrashHandlerLinux"/>; returns the slot holding the next layer, or null.</summary>
+    public static CrashHandlerLinuxFn* ChainCrashHandlerLinux(this HookService h, CrashHandlerLinuxFn handler, int priority) =>
+        (CrashHandlerLinuxFn*)h.Chain(SymbolMap.CrashHandlerLinux, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.NuiHandleError"/>; returns the original, or null.</summary>
     public static NuiHandleErrorFn InstallNuiHandleError(this HookService h, NuiHandleErrorFn handler) =>
         (NuiHandleErrorFn)h.Install(SymbolMap.NuiHandleError, (IntPtr)handler);
