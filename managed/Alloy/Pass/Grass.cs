@@ -14,12 +14,11 @@ internal static class Grass
     internal static readonly KnobGroup G;
     internal static readonly Knob<bool> Enabled;
     internal static readonly Knob<float> Density, Far, Wind, Push, WindSpeed, Lod, LodMin, LodWidth, LodHeight, Shade,
-                                         CastWidth, PushRadius, PushExtent, CullShrink, CullMax, Soften, Edge, RootAo, GTint,
+                                         CastWidth, PushRadius, PushExtent, CullShrink, CullMax, Edge, RootAo, GTint,
                                          SnowThin, SnowFall, SnowLook, Backlight, Sheen,
                                          BladeDensity, Width, Clump, BladeLod;
-    internal static readonly Knob<int> Style, Shadow, Tuft, Aniso, GViz;
-    internal static readonly Knob<bool> Cull, SoftEdge, VLight, Prepass;
-    internal static readonly KnobButton DumpMips, DumpShadow;
+    internal static readonly Knob<int> Style, Tuft, GViz;
+    internal static readonly Knob<bool> Cull, VLight;
 
     static Grass()
     {
@@ -58,13 +57,6 @@ internal static class Grass
         Shade = G.Slider("shade", "Full-shading radius", 5f, 200f, 1f, 40f, "m", Tier.Advanced,
                          help: "Past this blades skip light and shadow taps.")
                  .Ladder(Quality.Grass, 15f, 25f, 40f, 60f);
-        Shadow = G.Dropdown("shadow", "Grass casts shadows", new[] { 0, 1, 2, 3, 4 }, 1, new[] { "none", "1", "2", "3", "4" },
-                            tier: Tier.Advanced,
-                            help: "How many sun cascades the blades are drawn into. More is sharper far away and costlier.")
-                  .Ladder(Quality.Grass, 0, 1, 1, 2);
-        Aniso = G.Dropdown("aniso", "Anisotropic filtering", new[] { 1, 2, 4, 8, 16 }, 8, tier: Tier.Advanced,
-                           help: "Keeps grass textures sharp when seen at a low angle. Lower is a little faster and blurrier.",
-                           changed: GrassField.SamplerDirty);
         G.Section("");
         SnowThin = G.Slider("snowthin", "Thinning under snow", 0f, 1f, 0.05f, 0.85f, tier: Tier.ChatOnly,
                             help: "Share of the blades that vanish under full snow cover (the rest stand shorter). 0 keeps a summer meadow.");
@@ -83,13 +75,10 @@ internal static class Grass
         CullShrink = G.Slider("cullshrink", "Object footprint scale", 0f, 2f, 0.05f, 0.8f, tier: Tier.ChatOnly);
         CullMax = G.Slider("cullmax", "Footprint cap", 0f, 20f, 0.5f, 0f, "m", Tier.ChatOnly);
         Tuft = G.Slider("tuft", "Blades per tuft", 1, 8, 1, 3, tier: Tier.ChatOnly);
-        Soften = G.Slider("soften", "Texture softening", 0f, 2f, 0.05f, 0.5f, tier: Tier.ChatOnly,
-                          help: "Mip bias on the blade texture.", changed: GrassField.SamplerDirty);
         Edge = G.Slider("edge", "Edge ramp width", 0f, 4f, 0.1f, 2f, tier: Tier.ChatOnly);
-        SoftEdge = G.Toggle("softedge", "Blended silhouettes", true, Tier.ChatOnly);
         RootAo = G.Slider("rootao", "Root darkening", 0f, 1f, 0.05f, 0f, tier: Tier.ChatOnly);
         GTint = G.Slider("gtint", "Ground tint", 0f, 1f, 0.05f, 0.15f, tier: Tier.ChatOnly,
-                         help: "Blade fades into the ground colour under its root.", changed: GrassField.GroundDiag);
+                         help: "Blade fades into the ground colour under its root.");
         Width = G.Slider("width", "Blade width", 0.02f, 0.4f, 0.01f, 0.05f, tier: Tier.ChatOnly,
                          help: "Procedural blade width at the root, relative to its height.");
         Clump = G.Slider("clump", "Clumping", 0f, 1f, 0.05f, 0.5f, tier: Tier.ChatOnly,
@@ -99,9 +88,6 @@ internal static class Grass
         Sheen = G.Slider("sheen", "Sheen", 0f, 1f, 0.05f, 0.1f, tier: Tier.ChatOnly, help: "Specular glint on the grass.");
         VLight = G.Toggle("vlight", "Per-vertex lighting", true, Tier.ChatOnly, help: "Off = per-pixel (costlier).")
                   .Ladder(Quality.Grass, true, true, true, false);
-        Prepass = G.Toggle("prepass", "prepass", true, Tier.ChatOnly);
-        GViz = G.Slider("gviz", "gviz", 0, 4, 1, 0, tier: Tier.ChatOnly, changed: GrassField.GroundDiag);
-        DumpMips = G.Button("dumpmips", "dumpmips", GrassField.DumpMipsNext, Tier.ChatOnly);
-        DumpShadow = G.Button("dumpshadow", "dumpshadow", GrassField.DumpShadowNext, Tier.ChatOnly);
+        GViz = G.Slider("gviz", "gviz", 0, 4, 1, 0, tier: Tier.ChatOnly);
     }
 }

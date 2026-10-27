@@ -715,10 +715,7 @@ ChatOnly master and two diagnostics, so it has no submenu.
 | grass.lod | Full-density radius | S | 5–200 m · 40 | A | L | Detail | Every blade draws inside this. Ladders on `quality.grass`. |
 | grass.bladelod | Full-detail blade radius | S | 5–200 m · 30 | A | L | Detail | Procedural blades inside this are smooth curves; past it each is a single triangle. Ladders on `quality.grass`. |
 | grass.shade | Full-shading radius | S | 5–200 m · 40 | A | L | Detail | Past this blades skip light and shadow taps. Ladders on `quality.grass`. |
-| grass.shadow | Grass casts shadows | D | none / 1 / 2 / 3 / 4 · 1 | A | L | Detail | How many sun cascades the blades are drawn into. More is sharper far away and costlier. Ladders on `quality.grass`. |
-| grass.aniso | Anisotropic filtering | D | 1 / 2 / 4 / 8 / 16 · 8 | A | L | Detail | Keeps grass textures sharp when seen at a low angle. Lower is a little faster and blurrier. |
-| grass.snowthin / snowfall / snowlook / windspeed / lodmin / lodwidth / lodheight / castwidth / pushradius / pushextent / cull / cullshrink / cullmax / tuft / soften / edge / softedge / rootao / gtint / width / clump / backlight / sheen / vlight / prepass / gviz | — | T, S | as declared | C | L | — | the winter look, the far-field ramp, the push field, the object cull, the blade shape and shading (`vlight` ladders on `quality.grass`) |
-| grass.dumpmips / dumpshadow | — | B | — | C | — | — | |
+| grass.snowthin / snowfall / snowlook / windspeed / lodmin / lodwidth / lodheight / castwidth / pushradius / pushextent / cull / cullshrink / cullmax / tuft / edge / rootao / gtint / width / clump / backlight / sheen / vlight / gviz | — | T, S | as declared | C | L | — | the winter look, the far-field ramp, the push field, the object cull, the blade shape and shading (`vlight` ladders on `quality.grass`) |
 | weather.enabled | Weather | T | on | U | L | — | Rain and snow drawn by CX: wind-leaning streaks and flakes that stop under cover, and ground that wets, puddles and snows over. Off, the game's own rain and snow sheets fall instead. |
 | weather.density | Density | S | 0–3 step 0.1 · 1 | U | L | Precipitation | How much rain or snow falls, on top of the weather the area asks for. Ladders on `quality.weather`. |
 | weather.wet | Wet surfaces | S | 0–1 step 0.05 · 1 | U | L | Surfaces | Exposed ground and roofs darken and turn glossy in rain, reflecting the sky, and puddles pool in low ground. 0 = off. |
@@ -931,7 +928,7 @@ quarter.
 
 **quality.grass** → `grass.density` 0.75 / 1.25 / 2 / 3 · `grass.bladedensity` 3 / 5 / 8 / 12 ·
 `grass.lod` 15 / 25 / 40 / 60 m · `grass.bladelod` 10 / 20 / 30 / 45 m · `grass.shade` 15 / 25 /
-40 / 60 m · `grass.shadow` none / 1 / 1 / 2 cascades · `grass.vlight` on / on / on / off.
+40 / 60 m · `grass.vlight` on / on / on / off.
 
 **quality.weather** → `weather.density` 0.5 / 0.8 / 1 / 1.5 · `weather.range` 12 / 16 / 20 /
 28 m · `weather.count` 4000 / 8000 / 16000 / 24000 · `weather.impacts` 0 / 0.35 / 0.6 / 1 ·

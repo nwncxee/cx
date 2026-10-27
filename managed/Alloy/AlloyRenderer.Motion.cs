@@ -102,29 +102,6 @@ public sealed unsafe partial class AlloyRenderer
         finally { MotionVectors.RollHistory(); }
     }
 
-    /// <summary>The effect classes' own vectors, one site for the whole frame: grass and particles are
-    /// displaced by wind and by simulation rather than by a matrix, so the field over their pixels is the
-    /// GROUND's, and each re-issues what it drew. Runs past both of the camera field's sites and before the
-    /// resolve reads it, so the target is complete whichever site painted it.</summary>
-    private static void EffectMotionPass(Matrix4x4* vp, Matrix4x4* view, Matrix4x4* proj,
-                                        float jx, float jy, int* viewport)
-    {
-        if (!GrassField.HasMotion && !Particles.HasMotion) return;
-        // The camera and the clock the field was built against: RollHistory has by now adopted this frame's.
-        Matrix4x4 prevVp = MotionVectors.FieldPrevVp;
-        int prevClock = MotionVectors.FieldPrevClock;
-        // The engine texture walk the grass sweep needs, while the frame's own target is still bound: the
-        // create path of a first-sighted atlas can touch GL.
-        GrassField.PrepareMotion();
-        if (!MotionVectors.BeginMovers(PostChain.DepthTex, viewport)) return;
-        GrassField.DrawMotion(vp, &prevVp, prevClock, jx, jy, viewport);
-        Particles.DrawMotion(view, proj, &prevVp, jx, jy, viewport);
-        MotionVectors.EndMovers(PostChain.Fbo, viewport);
-        if (!MotionVectors.EffectsSaid)
-            MotionVectors.SayEffects($"grass {(GrassField.HasMotion ? "yes" : "no")}, "
-                                   + $"particles {(Particles.HasMotion ? "yes" : "no")}");
-    }
-
     private static void Sweep(int n, Matrix4x4* vp, float jx, float jy, int* viewport)
     {
         Matrix4x4 prevVp = MotionVectors.PrevVp;

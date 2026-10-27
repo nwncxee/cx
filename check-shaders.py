@@ -526,12 +526,6 @@ def ablate(src, n):
     return define(src, f"CX_ABLATE {n}")
 
 
-def mot(src):
-    """The velocity arm of a stage (CX.Alloy.GrassField.MotionDefine): what turns a grass path's or the
-    particle pass's stages into the program that writes the field instead of the picture."""
-    return define(src, "CX_MOTION 1")
-
-
 def nosun(src):
     """CX.Alloy.Programs.WithoutSunSoft: the one define that compiles the sun's blocker search and disc out.
     A driver short of the two raw cascade views links THIS text, so the no-soft-sun arm has to compile and
@@ -599,18 +593,13 @@ def programs(g):
         "highlight composite": (g["cx_fullscreen_v"], g["cx_hilitecomp_f"]),
         "owned water": (g["cx_water_vs"], g["cx_water_fs"]),
         "instanced grass": (g["cx_grass_vs"], g["cx_grass_fs"]),
-        "grass depth prepass": (g["cx_grass_vs"], g["cx_grassdepth_f"]),
         "grass scatter": (g["cx_grass_c"],),
         "hi-Z reduce (from depth)": (g["cx_hiz_c"].replace("#version 460 core\n", "#version 460 core\n#define CX_HIZ_FIRST 1\n", 1),),
         "hi-Z reduce (mip to mip)": (g["cx_hiz_c"],),
         **{f"read-back ({t} x{n})": (g["cx_readback_c"].replace("#version 460 core\n", f"#version 460 core\n{d}#define CX_READBACK_WORDS {n}\n", 1),)
            for t, d, n in (("float", "", 1), ("float", "", 2), ("uint", "#define CX_READBACK_UINT 1\n", 1), ("uint", "#define CX_READBACK_UINT 1\n", 4))},
         "grass blades": (g["cx_gblade_vs"], g["cx_gblade_fs"]),
-        "grass blade depth": (g["cx_gblade_vs"], g["cx_gblade_df"]),
-        # CX-48: the velocity arm of each grass path -- GrassField.Motion's define, in the same place
-        "grass motion vectors": (mot(g["cx_grass_vs"]), mot(g["cx_grassdepth_f"])),
-        "grass blade motion vectors": (mot(g["cx_gblade_vs"]), mot(g["cx_gblade_df"])),
-        "particle motion vectors": (mot(g["cx_part_v"]), mot(g["cx_part_f"])),
+        "particles": (g["cx_part_v"], g["cx_part_f"]),
         "clustered light build": (g["cx_cluster_cs"],),
         "deferred lights": (g["cx_deferred_cs"],),
         # CX-188: the film's own dispatch (DeferredLights._progFilm), and the "every light" escapes' variant
@@ -624,7 +613,6 @@ def programs(g):
         "gui": (g["cx_gui_v"], g["cx_gui_f"]),
         "movie quad": (g["cx_movie_v"], g["cx_movie_f"]),
         "trigger highlight": (g["cx_fullscreen_v"], g["cx_hilitetrig_f"]),
-        "highlight glow": (g["cx_hiliteglow_v"], g["cx_hiliteglow_f"]),
         "halo occlusion probe": (g["cx_haloocc_c"],),
         "oit resolve": (g["cx_fullscreen_v"], g["cx_oitresolve_f"]),
         "light beams (scene database)": (g["cx_beamdb_v"], g["cx_beam_f"]),
