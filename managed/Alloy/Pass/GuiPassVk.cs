@@ -10,7 +10,7 @@ using NuiModelDoll = CX.Services.Nui.NuiModelDoll;
 namespace CX.Alloy;
 
 /// <summary>
-/// The GUI path on Vulkan, under <c>alloy.backend vk</c>: the layers <see cref="GuiCapture"/> listed and CX's own
+/// The GUI path on Vulkan, on Vulkan: the layers <see cref="GuiCapture"/> listed and CX's own
 /// windows either side of NUI are recorded into the <see cref="CX.Rhi"/> command list and drawn into the composite
 /// Vulkan presents, over the same depth stacking GL Alloy's <see cref="GuiPass"/> uses. One flush is one submit.
 /// </summary>
@@ -117,7 +117,7 @@ internal static unsafe partial class GuiPassVk
             {
                 _s.OffThreadSaid = true;
                 log.Always("GuiPassVk: this flush is not on the thread the Vulkan device belongs to -- the GUI is "
-                         + "NOT DRAWN on such flushes; alloy.renderthread splits the two");
+                         + "NOT DRAWN on such flushes");
             }
             return false;
         }

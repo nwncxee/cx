@@ -8,7 +8,7 @@ namespace CX.Alloy;
 internal static unsafe class UiScene
 {
     /// <summary>One noted frame: its jittered view-projection, the projection's two depth terms and the depth texture
-    /// (GL's name, or under <c>alloy.backend vk</c> Vulkan's image).</summary>
+    /// (GL's name, or on Vulkan Vulkan's image).</summary>
     private sealed class Frame
     {
         public Matrix4x4 Vp;

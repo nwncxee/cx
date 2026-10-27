@@ -205,7 +205,6 @@ internal static unsafe class SsaoPass
 
         CommandList cl = g.Cmds!;
         cl.Reset();
-        cl.Immediate = Renderer.RhiImmediate.V ? dev : null;
         Span<byte> blk = stackalloc byte[Std140.BlockBytes<SsaoBlock>()];
         MemoryMarshal.Write(blk, in g.Blk);
         cl.UpdateBuffer(g.Ubo, 0, blk);

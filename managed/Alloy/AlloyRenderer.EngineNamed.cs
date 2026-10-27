@@ -101,9 +101,7 @@ public sealed unsafe partial class AlloyRenderer
     /// Allocates nothing.</summary>
     internal static void BindEngineBlock()
     {
-        if (Renderer.OnVulkan) { FillEngineBlock(); return; }   // Vulkan takes the staged block (EngineBlockStaged)
-        if (FillEngineBlock()) _engineU.Blk.Rebind(UboSlots.Engine);
-        else _engineU.Blk.Bind(UboSlots.Engine);
+        FillEngineBlock();   // Vulkan takes the staged block (EngineBlockStaged)
     }
 
     /// <summary>The <c>CxEngine</c> block <see cref="BindEngineBlock"/> binds, staged and not bound. The noise term is a

@@ -85,7 +85,6 @@ internal static unsafe partial class OwnedTextures
         if (lw > MaxTexSize() || lh > MaxTexSize()) { why = Decline.Oversize; return 0; }
         bool mip = (t.GetMipMap() & MipByte) != 0;
         Sampler s = EngineSampler(t.GetClamp(), t.GetFilter() != 0, mip);
-        if (!Renderer.OnVulkan) Gl.DrainErrors(8);   // the verdict is ours to read, so nobody else's error may be sitting here
         uint dst;
         DdsReader.Info dds = default;
         bool ddsFormat = img != null && DdsReader.Lookup(img, out dds) && !DdsReader.EngineUploads(dds.Format);
@@ -98,7 +97,6 @@ internal static unsafe partial class OwnedTextures
         }
         else
             dst = UploadRaw(t, img, cell, w, h, bpp, s, mip);
-        err = Renderer.OnVulkan ? 0 : Gl.GetError();
         if (ddsFormat && dst != 0)
         {
             if (err == 0) _ddsFormatUploads++;

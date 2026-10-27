@@ -264,41 +264,14 @@ internal static unsafe partial class StageResources
 
     /// <summary>The frame's head, main view only, before the first draw pass: every live stage's images made at the
     /// sizes this view asks for (its <c>once</c> passes run over a remake), then -- for each stage a host drew last
-    /// frame or staged this one -- its history swapped and its frame passes run in declaration order. Vulkan's is <see cref="VkRun"/>.</summary>
+    /// frame or staged this one -- its history swapped and its frame passes run in declaration order, by <see cref="VkRun"/>.</summary>
     internal static void RunFrame(int* viewport, ExtenderLog? log)
     {
         var g = _gl;
         int f = AlloyRenderer.FrameSeq;
         if (g.Count == 0 || g.HeadSeq == f) return;
         g.HeadSeq = f;
-        // a Vulkan frame's head is VkRun, recorded into the frame's own list
-        if (Renderer.OnVulkan) return;
-        bool any = false;
-        for (int i = 0; i < g.Count; i++)
-        {
-            if (g.Stages[i] is not { Failed: false } s || !Ensure(i, s, viewport, log)) continue;
-            if (s.LastUse >= f - 1)
-            {
-                if (Gap(s.RanFrame, f)) s.FreshFrame = f;
-                s.RanFrame = f;
-                foreach (Img im in s.Images)
-                    if (im.Swap) (im.Tex, im.Prev) = (im.Prev, im.Tex);
-                any = true;
-            }
-            // ponytail: every frame, two calls per image -- nothing else binds these units; bind only on a make or a
-            // swap if a profile ever shows the calls
-            BindUnits(s);
-        }
-        if (!any) return;
-        // A draw that stored into an image last frame (what of a sun it showed) is read back by these passes.
-        Gl.MemoryBarrier(Gl.SHADER_IMAGE_ACCESS_BARRIER_BIT);
-        for (int i = 0; i < g.Count; i++)
-        {
-            if (g.Stages[i] is not { Failed: false } s || s.RanFrame != f) continue;
-            if (s.FreshFrame == f) s.FreshRuns++;
-            RunPasses(i, s, viewport, once: false);
-            if (g.FogStage == i) ReadFog(s, log);
-        }
+        // the frame's head is VkRun, recorded into the frame's own list
     }
 
     /// <summary>A stage's images, made at the sizes the declarations and the main view ask for, and its <c>once</c>

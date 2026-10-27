@@ -30,13 +30,13 @@ internal static unsafe partial class Weather
     private static WeatherVkState _vks = new();
 
     /// <summary>The filtered cover map holds this cover bake, on whichever backend draws.</summary>
-    private static bool EsmOk => Renderer.OnVulkan ? _vks.EsmValid : _gl.EsmValid;
+    private static bool EsmOk => _vks.EsmValid;
 
     /// <summary>The shelter cache holds this cover bake.</summary>
-    private static bool ShelOk => Renderer.OnVulkan ? _vks.ShelValid : _gl.ShelValid;
+    private static bool ShelOk => _vks.ShelValid;
 
     /// <summary>The wetness map exists at its fit.</summary>
-    private static bool MapHeld => Renderer.OnVulkan ? _vks.MapSize > 0 : _gl.MapTex != 0 && _gl.MapSize > 0;
+    private static bool MapHeld => _vks.MapSize > 0;
 
     /// <summary>A new device: its maps hold nothing, and the wetness map latches again.</summary>
     internal static void VkReset() { _vks = new WeatherVkState(); _mapClear = true; }

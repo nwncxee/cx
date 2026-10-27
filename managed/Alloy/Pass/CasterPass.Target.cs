@@ -95,11 +95,11 @@ public sealed unsafe partial class CasterPass
     /// <summary>Is the layered path taking this frame's views? On Vulkan it is the only path: the device carries
     /// <c>shaderOutputLayer</c> or no Vulkan backend exists at all.</summary>
     private static bool LayeredActive
-        => Renderer.OnVulkan ? VkArmed : _layerDial && _layerProbe > 0 && _gl.ProgLayer != 0;
+        => VkArmed;
 
     /// <summary>Has the frame's staging a non-empty source the views can select out of, on whichever backend
     /// bakes them? False bakes a clear, which for an empty world IS the bake.</summary>
-    private static bool GatherActive => Renderer.OnVulkan ? CasterGatherVk.Active : CasterGather.Active;
+    private static bool GatherActive => CasterGatherVk.Active;
     private static readonly StandDown _down = new("CasterPass DISARMED");
 
     /// <summary>Context loss: every GL name goes at once. Run on the loss edge, not each frame after it.</summary>
@@ -275,10 +275,9 @@ public sealed unsafe partial class CasterPass
     {
         int n = _qN; _qN = 0;
         if (n == 0) return true;
-        // on Vulkan the views are only QUEUED here: the colour frame flushes them once its own uploads have
-        // published the buffers the bake's binds name. An A/B frame falls through as well, so GL bakes the same
-        // queue into its own arrays and the comparison reads real maps on each side.
-        if (Renderer.OnVulkan) { _vk.Queued = n; return true; }
+        // the views are only QUEUED here: the colour frame flushes them once its own uploads have published the
+        // buffers the bake's binds name
+        _vk.Queued = n; return true;
         // distinct targets in first-seen order -- at most four exist (sun static/dynamic, cube static/pool).
         // A fifth-plus target would be a queue writer this flush does not know about; failing the flush
         // (publish nothing, blanket next frame) is the honest answer, not silently never baking it.
@@ -474,7 +473,7 @@ public sealed unsafe partial class CasterPass
         {
             // a target the Vulkan bake has no array for -- the sky view's own, a pair tile -- is refused rather than
             // queued: its caller must not publish a map nothing baked
-            if (Renderer.OnVulkan && map == CasterMap.Other) return VkNoTarget();
+            if (map == CasterMap.Other) return VkNoTarget();
             _submitCreatures = _gCreatures;
             _qMap[_qN] = map;
             _qTex[_qN] = tex; _qSize[_qN] = size; _qLayer[_qN] = layer; _qVp[_qN] = *vp;
@@ -484,10 +483,8 @@ public sealed unsafe partial class CasterPass
             _qN++;
             return true;
         }
-        // the per-view path is GL's alone: a Vulkan frame past the queue's ceiling refuses the view, which stands
-        // its map down for the frame rather than baking it with GL's programs into GL's targets
-        if (Renderer.OnVulkan) return VkQueueFull();
-        return GatherSubmit(tex, size, layer, vp, lightDir, focus, reach, margin, point, lodR1, lodR2, set, receiver);
+        // past the queue's ceiling the view is refused, which stands its map down for the frame
+        return VkQueueFull();
     }
 
     private static bool FboChecked(uint tex)

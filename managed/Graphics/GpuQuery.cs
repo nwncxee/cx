@@ -6,9 +6,9 @@ namespace CX.Graphics;
 /// meter for the session the first time both slots are pending at once.</summary>
 public unsafe struct GpuQuery
 {
-    /// <summary>The meters' kill switch (<c>/alloy gpumeter 0</c>): every Begin declines, so no query is
-    /// issued or harvested. The A/B for what the ~100 query calls a frame cost the submitting thread.</summary>
-    public static bool Enabled = true;
+    /// <summary>GL timer queries are off: Alloy renders on Vulkan, whose frame times itself. Every Begin declines,
+    /// so no query is issued or harvested. ponytail: the GL meters retire with the GL backend.</summary>
+    public static bool Enabled;
     private uint _q0, _q1;
     private bool _p0, _p1;
     private int _at;

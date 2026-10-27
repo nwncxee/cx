@@ -200,7 +200,6 @@ internal static unsafe class ContentTable
     /// on EVERY frame -- an unbound binding is an undefined read.</summary>
     internal static void Upload()
     {
-        if (!Renderer.OnVulkan && (Gl.CreateBuffers == null || Gl.NamedBufferData == null)) return;
         lock (_lock) UploadLocked();
     }
 
@@ -241,36 +240,7 @@ internal static unsafe class ContentTable
                 if (moved) Touch(r);
             }
         }
-        if (Renderer.OnVulkan) { s.DirtyLo = int.MaxValue; s.DirtyHi = -1; return; }   // the Vulkan frame takes the rows through Snapshot
-        int want = s.AnyRow ? MaxRows : 1;
-        if (s.Ssbo == 0 || want != s.Sized)
-        {
-            if (s.Ssbo == 0) { uint b; Gl.CreateBuffers(1, &b); if (b == 0) return; s.Ssbo = b; }
-            fixed (Row* p = s.Rows) Gl.NamedBufferData(s.Ssbo, (IntPtr)(want * RowBytes), p, Gl.DYNAMIC_DRAW);
-            s.Sized = want;
-            s.DirtyLo = int.MaxValue; s.DirtyHi = -1;
-            s.Uploads++;
-        }
-        else if (s.DirtyHi >= s.DirtyLo && Gl.NamedBufferSubData != null)
-        {
-            int lo = s.DirtyLo, n = s.DirtyHi - s.DirtyLo + 1;
-            if (lo + n > s.Sized)
-            {
-                // the dirty span is KEPT: a row dropped here is one the GPU never gets, and the terms behind
-                // a record's index would stay whatever the last tenant wrote -- another material's glow
-                if (s.Short++ == 0)
-                    s.Log?.Always($"ContentTable: rows {s.DirtyLo}..{s.DirtyHi} reach past the {s.Sized}-row "
-                                + "buffer -- held dirty for the next upload rather than dropped, which would "
-                                + "leave a material wearing another one's parameters");
-                Bind();
-                return;
-            }
-            fixed (Row* p = s.Rows.AsSpan(lo))
-                Gl.NamedBufferSubData(s.Ssbo, (IntPtr)(lo * RowBytes), (IntPtr)(n * RowBytes), p);
-            s.Uploads++;
-            s.DirtyLo = int.MaxValue; s.DirtyHi = -1;
-        }
-        Bind();
+        s.DirtyLo = int.MaxValue; s.DirtyHi = -1;   // the Vulkan frame takes the rows through Snapshot
     }
 
     /// <summary>The rows the GPU block holds -- one zero row until any exists, as <see cref="Upload"/> sizes it -- copied

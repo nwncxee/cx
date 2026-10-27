@@ -422,15 +422,10 @@ internal static class RenderPasses
                 CX.Alloy.Seam.SceneSlots.Attach(l); CX.Alloy.Seam.CameraSlots.Attach(l);
                 CX.Alloy.Seam.SeamFrame.Attach(l);
             },
-            // Both run: the render thread's preconditions are checked even when the scene checks failed.
-            SelfCheck = l => { CX.Alloy.Db.DbSceneSelfCheck.Run(l); CX.Alloy.Db.RenderThread.SelfCheck(l); },
-            // Context loss is terminal for the render thread: the context it holds is gone, so it must stop
-            // and let go BEFORE anything else rebuilds. Joined, not signalled -- the game thread may take the
-            // context back the instant this returns.
-            ContextLost = CX.Alloy.Db.RenderThread.Shutdown,
+            SelfCheck = l => CX.Alloy.Db.DbSceneSelfCheck.Run(l),
             Stats = f => Join(Join(CX.Alloy.Db.DbScene.Stats(f), CX.Alloy.Db.DbCamera.Stats(f)),
                               Join(CX.Alloy.Db.SeamDraw.Stats(f),
-                                   Join(CX.Alloy.Db.RenderSnapshot.Stats(f), CX.Alloy.Db.RenderThread.Stats(f)))),
+                                   CX.Alloy.Db.RenderSnapshot.Stats(f))),
         }, log);
 
         // CX-114: not a draw pass -- CX's part-tree builder and the ONE model-space vertex arena every part

@@ -16,7 +16,7 @@ internal static unsafe partial class OwnedTextures
     {
         if (_standIn.White != 0) return (int)_standIn.White;
         uint white = 0xFFFFFFFF;
-        uint t = Renderer.OnVulkan ? VkTextures.NewName() : Solid(white);
+        uint t = VkTextures.NewName();
         if (t == 0) return 0;
         MirrorSolid(t, 1, 1, white, NearestSampler);
         if (Renderer.OnVulkan && !VkTextures.Has(t)) return 0;
@@ -32,7 +32,7 @@ internal static unsafe partial class OwnedTextures
     internal static int NullTid()
     {
         if (_standIn.Black != 0) return (int)_standIn.Black;
-        uint t = Renderer.OnVulkan ? VkTextures.NewName() : Solid(0);
+        uint t = VkTextures.NewName();
         if (t == 0) return 0;
         MirrorSolid(t, 1, 1, 0, NearestSampler);
         if (Renderer.OnVulkan && !VkTextures.Has(t)) return 0;

@@ -1306,8 +1306,6 @@ internal static unsafe partial class Particles
     private static bool EnsureBuffers(int parts)
     {
         if (parts <= 0 || parts > MaxRecs) { if (parts > MaxRecs) _overflow++; return false; }
-        bool gl = !Renderer.OnVulkan;   // Vulkan uploads the CPU records itself
-        if (gl && _gl.Vao == 0) { uint v; Gl.CreateVertexArrays(1, &v); _gl.Vao = v; }
         if (_idxCap < parts)
         {
             int want = _idxCap > 0 ? _idxCap : MinRecs;
@@ -1315,11 +1313,6 @@ internal static unsafe partial class Particles
             if (_idx != null) NativeMemory.Free(_idx);
             _idx = (uint*)NativeMemory.Alloc((nuint)((long)want * sizeof(uint)));
             _idxCap = want;
-            if (gl)
-            {
-                if (_gl.IdxBuf == 0) { uint b; Gl.CreateBuffers(1, &b); _gl.IdxBuf = b; }
-                Gl.NamedBufferData(_gl.IdxBuf, (IntPtr)((long)want * sizeof(uint)), null, Gl.DYNAMIC_DRAW);
-            }
         }
         // The record store is sized off the ALLOCATOR's high-water mark, not off this frame's particle
         // count: blocks are persistent, so an emitter that went off screen still owns its slice.
@@ -1332,15 +1325,10 @@ internal static unsafe partial class Particles
             if (_recs != null) NativeMemory.Free(_recs);
             _recs = grown;
             _recsCap = want;
-            if (gl)
-            {
-                if (_gl.RecBuf == 0) { uint b; Gl.CreateBuffers(1, &b); _gl.RecBuf = b; }
-                Gl.NamedBufferData(_gl.RecBuf, (IntPtr)((long)want * sizeof(ParticleRec)), null, Gl.DYNAMIC_DRAW);
-            }
             // The new store holds nothing, so every block is stale by construction.
             for (int i = 0; i < _tabN; i++) _tab[i].Hash = 0;
         }
-        return !gl || (_gl.RecBuf != 0 && _gl.IdxBuf != 0);
+        return true;   // Vulkan uploads the CPU records itself
     }
 
     /// <summary>Give this emitter a block big enough for <paramref name="count"/> records, bump-allocated and

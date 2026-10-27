@@ -9,8 +9,8 @@ public readonly record struct DeviceCaps(
     int UniformAlign, int StorageAlign, float MaxAniso);
 
 /// <summary>A rendering backend: resources made cold, one <see cref="Submit"/> per recorded list (dispatch per
-/// pass, not per draw). Made inside the draw of the published frame and bound to that thread -- the render thread
-/// under <c>alloy.renderthread</c>, else the game thread; the knob is boot-only -- and refuses calls from any other.</summary>
+/// pass, not per draw). Made inside the draw of the published frame and bound to that thread (the game thread),
+/// and refuses calls from any other.</summary>
 public interface IDevice
 {
     DeviceCaps Caps { get; }

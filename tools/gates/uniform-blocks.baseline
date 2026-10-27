@@ -6,7 +6,6 @@
 5 managed/Alloy/Db/TexRegistry.Arturo.cs
 8 managed/Alloy/Highlight.cs
 33 managed/Alloy/Issue.cs
-15 managed/Alloy/Pass/AlloyLights.cs
 6 managed/Alloy/Pass/Beams.Db.cs
 4 managed/Alloy/Pass/CasterPass.Content.cs
 6 managed/Alloy/Pass/CasterPass.Stage.cs
@@ -24,7 +23,6 @@
 11 managed/Alloy/Pass/GrassField.Shadows.cs
 6 managed/Alloy/Pass/GuiContent.cs
 1 managed/Alloy/Pass/GuiModelSolve.cs
-2 managed/Alloy/Pass/GuiPass.cs
 12 managed/Alloy/Pass/Halos.cs
 5 managed/Alloy/Pass/HighlightGlow.cs
 1 managed/Alloy/Pass/IdTarget.cs
@@ -39,7 +37,7 @@
 4 managed/Alloy/Pass/PostStack.cs
 4 managed/Alloy/Pass/SceneFog.cs
 11 managed/Alloy/Pass/SkyStage.cs
-6 managed/Alloy/Pass/SkyView.cs
+4 managed/Alloy/Pass/SkyView.cs
 8 managed/Alloy/Pass/SmaaStage.cs
 15 managed/Alloy/Pass/Ssr.cs
 8 managed/Alloy/Pass/StageEnv.cs

@@ -47,7 +47,7 @@ world edge       AlloyRenderer.EndFrame: module unload / 4.6 context lost / part
                      -> AlloyRenderer.RevokeAll -> PassRegistry.Global.Revoke()
                      -> TileBuild.Revoke, PartTreeLive.Revoke, ModelCache.AreaEdge
 context loss     AlloyRenderer.EndFrame -> PassRegistry.Global.ContextLost()
-                     -> RenderThread.Shutdown (joined), MeshArena.ContextLost, TexRegistry.ContextLost,
+                     -> MeshArena.ContextLost, TexRegistry.ContextLost,
                         PltPalettes/PltColors/PltGpuCheck.ContextLost, DbFeed.ContextLost
 ```
 
@@ -111,8 +111,6 @@ as it was before, and that is what makes the drop-only `ContextLost` handlers sa
 - `DbFeed.ContextLost` resets `DbGrid` and `DbInputs` and re-marks every live part `Dirty.Created` so the next
   fold rebuilds the side tables. The records themselves survive: they are CPU state and the game still owns
   the objects.
-- `RenderThread.Shutdown` is the `scenedb` pass's `ContextLost` and is **joined, not signalled** — the game
-  thread may take the context back the instant it returns, so the thread must have let go first.
 - `GpuGraveyard.Drop` empties the deferred-free queue without issuing a delete, for the same reason, and is
   never drained again (see the next section).
 
@@ -228,10 +226,6 @@ participant at priority 9, one ahead of `GlContextService`'s bracket, and the or
 
 ```
 SeamDraw.OnBoundary                     game thread
-  RenderThread.StartWhenReady / SettleIfStandingDown
-  with a render thread live:
-     RenderSnapshot.AwaitDrained        <- THE FENCE: the renderer has released the previous frame
-     UiHostService.RecordWindowsForDbFrame (the 2D UI as draw lists; the renderer replays them in its GUI flush)
   DbGui.NewFrame, DbCamera.NewFrame
   RenderSnapshot.Publish                game thread
      FrameHoist.Fold + FoldFog          <- the frame's ENGINE reads, FIRST and here only
@@ -242,7 +236,7 @@ SeamDraw.OnBoundary                     game thread
      wait while the renderer still holds the previous frame   (a no-op after the fence)
      publish
   DbFeed.CloseViews
-  if the render thread is live: it draws; else DrawSnapshot here, then the 2D UI recorded and flushed, in try/finally
+  DrawViews here, then the 2D UI recorded and flushed, in try/finally
 SeamDraw.DrawSnapshot                   render thread, or the game thread on a stand-down
   per view: SceneFeed.TickFromView, then DbGui.Draw (GUI) or SeamDraw.Pass (world)
      Pass = AlloyRenderer.DbWorldPass -> DbOrder, LatchFrameTarget, then ONE 4.6 bracket (DbDrawView)
@@ -261,16 +255,8 @@ a copy. ADR 0028 section 5 describes the snapshot as carrying "changed world mat
 palettes, visibility"; as built it carries none of those. `DbFeed.Records.cs`'s R1-17 remark is the
 authoritative statement of the contract and is worth reading before touching either side of it.
 
-**The render thread still does not run, and the knob still cannot make it (CX-188).** `RenderThread.Start`
-refuses while any of five preconditions is unset — `GuiBuffersOwned`, `TextDocsPublished`, `UiOrderSettled`,
-`FrameInputsPublished`, `ScreenHandoffSettled` — and names every unmet one. (There is no `GuiOffThread`; a
-single flag would let whoever met one arm the others' races.) CX-188 met `TextDocsPublished` and
-`UiOrderSettled`; the two structural ones left are `GuiCapture`'s single static bank, which `NuiFlush` writes
-on the game thread while the renderer appends and resets it, and framebuffer 0, which has two writers in the
-window the fence cannot cover. `FrameInputsPublished` is the audited ledger of engine reads still inside the
-draw. `RenderThread.cs` carries all of it with each fix named. So `alloy.renderthread=1` logs a loud stand-down
-and the single-threaded path takes the frame. Every "render thread" row below therefore means *inside the 4.6
-bracket*, which today is the game thread.
+**There is no render thread.** The GL render thread retired with the GL backend (CX-313): the frame draws on
+the game thread, and every "render thread" row below means the draw side of the boundary on that thread.
 
 Of the three latent races that only arm with that thread, two are closed by the fence, which runs ahead of the
 fold; the third stands:

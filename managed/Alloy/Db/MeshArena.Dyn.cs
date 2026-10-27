@@ -114,13 +114,7 @@ public static unsafe partial class MeshArena
             int f = (int)rr.Format, stride = StrideOf[f];
             Section s = _sect[f];
             long bytes = (long)rr.NV * stride * 4;
-            if (Renderer.OnVulkan) { if (!DynUploadVk(in rr, stride)) continue; }
-            else
-            {
-                if (s.Vbo == 0 || s.Uploaded < rr.Base + rr.NV) continue;
-                fixed (float* p = s.Mirror.AsSpan(checked((int)((long)rr.Base * stride))))
-                    Gl.NamedBufferSubData(s.Vbo, (IntPtr)((long)rr.Base * stride * 4), (IntPtr)bytes, p);
-            }
+            if (!DynUploadVk(in rr, stride)) continue;
             _dynUploads++;
             _dynBytes += bytes;
         }

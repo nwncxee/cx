@@ -19,9 +19,6 @@ public static class TextQuads
     public static void Install(CX.Framework.ExtenderLog log)
     {
         _log = log;
-        // CX-120 precondition met: Issue takes the built list in ONE reference read and the builder fills a
-        // slot nothing is holding, so the per-view draw no longer walks a list the game thread is rewriting.
-        RenderThread.TextDocsPublished = true;
     }
 
     /// <summary>Floats a vertex: x, y, z, u, v -- the engine's 20-byte stream vertex.</summary>

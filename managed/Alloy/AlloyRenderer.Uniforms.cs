@@ -201,12 +201,6 @@ public sealed unsafe partial class AlloyRenderer
         FillPassBlock((PassBlock*)b);
         if (!AlloyLights.FillDraw(b, viewport, near, far)) PassBindsBorrowed++;
         // a Vulkan pass reads the staged block and binds its own shadow maps
-        if (!Renderer.OnVulkan)
-        {
-            FlushPassBlock();
-            BindSunMaps();
-            BindCubeMaps();
-        }
         Gl.Uniform1i(locCubes, CasterPass.CubesFresh ? CasterPass.CubeCount : 0);
     }
 
@@ -285,7 +279,6 @@ public sealed unsafe partial class AlloyRenderer
         _rxAreaDif = blk->Diffuse;
         _rxAreaDir = blk->Dir;
 
-        if (!_rawProbed && !Renderer.OnVulkan) ProbeRawSampler();
         blk->LocalFloor = AlloyLights.ShadowFloor;
         // Source radius (0 = no raw view, no search), temporal phase (golden-ratio turns per frame, 0
         // with no taa to integrate it), disc taps; w = the view depth past which no cube is read (0 = none)
@@ -381,8 +374,8 @@ public sealed unsafe partial class AlloyRenderer
     /// objects, and the search stands down; asked once.</summary>
     private static uint _rawSampler;
     private static bool _rawProbed;
-    /// <summary>The blocker search has its raw views: GL's sampler object, or Vulkan, whose bake binds its own.</summary>
-    private static bool RawSearch => _rawSampler != 0 || Renderer.OnVulkan;
+    /// <summary>The blocker search has its raw views: Vulkan's bake binds its own.</summary>
+    private static bool RawSearch => true;
     private static void ProbeRawSampler()
     {
         _rawProbed = true;

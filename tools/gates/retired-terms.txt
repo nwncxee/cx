@@ -103,3 +103,4 @@ alloy\.aotest	dead-code-cleanup
 \balloy\.swapprobe\b|\bswapprobe\b|\bSwapProbe\b	CX-326
 # The whole-frame GL/Vulkan A/B and its GUI sibling: Vulkan is the one renderer, so there is no GL half to compare.
 \balloy\.vkab\b|\bvkab(gui)?\b|\bVkParity\b|\bGuiParity\b|\bGlParity\b|\bVkStoodDown\b	CX-313
+alloy\.(backend|renderthread|rhiimmediate|gpumeter)\b	CX-313

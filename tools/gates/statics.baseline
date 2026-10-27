@@ -50,7 +50,7 @@
 4 managed/Alloy/Db/HitTest.Fixture.cs
 1 managed/Alloy/Db/HitTest.SelfCheck.cs
 2 managed/Alloy/Db/HitTestService.cs
-35 managed/Alloy/Db/MeshArena.cs
+32 managed/Alloy/Db/MeshArena.cs
 4 managed/Alloy/Db/MeshArena.Dyn.cs
 3 managed/Alloy/Db/MeshBvh.cs
 7 managed/Alloy/Db/ObjectBridge.cs
@@ -62,7 +62,6 @@
 10 managed/Alloy/Db/PltPalettes.cs
 8 managed/Alloy/Db/PltVerify.cs
 10 managed/Alloy/Db/RenderSnapshot.cs
-18 managed/Alloy/Db/RenderThread.cs
 1 managed/Alloy/Db/SceneDb.cs
 10 managed/Alloy/Db/SceneFeed.cs
 1 managed/Alloy/Db/SceneShell.cs
@@ -120,7 +119,7 @@
 12 managed/Alloy/Pass/Beams.Db.cs
 18 managed/Alloy/Pass/CasterGather.cs
 10 managed/Alloy/Pass/CasterPass.Cover.cs
-24 managed/Alloy/Pass/CasterPass.cs
+22 managed/Alloy/Pass/CasterPass.cs
 18 managed/Alloy/Pass/CasterPass.Cube.cs
 52 managed/Alloy/Pass/CasterPass.List.cs
 4 managed/Alloy/Pass/CasterPass.Mask.cs
@@ -142,7 +141,7 @@
 23 managed/Alloy/Pass/GrassField.Push.cs
 5 managed/Alloy/Pass/GrassField.Samplers.cs
 7 managed/Alloy/Pass/GrassField.Shadows.cs
-13 managed/Alloy/Pass/GuiPass.cs
+11 managed/Alloy/Pass/GuiPass.cs
 13 managed/Alloy/Pass/Halos.cs
 17 managed/Alloy/Pass/HighlightGlow.cs
 2 managed/Alloy/Pass/IdTarget.cs
@@ -211,7 +210,7 @@
 4 managed/Alloy/Scene/PartTable.cs
 8 managed/Alloy/Scene/PlaceableHold.cs
 20 managed/Alloy/Scene/SceneInputs.cs
-12 managed/Alloy/ScreenOwner.cs
+11 managed/Alloy/ScreenOwner.cs
 2 managed/Alloy/Seam/BehaviorSeam.cs
 3 managed/Alloy/Seam/CameraSlots.cs
 2 managed/Alloy/Seam/Facade.cs

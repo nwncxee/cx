@@ -351,20 +351,7 @@ internal static unsafe partial class LightmapBake
 
     private static void UploadRecords()
     {
-        if (Renderer.OnVulkan) { VkUploadRecords(); return; }
-        if (_gl.BufChart == 0)
-        {
-            uint b; Gl.CreateBuffers(1, &b); if (b == 0) return;
-            _gl.BufChart = b; _gl.BufFilled = false;
-        }
-        fixed (float* p = _rec)
-        {
-            if (!_gl.BufFilled) { Gl.NamedBufferData(_gl.BufChart, (IntPtr)((long)_rec.Length * 4), p, Gl.DYNAMIC_DRAW); _gl.BufFilled = true; }
-            else if (_dirtyHi >= _dirtyLo)
-                fixed (float* q = _rec.AsSpan((int)((long)_dirtyLo * RecFloats)))
-                Gl.NamedBufferSubData(_gl.BufChart, (IntPtr)((long)_dirtyLo * RecFloats * 4), (IntPtr)((long)(_dirtyHi - _dirtyLo + 1) * RecFloats * 4), q);
-        }
-        _dirtyLo = int.MaxValue; _dirtyHi = -1;
+        VkUploadRecords();
     }
 
     /// <summary>One fenced PBO readback of a block-aligned page region and the rects it holds:
@@ -478,8 +465,7 @@ internal static unsafe partial class LightmapBake
         int b = -1;
         for (int i = 0; i < ReadBufs && b < 0; i++) if (_cache.Busy[i] == 0) b = i;
         if (b < 0) { _uncached += _pendingRead.Count; _pendingRead.Clear(); _uSnap = false; return; }
-        byte* p = Renderer.OnVulkan ? null : (byte*)Gl.MapNamedBufferRange(_gl.Pbo, IntPtr.Zero, (IntPtr)total, Gl.MAP_READ_BIT);
-        if (p == null && !Renderer.OnVulkan) { _uncached += _pendingRead.Count; _pendingRead.Clear(); _uSnap = false; return; }
+        byte* p = null;
         // uninitialized and pinned: the zeroing of a 96 MiB array is pure cost when every byte is about to be
         // overwritten, and a buffer this size handed to the cache thread has no business being relocatable
         // uninitialized: zeroing an array whose every byte is about to be overwritten is pure cost. NOT pinned
@@ -487,7 +473,7 @@ internal static unsafe partial class LightmapBake
         // would leave holes there for the session.
         if (_readBufs[b] == null || _readBufs[b]!.Length < total)
             _readBufs[b] = GC.AllocateUninitializedArray<byte>((int)Math.Max(total, 1 << 20));
-        _uMap = p; _vkb.Draining = Renderer.OnVulkan; _uDone = 0; _uBuf = b;
+        _uMap = p; _vkb.Draining = true; _uDone = 0; _uBuf = b;
         CopySlice();
     }
 

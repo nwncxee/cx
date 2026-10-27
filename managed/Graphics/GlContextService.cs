@@ -647,7 +647,7 @@ public sealed unsafe class GlContextService : IExtenderService
     // ---- the 4.6 context on a render thread ----
 
     /// <summary>Make the 4.6 context current on the CALLING thread and leave it current -- what
-    /// <c>CX.Alloy.Db.RenderThread</c> does once instead of the per-frame Enter/Leave bracket. A GL context is
+    /// a render thread does once instead of the per-frame Enter/Leave bracket. A GL context is
     /// current on at most one thread, so this is valid only while the game thread holds no bracket
     /// (<see cref="Inside"/> false) and never calls <see cref="Enter"/> again; the engine's is untouched.</summary>
     public static bool MakeCurrentHere()

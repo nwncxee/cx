@@ -106,12 +106,11 @@ internal static unsafe class OitPass
     /// <summary>Will <see cref="Begin"/> open the bracket this frame, as far as the route can tell before it? The route
     /// then orders the blended range by state, not distance. What draws that range outside the bracket draws it in that
     /// order: the env-probe capture, and a frame <see cref="Begin"/> refuses with no scene depth or an empty viewport.</summary>
-    internal static bool OrderFree => !_gl.Failed && Mode != 0 && (Renderer.OnVulkan || Gl.BlendFunci != null && Gl.DrawBuffers != null);
+    internal static bool OrderFree => !_gl.Failed && Mode != 0;
 
-    /// <summary>Will the list resolve composite each object id once this frame, as far as the route can tell? Mode 2
-    /// with its node pool; the weighted modes and the sorted pass let an object's overlapping parts thicken it, as does
-    /// Vulkan, which has no lists.</summary>
-    internal static bool Dedupes => OrderFree && Mode == 2 && ListsArmed && !_gl.ListsFailed && !Renderer.OnVulkan;
+    /// <summary>Will the list resolve composite each object id once this frame? Never: Vulkan has no lists, so an
+    /// object's overlapping parts thicken it as the weighted modes do.</summary>
+    internal static bool Dedupes => false;
 
     /// <summary>Open the accumulation pair for the blended range. False = draw the old way this frame.</summary>
     internal static bool Begin(uint depthTex, int* viewport)

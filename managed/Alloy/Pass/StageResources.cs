@@ -358,12 +358,10 @@ internal static unsafe partial class StageResources
         { Fail(id, $"{nativeRef} is one of Alloy's own resrefs, not a native stage", log); return id; }
         string? text = VanillaShader.ChainText(nativeRef);
         if (text == null) { Fail(id, "the resource chain has no such file (or alloy.vanillabridge=0)", log); return id; }
-        if (!Renderer.OnVulkan && !EntryPoints(out string missing)) { Fail(id, $"the driver exposes no {missing}", log); return id; }
         if (!ParseDecls(s, text, out string why) || !Claim(id, s, out why) || !Units(s, out why)) { Fail(id, why, log); return id; }
         // The fixed-size images are a build-time fact and are budgeted as one; the view-sized ones join at the make.
         if (!Budget(s, 0, 0, out _, out why)) { Fail(id, why, log); return id; }
         // Vulkan builds the passes at its frame's head, where the device is (VkBuildPasses)
-        if (!Renderer.OnVulkan && !BuildPasses(id, log)) return id;
         if (s.Images.Length > 0 || s.Passes.Length > 0)
             log?.Info($"StageResources: {nativeRef}.shd declares {s.Images.Length} image(s) and {s.Passes.Length} pass(es)");
         return id;
@@ -394,10 +392,7 @@ internal static unsafe partial class StageResources
         if (s.Images.Length == 0) return true;
         if (g.UnitLimit == 0)
         {
-            int n = 0;
-            if (Renderer.OnVulkan) n = int.MaxValue;
-            else if (Gl.GetIntegerv != null) Gl.GetIntegerv(Gl.MAX_COMBINED_TEXTURE_IMAGE_UNITS, &n);
-            g.UnitLimit = n;
+            g.UnitLimit = int.MaxValue;
         }
         uint next = g.NextUnit;
         foreach (Img im in s.Images)

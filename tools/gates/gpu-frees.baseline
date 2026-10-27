@@ -1,6 +1,5 @@
 1 managed/Alloy/Core/StreamRing.cs
 4 managed/Alloy/Db/PltGpuCheck.cs
-1 managed/Alloy/Db/PltPalettes.cs
 2 managed/Alloy/Db/TexRegistry.Load.cs
 1 managed/Alloy/DdsReader.Formats.cs
 1 managed/Alloy/Highlight.cs
@@ -9,7 +8,6 @@
 1 managed/Alloy/OwnedTextures.Retire.cs
 1 managed/Alloy/OwnedTextures.Transcode.cs
 1 managed/Alloy/OwnedTextures.Upload.cs
-1 managed/Alloy/Pass/CasterPass.Sky.cs
 1 managed/Alloy/Pass/CasterPass.Target.cs
 3 managed/Alloy/Pass/EnvProbe.cs
 2 managed/Alloy/Pass/GuiModelSolve.cs

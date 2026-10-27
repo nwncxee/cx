@@ -16,26 +16,14 @@ internal static unsafe partial class LightmapBake
     /// <summary>Bytes this thread allocated inside <see cref="Run"/> this period, for the period line: the
     /// frame line's GC total said gigabytes a period and nothing said whose.</summary>
     private static long _allocRun;
-    /// <summary>Once a frame, at the frame slot after the probe captures: adopt cache hits, pack newcomers,
-    /// advance the bake by its pacing, collect readbacks and upload the records. Inside the colour bracket,
-    /// with the shadow bracket's gather staged; the caller restores its target after.</summary>
-    internal static void Run(bool capturing, int frame)
-    {
-        if (Renderer.OnVulkan) return;   // the Vulkan frame runs it through VkRun
-        if (!Enabled) { AbortReadback(gl: true); return; }
-        if (capturing) return;
-        long a0 = GC.GetAllocatedBytesForCurrentThread();
-        try { RunInner(frame); }
-        finally { _allocRun += GC.GetAllocatedBytesForCurrentThread() - a0; }
-    }
 
     private static void RunInner(int frame)
     {
-        if (Renderer.OnVulkan ? !VkEnsure() : !Ensure()) return;
+        if (!VkEnsure()) return;
         _frame = frame;
         TrackWindow();
         long t = Stopwatch.GetTimestamp();
-        if (Renderer.OnVulkan ? !VkPool() : !Pool()) return;
+        if (!VkPool()) return;
         t = Phase(Ph.Pool, t);
         InstallAreaCache();   // CX-56: before the sweep -- the plan's set is what arms Enrol at all
         t = Phase(Ph.Area, t);
@@ -56,12 +44,7 @@ internal static unsafe partial class LightmapBake
         t = Phase(Ph.Collect, t);
         AreaSnap();
         t = Phase(Ph.Snap, t);
-        if (Renderer.OnVulkan) VkSteps();
-        else
-        {
-            int steps = Hold ? HoldLightsPerFrame : BackgroundLightsPerFrame;
-            for (int k = 0; k < steps; k++) if (!Step()) break;
-        }
+        VkSteps();
         t = Phase(Ph.Steps, t);
         UploadRecords();
         Phase(Ph.Records, t);
@@ -168,8 +151,7 @@ internal static unsafe partial class LightmapBake
         _bakePage = page; _bakeLight = 0;
         _pageT0 = Stopwatch.GetTimestamp();
         // the scratch planes: A' = sum rgb + coverage alpha, B' = sum luminance * direction, C' = per channel the mover's luminance
-        if (!Renderer.OnVulkan) BeginCoverage();
-        else if (!VkCoverage()) { AbortBake(); return false; }
+        if (!VkCoverage()) { AbortBake(); return false; }
         if (_logLeft > 0) LogNearest(page);
         int crowded = 0;
         if (_logLeft > 0)
@@ -348,17 +330,13 @@ internal static unsafe partial class LightmapBake
         // a rect of the page in flight was evicted or dropped between bands and the union shrank under the
         // rows already encoded: the page starts over rather than dispatch a negative region
         if (bw <= 0 || bh <= 0) { AbortBake(); return true; }
-        if (Renderer.OnVulkan) { if (!VkEncode(page, x0 / Block, y / Block, bw, bh)) return false; }
-        else EncodeBand(page, x0 / Block, y / Block, bw, bh);
+        if (!VkEncode(page, x0 / Block, y / Block, bw, bh)) return false;
         _enc.Row += bh * Block;
         if (y0 + _enc.Row < y1) return Hold;
-        if (!Renderer.OnVulkan) Gl.MemoryBarrier(Gl.ALL_BARRIER_BITS);
         for (int k = 0; k < _bakeRects.Count; k++)
         {
             CellOf(_rects[_bakeRects[k]], out int cx, out int cy, out int cw, out int ch);
-            if (Renderer.OnVulkan) { VkCopyCell(page, cx, cy, cw, ch); continue; }
-            Gl.CopyImageSubData(_gl.BlkA, Gl.TEXTURE_2D, 0, cx / Block, cy / Block, 0, _gl.TexA, Gl.TEXTURE_2D_ARRAY, 0, cx, cy, page, cw / Block, ch / Block, 1);
-            Gl.CopyImageSubData(_gl.BlkB, Gl.TEXTURE_2D, 0, cx / Block, cy / Block, 0, _gl.TexB, Gl.TEXTURE_2D_ARRAY, 0, cx, cy, page, cw / Block, ch / Block, 1);
+            VkCopyCell(page, cx, cy, cw, ch);
         }
         FinishLanding(page, x0, y0, x1, y1);
         return true;
@@ -391,8 +369,7 @@ internal static unsafe partial class LightmapBake
         // page's fence still open is polled, never waited on: the render thread does not stall for a cache
         // file, and a page landing that close behind another goes uncached (a miss next session, nothing else).
         if (!ReadbackIdle) { CollectReadback(); IssueStashed(); }
-        if (!Renderer.OnVulkan && (Gl.FenceSync == null || Gl.MapNamedBufferRange == null)) _uncached += _bakeRects.Count;
-        else if (ReadbackIdle) QueueReadback(page, x0, y0, x1 - x0, y1 - y0, _bakeRects);
+        if (ReadbackIdle) QueueReadback(page, x0, y0, x1 - x0, y1 - y0, _bakeRects);
         // CX-102: a copy still draining must not turn this landing into a cache miss -- its region waits and is
         // queued the moment the PBO is free. A landed rect keeps its page and place until a Repack.
         else StashReadback(page, x0, y0, x1 - x0, y1 - y0, _bakeRects);

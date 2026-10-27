@@ -4,7 +4,7 @@ using CX.Rhi;
 
 namespace CX.Alloy;
 
-/// <summary>The render seam's devices: GL 4.6 over Alloy's context for the GL passes, and under <c>alloy.backend vk</c>
+/// <summary>The render seam's devices: GL 4.6 over Alloy's context for the GL passes, and on Vulkan
 /// the Vulkan backend that renders the frame into the composite. Made on first use inside the frame's draw (so on
 /// the thread holding the context), dropped whole with the context.</summary>
 internal static class AlloyDevice
@@ -30,7 +30,7 @@ internal static class AlloyDevice
     /// <summary>The Vulkan backend if a frame has made it already; never makes one.</summary>
     internal static VkBackend? VulkanMade => _s.Vk;
 
-    /// <summary>The Vulkan backend under <c>alloy.backend vk</c>, null otherwise or when it refused (logged).</summary>
+    /// <summary>The Vulkan backend on Vulkan, null otherwise or when it refused (logged).</summary>
     internal static VkBackend? Vulkan(ExtenderLog log)
     {
         var s = _s;

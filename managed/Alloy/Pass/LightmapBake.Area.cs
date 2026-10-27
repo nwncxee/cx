@@ -548,7 +548,7 @@ internal static unsafe partial class LightmapBake
         empty = false;
         // no transient test here: a busy readback is the STEP's guard, because a refusal at this point has
         // already consumed the page's turn -- the only refusals left are permanent ones
-        if (!Renderer.OnVulkan && (Gl.FenceSync == null || Gl.MapNamedBufferRange == null) || page >= Layers) return false;
+        if (page >= Layers) return false;
         _areaSnapRects.Clear();
         for (int ri = 0; ri < _rectN; ri++) if (_rects[ri].Page == page && _rects[ri].State == RState.Landed) _areaSnapRects.Add(ri);
         if (!AreaSnapRegion(page, out int x0, out int y0, out int w, out int h) || _areaSnapRects.Count == 0) { empty = true; return false; }

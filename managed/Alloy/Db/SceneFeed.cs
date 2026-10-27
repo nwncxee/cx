@@ -65,8 +65,7 @@ public static class SceneFeed
 
     /// <summary>The same fill from a published <c>RenderSnapshot.ViewRec</c>: the camera AS RECORDED, since
     /// re-reading the columns would hand frame N's geometry frame N+1's camera.</summary>
-    /// <param name="h">Hoisted ENGINE terms; nothing under this call reads engine memory, so the per-view
-    /// draw can run on <c>RenderThread</c>.</param>
+    /// <param name="h">Hoisted ENGINE terms; nothing under this call reads engine memory.</param>
     internal static void TickFromView(DbId scene, DbId camera, in RenderSnapshot.ViewRec v, in FrameHoist h)
     {
         // The renderer's own view latch, from the SNAPSHOT's matrices, fed before anything else this view

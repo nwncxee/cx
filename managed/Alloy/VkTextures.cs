@@ -9,7 +9,7 @@ using CX.Rhi;
 namespace CX.Alloy;
 
 /// <summary>
-/// Every owned texture on Vulkan too, under <c>alloy.backend vk</c>: the bytes each of <see cref="OwnedTextures"/>'
+/// Every owned texture on Vulkan too, on Vulkan: the bytes each of <see cref="OwnedTextures"/>'
 /// upload sites hands GL go up again as a Vulkan image with the same levels and sampler, and the image takes a
 /// bindless index. Keyed by the owned name the batch tables carry: a GL name, or on Vulkan one <see cref="NewName"/>
 /// hands out with no GL texture behind it.

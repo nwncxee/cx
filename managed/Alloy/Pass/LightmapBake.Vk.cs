@@ -51,8 +51,8 @@ internal static unsafe partial class LightmapBake
     /// <summary>Resident page layers on the backend that bakes them.</summary>
     private static int Layers
     {
-        get => Renderer.OnVulkan ? _vkb.Layers : _gl.Layers;
-        set { if (Renderer.OnVulkan) _vkb.Layers = value; else _gl.Layers = value; }
+        get => _vkb.Layers;
+        set => _vkb.Layers = value;
     }
 
     /// <summary>A readback's copy is queued and its submit not yet known done.</summary>

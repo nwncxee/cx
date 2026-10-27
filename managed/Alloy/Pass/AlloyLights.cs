@@ -545,9 +545,8 @@ internal static unsafe class AlloyLights
     internal static int LastLightCount;
     internal static float LastBuildMs;
 
-    /// <summary>True once the rig is usable: compute + SSBO entry points resolved and the program linked; on Vulkan,
-    /// whose frame builds its own, always.</summary>
-    internal static bool Ready => (Renderer.OnVulkan || _gl.Prog != 0) && !_failed;
+    /// <summary>True while the rig is usable: the Vulkan frame holds its light buffers and records the build.</summary>
+    internal static bool Ready => !_failed;
 
     /// <summary>Records the light SSBO holds this frame -- the <c>uLightCount</c> any pass that culls
     /// <c>uLights</c> for itself (the deferred pass's per-tile list) has to walk.</summary>
@@ -591,14 +590,13 @@ internal static unsafe class AlloyLights
     /// exactly like the staging receiver does.</summary>
     internal static void Upload(int frame)
     {
-        if (!Ensure()) return;
+        if (_failed) return;
         if (_gl.UploadFrame == frame) return;
         _gl.UploadFrame = frame;
         _rel = Lighting.Relevance.V;
         _tallyFrame = frame % TallyEvery == 0;
         int n = FrameInputs.LightCount;
         if (n * 8 > _stage.Length) _stage = new float[n * 8];
-        if (n > _gl.SsboLights && !Renderer.OnVulkan) GrowLightBuffer(n);
         float rmin = float.MaxValue, rmax = 0f, rsum = 0f;
         Span<AreaLightRec> recs = System.Runtime.InteropServices.MemoryMarshal.Cast<float, AreaLightRec>(_stage.AsSpan());
         fixed (float* s = _stage)
@@ -618,24 +616,12 @@ internal static unsafe class AlloyLights
                 // #674: the static bit rides the same lane, +CX_LIGHT_STATIC; the shader decodes w >= 128.
                 if (FrameInputs.AreaLightStatic[i] && !FrameInputs.AreaLightAmbient[i]) d.Slot += LightStatic + LightSetStride * (FrameInputs.AreaLightSetIndex[i] + 1);
             }
-            // on Vulkan the records go up through the Vulkan recorder's own copy of this staging
-            if (!Renderer.OnVulkan)
-                Gl.NamedBufferSubData(_gl.BufLights, IntPtr.Zero, (IntPtr)(n * 8 * sizeof(float)), s);
         }
         _gl.Uploaded = n;
         LastLightCount = n;
         _radMin = n > 0 ? rmin : 0f; _radMax = rmax; _radMean = n > 0 ? rsum / n : 0f;
     }
 
-    /// <summary>Re-size the light SSBO for a denser area than any seen this session. Cold: an area load at
-    /// worst, and never in a frame that did not need it. The contents are re-uploaded by the caller, which
-    /// is why this only has to allocate.</summary>
-    private static void GrowLightBuffer(int lights)
-    {
-        _gl.SsboLights = lights;
-        Gl.NamedBufferData(_gl.BufLights, (IntPtr)((long)lights * 8 * sizeof(float)), null, Gl.DYNAMIC_DRAW);
-        _log?.Info($"AlloyLights: light SSBO grown to {lights} lights");
-    }
 
     /// <summary>Read the froxel grid's whole projection input off the projection matrix itself, so the depth
     /// slicing and the froxel bounds can never disagree about which pass they belong to -- this pass may be
@@ -667,7 +653,7 @@ internal static unsafe class AlloyLights
         // NOT gated on the light count: with zero point lights the dispatch still writes an all-zero cluster
         // table, which is exactly right -- the lit parts then shade on area ambient + sun alone instead of
         // being dropped from the frame for want of a torch.
-        if (!Ensure()) return false;
+        if (_failed) return false;
         if (!(p00 > 0f) || !(p11 > 0f) || !(far > near)) return false;
         if (near < MinNear) near = MinNear;
         if (far <= near) return false;
@@ -686,51 +672,7 @@ internal static unsafe class AlloyLights
             HotX = Lightmap.Movers.V ? 1f : 0f, HotY = Shadows.CubeDist.V, RelX = boundsOk ? _rel : 0f, RelY = ReachUniform,
             PadX = 2f / Math.Max(vpW, 1), PadY = 2f / Math.Max(vpH, 1), Ran = true,
         };
-        // the Vulkan frame records this build itself, from the terms just staged: GL's own dispatch would bin the
-        // same lights into a table nothing there reads.
-        if (Renderer.OnVulkan) return true;
-
-        int slot = _queryAt;
-        bool timing = _gl.Query[slot] != 0 && !(slot == 0 ? _gl.QueryPending0 : _gl.QueryPending1);
-        if (timing) Gl.BeginQuery(Gl.TIME_ELAPSED, _gl.Query[slot]);
-
-        ref BuildTerms t = ref _gl.Terms;
-        Gl.UseProgram(_gl.Prog);
-        Gl.Uniform3i(_gl.LocGrid, t.GridX, t.GridY, t.GridZ);
-        fixed (Matrix4x4* vm = &t.View) Gl.UniformMatrix4fv(_gl.LocView, 1, 0, (float*)vm);
-        Gl.Uniform2f(_gl.LocProjXY, t.ProjX, t.ProjY);
-        Gl.Uniform2f(_gl.LocZ, t.Near, t.Far);
-        Gl.Uniform1i(_gl.LocCount, t.LightCount);
-        Gl.Uniform1f(_gl.LocReach, t.Reach);
-        Gl.Uniform1i(_gl.LocBinCap, t.BinCap);
-        Gl.Uniform2f(_gl.LocBinAtten, t.AttenX, t.AttenY);
-        // the hot partition reads the same mover spheres and dyn pages the lit stage will, so they go up first
-        fixed (float* dp = CasterPass.CubeDynPage) Gl.Uniform1fv(_gl.LocDynPage, CasterPass.MaxCubes, dp);
-        Gl.Uniform2f(_gl.LocHot, t.HotX, t.HotY);
-        Gl.Uniform1i(_gl.LocReflK, t.ReflK);
-        Gl.Uniform2f(_gl.LocRel, t.RelX, t.RelY);
-        Gl.Uniform2f(_gl.LocFloor, t.Floor, t.Gain);
-        Gl.Uniform2f(_gl.LocPad, t.PadX, t.PadY);
-        Gl.Uniform1i(_gl.LocTally, t.Tally);
-        UploadMovers();
-        Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindLights, _gl.BufLights);
-        Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindCounts, _gl.BufCounts);
-        Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindIndices, _gl.BufIndices);
-        Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindStats, _gl.BufStats);
-        Gl.DispatchCompute((ClusterCount + GroupSize - 1) / GroupSize, 1, 1);
-        // BUFFER_UPDATE: TakeClusterOverflow copies _gl.BufStats out, which SHADER_STORAGE alone does not order (GL 4.6 7.13)
-        Gl.MemoryBarrier(Gl.SHADER_STORAGE_BARRIER_BIT | Gl.BUFFER_UPDATE_BARRIER_BIT);
-
-        if (timing)
-        {
-            Gl.EndQuery(Gl.TIME_ELAPSED);
-            if (slot == 0) _gl.QueryPending0 = true; else _gl.QueryPending1 = true;
-            _queryAt = 1 - slot;
-        }
-        // harvest BOTH slots: a slot whose result is never collected stays pending forever and the timer
-        // silently stops reporting
-        HarvestQuery(0);
-        HarvestQuery(1);
+        // the Vulkan frame records this build itself, from the terms just staged
         return true;
     }
 
@@ -893,52 +835,6 @@ internal static unsafe class AlloyLights
 
         (overflow > 0 ? $", CLUSTER OVERFLOW {overflow}/period (cap {ClusterCap})" : "");
 
-    private static bool Ensure()
-    {
-        if (Renderer.OnVulkan) return true;   // the Vulkan frame holds its own light buffers and records the build
-        if (_gl.Prog != 0) return true;
-        if (_failed) return false;
-        if (Gl.DispatchCompute == null || Gl.MemoryBarrier == null || Gl.BindBufferBase == null
-            || Gl.GenQueries == null || Gl.GetQueryObjectui64v == null)
-        { _failed = true; _log?.Info("AlloyLights: compute/SSBO entry points unresolved -- Alloy lighting unavailable"); return false; }
-
-        uint prog = GlProgram.Compute(ShdClusterCs, ShaderStages.Source(ShdClusterCs), _log,
-                                      "AlloyLights cluster build");
-        if (prog == 0) { _failed = true; return false; }
-        _gl.LocView = GlProgram.Loc(prog, "uView"); _gl.LocProjXY = GlProgram.Loc(prog, "uProjXY");
-        _gl.LocZ = GlProgram.Loc(prog, "uZ"); _gl.LocCount = GlProgram.Loc(prog, "uLightCount");
-        _gl.LocReach = GlProgram.Loc(prog, "uReach");
-        _gl.LocBinCap = GlProgram.Loc(prog, "uBinCap"); _gl.LocBinAtten = GlProgram.Loc(prog, "uAtten");
-        _gl.LocGrid = GlProgram.Loc(prog, "uGrid");
-        _gl.LocDynPage = GlProgram.Loc(prog, "uDynPage"); _gl.LocHot = GlProgram.Loc(prog, "uHot");
-        _gl.LocReflK = GlProgram.Loc(prog, "uReflK");
-        _gl.LocRel = GlProgram.Loc(prog, "uRel"); _gl.LocPad = GlProgram.Loc(prog, "uPad"); _gl.LocTally = GlProgram.Loc(prog, "uTally");
-        _gl.LocFloor = GlProgram.Loc(prog, "uLightFloor");
-
-        uint b;
-        Gl.CreateBuffers(1, &b); _gl.BufLights = b;
-        Gl.NamedBufferData(_gl.BufLights, (IntPtr)(InitialLights * 8 * sizeof(float)), null, Gl.DYNAMIC_DRAW);
-        _gl.SsboLights = InitialLights;
-        Gl.CreateBuffers(1, &b); _gl.BufCounts = b;
-        Gl.NamedBufferData(_gl.BufCounts, (IntPtr)(ClusterCount * ClusterHeadWords * sizeof(uint)), null, Gl.DYNAMIC_DRAW);
-        Gl.CreateBuffers(1, &b); _gl.BufIndices = b;
-        Gl.NamedBufferData(_gl.BufIndices, (IntPtr)((long)ClusterCount * ClusterCap * sizeof(uint)), null, Gl.DYNAMIC_DRAW);
-        // a reader can run before the first cluster build (the bake): stale memory there is a light count in the millions
-        Gl.ZeroBuffer(_gl.BufCounts, (long)ClusterCount * ClusterHeadWords * sizeof(uint));
-        Gl.ZeroBuffer(_gl.BufIndices, (long)ClusterCount * ClusterCap * sizeof(uint));
-        Gl.CreateBuffers(1, &b); _gl.BufMovers = b;
-        Gl.NamedBufferData(_gl.BufMovers, (IntPtr)(CasterPass.CubeDynSphere.Length * sizeof(float)), null, Gl.DYNAMIC_DRAW);
-        _gl.MoversGen = -1;
-        Gl.CreateBuffers(1, &b); _gl.BufStats = b;
-        uint* zero = stackalloc uint[StatsWords] { 0, 0, 0, 0 };
-        Gl.NamedBufferData(_gl.BufStats, (IntPtr)(StatsWords * sizeof(uint)), zero, Gl.DYNAMIC_DRAW);
-
-        fixed (uint* q = _gl.Query) Gl.GenQueries(2, q);
-        _gl.Prog = prog;
-        _log?.Info($"AlloyLights: cluster build ready -- {GridX}x{GridY}x{GridZ} froxels, " +
-                   $"{ClusterCap} lights/cluster, {InitialLights}-light SSBO (grown on demand -- no ceiling)");
-        return true;
-    }
 
     /// <summary>sRGB -&gt; linear exponent, verified against <c>RenderInterface::GetColorSpaceFromSRGB</c>
     /// (the constant it reads is 2.2). Shared with <see cref="FrameRead"/>, which applies

@@ -505,7 +505,6 @@ internal static unsafe partial class TexRegistry
             uint dead;
             lock (_lock) { if (_graveyard.Count == 0) break; dead = _graveyard.Dequeue(); }
             // The handle went non-resident above, but the frames in flight were submitted holding it.
-            if (!Renderer.OnVulkan) GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, dead);   // a Vulkan name has no GL object
             VkTextures.Forget(dead);
         }
         long fastBytes = 0;
@@ -550,7 +549,7 @@ internal static unsafe partial class TexRegistry
             bool clamp, nearest, mip;
             lock (_lock) { name = _name[i]; clamp = _clamp[i]; nearest = _nearest[i]; mip = _mipmap[i]; }
             if (name == 0) continue;
-            uint target = Renderer.OnVulkan ? VkTextures.NewName() : Gl.GetTextureHandleARB != null ? CloneLevels(name) : name;
+            uint target = VkTextures.NewName();
             if (target == 0)
             {
                 if (LoudOnce("clone")) _log?.Always($"TexRegistry: the sampler change on \"{_resref[i]}\" could not copy the texture -- it keeps the state it was minted with");

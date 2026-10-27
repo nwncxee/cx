@@ -170,7 +170,7 @@ internal static unsafe partial class OwnedTextures
     private static void Upload(TransJob job)
     {
         if (job.Ctx != _transCtx || !_res.TryGetValue(job.Key, out Entry e) || e.Owned != job.Src) { _transStale++; return; }
-        uint dst = Renderer.OnVulkan ? VkTextures.NewName() : UploadGl(job);
+        uint dst = VkTextures.NewName();
         if (dst == 0) return;
         // The funnel's scan belongs to the RESOURCE, not to the name: the swap retires the scanned name, so
         // without this a transcoded cutout reads as unscanned and the caster pass stops testing its alpha.
