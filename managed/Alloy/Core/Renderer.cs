@@ -151,7 +151,7 @@ internal static class Renderer
                            + "lays out. Off, the game's own renderer draws them again.");
         Border = G.Slider("border", "Neighbouring-area ring", 5, 40, 5, 15, "tiles", Tier.ChatOnly, Effect.Restart,
                           help: "Tiles drawn past the area edge so the horizon is not empty; the stock game draws 5.");
-        Oit = G.Dropdown("oit", "Transparency", new[] { 0, 1, 2 }, 2, new[] { "sorted", "weighted", "linked lists" }, tier: Tier.ChatOnly,
+        Oit = G.Dropdown("oit", "Transparency", new[] { 0, 1 }, 1, new[] { "sorted", "weighted" }, tier: Tier.ChatOnly,
                          help: "How overlapping transparent surfaces are combined.", changed: AlloyRenderer.InvalidateRecords);
         TexCache = G.Dropdown("texcache", "Texture memory budget", new[] { -1, 512, 1024, 2048, 4096, 8192 }, -1, tier: Tier.ChatOnly,
                               effect: Effect.Restart, format: AutoInt, parse: ParseAutoInt);
@@ -228,7 +228,7 @@ internal static class Renderer
         // the GL meters time GL work, of which a Vulkan session has none
         VisList = G.Toggle("vislist", "vislist", true, Tier.ChatOnly, changed: AlloyRenderer.InvalidateRecords);
         WashTest = G.Toggle("washtest", "washtest", true, Tier.ChatOnly, changed: AlloyRenderer.InvalidateRecords);
-        OitViz = G.Slider("oitviz", "oitviz", 0, 5, 1, 0, tier: Tier.ChatOnly);
+        OitViz = G.Slider("oitviz", "oitviz", 0, 3, 1, 0, tier: Tier.ChatOnly);
 
         // The flicker hunt's GPU half: every colour dispatch's kept total, read back fenced and never waited
         // on. Off by default -- a per-frame read of a GPU-written buffer is a real wait on Mesa.

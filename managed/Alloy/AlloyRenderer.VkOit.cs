@@ -23,7 +23,7 @@ public sealed unsafe partial class AlloyRenderer
         public GuiVkProg? Resolve;
         /// <summary>The composite's blend, and the plain one a <c>/alloy oitviz</c> view draws with.</summary>
         public PipelineId Blended, Plain;
-        public int Viz = -1, Mode = -1, Net = -1;
+        public int Viz = -1;
         public bool Tried, Live;
     }
 
@@ -41,7 +41,7 @@ public sealed unsafe partial class AlloyRenderer
             o.Tried = true;
             o.Resolve = PostChainVk.Program(vk, PostChain.FullscreenVs, OitPass.OitResolveFs, "oit resolve", q =>
             {
-                o.Viz = q.Loc("uViz"); o.Mode = q.Loc("uMode"); o.Net = q.Loc("uNet");
+                o.Viz = q.Loc("uViz");
             }, log);
             if (o.Resolve != null)
             {
@@ -54,9 +54,6 @@ public sealed unsafe partial class AlloyRenderer
                 log.Always("AlloyRenderer: the Vulkan OIT resolve was REFUSED (logged above) -- the blended class draws in "
                          + "its route's order on Vulkan this session, which is not back to front");
             }
-            else if (OitPass.Mode == 2)
-                log.Always("AlloyRenderer: alloy.oit 2's per-pixel lists are not on Vulkan -- the blended class composites "
-                         + "through the weighted pair (mode 1), and a faded object's parts thicken it");
         }
         if (o.Resolve == null) return false;
         if (o.Accum.IsNull || o.W != w || o.H != h)
@@ -107,9 +104,6 @@ public sealed unsafe partial class AlloyRenderer
         Array.Clear(p.Block);
         VkUniformShim.Capture(p.Members, p.Block);
         VkUniformShim.Set(o.Viz, OitPass.Viz);
-        VkUniformShim.Set(o.Mode, 1);
-        // the pair is written every frame, so the lists' overflow net has nothing to say
-        VkUniformShim.Set(o.Net, 1);
         VkUniformShim.EndCapture();
         int at = p.Block.Length == 0 ? 0 : VkArena(p.Block);
         if (at < 0) return false;

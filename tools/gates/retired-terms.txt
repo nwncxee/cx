@@ -120,3 +120,6 @@ alloy\.(backend|renderthread|rhiimmediate|gpumeter)\b	CX-313
 # built, the per-view fallback its extension probe chose, and the GL-vs-Vulkan bake reading. Vulkan bakes every view.
 \bshadow\.(layered|maskh)\b|\bHandleMaskReady\b|\bEnsureHandleMask\b|\bDepthArray\b|\bFboChecked\b	GL sweep 4
 \bCasterPass\.(CascadeTex|SunDynTex|CubeTex|CubeDynTex)\b|\bVkProbeAgainstGl\b|\bBindSunMaps\b|\bBindCubeMaps\b	GL sweep 4
+# The per-pixel linked-list transparency mode (alloy.oit 2) and the two SSBO points its head table and node pool
+# claimed: nothing allocated them and the resolve never selected them. The weighted pair is the one composite.
+\bOitHeads\b|\bOitNodes\b|\bCxOitHeads\b|\bCxOitNodes\b|per-pixel linked lists	GL sweep 4
