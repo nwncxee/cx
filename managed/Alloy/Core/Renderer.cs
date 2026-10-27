@@ -53,7 +53,7 @@ internal static class Renderer
     internal static readonly Knob<bool> Bcn, Hdr, Gl46, OwnedTex, TexSingle, DdsRead, HandleDrop,
                                         Spirv, VanillaBridge, HostFs, OwnSkin, DumpShaders, GlDebug, EngineZones,
                                         Gui, Movie;
-    internal static readonly Knob<int> Border, Oit, OitLayers, TexCache, Bindless, BcnDrip, TexDelete, MaxElements, RasterRead,
+    internal static readonly Knob<int> Border, Oit, TexCache, Bindless, BcnDrip, TexDelete, MaxElements, RasterRead,
                                        ClusterCap, GlSync, SkipBuckets, FrameDiff, ParityDump, StaleAudit;
     internal static readonly Knob<bool> Light, Prepass, Retest, HlDiag, Poll, PrepassKey, PrepassFeat, IdTarget,
                                         BlendDepth, VisList, WashTest, DepthEqual;
@@ -153,8 +153,6 @@ internal static class Renderer
                           help: "Tiles drawn past the area edge so the horizon is not empty; the stock game draws 5.");
         Oit = G.Dropdown("oit", "Transparency", new[] { 0, 1, 2 }, 2, new[] { "sorted", "weighted", "linked lists" }, tier: Tier.ChatOnly,
                          help: "How overlapping transparent surfaces are combined.", changed: AlloyRenderer.InvalidateRecords);
-        OitLayers = G.Dropdown("oitlayers", "Transparency layers per pixel", new[] { 1, 2, 3, 4, 6, 8 }, 3, tier: Tier.ChatOnly,
-                               effect: Effect.Restart, help: "Memory reserved for linked-list transparency; ~33 MB per layer at 1080p.");
         TexCache = G.Dropdown("texcache", "Texture memory budget", new[] { -1, 512, 1024, 2048, 4096, 8192 }, -1, tier: Tier.ChatOnly,
                               effect: Effect.Restart, format: AutoInt, parse: ParseAutoInt);
         Bindless = G.Dropdown("bindless", "Bindless textures", new[] { -1, 1, 0 }, -1, tier: Tier.ChatOnly, effect: Effect.Restart,
