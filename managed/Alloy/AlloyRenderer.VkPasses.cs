@@ -86,6 +86,8 @@ public sealed unsafe partial class AlloyRenderer
         int arena0 = s.ArenaUsed;
         var b = new VkBound { Fmt = -1, Tex = -1 };
         VkPassStart(side, w, h);
+        // the record is this frame's deferred walk's, which runs after these draws; a resize remakes it there
+        _vkdef.Wrote = false;
         VkHandOverReads(cl, s);
         bool ok = true;
         var plain = new VkRange(_depthEqual, true, false, false, colour, gbuf, VkDecalFold);
