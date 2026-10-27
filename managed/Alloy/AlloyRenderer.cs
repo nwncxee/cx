@@ -190,7 +190,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// and the frame want the same values.</summary>
     internal static bool _capturing;
     /// <summary>The capture in progress is the mirrored draw of the planar reflection, not the probe:
-    /// creatures stay in and every program writes its alpha (see <see cref="PlanarPass"/>).</summary>
+    /// creatures stay in and every stage writes its alpha.</summary>
     internal static bool _planar;
     /// <summary>The planar mirror's world z while <see cref="_planar"/> is set: its draw drops what lies under it.</summary>
     internal static float _mirrorZ;
@@ -475,7 +475,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// <c>_litFailed</c> are NOT cleared: a stage that could not build is a fact about the source.</summary>
     internal static void ContextLost()
     {
-        Programs._prog46 = 0; Programs._progLit46 = 0; Programs._progLitList = 0; Programs._progLitDef = 0; Programs.ForgetDecal(delete: false); Programs._progLitMask = 0; OitPass.ListsArmed = false; Programs._progDepth = 0; Programs._progDepthKey = 0; Programs._progDepthFeat = 0; Programs._progWater = 0;
+        Programs._prog46 = 0; Programs._progLit46 = 0; Programs._progLitList = 0; Programs._progLitDef = 0; Programs.ForgetDecal(delete: false); Programs._progLitMask = 0; Programs._progDepth = 0; Programs._progDepthKey = 0; Programs._progDepthFeat = 0; Programs._progWater = 0;
         Ablation.Forget(delete: false);
         Highlight.HighlightContextLost();
         TriggerHighlight.ContextLost();

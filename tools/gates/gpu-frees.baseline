@@ -9,11 +9,9 @@
 1 managed/Alloy/OwnedTextures.Transcode.cs
 1 managed/Alloy/OwnedTextures.Upload.cs
 1 managed/Alloy/Pass/CasterPass.Target.cs
-3 managed/Alloy/Pass/EnvProbe.cs
 2 managed/Alloy/Pass/GuiModelSolve.cs
 5 managed/Alloy/Pass/LightmapBake.cs
 7 managed/Alloy/Pass/LightmapBake.Pages.cs
-1 managed/Alloy/Pass/OitPass.cs
 1 managed/Alloy/Pass/PairShadows.cs
 1 managed/Alloy/Pass/Weather.Esm.cs
 1 managed/Graphics/GlTexture.cs

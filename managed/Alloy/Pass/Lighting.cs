@@ -11,7 +11,7 @@ internal static class Lighting
     internal static readonly KnobGroup G;
     internal static readonly Knob<float> Gain, Ambient, Sun, Sky, Overbright, Sss, Wrap, WrapNdl, Hot, HotSize, Radius, Falloff,
                                          ProbeGain, BinReach, AmbientDir,
-                                         Daylight, DayLow, DayHigh, Flicker, FlickerSpeed, SsrRough, SsrPlanarCull, Relevance, Floor, FullModel;
+                                         Daylight, DayLow, DayHigh, Flicker, FlickerSpeed, SsrRough, Relevance, Floor, FullModel;
     internal static readonly Knob<int> Fadeout, ProbeSize, BinCap, SsrDetail, SsrPlanarRes;
     internal static readonly Knob<bool> Probe, ReachFade, HiddenLights, Brdf, Grazing, SpecAa, Ssr, SsrPlanar,
                                         Deferred, DeferredTiles, LightRec;
@@ -113,8 +113,6 @@ internal static class Lighting
                                   tier: Tier.ChatOnly,
                                   help: "The resolution the mirrored scene is drawn at. Lower is cheaper and softer.")
                         .Ladder(Quality.Reflections, 8, 8, 8, 4);
-        SsrPlanarCull = G.Slider("ssrplanarcull", "Mirror reflection small-object cull", 0f, 16f, 0.5f, 2f, "px", Tier.ChatOnly,
-                                 help: "Objects smaller than this many pixels of the mirrored draw are left out of it. Higher is cheaper.");
         HiddenLights = G.Toggle("hidden", "Hidden lights do not reflect", true, Tier.ChatOnly,
                                 help: "A wet or glossy surface mirrors a light only where that light's shadow lets it -- a lamp on a terrace reflects in the street from where the ground sees over the parapet, not from the wall's foot.");
         G.Section("Materials");

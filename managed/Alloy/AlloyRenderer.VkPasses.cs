@@ -448,7 +448,7 @@ public sealed unsafe partial class AlloyRenderer
         return true;
     }
 
-    /// <summary>Batch <paramref name="g"/>'s cull, its winding flipped under the planar mirror as GL's PlanarPass flips it.</summary>
+    /// <summary>Batch <paramref name="g"/>'s cull, its winding flipped under the planar mirror.</summary>
     private static RasterState VkRaster(int g, bool wash) => new(_gNoCull[g] ? CullMode.None : CullMode.Back, _planar, wash);
 
     /// <summary>One batch: the program bound (its loose block captured) when it or the bound diffuse changed, the

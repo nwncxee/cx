@@ -1,12 +1,12 @@
 2 managed/Alloy/Ablation.cs
 23 managed/Alloy/AlloyRenderer.Batches.cs
 4 managed/Alloy/AlloyRenderer.Device.cs
-70 managed/Alloy/AlloyRenderer.Frame.cs
+56 managed/Alloy/AlloyRenderer.Frame.cs
 2 managed/Alloy/AlloyRenderer.Handles.cs
 6 managed/Alloy/AlloyRenderer.Metrics.cs
 13 managed/Alloy/AlloyRenderer.Motion.cs
 3 managed/Alloy/AlloyRenderer.Target.cs
-74 managed/Alloy/AlloyRenderer.Uniforms.cs
+71 managed/Alloy/AlloyRenderer.Uniforms.cs
 4 managed/Alloy/AlloyRenderer.Vao.cs
 5 managed/Alloy/BlendProfile.cs
 9 managed/Alloy/Core/ContentPrograms.cs
@@ -22,7 +22,7 @@
 45 managed/Alloy/Db/TexRegistry.Load.cs
 16 managed/Alloy/DdsReader.Formats.cs
 48 managed/Alloy/Highlight.cs
-67 managed/Alloy/Issue.cs
+65 managed/Alloy/Issue.cs
 9 managed/Alloy/MovieFrame.cs
 32 managed/Alloy/MovieService.cs
 9 managed/Alloy/OwnedTextures.cs
@@ -38,14 +38,12 @@
 5 managed/Alloy/Pass/CasterPass.Content.cs
 12 managed/Alloy/Pass/CasterPass.Stage.cs
 49 managed/Alloy/Pass/CasterPass.Target.cs
-65 managed/Alloy/Pass/CoverageLayer.cs
 71 managed/Alloy/Pass/CullPass.cs
 26 managed/Alloy/Pass/DecalLayer.cs
 22 managed/Alloy/Pass/DeferredLights.cs
 19 managed/Alloy/Pass/DeferredShadows.cs
-47 managed/Alloy/Pass/EnvProbe.cs
 9 managed/Alloy/Pass/FbPostStage.cs
-47 managed/Alloy/Pass/FogVolume.cs
+20 managed/Alloy/Pass/FogVolume.cs
 51 managed/Alloy/Pass/FrameSnapshot.cs
 8 managed/Alloy/Pass/FrameTap.cs
 8 managed/Alloy/Pass/GBuffer.cs
@@ -66,7 +64,6 @@
 22 managed/Alloy/Pass/LightmapBake.Pages.cs
 65 managed/Alloy/Pass/LightmapBake.Step.cs
 34 managed/Alloy/Pass/MotionVectors.cs
-67 managed/Alloy/Pass/OitPass.cs
 24 managed/Alloy/Pass/PairDebt.cs
 17 managed/Alloy/Pass/PairShadows.cs
 55 managed/Alloy/Pass/Particles.cs
@@ -79,7 +76,6 @@
 12 managed/Alloy/Pass/SkyView.cs
 41 managed/Alloy/Pass/SmaaStage.cs
 5 managed/Alloy/Pass/SsaoPass.cs
-88 managed/Alloy/Pass/Ssr.cs
 8 managed/Alloy/Pass/StageEnv.cs
 1 managed/Alloy/Pass/StageResources.cs
 32 managed/Alloy/Pass/StageResources.Gl.cs

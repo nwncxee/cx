@@ -317,9 +317,9 @@ public sealed unsafe partial class AlloyRenderer
         blk->SceneEnv = _sceneEnv ? 1 : 0;
     }
 
-    /// <summary>May this pass sample the IBL probe? Never during a capture: sampling a texture that is an
-    /// attachment of the framebuffer being written is undefined, and the capture draws through the lit program.</summary>
-    private static bool ProbeLive => (!_capturing || _planar) && EnvProbe.Ready && EnvProbe.Tex != 0;
+    /// <summary>May this pass sample the IBL probe? Never during a capture: sampling an image that is an
+    /// attachment of the target being written is undefined, and the capture draws through the lit stage.</summary>
+    private static bool ProbeLive => (!_capturing || _planar) && EnvProbe.Ready;
 
     /// <summary>Point the cascade units at <see cref="CasterPass"/>'s arrays, or at the null stand-ins when they
     /// are stale -- bound either way, because the draw validates every shadow sampler against its unit even
@@ -427,15 +427,5 @@ public sealed unsafe partial class AlloyRenderer
             Gl.BindTexture(Gl.TEXTURE_CUBE_MAP_ARRAY, dy);
         }
         Gl.ActiveTexture(Gl.TEXTURE0);       // leave unit 0 current: the batch loop rebinds diffuse textures
-    }
-
-    /// <summary>The IBL probe onto its unit, or nothing -- unbound rather than left bound during a
-    /// capture (<see cref="ProbeLive"/>); <c>uProbeMips</c> 0 in the pass block says the same to the stage.</summary>
-    internal static void BindProbe()
-    {
-        Gl.ActiveTexture(Gl.TEXTURE0 + EnvProbe.ProbeUnit);
-        Gl.BindTexture(Gl.TEXTURE_CUBE_MAP, ProbeLive ? EnvProbe.Tex : 0);
-        Gl.ActiveTexture(Gl.TEXTURE0);       // leave unit 0 current: the batch loop rebinds diffuse textures
-        EnvProbe.BindSh();
     }
 }

@@ -84,15 +84,8 @@ internal static class RenderPasses
             ContextLost = FrameSnapshot.Forget,
             Stats = FrameSnapshot.Stats,
         }, log);
-        // CX-51: the reflection history -- a copy per frame and the camera it was drawn by.
-        r.Register(new PassLifecycle
-        {
-            Name = "ssr",
-            Attach = Ssr.Attach,
-            Revoke = Ssr.Revoke,
-            ContextLost = Ssr.Forget,
-            Stats = Ssr.Stats,
-        }, log);
+        // CX-51: the screen-space reflections. No edges of its own -- the pass's targets are the device's.
+        r.Register(new PassLifecycle { Name = "ssr", Stats = Ssr.Stats }, log);
         // CX-29: not a pass and not Alloy's -- the pose layer runs under either renderer. Registered for its
         // clause on the [alloy] period line only.
         r.Register(new PassLifecycle { Name = "pose", Stats = PoseService.Stats }, log);
@@ -311,20 +304,8 @@ internal static class RenderPasses
             ContextLost = PairDebt.Forget,
             Stats = PairDebt.Stats,
         }, log);
-        r.Register(new PassLifecycle
-        {
-            Name = "a2c",
-            Attach = CoverageLayer.Attach,
-            ContextLost = CoverageLayer.Forget,
-            Stats = CoverageLayer.Stats,
-        }, log);
-        r.Register(new PassLifecycle
-        {
-            Name = "oit",
-            Attach = OitPass.Init,
-            ContextLost = OitPass.ContextLost,
-            Stats = OitPass.Stats,
-        }, log);
+        r.Register(new PassLifecycle { Name = "a2c", Stats = CoverageLayer.Stats }, log);
+        r.Register(new PassLifecycle { Name = "oit", Stats = OitPass.Stats }, log);
         // The sky-visibility map. Its depth view belongs to CasterPass (an ortho caster render); what is
         // registered here is the map baked from it -- a GL texture and a compute program, so it goes with
         // the context, and the area edge is what makes the bake another area's.

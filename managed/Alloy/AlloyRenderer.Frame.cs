@@ -750,26 +750,6 @@ public sealed unsafe partial class AlloyRenderer
         if (counting) _qSamples.End(Gl.SAMPLES_PASSED);
     }
 
-    /// <summary>The cutout class, in vanilla's own slot -- bucket 1 follows <c>RenderSkyBoxes</c>. It draws
-    /// unblended (see <see cref="AlloyClasses.Blends"/>), so the order is kept only because it is the engine's.
-    /// Depth mask back ON (the sky left it off) at the opaque set's LEQUAL, and out of the SAMPLES_PASSED
-    /// count, which stays the opaque set's overdraw baseline.</summary>
-    private static void CutoutOwnedPass(int opaqueEnd, Matrix4x4* vp, int* viewport, float near, float far)
-    {
-        // CX-189: the coverage tail waits for its own layer whenever one can arm; a capture draws it here, cut
-        _a2cHeld = !_capturing && _gA2cStart < opaqueEnd && CoverageLayer.Armed;
-        if (!_capturing && !_a2cHeld) CoverageLayer.Idle();
-        Gl.DepthMask(1);
-        Gl.DepthFunc(Gl.LEQUAL);
-        if (_gA2cStart > _gCutoutStart)
-            IssueClass(_gCutoutStart, _gA2cStart, GpuTerm.Cutout, GpuTerm.CutoutKey, vp, viewport, near, far);
-        // ...and a tail the layer is not taking, on its own term: it sits past the keyhole partition IssueClass splits on
-        if (_a2cHeld || _gA2cStart >= opaqueEnd) return;
-        GpuBegin(GpuTerm.Coverage);
-        Issue.IssueColour(_gA2cStart, opaqueEnd, vp, viewport, near, far);
-        GpuEnd(GpuTerm.Coverage);
-    }
-
     /// <summary>The split washes' fully covered interiors, solid and lit like the cutouts beside them: a covered
     /// texel needs no blending, and in the blended pass each one cost a forward-lit fragment. That pass then draws
     /// only each wash's graded edge.</summary>
@@ -781,30 +761,6 @@ public sealed unsafe partial class AlloyRenderer
         Gl.DepthFunc(Gl.LEQUAL);
         Issue.WashInteriors(_gOpaqueEnd, _gBlendEnd, vp, viewport, near, far);
         GpuEnd(GpuTerm.Washes);
-    }
-
-    /// <summary><see cref="CutoutOwnedPass"/> left the <c>NWN_ALPHA_MODE 2</c> tail for the coverage layer.</summary>
-    private static bool _a2cHeld;
-
-    /// <summary><see cref="PassId.CoverageOwned"/>: the held coverage tail through <see cref="CoverageLayer"/>,
-    /// scissored to its parts' screen rectangle. A layer that will not open this frame still draws the parts, as
-    /// cutouts straight into the frame -- forward lit, since the G-buffer has closed.</summary>
-    private static void CoverageOwnedPass(Matrix4x4* vp, int* viewport, float near, float far)
-    {
-        _a2cHeld = false;
-        CoverageRect(vp, viewport, out int x, out int y, out int w, out int h);
-        if (w <= 0 || h <= 0) return;
-        GpuBegin(GpuTerm.Coverage);
-        bool layer = CoverageLayer.Begin(viewport, x, y, w, h);
-        Issue._coverPass = layer;
-        Issue._forwardOnly = true;
-        Gl.DepthMask(1);
-        Gl.DepthFunc(Gl.LEQUAL);
-        Issue.IssueColour(_gA2cStart, _gOpaqueEnd, vp, viewport, near, far);
-        Issue._coverPass = false;
-        Issue._forwardOnly = false;
-        if (layer) CoverageLayer.End(viewport);
-        GpuEnd(GpuTerm.Coverage);
     }
 
     /// <summary>The viewport-space rectangle the coverage tail's bounding spheres project into, padded a pixel.
@@ -870,106 +826,6 @@ public sealed unsafe partial class AlloyRenderer
             GpuEnd(keyed);
         }
         Issue._matchDepth = false;
-    }
-
-    /// <summary>Capture the area's IBL probe -- the same staged batches, drawn six more times into a small cube
-    /// from the player's position. At the END of the colour bracket, after both on-screen passes: the light
-    /// binning is per-pass state each face overwrites, and the next pass rebuilds it anyway. Gated by
-    /// <see cref="EnvProbe.Wanted"/>; the frame meters are saved and restored, or capture frames would lie.</summary>
-    private static void CaptureProbe(int groups, float far)
-    {
-        long tProbe = FrameZones.Now;
-        // The six faces submit through Issue.IssueBatches, which books its own zone -- so the parent subtracts it
-        // exactly as the shim subtracts the Alloy frame. Without this a capture frame counts the submission
-        // twice, and a capture frame is precisely the shape that latches the worst-frame snapshot.
-        long issue0 = FrameZones.Ticks(FrameZones.Zone.Issue);
-        try { CaptureProbeInner(groups, far); }
-        finally { FrameZones.Add(FrameZones.Zone.Probe, tProbe, FrameZones.Ticks(FrameZones.Zone.Issue) - issue0); }
-    }
-
-    private static void CaptureProbeInner(int groups, float far)
-    {
-        // the dome stages after the area light: a probe captured before it has only the clear for a sky
-        bool domeArrived = EnvProbe.Ready && !_probeDome && _skyN > 0;
-        if (!domeArrived && !EnvProbe.Wanted(_eyePos, _frameSeq)) return;
-        if (!ProbeLightSettled() || !EnvProbe.LightsSettled(AlloyLights.LastLightCount)) return;
-        if (!EnvProbe.Begin(_eyePos, _frameSeq, far, ProbeClear())) return;
-
-        long draws = Counters._draws, batches = Counters._batches;
-        float buildMs = AlloyLights.LastBuildMs;   // the [alloy] line's cluster timer is the SCREEN's build
-        Vector3 eye = _eyePos;
-        _capturing = true;
-        _eyePos = EnvProbe.Origin;
-        (float fnear, float ffar) = EnvProbe.FacePlanes;
-        int* faceVp = stackalloc int[4] { 0, 0, EnvProbe.Size, EnvProbe.Size };
-        bool ok = true;
-        Gl.DepthFunc(Gl.LEQUAL);   // the sky survives only where no face geometry wrote depth
-        for (int f = 0; f < 6 && ok; f++)
-        {
-            ok = EnvProbe.Face(f, out Matrix4x4 vp);
-            if (!ok) break;
-            Matrix4x4 view = EnvProbe.FaceView(f);
-            // A cube face is exactly 90deg, so the projection's p00 and p11 are both cot(45) = 1.
-            AlloyLights.Build(view, 1f, 1f, fnear, ffar, EnvProbe.Size, EnvProbe.Size, tally: false);
-            Gl.ColorMask(1, 1, 1, 1);
-            Issue.IssueBatches(0, groups, vp, faceVp, fnear, ffar);
-            Gl.ColorMask(1, 1, 1, 0);   // the dome is infinitely far: the clear's alpha 0 already says so
-            // the real sky behind the world, so a wet street mirrors the dome and not the clear colour; the
-            // dome is parked at this frame's camera, which is where the probe stands
-            // CX-88: the WHOLE dome, hosted stage included -- an Alloy sky program takes uVP like every
-            // other Alloy draw, so a cube face is just another view. #136's engine-program replay could not
-            // be pointed at one, which is what the ProbeClear sky stand-in was for.
-            SkyOwnedPass(&vp, faceVp);
-            Gl.DepthMask(1);   // the sky pass leaves the mask off, and the next face's depth clear honours it
-        }
-        Gl.ColorMask(1, 1, 1, 1);
-        if (ok) { EnvProbe.End(); _probeDome = _skyN > 0; } else Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
-        _capturing = false;
-        _eyePos = eye;
-        Counters._draws = draws; Counters._batches = batches;
-        AlloyLights.LastBuildMs = buildMs;
-    }
-
-    /// <summary>The planar reflection -- the opaque set mirrored across the ground at the player's feet into
-    /// <see cref="Ssr"/>'s half-res target, filling the holes a screen-space trace leaves. Probe-capture flags
-    /// plus <see cref="_planar"/>, mirrored eye, winding flipped, no local light, at <c>light.ssrplanarres</c>;
-    /// the lit stage discards what lies under <c>uMirrorZ</c>. ponytail: one plane, the player's.</summary>
-    private static void PlanarPass(Matrix4x4* vp, float near, float far, int* viewport)
-    {
-        if (_runtime == null || !Ssr.BeginPlanar(viewport[2], viewport[3], out int pw, out int ph)) return;
-        float z = Rt.PlayerPos.Z;
-        // the reflection across z = h, row vectors (p' = p M): z' = 2h - z
-        Matrix4x4 m = Matrix4x4.Identity;
-        m.M33 = -1f; m.M43 = 2f * z;
-        Matrix4x4 mVp = m * *vp;
-        long draws = Counters._draws, batches = Counters._batches;
-        Vector3 eye = _eyePos;
-        int* pvp = stackalloc int[4] { 0, 0, pw, ph };
-        _capturing = _planar = true;
-        _mirrorZ = z;
-        _eyePos = new Vector3(eye.X, eye.Y, 2f * z - eye.Z);
-        new PassState(depth: true, depthWrite: true, cull: true, srgb: false).Apply();
-        Gl.DepthFunc(Gl.LEQUAL);
-        Gl.FrontFace(Gl.CW);
-        // the colour phase's list is this camera's: re-cull for the mirror, dropping what is off its frustum, under
-        // the plane, or smaller than light.ssrplanarcull mirror pixels (the threshold is in main-view pixels)
-        bool indirect = CullPass.Active && CullPass.Dispatch(CullPass.PhaseMirror, &mVp, hiZ: false, PassGen,
-                                                             Lighting.SsrPlanarCull.V * Lighting.SsrPlanarRes.V, z);
-        if (indirect) CullPass.BindForDraw(CullPass.PhaseMirror);
-        Issue._holdProg = false;
-        AlloyLights.BorrowedTable = true;
-        try { Issue.IssueBatches(0, _gOpaqueEnd, mVp, pvp, near, far, indirect); }
-        finally
-        {
-            AlloyLights.BorrowedTable = false;
-            if (indirect) { CullPass.UnbindForDraw(); Issue.BindStagedSlots(); }
-            Gl.FrontFace(Gl.CCW);
-            _capturing = _planar = false;
-            _eyePos = eye;
-            Counters._draws = draws; Counters._batches = batches;
-            Ssr.EndPlanar(z);
-            Gl.Viewport(viewport[0], viewport[1], viewport[2], viewport[3]);
-        }
     }
 
     /// <summary>The area light the last frame saw, for <see cref="ProbeLightSettled"/>.</summary>

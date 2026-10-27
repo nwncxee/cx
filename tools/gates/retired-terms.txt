@@ -104,3 +104,6 @@ alloy\.aotest	dead-code-cleanup
 # The whole-frame GL/Vulkan A/B and its GUI sibling: Vulkan is the one renderer, so there is no GL half to compare.
 \balloy\.vkab\b|\bvkab(gui)?\b|\bVkParity\b|\bGuiParity\b|\bGlParity\b|\bVkStoodDown\b	CX-313
 alloy\.(backend|renderthread|rhiimmediate|gpumeter)\b	CX-313
+# The GL halves of the SSR, volumetric fog, OIT, coverage-layer and probe passes, and the two knobs only they
+# read: the per-pixel OIT node pool and the mirror pass's own small-object cull. Vulkan draws all five.
+\balloy\.oitlayers\b|\bOitLayers\b|\blight\.ssrplanarcull\b|\bssrplanarcull\b|\bSsrPlanarCull\b	GL sweep 2

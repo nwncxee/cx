@@ -5,18 +5,16 @@
 3 managed/Alloy/Db/PltGpuCheck.cs
 5 managed/Alloy/Db/TexRegistry.Arturo.cs
 8 managed/Alloy/Highlight.cs
-33 managed/Alloy/Issue.cs
+31 managed/Alloy/Issue.cs
 6 managed/Alloy/Pass/Beams.Db.cs
 4 managed/Alloy/Pass/CasterPass.Content.cs
 6 managed/Alloy/Pass/CasterPass.Stage.cs
 5 managed/Alloy/Pass/CasterPass.Target.cs
-4 managed/Alloy/Pass/CoverageLayer.cs
 4 managed/Alloy/Pass/CullPass.cs
 4 managed/Alloy/Pass/DeferredLights.cs
 7 managed/Alloy/Pass/DeferredShadows.cs
-2 managed/Alloy/Pass/EnvProbe.cs
 6 managed/Alloy/Pass/FbPostStage.cs
-27 managed/Alloy/Pass/FogVolume.cs
+20 managed/Alloy/Pass/FogVolume.cs
 47 managed/Alloy/Pass/GrassField.cs
 6 managed/Alloy/Pass/GrassField.Motion.cs
 3 managed/Alloy/Pass/GrassField.Programs.cs
@@ -29,7 +27,6 @@
 4 managed/Alloy/Pass/LightmapBake.cs
 12 managed/Alloy/Pass/LightmapBake.Step.cs
 5 managed/Alloy/Pass/MotionVectors.cs
-8 managed/Alloy/Pass/OitPass.cs
 9 managed/Alloy/Pass/PairDebt.cs
 21 managed/Alloy/Pass/Particles.cs
 11 managed/Alloy/Pass/Particles.Motion.cs
@@ -39,7 +36,6 @@
 11 managed/Alloy/Pass/SkyStage.cs
 4 managed/Alloy/Pass/SkyView.cs
 8 managed/Alloy/Pass/SmaaStage.cs
-15 managed/Alloy/Pass/Ssr.cs
 8 managed/Alloy/Pass/StageEnv.cs
 2 managed/Alloy/Pass/StageResources.Gl.cs
 8 managed/Alloy/Pass/TaaStage.cs

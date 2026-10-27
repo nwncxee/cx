@@ -296,9 +296,9 @@ public sealed unsafe partial class AlloyRenderer
     }
 
     /// <summary>The planar mirror -- the opaque set mirrored across the ground at the player's feet into a
-    /// 1/<c>light.ssrplanarres</c> target, winding flipped, the lit stage dropping what lies under the plane -- as GL's
-    /// PlanarPass draws it. False = no mirror this frame. ponytail: one plane, the player's; no mirror re-cull, the whole
-    /// opaque list draws (the GL cull pass's mirror phase is the upgrade).</summary>
+    /// 1/<c>light.ssrplanarres</c> target, winding flipped, the lit stage dropping what lies under the plane.
+    /// False = no mirror this frame. ponytail: one plane, the player's; no mirror re-cull, the whole opaque list
+    /// draws (a mirror phase in the cull pass is the upgrade).</summary>
     private static bool VkPlanarPass(VkBackend vk, CommandList cl, VkSsrState s, in Matrix4x4 vp, int* viewport, float near,
                                      float far, ExtenderLog log)
     {

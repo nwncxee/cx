@@ -171,31 +171,25 @@ internal static unsafe class GBuffer
         for (uint i = 0; i < Targets; i++) Gl.ColorMaski((uint)FirstAttachment + i, b, b, b, b);
     }
 
-    /// <summary>The frame FBO's draw-buffer list, composed from both armed states: the colour at 0, the OIT
-    /// reveal slot at 1 (NONE in these passes), Ssr's records at 2..3 and the G-buffer at 4..6.
-    /// <paramref name="suspend"/> is the sky, which writes neither -- its pixels keep G0 = 0 and no record.</summary>
+    /// <summary>The frame FBO's draw-buffer list: the colour at 0, the OIT reveal slot at 1 and the reflection
+    /// record's pair at 2..3 (all NONE in these passes), the G-buffer at 4..6.
+    /// <paramref name="suspend"/> is the sky, which writes none of them -- its pixels keep G0 = 0.</summary>
     internal static void ApplyDrawBuffers(bool suspend = false)
     {
-        bool ssr = Ssr.RecordsArmed && !suspend, gb = _gl.Armed && !suspend;
-        if (!ssr && !gb && !_gl.Wrote) return;
+        bool gb = _gl.Armed && !suspend;
+        if (!gb && !_gl.Wrote) return;
         if (Gl.DrawBuffers == null) return;
         uint* bufs = stackalloc uint[FirstAttachment + Targets];
         bufs[0] = Gl.COLOR_ATTACHMENT0;
         int n = 1;
-        if (ssr || gb)
+        if (gb)
         {
-            bufs[1] = Gl.NONE;
-            bufs[2] = ssr ? Gl.COLOR_ATTACHMENT2 : Gl.NONE;
-            bufs[3] = ssr ? Gl.COLOR_ATTACHMENT3 : Gl.NONE;
-            n = FirstAttachment;
-            if (gb)
-            {
-                for (uint i = 0; i < Targets; i++) bufs[FirstAttachment + i] = Gl.COLOR_ATTACHMENT4 + i;
-                n = FirstAttachment + Targets;
-            }
+            for (int i = 1; i < FirstAttachment; i++) bufs[i] = Gl.NONE;
+            for (uint i = 0; i < Targets; i++) bufs[FirstAttachment + i] = Gl.COLOR_ATTACHMENT4 + i;
+            n = FirstAttachment + Targets;
         }
         Gl.DrawBuffers(n, bufs);
-        _gl.Wrote = n > 1 || Ssr.RecordsArmed || _gl.Armed;
+        _gl.Wrote = n > 1 || _gl.Armed;
     }
 
     /// <summary>Context loss: the names are gone.</summary>
