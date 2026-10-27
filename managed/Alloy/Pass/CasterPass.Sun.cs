@@ -26,7 +26,6 @@ public sealed unsafe partial class CasterPass
 
     /// <summary>The depth array holding the cascades (0 = none yet). Read by the Alloy colour pass, in the
     /// same 4.6 context, on the frame after the render.</summary>
-    internal static uint CascadeTex => _gl.CascadeTex;
     /// <summary>Cascades successfully rendered on the last pass, innermost first.</summary>
     internal static int CascadeCount;
     /// <summary>Row-major light view-projection per cascade, 16 floats each -- the matrix each layer was
@@ -78,11 +77,6 @@ public sealed unsafe partial class CasterPass
     // static re-bakes per cascade LAYER, and a layer whose static half is stale essentially every frame
     // degrades itself to the combined bake (today's behaviour, SetAll, no dynamic half) and says so.
 
-    /// <summary>The sun's dynamic depth array (0 = none), one layer per cascade at the SAME face size as the
-    /// static array -- the near cascade must carry the player's own shadow at full quality, and a mirror is
-    /// the shape with no per-layer resolution bookkeeping. <c>shadow.sundyn</c> 0 disables the sun split
-    /// permanently (the cubes keep theirs).</summary>
-    internal static uint SunDynTex => _gl.SunDynTex;
     /// <summary>Per cascade layer: 1 = the dynamic half holds a fresh mover bake this frame, 0 = sample the
     /// static half alone. The receiver's <c>uSunDyn</c>; zero is what a program that never sets it reads.</summary>
     internal static readonly float[] SunDynMask = new float[MaxCascades];
@@ -229,7 +223,7 @@ public sealed unsafe partial class CasterPass
                 if (split) _sunStaticL[i]++;
                 if (split && DegradeCounts(invalidate, keyChanged, staticEvt)) _sunWinBaked[i]++;
                 ChargeBake(WhySun, invalidate, keyChanged);
-                bool viewOk = RenderView(CasterMap.SunStatic, _gl.DepthTex, _mapSize, i, &vp,
+                bool viewOk = RenderView(CasterMap.SunStatic, _mapSize, i, &vp,
                                          dir, c, radius, margin, point: false,
                                          set: combined ? CasterGather.SetAll : CasterGather.SetStatic);
                 // A cascade that stalled holds last frame's depth under this frame's key, and the cascades
@@ -273,14 +267,13 @@ public sealed unsafe partial class CasterPass
                 // The cadence ladder: a far cascade's dynamic layer holds one frame under the same fit.
                 else if (i >= _sunFull && !invalidate && !_rxForce && _sunDynValid[i] && _sunDynVp[i] == vp && ((_frameSeq + i) & 1) != 0)
                 { SunDynMask[i] = 1f; _sunDynSkipped++; }
-                else if (RenderView(CasterMap.SunDyn, _gl.SunDynTex, _mapSize, i, &vp, dir, c, radius, margin, point: false,
+                else if (RenderView(CasterMap.SunDyn, _mapSize, i, &vp, dir, c, radius, margin, point: false,
                                     set: CasterGather.SetDynamic, receiver: true))
                 { SunDynMask[i] = 1f; _sunDynBakedViews++; _sunDynValid[i] = true; _sunDynVp[i] = vp; }
                 else _sunDynValid[i] = false;
             }
         }
         TraceFit(focus, dir, latched);
-        _gl.CascadeTex = _gl.DepthTex;
         // CascadeCount is the ONLY thing bounding the receiver's read: a stall at cascade i leaves layers
         // >= i holding last frame's depth and CascadeVp[>= i] holding last frame's matrix, and the
         // receiver's loop simply never reaches them. Same invariant covers the uniform upload, which
@@ -339,7 +332,7 @@ public sealed unsafe partial class CasterPass
     /// them". A publication the receiver did not take is a gate fault; one it took against an empty map is a
     /// bake fault, and nothing else tells the two apart. It compares the PREVIOUS frame's stamp.</summary>
     private static string SunRxReadout()
-        => $" | [sunrx] published={_cascadeStamp == _frameSeq - 1} count={CascadeCount} tex={_gl.CascadeTex} " +
+        => $" | [sunrx] published={_cascadeStamp == _frameSeq - 1} count={CascadeCount} " +
            $"stamp={_cascadeStamp} seq={_frameSeq} interior={FrameInputs.Interior} hasSun={FrameInputs.HasSun} " +
            $"| c0 baked={_sunBaked[0]} fit={_sunFitValid[0]} mover={_sunHadMover[0]} " +
            $"c=({_sunFitC[0]:F1},{_sunFitC[1]:F1},{_sunFitC[2]:F1}) r={CascadeFitRadius[0]:F1} " +

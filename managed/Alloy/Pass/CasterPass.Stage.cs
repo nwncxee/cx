@@ -294,13 +294,6 @@ public sealed unsafe partial class CasterPass
             // a blended caster the mask stage cannot take (no diffuse, no UVs, mask off) casts nothing, as before #363
             if (_liveBlend[i] && masked == 0) continue;
             if (masked != 0) maskedN++;
-            // A record with a resident handle samples its mask through the handle block, so the texture
-            // leaves the key. Handle 0 is a BLACK texture (every fragment discards), hence the guard: such a
-            // record keeps the bound-texture batch.
-            bool hmask = masked != 0 && HandleMaskReady && AlloyRenderer.RecordHandle0(_liveSlot[i]) != 0;
-            // CX-303: a content pair's twin reads its maps only as HANDLES, so without the handle stage its caster
-            // falls back to the plain masked one, cutting on the diffuse alpha and unmoved.
-            if (!hmask) content = false;
             _gLive[n] = i;
             // #302: the cutout threshold is a per-BATCH uniform now, exactly as the colour path spells it
             // (uAlphaCut), so it joins the key rather than riding in a per-draw record. The batch takes the
@@ -308,7 +301,7 @@ public sealed unsafe partial class CasterPass
             // the (VAO, prim) pair below, the handle flag at 32 and the texture name in the low 32.
             _gKey[n] = ((masked != 0 ? 1L : 0L) << 62) | ((long)_liveCut[i] << 60)
                        | ((long)_liveVao[i] << 44) | ((long)_livePrim[i] << 36)
-                       | (hmask ? 1L << 32 : 0L) | (hmask ? (content ? (uint)_liveContent[i] : 0u) : (uint)masked);
+                       | (uint)masked;
             n++;
             if (i < _liveCreatures) creatures++;
         }

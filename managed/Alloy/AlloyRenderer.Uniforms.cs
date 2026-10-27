@@ -321,39 +321,11 @@ public sealed unsafe partial class AlloyRenderer
     /// attachment of the target being written is undefined, and the capture draws through the lit stage.</summary>
     private static bool ProbeLive => (!_capturing || _planar) && EnvProbe.Ready;
 
-    /// <summary>Point the cascade units at <see cref="CasterPass"/>'s arrays, or at the null stand-ins when they
-    /// are stale -- bound either way, because the draw validates every shadow sampler against its unit even
-    /// when the shader never takes the fetch (see NullShadow).</summary>
-    internal static void BindSunMaps()
-    {
-        if (!_rawProbed) ProbeRawSampler();
-        bool fresh = CasterPass.CascadesFresh;
-        uint stat = SunShadowOr(fresh ? CasterPass.CascadeTex : 0);
-        Gl.ActiveTexture(Gl.TEXTURE0 + SunUnit);
-        Gl.BindTexture(Gl.TEXTURE_2D_ARRAY, stat);
-        // The dynamic half rides the same publish, on BOTH units the table assigns it (the grass
-        // program's unit 10 is its displacement field, so grass reads the array off unit 13 instead).
-        uint dyn = SunShadowOr(fresh ? CasterPass.SunDynTex : 0);
-        Gl.ActiveTexture(Gl.TEXTURE0 + SunDynUnit);
-        Gl.BindTexture(Gl.TEXTURE_2D_ARRAY, dyn);
-        Gl.ActiveTexture(Gl.TEXTURE0 + SunDynUnitGrass);
-        Gl.BindTexture(Gl.TEXTURE_2D_ARRAY, dyn);
-        if (_rawSampler != 0)
-        {   // CX-49: the same two arrays on the raw units; the sampler object bound there strips the compare
-            Gl.ActiveTexture(Gl.TEXTURE0 + TextureSlots.SunShadowRaw);
-            Gl.BindTexture(Gl.TEXTURE_2D_ARRAY, stat);
-            Gl.ActiveTexture(Gl.TEXTURE0 + TextureSlots.SunShadowDynRaw);
-            Gl.BindTexture(Gl.TEXTURE_2D_ARRAY, dyn);
-        }
-        Gl.ActiveTexture(Gl.TEXTURE0);       // leave unit 0 current: the batch loop rebinds diffuse textures
-    }
-
     /// <summary>1x1 depth-1 (lit) stand-ins with compare on, bound on a shadow unit whenever its map is absent
     /// or stale. A shadow sampler validated against an empty unit or a colour texture is undefined behaviour
     /// even when the shader never takes the fetch (NVIDIA debug id 131222, ~4 per frame); Mesa owes it
     /// nothing. Names die with the context (<see cref="ContextLost"/>).</summary>
-    private static uint _nullSunShadow, _nullCubeShadow;
-    internal static uint SunShadowOr(uint tex) => tex != 0 ? tex : NullShadow(Gl.TEXTURE_2D_ARRAY, 1, ref _nullSunShadow);
+    private static uint _nullCubeShadow;
     internal static uint CubeShadowOr(uint tex) => tex != 0 ? tex : NullShadow(Gl.TEXTURE_CUBE_MAP_ARRAY, 6, ref _nullCubeShadow);
     private static uint NullShadow(uint target, int layers, ref uint name)
     {
@@ -369,63 +341,6 @@ public sealed unsafe partial class AlloyRenderer
         return name = t;
     }
 
-    /// <summary>The no-compare sampler the receiver's blocker search reads the cube arrays through
-    /// (<see cref="TextureSlots.LocalShadowRaw"/>). 0 = the driver is short of fragment units or sampler
-    /// objects, and the search stands down; asked once.</summary>
-    private static uint _rawSampler;
-    private static bool _rawProbed;
     /// <summary>The blocker search has its raw views: Vulkan's bake binds its own.</summary>
     private static bool RawSearch => true;
-    private static void ProbeRawSampler()
-    {
-        _rawProbed = true;
-        int units = 0; Gl.GetIntegerv(Gl.MAX_TEXTURE_IMAGE_UNITS, &units);
-        // The CUBE threshold, which is the cube units' own and nothing else's: the sun's two raw views sit
-        // higher and stand down on their own at link time (Programs.WithoutSunSoft), so a driver that can
-        // seat the cubes keeps their contact hardening whatever it can do for the sun.
-        if (units <= (int)TextureSlots.LocalShadowDynRaw || Gl.GenSamplers == null || Gl.SamplerParameteri == null || Gl.BindSampler == null)
-        { _log?.Info($"AlloyRenderer: shadow blocker search OFF (hard edges, no contact hardening) -- " +
-                     $"{units} fragment texture units, needs {TextureSlots.LocalShadowDynRaw + 1}"); return; }
-        uint s; Gl.GenSamplers(1, &s);
-        Gl.SamplerParameteri(s, Gl.TEXTURE_COMPARE_MODE, 0);   // GL_NONE: a depth, not a verdict
-        Gl.SamplerParameteri(s, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
-        Gl.SamplerParameteri(s, Gl.TEXTURE_MAG_FILTER, Gl.NEAREST);
-        Gl.SamplerParameteri(s, Gl.TEXTURE_WRAP_S, Gl.CLAMP_TO_EDGE);
-        Gl.SamplerParameteri(s, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
-        Gl.BindSampler(TextureSlots.LocalShadowRaw, s); Gl.BindSampler(TextureSlots.LocalShadowDynRaw, s);
-        // CX-49: the sun's two raw units take the same sampler object -- a 2D array of depth read as a depth
-        // rather than a verdict is the same ask as the cube's. Bound whatever the fragment-unit count, which
-        // is legal (a bind is capped by MAX_COMBINED_TEXTURE_IMAGE_UNITS, floor 80) and unread where the lit
-        // program never declared the samplers.
-        Gl.BindSampler(TextureSlots.SunShadowRaw, s); Gl.BindSampler(TextureSlots.SunShadowDynRaw, s);
-        _rawSampler = s;
-        _log?.Info($"AlloyRenderer: shadow blocker search ON -- {units} fragment texture units, raw views on "
-                   + $"{TextureSlots.LocalShadowRaw}/{TextureSlots.LocalShadowDynRaw} (cubes) and "
-                   + $"{TextureSlots.SunShadowRaw}/{TextureSlots.SunShadowDynRaw} (sun cascades, "
-                   + $"{(units >= Programs.SunSoftUnitsNeed ? "declared" : "NOT declared on this driver")})");
-    }
-
-    /// <summary>Point the cube units at <see cref="CasterPass"/>'s static and dynamic arrays (the null stand-in
-    /// when stale, as <see cref="BindSunMaps"/>), and the same two on the raw units when the blocker search
-    /// has its sampler.</summary>
-    internal static void BindCubeMaps()
-    {
-        if (!_rawProbed) ProbeRawSampler();
-        bool fresh = CasterPass.CubesFresh;
-        uint st = CubeShadowOr(fresh ? CasterPass.CubeTex : 0), dy = CubeShadowOr(fresh ? CasterPass.CubeDynTex : 0);
-        Gl.ActiveTexture(Gl.TEXTURE0 + CubeUnit);
-        Gl.BindTexture(Gl.TEXTURE_CUBE_MAP_ARRAY, st);
-        // The dynamic pool rides the same publish -- the per-slot page indices carry PAGE+1, so a slot
-        // with no movers (or a session with no pool) reads 0 and the receiver stays static-only there.
-        Gl.ActiveTexture(Gl.TEXTURE0 + CubeDynUnit);
-        Gl.BindTexture(Gl.TEXTURE_CUBE_MAP_ARRAY, dy);
-        if (_rawSampler != 0)
-        {   // The same two arrays on the raw units; the sampler object bound there strips the compare
-            Gl.ActiveTexture(Gl.TEXTURE0 + TextureSlots.LocalShadowRaw);
-            Gl.BindTexture(Gl.TEXTURE_CUBE_MAP_ARRAY, st);
-            Gl.ActiveTexture(Gl.TEXTURE0 + TextureSlots.LocalShadowDynRaw);
-            Gl.BindTexture(Gl.TEXTURE_CUBE_MAP_ARRAY, dy);
-        }
-        Gl.ActiveTexture(Gl.TEXTURE0);       // leave unit 0 current: the batch loop rebinds diffuse textures
-    }
 }

@@ -9,8 +9,8 @@ namespace CX.Alloy;
 internal static class Shadows
 {
     internal static readonly KnobGroup G;
-    internal static readonly Knob<bool> Enabled, SunDyn, Casters, Gather, Receiver, Rebake, Split, Layered, RefreshAll, DynSrc,
-                                        DynEvents, FlipCollect, MaskH, Trace, Detail;
+    internal static readonly Knob<bool> Enabled, SunDyn, Casters, Gather, Receiver, Rebake, Split, RefreshAll, DynSrc,
+                                        DynEvents, FlipCollect, Trace, Detail;
     internal static readonly Knob<float> Dist, Soft, Floor, DiscPx, Near, CsmBias, MaskHoles, MaskGraded, FocusDist, DynMin, CubeDist,
                                          SunAngle;
     internal static readonly Knob<int> Cascades, Size, Cubes, CubeSize, DynSize, DynCount, Cap, Fade, FadeSlots,
@@ -134,12 +134,10 @@ internal static class Shadows
         Receiver = G.Toggle("receiver", "receiver", true, Tier.ChatOnly);
         Rebake = G.Toggle("rebake", "rebake", true, Tier.ChatOnly);
         Split = G.Toggle("split", "split", true, Tier.ChatOnly, changed: CasterPass.ShadowInvalidate);
-        Layered = G.Toggle("layered", "layered", true, Tier.ChatOnly);
         RefreshAll = G.Toggle("refreshall", "refreshall", false, Tier.ChatOnly);
         DynSrc = G.Toggle("dynsrc", "dynsrc", true, Tier.ChatOnly);
         DynEvents = G.Toggle("dynevents", "dynevents", true, Tier.ChatOnly, changed: CasterPass.ShadowInvalidate);
         FlipCollect = G.Toggle("flipcollect", "flipcollect", false, Tier.ChatOnly);
-        MaskH = G.Toggle("maskh", "maskh", true, Tier.ChatOnly, changed: CasterPass.ListChanged);
         Trace = G.Toggle("trace", "trace", false, Tier.ChatOnly);
         // the thresholds are not in any bake's key, so a change has to invalidate the held static maps --
         // otherwise the A/B measures the detail the maps were already baked at

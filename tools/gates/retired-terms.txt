@@ -116,3 +116,7 @@ alloy\.(backend|renderthread|rhiimmediate|gpumeter)\b	CX-313
 \bEffectMotionPass\b|\bMotionDefine\b|\bcx_grassdepth_f\b|\bcx_gblade_df\b|\bcx_part_c\b	GL sweep 3
 \bGatherSubmit\b|\bBakeStaticCube\b|\bDrawLayered\b|\bCasterGather\.(Dispatch|DispatchLayer|Begin|Stand)\b	GL sweep 3
 \bCullPass\.(Begin|Dispatch|BuildHiZ|Active|Ready|CullFrames|KeptDraws|CulledDraws)\b|\bcx_hiz_f\b	GL sweep 3
+# The GL shadow bracket: the depth arrays and framebuffer it allocated, the handle-sampled masked pair only it
+# built, the per-view fallback its extension probe chose, and the GL-vs-Vulkan bake reading. Vulkan bakes every view.
+\bshadow\.(layered|maskh)\b|\bHandleMaskReady\b|\bEnsureHandleMask\b|\bDepthArray\b|\bFboChecked\b	GL sweep 4
+\bCasterPass\.(CascadeTex|SunDynTex|CubeTex|CubeDynTex)\b|\bVkProbeAgainstGl\b|\bBindSunMaps\b|\bBindCubeMaps\b	GL sweep 4

@@ -92,7 +92,7 @@ public sealed unsafe partial class CasterPass : IExtenderService
     private static int _cascadeStamp = -1, _cubeStamp = -1;
 
     private static ExtenderLog? _log;
-    private static bool _armed, _disarmed;
+    private static bool _armed;
     private static uint* _primTable;
 
     // --- lifecycle + diagnostics
@@ -223,7 +223,7 @@ public sealed unsafe partial class CasterPass : IExtenderService
     /// did not change. Everything below runs inside the GL bracket.</summary>
     public static void OnPassSlot()
     {
-        if (!_armed || _disarmed) return;
+        if (!_armed) return;
         _frameSeq++;   // before the early-outs: a frame that renders nothing must READ as stale, not as fresh
         // The overlay's view readout describes THIS frame, so it has to be zeroed ahead of every early-out
         // below -- a frozen count left over from the last frame that rendered reads as a pass still baking.
@@ -303,7 +303,7 @@ public sealed unsafe partial class CasterPass : IExtenderService
         if (sun || (_cubeLights > 0 && FrameInputs.LocalLightCount > 0) || (sun && Weather.CoverWanted) || LightmapBake.WantsGather)
         {
             AlloyRenderer.Step("shadow bracket: caster programs and the gather staging");
-            if (onVk) { EnsureHandleMask(); _gStaged = GatherStage(); }
+            if (onVk) _gStaged = GatherStage();
         }
         // #282: the blanket invalidate is read by BOTH passes and cleared by the cube scan, so it is snapshot
         // once here -- FrameGraph decides the order of the two, and whichever ran second would otherwise miss it.
@@ -426,22 +426,16 @@ public sealed unsafe partial class CasterPass : IExtenderService
                    // rate -- the number the toroidal-escalation verdict reads. A layer marked C degraded
                    // itself to the combined bake (static half stale essentially every frame), which is
                    // today's behaviour and not a wrong shadow.
-                   (_gl.SunDynTex != 0
+                   (!_vk.SunDyn.IsNull
                     ? $"; static per layer {SunLayerReadout()} /frame, " +
                       $"{(float)_sunDynBakedViews / _frames:F1} dynamic bakes/frame ({(float)_sunDynSkipped / _frames:F1} held by cadence), " +
                       $"degraded-to-combined [{SunCombinedReadout()}]"
                     : "; sun split OFF (shadow.sundyn 0)") + ") " +
-                   // #307: which submission path the views took, and what it cost.
-                   (_layerDial
-                    ? _layerProbe > 0 && _gl.ProgLayer != 0
-                      ? $"(layered bake: {(float)CasterGather.LayerDispatches / _frames:F1} dispatches over " +
-                        $"{(float)CasterGather.LayerViews / _frames:F1} views/frame, " +
-                        $"{_gDrawN} staged draws in {_gGroups} batches ({MaskedBatches()} masked)" +
-                        (_layerFlushFails > 0 ? $", {_layerFlushFails} flush FAILURES" : "") + ") "
-                      : _layerProbe < 0
-                        ? "(layered bake UNAVAILABLE -- no ARB_shader_viewport_layer_array, per-view path) "
-                        : ""
-                    : "(layered bake OFF -- /shadow layered 1) ") +
+                   // #307: what the one submission path cost.
+                   ($"(layered bake: {(float)CasterGather.LayerDispatches / _frames:F1} dispatches over " +
+                    $"{(float)CasterGather.LayerViews / _frames:F1} views/frame, " +
+                    $"{_gDrawN} staged draws in {_gGroups} batches ({MaskedBatches()} masked)" +
+                    (_layerFlushFails > 0 ? $", {_layerFlushFails} flush FAILURES" : "") + ") ") +
                    $"(bakes charged to -- sun: blanket {_bakeWhy[WhySun]}, key {_bakeWhy[WhySun + 1]}, " +
                    $"mover {_bakeWhy[WhySun + 2]}; cube: blanket {_bakeWhy[WhyCube]}, key {_bakeWhy[WhyCube + 1]}, " +
                    $"mover {_bakeWhy[WhyCube + 2]}) " +
