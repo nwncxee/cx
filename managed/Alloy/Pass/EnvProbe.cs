@@ -177,7 +177,7 @@ internal static unsafe class EnvProbe
     /// has walked <see cref="MoveDist"/> out of the last one. The frame floor sits in front of both.</summary>
     internal static bool Wanted(Vector3 eye, int frame)
     {
-        if (!_on || _down.Failed || !Renderer.OnVulkan && Gl.ClearColor == null || LightmapBake.Held) return false;
+        if (!_on || _down.Failed || LightmapBake.Held) return false;
         if (frame - _lastFrame < MinFrames) return false;
         return !Ready || Vector3.DistanceSquared(eye, Origin) > MoveDist * MoveDist;
     }

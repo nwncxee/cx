@@ -73,6 +73,7 @@ internal static unsafe partial class TextAtlas
         for (int i = 0; i < orphans.Count; i++)
         {
             if (orphans[i] == 0) continue;
+            if (!Renderer.OnVulkan) GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, orphans[i]);   // a Vulkan name has no GL object
             Forget(orphans[i]);
             Deleted++;
         }
@@ -98,7 +99,7 @@ internal static unsafe partial class TextAtlas
                 _log?.Always("TextAtlas: the Vulkan device never came up on this thread -- CX fonts do NOT DRAW");
             return false;
         }
-        uint t = VkTextures.NewName();
+        uint t = Renderer.OnVulkan ? VkTextures.NewName() : UploadGl(p);
         if (t == 0) return false;
         p.Font.Atlas = t;
         MirrorVk(t, p);

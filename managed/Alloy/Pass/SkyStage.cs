@@ -73,8 +73,6 @@ internal static unsafe class SkyStage
     /// lazily on the next sky frame.</summary>
     internal static void DropPrograms()
     {
-        if (!Renderer.OnVulkan)
-            for (int i = 0; i < _gl.Count; i++) if (_gl.Progs[i].Prog != 0) Gl.DeleteProgram(_gl.Progs[i].Prog);
         _gl = new SkyState();
     }
 
@@ -119,9 +117,6 @@ internal static unsafe class SkyStage
         e.NativeLive = TryNative(resref, vkName, out e.Native, out uint prog);
         e.Prog = e.NativeLive ? prog : Build(resref, native: false, vkName);
         if (e.Prog == 0) { e.Failed = true; return 0; }
-        // A native program that its stage's images refuse (a type that disagrees, say) is replanted on the plain one.
-        if (!Locate(ref e)) Replant(ref e);
-        if (e.Prog == 0) return 0;
         if (e.NativeLive) StageResources.Use(e.Native);
         _log?.Info(e.NativeLive
             ? $"SkyStage: {StageResources.Prefix}{resref}.shd hosted as the sky's fragment stage -- the native "
@@ -136,11 +131,9 @@ internal static unsafe class SkyStage
     private static void Replant(ref Entry e)
     {
         uint vkName = e.Prog;
-        if (e.Prog != 0 && !Renderer.OnVulkan) Gl.DeleteProgram(e.Prog);
         e.NativeLive = false;
         e.Prog = Build(e.Ref, native: false, vkName);
         if (e.Prog == 0) { e.Failed = true; return; }
-        Locate(ref e);
         _log?.Info($"SkyStage: {e.Ref}.shd is hosted plainly from here on -- its native stage stood down");
     }
 
@@ -233,46 +226,9 @@ internal static unsafe class SkyStage
     private static uint Build(string resref, bool native, uint vkName)
     {
         if (!Texts(resref, native, out var pair, out var embedded)) return 0;
-        if (Renderer.OnVulkan) return vkName;
-        string what = What(resref, native);
-        uint prog = GlProgram.Graphics(pair.Vs, pair.Fs, _log, what);
-        if (prog == 0 && (pair.Vs != embedded.Vs || pair.Fs != embedded.Fs))
-        {
-            _log?.Info($"{what}: an override .shd failed to build -- falling back to the embedded stages");
-            prog = GlProgram.Graphics(embedded.Vs, embedded.Fs, _log, what);
-        }
-        if (prog != 0 && GlProgram.LastStubbed)
-        {
-            Gl.DeleteProgram(prog);
-            prog = 0;
-        }
-        // "NOT DRAWN" belongs to the PLAIN arm alone: a native stage that will not build is followed by this same
-        // method on the stage the engine runs, and StageResources.Fail is what says so. Claiming no sky here would
-        // be a line about something that is not happening.
-        if (prog == 0 && !native)
-            _log?.Always($"SkyStage: the sky program for {resref}.shd did not build (a stubbed stage is a black "
-                       + "dome, so it is refused too) -- the sky is NOT DRAWN; see the compile log above");
-        return prog;
+        return vkName;
     }
 
-    /// <summary>The program's uniform locations, and its attachment to its native stage's images and the frame
-    /// uniforms. False when the native stage refused it: the caller replants the entry.</summary>
-    private static bool Locate(ref Entry e)
-    {
-        if (Renderer.OnVulkan) return true;
-        uint p = e.Prog;
-        e.Vp = GlProgram.Loc(p, "uVP"); e.DrawBase = GlProgram.Loc(p, "uDrawBase");
-        e.Tex = GlProgram.Loc(p, "uTex"); e.Tex1 = GlProgram.Loc(p, "texUnit1");
-        e.Tint = GlProgram.Loc(p, "uTint"); e.SkyFog = GlProgram.Loc(p, "uSkyFog");
-        e.ViewInv = GlProgram.Loc(p, "uViewInv");
-        // The engine's own per-draw constant colour: PartTriMesh::Mat's SetColor4f, which every stock stage
-        // seeds FragmentColor from. Declared by the CONTENT stage, so this may be -1.
-        e.Global = GlProgram.Loc(p, "globalColor");
-        e.Oit = GlProgram.Loc(p, "uOit"); e.OitDepth = GlProgram.Loc(p, "uOitDepth");
-        e.Env = StageEnvLoc.Locate(p);
-        e.Rec = StageResources.Attach(p, e.NativeLive ? e.Native : -1, -1, _log);
-        return e.Rec != -2;
-    }
 
     /// <summary>A pass is starting: nothing is primed. Cheap, and it is what stops one pass's upload being
     /// credited to the next (the probe's six faces each have their own view-projection).</summary>

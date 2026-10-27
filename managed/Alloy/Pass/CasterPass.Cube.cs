@@ -294,7 +294,7 @@ public sealed unsafe partial class CasterPass
         bool scannedAll = true;
         // #305: the split runs only when its pool exists -- shadow.dyncount 0 or a refused allocation is the
         // combined bake everywhere, exactly as /shadow split 0 spells it.
-        bool split = _split && _cubeDynPages > 0 && (Renderer.OnVulkan || _gl.CubeDynTex != 0);
+        bool split = _split && _cubeDynPages > 0;
         // #322 review: one hidden UNBAKED slot per frame bakes anyway, nearest first -- the warm-up drain.
         // Without it a camera turn finds every hidden slot unbaked at once and the ring smears the burst
         // as visible shadow pop-in; with it the churn is paid gradually while hidden, which is what the

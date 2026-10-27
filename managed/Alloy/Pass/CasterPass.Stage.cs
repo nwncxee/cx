@@ -240,14 +240,10 @@ public sealed unsafe partial class CasterPass
                     for (int d = 0; d < _gN; d++)
                         if (WriteStagedWords(src, d, _gLive[d])) { _gStaleWords++; changed = true; }
                 }
-                // as the rebuild below: each backend that bakes this frame arms its own gather. GL's skips Vulkan
-                // frames, so an A/B frame re-uploads its source whole
-                bool stood = _gN == 0
-                             || (!Renderer.OnVulkan || VkGatherBegin(_gN, src, changed))
-                                && (Renderer.OnVulkan || CasterGather.Begin(_gN, _gGroups, src, changed || Renderer.OnVulkan));
+                bool stood = _gN == 0 || VkGatherBegin(_gN, src, changed);
                 _gDrawN = stood ? _gN : 0;
                 if (stood) { _submitMasked += _gMasked; StageDynamicSource(); }
-                else CasterGather.StandDynamic();
+                else StandDynamicSource();
                 return stood;
             }
         }
@@ -343,10 +339,7 @@ public sealed unsafe partial class CasterPass
         bool ok;
         fixed (CasterSrcRec* src = _gSrc)
         {
-            // an A/B frame publishes to BOTH, so each backend's bake selects out of the one staging
-            bool onVk = !Renderer.OnVulkan || VkGatherBegin(n, src, true);
-            bool onGl = Renderer.OnVulkan || CasterGather.Begin(n, _gGroups, src, true);
-            ok = onVk && onGl;
+            ok = VkGatherBegin(n, src, true);
         }
         if (ok) { _gDrawN = n; _submitMasked += maskedN; StageDynamicSource(); }
         else StandDynamicSource();

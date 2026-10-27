@@ -267,24 +267,7 @@ internal static unsafe partial class LightmapBake
     internal static void CompileNotice()
     {
         int now = GlContextService.Presents;
-        if (Renderer.OnVulkan) { CompileNoticeVk(now); return; }
-        if (!Held && _edgePresent != now || _noticeAt == now || !GlContextService.Inside || TextRig.Atlas == null) return;
-        // CX-100: under the engine's load screen the frozen screen is the notice; a CX backdrop would be a second one.
-        if (LoadScreen.PanelUp) return;
-        int w = TextRig.ViewportW, h = TextRig.ViewportH;
-        if (w <= 0 || h <= 0) return;
-        _noticeAt = now; _captionPhase = -1;   // the screen's batches are shared: the hold's caption rebakes at its next present
-        int bracket = GlContextService.Suspend();   // a nested Leave would hand nothing back; everything below is ENGINE GL
-        int* vp = stackalloc int[4];
-        Gl.GetIntegerv(Gl.VIEWPORT, vp);
-        Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
-        Gl.Viewport(0, 0, w, h);
-        LoadScreen.Notice("Compiling shaders…", "Only once: the result is saved for next time");
-        GlContextService.SwapNow();
-        UiHostService.HandBack();
-        Gl.Viewport(vp[0], vp[1], vp[2], vp[3]);   // GLRender::SetViewPort caches no GL state, so the raw value is all it had
-        if (GlContextService.Resume(bracket)) _log?.Info($"LightmapBake: a shader compile {(Held ? "under the hold" : "on an area's first frame")} -- \"Compiling shaders\" is on screen until it finishes");
-        else { UiHostService.Owe(); _log?.Always("LightmapBake: the 4.6 context REFUSED re-entry after the compile notice -- this frame's Alloy GL runs on the engine's context"); }
+        CompileNoticeVk(now);
     }
 
     /// <summary><see cref="CompileNotice"/> on Vulkan: the backdrop recorded over the composite and presented by Vulkan at

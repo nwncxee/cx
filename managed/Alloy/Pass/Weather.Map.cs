@@ -79,12 +79,6 @@ internal static unsafe partial class Weather
     internal static void UploadMap(int locXf, int locP, bool capturing)
     {
         bool on = MapLive && !capturing && Enabled.V;
-        if (Gl.BindTexture != null && !Renderer.OnVulkan)
-        {
-            Gl.ActiveTexture(Gl.TEXTURE0 + TextureSlots.WetMap);
-            Gl.BindTexture(Gl.TEXTURE_2D, on ? _gl.MapTex : 0);
-            Gl.ActiveTexture(Gl.TEXTURE0);
-        }
         if (locXf >= 0) Gl.Uniform4f(locXf, 0f, 0f, on ? _mapTpm : 0f, WetStrength.V);
         if (locP >= 0) Gl.Uniform4f(locP, PuddleDepth.V, MathF.Max(PuddleEdge.V * PuddleDepth.V, 1e-4f), MapShelterM, Puddles.V);
     }

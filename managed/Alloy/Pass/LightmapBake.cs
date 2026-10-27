@@ -351,20 +351,7 @@ internal static unsafe partial class LightmapBake
 
     private static void UploadRecords()
     {
-        if (Renderer.OnVulkan) { VkUploadRecords(); return; }
-        if (_gl.BufChart == 0)
-        {
-            uint b; Gl.CreateBuffers(1, &b); if (b == 0) return;
-            _gl.BufChart = b; _gl.BufFilled = false;
-        }
-        fixed (float* p = _rec)
-        {
-            if (!_gl.BufFilled) { Gl.NamedBufferData(_gl.BufChart, (IntPtr)((long)_rec.Length * 4), p, Gl.DYNAMIC_DRAW); _gl.BufFilled = true; }
-            else if (_dirtyHi >= _dirtyLo)
-                fixed (float* q = _rec.AsSpan((int)((long)_dirtyLo * RecFloats)))
-                Gl.NamedBufferSubData(_gl.BufChart, (IntPtr)((long)_dirtyLo * RecFloats * 4), (IntPtr)((long)(_dirtyHi - _dirtyLo + 1) * RecFloats * 4), q);
-        }
-        _dirtyLo = int.MaxValue; _dirtyHi = -1;
+        VkUploadRecords();
     }
 
     /// <summary>One fenced PBO readback of a block-aligned page region and the rects it holds:

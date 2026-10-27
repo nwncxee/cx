@@ -52,7 +52,7 @@ internal static unsafe partial class LightmapBake
     private static int Layers
     {
         get => _vkb.Layers;
-        set { if (Renderer.OnVulkan) _vkb.Layers = value; else _gl.Layers = value; }
+        set => _vkb.Layers = value;
     }
 
     /// <summary>A readback's copy is queued and its submit not yet known done.</summary>

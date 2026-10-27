@@ -75,12 +75,6 @@ internal static unsafe partial class Weather
     internal static void BindEsm(int locParams, bool oit)
     {
         bool on = !oit && EsmOk && Cover.V && CasterPass.CoverFresh;
-        if (!oit && !Renderer.OnVulkan)
-        {
-            Gl.ActiveTexture(Gl.TEXTURE0 + TextureSlots.CoverEsm);
-            Gl.BindTexture(Gl.TEXTURE_2D, on ? _gl.EsmTex1 : 0);
-            Gl.ActiveTexture(Gl.TEXTURE0);
-        }
         if (locParams >= 0) Gl.Uniform4f(locParams, _esmC, _esmBias, on ? 1f : 0f, 0f);
     }
 

@@ -64,27 +64,5 @@ public sealed unsafe partial class CasterPass
     /// <summary>The cover-edge knob moved: filter the held bake again at its new width.</summary>
     internal static void RefilterCover() { if (_coverBaked) _coverNew = true; }
 
-    /// <summary>After the layered flush landed this frame's bakes: a new cover map gets its filtered copy (Weather.Esm).
-    /// Vulkan filters its own from the bake count (<see cref="CoverBakes"/>); GL's runs there only for the A/B's half.</summary>
-    private static void CoverFiltered()
-    {
-        if (!_coverNew || Renderer.OnVulkan) return;
-        _coverNew = false;
-        if (!CoverFresh) return;
-        if (Weather.WaterRoof.V)
-        {
-            // water is no caster, so the bake never saw it: stamp the frame's water batches into the layer as
-            // roofs over their beds, under the bake's own state (cull off, LEQUAL), before the filter reads it
-            Gl.BindFramebuffer(Gl.FRAMEBUFFER, _gl.Fbo);
-            Gl.FramebufferTextureLayer(Gl.FRAMEBUFFER, Gl.DEPTH_ATTACHMENT, _gl.DepthTex, 0, CoverLayer);
-            Gl.DrawBuffer(Gl.NONE); Gl.ReadBuffer(Gl.NONE);
-            Gl.Viewport(0, 0, _mapSize, _mapSize);
-            new PassState(depth: true, depthWrite: true, cull: false).Apply();
-            Gl.DepthFunc(Gl.LEQUAL);
-            Matrix4x4 vp = CoverVp;
-            AlloyRenderer.DrawWaterOccluders(&vp);
-        }
-        Weather.FilterCover(_gl.CascadeTex, CoverLayer, _mapSize, Weather.CoverRange.V);
-    }
     internal static string CoverStats() => $"cover {CoverBakes} bakes / {CoverHeld} held / {Weather.EsmBakes} filtered";
 }
