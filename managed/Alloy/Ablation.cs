@@ -22,7 +22,7 @@ internal static unsafe class Ablation
     private const int Sites = 3;
 
     /// <summary>The issue loop stops after this many batches that actually draw, 0 = all of them. Read once per
-    /// batch there, and non-zero only inside <see cref="Blended"/>; no field on this class has an initialiser,
+    /// batch there; no field on this class has an initialiser,
     /// so the class takes no static constructor and that read is a plain static load.</summary>
     internal static int DrawCap;
 
@@ -79,7 +79,7 @@ internal static unsafe class Ablation
         }
         _progs = null; _failed = null; _shipped = null;
         _litProgs = null; _litLocs = null;
-        _litProg = 0; _litList = 0; _litCap = 0; _litSkip = false;
+        _litProg = 0; _litCap = 0; _litSkip = false;
     }
 
     /// <summary>One rung's program, built on the first step that asks for it.</summary>
@@ -118,12 +118,11 @@ internal static unsafe class Ablation
 
     // ---- the blended accumulation's ladder: the lit program, not a compute pass ----------------------------
 
-    /// <summary>Per rung: the accumulation's variant at <c>rung * 2</c> and its OIT-lists twin at
-    /// <c>rung * 2 + 1</c> (0 = none), each with the locations it took at its own link.</summary>
+    /// <summary>Per rung: the accumulation's variant (0 = not built) with the locations it took at its link.</summary>
     private static uint[]? _litProgs;
     private static LitLoc[]? _litLocs;
-    private static uint _litProg, _litList;
-    private static LitLoc _litLoc, _litListLoc;
+    private static uint _litProg;
+    private static LitLoc _litLoc;
     /// <summary>The two draw-side rungs: draw nothing at all, or stop after the first batch that draws -- a
     /// one-time wait costs the same as every group, a per-draw cost almost nothing.</summary>
     private static bool _litSkip;
@@ -143,64 +142,23 @@ internal static unsafe class Ablation
 
     private static bool LitRung(int rung, ExtenderLog? log)
     {
-        _litProg = 0; _litList = 0;
+        _litProg = 0;
         _litSkip = rung == 1;
         _litCap = rung == 2 ? 1 : 0;
         if (rung <= 1) return true;
         if (Programs._litFsSrc == null || Programs._litVsSrc == null || rung > MaxLitRung) return false;
-        _litProgs ??= new uint[(MaxLitRung + 1) * 2];
-        _litLocs ??= new LitLoc[(MaxLitRung + 1) * 2];
-        int k = rung * 2;
+        _litProgs ??= new uint[MaxLitRung + 1];
+        _litLocs ??= new LitLoc[MaxLitRung + 1];
+        int k = rung;
         if (_litProgs[k] == 0)
         {
             string fs = ShaderStages.WithDefine(Programs._litFsSrc, LitDefines(rung));
             _litProgs[k] = GlProgram.Graphics(Programs._litVsSrc, fs, log, $"AlloyRenderer lit program (blended ablate {rung})", host: false);
             if (_litProgs[k] == 0) return false;
             _litLocs[k] = Programs.LitLocs(_litProgs[k]);
-            if (Programs._progLitList != 0)
-            {
-                _litProgs[k + 1] = GlProgram.Graphics(Programs._litVsSrc, OitPass.WithLists(fs), log,
-                                                      $"AlloyRenderer lit program (blended ablate {rung}, OIT lists)", host: false);
-                if (_litProgs[k + 1] == 0) return false;
-                _litLocs[k + 1] = Programs.LitLocs(_litProgs[k + 1]);
-            }
         }
         _litProg = _litProgs[k]; _litLoc = _litLocs[k];
-        _litList = _litProgs[k + 1]; _litListLoc = _litLocs[k + 1];
         return true;
     }
 
-    /// <summary>The blended accumulation's scope: the lit slots point at this step's variant for the length of
-    /// its draws and are put back when it closes, so nothing else in the frame draws with one.</summary>
-    internal ref struct Blended
-    {
-        private uint _lit, _list;
-        private LitLoc _litL, _listL;
-        /// <summary>This rung draws nothing: the bracket opens and closes with no draw in it.</summary>
-        internal bool Skip;
-
-        internal void Begin()
-        {
-            _lit = Programs._progLit46; _list = Programs._progLitList; _litL = Programs._lit; _listL = Programs._litL;
-            Skip = _litSkip;
-            DrawCap = _litCap;
-            if (_litProg != 0) { Programs._progLit46 = _litProg; Programs._lit = _litLoc; }
-            if (_litList != 0) { Programs._progLitList = _litList; Programs._litL = _litListLoc; }
-        }
-
-        internal void Dispose()
-        {
-            DrawCap = 0;
-            Programs._progLit46 = _lit; Programs._lit = _litL;
-            Programs._progLitList = _list; Programs._litL = _listL;
-        }
-    }
-
-    /// <summary>Open the accumulation's scope: <c>using (var step = Ablation.BlendedStep())</c>.</summary>
-    internal static Blended BlendedStep()
-    {
-        Blended b = default;
-        b.Begin();
-        return b;
-    }
 }

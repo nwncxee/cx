@@ -170,7 +170,7 @@ vanilla. There is no walk. A decline is geometry that nothing renders, so each b
   the moment the walk went. Hovering a placeable made it vanish for the length of the hover while
   `Scene::DoHighlightGob` painted a glow over nothing. Alloy draws the part normally now and the engine's
   overlay composited the glow on top. CX-82 took that over too: the glow is Alloy's own pass now
-  (`Highlight`'s outline, or `HighlightGlow`'s glow quads for a root it cannot outline), and no engine draw
+  (`Highlight`'s outline), and no engine draw
   follows the Alloy bracket. What is given up is only
   `PartTriMesh::Mat` @0x450960's highlight branch — `Disable(5)` plus `SetColor4f(1,1,1,alpha)`, the part
   going flat-white-unlit under the cursor.

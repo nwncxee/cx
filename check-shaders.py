@@ -554,16 +554,12 @@ def programs(g):
         # views -- plain and deferred, because the twins are spliced from whichever text the lit build used
         "clustered lit (no soft sun)": (g["cx_ownlit_vs"], nosun(g["cx_ownlit_fs"])),
         "clustered lit (no soft sun, deferred twin)": (g["cx_ownlit_vs"], nosun(g["cx_ownlit_fs"]).replace("#version 460 core\n", "#version 460 core\n#define CX_DEFERRED 1\n#define CX_GBUF_OUT 1\n", 1)),
-        "clustered lit (OIT lists)": (g["cx_ownlit_vs"], g["cx_ownlit_fs"].replace("#version 460 core\n", "#version 460 core\n#define CX_OIT_LISTS 1\n", 1)),
         # CX-188: the deferred twin -- the same two defines Programs.WithDeferred injects, in the same place
         "clustered lit (deferred twin)": (g["cx_ownlit_vs"], g["cx_ownlit_fs"].replace("#version 460 core\n", "#version 460 core\n#define CX_DEFERRED 1\n#define CX_GBUF_OUT 1\n", 1)),
         # CX-188: /alloy bench's blended ladder -- Ablation.LitDefines, in the same place
-        **{f"clustered lit (blended ablate {n}{tw})": (g["cx_ownlit_vs"], g["cx_ownlit_fs"].replace("#version 460 core\n", f"#version 460 core\n{lx}{d}", 1))
-           for tw, lx in (("", ""), (", OIT lists", "#define CX_OIT_LISTS 1\n"))
+        **{f"clustered lit (blended ablate {n})": (g["cx_ownlit_vs"], g["cx_ownlit_fs"].replace("#version 460 core\n", f"#version 460 core\n{d}", 1))
            for n, d in ((3, "#define CX_BLEND_FLAT 1\n"), (4, "#define CX_NO_HOT 1\n#define CX_ABLATE 2\n"),
                         (5, "#define CX_NO_HOT 1\n#define CX_ABLATE 4\n"), (6, "#define CX_NO_HOT 1\n"))},
-        # CX-189: the coverage layer's mask variant -- Programs.EnsureMaskProgram's define, in the same place
-        "clustered lit (A2C mask)": (g["cx_ownlit_vs"], g["cx_ownlit_fs"].replace("#version 460 core\n", "#version 460 core\n#define CX_A2C_MASK 1\n", 1)),
         "clustered lit (decal layer writer)": (g["cx_ownlit_vs"], g["cx_ownlit_fs"].replace("#version 460 core\n", "#version 460 core\n#define CX_DECAL_WRITE 1\n", 1)),
         "coverage layer seed": (g["cx_fullscreen_v"], g["cx_a2cseed_f"]),
         "coverage layer depth": (g["cx_fullscreen_v"], g["cx_a2cdepth_f"]),
@@ -641,8 +637,7 @@ SIDE_EFFECTS = re.compile(r"\b(atomic\w*|imageStore|imageAtomic\w*|gl_FragDepth)
 
 def check_early_z(progs):
     """A fragment-stage side effect (SSBO/image store or atomic, gl_FragDepth) costs the program its early-Z,
-    so it may reach ONLY the OIT-lists twin: every other stage an opaque draw uses must preprocess clean.
-    (The fullbright stage takes the block at RUNTIME through OitPass.WithLists -- a deliberate exception.)
+    so every stage an opaque draw uses must preprocess clean.
     CX-188's deferred twin is checked here too: it draws the OPAQUE and CUTOUT classes, so early-Z is the
     whole point of it, and its G-buffer outputs are plain fragment outputs, not side effects."""
     with tempfile.TemporaryDirectory() as tmp:
@@ -654,8 +649,7 @@ def check_early_z(progs):
             r = subprocess.run(["glslangValidator", "-E", p], capture_output=True, text=True)
             return sorted({m.group(0).split("(")[0].strip() for m in SIDE_EFFECTS.finditer(r.stdout)})
         bad = 0
-        for name, want in (("clustered lit", False), ("clustered lit (OIT lists)", True),
-                           ("clustered lit (deferred twin)", False), ("clustered lit (A2C mask)", False),
+        for name, want in (("clustered lit", False), ("clustered lit (deferred twin)", False),
                            ("owned water", False), ("grass blades", False)):
             got = effects(name)
             ok = bool(got) == want
