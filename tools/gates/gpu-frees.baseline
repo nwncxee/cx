@@ -2,7 +2,6 @@
 4 managed/Alloy/Db/PltGpuCheck.cs
 2 managed/Alloy/Db/TexRegistry.Load.cs
 1 managed/Alloy/DdsReader.Formats.cs
-1 managed/Alloy/Highlight.cs
 1 managed/Alloy/OwnedTextures.cs
 2 managed/Alloy/OwnedTextures.Cube.cs
 1 managed/Alloy/OwnedTextures.Retire.cs

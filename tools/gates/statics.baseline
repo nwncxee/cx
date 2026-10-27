@@ -1,4 +1,4 @@
-12 managed/Alloy/Ablation.cs
+10 managed/Alloy/Ablation.cs
 10 managed/Alloy/AlloyRenderer.Batches.cs
 23 managed/Alloy/AlloyRenderer.Bench.cs
 4 managed/Alloy/AlloyRenderer.Bones.cs
@@ -10,7 +10,6 @@
 7 managed/Alloy/AlloyRenderer.Target.cs
 15 managed/Alloy/AlloyRenderer.Uniforms.cs
 1 managed/Alloy/AlloyRenderer.Vao.cs
-3 managed/Alloy/BlendProfile.cs
 9 managed/Alloy/Core/AlloyGate.cs
 2 managed/Alloy/Core/AurXform.cs
 9 managed/Alloy/Core/StagePool.cs
@@ -84,8 +83,8 @@
 4 managed/Alloy/DdsReader.Formats.cs
 12 managed/Alloy/DebugStringService.cs
 2 managed/Alloy/FrameDiff.cs
-20 managed/Alloy/Highlight.cs
-12 managed/Alloy/Issue.cs
+2 managed/Alloy/Highlight.cs
+1 managed/Alloy/Issue.cs
 5 managed/Alloy/MaterialExtraSlots.cs
 1 managed/Alloy/Mdl/MdlBinaryPayload.cs
 2 managed/Alloy/Mdl/MdlParser.cs
@@ -117,7 +116,7 @@
 6 managed/Alloy/Pass/AreaBorder.cs
 9 managed/Alloy/Pass/Beams.cs
 12 managed/Alloy/Pass/Beams.Db.cs
-18 managed/Alloy/Pass/CasterGather.cs
+16 managed/Alloy/Pass/CasterGather.cs
 10 managed/Alloy/Pass/CasterPass.Cover.cs
 22 managed/Alloy/Pass/CasterPass.cs
 18 managed/Alloy/Pass/CasterPass.Cube.cs
@@ -126,7 +125,7 @@
 15 managed/Alloy/Pass/CasterPass.Stage.cs
 25 managed/Alloy/Pass/CasterPass.Sun.cs
 5 managed/Alloy/Pass/CasterPass.Target.cs
-25 managed/Alloy/Pass/CullPass.cs
+4 managed/Alloy/Pass/CullPass.cs
 10 managed/Alloy/Pass/DeferredLights.cs
 2 managed/Alloy/Pass/DeferredShadows.cs
 1 managed/Alloy/Pass/DepthResource.cs
@@ -135,14 +134,11 @@
 10 managed/Alloy/Pass/FrameSnapshot.cs
 3 managed/Alloy/Pass/FrameTap.cs
 2 managed/Alloy/Pass/GBuffer.cs
-43 managed/Alloy/Pass/GrassField.cs
+34 managed/Alloy/Pass/GrassField.cs
 12 managed/Alloy/Pass/GrassField.Db.cs
 23 managed/Alloy/Pass/GrassField.Push.cs
-5 managed/Alloy/Pass/GrassField.Samplers.cs
-7 managed/Alloy/Pass/GrassField.Shadows.cs
 11 managed/Alloy/Pass/GuiPass.cs
 13 managed/Alloy/Pass/Halos.cs
-17 managed/Alloy/Pass/HighlightGlow.cs
 2 managed/Alloy/Pass/IdTarget.cs
 30 managed/Alloy/Pass/LightmapBake.Area.cs
 65 managed/Alloy/Pass/LightmapBake.cs
@@ -155,7 +151,7 @@
 23 managed/Alloy/Pass/NuiFlush.cs
 5 managed/Alloy/Pass/PairDebt.cs
 21 managed/Alloy/Pass/PairShadows.cs
-44 managed/Alloy/Pass/Particles.cs
+37 managed/Alloy/Pass/Particles.cs
 7 managed/Alloy/Pass/PostChain.cs
 14 managed/Alloy/Pass/PostStack.cs
 2 managed/Alloy/Pass/SceneDepth.cs
@@ -179,7 +175,7 @@
 11 managed/Alloy/Pass/Weather.Tracks.cs
 6 managed/Alloy/Pass/Weather.WetStep.cs
 1 managed/Alloy/PresentTarget.cs
-68 managed/Alloy/Programs.cs
+62 managed/Alloy/Programs.cs
 16 managed/Alloy/RasterReader.cs
 9 managed/Alloy/RasterReader.Forced.cs
 2 managed/Alloy/ResLocate.cs

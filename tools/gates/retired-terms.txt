@@ -107,3 +107,12 @@ alloy\.(backend|renderthread|rhiimmediate|gpumeter)\b	CX-313
 # The GL halves of the SSR, volumetric fog, OIT, coverage-layer and probe passes, and the two knobs only they
 # read: the per-pixel OIT node pool and the mirror pass's own small-object cull. Vulkan draws all five.
 \balloy\.oitlayers\b|\bOitLayers\b|\blight\.ssrplanarcull\b|\bssrplanarcull\b|\bSsrPlanarCull\b	GL sweep 2
+# The GL halves of the grass, particle, highlight, cull and caster-gather passes, the GL colour frame they
+# were issued from, and the knobs and instruments only those read. Vulkan draws every one of them.
+\bgrass\.(shadow|aniso|soften|softedge|prepass|dumpmips|dumpshadow)\b	GL sweep 3
+\bHighlightGlow\b|\bOutlineHighlightPass\b|\bBlendProfile\b	GL sweep 3
+\bOitPass\.WithLists\b|\bCX_OIT_LISTS\b|\bCX_A2C_MASK\b|\b_progLitList\b|\b_progLitMask\b	GL sweep 3
+\bGpuTerm\.(Coverage|Washes)\b|\bWashInteriors\b|\bOpaqueOwnedPass\b|\bIssueBatchesInner\b	GL sweep 3
+\bEffectMotionPass\b|\bMotionDefine\b|\bcx_grassdepth_f\b|\bcx_gblade_df\b|\bcx_part_c\b	GL sweep 3
+\bGatherSubmit\b|\bBakeStaticCube\b|\bDrawLayered\b|\bCasterGather\.(Dispatch|DispatchLayer|Begin|Stand)\b	GL sweep 3
+\bCullPass\.(Begin|Dispatch|BuildHiZ|Active|Ready|CullFrames|KeptDraws|CulledDraws)\b|\bcx_hiz_f\b	GL sweep 3
