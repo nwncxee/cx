@@ -87,7 +87,7 @@ internal static class AlloyGate
     private static AlloyStand Evaluate(out string why)
     {
         if (_optedOut)
-        { why = "alloy.enabled=0 in cx.cfg -- the engine renderer was asked for"; return AlloyStand.Choice; }
+        { why = "alloy.enabled=0 in cx.cfg, or Vulkan cannot start -- the engine renders"; return AlloyStand.Choice; }
         if (!DrawFunnelService.Armed)
         { why = "alloy.drawhooks is not batch in cx.cfg, so nothing is enrolled to draw"; return AlloyStand.Choice; }
         if (!PostChain.Configured)
@@ -191,10 +191,10 @@ internal static class AlloyGate
         // stands Alloy down on Windows. Sound only because CLAUDE.md makes Unresolved a transient state.
         _layoutOk = EngineLayout.Require(log, "Alloy");
         // Restart knob: Boot, not V -- the verdict is frozen for the session whatever the panel says later.
-        _optedOut = !Renderer.Enabled.Boot;
+        _optedOut = !Renderer.On;
         log.Info(_optedOut
-            ? "[alloygate] alloy.enabled=0 -- the engine renders everything this session (alloy.enabled=1 in "
-              + "cx.cfg and restart for the Alloy renderer)"
+            ? "[alloygate] Alloy is off (alloy.enabled=0, or Vulkan cannot start) -- the engine renders everything "
+              + "this session"
             : "[alloygate] Alloy requested (alloy.enabled=0 in cx.cfg and restart for the engine renderer)");
         SelfCheck(log);
         FrameRegistry.Global.Register(FramePhase.Start, 1, OnFrameStart, "AlloyGate.verdict", log);

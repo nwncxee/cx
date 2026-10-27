@@ -63,7 +63,7 @@ public sealed unsafe partial class MovieService : IExtenderService
         SelfCheck(log);
         // Read off the knob, not asked of AlloyGate, so this does not depend on service discovery order --
         // and so vanilla installs nothing.
-        if (!Renderer.Enabled.Boot)
+        if (!Renderer.On)
         { log.Info("Movies: standing down (alloy.enabled=0) -- the engine draws its own movie quad"); return; }
         _orig = hooks.InstallMovieShowFrame(&OnShowFrame);
         if (_orig == null)

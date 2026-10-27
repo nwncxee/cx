@@ -15,8 +15,25 @@ internal static class Renderer
     internal static readonly Knob<bool> Enabled;
     /// <summary>Is Alloy drawing this session? Then it draws the CX scene database (ADR 0028): the seam is installed
     /// and no engine <c>Scene</c>/<c>Gob</c>/<c>Part</c> exists. Off is vanilla. <c>alloy.enabled</c>'s Boot value,
-    /// frozen for the session.</summary>
-    internal static bool On => Enabled.Boot;
+    /// frozen for the session. Alloy is Vulkan's: a refused Vulkan probe stands it down and the game runs vanilla.</summary>
+    internal static bool On => Enabled.Boot && VulkanUp();
+
+    /// <summary>The session's Vulkan verdict, taken once at the first <see cref="On"/>: -1 untaken, 0 refused, 1 up.</summary>
+    private sealed class BootState { public int VkUp = -1; }
+
+    private static readonly BootState _boot = new();
+
+    /// <summary>Can this session's backend run? GL needs no probe; Vulkan's refusal is said once, with the vanilla fallback.</summary>
+    private static bool VulkanUp()
+    {
+        if (_boot.VkUp >= 0) return _boot.VkUp == 1;
+        if (!VkPicked || KnobGroup.Log is not ExtenderLog log) return true;
+        string? why = CX.Graphics.Rhi.VkBackend.Refusal(log);
+        _boot.VkUp = why == null ? 1 : 0;
+        if (why != null)
+            log.Always($"Renderer: Vulkan cannot start ({why}) -- Alloy stands down and the game runs vanilla this session");
+        return why == null;
+    }
     internal static readonly Knob<float> Scale, Lod;
     /// <summary>How strongly the cutout test makes up for the alpha a mip averages away (<c>cx_alphamip.glsl</c>).</summary>
     internal static readonly Knob<float> CutMip;
@@ -62,8 +79,10 @@ internal static class Renderer
     /// Boot, and not a render mode: Vulkan replaces GL Alloy pass by pass.</summary>
     internal static readonly Knob<string> Backend;
     internal const string BackendGl = "gl", BackendVk = "vk";
-    /// <summary>The seam runs on Vulkan this session.</summary>
-    internal static bool OnVulkan => Backend.Boot == BackendVk;
+    /// <summary>The seam runs on Vulkan this session: Alloy is on and Vulkan started.</summary>
+    internal static bool OnVulkan => VkPicked && On;
+    /// <summary><c>alloy.backend</c> names Vulkan, whether or not it can start.</summary>
+    private static bool VkPicked => Backend.Boot == BackendVk;
     /// <summary>Arm <see cref="CX.Alloy.Db.HitProbe"/>, the live hit-test instrument.</summary>
     internal static readonly Knob<bool> HitCheck;
 
@@ -108,8 +127,8 @@ internal static class Renderer
     {
         Quality.Touch();
         G = KnobGroup.Declare("alloy", "Graphics", "Quality", master: "Enable the Alloy renderer",
-            masterHelp: "Draw the 3D world with CX's own OpenGL 4.6 renderer: real-time shadows, HDR, grass, post-processing. "
-                      + "Off, the game's own renderer draws the world and nothing under Graphics applies. "
+            masterHelp: "Draw the 3D world with CX's own Vulkan renderer: real-time shadows, HDR, grass, post-processing. "
+                      + "Off, or on a machine Vulkan cannot run, the game's own renderer draws the world and nothing under Graphics applies. "
                       + "Takes effect at the next launch.",
             masterEffect: Effect.Restart, masterTier: Tier.ChatOnly, order: 302, title: "Display");
         Enabled = G.Master!;
@@ -187,9 +206,9 @@ internal static class Renderer
         DumpShaders = G.Toggle("dumpshaders", "dumpshaders", false, Tier.ChatOnly, Effect.Restart);
         GlDebug = G.Toggle("gldebug", "gldebug", false, Tier.ChatOnly, Effect.Restart);
         RenderThread = G.Toggle("renderthread", "renderthread", false, Tier.ChatOnly, Effect.Restart);
-        Backend = G.Dropdown("backend", "Render backend", new[] { BackendGl, BackendVk }, BackendGl, tier: Tier.ChatOnly,
+        Backend = G.Dropdown("backend", "Render backend", new[] { BackendGl, BackendVk }, BackendVk, tier: Tier.ChatOnly,
                              effect: Effect.Restart,
-                             help: "gl = GL 4.6 renders the frame; vk = Vulkan does (dev-only: the frame's clear until its passes port).");
+                             help: "vk = Vulkan renders the frame (a machine Vulkan refuses runs vanilla); gl = the retiring GL 4.6 renderer.");
         RhiImmediate = G.Toggle("rhiimmediate", "Seam passes submit as they record", true, Tier.ChatOnly,
                                 help: "1 = each command reaches GL as it is recorded; 0 = a pass's whole list at its end. Same GL calls either way.");
         // CX-120: the pass number to dump the frame's whole input set at, 0 = off. A pass NUMBER rather than a

@@ -69,7 +69,7 @@ public sealed unsafe partial class NullGl : IExtenderService
             return false;
         if (!CX.Alloy.Renderer.On)
         {
-            log.Always("NullGl: alloy.backend vk with alloy.enabled=0 -- the engine draws this session, so it keeps its GL context");
+            log.Always("NullGl: Alloy is off this session (alloy.enabled=0, or Vulkan refused) -- the engine draws, so it keeps its GL context");
             return false;
         }
         if (VkBackend.Refusal(log) is string why)

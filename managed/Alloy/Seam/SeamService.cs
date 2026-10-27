@@ -28,7 +28,7 @@ public sealed unsafe class SeamService : IExtenderService
     {
         _log = log;
         Facade.Log = log;
-        if (!Renderer.Enabled.Boot)
+        if (!Renderer.On)
         {
             log.Info("seam: alloy.enabled=0 -- vanilla, no seam installed");
             return;

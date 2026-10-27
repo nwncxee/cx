@@ -14,7 +14,7 @@ public sealed unsafe class LoadBarService : IExtenderService
 {
     public void Initialize(ExtenderLog log, HookService hooks)
     {
-        if (!Renderer.Enabled.Boot) return;
+        if (!Renderer.On) return;
         LoadScreen.Orig = hooks.InstallStatusBarSetStatus(&OnSetStatus);
         if (LoadScreen.Orig == null)
             log.Always("LoadBar: CGuiStatusBar::SetStatus did not hook -- the load bar is the engine's alone and the bake hold shows no progress on it");

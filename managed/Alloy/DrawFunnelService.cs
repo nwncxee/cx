@@ -18,7 +18,7 @@ public sealed class DrawFunnelService : IExtenderService
     public void Initialize(ExtenderLog log, HookService hooks)
     {
         FrameTap.Install(log);   // diagnostic; ahead of the stand-down so a vanilla session can snap the same way
-        if (!Renderer.Enabled.Boot)
+        if (!Renderer.On)
         { log.Info("DrawFunnels: standing down (alloy.enabled=0) -- the engine renders this session"); return; }
         string mode = Renderer.DrawHooks.Boot;
         if (mode != DrawModeBatch)
