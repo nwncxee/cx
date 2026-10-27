@@ -43,11 +43,6 @@ internal static unsafe partial class Particles
     /// (<c>DAT_013eee18</c> = 0.01).</summary>
     private const float NoLifeRate = 0.01f;
 
-    /// <summary>Aurora blend factors: normal alpha is <c>SetBlendFunc(0, 1)</c>, additive
-    /// <c>SetBlendFunc(0, 2)</c>. Both int arguments come from the DISASSEMBLY -- the decompiler drops the
-    /// second and renders both arms as <c>SetBlendFunc(0)</c>, the int-valued twin of the trap
-    /// <see cref="Beams"/>'s <c>projectionWorldZClip</c> fell into.</summary>
-    private const uint GlSrcAlpha = 0x0302, GlOneMinusSrcAlpha = 0x0303, GlOne = 1;   // not-an-offset: GL blend-factor enums
     /// <summary>The alpha-discard threshold a punch-through emitter draws under. It is
     /// <c>fAlphaDiscardValue</c> under <c>RenderInterface::Enable(1)</c>, the same 0.2 every other cutout
     /// class in the Alloy pass uses (<see cref="AlloyClasses.Discard"/>); the other two blend classes draw
@@ -85,19 +80,9 @@ internal static unsafe partial class Particles
     /// <summary>The record and index buffers the vertex stage names, above the light rig it also reads
     /// (<see cref="SsboSlots"/>).</summary>
     internal const uint BindRecs = SsboSlots.ParticleRecs, BindIdx = SsboSlots.ParticleIdx;
-    /// <summary>The compute stage's inputs. <see cref="BindSpans"/> is one entry per emitter the pass
-    /// placed, <see cref="BindGroups"/> one per draw group.</summary>
-    private const uint BindSpans = SsboSlots.ParticleSpans, BindGroups = SsboSlots.ParticleGroups;
-
-    /// <summary>The index-build workgroup size, and the largest group the compute sort will order: one
-    /// workgroup per draw group, one shared-memory bitonic network per blended group. ponytail: the cap is
-    /// what the shared arrays hold (2048 * (float + uint) = 16KB, half the 32KB GL guarantees), and a bigger
-    /// group keeps fill order -- a global key sort is the upgrade, and <c>sort-skipped=</c> the trip-wire.</summary>
-    private const int SortLocal = 256, SortCap = 2048;
-    /// <summary>The top bit of a group descriptor's particle count, set by the CPU on exactly the groups the
-    /// sort may reorder. The count itself is bounded by <see cref="MaxRecs"/>, so the bit is free -- and it
-    /// is the ONLY thing that decides a reorder, which is what keeps the classes separable.</summary>
-    private const uint SortFlag = 0x80000000u;   // not-an-offset: a sort-key bit of ours
+    /// <summary>The largest group the depth sort will order. ponytail: a bigger group keeps fill order --
+    /// a global key sort is the upgrade, and <c>sort-skipped=</c> the trip-wire.</summary>
+    private const int SortCap = 2048;
 
     /// <summary>Emitters tracked at once. Past this an emitter is declined and, with the engine walk gone,
     /// does not draw at all -- which is the whole cost of the cap.</summary>
@@ -189,10 +174,6 @@ internal static unsafe partial class Particles
     /// offset, unused), std430 <c>uvec4</c>. This is the whole of what replaced the per-particle CPU index
     /// loop: three numbers an emitter instead of four bytes a particle.</summary>
     private static readonly uint[] _span = new uint[MaxEmitters * 4];
-    /// <summary>One descriptor per draw group -- (first span, spans, index offset, particles with
-    /// <see cref="SortFlag"/>). One workgroup consumes one of these, and a group is single-class by
-    /// construction, so no workgroup can ever move a particle across a class.</summary>
-    private static readonly uint[] _grp = new uint[MaxGroups * 4];
     /// <summary>Emitters in draw order, grouped -- the permutation of <see cref="_order"/> the writer walks.
     /// </summary>
     private static readonly int[] _draw = new int[MaxEmitters];
@@ -203,13 +184,6 @@ internal static unsafe partial class Particles
 
     private static ExtenderLog? _log;
     private static AurTextureBindInUnitFn _bindInUnit;
-    /// <summary>The engine's bound-texture cache, snapshot-restored across the draw loop. See
-    /// <see cref="SymbolMap.GlBoundTextures"/> for why a pass that draws in its own context has to.</summary>
-    private static ulong* _engBoundTex;
-    private static uint* _engActiveStage, _engStageEnabled;
-    /// <summary>Entries in <c>GLRender::m_boundTextures</c>, from the 0x10-iteration clear loop in
-    /// <c>GLRender::ResetRenderStates</c> @0x4d1810.</summary>
-    private const int EngTexStages = 16;
     private static EmitterGetTileAlphaFn _tileAlpha;
     private static EmitterGetGobAlphaFn _gobAlpha;
     private static EmitterIsSplatFn _isSplat;
@@ -219,34 +193,6 @@ internal static unsafe partial class Particles
     /// come up, so this client cannot run the Alloy pass at all. It is not the user toggle
     /// (<see cref="Enabled"/>) and <c>particles.enabled</c> must never clear it.</summary>
     private static bool _off;
-    /// <summary>Every GL name and location the context owns, in one object: <see cref="ContextLost"/> replaces it.</summary>
-    private sealed class PartGlState
-    {
-        public bool Failed;
-        public uint Prog, Vao, RecBuf, IdxBuf, Samp;
-        /// <summary>The index-build/sort compute program and its two descriptor buffers.</summary>
-        public uint CsProg, SpanBuf, GrpBuf;
-        public int CsEye = -1;
-        public bool CsFailed;
-        public int SpanCap, GrpCap;
-        public int LocEye = -1;
-        /// <summary>The fog block's locations: the stage fogs through the world pass's own uploader, so it
-        /// takes the world pass's own location set.</summary>
-        public AlloyRenderer.FeatLoc FogLoc;
-        public int LocView = -1, LocProj = -1, LocTex = -1, LocCut = -1, LocAdditive = -1,
-                   LocSoftOn = -1, LocDepthTex = -1, LocEmissive = -1, LocLit = -1, LocViz = -1;
-        /// <summary>The velocity arm: the same two stages with CX_MOTION compiled in. 0 = the class keeps
-        /// the camera's own vectors.</summary>
-        public uint MotionProg;
-        public int MLocView = -1, MLocProj = -1, MLocPrevVp = -1, MLocJitter = -1, MLocSize = -1, MLocTex = -1,
-                   MLocAdditive = -1;
-        /// <summary>The light rig's own uniform locations, in the order <see cref="AlloyLights"/> and
-        /// <see cref="AlloyRenderer"/> want them handed back.</summary>
-        public int LSunTex = -1, LSunDynTex = -1, LCubeTex = -1, LCubeCount = -1, LCubeDynTex = -1,
-                   LSunMedia = -1, LLocalMedia = -1;
-    }
-
-    private static PartGlState _gl = new();
     /// <summary>The CPU shadow of the record buffer, addressed by <see cref="Emit.RecBase"/>. The build
     /// writes here; only the blocks whose hash moved are sent to GL.</summary>
     private static ParticleRec* _recs;
@@ -259,16 +205,14 @@ internal static unsafe partial class Particles
 
     private static int _frame;
     private static int _captured, _declined, _emitters, _groups, _suppressed, _overflow;
-    /// <summary>Record blocks re-sent this period, blocks the hash said were unchanged, and times the block
-    /// allocator ran out and started over (which costs one frame of vanilla emitters).</summary>
-    private static int _blockUploads, _blockSkips, _recResets;
-    /// <summary>Groups the compute pass ordered, and blended groups it left in fill order because they were
-    /// larger than <see cref="SortCap"/>.</summary>
-    private static int _sorted, _sortSkipped;
+    /// <summary>Blocks the hash said were unchanged, and times the block allocator ran out and started
+    /// over (which costs one frame of vanilla emitters).</summary>
+    private static int _blockSkips, _recResets;
+    /// <summary>Groups this period's sort ordered.</summary>
+    private static int _sorted;
     // Why an emitter was declined, split -- "particles are still vanilla" has five different fixes behind
     // it and only the split says which.
-    private static int _decFade, _decEmpty, _decShader, _decTex, _decFull, _reclaimed, _softPasses,
-                       _emissive, _litGroups;
+    private static int _decFade, _decEmpty, _decShader, _decTex, _decFull, _reclaimed, _emissive;
     /// <summary>Light records the emitter tint walked this period -- the cost of sampling the rig per tinted
     /// emitter, and the trip-wire for the walk's ponytail (<see cref="SceneTint"/>).</summary>
     private static int _tintLights;
@@ -294,9 +238,6 @@ internal static unsafe partial class Particles
         SceneDepth.Attach(log);
 
         _bindInUnit = EngineFn.AurTextureBindInUnit;
-        _engBoundTex = (ulong*)Native.Sym(SymbolMap.GlBoundTextures);
-        _engActiveStage = (uint*)Native.Sym(SymbolMap.GlActiveTextureStage);
-        _engStageEnabled = (uint*)Native.Sym(SymbolMap.GlEnabledTextureStages);
         _tileAlpha = EngineFn.EmitterGetTileAlpha;
         _gobAlpha = EngineFn.EmitterGetGobAlpha;
         _isSplat = EngineFn.EmitterIsSplat;
@@ -380,169 +321,9 @@ internal static unsafe partial class Particles
         return s;
     }
 
-    // ---- the Alloy pass -------------------------------------------------------------------------------
-
-    /// <summary>The Alloy emitter pass, after the beams -- vanilla's own placement (step 28, straight after
-    /// <c>Scene::RenderBeams</c>). Leaves GL_BLEND off, the depth mask on and culling off, which is the state
-    /// the beams handed over and the probe capture after this needs.</summary>
-    internal static void Draw(Matrix4x4* view, Matrix4x4* proj, int* viewport, float near, float far,
-                              bool lightingOn)
-    {
-        _frame++;
-        if (_off || !Enabled.V || _gl.Failed || _orderN == 0 || Gl.DrawArrays == null) return;
-        if (!EnsureProgram()) return;
-        int at = Build(view, lightingOn, true, out Vector3 eye, out bool lit, out int groups);
-        if (at == 0) return;
-
-        // #148: the depth snapshot, here rather than at a pass slot of its own. It is not an ordering
-        // decision -- nothing else in the frame reads it and nothing draws between it and the particles --
-        // so it does not belong in the graph, where it would only make FrameGraph.SelfCheck churn.
-        // Taken after the build so the frame's cost is paid only when there is something to soften.
-        bool soft = Soft.V && SceneDepth.Take(viewport);
-
-        if (!Order(groups, eye))
-        {
-            for (int i = 0; i < _drawN; i++)
-                for (int j = 0; j < _wrote[i]; j++)
-                    _idx[_span[i * 4 + 2] + j] = _span[i * 4] + (uint)j;
-            Gl.NamedBufferSubData(_gl.IdxBuf, 0, (IntPtr)((long)at * sizeof(uint)), _idx);
-        }
-        Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindRecs, _gl.RecBuf);
-        Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindIdx, _gl.IdxBuf);
-        Gl.UseProgram(_gl.Prog);
-        Gl.UniformMatrix4fv(_gl.LocView, 1, 0, (float*)view);
-        Gl.UniformMatrix4fv(_gl.LocProj, 1, 0, (float*)proj);
-        Gl.Uniform3fv(_gl.LocEye, 1, (float*)&eye);
-        Gl.Uniform1i(_gl.LocTex, 0);
-        AlloyRenderer.UploadFog(_gl.FogLoc);
-        if (lit)
-        {
-            AlloyLights.BindForDraw();
-            AlloyRenderer.BindPass(_gl.LCubeCount, viewport, near, far);
-            // #336: /particles shadows 0 -- no cube taps on particle fragments (uLocalCubes 0 makes the
-            // receiver answer lit at once). The pass read 1,2-1,8ms GPU at overdraw x0,6-0,9, so the term
-            // is per-fragment cost, and the lit path's cube taps are the one heavy thing in it.
-            if (!Shadows.V && _gl.LCubeCount >= 0) Gl.Uniform1i(_gl.LCubeCount, 0);
-            // A particle is a point in a volume, not a point on a surface: the shadow lookups' normal
-            // offset is a surface remedy and applying it to a camera-facing billboard normal is what put
-            // bands across the smoke. Both lookups keep their constant biases; only the offset goes.
-            Gl.Uniform1f(_gl.LSunMedia, 1f);
-            Gl.Uniform1f(_gl.LLocalMedia, 1f);
-        }
-        Gl.Uniform1i(_gl.LocViz, Viz.V);
-        Gl.Uniform1i(_gl.LocSoftOn, soft ? 1 : 0);
-        Gl.Uniform1i(_gl.LocDepthTex, (int)SceneDepth.Unit);
-        if (soft) { SceneDepth.Bind(); _softPasses++; }
-        Gl.ActiveTexture(Gl.TEXTURE0);
-        if (Sampler.Boot && EnsureSampler()) Gl.BindSampler(0, _gl.Samp);
-        Gl.BindVertexArray(_gl.Vao);
-
-        // #237: _bindInUnit below is the ENGINE's bind wrapper, and it writes the engine's per-stage cache
-        // while the glBindTexture it performs lands in ALLOY's context. Bindings are per-context, so every
-        // entry it leaves is a lie about the engine's own context -- and the engine's next matching bind
-        // early-outs on it (SetActiveTextureAndBind @0x45ce10 returns before glActiveTexture/glBindTexture on
-        // a hit), drawing the 2D UI with whatever its context still held. Snapshot the three globals and put
-        // them back: Alloy never touched the engine's context, so the values found here stay true across the
-        // pass. The alternative -- binding raw, as OwnedTextures does -- would skip the resolve and the
-        // animation-controller tick this pass needs.
-        bool engCache = _engBoundTex != null && _engActiveStage != null && _engStageEnabled != null;
-        ulong* engSaved = stackalloc ulong[EngTexStages];
-        uint engStage = 0, engEnabled = 0;
-        if (engCache)
-        {
-            new ReadOnlySpan<ulong>(_engBoundTex, EngTexStages).CopyTo(new Span<ulong>(engSaved, EngTexStages));
-            engStage = *_engActiveStage; engEnabled = *_engStageEnabled;
-        }
-
-        int cls = -1, cull = -1;
-        uint texName = 0;
-        IntPtr texObj = IntPtr.Zero;
-        bool texDb = false;
-        float emis = float.NaN;
-        for (int gi = 0; gi < groups; gi++)
-        {
-            if (_gParts[gi] == 0) continue;
-            if (_gCls[gi] != cls)
-            {
-                cls = _gCls[gi];
-                if (cls == ClsPunch)
-                {
-                    Gl.Disable(Gl.BLEND); Gl.DepthMask(1);
-                    SceneDepth.Invalidate();   // cutouts write depth: halos/weather must not reuse the pre-particle copy
-                    Gl.Uniform1f(_gl.LocCut, PunchDiscard); Gl.Uniform1i(_gl.LocAdditive, 0);
-                }
-                else
-                {
-                    Gl.Enable(Gl.BLEND); Gl.DepthMask(0);
-                    Gl.BlendFunc(GlSrcAlpha, cls == ClsAdd ? GlOne : GlOneMinusSrcAlpha);
-                    Gl.Uniform1f(_gl.LocCut, NoDiscard);
-                    Gl.Uniform1i(_gl.LocAdditive, cls == ClsAdd ? 1 : 0);
-                }
-                Gl.Uniform1i(_gl.LocLit, lit && cls == ClsBlend ? 1 : 0);
-                if (lit && cls == ClsBlend) _litGroups++;
-            }
-            if (_gCull[gi] != cull)
-            { cull = _gCull[gi]; if (cull != 0) Gl.Enable(Gl.CULL_FACE); else Gl.Disable(Gl.CULL_FACE); }
-            if (_gTexObj[gi] != texObj || _gDb[gi] != texDb)
-            {
-                texObj = _gTexObj[gi];
-                texDb = _gDb[gi];
-                // CX-120: a DB emitter's texture is Alloy's own -- a GL name from TexRegistry, bound
-                // directly. There is no CAurTexture to resolve, no animation controller to tick and no
-                // engine bind cache to keep honest.
-                if (texDb) { Gl.BindTexture(Gl.TEXTURE_2D, (uint)(nint)texObj); texName = (uint)(nint)texObj; }
-                // The engine's own bind, on unit 0, frame -1 ("whatever the controller says") -- exactly the
-                // call Material::BindAllStandardTextures makes. It resolves the referenced texture, takes the
-                // id off the RESOLVED object, and ticks the animation controller. A raw glBindTexture of the
-                // Material's own id skips all three, which is how a smoke emitter ended up drawing another
-                // effect's artwork.
-                else
-                {
-                    _bindInUnit(texObj, 0, -1);
-                    // CX-48: only the engine's resolve hides the name it landed on. Asked once per texture
-                    // CHANGE and only when there is a velocity sweep to use it -- client state, no stall --
-                    // and it is the one way to bind that texture again without ticking its controller twice.
-                    texName = 0;
-                    if (_gl.MotionProg != 0)
-                    {
-                        int nm = 0;
-                        Gl.GetIntegerv(Gl.TEXTURE_BINDING_2D, &nm);
-                        texName = (uint)nm;
-                    }
-                }
-            }
-            _motion.TexName[gi] = texName;
-            if (_gEmis[gi] != emis) { emis = _gEmis[gi]; Gl.Uniform1f(_gl.LocEmissive, emis); }
-            // Six vertices a particle, expanded from gl_VertexID -- there is no vertex buffer any more.
-            Gl.DrawArrays(Gl.TRIANGLES, _gStart[gi] * 6, _gParts[gi] * 6);
-        }
-
-        if (engCache)
-        {
-            new ReadOnlySpan<ulong>(engSaved, EngTexStages).CopyTo(new Span<ulong>(_engBoundTex, EngTexStages));
-            *_engActiveStage = engStage; *_engStageEnabled = engEnabled;
-        }
-
-        if (_gl.Samp != 0) Gl.BindSampler(0, 0);
-        Gl.BindVertexArray(0);
-        Gl.Disable(Gl.BLEND);
-        Gl.Disable(Gl.CULL_FACE);
-        Gl.DepthMask(1);
-
-        // Stamped only on emitters whose records actually reached the GPU -- the engine-side hook reads
-        // this to decide whether to skip its own draw, so an emitter that produced nothing (every particle
-        // slot null, or a linked pair with no partner) has to keep its vanilla one rather than vanish.
-        for (int i = 0; i < _drawN; i++)
-            if (_wrote[i] > 0) { _tab[_sSlot[_draw[i]]].IssuedGen = AlloyRenderer.PassGen; _emitters++; }
-        _groups += groups;
-        // CX-48: what was drawn, for the velocity sweep that re-issues it later in the frame.
-        NoteMotionGroups(groups);
-    }
-
-    /// <summary>The pass's CPU half, shared by both renderers: classify and group the captured emitters, build each
-    /// one's records into its persistent block (sent to GL's store when <paramref name="gl"/>, by its hash) and lay
-    /// the groups' particle ranges out. The particles placed; 0 = nothing to draw.</summary>
-    private static int Build(Matrix4x4* view, bool lightingOn, bool gl, out Vector3 eye, out bool lit, out int groups)
+    /// <summary>The pass's CPU half: classify and group the captured emitters, build each one's records into
+    /// its persistent block, and lay the groups' particle ranges out. The particles placed; 0 = nothing to draw.</summary>
+    private static int Build(Matrix4x4* view, bool lightingOn, out Vector3 eye, out bool lit, out int groups)
     {
         // The camera the billboards face: the frame's own camera block, where the seam published this view's pose.
         eye = default; lit = false; groups = 0;
@@ -590,17 +371,8 @@ internal static unsafe partial class Particles
             // simulation skipped -- costs a hash of its own memory and no bus traffic at all.
             // ponytail: a camera-derived basis in record slots 8..14 can never match across a rotation.
             // Upgrade: build the basis in cx_particle_v instead. See Fnv for the measurement that parks it.
-            ulong h = Fnv(block.Slice(0, wrote));
-            if (gl && h != e.Hash)
-            {
-                e.Hash = h;
-                fixed (ParticleRec* up = block)
-                    Gl.NamedBufferSubData(_gl.RecBuf,
-                                          (IntPtr)((long)e.RecBase * sizeof(ParticleRec)),
-                                          (IntPtr)((long)wrote * sizeof(ParticleRec)), up);
-                _blockUploads++;
-            }
-            else _blockSkips++;
+            e.Hash = Fnv(block.Slice(0, wrote));
+            _blockSkips++;
             // #288: the span, not the particles. The index list itself is filled by the compute pass below
             // -- or, under /particles sort 0, from this same descriptor on the CPU.
             _span[i * 4] = (uint)e.RecBase; _span[i * 4 + 1] = (uint)wrote; _span[i * 4 + 2] = (uint)at;
@@ -1169,135 +941,9 @@ internal static unsafe partial class Particles
         }
     }
 
-    // ---- GL resources ---------------------------------------------------------------------------------
-
-    private static bool EnsureProgram()
-    {
-        if (_gl.Prog != 0) return true;
-        if (_gl.Failed) return false;
-        _gl.Prog = GlProgram.Graphics(ShaderSource.Get("cx_part_v.glsl"),
-            ShaderSource.Get("cx_part_f.glsl"), _log, "Particles");
-        if (_gl.Prog == 0)
-        { _gl.Failed = true; _log?.Info("Particles: program build failed -- no particles are drawn"); return false; }
-        _gl.LocView = GlProgram.Loc(_gl.Prog, "uView");
-        _gl.LocProj = GlProgram.Loc(_gl.Prog, "uProj");
-        _gl.LocEye = GlProgram.Loc(_gl.Prog, "uEye");
-        _gl.LocTex = GlProgram.Loc(_gl.Prog, "uTex");
-        _gl.LocCut = GlProgram.Loc(_gl.Prog, "uAlphaCut");
-        _gl.FogLoc = Programs.FeatLocs(_gl.Prog);
-        _gl.LocAdditive = GlProgram.Loc(_gl.Prog, "uAdditive");
-        _gl.LocSoftOn = GlProgram.Loc(_gl.Prog, "uSoftOn");
-        _gl.LocDepthTex = GlProgram.Loc(_gl.Prog, "uSceneDepth");
-        _gl.LocEmissive = GlProgram.Loc(_gl.Prog, "uEmissive");
-        _gl.LocLit = GlProgram.Loc(_gl.Prog, "uLit");
-        _gl.LocViz = GlProgram.Loc(_gl.Prog, "uViz");
-        _gl.LSunTex = GlProgram.Loc(_gl.Prog, "uSunShadow"); _gl.LSunDynTex = GlProgram.Loc(_gl.Prog, "uSunDynShadow");
-        _gl.LCubeTex = GlProgram.Loc(_gl.Prog, "uLocalShadow"); _gl.LCubeDynTex = GlProgram.Loc(_gl.Prog, "uLocalDynShadow");
-        _gl.LCubeCount = GlProgram.Loc(_gl.Prog, "uLocalCubes");
-        _gl.LSunMedia = GlProgram.Loc(_gl.Prog, "uSunMedia");
-        _gl.LLocalMedia = GlProgram.Loc(_gl.Prog, "uLocalMedia");
-        // The sampler UNITS, once, at link time rather than per pass. uSunShadow and uLocalShadow are a
-        // sampler2DArrayShadow and a samplerCubeArrayShadow; leaving them at their default unit 0 puts three
-        // different sampler types on one unit, which GL 4.6 makes an INVALID_OPERATION that discards the
-        // whole draw, so `/particles lit 0` would otherwise mean "no particles at all" on a strict driver.
-        Gl.UseProgram(_gl.Prog);
-        Gl.Uniform1i(_gl.LSunTex, (int)AlloyRenderer.SunUnit);
-        Gl.Uniform1i(_gl.LSunDynTex, (int)AlloyRenderer.SunDynUnit);
-        Gl.Uniform1i(_gl.LCubeTex, (int)AlloyRenderer.CubeUnit);
-        Gl.Uniform1i(_gl.LCubeDynTex, (int)AlloyRenderer.CubeDynUnit);
-        BuildMotionProgram();
-        return true;
-    }
-
-    /// <summary>The sampler this pass reads every particle diffuse through. Deliberately un-mipmapped:
-    /// every emitter on screen animates through a UV ATLAS, and a mip level of an atlas averages neighbouring
-    /// CELLS together -- so the frame a particle is meant to show gets blended with the frames beside it.
-    /// LINEAR without mips also makes the texture's completeness irrelevant.</summary>
-    private static bool EnsureSampler()
-    {
-        if (_gl.Samp != 0) return true;
-        if (Gl.BindSampler == null) return false;
-        _gl.Samp = Gl.LinearClampSampler();
-        return _gl.Samp != 0;
-    }
-
-    /// <summary>Build the index-build/sort program. Not an overridable stage -- ADR 0012's table is the set a
-    /// content author can restyle, and there is no look here to restyle. A driver whose loader never produced
-    /// the compute entry points latches <see cref="PartGlState.CsFailed"/> and the CPU path stands in.</summary>
-    private static bool EnsureSort()
-    {
-        if (_gl.CsProg != 0) return true;
-        if (_gl.CsFailed) return false;
-        if (Gl.DispatchCompute == null || Gl.MemoryBarrier == null || Gl.BindBufferBase == null)
-        { _gl.CsFailed = true; return false; }
-        _gl.CsProg = GlProgram.Compute(ParticleCs, _log, "Particles index build + depth sort");
-        if (_gl.CsProg == 0) { _gl.CsFailed = true; return false; }
-        _gl.CsEye = GlProgram.Loc(_gl.CsProg, "uEye");
-        _log?.Info($"Particles: #288 armed -- index build and depth sort in compute, "
-                   + $"{SortLocal} threads a group, sort cap {SortCap} particles");
-        return true;
-    }
-
-    /// <summary>May the compute pass reorder this group? The whole of the ordering rule, in one place
-    /// so that <see cref="SelfCheck"/> pins the SAME predicate <see cref="Order"/> stages rather than a
-    /// restatement of it that can drift away from it.</summary>
+    /// <summary>May the depth sort reorder this group? The whole of the ordering rule, in one place so that
+    /// <see cref="SelfCheck"/> pins the SAME predicate the pass stages rather than a restatement of it.</summary>
     private static bool WillSort(int cls, int parts) => cls == ClsBlend && parts > 1 && parts <= SortCap;
-
-    /// <summary>Fill the draw-order index list, and order the blended groups back-to-front, on the GPU.
-    /// False means the caller does it on the CPU instead, unsorted. The separability guarantee is structural:
-    /// one workgroup owns one draw group, a group is single-class by construction, and the groups' index
-    /// ranges are disjoint and issued in group order, so no dispatch can move a particle out of its class.</summary>
-    private static bool Order(int groups, Vector3 eye)
-    {
-        if (!Sort.V || !EnsureSort()) return false;
-
-        // Only the alpha-blended class gets ordered. Punch-through writes depth and discards, so it is
-        // already order-independent; addition commutes with itself, which is exactly why the additive class
-        // could be batched across the screen in the first place -- reordering it would cost a sort and buy
-        // nothing.
-        for (int gi = 0; gi < groups; gi++)
-        {
-            uint count = (uint)_gParts[gi];
-            bool sort = WillSort(_gCls[gi], _gParts[gi]);
-            if (_gCls[gi] == ClsBlend && count > SortCap) _sortSkipped++;
-            if (sort) _sorted++;
-            _grp[gi * 4] = (uint)_gFirst[gi];
-            _grp[gi * 4 + 1] = (uint)_gCount[gi];
-            _grp[gi * 4 + 2] = (uint)_gStart[gi];
-            _grp[gi * 4 + 3] = sort ? count | SortFlag : count;
-        }
-
-        Stage(ref _gl.SpanBuf, ref _gl.SpanCap, _span, _drawN * 4, BindSpans);
-        Stage(ref _gl.GrpBuf, ref _gl.GrpCap, _grp, groups * 4, BindGroups);
-        Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindRecs, _gl.RecBuf);
-        Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindIdx, _gl.IdxBuf);
-        Gl.UseProgram(_gl.CsProg);
-        Gl.Uniform3fv(_gl.CsEye, 1, (float*)&eye);
-        Gl.DispatchCompute((uint)groups, 1, 1);
-        // The vertex stage reads the index list as shader storage; BUFFER_UPDATE is for the other consumer,
-        // which is a later frame's glBufferSubData onto the same buffer the moment /particles sort 0 is
-        // typed. An incoherent shader write is not ordered against a client update without it.
-        Gl.MemoryBarrier(Gl.SHADER_STORAGE_BARRIER_BIT | Gl.BUFFER_UPDATE_BARRIER_BIT);
-        return true;
-    }
-
-    /// <summary>Upload one descriptor array, growing its store by doubling. Both are small enough that the
-    /// whole array goes up every pass: the spans are three numbers an emitter and the groups four, against
-    /// the four bytes a PARTICLE this replaced.</summary>
-    private static void Stage(ref uint buf, ref int cap, uint[] src, int uints, uint binding)
-    {
-        if (buf == 0) { uint b; Gl.CreateBuffers(1, &b); buf = b; }
-        if (cap < uints)
-        {
-            int want = cap > 0 ? cap : 256;
-            while (want < uints) want *= 2;
-            Gl.NamedBufferData(buf, (IntPtr)((long)want * sizeof(uint)), null, Gl.DYNAMIC_DRAW);
-            cap = want;
-        }
-        fixed (uint* p = src)
-            Gl.NamedBufferSubData(buf, IntPtr.Zero, (IntPtr)((long)uints * sizeof(uint)), p);
-        Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, binding, buf);
-    }
 
     /// <summary>The persistent record buffer and the per-frame index list. Growth is by doubling and a grow
     /// REBUILDS the GL store, so every block's hash is void -- <see cref="EnsureBlock"/> re-sends them, one
@@ -1367,15 +1013,11 @@ internal static unsafe partial class Particles
         _recTop = 0;
     }
 
-    /// <summary>The 4.6 context went away: every GL NAME this class holds belongs to it, so the owner is
-    /// replaced and there is nothing to delete. Separate from <see cref="Forget"/> with teeth -- <c>EnsureProgram</c>
-    /// returns true on <c>_gl.Prog != 0</c>, so a table-only reset would leave the draw failing silently while
-    /// the suppression stamp (which keys on vertices STAGED) went on declining the engine's own draw.</summary>
+    /// <summary>The device went away: the table goes with the records it named, and the staging memory is
+    /// released. Separate from <see cref="Forget"/>, which keeps the staging.</summary>
     internal static void ContextLost()
     {
         Forget();
-        _gl = new PartGlState();
-        _motion = new PartMotionState();   // its texture names are that context's
         if (_recs != null) { NativeMemory.Free(_recs); _recs = null; }
         if (_idx != null) { NativeMemory.Free(_idx); _idx = null; }
         _recsCap = 0; _idxCap = 0;
@@ -1385,18 +1027,17 @@ internal static unsafe partial class Particles
     internal static string Describe()
         => $"{(_off ? "UNAVAILABLE" : Enabled.V ? "on" : "off")} soft {(Soft.V ? 1 : 0)} lit {(Lit.V ? 1 : 0)} shadows {(Shadows.V ? 1 : 0)} " +
            $"viz {Viz.V} grid {(Grid.V ? 1 : 0)} guard {(Guard.V ? 1 : 0)} diag {(Diag.V ? 1 : 0)} " +
-           $"sort {(Sort.V ? 1 : 0)}{(_gl.CsFailed ? " (NO COMPUTE -- CPU index build)" : "")} " +
-           $"(batch {(Batch.Boot ? 1 : 0)}, sampler {(Sampler.Boot ? "owned" : "inherited")} -- both restart)";
+           $"sort {(Sort.V ? 1 : 0)} (batch {(Batch.Boot ? 1 : 0)} -- restarts)";
 
     internal static void ResetPeriod()
     {
         _captured = 0; _declined = 0; _emitters = 0; _groups = 0; _suppressed = 0;
         _decFade = 0; _decEmpty = 0; _decShader = 0; _decTex = 0; _decFull = 0;
-        _reclaimed = 0; _overflow = 0; _softPasses = 0; _emissive = 0; _litGroups = 0;
+        _reclaimed = 0; _overflow = 0; _emissive = 0;
         for (int i = 0; i < 7; i++) _cType[i] = 0;
         for (int i = 0; i < ClsCount; i++) _cCls[i] = 0;
         _cSplat = 0; _cTinted = 0; _cGrid = 0;
-        _blockUploads = 0; _blockSkips = 0; _recResets = 0; _sorted = 0; _sortSkipped = 0;
+        _blockSkips = 0; _recResets = 0; _sorted = 0;
         _tintLights = 0;
     }
 
@@ -1410,18 +1051,11 @@ internal static unsafe partial class Particles
           + $", {_suppressed} engine draws suppressed"
           + (_declined == 0 ? "" : $", {_declined} declined ({_decFade} fading, {_decEmpty} empty, " +
                                     $"{_decShader} custom shader, {_decTex} no texture, {_decFull} table full)")
-          + (!Soft.V ? ", soft OFF"
-                    : $", {_softPasses} passes softened" + (SceneDepth.Ready || _softPasses > 0 ? "" : " (NO DEPTH COPY)"))
-          + (!Lit.V ? ", unlit" : $", {_litGroups} lit draws")
+          + (Soft.V ? "" : ", soft OFF")
+          + (Lit.V ? "" : ", unlit")
           + (_emissive == 0 ? "" : $", {_emissive} emissive")
           + (_reclaimed == 0 ? "" : $", {_reclaimed} table slots reclaimed from unwalked emitters")
-          // Per FRAME, like everything around it: as a period total this read "1927/1927 record blocks
-          // re-sent" for what is two blocks and 8KB a frame, which is an alarm where there is no bus traffic.
-          + $", {(float)_blockUploads / MathF.Max(1, frames):F1} of {(float)(_blockUploads + _blockSkips) / MathF.Max(1, frames):F1} record blocks re-sent per frame"
-          + (!Sort.V ? ", index built on the CPU, unsorted (/particles sort 0)"
-             : _gl.CsFailed ? ", index built on the CPU, unsorted (NO COMPUTE)"
-             : $", {_sorted} groups depth-sorted in compute"
-               + (_sortSkipped == 0 ? "" : $", {_sortSkipped} sort-skipped (over {SortCap})"))
+          + (Sort.V ? $", {_sorted} groups depth-sorted" : ", index unsorted (/particles sort 0)")
           + (_recResets == 0 ? "" : $", {_recResets} BLOCK-ALLOCATOR RESETS (see EnsureBlock)")
           + (_overflow == 0 ? "" : $", {_overflow} passes OVERFLOWED (group or record cap)")
           + (_tintLights == 0 ? "" : $", tint={(float)_tintLights / MathF.Max(1, frames):F0} light samples/frame")
@@ -1440,32 +1074,7 @@ internal static unsafe partial class Particles
         return sb.ToString();
     }
 
-    /// <summary>The compute stage's bitonic network, transcribed. It exists ONLY for
-    /// <see cref="SelfCheck"/> -- the shader is the one that runs -- and it is written line for line against
-    /// <see cref="ParticleCs"/> so that a change to one and not the other shows up as a failing check
-    /// rather than as reordered smoke on somebody's screen.</summary>
-    private static void SortModel(float[] key, uint[] val)
-    {
-        int count = key.Length;
-        int n = 1;
-        while (n < count) n <<= 1;
-        var k = new float[n];
-        var v = new uint[n];
-        for (int i = 0; i < n; i++) { k[i] = i < count ? key[i] : 3.0e38f; v[i] = i < count ? val[i] : 0u; }
-        for (int step = 2; step <= n; step <<= 1)
-            for (int j = step >> 1; j > 0; j >>= 1)
-                for (int i = 0; i < n; i++)
-                {
-                    int l = i ^ j;
-                    if (l > i && (k[i] > k[l]) == ((i & step) == 0))
-                    { (k[i], k[l]) = (k[l], k[i]); (v[i], v[l]) = (v[l], v[i]); }
-                }
-        for (int i = 0; i < count; i++) { key[i] = k[i]; val[i] = v[i]; }
-    }
-
     // ---- shaders ---------------------------------------------------------------------------------------
-
-    private static string ParticleCs => ShaderSource.Get("cx_part_c.glsl");
 
     /// <summary>The vertex stage, attributeless: six vertices a particle expanded from <c>gl_VertexID</c>
     /// against the persistent record buffer, through the draw-order index list, with the CPU build's own
