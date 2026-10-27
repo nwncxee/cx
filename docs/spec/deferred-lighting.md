@@ -69,7 +69,7 @@ ones at exactly 0). An alpha-tested wash whose diffuse measures graded alpha dra
 vanilla draws its alpha-tested bucket (blend and the 0.2 test together): drawn hard, its edge showed the colour
 the texture keeps under alpha 0, white on many decal sheets. A blending wash that is not a decal is
 **split** (`AlloyRenderer.WashSplit`): its fully covered texels (coverage times part alpha at least 0.99,
-`uSolid`) draw solid with the cutouts through the deferred twin (`Issue.WashInteriors`, the `washes` GPU
+`uSolid`) draw solid with the cutouts through the deferred twin (the wash split, the `washes` GPU
 term); the rest blends, drawn under `GL_LESS` so every interior fragment meets its own depth and is dropped
 unshaded. A forward-lit blended fragment costs several opaque ones, and these sheets cover much of a town's ground. Only static objects' sheets are washes, and
 never a coverage or env-mapped material or a posed mesh. `[decals] flat sheet ... draws as a wash` in `cx.log` names the first 64 a

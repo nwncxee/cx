@@ -31,7 +31,7 @@ public sealed unsafe partial class AlloyRenderer
     /// untimed; the shadow bracket and the light build run their own elapsed queries OUTSIDE every term by
     /// pass order, which is the premise the guard rests on. The <c>*Key</c> terms are the keyhole-dissolving
     /// tails, and the deferred pass is three dispatches timed apart, so each knob behind them has a number.</summary>
-    internal enum GpuTerm { Prepass, PrepassKey, PrepassFeat, PrepassRetest, Ao, Opaque, OpaqueKey, Cutout, CutoutKey, Grass, GrassDepth, Sky, Passes, Blended, BlendedComposite, BlendedHosted, BlendedDepth, Water, Additive, Particles, Motion, Post, Cull, HiZ, Beams, WaterCopy, Weather, Ssr, Deferred, DeferredShadow, PairDebt, Coverage, Decals, Washes, Fog, Count }
+    internal enum GpuTerm { Prepass, PrepassKey, PrepassFeat, PrepassRetest, Ao, Opaque, OpaqueKey, Cutout, CutoutKey, Grass, GrassDepth, Sky, Passes, Blended, BlendedComposite, BlendedHosted, BlendedDepth, Water, Additive, Particles, Motion, Post, Cull, HiZ, Beams, WaterCopy, Weather, Ssr, Deferred, DeferredShadow, PairDebt, Decals, Fog, Count }
     /// <summary>One elapsed query per term. TIME_ELAPSED cannot nest: a colour timer wrapping the grass and
     /// water ones has its inner End close it early, wedging both inner meters on a stale sample.</summary>
     private static readonly GpuQuery[] _qTerm = new GpuQuery[(int)GpuTerm.Count];
@@ -207,20 +207,13 @@ public sealed unsafe partial class AlloyRenderer
                    // the driver's CPU cost is every pass's call count, and a stage whose calls track its
                    // commands one for one is a stage submitting a draw at a time.
                    $"{Submit.Line(Counters._frames)}, " +
-                   // #243 (AC5): what the GPU cull kept, and what it dropped. Taken off the count buffer
-                   // three frames behind the dispatch, so nothing on the submission path waits for it. The
-                   // "not running" reading is deliberately distinct from a cull that kept everything: one is
-                   // "this instrument has nothing to say", the other is a finding about the area.
+                   // #243 (AC5): the cull's mode and the bounds it tested, measured by the staging walk.
+                   // The "not running" reading is deliberately distinct from a cull that kept everything:
+                   // one is "this instrument has nothing to say", the other is a finding about the area.
                    (CullPass.Mode <= CullPass.ModeOff ? "cull OFF (/alloy cull 2 arms it), "
-                      : !CullPass.Ready ? "cull unavailable -- no compute or no indirect-count, "
-                      : CullPass.CullFrames == 0 ? "cull armed, no counts read back yet, "
-                      : $"cull keeps {(float)CullPass.KeptDraws / CullPass.CullFrames:F0}/frame and drops " +
-                        $"{(float)CullPass.CulledDraws / CullPass.CullFrames:F0} " +
-                        $"({(CullPass.KeptDraws + CullPass.CulledDraws == 0 ? 0f : 100f * CullPass.CulledDraws / (CullPass.KeptDraws + CullPass.CulledDraws)):F0}% of the colour range, " +
-                        $"{(CullPass.Mode >= CullPass.ModeHiZ ? "frustum+hi-Z" : "frustum only")}; bounds span " +
+                      : $"cull {(CullPass.Mode >= CullPass.ModeHiZ ? "frustum+hi-Z" : "frustum only")}; bounds span " +
                         $"{CullPass.SpreadX:F0}x{CullPass.SpreadY:F0}x{CullPass.SpreadZ:F0}u, largest radius " +
-                        $"{CullPass.SpreadMaxR:F0}u), ") +
-                   (Renderer.CullWatch.V ? $"cullwatch {CullPass.WatchCollapses} collapse(s) over {CullPass.WatchReads} reads ({CullPass.WatchLate} late), " : "") +
+                        $"{CullPass.SpreadMaxR:F0}u, ") +
                    // #285: every reason on this list is a HOLE -- geometry that nothing renders this frame.
                    $"NOT DRAWN this frame: unlit-pass {(float)Counters._skipNoLight / Counters._frames:F0} identity {(float)Counters._skipIdentity / Counters._frames:F0} " +
                    $"inactive-LOD {(float)Counters._skipLod / Counters._frames:F0} " +
@@ -300,9 +293,6 @@ public sealed unsafe partial class AlloyRenderer
                     : $"prepass {(float)Counters._prepassDraws / Counters._frames:F0} draws/frame" +
                       (Counters._prepassKeyed == 0 ? "" : $" ({(float)Counters._prepassKeyed / Counters._frames:F0} of them dissolving, keyhole stage)") +
                       (Counters._prepassSkipped == 0 ? "" : $" (+{(float)Counters._prepassSkipped / Counters._frames:F0} excluded, displacing/skinned or cutout)") +
-                      // #489 (AC2): the GPU's kept figures under the staged ceiling -- phase one plus phase
-                      // two, and phase two's own share -- with phase two's submission as its own term.
-                      (CullPass.CullFrames == 0 ? "" : $" (cull kept {(float)CullPass.PrepassKept / CullPass.CullFrames:F0}, of which retest {(float)CullPass.RetestKept / CullPass.CullFrames:F0})") +
                       (_qTerm[(int)GpuTerm.Prepass].Measured ? $" in {GpuMs(GpuTerm.Prepass):F3}ms" : "") +
                       (_qTerm[(int)GpuTerm.PrepassRetest].Measured ? $" + retest {GpuMs(GpuTerm.PrepassRetest):F3}ms" : "") +
                       (_qTerm[(int)GpuTerm.PrepassKey].Measured ? $" + keyhole sweep {GpuMs(GpuTerm.PrepassKey):F3}ms" : "") +
@@ -347,7 +337,6 @@ public sealed unsafe partial class AlloyRenderer
                          // above: this is what light.deferred moved OUT of them (A/B with /light deferred 0).
                          (_qTerm[(int)GpuTerm.Deferred].Measured ? $" / deferred {GpuMs(GpuTerm.Deferred):F2}" : "") +
                          // CX-189: the coverage layer -- seed, the forward-lit A2C draws and the resolve, together
-                         (_qTerm[(int)GpuTerm.Coverage].Measured ? $" / a2c {GpuMs(GpuTerm.Coverage):F2}" : "") +
                          // CX-188 step 3: the per-pixel shadow record the walk above reads, apart from it
                          // (A/B with /shadow deferredres and /shadow cap 0).
                          (_qTerm[(int)GpuTerm.DeferredShadow].Measured
@@ -358,7 +347,6 @@ public sealed unsafe partial class AlloyRenderer
                          // CX-273: the ground decals' layer, which the blended term no longer carries
                          (_qTerm[(int)GpuTerm.Decals].Measured ? $" / decals {GpuMs(GpuTerm.Decals):F3}" : "") +
                          // ...and the washes' solid interiors, drawn beside the cutouts so the blended term keeps only their edges
-                         (_qTerm[(int)GpuTerm.Washes].Measured ? $" / washes {GpuMs(GpuTerm.Washes):F3}" : "") +
                          (_qTerm[(int)GpuTerm.Weather].Measured ? $" / weather {GpuMs(GpuTerm.Weather):F3}" : "") +
                          (_qTerm[(int)GpuTerm.Fog].Measured ? $" / vfog {GpuMs(GpuTerm.Fog):F3}" : "") +
                          $" (gpu terms total {GpuTermsTotal() + CasterPass.ShadowGpuMs:F2} incl. shadows {CasterPass.ShadowGpuMs:F2}; colour bracket span {GpuSpanMs:F2})" : "") +

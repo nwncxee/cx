@@ -401,7 +401,7 @@ public sealed unsafe partial class AlloyRenderer
              & VkIssue(side, ref b, tail, to, r, vp, viewport, near, far, indirect);
     }
 
-    /// <summary>One range of batches, deciding per batch as <see cref="Issue.IssueBatchesInner"/> does: the program, the
+    /// <summary>One range of batches, deciding per batch: the program, the
     /// cut, the blend pair, the depth rule, the wash offset, the cull. Water sits out (its pass is not on Vulkan); a
     /// content pair draws through the plain lit program until content programs port. False only on a refused bind.</summary>
     private static bool VkIssue(CommandList side, ref VkBound b, int from, int to, VkRange r, in Matrix4x4 vp, int* viewport,

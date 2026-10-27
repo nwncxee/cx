@@ -169,7 +169,7 @@ internal static unsafe partial class GrassField
         check.Expect(SamePushers(1), "an unchanged pusher list compares equal");
         _pushWas[0].X = 1.01f;
         check.Expect(!SamePushers(1), "...and one texel of movement does not");
-        _pushNowN = 0; _gl.PushWasN = -1;
+        _pushNowN = 0; _vkg.PushWasN = -1;
         _pushClear = clear0;
 
         // A pusher is kept only where grass lies: one marked cell (texels 8..11 square) must be found by a rect
@@ -190,7 +190,6 @@ internal static unsafe partial class GrassField
         Grass.Enabled.V = false;
         check.Expect(Stats().StartsWith("no grass"), "with the toggle off the pass reports no grass");
         _off = true; Grass.Enabled.V = true;
-        check.Expect(_off && !CastsInto(0), "arming from chat cannot clear the resolution latch");
         _off = off0; Grass.Enabled.V = on0;
 
         // ---- CX-48: the sway, and last frame's. The oracle is the embedded GLSL against the hand-written
@@ -208,11 +207,6 @@ internal static unsafe partial class GrassField
         check.Expect(GrassVmain.Contains("vPrev = uPrevVP * vec4(iPos.xyz + pPrev, 1.0);")
           && BladeVmain.Contains("CxBladeCurve(root, leanPrev, h, press, t, Tprev) + across * side * width * 0.5"),
           "the previous position rides this frame's widening, push and width: the sway term is what moves");
-        check.Expect(GrassDepthFs.Contains("frag = vec4(CxMotionVec(vCur, vPrev), 0.0, 0.0);")
-          && BladeDepthFs.Contains("frag = vec4(CxMotionVec(vCur, vPrev), 0.0, 0.0);"),
-          "both velocity stages write the shared convention, behind the coverage decision that drew the blade");
-        check.Expect(!ShaderContract.SwaySafe("void main() { gl_Position = uVP * vec4(aPos, 1.0); }"),
-          "a vertex stage with no previous blade in it is refused, and its class keeps the camera's field");
 
         log.Info(check.Ok ? "GrassField.SelfCheck: passed" : "GrassField.SelfCheck: FAILED");
     }

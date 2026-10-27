@@ -73,7 +73,7 @@ public sealed unsafe partial class AlloyRenderer
         => !wash ? (byte)0 : cls == (byte)AlloyClass.Blended && !decal ? WashSplit : WashWhole;
 
     /// <summary><see cref="DbWashMode"/>'s values: a wash drawn in one piece, or one whose fully covered interior
-    /// draws solid with the cutouts (<see cref="Issue.WashInteriors"/>) and whose graded rest blends.</summary>
+    /// draws solid with the cutouts and whose graded rest blends.</summary>
     internal const byte WashWhole = 1, WashSplit = 2;
 
     /// <summary>Name a slot's wash in the log once its diffuse is measured -- before that its class is the

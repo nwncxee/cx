@@ -33,7 +33,7 @@ internal static unsafe partial class Particles
         _frame++;
         eye = default; lit = false; groups = 0;
         if (_off || !Enabled.V || _orderN == 0) return 0;
-        int at = Build(view, lightingOn, false, out eye, out lit, out groups);
+        int at = Build(view, lightingOn, out eye, out lit, out groups);
         if (at == 0) return 0;
         for (int i = 0; i < _drawN; i++)
             for (int j = 0; j < _wrote[i]; j++)

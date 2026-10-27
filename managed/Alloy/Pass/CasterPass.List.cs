@@ -232,7 +232,6 @@ public sealed unsafe partial class CasterPass
         VdoRepackFn next = *_repackSlot;
         if (next != null) next(vdo);
         _liveCount = 0; _liveCreatures = 0; _liveGen = -1;
-        CasterGather.Stand();
     }
 
     /// <summary>Once per frame, before any view submits: revalidate every caster and resolve its live world

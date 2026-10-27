@@ -14,14 +14,6 @@ internal static class OitPass
     /// Unblended.</summary>
     internal static int Viz => Renderer.OitViz.V;
 
-    /// <summary>The define that compiles the append block into a fragment stage, after its #version line.</summary>
-    internal static string WithLists(string fs)
-    {
-        int v = fs.IndexOf("#version", StringComparison.Ordinal);
-        if (v < 0) return fs;
-        return fs.Insert(fs.IndexOf('\n', v) + 1, "#define CX_OIT_LISTS 1\n");
-    }
-
     /// <summary>Will the blended range go through the pair this frame, as far as the route can tell before it? The
     /// route then orders that range by state, not distance.</summary>
     internal static bool OrderFree => Mode != 0;

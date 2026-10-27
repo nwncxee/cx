@@ -28,8 +28,6 @@ internal static unsafe class ContentPrograms
         public AlloyRenderer.LitLoc FwdLoc, DefLoc, DepthLoc, CastLoc, CastLayerLoc;
         /// <summary>What each program was attached as (<see cref="StageResources.Attach"/>): -1 is nothing per bind.</summary>
         public int FwdRec = -1, DefRec = -1, DepthRec = -1, CastRec = -1, CastLayerRec = -1;
-        /// <summary>The depth twin's <c>uHlColor</c>: the outline-highlight mask draws through it.</summary>
-        public int DepthHl = -1;
     }
 
     /// <summary>One content pair: its names, its programs, and the facts its build read off the translation.</summary>
@@ -245,9 +243,6 @@ internal static unsafe class ContentPrograms
 
     /// <summary>The pair's depth twin (the prepass's program for it), or 0.</summary>
     internal static uint DepthProgram(int feat) => Of(feat)?.P.Depth ?? 0;
-
-    /// <summary>Where the depth twin takes the outline-highlight mask's colour, or -1.</summary>
-    internal static int DepthHlColor(int feat) => Of(feat)?.P.DepthHl ?? -1;
 
     /// <summary>The depth twin's uniform locations.</summary>
     internal static ref AlloyRenderer.LitLoc DepthLoc(int feat)
@@ -469,7 +464,7 @@ internal static unsafe class ContentPrograms
             switch (slot)
             {
                 case 1: p.Def = t; p.DefLoc = loc; p.DefRec = rec; break;
-                case 2: p.Depth = t; p.DepthLoc = loc; p.DepthHl = GlProgram.Loc(t, "uHlColor"); p.DepthRec = rec; break;
+                case 2: p.Depth = t; p.DepthLoc = loc; p.DepthRec = rec; break;
                 case 3: p.Cast = t; p.CastLoc = loc; p.CastRec = rec; break;
                 default: p.CastLayer = t; p.CastLayerLoc = loc; p.CastLayerRec = rec; break;
             }

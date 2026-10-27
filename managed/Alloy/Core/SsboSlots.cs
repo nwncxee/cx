@@ -30,8 +30,7 @@ internal static class SsboSlots
     /// material table they read beside it.</summary>
     internal const uint GrassInst = 15;
     /// <summary>Compute scratch that reads no rig.</summary>
-    internal const uint ParticleSpans = 8, ParticleGroups = 9,
-                        CullSrc = 8, CullSphere = 9, CullCmd = 10, CullOut = 11, CullCount = 12, CullKey = 13, CullRej = 14,
+    internal const uint CullSrc = 8, CullSphere = 9, CullCmd = 10, CullOut = 11, CullCount = 12, CullKey = 13, CullRej = 14,
                         GatherSrc = 8, GatherCmd = 10, GatherCount = 11, CastSphere = 12,
                         GrassFaces = 8, GrassPatches = 9, GrassOut = 10, GrassCmd = 11,
                         HaloVis = 9, ReadbackOut = 8;
@@ -43,7 +42,7 @@ internal static class SsboSlots
     /// earlier one, which is the rule for every tenant of this point.</summary>
     internal const uint Content = 15;
     /// <summary>Single-pass draws that read no rig.</summary>
-    internal const uint Halos = 8, Glow = 8, Trig = 8, Gui = 8, BonesPrev = 8, DanglyPrev = 9;
+    internal const uint Halos = 8, Trig = 8, Gui = 8, BonesPrev = 8, DanglyPrev = 9;
     /// <summary>The 2D UI's command records, beside the GUI pass's own on <see cref="Gui"/> (a window replay sits between two of its
     /// runs); shares <see cref="DanglyPrev"/>'s point, whose reader binds before it draws.</summary>
     internal const uint UiCmds = 9;
@@ -58,12 +57,11 @@ internal static class SsboSlots
         ["CxPairBuf"] = Pair, ["CxChartBuf"] = Chart,
         ["Stats"] = LightStats, ["CxDeferredStats"] = DeferredStats, ["CxPairStats"] = PairStats, ["CxGrassMats"] = GrassMats,
         ["CxParticleBuf"] = ParticleRecs, ["CxParticleIdx"] = ParticleIdx,
-        ["CxSpanBuf"] = ParticleSpans, ["CxGroupBuf"] = ParticleGroups,
         ["CxCullSrc"] = CullSrc, ["CxCullSphere"] = CullSphere, ["CxCullCmd"] = CullCmd, ["CxCullOutIdx"] = CullOut,
         ["CxCullCount"] = CullCount, ["CxCullKey"] = CullKey, ["CxCullRej"] = CullRej, ["CxReadbackOut"] = ReadbackOut,
         ["CxGatherSrc"] = GatherSrc, ["CxGatherCmd"] = GatherCmd, ["CxGatherCount"] = GatherCount, ["CxCastSphere"] = CastSphere,
         ["CxGrassFaces"] = GrassFaces, ["CxGrassPatches"] = GrassPatches, ["CxGrassOut"] = GrassOut, ["CxGrassCmd"] = GrassCmd, ["CxGrassInst"] = GrassInst,
-        ["CxHaloBuf"] = Halos, ["CxHaloVis"] = HaloVis, ["CxHiliteGlowBuf"] = Glow, ["CxTrigBuf"] = Trig, ["CxGuiBuf"] = Gui,
+        ["CxHaloBuf"] = Halos, ["CxHaloVis"] = HaloVis, ["CxTrigBuf"] = Trig, ["CxGuiBuf"] = Gui,
         ["CxProbeShOut"] = ProbeSh, ["CxBonePrevBuf"] = BonesPrev, ["CxDanglyPrevBuf"] = DanglyPrev,
         ["CxContentBuf"] = Content, ["CxUiCmdBuf"] = UiCmds,
     };

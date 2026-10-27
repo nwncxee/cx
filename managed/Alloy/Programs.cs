@@ -54,10 +54,7 @@ internal static unsafe class Programs
     /// <summary><c>uAlphaMip</c> on the fullbright and feature-depth programs (the lit ones carry it in <see cref="LitLoc"/>).</summary>
     internal static int _locAlphaMip = -1, _depthFeatMip = -1;
 
-    internal static LitLoc _lit, _litL, _litD;
-    /// <summary>The lit program WITH the OIT append block (OitPass.WithLists), or 0. Bound only for lit batches inside a
-    /// linked-list bracket; every other lit draw keeps early-Z through <see cref="_progLit46"/>.</summary>
-    internal static uint _progLitList;
+    internal static LitLoc _lit, _litD;
     /// <summary>ADR 0029: the DEFERRED twin -- the same final text with <c>CX_DEFERRED</c> and
     /// <c>CX_GBUF_OUT</c> in, so the point-light walk and the film statics are compiled out and the G-buffer is
     /// written instead. 0 = no twin, which is what stands the deferred pass down. Bound for the opaque and
@@ -82,13 +79,6 @@ internal static unsafe class Programs
         if (delete && _decal.Prog != 0) Gl.DeleteProgram(_decal.Prog);
         _decal = new DecalProgState();
     }
-    /// <summary>The lit program with <c>CX_A2C_MASK</c> -- the coverage layer's own sample mask
-    /// (<c>alloy.a2cmask</c>). Built on the layer's first ask; 0 until then or after a refusal.</summary>
-    internal static uint _progLitMask;
-    internal static LitLoc _litM;
-    internal static int _litMaskSamples = -1;
-    private static bool _maskFailed;
-
     internal static int _locViz = -1;
     internal static int _locOit = -1, _locOitDim = -1, _locOitGob = -1;
     /// <summary>The fullbright stage's constant colour. White for every unlit draw but a fog-tinted
@@ -194,16 +184,13 @@ internal static unsafe class Programs
     {
         _spliceStale = false;
         if (_progLit46 != 0) Gl.DeleteProgram(_progLit46);
-        if (_progLitList != 0) Gl.DeleteProgram(_progLitList);
         if (_progLitDef != 0) Gl.DeleteProgram(_progLitDef);
         ForgetDecal(delete: true);
-        if (_progLitMask != 0) Gl.DeleteProgram(_progLitMask);
-        _progLitMask = 0; _maskFailed = false;
         if (_progWater != 0) Gl.DeleteProgram(_progWater);
-        _progLit46 = 0; _progLitList = 0; _progLitDef = 0; _progWater = 0;
+        _progLit46 = 0; _progLitDef = 0; _progWater = 0;
         Ablation.Forget(delete: true);
         _litFailed = false; _waterFailed = false;
-        GrassField.DropProgram();
+        // grass splices content too; its stages rebuild from the module now loaded
         // the native stages' images and passes first: the hosts below re-attach their programs to them as they rebuild
         StageResources.DropAll();
         PostStack.DropSpliced();
@@ -230,8 +217,7 @@ internal static unsafe class Programs
         if (_spliceStale) DropSpliced();
         if (_prog46 == 0 && !_progFailed)
         {
-            // ponytail: one cheap stage keeps the lists block (no early-Z for unlit parts); twin it as the lit one if it ever shows
-            string fbFs = OitPass.WithLists(ShaderStages.Source(ShdFullbrightFs));
+            string fbFs = ShaderStages.Source(ShdFullbrightFs);
             uint prog = GlProgram.Graphics(ShdFullbrightVs, ShaderStages.Source(ShdFullbrightVs),
                                            ShdFullbrightFs, fbFs,
                                            _log, "AlloyRenderer fullbright program",
@@ -449,7 +435,7 @@ internal static unsafe class Programs
         string litVs = ShaderStages.Source(ShdLitVs);
         GlProgram.Texts(ShdLitVs, litVs, ShdLitFs, litFs, null, "", out string pv, out string pf);
         var guess = Variants(pf);
-        using var prefetched = GlProgram.Prefetch([(pv, pf, false), (pv, guess.List, false), (pv, guess.Def, false),
+        using var prefetched = GlProgram.Prefetch([(pv, pf, false), (pv, guess.Def, false),
                                                    (pv, guess.Decal, false)], _log);
         // the content regions' STUBS: the program every lit batch draws with carries no content body; a content
         // pair's own programs (ContentPrograms) carry them for the batches that need them
@@ -488,13 +474,7 @@ internal static unsafe class Programs
         _progLit46 = prog;
         _lit = LitLocs(prog);
         _litFsSrc = finalFs;
-        // The OIT-lists twin: the same text that just compiled, plus the append block, bound only inside a mode-2
-        // bracket. Verified on the text because a content override may carry no block at all.
-        var (listFs, defFs, decalFs) = Variants(finalFs);
-        uint pl = listFs != null ? GlProgram.Graphics(vsSrc, listFs, _log, "AlloyRenderer lit program (OIT lists)", host: false) : 0;
-        _progLitList = pl;
-        if (pl != 0) _litL = LitLocs(pl);
-        else _log?.Info("AlloyRenderer: lit OIT-lists twin unavailable -- /alloy oit 2 resolves the weighted way");
+        var (defFs, decalFs) = Variants(finalFs);
         // CX-188 (ADR 0029): the DEFERRED twin, from the same final text. A content override of cx_ownlit_fs
         // (or of a library inside it) that never calls CxGbufWrite cannot be one -- there is no half-deferred
         // frame, so the whole pass stands down with the override named.
@@ -520,32 +500,12 @@ internal static unsafe class Programs
                  + "deferred twin and DeferredLights add");
     }
 
-    /// <summary>The lit variants' fragment texts from the lit stage's final text: the OIT-lists twin, the deferred
-    /// twin and the decal layer's writer, null where that text cannot carry the variant.</summary>
-    private static (string? List, string? Def, string Decal) Variants(string fs)
+    /// <summary>The lit variants' fragment texts from the lit stage's final text: the deferred twin and the
+    /// decal layer's writer, null where that text cannot carry the variant.</summary>
+    private static (string? Def, string Decal) Variants(string fs)
     {
-        string list = OitPass.WithLists(fs), def = WithDeferred(fs);
-        return (list.Contains("atomicAdd(uOitCount") ? list : null, def.Contains("CxGbufWrite(g)") ? def : null,
-                ShaderStages.WithDefine(fs, "CX_DECAL_WRITE 1"));
-    }
-
-    /// <summary>Build <see cref="_progLitMask"/> from the lit program's own final text. False = no lit
-    /// program yet, or the variant refused (latched, logged once): the layer falls back to hardware coverage.</summary>
-    internal static bool EnsureMaskProgram()
-    {
-        if (_progLitMask != 0) return true;
-        if (_maskFailed || _litFsSrc == null || _litVsSrc == null) return false;
-        _progLitMask = GlProgram.Graphics(_litVsSrc, ShaderStages.WithDefine(_litFsSrc, "CX_A2C_MASK 1"), _log,
-                                          "AlloyRenderer lit program (A2C mask)", host: false);
-        if (_progLitMask == 0)
-        {
-            _maskFailed = true;
-            _log?.Info("AlloyRenderer: the A2C mask variant did not build -- alloy.a2cmask stands down, hardware coverage draws the layer");
-            return false;
-        }
-        _litM = LitLocs(_progLitMask);
-        _litMaskSamples = GlProgram.Loc(_progLitMask, "uA2cSamples");
-        return true;
+        string def = WithDeferred(fs);
+        return (def.Contains("CxGbufWrite(g)") ? def : null, ShaderStages.WithDefine(fs, "CX_DECAL_WRITE 1"));
     }
 
     /// <summary>The defines that compile a lit fragment stage into the deferred twin, spliced after its

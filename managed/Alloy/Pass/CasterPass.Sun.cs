@@ -66,9 +66,6 @@ public sealed unsafe partial class CasterPass
     /// <summary>Per-cascade fit radius, published for the receiver's cross-fade band.</summary>
     internal static readonly float[] CascadeFitRadius = new float[MaxCascades];
     private static readonly bool[] _sunBaked = new bool[MaxCascades];
-    /// <summary>Cascades whose static layer this frame re-baked -- the grass casters go in after the flush.</summary>
-    private static readonly bool[] _sunRebaked = new bool[MaxCascades];
-    private static readonly bool[] _sunDynRebaked = new bool[MaxCascades];
     private static readonly bool[] _sunHadMover = new bool[MaxCascades];
     private static long _sunBakedViews, _sunSkippedViews;
 
@@ -239,7 +236,7 @@ public sealed unsafe partial class CasterPass
                 // after it were never scanned -- so their mover evidence is missing too. One blanket frame
                 // covers both.
                 if (!viewOk) { _sunBaked[i] = false; _sunScanned = false; break; }
-                _sunBaked[i] = true; _sunRebaked[i] = combined;
+                _sunBaked[i] = true;
                 _sunKeyCombined[i] = combined;
                 _sunKeyVp[i] = vp;
                 // The latch commits only beside a successful bake: a stalled view must not leave the next
@@ -269,12 +266,8 @@ public sealed unsafe partial class CasterPass
                 // #336: the layer's content is the dynamic SET, which changes on an EVENT in the fit -- a
                 // mover, a membership flip, a ghost -- and on a fit matrix it was not baked under. A held-
                 // still caster keeps the layer SAMPLED, not re-baked.
-                // #196: grass casts into the dynamic layer (its sway is continuous motion), so a grass
-                // cascade has movers by definition and re-bakes every frame
-                bool grass = GrassField.CastsInto(i);
-                hasDyn |= grass;
                 if (!hasDyn || !_sunBaked[i]) _sunDynValid[i] = false;
-                else if (_dynEvents && !invalidate && !_rxForce && !grass && _sunDynValid[i] && _sunDynVp[i] == vp
+                else if (_dynEvents && !invalidate && !_rxForce && _sunDynValid[i] && _sunDynVp[i] == vp
                          && !EventInFit(c, dir, radius, margin))
                     SunDynMask[i] = 1f;
                 // The cadence ladder: a far cascade's dynamic layer holds one frame under the same fit.
@@ -282,7 +275,7 @@ public sealed unsafe partial class CasterPass
                 { SunDynMask[i] = 1f; _sunDynSkipped++; }
                 else if (RenderView(CasterMap.SunDyn, _gl.SunDynTex, _mapSize, i, &vp, dir, c, radius, margin, point: false,
                                     set: CasterGather.SetDynamic, receiver: true))
-                { SunDynMask[i] = 1f; _sunDynBakedViews++; _sunDynValid[i] = true; _sunDynVp[i] = vp; _sunDynRebaked[i] = grass; }
+                { SunDynMask[i] = 1f; _sunDynBakedViews++; _sunDynValid[i] = true; _sunDynVp[i] = vp; }
                 else _sunDynValid[i] = false;
             }
         }

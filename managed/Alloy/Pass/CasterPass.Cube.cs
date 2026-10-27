@@ -765,26 +765,4 @@ public sealed unsafe partial class CasterPass
         }
     }
 
-    /// <summary>The lightmap bake's scratch cube -- the STATIC set's depth from one light, six views
-    /// submitted synchronously into <paramref name="tex"/> (a one-cube cube array, <paramref name="size"/> a
-    /// side) through the same gather the frame's cubes use, filtered to still casters. Every static light is
-    /// baked shadowed this way. False = the caller leaves the light for a later frame.</summary>
-    internal static bool BakeStaticCube(uint tex, int size, Vector3 pos, float near, float far)
-    {
-        near = MathF.Max(near, CubeNear);
-        if (!_gStaged || tex == 0 || !(far > near)) return false;
-        for (int f = 0; f < CubeFaces; f++)
-        {
-            Matrix4x4 vp = ShadowMath.PointLightFaceViewProj(pos, f, near, far);
-            bool ok = CasterGather.Active
-                // CX-50: full detail, thresholds 0. This cube is baked ONCE into the lightmap, so its
-                // triangles are no part of the frame budget, and a coarser caster here would quietly move
-                // baked lighting -- and the bake's cache keys say nothing about a detail level.
-                ? GatherSubmit(tex, size, f, &vp, ShadowMath.CubeFaceForward(f), pos, far, 0f, true,
-                               0f, 0f, CasterGather.SetStatic, false)
-                : ClearLayer(CasterMap.Other, tex, size, f);
-            if (!ok) return false;
-        }
-        return true;
-    }
 }

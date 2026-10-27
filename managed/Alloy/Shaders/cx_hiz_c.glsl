@@ -1,6 +1,6 @@
 #version 460 core
-// One level of the hi-Z pyramid: each texel the max of the 3x3 under it one level up, clamped at the edge, as
-// cx_hiz_f does on GL. CX_HIZ_FIRST reads the scene depth; otherwise the level above, through its storage view.
+// One level of the hi-Z pyramid: each texel the max of the 3x3 under it one level up, clamped at the edge.
+// CX_HIZ_FIRST reads the scene depth; otherwise the level above, through its storage view.
 layout(local_size_x = 8, local_size_y = 8) in;
 #ifdef CX_HIZ_FIRST
 layout(binding = 0) uniform sampler2D uSrc;

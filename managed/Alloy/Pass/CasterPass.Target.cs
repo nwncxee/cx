@@ -138,7 +138,6 @@ public sealed unsafe partial class CasterPass
         _invalidate = true; _moverCount = 0; _ghostCount = 0;
         _prevCount = 0;
         _liveCount = 0; _liveCreatures = 0; _liveGen = -1;
-        CasterGather.Stand();
         CascadeCount = 0; CubeCount = 0;   // the maps describe a world that just went away; stop the receiver sampling them
         if (any) _log?.Info($"CasterPass: caster set released ({why})");
     }
@@ -244,12 +243,6 @@ public sealed unsafe partial class CasterPass
                            "layered bake is unavailable, every view submits on the per-view path");
         }
         if (_layerProbe < 0 || _gl.ProgLayer != 0) return;
-        if (!CasterGather.EnsureLayer())
-        {
-            _gl.LayerProgFailed = true;
-            _log?.Info("CasterPass: the layered gather dispatch failed to build -- per-view path");
-            return;
-        }
         uint p = GlProgram.Graphics(CastLayerVs, CastFs, _log, "CasterPass layered depth program");
         uint pm = GlProgram.Graphics(CastLayerMaskVs, CastMaskFs, _log, "CasterPass layered masked depth program");
         // Both or neither: a layered pass whose masked batches silently fell back to solid quads would
@@ -277,74 +270,10 @@ public sealed unsafe partial class CasterPass
         if (n == 0) return true;
         // the views are only QUEUED here: the colour frame flushes them once its own uploads have published the
         // buffers the bake's binds name
-        _vk.Queued = n; return true;
-        // distinct targets in first-seen order -- at most four exist (sun static/dynamic, cube static/pool).
-        // A fifth-plus target would be a queue writer this flush does not know about; failing the flush
-        // (publish nothing, blanket next frame) is the honest answer, not silently never baking it.
-        uint* seen = stackalloc uint[8];
-        int nt = 0;
-        for (int k = 0; k < n; k++)
-        {
-            bool dup = false;
-            for (int t = 0; t < nt && !dup; t++) dup = seen[t] == _qTex[k];
-            if (dup) continue;
-            if (nt >= 8) return false;
-            seen[nt++] = _qTex[k];
-        }
-        for (int t = 0; t < nt; t++)
-            if (!FlushTarget(seen[t], n)) return false;
+        _vk.Queued = n;
         return true;
     }
 
-    private static bool FlushTarget(uint tex, int n)
-    {
-        int size = 0;
-        bool first = true;
-        // The stale layers clear FIRST, one attach per view: a layered attachment clears every layer at
-        // once, fresh ones included, so the per-layer loop here is correctness rather than thrift. The
-        // target's state (FBO, viewport, buffers, depth state) is set once on the first view; the rest
-        // attach and clear, two calls each instead of a dozen.
-        for (int k = 0; k < n; k++)
-        {
-            if (_qTex[k] != tex) continue;
-            size = _qSize[k];
-            if (first) { if (!BeginTarget(tex, size, _qLayer[k])) return false; first = false; continue; }
-            Gl.FramebufferTextureLayer(Gl.FRAMEBUFFER, Gl.DEPTH_ATTACHMENT, tex, 0, _qLayer[k]);
-            Gl.Clear(Gl.DEPTH_BUFFER_BIT);
-        }
-        Gl.FramebufferTexture(Gl.FRAMEBUFFER, Gl.DEPTH_ATTACHMENT, tex, 0);
-        if (Gl.CheckFramebufferStatus(Gl.FRAMEBUFFER) != Gl.FRAMEBUFFER_COMPLETE)
-        {
-            Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
-            Disarm("the layered caster depth framebuffer is incomplete");
-            return false;
-        }
-        Gl.Viewport(0, 0, size, size);
-        // ponytail: chunking only exists for the blanket-invalidate frame in a huge area -- a settled frame
-        // is one chunk. Growing MaxLayerCmds is the upgrade if the chunk count ever shows on the period line.
-        int chunk = Math.Max(1, MaxLayerCmds / Math.Max(_gDrawN, 1));
-        int k2 = 0;
-        while (true)
-        {
-            int vn = 0, sets = 0;
-            fixed (CasterViewRec* vs = _viewStage)
-                while (k2 < n && vn < chunk)
-                { if (_qTex[k2] == tex) { sets |= 1 << _qSet[k2]; StageView(vs, vn++, k2); } k2++; }
-            if (vn == 0) break;
-            bool ok;
-            fixed (CasterViewRec* vs = _viewStage)
-                ok = CasterGather.DispatchLayer(vs, vn, sets == 1 << CasterGather.SetDynamic);
-            if (!ok) { Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0); return false; }
-            DrawLayered(vn, sets, size);
-            CasterGather.End();
-        }
-        Gl.BindVertexArray(0);
-        Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
-        return true;
-    }
-
-    /// <summary>One queued view into the chunk's staged table, in the layout the dispatch and the layered
-    /// vertex stage both read (mat4 vp; focus/reach; dir/along; receiver/point/set/layer; detail).</summary>
     private static void StageView(CasterViewRec* dst, int vi, int k)
     {
         ref CasterViewRec r = ref dst[vi];
@@ -359,54 +288,6 @@ public sealed unsafe partial class CasterPass
         r.LodR2 = _qLodR2[k];
     }
 
-    /// <summary>The layered pass's batch loop: <see cref="GatherSubmit"/>'s state walk minus the per-view
-    /// uniforms, one indirect-count draw per batch for ALL the chunk's views.</summary>
-    /// <param name="sets">The union of the chunk's view SETS, a bit per <c>CasterGather.Set*</c>: a batch none
-    /// of them can admit a caster from is not issued at all (SL2).</param>
-    private static void DrawLayered(int vn, int sets, int size)
-    {
-        Gl.ActiveTexture(Gl.TEXTURE0);
-        int boundVao = -1, boundMode = -1, boundTex = -1;
-        int boundCut = -1;
-        for (int g = 0; g < _gGroups; g++)
-        {
-            if (BatchIdle(g, sets)) { _mdiSkipped++; continue; }
-            int cut0 = _gTex[g], mode = StageOf(g);
-            if (mode != boundMode)
-            {
-                boundMode = mode;
-                if (mode >= ContentMode) BindContentCaster(mode - ContentMode, layered: true, null, size);
-                else
-                {
-                    Gl.UseProgram(mode == 0 ? _gl.ProgLayer : mode == 1 ? _gl.ProgLayerMask : _gl.ProgLayerMaskH);
-                    if (mode == 1) Gl.Uniform1i(_gl.LocLayerMaskTex, 0);
-                }
-                boundCut = -1;
-            }
-            if (mode >= ContentMode && (int)_gCut[g] != boundCut)
-            {
-                boundCut = (int)_gCut[g];
-                ContentCasterCut(mode - ContentMode, true, _gCut[g]);
-            }
-            else if (mode != 0 && mode < ContentMode && (int)_gCut[g] != boundCut)
-            {
-                CasterCut kind = _gCut[g]; boundCut = (int)kind;
-                Gl.Uniform1f(mode == 1 ? _gl.LocLayerMaskCut : _gl.LocLayerMaskHCut, Threshold(kind));
-                Gl.Uniform1f(mode == 1 ? _gl.LocLayerMaskMip : _gl.LocLayerMaskHMip, Renderer.CutMip.V);
-                Gl.Uniform1i(mode == 1 ? _gl.LocLayerMaskDither : _gl.LocLayerMaskHDither, DitherFor(kind));
-                Gl.Uniform1i(mode == 1 ? _gl.LocLayerMaskEnv : _gl.LocLayerMaskHEnv, kind == CasterCut.EnvAlpha ? 1 : 0);
-            }
-            if (mode == 1 && cut0 != boundTex) { Gl.BindTexture(Gl.TEXTURE_2D, (uint)cut0); boundTex = cut0; }
-            if (_gVao[g] != boundVao) { Gl.BindVertexArray(AlloyRenderer.CasterVao(_gVao[g])); boundVao = _gVao[g]; }
-            CasterGather.DrawLayer(BatchMode(g), g, _gStart[g], _gLen[g], vn);
-            _mdiCalls++;
-        }
-    }
-
-    /// <summary>A depth array sampled with hardware PCF: LINEAR + depth-compare IS the filter, one bilinear
-    /// 2x2 comparison per fetch at no more cost than a plain sample. Same setup for the 2D cascade array and
-    /// the cube array -- only the target and the layer count differ.</summary>
-    /// <summary>0 = the storage was refused, and the pass has already disarmed itself by name.</summary>
     private static uint DepthArray(uint target, int size, int layers)
     {
         uint t; Gl.CreateTextures(target, 1, &t);

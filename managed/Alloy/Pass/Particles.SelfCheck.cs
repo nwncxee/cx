@@ -158,17 +158,6 @@ internal static unsafe partial class Particles
         check.Expect(ClsPunch < ClsBlend && ClsBlend < ClsAdd,
           "punch-through draws FIRST: it writes depth, so the blended classes get to test against it");
 
-        // a dispatch naming a different binding or cap than the CPU staged for reads someone else's buffer
-        check.Expect(ParticleCs.Contains($"binding = {BindRecs}) readonly buffer CxParticleBuf")
-          && ParticleCs.Contains($"binding = {BindIdx}) buffer CxParticleIdx")
-          && ParticleCs.Contains($"binding = {BindSpans}) readonly buffer CxSpanBuf")
-          && ParticleCs.Contains($"binding = {BindGroups}) readonly buffer CxGroupBuf"),
-          "the compute stage names the four bindings this pass binds");
-        check.Expect(ParticleCs.Contains($"local_size_x = {SortLocal}") && ParticleCs.Contains($"CX_SORT_CAP = {SortCap}u"),
-          "the compute stage's workgroup size and shared-array cap are the ones the CPU dispatches for");
-        check.Expect(ParticleCs.Contains("0x80000000u") && SortFlag == 0x80000000u && MaxRecs < SortFlag,
-          "the sort flag rides a bit the particle count can never reach");
-
         // #131's ordering rule rests on exactly two things: groups are single-class, and their ranges
         // disjoint. Staged on the batching path: particles.batch=0 walks the capture order instead, so the
         // player's dial would otherwise decide whether these assertions run at all.
@@ -213,21 +202,6 @@ internal static unsafe partial class Particles
         _drawN = 0; _orderN = 0;
         Array.Clear(_wrote, 0, cls0.Length);
 
-        // the bitonic network as the stage writes it: one that is not a permutation drops particles
-        foreach (int cnt in new[] { 1, 2, 3, 7, 8, 33, 256, 300 })
-        {
-            var key = new float[cnt];
-            var val = new uint[cnt];
-            for (int i = 0; i < cnt; i++) { key[i] = ((i * 37) % cnt) - cnt * 0.5f; val[i] = (uint)i; }
-            SortModel(key, val);
-            bool sorted = true, perm = true;
-            for (int i = 1; i < cnt; i++) if (key[i - 1] > key[i]) sorted = false;
-            var seen = new bool[cnt];
-            foreach (uint v in val) { if (v >= cnt || seen[v]) perm = false; else seen[v] = true; }
-            check.Expect(sorted, $"the bitonic network sorts {cnt} keys ascending -- most negative first, i.e. FARTHEST first");
-            check.Expect(perm, $"...and is a permutation of its input at {cnt}: no particle is dropped or drawn twice");
-        }
-
         // ---- the toggle (#180). Two flags on purpose: the chat toggle must not be able to arm a client
         // where the pass never resolved, and collapsing them back into one would draw from unresolved
         // pointers.
@@ -250,14 +224,6 @@ internal static unsafe partial class Particles
         check.Expect(!ShaderContract.RecordSafe(
             "struct CxParticle\n{\n vec4 a; vec4 b; vec4 c; vec4 d; vec4 e; vec4 f;\n};\n", "CxParticle", RecFloats),
           "a six-vec4 override is refused: it would read every record one vec4 short of the stride");
-        check.Expect(MotionVmain.Contains("vPrev = uPrevVP * vec4(world - (p.centre.xyz - p.prev.xyz), 1.0);")
-          && MotionFmain.Contains("frag = vec4(CxMotionVec(vCur, vPrev), 0.0, 0.0);"),
-          "the velocity arm moves the whole quad by the centre's own step and writes the shared convention");
-        // An additive glow's texture is alpha 1 over a black quad: cut on alpha, its whole quad took the sprite's
-        // vector and TAA dragged the scene behind it along -- the haze round every effect.
-        check.Expect(MotionFmain.Contains("float share = uAdditive != 0 ? max(max(c.r, c.g), c.b) * c.a : c.a;")
-          && MotionFmain.Contains("if (share < CX_MOTION_CUT) discard;") && !MotionFmain.Contains("if (c.a < CX_MOTION_CUT)"),
-          "an additive sprite claims the velocity field by what it adds, not by its alpha");
         // Last frame's centre, off hand-written positions: a slot with no previous frame behind it, a step,
         // and a step too large to be one particle's own movement (a recycled pool slot).
         check.Expect(PrevCentre(true, new Vector3(0f), new Vector3(5f, 6f, 7f)) == new Vector3(5f, 6f, 7f),

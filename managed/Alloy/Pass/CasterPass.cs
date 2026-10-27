@@ -347,7 +347,6 @@ public sealed unsafe partial class CasterPass : IExtenderService
             PairShadows.Stand();   // the pair tiles never landed either: no light may be read as paired this frame
             _invalidate = true; _sunScanned = false; _cubeScanned = false;
         }
-        Array.Clear(_sunRebaked); Array.Clear(_sunDynRebaked);
         // ...and only now may the frame's invalidation be consumed: every pass that ran reached every one of
         // its views, so each of them recorded this frame's movers against its own slots.
         if ((_sunRan || _cubeRan) && (!_sunRan || _sunScanned) && (!_cubeRan || _cubeScanned))
@@ -392,7 +391,7 @@ public sealed unsafe partial class CasterPass : IExtenderService
     private static void Lifecycle()
     {
         if (!GlContextService.Available) Release("4.6 context lost");
-        if (_was.Available && !GlContextService.Available) { ContextLost(); CasterGather.ContextLost(); }
+        if (_was.Available && !GlContextService.Available) ContextLost();
         _was.Available = GlContextService.Available;
         bool inModule = GameGate.InModule;
         if (_was.InModule && !inModule) Release("module unload");

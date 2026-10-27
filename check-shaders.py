@@ -526,12 +526,6 @@ def ablate(src, n):
     return define(src, f"CX_ABLATE {n}")
 
 
-def mot(src):
-    """The velocity arm of a stage (CX.Alloy.GrassField.MotionDefine): what turns a grass path's or the
-    particle pass's stages into the program that writes the field instead of the picture."""
-    return define(src, "CX_MOTION 1")
-
-
 def nosun(src):
     """CX.Alloy.Programs.WithoutSunSoft: the one define that compiles the sun's blocker search and disc out.
     A driver short of the two raw cascade views links THIS text, so the no-soft-sun arm has to compile and
@@ -560,16 +554,12 @@ def programs(g):
         # views -- plain and deferred, because the twins are spliced from whichever text the lit build used
         "clustered lit (no soft sun)": (g["cx_ownlit_vs"], nosun(g["cx_ownlit_fs"])),
         "clustered lit (no soft sun, deferred twin)": (g["cx_ownlit_vs"], nosun(g["cx_ownlit_fs"]).replace("#version 460 core\n", "#version 460 core\n#define CX_DEFERRED 1\n#define CX_GBUF_OUT 1\n", 1)),
-        "clustered lit (OIT lists)": (g["cx_ownlit_vs"], g["cx_ownlit_fs"].replace("#version 460 core\n", "#version 460 core\n#define CX_OIT_LISTS 1\n", 1)),
         # CX-188: the deferred twin -- the same two defines Programs.WithDeferred injects, in the same place
         "clustered lit (deferred twin)": (g["cx_ownlit_vs"], g["cx_ownlit_fs"].replace("#version 460 core\n", "#version 460 core\n#define CX_DEFERRED 1\n#define CX_GBUF_OUT 1\n", 1)),
         # CX-188: /alloy bench's blended ladder -- Ablation.LitDefines, in the same place
-        **{f"clustered lit (blended ablate {n}{tw})": (g["cx_ownlit_vs"], g["cx_ownlit_fs"].replace("#version 460 core\n", f"#version 460 core\n{lx}{d}", 1))
-           for tw, lx in (("", ""), (", OIT lists", "#define CX_OIT_LISTS 1\n"))
+        **{f"clustered lit (blended ablate {n})": (g["cx_ownlit_vs"], g["cx_ownlit_fs"].replace("#version 460 core\n", f"#version 460 core\n{d}", 1))
            for n, d in ((3, "#define CX_BLEND_FLAT 1\n"), (4, "#define CX_NO_HOT 1\n#define CX_ABLATE 2\n"),
                         (5, "#define CX_NO_HOT 1\n#define CX_ABLATE 4\n"), (6, "#define CX_NO_HOT 1\n"))},
-        # CX-189: the coverage layer's mask variant -- Programs.EnsureMaskProgram's define, in the same place
-        "clustered lit (A2C mask)": (g["cx_ownlit_vs"], g["cx_ownlit_fs"].replace("#version 460 core\n", "#version 460 core\n#define CX_A2C_MASK 1\n", 1)),
         "clustered lit (decal layer writer)": (g["cx_ownlit_vs"], g["cx_ownlit_fs"].replace("#version 460 core\n", "#version 460 core\n#define CX_DECAL_WRITE 1\n", 1)),
         "coverage layer seed": (g["cx_fullscreen_v"], g["cx_a2cseed_f"]),
         "coverage layer depth": (g["cx_fullscreen_v"], g["cx_a2cdepth_f"]),
@@ -599,18 +589,13 @@ def programs(g):
         "highlight composite": (g["cx_fullscreen_v"], g["cx_hilitecomp_f"]),
         "owned water": (g["cx_water_vs"], g["cx_water_fs"]),
         "instanced grass": (g["cx_grass_vs"], g["cx_grass_fs"]),
-        "grass depth prepass": (g["cx_grass_vs"], g["cx_grassdepth_f"]),
         "grass scatter": (g["cx_grass_c"],),
         "hi-Z reduce (from depth)": (g["cx_hiz_c"].replace("#version 460 core\n", "#version 460 core\n#define CX_HIZ_FIRST 1\n", 1),),
         "hi-Z reduce (mip to mip)": (g["cx_hiz_c"],),
         **{f"read-back ({t} x{n})": (g["cx_readback_c"].replace("#version 460 core\n", f"#version 460 core\n{d}#define CX_READBACK_WORDS {n}\n", 1),)
            for t, d, n in (("float", "", 1), ("float", "", 2), ("uint", "#define CX_READBACK_UINT 1\n", 1), ("uint", "#define CX_READBACK_UINT 1\n", 4))},
         "grass blades": (g["cx_gblade_vs"], g["cx_gblade_fs"]),
-        "grass blade depth": (g["cx_gblade_vs"], g["cx_gblade_df"]),
-        # CX-48: the velocity arm of each grass path -- GrassField.Motion's define, in the same place
-        "grass motion vectors": (mot(g["cx_grass_vs"]), mot(g["cx_grassdepth_f"])),
-        "grass blade motion vectors": (mot(g["cx_gblade_vs"]), mot(g["cx_gblade_df"])),
-        "particle motion vectors": (mot(g["cx_part_v"]), mot(g["cx_part_f"])),
+        "particles": (g["cx_part_v"], g["cx_part_f"]),
         "clustered light build": (g["cx_cluster_cs"],),
         "deferred lights": (g["cx_deferred_cs"],),
         # CX-188: the film's own dispatch (DeferredLights._progFilm), and the "every light" escapes' variant
@@ -624,7 +609,6 @@ def programs(g):
         "gui": (g["cx_gui_v"], g["cx_gui_f"]),
         "movie quad": (g["cx_movie_v"], g["cx_movie_f"]),
         "trigger highlight": (g["cx_fullscreen_v"], g["cx_hilitetrig_f"]),
-        "highlight glow": (g["cx_hiliteglow_v"], g["cx_hiliteglow_f"]),
         "halo occlusion probe": (g["cx_haloocc_c"],),
         "oit resolve": (g["cx_fullscreen_v"], g["cx_oitresolve_f"]),
         "light beams (scene database)": (g["cx_beamdb_v"], g["cx_beam_f"]),
@@ -653,8 +637,7 @@ SIDE_EFFECTS = re.compile(r"\b(atomic\w*|imageStore|imageAtomic\w*|gl_FragDepth)
 
 def check_early_z(progs):
     """A fragment-stage side effect (SSBO/image store or atomic, gl_FragDepth) costs the program its early-Z,
-    so it may reach ONLY the OIT-lists twin: every other stage an opaque draw uses must preprocess clean.
-    (The fullbright stage takes the block at RUNTIME through OitPass.WithLists -- a deliberate exception.)
+    so every stage an opaque draw uses must preprocess clean.
     CX-188's deferred twin is checked here too: it draws the OPAQUE and CUTOUT classes, so early-Z is the
     whole point of it, and its G-buffer outputs are plain fragment outputs, not side effects."""
     with tempfile.TemporaryDirectory() as tmp:
@@ -666,8 +649,7 @@ def check_early_z(progs):
             r = subprocess.run(["glslangValidator", "-E", p], capture_output=True, text=True)
             return sorted({m.group(0).split("(")[0].strip() for m in SIDE_EFFECTS.finditer(r.stdout)})
         bad = 0
-        for name, want in (("clustered lit", False), ("clustered lit (OIT lists)", True),
-                           ("clustered lit (deferred twin)", False), ("clustered lit (A2C mask)", False),
+        for name, want in (("clustered lit", False), ("clustered lit (deferred twin)", False),
                            ("owned water", False), ("grass blades", False)):
             got = effects(name)
             ok = bool(got) == want
