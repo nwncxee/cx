@@ -8,7 +8,7 @@ using CX.Graphics.Rhi;
 namespace CX.Alloy;
 
 /// <summary>Alloy owns the screen's clears and its present once the GUI is Alloy's and no engine-drawn world
-/// needs the engine's own -- and under <c>alloy.backend vk</c> always, once the window is known: Vulkan presents every
+/// needs the engine's own -- and on Vulkan always, once the window is known: Vulkan presents every
 /// frame and GL's swap never runs. The engine's screen clears are swallowed at <c>RenderInterface::Clear</c> when they
 /// target the default framebuffer; the present is <c>SDL_GL_SwapWindow</c> or Vulkan's, then <c>ResetRenderStates</c>.</summary>
 internal static unsafe class ScreenOwner

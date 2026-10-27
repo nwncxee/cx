@@ -210,10 +210,9 @@ public static class RenderSnapshot
         }
     }
 
-    /// <summary>The renderer is done with the frame it took: the game thread may publish the next one. Render
-    /// thread, and the ONE call that keeps the pipeline moving -- a renderer that faults without releasing
-    /// would hang the game thread at the next publish, which is why <see cref="RenderThread"/> releases in a
-    /// <c>finally</c>.</summary>
+    /// <summary>The renderer is done with the frame it took: the game thread may publish the next one. The ONE
+    /// call that keeps the pipeline moving -- a draw that faults without releasing would hang the next publish,
+    /// which is why the seam releases in a <c>finally</c>.</summary>
     internal static void Release()
     {
         lock (_gate)
@@ -243,24 +242,6 @@ public static class RenderSnapshot
         {
             _stopping = false;
             _published = null;
-        }
-    }
-
-    /// <summary><b>THE FENCE.</b> Block until the renderer holds no frame; game thread, once per frame at the
-    /// top of the frame boundary. This is the two threads' whole mutual exclusion, and why the game thread may
-    /// touch framebuffer 0 and the engine's GL state at all: from here until the next <see cref="Publish"/> the
-    /// render thread is parked in <see cref="Take"/>, and the present and 2D UI go in that gap.</summary>
-    internal static void AwaitDrained()
-    {
-        lock (_gate)
-        {
-            while (_published != null && !_stopping)
-            {
-                _waits++;
-                long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
-                Monitor.Wait(_gate);
-                _waitTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
-            }
         }
     }
 

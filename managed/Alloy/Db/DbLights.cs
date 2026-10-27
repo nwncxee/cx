@@ -20,7 +20,7 @@ internal static class DbLights
 
     /// <summary>Gather this scene's lights into <c>FrameInputs</c>; once per world frame, before the draw.</summary>
     /// <param name="h">The frame's hoisted engine terms -- the area's VALUES, not a live <c>CNWCArea</c>, so
-    /// this walk reads no engine memory and can run on <c>RenderThread</c>.</param>
+    /// this walk reads no engine memory.</param>
     internal static void Walk(DbId scene, in FrameHoist h)
     {
         float radiusMult = h.RadiusMult;

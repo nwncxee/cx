@@ -257,7 +257,7 @@ internal static unsafe class GuiPass
         return true;
     }
 
-    /// <summary>The flush under <c>alloy.backend vk</c>: <see cref="GuiPassVk"/> records and submits it, with no GL.</summary>
+    /// <summary>The flush on Vulkan: <see cref="GuiPassVk"/> records and submits it, with no GL.</summary>
     private static bool VulkanFlush(int from, int mid, int to, bool windows)
     {
         // every flush, the world frame's included: the model views' texture work is Vulkan's here and needs no bracket

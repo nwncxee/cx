@@ -177,7 +177,7 @@ public struct FrameHoist
         check.Expect(z.RadiusMult > 0f, "the radius multiplier never folds to zero -- it multiplies every light's reach");
         log.Info(check.Ok ? "FrameHoist.SelfCheck: passed"
                           : "FrameHoist.SelfCheck: FAILED -- the frame's engine reads are not safely hoisted, so "
-                          + "alloy.renderthread=1 would read a CNWCArea the game thread is simulating");
+                          + "an off-thread draw would read a CNWCArea the game thread is simulating");
         return check.Ok;
     }
 }

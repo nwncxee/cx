@@ -120,21 +120,8 @@ internal static class AlloyGate
         if (!GameGate.InModule) { why = NoModule; return AlloyStand.Idle; }
         if (!GlContextService.Available)
         { why = "no GL 4.6 share-listed context on this device"; return AlloyStand.Incapable; }
-        // CX-348: the backend the session asked for. Asked once, with the engine's context current -- the
-        // interop extensions and the device UUID are the driver's, not a context's.
-        if (Renderer.OnVulkan && _log != null && CX.Graphics.Rhi.VkBackend.Refusal(_log) is string vk)
-        { why = vk; return AlloyStand.Incapable; }
-        // the render thread's bracket skips the cross-context fences the composite's hand-over is ordered by
-        if (Renderer.OnVulkan && Renderer.RenderThread.Boot)
-        { why = "alloy.backend vk does not run with alloy.renderthread on"; return AlloyStand.Incapable; }
         if (!AlloyRenderer.DrawCapable)
         { why = "an Alloy program did not build, or glMultiDrawElementsBaseVertex/glBindBufferBase is missing";
-          return AlloyStand.Incapable; }
-        // #264: the engine's bucket walk is gone, so the compute cull is the frame's ONLY visibility test.
-        // A driver that cannot dispatch it would draw every enumerated part of the area every frame -- which
-        // is a device that cannot support the Alloy frame, exactly what this state is for.
-        if (!Renderer.OnVulkan && !CullPass.Capable())
-        { why = "GL compute or glMultiDrawElementsIndirectCount is missing -- Alloy has no visibility test";
           return AlloyStand.Incapable; }
         if (PostChain.Failed)
         { why = "the HDR target cannot arm on this device"; return AlloyStand.Incapable; }

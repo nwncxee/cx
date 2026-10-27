@@ -193,8 +193,8 @@ public static unsafe partial class DbAnim
         // UNIT, out of the unscaled basis: the stock step rotates its terms by this and by its conjugate, and
         // a quaternion of norm sqrt(scale) would scale every one of them.
         Quaternion wrot = RotOf(world);
-        // ponytail: the snapshot stage is game-thread state the motion sweep reads; under alloy.renderthread it
-        // needs the arena's publish handoff (MeshArena.WriteDynamic) before that sweep may run off-thread.
+        // ponytail: the snapshot stage is game-thread state the motion sweep reads; on a render thread it
+        // would need the arena's publish handoff (MeshArena.WriteDynamic) before that sweep may run off-thread.
         AlloyRenderer.NoteDanglyPrev(part, dst, n);
         float move = VanillaDangly.Run(mesh.Positions, dn.Constraints, dn.Displacement, dn.Tightness, dn.Period,
                                        st, wpos, wrot, DanglyWind(in world, dt, windy), dt,

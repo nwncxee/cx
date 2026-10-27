@@ -22,7 +22,7 @@ public sealed unsafe partial class MovieService
 
     private static MovieVkState _vk = new();
 
-    /// <summary><see cref="Draw"/> under <c>alloy.backend vk</c>. False = the engine's own quad draws this frame.</summary>
+    /// <summary><see cref="Draw"/> on Vulkan. False = the engine's own quad draws this frame.</summary>
     private static bool DrawVk(int frameW, int frameH, int w, int h)
     {
         if (AlloyDevice.Vulkan(_log!) is not VkBackend vk || !vk.OnOwnThread)

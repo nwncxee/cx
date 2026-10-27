@@ -6,7 +6,7 @@ using CX.Rhi;
 
 namespace CX.Alloy;
 
-/// <summary>The world frame under <c>alloy.backend vk</c>: Vulkan culls, draws the colour bracket into its own scene
+/// <summary>The world frame on Vulkan: Vulkan culls, draws the colour bracket into its own scene
 /// targets and encodes them into the composite, which the GUI then draws over and Vulkan presents. Inside the 4.6
 /// bracket.</summary>
 internal static class VulkanFrame

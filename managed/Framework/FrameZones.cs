@@ -234,8 +234,8 @@ public static class FrameZones
 
     private const int N = (int)Zone.Count;
 
-    /// <summary>Accumulator ROWS, one per thread that brackets independently -- the game thread and, with
-    /// <c>alloy.renderthread=1</c>, Alloy's render thread; every array is row-major (<c>row * N + zone</c>) and
+    /// <summary>Accumulator ROWS, one per thread that brackets independently -- the game thread and a second
+    /// rendering thread; every array is row-major (<c>row * N + zone</c>) and
     /// <see cref="Add"/> credits the CALLING thread. One shared set would make the residual read negative, so row 0
     /// keeps it and row 1 is the render thread's own wall. Each cell is one aligned <c>long</c>, never torn.</summary>
     public const int Rows = 2;
@@ -796,7 +796,7 @@ public static class FrameZones
         ResetAll();
         log.Info(check.Ok ? "FrameZones.RowSelfCheck: passed"
                           : "FrameZones.RowSelfCheck: FAILED -- zone rows are not per thread, so with "
-                          + "alloy.renderthread=1 the residual and the blame column would both be nonsense");
+                          + "a second rendering thread the residual and the blame column would both be nonsense");
     }
 
     /// <summary>Off-device: subtraction, worst-frame capture and the period reset. All three are load-bearing

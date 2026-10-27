@@ -23,11 +23,13 @@ internal static class Renderer
 
     private static readonly BootState _boot = new();
 
-    /// <summary>Can this session's backend run? GL needs no probe; Vulkan's refusal is said once, with the vanilla fallback.</summary>
+    /// <summary>Can Vulkan run here? Its refusal is said once, with the vanilla fallback.</summary>
     private static bool VulkanUp()
     {
         if (_boot.VkUp >= 0) return _boot.VkUp == 1;
-        if (!VkPicked || KnobGroup.Log is not ExtenderLog log) return true;
+        if (KnobGroup.Log is not ExtenderLog log) return true;
+        // off-device (the self-check host): no client renders, so there is no Vulkan verdict to take and the suites run
+        if (CX.Framework.Native.Sym(SymbolMap.AppManager) == IntPtr.Zero) { _boot.VkUp = 1; return true; }
         string? why = CX.Graphics.Rhi.VkBackend.Refusal(log);
         _boot.VkUp = why == null ? 1 : 0;
         if (why != null)
@@ -54,7 +56,7 @@ internal static class Renderer
     internal static readonly Knob<int> Border, Oit, OitLayers, TexCache, Bindless, BcnDrip, TexDelete, MaxElements, RasterRead,
                                        ClusterCap, GlSync, SkipBuckets, FrameDiff, ParityDump, StaleAudit;
     internal static readonly Knob<bool> Light, Prepass, Retest, HlDiag, Poll, PrepassKey, PrepassFeat, IdTarget,
-                                        BlendDepth, GpuMeter, VisList, WashTest, DepthEqual;
+                                        BlendDepth, VisList, WashTest, DepthEqual;
     // ---- CX-103/104/105: the scene pipeline's dials ----
     internal static readonly Knob<bool> CullWatch;
     internal static readonly Knob<float> LodHyst;
@@ -66,23 +68,8 @@ internal static class Renderer
     internal static readonly Knob<bool> AuthoredLod;
     internal static readonly Knob<int> Viz, Threads, Cull, HlChan, OitViz;
     internal static readonly KnobButton Consts, FrameDumpBtn, ShaderDump, Snap;
-    // ---- CX-120 seam-scene ----
-    /// <summary>ADR 0028 section 5's render thread. Boot, and default OFF until the live harness clears it:
-    /// what it moves is Alloy's whole GL context to a second thread, and the things that still reach the
-    /// ENGINE's context on the game thread (<c>CX.Alloy.Db.RenderThread</c>'s remarks) are an ordering
-    /// question the harness has to answer, not a correctness one the build can.</summary>
-    internal static readonly Knob<bool> RenderThread;
-    /// <summary>A pass on the render seam submits each command as it records it, instead of its whole list at the
-    /// end: the same GL calls in the same order either way, so the A/B measures recording, not output.</summary>
-    internal static readonly Knob<bool> RhiImmediate;
-    /// <summary>Which API renders the Alloy frame: GL 4.6, or Vulkan into a composite the engine's context presents.
-    /// Boot, and not a render mode: Vulkan replaces GL Alloy pass by pass.</summary>
-    internal static readonly Knob<string> Backend;
-    internal const string BackendGl = "gl", BackendVk = "vk";
-    /// <summary>The seam runs on Vulkan this session: Alloy is on and Vulkan started.</summary>
-    internal static bool OnVulkan => VkPicked && On;
-    /// <summary><c>alloy.backend</c> names Vulkan, whether or not it can start.</summary>
-    private static bool VkPicked => Backend.Boot == BackendVk;
+    /// <summary>Alloy draws this session, on Vulkan: the one backend.</summary>
+    internal static bool OnVulkan => On;
     /// <summary>Arm <see cref="CX.Alloy.Db.HitProbe"/>, the live hit-test instrument.</summary>
     internal static readonly Knob<bool> HitCheck;
 
@@ -205,12 +192,6 @@ internal static class Renderer
         DumpTex = G.Text("dumptex", "dumptex", "", Tier.ChatOnly, Effect.Restart);
         DumpShaders = G.Toggle("dumpshaders", "dumpshaders", false, Tier.ChatOnly, Effect.Restart);
         GlDebug = G.Toggle("gldebug", "gldebug", false, Tier.ChatOnly, Effect.Restart);
-        RenderThread = G.Toggle("renderthread", "renderthread", false, Tier.ChatOnly, Effect.Restart);
-        Backend = G.Dropdown("backend", "Render backend", new[] { BackendGl, BackendVk }, BackendVk, tier: Tier.ChatOnly,
-                             effect: Effect.Restart,
-                             help: "vk = Vulkan renders the frame (a machine Vulkan refuses runs vanilla); gl = the retiring GL 4.6 renderer.");
-        RhiImmediate = G.Toggle("rhiimmediate", "Seam passes submit as they record", true, Tier.ChatOnly,
-                                help: "1 = each command reaches GL as it is recorded; 0 = a pass's whole list at its end. Same GL calls either way.");
         // CX-120: the pass number to dump the frame's whole input set at, 0 = off. A pass NUMBER rather than a
         // toggle because the first pass of a session is before the camera is placed, and the settled frame is
         // the one worth comparing between the two scene layers.
@@ -247,8 +228,6 @@ internal static class Renderer
         IdTarget = G.Toggle("idtarget", "idtarget", true, Tier.ChatOnly, changed: AlloyRenderer.InvalidateRecords);
         BlendDepth = G.Toggle("blenddepth", "blenddepth", true, Tier.ChatOnly);
         // the GL meters time GL work, of which a Vulkan session has none
-        GpuMeter = G.Toggle("gpumeter", "gpumeter", true, Tier.ChatOnly, changed: () => GpuQuery.Enabled = GpuMeter!.V && !OnVulkan);
-        GpuQuery.Enabled = GpuMeter.V && !OnVulkan;
         VisList = G.Toggle("vislist", "vislist", true, Tier.ChatOnly, changed: AlloyRenderer.InvalidateRecords);
         WashTest = G.Toggle("washtest", "washtest", true, Tier.ChatOnly, changed: AlloyRenderer.InvalidateRecords);
         OitViz = G.Slider("oitviz", "oitviz", 0, 5, 1, 0, tier: Tier.ChatOnly);

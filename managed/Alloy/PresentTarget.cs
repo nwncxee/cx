@@ -6,7 +6,7 @@ namespace CX.Alloy;
 
 /// <summary>Where GL Alloy's frame lands: a TEXTURE the ENGINE's context blits to the real default framebuffer after
 /// the bracket, each side over its own framebuffer object (WGL's two contexts address back buffers that fall out of
-/// phase across a swap). Under <c>alloy.backend vk</c> it sizes Vulkan's composite beside it, and Vulkan presents that
+/// phase across a swap). On Vulkan it sizes Vulkan's composite beside it, and Vulkan presents that
 /// itself: nothing here reaches the screen.</summary>
 internal static unsafe class PresentTarget
 {
@@ -48,7 +48,7 @@ internal static unsafe class PresentTarget
     internal static int Height => _s.H;
 
     /// <summary>Size the present colour image to the default framebuffer, once per frame, before anything
-    /// binds it -- in the 4.6 context; under <c>alloy.backend vk</c> Vulkan's composite instead, with no GL.</summary>
+    /// binds it -- in the 4.6 context; on Vulkan Vulkan's composite instead, with no GL.</summary>
     internal static void Ensure(int w, int h)
     {
         PresentState s = _s;
