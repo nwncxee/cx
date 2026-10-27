@@ -153,11 +153,10 @@ public sealed unsafe partial class CasterPass
         return _vk.Cmds != null && _vk.Dev is VkBackend vk && CasterGatherVk.DynamicSource(vk, _vk.Cmds, m, dst);
     }
 
-    /// <summary>No dynamic source this frame, on whichever backend bakes it.</summary>
+    /// <summary>No dynamic source this frame.</summary>
     private static void StandDynamicSource()
     {
-        if (!Renderer.OnVulkan) CasterGather.StandDynamic();
-        if (Renderer.OnVulkan) CasterGatherVk.StandDynamic();
+        CasterGatherVk.StandDynamic();
     }
 
     /// <summary>A view whose target the Vulkan bake has no array for: refused, so its caller publishes nothing.

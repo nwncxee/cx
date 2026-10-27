@@ -287,9 +287,6 @@ public sealed unsafe partial class AlloyRenderer
         // one the dirty list never named -- the change-driven build's own bug class.
         StaleAuditTick();
         if (!drawsUp) return false;
-        // #308 follow-up: the shadow bracket already uploaded this frame's block; re-orphaning it
-        // here would throw away the very pose the bake just sampled from.
-        if (!posedByShadow) Issue.UploadBones();
         FrameZones.Add(FrameZones.Zone.Upload, tUp);
         // The frame's head for native stages: every stage a host staged above or drew last frame gets its images
         // (re)made and its passes run here, before the first draw pass and outside every other GPU term.

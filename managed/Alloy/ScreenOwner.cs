@@ -7,9 +7,8 @@ using CX.Graphics.Rhi;
 
 namespace CX.Alloy;
 
-/// <summary>Alloy owns the screen's clears and its present once the GUI is Alloy's and no engine-drawn world
-/// needs the engine's own -- and on Vulkan always, once the window is known: Vulkan presents every
-/// frame and GL's swap never runs. The engine's screen clears are swallowed at <c>RenderInterface::Clear</c> when they
+/// <summary>Alloy owns the screen's clears and its present once the window is known: Vulkan presents every frame and
+/// GL's swap never runs. The engine's screen clears are swallowed at <c>RenderInterface::Clear</c> when they
 /// target the default framebuffer; the present is <c>SDL_GL_SwapWindow</c> or Vulkan's, then <c>ResetRenderStates</c>.</summary>
 internal static unsafe class ScreenOwner
 {
@@ -29,21 +28,12 @@ internal static unsafe class ScreenOwner
     private sealed class VkPresentState { public long Presents, Refused, Blank; }
 
     private static readonly VkPresentState _vk = new();
-    private static long _swallowed, _passed, _presents;
+    private static long _swallowed, _passed;
     private static bool _said;
 
     /// <summary>An engine draw that owns the whole screen is running (a movie frame handed back to the engine's quad):
     /// its clears are its own, and so is its draw -- <see cref="RspShim"/> lets that one through.</summary>
     internal static bool EngineFrame;
-
-    /// <summary>Put the bindings <c>GLRender::BindFramebuffer</c>'s two caches name back into real GL, after Alloy's own
-    /// framebuffer binds in the ENGINE context: the cache early-outs on a match, so a stale real binding would take the
-    /// engine's next draw. An unresolved read cache is left alone; Install refuses without the draw one.</summary>
-    internal static void RestoreEngineFbo()
-    {
-        Gl.BindFramebuffer(Gl.DRAW_FRAMEBUFFER, _cache.Draw != null ? *_cache.Draw : 0u);
-        if (_cache.Read != null) Gl.BindFramebuffer(Gl.READ_FRAMEBUFFER, *_cache.Read);
-    }
 
     /// <summary>The engine's last <c>glClearColor</c>: the fog colour in an area, black at the menus.</summary>
     internal static readonly float[] ClearRgba = { 0f, 0f, 0f, 1f };
@@ -69,12 +59,9 @@ internal static unsafe class ScreenOwner
             log.Always("ScreenOwner: RenderInterface::Clear/SetClearColor did not hook -- the engine keeps its clears");
     }
 
-    /// <summary>Is the screen Alloy's this frame? The GUI is Alloy's and the world, if there is one, is too -- a
-    /// vanilla world frame (an Incapable verdict) draws through the engine's own clears. Under Vulkan, whenever the
-    /// window is known: nothing the engine draws in GL reaches the screen there.</summary>
-    internal static bool Owned => _origClear != null && _swap != null
-                                  && (Renderer.OnVulkan ? GlContextService.Available
-                                                        : GuiPass.Capturing && (AlloyGate.Alloy || AlloyGate.Stand == AlloyStand.Idle));
+    /// <summary>Is the screen Alloy's this frame? Whenever Alloy draws and the window is known: nothing the engine
+    /// draws in GL reaches the screen.</summary>
+    internal static bool Owned => _origClear != null && _swap != null && Renderer.On && GlContextService.Available;
 
     [UnmanagedCallersOnly]
     private static void OnClear(uint mask)
@@ -96,19 +83,7 @@ internal static unsafe class ScreenOwner
     /// the caller runs the engine's <c>GLRender::SwapBuffers</c>.</summary>
     internal static bool Present(IntPtr window)
     {
-        if (!Owned) return false;
-        if (Renderer.OnVulkan) return PresentVulkan();
-        Gl.BindFramebuffer(Gl.FRAMEBUFFER, *_defaultFbo);
-        _swap(window);
-        _reset();
-        _presents++;
-        if (!_said)
-        {
-            _said = true;
-            _log?.Info("ScreenOwner: LIVE -- Alloy issues the present and the screen clears; the engine's "
-                     + "GLRender::SwapBuffers and its default-framebuffer clears no longer run");
-        }
-        return true;
+        return Owned && PresentVulkan();
     }
 
     /// <summary>Vulkan's present of the composite, then the engine's state reset the swap was wrapped in. A refusal
@@ -148,7 +123,7 @@ internal static unsafe class ScreenOwner
     internal static string Stats() => _origClear == null ? "screen: engine (not armed)"
         // The clear colour is on the line because it IS the void: every pixel the world does not cover ends up
         // this colour, and nothing else in a session reports it.
-        : $"screen: {(Owned ? "Alloy" : "engine")} -- {_presents} Alloy GL presents, {_vk.Presents} Vulkan presents"
+        : $"screen: {(Owned ? "Alloy" : "engine")} -- {_vk.Presents} Vulkan presents"
         + (_vk.Refused == 0 ? "" : $" ({_vk.Refused} REFUSED, nothing shown)") + (_vk.Blank == 0 ? "" : $" ({_vk.Blank} before the composite, nothing shown)") + $", {_swallowed} engine clears swallowed, "
         + $"{_passed} passed, clear=({ClearRgba[0]:F3},{ClearRgba[1]:F3},{ClearRgba[2]:F3})";
 }

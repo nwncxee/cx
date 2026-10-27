@@ -99,51 +99,8 @@ internal static unsafe class Issue
         return ok;
     }
 
-    /// <summary>Push the records that MOVED into the persistent per-draw SSBO, then stream the draw-to-slot
-    /// index array this pass's order needs. Past <see cref="RunBudget"/> runs a wholesale upload is cheaper, as a
-    /// reallocation or a dirty-list overflow also are. A persistent buffer cannot orphan, so a SubData over a
-    /// buffer the GPU may still be reading can sync. False = the slot array did not stream, frame sits out.</summary>
-    internal static bool UploadDraws()
-    {
-        int cap = _recOwnCap + MaxSkyDraws;
-        if (Renderer.OnVulkan) return VkHandOff(cap);
-        bool grew = false;
-        if (_drawBuf == 0) { uint b; Gl.CreateBuffers(1, &b); _drawBuf = b; }
-        if (cap > _recCapGpu)
-        {
-            Gl.NamedBufferData(_drawBuf,
-                          (IntPtr)((long)cap * DrawFloats * sizeof(float)), null, Gl.DYNAMIC_DRAW);
-            grew = true;
-        }
-        UploadState u = Uploads;
-        bool restaged = RecordEpoch != u.EpochSent;
-        u.EpochSent = RecordEpoch;
-        int runs = grew || _recDirtyAll ? 0 : SortedRuns();
-        bool whole = grew || _recDirtyAll || runs > RunBudget;
-        u.MaxRuns = Math.Max(u.MaxRuns, runs);
-        if (!whole) { if (runs > 0) { u.Deltas++; u.DeltaRuns += runs; } }
-        else
-        {
-            if (grew) u.Growth++; else if (_recDirtyAll) u.Overflow++; else if (restaged) u.Restage++; else u.OverBudget++;
-            u.RecordBytes += (long)cap * DrawFloats * sizeof(float);
-        }
-        fixed (DrawRecordBlock* p = _dData)
-        {
-            if (whole)
-                Gl.NamedBufferSubData(_drawBuf, IntPtr.Zero,
-                                      (IntPtr)((long)cap * DrawFloats * sizeof(float)), p);
-            else UploadRuns(_drawBuf, _dData, sizeof(DrawRecordBlock));
-        }
-        Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindDraw, _drawBuf);
-        StaleMirrorRecords(cap, whole, _recDirty, _recDirtyN);
-        if (_bindless) UploadHandles(cap, whole);
-        if (grew) _recCapGpu = cap;
-        VkNoteDirty(_recDirty, Math.Min(_recDirtyN, _recDirty.Length), whole);
-        _recDirtyN = 0; _recDirtyAll = false;
-        // ...and the one array that IS per draw and per pass, rewritten whole every pass: the ring's shape.
-        fixed (int* p = _dSlot)
-            return StreamRing.Stream(StreamRing.Site.DrawSlots, BindDrawIdx, p, (long)_drawN * sizeof(int), out _slotRange);
-    }
+    /// <summary>Hand the moved records and this pass's draw order to the Vulkan frame. False = the frame sits out.</summary>
+    internal static bool UploadDraws() => VkHandOff(_recOwnCap + MaxSkyDraws);
 
     /// <summary><see cref="UploadDraws"/> on Vulkan: no GL record table, handle table or stream ring -- the moved
     /// records go to the Vulkan table's dirty list, which uploads them in its own frame.</summary>
@@ -232,33 +189,11 @@ internal static unsafe class Issue
         }
     }
 
-    /// <summary>Called by the caster bake, inside its bracket, before its first view: the standing staging
-    /// samples the GPU handle table by record slot, so a handle dropped since the last colour upload must
-    /// not still be there. Leaves the dirty list for the colour bracket, which uploads the records too.</summary>
-    internal static void UploadHandlesForBake()
-    {
-        if (!_bindless || Renderer.OnVulkan) return;
-        int cap = _recOwnCap + MaxSkyDraws;
-        // capacity growth with no moved handle (an area's new records all resolve to 0 over rows already 0)
-        // leaves the dirty flag clear and the GPU table one area short: the bake would read past its end
-        if (!_texHDirty && !_recDirtyAll && cap <= _texHCapGpu) return;
-        bool whole = _recDirtyAll || cap > _texHCapGpu || SortedRuns() > RunBudget;
-        UploadHandles(cap, whole);
-        BakeHandleUploads++;
-    }
 
     /// <summary>Put the CPU-staged per-draw index array back on <see cref="BindDrawIdx"/>. The cull binds its
     /// own compacted one for the passes it drives; every other pass reads the staged order.</summary>
     internal static bool BindStagedSlots() => StreamRing.Rebind(StreamRing.Site.DrawSlots, BindDrawIdx, in _slotRange);
 
-    /// <summary>Push this pass's bone snapshots into the bone block. Nothing to upload is the common case (no
-    /// skinmesh on screen), and the block stays bound EMPTY rather than unbound -- a stage that declares it
-    /// must find something there even on a frame where no draw reads it. Not on <see cref="StreamRing"/>: the
-    /// next frame's caster bake reads it when the shadow bracket did not pose.</summary>
-    internal static void UploadBones()
-    {
-        if (_skinning && !Renderer.OnVulkan) UploadBoneBlock(ref _boneBuf, _boneStage, BindBones);   // Vulkan copies the stage itself
-    }
 
     /// <summary>One bone block, <c>_boneSlots</c> palettes from <paramref name="stage"/>, onto
     /// <paramref name="binding"/>.</summary>
