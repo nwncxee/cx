@@ -373,13 +373,7 @@ internal static unsafe partial class LightmapBake
             if (bytes != null && table != null)
             {
                 int y = up.Row, rows = BandRows(un.W, un.H, y);
-                if (Renderer.OnVulkan) VkUpload(bytes, un.Page, un.X0, un.Y0 + y, un.W, rows, 0, y, un.W, un.H);
-                else
-                {
-                    fixed (byte* pa = bytes.AsSpan((int)UnionOffset(0, 0, y, un.W, un.H))) Gl.CompressedTextureSubImage3D(_gl.TexA, 0, un.X0, un.Y0 + y, un.Page, un.W, rows, 1, FormatA, un.W * rows, pa);
-                    fixed (byte* pb = bytes.AsSpan((int)UnionOffset(1, 0, y, un.W, un.H))) Gl.CompressedTextureSubImage3D(_gl.TexB, 0, un.X0, un.Y0 + y, un.Page, un.W, rows, 1, FormatB, un.W * rows, pb);
-                    fixed (byte* pc = bytes.AsSpan((int)UnionOffset(2, 0, y, un.W, un.H))) Gl.TextureSubImage3D(_gl.TexC, 0, un.X0, un.Y0 + y, un.Page, un.W, rows, 1, Gl.RGBA, Gl.UNSIGNED_BYTE, pc);
-                }
+                VkUpload(bytes, un.Page, un.X0, un.Y0 + y, un.W, rows, 0, y, un.W, un.H);
                 up.Row = y + rows;
                 if (up.Row < un.H) continue;
             }
@@ -564,7 +558,7 @@ internal static unsafe partial class LightmapBake
     private static void AreaSnapAbandon()
     {
         int lost = _uSnap ? 1 : 0;   // the readback in flight is lost too: its fence is deleted with the pages
-        AbortReadback(gl: true);
+        AbortReadback();
         _uSnap = false;
         if (_areaPlanOut == null) return;
         for (int p = _areaSnapNext; p < MaxPages; p++) if (_areaSnapWant[p]) lost++;

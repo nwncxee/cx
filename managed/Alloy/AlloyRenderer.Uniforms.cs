@@ -321,26 +321,6 @@ public sealed unsafe partial class AlloyRenderer
     /// attachment of the target being written is undefined, and the capture draws through the lit stage.</summary>
     private static bool ProbeLive => (!_capturing || _planar) && EnvProbe.Ready;
 
-    /// <summary>1x1 depth-1 (lit) stand-ins with compare on, bound on a shadow unit whenever its map is absent
-    /// or stale. A shadow sampler validated against an empty unit or a colour texture is undefined behaviour
-    /// even when the shader never takes the fetch (NVIDIA debug id 131222, ~4 per frame); Mesa owes it
-    /// nothing. Names die with the context (<see cref="ContextLost"/>).</summary>
-    private static uint _nullCubeShadow;
-    internal static uint CubeShadowOr(uint tex) => tex != 0 ? tex : NullShadow(Gl.TEXTURE_CUBE_MAP_ARRAY, 6, ref _nullCubeShadow);
-    private static uint NullShadow(uint target, int layers, ref uint name)
-    {
-        if (name != 0) return name;
-        uint t; Gl.CreateTextures(target, 1, &t);
-        Gl.TextureStorage3D(t, 1, Gl.DEPTH_COMPONENT32F, 1, 1, layers);
-        float* one = stackalloc float[6] { 1f, 1f, 1f, 1f, 1f, 1f };
-        Gl.TextureSubImage3D(t, 0, 0, 0, 0, 1, 1, layers, Gl.DEPTH_COMPONENT, Gl.FLOAT, one);
-        Gl.TextureParameteri(t, Gl.TEXTURE_COMPARE_MODE, (int)Gl.COMPARE_REF_TO_TEXTURE);
-        Gl.TextureParameteri(t, Gl.TEXTURE_COMPARE_FUNC, (int)Gl.LEQUAL);
-        Gl.TextureParameteri(t, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
-        Gl.TextureParameteri(t, Gl.TEXTURE_MAG_FILTER, Gl.NEAREST);
-        return name = t;
-    }
-
     /// <summary>The blocker search has its raw views: Vulkan's bake binds its own.</summary>
     private static bool RawSearch => true;
 }

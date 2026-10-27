@@ -150,24 +150,6 @@ internal static unsafe partial class LightmapBake
         return true;
     }
 
-    /// <summary>The page's coverage on GL: the scratch planes cleared and every rect drawn at coverage.</summary>
-    private static void BeginCoverage()
-    {
-        BindScratch();
-        float* zero = stackalloc float[4] { 0f, 0f, 0f, 0f };
-        Gl.ClearBufferfv(Gl.COLOR, 0, zero); Gl.ClearBufferfv(Gl.COLOR, 1, zero); Gl.ClearBufferfv(Gl.COLOR, 2, zero);
-        Gl.DepthMask(1); Gl.ClearBufferfv(Gl.DEPTH, 0, zero); Gl.DepthMask(0);
-        Gl.UseProgram(_gl.ProgBake);
-        AlloyLights.BindForDraw();
-        Gl.Uniform1i(_bMode, 0);
-        BindNullCubes();
-        Gl.Uniform1f(_bDepth, -1f);
-        uint vao = 0;
-        for (int k = 0; k < _bakeRects.Count; k++) DrawRect(_bakeRects[k], ref vao);
-        Gl.BindVertexArray(0);
-        Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
-    }
-
     /// <summary>Diag for a surface baked wrong: the page's rect nearest the camera, its sphere, and the
     /// static lights that reach it (with the nearest one's distance against its reach when none does).</summary>
     private static void LogNearest(int page)
@@ -191,48 +173,6 @@ internal static unsafe partial class LightmapBake
         _log?.Info($"LightmapBake: [diag] page {page} nearest rect {r.W}x{r.H} at ({r.C.X:F1},{r.C.Y:F1},{r.C.Z:F1}) r={r.R:F1} slot {r.Slot}: "
                    + $"{n} static lights reach it" + (nl >= 0 ? $", nearest light {nd:F1}u away with reach {_setPosR[nl].W:F1}" : "")
                    + $", {(cam - r.C).Length():F1}u from the camera");
-    }
-
-    /// <summary>Compare-on stand-ins on both cube units: the bake's shadow samplers are validated on every
-    /// draw, sampled or not, and a unit a lit pass left empty is undefined behaviour (NVIDIA 131222).</summary>
-    private static void BindNullCubes()
-    {
-        uint n = AlloyRenderer.CubeShadowOr(0);
-        Gl.ActiveTexture(Gl.TEXTURE0 + AlloyRenderer.CubeUnit); Gl.BindTexture(Gl.TEXTURE_CUBE_MAP_ARRAY, n);
-        Gl.ActiveTexture(Gl.TEXTURE0 + AlloyRenderer.CubeDynUnit); Gl.BindTexture(Gl.TEXTURE_CUBE_MAP_ARRAY, n);
-        Gl.ActiveTexture(Gl.TEXTURE0);
-    }
-
-    private static void BindScratch()
-    {
-        AttachScratch();
-        new PassState(depth: false, depthWrite: false, blend: true, cull: false, srgb: false, blendSrc: Gl.ONE, blendDst: Gl.ONE).Apply();
-    }
-
-    /// <summary>The FBO over the three scratch planes and the scratch depth as its outputs.</summary>
-    private static void AttachScratch()
-    {
-        Gl.BindFramebuffer(Gl.FRAMEBUFFER, _gl.Fbo);
-        Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT0, Gl.TEXTURE_2D, _gl.ScrA, 0);
-        Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT1, Gl.TEXTURE_2D, _gl.ScrB, 0);
-        Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT2, Gl.TEXTURE_2D, _gl.ScrC, 0);
-        Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, Gl.DEPTH_ATTACHMENT, Gl.TEXTURE_2D, _gl.ScrZ, 0);
-        uint* bufs = stackalloc uint[3] { Gl.COLOR_ATTACHMENT0, Gl.COLOR_ATTACHMENT1, Gl.COLOR_ATTACHMENT2 };
-        Gl.DrawBuffers(3, bufs);
-        Gl.Viewport(0, 0, PageSize, PageSize);
-    }
-
-    private static void DrawRect(int ri, ref uint vao)
-    {
-        ref Rect r = ref _rects[ri];
-        if (r.Slot < 0 || !MeshChart.Range(r.Vao, r.Item, 0, out int baseVertex, out nint off, out int count, out _)) return;
-        uint want = MeshChart.VaoOf(r.Vao, r.Item);
-        if (want == 0) return;
-        if (want != vao) { Gl.BindVertexArray(want); vao = want; }
-        Gl.Uniform1i(_bSlot, r.Slot);
-        Gl.Uniform4f(_bRect, r.X, r.Y, r.S, 0f);
-        Gl.Uniform1f(_bSoftWorld, 1f / (MeshChart.AtlasTexelsPerUnit * r.S));
-        Gl.DrawElementsBaseVertex(Gl.TRIANGLES, count, CasterPass.GlUnsignedShort, (void*)off, baseVertex);
     }
 
     /// <summary>One light over the page: the bake program takes the light and its scratch cube exactly the
@@ -272,26 +212,6 @@ internal static unsafe partial class LightmapBake
         return true;
     }
 
-    /// <summary>One encode band on GL: the scratch planes into the block images, C into the page layer.</summary>
-    private static void EncodeBand(int page, int bx, int by, int bw, int bh)
-    {
-        Gl.UseProgram(_gl.ProgEnc);
-        Gl.ActiveTexture(Gl.TEXTURE0); Gl.BindTexture(Gl.TEXTURE_2D, _gl.ScrA);
-        Gl.ActiveTexture(Gl.TEXTURE0 + 1); Gl.BindTexture(Gl.TEXTURE_2D, _gl.ScrB);
-        Gl.ActiveTexture(Gl.TEXTURE0 + 2); Gl.BindTexture(Gl.TEXTURE_2D, _gl.ScrC);
-        Gl.ActiveTexture(Gl.TEXTURE0);
-        Gl.BindImageTexture(0, _gl.BlkA, 0, 0, 0, Gl.WRITE_ONLY, Gl.RGBA32UI);
-        Gl.BindImageTexture(1, _gl.BlkB, 0, 0, 0, Gl.WRITE_ONLY, Gl.RGBA32UI);
-        Gl.BindImageTexture(2, _gl.TexC, 0, 0, page, Gl.WRITE_ONLY, Gl.RGBA8);
-        int* region = stackalloc int[4] { bx, by, bw, bh };
-        Gl.Uniform4iv(_eRegion, 1, region);
-        Gl.DispatchCompute((uint)(bw + EncGroup - 1) / EncGroup, (uint)(bh + EncGroup - 1) / EncGroup, 1);
-        for (uint u = 0; u < 3; u++) Gl.BindImageTexture(u, 0, 0, 0, 0, Gl.WRITE_ONLY, Gl.RGBA8);
-        Gl.ActiveTexture(Gl.TEXTURE0 + 2); Gl.BindTexture(Gl.TEXTURE_2D, 0);
-        Gl.ActiveTexture(Gl.TEXTURE0 + 1); Gl.BindTexture(Gl.TEXTURE_2D, 0);
-        Gl.ActiveTexture(Gl.TEXTURE0); Gl.BindTexture(Gl.TEXTURE_2D, 0);
-    }
-
     /// <summary>The page's cells are in: queue (or stash) its readback, land its rects, close the page.</summary>
     private static void FinishLanding(int page, int x0, int y0, int x1, int y1)
     {
@@ -306,7 +226,7 @@ internal static unsafe partial class LightmapBake
         for (int k = 0; k < _bakeRects.Count; k++) { Land(_bakeRects[k], false); _pending--; }
         double ms = (Stopwatch.GetTimestamp() - _pageT0) * 1000.0 / Stopwatch.Frequency;
         _pageMs += ms; _pageMsN++;
-        if (_logLeft-- > 0) _log?.Info($"LightmapBake: page {page} landed -- {_bakeRects.Count} rects over {_bakeLights.Count} lights in {ms:F0} ms wall" + (_gl.QBake.Measured ? $", {_gl.QBake.Avg / 1e6:F2} ms GPU per light step" : ""));
+        if (_logLeft-- > 0) _log?.Info($"LightmapBake: page {page} landed -- {_bakeRects.Count} rects over {_bakeLights.Count} lights in {ms:F0} ms wall");
         AbortBake();
     }
 }

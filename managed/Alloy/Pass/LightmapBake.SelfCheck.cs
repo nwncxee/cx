@@ -152,13 +152,13 @@ internal static unsafe partial class LightmapBake
         int dw = _defW, dh = _defH, dx = _defX0, dy = _defY0, dp = _defPage, un = _uncached;
         var defWas = _defRects.ToArray();
         _defW = 0; _defRects.Clear();
-        check.Expect(_uMap == null && _gl.Fence == IntPtr.Zero && ReadbackIdle, "nothing in flight is idle");
+        check.Expect(!_vkb.ReadQueued && ReadbackIdle, "nothing in flight is idle");
         var two = new List<int> { 0, 1 };
         StashReadback(3, 0, 0, 8, 8, two);
         check.Expect(!ReadbackIdle, "a landing stashed behind a draining copy still counts as a readback in flight");
         StashReadback(4, 0, 0, 8, 8, two);
         check.Expect(_uncached == un + 2 && _defPage == 4, "a stash replaced inside one window counts the rects it dropped and keeps the newer landing");
-        AbortReadback(gl: false);
+        AbortReadback();
         check.Expect(ReadbackIdle && _uncached == un + 4, "abandoning a readback drops the stash and counts its rects");
         // CX-102: and the pack may reuse a stashed rect's entry or its page space between the stash and the
         // issue (EvictPage Kills landed rects and re-opens the page), which would put the new tenant's key over
