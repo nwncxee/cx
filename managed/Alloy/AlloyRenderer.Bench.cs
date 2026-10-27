@@ -219,7 +219,6 @@ public sealed unsafe partial class AlloyRenderer
     {
         if (_benchStep < 0) return;
         _benchFrame++;
-        if (_benchStep == 0 && _benchFrame == BenchSettle) BlendProfile.Arm();
         if (_benchFrame == BenchSettle)
         {
             _benchT0 = Stopwatch.GetTimestamp();
