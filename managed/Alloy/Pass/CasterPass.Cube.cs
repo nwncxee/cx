@@ -154,7 +154,7 @@ public sealed unsafe partial class CasterPass
     /// <see cref="CascadesFresh"/>: rendered on the most recent frame tick or not at all, which covers the
     /// vanilla verdict, a module unload and a disarm together.</summary>
     internal static bool CubesFresh
-        => CubeCount > 0 && (Renderer.OnVulkan ? !_vk.Cubes.IsNull : _gl.CubeTex != 0) && _cubeStamp == _frameSeq;
+        => CubeCount > 0 && !_vk.Cubes.IsNull && _cubeStamp == _frameSeq;
 
     /// <summary>Cube slot holding <paramref name="id"/>'s shadow, or -1. Called once per area light from the
     /// light walk, so it is O(lights * cubes) = a few hundred comparisons a frame, alloc-free.</summary>

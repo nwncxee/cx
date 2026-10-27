@@ -136,17 +136,7 @@ internal static unsafe class SkyView
     internal static void UploadLit(int locVp, int locTerm, bool capturing)
     {
         // a Vulkan stage's host borrows this setter inside a capture; the binder puts the map on uSkyMap
-        if (Renderer.OnVulkan) { UploadLitVk(locVp, locTerm, AlloyRenderer.VkSkyMap, capturing); return; }
-        bool on = Wanted && _gl.Valid && CasterPass.SkyFresh && !capturing;
-        if (locVp >= 0 || locTerm >= 0)
-        {
-            Matrix4x4 vp = on ? CasterPass.SkyMapFit.Vp : default;
-            if (locVp >= 0) Gl.UniformMatrix4fv(locVp, 1, 0, (float*)&vp);
-            if (locTerm >= 0) Gl.Uniform4f(locTerm, on ? Lighting.Sky.V : 0f, StepM, CoverM, RiseM);
-        }
-        Gl.ActiveTexture(Gl.TEXTURE0 + TextureSlots.SkyMap);
-        Gl.BindTexture(Gl.TEXTURE_2D, on ? _gl.MapTex : 0);
-        Gl.ActiveTexture(Gl.TEXTURE0);
+        UploadLitVk(locVp, locTerm, AlloyRenderer.VkSkyMap, capturing);
     }
 
     /// <summary><see cref="UploadLit"/> on Vulkan: the same two terms into the captured block, the map bound by the

@@ -31,11 +31,11 @@ internal static unsafe partial class LightmapBake
 
     private static void RunInner(int frame)
     {
-        if (Renderer.OnVulkan ? !VkEnsure() : !Ensure()) return;
+        if (!VkEnsure()) return;
         _frame = frame;
         TrackWindow();
         long t = Stopwatch.GetTimestamp();
-        if (Renderer.OnVulkan ? !VkPool() : !Pool()) return;
+        if (!VkPool()) return;
         t = Phase(Ph.Pool, t);
         InstallAreaCache();   // CX-56: before the sweep -- the plan's set is what arms Enrol at all
         t = Phase(Ph.Area, t);
@@ -168,8 +168,7 @@ internal static unsafe partial class LightmapBake
         _bakePage = page; _bakeLight = 0;
         _pageT0 = Stopwatch.GetTimestamp();
         // the scratch planes: A' = sum rgb + coverage alpha, B' = sum luminance * direction, C' = per channel the mover's luminance
-        if (!Renderer.OnVulkan) BeginCoverage();
-        else if (!VkCoverage()) { AbortBake(); return false; }
+        if (!VkCoverage()) { AbortBake(); return false; }
         if (_logLeft > 0) LogNearest(page);
         int crowded = 0;
         if (_logLeft > 0)
@@ -352,7 +351,6 @@ internal static unsafe partial class LightmapBake
         else EncodeBand(page, x0 / Block, y / Block, bw, bh);
         _enc.Row += bh * Block;
         if (y0 + _enc.Row < y1) return Hold;
-        if (!Renderer.OnVulkan) Gl.MemoryBarrier(Gl.ALL_BARRIER_BITS);
         for (int k = 0; k < _bakeRects.Count; k++)
         {
             CellOf(_rects[_bakeRects[k]], out int cx, out int cy, out int cw, out int ch);

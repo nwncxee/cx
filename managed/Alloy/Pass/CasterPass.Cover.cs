@@ -20,7 +20,7 @@ public sealed unsafe partial class CasterPass
     internal static int CoverMapSize => _mapSize;
     /// <summary>The sun-array layer holding the map (the cascade count).</summary>
     internal static int CoverLayer => _cascades;
-    internal static bool CoverFresh => _coverStamp == _frameSeq && (Renderer.OnVulkan ? !_vk.Cascades.IsNull : _gl.CascadeTex != 0);
+    internal static bool CoverFresh => _coverStamp == _frameSeq && !_vk.Cascades.IsNull;
     /// <summary>The world point the latched cover fit is centred on -- R2's wetness map dispatches over the
     /// map rect this window covers, and takes its z as the height its forward projection starts from.</summary>
     internal static Vector3 CoverCentre => _coverC;
@@ -36,7 +36,7 @@ public sealed unsafe partial class CasterPass
     /// exterior gate -- the array only exists past it, and an interior has no sky to fall from.</summary>
     private static void CoverPass(Vector3 focus, bool sun)
     {
-        if (!sun || !Weather.CoverWanted || !(Renderer.OnVulkan ? VkArmed : EnsureSun())) { CoverVp = default; return; }
+        if (!sun || !Weather.CoverWanted || !VkArmed) { CoverVp = default; return; }
         Vector3 dir = Weather.CoverDir;
         float radius = Weather.CoverRange.V, margin = radius;
         float slack = radius * CoverSlack;

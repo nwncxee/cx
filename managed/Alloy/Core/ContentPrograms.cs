@@ -424,8 +424,7 @@ internal static unsafe class ContentPrograms
     /// <summary>Has the lit stage a deferred twin for a pair's twin to follow: GL's built one, or on Vulkan a fragment
     /// text whose deferred compile writes the G-buffer.</summary>
     private static bool LitDeferred(string fs)
-        => Renderer.OnVulkan ? CX.Alloy.Programs.WithDeferred(fs).Contains("CxGbufWrite(g)", StringComparison.Ordinal)
-                             : CX.Alloy.Programs._progLitDef != 0;
+        => CX.Alloy.Programs.WithDeferred(fs).Contains("CxGbufWrite(g)", StringComparison.Ordinal);
 
     /// <summary>Claim the pair's programs -- compiled by now, or compiled here in turn without parallel compile -- and
     /// say what it became.</summary>

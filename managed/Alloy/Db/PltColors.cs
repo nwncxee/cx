@@ -256,42 +256,10 @@ internal static unsafe class PltColors
     internal static void Upload()
     {
         if (_words.Length == 0) return;
-        if (Renderer.OnVulkan)
-        {
-            // the Vulkan frame re-sends Sent whole when Sends moves
-            int w = _everPlt ? _words.Length : WordsPerRecord;
-            if (w != _sized || _dirtyHi >= _dirtyLo) { _sized = w; Mirror(0, w); _uploads++; }
-            _dirtyLo = int.MaxValue; _dirtyHi = -1;
-            return;
-        }
-        if (Gl.CreateBuffers == null || Gl.NamedBufferData == null) return;
-        // The block is bound on EVERY frame, in both modes. cx_plt.glsl is part of the lit stage either way,
-        // and an unbound shader-storage binding is an undefined read: one stray bit in the flag word would
-        // resolve a wall through the palette. Until a PLT record exists the buffer is one record of zeros, so
-        // the shader's `i < uPltRow.length()` makes that read defined and false (review r1, BLOCKER 3).
-        int want = _everPlt ? _words.Length : WordsPerRecord;
-        if (_ssbo == 0 || want != _sized)
-        {
-            if (_ssbo == 0) { uint b; Gl.CreateBuffers(1, &b); if (b == 0) return; _ssbo = b; }
-            fixed (uint* p = _words) Gl.NamedBufferData(_ssbo, (IntPtr)(want * sizeof(uint)), p, Gl.DYNAMIC_DRAW);
-            _sized = want;
-            Mirror(0, want);
-            _dirtyLo = int.MaxValue; _dirtyHi = -1;
-            _uploads++;
-        }
-        else if (_dirtyHi >= _dirtyLo && Gl.NamedBufferSubData != null)
-        {
-            int off = _dirtyLo * WordsPerRecord, n = (_dirtyHi - _dirtyLo + 1) * WordsPerRecord;
-            if (off + n <= _sized)
-            {
-                fixed (uint* p = _words.AsSpan(off))
-                    Gl.NamedBufferSubData(_ssbo, (IntPtr)(off * sizeof(uint)), (IntPtr)(n * sizeof(uint)), p);
-                _uploads++;
-                Mirror(off, n);
-            }
-            _dirtyLo = int.MaxValue; _dirtyHi = -1;
-        }
-        if (Gl.BindBufferBase != null) Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, Binding, _ssbo);
+        // the Vulkan frame re-sends Sent whole when Sends moves
+        int w = _everPlt ? _words.Length : WordsPerRecord;
+        if (w != _sized || _dirtyHi >= _dirtyLo) { _sized = w; Mirror(0, w); _uploads++; }
+        _dirtyLo = int.MaxValue; _dirtyHi = -1;
     }
 
     /// <summary>The words the GPU buffer holds, and how many sends there have been: a second backend re-sends them

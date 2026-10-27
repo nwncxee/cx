@@ -94,11 +94,8 @@ public sealed unsafe partial class AlloyRenderer
         // Admit and the bake) -- reads of memory the game thread simulates, done from whichever thread draws.
         DbLights.Walk(scene, in h);
         FrameZones.Add(FrameZones.Zone.Lwalk, tLights);
-        LatchFrameTarget();   // per-CONTEXT GL state: it has to be read before the switch below
-        // A refused Enter is not handled here -- each pass inside refuses on its own Enter and says why.
-        bool oneBracket = !Renderer.OnVulkan && GlContextService.Enter();   // a Vulkan view issues no GL
-        try { DbDrawView(scene, camera, in h); }
-        finally { if (oneBracket) GlContextService.Leave(); }
+        LatchFrameTarget();
+        DbDrawView(scene, camera, in h);
         // The world frame is in the present image now. With the GUI Alloy's, its flush draws over it there and
         // one blit hands the pair back. With the GUI stood down (/alloy gui 0, or a flush that cannot draw)
         // nothing composites over it, and whatever the engine's context still draws before the present --

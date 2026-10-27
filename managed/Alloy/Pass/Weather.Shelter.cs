@@ -163,5 +163,5 @@ internal static unsafe partial class Weather
         return true;
     }
 
-    private static string ShelterStats() => $", shelter cache {(ShelOk ? Renderer.OnVulkan ? "held" : $"{_gl.ShelSize}^2" : "none")} ({_shelBakes} bakes), ripple tiles {_ripBakes}";
+    private static string ShelterStats() => $", shelter cache {(ShelOk ? "held" : "none")} ({_shelBakes} bakes), ripple tiles {_ripBakes}";
 }

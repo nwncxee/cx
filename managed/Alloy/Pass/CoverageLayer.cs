@@ -219,7 +219,7 @@ internal static unsafe class CoverageLayer
         _runs = 0; _pixels = 0; _frameArea = 0; _released = 0;
         if (_down.Failed) return $"a2c STOOD DOWN ({_down.Reason})";
         if (n == 0) return Renderer.A2c.V < 2 ? "a2c off" : rel > 0 ? "a2c idle, targets released" : "a2c idle";
-        return $"a2c {(float)n / System.Math.Max(frames, 1):F2} runs/frame, {(Renderer.OnVulkan ? _gl.VkSamples : _gl.Samples)}x{(Masked ? " masked" : "")}, " +
+        return $"a2c {(float)n / System.Math.Max(frames, 1):F2} runs/frame, {_gl.VkSamples}x{(Masked ? " masked" : "")}, " +
                $"scissor {100.0 * px / System.Math.Max(area, 1):F1}% of the frame";
     }
 }

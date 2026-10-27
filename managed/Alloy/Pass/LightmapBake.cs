@@ -478,8 +478,7 @@ internal static unsafe partial class LightmapBake
         int b = -1;
         for (int i = 0; i < ReadBufs && b < 0; i++) if (_cache.Busy[i] == 0) b = i;
         if (b < 0) { _uncached += _pendingRead.Count; _pendingRead.Clear(); _uSnap = false; return; }
-        byte* p = Renderer.OnVulkan ? null : (byte*)Gl.MapNamedBufferRange(_gl.Pbo, IntPtr.Zero, (IntPtr)total, Gl.MAP_READ_BIT);
-        if (p == null && !Renderer.OnVulkan) { _uncached += _pendingRead.Count; _pendingRead.Clear(); _uSnap = false; return; }
+        byte* p = null;
         // uninitialized and pinned: the zeroing of a 96 MiB array is pure cost when every byte is about to be
         // overwritten, and a buffer this size handed to the cache thread has no business being relocatable
         // uninitialized: zeroing an array whose every byte is about to be overwritten is pure cost. NOT pinned
@@ -487,7 +486,7 @@ internal static unsafe partial class LightmapBake
         // would leave holes there for the session.
         if (_readBufs[b] == null || _readBufs[b]!.Length < total)
             _readBufs[b] = GC.AllocateUninitializedArray<byte>((int)Math.Max(total, 1 << 20));
-        _uMap = p; _vkb.Draining = Renderer.OnVulkan; _uDone = 0; _uBuf = b;
+        _uMap = p; _vkb.Draining = true; _uDone = 0; _uBuf = b;
         CopySlice();
     }
 

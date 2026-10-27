@@ -220,53 +220,8 @@ internal static unsafe class PostChain
     {
         Armed = false;
         if (!_on || _down.Failed) return false;
-        if (Renderer.OnVulkan)
-        {
-            // the Vulkan frame clears its own HDR target to this colour (VkPasses)
-            _lastClear = new Vector3(clearRgba[0], clearRgba[1], clearRgba[2]);
-            Armed = true;
-            return true;
-        }
-        // BlitFramebuffer is in the list for the sampled depth copies (SceneDepth, FrameSnapshot) and for
-        // the present hand-back, which is how the finished frame reaches the screen at all.
-        if (Gl.ClearColor == null || Gl.Clear == null || Gl.GenFramebuffers == null
-            || Gl.FramebufferTexture2D == null || Gl.BlitFramebuffer == null)
-            return StandDown("a required GL entry point is missing");
-        if (!EnsurePrograms()) return false;
-        if (!EnsureTargets(viewport[2], viewport[3])) return false;
-        if (!EnsureDepth(OwnDepthFormat, viewport[2], viewport[3])) return false;
-
-        Gl.BindFramebuffer(Gl.FRAMEBUFFER, _gl.Fbo);
-        Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT0, Gl.TEXTURE_2D, _gl.HdrTex, 0);
-        // DEPTH_ATTACHMENT alone even for a packed format: nothing owned touches stencil, and every Alloy
-        // funnel attaches depth here (see FrameSnapshot's probe, which relies on exactly that).
-        Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, Gl.DEPTH_ATTACHMENT, Gl.TEXTURE_2D, _gl.DepthTex, 0);
-        uint status = Gl.CheckFramebufferStatus(Gl.FRAMEBUFFER);
-        if (status != Gl.FRAMEBUFFER_COMPLETE)
-        {
-            Gl.BindFramebuffer(Gl.FRAMEBUFFER, PresentTarget.Fbo46);
-            return Refuse($"the HDR framebuffer is incomplete (0x{status:x})");
-        }
-
-        // The engine's own clear colour, linearised: ground truth rather than a guess, and one clear
-        // rather than a full-screen blit.
-        // clearRgba is READ IN THE ENGINE CONTEXT by the caller and handed over. A GL share list shares
-        // OBJECTS, never per-context state, and glClearColor is per-context: querying it here would return
-        // whatever THIS context was last set to -- (0,0,0,0) until the first probe capture, and EnvProbe's
-        // own clear colour ever after.
+        // the Vulkan frame clears its own HDR target to this colour (VkPasses)
         _lastClear = new Vector3(clearRgba[0], clearRgba[1], clearRgba[2]);
-        if (Post.ClearViz.V) Gl.ClearColor(1f, 0f, 1f, 1f);
-        else Gl.ClearColor(MathF.Pow(MathF.Max(clearRgba[0], 0f), AlloyLights.SrgbGamma),
-                      MathF.Pow(MathF.Max(clearRgba[1], 0f), AlloyLights.SrgbGamma),
-                      MathF.Pow(MathF.Max(clearRgba[2], 0f), AlloyLights.SrgbGamma), clearRgba[3]);
-        // Depth comes with it: this attachment is Alloy's own and nothing else clears it. The mask is set
-        // beside the clear rather than assumed -- glClear honours it, and a stale DepthMask(0) would leave
-        // the prepass writing into last pass's depth. The VALUE is this context's own glClearDepth, which
-        // nothing in Alloy sets, i.e. GL's initial 1.0: the far plane, which is what every pass assumes.
-        Gl.DepthMask(1);
-        Gl.Clear(Gl.COLOR_BUFFER_BIT | Gl.DEPTH_BUFFER_BIT);
-        // Left set: the only other consumer of this context's clear colour is EnvProbe, which sets its own
-        // every capture (EnvProbe.Begin), so there is nothing here worth restoring.
         Armed = true;
         return true;
     }

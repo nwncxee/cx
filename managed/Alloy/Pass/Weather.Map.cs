@@ -371,6 +371,6 @@ internal static unsafe partial class Weather
           "the kernel radius follows the cover-edge knob, floors at a cover texel, and the tap knob cannot outrun the loop");
     }
 
-    private static string MapStats() => !Map.V ? ", map off" : (Renderer.OnVulkan ? _vks.MapFailed : _gl.MapFailed) ? ", map UNAVAILABLE"
-        : MapLive ? $", map {(Renderer.OnVulkan ? _vks.MapSize : _gl.MapSize)}^2 @{_mapTpm:F2}/m ({_mapTicksDone} ticks / {_mapScatters} latches)" : ", map idle";
+    private static string MapStats() => !Map.V ? ", map off" : _vks.MapFailed ? ", map UNAVAILABLE"
+        : MapLive ? $", map {_vks.MapSize}^2 @{_mapTpm:F2}/m ({_mapTicksDone} ticks / {_mapScatters} latches)" : ", map idle";
 }

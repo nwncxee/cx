@@ -73,7 +73,7 @@ internal static unsafe partial class GrassField
         if (w < 8 || h < 8 || (long)w * h > 4L << 20 || (Renderer.OnVulkan && px == null))
         {
             _log?.Info($"[grass] material {m} tid {tid}: atlas unreadable ({w}x{h}"
-                     + (Renderer.OnVulkan ? $", the engine's copy: {TexScan.Describe(tex)}, the Vulkan image: {why}" : "")
+                     + $", the engine's copy: {TexScan.Describe(tex)}, the Vulkan image: {why}"
                      + ") -- drawn as cards");
             return 0;
         }
@@ -81,7 +81,6 @@ internal static unsafe partial class GrassField
         Span<GrassAtlas.Cell> cells = stackalloc GrassAtlas.Cell[4];
         fixed (byte* p = px)
         {
-            if (!Renderer.OnVulkan) Gl.GetTextureImage((uint)tid, 0, Gl.RGBA, Gl.UNSIGNED_BYTE, px.Length, p);
             GrassAtlas.Classify(p, w, h, cells);
         }
         for (int k = 0; k < 4; k++)

@@ -95,11 +95,11 @@ public sealed unsafe partial class CasterPass
     /// <summary>Is the layered path taking this frame's views? On Vulkan it is the only path: the device carries
     /// <c>shaderOutputLayer</c> or no Vulkan backend exists at all.</summary>
     private static bool LayeredActive
-        => Renderer.OnVulkan ? VkArmed : _layerDial && _layerProbe > 0 && _gl.ProgLayer != 0;
+        => VkArmed;
 
     /// <summary>Has the frame's staging a non-empty source the views can select out of, on whichever backend
     /// bakes them? False bakes a clear, which for an empty world IS the bake.</summary>
-    private static bool GatherActive => Renderer.OnVulkan ? CasterGatherVk.Active : CasterGather.Active;
+    private static bool GatherActive => CasterGatherVk.Active;
     private static readonly StandDown _down = new("CasterPass DISARMED");
 
     /// <summary>Context loss: every GL name goes at once. Run on the loss edge, not each frame after it.</summary>

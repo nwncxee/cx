@@ -143,7 +143,7 @@ public sealed unsafe partial class CasterPass
     /// -&gt; no render), a vanilla stretch (the pass is gated on <see cref="AlloyGate.Alloy"/>, so the toggle
     /// reverts sun shadows on the very next frame), and a disarm.</summary>
     internal static bool CascadesFresh
-        => CascadeCount > 0 && (Renderer.OnVulkan ? !_vk.Cascades.IsNull : _gl.CascadeTex != 0) && _cascadeStamp == _frameSeq;
+        => CascadeCount > 0 && !_vk.Cascades.IsNull && _cascadeStamp == _frameSeq;
 
     /// <summary>How far every cascade's fit reaches TOWARD the light, past its own extent: the full max
     /// shadow distance for all of them, NOT each one's radius. A caster only has to be up-sun of a fragment
@@ -164,7 +164,7 @@ public sealed unsafe partial class CasterPass
         // #306: the split runs only when its array exists -- shadow.sundyn 0 or a refused allocation is the
         // combined bake everywhere, exactly as /shadow split 0 spells it.
         // On Vulkan the array is the bake's own, made at the first view that names it, so the dial alone decides.
-        bool split = _split && (Renderer.OnVulkan ? _sunSplitCfg : _gl.SunDynTex != 0);
+        bool split = _split && _sunSplitCfg;
         // The degrade window ticks once per sun frame. A layer whose static half re-baked on >= 90% of the
         // window's frames is paying two bakes where one combined bake would do; it degrades to today's
         // behaviour until the rate drops back under half (walking stops), and the period line says so.

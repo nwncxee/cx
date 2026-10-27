@@ -136,8 +136,7 @@ public static unsafe partial class MeshArena
     internal static Action<int[], int>? RangesMoved;
     private static int _acquired, _freed, _refused, _compactions, _logLeft = LogCap;
     private static readonly int[] _refusedBy = new int[RefusalName.Length];
-    private static int _overReleased, _heldPastEviction, _collisions, _staleKeys, _unqueued, _glDeferred;
-    private static bool _saidDeferred, _dumped;
+    private static int _overReleased, _heldPastEviction, _collisions, _staleKeys, _unqueued;
     /// <summary>Meshes whose normals came from the parse (<see cref="MeshDef.Normals"/>, already welded and
     /// smoothing-group aware) and meshes that had none -- the arena's half of finding 11: the weld runs once
     /// per distinct mesh at the parse, never once per part at enrolment.</summary>
@@ -729,29 +728,6 @@ public static unsafe partial class MeshArena
     {
         // The CPU half runs wherever the caller is: frees and the readers' snapshot touch no GL.
         lock (_gate) { if (DrainFrees()) Publish(); }
-        bool vk = Renderer.OnVulkan;
-        if (!vk && Gl.CreateBuffers == null) return;
-        // The GL half may ONLY run with Alloy's 4.6 context current. Buffers are share-listed with the
-        // engine's context, but a VERTEX ARRAY OBJECT is a container and is never shared -- so a VAO built
-        // on the game thread at the present boundary (where the ENGINE's context is current) is a name the
-        // 4.6 context does not know, and every draw that binds it rasterises nothing. That is exactly what
-        // DB mode hit: the feed pumps at the boundary, the VAO was built there, `s.Vao != 0` from then on,
-        // and the in-bracket pump never rebuilt it. Deferred and SAID, never done in the wrong context.
-        if (!vk && !GlContextService.Inside)
-        {
-            _glDeferred++;
-            if (!_saidDeferred)
-            {
-                _saidDeferred = true;
-                _log?.Info("MeshArena: a pump arrived outside Alloy's 4.6 bracket -- its GL half is deferred to "
-                         + "the next in-bracket pump (a VAO is not shared between contexts)");
-            }
-            return;
-        }
-        // An in-bracket pump clears the deferral tally: the feed pumps at the present boundary every frame
-        // BY DESIGN, so a running count of those would read as a fault. What matters is a deferral with no
-        // in-bracket pump after it, which is the state that leaves the arena unuploaded.
-        _glDeferred = 0;
         lock (_gate)
         {
             bool changed = false;
@@ -760,12 +736,6 @@ public static unsafe partial class MeshArena
                 compact = _sect[f].Dead > MaxVerts / 4 || (_sect[f].Full && _sect[f].Dead > 0);
             if (compact) { Compact(); changed = true; }
 
-            for (int f = 0; f < Formats && !vk; f++)
-            {
-                Section s = _sect[f];
-                if (s.Used > 0 && s.Uploaded != s.Used) UploadVerts(s, StrideOf[f]);
-            }
-            if (!vk && _iUsed > 0 && _iUploaded != _iUsed) UploadIndices();
             // CX-120 seam-anim: the dangly and animmesh ranges whose vertices moved on the game thread
             // (MeshArena.Dyn.cs). Inside the same bracket and under the same lock as every other upload.
             PumpVk();
@@ -773,11 +743,10 @@ public static unsafe partial class MeshArena
             for (int f = 0; f < Formats; f++)
             {
                 Section s = _sect[f];
-                if (vk) { uint t = VkReadyName((Fmt)f); if (s.Vao != t) { s.Vao = t; changed = true; } }
-                else if (s.Vao == 0 && s.Vbo != 0 && _ebo != 0) { BuildVao(s, (Fmt)f); changed = true; }
+                uint t = VkReadyName((Fmt)f);
+                if (s.Vao != t) { s.Vao = t; changed = true; }
             }
             if (changed) Publish();
-            if (changed && !vk) Dump();
         }
     }
 
@@ -1074,44 +1043,9 @@ public static unsafe partial class MeshArena
                + (_staleKeys > 0 ? $", {_staleKeys} stale keys swept" : "")
                + (_unqueued > 0 ? $", {_unqueued} UNQUEUED zero-ref ranges reclaimed" : "")
                + (_movedTotal > 0 ? $", {_movedTotal} range(s) moved by a compaction (records refreshed)" : "")
-               + (_glDeferred > 0 ? $", {_glDeferred} pump(s) STILL DEFERRED (no in-bracket pump since)" : "")
                + DynStats();
     }
 
-    /// <summary>One-shot proof that the VAO the draw binds is the one this arena built, in THIS context:
-    /// every attribute's enable/size/type/stride/offset/buffer, the element binding, and both buffers' sizes.
-    /// A context mismatch shows up here as zeros on every row -- the name resolves to nothing.</summary>
-    private static void Dump()
-    {
-        if (_dumped || _log == null || Gl.GetVertexArrayiv == null || Gl.GetVertexAttribiv == null) return;
-        _dumped = true;
-        int prevVao = 0;
-        Gl.GetIntegerv(Gl.VERTEX_ARRAY_BINDING, &prevVao);
-        for (int f = 0; f < Formats; f++)
-        {
-            Section s = _sect[f];
-            if (s.Vao == 0) continue;
-            int elem = 0;
-            Gl.GetVertexArrayiv(s.Vao, Gl.ELEMENT_ARRAY_BUFFER_BINDING, &elem);
-            Gl.BindVertexArray(s.Vao);
-            string rows = "";
-            foreach (uint loc in new uint[] { 0, 1, 2, 3, 4, 5, 8, 9 })
-            {
-                int en = 0, sz = 0, ty = 0, st = 0, bf = 0;
-                Gl.GetVertexAttribiv(loc, Gl.VERTEX_ATTRIB_ARRAY_ENABLED, &en);
-                if (en == 0) continue;
-                Gl.GetVertexAttribiv(loc, Gl.VERTEX_ATTRIB_ARRAY_SIZE, &sz);
-                Gl.GetVertexAttribiv(loc, Gl.VERTEX_ATTRIB_ARRAY_TYPE, &ty);
-                Gl.GetVertexAttribiv(loc, Gl.VERTEX_ATTRIB_ARRAY_STRIDE, &st);
-                Gl.GetVertexAttribiv(loc, Gl.VERTEX_ATTRIB_ARRAY_BUFFER_BINDING, &bf);
-                void* ptr; Gl.GetVertexAttribPointerv(loc, Gl.VERTEX_ATTRIB_ARRAY_POINTER, &ptr);
-                rows += $" [{loc}]size={sz} type=0x{ty:x} stride={st} off={(nint)ptr} buf={bf}";
-            }
-            _log.Always($"MeshArena: [vaodump] fmt={(Fmt)f} vao={s.Vao} vbo={s.Vbo} ebo={_ebo} elemBinding={elem} "
-                      + $"verts={s.Used} uploaded={s.Uploaded} indices={_iUsed}{rows}");
-        }
-        Gl.BindVertexArray((uint)prevVao);
-    }
 
     /// <summary>The arena's GPU bytes, in the biggest unit that still reads as a number.</summary>
     private static string Size() => Bytes(VramBytes);

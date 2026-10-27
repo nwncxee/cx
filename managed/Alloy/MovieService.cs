@@ -187,8 +187,7 @@ public sealed unsafe partial class MovieService : IExtenderService
     {
         if (said) return false;
         said = true;
-        _log?.Always(Renderer.OnVulkan ? $"Movies: {why} -- the movie is NOT DRAWN until Vulkan can take it"
-                                       : $"Movies: {why} -- the engine's own movie quad draws the movie until Alloy can");
+        _log?.Always($"Movies: {why} -- the movie is NOT DRAWN until Vulkan can take it");
         return false;
     }
 

@@ -148,7 +148,7 @@ public sealed unsafe partial class AlloyRenderer
     internal static void VkNoteDirty(int[] dirty, int n, bool whole)
     {
         VkColourState s = _vkc;
-        if (!Renderer.OnVulkan || s.DirtyAll) return;
+        if (s.DirtyAll) return;
         if (whole || s.DirtyN + n > s.Dirty.Length) { s.DirtyAll = true; s.DirtyN = 0; return; }
         Array.Copy(dirty, 0, s.Dirty, s.DirtyN, n);
         s.DirtyN += n;

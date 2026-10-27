@@ -145,13 +145,9 @@ public sealed unsafe partial class CasterPass
     private static bool VkGatherBegin(int drawN, CasterSrcRec* src, bool changed)
         => _vk.Cmds != null && _vk.Dev is VkBackend vk && CasterGatherVk.Begin(vk, _vk.Cmds, drawN, _gGroups, src, changed);
 
-    /// <summary>The frame's dynamic source on whichever backend bakes it.</summary>
+    /// <summary>The frame's dynamic source.</summary>
     private static bool VkDynamicSource(int m, CasterSrcRec* dst)
-    {
-        bool gl = !Renderer.OnVulkan && CasterGather.DynamicSource(m, dst);
-        if (!Renderer.OnVulkan) return gl;
-        return _vk.Cmds != null && _vk.Dev is VkBackend vk && CasterGatherVk.DynamicSource(vk, _vk.Cmds, m, dst);
-    }
+        => _vk.Cmds != null && _vk.Dev is VkBackend vk && CasterGatherVk.DynamicSource(vk, _vk.Cmds, m, dst);
 
     /// <summary>No dynamic source this frame.</summary>
     private static void StandDynamicSource()

@@ -93,7 +93,7 @@ internal static unsafe partial class Weather
     internal static uint CoverDepthView => _gl.EsmValid ? _gl.EsmView : 0;
 
     /// <summary>A plain-depth copy of this cover bake is held, on whichever backend draws.</summary>
-    private static bool CoverDepthOk => Renderer.OnVulkan ? _vks.EsmValid : CoverDepthView != 0;
+    private static bool CoverDepthOk => _vks.EsmValid;
 
     private static bool EnsureEsm(uint array, int layer, int size)
     {

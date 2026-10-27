@@ -51,7 +51,7 @@ internal static unsafe partial class LightmapBake
     /// <summary>Resident page layers on the backend that bakes them.</summary>
     private static int Layers
     {
-        get => Renderer.OnVulkan ? _vkb.Layers : _gl.Layers;
+        get => _vkb.Layers;
         set { if (Renderer.OnVulkan) _vkb.Layers = value; else _gl.Layers = value; }
     }
 
