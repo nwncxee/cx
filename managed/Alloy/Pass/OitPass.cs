@@ -6,8 +6,7 @@ namespace CX.Alloy;
 /// depth, composited in one full-screen draw.</summary>
 internal static class OitPass
 {
-    /// <summary><c>/alloy oit</c>: 0 = the sorted, depth-writing pass (A/B instrument), 1 = weighted blended,
-    /// 2 = per-pixel linked lists, which only GL ever had; the pair draws for both non-zero modes.</summary>
+    /// <summary><c>/alloy oit</c>: 0 = the sorted, depth-writing pass (A/B instrument), 1 = the weighted pair.</summary>
     internal static int Mode => Renderer.Oit.V;
 
     /// <summary><c>/alloy oitviz</c>: 1 = revealage as grey, 2 = accumulated mean colour, 3 = accumulated weight/10.
@@ -18,8 +17,8 @@ internal static class OitPass
     /// route then orders that range by state, not distance.</summary>
     internal static bool OrderFree => Mode != 0;
 
-    /// <summary>Will the resolve composite each object id once this frame? Never: Vulkan has no lists, so an
-    /// object's overlapping parts thicken it as the weighted modes do.</summary>
+    /// <summary>Will the resolve composite each object id once this frame? Never: there are no per-pixel lists,
+    /// so an object's overlapping parts thicken it as the weighted pair does.</summary>
     internal static bool Dedupes => false;
 
     /// <summary>Composite: colour = accum.rgb / accum.a (the weighted mean), alpha = revealage, under

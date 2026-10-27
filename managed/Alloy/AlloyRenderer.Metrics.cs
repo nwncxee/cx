@@ -289,7 +289,6 @@ public sealed unsafe partial class AlloyRenderer
                    // #119: the prepass's own cost, and what it bought. samples/px is the overdraw figure --
                    // run the same scene with /alloy prepass 0 and the difference IS the pass's worth.
                    (!_depthPrepass ? "prepass OFF (/alloy prepass 1 restores it)"
-                    : Programs._progDepth == 0 ? "prepass unavailable"
                     : $"prepass {(float)Counters._prepassDraws / Counters._frames:F0} draws/frame" +
                       (Counters._prepassKeyed == 0 ? "" : $" ({(float)Counters._prepassKeyed / Counters._frames:F0} of them dissolving, keyhole stage)") +
                       (Counters._prepassSkipped == 0 ? "" : $" (+{(float)Counters._prepassSkipped / Counters._frames:F0} excluded, displacing/skinned or cutout)") +

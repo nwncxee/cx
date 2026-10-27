@@ -6,9 +6,9 @@
 4 managed/Alloy/AlloyRenderer.Device.cs
 7 managed/Alloy/AlloyRenderer.Frame.cs
 75 managed/Alloy/AlloyRenderer.Metrics.cs
-22 managed/Alloy/AlloyRenderer.Motion.cs
+10 managed/Alloy/AlloyRenderer.Motion.cs
 7 managed/Alloy/AlloyRenderer.Target.cs
-15 managed/Alloy/AlloyRenderer.Uniforms.cs
+11 managed/Alloy/AlloyRenderer.Uniforms.cs
 1 managed/Alloy/AlloyRenderer.Vao.cs
 9 managed/Alloy/Core/AlloyGate.cs
 2 managed/Alloy/Core/AurXform.cs
@@ -118,13 +118,13 @@
 12 managed/Alloy/Pass/Beams.Db.cs
 16 managed/Alloy/Pass/CasterGather.cs
 10 managed/Alloy/Pass/CasterPass.Cover.cs
-22 managed/Alloy/Pass/CasterPass.cs
+21 managed/Alloy/Pass/CasterPass.cs
 18 managed/Alloy/Pass/CasterPass.Cube.cs
 52 managed/Alloy/Pass/CasterPass.List.cs
 4 managed/Alloy/Pass/CasterPass.Mask.cs
 15 managed/Alloy/Pass/CasterPass.Stage.cs
 25 managed/Alloy/Pass/CasterPass.Sun.cs
-5 managed/Alloy/Pass/CasterPass.Target.cs
+2 managed/Alloy/Pass/CasterPass.Target.cs
 4 managed/Alloy/Pass/CullPass.cs
 10 managed/Alloy/Pass/DeferredLights.cs
 2 managed/Alloy/Pass/DeferredShadows.cs
@@ -141,7 +141,7 @@
 13 managed/Alloy/Pass/Halos.cs
 2 managed/Alloy/Pass/IdTarget.cs
 30 managed/Alloy/Pass/LightmapBake.Area.cs
-65 managed/Alloy/Pass/LightmapBake.cs
+64 managed/Alloy/Pass/LightmapBake.cs
 19 managed/Alloy/Pass/LightmapBake.Hold.cs
 27 managed/Alloy/Pass/LightmapBake.Lights.cs
 8 managed/Alloy/Pass/LightmapBake.Pack.cs
@@ -166,7 +166,7 @@
 13 managed/Alloy/Pass/TriggerHighlight.cs
 4 managed/Alloy/Pass/Weather.Cover.cs
 14 managed/Alloy/Pass/Weather.cs
-27 managed/Alloy/Pass/Weather.Draw.cs
+23 managed/Alloy/Pass/Weather.Draw.cs
 4 managed/Alloy/Pass/Weather.Esm.cs
 26 managed/Alloy/Pass/Weather.Map.cs
 14 managed/Alloy/Pass/Weather.Shelter.cs
@@ -175,7 +175,7 @@
 11 managed/Alloy/Pass/Weather.Tracks.cs
 6 managed/Alloy/Pass/Weather.WetStep.cs
 1 managed/Alloy/PresentTarget.cs
-62 managed/Alloy/Programs.cs
+4 managed/Alloy/Programs.cs
 16 managed/Alloy/RasterReader.cs
 9 managed/Alloy/RasterReader.Forced.cs
 2 managed/Alloy/ResLocate.cs

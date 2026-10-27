@@ -250,10 +250,8 @@ internal static unsafe partial class LightmapBake
         Array.Clear(_shelfY); Array.Clear(_shelfH); Array.Clear(_shelfX); Array.Clear(_pageClass); _packPage = 0; _finePage = 0; _refineCursor = 0;
         AbortBake();
         AreaSnapAbandon();   // the packing goes here: a plan waiting on one more readback is written as it stands
-        if (_gl.Layers > 0 && Gl.DeleteTextures != null) ClearPages();
         if (_vkb.Layers > 0) _vkb.ClearDue = true;
-        AbortReadback(gl: true);
-        if (_gl.Fence != IntPtr.Zero) { _uncached += _pendingRead.Count; if (Gl.DeleteSync != null) Gl.DeleteSync(_gl.Fence); _gl.Fence = IntPtr.Zero; }
+        AbortReadback();
         if (_vkb.ReadQueued) { _uncached += _pendingRead.Count; _vkb.ReadQueued = false; }
         _pendingRead.Clear();
         _cache.Drain();

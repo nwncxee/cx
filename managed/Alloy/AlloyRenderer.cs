@@ -442,7 +442,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// installed"; the capability pair is "a program built and the multidraw entry points exist", both of
     /// which latch and are deliberately never cleared by a context loss (see <see cref="ContextLost"/>).</summary>
     internal static bool ArmedForFrame => _armed;
-    internal static bool DrawCapable => !Programs._progFailed && !_batchUnavailable;
+    internal static bool DrawCapable => !_batchUnavailable;
 
     /// <summary>Inside the world view's colour pass (<see cref="DbWorldPass"/>), which is the only place
     /// Alloy draws: nothing of Alloy's runs inside the engine's own RenderSinglePass.</summary>
@@ -468,11 +468,9 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
 
     /// <summary>This pass's context-loss slot. Every GL NAME here belongs to the 4.6 context, so nothing is
     /// deleted -- the objects went with it -- and the names are dropped so each Ensure rebuilds rather than
-    /// short-circuiting on a handle and drawing through a dead one. <c>Programs._progFailed</c> and
-    /// <c>_litFailed</c> are NOT cleared: a stage that could not build is a fact about the source.</summary>
+    /// short-circuiting on a handle and drawing through a dead one.</summary>
     internal static void ContextLost()
     {
-        Programs._prog46 = 0; Programs._progLit46 = 0; Programs._progLitDef = 0; Programs.ForgetDecal(delete: false); Programs._progDepth = 0; Programs._progDepthKey = 0; Programs._progDepthFeat = 0; Programs._progWater = 0;
         Ablation.Forget(delete: false);
         TriggerHighlight.ContextLost();
         _drawBuf = 0; _texHBuf = 0; _boneBuf = 0;
@@ -488,13 +486,11 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         // whatever the next context recycles that number for.
         // #136: the engine-layout VAO cache goes with it. Same rule, same reason -- a container object is
         // not shared, so every name in it belonged to the context that just went.
-        Programs._waterFailed = false;
         // #257: and so is the target latch -- every name in it belongs to the context that just went.
         ForgetTarget();
         DepthResource.Revoke();
         PresentTarget.ContextLost();   // #456: names only -- the images died with the context
         GuiPass.ContextLost();
-        _nullSunShadow = 0; _nullCubeShadow = 0;
         MovieFrame.ContextLost();
         MovieService.ContextLost();   // the movie quad's program and buffers are Alloy's now, not the engine's
         PassContextLost();
@@ -519,14 +515,12 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         // Disarming must never be silent: the [alloy] period line is the only evidence this pass runs at
         // all, so its ABSENCE has to name a reason rather than read as "no news". RevokeAll only speaks when
         // something was owned, which is exactly not the case when the program failed before the first enroll.
-        if (Programs._progFailed || _batchUnavailable)
+        if (_batchUnavailable)
         {
-            RevokeAll(Programs._progFailed ? "program failed" : "multidraw unavailable");
+            RevokeAll("multidraw unavailable");
             _armed = false;
-            _log?.Info("AlloyRenderer: DISARMED (" + (Programs._progFailed
-                           ? "program build failed"
-                           : "glMultiDrawElementsBaseVertex or glBindBufferBase missing") +
-                       ") -- the Alloy world pass is off for this session and no [alloy] lines will follow");
+            _log?.Info("AlloyRenderer: DISARMED (glMultiDrawElementsBaseVertex or glBindBufferBase missing)"
+                     + " -- the Alloy world pass is off for this session and no [alloy] lines will follow");
             return;
         }
         bool lost = _was.Available && !GlContextService.Available;

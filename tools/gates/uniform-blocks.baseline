@@ -1,5 +1,3 @@
-9 managed/Alloy/AlloyRenderer.Batches.cs
-7 managed/Alloy/AlloyRenderer.Motion.cs
 30 managed/Alloy/AlloyRenderer.Uniforms.cs
 3 managed/Alloy/Db/PltGpuCheck.cs
 5 managed/Alloy/Db/TexRegistry.Arturo.cs
@@ -14,9 +12,6 @@
 1 managed/Alloy/Pass/GuiModelSolve.cs
 12 managed/Alloy/Pass/Halos.cs
 1 managed/Alloy/Pass/IdTarget.cs
-4 managed/Alloy/Pass/LightmapBake.cs
-6 managed/Alloy/Pass/LightmapBake.Step.cs
-5 managed/Alloy/Pass/MotionVectors.cs
 9 managed/Alloy/Pass/PairDebt.cs
 27 managed/Alloy/Pass/PostChain.cs
 4 managed/Alloy/Pass/PostStack.cs
@@ -29,13 +24,11 @@
 8 managed/Alloy/Pass/TaaStage.cs
 7 managed/Alloy/Pass/ToonStage.cs
 3 managed/Alloy/Pass/TriggerHighlight.cs
-4 managed/Alloy/Pass/Weather.Cover.cs
-18 managed/Alloy/Pass/Weather.Draw.cs
 6 managed/Alloy/Pass/Weather.Esm.cs
 12 managed/Alloy/Pass/Weather.Map.cs
 11 managed/Alloy/Pass/Weather.Shelter.cs
 16 managed/Alloy/Pass/Weather.Splash.cs
 11 managed/Alloy/Pass/Weather.Surface.cs
-20 managed/Alloy/Programs.cs
+10 managed/Alloy/Programs.cs
 1 managed/Services/Nui/NuiModelEngine.Solve.cs
 15 managed/Ui/TextRig.Replay.cs

@@ -303,7 +303,7 @@ public sealed unsafe partial class CasterPass
     {
         ImageId img = VkMapOf(map);
         if (img.IsNull) return false;
-        int size = 0, views = 0, lastLayer = 0;
+        int size = 0, views = 0;
         bool clamp = map is CasterMap.SunStatic or CasterMap.SunDyn or CasterMap.Sky;
         for (int k = 0; k < n; k++)
         {
@@ -314,7 +314,6 @@ public sealed unsafe partial class CasterPass
             cl.BeginRenderPass(new RenderPassDesc(default, new DepthAttachment(img, 0, _qLayer[k], LoadOp.Clear, StoreOp.Store, 1f)));
             cl.EndRenderPass();
             _vk.Baked++;
-            if (views == 0) lastLayer = _qLayer[k];   // the chunk's FIRST layer: the reading wants a baked one
             views++;
         }
         if ((_vk.Said & (1 << (int)map)) == 0)
@@ -336,7 +335,6 @@ public sealed unsafe partial class CasterPass
             fixed (CasterViewRec* vs = _viewStage)
                 ok = CasterGatherVk.DispatchLayer(vk, cl, vs, vn, sets == 1 << CasterGather.SetDynamic, chunk);
             if (!ok) return false;
-            VkProbeNote(map, lastLayer, vn, size);
             cl.BeginRenderPass(new RenderPassDesc(default, new DepthAttachment(img, 0, -1, LoadOp.Load, StoreOp.Store, 1f)));
             cl.SetViewport(0, 0, size, size);
             if (!MeshArena.VkEbo.IsNull) cl.BindIndexBuffer(MeshArena.VkEbo, IndexType.U16, 0);
@@ -477,7 +475,7 @@ public sealed unsafe partial class CasterPass
         for (int f = 0; f < CubeFaces; f++)
         {
             Matrix4x4 vp = ShadowMath.PointLightFaceViewProj(pos, f, near, far);
-            if (!RenderView(CasterMap.Bake, 0, size, slot * CubeFaces + f, &vp, ShadowMath.CubeFaceForward(f), pos, far, 0f, true,
+            if (!RenderView(CasterMap.Bake, size, slot * CubeFaces + f, &vp, ShadowMath.CubeFaceForward(f), pos, far, 0f, true,
                             CasterGather.SetStatic, false, false)) return false;
         }
         return true;

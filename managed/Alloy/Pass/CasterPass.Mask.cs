@@ -32,33 +32,6 @@ public sealed unsafe partial class CasterPass
 
     private static int _maskNoTex, _maskNoProg;
 
-    private static bool _maskH => Shadows.MaskH.V;
-    private static bool HandleMaskReady => _maskH && _gl.ProgMaskH != 0 && (_gl.ProgLayer == 0 || _gl.ProgLayerMaskH != 0);
-
-    /// <summary>Build the handle-sampling pair once the renderer's bindless path is armed. Lazy because the
-    /// bindless probe runs in the first COLOUR frame and this pass's programs are built in the shadow
-    /// bracket before it; a pass built on that frame would otherwise never get the pair. Re-stages once
-    /// when the pair becomes usable, so the standing key picks it up.</summary>
-    private static void EnsureHandleMask()
-    {
-        if (_gl.MaskHFailed || _gl.ProgMask == 0 || !AlloyRenderer.Bindless || CastMaskHFs == CastMaskHFsSrc) return;
-        if (_gl.ProgMaskH == 0)
-        {
-            _gl.ProgMaskH = GlProgram.Graphics(CastMaskHVs, CastMaskHFs, _log, "CasterPass handle-masked depth program");
-            if (_gl.ProgMaskH == 0) { _gl.MaskHFailed = true; return; }
-            _gl.LocMaskHVp = GlProgram.Loc(_gl.ProgMaskH, "uVP"); _gl.LocMaskHCut = GlProgram.Loc(_gl.ProgMaskH, "uAlphaCut"); _gl.LocMaskHDither = GlProgram.Loc(_gl.ProgMaskH, "uDither"); _gl.LocMaskHEnv = GlProgram.Loc(_gl.ProgMaskH, "uEnvAlpha"); _gl.LocMaskHMip = GlProgram.Loc(_gl.ProgMaskH, "uAlphaMip");
-            _listVer++;
-            _log?.Info("CasterPass: handle-sampled masks armed -- masked batches merge per VAO (/shadow maskh 0 is the A/B)");
-        }
-        if (_gl.ProgLayer != 0 && _gl.ProgLayerMaskH == 0)
-        {
-            _gl.ProgLayerMaskH = GlProgram.Graphics(CastLayerMaskHVs, CastMaskHFs, _log, "CasterPass layered handle-masked depth program");
-            if (_gl.ProgLayerMaskH == 0) { _gl.MaskHFailed = true; return; }
-            _gl.LocLayerMaskHCut = GlProgram.Loc(_gl.ProgLayerMaskH, "uAlphaCut"); _gl.LocLayerMaskHDither = GlProgram.Loc(_gl.ProgLayerMaskH, "uDither"); _gl.LocLayerMaskHEnv = GlProgram.Loc(_gl.ProgLayerMaskH, "uEnvAlpha"); _gl.LocLayerMaskHMip = GlProgram.Loc(_gl.ProgLayerMaskH, "uAlphaMip");
-            _listVer++;
-        }
-    }
-
     /// <summary>The two engine thresholds. Alpha means COVERAGE on everything the engine ships, so the
     /// default is the engine's own 0.2 -- the value its colour pass uses, which is what makes a leaf cast a
     /// leaf. The exception is an env-mapped material, where the diffuse alpha is REFLECTIVITY

@@ -15,7 +15,7 @@ internal static class SsboSlots
 
     /// <summary>Persistent: bound once (at upload, or at the bracket's start) and read by later passes without a
     /// rebind, so each owns its point outright and nothing else may bind there.</summary>
-    internal const uint Draw = 0, DrawIdx = 1, Bones = 2, TexH = 3, OitHeads = 4, OitNodes = 5, ViewTbl = 6, Plt = 7;
+    internal const uint Draw = 0, DrawIdx = 1, Bones = 2, TexH = 3, ViewTbl = 6, Plt = 7;
     /// <summary>The first shared point. Everything from here up is bound by its reader right before its own
     /// draw or dispatch, so a compute pass may take any of them in between.</summary>
     internal const uint Shared = 8;
@@ -51,7 +51,7 @@ internal static class SsboSlots
     private static readonly Dictionary<string, uint> Blocks = new()
     {
         ["CxDrawBuf"] = Draw, ["CxDrawIdxBuf"] = DrawIdx, ["CxBoneBuf"] = Bones, ["CxTexH"] = TexH,
-        ["CxOitHeads"] = OitHeads, ["CxOitNodes"] = OitNodes, ["CxBakeViews"] = ViewTbl, ["CxPltBuf"] = Plt,
+        ["CxBakeViews"] = ViewTbl, ["CxPltBuf"] = Plt,
         ["LightBuf"] = Lights, ["CxLightBuf"] = Lights, ["ClusterCount"] = ClusterCount, ["CxClusterCount"] = ClusterCount,
         ["ClusterIdx"] = ClusterIdx, ["CxClusterIdx"] = ClusterIdx, ["DynMovers"] = Movers, ["CxDynMovers"] = Movers,
         ["CxPairBuf"] = Pair, ["CxChartBuf"] = Chart,

@@ -38,20 +38,5 @@ internal static unsafe partial class Weather
     internal static bool CoverWanted => !_off && Enabled.V && Cover.V && !FrameInputs.Interior
         && ((CurrentKind != Kind.None && Density > 0f) || _wet > 0f || _snow > 0f);
 
-    /// <summary>The precipitation program's read: the sun array on its own unit (nothing else is bound there
-    /// in this program), the fit matrix, the layer. A zero matrix is "no map" to the stage.</summary>
-    private static void BindCover(ref Loc l)
-    {
-        bool on = Cover.V && CasterPass.CoverFresh;
-        Gl.ActiveTexture(Gl.TEXTURE0 + TextureSlots.SunShadow);
-        Gl.BindTexture(Gl.TEXTURE_2D_ARRAY, CasterPass.CascadeTex);
-        Gl.ActiveTexture(Gl.TEXTURE0);
-        Gl.Uniform1i(l.Cover, (int)TextureSlots.SunShadow);
-        Matrix4x4 vp = on ? CasterPass.CoverVp : default;
-        Gl.UniformMatrix4fv(l.CoverVp, 1, 0, (float*)&vp);
-        Gl.Uniform1f(l.CoverLayer, CasterPass.CoverLayer);
-        Gl.Uniform1f(l.CoverSoft, CoverSoft.V);
-    }
-
     private static string CoverStats() => Cover.V ? $", {CasterPass.CoverStats()}" : "";
 }

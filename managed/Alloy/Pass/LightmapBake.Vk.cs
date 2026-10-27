@@ -56,10 +56,10 @@ internal static unsafe partial class LightmapBake
     }
 
     /// <summary>A readback's copy is queued and its submit not yet known done.</summary>
-    private static bool Fenced => _gl.Fence != IntPtr.Zero || _vkb.ReadQueued;
+    private static bool Fenced => _vkb.ReadQueued;
 
     /// <summary>A finished readback is still being copied out, a slice a frame.</summary>
-    private static bool Draining => _uMap != null || _vkb.Draining;
+    private static bool Draining => _vkb.Draining;
 
     /// <summary>The record buffer the Vulkan lit and deferred stages read on <see cref="BindChart"/>; null before the
     /// first upload, and in the A/B's frames, whose GL half has no records to read.</summary>
@@ -103,7 +103,7 @@ internal static unsafe partial class LightmapBake
     internal static void VkRun(VkBackend vk, CommandList cl, bool capturing, int frame)
     {
         if (_vkb.Dev != vk) _vkb = new BakeVkState { Dev = vk };
-        if (!Enabled) { AbortReadback(gl: false); return; }
+        if (!Enabled) { AbortReadback(); return; }
         if (capturing) return;
         long a0 = GC.GetAllocatedBytesForCurrentThread();
         _vkb.Cl = cl;
