@@ -21,6 +21,8 @@ internal static unsafe partial class GrassField
     {
         public int FacesSent;
         public long PushGen;
+        /// <summary>Pushers in the list the push field currently holds (-1 = none that can be trusted).</summary>
+        public int PushWasN = -1;
         public readonly int[] Tids = new int[MaxGrassMaterials];
         public readonly bool[] Live = new bool[MaxGrassMaterials];
         /// <summary>The last <see cref="StageVk"/>'s plan, for the uniform writers.</summary>

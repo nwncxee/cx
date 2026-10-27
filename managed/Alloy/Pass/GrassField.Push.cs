@@ -52,8 +52,6 @@ internal static unsafe partial class GrassField
     private static readonly Pusher[] _pushNow = new Pusher[MaxPushers], _pushWas = new Pusher[MaxPushers];
     /// <summary>Pushers in this frame's list.</summary>
     private static int _pushNowN;
-    /// <summary>Pushers in the list the field currently holds (-1 = none that can be trusted).</summary>
-    private static int _pushWasN = -1;
     /// <summary>The texels <see cref="_push"/> is NOT neutral over -- what a rebuild has to undo and what the
     /// upload has to carry. Empty is <c>x1 &lt; x0</c>.</summary>
     private static int _pushRx0 = PushRes, _pushRy0 = PushRes, _pushRx1 = -1, _pushRy1 = -1;
@@ -92,7 +90,7 @@ internal static unsafe partial class GrassField
         // 256KB upload. With `push` at 0 the list is empty, and an empty list that repeats is the same skip.
         EnsureMask();
         bool over = WalkPushers(collect: true);
-        if (!over && _pushNowN == _pushWasN && SamePushers(_pushNowN))
+        if (!over && _pushNowN == _vkg.PushWasN && SamePushers(_pushNowN))
         { _pushSkips++; return; }
 
         // Only what the LAST list wrote needs undoing; the rest of the field is still the neutral template it
@@ -106,8 +104,8 @@ internal static unsafe partial class GrassField
         _pushRx0 = PushRes; _pushRy0 = PushRes; _pushRx1 = -1; _pushRy1 = -1;
         if (over) WalkPushers(collect: false);
         else for (int i = 0; i < _pushNowN; i++) WritePusher(in _pushNow[i]);
-        if (over) _pushWasN = -1;   // a truncated list must never match next frame
-        else { Array.Copy(_pushNow, _pushWas, _pushNowN); _pushWasN = _pushNowN; }
+        if (over) _vkg.PushWasN = -1;   // a truncated list must never match next frame
+        else { Array.Copy(_pushNow, _pushWas, _pushNowN); _vkg.PushWasN = _pushNowN; }
     }
 
     /// <summary>Walk the push population once: in <paramref name="collect"/> mode nothing is written and each
