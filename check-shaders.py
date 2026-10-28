@@ -8,8 +8,9 @@ unavailable -- lit parts revert to engine drawing" in the log and the world keep
 This turns that into a build-time error.
 
 The job here is text and SPIR-V: every stage parses as GLSL and compiles to a module the Vulkan
-environment accepts. What only a device can answer -- a pipeline refused at creation -- is
-`VkBackend.SelfCheck.Stage`, which `./run-demo.sh` runs.
+environment accepts. What only a device can answer is `./run-demo.sh`'s: a pipeline refused at
+creation (`VkBackend.SelfCheck.Stage`), and the three goldens that run a stage on the GPU and judge
+what it answered -- the lightmap block encoder, the G-buffer's lanes, the parallax march (`GpuGolden`).
 
 Composition is not written down here. Every stage is a `managed/Alloy/Shaders/*.glsl` file whose
 `#include` lines name the libraries it is built from (#707), and this script compiles those same
