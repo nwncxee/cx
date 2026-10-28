@@ -118,9 +118,9 @@ internal static unsafe partial class PostStack
         s.Up = taa && PostChain.TaaUpsample && (viewport[2] != dw || viewport[3] != dh);
         if (live != 0 && !Pair(vk, s, s.Up ? viewport[2] : dw, s.Up ? viewport[3] : dh, log)) { live = 0; taa = false; _targetBad = true; }
         TaaLive = taa;
-        if (live == 0) return PostChainVk.Record(vk, cl, hdr, depth, vk.Composite, true, viewport, display, log);
+        if (live == 0) return PostChainVk.Record(vk, cl, hdr, depth, vk.Composite, true, viewport, display, default, log);
         int* full = stackalloc int[4] { 0, 0, s.W, s.H };
-        if (!PostChainVk.Record(vk, cl, hdr, depth, s.A, false, viewport, full, log)) return false;
+        if (!PostChainVk.Record(vk, cl, hdr, depth, s.A, false, viewport, full, taa ? s.Vel : default, log)) return false;
         ImageId read = s.A, write = s.B;
         int left = System.Numerics.BitOperations.PopCount((uint)live);
         for (int i = 0; i < _stages.Length; i++)
