@@ -72,6 +72,7 @@ public static class ServiceHost
         CX.Graphics.VulkanToolchain.SelfCheck(log);   // the staged shaderc and the machine's loader, off-device only
         CX.Graphics.Rhi.VkBackend.SelfCheck(log);   // the pilot's stages compile for Vulkan with GL's bindings shifted apart
         CX.Graphics.Rhi.VkGlsl.SelfCheck(log);   // the GL-to-Vulkan GLSL rules on fixtures, and the std140 reflection
+        CX.Alloy.ShaderBinary.SelfCheck(log);   // a content SPIR-V .shd is validated, and GLSL text is never read as one
         CX.Alloy.VkPrograms.SelfCheck(log);   // the batch pass's programs translate and compile for Vulkan
         CX.Alloy.AlloyRenderer.VkDeferredSelfCheck(log);   // ...and the deferred path's three compute stages, on bindings the host binds
         CX.Rhi.RhiSelfCheck.Run(log);   // handles, the command arena's round trip and growth, format traits

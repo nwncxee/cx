@@ -55,6 +55,8 @@ stubs. gamescope chooses the display number itself, so the harness reads it back
 log (`Starting Xwayland on :N`) -- there is no flag to pin it. Sound reaches nothing either.
 `tools/live/isolate.sh` sets `ALSOFT_DRIVERS=null`, so OpenAL Soft mixes every frame and plays none of it, and points
 PulseAudio, PipeWire and SDL audio at sockets that don't exist. The Proton run also disables wine's audio drivers.
+It also exports `DISABLE_GAMESCOPE_WSI=1`: gamescope's machine-wide Vulkan WSI layer refuses a headless swapchain,
+which stands Alloy down and leaves the run grading the engine's own renderer.
 
 **Nothing outlives the run.** Every process the run starts carries `CX_LIVE_RUN=<tag>` in its environment, so the
 harness finds its own processes even after they leave the launch tree, as `wineserver` does. A run FAILs when one of

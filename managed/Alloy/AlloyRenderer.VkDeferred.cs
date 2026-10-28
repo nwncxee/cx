@@ -362,14 +362,18 @@ public sealed unsafe partial class AlloyRenderer
     /// translated, compiled and linked, its loose block reflected and its locations resolved. Null, logged, for a
     /// text the contract guard, the translator or the toolchain refused.</summary>
     private static VkDefStage? VkDefBuild(VkBackend vk, string resref, string? define, string label, ExtenderLog log)
-        => VkDefText(resref, define, label, log) is ({ } t, { } src) ? VkDefCompile(vk, t, src, label, log) : null;
+        => VkDefText(resref, define, label, log) is ({ } t, { } src)
+            ? VkDefCompile(vk, t, src, label, log, define == null ? resref : null) : null;
 
     /// <summary>A translated compute stage compiled and linked, its loose block reflected against
-    /// <paramref name="src"/> (the text it came from) and its locations resolved. Null, logged, when refused.</summary>
-    private static VkDefStage? VkDefCompile(VkBackend vk, VkProgramText t, string src, string label, ExtenderLog log)
+    /// <paramref name="src"/> (the text it came from) and its locations resolved. A SPIR-V <c>&lt;resref&gt;.shd</c>
+    /// stands in for the compile where <paramref name="binRef"/> names one. Null, logged, when refused.</summary>
+    private static VkDefStage? VkDefCompile(VkBackend vk, VkProgramText t, string src, string label, ExtenderLog log,
+                                            string? binRef = null)
     {
         if (t.Error != null) { log.Always($"AlloyRenderer: {label} did not translate -- {t.Error}"); return null; }
-        byte[]? spirv = VulkanToolchain.Compile(VkBackend.Translate(t.Cs), label, ShaderKind.ComputeShader, out string e);
+        byte[]? spirv = ShaderBinary.Stage(binRef, ShaderStage.Compute, t.Opaques, VkBackend.Translate(t.Cs),
+                                           label, log, out string e);
         if (spirv == null) { log.Always($"AlloyRenderer: {label} did not compile -- {e}"); return null; }
         var st = new VkDefStage { Opaques = t.Opaques.ToArray() };
         st.Cs = vk.CreateShader(ShaderStage.Compute, spirv, label);

@@ -136,7 +136,8 @@ internal static unsafe class SsaoPassVk
     }
 
     /// <summary>The stage pair <paramref name="fsRef"/> names, as GL compiles it (its own override and library
-    /// swaps), translated and compiled for Vulkan. A null id, logged, for a text the toolchain refused.</summary>
+    /// swaps), translated and compiled for Vulkan -- or a SPIR-V <c>&lt;fsRef&gt;.shd</c> as the fragment module. A
+    /// null id, logged, for a text the toolchain refused.</summary>
     private static PipelineId Pipeline(VkBackend vk, string fsRef, string label, ExtenderLog log)
     {
         ShaderTexts.Pair(PostChain.ShdPostVs, ShaderStages.Source(PostChain.ShdPostVs), fsRef, ShaderStages.Source(fsRef),
@@ -151,7 +152,8 @@ internal static unsafe class SsaoPassVk
             return default;
         }
         byte[]? v = VulkanToolchain.Compile(VkBackend.Translate(t.Vs), $"{label} vs", ShaderKind.VertexShader, out string ve);
-        byte[]? f = VulkanToolchain.Compile(VkBackend.Translate(t.Fs), $"{label} fs", ShaderKind.FragmentShader, out string fe);
+        byte[]? f = ShaderBinary.Stage(fsRef, ShaderStage.Fragment, t.Opaques, VkBackend.Translate(t.Fs),
+                                       $"{label} fs", log, out string fe);
         if (v == null || f == null) { log.Always($"SsaoPassVk: {label} did not compile -- {(v == null ? ve : fe)}"); return default; }
         var d = new PipelineDesc
         {
