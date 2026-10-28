@@ -279,7 +279,7 @@ public static void DrawBatch(float[] verts, int count, float alpha = 1f, float o
 - The replay sets its own full draw state (blend on, depth off, cull off), snapshots nothing (#210), and
   on the GL side `UiHostService` resyncs the engine after the roll-call.
 
-Textured quad (RGB, its own program/VAO): `managed/Ui/TextRig.cs:455`, see §9.
+Textured quad (RGB, a command of its own kind): `managed/Ui/TextRig.cs:455`, see §9.
 
 ### Rounded rects / borders / shadows
 
@@ -763,7 +763,7 @@ and use `Panel.Contains` in `HitTestOverride` (`QuickbarService.cs:344-401`). Ad
 ## 7. Hot-path rules
 
 The rule (CLAUDE.md, and `ADR 0004` "Consequences"): **the per-frame path is a hard zero-alloc
-invariant** — it runs on the render thread inside `SwapBuffers`, and NativeAOT's GC runs on whatever
+invariant** — it runs inside the engine's `SwapBuffers`, and NativeAOT's GC runs on whatever
 thread the hook fired on, so churn there is a visible stutter.
 
 **May not** happen in `DrawContent`: `new` of anything, `List<T>` growth, string concatenation/interpolation,
