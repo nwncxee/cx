@@ -35,8 +35,6 @@ internal static unsafe partial class Weather
     private static bool _mapClear, _mapArrive;
     private static long _mapTicks;
     private static int _mapFrame, _mapTicksDone, _mapScatters;
-    private static int _sScatVp, _sScatVpInv, _sScatXf, _sScatSize, _sScatRect, _sScatBasin, _sScatDepth;
-    private static int _sIntSize, _sIntStep, _sIntFill;
 
     private static void DeclareMapKnobs()
     {
@@ -89,118 +87,9 @@ internal static unsafe partial class Weather
     /// <summary>Context loss: the map texture went with the context, so nothing is latched to an area any more.</summary>
     private static void MapLost() { _mapArea = IntPtr.Zero; _mapClear = true; _mapTicks = 0; }
 
-    /// <summary>Once per presented world frame, from the weather draw: (re)fit the map to this area, clear
-    /// it on an edge, and integrate it on the cadence. The lit pass has already run, so a consumer reads the
-    /// previous frame's map -- one frame of latency on a term that moves over minutes.</summary>
-    private static void MapTick()
-    {
-        if (!Map.V || _gl.MapFailed || FrameInputs.Interior) return;
-        // nothing has ever fallen in this area: no allocation and no dispatch. Once there IS a map it
-        // stays, and it keeps integrating -- that is what dries ground the player has walked away from.
-        if (_gl.MapTex == 0 && !(CurrentKind != Kind.None && Density > 0f) && _wet <= 0f && _snow <= 0f) return;
-        if (!EnsureMap()) return;
-        long now = Stopwatch.GetTimestamp();
-        if (_mapClear)
-        {
-            _mapClear = false; _mapArea = FrameInputs.AreaPtr; _mapTicks = now;
-            Integrate(0f, clear: true);
-            return;
-        }
-        if (++_mapFrame < MapCadence.V) return;
-        _mapFrame = 0;
-        float dt = MathF.Min((float)(now - _mapTicks) / Stopwatch.Frequency, 0.25f * MapCadence.V);
-        _mapTicks = now;
-        if (dt <= 0f) return;
-        Integrate(dt, clear: false);
-    }
-
-    private static void Integrate(float dt, bool clear)
-    {
-        Gl.UseProgram(_gl.ProgInt);
-        Gl.BindImageTexture(MapImageUnit, _gl.MapTex, 0, 0, 0, Gl.READ_WRITE, RgbaFloat);
-        Gl.Uniform2i(_sIntSize, _gl.MapSize, _gl.MapSize);
-        bool rain = CurrentKind == Kind.Rain && Density > 0f;
-        // the map integrates at the same rates the three scalars do, so the two agree where they overlap
-        float soak = rain ? Density / MathF.Max(AccumSec.V, 1e-3f) : 0f;
-        float dry = 1f / MathF.Max(DrySec.V, 1e-3f);
-        float mode = clear ? -1f : _mapArrive && rain && Arrive.V ? 1f : 0f;
-        if (mode > 0f) _mapArrive = false;
-        Gl.Uniform4f(_sIntStep, dt, soak, dry, mode);
-        Gl.Uniform4f(_sIntFill, PuddleThreshold.V, 1f / MathF.Max(AccumSec.V, 1e-3f), 0.5f / MathF.Max(DrySec.V, 1e-3f), 0f);
-        int g = (_gl.MapSize + MapGroup - 1) / MapGroup;
-        Gl.DispatchCompute((uint)g, (uint)g, 1);
-        // the consumers SAMPLE the image these stores wrote: TEXTURE_FETCH as well as IMAGE_ACCESS
-        Gl.MemoryBarrier(Gl.SHADER_IMAGE_ACCESS_BARRIER_BIT | Gl.TEXTURE_FETCH_BARRIER_BIT);
-        Gl.UseProgram(0);
-        _mapTicksDone++;
-    }
-
-    /// <summary>After a cover bake landed and was filtered: latch this window's terrain into the map.
-    /// <paramref name="depthView"/> is the plain-depth view onto the cover layer (Weather.Esm's), and a
-    /// session without it keeps the older per-fragment estimate -- named in the log, never silent.</summary>
-    private static void MapScatter(uint depthView, float radius)
-    {
-        if (!Map.V || _gl.MapFailed || depthView == 0 || !MapLive) return;
-        if (!Matrix4x4.Invert(CasterPass.CoverVp, out Matrix4x4 inv)) return;
-        Vector2 c = new(CasterPass.CoverCentre.X, CasterPass.CoverCentre.Y);
-        float reach = radius * MapRectSlack;
-        int x0 = (int)MathF.Floor((c.X - reach) * _mapTpm), y0 = (int)MathF.Floor((c.Y - reach) * _mapTpm);
-        int x1 = (int)MathF.Ceiling((c.X + reach) * _mapTpm), y1 = (int)MathF.Ceiling((c.Y + reach) * _mapTpm);
-        x0 = Math.Max(x0, 0); y0 = Math.Max(y0, 0);
-        x1 = Math.Min(x1, _gl.MapSize); y1 = Math.Min(y1, _gl.MapSize);
-        if (x1 <= x0 || y1 <= y0) return;
-        Matrix4x4 vp = CasterPass.CoverVp;
-        Gl.UseProgram(_gl.ProgScat);
-        Gl.BindImageTexture(MapImageUnit, _gl.MapTex, 0, 0, 0, Gl.READ_WRITE, RgbaFloat);
-        Gl.ActiveTexture(Gl.TEXTURE0);
-        Gl.BindTexture(Gl.TEXTURE_2D, depthView);
-        Gl.Uniform1i(_sScatDepth, 0);
-        Gl.UniformMatrix4fv(_sScatVp, 1, 0, (float*)&vp);
-        Gl.UniformMatrix4fv(_sScatVpInv, 1, 0, (float*)&inv);
-        Gl.Uniform4f(_sScatXf, 0f, 0f, _mapTpm, CasterPass.CoverCentre.Z);
-        Gl.Uniform2i(_sScatSize, _gl.MapSize, _gl.MapSize);
-        Gl.Uniform2i(_sScatRect, x0, y0);
-        Gl.Uniform2f(_sScatBasin, Basin.V, MathF.Max(PuddleDepth.V * 4f, 0.05f));
-        Gl.DispatchCompute((uint)((x1 - x0 + MapGroup - 1) / MapGroup), (uint)((y1 - y0 + MapGroup - 1) / MapGroup), 1);
-        Gl.MemoryBarrier(Gl.SHADER_IMAGE_ACCESS_BARRIER_BIT | Gl.TEXTURE_FETCH_BARRIER_BIT);
-        Gl.BindTexture(Gl.TEXTURE_2D, 0);
-        Gl.UseProgram(0);
-        _mapScatters++;
-    }
-
     /// <summary>GL internal format of the map. Not on <see cref="Gl"/>: the one other RGBA32F target
     /// (<see cref="OitPass"/>) names it locally too.</summary>
     private const uint RgbaFloat = 0x8814;   // not-an-offset: GL internal-format enum GL_RGBA32F
-
-    private static bool EnsureMap()
-    {
-        if (Gl.DispatchCompute == null || Gl.BindImageTexture == null || Gl.MemoryBarrier == null)
-        { _gl.MapFailed = true; _log?.Info("Weather: no compute/image entry points -- the wetness map stands down, wetness falls back to the per-fragment estimate"); return false; }
-        if (_gl.ProgScat == 0)
-        {
-            _gl.ProgScat = GlProgram.Compute(ShaderSource.Get("cx_wx_scat_c.glsl"), _log, "Weather map scatter");
-            _gl.ProgInt = GlProgram.Compute(ShaderSource.Get("cx_wx_int_c.glsl"), _log, "Weather map integrate");
-            if (_gl.ProgScat == 0 || _gl.ProgInt == 0)
-            { _gl.MapFailed = true; _log?.Info("Weather: the wetness map programs did not build -- wetness falls back to the per-fragment estimate"); return false; }
-            _sScatVp = GlProgram.Loc(_gl.ProgScat, "uCoverVp"); _sScatVpInv = GlProgram.Loc(_gl.ProgScat, "uCoverVpInv");
-            _sScatXf = GlProgram.Loc(_gl.ProgScat, "uMapXf"); _sScatSize = GlProgram.Loc(_gl.ProgScat, "uMapSize");
-            _sScatRect = GlProgram.Loc(_gl.ProgScat, "uRectMin"); _sScatBasin = GlProgram.Loc(_gl.ProgScat, "uBasin");
-            _sScatDepth = GlProgram.Loc(_gl.ProgScat, "uCoverDepth");
-            _sIntSize = GlProgram.Loc(_gl.ProgInt, "uMapSize"); _sIntStep = GlProgram.Loc(_gl.ProgInt, "uStep");
-            _sIntFill = GlProgram.Loc(_gl.ProgInt, "uFill");
-        }
-        int want = MapFit(FrameInputs.AreaExtent, MapRes.V, out float tpm);
-        if (want <= 0) return false;
-        if (_gl.MapTex == 0 || _gl.MapSize != want)
-        {
-            RenderTarget.Create(ref _gl.MapTex, RgbaFloat, want, want, Gl.LINEAR);
-            _gl.MapSize = want; _mapClear = true;
-            _log?.Info($"Weather: wetness map {want}x{want} RGBA32F over {FrameInputs.AreaExtent.X:F0}x{FrameInputs.AreaExtent.Y:F0} m ({tpm:F2} texels/m)");
-        }
-        _mapTpm = tpm;
-        if (_mapArea != FrameInputs.AreaPtr) _mapClear = true;
-        return true;
-    }
 
     /// <summary>The map's square fit over an area's XY extent: the requested detail, capped both ways, and
     /// the texels per metre that actually results. 0 = no area extent yet, so no map.</summary>

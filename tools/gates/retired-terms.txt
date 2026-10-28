@@ -147,3 +147,6 @@ alloy\.(backend|renderthread|rhiimmediate|gpumeter)\b	CX-313
 # compute programs and the frame's head that ran them -- and the GL sky dome's per-pass and per-draw uploads.
 # Vulkan makes those images and records those passes and draws.
 \bStageResources\.RunFrame\b|\bSkyStage\.(BeginPass|Prepare|Draw)\b	GL sweep 5
+# The weather bakes' GL arms: the wetness map's scatter and integrate dispatches, the shelter and ripple tile
+# bakes, the cover map's ESM filter and the splash draw. Vulkan records every one of them.
+\bWeather\.(MapTick|MapScatter|EnsureMap|ShelterTick|ShelterBake|FilterCover|EnsureEsm|DrawSplash)\b	GL sweep 5
