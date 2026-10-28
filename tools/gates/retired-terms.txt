@@ -195,3 +195,6 @@ alloy\.(backend|renderthread|rhiimmediate|gpumeter)\b	CX-313
 # The mesh arena's one VAO per vertex format: the sections are Vulkan buffers, so what a caller asks is whether a
 # format's geometry is RESIDENT, not what its vertex-array name is.
 \bMeshArena\.Vao\b|\bMeshArenaDraw\.VaoOf\b|\bFakeVaoForCheck\b|\bCasterVao\b|\bMeshChart\.VaoOf\b|\bRawVao\b|\b_skVaoName\b	GL sweep 7
+# The GL pass loop's per-pass CPU partition. Nothing has written its rows since the loop went, so the period
+# line printed the heading with no numbers under it; FrameZones' own zones are where a pass's CPU is read.
+\bPassCpuNote\b|\b_passCpu\b|\b_passTail\b|\b_passSelfNeg\b|\bPaintStreamFailures\b	GL sweep 7

@@ -8,47 +8,12 @@ using CX.Graphics;
 
 namespace CX.Alloy;
 
-/// <summary>What the period measured and how: the per-pass CPU partition that fills the counters, and the one
-/// period line that prints every tally and resets it.</summary>
+/// <summary>The one [alloy] period line: every tally the period took, printed and reset.</summary>
 public sealed unsafe partial class AlloyRenderer
 {
     /// <summary>Pixels per world radius at unit depth for THIS pass (0 without perspective), kept for the cube
     /// receiver's disc gate.</summary>
     private static float _lodScale;
-
-    /// <summary>The colour-bracket loop's SELF CPU ticks per <see cref="PassId"/> this period -- the five
-    /// child zones <see cref="FrameZones.Zone.Passes"/> subtracts come off each row too, so the rows partition
-    /// that zone rather than double-counting Issue, Cull, Post, Probe and Lightmap inside it. The rows plus
-    /// <see cref="_passTail"/> account for the zone bar the <c>foreach</c>'s own unbracketed advance.</summary>
-    private static readonly long[] _passCpu = new long[(int)PassId.PostStack + 1];
-    /// <summary>The colour loop's tail (<c>PaintStreamFailures</c>): inside the Passes bracket and inside no
-    /// pass, so it is reported rather than left as an unexplained remainder.</summary>
-    private static long _passTail;
-    /// <summary>Rows that measured NEGATIVE self time, which can only mean a child zone was credited to a pass
-    /// it did not run inside. Must read 0.</summary>
-    private static int _passSelfNeg;
-
-    /// <summary>The five passes with the most SELF CPU per frame this period, clearing the tally. These five
-    /// are a partition of <see cref="FrameZones.Zone.Passes"/>, not a parent-and-child mix. Cold (period
-    /// line).</summary>
-    private static string PassCpuNote(int frames)
-    {
-        var sb = new System.Text.StringBuilder(", pass cpu self ms/frame:");
-        double k = 1000.0 / System.Diagnostics.Stopwatch.Frequency / Math.Max(1, frames);
-        for (int n = 0; n < 5; n++)
-        {
-            int best = -1;
-            for (int i = 0; i < _passCpu.Length; i++) if (_passCpu[i] > 0 && (best < 0 || _passCpu[i] > _passCpu[best])) best = i;
-            if (best < 0) break;
-            sb.Append(' ').Append((PassId)best).Append(' ').Append((_passCpu[best] * k).ToString("F2"));
-            _passCpu[best] = 0;
-        }
-        Array.Clear(_passCpu);
-        if (_passTail > 0) sb.Append(" tail ").Append((_passTail * k).ToString("F2"));
-        if (_passSelfNeg > 0) sb.Append(" (").Append(_passSelfNeg).Append(" NEGATIVE SELF ROWS -- the partition is broken)");
-        _passTail = 0; _passSelfNeg = 0;
-        return sb.ToString();
-    }
 
     /// <summary>The [alloy] period line: every number the period tallied, in one statement, in its own method
     /// so <see cref="EndFrame"/> reads as the gate, the census and the reset it is. Pure reporting: a closed log
@@ -204,7 +169,6 @@ public sealed unsafe partial class AlloyRenderer
                    ", shaded (gpu ms on the [vkgpu] line)" +
                    // #121: captures per SESSION against frames per PERIOD. A number that tracks the frame
                    // count is the acceptance criterion ("probe capture does not run per frame") failing.
-                   PassCpuNote(Counters._frames) +
                    $", probe {(EnvProbe.Ready ? $"ready ({EnvProbe.Captures} captures)" : "none yet")}" +
                    "; " +
                    AlloyLights.Diag(Counters._clusterOverflow) +
