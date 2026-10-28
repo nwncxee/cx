@@ -555,8 +555,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         Counters._nrmDeclared = Counters._nrmBound = 0;
         Array.Clear(Counters._drawsByClass);
         Counters._clusterOverflow = 0;
-        Counters._prepassDraws = 0; Counters._prepassSkipped = 0; Counters._prepassKeyed = 0; Counters._prepassFeatDraws = 0; _qSamples.Reset(); _qPartSamples.Reset(); _qBlendSamples.Reset(); _qBlendPrims.Reset(); _qBlendFrags.Reset(); _blendGroups = 0; _blendFrames = 0;
-        for (int i = 0; i < _qTerm.Length; i++) _qTerm[i].Reset(); _spanSum = 0; _spanN = 0;
+        Counters._prepassDraws = 0; Counters._prepassSkipped = 0; Counters._prepassKeyed = 0; Counters._prepassFeatDraws = 0;
     }
 
     /// <summary>R1-24: the scene database's checks. They GATE the renderer: a wrong answer is the whole world

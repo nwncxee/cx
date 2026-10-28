@@ -316,17 +316,6 @@ public static class FrameZones
     private static readonly long[] _evSum = new long[NE], _evHitch = new long[NE];
     private static readonly long[] _hitch = new long[Rows * N];
     private static long _dtHitch, _dtNoStall;
-    /// <summary>GPU span per frame, attributed by age: the stamp result for a frame arrives some frames later,
-    /// so a ring of hitch verdicts pairs it with the frame it measured. ponytail: a declined stamp slips the
-    /// pairing by a frame; the columns are a discriminator (GPU-bound hitch or not), not a per-frame ledger.</summary>
-    private static readonly bool[] _hitchRing = new bool[16];
-    private static double _gpuSum, _gpuHitch;
-    private static int _gpuN, _gpuHitchN;
-    public static void Gpu(double ms, int framesAgo)
-    {
-        _gpuSum += ms; _gpuN++;
-        if (_hitchRing[(_frames - framesAgo) & 15]) { _gpuHitch += ms; _gpuHitchN++; }
-    }
     private static int _hitchN, _framesNoStall;
     /// <summary>A hitch is a rendered frame longer than <see cref="HitchFactor"/> times the PREVIOUS period's
     /// mean frame (bootstrapped at the 60Hz budget) and short of a load stall. Relative on purpose: a plaza at
@@ -589,7 +578,6 @@ public static class FrameZones
         bool hitch = ms > _hitchMs && ms <= StallMs && Drew();
         if (hitch) { _hitchN++; _dtHitch += dt; Blame(); }
         if (ExtenderLog.Enabled) Sched(dt, hitch);
-        _hitchRing[(_frames - 1) & 15] = hitch;
         for (int i = 0; i < Rows * N; i++) { _sum[i] += _frame[i]; if (hitch) _hitch[i] += _frame[i]; _frame[i] = 0; }
         for (int e = 0; e < NE; e++) { _evSum[e] += _ev[e]; if (hitch) _evHitch[e] += _ev[e]; _ev[e] = 0; }
     }
@@ -606,7 +594,6 @@ public static class FrameZones
         }
         // From the frames under the stall cap: one 1,7s transition frame in a period would otherwise lift the
         // next period's threshold past every hitch in it -- and transitions are where the stutter is looked for.
-        if (_gpuN > 0) sb.Append($" || gpu-span all|hitch: {_gpuSum / _gpuN:F1}|{(_gpuHitchN > 0 ? _gpuHitch / _gpuHitchN : 0):F1}ms ({_gpuHitchN} paired)");
         if (_hitchN > 0)
         {
             sb.Append(" || blame:");
@@ -676,7 +663,6 @@ public static class FrameZones
         int frames = Math.Max(_frames, 1);
         if (_framesNoStall > 0) _hitchMs = MathF.Max(2f, (float)(_dtNoStall * 1000.0 / Stopwatch.Frequency / _framesNoStall) * HitchFactor);
         _dtNoStall = 0; _framesNoStall = 0;
-        _gpuSum = 0; _gpuHitch = 0; _gpuN = 0; _gpuHitchN = 0;
         Array.Clear(_scAll, 0, (int)Sc.Count); Array.Clear(_scHitch, 0, (int)Sc.Count); _wallAll = _wallHitch = 0;
         Array.Clear(_blame, 0, _blame.Length);
         for (int i = 0; i < N; i++) _mean[i] = _sum[i] / frames;
@@ -730,7 +716,7 @@ public static class FrameZones
     }
 
     /// <summary>Every accumulator back to boot state -- both zone rows, the period, the worst-frame latches, the
-    /// hitch ledger and its ring, the blame baseline, the event counters, the GPU-span pairing, the scheduler
+    /// hitch ledger, the blame baseline, the event counters, the scheduler
     /// deltas and the enrolment population. For the self-checks, which synthesise frames, and in one place so it
     /// cannot fall out of step with the fields.</summary>
     private static void ResetAll()
@@ -738,11 +724,10 @@ public static class FrameZones
         Array.Clear(_frame); Array.Clear(_sum); Array.Clear(_worst); Array.Clear(_worstDrew);
         Array.Clear(_hitch); Array.Clear(_mean); Array.Clear(_blame);
         Array.Clear(_ev); Array.Clear(_evSum); Array.Clear(_evHitch);
-        Array.Clear(_hitchRing); Array.Clear(_scAll); Array.Clear(_scHitch);
+        Array.Clear(_scAll); Array.Clear(_scHitch);
         _dtSum = 0; _dtWorst = 0; _dtWorstDrew = 0; _dtHitch = 0; _dtNoStall = 0;
         _frames = 0; _hitchN = 0; _framesNoStall = 0;
         _wallAll = 0; _wallHitch = 0;
-        _gpuSum = 0; _gpuHitch = 0; _gpuN = 0; _gpuHitchN = 0;
         _enrollN = 0; _enrollMarked = false;
         _hitchMs = 16.7f;
     }
@@ -791,8 +776,8 @@ public static class FrameZones
         // ONE place, not a list to keep in step: a term this check leaves behind is one the suite below reads
         // as a finding. The two Period() calls above re-key the BLAME baseline off this check's own synthetic
         // frames, which is how the first version of it made the real suite report its deliberate Alloy spike
-        // as `diffuse`; the hitch ring and the GPU-span pairing are the same hazard with no assertion on them
-        // yet, which is exactly why they belong in a reset nobody has to remember.
+        // as `diffuse`, a hazard with no assertion on it yet, which is exactly why it belongs in a reset
+        // nobody has to remember.
         ResetAll();
         log.Info(check.Ok ? "FrameZones.RowSelfCheck: passed"
                           : "FrameZones.RowSelfCheck: FAILED -- zone rows are not per thread, so with "

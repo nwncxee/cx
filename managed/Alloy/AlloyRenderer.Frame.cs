@@ -252,7 +252,6 @@ public sealed unsafe partial class AlloyRenderer
         if (!postOk) { DbNoDraw("PostChain.Begin refused"); return false; }
         long tPump = FrameZones.Now;
         Step("the arena pumps");
-        GpuFrameStart();
         // #287's scale, hoisted ahead of the staging walk: the automatic-LOD pick reads it there, and the
         // cull dispatch below is handed the same figure.
         _lodScale = perspective ? p11 * viewport[3] * 0.5f : 0f;

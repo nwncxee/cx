@@ -180,3 +180,7 @@ alloy\.(backend|renderthread|rhiimmediate|gpumeter)\b	CX-313
 # Dead GL members with no caller at all: the pass block's uniform send, the multidraw helper, the 4.6 draw
 # target's rebind, the GL extension strings and the two vendor VRAM queries behind them.
 \bFlushPassBlock\b|\bPassContextLost\b|\bMultiDrawRange\b|\bRebindFrameTarget\b|\bHasBindless\b|\bProbeVram\b	GL sweep 6
+# The GL GPU timers and every meter built on them: the elapsed-query terms of the colour bracket, the whole-bracket
+# TIMESTAMP span and the shadow bake's own query. The Vulkan frame times itself and reports on the [vkgpu] line.
+\bGpuQuery\b|\bGpuStamp\b|\bGpuTerm\b|\bGpuBegin\b|\bGpuEnd\b|\bGpuSpanEnd\b|\bGpuSpanLine\b|\bGpuSpanMs\b	GL sweep 7
+\bShadowGpu(Ms|Sum|N)\b|\bCasterGlState\b|\bFrameZones\.Gpu\b	GL sweep 7

@@ -1,5 +1,4 @@
 1 managed/Alloy/AlloyRenderer.Device.cs
-6 managed/Alloy/AlloyRenderer.Metrics.cs
 30 managed/Alloy/AlloyRenderer.Uniforms.cs
 4 managed/Alloy/Core/UniformBlock.cs
 1 managed/Alloy/Db/ContentTable.cs
