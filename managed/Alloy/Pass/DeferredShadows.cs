@@ -6,7 +6,7 @@ namespace CX.Alloy;
 /// <see cref="DeferredLights"/> that picks, per PIXEL, the four shadow-casting lights reaching it most
 /// strongly and writes each one's cube visibility once into the record this class owns (<c>cx_shrec.glsl</c>'s
 /// format, at <c>shadow.deferredres</c>).</summary>
-internal static unsafe class DeferredShadows
+internal static class DeferredShadows
 {
     /// <summary>The overridable compute stage's resref (hak-limit length).</summary>
     internal const string ShdCs = "cx_defshadow_cs";
