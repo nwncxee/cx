@@ -5,6 +5,10 @@ pipeline ships **embedded in the extender binary**, and every one of them can be
 replaced at runtime by a `.shd` resource of the same name — a customization surface
 for people who want the look to be theirs.
 
+Alloy renders through Vulkan, and that changes nothing about what you write: a stage is still GLSL text,
+still overridden by a `.shd` of GLSL text. The extender translates it for Vulkan and compiles it with
+shaderc at load, so the source you edit is the source the GPU runs.
+
 This document is the contract that surface comes with: what an override is, what the
 twenty-nine stages are, and precisely what the extender refuses and why.
 
@@ -57,42 +61,26 @@ There is also a headless trigger for offline work: put `alloy.dumpshaders=1` in
 
 ### Sizing tokens
 
-Dumped files contain `$CAP$`, `$SORT$`, `$GROUP$`, `$SRGB$`, `$BAND$` and `$AA$` unexpanded. **Leave them
+Dumped files contain `$CAP$`, `$SORT$`, `$DYNSPH$`, `$CUBES$`, `$GROUP$`, `$SRGB$`, `$AA$`, `$POSTMASK$`
+and `$SQM$` unexpanded (the authoritative list is `ShaderResource.Tokens`). **Leave them
 that way.** The extender expands them when it compiles, for an override exactly as for
 its own embedded default, so a file that keeps the tokens stays correct when those sizes
 change on the C# side. Freezing today's numbers into your copy is how it goes stale.
 
-### SPIR-V stages
+### SPIR-V stages: not a supported override
 
-A `.shd` may hold a **SPIR-V module** instead of GLSL text — same resref, same resource
-chain, sniffed by its magic word. It is off by default; put `alloy.spirv=1` in `cx.cfg` to
-accept one.
+**Write GLSL.** A `.shd` that holds a SPIR-V module instead of text is still sniffed by its magic word, and
+still named in the log — but nothing consumes it any more. The accepting path was the GL program builder's
+`glShaderBinary`/`glSpecializeShader` pair, and it went with the GL backend; the Vulkan side only ever
+compiles modules shaderc has just produced from text it can see. `alloy.spirv=1` therefore reaches no live
+code, and a module `.shd` falls back to the embedded stage with a line saying so.
 
-It is off by default because a module is unauditable. Everything the text path does for
-you is skipped for a binary stage:
+That is not a gap waiting to be filled. A module is unauditable, and everything the text path does would be
+skipped for one: no token expansion (`$CAP$` and friends are C#-side sizes), no library splice, no vanilla
+bridge or content pair — all of which are text surgery — and none of the guards below, which read source
+there would not be.
 
-- **no token expansion** — `$CAP$` and friends are C#-side sizes, and a module baked
-  against a different cap misreads the cluster SSBO. Bake today's numbers and re-bake
-  when they change.
-- **no vanilla splice and no content pairs** — the `#pragma`-driven bridge that
-  pulls stock and content shader bodies in (`#346`, `#350`) is text surgery.
-- **none of the guards below run.** They read the compiled source; there is no source.
-  Accepting a module is trusting you matched the embedded stage's record layout,
-  bindings and cutout rules yourself.
-
-Practical requirements, none of which the extender can check for you:
-
-- Compile for OpenGL, not Vulkan: `glslangValidator -G --target-env opengl -o out.shd in.frag`.
-  Vulkan-flavoured SPIR-V with descriptor sets will not specialize in a GL context.
-- **Keep the names.** Alloy resolves every uniform by `glGetUniformLocation`. A stripped
-  module links fine and then every lookup returns −1, every `glUniform` is a silent
-  no-op, and the frame is wrong with nothing in the log. Do not pass `--strip`.
-- Entry point must be `main`; specialization constants are not fed.
-- Both stages of a program must be the same kind — GL does not link GLSL against SPIR-V.
-  A mixed program just fails to link and falls back to the embedded default.
-
-A build failure of any kind rebuilds the embedded stage and says so in the log, so a bad
-module costs a log line rather than the frame.
+If you want a stage compiled your own way, compile it to GLSL and let the extender translate it.
 
 ## The overridable stages
 
@@ -366,14 +354,15 @@ naming either while another live stage holds it is refused. Passes run in **decl
 Every program built from a native stage — the stage's own programs and each pass program — gets the stage's
 images where it declares a uniform of that name. The uniform's **type** decides how:
 
-- `sampler2D` / `sampler3D` → the image's own texture unit. Every image, and its `_prev` half, stays bound on a
-  unit of its own from **32** up, above every unit Alloy claims, for the whole frame, and a sampler is pointed at
+- `sampler2D` / `sampler3D` → the image's own texture unit. Every image, and its `_prev` half, takes a
+  unit of its own from **33** up (`TextureSlots.ResourceBase`), above every unit Alloy claims, for the whole
+  frame, and a sampler is bound to
   it once, when its program is built. So an image reads the same from every pass that draws the program: the
   colour pass, the depth prepass, a shadow caster, a probe face, a reflection. `LINEAR` magnification, `LINEAR`
   or `LINEAR_MIPMAP_LINEAR` minification, wrap per the flags.
-- `image2D` / `image3D` → an image unit of the program's own, the uniform pointed at it once when its program is
-  built, and the image put there with `glBindImageTexture` (the declared format, `READ_WRITE`, layered for a
-  `tex3d`) each time the host binds the program: units 0..5 in a drawing program (the lit stage's decal images
+- `image2D` / `image3D` → an image binding of the program's own, read back off the compiled module and filled
+  from the frame's descriptor set each time the host binds the program (the declared format, read-write,
+  layered for a `tex3d`): bindings 0..5 in a drawing program (the lit stage's decal images
   hold 6 and 7), 0..7 in a pass. The GLSL `layout(<format>)` qualifier has to be the format the `#pragma` line declared: a
   mismatch is undefined loads and stores, so `check-shaders.py` reconciles the two and fails on a disagreement.
 
@@ -417,7 +406,7 @@ from the whole-stage environment `cx_stageenv`, one upload for both.
 
 - At the frame's **head**, after everything is staged and before the depth prepass, on the main view only:
   every live native stage's images are made if they are not, or remade when a view resize changed a view-sized
-  one, and its `once` passes run over them. They re-run after a context loss, after a module change, and
+  one, and its `once` passes run over them. They re-run after a device loss, after a module change, and
   whenever a resize remade any image.
 - Then each stage drawn in the previous frame, or staged in this one, swaps its history images and runs its
   `frame` passes. The sky and the material pairs are staged ahead of the head, so their passes run before the
@@ -428,7 +417,8 @@ from the whole-stage environment `cx_stageenv`, one upload for both.
 - `/alloy` prints the passes' GPU time as `native passes …`, and the `native stages:` clause of the `[alloy]`
   period line names each stage, how many passes ran this period, how many frames ran with no history (`cxFresh`
   1; a steady view has none) and how much image memory it holds.
-- `/alloy snap` writes every live stage's images, level 0, into `cx_snap/` beside the frame it snaps, as
+- `/alloy snap` writes the frame's finished scene colour into `cx_snap/` as one `<set>_vkscene.pfm` (float
+  RGB, rows bottom-up; `tools/snap/snap_stats.py` reads it), and every live stage's images, level 0, beside it as
   `<set>_native_<image>.cxi`: a `CXI <w> <h> <d>` line, then float RGBA, rows bottom-up. `cx.log` gets a
   `[snap]` line per pass and per program a host draws, with what its frame uniforms, samplers and images hold at
   that moment beside what they should. Each pass's plain-value uniforms go to `<set>_native_<pass>.uni` (the
@@ -477,16 +467,17 @@ extender build that predates overlays leaves it 0.
 ### When it fails
 
 A native stage that fails **anywhere** — a malformed declaration, a budget, an image that cannot be made, a
-pass that is not in the chain or will not build, a missing GL entry point, a program of its own that will not
-build or whose images disagree with it — is logged once by name with the reason, and its host runs the
+pass that is not in the chain or will not build as a compute pipeline, a stage that will not translate or
+will not compile, a program whose images disagree with it, or a block a pass has no buffer for — is logged
+once by name with the reason, and its host runs the
 **plain stage** instead. That fallback is the module's own: a real picture, not a stub. The refusal is a latch.
 A native sky that gives up mid-frame moves that one sky stage onto the plain program and stays there; a material
-pair rebuilds from its plain halves the next frame that asks. A module change, a context loss or an
+pair rebuilds from its plain halves the next frame that asks. A module change, a device loss or an
 `alloy.native` edit is what clears it. `grep StageResources cx.log` is the whole story, and the `native stages:`
 clause names each stage with what it runs, or `FELL BACK:` and the reason.
 
 The native stages, their images and their passes have a **module** lifetime — a module change drops them, and
-they die with the GL context.
+they die with the device.
 
 Offline, `./check-shaders.py` always compiles and driver-links the fixture under `tools/native/fixture/` — a
 native sky, its fallback stage and its three passes; a native material pair whose vertex half reads the image its

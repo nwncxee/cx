@@ -155,8 +155,8 @@ spot, names it once in the log and counts it; the `[gl46]` period line carries f
 plus an overflow count and a count of names whose delete entry point never resolved. A queue that is not
 keeping up is visible rather than silently correct.
 
-`FramesInFlight` is 3, and the number is not a guess. `OitPass.ReadSlots` is 3; the GPU-span
-timer harvests two slots because it finds the GPU about two frames behind. `OwnedTextures.Retire`'s deferred
+`FramesInFlight` is 3, and the number is not a guess. `OitPass.ReadSlots` is 3, and the GL timer queries that
+used to measure the GPU about two frames behind went with the GL backend. `OwnedTextures.Retire`'s deferred
 delete is the same quantity rather than a ring depth — it held a name for three drains because zink resolves
 bindless descriptors at batch completion and faults on an image destroyed before then — so its `DeferFrames`
 now reads `GpuGraveyard.FramesInFlight` instead of declaring the number a second time.
@@ -213,9 +213,9 @@ Four things stay immediate, each for a reason:
 
 Everything else that still frees a GPU object immediately is a creation failure, a program being rebuilt or a
 scratch object inside the bracket that made it. `tools/gates/gpu-frees.sh` counts those per file against
-`gpu-frees.baseline`, which may only shrink: 47 sites across 29 files as this landed, listed by
-`python3 tools/gates/gpu-frees.py -v`. A new pass that allocates its render target through `RenderTarget`
-gets the deferral for nothing and never touches the baseline.
+`gpu-frees.baseline`, which may only shrink; the GL sweeps took it down to one site each in eight files,
+listed by `python3 tools/gates/gpu-frees.py -v` and all of them in what is left of the GL side. A Vulkan
+object never counts: the backend's own deferral is the mechanism.
 
 Two notes for whoever reads this next. The `Part::~Part` death notice Part 2 inventories is gone: it went with
 the engine-scene path on 2026-10-07 and the DB object-destroy edge replaced it, and there is no GPU free on
