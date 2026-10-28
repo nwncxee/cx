@@ -57,5 +57,6 @@ a backend the Vulkan one had overtaken.
   are done with it.
 - **Windows is the same decision.** `version.dll` loads the same managed image, NullGl takes the same
   window, and the Windows refusal is a Vulkan refusal like any other.
-- **Not covered here:** per-device Vulkan refusals a particular driver forces, and anything the engine's own
-  GL renderer does when Alloy stands down. Both are the engine's behaviour, unchanged by this decision.
+- **Not covered here:** what the engine's own GL renderer draws when Alloy stands down. That is the engine's
+  behaviour and this decision does not touch it; a stood-down session is a vanilla client with the
+  extender's other features on.
