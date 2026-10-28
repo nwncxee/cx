@@ -353,7 +353,7 @@ internal static unsafe class DbGui
                 // itself -- the solid red cloak the native Examine panel showed (user-shots/22.png).
                 PltRows = !plt ? null : SceneDb.PartPltOwn[p] ? SceneDb.PartPltRow : SceneDb.ObjPltRow,
                 PltAt = plt && SceneDb.PartPltOwn[p] ? p * SceneDb.PltLayers : o * SceneDb.PltLayers,
-                Arena = true, ArenaFmt = (int)MeshArena.PubFormat(range), Prim = Gl.TRIANGLES, Count = idx, Offset = off, BaseVertex = baseVertex,
+                Arena = true, ArenaFmt = (int)MeshArena.PubFormat(range), Prim = EngineTokens.TRIANGLES, Count = idx, Offset = off, BaseVertex = baseVertex,
                 Tex = (int)tex, Bones = bones, Content = DrawRecipe.Content(recipe),
                 Mvp = world * viewProj,
                 Mv = world * v.View,
@@ -591,7 +591,7 @@ internal static unsafe class DbGui
         _refusedNoPass++;
         if (_saidNoPass) return;
         _saidNoPass = true;
-        _log?.Always("DbGui: GuiPass is not capturing (no 4.6 context, no program, or /alloy gui 0) -- "
+        _log?.Always("DbGui: GuiPass is not capturing (no render device, no program, or /alloy gui 0) -- "
                          + "the game's own GUI panels are NOT DRAWN in DB mode. There is no engine traversal "
                          + "underneath to fall back on: in DB mode this IS the GUI.");
     }

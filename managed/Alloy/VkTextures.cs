@@ -180,14 +180,14 @@ internal static class VkTextures
     /// <summary>The engine's sampler state (GL enums, <c>OwnedTextures.EngineSampler</c>) as the seam's.</summary>
     internal static SamplerDesc Sampler(int min, int mag, int wrapS, int wrapT, bool aniso)
     {
-        Filter Of(int f) => f is (int)Gl.LINEAR or (int)Gl.LINEAR_MIPMAP_LINEAR or (int)Gl.LINEAR_MIPMAP_NEAREST ? Filter.Linear : Filter.Nearest;
+        Filter Of(int f) => f is (int)EngineTokens.LINEAR or (int)EngineTokens.LINEAR_MIPMAP_LINEAR or (int)EngineTokens.LINEAR_MIPMAP_NEAREST ? Filter.Linear : Filter.Nearest;
         MipMode mip = min switch
         {
-            (int)Gl.LINEAR_MIPMAP_LINEAR or (int)Gl.NEAREST_MIPMAP_LINEAR => MipMode.Linear,
-            (int)Gl.NEAREST_MIPMAP_NEAREST or (int)Gl.LINEAR_MIPMAP_NEAREST => MipMode.Nearest,
+            (int)EngineTokens.LINEAR_MIPMAP_LINEAR or (int)EngineTokens.NEAREST_MIPMAP_LINEAR => MipMode.Linear,
+            (int)EngineTokens.NEAREST_MIPMAP_NEAREST or (int)EngineTokens.LINEAR_MIPMAP_NEAREST => MipMode.Nearest,
             _ => MipMode.None,
         };
-        Wrap W(int w) => w == (int)Gl.CLAMP_TO_EDGE ? Wrap.Clamp : Wrap.Repeat;
+        Wrap W(int w) => w == (int)EngineTokens.CLAMP_TO_EDGE ? Wrap.Clamp : Wrap.Repeat;
         return new SamplerDesc(Of(min), Of(mag), mip, W(wrapS), Aniso: aniso ? TexRegistry.Aniso() : 1, WrapT: W(wrapT));
     }
 

@@ -163,18 +163,18 @@ public sealed unsafe partial class AlloyRenderer
                                           bool lightingOn, bool ground, bool cards, bool farBlades, Vector3 dif, Vector3 amb)
     {
         Array.Clear(p.Block);
-        VkUniformShim.Capture(p.Members, p.Block);
+        LooseBlock.Capture(p.Members, p.Block);
         try
         {
             GrassField.VkColourTerms(v, vp, viewport, near, far, lightingOn, ground, cards);
             if (cards)
             {
-                VkUniformShim.Set(v.L.MatDif, [dif.X, dif.Y, dif.Z]);
-                VkUniformShim.Set(v.L.MatAmb, [amb.X, amb.Y, amb.Z]);
+                LooseBlock.Set(v.L.MatDif, [dif.X, dif.Y, dif.Z]);
+                LooseBlock.Set(v.L.MatAmb, [amb.X, amb.Y, amb.Z]);
             }
-            else VkUniformShim.Set(v.L.Segments, GrassField.VkSegments(farBlades));
+            else LooseBlock.Set(v.L.Segments, GrassField.VkSegments(farBlades));
         }
-        finally { VkUniformShim.EndCapture(); }
+        finally { LooseBlock.EndCapture(); }
         return VkArena(p.Block);
     }
 
@@ -183,9 +183,9 @@ public sealed unsafe partial class AlloyRenderer
     {
         VkDefStage sc = g.Scatter!;
         Array.Clear(sc.Block);
-        VkUniformShim.Capture(sc.Members, sc.Block);
+        LooseBlock.Capture(sc.Members, sc.Block);
         try { GrassField.VkScatterTerms(in g.LS, vp, clamp); }
-        finally { VkUniformShim.EndCapture(); }
+        finally { LooseBlock.EndCapture(); }
         return VkArena(sc.Block);
     }
 
@@ -246,7 +246,7 @@ public sealed unsafe partial class AlloyRenderer
         if (g.Scatter != null)
         {
             VkGrassState s = g;
-            VkUniformShim.Resolve(g.Scatter.Names, () => s.LS = GrassField.ScatterLocs(VkUniformShim.ProgramBase));
+            LooseBlock.Resolve(g.Scatter.Names, () => s.LS = GrassField.ScatterLocs());
         }
         g.Cards = VkGrassProgram(vk, VkPrograms.Id.Grass, g.LC, log);
         g.Blades = VkGrassProgram(vk, VkPrograms.Id.GrassBlade, g.LB, log);
@@ -279,8 +279,7 @@ public sealed unsafe partial class AlloyRenderer
     {
         VkProg? p = VkBuild(vk, id, log);
         if (p == null) return null;
-        uint name = VkUniformShim.ProgramBase + (uint)id;
-        VkUniformShim.Resolve(p.Names, () => { v.L = GrassField.Locate(name); v.F = Programs.FeatLocs(name); });
+        LooseBlock.Resolve(p.Names, () => { v.L = GrassField.Locate(); v.F = Programs.FeatLocs(); });
         return p;
     }
 

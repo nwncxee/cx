@@ -1,8 +1,3 @@
-1 managed/Alloy/DdsReader.Formats.cs
-1 managed/Alloy/OwnedTextures.cs
-1 managed/Graphics/GlTexture.cs
-1 managed/Graphics/RenderTarget.cs
 1 managed/Services/Nui/NuiModelEngine.Solve.cs
 1 managed/Services/Nui/NuiModelEngine.cs
 1 managed/Services/Nui/NuiModelView.Gl.cs
-1 managed/Ui/TextRig.Replay.cs

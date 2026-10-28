@@ -153,7 +153,7 @@ public static class FrameInputs
     /// <summary>Point lights snapshotted this walk -- the Alloy path's set. The deferred path has no light
     /// ceiling by design, and neither has the snapshot that feeds it.</summary>
     public static int LightCount { get => _cur.LightCount; set => _cur.LightCount = value; }
-    /// <summary>World pos (xyz) + lit range (w), packed for a single glUniform4fv.</summary>
+    /// <summary>World pos (xyz) + lit range (w), packed as one vec4 per light.</summary>
     public static Vector4[] AreaLightPosRange { get => _cur.AreaLightPosRange; set => _cur.AreaLightPosRange = value; }
     /// <summary>Light RGB (sRGB as stored in PartLight; the shader linearizes).</summary>
     public static Vector3[] AreaLightColor { get => _cur.AreaLightColor; set => _cur.AreaLightColor = value; }

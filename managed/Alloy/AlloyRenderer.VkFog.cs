@@ -56,19 +56,19 @@ public sealed unsafe partial class AlloyRenderer
         int arena0 = c.ArenaUsed;
         VkDefStage l = s.Light!, m = s.Sum!;
         Array.Clear(l.Block);
-        VkUniformShim.Capture(l.Members, l.Block);
+        LooseBlock.Capture(l.Members, l.Block);
         try
         {
             FogVolume.WriteLight(in t, in s.L, viewport, near, far);
-            VkUniformShim.Set(s.SunMedia, 1f);
-            VkUniformShim.Set(s.LocalMedia, 1f);
+            LooseBlock.Set(s.SunMedia, 1f);
+            LooseBlock.Set(s.LocalMedia, 1f);
         }
-        finally { VkUniformShim.EndCapture(); }
+        finally { LooseBlock.EndCapture(); }
         int loose = VkArena(l.Block), pass = VkArenaPass();
         Array.Clear(m.Block);
-        VkUniformShim.Capture(m.Members, m.Block);
+        LooseBlock.Capture(m.Members, m.Block);
         try { FogVolume.WriteSum(in t, in s.S); }
-        finally { VkUniformShim.EndCapture(); }
+        finally { LooseBlock.EndCapture(); }
         int looseSum = VkArena(m.Block);
         if (loose < 0 || pass < 0 || looseSum < 0) return;
         int len = (c.ArenaUsed - arena0 + 3) & ~3;
@@ -107,13 +107,13 @@ public sealed unsafe partial class AlloyRenderer
             return false;
         }
         VkFogState f = s;
-        VkUniformShim.Resolve(s.Light.Names, () =>
+        LooseBlock.Resolve(s.Light.Names, () =>
         {
-            f.L = FogVolume.LightLocsOf(VkUniformShim.ProgramBase);
-            f.SunMedia = GlProgram.Loc(VkUniformShim.ProgramBase, "uSunMedia");
-            f.LocalMedia = GlProgram.Loc(VkUniformShim.ProgramBase, "uLocalMedia");
+            f.L = FogVolume.LightLocsOf();
+            f.SunMedia = LooseBlock.Loc("uSunMedia");
+            f.LocalMedia = LooseBlock.Loc("uLocalMedia");
         });
-        VkUniformShim.Resolve(s.Sum.Names, () => f.S = FogVolume.GridLocsOf(VkUniformShim.ProgramBase));
+        LooseBlock.Resolve(s.Sum.Names, () => f.S = FogVolume.GridLocsOf());
         return true;
     }
 

@@ -440,8 +440,8 @@ internal static unsafe partial class MeshChart
         if (j.Out2N > tris * 3 * (1f - MeshLod.MinSaving) || j.Out2N >= j.Out1N && j.Out1N > 0) j.Out2N = 0;
     }
 
-    /// <summary>Collect what the worker finished into the arenas. Render thread, inside the bracket, once a
-    /// frame, before <c>BuildBatches</c>.</summary>
+    /// <summary>Collect what the worker finished into the arenas. Inside the frame, once a frame, before
+    /// <c>BuildBatches</c>.</summary>
     internal static void Pump()
     {
         if (!_jobs.Running) return;

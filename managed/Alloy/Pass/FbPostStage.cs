@@ -106,12 +106,12 @@ internal static unsafe class FbPostStage
         AlloyLights.TryPerspective(*proj, out _, out _, out _near, out _far);
     }
 
-    /// <summary>The hosted chain's locations in a program the uniform shim resolves.</summary>
+    /// <summary>The hosted chain's members of a program's loose block.</summary>
     internal readonly record struct VkLocs(AlloyRenderer.FeatLoc Feat, int View, int ViewInv, int Pixel, int Clip);
 
-    /// <summary>...resolved inside the shim's resolve of that program.</summary>
-    internal static VkLocs LocateVk() => new(Programs.FeatLocs(0), GlProgram.Loc(0, "m_view"), GlProgram.Loc(0, "m_view_inv"),
-                                            GlProgram.Loc(0, "pixelParams"), GlProgram.Loc(0, "clipParams"));
+    /// <summary>...resolved inside that program's open resolve.</summary>
+    internal static VkLocs LocateVk() => new(Programs.FeatLocs(), LooseBlock.Loc("m_view"), LooseBlock.Loc("m_view_inv"),
+                                            LooseBlock.Loc("pixelParams"), LooseBlock.Loc("clipParams"));
 
     /// <summary><see cref="Prepare"/>'s terms into the open capture of the Vulkan stage: the engine's feature terms, the
     /// view and its inverse, the pixel and clip triples. A native stage's images are not on Vulkan, so it never gets here.</summary>
@@ -119,12 +119,12 @@ internal static unsafe class FbPostStage
     {
         AlloyRenderer.FeatLoc feat = l.Feat;
         AlloyRenderer.UploadFeatureTerms(in feat, viewport);
-        VkUniformShim.Set(l.View, _view);
+        LooseBlock.Set(l.View, _view);
         if (!Matrix4x4.Invert(_view, out Matrix4x4 inv)) inv = Matrix4x4.Identity;
-        VkUniformShim.Set(l.ViewInv, inv);
+        LooseBlock.Set(l.ViewInv, inv);
         float w = viewport[2] > 0 ? viewport[2] : 1f, h = viewport[3] > 0 ? viewport[3] : 1f;
-        VkUniformShim.Set(l.Pixel, [1f / w, 1f / h, w / h]);
-        VkUniformShim.Set(l.Clip, [_near, _far, 1f - _near / MathF.Max(_far, 1e-6f)]);
+        LooseBlock.Set(l.Pixel, [1f / w, 1f / h, w / h]);
+        LooseBlock.Set(l.Clip, [_near, _far, 1f - _near / MathF.Max(_far, 1e-6f)]);
     }
 
     /// <summary>The stage text: the environment the chain reads (inc_common/inc_uniforms as the fragment half

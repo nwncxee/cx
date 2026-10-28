@@ -165,7 +165,7 @@ public sealed unsafe partial class AlloyRenderer
         // the record is the blended class's alone: every later lit bind uploads the gate off again
         s.LightRec = false;
         b.Prog = null;
-        // ADR 0011 PassId.FbCopy: the one snapshot of everything drawn so far, which only water reads. Without
+        // PassId.FbCopy: the one snapshot of everything drawn so far, which only water reads. Without
         // water the additive class closes the same pass; with it the pass ends so the copy can be recorded
         bool water = _gWaterEnd > _gBlendEnd && !_capturing;
         if (!water) ok &= VkIssue(side, ref b, _gWaterEnd, groups, add, vp, viewport, near, far, indirect);

@@ -10,12 +10,12 @@ namespace CX.Alloy;
 
 /// <summary>BATCH ISSUE: upload the staged per-draw records and bone snapshots, then submit the built groups
 /// as one multidraw per (program, VDO, texture, primitive) cut -- plus the blended and water variants that
-/// ride the same records under different GL state. Hot: nothing on this path allocates. An ADR 0014 module,
+/// ride the same records under different draw state. Hot: nothing on this path allocates. An ADR 0014 module,
 /// not a partial: it reaches the renderer's tables through <c>using static</c>, the same static load.</summary>
 internal static unsafe class Issue
 {
-    /// <summary>Forget every cached handle, the 4.6 context having gone and taken them with it. Cleared
-    /// unconditionally, and nothing is made non-resident -- that would be a call into a dead context.</summary>
+    /// <summary>Forget every cached handle, the render device having gone and taken them with it. Cleared
+    /// unconditionally, and nothing is made non-resident -- that would be a call on a dead device.</summary>
     internal static void ForgetHandles()
     {
         InvalidateRecords();   // #242: the persistent records hold the handles this forgets

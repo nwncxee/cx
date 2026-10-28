@@ -330,7 +330,7 @@ internal static unsafe partial class TexRegistry
             byte* rg = PltImage.Decode(raw, out int w, out int h, out int levels, out string? pw);
             if (rg == null) { j.Why = pw ?? "not a PLT"; return; }
             j.Data = rg; j.W = w; j.H = h; j.Levels = levels;
-            j.GlFmt = Gl.RG8;
+            j.GlFmt = EngineTokens.RG8;
             j.Compressed = false; j.GenMips = false;
             j.Bytes = PltImage.ChainBytes(w, h, levels);
             // A PLT carries no alpha of its own: the composite's alpha is the PALETTE texel's (ImageDecode
@@ -359,7 +359,7 @@ internal static unsafe partial class TexRegistry
             byte* px = RasterReader.PrepareTga(raw, out RasterReader.Raster r, out string? tw);
             if (px == null) { j.Why = tw ?? "the TGA was refused"; return; }
             j.Data = px; j.W = r.W; j.H = r.H; j.Levels = Levels(r.W, r.H); j.Channels = r.Px;
-            j.GlFmt = r.Px switch { 1 => Gl.R8, 3 => Gl.RGB8, _ => Gl.RGBA8 };
+            j.GlFmt = r.Px switch { 1 => EngineTokens.R8, 3 => EngineTokens.RGB8, _ => EngineTokens.RGBA8 };
             j.Compressed = false; j.GenMips = true;
             j.Bytes = r.Bytes;
             j.Cov = TexCoverageOf.OfRaster(new ReadOnlySpan<byte>(px, r.Bytes), r.W, r.H, r.Px);
@@ -475,16 +475,16 @@ internal static unsafe partial class TexRegistry
         return n;
     }
 
-    // ---- the bracket (GL only) ----
+    // ---- the frame's deferred work ----
 
-    /// <summary>Alloy's 4.6 bracket: delete what retired, upload what the worker finished and mint its handle.
-    /// Nothing else may mint a bindless handle -- residency is per context -- and nothing else here touches
-    /// the table or the engine: the result goes to <see cref="_landed"/> for <see cref="Tick"/> to file.</summary>
+    /// <summary>The frame's own point: delete what retired, upload what the worker finished and mint its
+    /// handle. Nothing else mints a bindless handle, and nothing else here touches the table or the engine:
+    /// the result goes to <see cref="_landed"/> for <see cref="Tick"/> to file.</summary>
     internal static void Drain()
     {
-        // FIRST, ahead of the deletes: a record still holding a dead handle must stop before anything this
-        // bracket does can be followed by a draw. The colour frame enters this bracket before it binds a
-        // target, so this is the frame's earliest point at which the renderer's tables may be touched.
+        // FIRST, ahead of the deletes: a record still holding a dead handle must stop before anything here
+        // can be followed by a draw. The colour frame runs this before it binds a target, so this is the
+        // frame's earliest point at which the renderer's tables may be touched.
         // Only names queued BEFORE the handle drain: a name's handle is queued ahead of it, so each of these
         // has gone non-resident before its delete.
         int graves;
@@ -562,7 +562,7 @@ internal static unsafe partial class TexRegistry
     /// ponytail: taken at upload/mint; a mid-area change reaches textures loaded after it.</summary>
     internal static int Aniso() => (int)Math.Max(StockConfig.Aniso, 1);
 
-    /// <summary>One finished job, uploaded and published. In the bracket.</summary>
+    /// <summary>One finished job, uploaded and published, at the frame's own point.</summary>
     private static void Finish(Job j)
     {
         int i = j.Slot;
@@ -579,8 +579,8 @@ internal static unsafe partial class TexRegistry
         FileCycle(j);
         FileArturo(j);
         ulong handle = MintHandle(name, j.Resref);
-        if (GlContextService.Debug)
-            _log?.Always($"TexRegistry: [gldebug] minted \"{j.Resref}\" tex {name} fmt 0x{j.GlFmt:x} {j.W}x{j.H} levels {j.Levels} handle 0x{handle:x}");
+        if (FramePump.Debug)
+            _log?.Always($"TexRegistry: [gpudebug] minted \"{j.Resref}\" tex {name} fmt 0x{j.GlFmt:x} {j.W}x{j.H} levels {j.Levels} handle 0x{handle:x}");
         Publish(new Landed(i, j.Gen, name, handle, j.Bytes, j.Cov, j.BumpyShiny, j.EnvMap, null, j.Tail, j.CovWhy));
     }
 
@@ -588,7 +588,7 @@ internal static unsafe partial class TexRegistry
 
     // ---- the game thread's half ----
 
-    /// <summary>The game thread's frame hop: file what the bracket uploaded, offer what was waiting, and evict
+    /// <summary>The game thread's frame hop: file what the drain uploaded, offer what was waiting, and evict
     /// past the budget. Everything here either writes <see cref="SceneDb"/> or reads the engine's resource
     /// manager, so it belongs on this thread and nowhere else.</summary>
     internal static void Tick()
@@ -750,10 +750,9 @@ internal static unsafe partial class TexRegistry
 
     // ---- handles ----
 
-    /// <summary>A resident bindless handle for a freshly uploaded name. Minted in the BRACKET and nowhere
-    /// else: a handle belongs to the share group and only Alloy's context is in it. A handled texture is
-    /// immutable from that moment -- a change is a new slot, never a sub-image. 0 when the device mints
-    /// nothing, which drops the slot's parts to the bound sampler path.</summary>
+    /// <summary>A resident bindless handle for a freshly uploaded name, minted at the frame's own point and
+    /// nowhere else. A handled texture is immutable from that moment -- a change is a new slot, never a
+    /// sub-image. 0 when the device mints nothing, which drops the slot's parts to the bound sampler path.</summary>
     private static ulong MintHandle(uint name, string resref)
     {
         if (name == 0) return 0;
@@ -785,8 +784,8 @@ internal static unsafe partial class TexRegistry
         return vram > 0 ? (vram << 20) / 4 : 512L << 20;
     }
 
-    /// <summary>Trim the idle set back to the budget, oldest first off the LRU head. Game thread; the GL
-    /// names go to the graveyard for the bracket.</summary>
+    /// <summary>Trim the idle set back to the budget, oldest first off the LRU head. Game thread; the names
+    /// go to the graveyard for the drain.</summary>
     private static void EvictPastBudget()
     {
         long budget = BudgetBytes();
@@ -795,8 +794,8 @@ internal static unsafe partial class TexRegistry
                 Retire(_idleHead);
     }
 
-    /// <summary>Terminal per session (<c>docs/owned-resource-lifetimes.md</c>): every GL name and handle this
-    /// registry held is gone with the context, so they are FORGOTTEN rather than deleted, graveyard included.
+    /// <summary>Terminal per session (<c>docs/owned-resource-lifetimes.md</c>): every name and handle this
+    /// registry held is gone with the device, so they are FORGOTTEN rather than deleted, graveyard included.
     /// A slot something still references reloads on the next <see cref="Tick"/>; an idle one is retired, its
     /// whole value having been the name it no longer has. The slots keep their resrefs.</summary>
     internal static void ContextLost()
@@ -804,11 +803,11 @@ internal static unsafe partial class TexRegistry
         lock (_lock)
         {
             // Ahead of the clear: the ripples' own textures are forgotten here, so the retires below cannot
-            // queue a dead context's names into a graveyard this frame has already emptied.
+            // queue a dead device's names into a graveyard this frame has already emptied.
             _graveyard.Clear();
-            // Nothing to zero in the records either: the context that owned them is gone, and the renderer's
-            // own context-loss path rebuilds its tables. The queue is DROPPED rather than drained, so a
-            // handle value the next context mints cannot be matched by a stale entry from the old one.
+            // Nothing to zero in the records either: the device that owned them is gone, and the renderer's
+            // own loss path rebuilds its tables. The queue is DROPPED rather than drained, so a handle value
+            // the next device mints cannot be matched by a stale entry from the old one.
             _dyingHandles.Clear();
             for (int i = 1; i < _high; i++)
             {

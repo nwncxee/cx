@@ -45,8 +45,8 @@ internal static class ShaderContract
         => vs.Contains("CxGrassSway(CxPrevClock() * uWindSpeed, phase)") && vs.Contains("vPrev = uPrevVP");
 
     /// <summary>Does this stage pair carry the cutout and the per-draw alpha? An override without them links
-    /// CLEANLY -- the record did not grow, the clip expression did not change, and <c>glUniform1f</c> on a -1
-    /// location is a legal no-op -- and ships a world with no alpha discard and a constant 1.0 alpha: grass as
+    /// CLEANLY -- the record did not grow, the clip expression did not change, and the per-draw alpha simply
+    /// goes unread -- and ships a world with no alpha discard and a constant 1.0 alpha: grass as
     /// opaque quads, windows as walls. Named terms, so an override may restyle around them, not drop them.</summary>
     public static bool CutoutSafe(string vs, string fs)
         // The probe is a SUBSTRING of the whole stage text, COMMENTS INCLUDED: a stage that merely mentions

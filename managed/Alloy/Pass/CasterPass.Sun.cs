@@ -24,8 +24,6 @@ public sealed unsafe partial class CasterPass
     /// this and nothing else: the fit follows the player, so an area ten times the size costs the same.</summary>
     private static float _maxDist => Shadows.Dist.V;
 
-    /// <summary>The depth array holding the cascades (0 = none yet). Read by the Alloy colour pass, in the
-    /// same 4.6 context, on the frame after the render.</summary>
     /// <summary>Cascades successfully rendered on the last pass, innermost first.</summary>
     internal static int CascadeCount;
     /// <summary>Row-major light view-projection per cascade, 16 floats each -- the matrix each layer was

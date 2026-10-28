@@ -20,7 +20,7 @@ internal static unsafe partial class Halos
     /// the element chain.</summary>
     internal static (string Vs, string Fs) VkTexts(ExtenderLog log)
     {
-        GlProgram.Texts(ShdHaloVs, ShaderStages.Source(ShdHaloVs), ShdHaloFs, ShaderStages.Source(ShdHaloFs), log, "Halos",
+        ShaderTexts.Pair(ShdHaloVs, ShaderStages.Source(ShdHaloVs), ShdHaloFs, ShaderStages.Source(ShdHaloFs), log, "Halos",
                         out string vs, out string fs);
         return ShaderContract.FlareSafe(vs, fs) ? (vs, fs)
             : (ShaderSource.Get(ShdHaloVs + ".glsl"), ShaderSource.Get(ShdHaloFs + ".glsl"));

@@ -541,8 +541,8 @@ prints its own equivalent.
 **Rejects:** a fragment stage without `uAlphaCut`, or one that reads `vAlpha` without a
 vertex stage that supplies it.
 
-**Why:** a stage written before per-draw alpha links cleanly — `glUniform1f` on a
-missing uniform's `-1` location is a legal no-op — and renders every cutout and blended
+**Why:** a stage written before per-draw alpha links cleanly — a uniform the block lacks
+has location `-1` and the write lands nowhere — and renders every cutout and blended
 surface solid.
 
 **You see:** the same `RebuildEmbedded` line as Record; it names both possibilities.

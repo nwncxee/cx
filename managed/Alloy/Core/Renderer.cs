@@ -50,11 +50,11 @@ internal static class Renderer
     /// <summary>Content stages' native versions (<c>cx_&lt;stage&gt;</c>) and the images and passes they declare.</summary>
     internal static readonly Knob<bool> Native;
     internal static readonly Knob<bool> TexPreview;
-    internal static readonly Knob<bool> Bcn, Hdr, Gl46, OwnedTex, TexSingle, DdsRead, HandleDrop,
-                                        Spirv, VanillaBridge, HostFs, OwnSkin, DumpShaders, GlDebug, EngineZones,
+    internal static readonly Knob<bool> Bcn, Hdr, OwnedTex, TexSingle, DdsRead, HandleDrop,
+                                        Spirv, VanillaBridge, HostFs, OwnSkin, DumpShaders, GpuDebug, EngineZones,
                                         Gui, Movie;
     internal static readonly Knob<int> Border, Oit, TexCache, Bindless, BcnDrip, TexDelete, MaxElements, RasterRead,
-                                       ClusterCap, GlSync, SkipBuckets, FrameDiff, ParityDump, StaleAudit;
+                                       ClusterCap, SkipBuckets, FrameDiff, ParityDump, StaleAudit;
     internal static readonly Knob<bool> Light, Prepass, Retest, HlDiag, Poll, PrepassKey, PrepassFeat, IdTarget,
                                         BlendDepth, VisList, WashTest, DepthEqual;
     // ---- CX-103/104/105: the scene pipeline's dials ----
@@ -156,7 +156,7 @@ internal static class Renderer
         TexCache = G.Dropdown("texcache", "Texture memory budget", new[] { -1, 512, 1024, 2048, 4096, 8192 }, -1, tier: Tier.ChatOnly,
                               effect: Effect.Restart, format: AutoInt, parse: ParseAutoInt);
         Bindless = G.Dropdown("bindless", "Bindless textures", new[] { -1, 1, 0 }, -1, tier: Tier.ChatOnly, effect: Effect.Restart,
-                              help: "Auto turns them off on Zink.", format: AutoOnOff, parse: ParseAutoOnOff);
+                              help: "Auto arms them: Vulkan's descriptor table is bindless on every device.", format: AutoOnOff, parse: ParseAutoOnOff);
         Native = G.Toggle("native", "Native shader stages", true, Tier.ChatOnly, changed: () => Programs._spliceStale = true,
                           help: "Run a content shader's native version (cx_<stage>) where the module ships one; off runs the "
                               + "stage the engine runs.");
@@ -164,7 +164,6 @@ internal static class Renderer
                        help: "Re-encodes uncompressed textures as BC1/BC3: 3–4× less VRAM, a little load-time CPU.");
 
         Hdr = G.Toggle("hdr", "hdr", true, Tier.ChatOnly, Effect.Restart);
-        Gl46 = G.Toggle("gl46", "gl46", true, Tier.ChatOnly, Effect.Restart);
         DrawHooks = G.Dropdown("drawhooks", "drawhooks", new[] { DrawFunnelService.DrawModeBatch, DrawFunnelService.DrawModeStats },
                                DrawFunnelService.DrawModeBatch, tier: Tier.ChatOnly, effect: Effect.Restart);
         OwnedTex = G.Toggle("ownedtex", "ownedtex", true, Tier.ChatOnly, Effect.Restart);
@@ -189,7 +188,7 @@ internal static class Renderer
         ClusterCap = G.Slider("clustercap", "clustercap", 8, 128, 1, 128, tier: Tier.ChatOnly, effect: Effect.Restart);
         DumpTex = G.Text("dumptex", "dumptex", "", Tier.ChatOnly, Effect.Restart);
         DumpShaders = G.Toggle("dumpshaders", "dumpshaders", false, Tier.ChatOnly, Effect.Restart);
-        GlDebug = G.Toggle("gldebug", "gldebug", false, Tier.ChatOnly, Effect.Restart);
+        GpuDebug = G.Toggle("gpudebug", "gpudebug", false, Tier.ChatOnly, Effect.Restart);
         // CX-120: the pass number to dump the frame's whole input set at, 0 = off. A pass NUMBER rather than a
         // toggle because the first pass of a session is before the camera is placed, and the settled frame is
         // the one worth comparing between the two scene layers.
@@ -201,7 +200,6 @@ internal static class Renderer
         // a toggle because the audit walks every live slot and diffs three GPU mirrors: once a second is a
         // diagnostic, every frame is a different frame.
         StaleAudit = G.Slider("staleaudit", "staleaudit", 0, 100000, 1, 0, tier: Tier.ChatOnly, effect: Effect.Restart);
-        GlSync = G.Slider("glsync", "glsync", 0, 1, 1, 0, tier: Tier.ChatOnly, effect: Effect.Restart);
         SkipBuckets = G.Slider("skipbuckets", "skipbuckets", 0, 3, 1, 3, tier: Tier.ChatOnly, effect: Effect.Restart);
         EngineZones = G.Toggle("enginezones", "enginezones", true, Tier.ChatOnly, Effect.Restart);
         // CX-99: 0 hands every movie frame back to the engine's own quad. Live, because a movie is the one

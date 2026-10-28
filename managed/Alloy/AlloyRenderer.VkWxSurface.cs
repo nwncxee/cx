@@ -234,14 +234,14 @@ public sealed unsafe partial class AlloyRenderer
     private static void VkWxOpen(VkDefStage st)
     {
         Array.Clear(st.Block);
-        VkUniformShim.Capture(st.Members, st.Block);
+        LooseBlock.Capture(st.Members, st.Block);
     }
 
     /// <summary>Close <see cref="VkWxOpen"/>'s capture, append the block to the arena and send it ahead of the
     /// dispatch that reads it (no pass flush uploads these); its offset, or -1 when the arena is full.</summary>
     private static int VkWxClose(CommandList cl, VkDefStage st)
     {
-        VkUniformShim.EndCapture();
+        LooseBlock.EndCapture();
         int at = VkArena(st.Block);
         if (at >= 0) cl.UpdateBuffer(_vkc.Arena, at, st.Block);
         return at;

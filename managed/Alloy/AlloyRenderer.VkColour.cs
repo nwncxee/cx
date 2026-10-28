@@ -34,7 +34,7 @@ public sealed unsafe partial class AlloyRenderer
         public int Feat, Epoch;
         public string Label = "";
         public ShaderId Vs, Fs;
-        public VkUniformShim.Member[] Members = [];
+        public LooseBlock.Member[] Members = [];
         public Dictionary<string, int> Names = new();
         public byte[] Block = [];
         public VkOpaque[] Opaques = [];
@@ -47,8 +47,6 @@ public sealed unsafe partial class AlloyRenderer
         /// constant colour a content stage reads instead of the record's alpha. -1 on every other program.</summary>
         public int ViewInv = -1, Global = -1;
         public readonly Dictionary<long, PipelineId> Pipes = new();
-        /// <summary>The fake GL program name its locations resolve under.</summary>
-        public uint ShimName;
         /// <summary>The native stages it is built from (-1: none), its declarations that are their images, and where
         /// their frame uniforms sit (<see cref="VkStageAttach"/>).</summary>
         public int StageA = -1, StageB = -1;
@@ -252,17 +250,14 @@ public sealed unsafe partial class AlloyRenderer
         return img;
     }
 
-    /// <summary>Named program <paramref name="id"/>, built by <see cref="VkBuild(VkBackend, VkProgramText, string, bool, uint, ExtenderLog)"/>.</summary>
+    /// <summary>Named program <paramref name="id"/>, built by <see cref="VkBuild(VkBackend, VkProgramText, string, bool, ExtenderLog)"/>.</summary>
     private static VkProg? VkBuild(VkBackend vk, VkPrograms.Id id, ExtenderLog log)
     {
         bool lit = id is VkPrograms.Id.Lit or VkPrograms.Id.LitDeferred or VkPrograms.Id.Decal;
-        VkProg? p = VkBuild(vk, VkPrograms.Text(id, log), $"{id}", lit, VkUniformShim.ProgramBase + (uint)id, log);
+        VkProg? p = VkBuild(vk, VkPrograms.Text(id, log), $"{id}", lit, log);
         if (p != null) { p.Id = id; p.Deferred = id == VkPrograms.Id.LitDeferred; }
         return p;
     }
-
-    /// <summary>The fake GL program names content programs resolve their locations under: past the named programs'.</summary>
-    private const uint ContentShimBase = VkUniformShim.ProgramBase + 64;   // not-an-offset: a reserved name range
 
     /// <summary>A content program's cache key: its feature id and variant.</summary>
     private static int VkContentKey(int feat, ContentVariant v) => feat * 8 + (int)v;
@@ -283,7 +278,7 @@ public sealed unsafe partial class AlloyRenderer
         else
         {
             // every variant of a pair is the lit stage's text, so every one takes the lit table
-            p = VkBuild(s.Dev, t, label, true, ContentShimBase + (uint)key, _log);
+            p = VkBuild(s.Dev, t, label, true, _log);
             if (p == null) _log.Always($"AlloyRenderer: Vulkan {label} NOT RUN (logged above) -- its parts draw the plain program");
             else if (na >= 0 || nb >= 0) VkStageAttach(p, na, nb);
         }
@@ -298,37 +293,37 @@ public sealed unsafe partial class AlloyRenderer
     }
 
     /// <summary>One program: translated, compiled once to SPIR-V for both its module and its reflection, its loose
-    /// block laid out, and GL's location tables resolved against that layout through <see cref="VkUniformShim"/> under
-    /// fake program <paramref name="name"/> -- the lit table when <paramref name="lit"/>.</summary>
-    private static VkProg? VkBuild(VkBackend vk, VkProgramText t, string label, bool lit, uint name, ExtenderLog log)
+    /// block laid out, and its location tables resolved against that layout -- the lit table when
+    /// <paramref name="lit"/>.</summary>
+    private static VkProg? VkBuild(VkBackend vk, VkProgramText t, string label, bool lit, ExtenderLog log)
     {
         if (t.Error != null) { log.Always($"AlloyRenderer: the Vulkan {label} program did not translate -- {t.Error}"); return null; }
         byte[]? vs = VulkanToolchain.Compile(VkBackend.Translate(t.Vs), $"vk {label} vs", ShaderKind.VertexShader, out string ve);
         byte[]? fs = VulkanToolchain.Compile(VkBackend.Translate(t.Fs), $"vk {label} fs", ShaderKind.FragmentShader, out string fe);
         if (vs == null || fs == null) { log.Always($"AlloyRenderer: the Vulkan {label} program did not compile -- {(vs == null ? ve : fe)}"); return null; }
-        var p = new VkProg { Lit = lit, Label = label, Opaques = t.Opaques.ToArray(), Refl = t.Fs.Contains("oReflN", StringComparison.Ordinal), ShimName = name };
+        var p = new VkProg { Lit = lit, Label = label, Opaques = t.Opaques.ToArray(), Refl = t.Fs.Contains("oReflN", StringComparison.Ordinal) };
         p.ReadsEngine = Array.Exists(p.Opaques, o => o.Set == 0 && o.Kind == VkBindKind.UniformBlock && o.Binding == UboSlots.Engine);
         p.Vs = vk.CreateShader(ShaderStage.Vertex, vs, $"vk {label} vs");
         p.Fs = vk.CreateShader(ShaderStage.Fragment, fs, $"vk {label} fs");
         if (p.Vs.IsNull || p.Fs.IsNull) return null;
-        if (VkUniformShim.Layout(t, vs, fs) is { } l) { p.Members = l.Members; p.Block = VkUniformShim.Block(l.Bytes); }
-        p.Names = VkUniformShim.Index(p.Members);
-        VkUniformShim.Resolve(p.Names, () =>
+        if (LooseBlock.Layout(t, vs, fs) is { } l) { p.Members = l.Members; p.Block = LooseBlock.Block(l.Bytes); }
+        p.Names = LooseBlock.Index(p.Members);
+        LooseBlock.Resolve(p.Names, () =>
         {
-            if (lit) p.L = Programs.LitLocs(name);
+            if (lit) p.L = Programs.LitLocs();
             else
             {
-                p.Vp = GlProgram.Loc(name, "uVP"); p.Tex = GlProgram.Loc(name, "uTex"); p.Viz = GlProgram.Loc(name, "uViz");
-                p.AlphaMip = GlProgram.Loc(name, "uAlphaMip"); p.Tint = GlProgram.Loc(name, "uTint");
-                p.SkyFog = GlProgram.Loc(name, "uSkyFog"); p.Oit = GlProgram.Loc(name, "uOit"); p.OitDim = GlProgram.Loc(name, "uOitDim");
-                p.ViewInv = GlProgram.Loc(name, "uViewInv"); p.Global = GlProgram.Loc(name, "globalColor");
-                p.F = Programs.FeatLocs(name);
+                p.Vp = LooseBlock.Loc("uVP"); p.Tex = LooseBlock.Loc("uTex"); p.Viz = LooseBlock.Loc("uViz");
+                p.AlphaMip = LooseBlock.Loc("uAlphaMip"); p.Tint = LooseBlock.Loc("uTint");
+                p.SkyFog = LooseBlock.Loc("uSkyFog"); p.Oit = LooseBlock.Loc("uOit"); p.OitDim = LooseBlock.Loc("uOitDim");
+                p.ViewInv = LooseBlock.Loc("uViewInv"); p.Global = LooseBlock.Loc("globalColor");
+                p.F = Programs.FeatLocs();
             }
         });
         return p;
     }
 
-    /// <summary>Capture one program's bind into its loose block -- GL's own setters, in the order the issue loop calls
+    /// <summary>Capture one program's bind into its loose block -- its terms in the order the issue loop writes
     /// them -- then the pass block, both appended to the arena, then the bind set. False (logged) when the arena is full.</summary>
     private static bool VkBindProgram(CommandList cl, VkProg p, in Matrix4x4 vp, int* viewport, float near, float far,
                                       BufferId slots, int tex)
@@ -337,7 +332,7 @@ public sealed unsafe partial class AlloyRenderer
         Array.Clear(p.Block);
         int viz = _capturing ? 0 : _lightViz;
         bool lit = p.Lit;
-        VkUniformShim.Capture(p.Members, p.Block);
+        LooseBlock.Capture(p.Members, p.Block);
         try
         {
             fixed (Matrix4x4* m = &vp)
@@ -346,41 +341,41 @@ public sealed unsafe partial class AlloyRenderer
                 else if (lit)
                 {
                     ref LitLoc L = ref p.L;
-                    VkUniformShim.Set(L.Vp, new ReadOnlySpan<float>(m, 16));
-                    VkUniformShim.Set(L.Viz, viz);
-                    VkUniformShim.Set(L.AoCutout, Ao.Cutout.V);
-                    VkUniformShim.Set(L.SsaoHalf, SsaoPassVk.Half ? 1 : 0);
-                    VkUniformShim.Set(L.AlphaMip, Renderer.CutMip.V);
-                    VkUniformShim.Set(L.MirrorZ, _mirrorZ);
-                    VkUniformShim.Set(L.LightRecOn, s.LightRec ? 1 : 0);
-                    VkUniformShim.Set(L.Oit, s.Oit ? 1 : 0);
-                    VkUniformShim.Set(L.Capture, _capturing ? _planar ? 2 : 1 : 0);
+                    LooseBlock.Set(L.Vp, new ReadOnlySpan<float>(m, 16));
+                    LooseBlock.Set(L.Viz, viz);
+                    LooseBlock.Set(L.AoCutout, Ao.Cutout.V);
+                    LooseBlock.Set(L.SsaoHalf, SsaoPassVk.Half ? 1 : 0);
+                    LooseBlock.Set(L.AlphaMip, Renderer.CutMip.V);
+                    LooseBlock.Set(L.MirrorZ, _mirrorZ);
+                    LooseBlock.Set(L.LightRecOn, s.LightRec ? 1 : 0);
+                    LooseBlock.Set(L.Oit, s.Oit ? 1 : 0);
+                    LooseBlock.Set(L.Capture, _capturing ? _planar ? 2 : 1 : 0);
                     UploadFeatureTerms(L.Feat, viewport);
                     BindPass(L.CubeCount, viewport, near, far);
-                    VkUniformShim.Set(L.DecalZ, [DecalLayer.Z0, DecalLayer.Z1]);
-                    VkUniformShim.Set(L.LightOcc, [Lighting.HiddenLights.V ? 1f : 0f, GlossyRough]);
+                    LooseBlock.Set(L.DecalZ, [DecalLayer.Z0, DecalLayer.Z1]);
+                    LooseBlock.Set(L.LightOcc, [Lighting.HiddenLights.V ? 1f : 0f, GlossyRough]);
                     UploadMaterialModel(L.Material);
                     bool wxOff = _capturing;
                     Weather.UploadLit(L.Weather, L.WeatherLook, L.CoverVp, L.CoverLayer, L.SnowLook, L.SnowLight, L.SnowPom, L.WxEdge, L.WxRun, L.WxCache, wxOff);
                     Weather.BindEsm(L.CoverEsm, s.Oit);
                     Weather.UploadMap(L.WxMapXf, L.WxMapP, wxOff);
                     SkyView.UploadLitVk(L.SkyVp, L.SkyTerm, VkSkyMap, _capturing && !_planar);
-                    VkUniformShim.Set(L.LmPages, LightmapBake.VkLivePages);
-                    VkUniformShim.Set(L.LmMovers, LightmapBake.MoverMode);
+                    LooseBlock.Set(L.LmPages, LightmapBake.VkLivePages);
+                    LooseBlock.Set(L.LmMovers, LightmapBake.MoverMode);
                 }
                 else
                 {
-                    VkUniformShim.Set(p.Vp, new ReadOnlySpan<float>(m, 16));
-                    VkUniformShim.Set(p.AlphaMip, Renderer.CutMip.V);
-                    VkUniformShim.Set(p.Viz, viz);
-                    VkUniformShim.Set(p.Tint, [1f, 1f, 1f]);
-                    VkUniformShim.Set(p.Oit, s.Oit ? 1 : 0);
+                    LooseBlock.Set(p.Vp, new ReadOnlySpan<float>(m, 16));
+                    LooseBlock.Set(p.AlphaMip, Renderer.CutMip.V);
+                    LooseBlock.Set(p.Viz, viz);
+                    LooseBlock.Set(p.Tint, [1f, 1f, 1f]);
+                    LooseBlock.Set(p.Oit, s.Oit ? 1 : 0);
                     UploadFeatureTerms(p.F, viewport);
                 }
             }
             VkStageFrame(p);
         }
-        finally { VkUniformShim.EndCapture(); }
+        finally { LooseBlock.EndCapture(); }
         // the terms whose resources are not on Vulkan yet read as absent: no cube, no lightmap, no sky map, no weather,
         // no fog volume -- every one gates on the value it is zeroed to
         VkShadowSay(p);

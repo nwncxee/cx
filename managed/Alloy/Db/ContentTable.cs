@@ -55,8 +55,8 @@ internal static unsafe class ContentTable
     /// <summary>Bytes per row on the GPU.</summary>
     internal static int RowBytes => sizeof(Row);
 
-    /// <summary>Everything mutable, in one owner: context loss replaces the GL half and a fresh session the
-    /// rest, so no name from a dead context survives as a field nobody remembered to zero.</summary>
+    /// <summary>Everything mutable, in one owner: context loss replaces the device half and a fresh session
+    /// the rest, so no name from a dead device survives as a field nobody remembered to zero.</summary>
     private sealed class TableState
     {
         public readonly Row[] Rows = new Row[MaxRows];

@@ -114,7 +114,7 @@ internal static class TextureSlots
     internal const uint SunShadowRaw = 29, SunShadowDynRaw = 30;
     /// <summary>R2: the area wetness map (<see cref="Weather"/>), read by the lit stage and the grass blade.
     /// Past the 0..15 budget for <see cref="LocalShadowRaw"/>'s reason -- every unit below is spent in the lit
-    /// bracket -- and declared by <c>layout(binding)</c>, so no bind-time <c>glUniform1i</c> can miss it.</summary>
+    /// bracket -- and declared by <c>layout(binding)</c>, which IS the unit: nothing assigns it by name.</summary>
     internal const uint WetMap = 18;
     /// <summary>The SAME prepass depth, on the same unit, read by the LIT stage -- so a fragment can ask
     /// whether the visibility at its pixel was computed from ITS OWN surface. The prepass and the colour pass
@@ -140,7 +140,7 @@ internal static class TextureSlots
     /// <summary>The master PLT palette (256x1792 RGBA8), read by the lit stage to resolve a layered
     /// texture per instance. Past the 0..15 budget for <see cref="LocalShadowRaw"/>'s reason -- every unit
     /// below is spent in the lit bracket -- and declared with <c>layout(binding)</c> in <c>cx_plt.glsl</c>,
-    /// so no bind-time <c>glUniform1i</c> can miss it.</summary>
+    /// which IS the unit: nothing assigns it by name.</summary>
     internal const uint PltPalette = 19;
 
     /// <summary>The volumetric fog's integrated volume (<see cref="FogVolume"/>), read by every stage that fogs, and its
@@ -171,8 +171,8 @@ internal static class TextureSlots
     /// <c>layout(binding)</c> in <c>cx_ownlit_head.glsl</c>; bound for the blended class by <see cref="Issue"/>.</summary>
     internal const uint LightRec = 26;
 
-    /// <summary>The map samplers, in unit order from <see cref="MapBase"/>. This array IS the bind order the
-    /// lit program's link-time <c>glUniform1i</c> loop walks -- there is no second copy of it.</summary>
+    /// <summary>The map samplers, in unit order from <see cref="MapBase"/>. This array IS the order
+    /// <see cref="VkPrograms.Units"/> gives them their bindings in -- there is no second copy of it.</summary>
     internal static readonly string[] MapSamplers =
         { "uNrmTex", "uSpecTex", "uRoughTex", "uHeightTex", "uIllumTex", "uFlowTex", "uAoTex" };
 
@@ -220,7 +220,7 @@ internal static class TextureSlots
 
         // Each unit against the sampler declaration in the stage that consumes it -- the copy that is
         // independent of the consts above, which now all alias this table. Rename or drop a declaration and
-        // glUniform1i binds a -1 location: a legal no-op that leaves the sampler on unit 0.
+        // the slot table no longer names its binding, which the Vulkan translation refuses.
         check.Expect(AlloyRenderer.OwnedFs.Contains("uniform sampler2D uTex;")
           && AlloyRenderer.OwnedLitFsHead.Contains("uniform sampler2D uTex;")
           && GrassField.GrassFsHead.Contains("uniform sampler2D uTex;")
@@ -313,8 +313,8 @@ internal static class TextureSlots
         check.Expect(ShaderStages.Source(Halos.ShdHaloFs).Contains("uniform sampler2D uFlare;"), $"{Diffuse} uFlare (flare program)");
         check.Expect(Weather.SplashVs.Contains("uniform sampler2D uCoverDepth;"), $"{CoverDepth} uCoverDepth (splash program)");
         check.Expect(Weather.SplashVs.Contains("uniform sampler2D uSceneDepth;"), $"{SceneDepth} uSceneDepth (splash program)");
-        // CX-188: the deferred pass declares its five by layout(binding), so no bind-time glUniform1i can miss
-        // one -- but the units still have to be the ones C# binds, which is what this pins.
+        // CX-188: the deferred pass declares its five by layout(binding), so nothing assigns them by name --
+        // but the units still have to be the ones C# binds, which is what this pins.
         string deferred = ShaderStages.Source(DeferredLights.ShdCs);
         check.Expect(deferred.Contains($"layout(binding = {Gbuf0}) uniform usampler2D uGb0;")
           && deferred.Contains($"layout(binding = {Gbuf1}) uniform usampler2D uGb1;")
@@ -348,8 +348,8 @@ internal static class TextureSlots
         check.Expect(ShadowKey == GrassGround && ShadowVis > GbufDepth,
           $"{ShadowVis}/{ShadowKey} the record's units leave the map block");
 
-        // ...and the units themselves. MapSamplers is what the lit program's bind loop walks, so a name added
-        // there without a unit to put it on would silently land on the probe's.
+        // ...and the units themselves. MapSamplers is what VkPrograms.Units walks, so a name added there
+        // without a unit to put it on would silently land on the probe's.
         check.Expect(MapSamplers.Length == MapCount, $"MapSamplers has {MapSamplers.Length} names for {MapCount} units");
         check.Expect(MapBase > LocalShadow && MapBase + MapCount <= PostHdr, $"{MapBase}..{MapBase + MapCount - 1} map block overlaps its neighbours");
         check.Expect(PostHdr < PostBloom && PostBloom < Probe && Probe < SnapshotColor

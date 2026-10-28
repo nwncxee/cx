@@ -9,7 +9,7 @@ using CX.Graphics;
 namespace CX.Alloy;
 
 /// <summary>
-/// Volumetric light beams, enumerated off the engine's bucket 15 and drawn at the Alloy graph slot (ADR 0011).
+/// Volumetric light beams, enumerated off the engine's bucket 15 and drawn at the Alloy graph slot.
 /// The population is <c>DrawBucketManager::GetFirstItem(Scene+0x208, 0xf, 0)</c> -- bucket <b>15</b>, which
 /// <c>Scene::RenderDrawBucket</c> never touches -- read directly once a frame in engine context, so the table
 /// cannot go stale. The model matrix is the IDENTITY: beam volumes are baked in world space.

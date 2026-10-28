@@ -24,7 +24,7 @@ internal static unsafe partial class LightmapBake
     /// arrive with each creature, long after the bake. The larger of this and an eighth of the card.</summary>
     private const int VramReserveMiB = 1024;
 
-    /// <summary>From the health bracket, which runs where the colour bracket does not: at the main menu, or with
+    /// <summary>From the frame's deferred work, which runs where the colour bracket does not: at the main menu, or with
     /// the pass off or stood down, the pool's memory goes back. Never under the hold, which is an area loading.</summary>
     internal static void ReleaseIdle()
     {

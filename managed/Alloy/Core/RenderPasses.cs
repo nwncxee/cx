@@ -351,10 +351,8 @@ internal static class RenderPasses
             Stats = f => Join(AlloyCamera.Stats(f), AlloyWind.Stats(f)),
         }, log);
 
-        // CX-120 seam-scene: not a draw pass -- the CX scene/camera records behind the Aurora seam, the
-        // frame's view snapshot and the render thread. Attach resolves the three window reads the slots need
-        // (SeamFrame) and the thread is started by the seam's own boot switch, not here: the knob is Boot and
-        // the 4.6 context has to exist first.
+        // CX-120 seam-scene: not a draw pass -- the CX scene/camera records behind the Aurora seam and the
+        // frame's view snapshot. Attach resolves the three window reads the slots need (SeamFrame).
         r.Register(new PassLifecycle
         {
             Name = "scenedb",

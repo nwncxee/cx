@@ -148,8 +148,6 @@ internal static class ShaderSource
             if (res.EndsWith(".glsl", StringComparison.Ordinal)) texts.Add((res, Get(res)));
         texts.Add(("CasterGather.GatherCs", CasterGather.GatherCs));
         texts.Add(("CasterGather.LayerCs", CasterGather.LayerCs));
-        texts.Add(("TextRig.BatchVs", CX.Ui.TextRig.BatchVs));
-        texts.Add(("TextRig.BatchFs", CX.Ui.TextRig.BatchFs));
         texts.Add(("bindless header", AlloyRenderer.BindlessFs("uniform sampler2D uTex;\n")));
         return texts;
     }

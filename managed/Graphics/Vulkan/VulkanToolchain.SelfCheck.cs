@@ -82,10 +82,10 @@ public static unsafe partial class VulkanToolchain
     private static void CheckCache(Checker check)
     {
         string src = ProbeSource + $"// cache probe {Environment.ProcessId}\n";
-        string path = System.IO.Path.Combine(ProgramBinary.CacheDir, $"vk-{CacheKey(src, ShaderKind.ComputeShader):x16}.spv");
+        string path = System.IO.Path.Combine(ShaderCache.Dir, $"vk-{CacheKey(src, ShaderKind.ComputeShader):x16}.spv");
         try
         {
-            System.IO.Directory.CreateDirectory(ProgramBinary.CacheDir);
+            System.IO.Directory.CreateDirectory(ShaderCache.Dir);
             System.IO.File.WriteAllBytes(path, new byte[24]);
             byte[]? fresh = Compile(src, "cx_vk_cache.comp", ShaderKind.ComputeShader, out string e);
             check.Expect(fresh != null && BitConverter.ToUInt32(fresh, 0) == SpirvMagic,

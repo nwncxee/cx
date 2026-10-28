@@ -1,6 +1,7 @@
 using System.Numerics;
 using CX.Engine;
 using CX.Graphics;
+using CX.Graphics.Rhi;
 
 namespace CX.Alloy;
 
@@ -31,30 +32,29 @@ internal unsafe struct FrameLoc
     internal readonly bool Any => Frame >= 0 || Main >= 0 || Fresh >= 0 || InvVp >= 0 || PrevVp >= 0 || Eye >= 0
                                 || View >= 0 || Overlay >= 0;
 
-    internal static FrameLoc Locate(uint prog) => new()
+    internal static FrameLoc Locate() => new()
     {
-        Frame = GlProgram.Loc(prog, "cxFrame"), Main = GlProgram.Loc(prog, "cxMain"),
-        Fresh = GlProgram.Loc(prog, "cxFresh"), InvVp = GlProgram.Loc(prog, "cxInvVp"),
-        PrevVp = GlProgram.Loc(prog, "cxPrevVp"), Eye = GlProgram.Loc(prog, "cxEye"),
-        View = GlProgram.Loc(prog, "cxView"), Overlay = GlProgram.Loc(prog, "cxOverlay"),
+        Frame = LooseBlock.Loc("cxFrame"), Main = LooseBlock.Loc("cxMain"),
+        Fresh = LooseBlock.Loc("cxFresh"), InvVp = LooseBlock.Loc("cxInvVp"),
+        PrevVp = LooseBlock.Loc("cxPrevVp"), Eye = LooseBlock.Loc("cxEye"),
+        View = LooseBlock.Loc("cxView"), Overlay = LooseBlock.Loc("cxOverlay"),
     };
 
-    /// <summary>Upload the set into the program currently bound. <paramref name="main"/> is <c>cxMain</c>: 1 for the
+    /// <summary>Upload the set into the open loose block. <paramref name="main"/> is <c>cxMain</c>: 1 for the
     /// on-screen view, 0 for a probe face or a reflection. Hot, and it allocates nothing.</summary>
     internal readonly void Upload(in StageFrame f, bool main, bool overlay)
     {
-        Gl.Uniform1i(Frame, f.Seq);
-        Gl.Uniform1i(Main, main ? 1 : 0);
-        Gl.Uniform1i(Fresh, f.Fresh ? 1 : 0);
+        LooseBlock.Set(Frame, f.Seq);
+        LooseBlock.Set(Main, main ? 1 : 0);
+        LooseBlock.Set(Fresh, f.Fresh ? 1 : 0);
         // raw row-major bytes, read column-major by GLSL: the transpose, so `M * v` in the stage is exact
         // (the convention MotionVectors' uInvVP/uPrevVP upload takes).
-        Matrix4x4 inv = f.InvVp, prev = f.PrevVp;
-        Gl.UniformMatrix4fv(InvVp, 1, 0, (float*)&inv);
-        Gl.UniformMatrix4fv(PrevVp, 1, 0, (float*)&prev);
+        LooseBlock.Set(InvVp, f.InvVp);
+        LooseBlock.Set(PrevVp, f.PrevVp);
         Vector3 eye = f.Eye;
-        Gl.Uniform3fv(Eye, 1, (float*)&eye);
-        Gl.Uniform2i(View, f.W, f.H);
-        Gl.Uniform1i(Overlay, overlay ? 1 : 0);
+        LooseBlock.Set(Eye, new ReadOnlySpan<float>((float*)&eye, 3));
+        LooseBlock.Set(View, f.W, f.H);
+        LooseBlock.Set(Overlay, overlay ? 1 : 0);
     }
 }
 
@@ -68,7 +68,7 @@ internal unsafe struct StageEnvLoc
 
     /// <summary>Resolve every name in one program. A location the program does not declare is -1, which GL
     /// ignores, so the same set is uploaded to a stock sky stage and to a pass alike.</summary>
-    internal static StageEnvLoc Locate(uint prog) => new() { Feat = Programs.FeatLocs(prog) };
+    internal static StageEnvLoc Locate() => new() { Feat = Programs.FeatLocs() };
 
     /// <summary>Upload the whole block into the program currently bound. Hot -- one call per program per pass, and it
     /// allocates nothing.</summary>

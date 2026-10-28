@@ -30,7 +30,7 @@ internal static unsafe partial class GuiContent
         if (!Texts(key, log, out string v, out string f)) return null;
         Prog? terms = null;
         GuiVkProg? p = GuiVkProg.Build(vk, Vulkan(Located(v)), Vulkan(f), VkUnits, What(key),
-                                       q => terms = Locs(GuiVkProg.ShimBase + (uint)key), log);
+                                       q => terms = Locs(), log);
         if (p == null || terms == null)
         {
             log.Always($"{What(key)}: NOT RUN on Vulkan (logged above) -- these GUI parts draw through Alloy's own GUI program");

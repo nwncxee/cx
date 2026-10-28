@@ -575,8 +575,8 @@ internal static unsafe class AlloyLights
         log.Info($"AlloyLights: {DescribeAtten()} -- /light retunes every dial live");
     }
 
-    /// <summary>Drop every GL object (context loss / disarm). Safe to call outside the bracket only when the
-    /// context is already gone -- the ids are then meaningless anyway.</summary>
+    /// <summary>Drop every device object (context loss / disarm). Safe outside the frame only when the device
+    /// is already gone -- the ids are then meaningless anyway.</summary>
     internal static void Forget()
     {
         _gl = new LightsGlState();

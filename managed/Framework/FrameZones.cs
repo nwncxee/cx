@@ -109,10 +109,10 @@ public static class FrameZones
         Own,
         /// <summary>Nested in <see cref="Alloy"/>: the six-face IBL probe capture.</summary>
         Probe,
-        /// <summary>Nested in <see cref="Alloy"/>: the pass preamble ahead of the 4.6 bracket (target latch,
+        /// <summary>Nested in <see cref="Alloy"/>: the pass preamble ahead of the colour bracket (target latch,
         /// post precheck, present target, camera), minus its <see cref="Pose"/> child.</summary>
         Setup,
-        /// <summary>Nested in <see cref="Alloy"/>: making the 4.6 context current.</summary>
+        /// <summary>Nested in <see cref="Alloy"/>: nothing on Vulkan -- a frame has no context to enter.</summary>
         Enter,
         /// <summary>Nested in <see cref="Alloy"/>: program ensure, target bind, GL state, water program.</summary>
         Prep,

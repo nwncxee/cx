@@ -189,7 +189,7 @@ Ceiling: the day two knobs must flip together, that pair becomes one `Knob<T>` w
   the registry, `Format()`s each knob, writes `cx.cfg.tmp`, then `File.Move(overwrite)`. Last
   writer wins. No write-if-changed compare. The render thread never touches the disk; the input
   thread only arms the timer.
-- **Boot keys** are renamed `<group>.<knob>` (`alloy.gl46`, `shadow.size`, `mouselook.sens`,
+- **Boot keys** are renamed `<group>.<knob>` (`alloy.hdr`, `shadow.size`, `mouselook.sens`,
   `general.logs`) with **no legacy read** of the flat name. `general.logs` is still consumed
   inside `Settings.Load`.
 - **Restart rows** show `V` with the `↻ restart` badge, amber when `V != Boot`.
@@ -630,7 +630,7 @@ rung). `alloy`'s `PanelStatus` is the renderer's own line ("Running: Alloy / Van
 | alloy.ghost | See-through creature thickness | S | 1–3 × step 0.1 · 1.2 | A | L | — | A creature an effect such as Invisibility makes see-through draws as this many layers of itself, so its shape still shows. 1 is the effect's own transparency. A fully invisible creature stays invisible. |
 | alloy.texpreview | Low-resolution texture previews | T | on | A | L | — | While an area streams in, every texture first shows a small blurred version of itself, then sharpens when the full one lands. Off: a texture shows white until it has fully loaded. |
 | alloy.a2c | Alpha-to-coverage samples | D | off / 2x / 4x / 8x · 4x | A | L | — | Materials that ask for alpha-to-coverage (`NWN_ALPHA_MODE 2`, often hair) get soft, layered edges from this many samples per pixel. Off draws them with the hard cutout edge every other leaf has. |
-| alloy.gui / border / oit / texcache / bindless / bcn / hdr / gl46 / drawhooks / ownedtex / pltverify / bcndrip / texsingle / ddsread / rasterread / texdelete / handledrop / maxelements / spirv / vanillabridge / hostfs / ownskin / clustercap / dumptex / dumpshaders / gldebug / framediff / paritydump / staleaudit / glsync / skipbuckets / enginezones | — | T, S, D, X | as declared | C | mostly R | — | capability gates, budgets and bisects |
+| alloy.gui / border / oit / texcache / bindless / bcn / hdr / drawhooks / ownedtex / pltverify / bcndrip / texsingle / ddsread / rasterread / texdelete / handledrop / maxelements / spirv / vanillabridge / hostfs / ownskin / clustercap / dumptex / dumpshaders / gpudebug / framediff / paritydump / staleaudit / skipbuckets / enginezones | — | T, S, D, X | as declared | C | mostly R | — | capability gates, budgets and bisects |
 | alloy.movie / a2cmask / light / prepass / viz / threads / cull / retest / hldiag / hlchan / poll / prepasskey / prepassfeat / depthequal / idtarget / blenddepth / vislist / washtest / oitviz / cullwatch / lodhyst / hitcheck | — | T, S | as declared | C | L | — | live path switches and visualisers |
 | alloy.authoredlod | authoredlod | T | on | H | L | — | cfg-only: authored `.lod` alternates are loaded and switched for every object, non-static placeables included, whatever the game's own LOD option says. Off is for debugging; the switch distances still follow the game's LOD scale setting. |
 | alloy.consts / framedump / bench / shaderdump / snap / hitbench | — | B | — | C | — | — | dumps and measurements (`bench` steps the GPU-cost settings and logs a `[bench]` table) |
@@ -1036,7 +1036,7 @@ Each step ships on its own and leaves the client working.
   `DialogSettings`, `NameplateSettings`, `QuickbarSettings` and their gears, the nuklear hotkey
   manager + the Options-panel "Hotkeys" button + their `SymbolMap` rows, `GameGate.Locked` /
   `OwnsFramePresent` and every `lockchat` branch (UiHostService, UiInputService, ChatService,
-  GlContextService, AlloyGate, CasterPass, AlloyRenderer, Quickbar, Notice, HotkeyInputService),
+  FramePump, AlloyGate, CasterPass, AlloyRenderer, Quickbar, Notice, HotkeyInputService),
   `ConfigFile.Load/Save/Baseline`, every `cx-<feature>.cfg` writer, nameplate `mode`, the FOV
   magic zero.
 - Files: `cx-camera.cfg`, `cx-chat.cfg`, `cx-combattext.cfg`, `cx-dialog.cfg`,

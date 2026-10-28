@@ -71,10 +71,10 @@ public sealed unsafe partial class AlloyRenderer
             {
                 bound = colour;
                 Array.Clear(p.Block);
-                VkUniformShim.Capture(p.Members, p.Block);
-                fixed (Matrix4x4* m = &vp) VkUniformShim.Set(p.Vp, new ReadOnlySpan<float>(m, 16));
-                VkUniformShim.Set(s.Color, [colour.X, colour.Y, colour.Z]);
-                VkUniformShim.EndCapture();
+                LooseBlock.Capture(p.Members, p.Block);
+                fixed (Matrix4x4* m = &vp) LooseBlock.Set(p.Vp, new ReadOnlySpan<float>(m, 16));
+                LooseBlock.Set(s.Color, [colour.X, colour.Y, colour.Z]);
+                LooseBlock.EndCapture();
                 int loose = VkArena(p.Block);
                 if (loose < 0) return false;
                 VkBindSet(side, p, c, loose, -1, c.Slots, 0);
@@ -95,10 +95,10 @@ public sealed unsafe partial class AlloyRenderer
         VkHlState s = _vkHl;
         if (!s.Drawn || s.Comp == null) return;
         PostChainVk.Open(s.Comp);
-        VkUniformShim.Set(s.Fill, Highlight.VkFill);
-        VkUniformShim.Set(s.Radius, Highlight.VkRadius);
+        LooseBlock.Set(s.Fill, Highlight.VkFill);
+        LooseBlock.Set(s.Radius, Highlight.VkRadius);
         // NDC offset j is uv offset j/2; the mask holds clean + j, so clean reads at uv + j/2
-        VkUniformShim.Set(s.Unjitter, [PostChain.JitterX * 0.5f, PostChain.JitterY * 0.5f]);
+        LooseBlock.Set(s.Unjitter, [PostChain.JitterX * 0.5f, PostChain.JitterY * 0.5f]);
         int at = PostChainVk.Close(cl, s.Comp);
         PostChainVk.Draw(cl, s.Comp, Format.Rgba8, PostChainVk.Blend.Over, composite, LoadOp.Load,
                          new Rect(display[0], display[1], display[2], display[3]), at, new PostChainVk.Inputs(default, Mask: s.Target), log);
@@ -118,8 +118,7 @@ public sealed unsafe partial class AlloyRenderer
             s.Tried = true;
             s.Side = new CommandList("vulkan highlight", 1 << 16, log);
             s.Mask = VkBuild(vk, VkPrograms.Id.HighlightMask, log);
-            const uint name = VkUniformShim.ProgramBase + (uint)VkPrograms.Id.HighlightMask;
-            if (s.Mask != null) VkUniformShim.Resolve(s.Mask.Names, () => s.Color = GlProgram.Loc(name, "uColor"));
+            if (s.Mask != null) LooseBlock.Resolve(s.Mask.Names, () => s.Color = LooseBlock.Loc("uColor"));
             s.Comp = PostChainVk.Program(vk, PostChain.FullscreenVs, Highlight.HighlightCompFs, "highlight composite", q =>
             {
                 s.Fill = q.Loc("uFill"); s.Radius = q.Loc("uRadius"); s.Unjitter = q.Loc("uUnjitter");

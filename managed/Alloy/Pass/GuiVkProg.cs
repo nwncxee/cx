@@ -10,13 +10,13 @@ namespace CX.Alloy;
 
 /// <summary>One of the GUI path's programs on Vulkan: the text GL compiles, translated by <see cref="VkGlsl"/>, its
 /// loose uniforms gathered into the <c>CxLoose</c> std140 block and GL's location tables resolved against that block
-/// through <see cref="VkUniformShim"/>. The GUI binds a texture per draw, so its pipelines are keyed by state rather
+/// through <see cref="LooseBlock"/>. The GUI binds a texture per draw, so its pipelines are keyed by state rather
 /// than cached on one.</summary>
 internal sealed class GuiVkProg
 {
     public string Label = "";
     public ShaderId Vs, Fs;
-    public VkUniformShim.Member[] Members = [];
+    public LooseBlock.Member[] Members = [];
     public Dictionary<string, int> Names = new();
     public byte[] Block = [];
     public VkOpaque[] Opaques = [];
@@ -28,11 +28,7 @@ internal sealed class GuiVkProg
     public CX.Alloy.StageResources.VkBind[] StageBinds = [];
     public CX.Alloy.FrameLoc StageFrame;
 
-    /// <summary>The fake GL program names the GUI path's shims resolve under: past every range
-    /// <see cref="AlloyRenderer"/>'s own programs reserve.</summary>
-    internal const uint ShimBase = VkUniformShim.ProgramBase + 4096;   // not-an-offset: a reserved name range
-
-    /// <summary>Program <paramref name="label"/> from the GL text of its two stages: translated, compiled to SPIR-V
+    /// <summary>Program <paramref name="label"/> from the text of its two stages: translated, compiled to SPIR-V
     /// for both the module and the reflection, its loose block laid out, then <paramref name="locate"/> run with
     /// locations answered from that block. Null (logged) when a step refused.</summary>
     internal static GuiVkProg? Build(VkBackend vk, string vs, string fs, IReadOnlyDictionary<string, uint> units,
@@ -48,9 +44,9 @@ internal sealed class GuiVkProg
         p.Vs = vk.CreateShader(ShaderStage.Vertex, vb, $"vk {label} vs");
         p.Fs = vk.CreateShader(ShaderStage.Fragment, fb, $"vk {label} fs");
         if (p.Vs.IsNull || p.Fs.IsNull) { log.Always($"GuiVkProg: {label}'s modules were REFUSED (logged above)"); return null; }
-        if (VkUniformShim.Layout(t, vb, fb) is { } l) { p.Members = l.Members; p.Block = VkUniformShim.Block(l.Bytes); }
-        p.Names = VkUniformShim.Index(p.Members);
-        VkUniformShim.Resolve(p.Names, () => locate(p));
+        if (LooseBlock.Layout(t, vb, fb) is { } l) { p.Members = l.Members; p.Block = LooseBlock.Block(l.Bytes); }
+        p.Names = LooseBlock.Index(p.Members);
+        LooseBlock.Resolve(p.Names, () => locate(p));
         return p;
     }
 

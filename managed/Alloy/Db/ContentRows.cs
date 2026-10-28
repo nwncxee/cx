@@ -45,9 +45,9 @@ internal static class ContentRows
         }
     }
 
-    /// <summary>Does the engine's upload of a <c>parameter</c> line reach a uniform of this kind? An <c>int</c> line is
-    /// <c>glUniform1i</c>, a one-value <c>float</c> line <c>glUniform1f</c>, and any longer one <c>glUniform4fv</c>
-    /// (<c>GLRender::SetUniforms</c> @0x4ccbf0); a call that does not fit the declared type is refused by GL.</summary>
+    /// <summary>Does the engine's upload of a <c>parameter</c> line reach a uniform of this kind? An <c>int</c>
+    /// line takes an <c>int</c>, a one-value <c>float</c> line a <c>float</c>, any longer one a <c>vec4</c>
+    /// (<c>GLRender::SetUniforms</c> @0x4ccbf0); the engine refuses an upload that does not fit the type.</summary>
     internal static bool Fits(ContentStage.ParamKind kind, bool isInt, int count)
         => count >= 1 && (isInt ? kind is ContentStage.ParamKind.Int or ContentStage.ParamKind.Bool
                          : count == 1 ? kind is ContentStage.ParamKind.Float or ContentStage.ParamKind.Bool

@@ -63,28 +63,28 @@ public sealed unsafe partial class AlloyRenderer
         VkColourState s = _vkc;
         int arena0 = s.ArenaUsed;
         Array.Clear(st.Block);
-        VkUniformShim.Capture(st.Members, st.Block);
+        LooseBlock.Capture(st.Members, st.Block);
         try
         {
-            VkUniformShim.Set(st.L.View, in t.View);
-            VkUniformShim.Set(st.L.Grid, (ReadOnlySpan<int>)[t.GridX, t.GridY, t.GridZ]);
-            VkUniformShim.Set(st.L.ProjXY, (ReadOnlySpan<float>)[t.ProjX, t.ProjY]);
-            VkUniformShim.Set(st.L.Z, (ReadOnlySpan<float>)[t.Near, t.Far]);
-            VkUniformShim.Set(st.L.LightCount, t.LightCount);
-            VkUniformShim.Set(st.L.Reach, t.Reach);
-            VkUniformShim.Set(st.L.LightFloor, (ReadOnlySpan<float>)[t.Floor, t.Gain]);
-            VkUniformShim.Set(st.L.BinCap, t.BinCap);
-            VkUniformShim.Set(st.L.Atten, (ReadOnlySpan<float>)[t.AttenX, t.AttenY]);
-            VkUniformShim.Set(st.L.Hot, (ReadOnlySpan<float>)[t.HotX, t.HotY]);
-            VkUniformShim.Set(st.L.ReflK, t.ReflK);
-            VkUniformShim.Set(st.L.Rel, (ReadOnlySpan<float>)[t.RelX, t.RelY]);
-            VkUniformShim.Set(st.L.Pad, (ReadOnlySpan<float>)[t.PadX, t.PadY]);
-            VkUniformShim.Set(st.L.Tally, t.Tally);
+            LooseBlock.Set(st.L.View, in t.View);
+            LooseBlock.Set(st.L.Grid, (ReadOnlySpan<int>)[t.GridX, t.GridY, t.GridZ]);
+            LooseBlock.Set(st.L.ProjXY, (ReadOnlySpan<float>)[t.ProjX, t.ProjY]);
+            LooseBlock.Set(st.L.Z, (ReadOnlySpan<float>)[t.Near, t.Far]);
+            LooseBlock.Set(st.L.LightCount, t.LightCount);
+            LooseBlock.Set(st.L.Reach, t.Reach);
+            LooseBlock.Set(st.L.LightFloor, (ReadOnlySpan<float>)[t.Floor, t.Gain]);
+            LooseBlock.Set(st.L.BinCap, t.BinCap);
+            LooseBlock.Set(st.L.Atten, (ReadOnlySpan<float>)[t.AttenX, t.AttenY]);
+            LooseBlock.Set(st.L.Hot, (ReadOnlySpan<float>)[t.HotX, t.HotY]);
+            LooseBlock.Set(st.L.ReflK, t.ReflK);
+            LooseBlock.Set(st.L.Rel, (ReadOnlySpan<float>)[t.RelX, t.RelY]);
+            LooseBlock.Set(st.L.Pad, (ReadOnlySpan<float>)[t.PadX, t.PadY]);
+            LooseBlock.Set(st.L.Tally, t.Tally);
             // the dyn-page table the hot partition reads, one float a cube slot -- an ARRAY member, so each element
             // goes at the block's own stride rather than packed against its neighbour
-            VkUniformShim.SetEach(st.L.DynPage, CasterPass.CubeDynPage.AsSpan(0, CasterPass.MaxCubes));
+            LooseBlock.SetEach(st.L.DynPage, CasterPass.CubeDynPage.AsSpan(0, CasterPass.MaxCubes));
         }
-        finally { VkUniformShim.EndCapture(); }
+        finally { LooseBlock.EndCapture(); }
         int loose = VkArena(st.Block);
         if (loose < 0) return;
         int len = (s.ArenaUsed - arena0 + 3) & ~3;

@@ -201,3 +201,13 @@ alloy\.(backend|renderthread|rhiimmediate|gpumeter)\b	CX-313
 # The snap set's other files: the HDR target either side of the sky pass and the default framebuffer at
 # present. The Vulkan frame records and submits once, so the one tap is its finished scene colour.
 _(opaque|sky|pre)\.pfm\b|_final\.ppm\b|\bdiff_final_pre\b	GL sweep 7
+# ADR 0033: Alloy is Vulkan-only, so CX's own GL 4.6 context and the present bracket around it are gone, with
+# the deferred GL-object graveyard, the GL program-binary disk cache and the uniform shim that aimed GL's
+# setters at a Vulkan block. GlContextService is FramePump: it counts presents and runs the deferred work.
+\bGlContextService\b|\bGpuGraveyard\b|\bVkUniformShim\b|\bProgramBinary\b|\bRenderTarget\b	GL sweep 8
+\bCurrent46\b|\bHeldHere(Depth)?\b|\bMakeCurrentHere\b|\bReserveForOtherThread\b|\bReleaseCurrentHere\b	GL sweep 8
+\bInBracket\b|\bRunInBracketHere\b|health bracket|\bParallelCompile\b|\bSwapNow\b	GL sweep 8
+4\.6 (core )?context|share-listed|share group	GL sweep 8
+\bGlProgram\.(Lib|Texts|Content|Compute|Prefetch|Start|Done|Drop|ForgetBackground|UsesBlock|Labels|LastStubbed)\b	GL sweep 8
+# The three knobs the GL context carried: two deleted outright, gldebug renamed gpudebug with its log tag.
+alloy\.(gl46|glsync|gldebug)\b|\[gl46\]|\[gldebug\]	GL sweep 8

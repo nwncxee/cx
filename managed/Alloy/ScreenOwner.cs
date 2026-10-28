@@ -61,7 +61,7 @@ internal static unsafe class ScreenOwner
 
     /// <summary>Is the screen Alloy's this frame? Whenever Alloy draws and the window is known: nothing the engine
     /// draws in GL reaches the screen.</summary>
-    internal static bool Owned => _origClear != null && _swap != null && Renderer.On && GlContextService.Available;
+    internal static bool Owned => _origClear != null && _swap != null && Renderer.On && FramePump.Available;
 
     [UnmanagedCallersOnly]
     private static void OnClear(uint mask)
@@ -78,9 +78,8 @@ internal static unsafe class ScreenOwner
         _origClearColor(r, g, b, a);
     }
 
-    /// <summary>The present, in the ENGINE context -- the one whose back buffer the GUI hand-back and every
-    /// engine-context draw landed in, which on Windows is not the 4.6 context's. False = not Alloy's to present;
-    /// the caller runs the engine's <c>GLRender::SwapBuffers</c>.</summary>
+    /// <summary>The present, at the engine's own swap point -- where the GUI hand-back and every engine draw
+    /// landed. False = not Alloy's to present; the caller runs the engine's <c>GLRender::SwapBuffers</c>.</summary>
     internal static bool Present(IntPtr window)
     {
         return Owned && PresentVulkan();

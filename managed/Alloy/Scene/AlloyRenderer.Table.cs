@@ -290,7 +290,7 @@ public sealed unsafe partial class AlloyRenderer
     private static int _swapN;
     private static bool _swapOverflow;
 
-    /// <summary>Inside the 4.6 bracket (handles are minted and made resident there): rewrite the handle
+    /// <summary>Where handles are minted and made resident: rewrite the handle
     /// block of every swapped record from its tids and mark it for upload. A record that never had handles
     /// (unlit) is left alone -- minting for it would spend residency on a texture nothing samples.</summary>
     private static void ApplySwaps()
@@ -365,7 +365,7 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>A handle that just died must leave every record block NOW, not at the next colour build: the
     /// caster bake samples the GPU handle table off a STANDING staging, and a sample through a dead handle is
     /// a GPU page fault and a hard reset on radeonsi, silent garbage on NVIDIA. Reached from the engine-name
-    /// cache's <see cref="DropHandle"/> and from <c>TexRegistry.Drain</c>, inside the bracket.</summary>
+    /// cache's <see cref="DropHandle"/> and from <c>TexRegistry.Drain</c>.</summary>
     internal static void ZeroHandle(ulong v)
     {
         if (v == 0) return;

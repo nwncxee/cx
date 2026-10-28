@@ -244,8 +244,8 @@ public static class TextQuads
                 if (run.Count <= 0) continue;
                 var rgba = new Vector4(run.R, run.G, run.B, i == list.CaretRun ? caretAlpha : run.A);
                 fixed (float* q = list.Quads.AsSpan(checked((int)((long)run.First * VertFloats))))
-                    GuiCapture.TextRun(q, run.Count, Gl.TRIANGLES, mvp, i == list.SelRun ? 0 : (int)atlas,
-                                       rgba, Gl.SRC_ALPHA, Gl.ONE_MINUS_SRC_ALPHA, depthTest, depthWrite);
+                    GuiCapture.TextRun(q, run.Count, EngineTokens.TRIANGLES, mvp, i == list.SelRun ? 0 : (int)atlas,
+                                       rgba, EngineTokens.SRC_ALPHA, EngineTokens.ONE_MINUS_SRC_ALPHA, depthTest, depthWrite);
                 issued++;
             }
         return issued;

@@ -147,8 +147,8 @@ internal static unsafe class PostChain
     /// lost.</summary>
     internal static uint LastInto;
 
-    /// <summary>The refusals decidable WITHOUT the 4.6 bracket, asked in ENGINE context before the Alloy
-    /// pass pays for its preamble; false stands the whole pass down to vanilla.</summary>
+    /// <summary>The refusals decidable ahead of the colour bracket, from the engine's own state, before the
+    /// Alloy pass pays for its preamble; false stands the whole pass down to vanilla.</summary>
     internal static bool Precheck(int* viewport)
     {
         // config hdr=0 is a deliberate setting and Attach already said so; it is not a refusal to report.

@@ -927,7 +927,7 @@ public sealed unsafe partial class AlloyRenderer
         row.Vao = db ? DbVaoKey(i) : _oVao[i];
         row.Item = db ? _oDbPart[i] : _oItem[i];
         row.Feat = feat;
-        row.Mode = db ? Gl.TRIANGLES : _primTable[_oPrim[i]];
+        row.Mode = db ? EngineTokens.TRIANGLES : _primTable[_oPrim[i]];
         row.NoCull = _oNoCull[i];
         row.Src = (byte)_oSrc[i]; row.Dst = (byte)_oDst[i]; row.Wash = (byte)_oWash[i];
         // #126: the class and the blend pair are GL state, which one multidraw cannot vary inside -- and so is a

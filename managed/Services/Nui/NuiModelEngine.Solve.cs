@@ -76,7 +76,7 @@ internal static unsafe partial class NuiModelEngine
         Gl.UseProgram(g.Prog);
         Gl.Uniform4f(g.Bg, bg[0], bg[1], bg[2], bg[3]);
         Gl.BindVertexArray((uint)g.Vao);
-        Gl.DrawArrays(Gl.TRIANGLES, 0, 3);
+        Gl.DrawArrays(EngineTokens.TRIANGLES, 0, 3);
         Gl.BindVertexArray((uint)vao);
         Gl.UseProgram((uint)prog);
         Gl.Viewport(vp[0], vp[1], vp[2], vp[3]);

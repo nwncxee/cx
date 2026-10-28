@@ -57,15 +57,14 @@ rather than a device verdict, because nothing the player does mid-session can ch
 | 1 | `alloy.enabled=0` in `cx.cfg`, **or Vulkan cannot start** — one term, because `Renderer.On` folds the session's Vulkan verdict into the request | Choice |
 | 2 | `alloy.drawhooks` not `batch` in `cx.cfg` | Choice |
 | 3 | `alloy.hdr=0` in `cx.cfg` — the Alloy stages have no display-space variant | Choice |
-| 4 | `alloy.gl46=0` in `cx.cfg` — an opt-out, kept ahead of the capability block so it is not reported as a device verdict. The knob no longer names a GL context: what it turns off is `GlContextService`'s per-present deferred-work pump (the owned-texture drain, `TexRegistry.Drain`, the PLT and content-table uploads) | Choice |
-| 4a | an `EngineLayout` offset row Alloy reads has no resolution for this platform (#456, `docs/engine-layout.md`) — the only capability term answerable cold, because it is a fact about the binary; asked ahead of everything that needs a warm client | Incapable |
+| 4 | an `EngineLayout` offset row Alloy reads has no resolution for this platform (#456, `docs/engine-layout.md`) — the only capability term answerable cold, because it is a fact about the binary; asked ahead of everything that needs a warm client | Incapable |
 | 5 | `AlloyRenderer` never armed (hooks did not install) — **after** every opt-out above, because each of them returns from `Initialize` before `_armed` is set, so asking this first reports the mechanism instead of the request | Idle |
 | 5a | the `RenderSinglePass` shim never armed (an engine symbol or draw funnel did not resolve) — same placement, one layer down; since #458 there is no Alloy-inside-the-engine's-frame mode to fall back to | Idle |
 | 5b | a self-check that gates arming failed — since CX-89 that includes `DoorFade.SelfCheck`: the shim stops calling `Scene::FadeDoors`, so a wrong fade would freeze `Gob+0x10c` and `Gob::HitCheck` would refuse the click. Standing the path down hands the fade back to the engine | Idle |
 | 5c | the scene seam did not install (`SeamService.Db` false: the facade self-check or an object/scene factory failed). Alloy draws only the CX scene database, so there is nothing to draw without it | Incapable |
 | 6 | no module loaded — **narrowed by CX-95**: it now means only "there is no world frame". The GUI scenes, the menus included, are Alloy's on their own verdict (`GuiPass.Capturing`: Alloy on for the session, the GUI pass armed and not failed, `alloy.gui` on), and so are the screen clears and the present (`ScreenOwner.Owned`) | Idle |
-| 7 | the render device did not come up (`GlContextService.Available`). The reason string still reads "no GL 4.6 share-listed context", which it cannot mean in a Vulkan session: `Available` is set true the moment NullGl takes the engine's GL away, standing for "the render device is up". So this can only answer in the frames before the first present. The device question proper is entry 1's | Incapable |
-| 8 | an Alloy program did not build, or `glMultiDrawElementsBaseVertex`/`glBindBufferBase` is missing. Dead as written: nothing sets the flag behind `AlloyRenderer.DrawCapable` any more, because multidraw was a GL entry-point question. A pipeline or shader the backend refuses is a `Fail` (below), not a verdict | Incapable |
+| 7 | the render device did not come up (`FramePump.Available`), which `cx.log`'s Vulkan verdict says the reason for. `Available` is set at the first present and never cleared, so this can only answer in the frames before it. The capability question proper is entry 1's | Incapable |
+| 8 | an Alloy program did not build, or the batch path could not arm. Dead as written: nothing sets the flag behind `AlloyRenderer.DrawCapable` any more. A pipeline or shader the backend refuses is a `Fail` (below), not a verdict | Incapable |
 | 9 | the HDR target latched a stand-down (`PostChain.Failed`) | Incapable |
 
 **Entries 8 and 9 answer here only in principle.** Programs build on first use, which is inside the first
@@ -140,8 +139,8 @@ Those degrade to "that class does not render", not to "the frame is not drawn" �
 not a frame verdict.
 
 `LightmapBake` (#674) is the same shape one level finer, and every refusal lands on the real-time loop, which
-is what an unbaked surface takes anyway: a missing entry point, too few texture units or a failed link latch
-the pass off for the context (`StandDown.Fail`, every record stays unbaked); a page that will not allocate
+is what an unbaked surface takes anyway: a refused bake or encoder program, or scratch the device will not
+allocate, latch the pass off for the session (`StandDown.Fail`, every record stays unbaked); a page that will not allocate
 refuses the pages past it (`Refuse`, the rest of the area stays unbaked and is counted as `past the cap`);
 a rect whose chart range moved before its bake is dropped and its readers re-enrol; a light whose scratch
 cube cannot be rendered this frame (no caster gather) leaves the step for the next frame. The period line
@@ -175,7 +174,7 @@ vanilla. There is no walk. A decline is geometry that nothing renders, so each b
   `Scene::DoHighlightGob` painted a glow over nothing. Alloy draws the part normally now and the engine's
   overlay composited the glow on top. CX-82 took that over too: the glow is Alloy's own pass now
   (`Highlight`'s outline), and no engine draw
-  follows the Alloy bracket. What is given up is only
+  follows Alloy's. What is given up is only
   `PartTriMesh::Mat` @0x450960's highlight branch — `Disable(5)` plus `SetColor4f(1,1,1,alpha)`, the part
   going flat-white-unlit under the cursor.
 - **The per-gob env override** (`gob+0x480`) was already owned by #121 and is *not* a flag:
@@ -319,7 +318,7 @@ So Alloy draws bucket 5 by classifying each part off its material exactly as it 
 better than vanilla's unsorted late slot. Nothing takes a second framebuffer copy, because nothing would read
 it. *If* a content `.mtr` ever pairs `sample_framebuffer 1` with a custom FS that samples `texFBColor`, the
 place that lands is the content pair's own program (`ContentPrograms`, CX-303) plus two texture units the
-lit bracket does not already spend — `TextureSlots.SnapshotColor`/`SnapshotDepth` are shared with the SSAO
+lit pass does not already spend — `TextureSlots.SnapshotColor`/`SnapshotDepth` are shared with the SSAO
 and OIT pairs, so they are not free inside the lit pass. That is a ticket, and it has no content yet.
 
 **`volumetric` is refused, and this is the writing.** The changelog describes it as two draws: "renders
@@ -352,16 +351,16 @@ there is no engine traversal underneath, so every later row costs the panels rat
 | the GUI pass armed and has not failed, and Alloy is on | `GuiPass.Capturing` | the panels are NOT DRAWN while it is false (one or two frames at boot); a pipeline failure is a loud `Fail` and they stay undrawn for the session |
 | `alloy.gui` on | `GuiPass.Capturing` | the player's choice, live -- and it costs the game's panels, which nothing else draws |
 | the world is Alloy's or absent | `ScreenOwner.Owned` | an engine-drawn world (an `Incapable` verdict) keeps the engine's clears and present; the GUI stays Alloy's over it |
-| Vulkan's composite image sized to the window | `PresentTarget.Ensure` | `AlloyGate.Fail`, the session's stated refusal. There is no GL buffer left to fall back to: `PresentTarget.Usable` is permanently false and the GL swap never runs, so a refused composite means nothing is presented rather than something else being. `/alloy` carries the size and the hand-back count |
-| the composite reaches the window | `ScreenOwner.PresentVulkan` | `AlloyGate.Fail`, counted: the window keeps its last frame, because GL's swap would show a back buffer nothing on Vulkan drew. A frame that arrives before the composite is first sized is not a failure — it presents nothing and says so once |
+| Vulkan's composite image sized to the window | `PresentTarget.Ensure` | `AlloyGate.Fail`, the session's stated refusal. There is nothing to fall back to: `PresentTarget.Usable` is permanently false and the engine's own swap never runs, so a refused composite means nothing is presented rather than something else being. `/alloy` carries the size and the hand-back count |
+| the composite reaches the window | `ScreenOwner.PresentVulkan` | `AlloyGate.Fail`, counted: the window keeps its last frame, because the engine's swap would show a back buffer nothing on Vulkan drew. A frame that arrives before the composite is first sized is not a failure — it presents nothing and says so once |
 
 ## The movie quad (CX-335)
 
 A movie is its own small verdict, asked per frame. The engine keeps the decode and the pacing, so what Alloy
 decides is only who draws the quad — and on Vulkan the answer is Alloy or nobody, because the engine's quad
-is GL and a Vulkan session presents no GL buffer. `MovieService` runs last of the `PrePresent` participants
-(priority 90, behind `SeamDraw`'s frame boundary), widens the decoded rows into a Vulkan image and draws them
-letterboxed over a black composite that Vulkan presents. No bracket, no hand-back blit.
+draws through its own GL, which a Vulkan session never presents. `MovieService` runs last of the `PrePresent`
+participants (priority 90, behind `SeamDraw`'s frame boundary), widens the decoded rows into a Vulkan image and
+draws them letterboxed over a black composite that Vulkan presents.
 
 `alloy.movie 0` is therefore overridden rather than obeyed: it would hand the frame to a quad nothing shows,
 so Vulkan draws the movie anyway and says so once. A refusal of Alloy's own mechanism stands the movie down

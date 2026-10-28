@@ -5,12 +5,13 @@ using System.Text;
 using CX.Engine;
 using CX.Framework;
 using CX.Graphics;
+using CX.Graphics.Rhi;
 
 namespace CX.Alloy;
 
 /// <summary>A GUI part whose <c>.mtr</c> names a content program (<c>customShaderVS</c> + <c>customShaderFS</c>) --
 /// how a server's load screen resizes its art and moves its bar. The pair is interned to a key the recipe keeps,
-/// built on its first draw in the 4.6 context the way the engine builds it, and fed the engine's uniforms per draw.</summary>
+/// built on its first draw the way the engine builds it, and fed the engine's uniforms per draw.</summary>
 internal static unsafe partial class GuiContent
 {
     private sealed class KeyState
@@ -24,7 +25,6 @@ internal static unsafe partial class GuiContent
     /// <summary>One built content program and the engine uniforms it declares (-1 = not declared).</summary>
     internal sealed class Prog
     {
-        public uint Id;
         public int Mvp, Mv, Texture, Color, Screen, Unit0;
     }
 
@@ -75,23 +75,6 @@ internal static unsafe partial class GuiContent
          + "#define attribute in\n#define texture2D texture\n#define textureCube texture\n"
          + (fragColor ? "#define gl_FragColor compat_glFragColor\nout vec4 compat_glFragColor;" : "") + "\n";
 
-    /// <summary>Build key <paramref name="key"/>'s program in the current (4.6) context. Null for both of the
-    /// reasons a key gets no program of its own -- the pair IS the stock one, said once as Info, or it cannot be
-    /// built, said once loudly -- and in both the parts draw through Alloy's own GUI program.</summary>
-    internal static Prog? Build(int key, ExtenderLog? log)
-    {
-        if (!Texts(key, log, out string v, out string f)) return null;
-        uint id = GlProgram.Content(v, f, Attribs, log, What(key));
-        if (id == 0)
-        {
-            log?.Always($"{What(key)}: the content program did not build (the line above says why) -- these GUI parts "
-                      + "draw WITHOUT their content shader");
-            return null;
-        }
-        log?.Info($"{What(key)}: built -- GUI parts on this material run the content's own stages");
-        return Locs(id);
-    }
-
     /// <summary>Key <paramref name="key"/>'s pair, as a log line names it.</summary>
     internal static string What(int key) { (string vs, string fs) = Pair(key); return $"GuiContent {vs}/{fs}"; }
 
@@ -125,13 +108,12 @@ internal static unsafe partial class GuiContent
         return true;
     }
 
-    /// <summary>The engine terms a built program declares, under GL program name -- or shim name -- <paramref name="id"/>.</summary>
-    internal static Prog Locs(uint id) => new()
+    /// <summary>The engine terms a built program declares (-1 = not declared), resolved against its loose block.</summary>
+    internal static Prog Locs() => new()
     {
-        Id = id,
-        Mvp = GlProgram.Loc(id, "m_mvp"), Mv = GlProgram.Loc(id, "m_mv"), Texture = GlProgram.Loc(id, "m_texture"),
-        Color = GlProgram.Loc(id, "globalColor"), Screen = GlProgram.Loc(id, "screenParams"),
-        Unit0 = GlProgram.Loc(id, "texUnit0"),
+        Mvp = LooseBlock.Loc("m_mvp"), Mv = LooseBlock.Loc("m_mv"), Texture = LooseBlock.Loc("m_texture"),
+        Color = LooseBlock.Loc("globalColor"), Screen = LooseBlock.Loc("screenParams"),
+        Unit0 = LooseBlock.Loc("texUnit0"),
     };
 
     private static (string, string) Pair(int key)
@@ -139,22 +121,21 @@ internal static unsafe partial class GuiContent
         lock (_keys) return (uint)key < (uint)_keys.Pairs.Count ? _keys.Pairs[key] : ("", "");
     }
 
-    /// <summary>Upload record <paramref name="di"/>'s engine terms to the bound program <paramref name="p"/>.
-    /// <c>screenParams</c> is the view's size (<c>GLRender::m_viewport</c> w, h), as the engine feeds it. Hot.</summary>
+    /// <summary>Record <paramref name="di"/>'s engine terms into the open loose block, at <paramref name="p"/>'s
+    /// members. <c>screenParams</c> is the view's size (<c>GLRender::m_viewport</c> w, h), as the engine feeds it. Hot.</summary>
     internal static void Feed(Prog p, int di, int viewW, int viewH, bool gamma)
     {
         ref GuiRec rec = ref GuiCapture.Records[di];
-        fixed (Matrix4x4* r = &rec.Mvp, mv = &rec.Mv)
         fixed (float* g = &rec.Colour.X)
         {
-            Gl.UniformMatrix4fv(p.Mvp, 1, 0, (float*)r);
-            Gl.UniformMatrix4fv(p.Mv, 1, 0, (float*)mv);
+            LooseBlock.Set(p.Mvp, rec.Mvp);
+            LooseBlock.Set(p.Mv, rec.Mv);
             Matrix4x4 t = TextureMatrix(rec.TexRot);
-            Gl.UniformMatrix4fv(p.Texture, 1, 0, (float*)&t);
-            Gl.Uniform4f(p.Color, Lin(g[0], gamma), Lin(g[1], gamma), Lin(g[2], gamma), g[3]);
+            LooseBlock.Set(p.Texture, t);
+            LooseBlock.Set(p.Color, Lin(g[0], gamma), Lin(g[1], gamma), Lin(g[2], gamma), g[3]);
         }
-        Gl.Uniform2f(p.Screen, viewW, viewH);
-        Gl.Uniform1i(p.Unit0, 0);
+        LooseBlock.Set(p.Screen, (float)viewW, viewH);
+        LooseBlock.Set(p.Unit0, 0);
     }
 
     /// <summary>The record's texture 2x2 <c>(a, b, c, d)</c> -- <c>u' = a*u + b*v</c>, <c>v' = c*u + d*v</c> -- as

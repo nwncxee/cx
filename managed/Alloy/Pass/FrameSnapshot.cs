@@ -6,7 +6,7 @@ using CX.Graphics;
 namespace CX.Alloy;
 
 /// <summary>
-/// The Alloy frame's ONE framebuffer copy, and the water stage that reads it (ADR 0011): colour and depth of
+/// The Alloy frame's ONE framebuffer copy, and the water stage that reads it: colour and depth of
 /// everything drawn up to <see cref="PassId.FbCopy"/>, snapshotted into this class's own texture pair so the
 /// water stage can march them. The engine takes TWO such copies per frame because its bucket order is fixed,
 /// not because two are needed; ours holds LINEAR HDR, so no engine draw could have read it anyway.

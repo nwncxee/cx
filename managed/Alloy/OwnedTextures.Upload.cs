@@ -15,7 +15,7 @@ internal static unsafe partial class OwnedTextures
 {
     /// <summary>Alloy's upload stands in for the engine's right now: the only state in which a format the engine
     /// cannot name may be handed to it (a shape Alloy declines still goes up the engine's way).</summary>
-    internal static bool OwnsUploads => _armed && _single && _origCreate != null && GlContextService.Available;
+    internal static bool OwnsUploads => _armed && _single && _origCreate != null && FramePump.Available;
 
     private static long _ddsFormatUploads, _ddsFormatFailed;
 
@@ -33,11 +33,11 @@ internal static unsafe partial class OwnedTextures
     /// <summary><c>GLRender::SetTextureParameters</c> @0x4ca180, fed <c>GetClamp()</c> (bit 2, R, read for a cube only),
     /// <c>GetFilter()</c> and <c>GetMipMap()</c>. A linear texture with no mips minifies NEAREST, as the engine's does.</summary>
     private static Sampler EngineSampler(int clamp, bool linear, bool mip) => new(
-        mip ? (linear ? Gl.LINEAR_MIPMAP_LINEAR : Gl.NEAREST_MIPMAP_NEAREST) : Gl.NEAREST,
-        linear ? Gl.LINEAR : Gl.NEAREST,
-        (clamp & 1) != 0 ? Gl.CLAMP_TO_EDGE : Gl.REPEAT,
-        (clamp & 2) != 0 ? Gl.CLAMP_TO_EDGE : Gl.REPEAT,
-        (clamp & 4) != 0 ? Gl.CLAMP_TO_EDGE : Gl.REPEAT,
+        mip ? (linear ? EngineTokens.LINEAR_MIPMAP_LINEAR : EngineTokens.NEAREST_MIPMAP_NEAREST) : EngineTokens.NEAREST,
+        linear ? EngineTokens.LINEAR : EngineTokens.NEAREST,
+        (clamp & 1) != 0 ? EngineTokens.CLAMP_TO_EDGE : EngineTokens.REPEAT,
+        (clamp & 2) != 0 ? EngineTokens.CLAMP_TO_EDGE : EngineTokens.REPEAT,
+        (clamp & 4) != 0 ? EngineTokens.CLAMP_TO_EDGE : EngineTokens.REPEAT,
         linear && mip);
 
     /// <summary>The levels a mipped texture gets: <c>SetTextureMipmapLevelParameters</c> @0x4c9c70's MAX_LEVEL

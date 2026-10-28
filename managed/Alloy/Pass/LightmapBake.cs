@@ -36,7 +36,7 @@ internal static unsafe partial class LightmapBake
     /// <summary>One compressed plane's layer, in bytes: 16 a 4x4 block.</summary>
     private const int LayerBlockBytes = PageSize * PageSize;
     /// <summary>The compressed planes' formats.</summary>
-    private const uint FormatA = Gl.COMPRESSED_RGB_BPTC_UNSIGNED_FLOAT, FormatB = Gl.COMPRESSED_RGBA_BPTC_UNORM;
+    private const uint FormatA = EngineTokens.COMPRESSED_RGB_BPTC_UNSIGNED_FLOAT, FormatB = EngineTokens.COMPRESSED_RGBA_BPTC_UNORM;
     /// <summary>The encoder's work group side, in blocks (<c>cx_bakeenc_c</c>'s <c>local_size</c>).</summary>
     internal const int EncGroup = 8;
     /// <summary>One resident page over its three planes, in MiB.</summary>

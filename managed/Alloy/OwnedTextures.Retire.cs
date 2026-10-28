@@ -106,10 +106,10 @@ internal static unsafe partial class OwnedTextures
     private static readonly HashSet<uint> _pendingForget = new();
     /// <summary>Names whose delete is held for <see cref="DeferFrames"/> drains: the last draw that sampled
     /// their handle may still be in flight, and a driver that resolves bindless descriptors at batch
-    /// completion (zink) faults on a destroyed image there. The records already carry the new name.</summary>
+    /// completion faults on a destroyed image there. The records already carry the new name.</summary>
     private static readonly List<uint>[] _deferred = MakeDeferred();
-    /// <summary>Read from <see cref="GpuGraveyard.FramesInFlight"/>: the same quantity, declared once.</summary>
-    private const int DeferFrames = GpuGraveyard.FramesInFlight;
+    /// <summary>Frames a retired name is held for: the depth every fenced ring in Alloy assumes.</summary>
+    private const int DeferFrames = 3;
 
     /// <summary>One list per frame of the hold plus the one being filled, so the due slot is never the slot
     /// this drain writes.</summary>
@@ -152,8 +152,8 @@ internal static unsafe partial class OwnedTextures
         return engineTid;
     }
 
-    /// <summary>Delete what <see cref="Retire"/> and the re-upload path queued. Once per frame from inside the
-    /// 4.6 bracket, where the names actually live; nothing to do is the normal case. Residency first, because
+    /// <summary>Delete what <see cref="Retire"/> and the re-upload path queued. Once per frame from the frame's
+    /// deferred work; nothing to do is the normal case. Residency first, because
     /// a resident bindless handle outlives the texture it names: the drop goes through the handle cache, since
     /// asking the driver would MINT handles for textures that never had one.</summary>
     internal static void Drain()
@@ -169,9 +169,8 @@ internal static unsafe partial class OwnedTextures
         if (_pending.Count > 0) { _deferred[slot].AddRange(_pending); _pending.Clear(); }
         if (due.Count == 0) return;
         int n = due.Count;
-        // auto: deletes are only unsafe where zink's bindless bookkeeping is live -- vetoed bindless = no handles = safe
-        bool delete = _texDelete == 1 || (_texDelete < 0 && !(GlContextService.Zink && AlloyRenderer.Bindless));
-        if (!delete && !_deleteNoted) { _deleteNoted = true; _log?.Info("OwnedTextures: owned textures are NEVER deleted this session (zink with bindless forced, or alloy.texdelete=0) -- names leak until the context goes"); }
+        bool delete = _texDelete != 0;
+        if (!delete && !_deleteNoted) { _deleteNoted = true; _log?.Info("OwnedTextures: owned textures are NEVER deleted this session (alloy.texdelete=0) -- names leak until the session ends"); }
         for (int i = 0; i < n; i++)
         {
             uint name = due[i];
@@ -185,7 +184,7 @@ internal static unsafe partial class OwnedTextures
 
     /// <summary>The handle half of <see cref="Drain"/>, callable ahead of it: the caster bake runs BEFORE the
     /// colour bracket's drain in the same frame, so it must first drop (and zero out of the records) every
-    /// handle whose texture died since the last drain. Idempotent within a frame, and inside a 4.6 bracket.</summary>
+    /// handle whose texture died since the last drain. Idempotent within a frame.</summary>
     internal static void DropDeadHandles()
     {
         if (_pendingForget.Count == 0 && _pendingHandles.Count == 0 && _pendingMarked) return;

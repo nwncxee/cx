@@ -140,19 +140,18 @@ on, because a renderer that keeps both warm is what ADR 0018's restart-only rule
    levels are a few texels wide and their colours are within a rounding of each other. No dither, no temporal
    term, so it holds with TAA off.
 
-## 5. Where the registry's upload work runs, and why in two places
+## 5. Where the registry's upload work runs, and why it has one entry point
 
-`TexRegistry.Drain`, `PltColors.Upload` and `PltPalettes.Create` are called from
-**both** deferred-work sites, and that is not redundancy: `GlContextService.OnFrame` runs the pump only on a
-frame in which the world pass did not already run it (`!_worked`), so an in-play frame --
-every frame the colour pass draws -- never reaches it. Hung on `OnFrame` alone, the registry uploaded
-nothing for a whole live session: the PLT GPU check waited for a texture that never arrived, and CX-119's
-bitmap font atlases would have waited for ever too. `OnFrame` still matters for the opposite case
-(the main menu, the disarm latch), where the world pass does not run at all.
+`TexRegistry.Drain`, `PltColors.Upload` and `PltPalettes.Create` are the frame's deferred work
+(`FramePump.Deferred`, declared once in `AlloyRenderer`'s arm), and three points in the frame reach for it:
+the world frame, a GUI flush that found no composite, and the present. Whichever gets there first runs it and
+`FramePump.WorkDue` goes false, so the others find nothing owed -- an in-play frame does the work in the
+colour pass, and the present does it on a frame that drew no world (the main menu, the disarm latch). Hung on
+the present alone, the registry uploaded nothing for a whole live session, and CX-119's bitmap font atlases
+would have waited for ever.
 
-On Vulkan neither site enters a context -- there is none -- and the uploads are copies recorded into the
-frame's command list. `OnFrame`'s own call is bare (`RunInBracketHere`, no fence, no switch), and
-`alloy.gl46=0` turns that whole pump off for the session.
+No site enters a context -- there is none -- and the uploads are copies recorded into the frame's command
+list.
 
 `TexRegistry.Tick` is the game thread's other half and runs from `FramePhase.Start`: it files what the pump
 uploaded (which writes `SceneDb`'s dirty lists), offers what was waiting (which reads the engine's resource

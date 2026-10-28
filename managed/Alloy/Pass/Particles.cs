@@ -10,7 +10,7 @@ using CX.Graphics;
 namespace CX.Alloy;
 
 /// <summary>
-/// Particles (ADR 0011): the vertex build, which is the only part of an emitter that was ever a draw -- a
+/// Particles: the vertex build, which is the only part of an emitter that was ever a draw -- a
 /// REBUILD, not a replay, since vanilla's own build survives nothing past its draw. Punch-through and
 /// additive commute, so those batch by texture across the whole screen while the alpha-blended remainder
 /// keeps the engine's order. Suppression is per EMITTER, because the engine's routine IS the cost.

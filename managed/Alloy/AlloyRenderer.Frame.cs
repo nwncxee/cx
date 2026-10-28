@@ -8,8 +8,8 @@ using CX.Graphics;
 
 namespace CX.Alloy;
 
-/// <summary>The FRAME DISPATCH. What the Alloy bracket does once per pass and in what order: the prepass, the
-/// opaque block, the pass-slot walk that hands each ADR 0011 slot to its owner, and the probe capture that
+/// <summary>The FRAME DISPATCH. What the Alloy frame does once per pass and in what order: the prepass, the
+/// opaque block, the pass-slot walk that hands each graph slot to its owner, and the probe capture that
 /// rides the same staged batches. Hot: nothing on this path allocates.</summary>
 public sealed unsafe partial class AlloyRenderer
 {
@@ -62,9 +62,9 @@ public sealed unsafe partial class AlloyRenderer
     }
 
     /// <summary>Everything the pass list needs before its first slot runs -- the snapshot revoke, the target
-    /// and viewport latch, the pose, this pass's camera, the own walk inside the 4.6 bracket and the batch
-    /// build. False = the pass is over before it began, having already left the bracket; on true the caller
-    /// owns the bracket and closes it. Hot: allocates nothing.</summary>
+    /// and viewport latch, the pose, this pass's camera, the own walk and the batch build. False = the pass
+    /// is over before it began; on true the caller owns the colour bracket and closes it. Hot: allocates
+    /// nothing.</summary>
     private static bool BeginOwnedFrame(int* display, int* viewport, out OwnedFrame f)
     {
         f = default;
@@ -80,7 +80,7 @@ public sealed unsafe partial class AlloyRenderer
         if (_batchUnavailable) { DbNoDraw("multidraw unavailable"); return false; }   // EndFrame revokes + disarms; never pay the bracket for nothing
         // Checked BEFORE anything stamps OwnGen: BuildBatches marks parts as drawn, which is only honest while
         // the issue phase cannot fail. Missing entry points are the one way it could.
-        // #257/ADR 0032: LatchFrameTarget read this in the ENGINE's context before the view's bracket opened.
+        // #257: LatchFrameTarget read this from the engine's own state before the view's bracket opened.
         ref Target t = ref _target;
         HoldPassTarget(in t);   // #375: the ONE read per pass; the post stack rebinds from this copy
         // #391: TWO viewports. `display` is the engine's -- where the resolve and the post stack go, and what
@@ -193,21 +193,19 @@ public sealed unsafe partial class AlloyRenderer
         FrameZones.Add(FrameZones.Zone.Setup, tSetup, FrameZones.Ticks(FrameZones.Zone.Pose) - pose0);
         long tEnter = FrameZones.Now;
         FrameZones.Add(FrameZones.Zone.Enter, tEnter);
-        Step("deferred bracket work: texture deletes, uploads and handle mints");
+        Step("deferred work: texture deletes, uploads and handle mints");
         long tOwn = FrameZones.Now;
-        // #211's queued texture deletes, CX-117's registry uploads/mints, the master PLT palette and the
-        // per-record colour rows: the frame's context-bound deferred work, declared once in Arm and run here
-        // because the colour bracket is normally the frame's FIRST. Whichever bracket runs it first is the one
-        // that does it, and GlContextService's health bracket then stands down for the frame -- its own, the
-        // GUI flush's and the render thread's all route through the one entry point for that reason.
-        GlContextService.RunInBracketHere();
+        // The frame's deferred work -- texture deletes, registry uploads and mints, the master PLT palette,
+        // the per-record colour rows -- declared once in Arm: whichever point in the frame reaches it first
+        // runs it, and the present then finds nothing owed, which is why they share the one entry point.
+        FramePump.RunDeferred();
         Step("ApplySwaps");
-        ApplySwaps();   // #386: swapped texture names take their new handles here, in the context that owns residency
+        ApplySwaps();   // #386: swapped texture names take their new handles here, where the handles are minted
         FrameZones.Add(FrameZones.Zone.Own, tOwn);
         long tPrep = FrameZones.Now, lights0 = FrameZones.Ticks(FrameZones.Zone.Lights);
         Step("EnsureProgram");
         Programs.DecideBindlessVk(); ContentPrograms.EnsureWanted();
-        // #117/#119: the lighting rig, the GL state and the batch BUILD are bracket preamble -- both
+        // #117/#119: the lighting rig, the draw state and the batch BUILD are bracket preamble -- both
         // colour-bracket passes draw the same staged batches, and building twice would revalidate (and
         // re-stamp OwnGen for) every Alloy part twice. The passes come off FrameGraph, not off call order.
         if (lightingOn)
@@ -334,23 +332,22 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>World frames whose colour-bracket steps <see cref="Step"/> names, from the first.</summary>
     private const int StepTraceFrames = 5;
 
-    /// <summary>Under <c>alloy.gldebug=1</c>, for the first world frames: name the step about to run, after waiting
-    /// for the GPU. The debug log is synchronous, so a CPU crash or a driver reset leaves its step as the last line.</summary>
+    /// <summary>Under <c>alloy.gpudebug=1</c>, for the first world frames: name the step about to run. The debug
+    /// log is synchronous, so a CPU crash or a driver reset leaves its step as the last line.</summary>
     internal static void Step(string what)
     {
-        if (!GlContextService.Debug) return;
+        if (!FramePump.Debug) return;
         StepTraceState s = _steps;
         if (s.Frame != _frameSeq)
         {
             if (s.FramesLeft <= 0) return;
             s.FramesLeft--; s.Frame = _frameSeq;
         }
-        // wait for the GPU at every traced step: a driver reset then ends the log AT the faulting stage
-        _log?.Always($"AlloyRenderer: [gldebug] frame {_frameSeq}: {what}");
+        _log?.Always($"AlloyRenderer: [gpudebug] frame {_frameSeq}: {what}");
     }
 
-    /// <summary>A pass's name for <see cref="Step"/>; only reached under <c>alloy.gldebug=1</c>.</summary>
-    internal static string PassName(PassId id) => GlContextService.Debug ? id.ToString() : "";
+    /// <summary>A pass's name for <see cref="Step"/>; only reached under <c>alloy.gpudebug=1</c>.</summary>
+    internal static string PassName(PassId id) => FramePump.Debug ? id.ToString() : "";
 
     /// <summary>Ticks the zones <see cref="FrameZones.Zone.Passes"/> subtracts have taken this frame, so a pass
     /// row can subtract the same ones and mean self time.</summary>

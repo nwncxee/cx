@@ -95,7 +95,7 @@ internal static unsafe partial class OwnedTextures
 
     /// <summary>The warm path: every cell of this texture is resident, so hand the engine Alloy's names and
     /// the scalars its build would have produced, and skip the read, the decode and the upload. The engine
-    /// then binds our names for its own 2D use (share-listed) and, on its next Reset, hands them to
+    /// then binds our names for its own 2D use and, on its next Reset, hands them to
     /// DeleteTextures -- where <see cref="OnDeleteTextures"/> keeps them. Refuses on any doubt.</summary>
     private static bool TryWarm(IntPtr tex)
     {

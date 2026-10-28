@@ -43,12 +43,12 @@ public static unsafe partial class VulkanToolchain
     /// <paramref name="error"/> with shaderc's own diagnostic when the source is refused. Cold: a compiler per call.</summary>
     internal static byte[]? Compile(string source, string name, ShaderKind kind, out string error)
     {
-        string cached = Path.Combine(ProgramBinary.CacheDir, $"vk-{CacheKey(source, kind):x16}.spv");
+        string cached = Path.Combine(ShaderCache.Dir, $"vk-{CacheKey(source, kind):x16}.spv");
         if (Cached(cached) is { } hit) { error = ""; return hit; }
         CX.Alloy.LightmapBake.CompileNotice();
         byte[]? spirv = CompileFresh(source, name, kind, out error);
         if (spirv != null)
-            try { Directory.CreateDirectory(ProgramBinary.CacheDir); File.WriteAllBytes(cached, spirv); }
+            try { Directory.CreateDirectory(ShaderCache.Dir); File.WriteAllBytes(cached, spirv); }
             catch (IOException) { } catch (UnauthorizedAccessException) { }
         return spirv;
     }

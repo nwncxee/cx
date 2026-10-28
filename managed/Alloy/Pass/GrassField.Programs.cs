@@ -6,6 +6,7 @@ using CX.Alloy.Db;
 using CX.Engine;
 using CX.Framework;
 using CX.Graphics;
+using CX.Graphics.Rhi;
 
 namespace CX.Alloy;
 
@@ -48,39 +49,39 @@ internal static unsafe partial class GrassField
     internal static string EmbeddedBladeFs => ShaderStages.Source(ShdBladeFs);
 
     /// <summary>The scatter's locations in program <paramref name="c"/>.</summary>
-    internal static ScatterLoc ScatterLocs(uint c)
+    internal static ScatterLoc ScatterLocs()
         => new ScatterLoc
         {
-            Planes = GlProgram.Loc(c, "uPlanes"), Eye = GlProgram.Loc(c, "uEyePos"), Lod = GlProgram.Loc(c, "uLod"),
-            Fade = GlProgram.Loc(c, "uFade"), SnowThin = GlProgram.Loc(c, "uSnowThin"), Clamp = GlProgram.Loc(c, "uClamp"),
-            PushTex = GlProgram.Loc(c, "uPushTex"), PushWindow = GlProgram.Loc(c, "uPushWindow"),
-            Near = GlProgram.Loc(c, "uNear"), Clump = GlProgram.Loc(c, "uClump"), CardKeep = GlProgram.Loc(c, "uCardKeep"),
-            BladeCap = GlProgram.Loc(c, "uBladeCap"),
+            Planes = LooseBlock.Loc("uPlanes"), Eye = LooseBlock.Loc("uEyePos"), Lod = LooseBlock.Loc("uLod"),
+            Fade = LooseBlock.Loc("uFade"), SnowThin = LooseBlock.Loc("uSnowThin"), Clamp = LooseBlock.Loc("uClamp"),
+            PushTex = LooseBlock.Loc("uPushTex"), PushWindow = LooseBlock.Loc("uPushWindow"),
+            Near = LooseBlock.Loc("uNear"), Clump = LooseBlock.Loc("uClump"), CardKeep = LooseBlock.Loc("uCardKeep"),
+            BladeCap = LooseBlock.Loc("uBladeCap"),
         };
 
     internal static string ScatterCs => ShaderSource.Get("cx_grass_c.glsl");
 
-    internal static Loc Locate(uint prog)
+    internal static Loc Locate()
         => new Loc
         {
-            Vp = GlProgram.Loc(prog, "uVP"), Eye = GlProgram.Loc(prog, "uEyePos"), Frame = GlProgram.Loc(prog, "uFrame"),
-            Fade = GlProgram.Loc(prog, "uFade"), Tex = GlProgram.Loc(prog, "uTex"),
-            Lod = GlProgram.Loc(prog, "uLod"), Shade = GlProgram.Loc(prog, "uShade"), Viz = GlProgram.Loc(prog, "uViz"),
-            Look = GlProgram.Loc(prog, "uLook"), Probe = GlProgram.Loc(prog, "uProbe"), Segments = GlProgram.Loc(prog, "uSegments"), Width = GlProgram.Loc(prog, "uWidth"),
-            Tuft = GlProgram.Loc(prog, "uTuft"), VLit = GlProgram.Loc(prog, "uVLit"), Cast = GlProgram.Loc(prog, "uCast"), CastWidth = GlProgram.Loc(prog, "uCastWidth"), Snow = GlProgram.Loc(prog, "uSnow"),
-            RootAo = GlProgram.Loc(prog, "uRootAo"), GroundTint = GlProgram.Loc(prog, "uGroundTint"), Ground = GlProgram.Loc(prog, "uGround"), GroundOn = GlProgram.Loc(prog, "uGroundOn"), GroundViz = GlProgram.Loc(prog, "uGroundViz"), SoftEdge = GlProgram.Loc(prog, "uSoftEdge"),
-            MatAmb = GlProgram.Loc(prog, "uMatAmbient"), MatDif = GlProgram.Loc(prog, "uMatDiffuse"),
-            Lit = GlProgram.Loc(prog, "uLit"), WindGain = GlProgram.Loc(prog, "uWindGain"),
-            WindSpeed = GlProgram.Loc(prog, "uWindSpeed"),
-            Msaa = GlProgram.Loc(prog, "uMsaa"), Edge = GlProgram.Loc(prog, "uEdge"),
-            PushTex = GlProgram.Loc(prog, "uPushTex"), PushGain = GlProgram.Loc(prog, "uPushGain"),
-            PushWindow = GlProgram.Loc(prog, "uPushWindow"),
-            SunTex = GlProgram.Loc(prog, "uSunShadow"), SunDynTex = GlProgram.Loc(prog, "uSunDynShadow"),
-            CubeTex = GlProgram.Loc(prog, "uLocalShadow"), CubeDynTex = GlProgram.Loc(prog, "uLocalDynShadow"),
-            CubeCount = GlProgram.Loc(prog, "uLocalCubes"),
-            WxMapXf = GlProgram.Loc(prog, "uWxMapXf"), WxMapP = GlProgram.Loc(prog, "uWxMapP"),
-            CoverVp = GlProgram.Loc(prog, "uCoverVp"), CoverLayer = GlProgram.Loc(prog, "uCoverLayer"), WxEdge = GlProgram.Loc(prog, "uWxEdge"), WxCache = GlProgram.Loc(prog, "uWxCache"),
-            SkyVp = GlProgram.Loc(prog, "uSkyVp"), SkyTerm = GlProgram.Loc(prog, "uSkyTerm"),
+            Vp = LooseBlock.Loc("uVP"), Eye = LooseBlock.Loc("uEyePos"), Frame = LooseBlock.Loc("uFrame"),
+            Fade = LooseBlock.Loc("uFade"), Tex = LooseBlock.Loc("uTex"),
+            Lod = LooseBlock.Loc("uLod"), Shade = LooseBlock.Loc("uShade"), Viz = LooseBlock.Loc("uViz"),
+            Look = LooseBlock.Loc("uLook"), Probe = LooseBlock.Loc("uProbe"), Segments = LooseBlock.Loc("uSegments"), Width = LooseBlock.Loc("uWidth"),
+            Tuft = LooseBlock.Loc("uTuft"), VLit = LooseBlock.Loc("uVLit"), Cast = LooseBlock.Loc("uCast"), CastWidth = LooseBlock.Loc("uCastWidth"), Snow = LooseBlock.Loc("uSnow"),
+            RootAo = LooseBlock.Loc("uRootAo"), GroundTint = LooseBlock.Loc("uGroundTint"), Ground = LooseBlock.Loc("uGround"), GroundOn = LooseBlock.Loc("uGroundOn"), GroundViz = LooseBlock.Loc("uGroundViz"), SoftEdge = LooseBlock.Loc("uSoftEdge"),
+            MatAmb = LooseBlock.Loc("uMatAmbient"), MatDif = LooseBlock.Loc("uMatDiffuse"),
+            Lit = LooseBlock.Loc("uLit"), WindGain = LooseBlock.Loc("uWindGain"),
+            WindSpeed = LooseBlock.Loc("uWindSpeed"),
+            Msaa = LooseBlock.Loc("uMsaa"), Edge = LooseBlock.Loc("uEdge"),
+            PushTex = LooseBlock.Loc("uPushTex"), PushGain = LooseBlock.Loc("uPushGain"),
+            PushWindow = LooseBlock.Loc("uPushWindow"),
+            SunTex = LooseBlock.Loc("uSunShadow"), SunDynTex = LooseBlock.Loc("uSunDynShadow"),
+            CubeTex = LooseBlock.Loc("uLocalShadow"), CubeDynTex = LooseBlock.Loc("uLocalDynShadow"),
+            CubeCount = LooseBlock.Loc("uLocalCubes"),
+            WxMapXf = LooseBlock.Loc("uWxMapXf"), WxMapP = LooseBlock.Loc("uWxMapP"),
+            CoverVp = LooseBlock.Loc("uCoverVp"), CoverLayer = LooseBlock.Loc("uCoverLayer"), WxEdge = LooseBlock.Loc("uWxEdge"), WxCache = LooseBlock.Loc("uWxCache"),
+            SkyVp = LooseBlock.Loc("uSkyVp"), SkyTerm = LooseBlock.Loc("uSkyTerm"),
         };
 
     // ---- shaders -----------------------------------------------------------------------------

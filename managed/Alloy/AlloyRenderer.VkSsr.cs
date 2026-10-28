@@ -79,40 +79,40 @@ public sealed unsafe partial class AlloyRenderer
         for (int i = 0; i < s.Levels; i++)
         {
             Array.Clear(hz.Block);
-            VkUniformShim.Capture(hz.Members, hz.Block);
-            VkUniformShim.Set(s.HLevel, i);
-            VkUniformShim.Set(s.HNf, [near, far]);
-            VkUniformShim.EndCapture();
+            LooseBlock.Capture(hz.Members, hz.Block);
+            LooseBlock.Set(s.HLevel, i);
+            LooseBlock.Set(s.HNf, [near, far]);
+            LooseBlock.EndCapture();
             if ((hzAt[i] = VkArena(hz.Block)) < 0) return;
         }
         for (int i = 0; i < s.ColLevels; i++)
         {
             Array.Clear(mp.Block);
-            VkUniformShim.Capture(mp.Members, mp.Block);
-            VkUniformShim.Set(s.MLevel, i);
-            VkUniformShim.EndCapture();
+            LooseBlock.Capture(mp.Members, mp.Block);
+            LooseBlock.Set(s.MLevel, i);
+            LooseBlock.EndCapture();
             if ((mpAt[i] = VkArena(mp.Block)) < 0) return;
         }
         GuiVkProg tr = s.Trace!, cp = s.Comp!;
         int fine = Lighting.SsrDetail.V;
         Array.Clear(tr.Block);
-        VkUniformShim.Capture(tr.Members, tr.Block);
-        VkUniformShim.Set(s.TProj, proj);
-        VkUniformShim.Set(s.TInvProj, invProj);
-        VkUniformShim.Set(s.TView, view);
-        VkUniformShim.Set(s.TInvView, invView);
-        VkUniformShim.Set(s.TNf, [near, far]);
-        VkUniformShim.Set(s.TSsr, [Lighting.SsrRough.V, Ssr.Steps[fine], VkProbeMips, fine]);
-        VkUniformShim.Set(s.TViz, 0);
-        VkUniformShim.Set(s.TColShift, s.ColShift);
-        VkUniformShim.Set(s.TPlane, [s.PlOn ? s.PlZ : 0f, s.PlOn ? 1f : 0f, 0f, 0f]);
-        VkUniformShim.EndCapture();
+        LooseBlock.Capture(tr.Members, tr.Block);
+        LooseBlock.Set(s.TProj, proj);
+        LooseBlock.Set(s.TInvProj, invProj);
+        LooseBlock.Set(s.TView, view);
+        LooseBlock.Set(s.TInvView, invView);
+        LooseBlock.Set(s.TNf, [near, far]);
+        LooseBlock.Set(s.TSsr, [Lighting.SsrRough.V, Ssr.Steps[fine], VkProbeMips, fine]);
+        LooseBlock.Set(s.TViz, 0);
+        LooseBlock.Set(s.TColShift, s.ColShift);
+        LooseBlock.Set(s.TPlane, [s.PlOn ? s.PlZ : 0f, s.PlOn ? 1f : 0f, 0f, 0f]);
+        LooseBlock.EndCapture();
         int trAt = VkArena(tr.Block);
         Array.Clear(cp.Block);
-        VkUniformShim.Capture(cp.Members, cp.Block);
-        VkUniformShim.Set(s.CCap, Lighting.SsrRough.V);
-        VkUniformShim.Set(s.CViz, 0);
-        VkUniformShim.EndCapture();
+        LooseBlock.Capture(cp.Members, cp.Block);
+        LooseBlock.Set(s.CCap, Lighting.SsrRough.V);
+        LooseBlock.Set(s.CViz, 0);
+        LooseBlock.EndCapture();
         int cpAt = VkArena(cp.Block);
         if (trAt < 0 || cpAt < 0) return;
         int len = (c.ArenaUsed - arena0 + 3) & ~3;
@@ -239,13 +239,13 @@ public sealed unsafe partial class AlloyRenderer
         s.Comp = PostChainVk.Program(vk, PostChain.FullscreenVs, ShaderSource.Get("cx_ssrcomp_f.glsl"), "ssr composite",
                                      p => { s.CCap = p.Loc("uCap"); s.CViz = p.Loc("uViz"); }, log);
         if (s.HiZ != null)
-            VkUniformShim.Resolve(s.HiZ.Names, () =>
+            LooseBlock.Resolve(s.HiZ.Names, () =>
             {
-                s.HLevel = GlProgram.Loc(VkUniformShim.ProgramBase, "uLevel");
-                s.HNf = GlProgram.Loc(VkUniformShim.ProgramBase, "uNf");
+                s.HLevel = LooseBlock.Loc("uLevel");
+                s.HNf = LooseBlock.Loc("uNf");
             });
         if (s.Mip != null)
-            VkUniformShim.Resolve(s.Mip.Names, () => s.MLevel = GlProgram.Loc(VkUniformShim.ProgramBase, "uLevel"));
+            LooseBlock.Resolve(s.Mip.Names, () => s.MLevel = LooseBlock.Loc("uLevel"));
         s.Point = vk.CreateSampler(new SamplerDesc(Filter.Nearest, Filter.Nearest, MipMode.Nearest, Wrap.Clamp));
         s.Trilinear = vk.CreateSampler(new SamplerDesc(Filter.Linear, Filter.Linear, MipMode.Linear, Wrap.Clamp));
         if (s.Trace != null) s.TracePipe = VkSsrPipe(vk, s.Trace, false);

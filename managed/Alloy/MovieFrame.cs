@@ -67,12 +67,12 @@ internal readonly struct MovieRows
     {
         if (width <= 0 || height <= 0) return default;
         if (align != 1 && align != 2 && align != 4 && align != 8) return default;
-        if (selector == Rgb565Selector) return new MovieRows(Gl.RGB, Gl.UNSIGNED_SHORT_5_6_5, 2, width, height, align);
+        if (selector == Rgb565Selector) return new MovieRows(EngineTokens.RGB, EngineTokens.UNSIGNED_SHORT_5_6_5, 2, width, height, align);
         if (NotMovie(selector)) return default;
         return extFormat switch
         {
-            0 => new MovieRows(Gl.RGBA, Gl.UNSIGNED_BYTE, 4, width, height, align),
-            1 => new MovieRows(Gl.RGB, Gl.UNSIGNED_BYTE, 3, width, height, align),
+            0 => new MovieRows(EngineTokens.RGBA, EngineTokens.UNSIGNED_BYTE, 4, width, height, align),
+            1 => new MovieRows(EngineTokens.RGB, EngineTokens.UNSIGNED_BYTE, 3, width, height, align),
             _ => default,
         };
     }
@@ -83,8 +83,8 @@ internal readonly struct MovieRows
 }
 
 /// <summary>The movie frame as the DECODER hands it over, not as the engine's texture. One hook, on the
-/// upload funnel, stages the rows to host memory; <see cref="Upload"/> puts them in an Alloy texture inside
-/// Alloy's own context. The engine's upload still runs, so the hand-back quad keeps its picture.</summary>
+/// upload funnel, stages the rows to host memory; <see cref="Upload"/> puts them in an Alloy texture. The
+/// engine's upload still runs, so the hand-back quad keeps its picture.</summary>
 internal static unsafe class MovieFrame
 {
     /// <summary>Everything one session's movie frames own: the staging buffer (kept at one frame's rows for

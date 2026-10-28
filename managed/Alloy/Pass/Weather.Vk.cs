@@ -28,21 +28,21 @@ internal static unsafe partial class Weather
     internal static (string Vs, string Fs) VkTexts(bool snow, ExtenderLog log)
     {
         string fs = snow ? ShdSnowFs : ShdRainFs;
-        GlProgram.Texts(ShdWeatherVs, ShaderStages.Source(ShdWeatherVs), fs, ShaderStages.Source(fs), log, "Weather",
+        ShaderTexts.Pair(ShdWeatherVs, ShaderStages.Source(ShdWeatherVs), fs, ShaderStages.Source(fs), log, "Weather",
                         out string v, out string f);
         return (v, f);
     }
 
-    /// <summary>The draw's locations in a program resolved through the uniform shim.</summary>
-    internal static Loc VkLocs(uint prog) => new()
+    /// <summary>The draw's members of the loose block being resolved.</summary>
+    internal static Loc VkLocs() => new()
     {
-        View = GlProgram.Loc(prog, "uView"), Proj = GlProgram.Loc(prog, "uProj"), Eye = GlProgram.Loc(prog, "uEye"),
-        Centre = GlProgram.Loc(prog, "uCentre"), Fall = GlProgram.Loc(prog, "uFall"), Phase = GlProgram.Loc(prog, "uPhase"),
-        Time = GlProgram.Loc(prog, "uTime"), Box = GlProgram.Loc(prog, "uBox"), Size = GlProgram.Loc(prog, "uSize"),
-        Kind = GlProgram.Loc(prog, "uKind"), Drift = GlProgram.Loc(prog, "uDrift"), Tint = GlProgram.Loc(prog, "uTint"),
-        Alpha = GlProgram.Loc(prog, "uAlpha"), Soft = GlProgram.Loc(prog, "uSoft"), Viz = GlProgram.Loc(prog, "uViz"),
-        CoverLayer = GlProgram.Loc(prog, "uCoverLayer"), Lit = GlProgram.Loc(prog, "uLit"), Back = GlProgram.Loc(prog, "uBack"),
-        CoverVp = GlProgram.Loc(prog, "uCoverVp"), CoverSoft = GlProgram.Loc(prog, "uCoverSoft"),
+        View = LooseBlock.Loc("uView"), Proj = LooseBlock.Loc("uProj"), Eye = LooseBlock.Loc("uEye"),
+        Centre = LooseBlock.Loc("uCentre"), Fall = LooseBlock.Loc("uFall"), Phase = LooseBlock.Loc("uPhase"),
+        Time = LooseBlock.Loc("uTime"), Box = LooseBlock.Loc("uBox"), Size = LooseBlock.Loc("uSize"),
+        Kind = LooseBlock.Loc("uKind"), Drift = LooseBlock.Loc("uDrift"), Tint = LooseBlock.Loc("uTint"),
+        Alpha = LooseBlock.Loc("uAlpha"), Soft = LooseBlock.Loc("uSoft"), Viz = LooseBlock.Loc("uViz"),
+        CoverLayer = LooseBlock.Loc("uCoverLayer"), Lit = LooseBlock.Loc("uLit"), Back = LooseBlock.Loc("uBack"),
+        CoverVp = LooseBlock.Loc("uCoverVp"), CoverSoft = LooseBlock.Loc("uCoverSoft"),
     };
 
     /// <summary>The draw's terms into the open capture, as <see cref="Submit"/> sets them, for <paramref name="kind"/>
@@ -50,48 +50,48 @@ internal static unsafe partial class Weather
     internal static void WriteVk(in Loc l, int kind, Matrix4x4* view, Matrix4x4* proj, Vector3 eye, bool lit)
     {
         bool snow = kind == 2;
-        VkUniformShim.Set(l.View, *view);
-        VkUniformShim.Set(l.Proj, *proj);
-        VkUniformShim.Set(l.Eye, [eye.X, eye.Y, eye.Z]);
+        LooseBlock.Set(l.View, *view);
+        LooseBlock.Set(l.Proj, *proj);
+        LooseBlock.Set(l.Eye, [eye.X, eye.Y, eye.Z]);
         Vector3 centre = FrameInputs.HasFocus ? FrameInputs.Focus : eye;
-        VkUniformShim.Set(l.Centre, [centre.X, centre.Y, centre.Z]);
-        VkUniformShim.Set(l.Fall, [_fall.X, _fall.Y, _fall.Z]);
-        VkUniformShim.Set(l.Phase, (float)_phase);
-        VkUniformShim.Set(l.Time, _wobble);
-        VkUniformShim.Set(l.Box, [Range.V, Range.V]);
-        VkUniformShim.Set(l.Size, [snow ? FlakeSize.V : kind == 3 ? StreakLen.V * 0.25f : StreakLen.V, snow ? FlakeSize.V : kind == 3 ? 0.03f : 0.02f]);
-        VkUniformShim.Set(l.Kind, kind);
-        VkUniformShim.Set(l.Drift, snow ? 0.4f : 0f);
+        LooseBlock.Set(l.Centre, [centre.X, centre.Y, centre.Z]);
+        LooseBlock.Set(l.Fall, [_fall.X, _fall.Y, _fall.Z]);
+        LooseBlock.Set(l.Phase, (float)_phase);
+        LooseBlock.Set(l.Time, _wobble);
+        LooseBlock.Set(l.Box, [Range.V, Range.V]);
+        LooseBlock.Set(l.Size, [snow ? FlakeSize.V : kind == 3 ? StreakLen.V * 0.25f : StreakLen.V, snow ? FlakeSize.V : kind == 3 ? 0.03f : 0.02f]);
+        LooseBlock.Set(l.Kind, kind);
+        LooseBlock.Set(l.Drift, snow ? 0.4f : 0f);
         float c = snow ? Brightness.V * 1.67f : Brightness.V;
-        VkUniformShim.Set(l.Tint, [c, c, c]);
-        VkUniformShim.Set(l.Lit, lit ? 1 : 0);
-        VkUniformShim.Set(l.Back, snow ? Backscatter.V : 0f);
-        VkUniformShim.Set(l.Alpha, snow ? 0.9f : kind == 3 ? MathF.Min(Opacity.V * 2f, 1f) : Opacity.V);
-        VkUniformShim.Set(l.Soft, Soft.V);
-        VkUniformShim.Set(l.Viz, Viz.V);
+        LooseBlock.Set(l.Tint, [c, c, c]);
+        LooseBlock.Set(l.Lit, lit ? 1 : 0);
+        LooseBlock.Set(l.Back, snow ? Backscatter.V : 0f);
+        LooseBlock.Set(l.Alpha, snow ? 0.9f : kind == 3 ? MathF.Min(Opacity.V * 2f, 1f) : Opacity.V);
+        LooseBlock.Set(l.Soft, Soft.V);
+        LooseBlock.Set(l.Viz, Viz.V);
         bool cover = Cover.V && CasterPass.CoverFresh;
-        VkUniformShim.Set(l.CoverVp, cover ? CasterPass.CoverVp : default);
-        VkUniformShim.Set(l.CoverLayer, (float)CasterPass.CoverLayer);
-        VkUniformShim.Set(l.CoverSoft, CoverSoft.V);
+        LooseBlock.Set(l.CoverVp, cover ? CasterPass.CoverVp : default);
+        LooseBlock.Set(l.CoverLayer, (float)CasterPass.CoverLayer);
+        LooseBlock.Set(l.CoverSoft, CoverSoft.V);
     }
 
     /// <summary>The splash stage pair, as GL builds it.</summary>
     internal static (string Vs, string Fs) VkSplashTexts(ExtenderLog log)
     {
-        GlProgram.Texts(ShdSplashVs, ShaderStages.Source(ShdSplashVs), ShdSplashFs, ShaderStages.Source(ShdSplashFs), log,
+        ShaderTexts.Pair(ShdSplashVs, ShaderStages.Source(ShdSplashVs), ShdSplashFs, ShaderStages.Source(ShdSplashFs), log,
                         "Weather splash", out string v, out string f);
         return (v, f);
     }
 
-    /// <summary>The splash draw's locations in a program resolved through the uniform shim.</summary>
-    internal static SpLoc VkSplashLocs(uint prog) => new()
+    /// <summary>The splash draw's members of the loose block being resolved.</summary>
+    internal static SpLoc VkSplashLocs() => new()
     {
-        View = GlProgram.Loc(prog, "uView"), Proj = GlProgram.Loc(prog, "uProj"), Eye = GlProgram.Loc(prog, "uEye"),
-        Lit = GlProgram.Loc(prog, "uLit"), P = GlProgram.Loc(prog, "uSplashP"), C = GlProgram.Loc(prog, "uSplashC"),
-        V = GlProgram.Loc(prog, "uSplashV"), CoverVp = GlProgram.Loc(prog, "uCoverVp"), CoverVpInv = GlProgram.Loc(prog, "uCoverVpInv"),
-        Tint = GlProgram.Loc(prog, "uTint"), Alpha = GlProgram.Loc(prog, "uAlpha"), Rain = GlProgram.Loc(prog, "uSplashRain"),
-        Foot = GlProgram.Loc(prog, "uFoot"), FootW = GlProgram.Loc(prog, "uFootW"),
-        WxMapXf = GlProgram.Loc(prog, "uWxMapXf"), WxMapP = GlProgram.Loc(prog, "uWxMapP"),
+        View = LooseBlock.Loc("uView"), Proj = LooseBlock.Loc("uProj"), Eye = LooseBlock.Loc("uEye"),
+        Lit = LooseBlock.Loc("uLit"), P = LooseBlock.Loc("uSplashP"), C = LooseBlock.Loc("uSplashC"),
+        V = LooseBlock.Loc("uSplashV"), CoverVp = LooseBlock.Loc("uCoverVp"), CoverVpInv = LooseBlock.Loc("uCoverVpInv"),
+        Tint = LooseBlock.Loc("uTint"), Alpha = LooseBlock.Loc("uAlpha"), Rain = LooseBlock.Loc("uSplashRain"),
+        Foot = LooseBlock.Loc("uFoot"), FootW = LooseBlock.Loc("uFootW"),
+        WxMapXf = LooseBlock.Loc("uWxMapXf"), WxMapP = LooseBlock.Loc("uWxMapP"),
     };
 
     /// <summary>The splash draw's terms into the open capture: its instance count,
@@ -105,24 +105,24 @@ internal static unsafe partial class Weather
         if (cover) vp = CasterPass.CoverVp;
         else crowns = 0;
         if (crowns + feet <= 0 || !AlloyLights.TryPerspective(*proj, out _, out float p11, out _, out _)) return 0;
-        VkUniformShim.Set(l.View, *view);
-        VkUniformShim.Set(l.Proj, *proj);
-        VkUniformShim.Set(l.Eye, [eye.X, eye.Y, eye.Z]);
+        LooseBlock.Set(l.View, *view);
+        LooseBlock.Set(l.Proj, *proj);
+        LooseBlock.Set(l.Eye, [eye.X, eye.Y, eye.Z]);
         Vector3 centre = FrameInputs.HasFocus ? FrameInputs.Focus : eye;
-        VkUniformShim.Set(l.C, [centre.X, centre.Y, CasterPass.CoverCentre.Z]);
+        LooseBlock.Set(l.C, [centre.X, centre.Y, CasterPass.CoverCentre.Z]);
         Vector2 vel = SplashVelocity(new Vector2(centre.X, centre.Y));
-        VkUniformShim.Set(l.V, [vel.X, vel.Y]);
-        VkUniformShim.Set(l.P, [_splashT, SplashLifeSec, ImpactRange.V, p11 * viewport[3] * 0.5f]);
-        VkUniformShim.Set(l.CoverVp, vp);
-        VkUniformShim.Set(l.CoverVpInv, inv);
-        VkUniformShim.Set(l.Rain, crowns * SplashParts);
-        VkUniformShim.Set(l.Foot, System.Runtime.InteropServices.MemoryMarshal.Cast<Vector4, float>(_footLive.AsSpan(0, feet)));
-        VkUniformShim.Set(l.FootW, [WetShown, FootSplash.V]);
+        LooseBlock.Set(l.V, [vel.X, vel.Y]);
+        LooseBlock.Set(l.P, [_splashT, SplashLifeSec, ImpactRange.V, p11 * viewport[3] * 0.5f]);
+        LooseBlock.Set(l.CoverVp, vp);
+        LooseBlock.Set(l.CoverVpInv, inv);
+        LooseBlock.Set(l.Rain, crowns * SplashParts);
+        LooseBlock.Set(l.Foot, System.Runtime.InteropServices.MemoryMarshal.Cast<Vector4, float>(_footLive.AsSpan(0, feet)));
+        LooseBlock.Set(l.FootW, [WetShown, FootSplash.V]);
         UploadMap(l.WxMapXf, l.WxMapP, false);
         float c = Brightness.V;
-        VkUniformShim.Set(l.Tint, [c, c, c]);
-        VkUniformShim.Set(l.Alpha, MathF.Min(Opacity.V * 1.5f, 1f));
-        VkUniformShim.Set(l.Lit, lit ? 1 : 0);
+        LooseBlock.Set(l.Tint, [c, c, c]);
+        LooseBlock.Set(l.Alpha, MathF.Min(Opacity.V * 1.5f, 1f));
+        LooseBlock.Set(l.Lit, lit ? 1 : 0);
         _splashes = crowns; _footSplashes = feet;
         int n = (crowns + feet * FootCrowns) * SplashParts;
         _drawn += n;

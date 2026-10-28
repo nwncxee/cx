@@ -566,15 +566,15 @@ internal static unsafe partial class StageResources
     {
         (fmt, bpp) = s switch
         {
-            "rgba8" => (Gl.RGBA8, 4),
-            "rgba16f" => (Gl.RGBA16F, 8),
-            "rgba32f" => (Gl.RGBA32F, 16),
-            "rg16f" => (Gl.RG16F, 4),
-            "rg8" => (Gl.RG8, 2),
-            "r16f" => (Gl.R16F, 2),
-            "r32f" => (Gl.R32F, 4),
-            "r8" => (Gl.R8, 1),
-            "r11f_g11f_b10f" => (Gl.R11F_G11F_B10F, 4),
+            "rgba8" => (EngineTokens.RGBA8, 4),
+            "rgba16f" => (EngineTokens.RGBA16F, 8),
+            "rgba32f" => (EngineTokens.RGBA32F, 16),
+            "rg16f" => (EngineTokens.RG16F, 4),
+            "rg8" => (EngineTokens.RG8, 2),
+            "r16f" => (EngineTokens.R16F, 2),
+            "r32f" => (EngineTokens.R32F, 4),
+            "r8" => (EngineTokens.R8, 1),
+            "r11f_g11f_b10f" => (EngineTokens.R11F_G11F_B10F, 4),
             _ => (0u, 0),
         };
         return bpp != 0;

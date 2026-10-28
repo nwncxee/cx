@@ -100,10 +100,8 @@ public sealed unsafe partial class CasterPass : IExtenderService
     private static bool _loggedOnce, _noSunLogged;
     private static int _frames;
     private static long _mdiCalls;
-    /// <summary>CPU ticks the bake's own 4.6 context bracket costs, printed on the period line. The view's
-    /// bracket is open by the time the bake runs (ADR 0032), so this pair is a depth bump and the figure
-    /// reads ~0; it stays because the view's draw runs its passes even when the view's own Enter was
-    /// refused, which makes each pass its own gate. A non-zero figure is that case happening.</summary>
+    /// <summary>Local light cubes baked, summed over the period: the period line prints the per-frame mean
+    /// against the number of cubes the budget holds.</summary>
     private static long _cubeLightsSum;
 
     /// <summary>Views rendered on the last frame -- the views the re-bake predicate found STALE, not every
@@ -231,7 +229,7 @@ public sealed unsafe partial class CasterPass : IExtenderService
         // AFTER the period line, which reports it: zeroing the timing ahead of Lifecycle made every period
         // line read 0.00 ms, since the frame's own measurement lands further down.
         LastShadowMs = 0f;
-        if (!AlloyGate.Alloy || !GameGate.InModule || !GlContextService.Available) return;
+        if (!AlloyGate.Alloy || !GameGate.InModule || !FramePump.Available) return;
         // #302: no enrollment of its own. The population is Alloy's ownership table, scanned on Alloy's
         // cadence -- there is one scan now (#304 deleted the ShadowEnroll zone that separated the two).
         // An empty table is not "nothing to do": whatever was casting last frame has stopped, and leaving
@@ -376,14 +374,14 @@ public sealed unsafe partial class CasterPass : IExtenderService
     }
     private static int _coverFreshFrames, _cascFreshFrames;
 
-    /// <summary>Module unload, a PartTable wipe and a lost 4.6 context all invalidate every recorded
+    /// <summary>Module unload, a PartTable wipe and a lost render device all invalidate every recorded
     /// identity wholesale; the period line is the only evidence the pass runs at all. This runs from the pass
     /// slot, which need not fire outside a module, so TableGen is the load-bearing edge: DrawFunnelService
     /// ticks from the present unconditionally and wipes on module unload.</summary>
     private static void Lifecycle()
     {
-        if (!GlContextService.Available) Release("4.6 context lost");
-        _was.Available = GlContextService.Available;
+        if (!FramePump.Available) Release("render device lost");
+        _was.Available = FramePump.Available;
         bool inModule = GameGate.InModule;
         if (_was.InModule && !inModule) Release("module unload");
         _was.InModule = inModule;

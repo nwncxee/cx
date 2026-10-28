@@ -77,8 +77,8 @@ internal static unsafe partial class TexRegistry
     /// cells of one resref).</summary>
     private static readonly int[] _cell = new int[MaxSlots];
     /// <summary>What the slot's alpha channel MEANS, for the draw classification. Derived from the DECODED
-    /// pixels on the worker, once, and kept across a context loss: it is a property of the content, not of a GL
-    /// name.</summary>
+    /// pixels on the worker, once, and kept across a context loss: it is a property of the content, not of
+    /// the name it was uploaded under.</summary>
     private static readonly TexCoverage[] _cov = new TexCoverage[MaxSlots];
     /// <summary>Each slot's mean colour as decoded (its own encoding), and whether one was taken: the sky
     /// texture's average that the sky-matched fog converges on (SceneFog), which is available only here --
@@ -386,9 +386,9 @@ internal static unsafe partial class TexRegistry
     internal static int TableSerial = 1;
 
     /// <summary>Unlink a slot from the table: its index entry, its dependents, its generation and its free-list
-    /// place. The GL name goes to the graveyard for the bracket to delete, since a delete is GL and this is the
-    /// game thread. The generation moves on here, so every outstanding <see cref="TexId"/> for it is dead and no
-    /// holder needs a death notice. Caller holds <see cref="_lock"/>.</summary>
+    /// place. The name goes to the graveyard for the drain, since a delete belongs in the frame and this is the
+    /// game thread. The generation moves on here, so every outstanding <see cref="TexId"/> for it is dead and
+    /// no holder needs a death notice. Caller holds <see cref="_lock"/>.</summary>
     private static void Retire(int i)
     {
         DropHandle(i);

@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using CX.Engine;
 using CX.Framework;
 using CX.Graphics;
+using CX.Graphics.Rhi;
 
 namespace CX.Alloy;
 
@@ -31,7 +32,7 @@ public sealed unsafe partial class AlloyRenderer
         c[1] = MathF.Pow(MathF.Max(src.Y, 0f), AlloyLights.SrgbGamma);
         c[2] = MathF.Pow(MathF.Max(src.Z, 0f), AlloyLights.SrgbGamma);
         c[3] = 1f;
-        Gl.Uniform4fv(loc, 1, c);
+        LooseBlock.Set(loc, new ReadOnlySpan<float>(c, 4));
     }
 
     /// <summary>This frame's fog, packed the way every Alloy stage reads it -- enable, start, end and
@@ -52,11 +53,11 @@ public sealed unsafe partial class AlloyRenderer
     {
         float* px = stackalloc float[4];
         PackFog(px);
-        Gl.Uniform4fv(loc.Fog, 1, px);
+        LooseBlock.Set(loc.Fog, new ReadOnlySpan<float>(px, 4));
         UploadFogColour(loc.FogColor);
-        fixed (Vector3* eye = &_eyePos) Gl.Uniform3fv(loc.Eye, 1, (float*)eye);
+        fixed (Vector3* eye = &_eyePos) LooseBlock.Set(loc.Eye, new ReadOnlySpan<float>((float*)eye, 3));
         Vector3 origin = SceneFog.Origin(out bool radial);
-        Gl.Uniform4f(loc.FogOrigin, origin.X, origin.Y, origin.Z, radial ? 1f : 0f);
+        LooseBlock.Set(loc.FogOrigin, origin.X, origin.Y, origin.Z, radial ? 1f : 0f);
         // The height layer is anchored to the player's feet: an area carries no ground plane to read, and
         // the runtime block is where the engine keeps the one position that tracks them.
         float playerZ = _runtime == null ? 0f : Rt.PlayerPos.Z;
@@ -74,29 +75,29 @@ public sealed unsafe partial class AlloyRenderer
         float w = viewport[2] > 0 ? viewport[2] : 1f, h = viewport[3] > 0 ? viewport[3] : 1f;
         float* px = stackalloc float[4];
         px[0] = 1f / w; px[1] = 1f / h; px[2] = w / h;
-        Gl.Uniform3fv(loc.Pixel, 1, px);
-        Gl.Uniform1f(loc.LodBias, PostChain.LodBias);   // -1 where the stage declares none; GL ignores it
-        Gl.Uniform1f(loc.Now, TexStream.Clock);
+        LooseBlock.Set(loc.Pixel, new ReadOnlySpan<float>(px, 3));
+        LooseBlock.Set(loc.LodBias, PostChain.LodBias);   // -1 where the stage declares none; the block drops it
+        LooseBlock.Set(loc.Now, TexStream.Clock);
         UploadFog(loc);
         if (_shaderConstF != null)
         {
             float a = _shaderConstF[KeyholeDiaA], b = _shaderConstF[KeyholeDiaB];
             px[0] = MathF.Min(a, b); px[1] = MathF.Max(a, b); px[2] = _shaderConstF[KeyholeMinZ];
-            Gl.Uniform3fv(loc.KhDia, 1, px);
+            LooseBlock.Set(loc.KhDia, new ReadOnlySpan<float>(px, 3));
         }
         UploadTargetShape(loc);
         UploadVanillaEnv(loc);
         if (_runtime == null) return;
         ShaderExposedRuntimeData rt = Rt;
-        Gl.Uniform1i(loc.Time, rt.TimeOfDay);
+        LooseBlock.Set(loc.Time, rt.TimeOfDay);
 
-        Gl.Uniform3fv(loc.Wind, 1, (float*)Unsafe.AsPointer(ref rt.AreaWind));
-        Gl.Uniform1i(loc.Flags, rt.AreaFlags);
-        Gl.Uniform3fv(loc.Cam, 1, (float*)Unsafe.AsPointer(ref rt.CamPos));
-        Gl.Uniform3fv(loc.CamFocus, 1, (float*)Unsafe.AsPointer(ref rt.CamFocus));
-        Gl.Uniform3fv(loc.Player, 1, (float*)Unsafe.AsPointer(ref rt.PlayerPos));
+        LooseBlock.Set(loc.Wind, new ReadOnlySpan<float>((float*)Unsafe.AsPointer(ref rt.AreaWind), 3));
+        LooseBlock.Set(loc.Flags, rt.AreaFlags);
+        LooseBlock.Set(loc.Cam, new ReadOnlySpan<float>((float*)Unsafe.AsPointer(ref rt.CamPos), 3));
+        LooseBlock.Set(loc.CamFocus, new ReadOnlySpan<float>((float*)Unsafe.AsPointer(ref rt.CamFocus), 3));
+        LooseBlock.Set(loc.Player, new ReadOnlySpan<float>((float*)Unsafe.AsPointer(ref rt.PlayerPos), 3));
         px[0] = rt.CamDist; px[1] = rt.CamPitch;
-        Gl.Uniform2fv(loc.KhCam, 1, px);
+        LooseBlock.Set(loc.KhCam, new ReadOnlySpan<float>(px, 2));
     }
 
     /// <summary>The spell-targeting shape's terms, straight out of the engine's global-constant tables, under
@@ -108,15 +109,15 @@ public sealed unsafe partial class AlloyRenderer
         // The shape's own "nothing to draw" answer is targetShape 0 AND range 0; the object type is the
         // other half of it, and 0 there is what the engine writes when the cursor is over nothing.
         if (_shaderConstI == null || _shaderConstV == null || _shaderConstV4 == null || _shaderConstF == null)
-        { Gl.Uniform1i(loc.TgtObjL, 0); Gl.Uniform1i(loc.TgtShapeL, 0); return; }
-        Gl.Uniform1i(loc.TgtShapeL, _shaderConstI[TgtShape]);
-        Gl.Uniform1i(loc.TgtSelfL, _shaderConstI[TgtOnSelf]);
-        Gl.Uniform1i(loc.TgtObjL, _shaderConstI[TgtObjType]);
-        Gl.Uniform1f(loc.TgtSizeXL, _shaderConstF[TgtSizeX]);
-        Gl.Uniform1f(loc.TgtSizeYL, _shaderConstF[TgtSizeY]);
-        Gl.Uniform1f(loc.TgtRangeL, _shaderConstF[TgtRange]);
-        Gl.Uniform4fv(loc.TgtColL, 1, &_shaderConstV4[TgtColour].X);
-        Gl.Uniform3fv(loc.TgtWorldL, 1, _shaderConstV);
+        { LooseBlock.Set(loc.TgtObjL, 0); LooseBlock.Set(loc.TgtShapeL, 0); return; }
+        LooseBlock.Set(loc.TgtShapeL, _shaderConstI[TgtShape]);
+        LooseBlock.Set(loc.TgtSelfL, _shaderConstI[TgtOnSelf]);
+        LooseBlock.Set(loc.TgtObjL, _shaderConstI[TgtObjType]);
+        LooseBlock.Set(loc.TgtSizeXL, _shaderConstF[TgtSizeX]);
+        LooseBlock.Set(loc.TgtSizeYL, _shaderConstF[TgtSizeY]);
+        LooseBlock.Set(loc.TgtRangeL, _shaderConstF[TgtRange]);
+        LooseBlock.Set(loc.TgtColL, new ReadOnlySpan<float>(&_shaderConstV4[TgtColour].X, 4));
+        LooseBlock.Set(loc.TgtWorldL, new ReadOnlySpan<float>(_shaderConstV, 3));
     }
 
     /// <summary>The rest of the shared vanilla environment -- the <c>CxEngine</c> block (the projection, the
@@ -125,7 +126,7 @@ public sealed unsafe partial class AlloyRenderer
     /// and zero is "off", which an unresolved constant table leaves them at.</summary>
     internal static void UploadVanillaEnv(in FeatLoc loc)
     {
-        if (loc.Engine) BindEngineBlock();
+        BindEngineBlock();
         if (_shaderConstI == null || _shaderConstF == null || _shaderConstV4 == null) return;
         // The whole block, not a selection: a content shader that begins reading a slot nobody thought to
         // wire would otherwise compile, link, and read zero -- working under the engine and silently doing
@@ -133,11 +134,11 @@ public sealed unsafe partial class AlloyRenderer
         fixed (FeatLoc* l = &loc)
         {
             for (int m = l->SIntLive; m != 0; m &= m - 1)
-            { int i = BitOperations.TrailingZeroCount(m); Gl.Uniform1i(l->SInt[i], _shaderConstI[SIntBase + i]); }
+            { int i = BitOperations.TrailingZeroCount(m); LooseBlock.Set(l->SInt[i], _shaderConstI[SIntBase + i]); }
             for (int m = l->SFloatLive; m != 0; m &= m - 1)
-            { int i = BitOperations.TrailingZeroCount(m); Gl.Uniform1f(l->SFloat[i], _shaderConstF[SFloatBase + i]); }
+            { int i = BitOperations.TrailingZeroCount(m); LooseBlock.Set(l->SFloat[i], _shaderConstF[SFloatBase + i]); }
             for (int m = l->SVecLive; m != 0; m &= m - 1)
-            { int i = BitOperations.TrailingZeroCount(m); Gl.Uniform4fv(l->SVec[i], 1, &_shaderConstV4[SVecBase + i].X); }
+            { int i = BitOperations.TrailingZeroCount(m); LooseBlock.Set(l->SVec[i], new ReadOnlySpan<float>(&_shaderConstV4[SVecBase + i].X, 4)); }
         }
     }
 
@@ -146,8 +147,7 @@ public sealed unsafe partial class AlloyRenderer
     internal static void UploadMaterialModel(int loc)
     {
         bool modern = Lighting.Brdf.V;
-        Gl.Uniform4f(loc, modern ? 1f : 0f, modern ? Lighting.AmbientDir.V : 0f, modern && Lighting.SpecAa.V ? 1f : 0f,
-                     Lighting.Grazing.V ? 0f : 1f);
+        LooseBlock.Set(loc, modern ? 1f : 0f, modern ? Lighting.AmbientDir.V : 0f, modern && Lighting.SpecAa.V ? 1f : 0f, Lighting.Grazing.V ? 0f : 1f);
     }
 
     /// <summary>The <c>CxPass</c> block's binding point, pinned by <see cref="UboSlots.Pass"/> against
@@ -201,7 +201,7 @@ public sealed unsafe partial class AlloyRenderer
         FillPassBlock((PassBlock*)b);
         if (!AlloyLights.FillDraw(b, viewport, near, far)) PassBindsBorrowed++;
         // a Vulkan pass reads the staged block and binds its own shadow maps
-        Gl.Uniform1i(locCubes, CasterPass.CubesFresh ? CasterPass.CubeCount : 0);
+        LooseBlock.Set(locCubes, CasterPass.CubesFresh ? CasterPass.CubeCount : 0);
     }
 
     /// <summary>The staging block, zeroed, for a caller that fills it itself (the lightmap bake's one light).</summary>

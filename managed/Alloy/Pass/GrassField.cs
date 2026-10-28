@@ -6,11 +6,12 @@ using CX.Alloy.Db;
 using CX.Engine;
 using CX.Framework;
 using CX.Graphics;
+using CX.Graphics.Rhi;
 
 namespace CX.Alloy;
 
 /// <summary>
-/// Grass, as a REPLACEMENT class (ADR 0011): the engine's <c>Scene::DoBinBucket</c> is left exactly as it is
+/// Grass, as a REPLACEMENT class: the engine's <c>Scene::DoBinBucket</c> is left exactly as it is
 /// and simply not called on the passes Alloy draws. GPU-driven -- the CPU culls whole patches, a compute
 /// scatter regenerates each visible patch's blades from its faces' seeds -- off the ENGINE's own face data and
 /// blade counts, and nothing it draws is ever semi-transparent AND depth-writing at once, as vanilla's is.
@@ -449,19 +450,19 @@ internal static unsafe partial class GrassField
         }
     }
 
-    /// <summary>The scatter's terms but its pass switch (<c>uClamp</c>), into the bound program.</summary>
+    /// <summary>The scatter's terms but its pass switch (<c>uClamp</c>), into the open loose block.</summary>
     private static void ScatterTerms(in ScatterLoc l, ReadOnlySpan<Vector4> planes, Vector3* eye, float fadeFrom, float farDist, float* pw)
     {
-        fixed (Vector4* pl = planes) Gl.Uniform4fv(l.Planes, 6, (float*)pl);
-        Gl.Uniform3fv(l.Eye, 1, (float*)eye);
-        Gl.Uniform4f(l.Lod, Grass.Lod.V, Grass.LodMin.V, Grass.LodWidth.V, Grass.LodHeight.V);
-        Gl.Uniform2f(l.Fade, fadeFrom, farDist);
-        Gl.Uniform1f(l.SnowThin, SnowThinShare(Weather.Snow, Weather.CurrentKind == Weather.Kind.Snow ? Weather.Density : 0f));
-        Gl.Uniform1f(l.Near, Grass.BladeLod.V);
-        Gl.Uniform2f(l.Clump, ClumpCell, Grass.Clump.V);
-        Gl.Uniform1f(l.CardKeep, 1f / MathF.Max(BladeMul, 1f));
-        Gl.Uniform2i(l.BladeCap, _bladeNear, _bladeFar);
-        Gl.Uniform3fv(l.PushWindow, 1, pw);
+        fixed (Vector4* pl = planes) LooseBlock.SetEach(l.Planes, 4, new ReadOnlySpan<float>((float*)pl, 24));
+        LooseBlock.Set(l.Eye, new ReadOnlySpan<float>((float*)eye, 3));
+        LooseBlock.Set(l.Lod, Grass.Lod.V, Grass.LodMin.V, Grass.LodWidth.V, Grass.LodHeight.V);
+        LooseBlock.Set(l.Fade, fadeFrom, farDist);
+        LooseBlock.Set(l.SnowThin, SnowThinShare(Weather.Snow, Weather.CurrentKind == Weather.Kind.Snow ? Weather.Density : 0f));
+        LooseBlock.Set(l.Near, Grass.BladeLod.V);
+        LooseBlock.Set(l.Clump, ClumpCell, Grass.Clump.V);
+        LooseBlock.Set(l.CardKeep, 1f / MathF.Max(BladeMul, 1f));
+        LooseBlock.Set(l.BladeCap, _bladeNear, _bladeFar);
+        LooseBlock.Set(l.PushWindow, new ReadOnlySpan<float>(pw, 3));
     }
 
     /// <summary>World size of a clump cell: procedural blades inside one share a lean and a height.</summary>
@@ -475,20 +476,19 @@ internal static unsafe partial class GrassField
     }
 
     /// <summary>Everything a colour program reads beyond the shared terms: the light rig, the sun cascades,
-    /// the local cubes, the ground copy. Leaves <paramref name="prog"/> bound.</summary>
-    private static void ColourUniforms(uint prog, in Loc loc, in AlloyRenderer.FeatLoc feat, Matrix4x4* vp, Vector3* eye,
+    /// the local cubes, the ground copy.</summary>
+    private static void ColourUniforms(in Loc loc, in AlloyRenderer.FeatLoc feat, Matrix4x4* vp, Vector3* eye,
                                        float nearDist, float farDist, float* pw, int* viewport, float near, float far,
                                        bool lightingOn, bool ground)
     {
-        Gl.UseProgram(prog);
         SharedUniforms(in loc, in feat, vp, eye, nearDist, farDist, false, pw, viewport, vlit: Grass.VLight.V && lightingOn);
-        Gl.Uniform1f(loc.Shade, Grass.Shade.V);
-        Gl.Uniform1i(loc.Viz, AlloyRenderer._lightViz);
-        Gl.Uniform1i(loc.Lit, lightingOn ? 1 : 0);
-        Gl.Uniform1f(loc.RootAo, Grass.RootAo.V);
-        Gl.Uniform1f(loc.GroundTint, Grass.GTint.V);
-        Gl.Uniform1i(loc.GroundOn, ground ? 1 : 0);
-        Gl.Uniform4f(loc.Look, Grass.Backlight.V, Grass.Sheen.V, Weather.WetShown, Weather.WetDark.V);
+        LooseBlock.Set(loc.Shade, Grass.Shade.V);
+        LooseBlock.Set(loc.Viz, AlloyRenderer._lightViz);
+        LooseBlock.Set(loc.Lit, lightingOn ? 1 : 0);
+        LooseBlock.Set(loc.RootAo, Grass.RootAo.V);
+        LooseBlock.Set(loc.GroundTint, Grass.GTint.V);
+        LooseBlock.Set(loc.GroundOn, ground ? 1 : 0);
+        LooseBlock.Set(loc.Look, Grass.Backlight.V, Grass.Sheen.V, Weather.WetShown, Weather.WetDark.V);
         Weather.UploadMap(loc.WxMapXf, loc.WxMapP, false);
         Weather.UploadGrassEdge(loc.CoverVp, loc.CoverLayer, loc.WxEdge, loc.WxCache);
         SkyView.UploadLit(loc.SkyVp, loc.SkyTerm, capturing: false);
@@ -504,26 +504,26 @@ internal static unsafe partial class GrassField
     private static void SharedUniforms(in Loc loc, in AlloyRenderer.FeatLoc feat, Matrix4x4* vp, Vector3* eye,
                                        float nearDist, float farDist, bool msaa, float* pw, int* viewport, bool vlit)
     {
-        Gl.UniformMatrix4fv(loc.Vp, 1, 0, (float*)vp);
-        Gl.Uniform1f(loc.Tuft, Grass.Tuft.V);
-        Gl.Uniform1f(loc.Width, Grass.Width.V);
-        Gl.Uniform1i(loc.VLit, vlit ? 1 : 0);   // the depth program never lights: its vertex stage skips the rig
-        Gl.Uniform1i(loc.Cast, 0);
-        Gl.Uniform1f(loc.CastWidth, Grass.CastWidth.V);
+        LooseBlock.Set(loc.Vp, new ReadOnlySpan<float>((float*)vp, 16));
+        LooseBlock.Set(loc.Tuft, (float)Grass.Tuft.V);   // a float member: the int knob must not land as its bit pattern
+        LooseBlock.Set(loc.Width, Grass.Width.V);
+        LooseBlock.Set(loc.VLit, vlit ? 1 : 0);   // the depth program never lights: its vertex stage skips the rig
+        LooseBlock.Set(loc.Cast, 0);
+        LooseBlock.Set(loc.CastWidth, Grass.CastWidth.V);
         // the snow on the ground (Weather's integrator) thins the field by rank and winters the survivors
-        Gl.Uniform2f(loc.Snow, SnowThinShare(Weather.Snow, Weather.CurrentKind == Weather.Kind.Snow ? Weather.Density : 0f), Weather.Snow * Grass.SnowLook.V);
-        Gl.Uniform3fv(loc.Eye, 1, (float*)eye);
-        Gl.Uniform2f(loc.Fade, nearDist, farDist);
-        Gl.Uniform1i(loc.Frame, PostChain.TaaOn ? AlloyRenderer.FrameSeq & 63 : 0);
-        Gl.Uniform4f(loc.Lod, Grass.Lod.V, Grass.LodMin.V, Grass.LodWidth.V, Grass.LodHeight.V);
-        Gl.Uniform1i(loc.Tex, 0);
-        Gl.Uniform1f(loc.WindGain, Grass.Wind.V);
-        Gl.Uniform1f(loc.WindSpeed, Grass.WindSpeed.V);
-        Gl.Uniform1i(loc.Msaa, msaa ? 1 : 0);
-        Gl.Uniform1f(loc.Edge, MathF.Max(Grass.Edge.V, 0.01f));
-        Gl.Uniform1i(loc.PushTex, (int)PushUnit);
-        Gl.Uniform1f(loc.PushGain, Grass.Push.V);
-        Gl.Uniform3fv(loc.PushWindow, 1, pw);
+        LooseBlock.Set(loc.Snow, SnowThinShare(Weather.Snow, Weather.CurrentKind == Weather.Kind.Snow ? Weather.Density : 0f), Weather.Snow * Grass.SnowLook.V);
+        LooseBlock.Set(loc.Eye, new ReadOnlySpan<float>((float*)eye, 3));
+        LooseBlock.Set(loc.Fade, nearDist, farDist);
+        LooseBlock.Set(loc.Frame, PostChain.TaaOn ? AlloyRenderer.FrameSeq & 63 : 0);
+        LooseBlock.Set(loc.Lod, Grass.Lod.V, Grass.LodMin.V, Grass.LodWidth.V, Grass.LodHeight.V);
+        LooseBlock.Set(loc.Tex, 0);
+        LooseBlock.Set(loc.WindGain, Grass.Wind.V);
+        LooseBlock.Set(loc.WindSpeed, Grass.WindSpeed.V);
+        LooseBlock.Set(loc.Msaa, msaa ? 1 : 0);
+        LooseBlock.Set(loc.Edge, MathF.Max(Grass.Edge.V, 0.01f));
+        LooseBlock.Set(loc.PushTex, (int)PushUnit);
+        LooseBlock.Set(loc.PushGain, Grass.Push.V);
+        LooseBlock.Set(loc.PushWindow, new ReadOnlySpan<float>(pw, 3));
         AlloyRenderer.UploadFeatureTerms(feat, viewport);
     }
 

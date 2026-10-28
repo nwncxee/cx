@@ -48,6 +48,6 @@ public sealed unsafe partial class AlloyRenderer
         p.StageA = a;
         p.StageB = b;
         p.StageBinds = StageResources.VkBinds(p.Opaques, a, b, draw: true);
-        VkUniformShim.Resolve(p.Names, () => p.StageFrame = FrameLoc.Locate(p.ShimName));
+        LooseBlock.Resolve(p.Names, () => p.StageFrame = FrameLoc.Locate());
     }
 }

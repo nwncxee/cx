@@ -163,7 +163,7 @@ public sealed unsafe partial class CasterPass
     /// through the engine's <c>PrimTypeTranslationTable</c> anyway read index 0, which that table answers
     /// <c>GL_POINTS</c>: the bake issued its draws and left a map with nothing in it to shadow with.</summary>
     private static uint BatchMode(int g)
-        => AlloyRenderer.IsArenaVao(_gVao[g]) ? Gl.TRIANGLES : _primTable[_gPrim[g]];
+        => AlloyRenderer.IsArenaVao(_gVao[g]) ? EngineTokens.TRIANGLES : _primTable[_gPrim[g]];
 
     /// <summary>Per batch: the mask is sampled through the record's handle (no texture in the key).</summary>
     private static readonly bool[] _gH = new bool[MaxCasters];
@@ -269,7 +269,7 @@ public sealed unsafe partial class CasterPass
             int dbTex = 0; float dbHoles = 0f, dbGraded = 0f;
             if (db) AlloyRenderer.DbCasterMask(_liveSlot[i], out dbTex, out dbHoles, out dbGraded);
             int drawTex = db ? dbTex : _liveTex[i] != 0 ? OwnedTextures.Draw(_liveTex[i]) : 0;
-            // the scan is a glGetTexImage of the owned name in the 4.6 context; /shadow mask skip is the A/B for it
+            // the coverage figures come from the upload scan of the decoded image; /shadow mask skip is the A/B
             // #363: a translucent diffuse (glass) has no holes at all; it qualifies on its graded fraction
             // instead and skips the mode-2 hole gate, which would hand it straight back to the solid stage.
             bool glass = drawTex != 0 && _maskDither > 0

@@ -9,7 +9,7 @@ using CX.Graphics;
 namespace CX.Alloy;
 
 /// <summary>The SERVICE -- hook install, the frame anchor, the pass-generation clock, the iterator's
-/// suppression answer and the end-of-frame report. Alloy draws the whole 3D world (ADR 0016); its lit program
+/// suppression answer and the end-of-frame report. Alloy draws the whole 3D world; its lit program
 /// is forward except for point lights, which a G-buffer twin and <see cref="DeferredLights"/> add (ADR 0029).
 /// The frame path lives in the siblings: <c>.Table</c>, <c>.Enroll</c>, <c>.Frame</c>, <c>.Batches</c>.</summary>
 public sealed unsafe partial class AlloyRenderer : IExtenderService
@@ -234,8 +234,6 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// <summary>Monotonic presented-frame counter: the light SSBO uploads once per frame, not once per pass.</summary>
     private static int _frameSeq;
 
-    private static bool _takeOverflow;
-
     public void Initialize(ExtenderLog log, HookService hooks)
     {
         _log = log;
@@ -246,9 +244,6 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         // the record contract every path submits from are ours and depend on no engine symbol, so a build
         // that never arms still reports whether the arithmetic it ships is right.
         StaticSelfCheck(log);
-        // Up here with the other unconditional checks: the queue schedules the same way on every client.
-        GpuGraveyard.Init(log);
-        GpuGraveyard.SelfCheck(log);
         // #170: ahead of every stand-down, matching the host's unconditional calls. The verdict must
         // outlive a renderer that never armed -- /alloy is the report it drives.
         AlloyGate.Arm(log);
@@ -275,19 +270,15 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         RenderPasses.Register(log);
         PassRegistry.SelfCheck(log);
         PassRegistry.Global.Attach(log);
-        // #211: the retired-texture deletes need a context, not a draw. Hung on the health bracket so they
-        // still happen while Alloy is stood down (main menu, the disarm latch).
-        // #212: and the geometry deletes with them, for exactly the same reason -- the colour bracket's own
-        // Drain never runs in those states, so a revoke there would hold the whole owned set for the session.
-        GlContextService.InBracket = static () =>
+        // #211/#212: the retired texture and geometry deletes need a point in the frame, not a draw. Hung on
+        // the present's deferred work so they still happen while Alloy is stood down (main menu, the disarm
+        // latch), states in which the colour bracket's own Drain never runs.
+        FramePump.Deferred = static () =>
         {
-            // First in the bracket: what the GPU has finished with goes back before this frame allocates. A Vulkan
-            // world frame runs this with no context, and the health bracket drains the GL names it leaves.
-            if (GlContextService.Current46) GpuGraveyard.Drain(GlContextService.Presents);
             OwnedTextures.Drain(); SampleVram();
             LightmapBake.ReleaseIdle();
             // CX-117: the registry's uploads and bindless mints, the master palette's upload and the
-            // per-record PLT rows -- all of them belong in this context and nowhere else, and all of them run
+            // per-record PLT rows -- all of them belong at this one point in the frame, and all of them run
             // in BOTH modes. The registry is not DB mode's alone (CX-119's bitmap font atlases acquire from it
             // on an engine-scene session, and gating the drain left them loading for ever); the row block must
             // be bound either way because cx_plt.glsl is part of the lit stage either way and an unbound
@@ -461,35 +452,29 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
          + "else draws the world, so those parts are NOT RENDERED AT ALL, and the spill set re-picks itself "
          + "every enrollment, so which geometry is missing changes as you watch)";
 
-    /// <summary>This pass's context-loss slot. Every GL NAME here belongs to the 4.6 context, so nothing is
+    /// <summary>This pass's device-loss slot. Every name here belonged to the device that went, so nothing is
     /// deleted -- the objects went with it -- and the names are dropped so each Ensure rebuilds rather than
     /// short-circuiting on a handle and drawing through a dead one.</summary>
     internal static void ContextLost()
     {
         _drawBuf = 0; _texHBuf = 0; _boneBuf = 0;
         MotionContextLost();
-        DbFeed.ContextLost();   // R1-30: the feed's own GL-backed tables
+        DbFeed.ContextLost();   // R1-30: the feed's own device-backed tables
         CX.Alloy.Db.DbAnim.DanglyBonesContextLost();
         // #242: ...and the persistent records went with the buffers that held them. Both halves matter -- the
         // capacity so the next upload reallocates rather than writing into a dead name, and the epoch so
         // every record is rebuilt rather than assumed still on the GPU.
         _recCapGpu = 0; InvalidateRecords();
-        // ...and the VAO cache. RevokeAll marks the slots stale, and EnsureVao DELETES a stale non-zero name
-        // before rebuilding -- which on a name minted by a context that no longer exists is a delete aimed at
-        // whatever the next context recycles that number for.
-        // #136: the engine-layout VAO cache goes with it. Same rule, same reason -- a container object is
-        // not shared, so every name in it belonged to the context that just went.
-        // #257: and so is the target latch -- every name in it belongs to the context that just went.
+        // #257: the target latch goes too -- every name in it belonged to the device that just went.
         ForgetTarget();
         DepthResource.Revoke();
-        PresentTarget.ContextLost();   // #456: names only -- the images died with the context
+        PresentTarget.ContextLost();   // #456: names only -- the images died with the device
         GuiPass.ContextLost();
         EngineBlockContextLost();
-        GpuGraveyard.Drop();   // after every handler above, so what they retired is dropped with the rest
     }
 
     /// <summary>Frame tick from the present (after the bucket walks). Module unload, a PartTable
-    /// wipe and a lost 4.6 context all invalidate every recorded identity wholesale.</summary>
+    /// wipe and a lost render device all invalidate every recorded identity wholesale.</summary>
     public static void EndFrame()
     {
         // CX-109: the per-present frame edge the world-camera sighting is stamped against. HERE rather than in
@@ -513,20 +498,17 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
                      + " -- the Alloy world pass is off for this session and no [alloy] lines will follow");
             return;
         }
-        bool lost = _was.Available && !GlContextService.Available;
-        _was.Available = GlContextService.Available;
-        if (!GlContextService.Available) RevokeAll("4.6 context lost");
-        // On the edge only: the owners' reset allocates, and the context stays lost for the session.
+        bool lost = _was.Available && !FramePump.Available;
+        _was.Available = FramePump.Available;
+        if (!FramePump.Available) RevokeAll("render device lost");
+        // On the edge only: the owners' reset allocates, and the device stays lost for the session.
         if (lost) PassRegistry.Global.ContextLost();
         bool inModule = GameGate.InModule;
         if (_was.InModule && !inModule) { RevokeAll("module unload"); Programs._spliceStale = true; OwnedTextures.ModuleUnloaded(); StockConfig.ModuleUnloaded(); AlloyEnvMap.ModuleUnloaded(); DbFeed.ModuleEdge(_log); }
         _was.InModule = inModule;
         if (inModule && !DbPassScene.IsNull) StockConfig.OnScene((IntPtr)DbPassScene.Value);
 
-        // the overflow counter lives in a GL buffer, so its readback has to happen inside the 4.6 bracket:
-        // arm it one frame ahead of the log so the value the log prints is this period's
         int period = Diag._loggedOnce ? LogEvery : FirstLogAt;
-        if (Counters._frames == period - 2) _takeOverflow = true;
         if (++Counters._frames < period) return;
         Diag._loggedOnce = true;
         PeriodReport();
@@ -586,16 +568,13 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         /// <summary>The WHOLE scriptable block, by location. Picking entries one feature at a time was a
         /// standing bug: a content shader that starts reading a new slot compiles, links and reads zero --
         /// a feature that silently does nothing under Alloy and works under the engine. Filled at program
-        /// build; a slot the stage does not use is -1, which GL ignores.</summary>
+        /// build; a slot the stage does not use is -1, which the loose block drops.</summary>
         internal ScriptableLocs SInt;
         internal ScriptableLocs SFloat;
         internal ScriptableLocs SVec;
         /// <summary>Bit i set when slot i of that kind resolved to a live location, so the upload walks only
         /// what the program declares instead of 48 calls, nearly all of them to -1.</summary>
         internal int SIntLive, SFloatLive, SVecLive;
-        /// <summary>Does the program read the <c>CxEngine</c> block (<see cref="EngineBlock"/>)? A program that
-        /// never declares it -- every stage outside the content environments -- costs its bind nothing.</summary>
-        internal bool Engine;
     }
     /// <summary><c>GLRender::m_shaderExposedRuntimeData</c>, the struct the engine's own SetUniforms uploads
     /// these five from. Null (symbol unresolved) leaves the wind still and the roofs wherever they were

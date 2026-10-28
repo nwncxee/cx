@@ -44,7 +44,7 @@ internal static unsafe partial class OwnedTextures
     /// <summary>Funnel -> encoder, and encoder -> upload. Main thread counts <see cref="_transN"/> alone.</summary>
     private static readonly ConcurrentQueue<TransJob> _encodeQ = new(), _encodedQ = new();
     private static int _transN;
-    /// <summary>Bumped by <see cref="ContextLost"/>: a job minted before it names a texture of the dead context.</summary>
+    /// <summary>Bumped by <see cref="ContextLost"/>: a job minted before it names a texture of the dead device.</summary>
     private static int _transCtx;
     private static long _transDone, _transDropped, _transStale, _transFailed;
     /// <summary>The session's transcode cost in Stopwatch ticks -- the main-thread upload and the encoder
@@ -76,13 +76,12 @@ internal static unsafe partial class OwnedTextures
         _encodeWake.Release();
     }
 
-    /// <summary>One frame's uploads of finished jobs, on <see cref="Maintain"/>'s anchor: main thread, with
-    /// the ENGINE's context current -- the context the funnel minted the source in, and the only thread that
-    /// writes these tables. Every edit is by name, so the engine's bind cache is never touched, and its
-    /// unpack-buffer binding is restored.</summary>
+    /// <summary>One frame's uploads of finished jobs, on <see cref="Maintain"/>'s anchor: the main thread,
+    /// where the funnel minted the source and the only thread that writes these tables. Every edit is by
+    /// name, so the engine's bind cache is never touched.</summary>
     private static void DripTranscodes()
     {
-        if (!GlContextService.Available || _transN == 0) return;
+        if (!FramePump.Available || _transN == 0) return;
         long t0 = FrameZones.Now;
         for (int spent = 0; spent < TranscodeBudget && _encodedQ.TryDequeue(out TransJob? job); spent++)
         {
@@ -148,7 +147,7 @@ internal static unsafe partial class OwnedTextures
         if (job.Blocks.Length > 0) ArrayPool<byte>.Shared.Return(job.Blocks);
     }
 
-    /// <summary>The GL-NAME edge: every queued job names a source texture of the dead context, so the work is
+    /// <summary>The NAME edge: every queued job names a source texture of the device that went, so the work is
     /// worthless and the memory is not. What the encoder thread is holding right now cannot be taken back --
     /// at most one job, whose buffers stay its own.</summary>
     private static void DropTranscodes()

@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using CX.Framework;
 using CX.Graphics;
+using CX.Graphics.Rhi;
 
 namespace CX.Alloy;
 
@@ -37,7 +38,7 @@ internal static unsafe partial class Weather
     /// <summary>Per lit / grass program bind: whether the cache belongs to the cover view the stage is reading.</summary>
     private static void UploadCache(int locCache, bool cover)
     {
-        if (locCache >= 0) Gl.Uniform1f(locCache, cover && ShelterCache.V && ShelOk ? 1f : 0f);
+        if (locCache >= 0) LooseBlock.Set(locCache, cover && ShelterCache.V && ShelOk ? 1f : 0f);
     }
 
     /// <summary>The cover bake is gone (area edge, flush failure): so is the cache baked from it.</summary>

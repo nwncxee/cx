@@ -34,15 +34,15 @@ internal static unsafe class GuiModelSolve
 
     /// <summary>Does a draw add its light to what is under it, the way an effect's fire ring does? The blend factors are
     /// the engine's own, as the capture recorded them.</summary>
-    internal static bool IsAdditive(in GuiCapture.Draw d) => d.Blend && d.Dst == Gl.ONE;
+    internal static bool IsAdditive(in GuiCapture.Draw d) => d.Blend && d.Dst == EngineTokens.ONE;
 
     /// <summary>Oracle: hand-written draws.</summary>
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
-        var add = new GuiCapture.Draw { Blend = true, Src = Gl.SRC_ALPHA, Dst = Gl.ONE };
-        var over = new GuiCapture.Draw { Blend = true, Src = Gl.SRC_ALPHA, Dst = Gl.ONE_MINUS_SRC_ALPHA };
-        var off = new GuiCapture.Draw { Blend = false, Dst = Gl.ONE };
+        var add = new GuiCapture.Draw { Blend = true, Src = EngineTokens.SRC_ALPHA, Dst = EngineTokens.ONE };
+        var over = new GuiCapture.Draw { Blend = true, Src = EngineTokens.SRC_ALPHA, Dst = EngineTokens.ONE_MINUS_SRC_ALPHA };
+        var off = new GuiCapture.Draw { Blend = false, Dst = EngineTokens.ONE };
         check.Expect(IsAdditive(in add), "blending onto the destination (src alpha, one) adds light");
         check.Expect(!IsAdditive(in over), "the usual over blend does not");
         check.Expect(!IsAdditive(in off), "a draw with blending off does not, whatever its stale factors");

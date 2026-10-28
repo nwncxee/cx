@@ -5,7 +5,7 @@ using CX.Framework;
 namespace CX.Alloy;
 
 /// <summary>
-/// The per-area image-based lighting probe (ADR 0011): a small prefiltered colour cubemap captured from the
+/// The per-area image-based lighting probe: a small prefiltered colour cubemap captured from the
 /// Alloy scene draw, the ambient-specular source of every Alloy lit part, in LINEAR RGBA16F. It replaces the
 /// engine's pseudo-spheremap, which squashes the AREA's authored env map over a view-space normal -- which is
 /// why indoor metal reflects an outdoor sky -- so the scene env map is never bound by the Alloy pass.

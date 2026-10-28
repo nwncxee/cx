@@ -49,12 +49,11 @@ public sealed unsafe partial class CasterPass
     private static bool GatherActive => CasterGatherVk.Active;
     private static void Release(string why)
     {
-        // The VAO cache keys on VDO pointers that may now be freed; the GL objects can only be deleted inside
-        // the bracket, so the rebuild happens there (EnsureVao). Retiring the slots is also what makes this
-        // IDEMPOTENT: a lost 4.6 context disables its service permanently, so Lifecycle calls Release every
-        // frame thereafter, and a guard on the caster count alone would re-log forever.
-        // The texture-alpha verdicts go with it. They are keyed on GL texture IDS, and GL recycles the
-        // names of deleted objects -- the same trap the VAO cache re-checks every pass for. A recycled id
+        // Retiring the slots is what makes this IDEMPOTENT: a lost render device disables its service
+        // permanently, so Lifecycle calls Release every frame thereafter, and a guard on the caster count
+        // alone would re-log forever.
+        // The texture-alpha verdicts go with it. They are keyed on texture IDS, and a deleted object's name
+        // is reissued at once -- the trap every name-keyed table carries. A recycled id
         // inheriting the previous texture's verdict is a wasted fetch in one direction and, in the other, a
         // foliage texture classified as having no alpha: the solid slab back again, intermittently and only
         // after an area transition. That is not a bug anyone would trace.
@@ -74,7 +73,7 @@ public sealed unsafe partial class CasterPass
         _sunWinFrames = 0;
         Array.Fill(_dynPageOf, -1);
         if (_dynPageSlot.Length > 0) Array.Fill(_dynPageSlot, -1);
-        // ...and the log is once per RELEASE, not once per frame: a lost 4.6 context disables its service
+        // ...and the log is once per RELEASE, not once per frame: a lost render device disables its service
         // permanently, so Lifecycle calls this every frame thereafter and an unguarded line would fill the log.
         bool any = _prevCount > 0 || _liveCount > 0 || CascadeCount > 0 || CubeCount > 0;
         _invalidate = true; _moverCount = 0; _ghostCount = 0;

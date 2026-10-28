@@ -101,7 +101,7 @@ public static unsafe partial class MeshArena
         _dynDirty[_dynDirtyN++] = range;
     }
 
-    /// <summary>Render thread, inside the GL bracket, under <see cref="_gate"/> (called from
+    /// <summary>Inside the frame's recording, under <see cref="_gate"/> (called from
     /// <see cref="Pump"/>): send each dirty range's vertex slice. A range whose section has not reached the GPU
     /// yet is skipped -- the append upload that follows carries its bytes anyway.</summary>
     private static void DynUpload()

@@ -19,8 +19,8 @@ internal static unsafe class ToonStage
     private static ExtenderLog? _log;
     private static Matrix4x4 _proj;
     private static float* _depthEdge, _colorEdge, _hardness;
-    /// <summary>Everything the GL context owns, in one object: context loss replaces it, so no program name
-    /// or uniform location from the dead context survives as a field nobody remembered to zero.</summary>
+    /// <summary>Everything the device owns, in one object: context loss replaces it, so no program name or
+    /// uniform location from the dead device survives as a field nobody remembered to zero.</summary>
     private sealed class ToonState
     {
         public uint Prog;
@@ -72,7 +72,7 @@ internal static unsafe class ToonStage
     /// <summary>The stage's terms on its Vulkan program, -1 where the program does not read one.</summary>
     internal readonly record struct VkLocs(int Proj, int Bands, int Ink, int Edge, int DepthThresh, int ColorThresh, int Hardness);
 
-    /// <summary>...resolved inside the shim's resolve of that program.</summary>
+    /// <summary>...resolved inside that program's open resolve.</summary>
     internal static VkLocs LocateVk(GuiVkProg p)
         => new(p.Loc("uProj"), p.Loc("uBands"), p.Loc("uInk"), p.Loc("uEdge"), p.Loc("uDepthThresh"), p.Loc("uColorThresh"),
                p.Loc("uHardness"));
@@ -81,13 +81,13 @@ internal static unsafe class ToonStage
     internal static void WriteVk(in VkLocs l)
     {
         (float ink, float depth, float colour, float hard) = Dials();
-        VkUniformShim.Set(l.Proj, _proj);
-        VkUniformShim.Set(l.Bands, Post.ToonBands.V);
-        VkUniformShim.Set(l.Ink, ink);
-        VkUniformShim.Set(l.Edge, Post.ToonEdge.V);
-        VkUniformShim.Set(l.DepthThresh, depth);
-        VkUniformShim.Set(l.ColorThresh, colour);
-        VkUniformShim.Set(l.Hardness, hard);
+        LooseBlock.Set(l.Proj, _proj);
+        LooseBlock.Set(l.Bands, Post.ToonBands.V);
+        LooseBlock.Set(l.Ink, ink);
+        LooseBlock.Set(l.Edge, Post.ToonEdge.V);
+        LooseBlock.Set(l.DepthThresh, depth);
+        LooseBlock.Set(l.ColorThresh, colour);
+        LooseBlock.Set(l.Hardness, hard);
     }
 
     /// <summary>The stage text. Display space in, display space out; the size comes off the depth texture

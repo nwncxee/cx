@@ -134,8 +134,8 @@ internal static unsafe partial class PostStack
             bool aa = st.Name == "aa";
             if (aa) SmaaStage.PassesVk(cl, read, log);
             PostChainVk.Open(v.P!);
-            VkUniformShim.Set(v.Dither, last ? PostChain.DitherLsb : 0f);
-            if (st.Value != null) VkUniformShim.Set(v.Param, st.Value());
+            LooseBlock.Set(v.Dither, last ? PostChain.DitherLsb : 0f);
+            if (st.Value != null) LooseBlock.Set(v.Param, st.Value());
             if (st == _fbpost) FbPostStage.WriteVk(in v.Fb, last ? display : full);
             if (v.P!.Stage >= 0)
             {
@@ -169,7 +169,7 @@ internal static unsafe partial class PostStack
             if (spliced == raw) return;
             raw = spliced;
         }
-        GlProgram.Texts(PostChain.ShdPostVs, ShaderStages.Source(PostChain.ShdPostVs), st.Resref, raw,
+        ShaderTexts.Pair(PostChain.ShdPostVs, ShaderStages.Source(PostChain.ShdPostVs), st.Resref, raw,
                         log, $"PostStack {st.Name}", out string vs, out string fs);
         if (!(ShaderContract.DisplaySafe(fs) && ShaderContract.SlotSafe(fs, "uSrc")))
         {
@@ -255,10 +255,10 @@ internal static unsafe partial class PostStack
         if (!Matrix4x4.Invert(*vp, out Matrix4x4 inv)) return false;
         Matrix4x4 prev = MotionVectors.NoteVk(vpClean, AlloyRenderer.FrameSeq);
         PostChainVk.Open(s.Motion);
-        VkUniformShim.Set(s.MInvVp, inv);
-        VkUniformShim.Set(s.MPrevVp, prev);
-        VkUniformShim.Set(s.MSize, [(float)w, h]);
-        VkUniformShim.Set(s.MJitter, [PostChain.JitterX, PostChain.JitterY]);
+        LooseBlock.Set(s.MInvVp, inv);
+        LooseBlock.Set(s.MPrevVp, prev);
+        LooseBlock.Set(s.MSize, [(float)w, h]);
+        LooseBlock.Set(s.MJitter, [PostChain.JitterX, PostChain.JitterY]);
         int at = PostChainVk.Close(cl, s.Motion);
         PostChainVk.Draw(cl, s.Motion, Format.Rg16F, PostChainVk.Blend.None, s.Vel, LoadOp.DontCare, new Rect(0, 0, w, h), at,
                          new PostChainVk.Inputs(default, default, depth), log);
@@ -272,9 +272,9 @@ internal static unsafe partial class PostStack
     {
         ImageId read = s.Cur == 0 ? s.Hist0 : s.Hist1, write = s.Cur == 0 ? s.Hist1 : s.Hist0;
         PostChainVk.Open(s.Taa!);
-        VkUniformShim.Set(s.TBlend, s.HistValid ? PostChain.TaaBlend : 1f);
-        VkUniformShim.Set(s.TUpsample, s.Up ? 1 : 0);
-        VkUniformShim.Set(s.TJitterPx, [PostChain.JitterX * 0.5f * s.W, PostChain.JitterY * 0.5f * s.H]);
+        LooseBlock.Set(s.TBlend, s.HistValid ? PostChain.TaaBlend : 1f);
+        LooseBlock.Set(s.TUpsample, s.Up ? 1 : 0);
+        LooseBlock.Set(s.TJitterPx, [PostChain.JitterX * 0.5f * s.W, PostChain.JitterY * 0.5f * s.H]);
         int at = PostChainVk.Close(cl, s.Taa!);
         PostChainVk.Draw(cl, s.Taa!, Format.Rgba16F, PostChainVk.Blend.None, write, LoadOp.DontCare, new Rect(0, 0, s.HistW, s.HistH), at,
                          new PostChainVk.Inputs(cur, default, depth, read, s.Vel, HistLinear: true), log);

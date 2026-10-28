@@ -55,7 +55,7 @@ public sealed unsafe partial class MovieService : IExtenderService
         MovieFrame.Install(log, hooks);
         FrameRegistry.Global.Register(FramePhase.PrePresent, LastBeforePresent, DrawPending, "Movie.frame", log);
         FrameRegistry.Global.Register(FramePhase.PostPresent, 5, AgePresent, "Movie.onscreen", log);
-        log.Info("Movies: Alloy draws the movie frame from the decode, in its own context and into the present "
+        log.Info("Movies: Alloy draws the movie frame from the decode, into the present "
                + "image (the engine keeps the decode, the pacing and the present)");
     }
 
@@ -124,9 +124,9 @@ public sealed unsafe partial class MovieService : IExtenderService
 
     // ---- the draw ----
 
-    /// <summary>Everything the draw owns: the GL names, which belong to ALLOY's 4.6 context, and the latches
+    /// <summary>Everything the draw owns: the texture names, which belong to ALLOY's device, and the latches
     /// that keep a refusal from re-failing twenty-four times a second. Never replaced --
-    /// <see cref="ContextLost"/> drops the names alone, so a context that went does not un-say a refusal.</summary>
+    /// <see cref="ContextLost"/> drops the names alone, so a device that went does not un-say a refusal.</summary>
     private sealed class MovieDrawState
     {
         internal bool Stood, Announced, SaidNoContext, SaidNoScreen, KnobSaid;
@@ -152,8 +152,8 @@ public sealed unsafe partial class MovieService : IExtenderService
         return false;
     }
 
-    /// <summary>Something the frame needs is not there YET -- the context has not come up or a render thread
-    /// holds it, the engine has not sized its window. Not this mechanism failing, so it is said once per
+    /// <summary>Something the frame needs is not there YET -- the render device has not come up, or the engine
+    /// has not sized its window. Not this mechanism failing, so it is said once per
     /// reason and NOT latched: this frame is the engine's quad's (nobody's on Vulkan), and the next one may well draw.</summary>
     private static bool NotYet(ref bool said, string why)
     {
@@ -163,15 +163,15 @@ public sealed unsafe partial class MovieService : IExtenderService
         return false;
     }
 
-    /// <summary>Put the frame on the screen: one 4.6 bracket around the upload and the quad, then the engine
-    /// context's hand-back blit. False = the engine's own quad should draw this frame instead.</summary>
+    /// <summary>Put the frame on the screen: the upload, the quad and the hand-back blit. False = the engine's
+    /// own quad should draw this frame instead.</summary>
     private static bool Draw(int frameW, int frameH, int texW, int texH)
     {
         if (_log == null || _s.Stood) return false;
         if (frameW <= 0 || frameH <= 0 || texW < frameW || texH < frameH)
             return Stand($"the decoder handed us a {frameW}x{frameH} frame in a {texW}x{texH} texture");
-        // The engine's own window size, read before the bracket: ShowFrame's ortho is built from it and the
-        // present image is sized to it, where the live GL viewport is whatever the last pass left. A zero
+        // The engine's own window size, read up front: ShowFrame's ortho is built from it and the present
+        // image is sized to it, where the live viewport is whatever the last pass left. A zero
         // READ is transient -- the engine sizes its window late -- so only the symbols are fatal.
         if (ScreenW == null || ScreenH == null) return Stand("g_nScreenWidth/Height did not resolve");
         int w = *ScreenW, h = *ScreenH;

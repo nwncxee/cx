@@ -102,9 +102,9 @@ public sealed unsafe partial class AlloyRenderer
         side.Reset();
         int arena0 = s.ArenaUsed;
         Array.Clear(p.Block);
-        VkUniformShim.Capture(p.Members, p.Block);
-        VkUniformShim.Set(o.Viz, OitPass.Viz);
-        VkUniformShim.EndCapture();
+        LooseBlock.Capture(p.Members, p.Block);
+        LooseBlock.Set(o.Viz, OitPass.Viz);
+        LooseBlock.EndCapture();
         int at = p.Block.Length == 0 ? 0 : VkArena(p.Block);
         if (at < 0) return false;
         Span<BufferBinding> ubo = stackalloc BufferBinding[1];

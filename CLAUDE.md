@@ -183,7 +183,9 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
   the files that keep it -- is CX0003 (`tools/analyzers/EngineGl.cs`), which the compiler checks because it can
   tell a constant from an entry point and an `Init` guard from a call; this gate does the one thing the compiler
   cannot, and refuses a permission that outlived its file. The list is read out of `EngineGl.cs`, never restated.
-  New work records on the seam (`managed/Rhi/`, `CX.Rhi`); the GL backend under `managed/Graphics/Rhi/` is gone.
+  The only GL CX keeps draws CX's own windows on the engine's renderer in a session Vulkan refused, plus the
+  stubs for the entry points the engine itself imports; new work records on the seam (`managed/Rhi/`, `CX.Rhi`).
+  GL enum numbers the engine's own data speaks are `EngineTokens`, not an entry point, and need no permission.
 - `selfcheck.sh`: inside a `*SelfCheck*` file or a `SelfCheck` method, an `Expect` that cannot fail fails --
   a compile-time-constant condition, a `const` compared to its own kind of literal (over `==` `!=` `<` `>`
   `<=` `>=`, the const named bare or as `Type.CONST` from any file), or the same text on both sides of a
@@ -215,16 +217,14 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
   passes that bind before they draw; `UboSlots.Check` pins the GLSL to it and `Std140.Pin` pins each block's
   members to the struct that stages them.
 - `uniform-blocks.sh`: a loose `Gl.Uniform*` call site under `managed/` counts against
-  `uniform-blocks.baseline`, which may only shrink -- a non-opaque uniform belongs in a std140 block on a
-  `UboSlots` point. A call that survives lands in the Vulkan block through `VkUniformShim`, and sampler units
-  are opaque and count too, so a file need not reach zero; `python3 tools/gates/uniform-blocks.py -v` lists each
-  site.
+  `uniform-blocks.baseline`, which may only shrink. Alloy writes the Vulkan uniform block itself
+  (`LooseBlock`), so every site left is the vanilla CX-UI path drawing on the engine's own renderer, where
+  sampler units are opaque and count too; `python3 tools/gates/uniform-blocks.py -v` lists each site.
 - `gpu-frees.sh`: an immediate `Gl.Delete{Textures,Buffers,Framebuffers,VertexArrays,Renderbuffers,Samplers}`
-  call site under `managed/` counts against `gpu-frees.baseline`, which may only shrink -- a GL object freed on
-  a lifetime edge goes to `GpuGraveyard.Retire`, whose drain deletes it once the frames in flight are done with
-  it. Alloy's own objects are Vulkan's (`VkBackend` holds a freed one past its submit ring), so what is left is
-  the GL that stays. A creation failure and a scratch object inside one bracket are legitimate, so a file need
-  not reach zero; `python3 tools/gates/gpu-frees.py -v` lists each site.
+  call site under `managed/` counts against `gpu-frees.baseline`, which may only shrink. Alloy's objects are
+  Vulkan's, destroyed through the backend, which holds a freed one past its submit ring, so every site left is
+  the vanilla CX-UI path -- which owns its objects for the session and frees them where they die;
+  `python3 tools/gates/gpu-frees.py -v` lists each site.
 - `compiler-rules.sh`: a `#pragma warning disable` or `SuppressMessage` of a `CX` rule, an RS0030 pragma outside
   `managed/Framework/` or with no `// <reason>` on its line, or a `NoWarn`/severity override lowering either in build config, fails.
 - `local-paths.sh`: a home directory, mount point or personal checkout path in a tracked file fails

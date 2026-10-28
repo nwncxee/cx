@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Numerics;
 using CX.Framework;
 using CX.Graphics;
+using CX.Graphics.Rhi;
 
 namespace CX.Alloy;
 
@@ -77,8 +78,8 @@ internal static unsafe partial class Weather
     internal static void UploadMap(int locXf, int locP, bool capturing)
     {
         bool on = MapLive && !capturing && Enabled.V;
-        if (locXf >= 0) Gl.Uniform4f(locXf, 0f, 0f, on ? _mapTpm : 0f, WetStrength.V);
-        if (locP >= 0) Gl.Uniform4f(locP, PuddleDepth.V, MathF.Max(PuddleEdge.V * PuddleDepth.V, 1e-4f), MapShelterM, Puddles.V);
+        if (locXf >= 0) LooseBlock.Set(locXf, 0f, 0f, on ? _mapTpm : 0f, WetStrength.V);
+        if (locP >= 0) LooseBlock.Set(locP, PuddleDepth.V, MathF.Max(PuddleEdge.V * PuddleDepth.V, 1e-4f), MapShelterM, Puddles.V);
     }
 
     /// <summary>The area edge: the map belongs to the area it was latched in.</summary>

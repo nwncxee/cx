@@ -141,7 +141,7 @@ internal static unsafe class GuiPass
     {
         int w = *_screenW, h = *_screenH;
         if (PresentTarget.Width != w || PresentTarget.Height != h) PresentTarget.Ensure(w, h);
-        if (!PresentTarget.Composed) { if (GlContextService.WorkDue) GlContextService.RunInBracketHere(); Db.MeshArena.Pump(); }
+        if (!PresentTarget.Composed) { if (FramePump.WorkDue) FramePump.RunDeferred(); Db.MeshArena.Pump(); }
         return VulkanFlush(from, mid, to, windows);
     }
 
@@ -161,10 +161,9 @@ internal static unsafe class GuiPass
     /// <summary>The GUI's resources die with the device.</summary>
     internal static void ContextLost()
     {
-        CX.Ui.TextRig.ContextLost();   // the windows' VAO and programs went with it
         CX.Ui.TextRig.VkContextLost();
         UiScene.ContextLost();
-        TextAtlas.ContextLost();   // CX-119: every font atlas went with the context
+        TextAtlas.ContextLost();   // every font atlas went with the device
         GuiPassVk.ContextLost();   // the Vulkan device went with the context, and every image and program on it
     }
 

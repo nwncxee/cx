@@ -67,9 +67,9 @@ internal static unsafe partial class Weather
     internal static void WriteEsmVk(int locStep, int locFirst, bool first)
     {
         float half = CoverSoft.V * 0.25f / MathF.Max(CoverRange.V, 1f);
-        if (first) VkUniformShim.Set(locStep, [half / 6f, 0f]);
-        else VkUniformShim.Set(locStep, [0f, half / 6f]);
-        VkUniformShim.Set(locFirst, first ? 1 : 0);
+        if (first) LooseBlock.Set(locStep, [half / 6f, 0f]);
+        else LooseBlock.Set(locStep, [0f, half / 6f]);
+        LooseBlock.Set(locFirst, first ? 1 : 0);
     }
 
     /// <summary>The bake <paramref name="bake"/> was filtered (<paramref name="ok"/>) on Vulkan: the lit stage's
@@ -132,14 +132,14 @@ internal static unsafe partial class Weather
     internal static void WriteIntegrateVk(Dictionary<string, int> n, float dt, bool clear)
     {
         int size = _vks.MapSize;
-        VkUniformShim.Set(Member(n, "uMapSize"), [size, size]);
+        LooseBlock.Set(Member(n, "uMapSize"), [size, size]);
         bool rain = CurrentKind == Kind.Rain && Density > 0f;
         float soak = rain ? Density / MathF.Max(AccumSec.V, 1e-3f) : 0f;
         float dry = 1f / MathF.Max(DrySec.V, 1e-3f);
         float mode = clear ? -1f : _mapArrive && rain && Arrive.V ? 1f : 0f;
         if (mode > 0f) _mapArrive = false;
-        VkUniformShim.Set(Member(n, "uStep"), [dt, soak, dry, mode]);
-        VkUniformShim.Set(Member(n, "uFill"), [PuddleThreshold.V, 1f / MathF.Max(AccumSec.V, 1e-3f), 0.5f / MathF.Max(DrySec.V, 1e-3f), 0f]);
+        LooseBlock.Set(Member(n, "uStep"), [dt, soak, dry, mode]);
+        LooseBlock.Set(Member(n, "uFill"), [PuddleThreshold.V, 1f / MathF.Max(AccumSec.V, 1e-3f), 0.5f / MathF.Max(DrySec.V, 1e-3f), 0f]);
         _mapTicksDone++;
     }
 
@@ -156,12 +156,12 @@ internal static unsafe partial class Weather
         int x1 = Math.Min((int)MathF.Ceiling((c.X + reach) * _mapTpm), size), y1 = Math.Min((int)MathF.Ceiling((c.Y + reach) * _mapTpm), size);
         w = x1 - x0; h = y1 - y0;
         if (w <= 0 || h <= 0) return false;
-        VkUniformShim.Set(Member(n, "uCoverVp"), CasterPass.CoverVp);
-        VkUniformShim.Set(Member(n, "uCoverVpInv"), inv);
-        VkUniformShim.Set(Member(n, "uMapXf"), [0f, 0f, _mapTpm, CasterPass.CoverCentre.Z]);
-        VkUniformShim.Set(Member(n, "uMapSize"), [size, size]);
-        VkUniformShim.Set(Member(n, "uRectMin"), [x0, y0]);
-        VkUniformShim.Set(Member(n, "uBasin"), [Basin.V, MathF.Max(PuddleDepth.V * 4f, 0.05f)]);
+        LooseBlock.Set(Member(n, "uCoverVp"), CasterPass.CoverVp);
+        LooseBlock.Set(Member(n, "uCoverVpInv"), inv);
+        LooseBlock.Set(Member(n, "uMapXf"), [0f, 0f, _mapTpm, CasterPass.CoverCentre.Z]);
+        LooseBlock.Set(Member(n, "uMapSize"), [size, size]);
+        LooseBlock.Set(Member(n, "uRectMin"), [x0, y0]);
+        LooseBlock.Set(Member(n, "uBasin"), [Basin.V, MathF.Max(PuddleDepth.V * 4f, 0.05f)]);
         _mapScatters++;
         return true;
     }
@@ -177,11 +177,11 @@ internal static unsafe partial class Weather
     {
         if (!Matrix4x4.Invert(CasterPass.CoverVp, out Matrix4x4 inv)) return false;
         Vector4 p = ShelterParams();
-        VkUniformShim.Set(Member(n, "uCoverVp"), CasterPass.CoverVp);
-        VkUniformShim.Set(Member(n, "uCoverVpInv"), inv);
-        VkUniformShim.Set(Member(n, "uSize"), [size, size]);
-        VkUniformShim.Set(Member(n, "uEdge"), [p.X, p.Y, p.Z, p.W]);
-        VkUniformShim.Set(Member(n, "uHollow"), HollowStepM / (CoverDepthRadii * MathF.Max(CoverRange.V, 1f)));
+        LooseBlock.Set(Member(n, "uCoverVp"), CasterPass.CoverVp);
+        LooseBlock.Set(Member(n, "uCoverVpInv"), inv);
+        LooseBlock.Set(Member(n, "uSize"), [size, size]);
+        LooseBlock.Set(Member(n, "uEdge"), [p.X, p.Y, p.Z, p.W]);
+        LooseBlock.Set(Member(n, "uHollow"), HollowStepM / (CoverDepthRadii * MathF.Max(CoverRange.V, 1f)));
         _shelBaked = p;
         return true;
     }
@@ -194,7 +194,7 @@ internal static unsafe partial class Weather
     internal static bool NoiseOwedVk => !_vks.NoiseDone;
     internal static void NoiseDoneVk() => _vks.NoiseDone = true;
 
-    internal static void WriteNoiseVk(Dictionary<string, int> n) => VkUniformShim.Set(Member(n, "uSize"), NoiseSize);
+    internal static void WriteNoiseVk(Dictionary<string, int> n) => LooseBlock.Set(Member(n, "uSize"), NoiseSize);
 
     /// <summary>This frame's ripple rate, 0 while nothing rings; the tile's side.</summary>
     internal static float RippleRateVk => SplashRate(false);
@@ -202,9 +202,9 @@ internal static unsafe partial class Weather
 
     internal static void WriteRippleVk(Dictionary<string, int> n, float rate)
     {
-        VkUniformShim.Set(Member(n, "uTimeOfDay"), AlloyRenderer.TimeOfDay);
-        VkUniformShim.Set(Member(n, "uSize"), RippleSize);
-        VkUniformShim.Set(Member(n, "uRate"), rate);
+        LooseBlock.Set(Member(n, "uTimeOfDay"), AlloyRenderer.TimeOfDay);
+        LooseBlock.Set(Member(n, "uSize"), RippleSize);
+        LooseBlock.Set(Member(n, "uRate"), rate);
         _ripBakes++;
     }
 

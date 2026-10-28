@@ -33,7 +33,7 @@ internal static unsafe class TriggerHighlight
     /// for the DB period line.</summary>
     internal static long Enrolled, Drawn;
 
-    /// <summary>Once per world frame, in ENGINE context and BEFORE the frame anchor: snapshot the highlighted
+    /// <summary>Once per world frame, on the game thread and BEFORE the frame anchor: snapshot the highlighted
     /// triggers from <see cref="Db.DbTriggers"/>' copies, never the engine objects. No in-view test: an unseen prism
     /// adds nothing. The filter is the ALPHA, 0.0 for every trigger nobody points at.</summary>
     internal static void Enroll()
@@ -103,8 +103,8 @@ internal static unsafe class TriggerHighlight
         int bytes = (PointBase + _points) * sizeof(Vector4);
         cl.UpdateBuffer(s.Buf, 0, System.Runtime.InteropServices.MemoryMarshal.AsBytes(new ReadOnlySpan<Vector4>(_stage, 0, PointBase + _points)));
         PostChainVk.Open(s.Prog);
-        VkUniformShim.Set(s.Count, _count);
-        VkUniformShim.Set(s.InvVp, inv);
+        LooseBlock.Set(s.Count, _count);
+        LooseBlock.Set(s.InvVp, inv);
         int at = PostChainVk.Close(cl, s.Prog);
         PostChainVk.Draw(cl, s.Prog, Format.Rgba8, PostChainVk.Blend.Over, composite, LoadOp.Load,
                          new Rect(display[0], display[1], display[2], display[3]), at,

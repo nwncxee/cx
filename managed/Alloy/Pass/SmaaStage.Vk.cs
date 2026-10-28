@@ -75,11 +75,11 @@ internal static unsafe partial class SmaaStage
     }
 
     /// <summary><c>uRt</c>, SMAA's (1/w, 1/h, w, h), into the open capture.</summary>
-    internal static void WriteVk(int loc) => VkUniformShim.Set(loc, [1f / _vk.W, 1f / _vk.H, _vk.W, _vk.H]);
+    internal static void WriteVk(int loc) => LooseBlock.Set(loc, [1f / _vk.W, 1f / _vk.H, _vk.W, _vk.H]);
 
     private static GuiVkProg? Make(VkBackend vk, string vs, string fsRef, string label, System.Action<GuiVkProg> locate, ExtenderLog log)
     {
-        GlProgram.Texts(PostChain.ShdPostVs, vs, fsRef, ShaderStages.Source(fsRef), log, label, out string v, out string f);
+        ShaderTexts.Pair(PostChain.ShdPostVs, vs, fsRef, ShaderStages.Source(fsRef), log, label, out string v, out string f);
         return PostChainVk.Program(vk, v, f, label, locate, log);
     }
 

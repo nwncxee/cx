@@ -2,15 +2,13 @@ using System;
 using System.Runtime.InteropServices;
 using CX.Alloy.Db;
 using CX.Framework;
-using CX.Graphics;
 
 namespace CX.Alloy;
 
-/// <summary>The GL half of CX-owned fonts -- a baked TTF atlas becomes a CX-owned texture, in immutable
-/// <c>RGBA8</c> storage with NEAREST and no mips, which is the engine's own sampling with a sized format.
-/// Lives on the submission side because <c>Alloy/Scene</c> and <c>Alloy/Db</c> name no GL. A BITMAP font's
-/// atlas is an ordinary resref-keyed texture and has no handle here yet: counted and said, never drawn blank.</summary>
-internal static unsafe partial class TextAtlas
+/// <summary>The upload half of CX-owned fonts -- a baked TTF atlas becomes a CX-owned <c>RGBA8</c> image,
+/// sampled NEAREST with no mips, which is the engine's own font sampling. A BITMAP font's atlas is an
+/// ordinary resref-keyed texture and has no image of its own here: counted and said, never drawn blank.</summary>
+internal static partial class TextAtlas
 {
     private static ExtenderLog? _log;
     /// <summary>One registry reference per bitmap-font texture, held for the session like the font itself.</summary>
@@ -27,13 +25,12 @@ internal static unsafe partial class TextAtlas
 
     internal static void Install(ExtenderLog log) => _log = log;
 
-    /// <summary>Is there anything for <see cref="Pump"/> to do? Two list counts, so its caller can skip
-    /// ENTERING Alloy's context on the frames -- nearly all of them -- with no atlas to build or free.</summary>
+    /// <summary>Is there anything for <see cref="Pump"/> to do? Two list counts, so its caller can skip the
+    /// drain on the frames -- nearly all of them -- with no atlas to build or free.</summary>
     internal static bool Due => TextFontBake.Pending.Count > 0 || TextFonts.Orphans.Count > 0;
 
     /// <summary>Drain the bake queue. Cold: it runs on the frames right after a font is first named, and does
-    /// nothing at all on every other frame. On GL it must be called inside Alloy's bracket (4.5 DSA uploads,
-    /// GL deletes); on Vulkan it touches only Vulkan images and needs no context.</summary>
+    /// nothing at all on every other frame. It touches only Vulkan images.</summary>
     internal static void Pump()
     {
         Sweep();
@@ -65,7 +62,7 @@ internal static unsafe partial class TextAtlas
         }
     }
 
-    /// <summary>Delete the atlases nothing refers to any more. Cold, and the one place a font's GL name dies.</summary>
+    /// <summary>Delete the atlases nothing refers to any more. Cold, and the one place a font's image dies.</summary>
     private static void Sweep()
     {
         var orphans = TextFonts.Orphans;
@@ -73,7 +70,6 @@ internal static unsafe partial class TextAtlas
         for (int i = 0; i < orphans.Count; i++)
         {
             if (orphans[i] == 0) continue;
-            if (!Renderer.OnVulkan) GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, orphans[i]);   // a Vulkan name has no GL object
             Forget(orphans[i]);
             Deleted++;
         }
@@ -82,24 +78,15 @@ internal static unsafe partial class TextAtlas
 
     private static bool Upload(TextFontBake.PendingAtlas p)
     {
-        // Not an error on the frames before the 4.6 context is up: the pending list is re-pumped every
-        // frame and the upload lands as soon as the entry points resolve. Only a wait that never ends is said.
-        if (!Renderer.OnVulkan && (Gl.CreateTextures == null || Gl.TextureStorage2D == null || Gl.TextureSubImage2D == null
-            || Gl.TextureParameteri == null))
-        {
-            if (++p.Waited == GiveUpFrames)
-                _log?.Always("TextAtlas: the DSA texture entry points never resolved -- CX fonts do NOT DRAW");
-            return false;
-        }
-        // Asked before the GL name exists: a flush on Vulkan samples the mirror, and the entry stays pending (with
-        // its pixels) until the device is up, so there is no GL name to leak per retry.
+        // Asked before the device is up: the entry stays pending with its pixels and the upload lands as soon as
+        // the device exists, so nothing is minted per retry. Only a wait that never ends is said.
         if (!MirrorReady())
         {
             if (++p.Waited == GiveUpFrames)
                 _log?.Always("TextAtlas: the Vulkan device never came up on this thread -- CX fonts do NOT DRAW");
             return false;
         }
-        uint t = Renderer.OnVulkan ? VkTextures.NewName() : UploadGl(p);
+        uint t = VkTextures.NewName();
         if (t == 0) return false;
         p.Font.Atlas = t;
         MirrorVk(t, p);
@@ -110,23 +97,7 @@ internal static unsafe partial class TextAtlas
         return true;
     }
 
-    /// <summary>The atlas into a new GL texture with the engine's font sampling; 0 when the driver gave no name.</summary>
-    private static uint UploadGl(TextFontBake.PendingAtlas p)
-    {
-        uint t;
-        Gl.CreateTextures(Gl.TEXTURE_2D, 1, &t);
-        if (t == 0) return 0;
-        Gl.TextureStorage2D(t, 1, Gl.RGBA8, p.Width, p.Height);
-        Gl.TextureSubImage2D(t, 0, 0, 0, p.Width, p.Height, Gl.RGBA, Gl.UNSIGNED_BYTE, (void*)p.Pixels);
-        // The engine's own font sampling: nearest on both filters, no mips. Anything else moves glyph pixels.
-        Gl.TextureParameteri(t, Gl.TEXTURE_MIN_FILTER, (int)Gl.NEAREST);
-        Gl.TextureParameteri(t, Gl.TEXTURE_MAG_FILTER, (int)Gl.NEAREST);
-        Gl.TextureParameteri(t, Gl.TEXTURE_WRAP_S, (int)Gl.CLAMP_TO_EDGE);
-        Gl.TextureParameteri(t, Gl.TEXTURE_WRAP_T, (int)Gl.CLAMP_TO_EDGE);
-        return t;
-    }
-
-    /// <summary>The context went: every atlas name is gone with it, so every font is re-baked on its next ask
+    /// <summary>The device went: every atlas image is gone with it, so every font is re-baked on its next ask
     /// (the epoch moves, which is what invalidates every cached quad list).</summary>
     internal static void ContextLost()
     {

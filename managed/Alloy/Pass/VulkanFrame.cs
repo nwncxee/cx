@@ -7,8 +7,7 @@ using CX.Rhi;
 namespace CX.Alloy;
 
 /// <summary>The world frame on Vulkan: Vulkan culls, draws the colour bracket into its own scene
-/// targets and encodes them into the composite, which the GUI then draws over and Vulkan presents. Inside the 4.6
-/// bracket.</summary>
+/// targets and encodes them into the composite, which the GUI then draws over and Vulkan presents.</summary>
 internal static class VulkanFrame
 {
     private sealed class FrameState

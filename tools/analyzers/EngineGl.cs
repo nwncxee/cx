@@ -16,26 +16,16 @@ public sealed class EngineGl : DiagnosticAnalyzer
 
     private const string GlType = "CX.Graphics.Gl";
 
-    /// <summary>Where <c>Gl.*</c> may be used: the bindings, CX's own UI windows on the vanilla renderer, the
-    /// engine's model views, the engine texture path's stood-down arm, and the uniform shim with its callers.
+    /// <summary>Where <c>Gl.*</c> may be used: the binding and its program builder and probe, the stubs for the
+    /// entry points the engine itself imports, CX's own windows and the NUI model view drawn on the engine's
+    /// renderer in a session Vulkan refused, and the engine draw census.
     /// <c>tools/gates/gl-confined.sh</c> reads this list and refuses a name no file answers to.</summary>
     private static readonly string[] Allowed =
     {
-        "/managed/Graphics/Gl.cs", "/managed/Graphics/GlProgram.cs", "/managed/Graphics/GlContextService.cs",
-        "/managed/Graphics/RenderTarget.cs", "/managed/Graphics/ProgramBinary.cs", "/managed/Graphics/GlProbe.cs",
-        "/managed/Graphics/GlTexture.cs", "/managed/Graphics/GpuGraveyard.cs",
-        "/managed/Graphics/NullGl.cs", "/managed/Graphics/NullGl.Stubs.cs",
-        "/managed/Ui/TextRig.cs", "/managed/Ui/TextRig.Replay.cs", "/managed/Ui/UiHostService.cs",
-        "/managed/Ui/KnobPanelService.cs", "/managed/Alloy/Pass/TextAtlas.cs",
+        "/managed/Graphics/Gl.cs", "/managed/Graphics/GlProgram.cs", "/managed/Graphics/GlProbe.cs",
+        "/managed/Ui/TextRig.cs", "/managed/Ui/TextRig.Replay.cs",
         "/managed/Services/Nui/NuiModelEngine.cs", "/managed/Services/Nui/NuiModelEngine.Solve.cs",
-        "/managed/Services/Nui/NuiModelView.Gl.cs", "/managed/Services/Perf/DrawStatsService.cs",
-        "/managed/Alloy/DdsReader.Formats.cs", "/managed/Alloy/OwnedTextures.cs",
-        "/managed/Graphics/Vulkan/VkUniformShim.cs",
-        "/managed/Alloy/AlloyRenderer.Uniforms.cs", "/managed/Alloy/Programs.cs",
-        "/managed/Alloy/Pass/GrassField.cs", "/managed/Alloy/Pass/FogVolume.cs", "/managed/Alloy/Pass/SceneFog.cs",
-        "/managed/Alloy/Pass/StageEnv.cs", "/managed/Alloy/Pass/GuiContent.cs",
-        "/managed/Alloy/Pass/Weather.Surface.cs", "/managed/Alloy/Pass/Weather.Map.cs",
-        "/managed/Alloy/Pass/Weather.Shelter.cs", "/managed/Alloy/Pass/Weather.Esm.cs",
+        "/managed/Services/Nui/NuiModelView.Gl.cs",
     };
 
     private static readonly DiagnosticDescriptor Rule = new(
@@ -45,9 +35,10 @@ public sealed class EngineGl : DiagnosticAnalyzer
         "CX.Backend",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
-        description: "Alloy renders on Vulkan, so GL survives in a named set of files -- the bindings, CX's own UI windows on the "
-            + "vanilla renderer, the engine's model views and texture path, and the uniform shim. Gl's constants, its Init guard "
-            + "and a null check of an entry point are not GL work.");
+        description: "Alloy renders on Vulkan, so GL survives in a named set of files -- the binding, the stubs for the entry "
+            + "points the engine imports, and CX's own windows and NUI model view drawn on the engine's renderer in a session "
+            + "Vulkan refused. Gl's Init guard and a null check of an entry point are not GL work, and a GL enum number the "
+            + "engine's own data speaks is EngineTokens.");
 
     /// <inheritdoc/>
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);

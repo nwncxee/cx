@@ -248,7 +248,7 @@ internal static unsafe partial class GuiPassVk
     private static string Text(string resref, ExtenderLog log)
     {
         string what = $"GuiPassVk {resref}";
-        return ShaderResource.Tokens(VanillaShader.Splice(GlProgram.Lib(ShaderSource.Get(resref), log, what), log, what, true, true));
+        return ShaderResource.Tokens(VanillaShader.Splice(ShaderTexts.Lib(ShaderSource.Get(resref), log, what), log, what, true, true));
     }
 
     /// <summary>Nothing draws the game's panels after this -- the scene database has no engine traversal underneath --

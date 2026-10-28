@@ -82,8 +82,7 @@ internal static unsafe partial class OwnedTextures
         _single = Renderer.TexSingle.Boot;
         DdsReader.Attach(log);
         TexLoad.Attach(log);
-        // Zink bisect knobs: a handled texture's delete (auto = never on zink, whose bindless teardown faults on
-        // a worker thread there) and the non-resident call ahead of it
+        // bisect dials: whether a handled texture's name is deleted at all, and the non-resident call ahead of it
         _texDelete = Renderer.TexDelete.Boot;
         _handleDrop = Renderer.HandleDrop.Boot;
         if (_armed)
@@ -254,7 +253,7 @@ internal static unsafe partial class OwnedTextures
         // A cell already naming an owned texture is the engine re-uploading INTO our name (a Restore after a
         // warm hand-back, or a refresh): fresh storage under a new name, exactly as a re-upload always was.
 
-        if (!GlContextService.Available)   // no 4.6 context yet: RefreshPreContext brings these back through the funnel
+        if (!FramePump.Available)   // no render device yet: RefreshPreContext brings these back through the funnel
         {
             Declined(etid, Borrow.PreContext);
             _borrowed.Add(etid);
@@ -288,15 +287,11 @@ internal static unsafe partial class OwnedTextures
 
         if (single)
         {
-            // The engine's cell now names OUR texture; its own name never received pixels and dies here.
-            // The engine's bind cache still says the old name is bound on unit 0 -- a name that no longer
-            // exists, so the next AurTextureBindTID of ours compares unequal and binds. Deleting a bound name
-            // resets the binding to 0, which is the state that cache should read as.
+            // The engine's cell now names OUR texture. Its own name holds no object -- the engine uploaded
+            // into no GL this session -- and it will never return the old one, so Discard deletes it.
             cells[cell] = dst;
             if (cell == 0) b.GlId = (int)dst;
-            uint old = (uint)etid;
-            if (!_owned.Contains(old) && Gl.DeleteTextures != null) { Gl.DeleteTextures(1, &old); ScrubEngineBoundCache(old); }
-            else _engineHeld.Remove(old);   // a refresh INTO our name: the engine will never return the old one, so Discard deletes it
+            _engineHeld.Remove((uint)etid);
             _engineHeld.Add(dst);
             ForgetBorrow(etid);
             _singleUploads++;
@@ -414,17 +409,17 @@ internal static unsafe partial class OwnedTextures
     /// Accounting only -- a name with no image costs a zero, not a refusal.</summary>
     private static long Measure(uint tex) => VkTextures.Bytes(tex);
 
-    /// <summary>The GL-NAME edge: the objects went with the context. Names are dropped and nothing is deleted
-    /// -- deleting into a dead context is the terminal edge.</summary>
+    /// <summary>The NAME edge: the objects went with the device. Names are dropped and nothing is deleted --
+    /// deleting on a dead device is the terminal edge.</summary>
     internal static void ContextLost()
     {
         _res.Clear();
         _index.Clear();
         _owned.Clear();
         _borrowed.Clear();
-        _borrow = new();   // the ledger was about the dead context's names, and its driver limits with them
-        _pending.Clear(); _pendingForget.Clear(); foreach (var d in _deferred) d.Clear();   // the names died with the context
-        _transCtx++;   // a job the encoder still holds names a texture of the dead context: it drops at its upload
+        _borrow = new();   // the ledger was about the dead device's names, and its driver limits with them
+        _pending.Clear(); _pendingForget.Clear(); foreach (var d in _deferred) d.Clear();   // the names died with the device
+        _transCtx++;   // a job the encoder still holds names a texture of the dead device: it drops at its upload
         DropTranscodes();
         _stats.Clear();
         _meta.Clear(); _inFlight.Clear(); _pendingHandles.Clear(); _idleBytes = 0; _evictDue = false;

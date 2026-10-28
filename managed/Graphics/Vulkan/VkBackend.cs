@@ -287,8 +287,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         return false;
     }
 
-    /// <summary>The device, or null -- logged -- when the probe refuses or a creation step fails. Made with Alloy's
-    /// 4.6 context current, whose device UUID it is matched by.</summary>
+    /// <summary>The device, or null -- logged -- when the probe refuses or a creation step fails.</summary>
     public static VkBackend? TryCreate(ExtenderLog log)
     {
         if (Refusal(log) is string why) { log.Always($"VkBackend: REFUSED -- {why}"); return null; }

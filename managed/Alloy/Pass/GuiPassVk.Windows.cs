@@ -80,21 +80,21 @@ internal static unsafe partial class GuiPassVk
         public void Write()
         {
             ref UiCmd c = ref L.Cmds[Cmd];
-            VkUniformShim.Set(W.Proj, Ortho);
-            VkUniformShim.Set(W.Alpha, c.Alpha);
-            VkUniformShim.Set(W.Offset, [c.OffX, c.OffY]);
-            VkUniformShim.Set(W.Occl, [c.Wx, c.Wy, c.Wz, c.Occl ? c.Hidden : TextRig.NoSceneTest]);
-            VkUniformShim.Set(W.Anchor, [c.Ax, c.Ay]);
-            VkUniformShim.Set(W.Scene, Scene ? 1 : 0);
+            LooseBlock.Set(W.Proj, Ortho);
+            LooseBlock.Set(W.Alpha, c.Alpha);
+            LooseBlock.Set(W.Offset, [c.OffX, c.OffY]);
+            LooseBlock.Set(W.Occl, [c.Wx, c.Wy, c.Wz, c.Occl ? c.Hidden : TextRig.NoSceneTest]);
+            LooseBlock.Set(W.Anchor, [c.Ax, c.Ay]);
+            LooseBlock.Set(W.Scene, Scene ? 1 : 0);
             if (c.Kind == UiDrawKind.IconPlt)
             {
-                VkUniformShim.Set(W.Crop, [c.U1, c.V0]);
-                VkUniformShim.SetEach(W.Rows, L.Rows.AsSpan(c.RowsAt, TextRig.PltRows));
+                LooseBlock.Set(W.Crop, [c.U1, c.V0]);
+                LooseBlock.SetEach(W.Rows, L.Rows.AsSpan(c.RowsAt, TextRig.PltRows));
             }
             if (!Scene) return;
-            VkUniformShim.Set(W.Vp, Vp);
-            VkUniformShim.Set(W.DepthK, [K.X, K.Y]);
-            VkUniformShim.Set(W.View, [(float)L.ViewW, L.ViewH]);
+            LooseBlock.Set(W.Vp, Vp);
+            LooseBlock.Set(W.DepthK, [K.X, K.Y]);
+            LooseBlock.Set(W.View, [(float)L.ViewW, L.ViewH]);
         }
     }
 

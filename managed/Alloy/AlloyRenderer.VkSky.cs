@@ -103,7 +103,7 @@ public sealed unsafe partial class AlloyRenderer
         VkProg? p = null;
         if (native && StageResources.Live(stage) && VkPrograms.SkyNativeText(resref, stage, log) is { } nt && _vkSky.Dev is { } nd)
         {
-            p = VkBuild(nd, nt, $"sky {key}", lit: false, ContentShimBase + SkyShimBase + (uint)k.Hosted.Count, log);
+            p = VkBuild(nd, nt, $"sky {key}", lit: false, log);
             if (p != null) VkStageAttach(p, stage, -1);
             else StageResources.Fail(stage, "its Vulkan sky program did not build (logged above)", log);
             log.Always(p != null ? $"AlloyRenderer: the Vulkan sky hosts {key} -- the native stage, its images and passes on Vulkan"
@@ -111,17 +111,13 @@ public sealed unsafe partial class AlloyRenderer
         }
         else if (!native && VkPrograms.SkyText(resref, log) is { } t && _vkSky.Dev is { } dev)
         {
-            p = VkBuild(dev, t, $"sky {resref}", lit: false, ContentShimBase + SkyShimBase + (uint)k.Hosted.Count, log);
+            p = VkBuild(dev, t, $"sky {resref}", lit: false, log);
             log.Always(p != null ? $"AlloyRenderer: the Vulkan sky hosts {resref} -- the dome draws the content's own stage"
                                  : $"AlloyRenderer: the Vulkan sky program for {resref} did not build (logged above) -- the dome is NOT DRAWN");
         }
         k.Hosted[key] = p;
         return p;
     }
-
-    /// <summary>The fake GL program names the sky's hosted stages resolve their locations under: past the content
-    /// pairs' range, which is <see cref="ContentShimBase"/> plus a pair key.</summary>
-    private const uint SkyShimBase = 1 << 20;   // not-an-offset: a reserved name range
 
     /// <summary>The sky's pipeline for <paramref name="p"/> drawing arena format <paramref name="fmt"/> under blend
     /// <paramref name="blend"/>, made on first ask; a <paramref name="probe"/> face's keeps the target's alpha, the
@@ -164,22 +160,22 @@ public sealed unsafe partial class AlloyRenderer
     {
         VkColourState s = _vkc;
         Array.Clear(p.Block);
-        VkUniformShim.Capture(p.Members, p.Block);
+        LooseBlock.Capture(p.Members, p.Block);
         try
         {
-            VkUniformShim.Set(p.Vp, in vp);
-            VkUniformShim.Set(p.AlphaMip, Renderer.CutMip.V);
-            VkUniformShim.Set(p.Viz, _capturing ? 0 : _lightViz);
+            LooseBlock.Set(p.Vp, in vp);
+            LooseBlock.Set(p.AlphaMip, Renderer.CutMip.V);
+            LooseBlock.Set(p.Viz, _capturing ? 0 : _lightViz);
             Vector3 t = _skTint[i];
-            VkUniformShim.Set(p.Tint, [t.X, t.Y, t.Z]);
-            VkUniformShim.Set(p.SkyFog, SceneFog.SkyBand);
-            VkUniformShim.Set(p.Global, [t.X, t.Y, t.Z, _skAlpha[i]]);
+            LooseBlock.Set(p.Tint, [t.X, t.Y, t.Z]);
+            LooseBlock.Set(p.SkyFog, SceneFog.SkyBand);
+            LooseBlock.Set(p.Global, [t.X, t.Y, t.Z, _skAlpha[i]]);
             // stock's sky reads the inverse view's translation column alone, so the eye position is the whole of it
-            VkUniformShim.Set(p.ViewInv, Matrix4x4.CreateTranslation(_eyePos));
+            LooseBlock.Set(p.ViewInv, Matrix4x4.CreateTranslation(_eyePos));
             UploadFeatureTerms(p.F, viewport);
             VkStageFrame(p);
         }
-        finally { VkUniformShim.EndCapture(); }
+        finally { LooseBlock.EndCapture(); }
         int loose = VkArena(p.Block);
         if (loose < 0 || (p.ReadsEngine && VkEngine() < 0)) return false;
         Span<int> tex = _skTex[i];

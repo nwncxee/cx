@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Numerics;
 using CX.Framework;
 using CX.Graphics;
+using CX.Graphics.Rhi;
 
 namespace CX.Alloy;
 
@@ -190,25 +191,25 @@ internal static unsafe class FogVolume
         return true;
     }
 
-    /// <summary>The light pass's terms, into whichever program is bound -- GL's, or a Vulkan block under the shim.</summary>
+    /// <summary>The light pass's terms into the open loose block.</summary>
     internal static void WriteLight(in Terms t, in LightLocs l, int* viewport, float near, float far)
     {
         AlloyRenderer.BindPass(l.Cubes, viewport, near, far);
         Matrix4x4 inv = t.InvVp, prevVp = t.PrevVp;
         PushGrid(in l.Grid, t.W, t.H, t.D, t.LogZ, t.Far, &inv, t.Eye, t.Fwd, t.M, t.Origin);
-        Gl.Uniform2f(l.Height, t.Height.X, t.Height.Y);
-        Gl.Uniform2f(l.Noise, t.Noise.X, t.Noise.Y);
-        Gl.Uniform3f(l.Drift, t.Drift.X, t.Drift.Y, t.Drift.Z);
-        Gl.Uniform3f(l.Ambient, t.Ambient.X, t.Ambient.Y, t.Ambient.Z);
-        Gl.Uniform4f(l.Sun, t.Sun.X, t.Sun.Y, t.Sun.Z, t.Sun.W);
-        Gl.Uniform3f(l.Local, t.Local.X, t.Local.Y, t.Local.Z);
-        Gl.Uniform1f(l.Phase, t.Phase);
-        Gl.Uniform3f(l.Jitter, t.Jit.X, t.Jit.Y, t.Jit.Z);
-        Gl.UniformMatrix4fv(l.PrevVp, 1, 0, (float*)&prevVp);
-        Gl.Uniform4f(l.PrevZ, t.PrevZ.X, t.PrevZ.Y, t.PrevZ.Z, t.PrevZ.W);
+        LooseBlock.Set(l.Height, t.Height.X, t.Height.Y);
+        LooseBlock.Set(l.Noise, t.Noise.X, t.Noise.Y);
+        LooseBlock.Set(l.Drift, t.Drift.X, t.Drift.Y, t.Drift.Z);
+        LooseBlock.Set(l.Ambient, t.Ambient.X, t.Ambient.Y, t.Ambient.Z);
+        LooseBlock.Set(l.Sun, t.Sun.X, t.Sun.Y, t.Sun.Z, t.Sun.W);
+        LooseBlock.Set(l.Local, t.Local.X, t.Local.Y, t.Local.Z);
+        LooseBlock.Set(l.Phase, t.Phase);
+        LooseBlock.Set(l.Jitter, t.Jit.X, t.Jit.Y, t.Jit.Z);
+        LooseBlock.Set(l.PrevVp, prevVp);
+        LooseBlock.Set(l.PrevZ, t.PrevZ.X, t.PrevZ.Y, t.PrevZ.Z, t.PrevZ.W);
     }
 
-    /// <summary>The integration pass's terms, into whichever program is bound.</summary>
+    /// <summary>The integration pass's terms, into the open loose block.</summary>
     internal static void WriteSum(in Terms t, in GridLocs g)
     {
         Matrix4x4 inv = t.InvVp;
@@ -230,17 +231,17 @@ internal static unsafe class FogVolume
     /// <summary>Which of the ping-pong pair this build writes; the other holds last frame's medium.</summary>
     internal static bool CurrentIsA => _b.CurA;
 
-    /// <summary>The two programs' locations, for a program resolved through the uniform shim.</summary>
-    internal static LightLocs LightLocsOf(uint prog) => new()
+    /// <summary>The two programs' members of the loose block being resolved.</summary>
+    internal static LightLocs LightLocsOf() => new()
     {
-        Grid = TakeGrid(prog), Height = GlProgram.Loc(prog, "uVfHeight"), Noise = GlProgram.Loc(prog, "uVfNoise"),
-        Drift = GlProgram.Loc(prog, "uVfDrift"), Ambient = GlProgram.Loc(prog, "uVfAmbient"), Sun = GlProgram.Loc(prog, "uVfSun"),
-        Local = GlProgram.Loc(prog, "uVfLocal"), Phase = GlProgram.Loc(prog, "uVfPhase"), Jitter = GlProgram.Loc(prog, "uVfJitter"),
-        PrevVp = GlProgram.Loc(prog, "uVfPrevVp"), PrevZ = GlProgram.Loc(prog, "uVfPrevZ"), Cubes = GlProgram.Loc(prog, "uLocalCubes"),
+        Grid = TakeGrid(), Height = LooseBlock.Loc("uVfHeight"), Noise = LooseBlock.Loc("uVfNoise"),
+        Drift = LooseBlock.Loc("uVfDrift"), Ambient = LooseBlock.Loc("uVfAmbient"), Sun = LooseBlock.Loc("uVfSun"),
+        Local = LooseBlock.Loc("uVfLocal"), Phase = LooseBlock.Loc("uVfPhase"), Jitter = LooseBlock.Loc("uVfJitter"),
+        PrevVp = LooseBlock.Loc("uVfPrevVp"), PrevZ = LooseBlock.Loc("uVfPrevZ"), Cubes = LooseBlock.Loc("uLocalCubes"),
     };
 
     /// <inheritdoc cref="LightLocsOf"/>
-    internal static GridLocs GridLocsOf(uint prog) => TakeGrid(prog);
+    internal static GridLocs GridLocsOf() => TakeGrid();
 
     /// <summary>The grid's workgroup edge, as both stages declare it.</summary>
     internal const int VkGroup = Group;
@@ -249,14 +250,14 @@ internal static unsafe class FogVolume
     private static void PushGrid(in GridLocs g, int w, int h, int d, float logZ, float far, Matrix4x4* invVp, Vector3 eye,
                                  Vector3 fwd, Medium m, Vector3 origin)
     {
-        Gl.Uniform3i(g.Size, w, h, d);
-        Gl.Uniform3f(g.Z, Near, far, logZ);
-        Gl.UniformMatrix4fv(g.InvVp, 1, 0, (float*)invVp);
-        Gl.Uniform3f(g.Eye, eye.X, eye.Y, eye.Z);
-        Gl.Uniform3f(g.Fwd, fwd.X, fwd.Y, fwd.Z);
-        Gl.Uniform4f(g.Med, m.Haze, m.Wall, m.Start, m.End);
-        Gl.Uniform3f(g.Origin, origin.X, origin.Y, origin.Z);
-        Gl.Uniform1f(g.Top, VolumetricFog.Top.V);
+        LooseBlock.Set(g.Size, w, h, d);
+        LooseBlock.Set(g.Z, Near, far, logZ);
+        LooseBlock.Set(g.InvVp, new ReadOnlySpan<float>((float*)invVp, 16));
+        LooseBlock.Set(g.Eye, eye.X, eye.Y, eye.Z);
+        LooseBlock.Set(g.Fwd, fwd.X, fwd.Y, fwd.Z);
+        LooseBlock.Set(g.Med, m.Haze, m.Wall, m.Start, m.End);
+        LooseBlock.Set(g.Origin, origin.X, origin.Y, origin.Z);
+        LooseBlock.Set(g.Top, VolumetricFog.Top.V);
     }
 
     /// <summary>Seconds since the last build, at most a tenth: a hitch does not throw the drift or the dawn ahead.</summary>
@@ -289,15 +290,15 @@ internal static unsafe class FogVolume
     internal static void Upload(int vfog, int vfogVp, bool capture)
     {
         bool on = _b.Built && !capture;
-        Gl.Uniform4f(vfog, on ? 1f : 0f, _b.D, Near, _b.InvLog);
-        if (on) fixed (Matrix4x4* m = &_b.Vp) Gl.UniformMatrix4fv(vfogVp, 1, 0, (float*)m);
+        LooseBlock.Set(vfog, on ? 1f : 0f, _b.D, Near, _b.InvLog);
+        if (on) LooseBlock.Set(vfogVp, _b.Vp);
     }
 
-    private static GridLocs TakeGrid(uint prog) => new()
+    private static GridLocs TakeGrid() => new()
     {
-        Size = GlProgram.Loc(prog, "uVfGrid"), Z = GlProgram.Loc(prog, "uVfZ"), InvVp = GlProgram.Loc(prog, "uVfInvVp"),
-        Eye = GlProgram.Loc(prog, "uVfEye"), Fwd = GlProgram.Loc(prog, "uVfFwd"), Med = GlProgram.Loc(prog, "uVfMed"),
-        Origin = GlProgram.Loc(prog, "uVfOrigin"), Top = GlProgram.Loc(prog, "uVfTop"),
+        Size = LooseBlock.Loc("uVfGrid"), Z = LooseBlock.Loc("uVfZ"), InvVp = LooseBlock.Loc("uVfInvVp"),
+        Eye = LooseBlock.Loc("uVfEye"), Fwd = LooseBlock.Loc("uVfFwd"), Med = LooseBlock.Loc("uVfMed"),
+        Origin = LooseBlock.Loc("uVfOrigin"), Top = LooseBlock.Loc("uVfTop"),
     };
 
     /// <summary>A new area: last frame's medium is another place's air.</summary>

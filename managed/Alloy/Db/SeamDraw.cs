@@ -6,7 +6,7 @@ using CX.Graphics;
 namespace CX.Alloy.Db;
 
 /// <summary>The frame boundary: a <c>PrePresent</c> participant one priority ahead of
-/// <see cref="GlContextService"/>'s 4.6 bracket (deliberately last), so the order is latch the window state,
+/// <see cref="FramePump"/>'s deferred work (deliberately last), so the order is latch the window state,
 /// fold, publish, draw, UI, present. <see cref="DbFeed.Present"/> is NOT used -- the fold must run inside
 /// <see cref="RenderSnapshot.Publish"/>, ahead of <c>TakeDirty</c>, or it sees an empty dirty list.</summary>
 internal static class SeamDraw
@@ -47,7 +47,7 @@ internal static class SeamDraw
         };
         FrameRegistry.Global.Register(FramePhase.PrePresent, 9, OnBoundary, "SeamDraw.frame", log);
         log.Info("SeamDraw: DB-mode frame boundary armed -- the CX scene database's frame runs at the present, "
-               + "one priority ahead of the 4.6 bracket");
+               + "one priority ahead of the frame's deferred work");
     }
 
     /// <summary>The frame, on the game thread: fold, publish, draw every view, then the GUI. Hot; allocates nothing.</summary>

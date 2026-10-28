@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Numerics;
 using CX.Framework;
 using CX.Graphics;
+using CX.Graphics.Rhi;
 
 namespace CX.Alloy;
 
@@ -123,31 +124,30 @@ internal static unsafe partial class Weather
     }
 
     /// <summary>Per lit program bind: the amounts, the look, and the cover view (zero matrix = no map, which the
-    /// stage reads as fully exposed). Absent on a stale content override (location -1): GL ignores it.</summary>
+    /// stage reads as fully exposed). Absent on a stale content override (location -1): the block drops it.</summary>
     internal static void UploadLit(int locWeather, int locLook, int locCoverVp, int locCoverLayer, int locSnowLook, int locSnowLight, int locSnowPom, int locEdge, int locRun, int locCache, bool capturing)
     {
         if (locWeather < 0) return;
         TickSurface();
         bool on = !capturing && !_off && Enabled.V;
-        Gl.Uniform4f(locWeather, on ? _wet * WetStrength.V : 0f, on ? _snow * SnowStrength.V : 0f,
-                     on ? _puddle : 0f, on ? Viz.V : 0f);
+        LooseBlock.Set(locWeather, on ? _wet * WetStrength.V : 0f, on ? _snow * SnowStrength.V : 0f, on ? _puddle : 0f, on ? Viz.V : 0f);
         float radius = MathF.Max(CoverRange.V, 1f);
         // w = the water film's roughness in the engine's alpha units; the knob is perceptual
-        Gl.Uniform4f(locLook, WetDark.V, SnowAlbedo.V, PuddleEdge.V, FilmRough.V * FilmRough.V);
-        Gl.Uniform4f(locSnowLook, SnowSparkle.V, SnowBump.V, SnowPile.V, MathF.Cos(SnowSlope.V * MathF.PI / 180f));
+        LooseBlock.Set(locLook, WetDark.V, SnowAlbedo.V, PuddleEdge.V, FilmRough.V * FilmRough.V);
+        LooseBlock.Set(locSnowLook, SnowSparkle.V, SnowBump.V, SnowPile.V, MathF.Cos(SnowSlope.V * MathF.PI / 180f));
         // z = the drift width in cover-view uv (the fit is 2 x radius across), w = ground variation
-        Gl.Uniform4f(locSnowLight, SnowWrap.V, SnowSky.V, SnowPileWidth.V * 0.5f / radius, SnowVary.V);
-        Gl.Uniform4f(locSnowPom, SnowDepth.V, SnowSteps.V, TilesetSkipsSnow ? 1f : 0f, 0f);
+        LooseBlock.Set(locSnowLight, SnowWrap.V, SnowSky.V, SnowPileWidth.V * 0.5f / radius, SnowVary.V);
+        LooseBlock.Set(locSnowPom, SnowDepth.V, SnowSteps.V, TilesetSkipsSnow ? 1f : 0f, 0f);
         bool cover = on && Cover.V && CasterPass.CoverFresh && CasterPass.CascadesFresh;
         Matrix4x4 vp = cover ? CasterPass.CoverVp : default;
-        Gl.UniformMatrix4fv(locCoverVp, 1, 0, (float*)&vp);
+        LooseBlock.Set(locCoverVp, vp);
         // z = uv per metre in the cover view (the fit is 2 x radius across), for the soft-edge taps
-        Gl.Uniform4f(locCoverLayer, CasterPass.CoverLayer, HollowStepM / (CoverDepthRadii * radius), CoverSoft.V * 0.5f / radius, SplashRate(capturing));
+        LooseBlock.Set(locCoverLayer, CasterPass.CoverLayer, HollowStepM / (CoverDepthRadii * radius), CoverSoft.V * 0.5f / radius, SplashRate(capturing));
         UploadEdge(locEdge, cover);
         UploadCache(locCache, cover);
         BindTracks();
         Vector2 tk = TrackUniform(on);
-        if (locRun >= 0) Gl.Uniform4f(locRun, on ? RunOff.V : 0f, on ? ShoreRim.V : 0f, tk.X, tk.Y);
+        if (locRun >= 0) LooseBlock.Set(locRun, on ? RunOff.V : 0f, on ? ShoreRim.V : 0f, tk.X, tk.Y);
     }
 
     /// <summary>R5: the shelter kernel <c>cx_wx_edge</c>'s <c>CxWetOpen</c> runs -- uv per metre in the cover
@@ -158,9 +158,7 @@ internal static unsafe partial class Weather
     {
         if (locEdge < 0) return;
         float radius = MathF.Max(CoverRange.V, 1f);
-        Gl.Uniform4f(locEdge, cover ? 0.5f / radius : 0f,
-                     MathF.Max(CoverSoft.V * EdgeKernelShare, EdgeKernelMinM), EdgeBreak.V,
-                     Math.Clamp(EdgeTaps.V, 1, EdgeTapsMax));
+        LooseBlock.Set(locEdge, cover ? 0.5f / radius : 0f, MathF.Max(CoverSoft.V * EdgeKernelShare, EdgeKernelMinM), EdgeBreak.V, Math.Clamp(EdgeTaps.V, 1, EdgeTapsMax));
     }
 
     /// <summary>The grass programs' shelter read: the cover view, its layer and the kernel, so a blade
@@ -170,8 +168,8 @@ internal static unsafe partial class Weather
     {
         bool cover = !_off && Enabled.V && Cover.V && CasterPass.CoverFresh && CasterPass.CascadesFresh;
         Matrix4x4 vp = cover ? CasterPass.CoverVp : default;
-        if (locCoverVp >= 0) Gl.UniformMatrix4fv(locCoverVp, 1, 0, (float*)&vp);
-        if (locCoverLayer >= 0) Gl.Uniform4f(locCoverLayer, CasterPass.CoverLayer, 0f, 0f, 0f);
+        if (locCoverVp >= 0) LooseBlock.Set(locCoverVp, vp);
+        if (locCoverLayer >= 0) LooseBlock.Set(locCoverLayer, CasterPass.CoverLayer, 0f, 0f, 0f);
         UploadEdge(locEdge, cover);
         UploadCache(locCache, cover);
     }

@@ -38,9 +38,6 @@ public sealed unsafe partial class AlloyRenderer
     internal readonly record struct VkLmDraw(int Slot, int X, int Y, float S, float SoftWorld, int Chan, int Fmt,
                                              int BaseVertex, int FirstIndex, int Count);
 
-    /// <summary>The bake's shim name; the encoder reads its terms under the base name, as the deferred stages do.</summary>
-    private const uint VkLmShim = VkUniformShim.ProgramBase + 62;   // not-an-offset: the bake program's shim name
-
     /// <summary>Both programs and the bake's pipelines, once per device; a refusal is logged and stays.</summary>
     internal static bool VkLmReady(VkBackend vk, ExtenderLog log)
     {
@@ -49,23 +46,23 @@ public sealed unsafe partial class AlloyRenderer
         if (s.Tried) return s.Bake != null;
         s.Tried = true;
         s.Side = new CommandList("vulkan lightmap bake", 1 << 16, log);
-        VkProg? p = VkBuild(vk, VkLmText(log, out string gs), "lightmap bake", false, VkLmShim, log);
+        VkProg? p = VkBuild(vk, VkLmText(log, out string gs), "lightmap bake", false, log);
         byte[]? g = VulkanToolchain.Compile(VkBackend.Translate(gs), "vk lightmap bake gs", ShaderKind.GeometryShader, out string ge);
         if (g == null) log.Always($"AlloyRenderer: the Vulkan lightmap bake's geometry stage did not compile -- {ge}");
         ShaderId gid = g == null ? default : vk.CreateShader(ShaderStage.Geometry, g, "vk lightmap bake gs");
         s.Enc = VkDefBuild(vk, "cx_bakeenc_c", "CX_BAKEENC_LAYER 1", "vk lightmap encoder", log);
         if (p != null)
-            VkUniformShim.Resolve(p.Names, () =>
+            LooseBlock.Resolve(p.Names, () =>
             {
-                s.BLight = GlProgram.Loc(VkLmShim, "uBakeLight"); s.BColor = GlProgram.Loc(VkLmShim, "uBakeColor");
-                s.BMode = GlProgram.Loc(VkLmShim, "uBakeMode"); s.BCube = GlProgram.Loc(VkLmShim, "uBakeCube");
-                s.BCubes = GlProgram.Loc(VkLmShim, "uLocalCubes");
+                s.BLight = LooseBlock.Loc("uBakeLight"); s.BColor = LooseBlock.Loc("uBakeColor");
+                s.BMode = LooseBlock.Loc("uBakeMode"); s.BCube = LooseBlock.Loc("uBakeCube");
+                s.BCubes = LooseBlock.Loc("uLocalCubes");
             });
         if (s.Enc != null)
-            VkUniformShim.Resolve(s.Enc.Names, () =>
+            LooseBlock.Resolve(s.Enc.Names, () =>
             {
-                s.ERegion = GlProgram.Loc(VkUniformShim.ProgramBase, "uRegion");
-                s.ELayer = GlProgram.Loc(VkUniformShim.ProgramBase, "uPageLayer");
+                s.ERegion = LooseBlock.Loc("uRegion");
+                s.ELayer = LooseBlock.Loc("uPageLayer");
             });
         s.Gs = gid;
         int st = (int)MeshArena.Fmt.Static;
@@ -102,7 +99,7 @@ public sealed unsafe partial class AlloyRenderer
     }
 
     private static string VkLmFinal(string src, ExtenderLog log, string what)
-        => ShaderResource.Tokens(VanillaShader.Splice(GlProgram.Lib(src, log, what), log, what, true, true));
+        => ShaderResource.Tokens(VanillaShader.Splice(ShaderTexts.Lib(src, log, what), log, what, true, true));
 
     /// <summary>A bake pipeline over arena format <paramref name="fmt"/>: three RGBA16F planes added into, the D16
     /// scratch depth tested GREATER and written for a light step and untouched for coverage, no cull.</summary>
@@ -133,13 +130,13 @@ public sealed unsafe partial class AlloyRenderer
         VkProg p = s.Bake!;
         bool cover = step == 0;
         Array.Clear(p.Block);
-        VkUniformShim.Capture(p.Members, p.Block);
-        VkUniformShim.Set(s.BMode, cover ? 0 : 1);
-        VkUniformShim.Set(s.BLight, [light.X, light.Y, light.Z, light.W]);
-        VkUniformShim.Set(s.BColor, [colour.X, colour.Y, colour.Z]);
-        VkUniformShim.Set(s.BCube, cube);
-        VkUniformShim.Set(s.BCubes, cover ? 0 : cube + 1);
-        VkUniformShim.EndCapture();
+        LooseBlock.Capture(p.Members, p.Block);
+        LooseBlock.Set(s.BMode, cover ? 0 : 1);
+        LooseBlock.Set(s.BLight, [light.X, light.Y, light.Z, light.W]);
+        LooseBlock.Set(s.BColor, [colour.X, colour.Y, colour.Z]);
+        LooseBlock.Set(s.BCube, cube);
+        LooseBlock.Set(s.BCubes, cover ? 0 : cube + 1);
+        LooseBlock.EndCapture();
         int arena0 = vc.ArenaUsed;
         int loose = VkArena(p.Block);
         byte* pb = stackalloc byte[PassBytes];
@@ -205,10 +202,10 @@ public sealed unsafe partial class AlloyRenderer
         VkColourState vc = _vkc;
         VkDefStage st = s.Enc!;
         Array.Clear(st.Block);
-        VkUniformShim.Capture(st.Members, st.Block);
-        VkUniformShim.Set(s.ERegion, (ReadOnlySpan<int>)[bx, by, bw, bh]);
-        VkUniformShim.Set(s.ELayer, layer);
-        VkUniformShim.EndCapture();
+        LooseBlock.Capture(st.Members, st.Block);
+        LooseBlock.Set(s.ERegion, (ReadOnlySpan<int>)[bx, by, bw, bh]);
+        LooseBlock.Set(s.ELayer, layer);
+        LooseBlock.EndCapture();
         int arena0 = vc.ArenaUsed;
         int loose = VkArena(st.Block);
         if (loose < 0) return false;

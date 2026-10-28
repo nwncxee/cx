@@ -97,7 +97,7 @@ public sealed unsafe partial class AlloyRenderer
                 }
                 if (staged < 0) break;
                 _skFmt[_skyN] = (int)MeshArena.FormatOf(DrawRecipe.Range(recipe));
-                _skMode[_skyN] = Gl.TRIANGLES;   // gl-ok: an enum value staged for the pass, no call
+                _skMode[_skyN] = EngineTokens.TRIANGLES;   // gl-ok: an enum value staged for the pass, no call
                 _skSrc[_skyN] = roles[r].Src; _skDst[_skyN] = roles[r].Dst;
                 _skAlpha[_skyN] = rec.Alpha;
                 _skProg[_skyN] = prog;

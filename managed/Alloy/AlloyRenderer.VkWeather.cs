@@ -72,13 +72,13 @@ public sealed unsafe partial class AlloyRenderer
         side.SetPipeline(s.Pipe[k]);
         Matrix4x4 v = view, pr = proj;
         Array.Clear(p.Block);
-        VkUniformShim.Capture(p.Members, p.Block);
+        LooseBlock.Capture(p.Members, p.Block);
         try
         {
             BindPass(p.L.CubeCount, viewport, near, far);
             Weather.WriteVk(in s.L[k], kind, &v, &pr, _eyePos, lit);
         }
-        finally { VkUniformShim.EndCapture(); }
+        finally { LooseBlock.EndCapture(); }
         int loose = VkArena(p.Block), pass = VkArenaPass();
         if (loose < 0 || pass < 0) return false;
         VkBindSet(side, p, c, loose, pass, c.Slots, 0);
@@ -97,13 +97,13 @@ public sealed unsafe partial class AlloyRenderer
         Matrix4x4 v = view, pr = proj;
         int n;
         Array.Clear(p.Block);
-        VkUniformShim.Capture(p.Members, p.Block);
+        LooseBlock.Capture(p.Members, p.Block);
         try
         {
             BindPass(p.L.CubeCount, viewport, near, far);
             n = Weather.WriteSplashVk(in s.Sp, &v, &pr, viewport, _eyePos, lit);
         }
-        finally { VkUniformShim.EndCapture(); }
+        finally { LooseBlock.EndCapture(); }
         if (n == 0) return true;
         int loose = VkArena(p.Block), pass = VkArenaPass();
         if (loose < 0 || pass < 0) return false;
@@ -119,17 +119,16 @@ public sealed unsafe partial class AlloyRenderer
         if (s.Tried[k]) return s.Prog[k] != null;
         s.Tried[k] = true;
         s.Side ??= new CommandList("vulkan weather", 1 << 14, log);
-        uint name = VkUniformShim.ProgramBase + 51 + (uint)k;   // not-an-offset: the weather programs' shim names
         (string vs, string fs) = k == VkSplashProg ? Weather.VkSplashTexts(log) : Weather.VkTexts(k == 1, log);
         string label = k == VkSplashProg ? "splash" : k == 1 ? "snow" : "rain";
         var units = new System.Collections.Generic.Dictionary<string, uint>(VkPrograms.Units) { ["uCover"] = TextureSlots.CoverEsm };
         VkProgramText t = VkGlsl.Translate(ShaderResource.Tokens(vs), ShaderResource.Tokens(fs), units, glDepth: false);
-        VkProg? p = VkBuild(vk, t, label, true, name, log);
+        VkProg? p = VkBuild(vk, t, label, true, log);
         if (p != null)
         {
             VkWxState w = s;
-            if (k == VkSplashProg) VkUniformShim.Resolve(p.Names, () => w.Sp = Weather.VkSplashLocs(name));
-            else VkUniformShim.Resolve(p.Names, () => w.L[k] = Weather.VkLocs(name));
+            if (k == VkSplashProg) LooseBlock.Resolve(p.Names, () => w.Sp = Weather.VkSplashLocs());
+            else LooseBlock.Resolve(p.Names, () => w.L[k] = Weather.VkLocs());
             var d = new PipelineDesc
             {
                 Vs = p.Vs, Fs = p.Fs, Topo = Topology.TriangleStrip, Raster = new RasterState(CullMode.None),

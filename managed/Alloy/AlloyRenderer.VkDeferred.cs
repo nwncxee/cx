@@ -25,7 +25,7 @@ public sealed unsafe partial class AlloyRenderer
         public ShaderId Cs;
         public PipelineId Pipe;
         public VkOpaque[] Opaques = [];
-        public VkUniformShim.Member[] Members = [];
+        public LooseBlock.Member[] Members = [];
         public Dictionary<string, int> Names = new();
         public byte[] Block = [];
         public VkDefLoc L;
@@ -243,32 +243,32 @@ public sealed unsafe partial class AlloyRenderer
     }
 
     /// <summary>Stage <paramref name="st"/>'s loose block and (once per frame) the <c>CxPass</c> block into the
-    /// frame's arena -- GL's own setters through the shim, as a colour bind captures them, with every term whose
-    /// map is not on Vulkan left at zero. False (logged by the arena) when the arena is full.</summary>
+    /// frame's arena -- the same writes a colour bind captures, with every term whose map is not on Vulkan left at
+    /// zero. False (logged by the arena) when the arena is full.</summary>
     private static bool VkDefBlocks(VkDefStage st, bool shadow, int* viewport, float near, float far,
                                     in Matrix4x4 invVp, in Matrix4x4 proj, int rw, int rh, int div, out int loose, ref int pass)
     {
         Array.Clear(st.Block);
-        VkUniformShim.Capture(st.Members, st.Block);
+        LooseBlock.Capture(st.Members, st.Block);
         try
         {
             // the CxPass block is filled from the same frame state and viewport as the colour pass's binds, so the
             // walk reads the cluster lookup and the light curve that pass drew with
             BindPass(st.L.Cubes, viewport, near, far);
             UploadMaterialModel(st.L.Material);
-            VkUniformShim.Set(st.L.LightOcc, [Lighting.HiddenLights.V ? 1f : 0f, GlossyRough]);
-            VkUniformShim.Set(st.L.LmMovers, LightmapBake.MoverMode);
+            LooseBlock.Set(st.L.LightOcc, [Lighting.HiddenLights.V ? 1f : 0f, GlossyRough]);
+            LooseBlock.Set(st.L.LmMovers, LightmapBake.MoverMode);
             if (shadow)
             {
                 // the record writer's own five, which are loose there rather than a block of their own
-                VkUniformShim.Set(st.L.Rect, (ReadOnlySpan<int>)[viewport[0], viewport[1], viewport[2], viewport[3]]);
-                VkUniformShim.Set(st.L.InvVp, in invVp);
-                VkUniformShim.Set(st.L.Proj, in proj);
-                VkUniformShim.Set(st.L.ShSize, (ReadOnlySpan<int>)[rw, rh]);
-                VkUniformShim.Set(st.L.ShRes, div);
+                LooseBlock.Set(st.L.Rect, (ReadOnlySpan<int>)[viewport[0], viewport[1], viewport[2], viewport[3]]);
+                LooseBlock.Set(st.L.InvVp, in invVp);
+                LooseBlock.Set(st.L.Proj, in proj);
+                LooseBlock.Set(st.L.ShSize, (ReadOnlySpan<int>)[rw, rh]);
+                LooseBlock.Set(st.L.ShRes, div);
             }
         }
-        finally { VkUniformShim.EndCapture(); }
+        finally { LooseBlock.EndCapture(); }
         loose = VkArena(st.Block);
         if (pass < 0) pass = VkArenaPass();
         return loose >= 0 && pass >= 0;
@@ -381,43 +381,43 @@ public sealed unsafe partial class AlloyRenderer
         foreach (VkLoose u in t.Loose) names.Add(u.Name);
         if (VkSpirv.Block(spirv, 0, VulkanToolchain.UniformBase + VkGlsl.LooseBinding, names) is { } l)
         {
-            var members = new List<VkUniformShim.Member>(l.Members.Count);
+            var members = new List<LooseBlock.Member>(l.Members.Count);
             foreach (VkLoose u in t.Loose)
             {
                 if (!l.Members.TryGetValue(u.Name, out var m)) continue;
                 int count = u.Array.Length == 0 ? 1 : VkGlsl.ResolveInt(u.Array, src) ?? 1;
-                members.Add(new VkUniformShim.Member(u.Name, m.Offset, m.Size, count > 1 ? m.Size / count : 0));
+                members.Add(new LooseBlock.Member(u.Name, m.Offset, m.Size, count > 1 ? m.Size / count : 0));
             }
             st.Members = members.ToArray();
             st.Block = new byte[(l.Bytes + 15) & ~15];
         }
-        st.Names = VkUniformShim.Index(st.Members);
-        VkUniformShim.Resolve(st.Names, () =>
+        st.Names = LooseBlock.Index(st.Members);
+        LooseBlock.Resolve(st.Names, () =>
         {
-            st.L.Cubes = GlProgram.Loc(VkUniformShim.ProgramBase, "uLocalCubes");
-            st.L.Material = GlProgram.Loc(VkUniformShim.ProgramBase, "uMaterial");
-            st.L.LightOcc = GlProgram.Loc(VkUniformShim.ProgramBase, "uLightOcc");
-            st.L.LmMovers = GlProgram.Loc(VkUniformShim.ProgramBase, "uLmMovers");
-            st.L.Rect = GlProgram.Loc(VkUniformShim.ProgramBase, "uRect");
-            st.L.InvVp = GlProgram.Loc(VkUniformShim.ProgramBase, "uInvVp");
-            st.L.Proj = GlProgram.Loc(VkUniformShim.ProgramBase, "uProj");
-            st.L.ShSize = GlProgram.Loc(VkUniformShim.ProgramBase, "uShSize");
-            st.L.ShRes = GlProgram.Loc(VkUniformShim.ProgramBase, "uShRes");
-            st.L.View = GlProgram.Loc(VkUniformShim.ProgramBase, "uView");
-            st.L.Grid = GlProgram.Loc(VkUniformShim.ProgramBase, "uGrid");
-            st.L.ProjXY = GlProgram.Loc(VkUniformShim.ProgramBase, "uProjXY");
-            st.L.Z = GlProgram.Loc(VkUniformShim.ProgramBase, "uZ");
-            st.L.LightCount = GlProgram.Loc(VkUniformShim.ProgramBase, "uLightCount");
-            st.L.Reach = GlProgram.Loc(VkUniformShim.ProgramBase, "uReach");
-            st.L.LightFloor = GlProgram.Loc(VkUniformShim.ProgramBase, "uLightFloor");
-            st.L.BinCap = GlProgram.Loc(VkUniformShim.ProgramBase, "uBinCap");
-            st.L.Atten = GlProgram.Loc(VkUniformShim.ProgramBase, "uAtten");
-            st.L.Hot = GlProgram.Loc(VkUniformShim.ProgramBase, "uHot");
-            st.L.ReflK = GlProgram.Loc(VkUniformShim.ProgramBase, "uReflK");
-            st.L.Rel = GlProgram.Loc(VkUniformShim.ProgramBase, "uRel");
-            st.L.Pad = GlProgram.Loc(VkUniformShim.ProgramBase, "uPad");
-            st.L.Tally = GlProgram.Loc(VkUniformShim.ProgramBase, "uTally");
-            st.L.DynPage = GlProgram.Loc(VkUniformShim.ProgramBase, "uDynPage");
+            st.L.Cubes = LooseBlock.Loc("uLocalCubes");
+            st.L.Material = LooseBlock.Loc("uMaterial");
+            st.L.LightOcc = LooseBlock.Loc("uLightOcc");
+            st.L.LmMovers = LooseBlock.Loc("uLmMovers");
+            st.L.Rect = LooseBlock.Loc("uRect");
+            st.L.InvVp = LooseBlock.Loc("uInvVp");
+            st.L.Proj = LooseBlock.Loc("uProj");
+            st.L.ShSize = LooseBlock.Loc("uShSize");
+            st.L.ShRes = LooseBlock.Loc("uShRes");
+            st.L.View = LooseBlock.Loc("uView");
+            st.L.Grid = LooseBlock.Loc("uGrid");
+            st.L.ProjXY = LooseBlock.Loc("uProjXY");
+            st.L.Z = LooseBlock.Loc("uZ");
+            st.L.LightCount = LooseBlock.Loc("uLightCount");
+            st.L.Reach = LooseBlock.Loc("uReach");
+            st.L.LightFloor = LooseBlock.Loc("uLightFloor");
+            st.L.BinCap = LooseBlock.Loc("uBinCap");
+            st.L.Atten = LooseBlock.Loc("uAtten");
+            st.L.Hot = LooseBlock.Loc("uHot");
+            st.L.ReflK = LooseBlock.Loc("uReflK");
+            st.L.Rel = LooseBlock.Loc("uRel");
+            st.L.Pad = LooseBlock.Loc("uPad");
+            st.L.Tally = LooseBlock.Loc("uTally");
+            st.L.DynPage = LooseBlock.Loc("uDynPage");
         });
         log.Info($"AlloyRenderer: {label} is built -- {st.Members.Length} loose members, {st.Opaques.Length} declarations");
         return st;

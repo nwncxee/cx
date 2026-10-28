@@ -148,18 +148,17 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>Room for the class's binds and draws; a growth is one allocation and one log line.</summary>
     private const int WaterArenaBytes = 1 << 18;
 
-    /// <summary>The stage's own uniforms, resolved against its block under the shim's name for it.</summary>
+    /// <summary>The stage's own uniforms, resolved against its loose block.</summary>
     private static void VkWaterLocs(VkProg p, VkWaterState s)
     {
-        uint name = VkUniformShim.ProgramBase + (uint)VkPrograms.Id.Water;
-        VkUniformShim.Resolve(p.Names, () =>
+        LooseBlock.Resolve(p.Names, () =>
         {
-            s.ViewLoc = GlProgram.Loc(name, "uView");
-            s.ProjLoc = GlProgram.Loc(name, "uProj");
-            s.NearFar = GlProgram.Loc(name, "uNearFar");
-            s.EnvOk = GlProgram.Loc(name, "uEnvOk");
-            s.Splash = GlProgram.Loc(name, "uSplash");
-            s.CubeCount = GlProgram.Loc(name, "uLocalCubes");
+            s.ViewLoc = LooseBlock.Loc("uView");
+            s.ProjLoc = LooseBlock.Loc("uProj");
+            s.NearFar = LooseBlock.Loc("uNearFar");
+            s.EnvOk = LooseBlock.Loc("uEnvOk");
+            s.Splash = LooseBlock.Loc("uSplash");
+            s.CubeCount = LooseBlock.Loc("uLocalCubes");
         });
     }
 
@@ -169,13 +168,13 @@ public sealed unsafe partial class AlloyRenderer
     private static void VkWaterTerms(VkProg p, in Matrix4x4 vp, int* viewport, float near, float far)
     {
         VkWaterState s = _vkWater;
-        fixed (Matrix4x4* m = &vp) VkUniformShim.Set(p.Vp, new ReadOnlySpan<float>(m, 16));
-        fixed (Matrix4x4* m = &s.View) VkUniformShim.Set(s.ViewLoc, new ReadOnlySpan<float>(m, 16));
-        fixed (Matrix4x4* m = &s.Proj) VkUniformShim.Set(s.ProjLoc, new ReadOnlySpan<float>(m, 16));
-        VkUniformShim.Set(s.NearFar, [near, far]);
-        VkUniformShim.Set(p.Viz, _capturing ? 0 : _lightViz);
-        VkUniformShim.Set(s.EnvOk, s.EnvLive ? 1 : 0);
-        VkUniformShim.Set(s.Splash, Weather.SplashRate(_capturing));
+        fixed (Matrix4x4* m = &vp) LooseBlock.Set(p.Vp, new ReadOnlySpan<float>(m, 16));
+        fixed (Matrix4x4* m = &s.View) LooseBlock.Set(s.ViewLoc, new ReadOnlySpan<float>(m, 16));
+        fixed (Matrix4x4* m = &s.Proj) LooseBlock.Set(s.ProjLoc, new ReadOnlySpan<float>(m, 16));
+        LooseBlock.Set(s.NearFar, [near, far]);
+        LooseBlock.Set(p.Viz, _capturing ? 0 : _lightViz);
+        LooseBlock.Set(s.EnvOk, s.EnvLive ? 1 : 0);
+        LooseBlock.Set(s.Splash, Weather.SplashRate(_capturing));
         UploadFeatureTerms(p.F, viewport);
         BindPass(s.CubeCount, viewport, near, far);
     }

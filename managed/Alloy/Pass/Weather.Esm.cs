@@ -2,6 +2,7 @@ using System.Numerics;
 using CX.Engine;
 using CX.Framework;
 using CX.Graphics;
+using CX.Graphics.Rhi;
 
 namespace CX.Alloy;
 
@@ -30,7 +31,7 @@ internal static unsafe partial class Weather
     internal static void BindEsm(int locParams, bool oit)
     {
         bool on = !oit && EsmOk && Cover.V && CasterPass.CoverFresh;
-        if (locParams >= 0) Gl.Uniform4f(locParams, _esmC, _esmBias, on ? 1f : 0f, 0f);
+        if (locParams >= 0) LooseBlock.Set(locParams, _esmC, _esmBias, on ? 1f : 0f, 0f);
     }
 
     /// <summary>The cover map is gone with its bake (area edge, flush failure): so is the filtered copy.</summary>

@@ -104,9 +104,9 @@ public sealed unsafe partial class AlloyRenderer
                                     int samples)
     {
         Array.Clear(p.Block);
-        VkUniformShim.Capture(p.Members, p.Block);
-        if (p == _vkCover.DepthBack) VkUniformShim.Set(_vkCover.USamples, samples);
-        VkUniformShim.EndCapture();
+        LooseBlock.Capture(p.Members, p.Block);
+        if (p == _vkCover.DepthBack) LooseBlock.Set(_vkCover.USamples, samples);
+        LooseBlock.EndCapture();
         int at = p.Block.Length == 0 ? 0 : VkArena(p.Block);
         if (at < 0) return false;
         Span<BufferBinding> ubo = stackalloc BufferBinding[1];

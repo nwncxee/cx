@@ -77,13 +77,13 @@ public sealed unsafe partial class AlloyRenderer
             {
                 dangly = want;
                 Array.Clear(p.Block);
-                VkUniformShim.Capture(p.Members, p.Block);
-                VkUniformShim.Set(p.Vp, *vp);
-                VkUniformShim.Set(s.PrevVp, prevVp);
-                VkUniformShim.Set(s.Jitter, [PostChain.JitterX, PostChain.JitterY]);
-                VkUniformShim.Set(s.Size, [(float)w, h]);
-                VkUniformShim.Set(s.DanglyLoc, want >= 0 ? (ReadOnlySpan<int>)[_oDpBase[i], _oDpN[i]] : [0, 0]);
-                VkUniformShim.EndCapture();
+                LooseBlock.Capture(p.Members, p.Block);
+                LooseBlock.Set(p.Vp, *vp);
+                LooseBlock.Set(s.PrevVp, prevVp);
+                LooseBlock.Set(s.Jitter, [PostChain.JitterX, PostChain.JitterY]);
+                LooseBlock.Set(s.Size, [(float)w, h]);
+                LooseBlock.Set(s.DanglyLoc, want >= 0 ? (ReadOnlySpan<int>)[_oDpBase[i], _oDpN[i]] : [0, 0]);
+                LooseBlock.EndCapture();
                 int loose = VkArena(p.Block);
                 if (loose < 0) return;
                 VkBindSet(side, p, c, loose, -1, c.Slots, 0, default, own);
@@ -111,12 +111,11 @@ public sealed unsafe partial class AlloyRenderer
         s.Tried = true;
         s.Side = new CommandList("vulkan mover motion", 1 << 16, log);
         s.Prog = VkBuild(vk, VkPrograms.Id.Motion, log);
-        const uint name = VkUniformShim.ProgramBase + (uint)VkPrograms.Id.Motion;
         if (s.Prog != null)
-            VkUniformShim.Resolve(s.Prog.Names, () =>
+            LooseBlock.Resolve(s.Prog.Names, () =>
             {
-                s.PrevVp = GlProgram.Loc(name, "uPrevVP"); s.Jitter = GlProgram.Loc(name, "uJitter");
-                s.Size = GlProgram.Loc(name, "uSize"); s.DanglyLoc = GlProgram.Loc(name, "uDangly");
+                s.PrevVp = LooseBlock.Loc("uPrevVP"); s.Jitter = LooseBlock.Loc("uJitter");
+                s.Size = LooseBlock.Loc("uSize"); s.DanglyLoc = LooseBlock.Loc("uDangly");
             });
         else log.Always("AlloyRenderer: the Vulkan mover velocity program was REFUSED (logged above) -- movers keep camera-only vectors");
         return s.Prog != null;

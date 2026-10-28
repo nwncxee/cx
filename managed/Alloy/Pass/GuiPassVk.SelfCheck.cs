@@ -76,7 +76,7 @@ internal static unsafe partial class GuiPassVk
         check.Expect(fb != null, $"{what}'s fragment stage compiles ({fe})");
         if (vb == null || fb == null) return;
         // the compiled modules' own reflection, which is the second artifact the hand-written offsets are held against
-        if (VkUniformShim.Layout(t, vb, fb) is not { } l)
+        if (LooseBlock.Layout(t, vb, fb) is not { } l)
         { check.Expect(false, $"{what} declares the loose block"); return; }
         foreach ((string name, int off, int bytes) in want)
             check.Expect(l.Reflected.TryGetValue(name, out var m) && m.Offset == off && m.Size == bytes,

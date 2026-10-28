@@ -26,7 +26,7 @@ internal static unsafe partial class StageResources
         public PipelineId Pipe;
         public VkOpaque[] Opaques = [];
         public VkBind[] Binds = [];
-        public VkUniformShim.Member[] Members = [];
+        public LooseBlock.Member[] Members = [];
         public Dictionary<string, int> Names = new();
         public byte[] Block = [];
         public StageEnvLoc Env;
@@ -64,9 +64,6 @@ internal static unsafe partial class StageResources
     private static VkResState _vk = new();
 
 
-    /// <summary>Fake GL program names a pass's loose block resolves under, past every other Vulkan shim range.</summary>
-    private const uint VkShimBase = VkUniformShim.ProgramBase + (1u << 24);   // not-an-offset: a reserved name range
-
     /// <summary>Sampled bindings the stage images may take on Vulkan: from <see cref="TextureSlots.ResourceBase"/> to the
     /// device's set-0 sampled range.</summary>
     private const uint VkSampledTop = 48;
@@ -82,9 +79,9 @@ internal static unsafe partial class StageResources
 
     private static Format VkFormat(uint gl) => gl switch
     {
-        Gl.RGBA8 => Format.Rgba8, Gl.RGBA16F => Format.Rgba16F, Gl.RGBA32F => Format.Rgba32F, Gl.RG16F => Format.Rg16F,
-        Gl.RG8 => Format.Rg8, Gl.R16F => Format.R16F, Gl.R32F => Format.R32F, Gl.R8 => Format.R8,
-        Gl.R11F_G11F_B10F => Format.R11G11B10F, _ => Format.Unknown,
+        EngineTokens.RGBA8 => Format.Rgba8, EngineTokens.RGBA16F => Format.Rgba16F, EngineTokens.RGBA32F => Format.Rgba32F, EngineTokens.RG16F => Format.Rg16F,
+        EngineTokens.RG8 => Format.Rg8, EngineTokens.R16F => Format.R16F, EngineTokens.R32F => Format.R32F, EngineTokens.R8 => Format.R8,
+        EngineTokens.R11F_G11F_B10F => Format.R11G11B10F, _ => Format.Unknown,
     };
 
     /// <summary>Stage image <paramref name="name"/> (or its <c>_prev</c> half) among stages <paramref name="a"/> and
@@ -376,13 +373,13 @@ internal static unsafe partial class StageResources
     private static bool VkDispatch(CommandList cl, int id, Stage s, VkStageRes r, Pass p, VkPassProg q, int* viewport)
     {
         Array.Clear(q.Block);
-        VkUniformShim.Capture(q.Members, q.Block);
+        LooseBlock.Capture(q.Members, q.Block);
         try
         {
             q.Env.Upload(viewport);
             VkUploadFrame(q.Frame, id, -1, main: true);
         }
-        finally { VkUniformShim.EndCapture(); }
+        finally { LooseBlock.EndCapture(); }
         Span<BufferBinding> ubo = stackalloc BufferBinding[4];
         Span<ImageBinding> sampled = stackalloc ImageBinding[(int)VkSampledTop];
         Span<ImageBinding> images = stackalloc ImageBinding[(int)PassImgUnits];
@@ -437,12 +434,11 @@ internal static unsafe partial class StageResources
             if (!VanillaShader.InChain(p.Ref))
             { Fail(id, $"pass {p.Ref}.shd is not in the resource chain (or alloy.vanillabridge=0)", log); return false; }
             string what = $"Vulkan pass ({s.Ref}: {p.Ref})";
-            uint name = VkShimBase + (uint)(id * MaxPasses + i);
-            VkPassProg? q = VkPass(vk, over, p.Ref, id, name, what, log);
+            VkPassProg? q = VkPass(vk, over, p.Ref, id, what, log);
             if (q == null && !ReferenceEquals(over, embedded))
             {
                 log?.Info($"{what}: the {ShdPassCs} override did not build -- taking the embedded wrapper");
-                q = VkPass(vk, embedded, p.Ref, id, name, what, log);
+                q = VkPass(vk, embedded, p.Ref, id, what, log);
             }
             if (q == null) { Fail(id, $"pass {p.Ref}.shd did not build as a Vulkan compute pipeline (logged above)", log); return false; }
             r.Passes[i] = q;
@@ -460,10 +456,10 @@ internal static unsafe partial class StageResources
     }
 
     /// <summary>One pass wrapper with the region's resref written in, translated, compiled and linked, its loose block
-    /// reflected and its locations resolved under fake program <paramref name="name"/>. Null, logged, when refused.</summary>
-    private static VkPassProg? VkPass(VkBackend vk, string wrapper, string resref, int id, uint name, string what, ExtenderLog? log)
+    /// reflected and its locations resolved against it. Null, logged, when refused.</summary>
+    private static VkPassProg? VkPass(VkBackend vk, string wrapper, string resref, int id, string what, ExtenderLog? log)
     {
-        string text = ShaderResource.Tokens(VanillaShader.Splice(GlProgram.Lib(wrapper.Replace(CsToken, resref, StringComparison.Ordinal),
+        string text = ShaderResource.Tokens(VanillaShader.Splice(ShaderTexts.Lib(wrapper.Replace(CsToken, resref, StringComparison.Ordinal),
                                                                                log, what), log, what, true, true));
         if (VkUnits(VkPrograms.Units, text, id, -1, PassImgUnits, out string why) is not { } units)
         { log?.Always($"StageResources: {what} -- {why}"); return null; }
@@ -485,18 +481,18 @@ internal static unsafe partial class StageResources
         foreach (VkLoose u in t.Loose) names.Add(u.Name);
         if (VkSpirv.Block(spirv, 0, VulkanToolchain.UniformBase + VkGlsl.LooseBinding, names) is { } l)
         {
-            var members = new List<VkUniformShim.Member>(l.Members.Count);
+            var members = new List<LooseBlock.Member>(l.Members.Count);
             foreach (VkLoose u in t.Loose)
             {
                 if (!l.Members.TryGetValue(u.Name, out var m)) continue;
                 int count = u.Array.Length == 0 ? 1 : VkGlsl.ResolveInt(u.Array, text) ?? 1;
-                members.Add(new VkUniformShim.Member(u.Name, m.Offset, m.Size, count > 1 ? m.Size / count : 0));
+                members.Add(new LooseBlock.Member(u.Name, m.Offset, m.Size, count > 1 ? m.Size / count : 0));
             }
             q.Members = members.ToArray();
-            q.Block = VkUniformShim.Block(l.Bytes);
+            q.Block = LooseBlock.Block(l.Bytes);
         }
-        q.Names = VkUniformShim.Index(q.Members);
-        VkUniformShim.Resolve(q.Names, () => { q.Env = StageEnvLoc.Locate(name); q.Frame = FrameLoc.Locate(name); });
+        q.Names = LooseBlock.Index(q.Members);
+        LooseBlock.Resolve(q.Names, () => { q.Env = StageEnvLoc.Locate(); q.Frame = FrameLoc.Locate(); });
         foreach (Match m in LocalSize.Matches(VkGlsl.Mask(t.Cs)))
         {
             int n = Math.Max(VkGlsl.ResolveInt(m.Groups[2].Value, t.Cs) ?? 1, 1);

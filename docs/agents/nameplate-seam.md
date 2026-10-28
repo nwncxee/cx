@@ -663,12 +663,6 @@ public static float Float(string key, float fallback, float min = float.MinValue
 public static string Text(string key, string fallback);
 ```
 
-Precedent, `managed/Graphics/GlContextService.cs`:
-
-```csharp
-_disabled = !Settings.Bool("gl46", true);
-```
-
 Every read is recorded and printed by `/knobs` (`managed/Framework/KnobSurface.cs:50`).
 
 ---

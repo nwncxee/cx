@@ -125,7 +125,7 @@ internal static unsafe partial class GrassField
         Vector3 eye = p.Eye;
         float* pw = stackalloc float[3] { _pushOriginX, _pushOriginY, _pushPerUnit / PushRes };
         ScatterTerms(in l, planes, &eye, p.Near, p.Far, pw);
-        VkUniformShim.Set(l.Clamp, clamp);
+        LooseBlock.Set(l.Clamp, clamp);
     }
 
     /// <summary>A colour stage's terms into the open capture, as <see cref="Issue"/> sets them for GL with no prepass;
@@ -136,11 +136,11 @@ internal static unsafe partial class GrassField
         FramePlan p = _vkg.Plan;
         Vector3 eye = p.Eye;
         float* pw = stackalloc float[3] { _pushOriginX, _pushOriginY, _pushPerUnit / PushRes };
-        ColourUniforms(0, in v.L, in v.F, vp, &eye, p.Near, p.Far, pw, viewport, near, far, lightingOn, ground);
+        ColourUniforms(in v.L, in v.F, vp, &eye, p.Near, p.Far, pw, viewport, near, far, lightingOn, ground);
         if (!cards) return;
-        VkUniformShim.Set(v.L.Msaa, 0);
-        VkUniformShim.Set(v.L.SoftEdge, 0);
-        VkUniformShim.Set(v.L.GroundViz, Grass.GViz.V);
+        LooseBlock.Set(v.L.Msaa, 0);
+        LooseBlock.Set(v.L.SoftEdge, 0);
+        LooseBlock.Set(v.L.GroundViz, Grass.GViz.V);
     }
 
     /// <summary>The strip pairs of blade draw <paramref name="far"/>.</summary>
@@ -158,11 +158,11 @@ internal static unsafe partial class GrassField
         if (k == VkStage.Blades)
         {
             string bvs = ShaderStages.Source(ShdBladeVs), bfs = ShaderStages.Source(ShdBladeFs);
-            GlProgram.Texts(ShdBladeVs, bvs, ShdBladeFs, bfs, log, what, out string v, out string f);
+            ShaderTexts.Pair(ShdBladeVs, bvs, ShdBladeFs, bfs, log, what, out string v, out string f);
             return ShaderContract.LinearSafe(f) ? (v, f) : (bvs, bfs);
         }
         string fs = EmbeddedFs, vs = ShaderStages.Source(ShdGrassVs);
-        GlProgram.Texts(ShdGrassVs, vs, ShdGrassFs, fs, log, what, out string gv, out string gf);
+        ShaderTexts.Pair(ShdGrassVs, vs, ShdGrassFs, fs, log, what, out string gv, out string gf);
         if (!(ShaderContract.LinearSafe(gf) && ShaderContract.SlotSafe(gf, "uTex"))) { gv = GrassVs; gf = fs; }
         return (gv, gf);
     }

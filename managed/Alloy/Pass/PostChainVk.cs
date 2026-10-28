@@ -88,20 +88,20 @@ internal static unsafe class PostChainVk
         Matrix4x4 invVp = AlloyRenderer.SkyInvVp;
         Vector3 eye = AlloyRenderer.EyePos;
         Open(s.Resolve!);
-        VkUniformShim.Set(r.SkyRaw, Post.SkyRaw.V && invVp != default ? 1 : 0);
-        VkUniformShim.Set(r.SkyBand, FrameInputs.FogOn && invVp != default ? SceneFog.SkyBand : 0f);
-        VkUniformShim.Set(r.InvVp, invVp);
-        VkUniformShim.Set(r.Eye, [eye.X, eye.Y, eye.Z]);
+        LooseBlock.Set(r.SkyRaw, Post.SkyRaw.V && invVp != default ? 1 : 0);
+        LooseBlock.Set(r.SkyBand, FrameInputs.FogOn && invVp != default ? SceneFog.SkyBand : 0f);
+        LooseBlock.Set(r.InvVp, invVp);
+        LooseBlock.Set(r.Eye, [eye.X, eye.Y, eye.Z]);
         FogVolume.Upload(r.VFog, r.VFogVp, capture: false);
-        VkUniformShim.Set(r.SkyBare, invVp == default ? 1 : 0);
-        VkUniformShim.Set(r.OverlayOn, StageResources.VkOverlay.IsNull ? 0 : 1);
-        VkUniformShim.Set(r.Strength, bloom ? Post.Bloom.V : 0f);
-        VkUniformShim.Set(r.Mode, Post.Tonemap.V);
-        VkUniformShim.Set(r.Knee, Post.TmKnee.V);
-        VkUniformShim.Set(r.Exposure, Post.Exposure.V);
-        VkUniformShim.Set(r.AcesMix, Post.AcesMix.V);
-        VkUniformShim.Set(r.Dither, last ? PostChain.DitherLsb : 0f);
-        VkUniformShim.Set(r.Viz, Post.Viz.V == PostChain.VizMotion ? 0 : Post.Viz.V);
+        LooseBlock.Set(r.SkyBare, invVp == default ? 1 : 0);
+        LooseBlock.Set(r.OverlayOn, StageResources.VkOverlay.IsNull ? 0 : 1);
+        LooseBlock.Set(r.Strength, bloom ? Post.Bloom.V : 0f);
+        LooseBlock.Set(r.Mode, Post.Tonemap.V);
+        LooseBlock.Set(r.Knee, Post.TmKnee.V);
+        LooseBlock.Set(r.Exposure, Post.Exposure.V);
+        LooseBlock.Set(r.AcesMix, Post.AcesMix.V);
+        LooseBlock.Set(r.Dither, last ? PostChain.DitherLsb : 0f);
+        LooseBlock.Set(r.Viz, Post.Viz.V == PostChain.VizMotion ? 0 : Post.Viz.V);
         int at = Close(cl, s.Resolve!);
         Draw(cl, s.Resolve!, FormatOf(into), Blend.None, into, LoadOp.Clear, new Rect(rect[0], rect[1], rect[2], rect[3]), at,
              new Inputs(hdr, bloom ? s.Bloom[0] : default, depth), log);
@@ -122,11 +122,11 @@ internal static unsafe class PostChainVk
         {
             int sw = i == 0 ? s.W : LevelW(s, i - 1), sh = i == 0 ? s.H : LevelH(s, i - 1);
             Open(s.Down!);
-            VkUniformShim.Set(d.Exposure, Post.Exposure.V);
-            VkUniformShim.Set(d.Lod, 0);
-            VkUniformShim.Set(d.First, i == 0 ? 1 : 0);
-            VkUniformShim.Set(d.Texel, [1f / sw, 1f / sh]);
-            VkUniformShim.Set(d.Thresh, [Post.Threshold.V, MathF.Max(Post.Knee.V, 1e-4f)]);
+            LooseBlock.Set(d.Exposure, Post.Exposure.V);
+            LooseBlock.Set(d.Lod, 0);
+            LooseBlock.Set(d.First, i == 0 ? 1 : 0);
+            LooseBlock.Set(d.Texel, [1f / sw, 1f / sh]);
+            LooseBlock.Set(d.Thresh, [Post.Threshold.V, MathF.Max(Post.Knee.V, 1e-4f)]);
             int at = Close(cl, s.Down!);
             Draw(cl, s.Down!, Format.Rgba16F, Blend.None, s.Bloom[i], LoadOp.DontCare, new Rect(0, 0, LevelW(s, i), LevelH(s, i)),
                  at, new Inputs(i == 0 ? hdr : s.Bloom[i - 1]), null);
@@ -134,8 +134,8 @@ internal static unsafe class PostChainVk
         for (int i = s.Levels - 1; i > 0; i--)
         {
             Open(s.Up!);
-            VkUniformShim.Set(u.Lod, 0);
-            VkUniformShim.Set(u.Texel, [1f / LevelW(s, i), 1f / LevelH(s, i)]);
+            LooseBlock.Set(u.Lod, 0);
+            LooseBlock.Set(u.Texel, [1f / LevelW(s, i), 1f / LevelH(s, i)]);
             int at = Close(cl, s.Up!);
             Draw(cl, s.Up!, Format.Rgba16F, Blend.Add, s.Bloom[i - 1], LoadOp.Load, new Rect(0, 0, LevelW(s, i - 1), LevelH(s, i - 1)),
                  at, new Inputs(s.Bloom[i]), null);
@@ -198,12 +198,12 @@ internal static unsafe class PostChainVk
         cl.EndRenderPass();
     }
 
-    /// <summary>Open a capture into <paramref name="p"/>'s loose block: the <c>VkUniformShim.Set</c> calls until
+    /// <summary>Open a capture into <paramref name="p"/>'s loose block: the <c>LooseBlock.Set</c> calls until
     /// <see cref="Close"/> fill it.</summary>
     internal static void Open(GuiVkProg p)
     {
         Array.Clear(p.Block);
-        if (p.Block.Length > 0) VkUniformShim.Capture(p.Members, p.Block);
+        if (p.Block.Length > 0) LooseBlock.Capture(p.Members, p.Block);
     }
 
     /// <summary>Close <see cref="Open"/>'s capture and append the block to the frame's post uniforms; its offset,
@@ -211,7 +211,7 @@ internal static unsafe class PostChainVk
     internal static int Close(CommandList cl, GuiVkProg p)
     {
         if (p.Block.Length == 0) return 0;
-        VkUniformShim.EndCapture();
+        LooseBlock.EndCapture();
         PostVkState s = _s;
         int align = Math.Max(s.Dev!.UniformAlign, 16);
         int at = (s.UboUsed + align - 1) & ~(align - 1);
@@ -240,7 +240,7 @@ internal static unsafe class PostChainVk
         if (p == null || stage < 0) return p;
         p.Stage = stage;
         p.StageBinds = StageResources.VkBinds(p.Opaques, stage, -1, draw: true);
-        VkUniformShim.Resolve(p.Names, () => p.StageFrame = FrameLoc.Locate(0));
+        LooseBlock.Resolve(p.Names, () => p.StageFrame = FrameLoc.Locate());
         return p;
     }
 
@@ -320,7 +320,7 @@ internal static unsafe class PostChainVk
     /// <summary>Post stage <paramref name="fsRef"/> over the full-screen vertex stage, as GL compiles the pair.</summary>
     private static GuiVkProg? Make(VkBackend vk, string fsRef, string label, Action<GuiVkProg> locate, ExtenderLog log)
     {
-        GlProgram.Texts(PostChain.ShdPostVs, ShaderStages.Source(PostChain.ShdPostVs), fsRef, ShaderStages.Source(fsRef),
+        ShaderTexts.Pair(PostChain.ShdPostVs, ShaderStages.Source(PostChain.ShdPostVs), fsRef, ShaderStages.Source(fsRef),
                         log, $"PostChainVk {label}", out string vs, out string fs);
         return Program(vk, vs, fs, label, locate, log);
     }

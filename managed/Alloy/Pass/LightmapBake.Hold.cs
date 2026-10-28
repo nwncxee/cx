@@ -187,7 +187,7 @@ internal static unsafe partial class LightmapBake
     internal static void BeginAreaEdge() => _areaEdge = true;
     internal static void EndAreaEdge()
     {
-        _areaEdge = false; _edgePresent = GlContextService.Presents; OnAreaLoaded(); StampEdge();
+        _areaEdge = false; _edgePresent = FramePump.Presents; OnAreaLoaded(); StampEdge();
         // the world scene dies BEFORE the next LoadArea: outside a hold the pending key is the area being left
         if (Held) TakeAreaKey();
     }
@@ -266,7 +266,7 @@ internal static unsafe partial class LightmapBake
     /// backdrop flashing over the world is worse than the hitch.</summary>
     internal static void CompileNotice()
     {
-        int now = GlContextService.Presents;
+        int now = FramePump.Presents;
         CompileNoticeVk(now);
     }
 

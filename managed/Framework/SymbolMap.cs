@@ -613,8 +613,9 @@ internal static unsafe class SymbolMap
     [Fn("int(byte b, int locale)")]
     public const string EncodingSingleCharToUtf8   = "_ZN8Encoding16SingleCharToUTF8EcNS_6LocaleE";
 
-    // The client runs an OpenGL 3.3 CORE context (verified: SDL_GL_SetAttribute PROFILE_MASK=CORE),
-    // so the owned draw is shader+VAO+VBO. Modern GL (>=1.3) resolves through this exported SDL entry.
+    // The client asks SDL for an OpenGL 3.3 CORE context (verified: SDL_GL_SetAttribute PROFILE_MASK=CORE)
+    // and resolves its own GL entries (>=1.3) through this exported SDL entry, which is where a Vulkan
+    // session hands it CX's stubs instead.
     public const string SdlGlGetProcAddress = "SDL_GL_GetProcAddress";
     // RenderInterface blend/depth wrappers (static; args in edi/esi, no `this`). We route only these
     // through the engine so its enable-cache stays in sync; matrices are ours (software stack -> shader
@@ -650,7 +651,7 @@ internal static unsafe class SymbolMap
     /// <summary><c>GLRender::m_boundTextures</c> @0x19ad0e0 -- the engine's per-stage bound-texture CACHE, 16 entries of
     /// <c>{AuroraEnableEnums target, GLuint name}</c>, with <c>m_activeTextureStage</c> @0x19ad0d8 and
     /// <c>m_bEnabledTextureStages</c> @0x19ad0d4 beside it. <c>SetActiveTextureAndBind</c> early-outs on a cache match,
-    /// so an engine bind called from Alloy's own context writes the cache while GL misses it: snapshot all three.</summary>
+    /// so a bind that never reaches the engine's own renderer leaves this cache stale: snapshot all three.</summary>
     public const string GlBoundTextures = "_ZN8GLRender15m_boundTexturesE";
     public const string GlActiveTextureStage = "_ZN8GLRender20m_activeTextureStageE";
     public const string GlEnabledTextureStages = "_ZN8GLRender23m_bEnabledTextureStagesE";

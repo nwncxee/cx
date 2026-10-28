@@ -216,15 +216,8 @@ public sealed unsafe class UiHostService : IExtenderService
         // Must be the LAST thing before the present -- after the window roll-call and after every PrePresent
         // participant. With Alloy rendering, only when something drew in this context this frame.
         if (!CX.Alloy.Renderer.On || _handBack.Owed) HandBack();
-        // the present is its own zone. It is the discriminator the other brackets cannot supply --
-        // a frame that spends its time HERE is waiting on the GPU or on vsync, which is a different problem
-        // from every zone that measures our own CPU work.
-        // the black-frame discriminator, and the only one that is free of the two-context question --
-        // this read is in the ENGINE's context, at the last instruction before the present, so what it sees
-        // IS what the swap is about to show. A bright value on a frame that displays black means the swap
-        // presented a buffer nobody drew; alternating values mean the frame was lost before it got here.
-        // Only in a module: the main menu presents for a minute before a save is loaded, and a budget spent
-        // there is 60 samples of a static background -- which is what the first run of this probe measured.
+        // The black-frame discriminator: read at the last instruction before the present, so what it sees IS what
+        // the swap is about to show. In a module only -- the menu's static background measures nothing.
         if (_presentProbe > 0 && GameGate.InModule)
         {
             _presentProbe--;
@@ -257,23 +250,14 @@ public sealed unsafe class UiHostService : IExtenderService
     /// <summary>Layer <paramref name="layer"/>'s windows as last recorded.</summary>
     internal static UiDrawList Windows(UiLayer layer) => _layers[(int)layer];
 
-    /// <summary>Record CX's own 2D windows for the frame Alloy draws, both layers, issuing no GL: Alloy's GUI pass
-    /// replays them inside its bracket. Game thread.</summary>
+    /// <summary>Record CX's own 2D windows for the frame Alloy draws, both layers, issuing nothing: Alloy's GUI pass
+    /// replays them into its own frame. Game thread.</summary>
     internal static void RecordWindowsForDbFrame()
     {
         long tEdge = FrameZones.Now, ui0 = FrameZones.Ticks(FrameZones.Zone.Ui);
         Record(UiLayer.BelowNui, true);
         Record(UiLayer.AboveNui, false);
         FrameZones.Add(FrameZones.Zone.UiEdge, tEdge, FrameZones.Ticks(FrameZones.Zone.Ui) - ui0);
-    }
-
-    /// <summary>Replay both recorded layers into the ENGINE's context and hand its state back: the windows of a frame
-    /// whose GUI the 4.6 bracket could not draw.</summary>
-    internal static void ReplayWindowsHere()
-    {
-        TextRig.Replay(_layers[(int)UiLayer.BelowNui]);
-        TextRig.Replay(_layers[(int)UiLayer.AboveNui]);
-        HandBack();
     }
 
     /// <summary>The engine-context draw with Alloy off: record one layer (null = both), replay it at once, then hand

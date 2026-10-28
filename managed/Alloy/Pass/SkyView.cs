@@ -91,8 +91,8 @@ internal static unsafe class SkyView
     internal static void UploadLitVk(int locVp, int locTerm, ImageId map, bool capturing)
     {
         bool on = Wanted && !map.IsNull && CasterPass.SkyFresh && !capturing;
-        VkUniformShim.Set(locVp, on ? CasterPass.SkyMapFit.Vp : default);
-        VkUniformShim.Set(locTerm, [on ? Lighting.Sky.V : 0f, StepM, CoverM, RiseM]);
+        LooseBlock.Set(locVp, on ? CasterPass.SkyMapFit.Vp : default);
+        LooseBlock.Set(locTerm, [on ? Lighting.Sky.V : 0f, StepM, CoverM, RiseM]);
     }
 
     /// <summary>The baked map describes an area that has gone; <see cref="CasterPass.SkyAreaEdge"/> drops the

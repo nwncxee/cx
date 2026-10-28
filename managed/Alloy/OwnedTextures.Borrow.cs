@@ -24,7 +24,7 @@ internal static unsafe partial class OwnedTextures
         /// <summary>The table is stood down for this upload (<c>alloy.texsingle=0</c>, or the hook did not install),
         /// so the engine's own copy is what the draw samples.</summary>
         StoodDown,
-        /// <summary>Uploaded before the 4.6 context existed. <see cref="RefreshPreContext"/> re-drives the engine's
+        /// <summary>Uploaded before the render device was up. <see cref="RefreshPreContext"/> re-drives the engine's
         /// own refresh once, which is what empties this kind.</summary>
         PreContext,
         /// <summary>Level 0 is past <c>GL_MAX_TEXTURE_SIZE</c>; the engine downsamples to fit and Alloy leaves the
@@ -109,22 +109,22 @@ internal static unsafe partial class OwnedTextures
         return _borrow.MaxTex;
     }
 
-    /// <summary>A texture the engine uploaded before the 4.6 context existed is borrowed for the session
+    /// <summary>A texture the engine uploaded before the render device was up is borrowed for the session
     /// otherwise: nothing re-drives the funnel for one the engine already holds. So drive the engine's OWN
     /// refresh once (<c>AurTextureRefreshAll</c>, what it runs when the anisotropy option changes), whose rebuild
-    /// comes back through the funnel with a context to upload into.</summary>
+    /// comes back through the funnel with a device to upload into.</summary>
     private static void RefreshPreContext()
     {
-        if (_borrow.PreCtx == 0 || _borrow.Refreshed || !_armed || !GlContextService.Available) return;
+        if (_borrow.PreCtx == 0 || _borrow.Refreshed || !_armed || !FramePump.Available) return;
         if (TexStream.InTransition) return;   // a rebuild of EVERY texture does not belong inside an area load
         if (EngineFn.AurTextureRefreshAll == null)
         {
             _borrow.Refreshed = true;
-            _log?.Always("OwnedTextures: AurTextureRefreshAll unresolved -- every texture the engine uploaded before the 4.6 context stays BORROWED for the session");
+            _log?.Always("OwnedTextures: AurTextureRefreshAll unresolved -- every texture the engine uploaded before the render device was up stays BORROWED for the session");
             return;
         }
         _borrow.Refreshed = true;
-        _log?.Info($"OwnedTextures: re-driving AurTextureRefreshAll -- {_borrow.PreCtx} textures were uploaded before the 4.6 context existed and come back through the upload funnel now");
+        _log?.Info($"OwnedTextures: re-driving AurTextureRefreshAll -- {_borrow.PreCtx} textures were uploaded before the render device was up and come back through the upload funnel now");
         EngineFn.AurTextureRefreshAll();
     }
 }

@@ -74,12 +74,12 @@ internal static unsafe partial class GuiPassVk
     {
         public void Write()
         {
-            VkUniformShim.Set(BoneStart, GuiCapture.DrawN * (GuiCapture.RecFloats / 4));
-            VkUniformShim.Set(Gamma, On ? 1 : 0);
+            LooseBlock.Set(BoneStart, GuiCapture.DrawN * (GuiCapture.RecFloats / 4));
+            LooseBlock.Set(Gamma, On ? 1 : 0);
         }
     }
 
-    /// <summary>One content draw's engine terms, through the same <see cref="GuiContent.Feed"/> GL calls.</summary>
+    /// <summary>One content draw's engine terms, through <see cref="GuiContent.Feed"/>.</summary>
     private readonly record struct ContentFill(GuiContent.Prog Terms, int Draw, int W, int H, bool Gamma) : IFill
     {
         public void Write() => GuiContent.Feed(Terms, Draw, W, H, Gamma);
@@ -88,7 +88,7 @@ internal static unsafe partial class GuiPassVk
     /// <summary>The model-view solve's background.</summary>
     private readonly record struct SolveFill(int Bg, Vector4 Colour) : IFill
     {
-        public void Write() => VkUniformShim.Set(Bg, [Colour.X, Colour.Y, Colour.Z, Colour.W]);
+        public void Write() => LooseBlock.Set(Bg, [Colour.X, Colour.Y, Colour.Z, Colour.W]);
     }
 
     /// <summary>Alloy's GUI program's loose block for this flush: the two terms it reads are per-flush, so the block
@@ -101,7 +101,7 @@ internal static unsafe partial class GuiPassVk
     }
 
     /// <summary>A content program's loose block for draw <paramref name="di"/>: the engine's own terms, written by
-    /// the same <see cref="GuiContent.Feed"/> GL calls, captured into the block at its reflected offsets.</summary>
+    /// <see cref="GuiContent.Feed"/> at the block's reflected offsets.</summary>
     private static int ContentBlock(GuiContent.VkPair pair, int di, int w, int h, bool gamma, ExtenderLog log)
         => Block(pair.Program, new ContentFill(pair.Terms, di, w, h, gamma), log);
 
@@ -111,9 +111,9 @@ internal static unsafe partial class GuiPassVk
     {
         if (p.Block.Length == 0) return 0;
         Array.Clear(p.Block);
-        VkUniformShim.Capture(p.Members, p.Block);
+        LooseBlock.Capture(p.Members, p.Block);
         try { fill.Write(); }
-        finally { VkUniformShim.EndCapture(); }
+        finally { LooseBlock.EndCapture(); }
         return Arena(p.Block, log);
     }
 
@@ -189,7 +189,7 @@ internal static unsafe partial class GuiPassVk
         AlloyRenderer.GlZero => BlendFactor.Zero,
         AlloyRenderer.GlOne => BlendFactor.One,
         AlloyRenderer.GlSrcColor => BlendFactor.SrcColor,
-        CX.Graphics.Gl.ONE_MINUS_SRC_COLOR => BlendFactor.OneMinusSrcColor,
+        CX.Graphics.EngineTokens.ONE_MINUS_SRC_COLOR => BlendFactor.OneMinusSrcColor,
         AlloyRenderer.GlSrcAlpha => BlendFactor.SrcAlpha,
         AlloyRenderer.GlOneMinusSrcAlpha => BlendFactor.OneMinusSrcAlpha,
         AlloyRenderer.GlDstColor => BlendFactor.DstColor,
@@ -201,8 +201,8 @@ internal static unsafe partial class GuiPassVk
     /// seam cannot assemble is not drawn under the wrong one.</summary>
     private static Topology? Topo(uint prim, ExtenderLog log)
     {
-        if (prim == CX.Graphics.Gl.TRIANGLES) return Topology.Triangles;
-        if (prim == CX.Graphics.Gl.TRIANGLE_STRIP) return Topology.TriangleStrip;
+        if (prim == CX.Graphics.EngineTokens.TRIANGLES) return Topology.Triangles;
+        if (prim == CX.Graphics.EngineTokens.TRIANGLE_STRIP) return Topology.TriangleStrip;
         if (!_s.PrimSaid)
         {
             _s.PrimSaid = true;

@@ -112,28 +112,28 @@ public sealed unsafe partial class AlloyRenderer
     {
         VkProg p = s.Prog!;
         Array.Clear(p.Block);
-        VkUniformShim.Capture(p.Members, p.Block);
+        LooseBlock.Capture(p.Members, p.Block);
         try
         {
-            VkUniformShim.Set(s.View, *view);
-            VkUniformShim.Set(s.Proj, *proj);
-            VkUniformShim.Set(s.Eye, [eye.X, eye.Y, eye.Z]);
+            LooseBlock.Set(s.View, *view);
+            LooseBlock.Set(s.Proj, *proj);
+            LooseBlock.Set(s.Eye, [eye.X, eye.Y, eye.Z]);
             UploadFog(p.F);
-            VkUniformShim.Set(s.Cut, g.Cls == Particles.VkPunch ? Particles.VkPunchCut : Particles.VkNoCut);
-            VkUniformShim.Set(s.Add, g.Cls == Particles.VkAdd ? 1 : 0);
-            VkUniformShim.Set(s.Lit, lit ? 1 : 0);
-            VkUniformShim.Set(s.Emis, g.Emissive);
-            VkUniformShim.Set(s.Viz, Particles.VizMode);
-            VkUniformShim.Set(s.Soft, soft ? 1 : 0);
+            LooseBlock.Set(s.Cut, g.Cls == Particles.VkPunch ? Particles.VkPunchCut : Particles.VkNoCut);
+            LooseBlock.Set(s.Add, g.Cls == Particles.VkAdd ? 1 : 0);
+            LooseBlock.Set(s.Lit, lit ? 1 : 0);
+            LooseBlock.Set(s.Emis, g.Emissive);
+            LooseBlock.Set(s.Viz, Particles.VizMode);
+            LooseBlock.Set(s.Soft, soft ? 1 : 0);
             if (lit)
             {
                 BindPass(s.Cubes, viewport, near, far);
-                if (!Particles.ShadowsOn) VkUniformShim.Set(s.Cubes, 0);
-                VkUniformShim.Set(s.SunMedia, 1f);
-                VkUniformShim.Set(s.LocalMedia, 1f);
+                if (!Particles.ShadowsOn) LooseBlock.Set(s.Cubes, 0);
+                LooseBlock.Set(s.SunMedia, 1f);
+                LooseBlock.Set(s.LocalMedia, 1f);
             }
         }
-        finally { VkUniformShim.EndCapture(); }
+        finally { LooseBlock.EndCapture(); }
         return VkArena(p.Block);
     }
 
@@ -186,18 +186,17 @@ public sealed unsafe partial class AlloyRenderer
         s.Tried = true;
         s.Side = new CommandList("vulkan particles", PartArenaBytes, log);
         s.Samp = vk.CreateSampler(new SamplerDesc(Filter.Linear, Filter.Linear, MipMode.None, Wrap.Clamp));
-        const uint name = VkUniformShim.ProgramBase + 48;   // not-an-offset: the particle program's shim name
         VkProgramText t = VkGlsl.Translate(ShaderResource.Tokens(ShaderSource.Get("cx_part_v.glsl")),
                                            ShaderResource.Tokens(ShaderSource.Get("cx_part_f.glsl")), VkPrograms.Units, glDepth: false);
-        VkProg? p = VkBuild(vk, t, "particles", false, name, log);
+        VkProg? p = VkBuild(vk, t, "particles", false, log);
         if (p != null)
-            VkUniformShim.Resolve(p.Names, () =>
+            LooseBlock.Resolve(p.Names, () =>
             {
-                s.View = GlProgram.Loc(name, "uView"); s.Proj = GlProgram.Loc(name, "uProj"); s.Eye = GlProgram.Loc(name, "uEye");
-                s.Cut = GlProgram.Loc(name, "uAlphaCut"); s.Add = GlProgram.Loc(name, "uAdditive"); s.Lit = GlProgram.Loc(name, "uLit");
-                s.Emis = GlProgram.Loc(name, "uEmissive"); s.Viz = GlProgram.Loc(name, "uViz"); s.Soft = GlProgram.Loc(name, "uSoftOn");
-                s.SunMedia = GlProgram.Loc(name, "uSunMedia"); s.LocalMedia = GlProgram.Loc(name, "uLocalMedia");
-                s.Cubes = GlProgram.Loc(name, "uLocalCubes");
+                s.View = LooseBlock.Loc("uView"); s.Proj = LooseBlock.Loc("uProj"); s.Eye = LooseBlock.Loc("uEye");
+                s.Cut = LooseBlock.Loc("uAlphaCut"); s.Add = LooseBlock.Loc("uAdditive"); s.Lit = LooseBlock.Loc("uLit");
+                s.Emis = LooseBlock.Loc("uEmissive"); s.Viz = LooseBlock.Loc("uViz"); s.Soft = LooseBlock.Loc("uSoftOn");
+                s.SunMedia = LooseBlock.Loc("uSunMedia"); s.LocalMedia = LooseBlock.Loc("uLocalMedia");
+                s.Cubes = LooseBlock.Loc("uLocalCubes");
             });
         for (int cls = 0; p != null && cls < s.Pipes.Length; cls++)
         {

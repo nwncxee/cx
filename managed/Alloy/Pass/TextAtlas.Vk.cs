@@ -34,17 +34,16 @@ internal static unsafe partial class TextAtlas
     /// <summary>The sampler every mirrored atlas is read through; null id before the first mirror.</summary>
     internal static SamplerId VkSampler => _vk.Nearest;
 
-    /// <summary>Can an atlas be mirrored right now? True off Vulkan, where there is nothing to mirror; on it, once
-    /// the device exists and this is the thread it belongs to.</summary>
+    /// <summary>Can an atlas be mirrored right now? Once the device exists and this is the thread it belongs to.</summary>
     private static bool MirrorReady()
-        => !Renderer.OnVulkan || (_log != null && AlloyDevice.Vulkan(_log) is VkBackend vk && vk.OnOwnThread);
+        => _log != null && AlloyDevice.Vulkan(_log) is VkBackend vk && vk.OnOwnThread;
 
     /// <summary>Mirror <paramref name="p"/>'s pixels, already uploaded to GL name <paramref name="gl"/>, as a Vulkan
     /// image under that name. A refusal is logged and counted by <see cref="VkTextures"/>: the glyphs then draw
     /// through the GUI pass's stand-in rather than blank.</summary>
     private static void MirrorVk(uint gl, TextFontBake.PendingAtlas p)
     {
-        if (!Renderer.OnVulkan || _log == null || AlloyDevice.Vulkan(_log) is not VkBackend vk) return;
+        if (_log == null || AlloyDevice.Vulkan(_log) is not VkBackend vk) return;
         if (_vk.Dev != vk) _vk = new VkAtlasState { Dev = vk };
         VkAtlasState s = _vk;
         if (s.Nearest.IsNull) s.Nearest = vk.CreateSampler(NearestClamp);

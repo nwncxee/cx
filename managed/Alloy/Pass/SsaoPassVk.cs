@@ -139,7 +139,7 @@ internal static unsafe class SsaoPassVk
     /// swaps), translated and compiled for Vulkan. A null id, logged, for a text the toolchain refused.</summary>
     private static PipelineId Pipeline(VkBackend vk, string fsRef, string label, ExtenderLog log)
     {
-        GlProgram.Texts(PostChain.ShdPostVs, ShaderStages.Source(PostChain.ShdPostVs), fsRef, ShaderStages.Source(fsRef),
+        ShaderTexts.Pair(PostChain.ShdPostVs, ShaderStages.Source(PostChain.ShdPostVs), fsRef, ShaderStages.Source(fsRef),
                         log, label, out string vs, out string fs);
         VkProgramText t = VkGlsl.Translate(vs, fs, VkPrograms.Units, glDepth: false);
         if (t.Error != null) { log.Always($"SsaoPassVk: {label} did not translate -- {t.Error}"); return default; }

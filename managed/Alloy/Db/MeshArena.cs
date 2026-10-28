@@ -727,10 +727,10 @@ public static unsafe partial class MeshArena
     // ---------------------------------------------------------------- the frame edge
 
     /// <summary>Collect the frame's frees, compact if the dead bytes have piled up, and push both mirrors to
-    /// the GPU. Render thread, inside Alloy's GL bracket, once a frame before the batches are built.</summary>
+    /// the GPU. Inside Alloy's frame, once a frame before the batches are built.</summary>
     internal static void Pump()
     {
-        // The CPU half runs wherever the caller is: frees and the readers' snapshot touch no GL.
+        // The CPU half runs wherever the caller is: frees and the readers' snapshot touch no GPU object.
         lock (_gate) { if (DrainFrees()) Publish(); }
         lock (_gate)
         {

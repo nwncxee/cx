@@ -43,11 +43,11 @@ public sealed unsafe partial class AlloyRenderer
         VkDefStage st = s.Bake!;
         int arena0 = c.ArenaUsed;
         Array.Clear(st.Block);
-        VkUniformShim.Capture(st.Members, st.Block);
-        VkUniformShim.Set(s.Size, (ReadOnlySpan<int>)[SkyView.MapSize, SkyView.MapSize]);
-        VkUniformShim.Set(s.Z, [fit.ZAt0, fit.ZPerDepth]);
-        VkUniformShim.Set(s.Fit, [fit.UvPerMetre, SkyMath.RangeM]);
-        VkUniformShim.EndCapture();
+        LooseBlock.Capture(st.Members, st.Block);
+        LooseBlock.Set(s.Size, (ReadOnlySpan<int>)[SkyView.MapSize, SkyView.MapSize]);
+        LooseBlock.Set(s.Z, [fit.ZAt0, fit.ZPerDepth]);
+        LooseBlock.Set(s.Fit, [fit.UvPerMetre, SkyMath.RangeM]);
+        LooseBlock.EndCapture();
         int at = VkArena(st.Block);
         if (at < 0) return;
         cl.UpdateBuffer(c.Arena, arena0, c.ArenaBytes.AsSpan(arena0, Math.Min((c.ArenaUsed - arena0 + 3) & ~3, ArenaCap - arena0)));
@@ -96,11 +96,11 @@ public sealed unsafe partial class AlloyRenderer
             return false;
         }
         VkSkyViewState k = s;
-        VkUniformShim.Resolve(s.Bake.Names, () =>
+        LooseBlock.Resolve(s.Bake.Names, () =>
         {
-            k.Size = GlProgram.Loc(VkUniformShim.ProgramBase, "uSize");
-            k.Z = GlProgram.Loc(VkUniformShim.ProgramBase, "uSkyZ");
-            k.Fit = GlProgram.Loc(VkUniformShim.ProgramBase, "uSkyFit");
+            k.Size = LooseBlock.Loc("uSize");
+            k.Z = LooseBlock.Loc("uSkyZ");
+            k.Fit = LooseBlock.Loc("uSkyFit");
         });
         return true;
     }

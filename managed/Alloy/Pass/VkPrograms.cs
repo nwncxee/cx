@@ -13,14 +13,14 @@ namespace CX.Alloy;
 internal static class VkPrograms
 {
     /// <summary>The programs the Vulkan passes draw through. Those past <see cref="Id.DepthFeat"/> are not among
-    /// <see cref="All"/>: like GL's, each is optional, built at its own pass's first frame, and a refusal stands
+    /// <see cref="All"/>: each is optional, built at its own pass's first frame, and a refusal stands
     /// that pass down rather than failing the frame.</summary>
     internal enum Id { Fullbright, Lit, LitDeferred, Depth, DepthKey, DepthFeat, Decal, Water, HighlightMask, Motion, Grass, GrassBlade }
 
     internal static readonly Id[] All = [Id.Fullbright, Id.Lit, Id.LitDeferred, Id.Depth, Id.DepthKey, Id.DepthFeat];
 
-    /// <summary>The bindings of the samplers these stages declare without a <c>layout(binding)</c>: the units GL's
-    /// program builds set by <c>glUniform1i</c> (<c>Programs.LitLocs</c>, <c>Programs.EnsureProgram</c>).</summary>
+    /// <summary>The binding each sampler these stages declare without a <c>layout(binding)</c> takes -- the one
+    /// table for them: a declaration it does not name is a translation error, not a silent unit 0.</summary>
     internal static readonly IReadOnlyDictionary<string, uint> Units = MakeUnits();
 
     private static Dictionary<string, uint> MakeUnits()
@@ -57,7 +57,7 @@ internal static class VkPrograms
         {
             case Id.Fullbright:
             {
-                GlProgram.Texts(AlloyRenderer.ShdFullbrightVs, ShaderStages.Source(AlloyRenderer.ShdFullbrightVs),
+                ShaderTexts.Pair(AlloyRenderer.ShdFullbrightVs, ShaderStages.Source(AlloyRenderer.ShdFullbrightVs),
                                 AlloyRenderer.ShdFullbrightFs, ShaderStages.Source(AlloyRenderer.ShdFullbrightFs),
                                 log, what, out string v, out string f);
                 return (Final(v, log, what, true), Final(f, log, what, true));
@@ -71,7 +71,7 @@ internal static class VkPrograms
             }
             case Id.Water:
             {
-                GlProgram.Texts(AlloyRenderer.ShdWaterVs, ShaderStages.Source(AlloyRenderer.ShdWaterVs),
+                ShaderTexts.Pair(AlloyRenderer.ShdWaterVs, ShaderStages.Source(AlloyRenderer.ShdWaterVs),
                                 AlloyRenderer.ShdWaterFs, ShaderStages.Source(AlloyRenderer.ShdWaterFs),
                                 log, what, out string v, out string f);
                 return (Final(v, log, what, true), Final(f, log, what, true));
@@ -112,7 +112,7 @@ internal static class VkPrograms
     {
         if (ContentPrograms.Texts(feat, v) is not { } t) return null;
         string what = $"VkPrograms content {feat} {v}";
-        string vs = Final(GlProgram.Lib(t.Vs, log, what), log, what, true), fs = Final(GlProgram.Lib(t.Fs, log, what), log, what, true);
+        string vs = Final(ShaderTexts.Lib(t.Vs, log, what), log, what, true), fs = Final(ShaderTexts.Lib(t.Fs, log, what), log, what, true);
         if (StageResources.VkUnits(Units, vs + "\n" + fs, nativeVs, nativeFs, StageResources.DrawImgUnits, out string why) is not { } units)
         {
             StageResources.Fail(nativeVs, why, log);
@@ -128,7 +128,7 @@ internal static class VkPrograms
     {
         if (!SkyStage.Texts(StageResources.Prefix + resref, native: true, out var pair, out _)) return null;
         string what = $"VkPrograms sky {StageResources.Prefix}{resref}";
-        string vs = Final(GlProgram.Lib(pair.Vs, log, what), log, what, true), fs = Final(GlProgram.Lib(pair.Fs, log, what), log, what, true);
+        string vs = Final(ShaderTexts.Lib(pair.Vs, log, what), log, what, true), fs = Final(ShaderTexts.Lib(pair.Fs, log, what), log, what, true);
         if (StageResources.VkUnits(Units, vs + "\n" + fs, stage, -1, StageResources.DrawImgUnits, out string why) is not { } units)
             return new VkProgramText { Error = why };
         return VkGlsl.Translate(vs, fs, units, glDepth: false);
@@ -141,8 +141,8 @@ internal static class VkPrograms
     {
         if (!SkyStage.Texts(resref, native: false, out var pair, out _)) return null;
         string what = $"VkPrograms sky {resref}";
-        return VkGlsl.Translate(Final(GlProgram.Lib(pair.Vs, log, what), log, what, true),
-                                Final(GlProgram.Lib(pair.Fs, log, what), log, what, true), Units, glDepth: false);
+        return VkGlsl.Translate(Final(ShaderTexts.Lib(pair.Vs, log, what), log, what, true),
+                                Final(ShaderTexts.Lib(pair.Fs, log, what), log, what, true), Units, glDepth: false);
     }
 
     /// <summary>The lit pair a content pair is spliced from on Vulkan: <see cref="LitTexts"/>, the text GL's lit
@@ -153,8 +153,8 @@ internal static class VkPrograms
     /// translates the pair's halves, and the build reads its facts off that translation.</summary>
     internal static void Splice(string vs, string fs, ExtenderLog? log, string what)
     {
-        Final(GlProgram.Lib(vs, log, what), log, what, true);
-        Final(GlProgram.Lib(fs, log, what), log, what, true);
+        Final(ShaderTexts.Lib(vs, log, what), log, what, true);
+        Final(ShaderTexts.Lib(fs, log, what), log, what, true);
     }
 
     /// <summary>The lit pair after the stage overrides and library swaps, before the splice: what GL's lit build and
@@ -162,7 +162,7 @@ internal static class VkPrograms
     private static (string Vs, string Fs) LitTexts(ExtenderLog? log, string what)
     {
         string fs = AlloyRenderer.BindlessFs(ShaderStages.Source(AlloyRenderer.ShdLitFs));
-        GlProgram.Texts(AlloyRenderer.ShdLitVs, ShaderStages.Source(AlloyRenderer.ShdLitVs), AlloyRenderer.ShdLitFs, fs,
+        ShaderTexts.Pair(AlloyRenderer.ShdLitVs, ShaderStages.Source(AlloyRenderer.ShdLitVs), AlloyRenderer.ShdLitFs, fs,
                         log, what, out string v, out string f);
         return (v, f);
     }

@@ -123,16 +123,16 @@ public sealed unsafe partial class AlloyRenderer
         for (int i = 0; i < s.Mips; i++)
         {
             Array.Clear(ggx.Block);
-            VkUniformShim.Capture(ggx.Members, ggx.Block);
-            VkUniformShim.Set(s.GLevel, i);
-            VkUniformShim.EndCapture();
+            LooseBlock.Capture(ggx.Members, ggx.Block);
+            LooseBlock.Set(s.GLevel, i);
+            LooseBlock.EndCapture();
             if ((at[i] = VkArena(ggx.Block)) < 0) return false;
         }
         Array.Clear(proj.Block);
-        VkUniformShim.Capture(proj.Members, proj.Block);
+        LooseBlock.Capture(proj.Members, proj.Block);
         Vector3 o = EnvProbe.Origin;
-        VkUniformShim.Set(s.POrigin, [o.X, o.Y, o.Z]);
-        VkUniformShim.EndCapture();
+        LooseBlock.Set(s.POrigin, [o.X, o.Y, o.Z]);
+        LooseBlock.EndCapture();
         int pAt = VkArena(proj.Block);
         if (pAt < 0) return false;
         int len = (c.ArenaUsed - arena0 + 3) & ~3;
@@ -213,9 +213,9 @@ public sealed unsafe partial class AlloyRenderer
         s.Ggx = VkDefBuild(vk, "cx_probe_ggx", null, "vk probe GGX prefilter", log);
         s.Proj = VkDefBuild(vk, "cx_probe_sh", null, "vk probe SH9 projection", log);
         if (s.Ggx != null)
-            VkUniformShim.Resolve(s.Ggx.Names, () => s.GLevel = GlProgram.Loc(VkUniformShim.ProgramBase, "uLevel"));
+            LooseBlock.Resolve(s.Ggx.Names, () => s.GLevel = LooseBlock.Loc("uLevel"));
         if (s.Proj != null)
-            VkUniformShim.Resolve(s.Proj.Names, () => s.POrigin = GlProgram.Loc(VkUniformShim.ProgramBase, "uOrigin"));
+            LooseBlock.Resolve(s.Proj.Names, () => s.POrigin = LooseBlock.Loc("uOrigin"));
         const ImageUse cube = ImageUse.Sampled | ImageUse.Storage;
         s.Cap = vk.CreateImage(new ImageDesc(ImageKind.Cube, Format.Rgba16F, s.Size, s.Size, 1, s.Mips, 1, 1,
                                              cube | ImageUse.ColorTarget, "vk probe capture"));

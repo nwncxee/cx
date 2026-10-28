@@ -16,15 +16,14 @@ public sealed unsafe partial class AlloyRenderer
     /// off the main thread as long as nothing mints during the stage, which nothing does.</summary>
     private static ulong HandleLookup(int tid)
         => tid != 0 && Probe(tid, out int hit, out _) ? _hVal[hit] : 0;
-    /// <summary>Resident bindless handle for a texture name. 0 in, 0 out. Called only inside the 4.6 bracket
-    /// (handles belong to the share group) and, while ownedtex is armed, only for an Alloy-OWNED name. A
-    /// handled texture is IMMUTABLE from this moment: a change means a new name, never an in-place
-    /// <c>TexSubImage</c> from the engine context -- residency is per context and nothing propagates.</summary>
+    /// <summary>Resident bindless handle for a texture name. 0 in, 0 out. Called only from the frame's own
+    /// recording and, while ownedtex is armed, only for an Alloy-OWNED name. A handled texture is IMMUTABLE
+    /// from this moment: a change means a new name, never an in-place update of the image behind it.</summary>
     internal static ulong HandleFor(int tid)
     {
         if (tid == 0) return 0;
         // a name that is not ours may already be dead or RECYCLED (Mesa hands the lowest free name straight
-        // back): minting on it is a fault on zink and another texture's handle on radeonsi
+        // back): minting on it hands back another texture's handle, or faults outright
         if (OwnedTextures.Armed && !OwnedTextures.IsOwned(tid)) return 0;
         if (Probe(tid, out int hit, out int free)) return _hVal[hit];
         if (free < 0) return 0;                        // table full: no handle, caller falls back

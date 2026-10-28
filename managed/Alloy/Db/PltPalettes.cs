@@ -38,11 +38,11 @@ internal static unsafe class PltPalettes
 
     /// <summary>Texture unit the lit stage reads the master palette on. Past the 0..15 budget for
     /// <c>LocalShadowRaw</c>'s reason -- every unit below is spent in the lit bracket -- and declared with
-    /// <c>layout(binding)</c> in <c>cx_plt.glsl</c>, so no bind-time <c>glUniform1i</c> can miss it.</summary>
+    /// <c>layout(binding)</c> in <c>cx_plt.glsl</c>, which IS the unit: nothing assigns it by name.</summary>
     internal const uint Unit = TextureSlots.PltPalette;
 
     internal static bool Ready => _tex != 0;
-    /// <summary>The master-palette texture's GL name, 0 until <see cref="Create"/> has made one. A UI draw
+    /// <summary>The master-palette texture's name, 0 until <see cref="Create"/> has made one. A UI draw
     /// that resolves a PLT itself binds it on a unit of its own rather than through <see cref="Bind"/>.</summary>
     internal static uint Texture => _tex;
     internal static ReadOnlySpan<byte> Master => _master;

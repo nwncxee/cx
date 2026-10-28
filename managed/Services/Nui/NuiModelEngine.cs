@@ -86,7 +86,7 @@ internal static unsafe partial class NuiModelEngine
         Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT0, Gl.TEXTURE_2D, tex, 0);
         Gl.BindFramebuffer(Gl.READ_FRAMEBUFFER, from);
         Gl.BindFramebuffer(Gl.DRAW_FRAMEBUFFER, e.FboDst);
-        Gl.BlitFramebuffer(0, 0, w, h, 0, h, w, 0, ColorBufferBit, (uint)Gl.NEAREST);
+        Gl.BlitFramebuffer(0, 0, w, h, 0, h, w, 0, ColorBufferBit, (uint)EngineTokens.NEAREST);
         if (scissor != 0) Gl.Enable(Gl.SCISSOR_TEST);
         Gl.BindFramebuffer(Gl.READ_FRAMEBUFFER, (uint)rd);
         Gl.BindFramebuffer(Gl.DRAW_FRAMEBUFFER, (uint)fbo);
@@ -131,9 +131,9 @@ internal static unsafe partial class NuiModelEngine
         uint t;
         Gl.GenTextures(1, &t);
         Gl.BindTexture(Gl.TEXTURE_2D, t);
-        Gl.TexImage2D(Gl.TEXTURE_2D, 0, (int)Rgba8, w, h, 0, Gl.RGBA, Gl.UNSIGNED_BYTE, null);
-        Gl.TexParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.LINEAR);
-        Gl.TexParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAG_FILTER, Gl.LINEAR);
+        Gl.TexImage2D(Gl.TEXTURE_2D, 0, (int)Rgba8, w, h, 0, EngineTokens.RGBA, EngineTokens.UNSIGNED_BYTE, null);
+        Gl.TexParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, EngineTokens.LINEAR);
+        Gl.TexParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAG_FILTER, EngineTokens.LINEAR);
         return t;
     }
 
@@ -149,8 +149,8 @@ internal static unsafe partial class NuiModelEngine
         Gl.GenTextures(1, &t); k.Depth = t;
         Gl.BindTexture(Gl.TEXTURE_2D, t);
         Gl.TexImage2D(Gl.TEXTURE_2D, 0, (int)Gl.DEPTH24_STENCIL8, w, h, 0, Gl.DEPTH_STENCIL, Gl.UNSIGNED_INT_24_8, null);
-        Gl.TexParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
-        Gl.TexParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAG_FILTER, Gl.NEAREST);
+        Gl.TexParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MIN_FILTER, EngineTokens.NEAREST);
+        Gl.TexParameteri(Gl.TEXTURE_2D, Gl.TEXTURE_MAG_FILTER, EngineTokens.NEAREST);
         Gl.BindFramebuffer(Gl.FRAMEBUFFER, k.Fbo);
         Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT0, Gl.TEXTURE_2D, k.Color, 0);
         Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, Gl.DEPTH_STENCIL_ATTACHMENT, Gl.TEXTURE_2D, k.Depth, 0);

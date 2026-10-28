@@ -54,14 +54,14 @@ public sealed unsafe partial class AlloyRenderer
             if (f != fmt) { fmt = f; side.SetPipeline(s.Pipes[f]); side.BindVertexBuffer(MeshArena.VkVbo((MeshArena.Fmt)f)); }
             Matrix4x4 m = SceneDb.PartWorld[part];
             Array.Clear(p.Block);
-            VkUniformShim.Capture(p.Members, p.Block);
-            VkUniformShim.Set(s.Model, m);
-            VkUniformShim.Set(s.View, view);
-            VkUniformShim.Set(s.Proj, proj);
-            VkUniformShim.Set(s.Src, [dir.X, dir.Y, dir.Z, -1f]);
-            VkUniformShim.Set(s.ZClip, zClip);
-            VkUniformShim.Set(s.Color, [tint, tint, tint, alpha]);
-            VkUniformShim.EndCapture();
+            LooseBlock.Capture(p.Members, p.Block);
+            LooseBlock.Set(s.Model, m);
+            LooseBlock.Set(s.View, view);
+            LooseBlock.Set(s.Proj, proj);
+            LooseBlock.Set(s.Src, [dir.X, dir.Y, dir.Z, -1f]);
+            LooseBlock.Set(s.ZClip, zClip);
+            LooseBlock.Set(s.Color, [tint, tint, tint, alpha]);
+            LooseBlock.EndCapture();
             int at = VkArena(p.Block);
             if (at < 0) return false;
             ReadOnlySpan<BufferBinding> ubo = [new(UboSlots.Loose, c.Arena, at, p.Block.Length)];
@@ -85,14 +85,13 @@ public sealed unsafe partial class AlloyRenderer
         if (s.Tried) return s.Prog != null;
         s.Tried = true;
         s.Side = new CommandList("vulkan beams", 1 << 14, log);
-        const uint name = VkUniformShim.ProgramBase + 49;   // not-an-offset: the beam program's shim name
         VkProgramText t = VkGlsl.Translate(Beams.VkVs, Beams.VkFs, VkPrograms.Units, glDepth: false);
-        VkProg? p = VkBuild(vk, t, "beams", false, name, log);
+        VkProg? p = VkBuild(vk, t, "beams", false, log);
         if (p != null)
-            VkUniformShim.Resolve(p.Names, () =>
+            LooseBlock.Resolve(p.Names, () =>
             {
-                s.Model = GlProgram.Loc(name, "uModel"); s.View = GlProgram.Loc(name, "uView"); s.Proj = GlProgram.Loc(name, "uProj");
-                s.Src = GlProgram.Loc(name, "uProjSrc"); s.ZClip = GlProgram.Loc(name, "uZClip"); s.Color = GlProgram.Loc(name, "uColor");
+                s.Model = LooseBlock.Loc("uModel"); s.View = LooseBlock.Loc("uView"); s.Proj = LooseBlock.Loc("uProj");
+                s.Src = LooseBlock.Loc("uProjSrc"); s.ZClip = LooseBlock.Loc("uZClip"); s.Color = LooseBlock.Loc("uColor");
             });
         VkColourState c = _vkc;
         for (int f = 0; p != null && f < MeshArena.Formats; f++)

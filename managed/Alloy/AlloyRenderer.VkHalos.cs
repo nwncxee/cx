@@ -63,14 +63,14 @@ public sealed unsafe partial class AlloyRenderer
             while (at + run < n && Halos.VkTex(at + run) == tex) run++;
             ImageId img = tex != 0 ? VkTextures.Image((int)tex) : default;
             Array.Clear(p.Block);
-            VkUniformShim.Capture(p.Members, p.Block);
-            VkUniformShim.Set(s.View, view);
-            VkUniformShim.Set(s.Proj, proj);
-            VkUniformShim.Set(s.Viz, Effects.HaloViz.V);
-            VkUniformShim.Set(s.Gain, Effects.Halos.V);
-            VkUniformShim.Set(s.First, at);
-            VkUniformShim.Set(s.Textured, img.IsNull ? 0 : 1);
-            VkUniformShim.EndCapture();
+            LooseBlock.Capture(p.Members, p.Block);
+            LooseBlock.Set(s.View, view);
+            LooseBlock.Set(s.Proj, proj);
+            LooseBlock.Set(s.Viz, Effects.HaloViz.V);
+            LooseBlock.Set(s.Gain, Effects.Halos.V);
+            LooseBlock.Set(s.First, at);
+            LooseBlock.Set(s.Textured, img.IsNull ? 0 : 1);
+            LooseBlock.EndCapture();
             int loose = VkArena(p.Block);
             if (loose < 0) return false;
             Span<ImageBinding> sampled = stackalloc ImageBinding[8];
@@ -114,18 +114,17 @@ public sealed unsafe partial class AlloyRenderer
         s.Tried = true;
         s.Side = new CommandList("vulkan halos", 1 << 14, log);
         s.Samp = vk.CreateSampler(new SamplerDesc(Filter.Linear, Filter.Linear, MipMode.Linear, Wrap.Clamp));
-        const uint name = VkUniformShim.ProgramBase + 50;   // not-an-offset: the halo program's shim name
         (string vs, string fs) = Halos.VkTexts(log);
         var units = new System.Collections.Generic.Dictionary<string, uint>(VkPrograms.Units) { ["uFlare"] = TextureSlots.Diffuse };
         units.Remove("uTex");
         VkProgramText t = VkGlsl.Translate(ShaderResource.Tokens(vs), ShaderResource.Tokens(fs), units, glDepth: false);
-        VkProg? p = VkBuild(vk, t, "halos", false, name, log);
+        VkProg? p = VkBuild(vk, t, "halos", false, log);
         if (p != null)
         {
-            VkUniformShim.Resolve(p.Names, () =>
+            LooseBlock.Resolve(p.Names, () =>
             {
-                s.View = GlProgram.Loc(name, "uView"); s.Proj = GlProgram.Loc(name, "uProj"); s.Viz = GlProgram.Loc(name, "uViz");
-                s.Gain = GlProgram.Loc(name, "uGain"); s.First = GlProgram.Loc(name, "uFirst"); s.Textured = GlProgram.Loc(name, "uTextured");
+                s.View = LooseBlock.Loc("uView"); s.Proj = LooseBlock.Loc("uProj"); s.Viz = LooseBlock.Loc("uViz");
+                s.Gain = LooseBlock.Loc("uGain"); s.First = LooseBlock.Loc("uFirst"); s.Textured = LooseBlock.Loc("uTextured");
             });
             var d = new PipelineDesc
             {

@@ -188,8 +188,8 @@ internal static unsafe class NuiFlush
                 sx = nx; sy = ny; sw = nw; sh = nh; open = true;
             }
             fixed (ushort* run = _idx.AsSpan(offset, count))
-                GuiCapture.Raw(vtx, VtxStride, GuiStream.FmtNuklear, run, count, 0, Gl.TRIANGLES, mvp,
-                               d.TextureId, Gl.SRC_ALPHA, Gl.ONE_MINUS_SRC_ALPHA);
+                GuiCapture.Raw(vtx, VtxStride, GuiStream.FmtNuklear, run, count, 0, EngineTokens.TRIANGLES, mvp,
+                               d.TextureId, EngineTokens.SRC_ALPHA, EngineTokens.ONE_MINUS_SRC_ALPHA);
             offset += count;
             _cmdsDrawn++;
         }

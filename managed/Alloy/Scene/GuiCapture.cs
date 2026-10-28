@@ -7,7 +7,7 @@ namespace CX.Alloy;
 /// <summary>
 /// The draw list of Alloy's GUI path. Every scene with no tile BSP (panels, menus, minimap, compass, cursor
 /// overlay, previews) is walked from the scene database into layers of records -- geometry, state and the
-/// content program a part's material names -- which <see cref="GuiPass"/> issues from the 4.6 context. The
+/// content program a part's material names -- which <see cref="GuiPass"/> issues. The
 /// list is BUILT here: no engine draw funnel feeds it and no draw of it is handed back to one.
 /// </summary>
 internal static unsafe class GuiCapture
