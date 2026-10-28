@@ -59,4 +59,4 @@ public sealed unsafe class ExampleService : IExtenderService
 - **Call the original, or don't, deliberately.** Calling it after your work is an
   "after" hook, before it an "before" hook, not at all is skip-original.
 - **Hot hooks allocate nothing.** NativeAOT's GC runs on whatever thread the hook
-  fired on. Frame and GL hooks are hot; input and network hooks are cold.
+  fired on. Frame, render and GL-stub hooks are hot; input and network hooks are cold.

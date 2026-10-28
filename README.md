@@ -10,7 +10,7 @@ There's more to see in the [gallery](media/README.md).
 
 ## Features
 
-**Graphics.** NWNCX:EE draws the 3D world with an updated OpenGL 4.6 renderer, which we call Alloy. There are many modern improvements that increase visual fidelity while also helping performance too. Real-time shadows, adaptive fog colouring, HDR with exposure, tone mapping, and bloom. Denser grass and precipitation that actually covers surfaces, improved wind physics, and GPU texture streaming.
+**Graphics.** NWNCX:EE draws the 3D world with its own Vulkan renderer, which we call Alloy. There are many modern improvements that increase visual fidelity while also helping performance too. Real-time shadows, adaptive fog colouring, HDR with exposure, tone mapping, and bloom. Denser grass and precipitation that actually covers surfaces, improved wind physics, and GPU texture streaming. Alloy needs a Vulkan 1.3 driver; on a machine without one it stands down and the game draws the world the way it always did, with every other feature still running.
 
 **Animation.** Animation transitions are much less stiff but the animations themselves remain mostly unchanged. Each movement eases into the next and uses simulated inertia; stride length changes with creature speed, so sliding is a thing of the past. Feet actually adjust to the floor so you _walk_ up and down stairs instead of floating over them.
 
