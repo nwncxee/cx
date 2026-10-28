@@ -62,7 +62,10 @@ internal sealed unsafe partial class VkBackend
         BindBindless();
         FlushUploads();
 
+        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         bool ok = Record(list.TakePending());
+        _translateTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+        _translateN++;
         if (_rendering) _vkd.vkCmdEndRendering(_cmd);
         _inPass = _rendering = false;
         if (ok && swap >= 0) ok = RecordPresent(swap);
@@ -287,6 +290,7 @@ internal sealed unsafe partial class VkBackend
             };
         if (!Staged(System.Runtime.InteropServices.MemoryMarshal.AsBytes(_multi.AsSpan(0, c.Draws)), out ulong at)) return false;
         _vkd.vkCmdDrawIndexedIndirect(_cmd, _slot!.Stage, at, (uint)c.Draws, IndirectStride);
+        _drawN += c.Draws;
         return true;
     }
 
@@ -297,6 +301,7 @@ internal sealed unsafe partial class VkBackend
     {
         if (!EnsureRendering()) return false;
         if (!_buffers.TryGet(c.Commands.Value, out VkBuf cmds)) return Fault("DrawIndexedIndirect: stale command buffer");
+        _drawN++;
         if (c.MaxDraws <= 0) return true;
         if (c.Count.IsNull)
         {
@@ -312,6 +317,7 @@ internal sealed unsafe partial class VkBackend
     {
         if (!EnsureRendering()) return false;
         if (!_buffers.TryGet(c.Commands.Value, out VkBuf cmds)) return Fault("DrawIndirect: stale command buffer");
+        _drawN++;
         if (c.MaxDraws > 0) _vkd.vkCmdDrawIndirect(_cmd, cmds.Buffer, (ulong)c.Offset, (uint)c.MaxDraws, ArraysStride);
         return true;
     }
@@ -365,6 +371,7 @@ internal sealed unsafe partial class VkBackend
         _vkd.vkUpdateDescriptorSets((uint)k, w, 0, null);
         // ponytail: every bind set lands on set 0, the one GLSL without a set qualifier reads
         _vkd.vkCmdBindDescriptorSets(_cmd, _inPass ? VkPipelineBindPoint.Graphics : _bindPoint, _pipeLayout, 0, 1, &set, 0, null);
+        _setN++;
         return true;
     }
 
@@ -416,6 +423,7 @@ internal sealed unsafe partial class VkBackend
     {
         if (!EnsureRendering()) return false;
         _vkd.vkCmdDraw(_cmd, (uint)c.Verts, (uint)c.Insts, (uint)c.FirstVert, (uint)c.FirstInst);
+        _drawN++;
         return true;
     }
 
@@ -423,6 +431,7 @@ internal sealed unsafe partial class VkBackend
     {
         if (!EnsureRendering()) return false;
         _vkd.vkCmdDrawIndexed(_cmd, (uint)c.Indices, (uint)c.Insts, (uint)c.FirstIndex, c.BaseVertex, (uint)c.FirstInst);
+        _drawN++;
         return true;
     }
 
