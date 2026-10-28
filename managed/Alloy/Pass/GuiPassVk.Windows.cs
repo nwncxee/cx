@@ -122,8 +122,6 @@ internal static unsafe partial class GuiPassVk
         CommandList side = s.Side!;
         side.SetViewport(0, 0, l.ViewW, l.ViewH);
         side.SetDepthRange(0f, 1f);
-        side.SetDepthState(default);
-        side.SetRasterState(default);
         side.BindVertexBuffer(s.Win.Vtx[li]);
         Span<BufferBinding> ubo = stackalloc BufferBinding[1];
         Span<ImageBinding> img = stackalloc ImageBinding[4];
@@ -135,7 +133,8 @@ internal static unsafe partial class GuiPassVk
             if (pipe.IsNull) { s.Skipped++; continue; }
             int loose = Block(w.P, new WinFill(w, l, i, ortho, scene, vp, k), log);
             if (loose < 0) return false;
-            if (pipe != b.Pipe) { side.SetPipeline(pipe); b.Pipe = pipe; }
+            // a pipeline bind re-asserts the pipeline's own depth and raster state, so a window's must follow it
+            if (pipe != b.Pipe) { side.SetPipeline(pipe); side.SetDepthState(default); side.SetRasterState(default); b.Pipe = pipe; }
             if (c.Clip) side.SetScissor(c.Cx, l.ViewH - (c.Cy + c.Ch), Math.Max(c.Cw, 0), Math.Max(c.Ch, 0));
             else side.SetScissor(0, 0, l.ViewW, l.ViewH);
             int nt = 0;
