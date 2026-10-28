@@ -258,9 +258,13 @@ public bool TryGet(int cp, out Glyph g)
 
 Line metrics: `GlyphAtlas.LineHeight`, `GlyphAtlas.Ascent` (`managed/Ui/GlyphAtlas.cs:22`).
 
-### The actual GL submit
+### The actual submit
 
-`managed/Ui/TextRig.cs:408` — this is the one call a window's `DrawContent` makes:
+`TextRig` is a **draw recorder, not a renderer**: `DrawBatch` appends a `UiDrawKind.Text` command to the
+frame's `UiDrawList`, and `TextRig.Replay` issues the finished list in whichever context draws the frame —
+Alloy's Vulkan GUI pass, or the engine's own GL present when Alloy is off. Nothing below decides who draws.
+
+`managed/Ui/TextRig.cs` — this is the one call a window's `DrawContent` makes:
 
 ```csharp
 public static void DrawBatch(float[] verts, int count, float alpha = 1f, float offX = 0f, float offY = 0f,
@@ -271,9 +275,9 @@ public static void DrawBatch(float[] verts, int count, float alpha = 1f, float o
 - `alpha` multiplies the whole batch (`uAlpha`) — the whole-plate fade knob.
 - `offX/offY` translate every vertex (`uOffset`) — used by Dialog for scroll; a nameplate could use it
   for a slide-in.
-- `clip` → `glScissor` in screen px, y-down top-left; the box is saved and restored inside.
-- It sets its own full GL preamble (blend on, depth off, cull off), snapshots nothing (#210), and
-  `UiHostService` resyncs the engine after the roll-call.
+- `clip` → a scissor box in screen px, y-down top-left, carried on the command and applied by the replay.
+- The replay sets its own full draw state (blend on, depth off, cull off), snapshots nothing (#210), and
+  on the GL side `UiHostService` resyncs the engine after the roll-call.
 
 Textured quad (RGB, its own program/VAO): `managed/Ui/TextRig.cs:455`, see §9.
 
@@ -307,8 +311,9 @@ Across windows, `UiHost.DrawFrame` (`managed/Ui/UiHost.cs:338`) walks ascending 
 
 ### What a window draws in
 
-**Absolute screen pixels, top-left origin, y grows downward.** `TextRig.DrawBatch` queries the live GL
-viewport and builds the ortho itself (`managed/Ui/TextRig.cs:277`):
+**Absolute screen pixels, top-left origin, y grows downward.** `TextRig` publishes the frame's viewport once
+per present — Alloy's screen size when Alloy is on, the live GL viewport when it is not — and the replay
+builds the ortho from it (`managed/Ui/TextRig.cs`):
 
 ```csharp
 /// <summary>Column-major ortho for glOrtho(0,w,h,0,-1,1): top-left origin, y grows downward.</summary>
@@ -874,7 +879,7 @@ Colours elsewhere are `uint` `0xRRGGBB` unpacked inline
 
 ---
 
-## 9. Textures — how a UI quad gets a GL texture
+## 9. Textures — how a UI quad gets a texture
 
 ### The API
 
@@ -887,8 +892,8 @@ public static void DrawPortrait(string resref, float x, float y, float w, float 
 
 `public const float PortraitAspect = 0.64f;` (`managed/Ui/TextRig.cs:497`) — size the rect to that or it distorts.
 
-It uses a **second** program/VAO/VBO (`_progRgb`, `_pvao`, `_pvbo`) so the text VBO's upload-if-changed
-cache stays valid, sets its own full GL preamble, resolves the resref, uploads 6 vertices, binds, draws.
+It records a command of its own kind, carrying the engine texture id the resref resolved to and six
+vertices, so the replay binds that texture for the run and the text commands around it are unaffected.
 
 ### The lifetime hazard, and the guard that already exists
 
@@ -926,12 +931,11 @@ resolve + guard in one call and caches nothing — that is the front door for a 
 
 ### Batching N portraits
 
-`DrawPortrait` is one upload + one draw per call — fine for one dialog portrait, wasteful for N plates.
-The batched precedent is `ChatRenderer.DrawPortraits` (`managed/Services/Chat/Render/ChatRenderer.cs:325-366`):
-resolve **every** TID and build **all** geometry into a single `stackalloc` buffer **first** (because
-`AurTextureGet`'s create path can touch GL and rebind `ARRAY_BUFFER` — it must never run between your
-`BindBuffer` and `BufferData`), then one `BufferData`, then a `BindTexture` + `DrawArrays(i*6, 6)` per
-portrait. It also caps at `MaxPortraitsPerFrame` and logs once when the cap bites. Copy that shape.
+`DrawPortrait` is one command per call — fine for one dialog portrait, wasteful for N plates.
+The batched precedent is `ChatRenderer.DrawPortraits` (`managed/Services/Chat/Render/ChatRenderer.cs`):
+resolve **every** TID and build **all** geometry into a single `stackalloc` buffer first, then record the
+run, so the replay changes texture once per portrait and uploads once for the batch. It also caps at
+`MaxPortraitsPerFrame` and logs once when the cap bites. Copy that shape.
 
 A texture id of 0 means "engine hasn't uploaded it yet" — skip that plate this frame, don't error.
 
@@ -952,7 +956,7 @@ public static bool DispatchMouseWheel(int dy)
 
 Coordinates are the **raw SDL event fields** — `*(int*)(ev + 0x14)` / `+ 0x18`
 (`UiInputService.cs:32, 191, 207, 219`), passed through unscaled. `Metrics.Scale` is never applied on the
-input side. So the hit-test space is SDL window pixels; the draw space is the GL viewport
+input side. So the hit-test space is SDL window pixels; the draw space is the frame's viewport
 (`TextRig.ViewportW/H`). These agree on a normal desktop; on HiDPI where SDL logical ≠ drawable pixels they
 would not. Every existing consumer assumes they agree — if a plate hit-test ever feels offset on a
 scaled display, this is the first thing to check.
@@ -1014,8 +1018,9 @@ there is no key-up route to windows. Two options, in preference order:
 ./sym.sh [-m] <pat> # symbol search; -m = mangled, for HookService.Install
 ```
 
-`build.sh` also enforces one static rule: `managed/Alloy/Scene/` must not call GL (grep for `Gl.` without a
-`gl-ok:` marker). Irrelevant to a UI service, but don't put nameplate GL under `Alloy/Scene/`.
+`build.sh` still greps `managed/Alloy/Scene/` for `Gl.` without a `gl-ok:` marker, and the broader rule is
+the compiler's now: CX0003 (`tools/analyzers/EngineGl.cs`) confines GL to a named list of files, since Alloy
+is Vulkan-only. A UI service draws by recording into `TextRig`'s list, so neither should come up.
 
 ### What `run-demo.sh` can and cannot verify
 
@@ -1035,7 +1040,7 @@ hook staging doesn't throw, and every `SelfCheck` you write passes. `UiHost.Self
 window registry, z-order, hit-test, cursor pick, draw roll-call and input precedence off-device —
 including a hermetic save/restore of the live registry.
 
-**Cannot verify:** anything with a GL context, a font (`GlyphAtlas.Bake` returns null headless —
+**Cannot verify:** anything that needs a render device, a font (`GlyphAtlas.Bake` returns null headless —
 "stbtt exports unresolved"), an engine symbol, a camera, a texture, or a pixel. Layout, projection maths
 and look are live-only.
 
