@@ -8,7 +8,7 @@ ignored, so an un-extended client loses nothing.
 This is the **client** (`nwmain`), not the server. The server end of any packet lives in the
 server's own extender (NWNX/Anvil); do not conflate the two.
 
-The OpenGL 4.6 renderer is called **Alloy** (`managed/Alloy/`, namespace
+The Vulkan renderer is called **Alloy** (`managed/Alloy/`, namespace
 `CX.Alloy`) -- one of the family: Anvil on the server backend, Crucible the
 module builder, Alloy the renderer. "Alloy" is the term for what it draws, and
 **vanilla** is the contrast: an Alloy part is one Alloy submits, a vanilla one is
@@ -97,8 +97,8 @@ Load path (the "hard work", you never touch it):
 Read before working in the area: `docs/hook-pattern.md` (a real hook + trampoline),
 `docs/owned-resource-lifetimes.md` (what creates and kills each owned table, per scene layer),
 `docs/alloy-refusals.md` (why a frame is the engine's), `docs/audio.md` (Steam Audio behind the engine's OpenAL).
-Every file under `managed/Alloy/Shaders/` is a `cx_*` resref <= 16 chars -- the hak limit, so each is
-overridable as `<resref>.shd`.
+Every file under `managed/Alloy/Shaders/` is GLSL under a `cx_*` resref <= 16 chars -- the hak limit, so each
+is overridable as `<resref>.shd` -- translated and compiled to SPIR-V at runtime (`VkGlsl`, shaderc).
 
 ## Adding a service (the whole contributor workflow)
 
@@ -241,7 +241,7 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
   here. Take its Before/After/SkipOriginal semantics, not its C# API.
 - **Hot hooks allocate nothing.** NativeAOT GC runs on whatever thread the hook
   fired on; the render/main loop stutters if it pauses there. Input/network hooks
-  are cold -- fine. Frame/GL hooks are hot -- be careful.
+  are cold -- fine. Frame, render and GL-stub hooks are hot -- be careful.
 - **Reuse an existing message opcode; don't invent one.** That is what keeps the
   extender optional (unknown packets are ignored server-side).
 - **Windows is a supported OS, not a follow-up.** A new hook or engine-memory read
@@ -258,7 +258,7 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
   never a pass's program: a measurement that needs its own variant of a stage does not get a field on the pass.
 - **Shaders for what shaders reach; extender for what they can't.** Lighting/color
   = `.shd` overrides via hak/NWSync (content, not this repo). Shadows, render bugs,
-  fixed-function state = engine-internal, needs a GL hook.
+  draw state = engine-internal: an Alloy pass or a hook, never content.
 
 ## The binary is your map
 
@@ -266,7 +266,11 @@ The client binary (`python3 tools/paths.py NWN_BIN`) is an
 **unstripped** ELF (~24k dynamically-exported functions). You hook by name, no
 offset hunting.
 
-Renders via OpenGL/GLX/X11 (SDL is static -- symbols appear, no `libSDL` in ldd).
+The engine renders via OpenGL/GLX/X11 (SDL is static -- symbols appear, no `libSDL` in ldd), and goes on
+running that code with Alloy on: `NullGl` makes SDL open a Vulkan window and routes every GL entry nwmain
+imports to a CX stub, so the session has no GL context and Vulkan presents (`VkBackend.Present`). Alloy is
+Vulkan's alone -- a refused probe (`VkBackend.Refusal`) stands it down and the engine's own GL renderer draws
+(ADR 0033).
 
 ## Reverse engineering (Ghidra)
 
