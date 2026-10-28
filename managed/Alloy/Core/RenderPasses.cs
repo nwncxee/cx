@@ -81,7 +81,6 @@ internal static class RenderPasses
             Name = "water",
             Attach = FrameSnapshot.Attach,
             SelfCheck = l => FrameSnapshot.SelfCheck(l),
-            ContextLost = FrameSnapshot.Forget,
             Stats = FrameSnapshot.Stats,
         }, log);
         // CX-51: the screen-space reflections. No edges of its own -- the pass's targets are the device's.
@@ -136,7 +135,6 @@ internal static class RenderPasses
         {
             Name = "beams",
             Install = Beams.Install,
-            ContextLost = Beams.ContextLost,
             SelfCheck = Beams.SelfCheck,
             Revoke = Beams.Forget,
             Stats = _ => Beams.Stats(),
@@ -146,7 +144,6 @@ internal static class RenderPasses
             Name = "halos",
             Install = Halos.Install,
             SelfCheck = Halos.SelfCheck,
-            ContextLost = Halos.ContextLost,
             Revoke = Halos.Revoke,
             Stats = _ => Halos.Stats(),
         }, log);
@@ -260,10 +257,7 @@ internal static class RenderPasses
         r.Register(new PassLifecycle
         {
             Name = "idtarget",
-            Attach = IdTarget.Attach,
             SelfCheck = l => IdTarget.SelfCheck(l),
-            ContextLost = IdTarget.Forget,
-            Stats = IdTarget.Stats,
         }, log);
         // CX-188: the G-buffer and the deferred point-light pass; both hold frame-sized GL objects.
         r.Register(new PassLifecycle

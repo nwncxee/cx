@@ -30,10 +30,6 @@ internal static unsafe partial class Beams
     /// <c>CNWCArea</c>'s <c>SetAsDay</c>/<c>SetAsDusk</c> store 0.05 and <c>SetAsDawn</c>/<c>SetAsNight</c>
     /// store 0, so a larger fallback draws every shaft proud of vanilla's -- and draws them at night.</summary>
     private const float DefaultAlpha = 0.05f;
-    private const uint GlUnsignedShort = 0x1403;   // not-an-offset: GL enum
-    /// <summary>Aurora blend factors <c>RenderBeams</c> sets: <c>SetBlendFunc(0, 2)</c> =
-    /// (GL_SRC_ALPHA, GL_ONE).</summary>
-    private const uint GlSrcAlpha = 0x0302, GlOne = 1;   // not-an-offset: GL blend-factor enums
     /// <summary>A handful of static volumes per area; past this a beam is not drawn.</summary>
     private const int MaxBeams = 2048;
 
@@ -48,10 +44,9 @@ internal static unsafe partial class Beams
     private static readonly Beam[] _beams = new Beam[MaxBeams];
     private static int _count;
 
-    // draw arguments resolved by Stage(), one slot per beam issued this pass. Allocated once: the draw path
-    // is inside the colour bracket and allocates nothing.
-    private static readonly int[] _sBeam = new int[MaxBeams], _sCount = new int[MaxBeams], _sBase = new int[MaxBeams];
-    private static readonly nint[] _sOff = new nint[MaxBeams];
+    // the beams staged by this pass, one slot each. Allocated once: the staging runs inside the frame and
+    // allocates nothing.
+    private static readonly int[] _sBeam = new int[MaxBeams];
 
     private static ExtenderLog? _log;
     private static int* _enable;
@@ -100,43 +95,6 @@ internal static unsafe partial class Beams
         if (d.LengthSquared() <= 0f) return false;
         dir = -Vector3.Normalize(d);
         return true;
-    }
-
-    /// <summary>The Alloy beam pass, right after the additive class and before the probe capture -- vanilla's
-    /// own position (step 27, straight after bucket 4). Additive <c>(SRC_ALPHA, ONE)</c>, depth test on, depth
-    /// mask off, exactly as <c>RenderBeams</c> sets it. Leaves GL_BLEND off and the depth mask on, which is
-    /// the state the additive arm hands over and the probe capture after it needs.</summary>
-    internal static void Draw(Matrix4x4* view, Matrix4x4* proj)
-    {
-        if (Disabled || _off || _count == 0 || Gl.DrawElementsBaseVertex == null) return;
-        // The player's own switch, honoured the way grass honours "Grass Mode": beams off means the owned
-        // pass draws nothing AND suppresses nothing, so the console variable keeps meaning what it says.
-        if (_enable != null && *_enable == 0) return;
-        // The frame's own sun (DbLights' area pick) is the only directional the database carries -- and an
-        // interior has none, exactly as vanilla's own routine draws nothing there.
-        if (!DirectionDb(out Vector3 dir) || !EnsureDbProgram()) return;
-        // #261 retired the all-or-none rule: a beam that cannot be staged is skipped and its neighbours draw.
-        int staged = 0;
-        for (int i = 0; i < _count; i++)
-            if (StageDb(i, staged)) _sBeam[staged++] = i;
-            else _refused++;
-        if (staged == 0) return;
-        // Vanilla dusk writes (t - 1) * 0.05, a negative alpha; its magnitude is the (1 - t) * 0.05 that mirrors dawn.
-        DrawDb(view, proj, in dir, _alpha != null ? MathF.Abs(*_alpha) : DefaultAlpha, staged);
-        Gl.Disable(Gl.BLEND);
-        Gl.DepthMask(1);
-        _drawn += staged;
-    }
-
-    /// <summary>Context loss: drop every GL name (they mean nothing once the context is gone) and the
-    /// captured world with them. <see cref="EnsureProgram"/> short-circuits on a non-zero <c>_prog</c> and
-    /// the draw binds <c>_vVao</c> directly, so leaving these set makes the next context draw through a dead
-    /// program and a dead VAO.</summary>
-    internal static void ContextLost()
-    {
-        _progDb = 0; _dbFailed = false;
-        _locDbModel = -1; _locDbView = -1; _locDbProj = -1; _locDbSrc = -1; _locDbZClip = -1; _locDbColor = -1;
-        Forget();
     }
 
     /// <summary>Every captured identity is void: the parts belong to a Scene whose unload freed them.</summary>

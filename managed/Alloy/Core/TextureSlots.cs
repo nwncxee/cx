@@ -63,7 +63,7 @@ internal static class TextureSlots
     /// <summary>The frame snapshot the water stage refracts through: colour then depth.</summary>
     internal const uint SnapshotColor = 13, SnapshotDepth = 14;
     /// <summary>The OIT resolve's accumulation pair. The snapshot's units: the resolve runs before the water
-    /// copy is taken, and FrameSnapshot.Bind re-binds its own textures before any water draw.</summary>
+    /// copy is taken, and the water pass re-binds its own textures before any water draw.</summary>
     internal const uint OitAccum = SnapshotColor, OitReveal = SnapshotDepth;
     /// <summary>The opaque depth the linked-list append tests against, bound for the accumulate only --
     /// the reveal unit, which is free until the resolve rebinds it.</summary>

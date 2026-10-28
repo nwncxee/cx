@@ -752,7 +752,7 @@ ChatOnly master and two diagnostics, so it has no submenu.
 | vfog.top | Fog bank height | S | 2–100 m step 1 · 15 | A | L | Shape | How far above the camera the fog reaches before it thins away: the sky shows above it, and tall things rise out of it. |
 | vfog.temporal / lightshadows | — | S, T | as declared | C | L | — | the share of past frames the volume keeps, and lamps' shadows in the fog |
 | water.enabled | Water | T | on | **C** | L | — | cfg-only: draw water (the stock water shader, reflecting the finished frame). Off, no water is drawn at all -- there is no stock water pass left behind it. |
-| water.rect / diag | — | T, S | as declared | C | L | — | |
+| water.rect | — | T | as declared | C | L | — | |
 
 **Motion** — groups `anim` (350, *Animation*), `dangly` (352, *Cloaks and hair*), `particles`
 (354, *Particles*). `emitsim` (356, *Particle simulation*, parent `particles.enabled`) is a

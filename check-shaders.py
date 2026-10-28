@@ -608,7 +608,6 @@ def programs(g):
         "gui": (g["cx_gui_v"], g["cx_gui_f"]),
         "movie quad": (g["cx_movie_v"], g["cx_movie_f"]),
         "trigger highlight": (g["cx_fullscreen_v"], g["cx_hilitetrig_f"]),
-        "halo occlusion probe": (g["cx_haloocc_c"],),
         "oit resolve": (g["cx_fullscreen_v"], g["cx_oitresolve_f"]),
         "light beams (scene database)": (g["cx_beamdb_v"], g["cx_beam_f"]),
         "lightmap bake": (g["cx_bake_v"], g["cx_bake_f"]),

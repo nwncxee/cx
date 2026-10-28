@@ -32,12 +32,6 @@ internal static unsafe class TriggerHighlight
     /// <summary>Enrolments that took at least one trigger (a non-zero highlight alpha), and draws that drew one,
     /// for the DB period line.</summary>
     internal static long Enrolled, Drawn;
-    private static uint _prog, _buf;
-    private static int _locCount, _locInvVp, _locDepth;
-    private static bool _failed, _logged;
-    private static ExtenderLog? _log;
-
-    internal static void Attach(ExtenderLog log) => _log = log;
 
     /// <summary>Once per world frame, in ENGINE context and BEFORE the frame anchor: snapshot the highlighted
     /// triggers from <see cref="Db.DbTriggers"/>' copies, never the engine objects. No in-view test: an unseen prism
@@ -45,7 +39,6 @@ internal static unsafe class TriggerHighlight
     internal static void Enroll()
     {
         _count = 0; _points = 0;
-        if (_failed) return;
         int n = Db.DbTriggers.Count;
         for (int i = 0; i < n && _count < MaxTriggers; i++)
         {
@@ -71,68 +64,6 @@ internal static unsafe class TriggerHighlight
             _count++;
         }
         if (_count > 0) Enrolled++;
-    }
-
-    /// <summary>The pass: one fullscreen triangle over the finished display-space frame, alpha-blended
-    /// exactly as vanilla's hull is (<c>SetBlendFunc(0, 1)</c> = SRC_ALPHA / ONE_MINUS_SRC_ALPHA). Depth test
-    /// off: the depth is an INPUT here, sampled, not tested against.</summary>
-    internal static void Draw(Matrix4x4* vp, int* display)
-    {
-        if (_count == 0 || PostChain.DepthTex == 0 || !EnsureProgram()) return;
-        if (!Matrix4x4.Invert(*vp, out Matrix4x4 inv)) return;
-        fixed (Vector4* s = _stage)
-            Gl.NamedBufferSubData(_buf, IntPtr.Zero, (IntPtr)((PointBase + _points) * sizeof(Vector4)), s);
-        Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindTrig, _buf);
-        Gl.ActiveTexture(Gl.TEXTURE0 + TextureSlots.HiliteDepth);
-        Gl.BindTexture(Gl.TEXTURE_2D, PostChain.DepthTex);
-        Gl.UseProgram(_prog);
-        Gl.Uniform1i(_locCount, _count);
-        Gl.Uniform1i(_locDepth, (int)TextureSlots.HiliteDepth);
-        // raw row-major bytes, read column-major by GLSL: the transpose, so uInvVP * ndc is exact
-        Gl.UniformMatrix4fv(_locInvVp, 1, 0, (float*)&inv);
-        Gl.Viewport(display[0], display[1], display[2], display[3]);
-        new PassState(depth: false, depthWrite: false, blend: true,
-                      blendSrc: AlloyRenderer.GlSrcAlpha, blendDst: AlloyRenderer.GlOneMinusSrcAlpha).Apply();
-        Gl.BindVertexArray(Vao());
-        Gl.DrawArrays(Gl.TRIANGLES, 0, 3);
-        Drawn++;
-        Gl.BindVertexArray(0);
-        Gl.Disable(Gl.BLEND);
-        Gl.Enable(Gl.DEPTH_TEST);
-        Gl.DepthMask(1);
-        if (_logged) return;
-        _logged = true;
-        _log?.Info($"TriggerHighlight: LIVE -- {_count} highlighted trigger(s), {_points} outline point(s), "
-                 + "drawn as an owned depth-reconstructed decal; the engine's DoHighlightTriggers is not "
-                 + "called on an Alloy frame and no default-framebuffer stencil is needed");
-    }
-
-    private static uint _vao;
-    private static uint Vao()
-    {
-        if (_vao == 0) { uint v; Gl.CreateVertexArrays(1, &v); _vao = v; }
-        return _vao;
-    }
-
-    private static bool EnsureProgram()
-    {
-        if (_prog != 0) return true;
-        if (_failed || Gl.CreateBuffers == null) return false;
-        _prog = GlProgram.Graphics(PostChain.FullscreenVs, ShaderSource.Get("cx_hilitetrig_f.glsl"),
-                                   _log, "AlloyRenderer trigger highlight");
-        if (_prog == 0)
-        {
-            _failed = true;
-            _log?.Always("TriggerHighlight: program build failed -- area transitions will not highlight on "
-                       + "hover this session");
-            return false;
-        }
-        uint b; Gl.CreateBuffers(1, &b); _buf = b;
-        Gl.NamedBufferData(_buf, (IntPtr)(Vec4s * 4 * sizeof(float)), null, Gl.DYNAMIC_DRAW);
-        _locCount = GlProgram.Loc(_prog, "uTrigCount");
-        _locInvVp = GlProgram.Loc(_prog, "uInvVP");
-        _locDepth = GlProgram.Loc(_prog, "uTrigDepth");
-        return true;
     }
 
     /// <summary>The Vulkan half: the program and the staged outline buffer on one device.</summary>
@@ -185,7 +116,6 @@ internal static unsafe class TriggerHighlight
                  + "against the frame's depth over the composite");
     }
 
-    internal static void ContextLost() { _prog = 0; _buf = 0; _vao = 0; _count = 0; _points = 0; }
 
     /// <summary>The SSBO layout is written twice -- here and in the GLSL -- and a silent disagreement reads
     /// every trigger's outline at its neighbour's offset. Asserted, not commented.</summary>

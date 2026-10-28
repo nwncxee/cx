@@ -2,15 +2,13 @@ using CX.Framework;
 
 namespace CX.Alloy;
 
-/// <summary>The <c>water</c> group (spec §4.3): the storage <see cref="FrameSnapshot"/> reads. <see cref="Diag"/>
-/// is a BUDGET of readbacks the pass counts down, not a switch. The master is ChatOnly (ADR 0030): off means
-/// no water anywhere, which is nobody's setting. Touched from
+/// <summary>The <c>water</c> group (spec §4.3): the storage <see cref="FrameSnapshot"/> reads. The master is
+/// ChatOnly (ADR 0030): off means no water anywhere, which is nobody's setting. Touched from
 /// <see cref="RenderCommands.Register"/> so the group declares at Initialize on the main thread.</summary>
 internal static class Water
 {
     internal static readonly KnobGroup G;
     internal static readonly Knob<bool> Enabled, Rect;
-    internal static readonly Knob<int> Diag;
 
     static Water()
     {
@@ -21,6 +19,5 @@ internal static class Water
         Enabled = G.Master!;
         G.Status = FrameSnapshot.Describe;
         Rect = G.Toggle("rect", "rect", true, Tier.ChatOnly);
-        Diag = G.Slider("diag", "diag", 0, 64, 1, 0, tier: Tier.ChatOnly);
     }
 }

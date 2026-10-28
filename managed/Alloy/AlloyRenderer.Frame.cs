@@ -77,7 +77,6 @@ public sealed unsafe partial class AlloyRenderer
         // #129: last pass's snapshot is not this pass's. Revoked first thing, so every path out of here that
         // never reaches PassId.FbCopy leaves Alloy water disarmed -- and BucketGate's bucket-6 gate reads
         // the same flag, so water is simply not drawn on exactly those passes (#285: a hole, not vanilla).
-        FrameSnapshot.Revoke();
         if (StreamRing.Refused) _batchUnavailable = true;   // CX-45: the ring failed the renderer (AlloyGate.Fail) when it was refused
         if (_batchUnavailable) { DbNoDraw("multidraw unavailable"); return false; }   // EndFrame revokes + disarms; never pay the bracket for nothing
         // Checked BEFORE anything stamps OwnGen: BuildBatches marks parts as drawn, which is only honest while

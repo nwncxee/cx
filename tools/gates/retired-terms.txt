@@ -131,3 +131,9 @@ alloy\.(backend|renderthread|rhiimmediate|gpumeter)\b	CX-313
 \bDeferredLights\.(Run|StatsBuf|BindStats)\b|\bDeferredShadows\.(Run|TexVis|TexKey|Res|Width|Height)\b	GL sweep 5
 \bPairDebt\.(Run|Active|StoodDown|Attach|Forget|Stats)\b|\bPairShadows\.(BindAtlas|Tex)\b	GL sweep 5
 \bGBuffer\.(BindForCompute|UnbindCompute)\b|\bAblation\.MaxRung\b	GL sweep 5
+# The GL halves of the vis-ID, flare, beam, trigger-highlight and framebuffer-copy passes, and the GL-only
+# dials and latches they fed: the flare occlusion probe's fade (the Vulkan halos draw at full strength, cut
+# per pixel against the depth copy) and the water copy's readback diagnostic.
+\bIdTarget\.(Begin|End|Paint|Attach|Forget|Stats)\b|\bHalos\.(Draw|Step|ContextLost)\b|\bcx_haloocc_c\b	GL sweep 5
+\bBeams\.(Draw|ContextLost)\b|\bTriggerHighlight\.(Draw|Attach|ContextLost)\b	GL sweep 5
+\bwater\.diag\b|\bFrameSnapshot\.(Copy|Bind|Unbind|Compare|ColorTex|Ready|Copies|Refusals|EnvOk|Forget|Revoke|LastRectFrac)\b	GL sweep 5
