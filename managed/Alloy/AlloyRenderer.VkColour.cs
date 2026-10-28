@@ -594,6 +594,12 @@ public sealed unsafe partial class AlloyRenderer
         if (VkIsWaterTex(o.Name) && VkWaterTex(o.Name) is { IsNull: false } wat)
             return new ImageBinding(o.Binding, wat, VkWaterSampler(o.Name));
         if (o.Name == "uSceneDepth" && !s.DepthRead.IsNull) return new ImageBinding(o.Binding, s.DepthRead);
+        return VkStandInOf(in o, s);
+    }
+
+    /// <summary>The stand-in of a sampler declaration's type, which reads as zero.</summary>
+    private static ImageBinding VkStandInOf(in VkOpaque o, VkColourState s)
+    {
         return o.Type switch
         {
             "usampler2D" => new ImageBinding(o.Binding, s.TexU2D),

@@ -609,7 +609,7 @@ internal static unsafe partial class GrassField
            $"edge {Grass.Edge.V:0.##} " +
            $"push x{Grass.Push.V:0.##} r{Grass.PushRadius.V:0.##} over {Grass.PushExtent.V:0.#}u " +
            $"cull {(Grass.Cull.V ? $"on shrink {Grass.CullShrink.V:0.##}" + (Grass.CullMax.V > 0f ? $" max {Grass.CullMax.V:0.#}u" : "") : "off")} " +
-           $"lod {Grass.Lod.V:0.#}u min {Grass.LodMin.V:0.###} w{Grass.LodWidth.V:0.##} h{Grass.LodHeight.V:0.##} shade {Grass.Shade.V:0.#}u tuft {Grass.Tuft.V:0} vlight {(Grass.VLight.V ? 1 : 0)} castwidth {Grass.CastWidth.V:0.#} rootao {Grass.RootAo.V:0.##} gtint {Grass.GTint.V:0.##} far {(Grass.Far.V > 0f ? $"{Grass.Far.V:0.#}u" : "engine")} " +
+           $"lod {Grass.Lod.V:0.#}u min {Grass.LodMin.V:0.###} w{Grass.LodWidth.V:0.##} h{Grass.LodHeight.V:0.##} shade {Grass.Shade.V:0.#}u tuft {Grass.Tuft.V:0} vlight {(Grass.VLight.V ? 1 : 0)} shadow {Grass.Shadow.V} castwidth {Grass.CastWidth.V:0.#} rootao {Grass.RootAo.V:0.##} gtint {Grass.GTint.V:0.##} far {(Grass.Far.V > 0f ? $"{Grass.Far.V:0.#}u" : "engine")} " +
            $"({_pushers} displacing, {_cullers} culling, {_reticles} non-solid skipped) " +
            $"style {(Grass.Style.V == Grass.StyleBlades ? $"blades x{Grass.BladeDensity.V:0} width {Grass.Width.V:0.##} clump {Grass.Clump.V:0.##} detail {Grass.BladeLod.V:0}u" : "textures")} " +
            $"backlight {Grass.Backlight.V:0.##} sheen {Grass.Sheen.V:0.##} " +

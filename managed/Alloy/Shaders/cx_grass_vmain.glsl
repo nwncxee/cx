@@ -112,9 +112,13 @@ void main()
     // blade's shadow is thinner than the gap between two vertices and averaged away here.
     // Not gated by uShade: past it only the SHADOW taps stop. A blade is a handful of vertices, and
     // without its point lights a night field past 40u went black under lit lamps.
+    // A depth or velocity stage never reads vLight and compiles the rig out: NVIDIA's pipeline compiler
+    // crashes eliminating this loop as dead once the fragment half leaves its output unread.
+#ifndef CX_GRASS_UNLIT
     if (uVLit != 0)
     {
         cxClusterXY = (gl_Position.xy / max(gl_Position.w, 1e-3) * 0.5 + 0.5) * vec2(uGrid.xy);
         vLight = uLit != 0 ? CxClusteredDiffuse(vWorld, vNrm, vDepth) : vec3(0.0);
     }
+#endif
 }
