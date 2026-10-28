@@ -39,6 +39,8 @@ public sealed unsafe partial class AlloyRenderer
                                        float far, bool lightingOn, bool perspective, int groups, ExtenderLog log)
     {
         int w = viewport[2], h = viewport[3];
+        // inside the frame's record bracket, which is why the module-unload edge only sets the flag
+        if (Programs._spliceStale) Programs.DropSpliced();
         if (!VkEnsure(vk, w, h, log)) return false;
         VkColourState s = _vkc;
         s.ArenaUsed = 0;
