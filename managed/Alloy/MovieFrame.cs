@@ -160,40 +160,6 @@ internal static unsafe class MovieFrame
         s.Staged = r;
     }
 
-    /// <summary>The staged rows in an Alloy texture. The CALLER holds the 4.6 bracket and has drained its
-    /// error queue: this is the frame's one upload and the quad that samples it draws in the same bracket.
-    /// Returns the texture name, or 0, which means the engine's own quad draws this frame and the reason was
-    /// said once.</summary>
-    internal static uint Upload(int frameW, int frameH)
-    {
-        MovieFrameState s = _s;
-        if (s.Refused || s.Log == null) return 0;
-        if (s.Orig == null) return Refuse("GLRender::DirectCreateSubTexture is not hooked");
-        MovieRows r = s.Staged;
-        if (!r.Ok) return 0;
-        if (r.Width != frameW || r.Height != frameH)
-            return Refuse($"the staged frame is {r.Width}x{r.Height} and ShowFrame asked for {frameW}x{frameH}");
-        if (!Gl.Init(s.Log)) return Refuse("the GL entry points did not resolve");
-        if (Gl.CreateTextures == null || Gl.TextureStorage2D == null || Gl.TextureSubImage2D == null
-            || Gl.TextureParameteri == null || Gl.PixelStorei == null)
-            return Refuse("a direct-state-access texture entry point did not resolve");
-        if (!Ensure(s, frameW, frameH)) return Refuse("the movie texture did not build");
-        OwnedTextures.Unpack u = OwnedTextures.Unpack.Take(0, 0, 0, r.Align);
-        Gl.TextureSubImage2D(s.Tex, 0, 0, 0, r.Width, r.Height, r.Format, r.Type, s.Rows);
-        u.Give();
-        uint err = Gl.GetError != null ? Gl.GetError() : 0;
-        if (err != 0) return Refuse($"the upload raised GL error 0x{err:x4}");
-
-        if (!s.SaidLive)
-        {
-            s.SaidLive = true;
-            s.Log.Info($"MovieFrame: LIVE -- the movie frame comes from the decode, {r.Width}x{r.Height} rows at "
-                     + $"pitch {r.Pitch} (format 0x{r.Format:x4}, type 0x{r.Type:x4}), staged and uploaded into an "
-                     + "Alloy texture in Alloy's context; the engine's own movie texture is no longer sampled");
-        }
-        return s.Tex;
-    }
-
     /// <summary>The staged rows as tight RGBA8 for a Vulkan upload, the same refusals as <see cref="Upload"/>; empty
     /// means the engine's own quad draws this frame and the reason was said once. Allocates only when the frame grows.</summary>
     internal static ReadOnlySpan<byte> RgbaVk(int frameW, int frameH)
@@ -218,26 +184,6 @@ internal static unsafe class MovieFrame
         return new ReadOnlySpan<byte>(o, 0, n * 4);
     }
 
-    /// <summary>Alloy's movie texture at the decoded frame's exact size -- no power-of-two pad, which is why
-    /// the plate's texture window is the whole texture. Immutable storage, so a size change recreates.</summary>
-    private static bool Ensure(MovieFrameState s, int width, int height)
-    {
-        if (s.Tex != 0 && s.TexW == width && s.TexH == height) return true;
-        GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, s.Tex);
-        s.Tex = 0;
-        uint tex;
-        Gl.CreateTextures(Gl.TEXTURE_2D, 1, &tex);
-        if (tex == 0) return false;
-        Gl.TextureStorage2D(tex, 1, Gl.RGBA8, width, height);
-        // One level, so the default NEAREST_MIPMAP_LINEAR minification would leave the texture incomplete.
-        Gl.TextureParameteri(tex, Gl.TEXTURE_MIN_FILTER, Gl.LINEAR);
-        Gl.TextureParameteri(tex, Gl.TEXTURE_MAG_FILTER, Gl.LINEAR);
-        Gl.TextureParameteri(tex, Gl.TEXTURE_WRAP_S, Gl.CLAMP_TO_EDGE);
-        Gl.TextureParameteri(tex, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
-        s.Tex = tex; s.TexW = width; s.TexH = height;
-        return true;
-    }
-
     /// <summary>Our own mechanism failing is loud and hands the movie to the engine's own quad -- never a
     /// quiet fallback. Once, and for the session: a refusal re-failing twenty-four times a second behind one
     /// stale log line is not a diagnosis.</summary>
@@ -252,7 +198,4 @@ internal static unsafe class MovieFrame
         return 0;
     }
 
-    /// <summary>The 4.6 context went and the texture went with it: the name is dropped, not deleted, so the
-    /// next frame rebuilds instead of drawing through a dead one.</summary>
-    internal static void ContextLost() { _s.Tex = 0; _s.TexW = 0; _s.TexH = 0; }
 }
