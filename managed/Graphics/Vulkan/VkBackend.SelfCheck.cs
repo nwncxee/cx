@@ -44,10 +44,6 @@ internal sealed unsafe partial class VkBackend
         var rgba = new ImageDesc(ImageKind.Tex2D, Format.Rgba8, 7, 5, 1, 3, 1, 1, ImageUse.Sampled, "");
         check.Expect(LevelBytes(bc1, 0) == 2048 && LevelBytes(bc1, 6) == 8 && LevelBytes(bc3, 0) == 32 && LevelBytes(rgba, 1) == 24,
             "a level's bytes: BC1 64x64 is 16x16 blocks of 8 (2048), its 1x1 mip one block (8); BC3 5x3 is 2x1 blocks of 16 (32); RGBA8 7x5's mip 1 is 3x2 texels (24)");
-        check.Expect(GlFormats.FromInternal(0x822F) == Format.Rg16F && GlFormats.FromInternal(0x8CAC) == Format.D32F
-                  && GlFormats.FromInternal(0x1234) == Format.Unknown,
-            "a GL texture's internal format finds its seam twin: RG16F 0x822F, DEPTH_COMPONENT32F 0x8CAC, nothing for 0x1234");
-
         bool staged = true;
         foreach (string leaf in VulkanToolchain.Libraries) staged &= VulkanToolchain.Load(leaf);
         if (!staged) { check.Skip("the staged shaderc did not load"); return; }

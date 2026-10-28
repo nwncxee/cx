@@ -61,7 +61,7 @@ internal static unsafe partial class Weather
     /// at the impacts knob under the shared instance budget. Split out so the self-check can drive it without
     /// a live cover bake.</summary>
     private static int SplashWanted()
-        => _gl.SplashFailed || Impacts.V <= 0f || CurrentKind != Kind.Rain || Density <= 0f ? 0
+        => Impacts.V <= 0f || CurrentKind != Kind.Rain || Density <= 0f ? 0
          : (int)(MaxCount.V * SplashShare * Impacts.V * Density * DensityScale.V);
 
     /// <summary>Fold this frame's centre into the smoothed velocity the stage back-dates each crown's birth with.</summary>

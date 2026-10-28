@@ -256,7 +256,7 @@ public sealed unsafe partial class CasterPass
         Array.Fill(_gAt, -1, 0, _liveCount);
         for (int i = 0; i < _liveCount; i++)
         {
-            if (AlloyRenderer.CasterVao(_liveVao[i]) == 0) continue;
+            if (!AlloyRenderer.CasterGeometry(_liveVao[i])) continue;
             // #265: resolve the OWNED name first and put the coverage question to IT -- the mask and colour
             // passes sample the owned copy, which may be a BCn transcode whose block-quantized alpha sits on
             // the other side of the cutout from the engine's raw original.

@@ -112,14 +112,11 @@ public static unsafe partial class MeshArena
 
     /// <summary>The name a format publishes in place of a GL VAO on Vulkan: nonzero once the device holds its vertices
     /// and the shared indices, so every reader's "uploaded yet" gate reads the same. No GL object stands behind it.</summary>
-    private static uint VkReadyName(Fmt f)
+    private static bool VkResident(Fmt f)
     {
         VkArenaState v = _vk;
-        return v.Vbo[(int)f].IsNull || v.Ebo.IsNull || v.Uploaded[(int)f] == 0 ? 0u : VkReadyBase + (uint)f;
+        return !v.Vbo[(int)f].IsNull && !v.Ebo.IsNull && v.Uploaded[(int)f] != 0;
     }
-
-    /// <summary>The first of <see cref="VkReadyName"/>'s names, far above any name GL hands out.</summary>
-    private const uint VkReadyBase = 1u << 30;
 
     /// <summary>A compaction rewrote the mirrors in place: Vulkan's copies go back up whole at the next pump.</summary>
     private static void VkCompacted()

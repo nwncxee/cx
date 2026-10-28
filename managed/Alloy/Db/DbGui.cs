@@ -310,7 +310,7 @@ internal static unsafe class DbGui
             int recipe = SceneDb.PartRecipe[p];
             if (recipe < 0) { _noRecipe++; _lNoRecipe++; continue; }
             int range = DrawRecipe.Range(recipe);
-            if (range < 0 || !MeshArena.Draw(range, 0, out uint vao, out int baseVertex, out nint off,
+            if (range < 0 || !MeshArena.Draw(range, 0, out int baseVertex, out nint off,
                                              out int idx, out _) || idx <= 0)
             { _noGeometry++; _lNoGeom++; continue; }
 
@@ -353,7 +353,7 @@ internal static unsafe class DbGui
                 // itself -- the solid red cloak the native Examine panel showed (user-shots/22.png).
                 PltRows = !plt ? null : SceneDb.PartPltOwn[p] ? SceneDb.PartPltRow : SceneDb.ObjPltRow,
                 PltAt = plt && SceneDb.PartPltOwn[p] ? p * SceneDb.PltLayers : o * SceneDb.PltLayers,
-                Vao = vao, ArenaFmt = (int)MeshArena.PubFormat(range), Prim = Gl.TRIANGLES, Count = idx, Offset = off, BaseVertex = baseVertex,
+                Arena = true, ArenaFmt = (int)MeshArena.PubFormat(range), Prim = Gl.TRIANGLES, Count = idx, Offset = off, BaseVertex = baseVertex,
                 Tex = (int)tex, Bones = bones, Content = DrawRecipe.Content(recipe),
                 Mvp = world * viewProj,
                 Mv = world * v.View,

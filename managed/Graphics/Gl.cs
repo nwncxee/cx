@@ -165,8 +165,6 @@ public static unsafe class Gl
     public const uint RGBA8 = 0x8058;
     /// <summary>The lightmap's irradiance page format, and a PBO readback's usage hint.</summary>
     public const uint R11F_G11F_B10F = 0x8C3A, STREAM_READ = 0x88E1;
-    /// <summary>The seam's remaining format rows (<c>GlFormats</c>): sRGB colour and the packed upload types.</summary>
-    public const uint SRGB8_ALPHA8 = 0x8C43, UNSIGNED_INT_10F_11F_11F_REV = 0x8C3B, FLOAT_32_UNSIGNED_INT_24_8_REV = 0x8DAD;
     /// <summary><c>glNamedBufferStorage</c>'s flag that allows <c>glNamedBufferSubData</c> after creation.</summary>
     public const uint DYNAMIC_STORAGE_BIT = 0x0100;
     /// <summary>The limits a device reads once into its capability record.</summary>

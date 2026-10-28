@@ -88,7 +88,7 @@ internal static partial class MeshChart
 
         // the memo, over two real arena ranges (CX-114: the places are MeshArena's, so the fixture files
         // them there and asserts against what it hands back)
-        CX.Alloy.Db.MeshArena.FakeVaoForCheck(CX.Alloy.Db.MeshArena.Fmt.Static, 1);
+        CX.Alloy.Db.MeshArena.FakeResidentForCheck(CX.Alloy.Db.MeshArena.Fmt.Static);
         var stage = new float[4 * Stride];
         for (int i = 0; i < 4; i++) { stage[i * Stride] = i; stage[i * Stride + 1] = i * 2; }
         ushort[] i0 = { 0, 1, 2 }, i1 = { 0, 1, 2, 0, 2, 3 };

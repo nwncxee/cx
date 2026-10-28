@@ -32,6 +32,7 @@ internal static unsafe partial class FrameTap
     internal static void TakeVk(VkBackend vk, ImageId hdr, int w, int h)
     {
         if (!Armed || _log == null || hdr.IsNull || w <= 0 || h <= 0) return;
+        Armed = false;   // one frame: the arm is spent whether or not the read-back lands
         uint[]? colour = ReadColour(vk, hdr, w, h);
         if (colour == null)
         {

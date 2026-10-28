@@ -145,7 +145,6 @@ internal static unsafe partial class Weather
         Gl.Uniform4f(locCoverLayer, CasterPass.CoverLayer, HollowStepM / (CoverDepthRadii * radius), CoverSoft.V * 0.5f / radius, SplashRate(capturing));
         UploadEdge(locEdge, cover);
         UploadCache(locCache, cover);
-        BindTiles();
         BindTracks();
         Vector2 tk = TrackUniform(on);
         if (locRun >= 0) Gl.Uniform4f(locRun, on ? RunOff.V : 0f, on ? ShoreRim.V : 0f, tk.X, tk.Y);

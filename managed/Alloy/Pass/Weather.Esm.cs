@@ -34,12 +34,7 @@ internal static unsafe partial class Weather
     }
 
     /// <summary>The cover map is gone with its bake (area edge, flush failure): so is the filtered copy.</summary>
-    internal static void EsmRelease() { _gl.EsmValid = false; _vks.EsmValid = false; _vks.FilteredBake = -1; ShelterRelease(); }
-
-    /// <summary>The cover layer as PLAIN depth -- the same <c>glTextureView</c> the filter reads,
-    /// compare mode off -- or 0 while there is none. The splash pass reconstructs each impact's landing
-    /// point from it; the compare sampler the drop stage uses cannot be read for a depth, only tested.</summary>
-    internal static uint CoverDepthView => _gl.EsmValid ? _gl.EsmView : 0;
+    internal static void EsmRelease() { _vks.EsmValid = false; _vks.FilteredBake = -1; ShelterRelease(); }
 
     /// <summary>A plain-depth copy of this cover bake is held, on whichever backend draws.</summary>
     private static bool CoverDepthOk => _vks.EsmValid;

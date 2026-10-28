@@ -25,28 +25,6 @@ internal static unsafe partial class Weather
                                 RainSpeed = null!, SnowSpeed = null!, WindLean = null!, Soft = null!, Drips = null!, Backscatter = null!, SnowAngle = null!;
     internal static Knob<int> MaxCount = null!, Viz = null!;
 
-    /// <summary>Every GL name the context owns across the weather partials, in one object: <see cref="ContextLost"/>
-    /// replaces it. The flags beside the names say what the named storage holds, so they go with it.</summary>
-    private sealed class WeatherGlState
-    {
-        public uint ProgRain, ProgSnow, Vao;
-        public uint ProgSplash;
-        public bool SplashFailed, SplashSaid;
-        public uint EsmView, EsmViewOf, EsmTex0, EsmTex1, EsmFbo, EsmProg, EsmVao;
-        public int EsmSize, EsmLayer = -1, EsmLocSrc, EsmLocStep, EsmLocC;
-        public bool EsmFailed, EsmValid;
-        public uint MapTex, ProgScat, ProgInt;
-        public int MapSize;
-        public bool MapFailed;
-        public uint ShelTex, NoiseTex, RipTex, ProgShel, ProgNoise, ProgRip;
-        public int ShelSize;
-        public bool ShelValid, ShelFailed, NoiseDone;
-        public uint TrackTex;
-        /// <summary>The whole print field owes an upload: a fresh texture's storage is undefined.</summary>
-        public bool TrackAll = true;
-    }
-
-    private static WeatherGlState _gl = new();
     private static bool _failed;
 
     /// <summary>The precipitation program's uniform locations, resolved once per program.</summary>
@@ -122,7 +100,7 @@ internal static unsafe partial class Weather
         SplashTick(dt);
     }
 
-    internal static void ContextLost() { _gl = new WeatherGlState(); MapLost(); }
+    internal static void ContextLost() => MapLost();
     internal static void ResetPeriod() => _drawn = 0;
     internal static string Stats() => _off ? "weather unavailable" : !Enabled.V ? "weather off"
         : $"weather {CurrentKind} {Density * 100f:F0}% {_count} instances, {_drips} drips{SplashStats()}{CoverStats()}{SurfaceStats()}{MapStats()}{ShelterStats()}, records {AlloyRenderer.RecCreature} creature / {AlloyRenderer.RecObject} object / {AlloyRenderer.RecTile} tile";

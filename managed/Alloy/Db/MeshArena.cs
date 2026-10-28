@@ -113,7 +113,10 @@ public static unsafe partial class MeshArena
     {
         internal float[] Mirror = Array.Empty<float>();
         internal int Used, Uploaded, Capacity, Dead;
-        internal uint Vbo, Vao;
+        internal uint Vbo;
+        /// <summary>Both this format's vertex buffer and the shared element buffer are uploaded: the section's
+        /// geometry is on the device and a range in it can be drawn.</summary>
+        internal bool Resident;
         internal bool Full;
     }
 
@@ -149,12 +152,13 @@ public static unsafe partial class MeshArena
     // ---------------------------------------------------------------- the published snapshot
 
     /// <summary>What a draw reads, published as ONE immutable array at every edge that can move geometry (a
-    /// new range, a free, a compaction, a VAO build, a context loss). The render thread reads this without a
+    /// new range, a free, a compaction, an upload, a device loss). The render thread reads this without a
     /// lock while the game thread acquires and releases under <see cref="_gate"/>; nothing a reader holds is
     /// ever written in place (finding 8).</summary>
     private sealed class Pub
     {
-        internal readonly uint Vao;
+        /// <summary>The section this range lives in has its geometry on the device.</summary>
+        internal readonly bool Resident;
         internal readonly int Base, Cnt0, Cnt1, Cnt2;
         internal readonly nint Off0, Off1, Off2;
         internal readonly Vector3 BMin, BMax, Center;
@@ -162,12 +166,12 @@ public static unsafe partial class MeshArena
         internal readonly bool Live;
         /// <summary>The tenant's identity: <see cref="Sig"/> of its content and hand-out generation.</summary>
         internal readonly ulong Sig;
-        /// <summary>The vertex layout the range lives in, for a caller that binds buffers rather than the VAO.</summary>
+        /// <summary>The vertex layout the range lives in, which is what a caller binds buffers by.</summary>
         internal readonly Fmt Format;
 
-        internal Pub(in Range r, uint vao)
+        internal Pub(in Range r, bool resident)
         {
-            Vao = vao; Base = r.Base; Sig = MeshArena.Sig(r.Content, (uint)r.Gen); Format = r.Format;
+            Resident = resident; Base = r.Base; Sig = MeshArena.Sig(r.Content, (uint)r.Gen); Format = r.Format;
             Cnt0 = r.Cnt0; Cnt1 = r.Cnt1; Cnt2 = r.Cnt2;
             Off0 = r.Off0; Off1 = r.Off1; Off2 = r.Off2;
             BMin = r.BMin; BMax = r.BMax; Center = r.Center; Radius = r.Radius;
@@ -191,12 +195,12 @@ public static unsafe partial class MeshArena
             Array.Copy(_pub, grown, _pub.Length);
             _pub = grown;
         }
-        _pub[id] = _ranges[id].Live ? new Pub(in _ranges[id], _sect[(int)_ranges[id].Format].Vao) : null;
+        _pub[id] = _ranges[id].Live ? new Pub(in _ranges[id], _sect[(int)_ranges[id].Format].Resident) : null;
         _epoch++;
     }
 
-    /// <summary>Republish every range: the edges that move geometry wholesale (a compaction, a VAO build, a
-    /// context loss). Under <see cref="_gate"/>.</summary>
+    /// <summary>Republish every range: the edges that move geometry wholesale (a compaction, an upload, a
+    /// device loss). Under <see cref="_gate"/>.</summary>
     private static void Publish()
     {
         if (_rangeHigh > _pub.Length)
@@ -206,7 +210,7 @@ public static unsafe partial class MeshArena
             _pub = new Pub?[cap];
         }
         for (int i = 1; i < _pub.Length; i++)
-            _pub[i] = i < _rangeHigh && _ranges[i].Live ? new Pub(in _ranges[i], _sect[(int)_ranges[i].Format].Vao) : null;
+            _pub[i] = i < _rangeHigh && _ranges[i].Live ? new Pub(in _ranges[i], _sect[(int)_ranges[i].Format].Resident) : null;
         _epoch++;
     }
 
@@ -263,8 +267,9 @@ public static unsafe partial class MeshArena
         }
     }
 
-    /// <summary>The VAO over <paramref name="f"/>'s section, zero until the first mesh lands in this context.</summary>
-    internal static uint Vao(Fmt f) => _sect[(int)f].Vao;
+    /// <summary>Is <paramref name="f"/>'s section on the device? False until the first mesh in that format
+    /// has been uploaded.</summary>
+    internal static bool Resident(Fmt f) => _sect[(int)f].Resident;
 
     // ---------------------------------------------------------------- acquire
 
@@ -657,16 +662,15 @@ public static unsafe partial class MeshArena
         return r != null && r.Live ? r.Sig : 0;
     }
 
-    /// <summary>What one draw needs: the VAO for the range's format, its base vertex, and the index BYTE
-    /// offset and count at <paramref name="lod"/>, falling back to the finest level that exists. False means
-    /// the range is gone, empty, or the arena has not been uploaded in this context yet.</summary>
-    internal static bool Draw(int range, int lod, out uint vao, out int baseVertex, out nint off, out int count, out int level)
+    /// <summary>What one draw needs: the range's base vertex, and the index BYTE offset and count at
+    /// <paramref name="lod"/>, falling back to the finest level that exists. False means the range is gone,
+    /// empty, or its section has not been uploaded to the device yet.</summary>
+    internal static bool Draw(int range, int lod, out int baseVertex, out nint off, out int count, out int level)
     {
-        vao = 0; baseVertex = 0; off = 0; count = 0; level = 0;
+        baseVertex = 0; off = 0; count = 0; level = 0;
         Pub?[] pub = _pub;
         Pub? r = (uint)range < (uint)pub.Length ? pub[range] : null;
-        if (r == null || r.Vao == 0) return false;
-        vao = r.Vao;
+        if (r == null || !r.Resident) return false;
         baseVertex = r.Base;
         if (lod >= 2 && r.Cnt2 > 0) { off = r.Off2; count = r.Cnt2; level = 2; return true; }
         if (lod >= 1 && r.Cnt1 > 0) { off = r.Off1; count = r.Cnt1; level = 1; return true; }
@@ -674,7 +678,7 @@ public static unsafe partial class MeshArena
         return r.Cnt0 > 0;
     }
 
-    /// <summary>The index runs alone, for a caller that has already picked its VAO. Same LOD fallback as
+    /// <summary>The index runs alone, for a caller that has already bound its buffers. Same LOD fallback as
     /// <see cref="Draw"/>, and the same lock-free snapshot read.</summary>
     internal static bool Runs(int range, int lod, out int baseVertex, out nint off, out int count, out int level)
     {
@@ -743,8 +747,8 @@ public static unsafe partial class MeshArena
             for (int f = 0; f < Formats; f++)
             {
                 Section s = _sect[f];
-                uint t = VkReadyName((Fmt)f);
-                if (s.Vao != t) { s.Vao = t; changed = true; }
+                bool t = VkResident((Fmt)f);
+                if (s.Resident != t) { s.Resident = t; changed = true; }
             }
             if (changed) Publish();
         }
@@ -890,7 +894,7 @@ public static unsafe partial class MeshArena
             for (int f = 0; f < Formats; f++)
             {
                 Section s = _sect[f];
-                s.Vao = 0; s.Vbo = 0; s.Uploaded = 0; s.Capacity = 0;
+                s.Resident = false; s.Vbo = 0; s.Uploaded = 0; s.Capacity = 0;
             }
             _ebo = 0; _iUploaded = 0; _iCapacity = 0;
             Publish();
@@ -1036,11 +1040,11 @@ public static unsafe partial class MeshArena
         lock (_gate) { DrainFrees(); Compact(); Publish(); }
     }
 
-    /// <summary>Pretend a format's VAO exists, for an off-device check of a caller whose gate is the VAO
-    /// name. No GL is involved and nothing draws.</summary>
-    internal static void FakeVaoForCheck(Fmt f, uint name)
+    /// <summary>Pretend a format's section is on the device, for an off-device check of a caller whose gate
+    /// is residency. No device is involved and nothing draws.</summary>
+    internal static void FakeResidentForCheck(Fmt f)
     {
-        lock (_gate) { _sect[(int)f].Vao = name; Publish(); }
+        lock (_gate) { _sect[(int)f].Resident = true; Publish(); }
     }
 
     /// <summary>Where <paramref name="range"/> sits, for the self-check's compaction assertions.</summary>
@@ -1076,12 +1080,6 @@ public static unsafe partial class MeshArena
 
 internal static class MeshArenaDraw
 {
-    /// <summary>The VAO <paramref name="range"/> actually draws from. A SKINNED range lives in its own
-    /// section with the bone streams at locations 8 and 9, so a caller that latched the static format's VAO
-    /// for every record would pull a skinned mesh's vertices through it. 0 = not resident.</summary>
-    internal static uint VaoOf(int range)
-        => MeshArena.Draw(range, 0, out uint vao, out _, out _, out _, out _) ? vao : 0u;
-
     /// <summary>Range <paramref name="range"/>'s draw arguments at LOD <paramref name="lod"/>: the index
     /// count, the byte offset into the shared element buffer and the base vertex. False when the range is not
     /// resident or has no geometry -- a counted refusal the feed re-asks next frame, never a silent hole.</summary>

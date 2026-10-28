@@ -46,9 +46,8 @@ public sealed unsafe partial class AlloyRenderer
                 int recipe = SceneDb.PartRecipe[p];
                 if (recipe < 0) continue;
                 if (_drawN >= MaxOwned || _skyN >= MaxSkyDraws) { staged = -1; break; }
-                if (!MeshArena.Draw(DrawRecipe.Range(recipe), 0, out uint vao, out int baseVertex,
-                                    out nint off, out int idxCount, out _)
-                    || idxCount <= 0 || vao == 0)
+                if (!MeshArena.Draw(DrawRecipe.Range(recipe), 0, out int baseVertex,
+                                    out nint off, out int idxCount, out _) || idxCount <= 0)
                 { _dbSkyNoRange++; staged = -1; break; }
                 // A material naming its own fragment stage (a content sky) is that stage, hosted; a
                 // stage that will not build refuses the sky rather than drawing the bare dome texture.
@@ -97,7 +96,7 @@ public sealed unsafe partial class AlloyRenderer
                     tex[k] = (int)name;
                 }
                 if (staged < 0) break;
-                _skFmt[_skyN] = (int)MeshArena.FormatOf(DrawRecipe.Range(recipe)); _skVaoName[_skyN] = vao;
+                _skFmt[_skyN] = (int)MeshArena.FormatOf(DrawRecipe.Range(recipe));
                 _skMode[_skyN] = Gl.TRIANGLES;   // gl-ok: an enum value staged for the pass, no call
                 _skSrc[_skyN] = roles[r].Src; _skDst[_skyN] = roles[r].Dst;
                 _skAlpha[_skyN] = rec.Alpha;
