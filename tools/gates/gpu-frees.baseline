@@ -8,8 +8,6 @@
 1 managed/Alloy/OwnedTextures.Transcode.cs
 1 managed/Alloy/OwnedTextures.Upload.cs
 2 managed/Alloy/Pass/GuiModelSolve.cs
-1 managed/Alloy/Pass/PairShadows.cs
-1 managed/Alloy/Pass/Weather.Esm.cs
 1 managed/Graphics/GlTexture.cs
 1 managed/Graphics/GpuReadback.cs
 1 managed/Graphics/RenderTarget.cs
