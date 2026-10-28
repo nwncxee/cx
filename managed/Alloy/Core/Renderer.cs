@@ -15,8 +15,27 @@ internal static class Renderer
     internal static readonly Knob<bool> Enabled;
     /// <summary>Is Alloy drawing this session? Then it draws the CX scene database (ADR 0028): the seam is installed
     /// and no engine <c>Scene</c>/<c>Gob</c>/<c>Part</c> exists. Off is vanilla. <c>alloy.enabled</c>'s Boot value,
-    /// frozen for the session.</summary>
-    internal static bool On => Enabled.Boot;
+    /// frozen for the session. Alloy is Vulkan's: a refused Vulkan probe stands it down and the game runs vanilla.</summary>
+    internal static bool On => Enabled.Boot && VulkanUp();
+
+    /// <summary>The session's Vulkan verdict, taken once at the first <see cref="On"/>: -1 untaken, 0 refused, 1 up.</summary>
+    private sealed class BootState { public int VkUp = -1; }
+
+    private static readonly BootState _boot = new();
+
+    /// <summary>Can Vulkan run here? Its refusal is said once, with the vanilla fallback.</summary>
+    private static bool VulkanUp()
+    {
+        if (_boot.VkUp >= 0) return _boot.VkUp == 1;
+        if (KnobGroup.Log is not ExtenderLog log) return true;
+        // off-device (the self-check host): no client renders, so there is no Vulkan verdict to take and the suites run
+        if (CX.Framework.Native.Sym(SymbolMap.AppManager) == IntPtr.Zero) { _boot.VkUp = 1; return true; }
+        string? why = CX.Graphics.Rhi.VkBackend.Refusal(log);
+        _boot.VkUp = why == null ? 1 : 0;
+        if (why != null)
+            log.Always($"Renderer: Vulkan cannot start ({why}) -- Alloy stands down and the game runs vanilla this session");
+        return why == null;
+    }
     internal static readonly Knob<float> Scale, Lod;
     /// <summary>How strongly the cutout test makes up for the alpha a mip averages away (<c>cx_alphamip.glsl</c>).</summary>
     internal static readonly Knob<float> CutMip;
@@ -31,13 +50,13 @@ internal static class Renderer
     /// <summary>Content stages' native versions (<c>cx_&lt;stage&gt;</c>) and the images and passes they declare.</summary>
     internal static readonly Knob<bool> Native;
     internal static readonly Knob<bool> TexPreview;
-    internal static readonly Knob<bool> Bcn, Hdr, Gl46, OwnedTex, TexSingle, DdsRead, HandleDrop,
-                                        Spirv, VanillaBridge, HostFs, OwnSkin, DumpShaders, GlDebug, EngineZones,
+    internal static readonly Knob<bool> Bcn, Hdr, OwnedTex, TexSingle, DdsRead, HandleDrop,
+                                        Spirv, VanillaBridge, HostFs, OwnSkin, DumpShaders, GpuDebug, EngineZones,
                                         Gui, Movie;
-    internal static readonly Knob<int> Border, Oit, OitLayers, TexCache, Bindless, BcnDrip, TexDelete, MaxElements, RasterRead,
-                                       ClusterCap, GlSync, SkipBuckets, FrameDiff, ParityDump, StaleAudit;
+    internal static readonly Knob<int> Border, Oit, TexCache, Bindless, BcnDrip, TexDelete, MaxElements, RasterRead,
+                                       ClusterCap, SkipBuckets, FrameDiff, ParityDump, StaleAudit;
     internal static readonly Knob<bool> Light, Prepass, Retest, HlDiag, Poll, PrepassKey, PrepassFeat, IdTarget,
-                                        BlendDepth, GpuMeter, VisList, WashTest, DepthEqual;
+                                        BlendDepth, VisList, WashTest, DepthEqual;
     // ---- CX-103/104/105: the scene pipeline's dials ----
     internal static readonly Knob<bool> CullWatch;
     internal static readonly Knob<float> LodHyst;
@@ -48,22 +67,9 @@ internal static class Renderer
     /// LOD option says: a cfg-only off switch for debugging, not a player choice.</summary>
     internal static readonly Knob<bool> AuthoredLod;
     internal static readonly Knob<int> Viz, Threads, Cull, HlChan, OitViz;
-    internal static readonly KnobButton Consts, FrameDumpBtn, ShaderDump, Snap, VkAb;
-    // ---- CX-120 seam-scene ----
-    /// <summary>ADR 0028 section 5's render thread. Boot, and default OFF until the live harness clears it:
-    /// what it moves is Alloy's whole GL context to a second thread, and the things that still reach the
-    /// ENGINE's context on the game thread (<c>CX.Alloy.Db.RenderThread</c>'s remarks) are an ordering
-    /// question the harness has to answer, not a correctness one the build can.</summary>
-    internal static readonly Knob<bool> RenderThread;
-    /// <summary>A pass on the render seam submits each command as it records it, instead of its whole list at the
-    /// end: the same GL calls in the same order either way, so the A/B measures recording, not output.</summary>
-    internal static readonly Knob<bool> RhiImmediate;
-    /// <summary>Which API renders the Alloy frame: GL 4.6, or Vulkan into a composite the engine's context presents.
-    /// Boot, and not a render mode: Vulkan replaces GL Alloy pass by pass.</summary>
-    internal static readonly Knob<string> Backend;
-    internal const string BackendGl = "gl", BackendVk = "vk";
-    /// <summary>The seam runs on Vulkan this session.</summary>
-    internal static bool OnVulkan => Backend.Boot == BackendVk;
+    internal static readonly KnobButton Consts, FrameDumpBtn, ShaderDump, Snap;
+    /// <summary>Alloy draws this session, on Vulkan: the one backend.</summary>
+    internal static bool OnVulkan => On;
     /// <summary>Arm <see cref="CX.Alloy.Db.HitProbe"/>, the live hit-test instrument.</summary>
     internal static readonly Knob<bool> HitCheck;
 
@@ -108,8 +114,8 @@ internal static class Renderer
     {
         Quality.Touch();
         G = KnobGroup.Declare("alloy", "Graphics", "Quality", master: "Enable the Alloy renderer",
-            masterHelp: "Draw the 3D world with CX's own OpenGL 4.6 renderer: real-time shadows, HDR, grass, post-processing. "
-                      + "Off, the game's own renderer draws the world and nothing under Graphics applies. "
+            masterHelp: "Draw the 3D world with CX's own Vulkan renderer: real-time shadows, HDR, grass, post-processing. "
+                      + "Off, or on a machine Vulkan cannot run, the game's own renderer draws the world and nothing under Graphics applies. "
                       + "Takes effect at the next launch.",
             masterEffect: Effect.Restart, masterTier: Tier.ChatOnly, order: 302, title: "Display");
         Enabled = G.Master!;
@@ -145,14 +151,12 @@ internal static class Renderer
                            + "lays out. Off, the game's own renderer draws them again.");
         Border = G.Slider("border", "Neighbouring-area ring", 5, 40, 5, 15, "tiles", Tier.ChatOnly, Effect.Restart,
                           help: "Tiles drawn past the area edge so the horizon is not empty; the stock game draws 5.");
-        Oit = G.Dropdown("oit", "Transparency", new[] { 0, 1, 2 }, 2, new[] { "sorted", "weighted", "linked lists" }, tier: Tier.ChatOnly,
+        Oit = G.Dropdown("oit", "Transparency", new[] { 0, 1 }, 1, new[] { "sorted", "weighted" }, tier: Tier.ChatOnly,
                          help: "How overlapping transparent surfaces are combined.", changed: AlloyRenderer.InvalidateRecords);
-        OitLayers = G.Dropdown("oitlayers", "Transparency layers per pixel", new[] { 1, 2, 3, 4, 6, 8 }, 3, tier: Tier.ChatOnly,
-                               effect: Effect.Restart, help: "Memory reserved for linked-list transparency; ~33 MB per layer at 1080p.");
         TexCache = G.Dropdown("texcache", "Texture memory budget", new[] { -1, 512, 1024, 2048, 4096, 8192 }, -1, tier: Tier.ChatOnly,
                               effect: Effect.Restart, format: AutoInt, parse: ParseAutoInt);
         Bindless = G.Dropdown("bindless", "Bindless textures", new[] { -1, 1, 0 }, -1, tier: Tier.ChatOnly, effect: Effect.Restart,
-                              help: "Auto turns them off on Zink.", format: AutoOnOff, parse: ParseAutoOnOff);
+                              help: "Auto arms them: Vulkan's descriptor table is bindless on every device.", format: AutoOnOff, parse: ParseAutoOnOff);
         Native = G.Toggle("native", "Native shader stages", true, Tier.ChatOnly, changed: () => Programs._spliceStale = true,
                           help: "Run a content shader's native version (cx_<stage>) where the module ships one; off runs the "
                               + "stage the engine runs.");
@@ -160,7 +164,6 @@ internal static class Renderer
                        help: "Re-encodes uncompressed textures as BC1/BC3: 3–4× less VRAM, a little load-time CPU.");
 
         Hdr = G.Toggle("hdr", "hdr", true, Tier.ChatOnly, Effect.Restart);
-        Gl46 = G.Toggle("gl46", "gl46", true, Tier.ChatOnly, Effect.Restart);
         DrawHooks = G.Dropdown("drawhooks", "drawhooks", new[] { DrawFunnelService.DrawModeBatch, DrawFunnelService.DrawModeStats },
                                DrawFunnelService.DrawModeBatch, tier: Tier.ChatOnly, effect: Effect.Restart);
         OwnedTex = G.Toggle("ownedtex", "ownedtex", true, Tier.ChatOnly, Effect.Restart);
@@ -185,13 +188,7 @@ internal static class Renderer
         ClusterCap = G.Slider("clustercap", "clustercap", 8, 128, 1, 128, tier: Tier.ChatOnly, effect: Effect.Restart);
         DumpTex = G.Text("dumptex", "dumptex", "", Tier.ChatOnly, Effect.Restart);
         DumpShaders = G.Toggle("dumpshaders", "dumpshaders", false, Tier.ChatOnly, Effect.Restart);
-        GlDebug = G.Toggle("gldebug", "gldebug", false, Tier.ChatOnly, Effect.Restart);
-        RenderThread = G.Toggle("renderthread", "renderthread", false, Tier.ChatOnly, Effect.Restart);
-        Backend = G.Dropdown("backend", "Render backend", new[] { BackendGl, BackendVk }, BackendGl, tier: Tier.ChatOnly,
-                             effect: Effect.Restart,
-                             help: "gl = GL 4.6 renders the frame; vk = Vulkan does (dev-only: the frame's clear until its passes port).");
-        RhiImmediate = G.Toggle("rhiimmediate", "Seam passes submit as they record", true, Tier.ChatOnly,
-                                help: "1 = each command reaches GL as it is recorded; 0 = a pass's whole list at its end. Same GL calls either way.");
+        GpuDebug = G.Toggle("gpudebug", "gpudebug", false, Tier.ChatOnly, Effect.Restart);
         // CX-120: the pass number to dump the frame's whole input set at, 0 = off. A pass NUMBER rather than a
         // toggle because the first pass of a session is before the camera is placed, and the settled frame is
         // the one worth comparing between the two scene layers.
@@ -203,7 +200,6 @@ internal static class Renderer
         // a toggle because the audit walks every live slot and diffs three GPU mirrors: once a second is a
         // diagnostic, every frame is a different frame.
         StaleAudit = G.Slider("staleaudit", "staleaudit", 0, 100000, 1, 0, tier: Tier.ChatOnly, effect: Effect.Restart);
-        GlSync = G.Slider("glsync", "glsync", 0, 1, 1, 0, tier: Tier.ChatOnly, effect: Effect.Restart);
         SkipBuckets = G.Slider("skipbuckets", "skipbuckets", 0, 3, 1, 3, tier: Tier.ChatOnly, effect: Effect.Restart);
         EngineZones = G.Toggle("enginezones", "enginezones", true, Tier.ChatOnly, Effect.Restart);
         // CX-99: 0 hands every movie frame back to the engine's own quad. Live, because a movie is the one
@@ -227,11 +223,10 @@ internal static class Renderer
         DepthEqual = G.Toggle("depthequal", "depthequal", true, Tier.ChatOnly);
         IdTarget = G.Toggle("idtarget", "idtarget", true, Tier.ChatOnly, changed: AlloyRenderer.InvalidateRecords);
         BlendDepth = G.Toggle("blenddepth", "blenddepth", true, Tier.ChatOnly);
-        GpuMeter = G.Toggle("gpumeter", "gpumeter", true, Tier.ChatOnly, changed: () => GpuQuery.Enabled = GpuMeter!.V);
-        GpuQuery.Enabled = GpuMeter.V;
+        // the GL meters time GL work, of which a Vulkan session has none
         VisList = G.Toggle("vislist", "vislist", true, Tier.ChatOnly, changed: AlloyRenderer.InvalidateRecords);
         WashTest = G.Toggle("washtest", "washtest", true, Tier.ChatOnly, changed: AlloyRenderer.InvalidateRecords);
-        OitViz = G.Slider("oitviz", "oitviz", 0, 5, 1, 0, tier: Tier.ChatOnly);
+        OitViz = G.Slider("oitviz", "oitviz", 0, 3, 1, 0, tier: Tier.ChatOnly);
 
         // The flicker hunt's GPU half: every colour dispatch's kept total, read back fenced and never waited
         // on. Off by default -- a per-frame read of a GPU-written buffer is a real wait on Mesa.
@@ -249,7 +244,6 @@ internal static class Renderer
                  help: "Hold the camera still: steps the GPU-cost settings, measures each, restores them, logs a [bench] table.");
         ShaderDump = G.Button("shaderdump", "shaderdump", ShaderStages.DumpToLog, Tier.ChatOnly);
         Snap = G.Button("snap", "snap", FrameTap.Arm, Tier.ChatOnly);
-        VkAb = G.Button("vkab", "vkab", VkParity.Arm, Tier.ChatOnly);
         // CX-89: every visible door's fade alpha against mindooralpha -- the instrument for "doors still
         // take a click", which no screenshot shows.
         // CX-118: chain the engine's own Scene::HitCheck to measure what a vanilla cast costs and to print

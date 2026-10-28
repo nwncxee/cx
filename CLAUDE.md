@@ -8,7 +8,7 @@ ignored, so an un-extended client loses nothing.
 This is the **client** (`nwmain`), not the server. The server end of any packet lives in the
 server's own extender (NWNX/Anvil); do not conflate the two.
 
-The OpenGL 4.6 renderer is called **Alloy** (`managed/Alloy/`, namespace
+The Vulkan renderer is called **Alloy** (`managed/Alloy/`, namespace
 `CX.Alloy`) -- one of the family: Anvil on the server backend, Crucible the
 module builder, Alloy the renderer. "Alloy" is the term for what it draws, and
 **vanilla** is the contrast: an Alloy part is one Alloy submits, a vanilla one is
@@ -97,8 +97,8 @@ Load path (the "hard work", you never touch it):
 Read before working in the area: `docs/hook-pattern.md` (a real hook + trampoline),
 `docs/owned-resource-lifetimes.md` (what creates and kills each owned table, per scene layer),
 `docs/alloy-refusals.md` (why a frame is the engine's), `docs/audio.md` (Steam Audio behind the engine's OpenAL).
-Every file under `managed/Alloy/Shaders/` is a `cx_*` resref <= 16 chars -- the hak limit, so each is
-overridable as `<resref>.shd`.
+Every file under `managed/Alloy/Shaders/` is GLSL under a `cx_*` resref <= 16 chars -- the hak limit, so each
+is overridable as `<resref>.shd` -- translated and compiled to SPIR-V at runtime (`VkGlsl`, shaderc).
 
 ## Adding a service (the whole contributor workflow)
 
@@ -170,8 +170,6 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
   that grows with every hook) are exempt and `file-size.baseline` holds what is still over. `EngineLayout` is
   one partial class over `EngineLayout*.cs`, and every tool that reads its rows reads all of them: a new block
   of rows goes in a part of its own once `EngineLayout.cs` would grow past its baseline.
-- `bench-scope.sh`: the `/alloy bench` ablation ladder's state outside its own two files, or the ladder named
-  outside the call sites the script lists, fails.
 - `retired-terms.sh`: a name listed in `tools/gates/retired-terms.txt` appearing under `managed/` or `docs/`
   fails. Not scanned: that file, `docs/adr/` and `docs/handoff/` -- dated records of what was true then.
 - `knob-refs.sh`: a `<group>.<knob>` key in a string literal under `managed/` naming no declared `Knob<T>`
@@ -181,12 +179,18 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
 - `statics.sh`: a file under `managed/Alloy` or `managed/Services` with more non-readonly `static` fields
   than `statics.baseline` allows fails. Free: `static readonly`, `const`, static methods/properties, and a
   lifetime owner -- a plain field whose type is a `...State` class declared under `managed/`.
-- `rhi-seam.sh`: a file under `managed/Alloy` with more direct `Gl.*` call sites than `rhi-seam.baseline` allows
-  fails. A pass migrated onto the seam (`managed/Rhi/`, `CX.Rhi`; the GL backend in `managed/Graphics/Rhi/`) records
-  into a `CommandList` and drops out of the baseline, so GL cannot grow back into it.
+- `gl-confined.sh`: a file named in CX0003's `Allowed` that is not in the tree fails. The RULE -- GL only in
+  the files that keep it -- is CX0003 (`tools/analyzers/EngineGl.cs`), which the compiler checks because it can
+  tell a constant from an entry point and an `Init` guard from a call; this gate does the one thing the compiler
+  cannot, and refuses a permission that outlived its file. The list is read out of `EngineGl.cs`, never restated.
+  The only GL CX keeps draws CX's own windows on the engine's renderer in a session Vulkan refused, plus the
+  stubs for the entry points the engine itself imports; new work records on the seam (`managed/Rhi/`, `CX.Rhi`).
+  GL enum numbers the engine's own data speaks are `EngineTokens`, not an entry point, and need no permission.
 - `selfcheck.sh`: inside a `*SelfCheck*` file or a `SelfCheck` method, an `Expect` that cannot fail fails --
-  a compile-time-constant condition, a `const` compared to its own kind of literal, or the same text on both
-  sides of `==`/`!=` -- and so does a hand-written `SKIPPED` log line.
+  a compile-time-constant condition, a `const` compared to its own kind of literal (over `==` `!=` `<` `>`
+  `<=` `>=`, the const named bare or as `Type.CONST` from any file), or the same text on both sides of a
+  comparison -- and so does a hand-written `SKIPPED` log line. The const-against-literal shape's standing
+  instances are `selfcheck.baseline`, which may only shrink; every other shape fails outright.
 
   **The independent-oracle rule.** A self-check's expected value comes from an independent oracle: a
   hand-written literal, golden data or a fixture, or a second artifact (the embedded GLSL text, a build
@@ -201,24 +205,26 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
 - `workflows.sh`: a workflow under `.github/workflows/` that actionlint or zizmor (offline) refuses fails --
   bad YAML or expressions, an unknown runner label, a shellcheck warning in a `run:`, a cache that feeds a
   release, a checkout that keeps its token.
-- `ssbo-bindings.sh`: an `std430` binding, a `SsboSlots` constant at or past `SsboSlots.Budget` (16, Intel's Windows
-  GL), or a numeric SSBO index passed straight to `BindBufferBase`/`BindBufferRange` under `managed/` fails.
+- `ssbo-bindings.sh`: an `std430` binding, a `SsboSlots` constant at or past `SsboSlots.Budget` (16, the
+  storage-buffer descriptors `VkBackend` allocates per set -- it reads the budget, so the two are one number),
+  or a numeric SSBO index passed straight to `BindBufferBase`/`BindBufferRange` under `managed/` fails.
   Every point lives in `Alloy/Core/SsboSlots.cs`: 0..7 persistent and exclusive, 8..15 shared by readers that
-  bind before they draw; `SsboSlots.Check` and `check-shaders.py` pin the GLSL to it.
+  bind before they draw; `SsboSlots.Check` and `check-shaders.py` pin the GLSL to it, and `SsboSlots.CheckDevice`
+  stands Alloy down on a device that seats fewer than the budget rather than finding out at the first bind.
 - `ubo-bindings.sh`: a `std140` binding, or a `UboSlots` constant, at or past `UboSlots.Budget` (12, Vulkan's
-  per-stage floor), or a numeric uniform-block index passed straight to `BindBufferBase`/`BindBufferRange` under
-  `managed/` fails. Every point lives in `Alloy/Core/UboSlots.cs`: 0..2 persistent and exclusive, 3..11 shared by
+  guaranteed `maxPerStageDescriptorUniformBuffers`, which `VkBackend` allocates per set), or a numeric
+  uniform-block index passed straight to `BindBufferBase`/`BindBufferRange` under `managed/` fails. Every point lives in `Alloy/Core/UboSlots.cs`: 0..2 persistent and exclusive, 3..11 shared by
   passes that bind before they draw; `UboSlots.Check` pins the GLSL to it and `Std140.Pin` pins each block's
   members to the struct that stages them.
 - `uniform-blocks.sh`: a loose `Gl.Uniform*` call site under `managed/` counts against
-  `uniform-blocks.baseline`, which may only shrink -- a non-opaque uniform belongs in a std140 block on a
-  `UboSlots` point, filled through `UniformBlock<T>`. Sampler units are opaque and count too, so a file need
-  not reach zero; `python3 tools/gates/uniform-blocks.py -v` lists each site.
-- `gpu-frees.sh`: an immediate `Gl.Delete{Textures,Buffers,Framebuffers,VertexArrays,Renderbuffers,Samplers}` call site
-  under `managed/` counts against `gpu-frees.baseline`, which may only shrink -- a GPU object freed on a
-  lifetime edge goes to `GpuGraveyard.Retire`, whose drain deletes it once the frames in flight are done with
-  it. A creation failure and a scratch object inside one bracket are legitimate, so a file need not reach
-  zero; `python3 tools/gates/gpu-frees.py -v` lists each site.
+  `uniform-blocks.baseline`, which may only shrink. Alloy writes the Vulkan uniform block itself
+  (`LooseBlock`), so every site left is the vanilla CX-UI path drawing on the engine's own renderer, where
+  sampler units are opaque and count too; `python3 tools/gates/uniform-blocks.py -v` lists each site.
+- `gpu-frees.sh`: an immediate `Gl.Delete{Textures,Buffers,Framebuffers,VertexArrays,Renderbuffers,Samplers}`
+  call site under `managed/` counts against `gpu-frees.baseline`, which may only shrink. Alloy's objects are
+  Vulkan's, destroyed through the backend, which holds a freed one past its submit ring, so every site left is
+  the vanilla CX-UI path -- which owns its objects for the session and frees them where they die;
+  `python3 tools/gates/gpu-frees.py -v` lists each site.
 - `compiler-rules.sh`: a `#pragma warning disable` or `SuppressMessage` of a `CX` rule, an RS0030 pragma outside
   `managed/Framework/` or with no `// <reason>` on its line, or a `NoWarn`/severity override lowering either in build config, fails.
 - `local-paths.sh`: a home directory, mount point or personal checkout path in a tracked file fails
@@ -241,7 +247,7 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
   here. Take its Before/After/SkipOriginal semantics, not its C# API.
 - **Hot hooks allocate nothing.** NativeAOT GC runs on whatever thread the hook
   fired on; the render/main loop stutters if it pauses there. Input/network hooks
-  are cold -- fine. Frame/GL hooks are hot -- be careful.
+  are cold -- fine. Frame, render and GL-stub hooks are hot -- be careful.
 - **Reuse an existing message opcode; don't invent one.** That is what keeps the
   extender optional (unknown packets are ignored server-side).
 - **Windows is a supported OS, not a follow-up.** A new hook or engine-memory read
@@ -254,11 +260,11 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
   as `this` (#456). `tools/abi/check-win-symbols.py` finds these; `build-win.sh` runs it. Deliberately Linux-only work is allowed
   and says so on its own line -- what is forbidden is the silent absence, where
   "never looked" and "decided" are the same missing key.
-- **Diagnostics reach a pass through the bench's one indirection** (`CX.Alloy.Ablation`): a pass holds one
-  program field and no bench-only one -- `tools/gates/bench-scope.sh`.
+- **A pass holds the one program field it draws with and no diagnostic-only one.** `/alloy bench` steps knobs,
+  never a pass's program: a measurement that needs its own variant of a stage does not get a field on the pass.
 - **Shaders for what shaders reach; extender for what they can't.** Lighting/color
   = `.shd` overrides via hak/NWSync (content, not this repo). Shadows, render bugs,
-  fixed-function state = engine-internal, needs a GL hook.
+  draw state = engine-internal: an Alloy pass or a hook, never content.
 
 ## The binary is your map
 
@@ -266,7 +272,11 @@ The client binary (`python3 tools/paths.py NWN_BIN`) is an
 **unstripped** ELF (~24k dynamically-exported functions). You hook by name, no
 offset hunting.
 
-Renders via OpenGL/GLX/X11 (SDL is static -- symbols appear, no `libSDL` in ldd).
+The engine renders via OpenGL/GLX/X11 (SDL is static -- symbols appear, no `libSDL` in ldd), and goes on
+running that code with Alloy on: `NullGl` makes SDL open a Vulkan window and routes every GL entry nwmain
+imports to a CX stub, so the session has no GL context and Vulkan presents (`VkBackend.Present`). Alloy is
+Vulkan's alone -- a refused probe (`VkBackend.Refusal`) stands it down and the engine's own GL renderer draws
+(ADR 0033).
 
 ## Reverse engineering (Ghidra)
 

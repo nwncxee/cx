@@ -1,7 +1,7 @@
 // CX-188 step 4 (ADR 0029): the HOT-LIGHT DEBT, once per pixel. A creature standing under a baked static
 // light owes the lightmap the shadow the bake never saw; the forward loop pays that per fragment per light
 // (up to 16 segment-vs-sphere tests and then cube taps on the light's dyn page, which is the -10.1 ms
-// `lightmap.movers 0` measures). The deferred stage has the hot branch compiled OUT (CX_NO_HOT), so this
+// `lightmap.movers 0` measures). The deferred stage has the hot branch compiled out (CX_NO_HOT), so this
 // dispatch is where the debt comes from: PairShadows baked one small tile per (light, mover) PAIR, this pass
 // culls those pairs against each 16x16 tile's own view-space box, and the pixels of a tile that holds one
 // evaluate it and subtract.
@@ -60,9 +60,7 @@ const float CX_PAIR_SLACK = 1e-3;
 shared uint sPair[CX_PAIR_TILE_CAP];
 shared uint sN, sDrop, sMinZ, sMaxZ;
 
-/// [0] tiles whose pair list overflowed, [1] the pairs they dropped, [2] tiles that held at least one pair,
-/// [3] the ablation ladder's sink, which nothing reads -- a bench variant's only way to keep the rung it
-/// stopped at from being dead-stripped, and never written by the shipped program.
+/// [0] tiles whose pair list overflowed, [1] the pairs they dropped, [2] tiles that held at least one pair.
 /// Loud by the period line, never silent. PER TILE and written by lane 0 alone: a counter incremented per
 /// owing PIXEL would be a hundred thousand atomics a frame on one word, which is a cost to measure with and
 /// not a measurement; tiles x the group's 256 pixels is the footprint either way.
@@ -143,9 +141,6 @@ void main()
     barrier();
 
     // sMinZ > sMaxZ = no baked deferred pixel in this tile: nothing here can owe, and there is no box.
-    // CX-188 ablation rung 1 (`/alloy bench`, CX.Alloy.AblateProgram): the G-buffer read and the tile's own
-    // depth slab, with the pair cull itself absent -- every tile then holds no pair and owes nothing.
-#if !defined(CX_ABLATE) || CX_ABLATE >= 2
     if (sMinZ <= sMaxZ && uPairN > 0)
     {
         vec3 fcw; float fr;
@@ -157,7 +152,6 @@ void main()
             if (at < CX_PAIR_TILE_CAP) sPair[at] = uint(i);
         }
     }
-#endif
     barrier();
     if (lane == 0u)
     {
@@ -178,14 +172,6 @@ void main()
     }
     barrier();
 
-#if defined(CX_ABLATE) && CX_ABLATE <= 2
-    // Ablation rungs 1 and 2: the tile's own depth slab, and at rung 2 the pair cull and the sort as well,
-    // with no G-buffer read, no pair tile tapped and nothing subtracted. The SINK is one atomic from lane 0
-    // into the stats word nothing reads -- not a per-pixel image write, which neither rung would otherwise pay.
-    // The full pass's own rung therefore carries the G-buffer read of a pair's tile along with the taps.
-    if (lane == 0u) atomicAdd(uPairStats[3], sN + sMinZ);
-    return;
-#endif
     if (!mine || sN == 0u) return;
     if (!CxGbufRead(texelFetch(uGb0, p, 0), texelFetch(uGb1, p, 0), viewDepth, g)
         || (g.flags & CX_GB_BAKED) == 0u || !(g.lmLum > 0.0)) return;

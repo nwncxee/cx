@@ -162,7 +162,7 @@ internal static unsafe partial class LightmapBake
         End();
         float first = _firstLandT == 0 ? -1f : (_firstLandT - _holdT0) / (float)Stopwatch.Frequency;
         _log?.Info($"LightmapBake: hold released after {s:F1} s ({why}) -- first bake at {(first < 0 ? "never" : $"{first:F1} s")}, "
-                 + $"{_landed} rects landed ({_landedHits} cached) / {_pending} pending, pages {_gl.Layers}, set {(_closed ? $"closed at walk {_walks}" : "OPEN")} "
+                 + $"{_landed} rects landed ({_landedHits} cached) / {_pending} pending, pages {Layers}, set {(_closed ? $"closed at walk {_walks}" : "OPEN")} "
                  + $"SetHash {SetHash:x16}, "
                  + $"charts {MeshChart.Done}/{MeshChart.Offered}, {_sharedEnrols} enrols shared a standing rect; census at the close static={_closeStatic} dynamic={_closeDynamic}, now static {CensusStatic} dynamic {CensusDynamic}"
                  + stages + AreaStats());
@@ -187,7 +187,7 @@ internal static unsafe partial class LightmapBake
     internal static void BeginAreaEdge() => _areaEdge = true;
     internal static void EndAreaEdge()
     {
-        _areaEdge = false; _edgePresent = GlContextService.Presents; OnAreaLoaded(); StampEdge();
+        _areaEdge = false; _edgePresent = FramePump.Presents; OnAreaLoaded(); StampEdge();
         // the world scene dies BEFORE the next LoadArea: outside a hold the pending key is the area being left
         if (Held) TakeAreaKey();
     }
@@ -266,24 +266,20 @@ internal static unsafe partial class LightmapBake
     /// backdrop flashing over the world is worse than the hitch.</summary>
     internal static void CompileNotice()
     {
-        int now = GlContextService.Presents;
-        if (!Held && _edgePresent != now || _noticeAt == now || !GlContextService.Inside || TextRig.Atlas == null) return;
-        // CX-100: under the engine's load screen the frozen screen is the notice; a CX backdrop would be a second one.
-        if (LoadScreen.PanelUp) return;
-        int w = TextRig.ViewportW, h = TextRig.ViewportH;
-        if (w <= 0 || h <= 0) return;
-        _noticeAt = now; _captionPhase = -1;   // the screen's batches are shared: the hold's caption rebakes at its next present
-        int bracket = GlContextService.Suspend();   // a nested Leave would hand nothing back; everything below is ENGINE GL
-        int* vp = stackalloc int[4];
-        Gl.GetIntegerv(Gl.VIEWPORT, vp);
-        Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
-        Gl.Viewport(0, 0, w, h);
+        int now = FramePump.Presents;
+        CompileNoticeVk(now);
+    }
+
+    /// <summary><see cref="CompileNotice"/> on Vulkan: the backdrop recorded over the composite and presented by Vulkan at
+    /// once, ahead of the compile. No GL bracket to step out of; the frame's own present follows as usual.</summary>
+    private static void CompileNoticeVk(int now)
+    {
+        if (!Held && _edgePresent != now || _noticeAt == now || TextRig.Atlas == null || LoadScreen.PanelUp) return;
+        if (TextRig.ViewportW <= 0 || TextRig.ViewportH <= 0) return;
+        _noticeAt = now; _captionPhase = -1;
         LoadScreen.Notice("Compiling shaders…", "Only once: the result is saved for next time");
-        GlContextService.SwapNow();
-        UiHostService.HandBack();
-        Gl.Viewport(vp[0], vp[1], vp[2], vp[3]);   // GLRender::SetViewPort caches no GL state, so the raw value is all it had
-        if (GlContextService.Resume(bracket)) _log?.Info($"LightmapBake: a shader compile {(Held ? "under the hold" : "on an area's first frame")} -- \"Compiling shaders\" is on screen until it finishes");
-        else { UiHostService.Owe(); _log?.Always("LightmapBake: the 4.6 context REFUSED re-entry after the compile notice -- this frame's Alloy GL runs on the engine's context"); }
+        if (ScreenOwner.PresentVulkanNow())
+            _log?.Info($"LightmapBake: a shader compile {(Held ? "under the hold" : "on an area's first frame")} -- \"Compiling shaders\" is on screen (Vulkan) until it finishes");
     }
 
     /// <summary>Pages with no rect still queued, probing or packing.</summary>

@@ -16,28 +16,20 @@ public sealed unsafe partial class AlloyRenderer
     /// off the main thread as long as nothing mints during the stage, which nothing does.</summary>
     private static ulong HandleLookup(int tid)
         => tid != 0 && Probe(tid, out int hit, out _) ? _hVal[hit] : 0;
-    /// <summary>Resident bindless handle for a texture name. 0 in, 0 out. Called only inside the 4.6 bracket
-    /// (handles belong to the share group) and, while ownedtex is armed, only for an Alloy-OWNED name. A
-    /// handled texture is IMMUTABLE from this moment: a change means a new name, never an in-place
-    /// <c>TexSubImage</c> from the engine context -- residency is per context and nothing propagates.</summary>
+    /// <summary>Resident bindless handle for a texture name. 0 in, 0 out. Called only from the frame's own
+    /// recording and, while ownedtex is armed, only for an Alloy-OWNED name. A handled texture is IMMUTABLE
+    /// from this moment: a change means a new name, never an in-place update of the image behind it.</summary>
     internal static ulong HandleFor(int tid)
     {
         if (tid == 0) return 0;
         // a name that is not ours may already be dead or RECYCLED (Mesa hands the lowest free name straight
-        // back): minting on it is a fault on zink and another texture's handle on radeonsi
+        // back): minting on it hands back another texture's handle, or faults outright
         if (OwnedTextures.Armed && !OwnedTextures.IsOwned(tid)) return 0;
         if (Probe(tid, out int hit, out int free)) return _hVal[hit];
         if (free < 0) return 0;                        // table full: no handle, caller falls back
-        ulong v = Gl.GetTextureHandleARB((uint)tid);
-        if (Diag._handleDiagLeft > 0) HandleDiag(tid, v);
-        // A failed mint is NOT cached. It used to be, and the enrollment wipe retried it within a second;
-        // with that wipe gone (#220) a cached zero would be a permanently black texture.
-        if (v == 0) return 0;
-        Gl.MakeTextureHandleResidentARB(v);
-        FrameZones.Count(FrameZones.Ev.Mint);
-        _hTid[free] = tid; _hVal[free] = v; _hRes[free] = true;
-        VkTextures.NoteHandle(v, tid);
-        return v;
+        ulong vk = VkTextures.HandleOf((uint)tid);
+        _hTid[free] = tid; _hVal[free] = vk;
+        return vk;
     }
 
     /// <summary>Walk the open-addressed chain for <paramref name="tid"/>. True with <paramref name="hit"/> set
@@ -99,17 +91,9 @@ public sealed unsafe partial class AlloyRenderer
     private static int Slot(int tid) =>
         (int)((uint)tid * 0x9E3779B9u >> (32 - HandleHashBits)) & ((1 << HandleHashBits) - 1);
 
-    /// <summary>This name's texture is about to be deleted, so its handle must stop being resident first: a
-    /// resident handle outlives the object it names, and sampling one after the delete is corruption. Called
-    /// by <c>OwnedTextures.Drain</c> inside the 4.6 bracket, only for a name that entry owns; the slot becomes
-    /// a <see cref="HandleTombstone"/>. A no-op for a name that never got a handle, the common case.</summary>
-    internal static void DropHandle(uint name) => DropHandle(name, gl: true);
-
-    /// <summary>The texture died in the ENGINE's context before this bracket could run: the handle is gone
-    /// with it, and asking the driver to make it non-resident is INVALID_OPERATION (Mesa) or worse. Tombstone only.</summary>
-    internal static void ForgetHandle(uint name) => DropHandle(name, gl: false);
-
-    internal static void DropHandle(uint name, bool gl)
+    /// <summary>This name's texture died: the slot it cached becomes a <see cref="HandleTombstone"/> and the
+    /// records holding it are marked. A no-op for a name that never got a handle, the common case.</summary>
+    internal static void DropHandle(uint name)
     {
         if (name == 0) return;
         // #242: a persistent record carries its handles (and, bindless off, its cached tid) across frames, so a
@@ -124,33 +108,12 @@ public sealed unsafe partial class AlloyRenderer
             if (k == 0) return;                       // never cached: nothing to drop
             if (k == tid)
             {
-                if (gl && _hRes[h] && _hVal[h] != 0 && Gl.MakeTextureHandleNonResidentARB != null)
-                    Gl.MakeTextureHandleNonResidentARB(_hVal[h]);
-                else if (!gl) BindlessLedger.Forget(name);
                 ZeroHandle(_hVal[h]);
-                _hTid[h] = HandleTombstone; _hVal[h] = 0; _hRes[h] = false;
+                _hTid[h] = HandleTombstone; _hVal[h] = 0;
                 return;
             }
             h = (h + 1) & ((1 << HandleHashBits) - 1);
         }
-    }
-
-    private const int HandleDiagBudget = 24;
-    /// <summary>Which GL call is failing on the handle path, and with what: the 4.6 bracket drains
-    /// <c>glGetError</c> anonymously, so the two candidate faults are told apart by the CODE.
-    /// <c>INVALID_OPERATION</c> after a non-zero handle is a re-resident of an already-resident handle;
-    /// <c>INVALID_VALUE</c>, or a zero handle from a tid just resolved, is a dead or recycled name.</summary>
-    private static void HandleDiag(int tid, ulong v)
-    {
-        uint err = 0, e;
-        int guard = 0;
-        while ((e = Gl.GetError()) != 0 && ++guard < 8) err = e;
-        if (err == 0 && v != 0) return;   // the normal case; this path allocates nothing, so it stays silent
-        Diag._handleDiagLeft--;
-        _log?.Info($"AlloyRenderer: [handle] tid={tid} handle=0x{v:x} err=0x{err:x} " +
-                   (v == 0 ? "-- glGetTextureHandleARB returned NO handle for a tid the material resolved this frame"
-                           : "-- the handle came back but the call errored") +
-                   $" ({Diag._handleDiagLeft} reports left)");
     }
 
     /// <summary>Rewrite a fragment stage's bound samplers into per-draw bindless handles. The stage already

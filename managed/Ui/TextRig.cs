@@ -12,8 +12,8 @@ namespace CX.Ui;
 /// <summary>
 /// The UI's draw recorder, not a renderer: it owns the glyph atlas (a stb_truetype coverage + distance-field bake, cold) and turns every CX
 /// window's draw -- <see cref="DrawBatch"/>, <see cref="DrawPortrait"/>, the icon and skin quads -- into a
-/// <see cref="UiDrawList"/> command. <see cref="Replay"/> issues a list in whichever context draws the frame:
-/// Alloy's GUI pass, or the engine's present with Alloy off. Nothing here decides WHAT to draw.
+/// <see cref="UiDrawList"/> command. A list is drawn by Alloy's GUI pass on Vulkan, or by <see cref="Replay"/> in the
+/// engine's own renderer where Alloy stood down. Nothing here decides WHAT to draw.
 /// </summary>
 public static unsafe partial class TextRig
 {
@@ -188,7 +188,7 @@ public static unsafe partial class TextRig
         AtlasSheet? baked = AtlasSheet.Bake(_requests, Ranges, Icons, AtlasSize, _log!);
         if (baked == null) return false;
         _sheet = baked;
-        _atlasEpoch++;    // every context re-uploads, and cached-geometry consumers rebuild: their glyph UVs went stale
+        _atlasEpoch++;    // the atlas re-uploads, and cached-geometry consumers rebuild: their glyph UVs went stale
         Rebaked?.Invoke();
         return true;
     }
@@ -231,8 +231,8 @@ public static unsafe partial class TextRig
 
     private static readonly RecordState _record = new();
 
-    /// <summary>Send every draw below into <paramref name="into"/> until the next call; null draws each at once, in the
-    /// current context. The roll-call's thread only.</summary>
+    /// <summary>Send every draw below into <paramref name="into"/> until the next call; null draws each at once.
+    /// The roll-call's thread only.</summary>
     public static void Record(UiDrawList? into) { _record.Into = into; _record.Stamp.Occl = false; }
 
     /// <summary>Anchor every draw below to world point <paramref name="world"/>, shown at UI pixel (<paramref name="ax"/>,
@@ -261,7 +261,8 @@ public static unsafe partial class TextRig
         if (r.Into != null) { r.Into.Add(cmd, verts, count, rows); return; }
         r.Now.Reset(ViewportW, ViewportH);
         r.Now.Add(cmd, verts, count, rows);
-        Replay(r.Now);
+        if (CX.Alloy.Renderer.OnVulkan) CX.Alloy.GuiPassVk.ReplayNow(r.Now, _log!);
+        else Replay(r.Now);
     }
 
     /// <summary>The texture a UI draw of engine texture <paramref name="engineTid"/> samples: Alloy's own when Alloy
@@ -273,8 +274,8 @@ public static unsafe partial class TextRig
     /// belong in it. Null when the client does not export the resman getter.</summary>
     internal static readonly AurTextureGetFn _aurGet = EngineFn.AurTextureGet;
 
-    /// <summary>Cold init: load the font and bake the atlas (incl. its solid-white chrome texel). No context exists
-    /// yet: each context builds its own GL objects on its first replay.</summary>
+    /// <summary>Cold init: load the font and bake the atlas (incl. its solid-white chrome texel). No renderer exists
+    /// yet: the sheet is uploaded on the first frame that draws it.</summary>
     public static void Init(ExtenderLog log)
     {
         _log = log;
@@ -304,7 +305,7 @@ public static unsafe partial class TextRig
         return px < MinFontPx ? MinFontPx : px > AtlasMaxPx ? AtlasMaxPx : px;
     }
 
-    /// <summary>Re-bake the atlas at a new glyph height (cold, on a settings change) and flag the GL texture for
+    /// <summary>Re-bake the atlas at a new glyph height (cold, on a settings change) and flag the sheet for
     /// re-upload next frame. No-op when unchanged (debounced for sub-pixel slider drags) or headless. Swaps the
     /// atlas reference atomically; the caller re-publishes the frame so its UVs and metrics match.</summary>
     public static void SetFont(float px)
@@ -406,8 +407,8 @@ public static unsafe partial class TextRig
     }
 
     /// <summary>Self-check for the resref -&gt; C-string marshalling that feeds AurTextureGet: truncation at 16
-    /// bytes and NUL-termination (a missing NUL would walk past the name into stack garbage), the portrait
-    /// size-suffix preference, and the bindless record's layout against std430 offsets worked by hand. Headless.</summary>
+    /// bytes and NUL-termination (a missing NUL would walk past the name into stack garbage) and the portrait
+    /// size-suffix preference, against resrefs and byte positions written out by hand. Headless.</summary>
     public static void SelfCheck(ExtenderLog log)
     {
         Span<byte> buf = stackalloc byte[17];
@@ -434,15 +435,8 @@ public static unsafe partial class TextRig
         n = FillCName("0123456789abcdet", buf);
         ok &= PreferMedium(buf, n) == 15 && buf[15] == (byte)'m' && buf[16] == 0;            // a full-length resref rewrites in place
 
-        // std430's offsets for the UiRec block BatchVs declares, worked by hand: uvec2 0, uint 8 and 12, vec2 16, two
-        // floats 24 and 28, vec4 32 and 48, vec2 64 and 72, padded to 80.
-        bool rec = sizeof(UiRec) == 80 && Marshal.OffsetOf<UiRec>(nameof(UiRec.OffX)) == 16
-                   && Marshal.OffsetOf<UiRec>(nameof(UiRec.Clip)) == 32 && Marshal.OffsetOf<UiRec>(nameof(UiRec.Occl)) == 48
-                   && Marshal.OffsetOf<UiRec>(nameof(UiRec.Ax)) == 64;
-        ok &= rec;
-
         log.Info(ok ? "TextRig.SelfCheck: passed"
-                    : $"TextRig.SelfCheck: FAILED (resref C-string marshalling / portrait size preference{(rec ? "" : " / the UiRec layout")})");
+                    : "TextRig.SelfCheck: FAILED (resref C-string marshalling / portrait size preference)");
     }
 
     private static IntPtr ResolveTexture(string resref)

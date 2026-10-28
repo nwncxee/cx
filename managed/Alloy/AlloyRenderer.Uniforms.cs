@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using CX.Engine;
 using CX.Framework;
 using CX.Graphics;
+using CX.Graphics.Rhi;
 
 namespace CX.Alloy;
 
@@ -31,7 +32,7 @@ public sealed unsafe partial class AlloyRenderer
         c[1] = MathF.Pow(MathF.Max(src.Y, 0f), AlloyLights.SrgbGamma);
         c[2] = MathF.Pow(MathF.Max(src.Z, 0f), AlloyLights.SrgbGamma);
         c[3] = 1f;
-        Gl.Uniform4fv(loc, 1, c);
+        LooseBlock.Set(loc, new ReadOnlySpan<float>(c, 4));
     }
 
     /// <summary>This frame's fog, packed the way every Alloy stage reads it -- enable, start, end and
@@ -52,16 +53,16 @@ public sealed unsafe partial class AlloyRenderer
     {
         float* px = stackalloc float[4];
         PackFog(px);
-        Gl.Uniform4fv(loc.Fog, 1, px);
+        LooseBlock.Set(loc.Fog, new ReadOnlySpan<float>(px, 4));
         UploadFogColour(loc.FogColor);
-        fixed (Vector3* eye = &_eyePos) Gl.Uniform3fv(loc.Eye, 1, (float*)eye);
+        fixed (Vector3* eye = &_eyePos) LooseBlock.Set(loc.Eye, new ReadOnlySpan<float>((float*)eye, 3));
         Vector3 origin = SceneFog.Origin(out bool radial);
-        Gl.Uniform4f(loc.FogOrigin, origin.X, origin.Y, origin.Z, radial ? 1f : 0f);
+        LooseBlock.Set(loc.FogOrigin, origin.X, origin.Y, origin.Z, radial ? 1f : 0f);
         // The height layer is anchored to the player's feet: an area carries no ground plane to read, and
         // the runtime block is where the engine keeps the one position that tracks them.
         float playerZ = _runtime == null ? 0f : Rt.PlayerPos.Z;
         SceneFog.Upload(loc, playerZ, _capturing);
-        FogVolume.Upload(loc.VFog, loc.VFogVp, _capturing || VkParity.Active);
+        FogVolume.Upload(loc.VFog, loc.VFogVp, _capturing);
     }
 
     /// <summary>Feed one program the engine's own live world state -- the same five values its own shaders
@@ -74,29 +75,29 @@ public sealed unsafe partial class AlloyRenderer
         float w = viewport[2] > 0 ? viewport[2] : 1f, h = viewport[3] > 0 ? viewport[3] : 1f;
         float* px = stackalloc float[4];
         px[0] = 1f / w; px[1] = 1f / h; px[2] = w / h;
-        Gl.Uniform3fv(loc.Pixel, 1, px);
-        Gl.Uniform1f(loc.LodBias, PostChain.LodBias);   // -1 where the stage declares none; GL ignores it
-        Gl.Uniform1f(loc.Now, TexStream.Clock);
+        LooseBlock.Set(loc.Pixel, new ReadOnlySpan<float>(px, 3));
+        LooseBlock.Set(loc.LodBias, PostChain.LodBias);   // -1 where the stage declares none; the block drops it
+        LooseBlock.Set(loc.Now, TexStream.Clock);
         UploadFog(loc);
         if (_shaderConstF != null)
         {
             float a = _shaderConstF[KeyholeDiaA], b = _shaderConstF[KeyholeDiaB];
             px[0] = MathF.Min(a, b); px[1] = MathF.Max(a, b); px[2] = _shaderConstF[KeyholeMinZ];
-            Gl.Uniform3fv(loc.KhDia, 1, px);
+            LooseBlock.Set(loc.KhDia, new ReadOnlySpan<float>(px, 3));
         }
         UploadTargetShape(loc);
         UploadVanillaEnv(loc);
         if (_runtime == null) return;
         ShaderExposedRuntimeData rt = Rt;
-        Gl.Uniform1i(loc.Time, rt.TimeOfDay);
+        LooseBlock.Set(loc.Time, rt.TimeOfDay);
 
-        Gl.Uniform3fv(loc.Wind, 1, (float*)Unsafe.AsPointer(ref rt.AreaWind));
-        Gl.Uniform1i(loc.Flags, rt.AreaFlags);
-        Gl.Uniform3fv(loc.Cam, 1, (float*)Unsafe.AsPointer(ref rt.CamPos));
-        Gl.Uniform3fv(loc.CamFocus, 1, (float*)Unsafe.AsPointer(ref rt.CamFocus));
-        Gl.Uniform3fv(loc.Player, 1, (float*)Unsafe.AsPointer(ref rt.PlayerPos));
+        LooseBlock.Set(loc.Wind, new ReadOnlySpan<float>((float*)Unsafe.AsPointer(ref rt.AreaWind), 3));
+        LooseBlock.Set(loc.Flags, rt.AreaFlags);
+        LooseBlock.Set(loc.Cam, new ReadOnlySpan<float>((float*)Unsafe.AsPointer(ref rt.CamPos), 3));
+        LooseBlock.Set(loc.CamFocus, new ReadOnlySpan<float>((float*)Unsafe.AsPointer(ref rt.CamFocus), 3));
+        LooseBlock.Set(loc.Player, new ReadOnlySpan<float>((float*)Unsafe.AsPointer(ref rt.PlayerPos), 3));
         px[0] = rt.CamDist; px[1] = rt.CamPitch;
-        Gl.Uniform2fv(loc.KhCam, 1, px);
+        LooseBlock.Set(loc.KhCam, new ReadOnlySpan<float>(px, 2));
     }
 
     /// <summary>The spell-targeting shape's terms, straight out of the engine's global-constant tables, under
@@ -108,15 +109,15 @@ public sealed unsafe partial class AlloyRenderer
         // The shape's own "nothing to draw" answer is targetShape 0 AND range 0; the object type is the
         // other half of it, and 0 there is what the engine writes when the cursor is over nothing.
         if (_shaderConstI == null || _shaderConstV == null || _shaderConstV4 == null || _shaderConstF == null)
-        { Gl.Uniform1i(loc.TgtObjL, 0); Gl.Uniform1i(loc.TgtShapeL, 0); return; }
-        Gl.Uniform1i(loc.TgtShapeL, _shaderConstI[TgtShape]);
-        Gl.Uniform1i(loc.TgtSelfL, _shaderConstI[TgtOnSelf]);
-        Gl.Uniform1i(loc.TgtObjL, _shaderConstI[TgtObjType]);
-        Gl.Uniform1f(loc.TgtSizeXL, _shaderConstF[TgtSizeX]);
-        Gl.Uniform1f(loc.TgtSizeYL, _shaderConstF[TgtSizeY]);
-        Gl.Uniform1f(loc.TgtRangeL, _shaderConstF[TgtRange]);
-        Gl.Uniform4fv(loc.TgtColL, 1, &_shaderConstV4[TgtColour].X);
-        Gl.Uniform3fv(loc.TgtWorldL, 1, _shaderConstV);
+        { LooseBlock.Set(loc.TgtObjL, 0); LooseBlock.Set(loc.TgtShapeL, 0); return; }
+        LooseBlock.Set(loc.TgtShapeL, _shaderConstI[TgtShape]);
+        LooseBlock.Set(loc.TgtSelfL, _shaderConstI[TgtOnSelf]);
+        LooseBlock.Set(loc.TgtObjL, _shaderConstI[TgtObjType]);
+        LooseBlock.Set(loc.TgtSizeXL, _shaderConstF[TgtSizeX]);
+        LooseBlock.Set(loc.TgtSizeYL, _shaderConstF[TgtSizeY]);
+        LooseBlock.Set(loc.TgtRangeL, _shaderConstF[TgtRange]);
+        LooseBlock.Set(loc.TgtColL, new ReadOnlySpan<float>(&_shaderConstV4[TgtColour].X, 4));
+        LooseBlock.Set(loc.TgtWorldL, new ReadOnlySpan<float>(_shaderConstV, 3));
     }
 
     /// <summary>The rest of the shared vanilla environment -- the <c>CxEngine</c> block (the projection, the
@@ -125,7 +126,7 @@ public sealed unsafe partial class AlloyRenderer
     /// and zero is "off", which an unresolved constant table leaves them at.</summary>
     internal static void UploadVanillaEnv(in FeatLoc loc)
     {
-        if (loc.Engine) BindEngineBlock();
+        BindEngineBlock();
         if (_shaderConstI == null || _shaderConstF == null || _shaderConstV4 == null) return;
         // The whole block, not a selection: a content shader that begins reading a slot nobody thought to
         // wire would otherwise compile, link, and read zero -- working under the engine and silently doing
@@ -133,11 +134,11 @@ public sealed unsafe partial class AlloyRenderer
         fixed (FeatLoc* l = &loc)
         {
             for (int m = l->SIntLive; m != 0; m &= m - 1)
-            { int i = BitOperations.TrailingZeroCount(m); Gl.Uniform1i(l->SInt[i], _shaderConstI[SIntBase + i]); }
+            { int i = BitOperations.TrailingZeroCount(m); LooseBlock.Set(l->SInt[i], _shaderConstI[SIntBase + i]); }
             for (int m = l->SFloatLive; m != 0; m &= m - 1)
-            { int i = BitOperations.TrailingZeroCount(m); Gl.Uniform1f(l->SFloat[i], _shaderConstF[SFloatBase + i]); }
+            { int i = BitOperations.TrailingZeroCount(m); LooseBlock.Set(l->SFloat[i], _shaderConstF[SFloatBase + i]); }
             for (int m = l->SVecLive; m != 0; m &= m - 1)
-            { int i = BitOperations.TrailingZeroCount(m); Gl.Uniform4fv(l->SVec[i], 1, &_shaderConstV4[SVecBase + i].X); }
+            { int i = BitOperations.TrailingZeroCount(m); LooseBlock.Set(l->SVec[i], new ReadOnlySpan<float>(&_shaderConstV4[SVecBase + i].X, 4)); }
         }
     }
 
@@ -146,8 +147,7 @@ public sealed unsafe partial class AlloyRenderer
     internal static void UploadMaterialModel(int loc)
     {
         bool modern = Lighting.Brdf.V;
-        Gl.Uniform4f(loc, modern ? 1f : 0f, modern ? Lighting.AmbientDir.V : 0f, modern && Lighting.SpecAa.V ? 1f : 0f,
-                     Lighting.Grazing.V ? 0f : 1f);
+        LooseBlock.Set(loc, modern ? 1f : 0f, modern ? Lighting.AmbientDir.V : 0f, modern && Lighting.SpecAa.V ? 1f : 0f, Lighting.Grazing.V ? 0f : 1f);
     }
 
     /// <summary>The <c>CxPass</c> block's binding point, pinned by <see cref="UboSlots.Pass"/> against
@@ -193,18 +193,15 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>This pass's shared scene terms into the <c>CxPass</c> block, then the shadow maps onto their
     /// units and the program's own <c>uLocalCubes</c>. Called at each program switch; the block goes up only
     /// when the refill differs from what is bound, so every switch after a pass's first costs a fill and a
-    /// compare and no GL uniform traffic.</summary>
+    /// compare and no GL uniform traffic. On Vulkan only the staging fill runs.</summary>
     internal static void BindPass(int locCubes, int* viewport, float near, float far)
     {
         PassBinds++;
         byte* b = PassBegin();
         FillPassBlock((PassBlock*)b);
         if (!AlloyLights.FillDraw(b, viewport, near, far)) PassBindsBorrowed++;
-        if (VkParity.Active) VkParity.StandDownPass(new Span<byte>(b, PassBytes));
-        FlushPassBlock();
-        BindSunMaps();
-        BindCubeMaps();
-        Gl.Uniform1i(locCubes, CasterPass.CubesFresh && !VkParity.Active ? CasterPass.CubeCount : 0);
+        // a Vulkan pass reads the staged block and binds its own shadow maps
+        LooseBlock.Set(locCubes, CasterPass.CubesFresh ? CasterPass.CubeCount : 0);
     }
 
     /// <summary>The staging block, zeroed, for a caller that fills it itself (the lightmap bake's one light).</summary>
@@ -218,23 +215,6 @@ public sealed unsafe partial class AlloyRenderer
         new Span<byte>(_passStage, PassBytes).Clear();
         return _passStage;
     }
-
-    /// <summary>Send the staged block if it differs from the one bound. Orphan-and-fill in one call, so a
-    /// block the GPU is still reading is never written under it. Rebound with each send (about one per pass),
-    /// so nothing that took binding 0 in between is ever read as the pass terms.</summary>
-    internal static void FlushPassBlock()
-    {
-        if (_passBuf != 0 && new ReadOnlySpan<byte>(_passStage, PassBytes).SequenceEqual(new ReadOnlySpan<byte>(_passSent, PassBytes)))
-            return;
-        if (_passBuf == 0) { uint b; Gl.CreateBuffers(1, &b); _passBuf = b; }
-        Gl.NamedBufferData(_passBuf, (IntPtr)PassBytes, _passStage, Gl.DYNAMIC_DRAW);
-        Gl.BindBufferBase(Gl.UNIFORM_BUFFER, PassBinding, _passBuf);
-        Buffer.MemoryCopy(_passStage, _passSent, PassBytes, PassBytes);
-        PassUploads++;
-    }
-
-    /// <summary>The block's name died with the context; the next send mints a new one.</summary>
-    internal static void PassContextLost() => _passBuf = 0;
 
     /// <summary>Every <c>CxPass</c> member from this pass's state: the engine's area terms, the cascade and
     /// cube receivers as <see cref="CasterPass"/> published them, and the probe. A stale cascade or cube set
@@ -282,17 +262,16 @@ public sealed unsafe partial class AlloyRenderer
         _rxAreaDif = blk->Diffuse;
         _rxAreaDir = blk->Dir;
 
-        if (!_rawProbed) ProbeRawSampler();
         blk->LocalFloor = AlloyLights.ShadowFloor;
         // Source radius (0 = no raw view, no search), temporal phase (golden-ratio turns per frame, 0
         // with no taa to integrate it), disc taps; w = the view depth past which no cube is read (0 = none)
-        blk->LocalPcss = new Vector4(_rawSampler != 0 ? AlloyLights.ShadowSource : 0f,
+        blk->LocalPcss = new Vector4(RawSearch ? AlloyLights.ShadowSource : 0f,
                 PostStack.TaaLive ? (_frameSeq * 0.618034f) % 1f : 0f, Shadows.Taps.V, AlloyLights.ShadowDist);
         // CX-49: the sun's own source size, as penumbra texels per unit of stored cascade depth -- the same
         // "no raw view, no search" gate the cubes take, and the same temporal phase and tap count out of
         // uLocalPcss above. A caller that fills the block itself (the lightmap bake) leaves it zero, which
         // the receiver reads as the fixed four-tap cross.
-        blk->SunPenum = _rawSampler != 0 ? CasterPass.SunPenumbraScale : 0f;
+        blk->SunPenum = RawSearch ? CasterPass.SunPenumbraScale : 0f;
         blk->SearchTaps = Shadows.Search.V;
         // Pixels -> world radius per unit view depth, so the shader compares its disc against the
         // screen without knowing the projection. 0 (no perspective this pass) = the disc everywhere.
@@ -321,123 +300,10 @@ public sealed unsafe partial class AlloyRenderer
         blk->SceneEnv = _sceneEnv ? 1 : 0;
     }
 
-    /// <summary>May this pass sample the IBL probe? Never during a capture: sampling a texture that is an
-    /// attachment of the framebuffer being written is undefined, and the capture draws through the lit program.</summary>
-    private static bool ProbeLive => (!_capturing || _planar) && EnvProbe.Ready && EnvProbe.Tex != 0;
+    /// <summary>May this pass sample the IBL probe? Never during a capture: sampling an image that is an
+    /// attachment of the target being written is undefined, and the capture draws through the lit stage.</summary>
+    private static bool ProbeLive => (!_capturing || _planar) && EnvProbe.Ready;
 
-    /// <summary>Point the cascade units at <see cref="CasterPass"/>'s arrays, or at the null stand-ins when they
-    /// are stale -- bound either way, because the draw validates every shadow sampler against its unit even
-    /// when the shader never takes the fetch (see NullShadow).</summary>
-    internal static void BindSunMaps()
-    {
-        if (!_rawProbed) ProbeRawSampler();
-        bool fresh = CasterPass.CascadesFresh;
-        uint stat = SunShadowOr(fresh ? CasterPass.CascadeTex : 0);
-        Gl.ActiveTexture(Gl.TEXTURE0 + SunUnit);
-        Gl.BindTexture(Gl.TEXTURE_2D_ARRAY, stat);
-        // The dynamic half rides the same publish, on BOTH units the table assigns it (the grass
-        // program's unit 10 is its displacement field, so grass reads the array off unit 13 instead).
-        uint dyn = SunShadowOr(fresh ? CasterPass.SunDynTex : 0);
-        Gl.ActiveTexture(Gl.TEXTURE0 + SunDynUnit);
-        Gl.BindTexture(Gl.TEXTURE_2D_ARRAY, dyn);
-        Gl.ActiveTexture(Gl.TEXTURE0 + SunDynUnitGrass);
-        Gl.BindTexture(Gl.TEXTURE_2D_ARRAY, dyn);
-        if (_rawSampler != 0)
-        {   // CX-49: the same two arrays on the raw units; the sampler object bound there strips the compare
-            Gl.ActiveTexture(Gl.TEXTURE0 + TextureSlots.SunShadowRaw);
-            Gl.BindTexture(Gl.TEXTURE_2D_ARRAY, stat);
-            Gl.ActiveTexture(Gl.TEXTURE0 + TextureSlots.SunShadowDynRaw);
-            Gl.BindTexture(Gl.TEXTURE_2D_ARRAY, dyn);
-        }
-        Gl.ActiveTexture(Gl.TEXTURE0);       // leave unit 0 current: the batch loop rebinds diffuse textures
-    }
-
-    /// <summary>1x1 depth-1 (lit) stand-ins with compare on, bound on a shadow unit whenever its map is absent
-    /// or stale. A shadow sampler validated against an empty unit or a colour texture is undefined behaviour
-    /// even when the shader never takes the fetch (NVIDIA debug id 131222, ~4 per frame); Mesa owes it
-    /// nothing. Names die with the context (<see cref="ContextLost"/>).</summary>
-    private static uint _nullSunShadow, _nullCubeShadow;
-    internal static uint SunShadowOr(uint tex) => tex != 0 ? tex : NullShadow(Gl.TEXTURE_2D_ARRAY, 1, ref _nullSunShadow);
-    internal static uint CubeShadowOr(uint tex) => tex != 0 ? tex : NullShadow(Gl.TEXTURE_CUBE_MAP_ARRAY, 6, ref _nullCubeShadow);
-    private static uint NullShadow(uint target, int layers, ref uint name)
-    {
-        if (name != 0) return name;
-        uint t; Gl.CreateTextures(target, 1, &t);
-        Gl.TextureStorage3D(t, 1, Gl.DEPTH_COMPONENT32F, 1, 1, layers);
-        float* one = stackalloc float[6] { 1f, 1f, 1f, 1f, 1f, 1f };
-        Gl.TextureSubImage3D(t, 0, 0, 0, 0, 1, 1, layers, Gl.DEPTH_COMPONENT, Gl.FLOAT, one);
-        Gl.TextureParameteri(t, Gl.TEXTURE_COMPARE_MODE, (int)Gl.COMPARE_REF_TO_TEXTURE);
-        Gl.TextureParameteri(t, Gl.TEXTURE_COMPARE_FUNC, (int)Gl.LEQUAL);
-        Gl.TextureParameteri(t, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
-        Gl.TextureParameteri(t, Gl.TEXTURE_MAG_FILTER, Gl.NEAREST);
-        return name = t;
-    }
-
-    /// <summary>The no-compare sampler the receiver's blocker search reads the cube arrays through
-    /// (<see cref="TextureSlots.LocalShadowRaw"/>). 0 = the driver is short of fragment units or sampler
-    /// objects, and the search stands down; asked once.</summary>
-    private static uint _rawSampler;
-    private static bool _rawProbed;
-    private static void ProbeRawSampler()
-    {
-        _rawProbed = true;
-        int units = 0; Gl.GetIntegerv(Gl.MAX_TEXTURE_IMAGE_UNITS, &units);
-        // The CUBE threshold, which is the cube units' own and nothing else's: the sun's two raw views sit
-        // higher and stand down on their own at link time (Programs.WithoutSunSoft), so a driver that can
-        // seat the cubes keeps their contact hardening whatever it can do for the sun.
-        if (units <= (int)TextureSlots.LocalShadowDynRaw || Gl.GenSamplers == null || Gl.SamplerParameteri == null || Gl.BindSampler == null)
-        { _log?.Info($"AlloyRenderer: shadow blocker search OFF (hard edges, no contact hardening) -- " +
-                     $"{units} fragment texture units, needs {TextureSlots.LocalShadowDynRaw + 1}"); return; }
-        uint s; Gl.GenSamplers(1, &s);
-        Gl.SamplerParameteri(s, Gl.TEXTURE_COMPARE_MODE, 0);   // GL_NONE: a depth, not a verdict
-        Gl.SamplerParameteri(s, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
-        Gl.SamplerParameteri(s, Gl.TEXTURE_MAG_FILTER, Gl.NEAREST);
-        Gl.SamplerParameteri(s, Gl.TEXTURE_WRAP_S, Gl.CLAMP_TO_EDGE);
-        Gl.SamplerParameteri(s, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
-        Gl.BindSampler(TextureSlots.LocalShadowRaw, s); Gl.BindSampler(TextureSlots.LocalShadowDynRaw, s);
-        // CX-49: the sun's two raw units take the same sampler object -- a 2D array of depth read as a depth
-        // rather than a verdict is the same ask as the cube's. Bound whatever the fragment-unit count, which
-        // is legal (a bind is capped by MAX_COMBINED_TEXTURE_IMAGE_UNITS, floor 80) and unread where the lit
-        // program never declared the samplers.
-        Gl.BindSampler(TextureSlots.SunShadowRaw, s); Gl.BindSampler(TextureSlots.SunShadowDynRaw, s);
-        _rawSampler = s;
-        _log?.Info($"AlloyRenderer: shadow blocker search ON -- {units} fragment texture units, raw views on "
-                   + $"{TextureSlots.LocalShadowRaw}/{TextureSlots.LocalShadowDynRaw} (cubes) and "
-                   + $"{TextureSlots.SunShadowRaw}/{TextureSlots.SunShadowDynRaw} (sun cascades, "
-                   + $"{(units >= Programs.SunSoftUnitsNeed ? "declared" : "NOT declared on this driver")})");
-    }
-
-    /// <summary>Point the cube units at <see cref="CasterPass"/>'s static and dynamic arrays (the null stand-in
-    /// when stale, as <see cref="BindSunMaps"/>), and the same two on the raw units when the blocker search
-    /// has its sampler.</summary>
-    internal static void BindCubeMaps()
-    {
-        if (!_rawProbed) ProbeRawSampler();
-        bool fresh = CasterPass.CubesFresh;
-        uint st = CubeShadowOr(fresh ? CasterPass.CubeTex : 0), dy = CubeShadowOr(fresh ? CasterPass.CubeDynTex : 0);
-        Gl.ActiveTexture(Gl.TEXTURE0 + CubeUnit);
-        Gl.BindTexture(Gl.TEXTURE_CUBE_MAP_ARRAY, st);
-        // The dynamic pool rides the same publish -- the per-slot page indices carry PAGE+1, so a slot
-        // with no movers (or a session with no pool) reads 0 and the receiver stays static-only there.
-        Gl.ActiveTexture(Gl.TEXTURE0 + CubeDynUnit);
-        Gl.BindTexture(Gl.TEXTURE_CUBE_MAP_ARRAY, dy);
-        if (_rawSampler != 0)
-        {   // The same two arrays on the raw units; the sampler object bound there strips the compare
-            Gl.ActiveTexture(Gl.TEXTURE0 + TextureSlots.LocalShadowRaw);
-            Gl.BindTexture(Gl.TEXTURE_CUBE_MAP_ARRAY, st);
-            Gl.ActiveTexture(Gl.TEXTURE0 + TextureSlots.LocalShadowDynRaw);
-            Gl.BindTexture(Gl.TEXTURE_CUBE_MAP_ARRAY, dy);
-        }
-        Gl.ActiveTexture(Gl.TEXTURE0);       // leave unit 0 current: the batch loop rebinds diffuse textures
-    }
-
-    /// <summary>The IBL probe onto its unit, or nothing -- unbound rather than left bound during a
-    /// capture (<see cref="ProbeLive"/>); <c>uProbeMips</c> 0 in the pass block says the same to the stage.</summary>
-    internal static void BindProbe()
-    {
-        Gl.ActiveTexture(Gl.TEXTURE0 + EnvProbe.ProbeUnit);
-        Gl.BindTexture(Gl.TEXTURE_CUBE_MAP, ProbeLive ? EnvProbe.Tex : 0);
-        Gl.ActiveTexture(Gl.TEXTURE0);       // leave unit 0 current: the batch loop rebinds diffuse textures
-        EnvProbe.BindSh();
-    }
+    /// <summary>The blocker search has its raw views: Vulkan's bake binds its own.</summary>
+    private static bool RawSearch => true;
 }

@@ -19,7 +19,7 @@ public sealed class ExtenderLog
     /// evaluates when this is false, so a census behind a closed gate is never walked at all.</summary>
     public static bool Enabled = true;
 
-    /// <summary>Every line is on disk before its call returns: set by <c>alloy.gldebug=1</c>, so the log of a crash
+    /// <summary>Every line is on disk before its call returns: set by <c>alloy.gpudebug=1</c>, so the log of a crash
     /// ends at the crash. Costs a file write per line on the caller's thread.</summary>
     public static bool Synchronous;
 

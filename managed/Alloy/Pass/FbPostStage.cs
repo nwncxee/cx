@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using CX.Framework;
 using CX.Graphics;
+using CX.Graphics.Rhi;
 
 namespace CX.Alloy;
 
@@ -33,14 +34,10 @@ internal static unsafe class FbPostStage
     private static ExtenderLog? _log;
     private static Matrix4x4 _view = Matrix4x4.Identity;
     private static float _near = 0.1f, _far = 100f;
-    /// <summary>Everything the GL context owns, in one object: context loss replaces it, so no name or
-    /// uniform location from the dead context survives as a field nobody remembered to zero. The build
-    /// tokens ride here because they describe the program that holds those locations.</summary>
+    /// <summary>What the hosted stage was last built against, in one object: a device change replaces it, so
+    /// no token from the one before survives as a field nobody remembered to reset.</summary>
     private sealed class FbPostState
     {
-        public uint Prog, Sampler;
-        public AlloyRenderer.FeatLoc Feat;
-        public int LocView, LocViewInv, LocPixel, LocClip, LocFbColor, LocFbDepth, Rec = -1;
         /// <summary>The chain's native stage the program was built from (<see cref="StageResources"/>), -1 for the chain.</summary>
         public int Native = -1;
         public int BuildMask = -1, BuildQuality = -1;
@@ -54,10 +51,10 @@ internal static unsafe class FbPostStage
     internal static int BuildQuality { get => _gl.BuildQuality; private set => _gl.BuildQuality = value; }
 
     internal static void Attach(ExtenderLog log) => _log = log;
-    /// <summary>Context loss: every GL name is gone.</summary>
+    /// <summary>Device loss: the build tokens name a stage the next device rebuilds.</summary>
     internal static void Forget() { _gl = new FbPostState(); }
-    /// <summary>The program is dropped (module change, option change); the sampler object outlives it.</summary>
-    internal static void DropProgram() { _gl.Prog = 0; BuildMask = -1; BuildQuality = -1; }
+    /// <summary>The stage is dropped (module change, option change) and rebuilt on the next frame.</summary>
+    internal static void DropProgram() { BuildMask = -1; BuildQuality = -1; }
 
     /// <summary>The bits the hosted text carries, of the engine's mask.</summary>
     internal static int HostedMask(int mask) => mask & ~MaskStripped;
@@ -87,6 +84,9 @@ internal static unsafe class FbPostStage
     /// <summary>Is the program being built from the chain's native stage? Its host then builds the wrapper as given.</summary>
     internal static bool HostsNative => _gl.Native >= 0;
 
+    /// <summary>The native stage the program is built from, -1 for the chain itself.</summary>
+    internal static int NativeId => _gl.Native;
+
     /// <summary>The native stage's program would not do: latched (said by <see cref="StageResources.Fail"/>), so the
     /// next <see cref="Hosting"/> hands back the chain itself.</summary>
     internal static void RefuseNative(string why, ExtenderLog? log)
@@ -106,41 +106,25 @@ internal static unsafe class FbPostStage
         AlloyLights.TryPerspective(*proj, out _, out _, out _near, out _far);
     }
 
-    /// <summary>From <see cref="PostStack.Run"/>, ahead of the stage draw: every engine name the chain reads,
-    /// from Alloy's values, onto this program -- the feature terms and the engine-named ones every Alloy program
-    /// takes, then the post stage's own. Hot. Also binds a LINEAR sampler on the source unit (the stack's
-    /// textures are NEAREST), which Run unbinds after the draw.</summary>
-    internal static void Prepare(uint src, uint prog, int* viewport)
+    /// <summary>The hosted chain's members of a program's loose block.</summary>
+    internal readonly record struct VkLocs(AlloyRenderer.FeatLoc Feat, int View, int ViewInv, int Pixel, int Clip);
+
+    /// <summary>...resolved inside that program's open resolve.</summary>
+    internal static VkLocs LocateVk() => new(Programs.FeatLocs(), LooseBlock.Loc("m_view"), LooseBlock.Loc("m_view_inv"),
+                                            LooseBlock.Loc("pixelParams"), LooseBlock.Loc("clipParams"));
+
+    /// <summary><see cref="Prepare"/>'s terms into the open capture of the Vulkan stage: the engine's feature terms, the
+    /// view and its inverse, the pixel and clip triples. A native stage's images are not on Vulkan, so it never gets here.</summary>
+    internal static void WriteVk(in VkLocs l, int* viewport)
     {
-        var g = _gl;
-        if (prog != g.Prog)
-        {
-            g.Prog = prog;
-            g.Feat = Programs.FeatLocs(prog);
-            g.LocView = GlProgram.Loc(prog, "m_view"); g.LocViewInv = GlProgram.Loc(prog, "m_view_inv");
-            g.LocPixel = GlProgram.Loc(prog, "pixelParams");
-            g.LocClip = GlProgram.Loc(prog, "clipParams");
-            g.LocFbColor = GlProgram.Loc(prog, "texFBColor"); g.LocFbDepth = GlProgram.Loc(prog, "texFBDepth");
-            // the cx frame uniforms the chain declares, cxOverlay among them (a flare of its own stands aside for one), and
-            // a native stage's images; one its images refuse is latched, and Stale rebuilds the stage from the chain
-            g.Rec = StageResources.Attach(prog, g.Native, -1, _log);
-            if (g.Rec == -2) g.Rec = -1;
-        }
-        Gl.UseProgram(prog);
-        Gl.Uniform1i(g.LocFbColor, (int)TextureSlots.PostHdr);
-        Gl.Uniform1i(g.LocFbDepth, (int)TextureSlots.PostBloom);
-        AlloyRenderer.UploadFeatureTerms(in g.Feat, viewport);
-        StageResources.Use(g.Native);
-        StageResources.Bind(g.Rec);
-        fixed (Matrix4x4* v = &_view) Gl.UniformMatrix4fv(g.LocView, 1, 0, (float*)v);
+        AlloyRenderer.FeatLoc feat = l.Feat;
+        AlloyRenderer.UploadFeatureTerms(in feat, viewport);
+        LooseBlock.Set(l.View, _view);
         if (!Matrix4x4.Invert(_view, out Matrix4x4 inv)) inv = Matrix4x4.Identity;
-        Gl.UniformMatrix4fv(g.LocViewInv, 1, 0, (float*)&inv);
+        LooseBlock.Set(l.ViewInv, inv);
         float w = viewport[2] > 0 ? viewport[2] : 1f, h = viewport[3] > 0 ? viewport[3] : 1f;
-        Gl.Uniform3f(g.LocPixel, 1f / w, 1f / h, w / h);
-        // clipParams = (near, far, 1 - near/far): inc_common.shd's own triple
-        Gl.Uniform3f(g.LocClip, _near, _far, 1f - _near / MathF.Max(_far, 1e-6f));
-        if (g.Sampler == 0) g.Sampler = Gl.LinearClampSampler();
-        if (g.Sampler != 0) Gl.BindSampler(TextureSlots.PostHdr, g.Sampler);
+        LooseBlock.Set(l.Pixel, [1f / w, 1f / h, w / h]);
+        LooseBlock.Set(l.Clip, [_near, _far, 1f - _near / MathF.Max(_far, 1e-6f)]);
     }
 
     /// <summary>The stage text: the environment the chain reads (inc_common/inc_uniforms as the fragment half

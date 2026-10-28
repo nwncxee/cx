@@ -613,8 +613,9 @@ internal static unsafe class SymbolMap
     [Fn("int(byte b, int locale)")]
     public const string EncodingSingleCharToUtf8   = "_ZN8Encoding16SingleCharToUTF8EcNS_6LocaleE";
 
-    // The client runs an OpenGL 3.3 CORE context (verified: SDL_GL_SetAttribute PROFILE_MASK=CORE),
-    // so the owned draw is shader+VAO+VBO. Modern GL (>=1.3) resolves through this exported SDL entry.
+    // The client asks SDL for an OpenGL 3.3 CORE context (verified: SDL_GL_SetAttribute PROFILE_MASK=CORE)
+    // and resolves its own GL entries (>=1.3) through this exported SDL entry, which is where a Vulkan
+    // session hands it CX's stubs instead.
     public const string SdlGlGetProcAddress = "SDL_GL_GetProcAddress";
     // RenderInterface blend/depth wrappers (static; args in edi/esi, no `this`). We route only these
     // through the engine so its enable-cache stays in sync; matrices are ours (software stack -> shader
@@ -650,7 +651,7 @@ internal static unsafe class SymbolMap
     /// <summary><c>GLRender::m_boundTextures</c> @0x19ad0e0 -- the engine's per-stage bound-texture CACHE, 16 entries of
     /// <c>{AuroraEnableEnums target, GLuint name}</c>, with <c>m_activeTextureStage</c> @0x19ad0d8 and
     /// <c>m_bEnabledTextureStages</c> @0x19ad0d4 beside it. <c>SetActiveTextureAndBind</c> early-outs on a cache match,
-    /// so an engine bind called from Alloy's own context writes the cache while GL misses it: snapshot all three.</summary>
+    /// so a bind that never reaches the engine's own renderer leaves this cache stale: snapshot all three.</summary>
     public const string GlBoundTextures = "_ZN8GLRender15m_boundTexturesE";
     public const string GlActiveTextureStage = "_ZN8GLRender20m_activeTextureStageE";
     public const string GlEnabledTextureStages = "_ZN8GLRender23m_bEnabledTextureStagesE";
@@ -677,6 +678,44 @@ internal static unsafe class SymbolMap
     /// <c>BindDefaultFramebuffer</c> and <c>ResetRenderStates</c>. Alloy's present calls it directly. C linkage.</summary>
     [Fn("void(IntPtr window)")]
     public const string SdlGlSwapWindow = "SDL_GL_SwapWindow";
+    /// <summary>SDL's swap interval as the engine set it (0 off, 1 vsync, -1 adaptive): Vulkan's present picks its mode
+    /// from it. C linkage.</summary>
+    [Fn("int()")]
+    public const string SdlGlGetSwapInterval = "SDL_GL_GetSwapInterval";
+    /// <summary>The SDL version the client links, which <c>SDL_GetWindowWMInfo</c> requires its caller to stamp. C linkage.</summary>
+    [Fn("void(byte* ver)")]
+    public const string SdlGetVersion = "SDL_GetVersion";
+    /// <summary>The window's native handles (X display + window, or the HWND): what a Vulkan surface is made over. C linkage.</summary>
+    [Fn("int(IntPtr window, byte* info)")]
+    public const string SdlGetWindowWmInfo = "SDL_GetWindowWMInfo";
+    /// <summary><c>SDL_CreateWindow</c>, called once from <c>main</c> with <c>SDL_WINDOW_OPENGL</c> set: a Vulkan
+    /// session swaps that flag for <c>SDL_WINDOW_VULKAN</c> here, so no GL library or context is ever made. C linkage.</summary>
+    [Fn("IntPtr(byte* title, int x, int y, int w, int h, uint flags)")]
+    public const string SdlCreateWindow = "SDL_CreateWindow";
+    /// <summary><c>RenderInterface::Shutdown(int)</c> @0x45d2b0, called once from <c>main</c> after the frame loop ends,
+    /// before the services stop and SDL quits: the client is quitting, and nothing is drawn after it.</summary>
+    [Fn("void(int final)")]
+    public const string RiShutdown = "_ZN15RenderInterface8ShutdownEi";
+    /// <summary><c>SDL_GL_CreateContext</c>, called once from <c>main</c> right after the window: a Vulkan session
+    /// answers it with a token and no context. C linkage.</summary>
+    [Fn("IntPtr(IntPtr window)")]
+    public const string SdlGlCreateContext = "SDL_GL_CreateContext";
+    /// <summary><c>SDL_GL_SetSwapInterval</c>: the engine's vsync choice, which a Vulkan session keeps for its own
+    /// present instead of handing it to a GL context that does not exist. C linkage.</summary>
+    [Fn("int(int interval)")]
+    public const string SdlGlSetSwapInterval = "SDL_GL_SetSwapInterval";
+    /// <summary><c>SDL_GL_GetDrawableSize</c>, which nuklear's GL backend reads: answered from the window's Vulkan
+    /// drawable in a session with no GL. C linkage.</summary>
+    [Fn("void(IntPtr window, int* w, int* h)")]
+    public const string SdlGlGetDrawableSize = "SDL_GL_GetDrawableSize";
+    /// <inheritdoc cref="SdlGlGetDrawableSize"/>
+    [Fn("void(IntPtr window, int* w, int* h)")]
+    public const string SdlVulkanGetDrawableSize = "SDL_Vulkan_GetDrawableSize";
+    /// <summary><c>RenderInterface::ReadPixelsFromBuffer(fb, x, y, w, h, format, dst)</c> @0x45d260 -- the static thunk
+    /// <c>AurSnapshot</c> (screenshots) and <c>AurSaveGameSnapshot</c> (save thumbnails) read the frame through; with no
+    /// GL the pixels come from Vulkan's composite.</summary>
+    [Fn("void(uint fb, int x, int y, int w, int h, int format, byte* dst)")]
+    public const string RiReadPixelsFromBuffer = "_ZN15RenderInterface20ReadPixelsFromBufferEjiiiiN6Aurora20AuroraTextureFormatsEPv";
     /// <summary><c>RenderInterface::Clear(uint mask)</c> @0x45d2a0 -- every engine clear (the frame's
     /// <c>Clear(3)</c> in <c>Update</c>, each GUI view's <c>Clear(2)</c>, snapshots) funnels through this static thunk
     /// to <c>GLRender::Clear</c>. Bits: 1 colour, 2 depth+stencil, 4 stencil.</summary>
@@ -912,7 +951,7 @@ internal static unsafe class SymbolMap
 
     // ---- the beam globals. Beams are NOT walked by Scene::RenderDrawBucket -- they live in
     //      DRAW BUCKET 15, which Scene::RenderBeams @0x46aba0 (vt+0x1d8) walks with its own program and its
-    //      own state. Alloy enumerates that bucket itself (Beams.Enroll); the vtable slot is the shim's.
+    //      own state. Alloy enumerates that bucket itself (Beams.EnrollDb); the vtable slot is the shim's.
     /// <summary>Global <c>enablebeams</c> @0x18aa18c (int, 1 by default) -- the flag
     /// <c>Scene::RenderBeams</c> gates its whole body on. The owned pass honours it: beams off means the
     /// owned draw does nothing AND does not suppress.</summary>
@@ -1748,6 +1787,11 @@ internal static unsafe class SymbolMap
     /// Copies both strings.</summary>
     [Fn("void(byte* key, byte* value, bool append)")]
     public const string CrashHandlerExpose = "_Z18CrashHandlerExposePKcS0_b";
+    /// <summary><c>CrashReporter_Linux::InternalCrashHandler(int)</c> @0xf07580: the engine's signal handler. A crash inside
+    /// it, or any crash once the client is quitting, re-enters it; hooked only through native/cxthunk.c, which exits
+    /// the process there instead of letting it spin.</summary>
+    [Fn("void(int sig)")]
+    public const string CrashHandlerLinux = "_ZN19CrashReporter_Linux20InternalCrashHandlerEi";
     /// <summary><c>kiwi::impl::SolverImpl::createRow(Constraint const&amp;, Tag&amp;)</c> @0x85eb40 (Windows rva 0x340e00):
     /// the constraint rewritten over the tableau's parametric symbols, returned as a <c>unique_ptr&lt;Row&gt;</c> BY
     /// VALUE -- Itanium <c>(sret, this, constraint, tag)</c>, Win64 <c>(this, sret, constraint, tag)</c>. It throws
@@ -2937,6 +2981,17 @@ internal static unsafe class SymbolMap
         [ScreenHeight] = Nm("?g_nScreenHeight@@3HA"),
         [StatusBarSetStatus] = Nm("?SetStatus@CGuiStatusBar@@QEAAXM@Z"),
         [SdlGlSwapWindow] = Nm("SDL_GL_SwapWindow"),
+        [SdlGlGetSwapInterval] = Nm("SDL_GL_GetSwapInterval"),
+        [SdlGetVersion] = Nm("SDL_GetVersion"),
+        [SdlGetWindowWmInfo] = Nm("SDL_GetWindowWMInfo"),
+        [SdlCreateWindow] = Nm("SDL_CreateWindow"),
+        [RiShutdown] = Nm("?Shutdown@RenderInterface@@SAXH@Z"),
+        [CrashHandlerLinux] = LinuxOnly("a signal handler: the Windows client crashes through its unhandled-exception filter instead"),
+        [SdlGlCreateContext] = Nm("SDL_GL_CreateContext"),
+        [SdlGlSetSwapInterval] = Nm("SDL_GL_SetSwapInterval"),
+        [SdlGlGetDrawableSize] = Nm("SDL_GL_GetDrawableSize"),
+        [SdlVulkanGetDrawableSize] = Nm("SDL_Vulkan_GetDrawableSize"),
+        [RiReadPixelsFromBuffer] = Nm("?ReadPixelsFromBuffer@RenderInterface@@SAXIHHHHW4AuroraTextureFormats@Aurora@@PEAX@Z"),
         [RiClear] = Nm("?Clear@RenderInterface@@SAXI@Z"),
         [RiSetClearColor] = Nm("?SetClearColor@RenderInterface@@SAXMMMM@Z"),
         [GlDefaultFramebuffer] = Nm("?cm_nDefaultFramebuffer@GLRender@@0IA"),

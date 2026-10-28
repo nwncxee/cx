@@ -21,6 +21,8 @@ internal static unsafe class AlloyLights
     /// compute. More clusters = SHORTER per-fragment loops: this knob, not <see cref="ClusterCap"/>.</summary>
     private const int GridX = 32, GridY = 18, GridZ = 24;
     private const int ClusterCount = GridX * GridY * GridZ;
+    /// <summary>Froxels in the grid -- what a second device sizes the same table by.</summary>
+    internal const int Clusters = ClusterCount;
     /// <summary>Lights binned per cluster, boot-tunable (<c>alloy.clustercap</c>); 128 is the shipped value.
     /// NOT free: the fragment loop reads the cluster's COUNT, so a formerly-overflowing froxel pays up to
     /// twice the per-fragment loop, plus SSBO bytes. ponytail: fixed capacity, no per-cluster compaction --
@@ -499,15 +501,14 @@ internal static unsafe class AlloyLights
     private sealed class LightsGlState
     {
         public uint Prog, BufLights, BufCounts, BufIndices, BufStats, BufMovers;
+        /// <summary>What the last dispatch's uniforms carried (<see cref="Terms"/>).</summary>
+        public BuildTerms Terms;
         public int MoversGen = -1;
         public int LocView = -1, LocProjXY = -1, LocZ = -1, LocCount = -1, LocGrid = -1, LocReach = -1, LocBinCap = -1, LocBinAtten = -1, LocReflK = -1;
         public int LocDynPage = -1, LocHot = -1, LocRel = -1, LocPad = -1, LocTally = -1, LocFloor = -1;
-        public readonly uint[] Query = new uint[2];
-        public bool QueryPending0, QueryPending1;
         /// <summary>Lights the SSBO is currently sized for; a denser area re-allocates it once.</summary>
         public int SsboLights;
         public int Uploaded, UploadFrame = -1;
-        public GpuReadback StatsRead;
     }
 
     private static LightsGlState _gl = new();
@@ -541,12 +542,31 @@ internal static unsafe class AlloyLights
     internal static int LastLightCount;
     internal static float LastBuildMs;
 
-    /// <summary>True once the rig is usable: compute + SSBO entry points resolved and the program linked.</summary>
-    internal static bool Ready => _gl.Prog != 0 && !_failed;
+    /// <summary>True while the rig is usable: the Vulkan frame holds its light buffers and records the build.</summary>
+    internal static bool Ready => !_failed;
 
     /// <summary>Records the light SSBO holds this frame -- the <c>uLightCount</c> any pass that culls
     /// <c>uLights</c> for itself (the deferred pass's per-tile list) has to walk.</summary>
     internal static int UploadedLights => _gl.Uploaded;
+
+    /// <summary>This frame's light records as <see cref="Upload"/> staged them, for a second device to mirror:
+    /// the Vulkan deferred pass reads the same bytes the GL SSBO holds, from the one fill.</summary>
+    internal static ReadOnlySpan<float> Staged => _stage.AsSpan(0, Math.Min(_gl.Uploaded, _stage.Length / 8) * 8);
+
+    /// <summary>Every loose term <see cref="Build"/> sent its dispatch, under the stage's own uniform names, so a
+    /// second device can replay the same build instead of transcribing the rules it was derived from.</summary>
+    internal struct BuildTerms
+    {
+        public Matrix4x4 View;
+        public int GridX, GridY, GridZ, LightCount, BinCap, ReflK, Tally;
+        public float ProjX, ProjY, Near, Far, Reach, Floor, Gain;
+        public float AttenX, AttenY, HotX, HotY, RelX, RelY, PadX, PadY;
+        /// <summary>The build ran this frame: its outputs are this view's and may be read.</summary>
+        public bool Ran;
+    }
+
+    /// <summary>The terms of the last build, for the Vulkan recorder's own dispatch of the same stage.</summary>
+    internal static BuildTerms Terms => _gl.Terms;
 
     internal static void Attach(ExtenderLog log)
     {
@@ -555,8 +575,8 @@ internal static unsafe class AlloyLights
         log.Info($"AlloyLights: {DescribeAtten()} -- /light retunes every dial live");
     }
 
-    /// <summary>Drop every GL object (context loss / disarm). Safe to call outside the bracket only when the
-    /// context is already gone -- the ids are then meaningless anyway.</summary>
+    /// <summary>Drop every device object (context loss / disarm). Safe outside the frame only when the device
+    /// is already gone -- the ids are then meaningless anyway.</summary>
     internal static void Forget()
     {
         _gl = new LightsGlState();
@@ -567,14 +587,13 @@ internal static unsafe class AlloyLights
     /// exactly like the staging receiver does.</summary>
     internal static void Upload(int frame)
     {
-        if (!Ensure()) return;
+        if (_failed) return;
         if (_gl.UploadFrame == frame) return;
         _gl.UploadFrame = frame;
         _rel = Lighting.Relevance.V;
         _tallyFrame = frame % TallyEvery == 0;
         int n = FrameInputs.LightCount;
         if (n * 8 > _stage.Length) _stage = new float[n * 8];
-        if (n > _gl.SsboLights) GrowLightBuffer(n);
         float rmin = float.MaxValue, rmax = 0f, rsum = 0f;
         Span<AreaLightRec> recs = System.Runtime.InteropServices.MemoryMarshal.Cast<float, AreaLightRec>(_stage.AsSpan());
         fixed (float* s = _stage)
@@ -594,22 +613,12 @@ internal static unsafe class AlloyLights
                 // #674: the static bit rides the same lane, +CX_LIGHT_STATIC; the shader decodes w >= 128.
                 if (FrameInputs.AreaLightStatic[i] && !FrameInputs.AreaLightAmbient[i]) d.Slot += LightStatic + LightSetStride * (FrameInputs.AreaLightSetIndex[i] + 1);
             }
-            Gl.NamedBufferSubData(_gl.BufLights, IntPtr.Zero, (IntPtr)(n * 8 * sizeof(float)), s);
         }
         _gl.Uploaded = n;
         LastLightCount = n;
         _radMin = n > 0 ? rmin : 0f; _radMax = rmax; _radMean = n > 0 ? rsum / n : 0f;
     }
 
-    /// <summary>Re-size the light SSBO for a denser area than any seen this session. Cold: an area load at
-    /// worst, and never in a frame that did not need it. The contents are re-uploaded by the caller, which
-    /// is why this only has to allocate.</summary>
-    private static void GrowLightBuffer(int lights)
-    {
-        _gl.SsboLights = lights;
-        Gl.NamedBufferData(_gl.BufLights, (IntPtr)((long)lights * 8 * sizeof(float)), null, Gl.DYNAMIC_DRAW);
-        _log?.Info($"AlloyLights: light SSBO grown to {lights} lights");
-    }
 
     /// <summary>Read the froxel grid's whole projection input off the projection matrix itself, so the depth
     /// slicing and the froxel bounds can never disagree about which pass they belong to -- this pass may be
@@ -641,95 +650,27 @@ internal static unsafe class AlloyLights
         // NOT gated on the light count: with zero point lights the dispatch still writes an all-zero cluster
         // table, which is exactly right -- the lit parts then shade on area ambient + sun alone instead of
         // being dropped from the frame for want of a torch.
-        if (!Ensure()) return false;
+        if (_failed) return false;
         if (!(p00 > 0f) || !(p11 > 0f) || !(far > near)) return false;
         if (near < MinNear) near = MinNear;
         if (far <= near) return false;
 
-        int slot = _queryAt;
-        bool timing = _gl.Query[slot] != 0 && !(slot == 0 ? _gl.QueryPending0 : _gl.QueryPending1);
-        if (timing) Gl.BeginQuery(Gl.TIME_ELAPSED, _gl.Query[slot]);
-
-        Gl.UseProgram(_gl.Prog);
-        Gl.Uniform3i(_gl.LocGrid, GridX, GridY, GridZ);
-        fixed (Matrix4x4* vm = &view) Gl.UniformMatrix4fv(_gl.LocView, 1, 0, (float*)vm);
-        Gl.Uniform2f(_gl.LocProjXY, p00, p11);
-        Gl.Uniform2f(_gl.LocZ, near, far);
-        Gl.Uniform1i(_gl.LocCount, _gl.Uploaded);
-        Gl.Uniform1f(_gl.LocReach, _binReach);
-        Gl.Uniform1i(_gl.LocBinCap, _binCap);
-        Gl.Uniform2f(_gl.LocBinAtten, _atten.X, _atten.Y);
-        // the hot partition reads the same mover spheres and dyn pages the lit stage will, so they go up first
-        fixed (float* dp = CasterPass.CubeDynPage) Gl.Uniform1fv(_gl.LocDynPage, CasterPass.MaxCubes, dp);
-        Gl.Uniform2f(_gl.LocHot, Lightmap.Movers.V ? 1f : 0f, Shadows.CubeDist.V);
-        // R4: 0 unless a water film can exist this frame, and then the build is what it always was
-        Gl.Uniform1i(_gl.LocReflK, Weather.ReflK);
         // a viewport under one pixel per tile breaks the tile-to-NDC mapping the bounds rest on: no bounds then
         bool boundsOk = vpW >= GridX && vpH >= GridY;
         _builtW = vpW; _builtH = vpH; _builtNear = near; _builtFar = far;
-        Gl.Uniform2f(_gl.LocRel, boundsOk ? _rel : 0f, ReachUniform);
         // CX-188 budget: light.floor and the master gain, so the build's per-light reach cut is the lit stage's
         // -- conservatively: cx_lightbuild's ReachCut takes the sRGB luma and skips uDayDim, both of which make
         // its lum LARGER than the walk's, so the build can only ever bin a light the walk then windows out.
-        Gl.Uniform2f(_gl.LocFloor, LightFloor, _gain);
-        Gl.Uniform2f(_gl.LocPad, 2f / Math.Max(vpW, 1), 2f / Math.Max(vpH, 1));
-        Gl.Uniform1i(_gl.LocTally, tally && _tallyFrame ? 1 : 0);
-        UploadMovers();
-        Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindLights, _gl.BufLights);
-        Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindCounts, _gl.BufCounts);
-        Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindIndices, _gl.BufIndices);
-        Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindStats, _gl.BufStats);
-        Gl.DispatchCompute((ClusterCount + GroupSize - 1) / GroupSize, 1, 1);
-        // BUFFER_UPDATE: TakeClusterOverflow copies _gl.BufStats out, which SHADER_STORAGE alone does not order (GL 4.6 7.13)
-        Gl.MemoryBarrier(Gl.SHADER_STORAGE_BARRIER_BIT | Gl.BUFFER_UPDATE_BARRIER_BIT);
-
-        if (timing)
+        _gl.Terms = new BuildTerms
         {
-            Gl.EndQuery(Gl.TIME_ELAPSED);
-            if (slot == 0) _gl.QueryPending0 = true; else _gl.QueryPending1 = true;
-            _queryAt = 1 - slot;
-        }
-        // harvest BOTH slots: a slot whose result is never collected stays pending forever and the timer
-        // silently stops reporting
-        HarvestQuery(0);
-        HarvestQuery(1);
+            View = view, GridX = GridX, GridY = GridY, GridZ = GridZ, LightCount = _gl.Uploaded, BinCap = _binCap,
+            ReflK = Weather.ReflK, Tally = tally && _tallyFrame ? 1 : 0, ProjX = p00, ProjY = p11, Near = near, Far = far,
+            Reach = _binReach, Floor = LightFloor, Gain = _gain, AttenX = _atten.X, AttenY = _atten.Y,
+            HotX = Lightmap.Movers.V ? 1f : 0f, HotY = Shadows.CubeDist.V, RelX = boundsOk ? _rel : 0f, RelY = ReachUniform,
+            PadX = 2f / Math.Max(vpW, 1), PadY = 2f / Math.Max(vpH, 1), Ran = true,
+        };
+        // the Vulkan frame records this build itself, from the terms just staged
         return true;
-    }
-
-    /// <summary>Bind the cluster buffers for the lit draw (the compute pass leaves them bound, but a draw can
-    /// follow a pass where the build was skipped).</summary>
-    internal static void BindForDraw()
-    {
-        if (!Ready)
-        {
-            // shared points: left alone, the lit stages would read the last compute pass's scratch as lights
-            Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindLights, 0);
-            Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindCounts, 0);
-            Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindIndices, 0);
-            Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindMovers, 0);
-            PairShadows.BindAtlas();
-            return;
-        }
-        Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindLights, _gl.BufLights);
-        Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindCounts, _gl.BufCounts);
-        Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindIndices, _gl.BufIndices);
-        UploadMovers();
-        // CX-188 step 4: the pair table and the tile atlas. Here rather than at one pass's bind, because
-        // CxPairVis is reachable from every program that lights (cx_localshadow includes it) and the table's
-        // own uPairN is the gate that keeps a frame with no pairs from reading either.
-        PairShadows.BindAtlas();
-    }
-
-    /// <summary>The mover spheres, once per rewrite, bound where both the cluster build and the lit stage read them.</summary>
-    private static void UploadMovers()
-    {
-        if (_gl.MoversGen != CasterPass.CubeDynSphereGen)
-        {
-            _gl.MoversGen = CasterPass.CubeDynSphereGen;
-            fixed (float* sp = CasterPass.CubeDynSphere)
-                Gl.NamedBufferSubData(_gl.BufMovers, IntPtr.Zero, (IntPtr)(CasterPass.CubeDynSphere.Length * sizeof(float)), sp);
-        }
-        Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindMovers, _gl.BufMovers);
     }
 
     /// <summary>The cluster lookup (grid, tile, depth range) and the light curve into the pass block,
@@ -811,38 +752,6 @@ internal static unsafe class AlloyLights
     private static float _radMin, _radMean, _radMax;
     internal static float ShadowNearWorld => _shadowNear * _srcRadius;
 
-    /// <summary>Non-blocking timer + overflow readback: only ever touched when the driver says the result is
-    /// already there, so the render thread never stalls on the GPU.</summary>
-    private static void HarvestQuery(int slot)
-    {
-        bool pending = slot == 0 ? _gl.QueryPending0 : _gl.QueryPending1;
-        if (!pending || _gl.Query[slot] == 0 || Gl.GetQueryObjectiv == null) return;
-        int avail; Gl.GetQueryObjectiv(_gl.Query[slot], Gl.QUERY_RESULT_AVAILABLE, &avail);
-        if (avail == 0) return;
-        ulong ns; Gl.GetQueryObjectui64v(_gl.Query[slot], Gl.QUERY_RESULT, &ns);
-        LastBuildMs = ns * 1e-6f;
-        if (slot == 0) _gl.QueryPending0 = false; else _gl.QueryPending1 = false;
-    }
-
-    /// <summary>Copy out + reset the GPU-side stats, and return the overflow count copied out two calls ago (a period
-    /// late; the entry totals beside it land in the period line). Once a period; it was a <c>glGetBufferSubData</c>,
-    /// which waited out the whole frame.</summary>
-    internal static uint TakeClusterOverflow()
-    {
-        if (!Ready || !GpuReadback.EntryPoints || !_gl.StatsRead.Ensure(StatsWords * sizeof(uint))) return 0;
-        int w = _statsSeq % GpuReadback.Slots, r = (_statsSeq + 1) % GpuReadback.Slots;
-        _statsSeq++;
-        _gl.StatsRead.Copy(_gl.BufStats, 0, w, 0, StatsWords * sizeof(uint));
-        _gl.StatsRead.Fence(w);
-        uint* zero = stackalloc uint[StatsWords] { 0, 0, 0, 0 };
-        Gl.NamedBufferSubData(_gl.BufStats, IntPtr.Zero, (IntPtr)(StatsWords * sizeof(uint)), zero);
-        uint* v = (uint*)_gl.StatsRead.Ready(r);
-        if (v == null) return 0;
-        _tallyBinned = v[1]; _tallyKept = v[2]; _tallyCand = v[3];
-        return v[0];
-    }
-    private static int _statsSeq;
-
     /// <summary>One-line description of the rig's state for the Alloy draw period log.</summary>
     internal static string Diag(uint overflow) =>
         $"{DescribeCurve()}, " +
@@ -855,51 +764,6 @@ internal static unsafe class AlloyLights
 
         (overflow > 0 ? $", CLUSTER OVERFLOW {overflow}/period (cap {ClusterCap})" : "");
 
-    private static bool Ensure()
-    {
-        if (_gl.Prog != 0) return true;
-        if (_failed) return false;
-        if (Gl.DispatchCompute == null || Gl.MemoryBarrier == null || Gl.BindBufferBase == null
-            || Gl.GenQueries == null || Gl.GetQueryObjectui64v == null)
-        { _failed = true; _log?.Info("AlloyLights: compute/SSBO entry points unresolved -- Alloy lighting unavailable"); return false; }
-
-        uint prog = GlProgram.Compute(ShdClusterCs, ShaderStages.Source(ShdClusterCs), _log,
-                                      "AlloyLights cluster build");
-        if (prog == 0) { _failed = true; return false; }
-        _gl.LocView = GlProgram.Loc(prog, "uView"); _gl.LocProjXY = GlProgram.Loc(prog, "uProjXY");
-        _gl.LocZ = GlProgram.Loc(prog, "uZ"); _gl.LocCount = GlProgram.Loc(prog, "uLightCount");
-        _gl.LocReach = GlProgram.Loc(prog, "uReach");
-        _gl.LocBinCap = GlProgram.Loc(prog, "uBinCap"); _gl.LocBinAtten = GlProgram.Loc(prog, "uAtten");
-        _gl.LocGrid = GlProgram.Loc(prog, "uGrid");
-        _gl.LocDynPage = GlProgram.Loc(prog, "uDynPage"); _gl.LocHot = GlProgram.Loc(prog, "uHot");
-        _gl.LocReflK = GlProgram.Loc(prog, "uReflK");
-        _gl.LocRel = GlProgram.Loc(prog, "uRel"); _gl.LocPad = GlProgram.Loc(prog, "uPad"); _gl.LocTally = GlProgram.Loc(prog, "uTally");
-        _gl.LocFloor = GlProgram.Loc(prog, "uLightFloor");
-
-        uint b;
-        Gl.CreateBuffers(1, &b); _gl.BufLights = b;
-        Gl.NamedBufferData(_gl.BufLights, (IntPtr)(InitialLights * 8 * sizeof(float)), null, Gl.DYNAMIC_DRAW);
-        _gl.SsboLights = InitialLights;
-        Gl.CreateBuffers(1, &b); _gl.BufCounts = b;
-        Gl.NamedBufferData(_gl.BufCounts, (IntPtr)(ClusterCount * ClusterHeadWords * sizeof(uint)), null, Gl.DYNAMIC_DRAW);
-        Gl.CreateBuffers(1, &b); _gl.BufIndices = b;
-        Gl.NamedBufferData(_gl.BufIndices, (IntPtr)((long)ClusterCount * ClusterCap * sizeof(uint)), null, Gl.DYNAMIC_DRAW);
-        // a reader can run before the first cluster build (the bake): stale memory there is a light count in the millions
-        Gl.ZeroBuffer(_gl.BufCounts, (long)ClusterCount * ClusterHeadWords * sizeof(uint));
-        Gl.ZeroBuffer(_gl.BufIndices, (long)ClusterCount * ClusterCap * sizeof(uint));
-        Gl.CreateBuffers(1, &b); _gl.BufMovers = b;
-        Gl.NamedBufferData(_gl.BufMovers, (IntPtr)(CasterPass.CubeDynSphere.Length * sizeof(float)), null, Gl.DYNAMIC_DRAW);
-        _gl.MoversGen = -1;
-        Gl.CreateBuffers(1, &b); _gl.BufStats = b;
-        uint* zero = stackalloc uint[StatsWords] { 0, 0, 0, 0 };
-        Gl.NamedBufferData(_gl.BufStats, (IntPtr)(StatsWords * sizeof(uint)), zero, Gl.DYNAMIC_DRAW);
-
-        fixed (uint* q = _gl.Query) Gl.GenQueries(2, q);
-        _gl.Prog = prog;
-        _log?.Info($"AlloyLights: cluster build ready -- {GridX}x{GridY}x{GridZ} froxels, " +
-                   $"{ClusterCap} lights/cluster, {InitialLights}-light SSBO (grown on demand -- no ceiling)");
-        return true;
-    }
 
     /// <summary>sRGB -&gt; linear exponent, verified against <c>RenderInterface::GetColorSpaceFromSRGB</c>
     /// (the constant it reads is 2.2). Shared with <see cref="FrameRead"/>, which applies

@@ -3,6 +3,8 @@ using System.Globalization;
 using System.Numerics;
 using CX.Framework;
 using CX.Graphics;
+using CX.Graphics.Rhi;
+using CX.Rhi;
 
 namespace CX.Alloy;
 
@@ -12,26 +14,11 @@ internal sealed class SkyViewState
 {
     public ExtenderLog? Log;
     public int Bakes;
-    public bool SaidNoUnit;
     /// <summary>Why the term cannot run at all this session, or null. Named in the log once and on the
     /// period line, never left silent.</summary>
     public string? Down;
     /// <summary>The fit the last log line named, so a re-bake of the same area says nothing.</summary>
     public Matrix4x4 SaidFit;
-}
-
-/// <summary>The GL half, replaced on context loss.</summary>
-internal sealed class SkyGlState
-{
-    /// <summary>The baked map: R the column's top surface in world metres, G the sky share it sees.</summary>
-    public uint MapTex;
-    public int MapSize;
-    public uint Prog;
-    public int LocDepth = -1, LocSize = -1, LocZ = -1, LocFit = -1;
-    public bool Failed, Valid;
-    /// <summary>The lit program was built without <c>CX_SKY_VIEW</c> -- this driver cannot seat the map's
-    /// texture unit, so the term stands down for the context.</summary>
-    public bool NoUnit;
 }
 
 /// <summary>The sky-visibility term. A vanilla area has ONE ambient for the whole of it, so an alley at noon
@@ -58,11 +45,9 @@ internal static unsafe class SkyView
     internal const float RiseM = 12f;
 
     private static SkyViewState _s = new();
-    private static SkyGlState _gl = new();
 
-    /// <summary>The term is wanted this frame: a strength above zero, a feed to read and a driver that can
-    /// seat the map.</summary>
-    internal static bool Wanted => Lighting.Sky.V > 0f && _s.Down == null && !_gl.Failed && !_gl.NoUnit;
+    /// <summary>The term is wanted this frame: a strength above zero and a feed to read.</summary>
+    internal static bool Wanted => Lighting.Sky.V > 0f && _s.Down == null;
 
     /// <summary>The overhead view rides the caster pass, so the shadow feed has to reach it: with
     /// <c>shadow.enabled=0</c> or a <c>shadow.stage</c> short of the bake there is nothing to read, and
@@ -79,39 +64,9 @@ internal static unsafe class SkyView
                    + "alley as vanilla does (turn Shadows on to get it back)");
     }
 
-    /// <summary>The lit program came out without <c>CX_SKY_VIEW</c>: nothing declares the map, so the term
-    /// stands down rather than uploading to a location that does not exist.</summary>
-    internal static void NoTextureUnit()
+    /// <summary>A bake landed, on either backend: counted, and the fit named once per area.</summary>
+    internal static void Baked(in SkyFit fit)
     {
-        _gl.NoUnit = true;
-        if (_s.SaidNoUnit) return;
-        _s.SaidNoUnit = true;
-        _s.Log?.Always("SkyView: the lit stage has no texture unit for the sky map on this driver -- the "
-                   + "sky-visibility term is off, and the area ambient fills an alley as vanilla does");
-    }
-
-    /// <summary>The overhead depth view landed: turn it into the map the lit stage reads. One dispatch over
-    /// <see cref="MapSize"/>^2 texels, each walking <see cref="SkyMath.Dirs"/> x <see cref="SkyMath.Steps"/>
-    /// taps of the depth -- the work the lit stage would otherwise redo per pixel per frame for an area that
-    /// has not changed (the weather shelter cache's own reason).</summary>
-    internal static void Bake(uint depthTex, in SkyFit fit)
-    {
-        _gl.Valid = false;
-        if (depthTex == 0 || fit.IsNone || !Ensure()) return;
-        Gl.UseProgram(_gl.Prog);
-        Gl.BindImageTexture(0, _gl.MapTex, 0, 0, 0, Gl.WRITE_ONLY, Gl.RG16F);
-        Gl.ActiveTexture(Gl.TEXTURE0);
-        Gl.BindTexture(Gl.TEXTURE_2D_ARRAY, depthTex);
-        Gl.Uniform1i(_gl.LocDepth, 0);
-        Gl.Uniform2i(_gl.LocSize, MapSize, MapSize);
-        Gl.Uniform2f(_gl.LocZ, fit.ZAt0, fit.ZPerDepth);
-        Gl.Uniform2f(_gl.LocFit, fit.UvPerMetre, SkyMath.RangeM);
-        uint g = (uint)((MapSize + Group - 1) / Group);
-        Gl.DispatchCompute(g, g, 1);
-        Gl.MemoryBarrier(Gl.SHADER_IMAGE_ACCESS_BARRIER_BIT | Gl.TEXTURE_FETCH_BARRIER_BIT);
-        Gl.BindTexture(Gl.TEXTURE_2D_ARRAY, 0);
-        Gl.UseProgram(0);
-        _gl.Valid = true;
         _s.Bakes++;
         if (_s.SaidFit.Equals(fit.Vp)) return;
         _s.SaidFit = fit.Vp;
@@ -127,65 +82,28 @@ internal static unsafe class SkyView
     /// </summary>
     internal static void UploadLit(int locVp, int locTerm, bool capturing)
     {
-        bool on = Wanted && _gl.Valid && CasterPass.SkyFresh && !capturing;
-        if (locVp >= 0 || locTerm >= 0)
-        {
-            Matrix4x4 vp = on ? CasterPass.SkyMapFit.Vp : default;
-            if (locVp >= 0) Gl.UniformMatrix4fv(locVp, 1, 0, (float*)&vp);
-            if (locTerm >= 0) Gl.Uniform4f(locTerm, on ? Lighting.Sky.V : 0f, StepM, CoverM, RiseM);
-        }
-        Gl.ActiveTexture(Gl.TEXTURE0 + TextureSlots.SkyMap);
-        Gl.BindTexture(Gl.TEXTURE_2D, on ? _gl.MapTex : 0);
-        Gl.ActiveTexture(Gl.TEXTURE0);
+        // a Vulkan stage's host borrows this setter inside a capture; the binder puts the map on uSkyMap
+        UploadLitVk(locVp, locTerm, AlloyRenderer.VkSkyMap, capturing);
+    }
+
+    /// <summary><see cref="UploadLit"/> on Vulkan: the same two terms into the captured block, the map bound by the
+    /// caller where the stage declares it. <paramref name="map"/> is the null id until a bake landed.</summary>
+    internal static void UploadLitVk(int locVp, int locTerm, ImageId map, bool capturing)
+    {
+        bool on = Wanted && !map.IsNull && CasterPass.SkyFresh && !capturing;
+        LooseBlock.Set(locVp, on ? CasterPass.SkyMapFit.Vp : default);
+        LooseBlock.Set(locTerm, [on ? Lighting.Sky.V : 0f, StepM, CoverM, RiseM]);
     }
 
     /// <summary>The baked map describes an area that has gone; <see cref="CasterPass.SkyAreaEdge"/> drops the
     /// key it was rendered under, so the next exterior frame bakes again.</summary>
-    internal static void Revoke() => _gl.Valid = false;
-
-    internal static void Forget() => _gl = new SkyGlState();
+    internal static void Revoke() => AlloyRenderer.VkSkyRevoke();
 
     internal static string Stats()
         => _s.Down != null ? $"skyview OFF -- {_s.Down}"
-         : _gl.NoUnit ? "skyview OFF -- no fragment texture unit for the map on this driver"
-         : _gl.Failed ? "skyview stood down -- see the SkyView line above"
          : Lighting.Sky.V <= 0f ? "skyview off (light sky 0)"
-         : $"skyview {(_gl.Valid ? $"{MapSize}^2" : "no map yet")} strength {Lighting.Sky.V:F2} reach "
+         : $"skyview {(!AlloyRenderer.VkSkyMap.IsNull ? $"{MapSize}^2" : "no map yet")} strength {Lighting.Sky.V:F2} reach "
          + $"{SkyMath.RangeM:F0}m, {_s.Bakes} baked, {CasterPass.SkyStats()}";
-
-    private static bool Ensure()
-    {
-        if (_gl.Failed) return false;
-        if (_gl.Prog == 0)
-        {
-            if (Gl.DispatchCompute == null || Gl.BindImageTexture == null || Gl.MemoryBarrier == null)
-            { Fail("this context has no compute entry points"); return false; }
-            _gl.Prog = GlProgram.Compute(ShaderSource.Get(Shd + ".glsl"), _s.Log, "SkyView bake");
-            if (_gl.Prog == 0) { Fail("the bake program did not build"); return false; }
-            _gl.LocDepth = GlProgram.Loc(_gl.Prog, "uSkyDepth");
-            _gl.LocSize = GlProgram.Loc(_gl.Prog, "uSize");
-            _gl.LocZ = GlProgram.Loc(_gl.Prog, "uSkyZ");
-            _gl.LocFit = GlProgram.Loc(_gl.Prog, "uSkyFit");
-        }
-        if (_gl.MapTex == 0 || _gl.MapSize != MapSize)
-        {
-            RenderTarget.Create(ref _gl.MapTex, Gl.RG16F, MapSize, MapSize, Gl.LINEAR);
-            _gl.MapSize = MapSize;
-            _s.Log?.Info($"SkyView: sky-visibility map {MapSize}x{MapSize} RG16F, fit to the area's own extent");
-        }
-        return true;
-    }
-
-    /// <summary>The caster pass could not allocate the overhead depth view: nothing to bake from.</summary>
-    internal static void NoDepthTarget(int size) => Fail($"a {size}x{size} depth view could not be allocated");
-
-    private static void Fail(string why)
-    {
-        _gl.Failed = true;
-        _gl.Prog = 0;
-        _s.Log?.Always($"SkyView: {why} -- the sky-visibility term is off, and the area ambient fills an "
-                   + "alley as vanilla does");
-    }
 
     internal const string Shd = "cx_skybake";
 

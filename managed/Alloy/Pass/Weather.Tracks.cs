@@ -19,7 +19,6 @@ internal static unsafe partial class Weather
     internal const float TrackPeriodM = 12.8f;
     /// <summary>Past the 0..15 budget, beside the other weather tiles (Weather.Shelter's units 23..25).</summary>
     internal const uint TrackUnit = 27;
-    private const uint GlRgba32f = 0x8814;   // not-an-offset: GL_RGBA32F
     /// <summary>The sole, in metres along the heading: a toe lobe ahead of the foot's centre and a heel lobe
     /// behind it, each an ellipse (half-length along, half-width across).</summary>
     private const float ToeAt = 0.05f, ToeLen = 0.085f, ToeWide = 0.05f, HeelAt = -0.08f, HeelLen = 0.05f, HeelWide = 0.04f;
@@ -154,56 +153,11 @@ internal static unsafe partial class Weather
         return TexelShows(in t[(gy - ty * TrackSize) * TrackSize + gx - tx * TrackSize], tx, ty, now, rate);
     }
 
-    /// <summary>Per lit bind: the rows stamped since the last one go up, and the texture goes on its unit (0 while
-    /// nothing was ever pressed, which the stage reads as no print through <c>uWxRun.w</c>).</summary>
+    /// <summary>Per lit bind: the print field is allocated on the first snowy bind, never inside the footstep
+    /// hook. Nothing was ever pressed reads as no print through <c>uWxRun.w</c>.</summary>
     private static void BindTracks()
     {
-        // allocated here, on the first snowy lit bind, never inside the footstep hook
         if (_track == null && Tracks.V && _snow > TrackMinSnow) _track = new TrackTexel[TrackSize * TrackSize];
-        if (_track == null || !EnsureTrack()) { Bind(TrackUnit, 0); return; }
-        if (_gl.TrackAll || _trackHi >= _trackLo) Upload();
-        Bind(TrackUnit, _gl.TrackTex);
-    }
-
-    /// <summary>The dirty rows, or all of them, with no pixel-unpack buffer and a tight row length: the engine's
-    /// state may hold either, and both reinterpret the client pointer.</summary>
-    private static void Upload()
-    {
-        int svUnpack, svRow;
-        Gl.GetIntegerv(Gl.PIXEL_UNPACK_BUFFER_BINDING, &svUnpack);
-        Gl.GetIntegerv(Gl.UNPACK_ROW_LENGTH, &svRow);
-        if (svUnpack != 0) Gl.BindBuffer(Gl.PIXEL_UNPACK_BUFFER, 0);
-        if (svRow != 0) Gl.PixelStorei(Gl.UNPACK_ROW_LENGTH, 0);
-        if (_gl.TrackAll || _trackHi - _trackLo + 1 >= TrackSize) TrackRows(0, TrackSize);
-        else
-        {
-            int a = _trackLo - FloorDiv(_trackLo) * TrackSize, b = _trackHi - FloorDiv(_trackHi) * TrackSize;
-            if (a <= b) TrackRows(a, b - a + 1);
-            else { TrackRows(a, TrackSize - a); TrackRows(0, b + 1); }
-        }
-        if (svUnpack != 0) Gl.BindBuffer(Gl.PIXEL_UNPACK_BUFFER, (uint)svUnpack);
-        if (svRow != 0) Gl.PixelStorei(Gl.UNPACK_ROW_LENGTH, svRow);
-        _gl.TrackAll = false; _trackLo = int.MaxValue; _trackHi = int.MinValue;
-    }
-
-    private static void TrackRows(int row, int n)
-    {
-        fixed (TrackTexel* first = _track.AsSpan(row * TrackSize))
-            Gl.TextureSubImage2D(_gl.TrackTex, 0, 0, row, TrackSize, n, Gl.RGBA, Gl.FLOAT, first);
-    }
-
-    private static bool EnsureTrack()
-    {
-        if (_gl.TrackTex != 0) return true;
-        if (Gl.CreateTextures == null || Gl.TextureStorage2D == null || Gl.TextureSubImage2D == null || Gl.TextureParameteri == null) return false;
-        uint t;
-        Gl.CreateTextures(Gl.TEXTURE_2D, 1, &t);
-        Gl.TextureStorage2D(t, 1, GlRgba32f, TrackSize, TrackSize);
-        Gl.TextureParameteri(t, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
-        Gl.TextureParameteri(t, Gl.TEXTURE_MAG_FILTER, Gl.NEAREST);
-        _gl.TrackTex = t;
-        _gl.TrackAll = true;
-        return true;
     }
 
     /// <summary><c>uWxRun.zw</c>: the stamp clock now, and the refill rate (0 = no prints to read).</summary>
@@ -226,7 +180,7 @@ internal static unsafe partial class Weather
     private static void TrackReset()
     {
         if (_track != null) Array.Clear(_track);
-        _gl.TrackAll = true; _trackLo = int.MaxValue; _trackHi = int.MinValue;
+        _vks.TrackAll = true; _trackLo = int.MaxValue; _trackHi = int.MinValue;
         _trackEpoch = Stopwatch.GetTimestamp();
         Array.Fill(_foot, new Vector4(0f, 0f, 0f, float.NegativeInfinity));
     }

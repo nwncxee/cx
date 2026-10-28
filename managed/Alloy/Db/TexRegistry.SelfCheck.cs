@@ -402,7 +402,7 @@ internal static unsafe partial class TexRegistry
         Land(pv, 0xA2u, 64, 0);
         Expect(TryResident(pv, out pn, out _) && pn == 0xA2u && StateOf(pv) == TexState.Resident && !_preview[pv.Index],
             "the full chain did not replace the preview");
-        Expect(_graveyard.Count == graveBefore + 1, "the preview's GL name was not retired");
+        Expect(_graveyard.Count == graveBefore + 1, "the preview's name was not retired");
         Expect((SceneDb.Parts.DirtyAt(pp) & Dirty.Texture) != 0, "the full chain did not reach a part drawing the preview");
         SceneDb.Parts.TakeDirty();
         SceneDb.Parts.Free(SceneDb.Parts.IdAt(pp));

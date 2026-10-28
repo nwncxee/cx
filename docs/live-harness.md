@@ -3,7 +3,7 @@
 `tools/live/run-live.sh` boots the real client with this worktree's CX, lands it in a playable area
 with a character, soaks for N seconds, captures the logs and screenshots, shuts it down and prints
 PASS or FAIL. It is for verifying that a change *works in the game* -- the thing `run-demo.sh`, which
-runs the framework in a stub host with no GL and no engine, cannot tell you.
+runs the framework in a stub host with no GPU and no engine, cannot tell you.
 
     tools/live/run-live.sh                             # defaults: 20 s in The Dark Ranger's Treasure
     tools/live/run-live.sh --seconds 60 --out /tmp/x
@@ -47,12 +47,16 @@ shots that match exactly count as evidence.
 ## How it works
 
 **Nothing reaches the desktop.** The client runs inside `gamescope --backend headless`, which starts
-its own nested Xwayland on a free display number and composites to nowhere. The GPU is the real one:
-`glxinfo` inside it reports `OpenGL core profile version string: 4.6.0 NVIDIA`, which is what Alloy
-needs. gamescope chooses the display number itself, so the harness reads it back out of gamescope's
+its own nested Xwayland on a free display number and composites to nowhere. The GPU is the real one, and
+what Alloy needs from it is **Vulkan 1.3** — `vulkaninfo` inside the nested display is the check, not
+`glxinfo`, since Alloy stands down and the game runs vanilla on a host whose Vulkan probe refuses. The engine
+still wants its GL libraries loadable either way, because it goes on running GL-shaped code against CX's
+stubs. gamescope chooses the display number itself, so the harness reads it back out of gamescope's
 log (`Starting Xwayland on :N`) -- there is no flag to pin it. Sound reaches nothing either.
 `tools/live/isolate.sh` sets `ALSOFT_DRIVERS=null`, so OpenAL Soft mixes every frame and plays none of it, and points
 PulseAudio, PipeWire and SDL audio at sockets that don't exist. The Proton run also disables wine's audio drivers.
+It also exports `DISABLE_GAMESCOPE_WSI=1`: gamescope's machine-wide Vulkan WSI layer refuses a headless swapchain,
+which stands Alloy down and leaves the run grading the engine's own renderer.
 
 **Nothing outlives the run.** Every process the run starts carries `CX_LIVE_RUN=<tag>` in its environment, so the
 harness finds its own processes even after they leave the launch tree, as `wineserver` does. A run FAILs when one of
@@ -227,8 +231,8 @@ With `--cfg alloy.enabled=0` the window draws as stock.
   throwaway `cx.cfg`. A change that breaks CX logging reads as a FAIL regardless of what it drew.
 - **It cannot tell you the picture is right.** It proves the client reached an area, kept presenting
   and did not fall over. Whether the frame looks correct is a human (or an image-diff) judgement on
-  the screenshots; `/alloy snap` via `--keys` gets you the matched HDR/present set that `tools/snap/`
-  reads if you want to bisect by pass.
+  the screenshots; `/alloy snap` via `--keys` writes the frame's scene colour as one `vkscene.pfm`, which
+  `tools/snap/snap_stats.py` reads, with each live native stage's images beside it.
 - **The screenshots are the client's X window, not Alloy's own readback.** They are what the
   compositor would show, which is what you want for "does it look right", but they carry the UI too.
 - **No frame-rate number.** `presents logged` is whatever CX's own reporting period last printed, not

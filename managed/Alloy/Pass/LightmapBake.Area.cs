@@ -308,7 +308,7 @@ internal static unsafe partial class LightmapBake
         string? no = (SetHash != 0 || _closed) && !confirmed ? $"the live walk closed on another static set first ({SetHash:x16}, the plan has {plan.SetHash:x16}: {SetDiff(plan.SetPosR, plan.SetCol, plan.SetPosR.Length)})"
                    : _rectN != 0 ? $"{_rectN} rects were already minted"
                    : plan.Settings != AreaSettingsHash() ? "the bake settings moved between the load and the edge"
-                   : plan.Layers > _gl.Layers ? $"{plan.Layers} pages, past the {_gl.Layers}-page pool lightmap.vram allows"
+                   : plan.Layers > Layers ? $"{plan.Layers} pages, past the {Layers}-page pool lightmap.vram allows"
                    : null;
         _answerIn = false; _answerPlan = null; _areaWant = false; _areaAsked = false;
         if (no != null)
@@ -373,11 +373,7 @@ internal static unsafe partial class LightmapBake
             if (bytes != null && table != null)
             {
                 int y = up.Row, rows = BandRows(un.W, un.H, y);
-                {
-                    fixed (byte* pa = bytes.AsSpan((int)UnionOffset(0, 0, y, un.W, un.H))) Gl.CompressedTextureSubImage3D(_gl.TexA, 0, un.X0, un.Y0 + y, un.Page, un.W, rows, 1, FormatA, un.W * rows, pa);
-                    fixed (byte* pb = bytes.AsSpan((int)UnionOffset(1, 0, y, un.W, un.H))) Gl.CompressedTextureSubImage3D(_gl.TexB, 0, un.X0, un.Y0 + y, un.Page, un.W, rows, 1, FormatB, un.W * rows, pb);
-                    fixed (byte* pc = bytes.AsSpan((int)UnionOffset(2, 0, y, un.W, un.H))) Gl.TextureSubImage3D(_gl.TexC, 0, un.X0, un.Y0 + y, un.Page, un.W, rows, 1, Gl.RGBA, Gl.UNSIGNED_BYTE, pc);
-                }
+                VkUpload(bytes, un.Page, un.X0, un.Y0 + y, un.W, rows, 0, y, un.W, un.H);
                 up.Row = y + rows;
                 if (up.Row < un.H) continue;
             }
@@ -546,13 +542,13 @@ internal static unsafe partial class LightmapBake
         empty = false;
         // no transient test here: a busy readback is the STEP's guard, because a refusal at this point has
         // already consumed the page's turn -- the only refusals left are permanent ones
-        if (Gl.FenceSync == null || Gl.MapNamedBufferRange == null || page >= _gl.Layers) return false;
+        if (page >= Layers) return false;
         _areaSnapRects.Clear();
         for (int ri = 0; ri < _rectN; ri++) if (_rects[ri].Page == page && _rects[ri].State == RState.Landed) _areaSnapRects.Add(ri);
         if (!AreaSnapRegion(page, out int x0, out int y0, out int w, out int h) || _areaSnapRects.Count == 0) { empty = true; return false; }
         _uSnap = true;
         QueueReadback(page, x0, y0, w, h, _areaSnapRects);
-        if (_gl.Fence != IntPtr.Zero) { _areaSnapped++; return true; }
+        if (Fenced) { _areaSnapped++; return true; }
         _uSnap = false;
         return false;
     }
@@ -562,7 +558,7 @@ internal static unsafe partial class LightmapBake
     private static void AreaSnapAbandon()
     {
         int lost = _uSnap ? 1 : 0;   // the readback in flight is lost too: its fence is deleted with the pages
-        AbortReadback(gl: true);
+        AbortReadback();
         _uSnap = false;
         if (_areaPlanOut == null) return;
         for (int p = _areaSnapNext; p < MaxPages; p++) if (_areaSnapWant[p]) lost++;

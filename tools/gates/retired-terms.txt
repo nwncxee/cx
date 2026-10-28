@@ -101,3 +101,118 @@ alloy\.aotest	dead-code-cleanup
 \bGlDrawReset\b|\bRiSetColorv\b|\bGlCurrentCustomProgram\b|\bGlMat(Ambient|Diffuse|Emissive)\b	CX-325
 # The two-contexts-one-surface probe: Alloy never writes framebuffer 0, so the question has no referent.
 \balloy\.swapprobe\b|\bswapprobe\b|\bSwapProbe\b	CX-326
+# The whole-frame GL/Vulkan A/B and its GUI sibling: Vulkan is the one renderer, so there is no GL half to compare.
+\balloy\.vkab\b|\bvkab(gui)?\b|\bVkParity\b|\bGuiParity\b|\bGlParity\b|\bVkStoodDown\b	CX-313
+alloy\.(backend|renderthread|rhiimmediate|gpumeter)\b	CX-313
+# The GL halves of the SSR, volumetric fog, OIT, coverage-layer and probe passes, and the two knobs only they
+# read: the per-pixel OIT node pool and the mirror pass's own small-object cull. Vulkan draws all five.
+\balloy\.oitlayers\b|\bOitLayers\b|\blight\.ssrplanarcull\b|\bssrplanarcull\b|\bSsrPlanarCull\b	GL sweep 2
+# The GL halves of the grass, particle, highlight, cull and caster-gather passes, the GL colour frame they
+# were issued from, and the knobs and instruments only those read. Vulkan draws every one of them.
+\bgrass\.(shadow|aniso|soften|softedge|prepass|dumpmips|dumpshadow)\b	GL sweep 3
+\bHighlightGlow\b|\bOutlineHighlightPass\b|\bBlendProfile\b	GL sweep 3
+\bOitPass\.WithLists\b|\bCX_OIT_LISTS\b|\bCX_A2C_MASK\b|\b_progLitList\b|\b_progLitMask\b	GL sweep 3
+\bGpuTerm\.(Coverage|Washes)\b|\bWashInteriors\b|\bOpaqueOwnedPass\b|\bIssueBatchesInner\b	GL sweep 3
+\bEffectMotionPass\b|\bMotionDefine\b|\bcx_grassdepth_f\b|\bcx_gblade_df\b|\bcx_part_c\b	GL sweep 3
+\bGatherSubmit\b|\bBakeStaticCube\b|\bDrawLayered\b|\bCasterGather\.(Dispatch|DispatchLayer|Begin|Stand)\b	GL sweep 3
+\bCullPass\.(Begin|Dispatch|BuildHiZ|Active|Ready|CullFrames|KeptDraws|CulledDraws)\b|\bcx_hiz_f\b	GL sweep 3
+# The GL shadow bracket: the depth arrays and framebuffer it allocated, the handle-sampled masked pair only it
+# built, the per-view fallback its extension probe chose, and the GL-vs-Vulkan bake reading. Vulkan bakes every view.
+\bshadow\.(layered|maskh)\b|\bHandleMaskReady\b|\bEnsureHandleMask\b|\bDepthArray\b|\bFboChecked\b	GL sweep 4
+\bCasterPass\.(CascadeTex|SunDynTex|CubeTex|CubeDynTex)\b|\bVkProbeAgainstGl\b|\bBindSunMaps\b|\bBindCubeMaps\b	GL sweep 4
+# The per-pixel linked-list transparency mode (alloy.oit 2) and the two SSBO points its head table and node pool
+# claimed: nothing allocated them and the resolve never selected them. The weighted pair is the one composite.
+\bOitHeads\b|\bOitNodes\b|\bCxOitHeads\b|\bCxOitNodes\b|per-pixel linked lists	GL sweep 4
+# The GL SSAO pass: its temporal accumulator reprojected through a velocity target the Vulkan estimate has
+# none of, so the knob that weighted the history and the accumulator's own stage went with it.
+\bao\.temporal\b|\bSsaoPass\.(Run|BindForDraw|TemporalWanted|DropHistory)\b|\bcx_ssaotemp_f\b	GL sweep 5
+# The GL deferred dispatches -- the light walk, the per-pixel shadow record, the hot-light debt -- and the GL
+# pair atlas they read. Vulkan dispatches the first two; the debt stage is declared and not yet dispatched.
+\bDeferredLights\.(Run|StatsBuf|BindStats)\b|\bDeferredShadows\.(Run|TexVis|TexKey|Res|Width|Height)\b	GL sweep 5
+\bPairDebt\.(Run|Active|StoodDown|Attach|Forget|Stats)\b|\bPairShadows\.(BindAtlas|Tex)\b	GL sweep 5
+\bGBuffer\.(BindForCompute|UnbindCompute)\b|\bAblation\.MaxRung\b	GL sweep 5
+# The GL halves of the vis-ID, flare, beam, trigger-highlight and framebuffer-copy passes, and the GL-only
+# dials and latches they fed: the flare occlusion probe's fade (the Vulkan halos draw at full strength, cut
+# per pixel against the depth copy) and the water copy's readback diagnostic.
+\bIdTarget\.(Begin|End|Paint|Attach|Forget|Stats)\b|\bHalos\.(Draw|Step|ContextLost)\b|\bcx_haloocc_c\b	GL sweep 5
+\bBeams\.(Draw|ContextLost)\b|\bTriggerHighlight\.(Draw|Attach|ContextLost)\b	GL sweep 5
+\bwater\.diag\b|\bFrameSnapshot\.(Copy|Bind|Unbind|Compare|ColorTex|Ready|Copies|Refusals|EnvOk|Forget|Revoke|LastRectFrac)\b	GL sweep 5
+# The GL post chain and display-space stack: the HDR target and its bloom chain, the resolve, the stack's
+# ping-pong pair, and the GL halves of the taa, aa and velocity passes. Vulkan resolves the frame and runs
+# every stack stage, so the dial that armed the velocity pass for its own sake has nothing left to arm.
+\bpost\.motion\b|\bPostChain\.(Bloom|Composite|Fbo|HdrTex|DepthTex|FullscreenVao|MotionWanted)\b	GL sweep 5
+\bPostStack\.(Begin|Run|Width|Height|Upsampling)\b|\bTaaStage\.(Ready|Prepare|Failed|Forget)\b	GL sweep 5
+\bMotionVectors\.(Tex|Painted|Failed|Forget)\b|\bSmaaStage\.(Ready|Prepare|Forget)\b	GL sweep 5
+# The GL half of the content stages' resources -- the declared images as textures, the declared passes as
+# compute programs and the frame's head that ran them -- and the GL sky dome's per-pass and per-draw uploads.
+# Vulkan makes those images and records those passes and draws.
+\bStageResources\.RunFrame\b|\bSkyStage\.(BeginPass|Prepare|Draw)\b	GL sweep 5
+# The weather bakes' GL arms: the wetness map's scatter and integrate dispatches, the shelter and ripple tile
+# bakes, the cover map's ESM filter and the splash draw. Vulkan records every one of them.
+\bWeather\.(MapTick|MapScatter|EnsureMap|ShelterTick|ShelterBake|FilterCover|EnsureEsm|DrawSplash)\b	GL sweep 5
+# The GL movie quad and the GL owned-texture uploads. Vulkan draws the movie plate from the decode, and every
+# owned texture's identity is now a Vulkan-only name (VkTextures.NewName) with a Vulkan image behind it.
+\bcx_movie_v\b|\bcx_movie_f\b|\bMoviePlate\.Write\b|\bTextureSlots\.MovieQuad\b	GL sweep 6
+\bOwnedTextures\.Unpack\b|\bGlTexture\.KeepZeroed\b	GL sweep 6
+# The arturo ripple's GPU warp. The .txi words are still read (they pick the uncompressed container), but the
+# warp itself was a GL compute pass and is not ported, so such a texture draws its source image.
+\bcx_arturo_c\b|\b(Keep|Warp|Step|Bury|Clear)Arturo\b|\bArturo(Programs|Buffers|StandDown|Turn)\b	GL sweep 6
+# The content pairs' GL program table and the issue loop's numbering of it, the host-side attach/bind/resolve that
+# pointed those programs at a stage's images, and the stage snapshot that read them all back. Vulkan compiles each
+# variant as a pipeline and binds a descriptor set, so none of it has a backend.
+\bContentPrograms\.(ProgBase|ProgId|IsProg|IsDeferred|Program|Loc|DepthLoc|CastLoc|BindExtras|BindTwinExtras)\b	GL sweep 6
+\bStageResources\.(Attach|Bind|Resolve|Snap|OverlayTex)\b|\bBindContentCaster\b|\bContentCasterCut\b	GL sweep 6
+# The per-area pipeline prewarm: a dummy draw per pipeline state through the GL program table. Vulkan warms its own
+# pipeline cache, so the key enumeration and the warm draw have nothing to warm.
+\bContentPrewarm\b|\bContentPipelines\b|\bPipelineKey\b|\bProgramWarm\b	GL sweep 6
+# The /alloy bench ablation ladder: a pass's stage rebuilt with CX_ABLATE n so the shader stopped after rung n.
+# Vulkan links its own pipelines, so every rung but "back on its own program" was refused and nothing it set was
+# read. /alloy bench keeps its knob sweep, which is what it measures now.
+\bAblation\b|\bAblateProgram\b|\bBlendAblate\b|\bLitDefines\b|\bBenchAblSummary\b|\bAblSite\b|\bBenchAblTerm\b	GL sweep 6
+# The GL render target of the scene depth copy and the G-buffer, the GPU-PLT check, the GL texture probe, the GL
+# RHI backend, the streaming ring, the one VAO per vertex format and the bindless residency ledger. Vulkan owns
+# every image, buffer, vertex input and descriptor these named.
+\bPltGpuCheck\b|\bTexProbe\b|\bGlDevice\b|\bAlloyDevice\.(Get|Borrow|GlName)\b	GL sweep 6
+\bStreamRing\b|\bVertexArrays\b|\bVertexStream\b|\bGpuRing\b|\bGpuReadback\b|\bBindlessLedger\b	GL sweep 6
+\bSceneDepth\.(Attach|Take|Bind|Ready|Invalidate|Forget)\b|\bGBuffer\.(Attach|Forget|Stats|Ready|Failed|BeginFrame)\b	GL sweep 6
+\bMeshArena\.(BuildVao|UploadVerts|UploadIndices)\b|\bBindBatchState\b|\bVaoName\b|\bOwnedClasses\b	GL sweep 6
+\bAlloyLights\.(BindForDraw|UploadMovers|HarvestQuery|TakeClusterOverflow)\b|\bForgetHandle\b|\bHandleDiag\b	GL sweep 6
+# Dead GL members with no caller at all: the pass block's uniform send, the multidraw helper, the 4.6 draw
+# target's rebind, the GL extension strings and the two vendor VRAM queries behind them.
+\bFlushPassBlock\b|\bPassContextLost\b|\bMultiDrawRange\b|\bRebindFrameTarget\b|\bHasBindless\b|\bProbeVram\b	GL sweep 6
+# The GL GPU timers and every meter built on them: the elapsed-query terms of the colour bracket, the whole-bracket
+# TIMESTAMP span and the shadow bake's own query. The Vulkan frame times itself and reports on the [vkgpu] line.
+\bGpuQuery\b|\bGpuStamp\b|\bGpuTerm\b|\bGpuBegin\b|\bGpuEnd\b|\bGpuSpanEnd\b|\bGpuSpanLine\b|\bGpuSpanMs\b	GL sweep 7
+\bShadowGpu(Ms|Sum|N)\b|\bCasterGlState\b|\bFrameZones\.Gpu\b	GL sweep 7
+# The last GL in the passes: the GUI model-view solve's two scratch textures and its program, the frame tap's
+# glReadPixels of the HDR target and the default framebuffer, the sky-visibility bake's GL compute, the weather's
+# GL texture names (shelter, noise, ripple, print field, filtered cover view) and the uniform block's GL buffer.
+# Vulkan records all of it; GlFormats described a GL texture nothing reads any more.
+\bGuiModelSolve\.(Scratch|Resolve|ContextLost|Ready)\b|\bFrameTap\.(Take|Final)\b	GL sweep 7
+\bSkyGlState\b|\bSkyView\.(Bake|Forget|NoTextureUnit|NoDepthTarget)\b	GL sweep 7
+\bWeatherGlState\b|\bCoverDepthView\b|\bBindTiles\b|\bBindRipple\b|\bEnsureTrack\b|\bTrackRows\b	GL sweep 7
+\bGlFormats\b|\bUniformBlock<[^>]*>\.(Bind|Rebind)\b	GL sweep 7
+# The mesh arena's one VAO per vertex format: the sections are Vulkan buffers, so what a caller asks is whether a
+# format's geometry is RESIDENT, not what its vertex-array name is.
+\bMeshArena\.Vao\b|\bMeshArenaDraw\.VaoOf\b|\bFakeVaoForCheck\b|\bCasterVao\b|\bMeshChart\.VaoOf\b|\bRawVao\b|\b_skVaoName\b	GL sweep 7
+# The GL pass loop's per-pass CPU partition. Nothing has written its rows since the loop went, so the period
+# line printed the heading with no numbers under it; FrameZones' own zones are where a pass's CPU is read.
+\bPassCpuNote\b|\b_passCpu\b|\b_passTail\b|\b_passSelfNeg\b|\bPaintStreamFailures\b	GL sweep 7
+# The snap set's other files: the HDR target either side of the sky pass and the default framebuffer at
+# present. The Vulkan frame records and submits once, so the one tap is its finished scene colour.
+_(opaque|sky|pre)\.pfm\b|_final\.ppm\b|\bdiff_final_pre\b	GL sweep 7
+# ADR 0033: Alloy is Vulkan-only, so CX's own GL 4.6 context and the present bracket around it are gone, with
+# the deferred GL-object graveyard, the GL program-binary disk cache and the uniform shim that aimed GL's
+# setters at a Vulkan block. GlContextService is FramePump: it counts presents and runs the deferred work.
+\bGlContextService\b|\bGpuGraveyard\b|\bVkUniformShim\b|\bProgramBinary\b|\bRenderTarget\b	GL sweep 8
+\bCurrent46\b|\bHeldHere(Depth)?\b|\bMakeCurrentHere\b|\bReserveForOtherThread\b|\bReleaseCurrentHere\b	GL sweep 8
+\bInBracket\b|\bRunInBracketHere\b|health bracket|\bParallelCompile\b|\bSwapNow\b	GL sweep 8
+4\.6 (core )?context|share-listed|share group	GL sweep 8
+\bGlProgram\.(Lib|Texts|Content|Compute|Prefetch|Start|Done|Drop|ForgetBackground|UsesBlock|Labels|LastStubbed)\b	GL sweep 8
+# The three knobs the GL context carried: two deleted outright, gldebug renamed gpudebug with its log tag.
+alloy\.(gl46|glsync|gldebug)\b|\[gl46\]|\[gldebug\]	GL sweep 8
+# ADR 0033's last two: the GL diagnostic probe (and the presentprobe knob that was its only caller) and the
+# model view's vanilla half. A model view is Alloy's to draw, so on the engine's renderer none draws and the
+# modelview capability is withdrawn; GlProgram's builder went with it (Gl.Loc is what TextRig kept).
+\bGlProbe\b|general\.presentprobe\b|\bpresentprobe\b|\[presentprobe\]	GL sweep 9
+\bNuiModelEngine\b|\bGlProgram\b|NuiModelView\.Gl\b	GL sweep 9

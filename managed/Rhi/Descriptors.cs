@@ -6,7 +6,7 @@ namespace CX.Rhi;
 /// format rather than a context flag.</summary>
 public enum Format : byte
 {
-    Unknown, R8, Rg8, Rgba8, Rgba8Srgb, R16F, Rg16F, Rgba16F, R32F, Rg32F, Rgba32F, R32Ui, Rgba32Ui, R11G11B10F,
+    Unknown, R8, Rg8, Rgba8, Rgba8Srgb, R16F, Rg16F, Rgba16F, R32F, Rg32F, Rgba32F, R32Ui, Rg32Ui, Rgba32Ui, R11G11B10F,
     D16, D24, D24S8, D32F, D32FS8,
     /// <summary>The block-compressed formats an engine or DDS texture arrives in, each sampled as UNORM (or SNORM/float).</summary>
     Bc1, Bc1A, Bc2, Bc3, Bc4, Bc4S, Bc5, Bc5S, Bc6U, Bc6S, Bc7,
@@ -19,7 +19,7 @@ public static class Formats
     public static bool IsDepth(this Format f) => f is Format.D16 or Format.D24 or Format.D24S8 or Format.D32F or Format.D32FS8;
 
     /// <summary>Holds unnormalized integers: cleared and read as integers, never through a float path.</summary>
-    public static bool IsInteger(this Format f) => f is Format.R32Ui or Format.Rgba32Ui;
+    public static bool IsInteger(this Format f) => f is Format.R32Ui or Format.Rg32Ui or Format.Rgba32Ui;
 
     /// <summary>Carries stencil too, so it attaches at the depth-stencil point.</summary>
     public static bool HasStencil(this Format f) => f is Format.D24S8 or Format.D32FS8;
@@ -38,8 +38,9 @@ public static class Formats
 [Flags]
 public enum BufferUse : byte { None = 0, Vertex = 1, Index = 2, Storage = 4, Uniform = 8, Indirect = 16, CopySrc = 32, CopyDst = 64 }
 
-/// <summary>Where a buffer lives: device-only, or written from the CPU with <c>UpdateBuffer</c>.</summary>
-public enum MemoryKind : byte { Device, Upload }
+/// <summary>Where a buffer lives: device-only, written from the CPU with <c>UpdateBuffer</c>, or host-visible for a
+/// copy the CPU reads back once its submit has finished.</summary>
+public enum MemoryKind : byte { Device, Upload, Readback }
 
 /// <summary>A buffer to create.</summary>
 public readonly record struct BufferDesc(long Bytes, BufferUse Use, MemoryKind Memory, string Label);

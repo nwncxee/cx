@@ -34,6 +34,28 @@ internal readonly struct MovieRows
     /// row's alignment padding need not exist, so a copy must not reach for it.</summary>
     internal long Bytes => Ok ? (long)Pitch * (Height - 1) + (long)Width * Bpp : 0;
 
+    /// <summary>The host rows <paramref name="src"/> (this shape's pitch) as tight RGBA8 in <paramref name="o"/>, alpha
+    /// opaque: 3- and 4-byte pixels copied, 565 expanded to the full byte range.</summary>
+    internal void Widen(ReadOnlySpan<byte> src, Span<byte> o)
+    {
+        for (int y = 0; y < Height; y++)
+        {
+            ReadOnlySpan<byte> row = src.Slice(y * Pitch, Width * Bpp);
+            int d = y * Width * 4;
+            for (int x = 0; x < Width; x++, d += 4)
+            {
+                if (Bpp == 4) { o[d] = row[x * 4]; o[d + 1] = row[x * 4 + 1]; o[d + 2] = row[x * 4 + 2]; }
+                else if (Bpp == 3) { o[d] = row[x * 3]; o[d + 1] = row[x * 3 + 1]; o[d + 2] = row[x * 3 + 2]; }
+                else
+                {
+                    int v = row[x * 2] | row[x * 2 + 1] << 8;
+                    o[d] = (byte)((v >> 11) * 255 / 31); o[d + 1] = (byte)((v >> 5 & 63) * 255 / 63); o[d + 2] = (byte)((v & 31) * 255 / 31);
+                }
+                o[d + 3] = 255;
+            }
+        }
+    }
+
     /// <summary>Selector values that pick a depth or float pair instead of the byte path. Declined rather
     /// than transcribed: the movie funnel passes 0, 1 or 9, and nothing else reaches it.</summary>
     private static bool NotMovie(int selector) => selector is 10 or 11 or 16 or 17;
@@ -45,12 +67,12 @@ internal readonly struct MovieRows
     {
         if (width <= 0 || height <= 0) return default;
         if (align != 1 && align != 2 && align != 4 && align != 8) return default;
-        if (selector == Rgb565Selector) return new MovieRows(Gl.RGB, Gl.UNSIGNED_SHORT_5_6_5, 2, width, height, align);
+        if (selector == Rgb565Selector) return new MovieRows(EngineTokens.RGB, EngineTokens.UNSIGNED_SHORT_5_6_5, 2, width, height, align);
         if (NotMovie(selector)) return default;
         return extFormat switch
         {
-            0 => new MovieRows(Gl.RGBA, Gl.UNSIGNED_BYTE, 4, width, height, align),
-            1 => new MovieRows(Gl.RGB, Gl.UNSIGNED_BYTE, 3, width, height, align),
+            0 => new MovieRows(EngineTokens.RGBA, EngineTokens.UNSIGNED_BYTE, 4, width, height, align),
+            1 => new MovieRows(EngineTokens.RGB, EngineTokens.UNSIGNED_BYTE, 3, width, height, align),
             _ => default,
         };
     }
@@ -61,8 +83,8 @@ internal readonly struct MovieRows
 }
 
 /// <summary>The movie frame as the DECODER hands it over, not as the engine's texture. One hook, on the
-/// upload funnel, stages the rows to host memory; <see cref="Upload"/> puts them in an Alloy texture inside
-/// Alloy's own context. The engine's upload still runs, so the hand-back quad keeps its picture.</summary>
+/// upload funnel, stages the rows to host memory; <see cref="Upload"/> puts them in an Alloy texture. The
+/// engine's upload still runs, so the hand-back quad keeps its picture.</summary>
 internal static unsafe class MovieFrame
 {
     /// <summary>Everything one session's movie frames own: the staging buffer (kept at one frame's rows for
@@ -79,6 +101,9 @@ internal static unsafe class MovieFrame
         internal uint Tex;
         internal int TexW, TexH;
         internal bool Refused, SaidLive;
+        /// <summary>The staged frame widened to RGBA8 for Vulkan, which takes no 3-byte or 565 image to sample.</summary>
+        internal byte[] Rgba = [];
+        internal bool SaidLiveVk;
     }
 
     private static MovieFrameState _s = new();
@@ -135,58 +160,28 @@ internal static unsafe class MovieFrame
         s.Staged = r;
     }
 
-    /// <summary>The staged rows in an Alloy texture. The CALLER holds the 4.6 bracket and has drained its
-    /// error queue: this is the frame's one upload and the quad that samples it draws in the same bracket.
-    /// Returns the texture name, or 0, which means the engine's own quad draws this frame and the reason was
-    /// said once.</summary>
-    internal static uint Upload(int frameW, int frameH)
+    /// <summary>The staged rows as tight RGBA8 for a Vulkan upload, the same refusals as <see cref="Upload"/>; empty
+    /// means the engine's own quad draws this frame and the reason was said once. Allocates only when the frame grows.</summary>
+    internal static ReadOnlySpan<byte> RgbaVk(int frameW, int frameH)
     {
         MovieFrameState s = _s;
-        if (s.Refused || s.Log == null) return 0;
-        if (s.Orig == null) return Refuse("GLRender::DirectCreateSubTexture is not hooked");
+        if (s.Refused || s.Log == null) return default;
+        if (s.Orig == null) { Refuse("GLRender::DirectCreateSubTexture is not hooked"); return default; }
         MovieRows r = s.Staged;
-        if (!r.Ok) return 0;
+        if (!r.Ok) return default;
         if (r.Width != frameW || r.Height != frameH)
-            return Refuse($"the staged frame is {r.Width}x{r.Height} and ShowFrame asked for {frameW}x{frameH}");
-        if (!Gl.Init(s.Log)) return Refuse("the GL entry points did not resolve");
-        if (Gl.CreateTextures == null || Gl.TextureStorage2D == null || Gl.TextureSubImage2D == null
-            || Gl.TextureParameteri == null || Gl.PixelStorei == null)
-            return Refuse("a direct-state-access texture entry point did not resolve");
-        if (!Ensure(s, frameW, frameH)) return Refuse("the movie texture did not build");
-        OwnedTextures.Unpack u = OwnedTextures.Unpack.Take(0, 0, 0, r.Align);
-        Gl.TextureSubImage2D(s.Tex, 0, 0, 0, r.Width, r.Height, r.Format, r.Type, s.Rows);
-        u.Give();
-        uint err = Gl.GetError != null ? Gl.GetError() : 0;
-        if (err != 0) return Refuse($"the upload raised GL error 0x{err:x4}");
-
-        if (!s.SaidLive)
+        { Refuse($"the staged frame is {r.Width}x{r.Height} and ShowFrame asked for {frameW}x{frameH}"); return default; }
+        int n = r.Width * r.Height;
+        if (s.Rgba.Length < n * 4) s.Rgba = new byte[n * 4];
+        byte[] o = s.Rgba;
+        r.Widen(new ReadOnlySpan<byte>(s.Rows, (int)r.Bytes), o);
+        if (!s.SaidLiveVk)
         {
-            s.SaidLive = true;
-            s.Log.Info($"MovieFrame: LIVE -- the movie frame comes from the decode, {r.Width}x{r.Height} rows at "
-                     + $"pitch {r.Pitch} (format 0x{r.Format:x4}, type 0x{r.Type:x4}), staged and uploaded into an "
-                     + "Alloy texture in Alloy's context; the engine's own movie texture is no longer sampled");
+            s.SaidLiveVk = true;
+            s.Log.Info($"MovieFrame: LIVE on Vulkan -- the movie frame comes from the decode, {r.Width}x{r.Height} rows at pitch "
+                     + $"{r.Pitch}, {r.Bpp} byte(s) a pixel widened to RGBA8 and uploaded into a Vulkan image");
         }
-        return s.Tex;
-    }
-
-    /// <summary>Alloy's movie texture at the decoded frame's exact size -- no power-of-two pad, which is why
-    /// the plate's texture window is the whole texture. Immutable storage, so a size change recreates.</summary>
-    private static bool Ensure(MovieFrameState s, int width, int height)
-    {
-        if (s.Tex != 0 && s.TexW == width && s.TexH == height) return true;
-        GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, s.Tex);
-        s.Tex = 0;
-        uint tex;
-        Gl.CreateTextures(Gl.TEXTURE_2D, 1, &tex);
-        if (tex == 0) return false;
-        Gl.TextureStorage2D(tex, 1, Gl.RGBA8, width, height);
-        // One level, so the default NEAREST_MIPMAP_LINEAR minification would leave the texture incomplete.
-        Gl.TextureParameteri(tex, Gl.TEXTURE_MIN_FILTER, Gl.LINEAR);
-        Gl.TextureParameteri(tex, Gl.TEXTURE_MAG_FILTER, Gl.LINEAR);
-        Gl.TextureParameteri(tex, Gl.TEXTURE_WRAP_S, Gl.CLAMP_TO_EDGE);
-        Gl.TextureParameteri(tex, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
-        s.Tex = tex; s.TexW = width; s.TexH = height;
-        return true;
+        return new ReadOnlySpan<byte>(o, 0, n * 4);
     }
 
     /// <summary>Our own mechanism failing is loud and hands the movie to the engine's own quad -- never a
@@ -203,7 +198,4 @@ internal static unsafe class MovieFrame
         return 0;
     }
 
-    /// <summary>The 4.6 context went and the texture went with it: the name is dropped, not deleted, so the
-    /// next frame rebuilds instead of drawing through a dead one.</summary>
-    internal static void ContextLost() { _s.Tex = 0; _s.TexW = 0; _s.TexH = 0; }
 }

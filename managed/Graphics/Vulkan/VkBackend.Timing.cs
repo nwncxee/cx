@@ -15,6 +15,13 @@ internal sealed unsafe partial class VkBackend
     /// <summary>Time the next submit: the frame's own, so a copy or a check submitted beside it is never banked.</summary>
     internal bool TimeNextSubmit;
     private int _gpuMsN;
+    /// <summary>Stopwatch ticks the CPU spent blocked on a slot fence, and on the swapchain acquire, since the last take.</summary>
+    private long _fenceTicks, _acquireTicks;
+
+    /// <summary>Stopwatch ticks spent walking a recorded list into <c>vkCmd*</c> calls, and what those calls were, since
+    /// the last take: the CPU half of a Vulkan frame that is neither a wait nor Alloy's own recording.</summary>
+    private long _translateTicks;
+    private int _setN, _drawN, _translateN;
 
     private void OpenTiming(in VkPhysicalDeviceProperties props)
     {
@@ -52,6 +59,34 @@ internal sealed unsafe partial class VkBackend
         if (_timePool.IsNull || !_timing) return;
         _vkd.vkCmdWriteTimestamp(_cmd, VkPipelineStageFlags.BottomOfPipe, _timePool, (uint)slot * 2 + 1);
         _timed[slot] = ok;
+    }
+
+    /// <summary>Wait on <paramref name="fence"/>, banking the blocked time into the fence wait the frame line reports.</summary>
+    private VkResult WaitFence(VkFence fence)
+    {
+        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+        VkResult r = _vkd.vkWaitForFences(1, &fence, true, FenceTimeoutNs);
+        _fenceTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+        return r;
+    }
+
+    /// <summary>Milliseconds blocked on slot fences and on the swapchain acquire since the last take.</summary>
+    internal void TakeWaitMs(out double fence, out double acquire)
+    {
+        fence = _fenceTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+        acquire = _acquireTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+        _fenceTicks = _acquireTicks = 0;
+    }
+
+    /// <summary>Milliseconds spent translating recorded lists into <c>vkCmd*</c> calls since the last take, with the bind
+    /// sets and recorded draws they carried and how many lists they came from. An indirect draw counts once, whatever
+    /// the GPU reads out of it.</summary>
+    internal double TakeTranslateMs(out int sets, out int draws, out int lists)
+    {
+        sets = _setN; draws = _drawN; lists = _translateN;
+        double ms = _translateTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+        _translateTicks = 0; _setN = _drawN = _translateN = 0;
+        return ms;
     }
 
     /// <summary>The mean GPU time of the timed submits banked since the last take, and how many; 0 when none were.</summary>

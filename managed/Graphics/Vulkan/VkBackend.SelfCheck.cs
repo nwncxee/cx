@@ -12,14 +12,14 @@ internal sealed unsafe partial class VkBackend
     /// <summary>SPIR-V's OpDecorate and its Binding decoration, transcribed from the specification's tables.</summary>
     private const uint OpDecorate = 71, DecorationBinding = 33;
 
-    /// <summary>The composite hand-over and the ported passes' stages, proven off-device where shaderc loads. Oracles: a
-    /// hand-written semaphore schedule for the hand-over; shaderc's acceptance of the translated text; SPIR-V binding
-    /// numbers read by the specification's opcodes against hand-written ones; the format tokens vulkan_core.h and
-    /// glcorearb.h assign, written by hand.</summary>
+    /// <summary>The present mode per swap interval and the ported passes' stages, proven off-device where shaderc loads.
+    /// Oracles: the interval-to-mode table written by hand; shaderc's acceptance of the translated text; SPIR-V binding
+    /// numbers read by the specification's opcodes against hand-written ones; format tokens from vulkan_core.h by hand.</summary>
     internal static void SelfCheck(ExtenderLog log)
     {
-        HandoverSchedule(log);
         var check = new Checker(log);
+        check.Expect(Mode(0) == VkPresentModeKHR.Immediate && Mode(1) == VkPresentModeKHR.Fifo && Mode(2) == VkPresentModeKHR.Fifo
+                  && Mode(-1) == VkPresentModeKHR.FifoRelaxed, "a swap interval did not pick its present mode");
         if (Native.Sym(SymbolMap.AppManager) != IntPtr.Zero)
         {
             check.Skip("on-device: the pilot's stages compile at the device's first pipeline, not at boot");
@@ -44,10 +44,6 @@ internal sealed unsafe partial class VkBackend
         var rgba = new ImageDesc(ImageKind.Tex2D, Format.Rgba8, 7, 5, 1, 3, 1, 1, ImageUse.Sampled, "");
         check.Expect(LevelBytes(bc1, 0) == 2048 && LevelBytes(bc1, 6) == 8 && LevelBytes(bc3, 0) == 32 && LevelBytes(rgba, 1) == 24,
             "a level's bytes: BC1 64x64 is 16x16 blocks of 8 (2048), its 1x1 mip one block (8); BC3 5x3 is 2x1 blocks of 16 (32); RGBA8 7x5's mip 1 is 3x2 texels (24)");
-        check.Expect(GlFormats.FromInternal(0x822F) == Format.Rg16F && GlFormats.FromInternal(0x8CAC) == Format.D32F
-                  && GlFormats.FromInternal(0x1234) == Format.Unknown,
-            "a GL texture's internal format finds its seam twin: RG16F 0x822F, DEPTH_COMPONENT32F 0x8CAC, nothing for 0x1234");
-
         bool staged = true;
         foreach (string leaf in VulkanToolchain.Libraries) staged &= VulkanToolchain.Load(leaf);
         if (!staged) { check.Skip("the staged shaderc did not load"); return; }
@@ -56,28 +52,11 @@ internal sealed unsafe partial class VkBackend
         // a uniform block's GL point lands at 48 + point, a storage block's at 64 + point, a sampler on its unit
         Stage(check, "cx_ssao_fs", ShaderKind.FragmentShader, [0, 51]);
         Stage(check, "cx_ssaoblur_fs", ShaderKind.FragmentShader, [0, 1, 51]);
-        Stage(check, "cx_ssaotemp_f", ShaderKind.FragmentShader, [0, 1, 2, 3, 51]);
         Stage(check, "cx_cull_c", ShaderKind.ComputeShader, [12, 51, 72, 73, 74, 75, 76, 77, 78]);
         Stage(check, "cx_cullsort_c", ShaderKind.ComputeShader, [51, 72, 74, 75, 77]);
         check.Expect(CX.Alloy.ShaderSource.Get("cx_cull_c.glsl").Contains($"layout(binding = {CX.Alloy.CullPass.PyramidUnit}) uniform sampler2D uPyramid;"),
             "the cull stage's pyramid sampler sits on the unit both backends bind it to");
         log.Info(check.Ok ? "VkBackend.SelfCheck: passed" : "VkBackend.SelfCheck: FAILED");
-    }
-
-    /// <summary>One composite image over a fresh session, a frame, a flip and a second take: GL signals once per take
-    /// that Vulkan waits on, never twice before a wait, and never on an image Vulkan already holds a release for.</summary>
-    private static void HandoverSchedule(ExtenderLog log)
-    {
-        var check = new Checker(log);
-        var h = new Handover();
-        check.Expect(h.Take(), "a fresh image is GL's: the first take has GL signal its release first");
-        h.Returned();
-        check.Expect(h.Flip(), "the frame after: the image leaves the screen and GL releases it");
-        check.Expect(!h.Flip(), "a second flip of a released image signals nothing -- a binary semaphore takes one signal per wait");
-        check.Expect(!h.Take(), "the take after a flip waits on that release and has GL signal nothing more");
-        h.Returned();
-        check.Expect(h.Take(), "a take with GL holding the image again (a second submit, no flip) has GL signal first");
-        log.Info(check.Ok ? "VkBackend.HandoverSchedule: passed" : "VkBackend.HandoverSchedule: FAILED");
     }
 
     private static void Stage(Checker check, string name, ShaderKind kind, uint[] bindings)

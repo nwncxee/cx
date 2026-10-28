@@ -87,14 +87,11 @@ internal static class AlloyGate
     private static AlloyStand Evaluate(out string why)
     {
         if (_optedOut)
-        { why = "alloy.enabled=0 in cx.cfg -- the engine renderer was asked for"; return AlloyStand.Choice; }
+        { why = "alloy.enabled=0 in cx.cfg, or Vulkan cannot start -- the engine renders"; return AlloyStand.Choice; }
         if (!DrawFunnelService.Armed)
         { why = "alloy.drawhooks is not batch in cx.cfg, so nothing is enrolled to draw"; return AlloyStand.Choice; }
         if (!PostChain.Configured)
         { why = "alloy.hdr=0 in cx.cfg, and the Alloy stages have no display-space variant"; return AlloyStand.Choice; }
-        // ahead of the capability block: an opt-out reported as "this device cannot" misdirects the report
-        if (GlContextService.OptedOut)
-        { why = "alloy.gl46=0 in cx.cfg"; return AlloyStand.Choice; }
         // #456: the first capability term, and the only one answerable cold -- it is a fact about the binary,
         // so it is asked ahead of everything that needs a warm client. Incapable rather than Choice: the
         // player asked for nothing here.
@@ -114,28 +111,14 @@ internal static class AlloyGate
         if (!CX.Alloy.Seam.SeamService.Db)
         { why = "the scene seam did not install (its facade self-check or a factory failed)"; return AlloyStand.Incapable; }
         // ...and ahead of it for the OTHER reason: the capability terms below are only answerable on a warm
-        // client. The 4.6 context is created from a present inside a world frame, so asking them at the main
-        // menu answers "no 4.6 context on this device" every single boot -- which is what the pre-#263 chain
-        // avoided by putting this term here, and what putting it after them reintroduced.
+        // client. The render device reports itself up from a present inside a world frame, so asking them at
+        // the main menu answers "the device did not come up" every single boot -- which is what the pre-#263
+        // chain avoided by putting this term here, and what putting it after them reintroduced.
         if (!GameGate.InModule) { why = NoModule; return AlloyStand.Idle; }
-        if (!GlContextService.Available)
-        { why = "no GL 4.6 share-listed context on this device"; return AlloyStand.Incapable; }
-        // CX-348: the backend the session asked for. Asked once, with the engine's context current -- the
-        // interop extensions and the device UUID are the driver's, not a context's.
-        if (Renderer.OnVulkan && _log != null && CX.Graphics.Rhi.VkBackend.Refusal(_log) is string vk)
-        { why = vk; return AlloyStand.Incapable; }
-        // the render thread's bracket skips the cross-context fences the composite's hand-over is ordered by
-        if (Renderer.OnVulkan && Renderer.RenderThread.Boot)
-        { why = "alloy.backend vk does not run with alloy.renderthread on"; return AlloyStand.Incapable; }
+        if (!FramePump.Available)
+        { why = "the render device did not come up (cx.log's Vulkan verdict says why)"; return AlloyStand.Incapable; }
         if (!AlloyRenderer.DrawCapable)
-        { why = "an Alloy program did not build, or glMultiDrawElementsBaseVertex/glBindBufferBase is missing";
-          return AlloyStand.Incapable; }
-        // #264: the engine's bucket walk is gone, so the compute cull is the frame's ONLY visibility test.
-        // A driver that cannot dispatch it would draw every enumerated part of the area every frame -- which
-        // is a device that cannot support the Alloy frame, exactly what this state is for.
-        if (!CullPass.Capable())
-        { why = "GL compute or glMultiDrawElementsIndirectCount is missing -- Alloy has no visibility test";
-          return AlloyStand.Incapable; }
+        { why = "an Alloy program did not build, or the batch path could not arm"; return AlloyStand.Incapable; }
         if (PostChain.Failed)
         { why = "the HDR target cannot arm on this device"; return AlloyStand.Incapable; }
         why = "";
@@ -144,7 +127,7 @@ internal static class AlloyGate
 
     /// <summary>Only a POSITIVE answer decides. <see cref="AlloyStand.Idle"/> and
     /// <see cref="AlloyStand.Incapable"/> both mean "not yet" as often as "never" -- the main menu is Idle,
-    /// and the 4.6 context is created from a present inside a world frame -- so freezing either would be a
+    /// and the render device comes up at a present inside a world frame -- so freezing either would be a
     /// renderer that never arms.</summary>
     private static bool Freezes(AlloyStand v) => v == AlloyStand.Alloy || v == AlloyStand.Choice;
 
@@ -191,10 +174,10 @@ internal static class AlloyGate
         // stands Alloy down on Windows. Sound only because CLAUDE.md makes Unresolved a transient state.
         _layoutOk = EngineLayout.Require(log, "Alloy");
         // Restart knob: Boot, not V -- the verdict is frozen for the session whatever the panel says later.
-        _optedOut = !Renderer.Enabled.Boot;
+        _optedOut = !Renderer.On;
         log.Info(_optedOut
-            ? "[alloygate] alloy.enabled=0 -- the engine renders everything this session (alloy.enabled=1 in "
-              + "cx.cfg and restart for the Alloy renderer)"
+            ? "[alloygate] Alloy is off (alloy.enabled=0, or Vulkan cannot start) -- the engine renders everything "
+              + "this session"
             : "[alloygate] Alloy requested (alloy.enabled=0 in cx.cfg and restart for the engine renderer)");
         SelfCheck(log);
         FrameRegistry.Global.Register(FramePhase.Start, 1, OnFrameStart, "AlloyGate.verdict", log);
@@ -226,7 +209,7 @@ internal static class AlloyGate
             check.Expect(Stand == AlloyStand.Choice, "the decision is frozen: clearing the config does not un-decide it");
 
             // ...but a NEGATIVE answer must not freeze, or a client that boots to the main menu (Idle) or
-            // whose 4.6 context is not up yet (Incapable) would never arm at all. This is the one the live
+            // whose render device is not up yet (Incapable) would never arm at all. This is the one the live
             // client caught: the capability block asked at the menu and put a dropout notice on screen.
             // Asserted on the rule rather than through Evaluate, whose answer here is whatever the host
             // running the check happens to be -- which is exactly the coupling that made the first version

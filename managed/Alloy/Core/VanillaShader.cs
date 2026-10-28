@@ -65,7 +65,7 @@ internal static unsafe class VanillaShader
     /// <summary>Replace every marked region in <paramref name="src"/> with the stock text of the resref the
     /// BEGIN marker names. A miss leaves the stub in place; nothing here can fail the compile that a
     /// missing file would not already have failed. <paramref name="host"/> false leaves every HOST region
-    /// at its stub while the plain regions still splice -- the middle rung of <c>GlProgram</c>'s retry.</summary>
+    /// at its stub while the plain regions still splice.</summary>
     internal static string Splice(string src, ExtenderLog? log, string what, bool fromContent = true, bool host = true)
     {
         int at = src.IndexOf(Marker, StringComparison.Ordinal);

@@ -1,7 +1,6 @@
 using System.Runtime.InteropServices;
 using CX.Engine;
 using CX.Framework;
-using CX.Graphics;
 
 namespace CX.Services.Perf;
 
@@ -9,7 +8,7 @@ namespace CX.Services.Perf;
 /// Per-frame draw-path histogram (ADR 0006), opt-in via <c>alloy.drawhooks=stats</c> in <c>cx.cfg</c> (off = no hooks,
 /// zero cost; config and not a chat command, because it and <c>DrawFunnelService</c> hook the same symbols, so which
 /// one arms is decided once at install). Call-through hooks on <c>GLRender::RenderVertexData</c> and
-/// <c>Scene::RenderDrawBucket</c> group draws by (VDO, GL program) and log the top ones. Hot, no allocation.
+/// <c>Scene::RenderDrawBucket</c> group draws by VDO and log the top ones. Hot, no allocation.
 /// </summary>
 public sealed unsafe class DrawStatsService : IExtenderService
 {
@@ -25,15 +24,14 @@ public sealed unsafe class DrawStatsService : IExtenderService
     // period accumulators (reset each log)
     private static int _frames, _draws, _indexed, _bucketDraws;
     private static long _idxSum;
-    // group table: key = vdo ^ (program rotated); value rows in parallel arrays
+    // group table: key = vdo; value rows in parallel arrays
     private static readonly ulong[] _gKey = new ulong[Groups];
     private static readonly int[] _gDraws = new int[Groups];
     private static readonly int[] _gItems = new int[Groups];
     private static readonly long[] _gIdx = new long[Groups];
     private static readonly IntPtr[] _gVdo = new IntPtr[Groups];
-    private static readonly int[] _gProg = new int[Groups];
     private static int _gOver;
-    // (vdo,item,program) first-seen set for unique-member counts
+    // (vdo,item) first-seen set for unique-member counts
     private static readonly ulong[] _pKey = new ulong[Pairs];
     private static int _pOver;
 
@@ -93,9 +91,8 @@ public sealed unsafe class DrawStatsService : IExtenderService
                 : new VdoElemItem(v.ElemItems)[(int)item].Count;
             _idxSum += idx;
         }
-        int prog = GlProbe.CurrentProgram();
 
-        ulong key = (ulong)vdo ^ ((ulong)(uint)prog << 40) ^ 1;   // ^1 so key 0 stays "empty"
+        ulong key = (ulong)vdo ^ 1;   // ^1 so key 0 stays "empty"
         int slot = (int)(key % Groups);
         for (int probe = 0; probe < 16; probe++, slot = (slot + 1) % Groups)
         {
@@ -103,7 +100,7 @@ public sealed unsafe class DrawStatsService : IExtenderService
             if (_gKey[slot] == 0)
             {
                 _gKey[slot] = key; _gDraws[slot] = 1; _gItems[slot] = 0; _gIdx[slot] = idx;
-                _gVdo[slot] = vdo; _gProg[slot] = prog;
+                _gVdo[slot] = vdo;
                 goto pairs;
             }
         }
@@ -124,7 +121,6 @@ public sealed unsafe class DrawStatsService : IExtenderService
     public static void EndFrame()
     {
         if (!Enabled) return;
-        if (Gl.GetIntegerv == null && _log != null) Gl.Init(_log);   // GL context exists here, not at service init
         if (++_frames < LogEvery || _draws == 0) return;
         int f = _frames;
         // cold path: allocation + sort are fine here
@@ -135,11 +131,11 @@ public sealed unsafe class DrawStatsService : IExtenderService
         _log?.Info($"DrawStatsService: [drawstats] {(float)_draws / f:F0} draws/frame " +
                    $"({100f * _indexed / _draws:F0}% indexed, {100f * _bucketDraws / _draws:F0}% in-bucket, " +
                    $"avg {(float)_idxSum / (_indexed > 0 ? _indexed : 1):F0} idx), " +
-                   $"{n} (vdo,prog) groups{(_gOver + _pOver > 0 ? $", hash-over {_gOver}/{_pOver}" : "")}");
+                   $"{n} vdo groups{(_gOver + _pOver > 0 ? $", hash-over {_gOver}/{_pOver}" : "")}");
         for (int i = 0; i < n && i < 12; i++)
         {
             int s = order[i];
-            _log?.Info($"DrawStatsService: [drawstats]   vdo=0x{(ulong)_gVdo[s]:x} prog={_gProg[s]}: " +
+            _log?.Info($"DrawStatsService: [drawstats]   vdo=0x{(ulong)_gVdo[s]:x}: " +
                        $"{(float)_gDraws[s] / f:F1} draws/frame, {_gItems[s]} items, avg {(float)_gIdx[s] / _gDraws[s]:F0} idx");
         }
         _frames = 0; _draws = 0; _indexed = 0; _bucketDraws = 0; _idxSum = 0;

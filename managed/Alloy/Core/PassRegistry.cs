@@ -27,8 +27,8 @@ public sealed class PassLifecycle
     /// check must GATE arming asserts it itself and returns before registering.</summary>
     public Action<ExtenderLog>? SelfCheck { get; init; }
 
-    /// <summary>Context loss or disarm: drop every GL name. Names mean nothing once the context is gone, so
-    /// this forgets rather than deletes.</summary>
+    /// <summary>Context loss or disarm: drop every device name. A name means nothing once the device is gone,
+    /// so this forgets rather than deletes.</summary>
     public Action? ContextLost { get; init; }
 
     /// <summary>The world went away underneath the pass -- part table wiped, module unloaded, enrollment
@@ -90,8 +90,8 @@ internal sealed class PassRegistry
     internal void RunSelfChecks(ExtenderLog log)
     { for (int i = 0; i < _sealed.Length; i++) _sealed[i].SelfCheck?.Invoke(log); }
 
-    /// <summary>Every registered pass drops its GL names. The whole reason the registry exists: a pass that
-    /// forgets to stand down on context loss keeps stale ids and draws from a dead context.</summary>
+    /// <summary>Every registered pass drops its device names. The whole reason the registry exists: a pass
+    /// that forgets to stand down on context loss keeps stale ids and draws through them.</summary>
     internal void ContextLost()
     { for (int i = 0; i < _sealed.Length; i++) _sealed[i].ContextLost?.Invoke(); }
 

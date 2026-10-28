@@ -153,7 +153,7 @@ public sealed unsafe class UiHostService : IExtenderService
         float dt = _gearLast == 0 ? 0f : (now - _gearLast) / (float)System.Diagnostics.Stopwatch.Frequency;
         _gearLast = now;
         if (!GearSurface) { _gear.Hovered = false; _gear.Bright = 0f; _gear.Spin = 0f; return; }
-        if (_log == null || !Gl.Init(_log) || !TextRig.Ready) return;
+        if (_log == null || !(NullGl.Active || Gl.Init(_log)) || !TextRig.Ready) return;
         float px = MenuGear.FaceFor(Metrics.GameUiScale);
         if (px != _gearFacePx || _gearEpoch != TextRig.AtlasEpoch)
         {
@@ -187,9 +187,6 @@ public sealed unsafe class UiHostService : IExtenderService
     private static bool _announced;
     private const uint GlArrayBuffer = 0x8892;  // not-an-offset: a GL enum
 
-    /// <summary>presents left to sample. Costs a pipeline stall each, so it is a knob that runs out.</summary>
-    private static int _presentProbe;
-
     /// <summary>The frame present: announce once, run the frame phases, then present. The window roll-call
     /// itself happens earlier, at <see cref="OnNkRender"/>, either side of NUI; it falls back to here, both
     /// layers over NUI, only when that chain never installed. Hot (every frame) and zero-alloc.</summary>
@@ -201,11 +198,11 @@ public sealed unsafe class UiHostService : IExtenderService
             _announced = true;
             _log?.Info("UiHostService: first frame presented -- hook is LIVE");
             CX.Services.CrashReport.Expose();
-            _presentProbe = General.PresentProbe.Boot;
             int pin = General.Pin.Boot;
             if (pin >= 0) _log?.Info($"UiHostService: main thread pin={pin} -> {(Affinity.PinThis(pin) ? "pinned" : "REFUSED")} (was on cpu {Affinity.CurrentCpu})");
         }
         ResizeTick(window);
+        CX.Graphics.SdlWindow.Note(window);
         FrameRegistry.Global.Run(FramePhase.Start);
         // When Alloy renders, the 2D UI is drawn BY its frame, after the view list: that frame runs at PrePresent --
         // after this point -- and would otherwise overwrite everything drawn here, which is what made CX's chat
@@ -215,21 +212,6 @@ public sealed unsafe class UiHostService : IExtenderService
         // Must be the LAST thing before the present -- after the window roll-call and after every PrePresent
         // participant. With Alloy rendering, only when something drew in this context this frame.
         if (!CX.Alloy.Renderer.On || _handBack.Owed) HandBack();
-        // the present is its own zone. It is the discriminator the other brackets cannot supply --
-        // a frame that spends its time HERE is waiting on the GPU or on vsync, which is a different problem
-        // from every zone that measures our own CPU work.
-        // the black-frame discriminator, and the only one that is free of the two-context question --
-        // this read is in the ENGINE's context, at the last instruction before the present, so what it sees
-        // IS what the swap is about to show. A bright value on a frame that displays black means the swap
-        // presented a buffer nobody drew; alternating values mean the frame was lost before it got here.
-        // Only in a module: the main menu presents for a minute before a save is loaded, and a budget spent
-        // there is 60 samples of a static background -- which is what the first run of this probe measured.
-        if (_presentProbe > 0 && GameGate.InModule)
-        {
-            _presentProbe--;
-            _log?.Always($"[presentprobe] fb0 centre before swap: 0x{GlProbe.ScreenCentre():x8}"
-                       + $"  into={CX.Alloy.PostChain.LastInto} resolves={CX.Alloy.PostChain.Resolves}");
-        }
         long tSwap = FrameZones.Now;
         // Alloy issues the present when the screen is Alloy's; otherwise the engine's GLRender::SwapBuffers.
         if (!CX.Alloy.ScreenOwner.Present(window) && _swapOrig != null) _swapOrig(window);
@@ -250,30 +232,20 @@ public sealed unsafe class UiHostService : IExtenderService
     }
 
     /// <summary>Each layer's recorded windows, by <see cref="UiLayer"/>: what Alloy's GUI pass replays on either
-    /// side of NUI's layers, or the engine-context draw below replays at once. Rewritten only while no render thread
-    /// replays them: the seam records after <c>RenderSnapshot.AwaitDrained</c>.</summary>
+    /// side of NUI's layers, or the engine-context draw below replays at once.</summary>
     private static readonly UiDrawList[] _layers = { new(), new() };
 
     /// <summary>Layer <paramref name="layer"/>'s windows as last recorded.</summary>
     internal static UiDrawList Windows(UiLayer layer) => _layers[(int)layer];
 
-    /// <summary>Record CX's own 2D windows for the frame Alloy draws, both layers, issuing no GL: Alloy's GUI pass
-    /// replays them inside its bracket. Game thread.</summary>
+    /// <summary>Record CX's own 2D windows for the frame Alloy draws, both layers, issuing nothing: Alloy's GUI pass
+    /// replays them into its own frame. Game thread.</summary>
     internal static void RecordWindowsForDbFrame()
     {
         long tEdge = FrameZones.Now, ui0 = FrameZones.Ticks(FrameZones.Zone.Ui);
         Record(UiLayer.BelowNui, true);
         Record(UiLayer.AboveNui, false);
         FrameZones.Add(FrameZones.Zone.UiEdge, tEdge, FrameZones.Ticks(FrameZones.Zone.Ui) - ui0);
-    }
-
-    /// <summary>Replay both recorded layers into the ENGINE's context and hand its state back: the windows of a frame
-    /// whose GUI the 4.6 bracket could not draw.</summary>
-    internal static void ReplayWindowsHere()
-    {
-        TextRig.Replay(_layers[(int)UiLayer.BelowNui]);
-        TextRig.Replay(_layers[(int)UiLayer.AboveNui]);
-        HandBack();
     }
 
     /// <summary>The engine-context draw with Alloy off: record one layer (null = both), replay it at once, then hand
@@ -377,7 +349,7 @@ public sealed unsafe class UiHostService : IExtenderService
                 // NOT inside the null-conditional -- Period() carries the period reset, and `?.` skips
                 // argument evaluation, so a null log would desync it from the _fs* counters reset below
                 // permanently (every later line would then average since boot).
-                string zones = FrameZones.Period() + CX.Graphics.GlContextService.GpuSpanLine();
+                string zones = FrameZones.Period();
                 _log?.Info(zones);                 // ...and where that frame went
                 _fsSum = 0; _fsN = 0; _fsMax = 0; _fsOver7 = 0; _fsOver17 = 0;
             }

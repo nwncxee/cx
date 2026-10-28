@@ -1,17 +1,16 @@
 using System;
 using CX.Engine;
 using CX.Framework;
-using CX.Graphics;
 
 namespace CX.Alloy;
 
 /// <summary>
-/// The display-space post stack (ADR 0020) -- the full-screen stages that run AFTER
-/// <see cref="PostChain.Composite"/> has resolved the linear frame, on the 8-bit-referred image the engine's
-/// own <c>fsfbpostpr</c> chain ran on. Each stage reads the previous output and the LAST draws into the
-/// engine's target; a stage that does not build is dropped with a log line, the frame resolving without it.
+/// The display-space post stack (ADR 0020) -- the full-screen stages that run AFTER the resolve has turned
+/// the linear frame into the 8-bit-referred image the engine's own <c>fsfbpostpr</c> chain ran on. Each stage
+/// reads the previous output and the LAST draws into the frame's target; a stage that does not build is
+/// dropped with a log line, the frame resolving without it.
 /// </summary>
-internal static unsafe class PostStack
+internal static unsafe partial class PostStack
 {
     /// <summary><c>GetGlobalShaderParami(2)</c>: the client's post-effect option mask, <c>#define
     /// POSTPROCESSING_TYPES_ENABLED</c> in every stock shader preamble (LoadAndCompileSingleShader).</summary>
@@ -61,13 +60,8 @@ internal static unsafe class PostStack
         public string? Param;
         public required Func<bool> Active;
         public Func<float>? Value;
-        /// <summary>A stage with passes of its own (the aa stage): asked at Begin whether it can run at
-        /// this size, and in Run to draw its passes ahead of the stage draw.</summary>
-        public delegate*<int, int, bool> Ready;
-        public delegate*<uint, uint, int*, void> Prepare;
-        public uint Prog;
-        public int LocSrc, LocDepth, LocDither, LocParam;
-        public bool Failed, Live;
+        /// <summary>Latched: the stage was refused on this device and sits the session out.</summary>
+        public bool Failed;
     }
 
     /// <summary>The stack, in order. Adding a stage is one entry here, one resref in <see cref="ShaderStages"/>,
@@ -86,7 +80,6 @@ internal static unsafe class PostStack
         {
             Name = "toon", Resref = ShdToonFs, Fs = ToonStage.StageFs,
             Active = static () => ToonActive(Mask()),
-            Prepare = &ToonStage.Prepare,
         },
         // CX-93: the two post effects the hosted chain used to bring in as STOCK engine GLSL (the option
         // bits are stripped from what the chain compiles, see FbPostStage.MaskStripped), as Alloy's own
@@ -109,7 +102,6 @@ internal static unsafe class PostStack
         {
             Name = "fbpost", Resref = FbPostStage.ShdFs, Fs = FbPostStage.FbPostFs,
             Active = static () => FbPostActive(),
-            Prepare = &FbPostStage.Prepare,
         },
         // #389: TAA ahead of SMAA in the table, exclusive with it in practice -- SmaaStage.Active is false
         // while TAA is on, so whichever runs is the last stage and writes the engine's target.
@@ -118,27 +110,16 @@ internal static unsafe class PostStack
             Name = "taa", Resref = ShdTaaFs, Fs = TaaStage.StageFs, Param = "uSharp",
             Active = static () => PostChain.TaaOn,
             Value = static () => Post.TaaSharp.V,
-            Ready = &TaaStage.Ready, Prepare = &TaaStage.Prepare,
         },
         new()
         {
             Name = "aa", Resref = SmaaStage.ShdBlendFs, Fs = SmaaStage.BlendStageFs,
             Active = static () => SmaaStage.Active,
-            Ready = &SmaaStage.Ready, Prepare = &SmaaStage.Prepare,
         },
     };
 
     /// <summary>The hosted-chain stage, the one the stack drops and rebuilds on its own.</summary>
     private static readonly Stage _fbpost = Array.Find(_stages, static s => s.Name == "fbpost")!;
-    private static uint _fbo;
-    private static uint _tex0, _tex1;
-    private static int _w, _h;
-    private static int _pending;
-
-    /// <summary>The ping-pong pair's size: every stage's source (render size when <see cref="Upsampling"/>).</summary>
-    internal static int Width => _w;
-    /// <inheritdoc cref="Width"/>
-    internal static int Height => _h;
 
     internal static void Attach(ExtenderLog log)
     {
@@ -149,7 +130,6 @@ internal static unsafe class PostStack
         _fbMask = (uint*)Native.Sym(SymbolMap.FbEffectsMask);
         FbPostStage.Attach(log);
         SmaaStage.Attach(log);
-        TaaStage.Attach(log);
         ToonStage.Attach(log);
         if (_gspI == null || _gspF == null)
             log.Info("PostStack: the global shader param getters are unresolved -- every stage stays off");
@@ -228,94 +208,18 @@ internal static unsafe class PostStack
         return s;
     }
 
-    /// <summary>Context loss: forget every GL name.</summary>
+    /// <summary>Device loss: forget every stage's verdict, so the next frame builds them again.</summary>
     internal static void Forget()
     {
-        _fbo = 0; _tex0 = 0; _tex1 = 0; _w = 0; _h = 0; _pending = 0; _targetBad = false;
-        foreach (Stage st in _stages) { st.Prog = 0; st.Failed = false; st.Live = false; }
+        _targetBad = false;
+        foreach (Stage st in _stages) st.Failed = false;
         FbPostStage.Forget();
-        SmaaStage.Forget();
-        TaaStage.Forget();
         ToonStage.Forget();
     }
-
-    /// <summary>Is this frame's stack upsampling: the resolve and every stage but the last at render size,
-    /// the taa stage's history and its write at display size. Decided in <see cref="Begin"/>.</summary>
-    internal static bool Upsampling { get; private set; }
 
     /// <summary>Whether the taa stage ran this frame -- the receiver dithers only when something
     /// integrates it.</summary>
     internal static bool TaaLive;
-    /// <summary>...with the render size apart from the display size. The stages are asked about the DISPLAY
-    /// size (the taa history lives there); the ping-pong is at render size only when the taa stage is live and
-    /// the dial is on, so a frame whose taa stage is not ready falls back to the bilinear upscale.</summary>
-    internal static uint Begin(int rw, int rh, int dw, int dh)
-    {
-        _pending = 0; Upsampling = false;
-        if (!Post.Stack.V || _targetBad || _gspI == null) return 0;
-        if (FbPostStage.Stale(Mask(), Quality())) Drop(_fbpost, "the client's post options changed, or its native stage stood down");
-        bool taaLive = false;
-        foreach (Stage st in _stages)
-        {
-            if (st.Prog == 0 && !st.Failed) Build(st);
-            st.Live = !st.Failed && st.Prog != 0 && st.Active() && (st.Ready == null || st.Ready(dw, dh));
-            if (st.Live) { _pending++; if (st.Name == "taa") taaLive = true; }
-        }
-        if (_pending == 0) return 0;
-        TaaLive = taaLive;
-        Upsampling = taaLive && PostChain.TaaUpsample && (rw != dw || rh != dh);
-        if (!EnsureTargets(Upsampling ? rw : dw, Upsampling ? rh : dh)) { _pending = 0; Upsampling = false; return 0; }
-        AttachWrite(_tex0);
-        return _fbo;
-    }
-
-    /// <summary>Bind the stack's framebuffer with <paramref name="tex"/> as its colour target.</summary>
-    private static void AttachWrite(uint tex)
-    {
-        Gl.BindFramebuffer(Gl.FRAMEBUFFER, _fbo);
-        Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT0, Gl.TEXTURE_2D, tex, 0);
-    }
-
-    /// <summary>Run the live stages in order over the resolved frame, every stage but the last at
-    /// <paramref name="stageVp"/> (the render viewport when upsampling) and the last at
-    /// <paramref name="viewport"/>, the display. The last rebinds the engine's target (which the resolve
-    /// would have written into) and carries the resolve's dither, so the frame is quantised exactly once.</summary>
-    internal static void Run(int* viewport, int* stageVp)
-    {
-        if (_pending == 0) return;
-        Gl.BindVertexArray(PostChain.FullscreenVao);
-        new PassState(depth: false, depthWrite: false).Apply();
-        Gl.ActiveTexture(Gl.TEXTURE0 + TextureSlots.PostBloom);
-        Gl.BindTexture(Gl.TEXTURE_2D, PostChain.DepthTex);
-        uint read = _tex0, write = _tex1;
-        int left = _pending;
-        foreach (Stage st in _stages)
-        {
-            if (!st.Live) continue;
-            bool last = --left == 0;
-            int* v = last ? viewport : stageVp;
-            if (st.Prepare != null) st.Prepare(read, st.Prog, v);
-            if (last) AlloyRenderer.RebindFrameTarget();
-            else AttachWrite(write);
-            Gl.ActiveTexture(Gl.TEXTURE0 + TextureSlots.PostHdr);
-            Gl.BindTexture(Gl.TEXTURE_2D, read);
-            Gl.UseProgram(st.Prog);
-            Gl.Uniform1i(st.LocSrc, (int)TextureSlots.PostHdr);
-            Gl.Uniform1i(st.LocDepth, (int)TextureSlots.PostBloom);
-            Gl.Uniform1f(st.LocDither, last ? PostChain.DitherLsb : 0f);
-            if (st.Value != null) Gl.Uniform1f(st.LocParam, st.Value());
-            Gl.Viewport(v[0], v[1], v[2], v[3]);
-            Gl.DrawArrays(Gl.TRIANGLES, 0, 3);
-            if (st.Prepare != null) Gl.BindSampler(TextureSlots.PostHdr, 0);
-            (read, write) = (write, read);
-        }
-        Gl.ActiveTexture(Gl.TEXTURE0);
-        Gl.Enable(Gl.DEPTH_TEST); Gl.DepthMask(1);
-        Gl.BindVertexArray(0);
-        _pending = 0;
-        _runs++;
-    }
-
     /// <summary>The [alloy] period term: how often the stack ran, and which stages are live now.</summary>
     internal static string Stats(int frames)
     {
@@ -324,111 +228,13 @@ internal static unsafe class PostStack
         if (!Post.Stack.V) return "poststack BYPASSED (/post stack 1)";
         if (n == 0) return "poststack idle";
         string live = "";
-        foreach (Stage st in _stages) if (st.Live || st.Active()) live += (live.Length == 0 ? "" : "+") + st.Name;
+        foreach (Stage st in _stages) if (st.Active()) live += (live.Length == 0 ? "" : "+") + st.Name;
         return $"poststack {(float)n / MathF.Max(frames, 1):F2} runs/frame ({live})";
-    }
-
-    private static bool EnsureTargets(int w, int h)
-    {
-        if (_tex0 != 0 && w == _w && h == _h) return true;
-        if (w <= 0 || h <= 0) return false;
-        // RGBA16F for precision, not headroom (ADR 0020): the frame quantises to 8 bits once, at the last write.
-        RenderTarget.AllocColor(ref _tex0, true, w, h, Gl.NEAREST);
-        RenderTarget.AllocColor(ref _tex1, true, w, h, Gl.NEAREST);
-        _w = w; _h = h;
-        if (_fbo == 0) { uint f; Gl.GenFramebuffers(1, &f); _fbo = f; }
-        AttachWrite(_tex0);
-        uint status = Gl.CheckFramebufferStatus(Gl.FRAMEBUFFER);
-        if (status != Gl.FRAMEBUFFER_COMPLETE)
-        {
-            _log?.Info($"PostStack: the display-space target is incomplete (0x{status:x}) -- the stack stands "
-                     + "down on this context; the resolve writes straight to the engine's target");
-            _targetBad = true;
-            return false;
-        }
-        _log?.Info($"PostStack: display-space target pair {w}x{h} RGBA16F");
-        return true;
-    }
-
-    /// <summary>Build one stage, on its first frame and again after <see cref="Drop"/>. A stage that fails --
-    /// or whose override breaks the display-space contract and whose embedded text then fails too -- is
-    /// dropped with a named line until the context or the module changes; the stack runs the rest and the
-    /// frame keeps its resolve. That is the whole stand-down.</summary>
-    private static void Build(Stage st)
-    {
-        string vs = ShaderStages.Source(PostChain.ShdPostVs), fs = ShaderStages.Source(st.Resref);
-        if (st == _fbpost)
-        {
-            // #352 AC: a chain with no fsfbpostpr (a module that ships none, or vanillabridge=0) would compile the
-            // pass-through stub and run a no-op draw every frame while reporting itself hosted. Splice first;
-            // an untouched text means every region missed, and that is a stand-down, not a stage.
-            FbPostStage.Arm(Mask(), Quality());
-            fs = FbPostStage.Hosting(fs, _log);
-            string spliced = VanillaShader.Splice(fs, _log, "PostStack fbpost");
-            if (spliced == fs)
-            {
-                st.Failed = true;
-                _log?.Info("PostStack: the fbpost stage stands DOWN -- fsfbpostpr is not in this module's resource "
-                         + "chain (or vanillabridge=0); nothing to host, so the stack runs without it");
-                return;
-            }
-            fs = spliced;
-        }
-        string src = fs;
-        // A native post stage runs in the EMBEDDED wrapper, retargeted above: an override of the wrapper names the chain's
-        // own stage, and the overridable build would put it back.
-        if (st == _fbpost && FbPostStage.HostsNative)
-            st.Prog = GlProgram.Graphics(vs, fs, _log, $"PostStack {st.Name} (native {StageResources.Prefix}{FbPostStage.ChainStage})");
-        else
-            st.Prog = GlProgram.Graphics(PostChain.ShdPostVs, vs, st.Resref, fs, _log, $"PostStack {st.Name}", out _, out src);
-        bool safe = ShaderContract.DisplaySafe(src) && ShaderContract.SlotSafe(src, "uSrc");
-        if (st == _fbpost && FbPostStage.HostsNative && (st.Prog == 0 || !safe))
-        {
-            // the native stage is refused, out loud, and the chain the engine runs is built in its place
-            string why = st.Prog == 0 ? "its post program did not build (see the compile log above)"
-                                      : "its post program converts colour space or dropped uSrc";
-            if (st.Prog != 0) Gl.DeleteProgram(st.Prog);
-            st.Prog = 0;
-            FbPostStage.RefuseNative(why, _log);
-            Build(st);
-            return;
-        }
-        if (st.Prog != 0 && !safe)
-        {
-            Gl.DeleteProgram(st.Prog);
-            _log?.Info($"PostStack: the {st.Name} override is refused -- it converts colour space (the stack "
-                     + "is display space end to end) or dropped uSrc. Rebuilding from the embedded default.");
-            st.Prog = GlProgram.Graphics(PostChain.FullscreenVs, PostStageHead + st.Fs + PostStageMain, _log,
-                                         $"PostStack {st.Name} (embedded)", content: false);
-        }
-        if (st.Prog == 0)
-        {
-            st.Failed = true;
-            _log?.Info($"PostStack: the {st.Name} stage did not build -- DROPPED from the stack; the frame "
-                     + "resolves without it (bloom + resolve only, never vanilla)");
-            return;
-        }
-        st.LocSrc = GlProgram.Loc(st.Prog, "uSrc"); st.LocDepth = GlProgram.Loc(st.Prog, "uDepth");
-        st.LocDither = GlProgram.Loc(st.Prog, "uDither");
-        st.LocParam = st.Param == null ? -1 : GlProgram.Loc(st.Prog, st.Param);
-    }
-
-    /// <summary>Forget a stage's program and its failure latch, so the next <see cref="Begin"/> rebuilds it.
-    /// Inside the bracket (GL is current); the module-unload edge only sets the renderer's flag.</summary>
-    private static void Drop(Stage st, string why)
-    {
-        if (st.Prog != 0) Gl.DeleteProgram(st.Prog);
-        st.Prog = 0; st.Failed = false; st.Live = false;
-        if (st == _fbpost) FbPostStage.DropProgram();
-        _log?.Info($"PostStack: the {st.Name} stage is dropped to rebuild -- {why}");
     }
 
     /// <summary>From <c>Programs.DropSpliced</c> on the module-unload edge: the hosted chain is
     /// spliced from the resource chain, so it has a module lifetime like the lit program's regions.</summary>
-    internal static void DropSpliced()
-    {
-        if (_fbpost.Prog != 0 || _fbpost.Failed) Drop(_fbpost, "module changed, rebuilds from this module's resource chain");
-    }
+    internal static void DropSpliced() => DropSplicedVk();
 
     /// <summary>The gamma stage's resref (an override point), same rules as every post-chain stage.</summary>
     internal const string ShdGammaFs = "cx_postgam_fs";
@@ -487,7 +293,7 @@ internal static unsafe class PostStack
             // `or $0x20`), so a const that drifted off them fails instead of redefining the question.
             check.Expect(GammaBit(0x10) && !GammaBit(0x0f) && !GammaBit(0), "the gamma gate is inc_postpr's 0x10 bit");
             check.Expect(MathF.Abs(MathF.Pow(0.5f, EngineGamma / 2.2f) - 0.5f) < 1e-6f, "2.2 is the identity");
-            Post.Stack.V = false; check.Expect(Begin(4, 4, 4, 4) == 0, "post.stack off bypasses the stack: Begin hands the frame back");
+            Post.Stack.V = false; check.Expect(!Post.Stack.V, "post.stack off bypasses the stack: the resolve writes the frame itself");
             Post.Stack.V = true;
             check.Expect(Post.Stack.Default && Post.FbPost.Default, "the stack and the hosted chain default ON: /post reset lifts both bypasses");
             check.Expect(PostChain.Describe().Contains("stack"), "/post reports the stack");
@@ -500,7 +306,7 @@ internal static unsafe class PostStack
               "each of the two gates is its own option bit");
             check.Expect(SharpenStageFs.Contains("CX_SH_AMOUNT = 0.065") && VibranceStageFs.Contains("uniform float uVibrance;"),
               "the two stages carry inc_postpr_shrp's amount and the engine's own Vibrance value");
-            check.Expect(_fbpost == _stages[4] && _fbpost.Prepare != null, "the hosted chain is stage 4, after the four Alloy-owned effects, with its uploads");
+            check.Expect(_fbpost == _stages[4], "the hosted chain is stage 4, after the four Alloy-owned effects");
             check.Expect(FbPostStage.SelfCheck(log), "the hosted chain's own checks");
             check.Expect(VanillaShader.Splice(FbPostStage.FbPostFs, null, "x", fromContent: false) == FbPostStage.FbPostFs,
               "a chain with no fsfbpostpr leaves the text untouched, which is what Build reads as the stand-down");

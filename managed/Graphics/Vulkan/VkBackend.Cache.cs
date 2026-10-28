@@ -17,7 +17,7 @@ internal sealed unsafe partial class VkBackend
     private void OpenPipelineCache(in VkPhysicalDeviceProperties props)
     {
         fixed (byte* u = props.pipelineCacheUUID)
-            _pipeCachePath = Path.Combine(ProgramBinary.CacheDir,
+            _pipeCachePath = Path.Combine(ShaderCache.Dir,
                 $"vk-pipelines-{props.vendorID:x}-{props.deviceID:x}-{Convert.ToHexString(new ReadOnlySpan<byte>(u, 16))}.bin");
         byte[] seed = [];
         try { if (File.Exists(_pipeCachePath)) seed = File.ReadAllBytes(_pipeCachePath); }

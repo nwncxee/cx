@@ -87,7 +87,7 @@ as device properties (`GetPlayerDeviceProperty`, names lowercase):
 | `cx_cap_card` | `9`: the client draws the cards declared in `card.<key>` lines (see [Cards](#cards)) and reads the `cardstyle` line and the style fields of [Style](#style), including a role identifier (`@accent`) in place of a colour, `look` for the game's own GUI art, and the glow, diagonal and pulse shape fields. Older values are listed below |
 | `cx_cap_palette` | `1`: the client reads `cxpal_<id>.txt` palette files from your content and offers them as `ui.palette` choices (see [Palettes](#palettes)) |
 | `cx_cap_nuirender` | `1`: the `nui.<id>.*` render keys below apply. Live only while Alloy draws NUI, so a client with Alloy off never advertises it |
-| `cx_cap_modelview` | `9`: `@model:<key>` NUI images, cards and the held image draw a live model (see [Model views](#model-views)), live only while the knobs `nui.enabled` and `nui.modelview` are on. Older values are listed below |
+| `cx_cap_modelview` | `9`: `@model:<key>` NUI images, cards and the held image draw a live model (see [Model views](#model-views)), live only while Alloy draws and the knobs `nui.enabled` and `nui.modelview` are on, so a client with Alloy off never advertises it. Older values are listed below |
 | `cx_cap_heldimage` | `3`: the `held.image` policy key shows an image under the pointer (`nui.enabled`, `nui.heldimage`), with `held.opacity`, `held.dx` and `held.dy`, and takes `@model:<key>`. `2` held a `@model:` name and drew nothing. `1` drew it at a fixed 0.9 opacity, centred on the pointer |
 | `cx_cap_heldpick` | `2`: the `held.pick.<id>` and `held.confirm` keys show a pick at once (needs the NUI element hit test as well), with `held.pickopacity`. `1` showed a pick at a fixed 0.55 opacity |
 
@@ -511,8 +511,9 @@ window's own popups (an open combo list) are not in that frame.
 ## Model views
 
 `@model:<key>` as the name of a NUI image shows a copy of a creature as a live, animated, lit model on a transparent
-background, redrawn every frame into the image's own texture. NUI draws it like any other image. Send it only to a client
-that advertises `cx_cap_modelview`, and send the plain image (a portrait) to every other one.
+background, redrawn every frame by Alloy into the image's own texture. NUI draws it like any other image. Send it only to a
+client that advertises `cx_cap_modelview`, and send the plain image (a portrait) to every other one. Alloy draws a model
+view and nothing else does, so a client with Alloy off withdraws the capability and no model view draws there.
 
 The same name works as a card's image or icon and as the `held.image` value (see "Where it goes, and how many" below).
 

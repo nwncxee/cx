@@ -19,8 +19,8 @@ internal static class DbSelfCheck
     /// translation, so a wrong index is three valid indices naming the wrong factors: nothing throws and only
     /// the picture is wrong. This pins both ends of that seam to the GL enums.</summary>
     private static bool BlendIndices()
-        => Issue.BlendGl(DrawRecipe.BlendSrcAlpha) == Gl.SRC_ALPHA
-        && Issue.BlendGl(DrawRecipe.BlendInvSrcAlpha) == Gl.ONE_MINUS_SRC_ALPHA
+        => Issue.BlendGl(DrawRecipe.BlendSrcAlpha) == EngineTokens.SRC_ALPHA
+        && Issue.BlendGl(DrawRecipe.BlendInvSrcAlpha) == EngineTokens.ONE_MINUS_SRC_ALPHA
         && Issue.BlendGl(DrawRecipe.BlendOne) == 1u
         && Issue.BlendGl(AlloyCensus.BlendOne) == 1u;
 

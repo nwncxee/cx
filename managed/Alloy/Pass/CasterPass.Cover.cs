@@ -16,9 +16,11 @@ public sealed unsafe partial class CasterPass
 
     /// <summary>World -&gt; the cover view's clip space, as the layer was rendered. Zero when not fresh.</summary>
     internal static Matrix4x4 CoverVp;
+    /// <summary>The map's side: the sun array's.</summary>
+    internal static int CoverMapSize => _mapSize;
     /// <summary>The sun-array layer holding the map (the cascade count).</summary>
     internal static int CoverLayer => _cascades;
-    internal static bool CoverFresh => _coverStamp == _frameSeq && _gl.CascadeTex != 0;
+    internal static bool CoverFresh => _coverStamp == _frameSeq && !_vk.Cascades.IsNull;
     /// <summary>The world point the latched cover fit is centred on -- R2's wetness map dispatches over the
     /// map rect this window covers, and takes its z as the height its forward projection starts from.</summary>
     internal static Vector3 CoverCentre => _coverC;
@@ -34,7 +36,7 @@ public sealed unsafe partial class CasterPass
     /// exterior gate -- the array only exists past it, and an interior has no sky to fall from.</summary>
     private static void CoverPass(Vector3 focus, bool sun)
     {
-        if (!sun || !Weather.CoverWanted || !EnsureSun()) { CoverVp = default; return; }
+        if (!sun || !Weather.CoverWanted || !VkArmed) { CoverVp = default; return; }
         Vector3 dir = Weather.CoverDir;
         float radius = Weather.CoverRange.V, margin = radius;
         float slack = radius * CoverSlack;
@@ -48,7 +50,7 @@ public sealed unsafe partial class CasterPass
         // reads it as geometry, for where rain and snow stop, where a puddle may form and whether a grass
         // blade is sheltered -- and a simplified roof edge moves all three. Its fit is the whole
         // precipitation range, so its texels are coarse and nearly every caster would thin.
-        if (RenderView(_gl.DepthTex, _mapSize, CoverLayer, &vp, dir, c, radius, margin, point: false,
+        if (RenderView(CasterMap.SunStatic, _mapSize, CoverLayer, &vp, dir, c, radius, margin, point: false,
                        set: CasterGather.SetStatic, detail: false))
         {
             _coverBaked = true; _coverKeyVp = vp; _coverC = c; _coverCValid = true; _coverNew = true;
@@ -59,29 +61,8 @@ public sealed unsafe partial class CasterPass
 
     private static void CoverRelease() { _coverBaked = false; _coverCValid = false; _coverNew = false; CoverVp = default; Weather.EsmRelease(); }
 
-    /// <summary>After the layered flush landed this frame's bakes: a new cover map gets its filtered copy (Weather.Esm).</summary>
     /// <summary>The cover-edge knob moved: filter the held bake again at its new width.</summary>
     internal static void RefilterCover() { if (_coverBaked) _coverNew = true; }
 
-    private static void CoverFiltered()
-    {
-        if (!_coverNew) return;
-        _coverNew = false;
-        if (!CoverFresh) return;
-        if (Weather.WaterRoof.V)
-        {
-            // water is no caster, so the bake never saw it: stamp the frame's water batches into the layer as
-            // roofs over their beds, under the bake's own state (cull off, LEQUAL), before the filter reads it
-            Gl.BindFramebuffer(Gl.FRAMEBUFFER, _gl.Fbo);
-            Gl.FramebufferTextureLayer(Gl.FRAMEBUFFER, Gl.DEPTH_ATTACHMENT, _gl.DepthTex, 0, CoverLayer);
-            Gl.DrawBuffer(Gl.NONE); Gl.ReadBuffer(Gl.NONE);
-            Gl.Viewport(0, 0, _mapSize, _mapSize);
-            new PassState(depth: true, depthWrite: true, cull: false).Apply();
-            Gl.DepthFunc(Gl.LEQUAL);
-            Matrix4x4 vp = CoverVp;
-            AlloyRenderer.DrawWaterOccluders(&vp);
-        }
-        Weather.FilterCover(_gl.CascadeTex, CoverLayer, _mapSize, Weather.CoverRange.V);
-    }
     internal static string CoverStats() => $"cover {CoverBakes} bakes / {CoverHeld} held / {Weather.EsmBakes} filtered";
 }

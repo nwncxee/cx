@@ -69,17 +69,20 @@ public static class ServiceHost
         CommandRegistry.SelfCheck(log);   // registration/dispatch/enumeration proof, off-device
         ConfigFile.SelfCheck(log);   // the shared line walker, proven at the host
         ExtenderLog.SelfCheck(log);   // the disabled log evaluates nothing, the enabled one reaches the file
-        CX.Graphics.BindlessLedger.SelfCheck(log);   // each AMD-strict bindless rule fires on its breach, not on the legal sequence
         CX.Graphics.VulkanToolchain.SelfCheck(log);   // the staged shaderc and the machine's loader, off-device only
         CX.Graphics.Rhi.VkBackend.SelfCheck(log);   // the pilot's stages compile for Vulkan with GL's bindings shifted apart
         CX.Graphics.Rhi.VkGlsl.SelfCheck(log);   // the GL-to-Vulkan GLSL rules on fixtures, and the std140 reflection
+        CX.Alloy.ShaderBinary.SelfCheck(log);   // a content SPIR-V .shd is validated, and GLSL text is never read as one
         CX.Alloy.VkPrograms.SelfCheck(log);   // the batch pass's programs translate and compile for Vulkan
-        CX.Graphics.ProgramBinary.SelfCheck(log);   // the program-binary cache key: every stage's text, its type, the driver
+        CX.Alloy.AlloyRenderer.VkDeferredSelfCheck(log);   // ...and the deferred path's three compute stages, on bindings the host binds
         CX.Rhi.RhiSelfCheck.Run(log);   // handles, the command arena's round trip and growth, format traits
-        CX.Alloy.VkParity.SelfCheck(log);   // the Vulkan A/B's comparator, against hand-worked differences
+        CX.Alloy.AlloyRenderer.VkDecalSelfCheck(log);   // the Vulkan decal layer's targets, blends and clear against GL's
+        CX.Alloy.AlloyRenderer.VkWaterSelfCheck(log);   // the Vulkan water class's snapshot pair and its filtered reads
+        CX.Alloy.GrassField.VkSelfCheck(log);   // the Vulkan grass stages read the scatter's records by instance, not a vertex stream
+        CX.Alloy.AlloyRenderer.VkIdSelfCheck(log);   // the Vulkan prepass's vis-ID slot against the stages that write it
         CX.Alloy.VkTextures.SelfCheck(log);   // the GL tokens an owned texture is stored in, as the formats and sampler Vulkan mirrors
-        CX.Graphics.Rhi.VkUniformShim.SelfCheck(log);   // GL's uniform setters land in a Vulkan block at the members' offsets
-        CX.Graphics.Rhi.GlFormats.SelfCheck(log);   // the seam's formats against the GL headers' token values
+        CX.Graphics.Rhi.LooseBlock.SelfCheck(log);   // a loose uniform lands at its member's std140 offset
+        CX.Alloy.GpuGolden.SelfCheck(log);   // ...and the three goldens that have to run on a GPU: the lightmap encoder, the G-buffer lanes, parallax
         Settings.SelfCheck(log);   // the prefixed read leaves no probe behind
         KnobSurface.Register();
         EngineLayout.SelfCheck(log);   // the three resolution forms, the counter, and a probe that fires
@@ -91,6 +94,7 @@ public static class ServiceHost
         CX.Ui.TextStyle.SelfCheck(log);   // per-element text rows + the batch's halos-under-bodies run
         CX.Ui.LoadScreen.SelfCheck(log);   // the two load sources as one monotonic bar
         CX.Alloy.GuiContent.SelfCheck(log);   // the engine's content-stage prologue, m_texture, the pair key
+        CX.Alloy.GuiPassVk.SelfCheck(log);   // the GUI and content programs translate for Vulkan, their blocks at the laid-out offsets
         foreach (IExtenderService service in all)
         {
             try { service.Initialize(log, hooks); }

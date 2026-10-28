@@ -113,14 +113,15 @@ public static unsafe partial class MeshArena
     {
         internal float[] Mirror = Array.Empty<float>();
         internal int Used, Uploaded, Capacity, Dead;
-        internal uint Vbo, Vao;
+        /// <summary>Both this format's vertex buffer and the shared element buffer are uploaded: the section's
+        /// geometry is on the device and a range in it can be drawn.</summary>
+        internal bool Resident;
         internal bool Full;
     }
 
     private static Section[] _sect = NewSections();
     private static ushort[] _iMirror = Array.Empty<ushort>();
     private static int _iUsed, _iUploaded, _iCapacity, _iDead;
-    private static uint _ebo;
     private static bool _elementsFull;
 
     private static readonly List<int> _pendingFree = new();
@@ -136,8 +137,7 @@ public static unsafe partial class MeshArena
     internal static Action<int[], int>? RangesMoved;
     private static int _acquired, _freed, _refused, _compactions, _logLeft = LogCap;
     private static readonly int[] _refusedBy = new int[RefusalName.Length];
-    private static int _overReleased, _heldPastEviction, _collisions, _staleKeys, _unqueued, _glDeferred;
-    private static bool _saidDeferred, _dumped;
+    private static int _overReleased, _heldPastEviction, _collisions, _staleKeys, _unqueued;
     /// <summary>Meshes whose normals came from the parse (<see cref="MeshDef.Normals"/>, already welded and
     /// smoothing-group aware) and meshes that had none -- the arena's half of finding 11: the weld runs once
     /// per distinct mesh at the parse, never once per part at enrolment.</summary>
@@ -150,12 +150,13 @@ public static unsafe partial class MeshArena
     // ---------------------------------------------------------------- the published snapshot
 
     /// <summary>What a draw reads, published as ONE immutable array at every edge that can move geometry (a
-    /// new range, a free, a compaction, a VAO build, a context loss). The render thread reads this without a
+    /// new range, a free, a compaction, an upload, a device loss). The render thread reads this without a
     /// lock while the game thread acquires and releases under <see cref="_gate"/>; nothing a reader holds is
     /// ever written in place (finding 8).</summary>
     private sealed class Pub
     {
-        internal readonly uint Vao;
+        /// <summary>The section this range lives in has its geometry on the device.</summary>
+        internal readonly bool Resident;
         internal readonly int Base, Cnt0, Cnt1, Cnt2;
         internal readonly nint Off0, Off1, Off2;
         internal readonly Vector3 BMin, BMax, Center;
@@ -163,10 +164,12 @@ public static unsafe partial class MeshArena
         internal readonly bool Live;
         /// <summary>The tenant's identity: <see cref="Sig"/> of its content and hand-out generation.</summary>
         internal readonly ulong Sig;
+        /// <summary>The vertex layout the range lives in, which is what a caller binds buffers by.</summary>
+        internal readonly Fmt Format;
 
-        internal Pub(in Range r, uint vao)
+        internal Pub(in Range r, bool resident)
         {
-            Vao = vao; Base = r.Base; Sig = MeshArena.Sig(r.Content, (uint)r.Gen);
+            Resident = resident; Base = r.Base; Sig = MeshArena.Sig(r.Content, (uint)r.Gen); Format = r.Format;
             Cnt0 = r.Cnt0; Cnt1 = r.Cnt1; Cnt2 = r.Cnt2;
             Off0 = r.Off0; Off1 = r.Off1; Off2 = r.Off2;
             BMin = r.BMin; BMax = r.BMax; Center = r.Center; Radius = r.Radius;
@@ -190,12 +193,12 @@ public static unsafe partial class MeshArena
             Array.Copy(_pub, grown, _pub.Length);
             _pub = grown;
         }
-        _pub[id] = _ranges[id].Live ? new Pub(in _ranges[id], _sect[(int)_ranges[id].Format].Vao) : null;
+        _pub[id] = _ranges[id].Live ? new Pub(in _ranges[id], _sect[(int)_ranges[id].Format].Resident) : null;
         _epoch++;
     }
 
-    /// <summary>Republish every range: the edges that move geometry wholesale (a compaction, a VAO build, a
-    /// context loss). Under <see cref="_gate"/>.</summary>
+    /// <summary>Republish every range: the edges that move geometry wholesale (a compaction, an upload, a
+    /// device loss). Under <see cref="_gate"/>.</summary>
     private static void Publish()
     {
         if (_rangeHigh > _pub.Length)
@@ -205,7 +208,7 @@ public static unsafe partial class MeshArena
             _pub = new Pub?[cap];
         }
         for (int i = 1; i < _pub.Length; i++)
-            _pub[i] = i < _rangeHigh && _ranges[i].Live ? new Pub(in _ranges[i], _sect[(int)_ranges[i].Format].Vao) : null;
+            _pub[i] = i < _rangeHigh && _ranges[i].Live ? new Pub(in _ranges[i], _sect[(int)_ranges[i].Format].Resident) : null;
         _epoch++;
     }
 
@@ -262,8 +265,9 @@ public static unsafe partial class MeshArena
         }
     }
 
-    /// <summary>The VAO over <paramref name="f"/>'s section, zero until the first mesh lands in this context.</summary>
-    internal static uint Vao(Fmt f) => _sect[(int)f].Vao;
+    /// <summary>Is <paramref name="f"/>'s section on the device? False until the first mesh in that format
+    /// has been uploaded.</summary>
+    internal static bool Resident(Fmt f) => _sect[(int)f].Resident;
 
     // ---------------------------------------------------------------- acquire
 
@@ -656,16 +660,15 @@ public static unsafe partial class MeshArena
         return r != null && r.Live ? r.Sig : 0;
     }
 
-    /// <summary>What one draw needs: the VAO for the range's format, its base vertex, and the index BYTE
-    /// offset and count at <paramref name="lod"/>, falling back to the finest level that exists. False means
-    /// the range is gone, empty, or the arena has not been uploaded in this context yet.</summary>
-    internal static bool Draw(int range, int lod, out uint vao, out int baseVertex, out nint off, out int count, out int level)
+    /// <summary>What one draw needs: the range's base vertex, and the index BYTE offset and count at
+    /// <paramref name="lod"/>, falling back to the finest level that exists. False means the range is gone,
+    /// empty, or its section has not been uploaded to the device yet.</summary>
+    internal static bool Draw(int range, int lod, out int baseVertex, out nint off, out int count, out int level)
     {
-        vao = 0; baseVertex = 0; off = 0; count = 0; level = 0;
+        baseVertex = 0; off = 0; count = 0; level = 0;
         Pub?[] pub = _pub;
         Pub? r = (uint)range < (uint)pub.Length ? pub[range] : null;
-        if (r == null || r.Vao == 0) return false;
-        vao = r.Vao;
+        if (r == null || !r.Resident) return false;
         baseVertex = r.Base;
         if (lod >= 2 && r.Cnt2 > 0) { off = r.Off2; count = r.Cnt2; level = 2; return true; }
         if (lod >= 1 && r.Cnt1 > 0) { off = r.Off1; count = r.Cnt1; level = 1; return true; }
@@ -673,7 +676,7 @@ public static unsafe partial class MeshArena
         return r.Cnt0 > 0;
     }
 
-    /// <summary>The index runs alone, for a caller that has already picked its VAO. Same LOD fallback as
+    /// <summary>The index runs alone, for a caller that has already bound its buffers. Same LOD fallback as
     /// <see cref="Draw"/>, and the same lock-free snapshot read.</summary>
     internal static bool Runs(int range, int lod, out int baseVertex, out nint off, out int count, out int level)
     {
@@ -722,33 +725,11 @@ public static unsafe partial class MeshArena
     // ---------------------------------------------------------------- the frame edge
 
     /// <summary>Collect the frame's frees, compact if the dead bytes have piled up, and push both mirrors to
-    /// the GPU. Render thread, inside Alloy's GL bracket, once a frame before the batches are built.</summary>
+    /// the GPU. Inside Alloy's frame, once a frame before the batches are built.</summary>
     internal static void Pump()
     {
-        // The CPU half runs wherever the caller is: frees and the readers' snapshot touch no GL.
+        // The CPU half runs wherever the caller is: frees and the readers' snapshot touch no GPU object.
         lock (_gate) { if (DrainFrees()) Publish(); }
-        if (Gl.CreateBuffers == null) return;
-        // The GL half may ONLY run with Alloy's 4.6 context current. Buffers are share-listed with the
-        // engine's context, but a VERTEX ARRAY OBJECT is a container and is never shared -- so a VAO built
-        // on the game thread at the present boundary (where the ENGINE's context is current) is a name the
-        // 4.6 context does not know, and every draw that binds it rasterises nothing. That is exactly what
-        // DB mode hit: the feed pumps at the boundary, the VAO was built there, `s.Vao != 0` from then on,
-        // and the in-bracket pump never rebuilt it. Deferred and SAID, never done in the wrong context.
-        if (!GlContextService.Inside)
-        {
-            _glDeferred++;
-            if (!_saidDeferred)
-            {
-                _saidDeferred = true;
-                _log?.Info("MeshArena: a pump arrived outside Alloy's 4.6 bracket -- its GL half is deferred to "
-                         + "the next in-bracket pump (a VAO is not shared between contexts)");
-            }
-            return;
-        }
-        // An in-bracket pump clears the deferral tally: the feed pumps at the present boundary every frame
-        // BY DESIGN, so a running count of those would read as a fault. What matters is a deferral with no
-        // in-bracket pump after it, which is the state that leaves the arena unuploaded.
-        _glDeferred = 0;
         lock (_gate)
         {
             bool changed = false;
@@ -757,12 +738,6 @@ public static unsafe partial class MeshArena
                 compact = _sect[f].Dead > MaxVerts / 4 || (_sect[f].Full && _sect[f].Dead > 0);
             if (compact) { Compact(); changed = true; }
 
-            for (int f = 0; f < Formats; f++)
-            {
-                Section s = _sect[f];
-                if (s.Used > 0 && s.Uploaded != s.Used) UploadVerts(s, StrideOf[f]);
-            }
-            if (_iUsed > 0 && _iUploaded != _iUsed) UploadIndices();
             // CX-120 seam-anim: the dangly and animmesh ranges whose vertices moved on the game thread
             // (MeshArena.Dyn.cs). Inside the same bracket and under the same lock as every other upload.
             PumpVk();
@@ -770,10 +745,10 @@ public static unsafe partial class MeshArena
             for (int f = 0; f < Formats; f++)
             {
                 Section s = _sect[f];
-                if (s.Vao == 0 && s.Vbo != 0 && _ebo != 0) { BuildVao(s, (Fmt)f); changed = true; }
+                bool t = VkResident((Fmt)f);
+                if (s.Resident != t) { s.Resident = t; changed = true; }
             }
             if (changed) Publish();
-            if (changed) Dump();
         }
     }
 
@@ -917,9 +892,9 @@ public static unsafe partial class MeshArena
             for (int f = 0; f < Formats; f++)
             {
                 Section s = _sect[f];
-                s.Vao = 0; s.Vbo = 0; s.Uploaded = 0; s.Capacity = 0;
+                s.Resident = false; s.Uploaded = 0; s.Capacity = 0;
             }
-            _ebo = 0; _iUploaded = 0; _iCapacity = 0;
+            _iUploaded = 0; _iCapacity = 0;
             Publish();
         }
     }
@@ -977,73 +952,6 @@ public static unsafe partial class MeshArena
         return true;
     }
 
-    /// <summary>By NAME, touching no binding; a grow respecifies under the same name, so the VAO over it stays
-    /// valid.</summary>
-    private static void UploadVerts(Section s, int stride)
-    {
-        if (s.Vbo == 0) { uint b; Gl.CreateBuffers(1, &b); if (b == 0) return; s.Vbo = b; s.Uploaded = 0; s.Capacity = 0; }
-        if (s.Uploaded < s.Used && s.Capacity >= s.Used)
-        {
-            fixed (float* p = s.Mirror.AsSpan(checked((int)((long)s.Uploaded * stride))))
-                Gl.NamedBufferSubData(s.Vbo, (IntPtr)((long)s.Uploaded * stride * 4),
-                                      (IntPtr)((long)(s.Used - s.Uploaded) * stride * 4), p);
-        }
-        else
-        {
-            s.Capacity = s.Mirror.Length / stride;
-            fixed (float* p = s.Mirror)
-                Gl.NamedBufferData(s.Vbo, (IntPtr)((long)s.Mirror.Length * 4), p, Gl.STATIC_DRAW);
-        }
-        s.Uploaded = s.Used;
-    }
-
-    private static void UploadIndices()
-    {
-        if (_ebo == 0) { uint b; Gl.CreateBuffers(1, &b); if (b == 0) return; _ebo = b; _iUploaded = 0; _iCapacity = 0; }
-        if (_iUploaded < _iUsed && _iCapacity >= _iUsed)
-        {
-            fixed (ushort* p = _iMirror.AsSpan(_iUploaded))
-                Gl.NamedBufferSubData(_ebo, (IntPtr)((long)_iUploaded * 2), (IntPtr)((long)(_iUsed - _iUploaded) * 2), p);
-        }
-        else
-        {
-            _iCapacity = _iMirror.Length;
-            fixed (ushort* p = _iMirror)
-                Gl.NamedBufferData(_ebo, (IntPtr)((long)_iCapacity * 2), p, Gl.STATIC_DRAW);
-        }
-        _iUploaded = _iUsed;
-    }
-
-    /// <summary>ONE VAO per format: the arena carries every stream a stage reads, so there is nothing per mesh
-    /// to vary. Built by name, so the draw loops' bound-VAO latch is never disturbed.</summary>
-    private static void BuildVao(Section s, Fmt f)
-    {
-        uint vao; Gl.CreateVertexArrays(1, &vao);
-        if (vao == 0) return;
-        int bytes = StrideBytes(f);
-        VertexArrays.Bind(vao, AlloyRenderer.LocPos, new VertexStream { Buf = s.Vbo, Size = 3, Type = Gl.FLOAT, Stride = bytes, Off = 0 });
-        VertexArrays.Bind(vao, AlloyRenderer.LocNrm, new VertexStream { Buf = s.Vbo, Size = 3, Type = Gl.FLOAT, Stride = bytes, Off = 12 });
-        VertexArrays.Bind(vao, AlloyRenderer.LocUv, new VertexStream { Buf = s.Vbo, Size = 2, Type = Gl.FLOAT, Stride = bytes, Off = 24 });
-        VertexArrays.Bind(vao, MeshChart.LocChartUv, new VertexStream { Buf = s.Vbo, Size = 2, Type = Gl.FLOAT, Stride = bytes, Off = 32 });
-        // The two packed words, both NORMALIZED: the tangent's lanes arrive as a vec4 in -1..1 with the
-        // handedness in w, the paint's four bytes as a vec4 in 0..1 in r,g,b,a order.
-        VertexArrays.Bind(vao, AlloyRenderer.LocTangent, new VertexStream
-        { Buf = s.Vbo, Size = 4, Type = Gl.INT_2_10_10_10_REV, Stride = bytes, Off = TanWord(f) * 4, Norm = 1 });
-        VertexArrays.Bind(vao, AlloyRenderer.LocPaint, new VertexStream
-        { Buf = s.Vbo, Size = 4, Type = Gl.UNSIGNED_BYTE, Stride = bytes, Off = PaintWord(f) * 4, Norm = 1 });
-        for (uint k = 0; CarriesUvSets(f) && k < 3; k++)
-            VertexArrays.Bind(vao, AlloyRenderer.LocUvSet1 + k, new VertexStream
-            { Buf = s.Vbo, Size = 2, Type = Gl.FLOAT, Stride = bytes, Off = (UvSetWord(f) + 2 * (int)k) * 4 });
-        if (IsSkinned(f))
-        {
-            // location 8 is a vec4 in the shader: UNSIGNED_BYTE with normalize OFF converts 0..255 to 0.0..255.0
-            VertexArrays.Bind(vao, AlloyRenderer.LocBoneIdx, new VertexStream { Buf = s.Vbo, Size = 4, Type = Gl.UNSIGNED_BYTE, Stride = bytes, Off = 40 });
-            VertexArrays.Bind(vao, AlloyRenderer.LocBoneW, new VertexStream { Buf = s.Vbo, Size = 4, Type = Gl.FLOAT, Stride = bytes, Off = 44 });
-        }
-        Gl.VertexArrayElementBuffer(vao, _ebo);
-        s.Vao = vao;
-    }
-
     // ---------------------------------------------------------------- report
 
     /// <summary>One clause of the <c>[alloy]</c> period line: the distinct meshes held, the parts they serve,
@@ -1070,44 +978,9 @@ public static unsafe partial class MeshArena
                + (_staleKeys > 0 ? $", {_staleKeys} stale keys swept" : "")
                + (_unqueued > 0 ? $", {_unqueued} UNQUEUED zero-ref ranges reclaimed" : "")
                + (_movedTotal > 0 ? $", {_movedTotal} range(s) moved by a compaction (records refreshed)" : "")
-               + (_glDeferred > 0 ? $", {_glDeferred} pump(s) STILL DEFERRED (no in-bracket pump since)" : "")
                + DynStats();
     }
 
-    /// <summary>One-shot proof that the VAO the draw binds is the one this arena built, in THIS context:
-    /// every attribute's enable/size/type/stride/offset/buffer, the element binding, and both buffers' sizes.
-    /// A context mismatch shows up here as zeros on every row -- the name resolves to nothing.</summary>
-    private static void Dump()
-    {
-        if (_dumped || _log == null || Gl.GetVertexArrayiv == null || Gl.GetVertexAttribiv == null) return;
-        _dumped = true;
-        int prevVao = 0;
-        Gl.GetIntegerv(Gl.VERTEX_ARRAY_BINDING, &prevVao);
-        for (int f = 0; f < Formats; f++)
-        {
-            Section s = _sect[f];
-            if (s.Vao == 0) continue;
-            int elem = 0;
-            Gl.GetVertexArrayiv(s.Vao, Gl.ELEMENT_ARRAY_BUFFER_BINDING, &elem);
-            Gl.BindVertexArray(s.Vao);
-            string rows = "";
-            foreach (uint loc in new uint[] { 0, 1, 2, 3, 4, 5, 8, 9 })
-            {
-                int en = 0, sz = 0, ty = 0, st = 0, bf = 0;
-                Gl.GetVertexAttribiv(loc, Gl.VERTEX_ATTRIB_ARRAY_ENABLED, &en);
-                if (en == 0) continue;
-                Gl.GetVertexAttribiv(loc, Gl.VERTEX_ATTRIB_ARRAY_SIZE, &sz);
-                Gl.GetVertexAttribiv(loc, Gl.VERTEX_ATTRIB_ARRAY_TYPE, &ty);
-                Gl.GetVertexAttribiv(loc, Gl.VERTEX_ATTRIB_ARRAY_STRIDE, &st);
-                Gl.GetVertexAttribiv(loc, Gl.VERTEX_ATTRIB_ARRAY_BUFFER_BINDING, &bf);
-                void* ptr; Gl.GetVertexAttribPointerv(loc, Gl.VERTEX_ATTRIB_ARRAY_POINTER, &ptr);
-                rows += $" [{loc}]size={sz} type=0x{ty:x} stride={st} off={(nint)ptr} buf={bf}";
-            }
-            _log.Always($"MeshArena: [vaodump] fmt={(Fmt)f} vao={s.Vao} vbo={s.Vbo} ebo={_ebo} elemBinding={elem} "
-                      + $"verts={s.Used} uploaded={s.Uploaded} indices={_iUsed}{rows}");
-        }
-        Gl.BindVertexArray((uint)prevVao);
-    }
 
     /// <summary>The arena's GPU bytes, in the biggest unit that still reads as a number.</summary>
     private static string Size() => Bytes(VramBytes);
@@ -1141,7 +1014,7 @@ public static unsafe partial class MeshArena
             _sect = NewSections();
             _iMirror = Array.Empty<ushort>();
             _iUsed = _iUploaded = _iCapacity = _iDead = 0;
-            _ebo = 0; _elementsFull = false;
+            _elementsFull = false;
             _acquired = _freed = _refused = _compactions = _overReleased = _heldPastEviction = 0;
             _collisions = _weldedFromParse = _noNormals = _staleKeys = _unqueued = 0;
             _movedN = 0; _movedTotal = 0;
@@ -1165,11 +1038,11 @@ public static unsafe partial class MeshArena
         lock (_gate) { DrainFrees(); Compact(); Publish(); }
     }
 
-    /// <summary>Pretend a format's VAO exists, for an off-device check of a caller whose gate is the VAO
-    /// name. No GL is involved and nothing draws.</summary>
-    internal static void FakeVaoForCheck(Fmt f, uint name)
+    /// <summary>Pretend a format's section is on the device, for an off-device check of a caller whose gate
+    /// is residency. No device is involved and nothing draws.</summary>
+    internal static void FakeResidentForCheck(Fmt f)
     {
-        lock (_gate) { _sect[(int)f].Vao = name; Publish(); }
+        lock (_gate) { _sect[(int)f].Resident = true; Publish(); }
     }
 
     /// <summary>Where <paramref name="range"/> sits, for the self-check's compaction assertions.</summary>
@@ -1205,12 +1078,6 @@ public static unsafe partial class MeshArena
 
 internal static class MeshArenaDraw
 {
-    /// <summary>The VAO <paramref name="range"/> actually draws from. A SKINNED range lives in its own
-    /// section with the bone streams at locations 8 and 9, so a caller that latched the static format's VAO
-    /// for every record would pull a skinned mesh's vertices through it. 0 = not resident.</summary>
-    internal static uint VaoOf(int range)
-        => MeshArena.Draw(range, 0, out uint vao, out _, out _, out _, out _) ? vao : 0u;
-
     /// <summary>Range <paramref name="range"/>'s draw arguments at LOD <paramref name="lod"/>: the index
     /// count, the byte offset into the shared element buffer and the base vertex. False when the range is not
     /// resident or has no geometry -- a counted refusal the feed re-asks next frame, never a silent hole.</summary>

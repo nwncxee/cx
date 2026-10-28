@@ -92,7 +92,7 @@ public sealed unsafe partial class CasterPass : IExtenderService
     private static int _cascadeStamp = -1, _cubeStamp = -1;
 
     private static ExtenderLog? _log;
-    private static bool _armed, _disarmed;
+    private static bool _armed;
     private static uint* _primTable;
 
     // --- lifecycle + diagnostics
@@ -100,27 +100,16 @@ public sealed unsafe partial class CasterPass : IExtenderService
     private static bool _loggedOnce, _noSunLogged;
     private static int _frames;
     private static long _mdiCalls;
-    /// <summary>CPU ticks the bake's own 4.6 context bracket costs, printed on the period line. The view's
-    /// bracket is open by the time the bake runs (ADR 0032), so this pair is a depth bump and the figure
-    /// reads ~0; it stays because the view's draw runs its passes even when the view's own Enter was
-    /// refused, which makes each pass its own gate. A non-zero figure is that case happening.</summary>
-    private static long _ctxTicks, _ctxFrames;
+    /// <summary>Local light cubes baked, summed over the period: the period line prints the per-frame mean
+    /// against the number of cubes the budget holds.</summary>
     private static long _cubeLightsSum;
 
     /// <summary>Views rendered on the last frame -- the views the re-bake predicate found STALE, not every
     /// view the budget holds (<c>/shadow rebake 0</c> puts it back to all of them) -- plus the CPU
-    /// milliseconds the shadow slot took. Those are CPU SUBMISSION only; <see cref="CasterGlState.QShadow"/> measures the
-    /// GPU side.</summary>
+    /// milliseconds the shadow slot took. CPU SUBMISSION only; the bake's GPU time is inside the Vulkan
+    /// frame's own figure on the <c>[vkgpu]</c> line.</summary>
     internal static int LastViews;
     internal static float LastShadowMs;
-    /// <summary>The period's average bake GPU time, for the [alloy] gpu total.</summary>
-    internal static double ShadowGpuMs => _gl.QShadow.Measured ? _gl.QShadow.Avg / 1e6 : 0.0;
-    /// <summary>The same meter's running totals, for a caller taking its OWN window rather than the period's
-    /// -- <c>/alloy bench</c>, whose steps are far shorter than a period line. The bake is the one GPU cost
-    /// that is not a <see cref="AlloyRenderer.GpuTerm"/>, and <c>lightmap.movers</c> moves it (the pair
-    /// tiles), so a bench step blind to it cannot split what that knob removes.</summary>
-    internal static ulong ShadowGpuSum => _gl.QShadow.Sum;
-    internal static int ShadowGpuN => _gl.QShadow.N;
     private static long _viewSum;
 
     public void Initialize(ExtenderLog log, HookService hooks)
@@ -224,7 +213,7 @@ public sealed unsafe partial class CasterPass : IExtenderService
     /// did not change. Everything below runs inside the GL bracket.</summary>
     public static void OnPassSlot()
     {
-        if (!_armed || _disarmed) return;
+        if (!_armed) return;
         _frameSeq++;   // before the early-outs: a frame that renders nothing must READ as stale, not as fresh
         // The overlay's view readout describes THIS frame, so it has to be zeroed ahead of every early-out
         // below -- a frozen count left over from the last frame that rendered reads as a pass still baking.
@@ -240,7 +229,7 @@ public sealed unsafe partial class CasterPass : IExtenderService
         // AFTER the period line, which reports it: zeroing the timing ahead of Lifecycle made every period
         // line read 0.00 ms, since the frame's own measurement lands further down.
         LastShadowMs = 0f;
-        if (!AlloyGate.Alloy || !GameGate.InModule || !GlContextService.Available) return;
+        if (!AlloyGate.Alloy || !GameGate.InModule || !FramePump.Available) return;
         // #302: no enrollment of its own. The population is Alloy's ownership table, scanned on Alloy's
         // cadence -- there is one scan now (#304 deleted the ShadowEnroll zone that separated the two).
         // An empty table is not "nothing to do": whatever was casting last frame has stopped, and leaving
@@ -288,36 +277,23 @@ public sealed unsafe partial class CasterPass : IExtenderService
         // it is the feed this pass reads. The camera fallback stands if that walk ever moves in here.
         Vector3 focus = FrameInputs.HasFocus ? FrameInputs.Focus : FrameInputs.CameraPos;
 
-        // An Enter failure must not leave the flag promising an upload that never happened -- the colour
-        // build would then skip BOTH the solve and the upload and skin against last frame's GPU block.
-        // Normally a depth bump: the world view's bracket is open (ADR 0032), and a real switch here means
-        // the view's own Enter was refused -- _ctxTicks on the period line is what says which.
-        long tCtx = System.Diagnostics.Stopwatch.GetTimestamp();
-        bool entered = GlContextService.Enter();
-        _ctxTicks += System.Diagnostics.Stopwatch.GetTimestamp() - tCtx;
-        if (!entered) { AlloyRenderer.PosedByShadow = false; return; }
-        AlloyRenderer.Step("shadow bracket: the pose upload");
-        AlloyRenderer.ShadowPoseUpload();   // the GL half of ShadowPose above: this frame's bones, uploaded
-        AlloyRenderer.Step("shadow bracket: dead handles and the bake's handle upload");
+        AlloyRenderer.Step("shadow bracket: dead handles");
         OwnedTextures.DropDeadHandles();        // the colour drain is AFTER this bracket; textures die on area load before both
-        Issue.UploadHandlesForBake();   // a handle dropped since the last colour upload must not be sampled below
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
-        _gl.QShadowOn = _gl.QShadow.Begin(Gl.TIME_ELAPSED);
         // #286: ONE staging for the whole frame, after the bones (the skin drop is a per-frame fact) and
         // inside the bracket (the mask resolve issues Alloy's texture copy). Every view below is then a
         // uniform block and a dispatch. Stand it down first: a frame that does not stage must not leave the
         // last frame's records armed, which would bake a world that has since moved.
-        CasterGather.Stand();
+        CasterGatherVk.Stand();
         _gStaged = false;
         _qN = 0;
+        // the Vulkan bake's own recording for this frame, which the colour frame appends ahead of its passes
+        bool onVk = VkBegin(_log!);
         ReceiverFrame();
         if (sun || (_cubeLights > 0 && FrameInputs.LocalLightCount > 0) || (sun && Weather.CoverWanted) || LightmapBake.WantsGather)
         {
             AlloyRenderer.Step("shadow bracket: caster programs and the gather staging");
-            if (EnsureCommon() && CasterGather.Ensure()) { EnsureLayered(); EnsureHandleMask(); _gStaged = GatherStage(); }
-            // #303: the compute dispatch is the ONLY selection path. A program that can never build would
-            // otherwise idle here forever with the engine's stencil shadows already suppressed.
-            else if (CasterGather.Failed) Disarm("the caster gather dispatch failed to build");
+            if (onVk) _gStaged = GatherStage();
         }
         // #282: the blanket invalidate is read by BOTH passes and cleared by the cube scan, so it is snapshot
         // once here -- FrameGraph decides the order of the two, and whichever ran second would otherwise miss it.
@@ -331,10 +307,13 @@ public sealed unsafe partial class CasterPass : IExtenderService
             switch (id)
             {
                 case PassId.SunCascades:
-                    if (sun && EnsureSun()) SunPass(focus);
+                    // on Vulkan the arrays are the bake's own, made at the first view that names one
+                    if (!sun) break;
+                    if (onVk) SunPass(focus);
                     break;
                 case PassId.LocalLightCubes:
-                    if (_cubeLights > 0 && FrameInputs.LocalLightCount > 0 && EnsureCubes()) CubePass(focus);
+                    if (_cubeLights <= 0 || FrameInputs.LocalLightCount <= 0) break;
+                    if (onVk) CubePass(focus);
                     break;
                 case PassId.RainCover:
                     CoverPass(focus, sun);
@@ -344,6 +323,8 @@ public sealed unsafe partial class CasterPass : IExtenderService
                     break;
             }
         }
+        // the lightmap bake's static cubes for this frame's light steps, queued with the frame's own views
+        if (onVk && _gStaged) LightmapBake.VkQueueCubes();
         // #307: the queued stale views flush in one layered pass per target, HERE -- the publish arrays the
         // passes wrote above assumed the bakes land. A failed flush publishes nothing for the frame instead:
         // the receiver samples no maps (a one-frame blink, never a lie) and the blanket re-bakes from scratch.
@@ -356,31 +337,14 @@ public sealed unsafe partial class CasterPass : IExtenderService
             PairShadows.Stand();   // the pair tiles never landed either: no light may be read as paired this frame
             _invalidate = true; _sunScanned = false; _cubeScanned = false;
         }
-        else if (_gStaged && _gl.Fbo != 0)
-        {   // #196: the combined (no-split) static layer, or the dynamic mirror -- never both, or the frozen
-            // static copy and the live one compose into a double shadow
-            Gl.Enable(Gl.DEPTH_CLAMP);
-            GrassField.DrawShadows(_gl.Fbo, _gl.DepthTex, _mapSize, _sunRebaked, CascadeCount);
-            GrassField.DrawShadows(_gl.Fbo, _gl.SunDynTex, _mapSize, _sunDynRebaked, CascadeCount);
-        }
-        CoverFiltered();
-        SkyBaked();
-        Array.Clear(_sunRebaked); Array.Clear(_sunDynRebaked);
         // ...and only now may the frame's invalidation be consumed: every pass that ran reached every one of
         // its views, so each of them recorded this frame's movers against its own slots.
         if ((_sunRan || _cubeRan) && (!_sunRan || _sunScanned) && (!_cubeRan || _cubeScanned))
         { _invalidate = false; _rxPending = false; }
         // #303: the culled-vs-drawn sample -- a latent copy of the last view's survivor counts, read back
         // frames later, so the figure reaches the period line without a readback on the draw path.
-        CasterGather.Sample();
-        if (_gl.QShadowOn) { _gl.QShadow.End(Gl.TIME_ELAPSED); _gl.QShadowOn = false; }
         LastShadowMs = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000f / System.Diagnostics.Stopwatch.Frequency;
         _viewSum += LastViews;
-        Gl.Disable(Gl.DEPTH_CLAMP);
-        tCtx = System.Diagnostics.Stopwatch.GetTimestamp();
-        GlContextService.Leave();
-        _ctxTicks += System.Diagnostics.Stopwatch.GetTimestamp() - tCtx;
-        _ctxFrames++;
     }
 
     /// <summary>Cold diagnostic, once per period: the six widest live casters by stored sphere, and how many live
@@ -410,15 +374,14 @@ public sealed unsafe partial class CasterPass : IExtenderService
     }
     private static int _coverFreshFrames, _cascFreshFrames;
 
-    /// <summary>Module unload, a PartTable wipe and a lost 4.6 context all invalidate every recorded
+    /// <summary>Module unload, a PartTable wipe and a lost render device all invalidate every recorded
     /// identity wholesale; the period line is the only evidence the pass runs at all. This runs from the pass
     /// slot, which need not fire outside a module, so TableGen is the load-bearing edge: DrawFunnelService
     /// ticks from the present unconditionally and wipes on module unload.</summary>
     private static void Lifecycle()
     {
-        if (!GlContextService.Available) Release("4.6 context lost");
-        if (_was.Available && !GlContextService.Available) { ContextLost(); CasterGather.ContextLost(); }
-        _was.Available = GlContextService.Available;
+        if (!FramePump.Available) Release("render device lost");
+        _was.Available = FramePump.Available;
         bool inModule = GameGate.InModule;
         if (_was.InModule && !inModule) Release("module unload");
         _was.InModule = inModule;
@@ -444,7 +407,7 @@ public sealed unsafe partial class CasterPass : IExtenderService
                    $"{_cubeDynSize}px = {_cubeDynPages * CubeFaces * (long)_cubeDynSize * _cubeDynSize * 4 / (1024 * 1024)} MB " +
                    $"beside the static array's {_cubeLights * CubeFaces * (long)_cubeSize * _cubeSize * 4 / (1024 * 1024)} MB) " +
                    // CX-188 step 4: the tiles that stood in for those pages; PairShadows.Stats says over how
-                   // many lights, and PairDebt.Stats what the screen-space debt then cost.
+                   // many lights.
                    (_pairBakedTiles > 0 ? $"({(float)_pairBakedTiles / _frames:F1} pair tiles BAKED/frame) " : "") +
                    $"(sun {(float)_sunBakedViews / _frames:F1} re-baked, " +
                    $"{(float)_sunSkippedViews / _frames:F1} skipped" +
@@ -452,22 +415,16 @@ public sealed unsafe partial class CasterPass : IExtenderService
                    // rate -- the number the toroidal-escalation verdict reads. A layer marked C degraded
                    // itself to the combined bake (static half stale essentially every frame), which is
                    // today's behaviour and not a wrong shadow.
-                   (_gl.SunDynTex != 0
+                   (!_vk.SunDyn.IsNull
                     ? $"; static per layer {SunLayerReadout()} /frame, " +
                       $"{(float)_sunDynBakedViews / _frames:F1} dynamic bakes/frame ({(float)_sunDynSkipped / _frames:F1} held by cadence), " +
                       $"degraded-to-combined [{SunCombinedReadout()}]"
                     : "; sun split OFF (shadow.sundyn 0)") + ") " +
-                   // #307: which submission path the views took, and what it cost.
-                   (_layerDial
-                    ? _layerProbe > 0 && _gl.ProgLayer != 0
-                      ? $"(layered bake: {(float)CasterGather.LayerDispatches / _frames:F1} dispatches over " +
-                        $"{(float)CasterGather.LayerViews / _frames:F1} views/frame, " +
-                        $"{_gDrawN} staged draws in {_gGroups} batches ({MaskedBatches()} masked)" +
-                        (_layerFlushFails > 0 ? $", {_layerFlushFails} flush FAILURES" : "") + ") "
-                      : _layerProbe < 0
-                        ? "(layered bake UNAVAILABLE -- no ARB_shader_viewport_layer_array, per-view path) "
-                        : ""
-                    : "(layered bake OFF -- /shadow layered 1) ") +
+                   // #307: what the one submission path cost.
+                   ($"(layered bake: {(float)CasterGather.LayerDispatches / _frames:F1} dispatches over " +
+                    $"{(float)CasterGather.LayerViews / _frames:F1} views/frame, " +
+                    $"{_gDrawN} staged draws in {_gGroups} batches ({MaskedBatches()} masked)" +
+                    (_layerFlushFails > 0 ? $", {_layerFlushFails} flush FAILURES" : "") + ") ") +
                    $"(bakes charged to -- sun: blanket {_bakeWhy[WhySun]}, key {_bakeWhy[WhySun + 1]}, " +
                    $"mover {_bakeWhy[WhySun + 2]}; cube: blanket {_bakeWhy[WhyCube]}, key {_bakeWhy[WhyCube + 1]}, " +
                    $"mover {_bakeWhy[WhyCube + 2]}) " +
@@ -529,13 +486,8 @@ public sealed unsafe partial class CasterPass : IExtenderService
                       $"{(float)CasterGather.SampledStagedDyn / CasterGather.SamplesDyn:F0} staged draws, " +
                       $"{(float)CasterGather.SampledRxDyn / CasterGather.SamplesDyn:F0} receiver-culled"
                     : "") +
-                   // S3-4(c): what the bake's Enter/Leave pair costs, inside the ms-cpu figure beside it. Near
-                   // zero means the world view's bracket was already open and this one was a depth bump.
-                   (_ctxFrames > 0
-                    ? $", 4.6 bracket {(double)_ctxTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency / _ctxFrames:F3} ms/frame"
-                    : "") +
                    $", {(float)_viewSum / _frames:F1} views baked per frame ({LastShadowMs:F2} ms cpu last" +
-                   (_gl.QShadow.Measured ? $", {_gl.QShadow.Avg / 1e6:F3} ms GPU avg" : "") + ")" +
+                   ")" +
                    $", {(float)_mdiCalls / _frames:F1} multidraw-indirect calls/frame " +
                    $"({(float)_mdiSkipped / _frames:F1} skipped: the batch holds nothing the view's set admits)" +
                    // SL1: the per-frame staged-word rewrite walks the refresh's visited set, and one frame in
@@ -560,10 +512,9 @@ public sealed unsafe partial class CasterPass : IExtenderService
                    SunRxReadout());
         _frames = 0; _mdiCalls = 0; _mdiSkipped = 0; _gAudits = 0; _gStaleWords = 0;
         _dSrcFrames = 0; _dSrcDraws = 0; _dSrcOver = 0; _dSrcAudits = 0; _dSrcMiss = 0; _dSrcHalf = 0; _dSrcExtra = 0;
-        _ctxTicks = 0; _ctxFrames = 0;
         CasterGather.DynDispatches = 0;
         _cubeLightsSum = 0; _viewSum = 0;
-        _liveSum = 0; _visitSum = 0; _touchedSum = 0; _gl.QShadow.Reset();
+        _liveSum = 0; _visitSum = 0; _touchedSum = 0;
         _cubeBakedSlots = 0; _cubeSkippedSlots = 0; _cubeOffSlots = 0; _cubeHeldSlots = 0; _cubeRoamSlots = 0; _cubeTurnovers = 0; _moverSum = 0; _ghostSum = 0; _cubeDynBakedPages = 0; _cubeDynBakedFaces = 0; _pairBakedTiles = 0;
         _sunBakedViews = 0; _sunSkippedViews = 0;
         Array.Clear(_sunStaticL); _sunDynBakedViews = 0; _sunDynSkipped = 0; _cubeDynSkipped = 0;

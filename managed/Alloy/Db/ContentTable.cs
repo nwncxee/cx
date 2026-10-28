@@ -55,8 +55,8 @@ internal static unsafe class ContentTable
     /// <summary>Bytes per row on the GPU.</summary>
     internal static int RowBytes => sizeof(Row);
 
-    /// <summary>Everything mutable, in one owner: context loss replaces the GL half and a fresh session the
-    /// rest, so no name from a dead context survives as a field nobody remembered to zero.</summary>
+    /// <summary>Everything mutable, in one owner: context loss replaces the device half and a fresh session
+    /// the rest, so no name from a dead device survives as a field nobody remembered to zero.</summary>
     private sealed class TableState
     {
         public readonly Row[] Rows = new Row[MaxRows];
@@ -68,7 +68,6 @@ internal static unsafe class ContentTable
         public readonly uint[] Obj = new uint[MaxRows];
         /// <summary>The content layout generation a row's lanes were filled against, -1 = fill it.</summary>
         public readonly int[] Filled = new int[MaxRows];
-        public uint Ssbo;
         public int Used, Sized, DirtyLo = int.MaxValue, DirtyHi = -1;
         public long Uploads, HandleWrites, Spilled, ContentFills;
         /// <summary>Bumped by every row edit, so a copy of the rows knows when it is stale without comparing them.</summary>
@@ -195,12 +194,11 @@ internal static unsafe class ContentTable
     }
 
     /// <summary>Re-read every row's palette handles off its recipe, fill every row whose layout moved, push what changed
-    /// and bind the block, in Alloy's bracket. A map lands asynchronously and a pair's lanes are known only once its
-    /// program built, so this is a per-frame walk of at most <see cref="MaxRows"/> rows. Bound on EVERY frame -- an
-    /// unbound binding is an undefined read.</summary>
+    /// and bind the block, in Alloy's bracket (on Vulkan the walk only). A map lands asynchronously and a pair's lanes
+    /// are known only once its program built, so this is a per-frame walk of at most <see cref="MaxRows"/> rows. Bound
+    /// on EVERY frame -- an unbound binding is an undefined read.</summary>
     internal static void Upload()
     {
-        if (Gl.CreateBuffers == null || Gl.NamedBufferData == null) return;
         lock (_lock) UploadLocked();
     }
 
@@ -241,35 +239,7 @@ internal static unsafe class ContentTable
                 if (moved) Touch(r);
             }
         }
-        int want = s.AnyRow ? MaxRows : 1;
-        if (s.Ssbo == 0 || want != s.Sized)
-        {
-            if (s.Ssbo == 0) { uint b; Gl.CreateBuffers(1, &b); if (b == 0) return; s.Ssbo = b; }
-            fixed (Row* p = s.Rows) Gl.NamedBufferData(s.Ssbo, (IntPtr)(want * RowBytes), p, Gl.DYNAMIC_DRAW);
-            s.Sized = want;
-            s.DirtyLo = int.MaxValue; s.DirtyHi = -1;
-            s.Uploads++;
-        }
-        else if (s.DirtyHi >= s.DirtyLo && Gl.NamedBufferSubData != null)
-        {
-            int lo = s.DirtyLo, n = s.DirtyHi - s.DirtyLo + 1;
-            if (lo + n > s.Sized)
-            {
-                // the dirty span is KEPT: a row dropped here is one the GPU never gets, and the terms behind
-                // a record's index would stay whatever the last tenant wrote -- another material's glow
-                if (s.Short++ == 0)
-                    s.Log?.Always($"ContentTable: rows {s.DirtyLo}..{s.DirtyHi} reach past the {s.Sized}-row "
-                                + "buffer -- held dirty for the next upload rather than dropped, which would "
-                                + "leave a material wearing another one's parameters");
-                Bind();
-                return;
-            }
-            fixed (Row* p = s.Rows.AsSpan(lo))
-                Gl.NamedBufferSubData(s.Ssbo, (IntPtr)(lo * RowBytes), (IntPtr)(n * RowBytes), p);
-            s.Uploads++;
-            s.DirtyLo = int.MaxValue; s.DirtyHi = -1;
-        }
-        Bind();
+        s.DirtyLo = int.MaxValue; s.DirtyHi = -1;   // the Vulkan frame takes the rows through Snapshot
     }
 
     /// <summary>The rows the GPU block holds -- one zero row until any exists, as <see cref="Upload"/> sizes it -- copied
@@ -287,19 +257,11 @@ internal static unsafe class ContentTable
         }
     }
 
-    /// <summary>Bind the block on <see cref="Binding"/>. Called at every content program bind: the point is a shared one,
-    /// and a reader that trusted an earlier bind would read the particle index block.</summary>
-    internal static void Bind()
-    {
-        if (_st.Ssbo != 0 && Gl.BindBufferBase != null)
-            Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, Binding, _st.Ssbo);
-    }
-
-    /// <summary>Terminal per session: the buffer belonged to the lost context. The rows themselves are CPU
+    /// <summary>Terminal per session: the buffer belonged to the lost device. The rows themselves are CPU
     /// state, and go up whole on the next <see cref="Upload"/>.</summary>
     internal static void ContextLost()
     {
-        _st.Ssbo = 0; _st.Sized = 0;
+        _st.Sized = 0;
         _st.DirtyLo = 0; _st.DirtyHi = MaxRows - 1;
     }
 

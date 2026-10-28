@@ -12,8 +12,8 @@ namespace CX.Alloy;
 /// the shadow bracket so the caster bake and the colour pass read the same frame's skin.</summary>
 public sealed unsafe partial class AlloyRenderer
 {
-    /// <summary>Publish every skinmesh's pose for THIS frame once, at the shadow bracket (CPU half here,
-    /// upload half in <see cref="ShadowPoseUpload"/>), so the colour preamble reuses it. A bake sampling the
+    /// <summary>Publish every skinmesh's pose for THIS frame once, at the shadow bracket, so the colour frame reuses it
+    /// (Vulkan copies the stage itself). A bake sampling the
     /// block the LAST colour build uploaded -- pose N-1 under a pass drawing pose N -- flips the self-shadow
     /// compare's sign every frame on a cloak lit by its own carried torch, which is the flicker.</summary>
     internal static bool PosedByShadow;
@@ -27,12 +27,6 @@ public sealed unsafe partial class AlloyRenderer
         PosedByShadow = true;
     }
 
-    /// <summary>The GL half of <see cref="ShadowPose"/>: push the solved block. Must run inside the 4.6
-    /// bracket.</summary>
-    internal static void ShadowPoseUpload()
-    {
-        if (PosedByShadow) Issue.UploadBones();
-    }
 
     /// <summary>Bone slots are STICKY -- a part keeps its slot in the bone block across frames, mirroring the
     /// ownership table's stable-slot scheme. Load-bearing for the shadow-bracket pose: the bake pairs the LAST
@@ -68,7 +62,7 @@ public sealed unsafe partial class AlloyRenderer
         // Nothing to pose for if the pass cannot draw: DrawOwned bails on these two without stamping a
         // single part, so the engine walks every one of them itself -- and would then solve each pose a
         // second time.
-        if (!_skinning || Programs._progFailed || _batchUnavailable) { _boneSlots = 0; return; }
+        if (!_skinning || _batchUnavailable) { _boneSlots = 0; return; }
         // CX-26: once a FRAME -- a second pose in the same frame (a reflection subframe) re-solves the same
         // animation state and must not make it its own history.
         bool roll = _poseRollSeq != _frameSeq;

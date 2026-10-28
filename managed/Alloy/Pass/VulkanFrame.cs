@@ -6,9 +6,8 @@ using CX.Rhi;
 
 namespace CX.Alloy;
 
-/// <summary>The world frame under <c>alloy.backend vk</c>: Vulkan culls, draws the colour bracket into its own scene
-/// targets and encodes them into the composite's back image; the present image flips to it, and the GUI and the
-/// engine's present carry on over it as over GL's. Inside the 4.6 bracket.</summary>
+/// <summary>The world frame on Vulkan: Vulkan culls, draws the colour bracket into its own scene
+/// targets and encodes them into the composite, which the GUI then draws over and Vulkan presents.</summary>
 internal static class VulkanFrame
 {
     private sealed class FrameState
@@ -30,14 +29,15 @@ internal static class VulkanFrame
     /// <summary>Frames between two GPU-time lines.</summary>
     private const int GpuPeriod = 300;
 
-    /// <summary>Render this frame into the back image and present it. A frame that cannot -- no backend, no present
-    /// image, a refused submit -- fails Alloy loudly: the screen would otherwise hold a stale front.</summary>
-    internal static unsafe void Run(ExtenderLog? log, in Matrix4x4 vp, int* viewport, int* display, float near, float far,
+    /// <summary>Render this frame into the composite. A frame that cannot -- no backend, no composite, a refused
+    /// submit -- fails Alloy loudly: the screen would otherwise hold a stale frame.</summary>
+    internal static unsafe void Run(ExtenderLog? log, in Matrix4x4 vp, in Matrix4x4 vpClean, in Matrix4x4 view, in Matrix4x4 proj,
+                                    int* viewport, int* display, float near, float far,
                                     bool lightingOn, bool perspective, int groups)
     {
         // a failed Alloy records nothing more: every submit after it would stage uploads no recording ever commits
         if (log == null || AlloyGate.Failed) return;
-        if (PresentTarget.Tex == 0 || AlloyDevice.Vulkan(log) is not VkBackend vk)
+        if (AlloyDevice.Vulkan(log) is not VkBackend vk || vk.Composite.IsNull)
         {
             AlloyGate.Fail("the Vulkan frame has no backend or no composite image (logged above)");
             return;
@@ -49,7 +49,8 @@ internal static class VulkanFrame
             AlloyGate.Fail("the Vulkan cull did not record (logged above) -- Alloy has no visibility test");
             return;
         }
-        if (!AlloyRenderer.VkRecordFrame(vk, cl, vk.CompositeBack, vp, viewport, display, near, far, lightingOn, perspective, groups, log))
+        if (!AlloyRenderer.VkRecordFrame(vk, cl, vk.Composite, vp, vpClean, view, proj, viewport, display, near, far,
+                                         lightingOn, perspective, groups, log))
         {
             AlloyGate.Fail("the Vulkan colour bracket did not record (logged above)");
             return;
@@ -60,17 +61,27 @@ internal static class VulkanFrame
             AlloyGate.Fail("the Vulkan frame's submit was refused (logged above)");
             return;
         }
-        AlloyRenderer.VkParityRead(vk);
+        Matrix4x4 vpN = vp, projN = proj;
+        UiScene.NoteVk(&vpN, &projN, viewport, AlloyRenderer.VkSceneDepth);
+        AlloyRenderer.VkFrameTap(vk);
         if (++_s.Frames % CacheSavePeriod == 0) vk.SavePipelineCache();
         if (_s.Frames % GpuPeriod == 0 && vk.TakeGpuMs(out int n) is var ms && n > 0)
-            log.Always($"VulkanFrame: [vkgpu] {ms:F2} ms GPU per frame over {n} frames (cull, prepass, hi-Z, G-buffer, opaque, cutout, blended)");
-        PresentTarget.Flip(vk.Flip());
+        {
+            vk.TakeWaitMs(out double fence, out double acquire);
+            double translate = vk.TakeTranslateMs(out int sets, out int draws, out int lists);
+            log.Always($"VulkanFrame: [vkgpu] {ms:F2} ms GPU per frame over {n} frames (bake, cull, prepass, hi-Z, AO, "
+                     + $"decals, G-buffer, opaque, cutout, sky, the deferred dispatches, blended); the CPU waited "
+                     + $"{fence / GpuPeriod:F2} ms/frame on submit fences and {acquire / GpuPeriod:F2} ms/frame on the swapchain acquire, "
+                     + $"and spent {translate / GpuPeriod:F2} ms/frame translating {(float)draws / GpuPeriod:F0} draws and "
+                     + $"{(float)sets / GpuPeriod:F0} bind sets over {(float)lists / GpuPeriod:F1} lists into vkCmd calls");
+        }
         PostChain.Painted();
         if (!_s.Live)
         {
             _s.Live = true;
-            log.Always("VulkanFrame: LIVE -- Vulkan culls, draws the prepass, G-buffer, opaque, cutout and blended batches, "
-                     + "and the engine's context presents the composite");
+            log.Always("VulkanFrame: LIVE -- Vulkan bakes the shadow maps, culls, draws the prepass with its vis-ID "
+                     + "target, the AO estimate, the decal layer, the G-buffer, the sky and the opaque, cutout and blended "
+                     + "batches, and shades the deferred point lights; Vulkan presents the composite itself");
         }
     }
 }

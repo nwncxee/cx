@@ -94,11 +94,8 @@ public sealed unsafe partial class AlloyRenderer
         // Admit and the bake) -- reads of memory the game thread simulates, done from whichever thread draws.
         DbLights.Walk(scene, in h);
         FrameZones.Add(FrameZones.Zone.Lwalk, tLights);
-        LatchFrameTarget();   // per-CONTEXT GL state: it has to be read before the switch below
-        // A refused Enter is not handled here -- each pass inside refuses on its own Enter and says why.
-        bool oneBracket = GlContextService.Enter();
-        try { DbDrawView(scene, camera, in h); }
-        finally { if (oneBracket) GlContextService.Leave(); }
+        LatchFrameTarget();
+        DbDrawView(scene, camera, in h);
         // The world frame is in the present image now. With the GUI Alloy's, its flush draws over it there and
         // one blit hands the pair back. With the GUI stood down (/alloy gui 0, or a flush that cannot draw)
         // nothing composites over it, and whatever the engine's context still draws before the present --
@@ -106,9 +103,8 @@ public sealed unsafe partial class AlloyRenderer
         if (!GuiPass.Capturing) PresentTarget.HandBackIfOwed();
     }
 
-    /// <summary>The view's draw inside ONE 4.6 bracket (ADR 0032): the shadow bake, the simulation slots and
-    /// the colour pass, which used to open and close a bracket each across a gap that issues no engine GL.
-    /// Enter is reentrant, so their own pairs are depth counters. Nothing here may issue ENGINE GL.</summary>
+    /// <summary>The view's draw: the shadow bake, the simulation slots and the colour pass, all inside the one
+    /// Vulkan frame. Nothing here may issue the engine's GL.</summary>
     private static void DbDrawView(DbId scene, DbId camera, in Db.FrameHoist h)
     {
         // CX-120: the shadow half of the frame anchor. SceneInputs.FrameStart used to be reached through
@@ -121,7 +117,7 @@ public sealed unsafe partial class AlloyRenderer
         // CX-120: the particle simulation and the beam enrolment, where the engine path runs them -- the sim
         // before the frame anchor so this frame's draw gets this frame's particles (#261), the beams from the
         // database's own `beaming` parts rather than the engine's bucket 15. Both are pure database reads, so
-        // neither needs the engine's GL context and both are safe on the render thread.
+        // neither needs the engine's GL and both are pure database reads.
         EmitterSim.StepDb(scene, DbFeed.FrameSeq);
         Beams.EnrollDb(scene);
         Halos.EnrollDb(scene, h.RadiusMult);

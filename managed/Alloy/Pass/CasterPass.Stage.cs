@@ -90,17 +90,17 @@ public sealed unsafe partial class CasterPass
     /// the membership is <c>_dMoverIdx</c>, which Collect and Refresh rebuild whole every frame.</summary>
     private static void StageDynamicSource()
     {
-        if (!Shadows.DynSrc.V || _gN <= 0 || _dMoverCount <= 0) { CasterGather.StandDynamic(); return; }
+        if (!Shadows.DynSrc.V || _gN <= 0 || _dMoverCount <= 0) { StandDynamicSource(); return; }
         fixed (CasterSrcRec* src = _gSrc)
         fixed (CasterSrcRec* dst = _dSrc)
         {
             int m = CopyDynamicSource(src, dst);
-            if (m < 0) { _dSrcOver++; CasterGather.StandDynamic(); return; }
+            if (m < 0) { _dSrcOver++; StandDynamicSource(); return; }
             // Past half the staging there is nothing left to save, and the upload would cost more than the
             // threads: the full source IS the dynamic source at that point.
-            if (m == 0 || m * 2 > _gN) { if (m > 0) _dSrcHalf++; CasterGather.StandDynamic(); return; }
+            if (m == 0 || m * 2 > _gN) { if (m > 0) _dSrcHalf++; StandDynamicSource(); return; }
             if ((_frameSeq & (StageAuditEvery - 1)) == 0) AuditDynamicSource(src, dst, m);
-            if (CasterGather.DynamicSource(m, dst)) { _dSrcFrames++; _dSrcDraws += m; }
+            if (VkDynamicSource(m, dst)) { _dSrcFrames++; _dSrcDraws += m; }
         }
     }
 
@@ -163,7 +163,7 @@ public sealed unsafe partial class CasterPass
     /// through the engine's <c>PrimTypeTranslationTable</c> anyway read index 0, which that table answers
     /// <c>GL_POINTS</c>: the bake issued its draws and left a map with nothing in it to shadow with.</summary>
     private static uint BatchMode(int g)
-        => AlloyRenderer.IsArenaVao(_gVao[g]) ? Gl.TRIANGLES : _primTable[_gPrim[g]];
+        => AlloyRenderer.IsArenaVao(_gVao[g]) ? EngineTokens.TRIANGLES : _primTable[_gPrim[g]];
 
     /// <summary>Per batch: the mask is sampled through the record's handle (no texture in the key).</summary>
     private static readonly bool[] _gH = new bool[MaxCasters];
@@ -240,10 +240,10 @@ public sealed unsafe partial class CasterPass
                     for (int d = 0; d < _gN; d++)
                         if (WriteStagedWords(src, d, _gLive[d])) { _gStaleWords++; changed = true; }
                 }
-                bool stood = _gN == 0 || CasterGather.Begin(_gN, _gGroups, src, changed);
+                bool stood = _gN == 0 || VkGatherBegin(_gN, src, changed);
                 _gDrawN = stood ? _gN : 0;
                 if (stood) { _submitMasked += _gMasked; StageDynamicSource(); }
-                else CasterGather.StandDynamic();
+                else StandDynamicSource();
                 return stood;
             }
         }
@@ -256,7 +256,7 @@ public sealed unsafe partial class CasterPass
         Array.Fill(_gAt, -1, 0, _liveCount);
         for (int i = 0; i < _liveCount; i++)
         {
-            if (AlloyRenderer.CasterVao(_liveVao[i]) == 0) continue;
+            if (!AlloyRenderer.CasterGeometry(_liveVao[i])) continue;
             // #265: resolve the OWNED name first and put the coverage question to IT -- the mask and colour
             // passes sample the owned copy, which may be a BCn transcode whose block-quantized alpha sits on
             // the other side of the cutout from the engine's raw original.
@@ -269,7 +269,7 @@ public sealed unsafe partial class CasterPass
             int dbTex = 0; float dbHoles = 0f, dbGraded = 0f;
             if (db) AlloyRenderer.DbCasterMask(_liveSlot[i], out dbTex, out dbHoles, out dbGraded);
             int drawTex = db ? dbTex : _liveTex[i] != 0 ? OwnedTextures.Draw(_liveTex[i]) : 0;
-            // the scan is a glGetTexImage of the owned name in the 4.6 context; /shadow mask skip is the A/B for it
+            // the coverage figures come from the upload scan of the decoded image; /shadow mask skip is the A/B
             // #363: a translucent diffuse (glass) has no holes at all; it qualifies on its graded fraction
             // instead and skips the mode-2 hole gate, which would hand it straight back to the solid stage.
             bool glass = drawTex != 0 && _maskDither > 0
@@ -282,9 +282,9 @@ public sealed unsafe partial class CasterPass
             // CX-303: ...and so is a content pair's caster, whose twin computes the pair's own coverage.
             bool content = _liveContent[i] != 0;
             bool cover = drawTex != 0 && (_liveCut[i] == CasterCut.Coverage || content);
-            int masked = drawTex != 0 && _gl.ProgMask != 0 && _maskMode != 0
+            int masked = drawTex != 0 && _vk.Mask != null && _maskMode != 0
                          && (cover || glass || (db ? dbHoles > 0f : TexHasAlpha(drawTex))) ? drawTex : 0;
-            if (masked == 0 && _liveTex[i] != 0 && _gl.ProgMask == 0) _maskNoProg++;
+            if (masked == 0 && _liveTex[i] != 0 && _vk.Mask == null) _maskNoProg++;
             // The mask MODE is decided here, in the key, not at the draw: a masked texture the mode draws
             // solid merges into its (VAO, prim) batch instead of costing one indirect call per view per
             // texture. The knobs bump _listVer so a change re-stages.
@@ -294,13 +294,6 @@ public sealed unsafe partial class CasterPass
             // a blended caster the mask stage cannot take (no diffuse, no UVs, mask off) casts nothing, as before #363
             if (_liveBlend[i] && masked == 0) continue;
             if (masked != 0) maskedN++;
-            // A record with a resident handle samples its mask through the handle block, so the texture
-            // leaves the key. Handle 0 is a BLACK texture (every fragment discards), hence the guard: such a
-            // record keeps the bound-texture batch.
-            bool hmask = masked != 0 && HandleMaskReady && AlloyRenderer.RecordHandle0(_liveSlot[i]) != 0;
-            // CX-303: a content pair's twin reads its maps only as HANDLES, so without the handle stage its caster
-            // falls back to the plain masked one, cutting on the diffuse alpha and unmoved.
-            if (!hmask) content = false;
             _gLive[n] = i;
             // #302: the cutout threshold is a per-BATCH uniform now, exactly as the colour path spells it
             // (uAlphaCut), so it joins the key rather than riding in a per-draw record. The batch takes the
@@ -308,7 +301,7 @@ public sealed unsafe partial class CasterPass
             // the (VAO, prim) pair below, the handle flag at 32 and the texture name in the low 32.
             _gKey[n] = ((masked != 0 ? 1L : 0L) << 62) | ((long)_liveCut[i] << 60)
                        | ((long)_liveVao[i] << 44) | ((long)_livePrim[i] << 36)
-                       | (hmask ? 1L << 32 : 0L) | (hmask ? (content ? (uint)_liveContent[i] : 0u) : (uint)masked);
+                       | (uint)masked;
             n++;
             if (i < _liveCreatures) creatures++;
         }
@@ -338,73 +331,12 @@ public sealed unsafe partial class CasterPass
         _gGroups = g + 1; _gCreatures = creatures; _gN = n; _gMasked = maskedN;
         bool ok;
         fixed (CasterSrcRec* src = _gSrc)
-            ok = CasterGather.Begin(n, _gGroups, src, true);
-        if (ok) { _gDrawN = n; _submitMasked += maskedN; StageDynamicSource(); }
-        else CasterGather.StandDynamic();
-        return ok;
-    }
-
-    /// <summary>Bake one view without a per-view walk. The dispatch selects out of this frame's staging
-    /// and writes the commands; the CPU issues one indirect-count draw per batch and never learns how many
-    /// survived.</summary>
-    private static bool GatherSubmit(uint tex, int size, int layer, Matrix4x4* vp,
-                                     Vector3 lightDir, Vector3 focus, float reach, float margin, bool point,
-                                     float lodR1, float lodR2, int set, bool receiver)
-    {
-        // PRE-cull figures: the survivors are the GPU's, and asking would be the readback this pass exists
-        // to not do -- the latent sample on the period line is what reports them.
-        _submitCreatures = _gCreatures;
-        if (!BeginTarget(tex, size, layer)) return false;
-        CasterGather.Dispatch(focus, lightDir, reach, reach + margin, point, lodR1, lodR2, set, receiver,
-                              dynSrc: set == CasterGather.SetDynamic);
-        // unit 0 is where the cutout stage samples; nothing else in this bracket moves the active unit
-        Gl.ActiveTexture(Gl.TEXTURE0);
-        int boundVao = -1, boundMode = -1, boundTex = -1;
-        int boundCut = -1;
-        // ponytail: every view issues one indirect-count draw per GLOBAL batch. SL2 removes the batches the
-        // view's SET provably empties -- the set flag is the CPU's own word, so that much needs no readback --
-        // and what is left is the batches whose count the CULL may have left at zero, which the CPU cannot
-        // know without the readback this pass exists to not do. Fewer batches (the staging key) is the lever
-        // for those.
-        int sets = 1 << set;
-        for (int g = 0; g < _gGroups; g++)
         {
-            if (BatchIdle(g, sets)) { _mdiSkipped++; continue; }
-            int cut0 = _gTex[g], mode = StageOf(g);
-            if (mode != boundMode)
-            {
-                boundMode = mode;
-                if (mode >= ContentMode) { BindContentCaster(mode - ContentMode, layered: false, vp, size); boundCut = -1; }
-                else
-                {
-                    Gl.UseProgram(mode == 0 ? _gl.Prog : mode == 1 ? _gl.ProgMask : _gl.ProgMaskH);
-                    Gl.UniformMatrix4fv(mode == 0 ? _gl.LocVp : mode == 1 ? _gl.LocMaskVp : _gl.LocMaskHVp, 1, 0, (float*)vp);
-                    if (mode == 1) Gl.Uniform1i(_gl.LocMaskTex, 0);
-                    boundCut = -1;
-                }
-            }
-            if (mode >= ContentMode && (int)_gCut[g] != boundCut)
-            {
-                boundCut = (int)_gCut[g];
-                ContentCasterCut(mode - ContentMode, false, _gCut[g]);
-            }
-            else if (mode != 0 && mode < ContentMode && (int)_gCut[g] != boundCut)
-            {
-                CasterCut kind = _gCut[g]; boundCut = (int)kind;
-                Gl.Uniform1f(mode == 1 ? _gl.LocMaskCut : _gl.LocMaskHCut, Threshold(kind));
-                Gl.Uniform1f(mode == 1 ? _gl.LocMaskMip : _gl.LocMaskHMip, Renderer.CutMip.V);
-                Gl.Uniform1i(mode == 1 ? _gl.LocMaskDither : _gl.LocMaskHDither, DitherFor(kind));
-                Gl.Uniform1i(mode == 1 ? _gl.LocMaskEnv : _gl.LocMaskHEnv, kind == CasterCut.EnvAlpha ? 1 : 0);
-            }
-            if (mode == 1 && cut0 != boundTex) { Gl.BindTexture(Gl.TEXTURE_2D, (uint)cut0); boundTex = cut0; }
-            if (_gVao[g] != boundVao) { Gl.BindVertexArray(AlloyRenderer.CasterVao(_gVao[g])); boundVao = _gVao[g]; }
-            CasterGather.Draw(BatchMode(g), g, _gStart[g], _gLen[g]);
-            _mdiCalls++;
+            ok = VkGatherBegin(n, src, true);
         }
-        CasterGather.End();
-        Gl.BindVertexArray(0);
-        Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
-        return true;
+        if (ok) { _gDrawN = n; _submitMasked += maskedN; StageDynamicSource(); }
+        else StandDynamicSource();
+        return ok;
     }
 
     /// <summary>The period's triangles baked per detail level, per sampled view -- the bake's twin of

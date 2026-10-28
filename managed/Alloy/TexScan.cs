@@ -41,7 +41,7 @@ internal static unsafe class TexScan
     }
 
     /// <summary>What the ENGINE says this texture is, straight off its own virtuals -- the counterpart to
-    /// <see cref="TexProbe.TexFormat"/>, which says what GL holds. When the two disagree the upload is the
+    /// what the device holds. When the two disagree the upload is the
     /// suspect; when they agree the resource is.</summary>
     internal static string Describe(IntPtr tex)
     {
@@ -100,6 +100,46 @@ internal static unsafe class TexScan
             r.Rgba = o;
         }
         return true;
+    }
+
+    /// <summary>Level 0 of the texture's decoded image as RGBA8, rows in upload order -- what a GL readback of the
+    /// uploaded level gives, read off the engine's own copy: DXT1/DXT5 and the DDS formats with a decoder here, or a
+    /// 3- or 4-byte raster. Null when the engine holds no image or the layout is not one of those. Cold, allocates.</summary>
+    internal static byte[]? TopRgba(IntPtr tex, out int w, out int h)
+    {
+        w = h = 0;
+        if (tex == IntPtr.Zero) return null;
+        var t = new CAurTexture(tex);
+        byte* px = (byte*)t.GetImage();
+        w = t.GetWidth(); h = t.GetHeight();
+        if (px == null || w <= 0 || h <= 0) return null;
+        var o = new byte[w * h * 4];
+        if (t.GetCompressedSize() > 0)
+        {
+            int hdr = t.GetNumMipHeaderBytes(), fmt = t.GetCompressionFormat();
+            DdsReader.Fmt f = DdsReader.Lookup(px, out DdsReader.Info dds) && !DdsReader.EngineUploads(dds.Format) ? dds.Format
+                            : fmt == FmtDxt1 ? DdsReader.Fmt.Bc1 : fmt == FmtDxt5 ? DdsReader.Fmt.Bc3 : DdsReader.Fmt.None;
+            if (!BcnDecode.Decodes(f)) return null;
+            int lvl = DdsReader.LevelSize(w, h, DdsReader.ChannelsOf(f)), n = BcnDecode.PixelBytes(f);
+            var dec = new byte[w * h * n];
+            BcnDecode.Unpack(new ReadOnlySpan<byte>(px, hdr + lvl).Slice(hdr), w, h, f, dec);
+            Widen(dec, n, o);
+            return o;
+        }
+        int bpp = t.GetBPP();
+        if (bpp is not (3 or 4)) return null;
+        Widen(new ReadOnlySpan<byte>(px, w * h * bpp), bpp, o);
+        return o;
+    }
+
+    /// <summary>RGB or RGBA texels into RGBA8, alpha 255 where the source has none.</summary>
+    internal static void Widen(ReadOnlySpan<byte> src, int bpp, Span<byte> dst)
+    {
+        for (int i = 0, n = dst.Length / 4; i < n; i++)
+        {
+            dst[i * 4] = src[i * bpp]; dst[i * 4 + 1] = src[i * bpp + 1]; dst[i * 4 + 2] = src[i * bpp + 2];
+            dst[i * 4 + 3] = bpp == 4 ? src[i * bpp + 3] : (byte)255;
+        }
     }
 
     /// <summary>A format the engine names by its same-sized stand-in (BC7 as DXT5 and so on) is scanned from its

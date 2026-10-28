@@ -81,18 +81,10 @@ internal static class RenderPasses
             Name = "water",
             Attach = FrameSnapshot.Attach,
             SelfCheck = l => FrameSnapshot.SelfCheck(l),
-            ContextLost = FrameSnapshot.Forget,
             Stats = FrameSnapshot.Stats,
         }, log);
-        // CX-51: the reflection history -- a copy per frame and the camera it was drawn by.
-        r.Register(new PassLifecycle
-        {
-            Name = "ssr",
-            Attach = Ssr.Attach,
-            Revoke = Ssr.Revoke,
-            ContextLost = Ssr.Forget,
-            Stats = Ssr.Stats,
-        }, log);
+        // CX-51: the screen-space reflections. No edges of its own -- the pass's targets are the device's.
+        r.Register(new PassLifecycle { Name = "ssr", Stats = Ssr.Stats }, log);
         // CX-29: not a pass and not Alloy's -- the pose layer runs under either renderer. Registered for its
         // clause on the [alloy] period line only.
         r.Register(new PassLifecycle { Name = "pose", Stats = PoseService.Stats }, log);
@@ -143,7 +135,6 @@ internal static class RenderPasses
         {
             Name = "beams",
             Install = Beams.Install,
-            ContextLost = Beams.ContextLost,
             SelfCheck = Beams.SelfCheck,
             Revoke = Beams.Forget,
             Stats = _ => Beams.Stats(),
@@ -153,7 +144,6 @@ internal static class RenderPasses
             Name = "halos",
             Install = Halos.Install,
             SelfCheck = Halos.SelfCheck,
-            ContextLost = Halos.ContextLost,
             Revoke = Halos.Revoke,
             Stats = _ => Halos.Stats(),
         }, log);
@@ -195,14 +185,6 @@ internal static class RenderPasses
             SelfCheck = DecalLayer.SelfCheck,
             ContextLost = DecalLayer.Forget,
             Stats = DecalLayer.Stats,
-        }, log);
-        r.Register(new PassLifecycle
-        {
-            Name = "scenedepth",
-            // Attached by Particles, its only consumer, rather than here: it is a resource the particle pass
-            // owns the timing of, not a pass of its own. ponytail: left alone; if a second consumer appears
-            // it moves to the Attach slot above.
-            ContextLost = SceneDepth.Forget,
         }, log);
         r.Register(new PassLifecycle
         {
@@ -251,14 +233,13 @@ internal static class RenderPasses
         }, log);
         // #375: the display-space stack after the resolve; its dials are the post group's. No Revoke -- it
         // captures nothing from the world; its inputs are the engine's option globals, read per frame.
-        // #388: the camera velocity target; post.motion and post.viz 4 reach it. Revoke resets the previous
+        // #388: the camera velocity target the accumulator reprojects through. Revoke resets the previous
         // view-projection so the first frame after an area transition paints zero rather than a jump.
         r.Register(new PassLifecycle
         {
             Name = "motion",
             Attach = MotionVectors.Attach,
             SelfCheck = l => MotionVectors.SelfCheck(l),
-            ContextLost = MotionVectors.Forget,
             Revoke = MotionVectors.Revoke,
             Stats = MotionVectors.Stats,
         }, log);
@@ -267,24 +248,12 @@ internal static class RenderPasses
         r.Register(new PassLifecycle
         {
             Name = "idtarget",
-            Attach = IdTarget.Attach,
             SelfCheck = l => IdTarget.SelfCheck(l),
-            ContextLost = IdTarget.Forget,
-            Stats = IdTarget.Stats,
-        }, log);
-        // CX-188: the G-buffer and the deferred point-light pass; both hold frame-sized GL objects.
-        r.Register(new PassLifecycle
-        {
-            Name = "gbuffer",
-            Attach = GBuffer.Attach,
-            ContextLost = GBuffer.Forget,
-            Stats = GBuffer.Stats,
         }, log);
         r.Register(new PassLifecycle
         {
             Name = "deferred",
             Attach = DeferredLights.Attach,
-            ContextLost = DeferredLights.Forget,
             Stats = DeferredLights.Stats,
         }, log);
         // CX-188 step 3: the per-pixel shadow visibility record -- a frame-sized texture pair, so it goes with
@@ -292,8 +261,6 @@ internal static class RenderPasses
         r.Register(new PassLifecycle
         {
             Name = "defshadow",
-            Attach = DeferredShadows.Attach,
-            ContextLost = DeferredShadows.Forget,
             Stats = DeferredShadows.Stats,
         }, log);
         r.Register(new PassLifecycle
@@ -304,36 +271,15 @@ internal static class RenderPasses
             ContextLost = PairShadows.Forget,
             Stats = PairShadows.Stats,
         }, log);
-        r.Register(new PassLifecycle
-        {
-            Name = "pairdebt",
-            Attach = PairDebt.Attach,
-            ContextLost = PairDebt.Forget,
-            Stats = PairDebt.Stats,
-        }, log);
-        r.Register(new PassLifecycle
-        {
-            Name = "a2c",
-            Attach = CoverageLayer.Attach,
-            ContextLost = CoverageLayer.Forget,
-            Stats = CoverageLayer.Stats,
-        }, log);
-        r.Register(new PassLifecycle
-        {
-            Name = "oit",
-            Attach = OitPass.Init,
-            ContextLost = OitPass.ContextLost,
-            Stats = OitPass.Stats,
-        }, log);
+        r.Register(new PassLifecycle { Name = "a2c", Stats = CoverageLayer.Stats }, log);
+        r.Register(new PassLifecycle { Name = "oit", Stats = OitPass.Stats }, log);
         // The sky-visibility map. Its depth view belongs to CasterPass (an ortho caster render); what is
-        // registered here is the map baked from it -- a GL texture and a compute program, so it goes with
-        // the context, and the area edge is what makes the bake another area's.
+        // registered here is the map baked from it, and the area edge is what makes the bake another area's.
         r.Register(new PassLifecycle
         {
             Name = "skyview",
             Attach = SkyView.Attach,
             SelfCheck = SkyView.SelfCheck,
-            ContextLost = SkyView.Forget,
             Revoke = CasterPass.SkyAreaEdge,
             Stats = _ => SkyView.Stats(),
         }, log);
@@ -349,10 +295,8 @@ internal static class RenderPasses
             Name = "ao",
             Attach = SsaoPass.Attach,
             SelfCheck = l => SsaoPass.SelfCheck(l),
-            ContextLost = SsaoPass.Forget,
-            // #390: the visibility history is another area's after a transition.
-            Revoke = SsaoPass.Revoke,
-            Stats = SsaoPass.Stats,
+            // No ContextLost: everything the estimate owns is the Vulkan device's, replaced whole with it.
+            Stats = SsaoPassVk.Stats,
         }, log);
         r.Register(new PassLifecycle
         {
@@ -407,10 +351,8 @@ internal static class RenderPasses
             Stats = f => Join(AlloyCamera.Stats(f), AlloyWind.Stats(f)),
         }, log);
 
-        // CX-120 seam-scene: not a draw pass -- the CX scene/camera records behind the Aurora seam, the
-        // frame's view snapshot and the render thread. Attach resolves the three window reads the slots need
-        // (SeamFrame) and the thread is started by the seam's own boot switch, not here: the knob is Boot and
-        // the 4.6 context has to exist first.
+        // CX-120 seam-scene: not a draw pass -- the CX scene/camera records behind the Aurora seam and the
+        // frame's view snapshot. Attach resolves the three window reads the slots need (SeamFrame).
         r.Register(new PassLifecycle
         {
             Name = "scenedb",
@@ -422,15 +364,10 @@ internal static class RenderPasses
                 CX.Alloy.Seam.SceneSlots.Attach(l); CX.Alloy.Seam.CameraSlots.Attach(l);
                 CX.Alloy.Seam.SeamFrame.Attach(l);
             },
-            // Both run: the render thread's preconditions are checked even when the scene checks failed.
-            SelfCheck = l => { CX.Alloy.Db.DbSceneSelfCheck.Run(l); CX.Alloy.Db.RenderThread.SelfCheck(l); },
-            // Context loss is terminal for the render thread: the context it holds is gone, so it must stop
-            // and let go BEFORE anything else rebuilds. Joined, not signalled -- the game thread may take the
-            // context back the instant this returns.
-            ContextLost = CX.Alloy.Db.RenderThread.Shutdown,
+            SelfCheck = l => CX.Alloy.Db.DbSceneSelfCheck.Run(l),
             Stats = f => Join(Join(CX.Alloy.Db.DbScene.Stats(f), CX.Alloy.Db.DbCamera.Stats(f)),
                               Join(CX.Alloy.Db.SeamDraw.Stats(f),
-                                   Join(CX.Alloy.Db.RenderSnapshot.Stats(f), CX.Alloy.Db.RenderThread.Stats(f)))),
+                                   CX.Alloy.Db.RenderSnapshot.Stats(f))),
         }, log);
 
         // CX-114: not a draw pass -- CX's part-tree builder and the ONE model-space vertex arena every part
@@ -472,7 +409,7 @@ internal static class RenderPasses
             // No Revoke: every slot is keyed on CONTENT (a resref, a kind, a cell), so a world edge
             // invalidates nothing in it -- which is the whole point of the registry replacing the engine's
             // per-area CAurTexture population.
-            ContextLost = () => { Db.TexRegistry.ContextLost(); Db.PltPalettes.ContextLost(); Db.PltColors.ContextLost(); Db.PltGpuCheck.ContextLost(); Db.ContentTable.ContextLost(); },
+            ContextLost = () => { Db.TexRegistry.ContextLost(); Db.PltPalettes.ContextLost(); Db.PltColors.ContextLost(); Db.ContentTable.ContextLost(); },
             Stats = _ => Join(Join(Db.TexRegistry.Note() + ", " + Db.PltPalettes.Note() + ", " + Db.PltColors.Note(),
                        Join(Db.PltImage.Note(), Db.ContentTable.Note())),
                        Join(Join(Seam.TexSeam.Note(), Db.PltVerify.Note()),
@@ -480,18 +417,15 @@ internal static class RenderPasses
         }, log);
 
         // CX-303: the content stages -- not a pass either, the programs a material's own fragment stage runs in,
-        // translated (ContentStage). Registered for a log, the off-device checks, the context loss that takes their
-        // program names and a line on the period report; the module edge drops them through Programs.DropSpliced.
+        // translated (ContentStage). Registered for a log, the off-device checks, the device loss that takes their
+        // pipelines and a line on the period report.
         r.Register(new PassLifecycle
         {
             Name = "content",
             Attach = ContentPrograms.Attach,
-            SelfCheck = l => { ContentStage.SelfCheck(l); ContentPrograms.SelfCheck(l); Db.ContentRows.SelfCheck(l);
-                               ContentPipelines.SelfCheck(l); },
-            ContextLost = () => { ContentPrograms.ContextLost(); ContentPrewarm.ContextLost(); },
-            // the prewarm's key table is per AREA: the next area's recipes name their own pipelines
-            Revoke = ContentPrewarm.AreaEdge,
-            Stats = _ => ContentPrograms.Note() + ContentPrewarm.Note(),
+            SelfCheck = l => { ContentStage.SelfCheck(l); ContentPrograms.SelfCheck(l); Db.ContentRows.SelfCheck(l); },
+            ContextLost = ContentPrograms.ContextLost,
+            Stats = _ => ContentPrograms.Note(),
         }, log);
 
         // CX-113: the model cache -- not a pass, the content-keyed table every CX-owned object takes its model

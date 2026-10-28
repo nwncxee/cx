@@ -6,11 +6,12 @@ using CX.Alloy.Db;
 using CX.Engine;
 using CX.Framework;
 using CX.Graphics;
+using CX.Graphics.Rhi;
 
 namespace CX.Alloy;
 
 /// <summary>
-/// Grass, as a REPLACEMENT class (ADR 0011): the engine's <c>Scene::DoBinBucket</c> is left exactly as it is
+/// Grass, as a REPLACEMENT class: the engine's <c>Scene::DoBinBucket</c> is left exactly as it is
 /// and simply not called on the passes Alloy draws. GPU-driven -- the CPU culls whole patches, a compute
 /// scatter regenerates each visible patch's blades from its faces' seeds -- off the ENGINE's own face data and
 /// blade counts, and nothing it draws is ever semi-transparent AND depth-writing at once, as vanilla's is.
@@ -110,15 +111,9 @@ internal static unsafe partial class GrassField
     private static readonly Patch[] _patches = new Patch[MaxPatches];
     private static int _patchCount, _faceCount;
     private static long _bladesResident;
-    /// <summary>Lines left for the copy's framebuffer diagnostic (<see cref="Grass.GTint"/> and
-    /// <see cref="Grass.GViz"/> re-arm three). GViz: 1 = every blade paints the copy texel behind it (the
-    /// scene should show through), 2 = the copy's centre texel, 3 = gl_FragCoord over the copy size as
-    /// red/green, 4 = a normalized texture() read.</summary>
-    private static int _groundDiag = 3;
     private static int _prepGen = -1, _seen;
     /// <summary>CPU-side face stream. Allocated once, cold: the draw path never allocates.</summary>
     private static GrassFace[]? _faces;
-    private static int _uploaded;
 
     /// <summary>The frame's visible patch table, two uvec4 each (<c>cx_gblade_c.glsl</c>'s <c>uPatch</c>).</summary>
     private static readonly uint[] _visTable = new uint[MaxPatches * 8];
@@ -135,27 +130,17 @@ internal static unsafe partial class GrassField
     private static volatile bool _rebake;
 
     // period counters
-    private static int _frames, _draws, _visible, _culled, _baked, _refused, _disabled;
-    private static int _mipsBuilt;
-    /// <summary>Records the scatter appended per command this period (off the persistent map), and the blade
-    /// indices it was handed -- the difference is the per-blade cull.</summary>
-    private static long _drawnNear, _drawnFar, _drawnCards;
+    private static int _frames, _visible, _culled, _baked, _refused, _disabled;
     private static int _bladeNear, _bladeFar;
     private static long _candidates;
-    private static int _scatters;
     /// <summary>Cap latches, cleared with the tables in <see cref="Forget"/> rather than per period: they
     /// describe the resident field, not the frame, and a cap that stops being reported reads as headroom
     /// that is not there.</summary>
     private static bool _capped, _patchCapped;
     private static int _thinned;
-    private static int _samples = 1;
 
     /// <summary>Drop the resident faces and bake them again at the next pass.</summary>
     internal static void Rebake() => _rebake = true;
-    internal static void SamplerDirty() => _samplerDirty = true;
-    internal static void GroundDiag() => _groundDiag = 3;
-    internal static void DumpMipsNext() => _dumpMips = true;
-    internal static void DumpShadowNext() => _dumpShadow = true;
 
     // ---- install -----------------------------------------------------------------------------
 
@@ -199,13 +184,10 @@ internal static unsafe partial class GrassField
         Forget();
     }
 
-    /// <summary>Context loss: the GL names mean nothing once the context is gone, so forget rather than
-    /// delete -- and forget the captured world with them, since a rebuilt context re-scatters anyway. Both
-    /// EnsureProgram and EnsureBuffers short-circuit on a non-zero name, so leaving these set makes the next
-    /// context draw through a dead program.</summary>
+    /// <summary>Device loss: forget the captured world with the device's objects, since a rebuilt device
+    /// re-scatters anyway.</summary>
     internal static void ContextLost()
     {
-        _gl = new GrassGlState();
         _down.Forget();
         Forget();
     }
@@ -213,9 +195,9 @@ internal static unsafe partial class GrassField
     internal static void Forget()
     {
         ForgetDb();
-        _patchCount = 0; _shadowN = 0;
+        _patchCount = 0;
         _faceCount = 0; _bladesResident = 0;
-        _uploaded = 0;
+        _vkg.FacesSent = 0;
         Array.Fill(_cls, default);
         _drawnGen = -1;
         _capped = false;
@@ -235,32 +217,8 @@ internal static unsafe partial class GrassField
         _frames++;
         _seen = Collect(vp);
         if (_seen == 0) return 0;
-        Upload();
         BuildPush();
         return _seen;
-    }
-
-    internal static void Draw(Matrix4x4* vp, int* viewport, float near, float far, bool lightingOn)
-    {
-        // Toggle-off returns WITHOUT stamping the generation: the class goes back to the ENGINE, which is
-        // the opposite of the density-0 branch below (nobody draws it, and the stamp is what keeps it that way).
-        if (_off || !Grass.Enabled.V || _down.Failed || _binBucket.IsNull) return;
-        if (*_grassEnabled == 0) return;      // the player's "Grass Mode" option: off means off, both paths
-        if (Gl.DrawArraysIndirect == null || Gl.DispatchCompute == null
-            || Gl.MemoryBarrier == null || Gl.BindBufferBase == null)
-        { _down.Fail(_log, "no indirect-draw or compute entry point", "no grass draws"); return; }
-        if (!EnsureProgram() || !EnsureBuffers()) return;
-        // Density 0 means the player asked for no grass. Stamp the generation and stop: the class is still
-        // OWNED (so the engine does not draw it back), and Collect never runs -- otherwise every frame would
-        // re-attempt a bake budget's worth of patches that scatter nothing.
-        if (Grass.Density.V <= 0f) { _drawnGen = AlloyRenderer.PassGen; return; }
-
-        int n = Prepare(vp);
-        if (n == 0) { _drawnGen = AlloyRenderer.PassGen; return; }
-        Issue(n, vp, viewport, near, far, lightingOn);
-        // Stamped even on a frame that drew nothing visible: the Alloy pass OWNS the class this pass, and a
-        // patch culled by distance must not come back as an engine draw.
-        _drawnGen = AlloyRenderer.PassGen;
     }
 
     /// <summary>Walk this frame's bins -- Alloy's own set, culled out of the scene's bin grid
@@ -345,44 +303,11 @@ internal static unsafe partial class GrassField
         return recs[mat];
     }
 
-    /// <summary>Push whatever the bake appended. One <c>BufferSubData</c> over the new tail, never the whole
-    /// stream -- the resident faces do not change once interned.</summary>
-    private static void Upload()
+    /// <summary>The frame's CPU half: the textures and their BLADE classification, the patch cull into the
+    /// visible table, and the regions and material table. The visible patches; 0 = nothing to draw.</summary>
+    private static int Plan(Matrix4x4* vp, bool bladeProg, int* tids, bool* live, out FramePlan f)
     {
-        if (_faces == null || _faceCount <= _uploaded) return;
-        int bytes = (_faceCount - _uploaded) * sizeof(GrassFace);
-        // The first write after a Forget (area load, /grass density) starts at byte 0, over a range the GPU
-        // may still be reading from last frame -- orphan it rather than make the driver serialise, at exactly
-        // the two moments this class exists to keep smooth. Every later write is an append past the read range.
-        if (_uploaded == 0)
-            Gl.NamedBufferData(_gl.FaceBuf, (IntPtr)((long)MaxFaces * sizeof(GrassFace)), null, Gl.DYNAMIC_DRAW);
-        fixed (GrassFace* src = _faces.AsSpan(_uploaded))
-            Gl.NamedBufferSubData(_gl.FaceBuf, (IntPtr)(_uploaded * sizeof(GrassFace)), (IntPtr)bytes, src);
-        _uploaded = _faceCount;
-    }
-
-    /// <summary>Samples of the surface this pass draws into, without a per-frame <c>glGet</c>.
-    /// Every target Alloy binds -- the post chain's HDR target, the present texture -- is built from plain
-    /// 2D attachments, so only framebuffer 0 can be multisampled, and its count cannot change under a live
-    /// context.</summary>
-    private static int TargetSamples()
-    {
-        if (PostChain.Armed || PresentTarget.Fbo46 != 0) return 1;
-        if (_gl.Fb0Samples == 0)
-        {
-            int s = 0;
-            Gl.GetIntegerv(Gl.SAMPLES, &s);
-            _gl.Fb0Samples = s < 1 ? 1 : s;
-        }
-        return _gl.Fb0Samples;
-    }
-
-    /// <summary>Cull the patches, scatter their blades on the GPU, and draw what survived: procedural blades
-    /// in two indirect strips (near full-detail, far one triangle), and one indirect draw of the engine's own
-    /// alpha-cut cards per material that has card cells. The CPU's share is the patch cull and a table of a
-    /// few thousand entries; the blade count never reaches it.</summary>
-    private static void Issue(int seen, Matrix4x4* vp, int* viewport, float near, float far, bool lightingOn)
-    {
+        f = default;
         Span<Vector4> planes = stackalloc Vector4[6];
         Frustum(in *vp, planes);
         Vector3 eye = AlloyRenderer.EyePos;
@@ -404,17 +329,10 @@ internal static unsafe partial class GrassField
         // and it is the ONLY gate on a grass material being drawn: RemoveGrassOverride (server minor 0x16)
         // clears it and forces a reload, but a reload rebuilds the bins for that material anyway -- the
         // engine's DoBinBucket simply refuses to draw them. Ignoring it renders grass a server just removed.
-        int* tids = stackalloc int[MaxGrassMaterials];
-        bool* live = stackalloc bool[MaxGrassMaterials];
         ResolveTextures(tids, live);
-        if (_dumpMips) { _dumpMips = false; DumpMips(tids, live); }
-        EnsureSamplers();
-        int samples = TargetSamples();
-        _samples = samples;
-        bool msaa = samples > 1;
         int* bits = stackalloc int[MaxGrassMaterials];
         bool* cards = stackalloc bool[MaxGrassMaterials];
-        ClassifyAll(tids, live, bits, cards);
+        ClassifyAll(tids, live, bits, cards, bladeProg);
 
         // each draw's upper bound this frame: the blades its visible patches can keep at their nearest point.
         // A patch straddling the blade detail radius counts toward both blade draws.
@@ -448,85 +366,16 @@ internal static unsafe partial class GrassField
             most = Math.Max(most, q.Blades);
             n++;
         }
-        if (n == 0) return;
+        if (n == 0) return 0;
         _visible += n;
-        _shadowN = n; _shadowEye = eye; _shadowNear = nearDist; _shadowFar = farDist;
-        int matN = WriteMaterials(live, bound, bits, nearB, farB);
-
-        float* pw = stackalloc float[3] { _pushOriginX, _pushOriginY, _pushPerUnit / PushRes };
-        AlloyRenderer.GpuBegin(AlloyRenderer.GpuTerm.GrassDepth);
-        Scatter(n, (int)Math.Clamp((most + SplitBlades - 1) / SplitBlades, 1, MaxSplit), planes, &eye, nearDist, farDist, matN, pw);
-        Gl.BindVertexArray(_gl.Vao);
-        Gl.BindBuffer(Gl.DRAW_INDIRECT_BUFFER, _gl.CmdBuf);
-        bool prepass = _slotCount > 0 && Grass.Prepass.V && _gl.ProgDepth != 0;
-        bool soft = Grass.SoftEdge.V && prepass && !msaa;
-        if (prepass)
-        {
-            Gl.UseProgram(_gl.ProgDepth);
-            Gl.Uniform1i(_gl.LocD.SoftEdge, soft ? 1 : 0);
-            SharedUniforms(in _gl.LocD, in _gl.FeatLocD, vp, &eye, nearDist, farDist, msaa, pw, viewport, vlit: false);
-            new PassState(depth: true, depthWrite: true, cull: false).Apply();
-            Gl.ColorMask(0, 0, 0, 0);
-            Gl.DepthFunc(Gl.LESS);
-            if (msaa) Gl.Enable(Gl.SAMPLE_ALPHA_TO_COVERAGE);
-            DrawSlots(tids, in _gl.LocD, depth: true);
-            if (msaa) Gl.Disable(Gl.SAMPLE_ALPHA_TO_COVERAGE);
-            Gl.ColorMask(1, 1, 1, 1);
-            Gl.DepthFunc(Gl.LEQUAL);
-        }
-        AlloyRenderer.GpuEnd(AlloyRenderer.GpuTerm.GrassDepth);
-
-        // The frame as it stands before the grass, for the root blend and the blades' fade into the ground.
-        // One colour-only blit (the shader reads no depth); the water pass takes its own, with depth, later.
-        bool blades = _bladeNear + _bladeFar > 0;
-        bool ground = (Grass.GTint.V > 0f || blades) && FrameSnapshot.Copy(viewport, depth: false);
-        if (ground && _groundDiag > 0) GroundDiagBefore(viewport);
-        if (lightingOn) AlloyLights.BindForDraw();
-        Gl.ActiveTexture(Gl.TEXTURE0 + TextureSlots.GrassGround);
-        Gl.BindTexture(Gl.TEXTURE_2D, FrameSnapshot.ColorTex);
-        Gl.ActiveTexture(Gl.TEXTURE0);
-        // CX-51: a blade reflects the probe as the ground around it does
-        AlloyRenderer.BindProbe();
-        AlloyRenderer.GpuBegin(AlloyRenderer.GpuTerm.Grass);
-        // Procedural blades: opaque, depth-writing, two-sided, and no discard -- early-Z rejects the field's own
-        // overdraw with no prepass.
-        if (blades)
-        {
-            Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindMats, _gl.MatBuf);
-            ColourUniforms(_gl.ProgBlade, in _gl.LocB, in _gl.FeatLocB, vp, &eye, nearDist, farDist, pw, viewport, near, far, lightingOn, ground);
-            new PassState(depth: true, depthWrite: true, cull: false).Apply();
-            DrawBlades(in _gl.LocB);
-        }
-        if (_slotCount > 0)
-        {
-            ColourUniforms(_gl.Prog, in _gl.Loc, in _gl.FeatLoc, vp, &eye, nearDist, farDist, pw, viewport, near, far, lightingOn, ground);
-            Gl.Uniform1i(_gl.Loc.Msaa, msaa ? 1 : 0);
-            Gl.Uniform1i(_gl.Loc.SoftEdge, soft ? 1 : 0);
-            Gl.Uniform1i(_gl.Loc.GroundViz, Grass.GViz.V);
-            // The class's whole point, in one declaration: blending OFF (or the soft fringe alone), the coverage
-            // decision made by the fragment stage's discards, depth from the prepass when it ran. Alpha-to-coverage
-            // only where the target has samples to cover. #292: cull OFF, a card is seen from both faces.
-            new PassState(depth: true, depthWrite: !prepass, cull: false, blend: soft,
-                          blendSrc: Gl.SRC_ALPHA, blendDst: Gl.ONE_MINUS_SRC_ALPHA).Apply();
-            if (msaa) Gl.Enable(Gl.SAMPLE_ALPHA_TO_COVERAGE);
-            DrawSlots(tids, in _gl.Loc, depth: false);
-            if (msaa) Gl.Disable(Gl.SAMPLE_ALPHA_TO_COVERAGE);
-        }
-        AlloyRenderer.GpuEnd(AlloyRenderer.GpuTerm.Grass);
-        // CX-48: what was drawn, for the velocity sweep that re-issues it later in the frame.
-        NoteIssued(eye, nearDist, farDist, ground);
-        if (ground && _groundDiag > 0) GroundDiagAfter(viewport);
-        // the drawn count, for Stats: copied GPU-side into a persistent map, read a frame or more late, never waited on
-        if (_gl.Stat != null)
-        {
-            _drawnNear += _gl.Stat[1]; _drawnFar += _gl.Stat[5];
-            for (int s = 0; s < _slotCount; s++) _drawnCards += _gl.Stat[(2 + s) * 4 + 1];
-            Gl.CopyNamedBufferSubData(_gl.CmdBuf, _gl.StatBuf, IntPtr.Zero, IntPtr.Zero, (IntPtr)(Cmds * 4 * sizeof(uint)));
-        }
-        if (_gl.SampMip != 0) Gl.BindSampler(0, 0);
-        Gl.BindBuffer(Gl.DRAW_INDIRECT_BUFFER, 0);
-        Gl.BindVertexArray(0);
+        f = new FramePlan(eye, nearDist, farDist, (int)Math.Clamp((most + SplitBlades - 1) / SplitBlades, 1, MaxSplit),
+                          WriteMaterials(live, bound, bits, nearB, farB));
+        return n;
     }
+
+    /// <summary>What <see cref="Plan"/> decided for the frame's draws: the eye, the fade band, the scatter's split and
+    /// one past the highest material written.</summary>
+    private readonly record struct FramePlan(Vector3 Eye, float Near, float Far, int Split, int Mats);
 
     /// <summary>The procedural blade multiplier the bake applies: 1 under the texture style.</summary>
     private static float BladeMul => Grass.Style.V == Grass.StyleBlades ? Grass.BladeDensity.V : 1f;
@@ -589,55 +438,31 @@ internal static unsafe partial class GrassField
         return top;
     }
 
-    /// <summary>Upload the frame's tables, reset the commands, and run the scatter: one workgroup per visible
-    /// patch (times <paramref name="split"/> for the biggest), then the clamp. The barrier covers every way its
-    /// output is read: as commands, as instance attributes, and by the stat copy.</summary>
-    private static void Scatter(int n, int split, ReadOnlySpan<Vector4> planes, Vector3* eye, float fadeFrom, float farDist, int matN, float* pw)
+    /// <summary>The frame's indirect commands before the scatter appends: each draw's vertex count and its region's
+    /// first record, every instance count zero.</summary>
+    private static void FillCommands(uint* cmd)
     {
-        fixed (uint* t = _visTable)
-        {
-            Gl.NamedBufferData(_gl.PatchBuf, (IntPtr)(n * 8 * sizeof(uint)), t, Gl.DYNAMIC_DRAW);
-        }
-        fixed (float* m = _matTable)
-        {
-            Gl.NamedBufferData(_gl.MatBuf, (IntPtr)(Math.Max(matN, 1) * MatVec4 * 4 * sizeof(float)), m, Gl.DYNAMIC_DRAW);
-        }
-        uint* cmd = stackalloc uint[Cmds * 4];
         for (int c = 0; c < Cmds; c++)
         {
             cmd[c * 4] = (uint)(c == 0 ? 2 * NearSegments + 1 : c == 1 ? 2 * FarSegments + 1 : TemplateVerts);
             cmd[c * 4 + 1] = 0; cmd[c * 4 + 2] = 0;
             cmd[c * 4 + 3] = (uint)(c == 0 ? 0 : c == 1 ? _bladeNear : c - 2 < _slotCount ? _slotBase[c - 2] : 0);
         }
-        Gl.NamedBufferSubData(_gl.CmdBuf, IntPtr.Zero, (IntPtr)(Cmds * 4 * sizeof(uint)), cmd);
+    }
 
-        Gl.UseProgram(_gl.ProgScatter);
-        fixed (Vector4* pl = planes) Gl.Uniform4fv(_gl.LocS.Planes, 6, (float*)pl);
-        Gl.Uniform3fv(_gl.LocS.Eye, 1, (float*)eye);
-        Gl.Uniform4f(_gl.LocS.Lod, Grass.Lod.V, Grass.LodMin.V, Grass.LodWidth.V, Grass.LodHeight.V);
-        Gl.Uniform2f(_gl.LocS.Fade, fadeFrom, farDist);
-        Gl.Uniform1f(_gl.LocS.SnowThin, SnowThinShare(Weather.Snow, Weather.CurrentKind == Weather.Kind.Snow ? Weather.Density : 0f));
-        Gl.Uniform1f(_gl.LocS.Near, Grass.BladeLod.V);
-        Gl.Uniform2f(_gl.LocS.Clump, ClumpCell, Grass.Clump.V);
-        Gl.Uniform1f(_gl.LocS.CardKeep, 1f / MathF.Max(BladeMul, 1f));
-        Gl.Uniform2i(_gl.LocS.BladeCap, _bladeNear, _bladeFar);
-        Gl.Uniform1i(_gl.LocS.Clamp, 0);
-        Gl.Uniform1i(_gl.LocS.PushTex, (int)PushUnit);
-        Gl.Uniform3fv(_gl.LocS.PushWindow, 1, pw);
-        Gl.ActiveTexture(Gl.TEXTURE0 + PushUnit);
-        Gl.BindTexture(Gl.TEXTURE_2D, _gl.PushTex);
-        Gl.ActiveTexture(Gl.TEXTURE0);
-        Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindFaces, _gl.FaceBuf);
-        Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindPatches, _gl.PatchBuf);
-        Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindMats, _gl.MatBuf);
-        Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindOut, _gl.OutBuf);
-        Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindCmd, _gl.CmdBuf);
-        Gl.DispatchCompute((uint)n, (uint)split, 1);
-        Gl.MemoryBarrier(Gl.SHADER_STORAGE_BARRIER_BIT);
-        Gl.Uniform1i(_gl.LocS.Clamp, Math.Max(matN, 1));
-        Gl.DispatchCompute(1, 1, 1);
-        Gl.MemoryBarrier(Gl.COMMAND_BARRIER_BIT | Gl.VERTEX_ATTRIB_ARRAY_BARRIER_BIT | Gl.BUFFER_UPDATE_BARRIER_BIT);
-        _scatters++;
+    /// <summary>The scatter's terms but its pass switch (<c>uClamp</c>), into the open loose block.</summary>
+    private static void ScatterTerms(in ScatterLoc l, ReadOnlySpan<Vector4> planes, Vector3* eye, float fadeFrom, float farDist, float* pw)
+    {
+        fixed (Vector4* pl = planes) LooseBlock.SetEach(l.Planes, 4, new ReadOnlySpan<float>((float*)pl, 24));
+        LooseBlock.Set(l.Eye, new ReadOnlySpan<float>((float*)eye, 3));
+        LooseBlock.Set(l.Lod, Grass.Lod.V, Grass.LodMin.V, Grass.LodWidth.V, Grass.LodHeight.V);
+        LooseBlock.Set(l.Fade, fadeFrom, farDist);
+        LooseBlock.Set(l.SnowThin, SnowThinShare(Weather.Snow, Weather.CurrentKind == Weather.Kind.Snow ? Weather.Density : 0f));
+        LooseBlock.Set(l.Near, Grass.BladeLod.V);
+        LooseBlock.Set(l.Clump, ClumpCell, Grass.Clump.V);
+        LooseBlock.Set(l.CardKeep, 1f / MathF.Max(BladeMul, 1f));
+        LooseBlock.Set(l.BladeCap, _bladeNear, _bladeFar);
+        LooseBlock.Set(l.PushWindow, new ReadOnlySpan<float>(pw, 3));
     }
 
     /// <summary>World size of a clump cell: procedural blades inside one share a lean and a height.</summary>
@@ -650,56 +475,24 @@ internal static unsafe partial class GrassField
         return MathF.Sqrt(dx * dx + dy * dy + dz * dz);
     }
 
-    /// <summary><c>GL_DRAW_INDIRECT_BUFFER_BINDING</c>.</summary>
-    private const uint DrawIndirectBinding = 0x8F43;   // not-an-offset: GL enum
-
     /// <summary>Everything a colour program reads beyond the shared terms: the light rig, the sun cascades,
-    /// the local cubes, the ground copy. Leaves <paramref name="prog"/> bound.</summary>
-    private static void ColourUniforms(uint prog, in Loc loc, in AlloyRenderer.FeatLoc feat, Matrix4x4* vp, Vector3* eye,
+    /// the local cubes, the ground copy.</summary>
+    private static void ColourUniforms(in Loc loc, in AlloyRenderer.FeatLoc feat, Matrix4x4* vp, Vector3* eye,
                                        float nearDist, float farDist, float* pw, int* viewport, float near, float far,
                                        bool lightingOn, bool ground)
     {
-        Gl.UseProgram(prog);
         SharedUniforms(in loc, in feat, vp, eye, nearDist, farDist, false, pw, viewport, vlit: Grass.VLight.V && lightingOn);
-        Gl.Uniform1f(loc.Shade, Grass.Shade.V);
-        Gl.Uniform1i(loc.Viz, AlloyRenderer._lightViz);
-        Gl.Uniform1i(loc.Lit, lightingOn ? 1 : 0);
-        Gl.Uniform1f(loc.RootAo, Grass.RootAo.V);
-        Gl.Uniform1f(loc.GroundTint, Grass.GTint.V);
-        Gl.Uniform1i(loc.GroundOn, ground ? 1 : 0);
-        Gl.Uniform4f(loc.Look, Grass.Backlight.V, Grass.Sheen.V, Weather.WetShown, Weather.WetDark.V);
+        LooseBlock.Set(loc.Shade, Grass.Shade.V);
+        LooseBlock.Set(loc.Viz, AlloyRenderer._lightViz);
+        LooseBlock.Set(loc.Lit, lightingOn ? 1 : 0);
+        LooseBlock.Set(loc.RootAo, Grass.RootAo.V);
+        LooseBlock.Set(loc.GroundTint, Grass.GTint.V);
+        LooseBlock.Set(loc.GroundOn, ground ? 1 : 0);
+        LooseBlock.Set(loc.Look, Grass.Backlight.V, Grass.Sheen.V, Weather.WetShown, Weather.WetDark.V);
         Weather.UploadMap(loc.WxMapXf, loc.WxMapP, false);
         Weather.UploadGrassEdge(loc.CoverVp, loc.CoverLayer, loc.WxEdge, loc.WxCache);
         SkyView.UploadLit(loc.SkyVp, loc.SkyTerm, capturing: false);
         AlloyRenderer.BindPass(loc.CubeCount, viewport, near, far);
-    }
-
-    private static void GroundDiagBefore(int* viewport)
-    {
-        _groundDiag--;
-        int fb; Gl.GetIntegerv(Gl.FRAMEBUFFER_BINDING, &fb);
-        int tw = 0, th = 0, fmt = 0;
-        Gl.GetTextureLevelParameteriv(FrameSnapshot.ColorTex, 0, Gl.TEXTURE_WIDTH, &tw);
-        Gl.GetTextureLevelParameteriv(FrameSnapshot.ColorTex, 0, Gl.TEXTURE_HEIGHT, &th);
-        Gl.GetTextureLevelParameteriv(FrameSnapshot.ColorTex, 0, Gl.TEXTURE_INTERNAL_FORMAT, &fmt);
-        _log?.Info($"[grassground] copy taken from fbo {fb} (post hdr fbo {PostChain.Fbo}) at {viewport[2]}x{viewport[3]}, "
-                 + $"copy tex {FrameSnapshot.ColorTex} {tw}x{th} fmt 0x{fmt:x} on unit {TextureSlots.GrassGround} (loc {_gl.Loc.Ground}), "
-                 + $"copies so far {FrameSnapshot.Copies}, pass gen {AlloyRenderer.PassGen}, capturing {AlloyRenderer.Capturing}");
-        FrameSnapshot.Compare((uint)fb, viewport[2], viewport[3], "before draw");
-    }
-
-    private static void GroundDiagAfter(int* viewport)
-    {
-        int bound = 0, samp = 0, uval = -1, act = 0;
-        Gl.GetIntegerv(0x84E0 /*ACTIVE_TEXTURE*/, &act);
-        Gl.ActiveTexture(Gl.TEXTURE0 + TextureSlots.GrassGround);
-        Gl.GetIntegerv(Gl.TEXTURE_BINDING_2D, &bound);
-        Gl.GetIntegerv(0x8919 /*SAMPLER_BINDING*/, &samp);
-        Gl.ActiveTexture((uint)act);
-        if (Gl.GetUniformiv != null) Gl.GetUniformiv(_gl.Prog, _gl.Loc.Ground, &uval);
-        _log?.Info($"[grassground] after draw: unit {TextureSlots.GrassGround} holds tex {bound} sampler obj {samp}, uGround = {uval}, viz {Grass.GViz.V}, active unit was 0x{act:x}");
-        int fb2; Gl.GetIntegerv(Gl.FRAMEBUFFER_BINDING, &fb2);
-        FrameSnapshot.Compare((uint)fb2, viewport[2], viewport[3], "after draw");
     }
 
     /// <summary>Share of the blades gone by rank: the cover's thinning, or while snow falls the
@@ -711,62 +504,27 @@ internal static unsafe partial class GrassField
     private static void SharedUniforms(in Loc loc, in AlloyRenderer.FeatLoc feat, Matrix4x4* vp, Vector3* eye,
                                        float nearDist, float farDist, bool msaa, float* pw, int* viewport, bool vlit)
     {
-        Gl.UniformMatrix4fv(loc.Vp, 1, 0, (float*)vp);
-        Gl.Uniform1f(loc.Tuft, Grass.Tuft.V);
-        Gl.Uniform1f(loc.Width, Grass.Width.V);
-        Gl.Uniform1i(loc.VLit, vlit ? 1 : 0);   // the depth program never lights: its vertex stage skips the rig
-        Gl.Uniform1i(loc.Cast, 0);
-        Gl.Uniform1f(loc.CastWidth, Grass.CastWidth.V);
+        LooseBlock.Set(loc.Vp, new ReadOnlySpan<float>((float*)vp, 16));
+        LooseBlock.Set(loc.Tuft, (float)Grass.Tuft.V);   // a float member: the int knob must not land as its bit pattern
+        LooseBlock.Set(loc.Width, Grass.Width.V);
+        LooseBlock.Set(loc.VLit, vlit ? 1 : 0);   // the depth program never lights: its vertex stage skips the rig
+        LooseBlock.Set(loc.Cast, 0);
+        LooseBlock.Set(loc.CastWidth, Grass.CastWidth.V);
         // the snow on the ground (Weather's integrator) thins the field by rank and winters the survivors
-        Gl.Uniform2f(loc.Snow, SnowThinShare(Weather.Snow, Weather.CurrentKind == Weather.Kind.Snow ? Weather.Density : 0f), Weather.Snow * Grass.SnowLook.V);
-        Gl.Uniform3fv(loc.Eye, 1, (float*)eye);
-        Gl.Uniform2f(loc.Fade, nearDist, farDist);
-        Gl.Uniform1i(loc.Frame, PostChain.TaaOn ? AlloyRenderer.FrameSeq & 63 : 0);
-        Gl.Uniform4f(loc.Lod, Grass.Lod.V, Grass.LodMin.V, Grass.LodWidth.V, Grass.LodHeight.V);
-        Gl.Uniform1i(loc.Tex, 0);
-        Gl.Uniform1f(loc.WindGain, Grass.Wind.V);
-        Gl.Uniform1f(loc.WindSpeed, Grass.WindSpeed.V);
-        Gl.Uniform1i(loc.Msaa, msaa ? 1 : 0);
-        Gl.Uniform1f(loc.Edge, MathF.Max(Grass.Edge.V, 0.01f));
-        Gl.Uniform1i(loc.PushTex, (int)PushUnit);
-        Gl.Uniform1f(loc.PushGain, _gl.PushTex == 0 ? 0f : Grass.Push.V);
-        Gl.Uniform3fv(loc.PushWindow, 1, pw);
+        LooseBlock.Set(loc.Snow, SnowThinShare(Weather.Snow, Weather.CurrentKind == Weather.Kind.Snow ? Weather.Density : 0f), Weather.Snow * Grass.SnowLook.V);
+        LooseBlock.Set(loc.Eye, new ReadOnlySpan<float>((float*)eye, 3));
+        LooseBlock.Set(loc.Fade, nearDist, farDist);
+        LooseBlock.Set(loc.Frame, PostChain.TaaOn ? AlloyRenderer.FrameSeq & 63 : 0);
+        LooseBlock.Set(loc.Lod, Grass.Lod.V, Grass.LodMin.V, Grass.LodWidth.V, Grass.LodHeight.V);
+        LooseBlock.Set(loc.Tex, 0);
+        LooseBlock.Set(loc.WindGain, Grass.Wind.V);
+        LooseBlock.Set(loc.WindSpeed, Grass.WindSpeed.V);
+        LooseBlock.Set(loc.Msaa, msaa ? 1 : 0);
+        LooseBlock.Set(loc.Edge, MathF.Max(Grass.Edge.V, 0.01f));
+        LooseBlock.Set(loc.PushTex, (int)PushUnit);
+        LooseBlock.Set(loc.PushGain, Grass.Push.V);
+        LooseBlock.Set(loc.PushWindow, new ReadOnlySpan<float>(pw, 3));
         AlloyRenderer.UploadFeatureTerms(feat, viewport);
-    }
-
-    /// <summary>The two procedural blade draws: near strips, then far single triangles. The program is bound.</summary>
-    private static void DrawBlades(in Loc loc)
-    {
-        Gl.Uniform1i(loc.Segments, NearSegments);
-        if (_bladeNear > 0) Gl.DrawArraysIndirect(Gl.TRIANGLE_STRIP, (void*)0);
-        Gl.Uniform1i(loc.Segments, FarSegments);
-        if (_bladeFar > 0) Gl.DrawArraysIndirect(Gl.TRIANGLE_STRIP, (void*)(4 * sizeof(uint)));
-        _draws += 2;
-    }
-
-    /// <summary>Every live slot's indirect draw: its material's atlas bound, and in the colour pass its
-    /// colours. The depth pass binds the atlas too -- its stage reads the alpha.</summary>
-    private static void DrawSlots(int* tids, in Loc loc, bool depth)
-    {
-        for (int slot = 0; slot < _slotCount; slot++) DrawSlot(slot, tids, in loc, depth);
-    }
-
-    private static void DrawSlot(int slot, int* tids, in Loc loc, bool depth)
-    {
-        int mat = _slotMat[slot];
-        CAurGrassInfo info = GrassInfo(mat);
-        int tid = tids[mat];
-        if (info.IsNull || tid == 0) return;   // not uploaded yet: skip the material, not the pass
-        if (!depth)
-        {
-            Vector3 dif = info.Diffuse, amb = info.Ambient;
-            Gl.Uniform3fv(loc.MatDif, 1, (float*)&dif);
-            Gl.Uniform3fv(loc.MatAmb, 1, (float*)&amb);
-        }
-        Gl.BindTexture(Gl.TEXTURE_2D, (uint)tid);
-        if (_gl.SampMip != 0) Gl.BindSampler(0, HasMips(tid) ? _gl.SampMip : _gl.SampFlat);
-        Gl.DrawArraysIndirect(Gl.TRIANGLES, (void*)((2 + slot) * 4 * sizeof(uint)));
-        _draws++;
     }
 
     // ---- the distance ladder (#355) ----------------------------------------------------------
@@ -848,21 +606,19 @@ internal static unsafe partial class GrassField
     /// <summary>One line for the <c>/grass</c> echo and the arm-time log.</summary>
     internal static string Describe()
         => $"{(_off ? "UNAVAILABLE" : Grass.Enabled.V ? "on" : "off")} density x{Grass.Density.V:0.##} wind x{Grass.Wind.V:0.##} windspeed {Grass.WindSpeed.V:0.####} " +
-           $"soften {Grass.Soften.V:0.##} aniso {_appliedAniso:0.#}x edge {Grass.Edge.V:0.##} " +
+           $"edge {Grass.Edge.V:0.##} " +
            $"push x{Grass.Push.V:0.##} r{Grass.PushRadius.V:0.##} over {Grass.PushExtent.V:0.#}u " +
            $"cull {(Grass.Cull.V ? $"on shrink {Grass.CullShrink.V:0.##}" + (Grass.CullMax.V > 0f ? $" max {Grass.CullMax.V:0.#}u" : "") : "off")} " +
-           $"lod {Grass.Lod.V:0.#}u min {Grass.LodMin.V:0.###} w{Grass.LodWidth.V:0.##} h{Grass.LodHeight.V:0.##} shade {Grass.Shade.V:0.#}u tuft {Grass.Tuft.V:0} vlight {(Grass.VLight.V ? 1 : 0)} shadow {Grass.Shadow.V} castwidth {Grass.CastWidth.V:0.#} ({_shadowDraws} cascade draws) rootao {Grass.RootAo.V:0.##} gtint {Grass.GTint.V:0.##} softedge {(Grass.SoftEdge.V ? 1 : 0)} far {(Grass.Far.V > 0f ? $"{Grass.Far.V:0.#}u" : "engine")} prepass {(Grass.Prepass.V ? (_gl.ProgDepth != 0 ? "on" : "UNAVAILABLE") : "off")} " +
+           $"lod {Grass.Lod.V:0.#}u min {Grass.LodMin.V:0.###} w{Grass.LodWidth.V:0.##} h{Grass.LodHeight.V:0.##} shade {Grass.Shade.V:0.#}u tuft {Grass.Tuft.V:0} vlight {(Grass.VLight.V ? 1 : 0)} castwidth {Grass.CastWidth.V:0.#} rootao {Grass.RootAo.V:0.##} gtint {Grass.GTint.V:0.##} far {(Grass.Far.V > 0f ? $"{Grass.Far.V:0.#}u" : "engine")} " +
            $"({_pushers} displacing, {_cullers} culling, {_reticles} non-solid skipped) " +
-           $"style {(Grass.Style.V == Grass.StyleBlades ? (_gl.ProgBlade != 0 ? $"blades x{Grass.BladeDensity.V:0} width {Grass.Width.V:0.##} clump {Grass.Clump.V:0.##} detail {Grass.BladeLod.V:0}u" : "blades UNAVAILABLE (cards)") : "textures")} " +
+           $"style {(Grass.Style.V == Grass.StyleBlades ? $"blades x{Grass.BladeDensity.V:0} width {Grass.Width.V:0.##} clump {Grass.Clump.V:0.##} detail {Grass.BladeLod.V:0}u" : "textures")} " +
            $"backlight {Grass.Backlight.V:0.##} sheen {Grass.Sheen.V:0.##} " +
-           $"({_patchCount} patches, {_faceCount} faces / {_bladesResident} blades resident; " +
-           $"{(_samples > 1 ? $"{_samples}x MSAA, alpha-to-coverage live" : "no MSAA, dithered edge")}" +
-           $"{(_anyFlat ? ", A TEXTURE HAS NO MIPS" : "")})";
+           $"({_patchCount} patches, {_faceCount} faces / {_bladesResident} blades resident)";
 
     // ---- diagnostics -------------------------------------------------------------------------
 
     internal static void ResetPeriod()
-    { _slotsOver = 0; _clipped = 0; _frames = 0; _draws = 0; _visible = 0; _culled = 0; _baked = 0; _disabled = 0; _candidates = 0; _scatters = 0; _drawnNear = 0; _drawnFar = 0; _drawnCards = 0; _pushWalked = 0; _pushSkips = 0; _pushTexels = 0; _pushOver = 0; _pushFrames = 0; }
+    { _slotsOver = 0; _clipped = 0; _frames = 0; _visible = 0; _culled = 0; _baked = 0; _disabled = 0; _candidates = 0; _pushWalked = 0; _pushSkips = 0; _pushTexels = 0; _pushOver = 0; _pushFrames = 0; }
 
     internal static string Stats()
     {
@@ -870,14 +626,9 @@ internal static unsafe partial class GrassField
         if (!Grass.Enabled.V) return "no grass (/grass enabled 0)";
         if (_down.Failed) return "no grass (Alloy program unavailable)";
         if (_frames == 0) return "grass idle";
-        int f = Math.Max(_scatters, 1);
         return $"grass {_patchCount} patches / {_faceCount} faces / {_bladesResident} blades resident, " +
                $"{(float)_visible / _frames:F0} patches drawn + {(float)_culled / _frames:F0} culled per frame, " +
-               // the scatter's own count, off the GPU a frame late: what the ladder kept, then what survived
-               // the per-blade frustum/solid/snow cull, by draw
-               $"{(float)_candidates / f:F0} blades past the ladder -> {(float)_drawnNear / f:F0} near + {(float)_drawnFar / f:F0} far blades + {(float)_drawnCards / f:F0} cards drawn per frame" +
-               (_gl.Stat == null ? " (NO COUNT READBACK)" : "") +
-               $", {(float)_draws / _frames:F0} draws/frame, {_baked} baked" + DbNote() +
+               $"{(float)_candidates / _frames:F0} blades past the ladder, {_baked} baked" + DbNote() +
                (_thinned == 0 ? "" : $", {_thinned} patches thinned to {MaxPatchBlades} blades") +
                (_slotsOver == 0 ? "" : $", {_slotsOver} MATERIAL-FRAMES PAST THE {Slots} DRAW SLOTS (not drawn)") +
                (_clipped == 0 ? "" : $", {_clipped} FRAMES OVER THE {RecordCap} RECORD CAP (far grass clipped) -- lower /grass density or far") +
@@ -887,11 +638,6 @@ internal static unsafe partial class GrassField
                                      "past the live grass-info count)") +
                (_capped ? $", FACE CAP HIT ({MaxFaces}) -- the rest of the area has no grass" : "") +
                (_patchCapped ? $", PATCH CAP HIT ({MaxPatches}) -- the rest of the area has no grass" : "") +
-               // The two facts that decide how the cutout edge is resolved, and neither is visible anywhere
-               // else: with no MSAA the edge is dithered rather than coverage-resolved, and a texture with
-               // no mip chain gets the flat sampler (so anisotropy and the soften bias do nothing on it).
-               $", {(_samples > 1 ? $"{_samples}x MSAA (A2C)" : "no MSAA (dithered edge)")}, mips built {_mipsBuilt}" +
-               $", aniso {_appliedAniso:0.#}x" + (_anyFlat ? ", A GRASS TEXTURE HAS NO MIPS" : "") +
                // Zero displacers with creatures on screen means the gob list, not the field: the shader term
                // is doing its job over a map nothing was splatted into, which no other number distinguishes.
                // A material a server removed is skipped here rather than never baked -- so it shows up as

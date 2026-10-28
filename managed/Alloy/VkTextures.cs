@@ -9,14 +9,22 @@ using CX.Rhi;
 namespace CX.Alloy;
 
 /// <summary>
-/// Every owned texture on Vulkan too, under <c>alloy.backend vk</c>: the bytes each of <see cref="OwnedTextures"/>'
+/// Every owned texture on Vulkan too, on Vulkan: the bytes each of <see cref="OwnedTextures"/>'
 /// upload sites hands GL go up again as a Vulkan image with the same levels and sampler, and the image takes a
-/// bindless index. Keyed by the owned GL name, which is what the batch tables carry; freed beside the GL name.
-/// ponytail: every texture is held twice in VRAM until GL Alloy is deleted.
+/// bindless index. Keyed by the owned name the batch tables carry: a GL name, or on Vulkan one <see cref="NewName"/>
+/// hands out with no GL texture behind it.
 /// </summary>
 internal static class VkTextures
 {
-    private readonly record struct Entry(ImageId Image, BindlessHandle Handle, SamplerDesc Sampler, SamplerId SamplerId);
+    private readonly record struct Entry(ImageId Image, BindlessHandle Handle, SamplerDesc Sampler, SamplerId SamplerId, long Bytes);
+
+    /// <summary>The next Vulkan-only name; outlives a device, so a name is never handed out twice in a session.</summary>
+    private sealed class NameState { public int Next = (int)FirstName - 1; }
+
+    private static readonly NameState _names = new();
+
+    /// <summary>The first Vulkan-only name: far past any name GL hands out, so the two ranges never meet.</summary>
+    internal const uint FirstName = 0x40000000;   // not-an-offset: a texture-name range
 
     /// <summary>One device's mirror, replaced whole with the device (context loss drops both).</summary>
     private sealed class VkTexState
@@ -26,8 +34,6 @@ internal static class VkTextures
         public readonly Dictionary<SamplerDesc, SamplerId> Samplers = new();
         /// <summary>Names sharing each image: a sampler change is a new GL name over the same texels.</summary>
         public readonly Dictionary<uint, int> Refs = new();
-        /// <summary>GL's resident handle for an owned name, as minted: the record tables carry handles, not names.</summary>
-        public readonly Dictionary<ulong, uint> HandleName = new();
         public long Mirrored, Refused;
         /// <summary>Bumped by every change to a name's mirror or a handle's name, and carried to a new device's state.</summary>
         public long Gen;
@@ -46,10 +52,7 @@ internal static class VkTextures
         if (AlloyDevice.Vulkan(log) is not VkBackend vk) return null;
         if (_s.Dev != vk)
         {
-            VkTexState was = _s;
-            _s = new VkTexState { Dev = vk, Gen = was.Gen + 1 };
-            // handles GL minted before the first device carry over; a replaced device went with GL's context, and its handles
-            if (was.Dev == null) foreach (var kv in was.HandleName) _s.HandleName[kv.Key] = kv.Value;
+            _s = new VkTexState { Dev = vk, Gen = _s.Gen + 1 };
         }
         return vk;
     }
@@ -63,7 +66,9 @@ internal static class VkTextures
         ImageId img = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, f, w, h, 1, mips, 1, 1, use, label));
         if (img.IsNull) { Refuse($"{label}: the device refused a {f} {w}x{h} image"); return default; }
         if (!_s.Samplers.TryGetValue(s, out SamplerId sid)) _s.Samplers[s] = sid = vk.CreateSampler(s);
-        _s.ByName[gl] = new Entry(img, vk.Bindless(img, sid), s, sid);
+        long bytes = 0;
+        for (int l = 0; l < mips; l++) bytes += LevelBytes(f, Math.Max(1, w >> l), Math.Max(1, h >> l));
+        _s.ByName[gl] = new Entry(img, vk.Bindless(img, sid), s, sid, bytes);
         _s.Gen++;
         _s.Refs[img.Value] = 1;
         _s.Mirrored++;
@@ -78,7 +83,7 @@ internal static class VkTextures
         if (t.Dev == null || !t.ByName.TryGetValue(src, out Entry e)) return;
         Forget(gl);
         if (!t.Samplers.TryGetValue(s, out SamplerId sid)) t.Samplers[s] = sid = t.Dev.CreateSampler(s);
-        t.ByName[gl] = new Entry(e.Image, t.Dev.Bindless(e.Image, sid), s, sid);
+        t.ByName[gl] = new Entry(e.Image, t.Dev.Bindless(e.Image, sid), s, sid, e.Bytes);
         t.Gen++;
         t.Refs[e.Image.Value] = t.Refs.GetValueOrDefault(e.Image.Value) + 1;
     }
@@ -114,6 +119,19 @@ internal static class VkTextures
         return px;
     }
 
+    /// <summary>A name for a texture that lives on Vulkan only: no GL object is made for it, and GL calls on it are no-ops.</summary>
+    internal static uint NewName() => (uint)System.Threading.Interlocked.Increment(ref _names.Next);
+
+    /// <summary>Does <paramref name="gl"/> hold an image?</summary>
+    internal static bool Has(uint gl) => _s.ByName.ContainsKey(gl);
+
+    /// <summary>The bytes <paramref name="gl"/>'s image holds over every level; 0 when it has none.</summary>
+    internal static long Bytes(uint gl) => _s.ByName.TryGetValue(gl, out Entry e) ? e.Bytes : 0;
+
+    private static long LevelBytes(Format f, int w, int h) => f.IsCompressed()
+        ? (long)((w + 3) / 4) * ((h + 3) / 4) * f.BlockBytes()
+        : (long)w * h * (f switch { Format.R8 => 1, Format.Rg8 => 2, _ => 4 });
+
     /// <summary>The sampler <paramref name="gl"/>'s mirror was made with, for a replacement that keeps it.</summary>
     internal static SamplerDesc? SamplerOf(uint gl) => _s.ByName.TryGetValue(gl, out Entry e) ? e.Sampler : null;
 
@@ -126,17 +144,17 @@ internal static class VkTextures
     /// <summary>The sampler a bound read of <paramref name="gl"/>'s mirror goes through; null id when it has none.</summary>
     internal static SamplerId SamplerId(int gl) => _s.ByName.TryGetValue((uint)gl, out Entry e) ? e.SamplerId : default;
 
-    /// <summary>GL minted <paramref name="handle"/> for owned name <paramref name="gl"/>.</summary>
-    internal static void NoteHandle(ulong handle, int gl)
-    {
-        if (Renderer.OnVulkan) { _s.HandleName[handle] = (uint)gl; _s.Gen++; }
-    }
+    /// <summary>The bit that marks a record-table handle as Vulkan's: the owned name in the low half, no GL handle behind it.</summary>
+    private const ulong VkHandle = 1UL << 63;
+
+    /// <summary>The handle the record tables carry for owned name <paramref name="gl"/> on Vulkan; nothing is minted.</summary>
+    internal static ulong HandleOf(uint gl) => gl == 0 ? 0 : VkHandle | gl;
 
     /// <summary>The mirror's generation: unchanged means every handle resolves to the index it did.</summary>
     internal static long Generation => _s.Gen;
 
-    /// <summary>The bindless index of the mirror behind GL handle <paramref name="handle"/>; 0 when it has none.</summary>
-    internal static uint IndexOfHandle(ulong handle) => _s.HandleName.TryGetValue(handle, out uint gl) ? Index((int)gl) : 0;
+    /// <summary>The bindless index of the mirror behind <see cref="HandleOf"/>'s <paramref name="handle"/>; 0 when it has none.</summary>
+    internal static uint IndexOfHandle(ulong handle) => (handle & VkHandle) != 0 ? Index((int)(uint)handle) : 0;
 
     /// <summary>The GL name died: its mirror and its index go after the frames in flight.</summary>
     internal static void Forget(uint gl)
@@ -159,36 +177,17 @@ internal static class VkTextures
                                 + (_s.Refused == RefusalLines ? "; further refusals are only counted" : ""));
     }
 
-    /// <summary>Every mirrored name's Vulkan sampler against GL's live texture state: how many disagree on the mip
-    /// filter or the anisotropy, with the first few named. The A/B's line; it reads every texture's state.</summary>
-    internal static string SamplerParity()
-    {
-        int n = 0, mip = 0, aniso = 0;
-        var seen = new System.Text.StringBuilder();
-        foreach ((uint gl, Entry e) in _s.ByName)
-        {
-            n++;
-            (int min, int a) = GlParity.TexParams(gl);
-            MipMode m = Sampler(min, (int)Gl.LINEAR, (int)Gl.REPEAT, (int)Gl.REPEAT, false).Mip;
-            bool mOff = m != e.Sampler.Mip, aOff = Math.Max(a, 1) != (int)e.Sampler.Aniso;
-            if (mOff) mip++;
-            if (aOff) aniso++;
-            if ((mOff || aOff) && mip + aniso <= 4) seen.Append($" [{gl}: GL min 0x{min:x} aniso {a}, Vulkan {e.Sampler.Mip} aniso {e.Sampler.Aniso}]");
-        }
-        return $"samplers: {n} mirrored, {mip} differ on the mip filter, {aniso} on anisotropy (Aniso() {TexRegistry.Aniso()}){seen}";
-    }
-
     /// <summary>The engine's sampler state (GL enums, <c>OwnedTextures.EngineSampler</c>) as the seam's.</summary>
     internal static SamplerDesc Sampler(int min, int mag, int wrapS, int wrapT, bool aniso)
     {
-        Filter Of(int f) => f is (int)Gl.LINEAR or (int)Gl.LINEAR_MIPMAP_LINEAR or (int)Gl.LINEAR_MIPMAP_NEAREST ? Filter.Linear : Filter.Nearest;
+        Filter Of(int f) => f is (int)EngineTokens.LINEAR or (int)EngineTokens.LINEAR_MIPMAP_LINEAR or (int)EngineTokens.LINEAR_MIPMAP_NEAREST ? Filter.Linear : Filter.Nearest;
         MipMode mip = min switch
         {
-            (int)Gl.LINEAR_MIPMAP_LINEAR or (int)Gl.NEAREST_MIPMAP_LINEAR => MipMode.Linear,
-            (int)Gl.NEAREST_MIPMAP_NEAREST or (int)Gl.LINEAR_MIPMAP_NEAREST => MipMode.Nearest,
+            (int)EngineTokens.LINEAR_MIPMAP_LINEAR or (int)EngineTokens.NEAREST_MIPMAP_LINEAR => MipMode.Linear,
+            (int)EngineTokens.NEAREST_MIPMAP_NEAREST or (int)EngineTokens.LINEAR_MIPMAP_NEAREST => MipMode.Nearest,
             _ => MipMode.None,
         };
-        Wrap W(int w) => w == (int)Gl.CLAMP_TO_EDGE ? Wrap.Clamp : Wrap.Repeat;
+        Wrap W(int w) => w == (int)EngineTokens.CLAMP_TO_EDGE ? Wrap.Clamp : Wrap.Repeat;
         return new SamplerDesc(Of(min), Of(mag), mip, W(wrapS), Aniso: aniso ? TexRegistry.Aniso() : 1, WrapT: W(wrapT));
     }
 

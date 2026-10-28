@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using CX.Engine;
 using CX.Framework;
 using CX.Graphics;
+using CX.Rhi;
 
 namespace CX.Alloy;
 
@@ -154,20 +155,19 @@ internal static unsafe partial class OwnedTextures
         check.Expect(s == new Sampler(0x2700, 0x2600, 0x2901, 0x812F, 0x2901, false), $"nearest mipped, T clamped: {s}"); // not-an-offset: GL enums
         s = EngineSampler(1, linear: false, mip: false);
         check.Expect(s == new Sampler(0x2600, 0x2600, 0x812F, 0x2901, 0x2901, false), $"nearest unmipped, S clamped: {s}"); // not-an-offset: GL enums
-        s = EngineSampler(CubeClamp, linear: true, mip: true);
-        check.Expect(s == new Sampler(0x2703, 0x2601, 0x812F, 0x812F, 0x812F, true), $"cube: {s}");             // not-an-offset: GL enums
+        s = EngineSampler(7, linear: true, mip: true);
+        check.Expect(s == new Sampler(0x2703, 0x2601, 0x812F, 0x812F, 0x812F, true), $"all three axes clamped: {s}");   // not-an-offset: GL enums
         check.Expect(EngineLevels(256, 256) == 9 && EngineLevels(512, 64) == 10 && EngineLevels(1, 1) == 1 && EngineLevels(3, 5) == 3,
                      $"levels: {EngineLevels(256, 256)} {EngineLevels(512, 64)} {EngineLevels(1, 1)} {EngineLevels(3, 5)}");
 
-        bool got = RawFormat(4, out uint sz, out uint fm, out uint ty);
-        check.Expect(got && sz == 0x8058 && fm == 0x1908 && ty == 0x1401, $"bpp 4: {sz:x}/{fm:x}/{ty:x}");       // not-an-offset: GL enums
-        got = RawFormat(3, out sz, out fm, out ty);
-        check.Expect(got && sz == 0x8051 && fm == 0x1907 && ty == 0x1401, $"bpp 3: {sz:x}/{fm:x}/{ty:x}");       // not-an-offset: GL enums
-        got = RawFormat(2, out sz, out fm, out ty);
-        check.Expect(got && sz == 0x8056 && fm == 0x1908 && ty == 0x8033, $"bpp 2: {sz:x}/{fm:x}/{ty:x}");       // not-an-offset: GL enums
-        got = RawFormat(1, out sz, out fm, out ty);
-        check.Expect(got && sz == 0x8229 && fm == 0x1903 && ty == 0x1401, $"bpp 1: {sz:x}/{fm:x}/{ty:x}");       // not-an-offset: GL enums
-        check.Expect(!RawFormat(0, out _, out _, out _) && !RawFormat(5, out _, out _, out _), "no texel width but 1..4 uploads");
+        check.Expect(RawBpp(1) && RawBpp(2) && RawBpp(3) && RawBpp(4) && !RawBpp(0) && !RawBpp(5), "no texel width but 1..4 uploads");
+        VkTextures.Pack(null, 1, 0, 0, 1, 1, 4, nibbles: false, out Format f4);
+        VkTextures.Pack(null, 1, 0, 0, 1, 1, 3, nibbles: false, out Format f3);
+        VkTextures.Pack(null, 1, 0, 0, 1, 1, 2, nibbles: false, out Format f2);
+        VkTextures.Pack(null, 1, 0, 0, 1, 1, 2, nibbles: true, out Format fn);
+        VkTextures.Pack(null, 1, 0, 0, 1, 1, 1, nibbles: false, out Format f1);
+        check.Expect(f4 == Format.Rgba8 && f3 == Format.Rgba8 && f2 == Format.Rg8 && fn == Format.Rgba8 && f1 == Format.R8,
+                     $"texel widths 4/3/2/4-bit/1 pack as {f4}/{f3}/{f2}/{fn}/{f1}");
 
         check.Expect(Pack4444(0x12, 0x34, 0x56, 0x78) == 0x1357 && Pack4444(0xff, 0x00, 0xff, 0x0f) == 0xF0F0,
                      $"pack: {Pack4444(0x12, 0x34, 0x56, 0x78):x4} {Pack4444(0xff, 0x00, 0xff, 0x0f):x4}");

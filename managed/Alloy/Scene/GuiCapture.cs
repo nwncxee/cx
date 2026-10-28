@@ -7,7 +7,7 @@ namespace CX.Alloy;
 /// <summary>
 /// The draw list of Alloy's GUI path. Every scene with no tile BSP (panels, menus, minimap, compass, cursor
 /// overlay, previews) is walked from the scene database into layers of records -- geometry, state and the
-/// content program a part's material names -- which <see cref="GuiPass"/> issues from the 4.6 context. The
+/// content program a part's material names -- which <see cref="GuiPass"/> issues. The
 /// list is BUILT here: no engine draw funnel feeds it and no draw of it is handed back to one.
 /// </summary>
 internal static unsafe class GuiCapture
@@ -29,9 +29,12 @@ internal static unsafe class GuiCapture
         public int EnvTex;
         public uint Prim, Format, Src, Dst;
         public long Offset;
-        /// <summary>A VAO the caller already owns (the mesh arena's), bound as-is. 0 = this draw takes the
-        /// one the flush builds for <see cref="Format"/>.</summary>
-        public uint RawVao;
+        /// <summary>This draw's geometry is the mesh arena's, in the <see cref="ArenaFmt"/> layout; false =
+        /// it is staged through the flush's own stream for <see cref="Format"/>.</summary>
+        public bool Arena;
+        /// <summary>With <see cref="Arena"/>: which mesh arena layout to bind the buffers of. Meaningless for a
+        /// stream draw.</summary>
+        public int ArenaFmt;
         /// <summary>The content program this draw runs (<see cref="GuiContent.Key"/>); 0 = Alloy's GUI program.</summary>
         public int Content;
     }
@@ -137,7 +140,7 @@ internal static unsafe class GuiCapture
             n = hi - lo + 1;
             if (IdxN + count > IdxMax) { Overflow("indices"); return false; }
         }
-        d.RawVao = 0;   // Draws[] is reused across frames: a stale arena VAO here would rebind the wrong buffers
+        d.Arena = false; d.ArenaFmt = 0;   // Draws[] is reused across frames: a stale layout here would bind the wrong buffers
         d.Content = 0;
         int at = (VtxN + stride - 1) / stride * stride;
         long bytes = (long)n * stride;
@@ -189,8 +192,11 @@ internal static unsafe class GuiCapture
     /// <c>GLRender</c> cache, because no engine draw runs to fill one.</summary>
     internal struct DbDraw
     {
-        /// <summary>The mesh arena's VAO for this range's format, and the three integers that address the run.</summary>
-        public uint Vao, Prim, Src, Dst;
+        /// <summary>The primitive mode and the two blend factors, as the engine's enum values.</summary>
+        public uint Prim, Src, Dst;
+        /// <summary>This part draws out of the mesh arena, in this layout (<c>MeshArena.Fmt</c>).</summary>
+        public bool Arena;
+        public int ArenaFmt;
         public int Count, BaseVertex, Tex;
         /// <summary>The DB bone slot whose 64-matrix palette poses this draw; -1 = rigid.</summary>
         public int Bones;
@@ -222,10 +228,10 @@ internal static unsafe class GuiCapture
     /// <see cref="GuiPass"/>'s program, SSBO and per-rect viewport are unchanged.</summary>
     internal static void DbPart(in DbDraw p)
     {
-        if (p.Count <= 0 || p.Vao == 0 || LayerN == 0 || !Room()) return;
+        if (p.Count <= 0 || !p.Arena || LayerN == 0 || !Room()) return;
         ref Draw d = ref Draws[DrawN];
         d.Stream = false; d.Indexed = true; d.Stride = 0; d.Format = 0;
-        d.RawVao = p.Vao; d.Content = p.Content; d.Prim = p.Prim; d.Count = p.Count; d.Offset = p.Offset; d.BaseVertex = p.BaseVertex;
+        d.Arena = p.Arena; d.ArenaFmt = p.ArenaFmt; d.Content = p.Content; d.Prim = p.Prim; d.Count = p.Count; d.Offset = p.Offset; d.BaseVertex = p.BaseVertex;
         d.Blend = p.Blend; d.Src = p.Src; d.Dst = p.Dst;
         d.DepthTest = p.DepthTest; d.DepthWrite = p.DepthWrite; d.Cull = p.Cull; d.Tex = p.Tex; d.EnvTex = p.Lit && p.EnvMap ? p.EnvTex : 0;
         ref GuiRec rec = ref Records[DrawN];

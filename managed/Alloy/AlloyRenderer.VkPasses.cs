@@ -22,29 +22,45 @@ public sealed unsafe partial class AlloyRenderer
     }
 
     /// <summary>How one range of batches draws: the depth rule it inherits, whether it is the wash interiors' pass, the
-    /// split washes' interiors having run, and the attachment set.</summary>
-    private readonly record struct VkRange(bool MatchDepth, bool DepthMask, bool Interior, bool SplitRan, VkTargets Targets, bool Gbuf);
+    /// split washes' interiors having run, the attachment set, and what its lit draws do with the decal layer
+    /// (<see cref="DecalLayer.ModeFold"/> for a surface pass, <see cref="DecalLayer.ModeSkip"/> for the blended one).</summary>
+    private readonly record struct VkRange(bool MatchDepth, bool DepthMask, bool Interior, bool SplitRan, VkTargets Targets,
+                                           bool Gbuf, int Decal = DecalLayer.ModeNone, VkOitPart Oit = VkOitPart.All);
+
+    /// <summary>Which blended batches a range draws under OIT: all of them, the accumulation's (counting the rest), or
+    /// only the ones that sat it out (<see cref="Issue.SitsOitOut"/>).</summary>
+    private enum VkOitPart : byte { All, Accum, Hosted }
 
     /// <summary>The colour bracket into <paramref name="cl"/> after the cull: uploads, the depth prepass, the opaque,
-    /// cutout and wash-interior pass into the scene colour and G-buffer, the blended and additive pass, then the scene
-    /// colour encoded into <paramref name="composite"/>. False (logged) when the device refused something.</summary>
-    internal static bool VkRecordFrame(VkBackend vk, CommandList cl, ImageId composite, in Matrix4x4 vp, int* viewport,
-                                       int* display, float near, float far, bool lightingOn, bool perspective, int groups,
-                                       ExtenderLog log)
+    /// cutout and wash-interior pass into the scene colour and G-buffer, the blended and additive pass, then the post chain
+    /// and stack into <paramref name="composite"/>. False (logged) when the device refused something.</summary>
+    internal static bool VkRecordFrame(VkBackend vk, CommandList cl, ImageId composite, in Matrix4x4 vp, in Matrix4x4 vpClean,
+                                       in Matrix4x4 view, in Matrix4x4 proj, int* viewport, int* display, float near,
+                                       float far, bool lightingOn, bool perspective, int groups, ExtenderLog log)
     {
         int w = viewport[2], h = viewport[3];
+        // inside the frame's record bracket, which is why the module-unload edge only sets the flag
+        if (Programs._spliceStale) Programs.DropSpliced();
         if (!VkEnsure(vk, w, h, log)) return false;
         VkColourState s = _vkc;
         s.ArenaUsed = 0;
         s.EngineAt = -1;
         s.Drawn = s.Skipped = 0;
         if (!VkUploads(vk, cl)) return false;
+        StageResources.VkRun(vk, cl, viewport, _capturing, log);
+        if (!VkRecordShadow(vk, cl, log)) return false;
+        // the weather's surface maps off the cover layer the bake just landed, ahead of every stage that reads them
+        VkWeatherSurface(vk, cl, log);
+        // the lightmap's slot: its static cubes were queued by the shadow bracket and baked by the flush just above
+        if (lightingOn) LightmapBake.VkRun(vk, cl, _capturing, _frameSeq);
         bool indirect = CullPassVk.Ran;
         int viz = _capturing ? 0 : _lightViz;
         bool gbuf = lightingOn && perspective && Lighting.Deferred.V && (viz == 0 || viz == VizLightFrom);
-        VkTargets colour = gbuf ? VkTargets.Colour : VkTargets.Forward;
+        bool refl = VkSsrArm(vk, w, h, gbuf, viz, log);
+        VkTargets colour = gbuf ? refl ? VkTargets.ColourRefl : VkTargets.Colour : VkTargets.Forward;
         s.GbufWritten = gbuf;
 
+        VkIdBegin(vk, w, h, log);
         if (!VkPrepass(cl, s, _gOpaqueEnd, vp, viewport, near, far, indirect, CullPassVk.PhasePrepass)) return false;
         if (indirect && _depthPrepass)
         {
@@ -56,17 +72,32 @@ public sealed unsafe partial class AlloyRenderer
             }
         }
         if (indirect) CullPassVk.RecordColour(cl);
+        // the depth the colour pass's draws may not sample (it is their own attachment) and the AO pass reads,
+        // as it stood when the prepass finished -- which is the depth the lit stage's ownership test is against
+        if (_depthPrepass)
+            cl.CopyImage(new CopyImageCmd(s.Depth, new ImageRegion(0, 0, 0, 0), s.DepthRead, new ImageRegion(0, 0, 0, 0), w, h, 1));
+        fixed (Matrix4x4* pr = &proj) SsaoPassVk.Record(vk, cl, s.DepthRead, _depthPrepass, pr, viewport, log);
+        // CX-273: the ground decals into their layer, off the list the cull just compacted and against the prepass
+        // depth, before the first surface that folds them in is drawn
+        if (!VkDecalPass(vk, cl, _gOpaqueEnd, DecalEnd(), vp, viewport, near, far,
+                         lightingOn && perspective && !_capturing && _depthPrepass && viewport[0] == 0 && viewport[1] == 0,
+                         indirect, log)) return false;
 
         CommandList side = s.Side!;
         side.Reset();
         int arena0 = s.ArenaUsed;
         var b = new VkBound { Fmt = -1, Tex = -1 };
         VkPassStart(side, w, h);
+        // the record is this frame's deferred walk's, which runs after these draws; a resize remakes it there
+        _vkdef.Wrote = false;
+        VkHandOverReads(cl, s);
         bool ok = true;
-        var plain = new VkRange(_depthEqual, true, false, false, colour, gbuf);
+        var plain = new VkRange(_depthEqual, true, false, false, colour, gbuf, VkDecalFold);
         ok &= VkIssueClass(side, ref b, 0, _gCutoutStart, plain, vp, viewport, near, far, indirect);
         ok &= VkIssueClass(side, ref b, _gCutoutStart, _gA2cStart, plain, vp, viewport, near, far, indirect);
-        ok &= VkIssue(side, ref b, _gA2cStart, _gOpaqueEnd, plain with { MatchDepth = false }, vp, viewport, near, far, indirect);
+        // the coverage tail waits for its layer whenever one arms; otherwise it draws here, cut
+        bool cover = VkCoverArm(vk, vp, viewport, log);
+        if (!cover) ok &= VkIssue(side, ref b, _gA2cStart, _gOpaqueEnd, plain with { MatchDepth = false }, vp, viewport, near, far, indirect);
         bool washes = _gOpaqueEnd < _gBlendEnd;
         if (washes) ok &= VkIssue(side, ref b, _gOpaqueEnd, _gBlendEnd, plain with { MatchDepth = false, Interior = true }, vp, viewport, near, far, indirect);
         if (!ok) return false;
@@ -82,27 +113,105 @@ public sealed unsafe partial class AlloyRenderer
             colors[GbufFirst] = new ColorAttachment(s.G0, 0, 0, LoadOp.Clear, StoreOp.Store, default);
             colors[GbufFirst + 1] = new ColorAttachment(s.G1, 0, 0, LoadOp.DontCare, StoreOp.Store, default);
             colors[GbufFirst + 2] = new ColorAttachment(s.G2, 0, 0, LoadOp.DontCare, StoreOp.Store, default);
+            if (refl) VkSsrAttachments(colors);
         }
         VkFlushPass(cl, side, arena0, new RenderPassDesc(colors[..n], new DepthAttachment(s.Depth, 0, 0, LoadOp.Load, StoreOp.Store, 1f)));
 
+        // the sky after the G-buffer writers rather than between them as GL's graph has it: the dome draws only
+        // where nothing wrote depth, so a cutout drawn before it covers exactly the pixels it would have covered
+        if (!VkRecordSky(vk, cl, s, vp, viewport, log)) return false;
+        // the froxel table both deferred stages and the fog's local lights read, from this frame's own build, then the
+        // fog volume: after the G-buffer writers, which the deferred walk fogs, and before every stage that fogs itself
+        VkClusterBuild(vk, cl, log);
+        VkFogPass(vk, cl, view, vpClean, viewport, near, far, perspective, lightingOn, log);
+        // ...and then ADR 0029's two dispatches, at the graph's own place: after the cutout pass and the sky,
+        // before the blended one. A sky pixel has no G-buffer record, so the walk leaves it alone.
+        VkDeferred(vk, cl, vp, view, proj, viewport, near, far, indirect ? CullPassVk.Slots(CullPassVk.PhaseColour) : s.Slots, log);
+        // the coverage layer at the graph's own place: seeded from the frame the deferred walk just lit
+        if (cover && !VkCoverPass(cl, s, vp, viewport, near, far, indirect, log)) return false;
+        // the grass class where GL's graph has it: after the deferred lights it is lit beside, before the blended one
+        if (!VkGrassPass(vk, cl, s, vp, viewport, near, far, lightingOn, log)) return false;
+        // the reflections at the graph's own place: after the deferred walk, before the blended class
+        VkSsrRun(vk, cl, vp, view, proj, viewport, near, far, lightingOn && perspective, log);
+
+        bool oit = VkOitArm(vk, w, h, log);
         side.Reset();
         arena0 = s.ArenaUsed;
         b = new VkBound { Fmt = -1, Tex = -1 };
         VkPassStart(side, w, h);
-        var fwd = new VkRange(false, true, false, washes, VkTargets.Forward, false);
-        ok &= VkIssue(side, ref b, _gOpaqueEnd, _gBlendEnd, fwd, vp, viewport, near, far, indirect);
-        ok &= VkIssue(side, ref b, _gWaterEnd, groups, fwd with { DepthMask = false }, vp, viewport, near, far, indirect);
+        VkHandOverReads(cl, s);
+        var fwd = new VkRange(false, true, false, washes, VkTargets.Forward, false, VkDecalSkip);
+        // the layer's readers are done with the blended range: additive takes it as GL does after DecalLayer.End
+        VkRange add = fwd with { DepthMask = false, Decal = DecalLayer.ModeNone };
+        if (oit)
+        {
+            s.Oit = true;
+            s.OitOut = 0;
+            ok &= VkIssue(side, ref b, _gOpaqueEnd, _gBlendEnd, fwd with { DepthMask = false, Targets = VkTargets.Oit, Oit = VkOitPart.Accum },
+                          vp, viewport, near, far, indirect);
+            s.Oit = false;
+            if (!ok) return false;
+            VkOitFlush(cl, side, s, arena0);
+            if (!VkOitResolve(cl, side, s, w, h, log)) return false;
+            side.Reset();
+            arena0 = s.ArenaUsed;
+            b = new VkBound { Fmt = -1, Tex = -1 };
+            VkPassStart(side, w, h);
+            // what the accumulation stepped over, the plain-blend way with vanilla's depth write, then the class's depth
+            if (s.OitOut > 0) ok &= VkIssue(side, ref b, _gOpaqueEnd, _gBlendEnd, fwd with { Oit = VkOitPart.Hosted }, vp, viewport, near, far, indirect);
+            VkBlendDepth(side, ref b, vp, viewport, near, far, indirect);
+        }
+        else ok &= VkIssue(side, ref b, _gOpaqueEnd, _gBlendEnd, fwd, vp, viewport, near, far, indirect);
+        // the record is the blended class's alone: every later lit bind uploads the gate off again
+        s.LightRec = false;
+        b.Prog = null;
+        // PassId.FbCopy: the one snapshot of everything drawn so far, which only water reads. Without
+        // water the additive class closes the same pass; with it the pass ends so the copy can be recorded
+        bool water = _gWaterEnd > _gBlendEnd && !_capturing;
+        if (!water) ok &= VkIssue(side, ref b, _gWaterEnd, groups, add, vp, viewport, near, far, indirect);
         if (!ok) return false;
         colors[0] = new ColorAttachment(s.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default);
-        VkFlushPass(cl, side, arena0, new RenderPassDesc(colors[..1], new DepthAttachment(s.Depth, 0, 0, LoadOp.Load, StoreOp.Store, 1f)));
+        var forward = new RenderPassDesc(colors[..1], new DepthAttachment(s.Depth, 0, 0, LoadOp.Load, StoreOp.Store, 1f));
+        VkFlushPass(cl, side, arena0, in forward);
+        if (water)
+        {
+            VkWaterCopy(vk, cl, w, h, log);
+            side.Reset();
+            arena0 = s.ArenaUsed;
+            b = new VkBound { Fmt = -1, Tex = -1 };
+            VkPassStart(side, w, h);
+            ok &= VkWaterIssue(side, ref b, _gBlendEnd, _gWaterEnd, vp, viewport, near, far, indirect);
+            ok &= VkIssue(side, ref b, _gWaterEnd, groups, add, vp, viewport, near, far, indirect);
+            if (!ok) return false;
+            ReadOnlySpan<ImageId> snap = [_vkWater.Col, _vkWater.Dep];
+            if (_vkWater.Ready) cl.ReadImages(snap);
+            VkFlushPass(cl, side, arena0, in forward);
+            VkWaterDone();
+        }
 
-        VkEncode(cl, s, composite, display);
+        if (!VkBeamPass(vk, cl, s, view, proj, viewport, log)) return false;
+        if (!VkParticlePass(vk, cl, s, view, proj, viewport, near, far, lightingOn, log)) return false;
+        if (!VkHaloPass(vk, cl, s, view, proj, viewport, log)) return false;
+        if (!VkWeatherPass(vk, cl, s, view, proj, viewport, near, far, lightingOn, log)) return false;
+        if (!VkHighlightMask(vk, cl, s, vp, viewport, near, far, groups, log)) return false;
+        VkIdPaint(vk, cl, s, log);
+
+        // the resolve grades a far pixel by its world ray, off the camera the dome drew through
+        if (!_capturing && (_skyN == 0 || !Matrix4x4.Invert(vp, out SkyInvVp))) SkyInvVp = default;
+        Matrix4x4 vpJ = vp, vpC = vpClean, pj = proj, vw = view;
+        ToonStage.SetProj(&pj);
+        FbPostStage.SetCamera(&vw, &pj);
+        if (!PostStack.RecordVk(vk, cl, s.Hdr, s.Depth, &vpJ, &vpC, viewport, display, log)) return false;
+        VkHighlightComposite(cl, composite, display, log);
+        TriggerHighlight.DrawVk(vk, cl, composite, s.Depth, vp, display, log);
+        // the probe last: this frame's lit stages read the cube as it stood, and its faces reuse the frame's side list
+        VkProbeCapture(vk, cl, s, far, lightingOn && perspective, log);
         if (!s.Live)
         {
             s.Live = true;
             log.Always($"AlloyRenderer: the Vulkan colour bracket is LIVE -- {s.Drawn} draws, {s.Skipped} skipped "
-                     + "(water, and any batch whose mesh or pipeline is not on Vulkan yet); lit by the sun and ambient only "
-                     + "until shadows, point lights, the probe and SSAO port");
+                     + "(water, and any batch whose mesh or pipeline is not on Vulkan yet); lit by the sun, ambient, the "
+                     + "AO estimate, the deferred point lights, the shadow maps and the probe");
         }
         return true;
     }
@@ -113,6 +222,21 @@ public sealed unsafe partial class AlloyRenderer
         side.SetViewport(0, 0, w, h);
         if (!MeshArena.VkEbo.IsNull) side.BindIndexBuffer(MeshArena.VkEbo, IndexType.U16, 0);
         side.SetDepthBias(Issue.WashOffsetFactor, Issue.WashOffsetUnits);
+    }
+
+    /// <summary>Hand over every image an earlier pass of this frame WROTE and the draws here read, OUTSIDE the pass:
+    /// a bind inside a begun render pass cannot move an image into its read layout, and which program of the pass
+    /// first declares one -- and whether a draw came before it -- is not something to depend on.</summary>
+    private static void VkHandOverReads(CommandList cl, VkColourState s)
+    {
+        Span<ImageId> arm = stackalloc ImageId[3];
+        int n = 0;
+        s.LightRec = _vkdef.Wrote && !_capturing && Lighting.LightRec.V;
+        if (s.LightRec) arm[n++] = _vkdef.LightRec;
+        if (SsaoPassVk.Live) arm[n++] = SsaoPassVk.Visibility;
+        if (!s.DepthRead.IsNull) arm[n++] = s.DepthRead;
+        cl.ReadImages(arm[..n]);
+        VkDecalHandOver(cl, s);
     }
 
     /// <summary>The arena bytes the pass's binds gathered, uploaded ahead of it, then the pass and its draws.</summary>
@@ -261,7 +385,12 @@ public sealed unsafe partial class AlloyRenderer
                 _gPrepassed[g] = true;
             }
         }
-        VkFlushPass(cl, side, arena0, new RenderPassDesc(default, new DepthAttachment(s.Depth, 0, 0, retest ? LoadOp.Load : LoadOp.Clear, StoreOp.Store, 1f)));
+        // #493: the vis-ID attachment rides these draws on slot 1, slot 0 routed nowhere, as GL's draw-buffer
+        // list has it; cleared on the first phase and loaded by the retest, which lands on the same image
+        Span<ColorAttachment> ids = stackalloc ColorAttachment[PrepassTargets];
+        var rp = new RenderPassDesc(VkIdAttachments(ids, !retest),
+                                    new DepthAttachment(s.Depth, 0, 0, retest ? LoadOp.Load : LoadOp.Clear, StoreOp.Store, 1f));
+        VkFlushPass(cl, side, arena0, in rp);
         return true;
     }
 
@@ -275,7 +404,7 @@ public sealed unsafe partial class AlloyRenderer
              & VkIssue(side, ref b, tail, to, r, vp, viewport, near, far, indirect);
     }
 
-    /// <summary>One range of batches, deciding per batch as <see cref="Issue.IssueBatchesInner"/> does: the program, the
+    /// <summary>One range of batches, deciding per batch: the program, the
     /// cut, the blend pair, the depth rule, the wash offset, the cull. Water sits out (its pass is not on Vulkan); a
     /// content pair draws through the plain lit program until content programs port. False only on a refused bind.</summary>
     private static bool VkIssue(CommandList side, ref VkBound b, int from, int to, VkRange r, in Matrix4x4 vp, int* viewport,
@@ -292,6 +421,8 @@ public sealed unsafe partial class AlloyRenderer
             bool lit = _gLit[g];
             bool content = Issue.HostedBody(lit, _gFeat[g]);
             bool oitOut = Issue.SitsOitOut(content, _gSrc[g], _gDst[g]);
+            if (r.Oit == VkOitPart.Accum && oitOut) { s.OitOut++; continue; }
+            if (r.Oit == VkOitPart.Hosted && !oitOut) continue;
             bool split = _gWash[g] == WashSplit && lit && g >= _gOpaqueEnd && (!oitOut || content && _gSrc[g] == 0 && _gDst[g] == 1);
             if (r.Interior && !split) continue;
             bool deferred = lit && r.Gbuf && (!content || ContentPrograms.HasDeferred(_gFeat[g])) && (viz == 0 || viz == VizLightFrom)
@@ -299,13 +430,18 @@ public sealed unsafe partial class AlloyRenderer
             VkProg p = (content ? VkContent(_gFeat[g], deferred ? ContentVariant.Deferred : ContentVariant.Forward) : null)
                        ?? s.Progs[(int)(lit ? deferred ? VkPrograms.Id.LitDeferred : VkPrograms.Id.Lit : VkPrograms.Id.Fullbright)]!;
             bool blend = AlloyClasses.Blends(cls) && !r.Interior;
-            int blendKey = blend ? 1 + Math.Min((int)_gSrc[g], 7) * 8 + Math.Min((int)_gDst[g], 7) : 0;
+            int blendKey = blend && r.Oit != VkOitPart.Accum ? 1 + Math.Min((int)_gSrc[g], 7) * 8 + Math.Min((int)_gDst[g], 7) : 0;
             bool equal = r.MatchDepth && _gPrepassed[g];
             bool wash = _gWash[g] != 0 && !equal;
             CompareOp func = equal ? CompareOp.Equal : split && r.SplitRan && !r.Interior ? CompareOp.Less : CompareOp.LessEqual;
             bool test = !(blend && wash && !Renderer.WashTest.V);
             var depth = new DepthState(test, !equal && r.DepthMask, func);
-            push.AlphaCut = AlloyClasses.Discard(cls);
+            push.AlphaCut = r.Targets == VkTargets.Cover ? CoverageLayer.Cut : AlloyClasses.Discard(cls);
+            // the batch's own AO membership, measured by the prepass exactly as the GL issue loop reads it
+            push.SsaoOn = lit && SsaoPassVk.Live && !_capturing && !s.Oit ? Issue.AoWhy(g) : 0;
+            push.AoDirect = push.SsaoOn > 0 ? SsaoPass.Direct : 0f;
+            // CX-273: fold the layer (a surface pass), or drop a decal batch's fragments it already took
+            push.Decal = r.Decal == DecalLayer.ModeSkip && !_gDecal[g] ? DecalLayer.ModeNone : r.Decal;
             if (!VkBatch(side, ref b, p, g, r.Targets, blendKey, depth, VkRaster(g, wash), slots, lit ? 0 : _gTex[g], ref push,
                          vp, viewport, near, far, CullPassVk.PhaseColour, indirect)) continue;
             Counters._batches++;
@@ -315,7 +451,8 @@ public sealed unsafe partial class AlloyRenderer
         return true;
     }
 
-    private static RasterState VkRaster(int g, bool wash) => new(_gNoCull[g] ? CullMode.None : CullMode.Back, false, wash);
+    /// <summary>Batch <paramref name="g"/>'s cull, its winding flipped under the planar mirror.</summary>
+    private static RasterState VkRaster(int g, bool wash) => new(_gNoCull[g] ? CullMode.None : CullMode.Back, _planar, wash);
 
     /// <summary>One batch: the program bound (its loose block captured) when it or the bound diffuse changed, the
     /// pipeline and dynamic state when they did, the per-batch constants, then the draw. False = sat out, counted.</summary>
@@ -355,41 +492,5 @@ public sealed unsafe partial class AlloyRenderer
         }
         s.Drawn += len;
         return true;
-    }
-
-    /// <summary>The encode into the composite: the linear scene colour to display space through the engine's gamma, at
-    /// the display rectangle. ponytail: the post chain's place until it ports -- no tonemap, no TAA, no bloom.</summary>
-    private static bool VkMakeEncode(VkBackend vk, VkColourState s, ExtenderLog log)
-    {
-        const string vs = "#version 460\nlayout(location = 0) out vec2 vUv;\nvoid main()\n{\n"
-                        + "    vec2 p = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2);\n    vUv = p;\n"
-                        + "    gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);\n}\n";
-        string fs = "#version 460\nlayout(binding = 0) uniform sampler2D uHdr;\nlayout(location = 0) in vec2 vUv;\n"
-                  + "layout(location = 0) out vec4 oColor;\nvoid main()\n{\n"
-                  + "    vec3 c = pow(clamp(texture(uHdr, vUv).rgb, 0.0, 1.0), vec3(1.0 / "
-                  + AlloyLights.SrgbGamma.ToString("F4", System.Globalization.CultureInfo.InvariantCulture) + "));\n"
-                  + "    oColor = vec4(c, 1.0);\n}\n";
-        s.EncodeVs = vk.CreateShader(new ShaderDesc(ShaderStage.Vertex, null, vs, "vk encode vs"));
-        s.EncodeFs = vk.CreateShader(new ShaderDesc(ShaderStage.Fragment, null, fs, "vk encode fs"));
-        var d = new PipelineDesc { Vs = s.EncodeVs, Fs = s.EncodeFs, Label = "vk encode" };
-        d.Targets.ColorCount = 1;
-        d.Targets.Colors[0] = Format.Rgba8;
-        d.Targets.Samples = 1;
-        s.Encode = vk.CreatePipeline(in d);
-        if (s.Encode.IsNull) log.Always("AlloyRenderer: the Vulkan encode pipeline was REFUSED (logged above)");
-        return !s.Encode.IsNull;
-    }
-
-    private static void VkEncode(CommandList cl, VkColourState s, ImageId composite, int* display)
-    {
-        Span<ColorAttachment> colors = stackalloc ColorAttachment[1];
-        colors[0] = new ColorAttachment(composite, 0, 0, LoadOp.Clear, StoreOp.Store, new Vector4(0f, 0f, 0f, 1f));
-        cl.BeginRenderPass(new RenderPassDesc(colors));
-        cl.SetPipeline(s.Encode);
-        cl.SetViewport(display[0], display[1], display[2], display[3]);
-        ReadOnlySpan<ImageBinding> tex = [new(0, s.Hdr, s.Linear)];
-        cl.BindSet(0, new BindSet(default, default, tex, default));
-        cl.Draw(3);
-        cl.EndRenderPass();
     }
 }

@@ -25,7 +25,7 @@ seam-feed streams install the hooks and the vtable slots.
 |---|---|---|---|
 | `AurSetPalette(int, char const*)` @0x485190 | `_Z13AurSetPaletteiPKc` | `?AurSetPalette@@YAHHPEBD@Z` | `PltPalettes.SetPalette(slot, resref)` |
 | `AurClearPalette()` @0x485090 | `_Z15AurClearPalettev` | `?AurClearPalette@@YAXXZ` | `PltPalettes.ContextLost()` (drops the texture; the buffer is rebuilt on the next `SetPalette`) |
-| `AurCreatePaletteTexture()` @0x4874d0 | `_Z23AurCreatePaletteTexturev` | `?AurCreatePaletteTexture@@YAXXZ` | `PltPalettes.Create()` -- **must run in Alloy's bracket**, so the seam defers it to the frame rather than calling it inline |
+| `AurCreatePaletteTexture()` @0x4874d0 | `_Z23AurCreatePaletteTexturev` | `?AurCreatePaletteTexture@@YAXXZ` | `PltPalettes.Create()` -- **must run in the frame's upload pump**, so the seam defers it to the frame rather than calling it inline |
 | `CAurTextureBasic::SetScheme(int*, int)` @0x485f90 | `_ZN16CAurTextureBasic9SetSchemeEPii` | `?SetScheme@CAurTextureBasic@@QEAAXPEAHH@Z` | `PltColors.SetRows(obj, rows)` |
 | `AurTextureSetLayered(CAurTexture*, char const*, int*, int)` @0x489bd0 | `_Z20AurTextureSetLayeredP11CAurTexturePKcPii` | `?AurTextureSetLayered@@YAXPEAVCAurTexture@@PEBDPEAHH@Z` | `PltColors.SetRows(obj, rows)` + `TexRegistry.Swap(old, resref)` |
 | `Material::ReplaceTexturePLT(char const*, char const*, char const*, int*, int)` @0x4c7a10 | `_ZN8Material17ReplaceTexturePLTEPKcS1_S1_Pii` | `?ReplaceTexturePLT@Material@@QEAAXPEBD00PEAHH@Z` | `TexRegistry.Swap` + `PltColors.SetRows` |
@@ -51,7 +51,7 @@ seam-feed streams install the hooks and the vtable slots.
     bool   TexRegistry.Clamps(TexId)                            // the sampler's wrap, for the PLT flag word
     TexCoverage TexRegistry.Coverage(TexId)                     // Unknown | Opaque | Cutout | Blended
     void   TexRegistry.Tick()                                   // GAME thread: file arrivals, offer, evict
-    void   TexRegistry.Drain()                                  // BRACKET: upload, mint, delete
+    void   TexRegistry.Drain()                                  // PUMP: upload, mint, forget
     void   PltColors.SetRow(obj, layer, row) / SetRows(obj, rows)
     void   PltColors.Stage(slot, obj) / Clear(slot) / Upload()
 
@@ -68,7 +68,7 @@ on, because a renderer that keeps both warm is what ADR 0018's restart-only rule
 - `OwnedTextures.KeepPltOnCpu()` and the `_pltOnGpu` / `_pltForced` state
   (`managed/Alloy/OwnedTextures.Plt.cs`), plus its two call sites in `OnConstructImage` / `OnGlImageBasic` and the
   per-frame re-assert in `AlloyRenderer.cs` (the `OwnedTextures.KeepPltOnCpu(); OwnedTextures.Drain();`
-  bracket hook). `SymbolMap.PltOnGpu` goes with them.
+  pump hook). `SymbolMap.PltOnGpu` goes with them.
 - `FrameZones.Zone.DemPlt` and `Ev.PltDemands`: in DB mode no PLT is ever demanded through the engine, so
   `DemPlt` reads 0 on `[zones]` after a PLT's first load. (The counters stay until the engine demand path
   goes; they are the acceptance read.)
@@ -88,7 +88,7 @@ on, because a renderer that keeps both warm is what ADR 0018's restart-only rule
   and the `AurTex` vtable guard on every material-derived texture read (ADR 0015). A `TexId` cannot dangle.
 - `OwnedTextures`' warm path (`Plain`, `Capture`, `TryWarm`, `_meta`, `_index`, `OnDeleteTextures`,
   `OnBuildAndStoreTexture`) and ADR 0023's hand-back: the registry has no engine delete funnel to survive.
-- `TexLoad`, `TexStream`, `TexProbe` and the `alloy.texsingle`
+- `TexLoad`, `TexStream` and the `alloy.texsingle`
   knob -- the registry's own loader is the only reader path left. `TexLoadRead` (the location record and the
   worker's file handles) STAYS: the registry uses it.
 - `CycleTextures` (the `CycleTIDTextureController` tick and its `~CAurTexture` death notice): **done.**
@@ -140,19 +140,22 @@ on, because a renderer that keeps both warm is what ADR 0018's restart-only rule
    levels are a few texels wide and their colours are within a rounding of each other. No dither, no temporal
    term, so it holds with TAA off.
 
-## 5. Where the registry's GL work runs, and why in two places
+## 5. Where the registry's upload work runs, and why it has one entry point
 
-`TexRegistry.Drain`, `PltColors.Upload`, `PltPalettes.Create` and `PltGpuCheck.Tick` are called from
-**both** Alloy bracket sites, and that is not redundancy: `GlContextService.OnFrame` runs its health bracket
-(`InBracket`) only on a frame in which nothing else entered the context (`!_worked`), so an in-play frame --
-every frame the colour pass draws -- never reaches it. Hung on the health bracket alone, the registry uploaded
-nothing for a whole live session: the PLT GPU check waited for a texture that never arrived, and CX-119's
-bitmap font atlases would have waited for ever too. The health bracket still matters for the opposite case
-(the main menu, the disarm latch), where the colour bracket returns before `Enter` for the rest of the session.
+`TexRegistry.Drain`, `PltColors.Upload` and `PltPalettes.Create` are the frame's deferred work
+(`FramePump.Deferred`, declared once in `AlloyRenderer`'s arm), and three points in the frame reach for it:
+the world frame, a GUI flush that found no composite, and the present. Whichever gets there first runs it and
+`FramePump.WorkDue` goes false, so the others find nothing owed -- an in-play frame does the work in the
+colour pass, and the present does it on a frame that drew no world (the main menu, the disarm latch). Hung on
+the present alone, the registry uploaded nothing for a whole live session, and CX-119's bitmap font atlases
+would have waited for ever.
 
-`TexRegistry.Tick` is the game thread's half and runs from `FramePhase.Start`: it files what the bracket
+No site enters a context -- there is none -- and the uploads are copies recorded into the frame's command
+list.
+
+`TexRegistry.Tick` is the game thread's other half and runs from `FramePhase.Start`: it files what the pump
 uploaded (which writes `SceneDb`'s dirty lists), offers what was waiting (which reads the engine's resource
-manager) and evicts past the budget. Nothing in the bracket reads engine memory or writes `SceneDb`.
+manager) and evicts past the budget. Nothing in the pump reads engine memory or writes `SceneDb`.
 
 ## 6. Alpha coverage is a decode, and the registry is where it is decided
 
@@ -188,5 +191,5 @@ resolves; erring the other way calls a plain cutout blended and sorts the whole 
 is told again at arrival, because the landing marks every dependent part `Dirty.Texture` through the same
 edge that replaces the white stand-in — no new mechanism. A resident slot still `Unknown` is counted on the
 period line (`coverage UNDECIDED`), because a draw classified against one keeps the blended guess for ever.
-The verdict is kept across a context loss: it is a property of the content, and the reload derives the same
+The verdict is kept across a device loss: it is a property of the content, and the reload derives the same
 answer.

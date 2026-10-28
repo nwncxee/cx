@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
-"""Compile the owned pipeline's embedded GLSL with glslangValidator, offline.
+"""Compile the owned pipeline's embedded GLSL to SPIR-V with glslangValidator, offline.
 
-    ./check-shaders.py      # exit 0 = every owned program compiles
+    ./check-shaders.py      # exit 0 = every owned program compiles and every module validates
 
 The runtime failure is quiet: a lit stage that does not compile only says "clustered lit program
 unavailable -- lit parts revert to engine drawing" in the log and the world keeps rendering, vanilla.
 This turns that into a build-time error.
+
+The job here is text and SPIR-V: every stage parses as GLSL and compiles to a module the Vulkan
+environment accepts. What only a device can answer is `./run-demo.sh`'s: a pipeline refused at
+creation (`VkBackend.SelfCheck.Stage`), and the three goldens that run a stage on the GPU and judge
+what it answered -- the lightmap block encoder, the G-buffer's lanes, the parallax march (`GpuGolden`).
 
 Composition is not written down here. Every stage is a `managed/Alloy/Shaders/*.glsl` file whose
 `#include` lines name the libraries it is built from (#707), and this script compiles those same
@@ -23,12 +28,11 @@ The audit at the end is the other half of that: every `ShaderSource.Get("x.glsl"
 file that exists, and every file is reached by something. A typo'd name is otherwise a stage that
 composes to nothing, on a machine that reaches that feature.
 
-Needs glslangValidator (Arch: `glslang`); the material pass also needs spirv-opt/spirv-dis
-(Arch: `spirv-tools`), and skips itself with a notice where they are absent.
+Needs glslangValidator (Arch: `glslang`); the module validation and the material pass also need
+spirv-val and spirv-opt/spirv-dis (Arch: `spirv-tools`), and skip themselves with a notice where
+they are absent.
 """
 import atexit
-import math
-import types
 import os
 import re
 import shutil
@@ -46,6 +50,66 @@ TOKENS = {"$CAP$": "128", "$SORT$": "32", "$DYNSPH$": "4", "$CUBES$": "64", "$GR
 INCLUDE = re.compile(r'^\s*#include\s+"([^"]+\.glsl)"\s*$')
 GET = re.compile(r'ShaderSource\.Get\("([^"]+)"\)')
 RESREF = re.compile(r'"(cx_\w+)"')
+# A file is reached when C# names it, whether it hands the name straight to ShaderSource.Get or to a helper
+# that does (GuiPassVk.Text, say), so reachability reads the quoted file name itself.
+NAMED = re.compile(r'"(cx_\w+\.glsl)"')
+
+# --- the SPIR-V compile -------------------------------------------------------------------------------------
+# The runtime hands each stage to shaderc for one Vulkan environment, after VkGlsl has rewritten the text; the
+# numbers that say which environment and where the bindless array sits are read off that C# so the two cannot
+# drift. Offline the same text goes through glslangValidator's Vulkan target: its relaxed rules gather a
+# stage's loose uniforms into one block, as VkGlsl's own CxLoose block does, and --amb/--aml stand in for the
+# sampler units and varying locations VkGlsl hands shaderc. A module the compiler accepts is then validated.
+# What only a device can answer -- a pipeline refused at creation -- is VkBackend.SelfCheck.Stage's job, which
+# ./run-demo.sh runs.
+VK_TOOLCHAIN_CS = os.path.join(MANAGED, "Graphics/Vulkan/VulkanToolchain.cs")
+_VK_SRC = open(VK_TOOLCHAIN_CS).read()
+VK_ENV = "vulkan" + re.search(r"TargetEnvironmentVersion\.Vulkan_(\d+)_(\d+)", _VK_SRC).expand(r"\1.\2")
+VK_UNIFORM_BASE, VK_STORAGE_BASE, VK_IMAGE_BASE = (
+    re.search(r"UniformBase = (\d+), StorageBase = (\d+), ImageBase = (\d+)", _VK_SRC).groups())
+VK_BINDLESS_SET = re.search(r"BindlessSet = (\d+)", _VK_SRC).group(1)
+VK_BINDLESS_ARRAY = re.search(r'BindlessArray = "(\w+)"',
+                              open(os.path.join(MANAGED, "Graphics/Vulkan/VkGlsl.cs")).read()).group(1)
+VK_FLAGS = ["-V", "--target-env", VK_ENV, "-R", "--amb", "--aml",
+            "--sub", VK_UNIFORM_BASE, "--sbb", VK_STORAGE_BASE, "--sib", VK_IMAGE_BASE]
+VK_BINDLESS_EXT = re.compile(r"^[ \t]*#extension\s+GL_ARB_bindless_texture\b[^\n]*\n?", re.M)
+VK_CONSTRUCT = re.compile(r"\bsampler2D\s*\(")
+VK_BUILTINS = ((r"\bgl_DrawID\b", "gl_DrawIDARB"), (r"\bgl_BaseInstance\b", "gl_BaseInstanceARB"),
+               (r"\bgl_BaseVertex\b", "gl_BaseVertexARB"), (r"\bgl_VertexID\b", "gl_VertexIndex"),
+               (r"\bgl_InstanceID\b", "(gl_InstanceIndex - gl_BaseInstanceARB)"))
+
+
+def vk_text(src):
+    """Mirrors VkGlsl: every `sampler2D(handle)` construction as an index into the bindless sampler array, the
+    extension line that declared handles gone, and the draw and vertex built-ins in Vulkan's spellings."""
+    out, at, s = [], 0, VK_BINDLESS_EXT.sub("", src)
+    for m in VK_CONSTRUCT.finditer(s):
+        if m.start() < at:
+            continue
+        depth, i = 0, m.end() - 1
+        while i < len(s):
+            depth += (s[i] == "(") - (s[i] == ")")
+            if depth == 0:
+                break
+            i += 1
+        if i >= len(s):
+            sys.exit(f"an unclosed sampler2D( construction at character {m.start()}")
+        out.append(s[at:m.start()])
+        out.append(f"{VK_BINDLESS_ARRAY}[nonuniformEXT(({s[m.end():i]}).x)]")
+        at = i + 1
+    out.append(s[at:])
+    s = "".join(out)
+    for pat, rep in VK_BUILTINS:
+        s = re.sub(pat, rep, s)
+    head = ("#extension GL_EXT_nonuniform_qualifier : require\n"
+            "#extension GL_ARB_shader_draw_parameters : require\n")
+    if f"{VK_BINDLESS_ARRAY}[" in s:
+        head += f"layout(set = {VK_BINDLESS_SET}, binding = 0) uniform sampler2D {VK_BINDLESS_ARRAY}[];\n"
+    v = s.index("#version")
+    e = s.index("\n", v) + 1
+    return s[:e] + head + s[e:]
+
+
 
 
 def expand_includes(name, depth=0, swap=None):
@@ -86,11 +150,12 @@ def cs_sources():
 
 def audit(g):
     """Every name C# asks ShaderSource for exists, and every file is reached by something."""
-    named, resrefs = set(), set()
+    named, resrefs, literals = set(), set(), set()
     for p in cs_sources():
         text = open(p).read()
         named.update(GET.findall(text))
         resrefs.update(RESREF.findall(text))
+        literals.update(NAMED.findall(text))
     included = {m.group(1) for f in g
                 for m in (INCLUDE.match(l) for l in open(os.path.join(SHADERS, f + ".glsl")))
                 if m}
@@ -99,7 +164,7 @@ def audit(g):
     for n in sorted(named - files):
         print(f"audit: C# asks ShaderSource for {n}, which no file answers"); bad = 1
     # A stage file is named by resref, through ShaderStages.Source -- never by a literal.
-    for f in sorted(files - named - included):
+    for f in sorted(files - named - literals - included):
         if f[:-5] in resrefs:
             continue
         print(f"audit: {f} is not included, named from C# or an overridable resref -- dead text"); bad = 1
@@ -443,7 +508,7 @@ def fold(prelude, expr, tmp):
            "void main() { cxProbe = vec4(" + expr + "); }\n")
     frag, spv = os.path.join(tmp, "fold.frag"), os.path.join(tmp, "fold.spv")
     open(frag, "w").write(src)
-    for cmd in (["glslangValidator", "-G", frag, "-o", spv], ["spirv-opt", "-O", spv, "-o", spv],
+    for cmd in (["glslangValidator"] + VK_FLAGS + ["-o", spv, frag], ["spirv-opt", "-O", spv, "-o", spv],
                 ["spirv-dis", spv]):
         r = subprocess.run(cmd, capture_output=True, text=True)
         if r.returncode:
@@ -479,18 +544,6 @@ def check_material(g):
     for tok, val in TOKENS.items():
         prelude = prelude.replace(tok, val)
     prelude = re.sub(r"(layout\(location = 0\) )?out vec4 frag;", "", prelude)   # our own probe output replaces it
-    # SPIR-V wants an explicit location on every user in/out; the GL path leaves them implicit.
-    loc = [0]
-    def locate(m):
-        # An ARRAY uniform consumes one location per element column, so it gets a generous stride; a scalar
-        # or vector consumes one, and a mat4 four. Striding everything by 64 ran past the implementation
-        # limit once the lit stage started carrying the engine's own uniform names too (#237).
-        stride = 64 if "[" in m.group(0) else 4
-        loc[0] += stride
-        return f"layout(location = {loc[0] - stride}) {m.group(0)}"
-    prelude = re.sub(r"^(?:flat )?in \w+ \w+;", locate, prelude, flags=re.M)
-    # ...and on every non-opaque uniform. Samplers are opaque and must NOT get one.
-    prelude = re.sub(r"^uniform (?!\w*sampler)\w+ \w+(\[[^\]]*\])?;", locate, prelude, flags=re.M)
     bad = 0
     with tempfile.TemporaryDirectory() as tmp:
         for label, expr, want in material_cases():
@@ -520,34 +573,15 @@ def define(src, text):
     return src[:e] + f"#define {text}\n" + src[e:]
 
 
-def ablate(src, n):
-    """The ablation variants are built only by an `/alloy bench` step, so this is the one place a rung that
-    stopped compiling is caught before someone runs the bench and loses that rung of the ladder."""
-    return define(src, f"CX_ABLATE {n}")
-
-
-def mot(src):
-    """The velocity arm of a stage (CX.Alloy.GrassField.MotionDefine): what turns a grass path's or the
-    particle pass's stages into the program that writes the field instead of the picture."""
-    return define(src, "CX_MOTION 1")
-
-
 def nosun(src):
     """CX.Alloy.Programs.WithoutSunSoft: the one define that compiles the sun's blocker search and disc out.
-    A driver short of the two raw cascade views links THIS text, so the no-soft-sun arm has to compile and
-    link too -- it is the fallback that keeps a lit program at all on such a driver."""
+    A device short of the two raw cascade views runs THIS text, so the no-soft-sun arm has to compile too --
+    it is the fallback that keeps a lit program at all on such a device."""
     return src.replace("#define CX_SUN_SOFT 1", "// CX-49: the soft sun filter is OFF -- too few fragment texture units for its raw cascade views")
-
-
-# CX-188: each ablated pass's ladder length -- the rungs CX.Alloy.Ablation can be asked for, which is what
-# AlloyRenderer.Bench's own step list walks. Rung 0 is the shipped program, a program in its own right below.
-ABLATIONS = {"cx_deferred_cs": 12, "cx_defshadow_cs": 2, "cx_pairdebt": 2}
 
 
 def programs(g):
     return {
-        **{f"{stage} (ablate {n})": (ablate(g[stage], n),)
-           for stage, rungs in ABLATIONS.items() for n in range(1, rungs + 1)},
         "fullbright": (g["cx_own_vs"], g["cx_own_fs"]),
         "depth prepass": (g["cx_depth_v"], g["cx_depth_f"]),
         "keyhole depth prepass": (g["cx_depthkey_v"], g["cx_depthkey_f"]),
@@ -556,23 +590,16 @@ def programs(g):
         "caster depth": (g["cx_cast_vs"], g["cx_cast_fs"]),
         "caster depth (alpha-tested)": (g["cx_castmask_v"], g["cx_castmask_f"]),
         "clustered lit": (g["cx_ownlit_vs"], g["cx_ownlit_fs"]),
-        # CX-49: the arm Programs.WithoutSunSoft builds where the driver cannot seat the sun's raw cascade
+        # CX-49: the arm Programs.WithoutSunSoft builds where the device cannot seat the sun's raw cascade
         # views -- plain and deferred, because the twins are spliced from whichever text the lit build used
         "clustered lit (no soft sun)": (g["cx_ownlit_vs"], nosun(g["cx_ownlit_fs"])),
         "clustered lit (no soft sun, deferred twin)": (g["cx_ownlit_vs"], nosun(g["cx_ownlit_fs"]).replace("#version 460 core\n", "#version 460 core\n#define CX_DEFERRED 1\n#define CX_GBUF_OUT 1\n", 1)),
-        "clustered lit (OIT lists)": (g["cx_ownlit_vs"], g["cx_ownlit_fs"].replace("#version 460 core\n", "#version 460 core\n#define CX_OIT_LISTS 1\n", 1)),
         # CX-188: the deferred twin -- the same two defines Programs.WithDeferred injects, in the same place
         "clustered lit (deferred twin)": (g["cx_ownlit_vs"], g["cx_ownlit_fs"].replace("#version 460 core\n", "#version 460 core\n#define CX_DEFERRED 1\n#define CX_GBUF_OUT 1\n", 1)),
-        # CX-188: /alloy bench's blended ladder -- Ablation.LitDefines, in the same place
-        **{f"clustered lit (blended ablate {n}{tw})": (g["cx_ownlit_vs"], g["cx_ownlit_fs"].replace("#version 460 core\n", f"#version 460 core\n{lx}{d}", 1))
-           for tw, lx in (("", ""), (", OIT lists", "#define CX_OIT_LISTS 1\n"))
-           for n, d in ((3, "#define CX_BLEND_FLAT 1\n"), (4, "#define CX_NO_HOT 1\n#define CX_ABLATE 2\n"),
-                        (5, "#define CX_NO_HOT 1\n#define CX_ABLATE 4\n"), (6, "#define CX_NO_HOT 1\n"))},
-        # CX-189: the coverage layer's mask variant -- Programs.EnsureMaskProgram's define, in the same place
-        "clustered lit (A2C mask)": (g["cx_ownlit_vs"], g["cx_ownlit_fs"].replace("#version 460 core\n", "#version 460 core\n#define CX_A2C_MASK 1\n", 1)),
         "clustered lit (decal layer writer)": (g["cx_ownlit_vs"], g["cx_ownlit_fs"].replace("#version 460 core\n", "#version 460 core\n#define CX_DECAL_WRITE 1\n", 1)),
         "coverage layer seed": (g["cx_fullscreen_v"], g["cx_a2cseed_f"]),
         "coverage layer depth": (g["cx_fullscreen_v"], g["cx_a2cdepth_f"]),
+        "coverage layer resolve": (g["cx_fullscreen_v"], g["cx_a2cres_f"]),
         "post bloom downsample": (g["cx_post_vs"], g["cx_bloomdn_fs"]),
         "post bloom upsample": (g["cx_post_vs"], g["cx_bloomup_fs"]),
         "post resolve": (g["cx_post_vs"], g["cx_resolve_fs"]),
@@ -590,7 +617,6 @@ def programs(g):
         "weather rain": (g["cx_weather_vs"], g["cx_rain_fs"]),
         "weather snow": (g["cx_weather_vs"], g["cx_snow_fs"]),
         "weather splash": (g["cx_splash_vs"], g["cx_splash_fs"]),
-        "ssao temporal": (g["cx_fullscreen_v"], g["cx_ssaotemp_f"]),
         "motion vectors": (g["cx_fullscreen_v"], g["cx_motioncam_f"]),
         "mover motion": (g["cx_motion_v"], g["cx_motion_f"]),
         "taa resolve": (g["cx_fullscreen_v"], g["cx_taa_f"]),
@@ -598,18 +624,13 @@ def programs(g):
         "highlight composite": (g["cx_fullscreen_v"], g["cx_hilitecomp_f"]),
         "owned water": (g["cx_water_vs"], g["cx_water_fs"]),
         "instanced grass": (g["cx_grass_vs"], g["cx_grass_fs"]),
-        "grass depth prepass": (g["cx_grass_vs"], g["cx_grassdepth_f"]),
         "grass scatter": (g["cx_grass_c"],),
         "hi-Z reduce (from depth)": (g["cx_hiz_c"].replace("#version 460 core\n", "#version 460 core\n#define CX_HIZ_FIRST 1\n", 1),),
         "hi-Z reduce (mip to mip)": (g["cx_hiz_c"],),
-        **{f"A/B read-back ({t} x{n})": (g["cx_parity_c"].replace("#version 460 core\n", f"#version 460 core\n{d}#define CX_PARITY_WORDS {n}\n", 1),)
-           for t, d, n in (("float", "", 1), ("float", "", 2), ("uint", "#define CX_PARITY_UINT 1\n", 1), ("uint", "#define CX_PARITY_UINT 1\n", 4))},
+        **{f"read-back ({t} x{n})": (g["cx_readback_c"].replace("#version 460 core\n", f"#version 460 core\n{d}#define CX_READBACK_WORDS {n}\n", 1),)
+           for t, d, n in (("float", "", 1), ("float", "", 2), ("uint", "#define CX_READBACK_UINT 1\n", 1), ("uint", "#define CX_READBACK_UINT 1\n", 4))},
         "grass blades": (g["cx_gblade_vs"], g["cx_gblade_fs"]),
-        "grass blade depth": (g["cx_gblade_vs"], g["cx_gblade_df"]),
-        # CX-48: the velocity arm of each grass path -- GrassField.Motion's define, in the same place
-        "grass motion vectors": (mot(g["cx_grass_vs"]), mot(g["cx_grassdepth_f"])),
-        "grass blade motion vectors": (mot(g["cx_gblade_vs"]), mot(g["cx_gblade_df"])),
-        "particle motion vectors": (mot(g["cx_part_v"]), mot(g["cx_part_f"])),
+        "particles": (g["cx_part_v"], g["cx_part_f"]),
         "clustered light build": (g["cx_cluster_cs"],),
         "deferred lights": (g["cx_deferred_cs"],),
         # CX-188: the film's own dispatch (DeferredLights._progFilm), and the "every light" escapes' variant
@@ -621,12 +642,8 @@ def programs(g):
         "volumetric fog light": (g["cx_vfog_cs"],),
         "volumetric fog integrate": (g["cx_vfogsum_cs"],),
         "gui": (g["cx_gui_v"], g["cx_gui_f"]),
-        "movie quad": (g["cx_movie_v"], g["cx_movie_f"]),
         "trigger highlight": (g["cx_fullscreen_v"], g["cx_hilitetrig_f"]),
-        "highlight glow": (g["cx_hiliteglow_v"], g["cx_hiliteglow_f"]),
-        "halo occlusion probe": (g["cx_haloocc_c"],),
         "oit resolve": (g["cx_fullscreen_v"], g["cx_oitresolve_f"]),
-        "oit clear": (g["cx_fullscreen_v"], g["cx_oitclear_f"]),
         "light beams (scene database)": (g["cx_beamdb_v"], g["cx_beam_f"]),
         "lightmap bake": (g["cx_bake_v"], g["cx_bake_f"]),
         "lightmap encoder": (g["cx_bakeenc_c"],),
@@ -640,7 +657,6 @@ def programs(g):
         "pass wrapper (stub)": (g["cx_pass_cs"],),
         "weather noise tile": (g["cx_wx_noise_c"],),
         "weather ripple tile": (g["cx_wx_ripl_c"],),
-        "arturo ripple warp": (g["cx_arturo_c"],),
     }
 
 
@@ -653,8 +669,7 @@ SIDE_EFFECTS = re.compile(r"\b(atomic\w*|imageStore|imageAtomic\w*|gl_FragDepth)
 
 def check_early_z(progs):
     """A fragment-stage side effect (SSBO/image store or atomic, gl_FragDepth) costs the program its early-Z,
-    so it may reach ONLY the OIT-lists twin: every other stage an opaque draw uses must preprocess clean.
-    (The fullbright stage takes the block at RUNTIME through OitPass.WithLists -- a deliberate exception.)
+    so every stage an opaque draw uses must preprocess clean.
     CX-188's deferred twin is checked here too: it draws the OPAQUE and CUTOUT classes, so early-Z is the
     whole point of it, and its G-buffer outputs are plain fragment outputs, not side effects."""
     with tempfile.TemporaryDirectory() as tmp:
@@ -666,8 +681,7 @@ def check_early_z(progs):
             r = subprocess.run(["glslangValidator", "-E", p], capture_output=True, text=True)
             return sorted({m.group(0).split("(")[0].strip() for m in SIDE_EFFECTS.finditer(r.stdout)})
         bad = 0
-        for name, want in (("clustered lit", False), ("clustered lit (OIT lists)", True),
-                           ("clustered lit (deferred twin)", False), ("clustered lit (A2C mask)", False),
+        for name, want in (("clustered lit", False), ("clustered lit (deferred twin)", False),
                            ("owned water", False), ("grass blades", False)):
             got = effects(name)
             ok = bool(got) == want
@@ -676,523 +690,30 @@ def check_early_z(progs):
         return bad
 
 
-# The shipped sizes, for the driver link below: NVIDIA's linker range-checks constant indices the inliner
-# produces, so the shapes glslang accepts at any size can still be refused at these.
-DRIVER_TOKENS = dict(TOKENS, **{"$DYNSPH$": "16", "$GROUP$": "64"})
-NV_EGL = "/usr/share/glvnd/egl_vendor.d/10_nvidia.json"
-
-
-_NV = {}
-
-
-def nv_context():
-    """A current GL 4.6 context on the NVIDIA driver through a headless EGL device, made once; returns its
-    proc lookup `fn(name, restype, *argtypes)`, or None after printing why there is none."""
-    if "fn" in _NV:
-        return _NV["fn"]
-    _NV["fn"] = None
-    if not os.path.exists(NV_EGL):
-        print("driver: skipped (no NVIDIA EGL vendor)")
+def check_program(name, stages, tmp, validate):
+    """One program as Vulkan GLSL: its stages compiled to a SPIR-V module each, checked against one another as
+    one program, and every module validated. Compiling the stages together is what pairs a vertex stage's
+    outputs with the fragment stage's inputs. Returns what was refused, or None."""
+    d = os.path.join(tmp, re.sub(r"[^A-Za-z0-9_.()-]", "_", name))
+    os.makedirs(d, exist_ok=True)
+    exts = EXTS[len(stages)]
+    for src, ext in zip(stages, exts):
+        for tok, val in TOKENS.items():
+            src = src.replace(tok, val)
+        open(os.path.join(d, f"stage.{ext}"), "w").write(vk_text(src))
+    # glslang names each module after its stage, so `stage.frag` compiles to `frag.spv` beside it.
+    r = subprocess.run(["glslangValidator"] + VK_FLAGS + [f"stage.{e}" for e in exts],
+                       cwd=d, capture_output=True, text=True)
+    if r.returncode:
+        return (r.stdout + r.stderr).strip()
+    if not validate:
         return None
-    os.environ["__EGL_VENDOR_LIBRARY_FILENAMES"] = NV_EGL
-    import ctypes as C
-    try:
-        egl = C.CDLL("libEGL.so.1")
-    except OSError:
-        print("driver: skipped (no libEGL)")
-        return None
-    egl.eglGetProcAddress.restype = C.c_void_p
-    egl.eglGetProcAddress.argtypes = [C.c_char_p]
-    def fn(name, res, *args):
-        p = egl.eglGetProcAddress(name.encode())
-        return C.CFUNCTYPE(res, *args)(p) if p else None
-    qd = fn("eglQueryDevicesEXT", C.c_uint, C.c_int, C.POINTER(C.c_void_p), C.POINTER(C.c_int))
-    gpd = fn("eglGetPlatformDisplayEXT", C.c_void_p, C.c_uint, C.c_void_p, C.c_void_p)
-    devs = (C.c_void_p * 8)(); n = C.c_int(0)
-    if not qd or not gpd or not qd(8, devs, C.byref(n)) or n.value == 0:
-        print("driver: skipped (no EGL device)")
-        return None
-    egl.eglInitialize.argtypes = [C.c_void_p, C.c_void_p, C.c_void_p]
-    egl.eglCreateContext.restype = C.c_void_p
-    egl.eglCreateContext.argtypes = [C.c_void_p, C.c_void_p, C.c_void_p, C.POINTER(C.c_int)]
-    egl.eglMakeCurrent.argtypes = [C.c_void_p] * 4
-    dpy = gpd(0x313F, devs[0], None)   # not-an-offset: EGL_PLATFORM_DEVICE_EXT
-    if not dpy or not egl.eglInitialize(dpy, None, None):
-        print("driver: skipped (EGL device did not initialise)")
-        return None
-    egl.eglBindAPI(0x30A2)   # not-an-offset: EGL_OPENGL_API
-    attrs = (C.c_int * 5)(0x3098, 4, 0x30FB, 6, 0x3038)   # not-an-offset: MAJOR 4, MINOR 6, EGL_NONE
-    ctx = egl.eglCreateContext(dpy, None, None, attrs)
-    if not ctx or not egl.eglMakeCurrent(dpy, None, None, ctx):
-        print("driver: skipped (no 4.6 context on the EGL device)")
-        return None
-    _NV["fn"] = fn
-    return fn
-
-
-def check_driver_link(progs, g):
-    """Link every program on the NVIDIA driver through a headless EGL device context, where one exists.
-    glslang compiled the lit stage clean while the driver refused it at LINK ("array index out of bounds" on
-    a path the inliner proved constant) and the whole world drew black -- this is the gate that sees that."""
-    fn = nv_context()
-    if fn is None:
-        return 0
-    import ctypes as C
-    u, i, p_ = C.c_uint, C.c_int, C.c_char_p
-    create = fn("glCreateShader", u, u)
-    source = fn("glShaderSource", None, u, i, C.POINTER(p_), C.c_void_p)
-    compile_ = fn("glCompileShader", None, u)
-    program = fn("glCreateProgram", u)
-    attach = fn("glAttachShader", None, u, u)
-    link = fn("glLinkProgram", None, u)
-    status = fn("glGetProgramiv", None, u, u, C.POINTER(i))
-    infolog = fn("glGetProgramInfoLog", None, u, i, C.c_void_p, C.c_char_p)
-    blockidx = fn("glGetUniformBlockIndex", u, u, p_)
-    kinds = {"vert": 0x8B31, "geom": 0x8DD9, "frag": 0x8B30, "comp": 0x91B9,   # not-an-offset: GL stage enums
-             "tesc": 0x8E88, "tese": 0x8E87}   # not-an-offset: GL stage enums
-    bad = 0
-    # CX-316: GlProgram.UsesBlock asks the driver whether a program reads the CxEngine block and skips its bind
-    # where it does not. NVIDIA reports a DECLARED block active whether or not anything reads it, which is why
-    # the fill behind it is stamped rather than compared; what must hold is the other direction -- a program that
-    # does not declare the block never reports it active, or the flag would bind on programs with no block.
-    eng_on = eng_bad = 0
-    for name, stages in progs.items():
-        exts = EXTS[len(stages)]
-        if name == "lightmap bake":   # glslang links it without its geometry stage; the driver needs it
-            stages, exts = (stages[0], g["cx_bake_g"], stages[1]), ("vert", "geom", "frag")
-        prog = program()
-        for src, ext in zip(stages, exts):
-            for tok, val in DRIVER_TOKENS.items():
-                src = src.replace(tok, val)
-            s = create(kinds[ext]); buf = p_(src.encode())
-            source(s, 1, C.byref(buf), None); compile_(s); attach(prog, s)
-        link(prog)
-        ok = i(0); status(prog, 0x8B82, C.byref(ok))   # not-an-offset: GL_LINK_STATUS
-        if not ok.value:
-            log = C.create_string_buffer(8192); infolog(prog, 8192, None, log)
-            errs = [l for l in log.value.decode(errors="replace").splitlines() if "error" in l]
-            print(f"driver link: {name}: FAILED\n  " + "\n  ".join(errs[:8]))
-            bad = 1
-            continue
-        if blockidx:
-            active = blockidx(prog, b"CxEngine") != 0xFFFFFFFF   # not-an-offset: GL_INVALID_INDEX
-            if not active:
-                continue
-            eng_on += 1
-            if "uniform CxEngine" not in "".join(stages):
-                print(f"driver link: {name}: FAILED (CxEngine reported active in a program that does not declare it)")
-                eng_bad = bad = 1
-    print(f"driver link: {'ok' if not bad else 'FAILED'} ({len(progs)} programs on the NVIDIA driver, "
-          f"CxEngine active in {eng_on}{', WRONGLY in one of them' if eng_bad else ''})")
-    return bad
-
-
-LM_N = 64   # the encoder fixture's side, texels
-
-
-def lm_fixture():
-    """A small bake's scratch planes and what the finish makes of each texel, written out here from the
-    finish's rule (covered = as baked, else the nearest covered texel within two, else none) -- the encoder
-    is never asked. Two lights over a hard shadow edge, with a hole whose middle the dilation cannot reach."""
-    import struct
-    half = lambda x: struct.unpack("e", struct.pack("e", x))[0]
-    cov = lambda x, y: 6 <= x < 58 and 6 <= y < 58 and not (27 <= x < 39 and 20 <= y < 44)
-    scr = {}
-    for y in range(LM_N):
-        for x in range(LM_N):
-            d1 = ((x - 16) ** 2 + (y - 16) ** 2) / 600.0   # half strength 24 texels out: 3 m at the default 8 px/m
-            d2 = ((x - 48) ** 2 + (y - 40) ** 2) / 600.0
-            shade = 0.15 if x + y < 40 else 1.0
-            irr = [shade * (3.0 * a / (1 + d1) + 2.0 * b / (1 + d2)) for a, b in zip((1.0, 0.6, 0.3), (0.2, 0.4, 1.0))]
-            lum = 0.2126 * irr[0] + 0.7152 * irr[1] + 0.0722 * irr[2]
-            v = ((x - 32) / 40.0, (y - 32) / 50.0, 1.0)
-            share = (x / 63.0, y / 63.0, 0.5, 1.0 - x / 63.0)
-            on = cov(x, y)
-            scr[x, y] = ([half(c) for c in irr] + [2.0 if on else 0.0],
-                         [half(c * lum * 0.7) for c in v] + [0.0],
-                         [half(c * lum) for c in share])
-    want = {}
-    for (x, y), (a, b, c) in scr.items():
-        if a[3] <= 0.0:
-            best = 1e9
-            for dy in range(-2, 3):
-                for dx in range(-2, 3):
-                    q = (x + dx, y + dy)
-                    if (dx, dy) == (0, 0) or q not in scr or scr[q][0][3] <= 0.0 or dx * dx + dy * dy >= best:
-                        continue
-                    best = dx * dx + dy * dy
-                    a, b, c = scr[q]
-            if best > 1e8:
-                continue
-        l = sum(k * k for k in b[:3]) ** 0.5
-        d = [k / l for k in b[:3]] if l > 1e-6 else [0.0, 0.0, 1.0]
-        lum = max(0.2126 * a[0] + 0.7152 * a[1] + 0.0722 * a[2], 1e-6)
-        want[x, y] = ([max(k, 0.0) for k in a[:3]], [k * 0.5 + 0.5 for k in d], [min(max(k / lum, 0.0), 1.0) for k in c])
-    return scr, want
-
-
-def driver_program(fn, src, what):
-    """Compile and link one compute stage on the driver: its program name, or None once `what` is reported FAILED."""
-    import ctypes as C
-    u, i, vp = C.c_uint, C.c_int, C.c_void_p
-    gl = lambda name, *a: fn(name, None, *a)
-    s = fn("glCreateShader", u, u)(0x91B9)   # not-an-offset: GL_COMPUTE_SHADER
-    buf = C.c_char_p(src.encode())
-    gl("glShaderSource", u, i, C.POINTER(C.c_char_p), vp)(s, 1, C.byref(buf), None)
-    gl("glCompileShader", u)(s)
-    prog = fn("glCreateProgram", u)()
-    gl("glAttachShader", u, u)(prog, s)
-    gl("glLinkProgram", u)(prog)
-    ok = i(0)
-    gl("glGetProgramiv", u, u, C.POINTER(i))(prog, 0x8B82, C.byref(ok))   # not-an-offset: GL_LINK_STATUS
-    if not ok.value:
-        print(f"{what}: FAILED (did not link on the driver)")
-        return None
-    return prog
-
-
-def driver_dispatch(fn, prog, groups, inputs, out_binding, out_len, what):
-    """Run `prog` over `groups` work groups with each (floats, binding) of `inputs` in its own SSBO and an
-    `out_len`-float output SSBO at `out_binding`: the output read back, or None once `what` is reported FAILED."""
-    import ctypes as C
-    u, i, vp = C.c_uint, C.c_int, C.c_void_p
-    gl = lambda name, *a: fn(name, None, *a)
-    data, base = gl("glNamedBufferData", u, C.c_ssize_t, vp, u), gl("glBindBufferBase", u, u, u)
-    bufs = [*inputs, ([0.0] * out_len, out_binding)]
-    ids = (u * len(bufs))()
-    gl("glCreateBuffers", i, C.POINTER(u))(len(bufs), ids)
-    for k, (arr, bind) in enumerate(bufs):
-        a = (C.c_float * len(arr))(*arr)
-        data(ids[k], C.sizeof(a), a, 0x88E4)   # not-an-offset: GL_STATIC_DRAW
-        base(0x90D2, bind, ids[k])   # not-an-offset: GL_SHADER_STORAGE_BUFFER
-    gl("glUseProgram", u)(prog)
-    gl("glDispatchCompute", u, u, u)(groups, 1, 1)
-    gl("glMemoryBarrier", u)(0xFFFFFFFF)   # not-an-offset: GL_ALL_BARRIER_BITS
-    out = (C.c_float * out_len)()
-    gl("glGetNamedBufferSubData", u, C.c_ssize_t, C.c_ssize_t, vp)(ids[-1], 0, C.sizeof(out), out)
-    if fn("glGetError", u)():
-        print(f"{what}: FAILED (a GL error in the fixture)")
-        return None
-    return list(out)
-
-
-def check_lmenc(g):
-    """The lightmap encoder against the driver's own BC6H/BC7 decoder: the fixture is encoded, the blocks are
-    copied into real BPTC textures and read back decoded. The bounds are the format's, measured: one or two
-    lines a block cannot follow two coloured lights crossing (RG11B10F's rounding was 0.64% mean, 1.5% max)
-    nor a 6x shadow step past mode 1's delta range; directions and mover shares hold to a few 8-bit steps."""
-    fn = nv_context()
-    if fn is None:
-        return 0
-    import ctypes as C
-    u, i, vp = C.c_uint, C.c_int, C.c_void_p
-    gl = lambda name, *a: fn(name, None, *a)
-    create_tex = gl("glCreateTextures", u, i, C.POINTER(u))
-    storage2 = gl("glTextureStorage2D", u, i, u, i, i)
-    storage3 = gl("glTextureStorage3D", u, i, u, i, i, i)
-    sub2 = gl("glTextureSubImage2D", u, i, i, i, i, i, u, u, vp)
-    clear = gl("glClearTexImage", u, i, u, u, vp)
-    unit = gl("glBindTextureUnit", u, u)
-    image = gl("glBindImageTexture", u, u, i, C.c_ubyte, i, u, u)
-    copy = gl("glCopyImageSubData", u, u, i, i, i, i, u, u, i, i, i, i, i, i, i)
-    getsub = gl("glGetTextureSubImage", u, i, i, i, i, i, i, i, u, u, i, vp)
-    errors = fn("glGetError", u)
-    use = gl("glUseProgram", u)
-    loc = fn("glGetUniformLocation", i, u, C.c_char_p)
-    uni4 = gl("glProgramUniform4i", u, i, i, i, i, i)
-    dispatch = gl("glDispatchCompute", u, u, u)
-    barrier = gl("glMemoryBarrier", u)
-    finish = gl("glFinish")
-    TEX2D, TEX2DA, RGBA, FLOAT, UBYTE, UINT = 0x0DE1, 0x8C1A, 0x1908, 0x1406, 0x1401, 0x1405   # not-an-offset: GL enums
-    RGBA16F, RGBA32UI, RGBA8, RGBA_INT, BC6, BC7 = 0x881A, 0x8D70, 0x8058, 0x8D99, 0x8E8F, 0x8E8C   # not-an-offset: GL enums
-    N, B = LM_N, LM_N // 4
-
-    def tex(target):
-        t = u(0); create_tex(target, 1, C.byref(t)); return t.value
-    scr, want = lm_fixture()
-    planes = []
-    for k in range(3):
-        t = tex(TEX2D); storage2(t, 1, RGBA16F, N, N)
-        buf = (C.c_float * (N * N * 4))(*[v for y in range(N) for x in range(N) for v in scr[x, y][k]])
-        sub2(t, 0, 0, 0, N, N, RGBA, FLOAT, buf)
-        unit(k, t); planes.append(t)
-    blk = []
-    for k in range(2):
-        t = tex(TEX2D); storage2(t, 1, RGBA32UI, B, B)
-        clear(t, 0, RGBA_INT, UINT, (C.c_uint * 4)()); blk.append(t)
-    page_c = tex(TEX2DA); storage3(page_c, 1, RGBA8, N, N, 2)
-    clear(page_c, 0, RGBA, UBYTE, (C.c_ubyte * 4)(85, 85, 85, 85))
-    prog = driver_program(fn, g["cx_bakeenc_c"], "lightmap encoder")
-    if prog is None:
-        return 1
-    use(prog)
-    uni4(prog, loc(prog, b"uRegion"), 1, 1, B - 2, B - 2)
-    image(0, blk[0], 0, 0, 0, 0x88B9, RGBA32UI)   # not-an-offset: GL_WRITE_ONLY
-    image(1, blk[1], 0, 0, 0, 0x88B9, RGBA32UI)   # not-an-offset: GL_WRITE_ONLY
-    image(2, page_c, 0, 0, 1, 0x88B9, RGBA8)   # not-an-offset: GL_WRITE_ONLY; layer 1
-    dispatch((B - 2 + 7) // 8, (B - 2 + 7) // 8, 1)
-    barrier(0xFFFFFFFF)   # not-an-offset: GL_ALL_BARRIER_BITS
-    got = []
-    for k, fmt in ((0, BC6), (1, BC7)):
-        t = tex(TEX2DA); storage3(t, 1, fmt, N, N, 2)
-        copy(blk[k], TEX2D, 0, 0, 0, 0, t, TEX2DA, 0, 0, 0, 1, B, B, 1)
-        out = (C.c_float * (N * N * 4))()
-        getsub(t, 0, 0, 0, 1, N, N, 1, RGBA, FLOAT, C.sizeof(out), out); got.append(out)
-    out_c = (C.c_ubyte * (N * N * 4))()
-    getsub(page_c, 0, 0, 0, 1, N, N, 1, RGBA, UBYTE, C.sizeof(out_c), out_c)
-    finish()
-    if errors():
-        print("lightmap encoder: FAILED (a GL error in the fixture)")
-        return 1
-    px = lambda arr, x, y: arr[(y * N + x) * 4:(y * N + x) * 4 + 4]
-    region = lambda x, y: 4 <= x < N - 4 and 4 <= y < N - 4
-    edge = lambda x, y: (x & ~3) + (y & ~3) < 40 <= (x | 3) + (y | 3)
-    a_smooth = a_all = a_sum = b_err = c_err = 0.0
-    a_n = 0
-    c_stray = zero_bad = 0
-    for y in range(N):
-        for x in range(N):
-            w = want.get((x, y)) if region(x, y) else None
-            blk_valid = region(x, y) and any((bx, by) in want for bx in range(x & ~3, (x & ~3) + 4) for by in range(y & ~3, (y & ~3) + 4))
-            if w is None:
-                if px(out_c, x, y) != [85, 85, 85, 85]:
-                    c_stray += 1
-                if not blk_valid and any(px(got[0], x, y)[:3]):
-                    zero_bad += 1
-                continue
-            rel = max(abs(d - e) / max(e, 1e-3) for d, e in zip(px(got[0], x, y)[:3], w[0]))
-            a_all = max(a_all, rel); a_sum += rel; a_n += 1
-            if not edge(x, y):
-                a_smooth = max(a_smooth, rel)
-            b_err = max(b_err, max(abs(d - e) * 255 for d, e in zip(px(got[1], x, y)[:3], w[1])))
-            c_err = max(c_err, max(abs(d / 255.0 - e) * 255 for d, e in zip(px(out_c, x, y), w[2])))
-    a_mean = a_sum / max(a_n, 1)
-    bad = a_mean > 0.015 or a_smooth > 0.04 or a_all > 0.10 or b_err > 6.0 or c_err > 1.01 or c_stray or zero_bad
-    print(f"lightmap encoder: {'FAILED' if bad else 'ok'} (irradiance {a_mean * 100:.2f}% mean, {a_smooth * 100:.2f}% max off the shadow edge, {a_all * 100:.2f}% on it,"
-          f" direction {b_err:.1f} and shares {c_err:.2f} 8-bit steps, {c_stray} share texels written past the finish,"
-          f" {zero_bad} texels of empty blocks not black)")
-    return int(bad)
-
-
-GBUF_SLOT = int(re.search(r"const int MaxOwned = (\d+)", open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "managed/Alloy/AlloyRenderer.cs")).read()).group(1)) - 1
-GBUF_CASES = [
-    # N, flags, viewDepth, rough, spec, fresnel, coat, coatRough, specC, slot, specT, diffT, lmLum, lmMover, lmShare,
-    # surfFade (the geometric normal, the fade; 0 = none)
-    ((0.0, 0.0, 1.0), 1, 0.5, 0.02, 0.04, 0.0, 0.0, 0.0, (0.04, 0.04, 0.04), 0, 1.0, (0.5, 0.25, 0.125), 0.0, (0, 0, 0, 0), (0, 0, 0),
-     (0.0, 0.0, 1.0, 0.0)),
-    ((0.0, 0.0, -1.0), 63, 37.25, 1.0, 1.0, 1.0, 1.0, 1.0, (1.0, 1.0, 1.0), GBUF_SLOT, 10.0, (40.0, 0.001, 3.0), 12.5, (1, 0.5, 0.25, 0), (55.0, 54.0, 0.0),
-     (0.6, 0.0, 0.8, 10.0)),
-    ((0.267, -0.535, 0.802), 7, 900.0, 0.31, 0.6, 0.35, 0.55, 0.02, (0.9, 0.3, 0.004), 4097, 0.37, (1e-4, 2e-4, 3e-4), 0.0213, (0.2, 0.4, 0.6, 0.8), (0.7, 0.8, 0.9),
-     (0.0, 0.0, -1.0, 1.0)),
-    ((-0.6, 0.64, -0.48), 41, 3.1, 0.75, 0.11, 0.9, 0.08, 0.3, (0.0, 0.5, 0.25), 99999, 0.0, (0.0, 0.0, 0.0), 300.0, (0, 1, 0, 1), (1000.0, 1.0, 0.01),
-     (-0.48, 0.6, 0.64, 4.37)),
-]
-
-
-def check_gbuf(g):
-    """cx_gbuf's lanes against the values written into them: the writer's pack (CxGbufPack) read back through the
-    reader (CxGbufRead) for the hand-written GBUF_CASES, held to the precision docs/spec/deferred-lighting.md
-    states; the slot lane reaches the last ownership slot's lightmap record, and the ownership test drops a moved
-    depth and a cleared G0."""
-    fn = nv_context()
-    if fn is None:
-        print("gbuf lanes: skipped (no driver context)")
-        return 0
-    IN, OUT = 32, 40
-    src = ("#version 460 core\nlayout(local_size_x = 1) in;\n" + g["cx_chartbuf"] + g["cx_gbuf"] + f"""
-layout(std430, binding = 2) readonly buffer In {{ float uIn[]; }};
-layout(std430, binding = 3) writeonly buffer Out {{ float uOut[]; }};
-void main()
-{{
-    int b = int(gl_WorkGroupID.x) * {IN}, o = int(gl_WorkGroupID.x) * {OUT};
-    CxGbuf g;
-    g.N = normalize(vec3(uIn[b], uIn[b + 1], uIn[b + 2])); g.flags = uint(uIn[b + 3]); g.viewDepth = uIn[b + 4];
-    g.rough = uIn[b + 5]; g.spec = uIn[b + 6]; g.fresnel = uIn[b + 7]; g.coat = uIn[b + 8]; g.coatRough = uIn[b + 9];
-    g.specC = vec3(uIn[b + 10], uIn[b + 11], uIn[b + 12]); g.slot = int(uIn[b + 13]); g.specT = uIn[b + 14];
-    g.diffT = vec3(uIn[b + 15], uIn[b + 16], uIn[b + 17]); g.lmLum = uIn[b + 18];
-    g.lmMover = vec4(uIn[b + 19], uIn[b + 20], uIn[b + 21], uIn[b + 22]); g.lmShare = vec3(uIn[b + 23], uIn[b + 24], uIn[b + 25]);
-    g.surfFade = vec4(normalize(vec3(uIn[b + 26], uIn[b + 27], uIn[b + 28])), uIn[b + 29]);
-    uvec4 w0, w1;
-    uint w2;
-    CxGbufPack(g, w0, w1, w2);
-    CxGbuf r;
-    bool ok = CxGbufRead(w0, w1, g.viewDepth, r);
-    CxGbuf x;
-    uOut[o + 26] = ok ? 1.0 : 0.0;
-    uOut[o + 27] = CxGbufRead(w0, w1, g.viewDepth * 1.02, x) ? 1.0 : 0.0;
-    uOut[o + 28] = CxGbufRead(uvec4(0u), w1, g.viewDepth, x) ? 1.0 : 0.0;
-    if (!ok) return;
-    uOut[o] = r.N.x; uOut[o + 1] = r.N.y; uOut[o + 2] = r.N.z; uOut[o + 3] = float(r.flags); uOut[o + 4] = r.viewDepth;
-    uOut[o + 5] = r.rough; uOut[o + 6] = r.spec; uOut[o + 7] = r.fresnel; uOut[o + 8] = r.coat; uOut[o + 9] = r.coatRough;
-    uOut[o + 10] = r.specC.r; uOut[o + 11] = r.specC.g; uOut[o + 12] = r.specC.b; uOut[o + 13] = float(r.slot);
-    uOut[o + 14] = r.specT; uOut[o + 15] = r.diffT.r; uOut[o + 16] = r.diffT.g; uOut[o + 17] = r.diffT.b;
-    uOut[o + 18] = r.lmLum; uOut[o + 19] = r.lmMover.x; uOut[o + 20] = r.lmMover.y; uOut[o + 21] = r.lmMover.z;
-    uOut[o + 22] = r.lmMover.w; uOut[o + 23] = r.lmShare.r; uOut[o + 24] = r.lmShare.g; uOut[o + 25] = r.lmShare.b;
-    uOut[o + 29] = r.lmTexel; uOut[o + 30] = r.lmPick.x; uOut[o + 31] = r.lmPick.y; uOut[o + 32] = r.lmPick.z;
-    uOut[o + 33] = r.lmPick.w;
-    CxGbufFade(w2, r);
-    uOut[o + 34] = r.surfFade.x; uOut[o + 35] = r.surfFade.y; uOut[o + 36] = r.surfFade.z; uOut[o + 37] = r.surfFade.w;
-}}
-""")
-    prog = driver_program(fn, src, "gbuf lanes")
-    if prog is None:
-        return 1
-    n = len(GBUF_CASES)
-    flat = []
-    for c in GBUF_CASES:
-        row = [*c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], *c[8], c[9], c[10], *c[11], c[12], *c[13], *c[14], *c[15]]
-        flat += row + [0.0] * (IN - len(row))
-    # every slot row an unbaked record but the last's: lmTexel 1 / (8 * 0.25) = 0.5, picks 3 / none / 7 / 254
-    chart = [0.0] * (8 * (GBUF_SLOT + 1))
-    for k in range(GBUF_SLOT + 1):
-        chart[8 * k:8 * k + 8] = [-1.0, 0.0, 0.0, 0.0, -1.0, -1.0, -1.0, -1.0]
-    chart[8 * GBUF_SLOT:8 * GBUF_SLOT + 8] = [2.0, 16.0, 32.0, 0.25, 3.0, -1.0, 7.0, 254.0]
-    out = driver_dispatch(fn, prog, n, [(chart, 13), (flat, 2)], 3, OUT * n, "gbuf lanes")
-    if out is None:
-        return 1
-    bad = []
-    worst_n = 0.0
-    def near(what, got, want, tol):
-        if not abs(got - want) <= tol:
-            bad.append(f"{what} {got:.6g} for {want:.6g}")
-    sq = lambda x, steps: 2.0 * math.sqrt(x) * 0.5 / steps + 0.25 / steps ** 2 + 1e-6
-    for k, c in enumerate(GBUF_CASES):
-        r = out[OUT * k:OUT * (k + 1)]
-        tag = f"case {k}"
-        if r[26] != 1.0 or r[27] != 0.0 or r[28] != 0.0:
-            bad.append(f"{tag}: ownership read {r[26]:.0f}, moved depth {r[27]:.0f}, cleared G0 {r[28]:.0f} (want 1, 0, 0)")
-            continue
-        nl = math.sqrt(sum(v * v for v in c[0]))
-        cosang = sum(a * b / nl for a, b in zip(r[0:3], c[0]))
-        ang = math.degrees(math.acos(max(-1.0, min(1.0, cosang))))
-        worst_n = max(worst_n, ang)
-        if ang > 0.06:
-            bad.append(f"{tag}: N off by {ang:.4f} deg")
-        near(f"{tag}: flags", r[3], c[1], 0.0)
-        near(f"{tag}: viewDepth", r[4], c[2], c[2] / 2048)
-        for j, nm in ((5, "rough"), (6, "spec"), (7, "fresnel")):
-            near(f"{tag}: {nm}", r[j], c[j - 2], 0.5 / 255 + 1e-6)
-        near(f"{tag}: coat", r[8], c[6], 0.5 / 127 + 1e-6)
-        near(f"{tag}: coatRough", r[9], c[7], sq(c[7], 127))
-        for j in range(3):
-            near(f"{tag}: specC", r[10 + j], c[8][j], sq(c[8][j], 255))
-        near(f"{tag}: slot", r[13], c[9], 0.0)
-        near(f"{tag}: specT", r[14], c[10], abs(c[10]) / 2048 + 1e-7)
-        near(f"{tag}: lmLum", r[18], c[12], abs(c[12]) / 2048 + 1e-7)
-        for j in range(4):
-            near(f"{tag}: lmMover", r[19 + j], c[13][j], 0.5 / 255 + 1e-6)
-        for off, want, nm in ((15, c[11], "diffT"), (23, c[14], "lmShare")):
-            for j in range(3):
-                near(f"{tag}: {nm}", r[off + j], want[j], max(want) / 400 + 1e-9)
-        # G2: the fade in 8 bits over [0, 10], 0 exact; the geometric normal at G0's own precision where there is one
-        near(f"{tag}: surfFade", r[37], c[15][3], 0.5 / 255 * 10.0 + 1e-6)
-        if c[15][3] > 0.0:
-            gl_ = math.sqrt(sum(v * v for v in c[15][:3]))
-            ga = math.degrees(math.acos(max(-1.0, min(1.0, sum(a * b / gl_ for a, b in zip(r[34:37], c[15][:3]))))))
-            worst_n = max(worst_n, ga)
-            if ga > 0.06:
-                bad.append(f"{tag}: surfFade normal off by {ga:.4f} deg")
-        if c[9] == GBUF_SLOT:
-            if r[29:34] != [0.5, 3.0, -1.0, 7.0, 254.0]:
-                bad.append(f"{tag}: slot {GBUF_SLOT}'s chart read back {r[29:34]}")
-        elif r[29] != 0.0 or r[30:34] != [-1.0] * 4:
-            bad.append(f"{tag}: an unbaked slot's chart read back {r[29:34]}")
-    print(f"gbuf lanes: {'FAILED' if bad else 'ok'} ({len(GBUF_CASES)} cases, normal within {worst_n:.4f} deg)")
-    for b in bad:
-        print(f"  {b}")
-    return int(bool(bad))
-
-
-def stock_displace(uv, tsb, V, ng, depth, screen_h, h):
-    """inc_displacement.shd DisplaceTextureCoords at SHADER_QUALITY_MODE 2, DisplacementOffset 0 and multiplier 0
-    (so the 1.0 default), m_texture the identity -- the oracle, written from the stock shader, not from ours."""
-    dot = lambda a, b: sum(x * y for x, y in zip(a, b))
-    vts = [-c for c in V]                                   # vViewToSurface_n
-    m = 1.0 + 0.5 * dot(vts, ng)
-    m *= m / (depth * 0.125)                                # -vPosView.z
-    it = 32.0 * min(max(m * screen_h / 1080.0, 0.0), 1.0)
-    if not it > 0.5:
-        return uv
-    vd = [dot(col, V) for col in tsb]                       # transpose(mTSB) * -vViewToSurface_n
-    it = math.floor(it + 0.5)
-    seg = 1.0 / it
-    k = 0.05 * ((1.0 - vd[2]) / (0.5 * vd[2] + 0.5) ** 2 + 1.0)
-    disp = (vd[0] * k, vd[1] * k)
-    cur = (1.0 - h(uv)) * seg
-    for _ in range(int(it), 1, -1):
-        delta = 1.0 - h((uv[0] - disp[0] * cur, uv[1] - disp[1] * cur)) - cur
-        if delta < 0.0:
-            delta /= cur
-            seg *= 0.5
-        else:
-            delta /= 1.0 - cur
-        cur += delta * seg
-    return (uv[0] - disp[0] * cur, uv[1] - disp[1] * cur)
-
-
-DISPLACE_H = "0.5 + 0.4 * sin(12.566371 * p.x) * cos(18.849556 * p.y)"
-DISPLACE_CASES = [
-    # uv, tangent frame (T, B, N), V (surface to eye), view depth, screen height
-    ((0.3, 0.7), ((1, 0, 0), (0, 1, 0), (0, 0, 1)), (0.7071068, 0.0, 0.7071068), 3.0, 1080),
-    ((0.15, 0.4), ((1, 0, 0), (0, 1, 0), (0, 0, 1)), (0.0, -0.9848078, 0.1736482), 10.0, 1080),
-    ((0.6, 0.2), ((0, 1, 0), (-1, 0, 0), (0, 0, 1)), (0.5, 0.3, 0.8124038), 6.0, 2160),
-    ((0.9, 0.55), ((1, 0, 0), (0, 0, 1), (0, -1, 0)), (0.3, -0.8, 0.5196152), 40.0, 1080),
-    ((0.42, 0.13), ((1, 0, 0), (0, 1, 0), (0, 0, 1)), (0.5, 0.0, 0.8660254), 200.0, 1080),
-]
-
-
-def check_displace(g):
-    """CxDisplace against stock_displace on DISPLACE_CASES, the height an analytic field both sides evaluate
-    (DISPLACE_H): angle, distance and screen height set the step count, the frame orders the march's axes."""
-    fn = nv_context()
-    if fn is None:
-        print("parallax: skipped (no driver context)")
-        return 0
-    m = re.search(r"^vec2 CxDisplace\(.*?^}\n", g["cx_ownlit_synth"], re.S | re.M)
-    steps = re.search(r"^const float CX_DISPLACE_STEPS = [^;]+;", g["cx_ownlit_head"], re.M)
-    if m is None or steps is None:
-        print("parallax: FAILED (CxDisplace or CX_DISPLACE_STEPS not found)")
-        return 1
-    IN = 16
-    src = ("#version 460 core\nlayout(local_size_x = 1) in;\n" + steps.group(0) + "\n"
-           f"float cxH(vec2 p) {{ return {DISPLACE_H}; }}\n"
-           "#define textureGrad(t, p, a, b) vec4(cxH(p))\n"
-           + m.group(0) + f"""
-layout(std430, binding = 2) readonly buffer In {{ float uIn[]; }};
-layout(std430, binding = 3) writeonly buffer Out {{ float uOut[]; }};
-void main()
-{{
-    int b = int(gl_WorkGroupID.x) * {IN}, o = int(gl_WorkGroupID.x) * 2;
-    mat3 tsb = mat3(uIn[b + 2], uIn[b + 3], uIn[b + 4], uIn[b + 5], uIn[b + 6], uIn[b + 7], uIn[b + 8], uIn[b + 9], uIn[b + 10]);
-    vec2 r = CxDisplace(vec2(uIn[b], uIn[b + 1]), tsb, vec3(uIn[b + 11], uIn[b + 12], uIn[b + 13]), uIn[b + 14],
-                        uIn[b + 15], vec2(0.0), vec2(0.0));
-    uOut[o] = r.x; uOut[o + 1] = r.y;
-}}
-""")
-    prog = driver_program(fn, src, "parallax")
-    if prog is None:
-        return 1
-    n = len(DISPLACE_CASES)
-    flat = []
-    for uv, tsb, V, depth, sh in DISPLACE_CASES:
-        row = [*uv, *tsb[0], *tsb[1], *tsb[2], *V, depth, sh]
-        flat += row + [0.0] * (IN - len(row))
-    out = driver_dispatch(fn, prog, n, [(flat, 2)], 3, 2 * n, "parallax")
-    if out is None:
-        return 1
-    h = lambda p: eval(DISPLACE_H, {"sin": math.sin, "cos": math.cos, "p": types.SimpleNamespace(x=p[0], y=p[1])})
-    bad, worst, moved = [], 0.0, 0
-    for k, (uv, tsb, V, depth, sh) in enumerate(DISPLACE_CASES):
-        want = stock_displace(uv, tsb, V, tsb[2], depth, sh, h)
-        err = max(abs(out[2 * k] - want[0]), abs(out[2 * k + 1] - want[1]))
-        worst = max(worst, err)
-        moved += want != uv
-        if err > 1e-4:
-            bad.append(f"case {k}: ({out[2 * k]:.6f}, {out[2 * k + 1]:.6f}), stock says ({want[0]:.6f}, {want[1]:.6f})")
-    print(f"parallax: {'FAILED' if bad else 'ok'} ({n} cases, {moved} displaced, within {worst:.2e} of inc_displacement.shd)")
-    for b in bad:
-        print(f"  {b}")
-    return int(bool(bad))
+    for ext in exts:
+        v = subprocess.run(["spirv-val", "--target-env", VK_ENV, os.path.join(d, ext + ".spv")],
+                           capture_output=True, text=True)
+        if v.returncode:
+            return f"{ext}'s module is not valid:\n" + (v.stdout + v.stderr).strip()
+    return None
 
 
 SSBO_BUDGET = int(re.search(r"const uint Budget = (\d+);", open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "managed/Alloy/Core/SsboSlots.cs")).read()).group(1))
@@ -1328,8 +849,8 @@ def content_programs(g):
     fix = content_stage.FIXTURE.get
     vt, ft, vr, fr = content_pair(g, "cx_fixvs", "cx_fixture", fix)
     progs.update(pair_programs("content pair cx_fixvs/cx_fixture", vt, ft, fr, vr))
-    # CX-316: a pair that declares the engine-named set itself, so the driver links the stripped declarations and
-    # the CxEngine block's reads -- the wind arrays no corpus stage happens to read.
+    # CX-316: a pair that declares the engine-named set itself, so the stripped declarations and the CxEngine
+    # block's reads are compiled -- the wind arrays no corpus stage happens to read.
     vt, ft, vr, fr = content_pair(g, "cx_fixengv", "cx_fixeng", fix)
     progs.update(pair_programs("content pair cx_fixengv/cx_fixeng", vt, ft, fr, vr))
     for f in ("cx_fixpost", "cx_fixwhole"):
@@ -1405,7 +926,7 @@ def post_programs(raw, g):
 # cx_X runs in its place under CX_NATIVE, and may declare GPU images and compute passes on #pragma lines of its own.
 # This mirrors CX.Alloy.StageResources' parser, so a declaration the extender would refuse fails here instead of at a
 # player's first frame; every token is an identifier or a decimal integer, because a GLSL preprocessor tokenises the
-# line (NVIDIA refuses `128x128` as an integer with a type suffix).
+# line and refuses `128x128` as an integer with a type suffix.
 NATIVE_FIXTURE = os.path.join(ROOT, "tools/native/fixture")
 NATIVE_CS = os.path.join(MANAGED, "Alloy/Pass/StageResources.cs")
 _NATIVE_SRC = open(NATIVE_CS).read()
@@ -1414,16 +935,16 @@ NATIVE_MAX_IMAGES, NATIVE_MAX_PASSES, NATIVE_MAX_2D, NATIVE_MAX_3D, NATIVE_MAX_V
     r"MaxImages = (\d+), MaxPasses = (\d+), Max2dSide = (\d+), Max3dSide = (\d+), MaxViewDiv = (\d+);", _NATIVE_SRC).groups())
 NATIVE_MAX_BYTES = (lambda m: int(m.group(1)) << int(m.group(2)))(re.search(r"MaxImageBytes = (\d+)L << (\d+);", _NATIVE_SRC))
 NATIVE_MAX_NAME = int(re.search(r"MaxNameChars = (\d+);", _NATIVE_SRC).group(1))
-# name -> (GL sized internal format, bytes per texel). StageResources.SelfCheck.cs asserts the same enums, and
-# check_native_grammar() reads them out of it, so neither table can drift from the other.
-NATIVE_FORMAT_ENUM = {"rgba8": (0x8058, 4), "rgba16f": (0x881A, 8), "rgba32f": (0x8814, 16),   # not-an-offset: GL enums
-                      "rg16f": (0x822F, 4), "rg8": (0x822B, 2), "r16f": (0x822D, 2),   # not-an-offset: GL enums
-                      "r32f": (0x822E, 4), "r8": (0x8229, 1), "r11f_g11f_b10f": (0x8C3A, 4)}   # not-an-offset: GL enums
+# name -> (the sized-format enum StageResources maps it to, bytes per texel). StageResources.SelfCheck.cs
+# asserts the same enums and check_native_grammar() reads them out of it, so neither table can drift.
+NATIVE_FORMAT_ENUM = {"rgba8": (0x8058, 4), "rgba16f": (0x881A, 8), "rgba32f": (0x8814, 16),   # not-an-offset: format enums
+                      "rg16f": (0x822F, 4), "rg8": (0x822B, 2), "r16f": (0x822D, 2),   # not-an-offset: format enums
+                      "r32f": (0x822E, 4), "r8": (0x8229, 1), "r11f_g11f_b10f": (0x8C3A, 4)}   # not-an-offset: format enums
 NATIVE_FORMATS = set(NATIVE_FORMAT_ENUM)
 NATIVE_FLAGS = {"history", "mips", "clamp"}
 NATIVE_TOKEN = re.compile(r"^(?:[A-Za-z_][A-Za-z0-9_]*|[0-9]+)$")
 NATIVE_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,%d}$" % (NATIVE_MAX_NAME - 1))
-# An image or sampler uniform as the driver sees it: the format layout qualifier is what a declared image's
+# An image or sampler uniform as a stage declares it: the format layout qualifier is what a declared image's
 # own format has to agree with, and the 2D/3D-ness with its shape.
 NATIVE_IMG = re.compile(r"(?:layout\s*\(([^)]*)\)\s*)?uniform\s+"
                         r"(?:(?:readonly|writeonly|coherent|volatile|restrict)\s+)*(image2D|image3D)\s+(\w+)\s*;")
@@ -1599,7 +1120,7 @@ def native_stages(g):
 
 def native_bindings(text):
     """{uniform name: (GLSL type, format layout qualifier or None)} for every image and 2D/3D sampler a
-    program declares -- what the driver will bind, as against what the #pragma lines declared."""
+    program declares -- what the backend will bind, as against what the #pragma lines declared."""
     out = {}
     for m in NATIVE_IMG.finditer(text):
         quals = [q.strip() for q in (m.group(1) or "").split(",")]
@@ -1763,7 +1284,7 @@ def native_programs(raw, g):
     return out, bad
 
 
-# The C#<->Python pin. CX.Alloy.StageResources.SelfCheck asserts its grammar on literal declaration lines and the GL
+# The C#<->Python pin. CX.Alloy.StageResources.SelfCheck asserts its grammar on literal declaration lines and the
 # enum each format maps to; those literals are read back out of that file here and run through THIS parser,
 # which has to reach the same verdicts. Two parsers for one grammar stay one grammar only if something says so.
 NATIVE_SELFCHECK_CS = os.path.join(MANAGED, "Alloy/Pass/StageResources.SelfCheck.cs")
@@ -1828,29 +1349,23 @@ def main():
     progs.update(native)
 
     bad = 0
+    validate = shutil.which("spirv-val") is not None
+    if not validate:
+        print("spirv-val: SKIPPED -- not installed (Arch: spirv-tools); modules are compiled, not validated")
     with tempfile.TemporaryDirectory() as tmp:
         for name, stages in progs.items():
-            paths = []
-            for src, ext in zip(stages, EXTS[len(stages)]):
-                for tok, val in TOKENS.items():
-                    src = src.replace(tok, val)
-                p = os.path.join(tmp, f"{re.sub(r'[^A-Za-z0-9_.()-]', '_', name)}.{ext}")
-                open(p, "w").write(src)
-                paths.append(p)
-            r = subprocess.run(["glslangValidator"] + paths, capture_output=True, text=True)
-            print(f"{name}: {'ok' if r.returncode == 0 else 'FAILED'}")
-            if r.returncode:
+            err = check_program(name, stages, tmp, validate)
+            print(f"{name}: {'ok' if err is None else 'FAILED'}")
+            if err is not None:
                 bad = 1
-                print(r.stdout, r.stderr)
-    print(f"{len(progs)} programs from {len(g)} embedded .glsl")
+                print(err)
+    print(f"{len(progs)} programs from {len(g)} embedded .glsl: "
+          + ("FAILED" if bad else f"every stage compiles to a {VK_ENV} module"
+             + (" and validates" if validate else ", unvalidated")))
     bad |= bad_content
     bad |= bad_native
     bad |= check_native_grammar()
     bad |= check_ssbo(progs)
-    bad |= check_driver_link(progs, g)
-    bad |= check_lmenc(g)
-    bad |= check_gbuf(g)
-    bad |= check_displace(g)
     bad |= check_early_z(progs)
     bad |= check_material(g)
     bad |= audit(g)

@@ -10,7 +10,14 @@ layout(binding = 1) uniform sampler2D uScrB;   // sum luminance * direction
 layout(binding = 2) uniform sampler2D uScrC;   // per mover channel, its luminance
 layout(binding = 0, rgba32ui) writeonly uniform uimage2D uBlkA;
 layout(binding = 1, rgba32ui) writeonly uniform uimage2D uBlkB;
+#ifdef CX_BAKEENC_LAYER
+layout(binding = 2, rgba8) writeonly uniform image2DArray uPageC;   // the whole page array; the encode writes one layer
+uniform int uPageLayer;
+#define CX_PAGE_C(p) ivec3(p, uPageLayer)
+#else
 layout(binding = 2, rgba8) writeonly uniform image2D uPageC;
+#define CX_PAGE_C(p) (p)
+#endif
 uniform ivec4 uRegion;   // first block, block count
 const vec3 CX_LUM = vec3(0.2126, 0.7152, 0.0722);
 const uint CX_W4[16] = uint[16](0u, 4u, 9u, 13u, 17u, 21u, 26u, 30u, 34u, 38u, 43u, 47u, 51u, 55u, 60u, 64u);
@@ -300,7 +307,7 @@ void main()
         uvec2 rg = uvec2(packHalf2x16(min(a.rg, vec2(65504.0))), packHalf2x16(vec2(min(a.b, 65504.0), 0.0)));
         gP[i] = vec3(float(rg.x & 0xFFFFu), float(rg.x >> 16), float(rg.y & 0xFFFFu));
         db[i] = d * 255.0;
-        imageStore(uPageC, p, c);
+        imageStore(uPageC, CX_PAGE_C(p), c);
     }
     if (mask == 0u) { imageStore(uBlkA, bp, uvec4(0u)); imageStore(uBlkB, bp, uvec4(0u)); return; }
     imageStore(uBlkA, bp, Bc6h(mask));

@@ -28,31 +28,28 @@ internal static unsafe class SkyStage
     /// (loudly, once), and nothing else draws it, so the frame has no sky.</summary>
     private const int MaxProgs = 4;
 
+    /// <summary>The names a Vulkan session's entries go by, one per slot: no GL program exists behind them, and the
+    /// Vulkan sky builds each from <see cref="Texts"/> through <see cref="Hosted"/>.</summary>
+    private const uint VkNameBase = 0xFFFFFF00;   // not-an-offset: a reserved name range
+
     private struct Entry
     {
         public string Ref;
         public uint Prog;
         public bool Failed;
-        public int Vp, DrawBase, Tex, Tex1, Tint, SkyFog, ViewInv, Global, Oit, OitDepth;
-        /// <summary>Every engine term this program shares with a native stage's compute passes.</summary>
-        public StageEnvLoc Env;
         /// <summary>The native stage declared for this one (<see cref="StageResources"/>), or -1 where the module ships
-        /// none -- kept even when it stood down, and what this program was attached as (-1: nothing per bind).</summary>
-        public int Native, Rec;
+        /// none -- kept even when it stood down.</summary>
+        public int Native;
         /// <summary>Is that native stage what this program hosts? False = the stage the engine runs is hosted plainly.</summary>
         public bool NativeLive;
     }
 
-    /// <summary>Everything the GL context owns, in one object: context loss replaces it, so neither a program
-    /// name nor the failure latch taken against the dead context survives as a field nobody remembered to
-    /// zero.</summary>
+    /// <summary>Every sky stage this session built, in one object: a device change replaces it, so neither a
+    /// program name nor the failure latch taken against the one before survives as a field nobody reset.</summary>
     private sealed class SkyState
     {
         public readonly Entry[] Progs = new Entry[MaxProgs];
         public int Count;
-        /// <summary>The program whose per-pass uniforms are already uploaded this pass, so a role's several
-        /// parts cost one upload. Cleared by <see cref="BeginPass"/>.</summary>
-        public uint Primed;
     }
 
     private static SkyState _gl = new();
@@ -60,8 +57,8 @@ internal static unsafe class SkyStage
 
     internal static void Attach(ExtenderLog log) => _log = log;
 
-    /// <summary>Context loss: every GL name is gone, and a failure latch taken against the old context is not
-    /// evidence about the new one.</summary>
+    /// <summary>Device loss: every program name is gone, and a failure latch taken against the old device is
+    /// not evidence about the new one.</summary>
     internal static void Forget() => _gl = new SkyState();
 
     /// <summary>Module change: the spliced text came off THAT module's resource chain, so it has a module
@@ -69,17 +66,7 @@ internal static unsafe class SkyStage
     /// lazily on the next sky frame.</summary>
     internal static void DropPrograms()
     {
-        for (int i = 0; i < _gl.Count; i++) if (_gl.Progs[i].Prog != 0) Gl.DeleteProgram(_gl.Progs[i].Prog);
         _gl = new SkyState();
-    }
-
-    /// <summary>The entry a program name belongs to, or -1 -- the one lookup the per-pass and per-draw calls
-    /// share. Hot, and over at most <see cref="MaxProgs"/> entries.</summary>
-    private static int IndexOf(uint prog)
-    {
-        var g = _gl;
-        for (int i = 0; i < g.Count; i++) if (g.Progs[i].Prog == prog) return i;
-        return -1;
     }
 
     /// <summary>The program for a material's custom fragment stage <paramref name="fs"/>, built on first sight
@@ -108,14 +95,12 @@ internal static unsafe class SkyStage
             return 0;
         }
         string resref = fs.ToLowerInvariant();
+        uint vkName = VkNameBase + (uint)g.Count;
         ref Entry e = ref g.Progs[g.Count++];
         e.Ref = resref;
-        e.NativeLive = TryNative(resref, out e.Native, out uint prog);
-        e.Prog = e.NativeLive ? prog : Build(resref, native: false);
+        e.NativeLive = TryNative(resref, vkName, out e.Native, out uint prog);
+        e.Prog = e.NativeLive ? prog : Build(resref, native: false, vkName);
         if (e.Prog == 0) { e.Failed = true; return 0; }
-        // A native program that its stage's images refuse (a type that disagrees, say) is replanted on the plain one.
-        if (!Locate(ref e)) Replant(ref e);
-        if (e.Prog == 0) return 0;
         if (e.NativeLive) StageResources.Use(e.Native);
         _log?.Info(e.NativeLive
             ? $"SkyStage: {StageResources.Prefix}{resref}.shd hosted as the sky's fragment stage -- the native "
@@ -129,11 +114,10 @@ internal static unsafe class SkyStage
     /// <see cref="StageResources.Fail"/>; a plain stage that will not build leaves the sky undrawn, as ever.</summary>
     private static void Replant(ref Entry e)
     {
-        if (e.Prog != 0) Gl.DeleteProgram(e.Prog);
+        uint vkName = e.Prog;
         e.NativeLive = false;
-        e.Prog = Build(e.Ref, native: false);
+        e.Prog = Build(e.Ref, native: false, vkName);
         if (e.Prog == 0) { e.Failed = true; return; }
-        Locate(ref e);
         _log?.Info($"SkyStage: {e.Ref}.shd is hosted plainly from here on -- its native stage stood down");
     }
 
@@ -141,7 +125,7 @@ internal static unsafe class SkyStage
     /// passes built, and the dome's program linked from it under <c>CX_NATIVE</c>. True with <paramref name="prog"/>
     /// when that is what the sky will host; <paramref name="id"/> comes back set either way (-1 only where the module
     /// ships none), so the period line can name a refusal.</summary>
-    private static bool TryNative(string resref, out int id, out uint prog)
+    private static bool TryNative(string resref, uint vkName, out int id, out uint prog)
     {
         id = -1;
         prog = 0;
@@ -150,19 +134,42 @@ internal static unsafe class SkyStage
         if (native == null) return false;
         id = StageResources.Declare(native, _log);
         if (!StageResources.Live(id)) return false;
-        prog = Build(native, native: true);
+        prog = Build(native, native: true, vkName);
         if (prog != 0) return true;
         StageResources.Fail(id, "the sky program for it did not build (see the compile log above)", _log);
         return false;
     }
 
-    /// <summary>Link the sky pair: Alloy's own fullbright VERTEX stage (the same text the unlit program
-    /// compiles, so the dome's clip position, texture rotation and world position come out identically) and
-    /// <see cref="ShdFs"/> with the content stage's resref written into its region.</summary>
-    private static uint Build(string resref, bool native)
+    /// <summary>The content stage GL program <paramref name="prog"/> hosts, and whether it hosts that stage's
+    /// native version: what a second backend needs to build the same dome. False for a program this cache does
+    /// not hold.</summary>
+    internal static bool Hosted(uint prog, out string resref, out bool native, out int stage)
     {
-        if (resref.Length > ShaderResource.ResRefBytes) return 0;
-        string what = $"AlloyRenderer sky program ({resref}{(native ? ", native, linear HDR" : "")})";
+        resref = ""; native = false; stage = -1;
+        var g = _gl;
+        for (int i = 0; i < g.Count; i++)
+            if (g.Progs[i].Prog == prog && prog != 0)
+            {
+                resref = g.Progs[i].Ref;
+                native = g.Progs[i].NativeLive;
+                stage = native ? g.Progs[i].Native : -1;
+                return true;
+            }
+        return false;
+    }
+
+    /// <summary>What a build of content stage <paramref name="resref"/> is called in the log.</summary>
+    private static string What(string resref, bool native)
+        => $"AlloyRenderer sky program ({resref}{(native ? ", native, linear HDR" : "")})";
+
+    /// <summary>The sky pair's text for content stage <paramref name="resref"/>: Alloy's own fullbright VERTEX stage
+    /// and <see cref="ShdFs"/> with the content resref written into its region. <paramref name="pair"/> prefers an
+    /// override of either half, <paramref name="embedded"/> is the shipped pair a failed override falls back to. False
+    /// (said once) when the content stage is not in the resource chain, which is no sky for this area.</summary>
+    internal static bool Texts(string resref, bool native, out (string Vs, string Fs) pair, out (string Vs, string Fs) embedded)
+    {
+        pair = embedded = ("", "");
+        if (resref.Length > ShaderResource.ResRefBytes) return false;
         // Refused rather than stubbed: the region's fallback stub is a BLACK DOME, which is a picture, so a
         // program built from it would be a silent fallback in the exact sense CX-45 forbids. No stage in the
         // chain (or the bridge disarmed) means no sky for this area, said out loud.
@@ -170,9 +177,9 @@ internal static unsafe class SkyStage
         {
             _log?.Always($"SkyStage: {resref}.shd is not in the resource chain (or alloy.vanillabridge=0) -- the "
                        + "sky cannot be compiled here and is NOT DRAWN (nothing else draws the sky since CX-87)");
-            return 0;
+            return false;
         }
-        // The override lookup is done HERE, not by GlProgram's overridable overload, because the region's
+        // The override lookup is done HERE, not inside the splice, because the region's
         // resref has to be written in before the splice reads the marker -- and an override that keeps the
         // token is entitled to the same substitution the embedded text gets.
         string evs = ShaderStages.Source(AlloyRenderer.ShdFullbrightVs), efs = ShaderStages.Source(ShdFs);
@@ -182,112 +189,30 @@ internal static unsafe class SkyStage
         // the #version line, which is the one place GLSL takes it, for the override exactly as for the default.
         if (native)
         {
-            bool embedded = ReferenceEquals(fs, efs);
+            bool own = ReferenceEquals(fs, efs);
             efs = ShaderStages.WithDefine(efs, StageResources.NativeDefine);
-            fs = embedded ? efs : ShaderStages.WithDefine(fs, StageResources.NativeDefine);
+            fs = own ? efs : ShaderStages.WithDefine(fs, StageResources.NativeDefine);
         }
         // The vertex half reads the per-draw record, so it owes the same two contracts the unlit program's
         // build checks -- an override that dropped them would put every dome at its neighbour's matrix.
         if (!ReferenceEquals(vs, evs) && !(ShaderContract.RecordSafe(vs) && ShaderContract.SlotIndexSafe(vs)))
         {
-            _log?.Info($"{what}: the {AlloyRenderer.ShdFullbrightVs} override does not declare the per-draw "
-                     + "record -- the sky takes the embedded vertex stage");
+            _log?.Info($"{What(resref, native)}: the {AlloyRenderer.ShdFullbrightVs} override does not declare the "
+                     + "per-draw record -- the sky takes the embedded vertex stage");
             vs = evs;
         }
-        uint prog = GlProgram.Graphics(vs, fs.Replace(FsToken, resref, StringComparison.Ordinal), _log, what);
-        if (prog == 0 && (!ReferenceEquals(vs, evs) || !ReferenceEquals(fs, efs)))
-        {
-            _log?.Info($"{what}: an override .shd failed to build -- falling back to the embedded stages");
-            prog = GlProgram.Graphics(evs, efs.Replace(FsToken, resref, StringComparison.Ordinal), _log, what);
-        }
-        if (prog != 0 && GlProgram.LastStubbed)
-        {
-            Gl.DeleteProgram(prog);
-            prog = 0;
-        }
-        // "NOT DRAWN" belongs to the PLAIN arm alone: a native stage that will not build is followed by this same
-        // method on the stage the engine runs, and StageResources.Fail is what says so. Claiming no sky here would
-        // be a line about something that is not happening.
-        if (prog == 0 && !native)
-            _log?.Always($"SkyStage: the sky program for {resref}.shd did not build (a stubbed stage is a black "
-                       + "dome, so it is refused too) -- the sky is NOT DRAWN; see the compile log above");
-        return prog;
-    }
-
-    /// <summary>The program's uniform locations, and its attachment to its native stage's images and the frame
-    /// uniforms. False when the native stage refused it: the caller replants the entry.</summary>
-    private static bool Locate(ref Entry e)
-    {
-        uint p = e.Prog;
-        e.Vp = GlProgram.Loc(p, "uVP"); e.DrawBase = GlProgram.Loc(p, "uDrawBase");
-        e.Tex = GlProgram.Loc(p, "uTex"); e.Tex1 = GlProgram.Loc(p, "texUnit1");
-        e.Tint = GlProgram.Loc(p, "uTint"); e.SkyFog = GlProgram.Loc(p, "uSkyFog");
-        e.ViewInv = GlProgram.Loc(p, "uViewInv");
-        // The engine's own per-draw constant colour: PartTriMesh::Mat's SetColor4f, which every stock stage
-        // seeds FragmentColor from. Declared by the CONTENT stage, so this may be -1.
-        e.Global = GlProgram.Loc(p, "globalColor");
-        e.Oit = GlProgram.Loc(p, "uOit"); e.OitDepth = GlProgram.Loc(p, "uOitDepth");
-        e.Env = StageEnvLoc.Locate(p);
-        e.Rec = StageResources.Attach(p, e.NativeLive ? e.Native : -1, -1, _log);
-        return e.Rec != -2;
-    }
-
-    /// <summary>A pass is starting: nothing is primed. Cheap, and it is what stops one pass's upload being
-    /// credited to the next (the probe's six faces each have their own view-projection).</summary>
-    internal static void BeginPass() => _gl.Primed = 0;
-
-    /// <summary>Everything a sky program needs that does not vary per draw, once per program per pass: the view-projection,
-    /// the sampler units, the camera's world matrix (stock reads its translation column as the eye) and the engine's
-    /// calendar and weather scalars. False: its native stage stood down at this frame's head, its images are gone, and
-    /// the dome sits the frame out (said by <see cref="StageResources.Fail"/>) until the next staging replants it. Hot.</summary>
-    internal static bool Prepare(uint prog, Matrix4x4* vp, int* viewport)
-    {
-        int at = IndexOf(prog);
-        if (at < 0) return true;
-        var g = _gl;
-        ref Entry e = ref g.Progs[at];
-        if (e.NativeLive && !StageResources.Live(e.Native)) return false;
-        Gl.UseProgram(prog);
-        if (g.Primed == prog)
-        {
-            Gl.UniformMatrix4fv(e.Vp, 1, 0, (float*)vp);
-            return true;
-        }
-        g.Primed = prog;
-        Gl.UniformMatrix4fv(e.Vp, 1, 0, (float*)vp);
-        Gl.Uniform1i(e.Tex, 0);
-        Gl.Uniform1i(e.Tex1, 1);
-        // uOit is program state and the sky is never in the OIT lists; left at the accumulation arm the dome
-        // would land as a near-zero weighted write (gl_FragCoord.z = 1), which is a black sky.
-        Gl.Uniform1i(e.Oit, 0);
-        Gl.Uniform1i(e.OitDepth, (int)TextureSlots.OitDepth);
-        // ponytail: stock reads m_view_inv's TRANSLATION COLUMN only (`vPosWorld.xyz - m_view_inv[3].xyz`,
-        // the view ray: inc_sunm, inc_moonm, inc_stars, inc_clouds), so a translation carries every read the
-        // sky chain makes, at every pass's own eye. A content stage that wants the camera BASIS needs the real
-        // inverse view threaded through from AlloyRenderer.Frame.
-        Matrix4x4 viewInv = Matrix4x4.CreateTranslation(AlloyRenderer.EyePos);
-        Gl.UniformMatrix4fv(e.ViewInv, 1, 0, (float*)&viewInv);
-        // The engine terms -- the same upload a native stage's compute passes take, so a pass and the stage it feeds
-        // never disagree about the calendar -- then its image units and frame uniforms, per pass.
-        e.Env.Upload(viewport);
-        StageResources.Bind(e.Rec);
+        pair = (vs, fs.Replace(FsToken, resref, StringComparison.Ordinal));
+        embedded = (evs, efs.Replace(FsToken, resref, StringComparison.Ordinal));
         return true;
     }
-
-    /// <summary>The per-draw terms: the record index the vertex stage reads its matrix at, the fog band, and
-    /// the engine's own constant colour -- <c>(tint, alpha)</c>, which is <c>PartTriMesh::Mat</c>'s two
-    /// branches exactly (white at the role's alpha, or the scene's fog colour at 1.0 for the skyfade
-    /// gob).</summary>
-    internal static void Draw(uint prog, int slot, float* tint, float alpha, float skyFog)
+    /// <summary>Content stage <paramref name="resref"/>'s GL program; on Vulkan, <paramref name="vkName"/> once its texts
+    /// are in the chain, the Vulkan sky compiling them itself. 0 when it cannot be built (said here).</summary>
+    private static uint Build(string resref, bool native, uint vkName)
     {
-        int at = IndexOf(prog);
-        if (at < 0) return;
-        ref Entry e = ref _gl.Progs[at];
-        Gl.Uniform1i(e.DrawBase, slot);
-        Gl.Uniform3fv(e.Tint, 1, tint);
-        Gl.Uniform4f(e.Global, tint[0], tint[1], tint[2], alpha);
-        Gl.Uniform1f(e.SkyFog, skyFog);
+        if (!Texts(resref, native, out var pair, out var embedded)) return 0;
+        return vkName;
     }
+
 
     /// <summary>Diagnostic: the stages built this session and the ones that refused, by name -- "no stage named",
     /// "a stage that would not build" and "a native stage running" are different facts and read differently; why a

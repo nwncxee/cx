@@ -19,7 +19,7 @@ internal static unsafe class NuiModelDoll
 {
     /// <summary>The scene name every doll asks for. The engine, and <c>DbScene.UniqueName</c> beside it, keep scene names unique by
     /// appending a number, so the second live doll's scene is <c>sceneGUI_guiModelView1</c>. A slot is told apart by its scene's
-    /// pointer, never its name. <c>RenderOnlyGobs</c> lights the exact name only, so <see cref="NuiModelEngine"/> shows it that.</summary>
+    /// pointer, never its name.</summary>
     internal const string ViewName = "guiModelView";
     /// <summary>The most dolls alive at once, across NUI windows, cards and the held image. A view past the cap keeps its stand-in.</summary>
     internal const int MaxViews = 8;
@@ -58,12 +58,8 @@ internal static unsafe class NuiModelDoll
         public int TargetW, TargetH;
         public readonly float[] Bg = new float[4];
         public bool Rendered, Claimed;
-        /// <summary>The view names effects or worn items, which may add light: with Alloy off a see-through background is then solved over black and white.</summary>
-        public bool Effects;
         public ModelLight Light = NuiModelLook.EngineLight;
         public readonly NuiModelGear.GearState Gear = new();
-        /// <summary>The slot's Alloy-off scratch target and the rectangle its texture was last drawn at.</summary>
-        public readonly NuiModelEngine.Scratch Scratch = new();
         public readonly NuiImageSpot.Spot Spot = new();
         public ModelSlot(int index) => Index = index;
     }
@@ -93,7 +89,6 @@ internal static unsafe class NuiModelDoll
         s.TargetTex = 0; s.TargetW = s.TargetH = 0;
         Array.Clear(s.Bg);
         s.Light = NuiModelLook.EngineLight;
-        s.Effects = false;
         s.Claimed = false;
         foreach (ModelSlot o in _o.Slots) if (o.Claimed) return;
         NuiModelGuard.Forget();
@@ -118,11 +113,9 @@ internal static unsafe class NuiModelDoll
     }
 
     internal static void SetTarget(ModelSlot s, uint tex, int w, int h) { s.TargetTex = tex; s.TargetW = w; s.TargetH = h; }
-    internal static bool TargetSize(ModelSlot s, out int w, out int h) { w = s.TargetW; h = s.TargetH; return w > 0 && h > 0; }
     /// <summary>The slot's layer was drawn into its target: the doll's first frame has landed.</summary>
     internal static void MarkRendered(ModelSlot s) => s.Rendered = true;
     internal static void SetLight(ModelSlot s, ModelLight l) => s.Light = l;
-    internal static void SetEffects(ModelSlot s, bool on) => s.Effects = on;
     internal static void SetBackground(ModelSlot s, float r, float g, float b, float a) { s.Bg[0] = r; s.Bg[1] = g; s.Bg[2] = b; s.Bg[3] = a; }
     internal static void Background(ModelSlot s, float* c) { for (int i = 0; i < 4; i++) c[i] = s.Bg[i]; }
 

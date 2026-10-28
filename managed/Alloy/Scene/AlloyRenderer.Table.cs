@@ -290,7 +290,7 @@ public sealed unsafe partial class AlloyRenderer
     private static int _swapN;
     private static bool _swapOverflow;
 
-    /// <summary>Inside the 4.6 bracket (handles are minted and made resident there): rewrite the handle
+    /// <summary>Where handles are minted and made resident: rewrite the handle
     /// block of every swapped record from its tids and mark it for upload. A record that never had handles
     /// (unlit) is left alone -- minting for it would spend residency on a texture nothing samples.</summary>
     private static void ApplySwaps()
@@ -365,7 +365,7 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>A handle that just died must leave every record block NOW, not at the next colour build: the
     /// caster bake samples the GPU handle table off a STANDING staging, and a sample through a dead handle is
     /// a GPU page fault and a hard reset on radeonsi, silent garbage on NVIDIA. Reached from the engine-name
-    /// cache's <see cref="DropHandle(uint, bool)"/> and from <c>TexRegistry.Drain</c>, inside the bracket.</summary>
+    /// cache's <see cref="DropHandle"/> and from <c>TexRegistry.Drain</c>.</summary>
     internal static void ZeroHandle(ulong v)
     {
         if (v == 0) return;
@@ -405,9 +405,6 @@ public sealed unsafe partial class AlloyRenderer
     internal const int HandleHashBits = 15;
     internal static readonly int[] _hTid = new int[1 << HandleHashBits];
     internal static readonly ulong[] _hVal = new ulong[1 << HandleHashBits];
-    /// <summary>Did WE make <see cref="_hVal"/>[i] resident? The driver cannot be asked, and guessing
-    /// produces GL_INVALID_OPERATION in both directions -- residency is only ever ours to know.</summary>
-    internal static readonly bool[] _hRes = new bool[1 << HandleHashBits];
     /// <summary>Is the bindless path live? Extension present, entry points resolved, not vetoed by
     /// alloy.bindless=off, and the LIT program's actual sources carry the handle block. When false everything
     /// draws exactly as before -- per-batch texture binds.</summary>
@@ -494,11 +491,9 @@ public sealed unsafe partial class AlloyRenderer
     // #125: the sky's own draw list, staged after the batch records and issued one draw at a time -- a
     // skybox is a handful of parts and each carries its own captured matrix, so there is nothing to group.
     internal const int MaxSkyDraws = 1024;
-    private static readonly int[] _skVao = new int[MaxSkyDraws];
-    /// <summary>The GL VAO NAME a DB sky draw binds, 0 when the draw is the engine path's and
-    /// <see cref="_skVao"/>'s index into the harvest cache is the answer. The arena hands out a name
-    /// directly, exactly as <c>Beams.EnrollDb</c> takes one.</summary>
-    private static readonly uint[] _skVaoName = new uint[MaxSkyDraws];
+    /// <summary>The mesh arena vertex format a DB sky draw's range lives in, as <see cref="Db.MeshArena.Fmt"/>:
+    /// the pass binds that format's own buffer and layout.</summary>
+    private static readonly int[] _skFmt = new int[MaxSkyDraws];
     private static readonly uint[] _skMode = new uint[MaxSkyDraws];
     private static readonly int[] _skSrc = new int[MaxSkyDraws], _skDst = new int[MaxSkyDraws];
     /// <summary>The constant colour <c>PartTriMesh::Mat</c> would have set for this sky part -- white,

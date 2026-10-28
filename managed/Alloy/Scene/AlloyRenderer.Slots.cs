@@ -76,12 +76,9 @@ public sealed unsafe partial class AlloyRenderer
         // owned buffer copies, and the VAOs built over them are only invalidated here -- an enrollment that
         // took nothing (_ownCount == 0) with slots left from an earlier one would otherwise keep binding a
         // VAO whose buffers were just freed, permanently, with the map empty so no upload can re-copy them.
-        // The VAO cache keys on VDO pointers that may now be freed: retire every slot for reuse. The GL
-        // objects can only be deleted inside the bracket, so the rebuild happens there (EnsureVao).
         PassRegistry.Global.Revoke();
-        CullPass.Revoke();
         // The slot space belongs to the FEED: every slot is joined to a live part through SceneDb.PartSlot and is
-        // released when the game destroys the part, never here. The GL-side teardown above is all a revoke is.
+        // released when the game destroys the part, never here. The device-side teardown above is all a revoke is.
         if (_ownCount > 0) _dbRevokeAll++;
     }
 

@@ -190,10 +190,10 @@ internal static unsafe partial class MeshChart
 
     /// <summary>Is a charted range available to pick this frame? False leaves every draw on its own uncharted
     /// arena range -- the stand-down, not a second code path.</summary>
-    internal static bool Armed => Vao != 0 && Lightmap.G.Master is { V: true };
+    internal static bool Armed => ArenaResident && Lightmap.G.Master is { V: true };
 
-    /// <summary>The arena's static-format VAO, zero until the first mesh lands in this context.</summary>
-    internal static uint Vao => CX.Alloy.Db.MeshArena.Vao(CX.Alloy.Db.MeshArena.Fmt.Static);
+    /// <summary>Is the arena's static section on the device? False until the first mesh lands in it.</summary>
+    internal static bool ArenaResident => CX.Alloy.Db.MeshArena.Resident(CX.Alloy.Db.MeshArena.Fmt.Static);
 
     internal static void Attach(ExtenderLog log)
     {
@@ -440,11 +440,11 @@ internal static unsafe partial class MeshChart
         if (j.Out2N > tris * 3 * (1f - MeshLod.MinSaving) || j.Out2N >= j.Out1N && j.Out1N > 0) j.Out2N = 0;
     }
 
-    /// <summary>Collect what the worker finished into the arenas. Render thread, inside the bracket, once a
-    /// frame, before <c>BuildBatches</c>: the only place a GL name is touched.</summary>
+    /// <summary>Collect what the worker finished into the arenas. Inside the frame, once a frame, before
+    /// <c>BuildBatches</c>.</summary>
     internal static void Pump()
     {
-        if (!_jobs.Running || Gl.CreateBuffers == null) return;
+        if (!_jobs.Running) return;
         while (_jobs.TryTake(out Job j))
         {
             var e = new Entry { Done = true, Refused = j.Refused, Content = j.Content, Bmin = j.Bmin, Bmax = j.Bmax, Sig = j.Sig, Range = -1 };
@@ -525,16 +525,14 @@ internal static unsafe partial class MeshChart
     internal static bool Range(int slot, int item, int lod, out int baseVertex, out nint off, out int count, out int level)
     {
         baseVertex = 0; off = 0; count = 0; level = 0;
-        if (Vao == 0 || !_table.TryGetValue(KeyOf(slot, item), out Entry e) || !e.Done || e.Refused != Refusal.None
+        if (!ArenaResident || !_table.TryGetValue(KeyOf(slot, item), out Entry e) || !e.Done || e.Refused != Refusal.None
             || !Current(slot, item, in e)) return false;
         return CX.Alloy.Db.MeshArena.Runs(e.Range, lod, out baseVertex, out off, out count, out level);
     }
 
-    /// <summary>The VAO an entry's charted range draws from -- its source's layout, which is the static one unless
-    /// the mesh carries UV sets 1..3. 0 = no chart.</summary>
-    internal static uint VaoOf(int slot, int item)
-        => _table.TryGetValue(KeyOf(slot, item), out Entry e) && e.Done && e.Refused == Refusal.None
-           ? CX.Alloy.Db.MeshArenaDraw.VaoOf(e.Range) : 0u;
+    /// <summary>The arena range an entry's charted mesh sits in, for its format on Vulkan; -1 = no chart.</summary>
+    internal static int RangeOf(int slot, int item)
+        => _table.TryGetValue(KeyOf(slot, item), out Entry e) && e.Done && e.Refused == Refusal.None ? e.Range : -1;
 
     /// <summary>Is a DB entry's chart still of the mesh its arena range holds? The key is the range INDEX, and an
     /// area hop recycles indices: until the new tenant is re-offered, the old entry would hand its draws the
@@ -546,7 +544,7 @@ internal static unsafe partial class MeshChart
     /// table epoch instead of one per call.</summary>
     internal static bool Range(ref RangeMemo m, int slot, int item, int lod, out int baseVertex, out nint off, out int count, out int level)
     {
-        if (Vao == 0) { baseVertex = 0; off = 0; count = 0; level = 0; return false; }
+        if (!ArenaResident) { baseVertex = 0; off = 0; count = 0; level = 0; return false; }
         long key = KeyOf(slot, item);
         // the arena's epoch is part of this one: a compaction there rebases every offset a memo cached
         int epoch = _epoch + CX.Alloy.Db.MeshArena.Epoch;

@@ -82,10 +82,10 @@ public static unsafe partial class VulkanToolchain
     private static void CheckCache(Checker check)
     {
         string src = ProbeSource + $"// cache probe {Environment.ProcessId}\n";
-        string path = System.IO.Path.Combine(ProgramBinary.CacheDir, $"vk-{CacheKey(src, ShaderKind.ComputeShader):x16}.spv");
+        string path = System.IO.Path.Combine(ShaderCache.Dir, $"vk-{CacheKey(src, ShaderKind.ComputeShader):x16}.spv");
         try
         {
-            System.IO.Directory.CreateDirectory(ProgramBinary.CacheDir);
+            System.IO.Directory.CreateDirectory(ShaderCache.Dir);
             System.IO.File.WriteAllBytes(path, new byte[24]);
             byte[]? fresh = Compile(src, "cx_vk_cache.comp", ShaderKind.ComputeShader, out string e);
             check.Expect(fresh != null && BitConverter.ToUInt32(fresh, 0) == SpirvMagic,
@@ -116,9 +116,7 @@ public static unsafe partial class VulkanToolchain
     /// those results skip rather than fail, so a headless runner and a stale driver both stay green.</summary>
     private static void CheckInstance(Checker check, ExtenderLog log)
     {
-        VkResult init;
-        try { init = vkInitialize(); }
-        catch (DllNotFoundException) { check.Skip("this machine has no Vulkan loader"); return; }
+        VkResult init = InitLoader();
         if (init != VkResult.Success)
         {
             check.Skip($"the Vulkan loader would not initialize ({init})");

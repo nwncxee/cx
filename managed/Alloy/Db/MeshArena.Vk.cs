@@ -26,6 +26,14 @@ public static unsafe partial class MeshArena
     /// <summary>Vulkan's index buffer, shared by every format; null before its first pump.</summary>
     internal static BufferId VkEbo => _vk.Ebo;
 
+    /// <summary>The layout range <paramref name="range"/> lives in, from the published box rather than the range
+    /// table, so a caller inside a frame reads it without the lock. <see cref="Fmt.Static"/> for no such range.</summary>
+    internal static Fmt PubFormat(int range)
+    {
+        Pub?[] pub = _pub;
+        return (uint)range < (uint)pub.Length && pub[range] is { } r ? r.Format : Fmt.Static;
+    }
+
     /// <summary>The vertex layout of format <paramref name="f"/> as the arena's VAOs bind it. Every location any
     /// arena stage declares is fed in every format, because Vulkan has no constant attribute: a format without
     /// bones feeds 8 and 9 from its position (read only behind a bone base, which such a mesh never has), and one
@@ -54,7 +62,8 @@ public static unsafe partial class MeshArena
     /// when it outgrew the old (which dies after the frames in flight). Inside <see cref="Pump"/>, under the lock.</summary>
     private static void PumpVk()
     {
-        if (!Renderer.OnVulkan || _log == null || AlloyDevice.Vulkan(_log) is not VkBackend vk) return;
+        // never makes the device: a pump at boot runs before GL can name the GPU the device is picked by
+        if (!Renderer.OnVulkan || AlloyDevice.VulkanMade is not VkBackend vk) return;
         if (_vk.Dev != vk) _vk = new VkArenaState { Dev = vk };
         VkArenaState v = _vk;
         for (int f = 0; f < Formats; f++)
@@ -89,14 +98,24 @@ public static unsafe partial class MeshArena
         v.IUploaded = _iUsed;
     }
 
-    /// <summary>A dynamic range's moved vertices into Vulkan's copy, beside GL's (<see cref="DynUpload"/>).</summary>
-    private static void DynUploadVk(in Range rr, int stride)
+    /// <summary>A dynamic range's moved vertices into Vulkan's copy (<see cref="DynUpload"/>); false when the
+    /// range's section has not reached the device yet, whose append upload carries the bytes anyway.</summary>
+    private static bool DynUploadVk(in Range rr, int stride)
     {
         VkArenaState v = _vk;
         int f = (int)rr.Format;
-        if (v.Dev == null || v.Vbo[f].IsNull || v.Uploaded[f] < rr.Base + rr.NV) return;
+        if (v.Dev == null || v.Vbo[f].IsNull || v.Uploaded[f] < rr.Base + rr.NV) return false;
         v.Dev.Upload(v.Vbo[f], (long)rr.Base * stride * 4,
                      MemoryMarshal.AsBytes(_sect[f].Mirror.AsSpan((int)((long)rr.Base * stride), rr.NV * stride)));
+        return true;
+    }
+
+    /// <summary>Is a format's geometry on the device? True once its vertex buffer and the shared index buffer
+    /// both hold an upload, so every reader's "uploaded yet" gate reads the same.</summary>
+    private static bool VkResident(Fmt f)
+    {
+        VkArenaState v = _vk;
+        return !v.Vbo[(int)f].IsNull && !v.Ebo.IsNull && v.Uploaded[(int)f] != 0;
     }
 
     /// <summary>A compaction rewrote the mirrors in place: Vulkan's copies go back up whole at the next pump.</summary>

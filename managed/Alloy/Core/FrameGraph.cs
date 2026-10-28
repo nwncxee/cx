@@ -3,8 +3,8 @@ using CX.Framework;
 namespace CX.Alloy;
 
 /// <summary>The two PHASES of the Alloy frame -- the bake's views, then the colour pass that samples them.
-/// ADR 0011 costed the graph at two and ADR 0032 runs both inside one GL bracket, so these group passes
-/// rather than count context switches; a third is still a design change, not an implementation detail.</summary>
+/// Both record into the one Vulkan frame, so these group passes rather than count anything; a third is a
+/// design change, not an implementation detail.</summary>
 internal enum Bracket
 {
     /// <summary>World casters: sun cascades + local light cubes. <see cref="CasterPass.OnPassSlot"/>.</summary>
@@ -14,8 +14,8 @@ internal enum Bracket
     Colour,
 }
 
-/// <summary>One pass of the Alloy frame. Declaration order IS ADR 0011's graph order -- new M3 passes are
-/// inserted at their graph position, never appended for convenience.</summary>
+/// <summary>One pass of the Alloy frame. Declaration order IS the graph order -- a new pass is inserted at
+/// its graph position, never appended for convenience.</summary>
 internal enum PassId
 {
     SunCascades,
@@ -115,14 +115,14 @@ internal enum PassId
 }
 
 /// <summary>
-/// The Alloy frame's pass list, declared once instead of implied by the order statements happen to appear in
-/// (ADR 0011). Each phase's site walks this and switches on the id, so adding a pass is one entry here plus
-/// one arm there. Wall-clock order too: the bake's views run ahead of the colour pass that samples them, both
-/// inside the view's one GL bracket (ADR 0032); <see cref="RspShim"/> records what stays outside Alloy.
+/// The Alloy frame's pass list, declared once instead of implied by the order statements happen to appear
+/// in. Each phase's site walks this and switches on the id, so adding a pass is one entry here plus one arm
+/// there. Wall-clock order too: the bake's views run ahead of the colour pass that samples them, both inside
+/// the view's one Vulkan frame; <see cref="RspShim"/> records what stays outside Alloy.
 /// </summary>
 internal static class FrameGraph
 {
-    /// <summary>ADR 0011 §"The graph", in order, each with the bracket it runs inside.</summary>
+    /// <summary>The graph, in order, each with the phase it runs inside.</summary>
     internal static readonly (PassId Id, Bracket Bracket)[] Passes =
     {
         (PassId.SunCascades,     Bracket.Shadow),
@@ -152,13 +152,13 @@ internal static class FrameGraph
         (PassId.PostStack,       Bracket.Colour),
     };
 
-    /// <summary>Off-device (run-demo.sh): the list schedules every declared pass exactly once, in ADR 0011's
-    /// order, in two contiguous phases. Ids ascending is what ties the walk to the ADR -- the enum carries the
+    /// <summary>Off-device (run-demo.sh): the list schedules every declared pass exactly once, in graph order,
+    /// in two contiguous phases. Ids ascending is what ties the walk to the declaration -- the enum carries the
     /// graph order, so a pass appended out of position fails here instead of rendering wrong. Returns false to
     /// keep the Alloy frame from arming at all -- a mis-ordered graph is a misrender, not a bad dial.</summary>
     internal static bool SelfCheck(ExtenderLog log)
     {
-        // A third phase is the design change ADR 0011 costed at two, so it fails here rather than appearing.
+        // A third phase is a design change, so it fails here rather than appearing.
         bool ok = Passes.Length == System.Enum.GetValues<PassId>().Length
                   && System.Enum.GetValues<Bracket>().Length == 2;
         int phases = 0;
@@ -166,7 +166,7 @@ internal static class FrameGraph
         {
             if (i > 0)
             {
-                if ((int)Passes[i].Id <= (int)Passes[i - 1].Id) ok = false;             // ADR order
+                if ((int)Passes[i].Id <= (int)Passes[i - 1].Id) ok = false;             // graph order
                 if (Passes[i].Bracket < Passes[i - 1].Bracket) ok = false;              // a phase never re-opens
                 if (Passes[i].Bracket != Passes[i - 1].Bracket) phases++;
             }

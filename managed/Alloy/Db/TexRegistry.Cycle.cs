@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using CX.Framework;
 using CX.Graphics;
+using CX.Graphics.Rhi;
+using CX.Rhi;
 
 namespace CX.Alloy.Db;
 
@@ -19,7 +21,6 @@ internal static unsafe partial class TexRegistry
     private sealed class Cycle
     {
         public int NumX, NumY, CellW, CellH, FullW, Px, Frame;
-        public uint PixFmt, PixType;
         public float Fps, Acc;
         public bool Mip;
         public byte[] Pixels = [];
@@ -114,7 +115,7 @@ internal static unsafe partial class TexRegistry
         var c = new Cycle
         {
             NumX = j.GridX, NumY = j.GridY, CellW = j.W, CellH = j.H, FullW = j.FullW, Px = j.Channels,
-            PixFmt = j.PixFmt, PixType = j.PixType, Fps = j.Fps, Mip = j.GenMips, Pixels = j.Pixels,
+            Fps = j.Fps, Mip = j.GenMips, Pixels = j.Pixels,
         };
         lock (_lock)
         {
@@ -133,7 +134,7 @@ internal static unsafe partial class TexRegistry
         long now = System.Diagnostics.Stopwatch.GetTimestamp();
         float dt = _cycleLast == 0 ? 0f : (now - _cycleLast) / (float)System.Diagnostics.Stopwatch.Frequency;
         _cycleLast = now;
-        if (_cycling.Count == 0 || Gl.TextureSubImage2D == null) return;
+        if (_cycling.Count == 0) return;
         for (int k = _cycling.Count - 1; k >= 0; k--)
         {
             int i = _cycling[k];
@@ -154,16 +155,11 @@ internal static unsafe partial class TexRegistry
     private static void UploadCell(uint name, Cycle c)
     {
         int x = c.Frame % c.NumX * c.CellW, y = c.Frame / c.NumX * c.CellH;
-        int svAlign, svRow;
-        Gl.GetIntegerv(Gl.UNPACK_ALIGNMENT, &svAlign);
-        Gl.GetIntegerv(Gl.UNPACK_ROW_LENGTH, &svRow);
-        Gl.PixelStorei(Gl.UNPACK_ALIGNMENT, 1);
-        Gl.PixelStorei(Gl.UNPACK_ROW_LENGTH, c.FullW);
-        fixed (byte* p = c.Pixels.AsSpan(checked((int)(((long)y * c.FullW + x) * c.Px))))
-            Gl.TextureSubImage2D(name, 0, 0, 0, c.CellW, c.CellH, c.PixFmt, c.PixType, p);
-        Gl.PixelStorei(Gl.UNPACK_ROW_LENGTH, svRow);
-        Gl.PixelStorei(Gl.UNPACK_ALIGNMENT, svAlign);
-        if (c.Mip && Gl.GenerateTextureMipmap != null) Gl.GenerateTextureMipmap(name);
+        ImageId img = VkTextures.Image((int)name);
+        if (img.IsNull || VkTextures.Device(_log) is not VkBackend vk) return;
+        byte[] px;
+        fixed (byte* sheet = c.Pixels) px = VkTextures.Pack(sheet, c.FullW, x, y, c.CellW, c.CellH, c.Px, nibbles: false, out _);
+        if (vk.Upload(img, 0, 0, px) && c.Mip) vk.GenerateMips(img);
     }
 
     /// <summary>The cycle clause of the registry's note.</summary>

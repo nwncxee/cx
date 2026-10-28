@@ -69,7 +69,7 @@ detail, no decisions (those live in the Plane tracker and `docs/adr/`). Terms cr
 ## Framework
 
 - **Core vs shell** — *Core* is pure C# logic with no native references (testable
-  off-device); the *native shell* is the hooks, GL draw, and SDL calls. Features land
+  off-device); the *native shell* is the hooks, the draw calls, and SDL. Features land
   in the Core behind the shell.
 - **Extender-optional** — a stock client plays vanilla; the extender only ever reuses
   existing wire opcodes, so an un-extended client loses nothing.
@@ -255,13 +255,24 @@ What a server can ask the client to draw in and beside its NUI windows. The cont
   styled panel shown beside a NUI element on hover; cards are its first use.
 - **Model view** — a live model drawn into a NUI image, a card or the held image, set up by the
   `model.<key>.*` keys. Its **doll** is the throwaway copy of the target the client builds and
-  draws; the target itself is only read.
+  draws; the target itself is only read. Alloy draws it, and nothing else does: a session Alloy
+  stood down draws no model view and withdraws `cx_cap_modelview`.
 - **Stand-in** — the picture a model view shows until its doll has drawn, and when it has none.
 - **Held image** — the image that follows the pointer while `held.image` names one. A **held
   pick** is the image a press on a NUI element shows at once, before the server answers.
 
 ## Rendering (Alloy)
 
+- **Alloy** — CX's renderer (`managed/Alloy/`, `CX.Alloy`), and the only one it has: it draws through
+  Vulkan, on the `CX.Rhi` seam over `VkBackend` (`managed/Graphics/Vulkan/`). **Vanilla** is the
+  contrast — an Alloy part is one Alloy submits, a vanilla one is one the engine draws with its own
+  OpenGL renderer. Vulkan is not optional to Alloy: the probe (`VkBackend.Refusal`) is asked once at
+  boot, and a machine it refuses runs the whole session vanilla (ADR 0033).
+- **NullGl** — what a Vulkan session does to the engine's OpenGL: SDL opens a Vulkan window instead
+  of a GL one, `SDL_GL_CreateContext` answers with a token nothing dereferences, and every GL entry
+  nwmain imports resolves to a CX stub. The engine goes on running its GL-shaped code against
+  nothing, its texture uploads captured into Vulkan and its screenshots read back from the composite.
+  The session has **no GL context at all**, which is the premise most of the terms below now rest on.
 - **Builder intent** — the part of an area's authored lighting that Alloy must preserve regardless
   of how it shades: *a light reaches what the builder made it reach, and what the builder left dark
   stays dark*. Range and the lit/unlit boundary are a content contract, because builders use them
@@ -290,7 +301,9 @@ What a server can ask the client to draw in and beside its NUI windows. The cont
   This is the shader that ships: it travels with the renderer it agrees with, so the per-draw record,
   the uniform blocks and the clip expression can never disagree with the CPU side. Every overridable
   stage has one. Every file, stage or library, is named by a `cx_*` resref of at most 16 characters (the
-  hak/NWSync limit), so a library can be overridden on its own too.
+  hak/NWSync limit), so a library can be overridden on its own too. The text stays GLSL: `VkGlsl`
+  translates it for Vulkan and shaderc compiles it to SPIR-V at load, so what an author reads and
+  what the GPU runs are the same source.
 - **Shader override** — a `cx_*.shd` a *user* places where the engine's resman will serve it
   (`development/`, `override/`, a hak), replacing that stage's **embedded stage** at load. A
   first-class customization surface — CX ships defaults and lets them be replaced — and explicitly
@@ -304,12 +317,13 @@ What a server can ask the client to draw in and beside its NUI windows. The cont
 - **Tuning knob** — see **Knob** under *Settings*. (Formerly: a value in exactly one of three
   kinds — chat command, config setting, deleted. Superseded by the unified settings model, where a
   knob is one declaration and the chat command and the settings panel are two views of it.)
-- **Render mode** — which renderer draws the 3D scene: the *owned* mode (Alloy) or the
-  *vanilla* mode (the engine's own path). Both ship permanently; a device that cannot run the
-  Alloy mode still runs every other extender feature. The mode is whole-scene — never a
-  per-class mixture — and it is **chosen once per session** (`alloy.enabled=0` in `cx.cfg`,
-  restart required), because Alloy's residency is exclusive and the two resource worlds
-  cannot both be warm. Bare `/alloy` reports which one is running and why.
+- **Render mode** — which renderer draws the 3D scene: the *owned* mode (Alloy, on Vulkan) or the
+  *vanilla* mode (the engine's own GL path). Both ship permanently; a device that cannot run the
+  Alloy mode still runs every extender feature that does not need a renderer of its own — what
+  Alloy alone can draw stands down and says so. The mode is whole-scene — never a
+  per-class mixture — and it is **chosen once per session**, by `alloy.enabled=0` in `cx.cfg`
+  (restart required) or by a Vulkan probe that refuses, because Alloy's residency is exclusive and
+  the two resource worlds cannot both be warm. Bare `/alloy` reports which one is running and why.
 - **Permanent engine resident** — a responsibility the engine keeps for good, not one staged
   back to it during a migration: the 2D UI, resource loading, simulation state, and
   animation/bone state. Rendering is not on the list. The rule that draws the line is *the
@@ -403,9 +417,10 @@ What a server can ask the client to draw in and beside its NUI windows. The cont
   per-pixel dither, instead of ramping its alpha. Every surviving fragment stays fully opaque, so a fade
   cannot introduce a blended fragment — which is what lets a fading class keep writing depth.
 - **Bracket** — one entry into the owned GL context and back (fence, flush, two `glXMakeCurrent`,
-  error drain). Every bracket is a GPU pipeline bubble, so the count per frame is a **budget**, not
-  an implementation detail: Alloy passes are grouped to fit inside existing brackets rather than
-  taking their own.
+  error drain), the unit ADR 0011 and ADR 0032 budgeted a frame in. A Vulkan session has no GL
+  context to enter, so **nothing brackets**: the deferred-work pump that used to need one runs
+  unbracketed at the present (`GlContextService.OnFrame`) and `Enter` refuses every asker, loudly.
+  The term survives for the GL frame's history and for reading ADR 0011/0032.
 - **Rain occlusion map** (#617) — one orthographic depth view of the still casters, looking along the
   **fall vector**, baked and held exactly as a sun cascade is (the texel-snapped fit matrix is the key) and
   stored as the spare layer of the sun array. The one primitive of Alloy weather: a shadow-map test against

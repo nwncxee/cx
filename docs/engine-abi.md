@@ -113,16 +113,14 @@ and `WinMessageHandler(SDL_Event*) -> int` are name-exported and confirmed ident
 the `CGuiInGame*` / `CNWCMessage` / `COptionsPanel` / `CPanelQuickBar` /
 `CCachedMouseCursorManager` handlers are `(this, scalars)` and carry no by-value class.
 
-### Callbacks, not hooks (8 handlers)
+### Callbacks, not hooks (6 handlers)
 
-Eight handlers never attach to an engine symbol, so there is no callee signature to
+Six handlers never attach to an engine symbol, so there is no callee signature to
 compare against. Their verdicts:
 
 | Handler | Reached by | Verdict |
 |---|---|---|
 | `Entry.CxInit` | `bootstrap.c` via `dlsym`/`GetProcAddress` | **ours on both ends**; the native bootstrap declares the same `void(void)` |
-| `GlContextService.XErrorNoop` | `XSetErrorHandler` | **Linux-only** — Xlib does not exist on the Windows leg |
-| `GlContextService.OnDebugMessage` | `glDebugMessageCallback` | identical: `GLDEBUGPROC` is `APIENTRY`, which is `__stdcall` on Win32 and plain on x64 — one convention on Win64 |
 | `HotkeyConsent.OnAnswer` | the engine, through `CPanelOkCancel+0x88` | `(void*, int)`, verified by #48's consent port, which runs on Windows |
 | `SceneWalk.OnBspNode` | passed to the engine's BSP walker as a callback | `(node, ctx)` pointers only; no by-value class |
 | `AlloyRenderer.EnsureBoneSlots`, `OwnedTextures.Adopt` | our own code, through a function pointer | internal; scalars and pointers, platform-neutral by construction |

@@ -71,7 +71,7 @@ internal static unsafe partial class GrassField
     /// instead of laying a trail, and one radius for every gob, there being no bounding sphere mapped.</summary>
     private static void BuildPush()
     {
-        if (_gl.PushTex == 0 || _push == null) return;
+        if (_push == null) return;
         _pushFrames++;
         _pushers = 0; _cullers = 0; _reticles = 0;
         _pushOut = 0; _pushNoGeom = 0; _pushIdle = 0; _pushWalkedNow = 0;
@@ -90,25 +90,22 @@ internal static unsafe partial class GrassField
         // 256KB upload. With `push` at 0 the list is empty, and an empty list that repeats is the same skip.
         EnsureMask();
         bool over = WalkPushers(collect: true);
-        if (!over && _gl.PushSynced && _pushNowN == _gl.PushWasN && SamePushers(_pushNowN))
+        if (!over && _pushNowN == _vkg.PushWasN && SamePushers(_pushNowN))
         { _pushSkips++; return; }
 
         // Only what the LAST list wrote needs undoing; the rest of the field is still the neutral template it
         // was allocated as. An overflow (or a texture whose storage has never been written) takes the whole
         // field instead -- correct, counted, and never the silent half-measure.
-        bool full = over || !_gl.PushSynced;
+        bool full = over;
+        _vkg.PushGen++;
         int cx0 = full ? 0 : _pushRx0, cy0 = full ? 0 : _pushRy0;
         int cx1 = full ? PushRes - 1 : _pushRx1, cy1 = full ? PushRes - 1 : _pushRy1;
         ClearPush(_push, cx0, cy0, cx1, cy1);
         _pushRx0 = PushRes; _pushRy0 = PushRes; _pushRx1 = -1; _pushRy1 = -1;
         if (over) WalkPushers(collect: false);
         else for (int i = 0; i < _pushNowN; i++) WritePusher(in _pushNow[i]);
-        // Stale on the GPU = what was cleared plus what was written.
-        UploadPush(Math.Min(cx0, _pushRx0), Math.Min(cy0, _pushRy0),
-                   Math.Max(cx1, _pushRx1), Math.Max(cy1, _pushRy1));
-        _gl.PushSynced = true;
-        if (over) _gl.PushWasN = -1;   // a truncated list must never match next frame
-        else { Array.Copy(_pushNow, _pushWas, _pushNowN); _gl.PushWasN = _pushNowN; }
+        if (over) _vkg.PushWasN = -1;   // a truncated list must never match next frame
+        else { Array.Copy(_pushNow, _pushWas, _pushNowN); _vkg.PushWasN = _pushNowN; }
     }
 
     /// <summary>Walk the push population once: in <paramref name="collect"/> mode nothing is written and each
@@ -260,21 +257,6 @@ internal static unsafe partial class GrassField
             int o = (y * PushRes + x0) * PushChannels;
             Array.Copy(_pushClear, o, field, o, w);
         }
-    }
-
-    /// <summary>Push one rectangle of the field to the GPU. A partial row needs the unpack stride, since the
-    /// rows of a sub-rectangle are <see cref="PushRes"/> apart in <see cref="_push"/>, not adjacent.</summary>
-    private static void UploadPush(int x0, int y0, int x1, int y1)
-    {
-        if (_push == null || x1 < x0 || y1 < y0) return;
-        int w = x1 - x0 + 1, h = y1 - y0 + 1;
-        bool strided = w != PushRes;
-        if (strided) Gl.PixelStorei(Gl.UNPACK_ROW_LENGTH, PushRes);
-        fixed (byte* p = _push.AsSpan((int)(((long)y0 * PushRes + x0) * PushChannels)))
-            Gl.TextureSubImage2D(_gl.PushTex, 0, x0, y0, w, h, Gl.RGBA, Gl.UNSIGNED_BYTE,
-                                 p);
-        if (strided) Gl.PixelStorei(Gl.UNPACK_ROW_LENGTH, 0);
-        _pushTexels += (long)w * h;
     }
 
     /// <summary>The texels <see cref="Splat"/> can touch, and false for a splat that touches none. The one

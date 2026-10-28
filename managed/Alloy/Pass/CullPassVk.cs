@@ -37,6 +37,9 @@ internal static class CullPassVk
         /// <summary>The max-depth pyramid (R32F, half the depth's size, down to 1x1), the view-projection its depth
         /// was drawn under, and whether it is this frame's (<see cref="Fresh"/>) or a prior frame's (<see cref="Stale"/>).</summary>
         public ImageId Pyr;
+        /// <summary>The pyramid a resize replaced: this frame's prepass cull bound it before the rebuild, so its id
+        /// must resolve until this frame's list has run. Destroyed at the next build.</summary>
+        public ImageId Retired;
         public int PyrW, PyrH, PyrLevels;
         public Matrix4x4 PyrVp;
         public bool Stale, Fresh, RetestPending;
@@ -212,7 +215,7 @@ internal static class CullPassVk
     /// <summary><c>alloy.cull</c> asks for the occlusion test.</summary>
     private static bool Occludes => CullPass.Mode >= CullPass.ModeHiZ;
 
-    /// <summary>One phase's dispatches into <paramref name="cl"/>, as <see cref="CullPass.Dispatch"/> sets them: the
+    /// <summary>One phase's dispatches into <paramref name="cl"/>: the
     /// prepass tests the prior pyramid in its own clip space and marks its rejects, the retest reads those marks,
     /// and the retest and colour sets test this frame's pyramid when there is one and <paramref name="occlude"/>.</summary>
     private static void Phase(CommandList cl, int p, int groups, ref CullBlock b, bool occlude)
@@ -257,12 +260,14 @@ internal static class CullPassVk
     }
 
     /// <summary>The max-depth pyramid from <paramref name="depth"/> (<paramref name="w"/> x <paramref name="h"/>, drawn
-    /// under the staged view-projection) into <paramref name="cl"/>, as <see cref="CullPass.BuildHiZ"/> builds it: half
+    /// under the staged view-projection) into <paramref name="cl"/>: half
     /// size, each texel the max of the 3x3 under it. It is this frame's for the retest and colour sets and next frame's
     /// stale one for its prepass. Nothing when the cull did not run or hi-Z is off.</summary>
     internal static void BuildHiZ(VkBackend vk, CommandList cl, ImageId depth, int w, int h)
     {
         var s = _s;
+        vk.Destroy(s.Retired);
+        s.Retired = default;
         if (!s.Ran || !Occludes || !EnsurePyramid(vk, w / 2, h / 2)) return;
         Reduce(cl, depth);
         s.Fresh = true;
@@ -292,7 +297,7 @@ internal static class CullPassVk
         var s = _s;
         w = Math.Max(w, 1); h = Math.Max(h, 1);
         if (!s.Pyr.IsNull && w == s.PyrW && h == s.PyrH) return true;
-        vk.Destroy(s.Pyr);
+        s.Retired = s.Pyr;
         s.Stale = false;
         int levels = 1;
         while ((w >> levels) > 0 || (h >> levels) > 0) levels++;

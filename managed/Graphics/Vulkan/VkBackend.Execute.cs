@@ -8,8 +8,8 @@ namespace CX.Graphics.Rhi;
 
 internal sealed unsafe partial class VkBackend
 {
-    /// <summary>Queue family indices with a meaning of their own (vulkan_core.h).</summary>
-    private const uint QueueFamilyIgnored = ~0u, QueueFamilyExternal = ~1u;
+    /// <summary>The queue family index that means "no ownership transfer" (vulkan_core.h).</summary>
+    private const uint QueueFamilyIgnored = ~0u;
     /// <summary>vkCmdUpdateBuffer's ceiling on one write.</summary>
     private const int MaxInlineUpdate = 65536;
     /// <summary>A slot's first staging buffer: past every block of constants, so only a scene-sized table grows it.</summary>
@@ -30,16 +30,19 @@ internal sealed unsafe partial class VkBackend
     private VkCommandBuffer _cmd;
     private Slot? _slot;
 
-    /// <summary>Record <paramref name="list"/> into one command buffer and run it. A composite image it touches is
-    /// taken from GL for the submit: Vulkan waits on GL's release (signalled now if GL still held it), renders, and
-    /// signals, and GL waits before anything of its own reads the image. No submit waits on a semaphore nobody signalled.</summary>
-    public bool Submit(CommandList list)
+    /// <summary>Record <paramref name="list"/> into one command buffer and run it.</summary>
+    public bool Submit(CommandList list) => Submit(list, -1);
+
+    /// <summary><see cref="Submit(CommandList)"/>, and with <paramref name="swap"/> at or past 0 the composite's blit
+    /// onto that acquired swapchain image after the list: the submit waits on the slot's acquire and signals the
+    /// image's ready semaphore, which the present waits on.</summary>
+    private bool Submit(CommandList list, int swap)
     {
         if (!OnThread("Submit")) return false;
         int slot = (int)(_submits % Slots);
         Slot s = _slots[slot];
         VkFence fence = s.Fence;
-        VkResult waited = _vkd.vkWaitForFences(1, &fence, true, FenceTimeoutNs);
+        VkResult waited = WaitFence(fence);
         if (waited != VkResult.Success)
             return Fault(waited == VkResult.ErrorDeviceLost
                 ? "the device was LOST running the previous submit on this slot -- a GPU fault in a recorded pass"
@@ -59,59 +62,38 @@ internal sealed unsafe partial class VkBackend
         BindBindless();
         FlushUploads();
 
+        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         bool ok = Record(list.TakePending());
+        _translateTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+        _translateN++;
         if (_rendering) _vkd.vkCmdEndRendering(_cmd);
         _inPass = _rendering = false;
-        VkImg? c0 = Composite(0), c1 = Composite(1);
-        Exported? a = c0?.Ext is { Taken: true } e0 ? e0 : null, b = c1?.Ext is { Taken: true } e1 ? e1 : null;
-        if (a != null) Release(c0!);
-        if (b != null) Release(c1!);
+        if (ok && swap >= 0) ok = RecordPresent(swap);
         TimeEnd(slot, ok);
         _vkd.vkEndCommandBuffer(_cmd);
         if (!ok)
         {
-            // nothing ran, so no recorded barrier did: every image is back in the layout it entered with, GL keeps the
-            // composite, and the uploads this recording flushed wait for the next one
-            for (int i = _undo.Count - 1; i >= 0; i--)
-            {
-                (VkImg g, VkImageLayout layout, bool held) = _undo[i];
-                g.Layout = layout;
-                if (g.Ext != null) g.Ext.Taken = held;
-            }
+            // nothing ran, so no recorded barrier did: every image is back in the layout it entered with, and the
+            // uploads this recording flushed wait for the next one
+            for (int i = _undo.Count - 1; i >= 0; i--) _undo[i].Img.Layout = _undo[i].Layout;
             _undo.Clear();
             _upload.Touched.Clear();
             return false;
         }
         CommitUploads();
 
-        VkSemaphore* wait = stackalloc VkSemaphore[2];
-        VkSemaphore* signal = stackalloc VkSemaphore[2];
-        VkPipelineStageFlags* stages = stackalloc VkPipelineStageFlags[2] { VkPipelineStageFlags.AllCommands, VkPipelineStageFlags.AllCommands };
-        uint n = 0;
-        ReadOnlySpan<Exported?> taken = [a, b];
-        foreach (Exported? e in taken)
-        {
-            if (e == null) continue;
-            if (e.Handover.Take()) GlHand(e, release: true);
-            wait[n] = e.GlDone;
-            signal[n++] = e.VkDone;
-        }
+        uint n = swap >= 0 ? 1u : 0u;
+        VkSemaphore wait = n == 0 ? default : _acquired[slot], signal = n == 0 ? default : _swap.Ready[swap];
+        VkPipelineStageFlags stages = VkPipelineStageFlags.Transfer;
         VkCommandBuffer cb = _cmd;
         var si = new VkSubmitInfo
         {
-            waitSemaphoreCount = n, pWaitSemaphores = wait, pWaitDstStageMask = stages,
-            commandBufferCount = 1, pCommandBuffers = &cb, signalSemaphoreCount = n, pSignalSemaphores = signal,
+            waitSemaphoreCount = n, pWaitSemaphores = &wait, pWaitDstStageMask = &stages,
+            commandBufferCount = 1, pCommandBuffers = &cb, signalSemaphoreCount = n, pSignalSemaphores = &signal,
         };
         _vkd.vkResetFences(1, &fence);
         if (_vkd.vkQueueSubmit(_queue, 1, &si, fence) != VkResult.Success)
-            return Fault("vkQueueSubmit refused the frame -- a GL release is now unmatched and the device is unusable");
-        foreach (Exported? e in taken)
-        {
-            if (e == null) continue;
-            GlHand(e, release: false);
-            e.Handover.Returned();
-            e.Taken = false;
-        }
+            return Fault("vkQueueSubmit refused the frame -- the device is unusable");
         _submits++;
         DrainDead();
         return true;
@@ -128,6 +110,7 @@ internal sealed unsafe partial class VkBackend
                 Op.EndRenderPass => End(),
                 Op.SetPipeline => Bind(r.Read<PipelineId>()),
                 Op.SetViewport => Viewport(r.Read<Rect>()),
+                Op.SetDepthRange => DepthRange(r.Read<DepthRangeCmd>()),
                 Op.SetScissor => Scissor(r.Read<Rect>()),
                 Op.SetDepthBias => DepthBias(r.Read<DepthBiasCmd>()),
                 Op.BindSet => BindSet(r.Read<BindSetCmd>(), ref r),
@@ -141,9 +124,15 @@ internal sealed unsafe partial class VkBackend
                 Op.BindVertexBuffer => VertexBuffer(r.Read<VertexBufferCmd>()),
                 Op.DrawIndexedMulti => DrawMulti(r.Read<MultiDrawCmd>(), ref r),
                 Op.DrawIndexedIndirect => Indirect(r.Read<IndirectCmd>()),
+                Op.DrawIndirect => IndirectArrays(r.Read<IndirectCmd>()),
                 Op.SetDepthState => Depth(r.Read<DepthState>()),
                 Op.SetRasterState => Raster(r.Read<RasterState>()),
-                // ponytail: image copies and blits join with the first pass that records them
+                Op.ReadImages => Readable(r.Read<ReadImagesCmd>(), ref r),
+                Op.CopyImage => CopyImg(r.Read<CopyImageCmd>()),
+                Op.BlitImage => BlitImg(r.Read<BlitImageCmd>()),
+                Op.CopyImageToBuffer => CopyToBuf(r.Read<CopyToBufferCmd>()),
+                Op.ClearImage => ClearImg(r.Read<ImageId>()),
+                Op.GenerateMips => MipsImg(r.Read<ImageId>()),
                 _ => Fault($"{op} is not on the Vulkan backend yet"),
             };
             if (!ok) return false;
@@ -162,6 +151,9 @@ internal sealed unsafe partial class VkBackend
         _pendDepth = h.Depth;
         _inPass = true;
         _scissorSet = false;
+        // every pass starts at the whole window-depth range, so a pass that collapses it (the sky dome) or stacks
+        // views in it (the GUI) does not leave the next one drawing where it left off
+        _depthMin = 0f; _depthMax = 1f;
         return true;
     }
 
@@ -182,21 +174,24 @@ internal sealed unsafe partial class VkBackend
         if (_rendering) return true;
         if (!_inPass) return Fault("a draw outside a render pass");
         VkRenderingAttachmentInfo* att = stackalloc VkRenderingAttachmentInfo[Math.Max(_pendCount, 1)];
-        int w = 0, h = 0;
+        int w = 0, h = 0, layers = 1;
         for (int i = 0; i < _pendCount; i++)
         {
             ColorAttachment c = _pend[i];
             // a null image routes the slot nowhere, so the slots after it keep their indices
             if (c.Image.IsNull) { att[i] = new VkRenderingAttachmentInfo { imageView = default, imageLayout = VkImageLayout.Undefined }; continue; }
             if (!_images.TryGet(c.Image.Value, out VkImg img)) return Fault($"render pass colour {i}: stale image");
-            if (c.Mip != 0 || c.Layer > 0) return Fault($"render pass colour {i}: mip {c.Mip} layer {c.Layer} -- only mip 0 of a 2D image on the Vulkan backend yet");
+            if (c.Mip != 0) return Fault($"render pass colour {i}: mip {c.Mip} -- only mip 0 on the Vulkan backend yet");
+            VkImageView cv = AttachView(img, c.Layer);
+            if (cv.IsNull) return Fault($"render pass colour {i}: layer {c.Layer} is past {img.Desc.Label}");
+            if (c.Layer < 0) layers = Math.Max(layers, Layers(img.Desc));
             Transition(img, VkImageLayout.ColorAttachmentOptimal);
             var clear = new VkClearValue();
             clear.color.float32[0] = c.Clear.X; clear.color.float32[1] = c.Clear.Y;
             clear.color.float32[2] = c.Clear.Z; clear.color.float32[3] = c.Clear.W;
             att[i] = new VkRenderingAttachmentInfo
             {
-                imageView = img.View, imageLayout = VkImageLayout.ColorAttachmentOptimal,
+                imageView = cv, imageLayout = VkImageLayout.ColorAttachmentOptimal,
                 loadOp = c.Load switch { LoadOp.Load => VkAttachmentLoadOp.Load, LoadOp.Clear => VkAttachmentLoadOp.Clear, _ => VkAttachmentLoadOp.DontCare },
                 storeOp = c.Store == StoreOp.Store ? VkAttachmentStoreOp.Store : VkAttachmentStoreOp.DontCare,
                 clearValue = clear,
@@ -209,14 +204,17 @@ internal sealed unsafe partial class VkBackend
         {
             DepthAttachment d = _pendDepth;
             if (!_images.TryGet(d.Image.Value, out VkImg img)) return Fault("render pass depth: stale image");
-            if (d.Mip != 0 || d.Layer > 0) return Fault($"render pass depth: mip {d.Mip} layer {d.Layer} -- only mip 0 of a 2D image on the Vulkan backend yet");
+            if (d.Mip != 0) return Fault($"render pass depth: mip {d.Mip} -- only mip 0 on the Vulkan backend yet");
             if (!img.Desc.Fmt.IsDepth()) return Fault($"render pass depth: {img.Desc.Label} is {img.Desc.Fmt}, not a depth format");
+            VkImageView dv = AttachView(img, d.Layer);
+            if (dv.IsNull) return Fault($"render pass depth: layer {d.Layer} is past {img.Desc.Label}");
+            if (d.Layer < 0) layers = Math.Max(layers, Layers(img.Desc));
             Transition(img, VkImageLayout.DepthStencilAttachmentOptimal);
             var clear = new VkClearValue();
             clear.depthStencil = new VkClearDepthStencilValue(d.Depth, 0);
             depth = new VkRenderingAttachmentInfo
             {
-                imageView = img.View, imageLayout = VkImageLayout.DepthStencilAttachmentOptimal,
+                imageView = dv, imageLayout = VkImageLayout.DepthStencilAttachmentOptimal,
                 loadOp = d.Load switch { LoadOp.Load => VkAttachmentLoadOp.Load, LoadOp.Clear => VkAttachmentLoadOp.Clear, _ => VkAttachmentLoadOp.DontCare },
                 storeOp = d.Store == StoreOp.Store ? VkAttachmentStoreOp.Store : VkAttachmentStoreOp.DontCare,
                 clearValue = clear,
@@ -227,7 +225,7 @@ internal sealed unsafe partial class VkBackend
         var area = new VkRect2D { extent = new VkExtent2D { width = (uint)w, height = (uint)h } };
         var ri = new VkRenderingInfo
         {
-            renderArea = area, layerCount = 1, colorAttachmentCount = (uint)_pendCount, pColorAttachments = att,
+            renderArea = area, layerCount = (uint)layers, colorAttachmentCount = (uint)_pendCount, pColorAttachments = att,
             pDepthAttachment = _pendHasDepth ? &depth : null, pStencilAttachment = stencil ? &depth : null,
         };
         _vkd.vkCmdBeginRendering(_cmd, &ri);
@@ -292,6 +290,7 @@ internal sealed unsafe partial class VkBackend
             };
         if (!Staged(System.Runtime.InteropServices.MemoryMarshal.AsBytes(_multi.AsSpan(0, c.Draws)), out ulong at)) return false;
         _vkd.vkCmdDrawIndexedIndirect(_cmd, _slot!.Stage, at, (uint)c.Draws, IndirectStride);
+        _drawN += c.Draws;
         return true;
     }
 
@@ -302,6 +301,7 @@ internal sealed unsafe partial class VkBackend
     {
         if (!EnsureRendering()) return false;
         if (!_buffers.TryGet(c.Commands.Value, out VkBuf cmds)) return Fault("DrawIndexedIndirect: stale command buffer");
+        _drawN++;
         if (c.MaxDraws <= 0) return true;
         if (c.Count.IsNull)
         {
@@ -313,11 +313,24 @@ internal sealed unsafe partial class VkBackend
         return true;
     }
 
+    private bool IndirectArrays(IndirectCmd c)
+    {
+        if (!EnsureRendering()) return false;
+        if (!_buffers.TryGet(c.Commands.Value, out VkBuf cmds)) return Fault("DrawIndirect: stale command buffer");
+        _drawN++;
+        if (c.MaxDraws > 0) _vkd.vkCmdDrawIndirect(_cmd, cmds.Buffer, (ulong)c.Offset, (uint)c.MaxDraws, ArraysStride);
+        return true;
+    }
+
+    /// <summary>A <c>VkDrawIndirectCommand</c>'s size: four words.</summary>
+    private const uint ArraysStride = 16;
+
     private bool Viewport(Rect v)
     {
+        _viewport = v;
         // same numbers as GL's: both put framebuffer row 0 at y 0 and NDC -1 on it, so an imported image
         // reads back the same way up in either API
-        var vp = new VkViewport { x = v.X, y = v.Y, width = v.W, height = v.H, minDepth = 0, maxDepth = 1 };
+        var vp = new VkViewport { x = v.X, y = v.Y, width = v.W, height = v.H, minDepth = _depthMin, maxDepth = _depthMax };
         _vkd.vkCmdSetViewport(_cmd, 0, 1, &vp);
         return true;
     }
@@ -358,6 +371,7 @@ internal sealed unsafe partial class VkBackend
         _vkd.vkUpdateDescriptorSets((uint)k, w, 0, null);
         // ponytail: every bind set lands on set 0, the one GLSL without a set qualifier reads
         _vkd.vkCmdBindDescriptorSets(_cmd, _inPass ? VkPipelineBindPoint.Graphics : _bindPoint, _pipeLayout, 0, 1, &set, 0, null);
+        _setN++;
         return true;
     }
 
@@ -369,13 +383,27 @@ internal sealed unsafe partial class VkBackend
         return true;
     }
 
+    /// <summary>Hand the named images over for sampling, outside any render pass: a bind of one inside a pass
+    /// after its first draw can place no barrier, and a target the frame just wrote is in its write layout.</summary>
+    private bool Readable(ReadImagesCmd h, ref CommandReader r)
+    {
+        ReadOnlySpan<ImageId> ids = r.Span<ImageId>(h.Images);
+        if (_inPass) return Fault("ReadImages inside a render pass -- the hand-over is a barrier, which a pass forbids");
+        // the layout a bind of that kind wants, so the bind itself finds the image already in it
+        VkImageLayout to = h.Access is Access.StorageRead or Access.StorageWrite
+            ? VkImageLayout.General : VkImageLayout.ShaderReadOnlyOptimal;
+        foreach (ImageId id in ids)
+            if (!id.IsNull && _images.TryGet(id.Value, out VkImg img)) Transition(img, to);
+        return true;
+    }
+
     private bool Img(ImageBinding s, uint at, VkDescriptorType type, VkWriteDescriptorSet* w, Span<VkDescriptorImageInfo> ii, ref int k, ref int t)
     {
         if (!_images.TryGet(s.Image.Value, out VkImg img)) return Fault($"bind set: stale image on slot {s.Slot}");
         bool storage = type == VkDescriptorType.StorageImage;
         VkImageLayout want = storage ? VkImageLayout.General : VkImageLayout.ShaderReadOnlyOptimal;
         if (!_rendering) Transition(img, want);
-        else if (img.Layout != want || img.Ext is { Taken: false })
+        else if (img.Layout != want)
             return Fault($"bind set: slot {s.Slot}'s image needs a barrier inside a begun render pass -- bind before the first draw");
         VkSampler sampler = _nearest;
         if (!storage && !s.Sampler.IsNull && !_samplers.TryGet(s.Sampler.Value, out sampler)) return Fault($"bind set: stale sampler on slot {s.Slot}");
@@ -395,6 +423,7 @@ internal sealed unsafe partial class VkBackend
     {
         if (!EnsureRendering()) return false;
         _vkd.vkCmdDraw(_cmd, (uint)c.Verts, (uint)c.Insts, (uint)c.FirstVert, (uint)c.FirstInst);
+        _drawN++;
         return true;
     }
 
@@ -402,6 +431,7 @@ internal sealed unsafe partial class VkBackend
     {
         if (!EnsureRendering()) return false;
         _vkd.vkCmdDrawIndexed(_cmd, (uint)c.Indices, (uint)c.Insts, (uint)c.FirstIndex, c.BaseVertex, (uint)c.FirstInst);
+        _drawN++;
         return true;
     }
 
@@ -556,46 +586,35 @@ internal sealed unsafe partial class VkBackend
         _vkd.vkCmdPipelineBarrier2(_cmd, &di);
     }
 
-    /// <summary>Move <paramref name="img"/> into <paramref name="to"/>. A composite image's first use in a submit also
-    /// takes it from GL (the external queue family), whose release left it in the shader-read layout.</summary>
+    /// <summary>Move <paramref name="img"/> into <paramref name="to"/>.</summary>
     private void Transition(VkImg img, VkImageLayout to)
     {
         Remember(img);
-        bool take = img.Ext is { Taken: false };
-        if (take) { img.Ext!.Taken = true; img.Layout = VkImageLayout.ShaderReadOnlyOptimal; }
-        else if (img.Layout == to && to == VkImageLayout.ShaderReadOnlyOptimal) return;
-        Barrier(img, to, take ? QueueFamilyExternal : QueueFamilyIgnored, take ? _family : QueueFamilyIgnored);
+        if (img.Layout == to && to == VkImageLayout.ShaderReadOnlyOptimal) return;
+        Barrier(img, to);
         img.Layout = to;
     }
 
-    /// <summary>Hand a composite image back to GL in the layout GL's wait names.</summary>
-    private void Release(VkImg img)
-    {
-        Remember(img);
-        Barrier(img, VkImageLayout.ShaderReadOnlyOptimal, _family, QueueFamilyExternal);
-        img.Layout = VkImageLayout.ShaderReadOnlyOptimal;
-    }
-
-    /// <summary>Note <paramref name="img"/>'s layout and hand-over as this recording found them, once per recording, so a
-    /// refused recording -- whose barriers never run -- puts them back.</summary>
+    /// <summary>Note <paramref name="img"/>'s layout as this recording found it, once per recording, so a refused
+    /// recording -- whose barriers never run -- puts it back.</summary>
     private void Remember(VkImg img)
     {
         if (img.UndoAt == _recording) return;
         img.UndoAt = _recording;
-        _undo.Add((img, img.Layout, img.Ext?.Taken ?? false));
+        _undo.Add((img, img.Layout));
     }
 
-    /// <summary>The current recording's count, and each image it changed with the layout and hand-over it found.</summary>
+    /// <summary>The current recording's count, and each image it changed with the layout it found.</summary>
     private long _recording;
-    private readonly List<(VkImg Img, VkImageLayout Layout, bool Taken)> _undo = new();
+    private readonly List<(VkImg Img, VkImageLayout Layout)> _undo = new();
 
-    private void Barrier(VkImg img, VkImageLayout to, uint srcFamily, uint dstFamily)
+    private void Barrier(VkImg img, VkImageLayout to)
     {
         var b = new VkImageMemoryBarrier2
         {
             srcStageMask = VkPipelineStageFlags2.AllCommands, srcAccessMask = VkAccessFlags2.MemoryWrite,
             dstStageMask = VkPipelineStageFlags2.AllCommands, dstAccessMask = VkAccessFlags2.MemoryRead | VkAccessFlags2.MemoryWrite,
-            oldLayout = img.Layout, newLayout = to, srcQueueFamilyIndex = srcFamily, dstQueueFamilyIndex = dstFamily,
+            oldLayout = img.Layout, newLayout = to, srcQueueFamilyIndex = QueueFamilyIgnored, dstQueueFamilyIndex = QueueFamilyIgnored,
             image = img.Image,
             subresourceRange = new VkImageSubresourceRange
             {

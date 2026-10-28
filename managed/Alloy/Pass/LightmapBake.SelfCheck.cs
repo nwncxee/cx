@@ -30,12 +30,12 @@ internal static unsafe partial class LightmapBake
         check.Expect(KeySampleBeats(true, 9ul, 8ul) && !KeySampleBeats(true, 8ul, 9ul) && !KeySampleBeats(true, 8ul, 8ul),
           "the key sample is not the lowest key of the area, so two runs can sample different rects");
         // the packer, on a scratch page state
-        int layers = _gl.Layers, page = _packPage;
+        int layers = Layers, page = _packPage;
         long placedWas = _placedArea;
         WindowState winWas = _win;
         _win = new WindowState();
         var sy = (int[])_shelfY.Clone(); var sh = (int[])_shelfH.Clone(); var sx = (int[])_shelfX.Clone();
-        _gl.Layers = 1; _packPage = 0; Array.Clear(_shelfY); Array.Clear(_shelfH); Array.Clear(_shelfX);
+        Layers = 1; _packPage = 0; Array.Clear(_shelfY); Array.Clear(_shelfH); Array.Clear(_shelfX);
         var a = new Rect { W = 100, H = 50 }; var b = new Rect { W = 100, H = 40 }; var c = new Rect { W = 4000, H = 60 };
         // oracle: hand-worked cells -- a side plus two gutters of 2, up to a multiple of 4
         check.Expect(Cell(1) == 8 && Cell(4) == 8 && Cell(5) == 12 && Cell(100) == 104 && Cell(50) == 56, "a cell is the rect and its gutters in whole blocks");
@@ -48,7 +48,7 @@ internal static unsafe partial class LightmapBake
         check.Expect(DesiredTier(0f) == 0 && DesiredTier(near * 100f) == Baseline && (Baseline < 1 || DesiredTier(near * 1.5f) == 1), "the tier doubles out from lightmap.near to the baseline");
         if (Baseline > 0 && _rectN == 0)
         {
-            _gl.Layers = 2; _packPage = 0; _finePage = 0; Array.Clear(_pageClass);
+            Layers = 2; _packPage = 0; _finePage = 0; Array.Clear(_pageClass);
             int rb = NewRect(), rf = NewRect();
             _rects[rb] = new Rect { Key = 1, W = 100, H = 50, Tier = Baseline, Page = -1 }; _rects[rf] = new Rect { Key = 2, W = 100, H = 50, Tier = 0, Page = -1, C = new Vector3(near * 1.5f, 0f, 0f) };
             _byKey[1] = rb; _byKey[2] = rf;
@@ -73,7 +73,7 @@ internal static unsafe partial class LightmapBake
         {
             float w = Lightmap.Window.V;
             var unionsWas = _areaUnions.ToArray();
-            _gl.Layers = 2; _packPage = 0; _finePage = 0; Array.Clear(_pageClass); Array.Clear(_shelfY); Array.Clear(_shelfH); Array.Clear(_shelfX);
+            Layers = 2; _packPage = 0; _finePage = 0; Array.Clear(_pageClass); Array.Clear(_shelfY); Array.Clear(_shelfH); Array.Clear(_shelfX);
             int rb = NewRect();
             (_owners[rb] ??= new List<int>(2)).Clear();
             _rects[rb] = new Rect { Key = 3, W = 100, H = 50, Tier = Baseline, Page = -1, State = RState.Landed, C = new Vector3(w * 1.3f, 0f, 0f), R = w * 0.1f };
@@ -89,7 +89,7 @@ internal static unsafe partial class LightmapBake
             _areaUnions.Clear(); _areaUnions.AddRange(unionsWas);
         }
         _win = winWas; _placedArea = placedWas;
-        _gl.Layers = layers; _packPage = page; Array.Copy(sy, _shelfY, sy.Length); Array.Copy(sh, _shelfH, sh.Length); Array.Copy(sx, _shelfX, sx.Length);
+        Layers = layers; _packPage = page; Array.Copy(sy, _shelfY, sy.Length); Array.Copy(sh, _shelfH, sh.Length); Array.Copy(sx, _shelfX, sx.Length);
         // the key
         int setN = _setN;
         if (_setPosR.Length < 1) { _setPosR = new Vector4[1]; _setCol = new Vector3[1]; }
@@ -152,13 +152,13 @@ internal static unsafe partial class LightmapBake
         int dw = _defW, dh = _defH, dx = _defX0, dy = _defY0, dp = _defPage, un = _uncached;
         var defWas = _defRects.ToArray();
         _defW = 0; _defRects.Clear();
-        check.Expect(_uMap == null && _gl.Fence == IntPtr.Zero && ReadbackIdle, "nothing in flight is idle");
+        check.Expect(!_vkb.ReadQueued && ReadbackIdle, "nothing in flight is idle");
         var two = new List<int> { 0, 1 };
         StashReadback(3, 0, 0, 8, 8, two);
         check.Expect(!ReadbackIdle, "a landing stashed behind a draining copy still counts as a readback in flight");
         StashReadback(4, 0, 0, 8, 8, two);
         check.Expect(_uncached == un + 2 && _defPage == 4, "a stash replaced inside one window counts the rects it dropped and keeps the newer landing");
-        AbortReadback(gl: false);
+        AbortReadback();
         check.Expect(ReadbackIdle && _uncached == un + 4, "abandoning a readback drops the stash and counts its rects");
         // CX-102: and the pack may reuse a stashed rect's entry or its page space between the stash and the
         // issue (EvictPage Kills landed rects and re-opens the page), which would put the new tenant's key over

@@ -189,7 +189,7 @@ Ceiling: the day two knobs must flip together, that pair becomes one `Knob<T>` w
   the registry, `Format()`s each knob, writes `cx.cfg.tmp`, then `File.Move(overwrite)`. Last
   writer wins. No write-if-changed compare. The render thread never touches the disk; the input
   thread only arms the timer.
-- **Boot keys** are renamed `<group>.<knob>` (`alloy.gl46`, `shadow.size`, `mouselook.sens`,
+- **Boot keys** are renamed `<group>.<knob>` (`alloy.hdr`, `shadow.size`, `mouselook.sens`,
   `general.logs`) with **no legacy read** of the flat name. `general.logs` is still consumed
   inside `Settings.Load`.
 - **Restart rows** show `V` with the `↻ restart` badge, amber when `V != Boot`.
@@ -292,7 +292,7 @@ its own, and *no CX* is an uninstall."
 |---|---|---|---|---|---|---|---|
 | general.commands | Enable chat commands | T | off | U | L | — | Lets `/grass`, `/shadow` and the other CX commands work in chat. Off, they go to the server like any other text — some servers use the same names. `/settings` always works. |
 | general.logs | Write cx.log for bug reports | T | off | A | L | — | Writes what CX is doing to cx.log (beside cx.cfg on Windows, in your home folder on Linux) from now on; restart to capture the launch lines too. Attach the file to a bug report. |
-| general.hookdebug / presentprobe / pin / resizeat | — | T, S | as declared | C | R | — | funchook trace, the present-time pixel probe, main-thread affinity, the timed window resize |
+| general.hookdebug / pin / resizeat | — | T, S | as declared | C | R | — | funchook trace, main-thread affinity, the timed window resize |
 
 `general.logs` is live because `ExtenderLog.Enabled` is one static bool. No ↻ badge.
 
@@ -630,8 +630,8 @@ rung). `alloy`'s `PanelStatus` is the renderer's own line ("Running: Alloy / Van
 | alloy.ghost | See-through creature thickness | S | 1–3 × step 0.1 · 1.2 | A | L | — | A creature an effect such as Invisibility makes see-through draws as this many layers of itself, so its shape still shows. 1 is the effect's own transparency. A fully invisible creature stays invisible. |
 | alloy.texpreview | Low-resolution texture previews | T | on | A | L | — | While an area streams in, every texture first shows a small blurred version of itself, then sharpens when the full one lands. Off: a texture shows white until it has fully loaded. |
 | alloy.a2c | Alpha-to-coverage samples | D | off / 2x / 4x / 8x · 4x | A | L | — | Materials that ask for alpha-to-coverage (`NWN_ALPHA_MODE 2`, often hair) get soft, layered edges from this many samples per pixel. Off draws them with the hard cutout edge every other leaf has. |
-| alloy.gui / border / oit / oitlayers / texcache / bindless / bcn / hdr / gl46 / drawhooks / ownedtex / pltverify / bcndrip / texsingle / ddsread / rasterread / texdelete / handledrop / maxelements / spirv / vanillabridge / hostfs / ownskin / clustercap / dumptex / dumpshaders / gldebug / renderthread / framediff / paritydump / staleaudit / glsync / skipbuckets / enginezones | — | T, S, D, X | as declared | C | mostly R | — | capability gates, budgets and bisects |
-| alloy.movie / a2cmask / light / prepass / viz / threads / cull / retest / hldiag / hlchan / poll / prepasskey / prepassfeat / depthequal / idtarget / blenddepth / gpumeter / vislist / washtest / oitviz / cullwatch / lodhyst / hitcheck | — | T, S | as declared | C | L | — | live path switches and visualisers |
+| alloy.gui / border / oit / texcache / bindless / bcn / hdr / drawhooks / ownedtex / pltverify / bcndrip / texsingle / ddsread / rasterread / texdelete / handledrop / maxelements / spirv / vanillabridge / hostfs / ownskin / clustercap / dumptex / dumpshaders / gpudebug / framediff / paritydump / staleaudit / skipbuckets / enginezones | — | T, S, D, X | as declared | C | mostly R | — | capability gates, budgets and bisects |
+| alloy.movie / a2cmask / light / prepass / viz / threads / cull / retest / hldiag / hlchan / poll / prepasskey / prepassfeat / depthequal / idtarget / blenddepth / vislist / washtest / oitviz / cullwatch / lodhyst / hitcheck | — | T, S | as declared | C | L | — | live path switches and visualisers |
 | alloy.authoredlod | authoredlod | T | on | H | L | — | cfg-only: authored `.lod` alternates are loaded and switched for every object, non-static placeables included, whatever the game's own LOD option says. Off is for debugging; the switch distances still follow the game's LOD scale setting. |
 | alloy.consts / framedump / bench / shaderdump / snap / hitbench | — | B | — | C | — | — | dumps and measurements (`bench` steps the GPU-cost settings and logs a `[bench]` table) |
 | lod.enabled | Automatic mesh detail | T | on | **C** | L | — | cfg-only: distant walls and floors are drawn from a simplified copy of their own mesh. Off draws every model at full detail at every distance, which is what the game does. |
@@ -662,7 +662,7 @@ so it adds no submenu content.
 | light.probesize | Reflection capture size | D | 64 / 128 / 256 / 512 px · 64 | A | R | Reflections | Resolution the surroundings are captured at. Ladders on `quality.reflections`. |
 | light.ssrdetail | Screen-space reflection detail | D | full / half / quarter · half | A | L | Reflections | The resolution a reflection finds what it hits at. Lower is cheaper and blockier. Ladders on `quality.reflections`. |
 | light.ambientdir | Directional ambient | S | 0–1 step 0.05 · 0.5 | A | L | Materials | Ambient light takes its direction from the surroundings (sky above, ground below) at the area's own brightness. 0 is the stock sun-facing shading. |
-| light.daylow / dayhigh / wrap / wrapndl / hot / hotsize / radius / falloff / fadeout / deferred / deferredtiles / lightrec / probegain / ssrrough / ssrplanarres / ssrplanarcull / hidden / brdf / specaa / binreach / bincap / relevance / floor / fullmodel / reachfade | — | T, S, D | as declared | C | L | — | the lit stage's tuning: the day curve, the sphere-light shape, the deferred path, reflection cost, the modern BRDF (ADR 0026) and the cluster/relevance budgets |
+| light.daylow / dayhigh / wrap / wrapndl / hot / hotsize / radius / falloff / fadeout / deferred / deferredtiles / lightrec / probegain / ssrrough / ssrplanarres / hidden / brdf / specaa / binreach / bincap / relevance / floor / fullmodel / reachfade | — | T, S, D | as declared | C | L | — | the lit stage's tuning: the day curve, the sphere-light shape, the deferred path, reflection cost, the modern BRDF (ADR 0026) and the cluster/relevance budgets |
 | shadow.enabled | Enable Alloy shadows | T | on | **C** | R | — | cfg-only: real-time sun cascades and point-light shadow cubes. Off, no surface takes a shadow from CX at all. |
 | shadow.dist | Sun shadow distance | S | 20–400 m step 10 · 120 | A | L | Sun | How far from you the sun casts shadows. Cost does not depend on area size. Ladders on `quality.shadows`. |
 | shadow.size | Sun shadow resolution | D | 512 / 1024 / 2048 / 4096 · 2048 | A | R | Sun | Per-cascade map size. Larger is sharper and slower. Ladders on `quality.shadows`. |
@@ -678,7 +678,7 @@ so it adds no submenu content.
 | ao.strength | Strength | S | 0.5–4 step 0.1 · 2.2 | U | L | — | Multiplied by the game's AO intensity slider. |
 | ao.dirs | Slices | S | 1–8 · 1 | A | L | — | Directions each pixel searches for nearby surfaces. More is smoother and slower. Ladders on `quality.ao`. |
 | ao.steps | Steps | S | 1–8 · 3 | A | L | — | Samples along each direction. More reaches further out accurately, and costs that much more. Ladders on `quality.ao`. |
-| ao.direct / cutout / temporal / maxpx / blur / on | — | T, S | as declared | C | L | — | the direct term, cutout coverage, temporal accumulation, the screen-radius cap (ladders on `quality.ao`), the blur and the bypass |
+| ao.direct / cutout / maxpx / blur / on | — | T, S | as declared | C | L | — | the direct term, cutout coverage, the screen-radius cap (ladders on `quality.ao`), the blur and the bypass |
 | lightmap.enabled | Baked static lighting | T | on | **C** | L | — | cfg-only: static geometry gets its lights baked into a lightmap as the area loads, and the frame stops re-shading it. Off is the live light loop. |
 | lightmap.density | Lightmap density | S | 2–32 px/m · 8 | A | L | — | Lightmap texels per metre of world. Each instance's rectangle is capped at a quarter page; a change re-bakes the area. |
 | lightmap.movers | Creature shadows from baked lights | T | on | A | L | — | A creature standing under a baked light casts its shadow on the baked surface. Off is cheaper. |
@@ -715,10 +715,7 @@ ChatOnly master and two diagnostics, so it has no submenu.
 | grass.lod | Full-density radius | S | 5–200 m · 40 | A | L | Detail | Every blade draws inside this. Ladders on `quality.grass`. |
 | grass.bladelod | Full-detail blade radius | S | 5–200 m · 30 | A | L | Detail | Procedural blades inside this are smooth curves; past it each is a single triangle. Ladders on `quality.grass`. |
 | grass.shade | Full-shading radius | S | 5–200 m · 40 | A | L | Detail | Past this blades skip light and shadow taps. Ladders on `quality.grass`. |
-| grass.shadow | Grass casts shadows | D | none / 1 / 2 / 3 / 4 · 1 | A | L | Detail | How many sun cascades the blades are drawn into. More is sharper far away and costlier. Ladders on `quality.grass`. |
-| grass.aniso | Anisotropic filtering | D | 1 / 2 / 4 / 8 / 16 · 8 | A | L | Detail | Keeps grass textures sharp when seen at a low angle. Lower is a little faster and blurrier. |
-| grass.snowthin / snowfall / snowlook / windspeed / lodmin / lodwidth / lodheight / castwidth / pushradius / pushextent / cull / cullshrink / cullmax / tuft / soften / edge / softedge / rootao / gtint / width / clump / backlight / sheen / vlight / prepass / gviz | — | T, S | as declared | C | L | — | the winter look, the far-field ramp, the push field, the object cull, the blade shape and shading (`vlight` ladders on `quality.grass`) |
-| grass.dumpmips / dumpshadow | — | B | — | C | — | — | |
+| grass.snowthin / snowfall / snowlook / windspeed / lodmin / lodwidth / lodheight / castwidth / pushradius / pushextent / cull / cullshrink / cullmax / tuft / edge / rootao / gtint / width / clump / backlight / sheen / vlight / gviz | — | T, S | as declared | C | L | — | the winter look, the far-field ramp, the push field, the object cull, the blade shape and shading (`vlight` ladders on `quality.grass`) |
 | weather.enabled | Weather | T | on | U | L | — | Rain and snow drawn by CX: wind-leaning streaks and flakes that stop under cover, and ground that wets, puddles and snows over. Off, the game's own rain and snow sheets fall instead. |
 | weather.density | Density | S | 0–3 step 0.1 · 1 | U | L | Precipitation | How much rain or snow falls, on top of the weather the area asks for. Ladders on `quality.weather`. |
 | weather.wet | Wet surfaces | S | 0–1 step 0.05 · 1 | U | L | Surfaces | Exposed ground and roofs darken and turn glossy in rain, reflecting the sky, and puddles pool in low ground. 0 = off. |
@@ -755,7 +752,7 @@ ChatOnly master and two diagnostics, so it has no submenu.
 | vfog.top | Fog bank height | S | 2–100 m step 1 · 15 | A | L | Shape | How far above the camera the fog reaches before it thins away: the sky shows above it, and tall things rise out of it. |
 | vfog.temporal / lightshadows | — | S, T | as declared | C | L | — | the share of past frames the volume keeps, and lamps' shadows in the fog |
 | water.enabled | Water | T | on | **C** | L | — | cfg-only: draw water (the stock water shader, reflecting the finished frame). Off, no water is drawn at all -- there is no stock water pass left behind it. |
-| water.rect / diag | — | T, S | as declared | C | L | — | |
+| water.rect | — | T | as declared | C | L | — | |
 
 **Motion** — groups `anim` (350, *Animation*), `dangly` (352, *Cloaks and hair*), `particles`
 (354, *Particles*). `emitsim` (356, *Particle simulation*, parent `particles.enabled`) is a
@@ -931,7 +928,7 @@ quarter.
 
 **quality.grass** → `grass.density` 0.75 / 1.25 / 2 / 3 · `grass.bladedensity` 3 / 5 / 8 / 12 ·
 `grass.lod` 15 / 25 / 40 / 60 m · `grass.bladelod` 10 / 20 / 30 / 45 m · `grass.shade` 15 / 25 /
-40 / 60 m · `grass.shadow` none / 1 / 1 / 2 cascades · `grass.vlight` on / on / on / off.
+40 / 60 m · `grass.vlight` on / on / on / off.
 
 **quality.weather** → `weather.density` 0.5 / 0.8 / 1 / 1.5 · `weather.range` 12 / 16 / 20 /
 28 m · `weather.count` 4000 / 8000 / 16000 / 24000 · `weather.impacts` 0 / 0.35 / 0.6 / 1 ·
@@ -1039,7 +1036,7 @@ Each step ships on its own and leaves the client working.
   `DialogSettings`, `NameplateSettings`, `QuickbarSettings` and their gears, the nuklear hotkey
   manager + the Options-panel "Hotkeys" button + their `SymbolMap` rows, `GameGate.Locked` /
   `OwnsFramePresent` and every `lockchat` branch (UiHostService, UiInputService, ChatService,
-  GlContextService, AlloyGate, CasterPass, AlloyRenderer, Quickbar, Notice, HotkeyInputService),
+  FramePump, AlloyGate, CasterPass, AlloyRenderer, Quickbar, Notice, HotkeyInputService),
   `ConfigFile.Load/Save/Baseline`, every `cx-<feature>.cfg` writer, nameplate `mode`, the FOV
   magic zero.
 - Files: `cx-camera.cfg`, `cx-chat.cfg`, `cx-combattext.cfg`, `cx-dialog.cfg`,

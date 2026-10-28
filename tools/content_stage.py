@@ -333,13 +333,26 @@ def kept(code, own):
     return bool(UNIFORM_WORD.match(code)) and any(w in own for w in re.findall(r"\w+", code))
 
 
+def line_statements(code):
+    """Mirrors ContentStage.Statements: a line of several declarations, one statement each; None for one, or a brace."""
+    if "{" in code or "}" in code or not code.rstrip().endswith(";"):
+        return None
+    parts = [p.strip() for p in code.split(";") if p.strip()]
+    return [p + ";" for p in parts] if len(parts) >= 2 else None
+
+
 def declarations(text, fragment, supplied, vs_out, ps, macros, r, own=frozenset()):
     out, zeroed, depth, block = [], [], 0, [False]
     for line in text.split("\n"):
         code = strip_line(line, block)
         braces = code.count("{") - code.count("}")
         if depth == 0 and not code.lstrip().startswith("#"):
-            new = None if kept(code, own) else rewrite(code, line, fragment, supplied, vs_out, ps, macros, zeroed, r)
+            parts = line_statements(code)
+            if parts:
+                new = "\n".join((None if kept(st, own) else rewrite(st, st, fragment, supplied, vs_out, ps, macros, zeroed, r)) or st
+                                for st in parts)
+            else:
+                new = None if kept(code, own) else rewrite(code, line, fragment, supplied, vs_out, ps, macros, zeroed, r)
             if r.refused:
                 return text
             if new is not None:
@@ -681,6 +694,9 @@ FIXTURE = {
                    "void main()\n{\n    ApplyStandardShader();\n    vPosView += vec3(0.0, 0.0, fWave);\n"
                    "    gl_Position = m_proj * vec4(vPosView, 1.0);\n}\n"),
     "cx_fixown": "vec3 ApplyColorSpace(vec3 c) { return c * c; }\nvoid main()\n{\n    gl_FragColor = vec4(ApplyColorSpace(vec3(0.5)), 1.0);\n}\n",
+    "cx_fixmulti": ('#include "inc_standard"\nuniform float rgbP0; uniform float rgbP1;\nvoid main()\n{\n'
+                    "    FragmentColor = vec4(1.0);\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n"
+                    "    gl_FragColor = vec4(FragmentColor.rgb * (rgbP0 + rgbP1), 1.0);\n}\n"),
 }
 STOCK_VS = ('// header\n#define SHADER_TYPE 1\n#define NORMAL_MAP 1\n#include "inc_standard"\n'
             "void main ()\n{\n    ApplyStandardShader();\n}\n")
@@ -740,6 +756,9 @@ def selfcheck(env_fs, env_vs, defs, vanfs, std_fs, std_vs, lit_vs):
     if mine.refused or "vec3 CxConOwn_ApplyColorSpace(vec3 c) { return c * c; }" not in mine.host \
        or "vec4(CxConOwn_ApplyColorSpace(vec3(0.5)), 1.0)" not in mine.host or "{ return c * c; }" in mine.host.replace("CxConOwn_ApplyColorSpace(vec3 c) { return c * c; }", ""):
         bad.append("a function the stage defines over one the program already has is not renamed, with its calls")
+    multi = translate("cx_fixmulti", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
+    if multi.refused or multi.params != [("rgbP0", "Float", 0), ("rgbP1", "Float", 1)]:
+        bad.append(f"two uniforms on one line do not both take a lane: {multi.refused or multi.params}")
     engv = translate("cx_fixengv", False, FIXTURE.get, env_vs, "", "", std_vs, lit_vs)
     eng = translate("cx_fixeng", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "",
                     vertex=engv if not engv.refused else None)

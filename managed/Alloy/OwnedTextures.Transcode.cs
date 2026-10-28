@@ -44,7 +44,7 @@ internal static unsafe partial class OwnedTextures
     /// <summary>Funnel -> encoder, and encoder -> upload. Main thread counts <see cref="_transN"/> alone.</summary>
     private static readonly ConcurrentQueue<TransJob> _encodeQ = new(), _encodedQ = new();
     private static int _transN;
-    /// <summary>Bumped by <see cref="ContextLost"/>: a job minted before it names a texture of the dead context.</summary>
+    /// <summary>Bumped by <see cref="ContextLost"/>: a job minted before it names a texture of the dead device.</summary>
     private static int _transCtx;
     private static long _transDone, _transDropped, _transStale, _transFailed;
     /// <summary>The session's transcode cost in Stopwatch ticks -- the main-thread upload and the encoder
@@ -76,13 +76,12 @@ internal static unsafe partial class OwnedTextures
         _encodeWake.Release();
     }
 
-    /// <summary>One frame's uploads of finished jobs, on <see cref="Maintain"/>'s anchor: main thread, with
-    /// the ENGINE's context current -- the context the funnel minted the source in, and the only thread that
-    /// writes these tables. Every edit is by name, so the engine's bind cache is never touched, and its
-    /// unpack-buffer binding is restored.</summary>
+    /// <summary>One frame's uploads of finished jobs, on <see cref="Maintain"/>'s anchor: the main thread,
+    /// where the funnel minted the source and the only thread that writes these tables. Every edit is by
+    /// name, so the engine's bind cache is never touched.</summary>
     private static void DripTranscodes()
     {
-        if (!GlContextService.Available || _transN == 0) return;
+        if (!FramePump.Available || _transN == 0) return;
         long t0 = FrameZones.Now;
         for (int spent = 0; spent < TranscodeBudget && _encodedQ.TryDequeue(out TransJob? job); spent++)
         {
@@ -148,7 +147,7 @@ internal static unsafe partial class OwnedTextures
         if (job.Blocks.Length > 0) ArrayPool<byte>.Shared.Return(job.Blocks);
     }
 
-    /// <summary>The GL-NAME edge: every queued job names a source texture of the dead context, so the work is
+    /// <summary>The NAME edge: every queued job names a source texture of the device that went, so the work is
     /// worthless and the memory is not. What the encoder thread is holding right now cannot be taken back --
     /// at most one job, whose buffers stay its own.</summary>
     private static void DropTranscodes()
@@ -157,54 +156,25 @@ internal static unsafe partial class OwnedTextures
         while (_encodedQ.TryDequeue(out TransJob? job)) { _transStale++; Release(job); }
     }
 
-    /// <summary>The sampler state of Alloy's raw upload <paramref name="src"/> onto its BCn stand-in.</summary>
-    private static void CopySampler(uint src, uint dst)
-    {
-        foreach (uint p in (ReadOnlySpan<uint>)[Gl.TEXTURE_MIN_FILTER, Gl.TEXTURE_MAG_FILTER, Gl.TEXTURE_WRAP_S, Gl.TEXTURE_WRAP_T, Gl.TEXTURE_MAX_ANISOTROPY])
-        {
-            int v; Gl.GetTextureParameteriv(src, p, &v);
-            Gl.TextureParameteri(dst, p, v);
-        }
-    }
-
     private static void Upload(TransJob job)
     {
         if (job.Ctx != _transCtx || !_res.TryGetValue(job.Key, out Entry e) || e.Owned != job.Src) { _transStale++; return; }
-        uint dst; Gl.CreateTextures(Gl.TEXTURE_2D, 1, &dst);
-        if (dst == 0) { _transFailed++; return; }
-        // DSA uploads still read through PIXEL_UNPACK_BUFFER, so the engine's (if any) steps aside.
-        int svUnpackBuf; Gl.GetIntegerv(Gl.PIXEL_UNPACK_BUFFER_BINDING, &svUnpackBuf);
-        if (svUnpackBuf != 0) Gl.BindBuffer(Gl.PIXEL_UNPACK_BUFFER, 0);
-        Gl.DrainErrors(8);
-        CopySampler(job.Src, dst);
-        uint fmt = job.Bc3 ? Gl.COMPRESSED_RGBA_S3TC_DXT5 : Gl.COMPRESSED_RGB_S3TC_DXT1;
-        // Immutable storage for the whole chain, then one sub-image per level -- never respecify: defining
-        // mutable levels one by one read as BcnUp 2,5-4,7ms per texture, and a mip read after respecification
-        // corrupted every level but the base on AMD/Mesa.
-        Gl.TextureStorage2D(dst, job.Levels, fmt, job.Lw[0], job.Lh[0]);
-        for (int i = 0; i < job.Levels; i++)
-        {
-            int size = BcnEncode.LevelSize(job.Lw[i], job.Lh[i], job.Bc3);
-            fixed (byte* level = job.Blocks.AsSpan((int)job.Off[i], size))
-                Gl.CompressedTextureSubImage2D(dst, i, 0, 0, job.Lw[i], job.Lh[i], fmt, size, level);
-        }
-        uint err = Gl.GetError();
-        if (svUnpackBuf != 0) Gl.BindBuffer(Gl.PIXEL_UNPACK_BUFFER, (uint)svUnpackBuf);
-        if (err != 0)
-        {
-            if (Gl.DeleteTextures != null) Gl.DeleteTextures(1, &dst);
-            _transFailed++;
-            if (++_bcnFails >= BcnFailCap)
-            {
-                _bcn = false;
-                _log?.Info($"OwnedTextures: BCn transcode DISABLED -- {_bcnFails} driver refusals (last 0x{err:x}); uploads stay raw until the next context");
-            }
-            return;
-        }
+        uint dst = VkTextures.NewName();
+        if (dst == 0) return;
         // The funnel's scan belongs to the RESOURCE, not to the name: the swap retires the scanned name, so
         // without this a transcoded cutout reads as unscanned and the caster pass stops testing its alpha.
         bool scanned = _stats.TryGetValue(job.Src, out Stat st);
         MirrorTranscode(job.Src, dst, job.Bc3, job.Levels, job.Lw, job.Lh, job.Off, job.Blocks);
+        if (!VkTextures.Has(dst))
+        {
+            _transFailed++;
+            if (++_bcnFails >= BcnFailCap)
+            {
+                _bcn = false;
+                _log?.Info($"OwnedTextures: BCn transcode DISABLED -- {_bcnFails} device refusals; uploads stay raw until the next device");
+            }
+            return;
+        }
         Replace(job.Key, job.Etid, dst, job.Compressed);
         if (scanned) _stats[dst] = st; else _stats.Remove(dst);
         FrameZones.Count(FrameZones.Ev.Transcode);

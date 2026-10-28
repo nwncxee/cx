@@ -24,71 +24,12 @@ internal static unsafe partial class LightmapBake
     /// arrive with each creature, long after the bake. The larger of this and an eighth of the card.</summary>
     private const int VramReserveMiB = 1024;
 
-    /// <summary>Make the pool resident: sized once per <c>lightmap.vram</c> value, so free memory moving never
-    /// resizes it. A new value frees the old pool and revokes the area first. False = the card would not give
-    /// the arrays, which latches the pass off.</summary>
-    private static bool Pool()
-    {
-        if (_gl.Layers > 0 && _gl.PoolMib == Lightmap.Vram.V) return true;
-        if (_gl.Layers > 0) { FreePages(); Revoke(); }
-        int n = PoolPages(Lightmap.Vram.V, AlloyRenderer.VramTotalMib, AlloyRenderer.VramFreeMib);
-        uint a = PageArray(FormatA, n), b = PageArray(FormatB, n), c = PageArray(Gl.RGBA8, n);
-        if (a == 0 || b == 0 || c == 0)
-        {
-            if (a != 0) Gl.DeleteTextures(1, &a);
-            if (b != 0) Gl.DeleteTextures(1, &b);
-            if (c != 0) Gl.DeleteTextures(1, &c);
-            _log?.Always($"LightmapBake: a {n}-page pool ({n * PageMiB} MiB) was refused by the card ({AlloyRenderer.VramFreeMib} MiB free)");
-            return _down.Fail(_log, "the page pool could not be allocated (out of video memory?)", "every surface keeps the real-time loop");
-        }
-        _gl.TexA = a; _gl.TexB = b; _gl.TexC = c; _gl.Layers = n; _gl.PoolMib = Lightmap.Vram.V;
-        ClearPages();
-        _log?.Info($"LightmapBake: page pool {n} x {PageMiB} MiB = {n * PageMiB} MiB resident (lightmap.vram {Lightmap.Vram.V}); {AlloyRenderer.VramFreeMib} MiB of VRAM free after it");
-        return true;
-    }
-
-    /// <summary>Every layer to zero blocks in A and B (black, and what the readback of a gap files) and no mover
-    /// share in C. A and B are compressed, so no framebuffer clears them: they upload from a zeroed buffer.</summary>
-    private static void ClearPages()
-    {
-        float* none = stackalloc float[4] { 0f, 0f, 0f, 0f };
-        uint* bufs = stackalloc uint[1] { Gl.COLOR_ATTACHMENT0 };
-        uint zero = 0;
-        Gl.CreateBuffers(1, &zero);
-        Gl.NamedBufferStorage(zero, (IntPtr)LayerBlockBytes, null, 0);
-        Gl.ZeroBuffer(zero, LayerBlockBytes);
-        Gl.BindBuffer(Gl.PIXEL_UNPACK_BUFFER, zero);
-        Gl.BindFramebuffer(Gl.FRAMEBUFFER, _gl.Fbo);
-        Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT1, Gl.TEXTURE_2D, 0, 0);
-        Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT2, Gl.TEXTURE_2D, 0, 0);
-        Gl.FramebufferTexture2D(Gl.FRAMEBUFFER, Gl.DEPTH_ATTACHMENT, Gl.TEXTURE_2D, 0, 0);
-        Gl.DrawBuffers(1, bufs);
-        for (int l = 0; l < _gl.Layers; l++)
-        {
-            Gl.FramebufferTextureLayer(Gl.FRAMEBUFFER, Gl.COLOR_ATTACHMENT0, _gl.TexC, 0, l);
-            Gl.ClearBufferfv(Gl.COLOR, 0, none);
-            Gl.CompressedTextureSubImage3D(_gl.TexA, 0, 0, 0, l, PageSize, PageSize, 1, FormatA, LayerBlockBytes, null);
-            Gl.CompressedTextureSubImage3D(_gl.TexB, 0, 0, 0, l, PageSize, PageSize, 1, FormatB, LayerBlockBytes, null);
-        }
-        Gl.BindFramebuffer(Gl.FRAMEBUFFER, 0);
-        Gl.BindBuffer(Gl.PIXEL_UNPACK_BUFFER, 0); Gl.DeleteBuffers(1, &zero);
-    }
-
-    private static void FreePages()
-    {
-        if (_gl.TexA != 0) { uint t = _gl.TexA; Gl.DeleteTextures(1, &t); }
-        if (_gl.TexB != 0) { uint t = _gl.TexB; Gl.DeleteTextures(1, &t); }
-        if (_gl.TexC != 0) { uint t = _gl.TexC; Gl.DeleteTextures(1, &t); }
-        _log?.Info($"LightmapBake: {_gl.Layers} pages freed ({_gl.Layers * PageMiB} MiB)");
-        _gl.TexA = _gl.TexB = _gl.TexC = 0; _gl.Layers = 0;
-    }
-
-    /// <summary>From the health bracket, which runs where the colour bracket does not: at the main menu, or with
+    /// <summary>From the frame's deferred work, which runs where the colour bracket does not: at the main menu, or with
     /// the pass off or stood down, the pool's memory goes back. Never under the hold, which is an area loading.</summary>
     internal static void ReleaseIdle()
     {
-        if (_gl.Layers == 0 || Held || (Enabled && GameGate.InModule)) return;
-        FreePages(); Revoke();
+        if (Layers == 0 || Held || (Enabled && GameGate.InModule)) return;
+        VkFreePages(); Revoke();
     }
 
     /// <summary>Pages up to the last one holding a placed rect (an evicted fine page leaves a hole below it).</summary>

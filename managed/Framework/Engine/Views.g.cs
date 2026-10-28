@@ -145,6 +145,16 @@ global using unsafe RiBindBufferFn = delegate* unmanaged<uint, uint, void>;
 global using unsafe SceneRenderOnlyGobsFn = delegate* unmanaged<nint, void>;
 global using unsafe StatusBarSetStatusFn = delegate* unmanaged<nint, float, void>;
 global using unsafe SdlGlSwapWindowFn = delegate* unmanaged<nint, void>;
+global using unsafe SdlGlGetSwapIntervalFn = delegate* unmanaged<int>;
+global using unsafe SdlGetVersionFn = delegate* unmanaged<byte*, void>;
+global using unsafe SdlGetWindowWmInfoFn = delegate* unmanaged<nint, byte*, int>;
+global using unsafe SdlCreateWindowFn = delegate* unmanaged<byte*, int, int, int, int, uint, nint>;
+global using unsafe RiShutdownFn = delegate* unmanaged<int, void>;
+global using unsafe SdlGlCreateContextFn = delegate* unmanaged<nint, nint>;
+global using unsafe SdlGlSetSwapIntervalFn = delegate* unmanaged<int, int>;
+global using unsafe SdlGlGetDrawableSizeFn = delegate* unmanaged<nint, int*, int*, void>;
+global using unsafe SdlVulkanGetDrawableSizeFn = delegate* unmanaged<nint, int*, int*, void>;
+global using unsafe RiReadPixelsFromBufferFn = delegate* unmanaged<uint, int, int, int, int, int, byte*, void>;
 global using unsafe RiClearFn = delegate* unmanaged<uint, void>;
 global using unsafe RiSetClearColorFn = delegate* unmanaged<float, float, float, float, void>;
 global using unsafe RiDeleteTexturesFn = delegate* unmanaged<uint, uint*, void>;
@@ -292,6 +302,7 @@ global using unsafe KiwiSubstituteFn = delegate* unmanaged<nint, nint, nint, voi
 global using unsafe KiwiOptimizeFn = delegate* unmanaged<nint, nint, void>;
 global using unsafe ReportCrashToUserFn = delegate* unmanaged<nint, byte*, byte*, void>;
 global using unsafe CrashHandlerExposeFn = delegate* unmanaged<byte*, byte*, bool, void>;
+global using unsafe CrashHandlerLinuxFn = delegate* unmanaged<int, void>;
 global using unsafe NuiHandleErrorFn = delegate* unmanaged<nint, nint, nint, void>;
 global using unsafe NuiJsonWindowCtorFn = delegate* unmanaged<nint, int, nint, nint, nint>;
 global using unsafe NuiJsonWindowUpdateFn = delegate* unmanaged<nint, void>;
@@ -4454,6 +4465,46 @@ public static unsafe class EngineFn
     private static bool _SdlGlSwapWindowDone;
     /// <inheritdoc cref="SymbolMap.SdlGlSwapWindow"/>
     public static SdlGlSwapWindowFn SdlGlSwapWindow => (SdlGlSwapWindowFn)(_SdlGlSwapWindowDone ? _SdlGlSwapWindow : Resolve(ref _SdlGlSwapWindow, ref _SdlGlSwapWindowDone, SymbolMap.SdlGlSwapWindow));
+    private static IntPtr _SdlGlGetSwapInterval;
+    private static bool _SdlGlGetSwapIntervalDone;
+    /// <inheritdoc cref="SymbolMap.SdlGlGetSwapInterval"/>
+    public static SdlGlGetSwapIntervalFn SdlGlGetSwapInterval => (SdlGlGetSwapIntervalFn)(_SdlGlGetSwapIntervalDone ? _SdlGlGetSwapInterval : Resolve(ref _SdlGlGetSwapInterval, ref _SdlGlGetSwapIntervalDone, SymbolMap.SdlGlGetSwapInterval));
+    private static IntPtr _SdlGetVersion;
+    private static bool _SdlGetVersionDone;
+    /// <inheritdoc cref="SymbolMap.SdlGetVersion"/>
+    public static SdlGetVersionFn SdlGetVersion => (SdlGetVersionFn)(_SdlGetVersionDone ? _SdlGetVersion : Resolve(ref _SdlGetVersion, ref _SdlGetVersionDone, SymbolMap.SdlGetVersion));
+    private static IntPtr _SdlGetWindowWmInfo;
+    private static bool _SdlGetWindowWmInfoDone;
+    /// <inheritdoc cref="SymbolMap.SdlGetWindowWmInfo"/>
+    public static SdlGetWindowWmInfoFn SdlGetWindowWmInfo => (SdlGetWindowWmInfoFn)(_SdlGetWindowWmInfoDone ? _SdlGetWindowWmInfo : Resolve(ref _SdlGetWindowWmInfo, ref _SdlGetWindowWmInfoDone, SymbolMap.SdlGetWindowWmInfo));
+    private static IntPtr _SdlCreateWindow;
+    private static bool _SdlCreateWindowDone;
+    /// <inheritdoc cref="SymbolMap.SdlCreateWindow"/>
+    public static SdlCreateWindowFn SdlCreateWindow => (SdlCreateWindowFn)(_SdlCreateWindowDone ? _SdlCreateWindow : Resolve(ref _SdlCreateWindow, ref _SdlCreateWindowDone, SymbolMap.SdlCreateWindow));
+    private static IntPtr _RiShutdown;
+    private static bool _RiShutdownDone;
+    /// <inheritdoc cref="SymbolMap.RiShutdown"/>
+    public static RiShutdownFn RiShutdown => (RiShutdownFn)(_RiShutdownDone ? _RiShutdown : Resolve(ref _RiShutdown, ref _RiShutdownDone, SymbolMap.RiShutdown));
+    private static IntPtr _SdlGlCreateContext;
+    private static bool _SdlGlCreateContextDone;
+    /// <inheritdoc cref="SymbolMap.SdlGlCreateContext"/>
+    public static SdlGlCreateContextFn SdlGlCreateContext => (SdlGlCreateContextFn)(_SdlGlCreateContextDone ? _SdlGlCreateContext : Resolve(ref _SdlGlCreateContext, ref _SdlGlCreateContextDone, SymbolMap.SdlGlCreateContext));
+    private static IntPtr _SdlGlSetSwapInterval;
+    private static bool _SdlGlSetSwapIntervalDone;
+    /// <inheritdoc cref="SymbolMap.SdlGlSetSwapInterval"/>
+    public static SdlGlSetSwapIntervalFn SdlGlSetSwapInterval => (SdlGlSetSwapIntervalFn)(_SdlGlSetSwapIntervalDone ? _SdlGlSetSwapInterval : Resolve(ref _SdlGlSetSwapInterval, ref _SdlGlSetSwapIntervalDone, SymbolMap.SdlGlSetSwapInterval));
+    private static IntPtr _SdlGlGetDrawableSize;
+    private static bool _SdlGlGetDrawableSizeDone;
+    /// <inheritdoc cref="SymbolMap.SdlGlGetDrawableSize"/>
+    public static SdlGlGetDrawableSizeFn SdlGlGetDrawableSize => (SdlGlGetDrawableSizeFn)(_SdlGlGetDrawableSizeDone ? _SdlGlGetDrawableSize : Resolve(ref _SdlGlGetDrawableSize, ref _SdlGlGetDrawableSizeDone, SymbolMap.SdlGlGetDrawableSize));
+    private static IntPtr _SdlVulkanGetDrawableSize;
+    private static bool _SdlVulkanGetDrawableSizeDone;
+    /// <inheritdoc cref="SymbolMap.SdlVulkanGetDrawableSize"/>
+    public static SdlVulkanGetDrawableSizeFn SdlVulkanGetDrawableSize => (SdlVulkanGetDrawableSizeFn)(_SdlVulkanGetDrawableSizeDone ? _SdlVulkanGetDrawableSize : Resolve(ref _SdlVulkanGetDrawableSize, ref _SdlVulkanGetDrawableSizeDone, SymbolMap.SdlVulkanGetDrawableSize));
+    private static IntPtr _RiReadPixelsFromBuffer;
+    private static bool _RiReadPixelsFromBufferDone;
+    /// <inheritdoc cref="SymbolMap.RiReadPixelsFromBuffer"/>
+    public static RiReadPixelsFromBufferFn RiReadPixelsFromBuffer => (RiReadPixelsFromBufferFn)(_RiReadPixelsFromBufferDone ? _RiReadPixelsFromBuffer : Resolve(ref _RiReadPixelsFromBuffer, ref _RiReadPixelsFromBufferDone, SymbolMap.RiReadPixelsFromBuffer));
     private static IntPtr _RiClear;
     private static bool _RiClearDone;
     /// <inheritdoc cref="SymbolMap.RiClear"/>
@@ -5051,6 +5102,10 @@ public static unsafe class EngineFn
     private static bool _CrashHandlerExposeDone;
     /// <inheritdoc cref="SymbolMap.CrashHandlerExpose"/>
     public static CrashHandlerExposeFn CrashHandlerExpose => (CrashHandlerExposeFn)(_CrashHandlerExposeDone ? _CrashHandlerExpose : Resolve(ref _CrashHandlerExpose, ref _CrashHandlerExposeDone, SymbolMap.CrashHandlerExpose));
+    private static IntPtr _CrashHandlerLinux;
+    private static bool _CrashHandlerLinuxDone;
+    /// <inheritdoc cref="SymbolMap.CrashHandlerLinux"/>
+    public static CrashHandlerLinuxFn CrashHandlerLinux => (CrashHandlerLinuxFn)(_CrashHandlerLinuxDone ? _CrashHandlerLinux : Resolve(ref _CrashHandlerLinux, ref _CrashHandlerLinuxDone, SymbolMap.CrashHandlerLinux));
     private static IntPtr _KiwiCreateRow;
     private static bool _KiwiCreateRowDone;
     /// <inheritdoc cref="SymbolMap.KiwiCreateRow"/>
@@ -6525,6 +6580,66 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.SdlGlSwapWindow"/>; returns the slot holding the next layer, or null.</summary>
     public static SdlGlSwapWindowFn* ChainSdlGlSwapWindow(this HookService h, SdlGlSwapWindowFn handler, int priority) =>
         (SdlGlSwapWindowFn*)h.Chain(SymbolMap.SdlGlSwapWindow, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.SdlGlGetSwapInterval"/>; returns the original, or null.</summary>
+    public static SdlGlGetSwapIntervalFn InstallSdlGlGetSwapInterval(this HookService h, SdlGlGetSwapIntervalFn handler) =>
+        (SdlGlGetSwapIntervalFn)h.Install(SymbolMap.SdlGlGetSwapInterval, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.SdlGlGetSwapInterval"/>; returns the slot holding the next layer, or null.</summary>
+    public static SdlGlGetSwapIntervalFn* ChainSdlGlGetSwapInterval(this HookService h, SdlGlGetSwapIntervalFn handler, int priority) =>
+        (SdlGlGetSwapIntervalFn*)h.Chain(SymbolMap.SdlGlGetSwapInterval, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.SdlGetVersion"/>; returns the original, or null.</summary>
+    public static SdlGetVersionFn InstallSdlGetVersion(this HookService h, SdlGetVersionFn handler) =>
+        (SdlGetVersionFn)h.Install(SymbolMap.SdlGetVersion, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.SdlGetVersion"/>; returns the slot holding the next layer, or null.</summary>
+    public static SdlGetVersionFn* ChainSdlGetVersion(this HookService h, SdlGetVersionFn handler, int priority) =>
+        (SdlGetVersionFn*)h.Chain(SymbolMap.SdlGetVersion, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.SdlGetWindowWmInfo"/>; returns the original, or null.</summary>
+    public static SdlGetWindowWmInfoFn InstallSdlGetWindowWmInfo(this HookService h, SdlGetWindowWmInfoFn handler) =>
+        (SdlGetWindowWmInfoFn)h.Install(SymbolMap.SdlGetWindowWmInfo, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.SdlGetWindowWmInfo"/>; returns the slot holding the next layer, or null.</summary>
+    public static SdlGetWindowWmInfoFn* ChainSdlGetWindowWmInfo(this HookService h, SdlGetWindowWmInfoFn handler, int priority) =>
+        (SdlGetWindowWmInfoFn*)h.Chain(SymbolMap.SdlGetWindowWmInfo, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.SdlCreateWindow"/>; returns the original, or null.</summary>
+    public static SdlCreateWindowFn InstallSdlCreateWindow(this HookService h, SdlCreateWindowFn handler) =>
+        (SdlCreateWindowFn)h.Install(SymbolMap.SdlCreateWindow, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.SdlCreateWindow"/>; returns the slot holding the next layer, or null.</summary>
+    public static SdlCreateWindowFn* ChainSdlCreateWindow(this HookService h, SdlCreateWindowFn handler, int priority) =>
+        (SdlCreateWindowFn*)h.Chain(SymbolMap.SdlCreateWindow, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.RiShutdown"/>; returns the original, or null.</summary>
+    public static RiShutdownFn InstallRiShutdown(this HookService h, RiShutdownFn handler) =>
+        (RiShutdownFn)h.Install(SymbolMap.RiShutdown, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.RiShutdown"/>; returns the slot holding the next layer, or null.</summary>
+    public static RiShutdownFn* ChainRiShutdown(this HookService h, RiShutdownFn handler, int priority) =>
+        (RiShutdownFn*)h.Chain(SymbolMap.RiShutdown, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.SdlGlCreateContext"/>; returns the original, or null.</summary>
+    public static SdlGlCreateContextFn InstallSdlGlCreateContext(this HookService h, SdlGlCreateContextFn handler) =>
+        (SdlGlCreateContextFn)h.Install(SymbolMap.SdlGlCreateContext, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.SdlGlCreateContext"/>; returns the slot holding the next layer, or null.</summary>
+    public static SdlGlCreateContextFn* ChainSdlGlCreateContext(this HookService h, SdlGlCreateContextFn handler, int priority) =>
+        (SdlGlCreateContextFn*)h.Chain(SymbolMap.SdlGlCreateContext, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.SdlGlSetSwapInterval"/>; returns the original, or null.</summary>
+    public static SdlGlSetSwapIntervalFn InstallSdlGlSetSwapInterval(this HookService h, SdlGlSetSwapIntervalFn handler) =>
+        (SdlGlSetSwapIntervalFn)h.Install(SymbolMap.SdlGlSetSwapInterval, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.SdlGlSetSwapInterval"/>; returns the slot holding the next layer, or null.</summary>
+    public static SdlGlSetSwapIntervalFn* ChainSdlGlSetSwapInterval(this HookService h, SdlGlSetSwapIntervalFn handler, int priority) =>
+        (SdlGlSetSwapIntervalFn*)h.Chain(SymbolMap.SdlGlSetSwapInterval, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.SdlGlGetDrawableSize"/>; returns the original, or null.</summary>
+    public static SdlGlGetDrawableSizeFn InstallSdlGlGetDrawableSize(this HookService h, SdlGlGetDrawableSizeFn handler) =>
+        (SdlGlGetDrawableSizeFn)h.Install(SymbolMap.SdlGlGetDrawableSize, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.SdlGlGetDrawableSize"/>; returns the slot holding the next layer, or null.</summary>
+    public static SdlGlGetDrawableSizeFn* ChainSdlGlGetDrawableSize(this HookService h, SdlGlGetDrawableSizeFn handler, int priority) =>
+        (SdlGlGetDrawableSizeFn*)h.Chain(SymbolMap.SdlGlGetDrawableSize, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.SdlVulkanGetDrawableSize"/>; returns the original, or null.</summary>
+    public static SdlVulkanGetDrawableSizeFn InstallSdlVulkanGetDrawableSize(this HookService h, SdlVulkanGetDrawableSizeFn handler) =>
+        (SdlVulkanGetDrawableSizeFn)h.Install(SymbolMap.SdlVulkanGetDrawableSize, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.SdlVulkanGetDrawableSize"/>; returns the slot holding the next layer, or null.</summary>
+    public static SdlVulkanGetDrawableSizeFn* ChainSdlVulkanGetDrawableSize(this HookService h, SdlVulkanGetDrawableSizeFn handler, int priority) =>
+        (SdlVulkanGetDrawableSizeFn*)h.Chain(SymbolMap.SdlVulkanGetDrawableSize, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.RiReadPixelsFromBuffer"/>; returns the original, or null.</summary>
+    public static RiReadPixelsFromBufferFn InstallRiReadPixelsFromBuffer(this HookService h, RiReadPixelsFromBufferFn handler) =>
+        (RiReadPixelsFromBufferFn)h.Install(SymbolMap.RiReadPixelsFromBuffer, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.RiReadPixelsFromBuffer"/>; returns the slot holding the next layer, or null.</summary>
+    public static RiReadPixelsFromBufferFn* ChainRiReadPixelsFromBuffer(this HookService h, RiReadPixelsFromBufferFn handler, int priority) =>
+        (RiReadPixelsFromBufferFn*)h.Chain(SymbolMap.RiReadPixelsFromBuffer, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.RiClear"/>; returns the original, or null.</summary>
     public static RiClearFn InstallRiClear(this HookService h, RiClearFn handler) =>
         (RiClearFn)h.Install(SymbolMap.RiClear, (IntPtr)handler);
@@ -7407,6 +7522,12 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.CrashHandlerExpose"/>; returns the slot holding the next layer, or null.</summary>
     public static CrashHandlerExposeFn* ChainCrashHandlerExpose(this HookService h, CrashHandlerExposeFn handler, int priority) =>
         (CrashHandlerExposeFn*)h.Chain(SymbolMap.CrashHandlerExpose, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.CrashHandlerLinux"/>; returns the original, or null.</summary>
+    public static CrashHandlerLinuxFn InstallCrashHandlerLinux(this HookService h, CrashHandlerLinuxFn handler) =>
+        (CrashHandlerLinuxFn)h.Install(SymbolMap.CrashHandlerLinux, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.CrashHandlerLinux"/>; returns the slot holding the next layer, or null.</summary>
+    public static CrashHandlerLinuxFn* ChainCrashHandlerLinux(this HookService h, CrashHandlerLinuxFn handler, int priority) =>
+        (CrashHandlerLinuxFn*)h.Chain(SymbolMap.CrashHandlerLinux, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.NuiHandleError"/>; returns the original, or null.</summary>
     public static NuiHandleErrorFn InstallNuiHandleError(this HookService h, NuiHandleErrorFn handler) =>
         (NuiHandleErrorFn)h.Install(SymbolMap.NuiHandleError, (IntPtr)handler);

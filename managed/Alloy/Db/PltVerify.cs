@@ -33,7 +33,6 @@ internal static unsafe class PltVerify
     {
         _log = log;
         _armed = Renderer.PltVerify.Boot;
-        PltGpuCheck.Attach(log);
         if (!_armed) return;
         _paletteHeight = (int*)Native.Sym(SymbolMap.PaletteHeight);
         _paletteImage = (IntPtr*)Native.Sym(SymbolMap.PaletteImage);
@@ -109,9 +108,6 @@ internal static unsafe class PltVerify
                 _pass++;
                 _log?.Always($"PltVerify: PASS {name} {w}x{h} -- all {n} texels match the engine's composite "
                            + $"(rows {RowsText(rows, count)})");
-                // ...and on the first one, hand the same PLT and the same rows to the GPU check: the CPU
-                // reference is now trusted, so the shipped GLSL can be measured against it.
-                PltGpuCheck.Arm(name, rows);
             }
             else
             {

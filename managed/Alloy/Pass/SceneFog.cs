@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using CX.Framework;
 using CX.Graphics;
+using CX.Graphics.Rhi;
 
 namespace CX.Alloy;
 
@@ -89,20 +90,20 @@ internal static unsafe class SceneFog
         bool useSky = _haveSky && !capture && !FrameInputs.Blind;
         float* v = stackalloc float[4];
         v[0] = useSky ? SkyMix : 0f; v[1] = HeightK; v[2] = playerZ + FloorOffset;
-        Gl.Uniform3fv(loc.FogSky, 1, v);
+        LooseBlock.Set(loc.FogSky, new ReadOnlySpan<float>(v, 3));
         Vector3 sky = _sky;
         v[0] = sky.X; v[1] = sky.Y; v[2] = sky.Z;
-        Gl.Uniform3fv(loc.FogSkyColor, 1, v);
+        LooseBlock.Set(loc.FogSkyColor, new ReadOnlySpan<float>(v, 3));
 
         Vector3 dir = FrameInputs.AreaDiffuseDir;
         float len = dir.Length();
         v[0] = len > 0f ? dir.X / len : 0f; v[1] = len > 0f ? dir.Y / len : 0f;
         v[2] = len > 0f ? dir.Z / len : 1f; v[3] = MathF.Max(SunExp, 1f);
-        Gl.Uniform4fv(loc.FogSun, 1, v);
+        LooseBlock.Set(loc.FogSun, new ReadOnlySpan<float>(v, 4));
         Vector3 sun = FrameInputs.HasAreaDiffuse && len > 0f && useSky
             ? FrameInputs.AreaDiffuse * (AlloyLights.SunScale * SunAmount) : default;
         v[0] = sun.X; v[1] = sun.Y; v[2] = sun.Z;
-        Gl.Uniform3fv(loc.FogSunColor, 1, v);
+        LooseBlock.Set(loc.FogSunColor, new ReadOnlySpan<float>(v, 3));
     }
 
     /// <summary>The display-space colour the skyfade gob is painted in: what fully fogged geometry converges to at the

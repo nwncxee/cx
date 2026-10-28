@@ -148,8 +148,7 @@ internal static unsafe partial class LightmapBake
 
     /// <summary>Restart the per-frame snapshot: the area edge, the re-open, and the per-walk clear of the
     /// seen sets. Takes the area's IDENTITY and its placeable-light count as VALUES rather than a live
-    /// <c>CNWCArea</c> -- the walk runs inside the per-view draw, which with <c>alloy.renderthread=1</c> is
-    /// not the game thread. The placeable registry is not walked: the database hands over its own verdict.</summary>
+    /// <c>CNWCArea</c> -- the walk runs inside the per-view draw, which reads no engine memory. The placeable registry is not walked: the database hands over its own verdict.</summary>
     internal static void BeginWalkDb(nint areaPtr, int placeableLights)
     {
         CensusStatic = CensusDynamic = CensusUnsettled = 0;

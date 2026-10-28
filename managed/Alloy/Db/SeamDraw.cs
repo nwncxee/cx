@@ -6,7 +6,7 @@ using CX.Graphics;
 namespace CX.Alloy.Db;
 
 /// <summary>The frame boundary: a <c>PrePresent</c> participant one priority ahead of
-/// <see cref="GlContextService"/>'s 4.6 bracket (deliberately last), so the order is latch the window state,
+/// <see cref="FramePump"/>'s deferred work (deliberately last), so the order is latch the window state,
 /// fold, publish, draw, UI, present. <see cref="DbFeed.Present"/> is NOT used -- the fold must run inside
 /// <see cref="RenderSnapshot.Publish"/>, ahead of <c>TakeDirty</c>, or it sees an empty dirty list.</summary>
 internal static class SeamDraw
@@ -33,7 +33,6 @@ internal static class SeamDraw
         _registered = true;
         _perView = PerView;
         DbFeed.Draw = _perView;
-        RenderThread.DrawFrame = DrawSnapshot;
         // THE fold, and the one place it happens. RenderSnapshot.Publish invokes this before it takes the
         // dirty lists, which is the only order that works: a fold after TakeDirty sees an empty list and
         // writes nothing, so the frame would publish and draw records nobody rebuilt.
@@ -47,19 +46,11 @@ internal static class SeamDraw
             FrameZones.Add(FrameZones.Zone.DbFold, t);
         };
         FrameRegistry.Global.Register(FramePhase.PrePresent, 9, OnBoundary, "SeamDraw.frame", log);
-        // CX-188: the file that BUILDS the order is the one that may assert it. OnBoundary fences the render
-        // thread first (RenderSnapshot.AwaitDrained), so every PrePresent participant after this one, the
-        // hand-back and the present run with the renderer parked; and the 2D UI roll-call now runs in BOTH
-        // arms of the boundary, after the world frame it composites over in each.
-        RenderThread.UiOrderSettled = true;
         log.Info("SeamDraw: DB-mode frame boundary armed -- the CX scene database's frame runs at the present, "
-               + "one priority ahead of the 4.6 bracket");
+               + "one priority ahead of the frame's deferred work");
     }
 
-    /// <summary>The frame, on the game thread: fold, publish, and then either draw it here or leave it to the
-    /// render thread. ONE order for both modes -- the only difference is which thread runs
-    /// <see cref="DrawSnapshot"/> -- so the self-check exercises the live protocol and not a test-only one.
-    /// Hot; allocates nothing.</summary>
+    /// <summary>The frame, on the game thread: fold, publish, draw every view, then the GUI. Hot; allocates nothing.</summary>
     private static void OnBoundary()
     {
         if (!Renderer.On) return;
@@ -68,9 +59,8 @@ internal static class SeamDraw
         finally { FrameZones.Add(FrameZones.Zone.Seam, t, FrameZones.TopLevelTicks() - top0); }
     }
 
-    /// <summary>One frame boundary. Re-asserts <c>DbFeed.Draw</c> (the feed's self-check clears it), starts the render thread once a
-    /// context exists, then in live mode records the 2D UI before the publish wakes the renderer, which replays it with the frame's
-    /// GUI flush. Without live mode the UI is recorded and replayed after every view, split around NUI's layers.</summary>
+    /// <summary>One frame boundary. Re-asserts <c>DbFeed.Draw</c> (the feed's self-check clears it); the UI is recorded and
+    /// replayed after every view, split around NUI's layers.</summary>
     private static void Boundary()
     {
         _frames++;
@@ -85,18 +75,6 @@ internal static class SeamDraw
                            + "this frame, but the boot order is deciding whether the frame draws at all.");
             }
         }
-        // Not at Install: the 4.6 context does not exist yet, and a render thread started without one stands down for good.
-        RenderThread.StartWhenReady(_log);
-        // Blocking here is the handshake: the game thread must not take the context back early.
-        RenderThread.SettleIfStandingDown();
-        // Latched once: a Live that changed mid-boundary would draw the UI twice or not at all.
-        bool live = RenderThread.Live;
-        if (live)
-        {
-            // Past this fence the render thread is parked, so the window lists it replays are this thread's to rewrite.
-            RenderSnapshot.AwaitDrained();
-            CX.Ui.UiHostService.RecordWindowsForDbFrame();
-        }
         // Once a frame, as the engine's own latch is: it is per run of GUI views, not per view.
         DbGui.NewFrame();
         DbCamera.NewFrame();   // latch every camera's previous position, once, as the engine does
@@ -104,7 +82,6 @@ internal static class SeamDraw
         RenderSnapshot.Frame f = RenderSnapshot.Publish();   // Fold runs inside, ahead of TakeDirty
         FrameZones.Add(FrameZones.Zone.Publish, tPub, FrameZones.Ticks(FrameZones.Zone.DbFold) - fold0);
         DbFeed.CloseViews();
-        if (live) return;                                    // the render thread draws it and releases it
         // try/finally: Publish waits on a held frame, so a throw that skipped Release would freeze the game thread on the next present.
         int nui = 0;
         try { nui = DrawViews(f); }
@@ -113,15 +90,6 @@ internal static class SeamDraw
             try { DrawGuiLayers(nui); }
             finally { RenderSnapshot.Release(); }
         }
-    }
-
-    /// <summary>Draw one published frame: every view in the order the game asked for it, each with the camera
-    /// matrices the snapshot recorded at the time of the request. Render thread (or the game thread on a
-    /// stand-down).</summary>
-    private static void DrawSnapshot(RenderSnapshot.Frame f)
-    {
-        int nui = DrawViews(f);
-        if (Renderer.On) FlushGui(nui);
     }
 
     /// <summary>The views of a frame, no GUI flush. Returns how many layers NUI had already recorded: they sit ahead

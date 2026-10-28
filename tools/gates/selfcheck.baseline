@@ -1,0 +1,6 @@
+1 managed/Alloy/Db/MtrParams.cs
+2 managed/Alloy/Db/TexRegistry.SelfCheck.cs
+2 managed/Alloy/Db/TextObjects.SelfCheck.cs
+1 managed/Alloy/Pass/AlloyLights.cs
+1 managed/Alloy/Pass/PairShadows.cs
+1 managed/Services/Cards/CardSelfCheck.cs

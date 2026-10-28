@@ -8,14 +8,14 @@ using static Vortice.Vulkan.Vulkan;
 
 namespace CX.Graphics.Rhi;
 
-/// <summary>The seam on Vulkan 1.3: one instance, one device matched to GL's by UUID, one queue, VMA, no surface. A
-/// pass's images are Vulkan's alone; the one thing GL sees is the composite the frame lands in
-/// (<see cref="CompositeBack"/>), which the engine's context presents. Made, used and dropped on the thread holding
+/// <summary>The seam on Vulkan 1.3: one instance, one device matched to GL's by UUID, one queue, VMA, and the game
+/// window's swapchain. Every image is Vulkan's alone: the frame lands in <see cref="Composite"/>, which
+/// <see cref="Present"/> puts on the window, and GL never touches it. Made, used and dropped on the thread holding
 /// Alloy's context.</summary>
 internal sealed unsafe partial class VkBackend : IDevice
 {
-    /// <summary>One image: a VMA allocation, or (<see cref="Ext"/> set) a composite image GL imports.
-    /// <see cref="Layout"/> is the layout the last recorded barrier left it in, across submits.</summary>
+    /// <summary>One image, a VMA allocation. <see cref="Layout"/> is the layout the last recorded barrier left it in,
+    /// across submits.</summary>
     private sealed class VkImg
     {
         public VkImage Image;
@@ -23,11 +23,13 @@ internal sealed unsafe partial class VkBackend : IDevice
         public VkImageView View;
         /// <summary>One view per mip, made the first time a mip is bound alone (a storage write down a chain).</summary>
         public VkImageView[]? MipViews;
+        /// <summary>One single-layer 2D view per layer of an array or cube array, made the first time that layer is
+        /// attached alone (the caster bake's per-layer clear).</summary>
+        public VkImageView[]? LayerViews;
         public ImageDesc Desc;
         public VkImageLayout Layout;
         /// <summary>The recording that last noted this image's layout for its undo (<see cref="Remember"/>).</summary>
         public long UndoAt = -1;
-        public Exported? Ext;
     }
 
     private readonly record struct VkBuf(VkBuffer Buffer, VmaAllocation Alloc, BufferDesc Desc);
@@ -53,7 +55,20 @@ internal sealed unsafe partial class VkBackend : IDevice
     {
         public string? Refusal;
         public bool LoaderUp;
+        /// <summary>The device the last <see cref="Open"/> chose: its PCI vendor id and name.</summary>
+        public uint VendorId;
+        public string Device = "";
     }
+
+    /// <summary>The chosen device's vendor, as GL names it -- what an engine with no GL context is told it runs on.</summary>
+    internal static string ProbedVendor => _probe.VendorId switch
+    {
+        0x10DE => "NVIDIA Corporation", 0x1002 => "AMD", 0x8086 => "Intel", 0 => "",
+        uint id => $"Vulkan vendor 0x{id:x4}",
+    };
+
+    /// <summary>The chosen device's name, empty before a probe.</summary>
+    internal static string ProbedDevice => _probe.Device;
 
     private static readonly ProbeState _probe = new();
     private static readonly bool Win = OperatingSystem.IsWindows();
@@ -61,13 +76,19 @@ internal sealed unsafe partial class VkBackend : IDevice
     /// <summary>The floor: dynamic rendering and synchronization2 are core, and it fixes the SPIR-V target.</summary>
     private static readonly VkVersion ApiFloor = VkVersion.Version_1_3;
     private const int LoggedFaults = 16;
-    private const int Slots = 2;
-    /// <summary>Submits a freed object waits out: past the slot ring, and past the graveyard's hold on a composite's GL texture.</summary>
-    private const int DeadAfter = GpuGraveyard.FramesInFlight * 2;
+    /// <summary>Submits in flight before one waits on a fence: a frame submits its world, its GUI and its present, so
+    /// six lets the CPU run two frames ahead, as a GL driver queues them; one missed vblank then costs no frame.</summary>
+    private const int Slots = 6;
+    /// <summary>Submits a freed object waits out: the last fence waited before the free must cover its submit, so past
+    /// the slot ring by at least one.</summary>
+    private const int DeadAfter = Slots + 2;
     /// <summary>Descriptor sets one submit may bind; a full pool refuses the bind, logged.</summary>
     private const uint SetsPerSubmit = 4096;
-    /// <summary>The one set's shape: each kind of binding, its count, at its <see cref="VulkanToolchain"/> base.</summary>
-    private const uint SampledSlots = 48, UniformSlots = 12, StorageSlots = 16, ImageSlots = 8;
+    /// <summary>The one set's shape: each kind of binding, its count, at its <see cref="VulkanToolchain"/> base.
+    /// The buffer counts ARE the slot tables' budgets rather than a second opinion on them, so a point the GLSL
+    /// may declare always has a descriptor to land in.</summary>
+    private const uint SampledSlots = 48, ImageSlots = 8;
+    private const uint UniformSlots = CX.Alloy.UboSlots.Budget, StorageSlots = CX.Alloy.SsboSlots.Budget;
     private const ulong FenceTimeoutNs = 2_000_000_000;
 
     private readonly ExtenderLog _log;
@@ -86,7 +107,6 @@ internal sealed unsafe partial class VkBackend : IDevice
     private readonly VkDescriptorSet _bindlessSet;
     private readonly VkPipelineLayout _pipeLayout;
     private readonly VkSampler _nearest;
-    private readonly VkPhysicalDeviceMemoryProperties _mem;
     private readonly bool _depthClamp;
 
     private readonly HandleTable<VkBuf> _buffers = new();
@@ -95,15 +115,14 @@ internal sealed unsafe partial class VkBackend : IDevice
     private readonly HandleTable<VkShader> _shaders = new();
     private readonly HandleTable<VkPipe> _pipelines = new();
     private readonly HandleTable<VertexLayoutDesc> _layouts = new();
-    /// <summary>Deaths waiting out the frames in flight: the Vulkan half, and a composite's GL half run first.</summary>
-    private readonly List<(long At, Action Free, Action? Gl)> _dead = new();
+    /// <summary>Deaths waiting out the frames in flight.</summary>
+    private readonly List<(long At, Action Free)> _dead = new();
     private long _submits;
     private int _faults;
 
     public DeviceCaps Caps { get; }
 
-    /// <summary>Why the backend cannot run here, as a constant string, or null when it can. Asked once, from the
-    /// verdict, with the ENGINE's context current: the interop extensions and the device UUID are the driver's.</summary>
+    /// <summary>Why the backend cannot run here, or null when it can. Asked once, from the verdict.</summary>
     internal static string? Refusal(ExtenderLog log)
     {
         if (_probe.Refusal == null)
@@ -111,89 +130,112 @@ internal sealed unsafe partial class VkBackend : IDevice
             _probe.Refusal = Open(log, out VkInstance inst, out _, out _, out _) ?? "";
             if (inst.IsNotNull) new VkInstanceApi(in inst).vkDestroyInstance();
             log.Always(_probe.Refusal.Length == 0
-                ? "VkBackend: probe PASSED -- a Vulkan 1.3 device shares GL's UUID and both sides carry the interop extensions"
+                ? "VkBackend: probe PASSED -- a Vulkan 1.3 device can run the backend and present to a window"
                 : $"VkBackend: probe REFUSED -- {_probe.Refusal}");
         }
         return _probe.Refusal.Length == 0 ? null : _probe.Refusal;
     }
 
-    /// <summary>The instance and the physical device GL runs on, or why not. The instance is returned live
-    /// (null on the first refusals) for the caller to keep or destroy.</summary>
+    /// <summary>The instance and the best device that can run the backend -- discrete before integrated -- or why
+    /// none can. The instance is returned live (null on the first refusals) for the caller to keep or destroy.</summary>
     private static string? Open(ExtenderLog log, out VkInstance inst, out VkPhysicalDevice phys, out uint family,
                                 out VkPhysicalDeviceFeatures feats)
     {
         inst = default; phys = default; family = 0; feats = default;
-        if (GlInterop.Refusal() is string gl) return gl;
         foreach (string leaf in VulkanToolchain.Libraries)
             if (!VulkanToolchain.Load(leaf)) return "the staged shaderc or VMA library did not load from the install folder";
         if (!_probe.LoaderUp)
         {
-            VkResult init;
-            try { init = vkInitialize(); }
-            catch (DllNotFoundException) { return "this machine has no Vulkan loader"; }
+            VkResult init = VulkanToolchain.InitLoader();
+            if (init == VkResult.ErrorInitializationFailed) return "this machine has no Vulkan loader";
             if (init != VkResult.Success) return "the Vulkan loader would not initialize";
             _probe.LoaderUp = true;
         }
         if (vkEnumerateInstanceVersion() < ApiFloor) return "the Vulkan loader is older than 1.3";
+        if (!InstanceHas(SurfaceExt) || !InstanceHas(WindowExt))
+            return Win ? "the Vulkan loader lacks VK_KHR_surface/VK_KHR_win32_surface" : "the Vulkan loader lacks VK_KHR_surface/VK_KHR_xlib_surface";
         var app = new VkApplicationInfo { apiVersion = ApiFloor };
-        var ci = new VkInstanceCreateInfo { pApplicationInfo = &app };
-        if (vkCreateInstance(&ci, null, out inst) != VkResult.Success) return "vkCreateInstance refused a Vulkan 1.3 instance";
+        VkResult made;
+        fixed (byte* se = SurfaceExt) fixed (byte* we = WindowExt)
+        {
+            byte** exts = stackalloc byte*[2] { se, we };
+            var ci = new VkInstanceCreateInfo { pApplicationInfo = &app, enabledExtensionCount = 2, ppEnabledExtensionNames = exts };
+            made = vkCreateInstance(&ci, null, out inst);
+        }
+        if (made != VkResult.Success) return "vkCreateInstance refused a Vulkan 1.3 instance with the window surface extensions";
         var vki = new VkInstanceApi(in inst);
         uint n = 0;
         vki.vkEnumeratePhysicalDevices(&n, null);
         if (n == 0) return "the Vulkan loader lists no device";
         VkPhysicalDevice* list = stackalloc VkPhysicalDevice[(int)n];
         vki.vkEnumeratePhysicalDevices(&n, list);
-        string why = "no Vulkan device has GL's device UUID";
+        string? why = null;
+        int best = -1;
         for (int i = 0; i < n; i++)
         {
-            var id = new VkPhysicalDeviceIDProperties();
-            var props = new VkPhysicalDeviceProperties2 { pNext = &id };
-            vki.vkGetPhysicalDeviceProperties2(list[i], &props);
-            if (!GlInterop.OnDevice(new ReadOnlySpan<byte>(id.deviceUUID, GlInterop.UUID_SIZE_EXT))) continue;
-            if (props.properties.apiVersion < ApiFloor) return "the Vulkan device GL runs on is below Vulkan 1.3";
-            if (!HasExt(vki, list[i], "VK_EXT_depth_clip_control\0"u8))
-                return "the Vulkan device lacks VK_EXT_depth_clip_control (GL's -1..1 clip depth)";
-            if (!HasExt(vki, list[i], Win ? "VK_KHR_external_memory_win32\0"u8 : "VK_KHR_external_memory_fd\0"u8)
-                || !HasExt(vki, list[i], Win ? "VK_KHR_external_semaphore_win32\0"u8 : "VK_KHR_external_semaphore_fd\0"u8))
-                return Win ? "the Vulkan device lacks VK_KHR_external_memory_win32/VK_KHR_external_semaphore_win32"
-                           : "the Vulkan device lacks VK_KHR_external_memory_fd/VK_KHR_external_semaphore_fd";
-            var clip = new VkPhysicalDeviceDepthClipControlFeaturesEXT();
-            var f11 = new VkPhysicalDeviceVulkan11Features { pNext = &clip };
-            var f12 = new VkPhysicalDeviceVulkan12Features { pNext = &f11 };
-            var f13 = new VkPhysicalDeviceVulkan13Features { pNext = &f12 };
-            var f2 = new VkPhysicalDeviceFeatures2 { pNext = &f13 };
-            vki.vkGetPhysicalDeviceFeatures2(list[i], &f2);
-            if (!f13.dynamicRendering || !f13.synchronization2) return "the Vulkan device lacks dynamic rendering or synchronization2";
-            if (Lacks(in f2.features, in f11, in f12) is string lack) return $"the Vulkan device lacks {lack}";
-            if (!clip.depthClipControl) return "the Vulkan device lacks depthClipControl";
-            uint qn = 0;
-            vki.vkGetPhysicalDeviceQueueFamilyProperties(list[i], &qn, null);
-            VkQueueFamilyProperties* q = stackalloc VkQueueFamilyProperties[(int)qn];
-            vki.vkGetPhysicalDeviceQueueFamilyProperties(list[i], &qn, q);
-            for (uint k = 0; k < qn; k++)
-            {
-                if ((q[k].queueFlags & (VkQueueFlags.Graphics | VkQueueFlags.Compute)) != (VkQueueFlags.Graphics | VkQueueFlags.Compute)) continue;
-                phys = list[i]; family = k; feats = f2.features;
-                log.Info($"VkBackend: device '{new string((sbyte*)props.properties.deviceName)}' Vulkan {Version(props.properties.apiVersion)}, queue family {k}");
-                return null;
-            }
-            why = "the Vulkan device GL runs on has no graphics+compute queue";
+            string? no = Suits(vki, list[i], out uint k, out VkPhysicalDeviceFeatures f, out VkPhysicalDeviceProperties props);
+            if (no != null) { why ??= $"'{new string((sbyte*)props.deviceName)}' {no}"; continue; }
+            int rank = Rank(props.deviceType);
+            if (rank <= best) continue;
+            best = rank; phys = list[i]; family = k; feats = f;
+            _probe.VendorId = props.vendorID; _probe.Device = new string((sbyte*)props.deviceName);
+            log.Info($"VkBackend: device '{new string((sbyte*)props.deviceName)}' ({props.deviceType}) Vulkan {Version(props.apiVersion)}, queue family {k}");
         }
-        return why;
+        return best >= 0 ? null : why ?? "the Vulkan loader lists no usable device";
+    }
+
+    /// <summary>A device kind's preference: a discrete GPU over an integrated one over anything else.</summary>
+    private static int Rank(VkPhysicalDeviceType t)
+        => t switch { VkPhysicalDeviceType.DiscreteGpu => 3, VkPhysicalDeviceType.IntegratedGpu => 2, VkPhysicalDeviceType.VirtualGpu => 1, _ => 0 };
+
+    /// <summary>Why <paramref name="d"/> cannot run the backend, or null with its graphics+compute queue family, features
+    /// and properties.</summary>
+    private static string? Suits(VkInstanceApi vki, VkPhysicalDevice d, out uint family, out VkPhysicalDeviceFeatures feats,
+                                 out VkPhysicalDeviceProperties props)
+    {
+        family = 0; feats = default;
+        var p2 = new VkPhysicalDeviceProperties2();
+        vki.vkGetPhysicalDeviceProperties2(d, &p2);
+        props = p2.properties;
+        if (props.apiVersion < ApiFloor) return "is below Vulkan 1.3";
+        if (!HasExt(vki, d, "VK_EXT_depth_clip_control\0"u8)) return "lacks VK_EXT_depth_clip_control (GL's -1..1 clip depth)";
+        if (!HasExt(vki, d, SwapchainExt)) return "lacks VK_KHR_swapchain";
+        var clip = new VkPhysicalDeviceDepthClipControlFeaturesEXT();
+        var f11 = new VkPhysicalDeviceVulkan11Features { pNext = &clip };
+        var f12 = new VkPhysicalDeviceVulkan12Features { pNext = &f11 };
+        var f13 = new VkPhysicalDeviceVulkan13Features { pNext = &f12 };
+        var f2 = new VkPhysicalDeviceFeatures2 { pNext = &f13 };
+        vki.vkGetPhysicalDeviceFeatures2(d, &f2);
+        if (!f13.dynamicRendering || !f13.synchronization2) return "lacks dynamic rendering or synchronization2";
+        if (Lacks(in f2.features, in f11, in f12) is string lack) return $"lacks {lack}";
+        if (!clip.depthClipControl) return "lacks depthClipControl";
+        uint qn = 0;
+        vki.vkGetPhysicalDeviceQueueFamilyProperties(d, &qn, null);
+        VkQueueFamilyProperties* q = stackalloc VkQueueFamilyProperties[(int)qn];
+        vki.vkGetPhysicalDeviceQueueFamilyProperties(d, &qn, q);
+        for (uint k = 0; k < qn; k++)
+        {
+            if ((q[k].queueFlags & (VkQueueFlags.Graphics | VkQueueFlags.Compute)) != (VkQueueFlags.Graphics | VkQueueFlags.Compute)) continue;
+            family = k; feats = f2.features;
+            return null;
+        }
+        return "has no graphics+compute queue";
     }
 
     /// <summary>The first feature the batch pass needs that the device does not have, or null: draw parameters for the
     /// draw index, indirect counts for the cull's lists, descriptor indexing for bindless textures, BC textures, cube
-    /// arrays, and robust buffer access so a stand-in buffer shorter than a stage's reach reads zeros.</summary>
+    /// arrays, robust buffer access so a stand-in buffer shorter than a stage's reach reads zeros, and a vertex stage's
+    /// <c>gl_Layer</c> for the caster bake, which renders every stale view of one array in one layered pass.</summary>
     private static string? Lacks(in VkPhysicalDeviceFeatures f, in VkPhysicalDeviceVulkan11Features f11, in VkPhysicalDeviceVulkan12Features f12)
     {
         if (!f11.shaderDrawParameters) return "shaderDrawParameters";
         if (!f12.drawIndirectCount) return "drawIndirectCount";
+        if (!f12.shaderOutputLayer) return "shaderOutputLayer (the caster bake's layered pass)";
         if (!f12.runtimeDescriptorArray || !f12.descriptorBindingPartiallyBound || !f12.descriptorBindingVariableDescriptorCount
             || !f12.shaderSampledImageArrayNonUniformIndexing || !f12.descriptorBindingSampledImageUpdateAfterBind)
             return "the descriptor indexing bindless textures need";
         if (!f.multiDrawIndirect) return "multiDrawIndirect";
+        if (!f.drawIndirectFirstInstance) return "drawIndirectFirstInstance (the caster bake's ownership slot)";
         if (!f.textureCompressionBC) return "BC texture compression";
         if (!f.imageCubeArray) return "cube-array images";
         if (!f.independentBlend) return "independent blend";
@@ -202,8 +244,35 @@ internal sealed unsafe partial class VkBackend : IDevice
         return null;
     }
 
+    /// <summary>Does the device carry <c>shaderOutputViewportIndex</c>? Its only use here is to make enabling
+    /// <c>VK_EXT_shader_viewport_index_layer</c> legal, which the specification allows only alongside it.</summary>
+    private bool ViewportIndex(VkPhysicalDevice d)
+    {
+        var f12 = new VkPhysicalDeviceVulkan12Features();
+        var f2 = new VkPhysicalDeviceFeatures2 { pNext = &f12 };
+        _vki.vkGetPhysicalDeviceFeatures2(d, &f2);
+        return f12.shaderOutputViewportIndex;
+    }
+
     /// <summary>major.minor.patch: the version's own formatting leads with the variant field.</summary>
     private static string Version(VkVersion v) => $"{v.Major}.{v.Minor}.{v.Patch}";
+
+    /// <summary>The instance extensions a window surface takes, and the device's swapchain; NUL-terminated.</summary>
+    private static ReadOnlySpan<byte> SurfaceExt => "VK_KHR_surface\0"u8;
+    private static ReadOnlySpan<byte> WindowExt => Win ? "VK_KHR_win32_surface\0"u8 : "VK_KHR_xlib_surface\0"u8;
+    private static ReadOnlySpan<byte> SwapchainExt => "VK_KHR_swapchain\0"u8;
+
+    private static bool InstanceHas(ReadOnlySpan<byte> name)
+    {
+        uint n = 0;
+        vkEnumerateInstanceExtensionProperties(null, &n, null);
+        var props = new VkExtensionProperties[n];
+        fixed (VkExtensionProperties* p = props) vkEnumerateInstanceExtensionProperties(null, &n, p);
+        for (int i = 0; i < n; i++)
+            fixed (byte* e = props[i].extensionName)
+                if (new ReadOnlySpan<byte>(e, name.Length).SequenceEqual(name)) return true;
+        return false;
+    }
 
     private static bool HasExt(VkInstanceApi vki, VkPhysicalDevice d, ReadOnlySpan<byte> name)
     {
@@ -217,8 +286,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         return false;
     }
 
-    /// <summary>The device, or null -- logged -- when the probe refuses or a creation step fails. Made with Alloy's
-    /// 4.6 context current: the semaphores are imported into it.</summary>
+    /// <summary>The device, or null -- logged -- when the probe refuses or a creation step fails.</summary>
     public static VkBackend? TryCreate(ExtenderLog log)
     {
         if (Refusal(log) is string why) { log.Always($"VkBackend: REFUSED -- {why}"); return null; }
@@ -254,37 +322,46 @@ internal sealed unsafe partial class VkBackend : IDevice
             pNext = &f11, drawIndirectCount = true, runtimeDescriptorArray = true, descriptorBindingPartiallyBound = true,
             descriptorBindingVariableDescriptorCount = true, shaderSampledImageArrayNonUniformIndexing = true,
             descriptorBindingSampledImageUpdateAfterBind = true,
+            // the caster bake's vertex stages write gl_Layer. glslang may spell that as 1.2's own ShaderLayer or
+            // as the EXT capability, so both features go on and the extension joins them where the device still
+            // advertises it -- enabling it with only one of the pair is what the spec forbids.
+            shaderOutputLayer = true, shaderOutputViewportIndex = ViewportIndex(phys),
         };
         var f13 = new VkPhysicalDeviceVulkan13Features { pNext = &f12, dynamicRendering = true, synchronization2 = true };
         var feats = new VkPhysicalDeviceFeatures2 { pNext = &f13 };
         feats.features.depthClamp = has.depthClamp;
         feats.features.samplerAnisotropy = has.samplerAnisotropy;
         feats.features.multiDrawIndirect = true;
+        // the caster bake's commands carry the ownership slot as firstInstance, which the depth stages read as
+        // gl_BaseInstance: an indirect draw may only name a non-zero one with this feature, and without it the
+        // draw is undefined -- it rasterized nothing, and no validation message says so
+        feats.features.drawIndirectFirstInstance = true;
         feats.features.textureCompressionBC = true;
         feats.features.imageCubeArray = true;
         feats.features.independentBlend = true;
         feats.features.robustBufferAccess = true;
         feats.features.fragmentStoresAndAtomics = has.fragmentStoresAndAtomics;
         feats.features.geometryShader = true;
-        ReadOnlySpan<byte> mem = Win ? "VK_KHR_external_memory_win32\0"u8 : "VK_KHR_external_memory_fd\0"u8;
-        ReadOnlySpan<byte> sem = Win ? "VK_KHR_external_semaphore_win32\0"u8 : "VK_KHR_external_semaphore_fd\0"u8;
+        bool layerExt = ViewportIndex(phys) && HasExt(_vki, phys, "VK_EXT_shader_viewport_index_layer\0"u8);
+        _memBudget = HasExt(_vki, phys, "VK_EXT_memory_budget\0"u8);
         VkDevice device;
-        fixed (byte* m = mem) fixed (byte* s = sem) fixed (byte* c = "VK_EXT_depth_clip_control\0"u8)
+        fixed (byte* sw = SwapchainExt) fixed (byte* c = "VK_EXT_depth_clip_control\0"u8)
+        fixed (byte* vl = "VK_EXT_shader_viewport_index_layer\0"u8) fixed (byte* mb = "VK_EXT_memory_budget\0"u8)
         {
-            byte** exts = stackalloc byte*[3] { m, s, c };
+            byte** exts = stackalloc byte*[4] { sw, c, null, null };
+            uint n = 2;
+            if (layerExt) exts[n++] = vl;
+            if (_memBudget) exts[n++] = mb;
             var dci = new VkDeviceCreateInfo
             {
                 pNext = &feats, queueCreateInfoCount = 1, pQueueCreateInfos = &qci,
-                enabledExtensionCount = 3, ppEnabledExtensionNames = exts,
+                enabledExtensionCount = n, ppEnabledExtensionNames = exts,
             };
             Check(_vki.vkCreateDevice(phys, &dci, null, out device), "vkCreateDevice");
         }
         _device = device;
         _vkd = new VkDeviceApi(_vki, in device);
         _vkd.vkGetDeviceQueue(family, 0, out _queue);
-        VkPhysicalDeviceMemoryProperties mp;
-        _vki.vkGetPhysicalDeviceMemoryProperties(phys, &mp);
-        _mem = mp;
 
         _vma = CreateAllocator(inst);
         var pci = new VkCommandPoolCreateInfo { flags = VkCommandPoolCreateFlags.ResetCommandBuffer, queueFamilyIndex = family };
@@ -292,6 +369,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         Check(_vkd.vkCreateCommandPool(&pci, &pool), "vkCreateCommandPool");
         _cmdPool = pool;
         for (int i = 0; i < Slots; i++) _slots[i] = MakeSlot();
+        for (int i = 0; i < Slots; i++) _acquired[i] = MakeSemaphore();
 
         VkPhysicalDeviceProperties props;
         _vki.vkGetPhysicalDeviceProperties(phys, &props);
@@ -308,12 +386,35 @@ internal sealed unsafe partial class VkBackend : IDevice
         _pipeLayout = pl;
         _nearest = Sampler(new SamplerDesc(Filter.Nearest, Filter.Nearest, MipMode.None, Wrap.Clamp));
         MakeBindlessZero();
-        Caps = new DeviceCaps((int)l.maxImageDimension2D, (int)l.maxImageArrayLayers, (int)l.maxColorAttachments, 1,
+        Caps = new DeviceCaps((int)l.maxImageDimension2D, (int)l.maxImageArrayLayers, (int)l.maxColorAttachments,
+            MaxCount(l.framebufferColorSampleCounts & l.framebufferDepthSampleCounts),
             (int)l.maxPerStageDescriptorSampledImages, (int)l.maxDescriptorSetSampledImages,
             (int)l.maxPerStageDescriptorStorageBuffers, (int)l.maxPerStageDescriptorStorageBuffers,
             (int)l.minUniformBufferOffsetAlignment, (int)l.minStorageBufferOffsetAlignment, has.samplerAnisotropy ? l.maxSamplerAnisotropy : 1f);
         _maxDrawIndirect = l.maxDrawIndirectCount;
-        log.Always($"VkBackend: LIVE -- {Caps}, {_bindlessCap} bindless textures; the composite is the only image GL imports");
+        log.Always($"VkBackend: LIVE -- {Caps}, {_bindlessCap} bindless textures; Vulkan presents the frame itself");
+    }
+
+    /// <summary>The device takes VK_EXT_memory_budget, so <see cref="DeviceLocalKib"/> reads the driver's own figures.</summary>
+    private bool _memBudget;
+    /// <inheritdoc cref="_memBudget"/>
+    public bool MemoryBudget => _memBudget;
+
+    /// <summary>The device-local heaps' size and what is left of their budget, KiB: the driver's with VK_EXT_memory_budget,
+    /// else the allocator's estimate over its own blocks. Any thread that owns the device.</summary>
+    public void DeviceLocalKib(out long freeKib, out long totalKib)
+    {
+        freeKib = 0; totalKib = 0;
+        VkPhysicalDeviceMemoryProperties mp;
+        _vki.vkGetPhysicalDeviceMemoryProperties(_phys, &mp);
+        VmaBudget* b = stackalloc VmaBudget[(int)VK_MAX_MEMORY_HEAPS];
+        Vma.vmaGetHeapBudgets(_vma, b);
+        for (int i = 0; i < mp.memoryHeapCount; i++)
+        {
+            if ((mp.memoryHeaps[i].flags & VkMemoryHeapFlags.DeviceLocal) == 0) continue;
+            totalKib += (long)(mp.memoryHeaps[i].size / 1024);
+            if (b[i].budget > b[i].usage) freeKib += (long)((b[i].budget - b[i].usage) / 1024);
+        }
     }
 
     private VmaAllocator CreateAllocator(VkInstance inst)
@@ -329,6 +430,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         var ci = new VmaAllocatorCreateInfo
         {
             physicalDevice = _phys, device = _device, instance = inst, vulkanApiVersion = ApiFloor, pVulkanFunctions = &fns,
+            flags = _memBudget ? VmaAllocatorCreateFlags.EXTMemoryBudget : VmaAllocatorCreateFlags.None,
         };
         Check(Vma.vmaCreateAllocator(&ci, out VmaAllocator a), "vmaCreateAllocator");
         return a;
@@ -381,37 +483,6 @@ internal sealed unsafe partial class VkBackend : IDevice
         return l;
     }
 
-    /// <summary>A binary semaphore exported once and imported into the current GL context: an opaque handle has
-    /// reference transference, so the one pair serves every submit.</summary>
-    private (VkSemaphore, uint) SharedSemaphore()
-    {
-        var ex = new VkExportSemaphoreCreateInfo { handleTypes = SemHandle };
-        var ci = new VkSemaphoreCreateInfo { pNext = &ex };
-        VkSemaphore s;
-        Check(_vkd.vkCreateSemaphore(&ci, &s), "vkCreateSemaphore");
-        IntPtr h;
-        if (Win)
-        {
-            var gi = new VkSemaphoreGetWin32HandleInfoKHR { semaphore = s, handleType = SemHandle };
-            nint wh;
-            Check(_vkd.vkGetSemaphoreWin32HandleKHR(&gi, &wh), "vkGetSemaphoreWin32HandleKHR");
-            h = wh;
-        }
-        else
-        {
-            var gi = new VkSemaphoreGetFdInfoKHR { semaphore = s, handleType = SemHandle };
-            int fd;
-            Check(_vkd.vkGetSemaphoreFdKHR(&gi, &fd), "vkGetSemaphoreFdKHR");
-            h = fd;
-        }
-        return (s, GlInterop.ImportSemaphore(h));
-    }
-
-    private static VkExternalMemoryHandleTypeFlags MemHandle =>
-        Win ? VkExternalMemoryHandleTypeFlags.OpaqueWin32 : VkExternalMemoryHandleTypeFlags.OpaqueFD;
-    private static VkExternalSemaphoreHandleTypeFlags SemHandle =>
-        Win ? VkExternalSemaphoreHandleTypeFlags.OpaqueWin32 : VkExternalSemaphoreHandleTypeFlags.OpaqueFD;
-
     private static void Check(VkResult r, string what)
     {
         if (r != VkResult.Success) throw new InvalidOperationException($"{what} returned {r}");
@@ -427,6 +498,12 @@ internal sealed unsafe partial class VkBackend : IDevice
         if ((d.Use & BufferUse.Index) != 0) use |= VkBufferUsageFlags.IndexBuffer;
         if ((d.Use & BufferUse.Indirect) != 0) use |= VkBufferUsageFlags.IndirectBuffer;
         if ((d.Use & BufferUse.CopySrc) != 0) use |= VkBufferUsageFlags.TransferSrc;
+        if (d.Memory == MemoryKind.Readback)
+        {
+            if (!HostBuffer((ulong)d.Bytes, use, VmaAllocationCreateFlags.HostAccessRandom, out VkBuffer hb, out VmaAllocation ha))
+                return Refused<BufferId>($"readback buffer {d.Label}: VMA refused {d.Bytes} bytes");
+            return new BufferId(_buffers.Add(new VkBuf(hb, ha, d)));
+        }
         var bci = new VkBufferCreateInfo { size = (ulong)d.Bytes, usage = use, sharingMode = VkSharingMode.Exclusive };
         // ponytail: Upload buffers are device-local too and written by recorded UpdateBuffer; a mapped ring when a pass streams
         var aci = new VmaAllocationCreateInfo { usage = VmaMemoryUsage.AutoPreferDevice };
@@ -435,39 +512,6 @@ internal sealed unsafe partial class VkBackend : IDevice
         if (Vma.vmaCreateBuffer(_vma, &bci, &aci, &b, &a, null) != VkResult.Success)
             return Refused<BufferId>($"buffer {d.Label}: VMA refused {d.Bytes} bytes");
         return new BufferId(_buffers.Add(new VkBuf(b, a, d)));
-    }
-
-    private bool Exportable(VkFormat f, VkImageUsageFlags usage)
-    {
-        var info = new VkPhysicalDeviceExternalImageFormatInfo { handleType = MemHandle };
-        var fi = new VkPhysicalDeviceImageFormatInfo2
-        {
-            pNext = &info, format = f, type = VkImageType.Image2D, tiling = VkImageTiling.Optimal, usage = usage,
-        };
-        var ext = new VkExternalImageFormatProperties();
-        var props = new VkImageFormatProperties2 { pNext = &ext };
-        return _vki.vkGetPhysicalDeviceImageFormatProperties2(_phys, &fi, &props) == VkResult.Success
-            && (ext.externalMemoryProperties.externalMemoryFeatures & VkExternalMemoryFeatureFlags.Exportable) != 0;
-    }
-
-    private IntPtr ExportMemory(VkDeviceMemory memory)
-    {
-        if (Win)
-        {
-            var gi = new VkMemoryGetWin32HandleInfoKHR { memory = memory, handleType = MemHandle };
-            nint h;
-            return _vkd.vkGetMemoryWin32HandleKHR(&gi, &h) == VkResult.Success ? h : IntPtr.Zero;
-        }
-        var fi = new VkMemoryGetFdInfoKHR { memory = memory, handleType = MemHandle };
-        int fd;
-        return _vkd.vkGetMemoryFdKHR(&fi, &fd) == VkResult.Success ? fd : IntPtr.Zero;
-    }
-
-    private int MemoryType(uint bits, VkMemoryPropertyFlags want)
-    {
-        for (int i = 0; i < _mem.memoryTypeCount; i++)
-            if ((bits & (1u << i)) != 0 && (_mem.memoryTypes[i].propertyFlags & want) == want) return i;
-        return -1;
     }
 
     public SamplerId CreateSampler(in SamplerDesc d) => OnThread("CreateSampler") ? new SamplerId(_samplers.Add(Sampler(d))) : default;
@@ -543,27 +587,16 @@ internal sealed unsafe partial class VkBackend : IDevice
 
     public void Destroy(ImageId i)
     {
-        if (!OnThread("Destroy") || !_images.Remove(i.Value, out VkImg g)) return;
-        if (g.Ext != null) GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, g.Ext.GlTex);
-        Exported? e = g.Ext;
-        Later(() => Free(g), e == null ? null : () =>
-        {
-            GlInterop.DeleteMemory(e.GlMem);
-            GlInterop.DeleteSemaphore(e.GlVkDone);
-            GlInterop.DeleteSemaphore(e.GlGlDone);
-        });
+        if (OnThread("Destroy") && _images.Remove(i.Value, out VkImg g)) Later(() => Free(g));
     }
 
-    /// <summary>The Vulkan half of an image: its view, the image and its memory, and a composite's semaphores.</summary>
+    /// <summary>An image's views, the image and its memory.</summary>
     private void Free(VkImg g)
     {
         _vkd.vkDestroyImageView(g.View);
         if (g.MipViews != null) foreach (VkImageView v in g.MipViews) if (v.IsNotNull) _vkd.vkDestroyImageView(v);
-        if (g.Ext == null) { Vma.vmaDestroyImage(_vma, g.Image, g.Alloc); return; }
-        _vkd.vkDestroyImage(g.Image);
-        _vkd.vkFreeMemory(g.Ext.Memory);
-        _vkd.vkDestroySemaphore(g.Ext.VkDone);
-        _vkd.vkDestroySemaphore(g.Ext.GlDone);
+        if (g.LayerViews != null) foreach (VkImageView v in g.LayerViews) if (v.IsNotNull) _vkd.vkDestroyImageView(v);
+        Vma.vmaDestroyImage(_vma, g.Image, g.Alloc);
     }
 
     public void Destroy(SamplerId s)
@@ -591,22 +624,21 @@ internal sealed unsafe partial class VkBackend : IDevice
         return new VertexLayoutId(_layouts.Add(d));
     }
 
-    /// <summary>Free once no submit in flight and no retired GL texture can still reach it. Cold: a resize or a rebuild.</summary>
-    private void Later(Action free, Action? gl = null) => _dead.Add((_submits, free, gl));
+    /// <summary>Free once no submit in flight can still reach it. Cold: a resize or a rebuild.</summary>
+    private void Later(Action free) => _dead.Add((_submits, free));
 
     private void DrainDead()
     {
         for (int i = _dead.Count - 1; i >= 0; i--)
             if (_submits - _dead[i].At >= DeadAfter)
             {
-                _dead[i].Gl?.Invoke();
                 _dead[i].Free();
                 _dead.RemoveAt(i);
             }
     }
 
-    /// <summary>Context loss or shutdown: wait the queue out and free every Vulkan object. The GL imports went with
-    /// the context, so a death queued for a composite runs its Vulkan half only.</summary>
+    /// <summary>Context loss or shutdown: wait the queue out and free every Vulkan object, the swapchain and the
+    /// window's surface last but one.</summary>
     internal void Dispose()
     {
         _vkd.vkDeviceWaitIdle();
@@ -624,6 +656,8 @@ internal sealed unsafe partial class VkBackend : IDevice
             _vkd.vkDestroyDescriptorPool(s.Pool);
             if (s.Stage.IsNotNull) Vma.vmaDestroyBuffer(_vma, s.Stage, s.StageAlloc);
         }
+        foreach (VkSemaphore a in _acquired) _vkd.vkDestroySemaphore(a);
+        DropSwapchain();
         _vkd.vkDestroyCommandPool(_cmdPool);
         _vkd.vkDestroySampler(_nearest);
         foreach (UploadChunk c in _upload.Chunks) Vma.vmaDestroyBuffer(_vma, c.Buffer, c.Alloc);

@@ -20,6 +20,8 @@ internal readonly record struct VkLoose(string Type, string Name, string Array);
 internal sealed class VkProgramText
 {
     public string Vs = "", Fs = "";
+    /// <summary>The one stage of a COMPUTE translation (<see cref="VkGlsl.TranslateCompute"/>); empty otherwise.</summary>
+    public string Cs = "";
     /// <summary><see cref="VkGlsl.LooseBlock"/>'s members, in declaration order: vertex stage first.</summary>
     public readonly List<VkLoose> Loose = new();
     /// <summary>Every sampler, image and block either stage declares, deduped by stage-independent identity.</summary>

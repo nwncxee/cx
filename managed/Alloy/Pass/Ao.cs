@@ -9,7 +9,7 @@ namespace CX.Alloy;
 internal static class Ao
 {
     internal static readonly KnobGroup G;
-    internal static readonly Knob<float> Radius, Strength, Direct, Cutout, Temporal, MaxPx;
+    internal static readonly Knob<float> Radius, Strength, Direct, Cutout, MaxPx;
     internal static readonly Knob<int> Dirs, Steps;
     internal static readonly Knob<bool> Blur, On;
 
@@ -34,8 +34,6 @@ internal static class Ao
                           help: "0 = ambient only (invisible indoors).");
         Cutout = G.Slider("cutout", "On cutout surfaces", 0f, 1f, 0.05f, 1f, tier: Tier.ChatOnly,
                           help: "How much occlusion leaf and grass cards take: 1 = full (a card stamps its silhouette on the card behind it).");
-        Temporal = G.Slider("temporal", "Temporal accumulation", 0f, 0.98f, 0.02f, 0.8f, tier: Tier.ChatOnly,
-                            help: "0 = single frame.", changed: SsaoPass.DropHistory);
         MaxPx = G.Slider("maxpx", "Screen radius cap", 16f, 256f, 8f, 96f, "px", Tier.ChatOnly)
                  .Ladder(Quality.Ao, 48f, 64f, 96f, 128f);
         Blur = G.Toggle("blur", "Blur", true, Tier.ChatOnly);

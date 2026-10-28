@@ -45,6 +45,9 @@ internal static partial class ContentStage
                        + "void main()\n{\n    ApplyStandardShader();\n    vPosView += vec3(0.0, 0.0, fWave);\n"
                        + "    gl_Position = m_proj * vec4(vPosView, 1.0);\n}\n",
         ["cx_fixown"] = "vec3 ApplyColorSpace(vec3 c) { return c * c; }\nvoid main()\n{\n    gl_FragColor = vec4(ApplyColorSpace(vec3(0.5)), 1.0);\n}\n",
+        ["cx_fixmulti"] = "#include \"inc_standard\"\nuniform float rgbP0; uniform float rgbP1;\nvoid main()\n{\n"
+                        + "    FragmentColor = vec4(1.0);\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n"
+                        + "    gl_FragColor = vec4(FragmentColor.rgb * (rgbP0 + rgbP1), 1.0);\n}\n",
     };
 
     /// <summary>Off-device. Oracle: the fixtures' own text and the facts written out by hand -- which uniform takes which
@@ -115,6 +118,10 @@ internal static partial class ContentStage
                      && mine.Host.Contains("vec4(CxConOwn_ApplyColorSpace(vec3(0.5)), 1.0)")
                      && !mine.Host.Contains("vec3 ApplyColorSpace(vec3 c) { return c * c; }"),
                      "a function the stage defines over one the program already has is not renamed, with its calls");
+        Result multi = Translate("cx_fixmulti", true, Chain, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37);
+        check.Expect(multi.Refused == null
+                     && multi.Params.SequenceEqual(new Param[] { new("rgbP0", ParamKind.Float, 0), new("rgbP1", ParamKind.Float, 1) }),
+                     $"two uniforms on one line do not both take a lane: {multi.Refused}");
         Result engv = Translate("cx_fixengv", false, Chain, AlloyRenderer.ContentEnvVs, "", AlloyRenderer.OwnedLitVs, 8193, 37);
         Result eng = Translate("cx_fixeng", true, Chain, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37,
                                engv.Refused == null ? engv : null);

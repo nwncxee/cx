@@ -34,6 +34,12 @@ public sealed unsafe partial class CasterPass
     /// list.</summary>
     private static readonly int[] _sMoverIdx = new int[MaxCasters];
     private static int _sMoverCount;
+    /// <summary>Casters standing still but still in the dynamic set, waiting out <c>shadow.dynhold</c>: the static set
+    /// has not taken them yet. Counted by every collect and refresh, which revisit each dynamic caster every frame.</summary>
+    private sealed class HeldState { public int N; }
+    private static readonly HeldState _held = new();
+    /// <summary>This frame's casters the static set has not taken yet; 0 = the static set is complete.</summary>
+    internal static int HeldStill => _held.N;
     /// <summary>Is this live caster dynamic this frame? Staged into the gather source as the set flag its
     /// dispatch filter reads.</summary>
     private static readonly bool[] _liveDyn = new bool[MaxCasters];
@@ -226,7 +232,6 @@ public sealed unsafe partial class CasterPass
         VdoRepackFn next = *_repackSlot;
         if (next != null) next(vdo);
         _liveCount = 0; _liveCreatures = 0; _liveGen = -1;
-        CasterGather.Stand();
     }
 
     /// <summary>Once per frame, before any view submits: revalidate every caster and resolve its live world
@@ -240,7 +245,7 @@ public sealed unsafe partial class CasterPass
     private static void Collect()
     {
         int live = 0;
-        _moverCount = 0; _ghostCount = 0; _dMoverCount = 0; _sMoverCount = 0;
+        _moverCount = 0; _ghostCount = 0; _dMoverCount = 0; _sMoverCount = 0; _held.N = 0;
         int n = AlloyRenderer.OrderCount;
         for (int pass = 0; pass < 2; pass++)
         {
@@ -356,6 +361,7 @@ public sealed unsafe partial class CasterPass
         bool dyn = creature || _frameSeq - last <= _dynHold;
         _liveDyn[live] = dyn;
         if (dyn) _dMoverIdx[_dMoverCount++] = live;
+        if (dyn && !moving && !creature) _held.N++;
         if (appeared || dyn != wasDyn) { _sMoverIdx[_sMoverCount++] = live; if (!appeared) FrameZones.Count(FrameZones.Ev.DynFlip); }
         _liveStamp[slot] = _frameSeq;
     }
@@ -407,7 +413,7 @@ public sealed unsafe partial class CasterPass
         if (_offOverflow) return false;
         for (int q = 0; q < _offN; q++) if (!Mark(_offQ[q])) return false;
         _offN = 0;
-        _moverCount = 0; _ghostCount = 0; _dMoverCount = 0; _sMoverCount = 0;
+        _moverCount = 0; _ghostCount = 0; _dMoverCount = 0; _sMoverCount = 0; _held.N = 0;
         _visitSum += _visitN; _touchedSum += AlloyRenderer.CasterTouchedCount;
         for (int k = 0; k < _visitN; k++)
         {

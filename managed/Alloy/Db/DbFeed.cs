@@ -28,6 +28,9 @@ public static partial class DbFeed
     /// <summary>Inside the off-device self-check: its refusals are being PROVED, not reported.</summary>
     internal static bool _inSelfCheck;
 
+    /// <summary>The feed runs: Alloy draws this session, or the self-check drives it on a host where Alloy is off.</summary>
+    private static bool Fed => Renderer.On || _inSelfCheck;
+
     private static void Refuse(string what) { if (!_inSelfCheck) _log?.Info(what); }
 
     /// <summary>The renderer's per-view draw, registered when the renderer arms. A frame with records to draw and
@@ -47,7 +50,7 @@ public static partial class DbFeed
     /// build rather than two builds.</summary>
     public static void RequestView(DbId scene, DbId camera)
     {
-        if (!Renderer.On) return;
+        if (!Fed) return;
         if (_viewN >= MaxViews)
         {
             if (_viewRefused++ == 0)
@@ -65,7 +68,7 @@ public static partial class DbFeed
     /// each view runs in the order the game asked for it.</summary>
     public static void Present()
     {
-        if (!Renderer.On) { _viewN = 0; return; }
+        if (!Fed) { _viewN = 0; return; }
         _frames++;
         long tDirty = FrameZones.Now;
         Pumps();
@@ -93,7 +96,7 @@ public static partial class DbFeed
     /// which the game thread is about to write again for frame N+1, so it cannot move off that thread.</summary>
     internal static void FoldFrame()
     {
-        if (!Renderer.On) { _viewN = 0; return; }
+        if (!Fed) { _viewN = 0; return; }
         _frames++;
         long tDirty = FrameZones.Now;
         Pumps();

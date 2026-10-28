@@ -1,5 +1,6 @@
 using System.Numerics;
 using CX.Graphics;
+using CX.Rhi;
 
 namespace CX.Alloy;
 
@@ -35,7 +36,7 @@ public sealed unsafe partial class CasterPass
     /// <summary>The map still describes the area being drawn. Keyed on the AREA, not on a per-frame stamp:
     /// a frame that happens to lose the sun gate renders no view, and a one-frame flash back to the flat
     /// ambient would read as a pop under every roof in sight.</summary>
-    internal static bool SkyFresh => _sky.Baked && _gl.SkyDepth != 0 && !_sky.Fit.IsNone
+    internal static bool SkyFresh => _sky.Baked && !_sky.Fit.IsNone
                                   && _sky.Area == FrameInputs.AreaPtr && !FrameInputs.Interior;
 
     /// <summary>The shadow bracket's sky slot. <paramref name="sun"/> is the cascades' exterior gate: an
@@ -57,11 +58,10 @@ public sealed unsafe partial class CasterPass
         // coincidence rare; the upgrade is a submit that ignores the fade for this view alone.
         bool stale = !SkyFresh || !fit.Vp.Equals(_sky.Key.Vp) || (gen != _sky.KeyGen && settled);
         if (!stale) { _sky.Held++; return; }
-        if (!EnsureSkyDepth()) return;
         Matrix4x4 vp = fit.Vp;
         // Full detail and the STATIC set, for the cover map's reason: this is read as geometry, not as a
         // shadow, and a simplified roof edge moves the boundary a whole alley's ambient turns on.
-        if (RenderView(_gl.SkyDepth, SkyView.MapSize, 0, &vp, SkyMath.Down, fit.Centre, fit.Radius, fit.Radius,
+        if (RenderView(CasterMap.Sky, SkyView.MapSize, 0, &vp, SkyMath.Down, fit.Centre, fit.Radius, fit.Radius,
                        point: false, set: CasterGather.SetStatic, detail: false))
         {
             _sky.Baked = true; _sky.Key = fit; _sky.KeyGen = gen; _sky.Pending = true;
@@ -69,15 +69,6 @@ public sealed unsafe partial class CasterPass
         }
     }
 
-    /// <summary>After the layered flush landed this frame's renders: a new depth view gets its map
-    /// (<see cref="SkyView.Bake"/>), which is the only thing the lit stage ever reads.</summary>
-    private static void SkyBaked()
-    {
-        if (!_sky.Pending) return;
-        _sky.Pending = false;
-        if (!SkyFresh) return;
-        SkyView.Bake(_gl.SkyDepth, _sky.Fit);
-    }
 
     /// <summary>Area edge: the map and the key it was rendered under both describe an area that has gone, even
     /// when the client hands the next area the same <c>CNWCArea</c>, which would otherwise read as still fresh.</summary>
@@ -92,34 +83,17 @@ public sealed unsafe partial class CasterPass
         SkyView.Revoke();
     }
 
-    /// <summary>The overhead view's own depth target: one layer, compare mode OFF (the bake reads a stored
-    /// height, not a verdict), and allocated here rather than through <c>DepthArray</c> so a refusal stands
-    /// the sky term down by name instead of disarming every shadow in the frame.</summary>
-    private static bool EnsureSkyDepth()
+
+    /// <summary>The overhead view the colour frame's flush just landed, for the Vulkan bake, once; false when there is
+    /// none this frame or it no longer describes the area being drawn.</summary>
+    internal static bool VkSkyTake(out ImageId depth, out SkyFit fit)
     {
-        if (!EnsureCommon()) return false;
-        if (_gl.SkyDepth != 0) return true;
-        int size = SkyView.MapSize;
-        uint t; Gl.CreateTextures(Gl.TEXTURE_2D_ARRAY, 1, &t);
-        Gl.DrainErrors();   // an earlier pass's error must not be read as this allocation's
-        Gl.TextureStorage3D(t, 1, Gl.DEPTH_COMPONENT24, size, size, 1);
-        if (Gl.GetError() != 0)
-        {
-            Gl.DeleteTextures(1, &t);
-            SkyView.NoDepthTarget(size);
-            return false;
-        }
-        Gl.TextureParameteri(t, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
-        Gl.TextureParameteri(t, Gl.TEXTURE_MAG_FILTER, Gl.NEAREST);
-        Gl.TextureParameteri(t, Gl.TEXTURE_WRAP_S, Gl.CLAMP_TO_EDGE);
-        Gl.TextureParameteri(t, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
-        Gl.TextureParameteri(t, Gl.TEXTURE_COMPARE_MODE, (int)Gl.NONE);
-        _gl.SkyDepth = t;
-        _sky.Baked = false;
-        return true;
+        depth = _vk.Sky; fit = _sky.Fit;
+        if (!_sky.Pending) return false;
+        _sky.Pending = false;
+        return SkyFresh && !depth.IsNull;
     }
 
     internal static string SkyStats()
-        => _disarmed ? "the caster pass is DISARMED, so no overhead view is rendered"
-         : $"sky view {_sky.Bakes} rendered / {_sky.Held} held";
+        => $"sky view {_sky.Bakes} rendered / {_sky.Held} held";
 }

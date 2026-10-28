@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 using System.Collections.Generic;
 using CX.Rhi;
 using Vortice.Vulkan;
@@ -20,7 +21,8 @@ internal sealed unsafe partial class VkBackend
     /// <summary>A copy waiting for the next submit: staged bytes into a buffer range, into one mip and layer of an
     /// image, or (<see cref="Mips"/>) an image's chain blitted down from its base level.</summary>
     private readonly record struct PendingCopy(ImageId Image, BufferId Buffer, int Mip, int Layer, long DstOffset,
-                                               VkBuffer Src, ulong SrcOffset, ulong Bytes, bool Mips);
+                                               VkBuffer Src, ulong SrcOffset, ulong Bytes, bool Mips,
+                                               int X = 0, int Y = 0, int W = 0, int H = 0, int RowTexels = 0);
 
     /// <summary>Uploads made between submits: their staging and their copies, recorded at the head of the next
     /// submit; a chunk goes back to <see cref="Pool"/> after it and is reused once that submit is past.
@@ -72,6 +74,7 @@ internal sealed unsafe partial class VkBackend
         Format.Rg32F => VkFormat.R32G32Sfloat,
         Format.Rgba32F => VkFormat.R32G32B32A32Sfloat,
         Format.R32Ui => VkFormat.R32Uint,
+        Format.Rg32Ui => VkFormat.R32G32Uint,
         Format.Rgba32Ui => VkFormat.R32G32B32A32Uint,
         Format.R11G11B10F => VkFormat.B10G11R11UfloatPack32,
         Format.D16 => VkFormat.D16Unorm,
@@ -102,7 +105,10 @@ internal sealed unsafe partial class VkBackend
     public ImageId CreateImage(in ImageDesc d)
     {
         if (!OnThread("CreateImage")) return default;
-        if (d.Samples > 1 || Of(d.Fmt) == VkFormat.Undefined || d.W <= 0 || d.H <= 0 || d.Mips < 1 || d.Layers < 1)
+        bool ms = d.Samples > 1;
+        if (ms && (d.Kind != ImageKind.Tex2D || d.Mips != 1 || d.Layers != 1 || (d.Use & ImageUse.Storage) != 0 || d.Samples > Caps.MaxSamples
+                   || !BitOperations.IsPow2(d.Samples))
+            || Of(d.Fmt) == VkFormat.Undefined || d.W <= 0 || d.H <= 0 || d.Mips < 1 || d.Layers < 1)
             return Refused<ImageId>($"image {d.Label}: {d.Kind} {d.Fmt} {d.W}x{d.H} x{d.Samples} with {d.Mips} mips, {d.Layers} layers");
         VkImageCreateInfo ici = ImageInfo(d, null);
         var aci = new VmaAllocationCreateInfo { usage = VmaMemoryUsage.AutoPreferDevice };
@@ -111,6 +117,14 @@ internal sealed unsafe partial class VkBackend
         if (Vma.vmaCreateImage(_vma, &ici, &aci, &image, &a, null) != VkResult.Success)
             return Refused<ImageId>($"image {d.Label}: VMA refused {d.Kind} {d.Fmt} {d.W}x{d.H}");
         return new ImageId(_images.Add(new VkImg { Image = image, Alloc = a, View = View(image, d, -1), Desc = d }));
+    }
+
+    /// <summary>The description image <paramref name="i"/> was made with; false for a stale or null id.</summary>
+    internal bool DescOf(ImageId i, out ImageDesc d)
+    {
+        bool ok = _images.TryGet(i.Value, out VkImg img);
+        d = ok ? img.Desc : default;
+        return ok;
     }
 
     /// <summary><paramref name="d"/> as Vulkan creates it, optimally tiled. A cube's layers are its faces, six per cube.</summary>
@@ -123,7 +137,7 @@ internal sealed unsafe partial class VkBackend
             flags = cube ? VkImageCreateFlags.CubeCompatible : VkImageCreateFlags.None, format = Of(d.Fmt),
             extent = new VkExtent3D { width = (uint)d.W, height = (uint)d.H, depth = d.Kind == ImageKind.Tex3D ? (uint)Math.Max(d.D, 1) : 1 },
             mipLevels = (uint)d.Mips, arrayLayers = (uint)(d.Kind == ImageKind.Tex3D ? 1 : cube ? d.Layers * 6 : d.Layers),
-            samples = VkSampleCountFlags.Count1, tiling = VkImageTiling.Optimal,
+            samples = (VkSampleCountFlags)Math.Max(d.Samples, 1), tiling = VkImageTiling.Optimal,
             usage = Usage(d.Use, d.Fmt), sharingMode = VkSharingMode.Exclusive, initialLayout = VkImageLayout.Undefined,
         };
     }
@@ -139,10 +153,12 @@ internal sealed unsafe partial class VkBackend
 
     /// <summary>A view of every mip (<paramref name="mip"/> -1) or of one, typed as the shader declares the kind:
     /// a single-layer 2D image as 2D, more layers as an array, a cube as a cube. A grey image reads red into all
-    /// three colours and alpha as 1.</summary>
-    private VkImageView View(VkImage image, in ImageDesc d, int mip)
+    /// three colours and alpha as 1. A non-negative <paramref name="layer"/> is one layer of an array or cube array,
+    /// typed 2D: the attachment of one cascade or one cube face.</summary>
+    private VkImageView View(VkImage image, in ImageDesc d, int mip, int layer = -1, bool array = false)
     {
-        VkImageViewType type = d.Kind switch
+        VkImageViewType type = layer >= 0 ? VkImageViewType.Image2D
+                             : array ? VkImageViewType.Image2DArray : d.Kind switch
         {
             ImageKind.Tex3D => VkImageViewType.Image3D,
             ImageKind.Cube when d.Layers == 1 => VkImageViewType.ImageCube,
@@ -159,7 +175,8 @@ internal sealed unsafe partial class VkBackend
             {
                 aspectMask = d.Fmt.IsDepth() ? VkImageAspectFlags.Depth : VkImageAspectFlags.Color,
                 baseMipLevel = (uint)Math.Max(mip, 0), levelCount = mip < 0 ? (uint)d.Mips : 1,
-                layerCount = d.Kind == ImageKind.Tex3D ? 1 : (uint)(cube ? d.Layers * 6 : d.Layers),
+                baseArrayLayer = (uint)Math.Max(layer, 0),
+                layerCount = layer >= 0 ? 1 : d.Kind == ImageKind.Tex3D ? 1 : (uint)(cube ? d.Layers * 6 : d.Layers),
             },
         };
         VkImageView view;
@@ -176,6 +193,33 @@ internal sealed unsafe partial class VkBackend
         return img.MipViews[mip];
     }
 
+    /// <summary>The attachment view of mip 0: every layer for <paramref name="layer"/> -1 (a layered pass, which a
+    /// stage routes into with <c>gl_Layer</c>), one layer alone otherwise, made on first ask. Null when the layer is
+    /// past the image. A cube's own view is typed as a cube, which no attachment may be, so a layered pass over one
+    /// gets a 2D-array view of the same faces.</summary>
+    private VkImageView AttachView(VkImg img, int layer)
+    {
+        int layers = Layers(img.Desc);
+        if (layer >= layers) return default;
+        if (layers == 1) return img.View;
+        // index `layers` holds the whole-array view, past the per-layer ones
+        img.LayerViews ??= new VkImageView[layers + 1];
+        int at = layer < 0 ? layers : layer;
+        if (img.LayerViews[at].IsNull) img.LayerViews[at] = View(img.Image, img.Desc, 0, layer, array: true);
+        return img.LayerViews[at];
+    }
+
+    /// <summary>Array layers an image holds, counting a cube's six faces each.</summary>
+    /// <summary>The largest sample count in <paramref name="counts"/>, at most 8 -- what a multisampled target may ask for.</summary>
+    private static int MaxCount(VkSampleCountFlags counts)
+    {
+        uint c = (uint)counts & 15u;
+        return c == 0 ? 1 : 1 << BitOperations.Log2(c);
+    }
+
+    private static int Layers(in ImageDesc d)
+        => d.Kind == ImageKind.Tex3D ? 1 : d.Kind is ImageKind.Cube or ImageKind.CubeArray ? d.Layers * 6 : d.Layers;
+
     /// <summary>Bytes one mip of one layer holds tightly packed: block rows for a compressed format.</summary>
     internal static long LevelBytes(in ImageDesc d, int mip)
     {
@@ -190,7 +234,7 @@ internal sealed unsafe partial class VkBackend
         Format.Rg8 or Format.R16F or Format.D16 => 2,
         Format.Rg16F or Format.R32F or Format.R32Ui or Format.Rgba8 or Format.Rgba8Srgb or Format.R11G11B10F
             or Format.D24 or Format.D24S8 or Format.D32F => 4,
-        Format.Rgba16F or Format.Rg32F or Format.D32FS8 => 8,
+        Format.Rgba16F or Format.Rg32F or Format.Rg32Ui or Format.D32FS8 => 8,
         _ => 16,
     };
 
@@ -276,9 +320,10 @@ internal sealed unsafe partial class VkBackend
             u.Touched.Add(p.Image.Value);
             var r = new VkBufferImageCopy
             {
-                bufferOffset = p.SrcOffset,
+                bufferOffset = p.SrcOffset, bufferRowLength = (uint)p.RowTexels,
                 imageSubresource = new VkImageSubresourceLayers { aspectMask = Aspect(img.Desc.Fmt), mipLevel = (uint)p.Mip, baseArrayLayer = (uint)p.Layer, layerCount = 1 },
-                imageExtent = new VkExtent3D
+                imageOffset = new VkOffset3D { x = p.X, y = p.Y },
+                imageExtent = p.W > 0 ? new VkExtent3D { width = (uint)p.W, height = (uint)p.H, depth = 1 } : new VkExtent3D
                 {
                     width = (uint)Math.Max(img.Desc.W >> p.Mip, 1), height = (uint)Math.Max(img.Desc.H >> p.Mip, 1),
                     depth = img.Desc.Kind == ImageKind.Tex3D ? (uint)Math.Max(img.Desc.D >> p.Mip, 1) : 1,
@@ -315,8 +360,9 @@ internal sealed unsafe partial class VkBackend
                 srcSubresource = new VkImageSubresourceLayers { aspectMask = VkImageAspectFlags.Color, mipLevel = (uint)(m - 1), layerCount = layers },
                 dstSubresource = new VkImageSubresourceLayers { aspectMask = VkImageAspectFlags.Color, mipLevel = (uint)m, layerCount = layers },
             };
-            b.srcOffsets[1] = new VkOffset3D { x = Math.Max(img.Desc.W >> (m - 1), 1), y = Math.Max(img.Desc.H >> (m - 1), 1), z = 1 };
-            b.dstOffsets[1] = new VkOffset3D { x = Math.Max(img.Desc.W >> m, 1), y = Math.Max(img.Desc.H >> m, 1), z = 1 };
+            bool vol = img.Desc.Kind == ImageKind.Tex3D;
+            b.srcOffsets[1] = new VkOffset3D { x = Math.Max(img.Desc.W >> (m - 1), 1), y = Math.Max(img.Desc.H >> (m - 1), 1), z = vol ? Math.Max(img.Desc.D >> (m - 1), 1) : 1 };
+            b.dstOffsets[1] = new VkOffset3D { x = Math.Max(img.Desc.W >> m, 1), y = Math.Max(img.Desc.H >> m, 1), z = vol ? Math.Max(img.Desc.D >> m, 1) : 1 };
             _vkd.vkCmdBlitImage(_cmd, img.Image, VkImageLayout.TransferSrcOptimal, img.Image, VkImageLayout.TransferDstOptimal, 1, &b, VkFilter.Linear);
             MipBarrier(img, m - 1, VkImageLayout.TransferSrcOptimal, VkImageLayout.TransferDstOptimal);
         }

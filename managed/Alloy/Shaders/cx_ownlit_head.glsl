@@ -55,25 +55,9 @@ uniform int uSolid;
 const float CX_SOLID_ALPHA = 0.99;
 layout(location = 0) out vec4 frag;
 #if defined(CX_DEPTH_ONLY) && !defined(CX_CAST)
-// a content pair's depth twin doubles as its outline-highlight mask (Highlight.DrawTargets): location 0 takes the
-// root's colour there, and nothing in the prepass, whose draw buffer 0 is NONE or masked off
+// a content pair's depth twin doubles as its outline-highlight mask: location 0 takes the root's colour
+// there, and nothing in the prepass, whose draw buffer 0 is NONE or masked off
 uniform vec3 uHlColor;
-#endif
-#ifdef CX_A2C_MASK
-// CX-189: the coverage layer's own mask. Hardware alpha-to-coverage gives equal alpha one sample pattern,
-// so a second hair card at the same alpha lands on the same samples and vanishes; rotating the pattern by a
-// hash of the primitive keeps the count and moves the samples. Spatial only: it must hold with TAA off.
-uniform int uA2cSamples;
-int CxA2cMask(float a)
-{
-    int n = clamp(uA2cSamples, 1, 8);
-    int k = clamp(int(a * float(n) + 0.5), 0, n);
-    uint h = uint(vDraw) * 0x9E3779B9u ^ uint(gl_PrimitiveID) * 0x85EBCA6Bu;
-    h ^= h >> 15; h *= 0x2C1B3C6Du; h ^= h >> 12;
-    int r = int(h % uint(n));
-    int full = (1 << n) - 1, m = (1 << k) - 1;
-    return ((m << r) | (m >> (n - r))) & full;
-}
 #endif
 #include "cx_ssr.glsl"
 #include "cx_reflrec.glsl"

@@ -25,38 +25,16 @@ internal static unsafe partial class Weather
                                 RainSpeed = null!, SnowSpeed = null!, WindLean = null!, Soft = null!, Drips = null!, Backscatter = null!, SnowAngle = null!;
     internal static Knob<int> MaxCount = null!, Viz = null!;
 
-    /// <summary>Every GL name the context owns across the weather partials, in one object: <see cref="ContextLost"/>
-    /// replaces it. The flags beside the names say what the named storage holds, so they go with it.</summary>
-    private sealed class WeatherGlState
-    {
-        public uint ProgRain, ProgSnow, Vao;
-        public uint ProgSplash;
-        public bool SplashFailed, SplashSaid;
-        public uint EsmView, EsmViewOf, EsmTex0, EsmTex1, EsmFbo, EsmProg, EsmVao;
-        public int EsmSize, EsmLayer = -1, EsmLocSrc, EsmLocStep, EsmLocC;
-        public bool EsmFailed, EsmValid;
-        public uint MapTex, ProgScat, ProgInt;
-        public int MapSize;
-        public bool MapFailed;
-        public uint ShelTex, NoiseTex, RipTex, ProgShel, ProgNoise, ProgRip;
-        public int ShelSize;
-        public bool ShelValid, ShelFailed, NoiseDone;
-        public uint TrackTex;
-        /// <summary>The whole print field owes an upload: a fresh texture's storage is undefined.</summary>
-        public bool TrackAll = true;
-    }
-
-    private static WeatherGlState _gl = new();
-    private static Loc _locRain, _locSnow;
-    private static AlloyRenderer.LitLoc _litRain, _litSnow;
     private static bool _failed;
+
+    /// <summary>The precipitation program's uniform locations, resolved once per program.</summary>
+    internal struct Loc { public int View, Proj, Eye, Centre, Fall, Phase, Time, Box, Size, Kind, Drift, Depth, Tint, Alpha, Soft, Viz, Cover, CoverVp, CoverLayer, CoverSoft, Lit, Back; }
     private static double _phase;
     private static float _wobble;
     private static long _ticks;
     private static int _drawn, _count, _drips;
     private static Vector3 _fall;
 
-    private struct Loc { public int View, Proj, Eye, Centre, Fall, Phase, Time, Box, Size, Kind, Drift, Depth, Tint, Alpha, Soft, Viz, Cover, CoverVp, CoverLayer, CoverSoft, Lit, Back; }
 
     private static void DeclareKnobs()
     {
@@ -122,104 +100,7 @@ internal static unsafe partial class Weather
         SplashTick(dt);
     }
 
-    /// <summary>The weather pass, after the halos: alpha over, depth-tested against the finished frame, no
-    /// depth write. Precipitation while the engine's density is up; drips while the roofs are wet and there
-    /// is a cover map to find their edges in. Hands back blend off, depth test on, depth mask on.</summary>
-    internal static void Draw(Matrix4x4* view, Matrix4x4* proj, int* viewport, Vector3 eye, Vector2 wind, float near, float far, bool lightingOn)
-    {
-        _count = 0; _drips = 0;
-        // an interior has no sky: nothing falls and nothing soaks, whatever weather the area was given
-        if (_off || _failed || !Enabled.V || FrameInputs.Interior) return;
-        // R2: the area wetness map's own update, before the precipitation's early-out -- it has to dry after
-        // the rain stops, which is exactly the frame nothing falls on.
-        MapTick();
-        ShelterTick();
-        bool snow = CurrentKind == Kind.Snow;
-        int count = CurrentKind != Kind.None && Density > 0f ? (int)(MaxCount.V * Density * DensityScale.V * (snow ? 0.5f : 1f)) : 0;
-        int drips = !snow && Cover.V && CasterPass.CoverFresh ? (int)(MaxCount.V * Drips.V * _wet) : 0;
-        int splashes = SplashCount() + FootLive(TrackNow);
-        if (count <= 0 && drips <= 0 && splashes <= 0) return;
-        Tick(wind);
-        // the falling streaks and drips fade against the scene; a splash tests its landing point against it
-        if (!SceneDepth.Take(viewport)) return;
-        SceneDepth.Bind();
-        // R1: PREMULTIPLIED. The stages write the scatter already weighted by coverage and an extinction
-        // proportional to it, so an unlit drop is transparent instead of a dark film over the scene.
-        new PassState(depth: true, depthWrite: false, blend: true,
-                      blendSrc: AlloyRenderer.GlOne, blendDst: Gl.ONE_MINUS_SRC_ALPHA).Apply();
-        if (_gl.Vao == 0) { uint v; Gl.CreateVertexArrays(1, &v); _gl.Vao = v; }
-        Gl.BindVertexArray(_gl.Vao);
-        if (count > 0 && Submit(snow ? 2 : 1, count, view, proj, eye, viewport, near, far, lightingOn)) { _count = count; _drawn += count; }
-        if (drips > 0 && Submit(3, drips, view, proj, eye, viewport, near, far, lightingOn)) { _drips = drips; _drawn += drips; }
-        DrawSplash(view, proj, viewport, eye, near, far, lightingOn);
-        Gl.BindVertexArray(0);
-        Gl.Disable(Gl.BLEND);
-        Gl.DepthMask(1);
-    }
-
-    /// <summary>One instanced draw of <paramref name="kind"/> (1 rain, 2 snow, 3 drips: rain's program).</summary>
-    private static bool Submit(int kind, int count, Matrix4x4* view, Matrix4x4* proj, Vector3 eye, int* viewport, float near, float far, bool lightingOn)
-    {
-        bool snow = kind == 2;
-        if (!EnsureProgram(snow)) return false;
-        ref Loc l = ref (snow ? ref _locSnow : ref _locRain);
-        ref AlloyRenderer.LitLoc L = ref (snow ? ref _litSnow : ref _litRain);
-        Gl.UseProgram(snow ? _gl.ProgSnow : _gl.ProgRain);
-        Gl.UniformMatrix4fv(l.View, 1, 0, (float*)view);
-        Gl.UniformMatrix4fv(l.Proj, 1, 0, (float*)proj);
-        Gl.Uniform3f(l.Eye, eye.X, eye.Y, eye.Z);
-        // the box sits on the camera's follow target, not the camera: a top-down camera is 10-20 m up, and a
-        // box about it would leave the ground -- and every eave between a roof and it -- outside the field
-        Vector3 centre = FrameInputs.HasFocus ? FrameInputs.Focus : eye;
-        Gl.Uniform3f(l.Centre, centre.X, centre.Y, centre.Z);
-        Gl.Uniform3f(l.Fall, _fall.X, _fall.Y, _fall.Z);
-        Gl.Uniform1f(l.Phase, (float)_phase);
-        Gl.Uniform1f(l.Time, _wobble);
-        Gl.Uniform2f(l.Box, Range.V, Range.V);
-        // a drip is a short fat drop: a quarter streak, wider, twice as solid as the rain around it
-        Gl.Uniform2f(l.Size, snow ? FlakeSize.V : kind == 3 ? StreakLen.V * 0.25f : StreakLen.V, snow ? FlakeSize.V : kind == 3 ? 0.03f : 0.02f);
-        Gl.Uniform1i(l.Kind, kind);
-        Gl.Uniform1f(l.Drift, snow ? 0.4f : 0f);
-        Gl.Uniform1i(l.Depth, (int)SceneDepth.Unit);
-        // the light itself is the vertex stage's (sun + shadow + clustered lamps at the instance); this is
-        // the scalar on it -- flakes are near-opaque white, streaks faint, so the flake takes more of it
-        float c = snow ? Brightness.V * 1.67f : Brightness.V;
-        Gl.Uniform3f(l.Tint, c, c, c);
-        bool lit = lightingOn && AlloyLights.Ready;
-        Gl.Uniform1i(l.Lit, lit ? 1 : 0);
-        Gl.Uniform1f(l.Back, snow ? Backscatter.V : 0f);
-        AlloyRenderer.BindPass(L.CubeCount, viewport, near, far);
-        if (lit) AlloyLights.BindForDraw();
-        Gl.Uniform1f(l.Alpha, snow ? 0.9f : kind == 3 ? MathF.Min(Opacity.V * 2f, 1f) : Opacity.V);
-        Gl.Uniform1f(l.Soft, Soft.V);
-        Gl.Uniform1i(l.Viz, Viz.V);
-        BindCover(ref l);
-        Gl.DrawArraysInstancedBaseInstance(GlTriangleStrip, 0, 4, count, 0);
-        return true;
-    }
-
-    private static bool EnsureProgram(bool snow)
-    {
-        // The GL entry points load at the first bracket, after Install -- so this is asked per draw, as the halos do.
-        if (_failed || Gl.DrawArraysInstancedBaseInstance == null) return false;
-        ref uint prog = ref (snow ? ref _gl.ProgSnow : ref _gl.ProgRain);
-        if (prog != 0) return true;
-        string fs = snow ? ShdSnowFs : ShdRainFs;
-        prog = GlProgram.Graphics(ShdWeatherVs, ShaderStages.Source(ShdWeatherVs), fs, ShaderStages.Source(fs), _log, "Weather");
-        if (prog == 0) { _failed = true; _log?.Info("Weather: program build failed -- nothing falls this session"); return false; }
-        ref Loc l = ref (snow ? ref _locSnow : ref _locRain);
-        l.View = GlProgram.Loc(prog, "uView"); l.Proj = GlProgram.Loc(prog, "uProj"); l.Eye = GlProgram.Loc(prog, "uEye"); l.Centre = GlProgram.Loc(prog, "uCentre");
-        l.Fall = GlProgram.Loc(prog, "uFall"); l.Phase = GlProgram.Loc(prog, "uPhase"); l.Time = GlProgram.Loc(prog, "uTime");
-        l.Box = GlProgram.Loc(prog, "uBox"); l.Size = GlProgram.Loc(prog, "uSize"); l.Kind = GlProgram.Loc(prog, "uKind");
-        l.Drift = GlProgram.Loc(prog, "uDrift"); l.Depth = GlProgram.Loc(prog, "uSceneDepth"); l.Tint = GlProgram.Loc(prog, "uTint");
-        l.Alpha = GlProgram.Loc(prog, "uAlpha"); l.Soft = GlProgram.Loc(prog, "uSoft"); l.Viz = GlProgram.Loc(prog, "uViz");
-        l.Cover = GlProgram.Loc(prog, "uCover"); l.CoverVp = GlProgram.Loc(prog, "uCoverVp"); l.CoverLayer = GlProgram.Loc(prog, "uCoverLayer"); l.CoverSoft = GlProgram.Loc(prog, "uCoverSoft");
-        l.Lit = GlProgram.Loc(prog, "uLit"); l.Back = GlProgram.Loc(prog, "uBack");
-        (snow ? ref _litSnow : ref _litRain) = Programs.LitLocs(prog);
-        return true;
-    }
-
-    internal static void ContextLost() { _gl = new WeatherGlState(); MapLost(); }
+    internal static void ContextLost() => MapLost();
     internal static void ResetPeriod() => _drawn = 0;
     internal static string Stats() => _off ? "weather unavailable" : !Enabled.V ? "weather off"
         : $"weather {CurrentKind} {Density * 100f:F0}% {_count} instances, {_drips} drips{SplashStats()}{CoverStats()}{SurfaceStats()}{MapStats()}{ShelterStats()}, records {AlloyRenderer.RecCreature} creature / {AlloyRenderer.RecObject} object / {AlloyRenderer.RecTile} tile";

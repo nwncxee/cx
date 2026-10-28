@@ -345,11 +345,11 @@ public sealed unsafe partial class AlloyRenderer
     /// alpha-masked; a caster VAO id that is not the arena's names no geometry Alloy draws.</summary>
     internal static bool VdoHasUv(int v) => IsArenaVao(v);
 
-    /// <summary>The 4.6 VAO for a VDO slot, built on demand. Shadow and colour draw in the SAME context, so
-    /// there is one VAO for both -- the whole reason the caster pass no longer keeps its own cache. 0 = the
-    /// harvest could not build one and this caster does not cast this frame.</summary>
-    internal static uint CasterVao(int v)
-        => IsArenaVao(v) ? MeshArena.Vao((MeshArena.Fmt)(v - DbVaoBase)) : 0u;
+    /// <summary>Has this caster VAO id geometry on the device to bake from? Only the arena's sections hold
+    /// any, and one is drawable once its vertex and index buffers are uploaded; false means the caster does
+    /// not cast this frame.</summary>
+    internal static bool CasterGeometry(int v)
+        => IsArenaVao(v) && MeshArena.Resident((MeshArena.Fmt)(v - DbVaoBase));
 
     /// <summary>Triage: what the bake will transform this slot by, beside what the engine says it is right
     /// now. The record is the shadow pass's ONE input for placement, so a disagreement here is the whole bug.

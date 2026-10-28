@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Numerics;
 using CX.Framework;
 using CX.Graphics;
+using CX.Graphics.Rhi;
 
 namespace CX.Alloy;
 
@@ -39,25 +40,20 @@ internal static unsafe class FogVolume
     internal readonly record struct Medium(float Haze, float Wall, float Start, float End);
 
     /// <summary>Uniform locations of the lighting pass.</summary>
-    private struct LightLocs
+    internal struct LightLocs
     {
         internal GridLocs Grid;
         internal int Height, Noise, Drift, Ambient, Sun, Local, Phase, Jitter, PrevVp, PrevZ, Cubes;
     }
 
     /// <summary>Locations of the grid and medium uniforms both passes declare (<c>cx_vfogmed.glsl</c>).</summary>
-    private struct GridLocs { internal int Size, Z, InvVp, Eye, Fwd, Med, Origin, Top; }
+    internal struct GridLocs { internal int Size, Z, InvVp, Eye, Fwd, Med, Origin, Top; }
 
-    /// <summary>Everything the GL context owns: context loss replaces it whole.</summary>
-    private sealed class FogVolumeGlState
+    /// <summary>The build's own state, replaced whole on a device edge: which of the ping-pong pair this frame
+    /// writes, the history it may filter against, and the volume this frame's readers sample.</summary>
+    private sealed class FogVolumeBuildState
     {
-        public uint ProgLight, ProgSum;
-        public LightLocs L;
-        public GridLocs S;
-        /// <summary>The lighting pass's two outputs (this frame's and last frame's, swapped each frame) and the
-        /// integrated volume, whose last slice is also the sky's.</summary>
-        public uint MedA, MedB, Sum;
-        public int W, H, D;
+        public int D;
         public bool CurA, History;
         public Matrix4x4 PrevVp;
         public float PrevInvLog;
@@ -82,13 +78,11 @@ internal static unsafe class FogVolume
         public Vector4 LastSun;
     }
 
-    private static FogVolumeGlState _gl = new();
+    private static FogVolumeBuildState _b = new();
     private static FogVolumeSessionState _s = new();
-    private static readonly StandDown _down = new("FogVolume");
-
-    /// <summary>The mode is chosen and its programs have not failed: the far plane, the cull and the sky band follow
-    /// the volume's shape rather than the ramp's.</summary>
-    internal static bool On => VolumetricFog.Enabled.V && !_down.Failed;
+    /// <summary>The mode is chosen: the far plane, the cull and the sky band follow the volume's shape rather
+    /// than the ramp's.</summary>
+    internal static bool On => VolumetricFog.Enabled.V;
 
     internal static void Attach(ExtenderLog log) => _s.Log = log;
 
@@ -139,92 +133,131 @@ internal static unsafe class FogVolume
 
     private static float Lin(float v) => MathF.Pow(MathF.Max(v, 0f), AlloyLights.SrgbGamma);
 
-    /// <summary>Build this frame's volume for the main view, ahead of the first stage that fogs. <paramref name="main"/>
-    /// false (a capture, no perspective) or the mode off leaves every stage on the ramp this frame.</summary>
-    internal static void Run(in Matrix4x4 view, in Matrix4x4 vpClean, int* viewport, float near, float far, bool main, bool lightingOn)
+    /// <summary>One build's terms, decided on the CPU and pushed identically by both renderers' dispatches.</summary>
+    internal struct Terms
     {
-        _gl.Built = false;
-        if (!VolumetricFog.Enabled.V) { Release(); return; }
-        // a frame without a volume leaves last frame's medium describing a camera from frames ago
-        if (!main || viewport[2] <= 0 || viewport[3] <= 0 || !Ready()
-            || !Matrix4x4.Invert(vpClean, out Matrix4x4 invVp) || !Matrix4x4.Invert(view, out Matrix4x4 camToWorld))
-        { _gl.History = false; return; }
-        (int w, int h, int d) = VolumetricFog.Grid;
-        Ensure(w, h, d);
-        float dt = Tick();
+        public int W, H, D;
+        public float LogZ, Far;
+        public Matrix4x4 InvVp;
+        public Vector3 Eye, Fwd, Origin, Ambient, Jit, Drift, Local;
+        public Medium M;
+        public Vector4 Sun, PrevZ;
+        public Vector2 Height, Noise;
+        public float Phase;
+        public Matrix4x4 PrevVp;
+    }
 
-        Vector3 eye = camToWorld.Translation;
-        Vector3 fwd = -Vector3.Normalize(new Vector3(view.M13, view.M23, view.M33));
-        float vfar = MathF.Max(far, Near * 2f);
-        float logZ = MathF.Log(vfar / Near);
-        Vector3 origin = SceneFog.Origin(out _);
-        Medium m = MediumFor(FrameInputs.FogOn, FrameInputs.FogStart, FrameInputs.FogEnd, vfar, VolumetricFog.Haze.V);
+    /// <summary>This frame's terms for the main view, the drift and the dawn stepped; false (history dropped) when no
+    /// volume is built this frame -- a capture, no perspective, a camera that does not invert.</summary>
+    internal static bool Prepare(in Matrix4x4 view, in Matrix4x4 vpClean, int* viewport, float far, bool main, bool lightingOn,
+                                 out Terms t)
+    {
+        t = default;
+        // a frame without a volume leaves last frame's medium describing a camera from frames ago
+        if (!main || viewport[2] <= 0 || viewport[3] <= 0
+            || !Matrix4x4.Invert(vpClean, out Matrix4x4 invVp) || !Matrix4x4.Invert(view, out Matrix4x4 camToWorld))
+        { _b.History = false; return false; }
+        (t.W, t.H, t.D) = VolumetricFog.Grid;
+        float dt = Tick();
+        t.InvVp = invVp;
+        t.Eye = camToWorld.Translation;
+        t.Fwd = -Vector3.Normalize(new Vector3(view.M13, view.M23, view.M33));
+        t.Far = MathF.Max(far, Near * 2f);
+        t.LogZ = MathF.Log(t.Far / Near);
+        t.Origin = SceneFog.Origin(out _);
+        t.M = MediumFor(FrameInputs.FogOn, FrameInputs.FogStart, FrameInputs.FogEnd, t.Far, VolumetricFog.Haze.V);
         bool outdoors = !FrameInputs.Interior && !FrameInputs.Blind;
         bool haveSky = SceneFog.TrySky(out Vector3 sky) && outdoors;
-        Vector3 ambient = Ambient(FrameInputs.FogOn, FrameInputs.FogColor, haveSky, sky,
-                                  (FrameInputs.HasAreaAmbient ? FrameInputs.AreaAmbient : default) * AlloyLights.AmbientScale,
-                                  VolumetricFog.Sky.V);
+        t.Ambient = Ambient(FrameInputs.FogOn, FrameInputs.FogColor, haveSky, sky,
+                            (FrameInputs.HasAreaAmbient ? FrameInputs.AreaAmbient : default) * AlloyLights.AmbientScale,
+                            VolumetricFog.Sky.V);
         _s.Day += ((FrameInputs.Night ? 0f : 1f) - _s.Day) * MathF.Min(dt / DayEase, 1f);
-        Vector4 sun = SunShare(FrameInputs.Interior, FrameInputs.Blind, FrameInputs.HasAreaDiffuse, FrameInputs.AreaDiffuse,
-                               _s.Day, VolumetricFog.Sun.V);
-        _s.Last = m; _s.LastAmbient = ambient; _s.LastSun = sun;
+        t.Sun = SunShare(FrameInputs.Interior, FrameInputs.Blind, FrameInputs.HasAreaDiffuse, FrameInputs.AreaDiffuse,
+                         _s.Day, VolumetricFog.Sun.V);
+        _s.Last = t.M; _s.LastAmbient = t.Ambient; _s.LastSun = t.Sun;
         Vector2 wind = AlloyRenderer.AreaWind();
         Vector2 dir = wind.LengthSquared() > 1e-6f ? Vector2.Normalize(wind) : new Vector2(0.8f, 0.6f);
         float step = VolumetricFog.Wind.V * dt;
         _s.DriftX += dir.X * step; _s.DriftY += dir.Y * step; _s.DriftZ += Rise * step;
+        t.Drift = new Vector3((float)_s.DriftX, (float)_s.DriftY, (float)_s.DriftZ);
         bool temporal = VolumetricFog.Temporal.V > 0f;
-        Vector3 jit = temporal ? Jitter(_gl.Frame) : new Vector3(0f, 0f, 0.5f);
-        uint cur = _gl.CurA ? _gl.MedA : _gl.MedB, prev = _gl.CurA ? _gl.MedB : _gl.MedA;
+        t.Jit = temporal ? Jitter(_b.Frame) : new Vector3(0f, 0f, 0.5f);
+        t.Height = new Vector2(t.Origin.Z + VolumetricFog.Floor.V, VolumetricFog.Height.V);
+        t.Noise = new Vector2(VolumetricFog.Noise.V, 1f / MathF.Max(VolumetricFog.NoiseSize.V, 0.5f));
+        t.Local = new Vector3(lightingOn ? VolumetricFog.Lights.V : 0f, VolumetricFog.LightShadows.V ? 1f : 0f, VolumetricFog.Reach.V);
+        t.Phase = VolumetricFog.Aniso.V;
+        t.PrevVp = _b.PrevVp;
+        t.PrevZ = new Vector4(Near, _b.PrevInvLog, VolumetricFog.Temporal.V, _b.History && temporal ? 1f : 0f);
+        return true;
+    }
 
-        Gl.UseProgram(_gl.ProgLight);
-        AlloyLights.BindForDraw();
-        AlloyRenderer.BindPass(_gl.L.Cubes, viewport, near, far);
-        PushGrid(in _gl.L.Grid, w, h, d, logZ, vfar, &invVp, eye, fwd, m, origin);
-        Gl.Uniform2f(_gl.L.Height, origin.Z + VolumetricFog.Floor.V, VolumetricFog.Height.V);
-        Gl.Uniform2f(_gl.L.Noise, VolumetricFog.Noise.V, 1f / MathF.Max(VolumetricFog.NoiseSize.V, 0.5f));
-        Gl.Uniform3f(_gl.L.Drift, (float)_s.DriftX, (float)_s.DriftY, (float)_s.DriftZ);
-        Gl.Uniform3f(_gl.L.Ambient, ambient.X, ambient.Y, ambient.Z);
-        Gl.Uniform4f(_gl.L.Sun, sun.X, sun.Y, sun.Z, sun.W);
-        Gl.Uniform3f(_gl.L.Local, lightingOn ? VolumetricFog.Lights.V : 0f, VolumetricFog.LightShadows.V ? 1f : 0f, VolumetricFog.Reach.V);
-        Gl.Uniform1f(_gl.L.Phase, VolumetricFog.Aniso.V);
-        Gl.Uniform3f(_gl.L.Jitter, jit.X, jit.Y, jit.Z);
-        fixed (Matrix4x4* pv = &_gl.PrevVp) Gl.UniformMatrix4fv(_gl.L.PrevVp, 1, 0, (float*)pv);
-        Gl.Uniform4f(_gl.L.PrevZ, Near, _gl.PrevInvLog, VolumetricFog.Temporal.V, _gl.History && temporal ? 1f : 0f);
-        Gl.BindTextureUnit(TextureSlots.VFog, prev);
-        Gl.BindImageTexture(0, cur, 0, 1, 0, Gl.WRITE_ONLY, Gl.RGBA16F);
-        Gl.DispatchCompute((uint)((w + Group - 1) / Group), (uint)((h + Group - 1) / Group), (uint)d);
-        Gl.MemoryBarrier(Gl.SHADER_IMAGE_ACCESS_BARRIER_BIT | Gl.TEXTURE_FETCH_BARRIER_BIT);
+    /// <summary>The light pass's terms into the open loose block.</summary>
+    internal static void WriteLight(in Terms t, in LightLocs l, int* viewport, float near, float far)
+    {
+        AlloyRenderer.BindPass(l.Cubes, viewport, near, far);
+        Matrix4x4 inv = t.InvVp, prevVp = t.PrevVp;
+        PushGrid(in l.Grid, t.W, t.H, t.D, t.LogZ, t.Far, &inv, t.Eye, t.Fwd, t.M, t.Origin);
+        LooseBlock.Set(l.Height, t.Height.X, t.Height.Y);
+        LooseBlock.Set(l.Noise, t.Noise.X, t.Noise.Y);
+        LooseBlock.Set(l.Drift, t.Drift.X, t.Drift.Y, t.Drift.Z);
+        LooseBlock.Set(l.Ambient, t.Ambient.X, t.Ambient.Y, t.Ambient.Z);
+        LooseBlock.Set(l.Sun, t.Sun.X, t.Sun.Y, t.Sun.Z, t.Sun.W);
+        LooseBlock.Set(l.Local, t.Local.X, t.Local.Y, t.Local.Z);
+        LooseBlock.Set(l.Phase, t.Phase);
+        LooseBlock.Set(l.Jitter, t.Jit.X, t.Jit.Y, t.Jit.Z);
+        LooseBlock.Set(l.PrevVp, prevVp);
+        LooseBlock.Set(l.PrevZ, t.PrevZ.X, t.PrevZ.Y, t.PrevZ.Z, t.PrevZ.W);
+    }
 
-        Gl.UseProgram(_gl.ProgSum);
-        PushGrid(in _gl.S, w, h, d, logZ, vfar, &invVp, eye, fwd, m, origin);
-        Gl.BindImageTexture(0, cur, 0, 1, 0, Gl.READ_ONLY, Gl.RGBA16F);
-        Gl.BindImageTexture(1, _gl.Sum, 0, 1, 0, Gl.WRITE_ONLY, Gl.RGBA16F);
-        Gl.DispatchCompute((uint)((w + Group - 1) / Group), (uint)((h + Group - 1) / Group), 1);
-        Gl.MemoryBarrier(Gl.TEXTURE_FETCH_BARRIER_BIT | Gl.SHADER_IMAGE_ACCESS_BARRIER_BIT);
-        Gl.BindImageTexture(0, 0, 0, 0, 0, Gl.READ_ONLY, Gl.RGBA16F);
-        Gl.BindImageTexture(1, 0, 0, 0, 0, Gl.WRITE_ONLY, Gl.RGBA16F);
-        Gl.BindTextureUnit(TextureSlots.VFog, _gl.Sum);
-        Gl.ActiveTexture(Gl.TEXTURE0);   // the unit every pass leaves current: the colour loop rebinds diffuse there
-        Gl.UseProgram(0);
+    /// <summary>The integration pass's terms, into the open loose block.</summary>
+    internal static void WriteSum(in Terms t, in GridLocs g)
+    {
+        Matrix4x4 inv = t.InvVp;
+        PushGrid(in g, t.W, t.H, t.D, t.LogZ, t.Far, &inv, t.Eye, t.Fwd, t.M, t.Origin);
+    }
 
-        _gl.Vp = vpClean; _gl.InvLog = 1f / logZ; _gl.Built = true;
-        _gl.PrevVp = vpClean; _gl.PrevInvLog = _gl.InvLog; _gl.History = true;
-        _gl.CurA = !_gl.CurA; _gl.Frame++;
+    /// <summary>A built volume: the readers' camera and slice mapping, and next frame's history.</summary>
+    internal static void Finish(in Terms t, in Matrix4x4 vpClean)
+    {
+        _b.Vp = vpClean; _b.InvLog = 1f / t.LogZ; _b.D = t.D; _b.Built = true;
+        _b.PrevVp = vpClean; _b.PrevInvLog = _b.InvLog; _b.History = true;
+        _b.CurA = !_b.CurA; _b.Frame++;
         _s.Runs++;
     }
+
+    /// <summary>No volume this frame: every reader stays on the ramp.</summary>
+    internal static void NotBuilt() => _b.Built = false;
+
+    /// <summary>Which of the ping-pong pair this build writes; the other holds last frame's medium.</summary>
+    internal static bool CurrentIsA => _b.CurA;
+
+    /// <summary>The two programs' members of the loose block being resolved.</summary>
+    internal static LightLocs LightLocsOf() => new()
+    {
+        Grid = TakeGrid(), Height = LooseBlock.Loc("uVfHeight"), Noise = LooseBlock.Loc("uVfNoise"),
+        Drift = LooseBlock.Loc("uVfDrift"), Ambient = LooseBlock.Loc("uVfAmbient"), Sun = LooseBlock.Loc("uVfSun"),
+        Local = LooseBlock.Loc("uVfLocal"), Phase = LooseBlock.Loc("uVfPhase"), Jitter = LooseBlock.Loc("uVfJitter"),
+        PrevVp = LooseBlock.Loc("uVfPrevVp"), PrevZ = LooseBlock.Loc("uVfPrevZ"), Cubes = LooseBlock.Loc("uLocalCubes"),
+    };
+
+    /// <inheritdoc cref="LightLocsOf"/>
+    internal static GridLocs GridLocsOf() => TakeGrid();
+
+    /// <summary>The grid's workgroup edge, as both stages declare it.</summary>
+    internal const int VkGroup = Group;
 
     /// <summary>The grid and medium uniforms, into whichever pass is bound.</summary>
     private static void PushGrid(in GridLocs g, int w, int h, int d, float logZ, float far, Matrix4x4* invVp, Vector3 eye,
                                  Vector3 fwd, Medium m, Vector3 origin)
     {
-        Gl.Uniform3i(g.Size, w, h, d);
-        Gl.Uniform3f(g.Z, Near, far, logZ);
-        Gl.UniformMatrix4fv(g.InvVp, 1, 0, (float*)invVp);
-        Gl.Uniform3f(g.Eye, eye.X, eye.Y, eye.Z);
-        Gl.Uniform3f(g.Fwd, fwd.X, fwd.Y, fwd.Z);
-        Gl.Uniform4f(g.Med, m.Haze, m.Wall, m.Start, m.End);
-        Gl.Uniform3f(g.Origin, origin.X, origin.Y, origin.Z);
-        Gl.Uniform1f(g.Top, VolumetricFog.Top.V);
+        LooseBlock.Set(g.Size, w, h, d);
+        LooseBlock.Set(g.Z, Near, far, logZ);
+        LooseBlock.Set(g.InvVp, new ReadOnlySpan<float>((float*)invVp, 16));
+        LooseBlock.Set(g.Eye, eye.X, eye.Y, eye.Z);
+        LooseBlock.Set(g.Fwd, fwd.X, fwd.Y, fwd.Z);
+        LooseBlock.Set(g.Med, m.Haze, m.Wall, m.Start, m.End);
+        LooseBlock.Set(g.Origin, origin.X, origin.Y, origin.Z);
+        LooseBlock.Set(g.Top, VolumetricFog.Top.V);
     }
 
     /// <summary>Seconds since the last build, at most a tenth: a hitch does not throw the drift or the dawn ahead.</summary>
@@ -249,117 +282,36 @@ internal static unsafe class FogVolume
     internal static bool Horizon(out Vector3 lin)
     {
         lin = _s.LastAmbient;
-        return _gl.Built;
+        return _b.Built;
     }
 
     /// <summary>Push this frame's volume at one program (its <c>uVFog</c> and <c>uVFogVp</c>), or stand it down
     /// (<c>uVFog.x</c> 0) where none was built or <paramref name="capture"/> says the pass is another camera's.</summary>
     internal static void Upload(int vfog, int vfogVp, bool capture)
     {
-        bool on = _gl.Built && !capture;
-        Gl.Uniform4f(vfog, on ? 1f : 0f, _gl.D, Near, _gl.InvLog);
-        if (on) fixed (Matrix4x4* m = &_gl.Vp) Gl.UniformMatrix4fv(vfogVp, 1, 0, (float*)m);
+        bool on = _b.Built && !capture;
+        LooseBlock.Set(vfog, on ? 1f : 0f, _b.D, Near, _b.InvLog);
+        if (on) LooseBlock.Set(vfogVp, _b.Vp);
     }
 
-    /// <summary>Build both programs on the first frame that wants them, once; a failure is loud and latched, and the ramp
-    /// keeps drawing the fog. The shadow libraries' samplers take the units the frame binds the arrays on, and both
-    /// receivers are told each sample is a point in a volume, not a surface to lift off.</summary>
-    private static bool Ready()
+    private static GridLocs TakeGrid() => new()
     {
-        if (_gl.ProgLight != 0) return true;
-        if (_down.Failed) return false;
-        if (Gl.DispatchCompute == null || Gl.MemoryBarrier == null || Gl.BindImageTexture == null || Gl.TextureStorage3D == null
-            || Gl.BindTextureUnit == null)
-            return _down.Fail(_s.Log, "compute, image or 3D texture entry points are missing", "the fog stays the ramp for the session");
-        uint light = GlProgram.Compute(ShdLightCs, ShaderStages.Source(ShdLightCs), _s.Log, "FogVolume light");
-        uint sum = light == 0 ? 0 : GlProgram.Compute(ShdSumCs, ShaderStages.Source(ShdSumCs), _s.Log, "FogVolume integrate");
-        if (light == 0 || sum == 0)
-        {
-            _s.Log?.Always("FogVolume: a volumetric fog program did not build (the driver's own log is above) -- vfog.enabled "
-                         + "has no effect this session and the fog group's ramp draws the fog");
-            return _down.Fail(_s.Log, "a compute program did not link", "the fog stays the ramp for the session");
-        }
-        _gl.ProgLight = light; _gl.ProgSum = sum;
-        _gl.L.Grid = TakeGrid(light);
-        _gl.L.Height = GlProgram.Loc(light, "uVfHeight");
-        _gl.L.Noise = GlProgram.Loc(light, "uVfNoise");
-        _gl.L.Drift = GlProgram.Loc(light, "uVfDrift");
-        _gl.L.Ambient = GlProgram.Loc(light, "uVfAmbient");
-        _gl.L.Sun = GlProgram.Loc(light, "uVfSun");
-        _gl.L.Local = GlProgram.Loc(light, "uVfLocal");
-        _gl.L.Phase = GlProgram.Loc(light, "uVfPhase");
-        _gl.L.Jitter = GlProgram.Loc(light, "uVfJitter");
-        _gl.L.PrevVp = GlProgram.Loc(light, "uVfPrevVp");
-        _gl.L.PrevZ = GlProgram.Loc(light, "uVfPrevZ");
-        _gl.L.Cubes = GlProgram.Loc(light, "uLocalCubes");
-        _gl.S = TakeGrid(sum);
-        Gl.UseProgram(light);
-        Gl.Uniform1i(GlProgram.Loc(light, "uSunShadow"), (int)TextureSlots.SunShadow);
-        Gl.Uniform1i(GlProgram.Loc(light, "uSunDynShadow"), (int)TextureSlots.SunShadowDyn);
-        Gl.Uniform1i(GlProgram.Loc(light, "uLocalShadow"), (int)TextureSlots.LocalShadow);
-        Gl.Uniform1i(GlProgram.Loc(light, "uLocalDynShadow"), (int)TextureSlots.LocalShadowDyn);
-        Gl.Uniform1i(GlProgram.Loc(light, "uVfHist"), (int)TextureSlots.VFog);
-        Gl.Uniform1f(GlProgram.Loc(light, "uSunMedia"), 1f);
-        Gl.Uniform1f(GlProgram.Loc(light, "uLocalMedia"), 1f);
-        Gl.UseProgram(0);
-        _s.Log?.Info("FogVolume: ready -- two compute passes over the main view's froxel grid");
-        return true;
-    }
-
-    private static GridLocs TakeGrid(uint prog) => new()
-    {
-        Size = GlProgram.Loc(prog, "uVfGrid"), Z = GlProgram.Loc(prog, "uVfZ"), InvVp = GlProgram.Loc(prog, "uVfInvVp"),
-        Eye = GlProgram.Loc(prog, "uVfEye"), Fwd = GlProgram.Loc(prog, "uVfFwd"), Med = GlProgram.Loc(prog, "uVfMed"),
-        Origin = GlProgram.Loc(prog, "uVfOrigin"), Top = GlProgram.Loc(prog, "uVfTop"),
+        Size = LooseBlock.Loc("uVfGrid"), Z = LooseBlock.Loc("uVfZ"), InvVp = LooseBlock.Loc("uVfInvVp"),
+        Eye = LooseBlock.Loc("uVfEye"), Fwd = LooseBlock.Loc("uVfFwd"), Med = LooseBlock.Loc("uVfMed"),
+        Origin = LooseBlock.Loc("uVfOrigin"), Top = LooseBlock.Loc("uVfTop"),
     };
 
-    /// <summary>The three volumes at this grid; a new grid is new storage and starts without history.</summary>
-    private static void Ensure(int w, int h, int d)
-    {
-        if (_gl.Sum != 0 && _gl.W == w && _gl.H == h && _gl.D == d) return;
-        Release();
-        _gl.MedA = Volume(w, h, d); _gl.MedB = Volume(w, h, d); _gl.Sum = Volume(w, h, d);
-        _gl.W = w; _gl.H = h; _gl.D = d;
-        _s.Log?.Info($"FogVolume: {w}x{h}x{d} froxels ({3L * w * h * d * 8 >> 20} MiB)");
-    }
-
-    private static uint Volume(int w, int h, int d)
-    {
-        uint t;
-        Gl.CreateTextures(Gl.TEXTURE_3D, 1, &t);
-        Gl.TextureStorage3D(t, 1, Gl.RGBA16F, w, h, d);
-        RenderTarget.Clamp(t, Gl.LINEAR);
-        Gl.TextureParameteri(t, Gl.TEXTURE_WRAP_R, Gl.CLAMP_TO_EDGE);
-        return t;
-    }
-
-    /// <summary>Delete the volumes (the mode switched off, or a new grid); the programs stay.</summary>
-    private static void Release()
-    {
-        if (_gl.Sum == 0) return;
-        GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, _gl.MedA);
-        GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, _gl.MedB);
-        GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, _gl.Sum);
-        _gl.MedA = _gl.MedB = _gl.Sum = 0;
-        _gl.W = _gl.H = _gl.D = 0;
-        _gl.History = false;
-    }
-
     /// <summary>A new area: last frame's medium is another place's air.</summary>
-    internal static void Revoke() => _gl.History = false;
+    internal static void Revoke() => _b.History = false;
 
-    /// <summary>Context loss: every name went with it.</summary>
-    internal static void Forget()
-    {
-        _gl = new FogVolumeGlState();
-        _down.Forget();
-    }
+    /// <summary>A device edge: the history belongs to the volumes that went with it.</summary>
+    internal static void Forget() => _b = new FogVolumeBuildState();
 
     /// <summary>The period line's clause: nothing while the mode is off.</summary>
     internal static string Stats(int frames)
     {
-        string s = !VolumetricFog.Enabled.V ? "" : $"vfog {_gl.W}x{_gl.H}x{_gl.D} ({_s.Runs} builds in {frames} frames"
-                 + (_down.Reason.Length > 0 ? ", last refusal: " + _down.Reason : "") + ")";
+        (int gw, int gh, int gd) = VolumetricFog.Grid;
+        string s = !VolumetricFog.Enabled.V ? "" : $"vfog {gw}x{gh}x{gd} ({_s.Runs} builds in {frames} frames)";
         _s.Runs = 0;
         return s;
     }
@@ -460,10 +412,10 @@ internal static unsafe class FogVolume
     internal static string Describe()
     {
         if (!VolumetricFog.Enabled.V) return "OFF -- the fog group draws the fog";
-        if (_down.Failed) return "FAILED -- " + _down.Reason + "; the fog group draws the fog";
         Medium m = _s.Last;
         float opaque = OpaqueDistance(FrameInputs.FogOn, FrameInputs.FogStart, FrameInputs.FogEnd, VolumetricFog.Haze.V);
-        return $"{_gl.W}x{_gl.H}x{_gl.D}  haze {m.Haze:F4}/m  wall {m.Wall:F3}/m over {m.Start:F0}..{m.End:F0} m, bank top {VolumetricFog.Top.V:F0} m  "
+        (int gw, int gh, int gd) = VolumetricFog.Grid;
+        return $"{gw}x{gh}x{gd}  haze {m.Haze:F4}/m  wall {m.Wall:F3}/m over {m.Start:F0}..{m.End:F0} m, bank top {VolumetricFog.Top.V:F0} m  "
              + $"[opaque {(float.IsInfinity(opaque) ? "--" : opaque.ToString("F0"))} m]  "
              + $"ambient {_s.LastAmbient.X:F2},{_s.LastAmbient.Y:F2},{_s.LastAmbient.Z:F2}  "
              + $"sun share {_s.LastSun.W:F2} hue {_s.LastSun.X:F2},{_s.LastSun.Y:F2},{_s.LastSun.Z:F2} (day {_s.Day:F2})";
