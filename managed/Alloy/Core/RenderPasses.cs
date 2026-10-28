@@ -297,13 +297,6 @@ internal static class RenderPasses
             ContextLost = PairShadows.Forget,
             Stats = PairShadows.Stats,
         }, log);
-        r.Register(new PassLifecycle
-        {
-            Name = "pairdebt",
-            Attach = PairDebt.Attach,
-            ContextLost = PairDebt.Forget,
-            Stats = PairDebt.Stats,
-        }, log);
         r.Register(new PassLifecycle { Name = "a2c", Stats = CoverageLayer.Stats }, log);
         r.Register(new PassLifecycle { Name = "oit", Stats = OitPass.Stats }, log);
         // The sky-visibility map. Its depth view belongs to CasterPass (an ortho caster render); what is

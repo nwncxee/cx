@@ -39,8 +39,6 @@ internal static unsafe class PairShadows
 
     /// <summary>Pairs this frame's plan committed -- what the bake walks and what the GPU table holds.</summary>
     internal static int Count { get; private set; }
-    /// <summary>The depth atlas, 0 until the first claim allocated it. One 2D-array layer per pair.</summary>
-    internal static uint Tex { get; private set; }
     /// <summary>A tile's side in texels.</summary>
     internal static int TileSize => _tile;
 
@@ -49,12 +47,11 @@ internal static unsafe class PairShadows
     /// these tiles feed is taken there and nowhere else. One predicate, read by the planner and by the debt
     /// pass, so the bake and the receiver can never disagree about who owns a light's movers.</summary>
     internal static bool On => Lightmap.MoverLights.V > 0 && Lightmap.Movers.V && Lightmap.MoverTaps.V
-                               && !_atlasFailed && !PairDebt.StoodDown && DeferredLights.Active;
+                               && DeferredLights.Active;
 
     private static ExtenderLog? _log;
     private static int _tile = 128, _cap = 256;
-    private static bool _booted, _atlasFailed;
-    private static uint _buf;
+    private static bool _booted;
 
     /// <summary>The GPU table: <c>uPairN</c> plus three pad words, then <see cref="RecFloats"/> per pair.</summary>
     private const int HeaderFloats = 4;
@@ -101,7 +98,6 @@ internal static unsafe class PairShadows
     /// <summary>Movers a full light list turned away this frame (no shadow from that light), on the period line.</summary>
     private static int _planFull;
 
-    private static int _gen, _upGen = -1;
     private static long _pairs, _slots, _refused, _overflow, _frames, _moversRanked, _crowded;
     /// <summary>Tiles whose layer already held this exact pair's depth and so were not queued, and movers the
     /// ranking never ran because every candidate light's list was already full.</summary>
@@ -152,7 +148,7 @@ internal static unsafe class PairShadows
 
     internal static void Forget()
     {
-        Tex = 0; _buf = 0; _atlasFailed = false; _upGen = -1; Count = 0; _nLights = 0;
+        Count = 0; _nLights = 0;
         Array.Clear(_base);
         ForgetKeys();
     }
@@ -168,8 +164,7 @@ internal static unsafe class PairShadows
         _pairs = _slots = _refused = _overflow = _frames = _moversRanked = _crowded = _held = _late = 0;
         _view.Culled = 0;
         float n = MathF.Max(frames, 1);
-        return _atlasFailed ? "pair tiles STOOD DOWN (no atlas)"
-             : !On ? $"pair tiles off ({(Lightmap.MoverLights.V <= 0 ? "lightmap.moverlights 0" : "light.deferred off")})"
+        return !On ? $"pair tiles off ({(Lightmap.MoverLights.V <= 0 ? "lightmap.moverlights 0" : "light.deferred off")})"
              : f == 0 ? "pair tiles idle"
              : $"pair tiles {p / n:F1}/frame over {s / n:F1} lights at {_tile}px "
              + $"({p * 100f / MathF.Max(f, 1) / _cap:F0}% of {_cap}, {hl / n:F1} HELD (the layer already held "
@@ -185,9 +180,6 @@ internal static unsafe class PairShadows
     /// switch for every reader.</summary>
     internal static void Begin(int frameSeq)
     {
-        // a table that HELD pairs and now does not must still be re-uploaded: uPairN is the gate every
-        // reader takes, and a stale non-zero one would outlive the frame that earned it
-        if (Count > 0) _gen++;
         _seq = frameSeq;
         Count = 0; _nLights = 0; _planFull = 0; _nFullLights = 0; _view.Cull = false;
         Array.Clear(_base);
@@ -341,7 +333,6 @@ internal static unsafe class PairShadows
             int boxes = _lN[i];
             if (boxes <= 0) continue;
             if (Count + boxes > _cap) { _overflow++; continue; }
-            if (!EnsureAtlas()) return;
             int at = Count;
             Vector3 pos = new(_lPr[i].X, _lPr[i].Y, _lPr[i].Z);
             float far = _lFar[i];
@@ -374,9 +365,9 @@ internal static unsafe class PairShadows
             if (kept == 0) continue;
             Count = at + kept;
             _base[_lSlot[i]] = at + 1;
-            _gen++; _pairs += kept; _slots++;
+            _pairs += kept; _slots++;
         }
-        if (Count > 0) { _rec[0] = BitConverter.Int32BitsToSingle(Count); _gen++; }
+        if (Count > 0) _rec[0] = BitConverter.Int32BitsToSingle(Count);
         if (Dump.Next)
         {
             Dump.Next = false;
@@ -451,58 +442,6 @@ internal static unsafe class PairShadows
     {
         if (pi < 0 || pi >= Count) return;
         _kSeq[pi] = _seq; _held++;
-    }
-
-    private static bool EnsureAtlas()
-    {
-        if (Tex != 0) return true;
-        if (_atlasFailed) return false;
-        uint t; Gl.CreateTextures(Gl.TEXTURE_2D_ARRAY, 1, &t);
-        Gl.DrainErrors();   // an earlier pass's error must not be read as this allocation's
-        Gl.TextureStorage3D(t, 1, Gl.DEPTH_COMPONENT24, _tile, _tile, _cap);
-        if (Gl.GetError() != 0)
-        {
-            Gl.DeleteTextures(1, &t);
-            _atlasFailed = true;
-            _log?.Always($"PairShadows: a {_tile}x{_tile}x{_cap} depth array could not be allocated -- hot "
-                       + "static lights keep their dynamic cube pages and the deferred frame owes them nothing "
-                       + "(lightmap.paircount / lightmap.pairsize size it)");
-            return false;
-        }
-        // LINEAR + depth-compare IS the filter: one hardware 2x2 comparison per fetch, as the cubes take it
-        Gl.TextureParameteri(t, Gl.TEXTURE_MIN_FILTER, Gl.LINEAR);
-        Gl.TextureParameteri(t, Gl.TEXTURE_MAG_FILTER, Gl.LINEAR);
-        Gl.TextureParameteri(t, Gl.TEXTURE_WRAP_S, Gl.CLAMP_TO_EDGE);
-        Gl.TextureParameteri(t, Gl.TEXTURE_WRAP_T, Gl.CLAMP_TO_EDGE);
-        Gl.TextureParameteri(t, Gl.TEXTURE_COMPARE_MODE, (int)Gl.COMPARE_REF_TO_TEXTURE);
-        Gl.TextureParameteri(t, Gl.TEXTURE_COMPARE_FUNC, (int)Gl.LEQUAL);
-        Tex = t;
-        ForgetKeys();   // fresh storage holds no bake, whatever the keys say (#241's rule for the cubes)
-        _log?.Info($"PairShadows: pair atlas {_cap} x {_tile}x{_tile} depth "
-                 + $"({(long)_cap * _tile * _tile * 4 / (1024 * 1024)} MB; lightmap.paircount / lightmap.pairsize)");
-        return true;
-    }
-
-    /// <summary>From <see cref="AlloyLights.BindForDraw"/> -- every program that lights, plus the debt
-    /// dispatch: the pair table and the tile atlas. Bound whether or not anything is paired, because the
-    /// table's own <c>uPairN</c> is the gate <c>CxPairBase</c> reads and a stale binding would make it
-    /// garbage. Leaves unit 0 current.</summary>
-    internal static void BindAtlas()
-    {
-        Gl.EnsureStorage(ref _buf, (long)(HeaderFloats + MaxPairs * RecFloats) * sizeof(float), false);
-        if (_gen != _upGen)
-        {
-            _upGen = _gen;
-            // Count 0 still uploads the header: uPairN has to read zero on a frame that paired nothing.
-            if (Count <= 0) _rec[0] = BitConverter.Int32BitsToSingle(0);
-            fixed (float* r = _rec)
-                Gl.NamedBufferSubData(_buf, IntPtr.Zero,
-                                      (IntPtr)((long)(HeaderFloats + Math.Max(Count, 0) * RecFloats) * sizeof(float)), r);
-        }
-        Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, Binding, _buf);
-        Gl.ActiveTexture(Gl.TEXTURE0 + TextureSlots.PairMap);
-        Gl.BindTexture(Gl.TEXTURE_2D_ARRAY, Tex);
-        Gl.ActiveTexture(Gl.TEXTURE0);
     }
 
     /// <summary>Off-device: the pair frustum frames its mover and stops at the light's reach, the per-mover

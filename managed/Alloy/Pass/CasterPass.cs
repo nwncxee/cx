@@ -418,7 +418,7 @@ public sealed unsafe partial class CasterPass : IExtenderService
                    $"{_cubeDynSize}px = {_cubeDynPages * CubeFaces * (long)_cubeDynSize * _cubeDynSize * 4 / (1024 * 1024)} MB " +
                    $"beside the static array's {_cubeLights * CubeFaces * (long)_cubeSize * _cubeSize * 4 / (1024 * 1024)} MB) " +
                    // CX-188 step 4: the tiles that stood in for those pages; PairShadows.Stats says over how
-                   // many lights, and PairDebt.Stats what the screen-space debt then cost.
+                   // many lights.
                    (_pairBakedTiles > 0 ? $"({(float)_pairBakedTiles / _frames:F1} pair tiles BAKED/frame) " : "") +
                    $"(sun {(float)_sunBakedViews / _frames:F1} re-baked, " +
                    $"{(float)_sunSkippedViews / _frames:F1} skipped" +

@@ -126,3 +126,8 @@ alloy\.(backend|renderthread|rhiimmediate|gpumeter)\b	CX-313
 # The GL SSAO pass: its temporal accumulator reprojected through a velocity target the Vulkan estimate has
 # none of, so the knob that weighted the history and the accumulator's own stage went with it.
 \bao\.temporal\b|\bSsaoPass\.(Run|BindForDraw|TemporalWanted|DropHistory)\b|\bcx_ssaotemp_f\b	GL sweep 5
+# The GL deferred dispatches -- the light walk, the per-pixel shadow record, the hot-light debt -- and the GL
+# pair atlas they read. Vulkan dispatches the first two; the debt stage is declared and not yet dispatched.
+\bDeferredLights\.(Run|StatsBuf|BindStats)\b|\bDeferredShadows\.(Run|TexVis|TexKey|Res|Width|Height)\b	GL sweep 5
+\bPairDebt\.(Run|Active|StoodDown|Attach|Forget|Stats)\b|\bPairShadows\.(BindAtlas|Tex)\b	GL sweep 5
+\bGBuffer\.(BindForCompute|UnbindCompute)\b|\bAblation\.MaxRung\b	GL sweep 5

@@ -687,7 +687,6 @@ internal static unsafe class AlloyLights
             Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindCounts, 0);
             Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindIndices, 0);
             Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindMovers, 0);
-            PairShadows.BindAtlas();
             return;
         }
         Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindLights, _gl.BufLights);
@@ -697,7 +696,6 @@ internal static unsafe class AlloyLights
         // CX-188 step 4: the pair table and the tile atlas. Here rather than at one pass's bind, because
         // CxPairVis is reachable from every program that lights (cx_localshadow includes it) and the table's
         // own uPairN is the gate that keeps a frame with no pairs from reading either.
-        PairShadows.BindAtlas();
     }
 
     /// <summary>The mover spheres, once per rewrite, bound where both the cluster build and the lit stage read them.</summary>
