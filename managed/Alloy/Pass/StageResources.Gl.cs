@@ -6,68 +6,11 @@ using CX.Graphics;
 
 namespace CX.Alloy;
 
-/// <summary><b>The GL half of <see cref="StageResources"/>:</b> the declared images as real textures on units of their
-/// own, the declared passes as compute programs, a host's program resolved against its stages' images by name, and the
-/// frame's head -- remakes, history swaps, and every pass of the stages drawn -- before the first draw pass.</summary>
+/// <summary><b>The host-side half of <see cref="StageResources"/>:</b> a host's program resolved against its stages'
+/// declared images by name, the image units and frame uniforms that resolve puts on it, and the extent and budget
+/// arithmetic the backend sizes those images by.</summary>
 internal static unsafe partial class StageResources
 {
-    /// <summary>The entry points a native stage's images and passes need. Named one at a time, because "it fell
-    /// back" with no reason is the failure this project refuses.</summary>
-    private static bool EntryPoints(out string missing)
-    {
-        missing = Gl.CreateTextures == null ? "glCreateTextures"
-                : Gl.TextureStorage2D == null ? "glTextureStorage2D"
-                : Gl.TextureStorage3D == null ? "glTextureStorage3D"
-                : Gl.TextureParameteri == null ? "glTextureParameteri"
-                : Gl.GenerateTextureMipmap == null ? "glGenerateTextureMipmap"
-                : Gl.BindTextureUnit == null ? "glBindTextureUnit"
-                : Gl.BindImageTexture == null ? "glBindImageTexture"
-                : Gl.DispatchCompute == null ? "glDispatchCompute"
-                : Gl.MemoryBarrier == null ? "glMemoryBarrier"
-                : Gl.GetActiveUniform == null ? "glGetActiveUniform"
-                : Gl.GetUniformiv == null ? "glGetUniformiv"
-                : Gl.GetProgramiv == null ? "glGetProgramiv"
-                : Gl.GetIntegerv == null ? "glGetIntegerv"
-                : Gl.DeleteTextures == null ? "glDeleteTextures" : "";
-        return missing.Length == 0;
-    }
-
-    /// <summary>Compile every declared pass as a compute program, read its work-group size off the program, and
-    /// resolve its images. A pass that is not in the chain, will not build, or links from the wrapper's STUB refuses
-    /// the whole stage: a pass that writes nothing leaves an empty buffer in the picture, which is a silent fallback.</summary>
-    private static bool BuildPasses(int id, ExtenderLog? log)
-    {
-        if (At(id) is not { } s || s.Failed) return false;
-        string embedded = ShaderStages.Source(ShdPassCs);
-        string over = ShaderResource.Override(ShdPassCs, log) ?? embedded;
-        foreach (Pass p in s.Passes)
-        {
-            if (!VanillaShader.InChain(p.Ref))
-            { Fail(id, $"pass {p.Ref}.shd is not in the resource chain (or alloy.vanillabridge=0)", log); return false; }
-            string what = $"Alloy pass program ({s.Ref}: {p.Ref})";
-            uint prog = Compute(over, p.Ref, log, what);
-            if (prog == 0 && !ReferenceEquals(over, embedded))
-            {
-                log?.Info($"{what}: the {ShdPassCs} override did not build -- taking the embedded wrapper");
-                prog = Compute(embedded, p.Ref, log, what);
-            }
-            if (prog == 0)
-            { Fail(id, $"pass {p.Ref}.shd did not build as a compute program (see the compile log above)", log); return false; }
-            p.Prog = prog;
-            int* gs = stackalloc int[3] { 1, 1, 1 };
-            Gl.GetProgramiv(prog, Gl.COMPUTE_WORK_GROUP_SIZE, gs);
-            p.Gx = Math.Max(gs[0], 1); p.Gy = Math.Max(gs[1], 1); p.Gz = Math.Max(gs[2], 1);
-            p.Env = StageEnvLoc.Locate(prog);
-            p.Frame = FrameLoc.Locate(prog);
-            if (!Resolve(prog, id, -1, PassImgUnits, out p.Binds, out p.Samplers, out string why)
-                || !Point(prog, p.Samplers, p.Binds, out why))
-            { Fail(id, $"pass {p.Ref}: {why}", log); return false; }
-            log?.Info($"{what}: built, {p.Gx}x{p.Gy}x{p.Gz} work group, {p.Binds.Length} image unit(s), "
-                    + $"{p.Samplers.Length} sampler(s)");
-        }
-        if (!MarkSwaps(s, out string refused) || !OverlayWritten(s, out refused)) { Fail(id, refused, log); return false; }
-        return true;
-    }
 
     /// <summary>A <c>cx_overlay</c> image has to be one a FRAME pass writes as an image: the resolve adds it to every
     /// frame, and one nothing rewrites is the same picture whichever way the camera turns.</summary>
@@ -101,19 +44,6 @@ internal static unsafe partial class StageResources
                 return false;
             }
         return true;
-    }
-
-    /// <summary>One pass wrapper with the region's resref written in, built and refused if it fell back to the
-    /// wrapper's stub. The override lookup is the CALLER's (as in <see cref="SkyStage"/>): the resref has to
-    /// be in the text before the splice reads the marker.</summary>
-    private static uint Compute(string wrapper, string resref, ExtenderLog? log, string what)
-    {
-        GlProgram.LastStubbed = false;
-        uint prog = GlProgram.Compute(wrapper.Replace(CsToken, resref, StringComparison.Ordinal), log, what);
-        if (prog == 0 || !GlProgram.LastStubbed) return prog;
-        log?.Info($"{what}: the spliced pass fell back to the wrapper's stub, which dispatches nothing -- refused");
-        Gl.DeleteProgram(prog);
-        return 0;
     }
 
     /// <summary>A program a host built and is about to draw with, from native stages <paramref name="a"/> and
@@ -262,50 +192,6 @@ internal static unsafe partial class StageResources
         }
     }
 
-    /// <summary>The frame's head, main view only, before the first draw pass: every live stage's images made at the
-    /// sizes this view asks for (its <c>once</c> passes run over a remake), then -- for each stage a host drew last
-    /// frame or staged this one -- its history swapped and its frame passes run in declaration order, by <see cref="VkRun"/>.</summary>
-    internal static void RunFrame(int* viewport, ExtenderLog? log)
-    {
-        var g = _gl;
-        int f = AlloyRenderer.FrameSeq;
-        if (g.Count == 0 || g.HeadSeq == f) return;
-        g.HeadSeq = f;
-        // the frame's head is VkRun, recorded into the frame's own list
-    }
-
-    /// <summary>A stage's images, made at the sizes the declarations and the main view ask for, and its <c>once</c>
-    /// passes run over them. Idempotent: a frame that changes nothing costs the extent compare below.</summary>
-    private static bool Ensure(int id, Stage s, int* viewport, ExtenderLog? log)
-    {
-        var g = _gl;
-        int vw = g.HaveView ? g.ViewW : Math.Max(viewport[2], 1);
-        int vh = g.HaveView ? g.ViewH : Math.Max(viewport[3], 1);
-        if (s.Made && !Stale(s, vw, vh)) return true;
-        if (!Remake(s, vw, vh, out string why)) { Fail(id, why, log); return false; }
-        s.Made = true; s.MadeW = vw; s.MadeH = vh;
-        s.FreshFrame = AlloyRenderer.FrameSeq;
-        if (s.Images.Length > 0)
-            log?.Info($"StageResources: {s.Ref} made {s.Images.Length} image(s), {s.Bytes / (1024.0 * 1024.0):F1} MiB "
-                    + $"(main view {vw}x{vh})");
-        // The once passes read through the units, so the new textures go onto them first. Every once pass re-runs
-        // whenever ANY image was remade: sorting out which of them wrote a view-sized one has nothing to gain.
-        BindUnits(s);
-        RunPasses(id, s, viewport, once: true);
-        return true;
-    }
-
-    private static bool Stale(Stage s, int vw, int vh)
-    {
-        foreach (Img im in s.Images)
-        {
-            Extent(im, vw, vh, out int w, out int h, out int d);
-            if (im.Tex == 0 || im.MadeW != w || im.MadeH != h || im.MadeD != d) return true;
-            if (im.History && im.Prev == 0) return true;
-        }
-        return false;
-    }
-
     /// <summary>A declared image's extent in this view: its own for <c>2d</c>/<c>3d</c>, the main view's
     /// render size over the divisor (rounded up) for <c>view</c>.</summary>
     private static void Extent(Img im, int vw, int vh, out int w, out int h, out int d)
@@ -348,28 +234,8 @@ internal static unsafe partial class StageResources
         return false;
     }
 
-    private static bool Remake(Stage s, int vw, int vh, out string why)
-    {
-        if (!Budget(s, vw, vh, out long bytes, out why)) return false;
-        s.Bytes = bytes;
-        foreach (Img im in s.Images)
-        {
-            Extent(im, vw, vh, out int w, out int h, out int d);
-            if (im.Tex != 0 && im.MadeW == w && im.MadeH == h && im.MadeD == d
-                && (!im.History || im.Prev != 0)) continue;
-            GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, im.Tex);
-            GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, im.Prev);
-            im.Tex = Texture(im, w, h, d);
-            im.Prev = im.History ? Texture(im, w, h, d) : 0u;
-            if (im.Tex == 0 || (im.History && im.Prev == 0))
-            { im.MadeW = im.MadeH = im.MadeD = 0; why = $"image `{im.Name}` ({w}x{h}x{d}) could not be made"; return false; }
-            im.MadeW = w; im.MadeH = h; im.MadeD = d;
-        }
-        return true;
-    }
-
-    /// <summary>Levels and bytes of one image at an extent -- the mip chain summed rather than approximated,
-    /// since it is what the budget is taken against.</summary>
+    /// <summary>Levels of one image at an extent -- the mip chain counted rather than approximated, since the
+    /// budget is taken against it.</summary>
     private static int Levels(Img im, int w, int h, int d)
     {
         if (!im.Mips) return 1;
@@ -390,104 +256,7 @@ internal static unsafe partial class StageResources
         return total;
     }
 
-    private static uint Texture(Img im, int w, int h, int d)
-    {
-        bool vol = im.Shape == Shape.Tex3d;
-        uint tex;
-        Gl.CreateTextures(vol ? Gl.TEXTURE_3D : Gl.TEXTURE_2D, 1, &tex);
-        if (tex == 0) return 0;
-        int levels = Levels(im, w, h, d);
-        if (vol) Gl.TextureStorage3D(tex, levels, im.Format, w, h, d);
-        else Gl.TextureStorage2D(tex, levels, im.Format, w, h);
-        Gl.TextureParameteri(tex, Gl.TEXTURE_MAG_FILTER, Gl.LINEAR);
-        Gl.TextureParameteri(tex, Gl.TEXTURE_MIN_FILTER, im.Mips ? Gl.LINEAR_MIPMAP_LINEAR : Gl.LINEAR);
-        int wrap = im.Clamp || im.Shape == Shape.View ? Gl.CLAMP_TO_EDGE : Gl.REPEAT;
-        Gl.TextureParameteri(tex, Gl.TEXTURE_WRAP_S, wrap);
-        Gl.TextureParameteri(tex, Gl.TEXTURE_WRAP_T, wrap);
-        if (vol) Gl.TextureParameteri(tex, Gl.TEXTURE_WRAP_R, wrap);
-        // Zeroed, so a frame between the make and the first pass that writes it reads a known value rather
-        // than whatever the allocation held; cxFresh is how a stage is told its history is that zero.
-        if (Gl.ClearTexImage != null)
-            for (int l = 0; l < levels; l++) Gl.ClearTexImage(tex, l, Gl.RGBA_, Gl.FLOAT, null);
-        return tex;
-    }
-
-    /// <summary>A stage's images onto their own units, current half and last frame's.</summary>
-    private static void BindUnits(Stage s)
-    {
-        foreach (Img im in s.Images)
-        {
-            Gl.BindTextureUnit(im.Unit, im.Tex);
-            if (im.History) Gl.BindTextureUnit(im.UnitPrev, im.Prev);
-        }
-    }
-
-    /// <summary>One RGBA float texel: what a <c>cx_fog</c> readback copies per frame.</summary>
-    private const int FogBytes = 16;
-
-    /// <summary>Read the <c>cx_fog</c> texel back without a stall: this frame's copy goes into one slot, and the slot
-    /// written two frames ago -- its fence long passed -- becomes the fog's colour. A colour meant for the fog changes
-    /// over minutes, so two frames late is the colour. Hot: no allocation, no wait.</summary>
-    private static void ReadFog(Stage s, ExtenderLog? log)
-    {
-        var g = _gl;
-        if (s.FogImage < 0 || g.FogMiss.Length > 0) return;
-        Img im = s.Images[s.FogImage];
-        if (im.Tex == 0) return;
-        if (!GpuReadback.EntryPoints || Gl.GetTextureSubImage == null || !g.FogRead.Ensure(FogBytes))
-        {
-            g.FogMiss = "the driver gave no mapped readback buffer";
-            log?.Always($"StageResources: {s.Ref}'s fog colour cannot be read back ({g.FogMiss}) -- the fog keeps the "
-                      + "area's own colour");
-            return;
-        }
-        int w = g.FogSeq % GpuReadback.Slots, r = (g.FogSeq + 1) % GpuReadback.Slots;
-        float* got = (float*)g.FogRead.Ready(r);
-        if (got != null && float.IsFinite(got[0]) && float.IsFinite(got[1]) && float.IsFinite(got[2]))
-        {
-            g.Fog = new Vector3(MathF.Max(got[0], 0f), MathF.Max(got[1], 0f), MathF.Max(got[2], 0f));
-            g.HaveFog = true;
-        }
-        Gl.MemoryBarrier(Gl.TEXTURE_UPDATE_BARRIER_BIT | Gl.PIXEL_BUFFER_BARRIER_BIT);
-        g.FogRead.ReadTexture(im.Tex, s.FogX, s.FogY, 1, 1, Gl.RGBA, Gl.FLOAT, w, FogBytes);
-        g.FogRead.Fence(w);
-        g.FogSeq++;
-    }
-
-    /// <summary>Dispatch every pass of one kind, then hand back the image units and the program that was current.
-    /// Symmetric on its own, so the frame's draw passes find nothing of ours bound. Hot: no allocation.</summary>
-    private static void RunPasses(int id, Stage s, int* viewport, bool once)
-    {
-        bool any = false;
-        foreach (Pass p in s.Passes) if (p.Once == once && p.Prog != 0) { any = true; break; }
-        if (!any) return;
-        int prev = 0;
-        Gl.GetIntegerv(Gl.CURRENT_PROGRAM, &prev);
-        foreach (Pass p in s.Passes) if (p.Once == once && p.Prog != 0) Dispatch(id, s, p, viewport);
-        for (uint u = 0; u < PassImgUnits; u++) Gl.BindImageTexture(u, 0, 0, 0, 0, Gl.READ_WRITE, Gl.RGBA8);
-        Gl.UseProgram((uint)prev);
-    }
-
     /// <summary>Work groups over one extent: the division rounded UP, so the texels of a last partial group
     /// still get an invocation (and the stage's own bounds test is what keeps it inside the image).</summary>
     private static uint Groups(int extent, int group) => (uint)((extent + group - 1) / Math.Max(group, 1));
-
-    private static void Dispatch(int id, Stage s, Pass p, int* viewport)
-    {
-        Img over = s.Images[p.Image];
-        Gl.UseProgram(p.Prog);
-        p.Env.Upload(viewport);
-        if (p.Frame.Any) p.Frame.Upload(FrameFor(id, -1), main: true, OverlayTex() != 0);
-        BindImages(p.Binds);
-        Gl.DispatchCompute(Groups(over.MadeW, p.Gx), Groups(over.MadeH, p.Gy), Groups(over.MadeD, p.Gz));
-        Gl.MemoryBarrier(Gl.SHADER_IMAGE_ACCESS_BARRIER_BIT | Gl.TEXTURE_FETCH_BARRIER_BIT);
-        foreach (ImageBind b in p.Binds)
-        {
-            // The CURRENT half only: a `_prev` bound as an image is last frame's picture, and regenerating
-            // its chain would filter a texture this pass did not write.
-            Img im = s.Images[b.Image];
-            if (!b.Prev && im.Mips && im.Tex != 0) Gl.GenerateTextureMipmap(im.Tex);
-        }
-        s.Runs++;
-    }
 }

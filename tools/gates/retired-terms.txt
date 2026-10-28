@@ -143,3 +143,7 @@ alloy\.(backend|renderthread|rhiimmediate|gpumeter)\b	CX-313
 \bpost\.motion\b|\bPostChain\.(Bloom|Composite|Fbo|HdrTex|DepthTex|FullscreenVao|MotionWanted)\b	GL sweep 5
 \bPostStack\.(Begin|Run|Width|Height|Upsampling)\b|\bTaaStage\.(Ready|Prepare|Failed|Forget)\b	GL sweep 5
 \bMotionVectors\.(Tex|Painted|Failed|Forget)\b|\bSmaaStage\.(Ready|Prepare|Forget)\b	GL sweep 5
+# The GL half of the content stages' resources -- the declared images as textures, the declared passes as
+# compute programs and the frame's head that ran them -- and the GL sky dome's per-pass and per-draw uploads.
+# Vulkan makes those images and records those passes and draws.
+\bStageResources\.RunFrame\b|\bSkyStage\.(BeginPass|Prepare|Draw)\b	GL sweep 5

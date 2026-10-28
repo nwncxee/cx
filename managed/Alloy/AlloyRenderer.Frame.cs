@@ -285,13 +285,6 @@ public sealed unsafe partial class AlloyRenderer
         FrameZones.Add(FrameZones.Zone.Upload, tUp);
         // The frame's head for native stages: every stage a host staged above or drew last frame gets its images
         // (re)made and its passes run here, before the first draw pass and outside every other GPU term.
-        if (!_capturing)
-        {
-            Step("the native stages' passes");
-            GpuBegin(GpuTerm.Passes);
-            StageResources.RunFrame(viewport, _log);
-            GpuEnd(GpuTerm.Passes);
-        }
         // #243: Alloy's own visibility, dispatched twice -- frustum-only for the depth prepass, then
         // frustum + hi-Z for the colour pass once the prepass has filled the depth the pyramid is
         // built from.
