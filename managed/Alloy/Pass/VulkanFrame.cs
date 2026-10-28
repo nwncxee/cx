@@ -69,9 +69,12 @@ internal static class VulkanFrame
         if (_s.Frames % GpuPeriod == 0 && vk.TakeGpuMs(out int n) is var ms && n > 0)
         {
             vk.TakeWaitMs(out double fence, out double acquire);
+            double translate = vk.TakeTranslateMs(out int sets, out int draws, out int lists);
             log.Always($"VulkanFrame: [vkgpu] {ms:F2} ms GPU per frame over {n} frames (bake, cull, prepass, hi-Z, AO, "
                      + $"decals, G-buffer, opaque, cutout, sky, the deferred dispatches, blended); the CPU waited "
-                     + $"{fence / GpuPeriod:F2} ms/frame on submit fences and {acquire / GpuPeriod:F2} ms/frame on the swapchain acquire");
+                     + $"{fence / GpuPeriod:F2} ms/frame on submit fences and {acquire / GpuPeriod:F2} ms/frame on the swapchain acquire, "
+                     + $"and spent {translate / GpuPeriod:F2} ms/frame translating {(float)draws / GpuPeriod:F0} draws and "
+                     + $"{(float)sets / GpuPeriod:F0} bind sets over {(float)lists / GpuPeriod:F1} lists into vkCmd calls");
         }
         PostChain.Painted();
         if (!_s.Live)
