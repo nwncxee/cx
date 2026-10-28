@@ -4,7 +4,6 @@ using System.Runtime.InteropServices;
 using CX.Alloy.Db;
 using CX.Engine;
 using CX.Framework;
-using CX.Graphics;
 using CX.Graphics.Rhi;
 
 namespace CX.Alloy;
@@ -57,9 +56,6 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>ATI_meminfo (Mesa) answers FREE, never total; at probe time that is most of the card.</summary>
     internal static long VramFreeMib => _vram.FreeKib / 1024;
     internal static bool VramProbed => _vramProbed;
-
-    /// <summary>One <c>glGetIntegerv</c>, for a query that answers a single value.</summary>
-    private static int GetInt(uint pname) { int v = 0; Gl.GetIntegerv(pname, &v); return v; }
 
     /// <summary>The <c>/knobs</c> residency line: what Alloy is holding, and what the device will say about
     /// the pool it is holding it in. Null until the bracket has probed, which is the honest answer before a

@@ -5,12 +5,14 @@ using CX.Framework;
 namespace CX.Alloy;
 
 /// <summary>The shader-storage binding contract, written down once, like <see cref="TextureSlots"/>. A point past
-/// the driver's <c>MAX_SHADER_STORAGE_BUFFER_BINDINGS</c> is a compile error that costs the whole program; two
-/// buffers on one point are no error at all -- the reader gets the other buffer.</summary>
+/// the budget is a descriptor the device's set has no slot for, so the bind is refused and the pass draws nothing;
+/// two buffers on one point are no error at all -- the reader gets the other buffer.</summary>
 internal static class SsboSlots
 {
-    /// <summary>The whole budget: Intel's Windows GL reports 16 binding points, the smallest a supported driver
-    /// reports (the GL 4.6 floor is 8).</summary>
+    /// <summary>The whole budget: the storage-buffer descriptors <c>VkBackend</c> allocates per set, which is
+    /// what a bind past this point has nowhere to go in. Every supported device reports far more than 16 for
+    /// <c>maxPerStageDescriptorStorageBuffers</c> (its guaranteed minimum is 4, and <c>DeviceCaps</c> carries
+    /// the figure a device actually reported); the set's shape is the binding ceiling, not the device's.</summary>
     internal const uint Budget = 16;
 
     /// <summary>Persistent: bound once (at upload, or at the bracket's start) and read by later passes without a

@@ -261,8 +261,6 @@ internal static class RenderPasses
         r.Register(new PassLifecycle
         {
             Name = "defshadow",
-            Attach = DeferredShadows.Attach,
-            ContextLost = DeferredShadows.Forget,
             Stats = DeferredShadows.Stats,
         }, log);
         r.Register(new PassLifecycle

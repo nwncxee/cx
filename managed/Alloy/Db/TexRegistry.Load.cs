@@ -748,41 +748,6 @@ internal static unsafe partial class TexRegistry
                 + "For the rest of the session a diffuse slot naming it draws the WHITE STAND-IN, a map slot draws unbound (stock)");
     }
 
-    /// <summary>A new immutable texture holding every level of <paramref name="src"/>, its swizzle and MAX_LEVEL
-    /// carried, sampler state not: a texture a bindless handle was minted for refuses every later TexParameter,
-    /// so a sampler change is a fresh name. 0 when the driver refused the copy (the error is drained).</summary>
-    private static uint CloneLevels(uint src)
-    {
-        const int MaxLevels = 16;
-        if (Gl.CopyImageSubData == null || Gl.GetTextureLevelParameteriv == null) return 0;
-        int* lw = stackalloc int[MaxLevels], lh = stackalloc int[MaxLevels];
-        int levels = 0, fmt = 0;
-        for (; levels < MaxLevels; levels++)
-        {
-            int w = 0, h = 0;
-            Gl.GetTextureLevelParameteriv(src, levels, Gl.TEXTURE_WIDTH, &w);
-            Gl.GetTextureLevelParameteriv(src, levels, Gl.TEXTURE_HEIGHT, &h);
-            if (w <= 0 || h <= 0) break;
-            lw[levels] = w; lh[levels] = h;
-        }
-        Gl.GetTextureLevelParameteriv(src, 0, Gl.TEXTURE_INTERNAL_FORMAT, &fmt);
-        if (levels == 0 || fmt == 0) return 0;
-        Gl.DrainErrors(8);
-        uint dst; Gl.CreateTextures(Gl.TEXTURE_2D, 1, &dst);
-        if (dst == 0) return 0;
-        Gl.TextureStorage2D(dst, levels, (uint)fmt, lw[0], lh[0]);
-        foreach (uint p in (ReadOnlySpan<uint>)[Gl.TEXTURE_SWIZZLE_R, Gl.TEXTURE_SWIZZLE_G, Gl.TEXTURE_SWIZZLE_B, Gl.TEXTURE_SWIZZLE_A, Gl.TEXTURE_MAX_LEVEL])
-        {
-            int v; Gl.GetTextureParameteriv(src, p, &v);
-            Gl.TextureParameteri(dst, p, v);
-        }
-        for (int l = 0; l < levels; l++)
-            Gl.CopyImageSubData(src, Gl.TEXTURE_2D, l, 0, 0, 0, dst, Gl.TEXTURE_2D, l, 0, 0, 0, lw[l], lh[l], 1);
-        if (Gl.GetError() == 0) return dst;
-        Gl.DeleteTextures(1, &dst);
-        return 0;
-    }
-
     // ---- handles ----
 
     /// <summary>A resident bindless handle for a freshly uploaded name. Minted in the BRACKET and nowhere

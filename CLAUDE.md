@@ -179,9 +179,12 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
 - `statics.sh`: a file under `managed/Alloy` or `managed/Services` with more non-readonly `static` fields
   than `statics.baseline` allows fails. Free: `static readonly`, `const`, static methods/properties, and a
   lifetime owner -- a plain field whose type is a `...State` class declared under `managed/`.
-- `rhi-seam.sh`: a file under `managed/Alloy` with more direct `Gl.*` call sites than `rhi-seam.baseline` allows
-  fails. A pass migrated onto the seam (`managed/Rhi/`, `CX.Rhi`; the GL backend in `managed/Graphics/Rhi/`) records
-  into a `CommandList` and drops out of the baseline, so GL cannot grow back into it.
+- `gl-confined.sh`: outside the files listed in the gate, a `Gl.` member that is not a SCREAMING_CASE token
+  fails -- the tokens are the enum values the engine's own draw, blend, sampler and texture-format data is
+  expressed in, and every entry point in `managed/Graphics/Gl.cs` is PascalCase. The list is CX's UI windows on
+  the vanilla renderer, the engine's own model views, the engine texture path's stood-down arm, and the uniform
+  shim with its callers. No baseline: Alloy renders on Vulkan, so new work records on the seam (`managed/Rhi/`,
+  `CX.Rhi`) and a new GL call site is refused rather than counted.
 - `selfcheck.sh`: inside a `*SelfCheck*` file or a `SelfCheck` method, an `Expect` that cannot fail fails --
   a compile-time-constant condition, a `const` compared to its own kind of literal (over `==` `!=` `<` `>`
   `<=` `>=`, the const named bare or as `Type.CONST` from any file), or the same text on both sides of a
@@ -201,24 +204,21 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
 - `workflows.sh`: a workflow under `.github/workflows/` that actionlint or zizmor (offline) refuses fails --
   bad YAML or expressions, an unknown runner label, a shellcheck warning in a `run:`, a cache that feeds a
   release, a checkout that keeps its token.
-- `ssbo-bindings.sh`: an `std430` binding, a `SsboSlots` constant at or past `SsboSlots.Budget` (16, Intel's Windows
-  GL), or a numeric SSBO index passed straight to `BindBufferBase`/`BindBufferRange` under `managed/` fails.
+- `ssbo-bindings.sh`: an `std430` binding, a `SsboSlots` constant at or past `SsboSlots.Budget` (16, the
+  storage-buffer descriptors `VkBackend` allocates per set -- it reads the budget, so the two are one number),
+  or a numeric SSBO index passed straight to `BindBufferBase`/`BindBufferRange` under `managed/` fails.
   Every point lives in `Alloy/Core/SsboSlots.cs`: 0..7 persistent and exclusive, 8..15 shared by readers that
   bind before they draw; `SsboSlots.Check` and `check-shaders.py` pin the GLSL to it.
 - `ubo-bindings.sh`: a `std140` binding, or a `UboSlots` constant, at or past `UboSlots.Budget` (12, Vulkan's
-  per-stage floor), or a numeric uniform-block index passed straight to `BindBufferBase`/`BindBufferRange` under
+  guaranteed `maxPerStageDescriptorUniformBuffers`, which `VkBackend` allocates per set), or a numeric uniform-block index passed straight to `BindBufferBase`/`BindBufferRange` under
   `managed/` fails. Every point lives in `Alloy/Core/UboSlots.cs`: 0..2 persistent and exclusive, 3..11 shared by
   passes that bind before they draw; `UboSlots.Check` pins the GLSL to it and `Std140.Pin` pins each block's
   members to the struct that stages them.
 - `uniform-blocks.sh`: a loose `Gl.Uniform*` call site under `managed/` counts against
   `uniform-blocks.baseline`, which may only shrink -- a non-opaque uniform belongs in a std140 block on a
-  `UboSlots` point, filled through `UniformBlock<T>`. Sampler units are opaque and count too, so a file need
-  not reach zero; `python3 tools/gates/uniform-blocks.py -v` lists each site.
-- `gpu-frees.sh`: an immediate `Gl.Delete{Textures,Buffers,Framebuffers,VertexArrays,Renderbuffers,Samplers}` call site
-  under `managed/` counts against `gpu-frees.baseline`, which may only shrink -- a GPU object freed on a
-  lifetime edge goes to `GpuGraveyard.Retire`, whose drain deletes it once the frames in flight are done with
-  it. A creation failure and a scratch object inside one bracket are legitimate, so a file need not reach
-  zero; `python3 tools/gates/gpu-frees.py -v` lists each site.
+  `UboSlots` point. A call that survives lands in the Vulkan block through `VkUniformShim`, and sampler units
+  are opaque and count too, so a file need not reach zero; `python3 tools/gates/uniform-blocks.py -v` lists each
+  site.
 - `compiler-rules.sh`: a `#pragma warning disable` or `SuppressMessage` of a `CX` rule, an RS0030 pragma outside
   `managed/Framework/` or with no `// <reason>` on its line, or a `NoWarn`/severity override lowering either in build config, fails.
 - `local-paths.sh`: a home directory, mount point or personal checkout path in a tracked file fails

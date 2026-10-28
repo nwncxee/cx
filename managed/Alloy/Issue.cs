@@ -33,21 +33,6 @@ internal static unsafe class Issue
         Array.Clear(_hTid, 0, _hTid.Length);
     }
 
-    /// <summary>The sorted dirty list as runs of consecutive slots, one <c>BufferSubData</c> per run. Per
-    /// slot was one call each, and radeonsi stages, copies and barriers EVERY call into a buffer the GPU is
-    /// still reading (<c>si_buffer_subdata</c> forces DISCARD_RANGE), so the call count is the cost there.
-    /// Duplicates collapse. Caller sorts once; both record buffers walk the same list.</summary>
-    private static void UploadRuns<T>(uint buf, T[] data, int recBytes) where T : unmanaged
-    {
-        for (int d = 0; d < _recDirtyN;)
-        {
-            d = NextRun(_recDirty, _recDirtyN, d, out int first, out int last);
-            int off = first * recBytes, len = (last - first + 1) * recBytes;
-            fixed (byte* p = MemoryMarshal.AsBytes(data.AsSpan()).Slice(off, len))
-                Gl.NamedBufferSubData(buf, (IntPtr)off, (IntPtr)len, p);
-        }
-    }
-
     /// <summary>The run of consecutive (or repeated) slots starting at sorted <c>_recDirty[d]</c>; returns
     /// the index past it.</summary>
     private static int NextRun(int[] dirty, int n, int d, out int first, out int last)
@@ -66,10 +51,9 @@ internal static unsafe class Issue
         return runs;
     }
 
-    /// <summary>The most runs one delta upload sends; past it the whole table goes up in one call. A delta costs
-    /// its call count (<see cref="UploadRuns"/>), so the budget is in runs, not in a share of the view's draws.</summary>
-    // ponytail: a guessed break-even; tune it from the period line's runs, or scatter the deltas from the
-    // stream ring on the GPU, which makes every delta one call and leaves only growth whole.
+    /// <summary>The most runs one delta upload sends; past it the whole table goes up in one copy. A delta
+    /// costs its copy count, so the budget is in runs, not in a share of the view's draws.</summary>
+    // ponytail: a guessed break-even; tune it from the period line's runs.
     internal const int RunBudget = 512;
 
     /// <summary>A wrong run uploads a stale record over a live slot, silently, so this joins the disarm

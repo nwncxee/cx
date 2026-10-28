@@ -68,7 +68,6 @@ internal static unsafe class ContentTable
         public readonly uint[] Obj = new uint[MaxRows];
         /// <summary>The content layout generation a row's lanes were filled against, -1 = fill it.</summary>
         public readonly int[] Filled = new int[MaxRows];
-        public uint Ssbo;
         public int Used, Sized, DirtyLo = int.MaxValue, DirtyHi = -1;
         public long Uploads, HandleWrites, Spilled, ContentFills;
         /// <summary>Bumped by every row edit, so a copy of the rows knows when it is stale without comparing them.</summary>
@@ -258,19 +257,11 @@ internal static unsafe class ContentTable
         }
     }
 
-    /// <summary>Bind the block on <see cref="Binding"/>. Called at every content program bind: the point is a shared one,
-    /// and a reader that trusted an earlier bind would read the particle index block.</summary>
-    internal static void Bind()
-    {
-        if (_st.Ssbo != 0 && Gl.BindBufferBase != null)
-            Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, Binding, _st.Ssbo);
-    }
-
-    /// <summary>Terminal per session: the buffer belonged to the lost context. The rows themselves are CPU
+    /// <summary>Terminal per session: the buffer belonged to the lost device. The rows themselves are CPU
     /// state, and go up whole on the next <see cref="Upload"/>.</summary>
     internal static void ContextLost()
     {
-        _st.Ssbo = 0; _st.Sized = 0;
+        _st.Sized = 0;
         _st.DirtyLo = 0; _st.DirtyHi = MaxRows - 1;
     }
 

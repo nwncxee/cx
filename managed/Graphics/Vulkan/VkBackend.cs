@@ -84,8 +84,11 @@ internal sealed unsafe partial class VkBackend : IDevice
     private const int DeadAfter = Slots + 2;
     /// <summary>Descriptor sets one submit may bind; a full pool refuses the bind, logged.</summary>
     private const uint SetsPerSubmit = 4096;
-    /// <summary>The one set's shape: each kind of binding, its count, at its <see cref="VulkanToolchain"/> base.</summary>
-    private const uint SampledSlots = 48, UniformSlots = 12, StorageSlots = 16, ImageSlots = 8;
+    /// <summary>The one set's shape: each kind of binding, its count, at its <see cref="VulkanToolchain"/> base.
+    /// The buffer counts ARE the slot tables' budgets rather than a second opinion on them, so a point the GLSL
+    /// may declare always has a descriptor to land in.</summary>
+    private const uint SampledSlots = 48, ImageSlots = 8;
+    private const uint UniformSlots = CX.Alloy.UboSlots.Budget, StorageSlots = CX.Alloy.SsboSlots.Budget;
     private const ulong FenceTimeoutNs = 2_000_000_000;
 
     private readonly ExtenderLog _log;

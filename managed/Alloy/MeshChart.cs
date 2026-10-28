@@ -444,7 +444,7 @@ internal static unsafe partial class MeshChart
     /// frame, before <c>BuildBatches</c>: the only place a GL name is touched.</summary>
     internal static void Pump()
     {
-        if (!_jobs.Running || (!Renderer.OnVulkan && Gl.CreateBuffers == null)) return;
+        if (!_jobs.Running) return;
         while (_jobs.TryTake(out Job j))
         {
             var e = new Entry { Done = true, Refused = j.Refused, Content = j.Content, Bmin = j.Bmin, Bmax = j.Bmax, Sig = j.Sig, Range = -1 };
