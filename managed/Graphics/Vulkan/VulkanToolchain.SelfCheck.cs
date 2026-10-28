@@ -116,9 +116,7 @@ public static unsafe partial class VulkanToolchain
     /// those results skip rather than fail, so a headless runner and a stale driver both stay green.</summary>
     private static void CheckInstance(Checker check, ExtenderLog log)
     {
-        VkResult init;
-        try { init = vkInitialize(); }
-        catch (DllNotFoundException) { check.Skip("this machine has no Vulkan loader"); return; }
+        VkResult init = InitLoader();
         if (init != VkResult.Success)
         {
             check.Skip($"the Vulkan loader would not initialize ({init})");

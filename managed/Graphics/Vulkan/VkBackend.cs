@@ -146,10 +146,7 @@ internal sealed unsafe partial class VkBackend : IDevice
             if (!VulkanToolchain.Load(leaf)) return "the staged shaderc or VMA library did not load from the install folder";
         if (!_probe.LoaderUp)
         {
-            VkResult init;
-            try { init = vkInitialize(); }
-            catch (DllNotFoundException) { return "this machine has no Vulkan loader"; }
-            if (init != VkResult.Success) return "the Vulkan loader would not initialize";
+            if (VulkanToolchain.InitLoader() != VkResult.Success) return "the Vulkan loader would not initialize";
             _probe.LoaderUp = true;
         }
         if (vkEnumerateInstanceVersion() < ApiFloor) return "the Vulkan loader is older than 1.3";
