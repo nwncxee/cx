@@ -21,19 +21,16 @@ internal static unsafe class Issue
         InvalidateRecords();   // #242: the persistent records hold the handles this forgets
         Array.Clear(_hTid, 0, _hTid.Length);
         Array.Clear(_hVal, 0, _hVal.Length);
-        Array.Clear(_hRes, 0, _hRes.Length);
     }
 
     /// <summary>Forget the cached handles at an enrollment. Only meaningful while the cache holds ENGINE names,
     /// which get recycled behind us; with <c>ownedtex</c> armed the names are Alloy's own and are invalidated
-    /// precisely by <c>OwnedTextures.Drain</c> -&gt; <see cref="DropHandle"/>, so a wipe here would only make
-    /// the next mint re-resident an already-resident handle (GL_INVALID_OPERATION).</summary>
+    /// precisely by <c>OwnedTextures.Drain</c> -&gt; <see cref="DropHandle"/>.</summary>
     internal static void WipeHandles()
     {
         if (OwnedTextures.Armed) return;
         InvalidateRecords();   // #242: same reason as ForgetHandles -- a record outlives the wipe otherwise
         Array.Clear(_hTid, 0, _hTid.Length);
-        Array.Clear(_hRes, 0, _hRes.Length);
     }
 
     /// <summary>The sorted dirty list as runs of consecutive slots, one <c>BufferSubData</c> per run. Per
@@ -121,20 +118,6 @@ internal static unsafe class Issue
 
     /// <summary>Start a period's tallies, keeping the record epoch the last upload sent.</summary>
     internal static void ResetPeriod() => Uploads = new() { EpochSent = Uploads.EpochSent };
-
-    /// <summary>The staged draw-to-slot array's ring slice, for <see cref="BindStagedSlots"/>.</summary>
-    internal static StreamRing.Range _slotRange;
-
-    /// <summary>Context loss: forget the ring slice and the handle table's capacity, both of which describe
-    /// buffers that died with it, so the next upload sizes the new buffer before writing into it.</summary>
-    internal static void ContextLost() => _slotRange = default;
-
-    /// <summary>The handle table alone. Its capacity is tracked apart from the draw records' so the bake can
-    /// bring it up to date on a frame the colour bracket has not reached (or refused).</summary>
-    /// <summary>Put the CPU-staged per-draw index array back on <see cref="BindDrawIdx"/>. The cull binds its
-    /// own compacted one for the passes it drives; every other pass reads the staged order.</summary>
-    internal static bool BindStagedSlots() => StreamRing.Rebind(StreamRing.Site.DrawSlots, BindDrawIdx, in _slotRange);
-
 
     /// <summary>Did a batch write the depth <see cref="SsaoPass"/> read, and if not, WHICH of the prepass's
     /// exclusions caught it? A batch the prepass skipped must not consume the visibility buffer at all. The

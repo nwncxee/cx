@@ -5,7 +5,6 @@ using CX.Engine;
 using CX.Framework;
 using CX.Graphics;
 using static CX.Alloy.PartTable;
-using static CX.Alloy.TexProbe;
 namespace CX.Alloy;
 
 /// <summary>The material rules the frame still asks, and their constants: which draw buckets and late keywords a

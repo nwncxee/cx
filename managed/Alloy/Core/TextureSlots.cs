@@ -13,10 +13,6 @@ internal static class TextureSlots
     /// <summary>Unit 0, the material diffuse -- and the unit every pass leaves current, because the colour
     /// loop rebinds diffuse textures there thousands of times a frame.</summary>
     internal const uint Diffuse = 0;
-    /// <summary>The movie quad's one sampler, on the diffuse unit: it draws alone in its own bracket, so the
-    /// reuse costs nothing. Pinned to its GLSL by <see cref="MovieService.SelfCheck"/> and not by
-    /// <see cref="Check"/> -- an overridden movie stage should cost the movie, not stand Alloy down.</summary>
-    internal const uint MovieQuad = Diffuse;
     /// <summary>The sun cascade array (<c>sampler2DArrayShadow</c>) and the local-light cube array
     /// (<c>samplerCubeArrayShadow</c>). Both are bound once at program link, not per frame: a sampler left at
     /// its default points at unit 0 alongside the diffuse, which is the type collision above.</summary>
@@ -170,7 +166,7 @@ internal static class TextureSlots
     /// <see cref="LocalShadowRaw"/>'s reason and declared with <c>layout(binding)</c>.</summary>
     internal const uint PairMap = 28;
 
-    /// <summary>The deferred pass's light record (<see cref="GBuffer.TexLight"/>), read by the lit stage's
+    /// <summary>The deferred pass's light record, read by the lit stage's
     /// blended draws. Past the 0..15 budget for <see cref="LocalShadowRaw"/>'s reason and declared with
     /// <c>layout(binding)</c> in <c>cx_ownlit_head.glsl</c>; bound for the blended class by <see cref="Issue"/>.</summary>
     internal const uint LightRec = 26;

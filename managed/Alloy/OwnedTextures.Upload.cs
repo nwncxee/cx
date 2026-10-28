@@ -104,7 +104,7 @@ internal static unsafe partial class OwnedTextures
                 _log?.Always($"OwnedTextures: {dds.Format} {dds.W}x{dds.H} REFUSED by the driver (0x{err:x}) -- the engine's same-sized upload stands and draws as garbage");
         }
         if (err == 0 && dst != 0) { why = Decline.None; return dst; }
-        if (dst != 0) { VkTextures.Forget(dst); if (!Renderer.OnVulkan) Gl.DeleteTextures(1, &dst); }
+        if (dst != 0) VkTextures.Forget(dst);
         return 0;
     }
 
@@ -115,54 +115,29 @@ internal static unsafe partial class OwnedTextures
     /// <summary><c>GetMipMap()</c> answers a bool in its low byte.</summary>
     private const int MipByte = 0xff;   // not-an-offset: a byte mask
 
-    /// <summary>The storage, format and packed type an engine image of <paramref name="bpp"/> bytes per texel is
-    /// read through. 4/3/1 are byte channels as <c>GLRender::CreateTexture</c> @0x4ca2b0 names them; 2 is the
-    /// four-bits-per-channel image <c>ImageRead16bit</c> @0x4b6a50 reads from a <c>.4pc</c> file, R,G,B,A from the
-    /// high nibble down -- GL's 4_4_4_4 exactly, which the engine pairs with GL_RG and so uploads nowhere.</summary>
-    private static bool RawFormat(int bpp, out uint sized, out uint fmt, out uint type)
-    {
-        type = Gl.UNSIGNED_BYTE;
-        switch (bpp)
-        {
-            case 4: sized = Gl.RGBA8; fmt = Gl.RGBA; return true;
-            case 3: sized = Gl.RGB8; fmt = Gl.RGB; return true;
-            case 2: sized = Gl.RGBA4; fmt = Gl.RGBA; type = Gl.UNSIGNED_SHORT_4_4_4_4; return true;
-            case 1: sized = Gl.R8; fmt = Gl.RED; return true;
-            default: sized = fmt = 0; return false;
-        }
-    }
+    /// <summary>The texel widths an engine image is transcribed from. 4/3/1 are byte channels as
+    /// <c>GLRender::CreateTexture</c> @0x4ca2b0 names them; 2 is the four-bits-per-channel image
+    /// <c>ImageRead16bit</c> @0x4b6a50 reads from a <c>.4pc</c> file, R,G,B,A from the high nibble down.</summary>
+    private static bool RawBpp(int bpp) => bpp is 1 or 2 or 3 or 4;
 
-    /// <summary>An uncompressed sheet: the cell is read in place through the unpack rectangle (the engine copies it
-    /// out with <c>ImageGetSubImage</c>), mips by <c>glGenerateMipmap</c> as the engine's are. A null image gets
-    /// zeroed storage and keeps it: the only other GL that writes a cell's storage is the GPU-PLT branch of
+    /// <summary>An uncompressed sheet: the cell is packed out of the sheet in place (the engine copies it out with
+    /// <c>ImageGetSubImage</c>) and mipped on the device as the engine mips it. A null image goes up zeroed, as the
+    /// engine's null upload leaves it: the only other write of a cell's storage is the GPU-PLT branch of
     /// <c>glImageBasic</c>, which Alloy holds off, so nothing fills it behind us.</summary>
     private static uint UploadRaw(CAurTexture t, byte* img, int cell, int w, int h, int bpp, in Sampler s, bool mip)
     {
         int nx = t.GetNumX(), ny = t.GetNumY();
-        if (!RawFormat(bpp, out uint sized, out uint fmt, out uint type) || nx <= 0 || ny <= 0) return 0;
+        if (!RawBpp(bpp) || nx <= 0 || ny <= 0) return 0;
         int cw = w / nx, ch = h / ny;
         if (cw <= 0 || ch <= 0 || cell < 0 || cell >= nx * ny) return 0;
-        if (Renderer.OnVulkan)
-        {
-            uint n = VkTextures.NewName();
-            MirrorRaw(n, img, w, (cell % nx) * cw, (cell / nx) * ch, cw, ch, bpp, s, mip);
-            return VkTextures.Has(n) ? n : 0;
-        }
-        uint dst = Storage(Gl.TEXTURE_2D, mip ? EngineLevels(cw, ch) : 1, sized, cw, ch, s, bpp == 1);
-        if (dst == 0) return 0;
-        MirrorRaw(dst, img, w, (cell % nx) * cw, (cell / nx) * ch, cw, ch, bpp, s, mip);
-        if (img == null) return GlTexture.KeepZeroed(dst, fmt, type);   // no pixels: zeroed storage, as the engine's null upload leaves
-        var u = Unpack.Take(w, (cell % nx) * cw, (cell / nx) * ch);
-        Gl.TextureSubImage2D(dst, 0, 0, 0, cw, ch, fmt, type, img);
-        u.Give();
-        if (mip) Gl.GenerateTextureMipmap(dst);
-        return dst;
+        uint n = VkTextures.NewName();
+        MirrorRaw(n, img, w, (cell % nx) * cw, (cell / nx) * ch, cw, ch, bpp, s, mip);
+        return VkTextures.Has(n) ? n : 0;
     }
 
     /// <summary>The stand-in for a shape the engine's own upload cannot produce pixels for either
-    /// (<see cref="Decline.EngineToo"/>): storage of the cell's size, zeroed, one level and an unmipped sampler so
-    /// the texture is COMPLETE -- a bindless handle may be minted on it, unlike the storage-less name a failed
-    /// <c>glTexImage2D</c> leaves. 0 = the driver gave no name, or would not clear it.</summary>
+    /// (<see cref="Decline.EngineToo"/>): an image of the cell's size, zeroed, one level and an unmipped sampler so
+    /// it is COMPLETE and a bindless index may be taken on it. 0 = the device refused it.</summary>
     private static uint UploadEmpty(IntPtr tex)
     {
         var t = new CAurTexture(tex);
@@ -171,15 +146,9 @@ internal static unsafe partial class OwnedTextures
         int cw = Math.Max(w / nx, 1), ch = Math.Max(h / ny, 1);
         if (cw > MaxTexSize() || ch > MaxTexSize()) return 0;
         Sampler s = EngineSampler(t.GetClamp(), t.GetFilter() != 0, mip: false);
-        if (Renderer.OnVulkan)
-        {
-            uint n = VkTextures.NewName();
-            MirrorSolid(n, cw, ch, 0, VkSampler(s));
-            return VkTextures.Has(n) ? n : 0;
-        }
-        uint dst = Storage(Gl.TEXTURE_2D, 1, Gl.RGBA8, cw, ch, s, red: false);
-        if (dst != 0) MirrorSolid(dst, cw, ch, 0, VkSampler(s));
-        return dst == 0 ? 0 : GlTexture.KeepZeroed(dst, Gl.RGBA, Gl.UNSIGNED_BYTE);
+        uint n = VkTextures.NewName();
+        MirrorSolid(n, cw, ch, 0, VkSampler(s));
+        return VkTextures.Has(n) ? n : 0;
     }
 
     /// <summary>A compressed image in a format the engine names: each level behind its own header run, sized
@@ -189,108 +158,19 @@ internal static unsafe partial class OwnedTextures
         uint fmt = EngineFormat(t.GetCompressionFormat());
         if (fmt == 0) return 0;
         int levels = mip ? EngineLevels(w, h) : 1;
-        if (Renderer.OnVulkan)
-        {
-            uint n = VkTextures.NewName();
-            MirrorCompressed(n, t, fmt, w, h, levels, s, red);
-            return VkTextures.Has(n) ? n : 0;
-        }
-        uint dst = Storage(Gl.TEXTURE_2D, levels, fmt, w, h, s, red);
-        if (dst == 0) return 0;
-        var u = Unpack.NoBuffer();
-        for (int l = 0; l < levels; l++)
-        {
-            byte* level = t.CompressedLevel(l, out int lw, out int lh, out int size);
-            Gl.CompressedTextureSubImage2D(dst, l, 0, 0, lw, lh, fmt, size, level);
-        }
-        u.Give();
-        MirrorCompressed(dst, t, fmt, w, h, levels, s, red);
-        return dst;
+        uint n = VkTextures.NewName();
+        MirrorCompressed(n, t, fmt, w, h, levels, s, red);
+        return VkTextures.Has(n) ? n : 0;
     }
 
     /// <summary>A format the engine's table has no entry for (BC2, SNORM RGTC, BC6H, BC7), from the padded chain
     /// <see cref="DdsReader"/> parsed, under its real format; <see cref="UploadOwn"/> counts and names a refusal.</summary>
     private static uint UploadDdsFormat(byte* chain, in DdsReader.Info i, in Sampler s, bool mip, bool red)
     {
-        uint fmt = DdsReader.GlFormat(i.Format);
         int levels = mip ? Math.Min(Math.Max(i.Levels, 1), EngineLevels(i.W, i.H)) : 1;
-        if (Renderer.OnVulkan)
-        {
-            uint n = VkTextures.NewName();
-            MirrorDds(n, chain, i, levels, s, red);
-            return VkTextures.Has(n) ? n : 0;
-        }
-        uint dst = Storage(Gl.TEXTURE_2D, levels, fmt, i.W, i.H, s, red);
-        if (dst == 0) return 0;
-        var u = Unpack.NoBuffer();
-        long off = 0;
-        for (int l = 0, w = i.W, h = i.H; l < levels; l++, w = Math.Max(1, w >> 1), h = Math.Max(1, h >> 1))
-        {
-            int sz = DdsReader.LevelSize(w, h, i.Channels);
-            fixed (byte* level = new ReadOnlySpan<byte>(chain, (int)i.ChainBytes).Slice((int)off, sz))
-                Gl.CompressedTextureSubImage2D(dst, l, 0, 0, w, h, fmt, sz, level);
-            off += sz;
-        }
-        u.Give();
-        MirrorDds(dst, chain, i, levels, s, red);
-        return dst;
-    }
-
-    /// <summary>A fresh immutable texture with the engine's sampler and, for one channel, its R,R,R,1 swizzle.</summary>
-    private static uint Storage(uint target, int levels, uint fmt, int w, int h, in Sampler s, bool red)
-    {
-        uint dst; Gl.CreateTextures(target, 1, &dst);
-        if (dst == 0) return 0;
-        Gl.TextureStorage2D(dst, levels, fmt, w, h);
-        Gl.TextureParameteri(dst, Gl.TEXTURE_MIN_FILTER, s.Min);
-        Gl.TextureParameteri(dst, Gl.TEXTURE_MAG_FILTER, s.Mag);
-        Gl.TextureParameteri(dst, Gl.TEXTURE_WRAP_S, s.WrapS);
-        Gl.TextureParameteri(dst, Gl.TEXTURE_WRAP_T, s.WrapT);
-        Gl.TextureParameteri(dst, Gl.TEXTURE_WRAP_R, s.WrapR);   // ignored by a 2D texture
-        Gl.TextureParameteri(dst, Gl.TEXTURE_MAX_ANISOTROPY, s.Aniso ? TexRegistry.Aniso() : 1);
-        if (red)
-        {
-            Gl.TextureParameteri(dst, Gl.TEXTURE_SWIZZLE_G, (int)Gl.RED);
-            Gl.TextureParameteri(dst, Gl.TEXTURE_SWIZZLE_B, (int)Gl.RED);
-            Gl.TextureParameteri(dst, Gl.TEXTURE_SWIZZLE_A, (int)Gl.ONE);
-        }
-        return dst;
-    }
-
-    /// <summary>A context's unpack state, set for one upload and put back as it was: no unpack buffer (it
-    /// would turn the pointer into an offset), rows at <paramref name="align"/>, and the cell's rectangle in
-    /// the sheet. The engine's context here; Alloy's own in <see cref="MovieFrame"/>.</summary>
-    internal struct Unpack
-    {
-        private int _buf, _align, _row, _skipPx, _skipRows;
-
-        internal static Unpack Take(int rowLength, int skipPixels, int skipRows, int align = 1)
-        {
-            Unpack u = default;
-            Gl.GetIntegerv(Gl.PIXEL_UNPACK_BUFFER_BINDING, &u._buf);
-            Gl.GetIntegerv(Gl.UNPACK_ALIGNMENT, &u._align);
-            Gl.GetIntegerv(Gl.UNPACK_ROW_LENGTH, &u._row);
-            Gl.GetIntegerv(Gl.UNPACK_SKIP_PIXELS, &u._skipPx);
-            Gl.GetIntegerv(Gl.UNPACK_SKIP_ROWS, &u._skipRows);
-            if (u._buf != 0) Gl.BindBuffer(Gl.PIXEL_UNPACK_BUFFER, 0);
-            Gl.PixelStorei(Gl.UNPACK_ALIGNMENT, align);
-            Gl.PixelStorei(Gl.UNPACK_ROW_LENGTH, rowLength);
-            Gl.PixelStorei(Gl.UNPACK_SKIP_PIXELS, skipPixels);
-            Gl.PixelStorei(Gl.UNPACK_SKIP_ROWS, skipRows);
-            return u;
-        }
-
-        /// <summary>Just the unpack buffer out of the way, for a compressed upload the rectangle does not apply to.</summary>
-        internal static Unpack NoBuffer() => Take(0, 0, 0);
-
-        internal readonly void Give()
-        {
-            Gl.PixelStorei(Gl.UNPACK_ALIGNMENT, _align);
-            Gl.PixelStorei(Gl.UNPACK_ROW_LENGTH, _row);
-            Gl.PixelStorei(Gl.UNPACK_SKIP_PIXELS, _skipPx);
-            Gl.PixelStorei(Gl.UNPACK_SKIP_ROWS, _skipRows);
-            if (_buf != 0) Gl.BindBuffer(Gl.PIXEL_UNPACK_BUFFER, (uint)_buf);
-        }
+        uint n = VkTextures.NewName();
+        MirrorDds(n, chain, i, levels, s, red);
+        return VkTextures.Has(n) ? n : 0;
     }
 
     private static string DdsFormatNote() => $", {_ddsFormatUploads} DDS-format uploads ({_ddsFormatFailed} REFUSED)";

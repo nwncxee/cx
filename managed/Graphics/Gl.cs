@@ -36,7 +36,7 @@ public static unsafe class Gl
     public const uint FUNC_ADD = 0x8006, MIN = 0x8007;
     public const uint COLOR_ATTACHMENT1 = 0x8CE1;
     public const uint COLOR_ATTACHMENT2 = 0x8CE2, COLOR_ATTACHMENT3 = 0x8CE3;
-    /// <summary>The deferred G-buffer's first attachment (<c>GBuffer.FirstAttachment</c>); the pass
+    /// <summary>The deferred G-buffer's first attachment; the pass
     /// names the next as <c>COLOR_ATTACHMENT4 + i</c>, the enums being contiguous.</summary>
     public const uint COLOR_ATTACHMENT4 = 0x8CE4;
     public const uint POLYGON_OFFSET_FILL = 0x8037;
@@ -108,7 +108,7 @@ public static unsafe class Gl
     /// <summary>The current clear colour, as glGetFloatv reads it back -- the engine's own value, so
     /// the Alloy HDR target starts from what the engine cleared to instead of from a guess.</summary>
     public const uint COLOR_CLEAR_VALUE = 0x0C22;
-    /// <summary>The depth-attachment probe the sampled depth copies (<c>SceneDepth</c>, <c>FrameSnapshot</c>)
+    /// <summary>The depth-attachment probe the sampled depth copies (<c>FrameSnapshot</c>)
     /// size themselves from. A blit of DEPTH_BUFFER_BIT needs both attachments in one format, so a copy asks
     /// its SOURCE rather than assuming. DEPTH (0x1801) is the attachment POINT the query takes for the default
     /// framebuffer, where DEPTH_ATTACHMENT is not a legal name.</summary>
@@ -169,7 +169,7 @@ public static unsafe class Gl
     public const uint SRGB8_ALPHA8 = 0x8C43, UNSIGNED_INT_10F_11F_11F_REV = 0x8C3B, FLOAT_32_UNSIGNED_INT_24_8_REV = 0x8DAD;
     /// <summary><c>glNamedBufferStorage</c>'s flag that allows <c>glNamedBufferSubData</c> after creation.</summary>
     public const uint DYNAMIC_STORAGE_BIT = 0x0100;
-    /// <summary>The limits <c>GlDevice</c> reads once into <c>DeviceCaps</c>.</summary>
+    /// <summary>The limits a device reads once into its capability record.</summary>
     public const uint MAX_TEXTURE_SIZE = 0x0D33, MAX_ARRAY_TEXTURE_LAYERS = 0x88FF, MAX_COLOR_ATTACHMENTS = 0x8CDF,
                       UNIFORM_BUFFER_OFFSET_ALIGNMENT = 0x8A34, SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT = 0x90DF;
     /// <summary>BPTC (GL 4.2 core): BC7 for 8-bit colour, BC6H unsigned for HDR -- 16 bytes per 4x4 block.</summary>
@@ -751,7 +751,6 @@ public static unsafe class Gl
         // SceneInputs null-checks GenFramebuffers/FramebufferTexture2D itself before using the FBO path.
         _ready = CreateProgram != null && GenVertexArrays != null && BufferData != null && DrawArrays != null;
         if (!_ready) { log.Info("Gl: a required GL 3.x proc was missing"); _failed = true; }
-        else BindlessLedger.Install(log);
         return _ready;
     }
 

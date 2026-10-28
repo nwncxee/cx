@@ -134,10 +134,6 @@ internal static unsafe partial class OwnedTextures
             : "OwnedTextures: CreateTexture not installed -- every texture is BORROWED (owned draws sample engine ids)");
 
         _origDelete = hooks.InstallRiDeleteTextures(&OnDeleteTextures);
-        _origCreateCube = hooks.InstallRiCreateCubeTexture(&OnCreateCubeTexture);
-        log.Info(_origCreateCube == null ? "OwnedTextures: CreateCubeTexture not installed -- cube textures stay the engine's"
-            : _single ? "OwnedTextures: watching RenderInterface::CreateCubeTexture -- Alloy uploads every cube texture into a cube of its own"
-            : "OwnedTextures: CreateCubeTexture hooked but texsingle=0 -- cube textures stay the engine's");
         // ADR 0023: the build itself, so a warm resource skips the read, the decode and the upload.
         _origBuildAndStoreTexture = hooks.InstallAurTextureBuildAndStoreTexture(&OnBuildAndStoreTexture);
         _znam = EngineFn.OperatorNewArray;
@@ -323,10 +319,9 @@ internal static unsafe partial class OwnedTextures
     private static long _singleUploads;
 
     /// <summary>For the period line: how many textures came down the one-upload path rather than the engine's
-    /// copy plus Alloy's, the cubes beside them, and what the DDS formats did.</summary>
+    /// copy plus Alloy's, and what the DDS formats did.</summary>
     internal static string UploadNote()
-        => $"single upload {(_single ? "on" : "off")} ({_singleUploads} textures, {_cubeUploads} cubes"
-         + (_cubeEmpty > 0 ? $", {_cubeEmpty} cubes EMPTY" : "") + $"{DdsFormatNote()})";
+        => $"single upload {(_single ? "on" : "off")} ({_singleUploads} textures{DdsFormatNote()})";
     /// <summary>Owned names the ENGINE holds in a cell array (a single upload or a warm hand-back). Such a name
     /// must not be GL-deleted by Alloy while the engine may still bind it for its own 2D use -- icons,
     /// portraits and glyph sheets all come through this funnel -- so a swap or eviction drops its handle and
@@ -415,37 +410,9 @@ internal static unsafe partial class OwnedTextures
     private const ulong CellMask = 0xFFFF;   // not-an-offset: key bit field
     private const int MaxCells = (int)CellMask + 1;
 
-    /// <summary>How much VRAM <paramref name="tex"/> occupies, over every level
-    /// that has storage. A block format answers directly; anything else is width*height*(sum of the channel
-    /// widths). Accounting only -- a driver that answers nothing costs a zero, not a refusal.</summary>
-    private static long Measure(uint tex)
-    {
-        if (Renderer.OnVulkan) return VkTextures.Bytes(tex);
-        long total = 0;
-        for (int level = 0; level < MaxLevels; level++)
-        {
-            int w = 0, h = 0;
-            Gl.GetTextureLevelParameteriv(tex, level, Gl.TEXTURE_WIDTH, &w);
-            Gl.GetTextureLevelParameteriv(tex, level, Gl.TEXTURE_HEIGHT, &h);
-            if (w <= 0 || h <= 0) break;
-            int compressed = 0;
-            Gl.GetTextureLevelParameteriv(tex, level, Gl.TEXTURE_COMPRESSED, &compressed);
-            if (compressed != 0)
-            {
-                int size = 0;
-                Gl.GetTextureLevelParameteriv(tex, level, Gl.TEXTURE_COMPRESSED_IMAGE_SIZE, &size);
-                total += size > 0 ? size : 0;
-                continue;
-            }
-            int r = 0, g = 0, b = 0, a = 0;
-            Gl.GetTextureLevelParameteriv(tex, level, Gl.TEXTURE_RED_SIZE, &r);
-            Gl.GetTextureLevelParameteriv(tex, level, Gl.TEXTURE_GREEN_SIZE, &g);
-            Gl.GetTextureLevelParameteriv(tex, level, Gl.TEXTURE_BLUE_SIZE, &b);
-            Gl.GetTextureLevelParameteriv(tex, level, Gl.TEXTURE_ALPHA_SIZE, &a);
-            total += (long)w * h * (r + g + b + a) / 8;
-        }
-        return total;
-    }
+    /// <summary>How much VRAM <paramref name="tex"/> occupies, over every level its image holds.
+    /// Accounting only -- a name with no image costs a zero, not a refusal.</summary>
+    private static long Measure(uint tex) => VkTextures.Bytes(tex);
 
     /// <summary>The GL-NAME edge: the objects went with the context. Names are dropped and nothing is deleted
     /// -- deleting into a dead context is the terminal edge.</summary>

@@ -8,7 +8,7 @@ layout(std430, binding = 8) readonly buffer LightBuf { vec4 uLights[]; };
 layout(std430, binding = 9) writeonly buffer ClusterCount { uint uClCount[]; };
 layout(std430, binding = 10) buffer ClusterIdx { uint uClIdx[]; };
 // [0] froxels that overflowed CAP; [1..3] a sampled build's entry totals -- binned, the kept prefix a
-// fragment walks, and the floor candidates its light.relevance search reads (AlloyLights.TakeClusterOverflow)
+// fragment walks, and the floor candidates its light.relevance search reads
 layout(std430, binding = 14) buffer Stats { uint uStats[]; };
 // CasterPass.CubeDynSphere, the lit stage's own mover spheres (xyz, r; r < 0 unused), $DYNSPH$ per cube slot
 layout(std430, binding = 11) readonly buffer DynMovers { vec4 uDynMovers[]; };

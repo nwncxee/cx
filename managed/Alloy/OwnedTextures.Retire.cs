@@ -34,7 +34,7 @@ internal static unsafe partial class OwnedTextures
     [UnmanagedCallersOnly]
     private static void OnDeleteTextures(uint n, uint* names)
     {
-        if (Renderer.OnVulkan && names != null)
+        if (names != null)
             for (uint i = 0; i < n; i++) GuiPassVk.ForgetEngine(names[i]);
         if (Budget() > 0 && names != null && n > 0 && n <= 4096)
         {
@@ -175,11 +175,9 @@ internal static unsafe partial class OwnedTextures
         for (int i = 0; i < n; i++)
         {
             uint name = due[i];
-            if (_handleDrop) AlloyRenderer.DropHandle(name);   // residency first: a resident handle outlives its texture
-            else AlloyRenderer.ForgetHandle(name);
+            AlloyRenderer.DropHandle(name);
             Forget(name);
             VkTextures.Forget(name);
-            if (delete && !Renderer.OnVulkan && Gl.DeleteTextures != null) Gl.DeleteTextures(1, &name);   // a Vulkan name has no GL object
         }
         due.Clear();
         _log?.Info($"OwnedTextures: {(delete ? "released" : "retired (kept alive)")} {n} owned textures (engine names retired so far: {_retired})");
@@ -195,7 +193,7 @@ internal static unsafe partial class OwnedTextures
         {
             foreach (uint f in _pendingForget) _pendingHandles.Add(f);   // for the record marks below
             AlloyRenderer.NoteOwnedNamesRetired(_pending, _pendingHandles);
-            foreach (uint f in _pendingForget) { _pendingHandles.Remove(f); AlloyRenderer.ForgetHandle(f); }
+            foreach (uint f in _pendingForget) { _pendingHandles.Remove(f); AlloyRenderer.DropHandle(f); }
             _pendingForget.Clear();
         }
         else AlloyRenderer.NoteOwnedNamesRetired(_pending, _pendingHandles);

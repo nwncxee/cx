@@ -90,11 +90,11 @@ world through an identity view; with `view.cameraloop 0` the same slot refuses o
 `m_aurMtxStack` instead (all `AlloyRenderer.NoFrameBehindUs`).
 
 All of them call `AlloyGate.Fail` — and so does every capability latch that can only be taken *after* the freeze:
-`AlloyRenderer` when the multidraw or stream-ring entry points are missing, `StreamRing` when the driver refuses
+`AlloyRenderer` when the multidraw entry points are missing, the frame when the driver refuses
 its persistent map, its program builder when a program does not link, `PostChain.StandDown`, and
 `PresentTarget` where framebuffer 0 is not the buffer the platform presents (Windows).
 
-A ring that exists but cannot take a push (a region fence past `GpuRing.TimeoutNs`, a frame past the bounds the
+A ring that exists but cannot take a push (a region fence that timed out, a frame past the bounds the
 region is sized from, a slice rebound after the ring left it) is not a `Fail`: that pass sits the frame out, the
 first failure of each kind is logged in full (`[stream] UPLOAD FAILED`), the `[alloy]` line counts the rest, and
 a red band marks it on screen -- top edge the draw slots (the colour frame did not draw), left the cull source
@@ -130,7 +130,7 @@ verdict nor the next.
 
 ## Per-class stand-downs are not in this set
 
-`GrassField`, `CasterPass`, `EnvProbe`, `SceneDepth`, `FrameSnapshot` and `PostChain` each own a `StandDown`;
+`GrassField`, `CasterPass`, `EnvProbe`, `FrameSnapshot` and `PostChain` each own a `StandDown`;
 `PostStack` (#375) stands down per STAGE, dropping the one that did not build and running the rest.
 Those degrade to "that class does not render", not to "the frame is not drawn" — punch-list territory (#217),
 not a frame verdict.

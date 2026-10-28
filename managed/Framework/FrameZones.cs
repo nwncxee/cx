@@ -160,7 +160,7 @@ public static class FrameZones
         /// <summary>The lightmap bake's frame step (adopt, pack, the light steps, the readback), inside
         /// <see cref="Passes"/> and subtracted from it.</summary>
         Lightmap,
-        /// <summary>Nested in <see cref="Passes"/>: the stream ring's region fence (<c>GpuRing.Acquire</c>) --
+        /// <summary>Nested in <see cref="Passes"/>: the frame's wait on a region fence --
         /// the CPU waiting for the GPU to drain the frame before last. Large here means GPU-bound.</summary>
         Wait,
         /// <summary>Hit testing against CX's scene -- every <c>HitTest.Cast</c> the frame ran, hover pick

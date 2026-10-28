@@ -114,7 +114,7 @@ keep the full walk's registers allocated in the very programs the step exists to
 `DeferredLights` is one pass and two dispatches: the shadow record (`DeferredShadows`, `cx_defshadow_cs`) and then
 the light walk (`DeferredLights`, `cx_deferred_cs`), each with its own GPU term.
 
-- `GBuffer.BeginFrame()` clears G0 to zero before `OpaqueOwned`. G1 and G2 are never cleared: G0's flag byte
+- The frame clears G0 to zero before the opaque batches. G1 and G2 are never cleared: G0's flag byte
   gates every read.
 - `OpaqueOwned` and `CutoutOwned` attach G0..G2 at COLOR4..6 (draw buffers `{0, NONE, 2, 3, 4, 5, 6}`
   while Ssr's records are attached, `{0, NONE, NONE, NONE, 4, 5, 6}` otherwise) and detach after
@@ -367,16 +367,16 @@ percent low: an average, not an audit. **`N entries/px (M rejected)`** beside th
 indexed and how much of it lit nothing (reach, relevance, facing): the price of a long list is paid per entry,
 lit or not.
 
-`/alloy bench` also prices the passes from the inside: it rebuilds `cx_deferred_cs`, `cx_defshadow_cs` and
-`cx_pairdebt` with `CX_ABLATE n`, each rung stopping after one more stage, and ends with one
-`[bench] ablation:` line per pass giving each stage's own cost. The variants exist only while the bench runs.
+`/alloy bench` prices the passes from the outside: it steps the knobs that turn each one on and off and reads
+every GPU term per step. There is no per-stage ladder — swapping a pass's program was a GL-renderer trick, and
+Vulkan links its own pipelines.
 
 ## Streams (branch `cx-188-deferred-lighting`)
 
 | step | owner files |
 |---|---|
 | 0 ADR | `docs/adr/0029-*.md`, `GLOSSARY.md` |
-| 1 G-buffer writer | `Pass/GBuffer.cs`, `cx_ownlit_*.glsl` (CX_DEFERRED blocks), `Programs.cs` (the twin), `Issue.cs` (selection), Ssr draw-buffer interplay |
+| 1 G-buffer writer | `cx_ownlit_*.glsl` (CX_DEFERRED blocks), `AlloyRenderer.VkDeferred.cs`, Ssr interplay |
 | 2 deferred compute | `Pass/DeferredLights.cs`, `cx_deferred_cs.glsl`, `cx_lightfrag.glsl` (list-source generalisation), `ShaderStages.All`, bench step, period line |
 | 3 shadows in compute | `Pass/DeferredShadows.cs`, `cx_defshadow_cs.glsl`, `cx_shrec.glsl` (the record's format), `cx_lightfrag.glsl` (the `CX_SHADOW_SOURCE` hook), `cx_localshadow.glsl` (`CxLocalShadowFast`), `cx_deferred_cs.glsl` (the reader) |
 | 4 hot-light debt | `Pass/PairShadows.cs`, `Pass/PairDebt.cs`, `cx_pairbuf/cx_pairshad/cx_pairdebt.glsl`, `ShadowMath.PairViewProj`, `CasterPass` (the hoisted cull verdict, the plan, the pair bakes), `cx_lightfrag.glsl` (`CX_NO_HOT` in the full body), `cx_localshadow.glsl` (`CX_PAIR_RECV` in `CxLocalShadowQ` and `CxLocalShadowFast`), `cx_deferred_cs.glsl` + `cx_defshadow_cs.glsl` (the define) |

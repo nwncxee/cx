@@ -246,7 +246,6 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         // the record contract every path submits from are ours and depend on no engine symbol, so a build
         // that never arms still reports whether the arithmetic it ships is right.
         StaticSelfCheck(log);
-        StreamRing.Init(log);
         // Up here with the other unconditional checks: the queue schedules the same way on every client.
         GpuGraveyard.Init(log);
         GpuGraveyard.SelfCheck(log);
@@ -298,9 +297,6 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
             Db.PltColors.Upload();
             Db.ContentTable.Upload();
             Db.PltPalettes.Create();
-            // CX-117's GPU check: idle unless alloy.pltverify armed it, and it runs in BOTH modes -- what it
-            // measures is the shipped GLSL, which does not care which scene layer produced the record.
-            if (Db.PltVerify.On) Db.PltGpuCheck.Tick();
         };
         // #117: ahead of every stand-down -- a broken pass order is a misrender in BOTH bracket sites, so the
         // one service that happens to host the check must not be able to opt the check out.
@@ -338,7 +334,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         if (!CutCensusSelfCheck(log) || !CasterBoundSelfCheck(log) || !SortSelfCheck(log) || !OitOrderSelfCheck(log) || !CullSortSelfCheck(log) || !SplitSelfCheck(log) || !MtrParams.SelfCheck(log) || !ChaseSelfCheck(log) || !KeyholeBoxSelfCheck(log) || !SphereRectSelfCheck(log)
             || !AreaGrid.SelfCheck(log)
             || !DbSelfChecks(log)
-            || !Issue.RunsSelfCheck(log) || !StreamRing.SelfCheck(log) || !Submit.SelfCheck(log)
+            || !Issue.RunsSelfCheck(log) || !Submit.SelfCheck(log)
             || !ShaderContract.SelfCheck(log)
             || !StockConfig.SelfCheck(log)) return;
         // NOT in the chain above: those two guard what reaches the screen, and this one guards a debug dump.
@@ -470,7 +466,6 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// short-circuiting on a handle and drawing through a dead one.</summary>
     internal static void ContextLost()
     {
-        Ablation.Forget(delete: false);
         _drawBuf = 0; _texHBuf = 0; _boneBuf = 0;
         MotionContextLost();
         DbFeed.ContextLost();   // R1-30: the feed's own GL-backed tables
@@ -478,7 +473,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         // #242: ...and the persistent records went with the buffers that held them. Both halves matter -- the
         // capacity so the next upload reallocates rather than writing into a dead name, and the epoch so
         // every record is rebuilt rather than assumed still on the GPU.
-        Issue.ContextLost(); StreamRing.ContextLost(); _recCapGpu = 0; InvalidateRecords();
+        _recCapGpu = 0; InvalidateRecords();
         // ...and the VAO cache. RevokeAll marks the slots stale, and EnsureVao DELETES a stale non-zero name
         // before rebuilding -- which on a name minted by a context that no longer exists is a delete aimed at
         // whatever the next context recycles that number for.
@@ -489,9 +484,6 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         DepthResource.Revoke();
         PresentTarget.ContextLost();   // #456: names only -- the images died with the context
         GuiPass.ContextLost();
-        MovieFrame.ContextLost();
-        MovieService.ContextLost();   // the movie quad's program and buffers are Alloy's now, not the engine's
-        PassContextLost();
         EngineBlockContextLost();
         GpuGraveyard.Drop();   // after every handler above, so what they retired is dropped with the rest
     }

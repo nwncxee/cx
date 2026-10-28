@@ -1,19 +1,16 @@
-7 managed/Alloy/Ablation.cs
 10 managed/Alloy/AlloyRenderer.Batches.cs
-23 managed/Alloy/AlloyRenderer.Bench.cs
+22 managed/Alloy/AlloyRenderer.Bench.cs
 4 managed/Alloy/AlloyRenderer.Bones.cs
 29 managed/Alloy/AlloyRenderer.cs
-4 managed/Alloy/AlloyRenderer.Device.cs
+3 managed/Alloy/AlloyRenderer.Device.cs
 7 managed/Alloy/AlloyRenderer.Frame.cs
-75 managed/Alloy/AlloyRenderer.Metrics.cs
+74 managed/Alloy/AlloyRenderer.Metrics.cs
 10 managed/Alloy/AlloyRenderer.Motion.cs
 7 managed/Alloy/AlloyRenderer.Target.cs
 11 managed/Alloy/AlloyRenderer.Uniforms.cs
-1 managed/Alloy/AlloyRenderer.Vao.cs
 9 managed/Alloy/Core/AlloyGate.cs
 2 managed/Alloy/Core/AurXform.cs
 9 managed/Alloy/Core/StagePool.cs
-14 managed/Alloy/Core/StreamRing.cs
 3 managed/Alloy/CreatureParity.cs
 20 managed/Alloy/Db/DbAnim.Behavior.cs
 26 managed/Alloy/Db/DbAnim.cs
@@ -56,7 +53,6 @@
 3 managed/Alloy/Db/PartGate.cs
 13 managed/Alloy/Db/PartTree.cs
 12 managed/Alloy/Db/PltColors.cs
-13 managed/Alloy/Db/PltGpuCheck.cs
 2 managed/Alloy/Db/PltImage.cs
 10 managed/Alloy/Db/PltPalettes.cs
 8 managed/Alloy/Db/PltVerify.cs
@@ -67,7 +63,7 @@
 15 managed/Alloy/Db/SeamDraw.cs
 31 managed/Alloy/Db/TexRegistry.cs
 3 managed/Alloy/Db/TexRegistry.Cycle.cs
-7 managed/Alloy/Db/TexRegistry.Load.cs
+6 managed/Alloy/Db/TexRegistry.Load.cs
 7 managed/Alloy/Db/TextFontBake.cs
 1 managed/Alloy/Db/TextFonts.cs
 1 managed/Alloy/Db/TextMarkup.cs
@@ -84,7 +80,6 @@
 12 managed/Alloy/DebugStringService.cs
 2 managed/Alloy/FrameDiff.cs
 2 managed/Alloy/Highlight.cs
-1 managed/Alloy/Issue.cs
 5 managed/Alloy/MaterialExtraSlots.cs
 1 managed/Alloy/Mdl/MdlBinaryPayload.cs
 2 managed/Alloy/Mdl/MdlParser.cs
@@ -107,12 +102,11 @@
 20 managed/Alloy/NwSyncReader.cs
 15 managed/Alloy/OwnedTextures.Cache.cs
 15 managed/Alloy/OwnedTextures.cs
-3 managed/Alloy/OwnedTextures.Cube.cs
 3 managed/Alloy/OwnedTextures.Plt.cs
 5 managed/Alloy/OwnedTextures.Retire.cs
 25 managed/Alloy/OwnedTextures.Transcode.cs
 2 managed/Alloy/OwnedTextures.Upload.cs
-23 managed/Alloy/Pass/AlloyLights.cs
+22 managed/Alloy/Pass/AlloyLights.cs
 6 managed/Alloy/Pass/AreaBorder.cs
 9 managed/Alloy/Pass/Beams.cs
 4 managed/Alloy/Pass/Beams.Db.cs
@@ -133,7 +127,6 @@
 4 managed/Alloy/Pass/FbPostStage.cs
 4 managed/Alloy/Pass/FrameSnapshot.cs
 3 managed/Alloy/Pass/FrameTap.cs
-2 managed/Alloy/Pass/GBuffer.cs
 34 managed/Alloy/Pass/GrassField.cs
 12 managed/Alloy/Pass/GrassField.Db.cs
 23 managed/Alloy/Pass/GrassField.Push.cs
@@ -152,7 +145,6 @@
 37 managed/Alloy/Pass/Particles.cs
 7 managed/Alloy/Pass/PostChain.cs
 8 managed/Alloy/Pass/PostStack.cs
-2 managed/Alloy/Pass/SceneDepth.cs
 4 managed/Alloy/Pass/SceneFog.cs
 1 managed/Alloy/Pass/SkyBox.cs
 1 managed/Alloy/Pass/SkyStage.cs

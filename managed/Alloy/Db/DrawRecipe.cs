@@ -319,7 +319,7 @@ internal static partial class DrawRecipe
     /// (each reads as its last tenant until a new one fills it).</summary>
     internal static int High => _n;
     /// <summary>Bumped whenever a CONTENT recipe is interned or reclassified, so a reader keyed on the content
-    /// set (<see cref="CX.Alloy.ContentPrewarm"/>) walks the table only when its answer can have moved.</summary>
+    /// set walks the table only when its answer can have moved.</summary>
     internal static int ContentSerial => System.Threading.Volatile.Read(ref _own.ContentSerial);
     internal static int Content(int r) => _content[r];
     internal static int Slots(int r) => _slots[r];

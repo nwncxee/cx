@@ -107,18 +107,4 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>Snapshot the pass's target block. Once, at the top of the colour pass, after the one
     /// <see cref="ThisFrameTarget"/> read.</summary>
     private static void HoldPassTarget(in Target t) => _passTarget = t;
-
-    /// <summary>Put the pass's engine target back as the draw framebuffer, sRGB state included -- for the post
-    /// stack's last stage, which writes where the resolve would have. From the snapshot, never a fresh read.</summary>
-    internal static void RebindFrameTarget()
-    {
-        ref Target t = ref _passTarget;
-        BindTarget();
-        if (t.Srgb) Gl.Enable(Gl.FRAMEBUFFER_SRGB); else Gl.Disable(Gl.FRAMEBUFFER_SRGB);
-    }
-
-    /// <summary>Bind the 4.6-side draw target: the <see cref="PresentTarget"/> image, which the engine's
-    /// context blits to the real default framebuffer after the bracket. Zero -- no composite image -- writes
-    /// framebuffer 0, which only the shared GLX drawable makes correct.</summary>
-    private static void BindTarget() => Gl.BindFramebuffer(Gl.FRAMEBUFFER, PresentTarget.Fbo46);
 }

@@ -34,7 +34,6 @@ internal static unsafe class Programs
     internal static void DropSpliced()
     {
         _spliceStale = false;
-        Ablation.Forget(delete: true);
         // grass splices content too; its stages rebuild from the module now loaded
         // the native stages' images and passes first: the hosts below re-attach their programs to them as they rebuild
         StageResources.DropAll();

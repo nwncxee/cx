@@ -62,27 +62,10 @@ public sealed unsafe partial class MovieService
         MoviePlate letter = MoviePlate.Fit(854, 480, 1280, 1024);
         check.Expect(letter.Sy < 1f && MathF.Abs(letter.Sx - 1f) < Eps, "a 16:9 movie on a 5:4 screen gets bars top and bottom");
 
-        // 4. The texture window, half a texel in at each edge so the LINEAR fetch this port uses never
-        //    reaches past the frame (the engine's NEAREST could).
-        MoviePlate pad = MoviePlate.Fit(854, 480, 1920, 1080);
-        check.Expect(MathF.Abs(pad.U0 - 0.5f / 854f) < 1e-6f && MathF.Abs(pad.V0 - 0.5f / 480f) < 1e-6f,
-                     "the texture window starts half a texel in");
-        check.Expect(MathF.Abs(pad.U1 - 853.5f / 854f) < 1e-6f && MathF.Abs(pad.V1 - 479.5f / 480f) < 1e-6f,
-                     "...and stops half a texel short of the far edge");
-
-        // 5. V0 is the TOP of the screen: the decoder uploads row 0 first and the engine's quad puts it there.
-        Span<Vector4> v = stackalloc Vector4[4];
-        pad.Write(v);
-        check.Expect(v[0].Y > 0f && v[0].W == pad.V0 && v[1].Y < 0f && v[1].W == pad.V1,
-                     "the strip's first vertex is top-left at V0, so the frame is not drawn upside down");
-        check.Expect(v[0].X == -pad.Sx && v[2].X == pad.Sx && v[3].X == pad.Sx && v[3].Y == -pad.Sy,
-                     "...and the four vertices are a triangle strip, not a fan");
-
-        // 6. The unit the quad's sampler is declared on, against the table: the GLSL text is the oracle, and
-        //    the draw binds its texture on TEXTURE0 with nothing else in the bracket to notice a drift.
-        check.Expect(ShaderSource.Get("cx_movie_f.glsl")
-                         .Contains($"layout(binding = {TextureSlots.MovieQuad}) uniform sampler2D uTex;"),
-                     $"the movie program's uTex is declared on texture unit {TextureSlots.MovieQuad}");
+        // 4. The decoder uploads row 0 first and the screen's top is where it goes, so the Vulkan plate's
+        //    shader has to flip V. The GLSL text is the oracle.
+        check.Expect(ShaderSource.Get("cx_movie_vk_f.glsl").Contains("texture(uSrc, vec2(vUV.x, 1.0 - vUV.y))"),
+                     "the movie shader flips V, so the frame is not drawn upside down");
 
         RowsCheck(check);
 

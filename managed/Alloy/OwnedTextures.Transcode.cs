@@ -157,16 +157,6 @@ internal static unsafe partial class OwnedTextures
         while (_encodedQ.TryDequeue(out TransJob? job)) { _transStale++; Release(job); }
     }
 
-    /// <summary>The sampler state of Alloy's raw upload <paramref name="src"/> onto its BCn stand-in.</summary>
-    private static void CopySampler(uint src, uint dst)
-    {
-        foreach (uint p in (ReadOnlySpan<uint>)[Gl.TEXTURE_MIN_FILTER, Gl.TEXTURE_MAG_FILTER, Gl.TEXTURE_WRAP_S, Gl.TEXTURE_WRAP_T, Gl.TEXTURE_MAX_ANISOTROPY])
-        {
-            int v; Gl.GetTextureParameteriv(src, p, &v);
-            Gl.TextureParameteri(dst, p, v);
-        }
-    }
-
     private static void Upload(TransJob job)
     {
         if (job.Ctx != _transCtx || !_res.TryGetValue(job.Key, out Entry e) || e.Owned != job.Src) { _transStale++; return; }
@@ -176,49 +166,21 @@ internal static unsafe partial class OwnedTextures
         // without this a transcoded cutout reads as unscanned and the caster pass stops testing its alpha.
         bool scanned = _stats.TryGetValue(job.Src, out Stat st);
         MirrorTranscode(job.Src, dst, job.Bc3, job.Levels, job.Lw, job.Lh, job.Off, job.Blocks);
-        if (Renderer.OnVulkan && !VkTextures.Has(dst)) { _transFailed++; return; }
+        if (!VkTextures.Has(dst))
+        {
+            _transFailed++;
+            if (++_bcnFails >= BcnFailCap)
+            {
+                _bcn = false;
+                _log?.Info($"OwnedTextures: BCn transcode DISABLED -- {_bcnFails} device refusals; uploads stay raw until the next device");
+            }
+            return;
+        }
         Replace(job.Key, job.Etid, dst, job.Compressed);
         if (scanned) _stats[dst] = st; else _stats.Remove(dst);
         FrameZones.Count(FrameZones.Ev.Transcode);
         _transDone++;
         _censusTrans++; _censusSaved += job.Bytes > job.Compressed ? job.Bytes - job.Compressed : 0;
-    }
-
-    /// <summary>The job's BCn chain into a new GL texture under the raw upload's sampler; 0 (counted) when refused.</summary>
-    private static uint UploadGl(TransJob job)
-    {
-        uint dst; Gl.CreateTextures(Gl.TEXTURE_2D, 1, &dst);
-        if (dst == 0) { _transFailed++; return 0; }
-        // DSA uploads still read through PIXEL_UNPACK_BUFFER, so the engine's (if any) steps aside.
-        int svUnpackBuf; Gl.GetIntegerv(Gl.PIXEL_UNPACK_BUFFER_BINDING, &svUnpackBuf);
-        if (svUnpackBuf != 0) Gl.BindBuffer(Gl.PIXEL_UNPACK_BUFFER, 0);
-        Gl.DrainErrors(8);
-        CopySampler(job.Src, dst);
-        uint fmt = job.Bc3 ? Gl.COMPRESSED_RGBA_S3TC_DXT5 : Gl.COMPRESSED_RGB_S3TC_DXT1;
-        // Immutable storage for the whole chain, then one sub-image per level -- never respecify: defining
-        // mutable levels one by one read as BcnUp 2,5-4,7ms per texture, and a mip read after respecification
-        // corrupted every level but the base on AMD/Mesa.
-        Gl.TextureStorage2D(dst, job.Levels, fmt, job.Lw[0], job.Lh[0]);
-        for (int i = 0; i < job.Levels; i++)
-        {
-            int size = BcnEncode.LevelSize(job.Lw[i], job.Lh[i], job.Bc3);
-            fixed (byte* level = job.Blocks.AsSpan((int)job.Off[i], size))
-                Gl.CompressedTextureSubImage2D(dst, i, 0, 0, job.Lw[i], job.Lh[i], fmt, size, level);
-        }
-        uint err = Gl.GetError();
-        if (svUnpackBuf != 0) Gl.BindBuffer(Gl.PIXEL_UNPACK_BUFFER, (uint)svUnpackBuf);
-        if (err != 0)
-        {
-            if (Gl.DeleteTextures != null) Gl.DeleteTextures(1, &dst);
-            _transFailed++;
-            if (++_bcnFails >= BcnFailCap)
-            {
-                _bcn = false;
-                _log?.Info($"OwnedTextures: BCn transcode DISABLED -- {_bcnFails} driver refusals (last 0x{err:x}); uploads stay raw until the next context");
-            }
-            return 0;
-        }
-        return dst;
     }
 
     internal static string TranscodeNote()

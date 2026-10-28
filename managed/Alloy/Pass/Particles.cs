@@ -235,7 +235,6 @@ internal static unsafe partial class Particles
     internal static void Install(ExtenderLog log, HookService hooks)
     {
         _log = log;
-        SceneDepth.Attach(log);
 
         _bindInUnit = EngineFn.AurTextureBindInUnit;
         _tileAlpha = EngineFn.EmitterGetTileAlpha;

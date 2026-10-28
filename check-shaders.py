@@ -520,12 +520,6 @@ def define(src, text):
     return src[:e] + f"#define {text}\n" + src[e:]
 
 
-def ablate(src, n):
-    """The ablation variants are built only by an `/alloy bench` step, so this is the one place a rung that
-    stopped compiling is caught before someone runs the bench and loses that rung of the ladder."""
-    return define(src, f"CX_ABLATE {n}")
-
-
 def nosun(src):
     """CX.Alloy.Programs.WithoutSunSoft: the one define that compiles the sun's blocker search and disc out.
     A driver short of the two raw cascade views links THIS text, so the no-soft-sun arm has to compile and
@@ -533,15 +527,8 @@ def nosun(src):
     return src.replace("#define CX_SUN_SOFT 1", "// CX-49: the soft sun filter is OFF -- too few fragment texture units for its raw cascade views")
 
 
-# CX-188: each ablated pass's ladder length -- the rungs CX.Alloy.Ablation can be asked for, which is what
-# AlloyRenderer.Bench's own step list walks. Rung 0 is the shipped program, a program in its own right below.
-ABLATIONS = {"cx_deferred_cs": 12, "cx_defshadow_cs": 2, "cx_pairdebt": 2}
-
-
 def programs(g):
     return {
-        **{f"{stage} (ablate {n})": (ablate(g[stage], n),)
-           for stage, rungs in ABLATIONS.items() for n in range(1, rungs + 1)},
         "fullbright": (g["cx_own_vs"], g["cx_own_fs"]),
         "depth prepass": (g["cx_depth_v"], g["cx_depth_f"]),
         "keyhole depth prepass": (g["cx_depthkey_v"], g["cx_depthkey_f"]),
@@ -556,10 +543,6 @@ def programs(g):
         "clustered lit (no soft sun, deferred twin)": (g["cx_ownlit_vs"], nosun(g["cx_ownlit_fs"]).replace("#version 460 core\n", "#version 460 core\n#define CX_DEFERRED 1\n#define CX_GBUF_OUT 1\n", 1)),
         # CX-188: the deferred twin -- the same two defines Programs.WithDeferred injects, in the same place
         "clustered lit (deferred twin)": (g["cx_ownlit_vs"], g["cx_ownlit_fs"].replace("#version 460 core\n", "#version 460 core\n#define CX_DEFERRED 1\n#define CX_GBUF_OUT 1\n", 1)),
-        # CX-188: /alloy bench's blended ladder -- Ablation.LitDefines, in the same place
-        **{f"clustered lit (blended ablate {n})": (g["cx_ownlit_vs"], g["cx_ownlit_fs"].replace("#version 460 core\n", f"#version 460 core\n{d}", 1))
-           for n, d in ((3, "#define CX_BLEND_FLAT 1\n"), (4, "#define CX_NO_HOT 1\n#define CX_ABLATE 2\n"),
-                        (5, "#define CX_NO_HOT 1\n#define CX_ABLATE 4\n"), (6, "#define CX_NO_HOT 1\n"))},
         "clustered lit (decal layer writer)": (g["cx_ownlit_vs"], g["cx_ownlit_fs"].replace("#version 460 core\n", "#version 460 core\n#define CX_DECAL_WRITE 1\n", 1)),
         "coverage layer seed": (g["cx_fullscreen_v"], g["cx_a2cseed_f"]),
         "coverage layer depth": (g["cx_fullscreen_v"], g["cx_a2cdepth_f"]),
@@ -606,7 +589,6 @@ def programs(g):
         "volumetric fog light": (g["cx_vfog_cs"],),
         "volumetric fog integrate": (g["cx_vfogsum_cs"],),
         "gui": (g["cx_gui_v"], g["cx_gui_f"]),
-        "movie quad": (g["cx_movie_v"], g["cx_movie_f"]),
         "trigger highlight": (g["cx_fullscreen_v"], g["cx_hilitetrig_f"]),
         "oit resolve": (g["cx_fullscreen_v"], g["cx_oitresolve_f"]),
         "light beams (scene database)": (g["cx_beamdb_v"], g["cx_beam_f"]),
@@ -622,7 +604,6 @@ def programs(g):
         "pass wrapper (stub)": (g["cx_pass_cs"],),
         "weather noise tile": (g["cx_wx_noise_c"],),
         "weather ripple tile": (g["cx_wx_ripl_c"],),
-        "arturo ripple warp": (g["cx_arturo_c"],),
     }
 
 

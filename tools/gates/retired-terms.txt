@@ -150,3 +150,33 @@ alloy\.(backend|renderthread|rhiimmediate|gpumeter)\b	CX-313
 # The weather bakes' GL arms: the wetness map's scatter and integrate dispatches, the shelter and ripple tile
 # bakes, the cover map's ESM filter and the splash draw. Vulkan records every one of them.
 \bWeather\.(MapTick|MapScatter|EnsureMap|ShelterTick|ShelterBake|FilterCover|EnsureEsm|DrawSplash)\b	GL sweep 5
+# The GL movie quad and the GL owned-texture uploads. Vulkan draws the movie plate from the decode, and every
+# owned texture's identity is now a Vulkan-only name (VkTextures.NewName) with a Vulkan image behind it.
+\bcx_movie_v\b|\bcx_movie_f\b|\bMoviePlate\.Write\b|\bTextureSlots\.MovieQuad\b	GL sweep 6
+\bOwnedTextures\.Unpack\b|\bGlTexture\.KeepZeroed\b	GL sweep 6
+# The arturo ripple's GPU warp. The .txi words are still read (they pick the uncompressed container), but the
+# warp itself was a GL compute pass and is not ported, so such a texture draws its source image.
+\bcx_arturo_c\b|\b(Keep|Warp|Step|Bury|Clear)Arturo\b|\bArturo(Programs|Buffers|StandDown|Turn)\b	GL sweep 6
+# The content pairs' GL program table and the issue loop's numbering of it, the host-side attach/bind/resolve that
+# pointed those programs at a stage's images, and the stage snapshot that read them all back. Vulkan compiles each
+# variant as a pipeline and binds a descriptor set, so none of it has a backend.
+\bContentPrograms\.(ProgBase|ProgId|IsProg|IsDeferred|Program|Loc|DepthLoc|CastLoc|BindExtras|BindTwinExtras)\b	GL sweep 6
+\bStageResources\.(Attach|Bind|Resolve|Snap|OverlayTex)\b|\bBindContentCaster\b|\bContentCasterCut\b	GL sweep 6
+# The per-area pipeline prewarm: a dummy draw per pipeline state through the GL program table. Vulkan warms its own
+# pipeline cache, so the key enumeration and the warm draw have nothing to warm.
+\bContentPrewarm\b|\bContentPipelines\b|\bPipelineKey\b|\bProgramWarm\b	GL sweep 6
+# The /alloy bench ablation ladder: a pass's stage rebuilt with CX_ABLATE n so the shader stopped after rung n.
+# Vulkan links its own pipelines, so every rung but "back on its own program" was refused and nothing it set was
+# read. /alloy bench keeps its knob sweep, which is what it measures now.
+\bAblation\b|\bAblateProgram\b|\bBlendAblate\b|\bLitDefines\b|\bBenchAblSummary\b|\bAblSite\b|\bBenchAblTerm\b	GL sweep 6
+# The GL render target of the scene depth copy and the G-buffer, the GPU-PLT check, the GL texture probe, the GL
+# RHI backend, the streaming ring, the one VAO per vertex format and the bindless residency ledger. Vulkan owns
+# every image, buffer, vertex input and descriptor these named.
+\bPltGpuCheck\b|\bTexProbe\b|\bGlDevice\b|\bAlloyDevice\.(Get|Borrow|GlName)\b	GL sweep 6
+\bStreamRing\b|\bVertexArrays\b|\bVertexStream\b|\bGpuRing\b|\bGpuReadback\b|\bBindlessLedger\b	GL sweep 6
+\bSceneDepth\.(Attach|Take|Bind|Ready|Invalidate|Forget)\b|\bGBuffer\.(Attach|Forget|Stats|Ready|Failed|BeginFrame)\b	GL sweep 6
+\bMeshArena\.(BuildVao|UploadVerts|UploadIndices)\b|\bBindBatchState\b|\bVaoName\b|\bOwnedClasses\b	GL sweep 6
+\bAlloyLights\.(BindForDraw|UploadMovers|HarvestQuery|TakeClusterOverflow)\b|\bForgetHandle\b|\bHandleDiag\b	GL sweep 6
+# Dead GL members with no caller at all: the pass block's uniform send, the multidraw helper, the 4.6 draw
+# target's rebind, the GL extension strings and the two vendor VRAM queries behind them.
+\bFlushPassBlock\b|\bPassContextLost\b|\bMultiDrawRange\b|\bRebindFrameTarget\b|\bHasBindless\b|\bProbeVram\b	GL sweep 6

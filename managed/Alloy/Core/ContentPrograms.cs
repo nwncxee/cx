@@ -5,6 +5,9 @@ using CX.Graphics;
 
 namespace CX.Alloy;
 
+/// <summary>Which of a content pair's five programs a draw binds (<see cref="ContentPrograms"/>).</summary>
+internal enum ContentVariant : byte { Forward, Deferred, Depth, Caster, CasterLayer }
+
 /// <summary>
 /// The CONTENT pairs: every <c>customShaderVS</c>/<c>customShaderFS</c> pair a <c>.mtr</c> names, keyed as the engine's
 /// cache keys them, each with programs spliced from the lit stages with its halves translated (<see cref="ContentStage"/>):
@@ -13,10 +16,6 @@ namespace CX.Alloy;
 /// </summary>
 internal static unsafe class ContentPrograms
 {
-    /// <summary>The issue loop's program number for a pair's programs: <c>ProgBase + 2 * index</c> forward, one more for
-    /// the deferred twin. Above every number the named lit programs use.</summary>
-    internal const int ProgBase = 100;
-
     /// <summary>What a Vulkan session holds in a variant's program slot: the pair's text is ready for
     /// <see cref="Texts"/>, and no GL program exists behind it.</summary>
     private const uint VkReady = uint.MaxValue;
@@ -25,9 +24,6 @@ internal static unsafe class ContentPrograms
     private sealed class ProgramSet
     {
         public uint Fwd, Def, Depth, Cast, CastLayer;
-        public AlloyRenderer.LitLoc FwdLoc, DefLoc, DepthLoc, CastLoc, CastLayerLoc;
-        /// <summary>What each program was attached as (<see cref="StageResources.Attach"/>): -1 is nothing per bind.</summary>
-        public int FwdRec = -1, DefRec = -1, DepthRec = -1, CastRec = -1, CastLayerRec = -1;
     }
 
     /// <summary>One content pair: its names, its programs, and the facts its build read off the translation.</summary>
@@ -41,8 +37,6 @@ internal static unsafe class ContentPrograms
         public ProgramSet P = new();
         /// <summary>A batch asked for the pair and its programs are not built: the next frame starts them.</summary>
         public bool Wanted;
-        /// <summary>The background compile's keys while it runs (<see cref="GlProgram.Start"/>), null otherwise.</summary>
-        public ulong[]? Keys;
         public string? VsSrc, FsSrc;
         /// <summary>The pair could not translate or build against this module. A fact about the source, kept until the
         /// module changes.</summary>
@@ -154,12 +148,11 @@ internal static unsafe class ContentPrograms
         return false;
     }
 
-    /// <summary>Queue this pair's build without asking to draw it: what the per-area prewarm
-    /// (<see cref="ContentPrewarm"/>) marks a pair with, so its programs compile behind the load screen rather than
-    /// at the frame a batch first wants them.</summary>
+    /// <summary>Queue this pair's build without asking to draw it, so it compiles behind a load screen rather
+    /// than at the frame a batch first wants it.</summary>
     internal static void Want(int feat)
     {
-        if (Of(feat) is { Failed: false, Plain: false, Keys: null, P.Fwd: 0 } s) s.Wanted = true;
+        if (Of(feat) is { Failed: false, Plain: false, P.Fwd: 0 } s) s.Wanted = true;
     }
 
     /// <summary>Has this pair's build happened -- its programs are up, or it is the plain path, or it was refused?
@@ -220,93 +213,19 @@ internal static unsafe class ContentPrograms
     internal static ContentStage.Param[] Params(int feat) => Of(feat)?.Params ?? [];
     internal static int Epoch(int feat) => Of(feat)?.Epoch ?? 0;
 
-    /// <summary>The issue loop's number for pair <paramref name="feat"/>'s forward program or deferred twin.</summary>
-    internal static int ProgId(int feat, bool deferred) => ProgBase + 2 * (feat - (int)ShaderFeature.Content0) + (deferred ? 1 : 0);
-
-    internal static bool IsProg(int which) => which >= ProgBase;
-    internal static bool IsDeferred(int which) => which >= ProgBase && ((which - ProgBase) & 1) == 1;
-
-    private static Stage? OfProg(int which)
-        => which >= ProgBase ? Of((int)ShaderFeature.Content0 + (which - ProgBase) / 2) : null;
-
-    /// <summary>The GL program behind issue-loop number <paramref name="which"/>.</summary>
-    internal static uint Program(int which)
-        => OfProg(which) is { } s ? (IsDeferred(which) ? s.P.Def : s.P.Fwd) : 0;
-
-    /// <summary>The uniform locations of issue-loop number <paramref name="which"/>.</summary>
-    internal static ref AlloyRenderer.LitLoc Loc(int which)
-    {
-        Stage? s = OfProg(which);
-        if (s == null) return ref _reg.None;
-        return ref IsDeferred(which) ? ref s.P.DefLoc : ref s.P.FwdLoc;
-    }
-
     /// <summary>The pair's depth twin (the prepass's program for it), or 0.</summary>
     internal static uint DepthProgram(int feat) => Of(feat)?.P.Depth ?? 0;
-
-    /// <summary>The depth twin's uniform locations.</summary>
-    internal static ref AlloyRenderer.LitLoc DepthLoc(int feat)
-    {
-        Stage? s = Of(feat);
-        if (s == null) return ref _reg.None;
-        return ref s.P.DepthLoc;
-    }
 
     /// <summary>The pair's caster twin -- the layered one for <paramref name="layered"/> -- or 0.</summary>
     internal static uint CastProgram(int feat, bool layered) => Of(feat) is { } s ? (layered ? s.P.CastLayer : s.P.Cast) : 0;
 
-    /// <summary>A caster twin's uniform locations.</summary>
-    internal static ref AlloyRenderer.LitLoc CastLoc(int feat, bool layered)
-    {
-        Stage? s = Of(feat);
-        if (s == null) return ref _reg.None;
-        return ref layered ? ref s.P.CastLayerLoc : ref s.P.CastLoc;
-    }
-
-    /// <summary>What a content program reads beyond the lit stage's own terms: its native half's images. The
-    /// engine's <c>solid_noise</c> (<c>texUnitNoise</c>) rides the <c>CxEngine</c> block. Called at the program's
-    /// bind.</summary>
-    internal static void BindExtras(int which)
-    {
-        Stage? s = OfProg(which);
-        if (s == null) return;
-        StageResources.Bind(IsDeferred(which) ? s.P.DefRec : s.P.FwdRec);
-    }
-
-    /// <summary><see cref="BindExtras"/> for a pair's depth twin (<paramref name="cast"/> false) or caster twin, the
-    /// layered one for <paramref name="layered"/>.</summary>
-    internal static void BindTwinExtras(int feat, bool cast, bool layered)
-    {
-        Stage? s = Of(feat);
-        if (s == null) return;
-        StageResources.Bind(!cast ? s.P.DepthRec : layered ? s.P.CastLayerRec : s.P.CastRec);
-    }
-
-    /// <summary>Start every pair a batch asked for since the last frame, and finish every one whose background compile
-    /// is done. Render thread, in the bracket, ahead of every batch: the lit programs must exist, because a pair's
-    /// programs are spliced from their text.</summary>
+    /// <summary>Start every pair a batch asked for since the last frame. Render thread, in the bracket, ahead of
+    /// every batch: the lit stage's text must exist, because a pair's programs are spliced from it.</summary>
     internal static void EnsureWanted()
     {
-        bool vk = Renderer.OnVulkan;
-        if (!vk && (CX.Alloy.Programs._litFsSrc == null || CX.Alloy.Programs._litVsSrc == null)) return;
         RegistryState r = _reg;
         for (int i = 0; i < r.Count; i++)
-        {
-            if (r.ById[i] is not { } s) continue;
-            if (s.Keys != null) { if (GlProgram.Done(s.Keys)) Finish(s); }
-            else if (s.Wanted) { if (vk) StartVk(s); else Start(s); }
-        }
-    }
-
-    /// <summary>Translate the pair and issue its programs to the driver's compiler threads; <see cref="Finish"/> claims
-    /// them once they are done. A pair whose halves both add nothing to stock is the plain lit path and builds nothing.</summary>
-    private static void Start(Stage s)
-    {
-        if (!Splice(s, CX.Alloy.Programs._litVsSrc!, CX.Alloy.Programs._litFsSrc!)) return;
-        // the forward pair first: its splice translates the halves, and the facts say which twins the pair needs
-        var keys = new List<ulong> { GlProgram.Start(s.VsSrc!, s.FsSrc!, true) };
-        if (Facts(s, out _)) foreach (var t in Twins(s)) keys.Add(GlProgram.Start(t.Vs, t.Fs, true));
-        s.Keys = keys.ToArray();
+            if (r.ById[i] is { Wanted: true } s) StartVk(s);
     }
 
     /// <summary>A Vulkan session's build: the pair's texts spliced from the lit stage Vulkan compiles, its halves
@@ -421,60 +340,6 @@ internal static unsafe class ContentPrograms
     private static bool LitDeferred(string fs)
         => CX.Alloy.Programs.WithDeferred(fs).Contains("CxGbufWrite(g)", StringComparison.Ordinal);
 
-    /// <summary>Claim the pair's programs -- compiled by now, or compiled here in turn without parallel compile -- and
-    /// say what it became.</summary>
-    private static void Finish(Stage s)
-    {
-        ulong[] issued = s.Keys!;
-        s.Keys = null;
-        string what = What(s);
-        int prev;
-        Gl.GetIntegerv(Gl.CURRENT_PROGRAM, &prev);
-        uint fwd = GlProgram.Graphics(s.VsSrc!, s.FsSrc!, _reg.Log, what, host: true);
-        bool stubbed = GlProgram.LastStubbed, facts = Facts(s, out string? refused);
-        if (fwd == 0 || stubbed || !facts)
-        {
-            if (fwd != 0) Gl.DeleteProgram(fwd);
-            GlProgram.Drop(issued);
-            Fail(s, refused ?? (fwd == 0 ? "its program did not compile or link (the lines above say why)"
-                                         : "it compiled only with its body stubbed (the lines above say why)"));
-            Gl.UseProgram((uint)prev);
-            return;
-        }
-        var p = new ProgramSet { Fwd = fwd, FwdLoc = CX.Alloy.Programs.LitLocs(fwd) };
-        p.FwdRec = StageResources.Attach(fwd, s.NatVs, s.NatFs, _reg.Log);
-        if (p.FwdRec == -2)
-        {
-            Gl.DeleteProgram(fwd);
-            GlProgram.Drop(issued);
-            Gl.UseProgram((uint)prev);
-            Renew(s, "its native half refused the program");
-            return;
-        }
-        var built = new List<string>();
-        foreach (var (twin, vs, fs, slot) in Twins(s))
-        {
-            uint t = GlProgram.Graphics(vs, fs, _reg.Log, $"{what} ({twin})", host: true);
-            if (t != 0 && GlProgram.LastStubbed) { Gl.DeleteProgram(t); t = 0; }
-            if (t == 0) continue;
-            int rec = StageResources.Attach(t, s.NatVs, s.NatFs, _reg.Log);
-            if (rec == -2) { Gl.DeleteProgram(t); continue; }
-            built.Add(twin);
-            var loc = CX.Alloy.Programs.LitLocs(t);
-            switch (slot)
-            {
-                case 1: p.Def = t; p.DefLoc = loc; p.DefRec = rec; break;
-                case 2: p.Depth = t; p.DepthLoc = loc; p.DepthRec = rec; break;
-                case 3: p.Cast = t; p.CastLoc = loc; p.CastRec = rec; break;
-                default: p.CastLayer = t; p.CastLayerLoc = loc; p.CastLayerRec = rec; break;
-            }
-        }
-        s.P = p;
-        s.Epoch++;
-        Say(s, what, built);
-        Gl.UseProgram((uint)prev);
-    }
-
     /// <summary>The one line a built pair says: what it runs as, which twins it has, and what its translation noted.</summary>
     private static void Say(Stage s, string what, List<string> built)
     {
@@ -521,10 +386,8 @@ internal static unsafe class ContentPrograms
 
     private static void Drop(Stage s)
     {
-        foreach (uint p in new[] { s.P.Fwd, s.P.Def, s.P.Depth, s.P.Cast, s.P.CastLayer }) if (p is not (0 or VkReady)) Gl.DeleteProgram(p);
-        if (s.Keys != null) GlProgram.Drop(s.Keys);
         s.P = new ProgramSet();
-        s.Failed = false; s.Plain = false; s.Cuts = false; s.Moves = false; s.Wanted = false; s.Keys = null;
+        s.Failed = false; s.Plain = false; s.Cuts = false; s.Moves = false; s.Wanted = false;
         s.NatVs = -1; s.NatFs = -1;
     }
 
@@ -577,8 +440,7 @@ internal static unsafe class ContentPrograms
         RegistryState r = _reg;
         for (int i = 0; i < r.Count; i++)
             // the native stage ids too: the table they index is the dead context's, and a new one numbers afresh
-            if (r.ById[i] is { } s) { s.P = new ProgramSet(); s.Wanted = false; s.Keys = null; s.Failed = false; s.NatVs = -1; s.NatFs = -1; }
-        GlProgram.ForgetBackground();
+            if (r.ById[i] is { } s) { s.P = new ProgramSet(); s.Wanted = false; s.Failed = false; s.NatVs = -1; s.NatFs = -1; }
     }
 
     /// <summary>The period line's clause: pairs named, running, compiling, refused.</summary>
@@ -586,10 +448,10 @@ internal static unsafe class ContentPrograms
     {
         RegistryState r = _reg;
         if (r.Count == 0 && r.StockPairs == 0) return "";
-        int running = 0, failed = 0, compiling = 0;
+        int running = 0, failed = 0;
         for (int i = 0; i < r.Count; i++)
-            if (r.ById[i] is { } s) { if (s.P.Fwd != 0) running++; if (s.Failed) failed++; if (s.Keys != null) compiling++; }
-        return $"content pairs: {r.Count} named, {running} running, {compiling} compiling, {failed} NOT RUN, {r.StockPairs} stock"
+            if (r.ById[i] is { } s) { if (s.P.Fwd != 0) running++; if (s.Failed) failed++; }
+        return $"content pairs: {r.Count} named, {running} running, {failed} NOT RUN, {r.StockPairs} stock"
              + (r.Spilled == 0 ? "" : $", {r.Spilled} past the id range") + "; ";
     }
 
@@ -612,10 +474,7 @@ internal static unsafe class ContentPrograms
             check.Expect(a == 2 && b == 2, $"the first content pair is not id 2 for both cases of its names (got {a}, {b})");
             check.Expect(Register(Mtr("customshadervs cx_selfcheck_w\ncustomshaderfs cx_selfcheck_a\n")) == 3,
                          "the same fragment half under another vertex half does not take the next id");
-            check.Expect(ProgId(2, false) == 100 && ProgId(2, true) == 101 && ProgId(3, false) == 102
-                         && IsDeferred(101) && !IsDeferred(102) && !IsProg(9),
-                         "the issue-loop numbering is not 100 + 2 * index, plus one for the twin");
-            check.Expect(!AskReady(2) && _reg.ById[0]!.Wanted && !AskReady(1),
+                check.Expect(!AskReady(2) && _reg.ById[0]!.Wanted && !AskReady(1),
                          "an unbuilt pair reads ready, does not queue its build, or the skin class reads as content");
             string region = WithRegion("head\n//@cx-lib cx_host_f\nbody\n//@cx-end cx_host_f\ntail\n", FsLib,
                                        VanillaShader.ContentMark, "rambo", "vslit", RegionStub) ?? "";

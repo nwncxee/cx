@@ -48,7 +48,7 @@ world edge       AlloyRenderer.EndFrame: module unload / 4.6 context lost / part
                      -> TileBuild.Revoke, PartTreeLive.Revoke, ModelCache.AreaEdge
 context loss     AlloyRenderer.EndFrame -> PassRegistry.Global.ContextLost()
                      -> MeshArena.ContextLost, TexRegistry.ContextLost,
-                        PltPalettes/PltColors/PltGpuCheck.ContextLost, DbFeed.ContextLost
+                        PltPalettes/PltColors.ContextLost, DbFeed.ContextLost
 ```
 
 **The fourth edge the ADR folds into "model release" is really its own.** A texture does not die when a model
@@ -134,8 +134,7 @@ spot, names it once in the log and counts it; the `[gl46]` period line carries f
 plus an overflow count and a count of names whose delete entry point never resolved. A queue that is not
 keeping up is visible rather than silently correct.
 
-`FramesInFlight` is 3, and the number is not a guess. `StreamRing.Regions` is 3 and a push waits out the
-fence of the region three frames back; `GpuReadback.Slots` and `OitPass.ReadSlots` are both 3; the GPU-span
+`FramesInFlight` is 3, and the number is not a guess. `OitPass.ReadSlots` is 3; the GPU-span
 timer harvests two slots because it finds the GPU about two frames behind. `OwnedTextures.Retire`'s deferred
 delete is the same quantity rather than a ring depth — it held a name for three drains because zink resolves
 bindless descriptors at batch completion and faults on an image destroyed before then — so its `DeferFrames`
@@ -177,13 +176,11 @@ What is routed, and from where:
 | `StageResources`' stage images and their `Prev` history | `DropAll` at a module change, and `Remake` on a resize |
 | `TexRegistry`'s Arturo turn table | the ripple stand-down. Its per-ripple textures already deferred through `_graveyard`; this was the one pair on that edge that did not |
 | `TextAtlas.Sweep`'s orphaned font atlases | a font replaced by name, with the old atlas still sampled by the frames in flight |
-| `GlDevice`'s buffers, images and samplers | the RHI seam's `Destroy(BufferId/ImageId/SamplerId)`. `Destroy(ImageId)` retires through `Evict` first, so each framebuffer the image was attached to is queued ahead of the image itself and neither outlives the other's name |
 
 Four things stay immediate, each for a reason:
 
-- **A creation failure.** `RenderTarget.Create`'s refused storage, `GlDevice.CreateImage`'s refused storage
-  and `GlDevice.Execute`'s `Drop` of a framebuffer that came back incomplete, `EnvProbe`'s and
-  `LightmapBake`'s `GetError` arms, `Weather`'s refused texture view, `GlTexture.KeepZeroed`'s uncleared texture: the object was never submitted with, so
+- **A creation failure.** `RenderTarget.Create`'s refused storage, `EnvProbe`'s and
+  `LightmapBake`'s `GetError` arms, `Weather`'s refused texture view: the object was never submitted with, so
   there is no frame to wait for, and deferring it would hold memory the caller is about to ask for again.
 - **`LightmapBake`'s page pool.** `FreePages` is called from `Pool` and `ReleaseIdle` precisely to give the
   memory back, and `Pool` then allocates the replacement. Up to a gigabyte, so a three-frame hold is a
@@ -332,8 +329,7 @@ One priority inversion worth knowing about: `MeshArena.Acquire` (from the fold, 
 | Resource | Created by | Killed by | Context loss |
 |---|---|---|---|
 | Texture registry slots (16384, SoA, open-address `_hash`) | `TexRegistry.Alloc` from `Acquire` or `Swap`. The key is **(lower-cased resref, atlas cell)** and nothing else — not the kind (asking for the same file as `Auto` and as `Plt` used to make two slots and two uploads) and **not the PLT scheme**, which lives per object and is resolved in the shader | `TexRegistry.Retire`, from exactly three places: `Release` dropping the last reference on a *failed* slot, `EvictPastBudget` off the idle LRU head, and `ContextLost` for an unreferenced slot. **No object, scene, model or area edge touches it** — the `texreg` pass is registered with no `Revoke` on purpose | `TexRegistry.ContextLost` |
-| The registry's GL textures and bindless handles | `TexRegistry.Upload` (immutable storage, per-level sub-image) from `Finish` from `Drain`; `MintHandle` in the bracket only — a handle belongs to the share group | the name goes to `_graveyard` from `Retire`, from `Land`'s second-upload case, and from `Tick`'s stale-landing case; the `glDeleteTextures` happens in `Drain`'s first loop. The handle goes in `DropHandle` | names and handles forgotten, graveyard cleared, nothing deleted |
-| A ripple's GL textures (`.txi proceduretype arturo`): its source image and its wave pair, plus the one warp program and turn table | `TexRegistry.ArturoBuffers` / `ArturoPrograms` in the bracket, on the ripple's first warp; the CPU side is `KeepArturo` on the decode worker | `BuryArturo` queues both names into `_graveyard` — from `ClearArturo` (every slot reset and retire), from `FileArturo` replacing a slot's ripple, from `StepArturo` dropping one whose generation moved, and from `ArturoStandDown`, which also deletes the program and the table. Otherwise those two live as long as the context. The eviction budget sees all of it: `KeepArturo` sizes `j.Bytes` from the forced RGBA8 level plus the ripple's own copy and wave grid | `ArturoContextLost`, called before `ContextLost` clears the graveyard: program, table and every ripple's names forgotten, nothing deleted, the next warp makes them again |
+| The registry's Vulkan images and bindless indices | `TexRegistry.Upload` mints a Vulkan-only name and `MirrorJob` makes its image (one image for the chain, one level at a time) from `Finish` from `Drain`; `MintHandle` wraps the name as the record tables' handle | the name goes to `_graveyard` from `Retire`, from `Land`'s second-upload case, and from `Tick`'s stale-landing case; `VkTextures.Forget` happens in `Drain`'s first loop. The handle goes in `DropHandle` | names and handles forgotten, graveyard cleared, nothing deleted |
 | The decode worker, its queues and job buffers | `TexRegistry.StartWorker` (one `cx-tex` background thread, lazily on the first `Offer`); `Job.Data` from `PltImage.Decode` / `RasterReader.PrepareTga` / `DdsReader.Prepare` | `Recycle` frees `Job.Data` with the right allocator per kind; `Drain` uses `try { Finish } finally { Recycle }` so an upload throw cannot leak the decode buffer. The stale-upload guard is the generation alone: `Finish` returns if `(_gen[i] & 0xFFF) != j.Gen` | the queues are left; nothing draws |
 | The dependents list (`_depPart`/`_depNext`, 65536 edges) | `TexRegistry.AddDependent`, from `StageDbPart`'s bindless loop, and only while the slot is `Loading` — that is what bounds it | `MarkDependents(i)` once per slot at arrival or failure; `FreeDeps(i)` at `Retire`. Overflow is counted and said once: the part keeps the white stand-in until something else dirties it | — |
 | The PLT master palette (1.75 MiB CPU) and its RGBA8 texture | `PltPalettes.SetPalette` → `ReadTga` → `Compose` fills the CPU side on the game thread; `PltPalettes.Create` makes the texture in the bracket | `Create` itself deletes the old name before making the new one. That is the only delete | `PltPalettes.ContextLost` zeroes `_tex` and sets `_dirty`, deletes nothing |
@@ -491,7 +487,6 @@ engine-scene path; the table stays as the record of what went and why.
 | The `Part::~Part` death notice and its cascade | `DrawFunnelService.OnPartDtor` (`managed/Alloy/DrawFunnelService.cs`), installed by `hooks.InstallPartDtor` in `DrawFunnelService.Initialize`; it drives `SkyBox.Revoke`, `PartTable.MarkFreed`/`Die`, `NonMeshParts.Died` | A part record is a `DbTable` slot. `DbTable.Free` bumps the generation, so every outstanding `DbId` is dead at the free. There is no borrowed pointer to be told about. |
 | The #221 tombstone | `PartEntry.Freed` + `PartTable.MarkFreed`, `PartTable.EntryLive` (`managed/Alloy/Scene/PartTable.cs`); the same shape in `AlloyCensus.Find`, `GobLod.Insert`'s stamp | A tombstone exists to stop a **recycled address** reviving a record. A `DbId` carries a generation, so the recycled-identity class of bug cannot be expressed (`DbId`'s own summary says so). |
 | The VDO fingerprint and the recycled-address re-harvest | `VdoSig` (`managed/Alloy/Core/EngineRefs.cs`), `_vSig` + `SlotHolds` (`managed/Alloy/AlloyRenderer.Vao.cs`), the re-fingerprint in `VdoSlot` (`managed/Alloy/Scene/AlloyRenderer.Enroll.cs`), and `Beams`' copy of all three | There is no VDO. Geometry is a `MeshArena` range keyed on `MeshArena.ContentKey(MeshDef)` — content, not an address — and a range is handed back by `MeshArena.Release`, told. |
-| The VAO drip and the per-VDO VAOs | `AlloyRenderer.Vao.cs` in its entirety bar `BindBatchState`/`VaoName`: `Harvest`, `HarvestFailed`, `DripVao`/`DripArm`/`DripForget`/`DripRearm`, `EnsureVao`, `_vVao46`/`_vOwned`/`_vStale`, `ForgetLodVao`/`ForgetLodSlot`; `Beams._vVao` | Every DB draw comes out of the one arena: `AlloyRenderer.DbWriteColumns` writes `_oVao[i] = 0` and `_oLodBit[i] = DbArenaVaoBit`, so there is no per-record VAO to mint, retire or wait for. |
 | The enrolment walk | `EnrollBegin`/`EnrollStep`/`EnrollOne`/`EnrollFinish`/`TryEnrollDelta`/`RebuildOrder`/`VdoSlot`/`MeshCensus` and the walk-budget state (`managed/Alloy/Scene/AlloyRenderer.Enroll.cs`), driven from `OnRenderSinglePass` | `AlloyRenderer.DbSeat`/`DbRelease` write a slot's stable columns from a `(DbId part, int recipe)` pair on a dirty bit. The order is rebuilt only when `DbSetGen` moves (`AlloyRenderer.DbOrder`), which only a seat or a release bumps. |
 | `SceneWalk`'s sweep and its audit | `SceneWalk.Sweep`, `SceneWalk.Tick`, `SceneWalk.Enrol`, `SceneWalk.TryBind`, `SceneWalk.Rebind`, the `alloy.walkaudit` cadence and the `[enum] audit misses=` line (`managed/Alloy/Scene/SceneWalk.cs`) | A sweep answers "is this part still reachable?". The game says when a part dies; `DbFeed`'s `ObjectDied` releases the whole part range on that one edge. |
 | The `Gob::SetScene` leave notice | `SceneWalk.OnGobSetScene` → `SceneWalk.ReleaseGobTrees`, and its two consumers `GobXform.Forget` and `GobLod.Forget` | `DbScene.Leave`/`DbScene.ObjectDied` is the same news, told by the setter that caused it, with the handle in hand. |

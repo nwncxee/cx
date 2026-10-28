@@ -77,7 +77,6 @@ public sealed unsafe partial class AlloyRenderer
         // #129: last pass's snapshot is not this pass's. Revoked first thing, so every path out of here that
         // never reaches PassId.FbCopy leaves Alloy water disarmed -- and BucketGate's bucket-6 gate reads
         // the same flag, so water is simply not drawn on exactly those passes (#285: a hole, not vanilla).
-        if (StreamRing.Refused) _batchUnavailable = true;   // CX-45: the ring failed the renderer (AlloyGate.Fail) when it was refused
         if (_batchUnavailable) { DbNoDraw("multidraw unavailable"); return false; }   // EndFrame revokes + disarms; never pay the bracket for nothing
         // Checked BEFORE anything stamps OwnGen: BuildBatches marks parts as drawn, which is only honest while
         // the issue phase cannot fail. Missing entry points are the one way it could.
@@ -348,8 +347,7 @@ public sealed unsafe partial class AlloyRenderer
             s.FramesLeft--; s.Frame = _frameSeq;
         }
         // wait for the GPU at every traced step: a driver reset then ends the log AT the faulting stage
-        (int now, int peak) = BindlessLedger.ResidentCount;
-        _log?.Always($"AlloyRenderer: [gldebug] frame {_frameSeq}: {what} ({now} handles resident, peak {peak})");
+        _log?.Always($"AlloyRenderer: [gldebug] frame {_frameSeq}: {what}");
     }
 
     /// <summary>A pass's name for <see cref="Step"/>; only reached under <c>alloy.gldebug=1</c>.</summary>

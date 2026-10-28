@@ -165,7 +165,6 @@ public sealed unsafe partial class AlloyRenderer
                      + $"| {DbInputs.Stats()} | {DbEmitterChannels.Stats()} | {DbGui.Stats()}");
         _log?.Info($"AlloyRenderer: [alloy] {Counters._lastEnrolled}/{Counters._lastCandidates} parts owned{CapacityNote()}" +
                    (holes <= 0 ? "" : $" ({holes} NOT DRAWN)") + " [" + OwnedTextures.TranscodeNote() + "; " + OwnedTextures.CacheNote() + "; " + OwnedTextures.UploadNote() + TexStream.Note() + TexLoad.Note() + ModelLoad.Note() + "; " + DdsReader.Note() + "; " + RasterReader.Note() + "]" +
-                   $" drawn by {OwnedClasses()} " +
                    $"/ {Counters._lastTextures} textures " +
                    $"({_litCount} lit, {Counters._litUnownable} lit left to the engine" +
                    // #128: what the creature class costs, split. "Creatures are still vanilla" has three
@@ -352,7 +351,6 @@ public sealed unsafe partial class AlloyRenderer
                    // #121: captures per SESSION against frames per PERIOD. A number that tracks the frame
                    // count is the acceptance criterion ("probe capture does not run per frame") failing.
                    PassCpuNote(Counters._frames) +
-                   $", {StreamRing.Diag()}" +
                    $", probe {(EnvProbe.Ready ? $"ready ({EnvProbe.Captures} captures)" : "none yet")}" +
                    "; " +
                    AlloyLights.Diag(Counters._clusterOverflow) +
@@ -495,10 +493,6 @@ public sealed unsafe partial class AlloyRenderer
     /// same reason as <see cref="Counters"/>.</summary>
     internal static class Diag
     {
-        /// <summary>Diagnostic budget for <see cref="HandleDiag"/>. Cold by construction -- the miss path runs
-        /// about once per distinct texture per enrollment, not per draw -- and it stops speaking after this many
-        /// reports, so it costs one branch on a warm cache.</summary>
-        internal static int _handleDiagLeft = HandleDiagBudget;
         internal static bool _ambientFallbackLogged, _loggedOnce;
     }
 }

@@ -216,23 +216,6 @@ public sealed unsafe partial class AlloyRenderer
         return _passStage;
     }
 
-    /// <summary>Send the staged block if it differs from the one bound. Orphan-and-fill in one call, so a
-    /// block the GPU is still reading is never written under it. Rebound with each send (about one per pass),
-    /// so nothing that took binding 0 in between is ever read as the pass terms.</summary>
-    internal static void FlushPassBlock()
-    {
-        if (_passBuf != 0 && new ReadOnlySpan<byte>(_passStage, PassBytes).SequenceEqual(new ReadOnlySpan<byte>(_passSent, PassBytes)))
-            return;
-        if (_passBuf == 0) { uint b; Gl.CreateBuffers(1, &b); _passBuf = b; }
-        Gl.NamedBufferData(_passBuf, (IntPtr)PassBytes, _passStage, Gl.DYNAMIC_DRAW);
-        Gl.BindBufferBase(Gl.UNIFORM_BUFFER, PassBinding, _passBuf);
-        Buffer.MemoryCopy(_passStage, _passSent, PassBytes, PassBytes);
-        PassUploads++;
-    }
-
-    /// <summary>The block's name died with the context; the next send mints a new one.</summary>
-    internal static void PassContextLost() => _passBuf = 0;
-
     /// <summary>Every <c>CxPass</c> member from this pass's state: the engine's area terms, the cascade and
     /// cube receivers as <see cref="CasterPass"/> published them, and the probe. A stale cascade or cube set
     /// leaves its half zero, which the receivers read as nothing to sample.</summary>

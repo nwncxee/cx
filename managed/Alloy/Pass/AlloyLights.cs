@@ -506,12 +506,9 @@ internal static unsafe class AlloyLights
         public int MoversGen = -1;
         public int LocView = -1, LocProjXY = -1, LocZ = -1, LocCount = -1, LocGrid = -1, LocReach = -1, LocBinCap = -1, LocBinAtten = -1, LocReflK = -1;
         public int LocDynPage = -1, LocHot = -1, LocRel = -1, LocPad = -1, LocTally = -1, LocFloor = -1;
-        public readonly uint[] Query = new uint[2];
-        public bool QueryPending0, QueryPending1;
         /// <summary>Lights the SSBO is currently sized for; a denser area re-allocates it once.</summary>
         public int SsboLights;
         public int Uploaded, UploadFrame = -1;
-        public GpuReadback StatsRead;
     }
 
     private static LightsGlState _gl = new();
@@ -676,40 +673,6 @@ internal static unsafe class AlloyLights
         return true;
     }
 
-    /// <summary>Bind the cluster buffers for the lit draw (the compute pass leaves them bound, but a draw can
-    /// follow a pass where the build was skipped).</summary>
-    internal static void BindForDraw()
-    {
-        if (!Ready)
-        {
-            // shared points: left alone, the lit stages would read the last compute pass's scratch as lights
-            Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindLights, 0);
-            Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindCounts, 0);
-            Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindIndices, 0);
-            Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindMovers, 0);
-            return;
-        }
-        Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindLights, _gl.BufLights);
-        Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindCounts, _gl.BufCounts);
-        Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindIndices, _gl.BufIndices);
-        UploadMovers();
-        // CX-188 step 4: the pair table and the tile atlas. Here rather than at one pass's bind, because
-        // CxPairVis is reachable from every program that lights (cx_localshadow includes it) and the table's
-        // own uPairN is the gate that keeps a frame with no pairs from reading either.
-    }
-
-    /// <summary>The mover spheres, once per rewrite, bound where both the cluster build and the lit stage read them.</summary>
-    private static void UploadMovers()
-    {
-        if (_gl.MoversGen != CasterPass.CubeDynSphereGen)
-        {
-            _gl.MoversGen = CasterPass.CubeDynSphereGen;
-            fixed (float* sp = CasterPass.CubeDynSphere)
-                Gl.NamedBufferSubData(_gl.BufMovers, IntPtr.Zero, (IntPtr)(CasterPass.CubeDynSphere.Length * sizeof(float)), sp);
-        }
-        Gl.BindBufferBase(Gl.SHADER_STORAGE_BUFFER, BindMovers, _gl.BufMovers);
-    }
-
     /// <summary>The cluster lookup (grid, tile, depth range) and the light curve into the pass block,
     /// for the viewport and depth range this pass draws with. Each curve term is its own member, so a lane
     /// added here never changes what an older one means.</summary>
@@ -788,38 +751,6 @@ internal static unsafe class AlloyLights
     /// The plaza heatmap read 32+ lights per pixel; whether that is many lights or huge radii is this number.</summary>
     private static float _radMin, _radMean, _radMax;
     internal static float ShadowNearWorld => _shadowNear * _srcRadius;
-
-    /// <summary>Non-blocking timer + overflow readback: only ever touched when the driver says the result is
-    /// already there, so the render thread never stalls on the GPU.</summary>
-    private static void HarvestQuery(int slot)
-    {
-        bool pending = slot == 0 ? _gl.QueryPending0 : _gl.QueryPending1;
-        if (!pending || _gl.Query[slot] == 0 || Gl.GetQueryObjectiv == null) return;
-        int avail; Gl.GetQueryObjectiv(_gl.Query[slot], Gl.QUERY_RESULT_AVAILABLE, &avail);
-        if (avail == 0) return;
-        ulong ns; Gl.GetQueryObjectui64v(_gl.Query[slot], Gl.QUERY_RESULT, &ns);
-        LastBuildMs = ns * 1e-6f;
-        if (slot == 0) _gl.QueryPending0 = false; else _gl.QueryPending1 = false;
-    }
-
-    /// <summary>Copy out + reset the GPU-side stats, and return the overflow count copied out two calls ago (a period
-    /// late; the entry totals beside it land in the period line). Once a period; it was a <c>glGetBufferSubData</c>,
-    /// which waited out the whole frame.</summary>
-    internal static uint TakeClusterOverflow()
-    {
-        if (!Ready || !GpuReadback.EntryPoints || !_gl.StatsRead.Ensure(StatsWords * sizeof(uint))) return 0;
-        int w = _statsSeq % GpuReadback.Slots, r = (_statsSeq + 1) % GpuReadback.Slots;
-        _statsSeq++;
-        _gl.StatsRead.Copy(_gl.BufStats, 0, w, 0, StatsWords * sizeof(uint));
-        _gl.StatsRead.Fence(w);
-        uint* zero = stackalloc uint[StatsWords] { 0, 0, 0, 0 };
-        Gl.NamedBufferSubData(_gl.BufStats, IntPtr.Zero, (IntPtr)(StatsWords * sizeof(uint)), zero);
-        uint* v = (uint*)_gl.StatsRead.Ready(r);
-        if (v == null) return 0;
-        _tallyBinned = v[1]; _tallyKept = v[2]; _tallyCand = v[3];
-        return v[0];
-    }
-    private static int _statsSeq;
 
     /// <summary>One-line description of the rig's state for the Alloy draw period log.</summary>
     internal static string Diag(uint overflow) =>

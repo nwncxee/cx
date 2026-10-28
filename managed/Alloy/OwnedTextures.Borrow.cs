@@ -101,12 +101,11 @@ internal static unsafe partial class OwnedTextures
         return sb.ToString();
     }
 
-    /// <summary>The level-0 ceiling the oversize decline is measured against, asked once per context (Vulkan: the device's).</summary>
+    /// <summary>The level-0 ceiling the oversize decline is measured against: the device's, asked once.</summary>
     private static int MaxTexSize()
     {
-        if (_borrow.MaxTex == 0 && Renderer.OnVulkan)
+        if (_borrow.MaxTex == 0)
             return _log != null && AlloyDevice.Vulkan(_log) is CX.Graphics.Rhi.VkBackend vk ? _borrow.MaxTex = vk.Caps.MaxTextureSize : int.MaxValue;   // no device: the upload itself refuses
-        if (_borrow.MaxTex == 0) _borrow.MaxTex = GlTexture.MaxSize();
         return _borrow.MaxTex;
     }
 

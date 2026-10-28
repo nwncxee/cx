@@ -93,10 +93,6 @@
     if (!fromRec && uCapture != 2)
         point = CxClusteredLightLm(vWorld, N, V, vDepth, onMover, rough, spec, baked ? 1.0 : 0.0, CxLmTexelWorld(chart.rec),
                                    baked ? CxLightmapMover(chart.rec, vChart) : vec4(0.0), chart.pick, pointSpec, lmSub);
-#ifdef CX_ABLATE
-    // /alloy bench's blended ladder: the stopped walk's result kept alive at a strength the target rounds away
-    point *= CX_ABL_EPS; pointSpec *= CX_ABL_EPS;
-#endif
 #endif
     vec3 lm = vec3(0.0);
     if (baked)
