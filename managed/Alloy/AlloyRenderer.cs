@@ -484,7 +484,6 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         DepthResource.Revoke();
         PresentTarget.ContextLost();   // #456: names only -- the images died with the context
         GuiPass.ContextLost();
-        PassContextLost();
         EngineBlockContextLost();
         GpuGraveyard.Drop();   // after every handler above, so what they retired is dropped with the rest
     }

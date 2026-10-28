@@ -2,7 +2,7 @@
 22 managed/Alloy/AlloyRenderer.Bench.cs
 4 managed/Alloy/AlloyRenderer.Bones.cs
 29 managed/Alloy/AlloyRenderer.cs
-4 managed/Alloy/AlloyRenderer.Device.cs
+3 managed/Alloy/AlloyRenderer.Device.cs
 7 managed/Alloy/AlloyRenderer.Frame.cs
 74 managed/Alloy/AlloyRenderer.Metrics.cs
 10 managed/Alloy/AlloyRenderer.Motion.cs

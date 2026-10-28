@@ -1,8 +1,6 @@
-1 managed/Alloy/AlloyRenderer.Batches.cs
-4 managed/Alloy/AlloyRenderer.Device.cs
+1 managed/Alloy/AlloyRenderer.Device.cs
 6 managed/Alloy/AlloyRenderer.Metrics.cs
-3 managed/Alloy/AlloyRenderer.Target.cs
-33 managed/Alloy/AlloyRenderer.Uniforms.cs
+30 managed/Alloy/AlloyRenderer.Uniforms.cs
 4 managed/Alloy/Core/UniformBlock.cs
 1 managed/Alloy/Db/ContentTable.cs
 11 managed/Alloy/Db/TexRegistry.Load.cs

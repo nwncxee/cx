@@ -177,3 +177,6 @@ alloy\.(backend|renderthread|rhiimmediate|gpumeter)\b	CX-313
 \bSceneDepth\.(Attach|Take|Bind|Ready|Invalidate|Forget)\b|\bGBuffer\.(Attach|Forget|Stats|Ready|Failed|BeginFrame)\b	GL sweep 6
 \bMeshArena\.(BuildVao|UploadVerts|UploadIndices)\b|\bBindBatchState\b|\bVaoName\b|\bOwnedClasses\b	GL sweep 6
 \bAlloyLights\.(BindForDraw|UploadMovers|HarvestQuery|TakeClusterOverflow)\b|\bForgetHandle\b|\bHandleDiag\b	GL sweep 6
+# Dead GL members with no caller at all: the pass block's uniform send, the multidraw helper, the 4.6 draw
+# target's rebind, the GL extension strings and the two vendor VRAM queries behind them.
+\bFlushPassBlock\b|\bPassContextLost\b|\bMultiDrawRange\b|\bRebindFrameTarget\b|\bHasBindless\b|\bProbeVram\b	GL sweep 6
