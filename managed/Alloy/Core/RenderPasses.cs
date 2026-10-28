@@ -440,18 +440,15 @@ internal static class RenderPasses
         }, log);
 
         // CX-303: the content stages -- not a pass either, the programs a material's own fragment stage runs in,
-        // translated (ContentStage). Registered for a log, the off-device checks, the context loss that takes their
-        // program names and a line on the period report; the module edge drops them through Programs.DropSpliced.
+        // translated (ContentStage). Registered for a log, the off-device checks, the device loss that takes their
+        // pipelines and a line on the period report.
         r.Register(new PassLifecycle
         {
             Name = "content",
             Attach = ContentPrograms.Attach,
-            SelfCheck = l => { ContentStage.SelfCheck(l); ContentPrograms.SelfCheck(l); Db.ContentRows.SelfCheck(l);
-                               ContentPipelines.SelfCheck(l); },
-            ContextLost = () => { ContentPrograms.ContextLost(); ContentPrewarm.ContextLost(); },
-            // the prewarm's key table is per AREA: the next area's recipes name their own pipelines
-            Revoke = ContentPrewarm.AreaEdge,
-            Stats = _ => ContentPrograms.Note() + ContentPrewarm.Note(),
+            SelfCheck = l => { ContentStage.SelfCheck(l); ContentPrograms.SelfCheck(l); Db.ContentRows.SelfCheck(l); },
+            ContextLost = ContentPrograms.ContextLost,
+            Stats = _ => ContentPrograms.Note(),
         }, log);
 
         // CX-113: the model cache -- not a pass, the content-keyed table every CX-owned object takes its model

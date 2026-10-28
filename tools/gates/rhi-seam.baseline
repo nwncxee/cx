@@ -6,7 +6,6 @@
 3 managed/Alloy/AlloyRenderer.Target.cs
 33 managed/Alloy/AlloyRenderer.Uniforms.cs
 4 managed/Alloy/AlloyRenderer.Vao.cs
-9 managed/Alloy/Core/ContentPrograms.cs
 12 managed/Alloy/Core/PassState.cs
 2 managed/Alloy/Core/StreamRing.cs
 4 managed/Alloy/Core/UniformBlock.cs
@@ -18,7 +17,6 @@
 1 managed/Alloy/Issue.cs
 1 managed/Alloy/OwnedTextures.cs
 12 managed/Alloy/Pass/AlloyLights.cs
-5 managed/Alloy/Pass/CasterPass.Content.cs
 20 managed/Alloy/Pass/FogVolume.cs
 8 managed/Alloy/Pass/FrameTap.cs
 8 managed/Alloy/Pass/GBuffer.cs
@@ -29,9 +27,6 @@
 4 managed/Alloy/Pass/SceneFog.cs
 12 managed/Alloy/Pass/SkyView.cs
 8 managed/Alloy/Pass/StageEnv.cs
-1 managed/Alloy/Pass/StageResources.cs
-11 managed/Alloy/Pass/StageResources.Gl.cs
-20 managed/Alloy/Pass/StageResources.Snap.cs
 7 managed/Alloy/Pass/TextAtlas.cs
 1 managed/Alloy/Pass/Weather.Esm.cs
 2 managed/Alloy/Pass/Weather.Map.cs

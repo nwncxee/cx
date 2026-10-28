@@ -58,7 +58,6 @@ internal static unsafe partial class StageResources
         /// halves swap: swapping one that nothing rewrites would alternate its name between the baked
         /// texture and a zeroed one, every frame, with nothing to see but the flicker.</summary>
         public bool Swap;
-        public uint Tex, Prev;
         /// <summary>A Vulkan draw program writes this image as a storage image, so the frame's head hands it over writable.</summary>
         public bool VkDrawStore;
         /// <summary>The texture units its two halves stay bound on, from <see cref="TextureSlots.ResourceBase"/>: a
@@ -78,7 +77,6 @@ internal static unsafe partial class StageResources
         /// <summary>The image name the declaration gave, and its index once the names are resolved.</summary>
         public string ImageRef = "";
         public int Image = -1;
-        public uint Prog;
         public int Gx = 1, Gy = 1, Gz = 1;
         public StageEnvLoc Env;
         public FrameLoc Frame;
@@ -94,16 +92,6 @@ internal static unsafe partial class StageResources
         public int Stage, Image;
         public bool Prev;
         public uint Unit;
-    }
-
-    /// <summary>One program a host attached: the native stages it is built from (-1: none) and what its bind
-    /// uploads.</summary>
-    private sealed class Rec
-    {
-        public uint Prog;
-        public int A = -1, B = -1;
-        public ImageBind[] Binds = [], Samplers = [];
-        public FrameLoc Frame;
     }
 
     private sealed class Stage
@@ -131,14 +119,13 @@ internal static unsafe partial class StageResources
         public string OverlayRef = "";
     }
 
-    /// <summary>Everything the GL context owns plus the main view's frame, in one object: context loss replaces it,
-    /// so no program, texture, unit or failure latch taken against the dead context survives.</summary>
+    /// <summary>Every stage declaration plus the main view's frame, in one object: a device loss replaces it, so no
+    /// unit or failure latch taken against the dead device survives.</summary>
     private sealed class ResourcesState
     {
         public readonly Stage?[] Stages = new Stage[MaxStages];
         public int Count;
         public bool SaidFull;
-        public readonly List<Rec> Recs = [];
         /// <summary>The next texture unit an image half takes, and the driver's combined-unit count (0: not asked).</summary>
         public uint NextUnit = TextureSlots.ResourceBase;
         public int UnitLimit;
@@ -151,9 +138,8 @@ internal static unsafe partial class StageResources
         /// <summary>The frame whose head last ran, so a frame runs its passes once.</summary>
         public int HeadSeq = int.MinValue;
         /// <summary>The one <c>cx_fog</c> texel and the one <c>cx_overlay</c> a module may have: the stage that
-        /// declared each (-1: none), and the fog's readback and the last colour read back, LINEAR.</summary>
+        /// declared each (-1: none), and the last colour read back, LINEAR.</summary>
         public int FogStage = -1, OverlayStage = -1;
-        public GpuReadback FogRead;
         /// <summary>Why the texel cannot be read on this driver, said once; empty while it can.</summary>
         public string FogMiss = "";
         public int FogSeq;
@@ -163,7 +149,7 @@ internal static unsafe partial class StageResources
 
     private static ResourcesState _gl = new();
 
-    /// <summary>Context loss: every GL name is gone, and a failure latch taken against the old context is not
+    /// <summary>Device loss: every image is gone, and a failure latch taken against the old device is not
     /// evidence about the new one.</summary>
     internal static void Forget() => _gl = new ResourcesState();
 
@@ -174,20 +160,13 @@ internal static unsafe partial class StageResources
     {
         var g = _gl;
         for (int i = 0; i < g.Count; i++) Release(g.Stages[i]);
-        g.FogRead.Release();
         Forget();
     }
 
     private static void Release(Stage? s)
     {
         if (s == null) return;
-        foreach (Img im in s.Images)
-        {
-            GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, im.Tex);
-            GpuGraveyard.Retire(GpuGraveyard.Kind.Texture, im.Prev);
-            im.Tex = 0; im.Prev = 0; im.MadeW = 0; im.MadeH = 0; im.MadeD = 0;
-        }
-        foreach (Pass p in s.Passes) { if (p.Prog != 0) Gl.DeleteProgram(p.Prog); p.Prog = 0; }
+        foreach (Img im in s.Images) { im.MadeW = 0; im.MadeH = 0; im.MadeD = 0; }
         s.Made = false;
     }
 
@@ -306,15 +285,6 @@ internal static unsafe partial class StageResources
         if (!g.HaveFog || At(g.FogStage) is not { Failed: false } s || s.RanFrame < AlloyRenderer.FrameSeq - 1) return false;
         c = g.Fog;
         return true;
-    }
-
-    /// <summary>The overlay drawn THIS frame, for the resolve to add over the frame: its image's texture, or 0 when no
-    /// live stage declares one or its frame passes did not run this frame. Hot, no GL.</summary>
-    internal static uint OverlayTex()
-    {
-        var g = _gl;
-        if (At(g.OverlayStage) is not { Failed: false, Made: true } s || s.RanFrame != AlloyRenderer.FrameSeq) return 0;
-        return s.Images[s.OverlayImage].Tex;
     }
 
     /// <summary>Latch a failure: said once with the reason, the stage's GL objects released and its fog texel and

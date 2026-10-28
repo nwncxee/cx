@@ -1,6 +1,5 @@
 30 managed/Alloy/AlloyRenderer.Uniforms.cs
 3 managed/Alloy/Db/PltGpuCheck.cs
-4 managed/Alloy/Pass/CasterPass.Content.cs
 20 managed/Alloy/Pass/FogVolume.cs
 36 managed/Alloy/Pass/GrassField.cs
 6 managed/Alloy/Pass/GuiContent.cs
@@ -8,7 +7,6 @@
 4 managed/Alloy/Pass/SceneFog.cs
 4 managed/Alloy/Pass/SkyView.cs
 8 managed/Alloy/Pass/StageEnv.cs
-2 managed/Alloy/Pass/StageResources.Gl.cs
 1 managed/Alloy/Pass/Weather.Esm.cs
 2 managed/Alloy/Pass/Weather.Map.cs
 1 managed/Alloy/Pass/Weather.Shelter.cs

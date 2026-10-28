@@ -416,7 +416,7 @@ internal static unsafe partial class StageResources
         cl.SetPipeline(q.Pipe);
         cl.BindSet(0, new BindSet(ubo[..nu], default, sampled[..nt], images[..ni]));
         int x = r.W[p.Image], y = r.H[p.Image], z = r.D[p.Image];
-        cl.Dispatch((x + q.Gx - 1) / q.Gx, (y + q.Gy - 1) / q.Gy, (z + q.Gz - 1) / q.Gz);
+        cl.Dispatch((int)Groups(x, q.Gx), (int)Groups(y, q.Gy), (int)Groups(z, q.Gz));
         foreach (VkBind b in q.Binds)
             if (b.Storage && !b.Prev && s.Images[b.Image].Mips) cl.GenerateMips(r.Tex[b.Image]);
         s.Runs++;

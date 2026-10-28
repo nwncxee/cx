@@ -157,3 +157,11 @@ alloy\.(backend|renderthread|rhiimmediate|gpumeter)\b	CX-313
 # The arturo ripple's GPU warp. The .txi words are still read (they pick the uncompressed container), but the
 # warp itself was a GL compute pass and is not ported, so such a texture draws its source image.
 \bcx_arturo_c\b|\b(Keep|Warp|Step|Bury|Clear)Arturo\b|\bArturo(Programs|Buffers|StandDown|Turn)\b	GL sweep 6
+# The content pairs' GL program table and the issue loop's numbering of it, the host-side attach/bind/resolve that
+# pointed those programs at a stage's images, and the stage snapshot that read them all back. Vulkan compiles each
+# variant as a pipeline and binds a descriptor set, so none of it has a backend.
+\bContentPrograms\.(ProgBase|ProgId|IsProg|IsDeferred|Program|Loc|DepthLoc|CastLoc|BindExtras|BindTwinExtras)\b	GL sweep 6
+\bStageResources\.(Attach|Bind|Resolve|Snap|OverlayTex)\b|\bBindContentCaster\b|\bContentCasterCut\b	GL sweep 6
+# The per-area pipeline prewarm: a dummy draw per pipeline state through the GL program table. Vulkan warms its own
+# pipeline cache, so the key enumeration and the warm draw have nothing to warm.
+\bContentPrewarm\b|\bContentPipelines\b|\bPipelineKey\b|\bProgramWarm\b	GL sweep 6
