@@ -624,12 +624,18 @@ def programs(g):
         "highlight composite": (g["cx_fullscreen_v"], g["cx_hilitecomp_f"]),
         "owned water": (g["cx_water_vs"], g["cx_water_fs"]),
         "instanced grass": (g["cx_grass_vs"], g["cx_grass_fs"]),
+        "grass depth prepass": (define(g["cx_grass_vs"], "CX_GRASS_UNLIT 1"), g["cx_grassdepth_f"]),
         "grass scatter": (g["cx_grass_c"],),
         "hi-Z reduce (from depth)": (g["cx_hiz_c"].replace("#version 460 core\n", "#version 460 core\n#define CX_HIZ_FIRST 1\n", 1),),
         "hi-Z reduce (mip to mip)": (g["cx_hiz_c"],),
         **{f"read-back ({t} x{n})": (g["cx_readback_c"].replace("#version 460 core\n", f"#version 460 core\n{d}#define CX_READBACK_WORDS {n}\n", 1),)
            for t, d, n in (("float", "", 1), ("float", "", 2), ("uint", "#define CX_READBACK_UINT 1\n", 1), ("uint", "#define CX_READBACK_UINT 1\n", 4))},
         "grass blades": (g["cx_gblade_vs"], g["cx_gblade_fs"]),
+        # the depth and velocity variants compile the vertex light rig out (GrassField.UnlitOn), and the velocity
+        # arm in (GrassField.MotionOn), as GrassField.VkDepthTexts makes them
+        "grass blade depth": (define(g["cx_gblade_vs"], "CX_GRASS_UNLIT 1"), g["cx_gblade_df"]),
+        "grass motion vectors": (define(define(g["cx_grass_vs"], "CX_GRASS_UNLIT 1"), "CX_MOTION 1"), define(g["cx_grassdepth_f"], "CX_MOTION 1")),
+        "grass blade motion vectors": (define(define(g["cx_gblade_vs"], "CX_GRASS_UNLIT 1"), "CX_MOTION 1"), define(g["cx_gblade_df"], "CX_MOTION 1")),
         "particles": (g["cx_part_v"], g["cx_part_f"]),
         "clustered light build": (g["cx_cluster_cs"],),
         "deferred lights": (g["cx_deferred_cs"],),

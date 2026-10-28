@@ -17,7 +17,7 @@ internal static class Grass
                                          CastWidth, PushRadius, PushExtent, CullShrink, CullMax, Edge, RootAo, GTint,
                                          SnowThin, SnowFall, SnowLook, Backlight, Sheen,
                                          BladeDensity, Width, Clump, BladeLod;
-    internal static readonly Knob<int> Style, Tuft, GViz;
+    internal static readonly Knob<int> Style, Shadow, Tuft, GViz;
     internal static readonly Knob<bool> Cull, VLight;
 
     static Grass()
@@ -57,6 +57,10 @@ internal static class Grass
         Shade = G.Slider("shade", "Full-shading radius", 5f, 200f, 1f, 40f, "m", Tier.Advanced,
                          help: "Past this blades skip light and shadow taps.")
                  .Ladder(Quality.Grass, 15f, 25f, 40f, 60f);
+        Shadow = G.Dropdown("shadow", "Grass casts shadows", new[] { 0, 1, 2, 3, 4 }, 1, new[] { "none", "1", "2", "3", "4" },
+                            tier: Tier.Advanced,
+                            help: "How many sun cascades the blades are drawn into. More is sharper far away and costlier.")
+                  .Ladder(Quality.Grass, 0, 1, 1, 2);
         G.Section("");
         SnowThin = G.Slider("snowthin", "Thinning under snow", 0f, 1f, 0.05f, 0.85f, tier: Tier.ChatOnly,
                             help: "Share of the blades that vanish under full snow cover (the rest stand shorter). 0 keeps a summer meadow.");

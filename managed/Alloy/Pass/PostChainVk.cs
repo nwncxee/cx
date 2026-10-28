@@ -40,7 +40,7 @@ internal static unsafe class PostChainVk
         public BufferId Ubo;
         public int UboUsed;
         public SamplerId Linear, Nearest, Repeat;
-        public bool Said;
+        public bool Said, VizSaid;
     }
 
     private static PostVkState _s = new();
@@ -74,10 +74,10 @@ internal static unsafe class PostChainVk
     internal enum Blend : byte { None, Add, Over }
 
     /// <summary>Bloom, then the resolve of <paramref name="hdr"/> into <paramref name="into"/> at
-    /// <paramref name="rect"/>, dithered only when it is the frame's last write. False (logged) when a program or
-    /// target was refused: the frame has no other way to the screen.</summary>
+    /// <paramref name="rect"/>, dithered only when it is the frame's last write; <c>/post viz 4</c> paints <paramref name="vel"/>
+    /// instead. False (logged) when a program or target was refused: the frame has no other way to the screen.</summary>
     internal static bool Record(VkBackend vk, CommandList cl, ImageId hdr, ImageId depth, ImageId into, bool last,
-                                int* viewport, int* rect, ExtenderLog log)
+                                int* viewport, int* rect, ImageId vel, ExtenderLog log)
     {
         PostVkState s = _s;
         if (!Ensure(vk, log) || !Targets(vk, s, viewport[2], viewport[3], log)) return false;
@@ -101,10 +101,18 @@ internal static unsafe class PostChainVk
         LooseBlock.Set(r.Exposure, Post.Exposure.V);
         LooseBlock.Set(r.AcesMix, Post.AcesMix.V);
         LooseBlock.Set(r.Dither, last ? PostChain.DitherLsb : 0f);
-        LooseBlock.Set(r.Viz, Post.Viz.V == PostChain.VizMotion ? 0 : Post.Viz.V);
+        bool motion = Post.Viz.V == PostChain.VizMotion;
+        if (motion && vel.IsNull && !s.VizSaid)
+        {
+            s.VizSaid = true;
+            log.Always("PostChainVk: /post viz 4 shows NOTHING -- the velocity target is the taa stage's, and taa is not "
+                     + "drawing this frame; the frame resolves as viz 0");
+        }
+        LooseBlock.Set(r.Viz, motion && vel.IsNull ? 0 : Post.Viz.V);
         int at = Close(cl, s.Resolve!);
+        // the velocity viz rides the bloom input: the two views are exclusive by construction
         Draw(cl, s.Resolve!, FormatOf(into), Blend.None, into, LoadOp.Clear, new Rect(rect[0], rect[1], rect[2], rect[3]), at,
-             new Inputs(hdr, bloom ? s.Bloom[0] : default, depth), log);
+             new Inputs(hdr, motion && !vel.IsNull ? vel : bloom ? s.Bloom[0] : default, depth), log);
         if (!s.Said)
         {
             s.Said = true;

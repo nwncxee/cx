@@ -22,6 +22,7 @@ internal static unsafe partial class GrassField
         public int SkyVp, SkyTerm;   // the overhead sky view's fit and look terms, shared with the lit stage
         public int Frame, Vp, Eye, Fade, Tex, MatAmb, MatDif, Lit, WindGain, WindSpeed, Msaa, Edge, Lod, Shade, Viz, Tuft, VLit, Cast, CastWidth, RootAo, GroundTint, Ground, GroundOn, GroundViz, SoftEdge, Snow;
         public int PushTex, PushGain, PushWindow;
+        public int PrevVp, PrevTime, Jitter, MSize;   // the velocity arm's last-frame camera and clock, and the field's convention
         public int SunTex, SunDynTex, CubeTex, CubeCount, CubeDynTex;   // CX-43: the rest of the receiver rides CxPass
     }
     /// <summary>The scatter's uniforms.</summary>
@@ -82,6 +83,8 @@ internal static unsafe partial class GrassField
             WxMapXf = LooseBlock.Loc("uWxMapXf"), WxMapP = LooseBlock.Loc("uWxMapP"),
             CoverVp = LooseBlock.Loc("uCoverVp"), CoverLayer = LooseBlock.Loc("uCoverLayer"), WxEdge = LooseBlock.Loc("uWxEdge"), WxCache = LooseBlock.Loc("uWxCache"),
             SkyVp = LooseBlock.Loc("uSkyVp"), SkyTerm = LooseBlock.Loc("uSkyTerm"),
+            PrevVp = LooseBlock.Loc("uPrevVP"), PrevTime = LooseBlock.Loc("uPrevTimeOfDay"),
+            Jitter = LooseBlock.Loc("uJitter"), MSize = LooseBlock.Loc("uSize"),
         };
 
     // ---- shaders -----------------------------------------------------------------------------
@@ -98,6 +101,20 @@ internal static unsafe partial class GrassField
     internal static string GrassFsHead => ShaderSource.Get("cx_grass_fhead.glsl");
 
     internal static string BladeFsHead => ShaderSource.Get("cx_gblade_fhead.glsl");
+
+    /// <summary>The cards' alpha-tested depth stage: the colour stage's coverage decision with no colour, for the
+    /// prepass and the sun cascades; under <see cref="MotionOn"/> it writes the card's velocity instead.</summary>
+    internal static string GrassDepthFs => ShaderSource.Get("cx_grassdepth_f.glsl");
+
+    /// <summary>The blades' depth stage: opaque, so nothing to decide; under <see cref="MotionOn"/> their velocity.</summary>
+    internal static string BladeDepthFs => ShaderSource.Get("cx_gblade_df.glsl");
+
+    /// <summary>The define that compiles a grass path's velocity arm into both of its stages.</summary>
+    internal const string MotionOn = "CX_MOTION 1";
+
+    /// <summary>The define that compiles the per-vertex light rig out of a depth or velocity variant's vertex stage,
+    /// whose fragment half never reads it: NVIDIA's pipeline compiler crashes eliminating the rig as dead.</summary>
+    internal const string UnlitOn = "CX_GRASS_UNLIT 1";
 
     /// <summary>The fragment stage. Two discards and no blending at all, which is the whole replacement:
     /// vanilla's fade rides in the alpha channel its cutout reads, so a blade in the fade band is

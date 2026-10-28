@@ -15,7 +15,11 @@ internal static class VkPrograms
     /// <summary>The programs the Vulkan passes draw through. Those past <see cref="Id.DepthFeat"/> are not among
     /// <see cref="All"/>: each is optional, built at its own pass's first frame, and a refusal stands
     /// that pass down rather than failing the frame.</summary>
-    internal enum Id { Fullbright, Lit, LitDeferred, Depth, DepthKey, DepthFeat, Decal, Water, HighlightMask, Motion, Grass, GrassBlade }
+    internal enum Id
+    {
+        Fullbright, Lit, LitDeferred, Depth, DepthKey, DepthFeat, Decal, Water, HighlightMask, Motion, Grass, GrassBlade,
+        GrassDepth, GrassBladeDepth, GrassMotion, GrassBladeMotion,
+    }
 
     internal static readonly Id[] All = [Id.Fullbright, Id.Lit, Id.LitDeferred, Id.Depth, Id.DepthKey, Id.DepthFeat];
 
@@ -49,8 +53,12 @@ internal static class VkPrograms
         return u;
     }
 
-    /// <summary>The program's two stages as GL would compile them, before translation.</summary>
-    internal static (string Vs, string Fs) GlText(Id id, ExtenderLog? log)
+    /// <summary>Is <paramref name="id"/> one of the grass pass's programs, which bind the grass sampler table?</summary>
+    private static bool IsGrass(Id id) => id is Id.Grass or Id.GrassBlade or Id.GrassDepth or Id.GrassBladeDepth or Id.GrassMotion or Id.GrassBladeMotion;
+
+    /// <summary>The program's two stages as GL would compile them, before translation; null for a grass velocity arm
+    /// whose vertex text cannot put last frame's blade back.</summary>
+    internal static (string Vs, string Fs)? GlText(Id id, ExtenderLog? log)
     {
         string what = $"VkPrograms {id}";
         switch (id)
@@ -81,6 +89,12 @@ internal static class VkPrograms
                 (string v, string f) = GrassField.VkTexts(id == Id.Grass ? GrassField.VkStage.Cards : GrassField.VkStage.Blades, log);
                 return (Final(GrassField.VkInstanced(v), log, what, true), Final(f, log, what, true));
             }
+            case Id.GrassDepth or Id.GrassBladeDepth or Id.GrassMotion or Id.GrassBladeMotion:
+            {
+                var k = id is Id.GrassDepth or Id.GrassMotion ? GrassField.VkStage.Cards : GrassField.VkStage.Blades;
+                if (GrassField.VkDepthTexts(k, id is Id.GrassMotion or Id.GrassBladeMotion, log) is not { } t) return null;
+                return (Final(GrassField.VkInstanced(t.Vs), log, what, true), Final(t.Fs, log, what, true));
+            }
             case Id.Motion:
                 return (Final(AlloyRenderer.MotionVs, log, what, true), Final(AlloyRenderer.MotionFs, log, what, true));
             case Id.HighlightMask:
@@ -101,9 +115,10 @@ internal static class VkPrograms
     /// <summary>The program translated for Vulkan; <see cref="VkProgramText.Error"/> says why not.</summary>
     internal static VkProgramText Text(Id id, ExtenderLog? log)
     {
-        (string v, string f) = GlText(id, log);
+        if (GlText(id, log) is not { } t)
+            return new VkProgramText { Error = "its vertex stage does not put last frame's blade back (an override without the sway's velocity arm)" };
         // the device maps GL's -1..1 clip depth itself (VK_EXT_depth_clip_control), so the stages keep GL's clip z
-        return VkGlsl.Translate(v, f, id is Id.Grass or Id.GrassBlade ? GrassField.VkUnits : Units, glDepth: false);
+        return VkGlsl.Translate(t.Vs, t.Fs, IsGrass(id) ? GrassField.VkUnits : Units, glDepth: false);
     }
 
     /// <summary>Content pair <paramref name="feat"/>'s <paramref name="v"/> program translated for Vulkan, from the text

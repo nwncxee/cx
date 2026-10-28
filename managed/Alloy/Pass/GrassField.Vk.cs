@@ -27,6 +27,10 @@ internal static unsafe partial class GrassField
         public readonly bool[] Live = new bool[MaxGrassMaterials];
         /// <summary>The last <see cref="StageVk"/>'s plan, for the uniform writers.</summary>
         public FramePlan Plan;
+        /// <summary>What the last pass scattered and drew (<c>Patches</c> 0 = nothing), and whether it took the ground
+        /// copy: the cascade bake re-draws it next frame, the velocity sweep this frame.</summary>
+        public VkFrame Drawn;
+        public bool Ground;
     }
 
     private static GrassVkState _vkg = new();
@@ -58,6 +62,7 @@ internal static unsafe partial class GrassField
     internal static bool StageVk(Matrix4x4* vp, bool bladeProg, out VkFrame f)
     {
         f = default;
+        _vkg.Drawn = default;
         if (_off || !Grass.Enabled.V || _down.Failed || _binBucket.IsNull || *_grassEnabled == 0) return false;
         EnsureCpu();
         _drawnGen = AlloyRenderer.PassGen;
@@ -73,6 +78,25 @@ internal static unsafe partial class GrassField
         f = new VkFrame(n, p.Split, Math.Max(p.Mats, 1), _bladeNear, _bladeFar, _slotCount);
         return true;
     }
+
+    /// <summary>Note what the pass drew this frame, for the cascade bake and the velocity sweep.</summary>
+    internal static void VkDrew(in VkFrame f, bool ground)
+    {
+        _vkg.Drawn = f;
+        _vkg.Ground = ground;
+    }
+
+    /// <summary>What the last pass drew, and whether it took the ground copy; <c>Patches</c> 0 when it drew nothing.</summary>
+    internal static VkFrame VkLast(out bool ground)
+    {
+        ground = _vkg.Ground;
+        return _vkg.Drawn;
+    }
+
+    /// <summary>Does sun cascade <paramref name="i"/> take last pass's blades as casters? Under <see cref="Grass.Shadow"/>,
+    /// with grass drawn. A grass cascade's moving-caster layer re-bakes every frame: the sway is continuous motion.</summary>
+    internal static bool CastsInto(int i)
+        => i < Grass.Shadow.V && _vkg.Drawn.Patches > 0 && Grass.Enabled.V && !_off && !_down.Failed && AlloyRenderer.VkGrassCasts;
 
     /// <summary>This frame's visible-patch table, two uvec4 a patch.</summary>
     internal static ReadOnlySpan<uint> VkPatches(int n) => new(_visTable, 0, n * 8);
@@ -128,10 +152,11 @@ internal static unsafe partial class GrassField
         LooseBlock.Set(l.Clamp, clamp);
     }
 
-    /// <summary>A colour stage's terms into the open capture, as <see cref="Issue"/> sets them for GL with no prepass;
-    /// the cards' own three when <paramref name="cards"/>. The pass block is staged by the light rig's bind inside.</summary>
+    /// <summary>A colour stage's terms into the open capture; the cards' own three when <paramref name="cards"/>, the
+    /// fringe blended when <paramref name="soft"/> (the prepass laid the core's depth). The pass block is staged by the
+    /// light rig's bind inside.</summary>
     internal static void VkColourTerms(VkLocs v, Matrix4x4* vp, int* viewport, float near, float far, bool lightingOn,
-                                       bool ground, bool cards)
+                                       bool ground, bool cards, bool soft)
     {
         FramePlan p = _vkg.Plan;
         Vector3 eye = p.Eye;
@@ -139,8 +164,29 @@ internal static unsafe partial class GrassField
         ColourUniforms(in v.L, in v.F, vp, &eye, p.Near, p.Far, pw, viewport, near, far, lightingOn, ground);
         if (!cards) return;
         LooseBlock.Set(v.L.Msaa, 0);
-        LooseBlock.Set(v.L.SoftEdge, 0);
+        LooseBlock.Set(v.L.SoftEdge, soft ? 1 : 0);
         LooseBlock.Set(v.L.GroundViz, Grass.GViz.V);
+    }
+
+    /// <summary>A depth stage's terms into the open capture: the shared ones under no light rig, then the draw's own --
+    /// a cast view widens the blades, skips the keyhole and holds the dither still (a cascade is held across frames);
+    /// the prepass lays the core alone when the fringe blends (<paramref name="soft"/>); the velocity arm reads last
+    /// frame's camera and clock (<paramref name="prevVp"/> non-null) and the ground flag the colour pass drew with.</summary>
+    internal static void VkDepthTerms(VkLocs v, Matrix4x4* vp, int* viewport, bool cast, bool soft, Matrix4x4* prevVp, bool ground)
+    {
+        FramePlan p = _vkg.Plan;
+        Vector3 eye = p.Eye;
+        float* pw = stackalloc float[3] { _pushOriginX, _pushOriginY, _pushPerUnit / PushRes };
+        SharedUniforms(in v.L, in v.F, vp, &eye, p.Near, p.Far, false, pw, viewport, vlit: false);
+        LooseBlock.Set(v.L.Cast, cast ? 1 : 0);
+        LooseBlock.Set(v.L.SoftEdge, soft ? 1 : 0);
+        if (cast) LooseBlock.Set(v.L.Frame, 0);
+        LooseBlock.Set(v.L.GroundOn, ground ? 1 : 0);
+        if (prevVp == null) return;
+        LooseBlock.Set(v.L.PrevVp, *prevVp);
+        LooseBlock.Set(v.L.PrevTime, MotionVectors.FieldPrevClock);
+        LooseBlock.Set(v.L.Jitter, PostChain.JitterX, PostChain.JitterY);
+        LooseBlock.Set(v.L.MSize, viewport[2], viewport[3]);
     }
 
     /// <summary>The strip pairs of blade draw <paramref name="far"/>.</summary>
@@ -165,6 +211,18 @@ internal static unsafe partial class GrassField
         ShaderTexts.Pair(ShdGrassVs, vs, ShdGrassFs, fs, log, what, out string gv, out string gf);
         if (!(ShaderContract.LinearSafe(gf) && ShaderContract.SlotSafe(gf, "uTex"))) { gv = GrassVs; gf = fs; }
         return (gv, gf);
+    }
+
+    /// <summary>Stage <paramref name="k"/>'s depth pair: the colour pair's vertex text with its light rig compiled out,
+    /// so an override sways both alike, over the depth stage; the velocity arm compiled into both when
+    /// <paramref name="motion"/>, null when that vertex text does not put last frame's blade back.</summary>
+    internal static (string Vs, string Fs)? VkDepthTexts(VkStage k, bool motion, ExtenderLog? log)
+    {
+        (string v, _) = VkTexts(k, log);
+        string f = k == VkStage.Blades ? BladeDepthFs : GrassDepthFs;
+        if (motion && !ShaderContract.SwaySafe(v)) return null;
+        v = ShaderStages.WithDefine(v, UnlitOn);
+        return motion ? (ShaderStages.WithDefine(v, MotionOn), ShaderStages.WithDefine(f, MotionOn)) : (v, f);
     }
 
     /// <summary>The samplers the grass stages declare without a binding, on the units GL's build gives them.</summary>
@@ -214,6 +272,13 @@ internal static unsafe partial class GrassField
         check.Expect(cards.Contains("vec3(-1.0, 0.0, 0.0), vec3(1.0, 0.0, 1.0), vec3(1.0, 1.0, 1.0)"),
             "the template's first three corners as (side, z, u)");
         check.Expect(cards.Contains("vCellUv = aUV;") && blades.Contains("vec3 root = iPos.xyz;"), "the reads stay as GL wrote them");
+        check.Expect(GrassVmain.Contains("#ifndef CX_GRASS_UNLIT\n    if (uVLit != 0)") && BladeVmain.Contains("#ifndef CX_GRASS_UNLIT\n    if (uVLit != 0)"),
+            "both vertex mains compile the light rig out under the unlit define");
+        bool unlit = true;
+        foreach (VkStage k in (ReadOnlySpan<VkStage>)[VkStage.Cards, VkStage.Blades])
+            foreach (bool motion in (ReadOnlySpan<bool>)[false, true])
+                unlit &= VkDepthTexts(k, motion, null)?.Vs.Contains("#define CX_GRASS_UNLIT 1\n") == true;
+        check.Expect(unlit, "every depth and velocity variant's vertex stage takes the unlit define");
         log.Info(check.Ok ? "GrassField.VkSelfCheck: passed" : "GrassField.VkSelfCheck: FAILED");
     }
 }

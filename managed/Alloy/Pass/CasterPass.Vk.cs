@@ -61,6 +61,9 @@ public sealed unsafe partial class CasterPass
         public int Baked, Chunks;
         /// <summary>A bit per <see cref="CasterMap"/> already announced: each target says its first flush once.</summary>
         public int Said;
+        /// <summary>A bit per sun cascade this frame re-baked that takes the grass as a caster: the combined static
+        /// layer, and the moving-caster mirror where the split keeps one.</summary>
+        public int GrassStatic, GrassDyn;
     }
 
     private static CasterVkState _vk = new();
@@ -86,6 +89,10 @@ public sealed unsafe partial class CasterPass
         // the hand-over runs whatever the queue held: a frame that only CLEARED a layer (the static faces of a
         // roaming light) still left that array in its write layout
         bool ok = n == 0 || VkFlushLayered(cl, n);
+        // the grass into the cascades the flush just re-baked, while they are still depth targets
+        if (ok && _vk.Dev is VkBackend vk)
+            AlloyRenderer.VkGrassShadows(vk, cl, _vk.Cascades, _vk.GrassStatic, _vk.SunDyn, _vk.GrassDyn, _mapSize);
+        _vk.GrassStatic = _vk.GrassDyn = 0;
         VkHandOver(cl);
         if (ok) return true;
         _layerFlushFails++;
@@ -120,6 +127,7 @@ public sealed unsafe partial class CasterPass
         s.Cmds ??= new CommandList("vulkan caster bake", 1 << 20, log);
         s.Cmds.Reset();
         s.Baked = s.Chunks = 0;
+        s.GrassStatic = s.GrassDyn = 0;
         if (!CasterGatherVk.Ensure(vk, log)) { s.Failed = true; return false; }
         // the bounds FIRST: the colour build publishes them after this bracket, so these are the previous frame's
         // -- which is what the GL bake reads too -- and sizing them here keeps every dispatch below naming a live id

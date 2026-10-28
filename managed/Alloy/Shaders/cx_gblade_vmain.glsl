@@ -114,9 +114,13 @@ void main()
 #endif
     if (uCast == 0 && CxBladeKeyholed(root, uVP * vec4(root, 1.0)))
     { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
+    // A depth or velocity stage never reads vLight and compiles the rig out: NVIDIA's pipeline compiler
+    // crashes eliminating this loop as dead once the fragment half leaves its output unread.
+#ifndef CX_GRASS_UNLIT
     if (uVLit != 0)
     {
         cxClusterXY = (gl_Position.xy / max(gl_Position.w, 1e-3) * 0.5 + 0.5) * vec2(uGrid.xy);
         vLight = uLit != 0 ? CxClusteredDiffuse(vWorld, vNrm, vDepth) : vec3(0.0);
     }
+#endif
 }
