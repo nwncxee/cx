@@ -300,7 +300,7 @@ internal static unsafe partial class TexRegistry
             _name[i] = 0; _handle[i] = 0; _bytes[i] = 0; _preview[i] = false;
             _resref[i] = resref; _cell[i] = cell; _depHead[i] = -1; _pend[i] = PendNone; _clamp[i] = false;
             _cov[i] = TexCoverage.Unknown; _bumpyShiny[i] = false; _envMap[i] = false; _meanOk[i] = false;
-            _txiBlend[i] = 0; _txiDecal[i] = false; _cycle[i] = null; ClearArturo(i);
+            _txiBlend[i] = 0; _txiDecal[i] = false; _cycle[i] = null;
             CoverageSerial++; TableSerial++;
             _nearest[i] = false; _mipmap[i] = true; _samplerWish[i] = false;
             _idleNext[i] = _idlePrev[i] = -1;
@@ -405,7 +405,7 @@ internal static unsafe partial class TexRegistry
         _bytes[i] = 0; _resref[i] = null; _refs[i] = 0; _pend[i] = PendNone; _cov[i] = TexCoverage.Unknown;
         _bumpyShiny[i] = false;
         _envMap[i] = false;
-        _txiBlend[i] = 0; _txiDecal[i] = false; _cycle[i] = null; ClearArturo(i);
+        _txiBlend[i] = 0; _txiDecal[i] = false; _cycle[i] = null;
         CoverageSerial++; TableSerial++;
         _freeNext[i] = _freeHead; _freeHead = i;
         _live--;
@@ -472,12 +472,10 @@ internal static unsafe partial class TexRegistry
     /// <see cref="AlloyRenderer.ZeroHandle"/> must not run on the game thread beside a staging.</summary>
     private static void ZeroDyingHandles()
     {
-        bool gl = !Renderer.OnVulkan && GlContextService.Current46 && Gl.MakeTextureHandleNonResidentARB != null;
         while (true)
         {
             ulong v;
             lock (_lock) { if (_dyingHandles.Count == 0) break; v = _dyingHandles.Dequeue(); }
-            if (gl) Gl.MakeTextureHandleNonResidentARB(v);
             AlloyRenderer.ZeroHandle(v);
             _handlesDropped++;
         }

@@ -67,7 +67,7 @@
 15 managed/Alloy/Db/SeamDraw.cs
 31 managed/Alloy/Db/TexRegistry.cs
 3 managed/Alloy/Db/TexRegistry.Cycle.cs
-7 managed/Alloy/Db/TexRegistry.Load.cs
+6 managed/Alloy/Db/TexRegistry.Load.cs
 7 managed/Alloy/Db/TextFontBake.cs
 1 managed/Alloy/Db/TextFonts.cs
 1 managed/Alloy/Db/TextMarkup.cs
@@ -107,7 +107,6 @@
 20 managed/Alloy/NwSyncReader.cs
 15 managed/Alloy/OwnedTextures.Cache.cs
 15 managed/Alloy/OwnedTextures.cs
-3 managed/Alloy/OwnedTextures.Cube.cs
 3 managed/Alloy/OwnedTextures.Plt.cs
 5 managed/Alloy/OwnedTextures.Retire.cs
 25 managed/Alloy/OwnedTextures.Transcode.cs

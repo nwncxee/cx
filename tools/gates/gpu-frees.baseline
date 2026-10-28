@@ -1,12 +1,8 @@
 1 managed/Alloy/Core/StreamRing.cs
 4 managed/Alloy/Db/PltGpuCheck.cs
-2 managed/Alloy/Db/TexRegistry.Load.cs
+1 managed/Alloy/Db/TexRegistry.Load.cs
 1 managed/Alloy/DdsReader.Formats.cs
 1 managed/Alloy/OwnedTextures.cs
-2 managed/Alloy/OwnedTextures.Cube.cs
-1 managed/Alloy/OwnedTextures.Retire.cs
-1 managed/Alloy/OwnedTextures.Transcode.cs
-1 managed/Alloy/OwnedTextures.Upload.cs
 2 managed/Alloy/Pass/GuiModelSolve.cs
 1 managed/Graphics/GlTexture.cs
 1 managed/Graphics/GpuReadback.cs

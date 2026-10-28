@@ -1,6 +1,5 @@
 30 managed/Alloy/AlloyRenderer.Uniforms.cs
 3 managed/Alloy/Db/PltGpuCheck.cs
-5 managed/Alloy/Db/TexRegistry.Arturo.cs
 4 managed/Alloy/Pass/CasterPass.Content.cs
 20 managed/Alloy/Pass/FogVolume.cs
 36 managed/Alloy/Pass/GrassField.cs

@@ -44,7 +44,7 @@ internal static unsafe partial class TexRegistry
         public byte* Data;
         public int W, H, Levels, Channels;
         /// <summary>The GL internal format and the (format, type) pair of an uncompressed upload.</summary>
-        public uint GlFmt, PixFmt, PixType;
+        public uint GlFmt;
         public bool Compressed, GenMips, Clamp, Nearest, Mip;
         public TexCoverage Cov;
         /// <summary>Which decode answered <see cref="Cov"/>, in the words the <c>texcov:</c> line prints -- the
@@ -73,11 +73,8 @@ internal static unsafe partial class TexRegistry
         public bool Cycle;
         public float Fps = 1f;
         public byte[]? Pixels;
-        /// <summary>The <c>.txi</c> ripple (<see cref="ParseArturo"/>), and the running one the worker built
-        /// from it (<see cref="KeepArturo"/>) for the bracket to file.</summary>
+        /// <summary>The <c>.txi</c> ripple words (<see cref="ParseArturo"/>), which decide the container.</summary>
         public ArturoTxi Arturo;
-        /// <inheritdoc cref="Arturo"/>
-        public Arturo? Ripple;
     }
 
     /// <summary>Does this texture's <c>.txi</c> name a <c>bumpyshinytexture</c>? That is the water class:
@@ -153,7 +150,7 @@ internal static unsafe partial class TexRegistry
         // resource tables, and a hak's .txi beats the base game's by the resman's own order.
         string? txi = ReadResourceText(resref, TextFontLoad.ResTxi);
         TxiSampler(i, txi);
-        j.Pixels = null; j.FullW = 0; j.Ripple = null;
+        j.Pixels = null; j.FullW = 0;
         TxiMaterial(i, txi, j);
         j.Compressed = false; j.GenMips = false; j.Clamp = _clamp[i]; j.Cov = TexCoverage.Unknown; j.MeanOk = false;
         j.Nearest = _nearest[i]; j.Mip = _mipmap[i];
@@ -333,7 +330,7 @@ internal static unsafe partial class TexRegistry
             byte* rg = PltImage.Decode(raw, out int w, out int h, out int levels, out string? pw);
             if (rg == null) { j.Why = pw ?? "not a PLT"; return; }
             j.Data = rg; j.W = w; j.H = h; j.Levels = levels;
-            j.GlFmt = Gl.RG8; j.PixFmt = Gl.RG; j.PixType = Gl.UNSIGNED_BYTE;
+            j.GlFmt = Gl.RG8;
             j.Compressed = false; j.GenMips = false;
             j.Bytes = PltImage.ChainBytes(w, h, levels);
             // A PLT carries no alpha of its own: the composite's alpha is the PALETTE texel's (ImageDecode
@@ -362,20 +359,13 @@ internal static unsafe partial class TexRegistry
             byte* px = RasterReader.PrepareTga(raw, out RasterReader.Raster r, out string? tw);
             if (px == null) { j.Why = tw ?? "the TGA was refused"; return; }
             j.Data = px; j.W = r.W; j.H = r.H; j.Levels = Levels(r.W, r.H); j.Channels = r.Px;
-            (j.GlFmt, j.PixFmt) = r.Px switch
-            {
-                1 => (Gl.R8, Gl.RED),
-                3 => (Gl.RGB8, Gl.RGB_),
-                _ => (Gl.RGBA8, Gl.RGBA_),
-            };
-            j.PixType = Gl.UNSIGNED_BYTE;
+            j.GlFmt = r.Px switch { 1 => Gl.R8, 3 => Gl.RGB8, _ => Gl.RGBA8 };
             j.Compressed = false; j.GenMips = true;
             j.Bytes = r.Bytes;
             j.Cov = TexCoverageOf.OfRaster(new ReadOnlySpan<byte>(px, r.Bytes), r.W, r.H, r.Px);
             j.CovWhy = TexCoverageOf.Why($"TGA, {r.Px} channel(s)", j.Cov);
             j.MeanOk = TexScan.MeanOfRaster(px, r.W, r.H, r.Px, out j.Mean);
             CutGrid(j);
-            KeepArturo(j);
             return;
         }
         byte* chain = DdsReader.Prepare(raw, out DdsReader.Info info, out string? dw);
@@ -523,7 +513,6 @@ internal static unsafe partial class TexRegistry
         }
         ApplySamplerWishes();
         StepCycles();
-        StepArturo();
         // ...and AGAIN: ApplySamplerWishes drops and re-mints handles of its own, and leaving those to the
         // next frame's drain is a whole frame of records pointing at a handle this one just retired.
         ZeroDyingHandles();
@@ -555,17 +544,6 @@ internal static unsafe partial class TexRegistry
                 if (LoudOnce("clone")) _log?.Always($"TexRegistry: the sampler change on \"{_resref[i]}\" could not copy the texture -- it keeps the state it was minted with");
                 continue;
             }
-            if (!Renderer.OnVulkan)
-            {
-                int wrap = clamp ? Gl.CLAMP_TO_EDGE : Gl.REPEAT;
-                Gl.TextureParameteri(target, Gl.TEXTURE_WRAP_S, wrap);
-                Gl.TextureParameteri(target, Gl.TEXTURE_WRAP_T, wrap);
-                Gl.TextureParameteri(target, Gl.TEXTURE_MAG_FILTER, nearest ? Gl.NEAREST : Gl.LINEAR);
-                Gl.TextureParameteri(target, Gl.TEXTURE_MIN_FILTER,
-                    !mip ? (nearest ? Gl.NEAREST : Gl.LINEAR)
-                         : nearest ? Gl.NEAREST_MIPMAP_NEAREST : Gl.LINEAR_MIPMAP_LINEAR);
-                Gl.TextureParameteri(target, Gl.TEXTURE_MAX_ANISOTROPY, mip && !nearest ? Aniso() : 1);
-            }
             ulong fresh;
             lock (_lock)
             {
@@ -579,17 +557,10 @@ internal static unsafe partial class TexRegistry
         }
     }
 
-    private static float _anisoMax;
-
-    /// <summary>The player's Game Options anisotropy, clamped to the driver's ceiling (Vulkan's sampler creation
-    /// clamps to the device's): the level <c>GLRender::SetTextureAnisotropicFiltering</c> @0x5ca100 gives every linear
-    /// mipmapped texture. ponytail: taken at upload/mint; a mid-area change reaches textures loaded after it.</summary>
-    internal static int Aniso()
-    {
-        if (Renderer.OnVulkan) return (int)Math.Max(StockConfig.Aniso, 1);
-        if (_anisoMax == 0f && Gl.GetFloatv != null) { float v; Gl.GetFloatv(Gl.MAX_TEXTURE_MAX_ANISOTROPY, &v); _anisoMax = MathF.Max(v, 1f); }
-        return (int)Math.Clamp(StockConfig.Aniso, 1, (long)MathF.Max(_anisoMax, 1f));
-    }
+    /// <summary>The player's Game Options anisotropy (sampler creation clamps it to the device's ceiling): the level
+    /// <c>GLRender::SetTextureAnisotropicFiltering</c> @0x5ca100 gives every linear mipmapped texture.
+    /// ponytail: taken at upload/mint; a mid-area change reaches textures loaded after it.</summary>
+    internal static int Aniso() => (int)Math.Max(StockConfig.Aniso, 1);
 
     /// <summary>One finished job, uploaded and published. In the bracket.</summary>
     private static void Finish(Job j)
@@ -660,88 +631,16 @@ internal static unsafe partial class TexRegistry
         EvictPastBudget();
     }
 
-    /// <summary>The upload: immutable storage for the whole chain, then one sub-image per level. Never
-    /// respecify -- a mip read after respecification returned undefined pixels on Mesa/radeonsi, which is the
-    /// bug behind every-mip-but-the-base-wrong.</summary>
+    /// <summary>The upload: one image for the whole chain, then one level at a time. Never respecify -- a mip
+    /// read after respecification returned undefined pixels on Mesa/radeonsi, which is the bug behind
+    /// every-mip-but-the-base-wrong.</summary>
     private static uint Upload(Job j, out string? why)
     {
         why = null;
-        if (Renderer.OnVulkan)
-        {
-            uint n = VkTextures.NewName();
-            MirrorJob(n, j);
-            if (VkTextures.Has(n)) return n;
-            why = $"Vulkan refused a {j.W}x{j.H} {j.Levels}-level 0x{j.GlFmt:x} image";
-            return 0;
-        }
-        if (Gl.CreateTextures == null || Gl.TextureStorage2D == null) { why = "no GL 4.5 direct state access"; return 0; }
-        uint dst; Gl.CreateTextures(Gl.TEXTURE_2D, 1, &dst);
-        if (dst == 0) { why = "glCreateTextures returned no name"; return 0; }
-        int svUnpack; Gl.GetIntegerv(Gl.PIXEL_UNPACK_BUFFER_BINDING, &svUnpack);
-        if (svUnpack != 0) Gl.BindBuffer(Gl.PIXEL_UNPACK_BUFFER, 0);
-        // GL's default row alignment is 4 bytes. An RG8 mip of odd width (a 2-byte row), an R8 or RGB8 level
-        // whose width is not a multiple of 4, and every tail of a PLT chain all have rows that are not
-        // 4-aligned: at the default the driver skips padding that is not there, which reads the next row's
-        // pixels and runs off the end of the last one.
-        int svAlign; Gl.GetIntegerv(Gl.UNPACK_ALIGNMENT, &svAlign);
-        if (svAlign != 1) Gl.PixelStorei(Gl.UNPACK_ALIGNMENT, 1);
-        Gl.DrainErrors(8);
-        Gl.TextureStorage2D(dst, j.Levels, j.GlFmt, j.W, j.H);
-        Gl.TextureParameteri(dst, Gl.TEXTURE_MAX_LEVEL, j.Levels - 1);
-        // The texture's own .txi clamp (TxiSampler) or a script's SetTextureAttributes.
-        int wrap = j.Clamp ? Gl.CLAMP_TO_EDGE : Gl.REPEAT;
-        Gl.TextureParameteri(dst, Gl.TEXTURE_WRAP_S, wrap);
-        Gl.TextureParameteri(dst, Gl.TEXTURE_WRAP_T, wrap);
-        // A PLT is sampled by texelFetch and resolved per layer; a filtered RG8 read would interpolate LAYER
-        // INDICES, which is a different colour, not a blurrier one. Its own bilinear is in cx_plt.glsl, and a
-        // .txi filter attribute cannot talk it out of nearest.
-        bool nearest = j.Kind == TexKind.Plt || j.Nearest;
-        bool mip = j.Kind == TexKind.Plt || j.Mip;
-        Gl.TextureParameteri(dst, Gl.TEXTURE_MAG_FILTER, nearest ? Gl.NEAREST : Gl.LINEAR);
-        Gl.TextureParameteri(dst, Gl.TEXTURE_MIN_FILTER,
-            !mip ? (nearest ? Gl.NEAREST : Gl.LINEAR)
-                 : nearest ? Gl.NEAREST_MIPMAP_NEAREST : Gl.LINEAR_MIPMAP_LINEAR);
-        if (mip && !nearest) Gl.TextureParameteri(dst, Gl.TEXTURE_MAX_ANISOTROPY, Aniso());
-        if (j.Channels == 1 && !j.Compressed)
-        {
-            Gl.TextureParameteri(dst, Gl.TEXTURE_SWIZZLE_G, (int)Gl.RED);
-            Gl.TextureParameteri(dst, Gl.TEXTURE_SWIZZLE_B, (int)Gl.RED);
-        }
-        if (j.Compressed)
-        {
-            long off = 0;
-            for (int l = 0, w = j.W, h = j.H; l < j.Levels; l++, w = Math.Max(1, w >> 1), h = Math.Max(1, h >> 1))
-            {
-                int sz = DdsReader.LevelSize(w, h, j.Channels);
-                fixed (byte* lvl = new Span<byte>(j.Data, checked((int)(off + sz))).Slice((int)off))
-                    Gl.CompressedTextureSubImage2D(dst, l, 0, 0, w, h, j.GlFmt, sz, lvl);
-                off += sz;
-            }
-        }
-        else if (j.Kind == TexKind.Plt)
-        {
-            long off = 0;
-            for (int l = 0, w = j.W, h = j.H; l < j.Levels; l++, w = Math.Max(1, w >> 1), h = Math.Max(1, h >> 1))
-            {
-                fixed (byte* lvl = new Span<byte>(j.Data, checked((int)(off + (long)w * h * PltImage.BytesPerPixel))).Slice((int)off))
-                    Gl.TextureSubImage2D(dst, l, 0, 0, w, h, j.PixFmt, j.PixType, lvl);
-                off += (long)w * h * PltImage.BytesPerPixel;
-            }
-        }
-        else
-        {
-            int svRow = 0;
-            if (j.Pixels != null) { Gl.GetIntegerv(Gl.UNPACK_ROW_LENGTH, &svRow); Gl.PixelStorei(Gl.UNPACK_ROW_LENGTH, j.FullW); }
-            Gl.TextureSubImage2D(dst, 0, 0, 0, j.W, j.H, j.PixFmt, j.PixType, j.Data);
-            if (j.Pixels != null) Gl.PixelStorei(Gl.UNPACK_ROW_LENGTH, svRow);
-            if (j.GenMips && Gl.GenerateTextureMipmap != null) Gl.GenerateTextureMipmap(dst);
-        }
-        uint err = Gl.GetError();
-        if (svAlign != 1) Gl.PixelStorei(Gl.UNPACK_ALIGNMENT, svAlign);
-        if (svUnpack != 0) Gl.BindBuffer(Gl.PIXEL_UNPACK_BUFFER, (uint)svUnpack);
-        if (err == 0) { MirrorJob(dst, j); return dst; }
-        if (Gl.DeleteTextures != null) Gl.DeleteTextures(1, &dst);
-        why = $"the driver refused a {j.W}x{j.H} {j.Levels}-level 0x{j.GlFmt:x} upload (0x{err:x})";
+        uint n = VkTextures.NewName();
+        MirrorJob(n, j);
+        if (VkTextures.Has(n)) return n;
+        why = $"Vulkan refused a {j.W}x{j.H} {j.Levels}-level 0x{j.GlFmt:x} image";
         return 0;
     }
 
@@ -893,18 +792,8 @@ internal static unsafe partial class TexRegistry
     private static ulong MintHandle(uint name, string resref)
     {
         if (name == 0) return 0;
-        if (Renderer.OnVulkan) return VkTextures.HandleOf(name);
-        if (Gl.GetTextureHandleARB == null || Gl.MakeTextureHandleResidentARB == null) return 0;
-        ulong v = Gl.GetTextureHandleARB(name);
-        if (v == 0)
-        {
-            if (LoudOnce("mint"))
-                _log?.Always($"TexRegistry: glGetTextureHandleARB minted nothing for \"{resref}\" -- "
-                    + "its parts fall to the bound sampler path");
-            return 0;
-        }
-        Gl.MakeTextureHandleResidentARB(v);
-        return v;
+        _ = resref;
+        return VkTextures.HandleOf(name);
     }
 
     /// <summary>Release a slot's handle. Caller holds <see cref="_lock"/>, on any thread: no GL here, because
@@ -951,7 +840,6 @@ internal static unsafe partial class TexRegistry
         {
             // Ahead of the clear: the ripples' own textures are forgotten here, so the retires below cannot
             // queue a dead context's names into a graveyard this frame has already emptied.
-            ArturoContextLost();
             _graveyard.Clear();
             // Nothing to zero in the records either: the context that owned them is gone, and the renderer's
             // own context-loss path rebuilds its tables. The queue is DROPPED rather than drained, so a

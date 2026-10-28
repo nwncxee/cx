@@ -4,8 +4,8 @@ using CX.Graphics;
 
 namespace CX.Alloy;
 
-/// <summary>The two one-texel stand-ins an owned draw falls back on: the white texel a diffuse with no GL id
-/// draws as vanilla draws it, and the transparent-black texel an empty bindless map slot points at.</summary>
+/// <summary>The two one-texel stand-ins an owned draw falls back on: the white texel a diffuse with no texture
+/// id draws as vanilla draws it, and the transparent-black texel an empty bindless map slot points at.</summary>
 internal static unsafe partial class OwnedTextures
 {
     /// <summary>The one opaque white texel a part draws on when its diffuse resolves to GL id 0. Vanilla
@@ -19,7 +19,7 @@ internal static unsafe partial class OwnedTextures
         uint t = VkTextures.NewName();
         if (t == 0) return 0;
         MirrorSolid(t, 1, 1, white, NearestSampler);
-        if (Renderer.OnVulkan && !VkTextures.Has(t)) return 0;
+        if (!VkTextures.Has(t)) return 0;
         _owned.Add(t);
         _standIn.White = t;
         _log?.Info($"OwnedTextures: minted the white null-texture stand-in (tid {t}) -- a diffuse with no GL id now draws as vanilla draws it");
@@ -35,24 +35,10 @@ internal static unsafe partial class OwnedTextures
         uint t = VkTextures.NewName();
         if (t == 0) return 0;
         MirrorSolid(t, 1, 1, 0, NearestSampler);
-        if (Renderer.OnVulkan && !VkTextures.Has(t)) return 0;
+        if (!VkTextures.Has(t)) return 0;
         _owned.Add(t);
         _standIn.Black = t;
         return (int)t;
-    }
-
-    /// <summary>One nearest-filtered RGBA8 texel <paramref name="rgba"/> in GL; 0 with no context or no name.</summary>
-    private static uint Solid(uint rgba)
-    {
-        if (!GlContextService.Available) return 0;
-        uint t;
-        Gl.CreateTextures(Gl.TEXTURE_2D, 1, &t);
-        if (t == 0) return 0;
-        Gl.TextureStorage2D(t, 1, Gl.RGBA8, 1, 1);
-        Gl.TextureSubImage2D(t, 0, 0, 0, 1, 1, Gl.RGBA, Gl.UNSIGNED_BYTE, &rgba);
-        Gl.TextureParameteri(t, Gl.TEXTURE_MIN_FILTER, Gl.NEAREST);
-        Gl.TextureParameteri(t, Gl.TEXTURE_MAG_FILTER, Gl.NEAREST);
-        return t;
     }
 
     /// <summary>The <see cref="WhiteTid"/> and <see cref="NullTid"/> names, 0 until minted. Dropped (never

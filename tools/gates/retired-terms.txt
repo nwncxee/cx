@@ -150,3 +150,10 @@ alloy\.(backend|renderthread|rhiimmediate|gpumeter)\b	CX-313
 # The weather bakes' GL arms: the wetness map's scatter and integrate dispatches, the shelter and ripple tile
 # bakes, the cover map's ESM filter and the splash draw. Vulkan records every one of them.
 \bWeather\.(MapTick|MapScatter|EnsureMap|ShelterTick|ShelterBake|FilterCover|EnsureEsm|DrawSplash)\b	GL sweep 5
+# The GL movie quad and the GL owned-texture uploads. Vulkan draws the movie plate from the decode, and every
+# owned texture's identity is now a Vulkan-only name (VkTextures.NewName) with a Vulkan image behind it.
+\bcx_movie_v\b|\bcx_movie_f\b|\bMoviePlate\.Write\b|\bTextureSlots\.MovieQuad\b	GL sweep 6
+\bOwnedTextures\.Unpack\b|\bGlTexture\.KeepZeroed\b	GL sweep 6
+# The arturo ripple's GPU warp. The .txi words are still read (they pick the uncompressed container), but the
+# warp itself was a GL compute pass and is not ported, so such a texture draws its source image.
+\bcx_arturo_c\b|\b(Keep|Warp|Step|Bury|Clear)Arturo\b|\bArturo(Programs|Buffers|StandDown|Turn)\b	GL sweep 6
