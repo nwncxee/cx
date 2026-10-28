@@ -14,7 +14,7 @@ internal static unsafe partial class Weather
     internal static Knob<bool> ShelterCache = null!;
 
     internal const uint ShelterUnit = 23, NoiseUnit = 24, RippleUnit = 25;
-    private const int ShelterSizeMax = 2048, NoiseSize = 1024, RippleSize = 1024, ShelGroup = 8;
+    private const int ShelterSizeMax = 2048, NoiseSize = 1024, RippleSize = 1024;
 
     /// <summary>The parameters the cache was baked with; a knob that moves them re-bakes it.</summary>
     private static Vector4 _shelBaked;
