@@ -11,7 +11,7 @@ internal static class Post
     internal static readonly KnobGroup G;
     internal static readonly Knob<float> Exposure, Bloom, Threshold, Knee,
                                          AcesMix, TmKnee, Dither, TaaBlend, TaaSharp, ToonBands, ToonInk, ToonEdge;
-    internal static readonly Knob<bool> Taa, Taau, HalfRes, Stack, FbPost, Motion, ClearViz, SkyRaw;
+    internal static readonly Knob<bool> Taa, Taau, HalfRes, Stack, FbPost, ClearViz, SkyRaw;
     internal static readonly Knob<int> Tonemap, Viz;
 
     static Post()
@@ -61,7 +61,6 @@ internal static class Post
                              help: "With the game's Toon option; 1 = no posterise.");
         ToonInk = G.Slider("toonink", "Toon ink", 0f, 1f, 0.05f, 1f, tier: Tier.ChatOnly);
         ToonEdge = G.Slider("toonedge", "Toon edge", 1f, 8f, 0.5f, 1f, tier: Tier.ChatOnly);
-        Motion = G.Toggle("motion", "motion", false, Tier.ChatOnly);
         Viz = G.Slider("viz", "viz", 0, PostChain.VizMotion, 1, 0, tier: Tier.ChatOnly);
         ClearViz = G.Toggle("clearviz", "clearviz", false, Tier.ChatOnly);
         SkyRaw = G.Toggle("skyraw", "skyraw", true, Tier.ChatOnly);

@@ -16,14 +16,6 @@ internal static unsafe class MotionVectors
 
     private static ExtenderLog? _log;
 
-    /// <summary>The velocity target the vanilla renderer's chain samples, and the pass's stand-down latch:
-    /// context loss replaces it, so no name from the dead context survives as a field nobody zeroed.</summary>
-    private sealed class MotionGlState
-    {
-        public uint Tex;
-        public bool Failed;
-    }
-
     /// <summary>The camera history, which the WORLD owns: an area transition replaces it, so the next frame
     /// paints zero rather than a jump the length of the load screen. Context loss replaces it as well -- the
     /// target the history was reprojected against is gone.</summary>
@@ -55,7 +47,6 @@ internal static unsafe class MotionVectors
     /// rides over as the same int: across the wrap last frame's number is the larger one.</summary>
     private const int ClockWrap = 3600000;
 
-    private static MotionGlState _gl = new();
     private static MotionHistoryState _hist = new();
     private static int _runs;
     /// <summary>The clean camera of the last frame's first run, for the period's camera-steadiness term: how many
@@ -64,28 +55,15 @@ internal static unsafe class MotionVectors
     private static int _camSeq = -1, _camMoved, _camStill;
     private static float _camMax;
 
-    /// <summary>The vanilla renderer chain's velocity target, 0 until one has been made at this size.</summary>
-    internal static uint Tex => _gl.Tex;
     /// <inheritdoc cref="MotionHistoryState.FieldPrevVp"/>
     internal static Matrix4x4 FieldPrevVp => _hist.FieldPrevVp;
     /// <inheritdoc cref="MotionHistoryState.FieldPrevClock"/>
     internal static int FieldPrevClock => _hist.FieldPrevClock;
-    /// <summary>Has a velocity target the vanilla renderer's chain may read been painted this frame? The Vulkan
-    /// frame paints its own image instead (<c>PostStack.Vk</c>), so that chain's stages find nothing here.</summary>
-    internal static bool Painted { get; private set; }
-    /// <summary>Stood down on this context (program or target): the TAA jitter gates on it, so a frame with no
-    /// velocity target is never jittered without an accumulator.</summary>
-    internal static bool Failed => _gl.Failed;
-
     internal static void Attach(ExtenderLog log) => _log = log;
-
-    /// <summary>Context loss: the target name is gone, and so is the history it was reprojected against.</summary>
-    internal static void Forget()
-    { _gl = new MotionGlState(); Revoke(); }
 
     /// <summary>World edge (area transition): the previous camera is another area's. The next frame paints
     /// zero rather than a jump the length of the load screen.</summary>
-    internal static void Revoke() { _hist = new MotionHistoryState(); Painted = false; }
+    internal static void Revoke() => _hist = new MotionHistoryState();
 
     /// <summary>The camera history for the Vulkan frame's own velocity pass: this frame
     /// queued for <see cref="RollHistory"/>, and last frame's camera returned.</summary>
@@ -139,7 +117,7 @@ internal static unsafe class MotionVectors
         int n = _runs; _runs = 0;
         string cam = $", camera moved {_camMoved}/{_camMoved + _camStill} frames (max element step {_camMax:G3})";
         _camMoved = 0; _camStill = 0; _camMax = 0f;
-        return _gl.Failed ? "motion STOOD DOWN" : n == 0 ? "motion idle" : $"motion {(float)n / MathF.Max(frames, 1):F2} runs/frame" + cam + AlloyRenderer.MoverStats(frames);
+        return n == 0 ? "motion idle" : $"motion {(float)n / MathF.Max(frames, 1):F2} runs/frame" + cam + AlloyRenderer.MoverStats(frames);
     }
 
     /// <summary>Depth to NDC (default depth range, so z = 2d-1), through the inverse of this frame's

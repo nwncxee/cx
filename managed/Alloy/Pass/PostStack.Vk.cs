@@ -58,6 +58,14 @@ internal static unsafe partial class PostStack
     /// <summary>The TAA history on Vulkan starts over: the next resolve takes the current frame whole.</summary>
     internal static void ResetVk() => _vk.HistValid = false;
 
+    /// <summary>The module changed under the hosted chain: its program is spliced from the resource chain, so it
+    /// is dropped and rebuilt from the new module's.</summary>
+    private static void DropSplicedVk()
+    {
+        _vk.Stages[Array.IndexOf(_stages, _fbpost)] = new StageVk();
+        FbPostStage.DropProgram();
+    }
+
     /// <summary>Is the Vulkan taa stage refused on this device? The frame then draws unjittered.</summary>
     internal static bool TaaVkFailed => _vk.TaaTried && (_vk.Taa == null || _vk.Motion == null);
 

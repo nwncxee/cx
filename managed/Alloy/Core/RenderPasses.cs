@@ -241,14 +241,13 @@ internal static class RenderPasses
         }, log);
         // #375: the display-space stack after the resolve; its dials are the post group's. No Revoke -- it
         // captures nothing from the world; its inputs are the engine's option globals, read per frame.
-        // #388: the camera velocity target; post.motion and post.viz 4 reach it. Revoke resets the previous
+        // #388: the camera velocity target the accumulator reprojects through. Revoke resets the previous
         // view-projection so the first frame after an area transition paints zero rather than a jump.
         r.Register(new PassLifecycle
         {
             Name = "motion",
             Attach = MotionVectors.Attach,
             SelfCheck = l => MotionVectors.SelfCheck(l),
-            ContextLost = MotionVectors.Forget,
             Revoke = MotionVectors.Revoke,
             Stats = MotionVectors.Stats,
         }, log);

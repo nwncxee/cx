@@ -45,7 +45,7 @@ internal static unsafe class ToonStage
     /// <summary>Context loss: the locations belong to a program the stack rebuilds.</summary>
     internal static void Forget() { _gl = new ToonState(); }
 
-    /// <summary>From the frame, beside <see cref="PostStack.Begin"/>: the projection this frame drew with.
+    /// <summary>From the frame, beside the post stack: the projection this frame drew with.
     /// Only <c>[2].z</c>/<c>[3].z</c> are read, which the TAA jitter does not touch.</summary>
     internal static void SetProj(Matrix4x4* proj) => _proj = *proj;
 
@@ -60,32 +60,6 @@ internal static unsafe class ToonStage
     internal static string Describe()
         => $"bands {Post.ToonBands.V:F0} ink {(Hardness <= 0f ? "OFF (edge hardness 0)" : Post.ToonInk.V.ToString("F2"))} "
          + $"edge {Post.ToonEdge.V:F1}px | sliders: depth {DepthEdge:F3} colour {ColorEdge:F2} hardness {Hardness:F2}";
-
-    /// <summary>From <see cref="PostStack.Run"/>, ahead of the stage draw: the stage's own uniforms onto its
-    /// own program, which the caller then draws with. The sliders are read here, so moving one in the video
-    /// options moves the next frame. Binds nothing and leaves no target behind. Hot: allocates nothing.</summary>
-    internal static void Prepare(uint src, uint prog, int* viewport)
-    {
-        var g = _gl;
-        if (prog != g.Prog)
-        {
-            g.Prog = prog;
-            g.LocProj = GlProgram.Loc(prog, "uProj"); g.LocBands = GlProgram.Loc(prog, "uBands");
-            g.LocInk = GlProgram.Loc(prog, "uInk"); g.LocEdge = GlProgram.Loc(prog, "uEdge");
-            g.LocDepthThresh = GlProgram.Loc(prog, "uDepthThresh");
-            g.LocColorThresh = GlProgram.Loc(prog, "uColorThresh");
-            g.LocHardness = GlProgram.Loc(prog, "uHardness");
-        }
-        (float ink, float depth, float colour, float hard) = Dials();
-        Gl.UseProgram(prog);
-        fixed (Matrix4x4* p = &_proj) Gl.UniformMatrix4fv(g.LocProj, 1, 0, (float*)p);
-        Gl.Uniform1f(g.LocBands, Post.ToonBands.V);
-        Gl.Uniform1f(g.LocInk, ink);
-        Gl.Uniform1f(g.LocEdge, Post.ToonEdge.V);
-        Gl.Uniform1f(g.LocDepthThresh, depth);
-        Gl.Uniform1f(g.LocColorThresh, colour);
-        Gl.Uniform1f(g.LocHardness, hard);
-    }
 
     /// <summary>The ink, the two thresholds and the hardness as the stage reads them, off the sliders this frame.</summary>
     private static (float Ink, float Depth, float Colour, float Hard) Dials()

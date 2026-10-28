@@ -137,3 +137,9 @@ alloy\.(backend|renderthread|rhiimmediate|gpumeter)\b	CX-313
 \bIdTarget\.(Begin|End|Paint|Attach|Forget|Stats)\b|\bHalos\.(Draw|Step|ContextLost)\b|\bcx_haloocc_c\b	GL sweep 5
 \bBeams\.(Draw|ContextLost)\b|\bTriggerHighlight\.(Draw|Attach|ContextLost)\b	GL sweep 5
 \bwater\.diag\b|\bFrameSnapshot\.(Copy|Bind|Unbind|Compare|ColorTex|Ready|Copies|Refusals|EnvOk|Forget|Revoke|LastRectFrac)\b	GL sweep 5
+# The GL post chain and display-space stack: the HDR target and its bloom chain, the resolve, the stack's
+# ping-pong pair, and the GL halves of the taa, aa and velocity passes. Vulkan resolves the frame and runs
+# every stack stage, so the dial that armed the velocity pass for its own sake has nothing left to arm.
+\bpost\.motion\b|\bPostChain\.(Bloom|Composite|Fbo|HdrTex|DepthTex|FullscreenVao|MotionWanted)\b	GL sweep 5
+\bPostStack\.(Begin|Run|Width|Height|Upsampling)\b|\bTaaStage\.(Ready|Prepare|Failed|Forget)\b	GL sweep 5
+\bMotionVectors\.(Tex|Painted|Failed|Forget)\b|\bSmaaStage\.(Ready|Prepare|Forget)\b	GL sweep 5
