@@ -138,10 +138,10 @@ public static unsafe partial class TextRig
         if (ok == 0) { _log?.Info($"TextRig: {name} program link failed"); return null; }
         return new Prog
         {
-            Id = id, Proj = GlProgram.Loc(id, "uProj"), Tex = GlProgram.Loc(id, "uTex"), Alpha = GlProgram.Loc(id, "uAlpha"),
-            Offset = GlProgram.Loc(id, "uOffset"), Pal = GlProgram.Loc(id, "uPal"), Rows = GlProgram.Loc(id, "uRows[0]"),
-            Crop = GlProgram.Loc(id, "uCrop"), Occl = GlProgram.Loc(id, "uOccl"), Anchor = GlProgram.Loc(id, "uAnchor"),
-            Scene = GlProgram.Loc(id, "uScene"),
+            Id = id, Proj = Gl.Loc(id, "uProj"), Tex = Gl.Loc(id, "uTex"), Alpha = Gl.Loc(id, "uAlpha"),
+            Offset = Gl.Loc(id, "uOffset"), Pal = Gl.Loc(id, "uPal"), Rows = Gl.Loc(id, "uRows[0]"),
+            Crop = Gl.Loc(id, "uCrop"), Occl = Gl.Loc(id, "uOccl"), Anchor = Gl.Loc(id, "uAnchor"),
+            Scene = Gl.Loc(id, "uScene"),
         };
     }
 

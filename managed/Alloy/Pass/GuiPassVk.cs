@@ -243,8 +243,8 @@ internal static unsafe partial class GuiPassVk
         return true;
     }
 
-    /// <summary>A GUI stage's text as GL compiles it: the library overrides, then the vanilla splice and the sizing
-    /// tokens -- the same two steps <see cref="GlProgram.Graphics"/> and <see cref="VkPrograms"/> take.</summary>
+    /// <summary>A GUI stage's text as it is compiled: the library overrides, then the vanilla splice and the sizing
+    /// tokens -- the same two steps <see cref="VkPrograms"/> takes.</summary>
     private static string Text(string resref, ExtenderLog log)
     {
         string what = $"GuiPassVk {resref}";

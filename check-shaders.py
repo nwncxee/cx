@@ -49,6 +49,9 @@ TOKENS = {"$CAP$": "128", "$SORT$": "32", "$DYNSPH$": "4", "$CUBES$": "64", "$GR
 INCLUDE = re.compile(r'^\s*#include\s+"([^"]+\.glsl)"\s*$')
 GET = re.compile(r'ShaderSource\.Get\("([^"]+)"\)')
 RESREF = re.compile(r'"(cx_\w+)"')
+# A file is reached when C# names it, whether it hands the name straight to ShaderSource.Get or to a helper
+# that does (GuiPassVk.Text, say), so reachability reads the quoted file name itself.
+NAMED = re.compile(r'"(cx_\w+\.glsl)"')
 
 # --- the SPIR-V compile -------------------------------------------------------------------------------------
 # The runtime hands each stage to shaderc for one Vulkan environment, after VkGlsl has rewritten the text; the
@@ -146,11 +149,12 @@ def cs_sources():
 
 def audit(g):
     """Every name C# asks ShaderSource for exists, and every file is reached by something."""
-    named, resrefs = set(), set()
+    named, resrefs, literals = set(), set(), set()
     for p in cs_sources():
         text = open(p).read()
         named.update(GET.findall(text))
         resrefs.update(RESREF.findall(text))
+        literals.update(NAMED.findall(text))
     included = {m.group(1) for f in g
                 for m in (INCLUDE.match(l) for l in open(os.path.join(SHADERS, f + ".glsl")))
                 if m}
@@ -159,7 +163,7 @@ def audit(g):
     for n in sorted(named - files):
         print(f"audit: C# asks ShaderSource for {n}, which no file answers"); bad = 1
     # A stage file is named by resref, through ShaderStages.Source -- never by a literal.
-    for f in sorted(files - named - included):
+    for f in sorted(files - named - literals - included):
         if f[:-5] in resrefs:
             continue
         print(f"audit: {f} is not included, named from C# or an overridable resref -- dead text"); bad = 1

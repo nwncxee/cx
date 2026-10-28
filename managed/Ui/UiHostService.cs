@@ -187,9 +187,6 @@ public sealed unsafe class UiHostService : IExtenderService
     private static bool _announced;
     private const uint GlArrayBuffer = 0x8892;  // not-an-offset: a GL enum
 
-    /// <summary>presents left to sample. Costs a pipeline stall each, so it is a knob that runs out.</summary>
-    private static int _presentProbe;
-
     /// <summary>The frame present: announce once, run the frame phases, then present. The window roll-call
     /// itself happens earlier, at <see cref="OnNkRender"/>, either side of NUI; it falls back to here, both
     /// layers over NUI, only when that chain never installed. Hot (every frame) and zero-alloc.</summary>
@@ -201,7 +198,6 @@ public sealed unsafe class UiHostService : IExtenderService
             _announced = true;
             _log?.Info("UiHostService: first frame presented -- hook is LIVE");
             CX.Services.CrashReport.Expose();
-            _presentProbe = General.PresentProbe.Boot;
             int pin = General.Pin.Boot;
             if (pin >= 0) _log?.Info($"UiHostService: main thread pin={pin} -> {(Affinity.PinThis(pin) ? "pinned" : "REFUSED")} (was on cpu {Affinity.CurrentCpu})");
         }
@@ -216,14 +212,6 @@ public sealed unsafe class UiHostService : IExtenderService
         // Must be the LAST thing before the present -- after the window roll-call and after every PrePresent
         // participant. With Alloy rendering, only when something drew in this context this frame.
         if (!CX.Alloy.Renderer.On || _handBack.Owed) HandBack();
-        // The black-frame discriminator: read at the last instruction before the present, so what it sees IS what
-        // the swap is about to show. In a module only -- the menu's static background measures nothing.
-        if (_presentProbe > 0 && GameGate.InModule)
-        {
-            _presentProbe--;
-            _log?.Always($"[presentprobe] fb0 centre before swap: 0x{GlProbe.ScreenCentre():x8}"
-                       + $"  into={CX.Alloy.PostChain.LastInto} resolves={CX.Alloy.PostChain.Resolves}");
-        }
         long tSwap = FrameZones.Now;
         // Alloy issues the present when the screen is Alloy's; otherwise the engine's GLRender::SwapBuffers.
         if (!CX.Alloy.ScreenOwner.Present(window) && _swapOrig != null) _swapOrig(window);

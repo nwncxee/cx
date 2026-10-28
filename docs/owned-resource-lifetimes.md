@@ -156,7 +156,7 @@ Two things stay immediate, each for a reason:
 
 `tools/gates/gpu-frees.sh` counts the immediate frees that are left per file against `gpu-frees.baseline`,
 which may only shrink; `python3 tools/gates/gpu-frees.py -v` lists each one, and all of them are in the
-engine-GL path CX's own windows and the NUI model view replay on when Alloy stands down. A Vulkan object
+engine-GL path CX's own windows replay on when Alloy stands down. A Vulkan object
 never counts: the backend's own deferral is the mechanism.
 
 Two notes for whoever reads this next. The `Part::~Part` death notice Part 2 inventories is gone: it went with

@@ -17,7 +17,7 @@ public static class General
     /// for the launch lines, before any knob exists.</summary>
     public static readonly Knob<bool> Logs;
     public static readonly Knob<bool> HookDebug;
-    public static readonly Knob<int> PresentProbe, Pin;
+    public static readonly Knob<int> Pin;
     /// <summary>Debug: log the frame-time percentiles, and what model views cost in CPU and GPU, every few seconds.</summary>
     public static readonly Knob<bool> FrameTimes;
     /// <summary>Seconds after the first present at which this run halves the window's width; twice that is where it
@@ -40,7 +40,6 @@ public static class General
                 + "lines too. Attach the file to a bug report.",
             changed: () => ExtenderLog.Enabled = Logs!.V);
         HookDebug = G.Toggle("hookdebug", "hookdebug", false, Tier.ChatOnly, Effect.Restart);
-        PresentProbe = G.Slider("presentprobe", "presentprobe", 0, 200, 1, 0, tier: Tier.ChatOnly, effect: Effect.Restart);
         FrameTimes = G.Toggle("frametimes", "frametimes", false, Tier.ChatOnly,
             help: "Debug: every few seconds, log p50, p95, p99 and max of the frame time and of the CPU model views took, and the GPU time of the GUI replay.");
         Pin = G.Slider("pin", "pin", -1, 1023, 1, -1, tier: Tier.ChatOnly, effect: Effect.Restart);

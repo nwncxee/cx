@@ -10,8 +10,8 @@ namespace CX.Services.Nui;
 
 /// <summary>
 /// <c>"@model:&lt;key&gt;"</c> as any NUI image shows a live model: a throwaway copy of a creature the server names, drawn every
-/// frame into the texture the engine made for the image, so NUI draws it like any other. What the view shows is the
-/// server's, by policy keys under <c>model.&lt;key&gt;.</c> (<c>docs/ui-policy-contract.md</c>). Up to
+/// frame by Alloy into the image's texture, so NUI draws it like any other -- and not at all in a session Alloy stood down.
+/// What the view shows is the server's, by policy keys under <c>model.&lt;key&gt;.</c> (<c>docs/ui-policy-contract.md</c>). Up to
 /// <see cref="NuiModelDoll.MaxViews"/> live at once, a doll each. A card or the held image shows one through <see cref="Show"/>.
 /// </summary>
 internal static unsafe partial class NuiModelView
@@ -120,6 +120,12 @@ internal static unsafe partial class NuiModelView
     internal static void Init(ExtenderLog log, HookService hooks)
     {
         _s.Log = log;
+        if (!CX.Alloy.Renderer.OnVulkan)
+        {
+            log.Always("NuiModelView: Alloy is not drawing this session, and a model view is Alloy's to draw -- no model view "
+                     + "draws and the modelview capability is withdrawn, so a server that asks for one is told so at login");
+            return;
+        }
         _s.Ready = NuiModelDoll.Init(log);
         NuiModelGear.Init(log);
         NuiModelTarget.Init(log);
@@ -129,7 +135,6 @@ internal static unsafe partial class NuiModelView
         Capabilities.Register("modelview", 9, static () => _s.Ready && NuiKnobs.Enabled.V && NuiKnobs.ModelView.V);
         NuiKnobs.Enabled.Changed += Capabilities.Refresh;
         NuiKnobs.ModelView.Changed += Capabilities.Refresh;
-        NuiModelEngine.Install(log, hooks);
         FrameRegistry.Global.Register(FramePhase.PrePresent, 1, Frame, "NuiModelView.frame", log);
     }
 
@@ -721,7 +726,6 @@ internal static unsafe partial class NuiModelView
             if (v.Built) WearVfx(v, Resolve(v));
         }
         RefuseVfx(v);
-        NuiModelDoll.SetEffects(v.Slot, v.Vfx.Length > 0 || v.Wear.Length > 0);
         string bgRaw = Policy(v.Key, "bg", "");
         Span<float> bg = stackalloc float[4];
         if (!NuiModelLook.Background(bgRaw, bg)) Refuse(v.Key, "bg", bgRaw, "needs '#RRGGBB', '#RRGGBBAA' or numbers 'r,g,b,a'");

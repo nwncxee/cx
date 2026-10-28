@@ -211,3 +211,8 @@ _(opaque|sky|pre)\.pfm\b|_final\.ppm\b|\bdiff_final_pre\b	GL sweep 7
 \bGlProgram\.(Lib|Texts|Content|Compute|Prefetch|Start|Done|Drop|ForgetBackground|UsesBlock|Labels|LastStubbed)\b	GL sweep 8
 # The three knobs the GL context carried: two deleted outright, gldebug renamed gpudebug with its log tag.
 alloy\.(gl46|glsync|gldebug)\b|\[gl46\]|\[gldebug\]	GL sweep 8
+# ADR 0033's last two: the GL diagnostic probe (and the presentprobe knob that was its only caller) and the
+# model view's vanilla half. A model view is Alloy's to draw, so on the engine's renderer none draws and the
+# modelview capability is withdrawn; GlProgram's builder went with it (Gl.Loc is what TextRig kept).
+\bGlProbe\b|general\.presentprobe\b|\bpresentprobe\b|\[presentprobe\]	GL sweep 9
+\bNuiModelEngine\b|\bGlProgram\b|NuiModelView\.Gl\b	GL sweep 9

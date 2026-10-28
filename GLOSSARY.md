@@ -255,7 +255,8 @@ What a server can ask the client to draw in and beside its NUI windows. The cont
   styled panel shown beside a NUI element on hover; cards are its first use.
 - **Model view** — a live model drawn into a NUI image, a card or the held image, set up by the
   `model.<key>.*` keys. Its **doll** is the throwaway copy of the target the client builds and
-  draws; the target itself is only read.
+  draws; the target itself is only read. Alloy draws it, and nothing else does: a session Alloy
+  stood down draws no model view and withdraws `cx_cap_modelview`.
 - **Stand-in** — the picture a model view shows until its doll has drawn, and when it has none.
 - **Held image** — the image that follows the pointer while `held.image` names one. A **held
   pick** is the image a press on a NUI element shows at once, before the server answers.
@@ -318,7 +319,8 @@ What a server can ask the client to draw in and beside its NUI windows. The cont
   knob is one declaration and the chat command and the settings panel are two views of it.)
 - **Render mode** — which renderer draws the 3D scene: the *owned* mode (Alloy, on Vulkan) or the
   *vanilla* mode (the engine's own GL path). Both ship permanently; a device that cannot run the
-  Alloy mode still runs every other extender feature. The mode is whole-scene — never a
+  Alloy mode still runs every extender feature that does not need a renderer of its own — what
+  Alloy alone can draw stands down and says so. The mode is whole-scene — never a
   per-class mixture — and it is **chosen once per session**, by `alloy.enabled=0` in `cx.cfg`
   (restart required) or by a Vulkan probe that refuses, because Alloy's residency is exclusive and
   the two resource worlds cannot both be warm. Bare `/alloy` reports which one is running and why.

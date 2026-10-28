@@ -179,7 +179,7 @@ internal static unsafe class SkyStage
                        + "sky cannot be compiled here and is NOT DRAWN (nothing else draws the sky since CX-87)");
             return false;
         }
-        // The override lookup is done HERE, not by GlProgram's overridable overload, because the region's
+        // The override lookup is done HERE, not inside the splice, because the region's
         // resref has to be written in before the splice reads the marker -- and an override that keeps the
         // token is entitled to the same substitution the embedded text gets.
         string evs = ShaderStages.Source(AlloyRenderer.ShdFullbrightVs), efs = ShaderStages.Source(ShdFs);

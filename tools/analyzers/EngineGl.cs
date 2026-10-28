@@ -16,16 +16,13 @@ public sealed class EngineGl : DiagnosticAnalyzer
 
     private const string GlType = "CX.Graphics.Gl";
 
-    /// <summary>Where <c>Gl.*</c> may be used: the binding and its program builder and probe, the stubs for the
-    /// entry points the engine itself imports, CX's own windows and the NUI model view drawn on the engine's
-    /// renderer in a session Vulkan refused, and the engine draw census.
+    /// <summary>Where <c>Gl.*</c> may be used: the binding, and CX's own windows drawn on the engine's renderer in a
+    /// session Vulkan refused. Nothing else -- a feature of Alloy's stands down instead.
     /// <c>tools/gates/gl-confined.sh</c> reads this list and refuses a name no file answers to.</summary>
     private static readonly string[] Allowed =
     {
-        "/managed/Graphics/Gl.cs", "/managed/Graphics/GlProgram.cs", "/managed/Graphics/GlProbe.cs",
+        "/managed/Graphics/Gl.cs",
         "/managed/Ui/TextRig.cs", "/managed/Ui/TextRig.Replay.cs",
-        "/managed/Services/Nui/NuiModelEngine.cs", "/managed/Services/Nui/NuiModelEngine.Solve.cs",
-        "/managed/Services/Nui/NuiModelView.Gl.cs",
     };
 
     private static readonly DiagnosticDescriptor Rule = new(
