@@ -31,7 +31,8 @@ ALLOW = {
     "managed/Alloy/Pass/Weather.Surface.cs", "managed/Alloy/Pass/Weather.Map.cs",
     "managed/Alloy/Pass/Weather.Shelter.cs", "managed/Alloy/Pass/Weather.Esm.cs",
 }
-REF = re.compile(r"\bGl\.([A-Za-z_][A-Za-z0-9_]*)")
+# (?<![.\w]) so a FIELD called Gl (NullGl's state object has one) is not read as the static class
+REF = re.compile(r"(?<![.\w])Gl\.([A-Za-z_][A-Za-z0-9_]*)")
 files = subprocess.run(["git", "ls-files", "--cached", "--others", "--exclude-standard", "managed"],
                        capture_output=True, text=True).stdout.split()
 bad, stale = [], sorted(f for f in ALLOW if f not in files)
