@@ -225,7 +225,7 @@ internal static class VkPrograms
     private const uint OpDecorate = 71, DecorationDescriptorSet = 34, DecorationBinding = 33;
 
     /// <summary>An opaque's binding as the toolchain lays the one set out: each kind shifted past the last.</summary>
-    private static uint Shifted(VkOpaque o) => o.Kind switch
+    internal static uint Shifted(VkOpaque o) => o.Kind switch
     {
         VkBindKind.UniformBlock => VulkanToolchain.UniformBase + o.Binding,
         VkBindKind.StorageBlock => VulkanToolchain.StorageBase + o.Binding,
@@ -234,7 +234,7 @@ internal static class VkPrograms
     };
 
     /// <summary>The bindings a module decorates on variables in set 0 (no DescriptorSet decoration means set 0).</summary>
-    private static List<uint> Bindings(byte[] spirv)
+    internal static List<uint> Bindings(byte[] spirv)
     {
         ReadOnlySpan<uint> w = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, uint>(spirv);
         var binding = new Dictionary<uint, uint>();

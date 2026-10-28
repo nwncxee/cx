@@ -67,20 +67,60 @@ that way.** The extender expands them when it compiles, for an override exactly 
 its own embedded default, so a file that keeps the tokens stays correct when those sizes
 change on the C# side. Freezing today's numbers into your copy is how it goes stale.
 
-### SPIR-V stages: not a supported override
+### SPIR-V stages
 
-**Write GLSL.** A `.shd` that holds a SPIR-V module instead of text is still sniffed by its magic word, and
-still named in the log — but nothing consumes it any more. The accepting path was the GL program builder's
-`glShaderBinary`/`glSpecializeShader` pair, and it went with the GL backend; the Vulkan side only ever
-compiles modules shaderc has just produced from text it can see. `alloy.spirv=1` therefore reaches no live
-code, and a module `.shd` falls back to the embedded stage with a line saying so.
+**Write GLSL unless you have a reason not to.** A `.shd` whose first four bytes are SPIR-V's magic word
+(`0x07230203`) is a precompiled module, and Alloy can run one as the stage's module instead of compiling
+anything. That is the whole of it: the module is what the GPU gets. None of the text machinery runs for it —
+no sizing tokens (`$CAP$` and friends are C#-side sizes spliced into source), no library swap, no vanilla
+bridge, and none of the guards below, which read source there is none of. You own the interface.
 
-That is not a gap waiting to be filled. A module is unauditable, and everything the text path does would be
-skipped for one: no token expansion (`$CAP$` and friends are C#-side sizes), no library splice, no vanilla
-bridge or content pair — all of which are text surgery — and none of the guards below, which read source
-there would not be.
+It is off until you ask for it. Put `alloy.spirv=1` in `cx.cfg` and restart; without it a module `.shd` is
+named in the log and ignored, because a binary nobody can read is a bigger step than a text file.
 
-If you want a stage compiled your own way, compile it to GLSL and let the extender translate it.
+#### Which stages take one
+
+A module replaces exactly one compiled stage, so it is honoured only where the extender compiles that resref
+once, unvaried:
+
+| resref | stage |
+| --- | --- |
+| `cx_cluster_cs` | compute |
+| `cx_deferred_cs` | compute — the plain walk only; the in-loop and film twins carry a `#define` |
+| `cx_defshadow_cs` | compute |
+| `cx_vfog_cs`, `cx_vfogsum_cs` | compute |
+| `cx_ssao_fs`, `cx_ssaoblur_fs` | fragment |
+
+Everywhere else the extender compiles a stage's text with transforms of its own — the bindless rewrite, the
+deferred and decal twins, the vanilla splice, a content pair's spliced halves — and a module cannot carry
+them. Ship GLSL for those; the log says which it is when a module turns up for one.
+
+#### What the module has to match
+
+Compile the **translated** stage, not the dumped one. `VkGlsl` (`managed/Graphics/Vulkan/VkGlsl.cs`) rewrites
+GL GLSL into Vulkan GLSL before shaderc sees it, and `VulkanToolchain.CompileFresh` is the exact
+invocation: target environment Vulkan 1.3, locations auto-mapped, and GL's binding spaces shifted apart into
+the one descriptor set — samplers from 0, uniform blocks from 48, storage blocks from 64, storage images from
+80. Set 1 is the bindless sampler array. Every loose (non-block) uniform the stage declared is gathered into
+one std140 block the host fills by member name, so a module that drops it gets no uniforms. The entry point
+is `main`.
+
+The practical route is therefore: edit the dumped `.shd`, let the extender translate and compile it once, and
+compile your module from the same text with the same options. Reach for a module when you want a compiler
+Alloy does not ship — your own optimiser pass, a language that targets SPIR-V — not to save load time; the
+extender caches its own compiles beside `cx.cfg` already.
+
+#### What is checked, and what happens when it fails
+
+Alloy reads the module itself and refuses it on any of: the magic word absent, a length that is not a whole
+number of words, a SPIR-V version past 1.6, a zero id bound or a non-zero schema word, a malformed
+instruction stream, no `Shader` capability, no entry point, an entry point that is not `main`, an entry point
+whose execution model is not the stage's, or a set-0 binding no descriptor the host writes answers for — that
+last one hangs the device, which is why it is checked rather than found out.
+
+A refused module is loud and costs nothing: one `cx.log` line naming the resref and the reason, and the stage
+this extender ships compiles and runs in its place. That is what a GLSL override that will not compile does
+too. Nothing is quietly substituted, and nothing is quietly skipped.
 
 ## The overridable stages
 

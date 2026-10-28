@@ -27,10 +27,11 @@ internal static unsafe class ShaderResource
     {
         byte[]? b = Blob(resref, ResTypeShd, log);
         if (b == null) return null;
-        if (IsSpirv(b))
+        if (ShaderBinary.IsModule(b))
         {
-            log?.Info($"shader override: {resref}.shd is a SPIR-V module -- "
-                    + (SpirvArmed ? "taken as a binary stage" : "IGNORED, set alloy.spirv=1 in cx.cfg to accept it"));
+            log?.Info($"shader override: {resref}.shd is a SPIR-V module, not text -- "
+                    + (SpirvArmed ? "the stage's own text still answers for its interface"
+                                  : "IGNORED, set alloy.spirv=1 in cx.cfg to accept it"));
             return null;
         }
         // A BOM ahead of #version is a compile error, and an editor on Windows writes one without asking.
@@ -39,32 +40,19 @@ internal static unsafe class ShaderResource
         return text;
     }
 
-    /// <summary>The SPIR-V module a content author supplied for <paramref name="resref"/>, or null when the
-    /// resource is absent, is GLSL text, or the <c>spirv</c> capability gate is off. Opted into rather than
-    /// accepted: none of the text machinery a GLSL override goes through can read a module, so accepting one
-    /// trusts the author to have matched the embedded stage's record layout, bindings and cutout rules.</summary>
+    /// <summary>The raw SPIR-V a content author supplied for <paramref name="resref"/>, or null when the resource
+    /// is absent, is GLSL text, or the <c>spirv</c> capability gate is off. What may be read off it is checked in
+    /// <see cref="ShaderBinary.Validate"/>; the text machinery -- tokens, library splice, the stage contracts --
+    /// reaches no module, so the author owns the interface it declares.</summary>
     internal static byte[]? OverrideSpirv(string resref, ExtenderLog? log)
     {
         if (!SpirvArmed) return null;
         byte[]? b = Blob(resref, ResTypeShd, log);
-        if (b == null || !IsSpirv(b)) return null;
-        if ((b.Length & 3) != 0)
-        {
-            log?.Info($"shader override: {resref}.shd is {b.Length} bytes -- a SPIR-V module is a whole number of words, ignored");
-            return null;
-        }
-        return b;
+        return b != null && ShaderBinary.IsModule(b) ? b : null;
     }
 
-    /// <summary>SPIR-V's magic word, little-endian. A module that reads byte-swapped was produced for the
-    /// other endianness and GL will not take it, so it is refused rather than converted.</summary>
-    private const uint SpirvMagic = 0x07230203;   // not-an-offset: the SPIR-V file magic
-
-    private static bool IsSpirv(byte[] b) =>
-        b.Length >= 4 && (uint)(b[0] | (b[1] << 8) | (b[2] << 16) | (b[3] << 24)) == SpirvMagic;
-
-    /// <summary>Restart gate: binary shader stages are off unless the machine's owner says otherwise, because
-    /// nothing downstream can audit one.</summary>
+    /// <summary>Restart gate: a binary stage is opted into, because none of the text machinery can audit one --
+    /// only what <see cref="ShaderBinary.Validate"/> reads off the module itself.</summary>
     internal static bool SpirvArmed => Renderer.Spirv.Boot;
 
     /// <summary>The raw bytes behind <paramref name="resref"/> at <paramref name="type"/>, or null when nothing supplies

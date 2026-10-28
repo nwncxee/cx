@@ -90,20 +90,6 @@ internal static unsafe class GlProgram
     internal static uint Graphics(string vsRef, string vs, string fsRef, string fs, ExtenderLog? log, string what,
                                   out string vsSource, out string fsSource, bool host = true)
     {
-        byte[]? bvs = ShaderResource.OverrideSpirv(vsRef, log), bfs = ShaderResource.OverrideSpirv(fsRef, log);
-        if (bvs != null || bfs != null)
-        {
-            // ponytail: the contracts see the EMBEDDED text, because a module cannot be read for them --
-            // the alloy.spirv=1 gate is the audit. Mixed GLSL+SPIR-V stages fail to link per GL 4.6 and land on
-            // the same fallback below, so nothing special-cases them.
-            vsSource = vs; fsSource = fs;
-            uint v = bvs != null ? Binary(Gl.VERTEX_SHADER, bvs, log, what) : Compile(Gl.VERTEX_SHADER, vs, log, what, host);
-            uint f = bfs != null ? Binary(Gl.FRAGMENT_SHADER, bfs, log, what) : Compile(Gl.FRAGMENT_SHADER, fs, log, what, host);
-            if (v != 0 && f != 0) { uint p = Link(log, what, v, f); if (p != 0) return p; }
-            else { if (v != 0) Gl.DeleteShader(v); if (f != 0) Gl.DeleteShader(f); }
-            log?.Info($"{what}: SPIR-V override did not build -- falling back to the embedded default");
-            return Graphics(vs, fs, log, what, host);
-        }
         Texts(vsRef, vs, fsRef, fs, log, what, out vsSource, out fsSource);
         uint prog = Pair(vsSource, fsSource, log, what, host);
         if (prog != 0 || (ReferenceEquals(vsSource, vs) && ReferenceEquals(fsSource, fs))) return prog;
@@ -297,14 +283,6 @@ internal static unsafe class GlProgram
     /// ExtenderLog?, string)"/>: same lookup, same fall back to the embedded default on a build failure.</summary>
     internal static uint Compute(string csRef, string cs, ExtenderLog? log, string what)
     {
-        byte[]? bcs = ShaderResource.OverrideSpirv(csRef, log);
-        if (bcs != null)
-        {
-            uint c = Binary(Gl.COMPUTE_SHADER, bcs, log, what);
-            if (c != 0) { uint p = Link(log, what, c); if (p != 0) return p; }
-            log?.Info($"{what}: SPIR-V override did not build -- falling back to the embedded default");
-            return Compute(cs, log, what);
-        }
         string? ocs = ShaderResource.Override(csRef, log);
         string src = ShaderSource.Content(ocs ?? cs, log);
         if (!ShaderContract.BlocksSafe(cs, src))
@@ -396,36 +374,6 @@ internal static unsafe class GlProgram
                 + "so the program links and the feature it carried is off");
         LastStubbed = true;
         return CompileText(type, ShaderResource.Tokens(VanillaShader.Splice(rawSrc, log, what, false)), log, what);
-    }
-
-    /// <summary>Specialize one SPIR-V stage (GL 4.6 core). No token expansion, no vanilla splice and no
-    /// contract audit reach a module -- see <see cref="ShaderResource.OverrideSpirv"/>. Entry point is
-    /// <c>main</c>; specialization constants are not fed, so a module must bake its own sizes.</summary>
-    private static uint Binary(uint type, byte[] spirv, ExtenderLog? log, string what)
-    {
-        if (Gl.ShaderBinary == null || Gl.SpecializeShader == null)
-        {
-            log?.Info($"{what}: driver exposes no glShaderBinary/glSpecializeShader -- SPIR-V stage refused");
-            return 0;
-        }
-        uint sh = Gl.CreateShader(type);
-        // glShaderBinary rejects an unsupported format with INVALID_ENUM and leaves the object uncompiled,
-        // which the COMPILE_STATUS below reads as a plain build failure -- no separate capability query.
-        fixed (byte* p = spirv) Gl.ShaderBinary(1, &sh, Gl.SHADER_BINARY_FORMAT_SPIR_V, p, spirv.Length);
-        byte* entry = stackalloc byte[5];
-        entry[0] = (byte)'m'; entry[1] = (byte)'a'; entry[2] = (byte)'i'; entry[3] = (byte)'n'; entry[4] = 0;
-        Gl.SpecializeShader(sh, entry, 0, null, null);
-        int ok; Gl.GetShaderiv(sh, Gl.COMPILE_STATUS, &ok);
-        if (ok != 0)
-        {
-            Notes(sh, true, log, what);
-            log?.Info($"{what}: SPIR-V module accepted ({spirv.Length} bytes, type=0x{type:x}) -- "
-                    + "token expansion, vanilla splice and the stage contracts are all skipped for it");
-            return sh;
-        }
-        log?.Info($"{what}: SPIR-V specialize failed (type=0x{type:x}) -- {InfoLog(sh, true)}");
-        Gl.DeleteShader(sh);
-        return 0;
     }
 
     private static uint CompileText(uint type, string src, ExtenderLog? log, string what)
