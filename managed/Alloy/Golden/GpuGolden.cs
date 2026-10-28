@@ -15,15 +15,15 @@ namespace CX.Alloy;
 /// </summary>
 internal static partial class GpuGolden
 {
-    /// <summary>The goldens off-device, on a device made and disposed here and never a session's: a shell whose
-    /// Vulkan loader has a driver behind it runs them with no game. In a session Alloy owns the one device, so
-    /// this skips and <see cref="DeviceCheck"/> runs them on Alloy's instead.</summary>
+    /// <summary>The goldens on a device made and disposed here: a shell whose Vulkan loader has a driver behind
+    /// it runs them with no game. In a session Alloy owns the one device and a player's first frame does not
+    /// wait on them, so this skips.</summary>
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "GpuGolden.SelfCheck");
         if (Native.Sym(SymbolMap.AppManager) != IntPtr.Zero)
         {
-            check.Skip("on-device: the goldens run on Alloy's own device, at its first frame");
+            check.Skip("in a session: the goldens run in run-demo, not on a player's first frame");
             return;
         }
         if (VkBackend.Refusal(log) is string why) { check.Skip($"no Vulkan device to run the goldens on ({why})"); return; }
@@ -34,20 +34,7 @@ internal static partial class GpuGolden
         log.Info(check.Ok ? "GpuGolden.SelfCheck: passed" : "GpuGolden.SelfCheck: FAILED");
     }
 
-    /// <summary>The goldens on Alloy's device, once, at the frame that made it -- the one place in a session
-    /// where a device exists and nothing has recorded a pass into it yet. A failure here is this driver's own,
-    /// so it is said whether or not the log is on.</summary>
-    internal static void DeviceCheck(VkBackend vk, ExtenderLog log)
-    {
-        var check = new Checker(log, "GpuGolden.DeviceCheck");
-        Run(vk, check, log);
-        if (check.Ok) log.Info("GpuGolden.DeviceCheck: passed");
-        else log.Always("GpuGolden.DeviceCheck: FAILED -- this driver does not answer as the shaders' own golden "
-                      + "values say it should; turn general.logs on for the lane that disagreed");
-    }
-
-    /// <summary>All three goldens on <paramref name="vk"/>, each cleaning up after itself so a device the
-    /// session goes on rendering with is left exactly as it was found.</summary>
+    /// <summary>All three goldens on <paramref name="vk"/>, each cleaning up after itself.</summary>
     private static void Run(VkBackend vk, Checker check, ExtenderLog log)
     {
         ParallaxSelfCheck(vk, check, log);
