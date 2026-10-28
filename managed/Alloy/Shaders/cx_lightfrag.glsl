@@ -172,7 +172,7 @@ const float CX_RANK_NONE = -1e30;
 // entries-per-pixel. `x` counts lights that reached the pixel and faced it; `z` counts every entry the loop
 // read, so z - x is what the reach window, the relevance cut and the facing test rejected -- the number the
 // walk pays for and gets nothing back from. The relevance PRE-pass's own touches are not in z: it is a
-// separate walk of the candidate runs, and the ablation ladder is what prices it. Only cx_deferred_cs defines
+// separate walk of the candidate runs. Only cx_deferred_cs defines
 // CX_WALK_STATS; every other program compiles the walk with the three adds absent, not merely unexecuted.
 #ifdef CX_WALK_STATS
 vec3 cxWalkStats = vec3(0.0);
@@ -183,19 +183,6 @@ vec3 cxWalkStats = vec3(0.0);
 #define CX_WALK_LIT()
 #define CX_WALK_TAP()
 #define CX_WALK_ENTRY()
-#endif
-// CX-188: `/alloy bench`'s ABLATION ladder. `CX_ABLATE n` is injected after the #version line by
-// CX.Alloy.AblateProgram, for a bench step and nothing else, and it stops the walk after stage n while
-// handing back a cheap function of what that stage produced -- so the compiler cannot strip the stages
-// before it and (stage n - stage n-1) is that stage's own cost. 2 = the list source alone, 3 = + the
-// relevance pre-pass, 4 = + the light bodies with no shadow of any kind, 5 = + the shadow record fetch,
-// 6 = + cx_deferred_cs's transfer-weight combine, 7 = + its fill of a missed record, 8 = + the mirror tap;
-// the shipped program adds the film's statics. Stage 1 never calls this function (cx_deferred_cs owns that rung). No shipped
-// program defines it, so every one of them compiles this file exactly as it did before.
-#ifdef CX_ABLATE
-/// The sink's factor: small enough that the half-float target takes every ablated stage's contribution to
-/// zero, so the ladder changes the timing and not the picture.
-const float CX_ABL_EPS = 1e-30;
 #endif
 uint CxCluster(float viewDepth)
 {
@@ -458,7 +445,7 @@ void CxMoverOwe(int slot, int ch, float lum, float ndlRaw, bool soft, vec3 world
 // and stop there (lightmap.movertaps 0, a diagnostic). Unset reads
 // 0, the off position, which is what a stale content override degrades to.
 uniform int uLmMovers;
-// CX-188 step 4: a stage that defines CX_NO_HOT has the whole HOT branch compiled OUT of the walk below --
+// A stage that defines CX_NO_HOT has the whole HOT branch compiled OUT of the walk below --
 // no 16-sphere ray test, no dyn-page taps for a static light on a baked receiver, no hot tap cap, and `lmSub`
 // comes back zero. A hot static light then behaves exactly as a cold one here, and the debt it owes is taken
 // in screen space instead (cx_pairdebt). The DEFERRED stage defines it; the forward loop does not, so the
@@ -569,18 +556,6 @@ vec3 CxClusteredLightLm(vec3 worldPos, vec3 N, vec3 V, float viewDepth, float on
     // a baked receiver with no mirror to take skips every cold static outright -- they trail the list
     uint n = baked > 0.5 && !glossy ? CxListLive(cl) : CxListWalk(cl);
     vec3 acc = vec3(0.0);
-#if defined(CX_ABLATE) && CX_ABLATE <= 3
-    // Ablation stage 2: the LIST SOURCE alone -- every length the walk reads and every entry of the walked
-    // run indexed, with no light body behind it. At stage 3 it sits BESIDE the relevance pre-pass rather
-    // than inside the loop the pre-pass feeds, so (stage 4 - stage 3) understates the light bodies by
-    // exactly the amount stage 2 itself reports. Said here because the summary line cannot say it.
-    float cxAbl = float(n) + float(CxListN(cl)) + float(CxListLive(cl))
-                + float(CxListLiveCand(cl)) + float(CxListColdCand(cl));
-    for (uint k = 0u; k < n; k++) cxAbl += float(CxListIdx(cl, k));
-#if CX_ABLATE == 2
-    spec = vec3(cxAbl); return vec3(cxAbl);
-#endif
-#endif
     // #336: /shadow cap -- the cube taps a fragment may pay, chosen PER FRAGMENT by its CONTRIBUTION there
     // (CxLightRank, the unshadowed diffuse's luminance): the capN lights lighting this fragment most strongly
     // get a cube fetch, the rest draw unshadowed. Per fragment, never per froxel -- a per-froxel choice put the
@@ -627,10 +602,6 @@ vec3 CxClusteredLightLm(vec3 worldPos, vec3 N, vec3 V, float viewDepth, float on
 #endif
         for (uint k = 0u, nAll = CxListN(cl); k < nAll; k++) relMax = max(relMax, CxLightImportance(CxListIdx(cl, k), worldPos));
     }
-#if defined(CX_ABLATE) && CX_ABLATE == 3
-    // Ablation stage 3: the list source and the relevance / full-model PRE-PASS, and nothing of the loop.
-    spec = vec3(relMax); return vec3(cxAbl + relMax);
-#endif
     for (uint k = 0u; k < n; k++)
     {
         uint li = CxListIdx(cl, k);
@@ -763,11 +734,6 @@ vec3 CxClusteredLightLm(vec3 worldPos, vec3 N, vec3 V, float viewDepth, float on
         // rather than being fetched unshadowed; stock has no shadow to lose there, Alloy does
         vec3 unsh = CxPointDiffuse(c, att, ndlRaw, ndl);
         if (slot < 0 || farSh) { acc += unsh; spec += spc; continue; }
-#if defined(CX_ABLATE) && CX_ABLATE == 4
-        // Ablation stage 4: the light BODIES alone -- curve, N.L, lobe, subsurface leak -- with no shadow of
-        // any kind: no record fetch, no hardware tap, and (below) no mirror tap.
-        acc += unsh; spec += spc; continue;
-#endif
 #ifdef CX_SHADOW_SOURCE
         {
             // CX-188 step 3: the pixel's visibility was chosen and filtered once, before this walk. Matched by
@@ -840,10 +806,8 @@ vec3 CxClusteredLightLm(vec3 worldPos, vec3 N, vec3 V, float viewDepth, float on
 #endif
     // the mirror tap: the strongest lobe's shadow, taken back out of the unshadowed sum it went into. The
     // hardware tap alone -- a highlight has no penumbra worth a blocker search
-#if !defined(CX_ABLATE) || CX_ABLATE >= 8
     if (mSlot >= 0 && mSlot != aSlot && mSlot != bSlot)
         spec -= mSpc * (1.0 - mix(1.0, CxLocalShadowQ(mSlot, worldPos, N, mNdl, onMover, viewDepth, false), dfade));
-#endif
     // a baked shadow keeps uLocalFloor of its light (cx_bake_f), so a mover's takes back only the rest
     // (the channel shares in y were baked without the floor already)
     lmSub.x *= 1.0 - uLocalFloor;

@@ -102,28 +102,12 @@ void main()
                     vec3 worldPos = h.xyz / h.w;
                     float baked = (g.flags & CX_GB_BAKED) != 0u ? 1.0 : 0.0;
                     float onMover = (g.flags & CX_GB_ONMOVER) != 0u ? 1.0 : 0.0;
-#if defined(CX_ABLATE) && CX_ABLATE == 1
-                    // Ablation rung 1 (`/alloy bench`, CX.Alloy.AblateProgram): the G-buffer read, the
-                    // record's gate and the world position, with no candidate ranked and no cube tapped.
-                    // The key is still written, so the walk accepts the record -- an all-visible one, which
-                    // is why this rung is a brighter frame as well as a cheaper one.
-                    vis = vec4(1.0 - fract(dot(worldPos, vec3(1.0)) + baked + onMover + dfade) * CX_ABL_EPS);
-                    rec = uvec2(0u, CxShPackKey(viewDepth, g.N));
-#else
                     ivec4 ks; vec4 kn, kw; float rDrop;
                     drop = CxShRank(worldPos, g.N, viewDepth, baked, ks, kn, kw, rDrop);
-#if defined(CX_ABLATE) && CX_ABLATE == 2
-                    // Ablation rung 2: the candidate RANKING and the dissolve, with not one cube tapped.
-                    // The slots are written, so the walk reads this record and lights those lights fully
-                    // visible; the sink is what keeps the ranking chain alive.
-                    vis = vec4(1.0 - fract(kn.x + rDrop + dot(kw, vec4(1.0)) + float(drop)) * CX_ABL_EPS);
-#else
                     // the reader's bilateral upsample mixes the four interleaved rotations: 16 distinct tap
                     // positions per screen 2x2 at half resolution
                     vis = CxShTapRecord(ks, kn, kw, rDrop, worldPos, g.N, onMover, viewDepth, CxShRot(r));
-#endif
                     rec = uvec2(CxShPackSlots(ks), CxShPackKey(viewDepth, g.N));
-#endif
                 }
             }
         }

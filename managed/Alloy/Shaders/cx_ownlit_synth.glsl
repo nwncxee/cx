@@ -63,10 +63,6 @@ void main()
         frag = vec4(n, 1.0 - n, 0.0, 1.0);
         return;
     }
-#ifdef CX_BLEND_FLAT
-    // /alloy bench's blended ladder, rung 1: the raster and the OIT write with no shading at all
-    frag = CxOitOut(vec4(vec3(0.0), 0.5)); return;
-#endif
     // Every explicit derivative BEFORE the first discard: a killed lane leaves its quad neighbours' dFdx
     // undefined, and the anchor and keyhole discards below are per-fragment.
     float aoSlope = fwidth(gl_FragCoord.z);

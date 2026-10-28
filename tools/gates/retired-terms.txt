@@ -165,3 +165,7 @@ alloy\.(backend|renderthread|rhiimmediate|gpumeter)\b	CX-313
 # The per-area pipeline prewarm: a dummy draw per pipeline state through the GL program table. Vulkan warms its own
 # pipeline cache, so the key enumeration and the warm draw have nothing to warm.
 \bContentPrewarm\b|\bContentPipelines\b|\bPipelineKey\b|\bProgramWarm\b	GL sweep 6
+# The /alloy bench ablation ladder: a pass's stage rebuilt with CX_ABLATE n so the shader stopped after rung n.
+# Vulkan links its own pipelines, so every rung but "back on its own program" was refused and nothing it set was
+# read. /alloy bench keeps its knob sweep, which is what it measures now.
+\bAblation\b|\bAblateProgram\b|\bBlendAblate\b|\bLitDefines\b|\bBenchAblSummary\b|\bAblSite\b|\bBenchAblTerm\b	GL sweep 6

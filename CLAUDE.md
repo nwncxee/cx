@@ -170,8 +170,6 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
   that grows with every hook) are exempt and `file-size.baseline` holds what is still over. `EngineLayout` is
   one partial class over `EngineLayout*.cs`, and every tool that reads its rows reads all of them: a new block
   of rows goes in a part of its own once `EngineLayout.cs` would grow past its baseline.
-- `bench-scope.sh`: the `/alloy bench` ablation ladder's state outside its own two files, or the ladder named
-  outside the call sites the script lists, fails.
 - `retired-terms.sh`: a name listed in `tools/gates/retired-terms.txt` appearing under `managed/` or `docs/`
   fails. Not scanned: that file, `docs/adr/` and `docs/handoff/` -- dated records of what was true then.
 - `knob-refs.sh`: a `<group>.<knob>` key in a string literal under `managed/` naming no declared `Knob<T>`
@@ -256,8 +254,8 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
   as `this` (#456). `tools/abi/check-win-symbols.py` finds these; `build-win.sh` runs it. Deliberately Linux-only work is allowed
   and says so on its own line -- what is forbidden is the silent absence, where
   "never looked" and "decided" are the same missing key.
-- **Diagnostics reach a pass through the bench's one indirection** (`CX.Alloy.Ablation`): a pass holds one
-  program field and no bench-only one -- `tools/gates/bench-scope.sh`.
+- **A pass holds the one program field it draws with and no diagnostic-only one.** `/alloy bench` steps knobs,
+  never a pass's program: a measurement that needs its own variant of a stage does not get a field on the pass.
 - **Shaders for what shaders reach; extender for what they can't.** Lighting/color
   = `.shd` overrides via hak/NWSync (content, not this repo). Shadows, render bugs,
   fixed-function state = engine-internal, needs a GL hook.

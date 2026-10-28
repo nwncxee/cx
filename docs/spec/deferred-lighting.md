@@ -367,9 +367,9 @@ percent low: an average, not an audit. **`N entries/px (M rejected)`** beside th
 indexed and how much of it lit nothing (reach, relevance, facing): the price of a long list is paid per entry,
 lit or not.
 
-`/alloy bench` also prices the passes from the inside: it rebuilds `cx_deferred_cs`, `cx_defshadow_cs` and
-`cx_pairdebt` with `CX_ABLATE n`, each rung stopping after one more stage, and ends with one
-`[bench] ablation:` line per pass giving each stage's own cost. The variants exist only while the bench runs.
+`/alloy bench` prices the passes from the outside: it steps the knobs that turn each one on and off and reads
+every GPU term per step. There is no per-stage ladder — swapping a pass's program was a GL-renderer trick, and
+Vulkan links its own pipelines.
 
 ## Streams (branch `cx-188-deferred-lighting`)
 

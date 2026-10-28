@@ -38,15 +38,6 @@ layout(local_size_x = 16, local_size_y = 16) in;
 // CX-188 budget: ...and the walk counts what it spent here -- lights lit and hardware taps paid, per pixel --
 // so the period line can say the two numbers the budget is about instead of asserting them.
 #define CX_WALK_STATS 1
-// /alloy bench's PROBES (rungs 9..12): rung 6 -- no cube tap anywhere in the program -- plus ONE fetch that a
-// single invocation takes: 9 the whole hardware tap, 10 the static cube array alone, 11 the dynamic one alone,
-// 12 the pair atlas alone. Priced against rung 6 they say whether a tap costs per pixel or per program, and which
-// texture carries a per-program cost.
-#if defined(CX_ABLATE) && CX_ABLATE >= 9
-#define CX_ONE_TAP (CX_ABLATE - 8)
-#undef CX_ABLATE
-#define CX_ABLATE 6
-#endif
 
 /// This invocation's pixel CENTRE in window pixels -- the gl_FragCoord.xy of the fragment that wrote the record,
 /// which is what the froxel lookup and the shadow dither are both defined in terms of. Set first in main.
@@ -384,13 +375,8 @@ void main()
         mine = CxGbufReadWalk(texelFetch(uGb0, p, 0), texelFetch(uGb1, p, 0).w, viewDepth, g);
     }
 #ifndef CX_FILM_PASS
-    // a zero where no walk will run (and on every ablation rung below the weights): last frame's record must never
-    // read as this one's
-#if !defined(CX_ABLATE) || CX_ABLATE >= 6
+    // a zero where no walk will run: last frame's record must never read as this one's
     if (inRect && !mine) imageStore(uLightRec, p, uvec4(0u));
-#else
-    if (inRect) imageStore(uLightRec, p, uvec4(0u));
-#endif
 #endif
     // the tile's depth slab is its OWN pixels' -- the one bound a froxel grid cannot have
     if (mine) { atomicMin(sMinZ, floatBitsToUint(viewDepth)); atomicMax(sMaxZ, floatBitsToUint(viewDepth)); }
@@ -483,9 +469,6 @@ void main()
             CxGbufWeights(texelFetch(uGb1, p, 0), g);
             vec3 add = g.specT * CxFilmStatics(worldPos, g.N, V, viewDepth, g.coat, g.coatRough, onMover);
 #else
-        // CX-188 ablation: the record fetch is rung 5 of the ladder (cx_lightfrag's CX_ABLATE), so the
-        // stages below it run with the record's own defaults -- cxShVis 1, every slot -1.
-#if !defined(CX_ABLATE) || CX_ABLATE >= 5
         // CX-188 step 3: the pixel's shadows, chosen and filtered once before the walk. A live record that
         // answers nothing here is a fallback to the hardware tap, which is counted rather than left silent.
         CxShGather(ivec2(gl_GlobalInvocationID.xy), viewDepth, g.N);
@@ -497,7 +480,7 @@ void main()
         // never owed a record is not counted as having missed one
         if (uShRes > 0 && !cxShHave && uLocalSoft.w > 0.0 && cxRecvShadow > 0.0
             && (uLocalPcss.w <= 0.0 || viewDepth < uLocalPcss.w)) miss = 1u;
-#if !defined(CX_SH_INLOOP) && (!defined(CX_ABLATE) || CX_ABLATE >= 7)
+#ifndef CX_SH_INLOOP
         // A pixel the record missed fills its own before the walk, so the walk never taps a cube in its loop: the
         // nearest texel's lights, one hardware tap each at this pixel. Borrowing that texel's answer instead (no
         // tap) only moved the cost onto the mirror tap below, 1.4 ms -- the first cube tap in this program pays.
@@ -512,34 +495,9 @@ void main()
             cxShMiss = 0.0;
         }
 #endif
-#endif
-#ifdef CX_ONE_TAP
-        if (all(equal(gl_GlobalInvocationID.xy, uvec2(0u))))
-        {
-            vec4 pc = vec4(worldPos - uLocalLight[0].xyz, float(max(cxShSlot.x, 0)));
-#if CX_ONE_TAP == 1
-            cxShVis.x *= CxLocalShadowQ(max(cxShSlot.x, 0), worldPos, g.N, 0.5, onMover, viewDepth, false);
-#elif CX_ONE_TAP == 2
-            cxShVis.x *= texture(uLocalShadow, pc, 0.5);
-#elif CX_ONE_TAP == 3
-            cxShVis.x *= texture(uLocalDynShadow, pc, 0.5);
-#else
-            cxShVis.x *= texture(uPairMap, vec4(fract(worldPos.xy), pc.w, 0.5));
-#endif
-        }
-#endif
-#if defined(CX_ABLATE) && CX_ABLATE == 1
-        // Ablation rung 1: the G-buffer read, the record's own ownership test (CxGbufRead) and the world
-        // position, and not one light. The SINK is what keeps them from being dead-stripped -- a tiny
-        // multiple of every lane the rung produced, which the half-float target takes to zero.
-        CxGbufWeights(texelFetch(uGb1, p, 0), g);
-        vec3 add = vec3(dot(worldPos, vec3(1.0)) + dot(V, vec3(1.0)) + dot(g.N, vec3(1.0))
-                        + g.rough + g.spec + g.specC + g.lmLum + g.lmTexel + cxSheenRough + float(g.flags)) * CX_ABL_EPS;
-#else
         vec3 spec, lmSub;
         vec3 acc = CxClusteredLightLm(worldPos, g.N, V, viewDepth, onMover, g.rough, g.spec, baked,
                                       g.lmTexel, g.lmMover, g.lmPick, spec, lmSub);
-#if !defined(CX_ABLATE) || CX_ABLATE >= 6
         // the weights are fetched again here, after the walk; the offset (0, since a view depth's sign bit is
         // clear) is one the compiler cannot prove, so it cannot merge this fetch with the top one and hold G1 live
         CxGbufWeights(texelFetch(uGb1, p + ivec2(int(sMaxZ >> 31u), 0), 0), g);
@@ -550,14 +508,6 @@ void main()
         // stored the moment it exists: carried to the end of main, its four words sat live across the whole walk
         // and the mirror tap's rung went from 0.0 to 2.2 ms (82b7b4e)
         imageStore(uLightRec, p, CxLightRecPack(acc, spec, viewDepth, baked > 0.5, owe));
-#else
-        // Ablation rungs 2..5: the walk ran as far as CX_ABLATE and its results go into the same sink, so
-        // every rung pays the identical G-buffer read, world-position reconstruction and HDR read-modify-write
-        // and the difference between two rungs is the stage between them. The weights' combine, the fallback
-        // and mirror taps and the film are the later rungs' own work, so they are absent here.
-        vec3 add = (acc + spec + lmSub + vec3(cxShVis.x + float(cxShSlot.x + 1))) * CX_ABL_EPS;
-#endif
-#endif
 #endif
         vec4 hdr = imageLoad(uHdr, p);
         // alpha is the probe capture's 1 / distance, which this pass never runs for: hand it back untouched
