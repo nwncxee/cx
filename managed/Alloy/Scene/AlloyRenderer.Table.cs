@@ -365,7 +365,7 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>A handle that just died must leave every record block NOW, not at the next colour build: the
     /// caster bake samples the GPU handle table off a STANDING staging, and a sample through a dead handle is
     /// a GPU page fault and a hard reset on radeonsi, silent garbage on NVIDIA. Reached from the engine-name
-    /// cache's <see cref="DropHandle(uint, bool)"/> and from <c>TexRegistry.Drain</c>, inside the bracket.</summary>
+    /// cache's <see cref="DropHandle"/> and from <c>TexRegistry.Drain</c>, inside the bracket.</summary>
     internal static void ZeroHandle(ulong v)
     {
         if (v == 0) return;
@@ -405,9 +405,6 @@ public sealed unsafe partial class AlloyRenderer
     internal const int HandleHashBits = 15;
     internal static readonly int[] _hTid = new int[1 << HandleHashBits];
     internal static readonly ulong[] _hVal = new ulong[1 << HandleHashBits];
-    /// <summary>Did WE make <see cref="_hVal"/>[i] resident? The driver cannot be asked, and guessing
-    /// produces GL_INVALID_OPERATION in both directions -- residency is only ever ours to know.</summary>
-    internal static readonly bool[] _hRes = new bool[1 << HandleHashBits];
     /// <summary>Is the bindless path live? Extension present, entry points resolved, not vetoed by
     /// alloy.bindless=off, and the LIT program's actual sources carry the handle block. When false everything
     /// draws exactly as before -- per-batch texture binds.</summary>

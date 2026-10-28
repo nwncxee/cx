@@ -41,7 +41,7 @@ internal static unsafe class TexScan
     }
 
     /// <summary>What the ENGINE says this texture is, straight off its own virtuals -- the counterpart to
-    /// <see cref="TexProbe.TexFormat"/>, which says what GL holds. When the two disagree the upload is the
+    /// what the device holds. When the two disagree the upload is the
     /// suspect; when they agree the resource is.</summary>
     internal static string Describe(IntPtr tex)
     {

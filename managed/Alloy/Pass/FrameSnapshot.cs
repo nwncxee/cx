@@ -62,11 +62,7 @@ internal static unsafe class FrameSnapshot
     /// <inheritdoc cref="OwnNoise"/>
     private static bool _ownNoiseAsked;
     internal static string Describe()
-        // #456: the noise texture DESCRIBED, not just named. A bound-but-incomplete texture (a mipmapped
-        // min filter with no mips) samples as a constant, and a constant wave field is a flat sea -- which
-        // is indistinguishable from "bound and fine" if all the line prints is the id.
         => $"water {(On ? "on" : "off")} (vanilla fswater)  noise tid {NoiseTid} on unit {NoiseUnit} "
-         + $"{(NoiseTid == 0 ? "" : TexProbe.TexFormat(NoiseTid) + " " + TexProbe.TexTopMip(NoiseTid) + " ")}"
          + $"rect {(Rect ? 1 : 0)}";
 
     /// <summary>Copy only the rows and columns the water can cover (<c>/water rect 0</c> = whole frame).</summary>

@@ -20,8 +20,7 @@ internal static class SsboSlots
     /// draw or dispatch, so a compute pass may take any of them in between.</summary>
     internal const uint Shared = 8;
 
-    /// <summary>The light rig, rebound at every lighting program's bind (<see cref="AlloyLights.BindForDraw"/>,
-    /// <see cref="LightmapBake.BindForDraw"/>): one program reads all six, so they are distinct.</summary>
+    /// <summary>The light rig: one program reads all six, so they are distinct.</summary>
     internal const uint Lights = 8, ClusterCount = 9, ClusterIdx = 10, Movers = 11, Pair = 12, Chart = 13;
     /// <summary>Above the rig, for a pass whose program also reads it.</summary>
     internal const uint LightStats = 14, DeferredStats = 14, PairStats = 14, GrassMats = 14,

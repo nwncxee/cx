@@ -88,7 +88,7 @@ on, because a renderer that keeps both warm is what ADR 0018's restart-only rule
   and the `AurTex` vtable guard on every material-derived texture read (ADR 0015). A `TexId` cannot dangle.
 - `OwnedTextures`' warm path (`Plain`, `Capture`, `TryWarm`, `_meta`, `_index`, `OnDeleteTextures`,
   `OnBuildAndStoreTexture`) and ADR 0023's hand-back: the registry has no engine delete funnel to survive.
-- `TexLoad`, `TexStream`, `TexProbe` and the `alloy.texsingle`
+- `TexLoad`, `TexStream` and the `alloy.texsingle`
   knob -- the registry's own loader is the only reader path left. `TexLoadRead` (the location record and the
   worker's file handles) STAYS: the registry uses it.
 - `CycleTextures` (the `CycleTIDTextureController` tick and its `~CAurTexture` death notice): **done.**
@@ -142,7 +142,7 @@ on, because a renderer that keeps both warm is what ADR 0018's restart-only rule
 
 ## 5. Where the registry's GL work runs, and why in two places
 
-`TexRegistry.Drain`, `PltColors.Upload`, `PltPalettes.Create` and `PltGpuCheck.Tick` are called from
+`TexRegistry.Drain`, `PltColors.Upload` and `PltPalettes.Create` are called from
 **both** Alloy bracket sites, and that is not redundancy: `GlContextService.OnFrame` runs its health bracket
 (`InBracket`) only on a frame in which nothing else entered the context (`!_worked`), so an in-play frame --
 every frame the colour pass draws -- never reaches it. Hung on the health bracket alone, the registry uploaded

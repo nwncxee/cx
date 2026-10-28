@@ -1,14 +1,9 @@
-1 managed/Alloy/Core/StreamRing.cs
-4 managed/Alloy/Db/PltGpuCheck.cs
 1 managed/Alloy/Db/TexRegistry.Load.cs
 1 managed/Alloy/DdsReader.Formats.cs
 1 managed/Alloy/OwnedTextures.cs
 2 managed/Alloy/Pass/GuiModelSolve.cs
 1 managed/Graphics/GlTexture.cs
-1 managed/Graphics/GpuReadback.cs
 1 managed/Graphics/RenderTarget.cs
-1 managed/Graphics/Rhi/GlDevice.cs
-1 managed/Graphics/Rhi/GlDevice.Execute.cs
 1 managed/Services/Nui/NuiModelEngine.cs
 1 managed/Services/Nui/NuiModelEngine.Solve.cs
 1 managed/Services/Nui/NuiModelView.Gl.cs

@@ -175,8 +175,7 @@ internal static unsafe partial class OwnedTextures
         for (int i = 0; i < n; i++)
         {
             uint name = due[i];
-            if (_handleDrop) AlloyRenderer.DropHandle(name);   // residency first: a resident handle outlives its texture
-            else AlloyRenderer.ForgetHandle(name);
+            AlloyRenderer.DropHandle(name);
             Forget(name);
             VkTextures.Forget(name);
         }
@@ -194,7 +193,7 @@ internal static unsafe partial class OwnedTextures
         {
             foreach (uint f in _pendingForget) _pendingHandles.Add(f);   // for the record marks below
             AlloyRenderer.NoteOwnedNamesRetired(_pending, _pendingHandles);
-            foreach (uint f in _pendingForget) { _pendingHandles.Remove(f); AlloyRenderer.ForgetHandle(f); }
+            foreach (uint f in _pendingForget) { _pendingHandles.Remove(f); AlloyRenderer.DropHandle(f); }
             _pendingForget.Clear();
         }
         else AlloyRenderer.NoteOwnedNamesRetired(_pending, _pendingHandles);

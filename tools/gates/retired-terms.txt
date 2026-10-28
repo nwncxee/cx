@@ -169,3 +169,11 @@ alloy\.(backend|renderthread|rhiimmediate|gpumeter)\b	CX-313
 # Vulkan links its own pipelines, so every rung but "back on its own program" was refused and nothing it set was
 # read. /alloy bench keeps its knob sweep, which is what it measures now.
 \bAblation\b|\bAblateProgram\b|\bBlendAblate\b|\bLitDefines\b|\bBenchAblSummary\b|\bAblSite\b|\bBenchAblTerm\b	GL sweep 6
+# The GL render target of the scene depth copy and the G-buffer, the GPU-PLT check, the GL texture probe, the GL
+# RHI backend, the streaming ring, the one VAO per vertex format and the bindless residency ledger. Vulkan owns
+# every image, buffer, vertex input and descriptor these named.
+\bPltGpuCheck\b|\bTexProbe\b|\bGlDevice\b|\bAlloyDevice\.(Get|Borrow|GlName)\b	GL sweep 6
+\bStreamRing\b|\bVertexArrays\b|\bVertexStream\b|\bGpuRing\b|\bGpuReadback\b|\bBindlessLedger\b	GL sweep 6
+\bSceneDepth\.(Attach|Take|Bind|Ready|Invalidate|Forget)\b|\bGBuffer\.(Attach|Forget|Stats|Ready|Failed|BeginFrame)\b	GL sweep 6
+\bMeshArena\.(BuildVao|UploadVerts|UploadIndices)\b|\bBindBatchState\b|\bVaoName\b|\bOwnedClasses\b	GL sweep 6
+\bAlloyLights\.(BindForDraw|UploadMovers|HarvestQuery|TakeClusterOverflow)\b|\bForgetHandle\b|\bHandleDiag\b	GL sweep 6

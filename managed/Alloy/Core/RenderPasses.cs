@@ -188,14 +188,6 @@ internal static class RenderPasses
         }, log);
         r.Register(new PassLifecycle
         {
-            Name = "scenedepth",
-            // Attached by Particles, its only consumer, rather than here: it is a resource the particle pass
-            // owns the timing of, not a pass of its own. ponytail: left alone; if a second consumer appears
-            // it moves to the Attach slot above.
-            ContextLost = SceneDepth.Forget,
-        }, log);
-        r.Register(new PassLifecycle
-        {
             Name = "light",
             Attach = AlloyLights.Attach,
             SelfCheck = l => AlloyLights.SelfCheck(l),
@@ -258,19 +250,10 @@ internal static class RenderPasses
             Name = "idtarget",
             SelfCheck = l => IdTarget.SelfCheck(l),
         }, log);
-        // CX-188: the G-buffer and the deferred point-light pass; both hold frame-sized GL objects.
-        r.Register(new PassLifecycle
-        {
-            Name = "gbuffer",
-            Attach = GBuffer.Attach,
-            ContextLost = GBuffer.Forget,
-            Stats = GBuffer.Stats,
-        }, log);
         r.Register(new PassLifecycle
         {
             Name = "deferred",
             Attach = DeferredLights.Attach,
-            ContextLost = DeferredLights.Forget,
             Stats = DeferredLights.Stats,
         }, log);
         // CX-188 step 3: the per-pixel shadow visibility record -- a frame-sized texture pair, so it goes with
@@ -432,7 +415,7 @@ internal static class RenderPasses
             // No Revoke: every slot is keyed on CONTENT (a resref, a kind, a cell), so a world edge
             // invalidates nothing in it -- which is the whole point of the registry replacing the engine's
             // per-area CAurTexture population.
-            ContextLost = () => { Db.TexRegistry.ContextLost(); Db.PltPalettes.ContextLost(); Db.PltColors.ContextLost(); Db.PltGpuCheck.ContextLost(); Db.ContentTable.ContextLost(); },
+            ContextLost = () => { Db.TexRegistry.ContextLost(); Db.PltPalettes.ContextLost(); Db.PltColors.ContextLost(); Db.ContentTable.ContextLost(); },
             Stats = _ => Join(Join(Db.TexRegistry.Note() + ", " + Db.PltPalettes.Note() + ", " + Db.PltColors.Note(),
                        Join(Db.PltImage.Note(), Db.ContentTable.Note())),
                        Join(Join(Seam.TexSeam.Note(), Db.PltVerify.Note()),

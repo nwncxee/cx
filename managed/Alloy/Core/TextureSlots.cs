@@ -166,7 +166,7 @@ internal static class TextureSlots
     /// <see cref="LocalShadowRaw"/>'s reason and declared with <c>layout(binding)</c>.</summary>
     internal const uint PairMap = 28;
 
-    /// <summary>The deferred pass's light record (<see cref="GBuffer.TexLight"/>), read by the lit stage's
+    /// <summary>The deferred pass's light record, read by the lit stage's
     /// blended draws. Past the 0..15 budget for <see cref="LocalShadowRaw"/>'s reason and declared with
     /// <c>layout(binding)</c> in <c>cx_ownlit_head.glsl</c>; bound for the blended class by <see cref="Issue"/>.</summary>
     internal const uint LightRec = 26;
