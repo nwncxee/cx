@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Text;
 using CX.Rhi;
 using Vortice.Vulkan;
 
@@ -55,6 +56,7 @@ internal sealed unsafe partial class VkBackend
         var bi = new VkCommandBufferBeginInfo { flags = VkCommandBufferUsageFlags.OneTimeSubmit };
         _vkd.vkBeginCommandBuffer(s.Cmd, &bi);
         _cmd = s.Cmd;
+        if (_labels) OpenLabel(list.NameUtf8);
         _slot = s;
         _inPass = _rendering = false;
         TimeBegin(slot);
@@ -70,6 +72,13 @@ internal sealed unsafe partial class VkBackend
         _inPass = _rendering = false;
         if (ok && swap >= 0) ok = RecordPresent(swap);
         TimeEnd(slot, ok);
+        if (ok && _labelDepth > 1 && !_labelLeakLogged)
+        {
+            _labelLeakLogged = true;
+            _log.Always($"VkBackend: list {Encoding.UTF8.GetString(list.NameUtf8[..^1])} left {_labelDepth - 1} debug label(s) "
+                      + "open -- closed at its submit; a capture nests the passes after it wrongly (logged once)");
+        }
+        while (_labelDepth > 0) CloseLabel();
         _vkd.vkEndCommandBuffer(_cmd);
         if (!ok)
         {
@@ -133,6 +142,8 @@ internal sealed unsafe partial class VkBackend
                 Op.CopyImageToBuffer => CopyToBuf(r.Read<CopyToBufferCmd>()),
                 Op.ClearImage => ClearImg(r.Read<ImageId>()),
                 Op.GenerateMips => MipsImg(r.Read<ImageId>()),
+                Op.BeginLabel => Label(r.Read<LabelCmd>(), ref r),
+                Op.EndLabel => Unlabel(),
                 _ => Fault($"{op} is not on the Vulkan backend yet"),
             };
             if (!ok) return false;

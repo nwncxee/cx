@@ -44,11 +44,13 @@ internal static class VulkanFrame
         }
         CommandList cl = _s.Cmds ??= new CommandList("vulkan frame", FrameArenaBytes, log);
         cl.Reset();
+        cl.BeginLabel("cull"u8);
         if (!CullPassVk.Record(vk, cl, log))
         {
             AlloyGate.Fail("the Vulkan cull did not record (logged above) -- Alloy has no visibility test");
             return;
         }
+        cl.EndLabel();
         if (!AlloyRenderer.VkRecordFrame(vk, cl, vk.Composite, vp, vpClean, view, proj, viewport, display, near, far,
                                          lightingOn, perspective, groups, log))
         {

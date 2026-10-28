@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text;
 using CX.Framework;
 
 namespace CX.Rhi;
@@ -11,7 +12,7 @@ public enum Op : byte
     End, BeginRenderPass, EndRenderPass, SetPipeline, SetViewport, SetScissor, SetDepthBias, BindSet,
     BindIndexBuffer, Draw, DrawIndexed, DrawIndexedIndirect, Dispatch, CopyImage, BlitImage, UpdateBuffer, ZeroBuffer,
     PushConstants, BindVertexBuffer, DrawIndexedMulti, SetDepthState, SetRasterState, SetDepthRange, ReadImages,
-    DrawIndirect, CopyImageToBuffer, ClearImage, GenerateMips,
+    DrawIndirect, CopyImageToBuffer, ClearImage, GenerateMips, BeginLabel, EndLabel,
 }
 
 /// <summary>An index element's width.</summary>
@@ -60,6 +61,8 @@ public readonly record struct ZeroBufferCmd(BufferId Buffer, long Offset, long B
 /// <summary><see cref="Op.CopyImageToBuffer"/>: a <see cref="W"/> x <see cref="H"/> block of one mip and layer into a
 /// buffer at <see cref="Offset"/>, tightly packed (block rows for a compressed format).</summary>
 public readonly record struct CopyToBufferCmd(ImageId Src, ImageRegion From, int W, int H, BufferId Dst, long Offset);
+/// <summary><see cref="Op.BeginLabel"/>'s header; the UTF-8 name follows it, <see cref="Bytes"/> long with its NUL.</summary>
+public readonly record struct LabelCmd(int Bytes);
 /// <summary><see cref="Op.ReadImages"/>'s header; the ids follow it. <see cref="Access"/> says which read the
 /// hand-over is for: a sampled texture, or a storage image, which wants a layout of its own.</summary>
 public readonly record struct ReadImagesCmd(int Images, Access Access);
@@ -76,6 +79,7 @@ public sealed class CommandList
     private byte[] _buf;
     private int _len, _sent;
     private readonly string _name;
+    private readonly byte[] _nameZ;
     private readonly ExtenderLog? _log;
 
     /// <summary>Submit every command as it is recorded, instead of when the pass submits the list.</summary>
@@ -88,12 +92,16 @@ public sealed class CommandList
     /// <summary>Times the arena grew; each is one allocation and one log line.</summary>
     public int Growths { get; private set; }
 
+    /// <summary>The list's name, UTF-8 and NUL-terminated: what a capture tool shows its submit under.</summary>
+    public ReadOnlySpan<byte> NameUtf8 => _nameZ;
+
     /// <summary>Bytes recorded since the last <see cref="Reset"/>.</summary>
     public int Length => _len;
 
     public CommandList(string name, int bytes = 4096, ExtenderLog? log = null)
     {
         _name = name;
+        _nameZ = Encoding.UTF8.GetBytes(name + "\0");
         _log = log;
         _buf = new byte[Math.Max(Align, bytes)];
     }
@@ -222,6 +230,21 @@ public sealed class CommandList
         Put(images);
         Sent();
     }
+
+    /// <summary>Open a region named <paramref name="utf8"/> that capture tools show the commands up to its
+    /// <see cref="EndLabel"/> under. A device without debug labels skips both; one submit closes what it left open.</summary>
+    public void BeginLabel(ReadOnlySpan<byte> utf8)
+    {
+        Head(Op.BeginLabel);
+        Put(new LabelCmd(utf8.Length + 1));
+        Span<byte> dst = Reserve(utf8.Length + 1);
+        utf8.CopyTo(dst);
+        dst[^1] = 0;
+        Sent();
+    }
+
+    /// <summary>Close the innermost <see cref="BeginLabel"/>; one whose region began in an earlier submit is dropped.</summary>
+    public void EndLabel() { Head(Op.EndLabel); Sent(); }
 
     /// <summary>Every mip and layer of <paramref name="i"/> set to zero, outside a pass; the image needs <c>CopyDst</c>.</summary>
     public void ClearImage(ImageId i) { Head(Op.ClearImage); Put(i); Sent(); }

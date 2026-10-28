@@ -58,6 +58,8 @@ internal sealed unsafe partial class VkBackend : IDevice
         /// <summary>The device the last <see cref="Open"/> chose: its PCI vendor id and name.</summary>
         public uint VendorId;
         public string Device = "";
+        /// <summary>The last <see cref="Open"/> enabled VK_EXT_debug_utils on its instance.</summary>
+        public bool DebugUtils;
     }
 
     /// <summary>The chosen device's vendor, as GL names it -- what an engine with no GL context is told it runs on.</summary>
@@ -156,10 +158,13 @@ internal sealed unsafe partial class VkBackend : IDevice
             return Win ? "the Vulkan loader lacks VK_KHR_surface/VK_KHR_win32_surface" : "the Vulkan loader lacks VK_KHR_surface/VK_KHR_xlib_surface";
         var app = new VkApplicationInfo { apiVersion = ApiFloor };
         VkResult made;
-        fixed (byte* se = SurfaceExt) fixed (byte* we = WindowExt)
+        _probe.DebugUtils = InstanceHas(DebugUtilsExt);
+        fixed (byte* se = SurfaceExt) fixed (byte* we = WindowExt) fixed (byte* du = DebugUtilsExt)
         {
-            byte** exts = stackalloc byte*[2] { se, we };
-            var ci = new VkInstanceCreateInfo { pApplicationInfo = &app, enabledExtensionCount = 2, ppEnabledExtensionNames = exts };
+            // debug-utils last: the count drops it alone when the instance does not offer it
+            byte** exts = stackalloc byte*[3] { se, we, du };
+            uint ne = _probe.DebugUtils ? 3u : 2u;
+            var ci = new VkInstanceCreateInfo { pApplicationInfo = &app, enabledExtensionCount = ne, ppEnabledExtensionNames = exts };
             made = vkCreateInstance(&ci, null, out inst);
         }
         if (made != VkResult.Success) return "vkCreateInstance refused a Vulkan 1.3 instance with the window surface extensions";
@@ -261,6 +266,8 @@ internal sealed unsafe partial class VkBackend : IDevice
     private static ReadOnlySpan<byte> SurfaceExt => "VK_KHR_surface\0"u8;
     private static ReadOnlySpan<byte> WindowExt => Win ? "VK_KHR_win32_surface\0"u8 : "VK_KHR_xlib_surface\0"u8;
     private static ReadOnlySpan<byte> SwapchainExt => "VK_KHR_swapchain\0"u8;
+    /// <summary>Pass labels and object names for capture tools: offered by the loader or a capture layer.</summary>
+    private static ReadOnlySpan<byte> DebugUtilsExt => "VK_EXT_debug_utils\0"u8;
 
     private static bool InstanceHas(ReadOnlySpan<byte> name)
     {
@@ -312,6 +319,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         _phys = phys;
         _family = family;
         _depthClamp = has.depthClamp;
+        _labels = _probe.DebugUtils;
 
         float prio = 1f;
         var qci = new VkDeviceQueueCreateInfo { queueFamilyIndex = family, queueCount = 1, pQueuePriorities = &prio };
@@ -392,7 +400,8 @@ internal sealed unsafe partial class VkBackend : IDevice
             (int)l.maxPerStageDescriptorStorageBuffers, (int)l.maxPerStageDescriptorStorageBuffers,
             (int)l.minUniformBufferOffsetAlignment, (int)l.minStorageBufferOffsetAlignment, has.samplerAnisotropy ? l.maxSamplerAnisotropy : 1f);
         _maxDrawIndirect = l.maxDrawIndirectCount;
-        log.Always($"VkBackend: LIVE -- {Caps}, {_bindlessCap} bindless textures; Vulkan presents the frame itself");
+        log.Always($"VkBackend: LIVE -- {Caps}, {_bindlessCap} bindless textures, debug labels "
+                 + $"{(_labels ? "on" : "off")}; Vulkan presents the frame itself");
     }
 
     /// <summary>The device takes VK_EXT_memory_budget, so <see cref="DeviceLocalKib"/> reads the driver's own figures.</summary>
@@ -502,6 +511,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         {
             if (!HostBuffer((ulong)d.Bytes, use, VmaAllocationCreateFlags.HostAccessRandom, out VkBuffer hb, out VmaAllocation ha))
                 return Refused<BufferId>($"readback buffer {d.Label}: VMA refused {d.Bytes} bytes");
+            Name(VkObjectType.Buffer, hb.Handle, d.Label);
             return new BufferId(_buffers.Add(new VkBuf(hb, ha, d)));
         }
         var bci = new VkBufferCreateInfo { size = (ulong)d.Bytes, usage = use, sharingMode = VkSharingMode.Exclusive };
@@ -511,6 +521,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         VmaAllocation a;
         if (Vma.vmaCreateBuffer(_vma, &bci, &aci, &b, &a, null) != VkResult.Success)
             return Refused<BufferId>($"buffer {d.Label}: VMA refused {d.Bytes} bytes");
+        Name(VkObjectType.Buffer, b.Handle, d.Label);
         return new BufferId(_buffers.Add(new VkBuf(b, a, d)));
     }
 
