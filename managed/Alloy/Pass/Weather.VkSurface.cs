@@ -73,7 +73,7 @@ internal static unsafe partial class Weather
     }
 
     /// <summary>The bake <paramref name="bake"/> was filtered (<paramref name="ok"/>) on Vulkan: the lit stage's
-    /// compare terms follow it, as <see cref="FilterCover"/> sets them on GL.</summary>
+    /// compare terms follow it.</summary>
     internal static void FilteredVk(int bake, bool ok)
     {
         _vks.FilteredBake = bake; _vks.FilteredSoft = CoverSoft.V;
@@ -92,7 +92,7 @@ internal static unsafe partial class Weather
         _esmBias = EsmBiasM / (CoverDepthRadii * radius);
     }
 
-    /// <summary>The wetness map's step this frame on Vulkan, <see cref="MapTick"/>'s decisions: 0 nothing, 1 clear,
+    /// <summary>The wetness map's step this frame: 0 nothing, 1 clear,
     /// 2 integrate over <paramref name="dt"/>. <paramref name="size"/> is the side the map must have.</summary>
     internal static int MapStepVk(out int size, out float dt)
     {

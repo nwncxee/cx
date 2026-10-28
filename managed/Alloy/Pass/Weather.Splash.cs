@@ -30,8 +30,6 @@ internal static unsafe partial class Weather
 
     internal static Knob<float> Impacts = null!, ImpactRange = null!;
 
-    private static SpLoc _locSplash;
-    private static AlloyRenderer.LitLoc _litSplash;
     private static float _splashT;
     /// <summary>The disc centre's smoothed xy velocity, and the centre and clock it was last measured at.</summary>
     private static Vector2 _splashVel, _splashWasC;
@@ -65,84 +63,6 @@ internal static unsafe partial class Weather
     private static int SplashWanted()
         => _gl.SplashFailed || Impacts.V <= 0f || CurrentKind != Kind.Rain || Density <= 0f ? 0
          : (int)(MaxCount.V * SplashShare * Impacts.V * Density * DensityScale.V);
-
-    /// <summary>The splash draw, inside the precipitation bracket (its blend, depth test and depth mask are
-    /// already set). Depth-tested against the finished frame with no depth write, so a wall in front of an
-    /// impact hides it.</summary>
-    private static void DrawSplash(Matrix4x4* view, Matrix4x4* proj, int* viewport, Vector3 eye, float near, float far, bool lightingOn)
-    {
-        _splashes = 0; _footSplashes = 0;
-        int crowns = SplashCount(), feet = FootLive(TrackNow);
-        if (crowns <= 0 && !_gl.SplashSaid && SplashWanted() > 0 && Cover.V && CasterPass.CoverFresh && CoverDepthView == 0)
-        {
-            _gl.SplashSaid = true;
-            _log?.Info("Weather: no plain-depth view of the cover map -- rain splashes sit out (the landing point is unreadable without it)");
-        }
-        Matrix4x4 vp = default, inv = default;
-        // the footfalls read the map too, for the ground under the foot, so it binds whether or not it rains
-        bool cover = Cover.V && CasterPass.CoverFresh && CoverDepthView != 0 && Matrix4x4.Invert(CasterPass.CoverVp, out inv);
-        if (cover) vp = CasterPass.CoverVp;
-        else crowns = 0;
-        if (crowns + feet <= 0 || !EnsureSplash()) return;
-        if (!AlloyLights.TryPerspective(*proj, out _, out float p11, out _, out _)) return;
-        ref SpLoc l = ref _locSplash;
-        Gl.UseProgram(_gl.ProgSplash);
-        Gl.UniformMatrix4fv(l.View, 1, 0, (float*)view);
-        Gl.UniformMatrix4fv(l.Proj, 1, 0, (float*)proj);
-        Gl.Uniform3f(l.Eye, eye.X, eye.Y, eye.Z);
-        Vector3 centre = FrameInputs.HasFocus ? FrameInputs.Focus : eye;
-        // z = the height the cover ray's forward projection starts from: the fit's own centre, which is
-        // what the map scatter uses for the same Newton step
-        Gl.Uniform3f(l.C, centre.X, centre.Y, CasterPass.CoverCentre.Z);
-        Vector2 vel = SplashVelocity(new Vector2(centre.X, centre.Y));
-        Gl.Uniform2f(l.V, vel.X, vel.Y);
-        // w = pixels per metre at unit view depth: the stage's distance FADE, never a size
-        Gl.Uniform4f(l.P, _splashT, SplashLifeSec, ImpactRange.V, p11 * viewport[3] * 0.5f);
-        Gl.UniformMatrix4fv(l.CoverVp, 1, 0, (float*)&vp);
-        Gl.UniformMatrix4fv(l.CoverVpInv, 1, 0, (float*)&inv);
-        Gl.ActiveTexture(Gl.TEXTURE0 + TextureSlots.CoverDepth);
-        Gl.BindTexture(Gl.TEXTURE_2D, cover ? CoverDepthView : 0);
-        Gl.ActiveTexture(Gl.TEXTURE0);
-        Gl.Uniform1i(l.CoverDepth, (int)TextureSlots.CoverDepth);
-        Gl.Uniform1i(l.Depth, (int)SceneDepth.Unit);
-        // the footfalls: past the rain crowns, gated per point by the wetness map (bound by UploadMap)
-        Gl.Uniform1i(l.Rain, crowns * SplashParts);
-        fixed (Vector4* f = _footLive) Gl.Uniform4fv(l.Foot, feet, (float*)f);
-        Gl.Uniform2f(l.FootW, WetShown, FootSplash.V);
-        UploadMap(l.WxMapXf, l.WxMapP, false);
-        float c = Brightness.V;
-        Gl.Uniform3f(l.Tint, c, c, c);
-        Gl.Uniform1f(l.Alpha, MathF.Min(Opacity.V * 1.5f, 1f));
-        bool lit = lightingOn && AlloyLights.Ready;
-        Gl.Uniform1i(l.Lit, lit ? 1 : 0);
-        AlloyRenderer.BindPass(_litSplash.CubeCount, viewport, near, far);
-        if (lit) AlloyLights.BindForDraw();
-        Gl.DrawArraysInstancedBaseInstance(GlTriangleStrip, 0, 4, (crowns + feet * FootCrowns) * SplashParts, 0);
-        _splashes = crowns;
-        _footSplashes = feet;
-        _drawn += (crowns + feet * FootCrowns) * SplashParts;
-    }
-
-    private static bool EnsureSplash()
-    {
-        if (_gl.SplashFailed || Gl.DrawArraysInstancedBaseInstance == null) return false;
-        if (_gl.ProgSplash != 0) return true;
-        _gl.ProgSplash = GlProgram.Graphics(ShdSplashVs, ShaderStages.Source(ShdSplashVs), ShdSplashFs, ShaderStages.Source(ShdSplashFs), _log, "Weather splash");
-        if (_gl.ProgSplash == 0)
-        { _gl.SplashFailed = true; _log?.Info("Weather: splash program build failed -- no rain impacts this session"); return false; }
-        ref SpLoc l = ref _locSplash;
-        l.View = GlProgram.Loc(_gl.ProgSplash, "uView"); l.Proj = GlProgram.Loc(_gl.ProgSplash, "uProj");
-        l.Eye = GlProgram.Loc(_gl.ProgSplash, "uEye"); l.Lit = GlProgram.Loc(_gl.ProgSplash, "uLit");
-        l.P = GlProgram.Loc(_gl.ProgSplash, "uSplashP"); l.C = GlProgram.Loc(_gl.ProgSplash, "uSplashC"); l.V = GlProgram.Loc(_gl.ProgSplash, "uSplashV");
-        l.CoverDepth = GlProgram.Loc(_gl.ProgSplash, "uCoverDepth");
-        l.CoverVp = GlProgram.Loc(_gl.ProgSplash, "uCoverVp"); l.CoverVpInv = GlProgram.Loc(_gl.ProgSplash, "uCoverVpInv");
-        l.Depth = GlProgram.Loc(_gl.ProgSplash, "uSceneDepth");
-        l.Tint = GlProgram.Loc(_gl.ProgSplash, "uTint"); l.Alpha = GlProgram.Loc(_gl.ProgSplash, "uAlpha");
-        l.Rain = GlProgram.Loc(_gl.ProgSplash, "uSplashRain"); l.Foot = GlProgram.Loc(_gl.ProgSplash, "uFoot"); l.FootW = GlProgram.Loc(_gl.ProgSplash, "uFootW");
-        l.WxMapXf = GlProgram.Loc(_gl.ProgSplash, "uWxMapXf"); l.WxMapP = GlProgram.Loc(_gl.ProgSplash, "uWxMapP");
-        _litSplash = Programs.LitLocs(_gl.ProgSplash);
-        return true;
-    }
 
     /// <summary>Fold this frame's centre into the smoothed velocity the stage back-dates each crown's birth with.</summary>
     private static Vector2 SplashVelocity(Vector2 c)

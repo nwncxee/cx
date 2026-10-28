@@ -37,26 +37,19 @@ internal static unsafe class SkyStage
         public string Ref;
         public uint Prog;
         public bool Failed;
-        public int Vp, DrawBase, Tex, Tex1, Tint, SkyFog, ViewInv, Global, Oit, OitDepth;
-        /// <summary>Every engine term this program shares with a native stage's compute passes.</summary>
-        public StageEnvLoc Env;
         /// <summary>The native stage declared for this one (<see cref="StageResources"/>), or -1 where the module ships
-        /// none -- kept even when it stood down, and what this program was attached as (-1: nothing per bind).</summary>
-        public int Native, Rec;
+        /// none -- kept even when it stood down.</summary>
+        public int Native;
         /// <summary>Is that native stage what this program hosts? False = the stage the engine runs is hosted plainly.</summary>
         public bool NativeLive;
     }
 
-    /// <summary>Everything the GL context owns, in one object: context loss replaces it, so neither a program
-    /// name nor the failure latch taken against the dead context survives as a field nobody remembered to
-    /// zero.</summary>
+    /// <summary>Every sky stage this session built, in one object: a device change replaces it, so neither a
+    /// program name nor the failure latch taken against the one before survives as a field nobody reset.</summary>
     private sealed class SkyState
     {
         public readonly Entry[] Progs = new Entry[MaxProgs];
         public int Count;
-        /// <summary>The program whose per-pass uniforms are already uploaded this pass, so a role's several
-        /// parts cost one upload. Cleared by <see cref="BeginPass"/>.</summary>
-        public uint Primed;
     }
 
     private static SkyState _gl = new();
@@ -64,8 +57,8 @@ internal static unsafe class SkyStage
 
     internal static void Attach(ExtenderLog log) => _log = log;
 
-    /// <summary>Context loss: every GL name is gone, and a failure latch taken against the old context is not
-    /// evidence about the new one.</summary>
+    /// <summary>Device loss: every program name is gone, and a failure latch taken against the old device is
+    /// not evidence about the new one.</summary>
     internal static void Forget() => _gl = new SkyState();
 
     /// <summary>Module change: the spliced text came off THAT module's resource chain, so it has a module
@@ -74,15 +67,6 @@ internal static unsafe class SkyStage
     internal static void DropPrograms()
     {
         _gl = new SkyState();
-    }
-
-    /// <summary>The entry a program name belongs to, or -1 -- the one lookup the per-pass and per-draw calls
-    /// share. Hot, and over at most <see cref="MaxProgs"/> entries.</summary>
-    private static int IndexOf(uint prog)
-    {
-        var g = _gl;
-        for (int i = 0; i < g.Count; i++) if (g.Progs[i].Prog == prog) return i;
-        return -1;
     }
 
     /// <summary>The program for a material's custom fragment stage <paramref name="fs"/>, built on first sight
@@ -229,63 +213,6 @@ internal static unsafe class SkyStage
         return vkName;
     }
 
-
-    /// <summary>A pass is starting: nothing is primed. Cheap, and it is what stops one pass's upload being
-    /// credited to the next (the probe's six faces each have their own view-projection).</summary>
-    internal static void BeginPass() => _gl.Primed = 0;
-
-    /// <summary>Everything a sky program needs that does not vary per draw, once per program per pass: the view-projection,
-    /// the sampler units, the camera's world matrix (stock reads its translation column as the eye) and the engine's
-    /// calendar and weather scalars. False: its native stage stood down at this frame's head, its images are gone, and
-    /// the dome sits the frame out (said by <see cref="StageResources.Fail"/>) until the next staging replants it. Hot.</summary>
-    internal static bool Prepare(uint prog, Matrix4x4* vp, int* viewport)
-    {
-        int at = IndexOf(prog);
-        if (at < 0) return true;
-        var g = _gl;
-        ref Entry e = ref g.Progs[at];
-        if (e.NativeLive && !StageResources.Live(e.Native)) return false;
-        Gl.UseProgram(prog);
-        if (g.Primed == prog)
-        {
-            Gl.UniformMatrix4fv(e.Vp, 1, 0, (float*)vp);
-            return true;
-        }
-        g.Primed = prog;
-        Gl.UniformMatrix4fv(e.Vp, 1, 0, (float*)vp);
-        Gl.Uniform1i(e.Tex, 0);
-        Gl.Uniform1i(e.Tex1, 1);
-        // uOit is program state and the sky is never in the OIT lists; left at the accumulation arm the dome
-        // would land as a near-zero weighted write (gl_FragCoord.z = 1), which is a black sky.
-        Gl.Uniform1i(e.Oit, 0);
-        Gl.Uniform1i(e.OitDepth, (int)TextureSlots.OitDepth);
-        // ponytail: stock reads m_view_inv's TRANSLATION COLUMN only (`vPosWorld.xyz - m_view_inv[3].xyz`,
-        // the view ray: inc_sunm, inc_moonm, inc_stars, inc_clouds), so a translation carries every read the
-        // sky chain makes, at every pass's own eye. A content stage that wants the camera BASIS needs the real
-        // inverse view threaded through from AlloyRenderer.Frame.
-        Matrix4x4 viewInv = Matrix4x4.CreateTranslation(AlloyRenderer.EyePos);
-        Gl.UniformMatrix4fv(e.ViewInv, 1, 0, (float*)&viewInv);
-        // The engine terms -- the same upload a native stage's compute passes take, so a pass and the stage it feeds
-        // never disagree about the calendar -- then its image units and frame uniforms, per pass.
-        e.Env.Upload(viewport);
-        StageResources.Bind(e.Rec);
-        return true;
-    }
-
-    /// <summary>The per-draw terms: the record index the vertex stage reads its matrix at, the fog band, and
-    /// the engine's own constant colour -- <c>(tint, alpha)</c>, which is <c>PartTriMesh::Mat</c>'s two
-    /// branches exactly (white at the role's alpha, or the scene's fog colour at 1.0 for the skyfade
-    /// gob).</summary>
-    internal static void Draw(uint prog, int slot, float* tint, float alpha, float skyFog)
-    {
-        int at = IndexOf(prog);
-        if (at < 0) return;
-        ref Entry e = ref _gl.Progs[at];
-        Gl.Uniform1i(e.DrawBase, slot);
-        Gl.Uniform3fv(e.Tint, 1, tint);
-        Gl.Uniform4f(e.Global, tint[0], tint[1], tint[2], alpha);
-        Gl.Uniform1f(e.SkyFog, skyFog);
-    }
 
     /// <summary>Diagnostic: the stages built this session and the ones that refused, by name -- "no stage named",
     /// "a stage that would not build" and "a native stage running" are different facts and read differently; why a

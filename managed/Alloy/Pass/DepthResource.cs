@@ -3,8 +3,8 @@ namespace CX.Alloy;
 /// <summary>
 /// Whether the depth buffer <see cref="PassId.DepthPrepass"/> fills holds this pass's depth, published rather
 /// than kept private to the colour pass because water's screen-space march and the ambient occlusion want
-/// exactly this buffer. The buffer itself is Alloy's own depth texture (<see cref="PostChain.DepthTex"/>);
-/// sampling it while the colour bracket has it attached is the feedback loop a consumer's copy avoids.
+/// exactly this buffer. The buffer itself is the frame's own depth attachment; sampling it while the colour
+/// bracket has it attached is the feedback loop a consumer's copy avoids.
 /// </summary>
 internal static class DepthResource
 {

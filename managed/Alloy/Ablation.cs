@@ -16,9 +16,8 @@ internal static unsafe class Ablation
     /// <summary>The swappable program sites: the three compute passes, and the lit program the blended
     /// accumulation draws with.</summary>
     internal const int Lights = 0, Shadows = 1, Debt = 2, Lit = 3;
-    /// <summary>The longest compute ladder (the deferred walk's eight rungs, its probes at 9..12) and the
-    /// blended one's. Rung 0 is the shipped program, which no variant stands for.</summary>
-    internal const int MaxRung = 12, MaxLitRung = 6;
+    /// <summary>The blended ladder's length. Rung 0 is the shipped program, which no variant stands for.</summary>
+    internal const int MaxLitRung = 6;
     private const int Sites = 3;
 
     /// <summary>The issue loop stops after this many batches that actually draw, 0 = all of them. Read once per
@@ -26,37 +25,15 @@ internal static unsafe class Ablation
     /// so the class takes no static constructor and that read is a plain static load.</summary>
     internal static int DrawCap;
 
-    /// <summary>Per site and rung: the variant program (0 = not built) and the latch that stops a refused rung
-    /// recompiling on every step. Lazy -- nothing is built at boot or on a frame no bench is driving.</summary>
-    private static uint[]? _progs;
-    private static bool[]? _failed;
-    /// <summary>Per site: the program the pass had before the ladder pointed it elsewhere, 0 = it is on its own.
-    /// Read off the pass, so whichever of its own programs was bound is what comes back.</summary>
-    private static uint[]? _shipped;
-
     /// <summary>Put <paramref name="site"/> on rung <paramref name="rung"/>, or back on its own program at 0.
     /// False = that rung did not link, which refuses THE STEP: the pass keeps its program and the feature with
     /// it. <c>check-shaders.py</c> driver-links every rung, so that is a failed gate before it is a bench
     /// surprise.</summary>
     internal static bool Rung(int site, int rung, ExtenderLog? log)
     {
-        if (site == Lit) return LitRung(rung, log);
-        uint shipped = _shipped == null ? 0u : _shipped[site];
-        if (rung <= 0)
-        {
-            if (shipped != 0) { Bind(site, shipped); _shipped![site] = 0; }
-            return true;
-        }
-        if (shipped == 0)
-        {
-            shipped = Bound(site);
-            if (shipped == 0) return false;   // the pass never linked: there is nothing to ablate
-            (_shipped ??= new uint[Sites])[site] = shipped;
-        }
-        uint p = Variant(site, rung, log);
-        if (p == 0) { Bind(site, shipped); _shipped![site] = 0; return false; }
-        Bind(site, p);
-        return true;
+        // The three compute passes draw on Vulkan, which links its own pipelines: there is no program here to
+        // swap, so every rung but "back on its own" is refused and the step reports itself refused.
+        return site == Lit ? LitRung(rung, log) : rung <= 0;
     }
 
     /// <summary>Every site back on its own program: each step boundary, and finish.</summary>
@@ -74,47 +51,11 @@ internal static unsafe class Ablation
         if (delete)
         {
             Restore(null);
-            if (_progs != null) foreach (uint p in _progs) if (p != 0) Gl.DeleteProgram(p);
             if (_litProgs != null) foreach (uint p in _litProgs) if (p != 0) Gl.DeleteProgram(p);
         }
-        _progs = null; _failed = null; _shipped = null;
         _litProgs = null; _litLocs = null;
         _litProg = 0; _litCap = 0; _litSkip = false;
     }
-
-    /// <summary>One rung's program, built on the first step that asks for it.</summary>
-    private static uint Variant(int site, int rung, ExtenderLog? log)
-    {
-        if (rung < 1 || rung > MaxRung) return 0;
-        _progs ??= new uint[Sites * (MaxRung + 1)];
-        _failed ??= new bool[Sites * (MaxRung + 1)];
-        int i = site * (MaxRung + 1) + rung;
-        if (_progs[i] != 0) return _progs[i];
-        if (_failed[i]) return 0;
-        string resref = Resref(site);
-        // The override's text where there is one, so a rung measures the stage the session actually runs.
-        string src = ShaderResource.Override(resref, log) ?? ShaderStages.Source(resref);
-        uint p = GlProgram.Compute(ShaderStages.WithDefine(src, $"CX_ABLATE {rung}"), log, $"{Name(site)} ablate {rung}");
-        if (p == 0) { _failed[i] = true; return 0; }
-        _progs[i] = p;
-        return p;
-    }
-
-    private static uint Bound(int site)
-        => site == Lights ? DeferredLights.Program : site == Shadows ? DeferredShadows.Program : PairDebt.Program;
-
-    private static void Bind(int site, uint prog)
-    {
-        if (site == Lights) DeferredLights.Program = prog;
-        else if (site == Shadows) DeferredShadows.Program = prog;
-        else PairDebt.Program = prog;
-    }
-
-    private static string Resref(int site)
-        => site == Lights ? DeferredLights.ShdCs : site == Shadows ? DeferredShadows.ShdCs : PairDebt.ShdCs;
-
-    private static string Name(int site)
-        => site == Lights ? "DeferredLights" : site == Shadows ? "DeferredShadows" : "PairDebt";
 
     // ---- the blended accumulation's ladder: the lit program, not a compute pass ----------------------------
 

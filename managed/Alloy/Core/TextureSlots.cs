@@ -63,7 +63,7 @@ internal static class TextureSlots
     /// <summary>The frame snapshot the water stage refracts through: colour then depth.</summary>
     internal const uint SnapshotColor = 13, SnapshotDepth = 14;
     /// <summary>The OIT resolve's accumulation pair. The snapshot's units: the resolve runs before the water
-    /// copy is taken, and FrameSnapshot.Bind re-binds its own textures before any water draw.</summary>
+    /// copy is taken, and the water pass re-binds its own textures before any water draw.</summary>
     internal const uint OitAccum = SnapshotColor, OitReveal = SnapshotDepth;
     /// <summary>The opaque depth the linked-list append tests against, bound for the accumulate only --
     /// the reveal unit, which is free until the resolve rebinds it.</summary>
@@ -75,7 +75,7 @@ internal static class TextureSlots
     internal const uint GrassGround = MapBase + 6;
     /// <summary>The screen-space visibility the lit stage reads. Shares <see cref="SnapshotColor"/>'s
     /// unit: the snapshot takes it at FbCopy and lit additive draws follow, so the lit program REBINDS it at
-    /// every program bind (<see cref="SsaoPass.BindForDraw"/>) rather than trusting the pass's own bind.
+    /// every program bind rather than trusting the pass's own bind.
     /// Both sampler2D; the grass program's dyn-sun array on the same unit is a different program.</summary>
     internal const uint Ssao = SnapshotColor;
     /// <summary>The filtered cover map (Weather.Esm) the lit stage's exposure reads. Shares <see cref="SnapshotDepth"/>'s

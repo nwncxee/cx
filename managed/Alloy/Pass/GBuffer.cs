@@ -62,26 +62,6 @@ internal static unsafe class GBuffer
         Gl.BindTexture(Gl.TEXTURE_2D, tex);
     }
 
-    /// <summary>Bind the three G-buffer targets, the frame's depth and the lightmap record buffer the slot lane
-    /// indexes, for a compute pass to read. The depth is read while attached: a dispatch touches no framebuffer,
-    /// so there is no feedback loop, and the lit stage samples it at the same time (<c>SsaoPass.BindForDraw</c>).</summary>
-    internal static void BindForCompute()
-    {
-        BindUnit(TextureSlots.Gbuf0, _gl.Tex0);
-        BindUnit(TextureSlots.Gbuf1, _gl.Tex1);
-        BindUnit(TextureSlots.Gbuf2, _gl.Tex2);
-        BindUnit(TextureSlots.GbufDepth, PostChain.DepthTex);
-    }
-
-    /// <summary>Unbind the textures <see cref="BindForCompute"/> bound; the chart buffer is a shared point its next reader rebinds.</summary>
-    internal static void UnbindCompute()
-    {
-        BindUnit(TextureSlots.Gbuf0, 0);
-        BindUnit(TextureSlots.Gbuf1, 0);
-        BindUnit(TextureSlots.Gbuf2, 0);
-        BindUnit(TextureSlots.GbufDepth, 0);
-    }
-
     /// <summary>Attached to the frame FBO right now -- the opaque and cutout passes. Read by <see cref="Issue"/>,
     /// which masks the G-buffer's draw buffers per program while it is true.</summary>
     internal static bool Armed => _gl.Armed;

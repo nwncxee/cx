@@ -27,13 +27,9 @@ internal static unsafe class UiScene
 
     private static volatile UiSceneState _s = new();
 
-    /// <summary>The world pass finished: <paramref name="vp"/> and <paramref name="proj"/> drew the depth at render size
-    /// <paramref name="viewport"/>. Inside the bracket, after the post stack. A projection the depth terms cannot
-    /// read (not a perspective) publishes nothing.</summary>
-    internal static void Note(Matrix4x4* vp, Matrix4x4* proj, int* viewport) => Note(vp, proj, viewport, PostChain.DepthTex, default);
-
-    /// <summary><see cref="Note(Matrix4x4*, Matrix4x4*, int*)"/> for the Vulkan frame, whose depth is
-    /// <paramref name="depth"/>.</summary>
+    /// <summary>The world pass finished: <paramref name="vp"/> and <paramref name="proj"/> drew <paramref name="depth"/>
+    /// at render size <paramref name="viewport"/>. Inside the frame, after the post stack. A projection the depth
+    /// terms cannot read (not a perspective) publishes nothing.</summary>
     internal static void NoteVk(Matrix4x4* vp, Matrix4x4* proj, int* viewport, ImageId depth)
     {
         if (depth.IsNull) { _s.Cur = -1; return; }

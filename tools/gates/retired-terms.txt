@@ -123,3 +123,30 @@ alloy\.(backend|renderthread|rhiimmediate|gpumeter)\b	CX-313
 # The per-pixel linked-list transparency mode (alloy.oit 2) and the two SSBO points its head table and node pool
 # claimed: nothing allocated them and the resolve never selected them. The weighted pair is the one composite.
 \bOitHeads\b|\bOitNodes\b|\bCxOitHeads\b|\bCxOitNodes\b|per-pixel linked lists	GL sweep 4
+# The GL SSAO pass: its temporal accumulator reprojected through a velocity target the Vulkan estimate has
+# none of, so the knob that weighted the history and the accumulator's own stage went with it.
+\bao\.temporal\b|\bSsaoPass\.(Run|BindForDraw|TemporalWanted|DropHistory)\b|\bcx_ssaotemp_f\b	GL sweep 5
+# The GL deferred dispatches -- the light walk, the per-pixel shadow record, the hot-light debt -- and the GL
+# pair atlas they read. Vulkan dispatches the first two; the debt stage is declared and not yet dispatched.
+\bDeferredLights\.(Run|StatsBuf|BindStats)\b|\bDeferredShadows\.(Run|TexVis|TexKey|Res|Width|Height)\b	GL sweep 5
+\bPairDebt\.(Run|Active|StoodDown|Attach|Forget|Stats)\b|\bPairShadows\.(BindAtlas|Tex)\b	GL sweep 5
+\bGBuffer\.(BindForCompute|UnbindCompute)\b|\bAblation\.MaxRung\b	GL sweep 5
+# The GL halves of the vis-ID, flare, beam, trigger-highlight and framebuffer-copy passes, and the GL-only
+# dials and latches they fed: the flare occlusion probe's fade (the Vulkan halos draw at full strength, cut
+# per pixel against the depth copy) and the water copy's readback diagnostic.
+\bIdTarget\.(Begin|End|Paint|Attach|Forget|Stats)\b|\bHalos\.(Draw|Step|ContextLost)\b|\bcx_haloocc_c\b	GL sweep 5
+\bBeams\.(Draw|ContextLost)\b|\bTriggerHighlight\.(Draw|Attach|ContextLost)\b	GL sweep 5
+\bwater\.diag\b|\bFrameSnapshot\.(Copy|Bind|Unbind|Compare|ColorTex|Ready|Copies|Refusals|EnvOk|Forget|Revoke|LastRectFrac)\b	GL sweep 5
+# The GL post chain and display-space stack: the HDR target and its bloom chain, the resolve, the stack's
+# ping-pong pair, and the GL halves of the taa, aa and velocity passes. Vulkan resolves the frame and runs
+# every stack stage, so the dial that armed the velocity pass for its own sake has nothing left to arm.
+\bpost\.motion\b|\bPostChain\.(Bloom|Composite|Fbo|HdrTex|DepthTex|FullscreenVao|MotionWanted)\b	GL sweep 5
+\bPostStack\.(Begin|Run|Width|Height|Upsampling)\b|\bTaaStage\.(Ready|Prepare|Failed|Forget)\b	GL sweep 5
+\bMotionVectors\.(Tex|Painted|Failed|Forget)\b|\bSmaaStage\.(Ready|Prepare|Forget)\b	GL sweep 5
+# The GL half of the content stages' resources -- the declared images as textures, the declared passes as
+# compute programs and the frame's head that ran them -- and the GL sky dome's per-pass and per-draw uploads.
+# Vulkan makes those images and records those passes and draws.
+\bStageResources\.RunFrame\b|\bSkyStage\.(BeginPass|Prepare|Draw)\b	GL sweep 5
+# The weather bakes' GL arms: the wetness map's scatter and integrate dispatches, the shelter and ripple tile
+# bakes, the cover map's ESM filter and the splash draw. Vulkan records every one of them.
+\bWeather\.(MapTick|MapScatter|EnsureMap|ShelterTick|ShelterBake|FilterCover|EnsureEsm|DrawSplash)\b	GL sweep 5

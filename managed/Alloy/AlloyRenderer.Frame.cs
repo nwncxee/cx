@@ -77,7 +77,6 @@ public sealed unsafe partial class AlloyRenderer
         // #129: last pass's snapshot is not this pass's. Revoked first thing, so every path out of here that
         // never reaches PassId.FbCopy leaves Alloy water disarmed -- and BucketGate's bucket-6 gate reads
         // the same flag, so water is simply not drawn on exactly those passes (#285: a hole, not vanilla).
-        FrameSnapshot.Revoke();
         if (StreamRing.Refused) _batchUnavailable = true;   // CX-45: the ring failed the renderer (AlloyGate.Fail) when it was refused
         if (_batchUnavailable) { DbNoDraw("multidraw unavailable"); return false; }   // EndFrame revokes + disarms; never pay the bracket for nothing
         // Checked BEFORE anything stamps OwnGen: BuildBatches marks parts as drawn, which is only honest while
@@ -286,13 +285,6 @@ public sealed unsafe partial class AlloyRenderer
         FrameZones.Add(FrameZones.Zone.Upload, tUp);
         // The frame's head for native stages: every stage a host staged above or drew last frame gets its images
         // (re)made and its passes run here, before the first draw pass and outside every other GPU term.
-        if (!_capturing)
-        {
-            Step("the native stages' passes");
-            GpuBegin(GpuTerm.Passes);
-            StageResources.RunFrame(viewport, _log);
-            GpuEnd(GpuTerm.Passes);
-        }
         // #243: Alloy's own visibility, dispatched twice -- frustum-only for the depth prepass, then
         // frustum + hi-Z for the colour pass once the prepass has filled the depth the pyramid is
         // built from.

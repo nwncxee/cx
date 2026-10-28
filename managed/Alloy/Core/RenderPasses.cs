@@ -81,7 +81,6 @@ internal static class RenderPasses
             Name = "water",
             Attach = FrameSnapshot.Attach,
             SelfCheck = l => FrameSnapshot.SelfCheck(l),
-            ContextLost = FrameSnapshot.Forget,
             Stats = FrameSnapshot.Stats,
         }, log);
         // CX-51: the screen-space reflections. No edges of its own -- the pass's targets are the device's.
@@ -136,7 +135,6 @@ internal static class RenderPasses
         {
             Name = "beams",
             Install = Beams.Install,
-            ContextLost = Beams.ContextLost,
             SelfCheck = Beams.SelfCheck,
             Revoke = Beams.Forget,
             Stats = _ => Beams.Stats(),
@@ -146,7 +144,6 @@ internal static class RenderPasses
             Name = "halos",
             Install = Halos.Install,
             SelfCheck = Halos.SelfCheck,
-            ContextLost = Halos.ContextLost,
             Revoke = Halos.Revoke,
             Stats = _ => Halos.Stats(),
         }, log);
@@ -244,14 +241,13 @@ internal static class RenderPasses
         }, log);
         // #375: the display-space stack after the resolve; its dials are the post group's. No Revoke -- it
         // captures nothing from the world; its inputs are the engine's option globals, read per frame.
-        // #388: the camera velocity target; post.motion and post.viz 4 reach it. Revoke resets the previous
+        // #388: the camera velocity target the accumulator reprojects through. Revoke resets the previous
         // view-projection so the first frame after an area transition paints zero rather than a jump.
         r.Register(new PassLifecycle
         {
             Name = "motion",
             Attach = MotionVectors.Attach,
             SelfCheck = l => MotionVectors.SelfCheck(l),
-            ContextLost = MotionVectors.Forget,
             Revoke = MotionVectors.Revoke,
             Stats = MotionVectors.Stats,
         }, log);
@@ -260,10 +256,7 @@ internal static class RenderPasses
         r.Register(new PassLifecycle
         {
             Name = "idtarget",
-            Attach = IdTarget.Attach,
             SelfCheck = l => IdTarget.SelfCheck(l),
-            ContextLost = IdTarget.Forget,
-            Stats = IdTarget.Stats,
         }, log);
         // CX-188: the G-buffer and the deferred point-light pass; both hold frame-sized GL objects.
         r.Register(new PassLifecycle
@@ -297,13 +290,6 @@ internal static class RenderPasses
             ContextLost = PairShadows.Forget,
             Stats = PairShadows.Stats,
         }, log);
-        r.Register(new PassLifecycle
-        {
-            Name = "pairdebt",
-            Attach = PairDebt.Attach,
-            ContextLost = PairDebt.Forget,
-            Stats = PairDebt.Stats,
-        }, log);
         r.Register(new PassLifecycle { Name = "a2c", Stats = CoverageLayer.Stats }, log);
         r.Register(new PassLifecycle { Name = "oit", Stats = OitPass.Stats }, log);
         // The sky-visibility map. Its depth view belongs to CasterPass (an ortho caster render); what is
@@ -330,10 +316,8 @@ internal static class RenderPasses
             Name = "ao",
             Attach = SsaoPass.Attach,
             SelfCheck = l => SsaoPass.SelfCheck(l),
-            ContextLost = SsaoPass.Forget,
-            // #390: the visibility history is another area's after a transition.
-            Revoke = SsaoPass.Revoke,
-            Stats = SsaoPass.Stats,
+            // No ContextLost: everything the estimate owns is the Vulkan device's, replaced whole with it.
+            Stats = SsaoPassVk.Stats,
         }, log);
         r.Register(new PassLifecycle
         {

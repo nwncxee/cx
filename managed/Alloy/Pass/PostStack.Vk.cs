@@ -58,6 +58,14 @@ internal static unsafe partial class PostStack
     /// <summary>The TAA history on Vulkan starts over: the next resolve takes the current frame whole.</summary>
     internal static void ResetVk() => _vk.HistValid = false;
 
+    /// <summary>The module changed under the hosted chain: its program is spliced from the resource chain, so it
+    /// is dropped and rebuilt from the new module's.</summary>
+    private static void DropSplicedVk()
+    {
+        _vk.Stages[Array.IndexOf(_stages, _fbpost)] = new StageVk();
+        FbPostStage.DropProgram();
+    }
+
     /// <summary>Is the Vulkan taa stage refused on this device? The frame then draws unjittered.</summary>
     internal static bool TaaVkFailed => _vk.TaaTried && (_vk.Taa == null || _vk.Motion == null);
 
@@ -108,7 +116,8 @@ internal static unsafe partial class PostStack
         Rect rect = new(display[0], display[1], dw, dh);
         // upsampling, as GL's Begin decides it: the pair and every stage but the last at render size
         s.Up = taa && PostChain.TaaUpsample && (viewport[2] != dw || viewport[3] != dh);
-        if (live != 0 && !Pair(vk, s, s.Up ? viewport[2] : dw, s.Up ? viewport[3] : dh, log)) { live = 0; taa = false; }
+        if (live != 0 && !Pair(vk, s, s.Up ? viewport[2] : dw, s.Up ? viewport[3] : dh, log)) { live = 0; taa = false; _targetBad = true; }
+        TaaLive = taa;
         if (live == 0) return PostChainVk.Record(vk, cl, hdr, depth, vk.Composite, true, viewport, display, log);
         int* full = stackalloc int[4] { 0, 0, s.W, s.H };
         if (!PostChainVk.Record(vk, cl, hdr, depth, s.A, false, viewport, full, log)) return false;
@@ -182,7 +191,11 @@ internal static unsafe partial class PostStack
             v.Tried = false;
             return;
         }
-        if (v.P == null) log.Always($"PostStack: the {st.Name} stage did not build on Vulkan (logged above) -- it sits the session out");
+        if (v.P == null)
+        {
+            st.Failed = true;
+            log.Always($"PostStack: the {st.Name} stage did not build on Vulkan (logged above) -- it sits the session out");
+        }
     }
 
     /// <summary>The stack's two half-float images: the display size, or the render size when upsampling.</summary>

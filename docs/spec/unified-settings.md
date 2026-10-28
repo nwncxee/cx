@@ -678,7 +678,7 @@ so it adds no submenu content.
 | ao.strength | Strength | S | 0.5–4 step 0.1 · 2.2 | U | L | — | Multiplied by the game's AO intensity slider. |
 | ao.dirs | Slices | S | 1–8 · 1 | A | L | — | Directions each pixel searches for nearby surfaces. More is smoother and slower. Ladders on `quality.ao`. |
 | ao.steps | Steps | S | 1–8 · 3 | A | L | — | Samples along each direction. More reaches further out accurately, and costs that much more. Ladders on `quality.ao`. |
-| ao.direct / cutout / temporal / maxpx / blur / on | — | T, S | as declared | C | L | — | the direct term, cutout coverage, temporal accumulation, the screen-radius cap (ladders on `quality.ao`), the blur and the bypass |
+| ao.direct / cutout / maxpx / blur / on | — | T, S | as declared | C | L | — | the direct term, cutout coverage, the screen-radius cap (ladders on `quality.ao`), the blur and the bypass |
 | lightmap.enabled | Baked static lighting | T | on | **C** | L | — | cfg-only: static geometry gets its lights baked into a lightmap as the area loads, and the frame stops re-shading it. Off is the live light loop. |
 | lightmap.density | Lightmap density | S | 2–32 px/m · 8 | A | L | — | Lightmap texels per metre of world. Each instance's rectangle is capped at a quarter page; a change re-bakes the area. |
 | lightmap.movers | Creature shadows from baked lights | T | on | A | L | — | A creature standing under a baked light casts its shadow on the baked surface. Off is cheaper. |
@@ -752,7 +752,7 @@ ChatOnly master and two diagnostics, so it has no submenu.
 | vfog.top | Fog bank height | S | 2–100 m step 1 · 15 | A | L | Shape | How far above the camera the fog reaches before it thins away: the sky shows above it, and tall things rise out of it. |
 | vfog.temporal / lightshadows | — | S, T | as declared | C | L | — | the share of past frames the volume keeps, and lamps' shadows in the fog |
 | water.enabled | Water | T | on | **C** | L | — | cfg-only: draw water (the stock water shader, reflecting the finished frame). Off, no water is drawn at all -- there is no stock water pass left behind it. |
-| water.rect / diag | — | T, S | as declared | C | L | — | |
+| water.rect | — | T | as declared | C | L | — | |
 
 **Motion** — groups `anim` (350, *Animation*), `dangly` (352, *Cloaks and hair*), `particles`
 (354, *Particles*). `emitsim` (356, *Particle simulation*, parent `particles.enabled`) is a

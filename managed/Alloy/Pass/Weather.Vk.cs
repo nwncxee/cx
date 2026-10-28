@@ -94,7 +94,7 @@ internal static unsafe partial class Weather
         WxMapXf = GlProgram.Loc(prog, "uWxMapXf"), WxMapP = GlProgram.Loc(prog, "uWxMapP"),
     };
 
-    /// <summary>The splash draw's terms into the open capture, as <see cref="DrawSplash"/> sets them: its instance count,
+    /// <summary>The splash draw's terms into the open capture: its instance count,
     /// 0 when nothing lands this frame. Called after <see cref="StageVk"/>, which stepped the splash clock.</summary>
     internal static int WriteSplashVk(in SpLoc l, Matrix4x4* view, Matrix4x4* proj, int* viewport, Vector3 eye, bool lit)
     {

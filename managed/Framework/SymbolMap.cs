@@ -950,7 +950,7 @@ internal static unsafe class SymbolMap
 
     // ---- the beam globals. Beams are NOT walked by Scene::RenderDrawBucket -- they live in
     //      DRAW BUCKET 15, which Scene::RenderBeams @0x46aba0 (vt+0x1d8) walks with its own program and its
-    //      own state. Alloy enumerates that bucket itself (Beams.Enroll); the vtable slot is the shim's.
+    //      own state. Alloy enumerates that bucket itself (Beams.EnrollDb); the vtable slot is the shim's.
     /// <summary>Global <c>enablebeams</c> @0x18aa18c (int, 1 by default) -- the flag
     /// <c>Scene::RenderBeams</c> gates its whole body on. The owned pass honours it: beams off means the
     /// owned draw does nothing AND does not suppress.</summary>

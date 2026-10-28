@@ -157,7 +157,7 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The bit that keys a probe face's sky pipeline apart from the screen's.</summary>
     private const long SkyProbeKey = 1L << 33;   // not-an-offset: a cache-key tag
 
-    /// <summary>One dome's bind: the per-pass terms <c>SkyStage.Prepare</c> uploads and the per-draw ones its
+    /// <summary>One dome's bind: the per-pass terms the stage's own uniforms carry and the per-draw ones its
     /// <c>Draw</c> does, captured into the program's loose block, then the bind set with the material's engine
     /// textures on their units. False (logged) when the frame's uniform arena is full.</summary>
     private static bool VkBindSky(CommandList side, VkProg p, int i, in Matrix4x4 vp, int* viewport, BufferId slots)

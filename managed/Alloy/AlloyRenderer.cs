@@ -254,7 +254,6 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         // outlive a renderer that never armed -- /alloy is the report it drives.
         AlloyGate.Arm(log);
         PresentTarget.Attach(log);
-        TriggerHighlight.Attach(log);
         // #263: the config half of the verdict is the FIRST stand-down, ahead of every Attach and every
         // Install. Steps 4-7 replace engine paths rather than watching them -- Alloy performs the pool
         // upload, mints the texture handles, forces PLT compositing to the CPU -- so arming them in a
@@ -472,7 +471,6 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     internal static void ContextLost()
     {
         Ablation.Forget(delete: false);
-        TriggerHighlight.ContextLost();
         _drawBuf = 0; _texHBuf = 0; _boneBuf = 0;
         MotionContextLost();
         DbFeed.ContextLost();   // R1-30: the feed's own GL-backed tables

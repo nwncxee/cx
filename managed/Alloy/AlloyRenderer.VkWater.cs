@@ -97,8 +97,6 @@ public sealed unsafe partial class AlloyRenderer
         var from = new ImageRegion(0, 0, 0, 0);
         cl.CopyImage(new CopyImageCmd(c.Hdr, from, s.Col, from, w, h, 1));
         cl.CopyImage(new CopyImageCmd(c.Depth, from, s.Dep, from, w, h, 1));
-        // the env map is read HERE and not from FrameSnapshot.EnvOk, which only a GL bind sets: a Vulkan frame
-        // never reaches one, so that latch is always this scene's second-hand answer or none
         s.EnvLive = !VkTextures.Image(AlloyEnvMap.Tid()).IsNull;
         s.Ready = true;
         if (!s.Logged)
