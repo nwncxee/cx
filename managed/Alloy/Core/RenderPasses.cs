@@ -261,8 +261,6 @@ internal static class RenderPasses
         r.Register(new PassLifecycle
         {
             Name = "defshadow",
-            Attach = DeferredShadows.Attach,
-            ContextLost = DeferredShadows.Forget,
             Stats = DeferredShadows.Stats,
         }, log);
         r.Register(new PassLifecycle
@@ -276,14 +274,12 @@ internal static class RenderPasses
         r.Register(new PassLifecycle { Name = "a2c", Stats = CoverageLayer.Stats }, log);
         r.Register(new PassLifecycle { Name = "oit", Stats = OitPass.Stats }, log);
         // The sky-visibility map. Its depth view belongs to CasterPass (an ortho caster render); what is
-        // registered here is the map baked from it -- a GL texture and a compute program, so it goes with
-        // the context, and the area edge is what makes the bake another area's.
+        // registered here is the map baked from it, and the area edge is what makes the bake another area's.
         r.Register(new PassLifecycle
         {
             Name = "skyview",
             Attach = SkyView.Attach,
             SelfCheck = SkyView.SelfCheck,
-            ContextLost = SkyView.Forget,
             Revoke = CasterPass.SkyAreaEdge,
             Stats = _ => SkyView.Stats(),
         }, log);

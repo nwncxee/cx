@@ -492,12 +492,8 @@ public sealed unsafe partial class AlloyRenderer
     // skybox is a handful of parts and each carries its own captured matrix, so there is nothing to group.
     internal const int MaxSkyDraws = 1024;
     /// <summary>The mesh arena vertex format a DB sky draw's range lives in, as <see cref="Db.MeshArena.Fmt"/>:
-    /// the GL pass binds <see cref="_skVaoName"/> and never reads this, and the Vulkan pass has no VAO and binds
-    /// the format's own buffer and layout.</summary>
+    /// the pass binds that format's own buffer and layout.</summary>
     private static readonly int[] _skFmt = new int[MaxSkyDraws];
-    /// <summary>The GL VAO NAME a DB sky draw binds. The arena hands out a name directly, exactly as
-    /// <c>Beams.EnrollDb</c> takes one.</summary>
-    private static readonly uint[] _skVaoName = new uint[MaxSkyDraws];
     private static readonly uint[] _skMode = new uint[MaxSkyDraws];
     private static readonly int[] _skSrc = new int[MaxSkyDraws], _skDst = new int[MaxSkyDraws];
     /// <summary>The constant colour <c>PartTriMesh::Mat</c> would have set for this sky part -- white,

@@ -82,21 +82,6 @@ public sealed unsafe class GlContextService : IExtenderService
     /// <summary>Frames that reached the present with a game-thread bracket still open.</summary>
     private static int _leaks;
 
-    /// <summary>GPU span of the frame's Alloy work -- t0 at the first Enter, t1 re-stamped at every Leave, so
-    /// the pair brackets the shadow bake through the colour frame on the GPU timeline. NOT the frame's GPU
-    /// time: engine GL outside the brackets (2D UI, present) is excluded and idle gaps inside them are
-    /// included. Span far above the [alloy] elapsed sum means the GPU idled on the CPU.</summary>
-    private static GpuStamp _span;
-    private static bool _stamped;
-
-    /// <summary>The period's GPU span, formatted for the [zones] line; resets the period.</summary>
-    public static string GpuSpanLine()
-    {
-        string s = _span.Measured ? $" || gpu-span avg {_span.AvgMs:F1}ms max {_span.MaxMs:F1}ms" : " || gpu-span n/a";
-        _span.Reset();
-        return s;
-    }
-
     public void Initialize(ExtenderLog log, HookService hooks)
     {
         _log = log;
@@ -197,7 +182,6 @@ public sealed unsafe class GlContextService : IExtenderService
         }
         if (done) _workElsewhere++; else if (foreign) _healthAfterForeign++; else _healthAlone++;
         _workRan = false; _entered = false;
-        _span.Rotate(); _stamped = false;
     }
 
     /// <summary>The flag's contract, asserted with no context and no GL: the per-frame flag means THE WORK
@@ -402,7 +386,6 @@ public sealed unsafe class GlContextService : IExtenderService
             if (fIn != IntPtr.Zero) { _waitSync(fIn, 0, TimeoutIgnored); _deleteSync(fIn); }
         }
         _switches++;
-        if (!_stamped) { _span.LastMs = -1; _stamped = _span.Begin(); if (_span.LastMs >= 0) FrameZones.Gpu(_span.LastMs, GpuStamp.Age); }
         _depth = 1;
         return true;
     }
@@ -469,15 +452,6 @@ public sealed unsafe class GlContextService : IExtenderService
             // other half of it:
             //   Inside   -- never set true here (see Enter), so there is nothing to clear, and clearing it
             //               would be a write to the GAME thread's flag from this thread.
-            //   _span    -- Enter never called Begin, so _stamped cannot be this thread's and End would close
-            //               a span somebody else opened.
-            // ponytail: the cost is that [gl46]'s gpu-span -- the one discriminator for "GPU-bound or not"
-            // -- reads n/a for the whole session with a render thread live, because the only Begin/End pair
-            // is on the path this return skips. The upgrade is a GpuStamp owned by the render thread, and
-            // what it needs first is for _span's Rotate/Reset (OnFrame and the status line, both the game
-            // thread, and the status line is OUTSIDE the frame fence) to stop being able to run while this
-            // thread is mid-span. Not stamped from here blind: a half-rotated stamp reports a GPU time that
-            // is a measurement of nothing.
             return;
         }
         if (NullGl.Active) { _depth = 0; return; }
@@ -486,7 +460,6 @@ public sealed unsafe class GlContextService : IExtenderService
         if (_depth > 1) { _depth--; _err46 += Gl.DrainErrors(); return; }
         _depth = 0;   // ...which clears Inside, before the switch: a Fail below must not leave it standing
         _err46 += Gl.DrainErrors();
-        if (_stamped) _span.End();
 
         IntPtr fOut = IntPtr.Zero;
         if (_syncMode == 1) { if (_finish != null) _finish(); }

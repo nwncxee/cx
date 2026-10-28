@@ -180,3 +180,24 @@ alloy\.(backend|renderthread|rhiimmediate|gpumeter)\b	CX-313
 # Dead GL members with no caller at all: the pass block's uniform send, the multidraw helper, the 4.6 draw
 # target's rebind, the GL extension strings and the two vendor VRAM queries behind them.
 \bFlushPassBlock\b|\bPassContextLost\b|\bMultiDrawRange\b|\bRebindFrameTarget\b|\bHasBindless\b|\bProbeVram\b	GL sweep 6
+# The GL GPU timers and every meter built on them: the elapsed-query terms of the colour bracket, the whole-bracket
+# TIMESTAMP span and the shadow bake's own query. The Vulkan frame times itself and reports on the [vkgpu] line.
+\bGpuQuery\b|\bGpuStamp\b|\bGpuTerm\b|\bGpuBegin\b|\bGpuEnd\b|\bGpuSpanEnd\b|\bGpuSpanLine\b|\bGpuSpanMs\b	GL sweep 7
+\bShadowGpu(Ms|Sum|N)\b|\bCasterGlState\b|\bFrameZones\.Gpu\b	GL sweep 7
+# The last GL in the passes: the GUI model-view solve's two scratch textures and its program, the frame tap's
+# glReadPixels of the HDR target and the default framebuffer, the sky-visibility bake's GL compute, the weather's
+# GL texture names (shelter, noise, ripple, print field, filtered cover view) and the uniform block's GL buffer.
+# Vulkan records all of it; GlFormats described a GL texture nothing reads any more.
+\bGuiModelSolve\.(Scratch|Resolve|ContextLost|Ready)\b|\bFrameTap\.(Take|Final)\b	GL sweep 7
+\bSkyGlState\b|\bSkyView\.(Bake|Forget|NoTextureUnit|NoDepthTarget)\b	GL sweep 7
+\bWeatherGlState\b|\bCoverDepthView\b|\bBindTiles\b|\bBindRipple\b|\bEnsureTrack\b|\bTrackRows\b	GL sweep 7
+\bGlFormats\b|\bUniformBlock<[^>]*>\.(Bind|Rebind)\b	GL sweep 7
+# The mesh arena's one VAO per vertex format: the sections are Vulkan buffers, so what a caller asks is whether a
+# format's geometry is RESIDENT, not what its vertex-array name is.
+\bMeshArena\.Vao\b|\bMeshArenaDraw\.VaoOf\b|\bFakeVaoForCheck\b|\bCasterVao\b|\bMeshChart\.VaoOf\b|\bRawVao\b|\b_skVaoName\b	GL sweep 7
+# The GL pass loop's per-pass CPU partition. Nothing has written its rows since the loop went, so the period
+# line printed the heading with no numbers under it; FrameZones' own zones are where a pass's CPU is read.
+\bPassCpuNote\b|\b_passCpu\b|\b_passTail\b|\b_passSelfNeg\b|\bPaintStreamFailures\b	GL sweep 7
+# The snap set's other files: the HDR target either side of the sky pass and the default framebuffer at
+# present. The Vulkan frame records and submits once, so the one tap is its finished scene colour.
+_(opaque|sky|pre)\.pfm\b|_final\.ppm\b|\bdiff_final_pre\b	GL sweep 7

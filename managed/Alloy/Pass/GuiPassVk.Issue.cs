@@ -133,7 +133,7 @@ internal static unsafe partial class GuiPassVk
                 {
                     View v = ViewOf(vk, curTarget, l.W, l.H, log);
                     if (v.Colour.IsNull) { released = true; continue; }
-                    bool wanted = s.Solve != null && GuiModelSolve.Wanted(li - 1, to, owner, false, out runEnd);
+                    bool wanted = s.Solve != null && GuiModelSolve.Wanted(li - 1, to, owner, out runEnd);
                     if (wanted)
                     {
                         solve = 1; runStart = li - 1;
@@ -243,11 +243,10 @@ internal static unsafe partial class GuiPassVk
             ref GuiCapture.Draw d = ref GuiCapture.Draws[di];
             VertexLayoutId layout;
             BufferId vtx, idx;
-            if (d.RawVao != 0)
+            if (d.Arena)
             {
-                // CX-120: a DB draw's geometry is the mesh arena's, so Vulkan binds that layout's buffers where GL
-                // binds its vertex array. Nothing else changes: the record, the storage buffer and the per-rect
-                // viewport are the captured path's.
+                // CX-120: a DB draw's geometry is the mesh arena's, so Vulkan binds that layout's buffers. Nothing
+                // else changes: the record, the storage buffer and the per-rect viewport are the captured path's.
                 int fmt = d.ArenaFmt;
                 if ((uint)fmt >= MeshArena.Formats) { s.NoLayout++; continue; }
                 layout = s.ArenaLayout[fmt];

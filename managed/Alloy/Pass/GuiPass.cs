@@ -165,7 +165,6 @@ internal static unsafe class GuiPass
         CX.Ui.TextRig.VkContextLost();
         UiScene.ContextLost();
         TextAtlas.ContextLost();   // CX-119: every font atlas went with the context
-        GuiModelSolve.ContextLost();
         GuiPassVk.ContextLost();   // the Vulkan device went with the context, and every image and program on it
     }
 

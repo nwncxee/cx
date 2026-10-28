@@ -97,7 +97,7 @@ public sealed unsafe partial class AlloyRenderer
         // CX-50: the BASE run, always. The level this frame draws is the batch row's -- picked off the cull
         // sphere, which only this slot's own record block below makes current, and applied by the batch walk
         // (ArenaLevelRuns) on the main thread. A shadow view picks its own level per caster in the gather.
-        if (!MeshArena.Draw(DrawRecipe.Range(recipe), 0, out uint vao, out int baseVertex,
+        if (!MeshArena.Draw(DrawRecipe.Range(recipe), 0, out int baseVertex,
                             out nint off, out int idxCount, out int level) || idxCount <= 0)
         { _dbNoRange++; Inc(ref Counters._skipRange); return Skipped; }
         _cOff[i] = off; _cBase[i] = baseVertex; _cIdx[i] = idxCount;
@@ -109,14 +109,14 @@ public sealed unsafe partial class AlloyRenderer
             Matrix4x4 w0 = SceneDb.PartWorld[part];
             MeshArena.Bounds(DrawRecipe.Range(recipe), out Vector3 bmin, out Vector3 bmax, out _, out float brad);
             _log?.Info($"AlloyRenderer: [db] draw {_dbDumped} part={part} recipe={recipe} "
-                       + $"range={DrawRecipe.Range(recipe)} vao={vao} count={idxCount} off={(long)off} base={baseVertex} "
+                       + $"range={DrawRecipe.Range(recipe)} count={idxCount} off={(long)off} base={baseVertex} "
                        + $"lvl={level} cls={_oCls[i]} lit={_oLit[i]} "
                        + $"pos=({w0.M41:F2},{w0.M42:F2},{w0.M43:F2}) "
                        + $"m11={w0.M11:F3} m22={w0.M22:F3} m33={w0.M33:F3} "
                        + $"meshbox=({bmin.X:F2},{bmin.Y:F2},{bmin.Z:F2})..({bmax.X:F2},{bmax.Y:F2},{bmax.Z:F2}) r={brad:F2} "
                        + $"eye=({_eyePos.X:F2},{_eyePos.Y:F2},{_eyePos.Z:F2})");
         }
-        _oDbVao[i] = vao; _oDbLevel[i] = (byte)level;
+        _oDbLevel[i] = (byte)level;
 
         // ---- textures: a handle per slot, no re-fetch and no poll ----
         int slots = _oSlots[i];
@@ -501,14 +501,12 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>This slot's batch VAO key -- the arena SECTION its range lives in, so the static and skinned
     /// formats cut apart and nothing else does. Taken from the RANGE, not the recipe's skin flag: the arena
-    /// decides the section, and a key from a second opinion binds the batch to the wrong VAO when they
-    /// disagree (<c>MeshArenaDraw.VaoOf</c> answers per range).</summary>
+    /// decides the section, and a key from a second opinion binds the batch to the wrong buffers when they
+    /// disagree.</summary>
     private static int DbVaoKey(int i)
         => (int)MeshArena.FormatOf(DrawRecipe.Range(_oDbRecipe[i]));
 
-    /// <summary>The VAO and mesh-LOD level the arena gave this slot's last stage. Per slot because the batch
-    /// cut reads them back and a skinned range's VAO is not the static one's.</summary>
-    internal static readonly uint[] _oDbVao = new uint[MaxOwned];
+    /// <summary>The mesh-LOD level the arena gave this slot's last stage; the batch cut reads it back.</summary>
     internal static readonly byte[] _oDbLevel = new byte[MaxOwned];
 
     /// <summary>Chart offers left this frame. An area's whole tile set would otherwise be read off the arena

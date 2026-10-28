@@ -12,16 +12,6 @@ namespace CX.Alloy;
 /// layered queue's flush, and the teardown every context loss runs.</summary>
 public sealed unsafe partial class CasterPass
 {
-    /// <summary>What the pass still carries per context: the bracket's GPU timer. <see cref="ContextLost"/>
-    /// replaces it, so nothing from a dead context survives as a field nobody remembered to zero.</summary>
-    private sealed class CasterGlState
-    {
-        /// <summary>GPU time of the whole shadow bracket; the CPU stopwatch only sees submission.</summary>
-        public GpuQuery QShadow;
-    }
-
-    private static CasterGlState _gl = new();
-
     /// <summary>The frame's queued stale views: every stale view is queued and one layered flush per target
     /// array bakes them together. 1024 covers the ceiling population (4 + 4 cascades and 64 x 6 x 2 cube
     /// faces); past it a view is refused, which stands its map down for the frame.</summary>
@@ -57,9 +47,6 @@ public sealed unsafe partial class CasterPass
     /// <summary>Has the frame's staging a non-empty source the views can select out of, on whichever backend
     /// bakes them? False bakes a clear, which for an empty world IS the bake.</summary>
     private static bool GatherActive => CasterGatherVk.Active;
-    /// <summary>Context loss: every GL name goes at once. Run on the loss edge, not each frame after it.</summary>
-    private static void ContextLost() => _gl = new CasterGlState();
-
     private static void Release(string why)
     {
         // The VAO cache keys on VDO pointers that may now be freed; the GL objects can only be deleted inside

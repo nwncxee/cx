@@ -4,13 +4,14 @@ using CX.Framework;
 
 namespace CX.Alloy;
 
-/// <summary>The shader-storage binding contract, written down once, like <see cref="TextureSlots"/>. A point past
-/// the driver's <c>MAX_SHADER_STORAGE_BUFFER_BINDINGS</c> is a compile error that costs the whole program; two
-/// buffers on one point are no error at all -- the reader gets the other buffer.</summary>
+/// <summary>The shader-storage binding contract, written down once, like <see cref="TextureSlots"/>. A bind set
+/// carrying more storage buffers than the budget is refused and the pass draws nothing; two buffers on one point
+/// are no error at all -- the reader gets the other buffer.</summary>
 internal static class SsboSlots
 {
-    /// <summary>The whole budget: Intel's Windows GL reports 16 binding points, the smallest a supported driver
-    /// reports (the GL 4.6 floor is 8).</summary>
+    /// <summary>The whole budget: the storage-buffer descriptors <c>VkBackend</c> allocates per set, which reads
+    /// this. A device that cannot seat that many is refused at boot (<see cref="CheckDevice"/>) rather than
+    /// discovered at the first bind.</summary>
     internal const uint Budget = 16;
 
     /// <summary>Persistent: bound once (at upload, or at the bracket's start) and read by later passes without a
@@ -66,6 +67,17 @@ internal static class SsboSlots
     };
 
     private static readonly Regex Decl = new(@"layout\(std430,\s*binding\s*=\s*(\d+)\)\s*(?:\w+\s+)*?buffer\s+(\w+)");
+
+    /// <summary>The device can seat the whole budget. Vulkan guarantees only 4 per stage, so this is asked of
+    /// the device rather than assumed of it; a refusal stands Alloy down with the device's own figure named.
+    /// Oracle: the limit the driver reported, against the budget the set is built to.</summary>
+    internal static bool CheckDevice(in Rhi.DeviceCaps caps, ExtenderLog log)
+    {
+        if (caps.MaxStorageBindings >= Budget) return true;
+        log.Always($"SsboSlots: this device seats {caps.MaxStorageBindings} storage buffers a stage, and Alloy's "
+                 + $"bind set is built for {Budget} -- Alloy stands down and the engine draws this session");
+        return false;
+    }
 
     /// <summary>Oracle: the GLSL text itself -- every embedded stage and library, includes spliced, plus the two
     /// stages and the bindless header composed in C#. Each declaration is under the budget, at its table point,

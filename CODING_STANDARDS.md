@@ -43,9 +43,10 @@ rule and the gates.
 
 ## Threads and the host
 
-- **Only `managed/Graphics/` and the backend (`managed/Alloy/`) issue GL (CX0003).** Elsewhere the build refuses a
-  `Gl.*` call or a captured entry point; constants, `Gl.Init` and a null check are fine. The GL UI rig both render
-  modes keep (`TextRig`, `NuiModelEngine`, `NuiModelView.Gl`) is the carve-out, listed in the rule.
+- **Only the files CX0003 lists issue GL.** Alloy renders on Vulkan; elsewhere the build refuses a `Gl.*` call
+  or a captured entry point, and constants, `Gl.Init` and a null check are fine. The list is the bindings, CX's
+  own UI windows on the vanilla renderer, the engine's model views and texture path, and the uniform shim with
+  its callers; it lives in `tools/analyzers/EngineGl.cs` and `tools/gates/gl-confined.sh` keeps it honest.
 - **A thread blocks through `BlockingWait.Sleep(ms, why)`.** The game's main thread never blocks.
 - **No tasks.** The extender has no async path, so the `Task` and `ValueTask` types are banned.
 - **The environment is read through `HostEnv`.** A setting is a knob, never an environment variable (ADR 0025).

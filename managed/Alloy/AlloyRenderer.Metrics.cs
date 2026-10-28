@@ -4,142 +4,15 @@ using System.Runtime.InteropServices;
 using CX.Alloy.Db;
 using CX.Engine;
 using CX.Framework;
-using CX.Graphics;
 
 namespace CX.Alloy;
 
-/// <summary>What the period measured and how: the GPU query objects and the per-pass CPU partition that fill the
-/// counters, and the one period line that prints every tally and resets it.</summary>
+/// <summary>The one [alloy] period line: every tally the period took, printed and reset.</summary>
 public sealed unsafe partial class AlloyRenderer
 {
-    /// <summary>The fragments the COLOUR pass actually shaded. samples/screen-pixel is the overdraw figure and
-    /// its move with <c>/alloy prepass</c> is what the prepass is worth: on a vsync-capped display frame time
-    /// cannot answer that, because both modes sit on the cap and the saving becomes headroom.</summary>
-    private static GpuQuery _qSamples;
-    /// <summary>SAMPLES_PASSED over the particle pass alone -- its overdraw against the viewport.</summary>
-    private static GpuQuery _qPartSamples;
-    /// <summary>Samples the blended class's OIT accumulation wrote -- its overdraw, beside its GPU term.</summary>
-    private static GpuQuery _qBlendSamples;
-    /// <summary>The blended accumulation's triangles (PRIMITIVES_GENERATED) and its draw groups, per frame, for the period line.</summary>
-    private static GpuQuery _qBlendPrims;
-    /// <summary>The accumulation's fragment-shader invocations: oit 2 tests depth in the shader, so SAMPLES_PASSED
-    /// counts only the survivors and this is what the pass actually shades.</summary>
-    private static GpuQuery _qBlendFrags;
-    private static long _blendGroups;
-    private static int _blendFrames;
-    /// <summary>The timed GPU terms of the colour bracket, in pass order. Beams and the probe capture are
-    /// untimed; the shadow bracket and the light build run their own elapsed queries OUTSIDE every term by
-    /// pass order, which is the premise the guard rests on. The <c>*Key</c> terms are the keyhole-dissolving
-    /// tails, and the deferred pass is three dispatches timed apart, so each knob behind them has a number.</summary>
-    internal enum GpuTerm { Prepass, PrepassKey, PrepassFeat, PrepassRetest, Ao, Opaque, OpaqueKey, Cutout, CutoutKey, Grass, GrassDepth, Sky, Passes, Blended, BlendedComposite, BlendedHosted, BlendedDepth, Water, Additive, Particles, Motion, Post, Cull, HiZ, Beams, WaterCopy, Weather, Ssr, Deferred, DeferredShadow, PairDebt, Decals, Fog, Count }
-    /// <summary>One elapsed query per term. TIME_ELAPSED cannot nest: a colour timer wrapping the grass and
-    /// water ones has its inner End close it early, wedging both inner meters on a stale sample.</summary>
-    private static readonly GpuQuery[] _qTerm = new GpuQuery[(int)GpuTerm.Count];
-    /// <summary>The term whose query is open, -1 for none. Closed at frame start if a pass left it open.</summary>
-    private static int _qOpen = -1;
     /// <summary>Pixels per world radius at unit depth for THIS pass (0 without perspective), kept for the cube
     /// receiver's disc gate.</summary>
     private static float _lodScale;
-
-    /// <summary>Open a term's elapsed query unless another is already open -- the guard that keeps the
-    /// brackets serial. A term whose query declined the frame (result not ready) is simply not measured.</summary>
-    /// <summary>Every term's period average summed, shadows excluded (the bake has its own query).</summary>
-    private static double GpuTermsTotal()
-    { double s = 0; for (int t = 0; t < (int)GpuTerm.Count; t++) s += GpuMs((GpuTerm)t); return s; }
-
-    /// <summary>Is a timed term's query open? TIME_ELAPSED cannot nest, so a second timer waits.</summary>
-    internal static bool GpuTermOpen => _qOpen >= 0;
-
-    internal static void GpuBegin(GpuTerm t)
-    { if (_qOpen < 0 && _qTerm[(int)t].Begin(Gl.TIME_ELAPSED)) _qOpen = (int)t; }
-
-    /// <summary>Frame start: a term still open from the last frame (an early return between its Begin and
-    /// End) is closed here, or every later Begin is refused and the line reads zero for the session.</summary>
-    private static void GpuFrameStart()
-    {
-        if (_qOpen >= 0) GpuEnd((GpuTerm)_qOpen);
-        GpuSpanStamp(0);
-    }
-
-    /// <summary>Whole-bracket GPU span: TIMESTAMP at frame start and after the pass loop, two frames in flight.
-    /// The terms are serial elapsed queries and only cover what is bracketed; this is the number they are
-    /// measured against, so the unmeasured remainder has a size.</summary>
-    private static readonly uint[] _qSpan = new uint[4];
-    private static readonly bool[] _qSpanPending = new bool[2];
-    private static int _qSpanAt;
-    private static double _spanSum; private static int _spanN;
-    internal static double GpuSpanMs => _spanN == 0 ? 0.0 : _spanSum / _spanN / 1e6;
-
-    private static void GpuSpanStamp(int which)
-    {
-        if (!GpuQuery.Enabled || Gl.QueryCounter == null || Gl.GenQueries == null || Gl.GetQueryObjectui64v == null) return;
-        if (_qSpan[0] == 0) fixed (uint* q = _qSpan) Gl.GenQueries(4, q);
-        if (which == 0)
-        {
-            // Both slots, not just the one closed last: with the GPU two frames behind, both are pending, and
-            // harvesting only the newer one wedged the meter at 0 for the session.
-            for (int s = 0; s < 2; s++)
-            {
-                if (!_qSpanPending[s]) continue;
-                int ready; Gl.GetQueryObjectiv(_qSpan[s * 2 + 1], Gl.QUERY_RESULT_AVAILABLE, &ready);
-                if (ready == 0) continue;
-                ulong t0, t1;
-                Gl.GetQueryObjectui64v(_qSpan[s * 2], Gl.QUERY_RESULT, &t0);
-                Gl.GetQueryObjectui64v(_qSpan[s * 2 + 1], Gl.QUERY_RESULT, &t1);
-                _qSpanPending[s] = false;
-                if (t1 > t0 && t1 - t0 < 10_000_000_000UL) { _spanSum += t1 - t0; _spanN++; }
-            }
-            if (_qSpanPending[_qSpanAt]) return;
-            Gl.QueryCounter(_qSpan[_qSpanAt * 2], Gl.TIMESTAMP);
-        }
-        else if (!_qSpanPending[_qSpanAt])
-        {
-            Gl.QueryCounter(_qSpan[_qSpanAt * 2 + 1], Gl.TIMESTAMP);
-            _qSpanPending[_qSpanAt] = true;
-            _qSpanAt = 1 - _qSpanAt;
-        }
-    }
-    internal static void GpuSpanEnd() => GpuSpanStamp(1);
-
-    /// <summary>Close the term if it is the open one; a no-op for a term that never opened.</summary>
-    internal static void GpuEnd(GpuTerm t)
-    { if (_qOpen == (int)t) { _qTerm[(int)t].End(Gl.TIME_ELAPSED); _qOpen = -1; } }
-
-    private static double GpuMs(GpuTerm t) => _qTerm[(int)t].Avg / 1e6;
-
-    /// <summary>The colour-bracket loop's SELF CPU ticks per <see cref="PassId"/> this period -- the five
-    /// child zones <see cref="FrameZones.Zone.Passes"/> subtracts come off each row too, so the rows partition
-    /// that zone rather than double-counting Issue, Cull, Post, Probe and Lightmap inside it. The rows plus
-    /// <see cref="_passTail"/> account for the zone bar the <c>foreach</c>'s own unbracketed advance.</summary>
-    private static readonly long[] _passCpu = new long[(int)PassId.PostStack + 1];
-    /// <summary>The colour loop's tail (<c>PaintStreamFailures</c> + the GPU span close): inside the Passes
-    /// bracket and inside no pass, so it is reported rather than left as an unexplained remainder.</summary>
-    private static long _passTail;
-    /// <summary>Rows that measured NEGATIVE self time, which can only mean a child zone was credited to a pass
-    /// it did not run inside. Must read 0.</summary>
-    private static int _passSelfNeg;
-
-    /// <summary>The five passes with the most SELF CPU per frame this period, clearing the tally. These five
-    /// are a partition of <see cref="FrameZones.Zone.Passes"/>, not a parent-and-child mix. Cold (period
-    /// line).</summary>
-    private static string PassCpuNote(int frames)
-    {
-        var sb = new System.Text.StringBuilder(", pass cpu self ms/frame:");
-        double k = 1000.0 / System.Diagnostics.Stopwatch.Frequency / Math.Max(1, frames);
-        for (int n = 0; n < 5; n++)
-        {
-            int best = -1;
-            for (int i = 0; i < _passCpu.Length; i++) if (_passCpu[i] > 0 && (best < 0 || _passCpu[i] > _passCpu[best])) best = i;
-            if (best < 0) break;
-            sb.Append(' ').Append((PassId)best).Append(' ').Append((_passCpu[best] * k).ToString("F2"));
-            _passCpu[best] = 0;
-        }
-        Array.Clear(_passCpu);
-        if (_passTail > 0) sb.Append(" tail ").Append((_passTail * k).ToString("F2"));
-        if (_passSelfNeg > 0) sb.Append(" (").Append(_passSelfNeg).Append(" NEGATIVE SELF ROWS -- the partition is broken)");
-        _passTail = 0; _passSelfNeg = 0;
-        return sb.ToString();
-    }
 
     /// <summary>The [alloy] period line: every number the period tallied, in one statement, in its own method
     /// so <see cref="EndFrame"/> reads as the gate, the census and the reset it is. Pure reporting: a closed log
@@ -159,8 +32,6 @@ public sealed unsafe partial class AlloyRenderer
         // "200 NOT DRAWN" reads as the missing geometry it actually is. The reject breakdown at the end of
         // this line is what it decomposes into.
         int holes = Counters._lastCandidates - Counters._lastEnrolled;
-        // #325: the old single colour timer's span, opaque through additive (water = copy + draw).
-        double colourMs = 0; for (int t = (int)GpuTerm.Opaque; t <= (int)GpuTerm.Additive; t++) colourMs += GpuMs((GpuTerm)t);
         _log?.Info($"AlloyRenderer: [alloy] {DbFeed.Stats()} | {DbTableNote()} | {DbPassNote()} "
                      + $"| {DbInputs.Stats()} | {DbEmitterChannels.Stats()} | {DbGui.Stats()}");
         _log?.Info($"AlloyRenderer: [alloy] {Counters._lastEnrolled}/{Counters._lastCandidates} parts owned{CapacityNote()}" +
@@ -291,66 +162,10 @@ public sealed unsafe partial class AlloyRenderer
                     : $"prepass {(float)Counters._prepassDraws / Counters._frames:F0} draws/frame" +
                       (Counters._prepassKeyed == 0 ? "" : $" ({(float)Counters._prepassKeyed / Counters._frames:F0} of them dissolving, keyhole stage)") +
                       (Counters._prepassSkipped == 0 ? "" : $" (+{(float)Counters._prepassSkipped / Counters._frames:F0} excluded, displacing/skinned or cutout)") +
-                      (_qTerm[(int)GpuTerm.Prepass].Measured ? $" in {GpuMs(GpuTerm.Prepass):F3}ms" : "") +
-                      (_qTerm[(int)GpuTerm.PrepassRetest].Measured ? $" + retest {GpuMs(GpuTerm.PrepassRetest):F3}ms" : "") +
-                      (_qTerm[(int)GpuTerm.PrepassKey].Measured ? $" + keyhole sweep {GpuMs(GpuTerm.PrepassKey):F3}ms" : "") +
-                      (_qTerm[(int)GpuTerm.PrepassFeat].Measured ? $" + cutout/displaced sweep {GpuMs(GpuTerm.PrepassFeat):F3}ms ({(float)Counters._prepassFeatDraws / Counters._frames:F0} draws)" : "") +
-                      (_qTerm[(int)GpuTerm.Ao].Measured ? $" + ao {GpuMs(GpuTerm.Ao):F3}ms" : "") +
                       (!_prepassKey ? " (keyhole sweep OFF -- /alloy prepasskey 1)" : "")) +
-                   // CX-120: the sample query reads 0 on the DB path while the frame visibly shades, so the
-                   // counter is not measuring this path's draws. A measured-looking zero is worse than
-                   // silence -- it reads as "nothing rasterised", which is exactly the fault we spent a day
-                   // chasing -- so the clause says it is unmeasured rather than reporting a number it has
-                   // not got. ponytail: the query bracket needs a DB-mode home; it is a diagnostic, not a
-                   // pass, so it waits behind the consumers.
-                   ", shaded (not measured)" +
-                   (_qTerm[(int)GpuTerm.Opaque].Measured
-                       ? $", gpu ms: opaque {GpuMs(GpuTerm.Opaque):F2}" +
-                         (_qTerm[(int)GpuTerm.OpaqueKey].Measured ? $" (+ keyhole {GpuMs(GpuTerm.OpaqueKey):F2})" : "") +
-                         $" / cutout {GpuMs(GpuTerm.Cutout):F2}" +
-                         (_qTerm[(int)GpuTerm.CutoutKey].Measured ? $" (+ keyhole {GpuMs(GpuTerm.CutoutKey):F2})" : "") + " / " +
-                         $"grass {GpuMs(GpuTerm.Grass):F2} (+ depth {GpuMs(GpuTerm.GrassDepth):F2}) / sky {GpuMs(GpuTerm.Sky):F2}" +
-                         (_qTerm[(int)GpuTerm.Passes].Measured ? $" / native passes {GpuMs(GpuTerm.Passes):F2}" : "") +
-                         $" / blended {GpuMs(GpuTerm.Blended):F2}" +
-                         (_qTerm[(int)GpuTerm.BlendedComposite].Measured
-                             ? $" (accumulate" + (_qBlendSamples.Measured && Counters._lastPixels > 0 ? $", overdraw x{_qBlendSamples.Avg / Counters._lastPixels:F2}" : "")
-                               + (_blendFrames > 0 ? $", {_blendGroups / _blendFrames} groups" : "")
-                               + (_qBlendPrims.Measured ? $", {_qBlendPrims.Avg / 1000.0:F0}k tris" : "")
-                               + (_qBlendFrags.Measured && Counters._lastPixels > 0 ? $", shaded x{_qBlendFrags.Avg / Counters._lastPixels:F2}" : "")
-                               + $"; + composite {GpuMs(GpuTerm.BlendedComposite):F2}, hosted {GpuMs(GpuTerm.BlendedHosted):F2}, depth sweep {GpuMs(GpuTerm.BlendedDepth):F2})"
-                             : "") + " / " +
-                         $"water {GpuMs(GpuTerm.Water):F2} / additive {GpuMs(GpuTerm.Additive):F2} (colour {colourMs:F2}) " +
-                         $"/ particles {GpuMs(GpuTerm.Particles):F2}" +
-                         (_qPartSamples.Measured && Counters._lastPixels > 0 ? $" (overdraw x{_qPartSamples.Avg / Counters._lastPixels:F2})" : "") +
-                         (_qTerm[(int)GpuTerm.Motion].Measured ? $" / motion {GpuMs(GpuTerm.Motion):F2}" : "") +
-                         $" / post {GpuMs(GpuTerm.Post):F2}" +
-                         // The terms no pass owned: the cull dispatches, the hi-Z build, beams, the water
-                         // copy -- and the total, to read against the [gl46] gpu-span. Span minus total is
-                         // idle-or-unbracketed; it is idle if it shrinks when the frame goes GPU-bound.
-                         $" / cull {GpuMs(GpuTerm.Cull):F2} / hiz {GpuMs(GpuTerm.HiZ):F2} / beams {GpuMs(GpuTerm.Beams):F2}" +
-                         $" / water copy {GpuMs(GpuTerm.WaterCopy):F2}" +
-                         // CX-51: the history copy alone; the march itself is inside opaque (A/B with /light ssr 0)
-                         (_qTerm[(int)GpuTerm.Ssr].Measured ? $" / ssr {GpuMs(GpuTerm.Ssr):F2}" : "") +
-                         // CX-188: the deferred point-light dispatch. Read it against the lit colour terms
-                         // above: this is what light.deferred moved OUT of them (A/B with /light deferred 0).
-                         (_qTerm[(int)GpuTerm.Deferred].Measured ? $" / deferred {GpuMs(GpuTerm.Deferred):F2}" : "") +
-                         // CX-189: the coverage layer -- seed, the forward-lit A2C draws and the resolve, together
-                         // CX-188 step 3: the per-pixel shadow record the walk above reads, apart from it
-                         // (A/B with /shadow deferredres and /shadow cap 0).
-                         (_qTerm[(int)GpuTerm.DeferredShadow].Measured
-                             ? $" / deferred shadows {GpuMs(GpuTerm.DeferredShadow):F2}" : "") +
-                         // CX-188 step 4: the hot-light debt -- what the deferred stage's CX_NO_HOT gave up
-                         // on the baked receivers, taken back once per pixel (A/B with /lightmap moverlights 0).
-                         (_qTerm[(int)GpuTerm.PairDebt].Measured ? $" / pair debt {GpuMs(GpuTerm.PairDebt):F3}" : "") +
-                         // CX-273: the ground decals' layer, which the blended term no longer carries
-                         (_qTerm[(int)GpuTerm.Decals].Measured ? $" / decals {GpuMs(GpuTerm.Decals):F3}" : "") +
-                         // ...and the washes' solid interiors, drawn beside the cutouts so the blended term keeps only their edges
-                         (_qTerm[(int)GpuTerm.Weather].Measured ? $" / weather {GpuMs(GpuTerm.Weather):F3}" : "") +
-                         (_qTerm[(int)GpuTerm.Fog].Measured ? $" / vfog {GpuMs(GpuTerm.Fog):F3}" : "") +
-                         $" (gpu terms total {GpuTermsTotal() + CasterPass.ShadowGpuMs:F2} incl. shadows {CasterPass.ShadowGpuMs:F2}; colour bracket span {GpuSpanMs:F2})" : "") +
+                   ", shaded (gpu ms on the [vkgpu] line)" +
                    // #121: captures per SESSION against frames per PERIOD. A number that tracks the frame
                    // count is the acceptance criterion ("probe capture does not run per frame") failing.
-                   PassCpuNote(Counters._frames) +
                    $", probe {(EnvProbe.Ready ? $"ready ({EnvProbe.Captures} captures)" : "none yet")}" +
                    "; " +
                    AlloyLights.Diag(Counters._clusterOverflow) +

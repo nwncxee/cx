@@ -17,16 +17,12 @@ public sealed unsafe partial class AlloyRenderer
     private static (string Label, (int K, string V)[] Set)[]? _benchSteps;
     private static int _benchStep = -1, _benchFrame;
     private static long _benchT0, _benchStart;
-    private static double _benchSpan0; private static int _benchSpanN0;
-    private static readonly ulong[] _benchSum0 = new ulong[(int)GpuTerm.Count];
-    private static readonly int[] _benchN0 = new int[(int)GpuTerm.Count];
-    /// <summary>The shadow BAKE's own meter at the window's start -- the one GPU cost that is not a
-    /// <see cref="GpuTerm"/>, and the one <c>lightmap.movers</c> moves through the pair tiles.</summary>
-    private static ulong _benchBake0; private static int _benchBakeN0;
     /// <summary>The hot-path census at the window's start: what the scene's movers did to the step, apart from the knob.</summary>
     private static long _benchHot0, _benchSph0, _benchEng0, _benchMov0;
-    private static double _benchBaseBlend, _benchBaseFrame, _benchBaseSpan, _benchBaseLit, _benchBaseAll, _benchBaseBake;
-    /// <summary>Each step's GPU-span delta against the baseline, for the finish notice's three biggest savings.</summary>
+    private static double _benchBaseFrame;
+    /// <summary>Each step's WALL frame-time delta against the baseline, for the finish notice's three biggest
+    /// savings. Wall time, not a GPU figure: on a capped display a saving becomes headroom and reads as zero
+    /// here, so the [vkgpu] line is what answers "did it cost less GPU".</summary>
     private static double[]? _benchSaved;
 
     /// <summary>Total steps this run.</summary>
@@ -142,42 +138,19 @@ public sealed unsafe partial class AlloyRenderer
         if (_benchFrame == BenchSettle)
         {
             _benchT0 = Stopwatch.GetTimestamp();
-            _benchSpan0 = _spanSum; _benchSpanN0 = _spanN;
-            for (int t = 0; t < _qTerm.Length; t++) { _benchSum0[t] = _qTerm[t].Sum; _benchN0[t] = _qTerm[t].N; }
-            _benchBake0 = CasterPass.ShadowGpuSum; _benchBakeN0 = CasterPass.ShadowGpuN;
             _benchHot0 = CasterPass.HotSlots; _benchSph0 = CasterPass.HotSpheres; _benchEng0 = CasterPass.HotEngulf; _benchMov0 = CasterPass.MoverFrames;
             return;
         }
         if (_benchFrame < BenchSettle + BenchMeasure) return;
-        // a period line reset the meters mid-window: this step's deltas are garbage, so measure it again
-        if (_spanN < _benchSpanN0 || _qTerm[(int)GpuTerm.Opaque].N < _benchN0[(int)GpuTerm.Opaque]
-            || CasterPass.ShadowGpuN < _benchBakeN0) { _benchFrame = BenchSettle - 1; return; }
         double frame = (Stopwatch.GetTimestamp() - _benchT0) * 1000.0 / Stopwatch.Frequency / BenchMeasure;
-        double span = _spanN > _benchSpanN0 ? (_spanSum - _benchSpan0) / (_spanN - _benchSpanN0) / 1e6 : 0.0;
-        double lit = BenchTerm(GpuTerm.Opaque) + BenchTerm(GpuTerm.OpaqueKey) + BenchTerm(GpuTerm.Cutout) + BenchTerm(GpuTerm.CutoutKey);
-        double blend = BenchTerm(GpuTerm.Blended);
-        double all = 0.0;
-        for (int t = 0; t < _qTerm.Length; t++) all += BenchTerm((GpuTerm)t);
-        int bakeN = CasterPass.ShadowGpuN - _benchBakeN0;
-        double bake = bakeN > 0 && CasterPass.ShadowGpuSum >= _benchBake0 ? (CasterPass.ShadowGpuSum - _benchBake0) / (double)bakeN / 1e6 : 0.0;
-        if (_benchStep == 0) { _benchBaseBlend = blend; _benchBaseFrame = frame; _benchBaseSpan = span; _benchBaseLit = lit; _benchBaseAll = all; _benchBaseBake = bake; }
-        _benchSaved![_benchStep] = span - _benchBaseSpan;
-        _log?.Always($"AlloyRenderer: [bench] {BenchLabel(_benchStep)}: frame {frame:F2} ms ({1000.0 / frame:F0} fps, {frame - _benchBaseFrame:+0.00;-0.00}), "
-                   + $"gpu span {span:F2} ({span - _benchBaseSpan:+0.00;-0.00}), lit colour {lit:F2} ({lit - _benchBaseLit:+0.00;-0.00}), "
-                   + $"blended {blend:F2} ({blend - _benchBaseBlend:+0.00;-0.00}), "
-                   + $"all gpu terms {all:F2} ({all - _benchBaseAll:+0.00;-0.00}), shadow bake {bake:F2} ({bake - _benchBaseBake:+0.00;-0.00})"
+        if (_benchStep == 0) _benchBaseFrame = frame;
+        _benchSaved![_benchStep] = frame - _benchBaseFrame;
+        _log?.Always($"AlloyRenderer: [bench] {BenchLabel(_benchStep)}: frame {frame:F2} ms ({1000.0 / frame:F0} fps, {frame - _benchBaseFrame:+0.00;-0.00})"
                    + $"; scene: hot lights {(CasterPass.HotSlots - _benchHot0) / (double)BenchMeasure:F1}/f, "
                    + $"mover spheres {(CasterPass.HotSpheres - _benchSph0) / (double)BenchMeasure:F1}/f ({(CasterPass.HotEngulf - _benchEng0) / (double)BenchMeasure:F1} round their light), "
                    + $"moving casters {(CasterPass.MoverFrames - _benchMov0) / (double)BenchMeasure:F1}/f");
         if (++_benchStep >= BenchTotal) { BenchFinish("done"); return; }
         BenchApply();
-    }
-
-    /// <summary>One term's mean over the measured window, in ms; 0 when it was not measured.</summary>
-    private static double BenchTerm(GpuTerm t)
-    {
-        int n = _qTerm[(int)t].N - _benchN0[(int)t];
-        return n > 0 && _qTerm[(int)t].Sum >= _benchSum0[(int)t] ? (_qTerm[(int)t].Sum - _benchSum0[(int)t]) / (double)n / 1e6 : 0.0;
     }
 
     private static void BenchFinish(string why)
@@ -197,7 +170,7 @@ public sealed unsafe partial class AlloyRenderer
                         + BenchTopSavings());
     }
 
-    /// <summary>The three steps that cut the GPU span most, for the finish notice -- the knob name alone, which
+    /// <summary>The three steps that cut the frame time most, for the finish notice -- the knob name alone, which
     /// is the half of a step's label that fits a chat line.</summary>
     private static string BenchTopSavings()
     {
@@ -215,7 +188,7 @@ public sealed unsafe partial class AlloyRenderer
             if (best < 0) break;
             string label = BenchLabel(best);
             int cut = label.IndexOf(" (", StringComparison.Ordinal);
-            s += (s.Length > 0 ? ", " : ". Biggest GPU savings: ") + $"{(cut > 0 ? label[..cut] : label)} {_benchSaved[best]:0.00} ms";
+            s += (s.Length > 0 ? ", " : ". Biggest frame-time savings (wall; a capped display hides a GPU saving): ") + $"{(cut > 0 ? label[..cut] : label)} {_benchSaved[best]:0.00} ms";
             _benchSaved[best] = 0.0;   // taken: the next rank finds the next one down
         }
         return s;

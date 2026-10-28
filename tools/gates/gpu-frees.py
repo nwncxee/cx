@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
-"""Immediate GPU frees per file under managed/ -- the CX-319 census, for the ratchet.
+"""Immediate GL frees per file under managed/ -- the CX-319 census, for the ratchet.
 
     python3 tools/gates/gpu-frees.py       # "<count> <file>" lines
     python3 tools/gates/gpu-frees.py -v    # ...and every site, file:line
 
-A GPU object freed on a lifetime edge -- a resize, an area change, an eviction, a stand-down -- may still be
-read by the frames in flight. GL forgives it (the name goes, the object lives until no command names it);
-Vulkan does not, and vkDestroyImage on an image a submitted command buffer touches is undefined. The
-replacement is GpuGraveyard.Retire, whose drain deletes three frames later.
+A GL object freed on a lifetime edge -- a resize, an area change, an eviction, a stand-down -- may still be
+read by the frames in flight. The replacement is GpuGraveyard.Retire, whose drain deletes three frames later.
+Alloy's own objects are Vulkan's now, and VkBackend holds a freed one past its submit ring, so this census is
+over the GL that stays: the files CX0003 lists.
 
 What is left in the count is the legitimate remainder: a creation failure (the object was never submitted
-with), a scratch object made and dropped inside one bracket, and the lightmap page pool, which is freed
-precisely to make room for its replacement. So the ratchet is shrink-only, not a target of zero. The
-graveyard's own drain is the one exempt file.
+with) and a scratch object made and dropped inside one bracket. So the ratchet is shrink-only, not a target of
+zero. The graveyard's own drain is the one exempt file.
 """
 import re
 import subprocess

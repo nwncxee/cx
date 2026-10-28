@@ -108,18 +108,10 @@ public sealed unsafe partial class CasterPass : IExtenderService
 
     /// <summary>Views rendered on the last frame -- the views the re-bake predicate found STALE, not every
     /// view the budget holds (<c>/shadow rebake 0</c> puts it back to all of them) -- plus the CPU
-    /// milliseconds the shadow slot took. Those are CPU SUBMISSION only; <see cref="CasterGlState.QShadow"/> measures the
-    /// GPU side.</summary>
+    /// milliseconds the shadow slot took. CPU SUBMISSION only; the bake's GPU time is inside the Vulkan
+    /// frame's own figure on the <c>[vkgpu]</c> line.</summary>
     internal static int LastViews;
     internal static float LastShadowMs;
-    /// <summary>The period's average bake GPU time, for the [alloy] gpu total.</summary>
-    internal static double ShadowGpuMs => _gl.QShadow.Measured ? _gl.QShadow.Avg / 1e6 : 0.0;
-    /// <summary>The same meter's running totals, for a caller taking its OWN window rather than the period's
-    /// -- <c>/alloy bench</c>, whose steps are far shorter than a period line. The bake is the one GPU cost
-    /// that is not a <see cref="AlloyRenderer.GpuTerm"/>, and <c>lightmap.movers</c> moves it (the pair
-    /// tiles), so a bench step blind to it cannot split what that knob removes.</summary>
-    internal static ulong ShadowGpuSum => _gl.QShadow.Sum;
-    internal static int ShadowGpuN => _gl.QShadow.N;
     private static long _viewSum;
 
     public void Initialize(ExtenderLog log, HookService hooks)
@@ -391,7 +383,6 @@ public sealed unsafe partial class CasterPass : IExtenderService
     private static void Lifecycle()
     {
         if (!GlContextService.Available) Release("4.6 context lost");
-        if (_was.Available && !GlContextService.Available) ContextLost();
         _was.Available = GlContextService.Available;
         bool inModule = GameGate.InModule;
         if (_was.InModule && !inModule) Release("module unload");
@@ -525,7 +516,7 @@ public sealed unsafe partial class CasterPass : IExtenderService
         _dSrcFrames = 0; _dSrcDraws = 0; _dSrcOver = 0; _dSrcAudits = 0; _dSrcMiss = 0; _dSrcHalf = 0; _dSrcExtra = 0;
         CasterGather.DynDispatches = 0;
         _cubeLightsSum = 0; _viewSum = 0;
-        _liveSum = 0; _visitSum = 0; _touchedSum = 0; _gl.QShadow.Reset();
+        _liveSum = 0; _visitSum = 0; _touchedSum = 0;
         _cubeBakedSlots = 0; _cubeSkippedSlots = 0; _cubeOffSlots = 0; _cubeHeldSlots = 0; _cubeRoamSlots = 0; _cubeTurnovers = 0; _moverSum = 0; _ghostSum = 0; _cubeDynBakedPages = 0; _cubeDynBakedFaces = 0; _pairBakedTiles = 0;
         _sunBakedViews = 0; _sunSkippedViews = 0;
         Array.Clear(_sunStaticL); _sunDynBakedViews = 0; _sunDynSkipped = 0; _cubeDynSkipped = 0;

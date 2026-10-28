@@ -72,13 +72,13 @@ public sealed unsafe partial class AlloyRenderer
 
     private static EngineNamedState _engineU = new();
 
-    /// <summary>Context loss: the block's buffer belonged to the context that went, and so did the stamp
-    /// saying it holds this frame's terms. The owner is replaced whole, as every other block's is.</summary>
+    /// <summary>Device loss: the staged block describes a frame that is gone, and so does the stamp saying it
+    /// holds that frame's terms. The owner is replaced whole, as every other block's is.</summary>
     internal static void EngineBlockContextLost() => _engineU = new EngineNamedState();
 
-    /// <summary>Off-device: the context-loss slot leaves a NEW owner with a clear fill stamp. Oracle: the
-    /// reset's contract, written out here -- a buffer minted by the dead context must not be rebound, and a
-    /// stamp that still reads "filled this frame" is what would rebind it.</summary>
+    /// <summary>Off-device: the loss slot leaves a NEW owner with a clear fill stamp. Oracle: the reset's
+    /// contract, written out here -- a stamp that still reads "filled this frame" would serve the dead
+    /// device's terms to the next one.</summary>
     internal static bool EngineBlockSelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
@@ -86,16 +86,16 @@ public sealed unsafe partial class AlloyRenderer
         was.Frame = 0; was.Count = 7;
         EngineBlockContextLost();
         check.Expect(!ReferenceEquals(_engineU, was),
-                     "the context-loss slot kept the CxEngine owner, so its dead buffer name survives the loss");
+                     "the loss slot kept the CxEngine owner, so the dead device's terms survive the loss");
         check.Expect(!ReferenceEquals(_engineU.Blk, was.Blk), "...or it kept the block object inside it");
         check.Expect(_engineU.Frame == -1 && _engineU.Count == 0,
-                     "the replacement owner's fill stamp is not clear, so the first bind after a loss would rebind a dead buffer");
+                     "the replacement owner's fill stamp is not clear, so the first fill after a loss would be skipped");
         log.Info(check.Ok ? "AlloyRenderer.EngineBlockSelfCheck: passed (the CxEngine owner goes with the context)"
                           : "AlloyRenderer.EngineBlockSelfCheck: FAILED");
         return check.Ok;
     }
 
-    /// <summary>Fill the <c>CxEngine</c> block out of the engine's live state and bind it on
+    /// <summary>Fill the <c>CxEngine</c> block out of the engine's live state, for the frame to stage on
     /// <see cref="UboSlots.Engine"/>. The calendar, weather and mouse come off <see cref="Rt"/>, the frame
     /// counter is the presented frame's, the projection this pass's and the point sources Alloy's own wind's.
     /// Allocates nothing.</summary>
@@ -104,8 +104,7 @@ public sealed unsafe partial class AlloyRenderer
         FillEngineBlock();   // Vulkan takes the staged block (EngineBlockStaged)
     }
 
-    /// <summary>The <c>CxEngine</c> block <see cref="BindEngineBlock"/> binds, staged and not bound. The noise term is a
-    /// GL bindless handle.</summary>
+    /// <summary>The <c>CxEngine</c> block <see cref="BindEngineBlock"/> fills, as staged.</summary>
     internal static ref EngineBlock EngineBlockStaged()
     {
         FillEngineBlock();

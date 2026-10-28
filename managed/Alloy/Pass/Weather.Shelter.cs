@@ -6,15 +6,15 @@ using CX.Graphics;
 namespace CX.Alloy;
 
 /// <summary>The weather's precomputed surface terms: what the lit stage, the grass and the water used to work
-/// out per pixel per frame for a world that had not changed. Three textures -- the shelter disk and snow drift
-/// per cover bake, the value-noise tile per context, the ripple tile per rainy frame -- all read through
+/// out per pixel per frame for a world that had not changed. Three images -- the shelter disk and snow drift
+/// per cover bake, the value-noise tile per device, the ripple tile per rainy frame -- all read through
 /// <c>layout(binding)</c> units past the 0..15 budget (<see cref="TextureSlots"/>' reason).</summary>
 internal static unsafe partial class Weather
 {
     internal static Knob<bool> ShelterCache = null!;
 
     internal const uint ShelterUnit = 23, NoiseUnit = 24, RippleUnit = 25;
-    private const int ShelterSizeMax = 2048, NoiseSize = 1024, RippleSize = 1024, ShelGroup = 8;
+    private const int ShelterSizeMax = 2048, NoiseSize = 1024, RippleSize = 1024;
 
     /// <summary>The parameters the cache was baked with; a knob that moves them re-bakes it.</summary>
     private static Vector4 _shelBaked;
@@ -38,24 +38,10 @@ internal static unsafe partial class Weather
     private static void UploadCache(int locCache, bool cover)
     {
         if (locCache >= 0) Gl.Uniform1f(locCache, cover && ShelterCache.V && ShelOk ? 1f : 0f);
-        Bind(ShelterUnit, _gl.ShelValid ? _gl.ShelTex : 0);
-    }
-
-    /// <summary>The weather noise tile and this frame's ripple field, onto their own units.</summary>
-    private static void BindTiles() { Bind(NoiseUnit, _gl.NoiseDone ? _gl.NoiseTex : 0); BindRipple(); }
-
-    internal static void BindRipple() => Bind(RippleUnit, _gl.RipTex);
-
-    private static void Bind(uint unit, uint tex)
-    {
-        if (Renderer.OnVulkan) return;
-        Gl.ActiveTexture(Gl.TEXTURE0 + unit);
-        Gl.BindTexture(Gl.TEXTURE_2D, tex);
-        Gl.ActiveTexture(Gl.TEXTURE0);
     }
 
     /// <summary>The cover bake is gone (area edge, flush failure): so is the cache baked from it.</summary>
-    private static void ShelterRelease() { _gl.ShelValid = false; _vks.ShelValid = false; }
+    private static void ShelterRelease() => _vks.ShelValid = false;
 
     private static string ShelterStats() => $", shelter cache {(ShelOk ? "held" : "none")} ({_shelBakes} bakes), ripple tiles {_ripBakes}";
 }
