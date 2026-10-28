@@ -149,6 +149,7 @@ internal static class ShaderSource
         texts.Add(("CasterGather.GatherCs", CasterGather.GatherCs));
         texts.Add(("CasterGather.LayerCs", CasterGather.LayerCs));
         texts.Add(("bindless header", AlloyRenderer.BindlessFs("uniform sampler2D uTex;\n")));
+        texts.Add(("GpuGolden.CaseBlocks", GpuGolden.CaseBlocks(1, 1)));
         return texts;
     }
 

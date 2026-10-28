@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 using System.Runtime.InteropServices;
 using CX.Framework;
 using CX.Graphics.Rhi;
@@ -14,11 +15,11 @@ namespace CX.Alloy;
 /// </summary>
 internal static partial class GpuGolden
 {
-    /// <summary>One record to pack and read back. The arrays are three or four long, as the lane they feed.</summary>
-    private readonly record struct GbufCase(double[] N, int Flags, double ViewDepth, double Rough, double Spec,
-                                            double Fresnel, double Coat, double CoatRough, double[] SpecC, int Slot,
-                                            double SpecT, double[] DiffT, double LmLum, double[] LmMover,
-                                            double[] LmShare, double[] SurfFade);
+    /// <summary>One record to pack and read back. <c>SurfFade</c>'s xyz is the geometric normal, its w the fade.</summary>
+    private readonly record struct GbufCase(Vector3 N, int Flags, double ViewDepth, double Rough, double Spec,
+                                            double Fresnel, double Coat, double CoatRough, Vector3 SpecC, int Slot,
+                                            double SpecT, Vector3 DiffT, double LmLum, Vector4 LmMover,
+                                            Vector3 LmShare, Vector4 SurfFade);
 
     /// <summary>The last ownership slot there is: the slot lane has to reach it, which is why a case asks for it.
     /// A parameter of the fixture, not an expected value -- every lane's oracle is the literal beside it.</summary>
@@ -27,25 +28,24 @@ internal static partial class GpuGolden
     /// <summary>Hand-written records: everything at or near its floor, everything at its ceiling (the last slot,
     /// every flag, a fade at its maximum), an ordinary oblique surface with tiny weights, and one with negative
     /// and over-range terms the pack has to clamp. Each is the oracle for its own lanes.</summary>
-    private static GbufCase[] GbufCases =>
+    private static readonly GbufCase[] GbufCases =
     [
-        new([0, 0, 1], 1, 0.5, 0.02, 0.04, 0, 0, 0, [0.04, 0.04, 0.04], 0, 1.0, [0.5, 0.25, 0.125], 0,
-            [0, 0, 0, 0], [0, 0, 0], [0, 0, 1, 0]),
-        new([0, 0, -1], 63, 37.25, 1, 1, 1, 1, 1, [1, 1, 1], LastSlot, 10.0, [40.0, 0.001, 3.0], 12.5,
-            [1, 0.5, 0.25, 0], [55.0, 54.0, 0], [0.6, 0, 0.8, 10.0]),
-        new([0.267, -0.535, 0.802], 7, 900.0, 0.31, 0.6, 0.35, 0.55, 0.02, [0.9, 0.3, 0.004], 4097, 0.37,
-            [1e-4, 2e-4, 3e-4], 0.0213, [0.2, 0.4, 0.6, 0.8], [0.7, 0.8, 0.9], [0, 0, -1, 1.0]),
-        new([-0.6, 0.64, -0.48], 41, 3.1, 0.75, 0.11, 0.9, 0.08, 0.3, [0, 0.5, 0.25], 99999, 0,
-            [0, 0, 0], 300.0, [0, 1, 0, 1], [1000.0, 1.0, 0.01], [-0.48, 0.6, 0.64, 4.37]),
+        new(new(0, 0, 1), 1, 0.5, 0.02, 0.04, 0, 0, 0, new(0.04f, 0.04f, 0.04f), 0, 1.0,
+            new(0.5f, 0.25f, 0.125f), 0, new(0, 0, 0, 0), new(0, 0, 0), new(0, 0, 1, 0)),
+        new(new(0, 0, -1), 63, 37.25, 1, 1, 1, 1, 1, new(1, 1, 1), LastSlot, 10.0,
+            new(40f, 0.001f, 3f), 12.5, new(1f, 0.5f, 0.25f, 0f), new(55f, 54f, 0f), new(0.6f, 0f, 0.8f, 10f)),
+        new(new(0.267f, -0.535f, 0.802f), 7, 900.0, 0.31, 0.6, 0.35, 0.55, 0.02, new(0.9f, 0.3f, 0.004f), 4097, 0.37,
+            new(1e-4f, 2e-4f, 3e-4f), 0.0213, new(0.2f, 0.4f, 0.6f, 0.8f), new(0.7f, 0.8f, 0.9f), new(0, 0, -1, 1f)),
+        new(new(-0.6f, 0.64f, -0.48f), 41, 3.1, 0.75, 0.11, 0.9, 0.08, 0.3, new(0f, 0.5f, 0.25f), 99999, 0,
+            new(0, 0, 0), 300.0, new(0, 1, 0, 1), new(1000f, 1f, 0.01f), new(-0.48f, 0.6f, 0.64f, 4.37f)),
     ];
 
     /// <summary>Floats in and out per case: the record's lanes in, then everything read back plus the three
     /// ownership answers, the chart's record and the fade.</summary>
     private const int GbufIn = 32, GbufOut = 40;
 
-    /// <summary>Floats per chart record (<c>CxChart</c>: rec and pick), and the chart record a baked slot gets --
-    /// page 2 at (16, 32) with a quarter of a page texel per atlas texel, picking channels 3, none, 7 and 254.</summary>
-    private const int ChartFloats = 8;
+    /// <summary>The chart record a baked slot gets -- page 2 at (16, 32) with a quarter of a page texel per atlas
+    /// texel, picking channels 3, none, 7 and 254 -- and an unbaked one, as the buffer holds them.</summary>
     private static readonly float[] BakedChart = [2f, 16f, 32f, 0.25f, 3f, -1f, 7f, 254f];
     private static readonly float[] UnbakedChart = [-1f, 0f, 0f, 0f, -1f, -1f, -1f, -1f];
 
@@ -59,9 +59,7 @@ internal static partial class GpuGolden
     /// records and what each reads back are hand-written too, each the other's independent half.</summary>
     private static void GbufSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
     {
-        GbufCase[] cases = GbufCases;
-        // uLmPages gates the lightmap SAMPLERS, which this golden never reaches: a const 0 folds them out, and
-        // the chart's own record -- the lanes under test -- is read either way
+        // uLmPages gates the lightmap SAMPLERS, which this golden never reaches: a const 0 folds them out
         string chart = ShaderSource.Get("cx_chartbuf.glsl")
             .Replace("uniform int uLmPages;", "const int uLmPages = 0;", StringComparison.Ordinal);
         check.Expect(chart.Contains("const int uLmPages", StringComparison.Ordinal),
@@ -104,17 +102,17 @@ internal static partial class GpuGolden
         check.Expect(!pipe.IsNull, "the G-buffer golden's stage builds for the device");
         if (!pipe.IsNull)
         {
-            BufferId charts = GbufCharts(vk, log, cases);
+            BufferId charts = GbufCharts(vk, check, log);
             check.Expect(!charts.IsNull, "the chart buffer the slot lane indexes exists");
             if (!charts.IsNull)
             {
-                int n = cases.Length;
+                int n = GbufCases.Length;
                 var flat = new float[n * GbufIn];
-                for (int k = 0; k < n; k++) GbufRow(cases[k]).CopyTo(flat, k * GbufIn);
+                for (int k = 0; k < n; k++) GbufRow(GbufCases[k], flat.AsSpan(k * GbufIn, GbufIn));
                 float[]? got = RunCases(vk, log, pipe, n, flat, n * GbufOut, "golden gbuf lanes",
                     [new BufferBinding(SsboSlots.Chart, charts)]);
                 check.Expect(got != null, "the G-buffer golden dispatches and reads back");
-                if (got != null) GbufJudge(check, log, cases, got);
+                if (got != null) GbufJudge(check, log, got);
             }
             vk.Destroy(charts);
         }
@@ -122,52 +120,60 @@ internal static partial class GpuGolden
         vk.Destroy(cs);
     }
 
-    /// <summary>One case's lanes as the stage reads them, padded to <see cref="GbufIn"/>.</summary>
-    private static float[] GbufRow(in GbufCase c)
+    /// <summary>One case's lanes as the stage reads them.</summary>
+    private static void GbufRow(in GbufCase c, Span<float> row)
     {
-        double[] row =
-        [
-            .. c.N, c.Flags, c.ViewDepth, c.Rough, c.Spec, c.Fresnel, c.Coat, c.CoatRough, .. c.SpecC, c.Slot,
-            c.SpecT, .. c.DiffT, c.LmLum, .. c.LmMover, .. c.LmShare, .. c.SurfFade,
-        ];
-        var f = new float[GbufIn];
-        for (int i = 0; i < row.Length && i < GbufIn; i++) f[i] = (float)row[i];
-        return f;
+        row[0] = c.N.X; row[1] = c.N.Y; row[2] = c.N.Z;
+        row[3] = c.Flags;
+        row[4] = (float)c.ViewDepth;
+        row[5] = (float)c.Rough; row[6] = (float)c.Spec; row[7] = (float)c.Fresnel;
+        row[8] = (float)c.Coat; row[9] = (float)c.CoatRough;
+        row[10] = c.SpecC.X; row[11] = c.SpecC.Y; row[12] = c.SpecC.Z;
+        row[13] = c.Slot;
+        row[14] = (float)c.SpecT;
+        row[15] = c.DiffT.X; row[16] = c.DiffT.Y; row[17] = c.DiffT.Z;
+        row[18] = (float)c.LmLum;
+        row[19] = c.LmMover.X; row[20] = c.LmMover.Y; row[21] = c.LmMover.Z; row[22] = c.LmMover.W;
+        row[23] = c.LmShare.X; row[24] = c.LmShare.Y; row[25] = c.LmShare.Z;
+        row[26] = c.SurfFade.X; row[27] = c.SurfFade.Y; row[28] = c.SurfFade.Z; row[29] = c.SurfFade.W;
     }
 
     /// <summary>The chart buffer, every slot's record zero but the ones the cases name: the last slot baked, and
     /// each other case's slot explicitly unbaked. Sized for the whole ownership table, so the slot lane's own
     /// ceiling is a real index into it.</summary>
-    private static BufferId GbufCharts(VkBackend vk, ExtenderLog log, GbufCase[] cases)
+    private static BufferId GbufCharts(VkBackend vk, Checker check, ExtenderLog log)
     {
-        long bytes = (long)AlloyRenderer.MaxOwned * ChartFloats * sizeof(float);
-        BufferId b = vk.CreateBuffer(new BufferDesc(bytes, BufferUse.Storage | BufferUse.CopyDst, MemoryKind.Device,
-                                                    "golden gbuf charts"));
+        long stride = LightmapBake.RecFloats * sizeof(float);
+        BufferId b = vk.CreateBuffer(new BufferDesc(AlloyRenderer.MaxOwned * stride,
+            BufferUse.Storage | BufferUse.CopyDst, MemoryKind.Device, "golden gbuf charts"));
         if (b.IsNull) return b;
         var cl = new CommandList("golden gbuf charts", 4096, log);
         cl.ZeroBuffer(b);
-        foreach (GbufCase c in cases)
+        foreach (GbufCase c in GbufCases)
         {
             int slot = c.Slot & GbufSlotMask;
+            check.Expect(slot < AlloyRenderer.MaxOwned,
+                $"gbuf case slot {c.Slot} folds to {slot}, past the {AlloyRenderer.MaxOwned} records the chart holds");
             if (slot >= AlloyRenderer.MaxOwned) continue;
             float[] rec = slot == LastSlot ? BakedChart : UnbakedChart;
-            cl.UpdateBuffer(b, (long)slot * ChartFloats * sizeof(float), MemoryMarshal.AsBytes(rec.AsSpan()));
+            cl.UpdateBuffer(b, slot * stride, MemoryMarshal.AsBytes(rec.AsSpan()));
         }
         if (vk.Submit(cl)) return b;
         vk.Destroy(b);
         return default;
     }
 
-    /// <summary>The slot lane's width, as cx_gbuf's CX_GB_SLOT_BITS gives it: a slot past it comes back folded.</summary>
+    /// <summary>The slot lane's width, hand-written from cx_gbuf's CX_GB_SLOT_BITS rather than read out of it: a
+    /// slot past the lane comes back folded, and what it folds to is this golden's own answer.</summary>
     private const int GbufSlotMask = (1 << 18) - 1;
 
     /// <summary>Each lane against the case it came from, at the precision the format gives that lane.</summary>
-    private static void GbufJudge(Checker check, ExtenderLog log, GbufCase[] cases, float[] got)
+    private static void GbufJudge(Checker check, ExtenderLog log, float[] got)
     {
         double worstN = 0;
-        for (int k = 0; k < cases.Length; k++)
+        for (int k = 0; k < GbufCases.Length; k++)
         {
-            GbufCase c = cases[k];
+            GbufCase c = GbufCases[k];
             ReadOnlySpan<float> r = got.AsSpan(k * GbufOut, GbufOut);
             string tag = $"gbuf case {k}";
             check.Expect(r[26] == 1f && r[27] == 0f && r[28] == 0f,
@@ -192,10 +198,10 @@ internal static partial class GpuGolden
             for (int j = 0; j < 3; j++) Near(check, $"{tag}: diffT", r[15 + j], c.DiffT[j], Max(c.DiffT) / 400 + 1e-9);
             for (int j = 0; j < 3; j++) Near(check, $"{tag}: lmShare", r[23 + j], c.LmShare[j], Max(c.LmShare) / 400 + 1e-9);
             // G2: the fade in 8 bits over [0, 10], and the geometric normal at G0's own precision where there is one
-            Near(check, $"{tag}: surfFade", r[37], c.SurfFade[3], 0.5 / 255 * 10.0 + 1e-6);
-            if (c.SurfFade[3] > 0)
+            Near(check, $"{tag}: surfFade", r[37], c.SurfFade.W, 0.5 / 255 * 10.0 + 1e-6);
+            if (c.SurfFade.W > 0)
             {
-                double ga = Angle(r[34..37], c.SurfFade);
+                double ga = Angle(r[34..37], new Vector3(c.SurfFade.X, c.SurfFade.Y, c.SurfFade.Z));
                 worstN = Math.Max(worstN, ga);
                 check.Expect(ga <= NormalDeg, $"{tag}: the geometric normal came back {ga:F4} deg off");
             }
@@ -204,7 +210,7 @@ internal static partial class GpuGolden
                 $"{tag}: slot {c.Slot & GbufSlotMask}'s chart read back [{string.Join(", ", r[29..34].ToArray())}], "
               + $"want [{string.Join(", ", want)}]");
         }
-        log.Info($"GpuGolden: gbuf lanes, {cases.Length} cases, normal within {worstN:F4} deg");
+        log.Info($"GpuGolden: gbuf lanes, {GbufCases.Length} cases, normal within {worstN:F4} deg");
     }
 
     /// <summary>Half a step of an 8-bit unorm lane, and the degrees an octahedral normal may be off by.</summary>
@@ -213,18 +219,18 @@ internal static partial class GpuGolden
     /// <summary>Half a step of a sqrt-encoded unorm lane at <paramref name="steps"/>, which widens toward 0.</summary>
     private static double Sq(double x, int steps) => 2.0 * Math.Sqrt(x) * 0.5 / steps + 0.25 / (steps * (double)steps) + 1e-6;
 
-    private static double Max(double[] v) => Math.Max(v[0], Math.Max(v[1], v[2]));
+    /// <summary>The largest of a weight triple, which its shared exponent is fitted to.</summary>
+    private static double Max(Vector3 v) => Math.Max(v.X, Math.Max(v.Y, v.Z));
 
     private static void Near(Checker check, string what, double got, double want, double tol)
         => check.Expect(Math.Abs(got - want) <= tol, $"{what} came back {got:G6} for {want:G6} (tolerance {tol:G3})");
 
     /// <summary>The angle in degrees between a read-back direction and the case's own, both normalized.</summary>
-    private static double Angle(ReadOnlySpan<float> got, double[] want)
+    private static double Angle(ReadOnlySpan<float> got, Vector3 want)
     {
-        double wl = Math.Sqrt(want[0] * want[0] + want[1] * want[1] + want[2] * want[2]);
-        double gl = Math.Sqrt(got[0] * (double)got[0] + got[1] * (double)got[1] + got[2] * (double)got[2]);
+        double wl = want.Length(), gl = Math.Sqrt(got[0] * (double)got[0] + got[1] * (double)got[1] + got[2] * (double)got[2]);
         if (wl < 1e-9 || gl < 1e-9) return 180.0;
-        double d = (got[0] * want[0] + got[1] * want[1] + got[2] * want[2]) / (wl * gl);
+        double d = (got[0] * (double)want.X + got[1] * (double)want.Y + got[2] * (double)want.Z) / (wl * gl);
         return Math.Acos(Math.Clamp(d, -1.0, 1.0)) * 180.0 / Math.PI;
     }
 }

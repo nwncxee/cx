@@ -64,6 +64,7 @@ internal static class SsboSlots
         ["CxHaloBuf"] = Halos, ["CxTrigBuf"] = Trig, ["CxGuiBuf"] = Gui,
         ["CxProbeShOut"] = ProbeSh, ["CxBonePrevBuf"] = BonesPrev, ["CxDanglyPrevBuf"] = DanglyPrev,
         ["CxContentBuf"] = Content,
+        ["CxGoldenIn"] = GoldenIn, ["CxGoldenOut"] = GoldenOut,
     };
 
     private static readonly Regex Decl = new(@"layout\(std430,\s*binding\s*=\s*(\d+)\)\s*(?:\w+\s+)*?buffer\s+(\w+)");

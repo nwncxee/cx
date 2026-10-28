@@ -26,7 +26,8 @@ public static unsafe partial class VulkanToolchain
 
     /// <summary><c>vkInitialize</c>, retried behind an absolute-path load of each known loader: dlopening one
     /// registers its SONAME, which the by-name load inside the bindings then answers from. Idempotent, and
-    /// never throws -- a machine with no loader at all reports <see cref="VkResult.ErrorInitializationFailed"/>.</summary>
+    /// never throws -- a machine with no loader at all reports <see cref="VkResult.ErrorInitializationFailed"/>.
+    /// Windows takes the first answer: its loader is <c>vulkan-1.dll</c> beside the system, resolved by name.</summary>
     internal static VkResult InitLoader()
     {
         VkResult first = Init();

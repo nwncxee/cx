@@ -15,9 +15,9 @@ namespace CX.Alloy;
 /// </summary>
 internal static partial class GpuGolden
 {
-    /// <summary>The goldens off-device, on a device of their own: a build shell whose Vulkan loader has a driver
-    /// behind it runs them with no game. In a session Alloy owns the one device, so this skips and
-    /// <see cref="DeviceCheck"/> runs them on Alloy's instead.</summary>
+    /// <summary>The goldens off-device, on a device made and disposed here and never a session's: a shell whose
+    /// Vulkan loader has a driver behind it runs them with no game. In a session Alloy owns the one device, so
+    /// this skips and <see cref="DeviceCheck"/> runs them on Alloy's instead.</summary>
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "GpuGolden.SelfCheck");
@@ -35,12 +35,15 @@ internal static partial class GpuGolden
     }
 
     /// <summary>The goldens on Alloy's device, once, at the frame that made it -- the one place in a session
-    /// where a device exists and nothing has recorded a pass into it yet.</summary>
+    /// where a device exists and nothing has recorded a pass into it yet. A failure here is this driver's own,
+    /// so it is said whether or not the log is on.</summary>
     internal static void DeviceCheck(VkBackend vk, ExtenderLog log)
     {
         var check = new Checker(log, "GpuGolden.DeviceCheck");
         Run(vk, check, log);
-        log.Info(check.Ok ? "GpuGolden.DeviceCheck: passed" : "GpuGolden.DeviceCheck: FAILED -- see above");
+        if (check.Ok) log.Info("GpuGolden.DeviceCheck: passed");
+        else log.Always("GpuGolden.DeviceCheck: FAILED -- this driver does not answer as the shaders' own golden "
+                      + "values say it should; turn general.logs on for the lane that disagreed");
     }
 
     /// <summary>All three goldens on <paramref name="vk"/>, each cleaning up after itself so a device the
@@ -52,7 +55,7 @@ internal static partial class GpuGolden
         LightmapSelfCheck(vk, check, log);
     }
 
-    /// <summary>The version line every golden stage opens with, and the group side each dispatches one case per.</summary>
+    /// <summary>The version line every golden stage opens with, and the one the shipped libraries open with.</summary>
     private const string Version = "#version 460 core\n";
 
     /// <summary>One compute stage of <paramref name="src"/> built for the device: its pipeline and the module
@@ -66,8 +69,9 @@ internal static partial class GpuGolden
     }
 
     /// <summary>The storage block pair every case-per-group golden reads and writes, on the points
-    /// <see cref="SsboSlots"/> names -- interpolated, so the GLSL and the bind are one number.</summary>
-    private static string CaseBlocks(int inFloats, int outFloats) =>
+    /// <see cref="SsboSlots"/> names -- interpolated, so the GLSL and the bind are one number. Internal because
+    /// the binding contract reads it as one of the stages composed in C#.</summary>
+    internal static string CaseBlocks(int inFloats, int outFloats) =>
         $"layout(std430, binding = {SsboSlots.GoldenIn}) readonly buffer CxGoldenIn {{ float uIn[]; }};\n"
       + $"layout(std430, binding = {SsboSlots.GoldenOut}) writeonly buffer CxGoldenOut {{ float uOut[]; }};\n"
       + $"const int CX_GOLD_IN = {inFloats}, CX_GOLD_OUT = {outFloats};\n";

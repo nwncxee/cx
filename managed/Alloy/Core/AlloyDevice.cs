@@ -30,8 +30,7 @@ internal static class AlloyDevice
             if (s.Vk != null && !SsboSlots.CheckDevice(s.Vk.Caps, log)) { s.Vk.Dispose(); s.Vk = null; s.VkRefused = true; }
             // the seam's two image copies against a fixture, before the first pass records one
             s.Vk?.CopyDeviceCheck(log);
-            // ...and the three shader goldens, which need a GPU to mean anything: the lightmap block encoder
-            // against the driver's BC decoder, the G-buffer's lanes, and parallax against the stock march
+            // ...and the three shader goldens, on the driver whose answers they are about
             if (s.Vk != null) GpuGolden.DeviceCheck(s.Vk, log);
         }
         return s.Vk;

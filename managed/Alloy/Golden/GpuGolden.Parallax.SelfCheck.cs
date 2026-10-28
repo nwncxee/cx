@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 using CX.Framework;
 using CX.Graphics.Rhi;
 using CX.Rhi;
@@ -21,19 +22,19 @@ internal static partial class GpuGolden
 
     /// <summary>One march to check: the texture coordinate, the tangent frame's three columns (T, B, N), the
     /// surface-to-eye direction, the view depth and the screen height in pixels.</summary>
-    private readonly record struct DisplaceCase(double U, double V, double[] T, double[] B, double[] N,
-                                                double[] Eye, double Depth, double ScreenH);
+    private readonly record struct DisplaceCase(float U, float V, Vector3 T, Vector3 B, Vector3 N,
+                                                Vector3 Eye, float Depth, float ScreenH);
 
     /// <summary>Hand-written marches: head-on and grazing, two tangent frames that permute the axes (so a
     /// transpose the wrong way round shows), and near and far enough that the step count falls to one and to
     /// none. Floats of 16 per case, as <c>CX_GOLD_IN</c> says.</summary>
     private static readonly DisplaceCase[] DisplaceCases =
     [
-        new(0.3, 0.7, [1, 0, 0], [0, 1, 0], [0, 0, 1], [0.7071068, 0.0, 0.7071068], 3.0, 1080),
-        new(0.15, 0.4, [1, 0, 0], [0, 1, 0], [0, 0, 1], [0.0, -0.9848078, 0.1736482], 10.0, 1080),
-        new(0.6, 0.2, [0, 1, 0], [-1, 0, 0], [0, 0, 1], [0.5, 0.3, 0.8124038], 6.0, 2160),
-        new(0.9, 0.55, [1, 0, 0], [0, 0, 1], [0, -1, 0], [0.3, -0.8, 0.5196152], 40.0, 1080),
-        new(0.42, 0.13, [1, 0, 0], [0, 1, 0], [0, 0, 1], [0.5, 0.0, 0.8660254], 200.0, 1080),
+        new(0.3f, 0.7f, new(1, 0, 0), new(0, 1, 0), new(0, 0, 1), new(0.7071068f, 0f, 0.7071068f), 3f, 1080f),
+        new(0.15f, 0.4f, new(1, 0, 0), new(0, 1, 0), new(0, 0, 1), new(0f, -0.9848078f, 0.1736482f), 10f, 1080f),
+        new(0.6f, 0.2f, new(0, 1, 0), new(-1, 0, 0), new(0, 0, 1), new(0.5f, 0.3f, 0.8124038f), 6f, 2160f),
+        new(0.9f, 0.55f, new(1, 0, 0), new(0, 0, 1), new(0, -1, 0), new(0.3f, -0.8f, 0.5196152f), 40f, 1080f),
+        new(0.42f, 0.13f, new(1, 0, 0), new(0, 1, 0), new(0, 0, 1), new(0.5f, 0f, 0.8660254f), 200f, 1080f),
     ];
 
     /// <summary>Floats in and out per case: the frame and the march's terms, then the coordinate it lands on.</summary>
@@ -50,8 +51,7 @@ internal static partial class GpuGolden
             "cx_ownlit_synth declares CxDisplace and cx_ownlit_head CX_DISPLACE_STEPS");
         if (march.Length == 0 || steps.Length == 0) return;
 
-        // the march samples its height map through textureGrad: the macro hands both sides the same analytic
-        // field instead, and with no `t` in the replacement the sampler itself never reaches the compiler
+        // the macro drops its `t`, so no height sampler reaches the compiler and both sides march one field
         string src = Version + "layout(local_size_x = 1) in;\n" + steps
                    + $"float cxH(vec2 p) {{ return {HeightGlsl}; }}\n"
                    + "#define textureGrad(t, p, a, b) vec4(cxH(p))\n" + march
@@ -75,8 +75,15 @@ internal static partial class GpuGolden
             for (int k = 0; k < n; k++)
             {
                 DisplaceCase c = DisplaceCases[k];
-                double[] row = [c.U, c.V, .. c.T, .. c.B, .. c.N, .. c.Eye, c.Depth, c.ScreenH];
-                for (int i = 0; i < row.Length; i++) cases[k * DisplaceIn + i] = (float)row[i];
+                int b = k * DisplaceIn;
+                cases[b] = c.U;
+                cases[b + 1] = c.V;
+                Lanes(cases, b + 2, c.T);
+                Lanes(cases, b + 5, c.B);
+                Lanes(cases, b + 8, c.N);
+                Lanes(cases, b + 11, c.Eye);
+                cases[b + 14] = c.Depth;
+                cases[b + 15] = c.ScreenH;
             }
             float[]? got = RunCases(vk, log, pipe, n, cases, n * DisplaceOut, "golden parallax");
             check.Expect(got != null, "the parallax golden dispatches and reads back");
@@ -103,6 +110,14 @@ internal static partial class GpuGolden
         vk.Destroy(cs);
     }
 
+    /// <summary>A direction's three components into the case row at <paramref name="at"/>.</summary>
+    private static void Lanes(float[] row, int at, Vector3 v)
+    {
+        row[at] = v.X;
+        row[at + 1] = v.Y;
+        row[at + 2] = v.Z;
+    }
+
     /// <summary>What a march may differ by and still be the same march: the GPU runs it in single precision over
     /// up to 32 dependent steps, where the oracle runs in double.</summary>
     private const double DisplaceTol = 1e-4;
@@ -112,17 +127,17 @@ internal static partial class GpuGolden
     /// shader. Returns the case's own coordinate where the stock march takes no step.</summary>
     private static (double U, double V) StockDisplace(in DisplaceCase c)
     {
-        double[] ng = c.N;
-        double m = 1.0 - 0.5 * Dot(c.Eye, ng);   // 1 + 0.5 * dot(vViewToSurface_n, ng)
-        m *= m / (c.Depth * 0.125);              // -vPosView.z
+        double m = 1.0 - 0.5 * Dot(c.Eye, c.N);   // 1 + 0.5 * dot(vViewToSurface_n, ng)
+        m *= m / (c.Depth * 0.125);               // -vPosView.z
         double it = 32.0 * Math.Clamp(m * c.ScreenH / 1080.0, 0.0, 1.0);
         if (!(it > 0.5)) return (c.U, c.V);
-        double[] vd = [Dot(c.T, c.Eye), Dot(c.B, c.Eye), Dot(ng, c.Eye)];   // transpose(mTSB) * -vViewToSurface_n
+        // transpose(mTSB) * -vViewToSurface_n: the frame's columns against the eye direction
+        double vdT = Dot(c.T, c.Eye), vdB = Dot(c.B, c.Eye), vdN = Dot(c.N, c.Eye);
         it = Math.Floor(it + 0.5);
         double seg = 1.0 / it;
-        double zh = 0.5 * vd[2] + 0.5;
-        double k = 0.05 * ((1.0 - vd[2]) / (zh * zh) + 1.0);
-        double dx = vd[0] * k, dy = vd[1] * k;
+        double zh = 0.5 * vdN + 0.5;
+        double k = 0.05 * ((1.0 - vdN) / (zh * zh) + 1.0);
+        double dx = vdT * k, dy = vdB * k;
         double cur = (1.0 - Height(c.U, c.V)) * seg;
         for (int i = (int)it; i > 1; i--)
         {
@@ -134,5 +149,6 @@ internal static partial class GpuGolden
         return (c.U - dx * cur, c.V - dy * cur);
     }
 
-    private static double Dot(double[] a, double[] b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    /// <summary>A dot product in double, so the oracle's precision is the oracle's and not the march's.</summary>
+    private static double Dot(Vector3 a, Vector3 b) => (double)a.X * b.X + (double)a.Y * b.Y + (double)a.Z * b.Z;
 }

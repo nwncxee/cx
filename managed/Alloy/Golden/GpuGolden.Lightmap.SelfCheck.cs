@@ -30,9 +30,9 @@ internal static partial class GpuGolden
     /// decoders make of the blocks the encoder wrote. The encoder is never asked what it should have produced.</summary>
     private static void LightmapSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
     {
-        LmFixture(out float[] pa, out float[] pb, out float[] pc, out float[]?[] want);
+        LmFixture(out float[] pa, out float[] pb, out float[] pc, out LmTexel?[] want);
         int covered = 0;
-        foreach (float[]? w in want) if (w != null) covered++;
+        foreach (LmTexel? w in want) if (w != null) covered++;
         check.Expect(covered > LmN * LmN / 2 && covered < LmN * LmN,
             $"the fixture finishes {covered} of {LmN * LmN} texels -- some covered, some past the dilation's reach");
 
@@ -48,7 +48,7 @@ internal static partial class GpuGolden
             "cx_bakeenc_c opens with the version line this golden moves its layer define past, and still declares "
           + "uRegion and uPageLayer as the loose uniforms it folds out");
         PipelineId enc = Compute(vk, src, "golden lightmap encoder", out ShaderId encCs);
-        PipelineId dec = Compute(vk, Readback2, "golden lightmap decoder", out ShaderId decCs);
+        PipelineId dec = Compute(vk, FrameTap.ReadbackCs(LmDecodeWords), "golden lightmap decoder", out ShaderId decCs);
         check.Expect(!enc.IsNull && !dec.IsNull, "the lightmap golden's encoder and decoder stages build for the device");
 
         var r = new LmRes();
@@ -75,10 +75,9 @@ internal static partial class GpuGolden
     /// <summary>The page-array layer the encoder is told to write, so a write to the other one shows.</summary>
     private const int LmLayer = 1;
 
-    /// <summary>The shipped read-back stage set to two words a texel: a float target's RGBA as two half pairs,
-    /// which is how a decoded BC block comes back off the device.</summary>
-    private static string Readback2 =>
-        ShaderSource.Get("cx_readback_c.glsl").Replace(Version, Version + "#define CX_READBACK_WORDS 2\n", StringComparison.Ordinal);
+    /// <summary>Words a decoded texel reads back as: a float target's RGBA is two half pairs, which is how a
+    /// decoded BC block comes off the device.</summary>
+    private const int LmDecodeWords = 2;
 
     /// <summary>The golden's images: three scratch planes, the two block lanes the encoder writes, the
     /// block-compressed pair those are copied into, and the page layer plane C lands on.</summary>
@@ -149,8 +148,8 @@ internal static partial class GpuGolden
     /// into four floats a texel. Null when a step was refused.</summary>
     private static float[]? LmDecode(VkBackend vk, ExtenderLog log, ImageId bc, PipelineId dec, string what)
     {
-        BufferId outb = vk.CreateBuffer(new BufferDesc(LmN * LmN * 2 * sizeof(uint), BufferUse.Storage | BufferUse.CopySrc,
-            MemoryKind.Device, "golden lightmap " + what));
+        BufferId outb = vk.CreateBuffer(new BufferDesc(LmN * LmN * LmDecodeWords * sizeof(uint),
+            BufferUse.Storage | BufferUse.CopySrc, MemoryKind.Device, "golden lightmap " + what));
         float[]? got = null;
         if (!outb.IsNull)
         {
@@ -158,9 +157,9 @@ internal static partial class GpuGolden
             cl.ReadImages([bc]);
             cl.SetPipeline(dec);
             cl.BindSet(0, new BindSet(default, [new BufferBinding(SsboSlots.ReadbackOut, outb)], [new ImageBinding(0, bc)], default));
-            int groups = (LmN + ReadbackGroup - 1) / ReadbackGroup;
+            int groups = (LmN + FrameTap.ReadbackGroup - 1) / FrameTap.ReadbackGroup;
             cl.Dispatch(groups, groups);
-            var words = new uint[LmN * LmN * 2];
+            var words = new uint[LmN * LmN * LmDecodeWords];
             if (vk.Submit(cl) && vk.ReadBack(outb, MemoryMarshal.AsBytes(words.AsSpan())))
             {
                 got = new float[LmN * LmN * 4];
@@ -176,9 +175,6 @@ internal static partial class GpuGolden
         vk.Destroy(outb);
         return got;
     }
-
-    /// <summary>The read-back stage's group side, as <c>cx_readback_c.glsl</c> declares it.</summary>
-    private const int ReadbackGroup = 8;
 
     /// <summary>Page C's own layer, straight out of the image: the shares are already 8-bit.</summary>
     private static byte[]? LmShares(VkBackend vk, ExtenderLog log, LmRes r)
@@ -202,5 +198,47 @@ internal static partial class GpuGolden
         var h = new ushort[v.Length];
         for (int i = 0; i < v.Length; i++) h[i] = BitConverter.HalfToUInt16Bits((Half)v[i]);
         return MemoryMarshal.AsBytes(h.AsSpan()).ToArray();
+    }
+
+    /// <summary>The decoded planes against <paramref name="want"/>. The bounds are each format's, measured: one or
+    /// two lines a BC6H block cannot follow two coloured lights crossing, nor a 6x shadow step past mode 1's delta
+    /// range; directions and shares hold to a few 8-bit steps, and nothing is written outside the band.</summary>
+    private static void LmJudge(Checker check, ExtenderLog log, LmTexel?[] want, float[] irr, float[] dir, byte[] shares)
+    {
+        double smooth = 0, all = 0, sum = 0, dirErr = 0, shareErr = 0;
+        int n = 0, stray = 0, notBlack = 0;
+        for (int y = 0; y < LmN; y++)
+            for (int x = 0; x < LmN; x++)
+            {
+                int i = (y * LmN + x) * 4;
+                LmTexel? at = LmInBand(x, y) ? want[y * LmN + x] : null;
+                if (at is not LmTexel w)
+                {
+                    if (shares[i] != LmUntouched || shares[i + 1] != LmUntouched
+                        || shares[i + 2] != LmUntouched || shares[i + 3] != LmUntouched) stray++;
+                    if (!LmBlockFinished(want, x, y) && (irr[i] != 0f || irr[i + 1] != 0f || irr[i + 2] != 0f)) notBlack++;
+                    continue;
+                }
+                double rel = 0;
+                for (int c = 0; c < 3; c++) rel = Math.Max(rel, Math.Abs(irr[i + c] - w.Irr[c]) / Math.Max(w.Irr[c], 1e-3));
+                all = Math.Max(all, rel);
+                sum += rel;
+                n++;
+                if (!LmEdgeBlock(x, y)) smooth = Math.Max(smooth, rel);
+                for (int c = 0; c < 3; c++) dirErr = Math.Max(dirErr, Math.Abs(dir[i + c] - w.Dir[c]) * 255);
+                for (int c = 0; c < 4; c++) shareErr = Math.Max(shareErr, Math.Abs(shares[i + c] / 255.0 - w.Share[c]) * 255);
+            }
+        double mean = sum / Math.Max(n, 1);
+        check.Expect(n > 0, "the band the encoder wrote holds finished texels to judge");
+        check.Expect(mean <= 0.015, $"BC6H irradiance is {mean * 100:F2}% out on average, past 1.5%");
+        check.Expect(smooth <= 0.04, $"BC6H irradiance is {smooth * 100:F2}% out at worst off the shadow edge, past 4%");
+        check.Expect(all <= 0.10, $"BC6H irradiance is {all * 100:F2}% out at worst on the shadow edge, past 10%");
+        check.Expect(dirErr <= 6.0, $"the BC7 direction is {dirErr:F1} 8-bit steps out, past 6");
+        check.Expect(shareErr <= 1.01, $"the mover shares are {shareErr:F2} 8-bit steps out, past 1");
+        check.Expect(stray == 0, $"{stray} share texels were written outside what the finish answered for");
+        check.Expect(notBlack == 0, $"{notBlack} texels of blocks the encoder never wrote came back non-black");
+        log.Info($"GpuGolden: lightmap encoder, irradiance {mean * 100:F2}% mean, {smooth * 100:F2}% max off the shadow "
+               + $"edge, {all * 100:F2}% on it, direction {dirErr:F1} and shares {shareErr:F2} 8-bit steps, "
+               + $"{stray} stray share texels, {notBlack} texels of empty blocks not black");
     }
 }

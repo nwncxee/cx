@@ -12,7 +12,16 @@ internal static unsafe partial class FrameTap
     /// <see cref="Format.Rgba16F"/> and <see cref="WriteColour"/> unpacks it.</summary>
     private const int ColourWords = 2;
     /// <summary>The copy stage's local size, as <c>cx_readback_c.glsl</c> declares it.</summary>
-    private const int Group = 8;
+    internal const int ReadbackGroup = 8;
+
+    /// <summary>The copy stage composed for <paramref name="words"/> words a texel: the one place that text is
+    /// built, so a second reader of the same stage cannot drift from the frame tap's own.</summary>
+    internal static string ReadbackCs(int words)
+    {
+        const string Version = "#version 460 core\n";
+        return ShaderSource.Get("cx_readback_c.glsl")
+            .Replace(Version, Version + $"#define CX_READBACK_WORDS {words}\n", StringComparison.Ordinal);
+    }
 
     /// <summary>The read-back's copy stage, list and buffer, on one device.</summary>
     private sealed class TapVkState
@@ -58,8 +67,7 @@ internal static unsafe partial class FrameTap
         if (s.Dev != vk)
         {
             _vkTap = s = new TapVkState { Dev = vk, Cmds = new CommandList("vulkan frame tap", 4096, _log!) };
-            const string Version = "#version 460 core\n";
-            string src = ShaderSource.Get("cx_readback_c.glsl").Replace(Version, Version + $"#define CX_READBACK_WORDS {ColourWords}\n");
+            string src = ReadbackCs(ColourWords);
             var d = new PipelineDesc { Cs = vk.CreateShader(new ShaderDesc(ShaderStage.Compute, null, src, "frame tap copy")), Label = "frame tap copy" };
             s.Copy = vk.CreatePipeline(in d);
         }
@@ -77,7 +85,7 @@ internal static unsafe partial class FrameTap
         cl.Reset();
         cl.SetPipeline(s.Copy);
         cl.BindSet(0, new BindSet(default, [new BufferBinding(SsboSlots.ReadbackOut, s.Out)], [new ImageBinding(0, img)], default));
-        cl.Dispatch((w + Group - 1) / Group, (h + Group - 1) / Group);
+        cl.Dispatch((w + ReadbackGroup - 1) / ReadbackGroup, (h + ReadbackGroup - 1) / ReadbackGroup);
         return vk.Submit(cl) && vk.ReadBack(s.Out, MemoryMarshal.AsBytes(words.AsSpan())) ? words : null;
     }
 
