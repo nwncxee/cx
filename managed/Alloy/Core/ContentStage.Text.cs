@@ -72,7 +72,15 @@ internal static partial class ContentStage
             string code = StripLine(line, ref block);
             if (depth == 0 && !code.TrimStart().StartsWith('#'))
             {
-                string? rewritten = Kept(code, own) ? null : Rewrite(code, line, fragment, supplied, vsOut, ps, macros, zeroed, r);
+                string? rewritten;
+                if (Statements(code) is { } parts)
+                {
+                    var each = new StringBuilder();
+                    foreach (string st in parts)
+                        each.Append((Kept(st, own) ? null : Rewrite(st, st, fragment, supplied, vsOut, ps, macros, zeroed, r)) ?? st).Append('\n');
+                    rewritten = each.ToString(0, each.Length - 1);
+                }
+                else rewritten = Kept(code, own) ? null : Rewrite(code, line, fragment, supplied, vsOut, ps, macros, zeroed, r);
                 if (r.Refused != null) return text;
                 if (rewritten != null) { sb.Append(rewritten).Append('\n'); depth += Braces(code); continue; }
             }
@@ -106,6 +114,17 @@ internal static partial class ContentStage
     /// <summary>The cx frame uniforms (<see cref="FrameLoc"/>), which every host sets on a program that declares one.</summary>
     private static readonly string[] FrameNames = ["cxFrame", "cxMain", "cxFresh", "cxInvVp", "cxPrevVp", "cxEye", "cxView", "cxOverlay"];
     private static readonly Regex ImagePragma = new(@"(?m)^[ \t]*#[ \t]*pragma[ \t]+cx_image[ \t]+(\w+)", RegexOptions.Compiled);
+
+    /// <summary>A comment-stripped file-scope line holding several declarations (<c>uniform float a; uniform float b;</c>),
+    /// one statement each with its semicolon; null for a line of one statement, or one with a brace.</summary>
+    private static string[]? Statements(string code)
+    {
+        if (code.IndexOfAny(['{', '}']) >= 0 || !code.TrimEnd().EndsWith(';')) return null;
+        string[] parts = code.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length < 2) return null;
+        for (int i = 0; i < parts.Length; i++) parts[i] += ";";
+        return parts;
+    }
 
     /// <summary>Is this file-scope line a uniform declaration naming one of <paramref name="own"/>? It stays as written --
     /// its type may be an image with qualifiers the rewrite does not parse.</summary>
