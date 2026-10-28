@@ -34,6 +34,9 @@ internal static class SsboSlots
                         GatherSrc = 8, GatherCmd = 10, GatherCount = 11, CastSphere = 12,
                         GrassFaces = 8, GrassPatches = 9, GrassOut = 10, GrassCmd = 11,
                         ReadbackOut = 8;
+    /// <summary>The GPU goldens' fixture: the cases in, the stage's own answers out. The G-buffer golden reads
+    /// the chart beside them on <see cref="Chart"/>, so neither may take that point.</summary>
+    internal const uint GoldenIn = 8, GoldenOut = 9;
     /// <summary>The probe's SH output, which its dispatch unbinds after: the particle index point, whose every
     /// reader rebinds it, so the unbind cannot strand a lighting program.</summary>
     internal const uint ProbeSh = 15;
