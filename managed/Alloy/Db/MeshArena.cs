@@ -113,7 +113,6 @@ public static unsafe partial class MeshArena
     {
         internal float[] Mirror = Array.Empty<float>();
         internal int Used, Uploaded, Capacity, Dead;
-        internal uint Vbo;
         /// <summary>Both this format's vertex buffer and the shared element buffer are uploaded: the section's
         /// geometry is on the device and a range in it can be drawn.</summary>
         internal bool Resident;
@@ -123,7 +122,6 @@ public static unsafe partial class MeshArena
     private static Section[] _sect = NewSections();
     private static ushort[] _iMirror = Array.Empty<ushort>();
     private static int _iUsed, _iUploaded, _iCapacity, _iDead;
-    private static uint _ebo;
     private static bool _elementsFull;
 
     private static readonly List<int> _pendingFree = new();
@@ -894,9 +892,9 @@ public static unsafe partial class MeshArena
             for (int f = 0; f < Formats; f++)
             {
                 Section s = _sect[f];
-                s.Resident = false; s.Vbo = 0; s.Uploaded = 0; s.Capacity = 0;
+                s.Resident = false; s.Uploaded = 0; s.Capacity = 0;
             }
-            _ebo = 0; _iUploaded = 0; _iCapacity = 0;
+            _iUploaded = 0; _iCapacity = 0;
             Publish();
         }
     }
@@ -1016,7 +1014,7 @@ public static unsafe partial class MeshArena
             _sect = NewSections();
             _iMirror = Array.Empty<ushort>();
             _iUsed = _iUploaded = _iCapacity = _iDead = 0;
-            _ebo = 0; _elementsFull = false;
+            _elementsFull = false;
             _acquired = _freed = _refused = _compactions = _overReleased = _heldPastEviction = 0;
             _collisions = _weldedFromParse = _noNormals = _staleKeys = _unqueued = 0;
             _movedN = 0; _movedTotal = 0;
