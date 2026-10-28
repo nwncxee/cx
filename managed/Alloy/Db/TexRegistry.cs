@@ -575,13 +575,6 @@ internal static unsafe partial class TexRegistry
     /// answer <c>HasEnvMap</c> for it, and <c>PartTriMesh::Draw</c> @0x4513d0 would route the part into the
     /// environment-mapped branch, where the diffuse alpha is REFLECTIVITY rather than coverage.</summary>
     internal static bool EnvMapped(TexId id) => Valid(id) && _envMap[id.Index];
-    /// <summary>The resref resident under GL texture <paramref name="name"/>, "" if none: a linear scan, for a diagnostic.</summary>
-    internal static string ResrefOfGl(uint name)
-    {
-        if (name != 0) for (int i = 0; i < MaxSlots; i++) if (_name[i] == name) return _resref[i] ?? "";
-        return "";
-    }
-
     /// <summary>The slot's resref, for a log or a diagnostic line.</summary>
     internal static string ResrefOf(TexId id) => Valid(id) ? _resref[id.Index] ?? "" : "";
 

@@ -34,7 +34,7 @@ internal static unsafe class PostChain
     internal static int ResolveSeq { get; private set; }
 
     /// <summary>A frame outside the post chain covered the whole present image (the Vulkan frame): counted as a resolve.</summary>
-    internal static void Painted() => ResolveSeq++;
+    internal static void Painted() { Resolves++; ResolveSeq++; }
 
     private static bool _on = true;
     /// <summary>The <c>hdr</c> boot decision, published because it is a REFUSAL the cutover has to know
@@ -105,8 +105,9 @@ internal static unsafe class PostChain
     /// then averages, and a coarser mip would throw it away. 0 at 1.0, so the default is pixel-identical.</summary>
     internal static float LodBias => MathF.Min(MathF.Log2(_scale), 0f);
 
-    /// <summary>TAA is on -- the gate the jitter and the accumulator share.</summary>
-    internal static bool TaaOn => Post.Taa.V;
+    /// <summary>TAA is on and its stage can build -- the gate the jitter, the accumulator and SMAA share, so a
+    /// stage the device refused hands the anti-aliasing option back to SMAA.</summary>
+    internal static bool TaaOn => Post.Taa.V && !PostStack.TaaVkFailed;
     internal static float TaaBlend => Post.TaaBlend.V;
     /// <summary>Temporal upsampling: under a render scale below 1 with TAA on, the accumulator keeps its
     /// history at DISPLAY size and reconstructs from the jittered render-size frames, instead of the resolve

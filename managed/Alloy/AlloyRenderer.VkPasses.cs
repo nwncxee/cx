@@ -196,8 +196,9 @@ public sealed unsafe partial class AlloyRenderer
 
         // the resolve grades a far pixel by its world ray, off the camera the dome drew through
         if (!_capturing && (_skyN == 0 || !Matrix4x4.Invert(vp, out SkyInvVp))) SkyInvVp = default;
-        Matrix4x4 vpJ = vp, vpC = vpClean, pj = proj;
+        Matrix4x4 vpJ = vp, vpC = vpClean, pj = proj, vw = view;
         ToonStage.SetProj(&pj);
+        FbPostStage.SetCamera(&vw, &pj);
         if (!PostStack.RecordVk(vk, cl, s.Hdr, s.Depth, &vpJ, &vpC, viewport, display, log)) return false;
         VkHighlightComposite(cl, composite, display, log);
         TriggerHighlight.DrawVk(vk, cl, composite, s.Depth, vp, display, log);
