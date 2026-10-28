@@ -6,6 +6,9 @@
 # Exports the tag and points every audio route at a socket that does not exist. Call it in the launch subshell.
 live_isolate() {
     export CX_LIVE_RUN="$1"
+    # Gamescope's Vulkan WSI layer, installed machine-wide, breaks a headless Vulkan swapchain: Alloy's probe
+    # fails and the run grades the engine's renderer instead. A --stock run is GL, so the variable is inert there.
+    export DISABLE_GAMESCOPE_WSI=1
     export ALSOFT_DRIVERS=null
     export SDL_AUDIODRIVER=dummy SDL_AUDIO_DRIVER=dummy
     export PULSE_SERVER="unix:/proc/self/cx-no-audio"
