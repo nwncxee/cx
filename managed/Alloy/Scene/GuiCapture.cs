@@ -192,7 +192,7 @@ internal static unsafe class GuiCapture
     /// <c>GLRender</c> cache, because no engine draw runs to fill one.</summary>
     internal struct DbDraw
     {
-        /// <summary>The mesh arena's VAO for this range's format, and the three integers that address the run.</summary>
+        /// <summary>The primitive mode and the two blend factors, as the engine's enum values.</summary>
         public uint Prim, Src, Dst;
         /// <summary>This part draws out of the mesh arena, in this layout (<c>MeshArena.Fmt</c>).</summary>
         public bool Arena;

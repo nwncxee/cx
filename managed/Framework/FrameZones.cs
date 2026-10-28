@@ -716,9 +716,9 @@ public static class FrameZones
     }
 
     /// <summary>Every accumulator back to boot state -- both zone rows, the period, the worst-frame latches, the
-    /// hitch ledger, the blame baseline, the event counters, the scheduler
-    /// deltas and the enrolment population. For the self-checks, which synthesise frames, and in one place so it
-    /// cannot fall out of step with the fields.</summary>
+    /// hitch ledger, the blame baseline, the event counters, the scheduler deltas and the enrolment population.
+    /// For the self-checks, which synthesise frames, and in one place so it cannot fall out of step with the
+    /// fields.</summary>
     private static void ResetAll()
     {
         Array.Clear(_frame); Array.Clear(_sum); Array.Clear(_worst); Array.Clear(_worstDrew);

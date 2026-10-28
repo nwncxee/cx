@@ -441,7 +441,7 @@ internal static unsafe partial class MeshChart
     }
 
     /// <summary>Collect what the worker finished into the arenas. Render thread, inside the bracket, once a
-    /// frame, before <c>BuildBatches</c>: the only place a GL name is touched.</summary>
+    /// frame, before <c>BuildBatches</c>.</summary>
     internal static void Pump()
     {
         if (!_jobs.Running) return;

@@ -4,7 +4,6 @@ using System.Runtime.InteropServices;
 using CX.Alloy.Db;
 using CX.Engine;
 using CX.Framework;
-using CX.Graphics;
 
 namespace CX.Alloy;
 
@@ -164,8 +163,6 @@ public sealed unsafe partial class AlloyRenderer
                       (Counters._prepassKeyed == 0 ? "" : $" ({(float)Counters._prepassKeyed / Counters._frames:F0} of them dissolving, keyhole stage)") +
                       (Counters._prepassSkipped == 0 ? "" : $" (+{(float)Counters._prepassSkipped / Counters._frames:F0} excluded, displacing/skinned or cutout)") +
                       (!_prepassKey ? " (keyhole sweep OFF -- /alloy prepasskey 1)" : "")) +
-                   // The GPU side of the frame is the [vkgpu] line's, measured by the Vulkan frame's own
-                   // timestamps; this line counts what the CPU staged.
                    ", shaded (gpu ms on the [vkgpu] line)" +
                    // #121: captures per SESSION against frames per PERIOD. A number that tracks the frame
                    // count is the acceptance criterion ("probe capture does not run per frame") failing.

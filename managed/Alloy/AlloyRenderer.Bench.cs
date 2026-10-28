@@ -20,7 +20,9 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The hot-path census at the window's start: what the scene's movers did to the step, apart from the knob.</summary>
     private static long _benchHot0, _benchSph0, _benchEng0, _benchMov0;
     private static double _benchBaseFrame;
-    /// <summary>Each step's frame-time delta against the baseline, for the finish notice's three biggest savings.</summary>
+    /// <summary>Each step's WALL frame-time delta against the baseline, for the finish notice's three biggest
+    /// savings. Wall time, not a GPU figure: on a capped display a saving becomes headroom and reads as zero
+    /// here, so the [vkgpu] line is what answers "did it cost less GPU".</summary>
     private static double[]? _benchSaved;
 
     /// <summary>Total steps this run.</summary>
@@ -186,7 +188,7 @@ public sealed unsafe partial class AlloyRenderer
             if (best < 0) break;
             string label = BenchLabel(best);
             int cut = label.IndexOf(" (", StringComparison.Ordinal);
-            s += (s.Length > 0 ? ", " : ". Biggest savings: ") + $"{(cut > 0 ? label[..cut] : label)} {_benchSaved[best]:0.00} ms";
+            s += (s.Length > 0 ? ", " : ". Biggest frame-time savings (wall; a capped display hides a GPU saving): ") + $"{(cut > 0 ? label[..cut] : label)} {_benchSaved[best]:0.00} ms";
             _benchSaved[best] = 0.0;   // taken: the next rank finds the next one down
         }
         return s;

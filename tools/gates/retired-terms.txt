@@ -198,3 +198,6 @@ alloy\.(backend|renderthread|rhiimmediate|gpumeter)\b	CX-313
 # The GL pass loop's per-pass CPU partition. Nothing has written its rows since the loop went, so the period
 # line printed the heading with no numbers under it; FrameZones' own zones are where a pass's CPU is read.
 \bPassCpuNote\b|\b_passCpu\b|\b_passTail\b|\b_passSelfNeg\b|\bPaintStreamFailures\b	GL sweep 7
+# The snap set's other files: the HDR target either side of the sky pass and the default framebuffer at
+# present. The Vulkan frame records and submits once, so the one tap is its finished scene colour.
+_(opaque|sky|pre)\.pfm\b|_final\.ppm\b|\bdiff_final_pre\b	GL sweep 7

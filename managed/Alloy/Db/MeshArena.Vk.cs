@@ -110,8 +110,8 @@ public static unsafe partial class MeshArena
         return true;
     }
 
-    /// <summary>The name a format publishes in place of a GL VAO on Vulkan: nonzero once the device holds its vertices
-    /// and the shared indices, so every reader's "uploaded yet" gate reads the same. No GL object stands behind it.</summary>
+    /// <summary>Is a format's geometry on the device? True once its vertex buffer and the shared index buffer
+    /// both hold an upload, so every reader's "uploaded yet" gate reads the same.</summary>
     private static bool VkResident(Fmt f)
     {
         VkArenaState v = _vk;
