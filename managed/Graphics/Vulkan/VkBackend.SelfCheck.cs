@@ -32,6 +32,7 @@ internal sealed unsafe partial class VkBackend
             "a barrier's source makes the writes available -- SHADER_STORAGE_WRITE 2^34, COLOR_ATTACHMENT_WRITE 0x100, "
           + "DEPTH_STENCIL_ATTACHMENT_WRITE 0x400, TRANSFER_WRITE 0x1000 -- and no read: SHADER_SAMPLED_READ 2^32, SHADER_STORAGE_READ "
           + "2^33, COLOR_ATTACHMENT_READ 0x80, DEPTH_STENCIL_ATTACHMENT_READ 0x200, TRANSFER_READ 0x800");
+        CheckSetCache(check);
         if (Native.Sym(SymbolMap.AppManager) != IntPtr.Zero)
         {
             check.Skip("on-device: the pilot's stages compile at the device's first pipeline, not at boot");
@@ -69,6 +70,31 @@ internal sealed unsafe partial class VkBackend
         check.Expect(CX.Alloy.ShaderSource.Get("cx_cull_c.glsl").Contains($"layout(binding = {CX.Alloy.CullPass.PyramidUnit}) uniform sampler2D uPyramid;"),
             "the cull stage's pyramid sampler sits on the unit both backends bind it to");
         log.Info(check.Ok ? "VkBackend.SelfCheck: passed" : "VkBackend.SelfCheck: FAILED");
+    }
+
+    /// <summary>Oracle: hand-written binding strings and set handles. A set comes back only for the bindings it was
+    /// written with -- not for a prefix, a longer string or one field changed -- two strings that share a hash both
+    /// stay, and a clear forgets every set.</summary>
+    private static void CheckSetCache(Checker check)
+    {
+        static BindingKey K(uint binding, ulong obj = 7) => new(binding, VkDescriptorType.CombinedImageSampler, VkImageLayout.ShaderReadOnlyOptimal, obj, 3, 0, 0);
+        var c = new SetCache();
+        BindingKey[] a = [K(1), K(2), K(3), K(4)], b = [K(1), K(2), K(3), K(4, obj: 8)];
+        check.Expect(!c.TryGet(a, out _), "an empty cache held a set");
+        c.Add(a, 11);
+        check.Expect(c.TryGet(a, out ulong got) && got == 11, "the set written with bindings 1-4 did not come back for them");
+        check.Expect(!c.TryGet(b, out _), "binding 4 on another view found the set written with the first");
+        check.Expect(!c.TryGet(a.AsSpan(..3), out _) && !c.TryGet([.. a, K(5)], out _), "a prefix or an extension of bindings 1-4 found its set");
+        c.Add(b, 12);
+        c.AddHashed(a.AsSpan(..1), 7, 13);
+        c.AddHashed(a.AsSpan(..2), 7, 14);
+        check.Expect(c.TryGetHashed(a.AsSpan(..1), 7, out ulong h1) && h1 == 13 && c.TryGetHashed(a.AsSpan(..2), 7, out ulong h2) && h2 == 14,
+            "two strings on one hash: one lost its set to the other");
+        check.Expect(c.TryGet(a, out got) && got == 11 && c.TryGet(b, out got) && got == 12, "a later add lost an earlier set");
+        c.Clear();
+        check.Expect(!c.TryGet(a, out _) && !c.TryGet(b, out _) && !c.TryGetHashed(a.AsSpan(..1), 7, out _), "a cleared cache held a set");
+        c.Add(b, 21);
+        check.Expect(c.TryGet(b, out got) && got == 21 && !c.TryGet(a, out _), "after a clear, a new set did not come back alone");
     }
 
     private static bool ScopeIs(VkImageLayout l, ulong stages, ulong access)

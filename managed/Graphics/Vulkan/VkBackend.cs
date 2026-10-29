@@ -50,12 +50,11 @@ internal sealed unsafe partial class VkBackend : IDevice
     /// <summary>A pipeline, and the depth and raster state its desc named, which a bind restates dynamically.</summary>
     private readonly record struct VkPipe(VkPipeline Pipeline, bool Compute, DepthState Depth, RasterState Raster);
 
-    /// <summary>One submit's recording resources; two alternate, so a submit waits on the one two back.</summary>
+    /// <summary>One submit's recording resources; the slots rotate, so a submit waits on the one <see cref="Slots"/> back.</summary>
     private sealed class Slot
     {
         public VkCommandBuffer Cmd;
         public VkFence Fence;
-        public VkDescriptorPool Pool;
         /// <summary>Host-visible staging an update too large to record inline is copied through; reused from
         /// <see cref="StageUsed"/> 0 once the slot's fence has passed, grown when one submit outgrows it.</summary>
         public VkBuffer Stage;
@@ -97,8 +96,8 @@ internal sealed unsafe partial class VkBackend : IDevice
     /// <summary>Submits a freed object waits out: the last fence waited before the free must cover its submit, so past
     /// the slot ring by at least one.</summary>
     private const int DeadAfter = Slots + 2;
-    /// <summary>Descriptor sets one submit may bind; a full pool refuses the bind, logged.</summary>
-    private const uint SetsPerSubmit = 4096;
+    /// <summary>Distinct descriptor sets one pool holds before it is retired for a fresh one.</summary>
+    private const uint SetsPerPool = 4096;
     /// <summary>The one set's shape: each kind of binding, its count, at its <see cref="VulkanToolchain"/> base.
     /// The buffer counts ARE the slot tables' budgets rather than a second opinion on them, so a point the GLSL
     /// may declare always has a descriptor to land in.</summary>
@@ -118,6 +117,9 @@ internal sealed unsafe partial class VkBackend : IDevice
     private readonly VkCommandPool _cmdPool;
     private readonly Slot[] _slots = new Slot[Slots];
     private readonly VkDescriptorSetLayout _setLayout, _bindlessLayout;
+    /// <summary>The uniform slots from 0 that are dynamic, so a rebind at a new offset reuses its set: every one the
+    /// device's dynamic-buffer limit seats.</summary>
+    private readonly uint _dynUbos;
     private readonly VkDescriptorPool _bindlessPool;
     private readonly VkDescriptorSet _bindlessSet;
     private readonly VkPipelineLayout _pipeLayout;
@@ -389,12 +391,14 @@ internal sealed unsafe partial class VkBackend : IDevice
         VkCommandPool pool;
         Check(_vkd.vkCreateCommandPool(&pci, &pool), "vkCreateCommandPool");
         _cmdPool = pool;
-        for (int i = 0; i < Slots; i++) _slots[i] = MakeSlot();
-        for (int i = 0; i < Slots; i++) _acquired[i] = MakeSemaphore();
-
         VkPhysicalDeviceProperties props;
         _vki.vkGetPhysicalDeviceProperties(phys, &props);
         ref VkPhysicalDeviceLimits l = ref props.limits;
+        _dynUbos = Math.Min(UniformSlots, l.maxDescriptorSetUniformBuffersDynamic);
+        for (int i = 0; i < Slots; i++) _slots[i] = MakeSlot();
+        Check(MakeSetPool(out _sets.Pool), "vkCreateDescriptorPool");
+        for (int i = 0; i < Slots; i++) _acquired[i] = MakeSemaphore();
+
         OpenPipelineCache(in props);
         OpenTiming(in props);
         _setLayout = MakeSetLayout();
@@ -469,17 +473,6 @@ internal sealed unsafe partial class VkBackend : IDevice
         VkFence f;
         Check(_vkd.vkCreateFence(&fci, &f), "vkCreateFence");
         s.Fence = f;
-        VkDescriptorPoolSize* sizes = stackalloc VkDescriptorPoolSize[4]
-        {
-            new() { type = VkDescriptorType.CombinedImageSampler, descriptorCount = SetsPerSubmit * SampledSlots },
-            new() { type = VkDescriptorType.UniformBuffer, descriptorCount = SetsPerSubmit * UniformSlots },
-            new() { type = VkDescriptorType.StorageBuffer, descriptorCount = SetsPerSubmit * StorageSlots },
-            new() { type = VkDescriptorType.StorageImage, descriptorCount = SetsPerSubmit * ImageSlots },
-        };
-        var dpci = new VkDescriptorPoolCreateInfo { maxSets = SetsPerSubmit, poolSizeCount = 4, pPoolSizes = sizes };
-        VkDescriptorPool p;
-        Check(_vkd.vkCreateDescriptorPool(&dpci, &p), "vkCreateDescriptorPool");
-        s.Pool = p;
         return s;
     }
 
@@ -496,7 +489,8 @@ internal sealed unsafe partial class VkBackend : IDevice
                 b[k++] = new VkDescriptorSetLayoutBinding { binding = at + i, descriptorType = t, descriptorCount = 1, stageFlags = VkShaderStageFlags.All };
         }
         Run(b, ref k, VulkanToolchain.SampledBase, SampledSlots, VkDescriptorType.CombinedImageSampler);
-        Run(b, ref k, VulkanToolchain.UniformBase, UniformSlots, VkDescriptorType.UniformBuffer);
+        Run(b, ref k, VulkanToolchain.UniformBase, _dynUbos, VkDescriptorType.UniformBufferDynamic);
+        Run(b, ref k, VulkanToolchain.UniformBase + _dynUbos, UniformSlots - _dynUbos, VkDescriptorType.UniformBuffer);
         Run(b, ref k, VulkanToolchain.StorageBase, StorageSlots, VkDescriptorType.StorageBuffer);
         Run(b, ref k, VulkanToolchain.ImageBase, ImageSlots, VkDescriptorType.StorageImage);
         var ci = new VkDescriptorSetLayoutCreateInfo { bindingCount = n, pBindings = b };
@@ -606,12 +600,12 @@ internal sealed unsafe partial class VkBackend : IDevice
 
     public void Destroy(BufferId b)
     {
-        if (OnThread("Destroy") && _buffers.Remove(b.Value, out VkBuf g)) Later(() => Vma.vmaDestroyBuffer(_vma, g.Buffer, g.Alloc));
+        if (OnThread("Destroy") && _buffers.Remove(b.Value, out VkBuf g)) { _sets.Stale = true; Later(() => Vma.vmaDestroyBuffer(_vma, g.Buffer, g.Alloc)); }
     }
 
     public void Destroy(ImageId i)
     {
-        if (OnThread("Destroy") && _images.Remove(i.Value, out VkImg g)) Later(() => Free(g));
+        if (OnThread("Destroy") && _images.Remove(i.Value, out VkImg g)) { _sets.Stale = true; Later(() => Free(g)); }
     }
 
     /// <summary>An image's views, the image and its memory.</summary>
@@ -625,7 +619,7 @@ internal sealed unsafe partial class VkBackend : IDevice
 
     public void Destroy(SamplerId s)
     {
-        if (OnThread("Destroy") && _samplers.Remove(s.Value, out VkSampler v)) Later(() => _vkd.vkDestroySampler(v));
+        if (OnThread("Destroy") && _samplers.Remove(s.Value, out VkSampler v)) { _sets.Stale = true; Later(() => _vkd.vkDestroySampler(v)); }
     }
 
     public void Destroy(ShaderId s)
@@ -677,7 +671,6 @@ internal sealed unsafe partial class VkBackend : IDevice
         foreach (Slot s in _slots)
         {
             _vkd.vkDestroyFence(s.Fence);
-            _vkd.vkDestroyDescriptorPool(s.Pool);
             if (s.Stage.IsNotNull) Vma.vmaDestroyBuffer(_vma, s.Stage, s.StageAlloc);
         }
         foreach (VkSemaphore a in _acquired) _vkd.vkDestroySemaphore(a);
@@ -689,6 +682,8 @@ internal sealed unsafe partial class VkBackend : IDevice
         _vkd.vkDestroyPipelineLayout(_pipeLayout);
         if (_pipeCache.IsNotNull) _vkd.vkDestroyPipelineCache(_pipeCache);
         if (_timePool.IsNotNull) _vkd.vkDestroyQueryPool(_timePool);
+        _vkd.vkDestroyDescriptorPool(_sets.Pool);
+        foreach ((long _, VkDescriptorPool p) in _sets.Spare) _vkd.vkDestroyDescriptorPool(p);
         _vkd.vkDestroyDescriptorPool(_bindlessPool);
         _vkd.vkDestroyDescriptorSetLayout(_bindlessLayout);
         _vkd.vkDestroyDescriptorSetLayout(_setLayout);

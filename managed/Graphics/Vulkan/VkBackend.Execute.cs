@@ -50,7 +50,7 @@ internal sealed unsafe partial class VkBackend
             return Fault(waited == VkResult.ErrorDeviceLost
                 ? "the device was LOST running the previous submit on this slot -- a GPU fault in a recorded pass"
                 : $"the previous submit on this slot never finished ({waited}) -- a semaphore never signalled, or the GPU is stuck");
-        _vkd.vkResetDescriptorPool(s.Pool, 0);
+        if (_sets.Stale && !RetireSets()) return false;
         s.StageUsed = 0;
         _recording++;
         _undo.Clear();
@@ -372,8 +372,9 @@ internal sealed unsafe partial class VkBackend
 
     private bool DepthBias(DepthBiasCmd c) { _vkd.vkCmdSetDepthBias(_cmd, c.Units, 0, c.Factor); return true; }
 
-    /// <summary>One descriptor set from this submit's pool: the images it samples moved into their read layout first,
-    /// which is why a bind set must come ahead of the pass's first draw.</summary>
+    /// <summary>The descriptor set already written with these bindings, or a new one from the pool: the
+    /// images it samples moved into their read layout first, which is why a bind set must come ahead of the pass's
+    /// first draw. A dynamic uniform slot's offset is the bind's, not the set's.</summary>
     private bool BindSet(BindSetCmd h, ref CommandReader r)
     {
         ReadOnlySpan<BufferBinding> ubo = r.Span<BufferBinding>(h.Uniforms), ssbo = r.Span<BufferBinding>(h.Storage);
@@ -384,33 +385,58 @@ internal sealed unsafe partial class VkBackend
         VkWriteDescriptorSet* w = stackalloc VkWriteDescriptorSet[Math.Max(n, 1)];
         Span<VkDescriptorBufferInfo> bi = stackalloc VkDescriptorBufferInfo[Math.Max(ubo.Length + ssbo.Length, 1)];
         Span<VkDescriptorImageInfo> ii = stackalloc VkDescriptorImageInfo[Math.Max(tex.Length + img.Length, 1)];
+        Span<BindingKey> key = stackalloc BindingKey[Math.Max(n, 1)];
+        Span<uint> dyn = stackalloc uint[(int)_dynUbos];
         int k = 0, b = 0, t = 0;
         _setDraws = _inPass || _bindPoint == VkPipelineBindPoint.Graphics;
         if (!_setDraws) _cBufN = _cImgN = 0;
-        foreach (BufferBinding u in ubo) if (!Buf(u, VulkanToolchain.UniformBase, VkDescriptorType.UniformBuffer, w, bi, ref k, ref b)) return false;
-        foreach (BufferBinding u in ssbo) if (!Buf(u, VulkanToolchain.StorageBase, VkDescriptorType.StorageBuffer, w, bi, ref k, ref b)) return false;
-        foreach (ImageBinding s in tex) if (!Img(s, VulkanToolchain.SampledBase, VkDescriptorType.CombinedImageSampler, w, ii, ref k, ref t)) return false;
-        foreach (ImageBinding s in img) if (!Img(s, VulkanToolchain.ImageBase, VkDescriptorType.StorageImage, w, ii, ref k, ref t)) return false;
+        foreach (BufferBinding u in ubo) if (!Buf(u, VulkanToolchain.UniformBase, VkDescriptorType.UniformBuffer, w, bi, key, dyn, ref k, ref b)) return false;
+        foreach (BufferBinding u in ssbo) if (!Buf(u, VulkanToolchain.StorageBase, VkDescriptorType.StorageBuffer, w, bi, key, dyn, ref k, ref b)) return false;
+        foreach (ImageBinding s in tex) if (!Img(s, VulkanToolchain.SampledBase, VkDescriptorType.CombinedImageSampler, w, ii, key, ref k, ref t)) return false;
+        foreach (ImageBinding s in img) if (!Img(s, VulkanToolchain.ImageBase, VkDescriptorType.StorageImage, w, ii, key, ref k, ref t)) return false;
 
-        VkDescriptorSetLayout layout = _setLayout;
-        var ai = new VkDescriptorSetAllocateInfo { descriptorPool = _slot!.Pool, descriptorSetCount = 1, pSetLayouts = &layout };
+        ReadOnlySpan<BindingKey> written = key[..k];
         VkDescriptorSet set;
-        if (_vkd.vkAllocateDescriptorSets(&ai, &set) != VkResult.Success) return Fault($"the submit's {SetsPerSubmit} descriptor sets are spent");
-        for (int i = 0; i < k; i++) w[i].dstSet = set;
-        _vkd.vkUpdateDescriptorSets((uint)k, w, 0, null);
+        if (_sets.Cache.TryGet(written, out ulong held)) set = new VkDescriptorSet(held);
+        else
+        {
+            if (_sets.Left == 0 && !RetireSets()) return false;
+            VkDescriptorSetLayout layout = _setLayout;
+            var ai = new VkDescriptorSetAllocateInfo { descriptorPool = _sets.Pool, descriptorSetCount = 1, pSetLayouts = &layout };
+            if (_vkd.vkAllocateDescriptorSets(&ai, &set) != VkResult.Success) return Fault($"the descriptor pool refused a set with {_sets.Left} of {SetsPerPool} left");
+            _sets.Left--;
+            for (int i = 0; i < k; i++) w[i].dstSet = set;
+            _vkd.vkUpdateDescriptorSets((uint)k, w, 0, null);
+            _sets.Cache.Add(written, set.Handle);
+            _setMadeN++;
+        }
         // ponytail: every bind set lands on set 0, the one GLSL without a set qualifier reads
-        _vkd.vkCmdBindDescriptorSets(_cmd, _inPass ? VkPipelineBindPoint.Graphics : _bindPoint, _pipeLayout, 0, 1, &set, 0, null);
+        fixed (uint* d = dyn) _vkd.vkCmdBindDescriptorSets(_cmd, _inPass ? VkPipelineBindPoint.Graphics : _bindPoint, _pipeLayout, 0, 1, &set, _dynUbos, d);
         _setN++;
         return true;
     }
 
-    private bool Buf(BufferBinding u, uint at, VkDescriptorType type, VkWriteDescriptorSet* w, Span<VkDescriptorBufferInfo> bi, ref int k, ref int b)
+    private bool Buf(BufferBinding u, uint at, VkDescriptorType type, VkWriteDescriptorSet* w, Span<VkDescriptorBufferInfo> bi,
+                     Span<BindingKey> key, Span<uint> dyn, ref int k, ref int b)
     {
         if (!_buffers.TryGet(u.Buffer.Value, out VkBuf? buf)) return Fault($"bind set: stale buffer on slot {u.Slot}");
         VkAccessFlags2 access = type == VkDescriptorType.StorageBuffer ? StorageAccess : VkAccessFlags2.UniformRead;
         if (_setDraws) Use(buf, DrawStages, access);
         else { _cBufs[_cBufN] = buf; _cAccess[_cBufN++] = access; }
-        bi[b] = new VkDescriptorBufferInfo { buffer = buf.Buffer, offset = (ulong)u.Offset, range = u.Bytes == 0 ? Vortice.Vulkan.Vulkan.VK_WHOLE_SIZE : (ulong)u.Bytes };
+        ulong offset = (ulong)u.Offset, range = u.Bytes == 0 ? Vortice.Vulkan.Vulkan.VK_WHOLE_SIZE : (ulong)u.Bytes;
+        if (type == VkDescriptorType.UniformBuffer && u.Slot < _dynUbos)
+        {
+            type = VkDescriptorType.UniformBufferDynamic;
+            // a whole-buffer range leaves no room past a dynamic offset, so that one keeps its offset in the set
+            if (u.Bytes != 0)
+            {
+                if (offset > uint.MaxValue) return Fault($"bind set: uniform slot {u.Slot}'s offset {offset} is past a dynamic offset's 32 bits");
+                dyn[(int)u.Slot] = (uint)offset;
+                offset = 0;
+            }
+        }
+        bi[b] = new VkDescriptorBufferInfo { buffer = buf.Buffer, offset = offset, range = range };
+        key[k] = new BindingKey(at + u.Slot, type, default, buf.Buffer.Handle, 0, offset, range);
         w[k++] = new VkWriteDescriptorSet { dstBinding = at + u.Slot, descriptorCount = 1, descriptorType = type, pBufferInfo = (VkDescriptorBufferInfo*)Unsafe.AsPointer(ref bi[b++]) };
         return true;
     }
@@ -429,7 +455,8 @@ internal sealed unsafe partial class VkBackend
         return true;
     }
 
-    private bool Img(ImageBinding s, uint at, VkDescriptorType type, VkWriteDescriptorSet* w, Span<VkDescriptorImageInfo> ii, ref int k, ref int t)
+    private bool Img(ImageBinding s, uint at, VkDescriptorType type, VkWriteDescriptorSet* w, Span<VkDescriptorImageInfo> ii,
+                     Span<BindingKey> key, ref int k, ref int t)
     {
         if (!_images.TryGet(s.Image.Value, out VkImg img)) return Fault($"bind set: stale image on slot {s.Slot}");
         bool storage = type == VkDescriptorType.StorageImage;
@@ -442,6 +469,7 @@ internal sealed unsafe partial class VkBackend
         VkSampler sampler = _nearest;
         if (!storage && !s.Sampler.IsNull && !_samplers.TryGet(s.Sampler.Value, out sampler)) return Fault($"bind set: stale sampler on slot {s.Slot}");
         ii[t] = new VkDescriptorImageInfo { sampler = storage ? default : sampler, imageView = ViewOf(img, storage ? s.Mip : -1), imageLayout = want };
+        key[k] = new BindingKey(at + s.Slot, type, want, ii[t].imageView.Handle, ii[t].sampler.Handle, 0, 0);
         w[k++] = new VkWriteDescriptorSet { dstBinding = at + s.Slot, descriptorCount = 1, descriptorType = type, pImageInfo = (VkDescriptorImageInfo*)Unsafe.AsPointer(ref ii[t++]) };
         return true;
     }
