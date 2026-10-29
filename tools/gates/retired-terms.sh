@@ -6,7 +6,7 @@ list=tools/gates/retired-terms.txt
 rc=0
 while IFS=$'\t' read -r term ticket allow; do
   case "$term" in ''|'#'*) continue ;; esac
-  hits=$(grep -rniE -- "$term" managed docs 2>/dev/null \
+  hits=$(git grep --untracked -niIE -- "$term" managed docs 2>/dev/null \
          | grep -v '^docs/adr/' | grep -v '^docs/handoff/' \
          | { [ -n "$allow" ] && grep -viE -- "$allow" || cat; })
   [ -z "$hits" ] && continue
