@@ -116,6 +116,7 @@ internal sealed unsafe partial class VkBackend
         VmaAllocation a;
         if (Vma.vmaCreateImage(_vma, &ici, &aci, &image, &a, null) != VkResult.Success)
             return Refused<ImageId>($"image {d.Label}: VMA refused {d.Kind} {d.Fmt} {d.W}x{d.H}");
+        Name(VkObjectType.Image, image.Handle, d.Label);
         return new ImageId(_images.Add(new VkImg { Image = image, Alloc = a, View = View(image, d, -1), Desc = d }));
     }
 

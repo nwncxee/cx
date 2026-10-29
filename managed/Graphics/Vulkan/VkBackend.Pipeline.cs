@@ -19,6 +19,7 @@ internal sealed unsafe partial class VkBackend
             _pipeCacheDirty = true;
             if (_vkd.vkCreateComputePipelines(_pipeCache, 1, &ci, &pipe) != VkResult.Success)
                 return Refused<PipelineId>($"{what}: vkCreateComputePipelines refused");
+            Name(VkObjectType.Pipeline, pipe.Handle, what);
             return new PipelineId(_pipelines.Add(new VkPipe(pipe, true, default, default)));
         }
         if (!_shaders.TryGet(d.Vs.Value, out VkShader vs) || !_shaders.TryGet(d.Fs.Value, out VkShader fs))
@@ -113,6 +114,7 @@ internal sealed unsafe partial class VkBackend
         _pipeCacheDirty = true;
         if (_vkd.vkCreateGraphicsPipelines(_pipeCache, 1, &gci, &pipe) != VkResult.Success)
             return Refused<PipelineId>($"{what}: vkCreateGraphicsPipelines refused");
+        Name(VkObjectType.Pipeline, pipe.Handle, what);
         return new PipelineId(_pipelines.Add(new VkPipe(pipe, false, d.Depth, d.Raster)));
     }
 

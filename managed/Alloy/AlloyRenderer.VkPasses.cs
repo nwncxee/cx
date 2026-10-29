@@ -46,13 +46,23 @@ public sealed unsafe partial class AlloyRenderer
         s.ArenaUsed = 0;
         s.EngineAt = -1;
         s.Drawn = s.Skipped = 0;
+        cl.BeginLabel("uploads"u8);
         if (!VkUploads(vk, cl)) return false;
+        cl.EndLabel();
+        cl.BeginLabel("content stages"u8);
         StageResources.VkRun(vk, cl, viewport, _capturing, log);
+        cl.EndLabel();
+        cl.BeginLabel("shadow bake"u8);
         if (!VkRecordShadow(vk, cl, log)) return false;
+        cl.EndLabel();
         // the weather's surface maps off the cover layer the bake just landed, ahead of every stage that reads them
+        cl.BeginLabel("weather surface"u8);
         VkWeatherSurface(vk, cl, log);
+        cl.EndLabel();
         // the lightmap's slot: its static cubes were queued by the shadow bracket and baked by the flush just above
+        cl.BeginLabel("lightmap bake"u8);
         if (lightingOn) LightmapBake.VkRun(vk, cl, _capturing, _frameSeq);
+        cl.EndLabel();
         bool indirect = CullPassVk.Ran;
         int viz = _capturing ? 0 : _lightViz;
         bool gbuf = lightingOn && perspective && Lighting.Deferred.V && (viz == 0 || viz == VizLightFrom);
@@ -61,28 +71,44 @@ public sealed unsafe partial class AlloyRenderer
         s.GbufWritten = gbuf;
 
         VkIdBegin(vk, w, h, log);
+        cl.BeginLabel("prepass"u8);
         if (!VkPrepass(cl, s, _gOpaqueEnd, vp, viewport, near, far, indirect, CullPassVk.PhasePrepass)) return false;
+        cl.EndLabel();
         if (indirect && _depthPrepass)
         {
+            cl.BeginLabel("hi-Z"u8);
             CullPassVk.BuildHiZ(vk, cl, s.Depth, w, h);
+            cl.EndLabel();
             if (CullPassVk.RetestPending)
             {
+                cl.BeginLabel("retest"u8);
                 CullPassVk.RecordRetest(cl);
                 if (!VkPrepass(cl, s, _gOpaqueEnd, vp, viewport, near, far, indirect, CullPassVk.PhaseRetest)) return false;
+                cl.EndLabel();
             }
         }
-        if (indirect) CullPassVk.RecordColour(cl);
+        if (indirect)
+        {
+            cl.BeginLabel("colour cull"u8);
+            CullPassVk.RecordColour(cl);
+            cl.EndLabel();
+        }
         // the depth the colour pass's draws may not sample (it is their own attachment) and the AO pass reads,
         // as it stood when the prepass finished -- which is the depth the lit stage's ownership test is against
+        cl.BeginLabel("AO"u8);
         if (_depthPrepass)
             cl.CopyImage(new CopyImageCmd(s.Depth, new ImageRegion(0, 0, 0, 0), s.DepthRead, new ImageRegion(0, 0, 0, 0), w, h, 1));
         fixed (Matrix4x4* pr = &proj) SsaoPassVk.Record(vk, cl, s.DepthRead, _depthPrepass, pr, viewport, log);
+        cl.EndLabel();
+        cl.BeginLabel("decals"u8);
         // CX-273: the ground decals into their layer, off the list the cull just compacted and against the prepass
         // depth, before the first surface that folds them in is drawn
         if (!VkDecalPass(vk, cl, _gOpaqueEnd, DecalEnd(), vp, viewport, near, far,
                          lightingOn && perspective && !_capturing && _depthPrepass && viewport[0] == 0 && viewport[1] == 0,
                          indirect, log)) return false;
+        cl.EndLabel();
 
+        cl.BeginLabel("G-buffer"u8);
         CommandList side = s.Side!;
         side.Reset();
         int arena0 = s.ArenaUsed;
@@ -116,24 +142,40 @@ public sealed unsafe partial class AlloyRenderer
             if (refl) VkSsrAttachments(colors);
         }
         VkFlushPass(cl, side, arena0, new RenderPassDesc(colors[..n], new DepthAttachment(s.Depth, 0, 0, LoadOp.Load, StoreOp.Store, 1f)));
+        cl.EndLabel();
 
         // the sky after the G-buffer writers rather than between them as GL's graph has it: the dome draws only
         // where nothing wrote depth, so a cutout drawn before it covers exactly the pixels it would have covered
+        cl.BeginLabel("sky"u8);
         if (!VkRecordSky(vk, cl, s, vp, viewport, log)) return false;
+        cl.EndLabel();
         // the froxel table both deferred stages and the fog's local lights read, from this frame's own build, then the
         // fog volume: after the G-buffer writers, which the deferred walk fogs, and before every stage that fogs itself
+        cl.BeginLabel("light clusters"u8);
         VkClusterBuild(vk, cl, log);
+        cl.EndLabel();
+        cl.BeginLabel("fog volume"u8);
         VkFogPass(vk, cl, view, vpClean, viewport, near, far, perspective, lightingOn, log);
+        cl.EndLabel();
         // ...and then ADR 0029's two dispatches, at the graph's own place: after the cutout pass and the sky,
         // before the blended one. A sky pixel has no G-buffer record, so the walk leaves it alone.
+        cl.BeginLabel("deferred lights"u8);
         VkDeferred(vk, cl, vp, view, proj, viewport, near, far, indirect ? CullPassVk.Slots(CullPassVk.PhaseColour) : s.Slots, log);
+        cl.EndLabel();
         // the coverage layer at the graph's own place: seeded from the frame the deferred walk just lit
+        cl.BeginLabel("coverage"u8);
         if (cover && !VkCoverPass(cl, s, vp, viewport, near, far, indirect, log)) return false;
+        cl.EndLabel();
         // the grass class where GL's graph has it: after the deferred lights it is lit beside, before the blended one
+        cl.BeginLabel("grass"u8);
         if (!VkGrassPass(vk, cl, s, vp, viewport, near, far, lightingOn, log)) return false;
+        cl.EndLabel();
         // the reflections at the graph's own place: after the deferred walk, before the blended class
+        cl.BeginLabel("reflections"u8);
         VkSsrRun(vk, cl, vp, view, proj, viewport, near, far, lightingOn && perspective, log);
+        cl.EndLabel();
 
+        cl.BeginLabel("blended"u8);
         bool oit = VkOitArm(vk, w, h, log);
         side.Reset();
         arena0 = s.ArenaUsed;
@@ -173,8 +215,10 @@ public sealed unsafe partial class AlloyRenderer
         colors[0] = new ColorAttachment(s.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default);
         var forward = new RenderPassDesc(colors[..1], new DepthAttachment(s.Depth, 0, 0, LoadOp.Load, StoreOp.Store, 1f));
         VkFlushPass(cl, side, arena0, in forward);
+        cl.EndLabel();
         if (water)
         {
+            cl.BeginLabel("water"u8);
             VkWaterCopy(vk, cl, w, h, log);
             side.Reset();
             arena0 = s.ArenaUsed;
@@ -187,25 +231,40 @@ public sealed unsafe partial class AlloyRenderer
             if (_vkWater.Ready) cl.ReadImages(snap);
             VkFlushPass(cl, side, arena0, in forward);
             VkWaterDone();
+            cl.EndLabel();
         }
 
+        cl.BeginLabel("beams"u8);
         if (!VkBeamPass(vk, cl, s, view, proj, viewport, log)) return false;
+        cl.EndLabel();
+        cl.BeginLabel("particles"u8);
         if (!VkParticlePass(vk, cl, s, view, proj, viewport, near, far, lightingOn, log)) return false;
+        cl.EndLabel();
+        cl.BeginLabel("halos"u8);
         if (!VkHaloPass(vk, cl, s, view, proj, viewport, log)) return false;
+        cl.EndLabel();
+        cl.BeginLabel("weather"u8);
         if (!VkWeatherPass(vk, cl, s, view, proj, viewport, near, far, lightingOn, log)) return false;
+        cl.EndLabel();
+        cl.BeginLabel("highlight mask"u8);
         if (!VkHighlightMask(vk, cl, s, vp, viewport, near, far, groups, log)) return false;
         VkIdPaint(vk, cl, s, log);
+        cl.EndLabel();
 
         // the resolve grades a far pixel by its world ray, off the camera the dome drew through
         if (!_capturing && (_skyN == 0 || !Matrix4x4.Invert(vp, out SkyInvVp))) SkyInvVp = default;
         Matrix4x4 vpJ = vp, vpC = vpClean, pj = proj, vw = view;
         ToonStage.SetProj(&pj);
         FbPostStage.SetCamera(&vw, &pj);
+        cl.BeginLabel("post"u8);
         if (!PostStack.RecordVk(vk, cl, s.Hdr, s.Depth, &vpJ, &vpC, viewport, display, log)) return false;
         VkHighlightComposite(cl, composite, display, log);
         TriggerHighlight.DrawVk(vk, cl, composite, s.Depth, vp, display, log);
+        cl.EndLabel();
         // the probe last: this frame's lit stages read the cube as it stood, and its faces reuse the frame's side list
+        cl.BeginLabel("probe"u8);
         VkProbeCapture(vk, cl, s, far, lightingOn && perspective, log);
+        cl.EndLabel();
         if (!s.Live)
         {
             s.Live = true;

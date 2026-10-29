@@ -15,6 +15,7 @@ public static class RhiSelfCheck
         RoundTrip(check);
         DrawRoundTrip(check);
         Growth(check);
+        Labels(check);
         FormatTraits(check);
         Blends(check);
         log.Info(check.Ok ? "Rhi.SelfCheck: passed" : "Rhi.SelfCheck: FAILED");
@@ -138,6 +139,26 @@ public static class RhiSelfCheck
         for (int i = 0; i < 8; i++) list.Draw(i + 1);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
         check.Expect(allocated == 0 && list.Growths == grew, $"a warm arena records with no allocation ({allocated} bytes)");
+    }
+
+    /// <summary>A label reads back NUL-terminated around what it brackets, even over a reused arena's stale bytes.
+    /// Oracle: the label literals written out by hand.</summary>
+    private static void Labels(Checker check)
+    {
+        var list = new CommandList("selfcheck-labels");
+        list.BeginLabel("deferred lights"u8);
+        list.Reset();
+        list.BeginLabel("sky"u8);
+        list.Draw(3);
+        list.EndLabel();
+        CommandReader r = list.TakePending();
+        check.Expect(r.Next(out Op op) && op == Op.BeginLabel, $"BeginLabel, not {op}");
+        LabelCmd l = r.Read<LabelCmd>();
+        ReadOnlySpan<byte> name = r.Span<byte>(l.Bytes);
+        check.Expect(name.SequenceEqual("sky\0"u8), $"the label reads back as 'sky' and its terminator ({l.Bytes} bytes)");
+        check.Expect(r.Next(out op) && op == Op.Draw && r.Read<DrawCmd>().Verts == 3, "the bracketed draw follows the label");
+        check.Expect(r.Next(out op) && op == Op.EndLabel, $"EndLabel, not {op}");
+        check.Expect(!r.Next(out _), "nothing past the label's end");
     }
 
     /// <summary>A blend nobody constructed -- a fresh <see cref="BlendSet"/>'s element -- writes every channel, and a
