@@ -306,18 +306,25 @@ internal sealed unsafe partial class VkBackend
     {
         UploadState u = _upload;
         if (u.Copies.Count == 0) return;
+        // every destination's barrier first, so they record as one call ahead of all the copies
+        foreach (PendingCopy p in u.Copies)
+        {
+            if (!p.Buffer.IsNull) { if (_buffers.TryGet(p.Buffer.Value, out VkBuf? b)) Use(b, VkPipelineStageFlags2.AllTransfer, VkAccessFlags2.TransferWrite); }
+            else if (!p.Mips && _images.TryGet(p.Image.Value, out VkImg img)) Transition(img, VkImageLayout.TransferDstOptimal);
+        }
+        Flush();
         foreach (PendingCopy p in u.Copies)
         {
             if (!p.Buffer.IsNull)
             {
-                if (!_buffers.TryGet(p.Buffer.Value, out VkBuf b)) continue;
+                if (!_buffers.TryGet(p.Buffer.Value, out VkBuf? b)) continue;
                 var region = new VkBufferCopy { srcOffset = p.SrcOffset, dstOffset = (ulong)p.DstOffset, size = p.Bytes };
                 _vkd.vkCmdCopyBuffer(_cmd, p.Src, b.Buffer, 1, &region);
                 continue;
             }
             if (!_images.TryGet(p.Image.Value, out VkImg img)) continue;
             if (p.Mips) { BlitMips(img); continue; }
-            if (img.Layout != VkImageLayout.TransferDstOptimal) Transition(img, VkImageLayout.TransferDstOptimal);
+            if (img.Layout != VkImageLayout.TransferDstOptimal) { Transition(img, VkImageLayout.TransferDstOptimal); Flush(); }
             u.Touched.Add(p.Image.Value);
             var r = new VkBufferImageCopy
             {
@@ -331,10 +338,10 @@ internal sealed unsafe partial class VkBackend
                 },
             };
             _vkd.vkCmdCopyBufferToImage(_cmd, p.Src, img.Image, VkImageLayout.TransferDstOptimal, 1, &r);
+            img.Written = true;
         }
         foreach (uint id in u.Touched)
             if (_images.TryGet(id, out VkImg img)) Transition(img, VkImageLayout.ShaderReadOnlyOptimal);
-        FullBarrier();
     }
 
     /// <summary>The flushed uploads ran in a submitted recording: their chunks go back to the pool once it is done, and
@@ -351,7 +358,8 @@ internal sealed unsafe partial class VkBackend
     /// <summary>Each mip from the one above it by a linear blit, every layer at once; the image ends shader-readable.</summary>
     private void BlitMips(VkImg img)
     {
-        if (img.Layout != VkImageLayout.TransferDstOptimal) Transition(img, VkImageLayout.TransferDstOptimal);
+        Transition(img, VkImageLayout.TransferDstOptimal);
+        Flush();
         uint layers = (uint)(img.Desc.Kind is ImageKind.Cube or ImageKind.CubeArray ? img.Desc.Layers * 6 : img.Desc.Layers);
         for (int m = 1; m < img.Desc.Mips; m++)
         {
@@ -367,15 +375,17 @@ internal sealed unsafe partial class VkBackend
             _vkd.vkCmdBlitImage(_cmd, img.Image, VkImageLayout.TransferSrcOptimal, img.Image, VkImageLayout.TransferDstOptimal, 1, &b, VkFilter.Linear);
             MipBarrier(img, m - 1, VkImageLayout.TransferSrcOptimal, VkImageLayout.TransferDstOptimal);
         }
+        img.Written = true;
         Transition(img, VkImageLayout.ShaderReadOnlyOptimal);
     }
 
     private void MipBarrier(VkImg img, int mip, VkImageLayout from, VkImageLayout to)
     {
+        (VkPipelineStageFlags2 ss, VkAccessFlags2 sa) = Scope(from);
+        (VkPipelineStageFlags2 ds, VkAccessFlags2 da) = Scope(to);
         var b = new VkImageMemoryBarrier2
         {
-            srcStageMask = VkPipelineStageFlags2.AllCommands, srcAccessMask = VkAccessFlags2.MemoryWrite,
-            dstStageMask = VkPipelineStageFlags2.AllCommands, dstAccessMask = VkAccessFlags2.MemoryRead | VkAccessFlags2.MemoryWrite,
+            srcStageMask = ss, srcAccessMask = sa & WriteAccess, dstStageMask = ds, dstAccessMask = da,
             oldLayout = from, newLayout = to, srcQueueFamilyIndex = QueueFamilyIgnored, dstQueueFamilyIndex = QueueFamilyIgnored,
             image = img.Image,
             subresourceRange = new VkImageSubresourceRange
@@ -386,6 +396,7 @@ internal sealed unsafe partial class VkBackend
         };
         var di = new VkDependencyInfo { imageMemoryBarrierCount = 1, pImageMemoryBarriers = &b };
         _vkd.vkCmdPipelineBarrier2(_cmd, &di);
+        _barrierN++;
     }
 
     /// <summary>The bindless table's layout, pool and one set: a variable-length, partially bound, update-after-bind

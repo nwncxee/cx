@@ -103,6 +103,7 @@ internal sealed unsafe partial class VkBackend
         Transition(src, VkImageLayout.TransferSrcOptimal);
         VkImage dst = _swap.Images[idx];
         SwapBarrier(dst, VkImageLayout.Undefined, VkImageLayout.TransferDstOptimal);
+        Flush();
         var b = new VkImageBlit
         {
             srcSubresource = new VkImageSubresourceLayers { aspectMask = VkImageAspectFlags.Color, layerCount = 1 },
@@ -119,18 +120,19 @@ internal sealed unsafe partial class VkBackend
         return true;
     }
 
+    /// <summary>Queue a swapchain image's move. Out of undefined it waits on the transfer stage, the one the submit's
+    /// acquire wait releases, so the move chains after the acquire.</summary>
     private void SwapBarrier(VkImage image, VkImageLayout from, VkImageLayout to)
     {
-        var b = new VkImageMemoryBarrier2
+        (VkPipelineStageFlags2 ss, VkAccessFlags2 sa) = from == VkImageLayout.Undefined ? (VkPipelineStageFlags2.AllTransfer, VkAccessFlags2.None) : Scope(from);
+        (VkPipelineStageFlags2 ds, VkAccessFlags2 da) = Scope(to);
+        Queue(new VkImageMemoryBarrier2
         {
-            srcStageMask = VkPipelineStageFlags2.AllCommands, srcAccessMask = VkAccessFlags2.MemoryWrite,
-            dstStageMask = VkPipelineStageFlags2.AllCommands, dstAccessMask = VkAccessFlags2.MemoryRead | VkAccessFlags2.MemoryWrite,
+            srcStageMask = ss, srcAccessMask = sa & WriteAccess, dstStageMask = ds, dstAccessMask = da,
             oldLayout = from, newLayout = to, srcQueueFamilyIndex = QueueFamilyIgnored, dstQueueFamilyIndex = QueueFamilyIgnored,
             image = image,
             subresourceRange = new VkImageSubresourceRange { aspectMask = VkImageAspectFlags.Color, levelCount = 1, layerCount = 1 },
-        };
-        var di = new VkDependencyInfo { imageMemoryBarrierCount = 1, pImageMemoryBarriers = &b };
-        _vkd.vkCmdPipelineBarrier2(_cmd, &di);
+        });
     }
 
     /// <summary>The engine's swap interval as a present mode: off tears (immediate, else mailbox), adaptive relaxes, any

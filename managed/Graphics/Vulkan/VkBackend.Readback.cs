@@ -56,24 +56,22 @@ internal sealed unsafe partial class VkBackend
     {
         if (_inPass) return Fault("CopyImageToBuffer inside a render pass");
         if (!_images.TryGet(c.Src.Value, out VkImg src)) return Fault("CopyImageToBuffer: stale image");
-        if (!_buffers.TryGet(c.Dst.Value, out VkBuf dst)) return Fault("CopyImageToBuffer: stale buffer");
+        if (!_buffers.TryGet(c.Dst.Value, out VkBuf? dst)) return Fault("CopyImageToBuffer: stale buffer");
         if (!Inside(src, c.From, c.W, c.H, 1, out string why)) return Fault($"CopyImageToBuffer: the block is {why} of {src.Desc.Label}");
         long bytes = LevelBytes(src.Desc with { W = c.W, H = c.H, D = 1 }, 0);
         if (c.Offset < 0 || c.Offset + bytes > dst.Desc.Bytes) return Fault($"CopyImageToBuffer: {bytes} bytes at {c.Offset} of {dst.Desc.Label}'s {dst.Desc.Bytes}");
         Transition(src, VkImageLayout.TransferSrcOptimal);
+        Use(dst, VkPipelineStageFlags2.AllTransfer, VkAccessFlags2.TransferWrite);
+        Flush();
         var r = new VkBufferImageCopy
         {
             bufferOffset = (ulong)c.Offset, imageSubresource = Sub(src, c.From), imageOffset = At(src, c.From),
             imageExtent = new VkExtent3D { width = (uint)c.W, height = (uint)c.H, depth = 1 },
         };
         _vkd.vkCmdCopyImageToBuffer(_cmd, src.Image, VkImageLayout.TransferSrcOptimal, dst.Buffer, 1, &r);
-        var mb = new VkMemoryBarrier2
-        {
-            srcStageMask = VkPipelineStageFlags2.AllCommands, srcAccessMask = VkAccessFlags2.MemoryWrite,
-            dstStageMask = VkPipelineStageFlags2.Host, dstAccessMask = VkAccessFlags2.HostRead,
-        };
-        var di = new VkDependencyInfo { memoryBarrierCount = 1, pMemoryBarriers = &mb };
-        _vkd.vkCmdPipelineBarrier2(_cmd, &di);
+        // the host's read, queued with whatever the next command needs
+        _memSrc |= VkPipelineStageFlags2.AllTransfer; _memSrcAccess |= VkAccessFlags2.TransferWrite;
+        _memDst |= VkPipelineStageFlags2.Host; _memDstAccess |= VkAccessFlags2.HostRead;
         return true;
     }
 }

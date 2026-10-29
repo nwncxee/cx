@@ -1,0 +1,202 @@
+using System;
+using System.Collections.Generic;
+using Vortice.Vulkan;
+
+namespace CX.Graphics.Rhi;
+
+/// <summary>
+/// Barriers on Vulkan. Each is scoped by the layouts or uses on its two sides, never a whole-queue drain, and is
+/// queued as transitions are asked for; the queue records as one <c>vkCmdPipelineBarrier2</c> ahead of the next
+/// command that needs it. Images order by layout and a written flag, buffers by an epoch of uses.
+/// </summary>
+internal sealed unsafe partial class VkBackend
+{
+    /// <summary>Every shader stage a pipeline here runs.</summary>
+    private const VkPipelineStageFlags2 ShaderStages = VkPipelineStageFlags2.VertexShader | VkPipelineStageFlags2.GeometryShader
+                                                     | VkPipelineStageFlags2.FragmentShader | VkPipelineStageFlags2.ComputeShader;
+    /// <summary>The shader stages a draw runs.</summary>
+    private const VkPipelineStageFlags2 DrawStages = VkPipelineStageFlags2.VertexShader | VkPipelineStageFlags2.GeometryShader
+                                                   | VkPipelineStageFlags2.FragmentShader;
+    /// <summary>Every stage that reads or writes a buffer, and the accesses it may make: a buffer barrier's far side.</summary>
+    private const VkPipelineStageFlags2 BufferStages = ShaderStages | VkPipelineStageFlags2.DrawIndirect | VkPipelineStageFlags2.IndexInput
+                                                     | VkPipelineStageFlags2.VertexAttributeInput | VkPipelineStageFlags2.AllTransfer;
+    private const VkAccessFlags2 BufferAccess = VkAccessFlags2.IndirectCommandRead | VkAccessFlags2.IndexRead | VkAccessFlags2.VertexAttributeRead
+                                              | VkAccessFlags2.UniformRead | VkAccessFlags2.ShaderStorageRead | VkAccessFlags2.ShaderStorageWrite
+                                              | VkAccessFlags2.TransferRead | VkAccessFlags2.TransferWrite;
+    /// <summary>A storage buffer's access: read and, for all the backend knows, written. ponytail: a <c>readonly</c>
+    /// block counts as written too; the pipeline's SPIR-V NonWritable decorations would spare its readers the barrier.</summary>
+    private const VkAccessFlags2 StorageAccess = VkAccessFlags2.ShaderStorageRead | VkAccessFlags2.ShaderStorageWrite;
+    /// <summary>The accesses that write: the only ones a barrier's source side has to make available.</summary>
+    private const VkAccessFlags2 WriteAccess = VkAccessFlags2.ShaderWrite | VkAccessFlags2.ShaderStorageWrite | VkAccessFlags2.ColorAttachmentWrite
+                                             | VkAccessFlags2.DepthStencilAttachmentWrite | VkAccessFlags2.TransferWrite
+                                             | VkAccessFlags2.HostWrite | VkAccessFlags2.MemoryWrite;
+
+    /// <summary>The queued image barriers; an image's <see cref="VkImg.BarAt"/> indexes this while its
+    /// <see cref="VkImg.BarBatch"/> is <see cref="_batch"/>.</summary>
+    private VkImageMemoryBarrier2[] _imgBars = new VkImageMemoryBarrier2[32];
+    private int _imgBarN;
+    private long _batch;
+    /// <summary>The queued global memory barrier; a zero far side queues none.</summary>
+    private VkPipelineStageFlags2 _memSrc, _memDst;
+    private VkAccessFlags2 _memSrcAccess, _memDstAccess;
+    /// <summary>The buffer epoch: the stages that touched a buffer since the last buffer barrier, and the writes among
+    /// them. A buffer used twice in one epoch with a write on either side waits for a barrier.</summary>
+    private long _epoch;
+    private VkPipelineStageFlags2 _epochStages;
+    private VkAccessFlags2 _epochWrites;
+    /// <summary>Begun render passes, so a buffer use inside one can tell an earlier pass's use from its own.</summary>
+    private long _passN;
+    private bool _warLogged;
+    /// <summary>A refused recording queued barriers that never ran: the next one opens with a full barrier.</summary>
+    private bool _resync;
+    /// <summary><c>vkCmdPipelineBarrier2</c> calls since the last take.</summary>
+    private int _barrierN;
+
+    /// <summary>The compute bind set's buffers (with their access) and storage images, applied at each dispatch.</summary>
+    private readonly VkBuf[] _cBufs = new VkBuf[UniformSlots + StorageSlots];
+    private readonly VkAccessFlags2[] _cAccess = new VkAccessFlags2[UniformSlots + StorageSlots];
+    private readonly VkImg[] _cImgs = new VkImg[ImageSlots];
+    private int _cBufN, _cImgN;
+
+    /// <summary>The stages that touch an image in <paramref name="l"/> and the accesses they make there.</summary>
+    private static (VkPipelineStageFlags2 Stages, VkAccessFlags2 Access) Scope(VkImageLayout l) => l switch
+    {
+        VkImageLayout.Undefined or VkImageLayout.PresentSrcKHR => (VkPipelineStageFlags2.None, VkAccessFlags2.None),
+        VkImageLayout.ColorAttachmentOptimal => (VkPipelineStageFlags2.ColorAttachmentOutput,
+                                                 VkAccessFlags2.ColorAttachmentRead | VkAccessFlags2.ColorAttachmentWrite),
+        VkImageLayout.DepthStencilAttachmentOptimal => (VkPipelineStageFlags2.EarlyFragmentTests | VkPipelineStageFlags2.LateFragmentTests,
+                                                        VkAccessFlags2.DepthStencilAttachmentRead | VkAccessFlags2.DepthStencilAttachmentWrite),
+        VkImageLayout.ShaderReadOnlyOptimal => (ShaderStages, VkAccessFlags2.ShaderSampledRead),
+        VkImageLayout.General => (ShaderStages, StorageAccess),
+        VkImageLayout.TransferSrcOptimal => (VkPipelineStageFlags2.AllTransfer, VkAccessFlags2.TransferRead),
+        VkImageLayout.TransferDstOptimal => (VkPipelineStageFlags2.AllTransfer, VkAccessFlags2.TransferWrite),
+        _ => (VkPipelineStageFlags2.AllCommands, VkAccessFlags2.MemoryRead | VkAccessFlags2.MemoryWrite),
+    };
+
+    /// <summary>Move <paramref name="img"/> into <paramref name="to"/>, or order it against a write made in that layout
+    /// already (a storage write read next, an attachment drawn again). Queued: <see cref="Flush"/> records it.</summary>
+    private void Transition(VkImg img, VkImageLayout to)
+    {
+        Remember(img);
+        if (img.Layout == to && !img.Written) return;
+        (VkPipelineStageFlags2 ds, VkAccessFlags2 da) = Scope(to);
+        if (img.BarBatch == _batch)
+        {
+            ref VkImageMemoryBarrier2 q = ref _imgBars[img.BarAt];
+            q.newLayout = to; q.dstStageMask = ds; q.dstAccessMask = da;
+        }
+        else
+        {
+            (VkPipelineStageFlags2 ss, VkAccessFlags2 sa) = Scope(img.Layout);
+            img.BarBatch = _batch;
+            img.BarAt = Queue(new VkImageMemoryBarrier2
+            {
+                srcStageMask = ss, srcAccessMask = sa & WriteAccess, dstStageMask = ds, dstAccessMask = da,
+                oldLayout = img.Layout, newLayout = to, srcQueueFamilyIndex = QueueFamilyIgnored, dstQueueFamilyIndex = QueueFamilyIgnored,
+                image = img.Image,
+                subresourceRange = new VkImageSubresourceRange
+                {
+                    aspectMask = Aspect(img.Desc.Fmt), levelCount = Vortice.Vulkan.Vulkan.VK_REMAINING_MIP_LEVELS,
+                    layerCount = Vortice.Vulkan.Vulkan.VK_REMAINING_ARRAY_LAYERS,
+                },
+            });
+        }
+        img.Layout = to;
+        img.Written = false;
+    }
+
+    private int Queue(in VkImageMemoryBarrier2 b)
+    {
+        if (_imgBarN == _imgBars.Length) Array.Resize(ref _imgBars, _imgBarN * 2);
+        _imgBars[_imgBarN] = b;
+        return _imgBarN++;
+    }
+
+    /// <summary>Note <paramref name="b"/> used by <paramref name="stages"/> with <paramref name="access"/> by the next
+    /// command, queueing the buffer barrier a hazard on it needs. Inside a begun pass none can be placed: the pass's
+    /// begin made every earlier write visible, and a write after an earlier pass's read is refused out loud.</summary>
+    private void Use(VkBuf b, VkPipelineStageFlags2 stages, VkAccessFlags2 access)
+    {
+        bool write = (access & WriteAccess) != 0;
+        if (b.Epoch == _epoch && (write || b.Written))
+        {
+            if (!_rendering) Order();
+            else if (b.Pass != _passN && !_warLogged)
+            {
+                _warLogged = true;
+                _log.Always($"VkBackend: {b.Desc.Label} is bound for writing inside a begun render pass after an earlier "
+                          + "pass read it, and no barrier can go there -- bind it before the pass's first draw (logged once)");
+            }
+        }
+        if (b.Epoch != _epoch) { b.Epoch = _epoch; b.Written = false; }
+        b.Pass = _passN;
+        b.Written |= write;
+        _epochStages |= stages;
+        if (write) _epochWrites |= access & WriteAccess;
+    }
+
+    /// <summary>Order every buffer access of the epoch before every one after it, and open the next epoch. Queued.</summary>
+    private void Order()
+    {
+        if (_epochStages == VkPipelineStageFlags2.None) return;
+        _memSrc |= _epochStages; _memSrcAccess |= _epochWrites;
+        _memDst |= BufferStages; _memDstAccess |= BufferAccess;
+        _epoch++;
+        _epochStages = VkPipelineStageFlags2.None;
+        _epochWrites = VkAccessFlags2.None;
+    }
+
+    /// <summary>Record the queued barriers as one call; nothing when none are queued.</summary>
+    private void Flush()
+    {
+        if (_imgBarN == 0 && _memDst == VkPipelineStageFlags2.None) return;
+        var mb = new VkMemoryBarrier2 { srcStageMask = _memSrc, srcAccessMask = _memSrcAccess, dstStageMask = _memDst, dstAccessMask = _memDstAccess };
+        fixed (VkImageMemoryBarrier2* ib = _imgBars)
+        {
+            var di = new VkDependencyInfo
+            {
+                memoryBarrierCount = _memDst == VkPipelineStageFlags2.None ? 0u : 1u, pMemoryBarriers = &mb,
+                imageMemoryBarrierCount = (uint)_imgBarN, pImageMemoryBarriers = ib,
+            };
+            _vkd.vkCmdPipelineBarrier2(_cmd, &di);
+        }
+        _barrierN++;
+        Drop();
+    }
+
+    /// <summary>Forget the queued barriers: recorded, or dropped with a refused recording.</summary>
+    private void Drop()
+    {
+        _imgBarN = 0;
+        _batch++;
+        _memSrc = _memDst = VkPipelineStageFlags2.None;
+        _memSrcAccess = _memDstAccess = VkAccessFlags2.None;
+    }
+
+    /// <summary>Every write before it visible to every access after it: a refused recording's barriers never ran, so
+    /// the next recording opens with this instead of trusting the layouts' written flags and the buffer epoch.</summary>
+    private void FullBarrier()
+    {
+        var mb = new VkMemoryBarrier2
+        {
+            srcStageMask = VkPipelineStageFlags2.AllCommands, srcAccessMask = VkAccessFlags2.MemoryWrite,
+            dstStageMask = VkPipelineStageFlags2.AllCommands, dstAccessMask = VkAccessFlags2.MemoryRead | VkAccessFlags2.MemoryWrite,
+        };
+        var di = new VkDependencyInfo { memoryBarrierCount = 1, pMemoryBarriers = &mb };
+        _vkd.vkCmdPipelineBarrier2(_cmd, &di);
+        _barrierN++;
+    }
+
+    /// <summary>Note <paramref name="img"/>'s layout as this recording found it, once per recording, so a refused
+    /// recording -- whose barriers never run -- puts it back.</summary>
+    private void Remember(VkImg img)
+    {
+        if (img.UndoAt == _recording) return;
+        img.UndoAt = _recording;
+        _undo.Add((img, img.Layout));
+    }
+
+    /// <summary>The current recording's count, and each image it changed with the layout it found.</summary>
+    private long _recording;
+    private readonly List<(VkImg Img, VkImageLayout Layout)> _undo = new();
+}

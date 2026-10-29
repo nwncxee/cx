@@ -33,6 +33,7 @@ internal sealed unsafe partial class VkBackend
         if (!Inside(dst, c.To, dw, dh, c.D, out why)) return Fault($"CopyImage: the destination block is {why} of {dst.Desc.Label}");
         Transition(src, VkImageLayout.TransferSrcOptimal);
         Transition(dst, VkImageLayout.TransferDstOptimal);
+        Flush();
         var r = new VkImageCopy
         {
             srcSubresource = Sub(src, c.From), srcOffset = At(src, c.From),
@@ -41,6 +42,7 @@ internal sealed unsafe partial class VkBackend
         };
         _vkd.vkCmdCopyImage(_cmd, src.Image, VkImageLayout.TransferSrcOptimal, dst.Image,
                             VkImageLayout.TransferDstOptimal, 1, &r);
+        dst.Written = true;
         return true;
     }
 
@@ -54,6 +56,7 @@ internal sealed unsafe partial class VkBackend
         if (!_images.TryGet(i.Value, out VkImg img)) return Fault("ClearImage: stale image");
         if (Aspect(img.Desc.Fmt) != VkImageAspectFlags.Color) return Fault($"ClearImage: {img.Desc.Label} is not a colour image");
         Transition(img, VkImageLayout.TransferDstOptimal);
+        Flush();
         var zero = new VkClearColorValue();
         var range = new VkImageSubresourceRange
         {
@@ -61,6 +64,7 @@ internal sealed unsafe partial class VkBackend
             layerCount = Vortice.Vulkan.Vulkan.VK_REMAINING_ARRAY_LAYERS,
         };
         _vkd.vkCmdClearColorImage(_cmd, img.Image, VkImageLayout.TransferDstOptimal, &zero, 1, &range);
+        img.Written = true;
         return true;
     }
 
@@ -69,7 +73,7 @@ internal sealed unsafe partial class VkBackend
     {
         if (_inPass) return Fault("GenerateMips inside a render pass");
         if (!_images.TryGet(i.Value, out VkImg img)) return Fault("GenerateMips: stale image");
-        if (img.Desc.Mips > 1) { FullBarrier(); BlitMips(img); }
+        if (img.Desc.Mips > 1) BlitMips(img);
         return true;
     }
 
@@ -86,6 +90,7 @@ internal sealed unsafe partial class VkBackend
             return Fault($"BlitImage {src.Desc.Label} ({src.Desc.Fmt}) to {dst.Desc.Label} ({dst.Desc.Fmt}): different aspects");
         Transition(src, VkImageLayout.TransferSrcOptimal);
         Transition(dst, VkImageLayout.TransferDstOptimal);
+        Flush();
         var b = new VkImageBlit
         {
             srcSubresource = new VkImageSubresourceLayers { aspectMask = Aspect(src.Desc.Fmt), layerCount = 1 },
@@ -98,6 +103,7 @@ internal sealed unsafe partial class VkBackend
         VkFilter f = c.Filter == Filter.Linear && !src.Desc.Fmt.IsDepth() ? VkFilter.Linear : VkFilter.Nearest;
         _vkd.vkCmdBlitImage(_cmd, src.Image, VkImageLayout.TransferSrcOptimal, dst.Image,
                             VkImageLayout.TransferDstOptimal, 1, &b, f);
+        dst.Written = true;
         return true;
     }
 
