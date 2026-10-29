@@ -30,9 +30,22 @@ internal sealed unsafe partial class VkBackend : IDevice
         public VkImageLayout Layout;
         /// <summary>The recording that last noted this image's layout for its undo (<see cref="Remember"/>).</summary>
         public long UndoAt = -1;
+        /// <summary>A command wrote it since its last barrier: the next use in the same layout still waits on one.</summary>
+        public bool Written;
+        /// <summary>Its queued barrier's place in the batch numbered <see cref="BarBatch"/>.</summary>
+        public int BarAt;
+        public long BarBatch = -1;
     }
 
-    private readonly record struct VkBuf(VkBuffer Buffer, VmaAllocation Alloc, BufferDesc Desc);
+    private sealed class VkBuf(VkBuffer buffer, VmaAllocation alloc, BufferDesc desc)
+    {
+        public readonly VkBuffer Buffer = buffer;
+        public readonly VmaAllocation Alloc = alloc;
+        public readonly BufferDesc Desc = desc;
+        /// <summary>The buffer epoch it was last used in, and whether that epoch wrote it.</summary>
+        public long Epoch = -1;
+        public bool Written;
+    }
     private readonly record struct VkShader(VkShaderModule Module, ShaderStage Stage);
     /// <summary>A pipeline, and the depth and raster state its desc named, which a bind restates dynamically.</summary>
     private readonly record struct VkPipe(VkPipeline Pipeline, bool Compute, DepthState Depth, RasterState Raster);

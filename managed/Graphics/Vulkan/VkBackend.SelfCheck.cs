@@ -14,12 +14,24 @@ internal sealed unsafe partial class VkBackend
 
     /// <summary>The present mode per swap interval and the ported passes' stages, proven off-device where shaderc loads.
     /// Oracles: the interval-to-mode table written by hand; shaderc's acceptance of the translated text; SPIR-V binding
-    /// numbers read by the specification's opcodes against hand-written ones; format tokens from vulkan_core.h by hand.</summary>
+    /// numbers read by the specification's opcodes against hand-written ones; format tokens and each layout's barrier
+    /// scope as vulkan_core.h's bits, by hand.</summary>
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
         check.Expect(Mode(0) == VkPresentModeKHR.Immediate && Mode(1) == VkPresentModeKHR.Fifo && Mode(2) == VkPresentModeKHR.Fifo
                   && Mode(-1) == VkPresentModeKHR.FifoRelaxed, "a swap interval did not pick its present mode");
+        check.Expect(ScopeIs(VkImageLayout.ColorAttachmentOptimal, 0x400, 0x180) && ScopeIs(VkImageLayout.DepthStencilAttachmentOptimal, 0x300, 0x600)
+                  && ScopeIs(VkImageLayout.ShaderReadOnlyOptimal, 0x8C8, 0x100000000) && ScopeIs(VkImageLayout.General, 0x8C8, 0x600000000)
+                  && ScopeIs(VkImageLayout.TransferSrcOptimal, 0x1000, 0x800) && ScopeIs(VkImageLayout.TransferDstOptimal, 0x1000, 0x1000)
+                  && ScopeIs(VkImageLayout.Undefined, 0, 0),
+            "a layout's barrier scope: colour = COLOR_ATTACHMENT_OUTPUT 0x400 with its read|write 0x180; depth = EARLY|LATE_FRAGMENT_TESTS "
+          + "0x300 with 0x600; sampled = VERTEX|GEOMETRY|FRAGMENT|COMPUTE 0x8C8 with SHADER_SAMPLED_READ 2^32; general = the same "
+          + "stages with SHADER_STORAGE_READ|WRITE; transfer = ALL_TRANSFER 0x1000 with TRANSFER_READ 0x800 / WRITE 0x1000; undefined none");
+        check.Expect(((ulong)WriteAccess & 0x400001500) == 0x400001500 && ((ulong)WriteAccess & 0x300000A80) == 0,
+            "a barrier's source makes the writes available -- SHADER_STORAGE_WRITE 2^34, COLOR_ATTACHMENT_WRITE 0x100, "
+          + "DEPTH_STENCIL_ATTACHMENT_WRITE 0x400, TRANSFER_WRITE 0x1000 -- and no read: SHADER_SAMPLED_READ 2^32, SHADER_STORAGE_READ "
+          + "2^33, COLOR_ATTACHMENT_READ 0x80, DEPTH_STENCIL_ATTACHMENT_READ 0x200, TRANSFER_READ 0x800");
         if (Native.Sym(SymbolMap.AppManager) != IntPtr.Zero)
         {
             check.Skip("on-device: the pilot's stages compile at the device's first pipeline, not at boot");
@@ -58,6 +70,9 @@ internal sealed unsafe partial class VkBackend
             "the cull stage's pyramid sampler sits on the unit both backends bind it to");
         log.Info(check.Ok ? "VkBackend.SelfCheck: passed" : "VkBackend.SelfCheck: FAILED");
     }
+
+    private static bool ScopeIs(VkImageLayout l, ulong stages, ulong access)
+        => (ulong)Scope(l).Stages == stages && (ulong)Scope(l).Access == access;
 
     private static void Stage(Checker check, string name, ShaderKind kind, uint[] bindings)
     {

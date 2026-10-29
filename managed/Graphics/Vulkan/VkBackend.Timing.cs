@@ -79,13 +79,13 @@ internal sealed unsafe partial class VkBackend
     }
 
     /// <summary>Milliseconds spent translating recorded lists into <c>vkCmd*</c> calls since the last take, with the bind
-    /// sets and recorded draws they carried and how many lists they came from. An indirect draw counts once, whatever
+    /// sets, recorded draws and barrier calls they carried and how many lists they came from. An indirect draw counts once, whatever
     /// the GPU reads out of it.</summary>
-    internal double TakeTranslateMs(out int sets, out int draws, out int lists)
+    internal double TakeTranslateMs(out int sets, out int draws, out int lists, out int barriers)
     {
-        sets = _setN; draws = _drawN; lists = _translateN;
+        sets = _setN; draws = _drawN; lists = _translateN; barriers = _barrierN;
         double ms = _translateTicks * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
-        _translateTicks = 0; _setN = _drawN = _translateN = 0;
+        _translateTicks = 0; _setN = _drawN = _translateN = _barrierN = 0;
         return ms;
     }
 

@@ -27,6 +27,8 @@ internal sealed unsafe partial class VkBackend
     /// <summary>A multi-draw's commands, built here and staged for the indirect draw that gives each its draw index.</summary>
     private VkDrawIndexedIndirectCommand[] _multi = new VkDrawIndexedIndirectCommand[256];
     private bool _inPass, _rendering, _scissorSet;
+    /// <summary>The bind set being recorded serves draws: its uses apply now, not at each dispatch.</summary>
+    private bool _setDraws;
     private VkPipelineBindPoint _bindPoint = VkPipelineBindPoint.Graphics;
     private VkCommandBuffer _cmd;
     private Slot? _slot;
@@ -56,6 +58,9 @@ internal sealed unsafe partial class VkBackend
         var bi = new VkCommandBufferBeginInfo { flags = VkCommandBufferUsageFlags.OneTimeSubmit };
         _vkd.vkBeginCommandBuffer(s.Cmd, &bi);
         _cmd = s.Cmd;
+        Drop();
+        _cBufN = _cImgN = 0;
+        if (_resync) { FullBarrier(); _resync = false; }
         if (_labels) OpenLabel(list.NameUtf8);
         _slot = s;
         _inPass = _rendering = false;
@@ -71,6 +76,7 @@ internal sealed unsafe partial class VkBackend
         if (_rendering) _vkd.vkCmdEndRendering(_cmd);
         _inPass = _rendering = false;
         if (ok && swap >= 0) ok = RecordPresent(swap);
+        Flush();
         TimeEnd(slot, ok);
         if (ok && _labelDepth > 1 && !_labelLeakLogged)
         {
@@ -86,6 +92,7 @@ internal sealed unsafe partial class VkBackend
             // uploads this recording flushed wait for the next one
             for (int i = _undo.Count - 1; i >= 0; i--) _undo[i].Img.Layout = _undo[i].Layout;
             _undo.Clear();
+            _resync = true;
             _upload.Touched.Clear();
             return false;
         }
@@ -197,6 +204,7 @@ internal sealed unsafe partial class VkBackend
             if (cv.IsNull) return Fault($"render pass colour {i}: layer {c.Layer} is past {img.Desc.Label}");
             if (c.Layer < 0) layers = Math.Max(layers, Layers(img.Desc));
             Transition(img, VkImageLayout.ColorAttachmentOptimal);
+            img.Written = true;
             var clear = new VkClearValue();
             clear.color.float32[0] = c.Clear.X; clear.color.float32[1] = c.Clear.Y;
             clear.color.float32[2] = c.Clear.Z; clear.color.float32[3] = c.Clear.W;
@@ -221,6 +229,7 @@ internal sealed unsafe partial class VkBackend
             if (dv.IsNull) return Fault($"render pass depth: layer {d.Layer} is past {img.Desc.Label}");
             if (d.Layer < 0) layers = Math.Max(layers, Layers(img.Desc));
             Transition(img, VkImageLayout.DepthStencilAttachmentOptimal);
+            img.Written = true;
             var clear = new VkClearValue();
             clear.depthStencil = new VkClearDepthStencilValue(d.Depth, 0);
             depth = new VkRenderingAttachmentInfo
@@ -239,6 +248,9 @@ internal sealed unsafe partial class VkBackend
             renderArea = area, layerCount = (uint)layers, colorAttachmentCount = (uint)_pendCount, pColorAttachments = att,
             pDepthAttachment = _pendHasDepth ? &depth : null, pStencilAttachment = stencil ? &depth : null,
         };
+        // a bind after the first draw can place no barrier, so every buffer access before the pass is ordered now
+        Order();
+        Flush();
         _vkd.vkCmdBeginRendering(_cmd, &ri);
         if (!_scissorSet) _vkd.vkCmdSetScissor(_cmd, 0, 1, &area);
         _rendering = true;
@@ -279,7 +291,8 @@ internal sealed unsafe partial class VkBackend
 
     private bool VertexBuffer(VertexBufferCmd c)
     {
-        if (!_buffers.TryGet(c.Buffer.Value, out VkBuf b)) return Fault("BindVertexBuffer: stale buffer");
+        if (!_buffers.TryGet(c.Buffer.Value, out VkBuf? b)) return Fault("BindVertexBuffer: stale buffer");
+        Use(b, VkPipelineStageFlags2.VertexAttributeInput, VkAccessFlags2.VertexAttributeRead);
         VkBuffer vb = b.Buffer;
         ulong off = (ulong)c.Offset;
         _vkd.vkCmdBindVertexBuffers(_cmd, 0, 1, &vb, &off);
@@ -311,7 +324,8 @@ internal sealed unsafe partial class VkBackend
     private bool Indirect(IndirectCmd c)
     {
         if (!EnsureRendering()) return false;
-        if (!_buffers.TryGet(c.Commands.Value, out VkBuf cmds)) return Fault("DrawIndexedIndirect: stale command buffer");
+        if (!_buffers.TryGet(c.Commands.Value, out VkBuf? cmds)) return Fault("DrawIndexedIndirect: stale command buffer");
+        Use(cmds, VkPipelineStageFlags2.DrawIndirect, VkAccessFlags2.IndirectCommandRead);
         _drawN++;
         if (c.MaxDraws <= 0) return true;
         if (c.Count.IsNull)
@@ -319,7 +333,8 @@ internal sealed unsafe partial class VkBackend
             _vkd.vkCmdDrawIndexedIndirect(_cmd, cmds.Buffer, (ulong)c.Offset, (uint)c.MaxDraws, IndirectStride);
             return true;
         }
-        if (!_buffers.TryGet(c.Count.Value, out VkBuf count)) return Fault("DrawIndexedIndirect: stale count buffer");
+        if (!_buffers.TryGet(c.Count.Value, out VkBuf? count)) return Fault("DrawIndexedIndirect: stale count buffer");
+        Use(count, VkPipelineStageFlags2.DrawIndirect, VkAccessFlags2.IndirectCommandRead);
         _vkd.vkCmdDrawIndexedIndirectCount(_cmd, cmds.Buffer, (ulong)c.Offset, count.Buffer, (ulong)c.CountOffset, (uint)c.MaxDraws, IndirectStride);
         return true;
     }
@@ -327,7 +342,8 @@ internal sealed unsafe partial class VkBackend
     private bool IndirectArrays(IndirectCmd c)
     {
         if (!EnsureRendering()) return false;
-        if (!_buffers.TryGet(c.Commands.Value, out VkBuf cmds)) return Fault("DrawIndirect: stale command buffer");
+        if (!_buffers.TryGet(c.Commands.Value, out VkBuf? cmds)) return Fault("DrawIndirect: stale command buffer");
+        Use(cmds, VkPipelineStageFlags2.DrawIndirect, VkAccessFlags2.IndirectCommandRead);
         _drawN++;
         if (c.MaxDraws > 0) _vkd.vkCmdDrawIndirect(_cmd, cmds.Buffer, (ulong)c.Offset, (uint)c.MaxDraws, ArraysStride);
         return true;
@@ -369,6 +385,8 @@ internal sealed unsafe partial class VkBackend
         Span<VkDescriptorBufferInfo> bi = stackalloc VkDescriptorBufferInfo[Math.Max(ubo.Length + ssbo.Length, 1)];
         Span<VkDescriptorImageInfo> ii = stackalloc VkDescriptorImageInfo[Math.Max(tex.Length + img.Length, 1)];
         int k = 0, b = 0, t = 0;
+        _setDraws = _inPass || _bindPoint == VkPipelineBindPoint.Graphics;
+        if (!_setDraws) _cBufN = _cImgN = 0;
         foreach (BufferBinding u in ubo) if (!Buf(u, VulkanToolchain.UniformBase, VkDescriptorType.UniformBuffer, w, bi, ref k, ref b)) return false;
         foreach (BufferBinding u in ssbo) if (!Buf(u, VulkanToolchain.StorageBase, VkDescriptorType.StorageBuffer, w, bi, ref k, ref b)) return false;
         foreach (ImageBinding s in tex) if (!Img(s, VulkanToolchain.SampledBase, VkDescriptorType.CombinedImageSampler, w, ii, ref k, ref t)) return false;
@@ -388,7 +406,10 @@ internal sealed unsafe partial class VkBackend
 
     private bool Buf(BufferBinding u, uint at, VkDescriptorType type, VkWriteDescriptorSet* w, Span<VkDescriptorBufferInfo> bi, ref int k, ref int b)
     {
-        if (!_buffers.TryGet(u.Buffer.Value, out VkBuf buf)) return Fault($"bind set: stale buffer on slot {u.Slot}");
+        if (!_buffers.TryGet(u.Buffer.Value, out VkBuf? buf)) return Fault($"bind set: stale buffer on slot {u.Slot}");
+        VkAccessFlags2 access = type == VkDescriptorType.StorageBuffer ? StorageAccess : VkAccessFlags2.UniformRead;
+        if (_setDraws) Use(buf, DrawStages, access);
+        else { _cBufs[_cBufN] = buf; _cAccess[_cBufN++] = access; }
         bi[b] = new VkDescriptorBufferInfo { buffer = buf.Buffer, offset = (ulong)u.Offset, range = u.Bytes == 0 ? Vortice.Vulkan.Vulkan.VK_WHOLE_SIZE : (ulong)u.Bytes };
         w[k++] = new VkWriteDescriptorSet { dstBinding = at + u.Slot, descriptorCount = 1, descriptorType = type, pBufferInfo = (VkDescriptorBufferInfo*)Unsafe.AsPointer(ref bi[b++]) };
         return true;
@@ -416,6 +437,8 @@ internal sealed unsafe partial class VkBackend
         if (!_rendering) Transition(img, want);
         else if (img.Layout != want)
             return Fault($"bind set: slot {s.Slot}'s image needs a barrier inside a begun render pass -- bind before the first draw");
+        if (storage && _setDraws) img.Written = true;
+        else if (storage) _cImgs[_cImgN++] = img;
         VkSampler sampler = _nearest;
         if (!storage && !s.Sampler.IsNull && !_samplers.TryGet(s.Sampler.Value, out sampler)) return Fault($"bind set: stale sampler on slot {s.Slot}");
         ii[t] = new VkDescriptorImageInfo { sampler = storage ? default : sampler, imageView = ViewOf(img, storage ? s.Mip : -1), imageLayout = want };
@@ -425,7 +448,8 @@ internal sealed unsafe partial class VkBackend
 
     private bool IndexBuffer(IndexBufferCmd c)
     {
-        if (!_buffers.TryGet(c.Buffer.Value, out VkBuf b)) return Fault("BindIndexBuffer: stale buffer");
+        if (!_buffers.TryGet(c.Buffer.Value, out VkBuf? b)) return Fault("BindIndexBuffer: stale buffer");
+        Use(b, VkPipelineStageFlags2.IndexInput, VkAccessFlags2.IndexRead);
         _vkd.vkCmdBindIndexBuffer(_cmd, b.Buffer, (ulong)c.Offset, c.Type == IndexType.U16 ? VkIndexType.Uint16 : VkIndexType.Uint32);
         return true;
     }
@@ -449,8 +473,12 @@ internal sealed unsafe partial class VkBackend
     private bool Dispatch(DispatchCmd c)
     {
         if (_inPass) return Fault("a dispatch inside a render pass");
+        // the set's storage images and buffers count as written: a dispatch after one that wrote them waits on it
+        for (int i = 0; i < _cImgN; i++) Transition(_cImgs[i], VkImageLayout.General);
+        for (int i = 0; i < _cBufN; i++) Use(_cBufs[i], VkPipelineStageFlags2.ComputeShader, _cAccess[i]);
+        Flush();
         _vkd.vkCmdDispatch(_cmd, (uint)c.X, (uint)c.Y, (uint)c.Z);
-        FullBarrier();
+        for (int i = 0; i < _cImgN; i++) _cImgs[i].Written = true;
         return true;
     }
 
@@ -461,8 +489,8 @@ internal sealed unsafe partial class VkBackend
         if (!_buffers.TryGet(c.Buffer.Value, out VkBuf b)) return Fault("UpdateBuffer: stale buffer");
         if (c.Offset < 0 || c.Offset + c.Bytes > b.Desc.Bytes || (c.Bytes & 3) != 0 || (c.Offset & 3) != 0)
             return Fault($"UpdateBuffer of {c.Bytes} bytes at {c.Offset} into {b.Desc.Label}'s {b.Desc.Bytes}, in whole words");
-        // a write after reads: every draw and dispatch before it, this submit's or an earlier one's, is done with the bytes
-        FullBarrier();
+        Use(b, VkPipelineStageFlags2.AllTransfer, VkAccessFlags2.TransferWrite);
+        Flush();
         if (c.Bytes <= MaxInlineUpdate)
             fixed (byte* p = bytes) _vkd.vkCmdUpdateBuffer(_cmd, b.Buffer, (ulong)c.Offset, (ulong)c.Bytes, p);
         else
@@ -471,7 +499,6 @@ internal sealed unsafe partial class VkBackend
             var region = new VkBufferCopy { srcOffset = at, dstOffset = (ulong)c.Offset, size = (ulong)c.Bytes };
             _vkd.vkCmdCopyBuffer(_cmd, _slot!.Stage, b.Buffer, 1, &region);
         }
-        FullBarrier();
         return true;
     }
 
@@ -529,9 +556,9 @@ internal sealed unsafe partial class VkBackend
         if (c.Offset < 0 || bytes < 0 || c.Offset + bytes > b.Desc.Bytes || ((c.Offset | bytes) & 3) != 0)
             return Fault($"ZeroBuffer: {bytes} bytes at {c.Offset} of {b.Desc.Label}'s {b.Desc.Bytes}, in whole words");
         if (bytes == 0) return true;
-        FullBarrier();
+        Use(b, VkPipelineStageFlags2.AllTransfer, VkAccessFlags2.TransferWrite);
+        Flush();
         _vkd.vkCmdFillBuffer(_cmd, b.Buffer, (ulong)c.Offset, (ulong)bytes, 0);
-        FullBarrier();
         return true;
     }
 
@@ -561,11 +588,19 @@ internal sealed unsafe partial class VkBackend
         }
         var bi = new VkCommandBufferBeginInfo { flags = VkCommandBufferUsageFlags.OneTimeSubmit };
         _vkd.vkBeginCommandBuffer(cb, &bi);
+        // the frame leaves its last writes unordered until a use asks; this copy is one
+        var pre = new VkMemoryBarrier2
+        {
+            srcStageMask = VkPipelineStageFlags2.AllCommands, srcAccessMask = VkAccessFlags2.MemoryWrite,
+            dstStageMask = VkPipelineStageFlags2.AllTransfer, dstAccessMask = VkAccessFlags2.TransferRead,
+        };
+        var pdi = new VkDependencyInfo { memoryBarrierCount = 1, pMemoryBarriers = &pre };
+        _vkd.vkCmdPipelineBarrier2(cb, &pdi);
         var region = new VkBufferCopy { size = (ulong)dst.Length };
         _vkd.vkCmdCopyBuffer(cb, src.Buffer, hb, 1, &region);
         var mb = new VkMemoryBarrier2
         {
-            srcStageMask = VkPipelineStageFlags2.AllCommands, srcAccessMask = VkAccessFlags2.MemoryWrite,
+            srcStageMask = VkPipelineStageFlags2.AllTransfer, srcAccessMask = VkAccessFlags2.TransferWrite,
             dstStageMask = VkPipelineStageFlags2.Host, dstAccessMask = VkAccessFlags2.HostRead,
         };
         var di = new VkDependencyInfo { memoryBarrierCount = 1, pMemoryBarriers = &mb };
@@ -582,58 +617,5 @@ internal sealed unsafe partial class VkBackend
         _vkd.vkFreeCommandBuffers(_cmdPool, 1, &cb);
         Vma.vmaDestroyBuffer(_vma, hb, ha);
         return ok || Fault("ReadBack: the copy was refused");
-    }
-
-    /// <summary>Every write before it visible to every access after it. ponytail: one coarse barrier per write,
-    /// the frame graph derives narrow ones once a pass with real hazards moves over.</summary>
-    private void FullBarrier()
-    {
-        var mb = new VkMemoryBarrier2
-        {
-            srcStageMask = VkPipelineStageFlags2.AllCommands, srcAccessMask = VkAccessFlags2.MemoryWrite,
-            dstStageMask = VkPipelineStageFlags2.AllCommands, dstAccessMask = VkAccessFlags2.MemoryRead | VkAccessFlags2.MemoryWrite,
-        };
-        var di = new VkDependencyInfo { memoryBarrierCount = 1, pMemoryBarriers = &mb };
-        _vkd.vkCmdPipelineBarrier2(_cmd, &di);
-    }
-
-    /// <summary>Move <paramref name="img"/> into <paramref name="to"/>.</summary>
-    private void Transition(VkImg img, VkImageLayout to)
-    {
-        Remember(img);
-        if (img.Layout == to && to == VkImageLayout.ShaderReadOnlyOptimal) return;
-        Barrier(img, to);
-        img.Layout = to;
-    }
-
-    /// <summary>Note <paramref name="img"/>'s layout as this recording found it, once per recording, so a refused
-    /// recording -- whose barriers never run -- puts it back.</summary>
-    private void Remember(VkImg img)
-    {
-        if (img.UndoAt == _recording) return;
-        img.UndoAt = _recording;
-        _undo.Add((img, img.Layout));
-    }
-
-    /// <summary>The current recording's count, and each image it changed with the layout it found.</summary>
-    private long _recording;
-    private readonly List<(VkImg Img, VkImageLayout Layout)> _undo = new();
-
-    private void Barrier(VkImg img, VkImageLayout to)
-    {
-        var b = new VkImageMemoryBarrier2
-        {
-            srcStageMask = VkPipelineStageFlags2.AllCommands, srcAccessMask = VkAccessFlags2.MemoryWrite,
-            dstStageMask = VkPipelineStageFlags2.AllCommands, dstAccessMask = VkAccessFlags2.MemoryRead | VkAccessFlags2.MemoryWrite,
-            oldLayout = img.Layout, newLayout = to, srcQueueFamilyIndex = QueueFamilyIgnored, dstQueueFamilyIndex = QueueFamilyIgnored,
-            image = img.Image,
-            subresourceRange = new VkImageSubresourceRange
-            {
-                aspectMask = Aspect(img.Desc.Fmt), levelCount = Vortice.Vulkan.Vulkan.VK_REMAINING_MIP_LEVELS,
-                layerCount = Vortice.Vulkan.Vulkan.VK_REMAINING_ARRAY_LAYERS,
-            },
-        };
-        var di = new VkDependencyInfo { imageMemoryBarrierCount = 1, pImageMemoryBarriers = &b };
-        _vkd.vkCmdPipelineBarrier2(_cmd, &di);
     }
 }
