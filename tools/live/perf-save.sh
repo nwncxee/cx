@@ -5,13 +5,15 @@
 #   tools/live/perf-save.sh --saves DIR [--soak N] [--label NAME] [--cfg 'key=value' ...]
 #   --aniso N sets the anisotropic filtering mode. --override DIR copies its files into the throwaway override/ (e.g. a cx_*.shd shader variant).
 #   --keys SCRIPT runs (xtool grammar) once the area has settled, e.g. "key:Return;type:/alloy bench;key:Return"
+#   --passtime loads VK_LAYER_CX_passtime (tools/gpu-passtime) and prints GPU ms per debug label over the last
+#     1000 presents: live frames, a timestamp at each label edge, (gaps) = a parent's time no child label claims.
 #
 # DIR holds ONE save folder (it is preselected on the Load panel). The user's real cx.cfg is passed through so
 # knobs match play; each --cfg replaces that key. Click points are pixel constants for 2544x1378 at the
 # copied settings.tml's UI scale. Steady state = every reporting period after the first two in the area.
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-SAVES=""; SOAK=90; LABEL="run"; OVERRIDES=(); EXTRA=""; OVR=""; LIVE=()
+SAVES=""; SOAK=90; LABEL="run"; OVERRIDES=(); EXTRA=""; OVR=""; LIVE=(); PASSTIME=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --saves) SAVES="$2"; shift 2 ;;
@@ -21,6 +23,7 @@ while [ $# -gt 0 ]; do
         --keys)  EXTRA="$2;"; shift 2 ;;
         --override) OVR="$2"; shift 2 ;;
         --aniso) LIVE+=(--aniso "$2"); shift 2 ;;
+        --passtime) PASSTIME=1; shift ;;
         *) echo "perf-save: unknown option $1" >&2; exit 2 ;;
     esac
 done
@@ -42,6 +45,12 @@ for o in ${OVERRIDES+"${OVERRIDES[@]}"}; do args+=(--cfg "$o"); done
 
 OUT="${TMPDIR:-/tmp}/cx-perf-$LABEL-$(date +%H%M%S)"
 half=$(( SOAK * 500 ))
+if [ "$PASSTIME" = 1 ]; then
+    "$ROOT/tools/gpu-passtime/build.sh" >/dev/null || { echo "perf-save: the passtime layer did not build" >&2; exit 2; }
+    export VK_ADD_LAYER_PATH="$ROOT/build/passtime${VK_ADD_LAYER_PATH:+:$VK_ADD_LAYER_PATH}"
+    export VK_INSTANCE_LAYERS="VK_LAYER_CX_passtime${VK_INSTANCE_LAYERS:+:$VK_INSTANCE_LAYERS}"
+    export PASSTIME_OUT="$OUT/passtime.txt" DISABLE_GAMESCOPE_WSI=1
+fi
 if [ -n "$OVR" ]; then
     mkdir -p "$OUT/home/.local/share/Neverwinter Nights/override" && cp "$OVR"/* "$OUT/home/.local/share/Neverwinter Nights/override/" || exit 2
 fi
@@ -83,3 +92,7 @@ if evicted:
     print(f"  VRAM EVICTED {evicted} MiB: the card was oversubscribed (other processes hold VRAM) -- not comparable to a run that fits")
 print(f"  out {out}  (shot.png, cx.log)  harness exit {rc}")
 PY
+if [ "$PASSTIME" = 1 ]; then
+    if [ -f "$OUT/passtime.txt" ]; then cat "$OUT/passtime.txt"
+    else echo "perf-save: --passtime wrote no report ($OUT/passtime.txt) -- grep '[passtime]' $OUT/engine-stdout.log"; fi
+fi

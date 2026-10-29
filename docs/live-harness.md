@@ -223,6 +223,24 @@ a server (`docs/ui-policy-contract.md`); the ladder's window id is `cxladder_nui
 set `fadein` to 30000 and the three shots land inside it. For a fade out, add `fadeout=5000` and run with `--nui-close 45`.
 With `--cfg alloy.enabled=0` the window draws as stock.
 
+## GPU time per pass (`perf-save.sh --passtime`)
+
+`tools/live/perf-save.sh --saves DIR --passtime` builds `VK_LAYER_CX_passtime` (`tools/gpu-passtime/`, after its self-check),
+loads it into the client and prints GPU milliseconds per debug label over the last 1000 presents: median, p90, mean and
+max, as a tree. This is the standard measurement for GPU work; compare two runs that both used it.
+
+The layer writes a timestamp at every label begin and end on live frames and reads them back when the client re-records
+that command buffer, so nothing is replayed and nothing stalls. A label's time is end minus begin, so siblings split
+their parent; `(gaps)` is the parent's time no child label claims, and a large one means a pass is missing a label.
+The top-level `vulkan frame` agrees with the client's own `[vkgpu]` line. The layer adds about 3% GPU time.
+
+Other tools, for what they are good at:
+
+- RenderDoc captures and shows a frame well, but its per-event durations come from a serialized replay that splits
+  every multi-draw-indirect command into single draws, so the shadow bake, prepass and G-buffer read many times too slow.
+- Nsight Systems from the distribution traces live frames, but drops the label name from most instances of half the
+  passes and misreports nested labels. The Nix build discards every GPU timestamp on this kind of machine.
+
 ## Limits
 
 - **One client at a time.** The harness refuses to start if `nwmain-linux` is already running. Two
