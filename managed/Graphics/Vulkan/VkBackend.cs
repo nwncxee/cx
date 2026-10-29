@@ -50,13 +50,17 @@ internal sealed unsafe partial class VkBackend : IDevice
     /// <summary>A pipeline, and the depth and raster state its desc named, which a bind restates dynamically.</summary>
     private readonly record struct VkPipe(VkPipeline Pipeline, bool Compute, DepthState Depth, RasterState Raster);
 
-    /// <summary>One submit's recording resources; the slots rotate, so a submit waits on the one <see cref="Slots"/> back.</summary>
-    private sealed class Slot
+    /// <summary>One submit's recording resources, reused once the timeline passes <see cref="Done"/>: the value its
+    /// last submit signalled. <see cref="Index"/> is its place in the list and its timestamp pair.</summary>
+    private sealed class Slot(int index)
     {
+        public readonly int Index = index;
         public VkCommandBuffer Cmd;
-        public VkFence Fence;
+        public long Done;
+        /// <summary>Its last submit wrote a timestamp pair, read when the slot is next taken.</summary>
+        public bool Timed;
         /// <summary>Host-visible staging an update too large to record inline is copied through; reused from
-        /// <see cref="StageUsed"/> 0 once the slot's fence has passed, grown when one submit outgrows it.</summary>
+        /// <see cref="StageUsed"/> 0 once the slot's submit has finished, grown when one submit outgrows it.</summary>
         public VkBuffer Stage;
         public VmaAllocation StageAlloc;
         public ulong StageBytes, StageUsed;
@@ -90,12 +94,12 @@ internal sealed unsafe partial class VkBackend : IDevice
     /// <summary>The floor: dynamic rendering and synchronization2 are core, and it fixes the SPIR-V target.</summary>
     private static readonly VkVersion ApiFloor = VkVersion.Version_1_3;
     private const int LoggedFaults = 16;
-    /// <summary>Submits in flight before one waits on a fence: a frame submits its world, its GUI and its present, so
-    /// six lets the CPU run two frames ahead, as a GL driver queues them; one missed vblank then costs no frame.</summary>
-    private const int Slots = 6;
-    /// <summary>Submits a freed object waits out: the last fence waited before the free must cover its submit, so past
-    /// the slot ring by at least one.</summary>
-    private const int DeadAfter = Slots + 2;
+    /// <summary>Frames the CPU runs ahead of the GPU before a present waits, as a GL driver queues them; one missed
+    /// vblank then costs no frame. Counted per frame, whatever number of submits a frame makes.</summary>
+    private const int FramesInFlight = 2;
+    /// <summary>Recording slots at most: a frame's submits times the frames in flight, with room to spare. A submit that
+    /// finds every one still running waits on the oldest.</summary>
+    private const int MaxSlots = 16;
     /// <summary>Distinct descriptor sets one pool holds before it is retired for a fresh one.</summary>
     private const uint SetsPerPool = 4096;
     /// <summary>The one set's shape: each kind of binding, its count, at its <see cref="VulkanToolchain"/> base.
@@ -103,7 +107,7 @@ internal sealed unsafe partial class VkBackend : IDevice
     /// may declare always has a descriptor to land in.</summary>
     private const uint SampledSlots = 48, ImageSlots = 8;
     private const uint UniformSlots = CX.Alloy.UboSlots.Budget, StorageSlots = CX.Alloy.SsboSlots.Budget;
-    private const ulong FenceTimeoutNs = 2_000_000_000;
+    private const ulong WaitTimeoutNs = 2_000_000_000;
 
     private readonly ExtenderLog _log;
     private readonly int _thread;
@@ -115,7 +119,7 @@ internal sealed unsafe partial class VkBackend : IDevice
     private readonly uint _family;
     private readonly VmaAllocator _vma;
     private readonly VkCommandPool _cmdPool;
-    private readonly Slot[] _slots = new Slot[Slots];
+    private readonly List<Slot> _slots = new();
     private readonly VkDescriptorSetLayout _setLayout, _bindlessLayout;
     /// <summary>The uniform slots from 0 that are dynamic, so a rebind at a new offset reuses its set: every one the
     /// device's dynamic-buffer limit seats.</summary>
@@ -132,7 +136,7 @@ internal sealed unsafe partial class VkBackend : IDevice
     private readonly HandleTable<VkShader> _shaders = new();
     private readonly HandleTable<VkPipe> _pipelines = new();
     private readonly HandleTable<VertexLayoutDesc> _layouts = new();
-    /// <summary>Deaths waiting out the frames in flight.</summary>
+    /// <summary>Deaths waiting out the timeline value of the last submit that could reach them.</summary>
     private readonly List<(long At, Action Free)> _dead = new();
     private long _submits;
     private int _faults;
@@ -250,6 +254,7 @@ internal sealed unsafe partial class VkBackend : IDevice
     {
         if (!f11.shaderDrawParameters) return "shaderDrawParameters";
         if (!f12.drawIndirectCount) return "drawIndirectCount";
+        if (!f12.timelineSemaphore) return "timelineSemaphore";
         if (!f12.shaderOutputLayer) return "shaderOutputLayer (the caster bake's layered pass)";
         if (!f12.runtimeDescriptorArray || !f12.descriptorBindingPartiallyBound || !f12.descriptorBindingVariableDescriptorCount
             || !f12.shaderSampledImageArrayNonUniformIndexing || !f12.descriptorBindingSampledImageUpdateAfterBind)
@@ -344,7 +349,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         {
             pNext = &f11, drawIndirectCount = true, runtimeDescriptorArray = true, descriptorBindingPartiallyBound = true,
             descriptorBindingVariableDescriptorCount = true, shaderSampledImageArrayNonUniformIndexing = true,
-            descriptorBindingSampledImageUpdateAfterBind = true,
+            descriptorBindingSampledImageUpdateAfterBind = true, timelineSemaphore = true,
             // the caster bake's vertex stages write gl_Layer. glslang may spell that as 1.2's own ShaderLayer or
             // as the EXT capability, so both features go on and the extension joins them where the device still
             // advertises it -- enabling it with only one of the pair is what the spec forbids.
@@ -395,9 +400,9 @@ internal sealed unsafe partial class VkBackend : IDevice
         _vki.vkGetPhysicalDeviceProperties(phys, &props);
         ref VkPhysicalDeviceLimits l = ref props.limits;
         _dynUbos = Math.Min(UniformSlots, l.maxDescriptorSetUniformBuffersDynamic);
-        for (int i = 0; i < Slots; i++) _slots[i] = MakeSlot();
+        _timeline = MakeTimeline();
         Check(MakeSetPool(out _sets.Pool), "vkCreateDescriptorPool");
-        for (int i = 0; i < Slots; i++) _acquired[i] = MakeSemaphore();
+        for (int i = 0; i < FramesInFlight; i++) _acquired[i] = MakeSemaphore();
 
         OpenPipelineCache(in props);
         OpenTiming(in props);
@@ -462,20 +467,6 @@ internal sealed unsafe partial class VkBackend : IDevice
         return a;
     }
 
-    private Slot MakeSlot()
-    {
-        var s = new Slot();
-        var ai = new VkCommandBufferAllocateInfo { commandPool = _cmdPool, level = VkCommandBufferLevel.Primary, commandBufferCount = 1 };
-        VkCommandBuffer cb;
-        Check(_vkd.vkAllocateCommandBuffers(&ai, &cb), "vkAllocateCommandBuffers");
-        s.Cmd = cb;
-        var fci = new VkFenceCreateInfo { flags = VkFenceCreateFlags.Signaled };
-        VkFence f;
-        Check(_vkd.vkCreateFence(&fci, &f), "vkCreateFence");
-        s.Fence = f;
-        return s;
-    }
-
     /// <summary>The one descriptor set every pipeline shares: GL's four binding spaces laid end to end, so a pass's
     /// slot numbers carry over unchanged and no pipeline needs its own layout.</summary>
     private VkDescriptorSetLayout MakeSetLayout()
@@ -529,7 +520,9 @@ internal sealed unsafe partial class VkBackend : IDevice
         if (Vma.vmaCreateBuffer(_vma, &bci, &aci, &b, &a, null) != VkResult.Success)
             return Refused<BufferId>($"buffer {d.Label}: VMA refused {d.Bytes} bytes");
         Name(VkObjectType.Buffer, b.Handle, d.Label);
-        return new BufferId(_buffers.Add(new VkBuf(b, a, d)));
+        var id = new BufferId(_buffers.Add(new VkBuf(b, a, d)));
+        _upload.Zero.Add(id);
+        return id;
     }
 
     public SamplerId CreateSampler(in SamplerDesc d) => OnThread("CreateSampler") ? new SamplerId(_samplers.Add(Sampler(d))) : default;
@@ -605,7 +598,7 @@ internal sealed unsafe partial class VkBackend : IDevice
 
     public void Destroy(ImageId i)
     {
-        if (OnThread("Destroy") && _images.Remove(i.Value, out VkImg g)) { _sets.Stale = true; Later(() => Free(g)); }
+        if (OnThread("Destroy") && _images.Remove(i.Value, out VkImg g)) { _sets.Stale = true; LaterThanBindless(() => Free(g)); }
     }
 
     /// <summary>An image's views, the image and its memory.</summary>
@@ -619,7 +612,7 @@ internal sealed unsafe partial class VkBackend : IDevice
 
     public void Destroy(SamplerId s)
     {
-        if (OnThread("Destroy") && _samplers.Remove(s.Value, out VkSampler v)) { _sets.Stale = true; Later(() => _vkd.vkDestroySampler(v)); }
+        if (OnThread("Destroy") && _samplers.Remove(s.Value, out VkSampler v)) { _sets.Stale = true; LaterThanBindless(() => _vkd.vkDestroySampler(v)); }
     }
 
     public void Destroy(ShaderId s)
@@ -643,12 +636,12 @@ internal sealed unsafe partial class VkBackend : IDevice
     }
 
     /// <summary>Free once no submit in flight can still reach it. Cold: a resize or a rebuild.</summary>
-    private void Later(Action free) => _dead.Add((_submits, free));
+    private void Later(Action free) => _dead.Add((Next, free));
 
     private void DrainDead()
     {
         for (int i = _dead.Count - 1; i >= 0; i--)
-            if (_submits - _dead[i].At >= DeadAfter)
+            if (Passed(_dead[i].At))
             {
                 _dead[i].Free();
                 _dead.RemoveAt(i);
@@ -663,16 +656,16 @@ internal sealed unsafe partial class VkBackend : IDevice
         SavePipelineCache();
         foreach (var d in _dead) d.Free();
         _dead.Clear();
+        foreach (var d in _bindless.Behind) d.Free();
+        _bindless.Behind.Clear();
         foreach (VkImg g in _images.Live()) Free(g);
         foreach (VkBuf b in _buffers.Live()) Vma.vmaDestroyBuffer(_vma, b.Buffer, b.Alloc);
         foreach (VkSampler v in _samplers.Live()) _vkd.vkDestroySampler(v);
         foreach (VkShader v in _shaders.Live()) _vkd.vkDestroyShaderModule(v.Module);
         foreach (VkPipe v in _pipelines.Live()) _vkd.vkDestroyPipeline(v.Pipeline);
         foreach (Slot s in _slots)
-        {
-            _vkd.vkDestroyFence(s.Fence);
             if (s.Stage.IsNotNull) Vma.vmaDestroyBuffer(_vma, s.Stage, s.StageAlloc);
-        }
+        _vkd.vkDestroySemaphore(_timeline);
         foreach (VkSemaphore a in _acquired) _vkd.vkDestroySemaphore(a);
         DropSwapchain();
         _vkd.vkDestroyCommandPool(_cmdPool);
