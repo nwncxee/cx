@@ -30,13 +30,7 @@ internal sealed unsafe partial class VkBackend
     internal long Submitted => _submits;
 
     /// <summary>Has submit number <paramref name="n"/> finished on the GPU? Never blocks.</summary>
-    internal bool Finished(long n)
-    {
-        if (n >= _submits) return false;
-        if (_submits - n > Slots) return true;
-        VkFence f = _slots[(int)(n % Slots)].Fence;
-        return _vkd.vkWaitForFences(1, &f, true, 0) == VkResult.Success;
-    }
+    internal bool Finished(long n) => n < _submits && PassedNow(n + 1);
 
     /// <summary><paramref name="dst"/>.Length bytes of the readback buffer <paramref name="b"/> from
     /// <paramref name="offset"/>, made visible to the host. Only after <see cref="Finished"/> said so for the submit

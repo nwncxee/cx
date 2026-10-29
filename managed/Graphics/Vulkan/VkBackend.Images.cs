@@ -14,7 +14,7 @@ internal sealed unsafe partial class VkBackend
         public VkBuffer Buffer;
         public VmaAllocation Alloc;
         public ulong Size, Used;
-        /// <summary>The submit that last copied out of it; reusable once that one is past the frames in flight.</summary>
+        /// <summary>The timeline value of the submit that last copied out of it; reusable once the timeline passes it.</summary>
         public long At;
     }
 
@@ -32,6 +32,8 @@ internal sealed unsafe partial class VkBackend
         public readonly List<UploadChunk> Chunks = new();
         public readonly List<UploadChunk> Pool = new();
         public readonly List<PendingCopy> Copies = new();
+        /// <summary>Buffers made since the last submit, filled with zeros at its head ahead of every copy.</summary>
+        public readonly List<BufferId> Zero = new();
         public readonly HashSet<uint> Touched = new();
     }
 
@@ -43,6 +45,8 @@ internal sealed unsafe partial class VkBackend
     /// <summary>Each staged copy starts on this boundary: a BC block, a texel of every format, and the device's
     /// optimalBufferCopyOffsetAlignment floor.</summary>
     private const ulong UploadAlign = 16;
+    /// <summary>VK_WHOLE_SIZE: a fill to the end of the buffer.</summary>
+    private const ulong WholeSize = ~0ul;
 
     /// <summary>Bindless descriptors the table holds at most, clamped to the device's update-after-bind limit.</summary>
     private const uint BindlessWant = 65536;
@@ -54,6 +58,9 @@ internal sealed unsafe partial class VkBackend
     {
         public readonly Stack<uint> Free = new();
         public readonly List<(long At, uint Index)> Dying = new();
+        /// <summary>Images and samplers destroyed, waiting for the submit that points the indices released before them
+        /// at the zero texel: until it runs, a released index still reads them.</summary>
+        public readonly List<(long At, Action Free)> Behind = new();
         public uint Next = 1;
         public VkImageView Zero;
     }
@@ -279,7 +286,7 @@ internal sealed unsafe partial class VkBackend
             c = null;
             List<UploadChunk> pool = _upload.Pool;
             for (int k = 0; k < pool.Count && c == null; k++)
-                if (pool[k].Size >= len && _submits - pool[k].At >= DeadAfter) { c = pool[k]; pool.RemoveAt(k); }
+                if (pool[k].Size >= len && Passed(pool[k].At)) { c = pool[k]; pool.RemoveAt(k); }
             if (c == null)
             {
                 c = new UploadChunk { Size = Math.Max(UploadChunkBytes, len) };
@@ -305,6 +312,12 @@ internal sealed unsafe partial class VkBackend
     private void FlushUploads()
     {
         UploadState u = _upload;
+        if (u.Zero.Count > 0)
+        {
+            foreach (BufferId z in u.Zero) if (_buffers.TryGet(z.Value, out VkBuf? b)) Use(b, VkPipelineStageFlags2.AllTransfer, VkAccessFlags2.TransferWrite);
+            Flush();
+            foreach (BufferId z in u.Zero) if (_buffers.TryGet(z.Value, out VkBuf? b)) _vkd.vkCmdFillBuffer(_cmd, b.Buffer, 0, WholeSize, 0);
+        }
         if (u.Copies.Count == 0) return;
         // every destination's barrier first, so they record as one call ahead of all the copies
         foreach (PendingCopy p in u.Copies)
@@ -349,9 +362,10 @@ internal sealed unsafe partial class VkBackend
     private void CommitUploads()
     {
         UploadState u = _upload;
-        foreach (UploadChunk c in u.Chunks) { c.At = _submits; u.Pool.Add(c); }
+        foreach (UploadChunk c in u.Chunks) { c.At = Next; u.Pool.Add(c); }
         u.Chunks.Clear();
         u.Copies.Clear();
+        u.Zero.Clear();
         u.Touched.Clear();
     }
 
@@ -469,24 +483,34 @@ internal sealed unsafe partial class VkBackend
         WriteBindless(0, img.View, _nearest);
     }
 
-    /// <summary>Indices released at least the frames in flight ago go back to the free list, each pointed at the zero
+    /// <summary>Indices released before a finished submit go back to the free list, each pointed at the zero
     /// texel first: its image may be gone, and a record that still names it must read something. At a submit's head.</summary>
     private void RecycleBindless()
     {
         BindlessState t = _bindless;
         for (int k = t.Dying.Count - 1; k >= 0; k--)
-            if (_submits - t.Dying[k].At >= DeadAfter)
+            if (Passed(t.Dying[k].At))
             {
                 WriteBindless(t.Dying[k].Index, t.Zero, _nearest);
                 t.Free.Push(t.Dying[k].Index);
                 t.Dying.RemoveAt(k);
             }
+        for (int k = t.Behind.Count - 1; k >= 0; k--)
+            if (Passed(t.Behind[k].At))
+            {
+                Later(t.Behind[k].Free);
+                t.Behind.RemoveAt(k);
+            }
     }
+
+    /// <summary>Free an image or a sampler once the indices released before it read the zero texel and no submit in
+    /// flight can still reach it: <see cref="RecycleBindless"/> hands it to the deaths queue at the rewriting submit.</summary>
+    private void LaterThanBindless(Action free) => _bindless.Behind.Add((Next, free));
 
     /// <summary>Give <paramref name="h"/>'s index back once no submit in flight can still index it.</summary>
     internal void Unbind(BindlessHandle h)
     {
-        if (OnThread("Unbind") && h.Value != 0 && h.Value < _bindlessCap) _bindless.Dying.Add((_submits, (uint)h.Value));
+        if (OnThread("Unbind") && h.Value != 0 && h.Value < _bindlessCap) _bindless.Dying.Add((Next, (uint)h.Value));
     }
 
     /// <summary>The bindless table on set 1 of both bind points, once at the head of a submit: every pipeline shares

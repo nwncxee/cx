@@ -17,8 +17,8 @@ internal sealed unsafe partial class VkBackend
         public bool Stale;
         /// <summary>Pools retired since the last take: by a destroy, or by filling up.</summary>
         public int Retired;
-        /// <summary>Retired pools and the submit that retired each, reset and reused once no submit in flight can bind
-        /// their sets.</summary>
+        /// <summary>Retired pools and the timeline value each waits out, reset and reused once no submit in flight can
+        /// bind their sets.</summary>
         public readonly List<(long At, VkDescriptorPool Pool)> Spare = new();
     }
 
@@ -52,7 +52,7 @@ internal sealed unsafe partial class VkBackend
     {
         List<(long At, VkDescriptorPool Pool)> spare = _sets.Spare;
         int i = spare.Count - 1;
-        while (i >= 0 && _submits - spare[i].At < DeadAfter) i--;
+        while (i >= 0 && !Passed(spare[i].At)) i--;
         VkDescriptorPool fresh;
         if (i >= 0)
         {
@@ -61,7 +61,7 @@ internal sealed unsafe partial class VkBackend
             _vkd.vkResetDescriptorPool(fresh, 0);
         }
         else if (MakeSetPool(out fresh) != VkResult.Success) return Fault("a new descriptor pool was refused");
-        spare.Add((_submits, _sets.Pool));
+        spare.Add((Next, _sets.Pool));
         _sets.Pool = fresh;
         _sets.Cache.Clear();
         _sets.Left = SetsPerPool;

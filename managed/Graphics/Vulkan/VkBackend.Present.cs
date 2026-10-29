@@ -27,8 +27,8 @@ internal sealed unsafe partial class VkBackend
     }
 
     private readonly SwapState _swap = new();
-    /// <summary>One acquire semaphore per submit slot: the slot's fence proves the submit that waited on it is done.</summary>
-    private readonly VkSemaphore[] _acquired = new VkSemaphore[Slots];
+    /// <summary>One acquire semaphore per frame in flight: the frame wait proves the present that waited on it is done.</summary>
+    private readonly VkSemaphore[] _acquired = new VkSemaphore[FramesInFlight];
     /// <summary>The present's own submit: no pass, only the composite's blit onto the acquired image.</summary>
     private CommandList? _presentList;
 
@@ -54,33 +54,37 @@ internal sealed unsafe partial class VkBackend
         return !_composite.IsNull;
     }
 
-    /// <summary>Put the composite on the window: acquire a swapchain image, blit the composite onto it in a submit of
-    /// its own and present it. <paramref name="interval"/> is the engine's swap interval (0 off, 1 vsync, -1 adaptive),
-    /// which picks the present mode. False (logged) when there is no composite or the window refused the frame.</summary>
+    /// <summary>End the frame: wait for the one <see cref="FramesInFlight"/> back, acquire a swapchain image, blit the
+    /// composite onto it in a submit of its own and present it. <paramref name="interval"/> is the engine's swap interval
+    /// (0 off, 1 vsync, -1 adaptive), which picks the present mode. False (logged) when there is no composite or the
+    /// window refused the frame.</summary>
     internal bool Present(int interval, ExtenderLog log)
     {
         if (!OnThread("Present")) return false;
+        VkResult waited = WaitFrame();
+        bool ok = waited == VkResult.Success ? ShowComposite(interval, log) : Fault($"Present: the frame {FramesInFlight} back never finished ({waited})");
+        EndFrame();
+        return ok;
+    }
+
+    private bool ShowComposite(int interval, ExtenderLog log)
+    {
         if (!_images.TryGet(_composite.Value, out VkImg src)) return Fault("Present: there is no composite image");
         if (!EnsureSwapchain(Mode(interval), src.Desc.W, src.Desc.H, log)) return _swap.Empty && !_swap.Refused;
-        int slot = (int)(_submits % Slots);
-        VkFence fence = _slots[slot].Fence;
-        // the acquire below signals this slot's semaphore, which the slot's last submit may still be waiting on
-        if (WaitFence(fence) != VkResult.Success)
-            return Fault("Present: the previous submit on this slot never finished");
         uint idx = 0;
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
-        VkResult r = _vkd.vkAcquireNextImageKHR(_swap.Chain, FenceTimeoutNs, _acquired[slot], default, &idx);
+        VkResult r = _vkd.vkAcquireNextImageKHR(_swap.Chain, WaitTimeoutNs, Acquired, default, &idx);
         _acquireTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
         if (r == VkResult.ErrorOutOfDateKHR)
         {
             _swap.Stale = true;
             if (!EnsureSwapchain(_swap.Mode, src.Desc.W, src.Desc.H, log)) return _swap.Empty && !_swap.Refused;
-            r = _vkd.vkAcquireNextImageKHR(_swap.Chain, FenceTimeoutNs, _acquired[slot], default, &idx);
+            r = _vkd.vkAcquireNextImageKHR(_swap.Chain, WaitTimeoutNs, Acquired, default, &idx);
         }
         if (r != VkResult.Success && r != VkResult.SuboptimalKHR) return Fault($"Present: vkAcquireNextImageKHR returned {r}");
         CommandList cl = _presentList ??= new CommandList("vulkan present", 256, log);
         cl.Reset();
-        if (!Submit(cl, (int)idx)) return false;
+        if (!Submit(cl, (int)idx)) { Unacquire(); return false; }
         VkSemaphore ready = _swap.Ready[idx];
         VkSwapchainKHR chain = _swap.Chain;
         var pi = new VkPresentInfoKHR

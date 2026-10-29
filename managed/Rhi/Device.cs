@@ -15,7 +15,8 @@ public interface IDevice
 {
     DeviceCaps Caps { get; }
 
-    /// <summary>Each <c>Create*</c> returns a null id after logging why when the backend refuses.</summary>
+    /// <summary>Each <c>Create*</c> returns a null id after logging why when the backend refuses. A new device
+    /// buffer reads zero until something writes it; a readback buffer holds whatever the host memory held.</summary>
     BufferId CreateBuffer(in BufferDesc d);
     ImageId CreateImage(in ImageDesc d);
     SamplerId CreateSampler(in SamplerDesc d);

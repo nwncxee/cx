@@ -8,3 +8,5 @@ dotnet_diagnostic.CX0001.severity = error
 dotnet_diagnostic.CX0002.severity = error
 # GL outside managed/Graphics/ and managed/Alloy/.
 dotnet_diagnostic.CX0003.severity = error
+# A queue submit, fence or semaphore wait outside VkBackend.Sync.cs.
+dotnet_diagnostic.CX0004.severity = error

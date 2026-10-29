@@ -37,19 +37,12 @@ internal sealed unsafe partial class VkBackend
     public bool Submit(CommandList list) => Submit(list, -1);
 
     /// <summary><see cref="Submit(CommandList)"/>, and with <paramref name="swap"/> at or past 0 the composite's blit
-    /// onto that acquired swapchain image after the list: the submit waits on the slot's acquire and signals the
+    /// onto that acquired swapchain image after the list: the submit waits on the frame's acquire and signals the
     /// image's ready semaphore, which the present waits on.</summary>
     private bool Submit(CommandList list, int swap)
     {
         if (!OnThread("Submit")) return false;
-        int slot = (int)(_submits % Slots);
-        Slot s = _slots[slot];
-        VkFence fence = s.Fence;
-        VkResult waited = WaitFence(fence);
-        if (waited != VkResult.Success)
-            return Fault(waited == VkResult.ErrorDeviceLost
-                ? "the device was LOST running the previous submit on this slot -- a GPU fault in a recorded pass"
-                : $"the previous submit on this slot never finished ({waited}) -- a semaphore never signalled, or the GPU is stuck");
+        if (TakeSlot() is not Slot s) return false;
         if (_sets.Stale && !RetireSets()) return false;
         s.StageUsed = 0;
         _recording++;
@@ -64,7 +57,7 @@ internal sealed unsafe partial class VkBackend
         if (_labels) OpenLabel(list.NameUtf8);
         _slot = s;
         _inPass = _rendering = false;
-        TimeBegin(slot);
+        TimeBegin(s);
         RecycleBindless();
         BindBindless();
         FlushUploads();
@@ -77,7 +70,7 @@ internal sealed unsafe partial class VkBackend
         _inPass = _rendering = false;
         if (ok && swap >= 0) ok = RecordPresent(swap);
         Flush();
-        TimeEnd(slot, ok);
+        TimeEnd(s, ok);
         if (ok && _labelDepth > 1 && !_labelLeakLogged)
         {
             _labelLeakLogged = true;
@@ -98,19 +91,9 @@ internal sealed unsafe partial class VkBackend
         }
         CommitUploads();
 
-        uint n = swap >= 0 ? 1u : 0u;
-        VkSemaphore wait = n == 0 ? default : _acquired[slot], signal = n == 0 ? default : _swap.Ready[swap];
-        VkPipelineStageFlags stages = VkPipelineStageFlags.Transfer;
-        VkCommandBuffer cb = _cmd;
-        var si = new VkSubmitInfo
-        {
-            waitSemaphoreCount = n, pWaitSemaphores = &wait, pWaitDstStageMask = &stages,
-            commandBufferCount = 1, pCommandBuffers = &cb, signalSemaphoreCount = n, pSignalSemaphores = &signal,
-        };
-        _vkd.vkResetFences(1, &fence);
-        if (_vkd.vkQueueSubmit(_queue, 1, &si, fence) != VkResult.Success)
-            return Fault("vkQueueSubmit refused the frame -- the device is unusable");
-        _submits++;
+        if (QueueSubmit(_cmd, swap >= 0 ? Acquired : default, swap >= 0 ? _swap.Ready[swap] : default) != VkResult.Success)
+            return Fault("vkQueueSubmit2 refused the frame -- the device is unusable");
+        s.Done = _submits;
         DrainDead();
         return true;
     }
@@ -606,14 +589,6 @@ internal sealed unsafe partial class VkBackend
             Vma.vmaDestroyBuffer(_vma, hb, ha);
             return Fault("ReadBack: no command buffer");
         }
-        var fci = new VkFenceCreateInfo();
-        VkFence fence;
-        if (_vkd.vkCreateFence(&fci, &fence) != VkResult.Success)
-        {
-            _vkd.vkFreeCommandBuffers(_cmdPool, 1, &cb);
-            Vma.vmaDestroyBuffer(_vma, hb, ha);
-            return Fault("ReadBack: no fence");
-        }
         var bi = new VkCommandBufferBeginInfo { flags = VkCommandBufferUsageFlags.OneTimeSubmit };
         _vkd.vkBeginCommandBuffer(cb, &bi);
         // the frame leaves its last writes unordered until a use asks; this copy is one
@@ -634,14 +609,12 @@ internal sealed unsafe partial class VkBackend
         var di = new VkDependencyInfo { memoryBarrierCount = 1, pMemoryBarriers = &mb };
         _vkd.vkCmdPipelineBarrier2(cb, &di);
         _vkd.vkEndCommandBuffer(cb);
-        var si = new VkSubmitInfo { commandBufferCount = 1, pCommandBuffers = &cb };
-        bool submitted = _vkd.vkQueueSubmit(_queue, 1, &si, fence) == VkResult.Success;
-        if (submitted && _vkd.vkWaitForFences(1, &fence, true, FenceTimeoutNs) != VkResult.Success)
+        VkResult run = SubmitAndIdle(cb, out bool queued);
+        if (queued && run != VkResult.Success)
             return Fault("ReadBack: the copy never finished -- its scratch is leaked, not freed under the GPU");
-        bool ok = submitted;
+        bool ok = queued;
         fixed (byte* p = dst)
             ok = ok && Vma.vmaCopyAllocationToMemory(_vma, ha, 0, p, (ulong)dst.Length) == VkResult.Success;
-        _vkd.vkDestroyFence(fence);
         _vkd.vkFreeCommandBuffers(_cmdPool, 1, &cb);
         Vma.vmaDestroyBuffer(_vma, hb, ha);
         return ok || Fault("ReadBack: the copy was refused");
