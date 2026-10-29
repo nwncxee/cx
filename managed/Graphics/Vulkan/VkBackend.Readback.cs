@@ -69,9 +69,7 @@ internal sealed unsafe partial class VkBackend
             imageExtent = new VkExtent3D { width = (uint)c.W, height = (uint)c.H, depth = 1 },
         };
         _vkd.vkCmdCopyImageToBuffer(_cmd, src.Image, VkImageLayout.TransferSrcOptimal, dst.Buffer, 1, &r);
-        // the host's read, queued with whatever the next command needs
-        _memSrc |= VkPipelineStageFlags2.AllTransfer; _memSrcAccess |= VkAccessFlags2.TransferWrite;
-        _memDst |= VkPipelineStageFlags2.Host; _memDstAccess |= VkAccessFlags2.HostRead;
+        HostRead();
         return true;
     }
 }

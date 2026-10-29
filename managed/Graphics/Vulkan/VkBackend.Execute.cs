@@ -248,10 +248,9 @@ internal sealed unsafe partial class VkBackend
             renderArea = area, layerCount = (uint)layers, colorAttachmentCount = (uint)_pendCount, pColorAttachments = att,
             pDepthAttachment = _pendHasDepth ? &depth : null, pStencilAttachment = stencil ? &depth : null,
         };
-        // a bind after the first draw can place no barrier, so every buffer write before the pass is made visible now
-        if (_epochWrites != VkAccessFlags2.None) Order();
+        // a bind after the first draw can place no barrier, so every buffer access before the pass is ordered now
+        Order();
         Flush();
-        _passN++;
         _vkd.vkCmdBeginRendering(_cmd, &ri);
         if (!_scissorSet) _vkd.vkCmdSetScissor(_cmd, 0, 1, &area);
         _rendering = true;

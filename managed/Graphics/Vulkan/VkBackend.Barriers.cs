@@ -44,12 +44,12 @@ internal sealed unsafe partial class VkBackend
     private long _epoch;
     private VkPipelineStageFlags2 _epochStages;
     private VkAccessFlags2 _epochWrites;
-    /// <summary>Begun render passes, so a buffer use inside one can tell an earlier pass's use from its own.</summary>
-    private long _passN;
-    private bool _warLogged;
+    /// <summary>The buffer uses since the last flush: they run after the barrier queued now, so <see cref="Order"/>
+    /// stamps them into the epoch it opens rather than the one it closes.</summary>
+    private readonly List<(VkBuf Buf, VkPipelineStageFlags2 Stages, VkAccessFlags2 Writes)> _batchUses = new(64);
     /// <summary>A refused recording queued barriers that never ran: the next one opens with a full barrier.</summary>
     private bool _resync;
-    /// <summary><c>vkCmdPipelineBarrier2</c> calls since the last take.</summary>
+    /// <summary><c>vkCmdPipelineBarrier2</c> calls in the submits' recordings since the last take.</summary>
     private int _barrierN;
 
     /// <summary>The compute bind set's buffers (with their access) and storage images, applied at each dispatch.</summary>
@@ -113,26 +113,23 @@ internal sealed unsafe partial class VkBackend
     }
 
     /// <summary>Note <paramref name="b"/> used by <paramref name="stages"/> with <paramref name="access"/> by the next
-    /// command, queueing the buffer barrier a hazard on it needs. Inside a begun pass none can be placed: the pass's
-    /// begin made every earlier write visible, and a write after an earlier pass's read is refused out loud.</summary>
+    /// command, queueing the buffer barrier a hazard on it needs. Inside a begun pass none can be placed and none is
+    /// needed against earlier work, which the pass's begin ordered; two of the pass's own draws stay unordered.</summary>
     private void Use(VkBuf b, VkPipelineStageFlags2 stages, VkAccessFlags2 access)
     {
-        bool write = (access & WriteAccess) != 0;
-        if (b.Epoch == _epoch && (write || b.Written))
-        {
-            if (!_rendering) Order();
-            else if (b.Pass != _passN && !_warLogged)
-            {
-                _warLogged = true;
-                _log.Always($"VkBackend: {b.Desc.Label} is bound for writing inside a begun render pass after an earlier "
-                          + "pass read it, and no barrier can go there -- bind it before the pass's first draw (logged once)");
-            }
-        }
+        VkAccessFlags2 writes = access & WriteAccess;
+        if (_rendering) { Stamp(b, stages, writes); return; }
+        if (b.Epoch == _epoch && (writes != VkAccessFlags2.None || b.Written)) Order();
+        Stamp(b, stages, writes);
+        _batchUses.Add((b, stages, writes));
+    }
+
+    private void Stamp(VkBuf b, VkPipelineStageFlags2 stages, VkAccessFlags2 writes)
+    {
         if (b.Epoch != _epoch) { b.Epoch = _epoch; b.Written = false; }
-        b.Pass = _passN;
-        b.Written |= write;
+        b.Written |= writes != VkAccessFlags2.None;
         _epochStages |= stages;
-        if (write) _epochWrites |= access & WriteAccess;
+        _epochWrites |= writes;
     }
 
     /// <summary>Order every buffer access of the epoch before every one after it, and open the next epoch. Queued.</summary>
@@ -144,6 +141,14 @@ internal sealed unsafe partial class VkBackend
         _epoch++;
         _epochStages = VkPipelineStageFlags2.None;
         _epochWrites = VkAccessFlags2.None;
+        foreach ((VkBuf buf, VkPipelineStageFlags2 stages, VkAccessFlags2 writes) in _batchUses) Stamp(buf, stages, writes);
+    }
+
+    /// <summary>Queue the host's read of what the transfers before it wrote.</summary>
+    private void HostRead()
+    {
+        _memSrc |= VkPipelineStageFlags2.AllTransfer; _memSrcAccess |= VkAccessFlags2.TransferWrite;
+        _memDst |= VkPipelineStageFlags2.Host; _memDstAccess |= VkAccessFlags2.HostRead;
     }
 
     /// <summary>Record the queued barriers as one call; nothing when none are queued.</summary>
@@ -169,6 +174,7 @@ internal sealed unsafe partial class VkBackend
     {
         _imgBarN = 0;
         _batch++;
+        _batchUses.Clear();
         _memSrc = _memDst = VkPipelineStageFlags2.None;
         _memSrcAccess = _memDstAccess = VkAccessFlags2.None;
     }

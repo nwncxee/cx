@@ -28,9 +28,10 @@ internal sealed unsafe partial class VkBackend
             "a layout's barrier scope: colour = COLOR_ATTACHMENT_OUTPUT 0x400 with its read|write 0x180; depth = EARLY|LATE_FRAGMENT_TESTS "
           + "0x300 with 0x600; sampled = VERTEX|GEOMETRY|FRAGMENT|COMPUTE 0x8C8 with SHADER_SAMPLED_READ 2^32; general = the same "
           + "stages with SHADER_STORAGE_READ|WRITE; transfer = ALL_TRANSFER 0x1000 with TRANSFER_READ 0x800 / WRITE 0x1000; undefined none");
-        check.Expect((ulong)(Scope(VkImageLayout.ShaderReadOnlyOptimal).Access & WriteAccess) == 0
-                  && (ulong)(Scope(VkImageLayout.General).Access & WriteAccess) == 0x400000000,
-            "a barrier out of a sampled layout makes nothing available; out of general, SHADER_STORAGE_WRITE 0x400000000");
+        check.Expect(((ulong)WriteAccess & 0x400001500) == 0x400001500 && ((ulong)WriteAccess & 0x300000A80) == 0,
+            "a barrier's source makes the writes available -- SHADER_STORAGE_WRITE 2^34, COLOR_ATTACHMENT_WRITE 0x100, "
+          + "DEPTH_STENCIL_ATTACHMENT_WRITE 0x400, TRANSFER_WRITE 0x1000 -- and no read: SHADER_SAMPLED_READ 2^32, SHADER_STORAGE_READ "
+          + "2^33, COLOR_ATTACHMENT_READ 0x80, DEPTH_STENCIL_ATTACHMENT_READ 0x200, TRANSFER_READ 0x800");
         if (Native.Sym(SymbolMap.AppManager) != IntPtr.Zero)
         {
             check.Skip("on-device: the pilot's stages compile at the device's first pipeline, not at boot");

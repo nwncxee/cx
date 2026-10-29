@@ -37,10 +37,13 @@ internal sealed unsafe partial class VkBackend : IDevice
         public long BarBatch = -1;
     }
 
-    private sealed record VkBuf(VkBuffer Buffer, VmaAllocation Alloc, BufferDesc Desc)
+    private sealed class VkBuf(VkBuffer buffer, VmaAllocation alloc, BufferDesc desc)
     {
-        /// <summary>The buffer epoch and render pass it was last used in, and whether that epoch wrote it.</summary>
-        public long Epoch = -1, Pass = -1;
+        public readonly VkBuffer Buffer = buffer;
+        public readonly VmaAllocation Alloc = alloc;
+        public readonly BufferDesc Desc = desc;
+        /// <summary>The buffer epoch it was last used in, and whether that epoch wrote it.</summary>
+        public long Epoch = -1;
         public bool Written;
     }
     private readonly record struct VkShader(VkShaderModule Module, ShaderStage Stage);
