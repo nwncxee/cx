@@ -35,12 +35,12 @@ internal sealed unsafe partial class VkBackend
 
     /// <summary>Record <paramref name="list"/> into one command buffer and run it: an <see cref="CommandList.Async"/>
     /// one on the async queue, after every graphics submit before it.</summary>
-    public bool Submit(CommandList list) => Submit(list, -1);
+    public bool Submit(CommandList list) => Submit(list, -1, false);
 
     /// <summary><see cref="Submit(CommandList)"/>, and with <paramref name="swap"/> at or past 0 the composite's blit
     /// onto that acquired swapchain image after the list: the submit waits on the frame's acquire and signals the
     /// image's ready semaphore, which the present waits on.</summary>
-    private bool Submit(CommandList list, int swap)
+    private bool Submit(CommandList list, int swap, bool beside = false)
     {
         if (!OnThread("Submit")) return false;
         bool lane = list.Async && _async != null;
@@ -55,10 +55,11 @@ internal sealed unsafe partial class VkBackend
         _vkd.vkBeginCommandBuffer(s.Cmd, &bi);
         _cmd = s.Cmd;
         _onAsync = lane;
+        _besideNow = beside && !lane && _unjoined != 0 && !_beside;
         _crossed = null;
         Drop();
         _cBufN = _cImgN = 0;
-        if (_resync) { FullBarrier(); _resync = false; }
+        if (lane ? _resyncAsync : _resync) { FullBarrier(); if (lane) _resyncAsync = false; else _resync = false; }
         if (_labels) OpenLabel(list.NameUtf8);
         _slot = s;
         _inPass = _rendering = false;
@@ -75,8 +76,7 @@ internal sealed unsafe partial class VkBackend
         bool ok = Record(list.TakePending());
         _translateTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
         _translateN++;
-        if (ok && _crossed != null)
-            ok = Fault($"list {Encoding.UTF8.GetString(list.NameUtf8[..^1])} reached {_crossed} on the async queue, which was not made ImageUse.Async");
+        if (ok && _crossed != null) ok = Fault($"list {list.Name}: {_crossed}");
         if (_rendering) _vkd.vkCmdEndRendering(_cmd);
         _inPass = _rendering = false;
         if (ok && swap >= 0) ok = RecordPresent(swap);
@@ -85,7 +85,7 @@ internal sealed unsafe partial class VkBackend
         if (ok && _labelDepth > 1 && !_labelLeakLogged)
         {
             _labelLeakLogged = true;
-            _log.Always($"VkBackend: list {Encoding.UTF8.GetString(list.NameUtf8[..^1])} left {_labelDepth - 1} debug label(s) "
+            _log.Always($"VkBackend: list {list.Name} left {_labelDepth - 1} debug label(s) "
                       + "open -- closed at its submit; a capture nests the passes after it wrongly (logged once)");
         }
         while (_labelDepth > 0) CloseLabel();
@@ -96,15 +96,18 @@ internal sealed unsafe partial class VkBackend
             // uploads this recording flushed wait for the next one
             for (int i = _undo.Count - 1; i >= 0; i--) _undo[i].Img.Layout = _undo[i].Layout;
             _undo.Clear();
-            _resync = true;
-            _onAsync = false;
+            if (lane) _resyncAsync = true;
+            else _resync = true;
+            _onAsync = _besideNow = false;
             if (!lane) _upload.Touched.Clear();
             return false;
         }
         if (!lane) CommitUploads();
 
-        VkResult sent = lane ? AsyncSubmit(_cmd) : QueueSubmit(_cmd, swap >= 0 ? Acquired : default, swap >= 0 ? _swap.Ready[swap] : default);
-        _onAsync = false;
+        VkResult sent = lane ? AsyncSubmit(_cmd)
+                      : QueueSubmit(_cmd, swap >= 0 ? Acquired : default, swap >= 0 ? _swap.Ready[swap] : default, besideAsked: beside);
+        if (lane && sent == VkResult.Success) _asyncRec = _recording;
+        _onAsync = _besideNow = false;
         if (sent != VkResult.Success) return Fault("vkQueueSubmit2 refused the frame -- the device is unusable");
         s.Done = lane ? _async!.Submits : _submits;
         DrainDead();
@@ -257,6 +260,7 @@ internal sealed unsafe partial class VkBackend
     private bool Bind(PipelineId id)
     {
         if (!_pipelines.TryGet(id.Value, out VkPipe p)) return Fault("SetPipeline: stale pipeline");
+        if (_onAsync && !p.Compute) return Fault("a graphics pipeline on the async compute queue, which cannot draw");
         _bindPoint = p.Compute ? VkPipelineBindPoint.Compute : VkPipelineBindPoint.Graphics;
         _vkd.vkCmdBindPipeline(_cmd, _bindPoint, p.Pipeline);
         if (!p.Compute) { Depth(p.Depth); Raster(p.Raster); }

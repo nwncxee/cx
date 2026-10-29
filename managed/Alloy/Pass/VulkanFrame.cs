@@ -45,14 +45,6 @@ internal static class VulkanFrame
         CommandList cl = _s.Cmds ??= new CommandList("vulkan frame", FrameArenaBytes, log);
         cl.Reset();
         vk.TimeFrame = true;
-        try { Record(log, vk, cl, vp, vpClean, view, proj, viewport, display, near, far, lightingOn, perspective, groups); }
-        finally { vk.TimeFrame = false; }
-    }
-
-    private static unsafe void Record(ExtenderLog log, VkBackend vk, CommandList cl, in Matrix4x4 vp, in Matrix4x4 vpClean,
-                                      in Matrix4x4 view, in Matrix4x4 proj, int* viewport, int* display, float near, float far,
-                                      bool lightingOn, bool perspective, int groups)
-    {
         cl.BeginLabel("cull"u8);
         if (!CullPassVk.Record(vk, cl, log))
         {

@@ -34,6 +34,7 @@ internal sealed unsafe partial class VkBackend
           + "2^33, COLOR_ATTACHMENT_READ 0x80, DEPTH_STENCIL_ATTACHMENT_READ 0x200, TRANSFER_READ 0x800");
         CheckSetCache(check);
         CheckAsyncFamily(check);
+        CheckToAsync(check);
         if (Native.Sym(SymbolMap.AppManager) != IntPtr.Zero)
         {
             check.Skip("on-device: the pilot's stages compile at the device's first pipeline, not at boot");
@@ -109,6 +110,25 @@ internal sealed unsafe partial class VkBackend
         check.Expect(AsyncFamily([F(G, 1)]) == -1, "a device with one graphics family named an async one");
         check.Expect(AsyncFamily([F(G, 1), F(C, 0)]) == -1, "a compute family with no queues was taken");
         check.Expect(AsyncFamily([F(G, 1), F(G, 4)]) == -1, "a second graphics family was taken as the compute-only one");
+    }
+
+    /// <summary>Oracle: vulkan_core.h's bits, by hand. A barrier side on the async queue keeps its compute and transfer
+    /// stages and only the accesses those make; ALL_COMMANDS keeps everything; a graphics-only side keeps nothing.</summary>
+    private static void CheckToAsync(Checker check)
+    {
+        static (ulong, ulong) Cut(ulong stages, ulong access)
+        {
+            var s = (VkPipelineStageFlags2)stages;
+            var a = (VkAccessFlags2)access;
+            ToAsync(ref s, ref a);
+            return ((ulong)s, (ulong)a);
+        }
+        check.Expect(Cut(0x888, 0x100000004) == (0x800, 0x100000000),
+            "VERTEX|FRAGMENT|COMPUTE 0x888 with SHADER_SAMPLED_READ 2^32 and VERTEX_ATTRIBUTE_READ 4 is COMPUTE 0x800 with the sampled read alone");
+        check.Expect(Cut(0x1080, 0x400001000) == (0x1000, 0x1000),
+            "ALL_TRANSFER|FRAGMENT 0x1080 with SHADER_STORAGE_WRITE 2^34 and TRANSFER_WRITE 0x1000 is ALL_TRANSFER with TRANSFER_WRITE alone");
+        check.Expect(Cut(0x400, 0x100) == (0, 0), "COLOR_ATTACHMENT_OUTPUT 0x400 with its write 0x100 is nothing on a compute queue");
+        check.Expect(Cut(0x10000, 0x18000) == (0x10000, 0x18000), "ALL_COMMANDS 0x10000 with MEMORY_READ|WRITE 0x18000 stays whole");
     }
 
     private static bool ScopeIs(VkImageLayout l, ulong stages, ulong access)

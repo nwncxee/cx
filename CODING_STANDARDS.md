@@ -47,9 +47,10 @@ rule and the gates.
   or a captured entry point, and constants, `Gl.Init` and a null check are fine. The list is the bindings, CX's
   own UI windows on the vanilla renderer, the engine's model views and texture path, and the uniform shim with
   its callers; it lives in `tools/analyzers/EngineGl.cs` and `tools/gates/gl-confined.sh` keeps it honest.
-- **The Vulkan queue submits and waits in `VkBackend.Sync.cs` alone (CX0004).** Every submit signals the one
-  timeline semaphore and every lifetime waits on its values, so a submit, a fence or a semaphore wait elsewhere is
-  refused: go through `QueueSubmit`, `WaitFor` or `PassedNow`.
+- **The Vulkan queues submit and wait in `VkBackend.Sync.cs` alone (CX0004).** There are two timelines: the
+  graphics one, which every submit there signals and every lifetime waits on, and the async compute queue's, which
+  only a graphics submit's join waits on. A submit, a fence or a semaphore wait elsewhere is refused: go through
+  `QueueSubmit`, `AsyncSubmit`, `WaitFor` or `PassedNow`.
 - **A thread blocks through `BlockingWait.Sleep(ms, why)`.** The game's main thread never blocks.
 - **No tasks.** The extender has no async path, so the `Task` and `ValueTask` types are banned.
 - **The environment is read through `HostEnv`.** A setting is a knob, never an environment variable (ADR 0025).

@@ -20,6 +20,7 @@ internal sealed unsafe partial class VkBackend
         public readonly uint Family = family;
         public readonly VkCommandPool Pool = pool;
         public readonly VkSemaphore Timeline = timeline;
+        /// <summary>Numbered from 0 like the graphics slots, whose numbers index the timestamp pool: never timed.</summary>
         public readonly List<Slot> Slots = new();
         /// <summary>Async submits made, which is the value the last one signalled, and the counter as last read.</summary>
         public long Submits, Completed;
@@ -27,18 +28,21 @@ internal sealed unsafe partial class VkBackend
 
     /// <summary>Null on a device with no compute-only family: an async list then runs on the graphics queue.</summary>
     private readonly AsyncLane? _async;
-    /// <summary>The graphics family and the async one, for a resource both queues reach.</summary>
-    private readonly uint[] _families = new uint[2];
     /// <summary>The async value no graphics submit has waited on yet; 0 when none.</summary>
     private long _unjoined;
     /// <summary>A graphics submit already ran beside <see cref="_unjoined"/>: the next one waits on it.</summary>
     private bool _beside;
-    /// <summary>The submit being made was asked to run beside the async one before it.</summary>
-    private bool _besideAsked;
     /// <summary>The recording in progress is an async list on the async queue.</summary>
     private bool _onAsync;
-    /// <summary>An image the async recording reached that was not made <see cref="ImageUse.Async"/>.</summary>
+    /// <summary>The recording in progress runs beside <see cref="_unjoined"/>, whose recording was <see cref="_asyncRec"/>.</summary>
+    private bool _besideNow;
+    private long _asyncRec = -1;
+    /// <summary>An image the async recording reached that was not made <see cref="ImageUse.Async"/>, or one the beside
+    /// recording moved that the async one reached: either refuses the recording by name.</summary>
     private string? _crossed;
+    /// <summary>A refused async recording's barriers never ran: the lane's next recording opens with a full barrier.</summary>
+    private bool _resyncAsync;
+    /// <summary>A list with no commands, so uploads waiting for a graphics submit's head get one ahead of an async submit.</summary>
     private CommandList? _uploadList;
 
     /// <summary>The first family of <paramref name="families"/> with queues that computes and does not draw, or -1.</summary>
@@ -50,7 +54,8 @@ internal sealed unsafe partial class VkBackend
         return -1;
     }
 
-    /// <summary><paramref name="phys"/>'s async family, read off the device.</summary>
+    /// <summary><paramref name="phys"/>'s async family, read off the device. ponytail: a second walk of the table the
+    /// probe already read; once per device, so not threaded back out of it.</summary>
     private static int AsyncFamily(VkInstanceApi vki, VkPhysicalDevice phys)
     {
         uint n = 0;
@@ -66,19 +71,23 @@ internal sealed unsafe partial class VkBackend
         var pci = new VkCommandPoolCreateInfo { flags = VkCommandPoolCreateFlags.ResetCommandBuffer, queueFamilyIndex = family };
         VkCommandPool pool;
         Check(_vkd.vkCreateCommandPool(&pci, &pool), "vkCreateCommandPool (async)");
-        _families[0] = _family;
-        _families[1] = family;
         return new AsyncLane(q, family, pool, MakeTimeline());
     }
 
     /// <summary><see cref="Submit(CommandList)"/> for a graphics list that runs beside the async submit made before it
-    /// rather than waiting on it: what it does must not touch what that submit reads or writes. Without one pending it
-    /// is a plain submit; the graphics submit after it waits on the async one either way.</summary>
-    internal bool SubmitAlongside(CommandList list)
+    /// rather than waiting on it: an image it would move that the async recording reached refuses it by name. Without one
+    /// pending it is a plain submit; the graphics submit after it waits on the async one either way. ponytail: buffers are
+    /// not checked -- the arena takes disjoint ranges from both -- so what the two share is the caller's to keep apart.</summary>
+    internal bool SubmitAlongside(CommandList list) => Submit(list, -1, beside: true);
+
+    /// <summary>Both families, for a resource either queue reaches.</summary>
+    private void Share(ref VkSharingMode mode, ref uint count, ref uint* families, uint* two)
     {
-        _besideAsked = true;
-        try { return Submit(list, -1); }
-        finally { _besideAsked = false; }
+        two[0] = _family;
+        two[1] = _async!.Family;
+        mode = VkSharingMode.Concurrent;
+        count = 2;
+        families = two;
     }
 
     /// <summary>An async submit reads what the graphics submits before it left: uploads still waiting for a graphics
@@ -86,7 +95,7 @@ internal sealed unsafe partial class VkBackend
     private bool UploadsAhead()
     {
         UploadState u = _upload;
-        if (u.Copies.Count == 0 && u.Zero.Count == 0) return true;
+        if (!u.Pending) return true;
         _uploadList ??= new CommandList("vulkan uploads");
         _uploadList.Reset();
         return Submit(_uploadList, -1);

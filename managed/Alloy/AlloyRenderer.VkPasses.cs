@@ -65,7 +65,7 @@ public sealed unsafe partial class AlloyRenderer
         cl.EndLabel();
         // the submit the async froxel build and fog wait on: the bake and the uploads they read are in it, and the
         // prepass through the sky run beside them
-        VkHandOverAsync(cl);
+        VkHandOverStandIns(cl);
         if (!vk.Submit(cl)) return false;
         bool indirect = CullPassVk.Ran;
         int viz = _capturing ? 0 : _lightViz;

@@ -32,10 +32,10 @@ internal sealed unsafe partial class VkBackend
                                              | VkAccessFlags2.DepthStencilAttachmentWrite | VkAccessFlags2.TransferWrite
                                              | VkAccessFlags2.HostWrite | VkAccessFlags2.MemoryWrite;
 
-    /// <summary>The stages and accesses a compute-only queue's barrier may name: a graphics stage's half of a barrier there
-    /// is the cross-queue semaphore's, which orders everything the graphics queue did before it.</summary>
-    private const VkPipelineStageFlags2 AsyncStages = VkPipelineStageFlags2.ComputeShader | VkPipelineStageFlags2.DrawIndirect
-                                                    | VkPipelineStageFlags2.AllTransfer | VkPipelineStageFlags2.Host;
+    /// <summary>The stages a compute-only queue's barrier may name: a graphics stage's half of a barrier there is the
+    /// cross-queue semaphore's, which orders everything the graphics queue did before it.</summary>
+    private const VkPipelineStageFlags2 AsyncStages = VkPipelineStageFlags2.ComputeShader | VkPipelineStageFlags2.AllTransfer
+                                                    | VkPipelineStageFlags2.AllCommands;
     private const VkAccessFlags2 ShaderAccess = VkAccessFlags2.UniformRead | VkAccessFlags2.ShaderSampledRead
                                               | VkAccessFlags2.ShaderStorageRead | VkAccessFlags2.ShaderStorageWrite;
 
@@ -86,7 +86,10 @@ internal sealed unsafe partial class VkBackend
     private void Transition(VkImg img, VkImageLayout to)
     {
         Remember(img);
+        if (_onAsync) img.AsyncRec = _recording;
         if (img.Layout == to && !img.Written) return;
+        if (_besideNow && img.AsyncRec == _asyncRec)
+            _crossed ??= $"moved {img.Desc.Label}, which the async submit it runs beside reached -- hand it over ahead of both";
         (VkPipelineStageFlags2 ds, VkAccessFlags2 da) = Scope(to);
         if (img.BarBatch == _batch)
         {
@@ -164,6 +167,7 @@ internal sealed unsafe partial class VkBackend
     {
         if (_imgBarN == 0 && _memDst == VkPipelineStageFlags2.None) return;
         var mb = new VkMemoryBarrier2 { srcStageMask = _memSrc, srcAccessMask = _memSrcAccess, dstStageMask = _memDst, dstAccessMask = _memDstAccess };
+        bool mem = _memDst != VkPipelineStageFlags2.None;
         if (_onAsync)
         {
             ToAsync(ref mb.srcStageMask, ref mb.srcAccessMask);
@@ -173,12 +177,13 @@ internal sealed unsafe partial class VkBackend
                 ToAsync(ref _imgBars[i].srcStageMask, ref _imgBars[i].srcAccessMask);
                 ToAsync(ref _imgBars[i].dstStageMask, ref _imgBars[i].dstAccessMask);
             }
+            mem = mb.dstStageMask != VkPipelineStageFlags2.None;
         }
         fixed (VkImageMemoryBarrier2* ib = _imgBars)
         {
             var di = new VkDependencyInfo
             {
-                memoryBarrierCount = _memDst == VkPipelineStageFlags2.None ? 0u : 1u, pMemoryBarriers = &mb,
+                memoryBarrierCount = mem ? 1u : 0u, pMemoryBarriers = &mb,
                 imageMemoryBarrierCount = (uint)_imgBarN, pImageMemoryBarriers = ib,
             };
             _vkd.vkCmdPipelineBarrier2(_cmd, &di);
@@ -191,11 +196,10 @@ internal sealed unsafe partial class VkBackend
     private static void ToAsync(ref VkPipelineStageFlags2 stages, ref VkAccessFlags2 access)
     {
         stages &= AsyncStages;
+        if ((stages & VkPipelineStageFlags2.AllCommands) != 0) return;
         VkAccessFlags2 keep = VkAccessFlags2.None;
         if ((stages & VkPipelineStageFlags2.ComputeShader) != 0) keep |= ShaderAccess;
-        if ((stages & VkPipelineStageFlags2.DrawIndirect) != 0) keep |= VkAccessFlags2.IndirectCommandRead;
         if ((stages & VkPipelineStageFlags2.AllTransfer) != 0) keep |= VkAccessFlags2.TransferRead | VkAccessFlags2.TransferWrite;
-        if ((stages & VkPipelineStageFlags2.Host) != 0) keep |= VkAccessFlags2.HostRead | VkAccessFlags2.HostWrite;
         access &= keep;
     }
 
@@ -229,7 +233,7 @@ internal sealed unsafe partial class VkBackend
     {
         if (img.UndoAt == _recording) return;
         img.UndoAt = _recording;
-        if (_onAsync && (img.Desc.Use & ImageUse.Async) == 0) _crossed ??= img.Desc.Label;
+        if (_onAsync && (img.Desc.Use & ImageUse.Async) == 0) _crossed ??= $"reached {img.Desc.Label} on the async queue, which was not made ImageUse.Async";
         _undo.Add((img, img.Layout));
     }
 

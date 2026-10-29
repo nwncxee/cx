@@ -239,6 +239,15 @@ public sealed unsafe partial class AlloyRenderer
         return true;
     }
 
+    /// <summary>The stand-ins handed over for sampling in the submit the async list waits on: either queue binds them, so
+    /// neither may move one while the other runs. The caster maps were handed over by their own flush.</summary>
+    private static void VkHandOverStandIns(CommandList cl)
+    {
+        VkColourState s = _vkc;
+        ReadOnlySpan<ImageId> stand = [s.Tex2D, s.TexU2D, s.Tex2DArray, s.Tex3D, s.TexCube, s.TexCubeArray, s.Depth2DArray, s.DepthCubeArray];
+        cl.ReadImages(stand);
+    }
+
     /// <summary>A stand-in of one texel per layer: transparent black, or a depth of 1.0 that every shadow compare passes.</summary>
     private static ImageId VkStandIn(VkBackend vk, ImageKind kind, Format f, int faces, string label)
     {

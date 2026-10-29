@@ -520,6 +520,8 @@ public sealed unsafe partial class CasterPass
         if (!id.IsNull && madeSize == size && madeLayers == layers) return id;
         var s = _vk;
         s.Dev!.Destroy(id);
+        // shared with the async queue, whose fog samples the sun and cube maps -- concurrent sharing in place of an
+        // ownership transfer, as the beside G-buffer pass samples them at the same time
         id = s.Dev.CreateImage(new ImageDesc(kind, Format.D32F, size, size, 1, 1, layers, 1,
                                              ImageUse.DepthTarget | ImageUse.Sampled | ImageUse.Async, label));
         if (id.IsNull)

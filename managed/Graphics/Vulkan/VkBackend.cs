@@ -32,6 +32,8 @@ internal sealed unsafe partial class VkBackend : IDevice
         public long UndoAt = -1;
         /// <summary>A command wrote it since its last barrier: the next use in the same layout still waits on one.</summary>
         public bool Written;
+        /// <summary>The async recording that last reached it.</summary>
+        public long AsyncRec = -1;
         /// <summary>Its queued barrier's place in the batch numbered <see cref="BarBatch"/>.</summary>
         public int BarAt;
         public long BarBatch = -1;
@@ -345,7 +347,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         int asyncFamily = AsyncFamily(_vki, phys);
         VkDeviceQueueCreateInfo* qci = stackalloc VkDeviceQueueCreateInfo[2];
         qci[0] = new VkDeviceQueueCreateInfo { queueFamilyIndex = family, queueCount = 1, pQueuePriorities = &prio };
-        qci[1] = new VkDeviceQueueCreateInfo { queueFamilyIndex = (uint)Math.Max(asyncFamily, 0), queueCount = 1, pQueuePriorities = &prio };
+        if (asyncFamily >= 0) qci[1] = new VkDeviceQueueCreateInfo { queueFamilyIndex = (uint)asyncFamily, queueCount = 1, pQueuePriorities = &prio };
         var clip = new VkPhysicalDeviceDepthClipControlFeaturesEXT { depthClipControl = true };
         var f11 = new VkPhysicalDeviceVulkan11Features { pNext = &clip, shaderDrawParameters = true };
         var f12 = new VkPhysicalDeviceVulkan12Features
@@ -518,9 +520,9 @@ internal sealed unsafe partial class VkBackend : IDevice
             return new BufferId(_buffers.Add(new VkBuf(hb, ha, d)));
         }
         var bci = new VkBufferCreateInfo { size = (ulong)d.Bytes, usage = use, sharingMode = VkSharingMode.Exclusive };
-        uint* fams = stackalloc uint[2] { _families[0], _families[1] };
+        uint* fams = stackalloc uint[2];
         // either queue may reach any device buffer, and a buffer has no compression for concurrent sharing to cost
-        if (_async != null) { bci.sharingMode = VkSharingMode.Concurrent; bci.queueFamilyIndexCount = 2; bci.pQueueFamilyIndices = fams; }
+        if (_async != null) Share(ref bci.sharingMode, ref bci.queueFamilyIndexCount, ref bci.pQueueFamilyIndices, fams);
         // ponytail: Upload buffers are device-local too and written by recorded UpdateBuffer; a mapped ring when a pass streams
         var aci = new VmaAllocationCreateInfo { usage = VmaMemoryUsage.AutoPreferDevice };
         VkBuffer b;

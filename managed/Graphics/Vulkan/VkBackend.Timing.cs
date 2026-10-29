@@ -79,8 +79,8 @@ internal sealed unsafe partial class VkBackend
         return ms;
     }
 
-    /// <summary>A frame's submits were all made under <see cref="TimeFrame"/>.</summary>
-    internal void FrameTimed() => _gpuFrames++;
+    /// <summary>The frame's submits are all made: count it, and time nothing after it.</summary>
+    internal void FrameTimed() { _gpuFrames++; TimeFrame = false; }
 
     /// <summary>The GPU time banked since the last take per timed frame, and how many frames; 0 when none were.</summary>
     internal double TakeGpuMs(out int n)

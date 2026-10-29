@@ -36,8 +36,9 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>This frame's summed volume, or the null id where none was built.</summary>
     internal static ImageId VkFogVolume => _vkFog.Built ? _vkFog.Total : default;
 
-    /// <summary>The volume into <paramref name="cl"/>, ahead of the first stage that fogs. Nothing (every reader on the
-    /// ramp) when the mode is off, the view is a capture, or a stage was refused.</summary>
+    /// <summary>The volume into <paramref name="cl"/>, the frame's async list: every stage recorded before it reads last
+    /// frame's sum, every one after it this one. Nothing (every reader on the ramp) when the mode is off, the view is a
+    /// capture, or a stage was refused.</summary>
     private static void VkFogPass(VkBackend vk, CommandList cl, in Matrix4x4 view, in Matrix4x4 vpClean, int* viewport,
                                   float near, float far, bool main, bool lightingOn, ExtenderLog log)
     {
@@ -119,7 +120,7 @@ public sealed unsafe partial class AlloyRenderer
         return true;
     }
 
-    /// <summary>The three volumes at this grid; a new grid is new storage and starts without history.</summary>
+    /// <summary>The four volumes at this grid; a new grid is new storage and starts without history.</summary>
     private static bool VkFogVolumes(VkBackend vk, VkFogState s, int w, int h, int d, ExtenderLog log)
     {
         if (!s.SumA.IsNull && s.W == w && s.H == h && s.D == d) return true;
@@ -133,7 +134,8 @@ public sealed unsafe partial class AlloyRenderer
         FogVolume.Revoke();
         if (!s.MedA.IsNull && !s.MedB.IsNull && !s.SumA.IsNull && !s.SumB.IsNull) return true;
         log.Always($"AlloyRenderer: a {w}x{h}x{d} Vulkan fog volume was REFUSED (logged above) -- the fog stays the ramp");
-        s.SumA = default;
+        vk.Destroy(s.MedA); vk.Destroy(s.MedB); vk.Destroy(s.SumA); vk.Destroy(s.SumB);
+        s.MedA = s.MedB = s.SumA = s.SumB = default;
         return false;
 
         static ImageId Volume(VkBackend vk, int w, int h, int d, string label)
@@ -141,16 +143,4 @@ public sealed unsafe partial class AlloyRenderer
                                             ImageUse.Sampled | ImageUse.Storage | ImageUse.Async, label));
     }
 
-    /// <summary>Every image the async froxel and fog stages sample that a graphics pass may too, handed over for sampling
-    /// in the submit they wait on: the async queue may not move one that the G-buffer pass beside it reads.</summary>
-    private static void VkHandOverAsync(CommandList cl)
-    {
-        VkColourState s = _vkc;
-        ReadOnlySpan<ImageId> shared =
-        [
-            CasterPass.VkCascadeMap, CasterPass.VkSunDynMap, CasterPass.VkCubeMap, CasterPass.VkCubeDynMap,
-            s.Tex2D, s.TexU2D, s.Tex2DArray, s.Tex3D, s.TexCube, s.TexCubeArray, s.Depth2DArray, s.DepthCubeArray,
-        ];
-        cl.ReadImages(shared);
-    }
 }

@@ -3,9 +3,9 @@ using Vortice.Vulkan;
 namespace CX.Graphics.Rhi;
 
 /// <summary>
-/// The queue's timeline: submit number n signals value n + 1 on one timeline semaphore, so "has it finished" is the
-/// counter read against a value and every lifetime waits on a value, never on a fence. The CPU waits in one place,
-/// a present FramesInFlight frames on; a submit waits only when every recording slot is still running.
+/// The timelines: graphics submit number n signals value n + 1 on the graphics timeline, which every lifetime waits on;
+/// the async queue counts its own, which only a graphics submit's join waits on. "Has it finished" is a counter read
+/// against a value, never a fence. The CPU waits at a present FramesInFlight frames on, or when every slot still runs.
 /// </summary>
 internal sealed unsafe partial class VkBackend
 {
@@ -108,13 +108,13 @@ internal sealed unsafe partial class VkBackend
     /// the transfer stage and signalling <paramref name="signal"/> (when not null) and, <paramref name="counted"/>,
     /// the next value on the timeline: accepted, <see cref="_submits"/> is then the value it signalled. A counted
     /// submit also waits on the async submit not yet waited on, unless it is the one asked to run beside it.</summary>
-    private VkResult QueueSubmit(VkCommandBuffer cb, VkSemaphore wait, VkSemaphore signal, bool counted = true)
+    private VkResult QueueSubmit(VkCommandBuffer cb, VkSemaphore wait, VkSemaphore signal, bool counted = true, bool besideAsked = false)
     {
         var cbi = new VkCommandBufferSubmitInfo { commandBuffer = cb };
         VkSemaphoreSubmitInfo* w = stackalloc VkSemaphoreSubmitInfo[2];
         uint nw = 0;
         if (wait.IsNotNull) w[nw++] = new VkSemaphoreSubmitInfo { semaphore = wait, stageMask = VkPipelineStageFlags2.AllTransfer };
-        bool beside = counted && _besideAsked && _unjoined != 0 && !_beside;
+        bool beside = counted && besideAsked && _unjoined != 0 && !_beside;
         bool join = counted && _unjoined != 0 && !beside;
         if (join) w[nw++] = new VkSemaphoreSubmitInfo { semaphore = _async!.Timeline, value = (ulong)_unjoined, stageMask = VkPipelineStageFlags2.AllCommands };
         VkSemaphoreSubmitInfo* sig = stackalloc VkSemaphoreSubmitInfo[2];

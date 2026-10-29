@@ -35,6 +35,8 @@ internal sealed unsafe partial class VkBackend
         /// <summary>Buffers made since the last submit, filled with zeros at its head ahead of every copy.</summary>
         public readonly List<BufferId> Zero = new();
         public readonly HashSet<uint> Touched = new();
+        /// <summary>Copies or zero fills wait for a graphics submit's head.</summary>
+        public bool Pending => Copies.Count > 0 || Zero.Count > 0;
     }
 
     private readonly UploadState _upload = new();
@@ -118,13 +120,8 @@ internal sealed unsafe partial class VkBackend
             || Of(d.Fmt) == VkFormat.Undefined || d.W <= 0 || d.H <= 0 || d.Mips < 1 || d.Layers < 1)
             return Refused<ImageId>($"image {d.Label}: {d.Kind} {d.Fmt} {d.W}x{d.H} x{d.Samples} with {d.Mips} mips, {d.Layers} layers");
         VkImageCreateInfo ici = ImageInfo(d, null);
-        uint* fams = stackalloc uint[2] { _families[0], _families[1] };
-        if ((d.Use & ImageUse.Async) != 0 && _async != null)
-        {
-            ici.sharingMode = VkSharingMode.Concurrent;
-            ici.queueFamilyIndexCount = 2;
-            ici.pQueueFamilyIndices = fams;
-        }
+        uint* fams = stackalloc uint[2];
+        if ((d.Use & ImageUse.Async) != 0 && _async != null) Share(ref ici.sharingMode, ref ici.queueFamilyIndexCount, ref ici.pQueueFamilyIndices, fams);
         var aci = new VmaAllocationCreateInfo { usage = VmaMemoryUsage.AutoPreferDevice };
         VkImage image;
         VmaAllocation a;
