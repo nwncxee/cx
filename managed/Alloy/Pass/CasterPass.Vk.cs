@@ -521,7 +521,7 @@ public sealed unsafe partial class CasterPass
         var s = _vk;
         s.Dev!.Destroy(id);
         id = s.Dev.CreateImage(new ImageDesc(kind, Format.D32F, size, size, 1, 1, layers, 1,
-                                             ImageUse.DepthTarget | ImageUse.Sampled, label));
+                                             ImageUse.DepthTarget | ImageUse.Sampled | ImageUse.Async, label));
         if (id.IsNull)
         {
             s.Failed = true;

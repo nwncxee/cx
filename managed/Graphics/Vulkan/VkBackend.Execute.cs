@@ -33,7 +33,8 @@ internal sealed unsafe partial class VkBackend
     private VkCommandBuffer _cmd;
     private Slot? _slot;
 
-    /// <summary>Record <paramref name="list"/> into one command buffer and run it.</summary>
+    /// <summary>Record <paramref name="list"/> into one command buffer and run it: an <see cref="CommandList.Async"/>
+    /// one on the async queue, after every graphics submit before it.</summary>
     public bool Submit(CommandList list) => Submit(list, -1);
 
     /// <summary><see cref="Submit(CommandList)"/>, and with <paramref name="swap"/> at or past 0 the composite's blit
@@ -42,7 +43,9 @@ internal sealed unsafe partial class VkBackend
     private bool Submit(CommandList list, int swap)
     {
         if (!OnThread("Submit")) return false;
-        if (TakeSlot() is not Slot s) return false;
+        bool lane = list.Async && _async != null;
+        if (lane && !UploadsAhead()) return false;
+        if ((lane ? TakeSlot(_async!.Slots, _async.Pool, _async.Timeline, ref _async.Completed) : TakeSlot()) is not Slot s) return false;
         if (_sets.Stale && !RetireSets()) return false;
         s.StageUsed = 0;
         _recording++;
@@ -51,26 +54,34 @@ internal sealed unsafe partial class VkBackend
         var bi = new VkCommandBufferBeginInfo { flags = VkCommandBufferUsageFlags.OneTimeSubmit };
         _vkd.vkBeginCommandBuffer(s.Cmd, &bi);
         _cmd = s.Cmd;
+        _onAsync = lane;
+        _crossed = null;
         Drop();
         _cBufN = _cImgN = 0;
         if (_resync) { FullBarrier(); _resync = false; }
         if (_labels) OpenLabel(list.NameUtf8);
         _slot = s;
         _inPass = _rendering = false;
-        TimeBegin(s);
-        RecycleBindless();
+        // the bindless upkeep, the uploads and the frame's timestamps stay on the graphics queue
+        if (!lane)
+        {
+            TimeBegin(s);
+            RecycleBindless();
+        }
         BindBindless();
-        FlushUploads();
+        if (!lane) FlushUploads();
 
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         bool ok = Record(list.TakePending());
         _translateTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
         _translateN++;
+        if (ok && _crossed != null)
+            ok = Fault($"list {Encoding.UTF8.GetString(list.NameUtf8[..^1])} reached {_crossed} on the async queue, which was not made ImageUse.Async");
         if (_rendering) _vkd.vkCmdEndRendering(_cmd);
         _inPass = _rendering = false;
         if (ok && swap >= 0) ok = RecordPresent(swap);
         Flush();
-        TimeEnd(s, ok);
+        if (!lane) TimeEnd(s, ok);
         if (ok && _labelDepth > 1 && !_labelLeakLogged)
         {
             _labelLeakLogged = true;
@@ -86,14 +97,16 @@ internal sealed unsafe partial class VkBackend
             for (int i = _undo.Count - 1; i >= 0; i--) _undo[i].Img.Layout = _undo[i].Layout;
             _undo.Clear();
             _resync = true;
-            _upload.Touched.Clear();
+            _onAsync = false;
+            if (!lane) _upload.Touched.Clear();
             return false;
         }
-        CommitUploads();
+        if (!lane) CommitUploads();
 
-        if (QueueSubmit(_cmd, swap >= 0 ? Acquired : default, swap >= 0 ? _swap.Ready[swap] : default) != VkResult.Success)
-            return Fault("vkQueueSubmit2 refused the frame -- the device is unusable");
-        s.Done = _submits;
+        VkResult sent = lane ? AsyncSubmit(_cmd) : QueueSubmit(_cmd, swap >= 0 ? Acquired : default, swap >= 0 ? _swap.Ready[swap] : default);
+        _onAsync = false;
+        if (sent != VkResult.Success) return Fault("vkQueueSubmit2 refused the frame -- the device is unusable");
+        s.Done = lane ? _async!.Submits : _submits;
         DrainDead();
         return true;
     }
@@ -145,6 +158,7 @@ internal sealed unsafe partial class VkBackend
     {
         ReadOnlySpan<ColorAttachment> colors = r.Span<ColorAttachment>(h.Colors);
         if (_inPass) return Fault("a render pass began inside another");
+        if (_onAsync) return Fault("a render pass on the async compute queue, which cannot draw");
         if (colors.Length + (h.HasDepth ? 1 : 0) == 0 || colors.Length > RenderPassDesc.MaxColors) return Fault($"render pass with {colors.Length} colour attachments");
         colors.CopyTo(_pend);
         _pendCount = colors.Length;

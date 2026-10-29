@@ -33,6 +33,7 @@ internal sealed unsafe partial class VkBackend
           + "DEPTH_STENCIL_ATTACHMENT_WRITE 0x400, TRANSFER_WRITE 0x1000 -- and no read: SHADER_SAMPLED_READ 2^32, SHADER_STORAGE_READ "
           + "2^33, COLOR_ATTACHMENT_READ 0x80, DEPTH_STENCIL_ATTACHMENT_READ 0x200, TRANSFER_READ 0x800");
         CheckSetCache(check);
+        CheckAsyncFamily(check);
         if (Native.Sym(SymbolMap.AppManager) != IntPtr.Zero)
         {
             check.Skip("on-device: the pilot's stages compile at the device's first pipeline, not at boot");
@@ -95,6 +96,19 @@ internal sealed unsafe partial class VkBackend
         check.Expect(!c.TryGet(a, out _) && !c.TryGet(b, out _) && !c.TryGetHashed(a.AsSpan(..1), 7, out _), "a cleared cache held a set");
         c.Add(b, 21);
         check.Expect(c.TryGet(b, out got) && got == 21 && !c.TryGet(a, out _), "after a clear, a new set did not come back alone");
+    }
+
+    /// <summary>Oracle: hand-written family tables shaped as an RTX 3070, an RDNA card and an Intel iGPU report them. The
+    /// async queue is a family that computes without drawing; none, or one with no queues, leaves a single queue.</summary>
+    private static void CheckAsyncFamily(Checker check)
+    {
+        static VkQueueFamilyProperties F(VkQueueFlags f, uint n) => new() { queueFlags = f, queueCount = n };
+        const VkQueueFlags G = VkQueueFlags.Graphics | VkQueueFlags.Compute | VkQueueFlags.Transfer, C = VkQueueFlags.Compute | VkQueueFlags.Transfer;
+        check.Expect(AsyncFamily([F(G, 16), F(VkQueueFlags.Transfer, 2), F(C, 8)]) == 2, "the 3070's compute family 2 was not the async one");
+        check.Expect(AsyncFamily([F(G, 1), F(C, 4), F(VkQueueFlags.Transfer, 2)]) == 1, "the RDNA compute family 1 was not the async one");
+        check.Expect(AsyncFamily([F(G, 1)]) == -1, "a device with one graphics family named an async one");
+        check.Expect(AsyncFamily([F(G, 1), F(C, 0)]) == -1, "a compute family with no queues was taken");
+        check.Expect(AsyncFamily([F(G, 1), F(G, 4)]) == -1, "a second graphics family was taken as the compute-only one");
     }
 
     private static bool ScopeIs(VkImageLayout l, ulong stages, ulong access)

@@ -44,6 +44,15 @@ internal static class VulkanFrame
         }
         CommandList cl = _s.Cmds ??= new CommandList("vulkan frame", FrameArenaBytes, log);
         cl.Reset();
+        vk.TimeFrame = true;
+        try { Record(log, vk, cl, vp, vpClean, view, proj, viewport, display, near, far, lightingOn, perspective, groups); }
+        finally { vk.TimeFrame = false; }
+    }
+
+    private static unsafe void Record(ExtenderLog log, VkBackend vk, CommandList cl, in Matrix4x4 vp, in Matrix4x4 vpClean,
+                                      in Matrix4x4 view, in Matrix4x4 proj, int* viewport, int* display, float near, float far,
+                                      bool lightingOn, bool perspective, int groups)
+    {
         cl.BeginLabel("cull"u8);
         if (!CullPassVk.Record(vk, cl, log))
         {
@@ -57,12 +66,12 @@ internal static class VulkanFrame
             AlloyGate.Fail("the Vulkan colour bracket did not record (logged above)");
             return;
         }
-        vk.TimeNextSubmit = true;
         if (!vk.Submit(cl))
         {
             AlloyGate.Fail("the Vulkan frame's submit was refused (logged above)");
             return;
         }
+        vk.FrameTimed();
         Matrix4x4 vpN = vp, projN = proj;
         UiScene.NoteVk(&vpN, &projN, viewport, AlloyRenderer.VkSceneDepth);
         AlloyRenderer.VkFrameTap(vk);
@@ -71,8 +80,9 @@ internal static class VulkanFrame
         {
             vk.TakeWaitMs(out double gpu, out double acquire);
             double translate = vk.TakeTranslateMs(out int sets, out int made, out int retired, out int draws, out int lists, out int barriers);
-            log.Always($"VulkanFrame: [vkgpu] {ms:F2} ms GPU per frame over {n} frames (bake, cull, prepass, hi-Z, AO, "
-                     + $"decals, G-buffer, opaque, cutout, sky, the deferred dispatches, blended); the CPU waited "
+            log.Always($"VulkanFrame: [vkgpu] {ms:F2} ms GPU per frame over {n} frames on the graphics queue (bake, cull, prepass, "
+                     + $"hi-Z, AO, decals, G-buffer, opaque, cutout, sky, the deferred dispatches, blended; not the async froxel build "
+                     + $"and fog); the CPU waited "
                      + $"{gpu / GpuPeriod:F2} ms/frame on the GPU timeline and {acquire / GpuPeriod:F2} ms/frame on the swapchain acquire, "
                      + $"and spent {translate / GpuPeriod:F2} ms/frame translating {(float)draws / GpuPeriod:F0} draws and "
                      + $"{(float)sets / GpuPeriod:F0} bind sets ({(float)made / GpuPeriod:F1} written, the rest reused; {retired} pool(s) "

@@ -63,6 +63,10 @@ public sealed unsafe partial class AlloyRenderer
         cl.BeginLabel("lightmap bake"u8);
         if (lightingOn) LightmapBake.VkRun(vk, cl, _capturing, _frameSeq);
         cl.EndLabel();
+        // the submit the async froxel build and fog wait on: the bake and the uploads they read are in it, and the
+        // prepass through the sky run beside them
+        VkHandOverAsync(cl);
+        if (!vk.Submit(cl)) return false;
         bool indirect = CullPassVk.Ran;
         int viz = _capturing ? 0 : _lightViz;
         bool gbuf = lightingOn && perspective && Lighting.Deferred.V && (viz == 0 || viz == VizLightFrom);
@@ -150,13 +154,17 @@ public sealed unsafe partial class AlloyRenderer
         if (!VkRecordSky(vk, cl, s, vp, viewport, log)) return false;
         cl.EndLabel();
         // the froxel table both deferred stages and the fog's local lights read, from this frame's own build, then the
-        // fog volume: after the G-buffer writers, which the deferred walk fogs, and before every stage that fogs itself
-        cl.BeginLabel("light clusters"u8);
-        VkClusterBuild(vk, cl, log);
-        cl.EndLabel();
-        cl.BeginLabel("fog volume"u8);
-        VkFogPass(vk, cl, view, vpClean, viewport, near, far, perspective, lightingOn, log);
-        cl.EndLabel();
+        // fog volume, on the async queue beside the prepass through the sky recorded above: those read neither, and
+        // fog through last frame's sum, so every stage that fogs itself after them reads this one
+        CommandList al = s.Async!;
+        al.Reset();
+        al.BeginLabel("light clusters"u8);
+        VkClusterBuild(vk, al, log);
+        al.EndLabel();
+        al.BeginLabel("fog volume"u8);
+        VkFogPass(vk, al, view, vpClean, viewport, near, far, perspective, lightingOn, log);
+        al.EndLabel();
+        if (!vk.Submit(al) || !vk.SubmitAlongside(cl)) return false;
         // ...and then ADR 0029's two dispatches, at the graph's own place: after the cutout pass and the sky,
         // before the blended one. A sky pixel has no G-buffer record, so the walk leaves it alone.
         cl.BeginLabel("deferred lights"u8);

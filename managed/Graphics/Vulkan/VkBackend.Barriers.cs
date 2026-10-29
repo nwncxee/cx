@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using CX.Rhi;
 using Vortice.Vulkan;
 
 namespace CX.Graphics.Rhi;
@@ -30,6 +31,13 @@ internal sealed unsafe partial class VkBackend
     private const VkAccessFlags2 WriteAccess = VkAccessFlags2.ShaderWrite | VkAccessFlags2.ShaderStorageWrite | VkAccessFlags2.ColorAttachmentWrite
                                              | VkAccessFlags2.DepthStencilAttachmentWrite | VkAccessFlags2.TransferWrite
                                              | VkAccessFlags2.HostWrite | VkAccessFlags2.MemoryWrite;
+
+    /// <summary>The stages and accesses a compute-only queue's barrier may name: a graphics stage's half of a barrier there
+    /// is the cross-queue semaphore's, which orders everything the graphics queue did before it.</summary>
+    private const VkPipelineStageFlags2 AsyncStages = VkPipelineStageFlags2.ComputeShader | VkPipelineStageFlags2.DrawIndirect
+                                                    | VkPipelineStageFlags2.AllTransfer | VkPipelineStageFlags2.Host;
+    private const VkAccessFlags2 ShaderAccess = VkAccessFlags2.UniformRead | VkAccessFlags2.ShaderSampledRead
+                                              | VkAccessFlags2.ShaderStorageRead | VkAccessFlags2.ShaderStorageWrite;
 
     /// <summary>The queued image barriers; an image's <see cref="VkImg.BarAt"/> indexes this while its
     /// <see cref="VkImg.BarBatch"/> is <see cref="_batch"/>.</summary>
@@ -156,6 +164,16 @@ internal sealed unsafe partial class VkBackend
     {
         if (_imgBarN == 0 && _memDst == VkPipelineStageFlags2.None) return;
         var mb = new VkMemoryBarrier2 { srcStageMask = _memSrc, srcAccessMask = _memSrcAccess, dstStageMask = _memDst, dstAccessMask = _memDstAccess };
+        if (_onAsync)
+        {
+            ToAsync(ref mb.srcStageMask, ref mb.srcAccessMask);
+            ToAsync(ref mb.dstStageMask, ref mb.dstAccessMask);
+            for (int i = 0; i < _imgBarN; i++)
+            {
+                ToAsync(ref _imgBars[i].srcStageMask, ref _imgBars[i].srcAccessMask);
+                ToAsync(ref _imgBars[i].dstStageMask, ref _imgBars[i].dstAccessMask);
+            }
+        }
         fixed (VkImageMemoryBarrier2* ib = _imgBars)
         {
             var di = new VkDependencyInfo
@@ -167,6 +185,18 @@ internal sealed unsafe partial class VkBackend
         }
         _barrierN++;
         Drop();
+    }
+
+    /// <summary>One side of a barrier cut to what the async queue's family runs: each access only beside a stage that makes it.</summary>
+    private static void ToAsync(ref VkPipelineStageFlags2 stages, ref VkAccessFlags2 access)
+    {
+        stages &= AsyncStages;
+        VkAccessFlags2 keep = VkAccessFlags2.None;
+        if ((stages & VkPipelineStageFlags2.ComputeShader) != 0) keep |= ShaderAccess;
+        if ((stages & VkPipelineStageFlags2.DrawIndirect) != 0) keep |= VkAccessFlags2.IndirectCommandRead;
+        if ((stages & VkPipelineStageFlags2.AllTransfer) != 0) keep |= VkAccessFlags2.TransferRead | VkAccessFlags2.TransferWrite;
+        if ((stages & VkPipelineStageFlags2.Host) != 0) keep |= VkAccessFlags2.HostRead | VkAccessFlags2.HostWrite;
+        access &= keep;
     }
 
     /// <summary>Forget the queued barriers: recorded, or dropped with a refused recording.</summary>
@@ -199,6 +229,7 @@ internal sealed unsafe partial class VkBackend
     {
         if (img.UndoAt == _recording) return;
         img.UndoAt = _recording;
+        if (_onAsync && (img.Desc.Use & ImageUse.Async) == 0) _crossed ??= img.Desc.Label;
         _undo.Add((img, img.Layout));
     }
 

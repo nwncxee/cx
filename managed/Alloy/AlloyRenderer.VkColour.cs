@@ -96,6 +96,8 @@ public sealed unsafe partial class AlloyRenderer
         /// rather than a blend of four, which is what GL's own sampler object strips the arrays down to.</summary>
         public SamplerId Raw;
         public CommandList? Side;
+        /// <summary>The frame's async queue work: the froxel build and the fog volume, beside the prepass through the G-buffer pass.</summary>
+        public CommandList? Async;
         public uint WhiteIndex, NullIndex;
         public long Drawn, Skipped;
         /// <summary>This frame's colour pass wrote the G-buffer.</summary>
@@ -225,6 +227,7 @@ public sealed unsafe partial class AlloyRenderer
         s.DecalLayer = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, 1, 1, 1, 1, 1, 1, ImageUse.Storage, "vk decal layer stand-in"));
         s.DecalSurf = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rg32F, 1, 1, 1, 1, 1, 1, ImageUse.Storage, "vk decal surface stand-in"));
         s.Side = new CommandList("vulkan colour pass", 1 << 20, log);
+        s.Async = new CommandList("vulkan async", 64 << 10, log) { Async = true };
         if (s.ZeroUbo.IsNull || s.ZeroSsbo.IsNull || s.Arena.IsNull || s.Tex2D.IsNull || s.TexU2D.IsNull || s.Tex2DArray.IsNull
             || s.Tex3D.IsNull || s.TexCube.IsNull || s.TexCubeArray.IsNull || s.Depth2DArray.IsNull || s.DepthCubeArray.IsNull
             || s.DecalLayer.IsNull || s.DecalSurf.IsNull || s.Linear.IsNull || s.Shadow.IsNull || s.Raw.IsNull)
@@ -240,7 +243,8 @@ public sealed unsafe partial class AlloyRenderer
     private static ImageId VkStandIn(VkBackend vk, ImageKind kind, Format f, int faces, string label)
     {
         int layers = kind is ImageKind.Cube or ImageKind.CubeArray ? 1 : 1;
-        ImageId img = vk.CreateImage(new ImageDesc(kind, f, 1, 1, 1, 1, layers, 1, ImageUse.Sampled | ImageUse.CopyDst, $"vk stand-in {label}"));
+        ImageId img = vk.CreateImage(new ImageDesc(kind, f, 1, 1, 1, 1, layers, 1, ImageUse.Sampled | ImageUse.CopyDst | ImageUse.Async,
+                                                   $"vk stand-in {label}"));
         if (img.IsNull) return img;
         Span<byte> texel = stackalloc byte[16];
         texel.Clear();

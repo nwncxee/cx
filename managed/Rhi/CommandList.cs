@@ -85,6 +85,10 @@ public sealed class CommandList
     /// <summary>Submit every command as it is recorded, instead of when the pass submits the list.</summary>
     public IDevice? Immediate;
 
+    /// <summary>Recorded for the async compute queue: dispatches, copies and buffer writes only, over images made
+    /// <see cref="ImageUse.Async"/>. A device with no such queue runs it on the graphics queue, in submit order.</summary>
+    public bool Async { get; init; }
+
     /// <summary>An immediate submit was refused since the last <see cref="Reset"/>; later commands are not
     /// submitted, and the pass sits out.</summary>
     public bool Faulted { get; private set; }

@@ -118,6 +118,13 @@ internal sealed unsafe partial class VkBackend
             || Of(d.Fmt) == VkFormat.Undefined || d.W <= 0 || d.H <= 0 || d.Mips < 1 || d.Layers < 1)
             return Refused<ImageId>($"image {d.Label}: {d.Kind} {d.Fmt} {d.W}x{d.H} x{d.Samples} with {d.Mips} mips, {d.Layers} layers");
         VkImageCreateInfo ici = ImageInfo(d, null);
+        uint* fams = stackalloc uint[2] { _families[0], _families[1] };
+        if ((d.Use & ImageUse.Async) != 0 && _async != null)
+        {
+            ici.sharingMode = VkSharingMode.Concurrent;
+            ici.queueFamilyIndexCount = 2;
+            ici.pQueueFamilyIndices = fams;
+        }
         var aci = new VmaAllocationCreateInfo { usage = VmaMemoryUsage.AutoPreferDevice };
         VkImage image;
         VmaAllocation a;
@@ -513,12 +520,12 @@ internal sealed unsafe partial class VkBackend
         if (OnThread("Unbind") && h.Value != 0 && h.Value < _bindlessCap) _bindless.Dying.Add((Next, (uint)h.Value));
     }
 
-    /// <summary>The bindless table on set 1 of both bind points, once at the head of a submit: every pipeline shares
-    /// the layout, so no later bind disturbs it.</summary>
+    /// <summary>The bindless table on set 1 of both bind points (the compute one alone on the async queue), once at the
+    /// head of a submit: every pipeline shares the layout, so no later bind disturbs it.</summary>
     private void BindBindless()
     {
         VkDescriptorSet set = _bindlessSet;
-        _vkd.vkCmdBindDescriptorSets(_cmd, VkPipelineBindPoint.Graphics, _pipeLayout, VulkanToolchain.BindlessSet, 1, &set, 0, null);
+        if (!_onAsync) _vkd.vkCmdBindDescriptorSets(_cmd, VkPipelineBindPoint.Graphics, _pipeLayout, VulkanToolchain.BindlessSet, 1, &set, 0, null);
         _vkd.vkCmdBindDescriptorSets(_cmd, VkPipelineBindPoint.Compute, _pipeLayout, VulkanToolchain.BindlessSet, 1, &set, 0, null);
     }
 }
