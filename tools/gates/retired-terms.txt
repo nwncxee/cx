@@ -216,3 +216,6 @@ alloy\.(gl46|glsync|gldebug)\b|\[gl46\]|\[gldebug\]	GL sweep 8
 # modelview capability is withdrawn; GlProgram's builder went with it (Gl.Loc is what TextRig kept).
 \bGlProbe\b|general\.presentprobe\b|\bpresentprobe\b|\[presentprobe\]	GL sweep 9
 \bNuiModelEngine\b|\bGlProgram\b|NuiModelView\.Gl\b	GL sweep 9
+# The reflections resolve per full-res pixel and the temporal pass adds the result onto the frame, so the
+# half-res composite stage is gone.
+\bcx_ssrcomp_f\b	CX-385

@@ -83,8 +83,8 @@ internal static class RenderPasses
             SelfCheck = l => FrameSnapshot.SelfCheck(l),
             Stats = FrameSnapshot.Stats,
         }, log);
-        // CX-51: the screen-space reflections. No edges of its own -- the pass's targets are the device's.
-        r.Register(new PassLifecycle { Name = "ssr", Stats = Ssr.Stats }, log);
+        // CX-51: the screen-space reflections. The pass's targets are the device's; the world edge drops its history.
+        r.Register(new PassLifecycle { Name = "ssr", Revoke = AlloyRenderer.VkSsrRevoke, SelfCheck = Ssr.SelfCheck, Stats = Ssr.Stats }, log);
         // CX-29: not a pass and not Alloy's -- the pose layer runs under either renderer. Registered for its
         // clause on the [alloy] period line only.
         r.Register(new PassLifecycle { Name = "pose", Stats = PoseService.Stats }, log);

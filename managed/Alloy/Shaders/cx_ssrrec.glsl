@@ -1,5 +1,5 @@
 // CX-51: the reflection record's format, in one place for the lit stage that writes it (cx_reflrec) and the Ssr
-// passes that read it back (cx_ssrtrace_f, cx_ssrcomp_f). N = RGBA16F: octahedral world normal, roughness, view
+// passes that read it back (cx_ssrtrace_f, cx_ssrres_f). N = RGBA16F: octahedral world normal, roughness, view
 // depth. W = R11F_G11F_B10F: the reflection's weight. 12 bytes a pixel, down from two RGBA16F.
 #ifndef CX_SSRREC
 #define CX_SSRREC

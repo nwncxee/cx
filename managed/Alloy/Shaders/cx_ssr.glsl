@@ -21,6 +21,26 @@ vec2 CxEnvBrdf(float NoV, float perceptual)
     return vec2(-1.04, 1.04) * a004 + r.zw;
 }
 
+/// How far the trace's GGX draw leans toward the lobe's centre (0 = the whole lobe): the tail rays a rough surface
+/// would spend on grazing directions mostly miss, and the resolve's cone blur stands in for them.
+const float CX_SSR_BIAS = 0.7;
+
+/// Two R2 low-discrepancy values in [0, 1) at pixel p, phased per frame: a closed-form blue-ish pattern, so no
+/// noise texture is bound. The second axis swaps the R2 weights rather than offsetting, which would correlate them.
+vec2 CxSsrNoise(ivec2 p, int frame)
+{
+    vec2 q = vec2(p);
+    return fract(vec2(dot(q, vec2(0.7548777, 0.5698403)), dot(q, vec2(0.5698403, 0.7548777)))
+               + float(frame & 255) * vec2(0.618034, 0.381966));
+}
+
+/// The GGX normal distribution at alpha a.
+float CxGgxD(float NoH, float a)
+{
+    float a2 = a * a, d = NoH * NoH * (a2 - 1.0) + 1.0;
+    return a2 / max(3.14159265 * d * d, 1e-8);
+}
+
 /// CX-46: the probe's SH9 irradiance, written by cx_probe_sh after each capture with the cosine lobe and basis
 /// constants folded in, and the world point the capture stood at. Read only under uProbeMips > 0.
 layout(std140, binding = 1) uniform CxProbeSh { vec4 uProbeSh[9]; vec4 uProbeAt; };
