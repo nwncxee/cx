@@ -104,19 +104,21 @@ internal sealed unsafe partial class VkBackend
     /// last waited on it, has finished.</summary>
     private VkSemaphore Acquired => _acquired[_frames % FramesInFlight];
 
-    /// <summary>A command buffer (when not null) on the queue, waiting on <paramref name="wait"/> (when not null) at
-    /// the transfer stage and signalling <paramref name="signal"/> (when not null) and, <paramref name="counted"/>,
-    /// the next value on the timeline: accepted, <see cref="_submits"/> is then the value it signalled. A counted
-    /// submit also waits on the async submit not yet waited on, unless it is the one asked to run beside it.</summary>
+    /// <summary>A command buffer (when not null) on the queue, waiting on <paramref name="wait"/> (when not null) at the
+    /// transfer stage and on the transfer submit not yet waited on, signalling <paramref name="signal"/> (when not null)
+    /// and, <paramref name="counted"/>, the next timeline value, then in <see cref="_submits"/>. A counted submit also
+    /// waits on the async submit not yet waited on, unless it is the one asked to run beside it.</summary>
     private VkResult QueueSubmit(VkCommandBuffer cb, VkSemaphore wait, VkSemaphore signal, bool counted = true, bool besideAsked = false)
     {
         var cbi = new VkCommandBufferSubmitInfo { commandBuffer = cb };
-        VkSemaphoreSubmitInfo* w = stackalloc VkSemaphoreSubmitInfo[2];
+        VkSemaphoreSubmitInfo* w = stackalloc VkSemaphoreSubmitInfo[3];
         uint nw = 0;
         if (wait.IsNotNull) w[nw++] = new VkSemaphoreSubmitInfo { semaphore = wait, stageMask = VkPipelineStageFlags2.AllTransfer };
         bool beside = counted && besideAsked && _unjoined != 0 && !_beside;
         bool join = counted && _unjoined != 0 && !beside;
         if (join) w[nw++] = new VkSemaphoreSubmitInfo { semaphore = _async!.Timeline, value = (ulong)_unjoined, stageMask = VkPipelineStageFlags2.AllCommands };
+        bool shipped = cb.IsNotNull && _shippedJoin != 0;
+        if (shipped) w[nw++] = new VkSemaphoreSubmitInfo { semaphore = _transfer!.Timeline, value = (ulong)_shippedJoin, stageMask = VkPipelineStageFlags2.AllCommands };
         VkSemaphoreSubmitInfo* sig = stackalloc VkSemaphoreSubmitInfo[2];
         uint n = 0;
         if (counted) sig[n++] = new VkSemaphoreSubmitInfo { semaphore = _timeline, value = (ulong)(_submits + 1), stageMask = VkPipelineStageFlags2.AllCommands };
@@ -128,6 +130,7 @@ internal sealed unsafe partial class VkBackend
             signalSemaphoreInfoCount = n, pSignalSemaphoreInfos = sig,
         };
         VkResult r = _vkd.vkQueueSubmit2(_queue, 1, &si, default);
+        if (r == VkResult.Success && shipped) _shippedJoin = 0;
         if (r != VkResult.Success || !counted) return r;
         _submits++;
         if (beside) _beside = true;
@@ -138,7 +141,7 @@ internal sealed unsafe partial class VkBackend
     /// <summary>The recorded <paramref name="cb"/> on the async queue, after the last graphics submit.</summary>
     private VkResult AsyncSubmit(VkCommandBuffer cb)
     {
-        AsyncLane a = _async!;
+        Lane a = _async!;
         var cbi = new VkCommandBufferSubmitInfo { commandBuffer = cb };
         var w = new VkSemaphoreSubmitInfo { semaphore = _timeline, value = (ulong)_submits, stageMask = VkPipelineStageFlags2.AllCommands };
         var sig = new VkSemaphoreSubmitInfo { semaphore = a.Timeline, value = (ulong)(a.Submits + 1), stageMask = VkPipelineStageFlags2.AllCommands };
@@ -150,6 +153,18 @@ internal sealed unsafe partial class VkBackend
         };
         VkResult r = _vkd.vkQueueSubmit2(a.Queue, 1, &si, default);
         if (r == VkResult.Success) _unjoined = ++a.Submits;
+        return r;
+    }
+
+    /// <summary>The recorded <paramref name="cb"/> on the transfer queue <paramref name="t"/>, waiting on nothing:
+    /// accepted, <paramref name="t"/>'s submit count is the value it signalled.</summary>
+    private VkResult TransferSubmit(Lane t, VkCommandBuffer cb)
+    {
+        var cbi = new VkCommandBufferSubmitInfo { commandBuffer = cb };
+        var sig = new VkSemaphoreSubmitInfo { semaphore = t.Timeline, value = (ulong)(t.Submits + 1), stageMask = VkPipelineStageFlags2.AllCommands };
+        var si = new VkSubmitInfo2 { commandBufferInfoCount = 1, pCommandBufferInfos = &cbi, signalSemaphoreInfoCount = 1, pSignalSemaphoreInfos = &sig };
+        VkResult r = _vkd.vkQueueSubmit2(t.Queue, 1, &si, default);
+        if (r == VkResult.Success) t.Submits++;
         return r;
     }
 

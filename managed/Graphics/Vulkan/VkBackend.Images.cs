@@ -35,6 +35,13 @@ internal sealed unsafe partial class VkBackend
         /// <summary>Buffers made since the last submit, filled with zeros at its head ahead of every copy.</summary>
         public readonly List<BufferId> Zero = new();
         public readonly HashSet<uint> Touched = new();
+        /// <summary>Images the transfer queue filled and released, each acquired at the next graphics submit's head.</summary>
+        public readonly List<ImageId> Acquire = new();
+        /// <summary><see cref="Ship"/>'s scratch: the copies it sends, the ones it leaves, the images it releases.</summary>
+        public readonly List<PendingCopy> Sent = new(), Left = new();
+        public readonly HashSet<uint> Mipped = new(), Seen = new();
+        public readonly List<(ImageId Id, VkImg Img)> Released = new();
+        public VkImageMemoryBarrier2[] Bars = new VkImageMemoryBarrier2[16];
         /// <summary>Copies or zero fills wait for a graphics submit's head.</summary>
         public bool Pending => Copies.Count > 0 || Zero.Count > 0;
     }
@@ -126,8 +133,8 @@ internal sealed unsafe partial class VkBackend
             || Of(d.Fmt) == VkFormat.Undefined || d.W <= 0 || d.H <= 0 || d.Mips < 1 || d.Layers < 1)
             return Refused<ImageId>($"image {d.Label}: {d.Kind} {d.Fmt} {d.W}x{d.H} x{d.Samples} with {d.Mips} mips, {d.Layers} layers");
         VkImageCreateInfo ici = ImageInfo(d, null);
-        uint* fams = stackalloc uint[2];
-        if ((d.Use & ImageUse.Async) != 0 && _async != null) Share(ref ici.sharingMode, ref ici.queueFamilyIndexCount, ref ici.pQueueFamilyIndices, fams);
+        uint* fams = stackalloc uint[3];
+        if ((d.Use & ImageUse.Async) != 0) Share(ref ici.sharingMode, ref ici.queueFamilyIndexCount, ref ici.pQueueFamilyIndices, fams, transfer: false);
         var aci = new VmaAllocationCreateInfo { usage = VmaMemoryUsage.AutoPreferDevice };
         VkImage image;
         VmaAllocation a;
@@ -379,6 +386,19 @@ internal sealed unsafe partial class VkBackend
     private void FlushUploads()
     {
         UploadState u = _upload;
+        if (u.Acquire.Count > 0)
+        {
+            foreach (ImageId id in u.Acquire)
+            {
+                if (!_images.TryGet(id.Value, out VkImg img)) continue;
+                Remember(img);
+                Queue(Handover(img, VkPipelineStageFlags2.None, VkAccessFlags2.None, ShaderStages, VkAccessFlags2.ShaderSampledRead));
+                img.Layout = VkImageLayout.ShaderReadOnlyOptimal;
+                img.Written = false;
+            }
+            // its own batch: a transition merged into an acquire would no longer match the release
+            Flush();
+        }
         if (u.Zero.Count > 0)
         {
             foreach (BufferId z in u.Zero) if (_buffers.TryGet(z.Value, out VkBuf? b)) Use(b, VkPipelineStageFlags2.AllTransfer, VkAccessFlags2.TransferWrite);
@@ -406,23 +426,26 @@ internal sealed unsafe partial class VkBackend
             if (p.Mips) { BlitMips(img); continue; }
             if (img.Layout != VkImageLayout.TransferDstOptimal) { Transition(img, VkImageLayout.TransferDstOptimal); Flush(); }
             u.Touched.Add(p.Image.Value);
-            var r = new VkBufferImageCopy
-            {
-                bufferOffset = p.SrcOffset, bufferRowLength = (uint)p.RowTexels,
-                imageSubresource = new VkImageSubresourceLayers { aspectMask = Aspect(img.Desc.Fmt), mipLevel = (uint)p.Mip, baseArrayLayer = (uint)p.Layer, layerCount = 1 },
-                imageOffset = new VkOffset3D { x = p.X, y = p.Y },
-                imageExtent = p.W > 0 ? new VkExtent3D { width = (uint)p.W, height = (uint)p.H, depth = 1 } : new VkExtent3D
-                {
-                    width = (uint)Math.Max(img.Desc.W >> p.Mip, 1), height = (uint)Math.Max(img.Desc.H >> p.Mip, 1),
-                    depth = img.Desc.Kind == ImageKind.Tex3D ? (uint)Math.Max(img.Desc.D >> p.Mip, 1) : 1,
-                },
-            };
+            VkBufferImageCopy r = Region(p, img);
             _vkd.vkCmdCopyBufferToImage(_cmd, p.Src, img.Image, VkImageLayout.TransferDstOptimal, 1, &r);
             img.Written = true;
         }
         foreach (uint id in u.Touched)
             if (_images.TryGet(id, out VkImg img)) Transition(img, VkImageLayout.ShaderReadOnlyOptimal);
     }
+
+    /// <summary>The staged bytes of <paramref name="p"/> as one copy into its mip and layer of <paramref name="img"/>.</summary>
+    private static VkBufferImageCopy Region(in PendingCopy p, VkImg img) => new()
+    {
+        bufferOffset = p.SrcOffset, bufferRowLength = (uint)p.RowTexels,
+        imageSubresource = new VkImageSubresourceLayers { aspectMask = Aspect(img.Desc.Fmt), mipLevel = (uint)p.Mip, baseArrayLayer = (uint)p.Layer, layerCount = 1 },
+        imageOffset = new VkOffset3D { x = p.X, y = p.Y },
+        imageExtent = p.W > 0 ? new VkExtent3D { width = (uint)p.W, height = (uint)p.H, depth = 1 } : new VkExtent3D
+        {
+            width = (uint)Math.Max(img.Desc.W >> p.Mip, 1), height = (uint)Math.Max(img.Desc.H >> p.Mip, 1),
+            depth = img.Desc.Kind == ImageKind.Tex3D ? (uint)Math.Max(img.Desc.D >> p.Mip, 1) : 1,
+        },
+    };
 
     /// <summary>The flushed uploads ran in a submitted recording: their chunks go back to the pool once it is done, and
     /// the queue empties. A refused recording skips this, and the same copies flush again into the next.</summary>
@@ -435,6 +458,7 @@ internal sealed unsafe partial class VkBackend
         u.Copies.Clear();
         u.Zero.Clear();
         u.Touched.Clear();
+        u.Acquire.Clear();
     }
 
     /// <summary>Each mip from the one above it by a linear blit, every layer at once; the image ends shader-readable.</summary>

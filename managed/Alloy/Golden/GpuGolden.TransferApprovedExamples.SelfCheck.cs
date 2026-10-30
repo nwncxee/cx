@@ -32,7 +32,7 @@ internal static partial class GpuGolden
     private static void TransferImage(VkBackend vk, Checker check, ExtenderLog log)
     {
         ImageId img = PostImage(vk, Format.Rgba8, 4, 4, ImageUse.Sampled | ImageUse.CopyDst | ImageUse.CopySrc, "golden transfer texture");
-        BufferId rb = vk.CreateBuffer(new BufferDesc(64, BufferUse.CopyDst, MemoryKind.Device, "golden transfer read"));
+        BufferId rb = vk.CreateBuffer(new BufferDesc(64, BufferUse.CopyDst | BufferUse.CopySrc, MemoryKind.Device, "golden transfer read"));
         try
         {
             check.Expect(!img.IsNull && !rb.IsNull, "E1: the texture or its readback was refused (logged above)");
@@ -90,7 +90,7 @@ internal static partial class GpuGolden
     {
         ImageId img = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba8, 2, 2, 1, 2, 1, 1,
             ImageUse.Sampled | ImageUse.CopyDst | ImageUse.CopySrc, "golden transfer mips"));
-        BufferId rb = vk.CreateBuffer(new BufferDesc(4, BufferUse.CopyDst, MemoryKind.Device, "golden transfer mip read"));
+        BufferId rb = vk.CreateBuffer(new BufferDesc(4, BufferUse.CopyDst | BufferUse.CopySrc, MemoryKind.Device, "golden transfer mip read"));
         try
         {
             check.Expect(!img.IsNull && !rb.IsNull, "E3: the texture or its readback was refused (logged above)");
