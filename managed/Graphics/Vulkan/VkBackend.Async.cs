@@ -6,15 +6,15 @@ using Vortice.Vulkan;
 namespace CX.Graphics.Rhi;
 
 /// <summary>
-/// The async compute queue: a second queue on a family that computes without drawing, its own recording slots and its
-/// own timeline. An async submit waits on the last graphics submit; the first graphics submit after it may be asked to
-/// run beside it, and the one after that (or the first, when not asked) waits on it. Every lifetime stays on the
-/// graphics timeline, so an object an async submit reaches outlives the graphics submit that waits on it.
+/// The async compute queue: a second queue on a compute-only family with its own slots and timeline, on plumbing the
+/// transfer queue shares. An async submit waits on the last graphics submit; the first graphics submit after it may
+/// be asked to run beside it, the next (or the first, when not asked) waits on it. Every lifetime stays on the graphics
+/// timeline, so an object an async submit reaches outlives the graphics submit that waits on it.
 /// </summary>
 internal sealed unsafe partial class VkBackend
 {
-    /// <summary>The async queue's recording resources and timeline.</summary>
-    private sealed class AsyncLane(VkQueue queue, uint family, VkCommandPool pool, VkSemaphore timeline)
+    /// <summary>A second queue's recording resources and timeline: the async queue's, or the transfer queue's.</summary>
+    private sealed class QueueLane(VkQueue queue, uint family, VkCommandPool pool, VkSemaphore timeline)
     {
         public readonly VkQueue Queue = queue;
         public readonly uint Family = family;
@@ -27,7 +27,7 @@ internal sealed unsafe partial class VkBackend
     }
 
     /// <summary>Null on a device with no compute-only family: an async list then runs on the graphics queue.</summary>
-    private readonly AsyncLane? _async;
+    private readonly QueueLane? _async;
     /// <summary>The async value no graphics submit has waited on yet; 0 when none.</summary>
     private long _unjoined;
     /// <summary>A graphics submit already ran beside <see cref="_unjoined"/>: the next one waits on it.</summary>
@@ -54,24 +54,24 @@ internal sealed unsafe partial class VkBackend
         return -1;
     }
 
-    /// <summary><paramref name="phys"/>'s async family, read off the device. ponytail: a second walk of the table the
+    /// <summary><paramref name="phys"/>'s queue families, read off the device. ponytail: a second walk of the table the
     /// probe already read; once per device, so not threaded back out of it.</summary>
-    private static int AsyncFamily(VkInstanceApi vki, VkPhysicalDevice phys)
+    private static VkQueueFamilyProperties[] Families(VkInstanceApi vki, VkPhysicalDevice phys)
     {
         uint n = 0;
         vki.vkGetPhysicalDeviceQueueFamilyProperties(phys, &n, null);
-        Span<VkQueueFamilyProperties> f = new VkQueueFamilyProperties[n];
+        var f = new VkQueueFamilyProperties[n];
         fixed (VkQueueFamilyProperties* p = f) vki.vkGetPhysicalDeviceQueueFamilyProperties(phys, &n, p);
-        return AsyncFamily(f);
+        return f;
     }
 
-    private AsyncLane OpenAsync(uint family)
+    private QueueLane OpenLane(uint family, string name)
     {
         _vkd.vkGetDeviceQueue(family, 0, out VkQueue q);
         var pci = new VkCommandPoolCreateInfo { flags = VkCommandPoolCreateFlags.ResetCommandBuffer, queueFamilyIndex = family };
         VkCommandPool pool;
-        Check(_vkd.vkCreateCommandPool(&pci, &pool), "vkCreateCommandPool (async)");
-        return new AsyncLane(q, family, pool, MakeTimeline());
+        Check(_vkd.vkCreateCommandPool(&pci, &pool), $"vkCreateCommandPool ({name})");
+        return new QueueLane(q, family, pool, MakeTimeline());
     }
 
     /// <summary><see cref="Submit(CommandList)"/> for a graphics list that runs beside the async submit made before it
@@ -80,14 +80,18 @@ internal sealed unsafe partial class VkBackend
     /// not checked -- the arena takes disjoint ranges from both -- so what the two share is the caller's to keep apart.</summary>
     internal bool SubmitAlongside(CommandList list) => Submit(list, -1, beside: true);
 
-    /// <summary>Both families, for a resource either queue reaches.</summary>
-    private void Share(ref VkSharingMode mode, ref uint count, ref uint* families, uint* two)
+    /// <summary>The graphics family and the async one, and with <paramref name="transfer"/> the transfer one, for a
+    /// resource more than one queue reaches; exclusive when the device has neither.</summary>
+    private void Share(ref VkSharingMode mode, ref uint count, ref uint* families, uint* fams, bool transfer)
     {
-        two[0] = _family;
-        two[1] = _async!.Family;
+        uint n = 0;
+        fams[n++] = _family;
+        if (_async != null) fams[n++] = _async.Family;
+        if (transfer && _transfer != null) fams[n++] = _transfer.Family;
+        if (n == 1) return;
         mode = VkSharingMode.Concurrent;
-        count = 2;
-        families = two;
+        count = n;
+        families = fams;
     }
 
     /// <summary>Uploads still waiting for a graphics submit's head get one of their own: ahead of an async submit,
@@ -95,19 +99,19 @@ internal sealed unsafe partial class VkBackend
     private bool UploadsAhead()
     {
         UploadState u = _upload;
-        if (!u.Pending) return true;
+        if (!u.Pending && u.Acquire.Count == 0 && _shippedJoin == 0) return true;
         _uploadList ??= new CommandList("vulkan uploads");
         _uploadList.Reset();
         return Submit(_uploadList, -1);
     }
 
-    /// <summary>The async lane's objects, after the device is idle.</summary>
-    private void DisposeAsync()
+    /// <summary>A second queue's objects, after the device is idle.</summary>
+    private void DisposeLane(QueueLane? lane)
     {
-        if (_async == null) return;
-        foreach (Slot s in _async.Slots)
+        if (lane == null) return;
+        foreach (Slot s in lane.Slots)
             if (s.Stage.IsNotNull) Vma.vmaDestroyBuffer(_vma, s.Stage, s.StageAlloc);
-        _vkd.vkDestroySemaphore(_async.Timeline);
-        _vkd.vkDestroyCommandPool(_async.Pool);
+        _vkd.vkDestroySemaphore(lane.Timeline);
+        _vkd.vkDestroyCommandPool(lane.Pool);
     }
 }

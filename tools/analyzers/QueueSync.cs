@@ -23,13 +23,13 @@ public sealed class QueueSync : DiagnosticAnalyzer
     private static readonly DiagnosticDescriptor Rule = new(
         Id,
         "Queue sync outside the timeline",
-        "'{0}' submits or waits outside VkBackend.Sync.cs. Go through QueueSubmit, WaitFor or PassedNow.",
+        "'{0}' submits or waits outside VkBackend.Sync.cs. Go through QueueSubmit, AsyncSubmit, TransferSubmit, WaitFor or PassedNow.",
         "CX.Backend",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
         description: "The backend's graphics queue has a timeline semaphore: a submit signals its number, and readbacks, deaths, "
-            + "staging and descriptor pools wait on those numbers; the async compute queue's own timeline is waited on only by "
-            + "a graphics submit's join. A submit, fence or wait made elsewhere is invisible to them.");
+            + "staging and descriptor pools wait on those numbers; the async compute and transfer queues' own timelines are "
+            + "waited on only by a graphics submit's join. A submit, fence or wait made elsewhere is invisible to them.");
 
     /// <inheritdoc/>
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);

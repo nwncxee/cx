@@ -37,6 +37,7 @@ internal sealed unsafe partial class VkBackend
             "a bind is refused for the usage its image lacks: a colour target bound as storage, a storage-only image sampled");
         CheckSetCache(check);
         CheckAsyncFamily(check);
+        CheckTransferFamily(check);
         CheckToAsync(check);
         if (Native.Sym(SymbolMap.AppManager) != IntPtr.Zero)
         {
@@ -113,6 +114,17 @@ internal sealed unsafe partial class VkBackend
         check.Expect(AsyncFamily([F(G, 1)]) == -1, "a device with one graphics family named an async one");
         check.Expect(AsyncFamily([F(G, 1), F(C, 0)]) == -1, "a compute family with no queues was taken");
         check.Expect(AsyncFamily([F(G, 1), F(G, 4)]) == -1, "a second graphics family was taken as the compute-only one");
+    }
+
+    /// <summary>Oracle: a hand-written RDNA family table, whose compute family (which also copies) comes before its
+    /// copy-only one: the transfer queue is the copy-only family, never the async one.</summary>
+    private static void CheckTransferFamily(Checker check)
+    {
+        VkExtent3D texel = new() { width = 1, height = 1, depth = 1 };
+        VkQueueFamilyProperties F(VkQueueFlags f) => new() { queueFlags = f, queueCount = 2, minImageTransferGranularity = texel };
+        check.Expect(TransferFamily([F(VkQueueFlags.Graphics | VkQueueFlags.Compute | VkQueueFlags.Transfer),
+                                     F(VkQueueFlags.Compute | VkQueueFlags.Transfer), F(VkQueueFlags.Transfer)]) == 2,
+            "the RDNA copy-only family 2 was not the transfer one");
     }
 
     /// <summary>Oracle: vulkan_core.h's bits, by hand. A barrier side on the async queue keeps its compute and transfer

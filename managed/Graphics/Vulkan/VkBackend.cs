@@ -347,10 +347,13 @@ internal sealed unsafe partial class VkBackend : IDevice
         _labels = _probe.DebugUtils;
 
         float prio = 1f;
-        int asyncFamily = AsyncFamily(_vki, phys);
-        VkDeviceQueueCreateInfo* qci = stackalloc VkDeviceQueueCreateInfo[2];
-        qci[0] = new VkDeviceQueueCreateInfo { queueFamilyIndex = family, queueCount = 1, pQueuePriorities = &prio };
-        if (asyncFamily >= 0) qci[1] = new VkDeviceQueueCreateInfo { queueFamilyIndex = (uint)asyncFamily, queueCount = 1, pQueuePriorities = &prio };
+        VkQueueFamilyProperties[] families = Families(_vki, phys);
+        int asyncFamily = AsyncFamily(families), transferFamily = TransferFamily(families);
+        VkDeviceQueueCreateInfo* qci = stackalloc VkDeviceQueueCreateInfo[3];
+        uint queues = 0;
+        qci[queues++] = new VkDeviceQueueCreateInfo { queueFamilyIndex = family, queueCount = 1, pQueuePriorities = &prio };
+        if (asyncFamily >= 0) qci[queues++] = new VkDeviceQueueCreateInfo { queueFamilyIndex = (uint)asyncFamily, queueCount = 1, pQueuePriorities = &prio };
+        if (transferFamily >= 0) qci[queues++] = new VkDeviceQueueCreateInfo { queueFamilyIndex = (uint)transferFamily, queueCount = 1, pQueuePriorities = &prio };
         var clip = new VkPhysicalDeviceDepthClipControlFeaturesEXT { depthClipControl = true };
         var f11 = new VkPhysicalDeviceVulkan11Features { pNext = &clip, shaderDrawParameters = true };
         var f12 = new VkPhysicalDeviceVulkan12Features
@@ -395,7 +398,7 @@ internal sealed unsafe partial class VkBackend : IDevice
             if (_rateTexel > 0) exts[n++] = sr;
             var dci = new VkDeviceCreateInfo
             {
-                pNext = &feats, queueCreateInfoCount = asyncFamily >= 0 ? 2u : 1u, pQueueCreateInfos = qci,
+                pNext = &feats, queueCreateInfoCount = queues, pQueueCreateInfos = qci,
                 enabledExtensionCount = n, ppEnabledExtensionNames = exts,
             };
             Check(_vki.vkCreateDevice(phys, &dci, null, out device), "vkCreateDevice");
@@ -403,7 +406,8 @@ internal sealed unsafe partial class VkBackend : IDevice
         _device = device;
         _vkd = new VkDeviceApi(_vki, in device);
         _vkd.vkGetDeviceQueue(family, 0, out _queue);
-        _async = asyncFamily >= 0 ? OpenAsync((uint)asyncFamily) : null;
+        _async = asyncFamily >= 0 ? OpenLane((uint)asyncFamily, "async") : null;
+        _transfer = transferFamily >= 0 ? OpenLane((uint)transferFamily, "transfer") : null;
 
         _vma = CreateAllocator(inst);
         var pci = new VkCommandPoolCreateInfo { flags = VkCommandPoolCreateFlags.ResetCommandBuffer, queueFamilyIndex = family };
@@ -438,6 +442,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         _maxDrawIndirect = l.maxDrawIndirectCount;
         log.Always($"VkBackend: LIVE -- {Caps}, {_bindlessCap} bindless textures, debug labels "
                  + $"{(_labels ? "on" : "off")}, async compute {(_async != null ? $"on queue family {_async.Family}" : "on the graphics queue (no compute-only family)")}, "
+                 + $"first fills {(_transfer != null ? $"on transfer queue family {_transfer.Family}" : "on the graphics queue (no copy-only family)")}, "
                  + (_rateTexel > 0 ? $"shading-rate image in {_rateTexel} px tiles" : $"no shading-rate image ({rateWhy}): the G-buffer pass shades every pixel")
                  + "; Vulkan presents the frame itself");
     }
@@ -555,9 +560,9 @@ internal sealed unsafe partial class VkBackend : IDevice
             return new BufferId(_buffers.Add(new VkBuf(hb, ha, d)));
         }
         var bci = new VkBufferCreateInfo { size = (ulong)d.Bytes, usage = use, sharingMode = VkSharingMode.Exclusive };
-        uint* fams = stackalloc uint[2];
-        // either queue may reach any device buffer, and a buffer has no compression for concurrent sharing to cost
-        if (_async != null) Share(ref bci.sharingMode, ref bci.queueFamilyIndexCount, ref bci.pQueueFamilyIndices, fams);
+        uint* fams = stackalloc uint[3];
+        // any queue may reach any device buffer, and a buffer has no compression for concurrent sharing to cost
+        Share(ref bci.sharingMode, ref bci.queueFamilyIndexCount, ref bci.pQueueFamilyIndices, fams, transfer: true);
         // ponytail: Upload buffers are device-local too and written by recorded UpdateBuffer; a mapped ring when a pass streams
         var aci = new VmaAllocationCreateInfo { usage = VmaMemoryUsage.AutoPreferDevice };
         VkBuffer b;
@@ -714,7 +719,8 @@ internal sealed unsafe partial class VkBackend : IDevice
         foreach (VkSemaphore a in _acquired) _vkd.vkDestroySemaphore(a);
         DropSwapchain();
         _vkd.vkDestroyCommandPool(_cmdPool);
-        DisposeAsync();
+        DisposeLane(_async);
+        DisposeLane(_transfer);
         _vkd.vkDestroySampler(_nearest);
         foreach (UploadChunk c in _upload.Chunks) Vma.vmaDestroyBuffer(_vma, c.Buffer, c.Alloc);
         foreach (UploadChunk c in _upload.Pool) Vma.vmaDestroyBuffer(_vma, c.Buffer, c.Alloc);
