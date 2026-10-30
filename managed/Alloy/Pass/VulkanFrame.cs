@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Text;
 using System.Numerics;
 using CX.Framework;
 using CX.Graphics.Rhi;
@@ -15,7 +17,6 @@ internal static class VulkanFrame
         public CommandList? Cmds;
         public bool Live;
         public int Frames;
-        public readonly System.Collections.Generic.List<VkBackend.UploadTop> Uploads = [];
     }
 
     /// <summary>Frames between pipeline-cache writes: each is a no-op unless a pipeline was made since the last.</summary>
@@ -81,7 +82,7 @@ internal static class VulkanFrame
                      + $"{(float)sets / GpuPeriod:F0} bind sets ({(float)made / GpuPeriod:F1} written, the rest reused; {retired} pool(s) "
                      + $"retired this period) over {(float)lists / GpuPeriod:F1} lists into vkCmd calls, "
                      + $"{(float)barriers / GpuPeriod:F0} of them barriers");
-            log.Always($"VulkanFrame: [vkgpu] translation by op, ms/frame: {TopOps(vk)}; {Uploads(vk, _s.Uploads)}");
+            log.Always($"VulkanFrame: [vkgpu] translation by op, ms/frame: {TopOps(vk, n)}; {Updates(vk, n)}");
         }
         PostChain.Painted();
         if (!_s.Live)
@@ -95,41 +96,36 @@ internal static class VulkanFrame
 
     /// <summary>Ops shown on the by-op line, the costliest first; the rest are summed after them.</summary>
     private const int TopOpCount = 6;
-    /// <summary>Buffer labels shown on the upload half of that line.</summary>
+    /// <summary>Buffer labels shown on the buffer-update half of that line.</summary>
     private const int TopUploadCount = 4;
 
-    /// <summary>The ops that cost the most translation time since the last take, each with its commands per frame.</summary>
-    private static string TopOps(VkBackend vk)
+    /// <summary>The ops that cost the most translation time over the last <paramref name="frames"/>, each with its
+    /// commands per frame, and the worst frame's translation.</summary>
+    private static string TopOps(VkBackend vk, int frames)
     {
-        Span<double> ms = stackalloc double[VkBackend.OpCount];
-        Span<int> n = stackalloc int[VkBackend.OpCount];
-        vk.TakeOps(ms, n);
-        var order = new int[VkBackend.OpCount];
-        for (int i = 0; i < order.Length; i++) order[i] = i;
-        double[] cost = ms.ToArray();
-        Array.Sort(order, (a, b) => cost[b].CompareTo(cost[a]));
-        var sb = new System.Text.StringBuilder();
+        Span<VkBackend.OpCost> ops = stackalloc VkBackend.OpCost[VkBackend.OpCount];
+        vk.TakeOps(ops, out double peak);
+        ops.Sort(static (x, y) => y.Ms.CompareTo(x.Ms));
+        var sb = new StringBuilder();
         double rest = 0;
-        for (int k = 0; k < order.Length; k++)
+        for (int k = 0; k < ops.Length; k++)
         {
-            int i = order[k];
-            if (k >= TopOpCount) { rest += cost[i]; continue; }
-            if (n[i] == 0) break;
-            if (k > 0) sb.Append(", ");
-            sb.Append($"{(Op)i} {cost[i] / GpuPeriod:F3} ({(float)n[i] / GpuPeriod:F0})");
+            if (k >= TopOpCount) { rest += ops[k].Ms; continue; }
+            if (ops[k].N == 0) continue;
+            sb.Append($"{ops[k].Op} {ops[k].Ms / frames:F3} ({(float)ops[k].N / frames:F0}), ");
         }
-        return sb.Append($", the rest {rest / GpuPeriod:F3}").ToString();
+        return sb.Append($"the rest {rest / frames:F3}; the worst frame {peak:F2} ms").ToString();
     }
 
-    /// <summary>The upload bytes per frame since the last take, inline and staged, and the labels that wrote the most.</summary>
-    private static string Uploads(VkBackend vk, System.Collections.Generic.List<VkBackend.UploadTop> top)
+    /// <summary>Buffer-update bytes per frame over the last <paramref name="frames"/>, inline and staged, the worst
+    /// frame's, and the labels that wrote the most. Image uploads go another way and are not in it.</summary>
+    private static string Updates(VkBackend vk, int frames)
     {
-        vk.TakeUploads(out long inl, out long staged, out int calls, top);
-        var sb = new System.Text.StringBuilder($"uploads {inl / 1024.0 / GpuPeriod:F0} KB/frame inline and "
-                                             + $"{staged / 1024.0 / GpuPeriod:F0} KB staged (updates and multi-draws) over "
-                                             + $"{(float)calls / GpuPeriod:F0} updates, most:");
+        List<VkBackend.UploadTop> top = vk.TakeUploads(out long inl, out long staged, out long peak);
+        var sb = new StringBuilder($"buffer updates {inl / 1024.0 / frames:F0} KB/frame inline and {staged / 1024.0 / frames:F0} KB "
+                                 + $"staged (with the CPU multi-draws), the worst frame {peak / 1024.0:F0} KB, most:");
         for (int k = 0; k < top.Count && k < TopUploadCount; k++)
-            sb.Append($"{(k > 0 ? "," : "")} {top[k].Label} {top[k].Bytes / 1024.0 / GpuPeriod:F0} KB ({(float)top[k].Calls / GpuPeriod:F1})");
+            sb.Append($"{(k > 0 ? "," : "")} {top[k].Label} {top[k].Bytes / 1024.0 / frames:F0} KB ({(float)top[k].Calls / frames:F1})");
         return sb.ToString();
     }
 }
