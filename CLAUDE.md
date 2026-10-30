@@ -20,13 +20,8 @@ user-visible, not renamed (#530).
 
 ## Agent skills
 
-### Issue tracker
-
-Issues live on the SoW Plane (`https://plane.westgate.pw`, project `CX`) via `bin/plane`. See `docs/agents/issue-tracker.md`; `issue-tracker-gitea.md` is the pre-Plane tracker.
-
-### Domain docs
-
-Single-context: one `GLOSSARY.md` + `docs/adr/` at the repo root (created lazily). See `docs/agents/domain.md`.
+- Tickets: Plane, project `CX`, through `bin/plane`. See `docs/agents/issue-tracker.md`.
+- Domain: single-context, one `GLOSSARY.md` and one `docs/adr/` at the root. See `docs/agents/domain.md`.
 
 ## Build & run
 
