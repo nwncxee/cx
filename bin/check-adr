@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Copied from vicky-skills@6e5d3f4e0167b2cc85e10e5b0a03a2aebebc2b16,
+# Copied from vicky-skills@8fe6877022a3895980b33ed6643f14d6decbc48e,
 # plugins/vicky-skills/skills/engineering/true-names/scripts/check-adr.sh.
-# sow-platform holds the copy that counts, and sync-adr-check.yml carries it to
-# every other repository (PLAT-461). Fix a bug upstream, then copy it here.
+# Every repository carries this same copy. Fix a bug upstream, then copy it
+# here.
 # Checks decision records against ADR-FORMAT.md: a "# ADR-NNNN: " title, a
 # "Category: <name>." line from the fixed list, a "Decided YYYY-MM-DD." line and
 # a "Because " line, once each and in that order, then an optional
-# "Superseded by ADR-NNNN." line. No other line, no backticks, and at most 55
+# "Superseded by [<repo> ]ADR-NNNN." line. No other line, no backticks, and at most 55
 # words. Prints one line per problem and exits 1 when any record fails.
 set -u
 [ $# -gt 0 ] || { echo "usage: check-adr.sh <record>..." >&2; exit 2; }
@@ -19,7 +19,7 @@ for f in "$@"; do
     -e "s/^Category: ($categories)\.\$/category/" \
     -e 's/^Decided [0-9]{4}-[0-9]{2}-[0-9]{2}\.$/when/' \
     -e 's/^Because .+/why/' \
-    -e 's/^Superseded by ADR-[0-9]{4}\.$/superseded/' \
+    -e 's/^Superseded by ([a-z0-9][a-z0-9-]* )?ADR-[0-9]{4}\.$/superseded/' \
     -e '/^(what|category|when|why|superseded)$/!s/.*/other/' \
     | uniq -c | awk '{ printf "%s%s ", $2, ($1 > 1 ? "(x" $1 ")" : "") }')
   case "$shape" in
