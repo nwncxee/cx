@@ -2,19 +2,20 @@
 // The reflection trace: one ray per block of 1 << uSsr.w pixels, after the opaque set, sky, cutouts and grass (Ssr).
 // Which pixel of the block, and which direction off its GGX lobe, are drawn from the R2 sequence, phased per frame;
 // the ray walks THIS frame's depth as a hi-Z pyramid: it climbs while the ray stays in front of each cell's closest
-// surface and confirms a hit at the finest level. Out goes where the ray landed and how likely its direction was --
+// surface and confirms a hit per pixel, at level 0. Out goes where the ray landed and how likely its direction was --
 // never a colour: cx_ssrres_f resolves the hits per full-res pixel, reusing its neighbours', and cx_ssrhist_f keeps
 // them over frames. A miss, a back face or a ray off the screen is pdf 0.
 #include "cx_ssr.glsl"
 #include "cx_ssrrec.glsl"
 layout(location = 0) out vec4 frag;  // xy = the hit's uv, z = the ray's pdf (0 = no hit), w = the origin's 1 / view depth
+layout(location = 1) out float spent; // the share of the ray's cell visits used when it hit
 uniform sampler2D uDepth;    // the frame depth
 uniform sampler2D uHiZ;      // 1 / view depth: level 0 per pixel, each level up the MAX (closest) of the one below
 uniform sampler2D uRecN;     // the record: octahedral world normal, roughness, view depth (cx_ssrrec)
 uniform sampler2D uRecW;     // ...its weight
 uniform mat4 uProj, uInvProj, uView;
 uniform vec2 uNf;            // near, far
-uniform vec4 uSsr;           // x = roughness cap, y = cell visits per ray, z = finest hi-Z level, w = log2 of the block
+uniform vec4 uSsr;           // x = roughness cap, y = cell visits per ray, z = the level the walk starts at, w = log2 of the block
 uniform int uFrame;          // the noise phase
 
 /// The pyramid level the walk may climb to (a 64-pixel cell): coarser cells overlap too much of the scene to skip.
@@ -34,13 +35,14 @@ bool Behind(ivec2 p, vec3 r)
     return CxRecRead(uRecN, uRecW, uHiZ, p, n, rough, w) && dot(mat3(uView) * n, r) >= 0.0;
 }
 
-/// Where view-space ray r from view position o meets the screen's surface, in pixels; false = it does not.
-bool Trace(vec3 o, vec3 r, vec2 size, out vec2 ph)
+/// Where view-space ray r from view position o meets the screen's surface, in pixels, and the share of its visits that
+/// took; false = it does not.
+bool Trace(vec3 o, vec3 r, vec2 size, out vec2 ph, out float used)
 {
     ph = vec2(0.0);
+    used = 0.0;
     float len = r.z > 0.0 ? min(CX_SSR_DIST, (-uNf.x * 1.01 - o.z) / r.z) : CX_SSR_DIST;
     int top = min(textureQueryLevels(uHiZ) - 1, CX_SSR_TOP);
-    int fine = min(int(uSsr.z), top);
     if (len <= 0.0) return false;
     vec4 h0 = uProj * vec4(o, 1.0), h1 = uProj * vec4(o + r * len, 1.0);
     float k0 = 1.0 / h0.w, k1 = 1.0 / h1.w;
@@ -56,7 +58,7 @@ bool Trace(vec3 o, vec3 r, vec2 size, out vec2 ph)
     // (1/w is linear in screen space: the ray's inverse depth at t is mix(k0, k1, t))
     vec2 tx = mix(vec2(1e30), (floor(p0) + dirS - p0) * invD, moves);
     float t = min(tx.x, tx.y) + tEps;   // out of the pixel's own texel first
-    int iter = int(uSsr.y), lv = max(fine, 1);
+    int iter = int(uSsr.y), lv = clamp(int(uSsr.z), 1, top);
     for (int i = 0; i < iter && t < tEnd; i++)
     {
         float cs = float(1 << lv);
@@ -70,11 +72,12 @@ bool Trace(vec3 o, vec3 r, vec2 size, out vec2 ph)
         // the ray reaches that surface inside the cell: move to where, if it is still ahead
         float tc = abs(k1 - k0) > 1e-9 ? (kS - k0) / (k1 - k0) : t;
         if (kA > kS) t = clamp(tc, t, tExit);
-        if (lv > fine) { lv--; continue; }
+        if (lv > 0) { lv--; continue; }
         float ray = 1.0 / mix(k0, k1, t);
         if (ray - 1.0 / kS < max(CX_SSR_THICK, CX_SSR_THICKREL * ray) && !Behind(ivec2(p0 + d * t), r))
         {
             ph = p0 + d * t;
+            used = float(i) / float(iter);
             return true;
         }
         t = tExit + tEps;   // behind it, or its back: walk on at this level
@@ -85,6 +88,7 @@ bool Trace(vec3 o, vec3 r, vec2 size, out vec2 ph)
 void main()
 {
     frag = vec4(0.0);
+    spent = 0.0;
     int blk = 1 << int(uSsr.w), cells = blk * blk;
     ivec2 lim = textureSize(uHiZ, 0) - 1, base = ivec2(gl_FragCoord.xy) * blk, px = ivec2(-1);
     vec2 u = CxSsrNoise(ivec2(gl_FragCoord.xy), uFrame);
@@ -118,7 +122,7 @@ void main()
     float pdf = CxGgxD(NoH, a) * NoH / (4.0 * VoH);
     float k = texelFetch(uHiZ, px, 0).r;
     vec2 ph;
-    frag = Trace(o, r, size, ph) ? vec4(ph / size, pdf, k) : vec4(0.0, 0.0, 0.0, k);
+    frag = Trace(o, r, size, ph, spent) ? vec4(ph / size, pdf, k) : vec4(0.0, 0.0, 0.0, k);
     // a record some other program wrote garbage into can pass the depth test by chance: one NaN here is the
     // whole frame's, through the bloom
     if (any(isnan(frag)) || any(isinf(frag))) frag = vec4(0.0);

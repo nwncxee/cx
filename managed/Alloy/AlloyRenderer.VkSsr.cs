@@ -22,7 +22,7 @@ public sealed unsafe partial class AlloyRenderer
         public VkDefStage? HiZ, Mip;
         public GuiVkProg? Trace, Res, Hist;
         public bool Tried, Live, Armed;
-        public ImageId RecN, RecW, Pyr, Col, Out, Resolved;
+        public ImageId RecN, RecW, Pyr, Col, Out, Spent, Resolved;
         public int W, H, Levels, ColLevels, ColShift, BlkShift, Ow, Oh;
         /// <summary>The history pair, <see cref="HistAt"/> the one last frame wrote; <see cref="HistValid"/> = it holds
         /// that frame's, seen through <see cref="PrevVp"/>.</summary>
@@ -165,8 +165,9 @@ public sealed unsafe partial class AlloyRenderer
         ImageId prev = s.HistAt == 0 ? s.Hist0 : s.Hist1, next = s.HistAt == 0 ? s.Hist1 : s.Hist0;
         ReadOnlySpan<ImageId> read = [s.Pyr, s.Col, s.RecN, s.RecW, c.Depth, s.PlOn ? s.PlMip : s.Col, prev];
         cl.ReadImages(read);
-        VkSsrDraw(cl, tr, s.TracePipe, trAt, [new(s.Out, 0, 0, LoadOp.DontCare, StoreOp.Store, default)], s.Ow, s.Oh);
-        cl.ReadImages([s.Out]);
+        VkSsrDraw(cl, tr, s.TracePipe, trAt, [new(s.Out, 0, 0, LoadOp.DontCare, StoreOp.Store, default),
+                                            new(s.Spent, 0, 0, LoadOp.DontCare, StoreOp.Store, default)], s.Ow, s.Oh);
+        cl.ReadImages([s.Out, s.Spent]);
         VkSsrDraw(cl, rs, s.ResPipe, rsAt, [new(s.Resolved, 0, 0, LoadOp.DontCare, StoreOp.Store, default)], s.W, s.H);
         cl.ReadImages([s.Resolved]);
         VkSsrDraw(cl, hs, s.HistPipe, hsAt, [new(next, 0, 0, LoadOp.DontCare, StoreOp.Store, default),
@@ -242,6 +243,7 @@ public sealed unsafe partial class AlloyRenderer
                 "uRecN" => new ImageBinding(o.Binding, s.RecN, s.Point),
                 "uRecW" => new ImageBinding(o.Binding, s.RecW, s.Point),
                 "uTrace" => new ImageBinding(o.Binding, s.Out, s.Point),
+                "uSpent" => new ImageBinding(o.Binding, s.Spent, s.Point),
                 "uRes" => new ImageBinding(o.Binding, s.Resolved, s.Point),
                 "uHist" => new ImageBinding(o.Binding, s.HistAt == 0 ? s.Hist0 : s.Hist1, c.Linear),
                 "uProbe" => VkProbeImage(o) ?? new ImageBinding(o.Binding, c.TexCube, c.Linear),
@@ -289,9 +291,9 @@ public sealed unsafe partial class AlloyRenderer
             LooseBlock.Resolve(s.Mip.Names, () => s.MLevel = LooseBlock.Loc("uLevel"));
         s.Point = vk.CreateSampler(new SamplerDesc(Filter.Nearest, Filter.Nearest, MipMode.Nearest, Wrap.Clamp));
         s.Trilinear = vk.CreateSampler(new SamplerDesc(Filter.Linear, Filter.Linear, MipMode.Linear, Wrap.Clamp));
-        if (s.Trace != null) s.TracePipe = VkSsrPipe(vk, s.Trace, Format.Rgba32F, false);
-        if (s.Res != null) s.ResPipe = VkSsrPipe(vk, s.Res, Format.Rgba16F, false);
-        if (s.Hist != null) s.HistPipe = VkSsrPipe(vk, s.Hist, Format.Rgba16F, true);
+        if (s.Trace != null) s.TracePipe = VkSsrPipe(vk, s.Trace, [Format.Rgba32F, Format.R8], false);
+        if (s.Res != null) s.ResPipe = VkSsrPipe(vk, s.Res, [Format.Rgba16F], false);
+        if (s.Hist != null) s.HistPipe = VkSsrPipe(vk, s.Hist, [Format.Rgba16F, Format.Rgba16F], true);
         if (s.HiZ == null || s.Mip == null || s.Trace == null || s.Res == null || s.Hist == null || s.TracePipe.IsNull
             || s.ResPipe.IsNull || s.HistPipe.IsNull || s.Point.IsNull || s.Trilinear.IsNull)
         {
@@ -305,17 +307,13 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>A stage into one <paramref name="f"/> image, or with <paramref name="add"/> the temporal stage's pair:
     /// the history replaced, the frame's half-float colour added onto.</summary>
-    private static PipelineId VkSsrPipe(VkBackend vk, GuiVkProg p, Format f, bool add)
+    private static PipelineId VkSsrPipe(VkBackend vk, GuiVkProg p, ReadOnlySpan<Format> fs, bool add)
     {
         var d = new PipelineDesc { Vs = p.Vs, Fs = p.Fs, Label = $"vk {p.Label}" };
-        d.Targets.ColorCount = add ? 2 : 1;
-        d.Targets.Colors[0] = f;
+        d.Targets.ColorCount = fs.Length;
+        for (int i = 0; i < fs.Length; i++) d.Targets.Colors[i] = fs[i];
         d.Targets.Samples = 1;
-        if (add)
-        {
-            d.Targets.Colors[1] = Format.Rgba16F;
-            d.Blend[1] = new AttachmentBlend(true, BlendFactor.One, BlendFactor.One, BlendFactor.One, BlendFactor.One);
-        }
+        if (add) d.Blend[1] = new AttachmentBlend(true, BlendFactor.One, BlendFactor.One, BlendFactor.One, BlendFactor.One);
         return vk.CreatePipeline(in d);
     }
 
@@ -325,7 +323,7 @@ public sealed unsafe partial class AlloyRenderer
     private static bool VkSsrTargets(VkBackend vk, VkSsrState s, int w, int h, int shift, ExtenderLog log)
     {
         if (!s.Out.IsNull && s.W == w && s.H == h && s.BlkShift == shift) return true;
-        vk.Destroy(s.RecN); vk.Destroy(s.RecW); vk.Destroy(s.Pyr); vk.Destroy(s.Col); vk.Destroy(s.Out);
+        vk.Destroy(s.RecN); vk.Destroy(s.RecW); vk.Destroy(s.Pyr); vk.Destroy(s.Col); vk.Destroy(s.Out); vk.Destroy(s.Spent);
         vk.Destroy(s.Resolved); vk.Destroy(s.Hist0); vk.Destroy(s.Hist1);
         int colShift = Math.Min(shift, 1);
         int cw = Math.Max(w >> colShift, 1), ch = Math.Max(h >> colShift, 1), blk = 1 << shift;
@@ -338,12 +336,13 @@ public sealed unsafe partial class AlloyRenderer
         s.Pyr = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.R32F, w, h, 1, s.Levels, 1, 1, store, "vk ssr hi-Z"));
         s.Col = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, cw, ch, 1, s.ColLevels, 1, 1, store, "vk ssr colour"));
         s.Out = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba32F, s.Ow, s.Oh, 1, 1, 1, 1, attach, "vk ssr trace"));
+        s.Spent = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.R8, s.Ow, s.Oh, 1, 1, 1, 1, attach, "vk ssr trace spent"));
         s.Resolved = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, w, h, 1, 1, 1, 1, attach, "vk ssr resolve"));
         s.Hist0 = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, w, h, 1, 1, 1, 1, attach, "vk ssr history 0"));
         s.Hist1 = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, w, h, 1, 1, 1, 1, attach, "vk ssr history 1"));
         s.W = w; s.H = h; s.ColShift = colShift; s.BlkShift = shift;
         s.HistValid = false;
-        if (!s.RecN.IsNull && !s.RecW.IsNull && !s.Pyr.IsNull && !s.Col.IsNull && !s.Out.IsNull && !s.Resolved.IsNull
+        if (!s.RecN.IsNull && !s.RecW.IsNull && !s.Pyr.IsNull && !s.Col.IsNull && !s.Out.IsNull && !s.Spent.IsNull && !s.Resolved.IsNull
             && !s.Hist0.IsNull && !s.Hist1.IsNull) return true;
         log.Always($"AlloyRenderer: a {w}x{h} Vulkan screen-space reflection target was REFUSED (logged above) -- no reflections this frame");
         s.Out = default;
