@@ -62,6 +62,8 @@ internal static unsafe partial class PostStack
         public Func<float>? Value;
         /// <summary>Latched: the stage was refused on this device and sits the session out.</summary>
         public bool Failed;
+        /// <summary>The stage's debug label, made at its first draw.</summary>
+        public byte[]? Label;
     }
 
     /// <summary>The stack, in order. Adding a stage is one entry here, one resref in <see cref="ShaderStages"/>,

@@ -50,7 +50,7 @@ internal sealed unsafe partial class VkBackend
         if (!OnThread("Resize")) return false;
         Destroy(_composite);
         _composite = CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba8, w, h, 1, 1, 1, 1,
-                                               ImageUse.ColorTarget | ImageUse.Sampled | ImageUse.Storage | ImageUse.CopySrc | ImageUse.CopyDst, "composite"));
+                                               ImageUse.ColorTarget | ImageUse.Sampled | ImageUse.CopySrc | ImageUse.CopyDst, "composite"));
         return !_composite.IsNull;
     }
 

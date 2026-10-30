@@ -43,8 +43,8 @@ internal static unsafe class PostChainVk
         public bool Said, VizSaid;
         /// <summary>Both bloom stages built from the embedded texts: no content override reached either.</summary>
         public bool BloomStock;
-        /// <summary>Whether the bloom ran as compute, as last said; null before it first ran.</summary>
-        public bool? ComputeSaid;
+        /// <summary>The bloom has said how it runs on this device: as compute, stood down, or refused.</summary>
+        public bool ComputeSaid;
         public PipelineId BloomCs;
         public bool CsTried;
     }
@@ -94,19 +94,19 @@ internal static unsafe class PostChainVk
     internal static bool Record(VkBackend vk, CommandList cl, ImageId hdr, ImageId depth, ImageId into, bool last,
                                 int* viewport, int* rect, ImageId vel, ExtenderLog log)
     {
+        if (!Ensure(vk, log)) return false;
         PostVkState s = _s;
-        if (!Ensure(vk, log) || !Targets(vk, s, viewport[2], viewport[3], log)) return false;
+        if (!Targets(vk, s, viewport[2], viewport[3], log)) return false;
         bool bloom = Post.Bloom.V > 0f && StockConfig.HdrBloom;
         if (bloom)
         {
             cl.BeginLabel("bloom"u8);
-            if (s.ComputeSaid != s.BloomStock)
-            {
-                s.ComputeSaid = s.BloomStock;
-                log.Always(s.BloomStock ? "PostChainVk: the compute bloom is LIVE -- one dispatch per level, no render pass"
-                                        : "PostChainVk: the compute bloom STOOD DOWN for the content override of a bloom stage -- it draws as fragments");
-            }
-            if (!s.BloomStock || !BloomCompute(vk, cl, s, hdr, log)) Bloom(cl, s, hdr);
+            bool compute = s.BloomStock && BloomCompute(vk, cl, s, hdr, log);
+            if (!compute) Bloom(cl, s, hdr);
+            if (!s.ComputeSaid && (compute || !s.BloomStock))
+                log.Always(compute ? "PostChainVk: the compute bloom is LIVE -- one dispatch per level, no render pass"
+                                   : "PostChainVk: the compute bloom STOOD DOWN for the content override of a bloom stage -- it draws as fragments");
+            s.ComputeSaid = true;
             cl.EndLabel();
         }
 
@@ -150,13 +150,14 @@ internal static unsafe class PostChainVk
         return true;
     }
 
-    /// <summary>The bloom chain over <paramref name="hdr"/>, a <paramref name="w"/> x <paramref name="h"/> scene, as
-    /// compute dispatches or as <paramref name="compute"/> false the fragment draws. Its level 0, or the null id
-    /// (logged) when a program or target was refused.</summary>
+    /// <summary>The golden's handle on the bloom chain: over <paramref name="hdr"/>, a <paramref name="w"/> x
+    /// <paramref name="h"/> scene, as compute or (<paramref name="compute"/> false) as the fragment draws, which
+    /// <see cref="Record"/> picks between itself. Its level 0, or the null id (logged) when refused.</summary>
     internal static ImageId BloomVk(VkBackend vk, CommandList cl, ImageId hdr, int w, int h, bool compute, ExtenderLog log)
     {
+        if (!Ensure(vk, log)) return default;
         PostVkState s = _s;
-        if (!Ensure(vk, log) || !Targets(vk, s = _s, w, h, log)) return default;
+        if (!Targets(vk, s, w, h, log)) return default;
         if (!compute) Bloom(cl, s, hdr);
         else if (!BloomCompute(vk, cl, s, hdr, log)) return default;
         return s.Bloom[0];
@@ -197,7 +198,7 @@ internal static unsafe class PostChainVk
         if (!s.CsTried)
         {
             s.CsTried = true;
-            ShaderId cs = vk.CreateShader(new ShaderDesc(ShaderStage.Compute, null, ShaderSource.Get("cx_bloom_cs.glsl"), "bloom compute"));
+            ShaderId cs = vk.CreateShader(new ShaderDesc(ShaderStage.Compute, "cx_bloom_cs", ShaderSource.Get("cx_bloom_cs.glsl"), "bloom compute"));
             var d = new PipelineDesc { Cs = cs, Label = "bloom compute" };
             s.BloomCs = cs.IsNull ? default : vk.CreatePipeline(in d);
             if (s.BloomCs.IsNull) log.Always("PostChainVk: the compute bloom was REFUSED (logged above) -- the bloom draws as fragments");
@@ -451,9 +452,7 @@ internal static unsafe class PostChainVk
         s.Levels = Math.Max(levels, 1);
         for (int i = 0; i < s.Levels; i++)
         {
-            s.Bloom[i] = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, LevelW(s, i), LevelH(s, i), 1, 1, 1, 1,
-                                                      ImageUse.Sampled | ImageUse.ColorTarget | ImageUse.Storage | ImageUse.CopySrc,
-                                                      $"vk bloom {i}"));
+            s.Bloom[i] = Target(vk, LevelW(s, i), LevelH(s, i), $"vk bloom {i}", ImageUse.Storage | ImageUse.CopySrc);
             if (s.Bloom[i].IsNull)
             {
                 s.Levels = 0;
@@ -464,8 +463,8 @@ internal static unsafe class PostChainVk
         return true;
     }
 
-    /// <summary>A half-float post image a pass renders and a later one samples.</summary>
-    internal static ImageId Target(VkBackend vk, int w, int h, string label)
+    /// <summary>A half-float post image a pass renders and a later one samples, with <paramref name="extra"/> uses.</summary>
+    internal static ImageId Target(VkBackend vk, int w, int h, string label, ImageUse extra = ImageUse.None)
         => vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, w, h, 1, 1, 1, 1,
-                                       ImageUse.Sampled | ImageUse.ColorTarget, label));
+                                       ImageUse.Sampled | ImageUse.ColorTarget | extra, label));
 }

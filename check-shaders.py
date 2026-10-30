@@ -622,7 +622,6 @@ def programs(g):
         "mover motion": (g["cx_motion_v"], g["cx_motion_f"]),
         "taa resolve": (g["cx_fullscreen_v"], g["cx_taa_f"]),
         "post stack taa": (g["cx_post_vs"], g["cx_taa_fs"]),
-        "post stack taa (fused compute)": (g["cx_taa_cs"],),
         "highlight composite": (g["cx_fullscreen_v"], g["cx_hilitecomp_f"]),
         "owned water": (g["cx_water_vs"], g["cx_water_fs"]),
         "instanced grass": (g["cx_grass_vs"], g["cx_grass_fs"]),

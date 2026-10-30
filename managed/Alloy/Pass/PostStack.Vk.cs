@@ -20,8 +20,6 @@ internal static unsafe partial class PostStack
         /// <summary>The toon stage's terms, and the aa stage's <c>uRt</c>; unused by every other stage.</summary>
         public ToonStage.VkLocs Toon;
         public int Rt = -1;
-        /// <summary>The stage built from the embedded texts: no content stage or library override reached it.</summary>
-        public bool Stock;
     }
 
     /// <summary>The stack on one device, replaced whole with the device: the stages, the ping-pong pair, the velocity
@@ -41,8 +39,6 @@ internal static unsafe partial class PostStack
         public string? Missing;
         /// <summary>The stages drawn, one bit per stage, as last said; -1 before the first frame.</summary>
         public int Said = -1;
-        /// <summary>Whether the taa stage drew as one dispatch, as last said; null before it first drew.</summary>
-        public bool? FusedSaid;
     }
 
     private static StackVkState _vk = new();
@@ -126,7 +122,6 @@ internal static unsafe partial class PostStack
         int* full = stackalloc int[4] { 0, 0, s.W, s.H };
         if (!PostChainVk.Record(vk, cl, hdr, depth, s.A, false, viewport, full, taa ? s.Vel : default, log)) return false;
         ImageId read = s.A, write = s.B;
-        Span<byte> label = stackalloc byte[24];
         int left = System.Numerics.BitOperations.PopCount((uint)live);
         for (int i = 0; i < _stages.Length; i++)
         {
@@ -135,13 +130,7 @@ internal static unsafe partial class PostStack
             StageVk v = s.Stages[i];
             bool last = --left == 0;
             ImageId into = last ? vk.Composite : write;
-            "stage "u8.CopyTo(label);
-            cl.BeginLabel(label[..(6 + System.Text.Encoding.UTF8.GetBytes(st.Name, label[6..]))]);
-            if (st.Name == "taa" && last && TaaFused(vk, cl, s, v, read, depth, display, log))
-            {
-                cl.EndLabel();
-                continue;
-            }
+            cl.BeginLabel(st.Label ??= System.Text.Encoding.UTF8.GetBytes("stage " + st.Name));
             ImageId hist = st.Name == "taa" ? TaaResolve(cl, s, read, depth, log) : default;
             bool aa = st.Name == "aa";
             if (aa) SmaaStage.PassesVk(cl, read, log);
@@ -184,7 +173,6 @@ internal static unsafe partial class PostStack
         }
         ShaderTexts.Pair(PostChain.ShdPostVs, ShaderStages.Source(PostChain.ShdPostVs), st.Resref, raw,
                         log, $"PostStack {st.Name}", out string vs, out string fs);
-        v.Stock = vs == ShaderStages.Source(PostChain.ShdPostVs) && fs == ShaderStages.Source(st.Resref);
         if (!(ShaderContract.DisplaySafe(fs) && ShaderContract.SlotSafe(fs, "uSrc")))
         {
             log.Info($"PostStack: the {st.Name} override is refused on Vulkan too -- it converts colour space or dropped uSrc");
@@ -280,30 +268,6 @@ internal static unsafe partial class PostStack
         AlloyRenderer.VkMoverMotion(vk, cl, s.Vel, w, h, vp, prev, log);
         AlloyRenderer.VkGrassMotion(vk, cl, s.Vel, w, h, vp, prev);
         cl.EndLabel();
-        return true;
-    }
-
-    /// <summary>The taa stage as its last draw: the accumulate and the copy-out into the composite at
-    /// <paramref name="display"/> as one dispatch, when the stage is <see cref="StageVk.Stock"/>. False draws it as
-    /// two passes: a content override, or a refused stage (logged by it).</summary>
-    private static bool TaaFused(VkBackend vk, CommandList cl, StackVkState s, StageVk v, ImageId cur, ImageId depth,
-                                 int* display, ExtenderLog log)
-    {
-        if (s.FusedSaid != v.Stock)
-        {
-            s.FusedSaid = v.Stock;
-            log.Always(v.Stock ? "PostStack: the fused TAA is LIVE on Vulkan -- the accumulate and the copy-out are one dispatch"
-                               : "PostStack: the fused TAA STOOD DOWN for the content override of the taa stage -- it draws as two passes");
-        }
-        if (!v.Stock) return false;
-        ImageId read = s.Cur == 0 ? s.Hist0 : s.Hist1, write = s.Cur == 0 ? s.Hist1 : s.Hist0;
-        var f = new TaaFusedVk.Frame(cur, depth, s.Vel, read, write, vk.Composite, display[0], display[1], s.HistW, s.HistH,
-                                     s.HistValid ? PostChain.TaaBlend : 1f,
-                                     new Vector2(PostChain.JitterX * 0.5f * s.W, PostChain.JitterY * 0.5f * s.H), s.Up,
-                                     Post.TaaSharp.V, PostChain.DitherLsb);
-        if (!TaaFusedVk.Record(vk, cl, in f, log)) return false;
-        s.Cur ^= 1;
-        s.HistValid = true;
         return true;
     }
 

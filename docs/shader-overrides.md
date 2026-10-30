@@ -146,8 +146,9 @@ These are the stage resrefs. The libraries they include are listed by the dump; 
 | `cx_cast_vs` | vertex | Shadow-map depth bake: projects casters into a cascade or cube face. |
 | `cx_cast_fs` | fragment | The caster pass's fragment stage. Depth-only, and deliberately inert. |
 | `cx_post_vs` | vertex | Fullscreen triangle shared by the whole post chain. |
-| `cx_bloomdn_fs` | fragment | Bloom downsample. |
+| `cx_bloomdn_fs` | fragment | Bloom downsample. Overriding it, `cx_bloomup_fs` or a library inside either (`cx_bloom_lib` holds the taps) keeps the bloom as fragment passes: the stock chain runs as `cx_bloom_cs`. |
 | `cx_bloomup_fs` | fragment | Bloom upsample. |
+| `cx_bloom_cs` | compute | The stock bloom: one dispatch per level, the same taps as the two stages above through `cx_bloom_lib`, the upsample added onto the level it writes. 8x8 groups. |
 | `cx_resolve_fs` | fragment | The resolve: tonemap, dither, and the one stage that encodes to display space. |
 | `cx_postgam_fs` | fragment | The post stack's gamma stage (#375): the client's gamma option as `pow(c, g/2.2)`, display space in and out. |
 | `cx_smaaedge_fs` | fragment | The aa stage's first pass (#377): SMAA luma edges of the resolved frame. Carries the reference `SMAA.hlsl` under its GLSL port; `$AA$` is the preset the client's anti-aliasing option picked. |

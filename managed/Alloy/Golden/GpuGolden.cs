@@ -10,7 +10,7 @@ namespace CX.Alloy;
 /// <summary>
 /// The shader goldens that have to run on a GPU to mean anything: the lightmap block encoder against the
 /// driver's own BC6H/BC7 decoder, the G-buffer's pack and read lanes, the parallax march against the stock
-/// displacement, the shading rate per tile, and the compute post against the fragment chain. Each builds the shipped GLSL into a compute stage on a device of its own and compares what the
+/// displacement, the shading rate per tile, and the compute bloom against the fragment chain. Each builds the shipped GLSL into a compute stage on a device of its own and compares what the
 /// hardware answered with an oracle written here, so no assertion can be satisfied by the code under test.
 /// </summary>
 internal static partial class GpuGolden
