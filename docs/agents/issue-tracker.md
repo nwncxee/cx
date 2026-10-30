@@ -1,91 +1,53 @@
-# Issue tracker: Plane
+# Tickets: Plane
 
-Live work for this repository lives on the SoW Plane at `https://plane.westgate.pw`,
-workspace `shadows-over-westgate`, in project **`CX`** (Client Extender) -- a work item
-is named `CX-12`. GitHub (`nwncxee/cx`) keeps code, pull requests, releases and player bug
-reports.
+Tickets are Plane work items in project `CX`, named `CX-<n>`. Code, pull requests, releases and player bug reports stay on GitHub (`nwncxee/cx`). Client and renderer work is filed in `CX`.
 
-The workspace is shared with `sow-codebase` (`GAME`), NodeBB (`WEB`) and the platform
-(`PLAT`); a reference like `GAME-12` is unique across the whole workspace. File against
-the project that owns the outcome: client/renderer work is `CX`, the server end of a
-packet or a `.shd` in topdata is `GAME`. The credentials story and what `tea` is still
-for live once in `sow-platform/docs/agents/plane-tracker.md`.
+`bin/plane` is the Plane CLI. It needs Python 3 and your own `PLANE_API_KEY`, set in the environment or in the env file the CLI reads (`bin/plane --help`). Create the key in Plane under your profile's API tokens. `bin/plane whoami` confirms it. Fix a bug in the CLI at its source and copy the fixed file over this one by hand.
 
-## The client
+The Plane MCP server in `.mcp.json` reaches the same instance for reads and edits the CLI doesn't cover. It reads `PLANE_API_KEY` from the shell environment only.
 
-`plane` is `bin/plane`, a copy of sow-platform's `infra/nixos/scripts/plane.py`. Fix a
-bug at the source, never here, then copy the fixed file over this one by hand. The sync
-workflow reaches Gitea repositories only.
-
-It needs Python 3 and your own `PLANE_API_KEY`, nothing else. Create the key in Plane
-(sign in with Gitea, then profile -> API tokens) and put it in the environment or in
-`~/.config/sow/plane.env` as `PLANE_API_KEY=<key>`. Base URL and workspace are baked in.
-`bin/plane whoami` confirms the key.
-
-| Task | Command |
+| Action | Command |
 | --- | --- |
-| Read a whole thread | `bin/plane show CX-12` |
+| Read, whole (body, comments, relations) | `bin/plane show CX-12` |
 | Search titles | `bin/plane find CX "<text>"` |
-| File work | `bin/plane file CX "<title>" --body-file body.md --label Kind/Bug` |
-| Comment | `bin/plane comment CX-12 "<text>"`, or `--body-file comment.md` |
-| Replace a body | `bin/plane edit CX-12 --body-file body.md --expect <token>` (the `body:` line `show` printed) |
-| Take an item | `bin/plane claim CX-12` |
+| File, with project and labels | `bin/plane file CX "<title>" --body-file body.md --label Kind/Bug` |
+| Comment | `bin/plane comment CX-12 --body-file comment.md` |
+| Replace a body, if it is still the one read | `bin/plane edit CX-12 --body-file body.md --expect <token>` (the `body:` line `show` printed) |
 | Close | `bin/plane close CX-12` |
-| Answer, index on the map, close | `bin/plane resolve CX-12 --body-file answer.md --gist "<one line>"` |
-| Nest / block | `bin/plane parent CX-12 CX-1`, `bin/plane block CX-12 CX-9` |
-| A map's children / frontier | `bin/plane children CX-1`, `bin/plane frontier CX-1` |
+| Make a child of a star chart | `bin/plane parent CX-12 CX-1` |
+| Add a blocker | `bin/plane block CX-12 CX-9` |
+| Claim | `bin/plane claim CX-12` |
+| Move to a named state | `bin/plane state CX-12 "<state>"` |
+| List tickets waiting on you | `bin/plane waiting CX` |
+| List a chart's frontier | `bin/plane frontier CX-1` |
+| Attach a file | `bin/plane attach CX-12 <file>` |
+| Draw a star chart | `bin/plane draw CX-1` |
 
-Bodies and comments are Markdown; a bare `GAME-12` becomes a link. Every command takes
-`--json` for the raw object. `bin/plane <command> --help` has the flags. The full
-reference is `docs/agents/plane-tracker.md` in sow-platform.
-
-The Plane MCP server (`.mcp.json`, `uvx plane-mcp-server`) points at the same instance
-for reads and edits the CLI doesn't cover. It reads `PLANE_API_KEY` from the shell
-environment only, not from `plane.env`.
+Every command takes `--json` for the raw object, and `bin/plane <command> --help` lists the flags. Bodies and comments are Markdown.
 
 ## Closing a work item from a pull request
 
-The pull request body still names each work item it settles, one per line: `Closes CX-12`,
-`Fixes CX-12`, `Resolves: CX-12`. A bare `Part of CX-12` settles nothing.
+The pull request body names each work item it settles, one per line: `Closes CX-12`, `Fixes CX-12`, `Resolves: CX-12`. A bare `Part of CX-12` settles nothing.
 
-Nothing closes them for you: a merge on GitHub does not reach Plane. After the merge, close each
-named item by hand with
-`bin/plane close CX-12` and a `bin/plane comment` that names the pull request.
+A merge on GitHub does not reach Plane. After the merge, run `bin/plane close CX-12` for each named item, and `bin/plane comment` the pull request on it.
 
 ## Old `CX-<n>` and `#<n>` references
 
-Numbering restarted at `CX-1` on 2026-09-22. Every `CX-<n>` / `#<n>` in commits, ADRs,
-docs and memories written before then points at the retired local Plane (Gitea numbers
-were preserved there) and was **not** migrated. Treat such a reference as history, not
-as a live item on the new instance: a low `CX-<n>` there is a different, newer item.
-For the same reason `bin/plane show sow-client-extender#700` finds nothing: that lookup
-works only for issues the org-wide importer carried over, and this repository's were not.
+Numbering restarted at `CX-1` on 2026-09-22. A `CX-<n>` or `#<n>` in a commit, ADR, doc or memory written before then points at the retired tracker and was not migrated. Treat it as history: a low `CX-<n>` on the current instance is a different, newer item.
 
-## Wayfinding operations
+## Star chart operations
 
-A **map** is a work item labelled `wayfinder:map`. A **ticket** is a real child of it
-through the native parent field, labelled `wayfinder:research`, `:prototype`,
-`:grilling` or `:task`. **Blocking** is a `blocked_by` relation. The **frontier** is
-the map's open children with no assignee and no open blocker, and
-`bin/plane frontier CX-<map>` answers it.
+- **Star chart**: a work item labelled `starchart:chart`.
+- **Ticket**: a direct child of the chart through Plane's parent field, labelled `starchart:<kind>` unless it is a star. Keep tickets one level deep, because a frontier query reads children only. A ticket has one parent, and a chart and its tickets share one project.
+- **Blocking**: Plane's `blocked_by` relation. Write one only when the work can't start before the blocker closes; a softer order is a line in the body. Plane's public API can add a relation but not remove one, so removing is done in the interface.
+- **Frontier**: the chart's open, unassigned children with no open blocker.
+- **Chart**: `bin/plane draw CX-<chart>` draws it from its tickets and shows the drawing under the chart's Chart heading.
+- **Claim**: assign the work item to yourself before any other write.
 
-The rules from `sow-codebase/docs/agents/issue-tracker.md` hold here unchanged:
+## Waiting work
 
-1. **A map's tickets are its direct children, never nested** -- `frontier` looks one
-   level deep. Sub-structure means a second map.
-2. **A ticket has exactly one parent.** A ticket serving two arcs takes the owning map
-   as parent and reaches the other through `blocked_by`.
-3. **A map and all of its tickets live in one project.** Map-to-map edges are
-   `blocked_by`, which does cross projects.
-4. **A relation cannot be deleted through the public API.** Write a blocker when sure;
-   removing one is a human action in the UI.
-5. **`external_id` + `external_source`** is the idempotency key for anything that
-   writes into Plane.
+A waiting ticket is assigned to the user and can't go on until the thing its `Waits on:` line names is done. `loose-ends` parks one, and `gamma-shift` works through them.
 
-## When a skill says "publish to the issue tracker"
-
-`bin/plane file CX "<title>"`.
-
-## When a skill says "fetch the relevant ticket"
-
-`bin/plane show CX-<n>`.
+- **List tickets waiting on you**: `bin/plane waiting CX`.
+- **Park a ticket**: assign it to the user, move it to the not-started state, and add a `Waits on: <who or what>` line to the body.
+- **Claim a waiting ticket**: move it to In Progress, before any other write.
