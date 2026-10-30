@@ -18,7 +18,6 @@ layout(std140, binding = 3) uniform CxDeferred
     ivec4 uRect;     // the render viewport: xy = origin in window pixels, zw = size
     ivec2 uShSize;   // the visibility record's size in texels
     int uLightCount;
-    int uReflK;      // R4 (weather.filmlights): cold statics to rank as film-reflection candidates; 0 = no film
     int uShRes;      // shadow.deferredres: the record's divisor (1 full, 2 half); 0 = no record this frame
 };
 #endif

@@ -29,7 +29,8 @@ internal static unsafe partial class Weather
 
     internal static Knob<bool> Map = null!;
     internal static Knob<float> MapRes = null!, PuddleDepth = null!, Basin = null!, FilmRough = null!, WetDark = null!;
-    internal static Knob<int> MapCadence = null!, FilmLights = null!;
+    internal static Knob<int> MapCadence = null!;
+    internal static Knob<bool> FilmLights = null!;
 
     private static float _mapTpm;
     private static IntPtr _mapArea;
@@ -54,16 +55,16 @@ internal static unsafe partial class Weather
                                help: "How deep standing water gets in a full basin. Deeper water floods further up its banks.");
         FilmRough = G.Slider("filmrough", "Water film gloss", 0.1f, 0.4f, 0.01f, 0.22f, tier: Tier.ChatOnly,
                              help: "Roughness of the water film over wet ground: low is a mirror, high a matte sheen. Perceptual, so the low end is still a real lobe and not a needle.");
-        FilmLights = G.Slider("filmlights", "Film highlights", 0, 4, 1, 2, tier: Tier.ChatOnly,
-                              help: "Baked static lights a water film may mirror per cluster: the brightest few, evaluated on the film's own lobe. 0 = the film takes moving lights only.")
-                      .Ladder(Quality.Weather, 0, 1, 2, 4);
+        FilmLights = G.Toggle("filmlights", "Film highlights", true, Tier.ChatOnly,
+                              help: "A water film mirrors the baked static lights around it, each fading out at its own reach. Off = the film takes moving lights only.")
+                      .Ladder(Quality.Weather, false, true, true, true);
         WetDark = G.Slider("wetdark", "Wet darkening", 0f, 2f, 0.05f, 1f, tier: Tier.ChatOnly,
                            help: "How far a porous surface darkens and saturates when it soaks -- the albedo is raised to a power, so stone deepens and polished stone barely moves.");
     }
 
     /// <summary>R4: the film is live, so the cluster build may rank reflection candidates and the lit stage
     /// may walk them. 0 = the build and the stage run exactly as they do on a dry frame.</summary>
-    internal static int ReflK => Enabled.V && !_off && !FrameInputs.Interior && _wet > 0f && FilmLights.V > 0 ? FilmLights.V : 0;
+    internal static bool Film => Enabled.V && !_off && !FrameInputs.Interior && _wet > 0f && FilmLights.V;
 
     /// <summary>The map is allocated, belongs to the current area and is fit to read.</summary>
     internal static bool MapLive => MapHeld && _mapArea == FrameInputs.AreaPtr
@@ -126,13 +127,13 @@ internal static unsafe partial class Weather
         check.Expect(MapFit(default, 3f, out _) == 0 && MapFit(new Vector2(4f, 4f), 0.5f, out _) == MapSizeMin,
           "no area extent means no map, and a tiny area still gets the floor");
 
-        bool en = Enabled.V; float w = _wet; int fl = FilmLights.V;
-        Enabled.V = true; _wet = 0f; FilmLights.V = 2;
-        check.Expect(ReflK == 0, "a dry frame ranks no reflection candidates, so the cluster build is untouched");
+        bool en = Enabled.V; float w = _wet; bool fl = FilmLights.V;
+        Enabled.V = true; _wet = 0f; FilmLights.V = true;
+        check.Expect(!Film, "a dry frame walks no film highlights");
         _wet = 0.5f;
-        check.Expect(ReflK == 2, "a wet frame ranks the knob's candidates");
-        FilmLights.V = 0;
-        check.Expect(ReflK == 0, "film highlights off ranks none");
+        check.Expect(Film, "a wet frame walks them");
+        FilmLights.V = false;
+        check.Expect(!Film, "film highlights off walks none");
         Enabled.V = en; _wet = w; FilmLights.V = fl;
 
         check.Expect(lit.IndexOf("vec4 CxWetMap(", StringComparison.Ordinal) < lit.IndexOf("vec4 wxM = CxWetMap(vWorld.xy);", StringComparison.Ordinal)
@@ -154,14 +155,12 @@ internal static unsafe partial class Weather
         check.Expect(lit.Contains("wxFilmRough = CxWeatherRippleRough(wxFilmRough, wxRing, wxAmp, uCoverLayer.w);"),
           "the rain rings roughen the film and not the bed under it");
         check.Expect(lit.IndexOf("vec3 CxFilmStatics(", StringComparison.Ordinal) < lit.IndexOf("specLight += CxFilmStatics(", StringComparison.Ordinal)
-          && lit.Contains("if (wxFilm > 0.0 && baked && cxCoat > 0.0 && uCapture != 2)")
-          && lit.Contains("uint CxClusterRefl(uint cl) { return min(uClCount[cl * 3u + 1u] & 0xffffu, CX_CLUSTER_CAP); }"),
-          "the film's static highlights come off the cluster's short reflection list, gated on the film");
+          && lit.Contains("if (wxFilm > 0.0 && baked && cxCoat > 0.0 && uCapture != 2)"),
+          "the film's static highlights are gated on the film");
         string build = ShaderStages.Source(AlloyLights.ShdClusterCs);
-        check.Expect(build.Contains("uniform int uReflK;") && build.Contains("if (uReflK > 0)")
-          && build.Contains("uClCount[id * 3u] = n | (live << 16u);") && build.Contains("uClCount[id * 3u + 1u] = refl | (liveCand << 16u);")
+        check.Expect(build.Contains("uClCount[id * 3u] = n | (live << 16u);") && build.Contains("uClCount[id * 3u + 1u] = liveCand << 16u;")
           && build.Contains("uClCount[id * 3u + 2u] = coldCand | (kept << 16u);"),
-          "the cluster build writes all three header words and ranks candidates only when the film asked for them");
+          "the cluster build writes all three header words");
         check.Expect(ShaderSource.Get("cx_wx_int_c.glsl").Contains("if (m.z <= CX_WX_UNVISITED) return;")
           && ShaderSource.Get("cx_wx_scat_c.glsl").Contains("uniform sampler2D uCoverDepth;"),
           "the two map compute stages integrate only latched texels and latch off the cover depth");

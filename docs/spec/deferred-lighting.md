@@ -174,7 +174,7 @@ where `acc`, `spec`, `lmSub` are what `CxClusteredLightLm` returns for (worldPos
 rough, spec, baked, lmTexel, lmMover, lmPick), and `film` is `CxFilmStatics(...)` when `CX_GB_FILM` is set.
 The sum is taken in two dispatches of `cx_deferred_cs`: the walk adds every term but `P * film`, and the same
 stage compiled with `CX_FILM_PASS` adds `P * film` on the `CX_GB_FILM` pixels alone, only while
-`weather.filmlights` can lift a film. The split is exact (the term is linear) and is there for cost: with the
+`weather.filmlights` is on and the ground is wet. The split is exact (the term is linear) and is there for cost: with the
 film's light loop in the walk's program the pass ran 2.1 ms slower on the test area (`/alloy bench`, 2026-10-08).
 worldPos is reconstructed from the prepass depth with the inverse of the JITTERED view-projection the prepass
 rasterised with; viewDepth is the linear view depth (the forward stage's `vDepth = gl_Position.w`). At the
@@ -333,7 +333,6 @@ sets it:
 | **static lights that cast a creature's shadow onto baked ground** | 2 per creature | no pair tile, so that (light, creature) pair owes no debt | `lightmap.moverlights` (0 = the feature off) |
 | **pair tiles in the atlas** | `lightmap.paircount` x `lightmap.pairsize` | the light keeps its page instead; counted | `lightmap.paircount` |
 | **mirror (`light.hidden`) taps a pixel pays** | 1, for the strongest glossy lobe over `CX_MIRROR_FLOOR` | unshadowed reflection of the light | `light.hidden` |
-| **film reflection picks a froxel ranks** | `CX_REFL_MAX` = 4, and `weather.filmlights` | not reflected in the film | `weather.filmlights` |
 
 Three of those are per-pixel budgets on the SAME ranking -- `CxLightRank`: the light's **irradiance** at the
 pixel, the engine curve times the linear colour's luminance. `shadow.perpixel` (what casts a shadow),

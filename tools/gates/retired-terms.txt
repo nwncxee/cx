@@ -216,3 +216,5 @@ alloy\.(gl46|glsync|gldebug)\b|\[gl46\]|\[gldebug\]	GL sweep 8
 # modelview capability is withdrawn; GlProgram's builder went with it (Gl.Loc is what TextRig kept).
 \bGlProbe\b|general\.presentprobe\b|\bpresentprobe\b|\[presentprobe\]	GL sweep 9
 \bNuiModelEngine\b|\bGlProgram\b|NuiModelView\.Gl\b	GL sweep 9
+# The water film's per-froxel light picks: the film walks every cold static of its list, each fading at its own reach.
+\bCX_REFL_MAX\b|\bCxClusterRefl\b|\bCxListRefl\b|\bCxTileRefl\b|\buReflK\b|\bsRefl\b	CX-399

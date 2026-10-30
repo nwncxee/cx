@@ -85,8 +85,6 @@ float CxWrap(float ndl, float w)
 #endif
 uint CxClusterN(uint cl) { return min(uClCount[cl * 3u] & 0xffffu, CX_CLUSTER_CAP); }
 uint CxClusterLive(uint cl) { return min(uClCount[cl * 3u] >> 16u, CX_CLUSTER_CAP); }
-/// R4: the entries at [live, live + refl) -- the cold statics a water film mirrors. 0 = no film this frame.
-uint CxClusterRefl(uint cl) { return min(uClCount[cl * 3u + 1u] & 0xffffu, CX_CLUSTER_CAP); }
 /// light.relevance's floor candidates: [0, CxClusterLiveCand) and [CxClusterLive, CxClusterColdCand).
 uint CxClusterLiveCand(uint cl) { return min(uClCount[cl * 3u + 1u] >> 16u, CX_CLUSTER_CAP); }
 uint CxClusterColdCand(uint cl) { return min(uClCount[cl * 3u + 2u] & 0xffffu, CX_CLUSTER_CAP); }
@@ -107,7 +105,6 @@ uint CxClusterWalk(uint cl)
 #ifdef CX_LIGHT_LIST
 uint CxListN(uint cl);
 uint CxListLive(uint cl);
-uint CxListRefl(uint cl);
 uint CxListLiveCand(uint cl);
 uint CxListColdCand(uint cl);
 uint CxListWalk(uint cl);
@@ -115,7 +112,6 @@ uint CxListIdx(uint cl, uint k);
 #else
 uint CxListN(uint cl) { return CxClusterN(cl); }
 uint CxListLive(uint cl) { return CxClusterLive(cl); }
-uint CxListRefl(uint cl) { return CxClusterRefl(cl); }
 uint CxListLiveCand(uint cl) { return CxClusterLiveCand(cl); }
 uint CxListColdCand(uint cl) { return CxClusterColdCand(cl); }
 uint CxListWalk(uint cl) { return CxClusterWalk(cl); }

@@ -78,17 +78,14 @@ layout(rgba32ui, binding = 1) uniform writeonly uimage2D uLightRec;   // cx_gbuf
 /// Lights a tile may hold -- the froxel cap, so one number sizes both list sources and CxFilmStatics' own
 /// clamp against CX_CLUSTER_CAP still bounds the tiled walk. 512 bytes of shared memory at the shipped 128.
 const uint CX_TILE_CAP = CX_CLUSTER_CAP;
-/// R4's own ceiling on the film's reflection picks (cx_lightbuild CX_REFL_MAX).
-const int CX_REFL_MAX = 4;
 /// Float slack on the tile's view-space box, both sides: cx_lightbuild's own, and for its reason -- the walk
 /// measures in world space and the cull in view space.
 const float CX_TILE_SLACK = 1e-3;
 
 shared uint sList[CX_TILE_CAP];
-/// The list's two runs: [0, sLive) the live lights, [sLive, sLive + sRefl) R4's film picks at the head of the
-/// cold statics, [sLive, sN) every cold static. Nothing is culled and every entry is a relevance candidate,
-/// so liveCand = sLive and coldCand = kept = sN.
-shared uint sLive, sN, sRefl;
+/// The list's two runs: [0, sLive) the live lights, [sLive, sN) every cold static. Nothing is culled and every
+/// entry is a relevance candidate, so liveCand = sLive and coldCand = kept = sN.
+shared uint sLive, sN;
 /// Lights this tile could not hold, and the min/max of its DEFERRED pixels' linear view depth as float bits
 /// (every depth here is positive, where the bit order is the float order).
 shared uint sDrop, sMinZ, sMaxZ;
@@ -119,7 +116,6 @@ layout(std430, binding = 14) buffer CxDeferredStats { uint uDefStats[]; };
 // across the whole dispatch and the two modes share one program.
 uint CxListN(uint cl) { return uTiles != 0 ? sN : CxClusterN(cl); }
 uint CxListLive(uint cl) { return uTiles != 0 ? sLive : CxClusterLive(cl); }
-uint CxListRefl(uint cl) { return uTiles != 0 ? sRefl : CxClusterRefl(cl); }
 uint CxListLiveCand(uint cl) { return uTiles != 0 ? sLive : CxClusterLiveCand(cl); }
 uint CxListColdCand(uint cl) { return uTiles != 0 ? sN : CxClusterColdCand(cl); }
 uint CxListWalk(uint cl) { return uTiles != 0 ? sN : CxClusterWalk(cl); }
@@ -316,48 +312,13 @@ bool CxTileReaches(int i, vec3 lo, vec3 hi, vec3 fcw, float fr, bool hotOn, out 
     return true;
 }
 
-/// R4: the cold statics a water film mirrors, as cx_lightbuild ranks them -- the K strongest by the engine's
-/// curve at the box's nearest point times luma -- permuted to the front of the cold run so CxFilmStatics walks
-/// [sLive, sLive + sRefl) and nothing else. One lane, and only on a frame that has a film at all.
-void CxTileRefl(vec3 lo, vec3 hi)
-{
-    int K = min(uReflK, CX_REFL_MAX);
-    float rs[CX_REFL_MAX]; uint rp[CX_REFL_MAX];
-    uint refl = 0u;
-    vec2 at = uAtten.x > 0.0 ? uAtten : vec2(1.0, 1.0);
-    for (uint k = sLive; k < sN; k++)
-    {
-        uint li = sList[k];
-        vec4 pr = uLights[li * 2u];
-        vec3 e = (uView * vec4(pr.xyz, 1.0)).xyz;
-        vec3 dv = e - clamp(e, lo, hi);
-        float f2 = dot(dv, dv) / max(pr.w * pr.w, 1e-6);
-        float s = (1.0 - f2) / (at.x + at.y * f2) * dot(uLights[li * 2u + 1u].rgb, vec3(0.299, 0.587, 0.114));
-        uint j;
-        if (refl < uint(K)) { j = refl; refl++; }
-        else if (s > rs[(K - 1) & 3]) j = uint(K) - 1u;
-        else continue;
-        while (j > 0u && rs[(j - 1u) & 3u] < s) { rs[j & 3u] = rs[(j - 1u) & 3u]; rp[j & 3u] = rp[(j - 1u) & 3u]; j--; }
-        rs[j & 3u] = s; rp[j & 3u] = k;
-    }
-    for (uint j = 0u; j < refl; j++)
-    {
-        uint src = rp[j & 3u], dst = sLive + j;
-        if (src == dst) continue;
-        uint t = sList[dst]; sList[dst] = sList[src]; sList[src] = t;
-        // a later pick standing on the slot just claimed moved to where this one came from
-        for (uint q = j + 1u; q < refl; q++) if (rp[q & 3u] == dst) rp[q & 3u] = src;
-    }
-    sRefl = refl;
-}
-
 void main()
 {
     // Every barrier below sits at the top level of main and runs for every invocation, however the tile's own
     // pixels turn out: a group where some lane had returned early would hang on the first one.
     uint lane = gl_LocalInvocationIndex;
     if (lane == 0u)
-    { sMinZ = 0xffffffffu; sMaxZ = 0u; sLive = 0u; sN = 0u; sRefl = 0u; sDrop = 0u; sMiss = 0u;
+    { sMinZ = 0xffffffffu; sMaxZ = 0u; sLive = 0u; sN = 0u; sDrop = 0u; sMiss = 0u;
       sWalk = 0u; sTaps = 0u; sEntry = 0u; sPix = 0u; }
     barrier();
 
@@ -425,7 +386,6 @@ void main()
     {
         sDrop += sN > CX_TILE_CAP ? sN - CX_TILE_CAP : 0u;
         sN = min(sN, CX_TILE_CAP);
-        if (tiled && uReflK > 0 && sN > sLive) CxTileRefl(lo, hi);
         // the overflow is a budget with a counter, not a budget with a silence (the VAO drip's lesson)
 #ifndef CX_FILM_PASS
         if (sDrop != 0u) { atomicAdd(uDefStats[0], 1u); atomicAdd(uDefStats[1], sDrop); }

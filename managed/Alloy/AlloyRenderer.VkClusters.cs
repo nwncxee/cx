@@ -76,7 +76,6 @@ public sealed unsafe partial class AlloyRenderer
             LooseBlock.Set(st.L.BinCap, t.BinCap);
             LooseBlock.Set(st.L.Atten, (ReadOnlySpan<float>)[t.AttenX, t.AttenY]);
             LooseBlock.Set(st.L.Hot, (ReadOnlySpan<float>)[t.HotX, t.HotY]);
-            LooseBlock.Set(st.L.ReflK, t.ReflK);
             LooseBlock.Set(st.L.Rel, (ReadOnlySpan<float>)[t.RelX, t.RelY]);
             LooseBlock.Set(st.L.Pad, (ReadOnlySpan<float>)[t.PadX, t.PadY]);
             LooseBlock.Set(st.L.Tally, t.Tally);
