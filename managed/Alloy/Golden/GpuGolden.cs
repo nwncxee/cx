@@ -42,6 +42,7 @@ internal static partial class GpuGolden
         LightmapSelfCheck(vk, check, log);
         VrsSelfCheck(vk, check, log);
         PostSelfCheck(vk, check, log);
+        TransferSelfCheck(vk, check, log);
     }
 
     /// <summary>The version line every golden stage opens with, and the one the shipped libraries open with.</summary>

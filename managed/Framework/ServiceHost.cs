@@ -72,6 +72,7 @@ public static class ServiceHost
         CX.Graphics.VulkanToolchain.SelfCheck(log);   // the staged shaderc and the machine's loader, off-device only
         CX.Graphics.Rhi.VkBackend.SelfCheck(log);   // the pilot's stages compile for Vulkan with GL's bindings shifted apart
         CX.Graphics.Rhi.VkBackend.RateSelfCheck(log);   // the shading-rate tile follows the device's texel range
+        CX.Graphics.Rhi.VkBackend.TransferSelfCheck(log);   // the copy-only queue family a device's table offers
         CX.Graphics.Rhi.VkGlsl.SelfCheck(log);   // the GL-to-Vulkan GLSL rules on fixtures, and the std140 reflection
         CX.Alloy.ShaderBinary.SelfCheck(log);   // a content SPIR-V .shd is validated, and GLSL text is never read as one
         CX.Alloy.VkPrograms.SelfCheck(log);   // the batch pass's programs translate and compile for Vulkan
