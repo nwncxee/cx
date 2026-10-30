@@ -2,7 +2,7 @@
 # (run-demo.sh, no game needed); there is no unit-test project yet, so the build + load smoke is the gate.
 # `windows` builds the Windows leg with build-win-native.sh, the script release.yml ships, beside `ci`.
 # `no-decompiled` runs the decompiled-code check and the rule gates on every pull request: a listing can
-# hide in any file, Markdown included. Releases are built by release.yml on a v* tag.
+# hide in any file, Markdown included, and checks the decision records. Releases are built by release.yml on a v* tag.
 name: ci
 
 on:
@@ -129,6 +129,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      # Every decision record is what, category, when and why (docs/adr). Plain bash, so it runs before Nix installs.
+      - name: Decision records
+        run: bash bin/check-adr docs/adr/*.md
 
       - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
 
