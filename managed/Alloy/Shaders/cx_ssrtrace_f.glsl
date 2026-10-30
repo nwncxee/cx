@@ -3,11 +3,10 @@
 // Which pixel of the block, and which direction off its GGX lobe, are drawn from the R2 sequence, phased per frame;
 // the ray walks THIS frame's depth as a hi-Z pyramid: it climbs while the ray stays in front of each cell's closest
 // surface and confirms a hit at the finest level. Out goes where the ray landed and how likely its direction was --
-// never a colour: cx_ssrres_f resolves the hits per full-res pixel, reusing its neighbours', and cx_ssrtmp_f keeps
+// never a colour: cx_ssrres_f resolves the hits per full-res pixel, reusing its neighbours', and cx_ssrhist_f keeps
 // them over frames. A miss, a back face or a ray off the screen is pdf 0.
 #include "cx_ssr.glsl"
 #include "cx_ssrrec.glsl"
-in vec2 vUV;
 layout(location = 0) out vec4 frag;  // xy = the hit's uv, z = the ray's pdf (0 = no hit), w = the origin's 1 / view depth
 uniform sampler2D uDepth;    // the frame depth
 uniform sampler2D uHiZ;      // 1 / view depth: level 0 per pixel, each level up the MAX (closest) of the one below
@@ -26,11 +25,6 @@ const float CX_SSR_DIST = 60.0;
 /// depth precision. Thin on purpose -- a thicker skin reads a ray passing BEHIND an object as a hit on it, which
 /// draws a stretched second copy of the object below its reflection.
 const float CX_SSR_THICK = 0.15, CX_SSR_THICKREL = 0.015;
-vec3 ViewPos(vec2 uv, float depth)
-{
-    vec4 p = uInvProj * vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
-    return p.xyz / p.w;
-}
 
 /// A surface the ray meets from behind or edge-on: what the mirror sees is past it, so the walk goes on. Only a
 /// recorded surface knows its normal; an unrecorded one (grass, a hosted draw) is taken as facing.
@@ -110,7 +104,7 @@ void main()
     }
     if (px.x < 0) return;
     vec2 size = vec2(textureSize(uHiZ, 0));
-    vec3 o = ViewPos((vec2(px) + 0.5) / size, texelFetch(uDepth, px, 0).r);
+    vec3 o = CxViewPos(uInvProj, (vec2(px) + 0.5) / size, texelFetch(uDepth, px, 0).r);
     vec3 N = normalize(mat3(uView) * n), V = -normalize(o);
     // a GGX half vector off the lobe (alpha = the record's roughness), its polar draw leaned toward the centre
     float a = max(rough, 1e-3), e = u.y * (1.0 - CX_SSR_BIAS), phi = 6.2831853 * fract(u.x * float(cells));

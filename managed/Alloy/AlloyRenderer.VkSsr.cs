@@ -20,10 +20,10 @@ public sealed unsafe partial class AlloyRenderer
     {
         public VkBackend? Dev;
         public VkDefStage? HiZ, Mip;
-        public GuiVkProg? Trace, Res, Tmp;
+        public GuiVkProg? Trace, Res, Hist;
         public bool Tried, Live, Armed;
         public ImageId RecN, RecW, Pyr, Col, Out, Resolved;
-        public int W, H, Levels, ColLevels, ColShift, Shift, Ow, Oh;
+        public int W, H, Levels, ColLevels, ColShift, BlkShift, Ow, Oh;
         /// <summary>The history pair, <see cref="HistAt"/> the one last frame wrote; <see cref="HistValid"/> = it holds
         /// that frame's, seen through <see cref="PrevVp"/>.</summary>
         public ImageId Hist0, Hist1;
@@ -37,11 +37,11 @@ public sealed unsafe partial class AlloyRenderer
         public bool PlOn, PlFailed, PlLive;
         public float PlZ;
         public SamplerId Point, Trilinear;
-        public PipelineId TracePipe, ResPipe, TmpPipe;
+        public PipelineId TracePipe, ResPipe, HistPipe;
         public int HLevel = -1, HNf = -1, MLevel = -1;
         public int TProj = -1, TInvProj = -1, TView = -1, TNf = -1, TSsr = -1, TFrame = -1;
-        public int RInvProj = -1, RView = -1, RInvView = -1, RSsr = -1, RPlane = -1, RColShift = -1, RFrame = -1;
-        public int MInvProj = -1, MInvView = -1, MPrevVp = -1, MTmp = -1;
+        public int RInvProj = -1, RView = -1, RInvView = -1, RCap = -1, RProbeMips = -1, RShift = -1, RPlane = -1, RColShift = -1, RFrame = -1;
+        public int PInvProj = -1, PInvView = -1, PPrevVp = -1, PHistOn = -1;
     }
 
     private static VkSsrState _vkSsr = new();
@@ -53,10 +53,12 @@ public sealed unsafe partial class AlloyRenderer
         VkSsrState s = _vkSsr;
         if (s.Dev != vk) _vkSsr = s = new VkSsrState { Dev = vk };
         s.Armed = false;
+        // a capture draws into a cube between this frame's and the next: the history stays the screen's
         if (_capturing) return false;
+        bool want = gbuf && viz == 0 && Lighting.Ssr.V;
         // a frame without the pass leaves the history a frame behind
-        s.HistValid &= gbuf && viz == 0 && Lighting.Ssr.V;
-        if (!gbuf || viz != 0 || !Lighting.Ssr.V || !VkSsrEnsure(vk, s, log)) return false;
+        s.HistValid &= want;
+        if (!want || !VkSsrEnsure(vk, s, log)) return false;
         if (!VkSsrTargets(vk, s, w, h, Lighting.SsrDetail.V, log)) return false;
         s.Armed = true;
         return true;
@@ -102,15 +104,15 @@ public sealed unsafe partial class AlloyRenderer
             LooseBlock.EndCapture();
             if ((mpAt[i] = VkArena(mp.Block)) < 0) return;
         }
-        GuiVkProg tr = s.Trace!, rs = s.Res!, tm = s.Tmp!;
-        int detail = Lighting.SsrDetail.V, frame = _frameSeq & 255;
+        GuiVkProg tr = s.Trace!, rs = s.Res!, hs = s.Hist!;
+        int frame = _frameSeq;
         Array.Clear(tr.Block);
         LooseBlock.Capture(tr.Members, tr.Block);
         LooseBlock.Set(s.TProj, proj);
         LooseBlock.Set(s.TInvProj, invProj);
         LooseBlock.Set(s.TView, view);
         LooseBlock.Set(s.TNf, [near, far]);
-        LooseBlock.Set(s.TSsr, [Lighting.SsrRough.V, Ssr.Steps[detail], Math.Min(detail, 1), s.Shift]);
+        LooseBlock.Set(s.TSsr, [Lighting.SsrRough.V, Ssr.Steps[s.BlkShift], s.BlkShift, s.BlkShift]);
         LooseBlock.Set(s.TFrame, frame);
         LooseBlock.EndCapture();
         int trAt = VkArena(tr.Block);
@@ -119,21 +121,23 @@ public sealed unsafe partial class AlloyRenderer
         LooseBlock.Set(s.RInvProj, invProj);
         LooseBlock.Set(s.RView, view);
         LooseBlock.Set(s.RInvView, invView);
-        LooseBlock.Set(s.RSsr, [Lighting.SsrRough.V, 0f, VkProbeMips, s.Shift]);
+        LooseBlock.Set(s.RCap, Lighting.SsrRough.V);
+        LooseBlock.Set(s.RProbeMips, (float)VkProbeMips);
+        LooseBlock.Set(s.RShift, s.BlkShift);
         LooseBlock.Set(s.RColShift, s.ColShift);
         LooseBlock.Set(s.RPlane, [s.PlOn ? s.PlZ : 0f, s.PlOn ? 1f : 0f, 0f, 0f]);
         LooseBlock.Set(s.RFrame, frame);
         LooseBlock.EndCapture();
         int rsAt = VkArena(rs.Block);
-        Array.Clear(tm.Block);
-        LooseBlock.Capture(tm.Members, tm.Block);
-        LooseBlock.Set(s.MInvProj, invProj);
-        LooseBlock.Set(s.MInvView, invView);
-        LooseBlock.Set(s.MPrevVp, s.PrevVp);
-        LooseBlock.Set(s.MTmp, [s.HistValid ? 1f : 0f, 0f, 0f, 0f]);
+        Array.Clear(hs.Block);
+        LooseBlock.Capture(hs.Members, hs.Block);
+        LooseBlock.Set(s.PInvProj, invProj);
+        LooseBlock.Set(s.PInvView, invView);
+        LooseBlock.Set(s.PPrevVp, s.PrevVp);
+        LooseBlock.Set(s.PHistOn, s.HistValid ? 1 : 0);
         LooseBlock.EndCapture();
-        int tmAt = VkArena(tm.Block);
-        if (trAt < 0 || rsAt < 0 || tmAt < 0) return;
+        int hsAt = VkArena(hs.Block);
+        if (trAt < 0 || rsAt < 0 || hsAt < 0) return;
         int len = (c.ArenaUsed - arena0 + 3) & ~3;
         cl.UpdateBuffer(c.Arena, arena0, c.ArenaBytes.AsSpan(arena0, Math.Min(len, ArenaCap - arena0)));
 
@@ -161,12 +165,12 @@ public sealed unsafe partial class AlloyRenderer
         ImageId prev = s.HistAt == 0 ? s.Hist0 : s.Hist1, next = s.HistAt == 0 ? s.Hist1 : s.Hist0;
         ReadOnlySpan<ImageId> read = [s.Pyr, s.Col, s.RecN, s.RecW, c.Depth, s.PlOn ? s.PlMip : s.Col, prev];
         cl.ReadImages(read);
-        VkSsrDraw(cl, tr, s.TracePipe, trAt, [new(s.Out, 0, 0, LoadOp.DontCare, StoreOp.Store, default)], s.Ow, s.Oh, prev);
+        VkSsrDraw(cl, tr, s.TracePipe, trAt, [new(s.Out, 0, 0, LoadOp.DontCare, StoreOp.Store, default)], s.Ow, s.Oh);
         cl.ReadImages([s.Out]);
-        VkSsrDraw(cl, rs, s.ResPipe, rsAt, [new(s.Resolved, 0, 0, LoadOp.DontCare, StoreOp.Store, default)], s.W, s.H, prev);
+        VkSsrDraw(cl, rs, s.ResPipe, rsAt, [new(s.Resolved, 0, 0, LoadOp.DontCare, StoreOp.Store, default)], s.W, s.H);
         cl.ReadImages([s.Resolved]);
-        VkSsrDraw(cl, tm, s.TmpPipe, tmAt, [new(next, 0, 0, LoadOp.DontCare, StoreOp.Store, default),
-                                            new(c.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default)], s.W, s.H, prev);
+        VkSsrDraw(cl, hs, s.HistPipe, hsAt, [new(next, 0, 0, LoadOp.DontCare, StoreOp.Store, default),
+                                            new(c.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default)], s.W, s.H);
         s.HistAt ^= 1;
         s.HistValid = true;
         s.PrevVp = vp;
@@ -174,7 +178,7 @@ public sealed unsafe partial class AlloyRenderer
         {
             s.Live = true;
             log.Always($"AlloyRenderer: the Vulkan screen-space reflections are LIVE -- {s.W}x{s.H} records, a {s.Levels}-level "
-                     + $"hi-Z, the colour copy at 1/{1 << s.ColShift} with {s.ColLevels} mips, a ray per {1 << s.Shift}x{1 << s.Shift} "
+                     + $"hi-Z, the colour copy at 1/{1 << s.ColShift} with {s.ColLevels} mips, a ray per {1 << s.BlkShift}x{1 << s.BlkShift} "
                      + $"block ({s.Ow}x{s.Oh}), resolved and kept over frames at {s.W}x{s.H}");
         }
         if (s.PlOn && !s.PlLive)
@@ -208,10 +212,10 @@ public sealed unsafe partial class AlloyRenderer
     }
 
     /// <summary>One full-screen triangle of <paramref name="p"/> into <paramref name="colors"/>, each sampler on the image
-    /// its name says, the history on <paramref name="hist"/>, the probe on the live cube and the mirror on its chain
-    /// (else their stand-ins).</summary>
+    /// its name says, the history on last frame's, the probe on the live cube and the mirror on its chain (else their
+    /// stand-ins).</summary>
     private static void VkSsrDraw(CommandList cl, GuiVkProg p, PipelineId pipe, int at, ReadOnlySpan<ColorAttachment> colors,
-                                  int w, int h, ImageId hist)
+                                  int w, int h)
     {
         if (pipe.IsNull) return;
         VkSsrState s = _vkSsr;
@@ -239,7 +243,7 @@ public sealed unsafe partial class AlloyRenderer
                 "uRecW" => new ImageBinding(o.Binding, s.RecW, s.Point),
                 "uTrace" => new ImageBinding(o.Binding, s.Out, s.Point),
                 "uRes" => new ImageBinding(o.Binding, s.Resolved, s.Point),
-                "uHist" => new ImageBinding(o.Binding, hist, c.Linear),
+                "uHist" => new ImageBinding(o.Binding, s.HistAt == 0 ? s.Hist0 : s.Hist1, c.Linear),
                 "uProbe" => VkProbeImage(o) ?? new ImageBinding(o.Binding, c.TexCube, c.Linear),
                 "uPlanar" when s.PlOn => new ImageBinding(o.Binding, s.PlMip, s.Trilinear),
                 _ => new ImageBinding(o.Binding, c.Tex2D, c.Linear),
@@ -257,7 +261,7 @@ public sealed unsafe partial class AlloyRenderer
     /// reflections sit the session out on Vulkan.</summary>
     private static bool VkSsrEnsure(VkBackend vk, VkSsrState s, ExtenderLog log)
     {
-        if (s.Tried) return s.Tmp != null;
+        if (s.Tried) return s.Hist != null;
         s.Tried = true;
         s.HiZ = VkDefBuild(vk, SsrHiZ, "CX_SSR_STORAGE", "vk ssr hi-Z", log);
         s.Mip = VkDefBuild(vk, SsrHiZ, "CX_SSR_COLOUR", "vk ssr colour chain", log);
@@ -268,12 +272,12 @@ public sealed unsafe partial class AlloyRenderer
         }, log);
         s.Res = PostChainVk.Program(vk, PostChain.FullscreenVs, ShaderSource.Get("cx_ssrres_f.glsl"), "ssr resolve", p =>
         {
-            s.RInvProj = p.Loc("uInvProj"); s.RView = p.Loc("uView"); s.RInvView = p.Loc("uInvView"); s.RSsr = p.Loc("uSsr");
+            s.RInvProj = p.Loc("uInvProj"); s.RView = p.Loc("uView"); s.RInvView = p.Loc("uInvView"); s.RCap = p.Loc("uCap"); s.RProbeMips = p.Loc("uProbeMips"); s.RShift = p.Loc("uShift");
             s.RPlane = p.Loc("uPlane"); s.RColShift = p.Loc("uColShift"); s.RFrame = p.Loc("uFrame");
         }, log);
-        s.Tmp = PostChainVk.Program(vk, PostChain.FullscreenVs, ShaderSource.Get("cx_ssrtmp_f.glsl"), "ssr temporal", p =>
+        s.Hist = PostChainVk.Program(vk, PostChain.FullscreenVs, ShaderSource.Get("cx_ssrhist_f.glsl"), "ssr history", p =>
         {
-            s.MInvProj = p.Loc("uInvProj"); s.MInvView = p.Loc("uInvView"); s.MPrevVp = p.Loc("uPrevVp"); s.MTmp = p.Loc("uTmp");
+            s.PInvProj = p.Loc("uInvProj"); s.PInvView = p.Loc("uInvView"); s.PPrevVp = p.Loc("uPrevVp"); s.PHistOn = p.Loc("uHistOn");
         }, log);
         if (s.HiZ != null)
             LooseBlock.Resolve(s.HiZ.Names, () =>
@@ -287,11 +291,11 @@ public sealed unsafe partial class AlloyRenderer
         s.Trilinear = vk.CreateSampler(new SamplerDesc(Filter.Linear, Filter.Linear, MipMode.Linear, Wrap.Clamp));
         if (s.Trace != null) s.TracePipe = VkSsrPipe(vk, s.Trace, Format.Rgba32F, false);
         if (s.Res != null) s.ResPipe = VkSsrPipe(vk, s.Res, Format.Rgba16F, false);
-        if (s.Tmp != null) s.TmpPipe = VkSsrPipe(vk, s.Tmp, Format.Rgba16F, true);
-        if (s.HiZ == null || s.Mip == null || s.Trace == null || s.Res == null || s.Tmp == null || s.TracePipe.IsNull
-            || s.ResPipe.IsNull || s.TmpPipe.IsNull || s.Point.IsNull || s.Trilinear.IsNull)
+        if (s.Hist != null) s.HistPipe = VkSsrPipe(vk, s.Hist, Format.Rgba16F, true);
+        if (s.HiZ == null || s.Mip == null || s.Trace == null || s.Res == null || s.Hist == null || s.TracePipe.IsNull
+            || s.ResPipe.IsNull || s.HistPipe.IsNull || s.Point.IsNull || s.Trilinear.IsNull)
         {
-            s.Tmp = null;
+            s.Hist = null;
             log.Always("AlloyRenderer: a Vulkan screen-space reflection program or pipeline was REFUSED (logged above) -- "
                      + "surfaces keep their own lighting alone on Vulkan this session");
             return false;
@@ -320,7 +324,7 @@ public sealed unsafe partial class AlloyRenderer
     /// block; remade, and the history dropped, on a resize or a detail change.</summary>
     private static bool VkSsrTargets(VkBackend vk, VkSsrState s, int w, int h, int shift, ExtenderLog log)
     {
-        if (!s.Out.IsNull && s.W == w && s.H == h && s.Shift == shift) return true;
+        if (!s.Out.IsNull && s.W == w && s.H == h && s.BlkShift == shift) return true;
         vk.Destroy(s.RecN); vk.Destroy(s.RecW); vk.Destroy(s.Pyr); vk.Destroy(s.Col); vk.Destroy(s.Out);
         vk.Destroy(s.Resolved); vk.Destroy(s.Hist0); vk.Destroy(s.Hist1);
         int colShift = Math.Min(shift, 1);
@@ -337,7 +341,7 @@ public sealed unsafe partial class AlloyRenderer
         s.Resolved = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, w, h, 1, 1, 1, 1, attach, "vk ssr resolve"));
         s.Hist0 = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, w, h, 1, 1, 1, 1, attach, "vk ssr history 0"));
         s.Hist1 = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, w, h, 1, 1, 1, 1, attach, "vk ssr history 1"));
-        s.W = w; s.H = h; s.ColShift = colShift; s.Shift = shift;
+        s.W = w; s.H = h; s.ColShift = colShift; s.BlkShift = shift;
         s.HistValid = false;
         if (!s.RecN.IsNull && !s.RecW.IsNull && !s.Pyr.IsNull && !s.Col.IsNull && !s.Out.IsNull && !s.Resolved.IsNull
             && !s.Hist0.IsNull && !s.Hist1.IsNull) return true;

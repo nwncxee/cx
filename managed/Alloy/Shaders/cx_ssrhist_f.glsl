@@ -4,14 +4,13 @@
 // hit lies -- so a reflection keeps its place under a moving camera where the surface's own reprojection smears it.
 // The history is clamped to this frame's 3x3 neighbourhood, and with none (a reset, off-screen) the resolve shows
 // alone. Out: the new history, and the same correction added onto the frame under ONE/ONE.
-in vec2 vUV;
 layout(location = 0) out vec4 hist;
 layout(location = 1) out vec4 frag;
 uniform sampler2D uRes;      // this frame's resolve: rgb = the correction, a = the hit's distance (0 = the surface)
 uniform sampler2D uHist;     // last frame's history
 uniform sampler2D uDepth;    // the frame depth
 uniform mat4 uInvProj, uInvView, uPrevVp;
-uniform vec4 uTmp;           // x = 1 when uHist holds last frame's
+uniform int uHistOn;         // 1 when uHist holds last frame's
 /// The share of this frame's resolve in the blend: an eighth-ish converges the trace's noise in a few frames.
 const float CX_SSR_BLEND = 0.15;
 void main()
@@ -20,7 +19,7 @@ void main()
     vec4 cur = texelFetch(uRes, px, 0);
     vec3 res = cur.rgb;
     float depth = texelFetch(uDepth, px, 0).r;
-    if (uTmp.x > 0.0 && depth < 1.0)
+    if (uHistOn != 0 && depth < 1.0)
     {
         vec3 mn = cur.rgb, mx = cur.rgb;
         for (int y = -1; y <= 1; y++)
@@ -40,5 +39,5 @@ void main()
     }
     hist = vec4(res, 0.0);
     if (any(isnan(hist)) || any(isinf(hist))) hist = vec4(0.0);
-    frag = vec4(hist.rgb, 0.0);
+    frag = hist;
 }

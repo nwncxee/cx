@@ -5,10 +5,9 @@
 // distance, highlight-reduced (Karis) so one bright texel cannot outvote the rest. The mirrored draw (uPlanar)
 // answers first on flat ground at the player's height, the probe where neither answers. Out goes the correction
 // the lit stage's probe term needs, (reflection - probe) x this pixel's weight and gate; a = the hit's distance,
-// which cx_ssrtmp_f reprojects by.
+// which cx_ssrhist_f reprojects by.
 #include "cx_ssr.glsl"
 #include "cx_ssrrec.glsl"
-in vec2 vUV;
 layout(location = 0) out vec4 frag;
 uniform sampler2D uTrace;    // cx_ssrtrace_f: xy = hit uv, z = pdf (0 = none), w = the origin's 1 / view depth
 uniform sampler2D uDepth;    // the frame depth
@@ -21,7 +20,9 @@ uniform samplerCube uProbe;  // the probe the lit stage added, to be taken back 
 uniform sampler2D uPlanar;   // the opaque set drawn mirrored across uPlane.x, mipped: alpha 1 where it drew
 uniform vec4 uPlane;         // x = the mirror plane's world z, y = 1 when uPlanar holds this frame's
 uniform mat4 uInvProj, uView, uInvView;
-uniform vec4 uSsr;           // x = roughness cap, z = probe mips (0 = no probe), w = log2 of the trace's block
+uniform float uCap;          // the roughness cap
+uniform float uProbeMips;    // the probe's mips (0 = no probe)
+uniform int uShift;          // log2 of the trace's block
 uniform int uFrame;          // the noise phase
 
 /// How far (a share of view depth) a ray's origin may sit off this pixel and its hit still stand for it, faded
@@ -44,11 +45,6 @@ const float CX_SSR_FLOOR = 0.25;
 /// The mirrored draw's mip at roughness 1 (on the sqrt(rough) ladder the probe uses).
 /// ponytail: blur by roughness alone, not by the reflected point's height off the plane (no contact hardening).
 const float CX_PLANE_LOD = 4.0;
-vec3 ViewPos(vec2 uv, float depth)
-{
-    vec4 p = uInvProj * vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
-    return p.xyz / p.w;
-}
 
 float Luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
 
@@ -58,37 +54,41 @@ void main()
     ivec2 px = ivec2(gl_FragCoord.xy);
     vec3 n, w; float rough;
     if (!CxRecRead(uRecN, uRecW, uHiZ, px, n, rough, w)) return;
-    float gate = CxSsrGate(max(w.r, max(w.g, w.b)), rough, uSsr.x);
+    float gate = CxSsrGate(max(w.r, max(w.g, w.b)), rough, uCap);
     if (gate <= 0.0) return;
     vec2 size = vec2(textureSize(uHiZ, 0)), uv0 = (vec2(px) + 0.5) / size;
     float k = texelFetch(uHiZ, px, 0).r;
-    vec3 o = ViewPos(uv0, texelFetch(uDepth, px, 0).r);
+    vec3 o = CxViewPos(uInvProj, uv0, texelFetch(uDepth, px, 0).r);
     vec3 N = normalize(mat3(uView) * n), V = -normalize(o);
     float NoV = max(dot(N, V), 1e-4), a = max(rough, 1e-3), perceptual = sqrt(a);
-    // the lobe's cone (Stride's fit): its tangent, times the hit's screen distance, is the footprint a mip covers
-    float cone = perceptual * (1.0 - CX_SSR_BIAS) * NoV * perceptual * mix(clamp(NoV * 2.0, 0.0, 1.0), 1.0, perceptual);
+    // the lobe's cone (Stride's fit, on perceptual roughness): its tangent, times the hit's screen distance, is the
+    // footprint a mip covers
+    float sp = sqrt(perceptual);
+    float cone = perceptual * (1.0 - CX_SSR_BIAS) * NoV * sp * mix(clamp(NoV * 2.0, 0.0, 1.0), 1.0, sp);
     float maxMip = float(textureQueryLevels(uColor) - 1);
-    ivec2 base = px >> int(uSsr.w), lim = textureSize(uTrace, 0) - 1;
+    ivec2 base = px >> uShift, lim = textureSize(uTrace, 0) - 1;
     int turn = int(CxSsrNoise(px, uFrame).x * 4.0);
     vec3 sum = vec3(0.0);
     float wsum = 0.0, seen = 0.0, hits = 0.0, dist = 0.0;
     for (int j = 0; j < 4; j++)
     {
         ivec2 off = j == 0 ? ivec2(0) : CX_SSR_REUSE[j - 1];
-        for (int q = 0; q < (turn & 3); q++) off = ivec2(-off.y, off.x);
+        for (int q = 0; q < turn; q++) off = ivec2(-off.y, off.x);
         vec4 t = texelFetch(uTrace, clamp(base + off, ivec2(0), lim), 0);
         float join = 1.0 - smoothstep(CX_SSR_JOIN.x, CX_SSR_JOIN.y, abs(t.w - k) / k);
         if (!(join > 0.0)) continue;
         seen += join;
         if (!(t.z > 0.0)) continue;
-        vec3 h = ViewPos(t.xy, texelFetch(uDepth, clamp(ivec2(t.xy * size), ivec2(0), ivec2(size) - 1), 0).r);
+        vec3 h = CxViewPos(uInvProj, t.xy, texelFetch(uDepth, clamp(ivec2(t.xy * size), ivec2(0), ivec2(size) - 1), 0).r);
         vec3 L = h - o;
         float len = length(L);
         L /= max(len, 1e-4);
         float NoL = dot(N, L);
         if (NoL <= 0.0) continue;
-        // ponytail: D x N.L over the pdf, no shadowing-masking term -- the lobe's shape is what picks among hits
-        float wt = join * CxGgxD(max(dot(N, normalize(V + L)), 0.0), a) * NoL / t.z;
+        // the lobe toward the hit over the pdf it was drawn with: f x N.L is D x G x F / (4 N.V), and with G, F and
+        // the per-pixel 4 N.V out (the sum is normalised) D is what is left.
+        // ponytail: no Smith G -- it joins when a grazing lobe shows hits through its own masking
+        float wt = join * CxGgxD(max(dot(N, normalize(V + L)), 0.0), a) / t.z;
         if (!(wt > 0.0) || isinf(wt)) continue;
         float lod = log2(max(cone * distance(t.xy, uv0) * max(size.x, size.y), 1.0)) - float(uColShift);
         vec3 c = min(textureLod(uColor, t.xy, clamp(lod, 0.0, maxMip)).rgb, vec3(CX_SSR_MAX));
@@ -120,7 +120,7 @@ void main()
              * (1.0 - smoothstep(CX_PLANE_TOL.x, CX_PLANE_TOL.y, abs(P.z - uPlane.x)));
     // the lit stage's own fetch, exactly: R in world space, its roughness on the prefilter's mip ladder
     vec3 R = mat3(uInvView) * reflect(-V, N);
-    vec3 env = uSsr.z > 0.0 ? CxProbeFetch(uProbe, P, R, perceptual * (uSsr.z - 1.0)) : vec3(0.0);
+    vec3 env = uProbeMips > 0.0 ? CxProbeFetch(uProbe, P, R, perceptual * (uProbeMips - 1.0)) : vec3(0.0);
     // plane over screen over probe
     vec3 refl = max(mix(mix(env, hit, trust), pl.rgb, pa), env * CX_SSR_FLOOR);
     // the hit's distance only where the screen's hit is most of what shows: elsewhere the surface itself reprojects

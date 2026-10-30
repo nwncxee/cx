@@ -625,7 +625,7 @@ def programs(g):
         "ssr colour chain": (define(g["cx_ssrhiz_c"], "CX_SSR_COLOUR 1"),),
         "ssr trace": (g["cx_fullscreen_v"], g["cx_ssrtrace_f"]),
         "ssr resolve": (g["cx_fullscreen_v"], g["cx_ssrres_f"]),
-        "ssr temporal": (g["cx_fullscreen_v"], g["cx_ssrtmp_f"]),
+        "ssr history": (g["cx_fullscreen_v"], g["cx_ssrhist_f"]),
         "post stack taa": (g["cx_post_vs"], g["cx_taa_fs"]),
         "highlight composite": (g["cx_fullscreen_v"], g["cx_hilitecomp_f"]),
         "owned water": (g["cx_water_vs"], g["cx_water_fs"]),

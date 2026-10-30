@@ -1,5 +1,6 @@
-// CX-51: what every reflecting stage shares -- the split-sum weight, its dielectric floor and the radiance cap. The
-// screen-space trace itself is a pass of its own (Ssr, cx_ssrtrace_f): the lit stage writes a reflection record
+// CX-51: what every reflecting stage shares -- the split-sum weight, its dielectric floor and the radiance cap --
+// and what the screen-space pass's stages share: the lobe's bias and distribution, the noise and the view position.
+// The pass itself is Ssr (cx_ssrtrace_f, cx_ssrres_f, cx_ssrhist_f): the lit stage writes a reflection record
 // (cx_reflrec) and adds the probe; the pass swaps the probe for what the screen shows where it can see it.
 #ifndef CX_SSR
 #define CX_SSR
@@ -31,7 +32,14 @@ vec2 CxSsrNoise(ivec2 p, int frame)
 {
     vec2 q = vec2(p);
     return fract(vec2(dot(q, vec2(0.7548777, 0.5698403)), dot(q, vec2(0.5698403, 0.7548777)))
-               + float(frame & 255) * vec2(0.618034, 0.381966));
+               + float(frame & 255) * vec2(0.618034, 0.324718));
+}
+
+/// The view position at uv and window depth, through the inverse projection.
+vec3 CxViewPos(mat4 invProj, vec2 uv, float depth)
+{
+    vec4 p = invProj * vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+    return p.xyz / p.w;
 }
 
 /// The GGX normal distribution at alpha a.
