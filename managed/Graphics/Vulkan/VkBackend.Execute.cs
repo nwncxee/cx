@@ -117,6 +117,7 @@ internal sealed unsafe partial class VkBackend
 
     private bool Record(CommandReader r)
     {
+        long t = System.Diagnostics.Stopwatch.GetTimestamp();
         while (r.Next(out Op op))
         {
             bool ok = op switch
@@ -152,6 +153,10 @@ internal sealed unsafe partial class VkBackend
                 Op.EndLabel => Unlabel(),
                 _ => Fault($"{op} is not on the Vulkan backend yet"),
             };
+            long now = System.Diagnostics.Stopwatch.GetTimestamp();
+            _opTicks[(int)op] += now - t;
+            _opN[(int)op]++;
+            t = now;
             if (!ok) return false;
         }
         return true;
@@ -520,8 +525,13 @@ internal sealed unsafe partial class VkBackend
             return Fault($"UpdateBuffer of {c.Bytes} bytes at {c.Offset} into {b.Desc.Label}'s {b.Desc.Bytes}, in whole words");
         Use(b, VkPipelineStageFlags2.AllTransfer, VkAccessFlags2.TransferWrite);
         Flush();
+        if (b.UpCalls++ == 0) _upTouched.Add(b);
+        b.UpBytes += c.Bytes;
         if (c.Bytes <= MaxInlineUpdate)
+        {
             fixed (byte* p = bytes) _vkd.vkCmdUpdateBuffer(_cmd, b.Buffer, (ulong)c.Offset, (ulong)c.Bytes, p);
+            _inlineBytes += c.Bytes;
+        }
         else
         {
             if (!Staged(bytes, out ulong at)) return false;
@@ -560,6 +570,7 @@ internal sealed unsafe partial class VkBackend
         fixed (byte* p = bytes)
             if (Vma.vmaCopyMemoryToAllocation(_vma, p, s.StageAlloc, at, len) != VkResult.Success)
                 return Fault("staging: the copy into the mapped allocation was refused");
+        _stagedBytes += (long)len;
         s.StageUsed = (at + len + StageAlign - 1) & ~(StageAlign - 1);
         return true;
     }
