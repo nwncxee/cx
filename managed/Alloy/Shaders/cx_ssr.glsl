@@ -1,5 +1,6 @@
-// CX-51: what every reflecting stage shares -- the split-sum weight, its dielectric floor and the radiance cap. The
-// screen-space trace itself is a pass of its own (Ssr, cx_ssrtrace_f): the lit stage writes a reflection record
+// CX-51: what every reflecting stage shares -- the split-sum weight, its dielectric floor and the radiance cap --
+// and what the screen-space pass's stages share: the lobe's bias and distribution, the noise and the view position.
+// The pass itself is Ssr (cx_ssrtrace_f, cx_ssrres_f, cx_ssrhist_f): the lit stage writes a reflection record
 // (cx_reflrec) and adds the probe; the pass swaps the probe for what the screen shows where it can see it.
 #ifndef CX_SSR
 #define CX_SSR
@@ -19,6 +20,33 @@ vec2 CxEnvBrdf(float NoV, float perceptual)
     vec4 r = perceptual * c0 + c1;
     float a004 = min(r.x * r.x, exp2(-9.28 * NoV)) * r.x + r.y;
     return vec2(-1.04, 1.04) * a004 + r.zw;
+}
+
+/// How far the trace's GGX draw leans toward the lobe's centre (0 = the whole lobe): the tail rays a rough surface
+/// would spend on grazing directions mostly miss, and the resolve's cone blur stands in for them.
+const float CX_SSR_BIAS = 0.7;
+
+/// Two R2 low-discrepancy values in [0, 1) at pixel p, phased per frame: a closed-form blue-ish pattern, so no
+/// noise texture is bound. The second axis swaps the R2 weights rather than offsetting, which would correlate them.
+vec2 CxSsrNoise(ivec2 p, int frame)
+{
+    vec2 q = vec2(p);
+    return fract(vec2(dot(q, vec2(0.7548777, 0.5698403)), dot(q, vec2(0.5698403, 0.7548777)))
+               + float(frame & 255) * vec2(0.618034, 0.324718));
+}
+
+/// The view position at uv and window depth, through the inverse projection.
+vec3 CxViewPos(mat4 invProj, vec2 uv, float depth)
+{
+    vec4 p = invProj * vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+    return p.xyz / p.w;
+}
+
+/// The GGX normal distribution at alpha a.
+float CxGgxD(float NoH, float a)
+{
+    float a2 = a * a, d = NoH * NoH * (a2 - 1.0) + 1.0;
+    return a2 / max(3.14159265 * d * d, 1e-8);
 }
 
 /// CX-46: the probe's SH9 irradiance, written by cx_probe_sh after each capture with the cosine lobe and basis

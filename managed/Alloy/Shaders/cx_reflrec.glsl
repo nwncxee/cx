@@ -1,5 +1,5 @@
 // CX-51: the reflection record, beside the colour on draw buffers 2 and 3 while Ssr has them attached (the
-// opaque, cutout and grass passes; elsewhere they land on NONE). Ssr's trace reads it back per pixel; the format
+// opaque, cutout and grass passes; elsewhere they land on NONE). Ssr's trace reads it back per block and its resolve per pixel; the format
 // is cx_ssrrec's.
 #ifndef CX_REFLREC
 #define CX_REFLREC
