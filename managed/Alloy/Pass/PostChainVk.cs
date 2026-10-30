@@ -57,7 +57,7 @@ internal static unsafe class PostChainVk
     {
         ["uSrc"] = TextureSlots.PostHdr, ["uHdr"] = TextureSlots.PostHdr, ["uCur"] = TextureSlots.PostHdr,
         ["uBloom"] = TextureSlots.PostBloom, ["uDepth"] = TextureSlots.PostDepth, ["uOverlay"] = TextureSlots.PostOverlay,
-        ["uHist"] = TextureSlots.AaEdges, ["uVel"] = TextureSlots.AaArea, ["uMask"] = TextureSlots.PostHdr,
+        ["uHist"] = TextureSlots.PostHist, ["uVel"] = TextureSlots.AaArea, ["uMask"] = TextureSlots.PostHdr,
         ["texFBColor"] = TextureSlots.PostHdr, ["texFBDepth"] = TextureSlots.PostDepth,
     };
 
@@ -246,6 +246,7 @@ internal static unsafe class PostChainVk
     {
         vs = ShaderResource.Tokens(vs);
         fs = ShaderResource.Tokens(fs);
+        if (SharedUnit(fs) is { } clash) log.Always($"PostChainVk: post {label} puts {clash} -- BOTH read whichever image binds last");
         if (StageResources.VkUnits(UnitsFor(fs), fs, stage, -1, StageResources.DrawImgUnits, out string why) is not { } units)
         {
             log.Always($"PostChainVk: post {label} -- {why}");
@@ -259,6 +260,25 @@ internal static unsafe class PostChainVk
         return p;
     }
 
+    /// <summary>Two samplers <paramref name="fs"/> declares that <see cref="Units"/> puts on one unit, as
+    /// "uA and uB on unit n"; null when every one has its own. Two on one unit read whichever image binds last.</summary>
+    internal static string? SharedUnit(string fs)
+    {
+        var seen = new Dictionary<uint, string>();
+        foreach (System.Text.RegularExpressions.Match m in Samplers.Matches(fs))
+        {
+            string name = m.Groups[1].Value;
+            if (!Units.TryGetValue(name, out uint u)) continue;
+            if (seen.TryGetValue(u, out string? other) && other != name) return $"{other} and {name} on unit {u}";
+            seen[u] = name;
+        }
+        return null;
+    }
+
+    /// <summary>A sampler declaration without a binding, its name the first group.</summary>
+    private static readonly System.Text.RegularExpressions.Regex Samplers =
+        new(@"^\s*uniform\s+(?:\w+\s+)?sampler\w*\s+(\w+)\s*;", System.Text.RegularExpressions.RegexOptions.Multiline);
+
     /// <summary>The first unit a content stage's own unbound sampler takes: past every unit Alloy names.</summary>
     private const uint ContentUnitBase = 40;
 
@@ -268,8 +288,7 @@ internal static unsafe class PostChainVk
     {
         Dictionary<string, uint>? extra = null;
         uint next = ContentUnitBase;
-        foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(fs,
-                     @"^\s*uniform\s+(?:\w+\s+)?sampler\w*\s+(\w+)\s*;", System.Text.RegularExpressions.RegexOptions.Multiline))
+        foreach (System.Text.RegularExpressions.Match m in Samplers.Matches(fs))
         {
             string name = m.Groups[1].Value;
             if (Units.ContainsKey(name) || extra?.ContainsKey(name) == true) continue;

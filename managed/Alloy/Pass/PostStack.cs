@@ -284,6 +284,14 @@ internal static unsafe partial class PostStack
                 if (st.Param != null) check.Expect(src.Contains($"uniform float {st.Param};"), $"{st.Name}: declares its param {st.Param}");
                 check.Expect(src.IndexOf("CxStage(texture(uSrc, vUV))", StringComparison.Ordinal)
                   < src.IndexOf("CxDither(c.rgb", StringComparison.Ordinal), $"{st.Name}: dithers AFTER the stage");
+                string? su = PostChainVk.SharedUnit(src);
+                check.Expect(su == null, $"{st.Name}: every sampler on a unit of its own on Vulkan, not {su}");
+            }
+            foreach ((string name, string fs) in (ReadOnlySpan<(string, string)>)[("taa accumulate", TaaStage.TaaFs),
+                         ("camera velocity", MotionVectors.CameraFs), ("resolve", PostChain.ResolveFs)])
+            {
+                string? su = PostChainVk.SharedUnit(fs);
+                check.Expect(su == null, $"{name}: every sampler on a unit of its own on Vulkan, not {su}");
             }
             // The whole point: the same expression as inc_postpr_gam.shd, exponent Gamma/2.2, so a client at
             // 2.2 is the identity and every other value moves the Alloy frame exactly as it moves vanilla's.

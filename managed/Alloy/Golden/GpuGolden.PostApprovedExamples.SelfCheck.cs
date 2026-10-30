@@ -22,9 +22,10 @@ internal static partial class GpuGolden
 
     private static void PostSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
     {
-        PostTaaCase(vk, check, log, "E2 TAA at render size", PostW, PostH, false, 0.1f);
-        PostTaaCase(vk, check, log, "E2 TAA upsampled", 29, 17, true, 0.1f);
-        PostTaaCase(vk, check, log, "E2 TAA first frame", PostW, PostH, false, 1f);
+        PostTaaCase(vk, check, log, "E2 TAA at render size", PostW, PostH, false, 0.1f, 0f);
+        PostTaaCase(vk, check, log, "E2 TAA upsampled", 29, 17, true, 0.1f, 0f);
+        PostTaaCase(vk, check, log, "E2 TAA first frame", PostW, PostH, false, 1f, 0f);
+        PostTaaCase(vk, check, log, "E2 TAA dithered", PostW, PostH, false, 0.1f, PostStep);
     }
 
     /// <summary>A scene of bright and dark blocks, a softer history under it, a velocity that reaches outside the
@@ -73,8 +74,10 @@ internal static partial class GpuGolden
     }
 
     /// <summary>One TAA case: the scene at <paramref name="rw"/> x <paramref name="rh"/> (the render size), resolved
-    /// at the display size by both paths, their targets and new histories compared texel by texel.</summary>
-    private static void PostTaaCase(VkBackend vk, Checker check, ExtenderLog log, string name, int rw, int rh, bool upsample, float blend)
+    /// at the display size by both paths, their targets and new histories compared texel by texel. Undithered they
+    /// agree to one step; a dither of <paramref name="dither"/> adds its own span, since each stage hashes its noise.</summary>
+    private static void PostTaaCase(VkBackend vk, Checker check, ExtenderLog log, string name, int rw, int rh, bool upsample,
+                                    float blend, float dither)
     {
         int tw = PostW + 2 * PostX, th = PostH + 2 * PostY;
         ImageId cur = PostImage(vk, Format.Rgba32F, rw, rh, ImageUse.Sampled | ImageUse.CopyDst, "golden post cur");
@@ -100,11 +103,11 @@ internal static partial class GpuGolden
             if (!made) return;
             var jitter = new Vector2(0.3f, -0.2f);
             const float sharp = 0.3f;
-            bool drew = PostTaaFragment(vk, log, cur, depth, vel, hist, histOut[0], into[0], blend, jitter, upsample, sharp);
+            bool drew = PostTaaFragment(vk, log, cur, depth, vel, hist, histOut[0], into[0], blend, jitter, upsample, sharp, dither);
             check.Expect(drew, $"{name}: the fragment chain (the oracle) was refused (logged above)");
             var cl = new CommandList("golden post fused", 1 << 14, log);
-            var f = new TaaFusedVk.Frame(cur, depth, vel, hist, histOut[1], into[1], Format.Rgba8, PostX, PostY, PostW, PostH,
-                                         blend, jitter, upsample, sharp, PostChain.DitherLsb);
+            var f = new TaaFusedVk.Frame(cur, depth, vel, hist, histOut[1], into[1], PostX, PostY, PostW, PostH,
+                                         blend, jitter, upsample, sharp, dither);
             bool fused = TaaFusedVk.Record(vk, cl, in f, log) && vk.Submit(cl);
             check.Expect(fused, $"{name}: the fused TAA was refused or is missing (logged above)");
             if (!drew || !fused) return;
@@ -120,7 +123,8 @@ internal static partial class GpuGolden
                         int at = ((y + PostY) * tw + x + PostX) * 4 + k, d = Math.Abs(a[at] - b[at]);
                         if (d > worst) { worst = d; wx = x; wy = y; }
                     }
-            check.Expect(worst <= 1, $"{name}: the fused target differs from the fragment chain's by {worst} steps at ({wx},{wy})");
+            int allowed = dither > 0f ? 2 : 1;
+            check.Expect(worst <= allowed, $"{name}: the fused target differs from the fragment chain's by {worst} steps at ({wx},{wy})");
             ReadOnlySpan<Half> fa = MemoryMarshal.Cast<byte, Half>(ha), fb = MemoryMarshal.Cast<byte, Half>(hb);
             float hw = 0f;
             for (int i = 0; i < fa.Length; i++)
@@ -141,7 +145,8 @@ internal static partial class GpuGolden
     /// <summary>The oracle: the accumulate into <paramref name="histOut"/>, then the taa stage's copy-out with its sharpen
     /// and the dither into <paramref name="into"/> at the case's rect, as the post stack draws the pair.</summary>
     private static bool PostTaaFragment(VkBackend vk, ExtenderLog log, ImageId cur, ImageId depth, ImageId vel, ImageId hist,
-                                        ImageId histOut, ImageId into, float blend, Vector2 jitter, bool upsample, float sharp)
+                                        ImageId histOut, ImageId into, float blend, Vector2 jitter, bool upsample, float sharp,
+                                        float dither)
     {
         if (!PostChainVk.Ensure(vk, log)) return false;
         int lBlend = -1, lJitter = -1, lUp = -1, lDither = -1, lSharp = -1;
@@ -164,7 +169,7 @@ internal static partial class GpuGolden
         PostChainVk.Draw(cl, acc, Format.Rgba16F, PostChainVk.Blend.None, histOut, LoadOp.DontCare, new Rect(0, 0, PostW, PostH), at,
                          new PostChainVk.Inputs(cur, default, depth, hist, vel, HistLinear: true), log);
         PostChainVk.Open(stage);
-        LooseBlock.Set(lDither, PostChain.DitherLsb);
+        LooseBlock.Set(lDither, dither);
         LooseBlock.Set(lSharp, sharp);
         at = PostChainVk.Close(cl, stage);
         PostChainVk.Draw(cl, stage, Format.Rgba8, PostChainVk.Blend.None, into, LoadOp.Clear, new Rect(PostX, PostY, PostW, PostH), at,
