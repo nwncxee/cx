@@ -499,6 +499,7 @@ internal sealed unsafe partial class VkBackend
     {
         if (!_images.TryGet(s.Image.Value, out VkImg img)) return Fault($"bind set: stale image on slot {s.Slot}");
         bool storage = type == VkDescriptorType.StorageImage;
+        if (UsageMissing(img.Desc.Use, storage) is { } why) return Fault($"bind set: slot {s.Slot}'s image {img.Desc.Label} {why}");
         VkImageLayout want = storage ? VkImageLayout.General : VkImageLayout.ShaderReadOnlyOptimal;
         if (!_rendering) Transition(img, want);
         else if (img.Layout != want)
@@ -512,6 +513,12 @@ internal sealed unsafe partial class VkBackend
         w[k++] = new VkWriteDescriptorSet { dstBinding = at + s.Slot, descriptorCount = 1, descriptorType = type, pImageInfo = (VkDescriptorImageInfo*)Unsafe.AsPointer(ref ii[t++]) };
         return true;
     }
+
+    /// <summary>What an image made for <paramref name="use"/> lacks to be bound as a storage image or, without
+    /// <paramref name="storage"/>, sampled; null when it was made for that bind.</summary>
+    internal static string? UsageMissing(ImageUse use, bool storage)
+        => storage ? (use & ImageUse.Storage) == 0 ? "was not created for storage" : null
+                   : (use & ImageUse.Sampled) == 0 ? "was not created for sampling" : null;
 
     private bool IndexBuffer(IndexBufferCmd c)
     {

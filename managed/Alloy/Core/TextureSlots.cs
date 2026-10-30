@@ -48,6 +48,9 @@ internal static class TextureSlots
     /// units are free on the same argument as <see cref="PostHdr"/>: edges then weights on 12, the area
     /// table on 13, the search table on 14.</summary>
     internal const uint AaEdges = 12, AaBlend = 12, AaArea = 13, AaSearch = 14;
+    /// <summary>The taa stage's history. <see cref="AaSearch"/>'s unit: the accumulate and the copy-out also read
+    /// <see cref="PostDepth"/>, and no program that reads the history reads the search table.</summary>
+    internal const uint PostHist = AaSearch;
     /// <summary>The SCENE's environment map, which vanilla's water reflects. Shares
     /// <see cref="Probe"/>'s unit -- the water program stopped sampling the probe when the port replaced
     /// Alloy's own reflection with stock's, so the two are never live in one program. A sampler2D here and

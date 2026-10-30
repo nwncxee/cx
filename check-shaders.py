@@ -602,6 +602,7 @@ def programs(g):
         "coverage layer resolve": (g["cx_fullscreen_v"], g["cx_a2cres_f"]),
         "post bloom downsample": (g["cx_post_vs"], g["cx_bloomdn_fs"]),
         "post bloom upsample": (g["cx_post_vs"], g["cx_bloomup_fs"]),
+        "post bloom (compute)": (g["cx_bloom_cs"],),
         "post resolve": (g["cx_post_vs"], g["cx_resolve_fs"]),
         "post stack gamma": (g["cx_post_vs"], g["cx_postgam_fs"]),
         "post stack toon": (g["cx_post_vs"], g["cx_toon_fs"]),

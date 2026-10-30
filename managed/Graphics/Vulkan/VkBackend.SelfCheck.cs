@@ -32,6 +32,9 @@ internal sealed unsafe partial class VkBackend
             "a barrier's source makes the writes available -- SHADER_STORAGE_WRITE 2^34, COLOR_ATTACHMENT_WRITE 0x100, "
           + "DEPTH_STENCIL_ATTACHMENT_WRITE 0x400, TRANSFER_WRITE 0x1000 -- and no read: SHADER_SAMPLED_READ 2^32, SHADER_STORAGE_READ "
           + "2^33, COLOR_ATTACHMENT_READ 0x80, DEPTH_STENCIL_ATTACHMENT_READ 0x200, TRANSFER_READ 0x800");
+        check.Expect(UsageMissing(ImageUse.Sampled | ImageUse.ColorTarget, true) != null && UsageMissing(ImageUse.Storage, true) == null
+                  && UsageMissing(ImageUse.ColorTarget | ImageUse.Storage, false) != null && UsageMissing(ImageUse.Sampled, false) == null,
+            "a bind is refused for the usage its image lacks: a colour target bound as storage, a storage-only image sampled");
         CheckSetCache(check);
         CheckAsyncFamily(check);
         CheckToAsync(check);
