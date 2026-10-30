@@ -122,6 +122,7 @@ internal static unsafe partial class PostStack
         int* full = stackalloc int[4] { 0, 0, s.W, s.H };
         if (!PostChainVk.Record(vk, cl, hdr, depth, s.A, false, viewport, full, taa ? s.Vel : default, log)) return false;
         ImageId read = s.A, write = s.B;
+        Span<byte> label = stackalloc byte[24];
         int left = System.Numerics.BitOperations.PopCount((uint)live);
         for (int i = 0; i < _stages.Length; i++)
         {
@@ -130,6 +131,8 @@ internal static unsafe partial class PostStack
             StageVk v = s.Stages[i];
             bool last = --left == 0;
             ImageId into = last ? vk.Composite : write;
+            "stage "u8.CopyTo(label);
+            cl.BeginLabel(label[..(6 + System.Text.Encoding.UTF8.GetBytes(st.Name, label[6..]))]);
             ImageId hist = st.Name == "taa" ? TaaResolve(cl, s, read, depth, log) : default;
             bool aa = st.Name == "aa";
             if (aa) SmaaStage.PassesVk(cl, read, log);
@@ -147,6 +150,7 @@ internal static unsafe partial class PostStack
             int at = PostChainVk.Close(cl, v.P!);
             PostChainVk.Draw(cl, v.P!, PostChainVk.FormatOf(into), PostChainVk.Blend.None, into, LoadOp.Clear, last ? rect : new Rect(0, 0, s.W, s.H),
                              at, new PostChainVk.Inputs(read, default, depth, hist, Weights: aa ? SmaaStage.VkWeights : default), log);
+            cl.EndLabel();
             (read, write) = (write, read);
         }
         if (taa) MotionVectors.RollHistory();
@@ -254,6 +258,7 @@ internal static unsafe partial class PostStack
         }
         if (!Matrix4x4.Invert(*vp, out Matrix4x4 inv)) return false;
         Matrix4x4 prev = MotionVectors.NoteVk(vpClean, AlloyRenderer.FrameSeq);
+        cl.BeginLabel("velocity"u8);
         PostChainVk.Open(s.Motion);
         LooseBlock.Set(s.MInvVp, inv);
         LooseBlock.Set(s.MPrevVp, prev);
@@ -264,6 +269,7 @@ internal static unsafe partial class PostStack
                          new PostChainVk.Inputs(default, default, depth), log);
         AlloyRenderer.VkMoverMotion(vk, cl, s.Vel, w, h, vp, prev, log);
         AlloyRenderer.VkGrassMotion(vk, cl, s.Vel, w, h, vp, prev);
+        cl.EndLabel();
         return true;
     }
 
@@ -272,6 +278,7 @@ internal static unsafe partial class PostStack
     private static ImageId TaaResolve(CommandList cl, StackVkState s, ImageId cur, ImageId depth, ExtenderLog log)
     {
         ImageId read = s.Cur == 0 ? s.Hist0 : s.Hist1, write = s.Cur == 0 ? s.Hist1 : s.Hist0;
+        cl.BeginLabel("taa accumulate"u8);
         PostChainVk.Open(s.Taa!);
         LooseBlock.Set(s.TBlend, s.HistValid ? PostChain.TaaBlend : 1f);
         LooseBlock.Set(s.TUpsample, s.Up ? 1 : 0);
@@ -279,6 +286,7 @@ internal static unsafe partial class PostStack
         int at = PostChainVk.Close(cl, s.Taa!);
         PostChainVk.Draw(cl, s.Taa!, Format.Rgba16F, PostChainVk.Blend.None, write, LoadOp.DontCare, new Rect(0, 0, s.HistW, s.HistH), at,
                          new PostChainVk.Inputs(cur, default, depth, read, s.Vel, HistLinear: true), log);
+        cl.EndLabel();
         s.Cur ^= 1;
         s.HistValid = true;
         return write;

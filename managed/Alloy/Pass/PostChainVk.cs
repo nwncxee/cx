@@ -82,7 +82,12 @@ internal static unsafe class PostChainVk
         PostVkState s = _s;
         if (!Ensure(vk, log) || !Targets(vk, s, viewport[2], viewport[3], log)) return false;
         bool bloom = Post.Bloom.V > 0f && StockConfig.HdrBloom;
-        if (bloom) Bloom(cl, s, hdr);
+        if (bloom)
+        {
+            cl.BeginLabel("bloom"u8);
+            Bloom(cl, s, hdr);
+            cl.EndLabel();
+        }
 
         ResolveLocs r = s.R;
         Matrix4x4 invVp = AlloyRenderer.SkyInvVp;
@@ -109,10 +114,12 @@ internal static unsafe class PostChainVk
                      + "drawing this frame; the frame resolves as viz 0");
         }
         LooseBlock.Set(r.Viz, motion && vel.IsNull ? 0 : Post.Viz.V);
+        cl.BeginLabel("resolve"u8);
         int at = Close(cl, s.Resolve!);
         // the velocity viz rides the bloom input: the two views are exclusive by construction
         Draw(cl, s.Resolve!, FormatOf(into), Blend.None, into, LoadOp.Clear, new Rect(rect[0], rect[1], rect[2], rect[3]), at,
              new Inputs(hdr, motion && !vel.IsNull ? vel : bloom ? s.Bloom[0] : default, depth), log);
+        cl.EndLabel();
         if (!s.Said)
         {
             s.Said = true;
