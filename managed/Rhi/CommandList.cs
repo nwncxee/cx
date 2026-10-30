@@ -85,12 +85,20 @@ public sealed class CommandList
     /// <summary>Submit every command as it is recorded, instead of when the pass submits the list.</summary>
     public IDevice? Immediate;
 
+    /// <summary>Recorded for the async compute queue: dispatches, copies and buffer writes only, over images made
+    /// <see cref="ImageUse.Async"/> and bound by slot (no bindless texture). A device with no such queue runs it on the
+    /// graphics queue, in submit order.</summary>
+    public bool Async { get; init; }
+
     /// <summary>An immediate submit was refused since the last <see cref="Reset"/>; later commands are not
     /// submitted, and the pass sits out.</summary>
     public bool Faulted { get; private set; }
 
     /// <summary>Times the arena grew; each is one allocation and one log line.</summary>
     public int Growths { get; private set; }
+
+    /// <summary>The list's name, as a log line says it.</summary>
+    public string Name => _name;
 
     /// <summary>The list's name, UTF-8 and NUL-terminated: what a capture tool shows its submit under.</summary>
     public ReadOnlySpan<byte> NameUtf8 => _nameZ;

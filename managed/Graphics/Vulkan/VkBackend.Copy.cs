@@ -72,6 +72,7 @@ internal sealed unsafe partial class VkBackend
     private bool MipsImg(ImageId i)
     {
         if (_inPass) return Fault("GenerateMips inside a render pass");
+        if (_onAsync) return Fault("GenerateMips on the async compute queue, which cannot blit");
         if (!_images.TryGet(i.Value, out VkImg img)) return Fault("GenerateMips: stale image");
         if (img.Desc.Mips > 1) BlitMips(img);
         return true;
@@ -80,6 +81,7 @@ internal sealed unsafe partial class VkBackend
     private bool BlitImg(in BlitImageCmd c)
     {
         if (_inPass) return Fault("BlitImage inside a render pass -- a blit is not a draw, and its barriers cannot run there");
+        if (_onAsync) return Fault("BlitImage on the async compute queue, which cannot blit");
         if (!_images.TryGet(c.Src.Value, out VkImg src)) return Fault("BlitImage: stale source image");
         if (!_images.TryGet(c.Dst.Value, out VkImg dst)) return Fault("BlitImage: stale destination image");
         if (c.From.W <= 0 || c.From.H <= 0 || c.To.W <= 0 || c.To.H <= 0)

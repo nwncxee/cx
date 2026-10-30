@@ -33,6 +33,8 @@ internal sealed unsafe partial class VkBackend
           + "DEPTH_STENCIL_ATTACHMENT_WRITE 0x400, TRANSFER_WRITE 0x1000 -- and no read: SHADER_SAMPLED_READ 2^32, SHADER_STORAGE_READ "
           + "2^33, COLOR_ATTACHMENT_READ 0x80, DEPTH_STENCIL_ATTACHMENT_READ 0x200, TRANSFER_READ 0x800");
         CheckSetCache(check);
+        CheckAsyncFamily(check);
+        CheckToAsync(check);
         if (Native.Sym(SymbolMap.AppManager) != IntPtr.Zero)
         {
             check.Skip("on-device: the pilot's stages compile at the device's first pipeline, not at boot");
@@ -95,6 +97,38 @@ internal sealed unsafe partial class VkBackend
         check.Expect(!c.TryGet(a, out _) && !c.TryGet(b, out _) && !c.TryGetHashed(a.AsSpan(..1), 7, out _), "a cleared cache held a set");
         c.Add(b, 21);
         check.Expect(c.TryGet(b, out got) && got == 21 && !c.TryGet(a, out _), "after a clear, a new set did not come back alone");
+    }
+
+    /// <summary>Oracle: hand-written family tables shaped as an RTX 3070, an RDNA card and an Intel iGPU report them. The
+    /// async queue is a family that computes without drawing; none, or one with no queues, leaves a single queue.</summary>
+    private static void CheckAsyncFamily(Checker check)
+    {
+        static VkQueueFamilyProperties F(VkQueueFlags f, uint n) => new() { queueFlags = f, queueCount = n };
+        const VkQueueFlags G = VkQueueFlags.Graphics | VkQueueFlags.Compute | VkQueueFlags.Transfer, C = VkQueueFlags.Compute | VkQueueFlags.Transfer;
+        check.Expect(AsyncFamily([F(G, 16), F(VkQueueFlags.Transfer, 2), F(C, 8)]) == 2, "the 3070's compute family 2 was not the async one");
+        check.Expect(AsyncFamily([F(G, 1), F(C, 4), F(VkQueueFlags.Transfer, 2)]) == 1, "the RDNA compute family 1 was not the async one");
+        check.Expect(AsyncFamily([F(G, 1)]) == -1, "a device with one graphics family named an async one");
+        check.Expect(AsyncFamily([F(G, 1), F(C, 0)]) == -1, "a compute family with no queues was taken");
+        check.Expect(AsyncFamily([F(G, 1), F(G, 4)]) == -1, "a second graphics family was taken as the compute-only one");
+    }
+
+    /// <summary>Oracle: vulkan_core.h's bits, by hand. A barrier side on the async queue keeps its compute and transfer
+    /// stages and only the accesses those make; ALL_COMMANDS keeps everything; a graphics-only side keeps nothing.</summary>
+    private static void CheckToAsync(Checker check)
+    {
+        static (ulong, ulong) Cut(ulong stages, ulong access)
+        {
+            var s = (VkPipelineStageFlags2)stages;
+            var a = (VkAccessFlags2)access;
+            ToAsync(ref s, ref a);
+            return ((ulong)s, (ulong)a);
+        }
+        check.Expect(Cut(0x888, 0x100000004) == (0x800, 0x100000000),
+            "VERTEX|FRAGMENT|COMPUTE 0x888 with SHADER_SAMPLED_READ 2^32 and VERTEX_ATTRIBUTE_READ 4 is COMPUTE 0x800 with the sampled read alone");
+        check.Expect(Cut(0x1080, 0x400001000) == (0x1000, 0x1000),
+            "ALL_TRANSFER|FRAGMENT 0x1080 with SHADER_STORAGE_WRITE 2^34 and TRANSFER_WRITE 0x1000 is ALL_TRANSFER with TRANSFER_WRITE alone");
+        check.Expect(Cut(0x400, 0x100) == (0, 0), "COLOR_ATTACHMENT_OUTPUT 0x400 with its write 0x100 is nothing on a compute queue");
+        check.Expect(Cut(0x10000, 0x18000) == (0x10000, 0x18000), "ALL_COMMANDS 0x10000 with MEMORY_READ|WRITE 0x18000 stays whole");
     }
 
     private static bool ScopeIs(VkImageLayout l, ulong stages, ulong access)

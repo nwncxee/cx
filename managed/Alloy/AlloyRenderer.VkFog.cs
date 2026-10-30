@@ -9,9 +9,8 @@ namespace CX.Alloy;
 
 /// <summary>
 /// The volumetric fog (<see cref="PassId.FogVolume"/>) on Vulkan: <see cref="FogVolume"/>'s two compute stages over
-/// the froxel grid, the sum bound wherever a stage declares <c>uVFogVol</c>. ponytail: built after the G-buffer pass,
-/// beside the froxel build it reads, so that pass fogs through last frame's volume; move it ahead of the colour pass
-/// once the froxel build can move there without faulting the device.
+/// the froxel grid, the sum bound wherever a stage declares <c>uVFogVol</c>. Built on the async queue with the froxel
+/// build it reads, beside the prepass through the G-buffer pass, which fogs through last frame's sum: the two sums take turns.
 /// </summary>
 public sealed unsafe partial class AlloyRenderer
 {
@@ -24,7 +23,9 @@ public sealed unsafe partial class AlloyRenderer
         public FogVolume.GridLocs S;
         public int SunMedia = -1, LocalMedia = -1;
         public bool Tried, Live;
-        public ImageId MedA, MedB, Total;
+        public ImageId MedA, MedB, SumA, SumB;
+        /// <summary>The sum this frame's pass wrote, or last frame's until it runs.</summary>
+        public ImageId Total;
         public int W, H, D;
         /// <summary>This frame's volume is built, so its readers may sample it.</summary>
         public bool Built;
@@ -35,8 +36,9 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>This frame's summed volume, or the null id where none was built.</summary>
     internal static ImageId VkFogVolume => _vkFog.Built ? _vkFog.Total : default;
 
-    /// <summary>The volume into <paramref name="cl"/>, ahead of the first stage that fogs. Nothing (every reader on the
-    /// ramp) when the mode is off, the view is a capture, or a stage was refused.</summary>
+    /// <summary>The volume into <paramref name="cl"/>, the frame's async list: every stage recorded before it reads last
+    /// frame's sum, every one after it this one. Nothing (every reader on the ramp) when the mode is off, the view is a
+    /// capture, or a stage was refused.</summary>
     private static void VkFogPass(VkBackend vk, CommandList cl, in Matrix4x4 view, in Matrix4x4 vpClean, int* viewport,
                                   float near, float far, bool main, bool lightingOn, ExtenderLog log)
     {
@@ -49,6 +51,7 @@ public sealed unsafe partial class AlloyRenderer
         if (!VkFogVolumes(vk, s, t.W, t.H, t.D, log)) return;
         bool a = FogVolume.CurrentIsA;
         ImageId cur = a ? s.MedA : s.MedB, prev = a ? s.MedB : s.MedA;
+        s.Total = a ? s.SumA : s.SumB;
         int gx = (t.W + FogVolume.VkGroup - 1) / FogVolume.VkGroup, gy = (t.H + FogVolume.VkGroup - 1) / FogVolume.VkGroup;
 
         // both stages' blocks staged, then the arena range they took sent ahead of the first dispatch reading it
@@ -117,22 +120,27 @@ public sealed unsafe partial class AlloyRenderer
         return true;
     }
 
-    /// <summary>The three volumes at this grid; a new grid is new storage and starts without history.</summary>
+    /// <summary>The four volumes at this grid; a new grid is new storage and starts without history.</summary>
     private static bool VkFogVolumes(VkBackend vk, VkFogState s, int w, int h, int d, ExtenderLog log)
     {
-        if (!s.Total.IsNull && s.W == w && s.H == h && s.D == d) return true;
-        vk.Destroy(s.MedA); vk.Destroy(s.MedB); vk.Destroy(s.Total);
+        if (!s.SumA.IsNull && s.W == w && s.H == h && s.D == d) return true;
+        vk.Destroy(s.MedA); vk.Destroy(s.MedB); vk.Destroy(s.SumA); vk.Destroy(s.SumB);
         s.MedA = Volume(vk, w, h, d, "vk vfog medium a");
         s.MedB = Volume(vk, w, h, d, "vk vfog medium b");
-        s.Total = Volume(vk, w, h, d, "vk vfog sum");
+        s.SumA = Volume(vk, w, h, d, "vk vfog sum a");
+        s.SumB = Volume(vk, w, h, d, "vk vfog sum b");
+        s.Total = default;
         s.W = w; s.H = h; s.D = d;
         FogVolume.Revoke();
-        if (!s.MedA.IsNull && !s.MedB.IsNull && !s.Total.IsNull) return true;
+        if (!s.MedA.IsNull && !s.MedB.IsNull && !s.SumA.IsNull && !s.SumB.IsNull) return true;
         log.Always($"AlloyRenderer: a {w}x{h}x{d} Vulkan fog volume was REFUSED (logged above) -- the fog stays the ramp");
-        s.Total = default;
+        vk.Destroy(s.MedA); vk.Destroy(s.MedB); vk.Destroy(s.SumA); vk.Destroy(s.SumB);
+        s.MedA = s.MedB = s.SumA = s.SumB = default;
         return false;
 
         static ImageId Volume(VkBackend vk, int w, int h, int d, string label)
-            => vk.CreateImage(new ImageDesc(ImageKind.Tex3D, Format.Rgba16F, w, h, d, 1, 1, 1, ImageUse.Sampled | ImageUse.Storage, label));
+            => vk.CreateImage(new ImageDesc(ImageKind.Tex3D, Format.Rgba16F, w, h, d, 1, 1, 1,
+                                            ImageUse.Sampled | ImageUse.Storage | ImageUse.Async, label));
     }
+
 }

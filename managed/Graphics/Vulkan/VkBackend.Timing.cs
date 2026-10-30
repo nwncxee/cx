@@ -11,9 +11,11 @@ internal sealed unsafe partial class VkBackend
     private double _gpuMsSum;
     private bool _timing;
 
-    /// <summary>Time the next submit: the frame's own, so a copy or a check submitted beside it is never banked.</summary>
-    internal bool TimeNextSubmit;
-    private int _gpuMsN;
+    /// <summary>Time every graphics submit while set: the frame's own, so a copy or a check submitted outside it is never
+    /// banked. Async submits are not timed; what they hide behind the graphics queue is off the frame's GPU time.</summary>
+    internal bool TimeFrame;
+    /// <summary>Timed frames since the last take, which the banked submit times are averaged over.</summary>
+    private int _gpuFrames;
     /// <summary>Stopwatch ticks the CPU spent blocked on the timeline, and on the swapchain acquire, since the last take.</summary>
     private long _waitTicks, _acquireTicks;
 
@@ -41,14 +43,10 @@ internal sealed unsafe partial class VkBackend
         {
             ulong* t = stackalloc ulong[2];
             if (_vkd.vkGetQueryPoolResults(_timePool, slot * 2, 2, 16, t, 8, VkQueryResultFlags.Bit64) == VkResult.Success && t[1] >= t[0])
-            {
                 _gpuMsSum += (t[1] - t[0]) * _tickNs / 1e6;
-                _gpuMsN++;
-            }
             s.Timed = false;
         }
-        _timing = TimeNextSubmit;
-        TimeNextSubmit = false;
+        _timing = TimeFrame;
         if (!_timing) return;
         _vkd.vkCmdResetQueryPool(_cmd, _timePool, slot * 2, 2);
         _vkd.vkCmdWriteTimestamp(_cmd, VkPipelineStageFlags.TopOfPipe, _timePool, slot * 2);
@@ -81,12 +79,15 @@ internal sealed unsafe partial class VkBackend
         return ms;
     }
 
-    /// <summary>The mean GPU time of the timed submits banked since the last take, and how many; 0 when none were.</summary>
+    /// <summary>The frame's submits are all made: count it, and time nothing after it.</summary>
+    internal void FrameTimed() { _gpuFrames++; TimeFrame = false; }
+
+    /// <summary>The GPU time banked since the last take per timed frame, and how many frames; 0 when none were.</summary>
     internal double TakeGpuMs(out int n)
     {
-        n = _gpuMsN;
+        n = _gpuFrames;
         double avg = n == 0 ? 0 : _gpuMsSum / n;
-        _gpuMsSum = 0; _gpuMsN = 0;
+        _gpuMsSum = 0; _gpuFrames = 0;
         return avg;
     }
 }

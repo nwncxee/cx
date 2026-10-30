@@ -5,8 +5,8 @@ using Microsoft.CodeAnalysis.Operations;
 
 namespace CX.Analyzers;
 
-/// <summary>CX0004: a queue submit, a fence or a semaphore wait outside the backend's timeline. Every submit signals
-/// the timeline and every lifetime waits on its values, so a second path would hand out numbers nothing waits on.</summary>
+/// <summary>CX0004: a queue submit, a fence or a semaphore wait outside the backend's timelines. Every graphics submit
+/// signals the timeline every lifetime waits on, so a second path would hand out numbers nothing waits on.</summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class QueueSync : DiagnosticAnalyzer
 {
@@ -27,8 +27,9 @@ public sealed class QueueSync : DiagnosticAnalyzer
         "CX.Backend",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
-        description: "The backend's queue has one timeline semaphore: a submit signals its number, and readbacks, deaths, "
-            + "staging and descriptor pools wait on those numbers. A submit, fence or wait made elsewhere is invisible to them.");
+        description: "The backend's graphics queue has a timeline semaphore: a submit signals its number, and readbacks, deaths, "
+            + "staging and descriptor pools wait on those numbers; the async compute queue's own timeline is waited on only by "
+            + "a graphics submit's join. A submit, fence or wait made elsewhere is invisible to them.");
 
     /// <inheritdoc/>
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
