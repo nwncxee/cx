@@ -30,6 +30,7 @@ internal static partial class GpuGolden
         if (got == null) return;
         check.Expect(got[0] == 0, $"a coarse-shaded tile whose blocks step 0.11 reads rate {got[0]}, not full rate (0)");
         check.Expect(got[1] == 5, $"a coarse-shaded tile whose blocks step 0.04 reads rate {got[1]}, not 2x2 (5)");
+        log.Info($"GpuGolden: shading rate, {VrsTiles} pattern tiles and 2 coarse-shaded ones, rates {Convert.ToHexString(got.AsSpan(0, 2))}");
     }
 
     /// <summary>The rate <c>cx_vrs_cs</c> picks for each of <paramref name="tiles"/> 16x16 tiles side by side, the
@@ -51,7 +52,8 @@ internal static partial class GpuGolden
             ImageUse.Sampled | ImageUse.CopyDst, "golden rate scene"));
         ImageId rate = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.R8Ui, tiles, 1, 1, 1, 1, 1,
             ImageUse.Storage | ImageUse.CopySrc, "golden rate image"));
-        BufferId outb = vk.CreateBuffer(new BufferDesc((tiles + 3) & ~3, BufferUse.CopyDst | BufferUse.CopySrc, MemoryKind.Device, "golden rate read"));
+        int words = (tiles + 3) & ~3;
+        BufferId outb = vk.CreateBuffer(new BufferDesc(words, BufferUse.CopyDst | BufferUse.CopySrc, MemoryKind.Device, "golden rate read"));
         byte[]? got = null;
         if (!pipe.IsNull && !scene.IsNull && !rate.IsNull && !outb.IsNull && vk.Upload(scene, 0, 0, MemoryMarshal.AsBytes(px.AsSpan())))
         {
@@ -62,7 +64,7 @@ internal static partial class GpuGolden
             cl.PushConstants(0, MemoryMarshal.AsBytes((ReadOnlySpan<int>)[BitConverter.SingleToInt32Bits(VrsContrast), VrsEdge]));
             cl.Dispatch(tiles, 1);
             cl.CopyImageToBuffer(new CopyToBufferCmd(rate, new ImageRegion(0, 0, 0, 0), tiles, 1, outb, 0));
-            var bytes = new byte[(tiles + 3) & ~3];
+            var bytes = new byte[words];
             if (vk.Submit(cl) && vk.ReadBack(outb, bytes)) got = bytes;
         }
         vk.Destroy(outb);

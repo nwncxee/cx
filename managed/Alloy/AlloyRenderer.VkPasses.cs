@@ -120,7 +120,8 @@ public sealed unsafe partial class AlloyRenderer
         var b = new VkBound { Fmt = -1, Tex = -1 };
         VkPassStart(side, w, h);
         // the opaque class alone shades at the tile rates: a coarse alpha test would cut whole 2x2 blocks
-        side.SetShadingRate(!s.Rate.IsNull && Renderer.Vrs.V && !_capturing);
+        bool rated = !s.Rate.IsNull && Renderer.Vrs.V && !_capturing;
+        side.SetShadingRate(rated);
         // the record is this frame's deferred walk's, which runs after these draws; a resize remakes it there
         _vkdef.Wrote = false;
         VkHandOverReads(cl, s);
@@ -151,7 +152,6 @@ public sealed unsafe partial class AlloyRenderer
         }
         VkFlushPass(cl, side, arena0, new RenderPassDesc(colors[..n], new DepthAttachment(s.Depth, 0, 0, LoadOp.Load, StoreOp.Store, 1f))
                                      { ShadingRate = s.Rate });
-        bool rated = !s.Rate.IsNull;
         s.Rate = default;
         cl.EndLabel();
 
@@ -277,7 +277,7 @@ public sealed unsafe partial class AlloyRenderer
         TriggerHighlight.DrawVk(vk, cl, composite, s.Depth, vp, display, log);
         cl.EndLabel();
         cl.BeginLabel("shading rate"u8);
-        VkRatePass(cl, s.Hdr, rated && !_capturing);
+        VkRatePass(cl, s.Hdr, rated);
         cl.EndLabel();
         // the probe last: this frame's lit stages read the cube as it stood, and its faces reuse the frame's side list
         cl.BeginLabel("probe"u8);

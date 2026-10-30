@@ -53,7 +53,7 @@ internal sealed unsafe partial class VkBackend : IDevice
     }
     private readonly record struct VkShader(VkShaderModule Module, ShaderStage Stage);
     /// <summary>A pipeline, and the depth and raster state its desc named, which a bind restates dynamically.</summary>
-    private readonly record struct VkPipe(VkPipeline Pipeline, bool Compute, DepthState Depth, RasterState Raster);
+    private readonly record struct VkPipe(VkPipeline Pipeline, bool Compute, DepthState Depth, RasterState Raster, bool Rated = false);
 
     /// <summary>One submit's recording resources, reused once the timeline passes <see cref="Done"/>: the value its
     /// last submit signalled. <see cref="Index"/> is its place in the list and its timestamp pair.</summary>
@@ -380,7 +380,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         feats.features.geometryShader = true;
         bool layerExt = ViewportIndex(phys) && HasExt(_vki, phys, "VK_EXT_shader_viewport_index_layer\0"u8);
         _memBudget = HasExt(_vki, phys, "VK_EXT_memory_budget\0"u8);
-        _rateTexel = RateSupport(phys, out _rateWhy);
+        _rateTexel = RateSupport(phys, out string? rateWhy);
         var fsr = new VkPhysicalDeviceFragmentShadingRateFeaturesKHR { pipelineFragmentShadingRate = true, attachmentFragmentShadingRate = true };
         if (_rateTexel > 0) clip.pNext = &fsr;
         VkDevice device;
@@ -438,13 +438,12 @@ internal sealed unsafe partial class VkBackend : IDevice
         _maxDrawIndirect = l.maxDrawIndirectCount;
         log.Always($"VkBackend: LIVE -- {Caps}, {_bindlessCap} bindless textures, debug labels "
                  + $"{(_labels ? "on" : "off")}, async compute {(_async != null ? $"on queue family {_async.Family}" : "on the graphics queue (no compute-only family)")}, "
-                 + (_rateTexel > 0 ? $"shading-rate image in {_rateTexel} px tiles" : $"no shading-rate image ({_rateWhy}): the G-buffer pass shades every pixel")
+                 + (_rateTexel > 0 ? $"shading-rate image in {_rateTexel} px tiles" : $"no shading-rate image ({rateWhy}): the G-buffer pass shades every pixel")
                  + "; Vulkan presents the frame itself");
     }
 
-    /// <summary>The edge of a shading-rate image's texel in pixels, 0 when the device cannot read one; and why not.</summary>
+    /// <summary>The edge of a shading-rate image's texel in pixels, 0 when the device cannot read one.</summary>
     private readonly int _rateTexel;
-    private readonly string? _rateWhy;
     /// <inheritdoc cref="_rateTexel"/>
     internal int ShadingRateTexel => _rateTexel;
 

@@ -33,7 +33,7 @@ void main()
     ivec2 end = min(size, origin + uTile);
     int side = uTile / 2;
     uint stepX = 0u, stepY = 0u, pairsX = 0u, pairsY = 0u, crossX = 0u, crossY = 0u, blocksX = 0u, blocksY = 0u;
-    for (int b = int(gl_LocalInvocationIndex); b < side * side; b += 64)
+    for (int b = int(gl_LocalInvocationIndex); b < side * side; b += int(gl_WorkGroupSize.x * gl_WorkGroupSize.y))
     {
         ivec2 p = origin + 2 * ivec2(b % side, b / side);
         if (any(greaterThanEqual(p, size))) continue;

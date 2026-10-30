@@ -59,8 +59,6 @@ internal sealed unsafe partial class VkBackend
         // attachment's REPLACEs it, per draw, through the dynamic combiner SetShadingRate records
         bool rate = d.ShadingRate && _rateTexel > 0;
         var fsr = new VkPipelineFragmentShadingRateStateCreateInfoKHR { fragmentSize = new VkExtent2D(1, 1) };
-        fsr.combinerOps[0] = VkFragmentShadingRateCombinerOpKHR.Keep;
-        fsr.combinerOps[1] = VkFragmentShadingRateCombinerOpKHR.Keep;
         var rendering = new VkPipelineRenderingCreateInfo
         {
             pNext = rate ? &fsr : null,
@@ -105,13 +103,13 @@ internal sealed unsafe partial class VkBackend
         };
         var cb = new VkPipelineColorBlendStateCreateInfo { attachmentCount = (uint)colors, pAttachments = blend };
         // depth and raster are dynamic too: a bind restates the desc's, and a batch may override them per draw
-        VkDynamicState* dyn = stackalloc VkDynamicState[DynamicStates + 1]
+        VkDynamicState* dyn = stackalloc VkDynamicState[(int)RatedDynamicStates]
         {
             VkDynamicState.Viewport, VkDynamicState.Scissor, VkDynamicState.DepthBias, VkDynamicState.CullMode,
             VkDynamicState.FrontFace, VkDynamicState.DepthTestEnable, VkDynamicState.DepthWriteEnable,
             VkDynamicState.DepthCompareOp, VkDynamicState.DepthBiasEnable, VkDynamicState.FragmentShadingRateKHR,
         };
-        var dy = new VkPipelineDynamicStateCreateInfo { dynamicStateCount = rate ? DynamicStates + 1u : DynamicStates, pDynamicStates = dyn };
+        var dy = new VkPipelineDynamicStateCreateInfo { dynamicStateCount = rate ? RatedDynamicStates : DynamicStates, pDynamicStates = dyn };
         var gci = new VkGraphicsPipelineCreateInfo
         {
             pNext = &rendering, stageCount = (uint)ns, pStages = stages, pVertexInputState = &vin, pInputAssemblyState = &ia,
@@ -123,7 +121,7 @@ internal sealed unsafe partial class VkBackend
         if (_vkd.vkCreateGraphicsPipelines(_pipeCache, 1, &gci, &pipe) != VkResult.Success)
             return Refused<PipelineId>($"{what}: vkCreateGraphicsPipelines refused");
         Name(VkObjectType.Pipeline, pipe.Handle, what);
-        return new PipelineId(_pipelines.Add(new VkPipe(pipe, false, d.Depth, d.Raster)));
+        return new PipelineId(_pipelines.Add(new VkPipe(pipe, false, d.Depth, d.Raster, rate)));
     }
 
     private static VkPipelineShaderStageCreateInfo Stage(VkShader s)
@@ -151,8 +149,9 @@ internal sealed unsafe partial class VkBackend
     /// follow an edge.</summary>
     private const int PreferredRateTexel = 16;
 
-    /// <summary>The states every graphics pipeline leaves dynamic.</summary>
-    private const int DynamicStates = 9;
+    /// <summary>The states every graphics pipeline leaves dynamic; a pipeline made for a shading-rate image leaves
+    /// its combiner dynamic too.</summary>
+    private const uint DynamicStates = 9, RatedDynamicStates = DynamicStates + 1;
 
     internal static VkBlendFactor Factor(BlendFactor f) => f switch
     {

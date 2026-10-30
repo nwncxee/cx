@@ -83,7 +83,7 @@ public static class ServiceHost
         CX.Alloy.AlloyRenderer.VkIdSelfCheck(log);   // the Vulkan prepass's vis-ID slot against the stages that write it
         CX.Alloy.VkTextures.SelfCheck(log);   // the GL tokens an owned texture is stored in, as the formats and sampler Vulkan mirrors
         CX.Graphics.Rhi.LooseBlock.SelfCheck(log);   // a loose uniform lands at its member's std140 offset
-        CX.Alloy.GpuGolden.SelfCheck(log);   // ...and the three goldens that have to run on a GPU: the lightmap encoder, the G-buffer lanes, parallax
+        CX.Alloy.GpuGolden.SelfCheck(log);   // ...and the goldens that have to run on a GPU: the lightmap encoder, the G-buffer lanes, parallax, the shading rate
         Settings.SelfCheck(log);   // the prefixed read leaves no probe behind
         KnobSurface.Register();
         EngineLayout.SelfCheck(log);   // the three resolution forms, the counter, and a probe that fires

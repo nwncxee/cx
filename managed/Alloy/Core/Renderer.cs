@@ -148,9 +148,10 @@ internal static class Renderer
                               help: "While an area streams in, every texture first shows a small blurred version of itself, then sharpens when the full one lands. Off: a texture shows white until it has fully loaded.");
 
         Vrs = G.Toggle("vrs", "Shade flat areas coarsely", true, Tier.Advanced, Effect.Live,
-                       help: "Where the last frame showed little detail -- a plain wall, fog, a dark corner -- surfaces are lit "
+                       help: "Where the last frame showed little detail -- a plain wall, fog, a dark corner -- surfaces are shaded "
                            + "once per 2x2 pixels instead of every pixel. Edges keep full resolution. Needs a GPU with "
-                           + "variable-rate shading; elsewhere this does nothing.");
+                           + "variable-rate shading; elsewhere this does nothing.")
+              .Ladder(Quality.Detail, true, true, true, false);
         VrsContrast = G.Slider("vrscontrast", "Coarse shading below contrast", 0f, 0.05f, 0.0025f, 0.01f, tier: Tier.Advanced,
                                help: "How flat a small tile of the screen must look to shade coarsely: the mean brightness step between "
                                    + "neighbouring pixels, 0 to 1. Lower keeps more detail, higher saves more.");

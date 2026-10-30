@@ -152,7 +152,7 @@ internal sealed unsafe partial class VkBackend
                 Op.GenerateMips => MipsImg(r.Read<ImageId>()),
                 Op.BeginLabel => Label(r.Read<LabelCmd>(), ref r),
                 Op.EndLabel => Unlabel(),
-                Op.SetShadingRate => ShadingRate(r.Read<long>() != 0),
+                Op.SetShadingRate => ShadingRate(r.Read<ShadingRateCmd>().Coarse),
                 _ => Fault($"{op} is not on the Vulkan backend yet"),
             };
             if (!ok) return false;
@@ -174,7 +174,7 @@ internal sealed unsafe partial class VkBackend
         _pendCount = colors.Length;
         _pendHasDepth = h.HasDepth;
         _pendDepth = h.Depth;
-        _pendRate = _rateTexel > 0 ? h.ShadingRate : default;
+        _pendRate = h.ShadingRate;
         _inPass = true;
         _scissorSet = false;
         // every pass starts at the whole window-depth range, so a pass that collapses it (the sky dome) or stacks
@@ -190,6 +190,7 @@ internal sealed unsafe partial class VkBackend
         if (!EnsureRendering()) return false;
         _vkd.vkCmdEndRendering(_cmd);
         _inPass = _rendering = false;
+        _pendRate = default;
         return true;
     }
 
@@ -256,7 +257,7 @@ internal sealed unsafe partial class VkBackend
             imageLayout = VkImageLayout.FragmentShadingRateAttachmentOptimalKHR,
             shadingRateAttachmentTexelSize = new VkExtent2D(_rateTexel, _rateTexel),
         };
-        if (!_pendRate.IsNull)
+        if (!_pendRate.IsNull && _rateTexel > 0)
         {
             if (!_images.TryGet(_pendRate.Value, out VkImg ri0)) return Fault("render pass shading rate: stale image");
             if (ri0.Desc.W * _rateTexel < w || ri0.Desc.H * _rateTexel < h)
@@ -266,7 +267,7 @@ internal sealed unsafe partial class VkBackend
         }
         var ri = new VkRenderingInfo
         {
-            pNext = _pendRate.IsNull ? null : &rate,
+            pNext = rate.imageView.IsNull ? null : &rate,
             renderArea = area, layerCount = (uint)layers, colorAttachmentCount = (uint)_pendCount, pColorAttachments = att,
             pDepthAttachment = _pendHasDepth ? &depth : null, pStencilAttachment = stencil ? &depth : null,
         };
@@ -295,6 +296,8 @@ internal sealed unsafe partial class VkBackend
     private bool Bind(PipelineId id)
     {
         if (!_pipelines.TryGet(id.Value, out VkPipe p)) return Fault("SetPipeline: stale pipeline");
+        if (!p.Compute && p.Rated != (_inPass && !_pendRate.IsNull && _rateTexel > 0))
+            return Fault($"SetPipeline: a pipeline {(p.Rated ? "made for" : "not made for")} a shading-rate image, in a pass {(p.Rated ? "without" : "with")} one");
         if (_onAsync && !p.Compute) return Fault("a graphics pipeline on the async compute queue, which cannot draw");
         _bindPoint = p.Compute ? VkPipelineBindPoint.Compute : VkPipelineBindPoint.Graphics;
         _vkd.vkCmdBindPipeline(_cmd, _bindPoint, p.Pipeline);
