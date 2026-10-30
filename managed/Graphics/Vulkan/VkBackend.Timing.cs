@@ -215,5 +215,5 @@ internal sealed unsafe partial class VkBackend
     }
 
     /// <summary>One counter per <see cref="Op"/>: the enum is contiguous from 0, and the check pins this to its length.</summary>
-    internal const int OpCount = (int)Op.EndLabel + 1;
+    internal const int OpCount = (int)Op.SetShadingRate + 1;
 }

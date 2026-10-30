@@ -7,6 +7,8 @@ namespace CX.Rhi;
 public enum Format : byte
 {
     Unknown, R8, Rg8, Rgba8, Rgba8Srgb, R16F, Rg16F, Rgba16F, R32F, Rg32F, Rgba32F, R32Ui, Rg32Ui, Rgba32Ui, R11G11B10F,
+    /// <summary>One unsigned byte, read as an integer: a shading-rate image.</summary>
+    R8Ui,
     D16, D24, D24S8, D32F, D32FS8,
     /// <summary>The block-compressed formats an engine or DDS texture arrives in, each sampled as UNORM (or SNORM/float).</summary>
     Bc1, Bc1A, Bc2, Bc3, Bc4, Bc4S, Bc5, Bc5S, Bc6U, Bc6S, Bc7,
@@ -19,7 +21,7 @@ public static class Formats
     public static bool IsDepth(this Format f) => f is Format.D16 or Format.D24 or Format.D24S8 or Format.D32F or Format.D32FS8;
 
     /// <summary>Holds unnormalized integers: cleared and read as integers, never through a float path.</summary>
-    public static bool IsInteger(this Format f) => f is Format.R32Ui or Format.Rg32Ui or Format.Rgba32Ui;
+    public static bool IsInteger(this Format f) => f is Format.R8Ui or Format.R32Ui or Format.Rg32Ui or Format.Rgba32Ui;
 
     /// <summary>Carries stencil too, so it attaches at the depth-stencil point.</summary>
     public static bool HasStencil(this Format f) => f is Format.D24S8 or Format.D32FS8;
@@ -50,14 +52,15 @@ public enum ImageKind : byte { Tex2D, Tex2DArray, Cube, CubeArray, Tex3D }
 
 /// <summary>What an image is used as. Vulkan needs all of it at creation; GL ignores it.</summary>
 [Flags]
-public enum ImageUse : byte
+public enum ImageUse : ushort
 {
     None = 0, Sampled = 1, ColorTarget = 2, DepthTarget = 4, Storage = 8, CopySrc = 16, CopyDst = 32,
     /// <summary>Sampled as grey: red repeated into green and blue, alpha 1 -- a single-channel engine texture.</summary>
     Grey = 64,
-    /// <summary>Read or written by an <see cref="CommandList.Async"/> list as well as the graphics queue's. ponytail: the
-    /// last bit of the byte; the next flag widens the enum to ushort.</summary>
+    /// <summary>Read or written by an <see cref="CommandList.Async"/> list as well as the graphics queue's.</summary>
     Async = 128,
+    /// <summary>Read by a render pass as its shading-rate image (<see cref="RenderPassDesc.ShadingRate"/>).</summary>
+    ShadingRate = 256,
 }
 
 /// <summary>An image to create. <see cref="Layers"/> counts whole cubes for the cube kinds; <see cref="D"/> is

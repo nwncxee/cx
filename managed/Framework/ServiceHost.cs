@@ -71,6 +71,7 @@ public static class ServiceHost
         ExtenderLog.SelfCheck(log);   // the disabled log evaluates nothing, the enabled one reaches the file
         CX.Graphics.VulkanToolchain.SelfCheck(log);   // the staged shaderc and the machine's loader, off-device only
         CX.Graphics.Rhi.VkBackend.SelfCheck(log);   // the pilot's stages compile for Vulkan with GL's bindings shifted apart
+        CX.Graphics.Rhi.VkBackend.RateSelfCheck(log);   // the shading-rate tile follows the device's texel range
         CX.Graphics.Rhi.VkGlsl.SelfCheck(log);   // the GL-to-Vulkan GLSL rules on fixtures, and the std140 reflection
         CX.Alloy.ShaderBinary.SelfCheck(log);   // a content SPIR-V .shd is validated, and GLSL text is never read as one
         CX.Alloy.VkPrograms.SelfCheck(log);   // the batch pass's programs translate and compile for Vulkan
@@ -82,7 +83,7 @@ public static class ServiceHost
         CX.Alloy.AlloyRenderer.VkIdSelfCheck(log);   // the Vulkan prepass's vis-ID slot against the stages that write it
         CX.Alloy.VkTextures.SelfCheck(log);   // the GL tokens an owned texture is stored in, as the formats and sampler Vulkan mirrors
         CX.Graphics.Rhi.LooseBlock.SelfCheck(log);   // a loose uniform lands at its member's std140 offset
-        CX.Alloy.GpuGolden.SelfCheck(log);   // ...and the three goldens that have to run on a GPU: the lightmap encoder, the G-buffer lanes, parallax
+        CX.Alloy.GpuGolden.SelfCheck(log);   // ...and the goldens that have to run on a GPU: the lightmap encoder, the G-buffer lanes, parallax, the shading rate
         Settings.SelfCheck(log);   // the prefixed read leaves no probe behind
         KnobSurface.Register();
         EngineLayout.SelfCheck(log);   // the three resolution forms, the counter, and a probe that fires

@@ -82,6 +82,7 @@ internal sealed unsafe partial class VkBackend
         Format.R32F => VkFormat.R32Sfloat,
         Format.Rg32F => VkFormat.R32G32Sfloat,
         Format.Rgba32F => VkFormat.R32G32B32A32Sfloat,
+        Format.R8Ui => VkFormat.R8Uint,
         Format.R32Ui => VkFormat.R32Uint,
         Format.Rg32Ui => VkFormat.R32G32Uint,
         Format.Rgba32Ui => VkFormat.R32G32B32A32Uint,
@@ -160,6 +161,7 @@ internal sealed unsafe partial class VkBackend
         if ((use & ImageUse.ColorTarget) != 0 && !f.IsDepth()) u |= VkImageUsageFlags.ColorAttachment;
         if ((use & ImageUse.DepthTarget) != 0 || f.IsDepth()) u |= VkImageUsageFlags.DepthStencilAttachment;
         if ((use & ImageUse.Storage) != 0) u |= VkImageUsageFlags.Storage;
+        if ((use & ImageUse.ShadingRate) != 0) u |= VkImageUsageFlags.FragmentShadingRateAttachmentKHR;
         return u;
     }
 
@@ -242,7 +244,7 @@ internal sealed unsafe partial class VkBackend
 
     private static int TexelBytes(Format f) => f switch
     {
-        Format.R8 => 1,
+        Format.R8 or Format.R8Ui => 1,
         Format.Rg8 or Format.R16F or Format.D16 => 2,
         Format.Rg16F or Format.R32F or Format.R32Ui or Format.Rgba8 or Format.Rgba8Srgb or Format.R11G11B10F
             or Format.D24 or Format.D24S8 or Format.D32F => 4,

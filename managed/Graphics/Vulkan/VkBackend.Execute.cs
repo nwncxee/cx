@@ -24,6 +24,7 @@ internal sealed unsafe partial class VkBackend
     private int _pendCount;
     private bool _pendHasDepth;
     private DepthAttachment _pendDepth;
+    private ImageId _pendRate;
     /// <summary>A multi-draw's commands, built here and staged for the indirect draw that gives each its draw index.</summary>
     private VkDrawIndexedIndirectCommand[] _multi = new VkDrawIndexedIndirectCommand[256];
     private bool _inPass, _rendering, _scissorSet;
@@ -151,6 +152,7 @@ internal sealed unsafe partial class VkBackend
                 Op.GenerateMips => MipsImg(r.Read<ImageId>()),
                 Op.BeginLabel => Label(r.Read<LabelCmd>(), ref r),
                 Op.EndLabel => Unlabel(),
+                Op.SetShadingRate => ShadingRate(r.Read<ShadingRateCmd>().Coarse),
                 _ => Fault($"{op} is not on the Vulkan backend yet"),
             };
             if (!ok) return false;
@@ -172,6 +174,7 @@ internal sealed unsafe partial class VkBackend
         _pendCount = colors.Length;
         _pendHasDepth = h.HasDepth;
         _pendDepth = h.Depth;
+        _pendRate = h.ShadingRate;
         _inPass = true;
         _scissorSet = false;
         // every pass starts at the whole window-depth range, so a pass that collapses it (the sky dome) or stacks
@@ -187,6 +190,7 @@ internal sealed unsafe partial class VkBackend
         if (!EnsureRendering()) return false;
         _vkd.vkCmdEndRendering(_cmd);
         _inPass = _rendering = false;
+        _pendRate = default;
         return true;
     }
 
@@ -248,8 +252,22 @@ internal sealed unsafe partial class VkBackend
             if (w == 0) { w = img.Desc.W; h = img.Desc.H; }
         }
         var area = new VkRect2D { extent = new VkExtent2D { width = (uint)w, height = (uint)h } };
+        var rate = new VkRenderingFragmentShadingRateAttachmentInfoKHR
+        {
+            imageLayout = VkImageLayout.FragmentShadingRateAttachmentOptimalKHR,
+            shadingRateAttachmentTexelSize = new VkExtent2D(_rateTexel, _rateTexel),
+        };
+        if (!_pendRate.IsNull && _rateTexel > 0)
+        {
+            if (!_images.TryGet(_pendRate.Value, out VkImg ri0)) return Fault("render pass shading rate: stale image");
+            if (ri0.Desc.W * _rateTexel < w || ri0.Desc.H * _rateTexel < h)
+                return Fault($"render pass shading rate: {ri0.Desc.Label} is {ri0.Desc.W}x{ri0.Desc.H} tiles of {_rateTexel} px, short of {w}x{h}");
+            Transition(ri0, VkImageLayout.FragmentShadingRateAttachmentOptimalKHR);
+            rate.imageView = ri0.View;
+        }
         var ri = new VkRenderingInfo
         {
+            pNext = rate.imageView.IsNull ? null : &rate,
             renderArea = area, layerCount = (uint)layers, colorAttachmentCount = (uint)_pendCount, pColorAttachments = att,
             pDepthAttachment = _pendHasDepth ? &depth : null, pStencilAttachment = stencil ? &depth : null,
         };
@@ -262,9 +280,24 @@ internal sealed unsafe partial class VkBackend
         return true;
     }
 
+    private bool ShadingRate(bool coarse)
+    {
+        if (_rateTexel == 0) return true;
+        var one = new VkExtent2D(1, 1);
+        VkFragmentShadingRateCombinerOpKHR* ops = stackalloc VkFragmentShadingRateCombinerOpKHR[2]
+        {
+            VkFragmentShadingRateCombinerOpKHR.Keep,
+            coarse && !_pendRate.IsNull ? VkFragmentShadingRateCombinerOpKHR.Replace : VkFragmentShadingRateCombinerOpKHR.Keep,
+        };
+        _vkd.vkCmdSetFragmentShadingRateKHR(_cmd, &one, ops);
+        return true;
+    }
+
     private bool Bind(PipelineId id)
     {
         if (!_pipelines.TryGet(id.Value, out VkPipe p)) return Fault("SetPipeline: stale pipeline");
+        if (!p.Compute && p.Rated != (_inPass && !_pendRate.IsNull && _rateTexel > 0))
+            return Fault($"SetPipeline: a pipeline {(p.Rated ? "made for" : "not made for")} a shading-rate image, in a pass {(p.Rated ? "without" : "with")} one");
         if (_onAsync && !p.Compute) return Fault("a graphics pipeline on the async compute queue, which cannot draw");
         _bindPoint = p.Compute ? VkPipelineBindPoint.Compute : VkPipelineBindPoint.Graphics;
         _vkd.vkCmdBindPipeline(_cmd, _bindPoint, p.Pipeline);

@@ -53,7 +53,7 @@ internal sealed unsafe partial class VkBackend : IDevice
     }
     private readonly record struct VkShader(VkShaderModule Module, ShaderStage Stage);
     /// <summary>A pipeline, and the depth and raster state its desc named, which a bind restates dynamically.</summary>
-    private readonly record struct VkPipe(VkPipeline Pipeline, bool Compute, DepthState Depth, RasterState Raster);
+    private readonly record struct VkPipe(VkPipeline Pipeline, bool Compute, DepthState Depth, RasterState Raster, bool Rated = false);
 
     /// <summary>One submit's recording resources, reused once the timeline passes <see cref="Done"/>: the value its
     /// last submit signalled. <see cref="Index"/> is its place in the list and its timestamp pair.</summary>
@@ -380,14 +380,19 @@ internal sealed unsafe partial class VkBackend : IDevice
         feats.features.geometryShader = true;
         bool layerExt = ViewportIndex(phys) && HasExt(_vki, phys, "VK_EXT_shader_viewport_index_layer\0"u8);
         _memBudget = HasExt(_vki, phys, "VK_EXT_memory_budget\0"u8);
+        _rateTexel = RateSupport(phys, out string? rateWhy);
+        var fsr = new VkPhysicalDeviceFragmentShadingRateFeaturesKHR { pipelineFragmentShadingRate = true, attachmentFragmentShadingRate = true };
+        if (_rateTexel > 0) clip.pNext = &fsr;
         VkDevice device;
         fixed (byte* sw = SwapchainExt) fixed (byte* c = "VK_EXT_depth_clip_control\0"u8)
         fixed (byte* vl = "VK_EXT_shader_viewport_index_layer\0"u8) fixed (byte* mb = "VK_EXT_memory_budget\0"u8)
+        fixed (byte* sr = RateExt)
         {
-            byte** exts = stackalloc byte*[4] { sw, c, null, null };
+            byte** exts = stackalloc byte*[5] { sw, c, null, null, null };
             uint n = 2;
             if (layerExt) exts[n++] = vl;
             if (_memBudget) exts[n++] = mb;
+            if (_rateTexel > 0) exts[n++] = sr;
             var dci = new VkDeviceCreateInfo
             {
                 pNext = &feats, queueCreateInfoCount = asyncFamily >= 0 ? 2u : 1u, pQueueCreateInfos = qci,
@@ -432,8 +437,35 @@ internal sealed unsafe partial class VkBackend : IDevice
             (int)l.minUniformBufferOffsetAlignment, (int)l.minStorageBufferOffsetAlignment, has.samplerAnisotropy ? l.maxSamplerAnisotropy : 1f);
         _maxDrawIndirect = l.maxDrawIndirectCount;
         log.Always($"VkBackend: LIVE -- {Caps}, {_bindlessCap} bindless textures, debug labels "
-                 + $"{(_labels ? "on" : "off")}, async compute {(_async != null ? $"on queue family {_async.Family}" : "on the graphics queue (no compute-only family)")}; "
-                 + "Vulkan presents the frame itself");
+                 + $"{(_labels ? "on" : "off")}, async compute {(_async != null ? $"on queue family {_async.Family}" : "on the graphics queue (no compute-only family)")}, "
+                 + (_rateTexel > 0 ? $"shading-rate image in {_rateTexel} px tiles" : $"no shading-rate image ({rateWhy}): the G-buffer pass shades every pixel")
+                 + "; Vulkan presents the frame itself");
+    }
+
+    /// <summary>The edge of a shading-rate image's texel in pixels, 0 when the device cannot read one.</summary>
+    private readonly int _rateTexel;
+    /// <inheritdoc cref="_rateTexel"/>
+    internal int ShadingRateTexel => _rateTexel;
+
+    private static ReadOnlySpan<byte> RateExt => "VK_KHR_fragment_shading_rate\0"u8;
+
+    /// <summary>The square texel edge <paramref name="d"/> takes a shading-rate image in, or 0 with why not: the
+    /// extension, its attachment feature, and a square size <see cref="RateTexel"/> accepts.</summary>
+    private int RateSupport(VkPhysicalDevice d, out string? why)
+    {
+        why = null;
+        if (!HasExt(_vki, d, RateExt)) { why = "lacks VK_KHR_fragment_shading_rate"; return 0; }
+        var feats = new VkPhysicalDeviceFragmentShadingRateFeaturesKHR();
+        var f2 = new VkPhysicalDeviceFeatures2 { pNext = &feats };
+        _vki.vkGetPhysicalDeviceFeatures2(d, &f2);
+        if (!feats.attachmentFragmentShadingRate || !feats.pipelineFragmentShadingRate) { why = "lacks attachmentFragmentShadingRate"; return 0; }
+        var props = new VkPhysicalDeviceFragmentShadingRatePropertiesKHR();
+        var p2 = new VkPhysicalDeviceProperties2 { pNext = &props };
+        _vki.vkGetPhysicalDeviceProperties2(d, &p2);
+        VkExtent2D lo = props.minFragmentShadingRateAttachmentTexelSize, hi = props.maxFragmentShadingRateAttachmentTexelSize;
+        int t = RateTexel((int)Math.Max(lo.width, lo.height), (int)Math.Min(hi.width, hi.height));
+        if (t == 0) why = $"no square texel between {lo.width}x{lo.height} and {hi.width}x{hi.height}";
+        return t;
     }
 
     /// <summary>The device takes VK_EXT_memory_budget, so <see cref="DeviceLocalKib"/> reads the driver's own figures.</summary>

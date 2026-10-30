@@ -8,9 +8,9 @@ using CX.Rhi;
 namespace CX.Alloy;
 
 /// <summary>
-/// The three shader goldens that have to run on a GPU to mean anything: the lightmap block encoder against the
-/// driver's own BC6H/BC7 decoder, the G-buffer's pack and read lanes, and the parallax march against the stock
-/// displacement. Each builds the shipped GLSL into a compute stage on a device of its own and compares what the
+/// The shader goldens that have to run on a GPU to mean anything: the lightmap block encoder against the
+/// driver's own BC6H/BC7 decoder, the G-buffer's pack and read lanes, the parallax march against the stock
+/// displacement, and the shading rate per tile. Each builds the shipped GLSL into a compute stage on a device of its own and compares what the
 /// hardware answered with an oracle written here, so no assertion can be satisfied by the code under test.
 /// </summary>
 internal static partial class GpuGolden
@@ -34,12 +34,13 @@ internal static partial class GpuGolden
         log.Info(check.Ok ? "GpuGolden.SelfCheck: passed" : "GpuGolden.SelfCheck: FAILED");
     }
 
-    /// <summary>All three goldens on <paramref name="vk"/>, each cleaning up after itself.</summary>
+    /// <summary>Every golden on <paramref name="vk"/>, each cleaning up after itself.</summary>
     private static void Run(VkBackend vk, Checker check, ExtenderLog log)
     {
         ParallaxSelfCheck(vk, check, log);
         GbufSelfCheck(vk, check, log);
         LightmapSelfCheck(vk, check, log);
+        VrsSelfCheck(vk, check, log);
     }
 
     /// <summary>The version line every golden stage opens with, and the one the shipped libraries open with.</summary>
