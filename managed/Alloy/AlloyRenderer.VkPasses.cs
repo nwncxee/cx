@@ -113,17 +113,21 @@ public sealed unsafe partial class AlloyRenderer
         cl.EndLabel();
 
         cl.BeginLabel("G-buffer"u8);
+        s.Rate = gbuf ? VkRateImage(vk, cl, w, h, log) : default;
         CommandList side = s.Side!;
         side.Reset();
         int arena0 = s.ArenaUsed;
         var b = new VkBound { Fmt = -1, Tex = -1 };
         VkPassStart(side, w, h);
+        // the opaque class alone shades at the tile rates: a coarse alpha test would cut whole 2x2 blocks
+        side.SetShadingRate(!s.Rate.IsNull && Renderer.Vrs.V && !_capturing);
         // the record is this frame's deferred walk's, which runs after these draws; a resize remakes it there
         _vkdef.Wrote = false;
         VkHandOverReads(cl, s);
         bool ok = true;
         var plain = new VkRange(_depthEqual, true, false, false, colour, gbuf, VkDecalFold);
         ok &= VkIssueClass(side, ref b, 0, _gCutoutStart, plain, vp, viewport, near, far, indirect);
+        side.SetShadingRate(false);
         ok &= VkIssueClass(side, ref b, _gCutoutStart, _gA2cStart, plain, vp, viewport, near, far, indirect);
         // the coverage tail waits for its layer whenever one arms; otherwise it draws here, cut
         bool cover = VkCoverArm(vk, vp, viewport, log);
@@ -145,7 +149,10 @@ public sealed unsafe partial class AlloyRenderer
             colors[GbufFirst + 2] = new ColorAttachment(s.G2, 0, 0, LoadOp.DontCare, StoreOp.Store, default);
             if (refl) VkSsrAttachments(colors);
         }
-        VkFlushPass(cl, side, arena0, new RenderPassDesc(colors[..n], new DepthAttachment(s.Depth, 0, 0, LoadOp.Load, StoreOp.Store, 1f)));
+        VkFlushPass(cl, side, arena0, new RenderPassDesc(colors[..n], new DepthAttachment(s.Depth, 0, 0, LoadOp.Load, StoreOp.Store, 1f))
+                                     { ShadingRate = s.Rate });
+        bool rated = !s.Rate.IsNull;
+        s.Rate = default;
         cl.EndLabel();
 
         // the sky after the G-buffer writers rather than between them as GL's graph has it: the dome draws only
@@ -268,6 +275,9 @@ public sealed unsafe partial class AlloyRenderer
         if (!PostStack.RecordVk(vk, cl, s.Hdr, s.Depth, &vpJ, &vpC, viewport, display, log)) return false;
         VkHighlightComposite(cl, composite, display, log);
         TriggerHighlight.DrawVk(vk, cl, composite, s.Depth, vp, display, log);
+        cl.EndLabel();
+        cl.BeginLabel("shading rate"u8);
+        VkRatePass(cl, s.Hdr, rated && !_capturing);
         cl.EndLabel();
         // the probe last: this frame's lit stages read the cube as it stood, and its faces reuse the frame's side list
         cl.BeginLabel("probe"u8);

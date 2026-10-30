@@ -55,8 +55,15 @@ internal sealed unsafe partial class VkBackend
                 colorWriteMask = (VkColorComponentFlags)(~(int)a.Masked & (int)ColorMask.All),
             };
         }
+        // a pass with a rate image binds only pipelines made for one: the pipeline's own rate is 1x1 and the
+        // attachment's REPLACEs it, per draw, through the dynamic combiner SetShadingRate records
+        bool rate = d.ShadingRate && _rateTexel > 0;
+        var fsr = new VkPipelineFragmentShadingRateStateCreateInfoKHR { fragmentSize = new VkExtent2D(1, 1) };
+        fsr.combinerOps[0] = VkFragmentShadingRateCombinerOpKHR.Keep;
+        fsr.combinerOps[1] = VkFragmentShadingRateCombinerOpKHR.Keep;
         var rendering = new VkPipelineRenderingCreateInfo
         {
+            pNext = rate ? &fsr : null,
             colorAttachmentCount = (uint)colors, pColorAttachmentFormats = fmts,
             depthAttachmentFormat = Of(d.Targets.Depth),
             stencilAttachmentFormat = d.Targets.Depth.HasStencil() ? Of(d.Targets.Depth) : VkFormat.Undefined,
@@ -98,18 +105,19 @@ internal sealed unsafe partial class VkBackend
         };
         var cb = new VkPipelineColorBlendStateCreateInfo { attachmentCount = (uint)colors, pAttachments = blend };
         // depth and raster are dynamic too: a bind restates the desc's, and a batch may override them per draw
-        VkDynamicState* dyn = stackalloc VkDynamicState[DynamicStates]
+        VkDynamicState* dyn = stackalloc VkDynamicState[DynamicStates + 1]
         {
             VkDynamicState.Viewport, VkDynamicState.Scissor, VkDynamicState.DepthBias, VkDynamicState.CullMode,
             VkDynamicState.FrontFace, VkDynamicState.DepthTestEnable, VkDynamicState.DepthWriteEnable,
-            VkDynamicState.DepthCompareOp, VkDynamicState.DepthBiasEnable,
+            VkDynamicState.DepthCompareOp, VkDynamicState.DepthBiasEnable, VkDynamicState.FragmentShadingRateKHR,
         };
-        var dy = new VkPipelineDynamicStateCreateInfo { dynamicStateCount = DynamicStates, pDynamicStates = dyn };
+        var dy = new VkPipelineDynamicStateCreateInfo { dynamicStateCount = rate ? DynamicStates + 1u : DynamicStates, pDynamicStates = dyn };
         var gci = new VkGraphicsPipelineCreateInfo
         {
             pNext = &rendering, stageCount = (uint)ns, pStages = stages, pVertexInputState = &vin, pInputAssemblyState = &ia,
             pViewportState = &vp, pRasterizationState = &rs, pMultisampleState = &ms, pDepthStencilState = &ds,
             pColorBlendState = &cb, pDynamicState = &dy, layout = _pipeLayout,
+            flags = rate ? VkPipelineCreateFlags.RenderingFragmentShadingRateAttachmentKHR : VkPipelineCreateFlags.None,
         };
         _pipeCacheDirty = true;
         if (_vkd.vkCreateGraphicsPipelines(_pipeCache, 1, &gci, &pipe) != VkResult.Success)
@@ -134,6 +142,14 @@ internal sealed unsafe partial class VkBackend
         fixed (byte* main = "main\0"u8) st.pName = main;   // a u8 literal lives in the image: the pointer outlives the call
         return st;
     }
+
+    /// <summary>The shading-rate tile edge for a device whose texels run <paramref name="min"/>..<paramref name="max"/>
+    /// pixels: 16 where it can, the nearest end otherwise, 0 for an empty range.</summary>
+    internal static int RateTexel(int min, int max) => min > max ? 0 : Math.Clamp(PreferredRateTexel, min, max);
+
+    /// <summary>The tile edge the rate stage is tuned for: big enough to hold a contrast estimate, small enough to
+    /// follow an edge.</summary>
+    private const int PreferredRateTexel = 16;
 
     /// <summary>The states every graphics pipeline leaves dynamic.</summary>
     private const int DynamicStates = 9;

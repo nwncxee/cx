@@ -52,14 +52,15 @@ public enum ImageKind : byte { Tex2D, Tex2DArray, Cube, CubeArray, Tex3D }
 
 /// <summary>What an image is used as. Vulkan needs all of it at creation; GL ignores it.</summary>
 [Flags]
-public enum ImageUse : byte
+public enum ImageUse : ushort
 {
     None = 0, Sampled = 1, ColorTarget = 2, DepthTarget = 4, Storage = 8, CopySrc = 16, CopyDst = 32,
     /// <summary>Sampled as grey: red repeated into green and blue, alpha 1 -- a single-channel engine texture.</summary>
     Grey = 64,
-    /// <summary>Read or written by an <see cref="CommandList.Async"/> list as well as the graphics queue's. ponytail: the
-    /// last bit of the byte; the next flag widens the enum to ushort.</summary>
+    /// <summary>Read or written by an <see cref="CommandList.Async"/> list as well as the graphics queue's.</summary>
     Async = 128,
+    /// <summary>Read by a render pass as its shading-rate image (<see cref="RenderPassDesc.ShadingRate"/>).</summary>
+    ShadingRate = 256,
 }
 
 /// <summary>An image to create. <see cref="Layers"/> counts whole cubes for the cube kinds; <see cref="D"/> is

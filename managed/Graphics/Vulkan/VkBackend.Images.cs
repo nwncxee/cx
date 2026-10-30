@@ -161,6 +161,7 @@ internal sealed unsafe partial class VkBackend
         if ((use & ImageUse.ColorTarget) != 0 && !f.IsDepth()) u |= VkImageUsageFlags.ColorAttachment;
         if ((use & ImageUse.DepthTarget) != 0 || f.IsDepth()) u |= VkImageUsageFlags.DepthStencilAttachment;
         if ((use & ImageUse.Storage) != 0) u |= VkImageUsageFlags.Storage;
+        if ((use & ImageUse.ShadingRate) != 0) u |= VkImageUsageFlags.FragmentShadingRateAttachmentKHR;
         return u;
     }
 

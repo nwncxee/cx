@@ -78,6 +78,8 @@ internal sealed unsafe partial class VkBackend
         VkImageLayout.General => (ShaderStages, StorageAccess),
         VkImageLayout.TransferSrcOptimal => (VkPipelineStageFlags2.AllTransfer, VkAccessFlags2.TransferRead),
         VkImageLayout.TransferDstOptimal => (VkPipelineStageFlags2.AllTransfer, VkAccessFlags2.TransferWrite),
+        VkImageLayout.FragmentShadingRateAttachmentOptimalKHR => (VkPipelineStageFlags2.FragmentShadingRateAttachmentKHR,
+                                                                  VkAccessFlags2.FragmentShadingRateAttachmentReadKHR),
         _ => (VkPipelineStageFlags2.AllCommands, VkAccessFlags2.MemoryRead | VkAccessFlags2.MemoryWrite),
     };
 
