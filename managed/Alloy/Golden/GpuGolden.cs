@@ -40,6 +40,7 @@ internal static partial class GpuGolden
         ParallaxSelfCheck(vk, check, log);
         GbufSelfCheck(vk, check, log);
         LightmapSelfCheck(vk, check, log);
+        VrsSelfCheck(vk, check, log);
     }
 
     /// <summary>The version line every golden stage opens with, and the one the shipped libraries open with.</summary>
