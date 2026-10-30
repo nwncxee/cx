@@ -47,6 +47,7 @@ internal sealed unsafe partial class VkBackend
         bool lane = list.Async && _async != null;
         if (lane && !UploadsAhead()) return false;
         if ((lane ? TakeSlot(_async!.Slots, _async.Pool, _async.Timeline, ref _async.Completed) : TakeSlot()) is not Slot s) return false;
+        if (!lane && _aliasShrink) ShrinkGroups();
         if (_sets.Stale && !RetireSets()) return false;
         s.StageUsed = 0;
         _recording++;
@@ -95,7 +96,11 @@ internal sealed unsafe partial class VkBackend
         {
             // nothing ran, so no recorded barrier did: every image is back in the layout it entered with, and the
             // uploads this recording flushed wait for the next one
-            for (int i = _undo.Count - 1; i >= 0; i--) _undo[i].Img.Layout = _undo[i].Layout;
+            for (int i = _undo.Count - 1; i >= 0; i--)
+            {
+                _undo[i].Img.Layout = _undo[i].Layout;
+                if (_undo[i].Img.Group is AliasGroup g) g.Owner = null;
+            }
             _undo.Clear();
             if (lane) _resyncAsync = true;
             else _resync = true;

@@ -132,6 +132,7 @@ internal sealed unsafe partial class VkBackend
                    || !BitOperations.IsPow2(d.Samples))
             || Of(d.Fmt) == VkFormat.Undefined || d.W <= 0 || d.H <= 0 || d.Mips < 1 || d.Layers < 1)
             return Refused<ImageId>($"image {d.Label}: {d.Kind} {d.Fmt} {d.W}x{d.H} x{d.Samples} with {d.Mips} mips, {d.Layers} layers");
+        if (d.Alias is string group) return CreateAliased(d, group);
         VkImageCreateInfo ici = ImageInfo(d, null);
         uint* fams = stackalloc uint[3];
         if ((d.Use & ImageUse.Async) != 0) Share(ref ici.sharingMode, ref ici.queueFamilyIndexCount, ref ici.pQueueFamilyIndices, fams, transfer: false);
@@ -141,6 +142,7 @@ internal sealed unsafe partial class VkBackend
         if (Vma.vmaCreateImage(_vma, &ici, &aci, &image, &a, null) != VkResult.Success)
             return Refused<ImageId>($"image {d.Label}: VMA refused {d.Kind} {d.Fmt} {d.W}x{d.H}");
         Name(VkObjectType.Image, image.Handle, d.Label);
+        Vma.vmaSetAllocationName(_vma, a, d.Label);
         return new ImageId(_images.Add(new VkImg { Image = image, Alloc = a, View = View(image, d, -1), Desc = d }));
     }
 
@@ -269,6 +271,7 @@ internal sealed unsafe partial class VkBackend
     internal bool Upload(ImageId i, int mip, int layer, ReadOnlySpan<byte> bytes)
     {
         if (!OnThread("Upload") || !_images.TryGet(i.Value, out VkImg img)) return Fault("Upload: stale image");
+        if (img.Group != null) return Fault($"Upload into {img.Desc.Label}: an alias group's image keeps no contents past another member's use");
         if (mip < 0 || mip >= img.Desc.Mips || bytes.Length != LevelBytes(img.Desc, mip))
             return Fault($"Upload into {img.Desc.Label}: {bytes.Length} bytes for mip {mip}, which holds {LevelBytes(img.Desc, Math.Clamp(mip, 0, img.Desc.Mips - 1))}");
         if (!Stage(bytes, out VkBuffer src, out ulong at)) return false;
@@ -546,6 +549,7 @@ internal sealed unsafe partial class VkBackend
     internal BindlessHandle Bindless(ImageId i, SamplerId s)
     {
         if (!OnThread("Bindless") || !_images.TryGet(i.Value, out VkImg img)) return Refused<BindlessHandle>("Bindless: stale image");
+        if (img.Group != null) return Refused<BindlessHandle>($"Bindless: {img.Desc.Label} is in an alias group, whose images a rebind remakes");
         VkSampler sampler = _nearest;
         if (!s.IsNull && !_samplers.TryGet(s.Value, out sampler)) return Refused<BindlessHandle>("Bindless: stale sampler");
         BindlessState t = _bindless;

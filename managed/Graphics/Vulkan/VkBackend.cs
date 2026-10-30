@@ -37,6 +37,8 @@ internal sealed unsafe partial class VkBackend : IDevice
         /// <summary>Its queued barrier's place in the batch numbered <see cref="BarBatch"/>.</summary>
         public int BarAt;
         public long BarBatch = -1;
+        /// <summary>The alias group whose allocation it is bound into; null for an image with memory of its own.</summary>
+        public AliasGroup? Group;
     }
 
     private sealed class VkBuf(VkBuffer buffer, VmaAllocation alloc, BufferDesc desc)
@@ -557,6 +559,7 @@ internal sealed unsafe partial class VkBackend : IDevice
             if (!HostBuffer((ulong)d.Bytes, use, VmaAllocationCreateFlags.HostAccessRandom, out VkBuffer hb, out VmaAllocation ha))
                 return Refused<BufferId>($"readback buffer {d.Label}: VMA refused {d.Bytes} bytes");
             Name(VkObjectType.Buffer, hb.Handle, d.Label);
+            Vma.vmaSetAllocationName(_vma, ha, d.Label);
             return new BufferId(_buffers.Add(new VkBuf(hb, ha, d)));
         }
         var bci = new VkBufferCreateInfo { size = (ulong)d.Bytes, usage = use, sharingMode = VkSharingMode.Exclusive };
@@ -570,6 +573,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         if (Vma.vmaCreateBuffer(_vma, &bci, &aci, &b, &a, null) != VkResult.Success)
             return Refused<BufferId>($"buffer {d.Label}: VMA refused {d.Bytes} bytes");
         Name(VkObjectType.Buffer, b.Handle, d.Label);
+        Vma.vmaSetAllocationName(_vma, a, d.Label);
         var id = new BufferId(_buffers.Add(new VkBuf(b, a, d)));
         _upload.Zero.Add(id);
         return id;
@@ -648,7 +652,10 @@ internal sealed unsafe partial class VkBackend : IDevice
 
     public void Destroy(ImageId i)
     {
-        if (OnThread("Destroy") && _images.Remove(i.Value, out VkImg g)) { _sets.Stale = true; LaterThanBindless(() => Free(g)); }
+        if (!OnThread("Destroy") || !_images.Remove(i.Value, out VkImg g)) return;
+        _sets.Stale = true;
+        if (g.Group != null) Leave(g);
+        LaterThanBindless(() => Free(g));
     }
 
     /// <summary>An image's views, the image and its memory.</summary>
@@ -709,6 +716,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         foreach (var d in _bindless.Behind) d.Free();
         _bindless.Behind.Clear();
         foreach (VkImg g in _images.Live()) Free(g);
+        foreach (AliasGroup g in _alias.Values) Vma.vmaFreeMemory(_vma, g.Alloc);
         foreach (VkBuf b in _buffers.Live()) Vma.vmaDestroyBuffer(_vma, b.Buffer, b.Alloc);
         foreach (VkSampler v in _samplers.Live()) _vkd.vkDestroySampler(v);
         foreach (VkShader v in _shaders.Live()) _vkd.vkDestroyShaderModule(v.Module);

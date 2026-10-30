@@ -99,7 +99,12 @@ internal sealed unsafe partial class VkBackend
     private VkResult WaitFrame() => WaitFor(_frameEnds[_frames % FramesInFlight]);
 
     /// <summary>The frame ends on the last submit made so far.</summary>
-    private void EndFrame() => _frameEnds[_frames++ % FramesInFlight] = _submits;
+    private void EndFrame()
+    {
+        _frameEnds[_frames++ % FramesInFlight] = _submits;
+        // VMA refreshes its heap budget from the driver as the frame index moves
+        Vma.vmaSetCurrentFrameIndex(_vma, (uint)_frames);
+    }
 
     /// <summary>The acquire semaphore of the frame being presented: the frame <see cref="FramesInFlight"/> back, which
     /// last waited on it, has finished.</summary>

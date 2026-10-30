@@ -29,23 +29,30 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>The frame line's memory part: what Alloy's allocations hold, the device's use against its budget, and
     /// the largest allocations by name.</summary>
-    internal static string VramLine(long heldBytes, long usageBytes, long budgetBytes, ReadOnlySpan<(string Name, long Bytes)> top) => "";
+    internal static string VramLine(long heldBytes, long usageBytes, long budgetBytes, ReadOnlySpan<(string Name, long Bytes)> top)
+    {
+        const int Shift = 20;
+        var line = new System.Text.StringBuilder($", vram {heldBytes >> Shift}MiB held, {usageBytes >> Shift}/{budgetBytes >> Shift}MiB of the budget used");
+        if (usageBytes > budgetBytes) line.Append($", OVER BUDGET by {(usageBytes - budgetBytes) >> Shift}MiB");
+        for (int i = 0; i < top.Length; i++) line.Append(i == 0 ? "; largest " : ", ").Append($"{top[i].Name} {top[i].Bytes >> Shift}MiB");
+        return line.ToString();
+    }
 
     /// <summary>The frame line's memory part as the device reads now; empty before the first frame has probed it.</summary>
-    internal static string FrameVram() => "";
+    internal static string FrameVram()
+    {
+        if (!_vramProbed || AlloyDevice.VulkanMade is not VkBackend vk) return "";
+        vk.DeviceLocalBytes(out long usage, out long budget);
+        return VramLine(vk.DeviceLocalHeld, usage, budget, vk.Largest(3));
+    }
 
     /// <summary>The device's memory figures as last sampled, KiB.</summary>
     private sealed class VramState
     {
         public int FreeKib;
-        /// <summary>What the driver has paged out to host memory, cumulative. No Vulkan source yet:
-        /// VK_EXT_memory_budget reports usage against budget, not what was evicted.</summary>
-        public int EvictedKib;
     }
 
     private static readonly VramState _vram = new();
-    /// <inheritdoc cref="VramState.EvictedKib"/>
-    internal static long VramEvictedMib => _vram.EvictedKib / 1024;
     /// <summary>The free pool read now; -1 before the probe or without a memory query.</summary>
     internal static long VramFreeKibNow()
     {
