@@ -220,3 +220,5 @@ alloy\.(gl46|glsync|gldebug)\b|\[gl46\]|\[gldebug\]	GL sweep 8
 # half-res composite stage is gone.
 # The coat caps went with them: the resolve's cone and highlight reduction stand in.
 \bcx_ssrcomp_f\b|\bCX_SSR_COAT\w*	CX-385
+# The water film's per-froxel light picks: the film walks every cold static of its list, each fading at its own reach.
+\bCX_REFL_MAX\b|\bCxClusterRefl\b|\bCxListRefl\b|\bCxTileRefl\b|\buReflK\b|\bsRefl\b	CX-399

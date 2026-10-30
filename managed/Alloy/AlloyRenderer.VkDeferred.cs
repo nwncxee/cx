@@ -36,7 +36,7 @@ public sealed unsafe partial class AlloyRenderer
     private struct VkDefLoc
     {
         public int Cubes, Material, LightOcc, LmMovers, Rect, InvVp, Proj, ShSize, ShRes;
-        public int View, Grid, ProjXY, Z, LightCount, Reach, LightFloor, BinCap, Atten, Hot, ReflK, Rel, Pad, Tally, DynPage;
+        public int View, Grid, ProjXY, Z, LightCount, Reach, LightFloor, BinCap, Atten, Hot, Rel, Pad, Tally, DynPage;
     }
 
     /// <summary>The deferred path's resources on one device, replaced whole with the device.</summary>
@@ -91,7 +91,7 @@ public sealed unsafe partial class AlloyRenderer
         int div = Math.Max(Shadows.DeferredRes.V, 1);
         int rw = (w + div - 1) / div, rh = (h + div - 1) / div;
         if (!VkDefEnsure(vk, cl, w, h, rw, rh, log)) return;
-        bool film = Weather.ReflK > 0 && d.Film != null;
+        bool film = Weather.Film && d.Film != null;
         VkDefStage walk = VkDefWalk(vk, log);
 
         ReadOnlySpan<byte> rig = MemoryMarshal.AsBytes(AlloyLights.Staged);
@@ -113,7 +113,6 @@ public sealed unsafe partial class AlloyRenderer
         // writes them runs here too, and the per-tile cull when the knob asks -- the table says which it is
         b.Tiles = Lighting.DeferredTiles.V || VkClusterCounts.IsNull ? 1 : 0;
         b.LightCount = AlloyLights.UploadedLights;
-        b.ReflK = Weather.ReflK;
         b.ShSize = new Int2(rw, rh);
         b.ShRes = div;
         Span<byte> blk = stackalloc byte[Std140.BlockBytes<DeferredBlock>()];
@@ -417,7 +416,6 @@ public sealed unsafe partial class AlloyRenderer
             st.L.BinCap = LooseBlock.Loc("uBinCap");
             st.L.Atten = LooseBlock.Loc("uAtten");
             st.L.Hot = LooseBlock.Loc("uHot");
-            st.L.ReflK = LooseBlock.Loc("uReflK");
             st.L.Rel = LooseBlock.Loc("uRel");
             st.L.Pad = LooseBlock.Loc("uPad");
             st.L.Tally = LooseBlock.Loc("uTally");

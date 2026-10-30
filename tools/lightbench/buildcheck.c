@@ -179,13 +179,12 @@ int main(int argc, char** argv)
 
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, b[0]); glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof L, L);
     static uint32_t cnt[NC * 3], idx[(size_t)NC * CAP];
-    struct { float rel; int cap, refl; } cases[] = { { 0.f, 0, 2 }, { 0.01f, 0, 0 }, { 0.01f, 0, 2 }, { 0.1f, 0, 2 }, { 0.1f, 12, 2 } };
-    for (int ci = 0; ci < 5; ci++)
+    struct { float rel; int cap; } cases[] = { { 0.f, 0 }, { 0.01f, 0 }, { 0.1f, 0 }, { 0.1f, 12 } };
+    for (int ci = 0; ci < 4; ci++)
     {
         float rel = cases[ci].rel;
         glUniform2f(glGetUniformLocation(p, "uRel"), rel, REACH);
         glUniform1i(glGetUniformLocation(p, "uBinCap"), cases[ci].cap);
-        glUniform1i(glGetUniformLocation(p, "uReflK"), cases[ci].refl);
         uint32_t zero[4] = { 0 };
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, b[3]); glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, 16, zero);
         GLuint q; glGenQueries(1, &q);
@@ -205,13 +204,12 @@ int main(int argc, char** argv)
         long hotSeen = 0;
         for (int cl = 0; cl < NC; cl++)
         {
-            uint32_t n = cnt[cl * 3] & 0xffff, live = cnt[cl * 3] >> 16, refl = cnt[cl * 3 + 1] & 0xffff;
+            uint32_t n = cnt[cl * 3] & 0xffff, live = cnt[cl * 3] >> 16;
             uint32_t liveCand = cnt[cl * 3 + 1] >> 16, coldCand = cnt[cl * 3 + 2] & 0xffff, kept = cnt[cl * 3 + 2] >> 16;
             const uint32_t* e = idx + (size_t)cl * CAP;
             sumN += n; sumKept += kept; sumLive += live; sumCand += liveCand + coldCand - live;
             int bad = 0;
-            if (!(liveCand <= live && live + refl <= coldCand && coldCand <= kept && kept <= n && n <= CAP)) bad |= 1;
-            if (cases[ci].refl == 0 && refl != 0) bad |= 1;
+            if (!(liveCand <= live && live <= coldCand && coldCand <= kept && kept <= n && n <= CAP)) bad |= 1;
             if (rel == 0.f || cases[ci].cap > 0) { if (kept != n || liveCand != live || coldCand != n) bad |= 2; }
             unsigned char seen[NL] = { 0 };
             int gx = cl % GX, gy = (cl / GX) % GY, gz = cl / (GX * GY);
@@ -237,28 +235,6 @@ int main(int argc, char** argv)
                 if (k < live && stat && !hotLoose) bad |= 8;
                 if (k >= live && k < kept && (!stat || hotTight)) bad |= 8;
                 if (k < live && hotLoose) hotSeen++;
-            }
-            // R4: the picks are the top-refl cold statics by the nearest-point curve over the whole list
-            if (!bad && refl > 0)
-            {
-                float lo[3] = { 1e30f, 1e30f, 1e30f }, hi[3] = { -1e30f, -1e30f, -1e30f };
-                for (int cc = 0; cc < 8; cc++)
-                {
-                    float dz = (cc & 4) ? dd1 : dd0, pt[3] = { ((cc & 1) ? x1 : x0) * dz / P00, ((cc & 2) ? y1 : y0) * dz / P11, -dz };
-                    for (int a = 0; a < 3; a++) { lo[a] = fminf(lo[a], pt[a]); hi[a] = fmaxf(hi[a], pt[a]); }
-                }
-                float minPick = 1e30f, maxRest = -1e30f;
-                for (uint32_t k = live; k < n; k++)
-                {
-                    int li = e[k];
-                    if ((int)L[li * 8 + 7] < 128) continue;
-                    float ev[3]; toView(L + li * 8, ev);
-                    float dv2 = 0; for (int a = 0; a < 3; a++) { float q = ev[a] - fminf(fmaxf(ev[a], lo[a]), hi[a]); dv2 += q * q; }
-                    float f2 = dv2 / fmaxf(L[li * 8 + 3] * L[li * 8 + 3], 1e-6f);
-                    float s = (1.f - f2) / (AT0 + AT1 * f2) * (L[li * 8 + 4] * 0.299f + L[li * 8 + 5] * 0.587f + L[li * 8 + 6] * 0.114f);
-                    if (k < live + refl) minPick = fminf(minPick, s); else maxRest = fmaxf(maxRest, s);
-                }
-                if (maxRest > minPick * (1.f + 1e-4f) + 1e-9f) bad |= 16;
             }
             // the bounds, at sample points inside the (jittered) froxel
             for (int sIdx = 0; sIdx < 48 && !bad && rel > 0.f && cases[ci].cap == 0; sIdx++)
@@ -287,12 +263,12 @@ int main(int argc, char** argv)
             if (bad)
             {
                 caseFails++;
-                if (caseFails < 6) printf("  froxel %d (%d,%d,%d) bad=%x n=%u live=%u liveCand=%u refl=%u coldCand=%u kept=%u\n",
-                                          cl, gx, gy, gz, bad, n, live, liveCand, refl, coldCand, kept);
+                if (caseFails < 6) printf("  froxel %d (%d,%d,%d) bad=%x n=%u live=%u liveCand=%u coldCand=%u kept=%u\n",
+                                          cl, gx, gy, gz, bad, n, live, liveCand, coldCand, kept);
             }
         }
-        printf("relevance %.2f bincap %d refl %d: %s -- avg per froxel binned %.1f, live %.1f, kept %.1f, brightest-light search %.1f, hot statics live %ld; tally %u/%u/%u\n",
-               rel, cases[ci].cap, cases[ci].refl, caseFails ? "FAIL" : "ok", sumN / NC, sumLive / NC, sumKept / NC, sumCand / NC,
+        printf("relevance %.2f bincap %d: %s -- avg per froxel binned %.1f, live %.1f, kept %.1f, brightest-light search %.1f, hot statics live %ld; tally %u/%u/%u\n",
+               rel, cases[ci].cap, caseFails ? "FAIL" : "ok", sumN / NC, sumLive / NC, sumKept / NC, sumCand / NC,
                hotSeen, stats[1], stats[2], stats[3]);
         if (stats[1] != (uint32_t)sumN || stats[2] != (uint32_t)sumKept || stats[3] != (uint32_t)sumCand) { printf("  tally disagrees with the lists\n"); caseFails++; }
         fails += caseFails;

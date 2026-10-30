@@ -936,7 +936,7 @@ quarter.
 28 m · `weather.count` 4000 / 8000 / 16000 / 24000 · `weather.impacts` 0 / 0.35 / 0.6 / 1 ·
 `weather.splash` 0 / 1 / 1 / 1 · `weather.edgetaps` 3 / 5 / 8 / 12 · `weather.snowsteps` 4 / 6 /
 10 / 16 · `weather.mapres` 1.5 / 2 / 3 / 4 texels/m · `weather.mapcadence` 8 / 6 / 4 / 2 frames
-· `weather.filmlights` 0 / 1 / 2 / 4.
+· `weather.filmlights` off / on / on / on.
 
 **quality.effects** → `particles.soft` off / on / on / on · `particles.lit` off / on / on / on ·
 `particles.shadows` off / off / on / on · `effects.halos` 0 / 1 / 1 / 1.

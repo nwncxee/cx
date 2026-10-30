@@ -504,7 +504,7 @@ internal static unsafe class AlloyLights
         /// <summary>What the last dispatch's uniforms carried (<see cref="Terms"/>).</summary>
         public BuildTerms Terms;
         public int MoversGen = -1;
-        public int LocView = -1, LocProjXY = -1, LocZ = -1, LocCount = -1, LocGrid = -1, LocReach = -1, LocBinCap = -1, LocBinAtten = -1, LocReflK = -1;
+        public int LocView = -1, LocProjXY = -1, LocZ = -1, LocCount = -1, LocGrid = -1, LocReach = -1, LocBinCap = -1, LocBinAtten = -1;
         public int LocDynPage = -1, LocHot = -1, LocRel = -1, LocPad = -1, LocTally = -1, LocFloor = -1;
         /// <summary>Lights the SSBO is currently sized for; a denser area re-allocates it once.</summary>
         public int SsboLights;
@@ -558,7 +558,7 @@ internal static unsafe class AlloyLights
     internal struct BuildTerms
     {
         public Matrix4x4 View;
-        public int GridX, GridY, GridZ, LightCount, BinCap, ReflK, Tally;
+        public int GridX, GridY, GridZ, LightCount, BinCap, Tally;
         public float ProjX, ProjY, Near, Far, Reach, Floor, Gain;
         public float AttenX, AttenY, HotX, HotY, RelX, RelY, PadX, PadY;
         /// <summary>The build ran this frame: its outputs are this view's and may be read.</summary>
@@ -664,7 +664,7 @@ internal static unsafe class AlloyLights
         _gl.Terms = new BuildTerms
         {
             View = view, GridX = GridX, GridY = GridY, GridZ = GridZ, LightCount = _gl.Uploaded, BinCap = _binCap,
-            ReflK = Weather.ReflK, Tally = tally && _tallyFrame ? 1 : 0, ProjX = p00, ProjY = p11, Near = near, Far = far,
+            Tally = tally && _tallyFrame ? 1 : 0, ProjX = p00, ProjY = p11, Near = near, Far = far,
             Reach = _binReach, Floor = LightFloor, Gain = _gain, AttenX = _atten.X, AttenY = _atten.Y,
             HotX = Lightmap.Movers.V ? 1f : 0f, HotY = Shadows.CubeDist.V, RelX = boundsOk ? _rel : 0f, RelY = ReachUniform,
             PadX = 2f / Math.Max(vpW, 1), PadY = 2f / Math.Max(vpH, 1), Ran = true,

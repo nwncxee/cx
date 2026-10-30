@@ -232,17 +232,16 @@ float CxSheenLobe(vec3 N, vec3 V, vec3 L, float a)
     return d / (4.0 * max(NoL + NoV - NoL * NoV, 1e-4));
 }
 
-/// R4: the highlights a water film mirrors from the BAKED static lights the main walk no longer reaches.
-/// The cluster build ranks the few brightest per froxel and permutes them to the front of the cold tail
-/// (cx_lightbuild), so this is a walk of two to four lights, each on the COAT's lobe alone -- the pages
-/// already hold what the base owes them -- and only the strongest pays one cube tap for its own
-/// visibility. Never reached on a dry frame: the count is 0 and the caller is gated on the film.
+/// R4: the highlights a water film mirrors from the BAKED static lights the main walk no longer reaches: every
+/// cold static of the list, each on the COAT's lobe alone -- the pages already hold what the base owes them --
+/// and only the strongest pays one cube tap for its own visibility. The whole cold run, never a ranked few: each
+/// light fades to 0 at its own reach window, which is what binned it, so no light can switch off at a list's edge.
 /// Lives here, past CxCoatLobe, rather than in cx_lightfrag, which is composed before this file.
 vec3 CxFilmStatics(vec3 worldPos, vec3 N, vec3 V, float viewDepth, float coat, float coatRough, float onMover)
 {
     uint cl = CxCluster(viewDepth);
     uint live = CxListLive(cl);
-    uint last = min(live + CxListRefl(cl), CX_CLUSTER_CAP);
+    uint last = min(CxListN(cl), CX_CLUSTER_CAP);
     vec3 acc = vec3(0.0), bSpc = vec3(0.0);
     float bLum = 0.0, bNdl = 0.0;
     int bSlot = -1;

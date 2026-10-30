@@ -18,7 +18,7 @@ internal struct DeferredBlock
     public int Tiles;
     public Int4 Rect;
     public Int2 ShSize;
-    public int LightCount, ReflK, ShRes;
+    public int LightCount, ShRes;
 
     /// <summary>The GLSL against this struct. A member moved in either file stages every term after it into
     /// its neighbour, and a wrong viewport rect reconstructs every pixel's world position somewhere else.</summary>
@@ -31,7 +31,7 @@ internal struct DeferredBlock
             ("uView", Std140.At(ref b, ref b.View)), ("uEyePos", Std140.At(ref b, ref b.EyePos)),
             ("uTiles", Std140.At(ref b, ref b.Tiles)), ("uRect", Std140.At(ref b, ref b.Rect)),
             ("uShSize", Std140.At(ref b, ref b.ShSize)), ("uLightCount", Std140.At(ref b, ref b.LightCount)),
-            ("uReflK", Std140.At(ref b, ref b.ReflK)), ("uShRes", Std140.At(ref b, ref b.ShRes)),
+            ("uShRes", Std140.At(ref b, ref b.ShRes)),
         ]);
     }
 }

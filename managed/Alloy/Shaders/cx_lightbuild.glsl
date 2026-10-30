@@ -26,9 +26,6 @@ uniform vec2 uAtten;
 uniform float uDynPage[$CUBES$];
 // x = lightmap.movers (1 = a static light can go hot), y = shadow.cubedist (0 = no cut)
 uniform vec2 uHot;
-// R4 (weather.filmlights): how many cold statics to rank as reflection candidates for a water film.
-// 0 = none, which is every frame with no film, and then this pass writes exactly what it always did.
-uniform int uReflK;
 // x = light.relevance's cut, the SAME snapshot the lit stage's uRelevance.x carries this frame (0 = no bounds);
 // y = the lit stage's uReach, so Importance() is CxLightImportance term for term (0 = no reach fade)
 uniform vec2 uRel;
@@ -36,7 +33,6 @@ uniform vec2 uRel;
 uniform vec2 uPad;
 // 1 = add this build's entry totals to uStats[1..3] (a sampled frame)
 uniform int uTally;
-const int CX_REFL_MAX = 4;
 const uint CAP = $CAP$u;
 const uint SORT = $SORT$u;
 const int DYNSPH = $DYNSPH$;
@@ -259,8 +255,8 @@ void Build(uint id, out uint binned, out uint keptOut, out uint candOut, out boo
     }
 
     // The layout every walk reads (cx_lightfrag CxCluster*): [0, liveCand) live floor candidates,
-    // [liveCand, live) the rest of the live lights, [live, live + refl) R4's picks, [.., coldCand) cold floor
-    // candidates, [.., kept) the other cold statics, [kept, n) the culled. A fragment walks [0, kept) at most;
+    // [liveCand, live) the rest of the live lights, [live, coldCand) cold floor candidates,
+    // [.., kept) the other cold statics, [kept, n) the culled. A fragment walks [0, kept) at most;
     // a vertex stage's position can lie outside its froxel, so it walks [0, n) and the bounds owe it nothing.
     uint live = 0u, kept = n;
     for (uint mid = 0u; mid < kept;)
@@ -271,52 +267,11 @@ void Build(uint id, out uint binned, out uint keptOut, out uint candOut, out boo
         else mid++;
     }
     uint liveCand = Partition(base, 0u, live, FLAG_CAND);
-    // R4: the reflection candidates -- the K cold statics with the strongest curve x luma at this froxel,
-    // culled or not (the film walk has no relevance cut), moved to the front of the cold run so the lit stage
-    // can walk [live, live + refl) and nothing else.
-    uint refl = 0u;
-    if (uReflK > 0)
-    {
-        int K = min(uReflK, CX_REFL_MAX);
-        float rs[CX_REFL_MAX]; uint rp[CX_REFL_MAX];
-        for (uint k = live; k < n; k++)
-        {
-            uint li = uClIdx[base + k];
-            if ((li & FLAG_LIVE) != 0u) continue;
-            li &= IDX_MASK;
-            vec4 pr = uLights[li * 2u];
-            vec3 e = (uView * vec4(pr.xyz, 1.0)).xyz;
-            vec3 dv = e - clamp(e, lo, hi);
-            float f2 = dot(dv, dv) / max(pr.w * pr.w, 1e-6);
-            float s = (1.0 - f2) / (at.x + at.y * f2) * dot(uLights[li * 2u + 1u].rgb, vec3(0.299, 0.587, 0.114));
-            uint j;
-            if (refl < uint(K)) { j = refl; refl++; }
-            else if (s > rs[K - 1]) j = uint(K) - 1u;
-            else continue;
-            while (j > 0u && rs[j - 1u] < s) { rs[j] = rs[j - 1u]; rp[j] = rp[j - 1u]; j--; }
-            rs[j] = s; rp[j] = k;
-        }
-        for (uint j = 0u; j < refl; j++)
-        {
-            uint src = rp[j];
-            if (src >= kept)
-            {   // a culled pick joins the kept run at its end; the culled entry it displaces takes its place
-                Swap(base + src, base + kept);
-                for (uint q = j + 1u; q < refl; q++) if (rp[q] == kept) rp[q] = src;
-                src = kept++;
-            }
-            uint dst = live + j;
-            if (src == dst) continue;
-            Swap(base + dst, base + src);
-            // a later candidate standing on the slot just claimed moved to where this one came from
-            for (uint q = j + 1u; q < refl; q++) if (rp[q] == dst) rp[q] = src;
-        }
-    }
-    uint coldCand = Partition(base, live + refl, kept, FLAG_CAND);
+    uint coldCand = Partition(base, live, kept, FLAG_CAND);
     for (uint k = 0u; k < n; k++) uClIdx[base + k] &= IDX_MASK;
 
     uClCount[id * 3u] = n | (live << 16u);
-    uClCount[id * 3u + 1u] = refl | (liveCand << 16u);
+    uClCount[id * 3u + 1u] = liveCand << 16u;
     uClCount[id * 3u + 2u] = coldCand | (kept << 16u);
     binned = n; keptOut = kept; candOut = liveCand + coldCand - live;
     overflow = dropped != 0u && uBinCap <= 0;
