@@ -8,7 +8,6 @@
 #include "cx_ssr.glsl"
 #include "cx_ssrrec.glsl"
 layout(location = 0) out vec4 frag;  // xy = the hit's uv, z = the ray's pdf (0 = no hit), w = the origin's 1 / view depth
-layout(location = 1) out float spent; // the share of the ray's cell visits used when it hit
 uniform sampler2D uDepth;    // the frame depth
 uniform sampler2D uHiZ;      // 1 / view depth: level 0 per pixel, each level up the MAX (closest) of the one below
 uniform sampler2D uRecN;     // the record: octahedral world normal, roughness, view depth (cx_ssrrec)
@@ -35,12 +34,10 @@ bool Behind(ivec2 p, vec3 r)
     return CxRecRead(uRecN, uRecW, uHiZ, p, n, rough, w) && dot(mat3(uView) * n, r) >= 0.0;
 }
 
-/// Where view-space ray r from view position o meets the screen's surface, in pixels, and the share of its visits that
-/// took; false = it does not.
-bool Trace(vec3 o, vec3 r, vec2 size, out vec2 ph, out float used)
+/// Where view-space ray r from view position o meets the screen's surface, in pixels; false = it does not.
+bool Trace(vec3 o, vec3 r, vec2 size, out vec2 ph)
 {
     ph = vec2(0.0);
-    used = 0.0;
     float len = r.z > 0.0 ? min(CX_SSR_DIST, (-uNf.x * 1.01 - o.z) / r.z) : CX_SSR_DIST;
     int top = min(textureQueryLevels(uHiZ) - 1, CX_SSR_TOP);
     if (len <= 0.0) return false;
@@ -77,7 +74,6 @@ bool Trace(vec3 o, vec3 r, vec2 size, out vec2 ph, out float used)
         if (ray - 1.0 / kS < max(CX_SSR_THICK, CX_SSR_THICKREL * ray) && !Behind(ivec2(p0 + d * t), r))
         {
             ph = p0 + d * t;
-            used = float(i) / float(iter);
             return true;
         }
         t = tExit + tEps;   // behind it, or its back: walk on at this level
@@ -88,7 +84,6 @@ bool Trace(vec3 o, vec3 r, vec2 size, out vec2 ph, out float used)
 void main()
 {
     frag = vec4(0.0);
-    spent = 0.0;
     int blk = 1 << int(uSsr.w), cells = blk * blk;
     ivec2 lim = textureSize(uHiZ, 0) - 1, base = ivec2(gl_FragCoord.xy) * blk, px = ivec2(-1);
     vec2 u = CxSsrNoise(ivec2(gl_FragCoord.xy), uFrame);
@@ -122,7 +117,7 @@ void main()
     float pdf = CxGgxD(NoH, a) * NoH / (4.0 * VoH);
     float k = texelFetch(uHiZ, px, 0).r;
     vec2 ph;
-    frag = Trace(o, r, size, ph, spent) ? vec4(ph / size, pdf, k) : vec4(0.0, 0.0, 0.0, k);
+    frag = Trace(o, r, size, ph) ? vec4(ph / size, pdf, k) : vec4(0.0, 0.0, 0.0, k);
     // a record some other program wrote garbage into can pass the depth test by chance: one NaN here is the
     // whole frame's, through the bloom
     if (any(isnan(frag)) || any(isinf(frag))) frag = vec4(0.0);

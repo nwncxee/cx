@@ -10,7 +10,6 @@
 #include "cx_ssrrec.glsl"
 layout(location = 0) out vec4 frag;
 uniform sampler2D uTrace;    // cx_ssrtrace_f: xy = hit uv, z = pdf (0 = none), w = the origin's 1 / view depth
-uniform sampler2D uSpent;    // ...and the share of its ray's cell visits used when it hit
 uniform sampler2D uDepth;    // the frame depth
 uniform sampler2D uColor;    // the frame so far, linear HDR, mipmapped, its level 0 at level uColShift of the frame
 uniform int uColShift;
@@ -31,9 +30,6 @@ uniform int uFrame;          // the noise phase
 const vec2 CX_SSR_JOIN = vec2(0.01, 0.03);
 /// The neighbours whose hits a pixel reuses beside its own texel's, turned a quarter per drawn step.
 const ivec2 CX_SSR_REUSE[3] = ivec2[3](ivec2(1, 0), ivec2(-1, 1), ivec2(0, -1));
-/// The share of a ray's cell visits past which its hit fades toward the probe: a ray that ran dry one visit later
-/// would have left nothing, so the reflection ends in a ramp instead of along the coarse cells' edges.
-const float CX_SSR_SPENT = 0.75;
 /// The screen-edge fade, in uv: a hit this close to the border fades toward the probe instead of cutting.
 const float CX_SSR_EDGE = 0.08;
 /// How far (world z) a surface may sit off the mirror plane and still take the mirrored draw, faded over this range:
@@ -78,8 +74,7 @@ void main()
     {
         ivec2 off = j == 0 ? ivec2(0) : CX_SSR_REUSE[j - 1];
         for (int q = 0; q < turn; q++) off = ivec2(-off.y, off.x);
-        ivec2 tp = clamp(base + off, ivec2(0), lim);
-        vec4 t = texelFetch(uTrace, tp, 0);
+        vec4 t = texelFetch(uTrace, clamp(base + off, ivec2(0), lim), 0);
         float join = 1.0 - smoothstep(CX_SSR_JOIN.x, CX_SSR_JOIN.y, abs(t.w - k) / k);
         if (!(join > 0.0)) continue;
         seen += join;
@@ -102,7 +97,7 @@ void main()
         float edge = smoothstep(0.0, CX_SSR_EDGE, min(e.x, e.y));
         sum += c / (1.0 + Luma(c)) * wt;
         wsum += wt;
-        hits += join * edge * (1.0 - smoothstep(CX_SSR_SPENT, 1.0, texelFetch(uSpent, tp, 0).r));
+        hits += join * edge;
         dist += len * wt;
     }
     vec3 hit = vec3(0.0);

@@ -10,7 +10,7 @@ internal static class Ssr
 {
     /// <summary>Cell visits per ray at each <c>light.ssrdetail</c> (full, half, quarter), whose walk starts at the hi-Z
     /// level of the same rung. A ray grazing the ground it left never skips a coarse cell, so it pays ~2 visits a pixel;
-    /// the resolve fades a hit over the budget's last quarter, so running dry ends a reflection in a ramp.</summary>
+    /// 40 ran dry short of a building at low camera pitch and left the probe's sky.</summary>
     internal static ReadOnlySpan<float> Steps => [160f, 96f, 48f];
 
     /// <summary>The period line's clause: whether the reflections are asked for at all.</summary>
