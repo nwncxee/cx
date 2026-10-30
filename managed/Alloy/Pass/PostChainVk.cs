@@ -41,6 +41,21 @@ internal static unsafe class PostChainVk
         public int UboUsed;
         public SamplerId Linear, Nearest, Repeat;
         public bool Said, VizSaid;
+        /// <summary>Both bloom stages built from the embedded texts: no content override reached either.</summary>
+        public bool BloomStock;
+        /// <summary>Whether the bloom ran as compute, as last said; null before it first ran.</summary>
+        public bool? ComputeSaid;
+        public PipelineId BloomCs;
+        public bool CsTried;
+    }
+
+    /// <summary><c>cx_bloom_cs</c>'s push block, member for member.</summary>
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct BloomPush
+    {
+        public Vector2 Texel, Thresh;
+        public float Exposure;
+        public int First, Up;
     }
 
     private static PostVkState _s = new();
@@ -85,7 +100,13 @@ internal static unsafe class PostChainVk
         if (bloom)
         {
             cl.BeginLabel("bloom"u8);
-            Bloom(cl, s, hdr);
+            if (s.ComputeSaid != s.BloomStock)
+            {
+                s.ComputeSaid = s.BloomStock;
+                log.Always(s.BloomStock ? "PostChainVk: the compute bloom is LIVE -- one dispatch per level, no render pass"
+                                        : "PostChainVk: the compute bloom STOOD DOWN for the content override of a bloom stage -- it draws as fragments");
+            }
+            if (!s.BloomStock || !BloomCompute(vk, cl, s, hdr, log)) Bloom(cl, s, hdr);
             cl.EndLabel();
         }
 
@@ -129,6 +150,18 @@ internal static unsafe class PostChainVk
         return true;
     }
 
+    /// <summary>The bloom chain over <paramref name="hdr"/>, a <paramref name="w"/> x <paramref name="h"/> scene, as
+    /// compute dispatches or as <paramref name="compute"/> false the fragment draws. Its level 0, or the null id
+    /// (logged) when a program or target was refused.</summary>
+    internal static ImageId BloomVk(VkBackend vk, CommandList cl, ImageId hdr, int w, int h, bool compute, ExtenderLog log)
+    {
+        PostVkState s = _s;
+        if (!Ensure(vk, log) || !Targets(vk, s = _s, w, h, log)) return default;
+        if (!compute) Bloom(cl, s, hdr);
+        else if (!BloomCompute(vk, cl, s, hdr, log)) return default;
+        return s.Bloom[0];
+    }
+
     /// <summary>The downsample from the scene colour through every level, then the tent upsample back, adding.</summary>
     private static void Bloom(CommandList cl, PostVkState s, ImageId hdr)
     {
@@ -155,6 +188,50 @@ internal static unsafe class PostChainVk
             Draw(cl, s.Up!, Format.Rgba16F, Blend.Add, s.Bloom[i - 1], LoadOp.Load, new Rect(0, 0, LevelW(s, i - 1), LevelH(s, i - 1)),
                  at, new Inputs(s.Bloom[i]), null);
         }
+    }
+
+    /// <summary><see cref="Bloom"/> as one <c>cx_bloom_cs</c> dispatch per level; false (logged once) when the stage
+    /// was refused.</summary>
+    private static bool BloomCompute(VkBackend vk, CommandList cl, PostVkState s, ImageId hdr, ExtenderLog log)
+    {
+        if (!s.CsTried)
+        {
+            s.CsTried = true;
+            ShaderId cs = vk.CreateShader(new ShaderDesc(ShaderStage.Compute, null, ShaderSource.Get("cx_bloom_cs.glsl"), "bloom compute"));
+            var d = new PipelineDesc { Cs = cs, Label = "bloom compute" };
+            s.BloomCs = cs.IsNull ? default : vk.CreatePipeline(in d);
+            if (s.BloomCs.IsNull) log.Always("PostChainVk: the compute bloom was REFUSED (logged above) -- the bloom draws as fragments");
+        }
+        if (s.BloomCs.IsNull) return false;
+        cl.SetPipeline(s.BloomCs);
+        var p = new BloomPush { Thresh = new Vector2(Post.Threshold.V, MathF.Max(Post.Knee.V, 1e-4f)), Exposure = Post.Exposure.V };
+        for (int i = 0; i < s.Levels; i++)
+        {
+            int sw = i == 0 ? s.W : LevelW(s, i - 1), sh = i == 0 ? s.H : LevelH(s, i - 1);
+            p.Texel = new Vector2(1f / sw, 1f / sh);
+            p.First = i == 0 ? 1 : 0;
+            BloomDispatch(cl, s, in p, i == 0 ? hdr : s.Bloom[i - 1], s.Bloom[i], LevelW(s, i), LevelH(s, i));
+        }
+        p.First = 0;
+        p.Up = 1;
+        for (int i = s.Levels - 1; i > 0; i--)
+        {
+            p.Texel = new Vector2(1f / LevelW(s, i), 1f / LevelH(s, i));
+            BloomDispatch(cl, s, in p, s.Bloom[i], s.Bloom[i - 1], LevelW(s, i - 1), LevelH(s, i - 1));
+        }
+        return true;
+    }
+
+    /// <summary>The 8x8 groups covering a <paramref name="w"/> x <paramref name="h"/> level.</summary>
+    private const int BloomGroup = 8;
+
+    private static void BloomDispatch(CommandList cl, PostVkState s, in BloomPush p, ImageId src, ImageId dst, int w, int h)
+    {
+        ReadOnlySpan<ImageBinding> sampled = [new(0, src, s.Linear)];
+        ReadOnlySpan<ImageBinding> storage = [new(0, dst)];
+        cl.BindSet(0, new BindSet(default, default, sampled, storage));
+        cl.PushConstants(0, System.Runtime.InteropServices.MemoryMarshal.AsBytes(new ReadOnlySpan<BloomPush>(in p)));
+        cl.Dispatch((w + BloomGroup - 1) / BloomGroup, (h + BloomGroup - 1) / BloomGroup);
     }
 
     /// <summary>The attachment format a post draw into <paramref name="into"/> renders: the composite is 8-bit, every
@@ -332,13 +409,14 @@ internal static unsafe class PostChainVk
         s.Linear = vk.CreateSampler(new SamplerDesc(Filter.Linear, Filter.Linear, MipMode.Nearest, Wrap.Clamp));
         s.Nearest = vk.CreateSampler(new SamplerDesc(Filter.Nearest, Filter.Nearest, MipMode.Nearest, Wrap.Clamp));
         s.Repeat = vk.CreateSampler(new SamplerDesc(Filter.Linear, Filter.Linear, MipMode.Linear, Wrap.Repeat));
-        s.Down = Make(vk, PostChain.ShdBloomDownFs, "bloom downsample", p =>
+        s.Down = Make(vk, PostChain.ShdBloomDownFs, "bloom downsample", out bool downStock, p =>
         {
             s.D.Lod = p.Loc("uLod"); s.D.Texel = p.Loc("uTexel"); s.D.First = p.Loc("uFirst");
             s.D.Thresh = p.Loc("uThresh"); s.D.Exposure = p.Loc("uExposure");
         }, log);
-        s.Up = Make(vk, PostChain.ShdBloomUpFs, "bloom upsample", p => { s.U.Lod = p.Loc("uLod"); s.U.Texel = p.Loc("uTexel"); }, log);
-        s.Resolve = Make(vk, PostChain.ShdResolveFs, "resolve", p =>
+        s.Up = Make(vk, PostChain.ShdBloomUpFs, "bloom upsample", out bool upStock, p => { s.U.Lod = p.Loc("uLod"); s.U.Texel = p.Loc("uTexel"); }, log);
+        s.BloomStock = downStock && upStock;
+        s.Resolve = Make(vk, PostChain.ShdResolveFs, "resolve", out _, p =>
         {
             ResolveLocs r = s.R;
             r.SkyRaw = p.Loc("uSkyRaw"); r.SkyBand = p.Loc("uSkyBand"); r.InvVp = p.Loc("uInvVP"); r.Eye = p.Loc("uEyePos");
@@ -351,11 +429,13 @@ internal static unsafe class PostChainVk
         return !s.Failed;
     }
 
-    /// <summary>Post stage <paramref name="fsRef"/> over the full-screen vertex stage, as GL compiles the pair.</summary>
-    private static GuiVkProg? Make(VkBackend vk, string fsRef, string label, Action<GuiVkProg> locate, ExtenderLog log)
+    /// <summary>Post stage <paramref name="fsRef"/> over the full-screen vertex stage, as GL compiles the pair;
+    /// <paramref name="stock"/> when no content override reached either text.</summary>
+    private static GuiVkProg? Make(VkBackend vk, string fsRef, string label, out bool stock, Action<GuiVkProg> locate, ExtenderLog log)
     {
         ShaderTexts.Pair(PostChain.ShdPostVs, ShaderStages.Source(PostChain.ShdPostVs), fsRef, ShaderStages.Source(fsRef),
                         log, $"PostChainVk {label}", out string vs, out string fs);
+        stock = vs == ShaderStages.Source(PostChain.ShdPostVs) && fs == ShaderStages.Source(fsRef);
         return Program(vk, vs, fs, label, locate, log);
     }
 
@@ -371,7 +451,9 @@ internal static unsafe class PostChainVk
         s.Levels = Math.Max(levels, 1);
         for (int i = 0; i < s.Levels; i++)
         {
-            s.Bloom[i] = Target(vk, LevelW(s, i), LevelH(s, i), $"vk bloom {i}");
+            s.Bloom[i] = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, LevelW(s, i), LevelH(s, i), 1, 1, 1, 1,
+                                                      ImageUse.Sampled | ImageUse.ColorTarget | ImageUse.Storage | ImageUse.CopySrc,
+                                                      $"vk bloom {i}"));
             if (s.Bloom[i].IsNull)
             {
                 s.Levels = 0;
