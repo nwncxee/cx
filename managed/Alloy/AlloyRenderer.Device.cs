@@ -27,6 +27,13 @@ public sealed unsafe partial class AlloyRenderer
         _log.Info($"AlloyRenderer: [vram] {_vramExt}, {_vramTotalKib / 1024}MiB device-local, {_vram.FreeKib / 1024}MiB free");
     }
 
+    /// <summary>The frame line's memory part: what Alloy's allocations hold, the device's use against its budget, and
+    /// the largest allocations by name.</summary>
+    internal static string VramLine(long heldBytes, long usageBytes, long budgetBytes, ReadOnlySpan<(string Name, long Bytes)> top) => "";
+
+    /// <summary>The frame line's memory part as the device reads now; empty before the first frame has probed it.</summary>
+    internal static string FrameVram() => "";
+
     /// <summary>The device's memory figures as last sampled, KiB.</summary>
     private sealed class VramState
     {

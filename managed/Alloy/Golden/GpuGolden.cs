@@ -45,6 +45,7 @@ internal static partial class GpuGolden
         TransferSelfCheck(vk, check, log);
         TransferAfterMips(vk, check, log);
         TransferRefill(vk, check);
+        VmaSelfCheck(vk, check, log);
     }
 
     /// <summary>The version line every golden stage opens with, and the one the shipped libraries open with.</summary>
