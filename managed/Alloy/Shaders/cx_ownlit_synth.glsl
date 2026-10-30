@@ -112,10 +112,11 @@ void main()
     // from the depth prepass, so a fragment the prepass never drew -- a blended door, anything the
     // sweep skipped, anything drawn over a hole -- would otherwise wear the occlusion of whatever
     // stands behind it. #119 makes the two passes agree on gl_Position character-for-character, so
-    // for a prepassed fragment this equality is exact and the epsilon is only for the depth encode.
+    // for a prepassed fragment this equality is exact and the epsilon is only for the depth encode. A coarse
+    // fragment's z sits at its area's centre, half a pixel off the texel it fetches: half its own slope covers that.
     float aoDepth = texelFetch(uSceneDepth, ivec2(gl_FragCoord.xy), 0).r;
     float aoDz = abs(aoDepth - gl_FragCoord.z);
-    bool aoMine = uSsaoOn > 0 && aoDz < CX_AO_DEPTH_EPS;
+    bool aoMine = uSsaoOn > 0 && aoDz < CX_AO_DEPTH_EPS + 0.5 * aoSlope;
     if (aoMine) occl *= mix(1.0, CxSsaoAt(ivec2(gl_FragCoord.xy), aoDepth, aoSlope), uAlphaCut >= 0.0 ? uAoCutout : 1.0);
     if ((slots & (CX_SLOT_NORMAL | CX_SLOT_HEIGHT)) != 0)
     {

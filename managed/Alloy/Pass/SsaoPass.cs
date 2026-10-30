@@ -138,9 +138,10 @@ internal static unsafe class SsaoPass
               && AlloyRenderer.OwnedLitFsMain.Contains("vec3 diffuse = (sun + sunSss + point) * dirOcc;"),
               "/ao direct is the only route to the DIRECT terms, and 0 leaves them exactly as ADR 0021 had them");
             check.Expect(Ao.Direct.Default == 1f, "...and it ships at 1: ambient-only is invisible in a dark-ambient area (ADR 0021, amended)");
-            check.Expect(AlloyRenderer.OwnedLitFsMain.Contains("bool aoMine = uSsaoOn > 0 && aoDz < CX_AO_DEPTH_EPS;")
+            check.Expect(AlloyRenderer.OwnedLitFsMain.Contains("bool aoMine = uSsaoOn > 0 && aoDz < CX_AO_DEPTH_EPS + 0.5 * aoSlope;")
               && AlloyRenderer.OwnedLitFsMain.Contains("if (aoMine) occl *="),
-              "the fetch is per FRAGMENT: the pixel's occlusion must have been computed from this surface's own depth");
+              "the fetch is per FRAGMENT: the pixel's occlusion must have been computed from this surface's own depth, "
+              + "within half the fragment's slope (a coarse fragment's depth sits at its area's centre)");
             check.Expect(Strength > 0f && Ao.Strength.Min > 0f, "the strength never reads 0 -- a zero exponent is pow(v, 0) = 1, no occlusion at all");
             check.Expect(Describe().Contains("radius") && Describe().Contains("strength") && Describe().Contains("dirs"), "/ao reports its dials");
             check.Expect(fs.Contains("fract(b / 16.0 + float(uFrame) * 0.618034)"), "the raw stage's noise phase rotates with uFrame, which the single-frame estimate leaves at 0");
