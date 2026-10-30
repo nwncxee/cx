@@ -81,7 +81,8 @@ internal static class VulkanFrame
                      + $"and spent {translate / GpuPeriod:F2} ms/frame translating {(float)draws / GpuPeriod:F0} draws and "
                      + $"{(float)sets / GpuPeriod:F0} bind sets ({(float)made / GpuPeriod:F1} written, the rest reused; {retired} pool(s) "
                      + $"retired this period) over {(float)lists / GpuPeriod:F1} lists into vkCmd calls, "
-                     + $"{(float)barriers / GpuPeriod:F0} of them barriers");
+                     + $"{(float)barriers / GpuPeriod:F0} of them barriers; upload staging holds {vk.Staging.Chunks} chunk(s), "
+                     + $"{vk.Staging.Bytes >> 20} MiB");
             log.Always($"VulkanFrame: [vkgpu] translation by op, ms/frame: {TopOps(vk, n)}; {Updates(vk, n)}");
         }
         PostChain.Painted();

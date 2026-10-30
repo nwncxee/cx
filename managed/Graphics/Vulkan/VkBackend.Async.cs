@@ -90,8 +90,8 @@ internal sealed unsafe partial class VkBackend
         families = two;
     }
 
-    /// <summary>An async submit reads what the graphics submits before it left: uploads still waiting for a graphics
-    /// submit's head get one of their own first. False when it was refused.</summary>
+    /// <summary>Uploads still waiting for a graphics submit's head get one of their own: ahead of an async submit,
+    /// which reads what the graphics submits before it left, and when staging passes its budget. False when refused.</summary>
     private bool UploadsAhead()
     {
         UploadState u = _upload;
