@@ -47,6 +47,9 @@ internal sealed unsafe partial class VkBackend : IDevice
         /// <summary>The buffer epoch it was last used in, and whether that epoch wrote it.</summary>
         public long Epoch = -1;
         public bool Written;
+        /// <summary><see cref="Op.UpdateBuffer"/> bytes and calls into it since the last take.</summary>
+        public long UpBytes;
+        public int UpCalls;
     }
     private readonly record struct VkShader(VkShaderModule Module, ShaderStage Stage);
     /// <summary>A pipeline, and the depth and raster state its desc named, which a bind restates dynamically.</summary>
