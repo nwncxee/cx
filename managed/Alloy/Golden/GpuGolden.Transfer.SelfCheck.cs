@@ -34,4 +34,22 @@ internal static partial class GpuGolden
             vk.Destroy(img);
         }
     }
+
+    /// <summary>Two fills of one new buffer's same bytes before any submit land in the order made: the read gives the
+    /// second. Oracle: the hand-written patterns.</summary>
+    private static void TransferRefill(VkBackend vk, Checker check)
+    {
+        BufferId buf = vk.CreateBuffer(new BufferDesc(64, BufferUse.Vertex | BufferUse.CopyDst | BufferUse.CopySrc, MemoryKind.Device, "golden transfer refill"));
+        try
+        {
+            check.Expect(!buf.IsNull, "transfer refill: the buffer was refused (logged above)");
+            if (buf.IsNull) return;
+            byte[] first = TransferBytes(64, 11), second = TransferBytes(64, 150), got = new byte[64];
+            bool ran = vk.Upload(buf, 0, first) && vk.Upload(buf, 0, second)
+                    && vk.Submit(new CommandList("golden transfer frame")) && vk.ReadBack(buf, got);
+            check.Expect(ran, "transfer refill: a fill, the frame or the read was refused");
+            check.Expect(got.AsSpan().SequenceEqual(second), "transfer refill: the buffer does not read back the later of two fills");
+        }
+        finally { vk.Destroy(buf); }
+    }
 }

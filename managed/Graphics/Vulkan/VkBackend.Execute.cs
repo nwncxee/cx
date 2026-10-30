@@ -46,7 +46,6 @@ internal sealed unsafe partial class VkBackend
         if (!OnThread("Submit")) return false;
         bool lane = list.Async && _async != null;
         if (lane && !UploadsAhead()) return false;
-        if (!lane) Ship();
         if ((lane ? TakeSlot(_async!.Slots, _async.Pool, _async.Timeline, ref _async.Completed) : TakeSlot()) is not Slot s) return false;
         if (_sets.Stale && !RetireSets()) return false;
         s.StageUsed = 0;

@@ -4,8 +4,9 @@ namespace CX.Graphics.Rhi;
 
 /// <summary>
 /// The timelines: graphics submit number n signals value n + 1 on the graphics timeline, which every lifetime waits on;
-/// the async queue counts its own, which only a graphics submit's join waits on. "Has it finished" is a counter read
-/// against a value, never a fence. The CPU waits at a present FramesInFlight frames on, or when every slot still runs.
+/// the async and transfer queues count their own, which only a graphics submit's join waits on. "Has it finished" is a
+/// counter read against a value, never a fence. The CPU waits at a present FramesInFlight frames on, or when every
+/// slot still runs.
 /// </summary>
 internal sealed unsafe partial class VkBackend
 {
@@ -141,7 +142,7 @@ internal sealed unsafe partial class VkBackend
     /// <summary>The recorded <paramref name="cb"/> on the async queue, after the last graphics submit.</summary>
     private VkResult AsyncSubmit(VkCommandBuffer cb)
     {
-        Lane a = _async!;
+        QueueLane a = _async!;
         var cbi = new VkCommandBufferSubmitInfo { commandBuffer = cb };
         var w = new VkSemaphoreSubmitInfo { semaphore = _timeline, value = (ulong)_submits, stageMask = VkPipelineStageFlags2.AllCommands };
         var sig = new VkSemaphoreSubmitInfo { semaphore = a.Timeline, value = (ulong)(a.Submits + 1), stageMask = VkPipelineStageFlags2.AllCommands };
@@ -158,7 +159,7 @@ internal sealed unsafe partial class VkBackend
 
     /// <summary>The recorded <paramref name="cb"/> on the transfer queue <paramref name="t"/>, waiting on nothing:
     /// accepted, <paramref name="t"/>'s submit count is the value it signalled.</summary>
-    private VkResult TransferSubmit(Lane t, VkCommandBuffer cb)
+    private VkResult TransferSubmit(QueueLane t, VkCommandBuffer cb)
     {
         var cbi = new VkCommandBufferSubmitInfo { commandBuffer = cb };
         var sig = new VkSemaphoreSubmitInfo { semaphore = t.Timeline, value = (ulong)(t.Submits + 1), stageMask = VkPipelineStageFlags2.AllCommands };

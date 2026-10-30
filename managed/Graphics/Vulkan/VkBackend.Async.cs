@@ -6,15 +6,15 @@ using Vortice.Vulkan;
 namespace CX.Graphics.Rhi;
 
 /// <summary>
-/// The async compute queue: a second queue on a family that computes without drawing, its own recording slots and its
-/// own timeline. An async submit waits on the last graphics submit; the first graphics submit after it may be asked to
-/// run beside it, and the one after that (or the first, when not asked) waits on it. Every lifetime stays on the
-/// graphics timeline, so an object an async submit reaches outlives the graphics submit that waits on it.
+/// The async compute queue: a second queue on a compute-only family with its own slots and timeline, on plumbing the
+/// transfer queue shares. An async submit waits on the last graphics submit; the first graphics submit after it may
+/// be asked to run beside it, the next (or the first, when not asked) waits on it. Every lifetime stays on the graphics
+/// timeline, so an object an async submit reaches outlives the graphics submit that waits on it.
 /// </summary>
 internal sealed unsafe partial class VkBackend
 {
     /// <summary>A second queue's recording resources and timeline: the async queue's, or the transfer queue's.</summary>
-    private sealed class Lane(VkQueue queue, uint family, VkCommandPool pool, VkSemaphore timeline)
+    private sealed class QueueLane(VkQueue queue, uint family, VkCommandPool pool, VkSemaphore timeline)
     {
         public readonly VkQueue Queue = queue;
         public readonly uint Family = family;
@@ -27,7 +27,7 @@ internal sealed unsafe partial class VkBackend
     }
 
     /// <summary>Null on a device with no compute-only family: an async list then runs on the graphics queue.</summary>
-    private readonly Lane? _async;
+    private readonly QueueLane? _async;
     /// <summary>The async value no graphics submit has waited on yet; 0 when none.</summary>
     private long _unjoined;
     /// <summary>A graphics submit already ran beside <see cref="_unjoined"/>: the next one waits on it.</summary>
@@ -65,13 +65,13 @@ internal sealed unsafe partial class VkBackend
         return f;
     }
 
-    private Lane OpenLane(uint family, string name)
+    private QueueLane OpenLane(uint family, string name)
     {
         _vkd.vkGetDeviceQueue(family, 0, out VkQueue q);
         var pci = new VkCommandPoolCreateInfo { flags = VkCommandPoolCreateFlags.ResetCommandBuffer, queueFamilyIndex = family };
         VkCommandPool pool;
         Check(_vkd.vkCreateCommandPool(&pci, &pool), $"vkCreateCommandPool ({name})");
-        return new Lane(q, family, pool, MakeTimeline());
+        return new QueueLane(q, family, pool, MakeTimeline());
     }
 
     /// <summary><see cref="Submit(CommandList)"/> for a graphics list that runs beside the async submit made before it
@@ -82,16 +82,16 @@ internal sealed unsafe partial class VkBackend
 
     /// <summary>The graphics family and the async one, and with <paramref name="transfer"/> the transfer one, for a
     /// resource more than one queue reaches; exclusive when the device has neither.</summary>
-    private void Share(ref VkSharingMode mode, ref uint count, ref uint* families, uint* three, bool transfer)
+    private void Share(ref VkSharingMode mode, ref uint count, ref uint* families, uint* fams, bool transfer)
     {
         uint n = 0;
-        three[n++] = _family;
-        if (_async != null) three[n++] = _async.Family;
-        if (transfer && _transfer != null) three[n++] = _transfer.Family;
+        fams[n++] = _family;
+        if (_async != null) fams[n++] = _async.Family;
+        if (transfer && _transfer != null) fams[n++] = _transfer.Family;
         if (n == 1) return;
         mode = VkSharingMode.Concurrent;
         count = n;
-        families = three;
+        families = fams;
     }
 
     /// <summary>Uploads still waiting for a graphics submit's head get one of their own: ahead of an async submit,
@@ -106,7 +106,7 @@ internal sealed unsafe partial class VkBackend
     }
 
     /// <summary>A second queue's objects, after the device is idle.</summary>
-    private void DisposeLane(Lane? lane)
+    private void DisposeLane(QueueLane? lane)
     {
         if (lane == null) return;
         foreach (Slot s in lane.Slots)

@@ -102,21 +102,25 @@ internal sealed unsafe partial class VkBackend
         {
             (VkPipelineStageFlags2 ss, VkAccessFlags2 sa) = Scope(img.Layout);
             img.BarBatch = _batch;
-            img.BarAt = Queue(new VkImageMemoryBarrier2
-            {
-                srcStageMask = ss, srcAccessMask = sa & WriteAccess, dstStageMask = ds, dstAccessMask = da,
-                oldLayout = img.Layout, newLayout = to, srcQueueFamilyIndex = QueueFamilyIgnored, dstQueueFamilyIndex = QueueFamilyIgnored,
-                image = img.Image,
-                subresourceRange = new VkImageSubresourceRange
-                {
-                    aspectMask = Aspect(img.Desc.Fmt), levelCount = Vortice.Vulkan.Vulkan.VK_REMAINING_MIP_LEVELS,
-                    layerCount = Vortice.Vulkan.Vulkan.VK_REMAINING_ARRAY_LAYERS,
-                },
-            });
+            VkImageMemoryBarrier2 b = Whole(img);
+            b.srcStageMask = ss; b.srcAccessMask = sa & WriteAccess; b.dstStageMask = ds; b.dstAccessMask = da;
+            b.oldLayout = img.Layout; b.newLayout = to;
+            img.BarAt = Queue(b);
         }
         img.Layout = to;
         img.Written = false;
     }
+
+    /// <summary>A barrier over every mip and layer of <paramref name="img"/>, no stage, access, layout or ownership named.</summary>
+    private static VkImageMemoryBarrier2 Whole(VkImg img) => new()
+    {
+        srcQueueFamilyIndex = QueueFamilyIgnored, dstQueueFamilyIndex = QueueFamilyIgnored, image = img.Image,
+        subresourceRange = new VkImageSubresourceRange
+        {
+            aspectMask = Aspect(img.Desc.Fmt), levelCount = Vortice.Vulkan.Vulkan.VK_REMAINING_MIP_LEVELS,
+            layerCount = Vortice.Vulkan.Vulkan.VK_REMAINING_ARRAY_LAYERS,
+        },
+    };
 
     private int Queue(in VkImageMemoryBarrier2 b)
     {

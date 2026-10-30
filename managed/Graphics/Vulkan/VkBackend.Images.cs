@@ -381,10 +381,12 @@ internal sealed unsafe partial class VkBackend
         }
     }
 
-    /// <summary>Record every pending upload at the head of the submit, each image left readable, and hand the staging
+    /// <summary>Send the first fills on the transfer queue, then record every other pending upload and the acquire of
+    /// what the transfer queue released at the head of the submit, each image left readable, and hand the staging
     /// to the deaths queue. An image or buffer destroyed since its upload is skipped.</summary>
     private void FlushUploads()
     {
+        Ship();
         UploadState u = _upload;
         if (u.Acquire.Count > 0)
         {
@@ -392,7 +394,7 @@ internal sealed unsafe partial class VkBackend
             {
                 if (!_images.TryGet(id.Value, out VkImg img)) continue;
                 Remember(img);
-                Queue(Handover(img, VkPipelineStageFlags2.None, VkAccessFlags2.None, ShaderStages, VkAccessFlags2.ShaderSampledRead));
+                Queue(Handover(img, acquire: true));
                 img.Layout = VkImageLayout.ShaderReadOnlyOptimal;
                 img.Written = false;
             }

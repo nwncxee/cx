@@ -8,10 +8,10 @@ using CX.Rhi;
 namespace CX.Alloy;
 
 /// <summary>
-/// The shader goldens that have to run on a GPU to mean anything: the lightmap block encoder against the
-/// driver's own BC6H/BC7 decoder, the G-buffer's pack and read lanes, the parallax march against the stock
-/// displacement, the shading rate per tile, and the compute bloom against the fragment chain. Each builds the shipped GLSL into a compute stage on a device of its own and compares what the
-/// hardware answered with an oracle written here, so no assertion can be satisfied by the code under test.
+/// The goldens that have to run on a GPU to mean anything: the lightmap encoder against the driver's BC6H/BC7 decoder,
+/// the G-buffer lanes, the parallax march, the shading rate, the compute bloom against the fragment chain -- each the
+/// shipped GLSL as a compute stage -- and the transfer queue's fills against hand-written bytes. Each compares what the
+/// hardware answered with an oracle written here; the transfer queue's copy count is the backend's own, held to a literal.
 /// </summary>
 internal static partial class GpuGolden
 {
@@ -44,6 +44,7 @@ internal static partial class GpuGolden
         PostSelfCheck(vk, check, log);
         TransferSelfCheck(vk, check, log);
         TransferAfterMips(vk, check, log);
+        TransferRefill(vk, check);
     }
 
     /// <summary>The version line every golden stage opens with, and the one the shipped libraries open with.</summary>
