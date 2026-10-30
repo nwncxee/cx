@@ -2,7 +2,7 @@
 // The reflection trace: one ray per block of 1 << uSsr.w pixels, after the opaque set, sky, cutouts and grass (Ssr).
 // Which pixel of the block, and which direction off its GGX lobe, are drawn from the R2 sequence, phased per frame;
 // the ray walks THIS frame's depth as a hi-Z pyramid: it climbs while the ray stays in front of each cell's closest
-// surface and confirms a hit per pixel, at level 0. Out goes where the ray landed and how likely its direction was --
+// surface and confirms a hit at the finest level. Out goes where the ray landed and how likely its direction was --
 // never a colour: cx_ssrres_f resolves the hits per full-res pixel, reusing its neighbours', and cx_ssrhist_f keeps
 // them over frames. A miss, a back face or a ray off the screen is pdf 0.
 #include "cx_ssr.glsl"
@@ -14,7 +14,7 @@ uniform sampler2D uRecN;     // the record: octahedral world normal, roughness, 
 uniform sampler2D uRecW;     // ...its weight
 uniform mat4 uProj, uInvProj, uView;
 uniform vec2 uNf;            // near, far
-uniform vec4 uSsr;           // x = roughness cap, y = cell visits per ray, z = the level the walk starts at, w = log2 of the block
+uniform vec4 uSsr;           // x = roughness cap, y = cell visits per ray, z = finest hi-Z level, w = log2 of the block
 uniform int uFrame;          // the noise phase
 
 /// The pyramid level the walk may climb to (a 64-pixel cell): coarser cells overlap too much of the scene to skip.
@@ -40,6 +40,7 @@ bool Trace(vec3 o, vec3 r, vec2 size, out vec2 ph)
     ph = vec2(0.0);
     float len = r.z > 0.0 ? min(CX_SSR_DIST, (-uNf.x * 1.01 - o.z) / r.z) : CX_SSR_DIST;
     int top = min(textureQueryLevels(uHiZ) - 1, CX_SSR_TOP);
+    int fine = min(int(uSsr.z), top);
     if (len <= 0.0) return false;
     vec4 h0 = uProj * vec4(o, 1.0), h1 = uProj * vec4(o + r * len, 1.0);
     float k0 = 1.0 / h0.w, k1 = 1.0 / h1.w;
@@ -55,7 +56,7 @@ bool Trace(vec3 o, vec3 r, vec2 size, out vec2 ph)
     // (1/w is linear in screen space: the ray's inverse depth at t is mix(k0, k1, t))
     vec2 tx = mix(vec2(1e30), (floor(p0) + dirS - p0) * invD, moves);
     float t = min(tx.x, tx.y) + tEps;   // out of the pixel's own texel first
-    int iter = int(uSsr.y), lv = clamp(int(uSsr.z), 1, top);
+    int iter = int(uSsr.y), lv = max(fine, 1);
     for (int i = 0; i < iter && t < tEnd; i++)
     {
         float cs = float(1 << lv);
@@ -69,7 +70,7 @@ bool Trace(vec3 o, vec3 r, vec2 size, out vec2 ph)
         // the ray reaches that surface inside the cell: move to where, if it is still ahead
         float tc = abs(k1 - k0) > 1e-9 ? (kS - k0) / (k1 - k0) : t;
         if (kA > kS) t = clamp(tc, t, tExit);
-        if (lv > 0) { lv--; continue; }
+        if (lv > fine) { lv--; continue; }
         float ray = 1.0 / mix(k0, k1, t);
         if (ray - 1.0 / kS < max(CX_SSR_THICK, CX_SSR_THICKREL * ray) && !Behind(ivec2(p0 + d * t), r))
         {
