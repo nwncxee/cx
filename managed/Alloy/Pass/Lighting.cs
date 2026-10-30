@@ -102,7 +102,7 @@ internal static class Lighting
                             help: "Surfaces rougher than this keep the capture alone. Lower is cheaper.");
         SsrDetail = G.Dropdown("ssrdetail", "Screen-space reflection detail", new[] { 0, 1, 2 }, 1, new[] { "full", "half", "quarter" },
                                tier: Tier.Advanced,
-                               help: "The resolution a reflection finds what it hits at. Lower is cheaper and blockier.")
+                               help: "How many reflection rays are traced: one per pixel, per 2x2 or per 4x4 block. Lower is cheaper and noisier.")
                      .Ladder(Quality.Reflections, 2, 2, 1, 1);
         SsrPlanar = G.Toggle("ssrplanar", "Mirror reflections on flat ground", false,
                              help: "Wet ground at the player's height reflects a second, mirrored draw of the scene: no holes behind "

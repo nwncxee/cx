@@ -182,7 +182,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// <see cref="OwnedLitFsMain"/> and the water stage. Raise it when a stage adds one, or the new mode is
     /// silently clamped at the parse and the screenshot is of the old view.
     /// <see cref="FrameSnapshot.SelfCheck"/> asserts the water stage's highest view against this.</summary>
-    internal const int LightVizMax = 53;   // 53 = the CX-273 decal layer folded into each surface (white = all decal); 52 = a forward fragment's light source (green deferred record, yellow baked walk, red unbaked walk); 51 = the hot-light path per fragment (red tested, green ray hit); 40 = the #493 vis-ID target (IdTarget.VizMode); 41/42/45/46 = SSR trust, the reflection, the probe behind it and the mirrored draw (CX-51); 43/44 = the #674 lightmap term and its texel grid; 47..50 = CX-117's PLT forensics
+    internal const int LightVizMax = 53;   // 53 = the CX-273 decal layer folded into each surface (white = all decal); 52 = a forward fragment's light source (green deferred record, yellow baked walk, red unbaked walk); 51 = the hot-light path per fragment (red tested, green ray hit); 40 = the #493 vis-ID target (IdTarget.VizMode); 43/44 = the #674 lightmap term and its texel grid; 47..50 = CX-117's PLT forensics
     internal static int _lightViz => Renderer.Viz.V;
     /// <summary>This draw is going into the <see cref="EnvProbe"/> cube, not onto the screen. The lit and
     /// water stages read it, so a capture never samples the probe -- which is an attachment of the framebuffer
