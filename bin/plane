@@ -222,6 +222,30 @@ def find_lines(identifier, items, text, states_by_id):
     return lines
 
 
+WAITS_ON = re.compile(r"^Waits on:\s*(.+)$", re.MULTILINE)
+
+
+def waiting_lines(identifier, items, user_id, states_by_id, base_url, workspace):
+    """What `waiting` prints: `PROJ-N  title  waits on: <what>`, one line per item.
+
+    Waiting work is parked on one person: assigned to them, not started, and
+    its body has a `Waits on:` line saying what it waits for. Plain assigned
+    work has no such line and is left out.
+    """
+    lines = []
+    for item in items:
+        if user_id not in (item.get("assignees") or []):
+            continue
+        if states_by_id.get(str(item.get("state")), {}).get("group") != "unstarted":
+            continue
+        body = html_to_markdown(item.get("description_html"), base_url, workspace)
+        match = WAITS_ON.search(body)
+        if match:
+            name = item.get("name") or ""
+            lines.append(f"{identifier}-{item['sequence_id']}  {name}  waits on: {match[1]}")
+    return lines
+
+
 def is_open(work_item, states_by_id):
     """Open means: its state is not in a completed or cancelled group."""
     state = states_by_id.get(str(work_item.get("state")))
@@ -1677,6 +1701,12 @@ def main(argv=None):
     p.add_argument("project", help="project identifier, e.g. PLAT")
     p.add_argument("text")
 
+    p = sub.add_parser(
+        "waiting", help="work parked on you: assigned, not started, with a Waits on: line",
+        parents=[raw],
+    )
+    p.add_argument("project", help="project identifier, e.g. PLAT")
+
     sub.add_parser("whoami", help="the user who owns the API key, and their id")
 
     p = sub.add_parser("comment", help="add a comment, written in Markdown", parents=[raw])
@@ -1839,6 +1869,22 @@ def main(argv=None):
         else:
             states = client.states(project["id"])
             for line in find_lines(project["identifier"], items, args.text, states):
+                print(line)
+        return 0
+
+    if args.command == "waiting":
+        project = client.project(args.project.upper())
+        # Read and matched here, like `find`: the list endpoint filters nothing.
+        items = client.work_items(project["id"])
+        states = client.states(project["id"])
+        me = client.me()["id"]
+        lines = waiting_lines(
+            project["identifier"], items, me, states, client.base_url, client.workspace
+        )
+        if args.json:
+            _print(lines)
+        else:
+            for line in lines:
                 print(line)
         return 0
 
