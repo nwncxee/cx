@@ -37,13 +37,18 @@ import hashlib
 import html
 import html.parser
 import json
+import mimetypes
 import os
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 import urllib.error
 import urllib.parse
 import time
 import urllib.request
+import uuid
 
 # --- mapping ---------------------------------------------------------------
 
@@ -137,6 +142,9 @@ WORK_ITEM_REFERENCE = re.compile(r"^([A-Za-z][A-Za-z0-9]*)-(\d+)$")
 LEGACY_REFERENCE = re.compile(r"^(?:([\w.-]+)/)?([\w.-]+)#(\d+)$")
 
 
+PRIORITIES = ["none", "low", "medium", "high", "urgent"]
+
+
 def priority_for_labels(labels):
     """The Plane priority a Gitea issue's labels map to.
 
@@ -225,10 +233,10 @@ def is_open(work_item, states_by_id):
 def frontier(children, relations_by_item, states_by_id, open_outside=()):
     """Open children, unassigned, with no open blocker.
 
-    This is wayfinder's "what can be picked up right now". It is a pure
+    This is the star chart's "what can be picked up right now". It is a pure
     function of what the caller has already fetched so that the same rule can
     be asserted without a live instance. `open_outside` holds the ids of open
-    blockers that are not children: maps block each other across projects, and
+    blockers that are not children: star charts block each other across projects, and
     a child waiting on one is not ready.
     """
     open_ids = {str(c["id"]) for c in children if is_open(c, states_by_id)}
@@ -265,7 +273,7 @@ def child_lines(children, relations_by_item, states_by_id, labels_by_id, members
         kinds = [
             labels_by_id.get(str(label), {}).get("name", "") for label in child.get("labels") or []
         ]
-        kind = next((k.split(":", 1)[1] for k in kinds if k.startswith("wayfinder:")), "-")
+        kind = next((k.split(":", 1)[1] for k in kinds if k.startswith("starchart:")), "-")
         who = ", ".join(members_by_id.get(str(a), str(a)) for a in child.get("assignees") or [])
         line = f"{reference_by_id.get(item_id, item_id)}  {state}  {kind}  {who or '-'}  "
         line += child.get("name") or ""
@@ -647,17 +655,17 @@ def body_token(html_text):
     return hashlib.sha256(normalize_html(html_text).encode()).hexdigest()[:12]
 
 
-# --- indexing a decision on its map ----------------------------------------
+# --- indexing a decision on its star chart ---------------------------------
 
-DECISIONS = "decisions so far"
+DECISIONS = "decisions"
 
 
 def decision_line(name, item_url, gist, base_url, workspace, identifiers=None):
-    """The `<li>` `resolve` adds to a map: `- [name](url) — gist` (PLAT-273).
+    """The `<li>` `resolve` adds to a star chart: `- [name](url) — gist` (PLAT-273).
 
     The gist goes through the same inline Markdown as a body. It is written as
     a list item's text, so a gist that starts with `#` or `-` stays words.
-    The link leads the line because `append_decision` tells a map's own line
+    The link leads the line because `append_decision` tells a chart's own line
     for an item from a mention of it by that (PLAT-290).
     """
     gist = " ".join((gist or "").split())
@@ -701,18 +709,18 @@ def _heading_level(tag):
     return int(tag[1]) if re.fullmatch(r"h[1-6]", tag) else None
 
 
-def append_decision(map_html, line_html, item_url):
-    """A map body with `line_html` appended under "Decisions so far".
+def append_decision(chart_html, line_html, item_url):
+    """A star chart body with `line_html` appended under "Decisions".
 
-    Only that section is touched: maps still carry ticket lists and other
+    Only that section is touched: charts still carry ticket lists and other
     sections in any order. The line goes at the end of the first list after
     the heading; with no list, a new one starts right after the heading; with
-    no section, one goes in before "Not yet specified", or at the end. A body
+    no section, one goes in before "Nebulae", or at the end. A body
     whose section already has a line led by a link to `item_url` comes back
     as it was, so a re-run after a failure finishes the job without a second
     line.
     """
-    body = map_html or ""
+    body = chart_html or ""
     tags = _Tags(body).tags
     # A heading's text is the words after its open tag and every tag inside
     # it, up to its own close tag. Headings do not nest.
@@ -729,9 +737,9 @@ def append_decision(map_html, line_html, item_url):
     wrapped = body.rstrip().endswith("</div>") and body.lstrip().startswith("<div")
     end = body.rstrip().rindex("</div>") if wrapped else len(body)
     if section is None:
-        later = next((h for h in headings if h[3] == "not yet specified"), None)
+        later = next((h for h in headings if h[3] == "nebulae"), None)
         at = tags[later[0]][0] if later else end
-        return body[:at] + f"<h2>Decisions so far</h2><ul>{line_html}</ul>" + body[at:]
+        return body[:at] + f"<h2>Decisions</h2><ul>{line_html}</ul>" + body[at:]
 
     opened, closed, level, _ = section
     after_heading = body.index(">", tags[closed][0]) + 1
@@ -758,6 +766,163 @@ def append_decision(map_html, line_html, item_url):
             if depth == 0:
                 return body[:at] + line_html + body[at:]
     return body[:after_heading] + f"<ul>{line_html}</ul>" + body[after_heading:]
+
+
+def png_size(content):
+    """A PNG's width and height in pixels, read from its header; None for any other file."""
+    if content[:8] != b"\x89PNG\r\n\x1a\n" or content[12:16] != b"IHDR":
+        return None
+    width, height = int.from_bytes(content[16:20], "big"), int.from_bytes(content[20:24], "big")
+    return (width, height) if width and height else None
+
+
+def chart_section(chart_html):
+    """Where the drawing goes in a star chart body: (start, end), or None with no Chart heading.
+
+    It starts right after the heading. When an image opens the section, the
+    span covers it, so a redrawn chart shows only the new drawing.
+    """
+    body = chart_html or ""
+    tags = _Tags(body).tags
+    heading = next(
+        (n for n, (_, tag, opening, words) in enumerate(tags)
+         if opening and _heading_level(tag) and " ".join(words.split()).lower() == "chart"),
+        None,
+    )
+    close = next((k for k in range(heading + 1, len(tags)) if tags[k][1] == tags[heading][1]), None) \
+        if heading is not None else None
+    if close is None:
+        return None
+    start = end = body.index(">", tags[close][0]) + 1
+    first = tags[close + 1] if close + 1 < len(tags) else None
+    if first and first[2] and first[1] == "image-component":
+        after = tags[close + 2] if close + 2 < len(tags) else None
+        last = after if after and after[1] == first[1] and not after[2] else first
+        end = body.index(">", last[0]) + 1
+    return start, end
+
+
+def show_chart(chart_html, section, asset_id, width, height, block_id):
+    """A star chart body with the image `asset_id` in `section`, from `chart_section`.
+
+    Plane shows an attachment only in its panel, where a click downloads it.
+    Its editor shows an image inline as an `image-component` whose `src` is a
+    file id of the project, and an attachment's id works. The page shrinks a
+    wide image to fit, so `width` is the drawing's own.
+    """
+    body = chart_html or ""
+    image = (
+        f'<image-component src="{asset_id}" id="{block_id}" width="{width}px" height="auto" '
+        f'aspectRatio="{width / height:.4f}" alignment="left" status="uploaded"></image-component>'
+    )
+    return body[:section[0]] + image + body[section[1]:]
+
+
+def chart_mermaid(children, relations_by_item, states_by_id, labels_by_id, reference_by_id,
+                  course=()):
+    """A star chart's drawing as Mermaid, built from its children and blockers.
+
+    A node is `PROJ-N kind: title`, an edge runs from a blocker to what it
+    blocks and the frontier is drawn thick. An open
+    blocker outside the chart is a node of its own, and a warp's `course`
+    (references) is drawn yellow in place of the frontier. A closed ticket is
+    left out: the drawing shows the course ahead, and the log is in the
+    tracker. Tickets with no edge stack in a column per kind, ten to a
+    column, because Mermaid lays them out in one row otherwise.
+    """
+    def label(text):
+        text = " ".join((text or "").split())
+        return text.replace('"', "'").replace("[", "(").replace("]", ")")[:60]
+
+    every_id = {str(c["id"]) for c in children}
+    children = [c for c in children if is_open(c, states_by_id)]
+    node, kind_of, lines = {}, {}, []
+    for child in sorted(children, key=lambda c: c.get("sequence_id") or 0):
+        item_id = str(child["id"])
+        names = [labels_by_id.get(str(l), {}).get("name", "") for l in child.get("labels") or []]
+        kind = next((n.split(":", 1)[1] for n in names if n.startswith("starchart:")), "star")
+        node[item_id], kind_of[item_id] = f"N{child['sequence_id']}", kind.replace("-", " ")
+        lines.append(
+            f'{node[item_id]}["{reference_by_id.get(item_id, item_id)} {kind_of[item_id]}: '
+            f'{label(child.get("name"))}"]'
+        )
+    edges, outside = [], []
+    for item_id, relation in relations_by_item.items():
+        for blocker in relation.get("blocked_by", []):
+            blocker_id = str(blocker["issue_id"])
+            if blocker_id not in node and blocker_id in reference_by_id and blocker_id not in every_id:
+                node[blocker_id] = "X" + reference_by_id[blocker_id].replace("-", "")
+                outside.append(f'{node[blocker_id]}["{reference_by_id[blocker_id]} on another chart"]')
+            if blocker_id in node and item_id in node:
+                edges.append(f"{node[blocker_id]} --> {node[item_id]}")
+    linked = {name for edge in edges for name in edge.split(" --> ")}
+    out = ["flowchart TD"] + [f"  {line}" for line in lines + outside if line.split("[")[0] in linked]
+    columns, column_number = {}, 0
+    for item_id in node:
+        if node[item_id] not in linked and item_id in kind_of:
+            columns.setdefault(kind_of[item_id], []).append(node[item_id])
+    for kind, members in columns.items():
+        for start in range(0, len(members), 10):
+            column, column_number = members[start:start + 10], column_number + 1
+            out += [f'  subgraph C{column_number}["{kind}"]', "    direction TB"]
+            out += [f"    {line}" for line in lines if line.split("[")[0] in column]
+            out += [f"    {a} ~~~ {b}" for a, b in zip(column, column[1:])]
+            out.append("  end")
+    out += [f"  {edge}" for edge in edges]
+    out += ["  classDef frontier stroke-width:3px", "  classDef course fill:#fde68a"]
+    outside_ids = set(reference_by_id) - every_id
+    ready = [node[str(c["id"])] for c in frontier(children, relations_by_item, states_by_id, outside_ids)]
+    by_reference = {reference_by_id.get(i, i): name for i, name in node.items()}
+    lit = [by_reference[r] for r in course if r in by_reference]
+    ready = [name for name in ready if name not in lit]
+    if lit:
+        out.append(f"  class {','.join(lit)} course")
+    if ready:
+        out.append(f"  class {','.join(ready)} frontier")
+    return "\n".join(out) + "\n"
+
+
+def render_chart(mermaid):
+    """Mermaid to PNG bytes with mermaid-cli, at the drawing's own width.
+
+    mmdc shrinks every chart to 800 pixels by default, which leaves a big one
+    unreadable. mmdc comes from the path, or from nixpkgs when it is missing.
+    """
+    command = ["mmdc"] if shutil.which("mmdc") else ["nix", "shell", "nixpkgs#mermaid-cli", "-c", "mmdc"]
+    with tempfile.TemporaryDirectory() as folder:
+        config = os.path.join(folder, "natural.json")
+        with open(config, "w") as handle:
+            json.dump({"flowchart": {"useMaxWidth": False}}, handle)
+        with open(os.path.join(folder, "chart.mmd"), "w") as handle:
+            handle.write(mermaid)
+        try:
+            drawn = subprocess.run(
+                command + ["-q", "-c", config, "-i", os.path.join(folder, "chart.mmd"),
+                           "-o", os.path.join(folder, "chart.png")],
+                capture_output=True, text=True, timeout=300,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise SystemExit(f"plane: cannot run mmdc or nix to draw the chart: {error}") from error
+        if drawn.returncode != 0:
+            raise SystemExit(f"plane: mmdc failed: {' '.join(drawn.stderr.split()[-40:])}")
+        with open(os.path.join(folder, "chart.png"), "rb") as handle:
+            return handle.read()
+
+
+def show_drawing(client, project_id, item, reference, content):
+    """Attach a chart's PNG and show it under the body's Chart heading; the attachment.
+
+    The body is read right before it is written, as `resolve` does, because
+    drawing can take minutes and an edit made meanwhile would be lost.
+    """
+    attached = client.attach(project_id, item["id"], "chart.png", content, "image/png")
+    body = client.work_item_detail(project_id, item["id"]).get("description_html")
+    section = chart_section(body)
+    if section is None:
+        raise SystemExit(f"plane: {reference} lost its Chart heading; chart.png is attached but not shown")
+    shown = show_chart(body, section, attached["id"], *png_size(content), uuid.uuid4())
+    client.update_work_item(project_id, item["id"], {"description_html": shown})
+    return attached
 
 
 def thread(comments):
@@ -834,6 +999,26 @@ def show_text(reference, item, comments, relations, states_by_id, labels_by_id, 
 # --- client ----------------------------------------------------------------
 
 
+def multipart_body(fields, name, content, content_type):
+    """A multipart form for a presigned storage upload: the fields in order, the file last.
+
+    Storage checks the policy against the fields before it reads the file, so
+    the file part has to come after every field.
+    """
+    boundary = f"sow-plane-{uuid.uuid4().hex}"
+    parts = [
+        f'--{boundary}\r\nContent-Disposition: form-data; name="{key}"\r\n\r\n{value}\r\n'.encode()
+        for key, value in fields.items()
+    ]
+    parts.append(
+        f'--{boundary}\r\nContent-Disposition: form-data; name="file"; '
+        f'filename="{name}"\r\nContent-Type: {content_type}\r\n\r\n'.encode()
+        + content + b"\r\n"
+    )
+    parts.append(f"--{boundary}--\r\n".encode())
+    return boundary, b"".join(parts)
+
+
 class PlaneError(RuntimeError):
     """A failed call, carrying what the API said about it.
 
@@ -846,6 +1031,15 @@ class PlaneError(RuntimeError):
         super().__init__(message)
         self.status = status
         self.payload = payload if isinstance(payload, dict) else {}
+
+    @classmethod
+    def from_http(cls, method, url, error):
+        detail = error.read().decode(errors="replace")[:500]
+        try:
+            payload = json.loads(detail)
+        except ValueError:
+            payload = None
+        return cls(f"{method} {url} -> {error.code}: {detail}", status=error.code, payload=payload)
 
 
 class Plane:
@@ -938,16 +1132,7 @@ class Plane:
             with urllib.request.urlopen(request, timeout=self.timeout) as response:
                 payload = response.read()
         except urllib.error.HTTPError as error:
-            detail = error.read().decode(errors="replace")[:500]
-            try:
-                payload = json.loads(detail)
-            except ValueError:
-                payload = None
-            raise PlaneError(
-                f"{method} {url} -> {error.code}: {detail}",
-                status=error.code,
-                payload=payload,
-            ) from error
+            raise PlaneError.from_http(method, url, error) from error
         if not payload:
             return None
         return json.loads(payload)
@@ -1048,7 +1233,7 @@ class Plane:
     def find_by_legacy(self, legacy):
         """A migrated work item anywhere in the workspace, or None.
 
-        Blocking crosses projects -- the maps already depend on each other
+        Blocking crosses projects -- the star charts already depend on each other
         across repositories -- so a blocker is looked for everywhere and not
         only in the project being imported.
         """
@@ -1088,6 +1273,21 @@ class Plane:
             if state.get("group") == group:
                 return state
         raise PlaneError(f"project {project_id} has no state in group {group!r}")
+
+    def state_named(self, project_id, name):
+        """The state called `name` in this project, matched without case.
+
+        States belong to a project, so the same name is a different id in each.
+        An unknown name lists the ones that exist, as `label_ids` does.
+        """
+        states = list(self.states(project_id).values())
+        for state in states:
+            if str(state.get("name", "")).lower() == str(name).strip().lower():
+                return state
+        raise PlaneError(
+            f"unknown state {name!r}; this project has: "
+            f"{', '.join(sorted(s.get('name', '?') for s in states))}"
+        )
 
     def labels(self, project_id):
         return {label["name"]: label for label in self.paged(f"projects/{project_id}/labels/")}
@@ -1158,6 +1358,26 @@ class Plane:
     def close_work_item(self, project_id, item_id):
         state = self.state_in_group(project_id, "completed")
         return self.update_work_item(project_id, item_id, {"state": state["id"]})
+
+    def set_state(self, project_id, item_id, name):
+        state = self.state_named(project_id, name)
+        return self.update_work_item(project_id, item_id, {"state": state["id"]})
+
+    def set_priority(self, project_id, item_id, priority):
+        return self.update_work_item(project_id, item_id, {"priority": priority})
+
+    def unassign(self, project_id, item_id, current, user_id):
+        """Drop one assignee and keep the rest. Plane takes the whole list."""
+        kept = [u for u in current if str(u) != str(user_id)]
+        return self.update_work_item(project_id, item_id, {"assignees": kept})
+
+    def change_labels(self, project_id, item_id, current, add, remove):
+        """Add and remove labels by name; every name must already exist."""
+        add_ids = self.label_ids(project_id, add)
+        remove_ids = {str(i) for i in self.label_ids(project_id, remove)}
+        labels = [i for i in current if str(i) not in remove_ids]
+        labels += [i for i in add_ids if str(i) not in {str(x) for x in labels}]
+        return self.update_work_item(project_id, item_id, {"labels": labels})
 
     def set_parent(self, project_id, item_id, parent_id):
         return self.update_work_item(project_id, item_id, {"parent": parent_id})
@@ -1238,6 +1458,39 @@ class Plane:
             {"url": url, "title": title or url},
         )
 
+    def attach(self, project_id, item_id, name, content, content_type):
+        """Upload a file onto a work item, replacing an earlier one of the same name.
+
+        Plane takes a file in three calls: it hands out a presigned upload, the
+        file goes straight to storage with no API key, and a PATCH marks it
+        uploaded. A redrawn chart keeps its name, so once the new copy is in,
+        every older one of that name is deleted. A failed upload leaves the
+        old copy in place, and a re-run finishes the job.
+        """
+        path = f"projects/{project_id}/work-items/{item_id}/attachments/"
+        ticket = self.request(
+            "POST", path, {"name": name, "type": content_type, "size": len(content)}
+        )
+        upload = ticket["upload_data"]
+        self._upload(upload["url"], upload["fields"], name, content, content_type)
+        self.request("PATCH", f"{path}{ticket['asset_id']}/", {"is_uploaded": True})
+        for old in self.request("GET", path) or []:
+            if (old.get("attributes") or {}).get("name") == name and old["id"] != ticket["asset_id"]:
+                self.request("DELETE", f"{path}{old['id']}/")
+        return ticket["attachment"]
+
+    def _upload(self, url, fields, name, content, content_type):
+        """The file goes to storage as the presigned upload says, with no API key."""
+        boundary, body = multipart_body(fields, name, content, content_type)
+        request = urllib.request.Request(url, data=body, method="POST")
+        request.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
+        request.add_header("User-Agent", USER_AGENT)
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout):
+                pass
+        except urllib.error.HTTPError as error:
+            raise PlaneError.from_http("POST", url, error) from error
+
     def relations(self, project_id, item_id):
         return self.request("GET", f"projects/{project_id}/work-items/{item_id}/relations/")
 
@@ -1251,10 +1504,10 @@ class Plane:
     def block(self, project_id, item_id, blocker_ids):
         return self.add_relation(project_id, item_id, "blocked_by", blocker_ids)
 
-    # -- wayfinder
+    # -- star charts
 
     def children(self, project_id, parent_id):
-        """A map's children, their relations by id, and the project's states.
+        """A star chart's children, their relations by id, and the project's states.
 
         Every item in the project is read and filtered here, because the list
         endpoint ignores `parent=` and hands back the whole project. Move to the
@@ -1275,7 +1528,7 @@ class Plane:
         """`PROJ-N` for every child, and for every open blocker outside them.
 
         A child's reference is already in hand. A blocker outside the list --
-        often in another project, since maps depend on each other across
+        often in another project, since star charts depend on each other across
         repositories -- costs one fetch, and its project's states one more per
         project. A closed one is left out, which is how `child_lines` knows not
         to name it.
@@ -1469,20 +1722,39 @@ def main(argv=None):
     p.add_argument("reference")
 
     p = sub.add_parser(
-        "resolve", help="comment the answer, index it on the parent map, and close",
+        "resolve", help="comment the answer, index it on the parent star chart, and close",
         parents=[raw],
     )
     p.add_argument("reference")
     body = p.add_mutually_exclusive_group(required=True)
     body.add_argument("--body", help="the resolution, as Markdown")
     body.add_argument("--body-file", help="a file holding the resolution, as Markdown")
-    p.add_argument("--gist", required=True, help="one line for the map's Decisions so far")
+    p.add_argument("--gist", required=True, help="one line for the star chart's Decisions")
 
     p = sub.add_parser(
         "claim", help="assign a work item to a user, by default yourself", parents=[raw]
     )
     p.add_argument("reference")
     p.add_argument("user_id", nargs="?", help="a user id; omitted, the key's owner")
+
+    p = sub.add_parser("state", help="move a work item to a named state", parents=[raw])
+    p.add_argument("reference")
+    p.add_argument("state", help="a state name in the item's project, e.g. Todo")
+
+    p = sub.add_parser("priority", help="set a work item's priority", parents=[raw])
+    p.add_argument("reference")
+    p.add_argument("priority", choices=PRIORITIES)
+
+    p = sub.add_parser(
+        "unclaim", help="drop an assignee, by default yourself", parents=[raw]
+    )
+    p.add_argument("reference")
+    p.add_argument("user_id", nargs="?", help="a user id; omitted, the key's owner")
+
+    p = sub.add_parser("label", help="add and remove labels by name", parents=[raw])
+    p.add_argument("reference")
+    p.add_argument("--add", action="append", default=[], dest="add")
+    p.add_argument("--remove", action="append", default=[], dest="remove")
 
     p = sub.add_parser(
         "block", help="record that one item is blocked by others", parents=[raw]
@@ -1495,14 +1767,33 @@ def main(argv=None):
     p.add_argument("parent")
 
     p = sub.add_parser(
-        "children", help="every child of a map, one line each, closed ones too", parents=[raw]
+        "attach", help="upload a file onto a work item, replacing one of the same name",
+        parents=[raw],
     )
-    p.add_argument("map_reference")
+    p.add_argument("reference")
+    p.add_argument("file")
+    p.add_argument(
+        "--chart", action="store_true",
+        help="a star chart's drawing (a PNG): also show it under the body's Chart heading",
+    )
 
     p = sub.add_parser(
-        "frontier", help="open, unassigned children of a map with no open blocker", parents=[raw]
+        "draw", help="draw a star chart from its tickets and show the drawing under its Chart heading",
+        parents=[raw],
     )
-    p.add_argument("map_reference")
+    p.add_argument("chart_reference")
+    p.add_argument("--mermaid", action="store_true", help="print the Mermaid and change nothing")
+    p.add_argument("--course", default="", help="a warp's course and target, PROJ-N,PROJ-N: drawn yellow")
+
+    p = sub.add_parser(
+        "children", help="every child of a star chart, one line each, closed ones too", parents=[raw]
+    )
+    p.add_argument("chart_reference")
+
+    p = sub.add_parser(
+        "frontier", help="open, unassigned children of a star chart with no open blocker", parents=[raw]
+    )
+    p.add_argument("chart_reference")
 
     args = parser.parse_args(argv)
     client = Plane()
@@ -1622,17 +1913,17 @@ def main(argv=None):
         else:
             posted = client.comment(project_id, item["id"], answer)
             lines = [summary("commented on", reference, item)]
-        # The map is read right before it is written, as `edit` does: the line
+        # The chart is read right before it is written, as `edit` does: the line
         # goes into the body as it is now, not as it was a few requests ago.
         indexed, parent = None, item.get("parent")
         if parent:
             parent = client.work_item_detail(project_id, parent)
-            # A map and its tickets share a project, so the child's is the map's.
-            label = client.labels(project_id).get("wayfinder:map")
+            # A chart and its tickets share a project, so the child's is the chart's.
+            label = client.labels(project_id).get("starchart:chart")
             if not label or str(label["id"]) not in {str(i) for i in parent.get("labels") or []}:
                 parent = None
         if parent:
-            map_reference = f"{identifier}-{parent['sequence_id']}"
+            chart_reference = f"{identifier}-{parent['sequence_id']}"
             item_url = f"{client.base_url}/{client.workspace}/browse/{reference}/"
             identifiers = {project["identifier"] for project in client.projects()}
             line = decision_line(item.get("name") or reference, item_url, args.gist,
@@ -1640,14 +1931,14 @@ def main(argv=None):
             stored = parent.get("description_html") or ""
             updated = append_decision(stored, line, item_url)
             if updated == stored:
-                lines.append(f"already indexed {reference} on {map_reference}")
+                lines.append(f"already indexed {reference} on {chart_reference}")
             else:
                 indexed = client.update_work_item(
                     project_id, parent["id"], {"description_html": updated}
                 )
-                lines.append(f"indexed {reference} on {map_reference}")
+                lines.append(f"indexed {reference} on {chart_reference}")
         else:
-            lines.append(f"not indexed: {reference} has no parent map")
+            lines.append(f"not indexed: {reference} has no parent star chart")
         closed = client.close_work_item(project_id, item["id"])
         lines.append(summary("closed", reference, item))
         _report(args, [posted, indexed, closed], "\n".join(lines))
@@ -1662,7 +1953,49 @@ def main(argv=None):
             me = client.me()
             user_id, who = me["id"], me.get("display_name") or me["id"]
         claimed = client.assign(project_id, item["id"], [user_id])
-        _report(args, claimed, summary("claimed", reference, item, f"for {who}"))
+        line = summary("claimed", reference, item, f"for {who}")
+        # Claiming for yourself is taking the work, so the state says so and
+        # a second session sees it. Assigning someone else changes no state.
+        # The started group holds In Progress whatever a project calls it.
+        if not args.user_id:
+            started = client.state_in_group(project_id, "started")
+            claimed = client.update_work_item(project_id, item["id"], {"state": started["id"]})
+            line += f", {started.get('name', 'started')}"
+        _report(args, claimed, line)
+        return 0
+
+    if args.command == "state":
+        project_id, item, reference = _resolve(client, args.reference)
+        moved = client.set_state(project_id, item["id"], args.state)
+        _report(args, moved, summary("moved", reference, item, f"to {args.state}"))
+        return 0
+
+    if args.command == "priority":
+        project_id, item, reference = _resolve(client, args.reference)
+        done = client.set_priority(project_id, item["id"], args.priority)
+        _report(args, done, summary("set priority of", reference, item, f"to {args.priority}"))
+        return 0
+
+    if args.command == "unclaim":
+        project_id, item, reference = _resolve(client, args.reference)
+        if args.user_id:
+            user_id, who = args.user_id, args.user_id
+        else:
+            me = client.me()
+            user_id, who = me["id"], me.get("display_name") or me["id"]
+        done = client.unassign(project_id, item["id"], item.get("assignees") or [], user_id)
+        _report(args, done, summary("unclaimed", reference, item, f"for {who}"))
+        return 0
+
+    if args.command == "label":
+        if not (args.add or args.remove):
+            raise SystemExit("label needs --add or --remove")
+        project_id, item, reference = _resolve(client, args.reference)
+        done = client.change_labels(
+            project_id, item["id"], item.get("labels") or [], args.add, args.remove
+        )
+        changes = [f"+{n}" for n in args.add] + [f"-{n}" for n in args.remove]
+        _report(args, done, summary("relabelled", reference, item, " ".join(changes)))
         return 0
 
     if args.command == "block":
@@ -1681,8 +2014,47 @@ def main(argv=None):
         _report(args, moved, summary("parented", reference, item, under))
         return 0
 
+    if args.command == "attach":
+        project_id, item, reference = _resolve(client, args.reference)
+        name = os.path.basename(args.file)
+        content_type = mimetypes.guess_type(name)[0] or "application/octet-stream"
+        try:
+            with open(args.file, "rb") as handle:
+                content = handle.read()
+        except OSError as error:
+            raise SystemExit(f"plane: {error}") from error
+        size = png_size(content)
+        if args.chart and not size:
+            raise SystemExit(f"plane: --chart takes a PNG, and {args.file} is not one")
+        if args.chart and chart_section(item.get("description_html")) is None:
+            raise SystemExit(f"plane: {reference} has no Chart heading to show the drawing under")
+        if args.chart:
+            attached = show_drawing(client, project_id, item, reference, content)
+        else:
+            attached = client.attach(project_id, item["id"], name, content, content_type)
+        _report(args, attached, summary("attached", reference, item, name))
+        return 0
+
+    if args.command == "draw":
+        project_id, item, reference = _resolve(client, args.chart_reference)
+        children, relations, states = client.children(project_id, item["id"])
+        if not any(is_open(child, states) for child in children):
+            raise SystemExit(f"plane: {reference} has no open tickets to draw")
+        references = client.child_references(project_id, children, relations)
+        labels_by_id = {str(label["id"]): label for label in client.labels(project_id).values()}
+        course = [r.strip().upper() for r in args.course.split(",") if r.strip()]
+        mermaid = chart_mermaid(children, relations, states, labels_by_id, references, course)
+        if args.mermaid:
+            print(mermaid, end="")
+            return 0
+        if chart_section(item.get("description_html")) is None:
+            raise SystemExit(f"plane: {reference} has no Chart heading to show the drawing under")
+        attached = show_drawing(client, project_id, item, reference, render_chart(mermaid))
+        _report(args, attached, summary("drew", reference, item))
+        return 0
+
     if args.command in ("children", "frontier"):
-        project_id, item, _ = _resolve(client, args.map_reference)
+        project_id, item, _ = _resolve(client, args.chart_reference)
         children, relations, states = client.children(project_id, item["id"])
         references = client.child_references(project_id, children, relations)
         if args.command == "frontier":
