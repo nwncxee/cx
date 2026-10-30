@@ -25,8 +25,8 @@ internal sealed unsafe partial class VkBackend
                                                int X = 0, int Y = 0, int W = 0, int H = 0, int RowTexels = 0);
 
     /// <summary>Uploads made between submits: their staging and their copies, recorded at the head of the next
-    /// submit; a chunk goes back to <see cref="Pool"/> after it and is reused once that submit is past.
-    /// ponytail: the pool never shrinks -- an area load's high water stays mapped; trim it at an area edge if it shows.</summary>
+    /// submit; a chunk goes back to <see cref="Pool"/> after it, is reused once that submit is past, and is freed
+    /// once it sits there <see cref="StagingIdleSubmits"/> submits unused.</summary>
     private sealed class UploadState
     {
         public readonly List<UploadChunk> Chunks = new();
@@ -44,6 +44,11 @@ internal sealed unsafe partial class VkBackend
     /// <summary>The first staging chunk an upload opens: past a typical area's textures in a frame, so a load is a
     /// handful of chunks rather than one per texture.</summary>
     private const ulong UploadChunkBytes = 64ul << 20;
+    /// <summary>Staging the uploads between two submits may hold: past it the uploads so far go in a submit of their
+    /// own and their chunks are waited out and reused, so an area load (one long frame) stays inside it.</summary>
+    private const ulong StagingBudget = 256ul << 20;
+    /// <summary>Submits a pooled chunk sits unused before it is freed; the pool keeps one chunk past it.</summary>
+    private const long StagingIdleSubmits = 1000;
     /// <summary>Each staged copy starts on this boundary: a BC block, a texel of every format, and the device's
     /// optimalBufferCopyOffsetAlignment floor.</summary>
     private const ulong UploadAlign = 16;
@@ -289,10 +294,10 @@ internal sealed unsafe partial class VkBackend
         UploadChunk? c = _upload.Chunks.Count > 0 ? _upload.Chunks[^1] : null;
         if (c == null || c.Used + len > c.Size)
         {
-            c = null;
-            List<UploadChunk> pool = _upload.Pool;
-            for (int k = 0; k < pool.Count && c == null; k++)
-                if (pool[k].Size >= len && Passed(pool[k].At)) { c = pool[k]; pool.RemoveAt(k); }
+            c = Pooled(len, wait: false);
+            if (c == null && _upload.Chunks.Count > 0 && OpenStaging() + Math.Max(UploadChunkBytes, len) > StagingBudget
+                && UploadsAhead())
+                c = Pooled(len, wait: true);
             if (c == null)
             {
                 c = new UploadChunk { Size = Math.Max(UploadChunkBytes, len) };
@@ -311,6 +316,62 @@ internal sealed unsafe partial class VkBackend
                 return Fault("upload staging: the copy into the mapped allocation was refused");
         c.Used = (at + len + UploadAlign - 1) & ~(UploadAlign - 1);
         return true;
+    }
+
+    /// <summary>The bytes of the chunks the uploads since the last submit hold.</summary>
+    private ulong OpenStaging()
+    {
+        ulong sum = 0;
+        foreach (UploadChunk c in _upload.Chunks) sum += c.Size;
+        return sum;
+    }
+
+    /// <summary>The most recently used pooled chunk of at least <paramref name="len"/> bytes whose submit is past, taken
+    /// out of the pool -- the newest first, so the rest age toward the idle trim; <paramref name="wait"/> blocks on the
+    /// oldest such chunk when none is past yet. Null when the pool has none that fits.</summary>
+    private UploadChunk? Pooled(ulong len, bool wait)
+    {
+        List<UploadChunk> pool = _upload.Pool;
+        int oldest = -1;
+        for (int k = pool.Count - 1; k >= 0; k--)
+        {
+            if (pool[k].Size < len) continue;
+            if (Passed(pool[k].At)) { UploadChunk c = pool[k]; pool.RemoveAt(k); return c; }
+            if (oldest < 0 || pool[k].At < pool[oldest].At) oldest = k;
+        }
+        if (!wait || oldest < 0) return null;
+        VkResult r = WaitFor(pool[oldest].At);
+        if (r != VkResult.Success) { Fault($"upload staging: waiting out a chunk's submit returned {r}"); return null; }
+        UploadChunk w = pool[oldest];
+        pool.RemoveAt(oldest);
+        return w;
+    }
+
+    /// <summary>Free the pooled chunks unused for <see cref="StagingIdleSubmits"/> submits, keeping one of the standard
+    /// size, so a load's high water goes back once the loads stop.</summary>
+    private void TrimStaging()
+    {
+        List<UploadChunk> pool = _upload.Pool;
+        bool kept = false;
+        for (int k = pool.Count - 1; k >= 0; k--)
+        {
+            UploadChunk c = pool[k];
+            if (!kept && c.Size == UploadChunkBytes) { kept = true; continue; }
+            if (_submits - c.At < StagingIdleSubmits || !Passed(c.At)) continue;
+            Vma.vmaDestroyBuffer(_vma, c.Buffer, c.Alloc);
+            pool.RemoveAt(k);
+        }
+    }
+
+    /// <summary>The staging chunks held, in use and pooled, and their bytes.</summary>
+    internal (int Chunks, ulong Bytes) Staging
+    {
+        get
+        {
+            ulong bytes = OpenStaging();
+            foreach (UploadChunk c in _upload.Pool) bytes += c.Size;
+            return (_upload.Chunks.Count + _upload.Pool.Count, bytes);
+        }
     }
 
     /// <summary>Record every pending upload at the head of the submit, each image left readable, and hand the staging
@@ -370,6 +431,7 @@ internal sealed unsafe partial class VkBackend
         UploadState u = _upload;
         foreach (UploadChunk c in u.Chunks) { c.At = Next; u.Pool.Add(c); }
         u.Chunks.Clear();
+        TrimStaging();
         u.Copies.Clear();
         u.Zero.Clear();
         u.Touched.Clear();
