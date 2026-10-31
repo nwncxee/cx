@@ -185,12 +185,45 @@ public static unsafe partial class TextRig
     /// Every face's UVs move, so one epoch bump invalidates all cached glyph geometry.</summary>
     private static bool Rebake()
     {
+        int asked = _requests.Count;
+        AddStyleFaces();
         AtlasSheet? baked = AtlasSheet.Bake(_requests, Ranges, Icons, AtlasSize, _log!);
+        if (baked == null && _requests.Count > asked)
+        {
+            _requests.RemoveRange(asked, _requests.Count - asked);   // a style's face must not sink the bake that was asked for
+            baked = AtlasSheet.Bake(_requests, Ranges, Icons, AtlasSize, _log!);
+        }
         if (baked == null) return false;
         _sheet = baked;
         _atlasEpoch++;    // the atlas re-uploads, and cached-geometry consumers rebuild: their glyph UVs went stale
         Rebaked?.Invoke();
         return true;
+    }
+
+    /// <summary>Request every declared style's face that no request carries yet, under <see cref="_bakeLock"/>.</summary>
+    private static void AddStyleFaces()
+    {
+        var want = new List<(string Typeface, float Px)>();
+        TextStyle.Wanted(want);
+        foreach (var (typeface, px) in want)
+        {
+            if (_requests.Exists(r => !r.IconsOnly && r.Typeface == typeface && r.Px == px)) continue;
+            if (FontRegistry.Bytes(typeface) is byte[] bytes) _requests.Add(new FaceRequest(typeface, bytes, px));
+        }
+    }
+
+    /// <summary>Cold, once every service has declared its styles: one bake for every style face the sheet lacks, so
+    /// a window or menu opening later finds its face baked instead of re-baking the sheet on the frame it opens.</summary>
+    public static void WarmStyles()
+    {
+        lock (_bakeLock)
+        {
+            if (_sheet == null || _log == null) return;
+            var want = new List<(string Typeface, float Px)>();
+            TextStyle.Wanted(want);
+            foreach (var (typeface, px) in want)
+                if (!_sheet.TryFace(typeface, px, out _)) { Rebake(); return; }
+        }
     }
 
     /// <summary>Injected log (set in <see cref="Init"/>); the chat draw path reads it via this.</summary>

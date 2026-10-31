@@ -52,6 +52,20 @@ public sealed class TextStyle
                               help: $"Font for {what}; default follows the UI typeface. Type in the list to search.");
         Outline = g.Dropdown(prefix + "outline", "Text outline", OutlineLevels, outline, OutlineNames, tier: tier, changed: changed,
                              help: $"A dark edge around the letters of {what}, so they read over a bright scene.");
+        if (g.Registered) lock (s_all) s_all.Add(this);
+    }
+
+    /// <summary>Every style a registered group declared: each sheet bake carries their faces, so no element's first
+    /// draw re-bakes the whole sheet under the frame.</summary>
+    private static readonly List<TextStyle> s_all = new();
+
+    /// <summary>The (typeface, px) of every declared style that draws with a face of its own, into <paramref name="into"/>.</summary>
+    internal static void Wanted(List<(string Typeface, float Px)> into) { lock (s_all) Wanted(s_all, into); }
+
+    private static void Wanted(List<TextStyle> styles, List<(string Typeface, float Px)> into)
+    {
+        foreach (TextStyle s in styles)
+            if (!s.FollowsUi) into.Add((FontRegistry.Effective(s.Typeface.V), s.Px));
     }
 
     /// <summary>The element's face px at the GUI scale, clamped like the UI atlas.</summary>
@@ -142,6 +156,14 @@ public sealed class TextStyle
         s.Size.V = 0;
         check.Expect(!ReferenceEquals(s.Face(new GlyphAtlas()), ui) && s.Stamp != stamp, "a different face object moves the stamp");
         check.Expect(bare.Face(ui) == ui && bare.Stamp != s.Stamp, "two styles never share a stamp");
+
+        var want = new List<(string Typeface, float Px)>();
+        s.Size.V = 26;
+        check.Expect(Metrics.GameUiScale == 1f, "off-device the game UI scale is 1, so a face's px is its size");
+        Wanted(new List<TextStyle> { s, bare }, want);
+        check.Expect(want.Count == 1 && want[0] == ("default", 26f), "a bake wants the own-size style's face at 26 px, not the following one's");
+        s.Size.V = 0;
+        check.Expect(!s_all.Contains(s), "a style of an unregistered group is never baked ahead");
 
         check.Expect(HaloOf(0, 18f) == 0f && HaloOf(1, 18f) == 1f && HaloOf(2, 18f) == 2f && HaloOf(1, 36f) == 2f && HaloOf(1, 9f) == 1f,
                      "halo: off is 0, one px per level at 18 px, grows with the face, never under a px");
