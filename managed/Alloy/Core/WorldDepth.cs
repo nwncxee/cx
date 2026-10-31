@@ -23,5 +23,5 @@ internal static class WorldDepth
 
     /// <summary>A world program's two stages for Vulkan: its clip z comes off a folded matrix, so it passes through.</summary>
     internal static VkProgramText Translate(string vs, string fs, IReadOnlyDictionary<string, uint> units)
-        => VkGlsl.Translate(vs, fs, units, glDepth: false);
+        => VkGlsl.Translate(vs, fs, units);
 }

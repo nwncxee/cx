@@ -220,7 +220,7 @@ public sealed unsafe partial class CasterPass
     internal static VkCastProg? VkCastBuild(VkBackend vk, string vs, string fs, string label, ExtenderLog log)
     {
         var units = new Dictionary<string, uint> { ["uTex"] = 0 };
-        VkProgramText t = VkGlsl.Translate(vs, fs, units, glDepth: false);
+        VkProgramText t = VkGlsl.Translate(vs, fs, units);
         if (t.Error != null) { log.Always($"CasterPass: the Vulkan {label} program did not translate -- {t.Error}"); return null; }
         byte[]? vb = VulkanToolchain.Compile(VkBackend.Translate(t.Vs), $"vk {label} vs", ShaderKind.VertexShader, out string ve);
         byte[]? fb = VulkanToolchain.Compile(VkBackend.Translate(t.Fs), $"vk {label} fs", ShaderKind.FragmentShader, out string fe);

@@ -85,7 +85,7 @@ public sealed unsafe partial class AlloyRenderer
         if (s.Tried) return s.Prog != null;
         s.Tried = true;
         s.Side = new CommandList("vulkan beams", 1 << 14, log);
-        VkProgramText t = VkGlsl.Translate(Beams.VkVs, Beams.VkFs, VkPrograms.Units, glDepth: false);
+        VkProgramText t = VkGlsl.Translate(Beams.VkVs, Beams.VkFs, VkPrograms.Units);
         VkProg? p = VkBuild(vk, t, "beams", false, log);
         if (p != null)
             LooseBlock.Resolve(p.Names, () =>

@@ -187,7 +187,7 @@ public sealed unsafe partial class AlloyRenderer
         s.Side = new CommandList("vulkan particles", PartArenaBytes, log);
         s.Samp = vk.CreateSampler(new SamplerDesc(Filter.Linear, Filter.Linear, MipMode.None, Wrap.Clamp));
         VkProgramText t = VkGlsl.Translate(ShaderResource.Tokens(ShaderSource.Get("cx_part_v.glsl")),
-                                           ShaderResource.Tokens(ShaderSource.Get("cx_part_f.glsl")), VkPrograms.Units, glDepth: false);
+                                           ShaderResource.Tokens(ShaderSource.Get("cx_part_f.glsl")), VkPrograms.Units);
         VkProg? p = VkBuild(vk, t, "particles", false, log);
         if (p != null)
             LooseBlock.Resolve(p.Names, () =>

@@ -142,7 +142,7 @@ internal static unsafe class SsaoPassVk
     {
         ShaderTexts.Pair(PostChain.ShdPostVs, ShaderStages.Source(PostChain.ShdPostVs), fsRef, ShaderStages.Source(fsRef),
                         log, label, out string vs, out string fs);
-        VkProgramText t = VkGlsl.Translate(vs, fs, VkPrograms.Units, glDepth: false);
+        VkProgramText t = VkGlsl.Translate(vs, fs, VkPrograms.Units);
         if (t.Error != null) { log.Always($"SsaoPassVk: {label} did not translate -- {t.Error}"); return default; }
         if (t.Loose.Count > 0)
         {

@@ -122,7 +122,7 @@ public sealed unsafe partial class AlloyRenderer
         (string vs, string fs) = k == VkSplashProg ? Weather.VkSplashTexts(log) : Weather.VkTexts(k == 1, log);
         string label = k == VkSplashProg ? "splash" : k == 1 ? "snow" : "rain";
         var units = new System.Collections.Generic.Dictionary<string, uint>(VkPrograms.Units) { ["uCover"] = TextureSlots.CoverEsm };
-        VkProgramText t = VkGlsl.Translate(ShaderResource.Tokens(vs), ShaderResource.Tokens(fs), units, glDepth: false);
+        VkProgramText t = VkGlsl.Translate(ShaderResource.Tokens(vs), ShaderResource.Tokens(fs), units);
         VkProg? p = VkBuild(vk, t, label, true, log);
         if (p != null)
         {

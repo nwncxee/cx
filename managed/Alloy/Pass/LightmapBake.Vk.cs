@@ -15,9 +15,9 @@ internal static unsafe partial class LightmapBake
     /// <summary>Light steps one Vulkan frame takes at most: the scratch cubes the shadow bracket bakes them into.
     /// ponytail: the hold's 32 a frame would need 32 cubes resident; 8 keeps the array at 8 x 6 faces.</summary>
     private const int VkCubes = 8;
-    /// <summary>The push block's depth step is an integer: the GL value <c>(l + 1) / BakeDepthSteps * 2 - 1</c> is
-    /// <c>(l + 1) / VkDepthSteps - 1</c>, which the translated stage computes from it.</summary>
-    internal const int VkDepthSteps = BakeDepthSteps / 2;
+    /// <summary>The push block's depth step is the integer <c>l + 1</c>: the geometry stage writes it as the window depth
+    /// <c>(l + 1) / VkDepthSteps</c>, where GL's NDC step <c>(l + 1) / BakeDepthSteps * 2 - 1</c> landed.</summary>
+    internal const int VkDepthSteps = BakeDepthSteps;
 
     /// <summary>Everything the Vulkan bake owns on one device, replaced whole with the device.</summary>
     private sealed class BakeVkState

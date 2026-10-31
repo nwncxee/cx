@@ -106,7 +106,7 @@ public sealed unsafe partial class AlloyRenderer
         if (!s.Viz.IsNull) return true;
         if (s.VizRefused) return false;
         var units = new Dictionary<string, uint>(StringComparer.Ordinal) { ["uId"] = 0 };
-        VkProgramText t = VkGlsl.Translate(ShaderSource.Get("cx_fullscreen_v.glsl"), IdTarget.VizFs, units, glDepth: false);
+        VkProgramText t = VkGlsl.Translate(ShaderSource.Get("cx_fullscreen_v.glsl"), IdTarget.VizFs, units);
         string ve = "", fe = "";
         byte[]? vs = t.Error == null ? CX.Graphics.VulkanToolchain.Compile(VkBackend.Translate(t.Vs), "vk id viz vs", ShaderKind.VertexShader, out ve) : null;
         byte[]? fs = t.Error == null ? CX.Graphics.VulkanToolchain.Compile(VkBackend.Translate(t.Fs), "vk id viz fs", ShaderKind.FragmentShader, out fe) : null;
