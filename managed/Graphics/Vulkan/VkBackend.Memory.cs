@@ -51,15 +51,10 @@ internal sealed unsafe partial class VkBackend
         }
     }
 
-    /// <summary>The <paramref name="n"/> largest allocations in device-local memory by their bytes, each named by its
-    /// label (an alias group by its group), largest first. Cold: a walk of every live image and buffer.</summary>
+    /// <summary>The <paramref name="n"/> largest allocations by their bytes, each named by its label (an alias group by
+    /// its group), largest first. Cold: a walk of every live image and buffer.</summary>
     internal (string Name, long Bytes)[] Largest(int n)
     {
-        VkPhysicalDeviceMemoryProperties mp;
-        _vki.vkGetPhysicalDeviceMemoryProperties(_phys, &mp);
-        uint local = 0;
-        for (int i = 0; i < mp.memoryTypeCount; i++)
-            if ((mp.memoryTypes[i].propertyFlags & VkMemoryPropertyFlags.DeviceLocal) != 0) local |= 1u << i;
         var top = new (string Name, long Bytes)[n];
         int have = 0;
         void Offer(string name, VmaAllocation a)
@@ -67,7 +62,7 @@ internal sealed unsafe partial class VkBackend
             VmaAllocationInfo info;
             Vma.vmaGetAllocationInfo(_vma, a, &info);
             long bytes = (long)info.size;
-            if ((local & (1u << (int)info.memoryType)) == 0 || (have == n && bytes <= top[n - 1].Bytes)) return;
+            if (have == n && bytes <= top[n - 1].Bytes) return;
             int at = have < n ? have++ : n - 1;
             while (at > 0 && top[at - 1].Bytes < bytes) { top[at] = top[at - 1]; at--; }
             top[at] = (name, bytes);

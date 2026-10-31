@@ -19,6 +19,7 @@ internal static partial class GpuGolden
         BufferId settle = vk.CreateBuffer(new BufferDesc(64, BufferUse.CopyDst | BufferUse.CopySrc, MemoryKind.Device, "golden vma more settle"));
         check.Expect(!settle.IsNull, "the alias goldens' settle buffer was refused (logged above)");
         if (settle.IsNull) return;
+        AliasGrow(vk, check, log, settle);
         AliasOneSubmit(vk, check, log);
         AliasShrink(vk, check, log, settle);
         vk.Destroy(settle);
@@ -53,6 +54,24 @@ internal static partial class GpuGolden
         {
             vk.Destroy(first); vk.Destroy(second); vk.Destroy(ra); vk.Destroy(rb);
         }
+    }
+
+    /// <summary>Holds a group growing to a larger member made after a smaller one; turns red when the fit ignores size.</summary>
+    private static void AliasGrow(VkBackend vk, Checker check, ExtenderLog log, BufferId settle)
+    {
+        Settle(vk, log, settle);
+        (long Count, long Bytes) before = vk.Allocations;
+        ImageId lone = Target(vk, 64, "golden grow lone", null);
+        long large = vk.Allocations.Bytes - before.Bytes;
+        vk.Destroy(lone);
+        Settle(vk, log, settle);
+        before = vk.Allocations;
+        ImageId a = Target(vk, 4, "golden grow small", "golden grow"), b = Target(vk, 64, "golden grow large", "golden grow");
+        Settle(vk, log, settle);
+        check.Expect(vk.Allocations.Bytes - before.Bytes == large,
+                     $"a 4x4 then a 64x64 in one group hold {vk.Allocations.Bytes - before.Bytes} bytes, not the {large} a lone 64x64 takes");
+        vk.Destroy(a); vk.Destroy(b);
+        Settle(vk, log, settle);
     }
 
     /// <summary>Holds a group giving memory back when its largest member goes; turns red when the shrink is skipped.</summary>
