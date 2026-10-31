@@ -84,12 +84,14 @@ internal sealed unsafe partial class VkBackend
     };
 
     /// <summary>Move <paramref name="img"/> into <paramref name="to"/>, or order it against a write made in that layout
-    /// already (a storage write read next, an attachment drawn again). Queued: <see cref="Flush"/> records it.</summary>
-    private void Transition(VkImg img, VkImageLayout to)
+    /// already (a storage write read next, an attachment drawn again). Queued: <see cref="Flush"/> records it. GENERAL
+    /// is a storage read as much as a storage write, so a read there passes <paramref name="writes"/> false and an
+    /// alias member reading bytes another member took is refused instead of silently fresh.</summary>
+    private void Transition(VkImg img, VkImageLayout to, bool writes = true)
     {
         Remember(img);
         if (_onAsync) img.AsyncRec = _recording;
-        bool claimed = Claim(img, to);
+        bool claimed = Claim(img, to, writes);
         if (img.Layout == to && !img.Written) return;
         if (_besideNow && img.AsyncRec == _asyncRec)
             _crossed ??= $"moved {img.Desc.Label}, which the async submit it runs beside reached -- hand it over ahead of both";

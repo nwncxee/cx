@@ -218,9 +218,11 @@ internal sealed unsafe partial class VkBackend
         return view;
     }
 
-    /// <summary>The view binding one mip alone, made on first ask; mip -1 or a single-mip image is the whole view.</summary>
+    /// <summary>The view binding one mip alone, made on first ask; mip -1 or a single-mip image is the whole view.
+    /// Null for an image the device refused one, which every caller refuses to bind.</summary>
     private VkImageView ViewOf(VkImg img, int mip)
     {
+        if (img.Image.IsNull) return default;
         if (mip < 0 || img.Desc.Mips == 1) return img.View;
         img.MipViews ??= new VkImageView[img.Desc.Mips];
         if (img.MipViews[mip].IsNull) img.MipViews[mip] = View(img.Image, img.Desc, mip);
@@ -304,8 +306,8 @@ internal sealed unsafe partial class VkBackend
     }
 
     /// <summary>The pool every staging block that fits one comes out of: host-visible memory in whole blocks, bump
-    /// allocated (the linear algorithm, which hands out of the newest block alone), capped at the budget in blocks so
-    /// no load can hold more, with one block kept once the loads stop.</summary>
+    /// allocated (the linear algorithm, which hands out of the newest block alone), with one block kept once the loads
+    /// stop. How much a load may hold is <see cref="Make"/>'s budget check, the one that says so when it refuses.</summary>
     private VmaPool MakeStagePool()
     {
         VkBufferCreateInfo bci = StageInfo();
@@ -315,7 +317,7 @@ internal sealed unsafe partial class VkBackend
         var pci = new VmaPoolCreateInfo
         {
             memoryTypeIndex = type, flags = VmaPoolCreateFlags.LinearAlgorithm, blockSize = UploadBlockBytes,
-            minBlockCount = 1, maxBlockCount = (nuint)(StagingBudget / UploadBlockBytes),
+            minBlockCount = 1,
         };
         Check(Vma.vmaCreatePool(_vma, &pci, out VmaPool p), "vmaCreatePool (upload staging)");
         return p;
@@ -368,7 +370,7 @@ internal sealed unsafe partial class VkBackend
         ulong size = Math.Max(len, UploadBlockBytes);
         if (Staging.Bytes + size > StagingBudget) return null;
         var b = new UploadBlock { Size = size };
-        bool made = size > UploadBlockBytes
+        bool made = b.Own
                   ? HostBuffer(size, VkBufferUsageFlags.TransferSrc, VmaAllocationCreateFlags.HostAccessSequentialWrite, out b.Buffer, out b.Alloc)
                   : PoolBlock(out b.Buffer, out b.Alloc);
         if (made) { Vma.vmaSetAllocationName(_vma, b.Alloc, "upload staging"); return b; }
@@ -377,7 +379,7 @@ internal sealed unsafe partial class VkBackend
     }
 
     /// <summary>One block of the pool as a buffer over the whole of it, so a block costs one Vulkan buffer however many
-    /// uploads it carries; false when the pool is at its block cap.</summary>
+    /// uploads it carries; false when the device refused the memory.</summary>
     private bool PoolBlock(out VkBuffer b, out VmaAllocation a)
     {
         VkBufferCreateInfo bci = StageInfo();
@@ -650,34 +652,36 @@ internal sealed unsafe partial class VkBackend
         WriteBindless(0, img.View, _nearest);
     }
 
-    /// <summary>Indices released before a finished submit go back to the free list, each pointed at the zero
-    /// texel first: its image may be gone, and a record that still names it must read something. At a submit's head.</summary>
+    /// <summary>Indices released before a finished submit go back to the free list, each pointed at the zero texel
+    /// first: its image may be gone, and a record that still names it must read something. At the head of every
+    /// graphics submit, and a frame that reaches the screen always makes one (the present's blit records there), so
+    /// an async-only stretch holds the deaths longer and changes nothing else. In the order they were queued.</summary>
     private void RecycleBindless()
     {
         BindlessState t = _bindless;
-        for (int k = t.Dying.Count - 1; k >= 0; k--)
-            if (Passed(t.Dying[k].At))
-            {
-                WriteBindless(t.Dying[k].Index, t.Zero, _nearest);
-                t.Free.Push(t.Dying[k].Index);
-                t.Dying.RemoveAt(k);
-            }
-        for (int k = t.Behind.Count - 1; k >= 0; k--)
-            if (Passed(t.Behind[k].At))
-            {
-                Later(t.Behind[k].Free);
-                t.Behind.RemoveAt(k);
-            }
+        int n = 0;
+        while (n < t.Dying.Count && Passed(t.Dying[n].At))
+        {
+            WriteBindless(t.Dying[n].Index, t.Zero, _nearest);
+            t.Free.Push(t.Dying[n++].Index);
+        }
+        if (n > 0) t.Dying.RemoveRange(0, n);
+        n = 0;
+        while (n < t.Behind.Count && Passed(t.Behind[n].At)) Later(t.Behind[n++].Free);
+        if (n > 0) t.Behind.RemoveRange(0, n);
     }
 
     /// <summary>Free an image or a sampler once the indices released before it read the zero texel and no submit in
     /// flight can still reach it: <see cref="RecycleBindless"/> hands it to the deaths queue at the rewriting submit.</summary>
     private void LaterThanBindless(Action free) => _bindless.Behind.Add((Next, free));
 
-    /// <summary>Give <paramref name="h"/>'s index back once no submit in flight can still index it.</summary>
+    /// <summary>Give <paramref name="h"/>'s index back once no submit in flight can still index it. The null handle
+    /// names the zero texel and is nobody's to give back; one past the table never came from it.</summary>
     internal void Unbind(BindlessHandle h)
     {
-        if (OnThread("Unbind") && h.Value != 0 && h.Value < _bindlessCap) _bindless.Dying.Add((Next, (uint)h.Value));
+        if (!OnThread("Unbind") || h.Value == 0) return;
+        if (h.Value >= _bindlessCap) { Fault($"Unbind: handle {h.Value} is past the table's {_bindlessCap} descriptors"); return; }
+        _bindless.Dying.Add((Next, (uint)h.Value));
     }
 
     /// <summary>The bindless table on set 1 of both bind points (the compute one alone on the async queue), once at the

@@ -98,12 +98,13 @@ internal sealed unsafe partial class VkBackend
     /// waits on the GPU in a frame that keeps up.</summary>
     private VkResult WaitFrame() => WaitFor(_frameEnds[_frames % FramesInFlight]);
 
-    /// <summary>The frame ends on the last submit made so far.</summary>
+    /// <summary>The frame ends on the last submit made so far, and the alias lanes end with it.</summary>
     private void EndFrame()
     {
         _frameEnds[_frames++ % FramesInFlight] = _submits;
         // VMA refreshes its heap budget from the driver as the frame index moves
         Vma.vmaSetCurrentFrameIndex(_vma, (uint)_frames);
+        EndAliasFrame();
     }
 
     /// <summary>The acquire semaphore of the frame being presented: the frame <see cref="FramesInFlight"/> back, which
