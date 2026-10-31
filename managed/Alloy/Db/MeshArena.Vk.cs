@@ -136,6 +136,17 @@ public static unsafe partial class MeshArena
         return true;
     }
 
+    /// <summary>The submit number a freed place must outlive: the one being recorded now, which is the last
+    /// that can carry a draw of the bytes. -1 when nothing can be drawing them -- no Vulkan device, or not
+    /// the one the arena's buffers live on, so nothing of the arena has been recorded against it.</summary>
+    private static long VkFlightStamp()
+        => Renderer.OnVulkan && AlloyDevice.VulkanMade is VkBackend vk && _vk.Dev == vk ? vk.Submitted : -1;
+
+    /// <summary>Has the submit a retired place was stamped with finished? True once the device it was stamped
+    /// on is gone: its command buffers went with it.</summary>
+    private static bool VkFlightPassed(long stamp)
+        => AlloyDevice.VulkanMade is not VkBackend vk || _vk.Dev != vk || vk.Finished(stamp);
+
     /// <summary>The device is gone: drop every buffer id with it, so no reader short-circuits on a name that
     /// died and nothing is destroyed through a dead device. Under <see cref="_gate"/>.</summary>
     private static void VkForget() => _vk = new VkArenaState();

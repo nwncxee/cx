@@ -651,9 +651,10 @@ internal static class DbSelfCheck
         return ok;
     }
 
-    /// <summary>A freed range's place is reused where it lies: B's four vertices and its six indices go to
-    /// the next quad, and A keeps the base it was built at. Oracle: a quad's hand-written four vertices and
-    /// six indices, and the places two of them in a row add up to.</summary>
+    /// <summary>A freed range's place is reused where it lies, through the real tree -- and beyond the arena's
+    /// own V1 it pins the index run's BYTE offset and that <see cref="MeshArena.Runs"/>, the draw path, reports
+    /// the reused place. Oracle: a quad's hand-written four vertices and six indices, and the places two of
+    /// them in a row add up to.</summary>
     private static bool ArenaReuse()
     {
         Reset();

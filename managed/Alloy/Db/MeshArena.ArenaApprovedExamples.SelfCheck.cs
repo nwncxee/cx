@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using CX.Engine;
 using CX.Framework;
 
 namespace CX.Alloy.Db;
@@ -11,6 +12,8 @@ public static partial class MeshArena
     internal static void ArenaSelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "MeshArena.ArenaSelfCheck");
+        if (Native.Sym(SymbolMap.AppManager) != IntPtr.Zero)
+        { check.Skip("in a session: the suite's area hops build half a gigabyte of meshes, which a player's boot does not pay for"); return; }
         if (!ResetForCheck()) { check.Skip("the arena holds live meshes: the suite runs in run-demo, not in a session"); return; }
         try
         {
@@ -32,27 +35,31 @@ public static partial class MeshArena
 
     private static float[] Verts(int nv) => new float[nv * StrideOf[(int)Fmt.Static]];
 
-    /// <summary>V1: B's gap takes D, A and C stay put; a mesh larger than any gap goes after C.</summary>
+    /// <summary>V1: B's gap takes D, A and C stay put; a mesh larger than any gap goes after C. The three
+    /// 1000-vertex meshes land at 0, 1000 and 2000, so B's gap is at 1000 and the tail starts at 3000.</summary>
     private static void ReuseGap(Checker check)
     {
         float[] v = Verts(2000);
         int a = Mesh(0xA378_0001, 1000, v), b = Mesh(0xA378_0002, 1000, v), c = Mesh(0xA378_0003, 1000, v);
-        int baseA = PlaceForCheck(a).Base, baseB = PlaceForCheck(b).Base, baseC = PlaceForCheck(c).Base;
+        check.Expect(PlaceForCheck(a).Base == 0 && PlaceForCheck(b).Base == 1000 && PlaceForCheck(c).Base == 2000,
+            $"V1: the three meshes landed at {PlaceForCheck(a).Base}/{PlaceForCheck(b).Base}/{PlaceForCheck(c).Base}, not at 0/1000/2000");
         Release(b);
         FrameEdgeForCheck();
         int d = Mesh(0xA378_0004, 800, v);
-        check.Expect(PlaceForCheck(d).Base == baseB, $"V1: D landed at vertex {PlaceForCheck(d).Base}, not in B's place at {baseB}");
-        check.Expect(PlaceForCheck(a).Base == baseA && PlaceForCheck(c).Base == baseC, "V1: A or C moved when D was loaded");
+        check.Expect(PlaceForCheck(d).Base == 1000, $"V1: D landed at vertex {PlaceForCheck(d).Base}, not in B's place at 1000");
+        check.Expect(PlaceForCheck(a).Base == 0 && PlaceForCheck(c).Base == 2000, "V1: A or C moved when D was loaded");
         int e = Mesh(0xA378_0005, 2000, v);
-        check.Expect(PlaceForCheck(e).Base >= baseC + 1000, $"V1: a mesh larger than any gap landed at {PlaceForCheck(e).Base}, before C's end at {baseC + 1000}");
+        check.Expect(PlaceForCheck(e).Base == 3000, $"V1: a mesh larger than any gap landed at {PlaceForCheck(e).Base}, not after C's end at 3000");
         foreach (int r in (int[])[a, c, d, e]) if (r > 0) Release(r);
         FrameEdgeForCheck();
     }
 
-    /// <summary>V2: a 3-million-vertex area left for another of the same size holds about one area; going back, the same.</summary>
+    /// <summary>V2: a 3-million-vertex area left for another of the same size holds one area; going back, the
+    /// same. Oracle: 60 x 50,000 vertices at 48 B a static vertex, plus 60 runs of three 2-byte indices.</summary>
     private static void Hop(Checker check)
     {
         const int Meshes = 60, Each = 50_000;
+        const long Area = (long)Meshes * Each * 48 + (long)Meshes * 3 * 2;
         float[] v = Verts(Each);
         var held = new int[Meshes];
         void Load(ulong salt)
@@ -65,14 +72,13 @@ public static partial class MeshArena
             FrameEdgeForCheck();
         }
         Load(0xB378_0000);
-        long one = VramBytes;
+        check.Expect(PlacedBytes == Area, $"V2: one area holds {PlacedBytes} bytes, not the {Area} its vertices and indices add up to");
         Leave();
         Load(0xB378_1000);
-        long second = VramBytes;
-        check.Expect(second <= one + one / 10, $"V2: the second area holds {second >> 20} MiB against one area's {one >> 20} MiB");
+        check.Expect(PlacedBytes == Area, $"V2: the second area holds {PlacedBytes} bytes against one area's {Area}");
         Leave();
         Load(0xB378_0000);
-        check.Expect(VramBytes == second, $"V2: returning to the first area holds {VramBytes >> 20} MiB, not the {second >> 20} MiB the second held");
+        check.Expect(PlacedBytes == Area, $"V2: returning to the first area holds {PlacedBytes} bytes, not one area's {Area}");
         Leave();
     }
 

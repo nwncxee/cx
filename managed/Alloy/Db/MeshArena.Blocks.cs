@@ -6,37 +6,44 @@ namespace CX.Alloy.Db;
 
 /// <summary>Where a mesh LANDS: one VMA virtual block per vertex format and one over the shared element
 /// arena, each a TLSF free list over element counts and nothing more -- no device, no memory, pure CPU
-/// bookkeeping. A freed range's place goes back to its block and the next mesh that fits takes it, so a
-/// range placed once never moves and no consumer is ever told its geometry did.</summary>
+/// bookkeeping. A freed range's place goes back to its block once the submits that could draw it have
+/// passed, and the next mesh that fits takes it, so a range placed once never moves.</summary>
 public static unsafe partial class MeshArena
 {
     /// <summary>Best fit: a mesh lands in the SMALLEST free gap that holds it, so a freed range's place goes
     /// to a mesh of its size instead of the untouched tail being spent on it.</summary>
     private const VmaVirtualAllocationCreateFlags Fit = VmaVirtualAllocationCreateFlags.StrategyMinMemory;
 
-    /// <summary>A TLSF block over <paramref name="elements"/> places (vertices, or indices for the element
-    /// arena). Null when VMA refuses one or the staged library is not there, which is named loudly: the
-    /// arena then holds no geometry at all and every acquire is a counted refusal.</summary>
-    private static VmaVirtualBlock NewBlock(long elements)
+    /// <summary><paramref name="store"/>'s TLSF block over its places, made on FIRST USE -- by then the
+    /// staged VMA library is loadable and there is a log for a refusal to be named on. The ONE refusal site:
+    /// a store with no block can hold no geometry, and the arena is where all of Alloy's world geometry
+    /// lands, so a refusal stands Alloy down rather than drawing an empty world.</summary>
+    private static VmaVirtualBlock Blocked<T>(Store<T> store)
     {
-        // The block is native, and the arena's first one is made from a static initializer -- before any
-        // backend has loaded the staged library. The load is idempotent and by absolute path.
-        VulkanToolchain.Load(VulkanToolchain.VmaLibrary);
-        var ci = new VmaVirtualBlockCreateInfo { size = (ulong)elements };
+        if (!store.Block.IsNull || store.BlockRefused) return store.Block;
+        var ci = new VmaVirtualBlockCreateInfo { size = (ulong)store.Cap };
         try
         {
-            if (Vma.vmaCreateVirtualBlock(&ci, out VmaVirtualBlock b) == VkResult.Success) return b;
+            // the load is idempotent and by absolute path
+            if (VulkanToolchain.Load(VulkanToolchain.VmaLibrary)
+                && Vma.vmaCreateVirtualBlock(&ci, out VmaVirtualBlock b) == VkResult.Success)
+                return store.Block = b;
         }
-        // a missing, stale or foreign library: the type initializer this runs in must not throw at boot
+        // a missing, stale or foreign library
         catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException) { }
+        store.BlockRefused = true;
+        _log?.Always("MeshArena: VMA gave a store no virtual block -- the arena can place NO geometry");
+        AlloyGate.Fail("the mesh arena has no VMA virtual block, so no world geometry can be placed");
         return VmaVirtualBlock.Null;
     }
 
-    /// <summary>Place <paramref name="n"/> elements in <paramref name="block"/>, best fit, alignment 1 (the
-    /// unit IS a vertex or an index). False = they do not fit, which is the caller's counted refusal.</summary>
-    private static bool Place(VmaVirtualBlock block, int n, out VmaVirtualAllocation at, out int first)
+    /// <summary>Place <paramref name="n"/> elements in <paramref name="store"/>, best fit, alignment 1 (the
+    /// unit IS a vertex or an index). False = no block, or they do not fit; either is the caller's counted
+    /// refusal.</summary>
+    private static bool Place<T>(Store<T> store, int n, out VmaVirtualAllocation at, out int first)
     {
         at = VmaVirtualAllocation.Null; first = 0;
+        VmaVirtualBlock block = Blocked(store);
         if (block.IsNull || n <= 0) return false;
         var ci = new VmaVirtualAllocationCreateInfo { size = (ulong)n, alignment = 1, flags = Fit };
         VmaVirtualAllocation a;
