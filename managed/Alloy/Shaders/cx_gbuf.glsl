@@ -106,16 +106,38 @@ layout(location = 6) out uint oGb2;    // the geometric normal + the surface fad
 void CxGbufWrite(CxGbuf g) { CxGbufPack(g, oGb0, oGb1, oGb2); }
 #endif
 
+/// The ownership test's allowance for a coarse fragment, which wrote the view depth at its own centre for every
+/// pixel it covers: per axis the smaller depth step to the two neighbours, so a plane's own slope counts and a
+/// silhouette's jump does not. A full step where the centre sits half one off, so a grazing curve is covered.
+float CxGbufStepSlack(float z, float zx0, float zx1, float zy0, float zy1)
+{
+    return min(abs(zx0 - z), abs(z - zx1)) + min(abs(zy0 - z), abs(z - zy1));
+}
+
+/// <see cref="CxGbufStepSlack"/> at pixel <paramref name="p"/> off the frame depth buffer, linearised by
+/// <paramref name="proj"/>'s depth row as every reader linearises its own pixel.
+float CxGbufDepthSlack(sampler2D depth, ivec2 p, float z, mat4 proj)
+{
+    ivec2 hi = textureSize(depth, 0) - 1;
+    ivec2 s = (p & 1) * -2 + 1;   // toward the pixel's partner in its aligned 2x2 block, where a coarse fragment lies
+    float zx0 = proj[3].z / (texelFetch(depth, clamp(p + ivec2(s.x, 0), ivec2(0), hi), 0).r * 2.0 - 1.0 + proj[2].z);
+    float zx1 = proj[3].z / (texelFetch(depth, clamp(p - ivec2(s.x, 0), ivec2(0), hi), 0).r * 2.0 - 1.0 + proj[2].z);
+    float zy0 = proj[3].z / (texelFetch(depth, clamp(p + ivec2(0, s.y), ivec2(0), hi), 0).r * 2.0 - 1.0 + proj[2].z);
+    float zy1 = proj[3].z / (texelFetch(depth, clamp(p - ivec2(0, s.y), ivec2(0), hi), 0).r * 2.0 - 1.0 + proj[2].z);
+    return CxGbufStepSlack(z, zx0, zx1, zy0, zy1);
+}
+
 /// The reader's header: flags, normal, view depth, the lobe's scalars and the slot -- all G0, so a reader that
 /// needs no weight (cx_defshadow_cs) fetches 16 bytes. False = no twin draw lit this pixel, or a later draw
-/// covered it; leave it alone. <paramref name="frameDepth"/> is the frame depth buffer's linear view depth.
-bool CxGbufReadHead(uvec4 g0, float frameDepth, out CxGbuf g)
+/// covered it. <paramref name="frameDepth"/> is the depth buffer's linear view depth, <paramref name="slack"/>
+/// the coarse fragment's allowance on top of CX_GB_RECORD (CxGbufDepthSlack).
+bool CxGbufReadHead(uvec4 g0, float frameDepth, float slack, out CxGbuf g)
 {
     g.flags = g0.x & 255u;
     if ((g.flags & CX_GB_DEFERRED) == 0u) return false;
     vec4 a = unpackUnorm4x8(g0.y);
     g.viewDepth = unpackHalf2x16(g0.y).x;
-    if (!(abs(g.viewDepth / max(frameDepth, 1e-6) - 1.0) < CX_GB_RECORD)) return false;
+    if (!(abs(g.viewDepth - frameDepth) < CX_GB_RECORD * max(frameDepth, 1e-6) + slack)) return false;
     g.N = CxOctDecode(vec2(ivec2((g0.x >> 8u) & 4095u, g0.x >> 20u) - 2048) / 2047.0);
     g.rough = a.z; g.spec = a.w;
     vec4 c = unpackUnorm4x8(g0.z);
@@ -128,9 +150,9 @@ bool CxGbufReadHead(uvec4 g0, float frameDepth, out CxGbuf g)
 
 /// What the light walk itself reads: the header, G1's mover lane and the lightmap record the twin read by the
 /// same slot -- everything but the transfer weights. <paramref name="g1w"/> is G1.w alone.
-bool CxGbufReadWalk(uvec4 g0, uint g1w, float frameDepth, out CxGbuf g)
+bool CxGbufReadWalk(uvec4 g0, uint g1w, float frameDepth, float slack, out CxGbuf g)
 {
-    if (!CxGbufReadHead(g0, frameDepth, g)) return false;
+    if (!CxGbufReadHead(g0, frameDepth, slack, g)) return false;
     g.lmMover = unpackUnorm4x8(g1w);
     CxChart chart = uChart[g.slot];
     g.lmTexel = CxLmTexelWorld(chart.rec);
@@ -156,9 +178,9 @@ void CxGbufFade(uint g2, inout CxGbuf g)
                       float(g2 >> 24u) / 255.0 * CX_GB_FADE_MAX);
 }
 
-bool CxGbufRead(uvec4 g0, uvec4 g1, float frameDepth, out CxGbuf g)
+bool CxGbufRead(uvec4 g0, uvec4 g1, float frameDepth, float slack, out CxGbuf g)
 {
-    if (!CxGbufReadWalk(g0, g1.w, frameDepth, g)) return false;
+    if (!CxGbufReadWalk(g0, g1.w, frameDepth, slack, g)) return false;
     CxGbufWeights(g1, g);
     return true;
 }

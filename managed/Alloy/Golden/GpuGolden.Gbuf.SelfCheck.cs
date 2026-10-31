@@ -8,10 +8,10 @@ using CX.Rhi;
 namespace CX.Alloy;
 
 /// <summary>
-/// The G-buffer golden: every lane <c>CxGbufPack</c> writes, read back through <c>CxGbufRead</c> and
-/// <c>CxGbufFade</c>, held to the precision docs/spec/deferred-lighting.md states for it. The ownership test is
-/// checked both ways -- a record at its own depth is read, one at a moved depth and one behind a cleared G0 are
-/// not -- and the slot lane is driven to the last ownership slot there is.
+/// The G-buffer golden: every lane <c>CxGbufPack</c> writes, read back at the precision the deferred spec states.
+/// The ownership test is checked both ways: a record at its own depth, or a coarse fragment's centre on grazing
+/// ground, is read; one at a moved depth, behind a cleared G0 or at a silhouette is not. The slot lane is driven
+/// to the last ownership slot there is.
 /// </summary>
 internal static partial class GpuGolden
 {
@@ -42,7 +42,7 @@ internal static partial class GpuGolden
 
     /// <summary>Floats in and out per case: the record's lanes in, then everything read back plus the three
     /// ownership answers, the chart's record and the fade.</summary>
-    private const int GbufIn = 32, GbufOut = 40;
+    private const int GbufIn = 32, GbufOut = 41;
 
     /// <summary>The chart record a baked slot gets -- page 2 at (16, 32) with a quarter of a page texel per atlas
     /// texel, picking channels 3, none, 7 and 254 -- and an unbaked one, as the buffer holds them.</summary>
@@ -81,10 +81,14 @@ internal static partial class GpuGolden
                          uint w2;
                          CxGbufPack(g, w0, w1, w2);
                          CxGbuf r, x;
-                         bool ok = CxGbufRead(w0, w1, g.viewDepth, r);
+                         bool ok = CxGbufRead(w0, w1, g.viewDepth, 0.0, r);
                          uOut[o + 26] = ok ? 1.0 : 0.0;
-                         uOut[o + 27] = CxGbufRead(w0, w1, g.viewDepth * 1.02, x) ? 1.0 : 0.0;
-                         uOut[o + 28] = CxGbufRead(uvec4(0u), w1, g.viewDepth, x) ? 1.0 : 0.0;
+                         uOut[o + 27] = CxGbufRead(w0, w1, g.viewDepth * 1.02, 0.0, x) ? 1.0 : 0.0;
+                         uOut[o + 28] = CxGbufRead(uvec4(0u), w1, g.viewDepth, 0.0, x) ? 1.0 : 0.0;
+                         float f = g.viewDepth / 1.025;
+                         uOut[o + 38] = CxGbufRead(w0, w1, f, CxGbufStepSlack(f, f * 1.05, f / 1.05, f, f), x) ? 1.0 : 0.0;
+                         uOut[o + 39] = CxGbufRead(w0, w1, f, CxGbufStepSlack(f, f * 3.0, f, f, f), x) ? 1.0 : 0.0;
+                         uOut[o + 40] = CxGbufStepSlack(10.0, 10.3, 9.8, 110.0, 9.9);
                          if (!ok) return;
                          uOut[o] = r.N.x; uOut[o + 1] = r.N.y; uOut[o + 2] = r.N.z; uOut[o + 3] = float(r.flags); uOut[o + 4] = r.viewDepth;
                          uOut[o + 5] = r.rough; uOut[o + 6] = r.spec; uOut[o + 7] = r.fresnel; uOut[o + 8] = r.coat; uOut[o + 9] = r.coatRough;
@@ -178,6 +182,12 @@ internal static partial class GpuGolden
             check.Expect(r[26] == 1f && r[27] == 0f && r[28] == 0f,
                 $"{tag}: the record reads at its own depth and not at a moved one or behind a cleared G0 "
               + $"(got {r[26]:F0}, {r[27]:F0}, {r[28]:F0}, want 1, 0, 0)");
+            // a 1x2 fragment on grazing ground wrote its centre, 2.5% past this pixel's depth, where a step to
+            // either neighbour is about 5%; at a silhouette the far partner's step is not this surface's slope
+            check.Expect(r[38] == 1f && r[39] == 0f,
+                $"{tag}: a coarse fragment's centre depth reads on grazing ground and not at a silhouette "
+              + $"(got {r[38]:F0}, {r[39]:F0}, want 1, 0)");
+            Near(check, $"{tag}: the step slack (min 0.3/0.2 across + min 100/0.1 down)", r[40], 0.3, 1e-5);
             if (r[26] != 1f) continue;
             worstN = Math.Max(worstN, Angle(r[..3], c.N));
             check.Expect(Angle(r[..3], c.N) <= NormalDeg, $"{tag}: the normal came back {Angle(r[..3], c.N):F4} deg off");
