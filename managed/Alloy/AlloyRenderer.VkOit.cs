@@ -61,9 +61,9 @@ public sealed unsafe partial class AlloyRenderer
             vk.Destroy(o.Accum); vk.Destroy(o.Reveal);
             // 32-bit accumulation: stacked emissive layers overflow fp16 to inf, as OitPass measured on GL
             o.Accum = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba32F, w, h, 1, 1, 1, 1,
-                                                   ImageUse.Sampled | ImageUse.ColorTarget, "vk oit accum"));
+                                                   ImageUse.Sampled | ImageUse.ColorTarget, "vk oit accum", AliasLanes.Wide));
             o.Reveal = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.R16F, w, h, 1, 1, 1, 1,
-                                                    ImageUse.Sampled | ImageUse.ColorTarget, "vk oit reveal"));
+                                                    ImageUse.Sampled | ImageUse.ColorTarget, "vk oit reveal", AliasLanes.Second));
             o.W = w; o.H = h;
         }
         return !o.Accum.IsNull && !o.Reveal.IsNull;

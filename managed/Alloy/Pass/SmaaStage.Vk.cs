@@ -47,8 +47,8 @@ internal static unsafe partial class SmaaStage
         if (s.W == w && s.H == h) return true;
         vk.Destroy(s.Edges); vk.Destroy(s.Weights);
         const ImageUse use = ImageUse.Sampled | ImageUse.ColorTarget;
-        s.Edges = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba8, w, h, 1, 1, 1, 1, use, "vk smaa edges"));
-        s.Weights = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba8, w, h, 1, 1, 1, 1, use, "vk smaa weights"));
+        s.Edges = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba8, w, h, 1, 1, 1, 1, use, "vk smaa edges", AliasLanes.Narrow));
+        s.Weights = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba8, w, h, 1, 1, 1, 1, use, "vk smaa weights", AliasLanes.Weight));
         if (s.Edges.IsNull || s.Weights.IsNull) return Fail(s, log, $"the {w}x{h} edge/weight targets were REFUSED");
         s.W = w; s.H = h;
         log.Info($"SmaaStage: Vulkan edge + weight targets {w}x{h} at SMAA {PresetName(level)}");

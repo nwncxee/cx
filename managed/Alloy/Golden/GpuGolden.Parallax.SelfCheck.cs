@@ -66,7 +66,7 @@ internal static partial class GpuGolden
                          uOut[o] = r.x; uOut[o + 1] = r.y;
                      }
                      """;
-        PipelineId pipe = Compute(vk, src, "golden parallax", out ShaderId cs);
+        PipelineId pipe = vk.CreateCompute(src, "golden parallax");
         check.Expect(!pipe.IsNull, "the parallax golden's stage builds for the device");
         if (!pipe.IsNull)
         {
@@ -107,7 +107,6 @@ internal static partial class GpuGolden
             }
         }
         vk.Destroy(pipe);
-        vk.Destroy(cs);
     }
 
     /// <summary>A direction's three components into the case row at <paramref name="at"/>.</summary>

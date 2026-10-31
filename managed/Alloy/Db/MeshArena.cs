@@ -3,15 +3,15 @@ using System.Collections.Generic;
 using System.Numerics;
 using CX.Alloy.Mdl;
 using CX.Framework;
-using CX.Graphics;
+using Vortice.Vulkan;
 
 namespace CX.Alloy.Db;
 
 /// <summary>
-/// <b>Alloy's one model-space vertex arena.</b> A distinct mesh is uploaded ONCE, in its own model space, and
-/// every part that instances it draws that one range, placed by the matrix <c>GobXform</c> composes. Range ids
-/// are refcounted and identity is CONTENT, so two models with the same geometry share a range; indices are
-/// always <c>GL_UNSIGNED_SHORT</c>, and <see cref="Pump"/> is the one place a GL name is touched.
+/// <b>Alloy's one model-space vertex arena.</b> A distinct mesh is uploaded ONCE and every part that
+/// instances it draws that one range, placed by the matrix <c>GobXform</c> composes. Range ids are refcounted
+/// and identity is CONTENT; a range's place comes from a virtual block (<see cref="Place"/>), and
+/// <see cref="Pump"/> is the one place a device buffer is touched.
 /// </summary>
 public static unsafe partial class MeshArena
 {
@@ -36,7 +36,13 @@ public static unsafe partial class MeshArena
     /// <summary>Does <paramref name="m"/> carry any of UV sets 1..3? Vanilla uploads each one whose pool exists
     /// (<c>VertexPrimitiveFlat::SetupArrays</c> @0x458920) at <c>vTcIn1..3</c>, for a content shader to read.</summary>
     internal static bool HasUvSets(MeshDef m) => m.Uv[1].Length != 0 || m.Uv[2].Length != 0 || m.Uv[3].Length != 0;
-    private static Section[] NewSections() => new Section[] { new(), new(), new(), new() };
+    /// <summary>Four empty sections, each over <see cref="MaxVerts"/> vertices once its block is made.</summary>
+    private static Section[] NewSections()
+    {
+        var s = new Section[Formats];
+        for (int f = 0; f < Formats; f++) s[f] = new Section { Cap = MaxVerts };
+        return s;
+    }
 
     /// <summary>Float index of the packed tangent word, which is the second-to-last of either format: the
     /// two packed words sit after the format's own streams, so <see cref="Fmt.Skinned"/>'s bone slots and
@@ -48,12 +54,12 @@ public static unsafe partial class MeshArena
     internal static int StrideBytes(Fmt f) => StrideOf[(int)f] * 4;
 
     /// <summary>Vertices one format's section may hold (8M x 48 B = 384 MiB static, grown on demand; the
-    /// skinned section is far smaller). Measured: 2M in a 27x24 city of 1654 placeables, 4M hopping INTO a
-    /// ~3M-vertex area, because a load lands on the previous area's dead ranges and only the pump compacts.
-    /// ponytail: past the ceiling it refuses and counts -- no spill to a second VBO, no mid-load compaction.</summary>
+    /// skinned section is far smaller). Measured: 2M in a 27x24 city of 1654 placeables, and an area hop holds
+    /// one area, because the area left behind gives its places back. ponytail: a refusal may be fragmentation
+    /// rather than a full block -- it counts either way, and the upgrade is a second buffer per format.</summary>
     private const int MaxVerts = 1 << 23;
     /// <summary>Indices the shared element arena may hold (16M x 2 B = 32 MiB): scaled with
-    /// <see cref="MaxVerts"/>, since the same area hop doubles it.</summary>
+    /// <see cref="MaxVerts"/>.</summary>
     private const int MaxIndices = 16 << 20;
     /// <summary>A mesh past this cannot be addressed by a 16-bit index. The engine's own vertex count is a
     /// <c>ushort</c> (<c>MdlNodeTriMesh+0x284</c>), so no model file reaches it.</summary>
@@ -64,8 +70,8 @@ public static unsafe partial class MeshArena
     private static readonly object _gate = new();
 
     /// <summary>Why a mesh has no range. Counted and named on the period line, never a quiet hole.</summary>
-    internal enum Refusal : byte { None, Empty, TooManyVerts, Section, Elements, Table, Again }
-    private static readonly string[] RefusalName = { "none", "empty", "verts-over-64k", "section-full", "element-full", "table-full", "again-unchanged" };
+    internal enum Refusal : byte { None, Empty, TooManyVerts, Section, Elements, Table, Again, NoBlock }
+    private static readonly string[] RefusalName = { "none", "empty", "verts-over-64k", "section-full", "element-full", "table-full", "again-unchanged", "no-virtual-block" };
 
     /// <summary>One distinct mesh in the arena: where its vertices are, its three LOD index runs (BYTE offsets
     /// into the shared element arena; a zero count means the simplifier declined that level), its own-space
@@ -98,6 +104,9 @@ public static unsafe partial class MeshArena
         /// of <see cref="_byMesh"/>, which would otherwise grow for the session and pin every merged mesh's
         /// CPU arrays.</summary>
         internal List<MeshDef>? Keys;
+        /// <summary>The placements this range holds: its vertices in its section's block, and one per index
+        /// run in the shared element arena's. Given back at the free, which is what reopens the gap.</summary>
+        internal VmaVirtualAllocation VA, IA0, IA1, IA2;
         internal int NextFree;
     }
 
@@ -109,33 +118,68 @@ public static unsafe partial class MeshArena
     /// first. The generation is what makes a recycled range id safe to cache.</summary>
     private static readonly Dictionary<MeshDef, (int Range, int Gen)> _byMesh = new(ReferenceEqualityComparer.Instance);
 
-    private sealed class Section
+    /// <summary>One store the arena places in: the CPU mirror every reader and every upload reads, the
+    /// virtual block that places elements in it, how far the placements reach, and the spans the next pump
+    /// sends.</summary>
+    private abstract class Store<T>
     {
-        internal float[] Mirror = Array.Empty<float>();
-        internal int Used, Uploaded, Capacity, Dead;
-        /// <summary>Both this format's vertex buffer and the shared element buffer are uploaded: the section's
-        /// geometry is on the device and a range in it can be drawn.</summary>
+        internal T[] Mirror = Array.Empty<T>();
+        /// <summary>Elements the block holds, which is what it is made over on first use.</summary>
+        internal long Cap;
+        internal VmaVirtualBlock Block;
+        /// <summary>VMA would not give this store a block, which stood Alloy down: asked once, never again.</summary>
+        internal bool BlockRefused;
+        /// <summary>One past the highest element any placement has reached: how far the mirror and the device
+        /// buffer must cover. Monotone -- a freed range's place stays addressable for the next tenant.</summary>
+        internal int High;
+        internal readonly Spans Dirty = new();
+
+        /// <summary><paramref name="n"/> elements placed at <paramref name="at"/>: the store reaches that far
+        /// and the next pump sends exactly those.</summary>
+        internal void Placed(int at, int n)
+        {
+            if (at + n > High) High = at + n;
+            Dirty.Add(at, at + n);
+        }
+    }
+
+    /// <summary>One vertex format's store. <c>Resident</c>: both this format's vertex buffer and the shared
+    /// element buffer are uploaded, so the section's geometry is on the device and a range in it can draw.</summary>
+    private sealed class Section : Store<float>
+    {
         internal bool Resident;
-        internal bool Full;
+    }
+
+    /// <summary>The shared element store, which every format's ranges index out of.</summary>
+    private sealed class ElementState : Store<ushort>
+    {
     }
 
     private static Section[] _sect = NewSections();
-    private static ushort[] _iMirror = Array.Empty<ushort>();
-    private static int _iUsed, _iUploaded, _iCapacity, _iDead;
-    private static bool _elementsFull;
+    private static ElementState _idx = new() { Cap = MaxIndices };
 
     private static readonly List<int> _pendingFree = new();
-    /// <summary>Ranges whose placement a compaction changed, for the one frame edge that follows it.</summary>
-    private static int[] _moved = new int[64];
-    private static (int Base, nint Off)[] _movedFrom = new (int, nint)[64];
-    private static int _movedN, _movedTotal;
+    /// <summary>A freed range's places and the submit they must outlive: a place given back while a recorded
+    /// command buffer still draws from it is bytes the next mesh would overwrite in flight.</summary>
+    private struct Retired
+    {
+        internal long Stamp;
+        internal Fmt Format;
+        internal VmaVirtualAllocation VA, IA0, IA1, IA2;
+    }
 
-    /// <summary>Told, after a compaction, which ranges moved -- so a consumer that cached a base vertex or an
-    /// index offset in a record can refresh exactly those. Set by the draw side
-    /// (<c>AlloyRenderer.DbRangesMoved</c>) and run inside <see cref="Pump"/>, on the thread that owns the GL
-    /// bracket with the arena's lock held, so the handler reads through <see cref="Runs"/> and nothing else.</summary>
-    internal static Action<int[], int>? RangesMoved;
-    private static int _acquired, _freed, _refused, _compactions, _logLeft = LogCap;
+    /// <summary>The arena's in-flight clock and the places waiting on it: the Vulkan backend's free stamp on
+    /// a session, and a hand-driven pair for the off-device check, which has no device to stamp against.</summary>
+    private sealed class FlightState
+    {
+        internal bool ByHand;
+        internal long Now;
+        internal long Done = -1;
+        internal readonly List<Retired> Parked = new();
+    }
+
+    private static FlightState _flight = new();
+    private static int _acquired, _freed, _refused, _logLeft = LogCap;
     private static readonly int[] _refusedBy = new int[RefusalName.Length];
     private static int _overReleased, _heldPastEviction, _collisions, _staleKeys, _unqueued;
     /// <summary>Meshes whose normals came from the parse (<see cref="MeshDef.Normals"/>, already welded and
@@ -149,8 +193,8 @@ public static unsafe partial class MeshArena
 
     // ---------------------------------------------------------------- the published snapshot
 
-    /// <summary>What a draw reads, published as ONE immutable array at every edge that can move geometry (a
-    /// new range, a free, a compaction, an upload, a device loss). The render thread reads this without a
+    /// <summary>What a draw reads, published as ONE immutable array at every edge that can change an answer (a
+    /// new range, a free, an upload, a device loss). The render thread reads this without a
     /// lock while the game thread acquires and releases under <see cref="_gate"/>; nothing a reader holds is
     /// ever written in place (finding 8).</summary>
     private sealed class Pub
@@ -197,8 +241,8 @@ public static unsafe partial class MeshArena
         _epoch++;
     }
 
-    /// <summary>Republish every range: the edges that move geometry wholesale (a compaction, an upload, a
-    /// device loss). Under <see cref="_gate"/>.</summary>
+    /// <summary>Republish every range: the edges that change every answer at once (an upload, a device
+    /// loss). Under <see cref="_gate"/>.</summary>
     private static void Publish()
     {
         if (_rangeHigh > _pub.Length)
@@ -212,19 +256,14 @@ public static unsafe partial class MeshArena
         _epoch++;
     }
 
-    internal static void Attach(ExtenderLog log)
-    {
-        _log = log;
-        // the draw side's refresh for the records that cache a range's placement
-        RangesMoved = AlloyRenderer.DbRangesMoved;
-    }
+    internal static void Attach(ExtenderLog log) => _log = log;
 
     /// <summary>The log this arena names its refusals on. Settable so the off-device suite can silence the
     /// per-mesh lines its fixtures would otherwise fill <c>cx.log</c> with.</summary>
     internal static ExtenderLog? Log { get => _log; set => _log = value; }
 
-    /// <summary>Bumped by anything that can change a <see cref="Draw"/> answer (a free, a compaction, a context
-    /// loss): a cached answer stamped with an older one must re-probe.</summary>
+    /// <summary>Bumped by anything that can change a <see cref="Draw"/> answer (a new range, a free, a
+    /// context loss): a cached answer stamped with an older one must re-probe.</summary>
     internal static int Epoch => _epoch;
 
     /// <summary>Distinct meshes RESIDENT right now. Counted over the live ranges, not over the key map: a
@@ -253,15 +292,36 @@ public static unsafe partial class MeshArena
         }
     }
 
-    /// <summary>Arena bytes on the GPU: both vertex sections plus the shared element arena. What the
-    /// <c>[alloy]</c> line reports as world-geometry VRAM.</summary>
-    internal static long VramBytes
+    /// <summary>Arena bytes the placements occupy -- every vertex section's plus the shared element arena's,
+    /// a place PARKED on a submit included, because nothing else may have it yet. A place given back is not,
+    /// so an area hop reads as one area once its frees land; the device holds <see cref="HeldBytes"/>.</summary>
+    internal static long PlacedBytes
     {
         get
         {
-            long b = (long)_iUsed * 2;
-            for (int f = 0; f < Formats; f++) b += (long)_sect[f].Used * StrideOf[f] * 4;
-            return b;
+            // the blocks are not thread-safe, and an acquire on the game thread is in one while this reads
+            lock (_gate)
+            {
+                long b = Occupied(_idx.Block) * 2;
+                for (int f = 0; f < Formats; f++) b += Occupied(_sect[f].Block) * StrideOf[f] * 4;
+                return b;
+            }
+        }
+    }
+
+    /// <summary>Arena bytes the DEVICE holds: both mirrors' length, which is the size each arena buffer is
+    /// created at, so a mirror grown since the last pump reads high by the growth. Grow-only, and at or above
+    /// <see cref="PlacedBytes"/> by whatever the freed gaps and the untouched tail come to.</summary>
+    internal static long HeldBytes
+    {
+        get
+        {
+            lock (_gate)
+            {
+                long b = (long)_idx.Mirror.Length * 2;
+                for (int f = 0; f < Formats; f++) b += (long)_sect[f].Mirror.Length * 4;
+                return b;
+            }
         }
     }
 
@@ -357,8 +417,8 @@ public static unsafe partial class MeshArena
         }
     }
 
-    /// <summary>Drop one reference; the last one frees the range at the next <see cref="Pump"/> -- a
-    /// render-side frame edge, so no draw in flight holds its offsets.</summary>
+    /// <summary>Drop one reference; the last one frees the range at the next <see cref="Pump"/>, and its
+    /// place goes back to its block only once the submits that could still draw it have passed.</summary>
     public static void Release(int range)
     {
         lock (_gate)
@@ -467,12 +527,13 @@ public static unsafe partial class MeshArena
         Fmt fmt = FormatFor(skin != null, HasUvSets(mesh));
         int stride = StrideOf[(int)fmt];
         Section s = _sect[(int)fmt];
-        if (s.Used + nv > MaxVerts) { s.Full = true; return Refuse(Refusal.Section); }
+        if (!Place(s, nv, out VmaVirtualAllocation va, out int at))
+            return Refuse(s.Block.IsNull ? Refusal.NoBlock : Refusal.Section);
 
         int id = NewRange();
-        if (id < 0) return Refuse(Refusal.Table);
+        if (id < 0) { Unplace(s.Block, ref va); return Refuse(Refusal.Table); }
 
-        GrowMirror(s, (s.Used + nv) * stride, stride);
+        GrowMirror(s, (at + nv) * stride, stride);
         int tanWord = TanWord(fmt), paintWord = PaintWord(fmt), setWord = CarriesUvSets(fmt) ? UvSetWord(fmt) : -1;
         Vector2[] uv = mesh.Uv[0];
         var bmin = new Vector3(float.MaxValue);
@@ -481,7 +542,7 @@ public static unsafe partial class MeshArena
         if (haveNormals) _weldedFromParse++; else _noNormals++;
         for (int i = 0; i < nv; i++)
         {
-            int o = (s.Used + i) * stride;
+            int o = (at + i) * stride;
             Vector3 p = mesh.Positions[i];
             s.Mirror[o] = p.X; s.Mirror[o + 1] = p.Y; s.Mirror[o + 2] = p.Z;
             bmin = Vector3.Min(bmin, p);
@@ -519,25 +580,26 @@ public static unsafe partial class MeshArena
         ref Range rr = ref _ranges[id];
         rr.Content = content; rr.Content2 = content2;
         rr.NVerts = nv; rr.NIndices = mesh.Indices.Length;
-        rr.Refs = 1; rr.Format = fmt; rr.Base = s.Used; rr.NV = nv;
+        rr.Refs = 1; rr.Format = fmt; rr.Base = at; rr.NV = nv; rr.VA = va;
         rr.BMin = bmin; rr.BMax = bmax;
         rr.Center = (bmin + bmax) * 0.5f;
         rr.Radius = Radius(mesh.Positions, rr.Center);
         rr.Live = true; rr.Charted = false; rr.Offered = false; rr.Bake = false;
         rr.Keys = new List<MeshDef>(1) { mesh };
-        s.Used += nv;
 
-        if (!AppendRun(i0, i0.Length, out rr.Off0, out rr.Cnt0))
+        if (!PlaceRun(i0, i0.Length, out rr.Off0, out rr.Cnt0, out rr.IA0))
         {
-            s.Used -= nv;
+            Unplace(s.Block, ref rr.VA);
             rr.Live = false;
             rr.Keys = null;
             FreeRangeSlot(id);
-            return Refuse(Refusal.Elements);
+            return Refuse(_idx.Block.IsNull ? Refusal.NoBlock : Refusal.Elements);
         }
+        // only now that the range is really filed: an upload of a gap nothing owns is state for no mesh
+        s.Placed(at, nv);
         rr.Off1 = rr.Off2 = 0; rr.Cnt1 = rr.Cnt2 = 0;
-        if (n1 > 0 && i1 != null) AppendRun(i1, n1, out rr.Off1, out rr.Cnt1);
-        if (n2 > 0 && i2 != null) AppendRun(i2, n2, out rr.Off2, out rr.Cnt2);
+        if (n1 > 0 && i1 != null) PlaceRun(i1, n1, out rr.Off1, out rr.Cnt1, out rr.IA1);
+        if (n2 > 0 && i2 != null) PlaceRun(i2, n2, out rr.Off2, out rr.Cnt2, out rr.IA2);
 
         _byContent[content] = id;
         _acquired++;
@@ -606,32 +668,34 @@ public static unsafe partial class MeshArena
             if (nv <= 0 || n0 < 3 || interleaved.Length < nv * stride) return Refuse(Refusal.Empty);
             if (nv > MaxMeshVerts) return Refuse(Refusal.TooManyVerts);
             Section s = _sect[(int)fmt];
-            if (s.Used + nv > MaxVerts) { s.Full = true; return Refuse(Refusal.Section); }
+            if (!Place(s, nv, out VmaVirtualAllocation va, out int at))
+                return Refuse(s.Block.IsNull ? Refusal.NoBlock : Refusal.Section);
             int id = NewRange();
-            if (id < 0) return Refuse(Refusal.Table);
+            if (id < 0) { Unplace(s.Block, ref va); return Refuse(Refusal.Table); }
 
-            GrowMirror(s, (s.Used + nv) * stride, stride);
-            interleaved[..(nv * stride)].CopyTo(s.Mirror.AsSpan(s.Used * stride));
+            GrowMirror(s, (at + nv) * stride, stride);
+            interleaved[..(nv * stride)].CopyTo(s.Mirror.AsSpan(at * stride));
 
             ref Range rr = ref _ranges[id];
             rr.Content = key; rr.Content2 = content;
             rr.NVerts = nv; rr.NIndices = n0;
-            rr.Refs = 1; rr.Format = fmt; rr.Base = s.Used; rr.NV = nv;
+            rr.Refs = 1; rr.Format = fmt; rr.Base = at; rr.NV = nv; rr.VA = va;
             rr.BMin = bmin; rr.BMax = bmax; rr.Center = (bmin + bmax) * 0.5f;
             rr.Radius = Radius2(bmin, bmax);
             rr.Live = true; rr.Charted = true; rr.Offered = true; rr.Bake = false; rr.Keys = null;
-            s.Used += nv;
 
-            if (!AppendRun(i0, n0, out rr.Off0, out rr.Cnt0))
+            if (!PlaceRun(i0, n0, out rr.Off0, out rr.Cnt0, out rr.IA0))
             {
-                s.Used -= nv;
+                Unplace(s.Block, ref rr.VA);
                 rr.Live = false;
                 FreeRangeSlot(id);
-                return Refuse(Refusal.Elements);
+                return Refuse(_idx.Block.IsNull ? Refusal.NoBlock : Refusal.Elements);
             }
+            // only now that the range is really filed: an upload of a gap nothing owns is state for no mesh
+            s.Placed(at, nv);
             rr.Off1 = rr.Off2 = 0; rr.Cnt1 = rr.Cnt2 = 0;
-            if (n1 > 0 && i1 != null) AppendRun(i1, n1, out rr.Off1, out rr.Cnt1);
-            if (n2 > 0 && i2 != null) AppendRun(i2, n2, out rr.Off2, out rr.Cnt2);
+            if (n1 > 0 && i1 != null) PlaceRun(i1, n1, out rr.Off1, out rr.Cnt1, out rr.IA1);
+            if (n2 > 0 && i2 != null) PlaceRun(i2, n2, out rr.Off2, out rr.Cnt2, out rr.IA2);
 
             _byContent[key] = id;
             _acquired++;
@@ -724,8 +788,8 @@ public static unsafe partial class MeshArena
 
     // ---------------------------------------------------------------- the frame edge
 
-    /// <summary>Collect the frame's frees, compact if the dead bytes have piled up, and push both mirrors to
-    /// the GPU. Inside Alloy's frame, once a frame before the batches are built.</summary>
+    /// <summary>Collect the frame's frees and push both mirrors' dirty spans to the GPU. Inside Alloy's
+    /// frame, once a frame before the batches are built.</summary>
     internal static void Pump()
     {
         // The CPU half runs wherever the caller is: frees and the readers' snapshot touch no GPU object.
@@ -733,11 +797,6 @@ public static unsafe partial class MeshArena
         lock (_gate)
         {
             bool changed = false;
-            bool compact = _iDead > MaxIndices / 4 || (_elementsFull && _iDead > 0);
-            for (int f = 0; f < Formats && !compact; f++)
-                compact = _sect[f].Dead > MaxVerts / 4 || (_sect[f].Full && _sect[f].Dead > 0);
-            if (compact) { Compact(); changed = true; }
-
             // CX-120 seam-anim: the dangly and animmesh ranges whose vertices moved on the game thread
             // (MeshArena.Dyn.cs). Inside the same bracket and under the same lock as every other upload.
             PumpVk();
@@ -764,14 +823,19 @@ public static unsafe partial class MeshArena
                 _pendingFree.Add(i);
                 _unqueued++;
             }
-        if (_pendingFree.Count == 0) return false;
+        if (_pendingFree.Count == 0)
+        {
+            GiveBackPassed();
+            return false;
+        }
         for (int k = 0; k < _pendingFree.Count; k++)
         {
             int id = _pendingFree[k];
             if (!Alive(id) || _ranges[id].Refs > 0) continue;
             ref Range r = ref _ranges[id];
-            _sect[(int)r.Format].Dead += r.NV;
-            _iDead += r.Cnt0 + r.Cnt1 + r.Cnt2;
+            // the whole point: its vertices and its index runs go back to their blocks, so the next mesh
+            // that fits lands exactly here and nothing above it ever has to slide down
+            Retire(ref r);
             // only when the key still names THIS range: a second mesh of the same content acquired after this
             // one was queued owns the key now, and unmapping it would orphan a live range
             if (_byContent.TryGetValue(r.Content, out int at) && at == id) _byContent.Remove(r.Content);
@@ -798,103 +862,77 @@ public static unsafe partial class MeshArena
             foreach (ulong k in dead) _byContent.Remove(k);
             _staleKeys += dead.Count;
         }
+        GiveBackPassed();
         return true;
     }
 
-    /// <summary>Rewrite every section and the element arena with only the live ranges, in place under the same
-    /// buffer names (so the VAOs stay valid), and re-upload. Cold: an area change's worth of copying. TWO
-    /// passes with their own monotone cursors -- vertices PER FORMAT by base vertex, the shared element arena
-    /// by first index offset -- because one pass by base vertex is not monotone where two formats interleave.</summary>
-    private static void Compact()
+    /// <summary>Hold <paramref name="r"/>'s places until the submit that may still draw them has finished: a
+    /// command buffer recorded a frame ago still names those bytes, and the next mesh placed there uploads
+    /// over them with no barrier between. With nothing in flight they go back now.</summary>
+    private static void Retire(ref Range r)
     {
-        var live = new List<int>();
-        for (int i = 1; i < _rangeHigh; i++) if (_ranges[i].Live) live.Add(i);
-        long before = VramBytes;
-        // What a compaction MOVES is what a consumer that cached a base vertex or an index offset has to be
-        // told about. Without this a record staged once keeps the old numbers and draws out of whatever
-        // slid into that place -- the giant-nonsense-mesh class of bug (VDO address recycling, chart
-        // garbage meshes). Recorded before the move so the comparison is against the old placement.
-        _movedN = 0;
-        if (_moved.Length < live.Count) _moved = new int[Math.Max(live.Count, 64)];
-        if (_movedFrom.Length < live.Count) _movedFrom = new (int, nint)[Math.Max(live.Count, 64)];
-        foreach (int id in live) { _movedFrom[_movedN] = (_ranges[id].Base, _ranges[id].Off0); _moved[_movedN++] = id; }
+        long stamp = FlightStamp();
+        if (stamp < 0)
+        {
+            GiveBack(r.Format, ref r.VA, ref r.IA0, ref r.IA1, ref r.IA2);
+            return;
+        }
+        _flight.Parked.Add(new Retired { Stamp = stamp, Format = r.Format, VA = r.VA, IA0 = r.IA0, IA1 = r.IA1, IA2 = r.IA2 });
+        r.VA = r.IA0 = r.IA1 = r.IA2 = VmaVirtualAllocation.Null;
+    }
 
-        for (int f = 0; f < Formats; f++)
+    /// <summary>Every parked place whose work has finished goes back to its block, for the next mesh that fits
+    /// it. Under <see cref="_gate"/>, at the frame edge.</summary>
+    private static void GiveBackPassed()
+    {
+        List<Retired> parked = _flight.Parked;
+        // an area's unload parks thousands of places on ONE stamp, and asking the driver per place would be
+        // thousands of counter reads a frame: the lowest stamp found still in flight answers for every place
+        // at or above it, so each distinct stamp costs one read
+        long stalled = long.MaxValue;
+        for (int i = parked.Count - 1; i >= 0; i--)
         {
-            var mine = new List<int>();
-            foreach (int id in live) if ((int)_ranges[id].Format == f) mine.Add(id);
-            mine.Sort((a, b) => _ranges[a].Base.CompareTo(_ranges[b].Base));
-            Section s = _sect[f];
-            int stride = StrideOf[f], cursor = 0;
-            foreach (int id in mine)
-            {
-                ref Range r = ref _ranges[id];
-                if (cursor != r.Base)
-                    Array.Copy(s.Mirror, (long)r.Base * stride, s.Mirror, (long)cursor * stride, (long)r.NV * stride);
-                r.Base = cursor;
-                cursor += r.NV;
-            }
-            s.Used = cursor; s.Uploaded = 0; s.Dead = 0; s.Full = false;
-        }
-
-        live.Sort((a, b) => _ranges[a].Off0.CompareTo(_ranges[b].Off0));
-        int iCursor = 0;
-        foreach (int id in live)
-        {
-            ref Range r = ref _ranges[id];
-            r.Off0 = MoveRun(r.Off0, r.Cnt0, ref iCursor);
-            r.Off1 = MoveRun(r.Off1, r.Cnt1, ref iCursor);
-            r.Off2 = MoveRun(r.Off2, r.Cnt2, ref iCursor);
-        }
-        _iUsed = iCursor; _iUploaded = 0; _iDead = 0; _elementsFull = false;
-        VkCompacted();
-        _compactions++;
-        // keep only the ranges whose placement actually changed
-        int w = 0;
-        for (int k = 0; k < _movedN; k++)
-        {
-            int id = _moved[k];
-            if (_ranges[id].Base == _movedFrom[k].Base && _ranges[id].Off0 == _movedFrom[k].Off) continue;
-            _moved[w++] = id;
-        }
-        _movedN = w;
-        _movedTotal += w;
-        _log?.Info($"MeshArena: compacted -- {(before - VramBytes) >> 10} KiB reclaimed, {live.Count} meshes kept, "
-                 + $"{w} range(s) moved");
-        // Publish BEFORE telling anyone: the handler refreshes its cached offsets by asking this arena, and
-        // it must get the new placement, not the one it already holds.
-        if (w > 0)
-        {
-            Publish();
-            RangesMoved?.Invoke(_moved, w);
-            _movedN = 0;
+            if (parked[i].Stamp >= stalled) continue;
+            if (!FlightPassed(parked[i].Stamp)) { stalled = parked[i].Stamp; continue; }
+            Retired t = parked[i];
+            GiveBack(t.Format, ref t.VA, ref t.IA0, ref t.IA1, ref t.IA2);
+            parked.RemoveAt(i);
         }
     }
 
-    /// <summary>Slide one index run down to the compaction cursor. A range's three runs were appended back to
-    /// back, and the visit is ordered by the first of them, so the cursor is always at or below the source.</summary>
-    private static nint MoveRun(nint off, int count, ref int cursor)
+    /// <summary>One range's vertex block and its three index runs back to their blocks.</summary>
+    private static void GiveBack(Fmt fmt, ref VmaVirtualAllocation va, ref VmaVirtualAllocation ia0,
+                                ref VmaVirtualAllocation ia1, ref VmaVirtualAllocation ia2)
     {
-        if (count <= 0) return 0;
-        int from = (int)((long)off / 2);
-        if (from != cursor) Array.Copy(_iMirror, from, _iMirror, cursor, count);
-        nint at = (nint)((long)cursor * 2);
-        cursor += count;
-        return at;
+        Unplace(_sect[(int)fmt].Block, ref va);
+        Unplace(_idx.Block, ref ia0);
+        Unplace(_idx.Block, ref ia1);
+        Unplace(_idx.Block, ref ia2);
     }
 
-    /// <summary>The context is gone: forget every name, never delete. Both mirrors go back up on the next
-    /// <see cref="Pump"/>, which is terminal-safe -- nothing here is rebuilt from engine memory.</summary>
+    /// <summary>The submit a place given back now must outlive, -1 when nothing can be drawing from it.</summary>
+    private static long FlightStamp() => _flight.ByHand ? _flight.Now : VkFlightStamp();
+
+    /// <summary>Has the submit <paramref name="stamp"/> names finished on the GPU?</summary>
+    private static bool FlightPassed(long stamp) => _flight.ByHand ? stamp <= _flight.Done : VkFlightPassed(stamp);
+
+    /// <summary>The context is gone: forget every device name, never delete. The CPU bookkeeping stands --
+    /// the virtual blocks still hold every placement and both mirrors still hold the bytes -- so everything
+    /// goes back up at the next <see cref="Pump"/>, which is terminal-safe: nothing here is rebuilt from
+    /// engine memory.</summary>
     internal static void ContextLost()
     {
         lock (_gate)
         {
+            VkForget();
+            GiveBackPassed();   // the command buffers that held the retired places died with the device
             for (int f = 0; f < Formats; f++)
             {
                 Section s = _sect[f];
-                s.Resident = false; s.Uploaded = 0; s.Capacity = 0;
+                s.Resident = false;
+                s.Dirty.All(s.High);
             }
-            _iUploaded = 0; _iCapacity = 0;
+            _idx.Dirty.All(_idx.High);
             Publish();
         }
     }
@@ -933,57 +971,61 @@ public static unsafe partial class MeshArena
         Array.Resize(ref s.Mirror, cap);
     }
 
-    private static bool AppendRun(ushort[] run, int n, out nint off, out int count)
+    /// <summary>Place one index run in the shared element arena and copy it into the mirror; <paramref name="at"/>
+    /// is the placement the free gives back. False = it does not fit (the element-full refusal), nothing
+    /// placed.</summary>
+    private static bool PlaceRun(ushort[] run, int n, out nint off, out int count, out VmaVirtualAllocation at)
     {
-        off = 0; count = 0;
+        off = 0; count = 0; at = VmaVirtualAllocation.Null;
         if (n <= 0) return false;
-        if (_iUsed + n > MaxIndices) { _elementsFull = true; return false; }
-        if (_iMirror.Length < _iUsed + n)
+        if (!Place(_idx, n, out at, out int first)) return false;
+        if (_idx.Mirror.Length < first + n)
         {
-            int cap = _iMirror.Length == 0 ? 1 << 16 : _iMirror.Length;
-            while (cap < _iUsed + n) cap *= 2;
+            int cap = _idx.Mirror.Length == 0 ? 1 << 16 : _idx.Mirror.Length;
+            while (cap < first + n) cap *= 2;
             if (cap > MaxIndices) cap = MaxIndices;
-            Array.Resize(ref _iMirror, cap);
+            Array.Resize(ref _idx.Mirror, cap);
         }
-        Array.Copy(run, 0, _iMirror, _iUsed, n);
-        off = (nint)((long)_iUsed * 2);
+        Array.Copy(run, 0, _idx.Mirror, first, n);
+        _idx.Placed(first, n);
+        off = (nint)((long)first * 2);
         count = n;
-        _iUsed += n;
         return true;
     }
 
     // ---------------------------------------------------------------- report
 
     /// <summary>One clause of the <c>[alloy]</c> period line: the distinct meshes held, the parts they serve,
-    /// the arena's own bytes, the bytes the per-part path would have held for the same geometry and the
-    /// DIFFERENCE -- which is the saving the ticket asks for -- and any refusal.</summary>
+    /// what the placements come to against what the buffers hold, the bytes the per-part path would have held
+    /// for the same geometry and the DIFFERENCE -- the saving the ticket asks for -- any refusal, and the
+    /// places still parked on a submit.</summary>
     internal static string Stats(int frames)
     {
         if (_acquired == 0 && _refused == 0) return "";
         string why = "";
         for (int k = 1; k < RefusalName.Length; k++) if (_refusedBy[k] > 0) why += $" {RefusalName[k]} {_refusedBy[k]}";
         long holders = Holders;
-        long vram = VramBytes, unshared = _unsharedBytes;
+        long placed = PlacedBytes, held = HeldBytes, unshared = _unsharedBytes;
         int meshes = MeshCount;
         float share = meshes > 0 ? (float)holders / meshes : 0f;
-        return $"arena {meshes} meshes / {holders} holders ({share:0.0}x shared), {Bytes(vram)}"
-               + (unshared > vram ? $" against {Bytes(unshared)} one-copy-per-holder -- {Bytes(unshared - vram)} saved" : "")
+        return $"arena {meshes} meshes / {holders} holders ({share:0.0}x shared), placed {Bytes(placed)} of {Bytes(held)} held"
+               + (unshared > placed ? $" against {Bytes(unshared)} one-copy-per-holder -- {Bytes(unshared - placed)} saved" : "")
                + $", normals {_weldedFromParse} from the parse" + (_noNormals > 0 ? $" / {_noNormals} WITHOUT" : "")
                + (_freed > 0 ? $", {_freed} freed" : "")
-               + (_compactions > 0 ? $", {_compactions} compactions" : "")
                + (_refused > 0 ? $", REFUSED{why}" : "")
                + (_overReleased > 0 ? $", {_overReleased} OVER-RELEASED" : "")
                + (_heldPastEviction > 0 ? $", {_heldPastEviction} HELD PAST EVICTION" : "")
                + (_collisions > 0 ? $", {_collisions} content collisions" : "")
                + (_staleKeys > 0 ? $", {_staleKeys} stale keys swept" : "")
                + (_unqueued > 0 ? $", {_unqueued} UNQUEUED zero-ref ranges reclaimed" : "")
-               + (_movedTotal > 0 ? $", {_movedTotal} range(s) moved by a compaction (records refreshed)" : "")
+               + (_flight.Parked.Count > 0 ? $", {_flight.Parked.Count} place(s) waiting on a submit" : "")
                + DynStats();
     }
 
 
-    /// <summary>The arena's GPU bytes, in the biggest unit that still reads as a number.</summary>
-    private static string Size() => Bytes(VramBytes);
+    /// <summary>The arena's GPU bytes -- what the placements come to and what the buffers hold -- in the
+    /// biggest unit that still reads as a number.</summary>
+    private static string Size() => $"{Bytes(PlacedBytes)} of {Bytes(HeldBytes)} held";
 
     private static string Bytes(long b)
         => b >= 1 << 20 ? $"{b >> 20} MiB" : b >= 1 << 10 ? $"{b >> 10} KiB" : $"{b} B";
@@ -991,7 +1033,9 @@ public static unsafe partial class MeshArena
     internal static string Describe()
         => _acquired == 0 ? "no meshes held"
          : $"{MeshCount} distinct meshes serving {Holders} holders, {Size()}"
-           + (_elementsFull ? "; the element arena is full" : "");
+           + (_refusedBy[(int)Refusal.Section] > 0 ? "; a vertex section has refused a mesh" : "")
+           + (_refusedBy[(int)Refusal.Elements] > 0 ? "; the element arena has refused a run" : "")
+           + (_refusedBy[(int)Refusal.NoBlock] > 0 ? "; VMA gave it no virtual block" : "");
 
     /// <summary>Reset the arena to an empty session. The off-device suite's precondition, ENFORCED: it refuses
     /// (loudly) while anything is held, because this does run on a live client -- the self-check walk is part
@@ -1011,13 +1055,13 @@ public static unsafe partial class MeshArena
             _pub = Array.Empty<Pub?>();
             _rangeHigh = 1; _rangeFree = -1;
             _byContent.Clear(); _byMesh.Clear(); _pendingFree.Clear();
+            // the parked places go with their blocks: freeing one into a destroyed block is a native fault
+            _flight = new FlightState();
+            DestroyBlocks();
             _sect = NewSections();
-            _iMirror = Array.Empty<ushort>();
-            _iUsed = _iUploaded = _iCapacity = _iDead = 0;
-            _elementsFull = false;
-            _acquired = _freed = _refused = _compactions = _overReleased = _heldPastEviction = 0;
+            _idx = new ElementState { Cap = MaxIndices };
+            _acquired = _freed = _refused = _overReleased = _heldPastEviction = 0;
             _collisions = _weldedFromParse = _noNormals = _staleKeys = _unqueued = 0;
-            _movedN = 0; _movedTotal = 0;
             _unsharedBytes = 0;
             _logLeft = LogCap;
             Array.Clear(_refusedBy);
@@ -1026,16 +1070,10 @@ public static unsafe partial class MeshArena
         }
     }
 
-    /// <summary>The frame edge, driven off-device: frees land and the dead counters move, with no GL.</summary>
+    /// <summary>The frame edge, driven off-device: frees land and give their places back, with no device.</summary>
     internal static void FrameEdgeForCheck()
     {
         lock (_gate) { if (DrainFrees()) Publish(); }
-    }
-
-    /// <summary>Compaction, driven off-device.</summary>
-    internal static void CompactForCheck()
-    {
-        lock (_gate) { DrainFrees(); Compact(); Publish(); }
     }
 
     /// <summary>Pretend a format's section is on the device, for an off-device check of a caller whose gate
@@ -1045,7 +1083,50 @@ public static unsafe partial class MeshArena
         lock (_gate) { _sect[(int)f].Resident = true; Publish(); }
     }
 
-    /// <summary>Where <paramref name="range"/> sits, for the self-check's compaction assertions.</summary>
+    /// <summary>Drive the arena's in-flight clock by hand: a place freed from now on is stamped
+    /// <paramref name="now"/> and waits until the stamp is at or below <paramref name="done"/>. The
+    /// off-device check's only way to hold a submit, since no device is there to count one.</summary>
+    internal static void FlightForCheck(long now, long done)
+    {
+        // the clock moves, the places waiting on it stay: a new owner would drop them on the floor
+        lock (_gate) { _flight.ByHand = true; _flight.Now = now; _flight.Done = done; }
+    }
+
+    /// <summary>What the next pump would send of <paramref name="f"/>'s section: how many spans are pending
+    /// and the first one's BYTE range. The upload seam, off the device.</summary>
+    internal static (int Spans, long From, long To) PendingVertexBytesForCheck(Fmt f)
+    {
+        lock (_gate)
+        {
+            Section s = _sect[(int)f];
+            (int from, int to) = s.Dirty.Count > 0 ? s.Dirty.At(0) : (0, 0);
+            long w = StrideBytes(f);
+            return (s.Dirty.Count, from * w, to * w);
+        }
+    }
+
+    /// <summary>What the next pump would send of the shared element arena: how many spans are pending and the
+    /// first one's BYTE range.</summary>
+    internal static (int Spans, long From, long To) PendingIndexBytesForCheck()
+    {
+        lock (_gate)
+        {
+            (int from, int to) = _idx.Dirty.Count > 0 ? _idx.Dirty.At(0) : (0, 0);
+            return (_idx.Dirty.Count, from * 2L, to * 2L);
+        }
+    }
+
+    /// <summary>Forget both mirrors' dirty spans, as the pump that sent them would.</summary>
+    internal static void SentForCheck()
+    {
+        lock (_gate)
+        {
+            foreach (Section s in _sect) s.Dirty.Clear();
+            _idx.Dirty.Clear();
+        }
+    }
+
+    /// <summary>Where <paramref name="range"/> sits, for the self-check's placement assertions.</summary>
     internal static (int Base, nint Off0, int Cnt0) PlaceForCheck(int range)
     {
         lock (_gate) return Alive(range) ? (_ranges[range].Base, _ranges[range].Off0, _ranges[range].Cnt0) : (-1, 0, 0);

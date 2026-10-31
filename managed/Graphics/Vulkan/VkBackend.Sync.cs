@@ -21,8 +21,19 @@ internal sealed unsafe partial class VkBackend
     /// after it while the graphics submit beside an async one is still to come -- the first that waits on it.</summary>
     private long Next => _submits + (_onAsync || (_unjoined != 0 && !_beside) ? 2 : 1);
 
+    /// <summary>The value a caller that recycles memory of its OWN stamps a place given back now with: the
+    /// stamp <see cref="Later"/> defers the backend's own frees on. <see cref="FreePassed"/> says when that
+    /// place may be handed to someone else.</summary>
+    internal long FreeStamp => Next;
+
+    /// <inheritdoc cref="FreeStamp"/>
+    internal bool FreePassed(long stamp) => PassedNow(stamp);
+
     /// <summary>Has the timeline reached <paramref name="value"/>, as last read? Conservative between reads.</summary>
     private bool Passed(long value) => value <= _completed;
+
+    /// <summary>Has the timeline reached <paramref name="value"/>, reading the counter when the last read says no?</summary>
+    private bool PassedNow(long value) => Passed(value) || value <= Refresh();
 
     private long Refresh() => Refresh(_timeline, ref _completed);
 
@@ -95,8 +106,14 @@ internal sealed unsafe partial class VkBackend
     /// waits on the GPU in a frame that keeps up.</summary>
     private VkResult WaitFrame() => WaitFor(_frameEnds[_frames % FramesInFlight]);
 
-    /// <summary>The frame ends on the last submit made so far.</summary>
-    private void EndFrame() => _frameEnds[_frames++ % FramesInFlight] = _submits;
+    /// <summary>The frame ends on the last submit made so far, and the alias lanes end with it.</summary>
+    private void EndFrame()
+    {
+        _frameEnds[_frames++ % FramesInFlight] = _submits;
+        // VMA refreshes its heap budget from the driver as the frame index moves
+        Vma.vmaSetCurrentFrameIndex(_vma, (uint)_frames);
+        EndAliasFrame();
+    }
 
     /// <summary>The acquire semaphore of the frame being presented: the frame <see cref="FramesInFlight"/> back, which
     /// last waited on it, has finished.</summary>

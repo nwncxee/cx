@@ -84,11 +84,14 @@ internal sealed unsafe partial class VkBackend
     };
 
     /// <summary>Move <paramref name="img"/> into <paramref name="to"/>, or order it against a write made in that layout
-    /// already (a storage write read next, an attachment drawn again). Queued: <see cref="Flush"/> records it.</summary>
-    private void Transition(VkImg img, VkImageLayout to)
+    /// already (a storage write read next, an attachment drawn again). Queued: <see cref="Flush"/> records it. GENERAL
+    /// is a storage read as much as a storage write, so a read there passes <paramref name="writes"/> false and an
+    /// alias member reading bytes another member took is refused instead of silently fresh.</summary>
+    private void Transition(VkImg img, VkImageLayout to, bool writes = true)
     {
         Remember(img);
         if (_onAsync) img.AsyncRec = _recording;
+        bool claimed = Claim(img, to, writes);
         if (img.Layout == to && !img.Written) return;
         if (_besideNow && img.AsyncRec == _asyncRec)
             _crossed ??= $"moved {img.Desc.Label}, which the async submit it runs beside reached -- hand it over ahead of both";
@@ -97,10 +100,12 @@ internal sealed unsafe partial class VkBackend
         {
             ref VkImageMemoryBarrier2 q = ref _imgBars[img.BarAt];
             q.newLayout = to; q.dstStageMask = ds; q.dstAccessMask = da;
+            if (claimed) { q.oldLayout = VkImageLayout.Undefined; q.srcStageMask |= VkPipelineStageFlags2.AllCommands; q.srcAccessMask |= VkAccessFlags2.MemoryWrite; }
         }
         else
         {
-            (VkPipelineStageFlags2 ss, VkAccessFlags2 sa) = Scope(img.Layout);
+            // a claimed member's memory was last written through another image of its group, in any stage
+            (VkPipelineStageFlags2 ss, VkAccessFlags2 sa) = claimed ? (VkPipelineStageFlags2.AllCommands, VkAccessFlags2.MemoryWrite) : Scope(img.Layout);
             img.BarBatch = _batch;
             VkImageMemoryBarrier2 b = Whole(img);
             b.srcStageMask = ss; b.srcAccessMask = sa & WriteAccess; b.dstStageMask = ds; b.dstAccessMask = da;

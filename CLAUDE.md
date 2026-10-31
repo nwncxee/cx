@@ -181,6 +181,18 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
   The only GL CX keeps draws CX's own windows on the engine's renderer in a session Vulkan refused, plus the
   stubs for the entry points the engine itself imports; new work records on the seam (`managed/Rhi/`, `CX.Rhi`).
   GL enum numbers the engine's own data speaks are `EngineTokens`, not an entry point, and need no permission.
+- `vma-confined.sh`: a file named in CX0005's `Allowed` that is not in the tree fails. The RULE -- the device is
+  the backend's -- is CX0005 (`tools/analyzers/VulkanDevice.cs`), which the compiler checks because it can tell a
+  `vk*`/`vma*` entry point from an enum member: outside `managed/Graphics/` a Vulkan or VMA call is refused, and
+  the one exception is VMA's virtual-block family, which touches no device, in the files that keep books on it
+  (the mesh arena). This gate refuses a permission that outlived its file; the list is read out of
+  `VulkanDevice.cs`, never restated. Vulkan's enums, structs and handle types are data, and are free anywhere.
+- `alias-lanes.sh`: an alias argument under `managed/` that is a string literal rather than an `AliasLanes`
+  member fails, as does `Alias = "..."`. Equal alias strings make two render targets SHARE one allocation, so a
+  lane is a declaration in `Alloy/Core/AliasLanes.cs` (which says which targets are in which lane, in frame
+  order) and a typo must not buy a second allocation in silence. Any parameter named `alias` declares one, so
+  `ImageDesc`'s 11th positional and each pass's own `Target` helper are covered by the one rule;
+  `managed/Alloy/Golden/` is exempt, its goldens inventing lanes to test the sharing itself.
 - `selfcheck.sh`: inside a `*SelfCheck*` file or a `SelfCheck` method, an `Expect` that cannot fail fails --
   a compile-time-constant condition, a `const` compared to its own kind of literal (over `==` `!=` `<` `>`
   `<=` `>=`, the const named bare or as `Type.CONST` from any file), or the same text on both sides of a
@@ -224,6 +236,8 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
   `managed/Framework/` or with no `// <reason>` on its line, or a `NoWarn`/severity override lowering either in build config, fails.
 - `local-paths.sh`: a home directory, mount point or personal checkout path in a tracked file fails
   (`docs/adr/`, `docs/handoff/` exempt); a machine's paths go through `tools/paths.py`.
+- `compute-pipes.sh`: a `ShaderDesc(ShaderStage.Compute ...)` under `managed/` outside `VkBackend.Pipeline.cs` fails; a
+  compute pipeline from GLSL is `VkBackend.CreateCompute`.
 
 ## Hard rules
 

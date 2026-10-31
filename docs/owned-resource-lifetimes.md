@@ -164,10 +164,11 @@ the engine-scene path on 2026-10-07 and the DB object-destroy edge replaced it, 
 that edge to defer, because `MeshArena.Release` only queues a byte range.
 
 That range is the one case the backend's deferral does not cover, because the buffer behind it is never
-destroyed: `MeshArena.DrainFrees` hands a range back to the arena's own allocator at the frame edge, and the
-next `Acquire` can upload a different mesh into those bytes while the previous frame's draw still names them.
-The symptom is a wrong mesh for one frame rather than a crash, which is why it has gone unnoticed; the fix is
-a frame stamp on `_pendingFree`.
+destroyed, so the arena defers it itself. `MeshArena.DrainFrees` does not hand a freed range's places straight
+back: it stamps them with `VkBackend.FreeStamp` (the submit that will next read them) and parks them, and
+`GiveBackPassed` returns them to their blocks once `VkBackend.FreePassed` says that submit is done. Without the
+stamp the next `Acquire` could land in those bytes and upload over geometry the previous frame's command
+buffer still draws — a wrong mesh for one frame rather than a crash, which is why it went unnoticed.
 
 ## Threading: who may touch what
 
@@ -228,9 +229,9 @@ fold; the third stands:
    now inside the fence, and the draw side that reads the table (`AlloyRenderer.Db.cs`, `DbStage.cs`,
    `Casters.cs`, `DbInputs.cs`) runs outside it. The two spans are disjoint by construction. A writer added
    OUTSIDE the fold would re-open this, which is what `MeshArena.Dyn.cs` is really warning about.
-3. **`MeshArena`'s read API is lock-free against a locked, compacting writer.** `Draw`, `Runs`, `Bounds`,
-   `RefsOf`, `Alive` read `_ranges` with no lock; `NewRange` reassigns the array under the lock and `Compact`
-   rewrites every live range's `Base`/`Off*` in place.
+3. **`MeshArena`'s read API is lock-free against a locked writer.** `Draw`, `Runs`, `Bounds`, `RefsOf`,
+   `Alive` read `_ranges` with no lock; `NewRange` reassigns the array under the lock. A placed range never
+   moves, so the only thing a reader can see go stale is a range that has been freed.
 
 Two things cross threads correctly today and must keep doing so: `MeshArena.Pump` (the only place frees land
 and both mirrors go up, under `_gate`) and `TexRegistry.Drain` (GPU only — it forgets the graveyard's names,
@@ -241,7 +242,7 @@ threads with no stop token — process lifetime, deliberately.
 
 One priority inversion worth knowing about: `MeshArena.Acquire` (from the fold, game thread) and
 `MeshArena.Forget` (from an eviction, game thread) take `_gate`, which the draw side holds for the whole of
-`Pump` including `Compact` and every upload. And `MeshSimplify.Run` — two calls per distinct mesh, from
+`Pump` and every upload it makes. And `MeshSimplify.Run` — two calls per distinct mesh, from
 `CutLods` inside `Build` — runs on the game thread *while holding `_gate`*.
 
 ## The tables
@@ -274,8 +275,8 @@ One priority inversion worth knowing about: `MeshArena.Acquire` (from the fold, 
 | The model table (`ModelCache._table`/`_bySlot`/`_lru`) | `ModelCache.InsertModel`, from `Publish` | `ModelCache.Evict`, from `Trim` (idle bytes past `models.budget`, default 192 MiB) or `Clear` (a source change / module unload). `AreaEdge` reports the census and drops the read-ahead references; it releases nothing held | none — it owns no GPU object |
 | Parsed `ModelDef`s | `MdlParser.Parse` on the `cx-model` worker | GC, once `Evict` has removed the slot and every `Evicting` subscriber has dropped its strong references | none |
 | The parse queue and jobs | `ModelCache.Start`, which lazily mints the one `cx-model` background thread | jobs by `_flight.Remove`/`_done.Dequeue`; `Clear` bumps `_sourceGen` so in-flight work publishes stale and is dropped. The thread lives for the process | none |
-| Arena ranges (`MeshArena._ranges`, `_byContent`, `_byMesh`) | `MeshArena.Acquire` → `Build`, `AcquireRaw`, `AcquireDynamic` | `MeshArena.Release` last-ref queues into `_pendingFree`; the kill is `DrainFrees` inside `Pump` — a render-side frame edge, "so no draw in flight holds its offsets". `Forget(ModelDef)` drops the `_byMesh` shortcuts only and **releases nothing**, counting `_heldPastEviction` for a part that outlived its model | `MeshArena.ContextLost` forgets the names, keeps the ranges and both mirrors |
-| The arena's two CPU mirrors (`Section.Mirror`, `_iMirror`) | `GrowMirror` / `AppendRun` | nothing: grow-only, `Compact` compacts the contents but never shrinks the arrays. `ResetForCheck` is off-device only | kept, deliberately |
+| Arena ranges (`MeshArena._ranges`, `_byContent`, `_byMesh`) and their placements (one VMA virtual block per vertex format plus one over the shared element arena) | `MeshArena.Acquire` → `Build`, `AcquireRaw`, `AcquireDynamic`, each placing its vertices and index runs best-fit in those blocks | `MeshArena.Release` last-ref queues into `_pendingFree`; the kill is `DrainFrees` inside `Pump`, which stamps every placement with the submit being recorded and parks it in `_retired` — `GiveBackPassed` hands it back to its block for the next mesh that fits once that submit has finished, never while a command buffer may still draw those bytes. `Forget(ModelDef)` drops the `_byMesh` shortcuts only and **releases nothing**, counting `_heldPastEviction` for a part that outlived its model | `MeshArena.ContextLost` forgets the device names, keeps the blocks, the ranges and both mirrors; `ResetForCheck` destroys and remakes the blocks |
+| The arena's two CPU mirrors (`Section.Mirror`, `_idx.Mirror`) | `GrowMirror` / `PlaceRun`, each reaching as far as the highest placement | nothing: grow-only — a freed gap is reused where it lies and the arrays never shrink. `ResetForCheck` is off-device only | kept, deliberately |
 | Mesh LOD levels | `MeshArena.CutLods` — two `MeshSimplify.Run` calls per distinct mesh, on the game thread under `_gate`, each level kept only if it saves `MeshLod.MinSaving` | with the range | with the names |
 | Dynamic (dangly/animmesh) ranges and their native vertex buffers | `DbAnim.TakeRange` → `MeshArena.AcquireDynamic` with a per-part splitmix key so nothing dedups onto it, plus `DbAnim.DynTake`'s `NativeMemory.Alloc` (cap `MaxDynParts` 2048, refused loudly past it) | `DbAnim.DanglyForget(obj)` from `DbAnim.OnRetire` — the object-destroy edge: free both native buffers, `MeshArena.Release` the range, swap-remove from `_dynList`. The private recipe row is only retired by `DrawRecipe.Forget` | with the arena |
 | The dynamic patch queue | `MeshArena.WriteDynamic` (game thread, under `_gate`: patches positions in the mirror and recomputes the cull bounds so the sphere follows the pose) | `MeshArena.DynUpload` inside `Pump` — one buffer upload per dirty range, under the same lock. `_dynDirty` is a fixed 4096; overflow is counted and named as "a frozen cloak" | not cleared by `ContextLost` — frozen, inert |
@@ -373,8 +374,9 @@ now has its producer:
   `ObjectSlots.ReleaseRecord`): a recycled index no longer wears the dead tenant's skin, hair and armour.
 - `TextAtlas.ContextLost` has a caller (`GuiPass`).
 - `MeshArena.Pump` runs in the frame fold, so a GUI-only frame collects finished work.
-- A compaction refreshes exactly the records that moved: `MeshArena` reports the moved ranges and
-  `AlloyRenderer.DbRangesMoved` rewrites those slots' draw arguments. Nothing re-stages.
+- A freed range's place is reused where it lies: `MeshArena`'s VMA virtual blocks hand the gap to the next
+  mesh that fits it, so no range ever moves and no record's cached draw arguments can go stale — but only
+  after the submit that could still have drawn the freed range has finished.
 - `DbFeed.Retry` keeps its own retry list instead of re-marking `Dirty.Material` from inside the fold that
   clears it.
 

@@ -264,7 +264,8 @@ What a server can ask the client to draw in and beside its NUI windows. The cont
 ## Rendering (Alloy)
 
 - **Alloy** — CX's renderer (`managed/Alloy/`, `CX.Alloy`), and the only one it has: it draws through
-  Vulkan, on the `CX.Rhi` seam over `VkBackend` (`managed/Graphics/Vulkan/`). **Vanilla** is the
+  Vulkan, on the `CX.Rhi` seam over `VkBackend` (`managed/Graphics/Vulkan/`); the mesh arena's VMA virtual blocks
+  are CPU bookkeeping, not the device, and sit outside the seam. **Vanilla** is the
   contrast — an Alloy part is one Alloy submits, a vanilla one is one the engine draws with its own
   OpenGL renderer. Vulkan is not optional to Alloy: the probe (`VkBackend.Refusal`) is asked once at
   boot, and a machine it refuses runs the whole session vanilla (ADR 0033).

@@ -8,14 +8,17 @@ namespace CX.Graphics.Rhi;
 
 internal sealed unsafe partial class VkBackend
 {
-    /// <summary>One host-visible buffer uploads are copied into ahead of the submit that moves them to the device.</summary>
-    private sealed class UploadChunk
+    /// <summary>One host-visible buffer uploads are copied into ahead of the submit that moves them to the device: one
+    /// whole block of the staging pool, or an upload too large for a block in an allocation of its own.</summary>
+    private sealed class UploadBlock
     {
         public VkBuffer Buffer;
         public VmaAllocation Alloc;
         public ulong Size, Used;
         /// <summary>The timeline value of the submit that last copied out of it; reusable once the timeline passes it.</summary>
         public long At;
+        /// <summary>Larger than a pool block, so it holds memory of its own rather than one of the pool's.</summary>
+        public bool Own => Size > UploadBlockBytes;
     }
 
     /// <summary>A copy waiting for the next submit: staged bytes into a buffer range, into one mip and layer of an
@@ -25,12 +28,12 @@ internal sealed unsafe partial class VkBackend
                                                int X = 0, int Y = 0, int W = 0, int H = 0, int RowTexels = 0);
 
     /// <summary>Uploads made between submits: their staging and their copies, recorded at the head of the next
-    /// submit; a chunk goes back to <see cref="Pool"/> after it, is reused once that submit is past, and is freed
+    /// submit; a block goes to <see cref="Spare"/> after it, is reused once that submit is past, and is freed
     /// once it sits there <see cref="StagingIdleSubmits"/> submits unused.</summary>
     private sealed class UploadState
     {
-        public readonly List<UploadChunk> Chunks = new();
-        public readonly List<UploadChunk> Pool = new();
+        public readonly List<UploadBlock> Blocks = new();
+        public readonly List<UploadBlock> Spare = new();
         public readonly List<PendingCopy> Copies = new();
         /// <summary>Buffers made since the last submit, filled with zeros at its head ahead of every copy.</summary>
         public readonly List<BufferId> Zero = new();
@@ -47,14 +50,17 @@ internal sealed unsafe partial class VkBackend
     }
 
     private readonly UploadState _upload = new();
+    /// <summary>The VMA pool every staging block comes out of, made with the device.</summary>
+    private readonly VmaPool _stagePool;
 
-    /// <summary>The first staging chunk an upload opens: past a typical area's textures in a frame, so a load is a
-    /// handful of chunks rather than one per texture.</summary>
-    private const ulong UploadChunkBytes = 64ul << 20;
-    /// <summary>Staging the uploads between two submits may hold: past it the uploads so far go in a submit of their
-    /// own and their chunks are waited out and reused, so an area load (one long frame) stays inside it.</summary>
+    /// <summary>One block of the staging pool, which every upload that fits one is copied into: past a typical area's
+    /// textures in a frame, so a load holds a handful of blocks rather than a buffer per texture.</summary>
+    private const ulong UploadBlockBytes = 64ul << 20;
+    /// <summary>Staging held at once -- the pool's blocks and the allocations of uploads too large for one: past it the
+    /// uploads so far go in a submit of their own and their staging is waited out and reused, so an area load (one long
+    /// frame) stays inside it.</summary>
     private const ulong StagingBudget = 256ul << 20;
-    /// <summary>Submits a pooled chunk sits unused before it is freed; the pool keeps one chunk past it.</summary>
+    /// <summary>Submits a spare block sits unused before it is freed; the pool's own floor block stays.</summary>
     private const long StagingIdleSubmits = 1000;
     /// <summary>Each staged copy starts on this boundary: a BC block, a texel of every format, and the device's
     /// optimalBufferCopyOffsetAlignment floor.</summary>
@@ -132,6 +138,7 @@ internal sealed unsafe partial class VkBackend
                    || !BitOperations.IsPow2(d.Samples))
             || Of(d.Fmt) == VkFormat.Undefined || d.W <= 0 || d.H <= 0 || d.Mips < 1 || d.Layers < 1)
             return Refused<ImageId>($"image {d.Label}: {d.Kind} {d.Fmt} {d.W}x{d.H} x{d.Samples} with {d.Mips} mips, {d.Layers} layers");
+        if (d.Alias is string group) return CreateAliased(d, group);
         VkImageCreateInfo ici = ImageInfo(d, null);
         uint* fams = stackalloc uint[3];
         if ((d.Use & ImageUse.Async) != 0) Share(ref ici.sharingMode, ref ici.queueFamilyIndexCount, ref ici.pQueueFamilyIndices, fams, transfer: false);
@@ -141,6 +148,7 @@ internal sealed unsafe partial class VkBackend
         if (Vma.vmaCreateImage(_vma, &ici, &aci, &image, &a, null) != VkResult.Success)
             return Refused<ImageId>($"image {d.Label}: VMA refused {d.Kind} {d.Fmt} {d.W}x{d.H}");
         Name(VkObjectType.Image, image.Handle, d.Label);
+        Vma.vmaSetAllocationName(_vma, a, d.Label);
         return new ImageId(_images.Add(new VkImg { Image = image, Alloc = a, View = View(image, d, -1), Desc = d }));
     }
 
@@ -210,9 +218,11 @@ internal sealed unsafe partial class VkBackend
         return view;
     }
 
-    /// <summary>The view binding one mip alone, made on first ask; mip -1 or a single-mip image is the whole view.</summary>
+    /// <summary>The view binding one mip alone, made on first ask; mip -1 or a single-mip image is the whole view.
+    /// Null for an image the device refused one, which every caller refuses to bind.</summary>
     private VkImageView ViewOf(VkImg img, int mip)
     {
+        if (img.Image.IsNull) return default;
         if (mip < 0 || img.Desc.Mips == 1) return img.View;
         img.MipViews ??= new VkImageView[img.Desc.Mips];
         if (img.MipViews[mip].IsNull) img.MipViews[mip] = View(img.Image, img.Desc, mip);
@@ -269,6 +279,7 @@ internal sealed unsafe partial class VkBackend
     internal bool Upload(ImageId i, int mip, int layer, ReadOnlySpan<byte> bytes)
     {
         if (!OnThread("Upload") || !_images.TryGet(i.Value, out VkImg img)) return Fault("Upload: stale image");
+        if (img.Group != null) return Fault($"Upload into {img.Desc.Label}: an alias group's image keeps no contents past another member's use");
         if (mip < 0 || mip >= img.Desc.Mips || bytes.Length != LevelBytes(img.Desc, mip))
             return Fault($"Upload into {img.Desc.Label}: {bytes.Length} bytes for mip {mip}, which holds {LevelBytes(img.Desc, Math.Clamp(mip, 0, img.Desc.Mips - 1))}");
         if (!Stage(bytes, out VkBuffer src, out ulong at)) return false;
@@ -294,90 +305,153 @@ internal sealed unsafe partial class VkBackend
         return true;
     }
 
-    /// <summary>Copy <paramref name="bytes"/> into the open upload chunk, opening one when it is full.</summary>
+    /// <summary>The pool every staging block that fits one comes out of: host-visible memory in whole blocks, bump
+    /// allocated (the linear algorithm, which hands out of the newest block alone), with one block kept once the loads
+    /// stop. How much a load may hold is <see cref="Make"/>'s budget check, the one that says so when it refuses.</summary>
+    private VmaPool MakeStagePool()
+    {
+        VkBufferCreateInfo bci = StageInfo();
+        var aci = new VmaAllocationCreateInfo { usage = VmaMemoryUsage.Auto, flags = VmaAllocationCreateFlags.HostAccessSequentialWrite };
+        uint type;
+        Check(Vma.vmaFindMemoryTypeIndexForBufferInfo(_vma, &bci, &aci, &type), "vmaFindMemoryTypeIndexForBufferInfo (upload staging)");
+        var pci = new VmaPoolCreateInfo
+        {
+            memoryTypeIndex = type, flags = VmaPoolCreateFlags.LinearAlgorithm, blockSize = UploadBlockBytes,
+            minBlockCount = 1,
+        };
+        Check(Vma.vmaCreatePool(_vma, &pci, out VmaPool p), "vmaCreatePool (upload staging)");
+        return p;
+    }
+
+    /// <summary>A buffer over one whole block, which is what a block of the pool is handed out as.</summary>
+    private static VkBufferCreateInfo StageInfo()
+        => new() { size = UploadBlockBytes, usage = VkBufferUsageFlags.TransferSrc, sharingMode = VkSharingMode.Exclusive };
+
+    /// <summary>Copy <paramref name="bytes"/> into the open staging block, opening one when it is full.</summary>
     private bool Stage(ReadOnlySpan<byte> bytes, out VkBuffer src, out ulong at)
     {
+        src = default; at = 0;
         ulong len = (ulong)bytes.Length;
-        UploadChunk? c = _upload.Chunks.Count > 0 ? _upload.Chunks[^1] : null;
-        if (c == null || c.Used + len > c.Size)
+        UploadBlock? b = _upload.Blocks.Count > 0 ? _upload.Blocks[^1] : null;
+        if (b == null || b.Used + len > b.Size)
         {
-            c = Pooled(len, wait: false);
-            if (c == null && _upload.Chunks.Count > 0 && OpenStaging() + Math.Max(UploadChunkBytes, len) > StagingBudget
-                && UploadsAhead())
-                c = Pooled(len, wait: true);
-            if (c == null)
-            {
-                c = new UploadChunk { Size = Math.Max(UploadChunkBytes, len) };
-                if (!HostBuffer(c.Size, VkBufferUsageFlags.TransferSrc, VmaAllocationCreateFlags.HostAccessSequentialWrite, out c.Buffer, out c.Alloc))
-                {
-                    src = default; at = 0;
-                    return Fault($"upload staging: VMA refused {c.Size} bytes");
-                }
-            }
-            c.Used = 0;
-            _upload.Chunks.Add(c);
+            b = Open(len);
+            if (b == null) return false;
+            b.Used = 0;
+            _upload.Blocks.Add(b);
         }
-        src = c.Buffer; at = c.Used;
+        src = b.Buffer; at = b.Used;
         fixed (byte* p = bytes)
-            if (Vma.vmaCopyMemoryToAllocation(_vma, p, c.Alloc, at, len) != VkResult.Success)
+            if (Vma.vmaCopyMemoryToAllocation(_vma, p, b.Alloc, at, len) != VkResult.Success)
                 return Fault("upload staging: the copy into the mapped allocation was refused");
-        c.Used = (at + len + UploadAlign - 1) & ~(UploadAlign - 1);
+        b.Used = (at + len + UploadAlign - 1) & ~(UploadAlign - 1);
         return true;
     }
 
-    /// <summary>The bytes of the chunks the uploads since the last submit hold.</summary>
-    private ulong OpenStaging()
+    /// <summary>A block to stage <paramref name="len"/> bytes in: a spare one whose submit is past, else a new one the
+    /// budget has room for, else the uploads so far go out in a submit of their own and the oldest spare that fits is
+    /// waited out and reused, giving up the spares too small for this one when the budget needs them. Null (logged)
+    /// when none came.</summary>
+    private UploadBlock? Open(ulong len)
     {
-        ulong sum = 0;
-        foreach (UploadChunk c in _upload.Chunks) sum += c.Size;
-        return sum;
+        UploadBlock? b = Reuse(len, wait: false) ?? Make(len);
+        if (b != null) return b;
+        if (!UploadsAhead()) return null;
+        b = Reuse(len, wait: true);
+        while (b == null && GiveUp()) b = Make(len);
+        if (b == null) Fault($"upload staging: no block for {len >> 20} MiB inside the {StagingBudget >> 20} MiB budget");
+        return b;
     }
 
-    /// <summary>The most recently used pooled chunk of at least <paramref name="len"/> bytes whose submit is past, taken
-    /// out of the pool -- the newest first, so the rest age toward the idle trim; <paramref name="wait"/> blocks on the
-    /// oldest such chunk when none is past yet. Null when the pool has none that fits.</summary>
-    private UploadChunk? Pooled(ulong len, bool wait)
+    /// <summary>A block of the pool for <paramref name="len"/> bytes, or its own allocation when no block holds that
+    /// much; null when the budget has no room for it, or (logged) when VMA refuses it.</summary>
+    private UploadBlock? Make(ulong len)
     {
-        List<UploadChunk> pool = _upload.Pool;
+        ulong size = Math.Max(len, UploadBlockBytes);
+        if (Staging.Bytes + size > StagingBudget) return null;
+        var b = new UploadBlock { Size = size };
+        bool made = b.Own
+                  ? HostBuffer(size, VkBufferUsageFlags.TransferSrc, VmaAllocationCreateFlags.HostAccessSequentialWrite, out b.Buffer, out b.Alloc)
+                  : PoolBlock(out b.Buffer, out b.Alloc);
+        if (made) { Vma.vmaSetAllocationName(_vma, b.Alloc, "upload staging"); return b; }
+        Fault($"upload staging: VMA refused {size >> 20} MiB");
+        return null;
+    }
+
+    /// <summary>One block of the pool as a buffer over the whole of it, so a block costs one Vulkan buffer however many
+    /// uploads it carries; false when the device refused the memory.</summary>
+    private bool PoolBlock(out VkBuffer b, out VmaAllocation a)
+    {
+        VkBufferCreateInfo bci = StageInfo();
+        var aci = new VmaAllocationCreateInfo { pool = _stagePool, flags = VmaAllocationCreateFlags.HostAccessSequentialWrite };
+        VkBuffer nb;
+        VmaAllocation na;
+        bool ok = Vma.vmaCreateBuffer(_vma, &bci, &aci, &nb, &na, null) == VkResult.Success;
+        b = ok ? nb : default;
+        a = ok ? na : default;
+        return ok;
+    }
+
+    /// <summary>The most recently used spare block of at least <paramref name="len"/> bytes whose submit is past, taken
+    /// off the list -- the newest first, so the rest age toward the idle trim; <paramref name="wait"/> blocks on the
+    /// oldest such block when none is past yet. Null when the list has none that fits.</summary>
+    private UploadBlock? Reuse(ulong len, bool wait)
+    {
+        List<UploadBlock> spare = _upload.Spare;
         int oldest = -1;
-        for (int k = pool.Count - 1; k >= 0; k--)
+        for (int k = spare.Count - 1; k >= 0; k--)
         {
-            if (pool[k].Size < len) continue;
-            if (Passed(pool[k].At)) { UploadChunk c = pool[k]; pool.RemoveAt(k); return c; }
-            if (oldest < 0 || pool[k].At < pool[oldest].At) oldest = k;
+            if (spare[k].Size < len) continue;
+            if (PassedNow(spare[k].At)) { UploadBlock got = spare[k]; spare.RemoveAt(k); return got; }
+            if (oldest < 0 || spare[k].At < spare[oldest].At) oldest = k;
         }
         if (!wait || oldest < 0) return null;
-        VkResult r = WaitFor(pool[oldest].At);
-        if (r != VkResult.Success) { Fault($"upload staging: waiting out a chunk's submit returned {r}"); return null; }
-        UploadChunk w = pool[oldest];
-        pool.RemoveAt(oldest);
+        VkResult r = WaitFor(spare[oldest].At);
+        if (r != VkResult.Success) { Fault($"upload staging: waiting out a staging block's submit returned {r}"); return null; }
+        UploadBlock w = spare[oldest];
+        spare.RemoveAt(oldest);
         return w;
     }
 
-    /// <summary>Free the pooled chunks unused for <see cref="StagingIdleSubmits"/> submits, keeping one of the standard
-    /// size, so a load's high water goes back once the loads stop.</summary>
+    /// <summary>Give up the longest-idle spare block whose submit is past, so the budget has room for a larger one;
+    /// false when every spare is still in flight, or there are none.</summary>
+    private bool GiveUp()
+    {
+        List<UploadBlock> spare = _upload.Spare;
+        int oldest = -1;
+        for (int k = 0; k < spare.Count; k++)
+            if (PassedNow(spare[k].At) && (oldest < 0 || spare[k].At < spare[oldest].At)) oldest = k;
+        if (oldest < 0) return false;
+        Vma.vmaDestroyBuffer(_vma, spare[oldest].Buffer, spare[oldest].Alloc);
+        spare.RemoveAt(oldest);
+        return true;
+    }
+
+    /// <summary>Free the spare blocks unused for <see cref="StagingIdleSubmits"/> submits, so a load's high water goes
+    /// back to the pool's floor block once the loads stop.</summary>
     private void TrimStaging()
     {
-        List<UploadChunk> pool = _upload.Pool;
-        bool kept = false;
-        for (int k = pool.Count - 1; k >= 0; k--)
+        List<UploadBlock> spare = _upload.Spare;
+        for (int k = spare.Count - 1; k >= 0; k--)
         {
-            UploadChunk c = pool[k];
-            if (!kept && c.Size == UploadChunkBytes) { kept = true; continue; }
-            if (_submits - c.At < StagingIdleSubmits || !Passed(c.At)) continue;
-            Vma.vmaDestroyBuffer(_vma, c.Buffer, c.Alloc);
-            pool.RemoveAt(k);
+            if (_submits - spare[k].At < StagingIdleSubmits || !Passed(spare[k].At)) continue;
+            Vma.vmaDestroyBuffer(_vma, spare[k].Buffer, spare[k].Alloc);
+            spare.RemoveAt(k);
         }
     }
 
-    /// <summary>The staging chunks held, in use and pooled, and their bytes.</summary>
-    internal (int Chunks, ulong Bytes) Staging
+    /// <summary>The staging blocks held and their bytes: the pool's blocks as VMA counts them, plus the allocations of
+    /// the uploads too large for one, in use and spare. The budget is measured against this.</summary>
+    internal (int Blocks, ulong Bytes) Staging
     {
         get
         {
-            ulong bytes = OpenStaging();
-            foreach (UploadChunk c in _upload.Pool) bytes += c.Size;
-            return (_upload.Chunks.Count + _upload.Pool.Count, bytes);
+            Vma.vmaGetPoolStatistics(_vma, _stagePool, out VmaStatistics s);
+            int blocks = (int)s.blockCount;
+            ulong bytes = s.blockBytes;
+            foreach (UploadBlock b in _upload.Blocks) if (b.Own) { blocks++; bytes += b.Size; }
+            foreach (UploadBlock b in _upload.Spare) if (b.Own) { blocks++; bytes += b.Size; }
+            return (blocks, bytes);
         }
     }
 
@@ -449,13 +523,13 @@ internal sealed unsafe partial class VkBackend
         },
     };
 
-    /// <summary>The flushed uploads ran in a submitted recording: their chunks go back to the pool once it is done, and
+    /// <summary>The flushed uploads ran in a submitted recording: their blocks go to the spare list once it is done, and
     /// the queue empties. A refused recording skips this, and the same copies flush again into the next.</summary>
     private void CommitUploads()
     {
         UploadState u = _upload;
-        foreach (UploadChunk c in u.Chunks) { c.At = Next; u.Pool.Add(c); }
-        u.Chunks.Clear();
+        foreach (UploadBlock b in u.Blocks) { b.At = Next; u.Spare.Add(b); }
+        u.Blocks.Clear();
         TrimStaging();
         u.Copies.Clear();
         u.Zero.Clear();
@@ -546,6 +620,7 @@ internal sealed unsafe partial class VkBackend
     internal BindlessHandle Bindless(ImageId i, SamplerId s)
     {
         if (!OnThread("Bindless") || !_images.TryGet(i.Value, out VkImg img)) return Refused<BindlessHandle>("Bindless: stale image");
+        if (img.Group != null) return Refused<BindlessHandle>($"Bindless: {img.Desc.Label} is in an alias group, whose images a rebind remakes");
         VkSampler sampler = _nearest;
         if (!s.IsNull && !_samplers.TryGet(s.Value, out sampler)) return Refused<BindlessHandle>("Bindless: stale sampler");
         BindlessState t = _bindless;
@@ -577,34 +652,36 @@ internal sealed unsafe partial class VkBackend
         WriteBindless(0, img.View, _nearest);
     }
 
-    /// <summary>Indices released before a finished submit go back to the free list, each pointed at the zero
-    /// texel first: its image may be gone, and a record that still names it must read something. At a submit's head.</summary>
+    /// <summary>Indices released before a finished submit go back to the free list, each pointed at the zero texel
+    /// first: its image may be gone, and a record that still names it must read something. At the head of every
+    /// graphics submit, and a frame that reaches the screen always makes one (the present's blit records there), so
+    /// an async-only stretch holds the deaths longer and changes nothing else. In the order they were queued.</summary>
     private void RecycleBindless()
     {
         BindlessState t = _bindless;
-        for (int k = t.Dying.Count - 1; k >= 0; k--)
-            if (Passed(t.Dying[k].At))
-            {
-                WriteBindless(t.Dying[k].Index, t.Zero, _nearest);
-                t.Free.Push(t.Dying[k].Index);
-                t.Dying.RemoveAt(k);
-            }
-        for (int k = t.Behind.Count - 1; k >= 0; k--)
-            if (Passed(t.Behind[k].At))
-            {
-                Later(t.Behind[k].Free);
-                t.Behind.RemoveAt(k);
-            }
+        int n = 0;
+        while (n < t.Dying.Count && Passed(t.Dying[n].At))
+        {
+            WriteBindless(t.Dying[n].Index, t.Zero, _nearest);
+            t.Free.Push(t.Dying[n++].Index);
+        }
+        if (n > 0) t.Dying.RemoveRange(0, n);
+        n = 0;
+        while (n < t.Behind.Count && Passed(t.Behind[n].At)) Later(t.Behind[n++].Free);
+        if (n > 0) t.Behind.RemoveRange(0, n);
     }
 
     /// <summary>Free an image or a sampler once the indices released before it read the zero texel and no submit in
     /// flight can still reach it: <see cref="RecycleBindless"/> hands it to the deaths queue at the rewriting submit.</summary>
     private void LaterThanBindless(Action free) => _bindless.Behind.Add((Next, free));
 
-    /// <summary>Give <paramref name="h"/>'s index back once no submit in flight can still index it.</summary>
+    /// <summary>Give <paramref name="h"/>'s index back once no submit in flight can still index it. The null handle
+    /// names the zero texel and is nobody's to give back; one past the table never came from it.</summary>
     internal void Unbind(BindlessHandle h)
     {
-        if (OnThread("Unbind") && h.Value != 0 && h.Value < _bindlessCap) _bindless.Dying.Add((Next, (uint)h.Value));
+        if (!OnThread("Unbind") || h.Value == 0) return;
+        if (h.Value >= _bindlessCap) { Fault($"Unbind: handle {h.Value} is past the table's {_bindlessCap} descriptors"); return; }
+        _bindless.Dying.Add((Next, (uint)h.Value));
     }
 
     /// <summary>The bindless table on set 1 of both bind points (the compute one alone on the async queue), once at the

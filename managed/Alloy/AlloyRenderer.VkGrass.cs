@@ -369,7 +369,7 @@ public sealed unsafe partial class AlloyRenderer
         if (!g.Ground.IsNull && g.GroundW == w && g.GroundH == h) return true;
         vk.Destroy(g.Ground);
         g.Ground = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, w, h, 1, 1, 1, 1,
-                                                ImageUse.Sampled | ImageUse.CopyDst, "vk grass ground copy"));
+                                                ImageUse.Sampled | ImageUse.CopyDst, "vk grass ground copy", AliasLanes.Wide));
         g.GroundW = w; g.GroundH = h;
         return !g.Ground.IsNull;
     }

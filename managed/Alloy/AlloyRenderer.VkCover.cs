@@ -159,9 +159,9 @@ public sealed unsafe partial class AlloyRenderer
         if (!c.Col.IsNull && c.W == w && c.H == h && c.Samples == samples) return true;
         VkCoverRelease(vk, c);
         c.Col = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, w, h, 1, 1, 1, samples,
-                                             ImageUse.Sampled | ImageUse.ColorTarget, "vk a2c colour"));
+                                             ImageUse.Sampled | ImageUse.ColorTarget, "vk a2c colour", AliasLanes.Wide));
         c.Dep = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.D32F, w, h, 1, 1, 1, samples,
-                                             ImageUse.Sampled | ImageUse.DepthTarget, "vk a2c depth"));
+                                             ImageUse.Sampled | ImageUse.DepthTarget, "vk a2c depth", AliasLanes.Second));
         c.SeedPipe = VkCoverPipe(vk, c.Seed, samples, new DepthState(true, true, CompareOp.Always), ColorMask.None, "vk a2c seed");
         if (c.Col.IsNull || c.Dep.IsNull || c.SeedPipe.IsNull)
         {

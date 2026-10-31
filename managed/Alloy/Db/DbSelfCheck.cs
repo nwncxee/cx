@@ -45,8 +45,7 @@ internal static class DbSelfCheck
             check.Expect(BBox(), "ComputePartBBox: the geometry through the part's own pose with all three corners rounded to 0.001, zeroed only for a part with no faces -- never for one that does not render");
             check.Expect(Ranges(), "part ranges: a freed chunk is reused by the next tree of its size class, and a tree past the table is a counted refusal");
             check.Expect(ArenaDedup(), "mesh arena: two objects over one mesh are ONE range with two references, and the last release frees it at the frame edge");
-            check.Expect(CompactRestage(), "a compaction tells the draw side exactly which ranges moved, and a record staged before it no longer holds the old base vertex or index offset");
-            check.Expect(ArenaCompact(), "mesh arena: a compaction slides the live ranges down and rebases their index runs");
+            check.Expect(ArenaReuse(), "mesh arena: a freed range's place -- its vertices and its index run -- is handed to the next mesh that fits, and no other range moves");
             check.Expect(ArenaStreams(), "mesh arena: the packed tangent and paint words round-trip, sit last in both formats, and land at the locations the lit vertex stage declares");
             check.Expect(ArenaStreamIdentity(), "mesh arena: two meshes that differ only in their tangent frame or their paint are different content, so they get ranges of their own");
             check.Expect(ArenaUvSets(), "mesh arena: a mesh with UV sets 1..3 lives in the Uv format, uploads them at attributes 11..13 after the bone streams, and is content of its own");
@@ -652,23 +651,39 @@ internal static class DbSelfCheck
         return ok;
     }
 
-    /// <summary>The compaction: the live ranges slide down and their index runs come with them.</summary>
-    private static bool ArenaCompact()
+    /// <summary>A freed range's place is reused where it lies, through the real tree -- and beyond the arena's
+    /// own V1 it pins the index run's BYTE offset and that <see cref="MeshArena.Runs"/>, the draw path, reports
+    /// the reused place. Oracle: a quad's hand-written four vertices and six indices, and the places two of
+    /// them in a row add up to.</summary>
+    private static bool ArenaReuse()
     {
         Reset();
         // distinct GEOMETRY, not just distinct textures: the arena keys on content, and the texture is not
         // part of it
         var m1 = Model("c1", new[] { -1 }, new[] { NodeKind.TriMesh }, new MeshDef?[] { Quad("a", 0f) });
         var m2 = Model("c2", new[] { -1 }, new[] { NodeKind.TriMesh }, new MeshDef?[] { Quad("b", 7f) });
+        var m3 = Model("c3", new[] { -1 }, new[] { NodeKind.TriMesh }, new MeshDef?[] { Quad("c", 13f) });
         DbId a = NewObject(), b = NewObject();
         if (!PartTree.Build(a, m1) || !PartTree.Build(b, m2)) return false;
+        int ra = SceneDb.PartMesh[SceneDb.ObjPartFirst[a.Index]];
         int rb = SceneDb.PartMesh[SceneDb.ObjPartFirst[b.Index]];
-        if (MeshArena.PlaceForCheck(rb).Base != 4) return false;
-        PartTree.Free(a);
-        MeshArena.CompactForCheck();
-        var place = MeshArena.PlaceForCheck(rb);
-        if (place.Base != 0 || place.Off0 != 0 || place.Cnt0 != 6) return false;
-        return MeshArena.Runs(rb, 0, out int bv, out nint off, out int cnt, out _) && bv == 0 && off == 0 && cnt == 6;
+        if (ra < 0 || rb < 0 || ra == rb) return false;
+        // A's quad is four vertices and six indices, so B's is the second of each
+        if (MeshArena.PlaceForCheck(ra).Base != 0) return false;
+        var was = MeshArena.PlaceForCheck(rb);
+        if (was.Base != 4 || was.Off0 != 12 || was.Cnt0 != 6) return false;
+
+        PartTree.Free(b);
+        MeshArena.FrameEdgeForCheck();
+        DbId c = NewObject();
+        if (!PartTree.Build(c, m3)) return false;
+        int rc = SceneDb.PartMesh[SceneDb.ObjPartFirst[c.Index]];
+        if (rc < 0 || rc == ra) return false;
+        var now = MeshArena.PlaceForCheck(rc);
+        if (now.Base != was.Base || now.Off0 != was.Off0 || now.Cnt0 != 6) return false;
+        if (MeshArena.PlaceForCheck(ra).Base != 0) return false;   // A never moved
+        return MeshArena.Runs(rc, 0, out int bv, out nint off, out int cnt, out _)
+            && bv == was.Base && off == was.Off0 && cnt == 6;
     }
 
     /// <summary>BLOCKER 1: a part index is a live <see cref="SceneDb.Parts"/> slot, so every consumer gated
@@ -864,48 +879,6 @@ internal static class DbSelfCheck
         if (CX.Alloy.Mdl.ModelCache.Placements != p0 + 1) return false;
         PartTree.Free(m);
         return CX.Alloy.Mdl.ModelCache.Placements == p0;
-    }
-
-    /// <summary><c>DbStage</c> writes a range's base vertex and index offset into the slot ONCE, so a compaction
-    /// that slides the range down would leave the record drawing out of whatever took its place. A,B,C; free B;
-    /// compact; C must have MOVED, be reported as moved, and the arena's answer for it must be the new
-    /// placement -- which is what the draw side refreshes from.</summary>
-    private static bool CompactRestage()
-    {
-        Reset();
-        Action<int[], int>? saved = MeshArena.RangesMoved;
-        var reported = new List<int>();
-        MeshArena.RangesMoved = (ids, n) => { for (int k = 0; k < n; k++) reported.Add(ids[k]); };
-        try
-        {
-            var ma = Model("ka", new[] { -1 }, new[] { NodeKind.TriMesh }, new MeshDef?[] { Quad("a", 0f) });
-            var mb = Model("kb", new[] { -1 }, new[] { NodeKind.TriMesh }, new MeshDef?[] { Quad("b", 1f) });
-            var mc = Model("kc", new[] { -1 }, new[] { NodeKind.TriMesh }, new MeshDef?[] { Quad("c", 2f) });
-            DbId a = NewObject(), b = NewObject(), c = NewObject();
-            if (!PartTree.Build(a, ma) || !PartTree.Build(b, mb) || !PartTree.Build(c, mc)) return false;
-            int ra = SceneDb.PartMesh[SceneDb.ObjPartFirst[a.Index]];
-            int rb = SceneDb.PartMesh[SceneDb.ObjPartFirst[b.Index]];
-            int rc = SceneDb.PartMesh[SceneDb.ObjPartFirst[c.Index]];
-            if (ra < 0 || rb < 0 || rc < 0 || ra == rb || rb == rc) return false;
-
-            // what a record staged BEFORE the compaction would have cached for C
-            if (!MeshArena.Runs(rc, 0, out int wasBase, out nint wasOff, out int wasCount, out _)) return false;
-
-            PartTree.Free(b);
-            MeshArena.CompactForCheck();
-
-            // C slid down into B's place, so the cached numbers are now someone else's
-            if (!MeshArena.Runs(rc, 0, out int nowBase, out nint nowOff, out int nowCount, out _)) return false;
-            if (nowBase == wasBase && nowOff == wasOff) return false;   // nothing moved: the check proves nothing
-            if (nowCount != wasCount) return false;                     // same geometry, only its place changed
-            if (!reported.Contains(rc)) return false;                   // the draw side was not told
-            if (reported.Contains(rb)) return false;                    // a freed range is not a mover
-
-            // and the arena's own bookkeeping agrees with what it hands a draw
-            var place = MeshArena.PlaceForCheck(rc);
-            return place.Base == nowBase && place.Off0 == nowOff && place.Cnt0 == nowCount;
-        }
-        finally { MeshArena.RangesMoved = saved; }
     }
 
     /// <summary>The <c>.mtr</c> parse, against <c>SharedMaterial::ParseField</c> @0x5c6760.</summary>

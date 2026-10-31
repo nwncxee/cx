@@ -18,7 +18,8 @@ public sealed unsafe partial class AlloyRenderer
     internal static void SampleVram()
     {
         if (_log == null || AlloyDevice.VulkanMade is not VkBackend vk) return;
-        vk.DeviceLocalKib(out long free, out long total);
+        vk.DeviceLocalBytes(out long usage, out long budget, out long size, out _);
+        long free = Math.Max(budget - usage, 0) / 1024, total = size / 1024;
         _vram.FreeKib = (int)Math.Min(free, int.MaxValue);
         if (_vramProbed) return;
         _vramProbed = true;
@@ -27,24 +28,35 @@ public sealed unsafe partial class AlloyRenderer
         _log.Info($"AlloyRenderer: [vram] {_vramExt}, {_vramTotalKib / 1024}MiB device-local, {_vram.FreeKib / 1024}MiB free");
     }
 
+    /// <summary>The frame line's memory part: what Alloy's allocations hold, the device's use against its budget, and
+    /// the largest allocations by name. Empty with no budget to measure against -- before a frame has read the
+    /// device, and on a device that answers no memory query -- because a row of zeros reads as a card holding none.</summary>
+    internal static string VramLine(long heldBytes, long usageBytes, long budgetBytes, ReadOnlySpan<(string Name, long Bytes)> top)
+    {
+        const int Shift = 20;
+        if (budgetBytes <= 0) return "";
+        var line = new System.Text.StringBuilder($", vram {heldBytes >> Shift}MiB held, {usageBytes >> Shift}/{budgetBytes >> Shift}MiB of the budget used");
+        if (usageBytes > budgetBytes) line.Append($", OVER BUDGET by {(usageBytes - budgetBytes) >> Shift}MiB");
+        for (int i = 0; i < top.Length; i++) line.Append(i == 0 ? "; largest " : ", ").Append($"{top[i].Name} {top[i].Bytes >> Shift}MiB");
+        return line.ToString();
+    }
+
+    /// <summary>The frame line's memory part as the device reads now; empty before the first frame, which is what
+    /// makes the device and reads its figures.</summary>
+    internal static string FrameVram()
+    {
+        if (!_vramProbed || AlloyDevice.VulkanMade is not VkBackend vk) return "";
+        vk.DeviceLocalBytes(out long usage, out long budget, out _, out long held);
+        return VramLine(held, usage, budget, vk.Largest(3));
+    }
+
     /// <summary>The device's memory figures as last sampled, KiB.</summary>
     private sealed class VramState
     {
         public int FreeKib;
-        /// <summary>What the driver has paged out to host memory, cumulative. No Vulkan source yet:
-        /// VK_EXT_memory_budget reports usage against budget, not what was evicted.</summary>
-        public int EvictedKib;
     }
 
     private static readonly VramState _vram = new();
-    /// <inheritdoc cref="VramState.EvictedKib"/>
-    internal static long VramEvictedMib => _vram.EvictedKib / 1024;
-    /// <summary>The free pool read now; -1 before the probe or without a memory query.</summary>
-    internal static long VramFreeKibNow()
-    {
-        SampleVram();
-        return _vramExt == null ? -1 : _vram.FreeKib;
-    }
 
     private static bool _vramProbed;
     private static string? _vramExt;

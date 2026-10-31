@@ -57,6 +57,7 @@ internal sealed unsafe partial class VkBackend
         bool lane = list.Async && _async != null;
         if (lane && !UploadsAhead()) return false;
         if ((lane ? TakeSlot(_async!.Slots, _async.Pool, _async.Timeline, ref _async.Completed) : TakeSlot()) is not Slot s) return false;
+        if (!lane) ShrinkGroups();
         if (_sets.Stale && !RetireSets()) return false;
         s.StageUsed = 0;
         _recording++;
@@ -105,7 +106,12 @@ internal sealed unsafe partial class VkBackend
         {
             // nothing ran, so no recorded barrier did: every image is back in the layout it entered with, and the
             // uploads this recording flushed wait for the next one
-            for (int i = _undo.Count - 1; i >= 0; i--) _undo[i].Img.Layout = _undo[i].Layout;
+            for (int i = _undo.Count - 1; i >= 0; i--)
+            {
+                _undo[i].Img.Layout = _undo[i].Layout;
+                _undo[i].Img.Live = false;
+                if (_undo[i].Img.Group is AliasGroup g) g.Owner = null;
+            }
             _undo.Clear();
             if (lane) _resyncAsync = true;
             else _resync = true;
@@ -500,7 +506,7 @@ internal sealed unsafe partial class VkBackend
         VkImageLayout to = h.Access is Access.StorageRead or Access.StorageWrite
             ? VkImageLayout.General : VkImageLayout.ShaderReadOnlyOptimal;
         foreach (ImageId id in ids)
-            if (!id.IsNull && _images.TryGet(id.Value, out VkImg img)) Transition(img, to);
+            if (!id.IsNull && _images.TryGet(id.Value, out VkImg img)) Transition(img, to, h.Access != Access.StorageRead);
         return true;
     }
 
@@ -518,7 +524,10 @@ internal sealed unsafe partial class VkBackend
         else if (storage) _cImgs[_cImgN++] = img;
         VkSampler sampler = _nearest;
         if (!storage && !s.Sampler.IsNull && !_samplers.TryGet(s.Sampler.Value, out sampler)) return Fault($"bind set: stale sampler on slot {s.Slot}");
-        ii[t] = new VkDescriptorImageInfo { sampler = storage ? default : sampler, imageView = ViewOf(img, storage ? s.Mip : -1), imageLayout = want };
+        VkImageView view = ViewOf(img, storage ? s.Mip : -1);
+        if (view.IsNull)
+            return Fault($"bind set: slot {s.Slot}'s image {img.Desc.Label} has no view -- its alias group dropped it (logged above)");
+        ii[t] = new VkDescriptorImageInfo { sampler = storage ? default : sampler, imageView = view, imageLayout = want };
         key[k] = new BindingKey(at + s.Slot, type, want, ii[t].imageView.Handle, ii[t].sampler.Handle, 0, 0);
         w[k++] = new VkWriteDescriptorSet { dstBinding = at + s.Slot, descriptorCount = 1, descriptorType = type, pImageInfo = (VkDescriptorImageInfo*)Unsafe.AsPointer(ref ii[t++]) };
         return true;

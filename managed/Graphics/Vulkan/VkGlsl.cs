@@ -53,8 +53,14 @@ internal static partial class VkGlsl
         ("int", "uDecal"), ("int", "uSolid"), ("int", "uOitGob"),
     ];
 
-    /// <summary>The bindless sampler array's name, on <see cref="VulkanToolchain.BindlessSet"/> binding 0.</summary>
-    internal const string BindlessArray = "cxTex2D";
+    /// <summary>The bindless sampler array's name, on <see cref="VulkanToolchain.BindlessSet"/> binding 0, and the
+    /// function every index into it goes through.</summary>
+    internal const string BindlessArray = "cxTex2D", BindlessAt = "cxTex2DAt";
+
+    /// <summary>Descriptors the array holds: an index at or past it samples slot 0, the zero texel, rather than one
+    /// the host never wrote. The backend sets it to what the device seats as it opens, and the number lands in the
+    /// text, so a module compiled under one cap is never read back under another.</summary>
+    internal static uint BindlessCap { get; set; } = 1;
 
     private static readonly Regex Header = new(
         @"^\s*(?:layout\s*\((?<lq>[^()]*)\)\s*)?(?<q>(?:(?:flat|smooth|noperspective|invariant|centroid|sample|precise|highp|mediump|lowp|readonly|writeonly|coherent|volatile|restrict)\s+)*)(?<s>uniform|in|out|buffer)\b(?<rest>.*)$",
@@ -118,8 +124,8 @@ internal static partial class VkGlsl
         {
             int open = m.Index + m.Length - 1, close = Close(mask, open);
             if (close < 0) throw new FormatException($"an unclosed sampler2D( construction at {m.Index}");
-            sb.Append(s, at, m.Index - at).Append(BindlessArray).Append("[nonuniformEXT((")
-              .Append(s, open + 1, close - open - 1).Append(").x)]");
+            sb.Append(s, at, m.Index - at).Append(BindlessArray).Append("[nonuniformEXT(").Append(BindlessAt).Append("((")
+              .Append(s, open + 1, close - open - 1).Append(").x))]");
             at = close + 1;
             used = true;
         }
@@ -271,7 +277,9 @@ internal static partial class VkGlsl
     private static string Shared(bool bindless, VkProgramText r)
     {
         var sb = new StringBuilder("// VkGlsl: declarations shared by both stages\n");
-        if (bindless) sb.Append($"layout(set = {VulkanToolchain.BindlessSet}, binding = 0) uniform sampler2D {BindlessArray}[];\n");
+        if (bindless)
+            sb.Append($"layout(set = {VulkanToolchain.BindlessSet}, binding = 0) uniform sampler2D {BindlessArray}[];\n")
+              .Append($"uint {BindlessAt}(uint i) {{ return i < {BindlessCap}u ? i : 0u; }}\n");
         sb.Append("layout(push_constant) uniform CxBatch {");
         foreach (var (t, n) in Push) sb.Append(' ').Append(t).Append(' ').Append(n).Append(';');
         sb.Append(" };\n");
@@ -325,6 +333,20 @@ internal static partial class VkGlsl
             sb.Append($"layout({inner}) {d.Quals}uniform {d.Type} {name}{arr}; ");
         }
         return sb.ToString().TrimEnd();
+    }
+
+    /// <summary>Every sampler, image and texture <paramref name="src"/> declares at file scope, in order: its type, name
+    /// and the <c>binding</c> its layout names (null when it names none). Comments are not read.</summary>
+    internal static List<(string Type, string Name, string? Binding)> Opaques(string src)
+    {
+        var list = new List<(string, string, string?)>();
+        foreach (Stmt st in Statements(src))
+        {
+            if (st.Term != ';' || !Parse(st, out Decl d) || d.Storage != "uniform" || !Opaque.IsMatch(d.Type)) continue;
+            Match bm = BindingQ.Match(d.LayoutInner);
+            foreach (var (name, _, _) in d.Names) list.Add((d.Type, name, bm.Success ? bm.Groups[1].Value : null));
+        }
+        return list;
     }
 
     private static void AddOpaque(VkProgramText r, VkOpaque o)

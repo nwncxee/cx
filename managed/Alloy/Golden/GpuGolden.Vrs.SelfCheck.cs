@@ -47,7 +47,7 @@ internal static partial class GpuGolden
                 px[at] = px[at + 1] = px[at + 2] = l;
                 px[at + 3] = 1f;
             }
-        PipelineId pipe = Compute(vk, ShaderSource.Get("cx_vrs_cs.glsl"), "golden shading rate", out ShaderId cs);
+        PipelineId pipe = vk.CreateCompute(ShaderSource.Get("cx_vrs_cs.glsl"), "golden shading rate");
         ImageId scene = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba32F, w, h, 1, 1, 1, 1,
             ImageUse.Sampled | ImageUse.CopyDst, "golden rate scene"));
         ImageId rate = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.R8Ui, tiles, 1, 1, 1, 1, 1,
@@ -71,7 +71,6 @@ internal static partial class GpuGolden
         vk.Destroy(rate);
         vk.Destroy(scene);
         vk.Destroy(pipe);
-        vk.Destroy(cs);
         return got;
     }
 }

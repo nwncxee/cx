@@ -47,8 +47,8 @@ internal static partial class GpuGolden
                   && src.Contains("const int uPageLayer", StringComparison.Ordinal),
             "cx_bakeenc_c opens with the version line this golden moves its layer define past, and still declares "
           + "uRegion and uPageLayer as the loose uniforms it folds out");
-        PipelineId enc = Compute(vk, src, "golden lightmap encoder", out ShaderId encCs);
-        PipelineId dec = Compute(vk, FrameTap.ReadbackCs(LmDecodeWords), "golden lightmap decoder", out ShaderId decCs);
+        PipelineId enc = vk.CreateCompute(src, "golden lightmap encoder");
+        PipelineId dec = vk.CreateCompute(FrameTap.ReadbackCs(LmDecodeWords), "golden lightmap decoder");
         check.Expect(!enc.IsNull && !dec.IsNull, "the lightmap golden's encoder and decoder stages build for the device");
 
         var r = new LmRes();
@@ -67,9 +67,7 @@ internal static partial class GpuGolden
         }
         LmFree(vk, r);
         vk.Destroy(enc);
-        vk.Destroy(encCs);
         vk.Destroy(dec);
-        vk.Destroy(decCs);
     }
 
     /// <summary>The page-array layer the encoder is told to write, so a write to the other one shows.</summary>
