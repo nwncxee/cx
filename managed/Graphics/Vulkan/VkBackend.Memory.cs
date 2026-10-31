@@ -20,6 +20,9 @@ internal sealed unsafe partial class VkBackend
     /// <summary>The refusals this device has logged or counted.</summary>
     internal int Faults => _faults;
 
+    /// <summary>The words the last refusal put in cx.log (or would have, past the logged few).</summary>
+    internal string LastFault => _lastFault;
+
     /// <summary>What the device-local heaps hold, their budget, their size and what Alloy's own allocations in them
     /// take, bytes: the driver's figures with VK_EXT_memory_budget, the allocator's estimate without. One walk, so
     /// the frame line reads every figure of one moment. Any thread that owns the device.</summary>

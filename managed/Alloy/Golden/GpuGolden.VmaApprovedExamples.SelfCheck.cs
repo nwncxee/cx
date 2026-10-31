@@ -149,13 +149,16 @@ internal static partial class GpuGolden
     }
 
     /// <summary>A5: a target the async queue uses is refused an alias group, every attempt logging its own refusal;
-    /// with no group it is made. Oracle: one counted refusal per attempt, by hand.</summary>
+    /// with no group it is made. Oracle: one counted refusal per attempt and the words the log must hold, by hand.</summary>
     private static void AliasAsync(VkBackend vk, Checker check)
     {
         int faults = vk.Faults;
         ImageId refused = Target(vk, 4, "golden alias async", "golden lane", ImageUse.Async);
         check.Expect(refused.IsNull, "A5: an async target was made in an alias group");
         check.Expect(vk.Faults == faults + 1, $"A5: the refusal logged {vk.Faults - faults} lines, not 1");
+        check.Expect(vk.LastFault.Contains("golden alias async", StringComparison.Ordinal)
+                     && vk.LastFault.Contains("queues", StringComparison.Ordinal),
+                     $"A5: the refusal does not name the target and the queues as its reason: \"{vk.LastFault}\"");
         vk.Destroy(refused);
         ImageId again = Target(vk, 4, "golden alias async twice", "golden lane", ImageUse.Async);
         check.Expect(again.IsNull, "A5: a second async target was made in an alias group");

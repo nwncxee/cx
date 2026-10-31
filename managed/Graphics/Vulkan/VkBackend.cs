@@ -150,6 +150,8 @@ internal sealed unsafe partial class VkBackend : IDevice
     private readonly List<(long At, Action Free)> _dead = new();
     private long _submits;
     private int _faults;
+    /// <summary>The reason the last refusal gave, whether or not it still reached the log.</summary>
+    private string _lastFault = "";
 
     public DeviceCaps Caps { get; }
 
@@ -742,6 +744,7 @@ internal sealed unsafe partial class VkBackend : IDevice
 
     private bool Fault(string why)
     {
+        _lastFault = why;
         if (++_faults <= LoggedFaults)
             _log.Always($"VkBackend: REFUSED {why}" + (_faults == LoggedFaults ? " -- further refusals are only counted" : ""));
         return false;
