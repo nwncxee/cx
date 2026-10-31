@@ -233,9 +233,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         var p2 = new VkPhysicalDeviceProperties2();
         vki.vkGetPhysicalDeviceProperties2(d, &p2);
         props = p2.properties;
-        if (props.apiVersion < ApiFloor) return "is below Vulkan 1.3";
-        if (!HasExt(vki, d, "VK_EXT_depth_clip_control\0"u8)) return "lacks VK_EXT_depth_clip_control (GL's -1..1 clip depth)";
-        if (!HasExt(vki, d, SwapchainExt)) return "lacks VK_KHR_swapchain";
+        if (Gate(props.apiVersion, n => HasExt(vki, d, System.Text.Encoding.ASCII.GetBytes(n + "\0"))) is string no) return no;
         var clip = new VkPhysicalDeviceDepthClipControlFeaturesEXT();
         var f11 = new VkPhysicalDeviceVulkan11Features { pNext = &clip };
         var f12 = new VkPhysicalDeviceVulkan12Features { pNext = &f11 };
@@ -256,6 +254,16 @@ internal sealed unsafe partial class VkBackend : IDevice
             return null;
         }
         return "has no graphics+compute queue";
+    }
+
+    /// <summary>Why a device reporting <paramref name="api"/>, whose extension list answers <paramref name="has"/>, cannot
+    /// run the backend before its features are asked; null when it may.</summary>
+    internal static string? Gate(VkVersion api, Func<string, bool> has)
+    {
+        if (api < ApiFloor) return "is below Vulkan 1.3";
+        if (!has("VK_EXT_depth_clip_control")) return "lacks VK_EXT_depth_clip_control (GL's -1..1 clip depth)";
+        if (!has("VK_KHR_swapchain")) return "lacks VK_KHR_swapchain";
+        return null;
     }
 
     /// <summary>The first feature the batch pass needs that the device does not have, or null: draw parameters for the

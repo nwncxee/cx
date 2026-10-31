@@ -19,6 +19,7 @@ internal sealed unsafe partial class VkBackend
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
+        DepthGateSelfCheck(check);
         check.Expect(Mode(0) == VkPresentModeKHR.Immediate && Mode(1) == VkPresentModeKHR.Fifo && Mode(2) == VkPresentModeKHR.Fifo
                   && Mode(-1) == VkPresentModeKHR.FifoRelaxed, "a swap interval did not pick its present mode");
         check.Expect(ScopeIs(VkImageLayout.ColorAttachmentOptimal, 0x400, 0x180) && ScopeIs(VkImageLayout.DepthStencilAttachmentOptimal, 0x300, 0x600)
