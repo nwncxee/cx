@@ -7,7 +7,7 @@ namespace CX.Alloy;
 
 /// <summary>The world's depth convention: every depth target the world programs draw into, and every matrix that
 /// feeds them. Casters and the GUI keep GL's depth through the translator's remap and are not described here.</summary>
-internal static class WorldDepth
+internal static partial class WorldDepth
 {
     /// <summary>What a world depth target is cleared to: the far plane.</summary>
     internal const float Clear = 0f;
