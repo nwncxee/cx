@@ -25,13 +25,14 @@ internal static partial class GpuGolden
         vk.Destroy(settle);
     }
 
-    /// <summary>Holds the ordering between two members inside one submit; turns red when the barrier a claim places
-    /// stops waiting on the other member's work.</summary>
+    /// <summary>Holds the ordering between two members inside one submit, at a size whose copy outlasts a clear;
+    /// turns red when the barrier a claim places stops waiting on the other member's work.</summary>
     private static void AliasOneSubmit(VkBackend vk, Checker check, ExtenderLog log)
     {
-        ImageId first = Target(vk, 4, "golden alias one-submit first", "golden one"), second = Target(vk, 4, "golden alias one-submit second", "golden one");
-        BufferId ra = vk.CreateBuffer(new BufferDesc(64, BufferUse.CopyDst | BufferUse.CopySrc, MemoryKind.Device, "golden alias one-submit read a"));
-        BufferId rb = vk.CreateBuffer(new BufferDesc(64, BufferUse.CopyDst | BufferUse.CopySrc, MemoryKind.Device, "golden alias one-submit read b"));
+        const int Side = 4096, Bytes = Side * Side * 4;
+        ImageId first = Target(vk, Side, "golden alias one-submit first", "golden one"), second = Target(vk, Side, "golden alias one-submit second", "golden one");
+        BufferId ra = vk.CreateBuffer(new BufferDesc(Bytes, BufferUse.CopyDst | BufferUse.CopySrc, MemoryKind.Device, "golden alias one-submit read a"));
+        BufferId rb = vk.CreateBuffer(new BufferDesc(Bytes, BufferUse.CopyDst | BufferUse.CopySrc, MemoryKind.Device, "golden alias one-submit read b"));
         try
         {
             check.Expect(!first.IsNull && !second.IsNull && !ra.IsNull && !rb.IsNull, "a one-submit alias target was refused (logged above)");
@@ -40,20 +41,28 @@ internal static partial class GpuGolden
             ReadOnlySpan<ColorAttachment> a = [new ColorAttachment(first, 0, 0, LoadOp.Clear, StoreOp.Store, new Vector4(1, 0, 0, 1))];
             cl.BeginRenderPass(new RenderPassDesc(a));
             cl.EndRenderPass();
-            cl.CopyImageToBuffer(new CopyToBufferCmd(first, new ImageRegion(0, 0, 0, 0), 4, 4, ra, 0));
+            cl.CopyImageToBuffer(new CopyToBufferCmd(first, new ImageRegion(0, 0, 0, 0), Side, Side, ra, 0));
             ReadOnlySpan<ColorAttachment> b = [new ColorAttachment(second, 0, 0, LoadOp.Clear, StoreOp.Store, new Vector4(0, 0, 1, 1))];
             cl.BeginRenderPass(new RenderPassDesc(b));
             cl.EndRenderPass();
-            cl.CopyImageToBuffer(new CopyToBufferCmd(second, new ImageRegion(0, 0, 0, 0), 4, 4, rb, 0));
-            var got = new byte[64];
+            cl.CopyImageToBuffer(new CopyToBufferCmd(second, new ImageRegion(0, 0, 0, 0), Side, Side, rb, 0));
+            var got = new byte[Bytes];
             check.Expect(vk.Submit(cl), "the one-submit alias list was refused (logged above)");
-            check.Expect(vk.ReadBack(ra, got) && got.AsSpan().SequenceEqual(Texels(255, 0, 0, 255)), "inside one submit the first member does not read back its red");
-            check.Expect(vk.ReadBack(rb, got) && got.AsSpan().SequenceEqual(Texels(0, 0, 255, 255)), "inside one submit the second member does not read back its blue");
+            check.Expect(vk.ReadBack(ra, got) && Solid(got, 255, 0, 0, 255), "inside one submit the first member does not read back its red");
+            check.Expect(vk.ReadBack(rb, got) && Solid(got, 0, 0, 255, 255), "inside one submit the second member does not read back its blue");
         }
         finally
         {
             vk.Destroy(first); vk.Destroy(second); vk.Destroy(ra); vk.Destroy(rb);
         }
+    }
+
+    /// <summary>Every RGBA8 texel of <paramref name="t"/> is the one colour given.</summary>
+    private static bool Solid(byte[] t, byte r, byte g, byte b, byte a)
+    {
+        for (int i = 0; i < t.Length; i += 4)
+            if (t[i] != r || t[i + 1] != g || t[i + 2] != b || t[i + 3] != a) return false;
+        return true;
     }
 
     /// <summary>Holds a group growing to a larger member made after a smaller one; turns red when the fit ignores size.</summary>
