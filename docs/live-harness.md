@@ -241,6 +241,58 @@ Other tools, for what they are good at:
 - Nsight Systems from the distribution traces live frames, but drops the label name from most instances of half the
   passes and misreports nested labels. The Nix build discards every GPU timestamp on this kind of machine.
 
+## Vulkan validation (`tools/vk/validate.sh`)
+
+    nix develop -c ./build.sh          # build in nix
+    tools/vk/validate.sh --out DIR     # run OUTSIDE it
+
+Runs the GPU goldens (`run-demo.sh`) twice under `VK_LAYER_KHRONOS_validation` and exits non-zero on any
+message. Pass A is core plus synchronization validation -- the commands CX records: a missing barrier, a wait
+nothing signals, a layout nobody transitioned. Pass B is core plus GPU-assisted validation, which instruments
+the shaders and checks what they read: a bindless index past the end of the descriptor array, a descriptor
+whose image was destroyed, an out-of-bounds buffer read. That second class is the one NVIDIA reads quietly and
+AMD takes the device down for, so it is worth an instrumented run on NVIDIA hardware.
+
+Run it outside `nix develop`. Inside, the stub host finds no ICD and every golden SKIPs, which the script
+refuses to call a pass -- it counts the `GpuGolden` lines and fails if any stood down.
+
+The layer is on no default loader path. It comes from the repository's own pinned nixpkgs
+(`nix build --inputs-from . nixpkgs#vulkan-validation-layers`), so its version moves with `flake.lock` and
+nothing else; `CX_VK_LAYER_DIR` points at another `explicit_layer.d`. `DISABLE_GAMESCOPE_WSI=1` is set because
+gamescope's WSI layer injects extensions into our device and logs errors that are not ours.
+
+`run-demo.sh` sends the host's stdout to `/dev/null`, so the layer's default stdout action would lose every
+message and "0 findings" would prove nothing. The settings therefore go in a `vk_layer_settings.txt`
+(`VK_LAYER_SETTINGS_PATH`) with `debug_action = VK_DBG_LAYER_ACTION_LOG_MSG` and a `log_filename` per pass.
+Three things keep a silent log honest:
+
+- **Every key is checked against the layer's own manifest** before the run. The GPU-AV key names have changed
+  across layer versions -- `gpuav_reserve_binding_slot` is gone, for one -- and a misspelt key is simply
+  ignored, which reads exactly like a clean run.
+- **The log must hold the layer's `Khronos Validation Layer Active` notice.** That is why both passes report at
+  `info` as well as `error,warn`: the notice is the proof the settings file was read at all.
+- **That notice's `Current Enables` line must name the pass's feature** --
+  `..._SYNCHRONIZATION_VALIDATION_EXT` for A, `..._GPU_ASSISTED_EXT` for B.
+
+Findings are every error and warning except the four ids the layer uses to talk about itself (loaded, core and
+GPU-AV together are slow, device features and limits forced on for the instrumentation); `tools/vk/report.py`
+holds that list and prints a count per id with the first 20 distinct.
+
+GPU-AV needs a descriptor set of its own. CX's pipeline layout uses sets 0 and 1 (`VulkanToolchain.BindlessSet`),
+so one is always free; there is nothing to reserve. It also forces on `bufferDeviceAddress`, `shaderInt64` and
+the memory model, and raises `maxUpdateAfterBindDescriptorsInAllPools`, so pass B is not a measurement of
+anything -- never read a frame time out of it.
+
+**What the goldens do not cover:** area-load churn, where descriptors are minted and freed in bulk. For that,
+the same settings go on a live run, which is manual -- `perf-save.sh` passes the environment through:
+
+    DISABLE_GAMESCOPE_WSI=1 VK_ADD_LAYER_PATH=<explicit_layer.d> \
+      VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation \
+      VK_LAYER_SETTINGS_PATH=DIR/pass-b/vk_layer_settings.txt \
+      tools/live/perf-save.sh --saves <copy of a quicksave> ...
+
+Edit that file's `log_filename` to a path of your own first, and count only messages after `VkBackend: LIVE`.
+
 ## Limits
 
 - **One client at a time.** The harness refuses to start if `nwmain-linux` is already running. Two
