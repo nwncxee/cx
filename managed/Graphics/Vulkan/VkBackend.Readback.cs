@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using CX.Rhi;
 using Vortice.Vulkan;
 
@@ -6,8 +7,8 @@ namespace CX.Graphics.Rhi;
 
 /// <summary>
 /// The seam's partial transfers on Vulkan: a sub-rectangle uploaded into one layer of an image, and an image block
-/// copied into a host-readable buffer that the CPU reads once the submit that copied it has finished -- polled, never
-/// waited on.
+/// copied into a host-readable buffer that the CPU reads from work the copy's list queued with
+/// <see cref="CommandList.WhenDone"/>, run once its submit has finished.
 /// </summary>
 internal sealed unsafe partial class VkBackend
 {
@@ -25,16 +26,68 @@ internal sealed unsafe partial class VkBackend
         return true;
     }
 
-    /// <summary>The submits made so far: a copy recorded into the next submit completes with submit number
-    /// <see cref="Submitted"/> as it reads now.</summary>
-    internal long Submitted => _submits;
+    /// <summary>Each submit's <see cref="CommandList.WhenDone"/> work in submit order, under the timeline value that
+    /// says it finished; -1 for work whose submit never ran.</summary>
+    private readonly List<(long At, WhenDoneCall Call)> _whenDone = new();
+    private readonly List<WhenDoneCall> _carried = new();
+    private readonly List<(WhenDoneCall Call, bool Ran)> _firing = new();
+    private bool _asyncWhenDoneSaid, _inWhenDone;
 
-    /// <summary>Has submit number <paramref name="n"/> finished on the GPU? Never blocks.</summary>
-    internal bool Finished(long n) => n < _submits && PassedNow(n + 1);
+    /// <summary>Block until every submit made so far has finished; false (logged) when the GPU did not within the
+    /// device's wait limit. Cold: a screenshot's own readback.</summary>
+    internal bool WaitSubmitted()
+    {
+        VkResult r = WaitFor(_submits);
+        return r == VkResult.Success || Fault($"WaitSubmitted: the GPU did not finish ({r})");
+    }
+
+    /// <summary>Move <paramref name="list"/>'s <see cref="CommandList.WhenDone"/> work onto the submit that just took
+    /// it: under its timeline value when it ran on the graphics queue, as never-ran otherwise.</summary>
+    private void CarryWhenDone(CommandList list, bool ran, bool lane)
+    {
+        list.TakeWhenDone(_carried);
+        if (_carried.Count == 0) return;
+        if (lane && !_asyncWhenDoneSaid)
+        {
+            _asyncWhenDoneSaid = true;
+            _log.Always($"VkBackend: list {list.Name} asked for WhenDone on the async queue, which has no frame-end "
+                      + "completion -- its work is told it never ran (logged once)");
+        }
+        long at = ran && !lane ? _submits : -1;
+        foreach (WhenDoneCall c in _carried) _whenDone.Add((at, c));
+        _carried.Clear();
+    }
+
+    /// <summary>Run the queued work whose submit has finished, in submit order among the submits that ran, after each
+    /// submit: where the backend already retires what the GPU finished. A call that submits is refused.</summary>
+    private void RunWhenDone()
+    {
+        if (_whenDone.Count == 0) return;
+        Refresh();
+        int keep = 0;
+        for (int i = 0; i < _whenDone.Count; i++)
+        {
+            (long at, WhenDoneCall c) = _whenDone[i];
+            if (at >= 0 && !Passed(at)) { _whenDone[keep++] = _whenDone[i]; continue; }
+            _firing.Add((c, at >= 0));
+        }
+        _whenDone.RemoveRange(keep, _whenDone.Count - keep);
+        _inWhenDone = true;
+        try { foreach ((WhenDoneCall c, bool ran) in _firing) c.Fn(c.Arg, ran); }
+        finally { _firing.Clear(); _inWhenDone = false; }
+    }
+
+    /// <summary>Device teardown: every queued work item is told its submit never ran.</summary>
+    private void RefuseWhenDone()
+    {
+        int n = _whenDone.Count;
+        for (int i = 0; i < n; i++) _whenDone[i].Call.Fn(_whenDone[i].Call.Arg, false);
+        _whenDone.RemoveRange(0, n);
+    }
 
     /// <summary><paramref name="dst"/>.Length bytes of the readback buffer <paramref name="b"/> from
-    /// <paramref name="offset"/>, made visible to the host. Only after <see cref="Finished"/> said so for the submit
-    /// that wrote them.</summary>
+    /// <paramref name="offset"/>, made visible to the host. Only from <see cref="CommandList.WhenDone"/> work of the list
+    /// that wrote them, or after <see cref="WaitSubmitted"/>.</summary>
     internal bool ReadMapped(BufferId b, long offset, Span<byte> dst)
     {
         if (!_buffers.TryGet(b.Value, out VkBuf buf) || buf.Desc.Memory != MemoryKind.Readback || offset + dst.Length > buf.Desc.Bytes)

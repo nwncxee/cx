@@ -23,7 +23,7 @@ public sealed class QueueSync : DiagnosticAnalyzer
     private static readonly DiagnosticDescriptor Rule = new(
         Id,
         "Queue sync outside the timeline",
-        "'{0}' submits or waits outside VkBackend.Sync.cs. Go through QueueSubmit, AsyncSubmit, TransferSubmit, WaitFor or PassedNow.",
+        "'{0}' submits or waits outside VkBackend.Sync.cs. Go through QueueSubmit, AsyncSubmit, TransferSubmit or WaitFor, or queue CPU work with CommandList.WhenDone.",
         "CX.Backend",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,

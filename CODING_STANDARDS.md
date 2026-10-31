@@ -50,7 +50,7 @@ rule and the gates.
 - **The Vulkan queues submit and wait in `VkBackend.Sync.cs` alone (CX0004).** There are three timelines: the
   graphics one, which every submit there signals and every lifetime waits on, and the async compute queue's and the
   transfer queue's, which only a graphics submit's join waits on. A submit, a fence or a semaphore wait elsewhere is
-  refused: go through `QueueSubmit`, `AsyncSubmit`, `TransferSubmit`, `WaitFor` or `PassedNow`.
+  refused: go through `QueueSubmit`, `AsyncSubmit`, `TransferSubmit`, or `WaitFor`; CPU work that waits on a submit is `CommandList.WhenDone`.
 - **A thread blocks through `BlockingWait.Sleep(ms, why)`.** The game's main thread never blocks.
 - **No tasks.** The extender has no async path, so the `Task` and `ValueTask` types are banned.
 - **The environment is read through `HostEnv`.** A setting is a knob, never an environment variable (ADR 0025).

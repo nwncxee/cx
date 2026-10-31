@@ -24,9 +24,6 @@ internal sealed unsafe partial class VkBackend
     /// <summary>Has the timeline reached <paramref name="value"/>, as last read? Conservative between reads.</summary>
     private bool Passed(long value) => value <= _completed;
 
-    /// <summary>Has the timeline reached <paramref name="value"/>, reading the counter when the last read says no?</summary>
-    private bool PassedNow(long value) => Passed(value) || value <= Refresh();
-
     private long Refresh() => Refresh(_timeline, ref _completed);
 
     /// <summary>Read <paramref name="sem"/>'s counter into <paramref name="completed"/>; a refused read keeps the last one,

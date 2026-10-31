@@ -8,8 +8,6 @@ namespace CX.Graphics;
 
 public sealed unsafe partial class NullGl
 {
-    /// <summary>The longest a snapshot waits for the composite's copy to land.</summary>
-    private const int SnapshotWaitMs = 2000;
     /// <summary>Aurora's texture-format enum the engine's snapshots read in: entry 1 of <c>textureFormatTranslationTable</c>,
     /// GL_RGB with unsigned bytes.</summary>
     private const int AuroraRgb = 1;
@@ -44,12 +42,7 @@ public sealed unsafe partial class NullGl
             var cl = new CommandList("vulkan snapshot", 256, log);
             cl.CopyImageToBuffer(new CopyToBufferCmd(comp, new ImageRegion(0, x, y, 0), cw, ch, buf, 0));
             if (!vk.Submit(cl)) return "the copy's submit was refused";
-            long at = vk.Submitted - 1;
-            for (int waited = 0; !vk.Finished(at); waited++)
-            {
-                if (waited * 2 >= SnapshotWaitMs) return "the copy did not land in time";
-                BlockingWait.Sleep(2, "a screenshot waits out its own readback, once");
-            }
+            if (!vk.WaitSubmitted()) return "the copy did not land in time";
             byte[] rgba = new byte[cw * ch * 4];
             if (!vk.ReadMapped(buf, 0, rgba)) return "the readback was refused";
             int stride = (w * 3 + 3) & ~3;

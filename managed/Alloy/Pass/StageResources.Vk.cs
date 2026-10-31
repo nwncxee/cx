@@ -54,14 +54,25 @@ internal static unsafe partial class StageResources
         public int HeadSeq = int.MinValue;
         /// <summary>Samplers by (mips, clamp).</summary>
         public readonly SamplerId[] Samplers = new SamplerId[4];
-        /// <summary>The fog texel's readback ring and the submit each slot's copy completes with (-1: empty).</summary>
+        /// <summary>The fog texel's readback ring and the copy each slot holds in flight.</summary>
         public BufferId FogBuf;
-        public readonly long[] FogAt = [-1, -1, -1];
-        public int FogSlot;
+        public readonly FogRead[] Fog = NewFogRing();
+        public int FogSlot, FogSeq;
         public bool SaidLive;
     }
 
     private static VkResState _vk = new();
+
+    /// <summary>One fog ring slot's copy in flight: its sequence number (-1: empty) and the texel's format.</summary>
+    private record struct FogRead(int Gen, Format Fmt);
+
+    /// <summary>A fog ring of <see cref="VkFogSlots"/> empty slots.</summary>
+    private static FogRead[] NewFogRing()
+    {
+        var r = new FogRead[VkFogSlots];
+        Array.Fill(r, new FogRead(-1, default));
+        return r;
+    }
 
 
     /// <summary>Sampled bindings the stage images may take on Vulkan: from <see cref="TextureSlots.ResourceBase"/> to the
@@ -219,7 +230,7 @@ internal static unsafe partial class StageResources
             for (int i = 0; i < v.Stages.Length; i++) VkRelease(v.Dev, v.Stages[i]);
             if (v.Dev == vk) { v.Dev.Destroy(v.FogBuf); foreach (SamplerId s in v.Samplers) v.Dev.Destroy(s); }
         }
-        _vk = v = new VkResState { Dev = vk, Owner = _gl };
+        _vk = v = new VkResState { Dev = vk, Owner = _gl, FogSeq = v.FogSeq };
         for (int k = 0; k < 4; k++)
             v.Samplers[k] = vk.CreateSampler(new SamplerDesc(Filter.Linear, Filter.Linear, k >= 2 ? MipMode.Linear : MipMode.None,
                                                              (k & 1) != 0 ? Wrap.Clamp : Wrap.Repeat));
@@ -495,8 +506,8 @@ internal static unsafe partial class StageResources
         return q;
     }
 
-    /// <summary>The <c>cx_fog</c> texel read back without a stall: this frame's copy into one ring slot, and the newest
-    /// slot whose submit has finished becomes the fog's colour. A colour meant for the fog changes over minutes.</summary>
+    /// <summary>The <c>cx_fog</c> texel read back without a stall: this frame's copy into one ring slot, which becomes
+    /// the fog's colour when the backend says its submit finished. A colour meant for the fog changes over minutes.</summary>
     private static void VkReadFog(VkBackend vk, CommandList cl, Stage s, VkStageRes r, ExtenderLog? log)
     {
         var g = _gl;
@@ -512,21 +523,33 @@ internal static unsafe partial class StageResources
         if (v.FogBuf.IsNull)
             v.FogBuf = vk.CreateBuffer(new BufferDesc(VkFogBytes * VkFogSlots, BufferUse.CopyDst, MemoryKind.Readback, "vk stage fog readback"));
         if (v.FogBuf.IsNull) { g.FogMiss = "the readback buffer was refused"; return; }
-        Span<byte> texel = stackalloc byte[VkFogBytes];
-        long newest = -1;
-        int pick = -1;
-        for (int k = 0; k < VkFogSlots; k++)
-            if (v.FogAt[k] > newest && vk.Finished(v.FogAt[k])) { newest = v.FogAt[k]; pick = k; }
-        if (pick >= 0 && vk.ReadMapped(v.FogBuf, pick * VkFogBytes, texel) && Decode(fmt, texel, out System.Numerics.Vector3 c))
-        {
-            g.Fog = c;
-            g.HaveFog = true;
-            v.FogAt[pick] = -1;
-        }
         int slot = v.FogSlot;
         v.FogSlot = (slot + 1) % VkFogSlots;
         cl.CopyImageToBuffer(new CopyToBufferCmd(r.Tex[s.FogImage], new ImageRegion(0, s.FogX, s.FogY, 0), 1, 1, v.FogBuf, slot * VkFogBytes));
-        v.FogAt[slot] = vk.Submitted;
+        v.Fog[slot] = new FogRead(++v.FogSeq, fmt);
+        cl.WhenDone(FogLanded, v.FogSeq);
+    }
+
+    /// <summary><see cref="OnFogLanded"/>, made once: a frame's fog copy allocates no delegate.</summary>
+    private static readonly Action<int, bool> FogLanded = OnFogLanded;
+
+    /// <summary>Fog copy <paramref name="gen"/> finished: its slot's texel becomes the fog's colour. Copies land in
+    /// submit order, so the newest is the colour that stays; one whose slot was retaken or state replaced is dropped.</summary>
+    private static void OnFogLanded(int gen, bool ran)
+    {
+        VkResState v = _vk;
+        int slot = -1;
+        for (int k = 0; k < VkFogSlots; k++) if (v.Fog[k].Gen == gen) slot = k;
+        if (slot < 0) return;
+        Format fmt = v.Fog[slot].Fmt;
+        v.Fog[slot] = new FogRead(-1, default);
+        if (!ran || v.Dev == null || v.Owner != _gl) return;
+        Span<byte> texel = stackalloc byte[VkFogBytes];
+        if (v.Dev.ReadMapped(v.FogBuf, slot * VkFogBytes, texel) && Decode(fmt, texel, out System.Numerics.Vector3 c))
+        {
+            _gl.Fog = c;
+            _gl.HaveFog = true;
+        }
     }
 
     /// <summary>One texel of <paramref name="fmt"/> as a linear colour, negatives and non-finite values refused.</summary>

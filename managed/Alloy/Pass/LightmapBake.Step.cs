@@ -216,7 +216,7 @@ internal static unsafe partial class LightmapBake
     private static void FinishLanding(int page, int x0, int y0, int x1, int y1)
     {
         // the readback: the union's raw bits into one PBO, fenced; CollectReadback writes the files. A previous
-        // page's fence still open is polled, never waited on: the render thread does not stall for a cache
+        // page's readback still in flight is never waited on: the render thread does not stall for a cache
         // file, and a page landing that close behind another goes uncached (a miss next session, nothing else).
         if (!ReadbackIdle) { CollectReadback(); IssueStashed(); }
         if (ReadbackIdle) QueueReadback(page, x0, y0, x1 - x0, y1 - y0, _bakeRects);

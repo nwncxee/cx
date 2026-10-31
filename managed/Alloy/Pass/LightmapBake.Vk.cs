@@ -31,10 +31,11 @@ internal static unsafe partial class LightmapBake
         public bool ClearDue;
         public BufferId Chart;
         public bool ChartFilled;
-        /// <summary>The readback buffer, the submit count when its copy was recorded, and whether one is in flight
+        /// <summary>The readback buffer, the generation of the copy last queued into it, and whether one is in flight
         /// (fenced) or being copied out (draining).</summary>
         public BufferId Read;
-        public long ReadBytes, ReadAt;
+        public long ReadBytes;
+        public int ReadGen;
         public bool ReadQueued, Draining;
         /// <summary>The light steps the shadow bracket queued cubes for: page, first light, static set, and each
         /// step's light index into the set.</summary>
@@ -286,17 +287,21 @@ internal static unsafe partial class LightmapBake
         s.Cl.CopyImageToBuffer(new CopyToBufferCmd(s.PageB, new ImageRegion(0, x0, y0, page), w, h, s.Read, plane));
         s.Cl.CopyImageToBuffer(new CopyToBufferCmd(s.PageC, new ImageRegion(0, x0, y0, page), w, h, s.Read, 2 * plane));
         s.ReadQueued = true;
-        s.ReadAt = s.Dev!.Submitted;
+        s.Cl.WhenDone(ReadLanded, ++s.ReadGen);
     }
 
-    /// <summary>Has the readback's submit finished? The frame's list is submitted after this pass records, possibly
-    /// behind other submits, so the copy is known done once the LAST submit at the time of asking is, and that last
-    /// submit is after the one it was recorded for.</summary>
-    private static bool VkReadDone()
+    /// <summary><see cref="OnReadLanded"/>, made once: queuing a readback allocates no delegate.</summary>
+    private static readonly Action<int, bool> ReadLanded = OnReadLanded;
+
+    /// <summary>The frame list carrying the readback's copy finished on the GPU (or never ran): the copy-out starts,
+    /// a slice a frame from the next. A readback aborted or replaced since is dropped.</summary>
+    private static void OnReadLanded(int gen, bool ran)
     {
         BakeVkState s = _vkb;
-        long last = s.Dev!.Submitted - 1;
-        return last >= s.ReadAt && s.Dev.Finished(last);
+        if (gen != s.ReadGen || !s.ReadQueued) return;
+        if (ran) { StartCopyOut(); return; }
+        s.ReadQueued = false;
+        _uncached += _pendingRead.Count; _pendingRead.Clear(); _uSnap = false;
     }
 
     /// <summary>One slice of the finished readback out of the buffer into the ring slot; false = refused (logged).</summary>
