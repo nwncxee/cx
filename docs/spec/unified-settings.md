@@ -1,7 +1,7 @@
 # Unified settings — build spec
 
 The contract for the one settings panel, the knob registry behind it, and the one `cx.cfg`.
-Decided on wayfinder map #556 (tickets #557–#568); the decisions are recorded there and in
+Decided on star chart #556 (tickets #557–#568); the decisions are recorded there and in
 [ADR 0025](../adr/0025-unified-settings-model.md), as amended by
 [ADR 0030](../adr/0030-player-facing-settings-panel.md) (tier by audience, shared submenus,
 quality presets). This file assembles them so a build session needs nothing else. Glossary:
