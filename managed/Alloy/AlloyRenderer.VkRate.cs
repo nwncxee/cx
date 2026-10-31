@@ -38,11 +38,7 @@ public sealed unsafe partial class AlloyRenderer
         VkRateState s = _vkRate;
         int t = vk.ShadingRateTexel;
         if (t == 0 || s.Failed) return default;
-        if (s.Prog.IsNull)
-        {
-            ShaderId cs = vk.CreateShader(new ShaderDesc(ShaderStage.Compute, null, ShaderSource.Get("cx_vrs_cs.glsl"), "shading rate"));
-            s.Prog = cs.IsNull ? default : vk.CreatePipeline(new PipelineDesc { Cs = cs, Label = "shading rate" });
-        }
+        if (s.Prog.IsNull) s.Prog = vk.CreateCompute(ShaderSource.Get("cx_vrs_cs.glsl"), "shading rate");
         if (!s.Image.IsNull && s.W == w && s.H == h) return s.Image;
         vk.Destroy(s.Image);
         s.Tx = (w + t - 1) / t;

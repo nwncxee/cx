@@ -224,6 +224,8 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
   `managed/Framework/` or with no `// <reason>` on its line, or a `NoWarn`/severity override lowering either in build config, fails.
 - `local-paths.sh`: a home directory, mount point or personal checkout path in a tracked file fails
   (`docs/adr/`, `docs/handoff/` exempt); a machine's paths go through `tools/paths.py`.
+- `compute-pipes.sh`: a `ShaderDesc(ShaderStage.Compute ...)` under `managed/` outside `VkBackend.Pipeline.cs` fails; a
+  compute pipeline from GLSL is `VkBackend.CreateCompute`.
 
 ## Hard rules
 

@@ -98,7 +98,7 @@ internal static partial class GpuGolden
                          uOut[o + 34] = r.surfFade.x; uOut[o + 35] = r.surfFade.y; uOut[o + 36] = r.surfFade.z; uOut[o + 37] = r.surfFade.w;
                      }
                      """;
-        PipelineId pipe = Compute(vk, src, "golden gbuf lanes", out ShaderId cs);
+        PipelineId pipe = vk.CreateCompute(src, "golden gbuf lanes");
         check.Expect(!pipe.IsNull, "the G-buffer golden's stage builds for the device");
         if (!pipe.IsNull)
         {
@@ -117,7 +117,6 @@ internal static partial class GpuGolden
             vk.Destroy(charts);
         }
         vk.Destroy(pipe);
-        vk.Destroy(cs);
     }
 
     /// <summary>One case's lanes as the stage reads them.</summary>

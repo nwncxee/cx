@@ -163,7 +163,7 @@ internal sealed unsafe partial class VkBackend
                 big = Fixture(n, n, "copy check blit target");
         BufferId outBuf = CreateBuffer(new BufferDesc(ramp.Length * sizeof(uint), BufferUse.Storage | BufferUse.CopySrc,
                                                       MemoryKind.Device, "copy check read-back"));
-        PipelineId copier = CopyChecker(out ShaderId reader);
+        PipelineId copier = CopyChecker();
         bool made = !src.IsNull && !dst.IsNull && !big.IsNull && !outBuf.IsNull && !copier.IsNull;
         check.Expect(made, "the fixture's three images, read-back buffer and copy stage exist");
         if (made)
@@ -195,7 +195,7 @@ internal sealed unsafe partial class VkBackend
             check.Expect(grown[n] == 1f && grown[n * 2] == 5f && grown[n * 3 + 3] == 6f,
                 $"...its second row repeats the first, and its lower half doubles 5 and 6 (got {grown[n]}, {grown[n * 2]}, {grown[n * 3 + 3]})");
         }
-        Destroy(src); Destroy(dst); Destroy(big); Destroy(outBuf); Destroy(copier); Destroy(reader);
+        Destroy(src); Destroy(dst); Destroy(big); Destroy(outBuf); Destroy(copier);
         log.Info(check.Ok ? "VkBackend.CopyDeviceCheck: passed" : "VkBackend.CopyDeviceCheck: FAILED -- see above");
     }
 
@@ -204,13 +204,11 @@ internal sealed unsafe partial class VkBackend
                                      ImageUse.Sampled | ImageUse.CopySrc | ImageUse.CopyDst, label));
 
     /// <summary>The one-word float copy stage of <c>cx_readback_c.glsl</c>.</summary>
-    private PipelineId CopyChecker(out ShaderId cs)
+    private PipelineId CopyChecker()
     {
         const string Version = "#version 460 core\n";
         string src = CX.Alloy.ShaderSource.Get("cx_readback_c.glsl").Replace(Version, Version + "#define CX_READBACK_WORDS 1\n");
-        cs = CreateShader(new ShaderDesc(ShaderStage.Compute, null, src, "vk copy check reader"));
-        var d = new PipelineDesc { Cs = cs, Label = "vk copy check reader" };
-        return CreatePipeline(in d);
+        return CreateCompute(src, "vk copy check reader");
     }
 
     /// <summary><paramref name="img"/>'s texels through the copy stage into <paramref name="buf"/>, submitted and
