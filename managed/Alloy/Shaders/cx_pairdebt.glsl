@@ -173,7 +173,8 @@ void main()
     barrier();
 
     if (!mine || sN == 0u) return;
-    if (!CxGbufRead(texelFetch(uGb0, p, 0), texelFetch(uGb1, p, 0), viewDepth, g)
+    if (!CxGbufRead(texelFetch(uGb0, p, 0), texelFetch(uGb1, p, 0), viewDepth,
+                    CxGbufDepthSlack(uGbDepth, p, viewDepth, uProj), g)
         || (g.flags & CX_GB_BAKED) == 0u || !(g.lmLum > 0.0)) return;
     CxGbufFade(texelFetch(uGb2, p, 0).r, g);
     cxSurfFade = g.surfFade;
