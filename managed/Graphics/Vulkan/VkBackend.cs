@@ -412,6 +412,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         _transfer = transferFamily >= 0 ? OpenLane((uint)transferFamily, "transfer") : null;
 
         _vma = CreateAllocator(inst);
+        _stagePool = MakeStagePool();
         var pci = new VkCommandPoolCreateInfo { flags = VkCommandPoolCreateFlags.ResetCommandBuffer, queueFamilyIndex = family };
         VkCommandPool pool;
         Check(_vkd.vkCreateCommandPool(&pci, &pool), "vkCreateCommandPool");
@@ -730,8 +731,9 @@ internal sealed unsafe partial class VkBackend : IDevice
         DisposeLane(_async);
         DisposeLane(_transfer);
         _vkd.vkDestroySampler(_nearest);
-        foreach (UploadChunk c in _upload.Chunks) Vma.vmaDestroyBuffer(_vma, c.Buffer, c.Alloc);
-        foreach (UploadChunk c in _upload.Pool) Vma.vmaDestroyBuffer(_vma, c.Buffer, c.Alloc);
+        foreach (UploadBlock b in _upload.Blocks) Vma.vmaDestroyBuffer(_vma, b.Buffer, b.Alloc);
+        foreach (UploadBlock b in _upload.Spare) Vma.vmaDestroyBuffer(_vma, b.Buffer, b.Alloc);
+        Vma.vmaDestroyPool(_vma, _stagePool);
         _vkd.vkDestroyPipelineLayout(_pipeLayout);
         if (_pipeCache.IsNotNull) _vkd.vkDestroyPipelineCache(_pipeCache);
         if (_timePool.IsNotNull) _vkd.vkDestroyQueryPool(_timePool);
