@@ -36,14 +36,21 @@ internal static unsafe class LooseBlock
         foreach (VkLoose u in t.Loose) names.Add(u.Name);
         uint at = VulkanToolchain.UniformBase + VkGlsl.LooseBinding;
         if ((VkSpirv.Block(fs, 0, at, names) ?? VkSpirv.Block(vs, 0, at, names)) is not { } l) return null;
-        var members = new List<Member>(l.Members.Count);
-        foreach (VkLoose u in t.Loose)
+        return (l.Members, l.Bytes, Members(t.Loose, l.Members));
+    }
+
+    /// <summary>The capture table of <paramref name="loose"/> as <paramref name="reflected"/> lays it out, in the
+    /// translator's order; a member the module dropped is left out, and an array's stride is its size per element.</summary>
+    internal static Member[] Members(IReadOnlyList<VkLoose> loose, Dictionary<string, (int Offset, int Size)> reflected)
+    {
+        var members = new List<Member>(reflected.Count);
+        foreach (VkLoose u in loose)
         {
-            if (!l.Members.TryGetValue(u.Name, out var m)) continue;
-            int count = u.Array.Length == 0 ? 1 : VkGlsl.ResolveInt(u.Array, t.Fs + t.Vs) ?? 1;
+            if (!reflected.TryGetValue(u.Name, out var m)) continue;
+            int count = u.Count;
             members.Add(new Member(u.Name, m.Offset, m.Size, count > 1 ? m.Size / count : 0));
         }
-        return (l.Members, l.Bytes, members.ToArray());
+        return members.ToArray();
     }
 
     /// <summary>A block's bytes, rounded up to the alignment a uniform binding takes.</summary>
