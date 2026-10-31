@@ -308,6 +308,12 @@ rules:
   engine does (from the game's own shaders, `ovr.bif` over `base_shaders.bif` as the client resolves them) and as Alloy runs it, paired with its partner by name
   where the tree has one, twins included. It fails when Alloy cannot run a stage the engine can.
 
+**Depth.** Alloy stores the world's depth reversed: 1 at the near plane, 0 at the far plane and the sky. A content
+stage still sees GL's depth. Its `gl_FragCoord.z` and its reads of `texFBDepth` are rewritten to one minus the stored
+value, which is GL's window depth, so stock's `nearClip / (1.0 - d * fDepthToLinearModifier)` holds as it always
+has. `m_proj` is the folded projection, the one that puts a vertex at the same depth as the world around it. A
+fragment half that linearises depth through `m_proj` instead of `clipParams` gets the wrong distance.
+
 ## Native stages, images and passes
 
 Wherever Alloy hosts a content stage, a module may ship an **Alloy-native version** of it: a file named `cx_` +
@@ -634,7 +640,9 @@ previous output to.
 
 The contract a stage keeps: declare `vec4 CxStage(vec4 c)` over the display-space input and hand
 display space on; the shared main dithers after it. `uDepth` carries the frame's depth for a stage
-that wants it. A stage whose override AND embedded text both fail is dropped from the stack with
+that wants it, reversed: 1 at the near plane, 0 at the far plane and the sky. Under the projection the stack hands
+a stage, that depth is the NDC z itself, so it linearises as `uProj[3].z / (d + uProj[2].z)` (`CxDepthViewZ` in
+`cx_scenedepth`), not through GL's `d * 2.0 - 1.0`. A stage whose override AND embedded text both fail is dropped from the stack with
 `PostStack: the <name> stage did not build -- DROPPED`, and the frame resolves without it.
 
 ### Caster inertness
