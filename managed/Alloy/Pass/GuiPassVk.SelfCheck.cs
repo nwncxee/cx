@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using CX.Framework;
 using CX.Graphics;
 using CX.Graphics.Rhi;
+using CX.Ui;
 using Vortice.ShaderCompiler;
 
 namespace CX.Alloy;
@@ -60,28 +61,54 @@ internal static unsafe partial class GuiPassVk
         // stage first, so two ints land at 0 and 4 -- the offsets the capture writes at.
         Block(check, log, "the GUI program", ShaderSource.Get("cx_gui_v.glsl"), ShaderSource.Get("cx_gui_f.glsl"),
               new Dictionary<string, uint>(StringComparer.Ordinal), [("uBoneStart", 0, 4), ("uGamma", 4, 4)]);
+        PltRows(check, log);
         log.Info(check.Ok ? "GuiPassVk.SelfCheck: passed" : "GuiPassVk.SelfCheck: FAILED");
     }
 
     /// <summary>One pair translated and compiled, its loose block reflected, and each <paramref name="want"/> member
     /// held at the offset and size the hand-written oracle gives it.</summary>
-    private static void Block(Checker check, ExtenderLog log, string what, string vs, string fs,
+    private static LooseBlock.Member[]? Block(Checker check, ExtenderLog log, string what, string vs, string fs,
                               IReadOnlyDictionary<string, uint> units, (string Name, int Offset, int Bytes)[] want)
     {
         VkProgramText t = VkGlsl.Translate(vs, fs, units, glDepth: false);
-        if (t.Error != null) { check.Expect(false, $"{what} translates ({t.Error})"); return; }
+        if (t.Error != null) { check.Expect(false, $"{what} translates ({t.Error})"); return null; }
         byte[]? vb = VulkanToolchain.Compile(VkBackend.Translate(t.Vs), $"{what} vs", ShaderKind.VertexShader, out string ve);
         byte[]? fb = VulkanToolchain.Compile(VkBackend.Translate(t.Fs), $"{what} fs", ShaderKind.FragmentShader, out string fe);
         check.Expect(vb != null, $"{what}'s vertex stage compiles ({ve})");
         check.Expect(fb != null, $"{what}'s fragment stage compiles ({fe})");
-        if (vb == null || fb == null) return;
+        if (vb == null || fb == null) return null;
         // the compiled modules' own reflection, which is the second artifact the hand-written offsets are held against
         if (LooseBlock.Layout(t, vb, fb) is not { } l)
-        { check.Expect(false, $"{what} declares the loose block"); return; }
+        { check.Expect(false, $"{what} declares the loose block"); return null; }
         foreach ((string name, int off, int bytes) in want)
             check.Expect(l.Reflected.TryGetValue(name, out var m) && m.Offset == off && m.Size == bytes,
                 $"{what}'s {name} sits at {off} over {bytes} bytes"
               + (l.Reflected.TryGetValue(name, out var g) ? $" (got {g.Offset}, {g.Size})" : " (absent)"));
         log.Info($"GuiPassVk.SelfCheck: {what} -- {t.Loose.Count} loose member(s) in {l.Bytes} bytes, {t.Opaques.Count} declaration(s)");
+        return l.Members;
+    }
+
+    /// <summary>The PLT icon window program's ten palette rows, each written where the shader reads it. Oracle: std140
+    /// pads every element of an int array to 16 bytes, so <c>uRows[i]</c> sits 16 * i past the member; the rows are
+    /// hand-written literals.</summary>
+    private static void PltRows(Checker check, ExtenderLog log)
+    {
+        if (Block(check, log, "the PLT icon window", Vk460(TextRig.VertexText), Vk460(TextRig.FragmentText(UiDrawKind.IconPlt)),
+                  new Dictionary<string, uint>(StringComparer.Ordinal) { ["uTex"] = 0, ["uPal"] = 1, ["uDepth"] = TextureSlots.HiliteDepth }, []) is not { } members) return;
+        int at = Array.FindIndex(members, m => m.Name == "uRows");
+        check.Expect(at >= 0, "the PLT icon window declares uRows as a loose member");
+        if (at < 0) return;
+        LooseBlock.Member rows = members[at];
+        check.Expect(rows.Stride == 16, $"uRows steps 16 bytes per element (got {rows.Stride})");
+        var block = LooseBlock.Block(rows.Offset + 16 * 10);
+        int[] want = [0, 1, 770, 771, 1025, 1026, 1283, 1284, 0, 0];
+        LooseBlock.Capture(members, block);
+        LooseBlock.SetEach(at, want);
+        LooseBlock.EndCapture();
+        for (int i = 0; i < want.Length; i++)
+        {
+            int got = System.Runtime.InteropServices.MemoryMarshal.Read<int>(block.AsSpan(rows.Offset + 16 * i));
+            check.Expect(got == want[i], $"uRows[{i}] holds row {want[i]} (got {got})");
+        }
     }
 }

@@ -481,14 +481,7 @@ internal static unsafe partial class StageResources
         foreach (VkLoose u in t.Loose) names.Add(u.Name);
         if (VkSpirv.Block(spirv, 0, VulkanToolchain.UniformBase + VkGlsl.LooseBinding, names) is { } l)
         {
-            var members = new List<LooseBlock.Member>(l.Members.Count);
-            foreach (VkLoose u in t.Loose)
-            {
-                if (!l.Members.TryGetValue(u.Name, out var m)) continue;
-                int count = u.Array.Length == 0 ? 1 : VkGlsl.ResolveInt(u.Array, text) ?? 1;
-                members.Add(new LooseBlock.Member(u.Name, m.Offset, m.Size, count > 1 ? m.Size / count : 0));
-            }
-            q.Members = members.ToArray();
+            q.Members = LooseBlock.Members(t.Loose, l.Members);
             q.Block = LooseBlock.Block(l.Bytes);
         }
         q.Names = LooseBlock.Index(q.Members);
