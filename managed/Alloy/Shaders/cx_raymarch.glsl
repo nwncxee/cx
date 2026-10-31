@@ -8,7 +8,7 @@
 /// reconstructed from the copy's own near/far rather than from an engine uniform.
 float CxMarchZ(sampler2D depth, vec2 nf, vec2 uv)
 {
-    float d = texture(depth, uv).x * 2.0 - 1.0;
+    float d = 1.0 - 2.0 * texture(depth, uv).x;   // GL's NDC z of the world's reversed depth
     return (2.0 * nf.x * nf.y) / (nf.y + nf.x - d * (nf.y - nf.x));
 }
 

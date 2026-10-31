@@ -400,8 +400,8 @@ internal static class CullPassVk
     private const int FixtureDepth = 64;
 
     /// <summary>The pyramid and the retest on this device. Oracle: hand-worked verdicts for the fixture's spheres
-    /// (every one at least 9 units out, so its nearest depth is past 0.5) against a depth of all 0 (a wall at the
-    /// near plane hides all but the never-culled draw), and all 1 save one 0 texel (a max keeps the 1s: nothing hides).</summary>
+    /// (every one at least 9 units out, so its nearest depth is past 0.5) against a reversed depth of all 1 (a wall at
+    /// the near plane hides all but the never-culled draw), and all 0 save one 1 texel (nothing hides).</summary>
     private static bool Occlusion(VkBackend vk, Checker check, CullSrcRec[] src, Sphere[] sph, ref CullBlock b)
     {
         var s = _s;
@@ -411,8 +411,8 @@ internal static class CullPassVk
         if (!check.Ok) { vk.Destroy(depth); return false; }
         var wall = new float[FixtureDepth * FixtureDepth];
         var open = new float[wall.Length];
-        Array.Fill(open, 1f);
-        open[FixtureDepth * FixtureDepth / 2 + FixtureDepth / 2] = 0f;
+        Array.Fill(wall, 1f);
+        open[FixtureDepth * FixtureDepth / 2 + FixtureDepth / 2] = 1f;
         int groups = 3;
         var cnt = new uint[groups];
         var slot = new int[src.Length];

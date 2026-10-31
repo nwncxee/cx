@@ -641,7 +641,7 @@ public sealed unsafe partial class AlloyRenderer
         var d = new PipelineDesc
         {
             Vs = p.Vs, Fs = p.Fs, Layout = s.Layouts[fmt], Topo = Topology.Triangles,
-            Raster = new RasterState(CullMode.Back), Depth = new DepthState(true, true, CompareOp.LessEqual),
+            Raster = new RasterState(CullMode.Back), Depth = new DepthState(true, true, WorldDepth.NearerOrEqual),
             Label = $"vk {p.Label} {(MeshArena.Fmt)fmt} {targets} blend {blend}{(rate ? " rated" : "")}", ShadingRate = rate,
         };
         d.Targets.Depth = Format.D32F;

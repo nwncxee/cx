@@ -150,7 +150,7 @@ public sealed unsafe partial class AlloyRenderer
         // M31/M32 scaled by M34 (sign-agnostic). Every owned stage, the hosted stock text (_projMtx) and the
         // cull see the same jittered camera; the velocity pass takes it back out. Zero with TAA off.
         float jx = 0f, jy = 0f;
-        Matrix4x4 vpClean = view * proj;
+        Matrix4x4 vpClean = view * proj, vpCleanZ = view * WorldDepth.Fold(proj);
         // a Vulkan frame whose TAA resolve did not build draws unjittered
         if (PostChain.TaaOn && !_capturing && !PostStack.TaaVkFailed)
         {
@@ -158,7 +158,9 @@ public sealed unsafe partial class AlloyRenderer
             proj.M31 += jx * proj.M34; proj.M32 += jy * proj.M34;
         }
         PostChain.JitterX = jx; PostChain.JitterY = jy;
-        _projMtx = proj;   // #347: what a spliced stock file reads as m_proj
+        // the GL pair stays for CPU geometry (frusta, light bins); the world's draws and depth readers take the fold
+        Matrix4x4 projZ = WorldDepth.Fold(proj);
+        _projMtx = projZ;   // #347: what a spliced stock file reads as m_proj
         Matrix4x4 vp = view * proj;
         // every froxel input comes off THIS pass's projection, never the capture side (see TryPerspective)
         bool perspective = AlloyLights.TryPerspective(proj, out float p00, out float p11,
@@ -299,7 +301,7 @@ public sealed unsafe partial class AlloyRenderer
         CullPassVk.Stage(_capturing ? 0 : groups, cullDraws, _dSrc, _dSph, _recOwnCap + MaxSkyDraws,
                          lodScale, _gOpaqueEnd, _eyePos, &vp);
         FrameZones.Add(FrameZones.Zone.Cull, tCull);
-        f.View = view; f.Proj = proj; f.Vp = vp; f.VpClean = vpClean;
+        f.View = view; f.Proj = projZ; f.Vp = view * projZ; f.VpClean = vpCleanZ;
         f.Jx = jx; f.Jy = jy; f.Near = near; f.Far = far; f.P00 = p00; f.P11 = p11;
         f.Perspective = perspective; f.LightingOn = lightingOn; f.Srgb = srgb; f.Groups = groups;
         PresentTarget.MarkComposed();

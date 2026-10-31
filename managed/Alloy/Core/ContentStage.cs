@@ -96,7 +96,7 @@ internal static partial class ContentStage
         string standard = fragment ? AlloyRenderer.ContentStandardFs : AlloyRenderer.ContentStandardVs;
         string? text = Resolve(stage, chain, standard, new List<string> { resref.ToLowerInvariant() }, 0, ref count, out string? missing);
         if (text == null) { r.Refused = missing; return r; }
-        text = Directive.Replace(text, "");
+        text = VanillaShader.GlDepth(Directive.Replace(text, ""));
         if (!MainFn.IsMatch(text)) { r.Refused = $"{resref}.shd has no void main() to run"; return r; }
         // the stage's OWN text, the stand-in left out: what its facts are read off
         count = 0;

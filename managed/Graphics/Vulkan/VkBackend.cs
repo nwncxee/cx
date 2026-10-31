@@ -767,6 +767,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         CompareOp.Less => VkCompareOp.Less,
         CompareOp.Equal => VkCompareOp.Equal,
         CompareOp.Greater => VkCompareOp.Greater,
+        CompareOp.GreaterEqual => VkCompareOp.GreaterOrEqual,
         CompareOp.Always => VkCompareOp.Always,
         _ => VkCompareOp.LessOrEqual,
     };

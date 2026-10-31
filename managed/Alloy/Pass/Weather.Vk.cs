@@ -104,7 +104,7 @@ internal static unsafe partial class Weather
         bool cover = Cover.V && CasterPass.CoverFresh && CoverDepthOk && Matrix4x4.Invert(CasterPass.CoverVp, out inv);
         if (cover) vp = CasterPass.CoverVp;
         else crowns = 0;
-        if (crowns + feet <= 0 || !AlloyLights.TryPerspective(*proj, out _, out float p11, out _, out _)) return 0;
+        if (crowns + feet <= 0 || !AlloyLights.TryPerspective(WorldDepth.Unfold(*proj), out _, out float p11, out _, out _)) return 0;
         LooseBlock.Set(l.View, *view);
         LooseBlock.Set(l.Proj, *proj);
         LooseBlock.Set(l.Eye, [eye.X, eye.Y, eye.Z]);

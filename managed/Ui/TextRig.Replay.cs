@@ -248,7 +248,7 @@ public static unsafe partial class TextRig
         "  ivec2 p = ivec2(vec2(a.x / uView.x, 1.0 - a.y / uView.y) * vec2(sz));\n" +
         "  float seen = 0.0;\n" +
         "  for (int i = 0; i < 5; i++) {\n" +
-        "    float ndc = texelFetch(uDepth, clamp(p + kTap[i], ivec2(0), sz - 1), 0).r * 2.0 - 1.0;\n" +
+        "    float ndc = texelFetch(uDepth, clamp(p + kTap[i], ivec2(0), sz - 1), 0).r;\n" +
         Invariant($"    seen += uDepthK.y / (ndc + uDepthK.x) + {OcclBias:F1} >= c.w ? 1.0 : 0.0;\n") +
         "  }\n" +
         "  return mix(o.w, 1.0, seen / 5.0);\n}\n";

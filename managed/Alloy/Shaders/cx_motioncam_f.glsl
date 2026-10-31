@@ -10,7 +10,7 @@ uniform vec2 uJitter;    // #389: this frame's sub-pixel jitter, NDC (0 with TAA
 void main()
 {
     float d = texture(uDepth, vUV).r;
-    vec4 ndc = vec4(vUV * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+    vec4 ndc = vec4(vUV * 2.0 - 1.0, d, 1.0);
     vec4 prev = uPrevVP * (uInvVP * ndc);
     if (abs(prev.w) < 1e-6) { frag = vec2(0.0); return; }
     vec2 v = (prev.xy / prev.w - (ndc.xy - uJitter)) * 0.5 * uSize;

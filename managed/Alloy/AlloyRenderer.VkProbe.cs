@@ -82,14 +82,14 @@ public sealed unsafe partial class AlloyRenderer
             CommandList side = c.Side!;
             for (int f = 0; f < 6 && ok; f++)
             {
-                Matrix4x4 vp = EnvProbe.FaceVp(f);
+                Matrix4x4 vp = WorldDepth.Fold(EnvProbe.FaceVp(f));
                 side.Reset();
                 int arena0 = c.ArenaUsed;
                 var b = new VkBound { Fmt = -1, Tex = -1 };
                 VkPassStart(side, s.Size, s.Size);
                 ok &= VkIssue(side, ref b, 0, _gOpaqueEnd, r, vp, faceVp, fnear, ffar, false);
                 ReadOnlySpan<ColorAttachment> colors = [new(s.Cap, 0, f, LoadOp.Clear, StoreOp.Store, clear)];
-                VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(s.Depth, 0, 0, LoadOp.Clear, StoreOp.Store, 1f)));
+                VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(s.Depth, 0, 0, LoadOp.Clear, StoreOp.Store, WorldDepth.Clear)));
                 // the real dome behind the world, parked at this frame's camera, which is where the probe stands
                 ok &= VkRecordSky(vk, cl, c, vp, faceVp, log, s.Cap, f, s.Depth);
             }

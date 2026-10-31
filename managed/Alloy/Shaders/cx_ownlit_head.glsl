@@ -72,7 +72,7 @@ uniform int uLightRecOn;
 // depth it was judged on (.r) and the nearest decal's view depth (.g). Every surface lying under that decal -- the
 // prepassed ground, a cutout drawn over it, a wash's interior -- folds the layer into its albedo and is lit once.
 uniform int uDecal;      // 1 = fold the layer into this surface; 2 = a decal batch whose on-surface fragments the layer took
-uniform vec2 uDecalZ;    // the projection's (M33, M43): linear view depth = y / (ndc z + x)
+uniform vec2 uDecalZ;    // the folded projection's (M33, M43): linear view depth = y / (depth + x)
 layout(rgba16f, binding = 6) readonly uniform image2D uDecalLayer;
 layout(rg32f, binding = 7) readonly uniform image2D uDecalSurf;
 /// How high above a surface a decal may lie and still fold into it: metres, plus a share of view depth for the
@@ -85,7 +85,7 @@ const float CX_DECAL_TOL_M = 0.1, CX_DECAL_TOL = 0.001;
 bool CxDecalOn(float z, float d)
 {
     if (!(z > 0.0 && z < 1.0)) return false;
-    float s = uDecalZ.y / ((z * 2.0 - 1.0) + uDecalZ.x);
+    float s = uDecalZ.y / (z + uDecalZ.x);
     float h = (s - d) / max(d, 1e-4) * abs(dot(vWorld - uEyePos, normalize(vNrm)));
     float eps = CX_DECAL_TOL * s;
     return h > -eps && h < CX_DECAL_TOL_M + eps;

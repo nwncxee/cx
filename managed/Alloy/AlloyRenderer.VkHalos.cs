@@ -117,7 +117,7 @@ public sealed unsafe partial class AlloyRenderer
         (string vs, string fs) = Halos.VkTexts(log);
         var units = new System.Collections.Generic.Dictionary<string, uint>(VkPrograms.Units) { ["uFlare"] = TextureSlots.Diffuse };
         units.Remove("uTex");
-        VkProgramText t = VkGlsl.Translate(ShaderResource.Tokens(vs), ShaderResource.Tokens(fs), units);
+        VkProgramText t = WorldDepth.Translate(ShaderResource.Tokens(vs), ShaderResource.Tokens(fs), units);
         VkProg? p = VkBuild(vk, t, "halos", false, log);
         if (p != null)
         {

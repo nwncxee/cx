@@ -19,8 +19,8 @@ out vec4 frag;
 void main()
 {
     float d = texture(uTrigDepth, vUV).r;
-    if (d >= 1.0) discard;                        // the sky sits at exactly 1.0: nothing to decal
-    vec4 h = uInvVP * vec4(vUV * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+    if (d <= 0.0) discard;                        // the sky sits at exactly 0.0: nothing to decal
+    vec4 h = uInvVP * vec4(vUV * 2.0 - 1.0, d, 1.0);
     if (abs(h.w) < 1e-6) discard;
     vec3 p = h.xyz / h.w;
     for (int k = 0; k < uTrigCount; k++)

@@ -69,7 +69,7 @@ internal static partial class GpuGolden
         check.Expect(fn.Length > 0, "E3: cx_scenedepth no longer declares float CxDepthViewZ(float d, mat4 proj)");
         check.Expect(px != null, "E3: the depth golden's draw was refused (logged above)");
         if (px == null || fn.Length == 0) return;
-        int row = ZSide / 4;
+        int row = ZSide * 3 / 4;   // framebuffer row 0 is NDC y -1: the quads fill the upper rows
         float[] d = [px[(row * ZSide + ZSide / 6) * 2 + 1], px[(row * ZSide + ZSide / 2) * 2 + 1],
                      px[(row * ZSide + ZSide * 5 / 6) * 2 + 1], WorldDepth.Clear];
         PipelineId pipe = vk.CreateCompute(Version + "layout(local_size_x = 1) in;\n" + CaseBlocks(4, 4) + $"const mat4 cxM = {Mat(proj)};\n"

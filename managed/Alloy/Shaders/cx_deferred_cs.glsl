@@ -324,13 +324,13 @@ void main()
 
     ivec2 p = ivec2(gl_GlobalInvocationID.xy) + uRect.xy;
     cxPixel = vec2(p) + 0.5;
-    float ndcZ = 1.0, viewDepth = 0.0;
+    float ndcZ = 0.0, viewDepth = 0.0;
     CxGbuf g;
     bool mine = all(lessThan(gl_GlobalInvocationID.xy, uvec2(uRect.zw)));
     bool inRect = mine;
     if (mine)
     {
-        ndcZ = texelFetch(uGbDepth, p, 0).r * 2.0 - 1.0;
+        ndcZ = texelFetch(uGbDepth, p, 0).r;
         // the forward stage's vDepth: gl_Position.w, which for a perspective projection IS the linear view depth
         viewDepth = uProj[3].z / (ndcZ + uProj[2].z);
         mine = CxGbufReadWalk(texelFetch(uGb0, p, 0), texelFetch(uGb1, p, 0).w, viewDepth,

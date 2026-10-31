@@ -79,7 +79,7 @@ public enum MipMode : byte { None, Nearest, Linear }
 public enum Wrap : byte { Repeat, Clamp }
 
 /// <summary>A depth or shadow comparison.</summary>
-public enum CompareOp : byte { Less, LessEqual, Equal, Greater, Always }
+public enum CompareOp : byte { Less, LessEqual, Equal, Greater, GreaterEqual, Always }
 
 /// <summary>A sampler to create. A non-null <see cref="Compare"/> makes it a shadow sampler, and a null
 /// <see cref="WrapT"/> wraps T (and R) as <see cref="Wrap"/> does S.</summary>

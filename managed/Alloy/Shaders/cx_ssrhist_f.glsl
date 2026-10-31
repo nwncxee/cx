@@ -19,7 +19,7 @@ void main()
     vec4 cur = texelFetch(uRes, px, 0);
     vec3 res = cur.rgb;
     float depth = texelFetch(uDepth, px, 0).r;
-    if (uHistOn != 0 && depth < 1.0)
+    if (uHistOn != 0 && depth > 0.0)
     {
         vec3 mn = cur.rgb, mx = cur.rgb;
         for (int y = -1; y <= 1; y++)
@@ -29,7 +29,7 @@ void main()
                 mn = min(mn, c); mx = max(mx, c);
             }
         vec2 uv = (vec2(px) + 0.5) / vec2(lim + 1);
-        vec4 v = uInvProj * vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+        vec4 v = uInvProj * vec4(uv * 2.0 - 1.0, depth, 1.0);
         v.xyz /= v.w;
         float d = length(v.xyz);
         vec4 c = uPrevVp * (uInvView * vec4(v.xyz * ((d + max(cur.a, 0.0)) / max(d, 1e-4)), 1.0));

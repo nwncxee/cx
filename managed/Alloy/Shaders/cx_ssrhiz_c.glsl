@@ -6,7 +6,7 @@
 // CX_SSR_STORAGE (Vulkan) reads the level below through its own storage view, as an image cannot be sampled and
 // stored at once there; CX_SSR_COLOUR is that device's mip chain of the colour copy, which it cannot generate.
 layout(local_size_x = 8, local_size_y = 8) in;
-layout(binding = 2) uniform sampler2D uSrc;          // the window depth (level 0) or this pyramid (above)
+layout(binding = 2) uniform sampler2D uSrc;          // the world depth (level 0, reversed) or this pyramid (above)
 #ifdef CX_SSR_COLOUR
 layout(rgba16f, binding = 0) writeonly uniform image2D uDst;
 layout(rgba16f, binding = 1) readonly uniform image2D uPrev;
@@ -37,8 +37,8 @@ void main()
     float k = 0.0;
     if (uLevel == 0)
     {
-        float d = texelFetch(uSrc, p, 0).r * 2.0 - 1.0;
-        k = (uNf.y + uNf.x - d * (uNf.y - uNf.x)) / (2.0 * uNf.x * uNf.y);
+        float d = texelFetch(uSrc, p, 0).r;
+        k = (uNf.x + d * (uNf.y - uNf.x)) / (uNf.x * uNf.y);
     }
     else
     {

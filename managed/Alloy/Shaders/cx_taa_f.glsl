@@ -57,7 +57,7 @@ vec2 CxDilatedVel(vec2 uv, vec2 vsz)
         {
             vec2 o = vec2(x, y) * texel;
             float d = textureLod(uDepth, uv + o, 0.0).r;
-            if (d < bestD) { bestD = d; best = o; }
+            if (d > bestD) { bestD = d; best = o; }
         }
     return textureLod(uVel, uv + best, 0.0).rg;
 }

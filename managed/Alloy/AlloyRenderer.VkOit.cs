@@ -91,7 +91,7 @@ public sealed unsafe partial class AlloyRenderer
             new(o.Accum, 0, 0, LoadOp.Clear, StoreOp.Store, Vector4.Zero),
             new(o.Reveal, 0, 0, LoadOp.Clear, StoreOp.Store, Vector4.One),
         ];
-        VkFlushPass(cl, side, arena0, new RenderPassDesc(pair, new DepthAttachment(s.Depth, 0, 0, LoadOp.Load, StoreOp.Store, 1f)));
+        VkFlushPass(cl, side, arena0, new RenderPassDesc(pair, new DepthAttachment(s.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear)));
     }
 
     /// <summary>The composite over the scene colour, in a pass of its own. False only when the uniform arena is full.</summary>
@@ -145,7 +145,7 @@ public sealed unsafe partial class AlloyRenderer
         VkColourState s = _vkc;
         VkProg p = s.Progs[(int)VkPrograms.Id.DepthFeat]!;
         BufferId slots = indirect ? CullPassVk.Slots(CullPassVk.PhaseColour) : s.Slots;
-        var depth = new DepthState(true, true, CompareOp.LessEqual);
+        var depth = new DepthState(true, true, WorldDepth.NearerOrEqual);
         var push = new VkBatchPush();
         for (int g = _gOpaqueEnd; g < _gBlendEnd; g++)
         {
