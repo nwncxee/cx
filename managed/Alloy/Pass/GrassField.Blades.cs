@@ -97,7 +97,7 @@ internal static unsafe partial class GrassField
         public CommandList? Cl;
         public BufferId Buf;
         public long Cap, Want, At;
-        public int M = -1, Tid;
+        public int M = -1, Tid, Polls;
         public ImageDesc Desc;
         /// <summary>A copy is in flight for material <paramref name="m"/>'s texture <paramref name="tid"/>.</summary>
         public bool Busy(int m, int tid) => M == m && Tid == tid;
@@ -105,12 +105,15 @@ internal static unsafe partial class GrassField
 
     private static GrassReadState _gr = new();
 
+    /// <summary>Asks of one in-flight readback before it is reported stalled: seconds of frames, far past any real copy.</summary>
+    private const int StallPolls = 600;
+
     /// <summary><see cref="VkRead"/>'s answers: the pixels are in hand, the copy is in flight, or it cannot be read.</summary>
     private const int ReadDone = 0, ReadPending = 1, ReadRefused = 2;
 
     /// <summary>Material <paramref name="m"/>'s atlas read off its Vulkan image as RGBA8, rows in upload order: the copy
-    /// queued on the first ask, the pixels on the ask after its submit finished. One copy in flight; another
-    /// material's ask waits its turn as a card.</summary>
+    /// submitted alone on the first ask, the pixels on the first ask after THAT submit finished, whatever came after it.
+    /// One copy in flight; another material's ask waits its turn as a card.</summary>
     private static int VkRead(int m, int tid, out byte[]? px, out int w, out int h, out string? why)
     {
         px = null; w = h = 0; why = null;
@@ -120,8 +123,13 @@ internal static unsafe partial class GrassField
         if (s.M >= 0)
         {
             if (!s.Busy(m, tid)) return ReadPending;
-            long last = vk.Submitted - 1;
-            if (last < s.At || !vk.Finished(last)) return ReadPending;
+            if (!vk.Finished(s.At))
+            {
+                if (++s.Polls == StallPolls)
+                    _log?.Always($"[grass] material {m} tid {tid}: the atlas readback (submit {s.At}) has not finished after "
+                               + $"{StallPolls} asks -- every grass atlas stays a card until it does");
+                return ReadPending;
+            }
             s.M = -1;
             var raw = new byte[s.Want];
             if (!vk.ReadMapped(s.Buf, 0, raw)) { why = "the readback was refused"; return ReadRefused; }
@@ -146,7 +154,7 @@ internal static unsafe partial class GrassField
         cl.CopyImageToBuffer(new CopyToBufferCmd(img, new ImageRegion(0, 0, 0, 0), d.W, d.H, s.Buf, 0));
         cl.ReadImages([img]);
         if (!vk.Submit(cl)) { why = "the copy's submit was refused"; return ReadRefused; }
-        s.At = vk.Submitted - 1; s.M = m; s.Tid = tid; s.Desc = d; s.Want = bytes;
+        s.At = vk.Submitted - 1; s.M = m; s.Tid = tid; s.Desc = d; s.Want = bytes; s.Polls = 0;
         return ReadPending;
     }
 
