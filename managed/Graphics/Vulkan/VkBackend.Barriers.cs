@@ -89,7 +89,7 @@ internal sealed unsafe partial class VkBackend
     {
         Remember(img);
         if (_onAsync) img.AsyncRec = _recording;
-        bool claimed = Claim(img);
+        bool claimed = Claim(img, to);
         if (img.Layout == to && !img.Written) return;
         if (_besideNow && img.AsyncRec == _asyncRec)
             _crossed ??= $"moved {img.Desc.Label}, which the async submit it runs beside reached -- hand it over ahead of both";

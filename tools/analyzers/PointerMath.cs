@@ -52,14 +52,15 @@ public sealed class PointerMath : DiagnosticAnalyzer
             Report(c.ReportDiagnostic, conv.Syntax);
     }
 
-    /// <summary><c>((float*)&amp;v)[i]</c> or <c>((float*)p)[k]</c> reads memory as an array the cast just invented: the place is a
-    /// field or an element of a type nobody declared.</summary>
+    /// <summary><c>((float*)&amp;v)[i]</c>, <c>((float*)p)[k]</c> or <c>(&amp;v.f)[i]</c> reads memory as an array the cast or the
+    /// address just invented: the place is a field or an element of a type nobody declared.</summary>
     private static void OnReinterpretIndex(SyntaxNodeAnalysisContext c)
     {
         var at = (ElementAccessExpressionSyntax)c.Node;
         SyntaxNode e = at.Expression;
         while (e is ParenthesizedExpressionSyntax p) e = p.Expression;
-        if (e is CastExpressionSyntax cast && c.SemanticModel.GetTypeInfo(cast, c.CancellationToken).Type?.TypeKind == TypeKind.Pointer)
+        if (e is CastExpressionSyntax cast && c.SemanticModel.GetTypeInfo(cast, c.CancellationToken).Type?.TypeKind == TypeKind.Pointer
+            || e.IsKind(SyntaxKind.AddressOfExpression))
             Report(c.ReportDiagnostic, at);
     }
 

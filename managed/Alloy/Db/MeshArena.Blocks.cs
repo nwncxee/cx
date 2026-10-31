@@ -27,8 +27,8 @@ public static unsafe partial class MeshArena
         {
             if (Vma.vmaCreateVirtualBlock(&ci, out VmaVirtualBlock b) == VkResult.Success) return b;
         }
-        catch (DllNotFoundException) { }
-        _log?.Info("MeshArena: no VMA virtual block -- the arena can hold NO geometry this session");
+        // a missing, stale or foreign library: the type initializer this runs in must not throw at boot
+        catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException) { }
         return VmaVirtualBlock.Null;
     }
 

@@ -18,7 +18,8 @@ public sealed unsafe partial class AlloyRenderer
     internal static void SampleVram()
     {
         if (_log == null || AlloyDevice.VulkanMade is not VkBackend vk) return;
-        vk.DeviceLocalKib(out long free, out long total);
+        vk.DeviceLocalBytes(out long usage, out long budget, out long size);
+        long free = Math.Max(budget - usage, 0) / 1024, total = size / 1024;
         _vram.FreeKib = (int)Math.Min(free, int.MaxValue);
         if (_vramProbed) return;
         _vramProbed = true;
@@ -42,7 +43,7 @@ public sealed unsafe partial class AlloyRenderer
     internal static string FrameVram()
     {
         if (!_vramProbed || AlloyDevice.VulkanMade is not VkBackend vk) return "";
-        vk.DeviceLocalBytes(out long usage, out long budget);
+        vk.DeviceLocalBytes(out long usage, out long budget, out _);
         return VramLine(vk.DeviceLocalHeld, usage, budget, vk.Largest(3));
     }
 
@@ -53,12 +54,6 @@ public sealed unsafe partial class AlloyRenderer
     }
 
     private static readonly VramState _vram = new();
-    /// <summary>The free pool read now; -1 before the probe or without a memory query.</summary>
-    internal static long VramFreeKibNow()
-    {
-        SampleVram();
-        return _vramExt == null ? -1 : _vram.FreeKib;
-    }
 
     private static bool _vramProbed;
     private static string? _vramExt;

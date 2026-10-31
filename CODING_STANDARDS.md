@@ -22,7 +22,7 @@ rule and the gates.
 ## A place in memory has a name
 
 - **Only `managed/Framework/` adds an offset to a pointer (CX0001).** Elsewhere the build refuses `p + n`, `p - n`,
-  `p += n`, `p++`, `(nint)p + n`, `(long)p`, `((float*)&v)[i]`, `((float*)p)[k]`, `&p[i]` and
+  `p += n`, `p++`, `(nint)p + n`, `(long)p`, `((float*)&v)[i]`, `((float*)p)[k]`, `(&v.f)[i]`, `&p[i]` and
   `Unsafe.AsPointer(ref p[i])`. Reading a value as `px[i]` on a pointer of the right type is fine.
 - **Engine memory reads through a view.** Declare the row (`Field<T>`, both OS values in the build file) and read
   the generated member.
@@ -51,6 +51,8 @@ rule and the gates.
   graphics one, which every submit there signals and every lifetime waits on, and the async compute queue's and the
   transfer queue's, which only a graphics submit's join waits on. A submit, a fence or a semaphore wait elsewhere is
   refused: go through `QueueSubmit`, `AsyncSubmit`, `TransferSubmit`, `WaitFor` or `PassedNow`.
+- **The device is the backend's.** Vulkan and VMA calls that reach the device live under `managed/Graphics/`;
+  VMA's virtual blocks touch no device and may be named where they keep books (the mesh arena).
 - **A thread blocks through `BlockingWait.Sleep(ms, why)`.** The game's main thread never blocks.
 - **No tasks.** The extender has no async path, so the `Task` and `ValueTask` types are banned.
 - **The environment is read through `HostEnv`.** A setting is a knob, never an environment variable (ADR 0025).

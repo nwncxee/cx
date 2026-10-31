@@ -234,7 +234,7 @@ public static unsafe partial class MeshArena
         _log = log;
         // the blocks are made at type init, before any log exists: this is the first chance to say so
         if (_idx.Block.IsNull || Array.Exists(_sect, s => s.Block.IsNull))
-            log.Info("MeshArena: no virtual block -- the arena can hold NO geometry this session");
+            log.Always("MeshArena: no VMA virtual block -- the arena can hold NO geometry this session");
     }
 
     /// <summary>The log this arena names its refusals on. Settable so the off-device suite can silence the

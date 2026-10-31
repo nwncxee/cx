@@ -476,27 +476,10 @@ internal sealed unsafe partial class VkBackend : IDevice
         return t;
     }
 
-    /// <summary>The device takes VK_EXT_memory_budget, so <see cref="DeviceLocalKib"/> reads the driver's own figures.</summary>
+    /// <summary>The device takes VK_EXT_memory_budget, so <see cref="DeviceLocalBytes"/> reads the driver's own figures.</summary>
     private bool _memBudget;
     /// <inheritdoc cref="_memBudget"/>
     public bool MemoryBudget => _memBudget;
-
-    /// <summary>The device-local heaps' size and what is left of their budget, KiB: the driver's with VK_EXT_memory_budget,
-    /// else the allocator's estimate over its own blocks. Any thread that owns the device.</summary>
-    public void DeviceLocalKib(out long freeKib, out long totalKib)
-    {
-        freeKib = 0; totalKib = 0;
-        VkPhysicalDeviceMemoryProperties mp;
-        _vki.vkGetPhysicalDeviceMemoryProperties(_phys, &mp);
-        VmaBudget* b = stackalloc VmaBudget[(int)VK_MAX_MEMORY_HEAPS];
-        Vma.vmaGetHeapBudgets(_vma, b);
-        for (int i = 0; i < mp.memoryHeapCount; i++)
-        {
-            if ((mp.memoryHeaps[i].flags & VkMemoryHeapFlags.DeviceLocal) == 0) continue;
-            totalKib += (long)(mp.memoryHeaps[i].size / 1024);
-            if (b[i].budget > b[i].usage) freeKib += (long)((b[i].budget - b[i].usage) / 1024);
-        }
-    }
 
     private VmaAllocator CreateAllocator(VkInstance inst)
     {

@@ -27,8 +27,6 @@ internal sealed unsafe partial class VkBackend
     }
 
     private readonly Dictionary<string, AliasGroup> _alias = new();
-    /// <summary>Some group lost a member since the last graphics submit.</summary>
-    private bool _aliasShrink;
 
     /// <summary>A group member of <paramref name="d"/>: a fresh image bound into its group's allocation, which is
     /// made, or remade larger with every member rebound, when this one does not fit. Null id (logged) when refused.</summary>
@@ -107,7 +105,8 @@ internal sealed unsafe partial class VkBackend
             _vkd.vkGetImageMemoryRequirements(m.Image, &r);
             req.alignment = Math.Max(req.alignment, r.alignment);
         }
-        var aci = new VmaAllocationCreateInfo { preferredFlags = VkMemoryPropertyFlags.DeviceLocal };
+        // memory of its own: a lane slot carved out of a shared block leaves its old slot as slack the driver keeps
+        var aci = new VmaAllocationCreateInfo { preferredFlags = VkMemoryPropertyFlags.DeviceLocal, flags = VmaAllocationCreateFlags.DedicatedMemory };
         if (Vma.vmaAllocateMemory(_vma, &req, &aci, out VmaAllocation a, out _) != VkResult.Success) return false;
         Vma.vmaSetAllocationName(_vma, a, "alias " + g.Name);
         VmaAllocation old = g.Alloc;
@@ -145,7 +144,7 @@ internal sealed unsafe partial class VkBackend
         AliasGroup g = img.Group!;
         g.Members.Remove(img);
         if (g.Owner == img) g.Owner = null;
-        if (g.Members.Count > 0) { g.Shrink = _aliasShrink = true; return; }
+        if (g.Members.Count > 0) { g.Shrink = true; return; }
         _alias.Remove(g.Name);
         VmaAllocation a = g.Alloc;
         if (a.IsNotNull) LaterThanBindless(() => Vma.vmaFreeMemory(_vma, a));
@@ -155,7 +154,6 @@ internal sealed unsafe partial class VkBackend
     /// gives its memory back. At a graphics submit's head, before anything records.</summary>
     private void ShrinkGroups()
     {
-        _aliasShrink = false;
         foreach (AliasGroup g in _alias.Values)
         {
             if (!g.Shrink) continue;
@@ -172,11 +170,14 @@ internal sealed unsafe partial class VkBackend
     }
 
     /// <summary>Make <paramref name="img"/> its group's owner: from here its contents are undefined, and the barrier
-    /// that moves it waits on everything before, whichever member it was.</summary>
-    private bool Claim(VkImg img)
+    /// that moves it waits on everything before, whichever member it was. A member READ straight after another
+    /// owned the memory reads that one's bytes -- a lane holding two live images -- and is a counted refusal.</summary>
+    private bool Claim(VkImg img, VkImageLayout to)
     {
         AliasGroup? g = img.Group;
         if (g == null || g.Owner == img) return false;
+        if (g.Owner != null && to is VkImageLayout.ShaderReadOnlyOptimal or VkImageLayout.TransferSrcOptimal)
+            Fault($"alias group {g.Name}: {img.Desc.Label} is read while {g.Owner.Desc.Label} holds its memory -- the two are live at once");
         g.Owner = img;
         img.Layout = VkImageLayout.Undefined;
         img.Written = false;

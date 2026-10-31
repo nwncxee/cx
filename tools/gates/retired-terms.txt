@@ -225,3 +225,4 @@ alloy\.(gl46|glsync|gldebug)\b|\[gl46\]|\[gldebug\]	GL sweep 8
 # The mesh arena's bump cursors and its compaction: a freed range's place is reused where it lies, so nothing
 # slides down, no consumer is told its geometry moved, and the dead counters that drove the pass are gone.
 \bCompactForCheck\b|\bVkCompacted\b|\b(Db)?RangesMoved\b|\bMoveRun\b|\bAppendRun\b|\b_iMirror\b|\b_iUsed\b|\b_iDead\b|\b_compactions\b|\b_movedTotal\b	CX-378
+\bVramEvictedMib\b|\bEvictedKib\b|vram EVICTED	CX-378

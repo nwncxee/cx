@@ -371,7 +371,7 @@ internal sealed unsafe partial class VkBackend
         bool made = size > UploadBlockBytes
                   ? HostBuffer(size, VkBufferUsageFlags.TransferSrc, VmaAllocationCreateFlags.HostAccessSequentialWrite, out b.Buffer, out b.Alloc)
                   : PoolBlock(out b.Buffer, out b.Alloc);
-        if (made) return b;
+        if (made) { Vma.vmaSetAllocationName(_vma, b.Alloc, "upload staging"); return b; }
         Fault($"upload staging: VMA refused {size >> 20} MiB");
         return null;
     }
