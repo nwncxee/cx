@@ -257,6 +257,8 @@ internal static class TextureSlots
         check.Expect(DoubleClaimed(litDecls) is null, $"two samplers claim one unit in {AlloyRenderer.ShdLitFs}: {DoubleClaimed(litDecls)}");
         const string CommentedClaim = "/* layout(binding = 5) uniform sampler2D uA; */\nlayout(binding = 5) uniform sampler2D uB;\n";
         check.Expect(DoubleClaimed(CommentedClaim) is null, $"a declaration inside a comment claims no unit: {DoubleClaimed(CommentedClaim)}");
+        const string ImageClaim = "layout(binding = 5) uniform sampler2D uA;\nlayout(binding = 5, r32f) uniform image2D uImg;\n";
+        check.Expect(DoubleClaimed(ImageClaim) is null, $"an image's binding is an image unit, not a texture unit: {DoubleClaimed(ImageClaim)}");
         // ...and the two unit BUDGETS the lit program is linked against. Every unit it claims is either under
         // the plain program's need or one of the soft sun's two on top -- except uPairMap, which only the
         // deferred shadow pass's CX_PAIR_RECV compiles in, so it is named here rather than counted.
@@ -296,6 +298,7 @@ internal static class TextureSlots
             check.Expect(AlloyRenderer.OwnedLitFsHead.Contains($"uniform sampler2D {MapSamplers[i]};"),
               $"{MapBase + i} {MapSamplers[i]}");
         check.Expect(PostChain.ResolveFs.Contains("uniform sampler2D uHdr;"), $"{PostHdr} uHdr");
+        check.Expect(TaaStage.TaaFs.Contains("uniform sampler2D uVel;"), $"{PostVel} uVel (taa accumulate)");
         check.Expect(PostChain.ResolveFs.Contains("uniform sampler2D uBloom;"), $"{PostBloom} uBloom");
         check.Expect(PostChain.ResolveFs.Contains("uniform sampler2D uDepth;"), $"{PostDepth} uDepth");
         check.Expect(PostChain.ResolveFs.Contains("uniform sampler2D uOverlay;"), $"{PostOverlay} uOverlay");

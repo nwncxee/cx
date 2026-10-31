@@ -430,7 +430,7 @@ internal static unsafe class PostChainVk
     }
 
     /// <summary>Post stage <paramref name="fsRef"/> over the full-screen vertex stage, as GL compiles the pair;
-    /// <paramref name="stock"/> when no content override reached either text.</summary>
+    /// <paramref name="stock"/> when the embedded texts are built: no override reached either, or one was refused.</summary>
     private static GuiVkProg? Make(VkBackend vk, string fsRef, string label, out bool stock, Action<GuiVkProg> locate, ExtenderLog log)
     {
         stock = ShaderTexts.Pair(PostChain.ShdPostVs, ShaderStages.Source(PostChain.ShdPostVs), fsRef, ShaderStages.Source(fsRef),

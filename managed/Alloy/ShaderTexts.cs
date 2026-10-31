@@ -20,7 +20,7 @@ internal static class ShaderTexts
 
     /// <summary>An overridable pair's texts: the stage override first, then the libraries inside whichever text
     /// won, back to the embedded stages when either reads a uniform block's terms outside the block
-    /// (<see cref="ShaderContract.BlocksSafe"/>). True when the texts handed back are the ones given: no override reached either.</summary>
+    /// (<see cref="ShaderContract.BlocksSafe"/>). True when the texts handed back are the ones given: no override reached either, or one did and was refused.</summary>
     internal static bool Pair(string vsRef, string vs, string fsRef, string fs, ExtenderLog? log, string what,
                               out string vsSource, out string fsSource)
     {

@@ -11,8 +11,7 @@ internal sealed unsafe partial class VkBackend
     {
         ShaderId cs = CreateShader(new ShaderDesc(ShaderStage.Compute, resref, src, label));
         if (cs.IsNull) return default;
-        var d = new PipelineDesc { Cs = cs, Label = label };
-        PipelineId pipe = CreatePipeline(in d);
+        PipelineId pipe = CreatePipeline(new PipelineDesc { Cs = cs, Label = label });
         Destroy(cs);
         return pipe;
     }

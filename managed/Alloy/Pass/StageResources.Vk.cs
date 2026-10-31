@@ -71,6 +71,10 @@ internal static unsafe partial class StageResources
     /// <summary>One RGBA texel of the widest format a fog image can have, and the readback ring's slots.</summary>
     private const int VkFogBytes = 16, VkFogSlots = 3;
 
+    /// <summary>The declaration types a stage image can be read through: <c>sampler2D</c>, <c>sampler3D</c>,
+    /// <c>image2D</c> and <c>image3D</c>.</summary>
+    private static bool StageImageType(string type) => type is "sampler2D" or "sampler3D" or "image2D" or "image3D";
+
     /// <summary>A compute stage's work-group size, one axis per match.</summary>
     private static readonly Regex LocalSize = new(@"\blocal_size_([xyz])\s*=\s*(\w+)", RegexOptions.CultureInvariant);
 
@@ -114,7 +118,7 @@ internal static unsafe partial class StageResources
         uint tex = TextureSlots.ResourceBase, img = 0;
         foreach ((string type, string name, _) in VkGlsl.Opaques(text))
         {
-            if (type is not ("sampler2D" or "sampler3D" or "image2D" or "image3D") || !FindImage(a, b, name, out int stage, out int image, out bool prev) || !taken.Add(name)) continue;
+            if (!StageImageType(type) || !FindImage(a, b, name, out int stage, out int image, out bool prev) || !taken.Add(name)) continue;
             Img im = _gl.Stages[stage]!.Images[image];
             if (prev && !im.History) { why = $"the program reads `{name}`, but `{im.Name}` is not declared `history`"; return null; }
             bool wants3d = type.EndsWith("3D", StringComparison.Ordinal);
