@@ -39,16 +39,23 @@ internal static partial class GpuGolden
         ZGlDepthCase(vk, check, log);
     }
 
-    /// <summary>E2: two full-screen quads 1 cm apart at <paramref name="dist"/> m, the nearer drawn first; every pixel
-    /// must keep the nearer.</summary>
+    /// <summary>Pairs E2 draws, each a step further than the last, so no single lucky rounding passes it.</summary>
+    private const int ZPairs = 16;
+
+    /// <summary>E2: two full-screen quads 1 cm apart, the nearer drawn first, at <paramref name="dist"/> m and at
+    /// <see cref="ZPairs"/> - 1 more places up to 0.6 m past it; every pixel of every pair must keep the nearer.</summary>
     private static void ZFightCase(VkBackend vk, Checker check, ExtenderLog log, Matrix4x4 proj, double dist, string tag)
     {
-        float[]? px = ZDraw(vk, log, [new ZQuad(-1, 1, dist), new ZQuad(-1, 1, dist + 0.01)], proj, $"golden {tag}");
-        check.Expect(px != null, $"{tag}: the depth golden's draw was refused (logged above)");
-        if (px == null) return;
         int far = 0;
-        for (int i = 0; i < ZSide * ZSide; i++) if (px[i * 2] != 1f) far++;
-        check.Expect(far == 0, $"{tag}: {far} of {ZSide * ZSide} pixels show the farther of two surfaces 1 cm apart at {dist} m");
+        for (int k = 0; k < ZPairs; k++)
+        {
+            double at = dist + k * 0.0371;
+            float[]? px = ZDraw(vk, log, [new ZQuad(-1, 1, at), new ZQuad(-1, 1, at + 0.01)], proj, $"golden {tag}");
+            check.Expect(px != null, $"{tag}: the depth golden's draw was refused (logged above)");
+            if (px == null) return;
+            for (int i = 0; i < ZSide * ZSide; i++) if (px[i * 2] != 1f) far++;
+        }
+        check.Expect(far == 0, $"{tag}: {far} of {ZPairs * ZSide * ZSide} pixels show the farther of two surfaces 1 cm apart at {dist} m");
     }
 
     /// <summary>E3: quads at 2, 30 and 300 m in the lower half, sky above; the shared decode reads each back within
