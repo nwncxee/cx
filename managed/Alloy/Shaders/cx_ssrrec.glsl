@@ -63,7 +63,9 @@ bool CxRecRead(sampler2D recN, sampler2D recW, sampler2D hiZ, ivec2 p, out vec3 
     vec4 r = texelFetch(recN, p, 0);
     n = vec3(0.0); rough = 1.0; w = vec3(0.0);
     float k = texelFetch(hiZ, p, 0).r;
-    if (!(abs(r.w * k - 1.0) < CX_SSR_RECORD + CxHiZSlack(hiZ, p, k))) return false;
+    float e = abs(r.w * k - 1.0);
+    // the neighbours only where the plain test fails: the trace's march calls this once per candidate hit
+    if (!(e < CX_SSR_RECORD) && !(e < CX_SSR_RECORD + CxHiZSlack(hiZ, p, k))) return false;
     n = CxOctDecode(r.xy);
     rough = r.z;
     w = texelFetch(recW, p, 0).rgb;
