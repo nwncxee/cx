@@ -67,9 +67,7 @@ internal static unsafe partial class FrameTap
         if (s.Dev != vk)
         {
             _vkTap = s = new TapVkState { Dev = vk, Cmds = new CommandList("vulkan frame tap", 4096, _log!) };
-            string src = ReadbackCs(ColourWords);
-            var d = new PipelineDesc { Cs = vk.CreateShader(new ShaderDesc(ShaderStage.Compute, null, src, "frame tap copy")), Label = "frame tap copy" };
-            s.Copy = vk.CreatePipeline(in d);
+            s.Copy = vk.CreateCompute(ReadbackCs(ColourWords), "frame tap copy");
         }
         if (s.Copy.IsNull) return null;
         var words = new uint[(long)w * h * ColourWords];

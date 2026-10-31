@@ -149,11 +149,11 @@ internal static class CullPassVk
         if (s.Failed) return false;
         if (!s.Prog.IsNull) return true;
         s.Cmds = new CommandList("vulkan cull check", ArenaBytes, log);
-        s.Prog = Compute(vk, CullPass.CullCs, "CullPassVk frustum cull");
-        s.ProgSort = Compute(vk, CullPass.SortCs, "CullPassVk back-to-front rank sort");
+        s.Prog = vk.CreateCompute(CullPass.CullCs, "CullPassVk frustum cull");
+        s.ProgSort = vk.CreateCompute(CullPass.SortCs, "CullPassVk back-to-front rank sort");
         s.Ubo = vk.CreateBuffer(new BufferDesc(Std140.BlockBytes<CullBlock>(), BufferUse.Uniform, MemoryKind.Upload, "cull block"));
-        s.ProgHiZFirst = Compute(vk, HiZCs.Replace(VersionLine, VersionLine + "#define CX_HIZ_FIRST\n"), "CullPassVk hi-Z first level");
-        s.ProgHiZ = Compute(vk, HiZCs, "CullPassVk hi-Z level");
+        s.ProgHiZFirst = vk.CreateCompute(HiZCs.Replace(VersionLine, VersionLine + "#define CX_HIZ_FIRST\n"), "CullPassVk hi-Z first level");
+        s.ProgHiZ = vk.CreateCompute(HiZCs, "CullPassVk hi-Z level");
         s.Stand = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.R32F, 1, 1, 1, 1, 1, 1, ImageUse.Sampled, "cull pyramid stand-in"));
         if (s.Prog.IsNull || s.ProgSort.IsNull || s.ProgHiZFirst.IsNull || s.ProgHiZ.IsNull || s.Ubo.IsNull || s.Stand.IsNull)
         {
@@ -177,12 +177,6 @@ internal static class CullPassVk
 
     /// <summary>The pyramid's local size, as <c>cx_hiz_c.glsl</c> declares it.</summary>
     private const int HiZGroup = 8;
-
-    private static PipelineId Compute(VkBackend vk, string src, string label)
-    {
-        var d = new PipelineDesc { Cs = vk.CreateShader(new ShaderDesc(ShaderStage.Compute, null, src, label)), Label = label };
-        return vk.CreatePipeline(in d);
-    }
 
     /// <summary>Upload the draw list and spheres into <paramref name="cl"/>, every phase's sets sized for it. False
     /// when the device refused a buffer (logged).</summary>

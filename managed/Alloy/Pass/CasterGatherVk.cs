@@ -78,8 +78,8 @@ internal static unsafe partial class CasterGatherVk
         if (s.Failed) return false;
         if (!s.Prog.IsNull) return true;
         s.Cmds = new CommandList("vulkan caster gather check", ArenaBytes, log);
-        s.Prog = Compute(vk, CasterGather.GatherCs, "CasterGatherVk caster cull");
-        s.LayerProg = Compute(vk, CasterGather.LayerCs, "CasterGatherVk layered caster cull");
+        s.Prog = vk.CreateCompute(CasterGather.GatherCs, "CasterGatherVk caster cull");
+        s.LayerProg = vk.CreateCompute(CasterGather.LayerCs, "CasterGatherVk layered caster cull");
         s.Ubo = vk.CreateBuffer(new BufferDesc(Std140.BlockBytes<GatherBlock>(), BufferUse.Uniform, MemoryKind.Upload, "gather block"));
         if (s.Prog.IsNull || s.LayerProg.IsNull || s.Ubo.IsNull)
         {
@@ -94,12 +94,6 @@ internal static unsafe partial class CasterGatherVk
             return false;
         }
         return true;
-    }
-
-    private static PipelineId Compute(VkBackend vk, string src, string label)
-    {
-        var d = new PipelineDesc { Cs = vk.CreateShader(new ShaderDesc(ShaderStage.Compute, null, src, label)), Label = label };
-        return vk.CreatePipeline(in d);
     }
 
     /// <summary>The frame's bounds into this port's own pair of sphere buffers: the colour cull's spheres, which

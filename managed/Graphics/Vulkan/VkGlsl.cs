@@ -335,6 +335,20 @@ internal static partial class VkGlsl
         return sb.ToString().TrimEnd();
     }
 
+    /// <summary>Every sampler, image and texture <paramref name="src"/> declares at file scope, in order: its type, name
+    /// and the <c>binding</c> its layout names (null when it names none). Comments are not read.</summary>
+    internal static List<(string Type, string Name, string? Binding)> Opaques(string src)
+    {
+        var list = new List<(string, string, string?)>();
+        foreach (Stmt st in Statements(src))
+        {
+            if (st.Term != ';' || !Parse(st, out Decl d) || d.Storage != "uniform" || !Opaque.IsMatch(d.Type)) continue;
+            Match bm = BindingQ.Match(d.LayoutInner);
+            foreach (var (name, _, _) in d.Names) list.Add((d.Type, name, bm.Success ? bm.Groups[1].Value : null));
+        }
+        return list;
+    }
+
     private static void AddOpaque(VkProgramText r, VkOpaque o)
     {
         if (!r.Opaques.Contains(o)) r.Opaques.Add(o);

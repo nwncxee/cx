@@ -74,6 +74,7 @@ internal static partial class VkGlsl
         VkGlsl.BindlessCap = cap;
         Bindless(check, bl);
         Errors(check);
+        OpaqueList(check);
         if (Native.Sym(SymbolMap.AppManager) != IntPtr.Zero) { check.Skip("on-device: shaderc compiles nothing at boot in a game session"); return; }
         bool staged = true;
         foreach (string leaf in VulkanToolchain.Libraries) staged &= VulkanToolchain.Load(leaf);
@@ -148,6 +149,17 @@ internal static partial class VkGlsl
     }
 
     private static string Clip(string s) => s.Length > 600 ? s[..600] + "..." : s;
+
+    /// <summary><see cref="Opaques"/> against the fixture's declarations as written: three unbound samplers, one on
+    /// binding 26, no loose uniform, and nothing from a commented-out line.</summary>
+    private static void OpaqueList(Checker check)
+    {
+        var got = Opaques(LooseFs.Replace("\r\n", "\n") + "/* uniform sampler2D uGone; */\n// layout(binding = 9) uniform image2D uGoneToo;\n");
+        string seen = string.Join(", ", got);
+        check.Expect(got.Count == 4 && got[0] == ("sampler2D", "uTex", null) && got[1] == ("sampler2D", "uNrmTex", null)
+                  && got[2] == ("sampler2D", "uSpecTex", null) && got[3] == ("usampler2D", "uLightRec", "26"),
+            $"the opaque list is the fixture's four samplers, its one binding kept and no comment read (got {seen})");
+    }
 
     private static void Layout(Checker check)
     {
