@@ -21,6 +21,14 @@ internal sealed unsafe partial class VkBackend
     /// after it while the graphics submit beside an async one is still to come -- the first that waits on it.</summary>
     private long Next => _submits + (_onAsync || (_unjoined != 0 && !_beside) ? 2 : 1);
 
+    /// <summary>The value a caller that recycles memory of its OWN stamps a place given back now with: the
+    /// stamp <see cref="Later"/> defers the backend's own frees on. <see cref="FreePassed"/> says when that
+    /// place may be handed to someone else.</summary>
+    internal long FreeStamp => Next;
+
+    /// <inheritdoc cref="FreeStamp"/>
+    internal bool FreePassed(long stamp) => PassedNow(stamp);
+
     /// <summary>Has the timeline reached <paramref name="value"/>, as last read? Conservative between reads.</summary>
     private bool Passed(long value) => value <= _completed;
 

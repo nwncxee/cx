@@ -16,8 +16,8 @@ public static unsafe partial class MeshArena
 
     /// <summary><paramref name="store"/>'s TLSF block over its places, made on FIRST USE -- by then the
     /// staged VMA library is loadable and there is a log for a refusal to be named on. The ONE refusal site:
-    /// a store with no block can hold no geometry, and the arena is where all of Alloy's world geometry
-    /// lands, so a refusal stands Alloy down rather than drawing an empty world.</summary>
+    /// the arena is where all of Alloy's world geometry lands, so a store VMA will not place anything in is
+    /// an <see cref="AlloyGate.Fail"/> -- named on screen and in the log -- not an empty world.</summary>
     private static VmaVirtualBlock Blocked<T>(Store<T> store)
     {
         if (!store.Block.IsNull || store.BlockRefused) return store.Block;

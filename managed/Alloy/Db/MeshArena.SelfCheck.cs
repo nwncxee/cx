@@ -55,6 +55,8 @@ public static partial class MeshArena
     private static void OwnBytesOnly(Checker check)
     {
         float[] v = Verts(1000);
+        FlightForCheck(0, long.MaxValue);   // nothing in flight: a freed place is the next mesh's at once
+        check.Expect(PendingVertexBytesForCheck(Fmt.Static) == (0, 0L, 0L), "the reset arena has spans pending");
         int a = Mesh(0xE378_0001, 1000, v), b = Mesh(0xE378_0002, 1000, v), c = Mesh(0xE378_0003, 1000, v);
         check.Expect(a > 0 && b > 0 && c > 0, "the three meshes the example loads were refused");
         SentForCheck();

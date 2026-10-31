@@ -121,7 +121,7 @@ public static unsafe partial class MeshArena
     /// <summary>One store the arena places in: the CPU mirror every reader and every upload reads, the
     /// virtual block that places elements in it, how far the placements reach, and the spans the next pump
     /// sends.</summary>
-    private class Store<T>
+    private abstract class Store<T>
     {
         internal T[] Mirror = Array.Empty<T>();
         /// <summary>Elements the block holds, which is what it is made over on first use.</summary>
@@ -168,15 +168,14 @@ public static unsafe partial class MeshArena
         internal VmaVirtualAllocation VA, IA0, IA1, IA2;
     }
 
-    private static readonly List<Retired> _retired = new();
-
-    /// <summary>The arena's in-flight clock: the Vulkan backend's submit counter on a session, and a
-    /// hand-driven pair for the off-device check, which has no device to count submits.</summary>
+    /// <summary>The arena's in-flight clock and the places waiting on it: the Vulkan backend's free stamp on
+    /// a session, and a hand-driven pair for the off-device check, which has no device to stamp against.</summary>
     private sealed class FlightState
     {
         internal bool ByHand;
         internal long Now;
         internal long Done = -1;
+        internal readonly List<Retired> Parked = new();
     }
 
     private static FlightState _flight = new();
@@ -293,9 +292,9 @@ public static unsafe partial class MeshArena
         }
     }
 
-    /// <summary>Arena bytes the LIVE placements occupy: every vertex section's plus the shared element
-    /// arena's. A freed gap is not counted, since the next mesh that fits takes it, so an area hop reads as
-    /// one area -- which is why this is not what the device holds (<see cref="HeldBytes"/>).</summary>
+    /// <summary>Arena bytes the placements occupy -- every vertex section's plus the shared element arena's,
+    /// a place PARKED on a submit included, because nothing else may have it yet. A place given back is not,
+    /// so an area hop reads as one area once its frees land; the device holds <see cref="HeldBytes"/>.</summary>
     internal static long PlacedBytes
     {
         get
@@ -310,9 +309,9 @@ public static unsafe partial class MeshArena
         }
     }
 
-    /// <summary>Arena bytes the DEVICE holds: both mirrors' length, which is the size every arena buffer is
-    /// created at. Grow-only, so it is at or above <see cref="PlacedBytes"/> by whatever the freed gaps and
-    /// the untouched tail come to -- the figure the frame line's largest allocations agree with.</summary>
+    /// <summary>Arena bytes the DEVICE holds: both mirrors' length, which is the size each arena buffer is
+    /// created at, so a mirror grown since the last pump reads high by the growth. Grow-only, and at or above
+    /// <see cref="PlacedBytes"/> by whatever the freed gaps and the untouched tail come to.</summary>
     internal static long HeldBytes
     {
         get
@@ -878,20 +877,26 @@ public static unsafe partial class MeshArena
             GiveBack(r.Format, ref r.VA, ref r.IA0, ref r.IA1, ref r.IA2);
             return;
         }
-        _retired.Add(new Retired { Stamp = stamp, Format = r.Format, VA = r.VA, IA0 = r.IA0, IA1 = r.IA1, IA2 = r.IA2 });
+        _flight.Parked.Add(new Retired { Stamp = stamp, Format = r.Format, VA = r.VA, IA0 = r.IA0, IA1 = r.IA1, IA2 = r.IA2 });
         r.VA = r.IA0 = r.IA1 = r.IA2 = VmaVirtualAllocation.Null;
     }
 
-    /// <summary>Every retired place whose submit has finished goes back to its block, for the next mesh that
-    /// fits it. Under <see cref="_gate"/>, at the frame edge.</summary>
+    /// <summary>Every parked place whose work has finished goes back to its block, for the next mesh that fits
+    /// it. Under <see cref="_gate"/>, at the frame edge.</summary>
     private static void GiveBackPassed()
     {
-        for (int i = _retired.Count - 1; i >= 0; i--)
+        List<Retired> parked = _flight.Parked;
+        // an area's unload parks thousands of places on ONE stamp, and asking the driver per place would be
+        // thousands of counter reads a frame: the lowest stamp found still in flight answers for every place
+        // at or above it, so each distinct stamp costs one read
+        long stalled = long.MaxValue;
+        for (int i = parked.Count - 1; i >= 0; i--)
         {
-            if (!FlightPassed(_retired[i].Stamp)) continue;
-            Retired t = _retired[i];
+            if (parked[i].Stamp >= stalled) continue;
+            if (!FlightPassed(parked[i].Stamp)) { stalled = parked[i].Stamp; continue; }
+            Retired t = parked[i];
             GiveBack(t.Format, ref t.VA, ref t.IA0, ref t.IA1, ref t.IA2);
-            _retired.RemoveAt(i);
+            parked.RemoveAt(i);
         }
     }
 
@@ -991,8 +996,9 @@ public static unsafe partial class MeshArena
     // ---------------------------------------------------------------- report
 
     /// <summary>One clause of the <c>[alloy]</c> period line: the distinct meshes held, the parts they serve,
-    /// the arena's own bytes, the bytes the per-part path would have held for the same geometry and the
-    /// DIFFERENCE -- which is the saving the ticket asks for -- and any refusal.</summary>
+    /// what the placements come to against what the buffers hold, the bytes the per-part path would have held
+    /// for the same geometry and the DIFFERENCE -- the saving the ticket asks for -- any refusal, and the
+    /// places still parked on a submit.</summary>
     internal static string Stats(int frames)
     {
         if (_acquired == 0 && _refused == 0) return "";
@@ -1012,6 +1018,7 @@ public static unsafe partial class MeshArena
                + (_collisions > 0 ? $", {_collisions} content collisions" : "")
                + (_staleKeys > 0 ? $", {_staleKeys} stale keys swept" : "")
                + (_unqueued > 0 ? $", {_unqueued} UNQUEUED zero-ref ranges reclaimed" : "")
+               + (_flight.Parked.Count > 0 ? $", {_flight.Parked.Count} place(s) waiting on a submit" : "")
                + DynStats();
     }
 
@@ -1048,8 +1055,7 @@ public static unsafe partial class MeshArena
             _pub = Array.Empty<Pub?>();
             _rangeHigh = 1; _rangeFree = -1;
             _byContent.Clear(); _byMesh.Clear(); _pendingFree.Clear();
-            // the places go with their blocks: freeing one into a destroyed block is a native fault
-            _retired.Clear();
+            // the parked places go with their blocks: freeing one into a destroyed block is a native fault
             _flight = new FlightState();
             DestroyBlocks();
             _sect = NewSections();
@@ -1082,7 +1088,8 @@ public static unsafe partial class MeshArena
     /// off-device check's only way to hold a submit, since no device is there to count one.</summary>
     internal static void FlightForCheck(long now, long done)
     {
-        lock (_gate) _flight = new FlightState { ByHand = true, Now = now, Done = done };
+        // the clock moves, the places waiting on it stay: a new owner would drop them on the floor
+        lock (_gate) { _flight.ByHand = true; _flight.Now = now; _flight.Done = done; }
     }
 
     /// <summary>What the next pump would send of <paramref name="f"/>'s section: how many spans are pending
@@ -1098,7 +1105,8 @@ public static unsafe partial class MeshArena
         }
     }
 
-    /// <inheritdoc cref="PendingVertexBytesForCheck"/>
+    /// <summary>What the next pump would send of the shared element arena: how many spans are pending and the
+    /// first one's BYTE range.</summary>
     internal static (int Spans, long From, long To) PendingIndexBytesForCheck()
     {
         lock (_gate)
