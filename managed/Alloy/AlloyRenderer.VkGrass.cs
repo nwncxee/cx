@@ -473,7 +473,7 @@ public sealed unsafe partial class AlloyRenderer
         var d = new PipelineDesc
         {
             Vs = p.Vs, Fs = p.Fs, Topo = topo, Raster = new RasterState(CullMode.None, DepthClamp: clamp),
-            Depth = new DepthState(true, true, CompareOp.LessEqual), Label = label,
+            Depth = new DepthState(true, true, WorldDepth.NearerOrEqual), Label = label,
         };
         d.Targets.ColorCount = colour == Format.Unknown ? 0 : 1;
         d.Targets.Colors[0] = colour;

@@ -1351,7 +1351,7 @@ def check_native_grammar():
 # CX-338: the world's depth is reversed (near 1, far 0) and its projection folded to match, so a world depth read IS
 # the NDC z. GL's decode of it (`d * 2.0 - 1.0`) or GL's far plane (`d >= 1.0`) is a missed site: the frame goes
 # wrong without a compile error, so the gate reads the text. Shadow and cover maps keep GL's depth and are not named.
-WORLD_DEPTH = r"\b(?:uDepth|uSceneDepth|uGbDepth|uFbDepth|uTrigDepth)\b"
+WORLD_DEPTH = r"\b(?:uDepth|uDepthMs|uSceneDepth|uGbDepth|uFbDepth|uTrigDepth)\b"
 WORLD_READ = re.compile(r"\b(?:texture|textureLod|texelFetch)\s*\(\s*" + WORLD_DEPTH)
 GL_DECODE = r"\s*\*\s*2\.0\s*-\s*1\.0"
 GL_FAR = r"\s*(?:>=\s*1\.0|<\s*1\.0)"

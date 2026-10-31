@@ -93,7 +93,7 @@ public sealed unsafe partial class AlloyRenderer
              .Replace("uniform float uLocalSoftWorld;", "uniform float uAoDirect;\n#define uLocalSoftWorld uAoDirect\n", StringComparison.Ordinal);
         var push = new System.Text.StringBuilder("layout(push_constant) uniform CxBatch {");
         foreach (var (t, n) in VkGlsl.Push) push.Append(' ').Append(t).Append(' ').Append(n).Append(';');
-        push.Append(" };\n#define uBakeDepth (float(uSsaoOn) / ").Append(LightmapBake.VkDepthSteps).Append(".0)\n");
+        push.Append(" };\n#define uBakeDepth (float(uSsaoOn) / ").Append(LightmapBake.BakeDepthSteps).Append(".0)\n");
         gs = ShaderStages.AfterVersion(g.Replace("uniform float uBakeDepth;", "", StringComparison.Ordinal), push.ToString());
         return VkGlsl.Translate(v, f, VkPrograms.Units);
     }

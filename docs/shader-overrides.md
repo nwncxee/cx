@@ -309,8 +309,8 @@ rules:
   where the tree has one, twins included. It fails when Alloy cannot run a stage the engine can.
 
 **Depth.** Alloy stores the world's depth reversed: 1 at the near plane, 0 at the far plane and the sky. A content
-stage still sees GL's depth. Its `gl_FragCoord.z` and its reads of `texFBDepth` are rewritten to one minus the stored
-value, which is GL's window depth, so stock's `nearClip / (1.0 - d * fDepthToLinearModifier)` holds as it always
+stage still sees GL's depth. Its `gl_FragCoord.z` and its reads of `texFBDepth` give GL's window depth in every
+program, the world's and the shadow casters' alike, so stock's `nearClip / (1.0 - d * fDepthToLinearModifier)` holds as it always
 has. `m_proj` is the folded projection, the one that puts a vertex at the same depth as the world around it. A
 fragment half that linearises depth through `m_proj` instead of `clipParams` gets the wrong distance.
 
@@ -435,7 +435,7 @@ compiles may declare them too and reads 0 there.
 | `int cxFrame` | the frame counter, one per presented frame |
 | `int cxMain` | 1 while the program draws into the main view, 0 into an env-probe cube face or a reflection |
 | `int cxFresh` | 1 when this stage's history is not one frame old: its images were (re)made this frame, or its passes resumed after a frame they did not run |
-| `mat4 cxInvVp` | the main view's UNJITTERED inverse view-projection: clip -> world |
+| `mat4 cxInvVp` | the main view's UNJITTERED inverse view-projection: GL clip -> world, so a `uDepth` sample goes in as `1.0 - d` |
 | `mat4 cxPrevVp` | that view-projection one frame ago; equal to the current one after a frame Alloy did not draw |
 | `vec3 cxEye` | the main view's eye, world space |
 | `ivec2 cxView` | the main view's render size, in pixels |
