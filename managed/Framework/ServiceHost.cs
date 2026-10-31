@@ -105,6 +105,7 @@ public static class ServiceHost
             try { service.Initialize(log, hooks); }
             catch (Exception e) { log.Info($"host: {service.GetType().Name} init threw: {e.Message}"); }
         }
+        CX.Ui.TextRig.WarmStyles();   // after every Initialize: the styles are declared in the services' knob groups
 
         // ADR 0025: after every Initialize, so the walk covers every group declared this session -- a User
         // row without help, a layout knob that is not a dropdown, a Restart knob whose Boot moved, all fail here.
