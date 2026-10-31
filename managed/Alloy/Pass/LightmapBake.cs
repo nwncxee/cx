@@ -366,13 +366,16 @@ internal static unsafe partial class LightmapBake
         _defW = 0; _defRects.Clear();
     }
 
-    /// <summary>A fenced readback that has completed is mapped once and copied out over as many frames as its
-    /// slice budget takes, then sliced per rect and handed to the cache thread. Polled, never waited on.</summary>
+    /// <summary>A landed readback's copy-out, one slice a frame, until the last slice hands it to the cache thread.</summary>
     private static void CollectReadback()
     {
-        if (Draining) { CopySlice(); return; }
-        if (!Fenced) return;
-        if (!VkReadDone()) return;
+        if (Draining) CopySlice();
+    }
+
+    /// <summary>A fenced readback's submit finished: it is copied out over as many frames as its slice budget takes,
+    /// into a free ring buffer, or dropped as uncached when every one is busy.</summary>
+    private static void StartCopyOut()
+    {
         _vkb.ReadQueued = false;
         long total = (long)_uw * _uh * TexelBytes;
         int b = -1;
@@ -384,7 +387,6 @@ internal static unsafe partial class LightmapBake
         if (_readBufs[b] == null || _readBufs[b]!.Length < total)
             _readBufs[b] = GC.AllocateUninitializedArray<byte>((int)Math.Max(total, 1 << 20));
         _vkb.Draining = true; _uDone = 0; _uBuf = b;
-        CopySlice();
     }
 
     /// <summary>Bytes a frame of a sliced readback copy moves: a small share normally, a large one under the

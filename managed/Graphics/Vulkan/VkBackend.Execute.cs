@@ -44,6 +44,16 @@ internal sealed unsafe partial class VkBackend
     private bool Submit(CommandList list, int swap, bool beside = false)
     {
         if (!OnThread("Submit")) return false;
+        if (_inWhenDone) return Fault($"list {list.Name} was submitted from WhenDone work, which must not submit");
+        bool ran = RecordAndQueue(list, swap, beside);
+        CarryWhenDone(list, ran, list.Async && _async != null);
+        RunWhenDone();
+        return ran;
+    }
+
+    /// <summary><see cref="Submit(CommandList, int, bool)"/>'s recording and queue submit, on the device's thread.</summary>
+    private bool RecordAndQueue(CommandList list, int swap, bool beside)
+    {
         bool lane = list.Async && _async != null;
         if (lane && !UploadsAhead()) return false;
         if ((lane ? TakeSlot(_async!.Slots, _async.Pool, _async.Timeline, ref _async.Completed) : TakeSlot()) is not Slot s) return false;

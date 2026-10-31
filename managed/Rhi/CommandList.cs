@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -69,6 +70,10 @@ public readonly record struct LabelCmd(int Bytes);
 /// hand-over is for: a sampled texture, or a storage image, which wants a layout of its own.</summary>
 public readonly record struct ReadImagesCmd(int Images, Access Access);
 
+/// <summary>CPU work waiting on a list's submit: <see cref="Fn"/> gets <see cref="Arg"/> and whether the GPU ran the
+/// submit (false: it was refused, or the device went away first).</summary>
+public readonly record struct WhenDoneCall(Action<int, bool> Fn, int Arg);
+
 /// <summary>One pass's recorded commands: an 8-byte opcode word and a fixed record per command, spans copied in
 /// after it, in one reused byte arena. Recording allocates nothing once the arena reaches the pass's high water;
 /// a growth logs. With <see cref="Immediate"/> set, each command is submitted as it is recorded -- the A/B for a
@@ -83,6 +88,7 @@ public sealed class CommandList
     private readonly string _name;
     private readonly byte[] _nameZ;
     private readonly ExtenderLog? _log;
+    private readonly List<WhenDoneCall> _whenDone = new();
 
     /// <summary>Submit every command as it is recorded, instead of when the pass submits the list.</summary>
     public IDevice? Immediate;
@@ -120,13 +126,33 @@ public sealed class CommandList
     /// pass whose draws were recorded aside while the constants they read were gathered for the upload ahead of it.</summary>
     public void Append(CommandList other)
     {
+        other.TakeWhenDone(_whenDone);
         if (other._len == 0) return;
         other._buf.AsSpan(0, other._len).CopyTo(Reserve(other._len));
         Sent();
     }
 
-    /// <summary>Forget every recorded command; the arena stays.</summary>
-    public void Reset() { _len = 0; _sent = 0; Faulted = false; }
+    /// <summary>Forget every recorded command; the arena stays. Work no submit took is told it never ran.</summary>
+    public void Reset()
+    {
+        _len = 0; _sent = 0; Faulted = false;
+        int n = _whenDone.Count;
+        for (int i = 0; i < n; i++) _whenDone[i].Fn(_whenDone[i].Arg, false);
+        _whenDone.RemoveRange(0, n);
+    }
+
+    /// <summary>Run <paramref name="fn"/>(<paramref name="arg"/>, ran) on the device's thread once the GPU has finished
+    /// the next submit that takes this list, so everything recorded before it. Pass a cached delegate: this allocates
+    /// nothing once the list's queue reaches its high water.</summary>
+    public void WhenDone(Action<int, bool> fn, int arg) => _whenDone.Add(new WhenDoneCall(fn, arg));
+
+    /// <summary>The work <see cref="WhenDone"/> queued since the last call, moved into <paramref name="into"/> for the
+    /// submit that takes the list.</summary>
+    public void TakeWhenDone(List<WhenDoneCall> into)
+    {
+        into.AddRange(_whenDone);
+        _whenDone.Clear();
+    }
 
     /// <summary>The commands recorded since the last call, for a device to execute. Each command is handed out once.</summary>
     public CommandReader TakePending()

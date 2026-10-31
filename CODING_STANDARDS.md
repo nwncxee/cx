@@ -50,7 +50,7 @@ rule and the gates.
 - **The Vulkan queues submit and wait in `VkBackend.Sync.cs` alone (CX0004).** There are three timelines: the
   graphics one, which every submit there signals and every lifetime waits on, and the async compute queue's and the
   transfer queue's, which only a graphics submit's join waits on. A submit, a fence or a semaphore wait elsewhere is
-  refused: go through `QueueSubmit`, `AsyncSubmit`, `TransferSubmit`, `WaitFor` or `PassedNow`.
+  refused: go through `QueueSubmit`, `AsyncSubmit`, `TransferSubmit`, or `WaitFor`; CPU work that waits on a submit is `CommandList.WhenDone`.
 - **The device is the backend's (CX0005).** A `vk*` or `vma*` entry point outside `managed/Graphics/` is
   refused: record the work on the seam (`managed/Rhi/`). VMA's virtual blocks touch no device, so the family is
   the one exception, in the files CX0005's `Allowed` names -- the mesh arena, which places meshes in a number

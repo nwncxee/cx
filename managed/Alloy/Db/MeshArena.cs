@@ -169,13 +169,17 @@ public static unsafe partial class MeshArena
     }
 
     /// <summary>The arena's in-flight clock and the places waiting on it: the Vulkan backend's free stamp on
-    /// a session, and a hand-driven pair for the off-device check, which has no device to stamp against.</summary>
+    /// a session, and a hand-driven pair for the off-device check, which has no device to stamp against. Each
+    /// distinct stamp parked on is asked of the backend once (<see cref="Asks"/>, by generation).</summary>
     private sealed class FlightState
     {
         internal bool ByHand;
         internal long Now;
         internal long Done = -1;
+        internal long Asked = -1;
+        internal int AskGen;
         internal readonly List<Retired> Parked = new();
+        internal readonly List<(int Gen, long Stamp)> Asks = new();
     }
 
     private static FlightState _flight = new();
@@ -823,11 +827,7 @@ public static unsafe partial class MeshArena
                 _pendingFree.Add(i);
                 _unqueued++;
             }
-        if (_pendingFree.Count == 0)
-        {
-            GiveBackPassed();
-            return false;
-        }
+        if (_pendingFree.Count == 0) return false;
         for (int k = 0; k < _pendingFree.Count; k++)
         {
             int id = _pendingFree[k];
@@ -862,7 +862,6 @@ public static unsafe partial class MeshArena
             foreach (ulong k in dead) _byContent.Remove(k);
             _staleKeys += dead.Count;
         }
-        GiveBackPassed();
         return true;
     }
 
@@ -872,32 +871,51 @@ public static unsafe partial class MeshArena
     private static void Retire(ref Range r)
     {
         long stamp = FlightStamp();
-        if (stamp < 0)
+        FlightState fl = _flight;
+        if (stamp < 0 || fl.ByHand && stamp <= fl.Done)
         {
             GiveBack(r.Format, ref r.VA, ref r.IA0, ref r.IA1, ref r.IA2);
             return;
         }
-        _flight.Parked.Add(new Retired { Stamp = stamp, Format = r.Format, VA = r.VA, IA0 = r.IA0, IA1 = r.IA1, IA2 = r.IA2 });
+        fl.Parked.Add(new Retired { Stamp = stamp, Format = r.Format, VA = r.VA, IA0 = r.IA0, IA1 = r.IA1, IA2 = r.IA2 });
         r.VA = r.IA0 = r.IA1 = r.IA2 = VmaVirtualAllocation.Null;
+        if (stamp <= fl.Asked || fl.ByHand) return;
+        fl.Asked = stamp;
+        fl.Asks.Add((++fl.AskGen, stamp));
+        VkAskPassed(stamp, fl.AskGen);
     }
 
-    /// <summary>Every parked place whose work has finished goes back to its block, for the next mesh that fits
-    /// it. Under <see cref="_gate"/>, at the frame edge.</summary>
-    private static void GiveBackPassed()
+    /// <summary>The backend's answer to ask <paramref name="gen"/>: its stamp has passed, so every place parked at or
+    /// below it goes back; told it never ran, the device went first and took the command buffers with it. An ask
+    /// a reset replaced is dropped. On the device's thread, after a submit.</summary>
+    private static void OnFlightPassed(int gen, bool ran)
+    {
+        lock (_gate)
+        {
+            List<(int Gen, long Stamp)> asks = _flight.Asks;
+            int at = -1;
+            for (int i = 0; i < asks.Count && at < 0; i++) if (asks[i].Gen == gen) at = i;
+            if (at < 0) return;
+            long stamp = ran ? asks[at].Stamp : long.MaxValue;
+            asks.RemoveRange(0, at + 1);
+            GiveBackUpTo(stamp);
+        }
+    }
+
+    /// <summary>Every place parked at or below <paramref name="done"/> goes back to its block, for the next mesh
+    /// that fits it. Under <see cref="_gate"/>.</summary>
+    private static void GiveBackUpTo(long done)
     {
         List<Retired> parked = _flight.Parked;
-        // an area's unload parks thousands of places on ONE stamp, and asking the driver per place would be
-        // thousands of counter reads a frame: the lowest stamp found still in flight answers for every place
-        // at or above it, so each distinct stamp costs one read
-        long stalled = long.MaxValue;
         for (int i = parked.Count - 1; i >= 0; i--)
         {
-            if (parked[i].Stamp >= stalled) continue;
-            if (!FlightPassed(parked[i].Stamp)) { stalled = parked[i].Stamp; continue; }
+            if (parked[i].Stamp > done) continue;
             Retired t = parked[i];
             GiveBack(t.Format, ref t.VA, ref t.IA0, ref t.IA1, ref t.IA2);
-            parked.RemoveAt(i);
         }
+        int keep = 0;
+        for (int i = 0; i < parked.Count; i++) if (parked[i].Stamp > done) parked[keep++] = parked[i];
+        parked.RemoveRange(keep, parked.Count - keep);
     }
 
     /// <summary>One range's vertex block and its three index runs back to their blocks.</summary>
@@ -913,9 +931,6 @@ public static unsafe partial class MeshArena
     /// <summary>The submit a place given back now must outlive, -1 when nothing can be drawing from it.</summary>
     private static long FlightStamp() => _flight.ByHand ? _flight.Now : VkFlightStamp();
 
-    /// <summary>Has the submit <paramref name="stamp"/> names finished on the GPU?</summary>
-    private static bool FlightPassed(long stamp) => _flight.ByHand ? stamp <= _flight.Done : VkFlightPassed(stamp);
-
     /// <summary>The context is gone: forget every device name, never delete. The CPU bookkeeping stands --
     /// the virtual blocks still hold every placement and both mirrors still hold the bytes -- so everything
     /// goes back up at the next <see cref="Pump"/>, which is terminal-safe: nothing here is rebuilt from
@@ -925,7 +940,8 @@ public static unsafe partial class MeshArena
         lock (_gate)
         {
             VkForget();
-            GiveBackPassed();   // the command buffers that held the retired places died with the device
+            GiveBackUpTo(long.MaxValue);   // the command buffers that held the retired places died with the device
+            _flight.Asks.Clear();
             for (int f = 0; f < Formats; f++)
             {
                 Section s = _sect[f];
@@ -1089,7 +1105,7 @@ public static unsafe partial class MeshArena
     internal static void FlightForCheck(long now, long done)
     {
         // the clock moves, the places waiting on it stay: a new owner would drop them on the floor
-        lock (_gate) { _flight.ByHand = true; _flight.Now = now; _flight.Done = done; }
+        lock (_gate) { _flight.ByHand = true; _flight.Now = now; _flight.Done = done; GiveBackUpTo(done); }
     }
 
     /// <summary>What the next pump would send of <paramref name="f"/>'s section: how many spans are pending
