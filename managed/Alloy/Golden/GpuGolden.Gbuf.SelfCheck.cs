@@ -86,9 +86,9 @@ internal static partial class GpuGolden
                          uOut[o + 27] = CxGbufRead(w0, w1, g.viewDepth * 1.02, 0.0, x) ? 1.0 : 0.0;
                          uOut[o + 28] = CxGbufRead(uvec4(0u), w1, g.viewDepth, 0.0, x) ? 1.0 : 0.0;
                          float f = g.viewDepth / 1.025;
-                         uOut[o + 38] = CxGbufRead(w0, w1, f, CxGbufStepSlack(f, f * 1.05, f / 1.05, f, f), x) ? 1.0 : 0.0;
-                         uOut[o + 39] = CxGbufRead(w0, w1, f, CxGbufStepSlack(f, f * 3.0, f, f, f), x) ? 1.0 : 0.0;
-                         uOut[o + 40] = CxGbufStepSlack(10.0, 10.3, 9.8, 110.0, 9.9);
+                         uOut[o + 38] = CxGbufRead(w0, w1, f, CxDepthStepSlack(f, f * 1.05, f / 1.05, f, f), x) ? 1.0 : 0.0;
+                         uOut[o + 39] = CxGbufRead(w0, w1, f, CxDepthStepSlack(f, f * 3.0, f, f, f), x) ? 1.0 : 0.0;
+                         uOut[o + 40] = CxDepthStepSlack(10.0, 10.3, 9.8, 110.0, 9.9);
                          if (!ok) return;
                          uOut[o] = r.N.x; uOut[o + 1] = r.N.y; uOut[o + 2] = r.N.z; uOut[o + 3] = float(r.flags); uOut[o + 4] = r.viewDepth;
                          uOut[o + 5] = r.rough; uOut[o + 6] = r.spec; uOut[o + 7] = r.fresnel; uOut[o + 8] = r.coat; uOut[o + 9] = r.coatRough;

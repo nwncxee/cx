@@ -106,15 +106,7 @@ layout(location = 6) out uint oGb2;    // the geometric normal + the surface fad
 void CxGbufWrite(CxGbuf g) { CxGbufPack(g, oGb0, oGb1, oGb2); }
 #endif
 
-/// The ownership test's allowance for a coarse fragment, which wrote the view depth at its own centre for every
-/// pixel it covers: per axis the smaller depth step to the two neighbours, so a plane's own slope counts and a
-/// silhouette's jump does not. A full step where the centre sits half one off, so a grazing curve is covered.
-float CxGbufStepSlack(float z, float zx0, float zx1, float zy0, float zy1)
-{
-    return min(abs(zx0 - z), abs(z - zx1)) + min(abs(zy0 - z), abs(z - zy1));
-}
-
-/// <see cref="CxGbufStepSlack"/> at pixel <paramref name="p"/> off the frame depth buffer, linearised by
+/// <see cref="CxDepthStepSlack"/> at pixel <paramref name="p"/> off the frame depth buffer, linearised by
 /// <paramref name="proj"/>'s depth row as every reader linearises its own pixel.
 float CxGbufDepthSlack(sampler2D depth, ivec2 p, float z, mat4 proj)
 {
@@ -124,7 +116,7 @@ float CxGbufDepthSlack(sampler2D depth, ivec2 p, float z, mat4 proj)
     float zx1 = proj[3].z / (texelFetch(depth, clamp(p - ivec2(s.x, 0), ivec2(0), hi), 0).r * 2.0 - 1.0 + proj[2].z);
     float zy0 = proj[3].z / (texelFetch(depth, clamp(p + ivec2(0, s.y), ivec2(0), hi), 0).r * 2.0 - 1.0 + proj[2].z);
     float zy1 = proj[3].z / (texelFetch(depth, clamp(p - ivec2(0, s.y), ivec2(0), hi), 0).r * 2.0 - 1.0 + proj[2].z);
-    return CxGbufStepSlack(z, zx0, zx1, zy0, zy1);
+    return CxDepthStepSlack(z, zx0, zx1, zy0, zy1);
 }
 
 /// The reader's header: flags, normal, view depth, the lobe's scalars and the slot -- all G0, so a reader that

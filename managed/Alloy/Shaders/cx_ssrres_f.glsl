@@ -25,8 +25,8 @@ uniform float uProbeMips;    // the probe's mips (0 = no probe)
 uniform int uShift;          // log2 of the trace's block
 uniform int uFrame;          // the noise phase
 
-/// How far (a share of view depth) a ray's origin may sit off this pixel and its hit still stand for it, faded
-/// over the range: a neighbour on another surface saw another reflection.
+/// How far (a share of view depth) a ray's origin may sit off this pixel's plane and its hit still stand for it,
+/// faded over the range: a neighbour on another surface saw another reflection.
 const vec2 CX_SSR_JOIN = vec2(0.01, 0.03);
 /// The neighbours whose hits a pixel reuses beside its own texel's, turned a quarter per drawn step.
 const ivec2 CX_SSR_REUSE[3] = ivec2[3](ivec2(1, 0), ivec2(-1, 1), ivec2(0, -1));
@@ -58,6 +58,13 @@ void main()
     if (gate <= 0.0) return;
     vec2 size = vec2(textureSize(uHiZ, 0)), uv0 = (vec2(px) + 0.5) / size;
     float k = texelFetch(uHiZ, px, 0).r;
+    // inverse depth's step per pixel along this pixel's plane: each axis' smaller one-sided step, never a silhouette's
+    ivec2 zl = textureSize(uHiZ, 0) - 1;
+    vec2 g = vec2(CxDepthStepSlack(k, texelFetch(uHiZ, min(px + ivec2(1, 0), zl), 0).r,
+                                      texelFetch(uHiZ, max(px - ivec2(1, 0), ivec2(0)), 0).r, k, k),
+                  CxDepthStepSlack(k, k, k, texelFetch(uHiZ, min(px + ivec2(0, 1), zl), 0).r,
+                                         texelFetch(uHiZ, max(px - ivec2(0, 1), ivec2(0)), 0).r));
+    int blk = 1 << uShift;
     vec3 o = CxViewPos(uInvProj, uv0, texelFetch(uDepth, px, 0).r);
     vec3 N = normalize(mat3(uView) * n), V = -normalize(o);
     float NoV = max(dot(N, V), 1e-4), a = max(rough, 1e-3), perceptual = sqrt(a);
@@ -74,8 +81,12 @@ void main()
     {
         ivec2 off = j == 0 ? ivec2(0) : CX_SSR_REUSE[j - 1];
         for (int q = 0; q < turn; q++) off = ivec2(-off.y, off.x);
-        vec4 t = texelFetch(uTrace, clamp(base + off, ivec2(0), lim), 0);
-        float join = 1.0 - smoothstep(CX_SSR_JOIN.x, CX_SSR_JOIN.y, abs(t.w - k) / k);
+        ivec2 tb = clamp(base + off, ivec2(0), lim);
+        vec4 t = texelFetch(uTrace, tb, 0);
+        if (!(t.w > 0.0)) continue;   // no pixel of that block reflects: it traced nothing
+        // the ray left from some pixel of that block, so the plane may span this far to it
+        vec2 lo = vec2(tb * blk - px), reach = max(abs(lo), abs(lo + float(blk - 1)));
+        float join = 1.0 - smoothstep(CX_SSR_JOIN.x, CX_SSR_JOIN.y, CxSsrJoinGap(k, t.w, g, reach));
         if (!(join > 0.0)) continue;
         seen += join;
         if (!(t.z > 0.0)) continue;
