@@ -51,8 +51,13 @@ rule and the gates.
   graphics one, which every submit there signals and every lifetime waits on, and the async compute queue's and the
   transfer queue's, which only a graphics submit's join waits on. A submit, a fence or a semaphore wait elsewhere is
   refused: go through `QueueSubmit`, `AsyncSubmit`, `TransferSubmit`, `WaitFor` or `PassedNow`.
-- **The device is the backend's.** Vulkan and VMA calls that reach the device live under `managed/Graphics/`;
-  VMA's virtual blocks touch no device and may be named where they keep books (the mesh arena).
+- **The device is the backend's (CX0005).** A `vk*` or `vma*` entry point outside `managed/Graphics/` is
+  refused: record the work on the seam (`managed/Rhi/`). VMA's virtual blocks touch no device, so the family is
+  the one exception, in the files CX0005's `Allowed` names -- the mesh arena, which places meshes in a number
+  line. Vulkan's enums, structs and handle types are data, not calls, and are free anywhere.
+- **A render target's alias lane is an `AliasLanes` member.** Two targets share one allocation when their
+  `Alias` strings are equal, so a lane is declared once, in frame order, and never spelled at the call site;
+  `tools/gates/alias-lanes.sh` refuses a literal, the goldens excepted.
 - **A thread blocks through `BlockingWait.Sleep(ms, why)`.** The game's main thread never blocks.
 - **No tasks.** The extender has no async path, so the `Task` and `ValueTask` types are banned.
 - **The environment is read through `HostEnv`.** A setting is a knob, never an environment variable (ADR 0025).

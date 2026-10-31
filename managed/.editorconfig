@@ -10,3 +10,5 @@ dotnet_diagnostic.CX0002.severity = error
 dotnet_diagnostic.CX0003.severity = error
 # A queue submit, fence or semaphore wait outside VkBackend.Sync.cs.
 dotnet_diagnostic.CX0004.severity = error
+# A Vulkan or VMA entry point outside managed/Graphics/.
+dotnet_diagnostic.CX0005.severity = error
