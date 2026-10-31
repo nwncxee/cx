@@ -90,7 +90,7 @@ vec3 vViewToSurface_n;
 vec3 CxConClipV()
 {
     float a = m_proj[2][2], b = m_proj[3][2];
-    float n = b / (a - 1.0), f = b / (a + 1.0);
+    float n = b / (a + 1.0), f = b / a;
     return vec3(n, f, 1.0 - n / f);
 }
 #define clipParams (CxConClipV())

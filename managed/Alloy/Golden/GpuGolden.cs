@@ -50,6 +50,7 @@ internal static partial class GpuGolden
         VmaMoreSelfCheck(vk, check, log);
         WhenDoneSelfCheck(vk, check, log);
         ReversedZSelfCheck(vk, check, log);
+        ContentClipSelfCheck(vk, check, log);
     }
 
     /// <summary>The version line every golden stage opens with, and the one the shipped libraries open with.</summary>

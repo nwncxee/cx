@@ -233,7 +233,7 @@ int CxConBound(int bit) { return (int(uDraw[vDraw].pbr.w) & bit) != 0 ? 1 : 0; }
 vec3 CxConClip()
 {
     float a = m_proj[2][2], b = m_proj[3][2];
-    float n = b / (a - 1.0), f = b / (a + 1.0);
+    float n = b / (a + 1.0), f = b / a;
     return vec3(n, f, 1.0 - n / f);
 }
 vec2 CxConSphereUV(vec3 n)
