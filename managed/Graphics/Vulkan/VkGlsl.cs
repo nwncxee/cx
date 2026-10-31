@@ -14,7 +14,11 @@ internal readonly record struct VkOpaque(string Name, string Type, uint Set, uin
 
 /// <summary>One loose uniform gathered into <see cref="VkGlsl.LooseBlock"/>: its type, name and array suffix
 /// (<c>""</c> or a literal <c>"[6]"</c>).</summary>
-internal readonly record struct VkLoose(string Type, string Name, string Array);
+internal readonly record struct VkLoose(string Type, string Name, string Array)
+{
+    /// <summary>Elements the member holds: 1 for a scalar, the literal inside <see cref="Array"/>'s brackets otherwise.</summary>
+    internal int Count => Array.Length == 0 ? 1 : int.Parse(Array.AsSpan(1, Array.Length - 2), System.Globalization.CultureInfo.InvariantCulture);
+}
 
 /// <summary>A program's two stages as Vulkan GLSL, what they declare, and why not when <see cref="Error"/> is set.</summary>
 internal sealed class VkProgramText
