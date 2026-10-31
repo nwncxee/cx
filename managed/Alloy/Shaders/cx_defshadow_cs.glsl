@@ -84,7 +84,7 @@ void main()
         float ndcZ = texelFetch(uGbDepth, p, 0).r * 2.0 - 1.0;
         float viewDepth = uProj[3].z / (ndcZ + uProj[2].z);
         CxGbuf g;
-        if (CxGbufReadHead(texelFetch(uGb0, p, 0), viewDepth, g))
+        if (CxGbufReadHead(texelFetch(uGb0, p, 0), viewDepth, CxGbufDepthSlack(uGbDepth, p, viewDepth, uProj), g))
         {
             cxRecvShadow = (g.flags & CX_GB_NOSHADOW) != 0u ? 0.0 : 1.0;
             // shadow.cubedist and the receiver's own flag, exactly as the walk computes them: a pixel that owes

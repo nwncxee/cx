@@ -9,7 +9,7 @@ namespace CX.Alloy;
 
 /// <summary>
 /// The goldens that have to run on a GPU to mean anything: the lightmap encoder against the driver's BC6H/BC7 decoder,
-/// the G-buffer lanes, the parallax march, the shading rate, the compute bloom against the fragment chain -- each the
+/// the G-buffer lanes, the reflection join, the parallax march, the shading rate, the compute bloom against the fragment chain -- each the
 /// shipped GLSL as a compute stage -- and the transfer queue's fills against hand-written bytes. Each compares what the
 /// hardware answered with an oracle written here; the transfer queue's copy count is the backend's own, held to a literal.
 /// </summary>
@@ -39,6 +39,7 @@ internal static partial class GpuGolden
     {
         ParallaxSelfCheck(vk, check, log);
         GbufSelfCheck(vk, check, log);
+        SsrJoinSelfCheck(vk, check, log);
         LightmapSelfCheck(vk, check, log);
         VrsSelfCheck(vk, check, log);
         PostSelfCheck(vk, check, log);

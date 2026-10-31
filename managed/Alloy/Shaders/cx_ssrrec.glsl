@@ -28,13 +28,44 @@ vec3 CxOctDecode(vec2 p)
     return normalize(n);
 }
 
+/// A depth test's allowance for a coarse fragment, which wrote one depth, its centre's, for every pixel it covers:
+/// per axis the smaller step from <paramref name="z"/> to its two neighbours, so a plane's own slope counts and a
+/// silhouette's jump does not. A full step where the centre sits half one off, so a grazing curve is covered.
+float CxDepthStepSlack(float z, float zx0, float zx1, float zy0, float zy1)
+{
+    return min(abs(zx0 - z), abs(z - zx1)) + min(abs(zy0 - z), abs(z - zy1));
+}
+
+/// <see cref="CxDepthStepSlack"/> over hiZ level 0 (1 / view depth) at <paramref name="p"/>, as a share of
+/// <paramref name="k"/>, the inverse depth there: the record's own test is a share too.
+float CxHiZSlack(sampler2D hiZ, ivec2 p, float k)
+{
+    ivec2 hi = textureSize(hiZ, 0) - 1;
+    float s = CxDepthStepSlack(k, texelFetch(hiZ, clamp(p + ivec2(1, 0), ivec2(0), hi), 0).r,
+                                  texelFetch(hiZ, clamp(p - ivec2(1, 0), ivec2(0), hi), 0).r,
+                                  texelFetch(hiZ, clamp(p + ivec2(0, 1), ivec2(0), hi), 0).r,
+                                  texelFetch(hiZ, clamp(p - ivec2(0, 1), ivec2(0), hi), 0).r);
+    return s / max(k, 1e-12);
+}
+
+/// How far (a share of <paramref name="k"/>) a ray origin's inverse depth <paramref name="tw"/> sits off this
+/// pixel's plane: inverse depth is linear in screen space across a plane, so <paramref name="g"/> (its step per
+/// pixel on each axis) times <paramref name="reach"/> (the farthest the origin can be, in pixels) is no gap.
+float CxSsrJoinGap(float k, float tw, vec2 g, vec2 reach)
+{
+    return max(abs(tw - k) - dot(g, reach), 0.0) / max(k, 1e-12);
+}
+
 /// The record at full-res texel p, if it belongs to what the frame shows there (NaN-safe: garbage fails). hiZ level 0
 /// is 1 / view depth.
 bool CxRecRead(sampler2D recN, sampler2D recW, sampler2D hiZ, ivec2 p, out vec3 n, out float rough, out vec3 w)
 {
     vec4 r = texelFetch(recN, p, 0);
     n = vec3(0.0); rough = 1.0; w = vec3(0.0);
-    if (!(abs(r.w * texelFetch(hiZ, p, 0).r - 1.0) < CX_SSR_RECORD)) return false;
+    float k = texelFetch(hiZ, p, 0).r;
+    float e = abs(r.w * k - 1.0);
+    // the neighbours only where the plain test fails: the trace's march calls this once per candidate hit
+    if (!(e < CX_SSR_RECORD) && !(e < CX_SSR_RECORD + CxHiZSlack(hiZ, p, k))) return false;
     n = CxOctDecode(r.xy);
     rough = r.z;
     w = texelFetch(recW, p, 0).rgb;
