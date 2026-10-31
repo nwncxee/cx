@@ -205,8 +205,8 @@ internal static unsafe partial class PostStack
     {
         if (!s.A.IsNull && s.W == w && s.H == h) return true;
         vk.Destroy(s.A); vk.Destroy(s.B);
-        s.A = PostChainVk.Target(vk, w, h, "vk post stack 0");
-        s.B = PostChainVk.Target(vk, w, h, "vk post stack 1");
+        s.A = PostChainVk.Target(vk, w, h, "vk post stack 0", alias: AliasLanes.Wide);
+        s.B = PostChainVk.Target(vk, w, h, "vk post stack 1", alias: AliasLanes.Second);
         s.W = w; s.H = h;
         if (!s.A.IsNull && !s.B.IsNull) return true;
         log.Always($"PostStack: the {w}x{h} stack pair was REFUSED on Vulkan (logged above) -- the frame resolves without its stages");
@@ -241,7 +241,7 @@ internal static unsafe partial class PostStack
         {
             vk.Destroy(s.Vel);
             s.Vel = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rg16F, w, h, 1, 1, 1, 1,
-                                                 ImageUse.Sampled | ImageUse.ColorTarget, "vk velocity"));
+                                                 ImageUse.Sampled | ImageUse.ColorTarget, "vk velocity", AliasLanes.Record));
             s.VelW = w; s.VelH = h;
             if (s.Vel.IsNull) return false;
         }

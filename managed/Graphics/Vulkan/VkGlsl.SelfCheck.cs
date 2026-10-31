@@ -68,7 +68,10 @@ internal static partial class VkGlsl
         var check = new Checker(log, "VkGlsl.SelfCheck");
         VkProgramText loose = VkGlsl.Translate(LooseVs.Replace("\r\n", "\n"), LooseFs.Replace("\r\n", "\n"), FixtureUnits);
         Rules(check, loose);
+        uint cap = VkGlsl.BindlessCap;
+        VkGlsl.BindlessCap = 11;
         VkProgramText bl = VkGlsl.Translate(BindlessVs.Replace("\r\n", "\n"), BindlessFsText.Replace("\r\n", "\n"), FixtureUnits);
+        VkGlsl.BindlessCap = cap;
         Bindless(check, bl);
         Errors(check);
         OpaqueList(check);
@@ -110,7 +113,8 @@ internal static partial class VkGlsl
     private static void Bindless(Checker check, VkProgramText r)
     {
         check.Expect(r.Error == null, $"the bindless fixture translates ({r.Error})");
-        check.Expect(r.Fs.Contains("#define uTex cxTex2D[nonuniformEXT((uTexH[(vDraw << 3) + 0]).x)]"), "a handle construction indexes set 1's array by the handle's low word");
+        check.Expect(r.Fs.Contains("#define uTex cxTex2D[nonuniformEXT(cxTex2DAt((uTexH[(vDraw << 3) + 0]).x))]"), "a handle construction indexes set 1's array by the handle's low word");
+        check.Expect(r.Fs.Contains("uint cxTex2DAt(uint i) { return i < 11u ? i : 0u; }"), "an index past the descriptors the device seats samples the zero texel");
         check.Expect(!r.Fs.Contains("GL_ARB_bindless_texture") && r.Fs.Contains("#extension GL_EXT_nonuniform_qualifier : require")
                   && r.Fs.Contains("layout(set = 1, binding = 0) uniform sampler2D cxTex2D[];"), "the ARB extension goes, the array and its qualifier's extension come");
         check.Expect(r.Opaques.Contains(new VkOpaque("CxTexH", "CxTexH", 0, 3, VkBindKind.StorageBlock)), "a storage block's binding is reported");

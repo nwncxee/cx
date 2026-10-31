@@ -450,7 +450,7 @@ internal static unsafe class PostChainVk
         s.Levels = Math.Max(levels, 1);
         for (int i = 0; i < s.Levels; i++)
         {
-            s.Bloom[i] = Target(vk, LevelW(s, i), LevelH(s, i), $"vk bloom {i}", ImageUse.Storage | ImageUse.CopySrc);
+            s.Bloom[i] = Target(vk, LevelW(s, i), LevelH(s, i), $"vk bloom {i}", ImageUse.Storage | ImageUse.CopySrc, i == 0 ? AliasLanes.Weight : null);
             if (s.Bloom[i].IsNull)
             {
                 s.Levels = 0;
@@ -462,7 +462,7 @@ internal static unsafe class PostChainVk
     }
 
     /// <summary>A half-float post image a pass renders and a later one samples, with <paramref name="extra"/> uses.</summary>
-    internal static ImageId Target(VkBackend vk, int w, int h, string label, ImageUse extra = ImageUse.None)
+    internal static ImageId Target(VkBackend vk, int w, int h, string label, ImageUse extra = ImageUse.None, string? alias = null)
         => vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, w, h, 1, 1, 1, 1,
-                                       ImageUse.Sampled | ImageUse.ColorTarget | extra, label));
+                                       ImageUse.Sampled | ImageUse.ColorTarget | extra, label, alias));
 }

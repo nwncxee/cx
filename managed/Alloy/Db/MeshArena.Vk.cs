@@ -7,15 +7,20 @@ namespace CX.Alloy.Db;
 
 public static unsafe partial class MeshArena
 {
-    /// <summary>The arena on Vulkan: one vertex buffer per format and the shared index buffer, filled from the same
-    /// CPU mirrors GL's are, on their own upload marks. Replaced whole when the device is.</summary>
+    /// <summary>The arena on Vulkan: one vertex buffer per format and the shared index buffer, filled from the
+    /// CPU mirrors span by dirty span. Replaced whole when the device is.</summary>
     private sealed class VkArenaState
     {
         public VkBackend? Dev;
         public readonly BufferId[] Vbo = new BufferId[Formats];
-        public readonly int[] Uploaded = new int[Formats], Capacity = new int[Formats];
+        /// <summary>Vertices each buffer has room for, and whether it has been filled at least once -- which
+        /// is the section's residency gate.</summary>
+        public readonly int[] Capacity = new int[Formats];
+        /// <inheritdoc cref="Capacity"/>
+        public readonly bool[] Filled = new bool[Formats];
         public BufferId Ebo;
-        public int IUploaded, ICapacity;
+        public int ICapacity;
+        public bool IFilled;
     }
 
     private static VkArenaState _vk = new();
@@ -58,70 +63,99 @@ public static unsafe partial class MeshArena
         ], StrideBytes(f), $"arena {f}");
     }
 
-    /// <summary>Bring Vulkan's copies up to the mirrors: the appended tail, or the whole mirror into a new buffer
-    /// when it outgrew the old (which dies after the frames in flight). Inside <see cref="Pump"/>, under the lock.</summary>
+    /// <summary>Bring Vulkan's copies up to the mirrors: every span a placement, a reused gap or a lost
+    /// context marked dirty -- a high-water mark would not do, since a mesh placed in a freed gap changes
+    /// bytes BELOW it -- or the whole mirror into a new buffer when it outgrew the old (which dies after the
+    /// frames in flight). Inside <see cref="Pump"/>, under the lock.</summary>
     private static void PumpVk()
     {
-        // never makes the device: a pump at boot runs before GL can name the GPU the device is picked by
+        // never makes the device: a pump at boot runs before anything can name the GPU the device is picked by
         if (!Renderer.OnVulkan || AlloyDevice.VulkanMade is not VkBackend vk) return;
-        if (_vk.Dev != vk) _vk = new VkArenaState { Dev = vk };
+        if (_vk.Dev != vk)
+        {
+            _vk = new VkArenaState { Dev = vk };
+            for (int f = 0; f < Formats; f++) _sect[f].Dirty.All(_sect[f].High);
+            _idx.Dirty.All(_idx.High);
+        }
         VkArenaState v = _vk;
         for (int f = 0; f < Formats; f++)
         {
             Section s = _sect[f];
             int stride = StrideOf[f];
-            if (s.Used == 0 || v.Uploaded[f] == s.Used) continue;
-            if (v.Vbo[f].IsNull || v.Capacity[f] < s.Used)
+            if (s.High == 0) continue;
+            if (v.Vbo[f].IsNull || v.Capacity[f] < s.High)
             {
                 vk.Destroy(v.Vbo[f]);
                 v.Capacity[f] = s.Mirror.Length / stride;
                 v.Vbo[f] = vk.CreateBuffer(new BufferDesc((long)s.Mirror.Length * 4, BufferUse.Vertex, MemoryKind.Device, $"arena {(Fmt)f} vertices"));
-                v.Uploaded[f] = 0;
+                v.Filled[f] = false;
                 if (v.Vbo[f].IsNull) { v.Capacity[f] = 0; continue; }
+                s.Dirty.All(s.High);   // a new buffer holds nothing of the old one
             }
-            int from = Math.Min(v.Uploaded[f], s.Used);
-            vk.Upload(v.Vbo[f], (long)from * stride * 4,
-                      MemoryMarshal.AsBytes(s.Mirror.AsSpan((int)((long)from * stride), (s.Used - from) * stride)));
-            v.Uploaded[f] = s.Used;
+            for (int k = 0; k < s.Dirty.Count; k++)
+            {
+                (int from, int to) = s.Dirty.At(k);
+                if (to > v.Capacity[f]) to = v.Capacity[f];
+                if (to <= from) continue;
+                vk.Upload(v.Vbo[f], (long)from * stride * 4,
+                          MemoryMarshal.AsBytes(s.Mirror.AsSpan((int)((long)from * stride), (to - from) * stride)));
+                v.Filled[f] = true;
+            }
+            s.Dirty.Clear();
         }
-        if (_iUsed == 0 || v.IUploaded == _iUsed) return;
-        if (v.Ebo.IsNull || v.ICapacity < _iUsed)
+        if (_idx.High == 0) return;
+        if (v.Ebo.IsNull || v.ICapacity < _idx.High)
         {
             vk.Destroy(v.Ebo);
-            v.ICapacity = _iMirror.Length;
-            v.Ebo = vk.CreateBuffer(new BufferDesc((long)_iMirror.Length * 2, BufferUse.Index, MemoryKind.Device, "arena indices"));
-            v.IUploaded = 0;
+            v.ICapacity = _idx.Mirror.Length;
+            v.Ebo = vk.CreateBuffer(new BufferDesc((long)_idx.Mirror.Length * 2, BufferUse.Index, MemoryKind.Device, "arena indices"));
+            v.IFilled = false;
             if (v.Ebo.IsNull) { v.ICapacity = 0; return; }
+            _idx.Dirty.All(_idx.High);
         }
-        int i0 = Math.Min(v.IUploaded, _iUsed);
-        vk.Upload(v.Ebo, (long)i0 * 2, MemoryMarshal.AsBytes(_iMirror.AsSpan(i0, _iUsed - i0)));
-        v.IUploaded = _iUsed;
+        for (int k = 0; k < _idx.Dirty.Count; k++)
+        {
+            (int from, int to) = _idx.Dirty.At(k);
+            if (to > v.ICapacity) to = v.ICapacity;
+            if (to <= from) continue;
+            vk.Upload(v.Ebo, (long)from * 2, MemoryMarshal.AsBytes(_idx.Mirror.AsSpan(from, to - from)));
+            v.IFilled = true;
+        }
+        _idx.Dirty.Clear();
     }
 
     /// <summary>A dynamic range's moved vertices into Vulkan's copy (<see cref="DynUpload"/>); false when the
-    /// range's section has not reached the device yet, whose append upload carries the bytes anyway.</summary>
+    /// range's section has not reached the device yet, whose own upload carries the bytes anyway.</summary>
     private static bool DynUploadVk(in Range rr, int stride)
     {
         VkArenaState v = _vk;
         int f = (int)rr.Format;
-        if (v.Dev == null || v.Vbo[f].IsNull || v.Uploaded[f] < rr.Base + rr.NV) return false;
+        if (v.Dev == null || v.Vbo[f].IsNull || !v.Filled[f] || v.Capacity[f] < rr.Base + rr.NV) return false;
         v.Dev.Upload(v.Vbo[f], (long)rr.Base * stride * 4,
                      MemoryMarshal.AsBytes(_sect[f].Mirror.AsSpan((int)((long)rr.Base * stride), rr.NV * stride)));
         return true;
     }
+
+    /// <summary>What a freed place must outlive, on the backend's own free stamp -- the same one it defers its
+    /// object frees on. -1 when nothing can be drawing those bytes: no Vulkan device, or not the one the
+    /// arena's buffers live on, so nothing of the arena has been recorded against it.</summary>
+    private static long VkFlightStamp()
+        => Renderer.OnVulkan && AlloyDevice.VulkanMade is VkBackend vk && _vk.Dev == vk ? vk.FreeStamp : -1;
+
+    /// <summary>Has the work a parked place was stamped against finished? True once the device it was stamped
+    /// on is gone: its command buffers went with it.</summary>
+    private static bool VkFlightPassed(long stamp)
+        => AlloyDevice.VulkanMade is not VkBackend vk || _vk.Dev != vk || vk.FreePassed(stamp);
+
+    /// <summary>The device is gone: drop every buffer id with it, so no reader short-circuits on a name that
+    /// died and nothing is destroyed through a dead device. Under <see cref="_gate"/>.</summary>
+    private static void VkForget() => _vk = new VkArenaState();
 
     /// <summary>Is a format's geometry on the device? True once its vertex buffer and the shared index buffer
     /// both hold an upload, so every reader's "uploaded yet" gate reads the same.</summary>
     private static bool VkResident(Fmt f)
     {
         VkArenaState v = _vk;
-        return !v.Vbo[(int)f].IsNull && !v.Ebo.IsNull && v.Uploaded[(int)f] != 0;
-    }
-
-    /// <summary>A compaction rewrote the mirrors in place: Vulkan's copies go back up whole at the next pump.</summary>
-    private static void VkCompacted()
-    {
-        Array.Clear(_vk.Uploaded);
-        _vk.IUploaded = 0;
+        return !v.Vbo[(int)f].IsNull && v.Filled[(int)f] && !v.Ebo.IsNull && v.IFilled;
     }
 }

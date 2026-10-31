@@ -333,12 +333,12 @@ public sealed unsafe partial class AlloyRenderer
         s.ColLevels = SsrLevels(cw, ch);
         s.Ow = (w + blk - 1) >> shift; s.Oh = (h + blk - 1) >> shift;
         const ImageUse attach = ImageUse.Sampled | ImageUse.ColorTarget, store = ImageUse.Sampled | ImageUse.Storage;
-        s.RecN = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, w, h, 1, 1, 1, 1, attach, "vk ssr record n"));
-        s.RecW = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.R11G11B10F, w, h, 1, 1, 1, 1, attach, "vk ssr record w"));
-        s.Pyr = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.R32F, w, h, 1, s.Levels, 1, 1, store, "vk ssr hi-Z"));
-        s.Col = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, cw, ch, 1, s.ColLevels, 1, 1, store, "vk ssr colour"));
-        s.Out = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba32F, s.Ow, s.Oh, 1, 1, 1, 1, attach, "vk ssr trace"));
-        s.Resolved = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, w, h, 1, 1, 1, 1, attach, "vk ssr resolve"));
+        s.RecN = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, w, h, 1, 1, 1, 1, attach, "vk ssr record n", AliasLanes.Record));
+        s.RecW = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.R11G11B10F, w, h, 1, 1, 1, 1, attach, "vk ssr record w", AliasLanes.Weight));
+        s.Pyr = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.R32F, w, h, 1, s.Levels, 1, 1, store, "vk ssr hi-Z", AliasLanes.Second));
+        s.Col = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, cw, ch, 1, s.ColLevels, 1, 1, store, "vk ssr colour", AliasLanes.Small));
+        s.Out = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba32F, s.Ow, s.Oh, 1, 1, 1, 1, attach, "vk ssr trace", AliasLanes.Narrow));
+        s.Resolved = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, w, h, 1, 1, 1, 1, attach, "vk ssr resolve", AliasLanes.Wide));
         s.Hist0 = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, w, h, 1, 1, 1, 1, attach, "vk ssr history 0"));
         s.Hist1 = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, w, h, 1, 1, 1, 1, attach, "vk ssr history 1"));
         s.W = w; s.H = h; s.ColShift = colShift; s.BlkShift = shift;

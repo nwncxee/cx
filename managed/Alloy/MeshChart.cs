@@ -117,7 +117,7 @@ internal static unsafe partial class MeshChart
     private static readonly SlotJobTable<Job, Entry> _jobs = new(MaxEntries, MaxPending);
     private static Dictionary<long, Entry> _table => _jobs.Entries;
 
-    /// <summary>Bumped by every edit that can change a <see cref="Range"/> answer (file, drop, compaction, the
+    /// <summary>Bumped by every edit that can change a <see cref="Range"/> answer (file, drop, the
     /// world edge): a <see cref="RangeMemo"/> stamped with an older one re-probes. Starts at 1 so a
     /// zeroed memo is stale.</summary>
     private static int _epoch = 1;
@@ -546,7 +546,7 @@ internal static unsafe partial class MeshChart
     {
         if (!ArenaResident) { baseVertex = 0; off = 0; count = 0; level = 0; return false; }
         long key = KeyOf(slot, item);
-        // the arena's epoch is part of this one: a compaction there rebases every offset a memo cached
+        // the arena's epoch is part of this one: a free there retires every offset a memo cached
         int epoch = _epoch + CX.Alloy.Db.MeshArena.Epoch;
         if (m.Epoch != epoch || m.Key != key || m.Lod != lod)
         {

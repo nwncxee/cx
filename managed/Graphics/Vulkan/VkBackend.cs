@@ -32,11 +32,16 @@ internal sealed unsafe partial class VkBackend : IDevice
         public long UndoAt = -1;
         /// <summary>A command wrote it since its last barrier: the next use in the same layout still waits on one.</summary>
         public bool Written;
+        /// <summary>An alias member written this frame and not read since, so its group's memory holds contents
+        /// another member's use would discard. A read, a claim and the frame's end clear it.</summary>
+        public bool Live;
         /// <summary>The async recording that last reached it.</summary>
         public long AsyncRec = -1;
         /// <summary>Its queued barrier's place in the batch numbered <see cref="BarBatch"/>.</summary>
         public int BarAt;
         public long BarBatch = -1;
+        /// <summary>The alias group whose allocation it is bound into; null for an image with memory of its own.</summary>
+        public AliasGroup? Group;
     }
 
     private sealed class VkBuf(VkBuffer buffer, VmaAllocation alloc, BufferDesc desc)
@@ -145,6 +150,8 @@ internal sealed unsafe partial class VkBackend : IDevice
     private readonly List<(long At, Action Free)> _dead = new();
     private long _submits;
     private int _faults;
+    /// <summary>The reason the last refusal gave, whether or not it still reached the log.</summary>
+    private string _lastFault = "";
 
     public DeviceCaps Caps { get; }
 
@@ -410,6 +417,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         _transfer = transferFamily >= 0 ? OpenLane((uint)transferFamily, "transfer") : null;
 
         _vma = CreateAllocator(inst);
+        _stagePool = MakeStagePool();
         var pci = new VkCommandPoolCreateInfo { flags = VkCommandPoolCreateFlags.ResetCommandBuffer, queueFamilyIndex = family };
         VkCommandPool pool;
         Check(_vkd.vkCreateCommandPool(&pci, &pool), "vkCreateCommandPool");
@@ -426,6 +434,8 @@ internal sealed unsafe partial class VkBackend : IDevice
         OpenTiming(in props);
         _setLayout = MakeSetLayout();
         (_bindlessLayout, _bindlessPool, _bindlessSet, _bindlessCap) = MakeBindless();
+        // every stage translated from here on bounds its bindless indices by what this device actually seats
+        VkGlsl.BindlessCap = _bindlessCap;
         VkDescriptorSetLayout* sl = stackalloc VkDescriptorSetLayout[2] { _setLayout, _bindlessLayout };
         var push = new VkPushConstantRange { stageFlags = VkShaderStageFlags.All, offset = 0, size = PushConstants.Bytes };
         var plci = new VkPipelineLayoutCreateInfo { setLayoutCount = 2, pSetLayouts = sl, pushConstantRangeCount = 1, pPushConstantRanges = &push };
@@ -473,27 +483,10 @@ internal sealed unsafe partial class VkBackend : IDevice
         return t;
     }
 
-    /// <summary>The device takes VK_EXT_memory_budget, so <see cref="DeviceLocalKib"/> reads the driver's own figures.</summary>
+    /// <summary>The device takes VK_EXT_memory_budget, so <see cref="DeviceLocalBytes"/> reads the driver's own figures.</summary>
     private bool _memBudget;
     /// <inheritdoc cref="_memBudget"/>
     public bool MemoryBudget => _memBudget;
-
-    /// <summary>The device-local heaps' size and what is left of their budget, KiB: the driver's with VK_EXT_memory_budget,
-    /// else the allocator's estimate over its own blocks. Any thread that owns the device.</summary>
-    public void DeviceLocalKib(out long freeKib, out long totalKib)
-    {
-        freeKib = 0; totalKib = 0;
-        VkPhysicalDeviceMemoryProperties mp;
-        _vki.vkGetPhysicalDeviceMemoryProperties(_phys, &mp);
-        VmaBudget* b = stackalloc VmaBudget[(int)VK_MAX_MEMORY_HEAPS];
-        Vma.vmaGetHeapBudgets(_vma, b);
-        for (int i = 0; i < mp.memoryHeapCount; i++)
-        {
-            if ((mp.memoryHeaps[i].flags & VkMemoryHeapFlags.DeviceLocal) == 0) continue;
-            totalKib += (long)(mp.memoryHeaps[i].size / 1024);
-            if (b[i].budget > b[i].usage) freeKib += (long)((b[i].budget - b[i].usage) / 1024);
-        }
-    }
 
     private VmaAllocator CreateAllocator(VkInstance inst)
     {
@@ -557,6 +550,7 @@ internal sealed unsafe partial class VkBackend : IDevice
             if (!HostBuffer((ulong)d.Bytes, use, VmaAllocationCreateFlags.HostAccessRandom, out VkBuffer hb, out VmaAllocation ha))
                 return Refused<BufferId>($"readback buffer {d.Label}: VMA refused {d.Bytes} bytes");
             Name(VkObjectType.Buffer, hb.Handle, d.Label);
+            Vma.vmaSetAllocationName(_vma, ha, d.Label);
             return new BufferId(_buffers.Add(new VkBuf(hb, ha, d)));
         }
         var bci = new VkBufferCreateInfo { size = (ulong)d.Bytes, usage = use, sharingMode = VkSharingMode.Exclusive };
@@ -570,6 +564,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         if (Vma.vmaCreateBuffer(_vma, &bci, &aci, &b, &a, null) != VkResult.Success)
             return Refused<BufferId>($"buffer {d.Label}: VMA refused {d.Bytes} bytes");
         Name(VkObjectType.Buffer, b.Handle, d.Label);
+        Vma.vmaSetAllocationName(_vma, a, d.Label);
         var id = new BufferId(_buffers.Add(new VkBuf(b, a, d)));
         _upload.Zero.Add(id);
         return id;
@@ -648,15 +643,17 @@ internal sealed unsafe partial class VkBackend : IDevice
 
     public void Destroy(ImageId i)
     {
-        if (OnThread("Destroy") && _images.Remove(i.Value, out VkImg g)) { _sets.Stale = true; LaterThanBindless(() => Free(g)); }
+        if (!OnThread("Destroy") || !_images.Remove(i.Value, out VkImg g)) return;
+        _sets.Stale = true;
+        if (g.Group != null) Leave(g);
+        LaterThanBindless(() => Free(g));
     }
 
-    /// <summary>An image's views, the image and its memory.</summary>
+    /// <summary>An image's views, the image and its memory. An alias member holds no allocation of its own, so only
+    /// its image goes here and its group's memory goes with the group.</summary>
     private void Free(VkImg g)
     {
-        _vkd.vkDestroyImageView(g.View);
-        if (g.MipViews != null) foreach (VkImageView v in g.MipViews) if (v.IsNotNull) _vkd.vkDestroyImageView(v);
-        if (g.LayerViews != null) foreach (VkImageView v in g.LayerViews) if (v.IsNotNull) _vkd.vkDestroyImageView(v);
+        FreeViews(g.View, g.MipViews, g.LayerViews);
         Vma.vmaDestroyImage(_vma, g.Image, g.Alloc);
     }
 
@@ -688,14 +685,13 @@ internal sealed unsafe partial class VkBackend : IDevice
     /// <summary>Free once no submit in flight can still reach it. Cold: a resize or a rebuild.</summary>
     private void Later(Action free) => _dead.Add((Next, free));
 
+    /// <summary>Every death whose submit is past, in the order they were queued: an image's views and image are
+    /// queued ahead of the memory they sit in, and a reverse drain would free that memory first.</summary>
     private void DrainDead()
     {
-        for (int i = _dead.Count - 1; i >= 0; i--)
-            if (Passed(_dead[i].At))
-            {
-                _dead[i].Free();
-                _dead.RemoveAt(i);
-            }
+        int n = 0;
+        while (n < _dead.Count && Passed(_dead[n].At)) _dead[n++].Free();
+        if (n > 0) _dead.RemoveRange(0, n);
     }
 
     /// <summary>Context loss or shutdown: wait the queue out and free every Vulkan object, the swapchain and the
@@ -709,6 +705,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         foreach (var d in _bindless.Behind) d.Free();
         _bindless.Behind.Clear();
         foreach (VkImg g in _images.Live()) Free(g);
+        foreach (AliasGroup g in _alias.Values) Vma.vmaFreeMemory(_vma, g.Alloc);
         foreach (VkBuf b in _buffers.Live()) Vma.vmaDestroyBuffer(_vma, b.Buffer, b.Alloc);
         foreach (VkSampler v in _samplers.Live()) _vkd.vkDestroySampler(v);
         foreach (VkShader v in _shaders.Live()) _vkd.vkDestroyShaderModule(v.Module);
@@ -722,8 +719,9 @@ internal sealed unsafe partial class VkBackend : IDevice
         DisposeLane(_async);
         DisposeLane(_transfer);
         _vkd.vkDestroySampler(_nearest);
-        foreach (UploadChunk c in _upload.Chunks) Vma.vmaDestroyBuffer(_vma, c.Buffer, c.Alloc);
-        foreach (UploadChunk c in _upload.Pool) Vma.vmaDestroyBuffer(_vma, c.Buffer, c.Alloc);
+        foreach (UploadBlock b in _upload.Blocks) Vma.vmaDestroyBuffer(_vma, b.Buffer, b.Alloc);
+        foreach (UploadBlock b in _upload.Spare) Vma.vmaDestroyBuffer(_vma, b.Buffer, b.Alloc);
+        Vma.vmaDestroyPool(_vma, _stagePool);
         _vkd.vkDestroyPipelineLayout(_pipeLayout);
         if (_pipeCache.IsNotNull) _vkd.vkDestroyPipelineCache(_pipeCache);
         if (_timePool.IsNotNull) _vkd.vkDestroyQueryPool(_timePool);
@@ -746,10 +744,18 @@ internal sealed unsafe partial class VkBackend : IDevice
 
     private bool Fault(string why)
     {
+        _lastFault = why;
         if (++_faults <= LoggedFaults)
             _log.Always($"VkBackend: REFUSED {why}" + (_faults == LoggedFaults ? " -- further refusals are only counted" : ""));
         return false;
     }
+
+    /// <summary>True while <see cref="Fault(string)"/> still logs: a path hot enough that interpolating a message
+    /// per call would cost it builds the message only then, and counts the refusal with <see cref="Fault()"/>.</summary>
+    private bool Logging => _faults < LoggedFaults;
+
+    /// <summary>A refusal counted with no message built.</summary>
+    private bool Fault() { _faults++; return false; }
 
     private static VkCompareOp Compare(CompareOp c) => c switch
     {

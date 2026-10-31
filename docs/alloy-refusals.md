@@ -95,8 +95,8 @@ world through an identity view; with `view.cameraloop 0` the same slot refuses o
 
 All of them call `AlloyGate.Fail` — and so does every capability latch that can only be taken *after* the freeze:
 the frame when a stage will not compile or a pipeline will not build, `PostChain.StandDown`, `ScreenOwner`
-when Vulkan cannot present the composite to the window, and `PresentTarget` when the composite image is
-refused at the window's size.
+when Vulkan cannot present the composite to the window, `PresentTarget` when the composite image is
+refused at the window's size, and `MeshArena` when VMA gives it no virtual block to place world geometry in.
 
 **Work that cannot be done this frame is not a `Fail`.** The pass sits the frame out, says so in full the
 first time and is counted after that; there is no fallback path that draws it some other way. The GL stream

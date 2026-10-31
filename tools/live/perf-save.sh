@@ -64,7 +64,7 @@ python3 - "$OUT/cx.log" "$LABEL" "$rc" "$OUT" <<'PY'
 import re, sys, statistics as st
 log, label, rc, out = sys.argv[1:]
 num = lambda s: float(s.replace(',', '.'))
-frames, gpus, zones, evicted = [], [], [], 0
+frames, gpus, zones, over = [], [], [], 0
 try:
     lines = open(log, encoding='utf-8', errors='replace').read().splitlines()
 except OSError:
@@ -72,7 +72,7 @@ except OSError:
 for l in lines:
     if 'UiHostService: [frame]' in l and (m := re.search(r'avg ([\d,]+)ms', l)):
         frames.append(num(m.group(1)))
-        if (e := re.search(r'vram EVICTED (\d+)MiB', l)): evicted = int(e.group(1))
+        if (e := re.search(r'OVER BUDGET by (\d+)MiB', l)): over = max(over, int(e.group(1)))
     elif 'gpu terms total' in l:
         gpus.append(num(re.search(r'gpu terms total ([\d,]+)', l).group(1)))
     elif 'FrameZones: [zones]' in l:
@@ -88,8 +88,8 @@ print(f"[{label}] frame {fm:.2f} ms ({1000/fm:.0f} fps, spread {min(f):.2f}..{ma
 if z:
     keys = sorted(z[0], key=lambda k: -st.mean(d.get(k, 0) for d in z))
     print("  zones " + " ".join(f"{k}:{st.mean(d.get(k,0) for d in z):.2f}" for k in keys if st.mean(d.get(k,0) for d in z) >= 0.15))
-if evicted:
-    print(f"  VRAM EVICTED {evicted} MiB: the card was oversubscribed (other processes hold VRAM) -- not comparable to a run that fits")
+if over:
+    print(f"  VRAM OVER BUDGET by up to {over} MiB: the card was oversubscribed (other processes hold VRAM) -- not comparable to a run that fits")
 print(f"  out {out}  (shot.png, cx.log)  harness exit {rc}")
 PY
 if [ "$PASSTIME" = 1 ]; then

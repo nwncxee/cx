@@ -46,7 +46,7 @@
 4 managed/Alloy/Db/HitTest.Fixture.cs
 1 managed/Alloy/Db/HitTest.SelfCheck.cs
 2 managed/Alloy/Db/HitTestService.cs
-32 managed/Alloy/Db/MeshArena.cs
+19 managed/Alloy/Db/MeshArena.cs
 4 managed/Alloy/Db/MeshArena.Dyn.cs
 3 managed/Alloy/Db/MeshBvh.cs
 7 managed/Alloy/Db/ObjectBridge.cs

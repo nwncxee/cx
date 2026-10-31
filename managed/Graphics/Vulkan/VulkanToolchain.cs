@@ -11,11 +11,15 @@ namespace CX.Graphics;
 /// own work, and this is the loader and the compiler call it will be built on.</summary>
 public static unsafe partial class VulkanToolchain
 {
+    /// <summary>The memory allocator's own leaf, named apart because its VIRTUAL blocks are CPU bookkeeping a
+    /// caller may want before any backend has brought the rest up (the mesh arena's placement).</summary>
+    internal static readonly string VmaLibrary = OperatingSystem.IsWindows() ? "vma.dll" : "libvma.so";
+
     /// <summary>The native libraries the build scripts stage beside us, by the leaf name each OS loads.
     /// The Vulkan loader itself is not here: it belongs to the machine, and the bindings find it.</summary>
     internal static readonly string[] Libraries = OperatingSystem.IsWindows()
-        ? ["shaderc_shared.dll", "vma.dll"]
-        : ["libshaderc_shared.so", "libvma.so"];
+        ? ["shaderc_shared.dll", VmaLibrary]
+        : ["libshaderc_shared.so", VmaLibrary];
 
     /// <summary>The folder the extender was installed into: the one the launcher loaded it from, or the
     /// host's own when nothing says (the Windows proxy, which the game loads from beside nwmain.exe).</summary>

@@ -64,9 +64,10 @@ public enum ImageUse : ushort
 }
 
 /// <summary>An image to create. <see cref="Layers"/> counts whole cubes for the cube kinds; <see cref="D"/> is
-/// the depth of a 3D image and 1 otherwise.</summary>
+/// the depth of a 3D image and 1 otherwise. Images that name one <see cref="Alias"/> share one allocation: each
+/// starts from nothing when another of them was used since, so none keeps contents past another's use.</summary>
 public readonly record struct ImageDesc(ImageKind Kind, Format Fmt, int W, int H, int D, int Mips, int Layers,
-                                        int Samples, ImageUse Use, string Label);
+                                        int Samples, ImageUse Use, string Label, string? Alias = null);
 
 /// <summary>A texel filter.</summary>
 public enum Filter : byte { Nearest, Linear }
