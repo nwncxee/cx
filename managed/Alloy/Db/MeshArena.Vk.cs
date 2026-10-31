@@ -142,10 +142,15 @@ public static unsafe partial class MeshArena
     private static long VkFlightStamp()
         => Renderer.OnVulkan && AlloyDevice.VulkanMade is VkBackend vk && _vk.Dev == vk ? vk.FreeStamp : -1;
 
-    /// <summary>Has the work a parked place was stamped against finished? True once the device it was stamped
-    /// on is gone: its command buffers went with it.</summary>
-    private static bool VkFlightPassed(long stamp)
-        => AlloyDevice.VulkanMade is not VkBackend vk || _vk.Dev != vk || vk.FreePassed(stamp);
+    /// <summary><see cref="OnFlightPassed"/>, made once: an ask allocates no delegate.</summary>
+    private static readonly Action<int, bool> FlightPassed = OnFlightPassed;
+
+    /// <summary>Ask the arena's device to say when <paramref name="stamp"/> has passed, as ask <paramref name="gen"/>.
+    /// A stamp is only ever taken off that device (<see cref="VkFlightStamp"/>).</summary>
+    private static void VkAskPassed(long stamp, int gen)
+    {
+        if (_vk.Dev is VkBackend vk) vk.WhenPassed(stamp, FlightPassed, gen);
+    }
 
     /// <summary>The device is gone: drop every buffer id with it, so no reader short-circuits on a name that
     /// died and nothing is destroyed through a dead device. Under <see cref="_gate"/>.</summary>

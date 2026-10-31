@@ -41,6 +41,14 @@ internal sealed unsafe partial class VkBackend
         return r == VkResult.Success || Fault($"WaitSubmitted: the GPU did not finish ({r})");
     }
 
+    /// <summary>Run <paramref name="fn"/>(<paramref name="arg"/>, ran) once the timeline passes <paramref name="stamp"/>, a
+    /// <see cref="FreeStamp"/>: memory a caller recycles itself goes back on the stamp the backend's own frees wait on.
+    /// Told it never ran when the device goes first. Pass a cached delegate.</summary>
+    internal void WhenPassed(long stamp, Action<int, bool> fn, int arg)
+    {
+        if (OnThread("WhenPassed")) _whenDone.Add((stamp, new WhenDoneCall(fn, arg)));
+    }
+
     /// <summary>Move <paramref name="list"/>'s <see cref="CommandList.WhenDone"/> work onto the submit that just took
     /// it: under its timeline value when it ran on the graphics queue, as never-ran otherwise.</summary>
     private void CarryWhenDone(CommandList list, bool ran, bool lane)

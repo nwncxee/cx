@@ -8,8 +8,9 @@ namespace CX.Alloy;
 
 internal static partial class GpuGolden
 {
-    /// <summary>A list's <see cref="CommandList.WhenDone"/> work runs once, in the order its lists ran, after the GPU finished its
-    /// copy, and a list reset unsubmitted tells its work it never ran. Oracle: the hand-written texel and arguments.</summary>
+    /// <summary>A list's <see cref="CommandList.WhenDone"/> work, and a free stamp's, runs once, in the order its submits
+    /// ran, after the GPU finished them; a list reset unsubmitted tells its work it never ran. Oracle: the hand-written
+    /// texel and arguments.</summary>
     private static void WhenDoneSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
     {
         ImageId img = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba8, 1, 1, 1, 1, 1, 1,
@@ -41,10 +42,15 @@ internal static partial class GpuGolden
                 "whendone: the copy's texel was not in the buffer when its work ran");
             check.Expect(vk.Submit(new CommandList("golden whendone tick 2", 256, log)) && got.Count == 2,
                 "whendone: work ran again on a later submit");
+            vk.WhenPassed(vk.FreeStamp, landed, 10);
+            check.Expect(got.Count == 2, "whendone: work on the free stamp ran before the submit that stamp names");
+            check.Expect(vk.Submit(new CommandList("golden whendone stamped", 256, log)) && vk.WaitSubmitted()
+                         && vk.Submit(new CommandList("golden whendone tick 3", 256, log)) && got.Count == 3 && got[2].Arg == 10 && got[2].Ran,
+                "whendone: work on the free stamp did not run once the submit it names had finished");
             var dropped = new CommandList("golden whendone dropped", 256, log);
             dropped.WhenDone(landed, 9);
             dropped.Reset();
-            check.Expect(got.Count == 3 && got[2].Arg == 9 && !got[2].Ran, "whendone: a list reset unsubmitted did not say its work never ran");
+            check.Expect(got.Count == 4 && got[3].Arg == 9 && !got[3].Ran, "whendone: a list reset unsubmitted did not say its work never ran");
         }
         finally
         {
