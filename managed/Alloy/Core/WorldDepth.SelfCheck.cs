@@ -1,5 +1,7 @@
+using System.Collections.Generic;
 using System.Numerics;
 using CX.Framework;
+using CX.Graphics.Rhi;
 
 namespace CX.Alloy;
 
@@ -21,8 +23,13 @@ internal static partial class WorldDepth
         string text = VanillaShader.GlDepth("a = texture2D(texFBDepth, uv).x + textureLod( texFBDepth , uv, 0.0).x"
                                           + " + texelFetch(texFBDepth, p, 0).x + gl_FragCoord.z + gl_FragCoord.zw.x + texture(uOther, uv).x;");
         check.Expect(text == "a = CxGlDepth(texFBDepth, uv).x + CxGlDepthLod(texFBDepth, uv, 0.0).x"
-                          + " + CxGlDepthFetch(texFBDepth, p, 0).x + (1.0 - gl_FragCoord.z) + gl_FragCoord.zw.x + texture(uOther, uv).x;",
+                          + " + CxGlDepthFetch(texFBDepth, p, 0).x + cxGlFragZ + gl_FragCoord.zw.x + texture(uOther, uv).x;",
             $"content reads GL's depth: each texFBDepth read and gl_FragCoord.z rewritten, nothing else ({text})");
+        const string vs = "#version 460 core\nvoid main() { gl_Position = vec4(0.0); }\n";
+        string fs = "#version 460 core\nout vec4 o;\nvoid main() { o = vec4(" + VanillaShader.GlDepth("gl_FragCoord.z") + "); }\n";
+        string? world = Translate(vs, fs, new Dictionary<string, uint>()).Fs, cast = VkGlsl.Translate(vs, fs, new Dictionary<string, uint>()).Fs;
+        check.Expect(world != null && world.Contains("o = vec4((1.0 - gl_FragCoord.z));"), $"a world program's fragment depth reads back as GL's ({world})");
+        check.Expect(cast != null && cast.Contains("o = vec4(gl_FragCoord.z);"), $"a caster or GUI program, which keeps GL's depth, reads its own fragment depth ({cast})");
         log.Info(check.Ok ? "WorldDepth.SelfCheck: passed" : "WorldDepth.SelfCheck: FAILED");
     }
 }
