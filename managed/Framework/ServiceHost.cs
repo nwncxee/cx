@@ -75,7 +75,7 @@ public static class ServiceHost
         CX.Graphics.Rhi.VkBackend.TransferSelfCheck(log);   // the copy-only queue family a device's table offers
         CX.Alloy.AlloyRenderer.VramBudgetSelfCheck(log);   // a device exactly at its budget is not over it
         CX.Alloy.AlloyRenderer.VramSelfCheck(log);   // the frame line's memory part names the largest allocations and an overrun
-        CX.Alloy.Db.MeshArena.ArenaSelfCheck(log);   // a freed mesh's gap is reused, so an area hop holds one area
+        CX.Alloy.Db.MeshArena.ArenaSelfCheckOffSession(log);   // a freed mesh's gap is reused, so an area hop holds one area
         CX.Graphics.Rhi.VkGlsl.SelfCheck(log);   // the GL-to-Vulkan GLSL rules on fixtures, and the std140 reflection
         CX.Alloy.ShaderBinary.SelfCheck(log);   // a content SPIR-V .shd is validated, and GLSL text is never read as one
         CX.Alloy.VkPrograms.SelfCheck(log);   // the batch pass's programs translate and compile for Vulkan
