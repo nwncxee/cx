@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using CX.Alloy.Db;
 using CX.Framework;
+using CX.Graphics.Rhi;
 
 namespace CX.Alloy;
 
@@ -51,6 +52,9 @@ internal static class TextureSlots
     /// <summary>The taa stage's history. <see cref="AaSearch"/>'s unit: the accumulate and the copy-out also read
     /// <see cref="PostDepth"/>, and no program that reads the history reads the search table.</summary>
     internal const uint PostHist = AaSearch;
+    /// <summary>The taa accumulate's velocity. <see cref="SceneDepth"/>'s unit: no post program reads the scene depth,
+    /// and every other post sampler, <see cref="PostOverlay"/> among them, sits below it.</summary>
+    internal const uint PostVel = SceneDepth;
     /// <summary>The SCENE's environment map, which vanilla's water reflects. Shares
     /// <see cref="Probe"/>'s unit -- the water program stopped sampling the probe when the port replaced
     /// Alloy's own reflection with stock's, so the two are never live in one program. A sampler2D here and
@@ -184,33 +188,36 @@ internal static class TextureSlots
     /// cannot say which the preprocessor keeps, so an exempt one has to be named by its caller.</summary>
     private static System.Collections.Generic.IEnumerable<uint> Claimed(string src)
     {
-        foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(
-                     src, @"layout\(binding\s*=\s*(\d+)\)\s*uniform\s+\w*sampler\w*\s+\w+\s*;"))
-            yield return uint.Parse(m.Groups[1].Value);
+        foreach ((uint unit, _) in Bound(src)) yield return unit;
     }
 
     /// <summary>The unit the source declares for the sampler named <paramref name="sampler"/>; 0 when it
     /// declares none, which fails every need it is compared with.</summary>
     private static uint Unit(string src, string sampler)
     {
-        var m = System.Text.RegularExpressions.Regex.Match(
-            src, @"layout\(binding\s*=\s*(\d+)\)\s*uniform\s+\w*sampler\w*\s+" + sampler + @"\s*;");
-        return m.Success ? uint.Parse(m.Groups[1].Value) : 0;
+        foreach ((uint unit, string name) in Bound(src))
+            if (name == sampler) return unit;
+        return 0;
     }
 
     /// <summary>The first unit two of those declarations both claim, named with both samplers; null when
     /// every unit is claimed once.</summary>
     private static string? DoubleClaimed(string src)
     {
-        var seen = new System.Collections.Generic.Dictionary<string, string>();
-        foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(
-                     src, @"layout\(binding\s*=\s*(\d+)\)\s*uniform\s+\w*sampler\w*\s+(\w+)\s*;"))
+        var seen = new System.Collections.Generic.Dictionary<uint, string>();
+        foreach ((uint unit, string name) in Bound(src))
         {
-            string unit = m.Groups[1].Value, name = m.Groups[2].Value;
             if (seen.TryGetValue(unit, out string? first) && first != name) return $"{unit} is {first} and {name}";
             seen[unit] = name;
         }
         return null;
+    }
+
+    /// <summary>Each sampler <paramref name="src"/> declares on a literal <c>layout(binding)</c>, with its unit.</summary>
+    private static System.Collections.Generic.IEnumerable<(uint Unit, string Name)> Bound(string src)
+    {
+        foreach ((string type, string name, string? binding) in VkGlsl.Opaques(src))
+            if (type.Contains("sampler", StringComparison.Ordinal) && uint.TryParse(binding, out uint unit)) yield return (unit, name);
     }
 
     /// <summary>Assert the table against the GLSL that actually compiled: every slot's sampler must be

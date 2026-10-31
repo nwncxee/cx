@@ -50,16 +50,6 @@ internal static partial class GpuGolden
     /// <summary>The version line every golden stage opens with, and the one the shipped libraries open with.</summary>
     private const string Version = "#version 460 core\n";
 
-    /// <summary>One compute stage of <paramref name="src"/> built for the device: its pipeline and the module
-    /// behind it, both null (logged by the backend) when the text is refused.</summary>
-    private static PipelineId Compute(VkBackend vk, string src, string label, out ShaderId cs)
-    {
-        cs = vk.CreateShader(new ShaderDesc(ShaderStage.Compute, null, src, label));
-        if (cs.IsNull) return default;
-        var d = new PipelineDesc { Cs = cs, Label = label };
-        return vk.CreatePipeline(in d);
-    }
-
     /// <summary>The storage block pair every case-per-group golden reads and writes, on the points
     /// <see cref="SsboSlots"/> names -- interpolated, so the GLSL and the bind are one number. Internal because
     /// the binding contract reads it as one of the stages composed in C#.</summary>

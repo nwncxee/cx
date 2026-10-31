@@ -72,7 +72,7 @@ internal static unsafe class PostChainVk
     {
         ["uSrc"] = TextureSlots.PostHdr, ["uHdr"] = TextureSlots.PostHdr, ["uCur"] = TextureSlots.PostHdr,
         ["uBloom"] = TextureSlots.PostBloom, ["uDepth"] = TextureSlots.PostDepth, ["uOverlay"] = TextureSlots.PostOverlay,
-        ["uHist"] = TextureSlots.PostHist, ["uVel"] = TextureSlots.AaArea, ["uMask"] = TextureSlots.PostHdr,
+        ["uHist"] = TextureSlots.PostHist, ["uVel"] = TextureSlots.PostVel, ["uMask"] = TextureSlots.PostHdr,
         ["texFBColor"] = TextureSlots.PostHdr, ["texFBDepth"] = TextureSlots.PostDepth,
     };
 
@@ -198,9 +198,7 @@ internal static unsafe class PostChainVk
         if (!s.CsTried)
         {
             s.CsTried = true;
-            ShaderId cs = vk.CreateShader(new ShaderDesc(ShaderStage.Compute, "cx_bloom_cs", ShaderSource.Get("cx_bloom_cs.glsl"), "bloom compute"));
-            var d = new PipelineDesc { Cs = cs, Label = "bloom compute" };
-            s.BloomCs = cs.IsNull ? default : vk.CreatePipeline(in d);
+            s.BloomCs = vk.CreateCompute(ShaderSource.Get("cx_bloom_cs.glsl"), "bloom compute", "cx_bloom_cs");
             if (s.BloomCs.IsNull) log.Always("PostChainVk: the compute bloom was REFUSED (logged above) -- the bloom draws as fragments");
         }
         if (s.BloomCs.IsNull) return false;
@@ -343,9 +341,8 @@ internal static unsafe class PostChainVk
     internal static string? SharedUnit(string fs)
     {
         var seen = new Dictionary<uint, string>();
-        foreach (System.Text.RegularExpressions.Match m in Samplers.Matches(fs))
+        foreach (string name in Unbound(fs))
         {
-            string name = m.Groups[1].Value;
             if (!Units.TryGetValue(name, out uint u)) continue;
             if (seen.TryGetValue(u, out string? other) && other != name) return $"{other} and {name} on unit {u}";
             seen[u] = name;
@@ -353,9 +350,12 @@ internal static unsafe class PostChainVk
         return null;
     }
 
-    /// <summary>A sampler declaration without a binding, its name the first group.</summary>
-    private static readonly System.Text.RegularExpressions.Regex Samplers =
-        new(@"^\s*uniform\s+(?:\w+\s+)?sampler\w*\s+(\w+)\s*;", System.Text.RegularExpressions.RegexOptions.Multiline);
+    /// <summary>The samplers <paramref name="fs"/> declares without a binding, in order.</summary>
+    private static IEnumerable<string> Unbound(string fs)
+    {
+        foreach ((string type, string name, string? binding) in VkGlsl.Opaques(fs))
+            if (binding == null && type.Contains("sampler", StringComparison.Ordinal)) yield return name;
+    }
 
     /// <summary>The first unit a content stage's own unbound sampler takes: past every unit Alloy names.</summary>
     private const uint ContentUnitBase = 40;
@@ -366,9 +366,8 @@ internal static unsafe class PostChainVk
     {
         Dictionary<string, uint>? extra = null;
         uint next = ContentUnitBase;
-        foreach (System.Text.RegularExpressions.Match m in Samplers.Matches(fs))
+        foreach (string name in Unbound(fs))
         {
-            string name = m.Groups[1].Value;
             if (Units.ContainsKey(name) || extra?.ContainsKey(name) == true) continue;
             extra ??= new Dictionary<string, uint>(Units, StringComparer.Ordinal);
             extra[name] = next++;
@@ -434,9 +433,8 @@ internal static unsafe class PostChainVk
     /// <paramref name="stock"/> when no content override reached either text.</summary>
     private static GuiVkProg? Make(VkBackend vk, string fsRef, string label, out bool stock, Action<GuiVkProg> locate, ExtenderLog log)
     {
-        ShaderTexts.Pair(PostChain.ShdPostVs, ShaderStages.Source(PostChain.ShdPostVs), fsRef, ShaderStages.Source(fsRef),
-                        log, $"PostChainVk {label}", out string vs, out string fs);
-        stock = vs == ShaderStages.Source(PostChain.ShdPostVs) && fs == ShaderStages.Source(fsRef);
+        stock = ShaderTexts.Pair(PostChain.ShdPostVs, ShaderStages.Source(PostChain.ShdPostVs), fsRef, ShaderStages.Source(fsRef),
+                                 log, $"PostChainVk {label}", out string vs, out string fs);
         return Program(vk, vs, fs, label, locate, log);
     }
 
