@@ -20,37 +20,24 @@ internal sealed unsafe partial class VkBackend
     /// <summary>The refusals this device has logged or counted.</summary>
     internal int Faults => _faults;
 
-    /// <summary>What the device-local heaps hold, their budget and their size, bytes: the driver's figures with
-    /// VK_EXT_memory_budget, the allocator's estimate without. Any thread that owns the device.</summary>
-    internal void DeviceLocalBytes(out long usage, out long budget, out long size)
+    /// <summary>What the device-local heaps hold, their budget, their size and what Alloy's own allocations in them
+    /// take, bytes: the driver's figures with VK_EXT_memory_budget, the allocator's estimate without. One walk, so
+    /// the frame line reads every figure of one moment. Any thread that owns the device.</summary>
+    internal void DeviceLocalBytes(out long usage, out long budget, out long size, out long held)
     {
-        usage = 0; budget = 0; size = 0;
+        usage = 0; budget = 0; size = 0; held = 0;
         VkPhysicalDeviceMemoryProperties mp;
         _vki.vkGetPhysicalDeviceMemoryProperties(_phys, &mp);
         VmaBudget* b = stackalloc VmaBudget[(int)VK_MAX_MEMORY_HEAPS];
         Vma.vmaGetHeapBudgets(_vma, b);
+        Vma.vmaCalculateStatistics(_vma, out VmaTotalStatistics t);
         for (int i = 0; i < mp.memoryHeapCount; i++)
         {
             if ((mp.memoryHeaps[i].flags & VkMemoryHeapFlags.DeviceLocal) == 0) continue;
             usage += (long)b[i].usage;
             budget += (long)b[i].budget;
             size += (long)mp.memoryHeaps[i].size;
-        }
-    }
-
-    /// <summary>What Alloy's allocations in device-local memory hold, bytes. Cold: a walk of VMA's blocks.</summary>
-    internal long DeviceLocalHeld
-    {
-        get
-        {
-            if (!OnThread("DeviceLocalHeld")) return 0;
-            Vma.vmaCalculateStatistics(_vma, out VmaTotalStatistics t);
-            VkPhysicalDeviceMemoryProperties mp;
-            _vki.vkGetPhysicalDeviceMemoryProperties(_phys, &mp);
-            long held = 0;
-            for (int i = 0; i < mp.memoryHeapCount; i++)
-                if ((mp.memoryHeaps[i].flags & VkMemoryHeapFlags.DeviceLocal) != 0) held += (long)t.memoryHeap[i].statistics.allocationBytes;
-            return held;
+            held += (long)t.memoryHeap[i].statistics.allocationBytes;
         }
     }
 

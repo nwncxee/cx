@@ -21,7 +21,10 @@ public sealed partial class AlloyRenderer
         check.Expect(over.Contains("OVER BUDGET by 1000MiB", StringComparison.Ordinal), $"S2: 9000MiB used of an 8000MiB budget does not say OVER BUDGET by 1000MiB: \"{over}\"");
         check.Expect(over.Contains("arena Static vertices 384MiB", StringComparison.Ordinal) && over.Contains("vk g-buffer 0 56MiB", StringComparison.Ordinal),
                      $"S2: over budget the line does not name the three largest: \"{over}\"");
-        check.Expect(FrameVram() == "", $"S1: before the first frame the line has a memory part: \"{FrameVram()}\"");
+        string at = VramLine(1000 * MiB, 8000 * MiB, 8000 * MiB, top);
+        check.Expect(!at.Contains("OVER BUDGET", StringComparison.Ordinal), $"S2: 8000MiB used of an 8000MiB budget says OVER BUDGET: \"{at}\"");
+        string none = VramLine(0, 0, 0, []);
+        check.Expect(none == "", $"S1: before the first frame, with no figure read off the device, the line has a memory part: \"{none}\"");
         log.Info(check.Ok ? "AlloyRenderer.VramSelfCheck: passed" : "AlloyRenderer.VramSelfCheck: FAILED");
     }
 }

@@ -10,7 +10,7 @@ namespace CX.Alloy;
 /// The memory goldens (approved-spec): render targets in one alias group share one allocation and each reads back
 /// what was last written into it; uploads past the staging budget arrive whole and the staging shrinks back once
 /// the loads stop; the largest allocations are named. Oracles: the device's own size for a lone image, hand-written
-/// clear colours and byte patterns, and the budget and chunk sizes in MiB.
+/// clear colours and byte patterns, and the budget and block sizes in MiB.
 /// </summary>
 internal static partial class GpuGolden
 {
@@ -30,7 +30,7 @@ internal static partial class GpuGolden
             AliasShare(vk, check, log, rb);
             AliasContents(vk, check, log, rb);
             AliasAsync(vk, check);
-            StagingLoad(vk, check, log);
+            StagingLoad(vk, log);
         }
         finally { vk.Destroy(rb); }
     }
@@ -107,41 +107,49 @@ internal static partial class GpuGolden
         return vk.Submit(cl) ? PostRead(vk, log, img, 4, 4, 4, rb) : null;
     }
 
-    /// <summary>Sixteen texels of one RGBA8 colour, written by hand.</summary>
-    private static byte[] Texels(byte r, byte g, byte b, byte a)
+    /// <summary>Clear <paramref name="img"/> (4x4) to <paramref name="c"/> inside <paramref name="cl"/>, then copy it
+    /// into <paramref name="to"/>, so a write and its read sit in one recording.</summary>
+    private static void ClearInto(CommandList cl, ImageId img, Vector4 c, BufferId to)
     {
-        var t = new byte[64];
-        for (int i = 0; i < 64; i += 4) { t[i] = r; t[i + 1] = g; t[i + 2] = b; t[i + 3] = a; }
-        return t;
+        ReadOnlySpan<ColorAttachment> at = [new ColorAttachment(img, 0, 0, LoadOp.Clear, StoreOp.Store, c)];
+        cl.BeginRenderPass(new RenderPassDesc(at));
+        cl.EndRenderPass();
+        cl.CopyImageToBuffer(new CopyToBufferCmd(img, new ImageRegion(0, 0, 0, 0), 4, 4, to, 0));
     }
 
-    /// <summary>A4: two targets of one group, each written and read in turn, read back their own colour; the next
-    /// frame's use of only the first reads that frame's colour.</summary>
+    /// <summary>A4: two targets of one group, written and read in turn inside ONE submit, read back their own colour;
+    /// the next frame's use of only the first reads that frame's colour.</summary>
     private static void AliasContents(VkBackend vk, Checker check, ExtenderLog log, BufferId rb)
     {
+        BufferId ra = vk.CreateBuffer(new BufferDesc(64, BufferUse.CopyDst | BufferUse.CopySrc, MemoryKind.Device, "golden alias first read"));
+        BufferId rc = vk.CreateBuffer(new BufferDesc(64, BufferUse.CopyDst | BufferUse.CopySrc, MemoryKind.Device, "golden alias second read"));
         (long Count, long Bytes) before = vk.Allocations;
         ImageId first = Target(vk, 4, "golden alias first", "golden pair"), second = Target(vk, 4, "golden alias second", "golden pair");
         try
         {
-            check.Expect(!first.IsNull && !second.IsNull, "A4: a target was refused (logged above)");
-            if (first.IsNull || second.IsNull) return;
+            check.Expect(!first.IsNull && !second.IsNull && !ra.IsNull && !rc.IsNull, "A4: a target or its readback was refused (logged above)");
+            if (first.IsNull || second.IsNull || ra.IsNull || rc.IsNull) return;
             Settle(vk, log, rb);
             check.Expect(vk.Allocations.Count - before.Count == 1, "A4: the two targets of one group do not share one allocation");
-            byte[]? got = ClearRead(vk, log, first, new Vector4(1, 0, 0, 1), rb);
-            check.Expect(got != null && got.AsSpan().SequenceEqual(Texels(255, 0, 0, 255)), "A4: the first target does not read back the red written into it");
-            got = ClearRead(vk, log, second, new Vector4(0, 0, 1, 1), rb);
-            check.Expect(got != null && got.AsSpan().SequenceEqual(Texels(0, 0, 255, 255)), "A4: the second target does not read back the blue written into it");
-            got = ClearRead(vk, log, first, new Vector4(0, 1, 0, 1), rb);
-            check.Expect(got != null && got.AsSpan().SequenceEqual(Texels(0, 255, 0, 255)), "A4: the next frame's first target does not read back the green written into it");
+            var cl = new CommandList("golden alias one frame", 1 << 10, log);
+            ClearInto(cl, first, new Vector4(1, 0, 0, 1), ra);
+            ClearInto(cl, second, new Vector4(0, 0, 1, 1), rc);
+            var got = new byte[64];
+            check.Expect(vk.Submit(cl), "A4: the frame writing and reading both targets was refused (logged above)");
+            check.Expect(vk.ReadBack(ra, got) && Solid(got, 255, 0, 0, 255), "A4: the first target does not read back the red written into it");
+            check.Expect(vk.ReadBack(rc, got) && Solid(got, 0, 0, 255, 255), "A4: the second target does not read back the blue written into it");
+            byte[]? next = ClearRead(vk, log, first, new Vector4(0, 1, 0, 1), rb);
+            check.Expect(next != null && Solid(next, 0, 255, 0, 255), "A4: the next frame's first target does not read back the green written into it");
         }
         finally
         {
-            vk.Destroy(first); vk.Destroy(second);
+            vk.Destroy(first); vk.Destroy(second); vk.Destroy(ra); vk.Destroy(rc);
             Settle(vk, log, rb);
         }
     }
 
-    /// <summary>A5: a target the async queue uses is refused an alias group, and the refusal is logged; with none it is made.</summary>
+    /// <summary>A5: a target the async queue uses is refused an alias group, every attempt logging its own refusal;
+    /// with no group it is made. Oracle: one counted refusal per attempt, by hand.</summary>
     private static void AliasAsync(VkBackend vk, Checker check)
     {
         int faults = vk.Faults;
@@ -149,8 +157,13 @@ internal static partial class GpuGolden
         check.Expect(refused.IsNull, "A5: an async target was made in an alias group");
         check.Expect(vk.Faults == faults + 1, $"A5: the refusal logged {vk.Faults - faults} lines, not 1");
         vk.Destroy(refused);
+        ImageId again = Target(vk, 4, "golden alias async twice", "golden lane", ImageUse.Async);
+        check.Expect(again.IsNull, "A5: a second async target was made in an alias group");
+        check.Expect(vk.Faults == faults + 2, $"A5: the second refusal logged {vk.Faults - faults - 1} lines, not 1");
+        vk.Destroy(again);
         ImageId made = Target(vk, 4, "golden alias async apart", null, ImageUse.Async);
         check.Expect(!made.IsNull, "A5: the same async target with no alias group was refused");
+        check.Expect(vk.Faults == faults + 2, $"A5: making it apart logged {vk.Faults - faults - 2} refusals, not 0");
         vk.Destroy(made);
     }
 
@@ -160,13 +173,26 @@ internal static partial class GpuGolden
         for (int i = 0; i < b.Length; i++) b[i] = (byte)(i * 13 + seed);
     }
 
+    /// <summary>The staging goldens' texture side: 100 MB of RGBA8 each, well past one staging block.</summary>
+    private const int StagingSide = 5000;
+
     /// <summary>L1 and L2: a lone 100 MB texture, then six more back to back in one frame, each read back whole while
-    /// the staging held stays inside 256 MiB; it stays where the load left it ten frames on and is 64 MiB a thousand on.</summary>
-    private static void StagingLoad(VkBackend vk, Checker check, ExtenderLog log)
+    /// the staging held stays inside 256 MiB; it stays where the load left it ten frames on and is 64 MiB a thousand on.
+    /// On its own suite, which skips on a device too small to hold the load. Oracle: hand-written byte patterns.</summary>
+    private static void StagingLoad(VkBackend vk, ExtenderLog log)
     {
-        const int Side = 5000, Textures = 6;
-        const long Budget = 256 * MiB, OneChunk = 64 * MiB;
-        var texels = new byte[Side * Side * 4];
+        const int Textures = 6;
+        const long Budget = 256 * MiB, OneBlock = 64 * MiB;
+        var check = new Checker(log, "GpuGolden.StagingLoad.SelfCheck");
+        long want = (long)(Textures + 2) * StagingSide * StagingSide * 4 + Budget;
+        vk.DeviceLocalBytes(out long usage, out long budget, out _, out _);
+        if (budget - usage < want)
+        {
+            check.Skip($"the load needs {want / MiB}MiB of device-local memory -- the textures, the readback and the"
+                       + $" staging budget -- and this device has {Math.Max(budget - usage, 0) / MiB}MiB free");
+            return;
+        }
+        var texels = new byte[(long)StagingSide * StagingSide * 4];
         var got = new byte[texels.Length];
         BufferId rb = vk.CreateBuffer(new BufferDesc(texels.Length, BufferUse.CopyDst | BufferUse.CopySrc, MemoryKind.Device, "golden staging read"));
         var imgs = new ImageId[Textures + 1];
@@ -175,7 +201,7 @@ internal static partial class GpuGolden
             check.Expect(!rb.IsNull, "L1: the readback was refused (logged above)");
             if (rb.IsNull) return;
             for (int i = 0; i <= Textures; i++)
-                imgs[i] = PostImage(vk, Format.Rgba8, Side, Side, ImageUse.Sampled | ImageUse.CopyDst | ImageUse.CopySrc, $"golden staging {i}");
+                imgs[i] = PostImage(vk, Format.Rgba8, StagingSide, StagingSide, ImageUse.Sampled | ImageUse.CopyDst | ImageUse.CopySrc, $"golden staging {i}");
             Pattern(texels, 0);
             check.Expect(vk.Upload(imgs[0], 0, 0, texels), "L1: the lone 100 MB texture's upload was refused (logged above)");
             check.Expect(Arrives(vk, log, imgs[0], rb, texels, got), "L1: the lone 100 MB texture did not arrive whole");
@@ -198,7 +224,7 @@ internal static partial class GpuGolden
             for (int f = 0; f < 1000; f++) vk.Submit(new CommandList("golden idle frame", 1 << 8, log));
             vk.ReadBack(rb, got.AsSpan(0, 4));
             vk.Submit(new CommandList("golden idle frame", 1 << 8, log));
-            check.Expect(vk.Staging.Bytes == (ulong)OneChunk, $"L2: a thousand idle frames on, the staging held is {vk.Staging.Bytes / MiB}MiB, not 64MiB");
+            check.Expect(vk.Staging.Bytes == (ulong)OneBlock, $"L2: a thousand idle frames on, the staging held is {vk.Staging.Bytes / MiB}MiB, not 64MiB");
         }
         finally
         {
@@ -210,9 +236,8 @@ internal static partial class GpuGolden
     /// <summary><paramref name="img"/> read back through <paramref name="rb"/> equals <paramref name="want"/> byte for byte.</summary>
     private static bool Arrives(VkBackend vk, ExtenderLog log, ImageId img, BufferId rb, byte[] want, byte[] got)
     {
-        const int Side = 5000;
         var cl = new CommandList("golden staging readback", 1 << 10, log);
-        cl.CopyImageToBuffer(new CopyToBufferCmd(img, new ImageRegion(0, 0, 0, 0), Side, Side, rb, 0));
+        cl.CopyImageToBuffer(new CopyToBufferCmd(img, new ImageRegion(0, 0, 0, 0), StagingSide, StagingSide, rb, 0));
         return vk.Submit(cl) && vk.ReadBack(rb, got) && got.AsSpan().SequenceEqual(want);
     }
 }

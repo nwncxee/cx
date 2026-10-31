@@ -18,7 +18,7 @@ public sealed unsafe partial class AlloyRenderer
     internal static void SampleVram()
     {
         if (_log == null || AlloyDevice.VulkanMade is not VkBackend vk) return;
-        vk.DeviceLocalBytes(out long usage, out long budget, out long size);
+        vk.DeviceLocalBytes(out long usage, out long budget, out long size, out _);
         long free = Math.Max(budget - usage, 0) / 1024, total = size / 1024;
         _vram.FreeKib = (int)Math.Min(free, int.MaxValue);
         if (_vramProbed) return;
@@ -29,22 +29,25 @@ public sealed unsafe partial class AlloyRenderer
     }
 
     /// <summary>The frame line's memory part: what Alloy's allocations hold, the device's use against its budget, and
-    /// the largest allocations by name.</summary>
+    /// the largest allocations by name. Empty with no budget to measure against -- before a frame has read the
+    /// device, and on a device that answers no memory query -- because a row of zeros reads as a card holding none.</summary>
     internal static string VramLine(long heldBytes, long usageBytes, long budgetBytes, ReadOnlySpan<(string Name, long Bytes)> top)
     {
         const int Shift = 20;
+        if (budgetBytes <= 0) return "";
         var line = new System.Text.StringBuilder($", vram {heldBytes >> Shift}MiB held, {usageBytes >> Shift}/{budgetBytes >> Shift}MiB of the budget used");
         if (usageBytes > budgetBytes) line.Append($", OVER BUDGET by {(usageBytes - budgetBytes) >> Shift}MiB");
         for (int i = 0; i < top.Length; i++) line.Append(i == 0 ? "; largest " : ", ").Append($"{top[i].Name} {top[i].Bytes >> Shift}MiB");
         return line.ToString();
     }
 
-    /// <summary>The frame line's memory part as the device reads now; empty before the first frame has probed it.</summary>
+    /// <summary>The frame line's memory part as the device reads now; empty before the first frame, which is what
+    /// makes the device and reads its figures.</summary>
     internal static string FrameVram()
     {
         if (!_vramProbed || AlloyDevice.VulkanMade is not VkBackend vk) return "";
-        vk.DeviceLocalBytes(out long usage, out long budget, out _);
-        return VramLine(vk.DeviceLocalHeld, usage, budget, vk.Largest(3));
+        vk.DeviceLocalBytes(out long usage, out long budget, out _, out long held);
+        return VramLine(held, usage, budget, vk.Largest(3));
     }
 
     /// <summary>The device's memory figures as last sampled, KiB.</summary>
