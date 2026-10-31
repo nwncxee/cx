@@ -49,8 +49,9 @@ internal sealed unsafe partial class VkBackend
         if (bits == 0)
         {
             _vkd.vkDestroyImage(img.Image);
-            if (g.Members.Count == 0) _alias.Remove(group);
-            return Refused<ImageId>($"image {d.Label}: no memory type it shares with alias group {group}'s members");
+            _log.Always($"VkBackend: image {d.Label} shares no memory type with alias group {group}'s members -- "
+                      + $"made with memory of its own, {req.size >> 20} MiB the group does not save");
+            return CreateImage(d with { Alias = null });
         }
         g.Members.Add(img);
         if (g.Alloc.IsNull || req.size > g.Size || bits != g.TypeBits)

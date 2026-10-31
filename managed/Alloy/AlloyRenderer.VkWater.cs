@@ -132,9 +132,9 @@ public sealed unsafe partial class AlloyRenderer
         vk.Destroy(s.Col);
         vk.Destroy(s.Dep);
         s.Col = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, w, h, 1, 1, 1, 1,
-                                             ImageUse.Sampled | ImageUse.CopyDst, "vk water colour copy"));
+                                             ImageUse.Sampled | ImageUse.CopyDst, "vk water colour copy", AliasLanes.Wide));
         s.Dep = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.D32F, w, h, 1, 1, 1, 1,
-                                             ImageUse.Sampled | ImageUse.CopyDst, "vk water depth copy"));
+                                             ImageUse.Sampled | ImageUse.CopyDst, "vk water depth copy", AliasLanes.Record));
         s.W = w; s.H = h;
         if (s.Col.IsNull || s.Dep.IsNull)
         {

@@ -177,7 +177,7 @@ internal static unsafe class SsaoPassVk
         if (w <= 0 || h <= 0) return false;
         s.SrcW = srcW; s.SrcH = srcH;
         vk.Destroy(s.Raw); vk.Destroy(s.Out);
-        s.Raw = Target(vk, w, h, "vk ssao raw");
+        s.Raw = Target(vk, w, h, "vk ssao raw", AliasLanes.Small);
         s.Out = Target(vk, w, h, "vk ssao out");
         if (s.Raw.IsNull || s.Out.IsNull)
         {
@@ -192,7 +192,7 @@ internal static unsafe class SsaoPassVk
         return true;
     }
 
-    private static ImageId Target(VkBackend vk, int w, int h, string label)
+    private static ImageId Target(VkBackend vk, int w, int h, string label, string? alias = null)
         => vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.R8, w, h, 1, 1, 1, 1,
-                                       ImageUse.Sampled | ImageUse.ColorTarget, label));
+                                       ImageUse.Sampled | ImageUse.ColorTarget, label, alias));
 }

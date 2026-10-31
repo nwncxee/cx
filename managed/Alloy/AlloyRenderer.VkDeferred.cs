@@ -202,7 +202,7 @@ public sealed unsafe partial class AlloyRenderer
             d.ShVis = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba8, rw, rh, 1, 1, 1, 1,
                                                    ImageUse.Storage | ImageUse.Sampled, "vk shadow record"));
             d.ShKey = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rg32Ui, rw, rh, 1, 1, 1, 1,
-                                                   ImageUse.Storage | ImageUse.Sampled, "vk shadow record key"));
+                                                   ImageUse.Storage | ImageUse.Sampled, "vk shadow record key", AliasLanes.Small));
             d.ShW = rw; d.ShH = rh;
             log.Info($"AlloyRenderer: the Vulkan visibility record is {rw}x{rh} (shadow.deferredres)");
         }
