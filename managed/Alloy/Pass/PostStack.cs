@@ -295,6 +295,10 @@ internal static unsafe partial class PostStack
                 string? su = PostChainVk.SharedUnit(fs);
                 check.Expect(su == null, $"{name}: every sampler on a unit of its own on Vulkan, not {su}");
             }
+            string? commented = PostChainVk.SharedUnit("/*\nuniform sampler2D uSrc;\n*/\nuniform sampler2D uHdr;\n");
+            check.Expect(commented == null, $"a sampler inside a block comment claims no unit, not {commented}");
+            string? overlayVel = PostChainVk.SharedUnit("uniform sampler2D uOverlay;\nuniform sampler2D uVel;\n");
+            check.Expect(overlayVel == null, $"uOverlay and uVel each have a unit of their own, not {overlayVel}");
             // The whole point: the same expression as inc_postpr_gam.shd, exponent Gamma/2.2, so a client at
             // 2.2 is the identity and every other value moves the Alloy frame exactly as it moves vanilla's.
             check.Expect(GammaStageFs.Contains("vec3(uGamma / 2.2)"), "gamma is pow(c, g/2.2), the stock stage's exponent");

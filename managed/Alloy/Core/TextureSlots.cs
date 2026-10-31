@@ -248,6 +248,8 @@ internal static class TextureSlots
         // consts above said nothing about, and two sampler types on one unit is a draw that vanishes).
         string litDecls = ShaderSource.Get(AlloyRenderer.ShdLitFs + ".glsl");
         check.Expect(DoubleClaimed(litDecls) is null, $"two samplers claim one unit in {AlloyRenderer.ShdLitFs}: {DoubleClaimed(litDecls)}");
+        const string CommentedClaim = "/* layout(binding = 5) uniform sampler2D uA; */\nlayout(binding = 5) uniform sampler2D uB;\n";
+        check.Expect(DoubleClaimed(CommentedClaim) is null, $"a declaration inside a comment claims no unit: {DoubleClaimed(CommentedClaim)}");
         // ...and the two unit BUDGETS the lit program is linked against. Every unit it claims is either under
         // the plain program's need or one of the soft sun's two on top -- except uPairMap, which only the
         // deferred shadow pass's CX_PAIR_RECV compiles in, so it is named here rather than counted.
