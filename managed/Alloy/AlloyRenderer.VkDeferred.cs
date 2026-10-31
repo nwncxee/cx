@@ -384,14 +384,7 @@ public sealed unsafe partial class AlloyRenderer
         foreach (VkLoose u in t.Loose) names.Add(u.Name);
         if (VkSpirv.Block(spirv, 0, VulkanToolchain.UniformBase + VkGlsl.LooseBinding, names) is { } l)
         {
-            var members = new List<LooseBlock.Member>(l.Members.Count);
-            foreach (VkLoose u in t.Loose)
-            {
-                if (!l.Members.TryGetValue(u.Name, out var m)) continue;
-                int count = u.Array.Length == 0 ? 1 : VkGlsl.ResolveInt(u.Array, src) ?? 1;
-                members.Add(new LooseBlock.Member(u.Name, m.Offset, m.Size, count > 1 ? m.Size / count : 0));
-            }
-            st.Members = members.ToArray();
+            st.Members = LooseBlock.Members(t.Loose, l.Members);
             st.Block = new byte[(l.Bytes + 15) & ~15];
         }
         st.Names = LooseBlock.Index(st.Members);
