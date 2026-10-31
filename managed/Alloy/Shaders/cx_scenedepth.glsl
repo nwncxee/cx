@@ -8,8 +8,14 @@ uniform sampler2D uSceneDepth;
 uniform int uViz;
 out vec4 frag;
 
+// View distance of world depth `d` under the world projection `proj`. The world's depth is reversed (near 1, far 0)
+// and its projection folded to match, so the stored depth IS the NDC z and needs no remap.
+float CxDepthViewZ(float d, mat4 proj)
+{
+    return proj[3].z / (d + proj[2].z);
+}
+
 float CxSceneViewZ(vec2 uv)
 {
-    float ndc = texture(uSceneDepth, uv).r * 2.0 - 1.0;
-    return uProj[3].z / (ndc + uProj[2].z);
+    return CxDepthViewZ(texture(uSceneDepth, uv).r, uProj);
 }

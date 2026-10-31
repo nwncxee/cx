@@ -19,6 +19,10 @@ internal sealed unsafe partial class VkBackend
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
+        DepthGateSelfCheck(check);
+        string? noSwap = Gate(new VkVersion(1, 3, 0), n => n != "VK_KHR_swapchain");
+        check.Expect(noSwap != null && noSwap.Contains("VK_KHR_swapchain", StringComparison.Ordinal),
+            $"a Vulkan 1.3 GPU with no swapchain is not refused for it ({noSwap ?? "not refused"})");
         check.Expect(Mode(0) == VkPresentModeKHR.Immediate && Mode(1) == VkPresentModeKHR.Fifo && Mode(2) == VkPresentModeKHR.Fifo
                   && Mode(-1) == VkPresentModeKHR.FifoRelaxed, "a swap interval did not pick its present mode");
         check.Expect(ScopeIs(VkImageLayout.ColorAttachmentOptimal, 0x400, 0x180) && ScopeIs(VkImageLayout.DepthStencilAttachmentOptimal, 0x300, 0x600)

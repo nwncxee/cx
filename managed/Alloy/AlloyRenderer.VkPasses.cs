@@ -150,7 +150,7 @@ public sealed unsafe partial class AlloyRenderer
             colors[GbufFirst + 2] = new ColorAttachment(s.G2, 0, 0, LoadOp.DontCare, StoreOp.Store, default);
             if (refl) VkSsrAttachments(colors);
         }
-        VkFlushPass(cl, side, arena0, new RenderPassDesc(colors[..n], new DepthAttachment(s.Depth, 0, 0, LoadOp.Load, StoreOp.Store, 1f))
+        VkFlushPass(cl, side, arena0, new RenderPassDesc(colors[..n], new DepthAttachment(s.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear))
                                      { ShadingRate = s.Rate });
         s.Rate = default;
         cl.EndLabel();
@@ -228,7 +228,7 @@ public sealed unsafe partial class AlloyRenderer
         if (!water) ok &= VkIssue(side, ref b, _gWaterEnd, groups, add, vp, viewport, near, far, indirect);
         if (!ok) return false;
         colors[0] = new ColorAttachment(s.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default);
-        var forward = new RenderPassDesc(colors[..1], new DepthAttachment(s.Depth, 0, 0, LoadOp.Load, StoreOp.Store, 1f));
+        var forward = new RenderPassDesc(colors[..1], new DepthAttachment(s.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear));
         VkFlushPass(cl, side, arena0, in forward);
         cl.EndLabel();
         if (water)
@@ -298,7 +298,8 @@ public sealed unsafe partial class AlloyRenderer
     {
         side.SetViewport(0, 0, w, h);
         if (!MeshArena.VkEbo.IsNull) side.BindIndexBuffer(MeshArena.VkEbo, IndexType.U16, 0);
-        side.SetDepthBias(Issue.WashOffsetFactor, Issue.WashOffsetUnits);
+        // GL's offset pulls toward the eye by going down; the world's reversed depth goes up
+        side.SetDepthBias(-Issue.WashOffsetFactor, -Issue.WashOffsetUnits);
     }
 
     /// <summary>Hand over every image an earlier pass of this frame WROTE and the draws here read, OUTSIDE the pass:
@@ -432,7 +433,7 @@ public sealed unsafe partial class AlloyRenderer
         int arena0 = s.ArenaUsed;
         var b = new VkBound { Fmt = -1, Tex = -1 };
         VkPassStart(side, viewport[2], viewport[3]);
-        var depth = new DepthState(true, true, CompareOp.Less);
+        var depth = new DepthState(true, true, WorldDepth.Nearer);
         var push = new VkBatchPush { AlphaCut = -1f };
         BufferId slots = indirect ? CullPassVk.Slots(phase) : s.Slots;
         for (int sweep = 0; _depthPrepass && sweep < 2; sweep++)
@@ -466,7 +467,7 @@ public sealed unsafe partial class AlloyRenderer
         // list has it; cleared on the first phase and loaded by the retest, which lands on the same image
         Span<ColorAttachment> ids = stackalloc ColorAttachment[PrepassTargets];
         var rp = new RenderPassDesc(VkIdAttachments(ids, !retest),
-                                    new DepthAttachment(s.Depth, 0, 0, retest ? LoadOp.Load : LoadOp.Clear, StoreOp.Store, 1f));
+                                    new DepthAttachment(s.Depth, 0, 0, retest ? LoadOp.Load : LoadOp.Clear, StoreOp.Store, WorldDepth.Clear));
         VkFlushPass(cl, side, arena0, in rp);
         return true;
     }
@@ -510,7 +511,7 @@ public sealed unsafe partial class AlloyRenderer
             int blendKey = blend && r.Oit != VkOitPart.Accum ? 1 + Math.Min((int)_gSrc[g], 7) * 8 + Math.Min((int)_gDst[g], 7) : 0;
             bool equal = r.MatchDepth && _gPrepassed[g];
             bool wash = _gWash[g] != 0 && !equal;
-            CompareOp func = equal ? CompareOp.Equal : split && r.SplitRan && !r.Interior ? CompareOp.Less : CompareOp.LessEqual;
+            CompareOp func = equal ? CompareOp.Equal : split && r.SplitRan && !r.Interior ? WorldDepth.Nearer : WorldDepth.NearerOrEqual;
             bool test = !(blend && wash && !Renderer.WashTest.V);
             var depth = new DepthState(test, !equal && r.DepthMask, func);
             push.AlphaCut = r.Targets == VkTargets.Cover ? CoverageLayer.Cut : AlloyClasses.Discard(cls);

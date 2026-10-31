@@ -233,7 +233,7 @@ int CxConBound(int bit) { return (int(uDraw[vDraw].pbr.w) & bit) != 0 ? 1 : 0; }
 vec3 CxConClip()
 {
     float a = m_proj[2][2], b = m_proj[3][2];
-    float n = b / (a - 1.0), f = b / (a + 1.0);
+    float n = b / (a + 1.0), f = b / a;
     return vec3(n, f, 1.0 - n / f);
 }
 vec2 CxConSphereUV(vec3 n)
@@ -314,7 +314,7 @@ float GetFog(float d) { return 0.0; }
 // Linear view depth off the depth buffer the engine binds as texFBDepth -- only ever bound for its framebuffer
 // effects, so on a world part this reads whatever the scene depth holds, as it does there.
 #ifndef CX_CON_HAS_GetDepth
-float GetDepth(vec2 uv) { return nearClip / max(1.0 - texture(uSceneDepth, uv).x * fDepthToLinearModifier, 1e-6); }
+float GetDepth(vec2 uv) { return nearClip / max(1.0 - CxGlDepth(uSceneDepth, uv).x * fDepthToLinearModifier, 1e-6); }
 #endif
 // The fragment's own view z, which the newer generation rebuilds from gl_FragCoord: Alloy carries it exactly.
 #ifndef CX_CON_HAS_GetFragmentViewZ

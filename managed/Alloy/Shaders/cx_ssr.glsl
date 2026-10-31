@@ -35,10 +35,11 @@ vec2 CxSsrNoise(ivec2 p, int frame)
                + float(frame & 255) * vec2(0.618034, 0.324718));
 }
 
-/// The view position at uv and window depth, through the inverse projection.
+/// The view position at uv and world depth, through the inverse of the world's folded projection: the reversed depth
+/// is the NDC z itself.
 vec3 CxViewPos(mat4 invProj, vec2 uv, float depth)
 {
-    vec4 p = invProj * vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+    vec4 p = invProj * vec4(uv * 2.0 - 1.0, depth, 1.0);
     return p.xyz / p.w;
 }
 

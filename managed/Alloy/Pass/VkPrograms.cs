@@ -117,8 +117,7 @@ internal static class VkPrograms
     {
         if (GlText(id, log) is not { } t)
             return new VkProgramText { Error = "its vertex stage does not put last frame's blade back (an override without the sway's velocity arm)" };
-        // the device maps GL's -1..1 clip depth itself (VK_EXT_depth_clip_control), so the stages keep GL's clip z
-        return VkGlsl.Translate(t.Vs, t.Fs, IsGrass(id) ? GrassField.VkUnits : Units, glDepth: false);
+        return WorldDepth.Translate(t.Vs, t.Fs, IsGrass(id) ? GrassField.VkUnits : Units);
     }
 
     /// <summary>Content pair <paramref name="feat"/>'s <paramref name="v"/> program translated for Vulkan, from the text
@@ -134,7 +133,8 @@ internal static class VkPrograms
             StageResources.Fail(nativeFs, why, log);
             return new VkProgramText { Error = why };
         }
-        return VkGlsl.Translate(vs, fs, units, glDepth: false);
+        // a caster twin draws into a shadow map, which keeps GL's window depth
+        return v is ContentVariant.Caster or ContentVariant.CasterLayer ? VkGlsl.Translate(vs, fs, units) : WorldDepth.Translate(vs, fs, units);
     }
 
     /// <summary>The hosted sky's NATIVE program for content stage <paramref name="resref"/> on native stage
@@ -146,7 +146,7 @@ internal static class VkPrograms
         string vs = Final(ShaderTexts.Lib(pair.Vs, log, what), log, what, true), fs = Final(ShaderTexts.Lib(pair.Fs, log, what), log, what, true);
         if (StageResources.VkUnits(Units, vs + "\n" + fs, stage, -1, StageResources.DrawImgUnits, out string why) is not { } units)
             return new VkProgramText { Error = why };
-        return VkGlsl.Translate(vs, fs, units, glDepth: false);
+        return WorldDepth.Translate(vs, fs, units);
     }
 
     /// <summary>The hosted sky's program for content stage <paramref name="resref"/>, translated for Vulkan from the
@@ -156,8 +156,8 @@ internal static class VkPrograms
     {
         if (!SkyStage.Texts(resref, native: false, out var pair, out _)) return null;
         string what = $"VkPrograms sky {resref}";
-        return VkGlsl.Translate(Final(ShaderTexts.Lib(pair.Vs, log, what), log, what, true),
-                                Final(ShaderTexts.Lib(pair.Fs, log, what), log, what, true), Units, glDepth: false);
+        return WorldDepth.Translate(Final(ShaderTexts.Lib(pair.Vs, log, what), log, what, true),
+                                Final(ShaderTexts.Lib(pair.Fs, log, what), log, what, true), Units);
     }
 
     /// <summary>The lit pair a content pair is spliced from on Vulkan: <see cref="LitTexts"/>, the text GL's lit

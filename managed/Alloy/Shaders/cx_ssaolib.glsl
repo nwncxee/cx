@@ -16,10 +16,11 @@ layout(std140, binding = 3) uniform CxSsao
     int uFrame;      // #390: the noise phase; 0 on the single-frame path
 };
 
-// Positive view distance: z_clip = z_v*M22 + M32, w_clip = -z_v, so z_v = -M32 / (ndc + M22).
+// Positive view distance: z_clip = z_v*M22 + M32, w_clip = -z_v, so z_v = -M32 / (ndc + M22); the world's
+// reversed depth under its folded projection is the NDC z itself.
 float CxViewDist(float depth)
 {
-    return uProj[3].z / (depth * 2.0 - 1.0 + uProj[2].z);
+    return uProj[3].z / (depth + uProj[2].z);
 }
 // View-space position (camera at the origin looking down -z) of the pixel at uv.
 vec3 CxViewPos(vec2 uv)

@@ -26,7 +26,7 @@ public sealed unsafe partial class CasterPass
 
     /// <summary>One translated depth program: its modules, the pipelines it has made by state key, and the offsets
     /// of the three loose members a masked stage reads out of its own block.</summary>
-    private sealed class VkCastProg
+    internal sealed class VkCastProg
     {
         public ShaderId Vs, Fs;
         public string Label = "";
@@ -217,10 +217,10 @@ public sealed unsafe partial class CasterPass
 
     /// <summary>One depth program: translated, compiled, and its loose block's three members located in the module's
     /// own offsets. Null (logged) when it did not translate or compile.</summary>
-    private static VkCastProg? VkCastBuild(VkBackend vk, string vs, string fs, string label, ExtenderLog log)
+    internal static VkCastProg? VkCastBuild(VkBackend vk, string vs, string fs, string label, ExtenderLog log)
     {
         var units = new Dictionary<string, uint> { ["uTex"] = 0 };
-        VkProgramText t = VkGlsl.Translate(vs, fs, units, glDepth: false);
+        VkProgramText t = VkGlsl.Translate(vs, fs, units);
         if (t.Error != null) { log.Always($"CasterPass: the Vulkan {label} program did not translate -- {t.Error}"); return null; }
         byte[]? vb = VulkanToolchain.Compile(VkBackend.Translate(t.Vs), $"vk {label} vs", ShaderKind.VertexShader, out string ve);
         byte[]? fb = VulkanToolchain.Compile(VkBackend.Translate(t.Fs), $"vk {label} fs", ShaderKind.FragmentShader, out string fe);

@@ -45,7 +45,7 @@ public sealed unsafe partial class AlloyRenderer
     internal static void VkFrameCamera(in Matrix4x4 view, in Matrix4x4 proj)
     {
         _vkWater.View = view;
-        _vkWater.Proj = proj;
+        _vkWater.Proj = WorldDepth.Unfold(proj);   // the march is stock's, in GL's clip z
     }
 
     /// <summary>A snapshot or engine texture the water stage reads, or the null id when the class is not drawing:
@@ -197,7 +197,7 @@ public sealed unsafe partial class AlloyRenderer
             int blendKey = blend ? 1 + Math.Min((int)_gSrc[g], 7) * 8 + Math.Min((int)_gDst[g], 7) : 0;
             bool wash = _gWash[g] != 0;
             push.AlphaCut = AlloyClasses.Discard(cls);
-            if (!VkBatch(side, ref b, s.Prog, g, VkTargets.Forward, blendKey, new DepthState(true, true, CompareOp.LessEqual),
+            if (!VkBatch(side, ref b, s.Prog, g, VkTargets.Forward, blendKey, new DepthState(true, true, WorldDepth.NearerOrEqual),
                          VkRaster(g, wash), slots, _gTex[g], ref push, vp, viewport, near, far, CullPassVk.PhaseColour, indirect))
                 continue;
             Counters._batches++;

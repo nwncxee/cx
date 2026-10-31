@@ -99,7 +99,7 @@ internal static unsafe class ToonStage
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
-        check.Expect(StageFs.Contains("uProj[3].z / (depth * 2.0 - 1.0 + uProj[2].z)"), "the linearisation is SSAO's");
+        check.Expect(StageFs.Contains("uProj[3].z / (depth + uProj[2].z)"), "the linearisation is SSAO's");
         check.Expect(StageFs.Contains("CxViewDist(zx) - d0"), "the ink is a plane fit against the neighbours' prediction");
         // ...and the prediction is made in RAW depth, which is the property the string cannot assert. A plane
         // is affine in window z, so the average of two neighbours IS the centre; average linearised distances

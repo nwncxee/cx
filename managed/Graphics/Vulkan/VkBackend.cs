@@ -233,18 +233,14 @@ internal sealed unsafe partial class VkBackend : IDevice
         var p2 = new VkPhysicalDeviceProperties2();
         vki.vkGetPhysicalDeviceProperties2(d, &p2);
         props = p2.properties;
-        if (props.apiVersion < ApiFloor) return "is below Vulkan 1.3";
-        if (!HasExt(vki, d, "VK_EXT_depth_clip_control\0"u8)) return "lacks VK_EXT_depth_clip_control (GL's -1..1 clip depth)";
-        if (!HasExt(vki, d, SwapchainExt)) return "lacks VK_KHR_swapchain";
-        var clip = new VkPhysicalDeviceDepthClipControlFeaturesEXT();
-        var f11 = new VkPhysicalDeviceVulkan11Features { pNext = &clip };
+        if (Gate(props.apiVersion, n => HasExt(vki, d, System.Text.Encoding.ASCII.GetBytes(n + "\0"))) is string no) return no;
+        var f11 = new VkPhysicalDeviceVulkan11Features();
         var f12 = new VkPhysicalDeviceVulkan12Features { pNext = &f11 };
         var f13 = new VkPhysicalDeviceVulkan13Features { pNext = &f12 };
         var f2 = new VkPhysicalDeviceFeatures2 { pNext = &f13 };
         vki.vkGetPhysicalDeviceFeatures2(d, &f2);
         if (!f13.dynamicRendering || !f13.synchronization2) return "lacks dynamic rendering or synchronization2";
         if (Lacks(in f2.features, in f11, in f12) is string lack) return $"lacks {lack}";
-        if (!clip.depthClipControl) return "lacks depthClipControl";
         uint qn = 0;
         vki.vkGetPhysicalDeviceQueueFamilyProperties(d, &qn, null);
         VkQueueFamilyProperties* q = stackalloc VkQueueFamilyProperties[(int)qn];
@@ -256,6 +252,15 @@ internal sealed unsafe partial class VkBackend : IDevice
             return null;
         }
         return "has no graphics+compute queue";
+    }
+
+    /// <summary>Why a device reporting <paramref name="api"/>, whose extension list answers <paramref name="has"/>, cannot
+    /// run the backend before its features are asked; null when it may.</summary>
+    internal static string? Gate(VkVersion api, Func<string, bool> has)
+    {
+        if (api < ApiFloor) return "is below Vulkan 1.3";
+        if (!has("VK_KHR_swapchain")) return "lacks VK_KHR_swapchain";
+        return null;
     }
 
     /// <summary>The first feature the batch pass needs that the device does not have, or null: draw parameters for the
@@ -361,8 +366,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         qci[queues++] = new VkDeviceQueueCreateInfo { queueFamilyIndex = family, queueCount = 1, pQueuePriorities = &prio };
         if (asyncFamily >= 0) qci[queues++] = new VkDeviceQueueCreateInfo { queueFamilyIndex = (uint)asyncFamily, queueCount = 1, pQueuePriorities = &prio };
         if (transferFamily >= 0) qci[queues++] = new VkDeviceQueueCreateInfo { queueFamilyIndex = (uint)transferFamily, queueCount = 1, pQueuePriorities = &prio };
-        var clip = new VkPhysicalDeviceDepthClipControlFeaturesEXT { depthClipControl = true };
-        var f11 = new VkPhysicalDeviceVulkan11Features { pNext = &clip, shaderDrawParameters = true };
+        var f11 = new VkPhysicalDeviceVulkan11Features { shaderDrawParameters = true };
         var f12 = new VkPhysicalDeviceVulkan12Features
         {
             pNext = &f11, drawIndirectCount = true, runtimeDescriptorArray = true, descriptorBindingPartiallyBound = true,
@@ -392,14 +396,14 @@ internal sealed unsafe partial class VkBackend : IDevice
         _memBudget = HasExt(_vki, phys, "VK_EXT_memory_budget\0"u8);
         _rateTexel = RateSupport(phys, out string? rateWhy);
         var fsr = new VkPhysicalDeviceFragmentShadingRateFeaturesKHR { pipelineFragmentShadingRate = true, attachmentFragmentShadingRate = true };
-        if (_rateTexel > 0) clip.pNext = &fsr;
+        if (_rateTexel > 0) f11.pNext = &fsr;
         VkDevice device;
-        fixed (byte* sw = SwapchainExt) fixed (byte* c = "VK_EXT_depth_clip_control\0"u8)
+        fixed (byte* sw = SwapchainExt)
         fixed (byte* vl = "VK_EXT_shader_viewport_index_layer\0"u8) fixed (byte* mb = "VK_EXT_memory_budget\0"u8)
         fixed (byte* sr = RateExt)
         {
-            byte** exts = stackalloc byte*[5] { sw, c, null, null, null };
-            uint n = 2;
+            byte** exts = stackalloc byte*[4] { sw, null, null, null };
+            uint n = 1;
             if (layerExt) exts[n++] = vl;
             if (_memBudget) exts[n++] = mb;
             if (_rateTexel > 0) exts[n++] = sr;
@@ -760,9 +764,9 @@ internal sealed unsafe partial class VkBackend : IDevice
 
     private static VkCompareOp Compare(CompareOp c) => c switch
     {
-        CompareOp.Less => VkCompareOp.Less,
         CompareOp.Equal => VkCompareOp.Equal,
         CompareOp.Greater => VkCompareOp.Greater,
+        CompareOp.GreaterEqual => VkCompareOp.GreaterOrEqual,
         CompareOp.Always => VkCompareOp.Always,
         _ => VkCompareOp.LessOrEqual,
     };

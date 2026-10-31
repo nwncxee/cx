@@ -34,8 +34,7 @@ internal sealed class GuiVkProg
     internal static GuiVkProg? Build(VkBackend vk, string vs, string fs, IReadOnlyDictionary<string, uint> units,
                                      string label, Action<GuiVkProg> locate, ExtenderLog log)
     {
-        // the device maps GL's -1..1 clip depth itself (VK_EXT_depth_clip_control), so the stages keep GL's clip z
-        VkProgramText t = VkGlsl.Translate(vs, fs, units, glDepth: false);
+        VkProgramText t = VkGlsl.Translate(vs, fs, units);
         if (t.Error != null) { log.Always($"GuiVkProg: {label} did not translate -- {t.Error}"); return null; }
         byte[]? vb = VulkanToolchain.Compile(VkBackend.Translate(t.Vs), $"vk {label} vs", ShaderKind.VertexShader, out string ve);
         byte[]? fb = VulkanToolchain.Compile(VkBackend.Translate(t.Fs), $"vk {label} fs", ShaderKind.FragmentShader, out string fe);

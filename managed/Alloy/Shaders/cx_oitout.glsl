@@ -19,7 +19,7 @@ vec4 CxOitOut(vec4 c)
     float a = clamp(c.a, 0.0, 1.0);
     ivec2 px = ivec2(gl_FragCoord.xy);
     // McGuire & Bavoil eq. 9: near-and-opaque weighs most; clamped so fp16 neither under- nor overflows.
-    float w = clamp(pow(min(1.0, a * 10.0) + 0.01, 3.0) * 1e8 * pow(1.0 - gl_FragCoord.z * 0.9, 3.0), 1e-2, 3e3);
+    float w = clamp(pow(min(1.0, a * 10.0) + 0.01, 3.0) * 1e8 * pow(0.1 + gl_FragCoord.z * 0.9, 3.0), 1e-2, 3e3);
     oReveal = a;
     return vec4(c.rgb * a, a) * w;
 }

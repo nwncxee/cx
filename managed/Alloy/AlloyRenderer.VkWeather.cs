@@ -53,7 +53,7 @@ public sealed unsafe partial class AlloyRenderer
         if (drip && !VkWxDraw(side, s, c, 0, 3, drips, view, proj, viewport, near, far, lit)) return false;
         if (VkWxEnsure(vk, s, VkSplashProg, log) && !VkSplashDraw(side, s, c, view, proj, viewport, near, far, lit)) return false;
         ReadOnlySpan<ColorAttachment> colors = [new(c.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default)];
-        VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, 1f)));
+        VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear)));
         if (!s.Live)
         {
             s.Live = true;
@@ -122,7 +122,7 @@ public sealed unsafe partial class AlloyRenderer
         (string vs, string fs) = k == VkSplashProg ? Weather.VkSplashTexts(log) : Weather.VkTexts(k == 1, log);
         string label = k == VkSplashProg ? "splash" : k == 1 ? "snow" : "rain";
         var units = new System.Collections.Generic.Dictionary<string, uint>(VkPrograms.Units) { ["uCover"] = TextureSlots.CoverEsm };
-        VkProgramText t = VkGlsl.Translate(ShaderResource.Tokens(vs), ShaderResource.Tokens(fs), units, glDepth: false);
+        VkProgramText t = WorldDepth.Translate(ShaderResource.Tokens(vs), ShaderResource.Tokens(fs), units);
         VkProg? p = VkBuild(vk, t, label, true, log);
         if (p != null)
         {
@@ -132,7 +132,7 @@ public sealed unsafe partial class AlloyRenderer
             var d = new PipelineDesc
             {
                 Vs = p.Vs, Fs = p.Fs, Topo = Topology.TriangleStrip, Raster = new RasterState(CullMode.None),
-                Depth = new DepthState(true, false, CompareOp.LessEqual), Label = $"vk {label}",
+                Depth = new DepthState(true, false, WorldDepth.NearerOrEqual), Label = $"vk {label}",
             };
             d.Targets.ColorCount = 1;
             d.Targets.Colors[0] = Format.Rgba16F;

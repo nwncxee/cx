@@ -114,7 +114,7 @@ internal static unsafe class SsaoPass
         {
             string fs = ShaderStages.Source(ShdSsaoFs), bl = ShaderStages.Source(ShdSsaoBlurFs);
             check.Expect(fs.Contains("float CxViewDist(float depth)") && bl.Contains("float CxViewDist(float depth)"), "both stages carry the reconstruction");
-            check.Expect(fs.Contains("uProj[3].z / (depth * 2.0 - 1.0 + uProj[2].z)"), "the linearisation is the particle fade's (uProj[3].z / (ndc + uProj[2].z))");
+            check.Expect(fs.Contains("uProj[3].z / (depth + uProj[2].z)"), "the linearisation is the particle fade's (uProj[3].z / (ndc + uProj[2].z))");
             check.Expect(ShaderContract.SlotSafe(fs, "uDepth") && ShaderContract.SlotSafe(bl, "uSrc", "uDepth"), "the samplers the C# side binds are declared");
             check.Expect(ShaderSource.Get("cx_ssaolib.glsl").Contains($"layout(binding = {SlotDepth}) uniform sampler2D uDepth;")
               && SsaoBlurFs.Contains($"layout(binding = {SlotSrc}) uniform sampler2D uSrc;"),

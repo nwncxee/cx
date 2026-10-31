@@ -65,8 +65,8 @@ public sealed unsafe partial class AlloyRenderer
         VkGrassState g = _vkGrass;
         if (g.Dev != vk) _vkGrass = g = new VkGrassState { Dev = vk };
         if (_capturing || !VkGrassEnsure(vk, g, log)) return true;
-        Matrix4x4 m = vp;
-        if (!GrassField.StageVk(&m, g.Blades != null, out GrassField.VkFrame f) || f.Patches == 0) return true;
+        Matrix4x4 m = vp, gl = WorldDepth.Unfold(vp);
+        if (!GrassField.StageVk(&gl, g.Blades != null, out GrassField.VkFrame f) || f.Patches == 0) return true;
         ReadOnlySpan<byte> faces = GrassField.VkNewFaces(out long faceAt);
         if (!faces.IsEmpty) cl.UpdateBuffer(g.Faces, faceAt, faces);
         ReadOnlySpan<byte> patches = MemoryMarshal.AsBytes(GrassField.VkPatches(f.Patches));
@@ -84,7 +84,7 @@ public sealed unsafe partial class AlloyRenderer
         // both scatter blocks staged, then the arena range they took sent ahead of the dispatches reading it
         int arena0 = c.ArenaUsed;
         VkDefStage sc = g.Scatter!;
-        int scatter = VkGrassScatterBlock(g, &m, 0), clamp = VkGrassScatterBlock(g, &m, f.Mats);
+        int scatter = VkGrassScatterBlock(g, &gl, 0), clamp = VkGrassScatterBlock(g, &gl, f.Mats);
         if (scatter < 0 || clamp < 0) return false;
         int len = (c.ArenaUsed - arena0 + 3) & ~3;
         cl.UpdateBuffer(c.Arena, arena0, c.ArenaBytes.AsSpan(arena0, Math.Min(len, ArenaCap - arena0)));
@@ -125,7 +125,7 @@ public sealed unsafe partial class AlloyRenderer
         if (prepass)
         {
             side.SetPipeline(g.CardPrePipe);
-            side.SetDepthState(new DepthState(true, true, CompareOp.Less));
+            side.SetDepthState(new DepthState(true, true, WorldDepth.Nearer));
             var pre = new VkGrassView(GrassDraw.Prepass, &m, null, viewport, near, far, false, ground, true);
             if (!VkGrassDraws(side, g, c, g.CardDepth!, g.LCD, in f, in pre, true, own, storage[..ns])) return false;
         }
@@ -133,17 +133,17 @@ public sealed unsafe partial class AlloyRenderer
         if (f.BladeNear + f.BladeFar > 0 && g.Blades != null)
         {
             side.SetPipeline(g.BladePipe);
-            side.SetDepthState(new DepthState(true, true, CompareOp.LessEqual));
+            side.SetDepthState(new DepthState(true, true, WorldDepth.NearerOrEqual));
             if (!VkGrassDraws(side, g, c, g.Blades, g.LB, in f, in colour, false, own, storage[..ns])) return false;
         }
         if (f.Slots > 0 && g.Cards != null)
         {
             side.SetPipeline(prepass ? g.CardSoftPipe : g.CardPipe);
-            side.SetDepthState(new DepthState(true, !prepass, CompareOp.LessEqual));
+            side.SetDepthState(new DepthState(true, !prepass, WorldDepth.NearerOrEqual));
             if (!VkGrassDraws(side, g, c, g.Cards, g.LC, in f, in colour, true, own, storage[..ns])) return false;
         }
         ReadOnlySpan<ColorAttachment> colors = [new(c.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default)];
-        VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, 1f)));
+        VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear)));
         GrassField.VkDrew(in f, ground);
         if (!g.Live)
         {
@@ -229,7 +229,7 @@ public sealed unsafe partial class AlloyRenderer
             for (int i = 0; !img.IsNull && mask >> i != 0; i++)
             {
                 if ((mask >> i & 1) == 0) continue;
-                Matrix4x4 vp = CasterPass.CascadeVpOf(i);
+                Matrix4x4 vp = WorldDepth.FoldGl(CasterPass.CascadeVpOf(i));
                 var d = new VkGrassView(GrassDraw.Cast, &vp, null, viewport, 0f, 0f, false, false, false);
                 side.Reset();
                 int arena0 = c.ArenaUsed;
@@ -301,17 +301,17 @@ public sealed unsafe partial class AlloyRenderer
         if (blades)
         {
             side.SetPipeline(g.BladeMotionPipe);
-            side.SetDepthState(new DepthState(true, false, CompareOp.LessEqual));
+            side.SetDepthState(new DepthState(true, false, WorldDepth.NearerOrEqual));
             if (!VkGrassDraws(side, g, c, g.BladeMotion!, g.LBM, in f, in d, false, own, storage)) return;
         }
         if (cards)
         {
             side.SetPipeline(g.CardMotionPipe);
-            side.SetDepthState(new DepthState(true, false, CompareOp.LessEqual));
+            side.SetDepthState(new DepthState(true, false, WorldDepth.NearerOrEqual));
             if (!VkGrassDraws(side, g, c, g.CardMotion!, g.LCM, in f, in d, true, own, storage)) return;
         }
         ReadOnlySpan<ColorAttachment> colors = [new(vel, 0, 0, LoadOp.Load, StoreOp.Store, default)];
-        VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, 1f)));
+        VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear)));
         if (!g.MotionLive)
         {
             g.MotionLive = true;
@@ -473,7 +473,7 @@ public sealed unsafe partial class AlloyRenderer
         var d = new PipelineDesc
         {
             Vs = p.Vs, Fs = p.Fs, Topo = topo, Raster = new RasterState(CullMode.None, DepthClamp: clamp),
-            Depth = new DepthState(true, true, CompareOp.LessEqual), Label = label,
+            Depth = new DepthState(true, true, WorldDepth.NearerOrEqual), Label = label,
         };
         d.Targets.ColorCount = colour == Format.Unknown ? 0 : 1;
         d.Targets.Colors[0] = colour;

@@ -155,7 +155,7 @@ internal static unsafe class MotionVectors
         check.Expect(_hist.PrevVp.M41 == 1f, "...and a second pass in the same frame does not roll it again");
         check.Expect(CameraFs.Contains("abs(prev.w) < 1e-6") && CameraFs.Contains("isnan(v)") && CameraFs.Contains("clamp(v, -uSize, uSize)"),
           "no NaN and no unbounded value leaves the stage");
-        check.Expect(CameraFs.Contains("d * 2.0 - 1.0"), "depth decodes for the default depth range");
+        check.Expect(CameraFs.Contains("vec4(vUV * 2.0 - 1.0, d, 1.0)"), "the reversed depth is the folded projection's NDC z");
         _hist.HasPrev = true; _hist.LastSeq = 7;
         Revoke();
         check.Expect(!_hist.HasPrev && _hist.LastSeq == -1, "Revoke drops the previous camera");

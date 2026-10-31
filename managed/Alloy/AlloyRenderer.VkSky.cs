@@ -47,10 +47,10 @@ public sealed unsafe partial class AlloyRenderer
         int arena0 = s.ArenaUsed;
         side.SetViewport(0, 0, viewport[2], viewport[3]);
         if (!MeshArena.VkEbo.IsNull) side.BindIndexBuffer(MeshArena.VkEbo, IndexType.U16, 0);
-        // the dome sits AT the camera: GL's glDepthRange(1,1) under LEQUAL is what makes "after the opaque pass"
-        // mean "only where nothing was drawn", and the collapsed Vulkan range is the same thing
-        side.SetDepthRange(1f, 1f);
-        side.SetDepthState(new DepthState(true, false, CompareOp.LessEqual));
+        // the dome sits AT the camera: a range collapsed onto the far plane under the nearer-or-equal test is what
+        // makes "after the opaque pass" mean "only where nothing was drawn"
+        side.SetDepthRange(WorldDepth.Clear, WorldDepth.Clear);
+        side.SetDepthState(new DepthState(true, false, WorldDepth.NearerOrEqual));
         side.SetRasterState(new RasterState(CullMode.Back));
         var push = new VkBatchPush { AlphaCut = -1f };
         PipelineId pipe = default;
@@ -82,7 +82,7 @@ public sealed unsafe partial class AlloyRenderer
         Span<ColorAttachment> colors = stackalloc ColorAttachment[1];
         colors[0] = new ColorAttachment(into.IsNull ? s.Hdr : into, 0, layer, LoadOp.Load, StoreOp.Store, default);
         VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(depth.IsNull ? s.Depth : depth, 0, 0,
-                                                                                      LoadOp.Load, StoreOp.Store, 1f)));
+                                                                                      LoadOp.Load, StoreOp.Store, WorldDepth.Clear)));
         if (!k.Live)
         {
             k.Live = true;
@@ -132,7 +132,7 @@ public sealed unsafe partial class AlloyRenderer
         {
             Vs = p.Vs, Fs = p.Fs, Layout = s.Layouts[fmt], Topo = Topology.Triangles,
             Raster = new RasterState(CullMode.Back, false, false, true),
-            Depth = new DepthState(true, false, CompareOp.LessEqual),
+            Depth = new DepthState(true, false, WorldDepth.NearerOrEqual),
             Label = $"vk sky {p.Label} {(MeshArena.Fmt)fmt} blend {blend}",
         };
         d.Targets.ColorCount = 1;

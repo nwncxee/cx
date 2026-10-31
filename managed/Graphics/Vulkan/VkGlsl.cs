@@ -86,6 +86,10 @@ internal static partial class VkGlsl
     private readonly record struct Decl(string LayoutInner, bool HasLayout, string Quals, string Storage, string Type,
                                         List<(string Name, string Array, string? Init)> Names);
 
+    /// <summary>A fragment's GL window depth in rewritten content text: <c>gl_FragCoord.z</c> where the program keeps GL's
+    /// depth, one minus it where the program draws reversed depth.</summary>
+    internal const string GlFragZ = "cxGlFragZ";
+
     /// <summary>Both stages of one program as Vulkan GLSL. <paramref name="samplerUnits"/> names the binding of every
     /// sampler or image declared without one; a declaration it does not name is an error.</summary>
     internal static VkProgramText Translate(string vs, string fs, IReadOnlyDictionary<string, uint> samplerUnits,
@@ -95,6 +99,7 @@ internal static partial class VkGlsl
         try
         {
             string tv = Builtins(Bindless(vs, out bool bv, r), out bool dv, r);
+            fs = fs.Replace(GlFragZ, glDepth ? "gl_FragCoord.z" : "(1.0 - gl_FragCoord.z)", StringComparison.Ordinal);
             string tf = Builtins(Bindless(fs, out bool bf, r), out bool df, r);
             if (r.Error != null) return r;
             List<Stmt> sv = Statements(tv), sf = Statements(tf);

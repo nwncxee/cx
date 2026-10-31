@@ -81,7 +81,7 @@ void main()
         // that would otherwise read one texel alone for a quarter of the pixels and mix none of the rotations.
         ivec2 p = r * uShRes + uRect.xy;
         cxPixel = vec2(p) + 0.5;
-        float ndcZ = texelFetch(uGbDepth, p, 0).r * 2.0 - 1.0;
+        float ndcZ = texelFetch(uGbDepth, p, 0).r;
         float viewDepth = uProj[3].z / (ndcZ + uProj[2].z);
         CxGbuf g;
         if (CxGbufReadHead(texelFetch(uGb0, p, 0), viewDepth, CxGbufDepthSlack(uGbDepth, p, viewDepth, uProj), g))

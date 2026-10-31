@@ -99,11 +99,11 @@ internal static unsafe class FbPostStage
 
     /// <summary>From the pass, beside the toon stage's projection: the camera the content's sun and lens
     /// maths project through (<c>m_view</c>, its inverse for a world position off the depth, and the near/far the
-    /// depth decode needs).</summary>
+    /// depth decode needs). <paramref name="proj"/> is the world's folded projection.</summary>
     internal static void SetCamera(Matrix4x4* view, Matrix4x4* proj)
     {
         _view = *view;
-        AlloyLights.TryPerspective(*proj, out _, out _, out _near, out _far);
+        AlloyLights.TryPerspective(WorldDepth.Unfold(*proj), out _, out _, out _near, out _far);
     }
 
     /// <summary>The hosted chain's members of a program's loose block.</summary>

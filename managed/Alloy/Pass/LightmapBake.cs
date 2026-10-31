@@ -64,7 +64,7 @@ internal static unsafe partial class LightmapBake
     /// <summary>Depth steps the scratch depth holds: light l of a page writes (l + 1) / this under GREATER,
     /// so the pushed triangles (<see cref="BakeGs"/>) that overlap along a shared edge add a light ONCE -- the
     /// second fragment on the texel fails the test. The bake stays additive with no clear per light.</summary>
-    private const int BakeDepthSteps = 1 << 16;
+    internal const int BakeDepthSteps = 1 << 16;
     private static int _cubeSize;
     private static int _bDepth;
     private static int _bSlot, _bRect, _bLight, _bColor, _bMode, _bCubeTex, _bDynTex, _bCubeCount, _bSoftWorld, _bChan;

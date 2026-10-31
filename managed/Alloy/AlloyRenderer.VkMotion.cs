@@ -68,7 +68,7 @@ public sealed unsafe partial class AlloyRenderer
             {
                 fmt = f;
                 side.SetPipeline(pipe);
-                side.SetDepthState(new DepthState(true, false, CompareOp.LessEqual));
+                side.SetDepthState(new DepthState(true, false, WorldDepth.NearerOrEqual));
                 side.SetRasterState(new RasterState(CullMode.None));
                 side.BindVertexBuffer(MeshArena.VkVbo((MeshArena.Fmt)f));
             }
@@ -95,7 +95,7 @@ public sealed unsafe partial class AlloyRenderer
         }
         if (drawn == 0) return;
         ReadOnlySpan<ColorAttachment> colors = [new(vel, 0, 0, LoadOp.Load, StoreOp.Store, default)];
-        VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, 1f)));
+        VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear)));
         _mvDrawn += drawn;
         if (!s.Live)
         {

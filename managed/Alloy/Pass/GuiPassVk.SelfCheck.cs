@@ -70,7 +70,7 @@ internal static unsafe partial class GuiPassVk
     private static LooseBlock.Member[]? Block(Checker check, ExtenderLog log, string what, string vs, string fs,
                               IReadOnlyDictionary<string, uint> units, (string Name, int Offset, int Bytes)[] want)
     {
-        VkProgramText t = VkGlsl.Translate(vs, fs, units, glDepth: false);
+        VkProgramText t = VkGlsl.Translate(vs, fs, units);
         if (t.Error != null) { check.Expect(false, $"{what} translates ({t.Error})"); return null; }
         byte[]? vb = VulkanToolchain.Compile(VkBackend.Translate(t.Vs), $"{what} vs", ShaderKind.VertexShader, out string ve);
         byte[]? fb = VulkanToolchain.Compile(VkBackend.Translate(t.Fs), $"{what} fs", ShaderKind.FragmentShader, out string fe);

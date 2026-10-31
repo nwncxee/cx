@@ -1348,6 +1348,52 @@ def check_native_grammar():
     return bad
 
 
+# CX-338: the world's depth is reversed (near 1, far 0) and its projection folded to match, so a world depth read IS
+# the NDC z. GL's decode of it (`d * 2.0 - 1.0`) or GL's far plane (`d >= 1.0`) is a missed site: the frame goes
+# wrong without a compile error, so the gate reads the text. Shadow and cover maps keep GL's depth and are not named.
+WORLD_DEPTH = r"\b(?:uDepth|uDepthMs|uSceneDepth|uGbDepth|uFbDepth|uTrigDepth)\b"
+WORLD_READ = re.compile(r"\b(?:texture|textureLod|texelFetch)\s*\(\s*" + WORLD_DEPTH)
+GL_DECODE = r"\s*\*\s*2\.0\s*-\s*1\.0"
+GL_FAR = r"\s*(?:>=\s*1\.0|<\s*1\.0)"
+
+
+def world_depth_misses(name, text):
+    """Lines of `text` that read world depth the GL way: decoded `* 2.0 - 1.0`, or tested against 1.0 as the far plane."""
+    out = []
+    held = set()
+    for i, line in enumerate(text.splitlines(), 1):
+        code = line.split("//")[0]
+        m = re.search(r"\b(?:float\s+)?(\w+)\s*=\s*" + WORLD_READ.pattern, code)
+        if m:
+            held.add(m.group(1))
+        names = "|".join(sorted(held))
+        if WORLD_READ.search(code) and re.search(r"\)\s*\.\s*[rx]" + GL_DECODE, code):
+            out.append(f"{name}.glsl:{i}: a world depth read decoded as GL's (* 2.0 - 1.0)")
+        elif WORLD_READ.search(code) and re.search(r"\)\s*\.\s*[rx]" + GL_FAR, code):
+            out.append(f"{name}.glsl:{i}: a world depth read tested against GL's far plane (1.0)")
+        elif names and re.search(r"\b(?:" + names + r")" + GL_DECODE, code):
+            out.append(f"{name}.glsl:{i}: a world depth decoded as GL's (* 2.0 - 1.0)")
+        elif names and re.search(r"\b(?:" + names + r")" + GL_FAR, code):
+            out.append(f"{name}.glsl:{i}: a world depth tested against GL's far plane (1.0)")
+    return out
+
+
+def check_world_depth():
+    """Every embedded .glsl file decodes world depth as reversed."""
+    bad = []
+    for f in sorted(os.listdir(SHADERS)):
+        if f.endswith(".glsl"):
+            bad += world_depth_misses(f[:-5], open(os.path.join(SHADERS, f)).read())
+    for b in bad:
+        print(f"world depth: {b}")
+    probe = world_depth_misses("probe", "float d = texture(uDepth, uv).r;\nfloat z = d * 2.0 - 1.0;\n"
+                                        "if (texelFetch(uSceneDepth, p, 0).r >= 1.0) return;\n")
+    if len(probe) != 2:
+        print(f"world depth: the gate's own probe found {len(probe)} of its 2 planted misses"); return 1
+    print("world depth: " + (f"{len(bad)} GL decode(s) of the reversed world depth" if bad else "every read is reversed -- ok"))
+    return 1 if bad else 0
+
+
 def main():
     raw = shaders()
     g = spliced(raw)
@@ -1382,6 +1428,7 @@ def main():
     bad |= check_early_z(progs)
     bad |= check_material(g)
     bad |= audit(g)
+    bad |= check_world_depth()
     return bad
 
 

@@ -389,7 +389,7 @@ public sealed unsafe partial class AlloyRenderer
                          near, far, false);
             // alpha 0 where nothing mirrored: the trace keeps its own answer there
             ReadOnlySpan<ColorAttachment> colors = [new(s.PlCol, 0, 0, LoadOp.Clear, StoreOp.Store, default)];
-            VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(s.PlDepth, 0, 0, LoadOp.Clear, StoreOp.Store, 1f)));
+            VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(s.PlDepth, 0, 0, LoadOp.Clear, StoreOp.Store, WorldDepth.Clear)));
         }
         finally
         {

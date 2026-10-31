@@ -76,7 +76,7 @@ public sealed unsafe partial class AlloyRenderer
         var cover = new VkRange(false, true, false, false, VkTargets.Cover, false, VkDecalFold);
         if (!VkIssue(side, ref b, _gA2cStart, _gOpaqueEnd, cover, vp, viewport, near, far, indirect)) return false;
         ReadOnlySpan<ColorAttachment> ms = [new(c.Col, 0, 0, LoadOp.DontCare, StoreOp.Store, default)];
-        VkFlushPass(cl, side, arena0, new RenderPassDesc(ms, new DepthAttachment(c.Dep, 0, 0, LoadOp.DontCare, StoreOp.Store, 1f)));
+        VkFlushPass(cl, side, arena0, new RenderPassDesc(ms, new DepthAttachment(c.Dep, 0, 0, LoadOp.DontCare, StoreOp.Store, WorldDepth.Clear)));
 
         side.Reset();
         arena0 = s.ArenaUsed;
@@ -86,7 +86,7 @@ public sealed unsafe partial class AlloyRenderer
         if (!VkCoverDraw(side, s, c.DepthBack!, c.DepthPipe, c.Dep, default, c.Samples)) return false;
         cl.ReadImages([c.Col, c.Dep]);
         ReadOnlySpan<ColorAttachment> frame = [new(s.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default)];
-        VkFlushPass(cl, side, arena0, new RenderPassDesc(frame, new DepthAttachment(s.Depth, 0, 0, LoadOp.Load, StoreOp.Store, 1f)));
+        VkFlushPass(cl, side, arena0, new RenderPassDesc(frame, new DepthAttachment(s.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear)));
         CoverageLayer.CountVk(c.Samples, (long)c.Rw * c.Rh, (long)w * h);
         if (!c.Live)
         {
@@ -137,7 +137,7 @@ public sealed unsafe partial class AlloyRenderer
             if (c.Seed != null && c.Resolve != null && c.DepthBack != null)
             {
                 c.ResolvePipe = VkCoverPipe(vk, c.Resolve, 1, new DepthState(), ColorMask.None, "vk a2c resolve");
-                c.DepthPipe = VkCoverPipe(vk, c.DepthBack, 1, new DepthState(true, true, CompareOp.Less), ColorMask.All, "vk a2c depth");
+                c.DepthPipe = VkCoverPipe(vk, c.DepthBack, 1, new DepthState(true, true, WorldDepth.Nearer), ColorMask.All, "vk a2c depth");
             }
             if (c.ResolvePipe.IsNull || c.DepthPipe.IsNull)
             {

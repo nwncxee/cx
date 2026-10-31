@@ -48,7 +48,8 @@ public sealed unsafe partial class AlloyRenderer
         side.Reset();
         int arena0 = c.ArenaUsed;
         VkPassStart(side, viewport[2], viewport[3]);
-        side.SetDepthBias(Highlight.VkBiasFactor, Highlight.VkBiasUnits);
+        // GL's offset pulls toward the eye by going down; the world's reversed depth goes up
+        side.SetDepthBias(-Highlight.VkBiasFactor, -Highlight.VkBiasUnits);
         int fmt = -1, cut = -1;
         Vector3 bound = new(float.NaN);
         var push = new VkBatchPush { AlphaCut = -1f };
@@ -64,7 +65,7 @@ public sealed unsafe partial class AlloyRenderer
             if (wantCut != cut)
             {
                 cut = wantCut;
-                side.SetDepthState(new DepthState(true, false, cutout ? CompareOp.Equal : CompareOp.LessEqual));
+                side.SetDepthState(new DepthState(true, false, cutout ? CompareOp.Equal : WorldDepth.NearerOrEqual));
                 side.SetRasterState(new RasterState(CullMode.None, false, !cutout));
             }
             if (colour != bound)
@@ -85,7 +86,7 @@ public sealed unsafe partial class AlloyRenderer
             s.Drawn = true;
         }
         ReadOnlySpan<ColorAttachment> colors = [new(s.Target, 0, 0, LoadOp.Clear, StoreOp.Store, default)];
-        VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, 1f)));
+        VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear)));
         return true;
     }
 

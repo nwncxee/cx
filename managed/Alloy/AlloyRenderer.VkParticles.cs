@@ -80,7 +80,7 @@ public sealed unsafe partial class AlloyRenderer
             {
                 cls = g.Cls;
                 side.SetPipeline(pipe);
-                side.SetDepthState(new DepthState(true, cls == Particles.VkPunch, CompareOp.LessEqual));
+                side.SetDepthState(new DepthState(true, cls == Particles.VkPunch, WorldDepth.NearerOrEqual));
             }
             if (cull != g.Cull)
             {
@@ -95,7 +95,7 @@ public sealed unsafe partial class AlloyRenderer
             side.Draw(g.Parts * 6, 1, g.Start * 6, 0);
         }
         ReadOnlySpan<ColorAttachment> colors = [new(c.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default)];
-        VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, 1f)));
+        VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear)));
         if (!s.Live)
         {
             s.Live = true;
@@ -186,8 +186,8 @@ public sealed unsafe partial class AlloyRenderer
         s.Tried = true;
         s.Side = new CommandList("vulkan particles", PartArenaBytes, log);
         s.Samp = vk.CreateSampler(new SamplerDesc(Filter.Linear, Filter.Linear, MipMode.None, Wrap.Clamp));
-        VkProgramText t = VkGlsl.Translate(ShaderResource.Tokens(ShaderSource.Get("cx_part_v.glsl")),
-                                           ShaderResource.Tokens(ShaderSource.Get("cx_part_f.glsl")), VkPrograms.Units, glDepth: false);
+        VkProgramText t = WorldDepth.Translate(ShaderResource.Tokens(ShaderSource.Get("cx_part_v.glsl")),
+                                               ShaderResource.Tokens(ShaderSource.Get("cx_part_f.glsl")), VkPrograms.Units);
         VkProg? p = VkBuild(vk, t, "particles", false, log);
         if (p != null)
             LooseBlock.Resolve(p.Names, () =>
@@ -203,7 +203,7 @@ public sealed unsafe partial class AlloyRenderer
             var d = new PipelineDesc
             {
                 Vs = p.Vs, Fs = p.Fs, Topo = Topology.Triangles, Raster = new RasterState(CullMode.None),
-                Depth = new DepthState(true, cls == Particles.VkPunch, CompareOp.LessEqual), Label = $"vk particles class {cls}",
+                Depth = new DepthState(true, cls == Particles.VkPunch, WorldDepth.NearerOrEqual), Label = $"vk particles class {cls}",
             };
             d.Targets.ColorCount = 1;
             d.Targets.Colors[0] = Format.Rgba16F;

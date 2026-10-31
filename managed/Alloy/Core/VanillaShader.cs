@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using CX.Engine;
 using CX.Framework;
+using CX.Graphics.Rhi;
 
 namespace CX.Alloy;
 
@@ -116,6 +117,7 @@ internal static unsafe class VanillaShader
                                                                   contentVs ? partner : resref, log, what, seen, src[..at])
                          : whole ? MainText(stock, resref, log, what, seen, src[..at])
                          : Validate(Includes(stock, log, what, seen, 0, AlloyRenderer.VanillaStandardFs), stub, resref, log, what);
+            if (body != null && !content) body = GlDepth(body);
             if (body != null)
             {
                 seen.Add(resref);
@@ -152,6 +154,23 @@ internal static unsafe class VanillaShader
             return null;
         }
         return text;
+    }
+
+    private static readonly Regex FbDepthRead = new(@"\b(texture2D|texture|textureLod|texelFetch)\s*\(\s*texFBDepth\s*,", RegexOptions.Compiled);
+    private static readonly Regex FragZ = new(@"\bgl_FragCoord\s*\.\s*z\b", RegexOptions.Compiled);
+
+    /// <summary>Content text <paramref name="text"/> reading GL's window depth, as the engine gives it: the world's depth is
+    /// reversed, so each <c>texFBDepth</c> read goes through <c>cx_envblk</c>'s <c>CxGlDepth</c> family and a
+    /// fragment's own <c>gl_FragCoord.z</c> becomes <see cref="VkGlsl.GlFragZ"/>, which the program's translation resolves.</summary>
+    internal static string GlDepth(string text)
+    {
+        text = FbDepthRead.Replace(text, m => m.Groups[1].Value switch
+        {
+            "textureLod" => "CxGlDepthLod(texFBDepth,",
+            "texelFetch" => "CxGlDepthFetch(texFBDepth,",
+            _ => "CxGlDepth(texFBDepth,",
+        });
+        return FragZ.Replace(text, VkGlsl.GlFragZ);
     }
 
     /// <summary>A function DEFINITION in stub text (name, then its parameter list, then the opening brace on

@@ -22,7 +22,7 @@ vec3 CxViewNormal(vec2 uv, vec3 P)
 void main()
 {
     float depth = textureLod(uDepth, vUV, 0.0).r;
-    if (depth >= 1.0) { frag = 1.0; return; }
+    if (depth <= 0.0) { frag = 1.0; return; }
     vec3 P = CxViewPos(vUV);
     vec3 N = CxViewNormal(vUV, P);
     vec3 V = normalize(-P);

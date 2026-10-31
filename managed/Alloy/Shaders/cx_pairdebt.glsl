@@ -122,22 +122,22 @@ void main()
 
     ivec2 p = ivec2(gl_GlobalInvocationID.xy) + uRect.xy;
     cxPixel = vec2(p) + 0.5;
-    float ndcZ = 1.0, viewDepth = 0.0;
+    float ndcZ = 0.0, viewDepth = 0.0;
     CxGbuf g;
     // lightmap.movers: 1 = a hot static light owes its mover's shadow; 0 = baked receivers skip static lights
     // outright, 2 = lightmap.movertaps 0, the diagnostic that stops at the ray test. Only 1 owes anything.
     bool mine = uLmMovers == 1 && all(lessThan(gl_GlobalInvocationID.xy, uvec2(uRect.zw)));
-    float z = 1.0;
+    float z = 0.0;
     if (mine)
     {
         z = texelFetch(uGbDepth, p, 0).r;
-        ndcZ = z * 2.0 - 1.0;
+        ndcZ = z;
         viewDepth = uProj[3].z / (ndcZ + uProj[2].z);
     }
     // The tile's depth slab is every DRAWN pixel's, off the depth buffer alone: the G-buffer is read below only
     // in a tile that holds a pair, which is most tiles not holding one. Wider than the baked pixels' own slab
     // (a pixel that owes nothing still widens it), so the cull is the conservative one.
-    if (mine && z < 1.0) { atomicMin(sMinZ, floatBitsToUint(viewDepth)); atomicMax(sMaxZ, floatBitsToUint(viewDepth)); }
+    if (mine && z > 0.0) { atomicMin(sMinZ, floatBitsToUint(viewDepth)); atomicMax(sMaxZ, floatBitsToUint(viewDepth)); }
     barrier();
 
     // sMinZ > sMaxZ = no baked deferred pixel in this tile: nothing here can owe, and there is no box.

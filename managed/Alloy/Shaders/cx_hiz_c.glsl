@@ -1,11 +1,12 @@
 #version 460 core
 // One level of the hi-Z pyramid: each texel the max of the 3x3 under it one level up, clamped at the edge.
-// CX_HIZ_FIRST reads the scene depth; otherwise the level above, through its storage view.
+// CX_HIZ_FIRST reads the scene depth, reversed (near 1), as GL's window depth (far 1) the cull compares in;
+// otherwise the level above, through its storage view.
 layout(local_size_x = 8, local_size_y = 8) in;
 #ifdef CX_HIZ_FIRST
 layout(binding = 0) uniform sampler2D uSrc;
 #define CX_SIZE textureSize(uSrc, 0)
-#define CX_FETCH(p) texelFetch(uSrc, p, 0).r
+#define CX_FETCH(p) (1.0 - texelFetch(uSrc, p, 0).r)
 #else
 layout(r32f, binding = 1) readonly uniform image2D uSrc;
 #define CX_SIZE imageSize(uSrc)

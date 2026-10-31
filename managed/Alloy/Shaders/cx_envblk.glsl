@@ -63,4 +63,9 @@ layout(std140, binding = 2) uniform CxEngine
 #define areaWeatherDensity uWeatherDensity
 #define userinputMousePosition uMouse
 #define userinputMouseButtons uMouseBtn
+// Content reads GL's window depth (far 1); the world's is reversed (far 0), exactly 1 minus GL's. The splice sends a
+// content text's reads of texFBDepth through these (VanillaShader.GlDepth).
+vec4 CxGlDepth(sampler2D s, vec2 uv) { return vec4(1.0) - texture(s, uv); }
+vec4 CxGlDepthLod(sampler2D s, vec2 uv, float lod) { return vec4(1.0) - textureLod(s, uv, lod); }
+vec4 CxGlDepthFetch(sampler2D s, ivec2 p, int lod) { return vec4(1.0) - texelFetch(s, p, lod); }
 #endif

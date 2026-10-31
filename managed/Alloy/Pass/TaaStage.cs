@@ -38,9 +38,9 @@ internal static class TaaStage
         check.Expect(TaaFs.Contains("vec2 velPx = CxDilatedVel(vUV, vsz);") && TaaFs.Contains("vec2 huv = vUV + velPx / vsz;")
           && TaaFs.Contains("vec2 vsz = vec2(textureSize(uVel, 0));"),
           "velocity becomes uv through the VELOCITY target's size, not the frame's (#391)");
-        check.Expect(TaaFs.Contains("vec2 CxDilatedVel(vec2 uv, vec2 vsz)") && TaaFs.Contains("if (d < bestD) { bestD = d; best = o; }")
+        check.Expect(TaaFs.Contains("vec2 CxDilatedVel(vec2 uv, vec2 vsz)") && TaaFs.Contains("if (d > bestD) { bestD = d; best = o; }")
           && TaaFs.Contains("float bestD = textureLod(uDepth, uv, 0.0).r;"),
-          "the velocity is dilated to the CLOSEST depth in the 3x3, and an all-equal depth keeps the centre tap");
+          "the velocity is dilated to the CLOSEST (reversed: greatest) depth in the 3x3, and an all-equal depth keeps the centre tap");
         check.Expect(TaaFs.Contains("vec3 CxHistory(vec2 uv, vec2 size)") && TaaFs.Contains("CxToYCoCg(CxHistory(huv, hsz))")
           && TaaFs.Contains("vec2 hsz = vec2(textureSize(uHist, 0));"),
           "history is fetched Catmull-Rom at ITS OWN size");

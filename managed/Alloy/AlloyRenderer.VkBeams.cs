@@ -40,7 +40,7 @@ public sealed unsafe partial class AlloyRenderer
         side.Reset();
         int arena0 = c.ArenaUsed;
         VkPassStart(side, viewport[2], viewport[3]);
-        side.SetDepthState(new DepthState(true, false, CompareOp.LessEqual));
+        side.SetDepthState(new DepthState(true, false, WorldDepth.NearerOrEqual));
         side.SetRasterState(new RasterState(CullMode.None));
         VkProg p = s.Prog!;
         int fmt = -1, drawn = 0;
@@ -70,7 +70,7 @@ public sealed unsafe partial class AlloyRenderer
             drawn++;
         }
         ReadOnlySpan<ColorAttachment> colors = [new(c.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default)];
-        VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, 1f)));
+        VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear)));
         if (!s.Live && drawn > 0)
         {
             s.Live = true;
@@ -85,7 +85,7 @@ public sealed unsafe partial class AlloyRenderer
         if (s.Tried) return s.Prog != null;
         s.Tried = true;
         s.Side = new CommandList("vulkan beams", 1 << 14, log);
-        VkProgramText t = VkGlsl.Translate(Beams.VkVs, Beams.VkFs, VkPrograms.Units, glDepth: false);
+        VkProgramText t = WorldDepth.Translate(Beams.VkVs, Beams.VkFs, VkPrograms.Units);
         VkProg? p = VkBuild(vk, t, "beams", false, log);
         if (p != null)
             LooseBlock.Resolve(p.Names, () =>
@@ -99,7 +99,7 @@ public sealed unsafe partial class AlloyRenderer
             var d = new PipelineDesc
             {
                 Vs = p.Vs, Fs = p.Fs, Layout = c.Layouts[f], Topo = Topology.Triangles, Raster = new RasterState(CullMode.None),
-                Depth = new DepthState(true, false, CompareOp.LessEqual), Label = $"vk beams {(MeshArena.Fmt)f}",
+                Depth = new DepthState(true, false, WorldDepth.NearerOrEqual), Label = $"vk beams {(MeshArena.Fmt)f}",
             };
             d.Targets.ColorCount = 1;
             d.Targets.Colors[0] = Format.Rgba16F;
