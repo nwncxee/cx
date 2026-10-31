@@ -23,7 +23,7 @@ public static unsafe partial class MeshArena
             Section s = _sect[(int)r.Format];
             int stride = StrideOf[(int)r.Format];
             long at = (long)r.Off0 / 2;
-            if ((long)(r.Base + r.NV) * stride > s.Mirror.Length || at + r.Cnt0 > _iUsed) return false;
+            if ((long)(r.Base + r.NV) * stride > s.Mirror.Length || at + r.Cnt0 > _idx.High) return false;
 
             int first = verts.Count / 3;
             for (int v = 0; v < r.NV; v++)
@@ -33,7 +33,7 @@ public static unsafe partial class MeshArena
             }
             for (long k = 0; k + 2 < r.Cnt0; k += 3)
             {
-                int a = _iMirror[at + k], b = _iMirror[at + k + 1], c = _iMirror[at + k + 2];
+                int a = _idx.Mirror[at + k], b = _idx.Mirror[at + k + 1], c = _idx.Mirror[at + k + 2];
                 if ((uint)a >= (uint)r.NV || (uint)b >= (uint)r.NV || (uint)c >= (uint)r.NV) continue;
                 tris.Add(first + a); tris.Add(first + b); tris.Add(first + c);
             }
@@ -76,7 +76,7 @@ public static unsafe partial class MeshArena
             int setWord = CarriesUvSets(r.Format) ? UvSetWord(r.Format) : -1;
             if (setWord >= 0 && uvSets.Length < r.NV * 6) return false;
             long at = (long)r.Off0 / 2;
-            if ((long)(r.Base + r.NV) * stride > s.Mirror.Length || at + r.Cnt0 > _iUsed) return false;
+            if ((long)(r.Base + r.NV) * stride > s.Mirror.Length || at + r.Cnt0 > _idx.High) return false;
             if (pos.Length < r.NV * 3 || nrm.Length < r.NV * 3 || uv.Length < r.NV * 2 || idx.Length < r.Cnt0) return false;
             if (tangent.Length < r.NV || paint.Length < r.NV) return false;
             for (int v = 0; v < r.NV; v++)
@@ -93,7 +93,7 @@ public static unsafe partial class MeshArena
             }
             for (long k = 0; k < r.Cnt0; k++)
             {
-                ushort v = _iMirror[at + k];
+                ushort v = _idx.Mirror[at + k];
                 if (v >= r.NV) return false;
                 idx[(int)k] = v;
             }

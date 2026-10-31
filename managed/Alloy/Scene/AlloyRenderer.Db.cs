@@ -256,28 +256,6 @@ public sealed unsafe partial class AlloyRenderer
     /// <see cref="ChartVaoBit"/> so it cannot collide with either engine-mode arena bit.</summary>
     internal const int DbArenaVaoBit = 1 << 22;
 
-    /// <summary>The arena compacted and these ranges moved. Every reader resolves a DB slot's range live off
-    /// the arena (the colour stage per frame, the bake through <see cref="DbCasterRange"/>), so nothing is
-    /// rewritten here; what remains is the cascades, which hold geometry no mover event describes.</summary>
-    internal static void DbRangesMoved(int[] moved, int count)
-    {
-        if (count <= 0) return;
-        int fixedUp = 0;
-        for (int i = 0; i < _ownCount; i++)
-        {
-            int part = _oDbPart[i];
-            if (part < 0) continue;
-            int range = DrawRecipe.Range(_oDbRecipe[i]);
-            if (range < 0) continue;
-            bool hit = false;
-            for (int k = 0; k < count; k++) if (moved[k] == range) { hit = true; break; }
-            if (!hit) continue;
-            fixedUp++;
-        }
-        // A moved range is new geometry under the published cascades, and no mover event describes it.
-        if (fixedUp > 0) CasterPass.ShadowInvalidate();
-    }
-
     /// <summary>The slot's class: <see cref="DbClass"/>'s, except that an opaque PLT on an instance with no env map
     /// is a cutout. <c>Material::GetIsOpaque</c> @0x4c6190 answers opaque for an env-mapped gob without asking the
     /// texture; without one it asks <c>HasAlpha</c>, which every PLT answers yes (alpha mean 0.5), so the palette
@@ -760,7 +738,7 @@ public sealed unsafe partial class AlloyRenderer
     /// nothing.</summary>
     internal static int DbSetGen = 1;
 
-    /// <summary>The slot set changed: a DB part was seated, released, or its arena range moved.
+    /// <summary>The slot set changed: a DB part was seated or released.
     /// <para>A STATIC part also has to reach the shadow side: the sun's staleness predicate is
     /// <c>invalidate || keyChanged || hadMover || hasMover</c>, and a static DB world trips none of them. A
     /// mover's arrival and departure are the predicate's own appeared and ghost terms, scoped to its views.</para></summary>
