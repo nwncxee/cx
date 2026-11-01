@@ -1,5 +1,5 @@
 using System;
-using System.Diagnostics;
+using System.Runtime.InteropServices;
 using CX.Framework;
 using CX.Rhi;
 
@@ -12,13 +12,12 @@ namespace CX.Alloy;
 /// </summary>
 internal static partial class Fsr
 {
-    /// <summary>What FSR holds across frames: the session's refusal, a pending history reset, the last size said and
-    /// the last frame's clock. Replaced whole on context loss.</summary>
+    /// <summary>What FSR holds across frames: the session's refusal, a pending history reset and the last size said. Replaced whole on context loss.</summary>
     private sealed class FsrState
     {
         public string? Refused;
         public bool Reset = true, ScaleSaid;
-        public long SaidSize = -1, LastTicks;
+        public (int, int, int, int) Said;
     }
 
     private static FsrState _s = new();
@@ -27,6 +26,12 @@ internal static partial class Fsr
     /// refused it.</summary>
     internal static bool On => Post.Fsr.V && _s.Refused == null && Renderer.Scale.V <= 1f;
 
+    [DllImport("cxfsr")] private static extern int cxfsr_phase_count(int renderW, int displayW);
+
+    /// <summary>FSR's jitter sequence length for a <paramref name="renderW"/> frame on a <paramref name="displayW"/>
+    /// display, as its own library counts it.</summary>
+    internal static int PhaseCount(int renderW, int displayW) => Math.Max(cxfsr_phase_count(renderW, displayW), 1);
+
     /// <summary>The cx.log line naming an upscale from <paramref name="rw"/> x <paramref name="rh"/> to
     /// <paramref name="dw"/> x <paramref name="dh"/>.</summary>
     internal static string Line(int rw, int rh, int dw, int dh) => $"PostStack: FSR 3.1 upscales the world from {rw}x{rh} to {dw}x{dh}";
@@ -34,8 +39,9 @@ internal static partial class Fsr
     /// <summary>Say the upscale once per size, and once that a render scale above 1 leaves FSR off.</summary>
     internal static void Note(int rw, int rh, int dw, int dh, ExtenderLog log)
     {
-        long size = (long)rw << 48 | (long)rh << 32 | (long)dw << 16 | (uint)dh;
-        if (size != _s.SaidSize) { _s.SaidSize = size; log.Always(Line(rw, rh, dw, dh)); }
+        if (_s.Said == (rw, rh, dw, dh)) return;
+        _s.Said = (rw, rh, dw, dh);
+        log.Always(Line(rw, rh, dw, dh));
     }
 
     /// <summary>The <c>post.fsr</c> knob is on and a render scale above 1 keeps FSR off: said once a session.</summary>
@@ -73,14 +79,8 @@ internal static partial class Fsr
     /// <summary>Context loss: the session's refusal and history start over.</summary>
     internal static void Forget() => _s = new FsrState();
 
-    /// <summary>Milliseconds since the last dispatch, as FSR takes it: 16.7 on the first, and never past 100.</summary>
-    internal static float FrameMs()
-    {
-        long now = Stopwatch.GetTimestamp();
-        float ms = _s.LastTicks == 0 ? 16.7f : (float)((now - _s.LastTicks) * 1000.0 / Stopwatch.Frequency);
-        _s.LastTicks = now;
-        return Math.Clamp(ms, 0.1f, 100f);
-    }
+    /// <summary>The game's frame delta in milliseconds, as FSR takes it: 16.7 while the engine's clock is unresolved.</summary>
+    internal static float FrameMs() => FrameDelta.Ready ? FrameDelta.Delta(FrameDelta.DtFloor) * 1000f : 16.7f;
 
     /// <summary>One dispatch in FSR's terms from Alloy's. Alloy's targets hold rows bottom-up, the way NDC y runs, so
     /// a jitter of j NDC is j x size / 2 render pixels along the rows with no flip, and the velocity target (render

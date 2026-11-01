@@ -38,17 +38,12 @@ internal sealed unsafe partial class VkBackend
         public uint Reset;
     }
 
-    [DllImport("cxfsr")] private static extern int cxfsr_create(FsrDevice* dev, uint maxW, uint maxH, uint displayW, uint displayH, uint flags, nint* ctx);
+    [DllImport("cxfsr")] private static extern int cxfsr_create(FsrDevice* dev, uint maxW, uint maxH, uint displayW, uint displayH, nint* ctx);
+    [DllImport("cxfsr")] private static extern int cxfsr_ring();
     [DllImport("cxfsr")] private static extern int cxfsr_dispatch(nint ctx, FsrDispatch* d);
     [DllImport("cxfsr")] private static extern ulong cxfsr_vram(nint ctx);
     [DllImport("cxfsr")] private static extern void cxfsr_destroy(nint ctx);
 
-    /// <summary>FSR's context flags: high-dynamic-range colour (bit 0) and inverted depth (bit 3), Alloy's reversed-Z.</summary>
-    private const uint FsrFlags = 1u << 0 | 1u << 3;
-
-    /// <summary>The dispatches FSR's backend rings its constants and descriptor sets over (its FFX_MAX_QUEUED_FRAMES):
-    /// a dispatch rewrites what the one this many back used.</summary>
-    private const int FsrRing = 4;
 
     /// <summary>The device's FSR context and the sizes it was made for; a refusal holds for the device's life.</summary>
     private sealed class FsrState
@@ -56,8 +51,9 @@ internal sealed unsafe partial class VkBackend
         public nint Ctx;
         public int MaxW, MaxH, DisplayW, DisplayH;
         public string? Refused;
-        /// <summary>The timeline value each of the last <see cref="FsrRing"/> dispatches finishes at, by dispatch number.</summary>
-        public readonly long[] Ring = new long[FsrRing];
+        /// <summary>The timeline value each of the last ring's worth of dispatches finishes at, by dispatch number: FSR's
+        /// backend rings its constants and descriptor sets, so a dispatch rewrites what the one a ring back used.</summary>
+        public readonly long[] Ring = new long[cxfsr_ring()];
         public long Dispatches;
     }
 
@@ -83,7 +79,7 @@ internal sealed unsafe partial class VkBackend
             Gdpa = vkGetInstanceProcAddr(_inst, "vkGetDeviceProcAddr"u8),
         };
         nint ctx;
-        int e = cxfsr_create(&dev, (uint)maxW, (uint)maxH, (uint)displayW, (uint)displayH, FsrFlags, &ctx);
+        int e = cxfsr_create(&dev, (uint)maxW, (uint)maxH, (uint)displayW, (uint)displayH, &ctx);
         if (e != 0)
         {
             f.Refused = $"FSR 3.1 refused this device: creating its context returned FfxErrorCode {e}";
@@ -121,7 +117,7 @@ internal sealed unsafe partial class VkBackend
         if (exposure != null) Transition(exposure, VkImageLayout.ShaderReadOnlyOptimal, false);
         Transition(output, VkImageLayout.General);
         Flush();
-        long slot = _fsr.Dispatches % FsrRing;
+        long slot = _fsr.Dispatches % _fsr.Ring.Length;
         if (WaitFor(_fsr.Ring[slot]) != VkResult.Success) return Fault("Upscale: the dispatch whose FSR constants this one reuses never finished");
         var d = new FsrDispatch
         {

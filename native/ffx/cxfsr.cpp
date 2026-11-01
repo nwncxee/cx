@@ -40,6 +40,10 @@ FfxErrorCode ffxSetFrameGenerationConfigToSwapchainVK(FfxFrameGenerationConfig c
 namespace std { void __throw_system_error(int) { abort(); } }
 #endif
 
+// Alloy's colour is linear HDR and its world depth reversed-Z, finite. tools/ffx/ffx_shaders.py compiles only the
+// permutations these flags reach; change them together.
+#define CXFSR_FLAGS (FFX_FSR3UPSCALER_ENABLE_HIGH_DYNAMIC_RANGE | FFX_FSR3UPSCALER_ENABLE_DEPTH_INVERTED)
+
 struct CxFsr
 {
     FfxFsr3UpscalerContext ctx;
@@ -95,7 +99,7 @@ extern "C" {
 
 // An FfxErrorCode: 0 is a context in *out, ready to dispatch.
 int cxfsr_create(const CxFsrDevice* dev, uint32_t maxRenderW, uint32_t maxRenderH, uint32_t displayW, uint32_t displayH,
-                 uint32_t flags, CxFsr** out)
+                 CxFsr** out)
 {
     *out = nullptr;
     s_instance = dev->instance; s_gipa = dev->gipa; s_gdpa = dev->gdpa;
@@ -109,7 +113,7 @@ int cxfsr_create(const CxFsrDevice* dev, uint32_t maxRenderW, uint32_t maxRender
     if (e == FFX_OK)
     {
         FfxFsr3UpscalerContextDescription d = {};
-        d.flags = flags;
+        d.flags = CXFSR_FLAGS;
         d.maxRenderSize = { maxRenderW, maxRenderH };
         d.maxUpscaleSize = { displayW, displayH };
         d.backendInterface = f->backend;
@@ -171,6 +175,12 @@ uint64_t cxfsr_vram(CxFsr* f)
     FfxEffectMemoryUsage u = {};
     return ffxFsr3UpscalerContextGetGpuMemoryUsage(&f->ctx, &u) == FFX_OK ? u.totalUsageInBytes : 0;
 }
+
+// The dispatches FSR's backend rings its constants and descriptor sets over.
+int cxfsr_ring() { return FFX_MAX_QUEUED_FRAMES; }
+
+// FSR's jitter sequence length.
+int cxfsr_phase_count(int renderW, int displayW) { return ffxFsr3UpscalerGetJitterPhaseCount(renderW, displayW); }
 
 // Free a context once no submit can still reach it.
 void cxfsr_destroy(CxFsr* f)

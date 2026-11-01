@@ -122,10 +122,7 @@ internal static unsafe class PostChain
     /// <summary>The jitter sequence length this frame takes at a <paramref name="displayW"/>-wide display.</summary>
     internal static int JitterPhases(int displayW)
     {
-        if (!Fsr.On) return JitterCount;
-        // FSR's own count, truncated as its code does: 8 x (display / render)^2
-        float ratio = (float)displayW / RenderSize(displayW);
-        return Math.Max((int)(8f * ratio * ratio), 1);
+        return Fsr.On ? Fsr.PhaseCount(RenderSize(displayW), displayW) : JitterCount;
     }
     /// <summary>This frame's sub-pixel jitter in NDC for a render target of <paramref name="w"/> x
     /// <paramref name="h"/>: Halton(2,3) over <paramref name="phases"/> frames, centred on zero, one render
