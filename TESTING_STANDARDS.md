@@ -8,6 +8,7 @@ Test props: fixtures a self-check needs are embedded beside it under `managed/`.
 Never holds test props: `managed/` outside a self-check's own fixtures, `media/`, and the staged `cx-linux-x64/` and `cx-windows-x64/` folders, which ship
 Commit test cruft: no
 Test kinds: self-checks, `SelfCheck` methods run by `./run-demo.sh` in the stub host and again at client boot. Gates, `tools/gates/run.sh`, which `build.sh` runs too. Live, `tools/live/run-live.sh` (`--ladder` for the scripted ladder, `--stock` for a client without CX), one client at a time; its limits are in `docs/live-harness.md`. Windows, `./run-proton.sh` and `tools/live/run-proton-live.sh` under Proton
+Mutation: by hand, no tool reads `SelfCheck` methods. Make one mutant at a time in the changed lines (a flipped comparison, a deleted call, a changed constant), run `./run-demo.sh`, which rebuilds, and count the mutant killed when a self-check fails. A gate script is mutated the same way and run with `tools/gates/run.sh`. Revert each mutant before the next
 Live checks: 1. Run `./build.sh` in your worktree. 2. Run `tools/live/run-live.sh` with the `--module`, `--cfg` and `--keys` the change needs. 3. Read the PASS or FAIL line, `cx.log` and the screenshots it saves. 4. For a look or a feel, start the real client with `cx-launch` and check by hand. The `over-to-you` skill hands that step to a person as a checklist
 
 ## Self-checks
