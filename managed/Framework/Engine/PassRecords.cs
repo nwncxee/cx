@@ -141,7 +141,7 @@ public struct HaloRec
     public Vector3 Pos;
     /// <summary>Occlusion softness.</summary>
     public float Softness;
-    /// <summary>Display colour with the fade folded in.</summary>
+    /// <summary>Display colour: the light's plus the element's shift.</summary>
     public Vector3 Tint;
     /// <summary>Flare radius.</summary>
     public float FlareRadius;
@@ -149,7 +149,7 @@ public struct HaloRec
     public float Size;
     /// <summary>This element's position along the centre-to-light axis.</summary>
     public float FlarePosition;
-    /// <summary>x: 1 on the one element of a light the occlusion probe measures, 0 on the rest. y unused.</summary>
+    /// <summary>x: 1 on the one element of a light the occlusion probe measures, 0 on the rest. y: the light's fade slot.</summary>
     public Vector2 Probe;
 }
 

@@ -47,6 +47,10 @@ internal static class SsboSlots
     /// <summary>Single-pass draws that read no rig.</summary>
     internal const uint Halos = 8, Glow = 8, Trig = 8, Gui = 8, BonesPrev = 8, DanglyPrev = 9;
 
+    /// <summary>The halo fades: the occlusion probe writes them, then the halo draw reads them, both binding them
+    /// beside <see cref="Halos"/> just before they run.</summary>
+    internal const uint HaloFade = 9;
+
     /// <summary>Every block name the GLSL declares, and the point C# binds it on.</summary>
     private static readonly Dictionary<string, uint> Blocks = new()
     {
@@ -61,7 +65,7 @@ internal static class SsboSlots
         ["CxCullCount"] = CullCount, ["CxCullKey"] = CullKey, ["CxCullRej"] = CullRej, ["CxReadbackOut"] = ReadbackOut,
         ["CxGatherSrc"] = GatherSrc, ["CxGatherCmd"] = GatherCmd, ["CxGatherCount"] = GatherCount, ["CxCastSphere"] = CastSphere,
         ["CxGrassFaces"] = GrassFaces, ["CxGrassPatches"] = GrassPatches, ["CxGrassOut"] = GrassOut, ["CxGrassCmd"] = GrassCmd, ["CxGrassInst"] = GrassInst,
-        ["CxHaloBuf"] = Halos, ["CxGobGlowBuf"] = Glow, ["CxTrigBuf"] = Trig, ["CxGuiBuf"] = Gui,
+        ["CxHaloBuf"] = Halos, ["CxHaloFade"] = HaloFade, ["CxGobGlowBuf"] = Glow, ["CxTrigBuf"] = Trig, ["CxGuiBuf"] = Gui,
         ["CxProbeShOut"] = ProbeSh, ["CxBonePrevBuf"] = BonesPrev, ["CxDanglyPrevBuf"] = DanglyPrev,
         ["CxContentBuf"] = Content,
         ["CxGoldenIn"] = GoldenIn, ["CxGoldenOut"] = GoldenOut,
