@@ -29,7 +29,7 @@ internal sealed unsafe partial class VkBackend
 
         // Given a GUI list held for the present
         // When the window refuses the frame, minimised or with no surface
-        // Then the held list still runs, and a later readback of the composite shows what it drew
+        // Then the held list still runs, and a later readback of the screen shows what it drew
         got = HeldThenRead(held, other, texel, present: true, log);
         check.Expect(got.AsSpan().SequenceEqual(texel),
             $"E5: after a refused present the spare screen holds the held list's texel 12,34,56,78 (got {string.Join(",", got)})");
