@@ -127,7 +127,7 @@
         g.flags = CX_GB_DEFERRED
                 | (baked ? CX_GB_BAKED : 0u)
                 | (onMover > 0.0 ? CX_GB_ONMOVER : 0u)
-                | (wxFilm > 0.0 && baked && cxCoat > 0.0 ? CX_GB_FILM : 0u)
+                | (wxFilm > 0.0 && baked && cxCoat > 0.0 && !CxGlossy(rough) ? CX_GB_FILM : 0u)
                 | (cxRecvShadow == 0.0 ? CX_GB_NOSHADOW : 0u)
                 | (cxModern < 0.5 ? CX_GB_STOCKLOBE : 0u);
         g.N = N; g.rough = rough; g.spec = spec; g.fresnel = cxFresnel;

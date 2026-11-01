@@ -610,7 +610,7 @@ internal static unsafe class AlloyLights
                 // Riding the existing pad is what keeps the cube receiver from needing a second buffer keyed
                 // the same way -- and the walk already resolved the slot by light identity.
                 d.Slot = FrameInputs.AreaLightAmbient[i] ? FrameInputs.AmbientSlot : FrameInputs.AreaLightSlot[i];
-                // #674: the static bit rides the same lane, +CX_LIGHT_STATIC; the shader decodes w >= 128.
+                // #674: the static bit rides the same lane, +CX_LIGHT_STATIC; the shader decodes it with CxLightIsStatic.
                 if (FrameInputs.AreaLightStatic[i] && !FrameInputs.AreaLightAmbient[i]) d.Slot += LightStatic + LightSetStride * (FrameInputs.AreaLightSetIndex[i] + 1);
             }
         }

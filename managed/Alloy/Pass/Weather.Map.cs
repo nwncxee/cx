@@ -54,7 +54,7 @@ internal static unsafe partial class Weather
         PuddleDepth = G.Slider("puddledepth", "Puddle depth", 0.005f, 0.12f, 0.005f, 0.03f, "m", Tier.ChatOnly,
                                help: "How deep standing water gets in a full basin. Deeper water floods further up its banks.");
         FilmRough = G.Slider("filmrough", "Water film gloss", 0.1f, 0.4f, 0.01f, 0.22f, tier: Tier.ChatOnly,
-                             help: "Roughness of the water film over wet ground: low is a mirror, high a matte sheen. Perceptual, so the low end is still a real lobe and not a needle.");
+                             help: "Roughness of the water film over the glossiest wet ground: low is a mirror, high a matte sheen. Duller ground takes a rougher film, and dark ground a sheen whatever this says. Perceptual, so the low end is still a real lobe and not a needle.");
         FilmLights = G.Toggle("filmlights", "Film highlights", true, Tier.ChatOnly,
                               help: "A water film mirrors the baked static lights around it, each fading out at its own reach. Off = the film takes moving lights only.")
                       .Ladder(Quality.Weather, false, true, true, true);
@@ -144,18 +144,19 @@ internal static unsafe partial class Weather
           && lit.Contains("rough * mix(0.6, CX_WX_PORO_ROUGH, wxPoro)")
           && !lit.Contains("0.25 * wxWet") && !lit.Contains("spec = max(spec,"),
           "damp ground keeps a dielectric F0 and porous ground keeps its roughness");
-        check.Expect(lit.Contains("const float CX_WX_MICRO_AMP = 2.0;") && lit.Contains("(CX_WX_MICRO_MEAN * 2.0 * (1.0 - uWxMapP.w) + CX_WX_MICRO_AMP * (0.35 * n1 + 0.65 * n2 - 0.5))")
+        check.Expect(lit.Contains("const float CX_WX_MICRO_AMP = 2.0;") && lit.Contains("float wxMicro = CxWxMicro(uWxMapP.x, uWxMapP.w, n1, wxFine, wxPoro);")
           && lit.Contains("smoothstep(CX_WX_FILM_FAR_M.x, CX_WX_FILM_FAR_M.y, vDepth)")
-          && lit.IndexOf("wxPoro = (1.0 - metal)", StringComparison.Ordinal) < lit.IndexOf("float wxMicro", StringComparison.Ordinal),
+          && lit.IndexOf("wxPoro = CxWxPoroOf(", StringComparison.Ordinal) < lit.IndexOf("float wxMicro", StringComparison.Ordinal),
           "the micro-relief outruns a full basin, and porosity is known before the film forms");
-        check.Expect(lit.IndexOf("wxFilmRough = max(uWeatherLook.w, CX_ALPHA_MIN);", StringComparison.Ordinal)
+        check.Expect(lit.IndexOf("wxFilmRough = wxLook.y;", StringComparison.Ordinal)
             < lit.IndexOf("if (wxFilm >= cxCoat) cxCoatRough = wxFilmRough;", StringComparison.Ordinal)
           && lit.Contains("cxCoat = max(cxCoat, wxFilm);"),
           "standing water reaches the lighting as the material's clear coat");
         check.Expect(lit.Contains("wxFilmRough = CxWeatherRippleRough(wxFilmRough, wxRing, wxAmp, uCoverLayer.w);"),
           "the rain rings roughen the film and not the bed under it");
         check.Expect(lit.IndexOf("vec3 CxFilmStatics(", StringComparison.Ordinal) < lit.IndexOf("specLight += CxFilmStatics(", StringComparison.Ordinal)
-          && lit.Contains("if (wxFilm > 0.0 && baked && cxCoat > 0.0 && uCapture != 2)"),
+          && lit.Contains("if (wxFilm > 0.0 && baked && cxCoat > 0.0 && uCapture != 2 && !CxGlossy(rough))")
+          && lit.Contains("| (wxFilm > 0.0 && baked && cxCoat > 0.0 && !CxGlossy(rough) ? CX_GB_FILM : 0u)"),
           "the film's static highlights are gated on the film");
         string build = ShaderStages.Source(AlloyLights.ShdClusterCs);
         check.Expect(build.Contains("uClCount[id * 3u] = n | (live << 16u);") && build.Contains("uClCount[id * 3u + 1u] = liveCand << 16u;")
@@ -245,7 +246,7 @@ internal static unsafe partial class Weather
         check.Expect(lit.Contains("wxWet = max(wxWet, wxBand * wxWetAmt * wxWetExp * uWxRun.x);")
           && lit.Contains("vec4 wxFoot = CxWetMap(vWorld.xy + Ng.xy * CX_WX_FOOT_M);")
           && lit.Contains("* smoothstep(-CX_WX_SHORE * uWxMapP.x, 0.0, wxD) * uWxRun.y;")
-          && lit.Contains("N = normalize(mix(N, Ng, wxFilm));") && !lit.Contains("mix(N, vec3(0.0, 0.0, 1.0), wxFilm)"),
+          && lit.Contains("N = normalize(mix(N, Ng, wxLook.z));") && !lit.Contains("mix(N, vec3(0.0, 0.0, 1.0), wxFilm)"),
           "the run-off band reads the ground beside the wall, the shoreline has a rim, and the film flattens toward the GEOMETRIC normal");
         // the kernel's fit: the knob is the feather in metres, and a zeroed one still filters
         check.Expect(MathF.Abs(MathF.Max(1f * EdgeKernelShare, EdgeKernelMinM) - 0.4f) < 1e-5f

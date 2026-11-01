@@ -474,7 +474,7 @@ internal static class ShaderContract
                   // bit decodes off the record's w, and a baked receiver skips a static light there -- a loop
                   // that lost the skip lights every baked surface twice, brighter and with nothing in the log.
                   && AlloyLights.FragmentLib.Contains("bool CxPointLight(vec4 pr, vec3 c0, vec3 worldPos, vec3 N,")
-                  && AlloyLights.FragmentLib.Contains("bool isStatic = w >= 128;") && AlloyLights.FragmentLib.Contains("int slot = CxLightSlot(w);")
+                  && AlloyLights.FragmentLib.Contains("bool isStatic = CxLightIsStatic(w);") && AlloyLights.FragmentLib.Contains("int slot = CxLightSlot(w);")
                   // CX-56: the bake-set index rides above the static bit (C# encodes it, GLSL decodes it) and a
                   // surface's pick names page C's bytes by it -- a skew darkens under a mover by another light's share
                   && AlloyLights.FragmentLib.Contains("const int CX_LIGHT_SET = 512;") && AlloyLights.LightSetStride == 512f

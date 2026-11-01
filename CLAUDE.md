@@ -237,6 +237,9 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
   (`docs/adr/`, `docs/handoff/` exempt); a machine's paths go through `tools/paths.py`.
 - `compute-pipes.sh`: a `ShaderDesc(ShaderStage.Compute ...)` under `managed/` outside `VkBackend.Pipeline.cs` fails; a
   compute pipeline from GLSL is `VkBackend.CreateCompute`.
+- `golden-glsl.sh`: a golden under `managed/Alloy/Golden/` declaring a `CX_*` constant a shipped shader declares (splice it
+  with `GpuGolden.Declaration`), indexing `uIn`/`uOut` with a literal stride (use `CX_GOLD_IN`/`CX_GOLD_OUT`), or a shader
+  comparing a light record's `w` with 128 (ask `CxLightIsStatic`) counts against `golden-glsl.baseline`, which may only shrink.
 
 ## Hard rules
 

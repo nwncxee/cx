@@ -417,8 +417,13 @@ vec3 CxPointDiffuse(vec3 c, float att, float ndlRaw, float ndl)
 // slot = w - 256 - 512 * (set + 1).
 const float CX_LIGHT_STATIC = 256.0;
 const int CX_LIGHT_SET = 512;
-int CxLightSet(int w) { return w >= 128 ? (w - 128) / CX_LIGHT_SET - 1 : -1; }
-int CxLightSlot(int w) { return w >= 128 ? w - 256 - CX_LIGHT_SET * (CxLightSet(w) + 1) : w; }
+/// Is this record a static light (in the lightmap pages)? The one test of the encoding above.
+bool CxLightIsStatic(int w)
+{
+    return w >= 128;
+}
+int CxLightSet(int w) { return CxLightIsStatic(w) ? (w - 128) / CX_LIGHT_SET - 1 : -1; }
+int CxLightSlot(int w) { return CxLightIsStatic(w) ? w - 256 - CX_LIGHT_SET * (CxLightSet(w) + 1) : w; }
 // CX-56: which of the surface's four mover shares is this light's -- its place in the record's pick, 4 = none.
 int CxPickChan(int set, vec4 pick)
 {
@@ -616,7 +621,7 @@ vec3 CxClusteredLightLm(vec3 worldPos, vec3 N, vec3 V, float viewDepth, float on
         // the record's spare w carries this light's cube slot (-1 = it casts no shadow this frame),
         // and the #674 static bit above it
         int w = int(cs.w);
-        bool isStatic = w >= 128;
+        bool isStatic = CxLightIsStatic(w);
         int slot = CxLightSlot(w);
         int ch = CxPickChan(CxLightSet(w), lmPick);
         // a static light on a baked receiver is in the pages already: a cold one costs nothing here,
