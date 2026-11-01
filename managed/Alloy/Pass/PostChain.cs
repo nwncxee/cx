@@ -104,9 +104,9 @@ internal static unsafe class PostChain
     /// keeps its detail. Under FSR one lower again, as AMD asks: its jittered frames rebuild the finer mip.</summary>
     internal static float LodBias => Fsr.On ? MathF.Log2(_scale) - 1f : MathF.Min(MathF.Log2(_scale), 0f);
 
-    /// <summary>TAA draws and its stage can build: <c>post.aa</c> picks it, or picks FSR while FSR cannot draw
-    /// (a render scale above 1, or a refusal) -- the gate the jitter and the accumulator share.</summary>
-    internal static bool TaaOn => !PostStack.TaaVkFailed && (Post.Aa.V == Post.AaTaa || (Post.Aa.V == Post.AaFsr && !Fsr.On));
+    /// <summary>TAA draws and its stage can build: <c>post.aa</c> picks FSR while FSR cannot draw (a render scale
+    /// above 1, or a refusal) -- the gate the jitter and the accumulator share.</summary>
+    internal static bool TaaOn => !PostStack.TaaVkFailed && Post.Aa.V == Post.AaFsr && !Fsr.On;
     /// <summary>The projection jitters this frame: TAA or FSR reconstructs from it.</summary>
     internal static bool Jittered => TaaOn || Fsr.On;
     internal static float TaaBlend => Post.TaaBlend.V;
@@ -262,7 +262,7 @@ internal static unsafe class PostChain
         string aa = Post.Aa.V;
         bool on = _on, armed = Armed;
         int vz = Post.Viz.V, sm = Post.Smaa.V;
-        Post.Aa.V = Post.AaTaa;
+        Post.Aa.V = Post.AaFsr; Post.Scale.V = 1.5f;
         try
         {
             check.Expect(Post.G.Get("hdr") == null && Renderer.G.Get("scale") == null && Post.G.Get("scale") == Post.Scale,
@@ -276,12 +276,17 @@ internal static unsafe class PostChain
             // post.aa picks one anti-aliaser. The jitter sequence is centred, one render pixel wide, and
             // repeats -- and is exactly zero-width at no size.
             Post.Viz.V = 0;
-            check.Expect(TaaOn && Jittered && !SmaaStage.Active, "post.aa taa: TAA draws, jittered, and SMAA does not");
+            check.Expect(TaaOn && Jittered && !Fsr.On && !SmaaStage.Active, "post.aa fsr above render scale 1: TAA draws in FSR's place, jittered, and SMAA does not");
             Post.Aa.V = Post.AaSmaa; check.Expect(!TaaOn && !Jittered, "post.aa smaa: no TAA and no jitter");
             Post.Aa.V = Post.AaOff; check.Expect(!TaaOn && !Jittered && !SmaaStage.Active, "post.aa off: no anti-aliaser draws");
-            Post.Aa.V = Post.AaFsr; Post.Scale.V = 1.5f;
-            check.Expect(TaaOn && !Fsr.On && !SmaaStage.Active, "post.aa fsr above render scale 1: TAA draws in FSR's place");
-            Post.Aa.V = Post.AaTaa; Post.Scale.V = sc;
+            check.Expect(!Post.Aa.TryParse("taa", out _), "TAA is no choice of post.aa: it draws only where FSR cannot");
+            check.Expect(Post.Scale.ShowIf != null && !Post.Scale.ShowIf() && Post.Smaa.ShowIf != null && !Post.Smaa.ShowIf(),
+              "post.aa off: the panel shows neither the render scale nor the SMAA quality");
+            Post.Aa.V = Post.AaSmaa;
+            check.Expect(!Post.Scale.ShowIf() && Post.Smaa.ShowIf(), "post.aa smaa: the panel shows the SMAA quality and not the render scale");
+            Post.Aa.V = Post.AaFsr;
+            check.Expect(Post.Scale.ShowIf() && !Post.Smaa.ShowIf(), "post.aa fsr: the panel shows the render scale and not the SMAA quality");
+            Post.Aa.V = Post.AaSmaa; Post.Scale.V = sc;
             float sx = 0f, sy = 0f, mx = 0f;
             for (int f = 0; f < JitterCount; f++)
             {

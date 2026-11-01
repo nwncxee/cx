@@ -13,8 +13,8 @@ internal static class Post
     internal static readonly Knob<string> Aa;
     internal static readonly Knob<bool> Taau, HalfRes, Stack, FbPost, ClearViz, SkyRaw;
     internal static readonly Knob<int> Smaa, Tonemap, Viz;
-    /// <summary><see cref="Aa"/>'s values: the anti-aliaser that draws.</summary>
-    internal const string AaFsr = "fsr", AaTaa = "taa", AaSmaa = "smaa", AaOff = "off";
+    /// <summary><see cref="Aa"/>'s values: the anti-aliaser that draws. TAA is none of them: it draws only where FSR cannot.</summary>
+    internal const string AaFsr = "fsr", AaSmaa = "smaa", AaOff = "off";
 
     static Post()
     {
@@ -24,13 +24,14 @@ internal static class Post
 
         G.Section("Anti-aliasing");
         Scale = G.Slider("scale", "Render scale", 0.25f, 2f, 0.05f, 0.9f,
-                         help: "Size of the 3D frame relative to your screen. Below 1 renders fewer pixels and upscales (faster); "
-                             + "above 1 supersamples (sharper, slower). The UI is never scaled.");
-        Aa = G.Dropdown("aa", "Anti-aliasing", new[] { AaFsr, AaTaa, AaSmaa, AaOff }, AaFsr, new[] { "FSR 3.1", "TAA", "SMAA", "Off" },
+                         help: "Size of the 3D frame relative to your screen. Below 1 renders fewer pixels and FSR 3.1 rebuilds "
+                             + "the full picture (faster); above 1 supersamples (sharper, slower). The UI is never scaled.");
+        Scale.ShowIf = static () => Aa.V == AaFsr;
+        Aa = G.Dropdown("aa", "Anti-aliasing", new[] { AaFsr, AaSmaa, AaOff }, AaFsr, new[] { "FSR 3.1", "SMAA", "Off" },
                         help: "How edges are smoothed. FSR 3.1 rebuilds the full-resolution picture from the render scale's smaller "
-                            + "frame and the frames before it; at render scale 1 it is the anti-aliasing, and above 1 TAA draws instead. "
-                            + "TAA smooths edges over several frames. SMAA smooths each frame on its own.",
-                        changed: () => { CX.Alloy.Fsr.Revoke(); TaaStage.Reset(); })
+                            + "frame and the frames before it; at render scale 1 it is the anti-aliasing. SMAA smooths each frame "
+                            + "on its own, at full resolution: picking it sets the render scale to 1.",
+                        changed: OnAa)
              .Ladder(Quality.Preset, Quality.Classic(AaSmaa, AaFsr));
         Smaa = G.Dropdown("smaa", "SMAA quality", new[] { 1, 2, 3 }, 2, new[] { "medium", "high", "ultra" },
                           help: "How far SMAA searches along an edge. Higher finds longer edges and costs more.");
@@ -76,5 +77,13 @@ internal static class Post
         Viz = G.Slider("viz", "viz", 0, PostChain.VizMotion, 1, 0, tier: Tier.ChatOnly);
         ClearViz = G.Toggle("clearviz", "clearviz", false, Tier.ChatOnly);
         SkyRaw = G.Toggle("skyraw", "skyraw", true, Tier.ChatOnly);
+    }
+
+    /// <summary>A new anti-aliaser starts its history over; SMAA has no upscaler, so picking it renders at full resolution.</summary>
+    private static void OnAa()
+    {
+        CX.Alloy.Fsr.Revoke();
+        TaaStage.Reset();
+        if (Aa.V == AaSmaa && Scale.V != 1f) Scale.Set(1f);
     }
 }
