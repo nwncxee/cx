@@ -81,7 +81,7 @@ internal static class Quality
         check.Expect(!CX.Alloy.Weather.Enabled.RungValue(classic) && CX.Alloy.Weather.Enabled.RungValue(Shipped), "weather.enabled: off under Classic");
         check.Expect(!Fog.Enabled.RungValue(classic) && Fog.Enabled.RungValue(Shipped), "fog.enabled: off under Classic");
         check.Expect(Post.Bloom.RungValue(classic) == 0f && Post.Bloom.RungValue(Shipped) == 0.06f, "post.bloom: 0 under Classic");
-        check.Expect(Post.Aa.RungValue(classic) == "smaa" && Post.Aa.RungValue(Shipped) == "taa", "post.aa: SMAA under Classic, TAA shipped");
+        check.Expect(Post.Aa.RungValue(classic) == "smaa" && Post.Aa.RungValue(Shipped) == "fsr", "post.aa: SMAA under Classic, FSR 3.1 shipped");
         check.Expect(Post.Tonemap.RungValue(classic) == 1 && Post.Tonemap.RungValue(Shipped) == 2, "post.tonemap: shoulder under Classic");
         check.Expect(Post.TmKnee.RungValue(classic) == 1f && Post.TmKnee.RungValue(Shipped) == 0.8f, "post.tmknee: 1 under Classic");
         check.Expect(!CX.Alloy.Lighting.Brdf.RungValue(classic) && CX.Alloy.Lighting.Brdf.RungValue(Shipped), "light.brdf: off under Classic");
