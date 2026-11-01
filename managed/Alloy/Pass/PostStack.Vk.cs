@@ -298,15 +298,17 @@ internal static unsafe partial class PostStack
         return true;
     }
 
-    /// <summary>FSR 3.1 on this frame, when it is on: the velocity, then the upscale from the render-size
-    /// <paramref name="hdr"/> into a display-size image, which becomes <paramref name="hdr"/> with
-    /// <paramref name="viewport"/> the whole display, so the resolve and the stack run at the display size. A device
-    /// that refuses FSR stands it down for the session. True when FSR drew.</summary>
+    /// <summary>FSR 3.1 on this frame's full-window perspective view: the velocity, then the upscale into a display-size
+    /// image that becomes <paramref name="hdr"/>, with <paramref name="viewport"/> the whole display, so the resolve and
+    /// the stack run at the display size. A refusal stands FSR down for the session. True when FSR drew.</summary>
     private static bool FsrVk(VkBackend vk, StackVkState s, CommandList cl, ref ImageId hdr, ImageId depth, Matrix4x4* vp,
                               Matrix4x4* vpClean, ref int* viewport, int* full, float near, float far, float fovY, ExtenderLog log)
     {
         if (!Fsr.On) { Fsr.NoteScale(log); return false; }
         int rw = viewport[2], rh = viewport[3], dw = full[2], dh = full[3];
+        // ponytail: one context and one history, so only the full-window world view; a second or orthographic view
+        // draws unsmoothed. Per-view contexts if those views ever matter.
+        if (fovY <= 0f || vk.CompositeSize != (dw, dh)) return false;
         if (vk.FsrReady(rw, rh, dw, dh) is string why) { Fsr.Refuse(why, log); return false; }
         if (s.FsrOut.IsNull || s.FsrW != dw || s.FsrH != dh)
         {

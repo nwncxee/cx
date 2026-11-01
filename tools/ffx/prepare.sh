@@ -3,7 +3,7 @@
 # (native/ffx/sdk-1.1.4.patch) into build/ffx/sdk, and its Vulkan shader headers generated into
 # build/ffx/shaders. Each step reruns only when its inputs are newer. The caller compiles.
 # Usage: tools/ffx/prepare.sh <python> <glslang>
-set -e
+set -euo pipefail
 cd "$(dirname "$0")/../.."
 PY=$1; GLSLANG=$2
 "$PY" tools/deps.py ffx-sdk build/deps

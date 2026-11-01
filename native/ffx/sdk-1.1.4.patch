@@ -7,7 +7,8 @@ AMD FidelityFX SDK 1.1.4 as CX builds its FSR 3.1 upscaler: `patch -p1` inside F
    rgba8 made every store to it undefined on Vulkan.
 6. ffx_vk.cpp: off Windows, the debug-name conversions copy ASCII instead of calling std::wstring_convert, so the
    library needs no C++ runtime.
-1 to 4 are the fixes JonathanOrr/xplane-fsr3 found (MIT), rewritten here.
+7. ffx_vk.cpp: a permutation with no compiled shader fails pipeline creation, in release builds too.
+1 to 4 follow the fixes JonathanOrr/xplane-fsr3 found (MIT; its notice is in LICENSES.txt).
 
 --- a/sdk/include/FidelityFX/gpu/fsr3upscaler/ffx_fsr3upscaler_callbacks_glsl.h
 +++ b/sdk/include/FidelityFX/gpu/fsr3upscaler/ffx_fsr3upscaler_callbacks_glsl.h
@@ -168,3 +169,13 @@ AMD FidelityFX SDK 1.1.4 as CX builds its FSR 3.1 upscaler: `patch -p1` inside F
          descriptorPoolCreateInfo.pPoolSizes = poolSizes;
          descriptorPoolCreateInfo.maxSets = backendContext->maxEffectContexts * FFX_MAX_PASS_COUNT * MAX_PIPELINE_USAGE_PER_FRAME * FFX_MAX_QUEUED_FRAMES;
  
+@@ -3249,6 +3276,9 @@
+     // WON'T WORK WITH FSR3!!
+     backendInterface->fpGetPermutationBlobByIndex(effect, pass, FFX_BIND_COMPUTE_SHADER_STAGE, permutationOptions, &shaderBlob);
+     FFX_ASSERT(shaderBlob.data && shaderBlob.size);
++    // CX: a permutation the build did not compile is a refusal, in release builds too
++    if (!shaderBlob.data || !shaderBlob.size)
++        return FFX_ERROR_INVALID_ARGUMENT;
+ 
+     //////////////////////////////////////////////////////////////////////////
+     // One root signature (or pipeline layout) per pipeline

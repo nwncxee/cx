@@ -86,7 +86,7 @@ internal static unsafe class PostChain
     internal static string Describe() =>
         $"hdr {(_on ? "on" : "off")}  bloom {Post.Bloom.V:F3}{(StockConfig.HdrBloom ? "" : " (OFF: stock HDR/Bloom option)")}  threshold {Post.Threshold.V:F2}  knee {Post.Knee.V:F2}  " +
         $"exposure {Post.Exposure.V:F2}  tonemap {Post.Tonemap.Format()}  acesmix {Post.AcesMix.V:F2}  tmknee {Post.TmKnee.V:F2}  " +
-        $"dither {Post.Dither.V:F2}  scale {_scale:F2} (lod bias {LodBias:F2})  taa {(Post.Taa.V ? "on" : "off")} (taablend {Post.TaaBlend.V:F2}, taasharp {Post.TaaSharp.V:F2}, taau {(Post.Taau.V ? 1 : 0)})  halfres {(Post.HalfRes.V ? "on" : "off")}"
+        $"dither {Post.Dither.V:F2}  scale {_scale:F2} (lod bias {LodBias:F2})  fsr {(Fsr.On ? "on" : Post.Fsr.V ? "off (" + (Fsr.PanelLine().Length > 0 ? "refused" : "scale above 1") + ")" : "off")}  taa {(TaaOn ? "on" : "off")} (taablend {Post.TaaBlend.V:F2}, taasharp {Post.TaaSharp.V:F2}, taau {(Post.Taau.V ? 1 : 0)})  halfres {(Post.HalfRes.V ? "on" : "off")}"
         + (Post.Viz.V > 0 ? $"  VIZ {Post.Viz.V}" : "")
         + (Post.ClearViz.V ? "  CLEARVIZ (target cleared magenta)" : "")
         + " | " + PostStack.Describe();

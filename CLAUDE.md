@@ -26,7 +26,7 @@ user-visible, not renamed (#530).
 ## Build & run
 
     nix develop         # flake.nix: the pinned toolchain (.#ci is what CI builds in, .#gates the gate jobs)
-    ./build.sh          # needs: .NET 10 SDK, clang 21, gcc 15, ld.lld, zlib, cmake, pkg-config, audio headers
+    ./build.sh          # needs: .NET 10 SDK, clang 21, gcc 15, ld.lld, zlib, cmake, pkg-config, audio headers, glslang
     ./run-demo.sh       # boots the framework in a stub host + proves the rot refusal (no game needed)
     ./sym.sh [-m] <pat> # search client symbols; -m = mangled (for Install)
     tools/live/run-live.sh  # boots the REAL client headless into a playable area and grades the session
@@ -46,7 +46,8 @@ of its contents -- the install is "unpack into bin/linux-x86".
 Launch the real client:  `NWN_BIN=/path/to/nwmain-linux ./cx-linux-x64/cx-launch`
 (Steam: put `"<abs>/cx-launch" %command%` in the game Launch Options.)
 
-First build fetches the funchook submodule and its nested diStorm if missing, then builds it.
+First build fetches the funchook submodule and its nested diStorm if missing, then builds it. It also fetches AMD's FidelityFX SDK
+source (about 200 MB, pinned in `tools/deps.json`) once, for FSR 3.1.
 
 Every version-bound number (EngineLayout offsets, SymbolMap `At()` RVAs, build keys) lives in
 `managed/Framework/Builds/<name>.tsv`, one complete file per supported client build; code
@@ -93,7 +94,10 @@ Read before working in the area: `docs/hook-pattern.md` (a real hook + trampolin
 `docs/owned-resource-lifetimes.md` (what creates and kills each owned table, per scene layer),
 `docs/alloy-refusals.md` (why a frame is the engine's), `docs/audio.md` (Steam Audio behind the engine's OpenAL).
 Every file under `managed/Alloy/Shaders/` is GLSL under a `cx_*` resref <= 16 chars -- the hak limit, so each
-is overridable as `<resref>.shd` -- translated and compiled to SPIR-V at runtime (`VkGlsl`, shaderc).
+is overridable as `<resref>.shd` -- translated and compiled to SPIR-V at runtime (`VkGlsl`, shaderc). FSR 3.1's shaders
+are the exception: AMD's GLSL, compiled when `build.sh` runs (`tools/ffx/`) and bound by AMD's backend, so
+`check-shaders.py`, the SSBO and UBO slot gates and the `cx_*.shd` contract never see them; they change through
+`native/ffx/sdk-1.1.4.patch`.
 
 ## Adding a service (the whole contributor workflow)
 
@@ -238,10 +242,6 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
   (`docs/adr/`, `docs/handoff/` exempt); a machine's paths go through `tools/paths.py`.
 - `compute-pipes.sh`: a `ShaderDesc(ShaderStage.Compute ...)` under `managed/` outside `VkBackend.Pipeline.cs` fails; a
   compute pipeline from GLSL is `VkBackend.CreateCompute`.
-
-FSR 3.1's shaders are outside every shader gate: they are AMD's GLSL, compiled to SPIR-V when `build.sh` runs
-(`tools/ffx/`) and bound by AMD's backend, so `check-shaders.py`, the SSBO and UBO slot gates and the `cx_*.shd`
-override contract never see them. A change to them is a change to `native/ffx/sdk-1.1.4.patch`.
 
 ## Hard rules
 

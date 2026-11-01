@@ -1,6 +1,6 @@
 using System;
-using System.Runtime.InteropServices;
 using CX.Framework;
+using CX.Graphics.Rhi;
 using CX.Rhi;
 
 namespace CX.Alloy;
@@ -18,6 +18,7 @@ internal static partial class Fsr
         public string? Refused;
         public bool Reset = true, ScaleSaid;
         public (int, int, int, int) Said;
+        public (int RenderW, int DisplayW, int Count) Phases;
     }
 
     private static FsrState _s = new();
@@ -26,11 +27,14 @@ internal static partial class Fsr
     /// refused it.</summary>
     internal static bool On => Post.Fsr.V && _s.Refused == null && Renderer.Scale.V <= 1f;
 
-    [DllImport("cxfsr")] private static extern int cxfsr_phase_count(int renderW, int displayW);
-
     /// <summary>FSR's jitter sequence length for a <paramref name="renderW"/> frame on a <paramref name="displayW"/>
-    /// display, as its own library counts it.</summary>
-    internal static int PhaseCount(int renderW, int displayW) => Math.Max(cxfsr_phase_count(renderW, displayW), 1);
+    /// display, as its library counts it, asked once per size.</summary>
+    internal static int PhaseCount(int renderW, int displayW)
+    {
+        if (_s.Phases.RenderW != renderW || _s.Phases.DisplayW != displayW)
+            _s.Phases = (renderW, displayW, Math.Max(VkBackend.FsrPhaseCount(renderW, displayW), 1));
+        return _s.Phases.Count;
+    }
 
     /// <summary>The cx.log line naming an upscale from <paramref name="rw"/> x <paramref name="rh"/> to
     /// <paramref name="dw"/> x <paramref name="dh"/>.</summary>
@@ -79,8 +83,8 @@ internal static partial class Fsr
     /// <summary>Context loss: the session's refusal and history start over.</summary>
     internal static void Forget() => _s = new FsrState();
 
-    /// <summary>The game's frame delta in milliseconds, as FSR takes it: 16.7 while the engine's clock is unresolved.</summary>
-    internal static float FrameMs() => FrameDelta.Ready ? FrameDelta.Delta(FrameDelta.DtFloor) * 1000f : 16.7f;
+    /// <summary>The game's frame delta in milliseconds, as FSR takes it: never past 100, and 16.7 while the engine's clock is unresolved.</summary>
+    internal static float FrameMs() => FrameDelta.Ready ? MathF.Min(FrameDelta.Delta(FrameDelta.DtFloor) * 1000f, 100f) : 16.7f;
 
     /// <summary>One dispatch in FSR's terms from Alloy's. Alloy's targets hold rows bottom-up, the way NDC y runs, so
     /// a jitter of j NDC is j x size / 2 render pixels along the rows with no flip, and the velocity target (render
@@ -101,7 +105,9 @@ internal static partial class Fsr
         try
         {
             OffSelfCheck(check);
-            Examples(check, log);
+            // the examples log a test refusal and read cx.log back: run-demo's own log, never a player's
+            if (Native.Sym(SymbolMap.AppManager) != IntPtr.Zero) check.Skip("in a session: the FSR examples run in run-demo");
+            else Examples(check, log);
         }
         finally { Post.Fsr.V = fsr; Post.Taa.V = taa; Renderer.Scale.V = scale; }
         log.Info(!check.Ok ? "Fsr.SelfCheck: FAILED" : Checker.Skipped > skipped ? "Fsr.SelfCheck: ran the rest (a skip above)" : "Fsr.SelfCheck: passed");

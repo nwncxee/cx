@@ -40,10 +40,14 @@ internal sealed unsafe partial class VkBackend
 
     [DllImport("cxfsr")] private static extern int cxfsr_create(FsrDevice* dev, uint maxW, uint maxH, uint displayW, uint displayH, nint* ctx);
     [DllImport("cxfsr")] private static extern int cxfsr_ring();
+    [DllImport("cxfsr")] private static extern int cxfsr_phase_count(int renderW, int displayW);
+
+    /// <summary>FSR's jitter sequence length for a <paramref name="renderW"/>-wide frame on a <paramref name="displayW"/>
+    /// display, as its library counts it. Touches no device.</summary>
+    internal static int FsrPhaseCount(int renderW, int displayW) => cxfsr_phase_count(renderW, displayW);
     [DllImport("cxfsr")] private static extern int cxfsr_dispatch(nint ctx, FsrDispatch* d);
     [DllImport("cxfsr")] private static extern ulong cxfsr_vram(nint ctx);
     [DllImport("cxfsr")] private static extern void cxfsr_destroy(nint ctx);
-
 
     /// <summary>The device's FSR context and the sizes it was made for; a refusal holds for the device's life.</summary>
     private sealed class FsrState
@@ -90,6 +94,9 @@ internal sealed unsafe partial class VkBackend
         _log.Always($"VkBackend: FSR 3.1 ready, up to {maxW}x{maxH} into {displayW}x{displayH}, {cxfsr_vram(ctx) / (1024.0 * 1024.0):F0} MiB of its own");
         return null;
     }
+
+    /// <summary>The composite's size: the window a full-screen view covers.</summary>
+    internal (int W, int H) CompositeSize => _images.TryGet(_composite.Value, out VkImg c) ? (c.Desc.W, c.Desc.H) : (0, 0);
 
     /// <summary>The device's FSR context goes with it.</summary>
     private void DisposeFsr()

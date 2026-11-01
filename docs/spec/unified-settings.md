@@ -689,7 +689,8 @@ so it adds no submenu content.
 | effects.sky / beams / halosize / haloviz | — | T, S | as declared | C | L | — | the sky dome, the light shafts, the halo's size as a multiple of vanilla's flare, the halo visualiser |
 | lighttrace.enabled | Trace every area-light change to cx.log | T | off | **C** | L | — | cfg-only diagnostic for area builders: every light, direction and fog packet the server sends, every day/night state change and transition, the lightning flash, and once a second the colours the engine applied to the area's sun next to the ones Alloy rendered -- all under the `[lighttrace]` prefix. Off costs nothing per frame. |
 
-**Image** — group `post` (330), no master (the resolve is the frame).
+**Image** — group `post` (330), no master (the resolve is the frame). Its `PanelStatus` is empty unless the device refused FSR,
+then "FSR 3.1 is off for this session: <why>."
 
 | key | label | kind | range · default | tier | eff | section | help |
 |---|---|---|---|---|---|---|---|
@@ -697,6 +698,7 @@ so it adds no submenu content.
 | post.bloom | Bloom | S | 0–0.5 step 0.01 · 0.06 | U | L | Bloom | Glow around bright lights. 0 is off. |
 | post.tonemap | Tone mapping | D | shoulder / aces / neutral · aces | U | L | Tone | How bright values above white are compressed. |
 | post.taa | Temporal anti-aliasing | T | on | U | L | Anti-aliasing | Smooths edges over several frames. |
+| post.fsr | FSR 3.1 upscaling | T | off | U | L | Anti-aliasing | Rebuilds the full-resolution picture from the render scale's smaller frame and the frames before it. Replaces temporal anti-aliasing while on; at render scale 1 it is the anti-aliasing. Render scale above 1 keeps it off. |
 | post.threshold | Bloom threshold | S | 0–4 step 0.05 · 1 | A | L | Bloom | |
 | post.knee | Bloom knee | S | 0–1 step 0.05 · 0.5 | A | L | Bloom | |
 | post.taasharp | TAA sharpness | S | 0–1 step 0.05 · 0.3 | A | L | Anti-aliasing | Undoes the softness the history blend leaves. 0 = the raw resolve. |

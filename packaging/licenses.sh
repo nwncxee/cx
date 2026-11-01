@@ -29,7 +29,9 @@ here=$(cd "$(dirname "$0")/.." && pwd)
   echo "----- xatlas (https://github.com/jpcy/xatlas) -----"; echo
   cat "$here/native/xatlas/LICENSE"; echo
   echo "----- AMD FidelityFX SDK (https://github.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK) -----"; echo
-  cat "$here/build/deps/FidelityFX-SDK-1.1.4/LICENSE.txt"; echo
+  cat "$here/third_party/fidelityfx/LICENSE.txt"; echo
+  echo "CX's patch to it carries four fixes found by xplane-fsr3 (https://github.com/JonathanOrr/xplane-fsr3):"; echo
+  cat "$here/third_party/xplane-fsr3/LICENSE.txt"; echo
   echo "----- SMAA (https://github.com/iryoku/smaa) -----"; echo
   cat "$here/third_party/smaa/LICENSE.txt"; echo
   echo "----- DejaVu fonts (https://dejavu-fonts.github.io) -----"; echo
