@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using CX.Alloy.Db;
 using CX.Framework;
 using CX.Graphics.Rhi;
@@ -48,19 +49,25 @@ public sealed unsafe partial class AlloyRenderer
         for (int f = 0; f < MeshArena.Formats; f++) formats += (live[f] = !MeshArena.VkVbo((MeshArena.Fmt)f).IsNull && !s.Layouts[f].IsNull) ? 1 : 0;
         if (formats == 0) return;
         bool rate = vk.ShadingRateTexel > 0;
-        foreach (VkProg? p in s.Progs) if (p != null) VkPrewarmProgram(p, live, rate);
+        long since = Stopwatch.GetTimestamp();
+        foreach (VkProg? p in s.Progs) if (p != null && !VkPrewarmProgram(p, live, rate, since)) return;
         VkDecalState d = VkDecalOwner(vk);
-        if (VkDecalWriter(vk, d, log)) VkPrewarmProgram(d.Prog!, live, rate);
+        if (VkDecalWriter(vk, d, log) && !VkPrewarmProgram(d.Prog!, live, rate, since)) return;
         VkMvState mv = VkMvOwner(vk);
-        if (VkMvEnsure(vk, mv, log)) VkPrewarmProgram(mv.Prog!, live, rate);
+        if (VkMvEnsure(vk, mv, log) && !VkPrewarmProgram(mv.Prog!, live, rate, since)) return;
         VkHlState hl = VkHlOwner(vk);
-        if (VkHlPrograms(vk, hl, log)) VkPrewarmProgram(hl.Mask!, live, rate);
-        foreach (VkProg? p in s.Content.Values) if (p != null) VkPrewarmProgram(p, live, rate);
+        if (VkHlPrograms(vk, hl, log) && !VkPrewarmProgram(hl.Mask!, live, rate, since)) return;
+        foreach (VkProg? p in s.Content.Values) if (p != null && !VkPrewarmProgram(p, live, rate, since)) return;
     }
 
+    /// <summary>Milliseconds of building one hold frame spends before the rest waits for the next, so a device that
+    /// compiles whole pipelines keeps the loading screen drawing.</summary>
+    private const double VkPrewarmBudgetMs = 25;
+
     /// <summary>Program <paramref name="p"/> into each of its sets, for each live format; the colour sets both rated and
-    /// not on a device with a rate image, since a pass binds only the one its own verdict names.</summary>
-    private static void VkPrewarmProgram(VkProg p, ReadOnlySpan<bool> live, bool rate)
+    /// not on a device with a rate image, since a pass binds only the one its own verdict names. False once the frame
+    /// has spent its budget since <paramref name="since"/>.</summary>
+    private static bool VkPrewarmProgram(VkProg p, ReadOnlySpan<bool> live, bool rate, long since)
     {
         ReadOnlySpan<VkTargets> sets = VkPrewarmSets(p);
         for (int f = 0; f < live.Length; f++)
@@ -72,7 +79,9 @@ public sealed unsafe partial class AlloyRenderer
                 if (t == VkTargets.Cover && _vkCover.Samples <= 0) continue;
                 VkPipeline(p, f, t, 0, rated: false);
                 if (rate && t is VkTargets.Colour or VkTargets.ColourRefl) VkPipeline(p, f, t, 0, rated: true);
+                if (Stopwatch.GetElapsedTime(since).TotalMilliseconds > VkPrewarmBudgetMs) return false;
             }
         }
+        return true;
     }
 }
