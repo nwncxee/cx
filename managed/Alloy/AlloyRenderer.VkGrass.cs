@@ -238,16 +238,16 @@ public sealed unsafe partial class AlloyRenderer
                 if (blades)
                 {
                     side.SetPipeline(g.BladeCastPipe);
-                    side.SetDepthState(new DepthState(true, true, CompareOp.LessEqual));
+                    side.SetDepthState(new DepthState(true, true, GlDepth.NearerOrEqual));
                     if (!VkGrassDraws(side, g, c, g.BladeDepth!, g.LBD, in f, in d, false, ownB, storage)) return;
                 }
                 if (cards)
                 {
                     side.SetPipeline(g.CardCastPipe);
-                    side.SetDepthState(new DepthState(true, true, CompareOp.LessEqual));
+                    side.SetDepthState(new DepthState(true, true, GlDepth.NearerOrEqual));
                     if (!VkGrassDraws(side, g, c, g.CardDepth!, g.LCD, in f, in d, true, ownC, storage)) return;
                 }
-                VkFlushPass(cl, side, arena0, new RenderPassDesc(default, new DepthAttachment(img, 0, i, LoadOp.Load, StoreOp.Store, 1f)));
+                VkFlushPass(cl, side, arena0, new RenderPassDesc(default, new DepthAttachment(img, 0, i, LoadOp.Load, StoreOp.Store, GlDepth.Clear)));
                 drawn++;
             }
         }

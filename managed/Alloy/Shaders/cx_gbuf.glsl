@@ -16,6 +16,7 @@
 #ifndef CX_GBUF
 #define CX_GBUF
 #include "cx_ssrrec.glsl"
+#include "cx_depthlin.glsl"
 
 /// G0.x's flag byte. CX_GB_DEFERRED is the only bit the reader gates on; the rest select the walk's branches
 /// exactly as the forward loop's own arguments did (baked, onMover, the film statics, cxRecvShadow == 0).
@@ -112,10 +113,10 @@ float CxGbufDepthSlack(sampler2D depth, ivec2 p, float z, mat4 proj)
 {
     ivec2 hi = textureSize(depth, 0) - 1;
     ivec2 s = (p & 1) * -2 + 1;   // toward the pixel's partner in its aligned 2x2 block, where a coarse fragment lies
-    float zx0 = proj[3].z / (texelFetch(depth, clamp(p + ivec2(s.x, 0), ivec2(0), hi), 0).r + proj[2].z);
-    float zx1 = proj[3].z / (texelFetch(depth, clamp(p - ivec2(s.x, 0), ivec2(0), hi), 0).r + proj[2].z);
-    float zy0 = proj[3].z / (texelFetch(depth, clamp(p + ivec2(0, s.y), ivec2(0), hi), 0).r + proj[2].z);
-    float zy1 = proj[3].z / (texelFetch(depth, clamp(p - ivec2(0, s.y), ivec2(0), hi), 0).r + proj[2].z);
+    float zx0 = CxDepthViewZ(texelFetch(depth, clamp(p + ivec2(s.x, 0), ivec2(0), hi), 0).r, proj);
+    float zx1 = CxDepthViewZ(texelFetch(depth, clamp(p - ivec2(s.x, 0), ivec2(0), hi), 0).r, proj);
+    float zy0 = CxDepthViewZ(texelFetch(depth, clamp(p + ivec2(0, s.y), ivec2(0), hi), 0).r, proj);
+    float zy1 = CxDepthViewZ(texelFetch(depth, clamp(p - ivec2(0, s.y), ivec2(0), hi), 0).r, proj);
     return CxDepthStepSlack(z, zx0, zx1, zy0, zy1);
 }
 

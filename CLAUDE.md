@@ -237,6 +237,15 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
   (`docs/adr/`, `docs/handoff/` exempt); a machine's paths go through `tools/paths.py`.
 - `compute-pipes.sh`: a `ShaderDesc(ShaderStage.Compute ...)` under `managed/` outside `VkBackend.Pipeline.cs` fails; a
   compute pipeline from GLSL is `VkBackend.CreateCompute`.
+- `adr.sh`: a decision record under `docs/adr/` that `bin/check-adr` refuses (its shape, backticks, over 55 words) fails.
+- `world-depth.sh`: a world depth read decoded as GL's (`d * 2.0 - 1.0`) or tested against GL's far plane (1.0) fails --
+  in a `.glsl` under `managed/Alloy/Shaders/`, in a helper a world depth reaches through a parameter, or in a GLSL string
+  in C# -- and so does a `.glsl` linearisation written anywhere but `cx_depthlin.glsl`'s `CxDepthViewZ`. The world
+  depth samplers are a list in `world-depth.py`; a new one goes on it. Its approved examples are
+  `world_depth_approved_examples.sh` beside it, which `build.sh` runs.
+- `depth-confined.sh`: a file named in CX0006's `Allowed` that is not in the tree fails. The RULE -- GL's depth test and
+  clear only in the files that keep GL depth (casters, shadow cascades, the GUI), and no depth test without its
+  comparison -- is CX0006 (`tools/analyzers/DepthConvention.cs`); its approved examples need the SDK, so `build.sh` runs them.
 - `golden-glsl.sh`: a golden under `managed/Alloy/Golden/` declaring a `CX_*` constant a shipped shader declares (splice it
   with `GpuGolden.Declaration`), indexing `uIn`/`uOut` with a literal stride (use `CX_GOLD_IN`/`CX_GOLD_OUT`), or a shader
   comparing a light record's `w` with 128 (ask `CxLightIsStatic`) counts against `golden-glsl.baseline`, which may only shrink.

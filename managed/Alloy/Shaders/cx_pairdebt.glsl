@@ -132,7 +132,7 @@ void main()
     {
         z = texelFetch(uGbDepth, p, 0).r;
         ndcZ = z;
-        viewDepth = uProj[3].z / (ndcZ + uProj[2].z);
+        viewDepth = CxDepthViewZ(ndcZ, uProj);
     }
     // The tile's depth slab is every DRAWN pixel's, off the depth buffer alone: the G-buffer is read below only
     // in a tile that holds a pair, which is most tiles not holding one. Wider than the baked pixels' own slab

@@ -82,7 +82,7 @@ void main()
         ivec2 p = r * uShRes + uRect.xy;
         cxPixel = vec2(p) + 0.5;
         float ndcZ = texelFetch(uGbDepth, p, 0).r;
-        float viewDepth = uProj[3].z / (ndcZ + uProj[2].z);
+        float viewDepth = CxDepthViewZ(ndcZ, uProj);
         CxGbuf g;
         if (CxGbufReadHead(texelFetch(uGb0, p, 0), viewDepth, CxGbufDepthSlack(uGbDepth, p, viewDepth, uProj), g))
         {

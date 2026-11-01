@@ -332,7 +332,7 @@ void main()
     {
         ndcZ = texelFetch(uGbDepth, p, 0).r;
         // the forward stage's vDepth: gl_Position.w, which for a perspective projection IS the linear view depth
-        viewDepth = uProj[3].z / (ndcZ + uProj[2].z);
+        viewDepth = CxDepthViewZ(ndcZ, uProj);
         mine = CxGbufReadWalk(texelFetch(uGb0, p, 0), texelFetch(uGb1, p, 0).w, viewDepth,
                               CxGbufDepthSlack(uGbDepth, p, viewDepth, uProj), g);
     }

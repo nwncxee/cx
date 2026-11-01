@@ -4,7 +4,7 @@
 cd "$(dirname "$0")/../.."
 rc=0
 for g in tools/gates/*.sh; do
-  case "$g" in */run.sh|*/hook.sh|*/ratchet.sh) continue ;; esac
+  case "$g" in */run.sh|*/hook.sh|*/ratchet.sh|*_approved_examples.sh) continue ;; esac
   bash "$g" || { echo "!! gate failed: $g" >&2; rc=1; }
 done
 exit $rc

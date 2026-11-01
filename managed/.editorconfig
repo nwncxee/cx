@@ -12,3 +12,5 @@ dotnet_diagnostic.CX0003.severity = error
 dotnet_diagnostic.CX0004.severity = error
 # A Vulkan or VMA entry point outside managed/Graphics/.
 dotnet_diagnostic.CX0005.severity = error
+# GL's depth test or clear outside the files that keep it, or a depth test with no comparison named.
+dotnet_diagnostic.CX0006.severity = error

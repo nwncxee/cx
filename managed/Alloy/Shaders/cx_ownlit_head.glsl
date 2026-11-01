@@ -60,6 +60,7 @@ layout(location = 0) out vec4 frag;
 uniform vec3 uHlColor;
 #endif
 #include "cx_ssr.glsl"
+#include "cx_depthlin.glsl"
 #include "cx_reflrec.glsl"
 // CX-188 (ADR 0029): the deferred G-buffer's lanes. CX_GBUF_OUT -- which only the CX_DEFERRED twin is built
 // with -- is what turns its two outputs on at locations 4..5; without it this is the reader's half alone.
@@ -72,20 +73,23 @@ uniform int uLightRecOn;
 // depth it was judged on (.r) and the nearest decal's view depth (.g). Every surface lying under that decal -- the
 // prepassed ground, a cutout drawn over it, a wash's interior -- folds the layer into its albedo and is lit once.
 uniform int uDecal;      // 1 = fold the layer into this surface; 2 = a decal batch whose on-surface fragments the layer took
-uniform vec2 uDecalZ;    // the folded projection's (M33, M43): linear view depth = y / (depth + x)
+uniform vec2 uDecalZ;    // the folded projection's (M33, M43), as CxDepthViewZ takes them
 layout(rgba16f, binding = 6) readonly uniform image2D uDecalLayer;
 layout(rg32f, binding = 7) readonly uniform image2D uDecalSurf;
 /// How high above a surface a decal may lie and still fold into it: metres, plus a share of view depth for the
 /// depth buffer's own precision.
 const float CX_DECAL_TOL_M = 0.1, CX_DECAL_TOL = 0.001;
+/// The window depth no decal takes: uDecalSurf clears to it where no writer reached the pixel, and a fragment
+/// at it lies on the world's near plane. Not a far plane -- the world's is 0.
+const float CX_DECAL_UNWRITTEN = 1.0;
 /// Does a decal at linear view depth <paramref name="d"/> lie on the surface whose window depth is <paramref name="z"/>?
 /// As HEIGHT off that surface (a grazing ray stretches depth without bound), one-sided: a surface over the decal (a foot
 /// on it) never takes it. The writer and the blended pass ask it of the same inputs, so one of them takes each decal
 /// fragment; a surface folding the layer asks it of the nearest decal.
 bool CxDecalOn(float z, float d)
 {
-    if (!(z > 0.0 && z < 1.0)) return false;
-    float s = uDecalZ.y / (z + uDecalZ.x);
+    if (!(z > 0.0 && z < CX_DECAL_UNWRITTEN)) return false;
+    float s = CxDepthViewZ(z, uDecalZ);
     float h = (s - d) / max(d, 1e-4) * abs(dot(vWorld - uEyePos, normalize(vNrm)));
     float eps = CX_DECAL_TOL * s;
     return h > -eps && h < CX_DECAL_TOL_M + eps;
