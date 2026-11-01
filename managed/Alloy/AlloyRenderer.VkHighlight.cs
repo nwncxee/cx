@@ -42,7 +42,8 @@ public sealed unsafe partial class AlloyRenderer
         s.Drawn = false;
         if (_capturing) return true;
         int n = Highlight.GatherVk(groups);
-        if (n == 0 || !VkHlEnsure(vk, s, viewport[2], viewport[3], log)) return true;
+        if (n == 0) return true;
+        if (!VkHlEnsure(vk, s, viewport[2], viewport[3], log)) { Highlight.UnmaskVk(); return true; }
         VkProg p = s.Mask!;
         CommandList side = s.Side!;
         side.Reset();
@@ -107,7 +108,7 @@ public sealed unsafe partial class AlloyRenderer
         {
             s.Live = true;
             log.Always("AlloyRenderer: the Vulkan outline highlight is LIVE -- the mask against the frame's depth, then the fill "
-                     + "and dilated outline over the composite (a root with no masked draw takes no glow on Vulkan)");
+                     + "and dilated outline over the composite (a root with no masked draw takes the vanilla glow)");
         }
     }
 
@@ -127,8 +128,8 @@ public sealed unsafe partial class AlloyRenderer
             if (s.Mask == null || s.Comp == null)
             {
                 s.Mask = null;
-                log.Always("AlloyRenderer: the Vulkan highlight mask or composite was REFUSED (logged above) -- nothing is "
-                         + "highlighted on Vulkan this session");
+                log.Always("AlloyRenderer: the Vulkan highlight mask or composite was REFUSED (logged above) -- every "
+                         + "highlight takes the vanilla glow on Vulkan this session");
             }
         }
         if (s.Mask == null) return false;

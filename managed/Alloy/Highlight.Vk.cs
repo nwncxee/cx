@@ -9,12 +9,13 @@ namespace CX.Alloy;
 internal static unsafe partial class Highlight
 {
     /// <summary>This frame's outline draws for the Vulkan mask: each record's draw index, its root, whether it is a
-    /// cutout (tested EQUAL, unbiased), and the roots' colours.</summary>
+    /// cutout (tested EQUAL, unbiased), the roots' colours, and which roots the mask covers.</summary>
     private sealed class HlVkState
     {
         public readonly int[] Draw = new int[MaxHlDraws], Root = new int[MaxHlDraws], Grp = new int[MaxHlDraws];
         public readonly bool[] Cut = new bool[MaxHlDraws];
         public readonly float[] Cols = new float[MaxHlRoots * 3];
+        public readonly bool[] Masked = new bool[MaxHlRoots];
         public int N, Roots;
     }
 
@@ -26,27 +27,32 @@ internal static unsafe partial class Highlight
     /// <summary>The outline's draws on Vulkan, gathered off the staged batches: every
     /// highlighted root the source hook claimed and its attached children, matched against the staged batches up to
     /// the blended class's end. A content pair's own depth twin is not on Vulkan, so its parts are not masked; a root
-    /// with no masked draw takes no highlight here (the glow is GL's). The draws gathered.</summary>
+    /// with no masked draw is left to <see cref="StageGlowVk"/>. The draws gathered.</summary>
     internal static int GatherVk(int groups)
     {
         HlVkState s = _vkHl;
-        s.N = 0; s.Roots = 0;
+        s.N = 0;
         DbId dbScene = AlloyRenderer.DbPassScene;
         int nGobs = Math.Min(SceneFeed.HighlightCount(dbScene), MaxHlRoots);
+        s.Roots = nGobs;
+        Array.Clear(s.Masked, 0, nGobs);
+        for (int i = 0; i < nGobs; i++)
+        {
+            SceneFeed.HighlightAt(dbScene, i, out _, out Vector3 c);
+            s.Cols[i * 3] = c.X; s.Cols[i * 3 + 1] = c.Y; s.Cols[i * 3 + 2] = c.Z;
+        }
         if (nGobs == 0 || !Renderer.OutlineHighlight) return 0;
         IntPtr* targets = stackalloc IntPtr[MaxHlTargets];
         byte* targetRoot = stackalloc byte[MaxHlTargets];
         int nT = 0;
         for (int i = 0; i < nGobs; i++)
         {
-            SceneFeed.HighlightAt(dbScene, i, out DbId o, out Vector3 c);
-            s.Cols[i * 3] = c.X; s.Cols[i * 3 + 1] = c.Y; s.Cols[i * 3 + 2] = c.Z;
+            SceneFeed.HighlightAt(dbScene, i, out DbId o, out _);
             if (nT >= MaxHlTargets || !OwnedHighlightDb(o)) continue;
             targetRoot[nT] = (byte)i;
             targets[nT++] = (IntPtr)o.Value;
             nT = DbAttached(o, (byte)i, targets, targetRoot, nT);
         }
-        s.Roots = nGobs;
         int end = groups < _gBlendEnd ? groups : _gBlendEnd;
         for (int g = 0; g < end && s.N < MaxHlDraws; g++)
         {
@@ -63,10 +69,35 @@ internal static unsafe partial class Highlight
                     if (targets[k] == gob) { hit = k; break; }
                 if (hit < 0) continue;
                 s.Draw[s.N] = j; s.Grp[s.N] = g; s.Root[s.N] = targetRoot[hit]; s.Cut[s.N] = _gCls[g] == (byte)AlloyClass.Cutout;
+                s.Masked[targetRoot[hit]] = true;
                 s.N++;
             }
         }
         return s.N;
+    }
+
+    /// <summary>The mask drew nothing this frame (its program or target was refused), so every root falls to the glow.</summary>
+    internal static void UnmaskVk() => Array.Clear(_vkHl.Masked, 0, _vkHl.Roots);
+
+    /// <summary>Every highlighted root the mask does not cover, staged into <see cref="GobGlow"/> with its propagating
+    /// attachments: an unclaimed channel, a root with no masked draw, or every root when the outline is off. After
+    /// <see cref="GatherVk"/>; the quads staged.</summary>
+    internal static int StageGlowVk(Vector3 eye)
+    {
+        HlVkState s = _vkHl;
+        if (s.Roots == 0) return 0;
+        DbId dbScene = AlloyRenderer.DbPassScene;
+        GobGlow.Begin(dbScene, eye);
+        IntPtr* kids = stackalloc IntPtr[MaxHlTargets];
+        byte* kidRoot = stackalloc byte[MaxHlTargets];
+        for (int i = 0; i < s.Roots; i++)
+        {
+            if (s.Masked[i]) continue;
+            SceneFeed.HighlightAt(dbScene, i, out DbId root, out _);
+            GobGlow.Stage(root, new Vector3(s.Cols[i * 3], s.Cols[i * 3 + 1], s.Cols[i * 3 + 2]), kids,
+                          DbAttached(root, 0, kids, kidRoot, 0));
+        }
+        return GobGlow.Staged().Length;
     }
 
     /// <summary>Gathered draw <paramref name="k"/>: its draw index, its batch, its root's colour and its depth rule.</summary>

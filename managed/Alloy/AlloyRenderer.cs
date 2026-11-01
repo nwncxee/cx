@@ -303,6 +303,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         ShaderStages.SelfCheck(log);
         ShaderSource.SelfCheck(log);
         TriggerHighlight.SelfCheck(log);
+        GobGlow.SelfCheck(log);
         GuiCapture.SelfCheck(log);
         GuiModelSolve.SelfCheck(log);
         Quality.SelfCheck(log);
@@ -370,6 +371,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
 
         // #336: the highlight SOURCE. Cold -- it fires on a mouseover edge or a VFX starting, never per
         // frame -- and it is the only place the channel that produced a highlight is visible.
+        GobGlow.Attach(log);
         Highlight._origRefreshHilite = hooks.InstallRefreshHilite(&Highlight.OnRefreshHilite);
         if (Highlight._origRefreshHilite == null)
             log.Info("AlloyRenderer: RefreshHilite unhooked -- no highlight claims a source, so every"
