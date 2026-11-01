@@ -54,7 +54,13 @@ internal sealed unsafe partial class VkBackend
         return s;
     }
 
-    private VkResult WaitFor(long value) => WaitFor(_timeline, value, ref _completed);
+    /// <summary>Block until the graphics timeline reaches <paramref name="value"/>. A value past every queued submit is
+    /// the held buffer's, which only the CPU can queue: it is queued first, or the wait would run out its limit.</summary>
+    private VkResult WaitFor(long value)
+    {
+        if (value > _submits) SubmitHeld();
+        return WaitFor(_timeline, value, ref _completed);
+    }
 
     /// <summary>Block until <paramref name="sem"/> reaches <paramref name="value"/>, banking the blocked time into the
     /// wait the frame line reports.</summary>
@@ -184,7 +190,7 @@ internal sealed unsafe partial class VkBackend
     /// while recording still names the submit it recorded into.</summary>
     private VkResult SubmitAndIdle(VkCommandBuffer cb, out bool queued)
     {
-        if (_held.Slot != null) SubmitHeld();
+        SubmitHeld();
         VkResult r = QueueSubmit(cb, default, default, counted: false);
         queued = r == VkResult.Success;
         if (!queued) return r;

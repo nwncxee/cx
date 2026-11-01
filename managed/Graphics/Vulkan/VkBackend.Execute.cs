@@ -45,7 +45,7 @@ internal sealed unsafe partial class VkBackend
     {
         if (!OnThread("Submit")) return false;
         if (_inWhenDone) return Fault($"list {list.Name} was submitted from WhenDone work, which must not submit");
-        if (_held.Slot != null) SubmitHeld();
+        SubmitHeld();
         bool ran = RecordAndQueue(list, swap, beside);
         CarryWhenDone(list, ran, list.Async && _async != null);
         RunWhenDone();
@@ -55,21 +55,23 @@ internal sealed unsafe partial class VkBackend
     /// <summary><see cref="Submit(CommandList, int, bool)"/>'s recording and queue submit, on the device's thread.</summary>
     private bool RecordAndQueue(CommandList list, int swap, bool beside)
     {
-        if (!Begin(list, beside, out Slot? s, out bool lane)) return false;
+        bool lane = list.Async && _async != null;
+        if (Begin(list, beside) is not Slot s) return false;
         bool ok = Body(list);
-        return Finish(s!, list.Name, lane, ok, swap, beside, committed: false);
+        return Finish(s, list.Name, lane, ok, swap, beside, committed: false);
     }
 
     /// <summary>A recording slot's command buffer begun for <paramref name="list"/>, with the bindless upkeep and the
-    /// uploads at its head on the graphics queue. False when no slot came or the bind sets would not retire.</summary>
-    private bool Begin(CommandList list, bool beside, out Slot? slot, out bool lane)
+    /// uploads at its head on the graphics queue. Null when no slot came, the bind sets would not retire, or a buffer
+    /// is still held for the present (its slot would be the one reset).</summary>
+    private Slot? Begin(CommandList list, bool beside)
     {
-        lane = list.Async && _async != null;
-        slot = null;
-        if (lane && !UploadsAhead()) return false;
-        if ((lane ? TakeSlot(_async!.Slots, _async.Pool, _async.Timeline, ref _async.Completed) : TakeSlot()) is not Slot s) return false;
+        if (_held.Slot != null) { Fault($"list {list.Name} began recording with a command buffer held for the present"); return null; }
+        bool lane = list.Async && _async != null;
+        if (lane && !UploadsAhead()) return null;
+        if ((lane ? TakeSlot(_async!.Slots, _async.Pool, _async.Timeline, ref _async.Completed) : TakeSlot()) is not Slot s) return null;
         if (!lane) ShrinkGroups();
-        if (_sets.Stale && !RetireSets()) return false;
+        if (_sets.Stale && !RetireSets()) return null;
         s.StageUsed = 0;
         _recording++;
         _undo.Clear();
@@ -95,8 +97,7 @@ internal sealed unsafe partial class VkBackend
         }
         BindBindless();
         if (!lane) FlushUploads();
-        slot = s;
-        return true;
+        return s;
     }
 
     /// <summary><paramref name="list"/>'s commands into the begun command buffer, its render pass ended.</summary>

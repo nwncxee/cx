@@ -29,7 +29,7 @@ internal sealed unsafe partial class VkBackend
     private readonly SwapState _swap = new();
     /// <summary>One acquire semaphore per frame in flight: the frame wait proves the present that waited on it is done.</summary>
     private readonly VkSemaphore[] _acquired = new VkSemaphore[FramesInFlight];
-    /// <summary>The present's own submit when nothing is held: no pass, only the composite's blit onto the acquired image.</summary>
+    /// <summary>The list <see cref="SubmitBlit"/> submits, empty: the blit is recorded after it.</summary>
     private CommandList? _presentList;
 
     /// <summary>A command buffer recorded by <see cref="HoldForPresent"/> and not yet queued: its slot (null when none
@@ -74,7 +74,7 @@ internal sealed unsafe partial class VkBackend
         if (!OnThread("Present")) return false;
         VkResult waited = WaitFrame();
         bool ok = waited == VkResult.Success ? ShowComposite(interval, log) : Fault($"Present: the frame {FramesInFlight} back never finished ({waited})");
-        if (_held.Slot != null) SubmitHeld();
+        SubmitHeld();
         EndFrame();
         return ok;
     }
@@ -94,9 +94,8 @@ internal sealed unsafe partial class VkBackend
             r = _vkd.vkAcquireNextImageKHR(_swap.Chain, WaitTimeoutNs, Acquired, default, &idx);
         }
         if (r != VkResult.Success && r != VkResult.SuboptimalKHR) return Fault($"Present: vkAcquireNextImageKHR returned {r}");
-        CommandList cl = _presentList ??= new CommandList("vulkan present", 256, log);
-        cl.Reset();
-        if (!(_held.Slot != null ? SubmitHeld((int)idx) : Submit(cl, (int)idx))) { Unacquire(); return false; }
+        bool sent = _held.Slot != null ? SubmitHeld((int)idx) : SubmitBlit((int)idx, log);
+        if (!sent) { Unacquire(); return false; }
         VkSemaphore ready = _swap.Ready[idx];
         VkSwapchainKHR chain = _swap.Chain;
         var pi = new VkPresentInfoKHR
@@ -108,6 +107,14 @@ internal sealed unsafe partial class VkBackend
         else if (r != VkResult.Success) return Fault($"Present: vkQueuePresentKHR returned {r}");
         _swap.Presents++;
         return true;
+    }
+
+    /// <summary>The present's own submit when nothing is held: only the blit onto swapchain image <paramref name="idx"/>.</summary>
+    private bool SubmitBlit(int idx, ExtenderLog log)
+    {
+        CommandList cl = _presentList ??= new CommandList("vulkan present", 256, log);
+        cl.Reset();
+        return Submit(cl, idx);
     }
 
     /// <summary>The composite's blit onto acquired swapchain image <paramref name="idx"/>, recorded last in the present's
@@ -320,12 +327,12 @@ internal sealed unsafe partial class VkBackend
     {
         if (!OnThread("HoldForPresent")) return false;
         if (_inWhenDone) return Fault($"list {list.Name} was held from WhenDone work, which must not submit");
-        if (_held.Slot != null) SubmitHeld();
+        SubmitHeld();
         if (list.Async) return Fault($"list {list.Name} is for the async queue; only a graphics list rides the present");
-        if (!Begin(list, false, out Slot? s, out _)) return false;
+        if (Begin(list, false) is not Slot s) return false;
         if (!Body(list))
         {
-            Finish(s!, list.Name, false, false, -1, false, committed: false);
+            Finish(s, list.Name, lane: false, ok: false, swap: -1, beside: false, committed: false);
             CarryWhenDone(list, false, false);
             RunWhenDone();
             return false;
@@ -338,13 +345,14 @@ internal sealed unsafe partial class VkBackend
         return true;
     }
 
-    /// <summary>The held command buffer queued: before the composite's blit onto swapchain image <paramref name="swap"/>
-    /// at or past 0, on its own below it. Its WhenDone work goes on the submit's value, or is told it never ran.</summary>
+    /// <summary>The held command buffer queued, if one is: before the composite's blit onto swapchain image
+    /// <paramref name="swap"/> at or past 0, on its own below it. Its WhenDone work goes on the submit's value, or is told
+    /// it never ran. True when nothing was held.</summary>
     private bool SubmitHeld(int swap = -1)
     {
-        Slot s = _held.Slot!;
+        if (_held.Slot is not Slot s) return true;
         _held.Slot = null;
-        bool ran = Finish(s, _held.Name, false, true, swap, false, committed: true);
+        bool ran = Finish(s, _held.Name, lane: false, ok: true, swap, beside: false, committed: true);
         long at = ran ? _submits : -1;
         foreach (WhenDoneCall c in _held.WhenDone) _whenDone.Add((at, c));
         _held.WhenDone.Clear();

@@ -70,6 +70,13 @@ internal sealed unsafe partial class VkBackend
             o.Reset();
             bool queued = HoldForPresent(h) && Submit(o) && WaitSubmitted() && Submit(o);
             check.Expect(queued && told == 1, $"a held buffer's WhenDone work is told it ran, once it has (got {told})");
+
+            h.Reset();
+            h.ClearImage(_composite);
+            long own = _submits + 1;
+            Vortice.Vulkan.VkResult waited = HoldForPresent(h) ? WaitFor(own) : Vortice.Vulkan.VkResult.ErrorUnknown;
+            check.Expect(waited == Vortice.Vulkan.VkResult.Success,
+                $"a wait on the held buffer's own value queues it rather than running out its limit (got {waited})");
         }
         Destroy(pa); Destroy(pc); Destroy(pd); Destroy(rb);
 

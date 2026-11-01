@@ -37,7 +37,7 @@ internal sealed unsafe partial class VkBackend
     /// device's wait limit. Cold: a screenshot's own readback.</summary>
     internal bool WaitSubmitted()
     {
-        if (_held.Slot != null) SubmitHeld();
+        SubmitHeld();
         VkResult r = WaitFor(_submits);
         return r == VkResult.Success || Fault($"WaitSubmitted: the GPU did not finish ({r})");
     }
