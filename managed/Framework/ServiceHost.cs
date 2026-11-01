@@ -88,6 +88,7 @@ public static class ServiceHost
         CX.Alloy.GrassField.VkSelfCheck(log);   // the Vulkan grass stages read the scatter's records by instance, not a vertex stream
         CX.Alloy.AlloyRenderer.VkIdSelfCheck(log);   // the Vulkan prepass's vis-ID slot against the stages that write it
         CX.Alloy.VkTextures.SelfCheck(log);   // the GL tokens an owned texture is stored in, as the formats and sampler Vulkan mirrors
+        CX.Graphics.Rhi.LooseBlock.Attach(log);
         CX.Graphics.Rhi.LooseBlock.SelfCheck(log);   // a loose uniform lands at its member's std140 offset
         CX.Alloy.GpuGolden.SelfCheck(log);   // ...and the goldens that have to run on a GPU: the lightmap encoder, the G-buffer lanes, parallax, the shading rate
         Settings.SelfCheck(log);   // the prefixed read leaves no probe behind

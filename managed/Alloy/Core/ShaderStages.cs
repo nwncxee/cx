@@ -42,14 +42,14 @@ internal static class ShaderStages
 
         """;
 
-    /// <summary>The grass vertex stage is invariant over ITSELF, not over the world's clip expression:
-    /// its depth prepass and its colour pass are two programs compiled from this one text, and the colour
-    /// pass tests LEQUAL against the prepass's depth. It displaces, so it neither computes nor promises the
+    /// <summary>A grass vertex stage is invariant over ITSELF, not over the world's clip expression: its depth,
+    /// colour and velocity passes are programs compiled from this one text, and each later one tests equal
+    /// against the depth the first wrote. It displaces, so it neither computes nor promises the
     /// <see cref="Invariant"/> expression.</summary>
     internal const string SelfInvariant = """
-        // IMPORTANT: `invariant gl_Position;`. This stage is compiled into TWO programs -- the grass depth
-        // prepass and the grass colour pass -- and the second re-tests the first's depth with LEQUAL, so the
-        // clip position must come out bit-identical from both. Keep the declaration; the expression is yours.
+        // IMPORTANT: `invariant gl_Position;`. This stage is compiled into several programs -- its depth,
+        // colour and velocity passes -- and each later one re-tests the depth the first wrote for equality, so the
+        // clip position must come out bit-identical from all of them. Keep the declaration; the expression is yours.
         // See docs/shader-overrides.md.
 
         """;
@@ -93,7 +93,7 @@ internal static class ShaderStages
         (AlloyRenderer.ShdWaterFs,      Banner + Record),
         (GrassField.ShdGrassVs,            Banner + SelfInvariant),
         (GrassField.ShdGrassFs,            Banner),
-        (GrassField.ShdBladeVs,            Banner),
+        (GrassField.ShdBladeVs,            Banner + SelfInvariant),
         (GrassField.ShdBladeFs,            Banner),
         (AlloyLights.ShdClusterCs,         Banner),
         (DeferredLights.ShdCs,             Banner + Record),

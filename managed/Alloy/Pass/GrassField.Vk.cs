@@ -186,7 +186,7 @@ internal static unsafe partial class GrassField
         LooseBlock.Set(v.L.PrevVp, *prevVp);
         LooseBlock.Set(v.L.PrevTime, MotionVectors.FieldPrevClock);
         LooseBlock.Set(v.L.Jitter, PostChain.JitterX, PostChain.JitterY);
-        LooseBlock.Set(v.L.MSize, viewport[2], viewport[3]);
+        LooseBlock.Set(v.L.MSize, (float)viewport[2], viewport[3]);
     }
 
     /// <summary>The strip pairs of blade draw <paramref name="far"/>.</summary>
