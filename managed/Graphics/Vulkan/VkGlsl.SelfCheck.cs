@@ -82,6 +82,7 @@ internal static partial class VkGlsl
         Compiles(check, "the loose fixture", loose);
         Compiles(check, "the bindless fixture", bl);
         Layout(check);
+        Utf8(check);
         log.Info(check.Ok ? "VkGlsl.SelfCheck: passed" : "VkGlsl.SelfCheck: FAILED");
     }
 
@@ -159,6 +160,15 @@ internal static partial class VkGlsl
         check.Expect(got.Count == 4 && got[0] == ("sampler2D", "uTex", null) && got[1] == ("sampler2D", "uNrmTex", null)
                   && got[2] == ("sampler2D", "uSpecTex", null) && got[3] == ("usampler2D", "uLightRec", "26"),
             $"the opaque list is the fixture's four samplers, its one binding kept and no comment read (got {seen})");
+    }
+
+    /// <summary>Valid GLSL whose comments hold multi-byte characters still compiles. Oracle: the hand-written fixture,
+    /// which glslc accepts as it stands.</summary>
+    private static void Utf8(Checker check)
+    {
+        const string Cs = "#version 460\nlayout(local_size_x = 1) in;\n// dawn — dusk — noon — night\nvoid main()\n{\n}\n";
+        byte[]? b = VulkanToolchain.Compile(Cs, "vkglsl utf-8 fixture", ShaderKind.ComputeShader, out string error);
+        check.Expect(b != null, $"a shader with em dashes in a comment compiles whole ({error})");
     }
 
     private static void Layout(Checker check)
