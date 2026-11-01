@@ -113,23 +113,26 @@ public sealed unsafe partial class AlloyRenderer
         return true;
     }
 
+    /// <summary>The writer, made once per device: built by the loading hold's prewarm or the layer's first frame. False
+    /// when it refused (logged), which stands the layer down for the session.</summary>
+    private static bool VkDecalWriter(VkBackend vk, VkDecalState d, ExtenderLog log)
+    {
+        if (d.Prog != null) return true;
+        if (d.Failed) return false;
+        d.Side = new CommandList("vulkan decal layer", DecalArenaBytes, log);
+        d.Prog = VkBuild(vk, VkPrograms.Id.Decal, log);
+        if (d.Prog != null) return true;
+        d.Failed = true;
+        log.Always("AlloyRenderer: the Vulkan decal layer's writer did not build (logged above) -- ground "
+                 + "decals draw in the blended pass for the session, as they did before the layer existed");
+        return false;
+    }
+
     /// <summary>The writer and the two targets, made once per device and resized with the view. False = the pass
     /// stood down (logged), for the session when the writer refused and until the next size when a target did.</summary>
     private static bool VkDecalEnsure(VkBackend vk, VkDecalState d, VkColourState s, int w, int h, ExtenderLog log)
     {
-        if (w <= 0 || h <= 0) return false;
-        if (d.Prog == null)
-        {
-            d.Side = new CommandList("vulkan decal layer", DecalArenaBytes, log);
-            d.Prog = VkBuild(vk, VkPrograms.Id.Decal, log);
-            if (d.Prog == null)
-            {
-                d.Failed = true;
-                log.Always("AlloyRenderer: the Vulkan decal layer's writer did not build (logged above) -- ground "
-                         + "decals draw in the blended pass for the session, as they did before the layer existed");
-                return false;
-            }
-        }
+        if (w <= 0 || h <= 0 || !VkDecalWriter(vk, d, log)) return false;
         if (d.W == w && d.H == h && !d.Layer.IsNull) return true;
         vk.Destroy(d.Layer);
         vk.Destroy(d.Surf);

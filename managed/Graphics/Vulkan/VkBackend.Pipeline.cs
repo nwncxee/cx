@@ -85,7 +85,7 @@ internal sealed unsafe partial class VkBackend
             _pipeCacheDirty = true;
             if (_vkd.vkCreateComputePipelines(_pipeCache, 1, &ci, &pipe) != VkResult.Success)
                 return Refused<PipelineId>($"{what}: vkCreateComputePipelines refused");
-            Tallied(since, false);
+            Tallied(since, false, what);
             Name(VkObjectType.Pipeline, pipe.Handle, what);
             return new PipelineId(_pipelines.Add(new VkPipe(new PipeObj(pipe, null), true, default, default)));
         }
@@ -104,7 +104,7 @@ internal sealed unsafe partial class VkBackend
             bool linked = Libraries;
             pipe = linked ? Linked(d, rate, dyn, what) : Build(d, rate, dyn, Part.Whole, null, 0, what);
             if (pipe.IsNull) return default;
-            Tallied(since, d.Material);
+            Tallied(since, d.Material, what);
             Name(VkObjectType.Pipeline, pipe.Handle, what);
             obj = new PipeObj(pipe, key);
             _shared[key] = obj;
