@@ -261,6 +261,10 @@ internal static unsafe partial class Halos
                      "the fragment stage samples the element's authored texture");
         check.Expect(vs.Contains("out vec2 vOcc;") && fs.Contains("+ vOcc * 0.5"),
                      "and reads the scene depth at the light rather than under the element");
+        Examples(check);
         log.Info(check.Ok ? "Halos.SelfCheck: passed" : "Halos.SelfCheck: FAILED -- see above");
     }
+
+    /// <summary>The fade's approved examples, in their own file.</summary>
+    static partial void Examples(Checker check);
 }

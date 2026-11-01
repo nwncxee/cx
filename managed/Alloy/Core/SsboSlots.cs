@@ -45,7 +45,7 @@ internal static class SsboSlots
     /// earlier one, which is the rule for every tenant of this point.</summary>
     internal const uint Content = 15;
     /// <summary>Single-pass draws that read no rig.</summary>
-    internal const uint Halos = 8, Glow = 8, Trig = 8, Gui = 8, BonesPrev = 8, DanglyPrev = 9;
+    internal const uint Halos = 8, HaloFade = 9, Glow = 8, Trig = 8, Gui = 8, BonesPrev = 8, DanglyPrev = 9;
 
     /// <summary>Every block name the GLSL declares, and the point C# binds it on.</summary>
     private static readonly Dictionary<string, uint> Blocks = new()
@@ -61,7 +61,7 @@ internal static class SsboSlots
         ["CxCullCount"] = CullCount, ["CxCullKey"] = CullKey, ["CxCullRej"] = CullRej, ["CxReadbackOut"] = ReadbackOut,
         ["CxGatherSrc"] = GatherSrc, ["CxGatherCmd"] = GatherCmd, ["CxGatherCount"] = GatherCount, ["CxCastSphere"] = CastSphere,
         ["CxGrassFaces"] = GrassFaces, ["CxGrassPatches"] = GrassPatches, ["CxGrassOut"] = GrassOut, ["CxGrassCmd"] = GrassCmd, ["CxGrassInst"] = GrassInst,
-        ["CxHaloBuf"] = Halos, ["CxGobGlowBuf"] = Glow, ["CxTrigBuf"] = Trig, ["CxGuiBuf"] = Gui,
+        ["CxHaloBuf"] = Halos, ["CxHaloFade"] = HaloFade, ["CxGobGlowBuf"] = Glow, ["CxTrigBuf"] = Trig, ["CxGuiBuf"] = Gui,
         ["CxProbeShOut"] = ProbeSh, ["CxBonePrevBuf"] = BonesPrev, ["CxDanglyPrevBuf"] = DanglyPrev,
         ["CxContentBuf"] = Content,
         ["CxGoldenIn"] = GoldenIn, ["CxGoldenOut"] = GoldenOut,
