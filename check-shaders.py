@@ -656,6 +656,7 @@ def programs(g):
         "shading rate": (g["cx_vrs_cs"],),
         "gui": (g["cx_gui_v"], g["cx_gui_f"]),
         "trigger highlight": (g["cx_fullscreen_v"], g["cx_hilitetrig_f"]),
+        "highlight glow": (g["cx_gobglow_v"], g["cx_gobglow_f"]),
         "oit resolve": (g["cx_fullscreen_v"], g["cx_oitresolve_f"]),
         "light beams (scene database)": (g["cx_beamdb_v"], g["cx_beam_f"]),
         "lightmap bake": (g["cx_bake_v"], g["cx_bake_f"]),

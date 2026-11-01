@@ -274,6 +274,7 @@ public sealed unsafe partial class AlloyRenderer
         cl.BeginLabel("post"u8);
         if (!PostStack.RecordVk(vk, cl, s.Hdr, s.Depth, &vpJ, &vpC, viewport, display, near, far, proj.M34 != 0f ? 2f * MathF.Atan(1f / proj.M22) : 0f, log)) return false;
         VkHighlightComposite(cl, composite, display, log);
+        if (!VkGlowPass(vk, cl, s, composite, view, proj, display, log)) return false;
         TriggerHighlight.DrawVk(vk, cl, composite, s.Depth, vp, display, log);
         cl.EndLabel();
         cl.BeginLabel("shading rate"u8);
