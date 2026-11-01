@@ -46,6 +46,9 @@ internal static partial class GpuGolden
     /// <see cref="ZPairs"/> - 1 more places up to 0.6 m past it; every pixel of every pair must keep the nearer.</summary>
     private static void ZFightCase(VkBackend vk, Checker check, ExtenderLog log, Matrix4x4 proj, double dist, string tag)
     {
+        // Given two flat surfaces 1 cm apart, 300 m from the camera, at the engine's usual near plane
+        // When Alloy draws them
+        // Then only the nearer surface shows, on every pixel
         int far = 0;
         for (int k = 0; k < ZPairs; k++)
         {
@@ -62,6 +65,9 @@ internal static partial class GpuGolden
     /// 0.1 percent, and the sky at the far plane or past it.</summary>
     private static void ZDistanceCase(VkBackend vk, Checker check, ExtenderLog log, Matrix4x4 proj)
     {
+        // Given a surface at a known distance from the camera (2 m, 30 m, 300 m)
+        // When ambient occlusion, reflections, fog, decals and the deferred lights read the scene's depth
+        // Then each reads back that distance, to within 0.1 percent, as it did before the change
         double[] want = [2, 30, 300];
         float[]? px = ZDraw(vk, log, [new ZQuad(-1, -1 / 3.0, want[0], 0), new ZQuad(-1 / 3.0, 1 / 3.0, want[1], 0),
                                       new ZQuad(1 / 3.0, 1, want[2], 0)], proj, "golden E3");
@@ -89,6 +95,9 @@ internal static partial class GpuGolden
     /// hands content; the hak quad covers columns 32 to 63 exactly and stands in front.</summary>
     private static void ZHakCase(VkBackend vk, Checker check, ExtenderLog log, Matrix4x4 proj)
     {
+        // Given that hak loaded and a placeable using the shader
+        // When Alloy draws the placeable
+        // Then it appears in the same place and hides behind and in front of the same objects as before the change
         float[]? px = ZDraw(vk, log, [new ZQuad(-1, 1, 30), new ZQuad(0, 1, 29.5)], proj, "golden E4");
         check.Expect(px != null, "E4: the depth golden's draw was refused (logged above)");
         if (px == null) return;
@@ -103,6 +112,9 @@ internal static partial class GpuGolden
     /// and 0.25, as the device's own GL depth mapping put them.</summary>
     private static void ZGlDepthCase(VkBackend vk, Checker check, ExtenderLog log)
     {
+        // Given a sunny outdoor area with a character portrait open
+        // When the frame draws
+        // Then the shadows, the portrait and the 3D GUI panels match the previous build pixel for pixel
         const string vs = Version + "flat out float vId;\nvoid main()\n{\n    int q = gl_VertexID / 6, k = gl_VertexID % 6;\n"
                         + "    vec2 c = vec2(k == 1 || k == 2 || k == 4 ? 1.0 : 0.0, k == 2 || k == 4 || k == 5 ? 1.0 : -1.0);\n"
                         + "    vId = float(q + 1);\n    gl_Position = vec4(c.x - float(1 - q), c.y, q == 0 ? 0.5 : -0.5, 1.0);\n}\n";
