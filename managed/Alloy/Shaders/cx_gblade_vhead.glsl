@@ -1,6 +1,9 @@
 // CX-24: the procedural blade vertex head. A blade is a triangle strip read off the scatter's record by
 // gl_VertexID: 2*uSegments+1 vertices, root pairs up to a single tip vertex.
 #version 460 core
+// the velocity pass redraws every blade and keeps only the fragments whose depth equals the colour
+// pass's: two programs over this one text, so the clip position must come out bit-identical from both
+invariant gl_Position;
 layout(location = 2) in vec4 iPos;      // xyz world root, w facing (radians about Z)
 layout(location = 3) in vec4 iParam;    // x height, y material*4 + cell, z rank, w bend
 layout(location = 4) in vec4 iNrm;      // xyz the ground's normal, w fade (1 = whole, 0 = the ground's colour)
