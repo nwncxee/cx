@@ -239,6 +239,10 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
 - `compute-pipes.sh`: a `ShaderDesc(ShaderStage.Compute ...)` under `managed/` outside `VkBackend.Pipeline.cs` fails; a
   compute pipeline from GLSL is `VkBackend.CreateCompute`.
 
+FSR 3.1's shaders are outside every shader gate: they are AMD's GLSL, compiled to SPIR-V when `build.sh` runs
+(`tools/ffx/`) and bound by AMD's backend, so `check-shaders.py`, the SSBO and UBO slot gates and the `cx_*.shd`
+override contract never see them. A change to them is a change to `native/ffx/sdk-1.1.4.patch`.
+
 ## Hard rules
 
 - **No decompiled code in the repository, ever.** Read the dump on your own

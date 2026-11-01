@@ -107,10 +107,7 @@ if [ ! -f build/libcxfsr.a ] || [ native/ffx/cxfsr.cpp -nt build/libcxfsr.a ] ||
   F=build/ffx/sdk
   mkdir -p build/ffx/obj && rm -f build/ffx/obj/*.o
   pids=()
-  for src in $F/src/components/fsr3upscaler/ffx_fsr3upscaler.cpp $F/src/backends/vk/ffx_vk.cpp $F/src/backends/shared/ffx_shader_blobs.cpp \
-             $F/src/backends/shared/blob_accessors/ffx_fsr3upscaler_shaderblobs.cpp $F/src/shared/ffx_assert.cpp \
-             $F/src/shared/ffx_message.cpp $F/src/shared/ffx_breadcrumbs_list.cpp $F/src/shared/ffx_object_management.cpp \
-             native/ffx/cxfsr.cpp; do
+  for src in $(sed "s|^|$F/src/|" tools/ffx/sources.txt) native/ffx/cxfsr.cpp; do
     # a 4-byte wchar_t outgrows the SDK's default context size; FFX_GCC drops its dllexport
     c++ -std=c++17 -O2 -fPIC -fvisibility=hidden -fno-exceptions -fno-rtti -w -DNDEBUG -include native/ffx/compat.h -DFFX_GCC \
       '-DFFX_SDK_DEFAULT_CONTEXT_SIZE=(1024 * 256)' -DFFX_FSR3UPSCALER -Ibuild/deps/Vulkan-Headers-vulkan-sdk-1.4.363.0/include \
