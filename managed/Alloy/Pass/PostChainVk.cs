@@ -40,7 +40,7 @@ internal static unsafe class PostChainVk
         public BufferId Ubo;
         public int UboUsed;
         public SamplerId Linear, Nearest, Repeat;
-        public bool Said, VizSaid;
+        public bool Said, VizSaid, EngineSaid;
         /// <summary>Both bloom stages built from the embedded texts: no content override reached either.</summary>
         public bool BloomStock;
         /// <summary>The bloom has said how it runs on this device: as compute, stood down, or refused.</summary>
@@ -250,9 +250,11 @@ internal static unsafe class PostChainVk
         Span<ImageBinding> img = stackalloc ImageBinding[8 + (int)StageResources.DrawImgUnits];
         Span<ImageBinding> sti = stackalloc ImageBinding[(int)StageResources.DrawImgUnits];
         int n = 0, ns = 0;
+        bool engine = false;
         foreach (VkOpaque o in p.Opaques)
         {
             if (o.Set != 0) continue;
+            engine |= o.Kind == VkBindKind.UniformBlock && o.Binding == UboSlots.Engine;
             if (o.Kind == VkBindKind.StorageImage && ns < sti.Length && StageResources.VkImageFor(p.StageBinds, o.Binding, true) is { } w)
                 sti[ns++] = w;
             if (o.Kind != VkBindKind.Sampled || n == img.Length) continue;
@@ -278,13 +280,26 @@ internal static unsafe class PostChainVk
             if (i.IsNull) i = o.Type == "sampler3D" ? AlloyRenderer.VkStandIn3D : AlloyRenderer.VkStandIn2D;
             img[n++] = new ImageBinding(o.Binding, i, smp);
         }
-        ReadOnlySpan<BufferBinding> ubo = p.Block.Length == 0 ? default : [new(UboSlots.Loose, s.Ubo, at, p.Block.Length)];
+        Span<BufferBinding> ubo = stackalloc BufferBinding[2];
+        int nu = 0;
+        if (p.Block.Length > 0) ubo[nu++] = new(UboSlots.Loose, s.Ubo, at, p.Block.Length);
+        if (engine)
+        {
+            int e = AlloyRenderer.VkStageEngine(cl, out BufferId arena, out int len);
+            if (e < 0)
+            {
+                if (!s.EngineSaid) log?.Always($"PostChainVk: post {p.Label} NOT DRAWN -- the frame's uniform arena could not stage the engine block it reads");
+                s.EngineSaid = true;
+                return;
+            }
+            ubo[nu++] = new(UboSlots.Engine, arena, e, len);
+        }
         ReadOnlySpan<ColorAttachment> colors = [new(into, 0, 0, load, StoreOp.Store, new Vector4(0f, 0f, 0f, 1f))];
         cl.BeginRenderPass(new RenderPassDesc(colors));
         cl.SetPipeline(pipe);
         cl.SetViewport(vp.X, vp.Y, vp.W, vp.H);
         ReadOnlySpan<BufferBinding> sto = t.Storage.Buffer.IsNull ? default : [t.Storage];
-        cl.BindSet(0, new BindSet(ubo, sto, img[..n], sti[..ns]));
+        cl.BindSet(0, new BindSet(ubo[..nu], sto, img[..n], sti[..ns]));
         cl.Draw(3);
         cl.EndRenderPass();
     }
