@@ -84,7 +84,7 @@ const float CX_DECAL_TOL_M = 0.1, CX_DECAL_TOL = 0.001;
 /// fragment; a surface folding the layer asks it of the nearest decal.
 bool CxDecalOn(float z, float d)
 {
-    if (!(z > 0.0 && z < 1.0)) return false;
+    if (!(z > 0.0)) return false;
     float s = uDecalZ.y / (z + uDecalZ.x);
     float h = (s - d) / max(d, 1e-4) * abs(dot(vWorld - uEyePos, normalize(vNrm)));
     float eps = CX_DECAL_TOL * s;

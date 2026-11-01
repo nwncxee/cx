@@ -117,7 +117,7 @@ bool CxSplashSeen(vec3 p)
     vec4 c = uProj * v;
     if (c.w <= 0.0 || any(greaterThan(abs(c.xy), vec2(c.w)))) return true;
     float ndc = texture(uSceneDepth, c.xy / c.w * 0.5 + 0.5).r;
-    float scene = uProj[3].z / (ndc + uProj[2].z);
+    float scene = CxDepthViewZ(ndc, uProj);
     return scene + v.z < CX_SPLASH_CONTACT.x - CX_SPLASH_CONTACT.y * v.z;
 }
 
