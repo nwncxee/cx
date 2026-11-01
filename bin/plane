@@ -49,6 +49,7 @@ import urllib.parse
 import time
 import urllib.request
 import uuid
+from datetime import datetime, time as clock
 
 # --- mapping ---------------------------------------------------------------
 
@@ -244,6 +245,45 @@ def waiting_lines(identifier, items, user_id, states_by_id, base_url, workspace)
             name = item.get("name") or ""
             lines.append(f"{identifier}-{item['sequence_id']}  {name}  waits on: {match[1]}")
     return lines
+
+
+def parse_since(text, local_zone=None):
+    """The moment `since` counts from: an ISO 8601 date and time with an
+    offset, or a bare date, read as midnight in the local time zone."""
+    try:
+        if "T" in text:
+            moment = datetime.fromisoformat(text)
+            if moment.tzinfo is None:
+                raise ValueError(text)
+            return moment
+        day = datetime.strptime(text, "%Y-%m-%d").date()
+    except ValueError:
+        raise PlaneError(
+            f"since: cannot read {text!r}; give a date (2026-11-01, read as midnight local time) "
+            "or a date and time with an offset (2026-11-01T09:00+01:00)"
+        ) from None
+    zone = local_zone or datetime.now().astimezone().tzinfo
+    return datetime.combine(day, clock(0, 0), tzinfo=zone)
+
+
+def _stamp(value):
+    return datetime.fromisoformat(value.replace("Z", "+00:00")) if value else None
+
+
+def since_lines(identifier, items, since):
+    """What `since` prints: `PROJ-N  new|edited  title`, newest change first.
+
+    An item created after the moment is new; one created before it and
+    changed after it is edited; anything else is left out."""
+    touched = []
+    for item in items:
+        created, updated = _stamp(item.get("created_at")), _stamp(item.get("updated_at"))
+        latest = max(stamp for stamp in (created, updated) if stamp is not None) if (created or updated) else None
+        if latest is None or latest <= since:
+            continue
+        kind = "new" if created is not None and created > since else "edited"
+        touched.append((latest, f"{identifier}-{item['sequence_id']}  {kind}  {item.get('name') or ''}"))
+    return [line for _, line in sorted(touched, key=lambda pair: pair[0], reverse=True)]
 
 
 def is_open(work_item, states_by_id):
@@ -1707,6 +1747,12 @@ def main(argv=None):
     )
     p.add_argument("project", help="project identifier, e.g. PLAT")
 
+    p = sub.add_parser(
+        "since", help="work items created or edited after a time, newest first", parents=[raw]
+    )
+    p.add_argument("project", help="project identifier, e.g. PLAT")
+    p.add_argument("time", help="a date (read as local midnight) or an ISO 8601 time with an offset")
+
     sub.add_parser("whoami", help="the user who owns the API key, and their id")
 
     p = sub.add_parser("comment", help="add a comment, written in Markdown", parents=[raw])
@@ -1869,6 +1915,17 @@ def main(argv=None):
         else:
             states = client.states(project["id"])
             for line in find_lines(project["identifier"], items, args.text, states):
+                print(line)
+        return 0
+
+    if args.command == "since":
+        moment = parse_since(args.time)
+        project = client.project(args.project.upper())
+        lines = since_lines(project["identifier"], client.work_items(project["id"]), moment)
+        if args.json:
+            _print(lines)
+        else:
+            for line in lines:
                 print(line)
         return 0
 

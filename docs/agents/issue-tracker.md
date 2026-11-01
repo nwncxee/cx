@@ -39,7 +39,7 @@ Numbering restarted at `CX-1` on 2026-09-22. A `CX-<n>` or `#<n>` in a commit, A
 
 - **Star chart**: a work item labelled `starchart:chart`.
 - **Ticket**: a direct child of the chart through Plane's parent field, labelled `starchart:<kind>` unless it is a star. Keep tickets one level deep, because a frontier query reads children only. A ticket has one parent, and a chart and its tickets share one project.
-- **Blocking**: Plane's `blocked_by` relation. Write one only when the work can't start before the blocker closes; a softer order is a line in the body. Plane's public API can add a relation but not remove one, so removing is done in the interface.
+- **Blocking**: Write the order as a `Waits on: <KEY> (<why>)` line in the later ticket's body: `loose-ends` and the waiting list read it. Plane's `blocked_by` relation is the exception, because its public API can add one but never remove one, so removing is a person's job in the interface. Write one only when the work calls code or needs an answer the blocker produces, and end the command with `# hard: <what of the blocker's work it needs>`. The `plane-block-guard` hook refuses a block without it.
 - **Frontier**: the chart's open, unassigned children with no open blocker.
 - **Chart**: `bin/plane draw CX-<chart>` draws it from its tickets and shows the drawing under the chart's Chart heading.
 - **Claim**: assign the work item to yourself before any other write.
@@ -51,3 +51,9 @@ A waiting ticket is assigned to the user and can't go on until the thing its `Wa
 - **List tickets waiting on you**: `bin/plane waiting CX`.
 - **Park a ticket**: assign it to the user, move it to the not-started state, and add a `Waits on: <who or what>` line to the body.
 - **Claim a waiting ticket**: move it to In Progress, before any other write.
+
+## Ticket drift
+
+Ticket drift: on
+
+Change `on` to `off` to stop the `ticket-drift` check in this repo.
