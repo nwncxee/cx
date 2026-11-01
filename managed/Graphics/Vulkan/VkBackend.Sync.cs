@@ -184,6 +184,7 @@ internal sealed unsafe partial class VkBackend
     /// while recording still names the submit it recorded into.</summary>
     private VkResult SubmitAndIdle(VkCommandBuffer cb, out bool queued)
     {
+        if (_held.Slot != null) SubmitHeld();
         VkResult r = QueueSubmit(cb, default, default, counted: false);
         queued = r == VkResult.Success;
         if (!queued) return r;

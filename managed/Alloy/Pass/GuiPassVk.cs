@@ -155,11 +155,12 @@ internal static unsafe partial class GuiPassVk
         return ok;
     }
 
-    /// <summary>The flush's one submit; a refusal is said once and counted after.</summary>
+    /// <summary>The flush's one submit; a refusal is said once and counted after. A flush into the composite rides the
+    /// present's submit, ahead of its blit.</summary>
     private static bool Submit(VkBackend vk, CommandList cl, ExtenderLog log)
     {
         GuiVkState s = _s;
-        if (!vk.Submit(cl))
+        if (!(s.Into.IsNull ? vk.HoldForPresent(cl) : vk.Submit(cl)))
         {
             if (!s.DropSaid)
             {

@@ -61,6 +61,7 @@ internal static partial class GpuGolden
         LinkedVerticesSelfCheck(vk, check, log);
         BindlessPastSelfCheck(vk, check, log);
         vk.PresentDeviceCheck(check, log);
+        vk.PresentHoldCheck(check, log);
     }
 
     /// <summary>FSR 3.1 against a supersampled scene, on this device.</summary>

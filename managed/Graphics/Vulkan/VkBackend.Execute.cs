@@ -45,6 +45,7 @@ internal sealed unsafe partial class VkBackend
     {
         if (!OnThread("Submit")) return false;
         if (_inWhenDone) return Fault($"list {list.Name} was submitted from WhenDone work, which must not submit");
+        if (_held.Slot != null) SubmitHeld();
         bool ran = RecordAndQueue(list, swap, beside);
         CarryWhenDone(list, ran, list.Async && _async != null);
         RunWhenDone();
@@ -54,7 +55,17 @@ internal sealed unsafe partial class VkBackend
     /// <summary><see cref="Submit(CommandList, int, bool)"/>'s recording and queue submit, on the device's thread.</summary>
     private bool RecordAndQueue(CommandList list, int swap, bool beside)
     {
-        bool lane = list.Async && _async != null;
+        if (!Begin(list, beside, out Slot? s, out bool lane)) return false;
+        bool ok = Body(list);
+        return Finish(s!, list.Name, lane, ok, swap, beside, committed: false);
+    }
+
+    /// <summary>A recording slot's command buffer begun for <paramref name="list"/>, with the bindless upkeep and the
+    /// uploads at its head on the graphics queue. False when no slot came or the bind sets would not retire.</summary>
+    private bool Begin(CommandList list, bool beside, out Slot? slot, out bool lane)
+    {
+        lane = list.Async && _async != null;
+        slot = null;
         if (lane && !UploadsAhead()) return false;
         if ((lane ? TakeSlot(_async!.Slots, _async.Pool, _async.Timeline, ref _async.Completed) : TakeSlot()) is not Slot s) return false;
         if (!lane) ShrinkGroups();
@@ -84,7 +95,13 @@ internal sealed unsafe partial class VkBackend
         }
         BindBindless();
         if (!lane) FlushUploads();
+        slot = s;
+        return true;
+    }
 
+    /// <summary><paramref name="list"/>'s commands into the begun command buffer, its render pass ended.</summary>
+    private bool Body(CommandList list)
+    {
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         bool ok = Record(list.TakePending());
         _translateTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
@@ -92,13 +109,21 @@ internal sealed unsafe partial class VkBackend
         if (ok && _crossed != null) ok = Fault($"list {list.Name}: {_crossed}");
         if (_rendering) _vkd.vkCmdEndRendering(_cmd);
         _inPass = _rendering = false;
+        return ok;
+    }
+
+    /// <summary>The begun command buffer ended and queued -- after the composite's blit when <paramref name="swap"/> is
+    /// at or past 0 -- or, when <paramref name="ok"/> is false, ended and dropped with every image back in the layout
+    /// it entered with. <paramref name="committed"/>: its uploads were committed when it was held.</summary>
+    private bool Finish(Slot s, string name, bool lane, bool ok, int swap, bool beside, bool committed)
+    {
         if (ok && swap >= 0) ok = RecordPresent(swap);
         Flush();
         if (!lane) TimeEnd(s, ok);
         if (ok && _labelDepth > 1 && !_labelLeakLogged)
         {
             _labelLeakLogged = true;
-            _log.Always($"VkBackend: list {list.Name} left {_labelDepth - 1} debug label(s) "
+            _log.Always($"VkBackend: list {name} left {_labelDepth - 1} debug label(s) "
                       + "open -- closed at its submit; a capture nests the passes after it wrongly (logged once)");
         }
         while (_labelDepth > 0) CloseLabel();
@@ -117,10 +142,10 @@ internal sealed unsafe partial class VkBackend
             if (lane) _resyncAsync = true;
             else _resync = true;
             _onAsync = _besideNow = false;
-            if (!lane) _upload.Touched.Clear();
+            if (!lane && !committed) _upload.Touched.Clear();
             return false;
         }
-        if (!lane) CommitUploads();
+        if (!lane && !committed) CommitUploads();
 
         VkResult sent = lane ? AsyncSubmit(_cmd)
                       : QueueSubmit(_cmd, swap >= 0 ? Acquired : default, swap >= 0 ? _swap.Ready[swap] : default, besideAsked: beside);

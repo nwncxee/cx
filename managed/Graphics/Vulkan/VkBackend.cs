@@ -737,6 +737,8 @@ internal sealed unsafe partial class VkBackend : IDevice
     {
         _vkd.vkDeviceWaitIdle();
         DisposeLibraries();
+        foreach (WhenDoneCall c in _held.WhenDone) c.Fn(c.Arg, false);
+        _held.WhenDone.Clear();
         RefuseWhenDone();
         DisposeFsr();
         SavePipelineCache();

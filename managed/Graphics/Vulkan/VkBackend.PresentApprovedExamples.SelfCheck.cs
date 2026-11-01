@@ -38,16 +38,24 @@ internal sealed unsafe partial class VkBackend
 
         byte[] HeldThenRead(CommandList h, CommandList o, byte[] want, bool present, ExtenderLog l)
         {
+            var toRb = new CopyToBufferCmd(_composite, new ImageRegion(0, 0, 0, 0), 1, 1, rb, 0);
+            var back = new byte[want.Length];
             o.Reset();
             o.ClearImage(_composite);
+            o.CopyImageToBuffer(toRb);
             if (!Submit(o)) return [];
             h.Reset();
             h.CopyImage(new CopyImageCmd(px, new ImageRegion(0, 0, 0, 0), _composite, new ImageRegion(0, 0, 0, 0), 1, 1, 1));
+            // after a present the read rides the held list and the wait submits nothing, so only the present queues it
+            if (present) h.CopyImageToBuffer(toRb);
             if (!HoldForPresent(h)) return [];
-            if (present) Present(1, l);
+            if (present)
+            {
+                Present(1, l);
+                return WaitFor(_submits) == Vortice.Vulkan.VkResult.Success && ReadMapped(rb, 0, back) ? back : [];
+            }
             o.Reset();
-            o.CopyImageToBuffer(new CopyToBufferCmd(_composite, new ImageRegion(0, 0, 0, 0), 1, 1, rb, 0));
-            var back = new byte[want.Length];
+            o.CopyImageToBuffer(toRb);
             return Submit(o) && WaitSubmitted() && ReadMapped(rb, 0, back) ? back : [];
         }
     }

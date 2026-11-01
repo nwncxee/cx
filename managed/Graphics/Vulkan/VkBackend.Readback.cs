@@ -33,10 +33,11 @@ internal sealed unsafe partial class VkBackend
     private readonly List<(WhenDoneCall Call, bool Ran)> _firing = new();
     private bool _asyncWhenDoneSaid, _inWhenDone;
 
-    /// <summary>Block until every submit made so far has finished; false (logged) when the GPU did not within the
+    /// <summary>Block until every submit made so far, and the commands held for the present, have finished; false (logged) when the GPU did not within the
     /// device's wait limit. Cold: a screenshot's own readback.</summary>
     internal bool WaitSubmitted()
     {
+        if (_held.Slot != null) SubmitHeld();
         VkResult r = WaitFor(_submits);
         return r == VkResult.Success || Fault($"WaitSubmitted: the GPU did not finish ({r})");
     }
