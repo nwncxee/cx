@@ -181,7 +181,7 @@ internal static partial class GpuGolden
             var cl = new CommandList(label, 1 << 12, log);
             ReadOnlySpan<ColorAttachment> at = [new ColorAttachment(col, 0, 0, LoadOp.Clear, StoreOp.Store, Vector4.Zero)];
             cl.BeginRenderPass(new RenderPassDesc(at, new DepthAttachment(dep, 0, 0, LoadOp.Clear, StoreOp.DontCare,
-                                                                          world ? WorldDepth.Clear : 1f)));
+                                                                          world ? WorldDepth.Clear : GlDepth.Clear)));
             cl.SetViewport(0, 0, ZSide, ZSide);
             cl.SetScissor(0, 0, ZSide, ZSide);
             cl.SetPipeline(pipe);

@@ -145,7 +145,7 @@ internal static unsafe partial class GuiPassVk
         var d = new PipelineDesc
         {
             Vs = p.Vs, Fs = p.Fs, Layout = layout, Topo = topo,
-            Raster = new RasterState(CullMode.None), Depth = new DepthState(true, true, CompareOp.LessEqual),
+            Raster = new RasterState(CullMode.None), Depth = new DepthState(true, true, GlDepth.NearerOrEqual),
             Label = $"vk {p.Label} layout {layout.Value} blend {blend} {topo}",
         };
         d.Targets.ColorCount = 1;

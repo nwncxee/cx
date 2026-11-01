@@ -216,7 +216,7 @@ public sealed unsafe partial class AlloyRenderer
         s.ZeroSsbo = vk.CreateBuffer(new BufferDesc(ZeroSsboBytes, BufferUse.Storage, MemoryKind.Device, "vk zero storage"));
         s.Arena = vk.CreateBuffer(new BufferDesc(ArenaCap, BufferUse.Uniform, MemoryKind.Upload, "vk uniform arena"));
         s.Linear = vk.CreateSampler(new SamplerDesc(Filter.Linear, Filter.Linear, MipMode.None, Wrap.Clamp));
-        s.Shadow = vk.CreateSampler(new SamplerDesc(Filter.Linear, Filter.Linear, MipMode.None, Wrap.Clamp, CompareOp.LessEqual));
+        s.Shadow = vk.CreateSampler(new SamplerDesc(Filter.Linear, Filter.Linear, MipMode.None, Wrap.Clamp, GlDepth.NearerOrEqual));
         s.Raw = vk.CreateSampler(new SamplerDesc(Filter.Nearest, Filter.Nearest, MipMode.None, Wrap.Clamp));
         s.Tex2D = VkStandIn(vk, ImageKind.Tex2D, Format.Rgba8, 1, "2D");
         s.TexU2D = VkStandIn(vk, ImageKind.Tex2D, Format.Rgba32Ui, 1, "uint 2D");

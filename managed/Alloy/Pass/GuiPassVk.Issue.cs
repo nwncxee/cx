@@ -225,7 +225,7 @@ internal static unsafe partial class GuiPassVk
         Span<ColorAttachment> colors = stackalloc ColorAttachment[1];
         Vector4 clear = s.ClearColour ? s.Clear : default;
         colors[0] = new ColorAttachment(pass.Colour, 0, 0, s.ClearColour ? LoadOp.Clear : LoadOp.Load, StoreOp.Store, clear);
-        var d = new DepthAttachment(pass.Depth, 0, 0, s.ClearDepth ? LoadOp.Clear : LoadOp.Load, StoreOp.Store, 1f);
+        var d = new DepthAttachment(pass.Depth, 0, 0, s.ClearDepth ? LoadOp.Clear : LoadOp.Load, StoreOp.Store, GlDepth.Clear);
         Readable(cl, s, pass.Colour);
         cl.BeginRenderPass(new RenderPassDesc(colors, d));
         cl.Append(s.Side!);
@@ -265,7 +265,7 @@ internal static unsafe partial class GuiPassVk
             int loose = content == null ? GuiBlock(prog, gamma, log) : ContentBlock(content, di, l.W, l.H, gamma, log);
             if (loose < 0) return false;
             if (pipe != b.Pipe) { side.SetPipeline(pipe); b.Pipe = pipe; b.StateSet = false; }
-            var depth = new DepthState(d.DepthTest, d.DepthWrite, CompareOp.LessEqual);
+            var depth = new DepthState(d.DepthTest, d.DepthWrite, GlDepth.NearerOrEqual);
             var raster = new RasterState(d.Cull ? CullMode.Back : CullMode.None, cw);
             if (!b.StateSet || depth != b.Depth) { side.SetDepthState(depth); b.Depth = depth; }
             if (!b.StateSet || raster != b.Raster) { side.SetRasterState(raster); b.Raster = raster; }

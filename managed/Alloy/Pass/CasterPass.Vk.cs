@@ -143,7 +143,7 @@ public sealed unsafe partial class CasterPass
         if (!VkArmed || s.Cmds == null) return false;
         ImageId img = VkMapOf(map);
         if (img.IsNull) return false;
-        s.Cmds.BeginRenderPass(new RenderPassDesc(default, new DepthAttachment(img, 0, layer, LoadOp.Clear, StoreOp.Store, 1f)));
+        s.Cmds.BeginRenderPass(new RenderPassDesc(default, new DepthAttachment(img, 0, layer, LoadOp.Clear, StoreOp.Store, GlDepth.Clear)));
         s.Cmds.EndRenderPass();
         return true;
     }
@@ -319,7 +319,7 @@ public sealed unsafe partial class CasterPass
             size = _qSize[k];
             // one pass per stale layer, cleared and nothing drawn: a layered attachment clears every layer at once,
             // fresh ones included, so the per-layer loop here is correctness rather than thrift
-            cl.BeginRenderPass(new RenderPassDesc(default, new DepthAttachment(img, 0, _qLayer[k], LoadOp.Clear, StoreOp.Store, 1f)));
+            cl.BeginRenderPass(new RenderPassDesc(default, new DepthAttachment(img, 0, _qLayer[k], LoadOp.Clear, StoreOp.Store, GlDepth.Clear)));
             cl.EndRenderPass();
             _vk.Baked++;
             views++;
@@ -343,7 +343,7 @@ public sealed unsafe partial class CasterPass
             fixed (CasterViewRec* vs = _viewStage)
                 ok = CasterGatherVk.DispatchLayer(vk, cl, vs, vn, sets == 1 << CasterGather.SetDynamic, chunk);
             if (!ok) return false;
-            cl.BeginRenderPass(new RenderPassDesc(default, new DepthAttachment(img, 0, -1, LoadOp.Load, StoreOp.Store, 1f)));
+            cl.BeginRenderPass(new RenderPassDesc(default, new DepthAttachment(img, 0, -1, LoadOp.Load, StoreOp.Store, GlDepth.Clear)));
             cl.SetViewport(0, 0, size, size);
             if (!MeshArena.VkEbo.IsNull) cl.BindIndexBuffer(MeshArena.VkEbo, IndexType.U16, 0);
             VkDrawLayered(cl, vn, sets, clamp);
@@ -458,7 +458,7 @@ public sealed unsafe partial class CasterPass
             // #292: cull OFF, deliberately unlike the colour pass -- which face is the front one is the LIGHT's
             // question here, and culling would let the light through a single-sided wall it stands behind
             Raster = new RasterState(CullMode.None, DepthClamp: clamp),
-            Depth = new DepthState(true, true, CompareOp.LessEqual),
+            Depth = new DepthState(true, true, GlDepth.NearerOrEqual),
             Label = $"vk {p.Label} {(MeshArena.Fmt)fmt}{(clamp ? " clamped" : "")}",
         };
         d.Targets.Depth = Format.D32F;
