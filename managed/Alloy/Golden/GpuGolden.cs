@@ -52,6 +52,8 @@ internal static partial class GpuGolden
         ReversedZSelfCheck(vk, check, log);
         ContentClipSelfCheck(vk, check, log);
         FsrSelfCheck(vk, check, log);
+        WetSelfCheck(vk, check, log);
+        WetNearLamp(vk, check, log);
     }
 
     /// <summary>FSR 3.1 against a supersampled scene, on this device.</summary>
