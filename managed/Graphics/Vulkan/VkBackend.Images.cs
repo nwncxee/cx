@@ -246,6 +246,17 @@ internal sealed unsafe partial class VkBackend
     }
 
     /// <summary>Array layers an image holds, counting a cube's six faces each.</summary>
+    /// <summary>The limits a pass plans against, from the device's table.</summary>
+    internal static DeviceCaps CapsOf(in VkPhysicalDeviceLimits l, bool aniso)
+        => new(Limit(l.maxImageDimension2D), Limit(l.maxImageArrayLayers), Limit(l.maxColorAttachments),
+            MaxCount(l.framebufferColorSampleCounts & l.framebufferDepthSampleCounts),
+            Limit(l.maxPerStageDescriptorSampledImages), Limit(l.maxDescriptorSetSampledImages),
+            Limit(l.maxPerStageDescriptorStorageBuffers), Limit(l.maxPerStageDescriptorStorageBuffers),
+            Limit(l.minUniformBufferOffsetAlignment), Limit(l.minStorageBufferOffsetAlignment), aniso ? l.maxSamplerAnisotropy : 1f);
+
+    /// <summary>A device limit as an int: UINT32_MAX, which some drivers report for "unbounded", reads as int.MaxValue.</summary>
+    private static int Limit(ulong v) => (int)Math.Min(v, int.MaxValue);
+
     /// <summary>The largest sample count in <paramref name="counts"/>, at most 8 -- what a multisampled target may ask for.</summary>
     private static int MaxCount(VkSampleCountFlags counts)
     {

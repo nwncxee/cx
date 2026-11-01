@@ -448,11 +448,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         _pipeLayout = pl;
         _nearest = Sampler(new SamplerDesc(Filter.Nearest, Filter.Nearest, MipMode.None, Wrap.Clamp));
         MakeBindlessZero();
-        Caps = new DeviceCaps((int)l.maxImageDimension2D, (int)l.maxImageArrayLayers, (int)l.maxColorAttachments,
-            MaxCount(l.framebufferColorSampleCounts & l.framebufferDepthSampleCounts),
-            (int)l.maxPerStageDescriptorSampledImages, (int)l.maxDescriptorSetSampledImages,
-            (int)l.maxPerStageDescriptorStorageBuffers, (int)l.maxPerStageDescriptorStorageBuffers,
-            (int)l.minUniformBufferOffsetAlignment, (int)l.minStorageBufferOffsetAlignment, has.samplerAnisotropy ? l.maxSamplerAnisotropy : 1f);
+        Caps = CapsOf(l, has.samplerAnisotropy);
         _maxDrawIndirect = l.maxDrawIndirectCount;
         log.Always($"VkBackend: LIVE -- {Caps}, {_bindlessCap} bindless textures, debug labels "
                  + $"{(_labels ? "on" : "off")}, async compute {(_async != null ? $"on queue family {_async.Family}" : "on the graphics queue (no compute-only family)")}, "
