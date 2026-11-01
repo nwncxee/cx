@@ -37,8 +37,7 @@ public sealed unsafe partial class AlloyRenderer
     private static bool VkHighlightMask(VkBackend vk, CommandList cl, VkColourState c, in Matrix4x4 vp, int* viewport,
                                         float near, float far, int groups, ExtenderLog log)
     {
-        VkHlState s = _vkHl;
-        if (s.Dev != vk) _vkHl = s = new VkHlState { Dev = vk };
+        VkHlState s = VkHlOwner(vk);
         s.Drawn = false;
         if (_capturing) return true;
         int n = Highlight.GatherVk(groups);
@@ -112,8 +111,29 @@ public sealed unsafe partial class AlloyRenderer
         }
     }
 
+    /// <summary>The highlight's state on <paramref name="vk"/>, replaced whole when the device is another.</summary>
+    private static VkHlState VkHlOwner(VkBackend vk)
+    {
+        VkHlState s = _vkHl;
+        if (s.Dev != vk) _vkHl = s = new VkHlState { Dev = vk };
+        return s;
+    }
+
     /// <summary>Both programs and the RGBA8 mask at the render size, made once per device and resized with the view.</summary>
     private static bool VkHlEnsure(VkBackend vk, VkHlState s, int w, int h, ExtenderLog log)
+    {
+        if (!VkHlPrograms(vk, s, log)) return false;
+        if (!s.Target.IsNull && s.W == w && s.H == h) return true;
+        vk.Destroy(s.Target);
+        s.Target = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba8, w, h, 1, 1, 1, 1,
+                                                ImageUse.Sampled | ImageUse.ColorTarget, "vk highlight mask"));
+        s.W = w; s.H = h;
+        return !s.Target.IsNull;
+    }
+
+    /// <summary>The mask and composite programs, made once per device, by the loading hold's prewarm or the first
+    /// highlight; false when either refused (logged once), which leaves every highlight to the vanilla glow.</summary>
+    private static bool VkHlPrograms(VkBackend vk, VkHlState s, ExtenderLog log)
     {
         if (!s.Tried)
         {
@@ -132,12 +152,6 @@ public sealed unsafe partial class AlloyRenderer
                          + "highlight takes the vanilla glow on Vulkan this session");
             }
         }
-        if (s.Mask == null) return false;
-        if (!s.Target.IsNull && s.W == w && s.H == h) return true;
-        vk.Destroy(s.Target);
-        s.Target = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba8, w, h, 1, 1, 1, 1,
-                                                ImageUse.Sampled | ImageUse.ColorTarget, "vk highlight mask"));
-        s.W = w; s.H = h;
-        return !s.Target.IsNull;
+        return s.Mask != null;
     }
 }

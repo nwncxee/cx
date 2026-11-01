@@ -241,6 +241,14 @@ Other tools, for what they are good at:
 - Nsight Systems from the distribution traces live frames, but drops the label name from most instances of half the
   passes and misreports nested labels. The Nix build discards every GPU timestamp on this kind of machine.
 
+## Pipeline prewarm (`tools/live/prewarm_approved_examples.sh`)
+
+The approved examples for the loading hold's pipeline prewarm. It copies the docks quicksave (`saves/000000 -
+quicksave` in the user directory, `savenfo.txt` naming Waterdeep) or takes `--saves DIR`, loads it through
+`perf-save.sh`, whose throwaway home starts with an empty shader and pipeline cache, and reads the
+`[vkpipe] after the loading screen` line. PASS means no material pipeline was built on the frame in the first 10 s
+past the hold. The line also names the other pipelines the frame still built, which nothing grades yet.
+
 ## Vulkan validation (`tools/vk/validate.sh`)
 
     nix develop -c ./build.sh          # build in nix

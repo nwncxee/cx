@@ -146,6 +146,14 @@ a rect whose chart range moved before its bake is dropped and its readers re-enr
 cube cannot be rendered this frame (no caster gather) leaves the step for the next frame. The period line
 names each: `lightmap pages N/cap, bakes landed/pending/refused (… past the cap)`.
 
+## Pipeline paths stand down per device, not per frame
+
+`VkBackend` picks two pipeline paths once, at open, and names both on its `LIVE` line. Without dynamic blend state
+(`VK_EXT_extended_dynamic_state3`) blend is baked into each pipeline. Without graphics pipeline libraries with fast
+linking (`VK_EXT_graphics_pipeline_library`) every pipeline is built whole on the frame. A library the driver refuses
+turns the library path off for the session, with one line, and the pipeline is built whole; a refused optimised link
+keeps the linked pipeline. None of these refuses a frame.
+
 ## The per-part census gates are not in this set either, and one is left standing
 
 `AlloyCensus`'s gate chain names why a recorded part is not an Alloy candidate. #263 deleted the one that had

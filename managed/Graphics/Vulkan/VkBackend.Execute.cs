@@ -80,6 +80,7 @@ internal sealed unsafe partial class VkBackend
         {
             TimeBegin(s);
             RecycleBindless();
+            SwapOptimised();
         }
         BindBindless();
         if (!lane) FlushUploads();
@@ -317,9 +318,33 @@ internal sealed unsafe partial class VkBackend
             return Fault($"SetPipeline: a pipeline {(p.Rated ? "made for" : "not made for")} a shading-rate image, in a pass {(p.Rated ? "without" : "with")} one");
         if (_onAsync && !p.Compute) return Fault("a graphics pipeline on the async compute queue, which cannot draw");
         _bindPoint = p.Compute ? VkPipelineBindPoint.Compute : VkPipelineBindPoint.Graphics;
-        _vkd.vkCmdBindPipeline(_cmd, _bindPoint, p.Pipeline);
+        _vkd.vkCmdBindPipeline(_cmd, _bindPoint, p.Obj.Handle);
         if (!p.Compute) { Depth(p.Depth); Raster(p.Raster); }
+        if (p.BlendDyn) RestateBlend(p.Blend, p.Colors);
         return true;
+    }
+
+    /// <summary>The first <paramref name="n"/> attachments' blend, as a pipeline whose blend is dynamic leaves it.</summary>
+    private void RestateBlend(in BlendSet b, int n)
+    {
+        if (n == 0) return;
+        VkBool32* on = stackalloc VkBool32[RenderPassDesc.MaxColors];
+        VkColorBlendEquationEXT* eq = stackalloc VkColorBlendEquationEXT[RenderPassDesc.MaxColors];
+        VkColorComponentFlags* mask = stackalloc VkColorComponentFlags[RenderPassDesc.MaxColors];
+        for (int i = 0; i < n; i++)
+        {
+            AttachmentBlend a = b[i];
+            on[i] = a.Enable;
+            eq[i] = new VkColorBlendEquationEXT
+            {
+                srcColorBlendFactor = Factor(a.SrcRgb), dstColorBlendFactor = Factor(a.DstRgb), colorBlendOp = Equation(a.Op),
+                srcAlphaBlendFactor = Factor(a.SrcA), dstAlphaBlendFactor = Factor(a.DstA), alphaBlendOp = Equation(a.Op),
+            };
+            mask[i] = Mask(a);
+        }
+        _vkd.vkCmdSetColorBlendEnableEXT(_cmd, 0, (uint)n, on);
+        _vkd.vkCmdSetColorBlendEquationEXT(_cmd, 0, (uint)n, eq);
+        _vkd.vkCmdSetColorWriteMaskEXT(_cmd, 0, (uint)n, mask);
     }
 
     private bool Depth(DepthState d)

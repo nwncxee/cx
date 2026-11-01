@@ -32,6 +32,8 @@ public sealed unsafe partial class AlloyRenderer
         public bool Refl;
         /// <summary>A content pair's program: its feature id and the pair's build generation it came from; 0 otherwise.</summary>
         public int Feat, Epoch;
+        /// <summary>The variant a content program was built as; <see cref="ContentVariant.Forward"/> for a stock one.</summary>
+        public ContentVariant Variant;
         public string Label = "";
         public ShaderId Vs, Fs;
         public LooseBlock.Member[] Members = [];
@@ -299,7 +301,7 @@ public sealed unsafe partial class AlloyRenderer
         }
         if (p != null)
         {
-            p.Feat = feat; p.Epoch = epoch; p.Deferred = v == ContentVariant.Deferred;
+            p.Feat = feat; p.Epoch = epoch; p.Deferred = v == ContentVariant.Deferred; p.Variant = v;
             _log.Always($"AlloyRenderer: Vulkan {label} built -- its parts draw the content's own stages");
         }
         else s.ContentFailed[key] = epoch;
@@ -632,11 +634,12 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>The pipeline for program <paramref name="p"/> drawing arena format <paramref name="fmt"/> into
     /// <paramref name="targets"/> under blend <paramref name="blend"/> (0 = off, else 1 + src * 8 + dst over the engine's
-    /// blend-mode indices), made on first ask. Null id when the device refused it.</summary>
-    private static PipelineId VkPipeline(VkProg p, int fmt, VkTargets targets, int blend)
+    /// blend-mode indices), made on first ask; <paramref name="rated"/> overrides the pass's own shading-rate verdict,
+    /// as the prewarm asks for both. Null id when the device refused it.</summary>
+    private static PipelineId VkPipeline(VkProg p, int fmt, VkTargets targets, int blend, bool? rated = null)
     {
         int samples = targets == VkTargets.Cover ? _vkCover.Samples : 1;
-        bool rate = targets is VkTargets.Colour or VkTargets.ColourRefl && !_vkc.Rate.IsNull;
+        bool rate = targets is VkTargets.Colour or VkTargets.ColourRefl && (rated ?? !_vkc.Rate.IsNull);
         long key = fmt | (long)targets << 4 | (long)blend << 8 | (long)samples << 24 | (rate ? 1L << 32 : 0);
         if (p.Pipes.TryGetValue(key, out PipelineId id)) return id;
         VkColourState s = _vkc;
@@ -644,7 +647,7 @@ public sealed unsafe partial class AlloyRenderer
         {
             Vs = p.Vs, Fs = p.Fs, Layout = s.Layouts[fmt], Topo = Topology.Triangles,
             Raster = new RasterState(CullMode.Back), Depth = new DepthState(true, true, WorldDepth.NearerOrEqual),
-            Label = $"vk {p.Label} {(MeshArena.Fmt)fmt} {targets} blend {blend}{(rate ? " rated" : "")}", ShadingRate = rate,
+            Label = $"vk {p.Label} {(MeshArena.Fmt)fmt} {targets} blend {blend}{(rate ? " rated" : "")}", ShadingRate = rate, Prewarmed = true,
         };
         d.Targets.Depth = Format.D32F;
         d.Targets.Samples = samples;
