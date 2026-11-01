@@ -58,11 +58,12 @@ internal static partial class GpuGolden
         // Then that frame spends no more than 2 ms building its pipeline, and the material is on screen that frame
         PipelineId fresh = BlendPipeline(vk, vs, fs, "golden linked fresh", Format.Rgba8, BlendFactor.SrcAlpha, BlendFactor.OneMinusSrcAlpha);
         string line = vk.PipelinePeriod();
+        bool linkedFirst = !vk.Optimised(fresh);
         float linked = BlendRed(vk, log, fresh, Format.Rgba8, "golden linked fresh");
         double worst = TallyWorst.Match(line) is { Success: true } w ? double.Parse(w.Groups[1].Value.Replace(',', '.'), CultureInfo.InvariantCulture) : double.NaN;
         check.Expect(TallyCount(line) == 1 && worst <= 2.0, $"a first-use pipeline of stages in use was linked within 2 ms: \"{line}\"");
         check.Expect(MathF.Abs(linked - 0.375f) < 1.5f / 255, $"...and drew that frame: {linked}, by hand 0.375 (half of 0.5 over half of 0.25)");
-        check.Expect(!vk.Optimised(fresh), "a pipeline linked this frame is not yet the worker's optimised one");
+        check.Expect(linkedFirst, "a pipeline linked this frame is not yet the worker's optimised one");
         // Given that linked pipeline
         // When the worker finishes the optimised one
         // Then the material draws with the optimised pipeline from the next frame, and looks the same

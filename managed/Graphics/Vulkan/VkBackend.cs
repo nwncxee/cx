@@ -57,8 +57,10 @@ internal sealed unsafe partial class VkBackend : IDevice
         public int UpCalls;
     }
     private readonly record struct VkShader(VkShaderModule Module, ShaderStage Stage);
-    /// <summary>A pipeline, and the depth and raster state its desc named, which a bind restates dynamically.</summary>
-    private readonly record struct VkPipe(VkPipeline Pipeline, bool Compute, DepthState Depth, RasterState Raster, bool Rated = false);
+    /// <summary>A pipeline id: the compiled pipeline it names, and the depth, raster and (when <see cref="BlendDyn"/>)
+    /// blend its desc named, which a bind restates dynamically.</summary>
+    private readonly record struct VkPipe(PipeObj Obj, bool Compute, DepthState Depth, RasterState Raster, bool Rated = false,
+                                          bool BlendDyn = false, BlendSet Blend = default, int Colors = 0);
 
     /// <summary>One submit's recording resources, reused once the timeline passes <see cref="Done"/>: the value its
     /// last submit signalled. <see cref="Index"/> is its place in the list and its timestamp pair.</summary>
@@ -399,16 +401,37 @@ internal sealed unsafe partial class VkBackend : IDevice
         _rateTexel = RateSupport(phys, out string? rateWhy);
         var fsr = new VkPhysicalDeviceFragmentShadingRateFeaturesKHR { pipelineFragmentShadingRate = true, attachmentFragmentShadingRate = true };
         if (_rateTexel > 0) f11.pNext = &fsr;
+        bool eds3Ext = HasExt(_vki, phys, Eds3Ext), gplExt = HasExt(_vki, phys, GplExt) && HasExt(_vki, phys, PipelineLibraryExt);
+        var eds3 = new VkPhysicalDeviceExtendedDynamicState3FeaturesEXT();
+        var gpl = new VkPhysicalDeviceGraphicsPipelineLibraryFeaturesEXT { pNext = eds3Ext ? &eds3 : null };
+        var asked = new VkPhysicalDeviceFeatures2 { pNext = gplExt ? &gpl : eds3Ext ? &eds3 : null };
+        _vki.vkGetPhysicalDeviceFeatures2(phys, &asked);
+        var gplProps = new VkPhysicalDeviceGraphicsPipelineLibraryPropertiesEXT();
+        var props2 = new VkPhysicalDeviceProperties2 { pNext = gplExt ? &gplProps : null };
+        _vki.vkGetPhysicalDeviceProperties2(phys, &props2);
+        _canDynBlend = eds3Ext && eds3.extendedDynamicState3ColorBlendEnable && eds3.extendedDynamicState3ColorBlendEquation
+                    && eds3.extendedDynamicState3ColorWriteMask;
+        _canLibraries = gplExt && gpl.graphicsPipelineLibrary && gplProps.graphicsPipelineLibraryFastLinking;
+        var eds3On = new VkPhysicalDeviceExtendedDynamicState3FeaturesEXT
+        {
+            pNext = f11.pNext, extendedDynamicState3ColorBlendEnable = true, extendedDynamicState3ColorBlendEquation = true,
+            extendedDynamicState3ColorWriteMask = true,
+        };
+        if (_canDynBlend) f11.pNext = &eds3On;
+        var gplOn = new VkPhysicalDeviceGraphicsPipelineLibraryFeaturesEXT { pNext = f11.pNext, graphicsPipelineLibrary = true };
+        if (_canLibraries) f11.pNext = &gplOn;
         VkDevice device;
         fixed (byte* sw = SwapchainExt)
         fixed (byte* vl = "VK_EXT_shader_viewport_index_layer\0"u8) fixed (byte* mb = "VK_EXT_memory_budget\0"u8)
-        fixed (byte* sr = RateExt)
+        fixed (byte* sr = RateExt) fixed (byte* e3 = Eds3Ext) fixed (byte* gl = GplExt) fixed (byte* plib = PipelineLibraryExt)
         {
-            byte** exts = stackalloc byte*[4] { sw, null, null, null };
+            byte** exts = stackalloc byte*[7] { sw, null, null, null, null, null, null };
             uint n = 1;
             if (layerExt) exts[n++] = vl;
             if (_memBudget) exts[n++] = mb;
             if (_rateTexel > 0) exts[n++] = sr;
+            if (_canDynBlend) exts[n++] = e3;
+            if (_canLibraries) { exts[n++] = gl; exts[n++] = plib; }
             var dci = new VkDeviceCreateInfo
             {
                 pNext = &feats, queueCreateInfoCount = queues, pQueueCreateInfos = qci,
@@ -442,6 +465,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         (_bindlessLayout, _bindlessPool, _bindlessSet, _bindlessCap) = MakeBindless();
         // every stage translated from here on bounds its bindless indices by what this device actually seats
         VkGlsl.BindlessCap = _bindlessCap;
+        _spec = MakeSpecialization(_bindlessCap);
         VkDescriptorSetLayout* sl = stackalloc VkDescriptorSetLayout[2] { _setLayout, _bindlessLayout };
         var push = new VkPushConstantRange { stageFlags = VkShaderStageFlags.All, offset = 0, size = PushConstants.Bytes };
         var plci = new VkPipelineLayoutCreateInfo { setLayoutCount = 2, pSetLayouts = sl, pushConstantRangeCount = 1, pPushConstantRanges = &push };
@@ -456,6 +480,7 @@ internal sealed unsafe partial class VkBackend : IDevice
                  + $"{(_labels ? "on" : "off")}, async compute {(_async != null ? $"on queue family {_async.Family}" : "on the graphics queue (no compute-only family)")}, "
                  + $"first fills {(_transfer != null ? $"on transfer queue family {_transfer.Family}" : "on the graphics queue (no copy-only family)")}, "
                  + (_rateTexel > 0 ? $"shading-rate image in {_rateTexel} px tiles" : $"no shading-rate image ({rateWhy}): the G-buffer pass shades every pixel")
+                 + $"; {BlendPathLine(_canDynBlend)}; {PipelinePathLine(_canLibraries)}"
                  + "; Vulkan presents the frame itself");
     }
 
@@ -465,6 +490,11 @@ internal sealed unsafe partial class VkBackend : IDevice
     internal int ShadingRateTexel => _rateTexel;
 
     private static ReadOnlySpan<byte> RateExt => "VK_KHR_fragment_shading_rate\0"u8;
+
+    /// <summary>Dynamic blend state, and graphics pipeline libraries with the extension they build on.</summary>
+    private static ReadOnlySpan<byte> Eds3Ext => "VK_EXT_extended_dynamic_state3\0"u8;
+    private static ReadOnlySpan<byte> GplExt => "VK_EXT_graphics_pipeline_library\0"u8;
+    private static ReadOnlySpan<byte> PipelineLibraryExt => "VK_KHR_pipeline_library\0"u8;
 
     /// <summary>The square texel edge <paramref name="d"/> takes a shading-rate image in, or 0 with why not: the
     /// extension, its attachment feature, and a square size <see cref="RateTexel"/> accepts.</summary>
@@ -666,12 +696,18 @@ internal sealed unsafe partial class VkBackend : IDevice
 
     public void Destroy(ShaderId s)
     {
-        if (OnThread("Destroy") && _shaders.Remove(s.Value, out VkShader v)) _vkd.vkDestroyShaderModule(v.Module);
+        if (!OnThread("Destroy") || !_shaders.Remove(s.Value, out VkShader v)) return;
+        DropLibraries(s);
+        _vkd.vkDestroyShaderModule(v.Module);
     }
 
     public void Destroy(PipelineId p)
     {
-        if (OnThread("Destroy") && _pipelines.Remove(p.Value, out VkPipe v)) Later(() => _vkd.vkDestroyPipeline(v.Pipeline));
+        if (!OnThread("Destroy") || !_pipelines.Remove(p.Value, out VkPipe v) || --v.Obj.Refs > 0) return;
+        PipeObj o = v.Obj;
+        o.Dead = true;
+        if (o.Key != null) _shared.Remove(o.Key);
+        Later(() => _vkd.vkDestroyPipeline(o.Handle));
     }
 
     /// <summary>A vertex layout to name in a <see cref="PipelineDesc"/>; held as declared, resolved per pipeline.</summary>
@@ -701,6 +737,7 @@ internal sealed unsafe partial class VkBackend : IDevice
     internal void Dispose()
     {
         _vkd.vkDeviceWaitIdle();
+        DisposeLibraries();
         RefuseWhenDone();
         DisposeFsr();
         SavePipelineCache();
@@ -713,7 +750,10 @@ internal sealed unsafe partial class VkBackend : IDevice
         foreach (VkBuf b in _buffers.Live()) Vma.vmaDestroyBuffer(_vma, b.Buffer, b.Alloc);
         foreach (VkSampler v in _samplers.Live()) _vkd.vkDestroySampler(v);
         foreach (VkShader v in _shaders.Live()) _vkd.vkDestroyShaderModule(v.Module);
-        foreach (VkPipe v in _pipelines.Live()) _vkd.vkDestroyPipeline(v.Pipeline);
+        var compiled = new HashSet<PipeObj>();
+        foreach (VkPipe v in _pipelines.Live())
+            if (compiled.Add(v.Obj)) _vkd.vkDestroyPipeline(v.Obj.Handle);
+        System.Runtime.InteropServices.NativeMemory.Free(_spec);
         foreach (Slot s in _slots)
             if (s.Stage.IsNotNull) Vma.vmaDestroyBuffer(_vma, s.Stage, s.StageAlloc);
         _vkd.vkDestroySemaphore(_timeline);

@@ -47,6 +47,7 @@ internal static class VulkanFrame
         CommandList cl = _s.Cmds ??= new CommandList("vulkan frame", FrameArenaBytes, log);
         cl.Reset();
         vk.TimeFrame = true;
+        vk.UnderHold = LightmapBake.Held;
         cl.BeginLabel("cull"u8);
         if (!CullPassVk.Record(vk, cl, log))
         {
@@ -84,6 +85,7 @@ internal static class VulkanFrame
                      + $"{(float)barriers / GpuPeriod:F0} of them barriers; upload staging holds {vk.Staging.Blocks} block(s), "
                      + $"{vk.Staging.Bytes >> 20} MiB");
             log.Always($"VulkanFrame: [vkgpu] translation by op, ms/frame: {TopOps(vk, n)}; {Updates(vk, n)}");
+            log.Always($"VulkanFrame: {vk.PipelinePeriod()}");
         }
         PostChain.Painted();
         if (!_s.Live)

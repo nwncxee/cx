@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using CX.Framework;
+using CX.Graphics;
 using CX.Graphics.Rhi;
 using CX.Rhi;
 using Vortice.ShaderCompiler;
@@ -58,7 +59,7 @@ internal static partial class GpuGolden
         {
             var cl = new CommandList(label, 1 << 12, log);
             ReadOnlySpan<ColorAttachment> at = [new ColorAttachment(col, 0, 0, LoadOp.Clear, StoreOp.Store, new Vector4(BlendDst, BlendDst, BlendDst, 1))];
-            cl.BeginRenderPass(new RenderPassDesc(at, default));
+            cl.BeginRenderPass(new RenderPassDesc(at));
             cl.SetViewport(0, 0, BlendSide, BlendSide);
             cl.SetScissor(0, 0, BlendSide, BlendSide);
             cl.SetPipeline(pipe);
