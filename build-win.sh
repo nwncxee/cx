@@ -80,6 +80,21 @@ if [ ! -f build/cxatlas.lib ] || [ native/xatlas/xatlas.cpp -nt build/cxatlas.li
   llvm-lib -out:build/cxatlas.lib build/xatlas_win.obj build/cxatlas_win.obj
 fi
 
+# CX-394: FSR 3.1 (see build.sh), the same sources and shaders; MSVC's CRT has the names native/ffx/compat.h fills in.
+bash tools/ffx/prepare.sh python3 glslang
+if [ ! -f build/cxfsr.lib ] || [ native/ffx/cxfsr.cpp -nt build/cxfsr.lib ] || [ build/ffx/shaders/.stamp -nt build/cxfsr.lib ]; then
+  echo ">> building FSR 3.1 (cxfsr.lib, clang-cl cross)..."
+  F=build/ffx/sdk
+  FI="-Ibuild/deps/Vulkan-Headers-vulkan-sdk-1.4.363.0/include -I$F/include -I$F/include/FidelityFX/host -I$F/src/shared"
+  FI="$FI -I$F/src/backends/shared -I$F/src/components -Ibuild/ffx/shaders"
+  mkdir -p build/ffx/objw && rm -f build/ffx/objw/*.obj
+  for src in $(sed "s|^|$F/src/|" tools/ffx/sources.txt) native/ffx/cxfsr.cpp; do
+    clang-cl -c -std:c++17 -O2 -MT -GS- -EHs-c- -GR- -DNDEBUG -D_HAS_EXCEPTIONS=0 -DFFX_FSR3UPSCALER $WINC \
+      $FI "$src" -Fo:"build/ffx/objw/$(basename "$src" .cpp).obj"
+  done
+  llvm-lib -out:build/cxfsr.lib build/ffx/objw/*.obj
+fi
+
 # CX-57: the pinned audio runtime -- OpenAL Soft's own Win64 release build and Steam Audio's phonon.dll, shipped
 # beside version.dll (see build.sh for why OpenAL is a separate file) -- and the mixer, linked in.
 python3 tools/deps.py openal-src build/deps

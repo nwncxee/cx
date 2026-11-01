@@ -5,8 +5,8 @@ using Microsoft.CodeAnalysis.Operations;
 
 namespace CX.Analyzers;
 
-/// <summary>CX0005: a Vulkan or VMA entry point outside the backend. The device is the backend's, so a feature
-/// records on the seam instead of reaching it; VMA's virtual blocks touch no device and keep books where listed.</summary>
+/// <summary>CX0005: a Vulkan, VMA or FSR (<c>cxfsr_</c>) entry point outside the backend. The device is the backend's, so
+/// a feature records on the seam instead of reaching it; VMA's virtual blocks touch no device and keep books where listed.</summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class VulkanDevice : DiagnosticAnalyzer
 {
@@ -33,7 +33,7 @@ public sealed class VulkanDevice : DiagnosticAnalyzer
     private static readonly DiagnosticDescriptor Rule = new(
         Id,
         "Vulkan or VMA outside the backend",
-        "'{0}' is a Vulkan or VMA entry point outside managed/Graphics/. The device is the backend's: record the work on the seam (managed/Rhi/). Only VMA's virtual blocks, in the files CX0005 lists, keep books outside it.",
+        "'{0}' is a Vulkan, VMA or FSR entry point outside managed/Graphics/. The device is the backend's: record the work on the seam (managed/Rhi/). Only VMA's virtual blocks, in the files CX0005 lists, keep books outside it.",
         "CX.Backend",
         DiagnosticSeverity.Error,
         isEnabledByDefault: true,
@@ -65,11 +65,13 @@ public sealed class VulkanDevice : DiagnosticAnalyzer
             IPropertyReferenceOperation p => p.Property,
             _ => null,
         };
-        if (s is null || !IsEntryPoint(s.Name) || s.ContainingNamespace?.ToDisplayString() != Ns) return;
+        if (s is null) return;
+        bool fsr = s is IMethodSymbol { IsExtern: true } && s.Name.StartsWith("cxfsr_", System.StringComparison.Ordinal);
+        if (!fsr && (!IsEntryPoint(s.Name) || s.ContainingNamespace?.ToDisplayString() != Ns)) return;
 
         string path = c.Operation.Syntax.SyntaxTree.FilePath.Replace('\\', '/');
         if (path.Contains(Home)) return;
-        if (VirtualBlock.Contains(s.Name))
+        if (!fsr && VirtualBlock.Contains(s.Name))
             foreach (string a in Allowed) if (path.Contains(a)) return;
 
         c.ReportDiagnostic(Diagnostic.Create(Rule, c.Operation.Syntax.GetLocation(), s.Name));

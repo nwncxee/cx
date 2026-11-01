@@ -36,7 +36,7 @@ internal static class Renderer
             log.Always($"Renderer: Vulkan cannot start ({why}) -- Alloy stands down and the game runs vanilla this session");
         return why == null;
     }
-    internal static readonly Knob<float> Scale, Lod;
+    internal static readonly Knob<float> Lod;
     /// <summary>How strongly the cutout test makes up for the alpha a mip averages away (<c>cx_alphamip.glsl</c>).</summary>
     internal static readonly Knob<float> CutMip;
     /// <summary>How many layers of itself a see-through creature draws as, under the list resolve that composites it once.</summary>
@@ -124,9 +124,6 @@ internal static class Renderer
         G.Status = Status;
         G.PanelStatus = PanelStatus;
 
-        Scale = G.Slider("scale", "Render scale", 0.25f, 2f, 0.05f, 1f,
-                         help: "Size of the 3D frame relative to your screen. Below 1 renders fewer pixels and upscales (faster); "
-                             + "above 1 supersamples (sharper, slower). The UI is never scaled.");
         Highlight = G.Dropdown("highlight", "Selection highlight", new[] { "glow", "outline" }, "outline",
                                help: "How a selected or hovered object is marked: an outline with a light fill, or a soft glow around the object.");
         Lod = G.Slider("lod", "Skip models smaller than", 0f, 8f, 0.5f, 1f, "px", Tier.Advanced,

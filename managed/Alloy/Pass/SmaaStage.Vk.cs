@@ -33,7 +33,7 @@ internal static unsafe partial class SmaaStage
         if (s.Dev != vk) _vk = s = new SmaaVkState { Dev = vk };
         if (s.Failed) return false;
         if (!s.Tried && !VkTables(vk, s, log)) return Fail(s, log, "the area/search tables were missing or REFUSED");
-        int level = LevelFor(Samples);
+        int level = Post.Smaa.V;
         if (!s.Built[level])
         {
             s.Built[level] = true;
@@ -59,7 +59,7 @@ internal static unsafe partial class SmaaStage
     internal static void PassesVk(CommandList cl, ImageId src, ExtenderLog log)
     {
         SmaaVkState s = _vk;
-        int l = LevelFor(Samples);
+        int l = Post.Smaa.V;
         GuiVkProg e = s.Edge[l]!, wt = s.Weight[l]!;
         var rect = new Rect(0, 0, s.W, s.H);
         PostChainVk.Open(e);

@@ -289,6 +289,17 @@ public sealed partial class KnobPanel
             z.PanelStatus = () => "line one\nline two that is long enough to wrap in the column at seven twenty by twelve eighty for sure";
             p._subs = new[] { new SubMenu(g), new SubMenu(z) }; p.SelectSub(1); p.LayoutRows();
             check.Expect(p.Sub == 1 && !p.AdvOpen && p.Rows.Count == 1 && p.Rows[0].Kind == RowKind.Status && p.Rows[0].Help.Length >= 3 && !p._resettable, "a zero-knob group renders its status as the whole body, no reset box");
+            // A ShowIf row: absent while its predicate says no, laid out once a pick turns it true.
+            var cg = new KnobGroup("cx-panelshowif", "Controls", "ShowIf", null, null, true, Effect.Live, null, null, "", register: false);
+            var pick = cg.Dropdown("pick", "Pick", new[] { "a", "b" }, "a", help: "Which one.");
+            var dep = cg.Slider("dep", "Only with b", 0f, 1f, 0.1f, 0.5f, help: "Shows when b is picked.");
+            dep.ShowIf = () => pick.V == "b";
+            p._subs = new[] { new SubMenu(cg) }; p.SelectSub(0); p.LayoutRows();
+            check.Expect(Has(pick) && !Has(dep), "a row whose ShowIf says no is not laid out");
+            p.PickChoice(R(pick), 1);
+            check.Expect(pick.V == "b" && Has(dep), "picking the choice it waits on lays the row out");
+            p.PickChoice(R(pick), 0);
+            check.Expect(!Has(dep), "...and picking away takes it out again");
             // A shared submenu: each group under its heading, greyed by its own gate only; a chat-only master that is
             // off lays a strip that turns it back on; a diagnostics-only group earns no submenu.
             var sa = new KnobGroup("cx-sharea", "Controls", "Shared", "Enable A", "A's master.", true, Effect.Live, null, null, "", register: false, title: "Alpha");

@@ -3,14 +3,10 @@ using CX.Framework;
 
 namespace CX.Alloy;
 
-/// <summary>Anti-aliasing as a post-stack stage (ADR 0020). The client's anti-aliasing option sizes the
-/// ENGINE's subframe renderbuffers (<c>Camera::RefreshRenderSubframeResources</c> @0x5a6610), which the Alloy
-/// frame never lands in, so under Alloy the option was inert. Alloy answers it with SMAA 1x on the resolved
-/// display-space frame, and the option's sample count picks the preset: 2 MEDIUM, 4 HIGH, 8 and 16 ULTRA.</summary>
-internal static unsafe partial class SmaaStage
+/// <summary>SMAA 1x as a post-stack stage (ADR 0020) on the resolved display-space frame, drawn when
+/// <c>post.aa</c> picks it, at the preset <c>post.smaa</c> names: 1 MEDIUM, 2 HIGH, 3 ULTRA.</summary>
+internal static partial class SmaaStage
 {
-    /// <summary><c>g_nMSAA</c>, the option's live value.</summary>
-    private static int* _msaa;
     /// <summary>The preset compiled in (0 none, 1 MEDIUM, 2 HIGH, 3 ULTRA): the <c>$AA$</c> token
     /// <see cref="ShaderResource.Tokens"/> expands, so an override reads the same preset as the embedded text.</summary>
     internal static int Level { get; private set; }
@@ -19,24 +15,12 @@ internal static unsafe partial class SmaaStage
     /// <summary>The reference tables, RG8 160x560 and R8 64x16, as the repo ships them (Textures/*.h upstream).</summary>
     internal const int AreaW = 160, AreaH = 560, SearchW = 64, SearchH = 16;
 
-    /// <summary>From <see cref="PostStack.Attach"/>: resolve the option's global.</summary>
-    internal static void Attach(ExtenderLog log)
-    {
-        _msaa = (int*)Native.Sym(SymbolMap.MsaaSamples);
-        if (_msaa == null) log.Info("SmaaStage: g_nMSAA is unresolved -- the anti-aliasing option stays inert");
-    }
-
-    /// <summary>The option's sample count -> preset level; pure, so the self-check can assert it.</summary>
-    internal static int LevelFor(int samples) => samples >= 8 ? 3 : samples >= 4 ? 2 : samples >= 2 ? 1 : 0;
-    /// <summary>The option as set right now, in MSAA samples; 0 when the global is unresolved.</summary>
-    internal static int Samples => _msaa == null ? 0 : *_msaa;
-    /// <summary>The stage's per-frame gate: the option is on, nothing of ours failed to build, and TAA is
-    /// off -- the two are exclusive, because TAA smooths what SMAA smooths and more.</summary>
-    internal static bool Active => !_vk.Failed && LevelFor(Samples) > 0 && !PostChain.TaaOn;
+    /// <summary>The stage's per-frame gate: <c>post.aa</c> picks SMAA and nothing of ours failed to build.</summary>
+    internal static bool Active => !_vk.Failed && Post.Aa.V == Post.AaSmaa;
     internal static string PresetName(int level) => level switch { 3 => "ULTRA", 2 => "HIGH", 1 => "MEDIUM", _ => "off" };
-    /// <summary>The /post and /knobs term: option, preset, and whether the stage is dropped.</summary>
+    /// <summary>The /post and /knobs term: the preset, and whether the stage draws.</summary>
     internal static string Describe()
-        => $"(aa option {Samples}x -> SMAA {PresetName(LevelFor(Samples))}{(_vk.Failed ? ", FAILED" : PostChain.TaaOn ? ", replaced by TAA" : "")})";
+        => $"(SMAA {PresetName(Post.Smaa.V)}{(_vk.Failed ? ", FAILED" : Active ? "" : ", not picked")})";
 
     /// <summary>Embedded table <paramref name="resource"/>'s bytes, or null when it is missing or not <paramref name="len"/> long.</summary>
     private static byte[]? TableBytes(string resource, int len)
@@ -57,13 +41,12 @@ internal static unsafe partial class SmaaStage
     /// live preset change rebuilds the other two programs and not this one.</summary>
     internal static string BlendStageFs => ShaderSource.Get("cx_smaablend_f.glsl");
 
-    /// <summary>Off-device: the option maps to the presets, the three passes compose on the port, and the
-    /// tables are in the build at their reference sizes.</summary>
+    /// <summary>Off-device: the presets are named, the three passes compose on the port, and the tables are in
+    /// the build at their reference sizes. Oracles: hand-written preset names and the reference table sizes.</summary>
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
-        check.Expect(LevelFor(0) == 0 && LevelFor(2) == 1 && LevelFor(4) == 2 && LevelFor(8) == 3 && LevelFor(16) == 3,
-          "0/2/4/8/16 samples -> off/MEDIUM/HIGH/ULTRA/ULTRA");
+        check.Expect(PresetName(1) == "MEDIUM" && PresetName(2) == "HIGH" && PresetName(3) == "ULTRA", "post.smaa 1/2/3 -> MEDIUM/HIGH/ULTRA");
         foreach (string r in new[] { ShdEdgeFs, ShdWeightFs, ShdBlendFs })
             check.Expect(ShaderStages.Source(r).Contains("#define SMAA_GLSL_4 1") && ShaderStages.Source(r).Contains("float2 SMAALumaEdgeDetectionPS("),
               $"{r} carries the port + library");

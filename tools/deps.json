@@ -21,5 +21,31 @@
       "steamaudio/lib/linux-x64/libphonon.so",
       "steamaudio/lib/windows-x64/phonon.dll"
     ]
+  },
+  "ffx-sdk": {
+    "url": "https://github.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK/archive/refs/tags/v1.1.4.tar.gz",
+    "sha256": "25c46398a656150397597f78d44bf7cb445e9e177dd116b309bbfdf50d50cc9f",
+    "file": "FidelityFX-SDK-v1.1.4.tar.gz",
+    "members": [
+      "FidelityFX-SDK-1.1.4/sdk/include/",
+      "FidelityFX-SDK-1.1.4/sdk/src/",
+      "FidelityFX-SDK-1.1.4/LICENSE.txt"
+    ]
+  },
+  "vulkan-headers": {
+    "url": "https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/vulkan-sdk-1.4.363.0.tar.gz",
+    "sha256": "4a078be12bef21cfebc09d878b77a63cff9d68f899254a0b00d0e37ef73e7f7e",
+    "file": "vulkan-sdk-1.4.363.0.tar.gz",
+    "members": [
+      "Vulkan-Headers-vulkan-sdk-1.4.363.0/include/"
+    ]
+  },
+  "glslang-win": {
+    "url": "https://github.com/KhronosGroup/glslang/releases/download/16.6.0/glslang-16.6.0-windows-x86_64-release.zip",
+    "sha256": "82bf434e69b9bb4829de7e2b4bc2c5e7a7861e53d66cf75e5cc70f5f694a8d9b",
+    "file": "glslang-16.6.0-windows-x86_64-release.zip",
+    "members": [
+      "bin/glslang.exe"
+    ]
   }
 }

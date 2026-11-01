@@ -85,7 +85,7 @@ public sealed unsafe partial class AlloyRenderer
         HoldPassTarget(in t);   // #375: the ONE read per pass; the post stack rebinds from this copy
         // #391: TWO viewports. `display` is the engine's -- where the resolve and the post stack go, and what
         // the 2D UI draws at. `viewport` is the RENDER one every owned pass sizes from: the display scaled by
-        // alloy.scale, origin 0 (the owned targets are their own allocations, so an offset would only mean
+        // post.scale, origin 0 (the owned targets are their own allocations, so an offset would only mean
         // drawing into their corner).
         display[0] = t.Vp0; display[1] = t.Vp1; display[2] = t.Vp2; display[3] = t.Vp3;
         viewport[0] = 0; viewport[1] = 0;
@@ -151,10 +151,10 @@ public sealed unsafe partial class AlloyRenderer
         // cull see the same jittered camera; the velocity pass takes it back out. Zero with TAA off.
         float jx = 0f, jy = 0f;
         Matrix4x4 vpClean = view * proj, vpCleanZ = view * WorldDepth.Fold(proj);
-        // a Vulkan frame whose TAA resolve did not build draws unjittered
-        if (PostChain.TaaOn && !_capturing && !PostStack.TaaVkFailed)
+        // a Vulkan frame whose TAA resolve did not build draws unjittered, unless FSR reconstructs it
+        if (PostChain.Jittered && !_capturing)
         {
-            PostChain.Jitter(_frameSeq, PostChain.RenderSize(t.Vp2), PostChain.RenderSize(t.Vp3), out jx, out jy);
+            PostChain.Jitter(_frameSeq, PostChain.RenderSize(t.Vp2), PostChain.RenderSize(t.Vp3), PostChain.JitterPhases(t.Vp2), out jx, out jy);
             proj.M31 += jx * proj.M34; proj.M32 += jy * proj.M34;
         }
         PostChain.JitterX = jx; PostChain.JitterY = jy;

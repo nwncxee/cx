@@ -108,6 +108,10 @@
     <DirectPInvoke Include="cxthunk" />
     <NativeLibrary Condition="'$(RuntimeIdentifier)' != 'win-x64'" Include="$(MSBuildThisFileDirectory)../build/libcxthunk.a" />
     <NativeLibrary Condition="'$(RuntimeIdentifier)' == 'win-x64'" Include="$(MSBuildThisFileDirectory)../build/cxthunk_win.obj" />
+    <!-- CX-394: FSR 3.1 upscaling, AMD's upscaler and Vulkan backend behind native/ffx/cxfsr.cpp's C API. -->
+    <DirectPInvoke Include="cxfsr" />
+    <NativeLibrary Condition="'$(RuntimeIdentifier)' != 'win-x64'" Include="$(MSBuildThisFileDirectory)../build/libcxfsr.a" />
+    <NativeLibrary Condition="'$(RuntimeIdentifier)' == 'win-x64'" Include="$(MSBuildThisFileDirectory)../build/cxfsr.lib" />
     <!-- The pinned-OpenAL redirect lives in the proxy half (native/bootstrap_win.c); Windows only. -->
     <DirectPInvoke Condition="'$(RuntimeIdentifier)' == 'win-x64'" Include="cxboot" />
   </ItemGroup>

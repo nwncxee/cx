@@ -63,7 +63,7 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>A camera CUT -- the camera layer snapping after a stand-down gate lifts, or a mode switch.
     /// Drops the reprojection history so neither the motion vectors, TAA nor the reflections carry one frame of the wrong
     /// camera. Flag writes only; safe from any point of the frame.</summary>
-    public static void CameraCut() { MotionVectors.Revoke(); TaaStage.Reset(); VkSsrRevoke(); }
+    public static void CameraCut() { MotionVectors.Revoke(); TaaStage.Reset(); Fsr.Revoke(); VkSsrRevoke(); }
 
     private static void NoteMoverDraw(int n, bool skinned, bool dangly)
     {

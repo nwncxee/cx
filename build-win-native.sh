@@ -45,6 +45,22 @@ if [ ! -f build/cxaudio.lib ] || [ native/cxaudio.cpp -nt build/cxaudio.lib ]; t
   lib -nologo -out:build/cxaudio.lib build/cxaudio_win.obj
 fi
 
+# CX-394: FSR 3.1 (see build.sh), its shaders compiled by Khronos' pinned glslang.exe.
+python tools/deps.py glslang-win build/deps/win
+bash tools/ffx/prepare.sh python build/deps/win/glslang.exe
+if [ ! -f build/cxfsr.lib ] || [ native/ffx/cxfsr.cpp -nt build/cxfsr.lib ] || [ build/ffx/shaders/.stamp -nt build/cxfsr.lib ]; then
+  echo ">> building FSR 3.1 (cxfsr.lib, MSVC)..."
+  F=build/ffx/sdk
+  FI="-Ibuild/deps/Vulkan-Headers-vulkan-sdk-1.4.363.0/include -I$F/include -I$F/include/FidelityFX/host -I$F/src/shared"
+  FI="$FI -I$F/src/backends/shared -I$F/src/components -Ibuild/ffx/shaders"
+  mkdir -p build/ffx/objw && rm -f build/ffx/objw/*.obj
+  for src in $(sed "s|^|$F/src/|" tools/ffx/sources.txt) native/ffx/cxfsr.cpp; do
+    cl -nologo -c -std:c++17 -O2 -MT -GS- -EHs-c- -GR- -DNDEBUG -D_HAS_EXCEPTIONS=0 -DFFX_FSR3UPSCALER \
+      $FI "$src" -Fo"build/ffx/objw/$(basename "$src" .cpp).obj"
+  done
+  lib -nologo -out:build/cxfsr.lib build/ffx/objw/*.obj
+fi
+
 # tools/abi/check-win-symbols.py needs llvm-undname and a real nwmain.exe; a CI runner has neither.
 echo ">> skipping the symbol check (no nwmain.exe here; build-win.sh runs it on the dev box)" >&2
 

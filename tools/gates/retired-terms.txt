@@ -232,3 +232,8 @@ alloy\.(gl46|glsync|gldebug)\b|\[gl46\]|\[gldebug\]	GL sweep 8
 # The arena's occupancy is PlacedBytes against HeldBytes, which the [alloy] line prints as both; the
 # suite gates itself on the session rather than through a wrapper of its own.
 \bVramBytes\b|\bArenaSelfCheckOffSession\b	CX-378
+# The render scale and the anti-aliaser moved beside each other in the post group: post.scale, post.aa (picks
+# FSR 3.1, TAA, SMAA or off) and post.smaa. The game's own anti-aliasing option no longer drives SMAA.
+alloy\.scale\b	CX-394
+post\.taa\b	CX-394
+/(alloy scale|post taa)\b	CX-394

@@ -1,0 +1,8 @@
+components/fsr3upscaler/ffx_fsr3upscaler.cpp
+backends/vk/ffx_vk.cpp
+backends/shared/ffx_shader_blobs.cpp
+backends/shared/blob_accessors/ffx_fsr3upscaler_shaderblobs.cpp
+shared/ffx_assert.cpp
+shared/ffx_message.cpp
+shared/ffx_breadcrumbs_list.cpp
+shared/ffx_object_management.cpp

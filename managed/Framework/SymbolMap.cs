@@ -1375,9 +1375,6 @@ internal static unsafe class SymbolMap
     /// framebuffer-effect walk -- <c>Camera::DoFrameBufferEffects</c> @0x4a8eb0 returns at once when it is 0.
     /// A plain int global (data symbol, not a function); Alloy's post stack honours it the same way.</summary>
     public const string EnableFBEffects = "enableFBeffects";
-    /// <summary>The client's anti-aliasing option as MSAA samples (0/2/4/8/16): what settings.tml
-    /// <c>graphics.video.anti-aliasing.mode</c> binds (DefineClientConfiguration @0x9ce7b0, setter @0x9c9330).</summary>
-    public const string MsaaSamples = "g_nMSAA";
     /// <summary><c>Camera::m_nFramebufferEffectsEnabled</c>: the FB-effect enable bits (Camera::SetFBEffectEnabled
     /// @0x5a6500); bit 0 = SSAO, what settings.tml <c>graphics.fbo.ssao.enabled</c> toggles.</summary>
     public const string FbEffectsMask = "_ZN6Camera28m_nFramebufferEffectsEnabledE";
@@ -3026,7 +3023,6 @@ internal static unsafe class SymbolMap
         [MatHasBumpyShinyMap] = Nm("?HasBumpyShinyMap@Material@@QEAA_NXZ"),
         [MeshBuckets] = Nm("?meshbuckets@@3V?$List@VBucket@@@@A"),
         [MinDoorAlpha] = Nm("?mindooralpha@@3MA"),
-        [MsaaSamples] = Nm("?g_nMSAA@@3HA"),
         [NetProcessReceivedFrames] = Nm("?ProcessReceivedFrames@CNetLayer@@QEAAXH@Z"),
         [NkSdlCopyEvent] = Hole("nuklear is not exported by nwmain.exe"),
         // nuklear is unexported on Windows, but nk_sdl_render's Tracy SourceLocationData anchors it and

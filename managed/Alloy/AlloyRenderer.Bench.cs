@@ -34,7 +34,7 @@ public sealed unsafe partial class AlloyRenderer
     {
         if (_benchStep >= 0) { BenchFinish("aborted"); return; }
         _benchKnobs = new Knob[] { Shadows.Soft, Shadows.CubeDist, Lighting.BinCap, Lighting.BinReach, Lightmap.Movers,
-                                   Weather.Enabled, Lighting.Ssr, Lighting.SsrPlanar, Renderer.Scale,
+                                   Weather.Enabled, Lighting.Ssr, Lighting.SsrPlanar, Post.Scale,
                                    Shadows.Taps, Shadows.Cap, Lighting.Relevance, Lighting.LightRec, Lighting.HiddenLights,
                                    Weather.EdgeTaps, Weather.Splash, Shadows.Dist, Shadows.SunFull, Lighting.Probe, Ao.On,
                                    Weather.FilmLights, Weather.Cover, Weather.WetStrength, Weather.RunOff, Weather.Map,
@@ -106,7 +106,7 @@ public sealed unsafe partial class AlloyRenderer
             // oit 2 tests depth in the shader (no early-Z), so every blended fragment behind a wall is shaded
             ("alloy.oit 1 (weighted OIT: hardware depth test, no lists)", new[] { (37, "1") }),
             ("alloy.oit 0 (sorted blending, no OIT)", new[] { (37, "0") }),
-            ("alloy.scale 0.5 (GPU unbound: frame = CPU)", new[] { (8, "0.5") }),
+            ("post.scale 0.5 (GPU unbound: frame = CPU)", new[] { (8, "0.5") }),
             ("baseline again (drift)", Array.Empty<(int, string)>()),
         };
         foreach (Knob k in _benchKnobs)

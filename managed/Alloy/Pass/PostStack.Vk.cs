@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using CX.Framework;
 using CX.Graphics;
 using CX.Graphics.Rhi;
@@ -23,13 +24,15 @@ internal static unsafe partial class PostStack
     }
 
     /// <summary>The stack on one device, replaced whole with the device: the stages, the ping-pong pair, the velocity
-    /// target and the TAA history.</summary>
+    /// target, the TAA history and FSR's output.</summary>
     private sealed class StackVkState
     {
         public VkBackend? Dev;
         public readonly StageVk[] Stages = NewStages();
-        public ImageId A, B, Vel, Hist0, Hist1;
-        public int W, H, VelW, VelH, HistW, HistH, Cur;
+        public ImageId A, B, Vel, Hist0, Hist1, FsrOut, FsrExposure;
+        public int W, H, VelW, VelH, HistW, HistH, Cur, FsrW, FsrH;
+        /// <summary>The exposure last written into <see cref="FsrExposure"/>; NaN before the first.</summary>
+        public float FsrExposureSet = float.NaN;
         public bool HistValid, Up;
         public GuiVkProg? Motion, Taa;
         public bool MotionTried, TaaTried;
@@ -67,14 +70,15 @@ internal static unsafe partial class PostStack
     }
 
     /// <summary>Is the Vulkan taa stage refused on this device? The frame then draws unjittered.</summary>
-    internal static bool TaaVkFailed => _vk.TaaTried && (_vk.Taa == null || _vk.Motion == null);
+    internal static bool TaaVkFailed => (_vk.TaaTried && _vk.Taa == null) || (_vk.MotionTried && _vk.Motion == null);
 
     /// <summary>The post chain and the stack on Vulkan: the resolve into the stack's first image (or the composite
     /// when no stage is live), each live stage after it, the last into the composite with the dither. The taa stage
     /// paints the camera velocity off <paramref name="depth"/> first. False (logged) when the frame has no way to the
     /// screen.</summary>
     internal static bool RecordVk(VkBackend vk, CommandList cl, ImageId hdr, ImageId depth, Matrix4x4* vp,
-                                  Matrix4x4* vpClean, int* viewport, int* display, ExtenderLog log)
+                                  Matrix4x4* vpClean, int* viewport, int* display, float near, float far, float fovY,
+                                  ExtenderLog log)
     {
         if (_vk.Dev != vk) _vk = new StackVkState { Dev = vk };
         StackVkState s = _vk;
@@ -82,6 +86,8 @@ internal static unsafe partial class PostStack
         if (FbPostStage.Stale(Mask(), Quality())) s.Stages[Array.IndexOf(_stages, _fbpost)] = new StageVk();
         if (!PostChainVk.Ensure(vk, log)) return false;
         int dw = display[2], dh = display[3];
+        int* full = stackalloc int[4] { 0, 0, dw, dh };
+        bool fsr = FsrVk(vk, s, cl, ref hdr, depth, vp, vpClean, ref viewport, full, near, far, fovY, log);
         int live = 0;
         string missing = "";
         bool taa = false;
@@ -118,9 +124,14 @@ internal static unsafe partial class PostStack
         s.Up = taa && PostChain.TaaUpsample && (viewport[2] != dw || viewport[3] != dh);
         if (live != 0 && !Pair(vk, s, s.Up ? viewport[2] : dw, s.Up ? viewport[3] : dh, log)) { live = 0; taa = false; _targetBad = true; }
         TaaLive = taa;
-        if (live == 0) return PostChainVk.Record(vk, cl, hdr, depth, vk.Composite, true, viewport, display, default, log);
-        int* full = stackalloc int[4] { 0, 0, s.W, s.H };
-        if (!PostChainVk.Record(vk, cl, hdr, depth, s.A, false, viewport, full, taa ? s.Vel : default, log)) return false;
+        ImageId vel = taa || fsr ? s.Vel : default;
+        if (live == 0)
+        {
+            if (fsr) MotionVectors.RollHistory();
+            return PostChainVk.Record(vk, cl, hdr, depth, vk.Composite, true, viewport, display, vel, log);
+        }
+        int* pair = stackalloc int[4] { 0, 0, s.W, s.H };
+        if (!PostChainVk.Record(vk, cl, hdr, depth, s.A, false, viewport, pair, vel, log)) return false;
         ImageId read = s.A, write = s.B;
         int left = System.Numerics.BitOperations.PopCount((uint)live);
         for (int i = 0; i < _stages.Length; i++)
@@ -137,7 +148,7 @@ internal static unsafe partial class PostStack
             PostChainVk.Open(v.P!);
             LooseBlock.Set(v.Dither, last ? PostChain.DitherLsb : 0f);
             if (st.Value != null) LooseBlock.Set(v.Param, st.Value());
-            if (st == _fbpost) FbPostStage.WriteVk(in v.Fb, last ? display : full);
+            if (st == _fbpost) FbPostStage.WriteVk(in v.Fb, last ? display : pair);
             if (v.P!.Stage >= 0)
             {
                 StageResources.Use(v.P.Stage);
@@ -151,7 +162,7 @@ internal static unsafe partial class PostStack
             cl.EndLabel();
             (read, write) = (write, read);
         }
-        if (taa) MotionVectors.RollHistory();
+        if (taa || fsr) MotionVectors.RollHistory();
         _runs++;
         return true;
     }
@@ -214,37 +225,24 @@ internal static unsafe partial class PostStack
         return false;
     }
 
-    /// <summary>The taa stage's inputs this frame: its programs, the history pair at the display size
-    /// (<paramref name="dw"/> x <paramref name="dh"/>), and the camera velocity painted off the finished depth. False
-    /// sits the stage out (the frame resolves without it).</summary>
+    /// <summary>The taa stage's inputs this frame: its program, the history pair at the display size
+    /// (<paramref name="dw"/> x <paramref name="dh"/>), and the camera velocity. False sits the stage out (the frame
+    /// resolves without it).</summary>
     private static bool TaaReady(VkBackend vk, StackVkState s, int* viewport, int dw, int dh, Matrix4x4* vp,
                                  Matrix4x4* vpClean, ImageId depth, CommandList cl, ExtenderLog log)
     {
         if (!s.TaaTried)
         {
             s.TaaTried = true;
-            s.Motion = PostChainVk.Program(vk, PostChain.FullscreenVs, MotionVectors.CameraFs, "camera velocity", p =>
-            {
-                s.MInvVp = p.Loc("uInvVP"); s.MPrevVp = p.Loc("uPrevVP"); s.MSize = p.Loc("uSize"); s.MJitter = p.Loc("uJitter");
-            }, log);
             s.Taa = PostChainVk.Program(vk, PostChain.FullscreenVs, TaaStage.TaaFs, "TAA resolve", p =>
             {
                 s.TBlend = p.Loc("uBlend"); s.TJitterPx = p.Loc("uJitterPx"); s.TUpsample = p.Loc("uUpsample");
             }, log);
-            if (s.Motion == null || s.Taa == null)
-                log.Always("PostStack: the Vulkan TAA resolve or its velocity pass did not build (logged above) -- the taa "
-                         + "stage sits the session out and the frame draws unjittered");
+            if (s.Taa == null)
+                log.Always("PostStack: the Vulkan TAA resolve did not build (logged above) -- the taa stage sits the session "
+                         + "out and the frame draws unjittered");
         }
-        if (s.Motion == null || s.Taa == null) return false;
-        int w = viewport[2], h = viewport[3];
-        if (s.Vel.IsNull || s.VelW != w || s.VelH != h)
-        {
-            vk.Destroy(s.Vel);
-            s.Vel = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rg16F, w, h, 1, 1, 1, 1,
-                                                 ImageUse.Sampled | ImageUse.ColorTarget, "vk velocity", AliasLanes.Record));
-            s.VelW = w; s.VelH = h;
-            if (s.Vel.IsNull) return false;
-        }
+        if (s.Taa == null) return false;
         if (s.Hist0.IsNull || s.HistW != dw || s.HistH != dh)
         {
             vk.Destroy(s.Hist0); vk.Destroy(s.Hist1);
@@ -253,6 +251,35 @@ internal static unsafe partial class PostStack
             s.HistW = dw; s.HistH = dh;
             s.HistValid = false;
             if (s.Hist0.IsNull || s.Hist1.IsNull) { s.Hist0 = default; return false; }
+        }
+        return VelocityReady(vk, s, viewport, vp, vpClean, depth, cl, log);
+    }
+
+    /// <summary>The camera velocity, painted off the finished depth into the render-size velocity target, with the
+    /// movers and the grass over it: what TAA and FSR both reproject through. False when its pass did not build.</summary>
+    private static bool VelocityReady(VkBackend vk, StackVkState s, int* viewport, Matrix4x4* vp, Matrix4x4* vpClean,
+                                      ImageId depth, CommandList cl, ExtenderLog log)
+    {
+        if (!s.MotionTried)
+        {
+            s.MotionTried = true;
+            s.Motion = PostChainVk.Program(vk, PostChain.FullscreenVs, MotionVectors.CameraFs, "camera velocity", p =>
+            {
+                s.MInvVp = p.Loc("uInvVP"); s.MPrevVp = p.Loc("uPrevVP"); s.MSize = p.Loc("uSize"); s.MJitter = p.Loc("uJitter");
+            }, log);
+            if (s.Motion == null)
+                log.Always("PostStack: the Vulkan velocity pass did not build (logged above) -- TAA and FSR sit the session out "
+                         + "and the frame draws unjittered");
+        }
+        if (s.Motion == null) return false;
+        int w = viewport[2], h = viewport[3];
+        if (s.Vel.IsNull || s.VelW != w || s.VelH != h)
+        {
+            vk.Destroy(s.Vel);
+            s.Vel = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rg16F, w, h, 1, 1, 1, 1,
+                                                 ImageUse.Sampled | ImageUse.ColorTarget, "vk velocity", AliasLanes.Record));
+            s.VelW = w; s.VelH = h;
+            if (s.Vel.IsNull) return false;
         }
         if (!Matrix4x4.Invert(*vp, out Matrix4x4 inv)) return false;
         Matrix4x4 prev = MotionVectors.NoteVk(vpClean, AlloyRenderer.FrameSeq);
@@ -268,6 +295,46 @@ internal static unsafe partial class PostStack
         AlloyRenderer.VkMoverMotion(vk, cl, s.Vel, w, h, vp, prev, log);
         AlloyRenderer.VkGrassMotion(vk, cl, s.Vel, w, h, vp, prev);
         cl.EndLabel();
+        return true;
+    }
+
+    /// <summary>FSR 3.1 on this frame's full-window perspective view: the velocity, then the upscale into a display-size
+    /// image that becomes <paramref name="hdr"/>, with <paramref name="viewport"/> the whole display, so the resolve and
+    /// the stack run at the display size. A refusal stands FSR down for the session. True when FSR drew.</summary>
+    private static bool FsrVk(VkBackend vk, StackVkState s, CommandList cl, ref ImageId hdr, ImageId depth, Matrix4x4* vp,
+                              Matrix4x4* vpClean, ref int* viewport, int* full, float near, float far, float fovY, ExtenderLog log)
+    {
+        if (!Fsr.On) { Fsr.NoteScale(log); return false; }
+        int rw = viewport[2], rh = viewport[3], dw = full[2], dh = full[3];
+        // ponytail: one context and one history, so only the full-window world view; a second or orthographic view
+        // draws unsmoothed. Per-view contexts if those views ever matter.
+        if (fovY <= 0f || vk.CompositeSize != (dw, dh)) return false;
+        if (vk.FsrReady(rw, rh, dw, dh) is string why) { Fsr.Refuse(why, log); return false; }
+        if (s.FsrOut.IsNull || s.FsrW != dw || s.FsrH != dh)
+        {
+            vk.Destroy(s.FsrOut);
+            s.FsrOut = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, dw, dh, 1, 1, 1, 1,
+                                                    ImageUse.Sampled | ImageUse.Storage, "vk fsr output"));
+            s.FsrW = dw; s.FsrH = dh;
+            if (s.FsrOut.IsNull) { Fsr.Refuse($"its {dw}x{dh} output image was refused (logged above)", log); return false; }
+        }
+        if (s.FsrExposure.IsNull)
+        {
+            s.FsrExposure = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.R32F, 1, 1, 1, 1, 1, 1,
+                                                         ImageUse.Sampled | ImageUse.CopyDst, "vk fsr exposure"));
+            if (s.FsrExposure.IsNull) { Fsr.Refuse("its exposure image was refused (logged above)", log); return false; }
+        }
+        float exposure = Post.Exposure.V;
+        if (exposure != s.FsrExposureSet && vk.Upload(s.FsrExposure, 0, 0, MemoryMarshal.AsBytes(new ReadOnlySpan<float>(in exposure))))
+            s.FsrExposureSet = exposure;
+        if (!VelocityReady(vk, s, viewport, vp, vpClean, depth, cl, log)) { Fsr.Refuse("the velocity pass did not build", log); return false; }
+        Fsr.Note(rw, rh, dw, dh, log);
+        cl.BeginLabel("fsr"u8);
+        cl.Upscale(Fsr.Command(hdr, depth, s.Vel, s.FsrExposure, s.FsrOut, rw, rh, PostChain.JitterX, PostChain.JitterY,
+                               Fsr.FrameMs(), near, far, fovY, Fsr.TakeReset()));
+        cl.EndLabel();
+        hdr = s.FsrOut;
+        viewport = full;
         return true;
     }
 

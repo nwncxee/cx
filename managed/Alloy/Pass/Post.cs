@@ -3,22 +3,38 @@ using CX.Framework;
 namespace CX.Alloy;
 
 /// <summary>The <c>post</c> group: the storage <see cref="PostChain"/>, <see cref="PostStack"/> and
-/// <see cref="ToonStage"/> read. No master -- the resolve IS the Alloy frame; <c>hdr</c> and the render scale
-/// are the Renderer group's. There is no auto exposure: <c>exposure</c> is one fixed linear gain on the
-/// resolved frame BEFORE the tonemap, because adaptation re-grades an area away from its builder's lighting.</summary>
+/// <see cref="ToonStage"/> read. No master -- the resolve IS the Alloy frame; <c>hdr</c> is the Renderer group's.
+/// There is no auto exposure: <c>exposure</c> is one fixed linear gain on the resolved frame BEFORE the tonemap, because adaptation re-grades an area away from its builder's lighting.</summary>
 internal static class Post
 {
     internal static readonly KnobGroup G;
-    internal static readonly Knob<float> Exposure, Bloom, Threshold, Knee,
+    internal static readonly Knob<float> Scale, Exposure, Bloom, Threshold, Knee,
                                          AcesMix, TmKnee, Dither, TaaBlend, TaaSharp, ToonBands, ToonInk, ToonEdge;
-    internal static readonly Knob<bool> Taa, Taau, HalfRes, Stack, FbPost, ClearViz, SkyRaw;
-    internal static readonly Knob<int> Tonemap, Viz;
+    internal static readonly Knob<string> Aa;
+    internal static readonly Knob<bool> Taau, HalfRes, Stack, FbPost, ClearViz, SkyRaw;
+    internal static readonly Knob<int> Smaa, Tonemap, Viz;
+    /// <summary><see cref="Aa"/>'s values: the anti-aliaser that draws.</summary>
+    internal const string AaFsr = "fsr", AaTaa = "taa", AaSmaa = "smaa", AaOff = "off";
 
     static Post()
     {
         G = KnobGroup.Declare("post", "Graphics", "Image", order: 330);
         G.Status = PostChain.Describe;
+        G.PanelStatus = CX.Alloy.Fsr.PanelLine;
 
+        G.Section("Anti-aliasing");
+        Scale = G.Slider("scale", "Render scale", 0.25f, 2f, 0.05f, 1f,
+                         help: "Size of the 3D frame relative to your screen. Below 1 renders fewer pixels and upscales (faster); "
+                             + "above 1 supersamples (sharper, slower). The UI is never scaled.");
+        Aa = G.Dropdown("aa", "Anti-aliasing", new[] { AaFsr, AaTaa, AaSmaa, AaOff }, AaTaa, new[] { "FSR 3.1", "TAA", "SMAA", "Off" },
+                        help: "How edges are smoothed. FSR 3.1 rebuilds the full-resolution picture from the render scale's smaller "
+                            + "frame and the frames before it; at render scale 1 it is the anti-aliasing, and above 1 TAA draws instead. "
+                            + "TAA smooths edges over several frames. SMAA smooths each frame on its own.",
+                        changed: () => { CX.Alloy.Fsr.Revoke(); TaaStage.Reset(); })
+             .Ladder(Quality.Preset, Quality.Classic(AaSmaa, AaTaa));
+        Smaa = G.Dropdown("smaa", "SMAA quality", new[] { 1, 2, 3 }, 2, new[] { "medium", "high", "ultra" },
+                          help: "How far SMAA searches along an edge. Higher finds longer edges and costs more.");
+        Smaa.ShowIf = static () => Aa.V == AaSmaa;
         G.Section("Exposure");
         Exposure = G.Slider("exposure", "Exposure", 0.25f, 4f, 0.05f, 1f,
                             help: "Overall brightness before tone mapping. 1 is neutral.");
@@ -31,10 +47,6 @@ internal static class Post
                              help: "How bright values above white are compressed.",
                              format: v => v switch { PostChain.TonemapShoulder => "shoulder", PostChain.TonemapNeutral => "neutral", _ => "aces" })
                   .Ladder(Quality.Preset, Quality.Classic(PostChain.TonemapShoulder, PostChain.TonemapAces));
-        G.Section("Anti-aliasing");
-        Taa = G.Toggle("taa", "Temporal anti-aliasing", true, help: "Smooths edges over several frames.")
-              .Ladder(Quality.Preset, Quality.Classic(false, true));
-        Taa.Changed = () => { if (Taa.V) TaaStage.Reset(); };
         G.Section("Bloom");
         Threshold = G.Slider("threshold", "Bloom threshold", 0f, 4f, 0.05f, 1f, tier: Tier.Advanced);
         Knee = G.Slider("knee", "Bloom knee", 0f, 1f, 0.05f, 0.5f, tier: Tier.Advanced);

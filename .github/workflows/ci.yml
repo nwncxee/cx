@@ -50,6 +50,7 @@ jobs:
             'tools/analyzers/*'
             'tools/gates/*'
             tools/build-openal.sh
+            'tools/ffx/*'
             tools/deps.json
             tools/deps.py
             packaging/cx-launch

@@ -371,7 +371,7 @@ the stage.
 - `<name>` is the GLSL identifier a program reads the image by: at most 31 characters, unique among the stage's
   images, and not in the reserved `gl_` space.
 - `tex2d` / `tex3d` take their extent in texels. `view <N>` is the **main view's render size** divided by `N`
-  (rounded up, `N` in 1..8), so it follows the window and `alloy.scale`; a view image is always
+  (rounded up, `N` in 1..8), so it follows the window and `post.scale`; a view image is always
   `CLAMP_TO_EDGE`.
 - `<format>` is one of `rgba8`, `rgba16f`, `rgba32f`, `rg16f`, `rg8`, `r16f`, `r32f`, `r8`,
   `r11f_g11f_b10f`.
