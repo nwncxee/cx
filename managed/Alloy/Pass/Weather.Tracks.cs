@@ -43,11 +43,19 @@ internal static unsafe partial class Weather
     /// <summary>Stamped texel rows not yet uploaded, in unwrapped texel coordinates; lo &gt; hi = none.</summary>
     private static int _trackLo = int.MaxValue, _trackHi = int.MinValue;
     private static long _trackEpoch = Stopwatch.GetTimestamp();
-    /// <summary>Which foot each recent creature put down last, direct-mapped by id: a bucket that changes hands
-    /// restarts its parity rather than sharing it.</summary>
-    private static readonly uint[] _sideId = new uint[SideBuckets];
-    private static ulong _sideBits;
+    /// <summary>Which foot each recent creature put down last and when, direct-mapped by id: a bucket that
+    /// changes hands restarts its parity rather than sharing it.</summary>
+    private sealed class FootSideState
+    {
+        public readonly uint[] Id = new uint[SideBuckets];
+        public readonly float[] At = new float[SideBuckets];
+        public ulong Bits;
+    }
+    private static FootSideState _side = new();
     private const int SideBuckets = 64;
+    /// <summary>Seconds under which a creature's second footstep is the same footfall: the stock walk and run carry
+    /// each <c>snd_footstep</c> event twice at one time, and a sprint steps every ~0.25 s.</summary>
+    private const float SameStepSec = 0.12f;
     /// <summary>Metres from the camera's follow target a print may land: past it, it could only take a texel from
     /// a print nearer the player.</summary>
     private const float TrackRangeM = 24f;
@@ -78,9 +86,12 @@ internal static unsafe partial class Weather
         if (!float.IsFinite(p.X) || !float.IsFinite(p.Y) || !float.IsFinite(p.Z)) return;
         Vector2 h = facing.LengthSquared() > 1e-6f ? Vector2.Normalize(facing) : Vector2.UnitY;
         int bit = (int)(id % SideBuckets);
-        if (_sideId[bit] != id) { _sideId[bit] = id; _sideBits &= ~(1UL << bit); }
-        _sideBits ^= 1UL << bit;
-        float side = ((_sideBits >> bit) & 1) != 0 ? FootSide : -FootSide;
+        FootSideState fs = _side;
+        if (fs.Id[bit] != id) { fs.Id[bit] = id; fs.Bits &= ~(1UL << bit); }
+        else if (now - fs.At[bit] < SameStepSec) return;
+        fs.At[bit] = now;
+        fs.Bits ^= 1UL << bit;
+        float side = ((fs.Bits >> bit) & 1) != 0 ? FootSide : -FootSide;
         Vector2 at = new Vector2(p.X, p.Y) + h * FootAhead + new Vector2(h.Y, -h.X) * side;
         Vector2 focus = FrameInputs.HasFocus ? new Vector2(FrameInputs.Focus.X, FrameInputs.Focus.Y) : at;
         if (_track != null && Tracks.V && _snow > TrackMinSnow && SnowStrength.V > 0f && Vector2.Distance(at, focus) < TrackRangeM)
@@ -182,6 +193,7 @@ internal static unsafe partial class Weather
         if (_track != null) Array.Clear(_track);
         _vks.TrackAll = true; _trackLo = int.MaxValue; _trackHi = int.MinValue;
         _trackEpoch = Stopwatch.GetTimestamp();
+        _side = new FootSideState();
         Array.Fill(_foot, new Vector4(0f, 0f, 0f, float.NegativeInfinity));
     }
 
@@ -191,8 +203,8 @@ internal static unsafe partial class Weather
     internal static string TrackLib => ShaderSource.Get("cx_wx_track.glsl");
 
     /// <summary>A print is shaped like a sole and lies along the heading; it is read back only in its own tile
-    /// repeat and fades out over the refill time; consecutive steps alternate feet; a dry or snowless footfall
-    /// leaves nothing; and the GLSL sizes are the C# ones.</summary>
+    /// repeat and fades out over the refill time; consecutive steps alternate feet, a doubled event counting as
+    /// one; a dry or snowless footfall leaves nothing; and the GLSL sizes are the C# ones.</summary>
     private static void TrackSelfCheck(Checker check)
     {
         Vector2 h = Vector2.UnitX, side = new(0f, -1f);
@@ -230,16 +242,16 @@ internal static unsafe partial class Weather
           && GlslConst(v, "CX_FOOT_LIFE") == FootLifeSec && GlslConst(v, "CX_FOOT_STAGGER") == FootStaggerSec,
           "the foot crowns live as long in the stage as the CPU keeps them");
 
-        TrackTexel[]? track = _track; float snow = _snow, wet = _wet; bool en = Enabled.V; ulong sides = _sideBits;
+        TrackTexel[]? track = _track; float snow = _snow, wet = _wet; bool en = Enabled.V; FootSideState sides = _side;
         Vector4[] foot = (Vector4[])_foot.Clone(); int next = _footNext, prints = _prints;
         // the player's cx.cfg is live here: pin every knob the path reads to its declared default
         bool tr = Tracks.V; float fill = TrackFill.V, fs = FootSplash.V, ws = WetStrength.V, ss = SnowStrength.V;
         Tracks.V = true; TrackFill.V = TrackFill.Default; FootSplash.V = FootSplash.Default; WetStrength.V = 1f; SnowStrength.V = 1f;
-        _track = null; Enabled.V = true; Array.Clear(_sideId); _snow = 0f; _wet = 0f; Array.Fill(_foot, new Vector4(0f, 0f, 0f, float.NegativeInfinity));
+        _track = null; Enabled.V = true; _side = new FootSideState(); _snow = 0f; _wet = 0f; Array.Fill(_foot, new Vector4(0f, 0f, 0f, float.NegativeInfinity));
         _track = new TrackTexel[TrackSize * TrackSize];
-        FootDown(new Vector3(20f, 20f, 0f), h, 7, 1f, true);
+        FootDown(new Vector3(20f, 20f, 0f), h, 7, 0.5f, true);
         check.Expect(TrackAt(_track, new Vector2(20f + FootAhead + ToeAt, 20f - FootSide), 1f, 0.01f) == 0f
-          && TrackAt(_track, new Vector2(20f + FootAhead + ToeAt, 20f + FootSide), 1f, 0.01f) == 0f && FootLive(1f) == 0,
+          && TrackAt(_track, new Vector2(20f + FootAhead + ToeAt, 20f + FootSide), 1f, 0.01f) == 0f && FootLive(0.6f) == 0,
           "a footfall on dry, bare ground leaves no print and throws no water");
         _snow = 1f;
         FootDown(new Vector3(20f, 20f, 0f), h, 7, 1f, true);
@@ -251,13 +263,30 @@ internal static unsafe partial class Weather
         for (float y = -0.2f; y <= 0.2f; y += 0.025f)
             if (_track != null && TrackAt(_track, new Vector2(20f + FootAhead + ToeAt, 22f + y), 1.5f, 0.01f) > 0.5f) second = new Vector2(0f, y);
         check.Expect(first.Y * second.Y < 0f, $"one creature's steps alternate feet (offsets {first.Y:F3} then {second.Y:F3})");
+        FootDown(new Vector3(24f, 20f, 0f), h, 7, 2.5f, true);
+        FootDown(new Vector3(24f, 20f, 0f), h, 7, 2.5f, true);
+        FootDown(new Vector3(24f, 22f, 0f), h, 7, 3f, true);
+        int doubledSides = 0;
+        float doubled = 0f, after = 0f;
+        for (float y = -0.2f; y <= 0.2f; y += 0.025f)
+        {
+            if (_track == null) break;
+            if (TrackAt(_track, new Vector2(24f + FootAhead + ToeAt, 20f + y), 3f, 0.01f) > 0.5f)
+            {
+                if (doubled == 0f || MathF.Sign(y) != MathF.Sign(doubled)) doubledSides++;
+                doubled = y;
+            }
+            if (TrackAt(_track, new Vector2(24f + FootAhead + ToeAt, 22f + y), 3f, 0.01f) > 0.5f) after = y;
+        }
+        check.Expect(doubledSides == 1 && doubled * after < 0f,
+          $"a footstep event the animation carries twice is one footfall: one foot down ({doubledSides} sides), and the next step on the other ({doubled:F3} then {after:F3})");
         _snow = 0f; _wet = 1f;
-        FootDown(new Vector3(20f, 20f, 0f), h, 7, 2f, false);
-        check.Expect(FootLive(2.1f) == 0, "a wet footfall under shelter throws nothing");
-        FootDown(new Vector3(20f, 20f, 0f), h, 7, 2f, true);
-        int live = FootLive(2.1f), gone = FootLive(2f + FootLifeSec + FootStaggerSec + 0.01f);
+        FootDown(new Vector3(20f, 20f, 0f), h, 7, 4f, false);
+        check.Expect(FootLive(4.1f) == 0, "a wet footfall under shelter throws nothing");
+        FootDown(new Vector3(20f, 20f, 0f), h, 7, 5f, true);
+        int live = FootLive(5.1f), gone = FootLive(5f + FootLifeSec + FootStaggerSec + 0.01f);
         check.Expect(live == 1 && gone == 0, $"a wet footfall throws one splash for its life and then none ({live}, {gone})");
-        _track = track; _snow = snow; _wet = wet; Enabled.V = en; _sideBits = sides; _footNext = next; _prints = prints;
+        _track = track; _snow = snow; _wet = wet; Enabled.V = en; _side = sides; _footNext = next; _prints = prints;
         Array.Copy(foot, _foot, FootMax);
         Tracks.V = tr; TrackFill.V = fill; FootSplash.V = fs; WetStrength.V = ws; SnowStrength.V = ss;
     }
