@@ -83,7 +83,7 @@ jobs:
           submodules: recursive # funchook pulls diStorm3 as a nested submodule
           persist-credentials: false
 
-      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
 
       # Read-only: CI never pushes to the binary cache. docs/binary-cache.md says when a maintainer refills it.
       - uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866 # v17
@@ -136,7 +136,7 @@ jobs:
       - name: Decision records
         run: bash bin/check-adr docs/adr/*.md
 
-      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
 
       # flake.nix's gates shell: the pinned Python, git and the workflow linters, nothing that needs a compiler.
       - name: No decompiled code in the tree
