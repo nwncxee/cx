@@ -77,7 +77,7 @@ internal static unsafe partial class StageResources
 
     /// <summary>Sampled bindings the stage images may take on Vulkan: from <see cref="TextureSlots.ResourceBase"/> to the
     /// device's set-0 sampled range.</summary>
-    private const uint VkSampledTop = 48;
+    private const uint VkSampledTop = VkBackend.SampledSlots;
 
     /// <summary>One RGBA texel of the widest format a fog image can have, and the readback ring's slots.</summary>
     private const int VkFogBytes = 16, VkFogSlots = 3;
