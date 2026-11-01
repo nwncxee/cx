@@ -58,6 +58,7 @@ internal static partial class GpuGolden
         PipelineTallySelfCheck(vk, check, log);
         DynamicBlendSelfCheck(vk, check, log);
         PipelineLibrarySelfCheck(vk, check, log);
+        LinkedVerticesSelfCheck(vk, check, log);
         BindlessPastSelfCheck(vk, check, log);
     }
 

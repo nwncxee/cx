@@ -261,12 +261,13 @@ internal sealed unsafe partial class VkBackend
             pMultisampleState = &ms, pDepthStencilState = &ds, pColorBlendState = &cb, pDynamicState = nd > 0 ? &dy : null,
             layout = _pipeLayout,
         };
-        // a link takes every state from its libraries: naming one again would define it twice
-        if (libs != null)
-        {
-            gci.pVertexInputState = null; gci.pInputAssemblyState = null; gci.pViewportState = null; gci.pRasterizationState = null;
-            gci.pMultisampleState = null; gci.pDepthStencilState = null; gci.pColorBlendState = null;
-        }
+        // a library gets only its part's state: NVIDIA bakes a pre-raster library's vertex input, which others share
+        Part own = libs != null ? Part.None : parts;
+        if ((own & Part.VertexInput) == 0) { gci.pVertexInputState = null; gci.pInputAssemblyState = null; }
+        if ((own & Part.PreRaster) == 0) { gci.pViewportState = null; gci.pRasterizationState = null; }
+        if ((own & Part.Fragment) == 0) gci.pDepthStencilState = null;
+        if ((own & (Part.Fragment | Part.Output)) == 0) gci.pMultisampleState = null;
+        if ((own & Part.Output) == 0) gci.pColorBlendState = null;
         VkPipeline pipe;
         if (_vkd.vkCreateGraphicsPipelines(_pipeCache, 1, &gci, &pipe) == VkResult.Success) return pipe;
         string why = $"{what}: vkCreateGraphicsPipelines refused ({(libs == null ? parts.ToString() : parts == Part.Whole ? "the optimised link" : "the link")})";
