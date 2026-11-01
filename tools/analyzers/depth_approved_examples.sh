@@ -17,30 +17,12 @@ cat > "$tmp/fixture.csproj" <<EOF
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="$repo/tools/analyzers/cx_analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <Compile Include="$repo/managed/Alloy/Core/GlDepth.cs;$repo/managed/Rhi/Pipeline.cs;$repo/managed/Rhi/Descriptors.cs;$repo/managed/Rhi/Handles.cs" />
   </ItemGroup>
 </Project>
 EOF
 printf '%s\n' '[*.cs]' 'dotnet_diagnostic.CX0006.severity = error' > "$tmp/.editorconfig"
-mkdir -p "$tmp/managed/Rhi" "$tmp/managed/Alloy/Core" "$tmp/managed/Alloy/Pass"
-cat > "$tmp/managed/Rhi/Stubs.cs" <<'EOF'
-namespace CX.Rhi;
-public enum CompareOp : byte { Never, Less, Equal, LessEqual, Greater, NotEqual, GreaterEqual, Always }
-public enum LoadOp : byte { Load, Clear, DontCare }
-public enum StoreOp : byte { Store, DontCare }
-public readonly record struct ImageId(int Value);
-public readonly record struct DepthState(bool Test = false, bool Write = false, CompareOp Compare = CompareOp.LessEqual);
-public readonly record struct DepthAttachment(ImageId Image, int Mip, int Layer, LoadOp Load, StoreOp Store, float Depth);
-EOF
-cat > "$tmp/managed/Alloy/Core/GlDepth.cs" <<'EOF'
-using CX.Rhi;
-namespace CX.Alloy;
-internal static class GlDepth
-{
-    internal const CompareOp Nearer = CompareOp.Less;
-    internal const CompareOp NearerOrEqual = CompareOp.LessEqual;
-    internal const float Clear = 1f;
-}
-EOF
+mkdir -p "$tmp/managed/Alloy/Pass"
 
 # E5
 # Given a world pass whose depth test is GL's, less or equal

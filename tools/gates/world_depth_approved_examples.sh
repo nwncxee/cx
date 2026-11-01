@@ -13,7 +13,7 @@ plant() {
   local root=$tmp/$1; shift
   mkdir -p "$root/managed/Alloy/Shaders" "$root/tools/analyzers"
   printf '%s\n' 'private static readonly string[] Allowed =' '{' '    "/managed/Alloy/Pass/CasterPass.Vk.cs",' '};' \
-    > "$root/tools/analyzers/GlDepth.cs"
+    > "$root/tools/analyzers/DepthConvention.cs"
   mkdir -p "$root/managed/Alloy/Pass"
   printf '%s\n' 'namespace CX.Alloy;' > "$root/managed/Alloy/Pass/CasterPass.Vk.cs"
   while [ $# -gt 0 ]; do
@@ -83,6 +83,9 @@ refuses world-depth.sh "$r" "E4" "cx_e4.glsl:2" "CxDepthViewZ"
 # Boundary: a shader that calls CxDepthViewZ passes
 r=$(plant e4b "managed/Alloy/Shaders/cx_e4.glsl=float d = texture(uSceneDepth, uv).r;\nfloat v = CxDepthViewZ(d, uProj);\n")
 passes world-depth.sh "$r" "E4 boundary"
+# The same copy written over an uploaded (M33, M43) pair is refused too.
+r=$(plant e4c "managed/Alloy/Shaders/cx_e4.glsl=float d = texture(uSceneDepth, uv).r;\nfloat v = uDepthK.y / (d + uDepthK.x);\n")
+refuses world-depth.sh "$r" "E4, an uploaded pair" "cx_e4.glsl:2" "CxDepthViewZ"
 
 # E8
 # Given a file named on the GL-depth list no longer exists

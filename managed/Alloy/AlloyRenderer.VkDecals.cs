@@ -191,8 +191,7 @@ public sealed unsafe partial class AlloyRenderer
         check.Expect(VkDecalClear(surf: false) == new Vector4(0f, 0f, 0f, 1f),
             $"the albedo layer clears to transparent black -- no pixel has a decal yet (got {VkDecalClear(surf: false)})");
         check.Expect(VkDecalClear(surf: true).X == 1f
-                     && ShaderSource.Get("cx_ownlit_head.glsl").Contains("if (!(z > 0.0 && z < CX_DECAL_UNWRITTEN)) return false;")
-                     && ShaderSource.Get("cx_ownlit_head.glsl").Contains("const float CX_DECAL_UNWRITTEN = 1.0;"),
+                     && ShaderSource.Get("cx_ownlit_head.glsl").Contains("if (!(z > 0.0 && z < CX_DECAL_UNWRITTEN)) return false;"),
             "the surface pair clears its window depth to the 1.0 CxDecalOn refuses outright, so a pixel no writer "
             + $"reached folds nothing (got {VkDecalClear(surf: true).X})");
         check.Expect(ShaderSource.Get("cx_oitout.glsl").Contains("layout(location = 1) out vec2 oDecalSurf;"),

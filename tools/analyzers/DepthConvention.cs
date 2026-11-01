@@ -10,7 +10,7 @@ namespace CX.Analyzers;
 /// <summary>CX0006: GL's depth convention outside the files that keep it. The world's depth is reversed, so GL's test,
 /// a depth test with no comparison named, and a clear to 1 are refused; the casters and the GUI name <c>GlDepth</c>.</summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public sealed class GlDepth : DiagnosticAnalyzer
+public sealed class DepthConvention : DiagnosticAnalyzer
 {
     /// <summary>The rule's id, the one a build log names.</summary>
     public const string Id = "CX0006";
@@ -88,10 +88,7 @@ public sealed class GlDepth : DiagnosticAnalyzer
     private static IArgumentOperation? Arg(IObjectCreationOperation op, string name)
         => op.Arguments.FirstOrDefault(a => a.Parameter?.Name == name);
 
-    private static bool IsOne(ILiteralOperation l)
-        => l.ConstantValue is { HasValue: true, Value: float f } ? f == 1f
-         : l.ConstantValue is { HasValue: true, Value: double d } ? d == 1.0
-         : l.ConstantValue is { HasValue: true, Value: int i } && i == 1;
+    private static bool IsOne(ILiteralOperation l) => l.ConstantValue is { HasValue: true, Value: 1f or 1 };
 
     private static bool In(SyntaxNode node, string[] paths)
     {

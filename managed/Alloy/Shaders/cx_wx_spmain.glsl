@@ -108,6 +108,8 @@ vec3 CxSplashLand(vec2 xy, out vec3 up, out bool ok)
     return p;
 }
 
+#include "cx_depthlin.glsl"
+
 /// False when the frame shows the scene well past `p`: the cover map has a surface there the frame never drew
 /// (a wall the keyhole dissolved) and a crown on it would hang in the air. Off screen there is nothing to
 /// test, and a point something nearer hides is the depth test's to clip.

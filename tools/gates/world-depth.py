@@ -11,11 +11,11 @@ import os
 import re
 import sys
 
-WORLD_DEPTH = r"(?:uDepth|uDepthMs|uSceneDepth|uGbDepth|uFbDepth|uTrigDepth)"
+WORLD_DEPTH = r"(?:uDepth|uDepthMs|uSceneDepth|uGbDepth|uFbDepth|uTrigDepth|uOitDepth)"
 READ = r"\b(?:texture|textureLod|texelFetch)\s*\(\s*"
 GL_DECODE = r"\s*\*\s*2\.0\s*-\s*1\.0"
 GL_FAR = r"\s*(?:>=\s*1\.0|<\s*1\.0)"
-LINEAR = re.compile(r"\[3\]\s*(?:\.z|\[2\])\s*/\s*\(")
+LINEAR = re.compile(r"\[3\]\s*(?:\.z|\[2\])\s*/\s*\(|\b(\w+)\.y\s*/\s*\([^()]*\+\s*\1\.x\s*\)")
 LINEAR_HOME = "cx_depthlin.glsl"
 FN_HEAD = re.compile(r"^\s*(?:\w+\s+)+?(\w+)\s*\(([^()]*)\)\s*\{?\s*$")
 CALL = re.compile(r"\b(\w+)\s*\(")
@@ -86,14 +86,11 @@ def misses(path, lines, world):
         if m:
             held.add(m.group(1))
         vals = "|".join(sorted(held | world(i - 1)))
-        if read.search(code) and re.search(r"\)\s*\.\s*[rx]" + GL_DECODE, code):
-            out.append(f"{path}:{i}: a world depth read decoded as GL's (* 2.0 - 1.0)")
-        elif read.search(code) and re.search(r"\)\s*\.\s*[rx]" + GL_FAR, code):
-            out.append(f"{path}:{i}: a world depth read tested against GL's far plane (1.0)")
-        elif vals and re.search(r"\b(?:" + vals + r")" + GL_DECODE, code):
-            out.append(f"{path}:{i}: a world depth decoded as GL's (* 2.0 - 1.0)")
-        elif vals and re.search(r"\b(?:" + vals + r")" + GL_FAR, code):
-            out.append(f"{path}:{i}: a world depth tested against GL's far plane (1.0)")
+        shapes = ([r"\)\s*\.\s*[rx]"] if read.search(code) else []) + ([r"\b(?:" + vals + r")"] if vals else [])
+        for gl, how in ((GL_DECODE, "decoded as GL's (* 2.0 - 1.0)"), (GL_FAR, "tested against GL's far plane (1.0)")):
+            if any(re.search(shape + gl, code) for shape in shapes):
+                out.append(f"{path}:{i}: a world depth {how}")
+                break
     return out
 
 
@@ -103,11 +100,12 @@ def world_params(texts):
     for lines in texts.values():
         fns.update(functions(lines))
     reach = {n: set() for n in fns}
+    spans = {path: functions(lines) for path, lines in texts.items()}
     changed = True
     while changed:
         changed = False
-        for lines in texts.values():
-            here = functions(lines)
+        for path, lines in texts.items():
+            here = spans[path]
             held = set()
             for i, raw in enumerate(lines):
                 code = code_of(raw)
@@ -115,7 +113,7 @@ def world_params(texts):
                 if m:
                     held.add(m.group(1))
                 scope = set(held)
-                for name, (a, b, params) in here.items():
+                for name, (a, b, _) in here.items():
                     if a <= i <= b:
                         scope |= reach.get(name, set())
                 world = re.compile(r"^(?:" + WORLD_DEPTH + "".join("|" + re.escape(n) for n in scope) + r")$"

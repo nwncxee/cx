@@ -642,8 +642,17 @@ The contract a stage keeps: declare `vec4 CxStage(vec4 c)` over the display-spac
 display space on; the shared main dithers after it. `uDepth` carries the frame's depth for a stage
 that wants it, reversed: 1 at the near plane, 0 at the far plane and the sky. Under the projection the stack hands
 a stage, that depth is the NDC z itself, so it linearises as `uProj[3].z / (d + uProj[2].z)` (`CxDepthViewZ` in
-`cx_scenedepth`), not through GL's `d * 2.0 - 1.0`. A stage whose override AND embedded text both fail is dropped from the stack with
+`cx_depthlin`), not through GL's `d * 2.0 - 1.0`. A stage whose override AND embedded text both fail is dropped from the stack with
 `PostStack: the <name> stage did not build -- DROPPED`, and the frame resolves without it.
+
+### Depth decode
+
+**Applies to:** `cx_depthlin`, the one decode from world depth to view distance.
+
+**Rejects:** nothing. Every Alloy reader of the scene's depth calls `CxDepthViewZ`, so an override changes
+the distance ambient occlusion, reflections, fog, decals, the deferred lights and the soft particles all see.
+The world's depth is reversed and its projection folded, so the stored depth is the NDC z: an override that
+decodes it as GL's `d * 2.0 - 1.0` puts every one of them wrong at once.
 
 ### Caster inertness
 

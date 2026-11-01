@@ -125,10 +125,13 @@ python3 tools/engine/views.py
 # CX-192: every rule in CLAUDE.md that a script can check is a gate under tools/gates/ (after views.py: the
 # engine-views gate reads the generated members). CI and the Claude Code hook run the same runner.
 # --no-gates: the release build, whose tagged tree already passed ci / gates on its pull request.
-if [ "$1" != --no-gates ]; then bash tools/gates/run.sh; fi
-# The compiler rules' approved examples compile planted C# against tools/analyzers/, so they need the SDK the gates
+# The rules' own approved examples plant trees and, for the compiler rules, compile them, which needs the SDK the gates
 # job does not carry; the build that has it runs them.
-if [ "$1" != --no-gates ]; then bash tools/analyzers/depth_approved_examples.sh; fi
+if [ "$1" != --no-gates ]; then
+  bash tools/gates/run.sh
+  bash tools/gates/world_depth_approved_examples.sh
+  bash tools/analyzers/depth_approved_examples.sh
+fi
 
 echo ">> building managed lib (C# NativeAOT -> cx_managed.so)..."
 CX_VERSION=$(git describe --tags --always 2>/dev/null || echo dev)

@@ -3,5 +3,4 @@
 #include "cx_localshadow.glsl"
 #include "cx_lightfrag.glsl"
 #include "cx_sunshadow.glsl"
-#include "cx_depthlin.glsl"
 #include "cx_wx_spmain.glsl"
