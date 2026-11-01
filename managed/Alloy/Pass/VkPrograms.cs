@@ -27,6 +27,17 @@ internal static class VkPrograms
     /// table for them: a declaration it does not name is a translation error, not a silent unit 0.</summary>
     internal static readonly IReadOnlyDictionary<string, uint> Units = MakeUnits();
 
+    /// <summary><see cref="Units"/> plus the material units a hosted sky declares as <c>texUnit1</c> and up, on the
+    /// material-map block from unit 1, where a content stage's <c>texUnit1</c> sits too.</summary>
+    internal static readonly IReadOnlyDictionary<string, uint> SkyUnits = MakeSkyUnits();
+
+    private static Dictionary<string, uint> MakeSkyUnits()
+    {
+        var u = MakeUnits();
+        for (int i = 1; i < AlloyRenderer.MaxEngTex; i++) u[$"texUnit{i}"] = TextureSlots.MapBase + (uint)(i - 1);
+        return u;
+    }
+
     private static Dictionary<string, uint> MakeUnits()
     {
         var u = new Dictionary<string, uint>(StringComparer.Ordinal)
@@ -144,7 +155,7 @@ internal static class VkPrograms
         if (!SkyStage.Texts(StageResources.Prefix + resref, native: true, out var pair, out _)) return null;
         string what = $"VkPrograms sky {StageResources.Prefix}{resref}";
         string vs = Final(ShaderTexts.Lib(pair.Vs, log, what), log, what, true), fs = Final(ShaderTexts.Lib(pair.Fs, log, what), log, what, true);
-        if (StageResources.VkUnits(Units, vs + "\n" + fs, stage, -1, StageResources.DrawImgUnits, out string why) is not { } units)
+        if (StageResources.VkUnits(SkyUnits, vs + "\n" + fs, stage, -1, StageResources.DrawImgUnits, out string why) is not { } units)
             return new VkProgramText { Error = why };
         return WorldDepth.Translate(vs, fs, units);
     }
@@ -157,7 +168,7 @@ internal static class VkPrograms
         if (!SkyStage.Texts(resref, native: false, out var pair, out _)) return null;
         string what = $"VkPrograms sky {resref}";
         return WorldDepth.Translate(Final(ShaderTexts.Lib(pair.Vs, log, what), log, what, true),
-                                Final(ShaderTexts.Lib(pair.Fs, log, what), log, what, true), Units);
+                                Final(ShaderTexts.Lib(pair.Fs, log, what), log, what, true), SkyUnits);
     }
 
     /// <summary>The lit pair a content pair is spliced from on Vulkan: <see cref="LitTexts"/>, the text GL's lit
@@ -186,12 +197,26 @@ internal static class VkPrograms
     private static string Final(string raw, ExtenderLog? log, string what, bool host)
         => ShaderResource.Tokens(VanillaShader.Splice(raw, log, what, true, host));
 
+    /// <summary>A sky stage that samples its material's second and fourth textures translates, those two on units 3 and 5.
+    /// Oracle: the hand-written fixture and the map block's first unit, 3, written out.</summary>
+    private static void SkyMaterialUnits(Checker check)
+    {
+        const string Vs = "#version 460 core\nout vec2 vUV;\nvoid main() { vUV = vec2(0.0); gl_Position = vec4(0.0); }\n";
+        const string Fs = "#version 460 core\nin vec2 vUV;\nout vec4 o;\nuniform sampler2D texUnit1;\nuniform sampler2D texUnit3;\n"
+                        + "void main() { o = texture(texUnit1, vUV) + texture(texUnit3, vUV); }\n";
+        VkProgramText t = VkGlsl.Translate(Vs, Fs, SkyUnits);
+        check.Expect(t.Error == null, $"a sky stage's texUnit1 and texUnit3 have units ({t.Error})");
+        check.Expect(t.Opaques.Exists(o => o.Name == "texUnit1" && o.Binding == 3) && t.Opaques.Exists(o => o.Name == "texUnit3" && o.Binding == 5),
+            "texUnit1 sits on unit 3 and texUnit3 on unit 5");
+    }
+
     /// <summary>Every program here, translated and compiled for Vulkan 1.3, its loose block reflected. Oracles:
     /// shaderc's verdict on each stage; the push block's offsets against the hand-written 0, 4 .. 24 its seven
     /// four-byte members take; the compiled block against the translator's member list, two artifacts.</summary>
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "VkPrograms.SelfCheck");
+        SkyMaterialUnits(check);
         if (Native.Sym(SymbolMap.AppManager) != IntPtr.Zero) { check.Skip("on-device: the Vulkan pass builds its programs at its first frame"); return; }
         bool staged = true;
         foreach (string leaf in VulkanToolchain.Libraries) staged &= VulkanToolchain.Load(leaf);
