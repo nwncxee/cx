@@ -12,7 +12,8 @@ namespace CX.Alloy;
 /// <summary>
 /// The GUI path on Vulkan, on Vulkan: the layers <see cref="GuiCapture"/> listed and CX's own
 /// windows either side of NUI are recorded into the <see cref="CX.Rhi"/> command list and drawn into the composite
-/// Vulkan presents, over the same depth stacking GL Alloy's <see cref="GuiPass"/> uses. One flush is one submit.
+/// Vulkan presents, over the same depth stacking GL Alloy's <see cref="GuiPass"/> uses. One flush is one submit, the
+/// present's when it draws into the composite.
 /// </summary>
 internal static unsafe partial class GuiPassVk
 {
@@ -106,7 +107,7 @@ internal static unsafe partial class GuiPassVk
          + (_s.NoTexture == 0 ? "" : $", {_s.NoTexture} on the stand-in texture") + EngineStats();
 
     /// <summary>The flush: layers <paramref name="from"/>..<paramref name="mid"/>, CX's below-NUI windows, layers
-    /// <paramref name="mid"/>..<paramref name="to"/>, the above-NUI windows, in one submit. <paramref name="into"/> is
+    /// <paramref name="mid"/>..<paramref name="to"/>, the above-NUI windows, in one submit (the present's, for the composite). <paramref name="into"/> is
     /// null for the composite Vulkan presents; <paramref name="clearBlack"/> clears it first, which is the A/B's.</summary>
     internal static bool Flush(int from, int mid, int to, bool windows, ExtenderLog log, ImageId into = default, bool clearBlack = false)
     {
@@ -155,11 +156,16 @@ internal static unsafe partial class GuiPassVk
         return ok;
     }
 
-    /// <summary>The flush's one submit; a refusal is said once and counted after.</summary>
+    /// <summary>A held flush the present never queued is a dropped one, counted like a refused submit.</summary>
+    private static readonly Action<int, bool> HeldTold = (_, ran) => { if (!ran) _s.Dropped++; };
+
+    /// <summary>The flush's one submit; a refusal is said once and counted after. A flush into the composite rides the
+    /// present's submit, ahead of its blit.</summary>
     private static bool Submit(VkBackend vk, CommandList cl, ExtenderLog log)
     {
         GuiVkState s = _s;
-        if (!vk.Submit(cl))
+        if (s.Into.IsNull) cl.WhenDone(HeldTold, 0);
+        if (!(s.Into.IsNull ? vk.HoldForPresent(cl) : vk.Submit(cl)))
         {
             if (!s.DropSaid)
             {

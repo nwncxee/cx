@@ -29,8 +29,19 @@ internal sealed unsafe partial class VkBackend
     private readonly SwapState _swap = new();
     /// <summary>One acquire semaphore per frame in flight: the frame wait proves the present that waited on it is done.</summary>
     private readonly VkSemaphore[] _acquired = new VkSemaphore[FramesInFlight];
-    /// <summary>The present's own submit: no pass, only the composite's blit onto the acquired image.</summary>
+    /// <summary>The list <see cref="SubmitBlit"/> submits, empty: the blit is recorded after it.</summary>
     private CommandList? _presentList;
+
+    /// <summary>A command buffer recorded by <see cref="HoldForPresent"/> and not yet queued: its slot (null when none
+    /// is held), the list's name for its log lines, and the list's WhenDone work.</summary>
+    private sealed class HeldState
+    {
+        public Slot? Slot;
+        public string Name = "";
+        public readonly System.Collections.Generic.List<WhenDoneCall> WhenDone = [];
+    }
+
+    private readonly HeldState _held = new();
 
     /// <summary>The image the frame renders into and the GUI draws over, and what <see cref="Present"/> shows. Null id
     /// before the present target sized it.</summary>
@@ -55,7 +66,7 @@ internal sealed unsafe partial class VkBackend
     }
 
     /// <summary>End the frame: wait for the one <see cref="FramesInFlight"/> back, acquire a swapchain image, blit the
-    /// composite onto it in a submit of its own and present it. <paramref name="interval"/> is the engine's swap interval
+    /// composite onto it after the commands held for it, in one submit, and present it. <paramref name="interval"/> is the engine's swap interval
     /// (0 off, 1 vsync, -1 adaptive), which picks the present mode. False (logged) when there is no composite or the
     /// window refused the frame.</summary>
     internal bool Present(int interval, ExtenderLog log)
@@ -63,6 +74,7 @@ internal sealed unsafe partial class VkBackend
         if (!OnThread("Present")) return false;
         VkResult waited = WaitFrame();
         bool ok = waited == VkResult.Success ? ShowComposite(interval, log) : Fault($"Present: the frame {FramesInFlight} back never finished ({waited})");
+        SubmitHeld();
         EndFrame();
         return ok;
     }
@@ -82,9 +94,8 @@ internal sealed unsafe partial class VkBackend
             r = _vkd.vkAcquireNextImageKHR(_swap.Chain, WaitTimeoutNs, Acquired, default, &idx);
         }
         if (r != VkResult.Success && r != VkResult.SuboptimalKHR) return Fault($"Present: vkAcquireNextImageKHR returned {r}");
-        CommandList cl = _presentList ??= new CommandList("vulkan present", 256, log);
-        cl.Reset();
-        if (!Submit(cl, (int)idx)) { Unacquire(); return false; }
+        bool sent = _held.Slot != null ? SubmitHeld((int)idx) : SubmitBlit((int)idx, log);
+        if (!sent) { Unacquire(); return false; }
         VkSemaphore ready = _swap.Ready[idx];
         VkSwapchainKHR chain = _swap.Chain;
         var pi = new VkPresentInfoKHR
@@ -96,6 +107,14 @@ internal sealed unsafe partial class VkBackend
         else if (r != VkResult.Success) return Fault($"Present: vkQueuePresentKHR returned {r}");
         _swap.Presents++;
         return true;
+    }
+
+    /// <summary>The present's own submit when nothing is held: only the blit onto swapchain image <paramref name="idx"/>.</summary>
+    private bool SubmitBlit(int idx, ExtenderLog log)
+    {
+        CommandList cl = _presentList ??= new CommandList("vulkan present", 256, log);
+        cl.Reset();
+        return Submit(cl, idx);
     }
 
     /// <summary>The composite's blit onto acquired swapchain image <paramref name="idx"/>, recorded last in the present's
@@ -299,6 +318,46 @@ internal sealed unsafe partial class VkBackend
         _vkd.vkDeviceWaitIdle();
         DropSwapchain();
         _log.Always($"VkBackend: the window is going -- its swapchain and surface released after {_swap.Presents} present(s)");
+    }
+
+    /// <summary>Record <paramref name="list"/> now into a command buffer the present ends: its commands, then the
+    /// composite's blit, in one submit. The next submit of any other list, a wait, or a present that shows nothing queues
+    /// it first on its own, so nothing recorded after it sees the composite without it. False (logged) when it did not record.</summary>
+    internal bool HoldForPresent(CommandList list)
+    {
+        if (!OnThread("HoldForPresent")) return false;
+        if (_inWhenDone) return Fault($"list {list.Name} was held from WhenDone work, which must not submit");
+        SubmitHeld();
+        if (list.Async) return Fault($"list {list.Name} is for the async queue; only a graphics list rides the present");
+        if (Begin(list, false) is not Slot s) return false;
+        if (!Body(list))
+        {
+            Finish(s, list.Name, lane: false, ok: false, swap: -1, beside: false, committed: false);
+            CarryWhenDone(list, false, false);
+            RunWhenDone();
+            return false;
+        }
+        // the uploads at its head are its own: one queued after the hold waits for the submit after it
+        CommitUploads();
+        list.TakeWhenDone(_held.WhenDone);
+        _held.Slot = s;
+        _held.Name = list.Name;
+        return true;
+    }
+
+    /// <summary>The held command buffer queued, if one is: before the composite's blit onto swapchain image
+    /// <paramref name="swap"/> at or past 0, on its own below it. Its WhenDone work goes on the submit's value, or is told
+    /// it never ran. True when nothing was held.</summary>
+    private bool SubmitHeld(int swap = -1)
+    {
+        if (_held.Slot is not Slot s) return true;
+        _held.Slot = null;
+        bool ran = Finish(s, _held.Name, lane: false, ok: true, swap, beside: false, committed: true);
+        long at = ran ? _submits : -1;
+        foreach (WhenDoneCall c in _held.WhenDone) _whenDone.Add((at, c));
+        _held.WhenDone.Clear();
+        RunWhenDone();
+        return ran;
     }
 
     /// <summary>Presents so far, for the status line.</summary>
