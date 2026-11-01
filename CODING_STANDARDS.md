@@ -55,6 +55,10 @@ rule and the gates.
   refused: record the work on the seam (`managed/Rhi/`). VMA's virtual blocks touch no device, so the family is
   the one exception, in the files CX0005's `Allowed` names -- the mesh arena, which places meshes in a number
   line. Vulkan's enums, structs and handle types are data, not calls, and are free anywhere.
+- **The world's depth is reversed (CX0006).** A world pass tests `WorldDepth.Nearer` or `NearerOrEqual` and clears
+  to `WorldDepth.Clear`. GL's less and less-or-equal tests, a clear to a literal 1 and a depth test that names no
+  comparison are refused outside the backend; the casters, shadow cascades and the GUI keep GL's depth through
+  `GlDepth`, in the files CX0006's `Allowed` names (ADR 0053).
 - **A render target's alias lane is an `AliasLanes` member.** Two targets share one allocation when their
   `Alias` strings are equal, so a lane is declared once, in frame order, and never spelled at the call site;
   `tools/gates/alias-lanes.sh` refuses a literal, the goldens excepted.
