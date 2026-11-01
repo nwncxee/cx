@@ -233,10 +233,10 @@ internal static unsafe class PostChainVk
         cl.Dispatch((w + BloomGroup - 1) / BloomGroup, (h + BloomGroup - 1) / BloomGroup);
     }
 
-    /// <summary>The attachment format a post draw into <paramref name="into"/> renders: the composite is 8-bit, every
-    /// other post image half-float.</summary>
+    /// <summary>The attachment format a post draw into <paramref name="into"/> renders: the screen is the window's
+    /// 8-bit format, every other post image half-float.</summary>
     internal static Format FormatOf(ImageId into)
-        => _s.Dev is { } vk && into == vk.Composite ? Format.Rgba8 : Format.Rgba16F;
+        => _s.Dev is { } vk && vk.IsScreen(into) ? vk.ScreenFormat : Format.Rgba16F;
 
     /// <summary>One full-screen triangle of <paramref name="p"/> into <paramref name="into"/> at <paramref name="vp"/>,
     /// its loose block at <paramref name="at"/>, sampling <paramref name="t"/>. Nothing (logged) when the device

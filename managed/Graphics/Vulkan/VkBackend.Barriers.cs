@@ -105,7 +105,9 @@ internal sealed unsafe partial class VkBackend
         else
         {
             // a claimed member's memory was last written through another image of its group, in any stage
-            (VkPipelineStageFlags2 ss, VkAccessFlags2 sa) = claimed ? (VkPipelineStageFlags2.AllCommands, VkAccessFlags2.MemoryWrite) : Scope(img.Layout);
+            (VkPipelineStageFlags2 ss, VkAccessFlags2 sa) = claimed ? (VkPipelineStageFlags2.AllCommands, VkAccessFlags2.MemoryWrite)
+                : img.Window && img.Layout == VkImageLayout.Undefined ? (AcquireStages, VkAccessFlags2.None) : Scope(img.Layout);
+            if (img.Window && img.Layout == VkImageLayout.Undefined) _scr.Touched = true;
             img.BarBatch = _batch;
             VkImageMemoryBarrier2 b = Whole(img);
             b.srcStageMask = ss; b.srcAccessMask = sa & WriteAccess; b.dstStageMask = ds; b.dstAccessMask = da;

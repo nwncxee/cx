@@ -27,7 +27,7 @@ public sealed unsafe partial class MovieService
     {
         if (AlloyDevice.Vulkan(_log!) is not VkBackend vk || !vk.OnOwnThread)
             return NotYet(ref _s.SaidNoContext, "the Vulkan device is not up on the game thread");
-        if (vk.Composite.IsNull) return NotYet(ref _s.SaidNoScreen, "Vulkan's composite is not sized yet");
+        if (!vk.HasScreen) return NotYet(ref _s.SaidNoScreen, "Vulkan's screen is not sized yet");
         MovieVkState s = _vk;
         if (s.Dev != vk) _vk = s = new MovieVkState { Dev = vk };
         if (!s.Tried)
@@ -52,7 +52,7 @@ public sealed unsafe partial class MovieService
         int pw = (int)MathF.Round(p.Sx * w), ph = (int)MathF.Round(p.Sy * h);
         CommandList cl = s.Cmds!;
         cl.Reset();
-        PostChainVk.Draw(cl, s.Prog, Format.Rgba8, PostChainVk.Blend.None, vk.Composite, LoadOp.Clear,
+        PostChainVk.Draw(cl, s.Prog, vk.ScreenFormat, PostChainVk.Blend.None, vk.Screen, LoadOp.Clear,
                          new Rect((w - pw) / 2, (h - ph) / 2, pw, ph), 0, new PostChainVk.Inputs(s.Img), _log);
         if (!vk.Submit(cl)) return Stand("the movie submit was refused (logged above)");
         if (!s.Announced)

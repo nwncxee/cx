@@ -106,7 +106,7 @@ internal static unsafe class TriggerHighlight
         LooseBlock.Set(s.Count, _count);
         LooseBlock.Set(s.InvVp, inv);
         int at = PostChainVk.Close(cl, s.Prog);
-        PostChainVk.Draw(cl, s.Prog, Format.Rgba8, PostChainVk.Blend.Over, composite, LoadOp.Load,
+        PostChainVk.Draw(cl, s.Prog, PostChainVk.FormatOf(composite), PostChainVk.Blend.Over, composite, LoadOp.Load,
                          new Rect(display[0], display[1], display[2], display[3]), at,
                          new PostChainVk.Inputs(default, Depth: depth, Storage: new BufferBinding(BindTrig, s.Buf, 0, bytes)), log);
         Drawn++;

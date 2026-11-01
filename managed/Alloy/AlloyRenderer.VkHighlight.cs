@@ -101,7 +101,7 @@ public sealed unsafe partial class AlloyRenderer
         // NDC offset j is uv offset j/2; the mask holds clean + j, so clean reads at uv + j/2
         LooseBlock.Set(s.Unjitter, [PostChain.JitterX * 0.5f, PostChain.JitterY * 0.5f]);
         int at = PostChainVk.Close(cl, s.Comp);
-        PostChainVk.Draw(cl, s.Comp, Format.Rgba8, PostChainVk.Blend.Over, composite, LoadOp.Load,
+        PostChainVk.Draw(cl, s.Comp, PostChainVk.FormatOf(composite), PostChainVk.Blend.Over, composite, LoadOp.Load,
                          new Rect(display[0], display[1], display[2], display[3]), at, new PostChainVk.Inputs(default, Mask: s.Target), log);
         if (!s.Live)
         {

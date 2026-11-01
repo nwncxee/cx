@@ -39,7 +39,7 @@ internal static class VulkanFrame
     {
         // a failed Alloy records nothing more: every submit after it would stage uploads no recording ever commits
         if (log == null || AlloyGate.Failed) return;
-        if (AlloyDevice.Vulkan(log) is not VkBackend vk || vk.Composite.IsNull)
+        if (AlloyDevice.Vulkan(log) is not VkBackend vk || !vk.HasScreen)
         {
             AlloyGate.Fail("the Vulkan frame has no backend or no composite image (logged above)");
             return;
@@ -55,7 +55,7 @@ internal static class VulkanFrame
             return;
         }
         cl.EndLabel();
-        if (!AlloyRenderer.VkRecordFrame(vk, cl, vk.Composite, vp, vpClean, view, proj, viewport, display, near, far,
+        if (!AlloyRenderer.VkRecordFrame(vk, cl, vk.Screen, vp, vpClean, view, proj, viewport, display, near, far,
                                          lightingOn, perspective, groups, log))
         {
             AlloyGate.Fail("the Vulkan colour bracket did not record (logged above)");

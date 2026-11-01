@@ -22,6 +22,8 @@ public sealed unsafe partial class AlloyRenderer
         public VkBackend? Dev;
         public VkProg? Prog;
         public PipelineId Pipe;
+        /// <summary>The screen format <see cref="Pipe"/> was made for.</summary>
+        public Format PipeFmt;
         public bool Tried, Live, TexSaid;
         public BufferId Recs;
         public long RecCap;
@@ -38,7 +40,8 @@ public sealed unsafe partial class AlloyRenderer
     {
         VkGlowState s = _vkGlow;
         if (s.Dev != vk) _vkGlow = s = new VkGlowState { Dev = vk };
-        if (_capturing || Highlight.StageGlowVk(EyePos) == 0 || !VkGlowEnsure(vk, s, log)) return true;
+        if (s.Tried && s.Prog != null && s.PipeFmt != PostChainVk.FormatOf(composite)) { vk.Destroy(s.Pipe); s.Tried = false; }
+        if (_capturing || Highlight.StageGlowVk(EyePos) == 0 || !VkGlowEnsure(vk, s, PostChainVk.FormatOf(composite), log)) return true;
         uint tex = GobGlow.TexName(out bool final, out string resref);
         ImageId img = tex != 0 ? VkTextures.Image((int)tex) : default;
         if (img.IsNull)
@@ -70,7 +73,9 @@ public sealed unsafe partial class AlloyRenderer
         LooseBlock.Capture(p.Members, p.Block);
         LooseBlock.Set(s.View, view);
         LooseBlock.Set(s.Proj, clean);
-        LooseBlock.Set(s.Rect, [display[0], display[1], 1f / Math.Max(display[2], 1), 1f / Math.Max(display[3], 1)]);
+        // a screen's rows run from the top, so its fragments' y comes back to the scene depth's rows through a flipped origin
+        float flipH = vk.IsScreen(composite) ? vk.FrameSize.H : 0f, sy = 1f / Math.Max(display[3], 1);
+        LooseBlock.Set(s.Rect, [display[0], flipH == 0f ? display[1] : flipH - display[1], 1f / Math.Max(display[2], 1), flipH == 0f ? sy : -sy]);
         LooseBlock.EndCapture();
         int loose = VkArena(p.Block);
         if (loose < 0) return false;
@@ -105,7 +110,7 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>The program and its additive, depth-less pipeline into the composite, made once per device; a refusal
     /// is said once and the glow sits out.</summary>
-    private static bool VkGlowEnsure(VkBackend vk, VkGlowState s, ExtenderLog log)
+    private static bool VkGlowEnsure(VkBackend vk, VkGlowState s, Format target, ExtenderLog log)
     {
         if (s.Tried) return s.Prog != null;
         s.Tried = true;
@@ -125,10 +130,11 @@ public sealed unsafe partial class AlloyRenderer
                 Depth = new DepthState(false, false, CompareOp.Always), Label = "vk highlight glow",
             };
             d.Targets.ColorCount = 1;
-            d.Targets.Colors[0] = Format.Rgba8;
+            d.Targets.Colors[0] = target;
             d.Targets.Samples = 1;
             d.Blend[0] = new AttachmentBlend(true, BlendFactor.One, BlendFactor.One, BlendFactor.One, BlendFactor.One);
             s.Pipe = vk.CreatePipeline(in d);
+            s.PipeFmt = target;
             if (s.Pipe.IsNull) p = null;
         }
         s.Prog = p;

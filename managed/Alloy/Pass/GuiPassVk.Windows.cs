@@ -51,7 +51,7 @@ internal static unsafe partial class GuiPassVk
         cl = null;
         vk = AlloyDevice.Vulkan(log);
         // before the first flush sizes the composite nothing is presented either (ScreenOwner says so)
-        if (vk != null && vk.Composite.IsNull) return false;
+        if (vk != null && !vk.HasScreen) return false;
         if (vk == null || !vk.OnOwnThread || _s.Busy || !Ensure(vk, log))
         {
             if (!_s.NowSaid)
@@ -108,7 +108,7 @@ internal static unsafe partial class GuiPassVk
     private static bool Windows(VkBackend vk, CommandList cl, UiDrawList l, int li, ExtenderLog log)
     {
         GuiVkState s = _s;
-        ImageId screen = s.Into.IsNull ? vk.Composite : s.Into;
+        ImageId screen = s.Into.IsNull ? vk.Screen : s.Into;
         if (l.CmdN == 0 || l.ViewW <= 0 || l.ViewH <= 0 || screen.IsNull || !WinEnsure(vk, s.Win, log)) return true;
         if (!Grow(vk, ref s.Win.Vtx[li], ref s.Win.VtxCap[li], Math.Max((long)l.VertN * sizeof(float), 64), BufferUse.Vertex,
                   $"vk ui windows {li}", log)) return false;

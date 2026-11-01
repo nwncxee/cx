@@ -9,8 +9,8 @@ using static Vortice.Vulkan.Vulkan;
 namespace CX.Graphics.Rhi;
 
 /// <summary>The seam on Vulkan 1.3: one instance, one device matched to GL's by UUID, one queue, VMA, and the game
-/// window's swapchain. Every image is Vulkan's alone: the frame lands in <see cref="Composite"/>, which
-/// <see cref="Present"/> puts on the window, and GL never touches it. Made, used and dropped on the thread holding
+/// window's swapchain. Every image is Vulkan's alone: the frame lands in <see cref="Screen"/>, the window's own
+/// image, which <see cref="Present"/> puts on the window, and GL never touches it. Made, used and dropped on the thread holding
 /// Alloy's context.</summary>
 internal sealed unsafe partial class VkBackend : IDevice
 {
@@ -28,6 +28,10 @@ internal sealed unsafe partial class VkBackend : IDevice
         public VkImageView[]? LayerViews;
         public ImageDesc Desc;
         public VkImageLayout Layout;
+        /// <summary>Row 0 is the window's top: a screen image, which a draw reaches through a flipped viewport.</summary>
+        public bool TopDown;
+        /// <summary>The swapchain's own image: its memory is the window's, and only its view is ours to free.</summary>
+        public bool Window;
         /// <summary>The recording that last noted this image's layout for its undo (<see cref="Remember"/>).</summary>
         public long UndoAt = -1;
         /// <summary>A command wrote it since its last barrier: the next use in the same layout still waits on one.</summary>
@@ -457,7 +461,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         _dynUbos = Math.Min(UniformSlots, l.maxDescriptorSetUniformBuffersDynamic);
         _timeline = MakeTimeline();
         Check(MakeSetPool(out _sets.Pool), "vkCreateDescriptorPool");
-        for (int i = 0; i < FramesInFlight; i++) _acquired[i] = MakeSemaphore();
+        for (int i = 0; i < AcquireRing; i++) _scr.Acquire[i] = MakeSemaphore();
 
         OpenPipelineCache(in props);
         OpenTiming(in props);
@@ -685,7 +689,7 @@ internal sealed unsafe partial class VkBackend : IDevice
     private void Free(VkImg g)
     {
         FreeViews(g.View, g.MipViews, g.LayerViews);
-        Vma.vmaDestroyImage(_vma, g.Image, g.Alloc);
+        if (!g.Window) Vma.vmaDestroyImage(_vma, g.Image, g.Alloc);
     }
 
     public void Destroy(SamplerId s)
@@ -757,7 +761,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         foreach (Slot s in _slots)
             if (s.Stage.IsNotNull) Vma.vmaDestroyBuffer(_vma, s.Stage, s.StageAlloc);
         _vkd.vkDestroySemaphore(_timeline);
-        foreach (VkSemaphore a in _acquired) _vkd.vkDestroySemaphore(a);
+        foreach (VkSemaphore a in _scr.Acquire) _vkd.vkDestroySemaphore(a);
         DropSwapchain();
         _vkd.vkDestroyCommandPool(_cmdPool);
         DisposeLane(_async);

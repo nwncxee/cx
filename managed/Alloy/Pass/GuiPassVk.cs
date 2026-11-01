@@ -34,6 +34,8 @@ internal static unsafe partial class GuiPassVk
     {
         public VkBackend? Dev;
         public bool Failed, Live, OffThreadSaid, PrimSaid, BlendSaid, SolveSaid, DropSaid;
+        /// <summary>The colour format of the pass open now: the screen's, or a model view's.</summary>
+        public Format Fmt = ViewFormat;
         /// <summary>Alloy's own GUI program and the two loose terms it reads per flush.</summary>
         public GuiVkProg? Prog;
         public int BoneStart = -1, Gamma = -1;
@@ -91,9 +93,6 @@ internal static unsafe partial class GuiPassVk
     /// <summary>The GUI's depth format on Vulkan. GL packs stencil beside it because its captured layers clear
     /// stencil; nothing in the pass tests it, so Vulkan carries depth alone.</summary>
     private const Format DepthFormat = Format.D32F;
-
-    /// <summary>The composite's format, which <c>VkBackend.Resize</c> exports the pair in.</summary>
-    private const Format CompositeFormat = Format.Rgba8;
 
     /// <summary>A model view's colour format: the RGBA8 its GL texture is, so a panel samples the same texels.</summary>
     private const Format ViewFormat = Format.Rgba8;
