@@ -80,6 +80,11 @@ public static unsafe partial class VulkanToolchain
         catch (IOException) { return null; } catch (UnauthorizedAccessException) { return null; }
     }
 
+    /// <summary><paramref name="s"/> with each non-ASCII character as a space. GLSL allows one only in a comment, and the
+    /// binding hands shaderc the text's length in UTF-16 characters, so each multi-byte one cut its tail short.</summary>
+    private static string Ascii(string s) => System.Text.Ascii.IsValid(s) ? s
+        : string.Create(s.Length, s, static (d, src) => { for (int i = 0; i < d.Length; i++) d[i] = char.IsAscii(src[i]) ? src[i] : ' '; });
+
     /// <summary>The compile itself, uncached.</summary>
     private static byte[]? CompileFresh(string source, string name, ShaderKind kind, out string error)
     {
@@ -88,7 +93,7 @@ public static unsafe partial class VulkanToolchain
         options.Bindings.Add(new BindingBase(UniformKind.Buffer, UniformBase));
         options.Bindings.Add(new BindingBase(UniformKind.StorageBuffer, StorageBase));
         options.Bindings.Add(new BindingBase(UniformKind.Image, ImageBase));
-        CompileResult result = compiler.Compile(source, name, options);
+        CompileResult result = compiler.Compile(Ascii(source), name, options);
         if (result.Status == CompilationStatus.Success)
         {
             error = "";

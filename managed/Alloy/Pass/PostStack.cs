@@ -324,6 +324,7 @@ internal static unsafe partial class PostStack
               "the two stages carry inc_postpr_shrp's amount and the engine's own Vibrance value");
             check.Expect(_fbpost == _stages[4], "the hosted chain is stage 4, after the four Alloy-owned effects");
             check.Expect(FbPostStage.SelfCheck(log), "the hosted chain's own checks");
+            check.Expect(PostChainVk.SelfCheck(log), "the post draw's own checks");
             check.Expect(VanillaShader.Splice(FbPostStage.FbPostFs, null, "x", fromContent: false) == FbPostStage.FbPostFs,
               "a chain with no fsfbpostpr leaves the text untouched, which is what Build reads as the stand-down");
             bool fb = Post.FbPost.V; Post.FbPost.V = false; check.Expect(!FbPostActive(), "post.fbpost off stands the hosted chain down"); Post.FbPost.V = fb;
