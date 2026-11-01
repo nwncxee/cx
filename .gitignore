@@ -16,6 +16,9 @@ tools/*/obj/
 
 # Agent worktrees are local scratch; a tracked one breaks the CI submodule checkout.
 .claude/worktrees/
+
+# The local list of items too small for a ticket.
+.todo
 .demo-tmp/
 
 # Per-machine paths (tools/paths.py; see local.env.example).
