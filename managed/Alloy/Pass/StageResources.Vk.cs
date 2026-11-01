@@ -77,7 +77,7 @@ internal static unsafe partial class StageResources
 
     /// <summary>Sampled bindings the stage images may take on Vulkan: from <see cref="TextureSlots.ResourceBase"/> to the
     /// device's set-0 sampled range.</summary>
-    private const uint VkSampledTop = 48;
+    private const uint VkSampledTop = VkBackend.SampledSlots;
 
     /// <summary>One RGBA texel of the widest format a fog image can have, and the readback ring's slots.</summary>
     private const int VkFogBytes = 16, VkFogSlots = 3;
@@ -118,7 +118,8 @@ internal static unsafe partial class StageResources
 
     /// <summary><paramref name="baseUnits"/> with every stage image <paramref name="text"/> declares given a binding of
     /// its own: a sampler from <see cref="TextureSlots.ResourceBase"/>, an image below <paramref name="imgUnits"/>. Null
-    /// with <paramref name="why"/> when a declaration disagrees with its image or the bindings run out. Cold.</summary>
+    /// with <paramref name="why"/> when a declaration disagrees with its image or the bindings run out. Images go first, so
+    /// a name a pass writes keeps its image unit though a library's preprocessed-out sampler declares it earlier. Cold.</summary>
     internal static IReadOnlyDictionary<string, uint>? VkUnits(IReadOnlyDictionary<string, uint> baseUnits, string text, int a,
                                                               int b, uint imgUnits, out string why)
     {
@@ -127,8 +128,11 @@ internal static unsafe partial class StageResources
         var d = new Dictionary<string, uint>(baseUnits, StringComparer.Ordinal);
         var taken = new HashSet<string>(StringComparer.Ordinal);
         uint tex = TextureSlots.ResourceBase, img = 0;
-        foreach ((string type, string name, _) in VkGlsl.Opaques(text))
+        var opaques = VkGlsl.Opaques(text);
+        foreach (bool images in (ReadOnlySpan<bool>)[true, false])
+        foreach ((string type, string name, _) in opaques)
         {
+            if (type.StartsWith("image", StringComparison.Ordinal) != images) continue;
             if (!StageImageType(type) || !FindImage(a, b, name, out int stage, out int image, out bool prev) || !taken.Add(name)) continue;
             Img im = _gl.Stages[stage]!.Images[image];
             if (prev && !im.History) { why = $"the program reads `{name}`, but `{im.Name}` is not declared `history`"; return null; }
@@ -482,7 +486,8 @@ internal static unsafe partial class StageResources
             { log?.Always($"StageResources: {what} declares block {o.Name}, which a pass has no buffer for on Vulkan"); return null; }
         byte[]? spirv = VulkanToolchain.Compile(VkBackend.Translate(t.Cs), what, ShaderKind.ComputeShader, out string e);
         if (spirv == null) { log?.Always($"StageResources: {what} did not compile -- {e}"); return null; }
-        var q = new VkPassProg { Opaques = t.Opaques.ToArray() };
+        List<uint> used = VkPrograms.Bindings(spirv);
+        var q = new VkPassProg { Opaques = t.Opaques.FindAll(o => o.Set != 0 || used.Contains(VkPrograms.Shifted(o))).ToArray() };
         q.Cs = vk.CreateShader(ShaderStage.Compute, spirv, what);
         if (q.Cs.IsNull) return null;
         var pd = new PipelineDesc { Cs = q.Cs, Label = what };

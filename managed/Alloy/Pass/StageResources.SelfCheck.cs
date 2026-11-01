@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text;
 using CX.Framework;
 using CX.Graphics;
@@ -18,6 +19,7 @@ internal static unsafe partial class StageResources
         Wrappers(check);
         Swaps(check);
         Overlay(check);
+        WriterUnits(check);
         // 129 texels over a group of 8 is 17 groups: the last one runs for a single column. Hand-written.
         check.Expect(Groups(129, 8) == 17 && Groups(128, 8) == 16 && Groups(1, 64) == 1 && Groups(32, 32) == 1,
           "a dispatch rounds its extent UP to whole work groups");
@@ -37,6 +39,36 @@ internal static unsafe partial class StageResources
 
     /// <summary>The good lines are the fixture's (<c>tools/native/fixture/cx_cxdemo_sky.shd</c>), written out
     /// here by hand; every bad one is a line a module could ship and must be told about by name.</summary>
+    /// <summary>A pass that writes an image a shared library would otherwise read keeps it on an image unit, whatever
+    /// dead sampler declaration of the same name comes first. Oracle: the hand-written fixture; image units start at 0.</summary>
+    private static void WriterUnits(Checker check)
+    {
+        const string Text = """
+            #version 460 core
+            #define CXDEMO_WRITING_BAND
+            #ifndef CXDEMO_WRITING_BAND
+            uniform sampler2D cxBand;
+            #endif
+            uniform sampler2D cxHist;
+            layout(rgba16f) uniform writeonly image2D cxBand;
+            void main() { }
+            """;
+        ResourcesState saved = _gl;
+        try
+        {
+            _gl = new ResourcesState();
+            var s = new Stage { Ref = "cx_cxdemo_sky" };
+            check.Expect(ParseDecls(s, "#pragma cx_image cxHist tex2d 8 8 rgba16f\n#pragma cx_image cxBand tex2d 8 8 rgba16f\n", out string why),
+              $"the writer fixture's declarations parse -- {why}");
+            _gl.Stages[0] = s;
+            _gl.Count = 1;
+            var u = VkUnits(new Dictionary<string, uint>(), Text, 0, -1, PassImgUnits, out why);
+            check.Expect(u != null && u["cxBand"] == 0 && u["cxHist"] == 33,
+              $"the image a pass writes takes image unit 0 and the one it samples sampled unit 33, not {(u == null ? why : $"{u["cxBand"]} and {u["cxHist"]}")}");
+        }
+        finally { _gl = saved; }
+    }
+
     private static void Grammar(Checker check)
     {
         const string good = """

@@ -247,8 +247,42 @@ internal static unsafe class PostChainVk
         PipelineId pipe = Pipe(p, f, add, log);
         if (pipe.IsNull) return;
         PostVkState s = _s;
-        Span<ImageBinding> img = stackalloc ImageBinding[8 + (int)StageResources.DrawImgUnits];
+        Span<ImageBinding> img = stackalloc ImageBinding[SampledMax];
         Span<ImageBinding> sti = stackalloc ImageBinding[(int)StageResources.DrawImgUnits];
+        (int n, int ns, bool engine) = Images(p, in t, img, sti);
+        Span<BufferBinding> ubo = stackalloc BufferBinding[2];
+        int nu = 0;
+        if (p.Block.Length > 0) ubo[nu++] = new(UboSlots.Loose, s.Ubo, at, p.Block.Length);
+        if (engine)
+        {
+            int e = AlloyRenderer.VkStageEngine(cl, out BufferId arena, out int len);
+            if (e < 0)
+            {
+                if (!s.EngineSaid) log?.Always($"PostChainVk: post {p.Label} NOT DRAWN -- the frame's uniform arena could not stage the engine block it reads");
+                s.EngineSaid = true;
+                return;
+            }
+            ubo[nu++] = new(UboSlots.Engine, arena, e, len);
+        }
+        ReadOnlySpan<ColorAttachment> colors = [new(into, 0, 0, load, StoreOp.Store, new Vector4(0f, 0f, 0f, 1f))];
+        cl.BeginRenderPass(new RenderPassDesc(colors));
+        cl.SetPipeline(pipe);
+        cl.SetViewport(vp.X, vp.Y, vp.W, vp.H);
+        ReadOnlySpan<BufferBinding> sto = t.Storage.Buffer.IsNull ? default : [t.Storage];
+        cl.BindSet(0, new BindSet(ubo[..nu], sto, img[..n], sti[..ns]));
+        cl.Draw(3);
+        cl.EndRenderPass();
+    }
+
+    /// <summary>Sampled images one post draw binds: every sampled binding the set has.</summary>
+    private const int SampledMax = (int)VkBackend.SampledSlots;
+
+    /// <summary>The set-0 images <paramref name="p"/> declares, bound by role into <paramref name="img"/> (sampled) and
+    /// <paramref name="sti"/> (storage), and whether it reads the engine block.</summary>
+    internal static (int Sampled, int Storage, bool Engine) Images(GuiVkProg p, in Inputs t, Span<ImageBinding> img,
+                                                                  Span<ImageBinding> sti)
+    {
+        PostVkState s = _s;
         int n = 0, ns = 0;
         bool engine = false;
         foreach (VkOpaque o in p.Opaques)
@@ -280,28 +314,20 @@ internal static unsafe class PostChainVk
             if (i.IsNull) i = o.Type == "sampler3D" ? AlloyRenderer.VkStandIn3D : AlloyRenderer.VkStandIn2D;
             img[n++] = new ImageBinding(o.Binding, i, smp);
         }
-        Span<BufferBinding> ubo = stackalloc BufferBinding[2];
-        int nu = 0;
-        if (p.Block.Length > 0) ubo[nu++] = new(UboSlots.Loose, s.Ubo, at, p.Block.Length);
-        if (engine)
-        {
-            int e = AlloyRenderer.VkStageEngine(cl, out BufferId arena, out int len);
-            if (e < 0)
-            {
-                if (!s.EngineSaid) log?.Always($"PostChainVk: post {p.Label} NOT DRAWN -- the frame's uniform arena could not stage the engine block it reads");
-                s.EngineSaid = true;
-                return;
-            }
-            ubo[nu++] = new(UboSlots.Engine, arena, e, len);
-        }
-        ReadOnlySpan<ColorAttachment> colors = [new(into, 0, 0, load, StoreOp.Store, new Vector4(0f, 0f, 0f, 1f))];
-        cl.BeginRenderPass(new RenderPassDesc(colors));
-        cl.SetPipeline(pipe);
-        cl.SetViewport(vp.X, vp.Y, vp.W, vp.H);
-        ReadOnlySpan<BufferBinding> sto = t.Storage.Buffer.IsNull ? default : [t.Storage];
-        cl.BindSet(0, new BindSet(ubo[..nu], sto, img[..n], sti[..ns]));
-        cl.Draw(3);
-        cl.EndRenderPass();
+        return (n, ns, engine);
+    }
+
+    /// <summary>Off-device: a post program that declares twenty samplers draws with all twenty bound. Oracle: the
+    /// twenty hand-written declarations, each on a binding of its own.</summary>
+    internal static bool SelfCheck(ExtenderLog log)
+    {
+        var check = new Checker(log, "PostChainVk.SelfCheck");
+        var p = new GuiVkProg { Opaques = new VkOpaque[20] };
+        for (uint i = 0; i < 20; i++) p.Opaques[i] = new VkOpaque($"uContent{i}", "sampler2D", 0, i, VkBindKind.Sampled);
+        Span<ImageBinding> img = stackalloc ImageBinding[SampledMax];
+        (int n, _, _) = Images(p, new Inputs(default), img, default);
+        check.Expect(n == 20 && img[19].Slot == 19, $"a post program's twenty samplers are all bound, not {n}");
+        return check.Ok;
     }
 
     /// <summary>Open a capture into <paramref name="p"/>'s loose block: the <c>LooseBlock.Set</c> calls until
