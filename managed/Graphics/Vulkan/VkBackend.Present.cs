@@ -43,16 +43,16 @@ internal sealed unsafe partial class VkBackend
 
     private readonly HeldState _held = new();
 
-    /// <summary>The stand-in screen: laid out as the window's images are, and drawn in their place while there is no
+    /// <summary>The spare screen: laid out as the window's images are, and drawn in their place while there is no
     /// window or its size is not the frame's, then blitted onto one. Its size is the frame's. Null id before the present
     /// target sized it.</summary>
-    private ImageId _standIn;
+    private ImageId _spare;
 
     /// <summary>Is the caller on the thread this device belongs to? A caller outside the frame's draw asks before
     /// recording, rather than taking a refusal per call.</summary>
     internal bool OnOwnThread => Environment.CurrentManagedThreadId == _thread;
 
-    /// <summary>The frame at <paramref name="w"/> x <paramref name="h"/>: the stand-in screen remade at that size in the
+    /// <summary>The frame at <paramref name="w"/> x <paramref name="h"/>: the spare screen remade at that size in the
     /// window's format, display-encoded as the window shows it; false when the device refused it. The old image dies
     /// after the frames in flight.</summary>
     internal bool Resize(int w, int h)
@@ -60,21 +60,21 @@ internal sealed unsafe partial class VkBackend
         if (!OnThread("Resize")) return false;
         if (_swap.Surface.IsNull) MakeSurface();
         if (_swap.Surface.IsNotNull && PickFormat().format is VkFormat f && f != VkFormat.Undefined) _scr.Fmt = ScreenFormatOf(f);
-        return MakeStandIn(w, h);
+        return MakeSpare(w, h);
     }
 
-    private bool MakeStandIn(int w, int h)
+    private bool MakeSpare(int w, int h)
     {
-        if (_scr.Now == _standIn) _scr.Now = default;
-        Destroy(_standIn);
-        _standIn = CreateImage(new ImageDesc(ImageKind.Tex2D, _scr.Fmt, w, h, 1, 1, 1, 1,
-                                               ImageUse.ColorTarget | ImageUse.Sampled | ImageUse.CopySrc | ImageUse.CopyDst, "screen stand-in"));
-        if (_images.TryGet(_standIn.Value, out VkImg img)) img.TopDown = true;
-        return !_standIn.IsNull;
+        if (_scr.Now == _spare) _scr.Now = default;
+        Destroy(_spare);
+        _spare = CreateImage(new ImageDesc(ImageKind.Tex2D, _scr.Fmt, w, h, 1, 1, 1, 1,
+                                               ImageUse.ColorTarget | ImageUse.Sampled | ImageUse.CopySrc | ImageUse.CopyDst, "spare screen"));
+        if (_images.TryGet(_spare.Value, out VkImg img)) img.TopDown = true;
+        return !_spare.IsNull;
     }
 
     /// <summary>End the frame: wait for the one <see cref="FramesInFlight"/> back, submit the commands held for it with
-    /// the window image's move to presentable, and present it; a stand-in frame is blitted onto an image acquired now,
+    /// the window image's move to presentable, and present it; a spare-screen frame is blitted onto an image acquired now,
     /// and a frame that drew no screen presents nothing. <paramref name="interval"/> (0 off, 1 vsync, -1 adaptive)
     /// picks the next acquire's present mode. False (logged) when the window refused the frame.</summary>
     internal bool Present(int interval, ExtenderLog log)
@@ -96,7 +96,7 @@ internal sealed unsafe partial class VkBackend
         int idx = _scr.Index;
         if (idx < 0)
         {
-            if (!_images.TryGet(_standIn.Value, out VkImg src)) return Fault("Present: the stand-in screen died before its blit");
+            if (!_images.TryGet(_spare.Value, out VkImg src)) return Fault("Present: the spare screen died before its blit");
             if (!EnsureSwapchain(Mode(_scr.Interval), src.Desc.W, src.Desc.H, log)) return _swap.Empty && !_swap.Refused;
             if ((idx = Acquire()) < 0) return false;
         }
@@ -125,8 +125,8 @@ internal sealed unsafe partial class VkBackend
     }
 
     /// <summary>The present's work on swapchain image <paramref name="idx"/>, recorded last in its submit: the frame's
-    /// window image on to presentable; or, for a frame drawn into the stand-in, the image from undefined to a copy
-    /// target, the stand-in's blit (scaled across a resize; both are top row first in one format), and on to presentable.</summary>
+    /// window image on to presentable; or, for a frame drawn into the spare screen, the image from undefined to a copy
+    /// target, the spare screen's blit (scaled across a resize; both are top row first in one format), and on to presentable.</summary>
     private bool RecordPresent(int idx)
     {
         if (idx == _scr.Index)
@@ -136,7 +136,7 @@ internal sealed unsafe partial class VkBackend
             Flush();
             return true;
         }
-        if (!_images.TryGet(_standIn.Value, out VkImg src)) return Fault("Present: the stand-in screen died before its blit");
+        if (!_images.TryGet(_spare.Value, out VkImg src)) return Fault("Present: the spare screen died before its blit");
         Transition(src, VkImageLayout.TransferSrcOptimal);
         VkImage dst = _swap.Images[idx];
         SwapBarrier(dst, VkImageLayout.Undefined, VkImageLayout.TransferDstOptimal);
@@ -265,10 +265,10 @@ internal sealed unsafe partial class VkBackend
         s.Readable = (caps.supportedUsageFlags & VkImageUsageFlags.TransferSrc) != 0;
         Format sf = ScreenFormatOf(fmt.format);
         RegisterWindowImages(images, sf, (int)ext.width, (int)ext.height);
-        if (sf != _scr.Fmt && _images.TryGet(_standIn.Value, out VkImg st))
+        if (sf != _scr.Fmt && _images.TryGet(_spare.Value, out VkImg st))
         {
             _scr.Fmt = sf;
-            MakeStandIn(st.Desc.W, st.Desc.H);
+            MakeSpare(st.Desc.W, st.Desc.H);
         }
         s.Ready = new VkSemaphore[n];
         for (int i = 0; i < n; i++) s.Ready[i] = MakeSemaphore();

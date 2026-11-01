@@ -78,9 +78,9 @@ internal static unsafe class TriggerHighlight
 
     private static TrigVkState _vk = new();
 
-    /// <summary>The pass on Vulkan, over the composite after the post stack, as GL draws it after its stack: the same
+    /// <summary>The pass on Vulkan, over the screen after the post stack, as GL draws it after its stack: the same
     /// stage, the outline buffer updated in the command list, the frame's depth sampled.</summary>
-    internal static void DrawVk(VkBackend vk, CommandList cl, ImageId composite, ImageId depth, in Matrix4x4 vp, int* display,
+    internal static void DrawVk(VkBackend vk, CommandList cl, ImageId screen, ImageId depth, in Matrix4x4 vp, int* display,
                                 ExtenderLog log)
     {
         TrigVkState s = _vk;
@@ -106,14 +106,14 @@ internal static unsafe class TriggerHighlight
         LooseBlock.Set(s.Count, _count);
         LooseBlock.Set(s.InvVp, inv);
         int at = PostChainVk.Close(cl, s.Prog);
-        PostChainVk.Draw(cl, s.Prog, PostChainVk.FormatOf(composite), PostChainVk.Blend.Over, composite, LoadOp.Load,
+        PostChainVk.Draw(cl, s.Prog, PostChainVk.FormatOf(screen), PostChainVk.Blend.Over, screen, LoadOp.Load,
                          new Rect(display[0], display[1], display[2], display[3]), at,
                          new PostChainVk.Inputs(default, Depth: depth, Storage: new BufferBinding(BindTrig, s.Buf, 0, bytes)), log);
         Drawn++;
         if (s.Live) return;
         s.Live = true;
         log.Always($"TriggerHighlight: the Vulkan area-transition highlight is LIVE -- {_count} trigger(s), {_points} outline point(s) "
-                 + "against the frame's depth over the composite");
+                 + "against the frame's depth over the screen");
     }
 
 

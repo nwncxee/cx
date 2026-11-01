@@ -9,7 +9,7 @@ using CX.Rhi;
 namespace CX.Alloy;
 
 /// <summary>The world frame on Vulkan: Vulkan culls, draws the colour bracket into its own scene
-/// targets and encodes them into the composite, which the GUI then draws over and Vulkan presents.</summary>
+/// targets and encodes them into the screen, which the GUI then draws over and Vulkan presents.</summary>
 internal static class VulkanFrame
 {
     private sealed class FrameState
@@ -31,7 +31,7 @@ internal static class VulkanFrame
     /// <summary>Frames between two GPU-time lines.</summary>
     private const int GpuPeriod = 300;
 
-    /// <summary>Render this frame into the composite. A frame that cannot -- no backend, no composite, a refused
+    /// <summary>Render this frame into the screen. A frame that cannot -- no backend, no screen, a refused
     /// submit -- fails Alloy loudly: the screen would otherwise hold a stale frame.</summary>
     internal static unsafe void Run(ExtenderLog? log, in Matrix4x4 vp, in Matrix4x4 vpClean, in Matrix4x4 view, in Matrix4x4 proj,
                                     int* viewport, int* display, float near, float far,
@@ -41,7 +41,7 @@ internal static class VulkanFrame
         if (log == null || AlloyGate.Failed) return;
         if (AlloyDevice.Vulkan(log) is not VkBackend vk || !vk.HasScreen)
         {
-            AlloyGate.Fail("the Vulkan frame has no backend or no composite image (logged above)");
+            AlloyGate.Fail("the Vulkan frame has no backend or no screen (logged above)");
             return;
         }
         CommandList cl = _s.Cmds ??= new CommandList("vulkan frame", FrameArenaBytes, log);
@@ -93,7 +93,7 @@ internal static class VulkanFrame
             _s.Live = true;
             log.Always("VulkanFrame: LIVE -- Vulkan bakes the shadow maps, culls, draws the prepass with its vis-ID "
                      + "target, the AO estimate, the decal layer, the G-buffer, the sky and the opaque, cutout and blended "
-                     + "batches, and shades the deferred point lights; Vulkan presents the composite itself");
+                     + "batches, and shades the deferred point lights; Vulkan presents the screen itself");
         }
     }
 

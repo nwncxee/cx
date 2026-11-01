@@ -9,7 +9,7 @@ using CX.Rhi;
 namespace CX.Alloy;
 
 /// <summary><see cref="PostChain"/> on Vulkan: the same bloom chain and resolve, from the same overridable stages,
-/// over the Vulkan frame's scene colour and depth, into the post stack's first image or the composite. Each bloom
+/// over the Vulkan frame's scene colour and depth, into the post stack's first image or the screen. Each bloom
 /// level is an image of its own rather than a mip, so no pass samples the image it writes. Also the full-screen
 /// helpers every post program on Vulkan draws through.</summary>
 internal static unsafe class PostChainVk

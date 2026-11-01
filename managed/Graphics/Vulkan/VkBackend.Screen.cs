@@ -11,7 +11,7 @@ internal sealed unsafe partial class VkBackend
     private sealed class ScreenState
     {
         public ImageId[] Ids = [];
-        /// <summary>What <see cref="Screen"/> answered this frame: a window image, the stand-in, or null before the first ask.</summary>
+        /// <summary>What <see cref="Screen"/> answered this frame: a window image, the spare screen, or null before the first ask.</summary>
         public ImageId Now;
         /// <summary>The window image acquired this frame; -1 when none is.</summary>
         public int Index = -1;
@@ -35,16 +35,16 @@ internal sealed unsafe partial class VkBackend
     private const int AcquireRing = FramesInFlight + 1;
 
     /// <summary>Where a submit waits on an acquire, and where a window image's move out of undefined starts: its first
-    /// draw, or the stand-in's blit.</summary>
+    /// draw, or the spare screen's blit.</summary>
     private const VkPipelineStageFlags2 AcquireStages = VkPipelineStageFlags2.ColorAttachmentOutput | VkPipelineStageFlags2.AllTransfer;
 
     /// <summary>The image the frame's last writers draw, top row first in the window's format: this frame's window
-    /// image, acquired on the first ask, or the stand-in while there is no window to draw or its size is not the
+    /// image, acquired on the first ask, or the spare screen while there is no window to draw or its size is not the
     /// frame's. Null before the present target sized it.</summary>
     internal ImageId Screen => !_scr.Now.IsNull ? _scr.Now : _scr.Now = TakeScreen();
 
     /// <summary>The present target is sized: <see cref="Screen"/> has an answer. Asks for no window image.</summary>
-    internal bool HasScreen => !_standIn.IsNull;
+    internal bool HasScreen => !_spare.IsNull;
 
     /// <summary>What <see cref="Screen"/> answered this frame, without asking; null when nothing has.</summary>
     internal ImageId ScreenNow => _scr.Now;
@@ -52,19 +52,19 @@ internal sealed unsafe partial class VkBackend
     /// <summary>The window's channel order, which every draw into <see cref="Screen"/> renders.</summary>
     internal Format ScreenFormat => _scr.Fmt;
 
-    /// <summary>Can <paramref name="i"/> be copied out of: the stand-in always, a window image where the surface allows.</summary>
-    internal bool Readable(ImageId i) => i == _standIn || _swap.Readable;
+    /// <summary>Can <paramref name="i"/> be copied out of: the spare screen always, a window image where the surface allows.</summary>
+    internal bool Readable(ImageId i) => i == _spare || _swap.Readable;
 
-    /// <summary>Is <paramref name="i"/> a screen image (a window image or the stand-in)?</summary>
+    /// <summary>Is <paramref name="i"/> a screen image (a window image or the spare screen)?</summary>
     internal bool IsScreen(ImageId i) => !i.IsNull && _images.TryGet(i.Value, out VkImg img) && img.TopDown;
 
     private ImageId TakeScreen()
     {
-        if (!OnThread("Screen") || !_images.TryGet(_standIn.Value, out VkImg st)) return default;
+        if (!OnThread("Screen") || !_images.TryGet(_spare.Value, out VkImg st)) return default;
         if (!EnsureSwapchain(Mode(_scr.Interval), st.Desc.W, st.Desc.H, _log) || _swap.W != st.Desc.W || _swap.H != st.Desc.H)
-            return _standIn;
+            return _spare;
         int idx = Acquire();
-        if (idx < 0 || !_images.TryGet(_scr.Ids[idx].Value, out VkImg img)) { Unacquire(); return _standIn; }
+        if (idx < 0 || !_images.TryGet(_scr.Ids[idx].Value, out VkImg img)) { Unacquire(); return _spare; }
         img.Layout = VkImageLayout.Undefined;
         img.Written = false;
         _scr.Index = idx;

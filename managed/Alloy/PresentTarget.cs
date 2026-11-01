@@ -3,11 +3,11 @@ using CX.Graphics.Rhi;
 
 namespace CX.Alloy;
 
-/// <summary>Where Alloy's frame lands: Vulkan's composite image, sized to the window here and presented by Vulkan
+/// <summary>Where Alloy's frame lands: Vulkan's screen, sized to the window here and presented by Vulkan
 /// itself. The world frame marks it composed; the GUI flush that draws over it hands it back.</summary>
 internal static class PresentTarget
 {
-    /// <summary>The composite's size, and whether the world frame has composited into it since the last hand-back.</summary>
+    /// <summary>The screen's size, and whether the world frame has composited into it since the last hand-back.</summary>
     private sealed class PresentState
     {
         public int W, H;
@@ -27,20 +27,20 @@ internal static class PresentTarget
     /// <summary>Is there a GL target for a frame to land on? Never: the frame is Vulkan's.</summary>
     internal static bool Usable => false;
 
-    /// <summary>The composite's size.</summary>
+    /// <summary>The screen's size.</summary>
     internal static int Width => _s.W;
     /// <inheritdoc cref="Width"/>
     internal static int Height => _s.H;
 
-    /// <summary>Size Vulkan's composite to the window, once per size; a refusal fails Alloy, said once.</summary>
+    /// <summary>Size Vulkan's screen to the window, once per size; a refusal fails Alloy, said once.</summary>
     internal static void Ensure(int w, int h)
     {
         PresentState s = _s;
         if (w <= 0 || h <= 0 || (w == s.W && h == s.H)) return;
         s.W = w; s.H = h;
         if (_log == null || AlloyDevice.Vulkan(_log) is not VkBackend vk || !vk.Resize(w, h))
-            AlloyGate.Fail($"Vulkan's {w}x{h} composite image was refused (logged above)");
-        else if (!s.Announced) { s.Announced = true; _log.Info($"PresentTarget: Vulkan composites into its own {w}x{h} image and presents it"); }
+            AlloyGate.Fail($"Vulkan's {w}x{h} screen was refused (logged above)");
+        else if (!s.Announced) { s.Announced = true; _log.Info($"PresentTarget: Vulkan's frame is {w}x{h}, drawn straight into the window's image"); }
     }
 
     /// <summary>The world frame is about to composite into the image: the GUI flush draws over it as it is.</summary>
@@ -55,10 +55,10 @@ internal static class PresentTarget
     /// <summary><see cref="HandBack"/> when the world composited and nothing has handed it back yet.</summary>
     internal static void HandBackIfOwed() { if (_s.Composed) HandBack(); }
 
-    /// <summary>The composite's size and its hand-backs this session.</summary>
+    /// <summary>The screen's size and its hand-backs this session.</summary>
     internal static string Stats()
-        => _s.W == 0 ? "present: no composite image yet" : $"present: {_s.W}x{_s.H} Vulkan composite, {_s.HandBacks} hand-backs";
+        => _s.W == 0 ? "present: no screen yet" : $"present: {_s.W}x{_s.H} Vulkan screen, {_s.HandBacks} hand-backs";
 
-    /// <summary>A lost device takes the composite with it; the next <see cref="Ensure"/> sizes a fresh one.</summary>
+    /// <summary>A lost device takes the screen with it; the next <see cref="Ensure"/> sizes a fresh one.</summary>
     internal static void ContextLost() => _s = new PresentState();
 }

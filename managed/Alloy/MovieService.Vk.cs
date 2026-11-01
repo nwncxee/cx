@@ -6,7 +6,7 @@ using CX.Rhi;
 namespace CX.Alloy;
 
 /// <summary>The movie frame on Vulkan: the decode's rows uploaded into a Vulkan image and drawn letterboxed over a
-/// black composite, which Vulkan's present then shows. No GL and no hand-back blit.</summary>
+/// black screen, which Vulkan's present then shows. No GL and no hand-back blit.</summary>
 public sealed unsafe partial class MovieService
 {
     /// <summary>The plate's program, its image at the frame's size and its command list, on one device.</summary>

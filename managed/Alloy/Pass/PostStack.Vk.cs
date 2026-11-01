@@ -72,8 +72,8 @@ internal static unsafe partial class PostStack
     /// <summary>Is the Vulkan taa stage refused on this device? The frame then draws unjittered.</summary>
     internal static bool TaaVkFailed => (_vk.TaaTried && _vk.Taa == null) || (_vk.MotionTried && _vk.Motion == null);
 
-    /// <summary>The post chain and the stack on Vulkan: the resolve into the stack's first image (or the composite
-    /// when no stage is live), each live stage after it, the last into the composite with the dither. The taa stage
+    /// <summary>The post chain and the stack on Vulkan: the resolve into the stack's first image (or the screen
+    /// when no stage is live), each live stage after it, the last into the screen with the dither. The taa stage
     /// paints the camera velocity off <paramref name="depth"/> first. False (logged) when the frame has no way to the
     /// screen.</summary>
     internal static bool RecordVk(VkBackend vk, CommandList cl, ImageId hdr, ImageId depth, Matrix4x4* vp,

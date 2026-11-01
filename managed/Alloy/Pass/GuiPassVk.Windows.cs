@@ -39,7 +39,7 @@ internal static unsafe partial class GuiPassVk
     internal static bool ReplayNow(UiDrawList l, ExtenderLog log)
         => TakeNow(log, out VkBackend? vk, out CommandList? cl) && Windows(vk!, cl!, l, NowList, log) && vk!.Submit(cl!);
 
-    /// <summary>Both layers of CX's recorded windows over the composite at once: a frame whose GUI flush could not
+    /// <summary>Both layers of CX's recorded windows over the screen at once: a frame whose GUI flush could not
     /// draw still shows them, as GL replays them in the engine's context.</summary>
     internal static bool ReplayLayersNow(ExtenderLog log)
         => TakeNow(log, out VkBackend? vk, out CommandList? cl)
@@ -50,7 +50,7 @@ internal static unsafe partial class GuiPassVk
     {
         cl = null;
         vk = AlloyDevice.Vulkan(log);
-        // before the first flush sizes the composite nothing is presented either (ScreenOwner says so)
+        // before the first flush sizes the screen nothing is presented either (ScreenOwner says so)
         if (vk != null && !vk.HasScreen) return false;
         if (vk == null || !vk.OnOwnThread || _s.Busy || !Ensure(vk, log))
         {
@@ -98,13 +98,13 @@ internal static unsafe partial class GuiPassVk
         }
     }
 
-    /// <summary>CX's windows of <paramref name="layer"/> over the whole composite, in a pass of their own after the
+    /// <summary>CX's windows of <paramref name="layer"/> over the whole screen, in a pass of their own after the
     /// layers before them: display space, depth off, one draw per recorded command with its scissor. False = the
     /// flush refuses (the arena is full); a layer with nothing recorded, or programs that did not build, draws nothing.</summary>
     private static bool Windows(VkBackend vk, CommandList cl, UiLayer layer, ExtenderLog log)
         => Windows(vk, cl, UiHostService.Windows(layer), (int)layer, log);
 
-    /// <summary>List <paramref name="l"/> over the composite through vertex buffer <paramref name="li"/>.</summary>
+    /// <summary>List <paramref name="l"/> over the screen through vertex buffer <paramref name="li"/>.</summary>
     private static bool Windows(VkBackend vk, CommandList cl, UiDrawList l, int li, ExtenderLog log)
     {
         GuiVkState s = _s;

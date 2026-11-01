@@ -11,7 +11,7 @@ namespace CX.Alloy;
 
 /// <summary>
 /// The vanilla highlight glow on Vulkan: <see cref="GobGlow"/>'s staged quads, one instanced strip each, added over the
-/// finished composite after the post stack -- where the engine's <c>Scene::DoHighlightGob</c> drew them -- and
+/// finished screen after the post stack -- where the engine's <c>Scene::DoHighlightGob</c> drew them -- and
 /// depth-tested in the fragment stage against the frame's depth.
 /// </summary>
 public sealed unsafe partial class AlloyRenderer
@@ -33,15 +33,15 @@ public sealed unsafe partial class AlloyRenderer
 
     private static VkGlowState _vkGlow = new();
 
-    /// <summary>The glow over <paramref name="composite"/> at <paramref name="display"/>, for every highlighted root the
+    /// <summary>The glow over <paramref name="screen"/> at <paramref name="display"/>, for every highlighted root the
     /// outline mask did not cover. False only when the device refused an upload or the uniform arena is full.</summary>
-    private static bool VkGlowPass(VkBackend vk, CommandList cl, VkColourState c, ImageId composite, in Matrix4x4 view,
+    private static bool VkGlowPass(VkBackend vk, CommandList cl, VkColourState c, ImageId screen, in Matrix4x4 view,
                                    in Matrix4x4 proj, int* display, ExtenderLog log)
     {
         VkGlowState s = _vkGlow;
         if (s.Dev != vk) _vkGlow = s = new VkGlowState { Dev = vk };
-        if (s.Tried && s.Prog != null && s.PipeFmt != PostChainVk.FormatOf(composite)) { vk.Destroy(s.Pipe); s.Tried = false; }
-        if (_capturing || Highlight.StageGlowVk(EyePos) == 0 || !VkGlowEnsure(vk, s, PostChainVk.FormatOf(composite), log)) return true;
+        if (s.Tried && s.Prog != null && s.PipeFmt != PostChainVk.FormatOf(screen)) { vk.Destroy(s.Pipe); s.Tried = false; }
+        if (_capturing || Highlight.StageGlowVk(EyePos) == 0 || !VkGlowEnsure(vk, s, PostChainVk.FormatOf(screen), log)) return true;
         uint tex = GobGlow.TexName(out bool final, out string resref);
         ImageId img = tex != 0 ? VkTextures.Image((int)tex) : default;
         if (img.IsNull)
@@ -60,7 +60,7 @@ public sealed unsafe partial class AlloyRenderer
         cl.UpdateBuffer(s.Recs, 0, bytes);
         ReadOnlySpan<ImageId> read = [c.Depth];
         cl.ReadImages(read);
-        // the composite is resolved, so the quads draw through the camera with the TAA jitter taken back out
+        // the screen is resolved, so the quads draw through the camera with the TAA jitter taken back out
         Matrix4x4 clean = proj;
         clean.M31 -= PostChain.JitterX * clean.M34; clean.M32 -= PostChain.JitterY * clean.M34;
         CommandList side = s.Side!;
@@ -74,7 +74,7 @@ public sealed unsafe partial class AlloyRenderer
         LooseBlock.Set(s.View, view);
         LooseBlock.Set(s.Proj, clean);
         // a screen's rows run from the top, so its fragments' y comes back to the scene depth's rows through a flipped origin
-        float flipH = vk.IsScreen(composite) ? vk.FrameSize.H : 0f, sy = 1f / Math.Max(display[3], 1);
+        float flipH = vk.IsScreen(screen) ? vk.FrameSize.H : 0f, sy = 1f / Math.Max(display[3], 1);
         LooseBlock.Set(s.Rect, [display[0], flipH == 0f ? display[1] : flipH - display[1], 1f / Math.Max(display[2], 1), flipH == 0f ? sy : -sy]);
         LooseBlock.EndCapture();
         int loose = VkArena(p.Block);
@@ -97,18 +97,18 @@ public sealed unsafe partial class AlloyRenderer
         }
         side.BindSet(0, new BindSet(ubo[..nu], ssbo[..ns], sampled[..nt], default));
         side.Draw(4, n, 0, 0);
-        ReadOnlySpan<ColorAttachment> colors = [new(composite, 0, 0, LoadOp.Load, StoreOp.Store, default)];
+        ReadOnlySpan<ColorAttachment> colors = [new(screen, 0, 0, LoadOp.Load, StoreOp.Store, default)];
         VkFlushPass(cl, side, arena0, new RenderPassDesc(colors));
         if (!s.Live)
         {
             s.Live = true;
             log.Always($"AlloyRenderer: the Vulkan highlight glow is LIVE -- {n} quad(s), three per visible mesh part of each "
-                     + "highlighted root the outline does not cover, over the composite");
+                     + "highlighted root the outline does not cover, over the screen");
         }
         return true;
     }
 
-    /// <summary>The program and its additive, depth-less pipeline into the composite, made once per device; a refusal
+    /// <summary>The program and its additive, depth-less pipeline into the screen, made once per device; a refusal
     /// is said once and the glow sits out.</summary>
     private static bool VkGlowEnsure(VkBackend vk, VkGlowState s, Format target, ExtenderLog log)
     {

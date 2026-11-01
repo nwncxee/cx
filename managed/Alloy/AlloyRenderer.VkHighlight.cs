@@ -12,7 +12,7 @@ namespace CX.Alloy;
 /// <summary>
 /// The owned highlight on Vulkan: <see cref="Highlight"/>'s mask -- each highlighted record redrawn in its root's
 /// colour, depth-tested against the frame's own depth -- then the one full-screen fill and dilated outline over the
-/// finished composite, as GL draws them after the post stack.
+/// finished screen, as GL draws them after the post stack.
 /// </summary>
 public sealed unsafe partial class AlloyRenderer
 {
@@ -90,8 +90,8 @@ public sealed unsafe partial class AlloyRenderer
         return true;
     }
 
-    /// <summary>The fill and outline over the composite, after the post stack, when this frame's mask drew.</summary>
-    internal static void VkHighlightComposite(CommandList cl, ImageId composite, int* display, ExtenderLog log)
+    /// <summary>The fill and outline over the screen, after the post stack, when this frame's mask drew.</summary>
+    internal static void VkHighlightComposite(CommandList cl, ImageId screen, int* display, ExtenderLog log)
     {
         VkHlState s = _vkHl;
         if (!s.Drawn || s.Comp == null) return;
@@ -101,13 +101,13 @@ public sealed unsafe partial class AlloyRenderer
         // NDC offset j is uv offset j/2; the mask holds clean + j, so clean reads at uv + j/2
         LooseBlock.Set(s.Unjitter, [PostChain.JitterX * 0.5f, PostChain.JitterY * 0.5f]);
         int at = PostChainVk.Close(cl, s.Comp);
-        PostChainVk.Draw(cl, s.Comp, PostChainVk.FormatOf(composite), PostChainVk.Blend.Over, composite, LoadOp.Load,
+        PostChainVk.Draw(cl, s.Comp, PostChainVk.FormatOf(screen), PostChainVk.Blend.Over, screen, LoadOp.Load,
                          new Rect(display[0], display[1], display[2], display[3]), at, new PostChainVk.Inputs(default, Mask: s.Target), log);
         if (!s.Live)
         {
             s.Live = true;
             log.Always("AlloyRenderer: the Vulkan outline highlight is LIVE -- the mask against the frame's depth, then the fill "
-                     + "and dilated outline over the composite (a root with no masked draw takes the vanilla glow)");
+                     + "and dilated outline over the screen (a root with no masked draw takes the vanilla glow)");
         }
     }
 
