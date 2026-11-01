@@ -40,6 +40,7 @@ internal static partial class GpuGolden
         ParallaxSelfCheck(vk, check, log);
         GbufSelfCheck(vk, check, log);
         SsrJoinSelfCheck(vk, check, log);
+        SsrGbufSelfCheck(vk, check, log);
         LightmapSelfCheck(vk, check, log);
         VrsSelfCheck(vk, check, log);
         PostSelfCheck(vk, check, log);
