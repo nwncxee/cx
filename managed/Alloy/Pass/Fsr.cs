@@ -116,12 +116,18 @@ internal static partial class Fsr
     /// <summary>The approved examples.</summary>
     static partial void Examples(Checker check, ExtenderLog log);
 
-    /// <summary>E3, a regression: TAA picked draws the frame as before -- TAA, its 8-frame jitter, no FSR.</summary>
+    /// <summary>E3, a regression: FSR 3.1 picked but refused draws the frame as TAA did -- TAA, its 8-frame jitter, no FSR.</summary>
     private static void OffSelfCheck(Checker check)
     {
-        Post.Aa.V = Post.AaTaa; Post.Scale.V = 0.67f;
-        check.Expect(!On, "E3: FSR off, FSR does not draw");
-        check.Expect(PostChain.TaaOn, "E3: FSR off, TAA runs in the post stack");
-        check.Expect(PostChain.JitterPhases(2560) == 8, $"E3: FSR off, the jitter repeats after 8 (got {PostChain.JitterPhases(2560)})");
+        Post.Aa.V = Post.AaFsr; Post.Scale.V = 0.67f;
+        FsrState keep = _s;
+        _s = new FsrState { Refused = "the self-check stands FSR down" };
+        try
+        {
+            check.Expect(!On, "E3: FSR refused, FSR does not draw");
+            check.Expect(PostChain.TaaOn, "E3: FSR refused, TAA runs in the post stack");
+            check.Expect(PostChain.JitterPhases(2560) == 8, $"E3: FSR refused, the jitter repeats after 8 (got {PostChain.JitterPhases(2560)})");
+        }
+        finally { _s = keep; }
     }
 }
