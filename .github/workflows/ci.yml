@@ -50,6 +50,7 @@ jobs:
             'tools/analyzers/*'
             'tools/gates/*'
             tools/build-openal.sh
+            tools/approved-examples.sh
             'tools/ffx/*'
             tools/deps.json
             tools/deps.py

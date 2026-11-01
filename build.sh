@@ -129,8 +129,7 @@ python3 tools/engine/views.py
 # job does not carry; the build that has it runs them.
 if [ "$1" != --no-gates ]; then
   bash tools/gates/run.sh
-  bash tools/gates/world_depth_approved_examples.sh
-  bash tools/analyzers/depth_approved_examples.sh
+  bash tools/approved-examples.sh
 fi
 
 echo ">> building managed lib (C# NativeAOT -> cx_managed.so)..."
