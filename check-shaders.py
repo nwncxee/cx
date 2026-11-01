@@ -654,6 +654,7 @@ def programs(g):
         "volumetric fog light": (g["cx_vfog_cs"],),
         "volumetric fog integrate": (g["cx_vfogsum_cs"],),
         "shading rate": (g["cx_vrs_cs"],),
+        "halo occlusion fade": (g["cx_haloocc_c"],),
         "gui": (g["cx_gui_v"], g["cx_gui_f"]),
         "trigger highlight": (g["cx_fullscreen_v"], g["cx_hilitetrig_f"]),
         "highlight glow": (g["cx_gobglow_v"], g["cx_gobglow_f"]),

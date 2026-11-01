@@ -55,6 +55,10 @@ internal static unsafe partial class Halos
         /// <summary>One <c>TexRegistry</c> reference per flare resref the area named, so a frame costs a
         /// dictionary probe rather than an acquire.</summary>
         public readonly Dictionary<string, Db.TexId> Textures = new();
+        /// <summary>Each flare light's fade slot, by <see cref="Staged.Key"/>, held to the area edge.</summary>
+        public readonly Dictionary<IntPtr, int> Slots = new();
+        /// <summary>The fade buffer still holds another area's fades.</summary>
+        public bool FadeReset = true;
     }
 
     private static HaloStageState _st = new();
@@ -109,6 +113,7 @@ internal static unsafe partial class Halos
         if (!Reaches(l.Position, def.FlareRadius)) return;
         int n = Elements(def);
         _st.Short += def.FlareTextures.Length - n;
+        int slot = FadeSlot(l.Id);
         bool lead = true;
         for (int i = 0; i < n; i++)
         {
@@ -122,7 +127,7 @@ internal static unsafe partial class Halos
             d.FlareRadius = def.FlareRadius;
             d.Size = size * Effects.HaloSize.V;
             d.FlarePosition = def.FlarePositions[i];
-            d.Probe = new Vector2(lead ? 1f : 0f, 0f);
+            d.Probe = new Vector2(lead ? 1f : 0f, slot);
             _st.At[_st.Count] = new Staged { Key = l.Id, Tex = TexName(def.FlareTextures[i]), Lead = lead };
             lead = false;
             _st.Count++;
@@ -192,7 +197,7 @@ internal static unsafe partial class Halos
     /// reads 0, and an Inf cannot reach the vertex stage's weights as Inf x 0.</summary>
     private static float Finite(float c) => c > 0f ? MathF.Min(c, 1e6f) : 0f;
 
-    /// <summary>World edge: this area's staged elements go, and the flare textures they held go with them.</summary>
+    /// <summary>World edge: this area's staged elements and fade slots go, and the flare textures they held go with them.</summary>
     internal static void Revoke()
     {
         foreach (Db.TexId id in _st.Textures.Values) Db.TexRegistry.Release(id);
@@ -202,7 +207,7 @@ internal static unsafe partial class Halos
     internal static void ResetPeriod() { _drawn = 0; _groups = 0; _bare = 0; _st.Short = 0; }
     internal static string Stats() => _off ? "halos unavailable" : !Effects.HalosOn ? "halos off"
         : $"halos {_st.Count} flare elements this frame; this period {_drawn} element draws in {_groups} texture "
-          + $"groups ({_bare} on the procedural profile, their texture not yet resident)"
+          + $"groups ({_bare} on the procedural profile, their texture not yet resident), {_st.Slots.Count} lights on the fade"
           + (_st.Short > 0 ? $", {_st.Short} element draws skipped for a texture with no size/position/shift" : "");
     internal static string Describe() => $"{(_off ? "UNAVAILABLE" : Effects.HalosOn ? "on" : "off")} size {Effects.HaloSize.V:F2} gain {Effects.Halos.V:F2} viz {Effects.HaloViz.V}";
 

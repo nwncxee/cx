@@ -12,8 +12,8 @@ namespace CX.Alloy;
 /// <summary>
 /// The light halos (<see cref="PassId.HalosOwned"/>) on Vulkan: <see cref="Halos"/>' staged flare elements, one
 /// instanced quad each, added over the scene colour with no depth test, each occluded per pixel against a depth copy
-/// as GL's stage does. The occlusion probe's fade is not on Vulkan: a halo draws at full strength until its pixels
-/// are covered.
+/// as GL's stage does. Each light's chain is faded by the occlusion probe, a compute over the same copy that walks the
+/// light's slot in a GPU fade buffer toward what it can see; the draw reads the slot the same frame.
 /// </summary>
 public sealed unsafe partial class AlloyRenderer
 {
@@ -28,10 +28,19 @@ public sealed unsafe partial class AlloyRenderer
         public long RecCap;
         public SamplerId Samp;
         public CommandList? Side;
+        public PipelineId Occ;
+        public BufferId Fade;
+        public long FadeCap;
         public int View = -1, Proj = -1, Viz = -1, Gain = -1, First = -1, Textured = -1;
     }
 
     private static VkHaloState _vkHalo = new();
+
+    /// <summary>The probe's workgroup: <c>local_size_x</c> in <c>cx_haloocc_c</c>.</summary>
+    private const int VkHaloOccGroup = 64;
+    /// <summary>The fade buffer's first size, in slots. ponytail: growing it makes a new, zeroed buffer, so every flare
+    /// fades in again once; copy the old slots across if an area ever outgrows this.</summary>
+    private const int VkHaloFadeSlots = 1024;
 
     /// <summary>The halos into <paramref name="cl"/> as their own pass; false only when the device refused an upload or
     /// the arena is full.</summary>
@@ -49,6 +58,7 @@ public sealed unsafe partial class AlloyRenderer
         cl.CopyImage(new CopyImageCmd(c.Depth, new ImageRegion(0, 0, 0, 0), c.DepthRead, new ImageRegion(0, 0, 0, 0), c.W, c.H, 1));
         ReadOnlySpan<ImageId> read = [c.DepthRead];
         cl.ReadImages(read);
+        if (!VkHaloOcclude(vk, cl, s, c, view, proj, n)) return false;
         CommandList side = s.Side!;
         side.Reset();
         int arena0 = c.ArenaUsed;
@@ -83,7 +93,8 @@ public sealed unsafe partial class AlloyRenderer
                 if (o.Kind == VkBindKind.UniformBlock && nu < ubo.Length)
                     ubo[nu++] = o.Binding == UboSlots.Loose ? new BufferBinding(o.Binding, c.Arena, loose, p.Block.Length) : new BufferBinding(o.Binding, c.ZeroUbo);
                 else if (o.Kind == VkBindKind.StorageBlock && ns < ssbo.Length)
-                    ssbo[ns++] = new BufferBinding(o.Binding, o.Binding == Halos.VkBind ? s.Recs : c.ZeroSsbo);
+                    ssbo[ns++] = new BufferBinding(o.Binding, o.Binding == Halos.VkBind ? s.Recs
+                                                            : o.Binding == SsboSlots.HaloFade ? s.Fade : c.ZeroSsbo);
                 else if (o.Kind == VkBindKind.Sampled && nt < sampled.Length)
                     sampled[nt++] = o.Name == "uSceneDepth" ? new ImageBinding(o.Binding, c.DepthRead)
                                   : o.Name == "uFlare" && !img.IsNull ? new ImageBinding(o.Binding, img, s.Samp)
@@ -102,12 +113,30 @@ public sealed unsafe partial class AlloyRenderer
         {
             s.Live = true;
             log.Always($"AlloyRenderer: the Vulkan halos are LIVE -- {n} flare element(s) in {groups} texture group(s), "
-                     + "occluded per pixel; the occlusion probe's fade is not on Vulkan");
+                     + $"occluded per pixel and faded by the occlusion probe over {Halos.FadeSlots} light slot(s)");
         }
         return true;
     }
 
-    /// <summary>The program and its additive, depth-less pipeline, made once per device; a refusal sits the halos out.</summary>
+    /// <summary>The occlusion probe over this frame's <paramref name="n"/> elements, ahead of the draw that reads its
+    /// fades; false only when the device refused the fade buffer.</summary>
+    private static bool VkHaloOcclude(VkBackend vk, CommandList cl, VkHaloState s, VkColourState c, in Matrix4x4 view,
+                                      in Matrix4x4 proj, int n)
+    {
+        long bytes = (long)Math.Max(Halos.FadeSlots, VkHaloFadeSlots) * sizeof(float);
+        if (!VkGrow(vk, ref s.Fade, ref s.FadeCap, bytes, "vk halo fades")) return false;
+        if (Halos.TakeFadeReset()) cl.ZeroBuffer(s.Fade);
+        Halos.OccConsts push = Halos.OccPush(view, proj, n, Halos.FadeStep(FrameDelta.Delta(FrameDelta.DtFloor)));
+        ReadOnlySpan<BufferBinding> ssbo = [new(SsboSlots.Halos, s.Recs), new(SsboSlots.HaloFade, s.Fade)];
+        cl.SetPipeline(s.Occ);
+        cl.BindSet(0, new BindSet(default, ssbo, [new ImageBinding(0, c.DepthRead)], default));
+        cl.PushConstants(0, MemoryMarshal.AsBytes(new ReadOnlySpan<Halos.OccConsts>(in push)));
+        cl.Dispatch((n + VkHaloOccGroup - 1) / VkHaloOccGroup);
+        return true;
+    }
+
+    /// <summary>The program, its additive, depth-less pipeline and the occlusion probe, made once per device; a refusal
+    /// of either sits the halos out.</summary>
     private static bool VkHaloEnsure(VkBackend vk, VkHaloState s, ExtenderLog log)
     {
         if (s.Tried) return s.Prog != null;
@@ -138,8 +167,13 @@ public sealed unsafe partial class AlloyRenderer
             s.Pipe = vk.CreatePipeline(in d);
             if (s.Pipe.IsNull) p = null;
         }
+        if (p != null)
+        {
+            s.Occ = vk.CreateCompute(ShaderSource.Get(Halos.OccCs + ".glsl"), "vk halo occlusion");
+            if (s.Occ.IsNull) p = null;
+        }
         s.Prog = p;
-        if (p == null) log.Always("AlloyRenderer: the Vulkan halo program was REFUSED (logged above) -- no halos on Vulkan this session");
+        if (p == null) log.Always("AlloyRenderer: the Vulkan halo program or its occlusion probe was REFUSED (logged above) -- no halos on Vulkan this session");
         return p != null;
     }
 }
