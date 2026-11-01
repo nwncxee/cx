@@ -116,14 +116,16 @@ internal static unsafe class PostChain
     /// <summary>This pass's projection jitter in NDC, as <see cref="Jitter"/> handed it out (0 with TAA off);
     /// the accumulator reads it to place the current frame's samples on the display grid.</summary>
     internal static float JitterX, JitterY;
-    /// <summary>The jitter sequence length -- Halton(2,3), eight points, then it repeats.</summary>
+    /// <summary>TAA's jitter sequence length -- Halton(2,3), eight points, then it repeats.</summary>
     internal const int JitterCount = 8;
+    /// <summary>The jitter sequence length this frame takes at a <paramref name="displayW"/>-wide display.</summary>
+    internal static int JitterPhases(int displayW) => JitterCount;
     /// <summary>This frame's sub-pixel jitter in NDC for a render target of <paramref name="w"/> x
-    /// <paramref name="h"/>: Halton(2,3) over <see cref="JitterCount"/> frames, centred on zero, one render
+    /// <paramref name="h"/>: Halton(2,3) over <paramref name="phases"/> frames, centred on zero, one render
     /// pixel of spread. Pure, so the self-check can walk the sequence.</summary>
-    internal static void Jitter(int frameSeq, int w, int h, out float jx, out float jy)
+    internal static void Jitter(int frameSeq, int w, int h, int phases, out float jx, out float jy)
     {
-        int i = (frameSeq & 0x7fffffff) % JitterCount + 1;
+        int i = (frameSeq & 0x7fffffff) % Math.Max(phases, 1) + 1;
         jx = (Halton(i, 2) - 0.5f) * 2f / Math.Max(w, 1);
         jy = (Halton(i, 3) - 0.5f) * 2f / Math.Max(h, 1);
     }
@@ -274,10 +276,10 @@ internal static unsafe class PostChain
             float sx = 0f, sy = 0f, mx = 0f;
             for (int f = 0; f < JitterCount; f++)
             {
-                Jitter(f, 1000, 500, out float jx, out float jy);
+                Jitter(f, 1000, 500, JitterCount, out float jx, out float jy);
                 sx += jx; sy += jy; mx = MathF.Max(mx, MathF.Max(MathF.Abs(jx) * 500f, MathF.Abs(jy) * 250f));
             }
-            Jitter(0, 1000, 500, out float j0x, out float j0y); Jitter(JitterCount, 1000, 500, out float j8x, out float j8y);
+            Jitter(0, 1000, 500, JitterCount, out float j0x, out float j0y); Jitter(JitterCount, 1000, 500, JitterCount, out float j8x, out float j8y);
             // Halton's first eight points are not exactly balanced (base 2 sums to 3.5625, a mean of -0.055
             // px): a mean under a tenth of a pixel is what this asserts, not zero.
             check.Expect(MathF.Abs(sx) * 500f / JitterCount < 0.1f && MathF.Abs(sy) * 250f / JitterCount < 0.1f, "the jitter sequence is centred within 0.1 px");

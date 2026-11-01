@@ -11,7 +11,7 @@ internal static class Post
     internal static readonly KnobGroup G;
     internal static readonly Knob<float> Exposure, Bloom, Threshold, Knee,
                                          AcesMix, TmKnee, Dither, TaaBlend, TaaSharp, ToonBands, ToonInk, ToonEdge;
-    internal static readonly Knob<bool> Taa, Taau, HalfRes, Stack, FbPost, ClearViz, SkyRaw;
+    internal static readonly Knob<bool> Taa, Fsr, Taau, HalfRes, Stack, FbPost, ClearViz, SkyRaw;
     internal static readonly Knob<int> Tonemap, Viz;
 
     static Post()
@@ -35,6 +35,9 @@ internal static class Post
         Taa = G.Toggle("taa", "Temporal anti-aliasing", true, help: "Smooths edges over several frames.")
               .Ladder(Quality.Preset, Quality.Classic(false, true));
         Taa.Changed = () => { if (Taa.V) TaaStage.Reset(); };
+        Fsr = G.Toggle("fsr", "FSR 3.1 upscaling", false,
+                       help: "Rebuilds the full-resolution picture from the render scale's smaller frame and the frames before it. "
+                           + "Replaces temporal anti-aliasing while on; at render scale 1 it is the anti-aliasing.");
         G.Section("Bloom");
         Threshold = G.Slider("threshold", "Bloom threshold", 0f, 4f, 0.05f, 1f, tier: Tier.Advanced);
         Knee = G.Slider("knee", "Bloom knee", 0f, 1f, 0.05f, 0.5f, tier: Tier.Advanced);

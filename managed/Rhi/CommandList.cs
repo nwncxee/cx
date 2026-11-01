@@ -13,7 +13,7 @@ public enum Op : byte
     End, BeginRenderPass, EndRenderPass, SetPipeline, SetViewport, SetScissor, SetDepthBias, BindSet,
     BindIndexBuffer, Draw, DrawIndexed, DrawIndexedIndirect, Dispatch, CopyImage, BlitImage, UpdateBuffer, ZeroBuffer,
     PushConstants, BindVertexBuffer, DrawIndexedMulti, SetDepthState, SetRasterState, SetDepthRange, ReadImages,
-    DrawIndirect, CopyImageToBuffer, ClearImage, GenerateMips, BeginLabel, EndLabel, SetShadingRate,
+    DrawIndirect, CopyImageToBuffer, ClearImage, GenerateMips, BeginLabel, EndLabel, SetShadingRate, Upscale,
 }
 
 /// <summary>An index element's width.</summary>
@@ -69,6 +69,12 @@ public readonly record struct LabelCmd(int Bytes);
 /// <summary><see cref="Op.ReadImages"/>'s header; the ids follow it. <see cref="Access"/> says which read the
 /// hand-over is for: a sampled texture, or a storage image, which wants a layout of its own.</summary>
 public readonly record struct ReadImagesCmd(int Images, Access Access);
+
+/// <summary><see cref="Op.Upscale"/>: one FSR 3.1 dispatch from the render-size inputs into the display-size
+/// <see cref="Output"/>. Jitter is in render pixels as FSR takes it; a null <see cref="Exposure"/> reads as 1.</summary>
+public readonly record struct UpscaleCmd(ImageId Color, ImageId Depth, ImageId Motion, ImageId Exposure, ImageId Output,
+                                         float JitterX, float JitterY, float MvScaleX, float MvScaleY, int RenderW, int RenderH,
+                                         float FrameMs, float Near, float Far, float FovY, bool Reset);
 
 /// <summary>CPU work waiting on a list's submit: <see cref="Fn"/> gets <see cref="Arg"/> and whether the GPU ran the
 /// submit (false: it was refused, or the device went away first).</summary>
@@ -288,6 +294,8 @@ public sealed class CommandList
 
     /// <summary>Every mip and layer of <paramref name="i"/> set to zero, outside a pass; the image needs <c>CopyDst</c>.</summary>
     public void ClearImage(ImageId i) { Head(Op.ClearImage); Put(i); Sent(); }
+    /// <summary>One FSR 3.1 upscale; the device must have said <c>FsrReady</c> for these sizes first.</summary>
+    public void Upscale(in UpscaleCmd c) { Head(Op.Upscale); Put(c); Sent(); }
     /// <summary><paramref name="i"/>'s mips past the base filled from it by linear blits, outside a pass; the image needs
     /// <c>CopySrc</c> and <c>CopyDst</c>.</summary>
     public void GenerateMips(ImageId i) { Head(Op.GenerateMips); Put(i); Sent(); }

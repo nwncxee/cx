@@ -226,6 +226,13 @@ internal static class RenderPasses
         }, log);
         r.Register(new PassLifecycle
         {
+            Name = "fsr",
+            SelfCheck = Fsr.SelfCheck,
+            Revoke = Fsr.Revoke,
+            ContextLost = Fsr.Forget,
+        }, log);
+        r.Register(new PassLifecycle
+        {
             Name = "post",
             Attach = PostChain.Attach,
             SelfCheck = l => PostChain.SelfCheck(l),

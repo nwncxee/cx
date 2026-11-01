@@ -51,7 +51,11 @@ internal static partial class GpuGolden
         WhenDoneSelfCheck(vk, check, log);
         ReversedZSelfCheck(vk, check, log);
         ContentClipSelfCheck(vk, check, log);
+        FsrSelfCheck(vk, check, log);
     }
+
+    /// <summary>FSR 3.1 against a supersampled scene, on this device.</summary>
+    static partial void FsrSelfCheck(VkBackend vk, Checker check, ExtenderLog log);
 
     /// <summary>The version line every golden stage opens with, and the one the shipped libraries open with.</summary>
     private const string Version = "#version 460 core\n";

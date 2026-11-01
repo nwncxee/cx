@@ -154,7 +154,7 @@ public sealed unsafe partial class AlloyRenderer
         // a Vulkan frame whose TAA resolve did not build draws unjittered
         if (PostChain.TaaOn && !_capturing && !PostStack.TaaVkFailed)
         {
-            PostChain.Jitter(_frameSeq, PostChain.RenderSize(t.Vp2), PostChain.RenderSize(t.Vp3), out jx, out jy);
+            PostChain.Jitter(_frameSeq, PostChain.RenderSize(t.Vp2), PostChain.RenderSize(t.Vp3), PostChain.JitterPhases(t.Vp2), out jx, out jy);
             proj.M31 += jx * proj.M34; proj.M32 += jy * proj.M34;
         }
         PostChain.JitterX = jx; PostChain.JitterY = jy;
