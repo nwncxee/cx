@@ -272,7 +272,8 @@ internal static unsafe partial class PostStack
         ExtenderLog? quiet = _log; _log = null;
         var check = new Checker(log);
         string aa = Post.Aa.V;
-        Post.Aa.V = Post.AaTaa;
+        float scale = Post.Scale.V;
+        Post.Aa.V = Post.AaFsr; Post.Scale.V = 1.5f;
         try
         {
             foreach (Stage st in _stages)
@@ -333,9 +334,9 @@ internal static unsafe partial class PostStack
             // #389: ...and TAA is exclusive with it, so it is last whenever it is live -- its stage draw is
             // the dithered write and the history never carries the dither.
             check.Expect(_stages[^2].Name == "taa", "taa sits right before aa, and the two are never live together");
-            check.Expect(!SmaaStage.Active && _stages[^2].Active(), "with post.aa taa the aa stage is idle and the taa stage live");
+            check.Expect(!SmaaStage.Active && _stages[^2].Active(), "with TAA in FSR's place the aa stage is idle and the taa stage live");
         }
-        finally { _log = quiet; Post.Stack.V = true; Post.Aa.V = aa; }
+        finally { _log = quiet; Post.Stack.V = true; Post.Aa.V = aa; Post.Scale.V = scale; }
         log.Info(check.Ok ? $"PostStack.SelfCheck: passed ({_stages.Length} stage(s))" : "PostStack.SelfCheck: FAILED");
         return check.Ok;
     }

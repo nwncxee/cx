@@ -41,8 +41,10 @@ internal static partial class Fsr
         check.Expect(seen.Count == 17 && x0 == x17 && y0 == y17, $"E4: ...visiting 17 positions before it repeats (got {seen.Count})");
 
         check.Expect(MathF.Abs(PostChain.LodBias + 1.58f) < 0.01f, $"E5: FSR 3.1 picked at 0.67, textures sample with a mip bias of -1.58 (got {PostChain.LodBias:F3})");
-        Post.Aa.V = Post.AaTaa;
-        check.Expect(MathF.Abs(PostChain.LodBias + 0.58f) < 0.01f, $"E5: ...where TAA at the same scale uses -0.58 (got {PostChain.LodBias:F3})");
+        FsrState keep = _s;
+        _s = new FsrState { Refused = "the self-check stands FSR down" };
+        try { check.Expect(MathF.Abs(PostChain.LodBias + 0.58f) < 0.01f, $"E5: ...where TAA, drawing at the same scale for a refused FSR, uses -0.58 (got {PostChain.LodBias:F3})"); }
+        finally { _s = keep; }
 
         RefusedExample(check, log);
         NewAreaExample(check);
