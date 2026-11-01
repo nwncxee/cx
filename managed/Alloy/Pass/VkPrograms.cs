@@ -28,13 +28,14 @@ internal static class VkPrograms
     internal static readonly IReadOnlyDictionary<string, uint> Units = MakeUnits();
 
     /// <summary><see cref="Units"/> plus the material units a hosted sky declares as <c>texUnit1</c> and up, on the
-    /// material-map block from unit 1, where a content stage's <c>texUnit1</c> sits too.</summary>
+    /// material-map block from unit 1, where a content stage's <c>texUnit1</c> sits too, and the engine noise.</summary>
     internal static readonly IReadOnlyDictionary<string, uint> SkyUnits = MakeSkyUnits();
 
     private static Dictionary<string, uint> MakeSkyUnits()
     {
         var u = MakeUnits();
         for (int i = 1; i < AlloyRenderer.MaxEngTex; i++) u[$"texUnit{i}"] = TextureSlots.MapBase + (uint)(i - 1);
+        u["texUnitNoise"] = FrameSnapshot.NoiseUnit;
         return u;
     }
 
@@ -197,15 +198,16 @@ internal static class VkPrograms
     private static string Final(string raw, ExtenderLog? log, string what, bool host)
         => ShaderResource.Tokens(VanillaShader.Splice(raw, log, what, true, host));
 
-    /// <summary>A sky stage that samples its material's second and fourth textures translates, those two on units 3 and 5.
-    /// Oracle: the hand-written fixture and the map block's first unit, 3, written out.</summary>
+    /// <summary>A sky stage that samples its material's second and fourth textures and the engine noise translates: those
+    /// two on units 3 and 5, the noise on 15. Oracle: the hand-written fixture and the units, written out.</summary>
     private static void SkyMaterialUnits(Checker check)
     {
         const string Vs = "#version 460 core\nout vec2 vUV;\nvoid main() { vUV = vec2(0.0); gl_Position = vec4(0.0); }\n";
-        const string Fs = "#version 460 core\nin vec2 vUV;\nout vec4 o;\nuniform sampler2D texUnit1;\nuniform sampler2D texUnit3;\n"
-                        + "void main() { o = texture(texUnit1, vUV) + texture(texUnit3, vUV); }\n";
+        const string Fs = "#version 460 core\nin vec2 vUV;\nout vec4 o;\nuniform sampler2D texUnit1;\nuniform sampler2D texUnit3;\nuniform sampler2D texUnitNoise;\n"
+                        + "void main() { o = texture(texUnit1, vUV) + texture(texUnit3, vUV) + texture(texUnitNoise, vUV); }\n";
         VkProgramText t = VkGlsl.Translate(Vs, Fs, SkyUnits);
-        check.Expect(t.Error == null, $"a sky stage's texUnit1 and texUnit3 have units ({t.Error})");
+        check.Expect(t.Error == null, $"a sky stage's texUnit1, texUnit3 and texUnitNoise have units ({t.Error})");
+        check.Expect(t.Opaques.Exists(o => o.Name == "texUnitNoise" && o.Binding == 15), "texUnitNoise sits on unit 15");
         check.Expect(t.Opaques.Exists(o => o.Name == "texUnit1" && o.Binding == 3) && t.Opaques.Exists(o => o.Name == "texUnit3" && o.Binding == 5),
             "texUnit1 sits on unit 3 and texUnit3 on unit 5");
     }
