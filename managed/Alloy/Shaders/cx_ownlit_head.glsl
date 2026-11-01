@@ -78,13 +78,15 @@ layout(rg32f, binding = 7) readonly uniform image2D uDecalSurf;
 /// How high above a surface a decal may lie and still fold into it: metres, plus a share of view depth for the
 /// depth buffer's own precision.
 const float CX_DECAL_TOL_M = 0.1, CX_DECAL_TOL = 0.001;
+/// What uDecalSurf's window depth clears to: no writer reached the pixel. Not a far plane -- the world's is 0.
+const float CX_DECAL_UNWRITTEN = 1.0;
 /// Does a decal at linear view depth <paramref name="d"/> lie on the surface whose window depth is <paramref name="z"/>?
 /// As HEIGHT off that surface (a grazing ray stretches depth without bound), one-sided: a surface over the decal (a foot
 /// on it) never takes it. The writer and the blended pass ask it of the same inputs, so one of them takes each decal
 /// fragment; a surface folding the layer asks it of the nearest decal.
 bool CxDecalOn(float z, float d)
 {
-    if (!(z > 0.0)) return false;
+    if (!(z > 0.0 && z < CX_DECAL_UNWRITTEN)) return false;
     float s = uDecalZ.y / (z + uDecalZ.x);
     float h = (s - d) / max(d, 1e-4) * abs(dot(vWorld - uEyePos, normalize(vNrm)));
     float eps = CX_DECAL_TOL * s;

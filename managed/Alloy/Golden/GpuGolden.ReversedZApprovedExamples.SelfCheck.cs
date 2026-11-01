@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using CX.Framework;
@@ -61,8 +62,8 @@ internal static partial class GpuGolden
         check.Expect(far == 0, $"{tag}: {far} of {ZPairs * ZSide * ZSide} pixels show the farther of two surfaces 1 cm apart at {dist} m");
     }
 
-    /// <summary>E3: quads at 2, 30 and 300 m in the lower half, sky above; the shared decode reads each back within
-    /// 0.1 percent, and the sky at the far plane or past it.</summary>
+    /// <summary>E3: quads at 2, 30 and 300 m in the lower half, then a sky dome drawn as the sky pass draws it, collapsed
+    /// onto the far plane; the shared decode reads each quad back within 0.1 percent, and the sky pixel at or past the far plane.</summary>
     private static void ZDistanceCase(VkBackend vk, Checker check, ExtenderLog log, Matrix4x4 proj)
     {
         // Given a surface at a known distance from the camera (2 m, 30 m, 300 m)
@@ -70,14 +71,16 @@ internal static partial class GpuGolden
         // Then each reads back that distance, to within 0.1 percent, as it did before the change
         double[] want = [2, 30, 300];
         float[]? px = ZDraw(vk, log, [new ZQuad(-1, -1 / 3.0, want[0], 0), new ZQuad(-1 / 3.0, 1 / 3.0, want[1], 0),
-                                      new ZQuad(1 / 3.0, 1, want[2], 0)], proj, "golden E3");
-        string fn = Function(ShaderSource.Get("cx_scenedepth.glsl"), "float CxDepthViewZ(");
-        check.Expect(fn.Length > 0, "E3: cx_scenedepth no longer declares float CxDepthViewZ(float d, mat4 proj)");
+                                      new ZQuad(1 / 3.0, 1, want[2], 0), new ZQuad(-1, 1, 400)], proj, "golden E3", sky: 1);
+        string fn = Function(ShaderSource.Get("cx_depthlin.glsl"), "float CxDepthViewZ(");
+        check.Expect(fn.Length > 0, "E3: cx_depthlin no longer declares float CxDepthViewZ(float d, mat4 proj)");
         check.Expect(px != null, "E3: the depth golden's draw was refused (logged above)");
         if (px == null || fn.Length == 0) return;
-        int row = ZSide * 3 / 4;   // framebuffer row 0 is NDC y -1: the quads fill the upper rows
+        int row = ZSide * 3 / 4, skyRow = ZSide / 4;   // framebuffer row 0 is NDC y -1: the quads fill the upper rows
+        int sky = skyRow * ZSide + ZSide / 2;
+        check.Expect(px[sky * 2] == 4f, $"E3 boundary: the pixel above the surfaces is quad {px[sky * 2]}, not the sky");
         float[] d = [px[(row * ZSide + ZSide / 6) * 2 + 1], px[(row * ZSide + ZSide / 2) * 2 + 1],
-                     px[(row * ZSide + ZSide * 5 / 6) * 2 + 1], WorldDepth.Clear];
+                     px[(row * ZSide + ZSide * 5 / 6) * 2 + 1], px[sky * 2 + 1]];
         PipelineId pipe = vk.CreateCompute(Version + "layout(local_size_x = 1) in;\n" + CaseBlocks(4, 4) + $"const mat4 cxM = {Mat(proj)};\n"
                                            + fn + "void main() { uint i = gl_WorkGroupID.x; uOut[i] = CxDepthViewZ(uIn[i], cxM); }\n",
                                            "golden E3 decode");
@@ -91,14 +94,15 @@ internal static partial class GpuGolden
         log.Info($"GpuGolden: E3 depth decode {got[0]}/{got[1]}/{got[2]} m, sky {got[3]} m");
     }
 
-    /// <summary>E4: a world wall at 30 m, then a hak's quad over the right half at 29.5 m through the m_proj the frame
-    /// hands content; the hak quad covers columns 32 to 63 exactly and stands in front.</summary>
+    /// <summary>E4: a world wall at 30 m, then a hak's quad over the right half at 29.5 m projected by <c>m_proj</c> out
+    /// of the engine block a content stage reads, filled as the frame fills it; the hak quad covers columns 32 to 63
+    /// exactly and stands in front.</summary>
     private static void ZHakCase(VkBackend vk, Checker check, ExtenderLog log, Matrix4x4 proj)
     {
         // Given that hak loaded and a placeable using the shader
         // When Alloy draws the placeable
         // Then it appears in the same place and hides behind and in front of the same objects as before the change
-        float[]? px = ZDraw(vk, log, [new ZQuad(-1, 1, 30), new ZQuad(0, 1, 29.5)], proj, "golden E4");
+        float[]? px = ZDraw(vk, log, [new ZQuad(-1, 1, 30), new ZQuad(0, 1, 29.5)], proj, "golden E4", hak: 1);
         check.Expect(px != null, "E4: the depth golden's draw was refused (logged above)");
         if (px == null) return;
         int wrong = 0;
@@ -140,29 +144,48 @@ internal static partial class GpuGolden
     private const string ZFs = Version + "flat in float vId;\nout vec2 cxOut;\nvoid main() { cxOut = vec2(vId, gl_FragCoord.z); }\n";
 
     /// <summary><paramref name="quads"/> in view space through <paramref name="proj"/>, as a world program draws them:
-    /// translated as the world's are, under the world's depth clear and test. Every pixel's id and depth, or null.</summary>
-    private static float[]? ZDraw(VkBackend vk, ExtenderLog log, ZQuad[] quads, in Matrix4x4 proj, string label)
+    /// translated as the world's are, under the world's depth clear and test. The quads past the first <paramref name="hak"/>
+    /// (when non-zero) project by the engine block's <c>m_proj</c>, as a hak's stage does; the last <paramref name="sky"/>
+    /// draw as the sky pass draws its dome. Every pixel's id and depth, or null.</summary>
+    private static float[]? ZDraw(VkBackend vk, ExtenderLog log, ZQuad[] quads, in Matrix4x4 proj, string label, int hak = 0, int sky = 0)
     {
         var at = new List<string>();
         foreach (ZQuad z in quads)
             foreach ((double x, double y) in (ReadOnlySpan<(double, double)>)[(z.X0, z.Y0), (z.X1, z.Y0), (z.X1, 1), (z.X0, z.Y0), (z.X1, 1), (z.X0, 1)])
                 at.Add($"vec3({G(x * z.Dist / proj.M11)}, {G(y * z.Dist / proj.M22)}, {G(-z.Dist)})");
-        string vs = Version + $"const vec3 cxPos[{at.Count}] = vec3[]({string.Join(", ", at)});\nconst mat4 cxM = {Mat(proj)};\n"
-                  + "flat out float vId;\nvoid main() { vId = float(gl_VertexID / 6 + 1); gl_Position = cxM * vec4(cxPos[gl_VertexID], 1.0); }\n";
+        string by = hak > 0 ? $"(vId > {hak}.5 ? m_proj : cxM)" : "cxM";
+        string vs = Version + (hak > 0 ? ShaderSource.Get("cx_envblk.glsl") + "\n" : "")
+                  + $"const vec3 cxPos[{at.Count}] = vec3[]({string.Join(", ", at)});\nconst mat4 cxM = {Mat(proj)};\n"
+                  + $"flat out float vId;\nvoid main() {{ vId = float(gl_VertexID / 6 + 1); gl_Position = {by} * vec4(cxPos[gl_VertexID], 1.0); }}\n";
         VkProgramText t = WorldDepth.Translate(vs, ZFs, new Dictionary<string, uint>());
         if (t.Error != null) { log.Always($"GpuGolden: {label} did not translate -- {t.Error}"); return null; }
         byte[]? vb = VulkanToolchain.Compile(VkBackend.Translate(t.Vs), $"{label} vs", ShaderKind.VertexShader, out string ve);
         byte[]? fb = VulkanToolchain.Compile(VkBackend.Translate(t.Fs), $"{label} fs", ShaderKind.FragmentShader, out string fe);
         if (vb == null || fb == null) { log.Always($"GpuGolden: {label} did not compile -- {(vb == null ? ve : fe)}"); return null; }
         ShaderId v = vk.CreateShader(ShaderStage.Vertex, vb, $"{label} vs"), f = vk.CreateShader(ShaderStage.Fragment, fb, $"{label} fs");
-        float[]? px = v.IsNull || f.IsNull ? null : ZRun(vk, log, v, f, quads.Length, label, true);
-        vk.Destroy(v); vk.Destroy(f);
+        BufferId engine = hak > 0 ? EngineBlockFor(vk, proj, label) : default;
+        float[]? px = v.IsNull || f.IsNull || hak > 0 && engine.IsNull ? null
+                    : ZRun(vk, log, v, f, quads.Length - sky, label, true, sky, engine);
+        vk.Destroy(v); vk.Destroy(f); vk.Destroy(engine);
         return px;
     }
 
+    /// <summary>The <c>CxEngine</c> block a content stage reads, its <c>m_proj</c> the world's folded projection
+    /// <paramref name="proj"/>, which is what the frame hands content; the rest zero.</summary>
+    private static BufferId EngineBlockFor(VkBackend vk, in Matrix4x4 proj, string label)
+    {
+        var b = new EngineBlock { Proj = proj };
+        BufferId u = vk.CreateBuffer(new BufferDesc(Unsafe.SizeOf<EngineBlock>(), BufferUse.Uniform | BufferUse.CopyDst,
+                                                    MemoryKind.Device, label + " engine block"));
+        if (!u.IsNull && !vk.Upload(u, 0, MemoryMarshal.AsBytes(new ReadOnlySpan<EngineBlock>(in b)))) { vk.Destroy(u); return default; }
+        return u;
+    }
+
     /// <summary><paramref name="quads"/> quads of stages <paramref name="v"/> and <paramref name="f"/> into an RG32F
-    /// target and a D32F depth, under the world's clear and test when <paramref name="world"/>, else always written.</summary>
-    private static float[]? ZRun(VkBackend vk, ExtenderLog log, ShaderId v, ShaderId f, int quads, string label, bool world = false)
+    /// target and a D32F depth, under the world's clear and test when <paramref name="world"/>, else always written;
+    /// then <paramref name="sky"/> more under the sky pass's depth state and range, the engine block bound when given.</summary>
+    private static float[]? ZRun(VkBackend vk, ExtenderLog log, ShaderId v, ShaderId f, int quads, string label, bool world = false,
+                                 int sky = 0, BufferId engine = default)
     {
         var d = new PipelineDesc
         {
@@ -172,11 +195,14 @@ internal static partial class GpuGolden
         };
         d.Targets.ColorCount = 1; d.Targets.Colors[0] = Format.Rg32F; d.Targets.Depth = Format.D32F; d.Targets.Samples = 1;
         PipelineId pipe = vk.CreatePipeline(d);
+        d.Depth = new DepthState(true, false, WorldDepth.NearerOrEqual);
+        d.Raster = new RasterState(CullMode.None, DepthClamp: true);
+        PipelineId skyPipe = sky > 0 ? vk.CreatePipeline(d) : default;
         ImageId col = PostImage(vk, Format.Rg32F, ZSide, ZSide, ImageUse.ColorTarget | ImageUse.CopySrc, label);
         ImageId dep = PostImage(vk, Format.D32F, ZSide, ZSide, ImageUse.DepthTarget, label + " depth");
         BufferId rb = vk.CreateBuffer(new BufferDesc(ZSide * ZSide * 8, BufferUse.CopyDst | BufferUse.CopySrc, MemoryKind.Device, label + " read"));
         float[]? px = null;
-        if (!pipe.IsNull && !col.IsNull && !dep.IsNull && !rb.IsNull)
+        if (!pipe.IsNull && (sky == 0 || !skyPipe.IsNull) && !col.IsNull && !dep.IsNull && !rb.IsNull)
         {
             var cl = new CommandList(label, 1 << 12, log);
             ReadOnlySpan<ColorAttachment> at = [new ColorAttachment(col, 0, 0, LoadOp.Clear, StoreOp.Store, Vector4.Zero)];
@@ -185,12 +211,19 @@ internal static partial class GpuGolden
             cl.SetViewport(0, 0, ZSide, ZSide);
             cl.SetScissor(0, 0, ZSide, ZSide);
             cl.SetPipeline(pipe);
+            if (!engine.IsNull) cl.BindSet(0, new BindSet([new BufferBinding(UboSlots.Engine, engine)], default, default, default));
             cl.Draw(quads * 6);
+            if (sky > 0)
+            {
+                cl.SetDepthRange(WorldDepth.Clear, WorldDepth.Clear);
+                cl.SetPipeline(skyPipe);
+                cl.Draw(sky * 6, 1, quads * 6);
+            }
             cl.EndRenderPass();
             if (vk.Submit(cl) && PostRead(vk, log, col, ZSide, ZSide, 8, rb) is { } bytes)
                 px = MemoryMarshal.Cast<byte, float>(bytes).ToArray();
         }
-        vk.Destroy(rb); vk.Destroy(dep); vk.Destroy(col); vk.Destroy(pipe);
+        vk.Destroy(rb); vk.Destroy(dep); vk.Destroy(col); vk.Destroy(pipe); vk.Destroy(skyPipe);
         return px;
     }
 
