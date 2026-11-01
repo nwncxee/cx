@@ -95,7 +95,7 @@ internal static unsafe class GuiPass
     }
 
     /// <summary>The frame's closing flush: the first <paramref name="panels"/> listed layers, CX's below-NUI windows,
-    /// the rest (NUI), then the above-NUI windows. A flush that cannot draw still puts the windows over the composite.</summary>
+    /// the rest (NUI), then the above-NUI windows. A flush that cannot draw still puts the windows over the screen.</summary>
     internal static void FlushWithWindows(int panels)
     {
         int n = GuiCapture.LayerN;
@@ -107,7 +107,7 @@ internal static unsafe class GuiPass
         ReplayWindowsVk();
     }
 
-    /// <summary>A Vulkan flush that could not draw: CX's windows still go over the composite on their own, both layers.</summary>
+    /// <summary>A Vulkan flush that could not draw: CX's windows still go over the screen on their own, both layers.</summary>
     private static void ReplayWindowsVk() { if (_log != null) GuiPassVk.ReplayLayersNow(_log); }
 
     /// <summary>Issue every layer captured since the last flush, then forget them. A flush that cannot run drops what

@@ -144,7 +144,7 @@ on, because a renderer that keeps both warm is what ADR 0018's restart-only rule
 
 `TexRegistry.Drain`, `PltColors.Upload` and `PltPalettes.Create` are the frame's deferred work
 (`FramePump.Deferred`, declared once in `AlloyRenderer`'s arm), and three points in the frame reach for it:
-the world frame, a GUI flush that found no composite, and the present. Whichever gets there first runs it and
+the world frame, a GUI flush that found no screen, and the present. Whichever gets there first runs it and
 `FramePump.WorkDue` goes false, so the others find nothing owed -- an in-play frame does the work in the
 colour pass, and the present does it on a frame that drew no world (the main menu, the disarm latch). Hung on
 the present alone, the registry uploaded nothing for a whole live session, and CX-119's bitmap font atlases

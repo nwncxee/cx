@@ -272,7 +272,7 @@ What a server can ask the client to draw in and beside its NUI windows. The cont
 - **NullGl** — what a Vulkan session does to the engine's OpenGL: SDL opens a Vulkan window instead
   of a GL one, `SDL_GL_CreateContext` answers with a token nothing dereferences, and every GL entry
   nwmain imports resolves to a CX stub. The engine goes on running its GL-shaped code against
-  nothing, its texture uploads captured into Vulkan and its screenshots read back from the composite.
+  nothing, its texture uploads captured into Vulkan and its screenshots read back from the screen.
   The session has **no GL context at all**, which is the premise most of the terms below now rest on.
 - **Builder intent** — the part of an area's authored lighting that Alloy must preserve regardless
   of how it shades: *a light reaches what the builder made it reach, and what the builder left dark
@@ -287,6 +287,11 @@ What a server can ask the client to draw in and beside its NUI windows. The cont
   contrast is a **direct read** — the same fact taken from the engine's own state at a moment Alloy
   chooses. Retiring parasitic input is what M5 means by *build it properly*; it is a statement about
   Alloy's inputs, never about the image.
+- **Screen** — the image a frame's last writers draw (the post stack, the highlights, the movie, the GUI and
+  CX's windows): the window's own swapchain image for that frame, row 0 at the top, in the window's channel order.
+  The backend flips the viewport, scissor and winding for it, so a pass still speaks GL's rows. When there is no
+  window, or its size is not the frame's, the screen is the **spare screen**, an owned image laid out the same way
+  that the present blits onto the window.
 - **Scene enumeration** — Alloy's own walk of the world's objects, covering everything in the area
   rather than the visible slice, producing the persistent records every pass reads. Contrast the
   **draw traversal**, the engine's per-frame walk of its draw buckets, which Alloy inherited

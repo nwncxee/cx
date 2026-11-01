@@ -135,21 +135,22 @@ internal static unsafe partial class GuiPassVk
     }
 
     /// <summary>The pipeline for <paramref name="p"/> drawing <paramref name="layout"/> under blend key
-    /// <paramref name="blend"/> and <paramref name="topo"/>, made on first ask. Null id when the device refused it.
+    /// <paramref name="blend"/> and <paramref name="topo"/> into the open pass's format, made on first ask. Null id when refused.
     /// Depth, culling, winding, the viewport and the depth range are dynamic, so one pipeline covers a layer's
     /// per-draw state.</summary>
     private static PipelineId Pipeline(GuiVkProg p, VertexLayoutId layout, int blend, Topology topo, ExtenderLog log)
     {
-        long key = layout.Value | (long)blend << 32 | (long)topo << 40;
+        Format f = _s.Fmt;
+        long key = layout.Value | (long)blend << 32 | (long)topo << 40 | (long)f << 48;
         if (p.Pipes.TryGetValue(key, out PipelineId id)) return id;
         var d = new PipelineDesc
         {
             Vs = p.Vs, Fs = p.Fs, Layout = layout, Topo = topo,
             Raster = new RasterState(CullMode.None), Depth = new DepthState(true, true, GlDepth.NearerOrEqual),
-            Label = $"vk {p.Label} layout {layout.Value} blend {blend} {topo}",
+            Label = $"vk {p.Label} layout {layout.Value} blend {blend} {topo} {f}",
         };
         d.Targets.ColorCount = 1;
-        d.Targets.Colors[0] = CompositeFormat;
+        d.Targets.Colors[0] = f;
         d.Targets.Depth = DepthFormat;
         d.Targets.Samples = 1;
         if (blend != 0)

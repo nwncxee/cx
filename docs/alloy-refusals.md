@@ -95,7 +95,7 @@ world through an identity view; with `view.cameraloop 0` the same slot refuses o
 
 All of them call `AlloyGate.Fail` — and so does every capability latch that can only be taken *after* the freeze:
 the frame when a stage will not compile or a pipeline will not build, `PostChain.StandDown`, `ScreenOwner`
-when Vulkan cannot present the composite to the window, `PresentTarget` when the composite image is
+when Vulkan cannot present the screen to the window, `PresentTarget` when the frame's spare screen is
 refused at the window's size, and `MeshArena` when VMA gives it no virtual block to place world geometry in.
 
 **Work that cannot be done this frame is not a `Fail`.** The pass sits the frame out, says so in full the
@@ -359,8 +359,9 @@ there is no engine traversal underneath, so every later row costs the panels rat
 | the GUI pass armed and has not failed, and Alloy is on | `GuiPass.Capturing` | the panels are NOT DRAWN while it is false (one or two frames at boot); a pipeline failure is a loud `Fail` and they stay undrawn for the session |
 | `alloy.gui` on | `GuiPass.Capturing` | the player's choice, live -- and it costs the game's panels, which nothing else draws |
 | the world is Alloy's or absent | `ScreenOwner.Owned` | an engine-drawn world (an `Incapable` verdict) keeps the engine's clears and present; the GUI stays Alloy's over it |
-| Vulkan's composite image sized to the window | `PresentTarget.Ensure` | `AlloyGate.Fail`, the session's stated refusal. There is nothing to fall back to: `PresentTarget.Usable` is permanently false and the engine's own swap never runs, so a refused composite means nothing is presented rather than something else being. `/alloy` carries the size and the hand-back count |
-| the composite reaches the window | `ScreenOwner.PresentVulkan` | `AlloyGate.Fail`, counted: the window keeps its last frame, because the engine's swap would show a back buffer nothing on Vulkan drew. A frame that arrives before the composite is first sized is not a failure — it presents nothing and says so once |
+| Vulkan's frame sized to the window (its spare screen made) | `PresentTarget.Ensure` | `AlloyGate.Fail`, the session's stated refusal. There is nothing to fall back to: `PresentTarget.Usable` is permanently false and the engine's own swap never runs, so a refused size means nothing is presented rather than something else being. `/alloy` carries the size and the hand-back count |
+| the window's images can be drawn into | `VkBackend.SurfaceRefusal`, at the frame's first screen ask | `AlloyGate.Fail` with `cx.log` saying the surface's images cannot be drawn into (or blitted into). The window exists by then and the session has no GL, so the engine's renderer cannot take over |
+| the screen reaches the window | `ScreenOwner.PresentVulkan` | `AlloyGate.Fail`, counted: the window keeps its last frame, because the engine's swap would show a back buffer nothing on Vulkan drew. A frame that arrives before the frame is first sized is not a failure — it presents nothing and says so once |
 
 ## The movie quad (CX-335)
 
@@ -368,7 +369,7 @@ A movie is its own small verdict, asked per frame. The engine keeps the decode a
 decides is only who draws the quad — and on Vulkan the answer is Alloy or nobody, because the engine's quad
 draws through its own GL, which a Vulkan session never presents. `MovieService` runs last of the `PrePresent`
 participants (priority 90, behind `SeamDraw`'s frame boundary), widens the decoded rows into a Vulkan image and
-draws them letterboxed over a black composite that Vulkan presents.
+draws them letterboxed over a black screen that Vulkan presents.
 
 `alloy.movie 0` is therefore overridden rather than obeyed: it would hand the frame to a quad nothing shows,
 so Vulkan draws the movie anyway and says so once. A refusal of Alloy's own mechanism stands the movie down
@@ -382,4 +383,4 @@ said once per reason and retried.
 | `alloy.movie` on | `MovieService.DrawPending` | with Alloy off it is the player's choice, live, and the engine's quad draws the frame under `ScreenOwner.EngineFrame`, which is what lets its opening `Clear` through. On Vulkan it is overridden and said once |
 | the decoder's frame fits the texture it names (`frameW/frameH` above zero, neither past `texW/texH`) | `MovieService.Draw` | a loud `Always`, latched for the session: a shape we cannot trust would draw stretched or sample past the decoded rows, so no movie is drawn for the rest of the session |
 | `g_nScreenWidth/Height` resolved, and reading above zero | `MovieService.Draw` | an unresolved symbol is latched. A zero READ is said once and **not** latched: the engine sizes its window after a movie frame can first arrive, and `GuiPass.Screen` treats the same pair the same way, so the next frame may well draw |
-| the Vulkan image for the frame's size was made, and the composite exists | `MovieService.DrawVk` | the backend says why and the frame is not drawn; the screen holds what it had |
+| the Vulkan image for the frame's size was made, and the screen is sized | `MovieService.DrawVk` | the backend says why and the frame is not drawn; the screen holds what it had |

@@ -4,7 +4,7 @@ using CX.Rhi;
 
 namespace CX.Alloy;
 
-/// <summary>The render seam's device: the Vulkan backend that renders the frame into the composite. Made on
+/// <summary>The render seam's device: the Vulkan backend that renders the frame into the screen. Made on
 /// first use inside the frame's draw, dropped whole with the device.</summary>
 internal static class AlloyDevice
 {
@@ -35,7 +35,7 @@ internal static class AlloyDevice
         return s.Vk;
     }
 
-    /// <summary>Device loss: the backend and the composite's images go with it.</summary>
+    /// <summary>Device loss: the backend and the screen's images go with it.</summary>
     internal static void Forget()
     {
         _s.Vk?.Dispose();

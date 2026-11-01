@@ -50,8 +50,8 @@ internal sealed unsafe partial class VkBackend
         }
         check.Expect(Translate("int i = gl_VertexID;") == "int i = gl_VertexIndex;", "GL's vertex index is spelled Vulkan's");
         check.Expect((int)Of(Format.R8) == 9 && (int)Of(Format.Rg16F) == 83 && (int)Of(Format.R32F) == 100
-                  && (int)Of(Format.Rgba8) == 37 && (int)Of(Format.Rgba8Srgb) == 43 && (int)Of(Format.Rgba16F) == 97,
-            "the seam's formats are vulkan_core.h's R8_UNORM 9, R16G16_SFLOAT 83, R32_SFLOAT 100, R8G8B8A8_UNORM 37, _SRGB 43, R16G16B16A16_SFLOAT 97");
+                  && (int)Of(Format.Rgba8) == 37 && (int)Of(Format.Rgba8Srgb) == 43 && (int)Of(Format.Bgra8) == 44 && (int)Of(Format.Rgba16F) == 97,
+            "the seam's formats are vulkan_core.h's R8_UNORM 9, R16G16_SFLOAT 83, R32_SFLOAT 100, R8G8B8A8_UNORM 37, _SRGB 43, B8G8R8A8_UNORM 44, R16G16B16A16_SFLOAT 97");
         check.Expect((int)Winding(false) == 1 && (int)Winding(true) == 0,
             "GL's CCW front is vulkan_core.h's FRONT_FACE_CLOCKWISE 1 and its CW COUNTER_CLOCKWISE 0: Vulkan's area carries the opposite sign");
         check.Expect((int)Of(Format.D32F) == 126 && (int)Of(Format.Bc1) == 131 && (int)Of(Format.Bc1A) == 133

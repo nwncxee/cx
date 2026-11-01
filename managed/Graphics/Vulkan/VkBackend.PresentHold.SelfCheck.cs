@@ -8,7 +8,7 @@ internal sealed unsafe partial class VkBackend
 {
     /// <summary>A held command buffer's edges: a wait with no submit after the hold, an upload queued while one is held,
     /// and an upload at a held buffer's head that must not run again after it. Oracle: hand-written texels read back
-    /// from a 1x1 composite.</summary>
+    /// from a 1x1 spare screen.</summary>
     internal void PresentHoldCheck(Checker check, ExtenderLog log)
     {
         byte[] a = [1, 2, 3, 4], c = [90, 80, 70, 60], d = [5, 6, 7, 8];
@@ -17,20 +17,20 @@ internal sealed unsafe partial class VkBackend
         var h = new CommandList("present hold held", 256, log);
         var o = new CommandList("present hold reader", 256, log);
         bool made = !pa.IsNull && !pc.IsNull && !pd.IsNull && !rb.IsNull && Resize(1, 1) && Upload(pa, 0, 0, a) && Upload(pc, 0, 0, c);
-        o.ClearImage(_composite);
-        check.Expect(made && Submit(o), "present hold: three texels, a readback and a cleared 1x1 composite exist");
+        o.ClearImage(_spare);
+        check.Expect(made && Submit(o), "present hold: three texels, a readback and a cleared 1x1 spare screen exist");
         if (made)
         {
             h.Reset();
-            h.CopyImage(Copy(pa, _composite));
-            h.CopyImageToBuffer(new CopyToBufferCmd(_composite, new ImageRegion(0, 0, 0, 0), 1, 1, rb, 0));
+            h.CopyImage(Copy(pa, _spare));
+            h.CopyImageToBuffer(new CopyToBufferCmd(_spare, new ImageRegion(0, 0, 0, 0), 1, 1, rb, 0));
             var got = new byte[4];
             bool read = HoldForPresent(h) && WaitSubmitted() && ReadMapped(rb, 0, got);
             check.Expect(read && got.AsSpan().SequenceEqual(a),
                 $"a wait after a hold, with no submit between, waits out the held buffer too: 1,2,3,4 (got {string.Join(",", got)})");
 
             h.Reset();
-            h.ClearImage(_composite);
+            h.ClearImage(_spare);
             bool held = HoldForPresent(h) && Upload(pd, 0, 0, d);
             got = Read(o, pd, rb, held);
             check.Expect(got.AsSpan().SequenceEqual(d),
@@ -45,10 +45,10 @@ internal sealed unsafe partial class VkBackend
                 $"an upload at a held buffer's head runs once, not again over what the buffer drew: 90,80,70,60 (got {string.Join(",", got)})");
 
             h.Reset();
-            h.CopyImage(Copy(pd, _composite));
+            h.CopyImage(Copy(pd, _spare));
             held = HoldForPresent(h);
             o.Reset();
-            o.CopyImageToBuffer(new CopyToBufferCmd(_composite, new ImageRegion(0, 0, 0, 0), 1, 1, rb, 0));
+            o.CopyImageToBuffer(new CopyToBufferCmd(_spare, new ImageRegion(0, 0, 0, 0), 1, 1, rb, 0));
             got = new byte[4];
             read = held && HoldForPresent(o) && WaitSubmitted() && ReadMapped(rb, 0, got);
             check.Expect(read && got.AsSpan().SequenceEqual(d),
@@ -65,14 +65,14 @@ internal sealed unsafe partial class VkBackend
 
             int told = 0;
             h.Reset();
-            h.ClearImage(_composite);
+            h.ClearImage(_spare);
             h.WhenDone((_, ran) => told = ran ? 1 : -1, 0);
             o.Reset();
             bool queued = HoldForPresent(h) && Submit(o) && WaitSubmitted() && Submit(o);
             check.Expect(queued && told == 1, $"a held buffer's WhenDone work is told it ran, once it has (got {told})");
 
             h.Reset();
-            h.ClearImage(_composite);
+            h.ClearImage(_spare);
             long own = _submits + 1;
             Vortice.Vulkan.VkResult waited = HoldForPresent(h) ? WaitFor(own) : Vortice.Vulkan.VkResult.ErrorUnknown;
             check.Expect(waited == Vortice.Vulkan.VkResult.Success,
@@ -87,8 +87,8 @@ internal sealed unsafe partial class VkBackend
         byte[] Read(CommandList l, ImageId img, BufferId buf, bool ok)
         {
             l.Reset();
-            l.CopyImage(Copy(img, _composite));
-            l.CopyImageToBuffer(new CopyToBufferCmd(_composite, new ImageRegion(0, 0, 0, 0), 1, 1, buf, 0));
+            l.CopyImage(Copy(img, _spare));
+            l.CopyImageToBuffer(new CopyToBufferCmd(_spare, new ImageRegion(0, 0, 0, 0), 1, 1, buf, 0));
             var back = new byte[4];
             return ok && Submit(l) && WaitSubmitted() && ReadMapped(buf, 0, back) ? back : [];
         }

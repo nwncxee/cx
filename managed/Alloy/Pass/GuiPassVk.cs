@@ -11,9 +11,9 @@ namespace CX.Alloy;
 
 /// <summary>
 /// The GUI path on Vulkan, on Vulkan: the layers <see cref="GuiCapture"/> listed and CX's own
-/// windows either side of NUI are recorded into the <see cref="CX.Rhi"/> command list and drawn into the composite
+/// windows either side of NUI are recorded into the <see cref="CX.Rhi"/> command list and drawn into the screen
 /// Vulkan presents, over the same depth stacking GL Alloy's <see cref="GuiPass"/> uses. One flush is one submit, the
-/// present's when it draws into the composite.
+/// present's when it draws into the screen.
 /// </summary>
 internal static unsafe partial class GuiPassVk
 {
@@ -34,6 +34,8 @@ internal static unsafe partial class GuiPassVk
     {
         public VkBackend? Dev;
         public bool Failed, Live, OffThreadSaid, PrimSaid, BlendSaid, SolveSaid, DropSaid;
+        /// <summary>The colour format of the pass open now: the screen's, or a model view's.</summary>
+        public Format Fmt = ViewFormat;
         /// <summary>Alloy's own GUI program and the two loose terms it reads per flush.</summary>
         public GuiVkProg? Prog;
         public int BoneStart = -1, Gamma = -1;
@@ -53,11 +55,11 @@ internal static unsafe partial class GuiPassVk
         public int Arena0;
         public bool ClearOwed, ClearDepth, ClearColour;
         public System.Numerics.Vector4 Clear;
-        /// <summary>Where this flush's screen layers land (the null id = the composite), and whether its first pass
+        /// <summary>Where this flush's screen layers land (the null id = the screen), and whether its first pass
         /// clears that image to opaque black: the A/B's terms, not a frame's.</summary>
         public ImageId Into;
         public bool Black;
-        /// <summary>The GUI's own depth, over the whole composite, and the size it was made at.</summary>
+        /// <summary>The GUI's own depth, over the whole screen, and the size it was made at.</summary>
         public ImageId Depth;
         public int DepthW, DepthH;
         /// <summary>The master palette's Vulkan copy and the send count it came from.</summary>
@@ -92,9 +94,6 @@ internal static unsafe partial class GuiPassVk
     /// stencil; nothing in the pass tests it, so Vulkan carries depth alone.</summary>
     private const Format DepthFormat = Format.D32F;
 
-    /// <summary>The composite's format, which <c>VkBackend.Resize</c> exports the pair in.</summary>
-    private const Format CompositeFormat = Format.Rgba8;
-
     /// <summary>A model view's colour format: the RGBA8 its GL texture is, so a panel samples the same texels.</summary>
     private const Format ViewFormat = Format.Rgba8;
 
@@ -107,8 +106,8 @@ internal static unsafe partial class GuiPassVk
          + (_s.NoTexture == 0 ? "" : $", {_s.NoTexture} on the stand-in texture") + EngineStats();
 
     /// <summary>The flush: layers <paramref name="from"/>..<paramref name="mid"/>, CX's below-NUI windows, layers
-    /// <paramref name="mid"/>..<paramref name="to"/>, the above-NUI windows, in one submit (the present's, for the composite). <paramref name="into"/> is
-    /// null for the composite Vulkan presents; <paramref name="clearBlack"/> clears it first, which is the A/B's.</summary>
+    /// <paramref name="mid"/>..<paramref name="to"/>, the above-NUI windows, in one submit (the present's, for the screen). <paramref name="into"/> is
+    /// null for the screen Vulkan presents; <paramref name="clearBlack"/> clears it first, which is the A/B's.</summary>
     internal static bool Flush(int from, int mid, int to, bool windows, ExtenderLog log, ImageId into = default, bool clearBlack = false)
     {
         if (AlloyDevice.Vulkan(log) is not VkBackend vk) return false;
@@ -150,7 +149,7 @@ internal static unsafe partial class GuiPassVk
         if (ok && !s.Live)
         {
             s.Live = true;
-            log.Always($"GuiPassVk: LIVE -- Vulkan draws the GUI and CX's windows into the composite it presents "
+            log.Always($"GuiPassVk: LIVE -- Vulkan draws the GUI and CX's windows into the screen it presents "
                      + $"({GuiCapture.LayerN} scene(s), {GuiCapture.DrawN} draw(s) this flush)");
         }
         return ok;
@@ -159,8 +158,8 @@ internal static unsafe partial class GuiPassVk
     /// <summary>A held flush the present never queued is a dropped one, counted like a refused submit.</summary>
     private static readonly Action<int, bool> HeldTold = (_, ran) => { if (!ran) _s.Dropped++; };
 
-    /// <summary>The flush's one submit; a refusal is said once and counted after. A flush into the composite rides the
-    /// present's submit, ahead of its blit.</summary>
+    /// <summary>The flush's one submit; a refusal is said once and counted after. A flush into the screen rides the
+    /// present's submit, ahead of the window image's move to presentable.</summary>
     private static bool Submit(VkBackend vk, CommandList cl, ExtenderLog log)
     {
         GuiVkState s = _s;

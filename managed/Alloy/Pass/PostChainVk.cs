@@ -9,7 +9,7 @@ using CX.Rhi;
 namespace CX.Alloy;
 
 /// <summary><see cref="PostChain"/> on Vulkan: the same bloom chain and resolve, from the same overridable stages,
-/// over the Vulkan frame's scene colour and depth, into the post stack's first image or the composite. Each bloom
+/// over the Vulkan frame's scene colour and depth, into the post stack's first image or the screen. Each bloom
 /// level is an image of its own rather than a mip, so no pass samples the image it writes. Also the full-screen
 /// helpers every post program on Vulkan draws through.</summary>
 internal static unsafe class PostChainVk
@@ -233,10 +233,10 @@ internal static unsafe class PostChainVk
         cl.Dispatch((w + BloomGroup - 1) / BloomGroup, (h + BloomGroup - 1) / BloomGroup);
     }
 
-    /// <summary>The attachment format a post draw into <paramref name="into"/> renders: the composite is 8-bit, every
-    /// other post image half-float.</summary>
+    /// <summary>The attachment format a post draw into <paramref name="into"/> renders: the image's own (the screen's
+    /// is the window's 8-bit format), half-float for an image the device does not know.</summary>
     internal static Format FormatOf(ImageId into)
-        => _s.Dev is { } vk && into == vk.Composite ? Format.Rgba8 : Format.Rgba16F;
+        => _s.Dev is { } vk && vk.DescOf(into, out ImageDesc d) ? d.Fmt : Format.Rgba16F;
 
     /// <summary>One full-screen triangle of <paramref name="p"/> into <paramref name="into"/> at <paramref name="vp"/>,
     /// its loose block at <paramref name="at"/>, sampling <paramref name="t"/>. Nothing (logged) when the device

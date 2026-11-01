@@ -270,7 +270,7 @@ internal static unsafe partial class LightmapBake
         CompileNoticeVk(now);
     }
 
-    /// <summary><see cref="CompileNotice"/> on Vulkan: the backdrop recorded over the composite and presented by Vulkan at
+    /// <summary><see cref="CompileNotice"/> on Vulkan: the backdrop recorded over the screen and presented by Vulkan at
     /// once, ahead of the compile. No GL bracket to step out of; the frame's own present follows as usual.</summary>
     private static void CompileNoticeVk(int now)
     {

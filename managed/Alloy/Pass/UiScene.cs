@@ -3,7 +3,7 @@ using CX.Rhi;
 
 namespace CX.Alloy;
 
-/// <summary>The world frame the 2D UI draws over: its camera and depth, noted after the composite and spent by the GUI
+/// <summary>The world frame the 2D UI draws over: its camera and depth, noted after the post stack and spent by the GUI
 /// flush that closes the same frame. A frame with no world (a menu) has none, so the UI's scene test sits out.</summary>
 internal static unsafe class UiScene
 {

@@ -95,8 +95,8 @@ internal sealed unsafe partial class VkBackend
         return null;
     }
 
-    /// <summary>The composite's size: the window a full-screen view covers.</summary>
-    internal (int W, int H) CompositeSize => _images.TryGet(_composite.Value, out VkImg c) ? (c.Desc.W, c.Desc.H) : (0, 0);
+    /// <summary>The frame's size: the window a full-screen view covers.</summary>
+    internal (int W, int H) FrameSize => _images.TryGet(_spare.Value, out VkImg c) ? (c.Desc.W, c.Desc.H) : (0, 0);
 
     /// <summary>The device's FSR context goes with it.</summary>
     private void DisposeFsr()

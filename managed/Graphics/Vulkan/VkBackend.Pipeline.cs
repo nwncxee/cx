@@ -114,7 +114,7 @@ internal sealed unsafe partial class VkBackend
             _shared[key] = obj;
             if (linked) QueueOptimised(obj, d, rate, dyn, what);
         }
-        return new PipelineId(_pipelines.Add(new VkPipe(obj, false, d.Depth, d.Raster, rate, dyn, d.Blend, d.Targets.ColorCount)));
+        return new PipelineId(_pipelines.Add(new VkPipe(obj, false, d.Depth, d.Raster, rate, dyn, d.Blend, d.Targets.ColorCount, d.Targets.Colors[0])));
     }
 
     /// <summary>What a compiled pipeline is made of: its four parts' keys, so a pipeline and the libraries it links from

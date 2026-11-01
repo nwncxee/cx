@@ -28,6 +28,10 @@ internal sealed unsafe partial class VkBackend
     /// <summary>A multi-draw's commands, built here and staged for the indirect draw that gives each its draw index.</summary>
     private VkDrawIndexedIndirectCommand[] _multi = new VkDrawIndexedIndirectCommand[256];
     private bool _inPass, _rendering, _scissorSet;
+    /// <summary>The height of the screen image the open pass draws, whose rows the viewport and scissor flip; 0 for
+    /// any other target. The raster state is kept so a change of target re-issues its winding.</summary>
+    private int _flipH;
+    private RasterState? _raster;
     /// <summary>The bind set being recorded serves draws: its uses apply now, not at each dispatch.</summary>
     private bool _setDraws;
     private VkPipelineBindPoint _bindPoint = VkPipelineBindPoint.Graphics;
@@ -38,9 +42,9 @@ internal sealed unsafe partial class VkBackend
     /// one on the async queue, after every graphics submit before it.</summary>
     public bool Submit(CommandList list) => Submit(list, -1, false);
 
-    /// <summary><see cref="Submit(CommandList)"/>, and with <paramref name="swap"/> at or past 0 the composite's blit
-    /// onto that acquired swapchain image after the list: the submit waits on the frame's acquire and signals the
-    /// image's ready semaphore, which the present waits on.</summary>
+    /// <summary><see cref="Submit(CommandList)"/>, and with <paramref name="swap"/> at or past 0 the present's work on
+    /// that acquired swapchain image after the list: the submit signals the image's ready semaphore, which the present
+    /// waits on. Any submit that first moves an acquired image waits on its acquire.</summary>
     private bool Submit(CommandList list, int swap, bool beside = false)
     {
         if (!OnThread("Submit")) return false;
@@ -88,6 +92,8 @@ internal sealed unsafe partial class VkBackend
         if (_labels) OpenLabel(list.NameUtf8);
         _slot = s;
         _inPass = _rendering = false;
+        _flipH = 0;
+        _raster = null;
         // the bindless upkeep, the uploads and the frame's timestamps stay on the graphics queue
         if (!lane)
         {
@@ -113,7 +119,7 @@ internal sealed unsafe partial class VkBackend
         return ok;
     }
 
-    /// <summary>The begun command buffer ended and queued -- after the composite's blit when <paramref name="swap"/> is
+    /// <summary>The begun command buffer ended and queued -- after the present's work when <paramref name="swap"/> is
     /// at or past 0 -- or, when <paramref name="ok"/> is false, ended and dropped with every image back in the layout
     /// it entered with. <paramref name="committed"/>: its uploads were committed when it was held.</summary>
     private bool Finish(Slot s, string name, bool lane, bool ok, int swap, bool beside, bool committed)
@@ -140,6 +146,7 @@ internal sealed unsafe partial class VkBackend
                 if (_undo[i].Img.Group is AliasGroup g) g.Owner = null;
             }
             _undo.Clear();
+            if (!lane) _scr.Touched = false;
             if (lane) _resyncAsync = true;
             else _resync = true;
             _onAsync = _besideNow = false;
@@ -148,9 +155,11 @@ internal sealed unsafe partial class VkBackend
         }
         if (!lane && !committed) CommitUploads();
 
+        bool waits = !lane && _scr.Touched;
         VkResult sent = lane ? AsyncSubmit(_cmd)
-                      : QueueSubmit(_cmd, swap >= 0 ? Acquired : default, swap >= 0 ? _swap.Ready[swap] : default, besideAsked: beside);
+                      : QueueSubmit(_cmd, waits ? Acquired : default, swap >= 0 ? _swap.Ready[swap] : default, besideAsked: beside);
         if (lane && sent == VkResult.Success) _asyncRec = _recording;
+        if (waits && sent == VkResult.Success) Waited();
         _onAsync = _besideNow = false;
         if (sent != VkResult.Success) return Fault("vkQueueSubmit2 refused the frame -- the device is unusable");
         s.Done = lane ? _async!.Submits : _submits;
@@ -224,6 +233,13 @@ internal sealed unsafe partial class VkBackend
         // every pass starts at the whole window-depth range, so a pass that collapses it (the sky dome) or stacks
         // views in it (the GUI) does not leave the next one drawing where it left off
         _depthMin = 0f; _depthMax = 1f;
+        int flip = FlipOf(colors);
+        if (flip != _flipH)
+        {
+            _flipH = flip;
+            Viewport(_viewport);
+            if (_raster is RasterState rs) Raster(rs);
+        }
         return true;
     }
 
@@ -343,6 +359,9 @@ internal sealed unsafe partial class VkBackend
         if (!p.Compute && p.Rated != (_inPass && !_pendRate.IsNull && _rateTexel > 0))
             return Fault($"SetPipeline: a pipeline {(p.Rated ? "made for" : "not made for")} a shading-rate image, in a pass {(p.Rated ? "without" : "with")} one");
         if (_onAsync && !p.Compute) return Fault("a graphics pipeline on the async compute queue, which cannot draw");
+        if (!p.Compute && _inPass && p.Colors > 0 && _pendCount > 0 && !_pend[0].Image.IsNull && _images.TryGet(_pend[0].Image.Value, out VkImg at)
+            && at.Desc.Fmt != p.Color0)
+            return Fault($"SetPipeline: a pipeline made for {p.Color0} in a pass drawing {at.Desc.Label}, which is {at.Desc.Fmt}");
         _bindPoint = p.Compute ? VkPipelineBindPoint.Compute : VkPipelineBindPoint.Graphics;
         _vkd.vkCmdBindPipeline(_cmd, _bindPoint, p.Obj.Handle);
         if (!p.Compute) { Depth(p.Depth); Raster(p.Raster); }
@@ -383,8 +402,10 @@ internal sealed unsafe partial class VkBackend
 
     private bool Raster(RasterState r)
     {
+        _raster = r;
         _vkd.vkCmdSetCullMode(_cmd, Cull(r.Cull));
-        _vkd.vkCmdSetFrontFace(_cmd, Winding(r.FrontCw));
+        // a flipped viewport mirrors every triangle, so the front face swaps with it
+        _vkd.vkCmdSetFrontFace(_cmd, Winding(r.FrontCw ^ (_flipH != 0)));
         _vkd.vkCmdSetDepthBiasEnable(_cmd, r.DepthBias);
         return true;
     }
@@ -463,15 +484,17 @@ internal sealed unsafe partial class VkBackend
     {
         _viewport = v;
         // same numbers as GL's: both put framebuffer row 0 at y 0 and NDC -1 on it, so an imported image
-        // reads back the same way up in either API
-        var vp = new VkViewport { x = v.X, y = v.Y, width = v.W, height = v.H, minDepth = _depthMin, maxDepth = _depthMax };
+        // reads back the same way up in either API; a screen image puts row 0 at the top, so NDC -1 goes to its bottom
+        var vp = _flipH == 0 ? new VkViewport { x = v.X, y = v.Y, width = v.W, height = v.H, minDepth = _depthMin, maxDepth = _depthMax }
+                             : new VkViewport { x = v.X, y = _flipH - v.Y, width = v.W, height = -v.H, minDepth = _depthMin, maxDepth = _depthMax };
         _vkd.vkCmdSetViewport(_cmd, 0, 1, &vp);
         return true;
     }
 
     private bool Scissor(Rect s)
     {
-        var r = new VkRect2D { offset = new VkOffset2D { x = s.X, y = s.Y }, extent = new VkExtent2D { width = (uint)s.W, height = (uint)s.H } };
+        (int y, int h) = _flipH == 0 ? (s.Y, s.H) : FlipRows(_flipH, s.Y, s.H);
+        var r = new VkRect2D { offset = new VkOffset2D { x = s.X, y = y }, extent = new VkExtent2D { width = (uint)s.W, height = (uint)h } };
         _vkd.vkCmdSetScissor(_cmd, 0, 1, &r);
         _scissorSet = true;
         return true;

@@ -14,7 +14,6 @@ internal sealed unsafe partial class VkBackend
     {
         public VkSurfaceKHR Surface;
         public VkSwapchainKHR Chain;
-        public VkImage[] Images = [];
         public VkSemaphore[] Ready = [];
         public VkFormat Format;
         public VkPresentModeKHR Mode;
@@ -27,9 +26,7 @@ internal sealed unsafe partial class VkBackend
     }
 
     private readonly SwapState _swap = new();
-    /// <summary>One acquire semaphore per frame in flight: the frame wait proves the present that waited on it is done.</summary>
-    private readonly VkSemaphore[] _acquired = new VkSemaphore[FramesInFlight];
-    /// <summary>The list <see cref="SubmitBlit"/> submits, empty: the blit is recorded after it.</summary>
+    /// <summary>The list <see cref="SubmitBlit"/> submits, empty: the present's own work is recorded after it.</summary>
     private CommandList? _presentList;
 
     /// <summary>A command buffer recorded by <see cref="HoldForPresent"/> and not yet queued: its slot (null when none
@@ -43,73 +40,70 @@ internal sealed unsafe partial class VkBackend
 
     private readonly HeldState _held = new();
 
-    /// <summary>The image the frame renders into and the GUI draws over, and what <see cref="Present"/> shows. Null id
-    /// before the present target sized it.</summary>
-    private ImageId _composite;
-
-    /// <inheritdoc cref="_composite"/>
-    internal ImageId Composite => _composite;
+    /// <summary>The spare screen: laid out as the window's images are, and drawn in their place while there is no
+    /// window or its size is not the frame's, then blitted onto one. Its size is the frame's. Null id before the present
+    /// target sized it.</summary>
+    private ImageId _spare;
 
     /// <summary>Is the caller on the thread this device belongs to? A caller outside the frame's draw asks before
     /// recording, rather than taking a refusal per call.</summary>
     internal bool OnOwnThread => Environment.CurrentManagedThreadId == _thread;
 
-    /// <summary>The composite at <paramref name="w"/> x <paramref name="h"/>, RGBA8 display-encoded as the window shows
-    /// it; false when the device refused it. The old image dies after the frames in flight.</summary>
+    /// <summary>The frame at <paramref name="w"/> x <paramref name="h"/>: the spare screen remade at that size in the
+    /// window's format, display-encoded as the window shows it; false when the device refused it. The old image dies
+    /// after the frames in flight.</summary>
     internal bool Resize(int w, int h)
     {
-        if (!OnThread("Resize")) return false;
-        Destroy(_composite);
-        _composite = CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba8, w, h, 1, 1, 1, 1,
-                                               ImageUse.ColorTarget | ImageUse.Sampled | ImageUse.CopySrc | ImageUse.CopyDst, "composite"));
-        return !_composite.IsNull;
+        return OnThread("Resize") && MakeSpare(w, h);
     }
 
-    /// <summary>End the frame: wait for the one <see cref="FramesInFlight"/> back, acquire a swapchain image, blit the
-    /// composite onto it after the commands held for it, in one submit, and present it. <paramref name="interval"/> is the engine's swap interval
-    /// (0 off, 1 vsync, -1 adaptive), which picks the present mode. False (logged) when there is no composite or the
-    /// window refused the frame.</summary>
+    private bool MakeSpare(int w, int h)
+    {
+        if (_scr.Now == _spare) _scr.Now = default;
+        Destroy(_spare);
+        _spare = CreateImage(new ImageDesc(ImageKind.Tex2D, _scr.Fmt, w, h, 1, 1, 1, 1,
+                                               ImageUse.ColorTarget | ImageUse.Sampled | ImageUse.CopySrc | ImageUse.CopyDst, "spare screen"));
+        if (_images.TryGet(_spare.Value, out VkImg img)) img.TopDown = true;
+        return !_spare.IsNull;
+    }
+
+    /// <summary>End the frame: wait for the one <see cref="FramesInFlight"/> back, submit the commands held for it with
+    /// the window image's move to presentable, and present it; a spare-screen frame is blitted onto an image acquired now,
+    /// and a frame that drew no screen presents nothing. <paramref name="interval"/> (0 off, 1 vsync, -1 adaptive)
+    /// picks the next acquire's present mode. False (logged) when the window refused the frame.</summary>
     internal bool Present(int interval, ExtenderLog log)
     {
         if (!OnThread("Present")) return false;
+        _scr.Interval = interval;
         VkResult waited = WaitFrame();
-        bool ok = waited == VkResult.Success ? ShowComposite(interval, log) : Fault($"Present: the frame {FramesInFlight} back never finished ({waited})");
+        bool ok = waited == VkResult.Success ? ShowScreen(log) : Fault($"Present: the frame {FramesInFlight} back never finished ({waited})");
         SubmitHeld();
+        Unacquire();
+        EndScreen();
         EndFrame();
         return ok;
     }
 
-    private bool ShowComposite(int interval, ExtenderLog log)
+    private bool ShowScreen(ExtenderLog log)
     {
-        if (!_images.TryGet(_composite.Value, out VkImg src)) return Fault("Present: there is no composite image");
-        if (!EnsureSwapchain(Mode(interval), src.Desc.W, src.Desc.H, log)) return _swap.Empty && !_swap.Refused;
-        uint idx = 0;
-        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
-        VkResult r = _vkd.vkAcquireNextImageKHR(_swap.Chain, WaitTimeoutNs, Acquired, default, &idx);
-        _acquireTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
-        if (r == VkResult.ErrorOutOfDateKHR)
+        if (_scr.Now.IsNull) return true;
+        int idx = _scr.Index;
+        if (idx < 0)
         {
-            _swap.Stale = true;
-            if (!EnsureSwapchain(_swap.Mode, src.Desc.W, src.Desc.H, log)) return _swap.Empty && !_swap.Refused;
-            r = _vkd.vkAcquireNextImageKHR(_swap.Chain, WaitTimeoutNs, Acquired, default, &idx);
+            if (!_images.TryGet(_spare.Value, out VkImg src)) return Fault("Present: the spare screen died before its blit");
+            if (!EnsureSwapchain(Mode(_scr.Interval), src.Desc.W, src.Desc.H, log)) return _swap.Empty && !_swap.Refused;
+            if ((idx = Acquire()) < 0) return false;
         }
-        if (r != VkResult.Success && r != VkResult.SuboptimalKHR) return Fault($"Present: vkAcquireNextImageKHR returned {r}");
-        bool sent = _held.Slot != null ? SubmitHeld((int)idx) : SubmitBlit((int)idx, log);
-        if (!sent) { Unacquire(); return false; }
-        VkSemaphore ready = _swap.Ready[idx];
-        VkSwapchainKHR chain = _swap.Chain;
-        var pi = new VkPresentInfoKHR
-        {
-            waitSemaphoreCount = 1, pWaitSemaphores = &ready, swapchainCount = 1, pSwapchains = &chain, pImageIndices = &idx,
-        };
-        r = _vkd.vkQueuePresentKHR(_queue, &pi);
+        bool sent = _held.Slot != null ? SubmitHeld(idx) : SubmitBlit(idx, log);
+        if (!sent) return false;
+        VkResult r = QueuePresent(idx);
         if (r == VkResult.ErrorOutOfDateKHR || r == VkResult.SuboptimalKHR) _swap.Stale = true;
         else if (r != VkResult.Success) return Fault($"Present: vkQueuePresentKHR returned {r}");
         _swap.Presents++;
         return true;
     }
 
-    /// <summary>The present's own submit when nothing is held: only the blit onto swapchain image <paramref name="idx"/>.</summary>
+    /// <summary>The present's own submit when nothing is held: only the present's work on swapchain image <paramref name="idx"/>.</summary>
     private bool SubmitBlit(int idx, ExtenderLog log)
     {
         CommandList cl = _presentList ??= new CommandList("vulkan present", 256, log);
@@ -117,45 +111,34 @@ internal sealed unsafe partial class VkBackend
         return Submit(cl, idx);
     }
 
-    /// <summary>The composite's blit onto acquired swapchain image <paramref name="idx"/>, recorded last in the present's
-    /// submit: the image from undefined to a copy target, the blit (which flips GL's rows, converts RGBA to the
-    /// window's order and scales across a resize), and the image on to presentable.</summary>
+    /// <summary>The present's work on swapchain image <paramref name="idx"/>, recorded last in its submit: the frame's
+    /// window image on to presentable; or, for a frame drawn into the spare screen, the image from undefined to a copy
+    /// target, the spare screen's blit (scaled across a resize; both are top row first in one format), and on to presentable.</summary>
     private bool RecordPresent(int idx)
     {
-        if (!_images.TryGet(_composite.Value, out VkImg src)) return Fault("Present: the composite died before its blit");
+        if (!_images.TryGet(_scr.Ids[idx].Value, out VkImg dst)) return Fault("Present: the window image died before its present");
+        if (idx == _scr.Index)
+        {
+            Transition(dst, VkImageLayout.PresentSrcKHR);
+            return true;
+        }
+        if (!_images.TryGet(_spare.Value, out VkImg src)) return Fault("Present: the spare screen died before its blit");
         Transition(src, VkImageLayout.TransferSrcOptimal);
-        VkImage dst = _swap.Images[idx];
-        SwapBarrier(dst, VkImageLayout.Undefined, VkImageLayout.TransferDstOptimal);
+        Transition(dst, VkImageLayout.TransferDstOptimal);
         Flush();
         var b = new VkImageBlit
         {
             srcSubresource = new VkImageSubresourceLayers { aspectMask = VkImageAspectFlags.Color, layerCount = 1 },
             dstSubresource = new VkImageSubresourceLayers { aspectMask = VkImageAspectFlags.Color, layerCount = 1 },
         };
-        // the composite holds GL's rows, bottom row first; the window shows row 0 at the top, so the blit flips
-        b.srcOffsets[0] = new VkOffset3D { x = 0, y = src.Desc.H, z = 0 };
-        b.srcOffsets[1] = new VkOffset3D { x = src.Desc.W, y = 0, z = 1 };
+        b.srcOffsets[1] = new VkOffset3D { x = src.Desc.W, y = src.Desc.H, z = 1 };
         b.dstOffsets[1] = new VkOffset3D { x = _swap.W, y = _swap.H, z = 1 };
         bool same = src.Desc.W == _swap.W && src.Desc.H == _swap.H;
-        _vkd.vkCmdBlitImage(_cmd, src.Image, VkImageLayout.TransferSrcOptimal, dst, VkImageLayout.TransferDstOptimal, 1, &b,
+        _vkd.vkCmdBlitImage(_cmd, src.Image, VkImageLayout.TransferSrcOptimal, dst.Image, VkImageLayout.TransferDstOptimal, 1, &b,
                             same ? VkFilter.Nearest : VkFilter.Linear);
-        SwapBarrier(dst, VkImageLayout.TransferDstOptimal, VkImageLayout.PresentSrcKHR);
+        dst.Written = true;
+        Transition(dst, VkImageLayout.PresentSrcKHR);
         return true;
-    }
-
-    /// <summary>Queue a swapchain image's move. Out of undefined it waits on the transfer stage, the one the submit's
-    /// acquire wait releases, so the move chains after the acquire.</summary>
-    private void SwapBarrier(VkImage image, VkImageLayout from, VkImageLayout to)
-    {
-        (VkPipelineStageFlags2 ss, VkAccessFlags2 sa) = from == VkImageLayout.Undefined ? (VkPipelineStageFlags2.AllTransfer, VkAccessFlags2.None) : Scope(from);
-        (VkPipelineStageFlags2 ds, VkAccessFlags2 da) = Scope(to);
-        Queue(new VkImageMemoryBarrier2
-        {
-            srcStageMask = ss, srcAccessMask = sa & WriteAccess, dstStageMask = ds, dstAccessMask = da,
-            oldLayout = from, newLayout = to, srcQueueFamilyIndex = QueueFamilyIgnored, dstQueueFamilyIndex = QueueFamilyIgnored,
-            image = image,
-            subresourceRange = new VkImageSubresourceRange { aspectMask = VkImageAspectFlags.Color, levelCount = 1, layerCount = 1 },
-        });
     }
 
     /// <summary>The engine's swap interval as a present mode: off tears (immediate, else mailbox), adaptive relaxes, any
@@ -167,7 +150,7 @@ internal sealed unsafe partial class VkBackend
         _ => VkPresentModeKHR.Fifo,
     };
 
-    /// <summary>The surface on first ask, and a swapchain for <paramref name="mode"/> at the composite's size, remade
+    /// <summary>The surface on first ask, and a swapchain for <paramref name="mode"/> at the frame's size, remade
     /// when the window went stale or the mode or size changed. A refusal is said once and holds for the session.</summary>
     private bool EnsureSwapchain(VkPresentModeKHR mode, int w, int h, ExtenderLog log)
     {
@@ -208,7 +191,7 @@ internal sealed unsafe partial class VkBackend
         return null;
     }
 
-    /// <summary>A swapchain for <paramref name="want"/> at the surface's size (the composite's, where the surface
+    /// <summary>A swapchain for <paramref name="want"/> at the surface's size (the frame's, where the surface
     /// leaves it open), replacing the old one; null when made, else why not. Cold: a resize or a mode change.</summary>
     private string? MakeSwapchain(VkPresentModeKHR want, int w, int h, ExtenderLog log)
     {
@@ -217,7 +200,7 @@ internal sealed unsafe partial class VkBackend
         VkSurfaceCapabilitiesKHR caps;
         if (_vki.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(_phys, s.Surface, &caps) != VkResult.Success)
             return "the surface's capabilities did not read";
-        if ((caps.supportedUsageFlags & VkImageUsageFlags.TransferDst) == 0) return "the surface's images cannot be blitted into";
+        if (SurfaceRefusal(caps.supportedUsageFlags) is string no) return no;
         VkSurfaceFormatKHR fmt = PickFormat();
         if (fmt.format == VkFormat.Undefined) return "the surface offers no 8-bit UNORM format";
         VkPresentModeKHR mode = HasMode(want) ? want : want == VkPresentModeKHR.Immediate && HasMode(VkPresentModeKHR.Mailbox)
@@ -227,13 +210,13 @@ internal sealed unsafe partial class VkBackend
                              (uint)Math.Clamp(h, (int)caps.minImageExtent.height, (int)caps.maxImageExtent.height));
         s.Empty = ext.width == 0 || ext.height == 0;
         if (s.Empty) { DropChain(); return null; }
-        uint count = caps.minImageCount + 1;
+        uint count = Math.Max(caps.minImageCount + 1, SwapImages);
         if (caps.maxImageCount != 0 && count > caps.maxImageCount) count = caps.maxImageCount;
         VkSwapchainKHR old = s.Chain;
         var ci = new VkSwapchainCreateInfoKHR
         {
             surface = s.Surface, minImageCount = count, imageFormat = fmt.format, imageColorSpace = fmt.colorSpace,
-            imageExtent = ext, imageArrayLayers = 1, imageUsage = VkImageUsageFlags.TransferDst,
+            imageExtent = ext, imageArrayLayers = 1, imageUsage = SwapUsage & caps.supportedUsageFlags,
             imageSharingMode = VkSharingMode.Exclusive, preTransform = caps.currentTransform,
             compositeAlpha = (caps.supportedCompositeAlpha & VkCompositeAlphaFlagsKHR.Opaque) != 0
                 ? VkCompositeAlphaFlagsKHR.Opaque : VkCompositeAlphaFlagsKHR.Inherit,
@@ -248,7 +231,13 @@ internal sealed unsafe partial class VkBackend
         var images = new VkImage[n];
         fixed (VkImage* p = images) _vkd.vkGetSwapchainImagesKHR(chain, &n, p);
         s.Chain = chain;
-        s.Images = images;
+        Format sf = ScreenFormatOf(fmt.format);
+        RegisterWindowImages(images, sf, (int)ext.width, (int)ext.height, (caps.supportedUsageFlags & VkImageUsageFlags.TransferSrc) != 0);
+        if (sf != _scr.Fmt && _images.TryGet(_spare.Value, out VkImg st))
+        {
+            _scr.Fmt = sf;
+            MakeSpare(st.Desc.W, st.Desc.H);
+        }
         s.Ready = new VkSemaphore[n];
         for (int i = 0; i < n; i++) s.Ready[i] = MakeSemaphore();
         s.Format = fmt.format;
@@ -259,7 +248,20 @@ internal sealed unsafe partial class VkBackend
         return null;
     }
 
-    /// <summary>The surface's 8-bit UNORM format, BGRA or RGBA, in the sRGB-nonlinear space the composite is already
+    /// <summary>Why a surface whose images support <paramref name="usage"/> cannot take the present; null when it can.
+    /// The frame draws into them, and a frame whose size is not the window's is blitted onto them.</summary>
+    internal static string? SurfaceRefusal(VkImageUsageFlags usage)
+        => (usage & VkImageUsageFlags.ColorAttachment) == 0 ? "the surface's images cannot be drawn into"
+         : (usage & VkImageUsageFlags.TransferDst) == 0 ? "the surface's images cannot be blitted into" : null;
+
+    /// <summary>What the window's images are made for: drawn, blitted into, and read back where the surface allows.</summary>
+    private const VkImageUsageFlags SwapUsage = VkImageUsageFlags.ColorAttachment | VkImageUsageFlags.TransferDst | VkImageUsageFlags.TransferSrc;
+
+    /// <summary>The window images asked for: one drawn, one shown, one queued, since the frame holds its image from its
+    /// first draw.</summary>
+    private const uint SwapImages = 3;
+
+    /// <summary>The surface's 8-bit UNORM format, BGRA or RGBA, in the sRGB-nonlinear space the frame is already
     /// encoded for; an sRGB format would encode it twice. Undefined when it offers neither.</summary>
     private VkSurfaceFormatKHR PickFormat()
     {
@@ -295,10 +297,10 @@ internal sealed unsafe partial class VkBackend
     private void DropChain()
     {
         SwapState s = _swap;
+        DropWindowImages();
         foreach (VkSemaphore r in s.Ready) _vkd.vkDestroySemaphore(r);
         if (s.Chain.IsNotNull) _vkd.vkDestroySwapchainKHR(s.Chain, null);
         s.Chain = default;
-        s.Images = [];
         s.Ready = [];
     }
 
@@ -321,8 +323,8 @@ internal sealed unsafe partial class VkBackend
     }
 
     /// <summary>Record <paramref name="list"/> now into a command buffer the present ends: its commands, then the
-    /// composite's blit, in one submit. The next submit of any other list, a wait, or a present that shows nothing queues
-    /// it first on its own, so nothing recorded after it sees the composite without it. False (logged) when it did not record.</summary>
+    /// present's own work, in one submit. The next submit of any other list, a wait, or a present that shows nothing queues
+    /// it first on its own, so nothing recorded after it sees the screen without it. False (logged) when it did not record.</summary>
     internal bool HoldForPresent(CommandList list)
     {
         if (!OnThread("HoldForPresent")) return false;
@@ -345,7 +347,7 @@ internal sealed unsafe partial class VkBackend
         return true;
     }
 
-    /// <summary>The held command buffer queued, if one is: before the composite's blit onto swapchain image
+    /// <summary>The held command buffer queued, if one is: before the present's work on swapchain image
     /// <paramref name="swap"/> at or past 0, on its own below it. Its WhenDone work goes on the submit's value, or is told
     /// it never ran. True when nothing was held.</summary>
     private bool SubmitHeld(int swap = -1)

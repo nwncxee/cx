@@ -9,6 +9,8 @@ public enum Format : byte
     Unknown, R8, Rg8, Rgba8, Rgba8Srgb, R16F, Rg16F, Rgba16F, R32F, Rg32F, Rgba32F, R32Ui, Rg32Ui, Rgba32Ui, R11G11B10F,
     /// <summary>One unsigned byte, read as an integer: a shading-rate image.</summary>
     R8Ui,
+    /// <summary>8-bit UNORM stored blue first: a window's own order, which a draw into it writes as RGBA.</summary>
+    Bgra8,
     D16, D24, D24S8, D32F, D32FS8,
     /// <summary>The block-compressed formats an engine or DDS texture arrives in, each sampled as UNORM (or SNORM/float).</summary>
     Bc1, Bc1A, Bc2, Bc3, Bc4, Bc4S, Bc5, Bc5S, Bc6U, Bc6S, Bc7,

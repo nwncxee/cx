@@ -118,9 +118,8 @@ internal sealed unsafe partial class VkBackend
         EndAliasFrame();
     }
 
-    /// <summary>The acquire semaphore of the frame being presented: the frame <see cref="FramesInFlight"/> back, which
-    /// last waited on it, has finished.</summary>
-    private VkSemaphore Acquired => _acquired[_frames % FramesInFlight];
+    /// <summary>The acquire semaphore of the window image taken last.</summary>
+    private VkSemaphore Acquired => _scr.Acquire[_scr.Slot];
 
     /// <summary>A command buffer (when not null) on the queue, waiting on <paramref name="wait"/> (when not null) at the
     /// transfer stage and on the transfer submit not yet waited on, signalling <paramref name="signal"/> (when not null)
@@ -131,7 +130,7 @@ internal sealed unsafe partial class VkBackend
         var cbi = new VkCommandBufferSubmitInfo { commandBuffer = cb };
         VkSemaphoreSubmitInfo* w = stackalloc VkSemaphoreSubmitInfo[3];
         uint nw = 0;
-        if (wait.IsNotNull) w[nw++] = new VkSemaphoreSubmitInfo { semaphore = wait, stageMask = VkPipelineStageFlags2.AllTransfer };
+        if (wait.IsNotNull) w[nw++] = new VkSemaphoreSubmitInfo { semaphore = wait, stageMask = AcquireStages };
         bool beside = counted && besideAsked && _unjoined != 0 && !_beside;
         bool join = counted && _unjoined != 0 && !beside;
         if (join) w[nw++] = new VkSemaphoreSubmitInfo { semaphore = _async!.Timeline, value = (ulong)_unjoined, stageMask = VkPipelineStageFlags2.AllCommands };
@@ -200,10 +199,40 @@ internal sealed unsafe partial class VkBackend
         return r;
     }
 
-    /// <summary>An acquire whose blit was never submitted: a submit that only waits on it, so the semaphore is unsignalled
-    /// again before a later frame acquires into it.</summary>
+    /// <summary>The swapchain's next image into <paramref name="sem"/>, waiting at most <see cref="WaitTimeoutNs"/> for one.</summary>
+    private VkResult AcquireNext(VkSemaphore sem, out uint idx)
+    {
+        uint i = 0;
+        VkResult r = _vkd.vkAcquireNextImageKHR(_swap.Chain, WaitTimeoutNs, sem, default, &i);
+        idx = i;
+        return r;
+    }
+
+    /// <summary>Swapchain image <paramref name="idx"/> to the window, once its ready semaphore signals.</summary>
+    private VkResult QueuePresent(int idx)
+    {
+        VkSemaphore ready = _swap.Ready[idx];
+        VkSwapchainKHR chain = _swap.Chain;
+        uint at = (uint)idx;
+        var pi = new VkPresentInfoKHR
+        {
+            waitSemaphoreCount = 1, pWaitSemaphores = &ready, swapchainCount = 1, pSwapchains = &chain, pImageIndices = &at,
+        };
+        return _vkd.vkQueuePresentKHR(_queue, &pi);
+    }
+
+    /// <summary>Block until the submit that last waited acquire semaphore <paramref name="slot"/> has finished: its
+    /// timeline value, or the whole queue for one waited off the timeline.</summary>
+    private VkResult AcquireFree(int slot)
+        => _scr.WaitedBy[slot] == long.MaxValue ? _vkd.vkQueueWaitIdle(_queue) : WaitFor(_scr.WaitedBy[slot]);
+
+    /// <summary>An acquire no submit waited on: a submit that only waits on it, so the semaphore is unsignalled again
+    /// before a later frame acquires into it. That submit is off the timeline, so the slot's next use waits the queue out.</summary>
     private void Unacquire()
     {
+        if (!_scr.Pending) return;
+        _scr.Pending = false;
+        _scr.WaitedBy[_scr.Slot] = long.MaxValue;
         if (QueueSubmit(default, Acquired, default, counted: false) != VkResult.Success) Fault("the unused acquire could not be waited out");
     }
 }

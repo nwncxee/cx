@@ -72,8 +72,8 @@ internal static unsafe partial class PostStack
     /// <summary>Is the Vulkan taa stage refused on this device? The frame then draws unjittered.</summary>
     internal static bool TaaVkFailed => (_vk.TaaTried && _vk.Taa == null) || (_vk.MotionTried && _vk.Motion == null);
 
-    /// <summary>The post chain and the stack on Vulkan: the resolve into the stack's first image (or the composite
-    /// when no stage is live), each live stage after it, the last into the composite with the dither. The taa stage
+    /// <summary>The post chain and the stack on Vulkan: the resolve into the stack's first image (or the screen
+    /// when no stage is live), each live stage after it, the last into the screen with the dither. The taa stage
     /// paints the camera velocity off <paramref name="depth"/> first. False (logged) when the frame has no way to the
     /// screen.</summary>
     internal static bool RecordVk(VkBackend vk, CommandList cl, ImageId hdr, ImageId depth, Matrix4x4* vp,
@@ -128,7 +128,7 @@ internal static unsafe partial class PostStack
         if (live == 0)
         {
             if (fsr) MotionVectors.RollHistory();
-            return PostChainVk.Record(vk, cl, hdr, depth, vk.Composite, true, viewport, display, vel, log);
+            return PostChainVk.Record(vk, cl, hdr, depth, vk.Screen(), true, viewport, display, vel, log);
         }
         int* pair = stackalloc int[4] { 0, 0, s.W, s.H };
         if (!PostChainVk.Record(vk, cl, hdr, depth, s.A, false, viewport, pair, vel, log)) return false;
@@ -140,7 +140,7 @@ internal static unsafe partial class PostStack
             Stage st = _stages[i];
             StageVk v = s.Stages[i];
             bool last = --left == 0;
-            ImageId into = last ? vk.Composite : write;
+            ImageId into = last ? vk.Screen() : write;
             cl.BeginLabel(st.Label ??= System.Text.Encoding.UTF8.GetBytes("stage " + st.Name));
             ImageId hist = st.Name == "taa" ? TaaResolve(cl, s, read, depth, log) : default;
             bool aa = st.Name == "aa";
@@ -308,7 +308,7 @@ internal static unsafe partial class PostStack
         int rw = viewport[2], rh = viewport[3], dw = full[2], dh = full[3];
         // ponytail: one context and one history, so only the full-window world view; a second or orthographic view
         // draws unsmoothed. Per-view contexts if those views ever matter.
-        if (fovY <= 0f || vk.CompositeSize != (dw, dh)) return false;
+        if (fovY <= 0f || vk.FrameSize != (dw, dh)) return false;
         if (vk.FsrReady(rw, rh, dw, dh) is string why) { Fsr.Refuse(why, log); return false; }
         if (s.FsrOut.IsNull || s.FsrW != dw || s.FsrH != dh)
         {

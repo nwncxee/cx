@@ -33,8 +33,8 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>The colour bracket into <paramref name="cl"/> after the cull: uploads, the depth prepass, the opaque,
     /// cutout and wash-interior pass into the scene colour and G-buffer, the blended and additive pass, then the post chain
-    /// and stack into <paramref name="composite"/>. False (logged) when the device refused something.</summary>
-    internal static bool VkRecordFrame(VkBackend vk, CommandList cl, ImageId composite, in Matrix4x4 vp, in Matrix4x4 vpClean,
+    /// and stack into <paramref name="screen"/>. False (logged) when the device refused something.</summary>
+    internal static bool VkRecordFrame(VkBackend vk, CommandList cl, ImageId screen, in Matrix4x4 vp, in Matrix4x4 vpClean,
                                        in Matrix4x4 view, in Matrix4x4 proj, int* viewport, int* display, float near,
                                        float far, bool lightingOn, bool perspective, int groups, ExtenderLog log)
     {
@@ -274,9 +274,9 @@ public sealed unsafe partial class AlloyRenderer
         FbPostStage.SetCamera(&vw, &pj);
         cl.BeginLabel("post"u8);
         if (!PostStack.RecordVk(vk, cl, s.Hdr, s.Depth, &vpJ, &vpC, viewport, display, near, far, proj.M34 != 0f ? 2f * MathF.Atan(1f / proj.M22) : 0f, log)) return false;
-        VkHighlightComposite(cl, composite, display, log);
-        if (!VkGlowPass(vk, cl, s, composite, view, proj, display, log)) return false;
-        TriggerHighlight.DrawVk(vk, cl, composite, s.Depth, vp, display, log);
+        VkHighlightComposite(cl, screen, display, log);
+        if (!VkGlowPass(vk, cl, s, screen, view, proj, display, log)) return false;
+        TriggerHighlight.DrawVk(vk, cl, screen, s.Depth, vp, display, log);
         cl.EndLabel();
         cl.BeginLabel("shading rate"u8);
         VkRatePass(cl, s.Hdr, rated);

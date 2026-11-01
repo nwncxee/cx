@@ -5,7 +5,7 @@ in vec2 vUV;
 in vec4 vColor;
 in float vViewZ;
 uniform sampler2D uTex;
-uniform vec4 uViewRect;   // the composite's viewport: its origin, then 1 / its size, so the depth fetch works under a render scale
+uniform vec4 uViewRect;   // the target's viewport: its origin, then 1 / its size (origin and height flipped on a top-down screen), so the depth fetch works under a render scale
 #include "cx_scenedepth.glsl"
 void main()
 {
