@@ -22,6 +22,7 @@ user-visible, not renamed (#530).
 
 - Tickets: Plane, project `CX`, through `bin/plane`. See `docs/agents/issue-tracker.md`.
 - Domain: single-context, one `GLOSSARY.md` and one `docs/adr/` at the root. See `docs/agents/domain.md`.
+- Testing: `TESTING_STANDARDS.md`.
 
 ## Build & run
 
@@ -199,13 +200,7 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
   comparison -- and so does a hand-written `SKIPPED` log line. The const-against-literal shape's standing
   instances are `selfcheck.baseline`, which may only shrink; every other shape fails outright.
 
-  **The independent-oracle rule.** A self-check's expected value comes from an independent oracle: a
-  hand-written literal, golden data or a fixture, or a second artifact (the embedded GLSL text, a build
-  `.tsv`, engine bytes). Never from a call to the code under test, a copy of it, or the declaration it
-  restates -- an assertion that cannot fail is worse than none, because it adds to the "passed" count and
-  suggests coverage that does not exist. A guard that can skip assertions `Expect`s its precondition first;
-  a suite that cannot run on this host calls `Checker.Skip`, which logs `SKIPPED` and counts it, and never
-  goes on to log "passed". A self-check Claude writes names its oracle in the check's `<summary>`.
+  The independent-oracle rule and the rest of the testing rules live in `TESTING_STANDARDS.md`.
 - `server-neutral.sh`: `managed/` naming a specific server or its content (SoW, Westgate, Arelith) fails;
   describe it generically. `Framework/Product.cs` (the hosting URLs) is exempt.
 - `media-size.sh`: a file under `media/` over 300 KB fails; compress it to WebP (a clip to animated WebP: GitHub cannot show a WebM).

@@ -17,7 +17,7 @@ rule and the gates.
   line with no parameter list bans one overload only, so ban each overload, or the type.
 - **One legal home.** Only the helper a ban names disables RS0030, under `managed/Framework/`, with
   `#pragma warning disable RS0030 // <why>`. CX rules are never switched off.
-- **No tests that read source text.** A rule a test would grep for is a ban line or an analyzer rule instead.
+- **Tests follow `TESTING_STANDARDS.md`**, which holds the testing rules, among them that no test reads source text.
 
 ## A place in memory has a name
 
