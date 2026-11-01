@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Text;
 using CX.Rhi;
 using Vortice.Vulkan;
@@ -20,11 +19,12 @@ internal sealed unsafe partial class VkBackend
         public bool Optimised, Dead;
     }
 
-    /// <summary>Compiled graphics pipelines by <see cref="PipeKey"/>: a second desc with the same key names the first one's.</summary>
+    /// <summary>Compiled graphics pipelines by <see cref="PipeKey"/>: a second desc with the same key names the first one's.
+    /// The key holds stage handles, whose generation changes when a slot is reused, so a stage made after another was
+    /// destroyed never meets its pipelines; an entry goes with the last id naming it.</summary>
     private readonly Dictionary<string, PipeObj> _shared = new();
 
-    /// <summary>The device makes blend enable, equation and write mask dynamic, and the override goldens use to take
-    /// the baked path on it anyway.</summary>
+    /// <summary>The device makes blend enable, equation and write mask dynamic; and whether the backend uses it.</summary>
     private readonly bool _canDynBlend;
     private bool _dynBlendOn = true;
 
@@ -35,12 +35,8 @@ internal sealed unsafe partial class VkBackend
     internal static string BlendPathLine(bool dynamic)
         => dynamic ? "blend is dynamic state, one pipeline for every blend mode" : "blend is baked into each pipeline";
 
-    /// <summary>The specialization every stage takes, in memory of its own: the bindless seat count on
-    /// <see cref="VkGlsl.BindlessCapConstant"/>. A stage that declares no such constant ignores it; a pipeline the
-    /// worker links reads it after the frame thread has moved on.</summary>
-    private readonly VkSpecializationInfo* _spec;
-
-    /// <summary><see cref="_spec"/>'s block: the info, its one map entry and the value, freed with the backend.</summary>
+    /// <summary>The specialization every stage takes: the bindless seat count on <see cref="VkGlsl.BindlessCapConstant"/>,
+    /// in a block on the caller's stack, which the create call reads and lets go. A stage without the constant ignores it.</summary>
     private struct SpecBlock
     {
         public VkSpecializationInfo Info;
@@ -48,14 +44,12 @@ internal sealed unsafe partial class VkBackend
         public uint Cap;
     }
 
-    /// <summary>A <see cref="SpecBlock"/> holding <paramref name="cap"/>, its info first so the block frees through it.</summary>
-    private static VkSpecializationInfo* MakeSpecialization(uint cap)
+    /// <summary><paramref name="b"/> filled with the device's seat count, its info pointing into itself.</summary>
+    private void Specialize(SpecBlock* b)
     {
-        var b = (SpecBlock*)NativeMemory.AllocZeroed((nuint)sizeof(SpecBlock));
-        b->Cap = cap;
+        b->Cap = _bindlessCap;
         b->Entry = new VkSpecializationMapEntry { constantID = VkGlsl.BindlessCapConstant, offset = 0, size = sizeof(uint) };
         b->Info = new VkSpecializationInfo { mapEntryCount = 1, pMapEntries = &b->Entry, dataSize = sizeof(uint), pData = &b->Cap };
-        return &b->Info;
     }
 
     /// <summary>A compute pipeline over <paramref name="src"/> (or <paramref name="resref"/>'s content override); null
@@ -81,7 +75,9 @@ internal sealed unsafe partial class VkBackend
         if (!d.Cs.IsNull)
         {
             if (!_shaders.TryGet(d.Cs.Value, out VkShader cs)) return Refused<PipelineId>($"{what}: stale compute stage");
-            var ci = new VkComputePipelineCreateInfo { stage = Stage(cs, _spec), layout = _pipeLayout };
+            SpecBlock spec;
+            Specialize(&spec);
+            var ci = new VkComputePipelineCreateInfo { stage = Stage(cs, &spec.Info), layout = _pipeLayout };
             _pipeCacheDirty = true;
             if (_vkd.vkCreateComputePipelines(_pipeCache, 1, &ci, &pipe) != VkResult.Success)
                 return Refused<PipelineId>($"{what}: vkCreateComputePipelines refused");
@@ -102,9 +98,17 @@ internal sealed unsafe partial class VkBackend
         else
         {
             bool linked = Libraries;
-            pipe = linked ? Linked(d, rate, dyn, what) : Build(d, rate, dyn, Part.Whole, null, 0, what);
+            _pipeCacheDirty = true;
+            pipe = linked ? Linked(d, rate, dyn, what) : default;
+            if (linked && pipe.IsNull)
+            {
+                _librariesOn = linked = false;
+                _log.Always($"VkBackend: REFUSED the pipeline library path at {what} (logged above) -- every pipeline is built "
+                          + "whole on the frame from here on, as on a device without libraries");
+            }
+            if (!linked) pipe = Build(d, rate, dyn, Part.Whole, null, 0, what);
             if (pipe.IsNull) return default;
-            Tallied(since, d.Material, what);
+            Tallied(since, d.Prewarmed, what);
             Name(VkObjectType.Pipeline, pipe.Handle, what);
             obj = new PipeObj(pipe, key);
             _shared[key] = obj;
@@ -113,10 +117,23 @@ internal sealed unsafe partial class VkBackend
         return new PipelineId(_pipelines.Add(new VkPipe(obj, false, d.Depth, d.Raster, rate, dyn, d.Blend, d.Targets.ColorCount)));
     }
 
-    /// <summary>What a compiled pipeline is made of: the stages, vertex input, the static raster and multisample state,
-    /// the targets, the rate, and the blend unless it is dynamic. Depth, cull, winding and bias are restated per bind.</summary>
+    /// <summary>What a compiled pipeline is made of: its four parts' keys, so a pipeline and the libraries it links from
+    /// are told apart by the same things. Depth, cull, winding and bias are restated per bind, and blend when dynamic.</summary>
     private static string PipeKey(in PipelineDesc d, bool rate, bool dyn)
-        => $"{d.Vs.Value} {d.Gs.Value} {d.Fs.Value} {d.Layout.Value} {(int)d.Topo} {(d.Raster.DepthClamp ? 'c' : '-')} {OutputKey(d, rate, dyn)}";
+    {
+        (string vi, string pr, string fs, string fo) = PartKeys(d, rate, dyn);
+        return $"{vi} | {pr} | {fs} | {fo}";
+    }
+
+    /// <summary>The key of each library part: vertex input, the vertex stages, the fragment stage, the output interface.</summary>
+    private static (string Vi, string Pr, string Fs, string Fo) PartKeys(in PipelineDesc d, bool rate, bool dyn)
+    {
+        string r = rate ? " r" : "";
+        return ($"vi {d.Layout.Value} {(int)d.Topo}",
+                $"pr {d.Vs.Value} {d.Gs.Value} {(d.Raster.DepthClamp ? 'c' : '-')}{r}",
+                $"fs {d.Fs.Value} s{Math.Max(d.Targets.Samples, 1)}{(d.AlphaToCoverage ? " a2c" : "")}{r}",
+                OutputKey(d, rate, dyn));
+    }
 
     /// <summary>The fragment output interface's part of a key: formats, samples, coverage, rate and the baked blend.</summary>
     private static string OutputKey(in PipelineDesc d, bool rate, bool dyn)
@@ -139,24 +156,28 @@ internal sealed unsafe partial class VkBackend
     [Flags]
     private enum Part : byte
     {
+        /// <summary>No part of its own: a link of libraries others built.</summary>
+        None = 0,
         VertexInput = 1, PreRaster = 2, Fragment = 4, Output = 8,
         Whole = VertexInput | PreRaster | Fragment | Output,
     }
 
     /// <summary>The <paramref name="parts"/> of <paramref name="d"/>'s pipeline: a whole pipeline, or one library part
     /// that keeps what an optimised link needs. Given <paramref name="libs"/> it links those <paramref name="nlibs"/>
-    /// libraries instead, optimised when <paramref name="parts"/> is <see cref="Part.Whole"/>. Null (logged) when refused;
-    /// safe on the worker, since it reads only the desc, the device and the stage modules a library outlives.</summary>
+    /// libraries instead, optimised when <paramref name="parts"/> is <see cref="Part.Whole"/>. Null (logged) when refused.
+    /// On the worker it writes only the cache object, which Vulkan synchronises; the frame thread marks it dirty.</summary>
     private VkPipeline Build(in PipelineDesc d, bool rate, bool dyn, Part parts, VkPipeline* libs, int nlibs, string what)
     {
+        SpecBlock spec;
+        Specialize(&spec);
         VkPipelineShaderStageCreateInfo* stages = stackalloc VkPipelineShaderStageCreateInfo[3];
         int ns = 0;
         if (libs == null && (parts & Part.PreRaster) != 0)
         {
-            stages[ns++] = Stage(ShaderOf(d.Vs), _spec);
-            if (!d.Gs.IsNull) stages[ns++] = Stage(ShaderOf(d.Gs), _spec);
+            stages[ns++] = Stage(ShaderOf(d.Vs), &spec.Info);
+            if (!d.Gs.IsNull) stages[ns++] = Stage(ShaderOf(d.Gs), &spec.Info);
         }
-        if (libs == null && (parts & Part.Fragment) != 0) stages[ns++] = Stage(ShaderOf(d.Fs), _spec);
+        if (libs == null && (parts & Part.Fragment) != 0) stages[ns++] = Stage(ShaderOf(d.Fs), &spec.Info);
 
         int colors = d.Targets.ColorCount;
         VkFormat* fmts = stackalloc VkFormat[RenderPassDesc.MaxColors];
@@ -216,7 +237,7 @@ internal sealed unsafe partial class VkBackend
         };
         var cb = new VkPipelineColorBlendStateCreateInfo { attachmentCount = (uint)colors, pAttachments = blend };
         VkDynamicState* dynamic = stackalloc VkDynamicState[MaxDynamicStates];
-        uint nd = libs == null ? DynamicStatesOf(parts, rate, dyn, dynamic) : 0;
+        uint nd = libs == null ? DynamicStatesOf(parts, rate, dyn && colors > 0, dynamic) : 0;
         var dy = new VkPipelineDynamicStateCreateInfo { dynamicStateCount = nd, pDynamicStates = dynamic };
 
         var lib = new VkGraphicsPipelineLibraryCreateInfoEXT { pNext = &rendering, flags = LibraryFlags(parts) };
@@ -246,7 +267,6 @@ internal sealed unsafe partial class VkBackend
             gci.pVertexInputState = null; gci.pInputAssemblyState = null; gci.pViewportState = null; gci.pRasterizationState = null;
             gci.pMultisampleState = null; gci.pDepthStencilState = null; gci.pColorBlendState = null;
         }
-        _pipeCacheDirty = true;
         VkPipeline pipe;
         if (_vkd.vkCreateGraphicsPipelines(_pipeCache, 1, &gci, &pipe) == VkResult.Success) return pipe;
         string why = $"{what}: vkCreateGraphicsPipelines refused ({(libs == null ? parts.ToString() : parts == Part.Whole ? "the optimised link" : "the link")})";

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
+using CX.Framework;
 using CX.Rhi;
 using Vortice.Vulkan;
 
@@ -43,8 +44,8 @@ internal sealed unsafe partial class VkBackend
 
     private readonly LibraryState _lib = new();
 
-    /// <summary>The device offers graphics pipeline libraries with fast linking, and the override goldens use to build
-    /// whole pipelines on it anyway.</summary>
+    /// <summary>The device offers graphics pipeline libraries with fast linking; and whether the backend uses them, which
+    /// a refused library turns off for the session.</summary>
     private readonly bool _canLibraries;
     private bool _librariesOn = true;
 
@@ -60,18 +61,18 @@ internal sealed unsafe partial class VkBackend
     {
         VkPipeline* libs = stackalloc VkPipeline[4];
         if (!LibrariesOf(d, rate, dyn, what, libs)) return default;
-        return Build(d, rate, dyn, 0, libs, 4, what);
+        return Build(d, rate, dyn, Part.None, libs, 4, what);
     }
 
     /// <summary>The four libraries <paramref name="d"/> links from, into <paramref name="libs"/>; false (logged) when one
     /// was refused.</summary>
     private bool LibrariesOf(in PipelineDesc d, bool rate, bool dyn, string what, VkPipeline* libs)
     {
-        string r = rate ? " r" : "";
-        libs[0] = Library(d, rate, dyn, Part.VertexInput, $"vi {d.Layout.Value} {(int)d.Topo}", what, default);
-        libs[1] = Library(d, rate, dyn, Part.PreRaster, $"pr {d.Vs.Value} {d.Gs.Value} {(d.Raster.DepthClamp ? 'c' : '-')}{r}", what, d.Vs, d.Gs);
-        libs[2] = Library(d, rate, dyn, Part.Fragment, $"fs {d.Fs.Value} s{Math.Max(d.Targets.Samples, 1)}{(d.AlphaToCoverage ? " a2c" : "")}{r}", what, d.Fs);
-        libs[3] = Library(d, rate, dyn, Part.Output, OutputKey(d, rate, dyn), what, default);
+        (string vi, string pr, string fs, string fo) = PartKeys(d, rate, dyn);
+        libs[0] = Library(d, rate, dyn, Part.VertexInput, vi, what, default);
+        libs[1] = Library(d, rate, dyn, Part.PreRaster, pr, what, d.Vs, d.Gs);
+        libs[2] = Library(d, rate, dyn, Part.Fragment, fs, what, d.Fs);
+        libs[3] = Library(d, rate, dyn, Part.Output, fo, what, default);
         return libs[0].IsNotNull && libs[1].IsNotNull && libs[2].IsNotNull && libs[3].IsNotNull;
     }
 
@@ -112,6 +113,7 @@ internal sealed unsafe partial class VkBackend
     /// <summary>The worker: every queued job's optimised link, onto the done queue, until the backend goes.</summary>
     private void LinkWorker()
     {
+        Affinity.ClearThis();   // created by the (possibly pinned) main thread; the links must not share its core
         LibraryState l = _lib;
         while (!l.Stop)
         {
@@ -126,11 +128,11 @@ internal sealed unsafe partial class VkBackend
 
     /// <summary>Every optimised pipeline the worker finished takes over from its linked one, which goes once no submit
     /// in flight can reach it; with no link left in flight, the libraries destroyed stages left go too. At the head of
-    /// every graphics submit; the number swapped in.</summary>
-    internal int SwapOptimised()
+    /// every graphics submit.</summary>
+    internal void SwapOptimised()
     {
+        if (!OnThread("SwapOptimised")) return;
         LibraryState l = _lib;
-        int n = 0;
         while (l.Done.TryDequeue(out LinkJob? job))
         {
             l.InFlight--;
@@ -140,9 +142,9 @@ internal sealed unsafe partial class VkBackend
             if (o.Dead) { Later(() => _vkd.vkDestroyPipeline(fresh)); continue; }
             o.Handle = fresh;
             o.Optimised = true;
+            _pipeCacheDirty = true;
             Name(VkObjectType.Pipeline, fresh.Handle, job.What + " (optimised)");
             Later(() => _vkd.vkDestroyPipeline(old));
-            n++;
         }
         if (l.InFlight == 0 && l.Grave.Count > 0)
         {
@@ -150,7 +152,6 @@ internal sealed unsafe partial class VkBackend
             l.Grave.Clear();
             Later(() => { foreach (VkPipeline p in dead) _vkd.vkDestroyPipeline(p); });
         }
-        return n;
     }
 
     /// <summary>The worker's optimised pipeline is the one <paramref name="p"/> draws with.</summary>

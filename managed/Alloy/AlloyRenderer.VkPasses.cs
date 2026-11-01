@@ -42,7 +42,7 @@ public sealed unsafe partial class AlloyRenderer
         // inside the frame's record bracket, which is why the module-unload edge only sets the flag
         if (Programs._spliceStale) Programs.DropSpliced();
         if (!VkEnsure(vk, w, h, log)) return false;
-        VkPrewarm(vk, w, h, log);
+        VkPrewarm(vk, log);
         VkColourState s = _vkc;
         s.ArenaUsed = 0;
         s.EngineAt = -1;

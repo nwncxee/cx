@@ -6,49 +6,42 @@ using CX.Graphics.Rhi;
 namespace CX.Alloy;
 
 /// <summary>
-/// The loading hold's pipeline prewarm on Vulkan: every frame the hold is up, each colour-bracket program the area can
-/// draw with asks for its pipeline into every target set its batches use, for every arena format holding a mesh, so the
-/// first frame past the loading screen finds them built. It never keeps the hold up; a pairing it misses shows by name
-/// on the backend's after-the-loading-screen line.
+/// The loading hold's pipeline prewarm on Vulkan: every frame the hold is up, each colour-bracket program asks for its
+/// pipeline into the target sets <see cref="VkPrewarmSets"/> pairs it with, for every arena format holding a mesh, so the
+/// first frame past the loading screen finds them built. It asks for blend 0 alone, which covers every blend mode where
+/// blend is dynamic state and only the unblended one where it is baked. It never keeps the hold up.
 /// </summary>
 public sealed unsafe partial class AlloyRenderer
 {
-    /// <summary>The target sets a stock program's batches draw into: the issue loop's own pairings, declared once here.</summary>
-    private static ReadOnlySpan<VkTargets> VkPrewarmSets(VkPrograms.Id id) => id switch
+    /// <summary>The target sets a program's batches draw into. A copy of the pairings the issue loop makes at its call
+    /// sites, kept honest by the backend's after-the-loading-screen line, which names any material pipeline it missed.
+    /// Water and grass are not on it: their pipelines count among the line's others.</summary>
+    private static ReadOnlySpan<VkTargets> VkPrewarmSets(VkProg p) => (p.Feat == 0, p.Id, p.Variant) switch
     {
-        VkPrograms.Id.Lit or VkPrograms.Id.Fullbright => LitSets,
-        VkPrograms.Id.LitDeferred => GbufSets,
-        VkPrograms.Id.Depth or VkPrograms.Id.DepthKey => PrepassSets,
-        VkPrograms.Id.DepthFeat => FeatDepthSets,
-        VkPrograms.Id.Decal => DecalSets,
-        VkPrograms.Id.HighlightMask => MaskSets,
-        VkPrograms.Id.Motion => VelocitySets,
+        (true, VkPrograms.Id.Lit or VkPrograms.Id.Fullbright, _) or (false, _, ContentVariant.Forward) =>
+            LitSets,
+        (true, VkPrograms.Id.LitDeferred, _) or (false, _, ContentVariant.Deferred) => GbufSets,
+        (true, VkPrograms.Id.Depth or VkPrograms.Id.DepthKey, _) or (false, _, ContentVariant.Depth) => PrepassSets,
+        (true, VkPrograms.Id.DepthFeat, _) => FeatDepthSets,
+        (true, VkPrograms.Id.Decal, _) => DecalSets,
+        (true, VkPrograms.Id.HighlightMask, _) => MaskSets,
+        (true, VkPrograms.Id.Motion, _) => VelocitySets,
         _ => default,
     };
 
-    /// <summary>A content program's sets, by the variant it was built as.</summary>
-    private static ReadOnlySpan<VkTargets> VkPrewarmSets(VkProg p) => p.Feat == 0 ? VkPrewarmSets(p.Id) : p.Variant switch
-    {
-        ContentVariant.Forward => LitSets,
-        ContentVariant.Deferred => GbufSets,
-        ContentVariant.Depth => PrepassSets,
-        _ => default,
-    };
-
+    /// <summary>The sets, made once: the switch above runs every frame the hold is up.</summary>
     private static readonly VkTargets[] LitSets =
-        [VkTargets.Colour, VkTargets.ColourRefl, VkTargets.Forward, VkTargets.Oit, VkTargets.Cover, VkTargets.Probe];
-    private static readonly VkTargets[] GbufSets = [VkTargets.Colour, VkTargets.ColourRefl];
-    private static readonly VkTargets[] PrepassSets = [VkTargets.Prepass];
-    private static readonly VkTargets[] FeatDepthSets = [VkTargets.Prepass, VkTargets.ForwardDepth];
-    private static readonly VkTargets[] DecalSets = [VkTargets.Decal];
-    private static readonly VkTargets[] MaskSets = [VkTargets.Mask];
-    private static readonly VkTargets[] VelocitySets = [VkTargets.Velocity];
+        [VkTargets.Colour, VkTargets.ColourRefl, VkTargets.Forward, VkTargets.Oit, VkTargets.Cover, VkTargets.Probe],
+        GbufSets = [VkTargets.Colour, VkTargets.ColourRefl], PrepassSets = [VkTargets.Prepass],
+        FeatDepthSets = [VkTargets.Prepass, VkTargets.ForwardDepth], DecalSets = [VkTargets.Decal], MaskSets = [VkTargets.Mask],
+        VelocitySets = [VkTargets.Velocity];
 
     /// <summary>Every pipeline the hold should leave built, under the hold: the stock programs, the optional passes'
-    /// programs (built here if their pass has not run yet) and every content program the area's batches built.</summary>
-    private static void VkPrewarm(VkBackend vk, int w, int h, ExtenderLog log)
+    /// programs (built here if their pass has not run yet; none of their sized targets) and every content program the
+    /// area's batches built.</summary>
+    private static void VkPrewarm(VkBackend vk, ExtenderLog log)
     {
-        if (!LightmapBake.Held) return;
+        if (!vk.UnderHold) return;
         VkColourState s = _vkc;
         Span<bool> live = stackalloc bool[MeshArena.Formats];
         int formats = 0;
@@ -56,15 +49,12 @@ public sealed unsafe partial class AlloyRenderer
         if (formats == 0) return;
         bool rate = vk.ShadingRateTexel > 0;
         foreach (VkProg? p in s.Progs) if (p != null) VkPrewarmProgram(p, live, rate);
-        VkDecalState d = _vkDecals;
-        if (d.Dev != vk) _vkDecals = d = new VkDecalState { Dev = vk };
+        VkDecalState d = VkDecalOwner(vk);
         if (VkDecalWriter(vk, d, log)) VkPrewarmProgram(d.Prog!, live, rate);
-        VkMvState mv = _vkMv;
-        if (mv.Dev != vk) _vkMv = mv = new VkMvState { Dev = vk };
+        VkMvState mv = VkMvOwner(vk);
         if (VkMvEnsure(vk, mv, log)) VkPrewarmProgram(mv.Prog!, live, rate);
-        VkHlState hl = _vkHl;
-        if (hl.Dev != vk) _vkHl = hl = new VkHlState { Dev = vk };
-        if (VkHlEnsure(vk, hl, w, h, log)) VkPrewarmProgram(hl.Mask!, live, rate);
+        VkHlState hl = VkHlOwner(vk);
+        if (VkHlPrograms(vk, hl, log)) VkPrewarmProgram(hl.Mask!, live, rate);
         foreach (VkProg? p in s.Content.Values) if (p != null) VkPrewarmProgram(p, live, rate);
     }
 

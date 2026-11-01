@@ -71,8 +71,7 @@ public sealed unsafe partial class AlloyRenderer
     private static bool VkDecalPass(VkBackend vk, CommandList cl, int from, int to, in Matrix4x4 vp, int* viewport,
                                     float near, float far, bool can, bool indirect, ExtenderLog log)
     {
-        VkDecalState d = _vkDecals;
-        if (d.Dev != vk) _vkDecals = d = new VkDecalState { Dev = vk };
+        VkDecalState d = VkDecalOwner(vk);
         d.Live = false;
         if (!can || to <= from || d.Failed) return true;
         VkColourState s = _vkc;
@@ -111,6 +110,14 @@ public sealed unsafe partial class AlloyRenderer
                      + "the surfaces under them and drop out of the blended pass");
         }
         return true;
+    }
+
+    /// <summary>The layer's state on <paramref name="vk"/>, replaced whole when the device is another.</summary>
+    private static VkDecalState VkDecalOwner(VkBackend vk)
+    {
+        VkDecalState d = _vkDecals;
+        if (d.Dev != vk) _vkDecals = d = new VkDecalState { Dev = vk };
+        return d;
     }
 
     /// <summary>The writer, made once per device: built by the loading hold's prewarm or the layer's first frame. False

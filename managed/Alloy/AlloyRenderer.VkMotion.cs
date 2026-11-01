@@ -34,8 +34,7 @@ public sealed unsafe partial class AlloyRenderer
     internal static void VkMoverMotion(VkBackend vk, CommandList cl, ImageId vel, int w, int h, Matrix4x4* vp,
                                        in Matrix4x4 prevVp, ExtenderLog log)
     {
-        VkMvState s = _vkMv;
-        if (s.Dev != vk) _vkMv = s = new VkMvState { Dev = vk };
+        VkMvState s = VkMvOwner(vk);
         int n = _mvN;
         if (n == 0 || _capturing || !VkMvEnsure(vk, s, log)) return;
         VkColourState c = _vkc;
@@ -102,6 +101,14 @@ public sealed unsafe partial class AlloyRenderer
             s.Live = true;
             log.Always($"AlloyRenderer: the Vulkan mover velocities are LIVE -- {drawn} moving record(s) over the camera field");
         }
+    }
+
+    /// <summary>The sweep's state on <paramref name="vk"/>, replaced whole when the device is another.</summary>
+    private static VkMvState VkMvOwner(VkBackend vk)
+    {
+        VkMvState s = _vkMv;
+        if (s.Dev != vk) _vkMv = s = new VkMvState { Dev = vk };
+        return s;
     }
 
     /// <summary>The sweep's program, made once per device; a refusal leaves movers on camera-only vectors, said once.</summary>

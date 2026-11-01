@@ -465,7 +465,6 @@ internal sealed unsafe partial class VkBackend : IDevice
         (_bindlessLayout, _bindlessPool, _bindlessSet, _bindlessCap) = MakeBindless();
         // every stage translated from here on bounds its bindless indices by what this device actually seats
         VkGlsl.BindlessCap = _bindlessCap;
-        _spec = MakeSpecialization(_bindlessCap);
         VkDescriptorSetLayout* sl = stackalloc VkDescriptorSetLayout[2] { _setLayout, _bindlessLayout };
         var push = new VkPushConstantRange { stageFlags = VkShaderStageFlags.All, offset = 0, size = PushConstants.Bytes };
         var plci = new VkPipelineLayoutCreateInfo { setLayoutCount = 2, pSetLayouts = sl, pushConstantRangeCount = 1, pPushConstantRanges = &push };
@@ -753,7 +752,6 @@ internal sealed unsafe partial class VkBackend : IDevice
         var compiled = new HashSet<PipeObj>();
         foreach (VkPipe v in _pipelines.Live())
             if (compiled.Add(v.Obj)) _vkd.vkDestroyPipeline(v.Obj.Handle);
-        System.Runtime.InteropServices.NativeMemory.Free(_spec);
         foreach (Slot s in _slots)
             if (s.Stage.IsNotNull) Vma.vmaDestroyBuffer(_vma, s.Stage, s.StageAlloc);
         _vkd.vkDestroySemaphore(_timeline);

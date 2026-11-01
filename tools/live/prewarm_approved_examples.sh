@@ -7,7 +7,10 @@
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SAVES=""
-[ "${1:-}" = "--saves" ] && SAVES="${2:-}"
+if [ "${1:-}" = "--saves" ]; then
+    SAVES="${2:-}"
+    [ -d "$SAVES" ] || { echo "prewarm: --saves needs a folder holding the docks save" >&2; exit 2; }
+fi
 if [ -z "$SAVES" ]; then
     USERDIR="$(python3 "$ROOT/tools/paths.py" NWN_USERDIR 2>/dev/null || echo "$HOME/.local/share/Neverwinter Nights")"
     SAVE="$USERDIR/saves/000000 - quicksave"
@@ -17,6 +20,8 @@ if [ -z "$SAVES" ]; then
 fi
 before="$(date +%s)"
 "$ROOT/tools/live/perf-save.sh" --saves "$SAVES" --soak 30 --label prewarm >/dev/null
+rc=$?
+[ "$rc" = 3 ] && { echo "prewarm: a client is already running" >&2; exit 2; }
 OUT="$(find "${TMPDIR:-/tmp}" -maxdepth 1 -type d -name 'cx-perf-prewarm-*' -newermt "@$before" | sort | tail -1)"
 LOG="$OUT/cx.log"
 [ -f "$LOG" ] || { echo "prewarm: no cx.log from the run ($OUT)" >&2; exit 2; }

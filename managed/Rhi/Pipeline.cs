@@ -102,9 +102,9 @@ public struct PipelineDesc
     /// <summary>Draws inside a pass that has a <see cref="RenderPassDesc.ShadingRate"/> image; ignored by a device
     /// without one.</summary>
     public bool ShadingRate;
-    /// <summary>A material's pipeline, which an area's loading hold builds ahead: one built on the frame past the hold
-    /// is a prewarm miss, and the tally says so.</summary>
-    public bool Material;
+    /// <summary>A pipeline an area's loading hold builds ahead (the colour bracket's, which the tally calls material
+    /// pipelines): one built on the frame past the hold is a prewarm miss, and the tally says so.</summary>
+    public bool Prewarmed;
     public string Label;
 }
 

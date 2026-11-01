@@ -85,8 +85,8 @@ internal static class VulkanFrame
                      + $"{(float)barriers / GpuPeriod:F0} of them barriers; upload staging holds {vk.Staging.Blocks} block(s), "
                      + $"{vk.Staging.Bytes >> 20} MiB");
             log.Always($"VulkanFrame: [vkgpu] translation by op, ms/frame: {TopOps(vk, n)}; {Updates(vk, n)}");
-            log.Always($"VulkanFrame: {vk.PipelinePeriod()}");
         }
+        if (_s.Frames % GpuPeriod == 0) log.Always($"VulkanFrame: {vk.PipelinePeriod()}");
         PostChain.Painted();
         if (!_s.Live)
         {
