@@ -49,6 +49,7 @@ internal static partial class GpuGolden
         vk.Destroy(pipe);
         check.Expect(got != null, "wet E8: the lamp stage was refused (logged above)");
         if (got == null) return;
+        log.Info(FormattableString.Invariant($"GpuGolden: wet lamp, film image {got[0]:F3} cold, {got[1]:F3} live"));
 
         // Given standing water reflecting a lamp
         // When the camera moves in from 20 m to 1 m

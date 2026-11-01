@@ -141,13 +141,13 @@
     float dirOcc = mix(1.0, occl, uAoDirect);
     vec3 specLight = (sunSpec * CxLoopSpec(CxSpecLobe(N, V, uAreaDir, rough, spec), N, V, uAreaDir) + pointSpec)
                      * dirOcc;
-    // R4: the film's own highlights from the baked statics the loop skipped -- a walk of two to four
-    // lights on the coat's lobe, capped at one cube tap. The base stayed matte, so it never joined the
-    // mirror path that walks the whole static list.
+    // R4: the film's own highlights from the baked statics, cold and hot -- the loop gives a matte base the
+    // image of neither -- on the coat's lobe, capped at one cube tap. A glossy base's mirror path already
+    // walks every static with the coat in its lobe, so it takes none here.
     // CX-188: compiled out of the twin with the walk, for the same reason -- the compute pass adds the film's
     // own highlights back through specT, which is the same weight pointSpec takes (both ride dirOcc).
 #ifndef CX_DEFERRED
-    if (wxFilm > 0.0 && baked && cxCoat > 0.0 && uCapture != 2)
+    if (wxFilm > 0.0 && baked && cxCoat > 0.0 && uCapture != 2 && !CxGlossy(rough))
         specLight += CxFilmStatics(vWorld, N, V, vDepth, cxCoat, cxCoatRough, onMover) * dirOcc;
 #endif
     vec3 diffuse = (sun + sunSss + point) * dirOcc;

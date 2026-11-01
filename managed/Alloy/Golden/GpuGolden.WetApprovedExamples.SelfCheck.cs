@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using CX.Framework;
 using CX.Graphics.Rhi;
 using CX.Rhi;
@@ -86,6 +87,7 @@ internal static partial class GpuGolden
         // Then the lamp shows on it as a soft wet sheen, never as a sharp mirror image
         check.Expect(A(0) >= WxSheenAlpha && W(0) > 0f, $"wet E2: dark cobble film alpha {A(0):F3}, weight {W(0):F3}: a sheen is alpha {WxSheenAlpha} or more");
 
+        log.Info(FormattableString.Invariant($"GpuGolden: wet film, weight/alpha dark {W(0):F2}/{A(0):F3} light {W(1):F2}/{A(1):F3} black {W(2):F2}/{A(2):F3} polished {W(3):F2}/{A(3):F3} rough {W(4):F2}/{A(4):F3}"));
         WetShowThrough(vk, check, log, soak, W(0), got[2]);
 
         // Given a dark floor whose PBR maps say it is polished smooth
@@ -136,7 +138,7 @@ internal static partial class GpuGolden
         PipelineId pipe = vk.CreateCompute(Version + "layout(local_size_x = 1) in;\n" + lib + CaseBlocks(1, 4) + $$"""
             void main()
             {
-                const float d = {{WxDepth}}, p = {{WxPuddles}};
+                const float d = {{WxDepth.ToString("R", CultureInfo.InvariantCulture)}}, p = {{WxPuddles.ToString("R", CultureInfo.InvariantCulture)}};
                 float poroPbr = CxWxPoroOf(0.3, 0.1, 0.0, CxWxGloss(0.2, 0.3, true), true);
                 uOut[0] = CxWxMicro(d, p, 0.5, 0.0, poroPbr);
                 uOut[1] = CxWxMicro(d, p, 0.5, 1.0, poroPbr);
@@ -151,6 +153,7 @@ internal static partial class GpuGolden
         check.Expect(got != null, "wet E6-E7: the pooling stage was refused (logged above)");
         if (got == null) return;
         float level = 0.5f * WxDepth;
+        log.Info(FormattableString.Invariant($"GpuGolden: wet pooling at {level:F4} m, groove {got[0]:F4} top {got[1]:F4} joint {got[2]:F4} stone {got[3]:F4}"));
 
         // Given a floor whose height map has grooves between raised stones
         // When rain fills the ground's basin halfway

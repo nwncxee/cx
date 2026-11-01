@@ -101,7 +101,11 @@
                     wxTrack = CxTrack(wxP);
                     wxSnow *= 1.0 - CX_WX_TRACK_BARE * wxTrack.x;
                 }
-                wxPoro = CxWxPoro(rough, spec, metal);
+                // What the water does on THIS surface. Its maps or its declaration say how smooth it is
+                // where they exist; where nothing does, its brightness stands in (cx_wx_look).
+                bool wxKnown = physical || (slots & (CX_SLOT_SPEC | CX_SLOT_ROUGH | CX_SLOT_ENV)) != 0 || d.pbr.x > 0.0 || d.pbr.y > 0.0;
+                float wxLum = dot(albedo, CX_WX_SOAK_LUMA), wxRough0 = rough;
+                wxPoro = CxWxPoroOf(rough, spec, metal, CxWxGloss(wxLum, rough, wxKnown), wxKnown);
                 if (up > 0.5)
                 {
                     float wxFlat = smoothstep(0.9, 0.98, up);
@@ -113,7 +117,18 @@
                         // centimetre scale, so a noise micro-relief stands in for what it cannot see -- a
                         // flat plaza breaks into pools instead of sheeting over as one mirror. Porous
                         // ground drinks its shallow pockets, so the relief counts double there.
-                        float wxMicro = uWxMapP.x * (CX_WX_MICRO_MEAN * 2.0 * (1.0 - uWxMapP.w) + CX_WX_MICRO_AMP * (0.35 * n1 + 0.65 * n2 - 0.5)) * (1.0 + wxPoro);
+                        // The fine half of that relief is the surface's own where it has one: its height map, or on
+                        // a surface nothing describes, its albedo against its neighbourhood -- a joint darker than
+                        // the stones round it is lower. Explicit gradients: this is non-uniform control flow.
+                        float wxFine = n2;
+                        if ((slots & CX_SLOT_HEIGHT) != 0) wxFine = textureGrad(uHeightTex, uv, du1, du2).r;
+                        else if (!wxKnown && !CxPltOn(vDraw))
+                        {
+                            float wxS = exp2(CX_WX_NEAR_MIPS);
+                            wxFine = CxWxFineLum(dot(textureGrad(uTex, uv, du1, du2).rgb, CX_WX_SOAK_LUMA),
+                                                 dot(textureGrad(uTex, uv, du1 * wxS, du2 * wxS).rgb, CX_WX_SOAK_LUMA));
+                        }
+                        float wxMicro = CxWxMicro(uWxMapP.x, uWxMapP.w, n1, wxFine, wxPoro);
                         float wxD = CxWetDepth(wxM) - wxMicro;
                         wxFilm = wxWetExp * wxFlat * smoothstep(0.0, uWxMapP.y, wxD);
                         // R5: the SHORELINE. Ground the water has just left, or has not quite reached, is
@@ -136,7 +151,7 @@
                 {
                     albedo = mix(albedo, vec3(uWeatherLook.y), wxSnow);
                     rough = mix(rough, 0.75, wxSnow); spec = mix(spec, 0.08, wxSnow);
-                    wxPoro = CxWxPoro(rough, spec, metal);
+                    wxPoro = CxWxPoroOf(rough, spec, metal, CxWxGloss(wxLum, rough, true), true);
                     // mounds: the normal tilts down the relief's gradient at the point the ray met it (or under
                     // the pixel with the relief off), more as the cover deepens
                     float wxGl = CxWxNoiseLod(wxPx);
@@ -173,7 +188,11 @@
                     // clear coat (cx_ownlit_light hands it to cxCoat / cxCoatRough) with the base normal
                     // flattened toward the water's own plane beneath it. The base keeps its roughness, and
                     // with it the cheap lighting path.
-                    wxFilmRough = max(uWeatherLook.w, CX_ALPHA_MIN);
+                    // The film follows the surface under it -- thin and rough over dull ground, which takes
+                    // a sheen its own texture shows through, and the knob's mirror only over the glossiest
+                    vec3 wxLook = CxWxFilmLook(wxFilm, wxLum, wxRough0, wxKnown, max(uWeatherLook.w, CX_ALPHA_MIN));
+                    wxFilm = wxLook.x;
+                    wxFilmRough = wxLook.y;
                     wxFilmRough = mix(wxFilmRough, max(wxFilmRough, CX_WX_FILM_FAR_A), smoothstep(CX_WX_FILM_FAR_M.x, CX_WX_FILM_FAR_M.y, vDepth));
                     // toward the GEOMETRIC normal, not toward the world's up. Water drowns a bed's
                     // normal-map detail but not its macro shape -- a sloped street under a film is still
@@ -181,7 +200,7 @@
                     // near-mirror lobe's alignment smoothly across a whole surface, which is what drew
                     // the film's highlight as a bright ARC rather than a reflection. A film only exists
                     // where the face is near-flat (wxFlat), so the geometric normal IS the water plane.
-                    N = normalize(mix(N, Ng, wxFilm));
+                    N = normalize(mix(N, Ng, wxLook.z));
                     albedo = CxWetSoak(albedo, uWeatherLook.x * wxFilm);
                 }
                 if (uCoverLayer.w > 0.0 && wxFilm > 0.0 && up > 0.9)

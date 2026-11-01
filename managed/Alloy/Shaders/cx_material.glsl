@@ -232,24 +232,24 @@ float CxSheenLobe(vec3 N, vec3 V, vec3 L, float a)
     return d / (4.0 * max(NoL + NoV - NoL * NoV, 1e-4));
 }
 
-/// R4: the highlights a water film mirrors from the BAKED static lights the main walk no longer reaches: every
-/// cold static of the list, each on the COAT's lobe alone -- the pages already hold what the base owes them --
-/// and only the strongest pays one cube tap for its own visibility. The whole cold run, never a ranked few: each
-/// light fades to 0 at its own reach window, which is what binned it, so no light can switch off at a list's edge.
+/// R4: the highlights a water film over a matte base mirrors from the BAKED static lights: every static the
+/// fragment's list keeps, cold or hot, each on the COAT's lobe alone, and only the strongest pays one cube tap.
+/// Never a ranked few: each light fades to 0 at its own reach window, so none switches off at a list's edge.
 /// Lives here, past CxCoatLobe, rather than in cx_lightfrag, which is composed before this file.
 vec3 CxFilmStatics(vec3 worldPos, vec3 N, vec3 V, float viewDepth, float coat, float coatRough, float onMover)
 {
     uint cl = CxCluster(viewDepth);
-    uint live = CxListLive(cl);
-    uint last = min(CxListN(cl), CX_CLUSTER_CAP);
+    uint last = CxListWalk(cl);
     vec3 acc = vec3(0.0), bSpc = vec3(0.0);
     float bLum = 0.0, bNdl = 0.0;
     int bSlot = -1;
-    for (uint k = live; k < last; k++)
+    for (uint k = 0u; k < last; k++)
     {
         uint li = CxListIdx(cl, k);
         vec4 pr = uLights[li * 2u];
         vec4 cs = uLights[li * 2u + 1u];
+        // a dynamic light's image is the main walk's, through CxLoopSpec; a HOT static's is this walk's too
+        if (int(cs.w) < 128) continue;
         vec3 c, L; float att, f2, ndlRaw, ndl;
         if (!CxPointLight(pr, cs.rgb, worldPos, N, c, L, att, f2, ndlRaw, ndl)) continue;
         if (ndl <= 0.0) continue;
