@@ -29,7 +29,7 @@ Every command takes `--json` for the raw object, and `bin/plane <command> --help
 
 The pull request body names each work item it settles, one per line: `Closes CX-12`, `Fixes CX-12`, `Resolves: CX-12`. A bare `Part of CX-12` settles nothing.
 
-A merge on GitHub does not reach Plane. After the merge, run `bin/plane close CX-12` for each named item, and `bin/plane comment` the pull request on it.
+Merging the pull request closes each item it names this way: Plane's GitHub integration does it, with no step of ours. Run `bin/plane close CX-12` only for an item the merge left open, such as one the body names on a `Refs` line.
 
 ## Old `CX-<n>` and `#<n>` references
 
