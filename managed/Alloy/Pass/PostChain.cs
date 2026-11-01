@@ -348,10 +348,9 @@ internal static unsafe class PostChain
               "the resolve's encode is unconditional -- it pairs with the stages' fixed decode, not the engine's gamma");
 
             // The debug VIEWS default off, so /post reset (every Default) clears a stray /post viz with the rest.
-            // post.aa is TAA -- the default anti-aliaser, and reset must put it back rather than leave the
-            // frame on SMAA.
-            check.Expect(Post.Aa.RungValue(Quality.Shipped) == "taa" && Post.Viz.Default == 0 && !Post.ClearViz.Default,
-              "the debug views default OFF and post.aa defaults to TAA: reset restores the shipped anti-aliaser");
+            // post.aa is FSR 3.1 at render scale 0.9 -- the shipped look, and reset must put both back.
+            check.Expect(Post.Aa.RungValue(Quality.Shipped) == "fsr" && Post.Scale.Default == 0.9f && Post.Viz.Default == 0 && !Post.ClearViz.Default,
+              "the debug views default OFF, and post.aa defaults to FSR 3.1 at post.scale 0.9: reset restores the shipped look");
 
             // The shoulder, in C#, mirroring the GLSL: identity below the knee, and never past 1.
             static float Shoulder(float c, float k)

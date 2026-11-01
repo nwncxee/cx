@@ -695,8 +695,8 @@ then "FSR 3.1 is off for this session: <why>."
 
 | key | label | kind | range · default | tier | eff | section | help |
 |---|---|---|---|---|---|---|---|
-| post.scale | Render scale | S | 0.25–2.00 step 0.05 · 1.00 | U | L | Anti-aliasing | Size of the 3D frame relative to your screen. Below 1 renders fewer pixels and upscales (faster); above 1 supersamples (sharper, slower). The UI is never scaled. |
-| post.aa | Anti-aliasing | D | FSR 3.1 / TAA / SMAA / Off · **TAA** (Classic: SMAA) | U | L | Anti-aliasing | How edges are smoothed. FSR 3.1 rebuilds the full-resolution picture from the render scale's smaller frame and the frames before it; at render scale 1 it is the anti-aliasing, and above 1 TAA draws instead. TAA smooths edges over several frames. SMAA smooths each frame on its own. |
+| post.scale | Render scale | S | 0.25–2.00 step 0.05 · **0.90** | U | L | Anti-aliasing | Size of the 3D frame relative to your screen. Below 1 renders fewer pixels and upscales (faster); above 1 supersamples (sharper, slower). The UI is never scaled. |
+| post.aa | Anti-aliasing | D | FSR 3.1 / TAA / SMAA / Off · **FSR 3.1** (Classic: SMAA) | U | L | Anti-aliasing | How edges are smoothed. FSR 3.1 rebuilds the full-resolution picture from the render scale's smaller frame and the frames before it; at render scale 1 it is the anti-aliasing, and above 1 TAA draws instead. TAA smooths edges over several frames. SMAA smooths each frame on its own. |
 | post.smaa | SMAA quality | D | medium / high / ultra · **high** | U | L | Anti-aliasing | How far SMAA searches along an edge. Higher finds longer edges and costs more. The row shows only while `post.aa` is SMAA (`Knob.ShowIf`). |
 | post.exposure | Exposure | S | 0.25–4 step 0.05 · 1 | U | L | Exposure | Overall brightness before tone mapping. 1 is neutral. |
 | post.bloom | Bloom | S | 0–0.5 step 0.01 · 0.06 | U | L | Bloom | Glow around bright lights. 0 is off. |

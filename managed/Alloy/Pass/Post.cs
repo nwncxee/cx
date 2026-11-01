@@ -23,15 +23,15 @@ internal static class Post
         G.PanelStatus = CX.Alloy.Fsr.PanelLine;
 
         G.Section("Anti-aliasing");
-        Scale = G.Slider("scale", "Render scale", 0.25f, 2f, 0.05f, 1f,
+        Scale = G.Slider("scale", "Render scale", 0.25f, 2f, 0.05f, 0.9f,
                          help: "Size of the 3D frame relative to your screen. Below 1 renders fewer pixels and upscales (faster); "
                              + "above 1 supersamples (sharper, slower). The UI is never scaled.");
-        Aa = G.Dropdown("aa", "Anti-aliasing", new[] { AaFsr, AaTaa, AaSmaa, AaOff }, AaTaa, new[] { "FSR 3.1", "TAA", "SMAA", "Off" },
+        Aa = G.Dropdown("aa", "Anti-aliasing", new[] { AaFsr, AaTaa, AaSmaa, AaOff }, AaFsr, new[] { "FSR 3.1", "TAA", "SMAA", "Off" },
                         help: "How edges are smoothed. FSR 3.1 rebuilds the full-resolution picture from the render scale's smaller "
                             + "frame and the frames before it; at render scale 1 it is the anti-aliasing, and above 1 TAA draws instead. "
                             + "TAA smooths edges over several frames. SMAA smooths each frame on its own.",
                         changed: () => { CX.Alloy.Fsr.Revoke(); TaaStage.Reset(); })
-             .Ladder(Quality.Preset, Quality.Classic(AaSmaa, AaTaa));
+             .Ladder(Quality.Preset, Quality.Classic(AaSmaa, AaFsr));
         Smaa = G.Dropdown("smaa", "SMAA quality", new[] { 1, 2, 3 }, 2, new[] { "medium", "high", "ultra" },
                           help: "How far SMAA searches along an edge. Higher finds longer edges and costs more.");
         Smaa.ShowIf = static () => Aa.V == AaSmaa;
