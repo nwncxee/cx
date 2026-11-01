@@ -121,6 +121,7 @@ internal sealed unsafe partial class VkBackend : IDevice
 
     private readonly ExtenderLog _log;
     private readonly int _thread;
+    private readonly VkInstance _inst;
     private readonly VkInstanceApi _vki;
     private readonly VkDeviceApi _vkd;
     private readonly VkPhysicalDevice _phys;
@@ -352,6 +353,7 @@ internal sealed unsafe partial class VkBackend : IDevice
     {
         _log = log;
         _thread = Environment.CurrentManagedThreadId;
+        _inst = inst;
         _vki = new VkInstanceApi(in inst);
         _phys = phys;
         _family = family;
@@ -704,6 +706,7 @@ internal sealed unsafe partial class VkBackend : IDevice
     {
         _vkd.vkDeviceWaitIdle();
         RefuseWhenDone();
+        DisposeFsr();
         SavePipelineCache();
         foreach (var d in _dead) d.Free();
         _dead.Clear();

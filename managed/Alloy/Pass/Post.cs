@@ -18,6 +18,7 @@ internal static class Post
     {
         G = KnobGroup.Declare("post", "Graphics", "Image", order: 330);
         G.Status = PostChain.Describe;
+        G.PanelStatus = CX.Alloy.Fsr.PanelLine;
 
         G.Section("Exposure");
         Exposure = G.Slider("exposure", "Exposure", 0.25f, 4f, 0.05f, 1f,
@@ -37,7 +38,9 @@ internal static class Post
         Taa.Changed = () => { if (Taa.V) TaaStage.Reset(); };
         Fsr = G.Toggle("fsr", "FSR 3.1 upscaling", false,
                        help: "Rebuilds the full-resolution picture from the render scale's smaller frame and the frames before it. "
-                           + "Replaces temporal anti-aliasing while on; at render scale 1 it is the anti-aliasing.");
+                           + "Replaces temporal anti-aliasing while on; at render scale 1 it is the anti-aliasing. "
+                           + "Render scale above 1 keeps it off.",
+                       changed: CX.Alloy.Fsr.Revoke);
         G.Section("Bloom");
         Threshold = G.Slider("threshold", "Bloom threshold", 0f, 4f, 0.05f, 1f, tier: Tier.Advanced);
         Knee = G.Slider("knee", "Bloom knee", 0f, 1f, 0.05f, 0.5f, tier: Tier.Advanced);

@@ -1,0 +1,170 @@
+AMD FidelityFX SDK 1.1.4 as CX builds its FSR 3.1 upscaler: `patch -p1` inside FidelityFX-SDK-1.1.4.
+1. ffx_types.h: the default context size can be overridden (build.sh sets it on Linux).
+2. ffx_vk.cpp: the scratch arrays are 64-byte aligned.
+3. ffx_vk.cpp: the descriptor pool is sized for 16 descriptors per set, and counts all six of its sizes.
+4. ffx_vk.cpp: a device-local request falls back to a host-visible type on a unified-memory device.
+5. ffx_fsr3upscaler_callbacks_glsl.h: the luma history is declared rgba16f, the format the host creates it in;
+   rgba8 made every store to it undefined on Vulkan.
+6. ffx_vk.cpp: off Windows, the debug-name conversions copy ASCII instead of calling std::wstring_convert, so the
+   library needs no C++ runtime.
+1 to 4 are the fixes JonathanOrr/xplane-fsr3 found (MIT), rewritten here.
+
+--- a/sdk/include/FidelityFX/gpu/fsr3upscaler/ffx_fsr3upscaler_callbacks_glsl.h
++++ b/sdk/include/FidelityFX/gpu/fsr3upscaler/ffx_fsr3upscaler_callbacks_glsl.h
+@@ -395,7 +395,7 @@
+ #endif
+ 
+ #if defined(FSR3UPSCALER_BIND_UAV_LUMA_HISTORY)
+-layout (set = 0, binding = FSR3UPSCALER_BIND_UAV_LUMA_HISTORY, rgba8) uniform image2D  rw_luma_history;
++layout (set = 0, binding = FSR3UPSCALER_BIND_UAV_LUMA_HISTORY, rgba16f) uniform image2D  rw_luma_history;
+ 
+ void StoreLumaHistory(FfxInt32x2 iPxPos, FfxFloat32x4 fLumaHistory)
+ {
+--- a/sdk/include/FidelityFX/host/ffx_types.h
++++ b/sdk/include/FidelityFX/host/ffx_types.h
+@@ -77,7 +77,9 @@
+ #define FFX_API __declspec(dllexport)
+ #endif // #if defined (FFX_GCC)
+ 
++#ifndef FFX_SDK_DEFAULT_CONTEXT_SIZE  // CX: overridable -- with a 4-byte wchar_t the upscaler's private context outgrows it
+ #define FFX_SDK_DEFAULT_CONTEXT_SIZE (1024 * 128)
++#endif
+ 
+ /// Maximum supported number of simultaneously bound SRVs.
+ ///
+--- a/sdk/src/backends/vk/ffx_vk.cpp
++++ b/sdk/src/backends/vk/ffx_vk.cpp
+@@ -35,6 +35,16 @@
+ 
+ #include <vulkan/vulkan.h>
+ 
++// CX: the scratch sub-arrays were 4-byte aligned, and a compiler that stores these structs with
++// aligned SSE moves faults on them.
++#define FFX_VK_SCRATCH_ALIGNMENT 64
++// CX: the pool asked for 1,024,000 descriptors of each type, about 125 MiB of device memory. A set is
++// one pipeline's layout, and no FSR 3.1 pass binds more than 16 of one type (16 static samplers is
++// the most), so 16 per set covers it.
++#define FFX_VK_DESCRIPTORS_PER_SET 16
++#define FFX_VK_POOL_DESCRIPTORS_PER_TYPE(contexts) \
++    ((contexts) * FFX_MAX_PASS_COUNT * MAX_PIPELINE_USAGE_PER_FRAME * FFX_MAX_QUEUED_FRAMES * FFX_VK_DESCRIPTORS_PER_SET)
++
+ // prototypes for functions in the interface
+ FfxVersionNumber       GetSDKVersionVK(FfxInterface* backendInterface);
+ FfxErrorCode           GetEffectGpuMemoryUsageVK(FfxInterface* backendInterface, FfxUInt32 effectContextId, FfxEffectMemoryUsage* outVramUsage);
+@@ -280,14 +290,14 @@
+         vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &numExtensions, nullptr);
+ 
+     uint32_t extensionPropArraySize = sizeof(VkExtensionProperties) * numExtensions;
+-    uint32_t gpuJobDescArraySize = FFX_ALIGN_UP(maxContexts * FFX_MAX_GPU_JOBS * sizeof(FfxGpuJobDescription), sizeof(uint32_t));
+-    uint32_t resourceViewArraySize = FFX_ALIGN_UP(((maxContexts * FFX_MAX_QUEUED_FRAMES * FFX_MAX_RESOURCE_COUNT * 2) + FFX_MAX_BINDLESS_DESCRIPTOR_COUNT) * sizeof(BackendContext_VK::VkResourceView), sizeof(uint32_t));
+-    uint32_t stagingRingBufferArraySize = FFX_ALIGN_UP(maxContexts * FFX_CONSTANT_BUFFER_RING_BUFFER_SIZE, sizeof(uint32_t));
+-    uint32_t pipelineArraySize = FFX_ALIGN_UP(maxContexts * FFX_MAX_PASS_COUNT * sizeof(BackendContext_VK::PipelineLayout), sizeof(uint32_t));
+-    uint32_t resourceArraySize = FFX_ALIGN_UP(maxContexts * FFX_MAX_RESOURCE_COUNT * sizeof(BackendContext_VK::Resource), sizeof(uint32_t));
+-    uint32_t contextArraySize = FFX_ALIGN_UP(maxContexts * sizeof(BackendContext_VK::EffectContext), sizeof(uint32_t));
++    uint32_t gpuJobDescArraySize = FFX_ALIGN_UP(maxContexts * FFX_MAX_GPU_JOBS * sizeof(FfxGpuJobDescription), FFX_VK_SCRATCH_ALIGNMENT);
++    uint32_t resourceViewArraySize = FFX_ALIGN_UP(((maxContexts * FFX_MAX_QUEUED_FRAMES * FFX_MAX_RESOURCE_COUNT * 2) + FFX_MAX_BINDLESS_DESCRIPTOR_COUNT) * sizeof(BackendContext_VK::VkResourceView), FFX_VK_SCRATCH_ALIGNMENT);
++    uint32_t stagingRingBufferArraySize = FFX_ALIGN_UP(maxContexts * FFX_CONSTANT_BUFFER_RING_BUFFER_SIZE, FFX_VK_SCRATCH_ALIGNMENT);
++    uint32_t pipelineArraySize = FFX_ALIGN_UP(maxContexts * FFX_MAX_PASS_COUNT * sizeof(BackendContext_VK::PipelineLayout), FFX_VK_SCRATCH_ALIGNMENT);
++    uint32_t resourceArraySize = FFX_ALIGN_UP(maxContexts * FFX_MAX_RESOURCE_COUNT * sizeof(BackendContext_VK::Resource), FFX_VK_SCRATCH_ALIGNMENT);
++    uint32_t contextArraySize = FFX_ALIGN_UP(maxContexts * sizeof(BackendContext_VK::EffectContext), FFX_VK_SCRATCH_ALIGNMENT);
+     
+-    return FFX_ALIGN_UP(sizeof(BackendContext_VK) + extensionPropArraySize + gpuJobDescArraySize + resourceViewArraySize + stagingRingBufferArraySize +
++    return FFX_ALIGN_UP(sizeof(BackendContext_VK) + FFX_VK_SCRATCH_ALIGNMENT + extensionPropArraySize + gpuJobDescArraySize + resourceViewArraySize + stagingRingBufferArraySize +
+                             pipelineArraySize + resourceArraySize + contextArraySize,
+                         sizeof(uint64_t));
+ }
+@@ -419,6 +429,20 @@
+         }
+     }
+ 
++    // CX: unified-memory devices (integrated GPUs, Lavapipe) have no device-local type that
++    // is not also host-visible, so the loop above finds nothing. Accept a host-visible one then.
++    if (bestCandidate == UINT32_MAX && requestedProperties == VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
++    {
++        for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++)
++        {
++            if ((memRequirements.memoryTypeBits & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & requestedProperties))
++            {
++                bestCandidate = i;
++                outProperties = memProperties.memoryTypes[i].propertyFlags;
++            }
++        }
++    }
++
+     return bestCandidate;
+ }
+ 
+@@ -1117,17 +1141,20 @@
+     }
+ }
+ #else
++// CX: the names are ASCII debug labels; a byte past 127 becomes '?'. No C++ runtime behind it.
+ void ConvertUTF8ToUTF16(const char* inputName, wchar_t* outputBuffer, size_t outputLen)
+ {
+-    memset(outputBuffer, 0, outputLen * sizeof(wchar_t));
+-    std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
+-    wcscpy_s(outputBuffer, outputLen, converter.from_bytes(inputName).c_str());
++    size_t i = 0;
++    for (; outputLen && inputName[i] && i + 1 < outputLen; i++)
++        outputBuffer[i] = (unsigned char)inputName[i] < 128 ? (wchar_t)inputName[i] : L'?';
++    if (outputLen) outputBuffer[i] = 0;
+ }
+ void ConvertUTF16ToUTF8(const wchar_t* inputName, char* outputBuffer, size_t outputLen)
+ {
+-    memset(outputBuffer, 0, outputLen * sizeof(char));
+-    std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
+-    strcpy_s(outputBuffer, outputLen, converter.to_bytes(inputName).c_str());
++    size_t i = 0;
++    for (; outputLen && inputName[i] && i + 1 < outputLen; i++)
++        outputBuffer[i] = inputName[i] >= 0 && inputName[i] < 128 ? (char)inputName[i] : '?';
++    if (outputLen) outputBuffer[i] = 0;
+ }
+ #endif  // _WIN32
+ 
+@@ -1402,13 +1429,13 @@
+         new (&backendContext->uniformBufferMutex) std::mutex();
+ 
+         // Map all of our pointers
+-        uint32_t gpuJobDescArraySize   = FFX_ALIGN_UP(backendContext->maxEffectContexts * FFX_MAX_GPU_JOBS * sizeof(FfxGpuJobDescription), sizeof(uint32_t));
+-        uint32_t resourceViewArraySize = FFX_ALIGN_UP(((backendContext->maxEffectContexts * FFX_MAX_QUEUED_FRAMES * FFX_MAX_RESOURCE_COUNT * 2) + FFX_MAX_BINDLESS_DESCRIPTOR_COUNT) * sizeof(BackendContext_VK::VkResourceView), sizeof(uint32_t));
+-        uint32_t stagingRingBufferArraySize = FFX_ALIGN_UP(backendContext->maxEffectContexts * FFX_CONSTANT_BUFFER_RING_BUFFER_SIZE, sizeof(uint32_t));
+-        uint32_t pipelineArraySize = FFX_ALIGN_UP(backendContext->maxEffectContexts * FFX_MAX_PASS_COUNT * sizeof(BackendContext_VK::PipelineLayout), sizeof(uint32_t));
+-        uint32_t resourceArraySize = FFX_ALIGN_UP(backendContext->maxEffectContexts * FFX_MAX_RESOURCE_COUNT * sizeof(BackendContext_VK::Resource), sizeof(uint32_t));
+-        uint32_t contextArraySize = FFX_ALIGN_UP(backendContext->maxEffectContexts * sizeof(BackendContext_VK::EffectContext), sizeof(uint32_t));
+-        uint8_t* pMem = (uint8_t*)((BackendContext_VK*)(backendContext + 1));
++        uint32_t gpuJobDescArraySize   = FFX_ALIGN_UP(backendContext->maxEffectContexts * FFX_MAX_GPU_JOBS * sizeof(FfxGpuJobDescription), FFX_VK_SCRATCH_ALIGNMENT);
++        uint32_t resourceViewArraySize = FFX_ALIGN_UP(((backendContext->maxEffectContexts * FFX_MAX_QUEUED_FRAMES * FFX_MAX_RESOURCE_COUNT * 2) + FFX_MAX_BINDLESS_DESCRIPTOR_COUNT) * sizeof(BackendContext_VK::VkResourceView), FFX_VK_SCRATCH_ALIGNMENT);
++        uint32_t stagingRingBufferArraySize = FFX_ALIGN_UP(backendContext->maxEffectContexts * FFX_CONSTANT_BUFFER_RING_BUFFER_SIZE, FFX_VK_SCRATCH_ALIGNMENT);
++        uint32_t pipelineArraySize = FFX_ALIGN_UP(backendContext->maxEffectContexts * FFX_MAX_PASS_COUNT * sizeof(BackendContext_VK::PipelineLayout), FFX_VK_SCRATCH_ALIGNMENT);
++        uint32_t resourceArraySize = FFX_ALIGN_UP(backendContext->maxEffectContexts * FFX_MAX_RESOURCE_COUNT * sizeof(BackendContext_VK::Resource), FFX_VK_SCRATCH_ALIGNMENT);
++        uint32_t contextArraySize = FFX_ALIGN_UP(backendContext->maxEffectContexts * sizeof(BackendContext_VK::EffectContext), FFX_VK_SCRATCH_ALIGNMENT);
++        uint8_t* pMem = (uint8_t*)FFX_ALIGN_UP((uintptr_t)((BackendContext_VK*)(backendContext + 1)), FFX_VK_SCRATCH_ALIGNMENT);
+ 
+         // Map gpu job array
+         backendContext->pGpuJobs = (FfxGpuJobDescription*)pMem;
+@@ -1518,18 +1545,18 @@
+         // create a global descriptor pool to hold all descriptors we'll need
+         VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = {};
+         VkDescriptorPoolSize poolSizes[] = {
+-            { VK_DESCRIPTOR_TYPE_SAMPLER, backendContext->maxEffectContexts * FFX_MAX_RESOURCE_COUNT * FFX_MAX_PASS_COUNT * FFX_MAX_QUEUED_FRAMES * MAX_PIPELINE_USAGE_PER_FRAME },
+-            { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, backendContext->maxEffectContexts * FFX_MAX_RESOURCE_COUNT * FFX_MAX_PASS_COUNT * FFX_MAX_QUEUED_FRAMES * MAX_PIPELINE_USAGE_PER_FRAME },
+-            { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, backendContext->maxEffectContexts * FFX_MAX_RESOURCE_COUNT * FFX_MAX_PASS_COUNT * FFX_MAX_QUEUED_FRAMES * MAX_PIPELINE_USAGE_PER_FRAME },
+-            { VK_DESCRIPTOR_TYPE_SAMPLER, backendContext->maxEffectContexts * FFX_MAX_RESOURCE_COUNT * FFX_MAX_PASS_COUNT * FFX_MAX_QUEUED_FRAMES * MAX_PIPELINE_USAGE_PER_FRAME },
+-            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, backendContext->maxEffectContexts * FFX_MAX_RESOURCE_COUNT * FFX_MAX_PASS_COUNT * FFX_MAX_QUEUED_FRAMES * MAX_PIPELINE_USAGE_PER_FRAME },
+-            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, backendContext->maxEffectContexts * FFX_MAX_RESOURCE_COUNT * FFX_MAX_PASS_COUNT * FFX_MAX_QUEUED_FRAMES * MAX_PIPELINE_USAGE_PER_FRAME },
++            { VK_DESCRIPTOR_TYPE_SAMPLER, FFX_VK_POOL_DESCRIPTORS_PER_TYPE(backendContext->maxEffectContexts) },
++            { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, FFX_VK_POOL_DESCRIPTORS_PER_TYPE(backendContext->maxEffectContexts) },
++            { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, FFX_VK_POOL_DESCRIPTORS_PER_TYPE(backendContext->maxEffectContexts) },
++            { VK_DESCRIPTOR_TYPE_SAMPLER, FFX_VK_POOL_DESCRIPTORS_PER_TYPE(backendContext->maxEffectContexts) },
++            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, FFX_VK_POOL_DESCRIPTORS_PER_TYPE(backendContext->maxEffectContexts) },
++            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, FFX_VK_POOL_DESCRIPTORS_PER_TYPE(backendContext->maxEffectContexts) },
+         };
+ 
+         descriptorPoolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+         descriptorPoolCreateInfo.pNext = nullptr;
+         descriptorPoolCreateInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+-        descriptorPoolCreateInfo.poolSizeCount = 5;
++        descriptorPoolCreateInfo.poolSizeCount = sizeof(poolSizes) / sizeof(poolSizes[0]);  // CX: was 5, which dropped STORAGE_BUFFER
+         descriptorPoolCreateInfo.pPoolSizes = poolSizes;
+         descriptorPoolCreateInfo.maxSets = backendContext->maxEffectContexts * FFX_MAX_PASS_COUNT * MAX_PIPELINE_USAGE_PER_FRAME * FFX_MAX_QUEUED_FRAMES;
+ 

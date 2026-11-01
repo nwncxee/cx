@@ -32,11 +32,11 @@ internal static unsafe partial class SmaaStage
     internal static int Samples => _msaa == null ? 0 : *_msaa;
     /// <summary>The stage's per-frame gate: the option is on, nothing of ours failed to build, and TAA is
     /// off -- the two are exclusive, because TAA smooths what SMAA smooths and more.</summary>
-    internal static bool Active => !_vk.Failed && LevelFor(Samples) > 0 && !PostChain.TaaOn;
+    internal static bool Active => !_vk.Failed && LevelFor(Samples) > 0 && !PostChain.TaaOn && !Fsr.On;
     internal static string PresetName(int level) => level switch { 3 => "ULTRA", 2 => "HIGH", 1 => "MEDIUM", _ => "off" };
     /// <summary>The /post and /knobs term: option, preset, and whether the stage is dropped.</summary>
     internal static string Describe()
-        => $"(aa option {Samples}x -> SMAA {PresetName(LevelFor(Samples))}{(_vk.Failed ? ", FAILED" : PostChain.TaaOn ? ", replaced by TAA" : "")})";
+        => $"(aa option {Samples}x -> SMAA {PresetName(LevelFor(Samples))}{(_vk.Failed ? ", FAILED" : Fsr.On ? ", replaced by FSR" : PostChain.TaaOn ? ", replaced by TAA" : "")})";
 
     /// <summary>Embedded table <paramref name="resource"/>'s bytes, or null when it is missing or not <paramref name="len"/> long.</summary>
     private static byte[]? TableBytes(string resource, int len)

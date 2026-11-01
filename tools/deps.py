@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""CX-57: the pinned audio runtime, fetched once and checked by sha256. The pins are in tools/deps.json, which
-flake.nix reads too.
+"""CX-57: the pinned audio runtime, and FSR's SDK source, fetched once and checked by sha256. The pins are in
+tools/deps.json, which flake.nix reads too.
 
     tools/deps.py <name> <dest>
 
@@ -12,6 +12,11 @@ The archives cache in $CX_DEPS_CACHE (default ~/.cache/cx-deps), so a clean buil
   openal-win   the upstream Win64 soft_oal.dll of the same release, shipped as cx_openal.dll.
   steamaudio   Steam Audio 4.8.1 (Apache-2.0): libphonon.so / phonon.dll only -- the headers are vendored in
                third_party/steamaudio.
+  ffx-sdk      AMD FidelityFX SDK 1.1.4 (MIT): the headers and sources the FSR 3.1 upscaler builds from
+               (build.sh, native/ffx/).
+  vulkan-headers  Khronos Vulkan-Headers 1.4.363 (Apache-2.0 / MIT): what the FSR library compiles against.
+  glslang-win  glslang 16.6.0 for Windows: build-win-native.sh compiles FSR's shaders with it; Linux takes the
+               nix shell's.
 """
 import hashlib, json, os, pathlib, shutil, sys, tarfile, urllib.request, zipfile
 
@@ -55,7 +60,9 @@ def main():
     dest.mkdir(parents=True, exist_ok=True)
     if path.name.endswith('.tar.gz'):
         with tarfile.open(path) as t:
-            t.extractall(dest, filter='data')
+            # a tarball's members are path prefixes, unpacked in place
+            keep = None if members is None else [m for m in t.getmembers() if m.name.startswith(tuple(members))]
+            t.extractall(dest, members=keep, filter='data')
     else:
         with zipfile.ZipFile(path) as z:
             for m in members:

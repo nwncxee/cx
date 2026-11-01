@@ -8,7 +8,8 @@ here=$(cd "$(dirname "$0")/.." && pwd)
   echo "==============================="
   echo
   echo "The extender itself is MIT licensed. It links funchook (GPLv2+ with a linking"
-  echo "exception), diStorm3 (BSD 3-clause) and xatlas (MIT), and embeds the SMAA lookup"
+  echo "exception), diStorm3 (BSD 3-clause), xatlas (MIT) and the FSR 3.1 upscaler from AMD's"
+  echo "FidelityFX SDK 1.1.4 (MIT, with CX's patches in native/ffx), and embeds the SMAA lookup"
   echo "tables (MIT) and the DejaVu Sans font (Bitstream Vera license). It ships, as separate"
   echo "unmodified libraries, OpenAL Soft 1.25.2 (LGPL-2.1: libopenal.so.1 / cx_openal.dll,"
   echo "source at https://github.com/kcat/openal-soft/releases/tag/1.25.2 -- replace the file"
@@ -27,6 +28,8 @@ here=$(cd "$(dirname "$0")/.." && pwd)
   cat "$here/third_party/funchook/distorm/COPYING"; echo
   echo "----- xatlas (https://github.com/jpcy/xatlas) -----"; echo
   cat "$here/native/xatlas/LICENSE"; echo
+  echo "----- AMD FidelityFX SDK (https://github.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK) -----"; echo
+  cat "$here/third_party/fidelityfx/LICENSE.txt"; echo
   echo "----- SMAA (https://github.com/iryoku/smaa) -----"; echo
   cat "$here/third_party/smaa/LICENSE.txt"; echo
   echo "----- DejaVu fonts (https://dejavu-fonts.github.io) -----"; echo

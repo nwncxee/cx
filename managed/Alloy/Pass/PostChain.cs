@@ -100,14 +100,15 @@ internal static unsafe class PostChain
     internal static int RenderSize(int display) => Math.Max((int)MathF.Round(display * _scale), 1);
 
     /// <summary>The texture LOD bias every owned material sample takes: <c>log2(scale)</c>, so a frame
-    /// rendered at fewer pixels picks the mips the DISPLAY footprint would have and the upscale does not
-    /// go soft on top of them. Clamped at 0: above 1.0 the point is the extra texture detail the resolve
-    /// then averages, and a coarser mip would throw it away. 0 at 1.0, so the default is pixel-identical.</summary>
-    internal static float LodBias => MathF.Min(MathF.Log2(_scale), 0f);
+    /// rendered at fewer pixels picks the mips the DISPLAY footprint would have, clamped at 0 so supersampling
+    /// keeps its detail. Under FSR one lower again, as AMD asks: its jittered frames rebuild the finer mip.</summary>
+    internal static float LodBias => Fsr.On ? MathF.Log2(_scale) - 1f : MathF.Min(MathF.Log2(_scale), 0f);
 
     /// <summary>TAA is on and its stage can build -- the gate the jitter, the accumulator and SMAA share, so a
     /// stage the device refused hands the anti-aliasing option back to SMAA.</summary>
-    internal static bool TaaOn => Post.Taa.V && !PostStack.TaaVkFailed;
+    internal static bool TaaOn => Post.Taa.V && !PostStack.TaaVkFailed && !Fsr.On;
+    /// <summary>The projection jitters this frame: TAA or FSR reconstructs from it.</summary>
+    internal static bool Jittered => TaaOn || Fsr.On;
     internal static float TaaBlend => Post.TaaBlend.V;
     /// <summary>Temporal upsampling: under a render scale below 1 with TAA on, the accumulator keeps its
     /// history at DISPLAY size and reconstructs from the jittered render-size frames, instead of the resolve
@@ -119,7 +120,13 @@ internal static unsafe class PostChain
     /// <summary>TAA's jitter sequence length -- Halton(2,3), eight points, then it repeats.</summary>
     internal const int JitterCount = 8;
     /// <summary>The jitter sequence length this frame takes at a <paramref name="displayW"/>-wide display.</summary>
-    internal static int JitterPhases(int displayW) => JitterCount;
+    internal static int JitterPhases(int displayW)
+    {
+        if (!Fsr.On) return JitterCount;
+        // FSR's own count, truncated as its code does: 8 x (display / render)^2
+        float ratio = (float)displayW / RenderSize(displayW);
+        return Math.Max((int)(8f * ratio * ratio), 1);
+    }
     /// <summary>This frame's sub-pixel jitter in NDC for a render target of <paramref name="w"/> x
     /// <paramref name="h"/>: Halton(2,3) over <paramref name="phases"/> frames, centred on zero, one render
     /// pixel of spread. Pure, so the self-check can walk the sequence.</summary>

@@ -54,6 +54,8 @@
         pkgs.gnumake
         pkgs.pkg-config
         pkgs.git
+        # build.sh compiles FSR's shaders (tools/ffx/ffx_shaders.py).
+        pkgs.glslang
         # build.sh runs tools/gates/run.sh, and its workflows gate needs all three.
         pkgs.actionlint
         pkgs.shellcheck
@@ -72,7 +74,6 @@
       # publish step and the tools/ scripts.
       devPackages = [
         llvm.llvm
-        pkgs.glslang
         pkgs.spirv-tools
         pkgs.jq
         pkgs.curl

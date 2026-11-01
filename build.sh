@@ -98,6 +98,29 @@ if [ ! -f build/libcxaudio.a ] || [ native/cxaudio.cpp -nt build/libcxaudio.a ];
   rm -f build/libcxaudio.a && ar rcs build/libcxaudio.a build/cxaudio.o
 fi
 
+# CX-394: FSR 3.1 upscaling -- AMD's FidelityFX SDK 1.1.4 upscaler and Vulkan backend, patched, its shaders compiled
+# by glslang, and native/ffx/cxfsr.cpp's C API in front: static and PIC like xatlas (DirectPInvoke "cxfsr").
+bash tools/ffx/prepare.sh python3 glslang
+if [ ! -f build/libcxfsr.a ] || [ native/ffx/cxfsr.cpp -nt build/libcxfsr.a ] || [ native/ffx/compat.h -nt build/libcxfsr.a ] \
+   || [ build/ffx/shaders/.stamp -nt build/libcxfsr.a ]; then
+  echo ">> building FSR 3.1 (libcxfsr.a)..."
+  F=build/ffx/sdk
+  mkdir -p build/ffx/obj && rm -f build/ffx/obj/*.o
+  pids=()
+  for src in $F/src/components/fsr3upscaler/ffx_fsr3upscaler.cpp $F/src/backends/vk/ffx_vk.cpp $F/src/backends/shared/ffx_shader_blobs.cpp \
+             $F/src/backends/shared/blob_accessors/ffx_fsr3upscaler_shaderblobs.cpp $F/src/shared/ffx_assert.cpp \
+             $F/src/shared/ffx_message.cpp $F/src/shared/ffx_breadcrumbs_list.cpp $F/src/shared/ffx_object_management.cpp \
+             native/ffx/cxfsr.cpp; do
+    # a 4-byte wchar_t outgrows the SDK's default context size; FFX_GCC drops its dllexport
+    c++ -std=c++17 -O2 -fPIC -fvisibility=hidden -fno-exceptions -fno-rtti -w -DNDEBUG -include native/ffx/compat.h -DFFX_GCC \
+      '-DFFX_SDK_DEFAULT_CONTEXT_SIZE=(1024 * 256)' -DFFX_FSR3UPSCALER -Ibuild/deps/Vulkan-Headers-vulkan-sdk-1.4.363.0/include \
+      -I$F/include -I$F/include/FidelityFX/host -I$F/src/shared -I$F/src/backends/shared -I$F/src/components -Ibuild/ffx/shaders \
+      -c "$src" -o "build/ffx/obj/$(basename "$src" .cpp).o" & pids+=($!)
+  done
+  for p in "${pids[@]}"; do wait "$p" || { echo "!! FSR 3.1 failed to compile (above)" >&2; exit 1; }; done
+  rm -f build/libcxfsr.a && ar rcs build/libcxfsr.a build/ffx/obj/*.o
+fi
+
 # The typed engine views (managed/Framework/Engine/Views.g.cs) are generated from EngineLayout's rows;
 # checked in because the Windows builds compile it without running python.
 python3 tools/engine/views.py
