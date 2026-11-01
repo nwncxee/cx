@@ -40,7 +40,7 @@ internal static class Post
                        help: "Rebuilds the full-resolution picture from the render scale's smaller frame and the frames before it. "
                            + "Replaces temporal anti-aliasing while on; at render scale 1 it is the anti-aliasing. "
                            + "Render scale above 1 keeps it off.",
-                       changed: CX.Alloy.Fsr.Revoke);
+                       changed: () => { CX.Alloy.Fsr.Revoke(); TaaStage.Reset(); });
         G.Section("Bloom");
         Threshold = G.Slider("threshold", "Bloom threshold", 0f, 4f, 0.05f, 1f, tier: Tier.Advanced);
         Knee = G.Slider("knee", "Bloom knee", 0f, 1f, 0.05f, 0.5f, tier: Tier.Advanced);

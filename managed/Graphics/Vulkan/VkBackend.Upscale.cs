@@ -46,12 +46,19 @@ internal sealed unsafe partial class VkBackend
     /// <summary>FSR's context flags: high-dynamic-range colour (bit 0) and inverted depth (bit 3), Alloy's reversed-Z.</summary>
     private const uint FsrFlags = 1u << 0 | 1u << 3;
 
+    /// <summary>The dispatches FSR's backend rings its constants and descriptor sets over (its FFX_MAX_QUEUED_FRAMES):
+    /// a dispatch rewrites what the one this many back used.</summary>
+    private const int FsrRing = 4;
+
     /// <summary>The device's FSR context and the sizes it was made for; a refusal holds for the device's life.</summary>
     private sealed class FsrState
     {
         public nint Ctx;
         public int MaxW, MaxH, DisplayW, DisplayH;
         public string? Refused;
+        /// <summary>The timeline value each of the last <see cref="FsrRing"/> dispatches finishes at, by dispatch number.</summary>
+        public readonly long[] Ring = new long[FsrRing];
+        public long Dispatches;
     }
 
     private readonly FsrState _fsr = new();
@@ -114,6 +121,8 @@ internal sealed unsafe partial class VkBackend
         if (exposure != null) Transition(exposure, VkImageLayout.ShaderReadOnlyOptimal, false);
         Transition(output, VkImageLayout.General);
         Flush();
+        long slot = _fsr.Dispatches % FsrRing;
+        if (WaitFor(_fsr.Ring[slot]) != VkResult.Success) return Fault("Upscale: the dispatch whose FSR constants this one reuses never finished");
         var d = new FsrDispatch
         {
             Cmd = _cmd, Color = Image(color, 0), Depth = Image(depth, 0), Motion = Image(motion, 0),
@@ -123,6 +132,8 @@ internal sealed unsafe partial class VkBackend
             Reset = c.Reset ? 1u : 0u,
         };
         int e = cxfsr_dispatch(_fsr.Ctx, &d);
+        _fsr.Ring[slot] = Next;
+        _fsr.Dispatches++;
         output.Written = true;
         // FSR bound its own pipelines and sets on the compute point, which disturbs the bindless set there
         BindBindless();
