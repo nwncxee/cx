@@ -124,7 +124,13 @@ public sealed unsafe partial class AlloyRenderer
                                       in Matrix4x4 proj, int n)
     {
         long bytes = (long)Math.Max(Halos.FadeSlots, VkHaloFadeSlots) * sizeof(float);
-        if (!VkGrow(vk, ref s.Fade, ref s.FadeCap, bytes, "vk halo fades")) return false;
+        if (s.Fade.IsNull || bytes > s.FadeCap)
+        {
+            vk.Destroy(s.Fade);
+            s.FadeCap = Math.Max(bytes, s.FadeCap * 2);
+            s.Fade = vk.CreateBuffer(new BufferDesc(s.FadeCap, BufferUse.Storage, MemoryKind.Device, "vk halo fades"));
+            if (s.Fade.IsNull) { s.FadeCap = 0; return false; }
+        }
         if (Halos.TakeFadeReset()) cl.ZeroBuffer(s.Fade);
         Halos.OccConsts push = Halos.OccPush(view, proj, n, Halos.FadeStep(FrameDelta.Delta(FrameDelta.DtFloor)));
         ReadOnlySpan<BufferBinding> ssbo = [new(SsboSlots.Halos, s.Recs), new(SsboSlots.HaloFade, s.Fade)];

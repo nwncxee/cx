@@ -45,7 +45,11 @@ internal static class SsboSlots
     /// earlier one, which is the rule for every tenant of this point.</summary>
     internal const uint Content = 15;
     /// <summary>Single-pass draws that read no rig.</summary>
-    internal const uint Halos = 8, HaloFade = 9, Glow = 8, Trig = 8, Gui = 8, BonesPrev = 8, DanglyPrev = 9;
+    internal const uint Halos = 8, Glow = 8, Trig = 8, Gui = 8, BonesPrev = 8, DanglyPrev = 9;
+
+    /// <summary>The halo fades: the occlusion probe writes them, then the halo draw reads them, both binding them
+    /// beside <see cref="Halos"/> just before they run.</summary>
+    internal const uint HaloFade = 9;
 
     /// <summary>Every block name the GLSL declares, and the point C# binds it on.</summary>
     private static readonly Dictionary<string, uint> Blocks = new()
