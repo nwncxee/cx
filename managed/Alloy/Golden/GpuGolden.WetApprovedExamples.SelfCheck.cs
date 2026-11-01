@@ -1,5 +1,4 @@
 using System;
-using System.Globalization;
 using CX.Framework;
 using CX.Graphics.Rhi;
 using CX.Rhi;
@@ -25,7 +24,7 @@ internal static partial class GpuGolden
     /// <summary>Linear albedo luminance of the fixture floors: a dark cobble, a light stone, an almost black floor.</summary>
     private const float WxDarkLum = 0.04f, WxLightLum = 0.35f, WxBlackLum = 0.005f;
 
-    /// <summary>Stock no-PBR roughness, the generated maximum, and a polished and a rough map's texel.</summary>
+    /// <summary>Roughness: stock no-PBR (the generated maximum), a polished map's texel, a rough map's texel.</summary>
     private const float WxStockRough = 0.55f, WxPolished = 0.08f, WxRoughMap = 0.85f;
 
     /// <summary>The <c>wx.puddledepth</c> default (m) and a mid puddles knob, the levels every pooling case runs at.</summary>
@@ -47,23 +46,23 @@ internal static partial class GpuGolden
 
     private static void WetSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
     {
-        string lib = ShaderSource.Get("cx_wx_look.glsl");
+        string f0 = Declaration(ShaderSource.Get("cx_ssr.glsl"), "CX_DIELECTRIC_F0");
+        string lib = f0 + ShaderSource.Get("cx_wx_look.glsl");
         string soak = ShaderSource.Get("cx_wx_soak.glsl");
-        check.Expect(lib.Contains("CxWxFilmLook(", StringComparison.Ordinal) && lib.Contains("CxWxMicro(", StringComparison.Ordinal),
-            "wet E1-E7: cx_wx_look declares CxWxFilmLook and CxWxMicro");
-        if (!lib.Contains("CxWxFilmLook(", StringComparison.Ordinal) || !lib.Contains("CxWxMicro(", StringComparison.Ordinal)) return;
+        bool have = f0.Length > 0 && Function(lib, "vec3 CxWxFilmLook(").Length > 0 && Function(lib, "float CxWxMicro(").Length > 0;
+        check.Expect(have, "wet E1-E7: cx_ssr declares CX_DIELECTRIC_F0 and cx_wx_look CxWxFilmLook and CxWxMicro");
+        if (!have) return;
 
-        float[] films = WxFilms;
-        int n = films.Length / WxFilmIn;
+        int n = WxFilms.Length / WxFilmIn;
         PipelineId pipe = vk.CreateCompute(Version + "layout(local_size_x = 1) in;\n" + soak + lib + CaseBlocks(WxFilmIn, WxFilmOut) + """
             void main()
             {
-                uint i = gl_WorkGroupID.x;
-                vec3 f = CxWxFilmLook(1.0, uIn[i * 4u], uIn[i * 4u + 1u], uIn[i * 4u + 2u] > 0.5, uIn[i * 4u + 3u]);
-                uOut[i * 3u] = f.x; uOut[i * 3u + 1u] = f.y; uOut[i * 3u + 2u] = f.z;
+                uint a = gl_WorkGroupID.x * uint(CX_GOLD_IN), b = gl_WorkGroupID.x * uint(CX_GOLD_OUT);
+                vec3 f = CxWxFilmLook(1.0, uIn[a], uIn[a + 1u], uIn[a + 2u] > 0.5, uIn[a + 3u]);
+                uOut[b] = f.x; uOut[b + 1u] = f.y; uOut[b + 2u] = f.z;
             }
             """, "golden wet film");
-        float[]? got = pipe.IsNull ? null : RunCases(vk, log, pipe, n, films, n * WxFilmOut, "golden wet film");
+        float[]? got = pipe.IsNull ? null : RunCases(vk, log, pipe, n, WxFilms, n * WxFilmOut, "golden wet film");
         vk.Destroy(pipe);
         check.Expect(got != null, "wet E1-E5: the film stage was refused (logged above)");
         if (got == null) return;
@@ -113,8 +112,8 @@ internal static partial class GpuGolden
         PipelineId pipe = vk.CreateCompute(Version + "layout(local_size_x = 1) in;\n" + soak + CaseBlocks(2, 1) + """
             void main()
             {
-                uint i = gl_WorkGroupID.x;
-                uOut[i] = CxWetSoak(vec3(uIn[i * 2u]), uIn[i * 2u + 1u]).g;
+                uint i = gl_WorkGroupID.x, a = i * uint(CX_GOLD_IN);
+                uOut[i] = CxWetSoak(vec3(uIn[a]), uIn[a + 1u]).g;
             }
             """, "golden wet soak");
         float[]? got = pipe.IsNull ? null : RunCases(vk, log, pipe, 2, cases, 2, "golden wet soak");
@@ -130,25 +129,23 @@ internal static partial class GpuGolden
             $"wet E3: film weight {weight:F3}, normal flattened {flatten:F3}, stone/joint contrast {wet:F2} wet against {dry:F2} dry");
     }
 
-    /// <summary>E6 and E7: metres each point stands over the water at a half-full basin, from <c>CxWxMicro</c>, with
+    /// <summary>E6 and E7: metres each point stands above its basin's low point, from <c>CxWxMicro</c>, with
     /// the micro-relief noise at its mean. E6's fine relief is the height map's texel (groove 0, top 1) on a PBR floor
     /// of roughness 0.3; E7's comes from a no-PBR cobble's joint (0.02) and stone (0.07) against their mean (0.05).</summary>
     private static void WetPooling(VkBackend vk, Checker check, ExtenderLog log, string lib)
     {
-        PipelineId pipe = vk.CreateCompute(Version + "layout(local_size_x = 1) in;\n" + lib + CaseBlocks(1, 4) + $$"""
+        PipelineId pipe = vk.CreateCompute(Version + "layout(local_size_x = 1) in;\n" + lib + CaseBlocks(6, 4) + """
             void main()
             {
-                const float d = {{WxDepth.ToString("R", CultureInfo.InvariantCulture)}}, p = {{WxPuddles.ToString("R", CultureInfo.InvariantCulture)}};
-                float poroPbr = CxWxPoroOf(0.3, 0.1, 0.0, CxWxGloss(0.2, 0.3, true), true);
+                float d = uIn[0], p = uIn[1], rough = uIn[2], joint = uIn[3], stone = uIn[4], near = uIn[5];
+                float poroPbr = CxWxPoroOf(0.3, 0.1, 0.0, 0.2, true);
                 uOut[0] = CxWxMicro(d, p, 0.5, 0.0, poroPbr);
                 uOut[1] = CxWxMicro(d, p, 0.5, 1.0, poroPbr);
-                float poroJ = CxWxPoroOf(0.55, 0.04, 0.0, CxWxGloss(0.02, 0.55, false), false);
-                float poroS = CxWxPoroOf(0.55, 0.04, 0.0, CxWxGloss(0.07, 0.55, false), false);
-                uOut[2] = CxWxMicro(d, p, 0.5, CxWxFineLum(0.02, 0.05), poroJ);
-                uOut[3] = CxWxMicro(d, p, 0.5, CxWxFineLum(0.07, 0.05), poroS);
+                uOut[2] = CxWxMicro(d, p, 0.5, CxWxFineLum(joint, near), CxWxPoroOf(rough, CX_DIELECTRIC_F0, 0.0, joint, false));
+                uOut[3] = CxWxMicro(d, p, 0.5, CxWxFineLum(stone, near), CxWxPoroOf(rough, CX_DIELECTRIC_F0, 0.0, stone, false));
             }
             """, "golden wet pooling");
-        float[]? got = pipe.IsNull ? null : RunCases(vk, log, pipe, 1, [0f], 4, "golden wet pooling");
+        float[]? got = pipe.IsNull ? null : RunCases(vk, log, pipe, 1, [WxDepth, WxPuddles, WxStockRough, 0.02f, 0.07f, 0.05f], 4, "golden wet pooling");
         vk.Destroy(pipe);
         check.Expect(got != null, "wet E6-E7: the pooling stage was refused (logged above)");
         if (got == null) return;

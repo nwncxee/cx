@@ -37,7 +37,7 @@ uint CxShRank(vec3 worldPos, vec3 N, float viewDepth, float baked,
         int slot = CxLightSlot(w);
         // slot -1 casts no shadow this frame and -2 is the ambient class, which takes none
         if (slot < 0) continue;
-        if (w >= 128 && baked > 0.5) continue;   // inPages, as above
+        if (CxLightIsStatic(w) && baked > 0.5) continue;   // inPages, as above
         vec3 c, L; float att, f2, ndlRaw, ndl;
         if (!CxPointLight(pr, cs.rgb, worldPos, N, c, L, att, f2, ndlRaw, ndl)) continue;
         if (ndl <= 0.0) continue;   // facing away: the walk pays for no cube fetch there either

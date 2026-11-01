@@ -7,7 +7,7 @@
 #include "cx_wx_look.glsl"
 // ---- #617/#618/#619: weather on surfaces --------------------------------------------------------
 uniform vec4 uWeather;         // x wetness, y snow, z puddle fill (all 0..1), w = /weather viz
-uniform vec4 uWeatherLook;     // x wet darkening, y snow albedo, z puddle edge, w puddle coverage
+uniform vec4 uWeatherLook;     // x wet darkening, y snow albedo, z puddle edge, w the film alpha at its glossiest
 // uCoverVp / uCoverLayer are declared by cx_wx_edge above: the shelter test owns them now, and the reads
 // below share them.
 uniform vec4 uSnowLook;        // x sparkle, y mound relief, z drift against walls, w = cos(steepest slope snow holds to)
@@ -43,10 +43,6 @@ const vec2 CX_WX_FILM_FAR_M = vec2(12.0, 40.0);
 /// The share of its roughness a soaked POROUS surface keeps (a sealed one keeps 0.6): water in the pores
 /// smooths dirt a little, a sealed stone a lot.
 const float CX_WX_PORO_ROUGH = 0.85;
-
-/// Mips above the texel's own that a surface of no height map reads its neighbourhood's brightness at:
-/// the joint or crack darker than that stands lower (CxWxFineLum).
-const float CX_WX_NEAR_MIPS = 3.0;
 
 float CxWeatherExposure(vec3 worldPos, vec3 N)
 {

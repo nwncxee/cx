@@ -54,7 +54,7 @@ internal static unsafe partial class Weather
         PuddleDepth = G.Slider("puddledepth", "Puddle depth", 0.005f, 0.12f, 0.005f, 0.03f, "m", Tier.ChatOnly,
                                help: "How deep standing water gets in a full basin. Deeper water floods further up its banks.");
         FilmRough = G.Slider("filmrough", "Water film gloss", 0.1f, 0.4f, 0.01f, 0.22f, tier: Tier.ChatOnly,
-                             help: "Roughness of the water film over wet ground: low is a mirror, high a matte sheen. Perceptual, so the low end is still a real lobe and not a needle.");
+                             help: "Roughness of the water film over the glossiest wet ground: low is a mirror, high a matte sheen. Duller ground takes a rougher film, and dark ground a sheen whatever this says. Perceptual, so the low end is still a real lobe and not a needle.");
         FilmLights = G.Toggle("filmlights", "Film highlights", true, Tier.ChatOnly,
                               help: "A water film mirrors the baked static lights around it, each fading out at its own reach. Off = the film takes moving lights only.")
                       .Ladder(Quality.Weather, false, true, true, true);
@@ -155,7 +155,8 @@ internal static unsafe partial class Weather
         check.Expect(lit.Contains("wxFilmRough = CxWeatherRippleRough(wxFilmRough, wxRing, wxAmp, uCoverLayer.w);"),
           "the rain rings roughen the film and not the bed under it");
         check.Expect(lit.IndexOf("vec3 CxFilmStatics(", StringComparison.Ordinal) < lit.IndexOf("specLight += CxFilmStatics(", StringComparison.Ordinal)
-          && lit.Contains("if (wxFilm > 0.0 && baked && cxCoat > 0.0 && uCapture != 2 && !CxGlossy(rough))"),
+          && lit.Contains("if (wxFilm > 0.0 && baked && cxCoat > 0.0 && uCapture != 2 && !CxGlossy(rough))")
+          && lit.Contains("| (wxFilm > 0.0 && baked && cxCoat > 0.0 && !CxGlossy(rough) ? CX_GB_FILM : 0u)"),
           "the film's static highlights are gated on the film");
         string build = ShaderStages.Source(AlloyLights.ShdClusterCs);
         check.Expect(build.Contains("uClCount[id * 3u] = n | (live << 16u);") && build.Contains("uClCount[id * 3u + 1u] = liveCand << 16u;")

@@ -305,9 +305,9 @@ bool CxTileReaches(int i, vec3 lo, vec3 hi, vec3 fcw, float fr, bool hotOn, out 
     if (dot(dv, dv) > r * r) return false;
     int w = int(uLights[i * 2 + 1].w);
 #ifdef CX_NO_HOT
-    live = w < 128;   // CX-188 step 4: a static light is never live on a baked receiver of this stage
+    live = !CxLightIsStatic(w);   // CX-188 step 4: a static light is never live on a baked receiver of this stage
 #else
-    live = w < 128 || (hotOn && CxTileHot(CxLightSlot(w), pr.xyz, fcw, fr));
+    live = !CxLightIsStatic(w) || (hotOn && CxTileHot(CxLightSlot(w), pr.xyz, fcw, fr));
 #endif
     return true;
 }
@@ -422,7 +422,7 @@ void main()
         float onMover = (g.flags & CX_GB_ONMOVER) != 0u ? 1.0 : 0.0;
 #ifdef CX_FILM_PASS
         // R4, the film pass: the water film's highlights from the baked statics the walk skips. The gate is the
-        // twin's (wxFilm > 0 && baked && cxCoat > 0), decided there and carried as a flag; every other pixel
+        // twin's (wxFilm > 0 && baked && cxCoat > 0 && !CxGlossy(rough)), decided there and carried as a flag; every other pixel
         // leaves the target untouched.
         if ((g.flags & CX_GB_FILM) == 0u) mine = false;
         else

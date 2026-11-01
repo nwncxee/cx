@@ -249,7 +249,7 @@ vec3 CxFilmStatics(vec3 worldPos, vec3 N, vec3 V, float viewDepth, float coat, f
         vec4 pr = uLights[li * 2u];
         vec4 cs = uLights[li * 2u + 1u];
         // a dynamic light's image is the main walk's, through CxLoopSpec; a HOT static's is this walk's too
-        if (int(cs.w) < 128) continue;
+        if (!CxLightIsStatic(int(cs.w))) continue;
         vec3 c, L; float att, f2, ndlRaw, ndl;
         if (!CxPointLight(pr, cs.rgb, worldPos, N, c, L, att, f2, ndlRaw, ndl)) continue;
         if (ndl <= 0.0) continue;

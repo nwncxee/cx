@@ -105,7 +105,7 @@
                 // where they exist; where nothing does, its brightness stands in (cx_wx_look).
                 bool wxKnown = physical || (slots & (CX_SLOT_SPEC | CX_SLOT_ROUGH | CX_SLOT_ENV)) != 0 || d.pbr.x > 0.0 || d.pbr.y > 0.0;
                 float wxLum = dot(albedo, CX_WX_SOAK_LUMA), wxRough0 = rough;
-                wxPoro = CxWxPoroOf(rough, spec, metal, CxWxGloss(wxLum, rough, wxKnown), wxKnown);
+                wxPoro = CxWxPoroOf(rough, spec, metal, wxLum, wxKnown);
                 if (up > 0.5)
                 {
                     float wxFlat = smoothstep(0.9, 0.98, up);
@@ -124,9 +124,8 @@
                         if ((slots & CX_SLOT_HEIGHT) != 0) wxFine = textureGrad(uHeightTex, uv, du1, du2).r;
                         else if (!wxKnown && !CxPltOn(vDraw))
                         {
-                            float wxS = exp2(CX_WX_NEAR_MIPS);
                             wxFine = CxWxFineLum(dot(textureGrad(uTex, uv, du1, du2).rgb, CX_WX_SOAK_LUMA),
-                                                 dot(textureGrad(uTex, uv, du1 * wxS, du2 * wxS).rgb, CX_WX_SOAK_LUMA));
+                                                 dot(textureGrad(uTex, uv, du1 * CX_WX_NEAR_GRAD, du2 * CX_WX_NEAR_GRAD).rgb, CX_WX_SOAK_LUMA));
                         }
                         float wxMicro = CxWxMicro(uWxMapP.x, uWxMapP.w, n1, wxFine, wxPoro);
                         float wxD = CxWetDepth(wxM) - wxMicro;
@@ -151,7 +150,7 @@
                 {
                     albedo = mix(albedo, vec3(uWeatherLook.y), wxSnow);
                     rough = mix(rough, 0.75, wxSnow); spec = mix(spec, 0.08, wxSnow);
-                    wxPoro = CxWxPoroOf(rough, spec, metal, CxWxGloss(wxLum, rough, true), true);
+                    wxPoro = CxWxPoroOf(rough, spec, metal, wxLum, true);
                     // mounds: the normal tilts down the relief's gradient at the point the ray met it (or under
                     // the pixel with the relief off), more as the cover deepens
                     float wxGl = CxWxNoiseLod(wxPx);
