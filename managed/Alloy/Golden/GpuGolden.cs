@@ -55,6 +55,10 @@ internal static partial class GpuGolden
         WetSelfCheck(vk, check, log);
         WetNearLamp(vk, check, log);
         HaloFadeSelfCheck(vk, check, log);
+        PipelineTallySelfCheck(vk, check, log);
+        DynamicBlendSelfCheck(vk, check, log);
+        PipelineLibrarySelfCheck(vk, check, log);
+        BindlessPastSelfCheck(vk, check, log);
     }
 
     /// <summary>FSR 3.1 against a supersampled scene, on this device.</summary>
