@@ -259,8 +259,9 @@ internal static unsafe class PostChain
         var check = new Checker(log);
 
         float sc = _scale, tb = Post.TaaBlend.V;
-        bool ta = Post.Taa.V, on = _on, armed = Armed;
+        bool ta = Post.Taa.V, fsr = Post.Fsr.V, on = _on, armed = Armed;
         int vz = Post.Viz.V;
+        Post.Fsr.V = false;
         try
         {
             check.Expect(Post.G.Get("hdr") == null && Post.G.Get("scale") == null,
@@ -378,7 +379,7 @@ internal static unsafe class PostChain
             // Every knob the check drove goes back: a missed one would ship its test value as the live value,
             // which is how /post viz once booted every session into the bloom-debug view.
             Renderer.Scale.V = sc; Post.TaaBlend.V = tb;
-            Post.Taa.V = ta; _on = on; Armed = armed; Post.Viz.V = vz;
+            Post.Taa.V = ta; Post.Fsr.V = fsr; _on = on; Armed = armed; Post.Viz.V = vz;
             _log = quiet;
         }
         log.Info(check.Ok ? "PostChain.SelfCheck: passed" : "PostChain.SelfCheck: FAILED");

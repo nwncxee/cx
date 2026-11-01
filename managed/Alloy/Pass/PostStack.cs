@@ -274,6 +274,8 @@ internal static unsafe partial class PostStack
     {
         ExtenderLog? quiet = _log; _log = null;
         var check = new Checker(log);
+        bool fsr = Post.Fsr.V;
+        Post.Fsr.V = false;
         try
         {
             foreach (Stage st in _stages)
@@ -338,7 +340,7 @@ internal static unsafe partial class PostStack
             check.Expect(!SmaaStage.Active && _stages[^2].Active(), "with /post taa 1 the aa stage is idle and the taa stage live");
             Post.Taa.V = taa;
         }
-        finally { _log = quiet; Post.Stack.V = true; }
+        finally { _log = quiet; Post.Stack.V = true; Post.Fsr.V = fsr; }
         log.Info(check.Ok ? $"PostStack.SelfCheck: passed ({_stages.Length} stage(s))" : "PostStack.SelfCheck: FAILED");
         return check.Ok;
     }
