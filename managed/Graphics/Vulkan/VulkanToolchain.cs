@@ -50,12 +50,16 @@ public static unsafe partial class VulkanToolchain
         string cached = Path.Combine(ShaderCache.Dir, $"vk-{CacheKey(source, kind):x16}.spv");
         if (Cached(cached) is { } hit) { error = ""; return hit; }
         CX.Alloy.LightmapBake.CompileNotice();
+        FreshCompiles++;
         byte[]? spirv = CompileFresh(source, name, kind, out error);
         if (spirv != null)
             try { Directory.CreateDirectory(ShaderCache.Dir); File.WriteAllBytes(cached, spirv); }
             catch (IOException) { } catch (UnauthorizedAccessException) { }
         return spirv;
     }
+
+    /// <summary>Stages shaderc compiled this session, the disk cache having none.</summary>
+    internal static int FreshCompiles { get; private set; }
 
     /// <summary>Bumped whenever <see cref="CompileFresh"/>'s options change: a module cached under the old ones is
     /// then never read.</summary>

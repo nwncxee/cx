@@ -78,6 +78,7 @@ public static class ServiceHost
         CX.Alloy.Db.MeshArena.ArenaSelfCheck(log);   // a freed mesh's gap is reused, so an area hop holds one area
         CX.Alloy.Db.MeshArena.SelfCheck(log);   // ...but not while a submit that may draw it is in flight, and a load sends its own bytes only
         CX.Graphics.Rhi.VkGlsl.SelfCheck(log);   // the GL-to-Vulkan GLSL rules on fixtures, and the std140 reflection
+        CX.Graphics.Rhi.VkGlsl.BindlessCapSelfCheck(log);   // one module serves every bindless seat count
         CX.Alloy.WorldDepth.SelfCheck(log);   // the reversed-Z folds and the content depth rewrite on fixtures
         CX.Alloy.ShaderBinary.SelfCheck(log);   // a content SPIR-V .shd is validated, and GLSL text is never read as one
         CX.Alloy.VkPrograms.SelfCheck(log);   // the batch pass's programs translate and compile for Vulkan

@@ -58,9 +58,13 @@ internal static partial class VkGlsl
     internal const string BindlessArray = "cxTex2D", BindlessAt = "cxTex2DAt";
 
     /// <summary>Descriptors the array holds: an index at or past it samples slot 0, the zero texel, rather than one
-    /// the host never wrote. The backend sets it to what the device seats as it opens, and the number lands in the
-    /// text, so a module compiled under one cap is never read back under another.</summary>
+    /// the host never wrote. The backend sets it to what the device seats as it opens and specialises every stage
+    /// with it, so the text, and the module cached from it, is the same on every device.</summary>
     internal static uint BindlessCap { get; set; } = 1;
+
+    /// <summary>The specialization constant <see cref="BindlessCap"/> reaches a stage through: far from the low ids a
+    /// content stage's own constants take.</summary>
+    internal const uint BindlessCapConstant = 1000;
 
     private static readonly Regex Header = new(
         @"^\s*(?:layout\s*\((?<lq>[^()]*)\)\s*)?(?<q>(?:(?:flat|smooth|noperspective|invariant|centroid|sample|precise|highp|mediump|lowp|readonly|writeonly|coherent|volatile|restrict)\s+)*)(?<s>uniform|in|out|buffer)\b(?<rest>.*)$",
@@ -284,7 +288,8 @@ internal static partial class VkGlsl
         var sb = new StringBuilder("// VkGlsl: declarations shared by both stages\n");
         if (bindless)
             sb.Append($"layout(set = {VulkanToolchain.BindlessSet}, binding = 0) uniform sampler2D {BindlessArray}[];\n")
-              .Append($"uint {BindlessAt}(uint i) {{ return i < {BindlessCap}u ? i : 0u; }}\n");
+              .Append($"layout(constant_id = {BindlessCapConstant}) const uint cxBindlessCap = 1u;\n")
+              .Append($"uint {BindlessAt}(uint i) {{ return i < cxBindlessCap ? i : 0u; }}\n");
         sb.Append("layout(push_constant) uniform CxBatch {");
         foreach (var (t, n) in Push) sb.Append(' ').Append(t).Append(' ').Append(n).Append(';');
         sb.Append(" };\n");
