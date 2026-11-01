@@ -301,6 +301,9 @@ internal sealed unsafe partial class VkBackend
         _log.Always($"VkBackend: the window is going -- its swapchain and surface released after {_swap.Presents} present(s)");
     }
 
+    /// <summary>Hold <paramref name="list"/>'s commands for the frame's present.</summary>
+    internal bool HoldForPresent(CommandList list) => true;
+
     /// <summary>Presents so far, for the status line.</summary>
     internal long Presents => _swap.Presents;
 }
