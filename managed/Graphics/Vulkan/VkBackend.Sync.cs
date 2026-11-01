@@ -199,6 +199,28 @@ internal sealed unsafe partial class VkBackend
         return r;
     }
 
+    /// <summary>The swapchain's next image into <paramref name="sem"/>, waiting at most <see cref="WaitTimeoutNs"/> for one.</summary>
+    private VkResult AcquireNext(VkSemaphore sem, out uint idx)
+    {
+        uint i = 0;
+        VkResult r = _vkd.vkAcquireNextImageKHR(_swap.Chain, WaitTimeoutNs, sem, default, &i);
+        idx = i;
+        return r;
+    }
+
+    /// <summary>Swapchain image <paramref name="idx"/> to the window, once its ready semaphore signals.</summary>
+    private VkResult QueuePresent(int idx)
+    {
+        VkSemaphore ready = _swap.Ready[idx];
+        VkSwapchainKHR chain = _swap.Chain;
+        uint at = (uint)idx;
+        var pi = new VkPresentInfoKHR
+        {
+            waitSemaphoreCount = 1, pWaitSemaphores = &ready, swapchainCount = 1, pSwapchains = &chain, pImageIndices = &at,
+        };
+        return _vkd.vkQueuePresentKHR(_queue, &pi);
+    }
+
     /// <summary>Block until the submit that last waited acquire semaphore <paramref name="slot"/> has finished: its
     /// timeline value, or the whole queue for one waited off the timeline.</summary>
     private VkResult AcquireFree(int slot)

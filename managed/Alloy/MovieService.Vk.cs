@@ -52,14 +52,14 @@ public sealed unsafe partial class MovieService
         int pw = (int)MathF.Round(p.Sx * w), ph = (int)MathF.Round(p.Sy * h);
         CommandList cl = s.Cmds!;
         cl.Reset();
-        PostChainVk.Draw(cl, s.Prog, vk.ScreenFormat, PostChainVk.Blend.None, vk.Screen, LoadOp.Clear,
+        PostChainVk.Draw(cl, s.Prog, PostChainVk.FormatOf(vk.Screen()), PostChainVk.Blend.None, vk.Screen(), LoadOp.Clear,
                          new Rect((w - pw) / 2, (h - ph) / 2, pw, ph), 0, new PostChainVk.Inputs(s.Img), _log);
         if (!vk.Submit(cl)) return Stand("the movie submit was refused (logged above)");
         if (!s.Announced)
         {
             s.Announced = true;
             _log?.Info($"Movies: first frame drawn by Vulkan -- {frameW}x{frameH} from the decode, letterboxed at {pw}x{ph} "
-                     + $"into the {w}x{h} composite Vulkan presents; the engine's ShowFrame quad is swallowed from here on");
+                     + $"into the {w}x{h} screen Vulkan presents; the engine's ShowFrame quad is swallowed from here on");
         }
         return true;
     }

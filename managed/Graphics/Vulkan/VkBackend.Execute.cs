@@ -42,9 +42,9 @@ internal sealed unsafe partial class VkBackend
     /// one on the async queue, after every graphics submit before it.</summary>
     public bool Submit(CommandList list) => Submit(list, -1, false);
 
-    /// <summary><see cref="Submit(CommandList)"/>, and with <paramref name="swap"/> at or past 0 the composite's blit
-    /// onto that acquired swapchain image after the list: the submit waits on the frame's acquire and signals the
-    /// image's ready semaphore, which the present waits on.</summary>
+    /// <summary><see cref="Submit(CommandList)"/>, and with <paramref name="swap"/> at or past 0 the present's work on
+    /// that acquired swapchain image after the list: the submit signals the image's ready semaphore, which the present
+    /// waits on. Any submit that first moves an acquired image waits on its acquire.</summary>
     private bool Submit(CommandList list, int swap, bool beside = false)
     {
         if (!OnThread("Submit")) return false;
@@ -119,7 +119,7 @@ internal sealed unsafe partial class VkBackend
         return ok;
     }
 
-    /// <summary>The begun command buffer ended and queued -- after the composite's blit when <paramref name="swap"/> is
+    /// <summary>The begun command buffer ended and queued -- after the present's work when <paramref name="swap"/> is
     /// at or past 0 -- or, when <paramref name="ok"/> is false, ended and dropped with every image back in the layout
     /// it entered with. <paramref name="committed"/>: its uploads were committed when it was held.</summary>
     private bool Finish(Slot s, string name, bool lane, bool ok, int swap, bool beside, bool committed)
@@ -359,6 +359,9 @@ internal sealed unsafe partial class VkBackend
         if (!p.Compute && p.Rated != (_inPass && !_pendRate.IsNull && _rateTexel > 0))
             return Fault($"SetPipeline: a pipeline {(p.Rated ? "made for" : "not made for")} a shading-rate image, in a pass {(p.Rated ? "without" : "with")} one");
         if (_onAsync && !p.Compute) return Fault("a graphics pipeline on the async compute queue, which cannot draw");
+        if (!p.Compute && _inPass && p.Colors > 0 && _pendCount > 0 && !_pend[0].Image.IsNull && _images.TryGet(_pend[0].Image.Value, out VkImg at)
+            && at.Desc.Fmt != p.Color0)
+            return Fault($"SetPipeline: a pipeline made for {p.Color0} in a pass drawing {at.Desc.Label}, which is {at.Desc.Fmt}");
         _bindPoint = p.Compute ? VkPipelineBindPoint.Compute : VkPipelineBindPoint.Graphics;
         _vkd.vkCmdBindPipeline(_cmd, _bindPoint, p.Obj.Handle);
         if (!p.Compute) { Depth(p.Depth); Raster(p.Raster); }

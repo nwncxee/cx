@@ -78,7 +78,7 @@ internal static unsafe partial class GuiPassVk
     private static bool Record(VkBackend vk, CommandList cl, int from, int to, ExtenderLog log)
     {
         GuiVkState s = _s;
-        ImageId screen = s.Into.IsNull ? vk.Screen : s.Into;
+        ImageId screen = s.Into.IsNull ? vk.Screen() : s.Into;
         if (screen.IsNull || s.Depth.IsNull) return false;
         var pass = new Pass();
         var b = new Bound();
@@ -189,7 +189,7 @@ internal static unsafe partial class GuiPassVk
         Close(cl, ref pass);
         GuiVkState s = _s;
         pass = new Pass { Open = true, Colour = colour, Depth = depth, W = w, H = h };
-        s.Fmt = s.Dev is { } vk && vk.IsScreen(colour) ? vk.ScreenFormat : ViewFormat;
+        s.Fmt = s.Dev is { } vk && vk.DescOf(colour, out ImageDesc cd) ? cd.Fmt : ViewFormat;
         s.Side!.Reset();
         s.Arena0 = s.ArenaUsed;
         b = new Bound();

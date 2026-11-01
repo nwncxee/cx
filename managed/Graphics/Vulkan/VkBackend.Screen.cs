@@ -11,7 +11,7 @@ internal sealed unsafe partial class VkBackend
     private sealed class ScreenState
     {
         public ImageId[] Ids = [];
-        /// <summary>What <see cref="Screen"/> answered this frame: a window image, the spare screen, or null before the first ask.</summary>
+        /// <summary>What <see cref="Screen()"/> answered this frame: a window image, the spare screen, or null before the first ask.</summary>
         public ImageId Now;
         /// <summary>The window image acquired this frame; -1 when none is.</summary>
         public int Index = -1;
@@ -39,37 +39,34 @@ internal sealed unsafe partial class VkBackend
     private const VkPipelineStageFlags2 AcquireStages = VkPipelineStageFlags2.ColorAttachmentOutput | VkPipelineStageFlags2.AllTransfer;
 
     /// <summary>The image the frame's last writers draw, top row first in the window's format: this frame's window
-    /// image, acquired on the first ask, or the spare screen while there is no window to draw or its size is not the
-    /// frame's. Null before the present target sized it.</summary>
-    internal ImageId Screen => !_scr.Now.IsNull ? _scr.Now : _scr.Now = TakeScreen();
+    /// image, acquired on the first ask (which can wait for one to come free), or the spare screen while there is no
+    /// window to draw or its size is not the frame's. Null before the present target sized it.</summary>
+    internal ImageId Screen() => !_scr.Now.IsNull ? _scr.Now : _scr.Now = TakeScreen();
 
-    /// <summary>The present target is sized: <see cref="Screen"/> has an answer. Asks for no window image.</summary>
+    /// <summary>The present target is sized: <see cref="Screen()"/> has an answer. Asks for no window image.</summary>
     internal bool HasScreen => !_spare.IsNull;
 
-    /// <summary>What <see cref="Screen"/> answered this frame, without asking; null when nothing has.</summary>
+    /// <summary>What <see cref="Screen()"/> answered this frame, without asking; null when nothing has.</summary>
     internal ImageId ScreenNow => _scr.Now;
 
-    /// <summary>The window's channel order, which every draw into <see cref="Screen"/> renders.</summary>
-    internal Format ScreenFormat => _scr.Fmt;
+    /// <summary>The height of <paramref name="i"/> when it is a screen image (a window image or the spare screen), whose
+    /// rows a draw reaches flipped; 0 for any other image.</summary>
+    internal int FlipHeight(ImageId i) => !i.IsNull && _images.TryGet(i.Value, out VkImg img) && img.TopDown ? img.Desc.H : 0;
 
-    /// <summary>Can <paramref name="i"/> be copied out of: the spare screen always, a window image where the surface allows.</summary>
-    internal bool Readable(ImageId i) => i == _spare || _swap.Readable;
-
-    /// <summary>Is <paramref name="i"/> a screen image (a window image or the spare screen)?</summary>
-    internal bool IsScreen(ImageId i) => !i.IsNull && _images.TryGet(i.Value, out VkImg img) && img.TopDown;
-
+    /// <summary>This frame's window image, or the spare screen when there is no window, its size is not the frame's, or
+    /// its images cannot be copied out of (a snapshot reads the screen back).</summary>
     private ImageId TakeScreen()
     {
-        if (!OnThread("Screen") || !_images.TryGet(_spare.Value, out VkImg st)) return default;
-        if (!EnsureSwapchain(Mode(_scr.Interval), st.Desc.W, st.Desc.H, _log) || _swap.W != st.Desc.W || _swap.H != st.Desc.H)
-            return _spare;
+        if (!OnThread("Screen") || !DescOf(_spare, out ImageDesc f)) return default;
+        if (!EnsureSwapchain(Mode(_scr.Interval), f.W, f.H, _log) || _swap.W != f.W || _swap.H != f.H || !WindowReadable) return _spare;
         int idx = Acquire();
-        if (idx < 0 || !_images.TryGet(_scr.Ids[idx].Value, out VkImg img)) { Unacquire(); return _spare; }
-        img.Layout = VkImageLayout.Undefined;
-        img.Written = false;
+        if (idx < 0) return _spare;
         _scr.Index = idx;
         return _scr.Ids[idx];
     }
+
+    /// <summary>The window's images can be copied out of, as their registered use says.</summary>
+    private bool WindowReadable => _scr.Ids.Length > 0 && DescOf(_scr.Ids[0], out ImageDesc d) && (d.Use & ImageUse.CopySrc) != 0;
 
     /// <summary>The next window image into the next acquire semaphore, once the submit that last waited that semaphore
     /// has finished; -1 (logged) when the window gave none.</summary>
@@ -80,19 +77,19 @@ internal sealed unsafe partial class VkBackend
         VkResult free = AcquireFree(slot);
         if (free != VkResult.Success) { Fault($"Present: the acquire semaphore never came free ({free})"); return -1; }
         c.WaitedBy[slot] = 0;
-        uint idx = 0;
         long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
-        VkResult r = _vkd.vkAcquireNextImageKHR(_swap.Chain, WaitTimeoutNs, c.Acquire[slot], default, &idx);
+        VkResult r = AcquireNext(c.Acquire[slot], out uint idx);
         if (r == VkResult.ErrorOutOfDateKHR)
         {
             _swap.Stale = true;
             if (!EnsureSwapchain(_swap.Mode, _swap.W, _swap.H, _log)) return -1;
-            r = _vkd.vkAcquireNextImageKHR(_swap.Chain, WaitTimeoutNs, c.Acquire[slot], default, &idx);
+            r = AcquireNext(c.Acquire[slot], out idx);
         }
         _acquireTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
         if (r != VkResult.Success && r != VkResult.SuboptimalKHR) { Fault($"Present: vkAcquireNextImageKHR returned {r}"); return -1; }
         c.Slot = slot;
         c.Pending = true;
+        if (_images.TryGet(c.Ids[idx].Value, out VkImg img)) { img.Layout = VkImageLayout.Undefined; img.Written = false; }
         return (int)idx;
     }
 
@@ -114,7 +111,7 @@ internal sealed unsafe partial class VkBackend
     private int FlipOf(ReadOnlySpan<ColorAttachment> colors)
     {
         foreach (ColorAttachment c in colors)
-            if (!c.Image.IsNull) return _images.TryGet(c.Image.Value, out VkImg img) && img.TopDown ? img.Desc.H : 0;
+            if (!c.Image.IsNull) return FlipHeight(c.Image);
         return 0;
     }
 
@@ -127,13 +124,14 @@ internal sealed unsafe partial class VkBackend
     }
 
     /// <summary>The window's images as ids the passes target, top row first; replaces any from the last chain.</summary>
-    private void RegisterWindowImages(VkImage[] images, Format f, int w, int h)
+    private void RegisterWindowImages(VkImage[] images, Format f, int w, int h, bool readable)
     {
         DropWindowImages();
         var ids = new ImageId[images.Length];
+        ImageUse use = ImageUse.ColorTarget | ImageUse.CopyDst | (readable ? ImageUse.CopySrc : ImageUse.None);
         for (int i = 0; i < images.Length; i++)
         {
-            var d = new ImageDesc(ImageKind.Tex2D, f, w, h, 1, 1, 1, 1, ImageUse.ColorTarget | ImageUse.CopySrc | ImageUse.CopyDst, $"window image {i}");
+            var d = new ImageDesc(ImageKind.Tex2D, f, w, h, 1, 1, 1, 1, use, $"window image {i}");
             ids[i] = new ImageId(_images.Add(new VkImg { Image = images[i], View = View(images[i], d, -1), Desc = d, TopDown = true, Window = true }));
         }
         _scr.Ids = ids;

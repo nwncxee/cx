@@ -360,7 +360,7 @@ there is no engine traversal underneath, so every later row costs the panels rat
 | `alloy.gui` on | `GuiPass.Capturing` | the player's choice, live -- and it costs the game's panels, which nothing else draws |
 | the world is Alloy's or absent | `ScreenOwner.Owned` | an engine-drawn world (an `Incapable` verdict) keeps the engine's clears and present; the GUI stays Alloy's over it |
 | Vulkan's frame sized to the window (its spare screen made) | `PresentTarget.Ensure` | `AlloyGate.Fail`, the session's stated refusal. There is nothing to fall back to: `PresentTarget.Usable` is permanently false and the engine's own swap never runs, so a refused size means nothing is presented rather than something else being. `/alloy` carries the size and the hand-back count |
-| the window's images can be drawn into | `VkBackend.SurfaceRefusal`, at the first present | `AlloyGate.Fail` with `cx.log` saying the surface's images cannot be drawn into (or blitted into). The window exists by then and the session has no GL, so the engine's renderer cannot take over |
+| the window's images can be drawn into | `VkBackend.SurfaceRefusal`, at the frame's first screen ask | `AlloyGate.Fail` with `cx.log` saying the surface's images cannot be drawn into (or blitted into). The window exists by then and the session has no GL, so the engine's renderer cannot take over |
 | the screen reaches the window | `ScreenOwner.PresentVulkan` | `AlloyGate.Fail`, counted: the window keeps its last frame, because the engine's swap would show a back buffer nothing on Vulkan drew. A frame that arrives before the frame is first sized is not a failure — it presents nothing and says so once |
 
 ## The movie quad (CX-335)

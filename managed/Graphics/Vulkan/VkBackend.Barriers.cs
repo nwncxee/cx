@@ -93,6 +93,8 @@ internal sealed unsafe partial class VkBackend
         if (_onAsync) img.AsyncRec = _recording;
         bool claimed = Claim(img, to, writes);
         if (img.Layout == to && !img.Written) return;
+        bool acquired = img.Window && img.Layout == VkImageLayout.Undefined;
+        if (acquired) _scr.Touched = true;
         if (_besideNow && img.AsyncRec == _asyncRec)
             _crossed ??= $"moved {img.Desc.Label}, which the async submit it runs beside reached -- hand it over ahead of both";
         (VkPipelineStageFlags2 ds, VkAccessFlags2 da) = Scope(to);
@@ -106,8 +108,7 @@ internal sealed unsafe partial class VkBackend
         {
             // a claimed member's memory was last written through another image of its group, in any stage
             (VkPipelineStageFlags2 ss, VkAccessFlags2 sa) = claimed ? (VkPipelineStageFlags2.AllCommands, VkAccessFlags2.MemoryWrite)
-                : img.Window && img.Layout == VkImageLayout.Undefined ? (AcquireStages, VkAccessFlags2.None) : Scope(img.Layout);
-            if (img.Window && img.Layout == VkImageLayout.Undefined) _scr.Touched = true;
+                : acquired ? (AcquireStages, VkAccessFlags2.None) : Scope(img.Layout);
             img.BarBatch = _batch;
             VkImageMemoryBarrier2 b = Whole(img);
             b.srcStageMask = ss; b.srcAccessMask = sa & WriteAccess; b.dstStageMask = ds; b.dstAccessMask = da;

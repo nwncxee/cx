@@ -55,7 +55,7 @@ internal static class VulkanFrame
             return;
         }
         cl.EndLabel();
-        if (!AlloyRenderer.VkRecordFrame(vk, cl, vk.Screen, vp, vpClean, view, proj, viewport, display, near, far,
+        if (!AlloyRenderer.VkRecordFrame(vk, cl, vk.Screen(), vp, vpClean, view, proj, viewport, display, near, far,
                                          lightingOn, perspective, groups, log))
         {
             AlloyGate.Fail("the Vulkan colour bracket did not record (logged above)");

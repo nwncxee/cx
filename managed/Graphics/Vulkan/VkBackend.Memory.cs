@@ -61,7 +61,7 @@ internal sealed unsafe partial class VkBackend
             while (at > 0 && top[at - 1].Bytes < bytes) { top[at] = top[at - 1]; at--; }
             top[at] = (name, bytes);
         }
-        foreach (VkImg g in _images.Live()) if (g.Group == null) Offer(g.Desc.Label, g.Alloc);
+        foreach (VkImg g in _images.Live()) if (g.Group == null && !g.Window) Offer(g.Desc.Label, g.Alloc);
         foreach (AliasGroup g in _alias.Values) Offer("alias " + g.Name, g.Alloc);
         foreach (VkBuf b in _buffers.Live()) Offer(b.Desc.Label, b.Alloc);
         return have == n ? top : top[..have];

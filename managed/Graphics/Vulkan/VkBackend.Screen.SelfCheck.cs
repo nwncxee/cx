@@ -49,8 +49,8 @@ internal sealed unsafe partial class VkBackend
         {
             check.Expect(!halves.IsNull && !white.IsNull && !rb.IsNull, "the screen check's pipelines and readback exist");
             if (halves.IsNull || white.IsNull || rb.IsNull) return;
-            ImageId screen = Screen;
-            check.Expect(IsScreen(screen), "with no window the frame draws a screen laid out as the window's");
+            ImageId screen = Screen();
+            check.Expect(FlipHeight(screen) == ScreenSide, "with no window the frame draws a screen laid out as the window's");
 
             var cl = new CommandList("screen check", 1 << 10, log);
             DrawScreen(cl, screen, halves, LoadOp.Clear, null);
@@ -58,7 +58,7 @@ internal sealed unsafe partial class VkBackend
             check.Expect(top != null && Row(top, 0) == 0xFF0000 && Row(top, 1) == 0xFF0000 && Row(top, 2) == 0x0000FF && Row(top, 3) == 0x0000FF,
                 $"E1: the window shows red over its top half and blue under it (rows top first: {Rows(top)})");
 
-            byte[] rgb = new byte[ScreenSide * 3 * ScreenSide];
+            byte[] rgb = new byte[((ScreenSide * 3 + 3) & ~3) * ScreenSide];
             string? why;
             fixed (byte* p = rgb) why = NullGl.ReadScreen(this, log, 0, 0, ScreenSide, ScreenSide, p);
             check.Expect(why == null && Rgb(rgb, 0) == 0x0000FF && Rgb(rgb, ScreenSide - 1) == 0xFF0000,
@@ -88,7 +88,7 @@ internal sealed unsafe partial class VkBackend
             Vs = vs, Fs = fs, Topo = Topology.Triangles, Raster = new RasterState(CullMode.Back),
             Depth = new DepthState(false, false, CompareOp.Always), Label = label,
         };
-        d.Targets.ColorCount = 1; d.Targets.Colors[0] = ScreenFormat; d.Targets.Depth = Format.Unknown; d.Targets.Samples = 1;
+        d.Targets.ColorCount = 1; d.Targets.Colors[0] = _scr.Fmt; d.Targets.Depth = Format.Unknown; d.Targets.Samples = 1;
         return CreatePipeline(d);
     }
 

@@ -34,7 +34,7 @@ internal static unsafe partial class GuiPassVk
     private const int NowList = 2;
 
     /// <summary>A list drawn outside the GUI flush -- the loading screen's lines, the compile notice -- recorded over the
-    /// composite and submitted at once, as GL's immediate replay draws it. False (said once) when the device is not on
+    /// screen and submitted at once, as GL's immediate replay draws it. False (said once) when the device is not on
     /// this thread or a flush is recording.</summary>
     internal static bool ReplayNow(UiDrawList l, ExtenderLog log)
         => TakeNow(log, out VkBackend? vk, out CommandList? cl) && Windows(vk!, cl!, l, NowList, log) && vk!.Submit(cl!);
@@ -108,7 +108,7 @@ internal static unsafe partial class GuiPassVk
     private static bool Windows(VkBackend vk, CommandList cl, UiDrawList l, int li, ExtenderLog log)
     {
         GuiVkState s = _s;
-        ImageId screen = s.Into.IsNull ? vk.Screen : s.Into;
+        ImageId screen = s.Into.IsNull ? vk.Screen() : s.Into;
         if (l.CmdN == 0 || l.ViewW <= 0 || l.ViewH <= 0 || screen.IsNull || !WinEnsure(vk, s.Win, log)) return true;
         if (!Grow(vk, ref s.Win.Vtx[li], ref s.Win.VtxCap[li], Math.Max((long)l.VertN * sizeof(float), 64), BufferUse.Vertex,
                   $"vk ui windows {li}", log)) return false;

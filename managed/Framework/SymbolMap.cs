@@ -713,7 +713,7 @@ internal static unsafe class SymbolMap
     public const string SdlVulkanGetDrawableSize = "SDL_Vulkan_GetDrawableSize";
     /// <summary><c>RenderInterface::ReadPixelsFromBuffer(fb, x, y, w, h, format, dst)</c> @0x45d260 -- the static thunk
     /// <c>AurSnapshot</c> (screenshots) and <c>AurSaveGameSnapshot</c> (save thumbnails) read the frame through; with no
-    /// GL the pixels come from Vulkan's composite.</summary>
+    /// GL the pixels come from Vulkan's screen.</summary>
     [Fn("void(uint fb, int x, int y, int w, int h, int format, byte* dst)")]
     public const string RiReadPixelsFromBuffer = "_ZN15RenderInterface20ReadPixelsFromBufferEjiiiiN6Aurora20AuroraTextureFormatsEPv";
     /// <summary><c>RenderInterface::Clear(uint mask)</c> @0x45d2a0 -- every engine clear (the frame's

@@ -8,7 +8,7 @@ internal sealed unsafe partial class VkBackend
 {
     /// <summary>A held command buffer's edges: a wait with no submit after the hold, an upload queued while one is held,
     /// and an upload at a held buffer's head that must not run again after it. Oracle: hand-written texels read back
-    /// from a 1x1 composite.</summary>
+    /// from a 1x1 spare screen.</summary>
     internal void PresentHoldCheck(Checker check, ExtenderLog log)
     {
         byte[] a = [1, 2, 3, 4], c = [90, 80, 70, 60], d = [5, 6, 7, 8];
@@ -18,7 +18,7 @@ internal sealed unsafe partial class VkBackend
         var o = new CommandList("present hold reader", 256, log);
         bool made = !pa.IsNull && !pc.IsNull && !pd.IsNull && !rb.IsNull && Resize(1, 1) && Upload(pa, 0, 0, a) && Upload(pc, 0, 0, c);
         o.ClearImage(_spare);
-        check.Expect(made && Submit(o), "present hold: three texels, a readback and a cleared 1x1 composite exist");
+        check.Expect(made && Submit(o), "present hold: three texels, a readback and a cleared 1x1 spare screen exist");
         if (made)
         {
             h.Reset();

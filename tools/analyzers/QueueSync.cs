@@ -5,8 +5,9 @@ using Microsoft.CodeAnalysis.Operations;
 
 namespace CX.Analyzers;
 
-/// <summary>CX0004: a queue submit, a fence or a semaphore wait outside the backend's timelines. Every graphics submit
-/// signals the timeline every lifetime waits on, so a second path would hand out numbers nothing waits on.</summary>
+/// <summary>CX0004: a queue submit, a fence, a semaphore wait, a swapchain acquire or a present outside the backend's
+/// timelines. Every graphics submit signals the timeline every lifetime waits on, and the acquire semaphores are a ring
+/// only one funnel turns, so a second path would hand out signals nothing waits on.</summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class QueueSync : DiagnosticAnalyzer
 {
@@ -18,7 +19,8 @@ public sealed class QueueSync : DiagnosticAnalyzer
     private static readonly ImmutableHashSet<string> Calls = ImmutableHashSet.Create(
         "vkQueueSubmit", "vkQueueSubmit2", "vkQueueSubmit2KHR", "vkQueueWaitIdle",
         "vkWaitSemaphores", "vkWaitSemaphoresKHR", "vkGetSemaphoreCounterValue", "vkGetSemaphoreCounterValueKHR", "vkSignalSemaphore",
-        "vkCreateFence", "vkWaitForFences", "vkResetFences", "vkGetFenceStatus");
+        "vkCreateFence", "vkWaitForFences", "vkResetFences", "vkGetFenceStatus",
+        "vkAcquireNextImageKHR", "vkAcquireNextImage2KHR", "vkQueuePresentKHR");
 
     private static readonly DiagnosticDescriptor Rule = new(
         Id,

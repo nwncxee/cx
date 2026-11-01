@@ -9,7 +9,7 @@ using static Vortice.Vulkan.Vulkan;
 namespace CX.Graphics.Rhi;
 
 /// <summary>The seam on Vulkan 1.3: one instance, one device matched to GL's by UUID, one queue, VMA, and the game
-/// window's swapchain. Every image is Vulkan's alone: the frame lands in <see cref="Screen"/>, the window's own
+/// window's swapchain. Every image is Vulkan's alone: the frame lands in <see cref="Screen()"/>, the window's own
 /// image, which <see cref="Present"/> puts on the window, and GL never touches it. Made, used and dropped on the thread holding
 /// Alloy's context.</summary>
 internal sealed unsafe partial class VkBackend : IDevice
@@ -64,7 +64,7 @@ internal sealed unsafe partial class VkBackend : IDevice
     /// <summary>A pipeline id: the compiled pipeline it names, and the depth, raster and (when <see cref="BlendDyn"/>)
     /// blend its desc named, which a bind restates dynamically.</summary>
     private readonly record struct VkPipe(PipeObj Obj, bool Compute, DepthState Depth, RasterState Raster, bool Rated = false,
-                                          bool BlendDyn = false, BlendSet Blend = default, int Colors = 0);
+                                          bool BlendDyn = false, BlendSet Blend = default, int Colors = 0, Format Color0 = Format.Unknown);
 
     /// <summary>One submit's recording resources, reused once the timeline passes <see cref="Done"/>: the value its
     /// last submit signalled. <see cref="Index"/> is its place in the list and its timestamp pair.</summary>
@@ -750,7 +750,8 @@ internal sealed unsafe partial class VkBackend : IDevice
         _dead.Clear();
         foreach (var d in _bindless.Behind) d.Free();
         _bindless.Behind.Clear();
-        foreach (VkImg g in _images.Live()) Free(g);
+        // the window's images go with the swapchain below
+        foreach (VkImg g in _images.Live()) if (!g.Window) Free(g);
         foreach (AliasGroup g in _alias.Values) Vma.vmaFreeMemory(_vma, g.Alloc);
         foreach (VkBuf b in _buffers.Live()) Vma.vmaDestroyBuffer(_vma, b.Buffer, b.Alloc);
         foreach (VkSampler v in _samplers.Live()) _vkd.vkDestroySampler(v);

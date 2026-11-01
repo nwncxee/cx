@@ -159,7 +159,7 @@ internal static unsafe partial class GuiPassVk
     private static readonly Action<int, bool> HeldTold = (_, ran) => { if (!ran) _s.Dropped++; };
 
     /// <summary>The flush's one submit; a refusal is said once and counted after. A flush into the screen rides the
-    /// present's submit, ahead of its blit.</summary>
+    /// present's submit, ahead of the window image's move to presentable.</summary>
     private static bool Submit(VkBackend vk, CommandList cl, ExtenderLog log)
     {
         GuiVkState s = _s;

@@ -39,7 +39,6 @@ public sealed unsafe partial class NullGl
     {
         ImageId screen = vk.ScreenNow;
         if (screen.IsNull) return "nothing has drawn the screen this frame";
-        if (!vk.Readable(screen)) return "the window's images cannot be copied out of";
         if (!vk.DescOf(screen, out ImageDesc d)) return "the screen is stale";
         int cw = Math.Min(w, d.W - x), ch = Math.Min(h, d.H - y);
         if (x < 0 || y < 0 || cw <= 0 || ch <= 0) return $"the block is outside the {d.W}x{d.H} screen";

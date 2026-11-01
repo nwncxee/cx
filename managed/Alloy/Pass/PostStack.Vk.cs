@@ -128,7 +128,7 @@ internal static unsafe partial class PostStack
         if (live == 0)
         {
             if (fsr) MotionVectors.RollHistory();
-            return PostChainVk.Record(vk, cl, hdr, depth, vk.Screen, true, viewport, display, vel, log);
+            return PostChainVk.Record(vk, cl, hdr, depth, vk.Screen(), true, viewport, display, vel, log);
         }
         int* pair = stackalloc int[4] { 0, 0, s.W, s.H };
         if (!PostChainVk.Record(vk, cl, hdr, depth, s.A, false, viewport, pair, vel, log)) return false;
@@ -140,7 +140,7 @@ internal static unsafe partial class PostStack
             Stage st = _stages[i];
             StageVk v = s.Stages[i];
             bool last = --left == 0;
-            ImageId into = last ? vk.Screen : write;
+            ImageId into = last ? vk.Screen() : write;
             cl.BeginLabel(st.Label ??= System.Text.Encoding.UTF8.GetBytes("stage " + st.Name));
             ImageId hist = st.Name == "taa" ? TaaResolve(cl, s, read, depth, log) : default;
             bool aa = st.Name == "aa";

@@ -14,7 +14,6 @@ internal sealed unsafe partial class VkBackend
     {
         public VkSurfaceKHR Surface;
         public VkSwapchainKHR Chain;
-        public VkImage[] Images = [];
         public VkSemaphore[] Ready = [];
         public VkFormat Format;
         public VkPresentModeKHR Mode;
@@ -23,8 +22,6 @@ internal sealed unsafe partial class VkBackend
         public bool Stale, Refused;
         /// <summary>The window has no area (minimised): there is no chain and nothing to show until it has one.</summary>
         public bool Empty;
-        /// <summary>The window's images can be copied out of: a snapshot reads the frame straight from one.</summary>
-        public bool Readable;
         public long Presents;
     }
 
@@ -57,10 +54,7 @@ internal sealed unsafe partial class VkBackend
     /// after the frames in flight.</summary>
     internal bool Resize(int w, int h)
     {
-        if (!OnThread("Resize")) return false;
-        if (_swap.Surface.IsNull) MakeSurface();
-        if (_swap.Surface.IsNotNull && PickFormat().format is VkFormat f && f != VkFormat.Undefined) _scr.Fmt = ScreenFormatOf(f);
-        return MakeSpare(w, h);
+        return OnThread("Resize") && MakeSpare(w, h);
     }
 
     private bool MakeSpare(int w, int h)
@@ -102,14 +96,7 @@ internal sealed unsafe partial class VkBackend
         }
         bool sent = _held.Slot != null ? SubmitHeld(idx) : SubmitBlit(idx, log);
         if (!sent) return false;
-        VkSemaphore ready = _swap.Ready[idx];
-        VkSwapchainKHR chain = _swap.Chain;
-        uint at = (uint)idx;
-        var pi = new VkPresentInfoKHR
-        {
-            waitSemaphoreCount = 1, pWaitSemaphores = &ready, swapchainCount = 1, pSwapchains = &chain, pImageIndices = &at,
-        };
-        VkResult r = _vkd.vkQueuePresentKHR(_queue, &pi);
+        VkResult r = QueuePresent(idx);
         if (r == VkResult.ErrorOutOfDateKHR || r == VkResult.SuboptimalKHR) _swap.Stale = true;
         else if (r != VkResult.Success) return Fault($"Present: vkQueuePresentKHR returned {r}");
         _swap.Presents++;
@@ -129,18 +116,15 @@ internal sealed unsafe partial class VkBackend
     /// target, the spare screen's blit (scaled across a resize; both are top row first in one format), and on to presentable.</summary>
     private bool RecordPresent(int idx)
     {
+        if (!_images.TryGet(_scr.Ids[idx].Value, out VkImg dst)) return Fault("Present: the window image died before its present");
         if (idx == _scr.Index)
         {
-            if (!_images.TryGet(_scr.Ids[idx].Value, out VkImg win)) return Fault("Present: the window image died before its present");
-            Transition(win, VkImageLayout.PresentSrcKHR);
-            Flush();
+            Transition(dst, VkImageLayout.PresentSrcKHR);
             return true;
         }
         if (!_images.TryGet(_spare.Value, out VkImg src)) return Fault("Present: the spare screen died before its blit");
         Transition(src, VkImageLayout.TransferSrcOptimal);
-        VkImage dst = _swap.Images[idx];
-        SwapBarrier(dst, VkImageLayout.Undefined, VkImageLayout.TransferDstOptimal);
-        _scr.Touched = true;
+        Transition(dst, VkImageLayout.TransferDstOptimal);
         Flush();
         var b = new VkImageBlit
         {
@@ -150,25 +134,11 @@ internal sealed unsafe partial class VkBackend
         b.srcOffsets[1] = new VkOffset3D { x = src.Desc.W, y = src.Desc.H, z = 1 };
         b.dstOffsets[1] = new VkOffset3D { x = _swap.W, y = _swap.H, z = 1 };
         bool same = src.Desc.W == _swap.W && src.Desc.H == _swap.H;
-        _vkd.vkCmdBlitImage(_cmd, src.Image, VkImageLayout.TransferSrcOptimal, dst, VkImageLayout.TransferDstOptimal, 1, &b,
+        _vkd.vkCmdBlitImage(_cmd, src.Image, VkImageLayout.TransferSrcOptimal, dst.Image, VkImageLayout.TransferDstOptimal, 1, &b,
                             same ? VkFilter.Nearest : VkFilter.Linear);
-        SwapBarrier(dst, VkImageLayout.TransferDstOptimal, VkImageLayout.PresentSrcKHR);
+        dst.Written = true;
+        Transition(dst, VkImageLayout.PresentSrcKHR);
         return true;
-    }
-
-    /// <summary>Queue a swapchain image's move. Out of undefined it waits on the transfer stage, one the submit's acquire
-    /// wait releases, so the move chains after the acquire.</summary>
-    private void SwapBarrier(VkImage image, VkImageLayout from, VkImageLayout to)
-    {
-        (VkPipelineStageFlags2 ss, VkAccessFlags2 sa) = from == VkImageLayout.Undefined ? (VkPipelineStageFlags2.AllTransfer, VkAccessFlags2.None) : Scope(from);
-        (VkPipelineStageFlags2 ds, VkAccessFlags2 da) = Scope(to);
-        Queue(new VkImageMemoryBarrier2
-        {
-            srcStageMask = ss, srcAccessMask = sa & WriteAccess, dstStageMask = ds, dstAccessMask = da,
-            oldLayout = from, newLayout = to, srcQueueFamilyIndex = QueueFamilyIgnored, dstQueueFamilyIndex = QueueFamilyIgnored,
-            image = image,
-            subresourceRange = new VkImageSubresourceRange { aspectMask = VkImageAspectFlags.Color, levelCount = 1, layerCount = 1 },
-        });
     }
 
     /// <summary>The engine's swap interval as a present mode: off tears (immediate, else mailbox), adaptive relaxes, any
@@ -261,10 +231,8 @@ internal sealed unsafe partial class VkBackend
         var images = new VkImage[n];
         fixed (VkImage* p = images) _vkd.vkGetSwapchainImagesKHR(chain, &n, p);
         s.Chain = chain;
-        s.Images = images;
-        s.Readable = (caps.supportedUsageFlags & VkImageUsageFlags.TransferSrc) != 0;
         Format sf = ScreenFormatOf(fmt.format);
-        RegisterWindowImages(images, sf, (int)ext.width, (int)ext.height);
+        RegisterWindowImages(images, sf, (int)ext.width, (int)ext.height, (caps.supportedUsageFlags & VkImageUsageFlags.TransferSrc) != 0);
         if (sf != _scr.Fmt && _images.TryGet(_spare.Value, out VkImg st))
         {
             _scr.Fmt = sf;
@@ -333,7 +301,6 @@ internal sealed unsafe partial class VkBackend
         foreach (VkSemaphore r in s.Ready) _vkd.vkDestroySemaphore(r);
         if (s.Chain.IsNotNull) _vkd.vkDestroySwapchainKHR(s.Chain, null);
         s.Chain = default;
-        s.Images = [];
         s.Ready = [];
     }
 
