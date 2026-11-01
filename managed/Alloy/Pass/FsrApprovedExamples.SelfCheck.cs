@@ -14,24 +14,22 @@ internal static partial class Fsr
 {
     static partial void Examples(Checker check, ExtenderLog log)
     {
-        Post.Taa.V = true;
-
-        Post.Fsr.V = true; Renderer.Scale.V = 0.67f;
-        check.Expect(On, "E1: FSR on at render scale 0.67, FSR draws the world");
+        Post.Aa.V = Post.AaFsr; Post.Scale.V = 0.67f;
+        check.Expect(On, "E1: FSR 3.1 picked at render scale 0.67, FSR draws the world");
         check.Expect(!PostChain.TaaOn && !SmaaStage.Active, "E1: ...and neither TAA nor SMAA runs");
         string e1 = Line(PostChain.RenderSize(2560), PostChain.RenderSize(1440), 2560, 1440);
         check.Expect(e1.Contains("1715x965 to 2560x1440", StringComparison.Ordinal),
             $"E1: cx.log says FSR drew it from 1715x965 up to 2560x1440 (got \"{e1}\")");
 
-        Renderer.Scale.V = 1f;
-        check.Expect(On && !PostChain.TaaOn, "E2: FSR on at render scale 1.0 still draws, and TAA does not run");
+        Post.Scale.V = 1f;
+        check.Expect(On && !PostChain.TaaOn, "E2: FSR 3.1 picked at render scale 1.0 still draws, and TAA does not run");
         string e2 = Line(PostChain.RenderSize(2560), PostChain.RenderSize(1440), 2560, 1440);
         check.Expect(e2.Contains("2560x1440 to 2560x1440", StringComparison.Ordinal),
             $"E2: cx.log says FSR drew it 2560x1440 to 2560x1440 (got \"{e2}\")");
 
-        Renderer.Scale.V = 0.67f;
+        Post.Scale.V = 0.67f;
         int phases = PostChain.JitterPhases(2560);
-        check.Expect(phases == 17, $"E4: FSR on at 0.67 on a 2560-wide window, the jitter repeats after 17 (got {phases})");
+        check.Expect(phases == 17, $"E4: FSR 3.1 picked at 0.67 on a 2560-wide window, the jitter repeats after 17 (got {phases})");
         var seen = new HashSet<(float, float)>();
         for (int f = 0; f < 17; f++)
         {
@@ -42,8 +40,8 @@ internal static partial class Fsr
         PostChain.Jitter(17, 1715, 965, phases, out float x17, out float y17);
         check.Expect(seen.Count == 17 && x0 == x17 && y0 == y17, $"E4: ...visiting 17 positions before it repeats (got {seen.Count})");
 
-        check.Expect(MathF.Abs(PostChain.LodBias + 1.58f) < 0.01f, $"E5: FSR on at 0.67, textures sample with a mip bias of -1.58 (got {PostChain.LodBias:F3})");
-        Post.Fsr.V = false;
+        check.Expect(MathF.Abs(PostChain.LodBias + 1.58f) < 0.01f, $"E5: FSR 3.1 picked at 0.67, textures sample with a mip bias of -1.58 (got {PostChain.LodBias:F3})");
+        Post.Aa.V = Post.AaTaa;
         check.Expect(MathF.Abs(PostChain.LodBias + 0.58f) < 0.01f, $"E5: ...where TAA at the same scale uses -0.58 (got {PostChain.LodBias:F3})");
 
         RefusedExample(check, log);
@@ -54,7 +52,7 @@ internal static partial class Fsr
     /// <summary>E6: a refusal is said once on cx.log, shown on the panel, and hands the frame back to TAA.</summary>
     private static void RefusedExample(Checker check, ExtenderLog log)
     {
-        Post.Fsr.V = true;
+        Post.Aa.V = Post.AaFsr;
         string why = $"the test GPU refused the upscaler ({Environment.TickCount64})";
         Refuse(why, log);
         Refuse(why, log);
@@ -77,7 +75,7 @@ internal static partial class Fsr
     /// <summary>E7: the world edge starts FSR's history over, once.</summary>
     private static void NewAreaExample(Checker check)
     {
-        Post.Fsr.V = true;
+        Post.Aa.V = Post.AaFsr;
         TakeReset();
         PassRegistry.Global.Revoke();
         bool first = TakeReset(), second = TakeReset();
@@ -87,7 +85,7 @@ internal static partial class Fsr
     /// <summary>E8: the install's LICENSES.txt carries AMD's MIT notice, and the panel never says AMD FidelityFX.</summary>
     private static void LicenceExample(Checker check)
     {
-        string label = Post.Fsr.Label + " " + Post.Fsr.Help;
+        string label = Post.Aa.Label + " " + Post.Aa.Help;
         check.Expect(!label.Contains("FidelityFX", StringComparison.OrdinalIgnoreCase), $"E8: the panel never says AMD FidelityFX (\"{label}\")");
         string path = Path.Combine("cx-linux-x64", "LICENSES.txt");
         if (!File.Exists(path)) { check.Skip("E8's licence half: no staged cx-linux-x64/LICENSES.txt here (run-demo has one)"); return; }

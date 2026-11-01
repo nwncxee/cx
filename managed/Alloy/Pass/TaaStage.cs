@@ -15,7 +15,7 @@ internal static class TaaStage
     internal static string StageFs => ShaderSource.Get("cx_taastage_f.glsl");
 
     /// <summary>History invalid: the next resolve takes the current frame whole. World edge (area transition)
-    /// and every /post taa 1.</summary>
+    /// and every post.aa change.</summary>
     internal static void Reset() => PostStack.ResetVk();
 
     /// <summary>The accumulator. Velocity is <c>prev - cur</c> in RENDER pixels, so it is turned into uv
@@ -34,7 +34,7 @@ internal static class TaaStage
         check.Expect(StageFs.Contains("uniform float uSharp;") && StageFs.Contains("h * 4.0 - n") && StageFs.Contains("if (uSharp > 0.0)"),
           "the copy-out carries the unsharp mask and is the raw history at taasharp 0");
         check.Expect(Post.TaaSharp.Default > 0f && Post.TaaSharp.Min == 0f, "post.taasharp ships sharpening, and 0 is the A/B back to the raw resolve");
-        check.Expect(Post.Taa.RungValue(Quality.Shipped), "TAA is the DEFAULT anti-aliaser: a fresh cx.cfg resolves temporally and SMAA stands aside");
+        check.Expect(Post.Aa.RungValue(Quality.Shipped) == "taa", "TAA is the DEFAULT anti-aliaser: a fresh cx.cfg resolves temporally");
         check.Expect(TaaFs.Contains("vec2 velPx = CxDilatedVel(vUV, vsz);") && TaaFs.Contains("vec2 huv = vUV + velPx / vsz;")
           && TaaFs.Contains("vec2 vsz = vec2(textureSize(uVel, 0));"),
           "velocity becomes uv through the VELOCITY target's size, not the frame's (#391)");

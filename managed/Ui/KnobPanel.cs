@@ -430,7 +430,7 @@ public sealed partial class KnobPanel
                 if (ReferenceEquals(off, hidden)) st.K = hidden;
             }
             string status = g.PanelStatus?.Invoke() ?? "";
-            _statusText += status + "\u0001";
+            _statusText += status + ShowSig(g) + "\u0001";
             bool userRows = false;
             foreach (Knob k in g.Knobs) if (k.Tier == Tier.User) { userRows = true; break; }
             if (g.Header.Length > 0 && (userRows || status.Length > 0 || !shared)) { Head(ref y); AddNote(rows, ref y, g.Header, noteW); }
@@ -438,8 +438,8 @@ public sealed partial class KnobPanel
             string section = "";
             foreach (Knob k in g.Knobs)
             {
-                if (k.Tier == Tier.Advanced) { adv++; continue; }
-                if (k.Tier != Tier.User) continue;
+                if (k.Tier == Tier.Advanced) { adv += Hides(k) ? 0 : 1; continue; }
+                if (k.Tier != Tier.User || Hides(k)) continue;
                 if (k.Kind != KnobKind.Button && k.Kind != KnobKind.Link) _resettable = true;
                 Head(ref y);
                 AddSection(rows, ref y, k, ref section);
@@ -459,7 +459,7 @@ public sealed partial class KnobPanel
                     bool headed = !shared;
                     foreach (Knob k in gs[slot].Knobs)
                     {
-                        if (k.Tier != Tier.Advanced) continue;
+                        if (k.Tier != Tier.Advanced || Hides(k)) continue;
                         if (!headed) { AddHeading(rows, ref y, gs[slot].Title); headed = true; }
                         AddSection(rows, ref y, k, ref section);
                         AddKnobRow(rows, ref y, k, false, true, slot);
@@ -996,7 +996,7 @@ public sealed partial class KnobPanel
     {
         if (g0 == null) return;
         string now = "";
-        foreach (KnobGroup g in g0.Groups) now += (g.PanelStatus?.Invoke() ?? "") + "\u0001";
+        foreach (KnobGroup g in g0.Groups) now += (g.PanelStatus?.Invoke() ?? "") + ShowSig(g) + "\u0001";
         if (now != _statusText) LayoutRows();
     }
 

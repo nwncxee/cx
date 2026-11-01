@@ -6,7 +6,7 @@ using CX.Rhi;
 namespace CX.Alloy;
 
 /// <summary>
-/// FSR 3.1 temporal upscaling on the Vulkan frame: the world renders at <c>alloy.scale</c>, FSR rebuilds it at the
+/// FSR 3.1 temporal upscaling on the Vulkan frame: the world renders at <c>post.scale</c>, FSR rebuilds it at the
 /// display size before the resolve, and the resolve and the post stack then run at the display size. It replaces
 /// TAA and SMAA while it draws.
 /// </summary>
@@ -23,9 +23,9 @@ internal static partial class Fsr
 
     private static FsrState _s = new();
 
-    /// <summary>FSR draws the world this frame: <c>post.fsr</c> is on, the render scale is at most 1, and nothing
+    /// <summary>FSR draws the world this frame: <c>post.aa</c> picks it, the render scale is at most 1, and nothing
     /// refused it.</summary>
-    internal static bool On => Post.Fsr.V && _s.Refused == null && Renderer.Scale.V <= 1f;
+    internal static bool On => Post.Aa.V == Post.AaFsr && _s.Refused == null && Post.Scale.V <= 1f;
 
     /// <summary>FSR's jitter sequence length for a <paramref name="renderW"/> frame on a <paramref name="displayW"/>
     /// display, as its library counts it, asked once per size.</summary>
@@ -48,12 +48,12 @@ internal static partial class Fsr
         log.Always(Line(rw, rh, dw, dh));
     }
 
-    /// <summary>The <c>post.fsr</c> knob is on and a render scale above 1 keeps FSR off: said once a session.</summary>
+    /// <summary><c>post.aa</c> picks FSR and a render scale above 1 keeps it off: said once a session.</summary>
     internal static void NoteScale(ExtenderLog log)
     {
-        if (!Post.Fsr.V || Renderer.Scale.V <= 1f || _s.ScaleSaid) return;
+        if (Post.Aa.V != Post.AaFsr || Post.Scale.V <= 1f || _s.ScaleSaid) return;
         _s.ScaleSaid = true;
-        log.Always($"PostStack: FSR 3.1 is on but the render scale is {Renderer.Scale.V:F2}; FSR only upscales, so TAA draws while it is above 1");
+        log.Always($"PostStack: FSR 3.1 is picked but the render scale is {Post.Scale.V:F2}; FSR only upscales, so TAA draws while it is above 1");
     }
 
     /// <summary>Stand FSR down for the session: <paramref name="why"/> said once, on cx.log and on the panel, and
@@ -99,8 +99,8 @@ internal static partial class Fsr
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "Fsr.SelfCheck");
-        bool fsr = Post.Fsr.V, taa = Post.Taa.V;
-        float scale = Renderer.Scale.V;
+        string aa = Post.Aa.V;
+        float scale = Post.Scale.V;
         int skipped = Checker.Skipped;
         try
         {
@@ -109,17 +109,17 @@ internal static partial class Fsr
             if (Native.Sym(SymbolMap.AppManager) != IntPtr.Zero) check.Skip("in a session: the FSR examples run in run-demo");
             else Examples(check, log);
         }
-        finally { Post.Fsr.V = fsr; Post.Taa.V = taa; Renderer.Scale.V = scale; }
+        finally { Post.Aa.V = aa; Post.Scale.V = scale; }
         log.Info(!check.Ok ? "Fsr.SelfCheck: FAILED" : Checker.Skipped > skipped ? "Fsr.SelfCheck: ran the rest (a skip above)" : "Fsr.SelfCheck: passed");
     }
 
     /// <summary>The approved examples.</summary>
     static partial void Examples(Checker check, ExtenderLog log);
 
-    /// <summary>E3, a regression: FSR off draws the frame as before -- TAA, its 8-frame jitter, no FSR.</summary>
+    /// <summary>E3, a regression: TAA picked draws the frame as before -- TAA, its 8-frame jitter, no FSR.</summary>
     private static void OffSelfCheck(Checker check)
     {
-        Post.Fsr.V = false; Post.Taa.V = true; Renderer.Scale.V = 0.67f;
+        Post.Aa.V = Post.AaTaa; Post.Scale.V = 0.67f;
         check.Expect(!On, "E3: FSR off, FSR does not draw");
         check.Expect(PostChain.TaaOn, "E3: FSR off, TAA runs in the post stack");
         check.Expect(PostChain.JitterPhases(2560) == 8, $"E3: FSR off, the jitter repeats after 8 (got {PostChain.JitterPhases(2560)})");

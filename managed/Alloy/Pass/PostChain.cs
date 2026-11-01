@@ -62,9 +62,9 @@ internal static unsafe class PostChain
 
     /// <summary>The RENDER scale -- the owned 3D frame's size as a fraction of the display target's,
     /// per axis. Below 1 the world renders at fewer pixels and the resolve upscales it (bilinear); above 1 it
-    /// is supersampling. The engine's 2D UI never sees it. <c>alloy.scale</c>, live; the knob's range is
+    /// is supersampling. The engine's 2D UI never sees it. <c>post.scale</c>, live; the knob's range is
     /// <see cref="MinScale"/>..<see cref="MaxScale"/> because a 0x0 target is a refusal, not a look.</summary>
-    private static float _scale => Renderer.Scale.V;
+    private static float _scale => Post.Scale.V;
     internal const float MinScale = 0.25f, MaxScale = 2f;
 
 
@@ -86,7 +86,7 @@ internal static unsafe class PostChain
     internal static string Describe() =>
         $"hdr {(_on ? "on" : "off")}  bloom {Post.Bloom.V:F3}{(StockConfig.HdrBloom ? "" : " (OFF: stock HDR/Bloom option)")}  threshold {Post.Threshold.V:F2}  knee {Post.Knee.V:F2}  " +
         $"exposure {Post.Exposure.V:F2}  tonemap {Post.Tonemap.Format()}  acesmix {Post.AcesMix.V:F2}  tmknee {Post.TmKnee.V:F2}  " +
-        $"dither {Post.Dither.V:F2}  scale {_scale:F2} (lod bias {LodBias:F2})  fsr {(Fsr.On ? "on" : Post.Fsr.V ? "off (" + (Fsr.PanelLine().Length > 0 ? "refused" : "scale above 1") + ")" : "off")}  taa {(TaaOn ? "on" : "off")} (taablend {Post.TaaBlend.V:F2}, taasharp {Post.TaaSharp.V:F2}, taau {(Post.Taau.V ? 1 : 0)})  halfres {(Post.HalfRes.V ? "on" : "off")}"
+        $"dither {Post.Dither.V:F2}  scale {_scale:F2} (lod bias {LodBias:F2})  aa {Post.Aa.V}{(Post.Aa.V == Post.AaFsr && !Fsr.On ? " (FSR off: " + (Fsr.PanelLine().Length > 0 ? "refused" : "scale above 1") + ")" : "")}  taa {(TaaOn ? "on" : "off")} (taablend {Post.TaaBlend.V:F2}, taasharp {Post.TaaSharp.V:F2}, taau {(Post.Taau.V ? 1 : 0)})  halfres {(Post.HalfRes.V ? "on" : "off")}"
         + (Post.Viz.V > 0 ? $"  VIZ {Post.Viz.V}" : "")
         + (Post.ClearViz.V ? "  CLEARVIZ (target cleared magenta)" : "")
         + " | " + PostStack.Describe();
@@ -104,9 +104,9 @@ internal static unsafe class PostChain
     /// keeps its detail. Under FSR one lower again, as AMD asks: its jittered frames rebuild the finer mip.</summary>
     internal static float LodBias => Fsr.On ? MathF.Log2(_scale) - 1f : MathF.Min(MathF.Log2(_scale), 0f);
 
-    /// <summary>TAA is on and its stage can build -- the gate the jitter, the accumulator and SMAA share, so a
-    /// stage the device refused hands the anti-aliasing option back to SMAA.</summary>
-    internal static bool TaaOn => Post.Taa.V && !PostStack.TaaVkFailed && !Fsr.On;
+    /// <summary>TAA draws and its stage can build: <c>post.aa</c> picks it, or picks FSR while FSR cannot draw
+    /// (a render scale above 1, or a refusal) -- the gate the jitter and the accumulator share.</summary>
+    internal static bool TaaOn => !PostStack.TaaVkFailed && (Post.Aa.V == Post.AaTaa || (Post.Aa.V == Post.AaFsr && !Fsr.On));
     /// <summary>The projection jitters this frame: TAA or FSR reconstructs from it.</summary>
     internal static bool Jittered => TaaOn || Fsr.On;
     internal static float TaaBlend => Post.TaaBlend.V;
@@ -259,25 +259,29 @@ internal static unsafe class PostChain
         var check = new Checker(log);
 
         float sc = _scale, tb = Post.TaaBlend.V;
-        bool ta = Post.Taa.V, fsr = Post.Fsr.V, on = _on, armed = Armed;
-        int vz = Post.Viz.V;
-        Post.Fsr.V = false;
+        string aa = Post.Aa.V;
+        bool on = _on, armed = Armed;
+        int vz = Post.Viz.V, sm = Post.Smaa.V;
+        Post.Aa.V = Post.AaTaa;
         try
         {
-            check.Expect(Post.G.Get("hdr") == null && Post.G.Get("scale") == null,
-              "hdr and scale are not post knobs: hdr is the Renderer's boot setting and the render scale is alloy.scale");
+            check.Expect(Post.G.Get("hdr") == null && Renderer.G.Get("scale") == null && Post.G.Get("scale") == Post.Scale,
+              "hdr is the Renderer's boot setting, and the render scale is post.scale, beside the anti-aliasing");
             check.Expect(Post.Tonemap.RungValue(Quality.Shipped) == TonemapAces && Post.Tonemap.RangeText() == "shoulder, aces, neutral",
               "the tonemap knob stores the operator index and formats its name");
             check.Expect(Post.Tonemap.TryParse("shoulder", out int tm) && tm == TonemapShoulder && Post.Tonemap.TryParse("0", out tm) && tm == TonemapShoulder
               && Post.Tonemap.TryParse("neutral", out tm) && tm == TonemapNeutral,
               "...and parses a name or an index");
             check.Expect(!Post.Tonemap.TryParse("off", out _), "there is no off: the shoulder is the minimal curve");
-            // #389: TAA stands SMAA down; both toggle with the one key. The jitter sequence is centred, one
-            // render pixel wide, and repeats -- and is exactly zero-width at no size.
-            Post.Viz.V = 0; Post.Taa.V = true;
-            check.Expect(TaaOn && !SmaaStage.Active, "/post taa 1 stands SMAA down");
-            Post.Taa.V = false; check.Expect(!TaaOn && SmaaStage.Active == (SmaaStage.LevelFor(SmaaStage.Samples) > 0),
-              "/post taa 0 hands the aa option back to SMAA");
+            // post.aa picks one anti-aliaser. The jitter sequence is centred, one render pixel wide, and
+            // repeats -- and is exactly zero-width at no size.
+            Post.Viz.V = 0;
+            check.Expect(TaaOn && Jittered && !SmaaStage.Active, "post.aa taa: TAA draws, jittered, and SMAA does not");
+            Post.Aa.V = Post.AaSmaa; check.Expect(!TaaOn && !Jittered, "post.aa smaa: no TAA and no jitter");
+            Post.Aa.V = Post.AaOff; check.Expect(!TaaOn && !Jittered && !SmaaStage.Active, "post.aa off: no anti-aliaser draws");
+            Post.Aa.V = Post.AaFsr; Post.Scale.V = 1.5f;
+            check.Expect(TaaOn && !Fsr.On && !SmaaStage.Active, "post.aa fsr above render scale 1: TAA draws in FSR's place");
+            Post.Aa.V = Post.AaTaa; Post.Scale.V = sc;
             float sx = 0f, sy = 0f, mx = 0f;
             for (int f = 0; f < JitterCount; f++)
             {
@@ -293,15 +297,15 @@ internal static unsafe class PostChain
             check.Expect(Post.TaaBlend.TryParse("0", out float blend) && blend == 0.02f, "taablend never reaches 0: a frozen history would never converge");
             check.Expect(Post.TaaBlend.TryParse("1", out blend) && blend == 0.5f, "...nor 1: that is the raw jitter with nothing averaging it");
             // #391: the render size and lod bias the scale produces never hit 0; the clamp itself is
-            // alloy.scale's range, MinScale..MaxScale. Plain field writes on the knob: nothing runs or is written.
-            check.Expect(Renderer.Scale.Min == MinScale && Renderer.Scale.Max == MaxScale, "alloy.scale spans exactly the resolve's range");
-            Renderer.Scale.V = 0.67f;
+            // post.scale's range, MinScale..MaxScale. Plain field writes on the knob: nothing runs or is written.
+            check.Expect(Post.Scale.Min == MinScale && Post.Scale.Max == MaxScale, "post.scale spans exactly the resolve's range");
+            Post.Scale.V = 0.67f;
             check.Expect(RenderSize(2560) == 1715 && RenderSize(1) == 1, "render size rounds, never below one pixel");
             check.Expect(MathF.Abs(LodBias - MathF.Log2(0.67f)) < 1e-6f, "the lod bias is log2(scale) below 1");
-            Renderer.Scale.V = 1.5f; check.Expect(LodBias == 0f, "...and 0 above it: supersampling keeps its detail");
-            Renderer.Scale.V = 1f; check.Expect(RenderSize(2560) == 2560 && LodBias == 0f, "1.0 is pixel-identical");
+            Post.Scale.V = 1.5f; check.Expect(LodBias == 0f, "...and 0 above it: supersampling keeps its detail");
+            Post.Scale.V = 1f; check.Expect(RenderSize(2560) == 2560 && LodBias == 0f, "1.0 is pixel-identical");
             check.Expect(Describe().Contains("bloom") && Describe().Contains("tonemap") && Describe().Contains("dither")
-              && Describe().Contains("exposure") && Describe().Contains("scale") && Describe().Contains("taa"),
+              && Describe().Contains("exposure") && Describe().Contains("scale") && Describe().Contains("aa "),
               "Describe names every knob group");
             check.Expect(ResolveFs.Contains("if (uViz == 4)") && ResolveFs.Contains("textureLod(uBloom, vUV, 0.0).rg"),
               "viz 4 paints the velocity target off the bloom unit");
@@ -344,10 +348,10 @@ internal static unsafe class PostChain
               "the resolve's encode is unconditional -- it pairs with the stages' fixed decode, not the engine's gamma");
 
             // The debug VIEWS default off, so /post reset (every Default) clears a stray /post viz with the rest.
-            // /post taa is ON -- it is the default anti-aliaser, and reset must put it back rather than leave
-            // the frame on SMAA.
-            check.Expect(Post.Taa.RungValue(Quality.Shipped) && Post.Viz.Default == 0 && !Post.ClearViz.Default,
-              "the debug views default OFF and taa defaults ON: reset restores the shipped anti-aliaser");
+            // post.aa is TAA -- the default anti-aliaser, and reset must put it back rather than leave the
+            // frame on SMAA.
+            check.Expect(Post.Aa.RungValue(Quality.Shipped) == "taa" && Post.Viz.Default == 0 && !Post.ClearViz.Default,
+              "the debug views default OFF and post.aa defaults to TAA: reset restores the shipped anti-aliaser");
 
             // The shoulder, in C#, mirroring the GLSL: identity below the knee, and never past 1.
             static float Shoulder(float c, float k)
@@ -378,8 +382,8 @@ internal static unsafe class PostChain
         {
             // Every knob the check drove goes back: a missed one would ship its test value as the live value,
             // which is how /post viz once booted every session into the bloom-debug view.
-            Renderer.Scale.V = sc; Post.TaaBlend.V = tb;
-            Post.Taa.V = ta; Post.Fsr.V = fsr; _on = on; Armed = armed; Post.Viz.V = vz;
+            Post.Scale.V = sc; Post.TaaBlend.V = tb;
+            Post.Aa.V = aa; Post.Smaa.V = sm; _on = on; Armed = armed; Post.Viz.V = vz;
             _log = quiet;
         }
         log.Info(check.Ok ? "PostChain.SelfCheck: passed" : "PostChain.SelfCheck: FAILED");

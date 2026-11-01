@@ -29,9 +29,9 @@ internal static partial class GpuGolden
 
     static partial void FsrSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
     {
-        bool fsr = Post.Fsr.V;
-        float scale = Renderer.Scale.V;
-        Post.Fsr.V = true; Renderer.Scale.V = 0.5f;
+        string aa = Post.Aa.V;
+        float scale = Post.Scale.V;
+        Post.Aa.V = Post.AaFsr; Post.Scale.V = 0.5f;
         ImageId color = PostImage(vk, Format.Rgba16F, FsrRw, FsrRh, ImageUse.Sampled | ImageUse.CopyDst, "golden fsr colour");
         ImageId depth = PostImage(vk, Format.R32F, FsrRw, FsrRh, ImageUse.Sampled | ImageUse.CopyDst, "golden fsr depth");
         ImageId vel = PostImage(vk, Format.Rg16F, FsrRw, FsrRh, ImageUse.Sampled | ImageUse.CopyDst, "golden fsr velocity");
@@ -67,7 +67,7 @@ internal static partial class GpuGolden
         finally
         {
             vk.Destroy(rb); vk.Destroy(output); vk.Destroy(vel); vk.Destroy(depth); vk.Destroy(color);
-            Post.Fsr.V = fsr; Renderer.Scale.V = scale;
+            Post.Aa.V = aa; Post.Scale.V = scale;
         }
     }
 

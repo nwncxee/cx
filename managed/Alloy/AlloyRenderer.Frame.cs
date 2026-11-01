@@ -85,7 +85,7 @@ public sealed unsafe partial class AlloyRenderer
         HoldPassTarget(in t);   // #375: the ONE read per pass; the post stack rebinds from this copy
         // #391: TWO viewports. `display` is the engine's -- where the resolve and the post stack go, and what
         // the 2D UI draws at. `viewport` is the RENDER one every owned pass sizes from: the display scaled by
-        // alloy.scale, origin 0 (the owned targets are their own allocations, so an offset would only mean
+        // post.scale, origin 0 (the owned targets are their own allocations, so an offset would only mean
         // drawing into their corner).
         display[0] = t.Vp0; display[1] = t.Vp1; display[2] = t.Vp2; display[3] = t.Vp3;
         viewport[0] = 0; viewport[1] = 0;

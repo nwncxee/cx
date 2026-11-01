@@ -105,8 +105,8 @@ internal static unsafe partial class PostStack
             Name = "fbpost", Resref = FbPostStage.ShdFs, Fs = FbPostStage.FbPostFs,
             Active = static () => FbPostActive(),
         },
-        // #389: TAA ahead of SMAA in the table, exclusive with it in practice -- SmaaStage.Active is false
-        // while TAA is on, so whichever runs is the last stage and writes the engine's target.
+        // #389: TAA ahead of SMAA in the table; post.aa picks at most one of them, so whichever runs is the
+        // last stage and writes the engine's target.
         new()
         {
             Name = "taa", Resref = ShdTaaFs, Fs = TaaStage.StageFs, Param = "uSharp",
@@ -131,7 +131,6 @@ internal static unsafe partial class PostStack
         _fbEffects = (int*)Native.Sym(SymbolMap.EnableFBEffects);
         _fbMask = (uint*)Native.Sym(SymbolMap.FbEffectsMask);
         FbPostStage.Attach(log);
-        SmaaStage.Attach(log);
         ToonStage.Attach(log);
         if (_gspI == null || _gspF == null)
             log.Info("PostStack: the global shader param getters are unresolved -- every stage stays off");
@@ -144,12 +143,10 @@ internal static unsafe partial class PostStack
                                 : GammaActive(Mask()) ? "pow(c, g/2.2) runs after the resolve"
                                 : "at 2.2 the engine skips the stage and so does Alloy")}");
         KnobSurface.Note(static () =>
-            $"the client's Anti-Aliasing video option (settings.tml graphics.video.anti-aliasing.mode = {SmaaStage.Samples}) "
-            + $"is the Alloy post stack's (#377): {(_stages[^1].Failed ? "the aa stage did NOT build and is dropped -- the option is inert"
-                                                   : _targetBad ? "the stack's target is incomplete on this device -- the option is inert"
-                                                   : !Post.Stack.V ? "BYPASSED by /post stack 0"
-                                                   : SmaaStage.Active ? $"runs after the resolve {SmaaStage.Describe()}"
-                                                   : $"off {SmaaStage.Describe()}")}");
+            "the client's Anti-Aliasing video option (settings.tml graphics.video.anti-aliasing.mode) is inert under Alloy: "
+            + $"post.aa picks the anti-aliaser, and the aa stage is {(_stages[^1].Failed ? "dropped, it did NOT build"
+                                                                      : !Post.Stack.V ? "BYPASSED by /post stack 0"
+                                                                      : SmaaStage.Active ? "live " : "idle ")}{SmaaStage.Describe()}");
         KnobSurface.Note(static () => _gspI == null ? null
             : "the client's Toon video option and its three sliders (settings.tml graphics.fbo.toon.enabled, "
             + ".depth-edge-threshold, .color-edge-threshold, .edge-hardness) are the Alloy post stack's cel "
@@ -274,8 +271,8 @@ internal static unsafe partial class PostStack
     {
         ExtenderLog? quiet = _log; _log = null;
         var check = new Checker(log);
-        bool fsr = Post.Fsr.V;
-        Post.Fsr.V = false;
+        string aa = Post.Aa.V;
+        Post.Aa.V = Post.AaTaa;
         try
         {
             foreach (Stage st in _stages)
@@ -336,11 +333,9 @@ internal static unsafe partial class PostStack
             // #389: ...and TAA is exclusive with it, so it is last whenever it is live -- its stage draw is
             // the dithered write and the history never carries the dither.
             check.Expect(_stages[^2].Name == "taa", "taa sits right before aa, and the two are never live together");
-            bool taa = Post.Taa.V; Post.Taa.V = true;
-            check.Expect(!SmaaStage.Active && _stages[^2].Active(), "with /post taa 1 the aa stage is idle and the taa stage live");
-            Post.Taa.V = taa;
+            check.Expect(!SmaaStage.Active && _stages[^2].Active(), "with post.aa taa the aa stage is idle and the taa stage live");
         }
-        finally { _log = quiet; Post.Stack.V = true; Post.Fsr.V = fsr; }
+        finally { _log = quiet; Post.Stack.V = true; Post.Aa.V = aa; }
         log.Info(check.Ok ? $"PostStack.SelfCheck: passed ({_stages.Length} stage(s))" : "PostStack.SelfCheck: FAILED");
         return check.Ok;
     }

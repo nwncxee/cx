@@ -95,6 +95,8 @@ static readonly Knob<float> Density = G.Slider("density", "Density", 0f, 4f, 0.2
   ("Approved on this server: …", "High, 3 settings changed from it."). Nearly every group has
   none. **A group with no User/Advanced row and no `PanelStatus` has no submenu** at all
   (`KnobPanel.Shown`).
+- `knob.ShowIf` hides one row while it returns false (`post.smaa` under `post.aa`); chat and `cx.cfg` still
+  reach the knob, and a press that flips it lays the panel out again.
 - `G.Bag("w")` holds Hidden dynamic keys (`<group>.w<N>.*`) outside the rows, the command,
   `/knobs` and `Reset`.
 - `KnobGroup.Declare` registers the group for enumeration and its generated `/<group>` handler.
@@ -623,7 +625,6 @@ rung). `alloy`'s `PanelStatus` is the renderer's own line ("Running: Alloy / Van
 | quality.weather | Weather | D | (the preset ladder) | U | L | Areas | Rain and snow density, splashes, and the wet and snowed ground. |
 | quality.effects | Effects | D | (the preset ladder) | U | L | Areas | Particles, light halos and other glows. |
 | alloy.enabled | Enable the Alloy renderer | T | on | **C** | R | — | cfg-only (ADR 0030 §6): the way to run without CX's renderer short of uninstalling, and the key `AlloyGate`'s failure notice names. Off, the game's own renderer draws the world and nothing under Graphics applies. |
-| alloy.scale | Render scale | S | 0.25–2.00 step 0.05 · 1.00 | U | L | — | Size of the 3D frame relative to your screen. Below 1 renders fewer pixels and upscales (faster); above 1 supersamples (sharper, slower). The UI is never scaled. |
 | alloy.highlight | Selection highlight | D | glow / outline · **outline** | U | L | — | How a selected or hovered object is marked: an outline with a light fill, or a soft glow around the object. |
 | alloy.lod | Skip models smaller than | S | 0–8 px step 0.5 · 1.0 | A | L | — | Distant models whose projected size is under this many pixels are not drawn at all. Ladders on `quality.detail`. |
 | alloy.cutmip | Distant cut-out fill | S | 0–1 step 0.05 · 0.25 | A | L | — | Leaves, fences and other cut-out textures thin out and shimmer with distance as their alpha averages away. This keeps them as full as they are up close. 0 is the stock test. |
@@ -694,11 +695,12 @@ then "FSR 3.1 is off for this session: <why>."
 
 | key | label | kind | range · default | tier | eff | section | help |
 |---|---|---|---|---|---|---|---|
+| post.scale | Render scale | S | 0.25–2.00 step 0.05 · 1.00 | U | L | Anti-aliasing | Size of the 3D frame relative to your screen. Below 1 renders fewer pixels and upscales (faster); above 1 supersamples (sharper, slower). The UI is never scaled. |
+| post.aa | Anti-aliasing | D | FSR 3.1 / TAA / SMAA / Off · **TAA** (Classic: SMAA) | U | L | Anti-aliasing | How edges are smoothed. FSR 3.1 rebuilds the full-resolution picture from the render scale's smaller frame and the frames before it; at render scale 1 it is the anti-aliasing, and above 1 TAA draws instead. TAA smooths edges over several frames. SMAA smooths each frame on its own. |
+| post.smaa | SMAA quality | D | medium / high / ultra · **high** | U | L | Anti-aliasing | How far SMAA searches along an edge. Higher finds longer edges and costs more. The row shows only while `post.aa` is SMAA (`Knob.ShowIf`). |
 | post.exposure | Exposure | S | 0.25–4 step 0.05 · 1 | U | L | Exposure | Overall brightness before tone mapping. 1 is neutral. |
 | post.bloom | Bloom | S | 0–0.5 step 0.01 · 0.06 | U | L | Bloom | Glow around bright lights. 0 is off. |
 | post.tonemap | Tone mapping | D | shoulder / aces / neutral · aces | U | L | Tone | How bright values above white are compressed. |
-| post.taa | Temporal anti-aliasing | T | on | U | L | Anti-aliasing | Smooths edges over several frames. |
-| post.fsr | FSR 3.1 upscaling | T | off | U | L | Anti-aliasing | Rebuilds the full-resolution picture from the render scale's smaller frame and the frames before it. Replaces temporal anti-aliasing while on; at render scale 1 it is the anti-aliasing. Render scale above 1 keeps it off. |
 | post.threshold | Bloom threshold | S | 0–4 step 0.05 · 1 | A | L | Bloom | |
 | post.knee | Bloom knee | S | 0–1 step 0.05 · 0.5 | A | L | Bloom | |
 | post.taasharp | TAA sharpness | S | 0–1 step 0.05 · 0.3 | A | L | Anti-aliasing | Undoes the softness the history blend leaves. 0 = the raw resolve. |
