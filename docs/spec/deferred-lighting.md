@@ -362,8 +362,8 @@ the pair-debt dispatch's own `min()` over the pairs covering it -- three budgets
 
 The walk and the record writer add four counters to the stats buffer: the tiles whose list overflowed, the lights
 they dropped, the pixels that found no usable record (the record's reach), and the lights the budget left
-unshadowed (its spend). The walk adds three more, reduced a wave (or a tile, on a device without wave
-operations) before one atomic each: the pixels it lit, the list entries they walked, and the most one pixel
+unshadowed (its spend). The walk adds three more, reduced a tile (a wave, under
+`light.deferredwave 1`) before one atomic each: the pixels it lit, the list entries they walked, and the most one pixel
 walked. One frame in 300 counts from zero and is copied back, and the deferred lights' period line reads the
 last of them as lights walked per pixel, on average and at most.
 
