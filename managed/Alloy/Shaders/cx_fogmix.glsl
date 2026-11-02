@@ -36,12 +36,19 @@ vec3 CxFogMix(vec3 lin, vec3 world, float f)
     return pow(max(disp, vec3(0.0)), vec3($SRGB$));
 }
 
-/// The sky dome's fog, for a stage drawing the sky (`band` > 0, SceneFog.SkyBand): the volume's whole ray where
-/// this pass reads it, else the ramp's horizon band -- every ray at or below the horizon fully fogged, fading to
-/// the raw dome `band` of ray elevation above it.
-vec3 CxFogSky(vec3 rgb, vec3 world, float band)
+/// The ramp's horizon band for a stage drawing the sky (`band` > 0, SceneFog.SkyBand): every ray at or below
+/// the horizon fully fogged, fading to the raw dome `band` of ray elevation above it.
+vec3 CxFogSkyBand(vec3 rgb, vec3 world, float band)
 {
-    if (uVFog.x > 0.0) { vec4 v = CxVFogSkyAt(world); return rgb * v.a + v.rgb; }
     if (uFogParams.x == 0.0) return rgb;
     return CxFogMix(rgb, world, 1.0 - smoothstep(0.0, band, normalize(world - uEyePos).z));
+}
+
+/// The sky dome's fog: the volume's whole ray where this pass reads the whole fog, the rain veil over the
+/// band where it carries the veil alone, else the band on its own.
+vec3 CxFogSky(vec3 rgb, vec3 world, float band)
+{
+    if (!CxVFogOn()) return CxFogSkyBand(rgb, world, band);
+    vec4 v = CxVFogSkyAt(world);
+    return (CxVFogWhole() ? rgb : CxFogSkyBand(rgb, world, band)) * v.a + v.rgb;
 }

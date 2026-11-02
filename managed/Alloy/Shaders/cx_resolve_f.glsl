@@ -81,7 +81,7 @@ void main()
     if (uViz == 4) { frag = vec4(0.5 + textureLod(uBloom, vUV, 0.0).rg / 64.0, 0.5, 1.0); return; }
 
     vec3 c = texture(uHdr, vUV).rgb;
-    if (uSkyBare != 0 && uVFog.x > 0.0 && texture(uDepth, vUV).r <= 0.0) { vec4 v = CxVFogSkyUv(vUV); c = c * v.a + v.rgb; }
+    if (uSkyBare != 0 && CxVFogOn() && texture(uDepth, vUV).r <= 0.0) { vec4 v = CxVFogSkyUv(vUV); c = c * v.a + v.rgb; }
     vec3 b = uStrength > 0.0 ? textureLod(uBloom, vUV, 0.0).rgb * uStrength : vec3(0.0);
     // CX-374: the sky is display-referred as its shader authored it (vanilla encodes it straight),
     // and exposure + the tonemap re-graded it ~2x at night. A sky pixel keeps its own value and
@@ -93,9 +93,11 @@ void main()
     {
         vec4 p = uInvVP * vec4(vUV * 2.0 - 1.0, 0.0, 1.0);
         const vec3 lum = vec3(0.2126, 0.7152, 0.0722);
-        if (uVFog.x > 0.0) graded = clamp(dot(CxVFogSkyAt(p.xyz / p.w).rgb, lum) / max(dot(c, lum), 1e-6), 0.0, 1.0);
-        else if (uSkyBand > 0.0) graded = 1.0 - smoothstep(0.0, uSkyBand, normalize(p.xyz / p.w - uEyePos).z);
-        else graded = 0.0;
+        // the volume's share where this pass reads one, and the dome's own band wherever that band still
+        // draws -- which, under the rain veil alone, is both
+        graded = CxVFogOn() ? clamp(dot(CxVFogSkyAt(p.xyz / p.w).rgb, lum) / max(dot(c, lum), 1e-6), 0.0, 1.0) : 0.0;
+        if (!CxVFogWhole() && uSkyBand > 0.0)
+            graded = 1.0 - (1.0 - graded) * smoothstep(0.0, uSkyBand, normalize(p.xyz / p.w - uEyePos).z);
         vec3 g = b * uExposure;
         raw = CxEncode(c + g + overlay);
         if (graded <= 0.0)

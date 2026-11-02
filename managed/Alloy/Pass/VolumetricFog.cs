@@ -21,7 +21,8 @@ internal static class VolumetricFog
     {
         G = KnobGroup.Declare("vfog", "Graphics", "World", master: "Volumetric fog", masterDefault: false,
             masterHelp: "Fog as a lit volume: sunlight falls through it in shafts, lamps glow in it and it drifts on the "
-                      + "wind, built from the area's own fog colour and distance. Replaces the fog above; costs GPU time.",
+                      + "wind, built from the area's own fog colour and distance. Replaces the fog above; costs GPU time. "
+                      + "Off, the same volume still carries far rain while it rains, and nothing else.",
             order: 345, title: "Volumetric fog");
         Enabled = G.Master!;
         G.Status = FogVolume.Describe;

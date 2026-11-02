@@ -3,6 +3,10 @@
 // sky's. Needs cx_fogdecl ahead of it.
 #ifndef CX_VFOG_LIB
 #define CX_VFOG_LIB
+/// Is there a volume to read at all? uVFog.x: 0 none, 1 the whole fog, 2 the rain veil alone.
+bool CxVFogOn() { return uVFog.x > 0.0; }
+/// ...and does it carry the whole fog, rather than the rain veil over the ramp the area already draws?
+bool CxVFogWhole() { return uVFog.x > 0.0 && uVFog.x < 1.5; }
 /// In-scattered light (rgb, LINEAR) and transmittance (a) between the main view's eye and `world`.
 vec4 CxVFogAt(vec3 world)
 {
