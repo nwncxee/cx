@@ -61,7 +61,7 @@ public sealed unsafe partial class AlloyRenderer
         side.Reset();
         side.SetViewport(0, 0, s.W, s.H);
         int arena0 = c.ArenaUsed;
-        if (c.Effects > 0)
+        if (c.Effects)
         {
             ReadOnlySpan<ImageId> read = [c.Hdr, s.Copy];
             cl.ReadImages(read);

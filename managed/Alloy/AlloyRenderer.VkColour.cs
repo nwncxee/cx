@@ -102,9 +102,9 @@ public sealed unsafe partial class AlloyRenderer
         public CommandList? Async;
         public uint WhiteIndex, NullIndex;
         public long Drawn, Skipped;
-        /// <summary>Draws this frame's beam, particle, halo and weather passes recorded: 0 means the reactive mask has
-        /// nothing to measure and is cleared instead of written.</summary>
-        public int Effects;
+        /// <summary>This frame's beam, particle, halo or weather pass drew: when none did, the reactive mask has nothing
+        /// to measure and is cleared instead of written.</summary>
+        public bool Effects;
         /// <summary>This frame's colour pass wrote the G-buffer.</summary>
         public bool GbufWritten;
         /// <summary>The shading-rate image the G-buffer pass being issued reads, or null: its pipelines are made for it.</summary>

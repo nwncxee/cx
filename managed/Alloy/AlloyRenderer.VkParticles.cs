@@ -93,7 +93,7 @@ public sealed unsafe partial class AlloyRenderer
             if (loose < 0 || (groupLit && pass < 0)) return false;
             VkPartBind(side, s, c, loose, pass, g.Tex, soft);
             side.Draw(g.Parts * 6, 1, g.Start * 6, 0);
-            c.Effects++;
+            c.Effects = true;
         }
         ReadOnlySpan<ColorAttachment> colors = [new(c.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default)];
         VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear)));

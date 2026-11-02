@@ -8,6 +8,8 @@ layout(local_size_x = 64) in;
 // CX-43: uAreaAmbient / uAreaDiffuse / uAreaDir ride the pass block.
 #include "cx_pass.glsl"
 layout(std430, binding = 14) coherent buffer CxWxCmd { uint uCmd[]; };
+/// Past the two draw commands: the survivors each command wanted before the record cap, for the cap's log line.
+const int CX_WX_WANTED = 8;
 layout(std430, binding = 15) writeonly buffer CxWxDropsOut { vec4 uDropsOut[]; };
 // CX_WX_REC_CAP, the most survivors one command keeps, is defined by the pass that builds this stage.
 /// The forward lobe of a rain drop's sun scatter (Henyey-Greenstein g).

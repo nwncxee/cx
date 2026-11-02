@@ -51,7 +51,9 @@ void main()
         {
             // no surface normal: the sun reaches a drop through a forward-scattering lobe, a lamp from wherever it stands
             vec3 V = normalize(uEye - P);
-            vec3 up = normalize(vec3(0.0, 0.0, 1.0) - V);
+            // the view ray bent up through the drop toward the sky; straight overhead it is the zenith
+            vec3 bent = vec3(0.0, 0.0, 1.0) - V;
+            vec3 up = dot(bent, bent) > 1e-6 ? normalize(bent) : vec3(0.0, 0.0, 1.0);
             sky = vec4(uAreaAmbient * (uProbeMips > 0.0 ? CxAmbientShape(up) : vec3(1.0)), uFallStep * speed);
             vec3 light = uAreaAmbient + uAreaDiffuse * 0.5;
             if (uLit != 0)
@@ -71,12 +73,13 @@ void main()
     uint n = subgroupBallotBitCount(ballot), first = 0u;
     if (subgroupElect() && n > 0u)
     {
+        atomicAdd(uCmd[CX_WX_WANTED + uSlot], n);
         first = atomicAdd(uCmd[uSlot * 4 + 1], n);
         if (first + n > CX_WX_REC_CAP) atomicMin(uCmd[uSlot * 4 + 1], CX_WX_REC_CAP);
     }
     first = subgroupBroadcastFirst(first);
     if (!keep || first + subgroupBallotExclusiveBitCount(ballot) >= CX_WX_REC_CAP) return;
-    uint at3 = (uint(uBase) + first + subgroupBallotExclusiveBitCount(ballot)) * 3u;
+    uint at3 = (uint(uSlot) * CX_WX_REC_CAP + first + subgroupBallotExclusiveBitCount(ballot)) * 3u;
     uDropsOut[at3] = at;
     uDropsOut[at3 + 1u] = lit;
     uDropsOut[at3 + 2u] = sky;

@@ -14,6 +14,7 @@ void main()
     vLight = lit.rgb;
     vBehind = uDrops[id + 2u].rgb;
 #ifdef CX_MOTION
+    vViewZ = (uView * vec4(pos, 1.0)).z;
     gl_Position = uVp * vec4(pos, 1.0);
     vVel = CxMotionVec(gl_Position, uPrevVP * vec4(pos - uFall * uDrops[id + 2u].w, 1.0));
 #else

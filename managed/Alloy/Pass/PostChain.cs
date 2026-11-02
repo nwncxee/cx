@@ -251,7 +251,7 @@ internal static unsafe class PostChain
 
     /// <summary>The resolve's one call into <c>cx_tonemap</c>: the frame's tone curve lives there and nowhere else,
     /// so the reactive mask measures the change through the very same call.</summary>
-    internal const string ToneCall = "c = CxTonemap(c, uMode, uKnee, uAcesMix);";
+    private const string ToneCall = "c = CxTonemap(c, uMode, uKnee, uAcesMix);";
 
     /// <summary>Off-device (run-demo.sh): the knob table has the shape the frame relies on and the shoulder
     /// really is the identity below its knee -- which is the whole parity argument, and the one property no

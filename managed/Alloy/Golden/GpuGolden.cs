@@ -67,6 +67,7 @@ internal static partial class GpuGolden
         RainMotionApprovedSelfCheck(vk, check, log);
         FarRainApprovedSelfCheck(vk, check, log);
         RainOnlyFogApprovedSelfCheck(vk, check, log);
+        NearTierSelfCheck(vk, check, log);
         vk.PresentDeviceCheck(check, log);
         vk.PresentHoldCheck(check, log);
         vk.ScreenCheck(check, log);

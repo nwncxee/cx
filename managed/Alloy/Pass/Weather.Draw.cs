@@ -36,11 +36,8 @@ internal static unsafe partial class Weather
     /// <summary>The density knob's ceiling, a multiple of the area's own weather.</summary>
     private const float DensityMax = 3f;
 
-    /// <summary>The most lattice points the fall walks: the count's ceiling at the density's.</summary>
-    internal const int FallCap = (int)(CountCap * DensityMax);
-
     /// <summary>The precipitation program's uniform locations, resolved once per program.</summary>
-    internal struct Loc { public int View, Proj, Eye, Centre, Fall, Phase, Time, Box, Size, Kind, Drift, Depth, Tint, Alpha, Soft, Viz, Cover, CoverVp, CoverLayer, CoverSoft, Lit, Back, Count, Slot, Base, FallStep; }
+    internal struct Loc { public int View, Proj, Eye, Centre, Fall, Phase, Time, Box, Size, Kind, Drift, Depth, Tint, Alpha, Soft, Viz, Cover, CoverVp, CoverLayer, CoverSoft, Lit, Back, Count, Slot, FallStep; }
     private static double _phase;
     private static float _wobble;
     private static long _ticks;

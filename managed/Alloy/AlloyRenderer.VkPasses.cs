@@ -47,7 +47,7 @@ public sealed unsafe partial class AlloyRenderer
         s.ArenaUsed = 0;
         s.EngineAt = -1;
         s.Drawn = s.Skipped = 0;
-        s.Effects = 0;
+        s.Effects = false;
         cl.BeginLabel("uploads"u8);
         if (!VkUploads(vk, cl)) return false;
         cl.EndLabel();

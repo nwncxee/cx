@@ -1,3 +1,14 @@
+/// The share of a pixel a drop, flake or roof drip covers (kind 1 rain, 2 snow, 3 drips) at quad coordinate `uv`:
+/// its shape, its contact fade `k` against the scene behind, and its hashed brightness `seed`. Colour and velocity
+/// both read this one value, so the pixels that take a drop's motion are the ones that show it.
+float CxWxCover(int kind, vec2 uv, float k, float seed)
+{
+    float a;
+    if (kind == 2) { float r = length(uv); a = r >= 1.0 ? 0.0 : smoothstep(1.0, 0.5, r); seed = 0.5 + 0.5 * seed; }
+    else { a = (1.0 - uv.x * uv.x) * (1.0 - uv.y * uv.y); a = a * a; }
+    return a * k * k * seed;
+}
+
 /// A drop, flake or roof drip (kind 1 rain, 2 snow, 3 drips) as premultiplied colour over what is behind it: it
 /// hides a fixed share of the scene whatever light is on it, shows `behind` (the sky bent through it) in that
 /// share, and throws `scatter` toward the eye. `cov` is the share of the pixel it covers.

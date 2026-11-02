@@ -44,7 +44,20 @@ public sealed unsafe partial class AlloyRenderer
         public int MVp, MPrevVp, MJitter, MSize;
         public bool MotionTried, MotionLive;
         public CommandList? MotionSide;
+        /// <summary>The camera the weather pass drew with, for the velocity's contact fade.</summary>
+        public Matrix4x4 View, Proj;
+        /// <summary>The commands' readback copy, the frame whose copy is in flight (0 = none), and whether the
+        /// record cap has been reported.</summary>
+        public BufferId CmdRead;
+        public int SampleGen, Frames;
+        public bool CapLogged;
     }
+
+    /// <summary>The command buffer's words: two four-word draw commands, then what each wanted before the cap.</summary>
+    private const int VkWxCmdWords = 10;
+
+    /// <summary>How often, in frames that culled, the commands are read back to see whether the cap bound.</summary>
+    private const int VkWxSamplePeriod = 120;
 
     /// <summary>The bytes of one cull survivor's record.</summary>
     private const int VkWxRecordBytes = 3 * 16;
@@ -76,6 +89,7 @@ public sealed unsafe partial class AlloyRenderer
         if ((fall || drip) && !VkWxCull(cl, s, c, snow ? 2 : 1, fall ? count : 0, drip ? drips : 0, step, view, proj, viewport, near, far, lit))
             return false;
         s.Fell = fall; s.Dripped = drip; s.Kind = snow ? 2 : 1;
+        s.View = view; s.Proj = proj;
         cl.CopyImage(new CopyImageCmd(c.Depth, new ImageRegion(0, 0, 0, 0), c.DepthRead, new ImageRegion(0, 0, 0, 0), c.W, c.H, 1));
         ReadOnlySpan<ImageId> read = [c.DepthRead];
         cl.ReadImages(read);
@@ -118,7 +132,7 @@ public sealed unsafe partial class AlloyRenderer
         ReadOnlySpan<BufferBinding> drops = [new(SsboSlots.WxDrops, s.Drops)];
         VkBindSet(side, p, c, loose, pass, c.Slots, 0, default, drops);
         side.DrawIndirect(s.Cmd, slot * 4 * sizeof(uint), 1);
-        c.Effects++;
+        c.Effects = true;
         return true;
     }
 
@@ -127,7 +141,7 @@ public sealed unsafe partial class AlloyRenderer
     private static bool VkWxCull(CommandList cl, VkWxState s, VkColourState c, int kind, int count, int drips, float step, in Matrix4x4 view,
                                  in Matrix4x4 proj, int* viewport, float near, float far, bool lit)
     {
-        ReadOnlySpan<uint> cmd = [4, 0, 0, 0, 4, 0, 0, VkWxDripBase];
+        ReadOnlySpan<uint> cmd = [4, 0, 0, 0, 4, 0, 0, VkWxDripBase, 0, 0];
         cl.UpdateBuffer(s.Cmd, 0, MemoryMarshal.AsBytes(cmd));
         int arena0 = c.ArenaUsed;
         int fall = count > 0 ? VkWxCullBlock(s, kind, count, 0, step, view, proj, viewport, near, far, lit) : 0;
@@ -140,7 +154,31 @@ public sealed unsafe partial class AlloyRenderer
         cl.SetPipeline(s.Cull!.Pipe);
         if (count > 0) { VkWxCullBind(cl, s, c, fall, fallPass); cl.Dispatch((count + 63) / 64); }
         if (drips > 0) { VkWxCullBind(cl, s, c, drip, dripPass); cl.Dispatch((drips + 63) / 64); }
+        if (++s.Frames % VkWxSamplePeriod == 0 && s.SampleGen == 0)
+        {
+            cl.CopyBuffer(new CopyBufferCmd(s.Cmd, 0, s.CmdRead, 0, VkWxCmdWords * sizeof(uint)));
+            s.SampleGen = s.Frames;
+            cl.WhenDone(VkWxSampleLanded, s.SampleGen);
+        }
         return true;
+    }
+
+    private static readonly Action<int, bool> VkWxSampleLanded = OnVkWxSample;
+
+    /// <summary>A sampled frame's commands landed: when a command wanted more survivors than the records keep, say so
+    /// once, loudly, since the drops past the cap are simply not drawn.</summary>
+    private static void OnVkWxSample(int gen, bool ran)
+    {
+        VkWxState s = _vkWx;
+        if (s.SampleGen != gen) return;
+        s.SampleGen = 0;
+        Span<uint> words = stackalloc uint[VkWxCmdWords];
+        if (!ran || s.Dev == null || s.CapLogged || !s.Dev.ReadMapped(s.CmdRead, 0, MemoryMarshal.AsBytes(words))) return;
+        uint wanted = Math.Max(words[8], words[9]);
+        if (wanted <= VkWxRecCap) return;
+        s.CapLogged = true;
+        _log?.Always($"AlloyRenderer: the precipitation kept {VkWxRecCap} of {wanted} visible drops in one draw -- the rest are "
+                   + "NOT drawn; lower weather.count or weather.density, or raise the record cap");
     }
 
     /// <summary>One cull dispatch's loose block, the pass block staged inside it: <paramref name="kind"/>'s terms, the
@@ -156,7 +194,7 @@ public sealed unsafe partial class AlloyRenderer
         {
             BindPass(st.L.Cubes, viewport, near, far);
             Weather.WriteVk(in s.CullL, kind, &v, &pr, _eyePos, lit);
-            Weather.WriteCullVk(in s.CullL, count, slot, slot == 0 ? 0 : VkWxDripBase, step);
+            Weather.WriteCullVk(in s.CullL, count, slot, step);
         }
         finally { LooseBlock.EndCapture(); }
         return VkArena(st.Block);
@@ -230,9 +268,11 @@ public sealed unsafe partial class AlloyRenderer
         if (content != null && s.Cull == null) log.Always($"AlloyRenderer: {label}'s override did not build (logged above) -- building the embedded stage");
         s.Cull ??= VkWxCullBuild(vk, ShaderStages.Source(Weather.ShdWeatherCull), units, label, log);
         s.Drops = vk.CreateBuffer(new BufferDesc(2L * VkWxRecCap * VkWxRecordBytes, BufferUse.Storage, MemoryKind.Device, "vk weather drops"));
-        s.Cmd = vk.CreateBuffer(new BufferDesc(8 * sizeof(uint), BufferUse.Storage | BufferUse.Indirect | BufferUse.CopyDst,
-                                               MemoryKind.Device, "vk weather commands"));
-        if (s.Cull == null || s.Drops.IsNull || s.Cmd.IsNull)
+        s.Cmd = vk.CreateBuffer(new BufferDesc(VkWxCmdWords * sizeof(uint), BufferUse.Storage | BufferUse.Indirect | BufferUse.CopyDst
+                                               | BufferUse.CopySrc, MemoryKind.Device, "vk weather commands"));
+        s.CmdRead = vk.CreateBuffer(new BufferDesc(VkWxCmdWords * sizeof(uint), BufferUse.CopyDst, MemoryKind.Readback,
+                                                   "vk weather commands readback"));
+        if (s.Cull == null || s.Drops.IsNull || s.Cmd.IsNull || s.CmdRead.IsNull)
         {
             s.Cull = null;
             log.Always("AlloyRenderer: the Vulkan weather cull or its buffers were REFUSED (logged above) -- nothing falls on Vulkan this session");
@@ -275,7 +315,7 @@ public sealed unsafe partial class AlloyRenderer
         side.SetPipeline(s.Pipe[VkSplashProg]);
         VkBindSet(side, p, c, loose, pass, c.Slots, 0);
         side.Draw(4, n, 0, 0);
-        c.Effects++;
+        c.Effects = true;
         return true;
     }
 

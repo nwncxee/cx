@@ -16,6 +16,5 @@ uniform float uCoverSoft;    // metres of feather at a cover edge
 uniform int uLit;        // 1 = take the light rig; 0 = flat area terms
 uniform float uBack;     // snow: how strongly a flake scatters light forward, toward an eye looking at the light
 uniform int uCount;      // the cull: how many lattice points this dispatch walks
-uniform int uSlot;       // ...the indirect command its survivors count into
-uniform int uBase;       // ...and the first record they take
+uniform int uSlot;       // ...the indirect command its survivors count into, and so their records
 uniform float uFallStep; // metres the field fell this frame at speed 1

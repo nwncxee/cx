@@ -45,12 +45,12 @@ public sealed unsafe partial class AlloyRenderer
                                        Matrix4x4* vp, in Matrix4x4 prevVp)
     {
         VkProg p = s.Motion!;
-        Matrix4x4 none = Matrix4x4.Identity;
+        Matrix4x4 view = s.View, proj = s.Proj;
         Array.Clear(p.Block);
         LooseBlock.Capture(p.Members, p.Block);
         try
         {
-            Weather.WriteVk(in s.ML, kind, vp, &none, _eyePos, false);
+            Weather.WriteVk(in s.ML, kind, &view, &proj, _eyePos, false);
             LooseBlock.Set(s.MVp, *vp);
             LooseBlock.Set(s.MPrevVp, prevVp);
             LooseBlock.Set(s.MJitter, [PostChain.JitterX, PostChain.JitterY]);

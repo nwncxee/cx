@@ -102,7 +102,7 @@ public sealed unsafe partial class AlloyRenderer
             }
             side.BindSet(0, new BindSet(ubo[..nu], ssbo[..ns], sampled[..nt], default));
             side.Draw(4, run, 0, 0);
-            c.Effects++;
+            c.Effects = true;
             if (img.IsNull) bare += run;
             groups++;
             at += run;
