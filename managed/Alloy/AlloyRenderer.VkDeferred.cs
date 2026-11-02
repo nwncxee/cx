@@ -122,19 +122,25 @@ public sealed unsafe partial class AlloyRenderer
         int len = (s.ArenaUsed - arena0 + 3) & ~3;
         if (len > 0) cl.UpdateBuffer(s.Arena, arena0, s.ArenaBytes.AsSpan(arena0, Math.Min(len, ArenaCap - arena0)));
 
+        cl.BeginLabel("shadow record"u8);
         cl.SetPipeline(d.Shadow!.Pipe);
         VkDefBindSet(cl, d.Shadow, d.ShVis, d.ShKey, looseSh, pass, slots);
         cl.Dispatch((rw + VkShGroup - 1) / VkShGroup, (rh + VkShGroup - 1) / VkShGroup);
+        cl.EndLabel();
+        cl.BeginLabel("walk"u8);
         cl.SetPipeline(walk.Pipe);
         VkDefBindSet(cl, walk, s.Hdr, d.LightRec, looseWalk, pass, slots);
         cl.Dispatch((w + VkDefGroup - 1) / VkDefGroup, (h + VkDefGroup - 1) / VkDefGroup);
+        cl.EndLabel();
         d.Wrote = true;
         if (film)
         {
             // the film's highlights on top: a linear term of the same pixel, so a second read-modify-write is exact
+            cl.BeginLabel("film"u8);
             cl.SetPipeline(d.Film!.Pipe);
             VkDefBindSet(cl, d.Film, s.Hdr, d.LightRec, looseFilm, pass, slots);
             cl.Dispatch((w + VkDefGroup - 1) / VkDefGroup, (h + VkDefGroup - 1) / VkDefGroup);
+            cl.EndLabel();
         }
         if (!d.Live)
         {
@@ -333,14 +339,14 @@ public sealed unsafe partial class AlloyRenderer
         cl.BindSet(0, new BindSet(ubo[..nu], ssbo[..ns], sampled[..nt], images[..ni]));
     }
 
-    /// <summary>Stage <paramref name="resref"/>'s text as GL would compile it -- its own override, then the library
-    /// swaps inside whichever text won, back to the embedded stage for an override that moved a block's term out of
-    /// it -- with <paramref name="define"/> on top, and that text translated for Vulkan. Null when the record
-    /// contract refused it (logged).</summary>
-    private static (VkProgramText Text, string Src)? VkDefText(string resref, string? define, string label, ExtenderLog log)
+    /// <summary>Stage <paramref name="resref"/>'s text as GL would compile it -- its override (or <paramref name="content"/>),
+    /// the library swaps inside it, the embedded stage for an override that moved a block's term out of it -- with
+    /// <paramref name="define"/> on top, translated for Vulkan. Null when the record contract refused it (logged).</summary>
+    private static (VkProgramText Text, string Src)? VkDefText(string resref, string? define, string label, ExtenderLog log,
+                                                              string? content = null)
     {
         string embedded = ShaderStages.Source(resref);
-        string src = ShaderSource.Content(ShaderResource.Override(resref, log) ?? embedded, log);
+        string src = ShaderSource.Content(content ?? ShaderResource.Override(resref, log) ?? embedded, log);
         if (!ShaderContract.BlocksSafe(embedded, src))
         {
             log.Always($"AlloyRenderer: {label}'s override reads a uniform block's terms outside the block -- building the embedded stage");

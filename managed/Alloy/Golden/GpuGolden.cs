@@ -60,6 +60,7 @@ internal static partial class GpuGolden
         PipelineLibrarySelfCheck(vk, check, log);
         LinkedVerticesSelfCheck(vk, check, log);
         BindlessPastSelfCheck(vk, check, log);
+        DeferredWalkSelfCheck(vk, check, log);
         vk.PresentDeviceCheck(check, log);
         vk.PresentHoldCheck(check, log);
         vk.ScreenCheck(check, log);
