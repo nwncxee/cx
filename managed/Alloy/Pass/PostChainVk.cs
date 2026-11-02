@@ -18,7 +18,8 @@ internal static unsafe class PostChainVk
     private sealed class ResolveLocs
     {
         public int SkyRaw = -1, SkyBand = -1, InvVp = -1, Eye = -1, VFog = -1, VFogVp = -1, SkyBare = -1, OverlayOn = -1;
-        public int Strength = -1, Mode = -1, Knee = -1, Exposure = -1, AcesMix = -1, Dither = -1, Viz = -1;
+        public int Strength = -1, Dither = -1, Viz = -1;
+        public PostChain.GradeLocs Grade = PostChain.GradeLocs.None;
     }
 
     /// <summary>The bloom stages' loose terms.</summary>
@@ -73,18 +74,18 @@ internal static unsafe class PostChainVk
         ["uSrc"] = TextureSlots.PostHdr, ["uHdr"] = TextureSlots.PostHdr, ["uCur"] = TextureSlots.PostHdr,
         ["uBloom"] = TextureSlots.PostBloom, ["uDepth"] = TextureSlots.PostDepth, ["uOverlay"] = TextureSlots.PostOverlay,
         ["uHist"] = TextureSlots.PostHist, ["uVel"] = TextureSlots.PostVel, ["uMask"] = TextureSlots.PostHdr,
-        ["uCopy"] = TextureSlots.PostCopy, ["uReact"] = TextureSlots.PostReact,
+        ["uCopy"] = TextureSlots.PostCopy, ["uReact"] = TextureSlots.PostReact, ["uWx"] = TextureSlots.PostWx,
         ["texFBColor"] = TextureSlots.PostHdr, ["texFBDepth"] = TextureSlots.PostDepth,
     };
 
     /// <summary>What a post draw samples, by the role its declaration names: <c>uSrc</c>/<c>uHdr</c>/<c>uCur</c>
-    /// read <see cref="Src"/>, then <c>uBloom</c>, <c>uDepth</c>, <c>uHist</c>, <c>uVel</c>, <c>uReact</c> and SMAA's four;
+    /// read <see cref="Src"/>, then <c>uBloom</c>, <c>uDepth</c>, <c>uHist</c>, <c>uVel</c>, <c>uReact</c>, <c>uWx</c> and SMAA's four;
     /// any other sampler, or a null image, takes a stand-in. <see cref="Storage"/> is the one storage buffer a draw may read.</summary>
     internal readonly record struct Inputs(ImageId Src, ImageId Bloom = default, ImageId Depth = default,
                                            ImageId Hist = default, ImageId Vel = default, bool HistLinear = false,
                                            ImageId Mask = default, ImageId Edges = default, ImageId Area = default,
                                            ImageId Search = default, ImageId Weights = default,
-                                           BufferBinding Storage = default, ImageId React = default);
+                                           BufferBinding Storage = default, ImageId React = default, ImageId Wx = default);
 
     /// <summary>How a post draw meets its target: replacing it, adding to it, or alpha-over it.</summary>
     internal enum Blend : byte { None, Add, Over }
@@ -123,10 +124,7 @@ internal static unsafe class PostChainVk
         LooseBlock.Set(r.SkyBare, invVp == default ? 1 : 0);
         LooseBlock.Set(r.OverlayOn, StageResources.VkOverlay.IsNull ? 0 : 1);
         LooseBlock.Set(r.Strength, bloom ? Post.Bloom.V : 0f);
-        LooseBlock.Set(r.Mode, Post.Tonemap.V);
-        LooseBlock.Set(r.Knee, Post.TmKnee.V);
-        LooseBlock.Set(r.Exposure, Post.Exposure.V);
-        LooseBlock.Set(r.AcesMix, Post.AcesMix.V);
+        PostChain.WriteGrade(r.Grade);
         LooseBlock.Set(r.Dither, last ? PostChain.DitherLsb : 0f);
         bool motion = Post.Viz.V == PostChain.VizMotion;
         if (motion && vel.IsNull && !s.VizSaid)
@@ -304,6 +302,7 @@ internal static unsafe class PostChainVk
                 "uHist" => (t.Hist, t.HistLinear ? s.Linear : s.Nearest),
                 "uVel" => (t.Vel, s.Linear),
                 "uReact" => (t.React, s.Linear),
+                "uWx" => (t.Wx, s.Linear),
                 "uMask" => (t.Mask, s.Linear),
                 "uEdges" => (t.Edges, s.Linear),
                 "uArea" => (t.Area, s.Linear),
@@ -464,8 +463,8 @@ internal static unsafe class PostChainVk
             ResolveLocs r = s.R;
             r.SkyRaw = p.Loc("uSkyRaw"); r.SkyBand = p.Loc("uSkyBand"); r.InvVp = p.Loc("uInvVP"); r.Eye = p.Loc("uEyePos");
             r.VFog = p.Loc("uVFog"); r.VFogVp = p.Loc("uVFogVp"); r.SkyBare = p.Loc("uSkyBare"); r.OverlayOn = p.Loc("uOverlayOn");
-            r.Strength = p.Loc("uStrength"); r.Mode = p.Loc("uMode"); r.Knee = p.Loc("uKnee"); r.Exposure = p.Loc("uExposure");
-            r.AcesMix = p.Loc("uAcesMix"); r.Dither = p.Loc("uDither"); r.Viz = p.Loc("uViz");
+            r.Strength = p.Loc("uStrength"); r.Grade = PostChain.LocateGrade(p.Loc);
+            r.Dither = p.Loc("uDither"); r.Viz = p.Loc("uViz");
         }, log);
         s.Failed = s.Down == null || s.Up == null || s.Resolve == null || s.Ubo.IsNull;
         if (s.Failed) log.Always("PostChainVk: a post program or its block was REFUSED (logged above) -- the Vulkan frame cannot reach the screen");

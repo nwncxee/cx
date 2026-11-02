@@ -8,40 +8,97 @@ using CX.Rhi;
 namespace CX.Alloy;
 
 /// <summary>
-/// The precipitation after FSR 3.1's upscale: this frame's cull records drawn onto the display-size frame before bloom
-/// and the tonemap, unjittered, with no depth target. A drop behind the scene fades out against the render-size depth
-/// copy the way every streak meets geometry, so FSR never holds a streak in the history it reconstructs from.
+/// The precipitation after the temporal resolve: this frame's cull records and crowns drawn onto the display-size frame
+/// after FSR 3.1's upscale, or into an overlay the taa stage composites after its resolve, unjittered, with no depth
+/// target. A drop behind the scene fades out against the render-size depth copy the way every streak meets geometry, and
+/// a crown behind it is discarded against the same copy, so neither resolve holds them in the history it reconstructs from.
 /// </summary>
 public sealed unsafe partial class AlloyRenderer
 {
-    /// <summary>The fall and the drips the weather pass held back, onto <paramref name="hdr"/> at <paramref name="w"/> by
-    /// <paramref name="h"/>: the upscaled frame, or the scene's own when FSR stood down this frame after the scene held them.
-    /// Nothing when none were held back; false only when the arena is full.</summary>
-    internal static bool VkWeatherLate(VkBackend vk, CommandList cl, ImageId hdr, int w, int h, float near, float far, ExtenderLog log)
+    /// <summary>The fall, the drips and the crowns the weather pass held back, onto <paramref name="into"/> at
+    /// <paramref name="w"/> by <paramref name="h"/>: the upscaled frame, the taa overlay (<paramref name="clear"/>), or the
+    /// scene's own frame when neither resolve ran after the scene held them. False only when the arena is full.</summary>
+    internal static bool VkWeatherLate(VkBackend vk, CommandList cl, ImageId into, bool clear, int w, int h, float near, float far,
+                                       ExtenderLog log)
     {
         VkWxState s = _vkWx;
-        if (s.Dev != vk || !s.Late || (!s.Fell && !s.Dripped) || _capturing) return true;
+        if (!VkWxHeld(vk, s)) return true;
         VkColourState c = _vkc;
-        s.LateSide ??= new CommandList("vulkan weather after the upscale", 1 << 12, log);
+        s.LateSide ??= new CommandList("vulkan weather after the resolve", 1 << 12, log);
         CommandList side = s.LateSide;
         side.Reset();
         int arena0 = c.ArenaUsed;
         side.SetViewport(0, 0, w, h);
         int* full = stackalloc int[4] { 0, 0, w, h };
         Matrix4x4 view = s.View, proj = s.Proj;
-        // the upscaled frame is resolved, so the drops draw through the camera with the jitter taken back out
+        // the resolved frame is unjittered, so the drops draw through the camera with the jitter taken back out
         proj.M31 -= PostChain.JitterX * proj.M34; proj.M32 -= PostChain.JitterY * proj.M34;
         int k = s.Kind == 2 ? 1 : 0;
         if (s.Fell && !VkWxLateDraw(vk, side, s, c, k, s.Kind, 0, &view, &proj, full, near, far, log)) return false;
         if (s.Dripped && !VkWxLateDraw(vk, side, s, c, 0, 3, 1, &view, &proj, full, near, far, log)) return false;
-        ReadOnlySpan<ColorAttachment> colors = [new(hdr, 0, 0, LoadOp.Load, StoreOp.Store, default)];
+        if (s.Splashed && VkWxLatePipe(vk, s, VkSplashProg, log) is { IsNull: false } sp
+            && !VkSplashDraw(side, s, c, view, proj, full, near, far, s.Lit, sp, true)) return false;
+        ReadOnlySpan<ColorAttachment> colors = [new(into, 0, 0, clear ? LoadOp.Clear : LoadOp.Load, StoreOp.Store, default)];
         VkFlushPass(cl, side, arena0, new RenderPassDesc(colors));
-        if (!s.LateLive)
+        // the taa stage samples the overlay inside its own render pass, where no barrier can be placed
+        if (clear) cl.ReadImages([into]);
+        Weather.Site site = clear ? Weather.Site.AfterTaa : Weather.Site.AfterUpscale;
+        if (s.LateSaid != site)
         {
-            s.LateLive = true;
-            log.Always($"AlloyRenderer: the Vulkan precipitation draws after the FSR upscale -- {w}x{h}, unjittered, out of FSR's history");
+            s.LateSaid = site;
+            log.Always($"AlloyRenderer: the Vulkan precipitation draws after the {(clear ? "TAA resolve" : "FSR upscale")} -- {w}x{h}, "
+                     + "unjittered, out of its history");
         }
         return true;
+    }
+
+    /// <summary>The display-size overlay the precipitation draws into for the taa stage to composite, made with the device and
+    /// resized with the display; null when nothing was held back this frame, or when the image was refused, which is said once
+    /// and draws the precipitation in the scene from the next frame.</summary>
+    internal static ImageId VkWeatherOverlay(VkBackend vk, int w, int h, ExtenderLog log)
+    {
+        VkWxState s = _vkWx;
+        if (!VkWxHeld(vk, s)) return default;
+        if (!s.Over.IsNull && s.OverW == w && s.OverH == h) return s.Over;
+        vk.Destroy(s.Over);
+        s.Over = VkTarget(vk, Format.Rgba16F, w, h, "vk precipitation after taa");
+        s.OverW = w; s.OverH = h;
+        if (s.Over.IsNull) VkWxLateRefused(s, $"its {w}x{h} overlay after the TAA resolve was REFUSED (logged above)", log);
+        return s.Over;
+    }
+
+    /// <summary>The taa stage this frame composites no precipitation (an override without <c>uWxOn</c>): said once, and the
+    /// precipitation draws in the scene, with its own motion, from the next frame.</summary>
+    internal static void VkWeatherNoOverlay(ExtenderLog log)
+    {
+        VkWxState s = _vkWx;
+        if (s.Late && !s.LateFailed)
+            VkWxLateRefused(s, "the taa stage composites none (an override without uWxOn)", log);
+    }
+
+    /// <summary>A late path refused for <paramref name="why"/>: said once, and the precipitation draws in the scene for the
+    /// rest of the session.</summary>
+    private static void VkWxLateRefused(VkWxState s, string why, ExtenderLog log)
+    {
+        log.Always($"AlloyRenderer: the Vulkan precipitation after the resolve stands down -- {why}; from the next frame it "
+                 + "draws in the scene, where FSR and TAA smear it over the ground");
+        s.LateFailed = true;
+    }
+
+    /// <summary>Whether this frame's weather pass held anything back for after the resolve.</summary>
+    private static bool VkWxHeld(VkBackend vk, VkWxState s)
+        => s.Dev == vk && s.Late && (s.Fell || s.Dripped || s.Splashed) && !_capturing;
+
+    /// <summary>Program <paramref name="k"/>'s depth-less pipeline, made once per device; null when it was refused, which is
+    /// said once and draws the precipitation in the scene from the next frame.</summary>
+    private static PipelineId VkWxLatePipe(VkBackend vk, VkWxState s, int k, ExtenderLog log)
+    {
+        if (!s.LatePipe[k].IsNull) return s.LatePipe[k];
+        string label = VkWxLabel(k);
+        PipelineDesc d = VkWxPipeDesc(s.Prog[k]!, $"vk {label} after the resolve", false);
+        s.LatePipe[k] = vk.CreatePipeline(in d);
+        if (s.LatePipe[k].IsNull) VkWxLateRefused(s, $"its {label} pipeline was REFUSED (logged above)", log);
+        return s.LatePipe[k];
     }
 
     /// <summary>One kind through program <paramref name="k"/> on its depth-less pipeline, indirect from the cull's command
@@ -51,27 +108,9 @@ public sealed unsafe partial class AlloyRenderer
     {
         VkProg? p = s.Prog[k];
         if (p == null) return true;
-        if (s.LatePipe[k].IsNull)
-        {
-            var d = new PipelineDesc
-            {
-                Vs = p.Vs, Fs = p.Fs, Topo = Topology.TriangleStrip, Raster = new RasterState(CullMode.None),
-                Label = k == 1 ? "vk snow after the upscale" : "vk rain after the upscale",
-            };
-            d.Targets.ColorCount = 1;
-            d.Targets.Colors[0] = Format.Rgba16F;
-            d.Targets.Samples = 1;
-            d.Blend[0] = new AttachmentBlend(true, BlendFactor.One, BlendFactor.OneMinusSrcAlpha, BlendFactor.One, BlendFactor.OneMinusSrcAlpha);
-            s.LatePipe[k] = vk.CreatePipeline(in d);
-            if (s.LatePipe[k].IsNull)
-            {
-                log.Always("AlloyRenderer: the Vulkan precipitation's after-upscale pipeline was REFUSED (logged above) -- from the next "
-                         + "frame the rain draws in the scene, where FSR smears it over the ground");
-                s.LateFailed = true;
-                return true;
-            }
-        }
-        side.SetPipeline(s.LatePipe[k]);
+        PipelineId pipe = VkWxLatePipe(vk, s, k, log);
+        if (pipe.IsNull) return true;
+        side.SetPipeline(pipe);
         Array.Clear(p.Block);
         LooseBlock.Capture(p.Members, p.Block);
         try

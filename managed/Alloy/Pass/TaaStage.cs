@@ -1,4 +1,5 @@
 using CX.Framework;
+using CX.Graphics.Rhi;
 
 namespace CX.Alloy;
 
@@ -13,6 +14,21 @@ internal static class TaaStage
     /// thing TAA gets held against SMAA for; <c>post.taasharp</c> is a cross-tap unsharp mask that puts the
     /// contrast back. The taps are texel-exact fetches: the history is NEAREST at this stage's own size.</summary>
     internal static string StageFs => ShaderSource.Get("cx_taastage_f.glsl");
+
+    /// <summary>The copy-out's precipitation terms: whether <c>uWx</c> holds this frame's, and the resolve's exposure and
+    /// tone curve its light takes. <see cref="On"/> below 0 = an override that composites none.</summary>
+    internal readonly record struct WxLocs(int On, PostChain.GradeLocs Grade);
+
+    /// <summary>...resolved inside the stage program's open resolve.</summary>
+    internal static WxLocs LocateWxVk(GuiVkProg p)
+        => new(p.Loc("uWxOn"), PostChain.LocateGrade(p.Loc));
+
+    /// <summary>The copy-out's precipitation terms into the open capture: <paramref name="on"/> when the overlay holds any.</summary>
+    internal static void WriteWxVk(in WxLocs l, bool on)
+    {
+        LooseBlock.Set(l.On, on ? 1 : 0);
+        PostChain.WriteGrade(l.Grade);
+    }
 
     /// <summary>History invalid: the next resolve takes the current frame whole. World edge (area transition)
     /// and every post.aa change.</summary>
@@ -29,8 +45,12 @@ internal static class TaaStage
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
-        check.Expect(StageFs.Contains("vec4 CxStage(vec4 c)") && ShaderContract.DisplaySafe(StageFs) && ShaderContract.SlotSafe(StageFs, "uHist"),
-          "the stage is display space and reads the history");
+        check.Expect(StageFs.Contains("vec4 CxStage(vec4 c)") && ShaderContract.DisplaySafe(StageFs) && ShaderContract.SlotSafe(StageFs, "uHist", "uWx")
+          && !ShaderContract.SlotSafe(StageFs.Replace("uniform sampler2D uWx;", ""), "uHist", "uWx"),
+          "the stage is display space and reads the history and the precipitation overlay");
+        check.Expect(StageFs.Contains("if (uWxOn != 0)") && StageFs.Contains("CxWxOver(pow(h, vec3($SRGB$)), textureLod(uWx, vUV, 0.0),")
+          && StageFs.Contains("h = pow(max(lin, vec3(0.0)), vec3(1.0 / $SRGB$));"),
+          "the precipitation lands over the resolved pixel in display-linear light, after the sharpen, and goes back out encoded");
         check.Expect(StageFs.Contains("uniform float uSharp;") && StageFs.Contains("h * 4.0 - n") && StageFs.Contains("if (uSharp > 0.0)"),
           "the copy-out carries the unsharp mask and is the raw history at taasharp 0");
         check.Expect(Post.TaaSharp.Default > 0f && Post.TaaSharp.Min == 0f, "post.taasharp ships sharpening, and 0 is the A/B back to the raw resolve");

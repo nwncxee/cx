@@ -4,6 +4,7 @@ using System.Numerics;
 using CX.Engine;
 using CX.Framework;
 using CX.Graphics;
+using CX.Graphics.Rhi;
 
 namespace CX.Alloy;
 
@@ -106,6 +107,25 @@ internal static unsafe class PostChain
 
     /// <summary>TAA draws and its stage can build: <c>post.aa</c> picks FSR while FSR cannot draw (a render scale
     /// above 1, or a refusal) -- the gate the jitter and the accumulator share.</summary>
+    /// <summary>A program's grade terms: the tone curve, its knee, the exposure before it and the ACES mix.</summary>
+    internal readonly record struct GradeLocs(int Mode, int Knee, int Exposure, int AcesMix)
+    {
+        internal static readonly GradeLocs None = new(-1, -1, -1, -1);
+    }
+
+    /// <summary>...resolved through <paramref name="loc"/> inside the program's open resolve.</summary>
+    internal static GradeLocs LocateGrade(Func<string, int> loc)
+        => new(loc("uMode"), loc("uKnee"), loc("uExposure"), loc("uAcesMix"));
+
+    /// <summary>The frame's grade into the open capture: the resolve, the reactive mask and the taa copy-out take it here.</summary>
+    internal static void WriteGrade(GradeLocs l)
+    {
+        LooseBlock.Set(l.Mode, Post.Tonemap.V);
+        LooseBlock.Set(l.Knee, Post.TmKnee.V);
+        LooseBlock.Set(l.Exposure, Post.Exposure.V);
+        LooseBlock.Set(l.AcesMix, Post.AcesMix.V);
+    }
+
     internal static bool TaaOn => !PostStack.TaaVkFailed && Post.Aa.V == Post.AaFsr && !Fsr.On;
     /// <summary>The projection jitters this frame: TAA or FSR reconstructs from it.</summary>
     internal static bool Jittered => TaaOn || Fsr.On;

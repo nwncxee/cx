@@ -25,7 +25,7 @@ public sealed unsafe partial class AlloyRenderer
         public bool Tried, Live, Failed;
         /// <summary>This frame's copy was taken, so the mask is written and its readers may have it.</summary>
         public bool Armed;
-        public int Mode = -1, Knee = -1, AcesMix = -1, Exposure = -1;
+        public PostChain.GradeLocs Grade = PostChain.GradeLocs.None;
     }
 
     private static VkReactState _vkReact = new();
@@ -91,10 +91,7 @@ public sealed unsafe partial class AlloyRenderer
         GuiVkProg p = s.Prog!;
         Array.Clear(p.Block);
         LooseBlock.Capture(p.Members, p.Block);
-        LooseBlock.Set(s.Mode, Post.Tonemap.V);
-        LooseBlock.Set(s.Knee, Post.TmKnee.V);
-        LooseBlock.Set(s.AcesMix, Post.AcesMix.V);
-        LooseBlock.Set(s.Exposure, Post.Exposure.V);
+        PostChain.WriteGrade(s.Grade);
         LooseBlock.EndCapture();
         int at = p.Block.Length == 0 ? 0 : VkArena(p.Block);
         if (at < 0) return;
@@ -127,8 +124,7 @@ public sealed unsafe partial class AlloyRenderer
             // through Content as the resolve's text is: a hak that ships cx_tonemap.shd regrades both, or neither
             s.Prog = PostChainVk.Program(vk, PostChain.FullscreenVs, ShaderSource.Content(ReactiveFs, log), "reactive mask", q =>
             {
-                s.Mode = q.Loc("uMode"); s.Knee = q.Loc("uKnee");
-                s.AcesMix = q.Loc("uAcesMix"); s.Exposure = q.Loc("uExposure");
+                s.Grade = PostChain.LocateGrade(q.Loc);
             }, log);
             if (s.Prog != null)
             {

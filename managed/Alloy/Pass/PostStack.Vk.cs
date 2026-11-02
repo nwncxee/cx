@@ -21,6 +21,8 @@ internal static unsafe partial class PostStack
         /// <summary>The toon stage's terms, and the aa stage's <c>uRt</c>; unused by every other stage.</summary>
         public ToonStage.VkLocs Toon;
         public int Rt = -1;
+        /// <summary>The taa stage's precipitation terms; unused by every other stage.</summary>
+        public TaaStage.WxLocs Wx = new(-1, PostChain.GradeLocs.None);
     }
 
     /// <summary>The stack on one device, replaced whole with the device: the stages, the ping-pong pair, the velocity
@@ -88,8 +90,6 @@ internal static unsafe partial class PostStack
         int dw = display[2], dh = display[3];
         int* full = stackalloc int[4] { 0, 0, dw, dh };
         bool fsr = FsrVk(vk, s, cl, ref hdr, depth, vp, vpClean, ref viewport, full, near, far, fovY, log);
-        // the rain the scene held back for the upscale draws here, on the display-size frame, or on the scene's own if FSR stood down
-        if (!AlloyRenderer.VkWeatherLate(vk, cl, hdr, fsr ? dw : viewport[2], fsr ? dh : viewport[3], near, far, log)) return false;
         int live = 0;
         string missing = "";
         bool taa = false;
@@ -126,6 +126,17 @@ internal static unsafe partial class PostStack
         s.Up = taa && PostChain.TaaUpsample && (viewport[2] != dw || viewport[3] != dh);
         if (live != 0 && !Pair(vk, s, s.Up ? viewport[2] : dw, s.Up ? viewport[3] : dh, log)) { live = 0; taa = false; _targetBad = true; }
         TaaLive = taa;
+        // the precipitation the scene held back: onto the upscaled frame, into the overlay the taa stage composites after its
+        // resolve, or onto the scene's own frame when neither resolve ran after all
+        ImageId wx = default;
+        if (taa && Weather.DrawsWhere(fsr, taa) == Weather.Site.AfterTaa)
+        {
+            if (s.Stages[TaaAt].Wx.On >= 0) wx = AlloyRenderer.VkWeatherOverlay(vk, dw, dh, log);
+            else AlloyRenderer.VkWeatherNoOverlay(log);
+        }
+        bool over = !wx.IsNull, wide = fsr || over;
+        if (!AlloyRenderer.VkWeatherLate(vk, cl, over ? wx : hdr, over, wide ? dw : viewport[2], wide ? dh : viewport[3], near, far, log))
+            return false;
         ImageId vel = taa || fsr ? s.Vel : default;
         if (live == 0)
         {
@@ -157,10 +168,12 @@ internal static unsafe partial class PostStack
                 StageResources.VkUploadFrame(v.P.StageFrame, v.P.Stage, -1, main: true);
             }
             if (st.Name == "toon") ToonStage.WriteVk(in v.Toon);
+            if (i == TaaAt) TaaStage.WriteWxVk(in v.Wx, !wx.IsNull);
             if (aa) SmaaStage.WriteVk(v.Rt);
             int at = PostChainVk.Close(cl, v.P!);
             PostChainVk.Draw(cl, v.P!, PostChainVk.FormatOf(into), PostChainVk.Blend.None, into, LoadOp.Clear, last ? rect : new Rect(0, 0, s.W, s.H),
-                             at, new PostChainVk.Inputs(read, default, depth, hist, Weights: aa ? SmaaStage.VkWeights : default), log);
+                             at, new PostChainVk.Inputs(read, default, depth, hist, Weights: aa ? SmaaStage.VkWeights : default,
+                                                        Wx: i == TaaAt ? wx : default), log);
             cl.EndLabel();
             (read, write) = (write, read);
         }
@@ -198,6 +211,7 @@ internal static unsafe partial class PostStack
             v.Param = st.Param == null ? -1 : p.Loc(st.Param);
             if (st == _fbpost) v.Fb = FbPostStage.LocateVk();
             if (st.Name == "toon") v.Toon = ToonStage.LocateVk(p);
+            if (st.Name == "taa") v.Wx = TaaStage.LocateWxVk(p);
             v.Rt = p.Loc("uRt");
         }, log, st == _fbpost ? FbPostStage.NativeId : -1);
         if (v.P == null && st == _fbpost && FbPostStage.HostsNative)

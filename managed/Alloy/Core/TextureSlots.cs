@@ -59,6 +59,9 @@ internal static class TextureSlots
     /// accumulate. <see cref="PostBloom"/>'s unit on <see cref="PostHdr"/>'s argument: neither program reads the
     /// bloom, and the two names never meet in one program.</summary>
     internal const uint PostCopy = PostBloom, PostReact = PostBloom;
+    /// <summary>The precipitation the taa stage's copy-out composites after the resolve. <see cref="PostBloom"/>'s unit:
+    /// the copy-out reads no bloom.</summary>
+    internal const uint PostWx = PostBloom;
     /// <summary>The SCENE's environment map, which vanilla's water reflects. Shares
     /// <see cref="Probe"/>'s unit -- the water program stopped sampling the probe when the port replaced
     /// Alloy's own reflection with stock's, so the two are never live in one program. A sampler2D here and

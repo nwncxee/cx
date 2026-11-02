@@ -29,6 +29,7 @@ out float vSeed;               // per-crown brightness, times the distance fade
 out float vAge;                // 0..1 through the crown's life
 out float vPart;               // 0 = the ring on the ground, >0 = a droplet streak
 out vec3 vLight;               // linear light at this splash
+out float vViewZ;              // view z of this vertex (negative ahead): the late draw's own depth test
 
 vec2 cxClusterXY;
 #define CX_CLUSTER_XY cxClusterXY

@@ -122,6 +122,8 @@ internal static unsafe partial class PostStack
 
     /// <summary>The hosted-chain stage, the one the stack drops and rebuilds on its own.</summary>
     private static readonly Stage _fbpost = Array.Find(_stages, static s => s.Name == "fbpost")!;
+    /// <summary>The taa stage's place in <see cref="_stages"/>.</summary>
+    private static readonly int TaaAt = Array.FindIndex(_stages, static s => s.Name == "taa");
 
     internal static void Attach(ExtenderLog log)
     {

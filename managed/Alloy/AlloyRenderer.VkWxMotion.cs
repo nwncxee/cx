@@ -10,7 +10,8 @@ namespace CX.Alloy;
 /// <summary>
 /// The precipitation's own motion on Vulkan: this frame's cull records drawn again into the velocity field after the camera,
 /// the movers and the grass, each streak or flake writing its fall only in its core, so TAA moves a drop's history with
-/// the drop and the ground's with the ground. Under FSR the rain draws after the upscale and writes no motion.
+/// the drop and the ground's with the ground. It runs only when TAA resolves a frame the rain was drawn into: the rain
+/// otherwise draws after the resolve and writes no motion.
 /// </summary>
 public sealed unsafe partial class AlloyRenderer
 {
@@ -20,7 +21,7 @@ public sealed unsafe partial class AlloyRenderer
                                          in Matrix4x4 prevVp, ExtenderLog log)
     {
         VkWxState s = _vkWx;
-        if (s.Dev != vk || (!s.Fell && !s.Dripped) || _capturing || !Weather.MotionWanted(Fsr.On, PostChain.TaaOn)) return;
+        if (s.Dev != vk || (!s.Fell && !s.Dripped) || _capturing || !Weather.MotionWanted(Fsr.On, PostChain.TaaOn, s.Late)) return;
         if (!VkWxMotionEnsure(vk, s, log)) return;
         VkColourState c = _vkc;
         CommandList side = s.MotionSide!;
