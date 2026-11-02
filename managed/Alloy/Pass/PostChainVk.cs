@@ -18,7 +18,8 @@ internal static unsafe class PostChainVk
     private sealed class ResolveLocs
     {
         public int SkyRaw = -1, SkyBand = -1, InvVp = -1, Eye = -1, VFog = -1, VFogVp = -1, SkyBare = -1, OverlayOn = -1;
-        public int Strength = -1, Mode = -1, Knee = -1, Exposure = -1, AcesMix = -1, Dither = -1, Viz = -1;
+        public int Strength = -1, Dither = -1, Viz = -1;
+        public PostChain.GradeLocs Grade = PostChain.GradeLocs.None;
     }
 
     /// <summary>The bloom stages' loose terms.</summary>
@@ -123,10 +124,7 @@ internal static unsafe class PostChainVk
         LooseBlock.Set(r.SkyBare, invVp == default ? 1 : 0);
         LooseBlock.Set(r.OverlayOn, StageResources.VkOverlay.IsNull ? 0 : 1);
         LooseBlock.Set(r.Strength, bloom ? Post.Bloom.V : 0f);
-        LooseBlock.Set(r.Mode, Post.Tonemap.V);
-        LooseBlock.Set(r.Knee, Post.TmKnee.V);
-        LooseBlock.Set(r.Exposure, Post.Exposure.V);
-        LooseBlock.Set(r.AcesMix, Post.AcesMix.V);
+        PostChain.WriteGrade(r.Grade);
         LooseBlock.Set(r.Dither, last ? PostChain.DitherLsb : 0f);
         bool motion = Post.Viz.V == PostChain.VizMotion;
         if (motion && vel.IsNull && !s.VizSaid)
@@ -465,8 +463,8 @@ internal static unsafe class PostChainVk
             ResolveLocs r = s.R;
             r.SkyRaw = p.Loc("uSkyRaw"); r.SkyBand = p.Loc("uSkyBand"); r.InvVp = p.Loc("uInvVP"); r.Eye = p.Loc("uEyePos");
             r.VFog = p.Loc("uVFog"); r.VFogVp = p.Loc("uVFogVp"); r.SkyBare = p.Loc("uSkyBare"); r.OverlayOn = p.Loc("uOverlayOn");
-            r.Strength = p.Loc("uStrength"); r.Mode = p.Loc("uMode"); r.Knee = p.Loc("uKnee"); r.Exposure = p.Loc("uExposure");
-            r.AcesMix = p.Loc("uAcesMix"); r.Dither = p.Loc("uDither"); r.Viz = p.Loc("uViz");
+            r.Strength = p.Loc("uStrength"); r.Grade = PostChain.LocateGrade(p.Loc);
+            r.Dither = p.Loc("uDither"); r.Viz = p.Loc("uViz");
         }, log);
         s.Failed = s.Down == null || s.Up == null || s.Resolve == null || s.Ubo.IsNull;
         if (s.Failed) log.Always("PostChainVk: a post program or its block was REFUSED (logged above) -- the Vulkan frame cannot reach the screen");

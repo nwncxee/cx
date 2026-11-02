@@ -36,12 +36,13 @@ public sealed unsafe partial class AlloyRenderer
         int k = s.Kind == 2 ? 1 : 0;
         if (s.Fell && !VkWxLateDraw(vk, side, s, c, k, s.Kind, 0, &view, &proj, full, near, far, log)) return false;
         if (s.Dripped && !VkWxLateDraw(vk, side, s, c, 0, 3, 1, &view, &proj, full, near, far, log)) return false;
-        if (s.Splashed && !VkSplashLateDraw(vk, side, s, c, &view, &proj, full, near, far, log)) return false;
+        if (s.Splashed && VkWxLatePipe(vk, s, VkSplashProg, log) is { IsNull: false } sp
+            && !VkSplashDraw(side, s, c, view, proj, full, near, far, s.Lit, sp, true)) return false;
         ReadOnlySpan<ColorAttachment> colors = [new(into, 0, 0, clear ? LoadOp.Clear : LoadOp.Load, StoreOp.Store, default)];
         VkFlushPass(cl, side, arena0, new RenderPassDesc(colors));
         // the taa stage samples the overlay inside its own render pass, where no barrier can be placed
         if (clear) cl.ReadImages([into]);
-        int site = clear ? 2 : 1;
+        Weather.Site site = clear ? Weather.Site.AfterTaa : Weather.Site.AfterUpscale;
         if (s.LateSaid != site)
         {
             s.LateSaid = site;
@@ -60,14 +61,28 @@ public sealed unsafe partial class AlloyRenderer
         if (!VkWxHeld(vk, s)) return default;
         if (!s.Over.IsNull && s.OverW == w && s.OverH == h) return s.Over;
         vk.Destroy(s.Over);
-        s.Over = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, w, h, 1, 1, 1, 1,
-                                              ImageUse.Sampled | ImageUse.ColorTarget, "vk precipitation after taa"));
+        s.Over = VkTarget(vk, Format.Rgba16F, w, h, "vk precipitation after taa");
         s.OverW = w; s.OverH = h;
-        if (!s.Over.IsNull) return s.Over;
-        log.Always($"AlloyRenderer: the Vulkan precipitation's {w}x{h} overlay after the TAA resolve was REFUSED (logged above) -- "
-                 + "from the next frame the rain draws in the scene, where TAA smears it over the ground");
+        if (s.Over.IsNull) VkWxLateRefused(s, $"its {w}x{h} overlay after the TAA resolve was REFUSED (logged above)", log);
+        return s.Over;
+    }
+
+    /// <summary>The taa stage this frame composites no precipitation (an override without <c>uWxOn</c>): said once, and the
+    /// precipitation draws in the scene, with its own motion, from the next frame.</summary>
+    internal static void VkWeatherNoOverlay(ExtenderLog log)
+    {
+        VkWxState s = _vkWx;
+        if (s.Late && !s.LateFailed)
+            VkWxLateRefused(s, "the taa stage composites none (an override without uWxOn)", log);
+    }
+
+    /// <summary>A late path refused for <paramref name="why"/>: said once, and the precipitation draws in the scene for the
+    /// rest of the session.</summary>
+    private static void VkWxLateRefused(VkWxState s, string why, ExtenderLog log)
+    {
+        log.Always($"AlloyRenderer: the Vulkan precipitation after the resolve stands down -- {why}; from the next frame it "
+                 + "draws in the scene, where FSR and TAA smear it over the ground");
         s.LateFailed = true;
-        return default;
     }
 
     /// <summary>Whether this frame's weather pass held anything back for after the resolve.</summary>
@@ -79,24 +94,10 @@ public sealed unsafe partial class AlloyRenderer
     private static PipelineId VkWxLatePipe(VkBackend vk, VkWxState s, int k, ExtenderLog log)
     {
         if (!s.LatePipe[k].IsNull) return s.LatePipe[k];
-        VkProg p = s.Prog[k]!;
-        string label = k == VkSplashProg ? "splash" : k == 1 ? "snow" : "rain";
-        var d = new PipelineDesc
-        {
-            Vs = p.Vs, Fs = p.Fs, Topo = Topology.TriangleStrip, Raster = new RasterState(CullMode.None),
-            Label = $"vk {label} after the resolve",
-        };
-        d.Targets.ColorCount = 1;
-        d.Targets.Colors[0] = Format.Rgba16F;
-        d.Targets.Samples = 1;
-        d.Blend[0] = new AttachmentBlend(true, BlendFactor.One, BlendFactor.OneMinusSrcAlpha, BlendFactor.One, BlendFactor.OneMinusSrcAlpha);
+        string label = VkWxLabel(k);
+        PipelineDesc d = VkWxPipeDesc(s.Prog[k]!, $"vk {label} after the resolve", false);
         s.LatePipe[k] = vk.CreatePipeline(in d);
-        if (s.LatePipe[k].IsNull)
-        {
-            log.Always($"AlloyRenderer: the Vulkan {label} pipeline after the resolve was REFUSED (logged above) -- from the next "
-                     + "frame the precipitation draws in the scene, where FSR and TAA smear it over the ground");
-            s.LateFailed = true;
-        }
+        if (s.LatePipe[k].IsNull) VkWxLateRefused(s, $"its {label} pipeline was REFUSED (logged above)", log);
         return s.LatePipe[k];
     }
 
@@ -124,34 +125,6 @@ public sealed unsafe partial class AlloyRenderer
         ReadOnlySpan<BufferBinding> drops = [new(SsboSlots.WxDrops, s.Drops)];
         VkBindSet(side, p, c, loose, pass, c.Slots, 0, default, drops);
         side.DrawIndirect(s.Cmd, slot * 4 * sizeof(uint), 1);
-        return true;
-    }
-
-    /// <summary>The rain and footfall crowns on the splash program's depth-less pipeline, each part tested against the depth
-    /// copy by its own stage; false only when the arena is full.</summary>
-    private static bool VkSplashLateDraw(VkBackend vk, CommandList side, VkWxState s, VkColourState c, Matrix4x4* view,
-                                         Matrix4x4* proj, int* full, float near, float far, ExtenderLog log)
-    {
-        VkProg p = s.Prog[VkSplashProg]!;
-        PipelineId pipe = VkWxLatePipe(vk, s, VkSplashProg, log);
-        if (pipe.IsNull) return true;
-        int n;
-        Array.Clear(p.Block);
-        LooseBlock.Capture(p.Members, p.Block);
-        try
-        {
-            BindPass(p.L.CubeCount, full, near, far);
-            n = Weather.WriteSplashVk(in s.Sp, view, proj, full, _eyePos, s.Lit);
-            LooseBlock.Set(s.Sp.Late, 1);
-            LooseBlock.Set(s.Sp.Screen, full[2], (float)full[3]);
-        }
-        finally { LooseBlock.EndCapture(); }
-        if (n == 0) return true;
-        int loose = VkArena(p.Block), pass = VkArenaPass();
-        if (loose < 0 || pass < 0) return false;
-        side.SetPipeline(pipe);
-        VkBindSet(side, p, c, loose, pass, c.Slots, 0);
-        side.Draw(4, n, 0, 0);
         return true;
     }
 }

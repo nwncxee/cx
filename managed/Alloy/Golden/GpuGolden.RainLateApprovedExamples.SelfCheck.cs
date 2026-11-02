@@ -40,7 +40,7 @@ internal static partial class GpuGolden
         check.Expect(have, "late rain: cx_wx_over declares CxWxOver");
         if (have)
         {
-            PipelineId pipe = vk.CreateCompute(Version + "layout(local_size_x = 1) in;\n" + CaseBlocks(8, 1) + tone + over + """
+            PipelineId pipe = vk.CreateCompute(Version + "layout(local_size_x = 1) in;\n" + CaseBlocks(7, 1) + tone + over + """
                 void main()
                 {
                     uint i = gl_WorkGroupID.x * uint(CX_GOLD_IN);
@@ -49,9 +49,9 @@ internal static partial class GpuGolden
                     uOut[gl_WorkGroupID.x * uint(CX_GOLD_OUT)] = v.g;
                 }
                 """, "golden late rain");
-            float[] cases = [0.4f, 0f, 0f, 1f, 1f, 0.8f, 0f, 0f,
-                             0.4f, 0.2f, 0.25f, 1f, 0f, 0f, 0f, 0f,
-                             0.4f, 0.2f, 0.25f, 2f, 0f, 0f, 0f, 0f];
+            float[] cases = [0.4f, 0f, 0f, 1f, 1f, 0.8f, 0f,
+                             0.4f, 0.2f, 0.25f, 1f, 0f, 0f, 0f,
+                             0.4f, 0.2f, 0.25f, 2f, 0f, 0f, 0f];
             float[]? got = pipe.IsNull ? null : RunCases(vk, log, pipe, 3, cases, 3, "golden late rain");
             vk.Destroy(pipe);
             check.Expect(got != null, "late rain: the stage was refused (logged above)");

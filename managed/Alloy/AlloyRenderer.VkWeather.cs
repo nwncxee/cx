@@ -49,14 +49,15 @@ public sealed unsafe partial class AlloyRenderer
         /// <summary>This frame's fall, drips and crowns wait for the late draw after the temporal resolve, lit or flat; a late
         /// pipeline or the overlay was refused once, so they draw in the scene for the rest of the session.</summary>
         public bool Late, Lit, LateFailed;
-        /// <summary>This frame's crowns wait for the late draw.</summary>
+        /// <summary>The splash program is ready this frame: with <see cref="Late"/>, the crowns wait for the late draw.</summary>
         public bool Splashed;
         /// <summary>The rain, snow and splash pipelines without depth, for the frame after the resolve.</summary>
         public readonly PipelineId[] LatePipe = new PipelineId[3];
         public CommandList? LateSide;
-        /// <summary>Where the late draw last said it drew: 1 after the upscale, 2 after the TAA resolve, -1 not yet.</summary>
-        public int LateSaid = -1;
-        /// <summary>The display-size overlay the taa stage composites the precipitation from, and its size.</summary>
+        /// <summary>Where the late draw last said it drew; the scene until it first draws.</summary>
+        public Weather.Site LateSaid;
+        /// <summary>The display-size overlay the taa stage composites the precipitation from, and its size. It aliases
+        /// nothing: it lives from the late draw to the taa stage, inside the post pair's lanes.</summary>
         public ImageId Over;
         public int OverW, OverH;
         /// <summary>The commands' readback copy, the frame whose copy is in flight (0 = none), and whether the
@@ -119,8 +120,8 @@ public sealed unsafe partial class AlloyRenderer
         if (!late && fall && !VkWxDraw(side, s, c, k, snow ? 2 : 1, 0, view, proj, viewport, near, far, lit)) return false;
         if (!late && drip && !VkWxDraw(side, s, c, 0, 3, 1, view, proj, viewport, near, far, lit)) return false;
         bool splash = VkWxEnsure(vk, s, VkSplashProg, log);
-        s.Splashed = late && splash;
-        if (!late && splash && !VkSplashDraw(side, s, c, view, proj, viewport, near, far, lit)) return false;
+        s.Splashed = splash;
+        if (!late && splash && !VkSplashDraw(side, s, c, view, proj, viewport, near, far, lit, s.Pipe[VkSplashProg], false)) return false;
         ReadOnlySpan<ColorAttachment> colors = [new(c.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default)];
         VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear)));
         if (!s.Live)
@@ -313,9 +314,10 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The splash program's slot in <see cref="VkWxState"/>, past rain's and snow's.</summary>
     private const int VkSplashProg = 2;
 
-    /// <summary>The rain and footfall crowns, through the splash program; false only when the arena is full.</summary>
+    /// <summary>The rain and footfall crowns, through the splash program on <paramref name="pipe"/>: in the scene, or
+    /// <paramref name="late"/> after the resolve, where each part tests the depth copy itself. False only when the arena is full.</summary>
     private static bool VkSplashDraw(CommandList side, VkWxState s, VkColourState c, in Matrix4x4 view, in Matrix4x4 proj,
-                                     int* viewport, float near, float far, bool lit)
+                                     int* viewport, float near, float far, bool lit, PipelineId pipe, bool late)
     {
         VkProg p = s.Prog[VkSplashProg]!;
         Matrix4x4 v = view, pr = proj;
@@ -326,16 +328,38 @@ public sealed unsafe partial class AlloyRenderer
         {
             BindPass(p.L.CubeCount, viewport, near, far);
             n = Weather.WriteSplashVk(in s.Sp, &v, &pr, viewport, _eyePos, lit);
+            LooseBlock.Set(s.Sp.Late, late ? 1 : 0);
+            LooseBlock.Set(s.Sp.Screen, [(float)viewport[2], viewport[3]]);
         }
         finally { LooseBlock.EndCapture(); }
         if (n == 0) return true;
         int loose = VkArena(p.Block), pass = VkArenaPass();
         if (loose < 0 || pass < 0) return false;
-        side.SetPipeline(s.Pipe[VkSplashProg]);
+        side.SetPipeline(pipe);
         VkBindSet(side, p, c, loose, pass, c.Slots, 0);
         side.Draw(4, n, 0, 0);
-        c.Effects = true;
+        c.Effects |= !late;
         return true;
+    }
+
+    /// <summary>Program <paramref name="k"/>'s name in logs and pipeline labels.</summary>
+    private static string VkWxLabel(int k) => k == VkSplashProg ? "splash" : k == 1 ? "snow" : "rain";
+
+    /// <summary>The precipitation's premultiplied pipeline over <paramref name="p"/>: depth-tested against the scene's target,
+    /// or with no depth target for the frame after the resolve.</summary>
+    private static PipelineDesc VkWxPipeDesc(VkProg p, string label, bool depth)
+    {
+        var d = new PipelineDesc
+        {
+            Vs = p.Vs, Fs = p.Fs, Topo = Topology.TriangleStrip, Raster = new RasterState(CullMode.None), Label = label,
+        };
+        if (depth) d.Depth = new DepthState(true, false, WorldDepth.NearerOrEqual);
+        d.Targets.ColorCount = 1;
+        d.Targets.Colors[0] = Format.Rgba16F;
+        if (depth) d.Targets.Depth = Format.D32F;
+        d.Targets.Samples = 1;
+        d.Blend[0] = new AttachmentBlend(true, BlendFactor.One, BlendFactor.OneMinusSrcAlpha, BlendFactor.One, BlendFactor.OneMinusSrcAlpha);
+        return d;
     }
 
     /// <summary>Program <paramref name="k"/> (0 rain, 1 snow, 2 splash) and its premultiplied pipeline, made once per device.</summary>
@@ -345,7 +369,7 @@ public sealed unsafe partial class AlloyRenderer
         s.Tried[k] = true;
         s.Side ??= new CommandList("vulkan weather", 1 << 14, log);
         (string vs, string fs) = k == VkSplashProg ? Weather.VkSplashTexts(log) : Weather.VkTexts(k == 1, log);
-        string label = k == VkSplashProg ? "splash" : k == 1 ? "snow" : "rain";
+        string label = VkWxLabel(k);
         VkProgramText t = WorldDepth.Translate(ShaderResource.Tokens(vs), ShaderResource.Tokens(fs), VkPrograms.Units);
         VkProg? p = VkBuild(vk, t, label, true, log);
         if (p != null)
@@ -353,16 +377,7 @@ public sealed unsafe partial class AlloyRenderer
             VkWxState w = s;
             if (k == VkSplashProg) LooseBlock.Resolve(p.Names, () => w.Sp = Weather.VkSplashLocs());
             else LooseBlock.Resolve(p.Names, () => w.L[k] = Weather.VkLocs());
-            var d = new PipelineDesc
-            {
-                Vs = p.Vs, Fs = p.Fs, Topo = Topology.TriangleStrip, Raster = new RasterState(CullMode.None),
-                Depth = new DepthState(true, false, WorldDepth.NearerOrEqual), Label = $"vk {label}",
-            };
-            d.Targets.ColorCount = 1;
-            d.Targets.Colors[0] = Format.Rgba16F;
-            d.Targets.Depth = Format.D32F;
-            d.Targets.Samples = 1;
-            d.Blend[0] = new AttachmentBlend(true, BlendFactor.One, BlendFactor.OneMinusSrcAlpha, BlendFactor.One, BlendFactor.OneMinusSrcAlpha);
+            PipelineDesc d = VkWxPipeDesc(p, $"vk {label}", true);
             s.Pipe[k] = vk.CreatePipeline(in d);
             if (s.Pipe[k].IsNull) p = null;
         }

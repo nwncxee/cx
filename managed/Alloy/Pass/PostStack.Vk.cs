@@ -22,7 +22,7 @@ internal static unsafe partial class PostStack
         public ToonStage.VkLocs Toon;
         public int Rt = -1;
         /// <summary>The taa stage's precipitation terms; unused by every other stage.</summary>
-        public TaaStage.WxLocs Wx = new(-1, -1, -1, -1, -1);
+        public TaaStage.WxLocs Wx = new(-1, PostChain.GradeLocs.None);
     }
 
     /// <summary>The stack on one device, replaced whole with the device: the stages, the ping-pong pair, the velocity
@@ -128,10 +128,14 @@ internal static unsafe partial class PostStack
         TaaLive = taa;
         // the precipitation the scene held back: onto the upscaled frame, into the overlay the taa stage composites after its
         // resolve, or onto the scene's own frame when neither resolve ran after all
-        ImageId wx = taa && !fsr && s.Stages[TaaAt].Wx.On >= 0 ? AlloyRenderer.VkWeatherOverlay(vk, dw, dh, log) : default;
-        bool shown = fsr || !wx.IsNull;
-        if (!AlloyRenderer.VkWeatherLate(vk, cl, wx.IsNull ? hdr : wx, !wx.IsNull, shown ? dw : viewport[2], shown ? dh : viewport[3],
-                                         near, far, log))
+        ImageId wx = default;
+        if (taa && Weather.DrawsWhere(fsr, taa) == Weather.Site.AfterTaa)
+        {
+            if (s.Stages[TaaAt].Wx.On >= 0) wx = AlloyRenderer.VkWeatherOverlay(vk, dw, dh, log);
+            else AlloyRenderer.VkWeatherNoOverlay(log);
+        }
+        bool over = !wx.IsNull, wide = fsr || over;
+        if (!AlloyRenderer.VkWeatherLate(vk, cl, over ? wx : hdr, over, wide ? dw : viewport[2], wide ? dh : viewport[3], near, far, log))
             return false;
         ImageId vel = taa || fsr ? s.Vel : default;
         if (live == 0)
