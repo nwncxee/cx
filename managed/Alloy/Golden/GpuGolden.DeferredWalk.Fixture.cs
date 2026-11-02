@@ -25,12 +25,14 @@ internal static partial class GpuGolden
     private static readonly DwMat DwCoated = new(0.45f, 0.5f, 1f, 1f, 0.05f, new Vector3(0.04f), 0, new Vector3(0.6f, 0.1f, 0.1f), 0);
     private static readonly DwMat DwSheen = new(0.8f, 0.2f, 0.5f, 0f, 0f, new Vector3(0.03f), 1, new Vector3(0.2f, 0.25f, 0.6f), 0);
     private static readonly DwMat DwSkin = new(0.5f, 0.3f, 0.6f, 0f, 0f, new Vector3(0.028f), 2, new Vector3(0.8f, 0.55f, 0.45f), GbStockLobe);
-    private static readonly DwMat DwFilm = new(0.3f, 0.4f, 1f, 0.8f, 0.02f, new Vector3(0.04f), 0, new Vector3(0.35f), GbFilm | GbBaked);
+    private static readonly DwMat DwFilm = new(0.3f, 0.4f, 1f, 0.8f, 0.3f, new Vector3(0.04f), 0, new Vector3(0.35f), GbFilm | GbBaked);
     private static readonly DwMat DwRing = new(0.2f, 0.9f, 1f, 1f, 0.03f, new Vector3(0.9f, 0.8f, 0.6f), 0, new Vector3(0.1f), 0);
 
     /// <summary>One plane of a scene: a point, its normal, and the material a pixel takes where it is hit;
-    /// <see cref="Where"/> limits it to a pixel region (null = everywhere it is the nearest hit).</summary>
-    private sealed record DwPlane(Vector3 At, Vector3 N, Func<int, int, DwMat> Mat, Func<int, int, bool>? Where = null);
+    /// <see cref="Where"/> limits it to a pixel region (null = everywhere it is the nearest hit), and
+    /// <see cref="Skew"/> puts the frame depth that share past the record's -- a coarse fragment's offset.</summary>
+    private sealed record DwPlane(Vector3 At, Vector3 N, Func<int, int, DwMat> Mat, Func<int, int, bool>? Where = null,
+                                  Func<int, int, float>? Skew = null);
 
     /// <summary>The scene camera: 60 degrees vertical, reversed depth, looking from <paramref name="eye"/> at
     /// <paramref name="target"/>; the near and far planes the froxel grid spans.</summary>
@@ -85,6 +87,7 @@ internal static partial class GpuGolden
                 px[at + 13] = 1f;
                 px[at + 14] = m.Albedo.X; px[at + 15] = m.Albedo.Y; px[at + 16] = m.Albedo.Z;
                 px[at + 22] = depth;
+                px[at + 38] = hit.Skew?.Invoke(x, y) ?? 0f;
                 bool left = x < DwW / 2;
                 for (int k = 0; k < 4; k++)
                 {
@@ -120,18 +123,21 @@ internal static partial class GpuGolden
     /// <summary>The sheen records the scenes' slots 1 and 2 name: a cloth's blue sheen, a skin's warm one.</summary>
     private static readonly Vector4[] DwSheenRecords = [Vector4.Zero, new(0.6f, 0.5f, 0.4f, 0.5f), new(0.5f, 0.3f, 0.25f, 0.6f)];
 
-    /// <summary>E3: a stone wall and its baked floor, 40 lights of mixed colour and reach, 8 casting shadows.</summary>
+    /// <summary>E3: a stone wall and its baked floor, 40 lights of mixed colour and reach, 8 casting shadows. Every
+    /// other floor column's record sits 1.5% off the frame depth: past the bare tolerance, inside the floor's slope.</summary>
     private static DeferredRigScene DwWall()
     {
         DeferredRigScene sc = DwCamera(new Vector3(0f, 2f, 10f), new Vector3(0f, 1.5f, 0f));
         DwSurfaces(sc, [new(Vector3.Zero, Vector3.UnitZ, (_, _) => DwStone),
-                        new(Vector3.Zero, Vector3.UnitY, (_, _) => DwStone with { Flags = GbBaked })]);
+                        new(Vector3.Zero, Vector3.UnitY, (_, _) => DwStone with { Flags = GbBaked },
+                            Skew: (x, _) => (x & 1) * 0.015f)]);
         DwLights(sc, 40, new Vector3(-8f, 0.3f, 0.3f), new Vector3(8f, 4f, 3f), 2f, 8f, 8, 5, 3889u);
         sc.Sheen = DwSheenRecords;
         return sc;
     }
 
-    /// <summary>E4: six materials side by side on one wall under the same 16 lights, the film strip baked.</summary>
+    /// <summary>E4: six materials side by side on one wall under the same 16 lights, the film strip baked, with three
+    /// static lamps in front of it (the last on cube slot 4) for the film pass to mirror.</summary>
     private static DeferredRigScene DwMaterials()
     {
         DwMat[] strips = [DwStone, DwGlossy, DwCoated, DwSheen, DwSkin, DwFilm];
@@ -139,6 +145,10 @@ internal static partial class GpuGolden
         DwSurfaces(sc, [new(Vector3.Zero, Vector3.UnitZ, (x, _) => strips[x * strips.Length / DwW]),
                         new(Vector3.Zero, Vector3.UnitY, (x, _) => strips[x * strips.Length / DwW])]);
         DwLights(sc, 16, new Vector3(-7f, 0.5f, 0.5f), new Vector3(7f, 4f, 3f), 3f, 9f, 4, 3, 1201u);
+        float[] film = [5f, 1f, 1.5f, 6f, 1f, 0.9f, 0.7f, 255f,  6f, 0.5f, 2f, 6f, 0.7f, 0.8f, 1f, 255f,
+                        4.5f, 2f, 1f, 7f, 1f, 1f, 1f, 260f];
+        sc.Lights = [.. sc.Lights, .. film];
+        sc.Cubes = [.. sc.Cubes, new Vector4(4.5f, 2f, 1f, 7f)];
         sc.Sheen = DwSheenRecords;
         return sc;
     }

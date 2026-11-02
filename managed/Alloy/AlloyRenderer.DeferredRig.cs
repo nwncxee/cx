@@ -13,9 +13,9 @@ namespace CX.Alloy;
 /// here, never a knob, so the user's own <c>cx.cfg</c> cannot move the answer.</summary>
 internal sealed class DeferredRigScene
 {
-    /// <summary>Floats per pixel in <see cref="Pixels"/>: the <c>CxGbuf</c> fields the twin packs, then the record
-    /// texel's four slots and visibilities.</summary>
-    internal const int PixelFloats = 38;
+    /// <summary>Floats per pixel in <see cref="Pixels"/>: the <c>CxGbuf</c> fields the twin packs, the record texel's
+    /// four slots and visibilities, then how far the frame depth sits past the record's (a share of it).</summary>
+    internal const int PixelFloats = 39;
     /// <summary>Floats per light in <see cref="Lights"/>: position and radius, then colour and the slot word.</summary>
     internal const int LightFloats = 8;
     /// <summary>The <c>CxDraw</c> record's floats and where its <c>ext1</c> (the sheen) starts in it.</summary>
@@ -81,7 +81,7 @@ public sealed unsafe partial class AlloyRenderer
                imageStore(uG0, p, w0);
                imageStore(uG1, p, w1);
                imageStore(uG2, p, uvec4(w2));
-               float d = g.viewDepth > 0.0 ? uPzw / g.viewDepth - uPzz : 0.0;
+               float d = g.viewDepth > 0.0 ? uPzw / (g.viewDepth * (1.0 + F(i, 38))) - uPzz : 0.0;
                imageStore(uDepthOut, p, vec4(d));
                if ((p.x & 1) == 0 && (p.y & 1) == 0)
                {
