@@ -25,7 +25,9 @@ internal static unsafe class SsaoPassVk
         /// there is no blur, so the lit stage reads one name either way.</summary>
         public ImageId Raw, Out;
         public int W, H, SrcW, SrcH, Runs;
-        public bool Failed, Said;
+        /// <summary>The <see cref="AlloyRenderer.FrameSeq"/> whose estimate is in <see cref="Out"/>; -1 = none.</summary>
+        public int LiveFrame = -1;
+        public bool Failed, Said, Half;
         public SsaoBlock Blk;
     }
 
@@ -40,14 +42,15 @@ internal static unsafe class SsaoPassVk
         SsaoVkState s = _s;
         int n = s.Runs; s.Runs = 0;
         return s.Failed ? "ao FAILED" : n == 0 ? "ao idle"
-             : $"ao {(float)n / MathF.Max(frames, 1):F2} runs/frame at {s.W}x{s.H}{(Half ? $" (half of {s.SrcW}x{s.SrcH})" : "")}";
+             : $"ao {(float)n / MathF.Max(frames, 1):F2} runs/frame at {s.W}x{s.H}{(s.Half ? $" (half of {s.SrcW}x{s.SrcH})" : "")}";
     }
 
-    /// <summary>This frame's visibility is in <see cref="Visibility"/>: the lit stage may read it.</summary>
-    internal static bool Live { get; private set; }
+    /// <summary>This frame's visibility is in <see cref="Visibility"/>: the lit stage may read it. False before the
+    /// pass records, since a resize there destroys the target an earlier bind of this frame would hold.</summary>
+    internal static bool Live => _s.LiveFrame == AlloyRenderer.FrameSeq;
 
     /// <summary>...at half the frame's extent, which the lit stage upsamples depth-aware (<c>uSsaoHalf</c>).</summary>
-    internal static bool Half { get; private set; }
+    internal static bool Half => Live && _s.Half;
 
     /// <summary>The target the lit stage samples, null until the pass has run once.</summary>
     internal static ImageId Visibility => _s.Out;
@@ -59,10 +62,9 @@ internal static unsafe class SsaoPassVk
     internal static void Record(VkBackend vk, CommandList cl, ImageId depth, bool depthFilled, Matrix4x4* proj,
                                 int* viewport, ExtenderLog log)
     {
-        Live = false;
-        Half = false;
         SsaoVkState s = _s;
         if (s.Dev != vk) _s = s = new SsaoVkState { Dev = vk };
+        s.LiveFrame = -1;
         if (s.Failed || !SsaoPass.Active || !depthFilled || depth.IsNull) return;
         bool half = SsaoPass.Wanted;
         if (!Ensure(vk, log) || !Targets(vk, viewport[2], viewport[3], half, log)) return;
@@ -90,8 +92,8 @@ internal static unsafe class SsaoPassVk
         Stage(cl, blur ? s.Raw : s.Out, s.Prog, vp, ubo, [new(SsaoPass.SlotDepth, depth)]);
         // #390: the blur folds the Bayer pattern away; on Vulkan there is no accumulator behind it yet
         if (blur) Stage(cl, s.Out, s.ProgBlur, vp, ubo, [new(SsaoPass.SlotDepth, depth), new(SsaoPass.SlotSrc, s.Raw)]);
-        Half = half;
-        Live = true;
+        s.Half = half;
+        s.LiveFrame = AlloyRenderer.FrameSeq;
         s.Runs++;
         if (!s.Said)
         {
