@@ -445,9 +445,9 @@ public sealed unsafe partial class CasterPass
         cl.BindSet(0, new BindSet(ubo[..nu], ssbo[..ns], sampled[..nt], default));
     }
 
-    /// <summary>Under the loading hold: each depth program's pipeline for every arena format holding a mesh, clamped as
-    /// the sun's maps take it and not as a lamp's cube does, so a caster first seen past the hold builds none. False
-    /// once the prewarm's budget since <paramref name="since"/> is spent.</summary>
+    /// <summary>Under the loading hold: each depth program's unclamped pipeline, a lamp cube's, for every arena format
+    /// holding a mesh, so a caster first seen past the hold builds none. The sun's maps bake under the hold and build
+    /// their own clamped ones. False once the prewarm's budget since <paramref name="since"/> is spent.</summary>
     internal static bool VkPrewarm(VkBackend vk, long since)
     {
         var s = _vk;
@@ -459,7 +459,6 @@ public sealed unsafe partial class CasterPass
             {
                 if (MeshArena.VkVbo((MeshArena.Fmt)f).IsNull || s.Layouts[f].IsNull) continue;
                 VkCastPipeline(p, f, clamp: false);
-                VkCastPipeline(p, f, clamp: true);
                 if (AlloyRenderer.VkPrewarmSpent(since)) return false;
             }
         }
