@@ -247,8 +247,9 @@ The approved examples for the loading hold's pipeline prewarm. It copies the doc
 quicksave` in the user directory, `savenfo.txt` naming Waterdeep) or takes `--saves DIR`, loads it through
 `perf-save.sh`, whose throwaway home starts with an empty shader and pipeline cache, and reads the
 `[vkpipe] after the loading screen` line. PASS means no material pipeline was built on the frame in the first 10 s
-past the hold. The line also names the other pipelines the frame still built; outside the four features below,
-nothing grades those yet.
+past the hold. The line also names the other pipelines the frame still built, and
+`tools/live/hold_builds_all_approved_examples.sh` (run it with `bash`) passes only when it counts none of either
+kind.
 
 `tools/live/hold_prewarm_approved_examples.sh` (run it with `bash`) reads the `[vkpipe] by feature` line written
 beside it: grass, particles, the environment probe and CX's windows, each counted under the hold and on the frame
