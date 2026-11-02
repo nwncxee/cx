@@ -65,7 +65,8 @@ public sealed unsafe partial class AlloyRenderer
         {
             ReadOnlySpan<ImageId> read = [c.Hdr, s.Copy];
             cl.ReadImages(read);
-            if (!VkReactiveDraw(side, s, c)) return;
+            // a full arena says so itself and records nothing, which leaves the clear below: a zero mask, not a stale one
+            VkReactiveDraw(side, s, c);
         }
         ReadOnlySpan<ColorAttachment> colors = [new(s.Mask, 0, 0, LoadOp.Clear, StoreOp.Store, default)];
         VkFlushPass(cl, side, arena0, new RenderPassDesc(colors));
@@ -77,9 +78,9 @@ public sealed unsafe partial class AlloyRenderer
         }
     }
 
-    /// <summary>The one full-screen triangle: the frame and its copy on the pass's own loose block. False when the
-    /// frame's uniform arena is full, which sits the pass out and leaves the cleared mask.</summary>
-    private static bool VkReactiveDraw(CommandList side, VkReactState s, VkColourState c)
+    /// <summary>The one full-screen triangle: the frame and its copy on the pass's own loose block. Records nothing
+    /// when the frame's uniform arena is full, which the arena says itself.</summary>
+    private static void VkReactiveDraw(CommandList side, VkReactState s, VkColourState c)
     {
         GuiVkProg p = s.Prog!;
         Array.Clear(p.Block);
@@ -90,7 +91,7 @@ public sealed unsafe partial class AlloyRenderer
         LooseBlock.Set(s.Exposure, Post.Exposure.V);
         LooseBlock.EndCapture();
         int at = p.Block.Length == 0 ? 0 : VkArena(p.Block);
-        if (at < 0) return false;
+        if (at < 0) return;
         Span<BufferBinding> ubo = stackalloc BufferBinding[2];
         Span<ImageBinding> img = stackalloc ImageBinding[4];
         int nu = 0, ni = 0;
@@ -106,7 +107,6 @@ public sealed unsafe partial class AlloyRenderer
         side.SetPipeline(s.Pipe);
         side.BindSet(0, new BindSet(ubo[..nu], default, img[..ni], default));
         side.Draw(3);
-        return true;
     }
 
     /// <summary>The program, its pipeline and the two targets at the render size, made once per device and resized
