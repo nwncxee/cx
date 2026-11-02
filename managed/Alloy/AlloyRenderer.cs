@@ -309,6 +309,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         Quality.SelfCheck(log);
         GuiStream.SelfCheck(log);
         NuiFlush.SelfCheck(log);
+        Issue.UploadSelfCheck(log);
         // ADR 0012: the dump is how a customizer gets a current starting point. Ahead of every stand-down
         // below, so a session that owns nothing can still produce one.
         ShaderStages.DumpIfConfigured(log);

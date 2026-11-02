@@ -72,6 +72,33 @@ internal static unsafe class Issue
         return ok;
     }
 
+    /// <summary>The record upload's own decision, which no other check reaches: the table goes up WHOLE when a
+    /// restage is pending or the capacity grew, the GPU capacity is a high-water mark that never shrinks, and
+    /// the dirty list and both flags come back clear. Oracle: the slot counts and flags set before each call.</summary>
+    internal static void UploadSelfCheck(ExtenderLog log)
+    {
+        var check = new Checker(log);
+        int ownCap = _recOwnCap, capGpu = _recCapGpu, dirtyN = _recDirtyN;
+        bool dirtyAll = _recDirtyAll, texH = _texHDirty;
+        try
+        {
+            const int grown = 7, shrunk = 3;
+            _recOwnCap = grown; _recCapGpu = 0; _recDirtyAll = false; _recDirtyN = 2; _texHDirty = true;
+            _recDirty[0] = 1; _recDirty[1] = 4;
+            UploadDraws();
+            check.Expect(_recCapGpu == grown + MaxSkyDraws, "the GPU capacity follows the owned slots plus the sky block");
+            check.Expect(_recDirtyN == 0 && !_recDirtyAll && !_texHDirty, "the dirty list and both flags come back clear");
+            _recOwnCap = shrunk;
+            UploadDraws();
+            check.Expect(_recCapGpu == grown + MaxSkyDraws, "a pass with fewer owned slots does not shrink the GPU capacity");
+        }
+        finally
+        {
+            _recOwnCap = ownCap; _recCapGpu = capGpu; _recDirtyN = dirtyN;
+            _recDirtyAll = dirtyAll; _texHDirty = texH;
+        }
+    }
+
     /// <summary>Hand the moved records and this pass's draw order to the Vulkan frame. False = the frame sits out.</summary>
     internal static bool UploadDraws() => VkHandOff(_recOwnCap + MaxSkyDraws);
 
