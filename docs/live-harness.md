@@ -254,6 +254,8 @@ nothing grades those yet.
 beside it: grass, particles, the environment probe and CX's windows, each counted under the hold and on the frame
 in the 10 s after. Its first example passes when each of the four was built and none on the frame; its second runs
 with `grass.enabled=false` and passes when no grass pipeline was built at all. `--only 1|2` runs one.
+`tools/live/hold_prewarm_regression.sh` reads the same line for two checks: at least one CX window pipeline is built
+under the hold, and with `particles.enabled=false` no particle pipeline is built at all.
 `tools/live/hold_length_regression.sh --before LOG [--before LOG ...] [--rounds N]` checks that the median hold
 over N docks runs (3 by default) lifts no later than the median of the `LOG`s, docks runs' `cx.log` on the build
 before. The hold varies by seconds from run to run, so give it more than one of each.
