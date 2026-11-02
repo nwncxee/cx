@@ -23,7 +23,8 @@ if [ -z "$SAVES" ]; then
     SAVES="$(mktemp -d "${TMPDIR:-/tmp}/cx-hold-length-saves-XXXX")"
     cp -a "$SAVE" "$SAVES/" || exit 2
 fi
-held() { grep -aoP "LightmapBake: hold released after \K[0-9.]+(?= s)" "$1" | tail -1; }
+# The log writes seconds in the machine's locale, so "19,7" as often as "19.7".
+held() { grep -aoP "LightmapBake: hold released after \K[0-9]+[.,][0-9]+(?= s)" "$1" | tail -1 | tr , .; }
 was="$(held "$BEFORE")"
 [ -n "$was" ] || { echo "hold-length: $BEFORE has no hold release line" >&2; exit 2; }
 before="$(date +%s)"
