@@ -27,8 +27,8 @@ float CxVfRain(float dist, float open)
 /// `rain` of a whole rain's veil.
 float CxVfDensity(vec3 world, float dist, float open, float rain, float haze)
 {
-    // a whole rain's extinction per metre: a quarter of a 30 m view taken by the veil alone
-    const float fall = 0.01;
+    // a whole rain's extinction per metre: a 100 m view loses about two fifths of itself to the veil
+    const float fall = 0.005;
     return haze * CxVfHaze(world) + rain * fall * CxVfRain(dist, open);
 }
 

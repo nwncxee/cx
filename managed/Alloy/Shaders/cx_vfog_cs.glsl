@@ -144,7 +144,9 @@ void main()
     vec3 V = toEye / max(dist, 1e-4);
     cxClusterXY = uv * vec2(uGrid.xy);   // the light grid spans the same viewport in tile units
     float open = uVfRain.x > 0.0 ? CxVfOpen(world) : 1.0;
-    vec4 v = vec4(CxVfLight(world, V, depth), CxVfDensity(world, dist, open, uVfRain.x, uVfRain.y));
+    // rain thins across the bank's top as the wall does, so a ray climbing to the sky leaves the veil behind
+    float rain = uVfRain.x * CxVfBank(world);
+    vec4 v = vec4(CxVfLight(world, V, depth), CxVfDensity(world, dist, open, rain, uVfRain.y));
     if (uVfPrevZ.w > 0.0)
     {
         // the froxel's CENTRE, where last frame's grid stored its own average of this froxel
