@@ -17,7 +17,7 @@ done
 if [ -n "$SAVES" ]; then
     [ -d "$SAVES" ] || { echo "hold-prewarm: --saves needs a folder holding the docks save" >&2; exit 2; }
 else
-    USERDIR="$(python3 "$ROOT/tools/paths.py" NWN_USERDIR 2>/dev/null || echo "$HOME/.local/share/Neverwinter Nights")"
+    USERDIR="$(python3 "$ROOT/tools/paths.py" NWN_USERDIR)" || exit 2
     SAVE="$USERDIR/saves/000000 - quicksave"
     grep -q Waterdeep "$SAVE/savenfo.txt" 2>/dev/null || { echo "hold-prewarm: $SAVE is not the docks save (savenfo.txt)" >&2; exit 2; }
     SAVES="$(mktemp -d "${TMPDIR:-/tmp}/cx-hold-prewarm-saves-XXXX")"
@@ -73,8 +73,7 @@ if [ -z "$ONLY" ] || [ "$ONLY" = 1 ]; then
         for f in "${FEATURES[@]}"; do
             held="$(total "$line" "$f" "under the hold")"; frame="$(total "$line" "$f" "on the frame")"
             [ -n "$held" ] && [ -n "$frame" ] || { echo "FAIL: the feature line names no count for $f: $line"; status=1; continue; }
-            # CX windows may be built at the main menu, before any hold: only the area's own passes must show up here
-            [ "$f" = "CX windows" ] || [ $((held + frame)) -gt 0 ] \
+            [ $((held + frame)) -gt 0 ] \
                 || { echo "hold-prewarm: the docks built no $f pipeline at all, so this run proves nothing: $line" >&2; exit 2; }
             [ "$frame" = 0 ] || { echo "FAIL: $frame $f pipeline(s) built on the frame after the loading screen: $line"; status=1; }
         done
