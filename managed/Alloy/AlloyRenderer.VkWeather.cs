@@ -118,6 +118,7 @@ public sealed unsafe partial class AlloyRenderer
         ReadOnlySpan<BufferBinding> drops = [new(SsboSlots.WxDrops, s.Drops)];
         VkBindSet(side, p, c, loose, pass, c.Slots, 0, default, drops);
         side.DrawIndirect(s.Cmd, slot * 4 * sizeof(uint), 1);
+        c.Effects++;
         return true;
     }
 
@@ -274,6 +275,7 @@ public sealed unsafe partial class AlloyRenderer
         side.SetPipeline(s.Pipe[VkSplashProg]);
         VkBindSet(side, p, c, loose, pass, c.Slots, 0);
         side.Draw(4, n, 0, 0);
+        c.Effects++;
         return true;
     }
 

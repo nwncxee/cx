@@ -332,7 +332,7 @@ internal static unsafe partial class PostStack
         Fsr.Note(rw, rh, dw, dh, log);
         cl.BeginLabel("fsr"u8);
         cl.Upscale(Fsr.Command(hdr, depth, s.Vel, s.FsrExposure, s.FsrOut, rw, rh, PostChain.JitterX, PostChain.JitterY,
-                               Fsr.FrameMs(), near, far, fovY, Fsr.TakeReset()));
+                               Fsr.FrameMs(), near, far, fovY, Fsr.TakeReset(), AlloyRenderer.VkReactiveMask));
         cl.EndLabel();
         hdr = s.FsrOut;
         viewport = full;
@@ -351,7 +351,8 @@ internal static unsafe partial class PostStack
         LooseBlock.Set(s.TJitterPx, [PostChain.JitterX * 0.5f * s.W, PostChain.JitterY * 0.5f * s.H]);
         int at = PostChainVk.Close(cl, s.Taa!);
         PostChainVk.Draw(cl, s.Taa!, Format.Rgba16F, PostChainVk.Blend.None, write, LoadOp.DontCare, new Rect(0, 0, s.HistW, s.HistH), at,
-                         new PostChainVk.Inputs(cur, default, depth, read, s.Vel, HistLinear: true), log);
+                         new PostChainVk.Inputs(cur, default, depth, read, s.Vel, HistLinear: true,
+                                                React: AlloyRenderer.VkReactiveMask), log);
         cl.EndLabel();
         s.Cur ^= 1;
         s.HistValid = true;

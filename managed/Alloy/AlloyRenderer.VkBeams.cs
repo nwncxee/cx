@@ -68,6 +68,7 @@ public sealed unsafe partial class AlloyRenderer
             side.BindSet(0, new BindSet(ubo, default, default, default));
             side.DrawIndexed(count, 1, (int)(off / sizeof(ushort)), baseVertex);
             drawn++;
+            c.Effects++;
         }
         ReadOnlySpan<ColorAttachment> colors = [new(c.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default)];
         VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear)));
