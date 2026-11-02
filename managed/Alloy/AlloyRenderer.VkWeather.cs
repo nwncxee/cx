@@ -46,9 +46,9 @@ public sealed unsafe partial class AlloyRenderer
         public CommandList? MotionSide;
         /// <summary>The camera the weather pass drew with, for the velocity's contact fade and the late draw.</summary>
         public Matrix4x4 View, Proj;
-        /// <summary>This frame's fall and drips wait for the late draw after the upscale, with these terms.</summary>
-        public bool Late, Lit;
-        public float Near, Far;
+        /// <summary>This frame's fall and drips wait for the late draw after the upscale, lit or flat; the late pipelines
+        /// were refused once, so the fall draws in the scene for the rest of the session.</summary>
+        public bool Late, Lit, LateFailed;
         /// <summary>The fall and drip pipelines without depth, for the display-size frame after the upscale.</summary>
         public readonly PipelineId[] LatePipe = new PipelineId[2];
         public CommandList? LateSide;
@@ -58,8 +58,9 @@ public sealed unsafe partial class AlloyRenderer
         public BufferId CmdRead;
         public int SampleGen, Frames;
         public bool CapLogged;
-        /// <summary>The last sampled frame's drops kept by the fall's command, and the lattice points it walked.</summary>
-        public uint Kept, Walked;
+        /// <summary>The last sampled frame's drops kept by the fall's command and the lattice points it walked; the walk
+        /// the copy in flight was taken over. Both clear when nothing falls.</summary>
+        public uint Kept, Walked, SampleWalked;
     }
 
     /// <summary>The command buffer's words: two four-word draw commands, then what each wanted before the cap.</summary>
@@ -90,7 +91,7 @@ public sealed unsafe partial class AlloyRenderer
         if (_capturing || c.DepthRead.IsNull) { s.CulledLast = false; return true; }
         int count = Weather.StageVk(AreaWind(), out bool snow, out int drips);
         int k = snow ? 1 : 0;
-        if (count < 0) { s.CulledLast = false; return true; }
+        if (count < 0) { s.CulledLast = false; s.Walked = 0; return true; }
         bool culls = (count > 0 || drips > 0) && VkWxCullEnsure(vk, s, log);
         bool fall = culls && count > 0 && VkWxEnsure(vk, s, k, log), drip = culls && drips > 0 && VkWxEnsure(vk, s, 0, log);
         bool lit = lightingOn && AlloyLights.Ready;
@@ -106,8 +107,9 @@ public sealed unsafe partial class AlloyRenderer
         side.Reset();
         int arena0 = c.ArenaUsed;
         side.SetViewport(0, 0, viewport[2], viewport[3]);
-        bool late = Weather.LateWanted(Fsr.On);
-        s.Late = late; s.Lit = lit; s.Near = near; s.Far = far;
+        // FSR reconstructs from history, and a streak in that history smears over the ground: hold the fall for after it
+        bool late = Fsr.On && !s.LateFailed;
+        s.Late = late; s.Lit = lit;
         if (!late && fall && !VkWxDraw(side, s, c, k, snow ? 2 : 1, 0, view, proj, viewport, near, far, lit)) return false;
         if (!late && drip && !VkWxDraw(side, s, c, 0, 3, 1, view, proj, viewport, near, far, lit)) return false;
         if (VkWxEnsure(vk, s, VkSplashProg, log) && !VkSplashDraw(side, s, c, view, proj, viewport, near, far, lit)) return false;
@@ -168,7 +170,7 @@ public sealed unsafe partial class AlloyRenderer
         if (drips > 0) { VkWxCullBind(cl, s, c, drip, dripPass); cl.Dispatch((drips + 63) / 64); }
         if (++s.Frames % VkWxSamplePeriod == 0 && s.SampleGen == 0)
         {
-            s.Walked = (uint)count;
+            s.SampleWalked = (uint)count;
             cl.CopyBuffer(new CopyBufferCmd(s.Cmd, 0, s.CmdRead, 0, VkWxCmdWords * sizeof(uint)));
             s.SampleGen = s.Frames;
             cl.WhenDone(VkWxSampleLanded, s.SampleGen);
@@ -191,6 +193,7 @@ public sealed unsafe partial class AlloyRenderer
         Span<uint> words = stackalloc uint[VkWxCmdWords];
         if (!ran || s.Dev == null || !s.Dev.ReadMapped(s.CmdRead, 0, MemoryMarshal.AsBytes(words))) return;
         s.Kept = words[1];
+        s.Walked = s.SampleWalked;
         uint wanted = Math.Max(words[8], words[9]);
         if (s.CapLogged || wanted <= VkWxRecCap) return;
         s.CapLogged = true;

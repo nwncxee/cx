@@ -14,9 +14,10 @@ namespace CX.Alloy;
 /// </summary>
 public sealed unsafe partial class AlloyRenderer
 {
-    /// <summary>The fall and the drips the weather pass held back, onto <paramref name="hdr"/> at
-    /// <paramref name="w"/> by <paramref name="h"/>. Nothing when none were held back; false only when the arena is full.</summary>
-    internal static bool VkWeatherLate(VkBackend vk, CommandList cl, ImageId hdr, int w, int h, ExtenderLog log)
+    /// <summary>The fall and the drips the weather pass held back, onto <paramref name="hdr"/> at <paramref name="w"/> by
+    /// <paramref name="h"/>: the upscaled frame, or the scene's own when FSR stood down this frame after the scene held them.
+    /// Nothing when none were held back; false only when the arena is full.</summary>
+    internal static bool VkWeatherLate(VkBackend vk, CommandList cl, ImageId hdr, int w, int h, float near, float far, ExtenderLog log)
     {
         VkWxState s = _vkWx;
         if (s.Dev != vk || !s.Late || (!s.Fell && !s.Dripped) || _capturing) return true;
@@ -28,10 +29,11 @@ public sealed unsafe partial class AlloyRenderer
         side.SetViewport(0, 0, w, h);
         int* full = stackalloc int[4] { 0, 0, w, h };
         Matrix4x4 view = s.View, proj = s.Proj;
+        // the upscaled frame is resolved, so the drops draw through the camera with the jitter taken back out
         proj.M31 -= PostChain.JitterX * proj.M34; proj.M32 -= PostChain.JitterY * proj.M34;
         int k = s.Kind == 2 ? 1 : 0;
-        if (s.Fell && !VkWxLateDraw(vk, side, s, c, k, s.Kind, 0, &view, &proj, full, log)) return false;
-        if (s.Dripped && !VkWxLateDraw(vk, side, s, c, 0, 3, 1, &view, &proj, full, log)) return false;
+        if (s.Fell && !VkWxLateDraw(vk, side, s, c, k, s.Kind, 0, &view, &proj, full, near, far, log)) return false;
+        if (s.Dripped && !VkWxLateDraw(vk, side, s, c, 0, 3, 1, &view, &proj, full, near, far, log)) return false;
         ReadOnlySpan<ColorAttachment> colors = [new(hdr, 0, 0, LoadOp.Load, StoreOp.Store, default)];
         VkFlushPass(cl, side, arena0, new RenderPassDesc(colors));
         if (!s.LateLive)
@@ -45,7 +47,7 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>One kind through program <paramref name="k"/> on its depth-less pipeline, indirect from the cull's command
     /// <paramref name="slot"/>; false only when the arena is full.</summary>
     private static bool VkWxLateDraw(VkBackend vk, CommandList side, VkWxState s, VkColourState c, int k, int kind, int slot,
-                                     Matrix4x4* view, Matrix4x4* proj, int* full, ExtenderLog log)
+                                     Matrix4x4* view, Matrix4x4* proj, int* full, float near, float far, ExtenderLog log)
     {
         VkProg? p = s.Prog[k];
         if (p == null) return true;
@@ -63,8 +65,9 @@ public sealed unsafe partial class AlloyRenderer
             s.LatePipe[k] = vk.CreatePipeline(in d);
             if (s.LatePipe[k].IsNull)
             {
-                log.Always("AlloyRenderer: the Vulkan precipitation's after-upscale pipeline was REFUSED (logged above) -- no rain under FSR");
-                s.Prog[k] = null;
+                log.Always("AlloyRenderer: the Vulkan precipitation's after-upscale pipeline was REFUSED (logged above) -- from the next "
+                         + "frame the rain draws in the scene, where FSR smears it over the ground");
+                s.LateFailed = true;
                 return true;
             }
         }
@@ -73,7 +76,7 @@ public sealed unsafe partial class AlloyRenderer
         LooseBlock.Capture(p.Members, p.Block);
         try
         {
-            BindPass(p.L.CubeCount, full, s.Near, s.Far);
+            BindPass(p.L.CubeCount, full, near, far);
             Weather.WriteVk(in s.L[k], kind, view, proj, _eyePos, s.Lit);
             LooseBlock.Set(s.L[k].Screen, [(float)full[2], full[3]]);
         }

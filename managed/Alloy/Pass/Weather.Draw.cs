@@ -117,10 +117,6 @@ internal static unsafe partial class Weather
     /// FSR the rain draws after the upscale, so its motion would only drag the ground under it.</summary>
     internal static bool MotionWanted(bool fsr, bool taa) => taa && !fsr;
 
-    /// <summary>Whether the fall and the drips draw after the upscale, on the display-size frame, instead of in the scene:
-    /// FSR reconstructs from history, and a streak in that history smears over the ground.</summary>
-    internal static bool LateWanted(bool fsr) => fsr;
-
     internal static void ContextLost() => MapLost();
     internal static void ResetPeriod() => _drawn = 0;
     internal static string Stats() => _off ? "weather unavailable" : !Enabled.V ? "weather off"

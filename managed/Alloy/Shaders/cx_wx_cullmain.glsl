@@ -1,3 +1,4 @@
+// CX_WX_RAIN_G, CX_WX_LENS and CX_WX_WANTED are declared by cx_wx_cull_cs, the stage that includes this body.
 
 // 1 = open sky above this point along the fall vector, 0 = covered. No map = open.
 float CxCovered(vec3 p)
@@ -37,10 +38,9 @@ void main()
         if (uKind == 2) q.xy += vec2(sin(uTime + h.y * 6.2832), cos(uTime * 1.5 + h.z * 6.2832)) * uDrift;
         vec3 P = R * q.x + U * q.y + F * q.z;
         float len = uKind != 2 ? uQuad.x * (0.5 + 0.8 * h.y) : uQuad.x;
-        // the near tier thins by drop COUNT (a hashed keep), not by brightness, to none 25 m from the camera, where the
-        // fog's veil has taken over the same share: fewer drops reads as distance, and the box's edge is past the last
-        // ...and none brushes the lens: a drop a metre off the camera is a bar across the screen
-        float edge = CxWxNearKeep(length(uEye - P)) * smoothstep(CX_WX_LENS, CX_WX_LENS * 3.0, length(uEye - P));
+        // thinned by drop COUNT to none 25 m out, where the fog's veil holds the same share; CX_WX_LENS keeps the lens clear
+        float dist = length(uEye - P);
+        float edge = CxWxNearKeep(dist) * (uKind == 3 ? 1.0 : smoothstep(CX_WX_LENS, CX_WX_LENS * 3.0, dist));
         vec4 cv = uView * vec4(P, 1.0);
         vec4 cc = uProj * cv;
         float r = len + uQuad.y;

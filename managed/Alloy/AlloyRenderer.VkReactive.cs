@@ -7,7 +7,7 @@ namespace CX.Alloy;
 /// <summary>
 /// The reactive mask: the scene colour copied before the beam, particle, halo and weather passes, and the tonemapped
 /// change they made written into an R8 target at the render size. FSR 3.1 takes it as its reactive input and the TAA
-/// resolve floors the current frame's share with it, so a streak's history does not drag along the ground's velocity.
+/// resolve floors the current frame's share with it, so an effect's history does not drag along the ground's velocity.
 /// </summary>
 public sealed unsafe partial class AlloyRenderer
 {

@@ -9,8 +9,8 @@ namespace CX.Alloy;
 
 /// <summary>
 /// The precipitation's own motion on Vulkan: this frame's cull records drawn again into the velocity field after the camera,
-/// the movers and the grass, each streak or flake writing its fall only in its core, so FSR and TAA move a drop's history
-/// with the drop and the ground's with the ground.
+/// the movers and the grass, each streak or flake writing its fall only in its core, so TAA moves a drop's history with
+/// the drop and the ground's with the ground. Under FSR the rain draws after the upscale and writes no motion.
 /// </summary>
 public sealed unsafe partial class AlloyRenderer
 {

@@ -88,7 +88,8 @@ internal static unsafe partial class PostStack
         int dw = display[2], dh = display[3];
         int* full = stackalloc int[4] { 0, 0, dw, dh };
         bool fsr = FsrVk(vk, s, cl, ref hdr, depth, vp, vpClean, ref viewport, full, near, far, fovY, log);
-        if (fsr && !AlloyRenderer.VkWeatherLate(vk, cl, hdr, dw, dh, log)) return false;
+        // the rain the scene held back for the upscale draws here, on the display-size frame, or on the scene's own if FSR stood down
+        if (!AlloyRenderer.VkWeatherLate(vk, cl, hdr, fsr ? dw : viewport[2], fsr ? dh : viewport[3], near, far, log)) return false;
         int live = 0;
         string missing = "";
         bool taa = false;
@@ -316,7 +317,7 @@ internal static unsafe partial class PostStack
         {
             vk.Destroy(s.FsrOut);
             s.FsrOut = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, dw, dh, 1, 1, 1, 1,
-                                                    ImageUse.Sampled | ImageUse.Storage, "vk fsr output"));
+                                                    ImageUse.Sampled | ImageUse.Storage | ImageUse.ColorTarget, "vk fsr output"));
             s.FsrW = dw; s.FsrH = dh;
             if (s.FsrOut.IsNull) { Fsr.Refuse($"its {dw}x{dh} output image was refused (logged above)", log); return false; }
         }
