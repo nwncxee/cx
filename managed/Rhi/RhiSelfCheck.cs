@@ -54,6 +54,7 @@ public static class RhiSelfCheck
         list.Draw(3);
         list.UpdateBuffer(new BufferId(5), 16, [1, 2, 3]);
         list.Dispatch(8, 4, 2);
+        list.CopyBuffer(new CopyBufferCmd(new BufferId(5), 4, new BufferId(6), 8, 12));
         list.EndRenderPass();
 
         CommandReader r = list.TakePending();
@@ -81,6 +82,8 @@ public static class RhiSelfCheck
         ReadOnlySpan<byte> bytes = r.Span<byte>(ub.Bytes);
         check.Expect(ub.Offset == 16 && bytes.Length == 3 && bytes[0] == 1 && bytes[2] == 3, "the update's bytes are copied in");
         check.Expect(r.Next(out op) && op == Op.Dispatch && r.Read<DispatchCmd>() == new DispatchCmd(8, 4, 2), "Dispatch 8x4x2");
+        check.Expect(r.Next(out op) && op == Op.CopyBuffer && r.Read<CopyBufferCmd>() == new CopyBufferCmd(new BufferId(5), 4, new BufferId(6), 8, 12),
+                     "CopyBuffer 12 bytes from 5+4 to 6+8");
         check.Expect(r.Next(out op) && op == Op.EndRenderPass, $"EndRenderPass, not {op}");
         check.Expect(!r.Next(out _), "nothing past the last command");
         check.Expect(!list.TakePending().Next(out _), "a command is handed out once");

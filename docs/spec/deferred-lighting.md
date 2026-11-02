@@ -323,7 +323,8 @@ sets it:
 | **a light's binned + walked radius, as a BRIGHTNESS** | 0.0003 display-linear | same window, per light | `light.floor` |
 | **a light's share of the pixel's brightest** | 0.01 | faded out over `[cut, full)` and skipped, per pixel, so no grid | `light.relevance` |
 | **lights with the full model at a pixel** | every light (off) | the plain engine curve: no near-field core, lobe spread 0, no subsurface leak | `light.fullmodel` (a share of the brightest, faded in over the octave below it) |
-| **lights a tile's own culled list can hold** | 128 (`CX_TILE_CAP` = the froxel cap) | dropped, counted as `TILE LIGHT LIST OVERFLOW` | -- (and `light.deferredtiles` is off by default, so the froxel lists are what the walk reads) |
+| **lights a tile's list can hold** | 256 (`CX_TILE_CAP`, twice the froxel cap: a tile's list is the union of its froxels') | dropped, counted on the stats buffer's overflow words | -- (`light.deferredtiles 0` walks each pixel's froxel list instead) |
+| **lights an area may hold for the tile lists** | 4096 (`CX_TILE_LIGHTS`, the gather's bitmasks) | the walk falls back to each pixel's froxel list | -- (`DeferredLights.TileLights`) |
 | **lights a PIXEL may shadow** | 4 | lit **unshadowed**, counted as `lights unshadowed past the budget`; the lane at the budget's edge is faded toward unshadowed with it, so the boundary is continuous | `shadow.perpixel` (0 = no budget, and then every knob's off position is bit-identical to the pre-budget frame) |
 | **lights a pixel's shadow record can hold** | 4 (`CX_SH_MAX`) | the format's ceiling, so `shadow.perpixel` cannot exceed it | -- (`cx_shrec.glsl`) |
 | **lights a pixel BLOCKER-searches** (contact hardening) | 2 forward (`CX_CAP_MAX`); 1 deferred -- the record's strongest, the other lanes sitting at `shadow.soft`'s ceiling | the single hardware tap forward; the record's cheap 4-tap disc deferred | `shadow.cap` (0 = every light one hard tap, and it stands the record and the budget down with it) |
@@ -357,17 +358,14 @@ The hot, pair and mirror taps are separate budgets and keep their own semantics;
 `shadow.perpixel`. A pixel's worst case is therefore `shadow.perpixel` record lanes, plus one mirror tap, plus
 the pair-debt dispatch's own `min()` over the pairs covering it -- three budgets, each with a counter.
 
-### What the period line says
+### What the counters hold
 
-`DeferredLights`' `[alloy]` clause carries the two numbers the budget is about, sampled over the harvested
-frames: **`N lights/px`** -- the average lights that actually lit a deferred pixel, which no longer grows with
-the area's lamp count -- and **`N hard taps/px`**, the cube taps the walk still paid, which the per-pixel shadow
-budget holds near zero. Beside them: the lights the budget left unshadowed (its spend), the pixels that found no
-usable record (the record's reach), and the tile-list overflow. The walked count is accumulated in the shader's
-own sixteens (`CX_WALK_UNIT`) so a 32-bit counter cannot wrap between harvests, which makes it read about a
-percent low: an average, not an audit. **`N entries/px (M rejected)`** beside them is the list length the walk
-indexed and how much of it lit nothing (reach, relevance, facing): the price of a long list is paid per entry,
-lit or not.
+The walk and the record writer add four counters to the stats buffer: the tiles whose list overflowed, the lights
+they dropped, the pixels that found no usable record (the record's reach), and the lights the budget left
+unshadowed (its spend). The walk adds three more, reduced a tile (a wave, under
+`light.deferredwave 1`) before one atomic each: the pixels it lit, the list entries they walked, and the most one pixel
+walked. One frame in 300 counts from zero and is copied back, and the deferred lights' period line reads the
+last of them as lights walked per pixel, on average and at most.
 
 `/alloy bench` prices the passes from the outside: it steps the knobs that turn each one on and off and reads
 every GPU term per step. There is no per-stage ladder — swapping a pass's program was a GL-renderer trick, and

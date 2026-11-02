@@ -10,8 +10,8 @@ namespace CX.Alloy;
 /// <summary>
 /// The world pass's point-light rig: the snapshot goes into an SSBO -- no 32-light UBO, no uniform-array
 /// ceiling -- and a compute pass bins it into a froxel grid. <see cref="DeferredLights"/>' tiled pass walks it
-/// for the opaque and cutout set (its own per-group list, or the froxel lists under
-/// <c>light.deferredtiles</c>); the forward consumers -- water, grass, particles, weather, probe -- take the rest.
+/// for the opaque and cutout set (each tile's list gathered off the froxels, or each pixel's froxel list under
+/// <c>light.deferredtiles 0</c>); the forward consumers -- water, grass, particles, weather, probe -- take the rest.
 /// </summary>
 internal static unsafe class AlloyLights
 {

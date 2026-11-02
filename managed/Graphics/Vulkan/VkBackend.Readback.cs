@@ -128,4 +128,22 @@ internal sealed unsafe partial class VkBackend
         HostRead();
         return true;
     }
+
+    /// <summary><see cref="Op.CopyBuffer"/>: the bytes left host-readable in the destination once the submit lands.</summary>
+    private bool CopyBuf(in CopyBufferCmd c)
+    {
+        if (_inPass) return Fault("CopyBuffer inside a render pass");
+        if (!_buffers.TryGet(c.Src.Value, out VkBuf? src)) return Fault("CopyBuffer: stale source buffer");
+        if (!_buffers.TryGet(c.Dst.Value, out VkBuf? dst)) return Fault("CopyBuffer: stale destination buffer");
+        if (c.Bytes <= 0 || ((c.SrcOffset | c.DstOffset | c.Bytes) & 3) != 0 || c.SrcOffset < 0 || c.DstOffset < 0
+            || c.SrcOffset + c.Bytes > src.Desc.Bytes || c.DstOffset + c.Bytes > dst.Desc.Bytes)
+            return Fault($"CopyBuffer: {c.Bytes} bytes from {src.Desc.Label} at {c.SrcOffset} to {dst.Desc.Label} at {c.DstOffset}, in whole words");
+        Use(src, VkPipelineStageFlags2.AllTransfer, VkAccessFlags2.TransferRead);
+        Use(dst, VkPipelineStageFlags2.AllTransfer, VkAccessFlags2.TransferWrite);
+        Flush();
+        var r = new VkBufferCopy { srcOffset = (ulong)c.SrcOffset, dstOffset = (ulong)c.DstOffset, size = (ulong)c.Bytes };
+        _vkd.vkCmdCopyBuffer(_cmd, src.Buffer, dst.Buffer, 1, &r);
+        HostRead();
+        return true;
+    }
 }

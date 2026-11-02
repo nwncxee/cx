@@ -487,8 +487,9 @@ internal static class ShaderContract
                   && AlloyLights.FragmentLib.Contains("if (inPages && !hot && !mirror) continue;")
                   // the deferred walk takes G1's weights only after it: decoded at the top they sat live across the
                   // walk and cost the pass 2.6 ms of occupancy, and nothing but the bench would have said so
-                  && ShaderSource.Get("cx_deferred_cs.glsl").Contains("CxGbufReadWalk(texelFetch(uGb0, p, 0), texelFetch(uGb1, p, 0).w, viewDepth,")
+                  && ShaderSource.Get("cx_deferred_cs.glsl").Contains("CxGbufReadWalk(g0, texelFetch(uGb1, p, 0).w, viewDepth,")
                   && !ShaderSource.Get("cx_deferred_cs.glsl").Contains("CxGbufRead(texelFetch")
+                  && ShaderSource.Get("cx_deferred_cs.glsl").Contains($"const uint CX_TILE_LIGHTS = {DeferredLights.TileLights}u;")
                   && AlloyLights.FragmentLib.Contains("CX_LIGHT_STATIC = 256.0;") && AlloyLights.LightStatic == 256f
                   && LightmapBake.BakeFs.Contains("CxPointLight(uBakeLight, uBakeColor, vWorld, N, c, L, att, f2, ndlRaw, ndl)")
                   && LightmapBake.BakeFs.Contains("vec3 unsh = CxPointDiffuse(c, att, ndlRaw, ndl);") && LightmapBake.BakeFs.Contains("vec3 lit = unsh * mix(uLocalFloor, 1.0, sh);")

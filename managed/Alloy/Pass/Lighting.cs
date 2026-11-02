@@ -14,7 +14,7 @@ internal static class Lighting
                                          Daylight, DayLow, DayHigh, Flicker, FlickerSpeed, SsrRough, Relevance, Floor, FullModel;
     internal static readonly Knob<int> Fadeout, ProbeSize, BinCap, SsrDetail, SsrPlanarRes;
     internal static readonly Knob<bool> Probe, ReachFade, HiddenLights, Brdf, Grazing, SpecAa, Ssr, SsrPlanar,
-                                        Deferred, DeferredTiles, LightRec;
+                                        Deferred, DeferredTiles, DeferredWave, LightRec;
 
     static Lighting()
     {
@@ -71,16 +71,18 @@ internal static class Lighting
         Deferred = G.Toggle("deferred", "Deferred point lights", true, Tier.ChatOnly,
                             help: "Point lights on solid surfaces are added in one screen pass after the world is drawn, instead of "
                                 + "inside every surface's shader. Same image, faster with many lights. Off is the previous path.");
-        // CX-188 step 2b: which light list the deferred pass walks. On, each 16x16 group culls the area's lights
-        // against its OWN depth slab; off, each pixel walks its froxel's list, which is the forward loop's own
-        // input and so the parity A/B. Chat-only: the answer is the same image either way, and the question is
-        // "is the tile cull paying for itself here", which is a bench question and not a setting.
-        // <para>OFF by default: measured on the CX-188 test area against a 14.8 ms GPU baseline,
-        // <c>light.deferredtiles 0</c> was -0.8 ms -- the depth-bounded cull is SLOWER than the froxel lists
-        // there. The froxel table is built once a frame for the whole grid; the cull re-walks every light of the
-        // area per 16x16 group, and a top-down camera's tiles span enough depth that the slab buys little back.
-        // The knob stays because an indoor or first-person camera is the case where it could win.</para>
-        DeferredTiles = G.Toggle("deferredtiles", "deferredtiles", false, Tier.ChatOnly);
+        // Which light list the deferred pass walks. On, each 16x16 group gathers the froxels its own pixels read, tests
+        // every entry against the slab between its nearest and farthest pixel, and the whole tile walks that one list
+        // in step; off, each pixel walks its own froxel's list, the forward loop's input and so the parity A/B.
+        // Chat-only: the image is the same either way, and the question is a bench question, not a setting.
+        // <para>ON by default: on the docks save the walk took 0.81 ms against the froxel lists' 0.97. A pixel's
+        // froxel changes slice every few pixels down a sloped floor, so a wave walked several lists at once; the
+        // tile's list is one, and its depth bound is the surface's own.</para>
+        DeferredTiles = G.Toggle("deferredtiles", "deferredtiles", true, Tier.ChatOnly);
+        // On a device whose subgroups offer ballot, 1 has a wave read each light index once and broadcast it, and reduce the
+        // tile's depth slab before one atomic. Chat-only, an A/B. OFF by default: it was the slower walk both on the docks
+        // save (1.00 ms against 0.81) and in a crowded multiplayer area (1.80 against 1.49).
+        DeferredWave = G.Toggle("deferredwave", "deferredwave", false, Tier.ChatOnly);
         // CX-188: the light record's A/B -- off, every blended lit fragment walks the lights again, even one lying on
         // a surface the deferred pass already lit (a floor decal). Chat-only, a bench question like the one above.
         LightRec = G.Toggle("lightrec", "lightrec", true, Tier.ChatOnly);

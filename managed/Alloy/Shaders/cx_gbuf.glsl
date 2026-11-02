@@ -153,6 +153,27 @@ bool CxGbufReadWalk(uvec4 g0, uint g1w, float frameDepth, float slack, out CxGbu
     return true;
 }
 
+/// The slack <paramref name="g0"/>'s record needs: none for a record inside the bare CX_GB_RECORD tolerance, or one
+/// that is no deferred record at all, else CxGbufDepthSlack. The slack is never negative, so a record inside the bare
+/// tolerance owns the pixel either way: the same verdict, with the four neighbour fetches only where they decide it.
+float CxGbufSlackIf(uvec4 g0, float frameDepth, sampler2D depth, ivec2 p, mat4 proj)
+{
+    bool bare = (g0.x & CX_GB_DEFERRED) == 0u || abs(unpackHalf2x16(g0.y).x - frameDepth) < CX_GB_RECORD * max(frameDepth, 1e-6);
+    return bare ? 0.0 : CxGbufDepthSlack(depth, p, frameDepth, proj);
+}
+
+/// <see cref="CxGbufReadWalk"/> with the slack fetched only where it decides ownership (CxGbufSlackIf).
+bool CxGbufReadWalk(uvec4 g0, uint g1w, float frameDepth, sampler2D depth, ivec2 p, mat4 proj, out CxGbuf g)
+{
+    return CxGbufReadWalk(g0, g1w, frameDepth, CxGbufSlackIf(g0, frameDepth, depth, p, proj), g);
+}
+
+/// <see cref="CxGbufReadHead"/> with the slack fetched only where it decides ownership (CxGbufSlackIf).
+bool CxGbufReadHead(uvec4 g0, float frameDepth, sampler2D depth, ivec2 p, mat4 proj, out CxGbuf g)
+{
+    return CxGbufReadHead(g0, frameDepth, CxGbufSlackIf(g0, frameDepth, depth, p, proj), g);
+}
+
 /// The transfer weights (G1.xyz), for a reader that applies them only once its walk is done: decoded at the
 /// top, these seven floats sit live across the whole walk and cost the deferred pass its occupancy.
 void CxGbufWeights(uvec4 g1, inout CxGbuf g)

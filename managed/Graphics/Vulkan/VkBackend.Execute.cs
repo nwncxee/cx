@@ -206,6 +206,7 @@ internal sealed unsafe partial class VkBackend
                 Op.EndLabel => Unlabel(),
                 Op.SetShadingRate => ShadingRate(r.Read<ShadingRateCmd>().Coarse),
                 Op.Upscale => Upscale(r.Read<UpscaleCmd>()),
+                Op.CopyBuffer => CopyBuf(r.Read<CopyBufferCmd>()),
                 _ => Fault($"{op} is not on the Vulkan backend yet"),
             };
             if (!ok) return false;

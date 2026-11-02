@@ -36,7 +36,7 @@ public sealed unsafe partial class AlloyRenderer
     private struct VkDefLoc
     {
         public int Cubes, Material, LightOcc, LmMovers, Rect, InvVp, Proj, ShSize, ShRes;
-        public int View, Grid, ProjXY, Z, LightCount, Reach, LightFloor, BinCap, Atten, Hot, Rel, Pad, Tally, DynPage;
+        public int View, Grid, ProjXY, Z, LightCount, Reach, LightFloor, BinCap, Atten, Hot, Rel, Pad, Tally, DynPage, WalkCount;
     }
 
     /// <summary>The deferred path's resources on one device, replaced whole with the device.</summary>
@@ -50,9 +50,20 @@ public sealed unsafe partial class AlloyRenderer
         /// built on the first frame an "every light" escape asks for it (<c>shadow.cap 0</c>).</summary>
         public VkDefStage? Walk, Film, Shadow, InLoop;
         public bool InLoopFailed;
+        /// <summary>The walk and film pass with wave lockstep, built the first frame <c>light.deferredwave 1</c> asks for
+        /// them on a device whose subgroups offer ballot.</summary>
+        public VkDefStage? Wave, WaveFilm;
+        public bool WaveFailed;
         /// <summary>The light records this frame, the counters both dispatches add to, and <see cref="DeferredBlock"/>.</summary>
         public BufferId Lights, Stats, Block;
         public long LightCap;
+        /// <summary>The host copy of <see cref="Stats"/> a sampled frame lands in, and the sample in flight (0 = none).</summary>
+        public BufferId StatsRead;
+        public int StatsGen, Frames;
+        /// <summary>The last sample's walk: deferred pixels lit, list entries they walked, the most one pixel walked.</summary>
+        public uint WalkPx, WalkSum, WalkMax;
+        /// <summary>The walk runs without wave lockstep on this device, and cx.log has said so.</summary>
+        public bool WaveNoted;
         /// <summary>The light record the walk writes, and the visibility record's two lanes.</summary>
         public ImageId LightRec, ShVis, ShKey;
         public int W, H, ShW, ShH;
@@ -67,8 +78,15 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>Invocations per group per axis, each stage's own <c>local_size</c>.</summary>
     private const int VkDefGroup = 16, VkShGroup = 8;
 
-    /// <summary>The counters' words, as <c>cx_deferred_cs</c> declares the block.</summary>
-    private const int VkDefStatsWords = 8;
+    /// <summary>The counters' words, as <c>cx_deferred_cs</c> lays them out: four overflow and miss counts, the four an
+    /// older walk's census adds to, then the period line's three.</summary>
+    private const int VkDefStatsWords = 12;
+    /// <summary>Where the period line's three sit: pixels the walk lit, the entries they walked, the most one walked.</summary>
+    private const int VkDefWalkWord = 8;
+    /// <summary>Frames between two sampled frames of the counters.</summary>
+    private const int VkDefStatsPeriod = 300;
+    /// <summary>The define that compiles the walk's wave lockstep (L1), on a device whose subgroups offer ballot.</summary>
+    private const string VkDefWave = "CX_WALK_WAVE 1";
 
     /// <summary>The two dispatches into <paramref name="cl"/>, between the colour pass and the blended one -- the
     /// frame-order place GL runs them. <paramref name="vp"/> is the view-projection the prepass rasterised with
@@ -91,16 +109,19 @@ public sealed unsafe partial class AlloyRenderer
         int div = Math.Max(Shadows.DeferredRes.V, 1);
         int rw = (w + div - 1) / div, rh = (h + div - 1) / div;
         if (!VkDefEnsure(vk, cl, w, h, rw, rh, log)) return;
-        bool film = Weather.Film && d.Film != null;
-        VkDefStage walk = VkDefWalk(vk, log);
+        (VkDefStage shipped, VkDefStage? filmSt) = VkDefPick(vk, log);
+        bool film = Weather.Film && filmSt != null;
+        VkDefStage walk = VkDefWalk(vk, shipped, log);
 
         ReadOnlySpan<byte> rig = MemoryMarshal.AsBytes(AlloyLights.Staged);
         if (!VkDefLights(vk, cl, rig, log)) return;
 
+        // one frame in VkDefStatsPeriod counts from zero and is copied out for the period line
+        bool sample = ++d.Frames % VkDefStatsPeriod == 0 && d.StatsGen == 0;
         int arena0 = s.ArenaUsed, pass = -1, looseFilm = 0;
         if (!VkDefBlocks(d.Shadow!, true, viewport, near, far, in invVp, in proj, rw, rh, div, out int looseSh, ref pass)
-            || !VkDefBlocks(walk, false, viewport, near, far, in invVp, in proj, rw, rh, div, out int looseWalk, ref pass)
-            || film && !VkDefBlocks(d.Film!, false, viewport, near, far, in invVp, in proj, rw, rh, div, out looseFilm, ref pass))
+            || !VkDefBlocks(walk, false, viewport, near, far, in invVp, in proj, rw, rh, div, out int looseWalk, ref pass, sample)
+            || film && !VkDefBlocks(filmSt!, false, viewport, near, far, in invVp, in proj, rw, rh, div, out looseFilm, ref pass))
             return;
 
         ref DeferredBlock b = ref d.Blk;
@@ -109,10 +130,10 @@ public sealed unsafe partial class AlloyRenderer
         b.Proj = proj;
         b.View = view;
         b.EyePos = eye;
-        // light.deferredtiles, as GL reads it: each pixel's own froxel list by default, now that the build that
-        // writes them runs here too, and the per-tile cull when the knob asks -- the table says which it is
-        b.Tiles = Lighting.DeferredTiles.V || VkClusterCounts.IsNull ? 1 : 0;
+        // light.deferredtiles: each tile's list gathered off the froxel table by default, each pixel's own froxel
+        // list when the knob says 0 -- and a frame with no table tests every light per tile instead
         b.LightCount = AlloyLights.UploadedLights;
+        b.Tiles = VkDefTiles(Lighting.DeferredTiles.V, !VkClusterCounts.IsNull, b.LightCount);
         b.ShSize = new Int2(rw, rh);
         b.ShRes = div;
         Span<byte> blk = stackalloc byte[Std140.BlockBytes<DeferredBlock>()];
@@ -122,37 +143,72 @@ public sealed unsafe partial class AlloyRenderer
         int len = (s.ArenaUsed - arena0 + 3) & ~3;
         if (len > 0) cl.UpdateBuffer(s.Arena, arena0, s.ArenaBytes.AsSpan(arena0, Math.Min(len, ArenaCap - arena0)));
 
+        if (sample) cl.ZeroBuffer(d.Stats);
+        cl.BeginLabel("shadow record"u8);
         cl.SetPipeline(d.Shadow!.Pipe);
         VkDefBindSet(cl, d.Shadow, d.ShVis, d.ShKey, looseSh, pass, slots);
         cl.Dispatch((rw + VkShGroup - 1) / VkShGroup, (rh + VkShGroup - 1) / VkShGroup);
+        cl.EndLabel();
+        cl.BeginLabel("walk"u8);
         cl.SetPipeline(walk.Pipe);
         VkDefBindSet(cl, walk, s.Hdr, d.LightRec, looseWalk, pass, slots);
         cl.Dispatch((w + VkDefGroup - 1) / VkDefGroup, (h + VkDefGroup - 1) / VkDefGroup);
+        cl.EndLabel();
         d.Wrote = true;
         if (film)
         {
             // the film's highlights on top: a linear term of the same pixel, so a second read-modify-write is exact
-            cl.SetPipeline(d.Film!.Pipe);
-            VkDefBindSet(cl, d.Film, s.Hdr, d.LightRec, looseFilm, pass, slots);
+            cl.BeginLabel("film"u8);
+            cl.SetPipeline(filmSt!.Pipe);
+            VkDefBindSet(cl, filmSt, s.Hdr, d.LightRec, looseFilm, pass, slots);
             cl.Dispatch((w + VkDefGroup - 1) / VkDefGroup, (h + VkDefGroup - 1) / VkDefGroup);
+            cl.EndLabel();
+        }
+        if (sample)
+        {
+            cl.CopyBuffer(new CopyBufferCmd(d.Stats, 0, d.StatsRead, 0, VkDefStatsWords * sizeof(uint)));
+            d.StatsGen = d.Frames;
+            cl.WhenDone(VkDefStatsLanded, d.StatsGen);
         }
         if (!d.Live)
         {
             d.Live = true;
             int cubes = CasterPass.CubesFresh ? CasterPass.CubeCount : 0;
-            log.Always($"AlloyRenderer: the Vulkan deferred path is LIVE -- {b.LightCount} point lights walked per tile "
-                     + $"over the G-buffer, visibility record {rw}x{rh}" + (film ? ", film highlights on top" : "")
+            log.Always($"AlloyRenderer: the Vulkan deferred path is LIVE -- {b.LightCount} point lights walked "
+                     + (b.Tiles == 0 ? "off each pixel's froxel list" : "off each tile's list")
+                     + $" over the G-buffer, visibility record {rw}x{rh}" + (film ? ", film highlights on top" : "")
                      + (cubes > 0 ? $"; {cubes} shadow cube(s) on the record's lanes"
                                   : "; no cube map was baked for this frame, so every light here is unshadowed"));
         }
     }
 
-    /// <summary>The walk this frame binds: the in-loop-tap variant while an "every light" escape is on
-    /// (<c>shadow.cap 0</c>, <c>shadow.perpixel 0</c>), else the shipped one, whose loop has no tap.</summary>
-    private static VkDefStage VkDefWalk(VkBackend vk, ExtenderLog log)
+    /// <summary>The walk and film pass this frame: the shipped pair, or the pair with wave lockstep while
+    /// <c>light.deferredwave</c> is 1 on a device that has ballot -- the A/B for how the walk scales in a crowded area.</summary>
+    private static (VkDefStage Walk, VkDefStage? Film) VkDefPick(VkBackend vk, ExtenderLog log)
     {
         VkDeferredState d = _vkdef;
-        if (AlloyLights.ShadowCap > 0f && AlloyLights.ShadowPerPixel > 0f) return d.Walk!;
+        if (!vk.WaveOps || !Lighting.DeferredWave.V || d.WaveFailed) return (d.Walk!, d.Film);
+        if (d.Wave == null)
+        {
+            d.Wave = VkDefBuild(vk, DeferredLights.ShdCs, VkDefWave, "vk deferred walk with wave lockstep", log);
+            d.WaveFilm = VkDefBuild(vk, DeferredLights.ShdCs, "CX_FILM_PASS 1\n" + VkDefWave, "vk deferred film with wave lockstep", log);
+            if (d.Wave == null || d.WaveFilm == null)
+            {
+                d.WaveFailed = true;
+                log.Always("AlloyRenderer: the Vulkan deferred walk with wave lockstep did not build (logged above) -- "
+                         + "light.deferredwave 1 keeps the shipped walk");
+                return (d.Walk!, d.Film);
+            }
+        }
+        return (d.Wave, d.WaveFilm);
+    }
+
+    /// <summary>The walk this frame binds: the in-loop-tap variant while an "every light" escape is on
+    /// (<c>shadow.cap 0</c>, <c>shadow.perpixel 0</c>), else <paramref name="shipped"/>, whose loop has no tap.</summary>
+    private static VkDefStage VkDefWalk(VkBackend vk, VkDefStage shipped, ExtenderLog log)
+    {
+        VkDeferredState d = _vkdef;
+        if (AlloyLights.ShadowCap > 0f && AlloyLights.ShadowPerPixel > 0f) return shipped;
         if (d.InLoop == null && !d.InLoopFailed)
         {
             d.InLoop = VkDefBuild(vk, DeferredLights.ShdCs, "CX_SH_INLOOP 1", "vk deferred in-loop taps", log);
@@ -163,8 +219,46 @@ public sealed unsafe partial class AlloyRenderer
                          + "shadow.cap 0 / shadow.perpixel 0 keep the record's four-light budget instead of tapping every light");
             }
         }
-        return d.InLoop ?? d.Walk!;
+        return d.InLoop ?? shipped;
     }
+
+    /// <summary>The walk's list source: 1 each tile's list gathered off the froxel table, 2 every light of the area tested
+    /// per tile on a frame with no table, 0 each pixel's own froxel list -- <c>light.deferredtiles</c> off, or an area
+    /// with more lights than the tile's bitmasks span.</summary>
+    internal static int VkDefTiles(bool tiles, bool table, int lights)
+        => lights > DeferredLights.TileLights ? 0 : !table ? 2 : tiles ? 1 : 0;
+
+    /// <summary><paramref name="define"/> with the walk's wave lockstep added where <paramref name="vk"/> runs it.</summary>
+    private static string? VkDefWaveOr(VkBackend vk, string? define)
+        => !vk.WaveOps ? define : define == null ? VkDefWave : define + "\n" + VkDefWave;
+
+    /// <summary>The one cx.log line a device without wave operations gets, the first time; null after it, and on a device with them.</summary>
+    internal static string? VkDefWaveNote(bool waveOps, ref bool noted)
+    {
+        if (waveOps || noted) return null;
+        noted = true;
+        return "AlloyRenderer: this device's subgroups offer no ballot -- the deferred walk runs without wave lockstep, "
+             + "each pixel reading its own copy of every light record";
+    }
+
+    /// <summary><see cref="VkDefStatsLanded"/>, made once: a sampled frame allocates no delegate.</summary>
+    private static readonly Action<int, bool> VkDefStatsLanded = OnVkDefStats;
+
+    /// <summary>Sample <paramref name="gen"/>'s counters landed: the walk's three become the period line's.</summary>
+    private static void OnVkDefStats(int gen, bool ran)
+    {
+        VkDeferredState d = _vkdef;
+        if (d.StatsGen != gen) return;
+        d.StatsGen = 0;
+        Span<uint> words = stackalloc uint[VkDefStatsWords];
+        if (!ran || d.Dev == null || !d.Dev.ReadMapped(d.StatsRead, 0, MemoryMarshal.AsBytes(words))) return;
+        d.WalkPx = words[VkDefWalkWord];
+        d.WalkSum = words[VkDefWalkWord + 1];
+        d.WalkMax = words[VkDefWalkWord + 2];
+    }
+
+    /// <summary>The period line's lights per pixel, off the last sampled frame.</summary>
+    internal static string VkDefWalked() => DeferredLights.WalkedText(_vkdef.WalkPx, _vkdef.WalkSum, _vkdef.WalkMax);
 
     /// <summary>The device's stages, buffers and record images. False (the path stood down, loudly) when one was
     /// refused: a deferred frame with no walk would leave every twin-drawn surface unlit by its point lights.</summary>
@@ -176,11 +270,14 @@ public sealed unsafe partial class AlloyRenderer
             d.Shadow = VkDefBuild(vk, DeferredShadows.ShdCs, null, "vk deferred shadow record", log);
             d.Walk = VkDefBuild(vk, DeferredLights.ShdCs, null, "vk deferred walk", log);
             d.Film = VkDefBuild(vk, DeferredLights.ShdCs, "CX_FILM_PASS 1", "vk deferred film", log);
+            if (VkDefWaveNote(vk.WaveOps, ref d.WaveNoted) is { } note) log.Always(note);
             d.Stats = vk.CreateBuffer(new BufferDesc(VkDefStatsWords * sizeof(uint), BufferUse.Storage | BufferUse.CopySrc,
                                                      MemoryKind.Device, "vk deferred stats"));
+            d.StatsRead = vk.CreateBuffer(new BufferDesc(VkDefStatsWords * sizeof(uint), BufferUse.CopyDst,
+                                                         MemoryKind.Readback, "vk deferred stats readback"));
             d.Block = vk.CreateBuffer(new BufferDesc(Std140.BlockBytes<DeferredBlock>(), BufferUse.Uniform,
                                                      MemoryKind.Upload, "vk deferred block"));
-            if (d.Shadow == null || d.Walk == null || d.Film == null || d.Stats.IsNull || d.Block.IsNull)
+            if (d.Shadow == null || d.Walk == null || d.Film == null || d.Stats.IsNull || d.StatsRead.IsNull || d.Block.IsNull)
             {
                 d.Failed = true;
                 log.Always("AlloyRenderer: the Vulkan deferred path did NOT build (logged above) -- the frame's twins "
@@ -245,7 +342,8 @@ public sealed unsafe partial class AlloyRenderer
     /// frame's arena -- the same writes a colour bind captures, with every term whose map is not on Vulkan left at
     /// zero. False (logged by the arena) when the arena is full.</summary>
     private static bool VkDefBlocks(VkDefStage st, bool shadow, int* viewport, float near, float far,
-                                    in Matrix4x4 invVp, in Matrix4x4 proj, int rw, int rh, int div, out int loose, ref int pass)
+                                    in Matrix4x4 invVp, in Matrix4x4 proj, int rw, int rh, int div, out int loose, ref int pass,
+                                    bool count = false)
     {
         Array.Clear(st.Block);
         LooseBlock.Capture(st.Members, st.Block);
@@ -257,6 +355,7 @@ public sealed unsafe partial class AlloyRenderer
             UploadMaterialModel(st.L.Material);
             LooseBlock.Set(st.L.LightOcc, [Lighting.HiddenLights.V ? 1f : 0f, GlossyRough]);
             LooseBlock.Set(st.L.LmMovers, LightmapBake.MoverMode);
+            LooseBlock.Set(st.L.WalkCount, count ? 1 : 0);
             if (shadow)
             {
                 // the record writer's own five, which are loose there rather than a block of their own
@@ -333,25 +432,37 @@ public sealed unsafe partial class AlloyRenderer
         cl.BindSet(0, new BindSet(ubo[..nu], ssbo[..ns], sampled[..nt], images[..ni]));
     }
 
-    /// <summary>Stage <paramref name="resref"/>'s text as GL would compile it -- its own override, then the library
-    /// swaps inside whichever text won, back to the embedded stage for an override that moved a block's term out of
-    /// it -- with <paramref name="define"/> on top, and that text translated for Vulkan. Null when the record
-    /// contract refused it (logged).</summary>
+    /// <summary>Stage <paramref name="resref"/>'s text as GL would compile it -- its override, the library swaps inside
+    /// it -- with <paramref name="define"/> on top, translated for Vulkan; the embedded stage, logged, for an override the
+    /// block or record contract refuses. Null when the embedded stage itself is refused (logged).</summary>
     private static (VkProgramText Text, string Src)? VkDefText(string resref, string? define, string label, ExtenderLog log)
+        => VkDefText(resref, define, label, log, ShaderResource.Override(resref, log), out _);
+
+    /// <summary><see cref="VkDefText(string, string?, string, ExtenderLog)"/> over <paramref name="content"/> in place of the
+    /// resource chain's override (null = the embedded stage); <paramref name="fromContent"/> says whose text it is.</summary>
+    private static (VkProgramText Text, string Src)? VkDefText(string resref, string? define, string label, ExtenderLog log,
+                                                              string? content, out bool fromContent)
     {
         string embedded = ShaderStages.Source(resref);
-        string src = ShaderSource.Content(ShaderResource.Override(resref, log) ?? embedded, log);
-        if (!ShaderContract.BlocksSafe(embedded, src))
+        fromContent = content != null;
+        string src = ShaderSource.Content(content ?? embedded, log);
+        if (fromContent && !ShaderContract.BlocksSafe(embedded, src))
         {
             log.Always($"AlloyRenderer: {label}'s override reads a uniform block's terms outside the block -- building the embedded stage");
-            src = embedded;
+            src = ShaderSource.Content(embedded, log);
+            fromContent = false;
         }
         if (!ShaderContract.RecordSafe(src) || !ShaderContract.RecordSafe(src, "CxChart", LightmapBake.RecFloats))
         {
-            log.Always($"AlloyRenderer: {label}'s CxDraw or CxChart record disagrees with the extender's (an override older than it)");
-            return null;
+            if (!fromContent)
+            {
+                log.Always($"AlloyRenderer: {label}'s CxDraw or CxChart record disagrees with the extender's");
+                return null;
+            }
+            log.Always($"AlloyRenderer: {label}'s override declares a CxDraw or CxChart record older than the extender's -- building the embedded stage");
+            return VkDefText(resref, define, label, log, null, out fromContent);
         }
-        if (define != null) src = ShaderStages.WithDefine(src, define);
+        if (define != null) src = ShaderStages.AfterVersion(src, "#define " + define.Replace("\n", "\n#define ") + "\n");
         // the compile-time text GL's own compute build makes: the vanilla splice, then the sizing tokens
         src = ShaderResource.Tokens(VanillaShader.Splice(src, log, label, true, true));
         return (VkGlsl.TranslateCompute(src, VkPrograms.Units), src);
@@ -361,8 +472,20 @@ public sealed unsafe partial class AlloyRenderer
     /// translated, compiled and linked, its loose block reflected and its locations resolved. Null, logged, for a
     /// text the contract guard, the translator or the toolchain refused.</summary>
     private static VkDefStage? VkDefBuild(VkBackend vk, string resref, string? define, string label, ExtenderLog log)
-        => VkDefText(resref, define, label, log) is ({ } t, { } src)
-            ? VkDefCompile(vk, t, src, label, log, define == null ? resref : null) : null;
+        => VkDefBuild(vk, resref, define, label, log, ShaderResource.Override(resref, log), out _);
+
+    /// <summary><see cref="VkDefBuild(VkBackend, string, string?, string, ExtenderLog)"/> over <paramref name="content"/>
+    /// (null = the embedded stage): an override that does not build falls back, logged, to the embedded stage.</summary>
+    private static VkDefStage? VkDefBuild(VkBackend vk, string resref, string? define, string label, ExtenderLog log,
+                                          string? content, out bool fromContent)
+    {
+        if (VkDefText(resref, define, label, log, content, out fromContent) is not ({ } t, { } src)) return null;
+        // a SPIR-V stand-in is for the stage as shipped: the wave define alone leaves its contract as it was
+        VkDefStage? st = VkDefCompile(vk, t, src, label, log, define is null or VkDefWave ? resref : null);
+        if (st != null || !fromContent) return st;
+        log.Always($"AlloyRenderer: {label}'s override did not build (logged above) -- building the embedded stage");
+        return VkDefBuild(vk, resref, define, label, log, null, out fromContent);
+    }
 
     /// <summary>A translated compute stage compiled and linked, its loose block reflected against
     /// <paramref name="src"/> (the text it came from) and its locations resolved. A SPIR-V <c>&lt;resref&gt;.shd</c>
@@ -413,6 +536,7 @@ public sealed unsafe partial class AlloyRenderer
             st.L.Pad = LooseBlock.Loc("uPad");
             st.L.Tally = LooseBlock.Loc("uTally");
             st.L.DynPage = LooseBlock.Loc("uDynPage");
+            st.L.WalkCount = LooseBlock.Loc("uWalkCount");
         });
         log.Info($"AlloyRenderer: {label} is built -- {st.Members.Length} loose members, {st.Opaques.Length} declarations");
         return st;

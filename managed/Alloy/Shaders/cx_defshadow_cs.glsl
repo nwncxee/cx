@@ -12,10 +12,10 @@
 // separates the lights keeping a shadow from the ones that do not must not follow the normal map. With the
 // budget off the score is -f2, which is the pre-budget order exactly.</para>
 // Its light list is the FROXEL table, the forward loop's own input, so the record's top-N is the top-N the
-// forward path would have shadowed. Matched by slot, so the two lists need not agree -- but with the budget on,
-// a light the deferred pass's tile cull keeps that this list never saw is UNSHADOWED there, and it is NOT
-// counted: the counter is the budget's own spend and that light was never a candidate here. Only reachable with
-// light.deferredtiles on, which is off by default precisely because the froxel lists are what the walk reads.
+// forward path would have shadowed. Matched by slot, so the two lists need not agree. The walk's tile list is the
+// union of the froxels its pixels read, so a light it holds that reaches a pixel is in that pixel's froxel too,
+// and so a candidate here; only the no-table fallback (every light tested per tile) can hold one this list never
+// saw, which is then lit UNSHADOWED there and not counted, never having been a candidate.
 #version 460 core
 layout(local_size_x = 8, local_size_y = 8) in;
 
@@ -84,7 +84,7 @@ void main()
         float ndcZ = texelFetch(uGbDepth, p, 0).r;
         float viewDepth = CxDepthViewZ(ndcZ, uProj);
         CxGbuf g;
-        if (CxGbufReadHead(texelFetch(uGb0, p, 0), viewDepth, CxGbufDepthSlack(uGbDepth, p, viewDepth, uProj), g))
+        if (CxGbufReadHead(texelFetch(uGb0, p, 0), viewDepth, uGbDepth, p, uProj, g))
         {
             cxRecvShadow = (g.flags & CX_GB_NOSHADOW) != 0u ? 0.0 : 1.0;
             // shadow.cubedist and the receiver's own flag, exactly as the walk computes them: a pixel that owes

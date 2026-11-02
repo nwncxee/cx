@@ -72,7 +72,7 @@ public sealed unsafe partial class AlloyRenderer
             // inside the lit stage and the deferred dispatch does nothing.
             ("light.deferred 0 (forward point-light loop in the lit stage)", new[] { (30, "0") }),
             ("light.lightrec 0 (blended fragments on a deferred surface walk the lights again)", new[] { (12, "0") }),
-            ("light.deferredtiles 1 (deferred pass on its own per-tile cull, not the froxel lists)", new[] { (31, "1") }),
+            ("light.deferredtiles 0 (each deferred pixel walks its own froxel list, not its tile's)", new[] { (31, "0") }),
             ("lightmap.movertaps 0 (hot lights: ray test only, no light body or shadow reads)", new[] { (29, "0") }),
             // The pair tiles and the screen-space debt they feed. 0 is the whole feature off --
             // the deferred frame then owes the baked receivers nothing and every static light keeps its page;

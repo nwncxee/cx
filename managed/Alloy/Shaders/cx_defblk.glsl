@@ -14,7 +14,7 @@ layout(std140, binding = 3) uniform CxDeferred
     mat4 uProj;
     mat4 uView;      // world -> view, for the tile cull's light positions; rigid, so its inverse is its transpose
     vec3 uEyePos;
-    int uTiles;      // light.deferredtiles: 1 = this group's own culled list, 0 = each pixel's froxel list
+    int uTiles;      // 1 = the group's list off its froxels, 2 = every light tested (no froxel table), 0 = each pixel's froxel list
     ivec4 uRect;     // the render viewport: xy = origin in window pixels, zw = size
     ivec2 uShSize;   // the visibility record's size in texels
     int uLightCount;

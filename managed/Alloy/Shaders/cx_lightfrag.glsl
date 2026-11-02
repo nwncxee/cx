@@ -28,6 +28,8 @@ vec2 cxHotViz = vec2(0.0);
 // pixel's brightest; every other caller of this library -- the bake, the shadow record, cx_material's film,
 // the pair debt -- leaves it 1, which is the pre-LOD body term for term.
 float cxLod = 1.0;
+/// The entries this fragment's full walk took from its list: what the deferred stage counts onto its period line.
+uint cxWalkN = 0u;
 // inc_lighting.shd:336-341's per-light surface fade: xyz the GEOMETRIC normal, w fSurfaceFadeModifier (w 0 = off --
 // the bake, the fog, every surface with no normal or height map). CxPointLight spends it on the wrapped dot.
 vec4 cxSurfFade = vec4(0.0);
@@ -90,6 +92,8 @@ uint CxClusterLiveCand(uint cl) { return min(uClCount[cl * 3u + 1u] >> 16u, CX_C
 uint CxClusterColdCand(uint cl) { return min(uClCount[cl * 3u + 2u] & 0xffffu, CX_CLUSTER_CAP); }
 /// How far this stage walks the whole list: the kept prefix for a fragment of the view the table was built for,
 /// every entry for a vertex stage or a pass that reuses another view's table (the planar mirror).
+/// Entry <paramref name="k"/> of froxel <paramref name="cl"/>'s list.
+uint CxClusterAt(uint cl, uint k) { return uClIdx[cl * CX_CLUSTER_CAP + k]; }
 uint CxClusterWalk(uint cl)
 {
 #ifdef CX_CLUSTER_FRAG
@@ -115,7 +119,7 @@ uint CxListLive(uint cl) { return CxClusterLive(cl); }
 uint CxListLiveCand(uint cl) { return CxClusterLiveCand(cl); }
 uint CxListColdCand(uint cl) { return CxClusterColdCand(cl); }
 uint CxListWalk(uint cl) { return CxClusterWalk(cl); }
-uint CxListIdx(uint cl, uint k) { return uClIdx[cl * CX_CLUSTER_CAP + k]; }
+uint CxListIdx(uint cl, uint k) { return CxClusterAt(cl, k); }
 #endif
 // CX-188 step 3: the walk's SHADOW SOURCE. A stage that has already evaluated this pixel's shadows once --
 // cx_deferred_cs, off the per-pixel visibility record cx_defshadow_cs wrote -- defines CX_SHADOW_SOURCE and
@@ -163,31 +167,22 @@ float CxLightRank(float att, vec3 cLin, float f2)
 }
 /// The score's own "nothing yet", below every value it can take (-f2 reaches -1 at a light's own reach).
 const float CX_RANK_NONE = -1e30;
-// CX-188 budget: the walk's own census -- x = lights that LIT this pixel, y = hardware shadow taps it still
-// paid, z = list ENTRIES the main loop touched -- for the period line's lights-per-pixel, taps-per-pixel and
-// entries-per-pixel. `x` counts lights that reached the pixel and faced it; `z` counts every entry the loop
-// read, so z - x is what the reach window, the relevance cut and the facing test rejected -- the number the
-// walk pays for and gets nothing back from. The relevance PRE-pass's own touches are not in z: it is a
-// separate walk of the candidate runs. Only cx_deferred_cs defines
-// CX_WALK_STATS; every other program compiles the walk with the three adds absent, not merely unexecuted.
+// A walk written against an older library counts into this; the library itself counts nothing, so it stays zero.
 #ifdef CX_WALK_STATS
 vec3 cxWalkStats = vec3(0.0);
-#define CX_WALK_LIT() cxWalkStats.x += 1.0
-#define CX_WALK_TAP() cxWalkStats.y += 1.0
-#define CX_WALK_ENTRY() cxWalkStats.z += 1.0
-#else
-#define CX_WALK_LIT()
-#define CX_WALK_TAP()
-#define CX_WALK_ENTRY()
 #endif
+/// The froxel slice a fragment at linear view depth <paramref name="viewDepth"/> reads.
+int CxClusterSlice(float viewDepth)
+{
+    float k = log(max(viewDepth, uZ.x) / uZ.x) / log(uZ.y / uZ.x);
+    return clamp(int(k * float(uGrid.z)), 0, uGrid.z - 1);
+}
 uint CxCluster(float viewDepth)
 {
     vec2 tile = CX_CLUSTER_XY;
     int gx = clamp(int(tile.x), 0, uGrid.x - 1);
     int gy = clamp(int(tile.y), 0, uGrid.y - 1);
-    float k = log(max(viewDepth, uZ.x) / uZ.x) / log(uZ.y / uZ.x);
-    int gz = clamp(int(k * float(uGrid.z)), 0, uGrid.z - 1);
-    return uint(gx + uGrid.x * (gy + uGrid.y * gz));
+    return uint(gx + uGrid.x * (gy + uGrid.y * CxClusterSlice(viewDepth)));
 }
 
 // Schlick's Fresnel, the pow-5 form the ship quality mode takes (inc_lighting.shd:247-262 GetFresnel,
@@ -556,6 +551,7 @@ vec3 CxClusteredLightLm(vec3 worldPos, vec3 N, vec3 V, float viewDepth, float on
     float glossW = CxGlossW(rough);
     // a baked receiver with no mirror to take skips every cold static outright -- they trail the list
     uint n = baked > 0.5 && !glossy ? CxListLive(cl) : CxListWalk(cl);
+    cxWalkN = n;
     vec3 acc = vec3(0.0);
     // #336: /shadow cap -- the cube taps a fragment may pay, chosen PER FRAGMENT by its CONTRIBUTION there
     // (CxLightRank, the unshadowed diffuse's luminance): the capN lights lighting this fragment most strongly
@@ -588,7 +584,8 @@ vec3 CxClusteredLightLm(vec3 worldPos, vec3 N, vec3 V, float viewDepth, float on
 #endif
     // light.relevance: the brightest light reaching this fragment, over the WHOLE list -- the live prefix moves
     // per froxel, the whole list only by lights that contribute exactly nothing here, so this is continuous.
-    // A fragment reads the build's floor candidates alone: no other entry can be the brightest here.
+    // A fragment reads the build's floor candidates alone: no other entry can be the brightest here. Always its
+    // OWN froxel's, whatever list the walk below takes: a max is order-free, so a tile's list keeps this brightest.
     // CX-188 budget: the pre-walk also feeds light.fullmodel, whose cut is a share of the same brightest
     float relMax = 0.0;
     if (uRelevance.x > 0.0 || uFullModel > 0.0)
@@ -596,17 +593,16 @@ vec3 CxClusteredLightLm(vec3 worldPos, vec3 N, vec3 V, float viewDepth, float on
 #ifdef CX_CLUSTER_FRAG
         if (uBounds > 0.5)
         {
-            for (uint k = 0u, e = CxListLiveCand(cl); k < e; k++) relMax = max(relMax, CxLightImportance(CxListIdx(cl, k), worldPos));
-            for (uint k = CxListLive(cl), e = CxListColdCand(cl); k < e; k++) relMax = max(relMax, CxLightImportance(CxListIdx(cl, k), worldPos));
+            for (uint k = 0u, e = CxClusterLiveCand(cl); k < e; k++) relMax = max(relMax, CxLightImportance(CxClusterAt(cl, k), worldPos));
+            for (uint k = CxClusterLive(cl), e = CxClusterColdCand(cl); k < e; k++) relMax = max(relMax, CxLightImportance(CxClusterAt(cl, k), worldPos));
         }
         else
 #endif
-        for (uint k = 0u, nAll = CxListN(cl); k < nAll; k++) relMax = max(relMax, CxLightImportance(CxListIdx(cl, k), worldPos));
+        for (uint k = 0u, nAll = CxClusterN(cl); k < nAll; k++) relMax = max(relMax, CxLightImportance(CxClusterAt(cl, k), worldPos));
     }
     for (uint k = 0u; k < n; k++)
     {
         uint li = CxListIdx(cl, k);
-        CX_WALK_ENTRY();
         // this light's share of the pixel's brightest: light.relevance's own quantity, and with it
         // light.fullmodel's. Continuous in position and in the light set, so neither cut has an edge to draw
         // and no light can POP as the ordering changes -- the share moves, it does not step.
@@ -681,7 +677,6 @@ vec3 CxClusteredLightLm(vec3 worldPos, vec3 N, vec3 V, float viewDepth, float on
         // slot -2 = ambient class: vanilla adds c*att to the ambient term, no N.L, no shadow
         if (slot == -2) { if (!inPages) acc += c * att; continue; }
         if (ndl <= 0.0) continue;   // facing away: no light, and no reason to pay for a cube fetch
-        CX_WALK_LIT();
 #ifndef CX_NO_HOT
         if (hot)
         {
@@ -753,7 +748,6 @@ vec3 CxClusteredLightLm(vec3 worldPos, vec3 N, vec3 V, float viewDepth, float on
 #ifdef CX_SH_INLOOP
             if (!have && (cxShMiss > 0.0 || uShBudget <= 0.0))
             {
-                CX_WALK_TAP();
                 v = CxLocalShadowQ(slot, worldPos, N, ndlRaw, onMover, viewDepth, false);
             }
 #endif

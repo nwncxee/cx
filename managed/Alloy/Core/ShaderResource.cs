@@ -37,7 +37,9 @@ internal static unsafe class ShaderResource
         // A BOM ahead of #version is a compile error, and an editor on Windows writes one without asking.
         string text = Encoding.UTF8.GetString(b).TrimStart('\uFEFF');
         log?.Info($"shader override: {resref}.shd from resman ({b.Length} bytes)");
-        return text;
+        // its includes spliced as an embedded stage's are: unspliced, a block it includes reads as members named with
+        // no block declaring them, and the stage contracts refuse it
+        return ShaderSource.Expand(text, resref);
     }
 
     /// <summary>The raw SPIR-V a content author supplied for <paramref name="resref"/>, or null when the resource

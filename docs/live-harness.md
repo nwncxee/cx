@@ -249,6 +249,21 @@ quicksave` in the user directory, `savenfo.txt` naming Waterdeep) or takes `--sa
 `[vkpipe] after the loading screen` line. PASS means no material pipeline was built on the frame in the first 10 s
 past the hold. The line also names the other pipelines the frame still built, which nothing grades yet.
 
+## Deferred walk A/B (`tools/live/deferred_walk_*.sh`)
+
+The deferred lights walk's live examples, each against main 65203c28. `--base DIR` is a checkout of that commit
+with its `cx-linux-x64/` built (`git worktree add --detach DIR 65203c28`, then `build.sh` there), and
+`--saves DIR` holds the docks quicksave alone. `deferred_walk_ab.sh` runs `perf-save.sh` from the base and from
+this checkout in turn, `--rounds` times (3 by default), and takes each run's GPU time per frame from the
+`[vkgpu]` lines of its `cx.log`. It refuses a run that oversubscribed VRAM.
+
+- `deferred_walk_approved_examples.sh`: the lit quay, the save's own view. PASS when the paired difference
+  shows this build cheaper by more than two standard errors.
+- `deferred_walk_horizon.sh`: facing the horizon. PASS when this build is no slower than two standard errors
+  plus 0.05 ms.
+
+A round takes about eight minutes. Rain varies from run to run, which is why the rounds alternate.
+
 ## Vulkan validation (`tools/vk/validate.sh`)
 
     nix develop -c ./build.sh          # build in nix

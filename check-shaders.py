@@ -649,6 +649,8 @@ def programs(g):
         # (DeferredLights.SelectEscape): the walk's in-loop hardware tap
         "deferred lights (film pass)": (g["cx_deferred_cs"].replace("#version 460 core\n", "#version 460 core\n#define CX_FILM_PASS 1\n", 1),),
         "deferred lights (in-loop taps)": (g["cx_deferred_cs"].replace("#version 460 core\n", "#version 460 core\n#define CX_SH_INLOOP 1\n", 1),),
+        "deferred lights (wave lockstep)": (g["cx_deferred_cs"].replace("#version 460 core\n", "#version 460 core\n#define CX_WALK_WAVE 1\n", 1),),
+        "deferred lights (film pass, wave lockstep)": (g["cx_deferred_cs"].replace("#version 460 core\n", "#version 460 core\n#define CX_FILM_PASS 1\n#define CX_WALK_WAVE 1\n", 1),),
         "deferred shadow record": (g["cx_defshadow_cs"],),
         "pair debt": (g["cx_pairdebt"],),
         "volumetric fog light": (g["cx_vfog_cs"],),

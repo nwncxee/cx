@@ -27,6 +27,7 @@ public sealed class DepthConvention : DiagnosticAnalyzer
         "/managed/Alloy/Pass/GuiPassVk.Issue.cs", "/managed/Alloy/Pass/GuiPassVk.Bind.cs",
         "/managed/Alloy/AlloyRenderer.VkGrass.cs", "/managed/Alloy/AlloyRenderer.VkColour.cs",
         "/managed/Alloy/Golden/GpuGolden.ReversedZApprovedExamples.SelfCheck.cs",
+        "/managed/Alloy/Golden/GpuGolden.DeferredRig.cs",
     };
 
     /// <summary>The backend, which maps every comparison and records every clear without knowing whose depth it is.</summary>

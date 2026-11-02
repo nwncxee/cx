@@ -173,9 +173,10 @@ void main()
     barrier();
 
     if (!mine || sN == 0u) return;
-    if (!CxGbufRead(texelFetch(uGb0, p, 0), texelFetch(uGb1, p, 0), viewDepth,
-                    CxGbufDepthSlack(uGbDepth, p, viewDepth, uProj), g)
-        || (g.flags & CX_GB_BAKED) == 0u || !(g.lmLum > 0.0)) return;
+    uvec4 g1 = texelFetch(uGb1, p, 0);
+    if (!CxGbufReadWalk(texelFetch(uGb0, p, 0), g1.w, viewDepth, uGbDepth, p, uProj, g)) return;
+    CxGbufWeights(g1, g);
+    if ((g.flags & CX_GB_BAKED) == 0u || !(g.lmLum > 0.0)) return;
     CxGbufFade(texelFetch(uGb2, p, 0).r, g);
     cxSurfFade = g.surfFade;
     vec4 h = uInvVp * vec4(2.0 * (cxPixel - vec2(uRect.xy)) / vec2(uRect.zw) - 1.0, ndcZ, 1.0);
