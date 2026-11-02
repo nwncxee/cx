@@ -1,6 +1,2 @@
 #include "cx_wx_vhead.glsl"
-#include "cx_wx_hash.glsl"
-#include "cx_localshadow.glsl"
-#include "cx_lightfrag.glsl"
-#include "cx_sunshadow.glsl"
 #include "cx_wx_vmain.glsl"

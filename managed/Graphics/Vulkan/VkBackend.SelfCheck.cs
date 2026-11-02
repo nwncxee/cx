@@ -39,6 +39,9 @@ internal sealed unsafe partial class VkBackend
         check.Expect(UsageMissing(ImageUse.Sampled | ImageUse.ColorTarget, true) != null && UsageMissing(ImageUse.Storage, true) == null
                   && UsageMissing(ImageUse.ColorTarget | ImageUse.Storage, false) != null && UsageMissing(ImageUse.Sampled, false) == null,
             "a bind is refused for the usage its image lacks: a colour target bound as storage, a storage-only image sampled");
+        check.Expect(AttachMissing(ImageUse.Sampled | ImageUse.Storage, false) != null && AttachMissing(ImageUse.ColorTarget, false) == null
+                  && AttachMissing(ImageUse.ColorTarget, true) != null && AttachMissing(ImageUse.DepthTarget, true) == null,
+            "an attachment is refused for the usage its image lacks: a sampled and storage image as colour, a colour target as depth");
         CheckSetCache(check);
         CheckAsyncFamily(check);
         CheckTransferFamily(check);

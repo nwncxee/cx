@@ -1,0 +1,1 @@
+sleep:17000;shot:@SHOTS@/still.png;sleep:1500;shot:@SHOTS@/pan0.png;sleep:250;shot:@SHOTS@/pan1.png;sleep:250;shot:@SHOTS@/pan2.png;sleep:250;shot:@SHOTS@/pan3.png;sleep:250;shot:@SHOTS@/pan4.png;sleep:250;shot:@SHOTS@/pan5.png

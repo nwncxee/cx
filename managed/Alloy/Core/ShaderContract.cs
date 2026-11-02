@@ -174,7 +174,7 @@ internal static class ShaderContract
     private static readonly string[] LightLiteHeads =
     {
         "cx_grass_vhead.glsl", "cx_grass_fhead.glsl", "cx_gblade_vhead.glsl", "cx_gblade_fhead.glsl",
-        "cx_water_fhead.glsl", "cx_part_vhead.glsl", "cx_part_fhead.glsl", "cx_wx_vhead.glsl", "cx_wx_sphead.glsl",
+        "cx_water_fhead.glsl", "cx_part_vhead.glsl", "cx_part_fhead.glsl", "cx_wx_cull_cs.glsl", "cx_wx_sphead.glsl",
     };
 
     /// <summary>...and that each of them still sets it. A head that lost the line renders identically and

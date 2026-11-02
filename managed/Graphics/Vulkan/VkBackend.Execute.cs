@@ -269,6 +269,7 @@ internal sealed unsafe partial class VkBackend
             // a null image routes the slot nowhere, so the slots after it keep their indices
             if (c.Image.IsNull) { att[i] = new VkRenderingAttachmentInfo { imageView = default, imageLayout = VkImageLayout.Undefined }; continue; }
             if (!_images.TryGet(c.Image.Value, out VkImg img)) return Fault($"render pass colour {i}: stale image");
+            if (AttachMissing(img.Desc.Use, false) is { } colourWhy) return Fault($"render pass colour {i}: {img.Desc.Label} {colourWhy}");
             if (c.Mip != 0) return Fault($"render pass colour {i}: mip {c.Mip} -- only mip 0 on the Vulkan backend yet");
             VkImageView cv = AttachView(img, c.Layer);
             if (cv.IsNull) return Fault($"render pass colour {i}: layer {c.Layer} is past {img.Desc.Label}");
@@ -293,6 +294,7 @@ internal sealed unsafe partial class VkBackend
         {
             DepthAttachment d = _pendDepth;
             if (!_images.TryGet(d.Image.Value, out VkImg img)) return Fault("render pass depth: stale image");
+            if (AttachMissing(img.Desc.Use, true) is { } depthWhy) return Fault($"render pass depth: {img.Desc.Label} {depthWhy}");
             if (d.Mip != 0) return Fault($"render pass depth: mip {d.Mip} -- only mip 0 on the Vulkan backend yet");
             if (!img.Desc.Fmt.IsDepth()) return Fault($"render pass depth: {img.Desc.Label} is {img.Desc.Fmt}, not a depth format");
             VkImageView dv = AttachView(img, d.Layer);
@@ -611,6 +613,12 @@ internal sealed unsafe partial class VkBackend
 
     /// <summary>What an image made for <paramref name="use"/> lacks to be bound as a storage image or, without
     /// <paramref name="storage"/>, sampled; null when it was made for that bind.</summary>
+    /// <summary>Why an image may not be a render pass's colour or <paramref name="depth"/> attachment, or null: the usage
+    /// it was created with has to say so, or the device begins rendering into an image it never allowed it for.</summary>
+    internal static string? AttachMissing(ImageUse use, bool depth)
+        => depth ? (use & ImageUse.DepthTarget) == 0 ? "was not created as a depth target" : null
+                 : (use & ImageUse.ColorTarget) == 0 ? "was not created as a colour target" : null;
+
     internal static string? UsageMissing(ImageUse use, bool storage)
         => storage ? (use & ImageUse.Storage) == 0 ? "was not created for storage" : null
                    : (use & ImageUse.Sampled) == 0 ? "was not created for sampling" : null;

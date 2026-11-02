@@ -88,6 +88,8 @@ internal static unsafe partial class PostStack
         int dw = display[2], dh = display[3];
         int* full = stackalloc int[4] { 0, 0, dw, dh };
         bool fsr = FsrVk(vk, s, cl, ref hdr, depth, vp, vpClean, ref viewport, full, near, far, fovY, log);
+        // the rain the scene held back for the upscale draws here, on the display-size frame, or on the scene's own if FSR stood down
+        if (!AlloyRenderer.VkWeatherLate(vk, cl, hdr, fsr ? dw : viewport[2], fsr ? dh : viewport[3], near, far, log)) return false;
         int live = 0;
         string missing = "";
         bool taa = false;
@@ -256,7 +258,7 @@ internal static unsafe partial class PostStack
     }
 
     /// <summary>The camera velocity, painted off the finished depth into the render-size velocity target, with the
-    /// movers and the grass over it: what TAA and FSR both reproject through. False when its pass did not build.</summary>
+    /// movers, the grass and the precipitation over it: what TAA and FSR both reproject through. False when its pass did not build.</summary>
     private static bool VelocityReady(VkBackend vk, StackVkState s, int* viewport, Matrix4x4* vp, Matrix4x4* vpClean,
                                       ImageId depth, CommandList cl, ExtenderLog log)
     {
@@ -294,6 +296,7 @@ internal static unsafe partial class PostStack
                          new PostChainVk.Inputs(default, default, depth), log);
         AlloyRenderer.VkMoverMotion(vk, cl, s.Vel, w, h, vp, prev, log);
         AlloyRenderer.VkGrassMotion(vk, cl, s.Vel, w, h, vp, prev);
+        AlloyRenderer.VkWeatherMotion(vk, cl, s.Vel, w, h, vp, prev, log);
         cl.EndLabel();
         return true;
     }
@@ -314,7 +317,7 @@ internal static unsafe partial class PostStack
         {
             vk.Destroy(s.FsrOut);
             s.FsrOut = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, dw, dh, 1, 1, 1, 1,
-                                                    ImageUse.Sampled | ImageUse.Storage, "vk fsr output"));
+                                                    ImageUse.Sampled | ImageUse.Storage | ImageUse.ColorTarget, "vk fsr output"));
             s.FsrW = dw; s.FsrH = dh;
             if (s.FsrOut.IsNull) { Fsr.Refuse($"its {dw}x{dh} output image was refused (logged above)", log); return false; }
         }
@@ -331,7 +334,7 @@ internal static unsafe partial class PostStack
         Fsr.Note(rw, rh, dw, dh, log);
         cl.BeginLabel("fsr"u8);
         cl.Upscale(Fsr.Command(hdr, depth, s.Vel, s.FsrExposure, s.FsrOut, rw, rh, PostChain.JitterX, PostChain.JitterY,
-                               Fsr.FrameMs(), near, far, fovY, Fsr.TakeReset()));
+                               Fsr.FrameMs(), near, far, fovY, Fsr.TakeReset(), AlloyRenderer.VkReactiveMask));
         cl.EndLabel();
         hdr = s.FsrOut;
         viewport = full;
@@ -350,7 +353,8 @@ internal static unsafe partial class PostStack
         LooseBlock.Set(s.TJitterPx, [PostChain.JitterX * 0.5f * s.W, PostChain.JitterY * 0.5f * s.H]);
         int at = PostChainVk.Close(cl, s.Taa!);
         PostChainVk.Draw(cl, s.Taa!, Format.Rgba16F, PostChainVk.Blend.None, write, LoadOp.DontCare, new Rect(0, 0, s.HistW, s.HistH), at,
-                         new PostChainVk.Inputs(cur, default, depth, read, s.Vel, HistLinear: true), log);
+                         new PostChainVk.Inputs(cur, default, depth, read, s.Vel, HistLinear: true,
+                                                React: AlloyRenderer.VkReactiveMask), log);
         cl.EndLabel();
         s.Cur ^= 1;
         s.HistValid = true;

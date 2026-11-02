@@ -5,6 +5,7 @@ uniform sampler2D uCur;      // this frame, display space, the stack's size
 uniform sampler2D uHist;     // last frame's history, LINEAR
 uniform sampler2D uVel;      // #388: prev - cur, render pixels, render size
 uniform sampler2D uDepth;    // the frame depth, render size: the dilation's closest-depth pick
+uniform sampler2D uReact;    // the reactive mask, render size: what the last four passes changed
 uniform float uBlend;        // the current frame's share at rest; 1 = no history
 uniform vec2 uJitterPx;      // this frame's projection jitter in RENDER pixels
 uniform int uUpsample;       // 1: uCur is render-sized, the history and this draw are display-sized
@@ -73,6 +74,13 @@ vec3 CxClipToBox(vec3 mn, vec3 mx, vec3 q)
     return m > 1.0 ? center + v / m : q;
 }
 
+// The reactive mask is a FLOOR under the current frame's share, never a ceiling: a pixel a streak or a
+// flare just changed carries no history worth reprojecting, and its velocity is the ground's behind it.
+float CxTaaReactive(float a, float mask)
+{
+    return max(a, mask);
+}
+
 void main()
 {
     // from vUV, not gl_FragCoord: the stack draws at the DISPLAY viewport, whose origin need not be 0
@@ -116,6 +124,7 @@ void main()
     // a moving pixel takes more of the frame -- a walking camera converges in a few frames, not ten
     float a = uBlend >= 1.0 ? 1.0 : min(0.5, uBlend + length(velPx) * 0.05);
     if (uUpsample != 0) a = mix(a * 0.25, a, conf);
+    a = CxTaaReactive(a, textureLod(uReact, vUV, 0.0).r);
     if (any(lessThan(huv, vec2(0.0))) || any(greaterThan(huv, vec2(1.0)))) a = 1.0;
     vec3 hy = CxClipToBox(mn, mx, CxToYCoCg(CxHistory(huv, hsz)));
     vec3 h = CxFromYCoCg(hy);

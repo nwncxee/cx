@@ -51,6 +51,9 @@ internal static class VkPrograms
             ["uProbe"] = EnvProbe.ProbeUnit,
             ["uOitDepth"] = TextureSlots.OitDepth,
             ["uCoverEsm"] = TextureSlots.CoverEsm,
+            // the raw cover layer of the sun array, on the same unit: the precipitation and froxel stages bind no
+            // filtered map, and neither binds both names
+            ["uCover"] = TextureSlots.CoverEsm,
             ["uCoverDepth"] = TextureSlots.CoverDepth,
             ["uSsao"] = TextureSlots.Ssao,
             ["uSceneDepth"] = TextureSlots.SsaoDepth,

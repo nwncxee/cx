@@ -88,12 +88,13 @@ internal static partial class Fsr
 
     /// <summary>One dispatch in FSR's terms from Alloy's. Alloy's targets hold rows bottom-up, the way NDC y runs, so
     /// a jitter of j NDC is j x size / 2 render pixels along the rows with no flip, and the velocity target (render
-    /// pixels, <c>prev - cur</c>, the same rows) is FSR's motion as it stands.</summary>
+    /// pixels, <c>prev - cur</c>, the same rows) is FSR's motion as it stands. <paramref name="reactive"/> trails the
+    /// list because the approved FSR golden calls this, and the guard locks that file whole.</summary>
     internal static UpscaleCmd Command(ImageId color, ImageId depth, ImageId motion, ImageId exposure, ImageId output,
                                        int rw, int rh, float jitterNdcX, float jitterNdcY, float frameMs,
-                                       float near, float far, float fovY, bool reset)
-        => new(color, depth, motion, exposure, output, jitterNdcX * rw * 0.5f, jitterNdcY * rh * 0.5f, 1f, 1f, rw, rh,
-               frameMs, near, far, fovY, reset);
+                                       float near, float far, float fovY, bool reset, ImageId reactive = default)
+        => new(color, depth, motion, exposure, reactive, output, jitterNdcX * rw * 0.5f, jitterNdcY * rh * 0.5f, 1f, 1f,
+               rw, rh, frameMs, near, far, fovY, reset);
 
     /// <summary>Off-device: the approved examples, and FSR off leaving the frame as it was.</summary>
     internal static void SelfCheck(ExtenderLog log)

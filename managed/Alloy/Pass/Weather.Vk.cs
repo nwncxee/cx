@@ -38,12 +38,23 @@ internal static unsafe partial class Weather
     {
         View = LooseBlock.Loc("uView"), Proj = LooseBlock.Loc("uProj"), Eye = LooseBlock.Loc("uEye"),
         Centre = LooseBlock.Loc("uCentre"), Fall = LooseBlock.Loc("uFall"), Phase = LooseBlock.Loc("uPhase"),
-        Time = LooseBlock.Loc("uTime"), Box = LooseBlock.Loc("uBox"), Size = LooseBlock.Loc("uSize"),
+        Time = LooseBlock.Loc("uTime"), Box = LooseBlock.Loc("uBox"), Size = LooseBlock.Loc("uQuad"),
         Kind = LooseBlock.Loc("uKind"), Drift = LooseBlock.Loc("uDrift"), Tint = LooseBlock.Loc("uTint"),
         Alpha = LooseBlock.Loc("uAlpha"), Soft = LooseBlock.Loc("uSoft"), Viz = LooseBlock.Loc("uViz"),
         CoverLayer = LooseBlock.Loc("uCoverLayer"), Lit = LooseBlock.Loc("uLit"), Back = LooseBlock.Loc("uBack"),
         CoverVp = LooseBlock.Loc("uCoverVp"), CoverSoft = LooseBlock.Loc("uCoverSoft"),
+        Count = LooseBlock.Loc("uCount"), Slot = LooseBlock.Loc("uSlot"), FallStep = LooseBlock.Loc("uFallStep"), Screen = LooseBlock.Loc("uScreen"),
     };
+
+    /// <summary>The cull's own terms into the open capture: the <paramref name="count"/> lattice points it walks, the
+    /// draw command <paramref name="slot"/> its survivors count into, and the metres <paramref name="fallStep"/> the field
+    /// fell since the last frame at speed 1.</summary>
+    internal static void WriteCullVk(in Loc l, int count, int slot, float fallStep)
+    {
+        LooseBlock.Set(l.FallStep, fallStep);
+        LooseBlock.Set(l.Count, count);
+        LooseBlock.Set(l.Slot, slot);
+    }
 
     /// <summary>The draw's terms into the open capture, as <see cref="Submit"/> sets them, for <paramref name="kind"/>
     /// (1 rain, 2 snow, 3 drips).</summary>
@@ -53,12 +64,11 @@ internal static unsafe partial class Weather
         LooseBlock.Set(l.View, *view);
         LooseBlock.Set(l.Proj, *proj);
         LooseBlock.Set(l.Eye, [eye.X, eye.Y, eye.Z]);
-        Vector3 centre = FrameInputs.HasFocus ? FrameInputs.Focus : eye;
-        LooseBlock.Set(l.Centre, [centre.X, centre.Y, centre.Z]);
+        LooseBlock.Set(l.Centre, [eye.X, eye.Y, eye.Z]);
         LooseBlock.Set(l.Fall, [_fall.X, _fall.Y, _fall.Z]);
         LooseBlock.Set(l.Phase, (float)_phase);
         LooseBlock.Set(l.Time, _wobble);
-        LooseBlock.Set(l.Box, [Range.V, Range.V]);
+        LooseBlock.Set(l.Box, [Box, Box]);
         LooseBlock.Set(l.Size, [snow ? FlakeSize.V : kind == 3 ? StreakLen.V * 0.25f : StreakLen.V, snow ? FlakeSize.V : kind == 3 ? 0.03f : 0.02f]);
         LooseBlock.Set(l.Kind, kind);
         LooseBlock.Set(l.Drift, snow ? 0.4f : 0f);

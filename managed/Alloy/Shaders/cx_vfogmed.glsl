@@ -25,11 +25,17 @@ vec3 CxVfRay(vec2 uv)
     return d / dot(d, uVfFwd);
 }
 
+/// The share of the bank still standing at `world`: whole below its top, thinning away across it, so a ray
+/// climbing out of the bank reaches a clear sky and the sky takes the same air.
+float CxVfBank(vec3 world)
+{
+    return 1.0 - smoothstep(0.5 * uVfTop, 1.5 * uVfTop, world.z - uVfEye.z);
+}
+
 /// The area fog's own extinction at `world`: nothing inside its start, rising to uVfMed.y at its end and on, and
-/// thinning away across the bank's top, so a ray climbing out of it reaches a clear sky and the sky takes the same air.
+/// thinning away across the bank's top.
 float CxVfWall(vec3 world)
 {
-    float bank = 1.0 - smoothstep(0.5 * uVfTop, 1.5 * uVfTop, world.z - uVfEye.z);
-    return uVfMed.y * smoothstep(uVfMed.z, uVfMed.w, distance(world, uVfOrigin)) * bank;
+    return uVfMed.y * smoothstep(uVfMed.z, uVfMed.w, distance(world, uVfOrigin)) * CxVfBank(world);
 }
 #endif

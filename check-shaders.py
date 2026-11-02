@@ -47,6 +47,9 @@ MANAGED = os.path.join(ROOT, "managed")
 TOKENS = {"$CAP$": "128", "$SORT$": "32", "$DYNSPH$": "4", "$CUBES$": "64", "$GROUP$": "8", "$SRGB$": "2.2", "$BAND$": "45.0, 0.0667", "$AA$": "3",
           # #352: the hosted post chain built with sharpen + vibrance on (the two hosted option bits), high quality
           "$POSTMASK$": "9", "$SQM$": "2"}
+# the cull's record cap, read out of the C# that defines it for the runtime build, so the two are one number
+WX_REC_CAP = 1 << int(re.search(r"VkWxRecCap = 1 << (\d+);", open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                       "managed/Alloy/AlloyRenderer.VkWeather.cs")).read()).group(1))
 INCLUDE = re.compile(r'^\s*#include\s+"([^"]+\.glsl)"\s*$')
 GET = re.compile(r'ShaderSource\.Get\("([^"]+)"\)')
 RESREF = re.compile(r'"(cx_\w+)"')
@@ -615,12 +618,16 @@ def programs(g):
         "ssao visibility": (g["cx_post_vs"], g["cx_ssao_fs"]),
         "ssao blur": (g["cx_post_vs"], g["cx_ssaoblur_fs"]),
         "halos": (g["cx_halo_vs"], g["cx_halo_fs"]),
+        "weather cull": (define(g["cx_wx_cull_cs"], f"CX_WX_REC_CAP {WX_REC_CAP}u"),),
+        "weather cull (wave)": (define(define(g["cx_wx_cull_cs"], f"CX_WX_REC_CAP {WX_REC_CAP}u"), "CX_WX_WAVE 1"),),
         "weather rain": (g["cx_weather_vs"], g["cx_rain_fs"]),
         "weather snow": (g["cx_weather_vs"], g["cx_snow_fs"]),
         "weather splash": (g["cx_splash_vs"], g["cx_splash_fs"]),
+        "weather motion vectors": (define(g["cx_weather_vs"], "CX_MOTION 1"), g["cx_wx_mot_f"]),
         "motion vectors": (g["cx_fullscreen_v"], g["cx_motioncam_f"]),
         "mover motion": (g["cx_motion_v"], g["cx_motion_f"]),
         "taa resolve": (g["cx_fullscreen_v"], g["cx_taa_f"]),
+        "reactive mask": (g["cx_fullscreen_v"], g["cx_reactive_f"]),
         "ssr hi-Z": (define(g["cx_ssrhiz_c"], "CX_SSR_STORAGE 1"),),
         "ssr colour chain": (define(g["cx_ssrhiz_c"], "CX_SSR_COLOUR 1"),),
         "ssr trace": (g["cx_fullscreen_v"], g["cx_ssrtrace_f"]),

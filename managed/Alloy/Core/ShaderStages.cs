@@ -123,6 +123,7 @@ internal static class ShaderStages
         (Halos.ShdHaloVs,                  Banner),
         (Halos.ShdHaloFs,                  Banner),
         (Weather.ShdWeatherVs,             Banner),
+        (Weather.ShdWeatherCull,           Banner),
         (Weather.ShdRainFs,                Banner),
         (Weather.ShdSnowFs,                Banner),
         (Weather.ShdSplashVs,              Banner),
@@ -205,7 +206,7 @@ internal static class ShaderStages
     /// that declares it. A missing switch arm is otherwise invisible until a program builds from "".</summary>
     internal static bool SelfCheck(ExtenderLog log)
     {
-        bool ok = All.Length == 42 && BindlessRef.Length <= ShaderResource.ResRefBytes;
+        bool ok = All.Length == 43 && BindlessRef.Length <= ShaderResource.ResRefBytes;
         foreach ((string r, string header) in All)
         {
             string src = Source(r);

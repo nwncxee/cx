@@ -12,8 +12,7 @@ namespace CX.Alloy;
 /// stages nothing. Roof drips are the same draw with <c>uKind = 3</c>, kept only under a lip.</summary>
 internal static unsafe partial class Weather
 {
-    internal const string ShdWeatherVs = "cx_weather_vs", ShdRainFs = "cx_rain_fs", ShdSnowFs = "cx_snow_fs";
-    private const uint GlTriangleStrip = 0x0005;   // not-an-offset: GL primitive-mode enum
+    internal const string ShdWeatherVs = "cx_weather_vs", ShdRainFs = "cx_rain_fs", ShdSnowFs = "cx_snow_fs", ShdWeatherCull = "cx_wx_cull_cs";
     /// <summary>Speed knobs are in m/s; the phase is kept in metres and wrapped at this many box lengths so
     /// the shader's <c>mod</c> never sees a large float, and the per-instance speed steps of 1/8 land on a
     /// box multiple at the wrap (1024/8 = 128 lengths).</summary>
@@ -21,14 +20,24 @@ internal static unsafe partial class Weather
     /// <summary>The wobble clock wraps where both wobble frequencies (1.0 and 1.5 rad/s) complete whole turns.</summary>
     private const float WobbleWrap = 400f * MathF.PI;
 
-    internal static Knob<float> DensityScale = null!, StreakLen = null!, FlakeSize = null!, Brightness = null!, Opacity = null!, Range = null!,
+    internal static Knob<float> DensityScale = null!, StreakLen = null!, FlakeSize = null!, Brightness = null!, Opacity = null!,
                                 RainSpeed = null!, SnowSpeed = null!, WindLean = null!, Soft = null!, Drips = null!, Backscatter = null!, SnowAngle = null!;
     internal static Knob<int> MaxCount = null!, Viz = null!;
 
     private static bool _failed;
 
+    /// <summary>The most lattice points one draw walks, and so the most records the Vulkan cull keeps for it.</summary>
+    internal const int CountCap = 400000;
+
+    /// <summary>The fall-aligned box the lattice wraps in, centred on the camera: room for the whole near tier, whose drops
+    /// thin out to none 25 m away (<c>CxWxNearKeep</c>), so its edge never shows and the far veil takes over from there.</summary>
+    internal const float Box = 52f;
+
+    /// <summary>The density knob's ceiling, a multiple of the area's own weather.</summary>
+    private const float DensityMax = 3f;
+
     /// <summary>The precipitation program's uniform locations, resolved once per program.</summary>
-    internal struct Loc { public int View, Proj, Eye, Centre, Fall, Phase, Time, Box, Size, Kind, Drift, Depth, Tint, Alpha, Soft, Viz, Cover, CoverVp, CoverLayer, CoverSoft, Lit, Back; }
+    internal struct Loc { public int View, Proj, Eye, Centre, Fall, Phase, Time, Box, Size, Kind, Drift, Depth, Tint, Alpha, Soft, Viz, Cover, CoverVp, CoverLayer, CoverSoft, Lit, Back, Count, Slot, FallStep, Screen; }
     private static double _phase;
     private static float _wobble;
     private static long _ticks;
@@ -39,7 +48,7 @@ internal static unsafe partial class Weather
     private static void DeclareKnobs()
     {
         G.Section("Precipitation");
-        DensityScale = G.Slider("density", "Density", 0f, 3f, 0.1f, 1f,
+        DensityScale = G.Slider("density", "Density", 0f, DensityMax, 0.1f, 1f,
                                 help: "How much rain or snow falls, on top of the weather the area asks for.")
                         .Ladder(Quality.Weather, 0.5f, 0.8f, 1f, 1.5f);
         Drips = G.Slider("drips", "Roof drips", 0f, 1f, 0.05f, 0.25f, tier: Tier.Advanced,
@@ -49,9 +58,7 @@ internal static unsafe partial class Weather
         FlakeSize = G.Slider("flake", "Snowflake size", 0.01f, 0.2f, 0.01f, 0.05f, "m", Tier.ChatOnly, help: "Diameter of one flake.");
         Brightness = G.Slider("bright", "Brightness", 0f, 3f, 0.1f, 0.6f, tier: Tier.ChatOnly, help: "Streaks and flakes take the light where they fall (sun, shadow, lamps); this scales it.");
         Opacity = G.Slider("opacity", "Rain opacity", 0.02f, 1f, 0.02f, 0.7f, tier: Tier.ChatOnly,
-                           help: "How much of the scene one lit streak hides. A streak with no light on it is invisible whatever this says.");
-        Range = G.Slider("range", "Range", 6f, 40f, 1f, 20f, "m", Tier.ChatOnly, help: "Size of the box around the camera the field fills.")
-                 .Ladder(Quality.Weather, 12f, 16f, 20f, 28f);
+                           help: "How strongly one streak shows: the share of the scene it hides, the sky seen through it and the light it throws.");
         RainSpeed = G.Slider("rainspeed", "Rain speed", 2f, 30f, 0.5f, 12f, "m/s", Tier.ChatOnly);
         SnowSpeed = G.Slider("snowspeed", "Snow speed", 0.2f, 6f, 0.1f, 1.2f, "m/s", Tier.ChatOnly);
         WindLean = G.Slider("windlean", "Wind lean", 0f, 3f, 0.05f, 0.6f, tier: Tier.ChatOnly,
@@ -62,8 +69,8 @@ internal static unsafe partial class Weather
                                help: "A flake between you and a light glows, lit from behind. 0 = off.");
         Soft = G.Slider("soft", "Contact fade", 0f, 20f, 0.5f, 6f, tier: Tier.ChatOnly,
                         help: "How sharply a streak fades where it meets geometry (1/m).");
-        MaxCount = G.Slider("count", "count", 500, 40000, 500, 16000, tier: Tier.ChatOnly)
-                    .Ladder(Quality.Weather, 4000, 8000, 16000, 24000);
+        MaxCount = G.Slider("count", "count", 500, CountCap, 500, 200000, tier: Tier.ChatOnly)
+                    .Ladder(Quality.Weather, 60000, 120000, 200000, 280000);
         Viz = G.Slider("viz", "viz", 0, VizMax, 1, 0, tier: Tier.ChatOnly, help: "1 streak contact fade, 2 exposure on the world, 3 record class (red creature, green object, blue tileset), 4 the wetness map (red wet, green fill, blue standing water; black = not latched)");
     }
 
@@ -94,27 +101,41 @@ internal static unsafe partial class Weather
         Vector3 f = new(wind.X * WindLean.V, wind.Y * WindLean.V, -1f);
         _fall = Vector3.Normalize(f);
         float speed = CurrentKind == Kind.Snow ? SnowSpeed.V : RainSpeed.V;
-        double wrap = Range.V * PhaseWrapLengths;
+        double wrap = PhaseWrap;
         _phase = (_phase + dt * speed) % wrap;
         _wobble = (_wobble + dt) % WobbleWrap;
         SplashTick(dt);
     }
 
+    /// <summary>Metres the field has fallen at speed 1, wrapped at <see cref="PhaseWrap"/>.</summary>
+    internal static double Phase => _phase;
+
+    /// <summary>Where <see cref="Phase"/> wraps.</summary>
+    internal static double PhaseWrap => Box * PhaseWrapLengths;
+
+    /// <summary>Whether the frame records rain's own motion: only TAA reads it with rain in the frame it resolves. Under
+    /// FSR the rain draws after the upscale, so its motion would only drag the ground under it.</summary>
+    internal static bool MotionWanted(bool fsr, bool taa) => taa && !fsr;
+
     internal static void ContextLost() => MapLost();
     internal static void ResetPeriod() => _drawn = 0;
     internal static string Stats() => _off ? "weather unavailable" : !Enabled.V ? "weather off"
-        : $"weather {CurrentKind} {Density * 100f:F0}% {_count} instances, {_drips} drips{SplashStats()}{CoverStats()}{SurfaceStats()}{MapStats()}{ShelterStats()}, records {AlloyRenderer.RecCreature} creature / {AlloyRenderer.RecObject} object / {AlloyRenderer.RecTile} tile";
+        : $"weather {CurrentKind} {Density * 100f:F0}% {_count} lattice points{AlloyRenderer.VkWxKept()}, {_drips} drips{SplashStats()}{CoverStats()}{SurfaceStats()}{MapStats()}{ShelterStats()}, records {AlloyRenderer.RecCreature} creature / {AlloyRenderer.RecObject} object / {AlloyRenderer.RecTile} tile";
     private static string DescribeDraw() => $" fall ({_fall.X:F2} {_fall.Y:F2} {_fall.Z:F2}) count {_count} drips {_drips}{SplashStats()}{CoverStats()}";
 
-    /// <summary>One instanced quad per drop or flake; every position is a function of the instance id, the
-    /// camera and the fall phase, so a hak override of this stage can reshape the field but never grow a
-    /// buffer. The instance's lattice point is tested against the rain occlusion map once, here. The light is
-    /// taken per vertex at the instance's own centre; <c>uLit = 0</c> falls back to the flat area terms.</summary>
+    /// <summary>One instanced quad per drop or flake the cull kept, read from its record by instance: the vertex
+    /// stage only turns the quad to the camera. <c>uLit = 0</c> falls back to the flat area terms.</summary>
     internal static string WeatherVs => ShaderSource.Get("cx_wx_v.glsl");
+    /// <summary>The cull stage: every position a function of the lattice id, the camera and the fall phase, so a hak
+    /// override can reshape the field but never grow a buffer; each drop tested against the cover map and lit once.</summary>
+    internal static string WeatherCull => ShaderSource.Get(ShdWeatherCull + ".glsl");
 
     /// <summary>A rain streak: a thin bright core tapered at both ends, faded where it meets geometry.
     /// Linear, alpha over. <c>/weather viz 1</c> paints the contact fade alone. The colour is the vertex stage's light times the brightness scalar.</summary>
     internal static string RainFs => ShaderSource.Get("cx_rain_f.glsl");
+
+    /// <summary>The velocity stage: a streak's or flake's own fall, written in its core and nowhere on its edge.</summary>
+    internal static string MotionFs => ShaderSource.Get("cx_wx_mot_f.glsl");
 
     /// <summary>A snowflake: a soft white disc, faded where it meets geometry. Linear, alpha over.</summary>
     internal static string SnowFs => ShaderSource.Get("cx_snow_f.glsl");

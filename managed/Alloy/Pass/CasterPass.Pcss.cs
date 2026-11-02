@@ -90,7 +90,7 @@ public sealed unsafe partial class CasterPass
         // ...and the callers the ticket keeps on the cheap path really are on it: a disc in a vertex stage
         // blurs a whole blade or billboard, and the sun is paid by every outdoor fragment.
         foreach (string cheap in new[] { "cx_grass_v.glsl", "cx_grass_fs.glsl", "cx_gblade_vs.glsl", "cx_gblade_fs.glsl",
-                                         "cx_part_v.glsl", "cx_part_f.glsl", "cx_wx_v.glsl", "cx_wx_sv.glsl", "cx_water_fs.glsl" })
+                                         "cx_part_v.glsl", "cx_part_f.glsl", "cx_wx_cull_cs.glsl", "cx_wx_sv.glsl", "cx_water_fs.glsl" })
             // the DEFINE, not the token: every one of these composes cx_sunshadow, whose own #ifdef names it
             check.Expect(!ShaderSource.Get(cheap).Contains("#define CX_SUN_SOFT"), $"{cheap} stays on the four-tap sun cross");
 

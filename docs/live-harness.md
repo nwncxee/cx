@@ -407,6 +407,11 @@ a window, `cardstyle`, cards and `model.*` dolls, with stock textures only. Each
 
 `light-engine`, `light-warm`, `light-cold` and `light-torch` are one doll under the engine's light and three server light recipes (the wiki's Light section); each opens a single 300x420 window.
 
+`rain` is the fixed rain capture: the PC jumps to the module's first outdoor area, heavy rain at noon there, a snap to one camera angle, then a slow scripted
+pan. Its keys save `still.png` and six frames 250 ms apart during the pan (`pan0.png` to `pan5.png`), so two builds
+compare frame for frame. Run it once with `--cfg post.scale=1` (FSR) and once with `--cfg post.scale=1.5` (TAA), with
+`--cfg chat.enabled=0`.
+
 `closebutton` opens two closable windows of one size side by side, the second under `nui.<id>.background=0`, presses where
 each close button sits, and logs `CXSHOW: show_close open` or `gone` every 2 s. A NUI button needs `down`, a pause and `up`:
 `click` releases in the same frame and NUI ignores it.

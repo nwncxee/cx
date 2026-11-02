@@ -1,9 +1,7 @@
 #include "cx_fogmix.glsl"
-/// How fogged this fragment is, 0..1. The area author's ramp, times the height layer.
-float CxFogFactor(vec3 world, float depth)
+/// The area author's own ramp, times the height layer: how fogged this fragment is with no volume to read.
+float CxFogRamp(vec3 world, float depth)
 {
-    // the volume's transmittance, where this pass reads it: the share of the surface the fog takes
-    if (uVFog.x > 0.0) return 1.0 - CxVFogAt(world).a;
     if (uFogParams.x == 0.0) return 0.0;
     // radial from the player (uFogOrigin.w == 1), so zooming the camera out does not move the fog;
     // else the engine's own view depth. CullPass measures the same way, or the cut shows.
@@ -15,10 +13,21 @@ float CxFogFactor(vec3 world, float depth)
     if (uFogSky.y > 0.0) f *= exp(-max(world.z - uFogSky.z, 0.0) * uFogSky.y);
     return min(f, 1.0);
 }
+/// How fogged this fragment is, 0..1: the ramp, the volume's own share where this pass reads the whole fog, or
+/// the two together where the volume carries the rain veil alone.
+float CxFogFactor(vec3 world, float depth)
+{
+    // the volume's transmittance, where this pass reads it: the share of the surface the fog takes
+    if (CxVFogWhole()) return 1.0 - CxVFogAt(world).a;
+    float f = CxFogRamp(world, depth);
+    return CxVFogOn() ? 1.0 - (1.0 - f) * CxVFogAt(world).a : f;
+}
 vec3 CxFog(vec3 lin, vec3 world, float depth)
 {
-    if (uVFog.x > 0.0) { vec4 v = CxVFogAt(world); return lin * v.a + v.rgb; }
-    return CxFogMix(lin, world, CxFogFactor(world, depth));
+    if (!CxVFogOn()) return CxFogMix(lin, world, CxFogFactor(world, depth));
+    vec4 v = CxVFogAt(world);
+    // the whole fog, or the rain veil over what the area's own ramp already did here
+    return (CxVFogWhole() ? lin : CxFogMix(lin, world, CxFogRamp(world, depth))) * v.a + v.rgb;
 }
 
 /// CX-120: the same ramp under FOG OF WAR. An unexplored tile is fogged toward black rather than
@@ -46,7 +55,7 @@ float CxFogRevealFactor(vec3 world, float depth, float hidden)
 
 vec3 CxFogReveal(vec3 lin, vec3 world, float depth, float hidden)
 {
-    if (hidden <= 0.0 && uVFog.x > 0.0) return CxFog(lin, world, depth);
+    if (hidden <= 0.0 && CxVFogOn()) return CxFog(lin, world, depth);
     float reveal = 1.0 - hidden;
     float f = CxFogRevealFactor(world, depth, hidden);
     if (f <= 0.0) return lin;

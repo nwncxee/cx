@@ -172,23 +172,7 @@ float CxSpecOcclusion(float NoV, float ao, float rough)
     return clamp(pow(NoV + ao, exp2(-16.0 * rough - 1.0)) - 1.0 + ao, 0.0, 1.0);
 }
 
-// CxProbeSh (the SH9 block) lives in cx_ssr.glsl beside CxProbeFetch, which reads its origin; cx_ownlit_head includes it.
-
-/// The probe's directional shape over the area ambient: the SH irradiance toward N over the mean luminance of
-/// N and -N, in [0, 2] by luminance. Normalised against its own opposite, so the authored ambient keeps its
-/// level and gains a direction and a colour -- sky above, ground below, the lit wall beside. The colour is
-/// capped at 2x per channel: a saturated capture must tint the ambient, not multiply one channel tenfold.
-vec3 CxAmbientShape(vec3 N)
-{
-    vec3 even = uProbeSh[0].rgb + uProbeSh[4].rgb * (N.x * N.y) + uProbeSh[5].rgb * (N.y * N.z)
-              + uProbeSh[6].rgb * (3.0 * N.z * N.z - 1.0) + uProbeSh[7].rgb * (N.x * N.z)
-              + uProbeSh[8].rgb * (N.x * N.x - N.y * N.y);
-    vec3 odd = uProbeSh[1].rgb * N.y + uProbeSh[2].rgb * N.z + uProbeSh[3].rgb * N.x;
-    vec3 a = max(even + odd, vec3(0.0)), b = max(even - odd, vec3(0.0));
-    const vec3 lum = vec3(0.2126, 0.7152, 0.0722);
-    float la = dot(a, lum);
-    return min(a / max(la, 1e-4), vec3(2.0)) * (2.0 * la / max(la + dot(b, lum), 1e-4));
-}
+// CxAmbientShape and the SH9 block it reads live in cx_probeshape.glsl, which cx_ssr.glsl includes.
 
 /// Per-fragment material state CxLoopSpec reads, set by the lit main before the first light.
 vec3 cxSpecScale;               // specColor (engine model only) x view-side normalisation x multiscatter x coat transmission

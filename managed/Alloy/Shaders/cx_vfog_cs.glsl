@@ -2,6 +2,8 @@
 // medium scatters toward the eye (rgb, LINEAR, per unit of extinction) and the haze's own extinction (a) at a point
 // jittered inside the froxel, blended with last frame's answer re-projected onto the same point of the world, so the
 // grid's steps average out over frames. cx_vfogsum_cs adds the area's fog wall and integrates the result.
+// The extinction also carries the far rain veil (cx_vfrain), gated by the cover map; a rain-only build carries
+// the veil alone, with no haze and no lamp glow, and the area's own fog ramp still draws under it.
 #version 460 core
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
@@ -31,6 +33,10 @@ uniform float uVfPhase;     // forward lobe's anisotropy g
 uniform vec3 uVfJitter;     // this frame's sample offset inside the froxel: xy in [-0.5, 0.5), z in [0, 1)
 uniform mat4 uVfPrevVp;     // last frame's unjittered view-projection
 uniform vec4 uVfPrevZ;      // (last near, 1 / last log(far / near), history weight, 1 = history valid)
+uniform vec2 uVfRain;       // (share of one whole rain the far veil carries, 1 = this build draws the fog's own haze too)
+uniform sampler2DArrayShadow uCover;   // the sun array; the rain cover map is layer uVfCoverLayer
+uniform mat4 uVfCoverVp;    // world -> the cover view's clip space; zero matrix = no map this frame
+uniform float uVfCoverLayer;
 
 // A second, backward lobe and its share: a camera looking down on a lit scene sees back-scattered light, which a
 // forward lobe alone leaves almost black.
@@ -41,6 +47,8 @@ const float CX_VF_BACK_W = 0.3;
 const float CX_VF_CORE = 1.0;
 // The share of its reach at which a lamp lights the air exactly as the surface curve says: brighter inside, dimmer out.
 const float CX_VF_PIVOT = 0.5;
+// The cover map's depth bias, as the precipitation pass's own cover test takes it.
+const float CX_VF_COVER_BIAS = 0.002;
 
 /// Henyey-Greenstein, scaled so the isotropic medium (g = 0) is 1 everywhere: its mean over the sphere is 1.
 float CxVfHg(float c, float g)
@@ -67,6 +75,20 @@ float CxVfHaze(vec3 world)
         h *= max(1.0 + uVfNoise.x * n, 0.0);
     }
     return h;
+}
+
+#define CX_VFRAIN_HAZE 1
+#include "cx_vfrain.glsl"
+
+/// 1 = open sky above this point along the fall vector, 0 = roofed. No map, or a point past its edge, is open --
+/// the verdict the precipitation pass's own cover test gives there.
+float CxVfOpen(vec3 world)
+{
+    if (uVfCoverVp[3][3] == 0.0) return 1.0;
+    vec4 c = uVfCoverVp * vec4(world, 1.0);
+    vec3 n = c.xyz / c.w * 0.5 + 0.5;
+    if (any(lessThan(n.xy, vec2(0.0))) || any(greaterThan(n.xy, vec2(1.0)))) return 1.0;
+    return texture(uCover, vec4(n.xy, uVfCoverLayer, n.z - CX_VF_COVER_BIAS));
 }
 
 /// Every clustered point light's light at `world`. A lamp is a SOURCE: the lit stage's curve sharpened toward an
@@ -105,8 +127,9 @@ vec3 CxVfLight(vec3 world, vec3 V, float depth)
 {
     vec3 l = uVfAmbient * (1.0 - uVfSun.w);
     if (uVfSun.w > 0.0) l += uVfAmbient * uVfSun.rgb * (CxVfPhase(uAreaDir, V) * CxSunShadow(world, uAreaDir, 1.0, 1.0));
-    if (uVfLocal.x > 0.0) l += uVfLocal.x * CxVfLamps(world, V, depth);
-    return l;
+    // a rain-only build gathers no lamps at all: uVfLocal.x is 0 there, so the walk folds out here
+    vec3 lamps = uVfLocal.x > 0.0 ? uVfLocal.x * CxVfLamps(world, V, depth) : vec3(0.0);
+    return CxVfScatter(l, lamps, uVfRain.y);
 }
 
 void main()
@@ -117,9 +140,14 @@ void main()
     vec2 uv = (vec2(id.xy) + 0.5 + uVfJitter.xy) / grid;
     float depth = CxVfDepth(float(id.z) + uVfJitter.z);
     vec3 world = uVfEye + CxVfRay(uv) * depth;
-    vec3 V = normalize(world - uVfEye);
+    vec3 toEye = world - uVfEye;
+    float dist = length(toEye);
+    vec3 V = toEye / max(dist, 1e-4);
     cxClusterXY = uv * vec2(uGrid.xy);   // the light grid spans the same viewport in tile units
-    vec4 v = vec4(CxVfLight(world, V, depth), CxVfHaze(world));
+    float open = uVfRain.x > 0.0 ? CxVfOpen(world) : 1.0;
+    // rain thins across the bank's top as the wall does, so a ray climbing to the sky leaves the veil behind
+    float rain = uVfRain.x * CxVfBank(world);
+    vec4 v = vec4(CxVfLight(world, V, depth), CxVfDensity(world, dist, open, rain, uVfRain.y));
     if (uVfPrevZ.w > 0.0)
     {
         // the froxel's CENTRE, where last frame's grid stored its own average of this froxel
