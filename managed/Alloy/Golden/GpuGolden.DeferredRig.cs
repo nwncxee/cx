@@ -30,6 +30,10 @@ internal sealed class DeferredRigScene
     internal string? WalkOverride;
     /// <summary>Set by the run: the walk it drew with was <see cref="WalkOverride"/>'s, not the shipped stage it falls back to.</summary>
     internal bool WalkFromContent;
+    /// <summary>The walk built without wave lockstep, as a device whose subgroups offer no ballot builds it.</summary>
+    internal bool NoWave;
+    /// <summary>Set by the run: the period line's counters -- pixels the walk lit, the entries they walked, the most one walked.</summary>
+    internal (uint Pixels, uint Sum, uint Most) Walked;
 }
 
 /// <summary>One pixel of a rig scene, in the order <c>CxRigPixel</c> reads it: the <c>CxGbuf</c> fields the twin packs,

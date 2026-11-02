@@ -62,6 +62,9 @@ internal static unsafe class DeferredLights
 
     internal static void Attach(ExtenderLog log) => _log = log;
 
+    /// <summary>The period line's lights per pixel (not built yet).</summary>
+    internal static string WalkedText(uint pixels, uint walked, uint most) => "";
+
     internal static string Stats(int frames)
         => $"deferred lights {(!Lighting.Deferred.V ? "off" : Lighting.DeferredTiles.V ? "on, tiled" : "on, froxel lists")}"
          + (_down.Reason.Length > 0 ? ", last refusal: " + _down.Reason : "");

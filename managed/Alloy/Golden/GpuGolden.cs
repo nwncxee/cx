@@ -61,6 +61,7 @@ internal static partial class GpuGolden
         LinkedVerticesSelfCheck(vk, check, log);
         BindlessPastSelfCheck(vk, check, log);
         DeferredWalkSelfCheck(vk, check, log);
+        DeferredWalkApprovedSelfCheck(vk, check, log);
         vk.PresentDeviceCheck(check, log);
         vk.PresentHoldCheck(check, log);
         vk.ScreenCheck(check, log);

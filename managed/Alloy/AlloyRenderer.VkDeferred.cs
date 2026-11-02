@@ -61,6 +61,9 @@ public sealed unsafe partial class AlloyRenderer
 
     private static VkDeferredState _vkdef = new();
 
+    /// <summary>The cx.log line a device without wave operations gets (not built yet).</summary>
+    internal static string? VkDefWaveNote(bool waveOps, ref bool noted) => null;
+
     /// <summary>This frame's light records on the device, for the froxel build that reads the same buffer.</summary>
     private static BufferId VkDeferredLights() => _vkdef.Lights;
 
