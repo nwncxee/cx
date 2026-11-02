@@ -43,7 +43,10 @@ CI builds only when a pull request touches a path in the `inputs` list of `.gith
 `build.sh` or a script it calls reads a new file, add that file to the list in the same change.
 
 `build.sh` stages a runtime folder `cx-linux-x64/` (launcher + 2 `.so` + the audio runtime) and a flat zip
-of its contents -- the install is "unpack into bin/linux-x86".
+of its contents -- the install is "unpack into bin/linux-x86". It refuses to build (exit 3, naming the pid)
+while a live process maps a file under this checkout's `cx-linux-x64/`, because restaging that folder swaps
+the libraries out from under a running client; a build in another checkout or worktree is fine, each stages
+its own folder, so the check is `tools/no-loaded-runtime.sh` and not "is a client running".
 Launch the real client:  `NWN_BIN=/path/to/nwmain-linux ./cx-linux-x64/cx-launch`
 (Steam: put `"<abs>/cx-launch" %command%` in the game Launch Options.)
 

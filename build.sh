@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -e
 cd "$(dirname "$0")"
+# Up front, so a client that has this checkout's staged runtime loaded costs a second rather than a build.
+bash tools/no-loaded-runtime.sh
 mkdir -p build
 # Bare `-j` is unbounded under make: OpenAL Soft then forks every TU at once and OOMs the host.
 JOBS=${JOBS:-$(nproc)}
@@ -148,6 +150,9 @@ echo ">> staging runtime dir (cx-linux-x64/)..."
 # One ready-to-run/ship folder: the wrapper loads the .so files beside it. The zip holds its
 # CONTENTS, not the folder, so "unpack into bin/linux-x86" is literally the whole install.
 OUT=cx-linux-x64
+# Asked again at the one line that rewrites the folder: the build above takes minutes, and a client can be
+# started in them.
+bash tools/no-loaded-runtime.sh
 rm -rf "$OUT" && mkdir -p "$OUT"
 cp -a build/libcx.so build/cx_managed.so "$OUT/"
 cp build/openal/libopenal.so.1 build/deps/sa/libphonon.so "$OUT/"
