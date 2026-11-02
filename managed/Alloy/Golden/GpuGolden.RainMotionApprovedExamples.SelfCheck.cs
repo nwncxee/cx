@@ -12,9 +12,9 @@ namespace CX.Alloy;
 /// </summary>
 internal static partial class GpuGolden
 {
-    /// <summary>1 when the frame records rain's motion under <paramref name="fsr"/> and <paramref name="taa"/>, 0 when it
-    /// does not; -1 until the choice is wired.</summary>
-    static partial void RainMotionWanted(bool fsr, bool taa, ref int wanted);
+    /// <summary>1 when the frame records rain's motion under <paramref name="fsr"/> and <paramref name="taa"/>, the rain drawn
+    /// after the resolve when <paramref name="late"/>; 0 when it does not; -1 until the choice is wired.</summary>
+    static partial void RainMotionWhen(bool fsr, bool taa, bool late, ref int wanted);
 
     private static void RainMotionApprovedSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
     {
@@ -53,15 +53,16 @@ internal static partial class GpuGolden
             }
         }
 
-        int off = -1, fsr = -1, taa = -1;
-        RainMotionWanted(false, false, ref off);
-        RainMotionWanted(true, false, ref fsr);
-        RainMotionWanted(false, true, ref taa);
+        int off = -1, fsr = -1, taa = -1, scene = -1;
+        RainMotionWhen(false, false, false, ref off);
+        RainMotionWhen(true, false, true, ref fsr);
+        RainMotionWhen(false, true, true, ref taa);
+        RainMotionWhen(false, true, false, ref scene);
 
         // Given anti-aliasing off or SMAA
         // When rain falls
         // Then the colour it draws is the same as before this change
-        check.Expect(off == 0 && fsr == 0 && taa == 1,
-            $"rain motion E4: rain's motion is recorded {off} with no temporal resolve and {fsr} under FSR, which draws the rain after its upscale (want 0), and {taa} under TAA (want 1)");
+        check.Expect(off == 0 && fsr == 0 && taa == 0 && scene == 1,
+            $"rain motion E4: rain's motion is recorded {off} with no temporal resolve, {fsr} under FSR and {taa} under TAA with the rain after the resolve (want 0), and {scene} under TAA with the rain left in the scene (want 1)");
     }
 }
