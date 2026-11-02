@@ -29,6 +29,9 @@ internal static class SsboSlots
     /// <summary>The grass scatter's records as the Vulkan grass stages read them by instance, above the rig and the
     /// material table they read beside it.</summary>
     internal const uint GrassInst = 15;
+    /// <summary>The precipitation cull's draw commands and its survivors' records, above the light rig the cull reads; the
+    /// streak and flake stages read the records alone.</summary>
+    internal const uint WxCmd = 14, WxDrops = 15;
     /// <summary>Compute scratch that reads no rig.</summary>
     internal const uint CullSrc = 8, CullSphere = 9, CullCmd = 10, CullOut = 11, CullCount = 12, CullKey = 13, CullRej = 14,
                         GatherSrc = 8, GatherCmd = 10, GatherCount = 11, CastSphere = 12,
@@ -65,6 +68,7 @@ internal static class SsboSlots
         ["CxCullCount"] = CullCount, ["CxCullKey"] = CullKey, ["CxCullRej"] = CullRej, ["CxReadbackOut"] = ReadbackOut,
         ["CxGatherSrc"] = GatherSrc, ["CxGatherCmd"] = GatherCmd, ["CxGatherCount"] = GatherCount, ["CxCastSphere"] = CastSphere,
         ["CxGrassFaces"] = GrassFaces, ["CxGrassPatches"] = GrassPatches, ["CxGrassOut"] = GrassOut, ["CxGrassCmd"] = GrassCmd, ["CxGrassInst"] = GrassInst,
+        ["CxWxCmd"] = WxCmd, ["CxWxDrops"] = WxDrops, ["CxWxDropsOut"] = WxDrops,
         ["CxHaloBuf"] = Halos, ["CxHaloFade"] = HaloFade, ["CxGobGlowBuf"] = Glow, ["CxTrigBuf"] = Trig, ["CxGuiBuf"] = Gui,
         ["CxProbeShOut"] = ProbeSh, ["CxBonePrevBuf"] = BonesPrev, ["CxDanglyPrevBuf"] = DanglyPrev,
         ["CxContentBuf"] = Content,

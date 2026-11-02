@@ -123,6 +123,7 @@ internal static class ShaderStages
         (Halos.ShdHaloVs,                  Banner),
         (Halos.ShdHaloFs,                  Banner),
         (Weather.ShdWeatherVs,             Banner),
+        (Weather.ShdWeatherCull,           Banner),
         (Weather.ShdRainFs,                Banner),
         (Weather.ShdSnowFs,                Banner),
         (Weather.ShdSplashVs,              Banner),

@@ -12,8 +12,7 @@ namespace CX.Alloy;
 /// stages nothing. Roof drips are the same draw with <c>uKind = 3</c>, kept only under a lip.</summary>
 internal static unsafe partial class Weather
 {
-    internal const string ShdWeatherVs = "cx_weather_vs", ShdRainFs = "cx_rain_fs", ShdSnowFs = "cx_snow_fs";
-    private const uint GlTriangleStrip = 0x0005;   // not-an-offset: GL primitive-mode enum
+    internal const string ShdWeatherVs = "cx_weather_vs", ShdRainFs = "cx_rain_fs", ShdSnowFs = "cx_snow_fs", ShdWeatherCull = "cx_wx_cull_cs";
     /// <summary>Speed knobs are in m/s; the phase is kept in metres and wrapped at this many box lengths so
     /// the shader's <c>mod</c> never sees a large float, and the per-instance speed steps of 1/8 land on a
     /// box multiple at the wrap (1024/8 = 128 lengths).</summary>
@@ -27,8 +26,17 @@ internal static unsafe partial class Weather
 
     private static bool _failed;
 
+    /// <summary>The most lattice points one draw walks, and so the most records the Vulkan cull keeps for it.</summary>
+    internal const int CountCap = 40000;
+
+    /// <summary>The density knob's ceiling, a multiple of the area's own weather.</summary>
+    private const float DensityMax = 3f;
+
+    /// <summary>The most lattice points the fall walks: the count's ceiling at the density's.</summary>
+    internal const int FallCap = (int)(CountCap * DensityMax);
+
     /// <summary>The precipitation program's uniform locations, resolved once per program.</summary>
-    internal struct Loc { public int View, Proj, Eye, Centre, Fall, Phase, Time, Box, Size, Kind, Drift, Depth, Tint, Alpha, Soft, Viz, Cover, CoverVp, CoverLayer, CoverSoft, Lit, Back; }
+    internal struct Loc { public int View, Proj, Eye, Centre, Fall, Phase, Time, Box, Size, Kind, Drift, Depth, Tint, Alpha, Soft, Viz, Cover, CoverVp, CoverLayer, CoverSoft, Lit, Back, Count, Slot, Base; }
     private static double _phase;
     private static float _wobble;
     private static long _ticks;
@@ -39,7 +47,7 @@ internal static unsafe partial class Weather
     private static void DeclareKnobs()
     {
         G.Section("Precipitation");
-        DensityScale = G.Slider("density", "Density", 0f, 3f, 0.1f, 1f,
+        DensityScale = G.Slider("density", "Density", 0f, DensityMax, 0.1f, 1f,
                                 help: "How much rain or snow falls, on top of the weather the area asks for.")
                         .Ladder(Quality.Weather, 0.5f, 0.8f, 1f, 1.5f);
         Drips = G.Slider("drips", "Roof drips", 0f, 1f, 0.05f, 0.25f, tier: Tier.Advanced,
@@ -62,7 +70,7 @@ internal static unsafe partial class Weather
                                help: "A flake between you and a light glows, lit from behind. 0 = off.");
         Soft = G.Slider("soft", "Contact fade", 0f, 20f, 0.5f, 6f, tier: Tier.ChatOnly,
                         help: "How sharply a streak fades where it meets geometry (1/m).");
-        MaxCount = G.Slider("count", "count", 500, 40000, 500, 16000, tier: Tier.ChatOnly)
+        MaxCount = G.Slider("count", "count", 500, CountCap, 500, 16000, tier: Tier.ChatOnly)
                     .Ladder(Quality.Weather, 4000, 8000, 16000, 24000);
         Viz = G.Slider("viz", "viz", 0, VizMax, 1, 0, tier: Tier.ChatOnly, help: "1 streak contact fade, 2 exposure on the world, 3 record class (red creature, green object, blue tileset), 4 the wetness map (red wet, green fill, blue standing water; black = not latched)");
     }
@@ -106,11 +114,12 @@ internal static unsafe partial class Weather
         : $"weather {CurrentKind} {Density * 100f:F0}% {_count} instances, {_drips} drips{SplashStats()}{CoverStats()}{SurfaceStats()}{MapStats()}{ShelterStats()}, records {AlloyRenderer.RecCreature} creature / {AlloyRenderer.RecObject} object / {AlloyRenderer.RecTile} tile";
     private static string DescribeDraw() => $" fall ({_fall.X:F2} {_fall.Y:F2} {_fall.Z:F2}) count {_count} drips {_drips}{SplashStats()}{CoverStats()}";
 
-    /// <summary>One instanced quad per drop or flake; every position is a function of the instance id, the
-    /// camera and the fall phase, so a hak override of this stage can reshape the field but never grow a
-    /// buffer. The instance's lattice point is tested against the rain occlusion map once, here. The light is
-    /// taken per vertex at the instance's own centre; <c>uLit = 0</c> falls back to the flat area terms.</summary>
+    /// <summary>One instanced quad per drop or flake the cull kept, read from its record by instance: the vertex
+    /// stage only turns the quad to the camera. <c>uLit = 0</c> falls back to the flat area terms.</summary>
     internal static string WeatherVs => ShaderSource.Get("cx_wx_v.glsl");
+    /// <summary>The cull stage: every position a function of the lattice id, the camera and the fall phase, so a hak
+    /// override can reshape the field but never grow a buffer; each drop tested against the cover map and lit once.</summary>
+    internal static string WeatherCull => ShaderSource.Get(ShdWeatherCull + ".glsl");
 
     /// <summary>A rain streak: a thin bright core tapered at both ends, faded where it meets geometry.
     /// Linear, alpha over. <c>/weather viz 1</c> paints the contact fade alone. The colour is the vertex stage's light times the brightness scalar.</summary>

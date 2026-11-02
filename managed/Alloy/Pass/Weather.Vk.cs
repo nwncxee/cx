@@ -16,8 +16,8 @@ internal static unsafe partial class Weather
         snow = CurrentKind == Kind.Snow;
         _count = 0; _drips = 0; drips = 0;
         if (_off || _failed || !Enabled.V || FrameInputs.Interior) return -1;
-        int count = CurrentKind != Kind.None && Density > 0f ? (int)(MaxCount.V * Density * DensityScale.V * (snow ? 0.5f : 1f)) : 0;
-        drips = !snow && Cover.V && CasterPass.CoverFresh ? (int)(MaxCount.V * Drips.V * _wet) : 0;
+        int count = CurrentKind != Kind.None && Density > 0f ? Math.Min((int)(MaxCount.V * Density * DensityScale.V * (snow ? 0.5f : 1f)), FallCap) : 0;
+        drips = !snow && Cover.V && CasterPass.CoverFresh ? Math.Min((int)(MaxCount.V * Drips.V * _wet), CountCap) : 0;
         if (count <= 0 && drips <= 0 && SplashCount() + FootLive(TrackNow) <= 0) return -1;
         Tick(wind);
         _count = count; _drips = drips; _drawn += count + drips;
@@ -43,7 +43,17 @@ internal static unsafe partial class Weather
         Alpha = LooseBlock.Loc("uAlpha"), Soft = LooseBlock.Loc("uSoft"), Viz = LooseBlock.Loc("uViz"),
         CoverLayer = LooseBlock.Loc("uCoverLayer"), Lit = LooseBlock.Loc("uLit"), Back = LooseBlock.Loc("uBack"),
         CoverVp = LooseBlock.Loc("uCoverVp"), CoverSoft = LooseBlock.Loc("uCoverSoft"),
+        Count = LooseBlock.Loc("uCount"), Slot = LooseBlock.Loc("uSlot"), Base = LooseBlock.Loc("uBase"),
     };
+
+    /// <summary>The cull's own terms into the open capture: the <paramref name="count"/> lattice points it walks, the
+    /// draw command <paramref name="slot"/> its survivors count into and the first record <paramref name="first"/> they take.</summary>
+    internal static void WriteCullVk(in Loc l, int count, int slot, int first)
+    {
+        LooseBlock.Set(l.Count, count);
+        LooseBlock.Set(l.Slot, slot);
+        LooseBlock.Set(l.Base, first);
+    }
 
     /// <summary>The draw's terms into the open capture, as <see cref="Submit"/> sets them, for <paramref name="kind"/>
     /// (1 rain, 2 snow, 3 drips).</summary>
