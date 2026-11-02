@@ -445,6 +445,26 @@ public sealed unsafe partial class CasterPass
         cl.BindSet(0, new BindSet(ubo[..nu], ssbo[..ns], sampled[..nt], default));
     }
 
+    /// <summary>Under the loading hold: each depth program's unclamped pipeline, a lamp cube's, for every arena format
+    /// holding a mesh, so a caster first seen past the hold builds none. The sun's maps bake under the hold and build
+    /// their own clamped ones. False once the prewarm's budget since <paramref name="since"/> is spent.</summary>
+    internal static bool VkPrewarm(VkBackend vk, long since)
+    {
+        var s = _vk;
+        if (s.Dev != vk || s.Failed) return true;
+        foreach (VkCastProg? p in (ReadOnlySpan<VkCastProg?>)[s.Plain, s.Mask, s.MaskH])
+        {
+            if (p == null) continue;
+            for (int f = 0; f < MeshArena.Formats; f++)
+            {
+                if (MeshArena.VkVbo((MeshArena.Fmt)f).IsNull || s.Layouts[f].IsNull) continue;
+                VkCastPipeline(p, f, clamp: false);
+                if (AlloyRenderer.VkPrewarmSpent(since)) return false;
+            }
+        }
+        return true;
+    }
+
     /// <summary>Program <paramref name="p"/>'s depth-only pipeline for arena format <paramref name="fmt"/>, with the
     /// clamp a directional view needs, made on first ask. Null id when the device refused it.</summary>
     private static PipelineId VkCastPipeline(VkCastProg p, int fmt, bool clamp)

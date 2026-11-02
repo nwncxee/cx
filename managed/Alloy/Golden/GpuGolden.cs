@@ -56,6 +56,7 @@ internal static partial class GpuGolden
         WetNearLamp(vk, check, log);
         HaloFadeSelfCheck(vk, check, log);
         PipelineTallySelfCheck(vk, check, log);
+        FeatureTallySelfCheck(vk, check, log);
         DynamicBlendSelfCheck(vk, check, log);
         PipelineLibrarySelfCheck(vk, check, log);
         LinkedVerticesSelfCheck(vk, check, log);

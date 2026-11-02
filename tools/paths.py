@@ -73,6 +73,8 @@ def _defaults(key, get):
     if key == "NWN_WIN_EXE":
         d = get("NWN_DIR")
         return d and f"{d}/bin/win32/nwmain.exe"
+    if key == "NWN_USERDIR":
+        return os.path.expanduser("~/.local/share/Neverwinter Nights")
     if key == "GHIDRA":
         return _ghidra()
     if key == "GHIDRA_PROJECT":

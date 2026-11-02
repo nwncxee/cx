@@ -64,15 +64,18 @@ public sealed unsafe partial class AlloyRenderer
     {
         VkGrassState g = _vkGrass;
         if (g.Dev != vk) _vkGrass = g = new VkGrassState { Dev = vk };
-        if (_capturing || !VkGrassEnsure(vk, g, log)) return true;
+        if (_capturing) return true;
+        // the velocity sweep and the cascades read what the pass last drew: off, that is nothing
+        if (!GrassField.VkOn) { GrassField.VkDrew(default, false); return true; }
+        if (!VkGrassEnsure(vk, g, log)) return true;
         Matrix4x4 m = vp, gl = WorldDepth.Unfold(vp);
         if (!GrassField.StageVk(&gl, g.Blades != null, out GrassField.VkFrame f) || f.Patches == 0) return true;
         ReadOnlySpan<byte> faces = GrassField.VkNewFaces(out long faceAt);
         if (!faces.IsEmpty) cl.UpdateBuffer(g.Faces, faceAt, faces);
         ReadOnlySpan<byte> patches = MemoryMarshal.AsBytes(GrassField.VkPatches(f.Patches));
         ReadOnlySpan<byte> mats = MemoryMarshal.AsBytes(GrassField.VkMats(f.Mats));
-        if (!VkGrowBuf(vk, ref g.Patches, ref g.PatchCap, patches.Length, "vk grass patches")
-            || !VkGrowBuf(vk, ref g.Mats, ref g.MatCap, mats.Length, "vk grass materials")) return true;
+        if (!VkGrowBuf(vk, ref g.Patches, ref g.PatchCap, patches.Length, PipeFeatures.Grass + "patches")
+            || !VkGrowBuf(vk, ref g.Mats, ref g.MatCap, mats.Length, PipeFeatures.Grass + "materials")) return true;
         cl.UpdateBuffer(g.Patches, 0, patches);
         cl.UpdateBuffer(g.Mats, 0, mats);
         Span<uint> cmd = stackalloc uint[GrassField.VkCmds * 4];
@@ -369,7 +372,7 @@ public sealed unsafe partial class AlloyRenderer
         if (!g.Ground.IsNull && g.GroundW == w && g.GroundH == h) return true;
         vk.Destroy(g.Ground);
         g.Ground = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, w, h, 1, 1, 1, 1,
-                                                ImageUse.Sampled | ImageUse.CopyDst, "vk grass ground copy", AliasLanes.Wide));
+                                                ImageUse.Sampled | ImageUse.CopyDst, PipeFeatures.Grass + "ground copy", AliasLanes.Wide));
         g.GroundW = w; g.GroundH = h;
         return !g.Ground.IsNull;
     }
@@ -384,7 +387,7 @@ public sealed unsafe partial class AlloyRenderer
         g.Side = new CommandList("vulkan grass", GrassArenaBytes, log);
         g.Clamp = vk.CreateSampler(new SamplerDesc(Filter.Linear, Filter.Linear, MipMode.None, Wrap.Clamp));
         string src = ShaderResource.Tokens(GrassField.ScatterCs);
-        g.Scatter = VkDefCompile(vk, VkGlsl.TranslateCompute(src, GrassField.VkUnits), src, "vk grass scatter", log);
+        g.Scatter = VkDefCompile(vk, VkGlsl.TranslateCompute(src, GrassField.VkUnits), src, PipeFeatures.Grass + "scatter", log);
         if (g.Scatter != null)
         {
             VkGrassState s = g;
@@ -394,17 +397,17 @@ public sealed unsafe partial class AlloyRenderer
         g.Blades = VkGrassProgram(vk, VkPrograms.Id.GrassBlade, g.LB, log);
         if (g.Cards != null)
         {
-            g.CardPipe = VkGrassPipe(vk, g.Cards, Topology.Triangles, "vk grass cards");
+            g.CardPipe = VkGrassPipe(vk, g.Cards, Topology.Triangles, PipeFeatures.Grass + "cards");
             if (g.CardPipe.IsNull) g.Cards = null;
         }
-        if (g.Blades != null && (g.BladePipe = VkGrassPipe(vk, g.Blades, Topology.TriangleStrip, "vk grass blades")).IsNull)
+        if (g.Blades != null && (g.BladePipe = VkGrassPipe(vk, g.Blades, Topology.TriangleStrip, PipeFeatures.Grass + "blades")).IsNull)
             g.Blades = null;
-        g.Faces = vk.CreateBuffer(new BufferDesc(GrassField.VkFaceBytes, BufferUse.Storage | BufferUse.CopyDst, MemoryKind.Device, "vk grass faces"));
-        g.Out = vk.CreateBuffer(new BufferDesc(GrassField.VkRecordBytes, BufferUse.Storage, MemoryKind.Device, "vk grass records"));
+        g.Faces = vk.CreateBuffer(new BufferDesc(GrassField.VkFaceBytes, BufferUse.Storage | BufferUse.CopyDst, MemoryKind.Device, PipeFeatures.Grass + "faces"));
+        g.Out = vk.CreateBuffer(new BufferDesc(GrassField.VkRecordBytes, BufferUse.Storage, MemoryKind.Device, PipeFeatures.Grass + "records"));
         g.Cmd = vk.CreateBuffer(new BufferDesc(GrassField.VkCmds * 4 * sizeof(uint), BufferUse.Storage | BufferUse.Indirect | BufferUse.CopyDst,
-                                               MemoryKind.Device, "vk grass commands"));
+                                               MemoryKind.Device, PipeFeatures.Grass + "commands"));
         g.Push = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba8, GrassField.VkPushRes, GrassField.VkPushRes, 1, 1, 1, 1,
-                                              ImageUse.Sampled | ImageUse.CopyDst, "vk grass push field"));
+                                              ImageUse.Sampled | ImageUse.CopyDst, PipeFeatures.Grass + "push field"));
         if (g.Scatter == null || g.Cards == null || g.Faces.IsNull || g.Out.IsNull || g.Cmd.IsNull || g.Push.IsNull || g.Clamp.IsNull)
         {
             g.Scatter = null;
@@ -433,18 +436,18 @@ public sealed unsafe partial class AlloyRenderer
         {
             var fringe = new AttachmentBlend(true, BlendFactor.SrcAlpha, BlendFactor.OneMinusSrcAlpha, BlendFactor.SrcAlpha,
                                              BlendFactor.OneMinusSrcAlpha);
-            g.CardPrePipe = VkGrassPipe(vk, g.CardDepth, Topology.Triangles, "vk grass card prepass", Format.Rgba16F,
+            g.CardPrePipe = VkGrassPipe(vk, g.CardDepth, Topology.Triangles, PipeFeatures.Grass + "card prepass", Format.Rgba16F,
                                         new AttachmentBlend(Masked: ColorMask.All));
-            g.CardSoftPipe = VkGrassPipe(vk, g.Cards!, Topology.Triangles, "vk grass cards blended fringe", Format.Rgba16F, fringe);
-            g.CardCastPipe = VkGrassPipe(vk, g.CardDepth, Topology.Triangles, "vk grass card cascades", Format.Unknown, clamp: true);
+            g.CardSoftPipe = VkGrassPipe(vk, g.Cards!, Topology.Triangles, PipeFeatures.Grass + "cards blended fringe", Format.Rgba16F, fringe);
+            g.CardCastPipe = VkGrassPipe(vk, g.CardDepth, Topology.Triangles, PipeFeatures.Grass + "card cascades", Format.Unknown, clamp: true);
         }
         g.Prepass = !g.CardPrePipe.IsNull && !g.CardSoftPipe.IsNull;
         if (g.BladeDepth != null)
-            g.BladeCastPipe = VkGrassPipe(vk, g.BladeDepth, Topology.TriangleStrip, "vk grass blade cascades", Format.Unknown, clamp: true);
+            g.BladeCastPipe = VkGrassPipe(vk, g.BladeDepth, Topology.TriangleStrip, PipeFeatures.Grass + "blade cascades", Format.Unknown, clamp: true);
         if (g.CardMotion != null)
-            g.CardMotionPipe = VkGrassPipe(vk, g.CardMotion, Topology.Triangles, "vk grass card velocity", Format.Rg16F);
+            g.CardMotionPipe = VkGrassPipe(vk, g.CardMotion, Topology.Triangles, PipeFeatures.Grass + "card velocity", Format.Rg16F);
         if (g.BladeMotion != null)
-            g.BladeMotionPipe = VkGrassPipe(vk, g.BladeMotion, Topology.TriangleStrip, "vk grass blade velocity", Format.Rg16F);
+            g.BladeMotionPipe = VkGrassPipe(vk, g.BladeMotion, Topology.TriangleStrip, PipeFeatures.Grass + "blade velocity", Format.Rg16F);
         if (!g.Prepass)
             log.Always("AlloyRenderer: the Vulkan grass card prepass was REFUSED (logged above) -- the cards write their own depth, "
                      + "with no blended fringe");

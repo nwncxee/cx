@@ -53,12 +53,7 @@ public sealed unsafe partial class AlloyRenderer
     /// passes, which have read the previous cube. The frame's counters and eye come back as they were.</summary>
     private static void VkProbeCapture(VkBackend vk, CommandList cl, VkColourState c, float far, bool lightingOn, ExtenderLog log)
     {
-        VkProbeState s = _vkProbe;
-        if (s.Dev != vk)
-        {
-            _vkProbe = s = new VkProbeState { Dev = vk };
-            EnvProbe.Revoke();
-        }
+        VkProbeState s = VkProbeOwner(vk);
         if (!lightingOn || s.Failed || ArenaCap - c.ArenaUsed < VkProbeArenaNeed) return;
         bool domeArrived = EnvProbe.Ready && !_probeDome && _skyN > 0;
         if (!domeArrived && !EnvProbe.Wanted(_eyePos, _frameSeq)) return;
@@ -201,6 +196,17 @@ public sealed unsafe partial class AlloyRenderer
         cl.BindSet(0, new BindSet(ubo[..nu], ssbo[..ns], sampled[..nt], images[..ni]));
     }
 
+    /// <summary>The probe's state on <paramref name="vk"/>, replaced whole, and the last capture revoked, when the device
+    /// is another.</summary>
+    private static VkProbeState VkProbeOwner(VkBackend vk)
+    {
+        VkProbeState s = _vkProbe;
+        if (s.Dev == vk) return s;
+        _vkProbe = s = new VkProbeState { Dev = vk };
+        EnvProbe.Revoke();
+        return s;
+    }
+
     /// <summary>The three stages, the two cubes, the face depth and the SH9 block, once per device; a refusal is said
     /// once and the probe sits the session out on Vulkan.</summary>
     private static bool VkProbeEnsure(VkBackend vk, VkProbeState s, ExtenderLog log)
@@ -209,20 +215,20 @@ public sealed unsafe partial class AlloyRenderer
         s.Tried = true;
         s.Size = EnvProbe.Size;
         s.Mips = EnvProbe.MipsOf(s.Size);
-        s.Box = VkDefBuild(vk, "cx_probe_box_c", null, "vk probe box chain", log);
-        s.Ggx = VkDefBuild(vk, "cx_probe_ggx", null, "vk probe GGX prefilter", log);
-        s.Proj = VkDefBuild(vk, "cx_probe_sh", null, "vk probe SH9 projection", log);
+        s.Box = VkDefBuild(vk, "cx_probe_box_c", null, PipeFeatures.Probe + "box chain", log);
+        s.Ggx = VkDefBuild(vk, "cx_probe_ggx", null, PipeFeatures.Probe + "GGX prefilter", log);
+        s.Proj = VkDefBuild(vk, "cx_probe_sh", null, PipeFeatures.Probe + "SH9 projection", log);
         if (s.Ggx != null)
             LooseBlock.Resolve(s.Ggx.Names, () => s.GLevel = LooseBlock.Loc("uLevel"));
         if (s.Proj != null)
             LooseBlock.Resolve(s.Proj.Names, () => s.POrigin = LooseBlock.Loc("uOrigin"));
         const ImageUse cube = ImageUse.Sampled | ImageUse.Storage;
         s.Cap = vk.CreateImage(new ImageDesc(ImageKind.Cube, Format.Rgba16F, s.Size, s.Size, 1, s.Mips, 1, 1,
-                                             cube | ImageUse.ColorTarget, "vk probe capture"));
+                                             cube | ImageUse.ColorTarget, PipeFeatures.Probe + "capture"));
         s.Tex = vk.CreateImage(new ImageDesc(ImageKind.Cube, Format.Rgba16F, s.Size, s.Size, 1, s.Mips, 1, 1, cube, "vk probe"));
         s.Depth = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.D32F, s.Size, s.Size, 1, 1, 1, 1, ImageUse.DepthTarget,
-                                               "vk probe depth"));
-        s.Sh = vk.CreateBuffer(new BufferDesc(VkProbeShBytes, BufferUse.Storage | BufferUse.Uniform, MemoryKind.Device, "vk probe sh9"));
+                                               PipeFeatures.Probe + "depth"));
+        s.Sh = vk.CreateBuffer(new BufferDesc(VkProbeShBytes, BufferUse.Storage | BufferUse.Uniform, MemoryKind.Device, PipeFeatures.Probe + "sh9"));
         s.Trilinear = vk.CreateSampler(new SamplerDesc(Filter.Linear, Filter.Linear, MipMode.Linear, Wrap.Clamp));
         if (s.Box == null || s.Ggx == null || s.Proj == null || s.Cap.IsNull || s.Tex.IsNull || s.Depth.IsNull || s.Sh.IsNull
             || s.Trilinear.IsNull)

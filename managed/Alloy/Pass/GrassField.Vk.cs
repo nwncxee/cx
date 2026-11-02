@@ -56,6 +56,9 @@ internal static unsafe partial class GrassField
     internal const long VkRecordBytes = (long)RecordCap * InstFloats * sizeof(float);
     internal const int VkPushRes = PushRes;
 
+    /// <summary>The Vulkan pass draws grass: switched on, the player's option on, not stood down. Off, it builds nothing.</summary>
+    internal static bool VkOn => !_off && Grass.Enabled.V && !_down.Failed && !_binBucket.IsNull && *_grassEnabled != 0;
+
     /// <summary>Gate, bake and plan the frame for the Vulkan pass as <see cref="Draw"/> does for GL. False hands the
     /// class back to the engine (switched off, the player's option off, stood down); true owns it this pass, with
     /// <c>Patches</c> 0 when nothing is drawn. <paramref name="bladeProg"/>: the blade program built on Vulkan.</summary>
@@ -63,7 +66,7 @@ internal static unsafe partial class GrassField
     {
         f = default;
         _vkg.Drawn = default;
-        if (_off || !Grass.Enabled.V || _down.Failed || _binBucket.IsNull || *_grassEnabled == 0) return false;
+        if (!VkOn) return false;
         EnsureCpu();
         _drawnGen = AlloyRenderer.PassGen;
         if (Grass.Density.V <= 0f || Prepare(vp) == 0) return true;
@@ -96,7 +99,7 @@ internal static unsafe partial class GrassField
     /// <summary>Does sun cascade <paramref name="i"/> take last pass's blades as casters? Under <see cref="Grass.Shadow"/>,
     /// with grass drawn. A grass cascade's moving-caster layer re-bakes every frame: the sway is continuous motion.</summary>
     internal static bool CastsInto(int i)
-        => i < Grass.Shadow.V && _vkg.Drawn.Patches > 0 && Grass.Enabled.V && !_off && !_down.Failed && AlloyRenderer.VkGrassCasts;
+        => i < Grass.Shadow.V && _vkg.Drawn.Patches > 0 && VkOn && AlloyRenderer.VkGrassCasts;
 
     /// <summary>This frame's visible-patch table, two uvec4 a patch.</summary>
     internal static ReadOnlySpan<uint> VkPatches(int n) => new(_visTable, 0, n * 8);

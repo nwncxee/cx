@@ -46,7 +46,7 @@ public sealed unsafe partial class AlloyRenderer
     {
         VkPartState s = _vkPart;
         if (s.Dev != vk) _vkPart = s = new VkPartState { Dev = vk };
-        if (_capturing || !VkPartEnsure(vk, s, log)) return true;
+        if (_capturing || !Particles.VkOn || !VkPartEnsure(vk, s, log)) return true;
         Matrix4x4 v = view, p = proj;
         int at = Particles.StageVk(&v, lightingOn, out Vector3 eye, out bool lit, out int groups);
         if (at == 0) return true;
@@ -204,7 +204,7 @@ public sealed unsafe partial class AlloyRenderer
             var d = new PipelineDesc
             {
                 Vs = p.Vs, Fs = p.Fs, Topo = Topology.Triangles, Raster = new RasterState(CullMode.None),
-                Depth = new DepthState(true, cls == Particles.VkPunch, WorldDepth.NearerOrEqual), Label = $"vk particles class {cls}",
+                Depth = new DepthState(true, cls == Particles.VkPunch, WorldDepth.NearerOrEqual), Label = $"{PipeFeatures.Particles}class {cls}",
             };
             d.Targets.ColorCount = 1;
             d.Targets.Colors[0] = Format.Rgba16F;

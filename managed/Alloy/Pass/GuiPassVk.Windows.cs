@@ -161,6 +161,21 @@ internal static unsafe partial class GuiPassVk
         return true;
     }
 
+    /// <summary>Under the loading hold: the window programs, and each one's pipeline into the screen's format, so the
+    /// first windows past the hold build none; the rest wait for the next hold frame once the prewarm's budget since
+    /// <paramref name="since"/> is spent. Nothing before the GUI's first flush has made its state.</summary>
+    internal static void PrewarmWindows(VkBackend vk, long since, ExtenderLog log)
+    {
+        GuiVkState s = _s;
+        Format f = vk.ScreenFormat;
+        if (s.Dev != vk || f == Format.Unknown || !WinEnsure(vk, s.Win, log)) return;
+        foreach (WinProg? w in s.Win.Progs)
+        {
+            if (AlloyRenderer.VkPrewarmSpent(since)) return;
+            if (w != null) Pipeline(w.P, s.Win.Layout, WinBlend, Topology.Triangles, f, log);
+        }
+    }
+
     /// <summary>The window programs and the UI vertex layout (pos2, uv2, rgb3, alpha1), made on the first replay. A
     /// refusal is said once and CX's windows are NOT DRAWN on Vulkan for the session.</summary>
     private static bool WinEnsure(VkBackend vk, WinState w, ExtenderLog log)
@@ -181,7 +196,7 @@ internal static unsafe partial class GuiPassVk
         for (int k = 0; k < KindCount && !w.Layout.IsNull; k++)
         {
             var wp = new WinProg();
-            wp.P = GuiVkProg.Build(vk, vs, Vk460(TextRig.FragmentText((UiDrawKind)k)), units, $"CX window {(UiDrawKind)k}", p =>
+            wp.P = GuiVkProg.Build(vk, vs, Vk460(TextRig.FragmentText((UiDrawKind)k)), units, $"{PipeFeatures.CxWindowProgram}{(UiDrawKind)k}", p =>
             {
                 wp.Proj = p.Loc("uProj"); wp.Alpha = p.Loc("uAlpha"); wp.Offset = p.Loc("uOffset"); wp.Occl = p.Loc("uOccl");
                 wp.Anchor = p.Loc("uAnchor"); wp.Crop = p.Loc("uCrop"); wp.Rows = p.Loc("uRows"); wp.Vp = p.Loc("uVp");
