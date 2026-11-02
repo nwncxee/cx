@@ -74,7 +74,7 @@ struct CxFsrImage
 struct CxFsrDispatch
 {
     VkCommandBuffer cmd;
-    CxFsrImage color, depth, motion, exposure, output;
+    CxFsrImage color, depth, motion, exposure, reactive, output;
     float jitterX, jitterY, mvScaleX, mvScaleY;
     uint32_t renderW, renderH;
     float frameMs, cameraNear, cameraFar, fovY;
@@ -151,6 +151,10 @@ int cxfsr_dispatch(CxFsr* f, const CxFsrDispatch* d)
     x.depth = Wrap(d->depth, L"cx depth");
     x.motionVectors = Wrap(d->motion, L"cx velocity");
     x.exposure = Wrap(d->exposure, L"cx exposure");
+    // The reactive mask the accumulate reads unconditionally -- no permutation of CXFSR_FLAGS switches it on, so
+    // tools/ffx/ffx_shaders.py compiles nothing new for it. transparencyAndComposition stays empty: CX marks what
+    // the beam, particle, halo and weather passes changed, which is this input's own job.
+    x.reactive = Wrap(d->reactive, L"cx reactive");
     x.output = Wrap(d->output, L"cx upscaled");
     x.dilatedDepth = f->backend.fpGetResource(&f->backend, f->shared[0]);
     x.dilatedMotionVectors = f->backend.fpGetResource(&f->backend, f->shared[1]);

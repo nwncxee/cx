@@ -31,7 +31,7 @@ internal sealed unsafe partial class VkBackend
     private struct FsrDispatch
     {
         public VkCommandBuffer Cmd;
-        public FsrImage Color, Depth, Motion, Exposure, Output;
+        public FsrImage Color, Depth, Motion, Exposure, Reactive, Output;
         public float JitterX, JitterY, MvScaleX, MvScaleY;
         public uint RenderW, RenderH;
         public float FrameMs, Near, Far, FovY;
@@ -117,11 +117,14 @@ internal sealed unsafe partial class VkBackend
             return Fault("Upscale: a stale image");
         VkImg? exposure = null;
         if (!c.Exposure.IsNull && !_images.TryGet(c.Exposure.Value, out exposure)) return Fault("Upscale: a stale exposure image");
+        VkImg? reactive = null;
+        if (!c.Reactive.IsNull && !_images.TryGet(c.Reactive.Value, out reactive)) return Fault("Upscale: a stale reactive image");
         if ((output.Desc.Use & ImageUse.Storage) == 0) return Fault($"Upscale into {output.Desc.Label}, which is not a storage image");
         Transition(color, VkImageLayout.ShaderReadOnlyOptimal, false);
         Transition(depth, VkImageLayout.ShaderReadOnlyOptimal, false);
         Transition(motion, VkImageLayout.ShaderReadOnlyOptimal, false);
         if (exposure != null) Transition(exposure, VkImageLayout.ShaderReadOnlyOptimal, false);
+        if (reactive != null) Transition(reactive, VkImageLayout.ShaderReadOnlyOptimal, false);
         Transition(output, VkImageLayout.General);
         Flush();
         long slot = _fsr.Dispatches % _fsr.Ring.Length;
@@ -129,7 +132,8 @@ internal sealed unsafe partial class VkBackend
         var d = new FsrDispatch
         {
             Cmd = _cmd, Color = Image(color, 0), Depth = Image(depth, 0), Motion = Image(motion, 0),
-            Exposure = exposure == null ? default : Image(exposure, 0), Output = Image(output, 1),
+            Exposure = exposure == null ? default : Image(exposure, 0),
+            Reactive = reactive == null ? default : Image(reactive, 0), Output = Image(output, 1),
             JitterX = c.JitterX, JitterY = c.JitterY, MvScaleX = c.MvScaleX, MvScaleY = c.MvScaleY,
             RenderW = (uint)c.RenderW, RenderH = (uint)c.RenderH, FrameMs = c.FrameMs, Near = c.Near, Far = c.Far, FovY = c.FovY,
             Reset = c.Reset ? 1u : 0u,

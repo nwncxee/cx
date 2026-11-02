@@ -73,10 +73,11 @@ public readonly record struct LabelCmd(int Bytes);
 public readonly record struct ReadImagesCmd(int Images, Access Access);
 
 /// <summary><see cref="Op.Upscale"/>: one FSR 3.1 dispatch from the render-size inputs into the display-size
-/// <see cref="Output"/>. Jitter is in render pixels as FSR takes it; a null <see cref="Exposure"/> reads as 1.</summary>
-public readonly record struct UpscaleCmd(ImageId Color, ImageId Depth, ImageId Motion, ImageId Exposure, ImageId Output,
-                                         float JitterX, float JitterY, float MvScaleX, float MvScaleY, int RenderW, int RenderH,
-                                         float FrameMs, float Near, float Far, float FovY, bool Reset);
+/// <see cref="Output"/>. Jitter is in render pixels as FSR takes it; a null <see cref="Exposure"/> reads as 1 and a
+/// null <see cref="Reactive"/> leaves every pixel as reactive as FSR's own history says.</summary>
+public readonly record struct UpscaleCmd(ImageId Color, ImageId Depth, ImageId Motion, ImageId Exposure, ImageId Reactive,
+                                         ImageId Output, float JitterX, float JitterY, float MvScaleX, float MvScaleY,
+                                         int RenderW, int RenderH, float FrameMs, float Near, float Far, float FovY, bool Reset);
 
 /// <summary>CPU work waiting on a list's submit: <see cref="Fn"/> gets <see cref="Arg"/> and whether the GPU ran the
 /// submit (false: it was refused, or the device went away first).</summary>
