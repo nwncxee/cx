@@ -623,6 +623,7 @@ def programs(g):
         "motion vectors": (g["cx_fullscreen_v"], g["cx_motioncam_f"]),
         "mover motion": (g["cx_motion_v"], g["cx_motion_f"]),
         "taa resolve": (g["cx_fullscreen_v"], g["cx_taa_f"]),
+        "reactive mask": (g["cx_fullscreen_v"], g["cx_reactive_f"]),
         "ssr hi-Z": (define(g["cx_ssrhiz_c"], "CX_SSR_STORAGE 1"),),
         "ssr colour chain": (define(g["cx_ssrhiz_c"], "CX_SSR_COLOUR 1"),),
         "ssr trace": (g["cx_fullscreen_v"], g["cx_ssrtrace_f"]),
