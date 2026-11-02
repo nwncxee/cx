@@ -39,7 +39,8 @@ void main()
         float len = uKind != 2 ? uQuad.x * (0.5 + 0.8 * h.y) : uQuad.x;
         // the near tier thins by drop COUNT (a hashed keep), not by brightness, to none 25 m from the camera, where the
         // fog's veil has taken over the same share: fewer drops reads as distance, and the box's edge is past the last
-        float edge = CxWxNearKeep(length(uEye - P));
+        // ...and none brushes the lens: a drop a metre off the camera is a bar across the screen
+        float edge = CxWxNearKeep(length(uEye - P)) * smoothstep(CX_WX_LENS, CX_WX_LENS * 3.0, length(uEye - P));
         vec4 cv = uView * vec4(P, 1.0);
         vec4 cc = uProj * cv;
         float r = len + uQuad.y;

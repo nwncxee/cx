@@ -16,6 +16,8 @@ layout(std430, binding = 15) writeonly buffer CxWxDropsOut { vec4 uDropsOut[]; }
 // CX_WX_REC_CAP, the most survivors one command keeps, is defined by the pass that builds this stage.
 /// The forward lobe of a rain drop's sun scatter (Henyey-Greenstein g).
 const float CX_WX_RAIN_G = 0.35;
+/// Metres from the camera inside which no drop is kept, fading in over three times that.
+const float CX_WX_LENS = 1.0;
 
 vec2 cxClusterXY;
 #define CX_CLUSTER_XY cxClusterXY

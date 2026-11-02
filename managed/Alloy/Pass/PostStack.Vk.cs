@@ -88,6 +88,7 @@ internal static unsafe partial class PostStack
         int dw = display[2], dh = display[3];
         int* full = stackalloc int[4] { 0, 0, dw, dh };
         bool fsr = FsrVk(vk, s, cl, ref hdr, depth, vp, vpClean, ref viewport, full, near, far, fovY, log);
+        if (fsr && !AlloyRenderer.VkWeatherLate(vk, cl, hdr, dw, dh, log)) return false;
         int live = 0;
         string missing = "";
         bool taa = false;

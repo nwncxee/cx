@@ -8,7 +8,7 @@ namespace CX.Alloy;
 /// <summary>
 /// The rain motion golden (approved-spec, E1, E2 and E4): the shipped <c>CxWxVelocity</c> either side of its
 /// <c>CX_WX_CORE</c> cut-off, and whether the frame records rain's motion for each anti-aliasing choice. Oracle: a drop
-/// vector of (3, -7) and a ground vector of (-1, 0.5), and the AA choices that read motion, written by hand.
+/// vector of (3, -7) and a ground vector of (-1, 0.5), and TAA as the one resolve that reads it, written by hand.
 /// </summary>
 internal static partial class GpuGolden
 {
@@ -61,7 +61,7 @@ internal static partial class GpuGolden
         // Given anti-aliasing off or SMAA
         // When rain falls
         // Then the colour it draws is the same as before this change
-        check.Expect(off == 0 && fsr == 1 && taa == 1,
-            $"rain motion E4: rain's motion is recorded {off} with no temporal resolve (want 0), {fsr} under FSR and {taa} under TAA (want 1)");
+        check.Expect(off == 0 && fsr == 0 && taa == 1,
+            $"rain motion E4: rain's motion is recorded {off} with no temporal resolve and {fsr} under FSR, which draws the rain after its upscale (want 0), and {taa} under TAA (want 1)");
     }
 }

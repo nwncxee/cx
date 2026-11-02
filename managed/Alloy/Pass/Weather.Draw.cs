@@ -37,7 +37,7 @@ internal static unsafe partial class Weather
     private const float DensityMax = 3f;
 
     /// <summary>The precipitation program's uniform locations, resolved once per program.</summary>
-    internal struct Loc { public int View, Proj, Eye, Centre, Fall, Phase, Time, Box, Size, Kind, Drift, Depth, Tint, Alpha, Soft, Viz, Cover, CoverVp, CoverLayer, CoverSoft, Lit, Back, Count, Slot, FallStep; }
+    internal struct Loc { public int View, Proj, Eye, Centre, Fall, Phase, Time, Box, Size, Kind, Drift, Depth, Tint, Alpha, Soft, Viz, Cover, CoverVp, CoverLayer, CoverSoft, Lit, Back, Count, Slot, FallStep, Screen; }
     private static double _phase;
     private static float _wobble;
     private static long _ticks;
@@ -113,13 +113,18 @@ internal static unsafe partial class Weather
     /// <summary>Where <see cref="Phase"/> wraps.</summary>
     internal static double PhaseWrap => Box * PhaseWrapLengths;
 
-    /// <summary>Whether the frame records rain's own motion: only a temporal resolve, FSR or TAA, reads it.</summary>
-    internal static bool MotionWanted(bool fsr, bool taa) => fsr || taa;
+    /// <summary>Whether the frame records rain's own motion: only TAA reads it with rain in the frame it resolves. Under
+    /// FSR the rain draws after the upscale, so its motion would only drag the ground under it.</summary>
+    internal static bool MotionWanted(bool fsr, bool taa) => taa && !fsr;
+
+    /// <summary>Whether the fall and the drips draw after the upscale, on the display-size frame, instead of in the scene:
+    /// FSR reconstructs from history, and a streak in that history smears over the ground.</summary>
+    internal static bool LateWanted(bool fsr) => fsr;
 
     internal static void ContextLost() => MapLost();
     internal static void ResetPeriod() => _drawn = 0;
     internal static string Stats() => _off ? "weather unavailable" : !Enabled.V ? "weather off"
-        : $"weather {CurrentKind} {Density * 100f:F0}% {_count} lattice points, {_drips} drips{SplashStats()}{CoverStats()}{SurfaceStats()}{MapStats()}{ShelterStats()}, records {AlloyRenderer.RecCreature} creature / {AlloyRenderer.RecObject} object / {AlloyRenderer.RecTile} tile";
+        : $"weather {CurrentKind} {Density * 100f:F0}% {_count} lattice points{AlloyRenderer.VkWxKept()}, {_drips} drips{SplashStats()}{CoverStats()}{SurfaceStats()}{MapStats()}{ShelterStats()}, records {AlloyRenderer.RecCreature} creature / {AlloyRenderer.RecObject} object / {AlloyRenderer.RecTile} tile";
     private static string DescribeDraw() => $" fall ({_fall.X:F2} {_fall.Y:F2} {_fall.Z:F2}) count {_count} drips {_drips}{SplashStats()}{CoverStats()}";
 
     /// <summary>One instanced quad per drop or flake the cull kept, read from its record by instance: the vertex

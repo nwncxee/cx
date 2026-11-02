@@ -43,7 +43,7 @@ internal static unsafe partial class Weather
         Alpha = LooseBlock.Loc("uAlpha"), Soft = LooseBlock.Loc("uSoft"), Viz = LooseBlock.Loc("uViz"),
         CoverLayer = LooseBlock.Loc("uCoverLayer"), Lit = LooseBlock.Loc("uLit"), Back = LooseBlock.Loc("uBack"),
         CoverVp = LooseBlock.Loc("uCoverVp"), CoverSoft = LooseBlock.Loc("uCoverSoft"),
-        Count = LooseBlock.Loc("uCount"), Slot = LooseBlock.Loc("uSlot"), FallStep = LooseBlock.Loc("uFallStep"),
+        Count = LooseBlock.Loc("uCount"), Slot = LooseBlock.Loc("uSlot"), FallStep = LooseBlock.Loc("uFallStep"), Screen = LooseBlock.Loc("uScreen"),
     };
 
     /// <summary>The cull's own terms into the open capture: the <paramref name="count"/> lattice points it walks, the

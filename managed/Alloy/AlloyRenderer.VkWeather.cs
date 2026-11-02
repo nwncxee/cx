@@ -44,13 +44,22 @@ public sealed unsafe partial class AlloyRenderer
         public int MVp, MPrevVp, MJitter, MSize;
         public bool MotionTried, MotionLive;
         public CommandList? MotionSide;
-        /// <summary>The camera the weather pass drew with, for the velocity's contact fade.</summary>
+        /// <summary>The camera the weather pass drew with, for the velocity's contact fade and the late draw.</summary>
         public Matrix4x4 View, Proj;
+        /// <summary>This frame's fall and drips wait for the late draw after the upscale, with these terms.</summary>
+        public bool Late, Lit;
+        public float Near, Far;
+        /// <summary>The fall and drip pipelines without depth, for the display-size frame after the upscale.</summary>
+        public readonly PipelineId[] LatePipe = new PipelineId[2];
+        public CommandList? LateSide;
+        public bool LateLive;
         /// <summary>The commands' readback copy, the frame whose copy is in flight (0 = none), and whether the
         /// record cap has been reported.</summary>
         public BufferId CmdRead;
         public int SampleGen, Frames;
         public bool CapLogged;
+        /// <summary>The last sampled frame's drops kept by the fall's command, and the lattice points it walked.</summary>
+        public uint Kept, Walked;
     }
 
     /// <summary>The command buffer's words: two four-word draw commands, then what each wanted before the cap.</summary>
@@ -97,8 +106,10 @@ public sealed unsafe partial class AlloyRenderer
         side.Reset();
         int arena0 = c.ArenaUsed;
         side.SetViewport(0, 0, viewport[2], viewport[3]);
-        if (fall && !VkWxDraw(side, s, c, k, snow ? 2 : 1, 0, view, proj, viewport, near, far, lit)) return false;
-        if (drip && !VkWxDraw(side, s, c, 0, 3, 1, view, proj, viewport, near, far, lit)) return false;
+        bool late = Weather.LateWanted(Fsr.On);
+        s.Late = late; s.Lit = lit; s.Near = near; s.Far = far;
+        if (!late && fall && !VkWxDraw(side, s, c, k, snow ? 2 : 1, 0, view, proj, viewport, near, far, lit)) return false;
+        if (!late && drip && !VkWxDraw(side, s, c, 0, 3, 1, view, proj, viewport, near, far, lit)) return false;
         if (VkWxEnsure(vk, s, VkSplashProg, log) && !VkSplashDraw(side, s, c, view, proj, viewport, near, far, lit)) return false;
         ReadOnlySpan<ColorAttachment> colors = [new(c.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default)];
         VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear)));
@@ -125,6 +136,7 @@ public sealed unsafe partial class AlloyRenderer
         {
             BindPass(p.L.CubeCount, viewport, near, far);
             Weather.WriteVk(in s.L[k], kind, &v, &pr, _eyePos, lit);
+            LooseBlock.Set(s.L[k].Screen, [(float)viewport[2], viewport[3]]);
         }
         finally { LooseBlock.EndCapture(); }
         int loose = VkArena(p.Block), pass = VkArenaPass();
@@ -156,6 +168,7 @@ public sealed unsafe partial class AlloyRenderer
         if (drips > 0) { VkWxCullBind(cl, s, c, drip, dripPass); cl.Dispatch((drips + 63) / 64); }
         if (++s.Frames % VkWxSamplePeriod == 0 && s.SampleGen == 0)
         {
+            s.Walked = (uint)count;
             cl.CopyBuffer(new CopyBufferCmd(s.Cmd, 0, s.CmdRead, 0, VkWxCmdWords * sizeof(uint)));
             s.SampleGen = s.Frames;
             cl.WhenDone(VkWxSampleLanded, s.SampleGen);
@@ -165,6 +178,9 @@ public sealed unsafe partial class AlloyRenderer
 
     private static readonly Action<int, bool> VkWxSampleLanded = OnVkWxSample;
 
+    /// <summary>The period line's cull figure: of the lattice points the fall walked, how many drops it kept.</summary>
+    internal static string VkWxKept() => _vkWx.Walked == 0 ? "" : $", the cull kept {_vkWx.Kept} of {_vkWx.Walked}";
+
     /// <summary>A sampled frame's commands landed: when a command wanted more survivors than the records keep, say so
     /// once, loudly, since the drops past the cap are simply not drawn.</summary>
     private static void OnVkWxSample(int gen, bool ran)
@@ -173,9 +189,10 @@ public sealed unsafe partial class AlloyRenderer
         if (s.SampleGen != gen) return;
         s.SampleGen = 0;
         Span<uint> words = stackalloc uint[VkWxCmdWords];
-        if (!ran || s.Dev == null || s.CapLogged || !s.Dev.ReadMapped(s.CmdRead, 0, MemoryMarshal.AsBytes(words))) return;
+        if (!ran || s.Dev == null || !s.Dev.ReadMapped(s.CmdRead, 0, MemoryMarshal.AsBytes(words))) return;
+        s.Kept = words[1];
         uint wanted = Math.Max(words[8], words[9]);
-        if (wanted <= VkWxRecCap) return;
+        if (s.CapLogged || wanted <= VkWxRecCap) return;
         s.CapLogged = true;
         _log?.Always($"AlloyRenderer: the precipitation kept {VkWxRecCap} of {wanted} visible drops in one draw -- the rest are "
                    + "NOT drawn; lower weather.count or weather.density, or raise the record cap");
