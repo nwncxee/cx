@@ -9,6 +9,7 @@ layout(local_size_x = 64) in;
 #include "cx_pass.glsl"
 layout(std430, binding = 14) coherent buffer CxWxCmd { uint uCmd[]; };
 layout(std430, binding = 15) writeonly buffer CxWxDropsOut { vec4 uDropsOut[]; };
+// CX_WX_REC_CAP, the most survivors one command keeps, is defined by the pass that builds this stage.
 /// The forward lobe of a rain drop's sun scatter (Henyey-Greenstein g).
 const float CX_WX_RAIN_G = 0.35;
 
@@ -22,4 +23,5 @@ vec2 cxClusterXY;
 #include "cx_probeshape.glsl"
 #define CX_WX_LAMPS 1
 #include "cx_wx_shade.glsl"
+#include "cx_vfrain.glsl"
 #include "cx_wx_cullmain.glsl"

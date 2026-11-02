@@ -20,14 +20,18 @@ internal static unsafe partial class Weather
     /// <summary>The wobble clock wraps where both wobble frequencies (1.0 and 1.5 rad/s) complete whole turns.</summary>
     private const float WobbleWrap = 400f * MathF.PI;
 
-    internal static Knob<float> DensityScale = null!, StreakLen = null!, FlakeSize = null!, Brightness = null!, Opacity = null!, Range = null!,
+    internal static Knob<float> DensityScale = null!, StreakLen = null!, FlakeSize = null!, Brightness = null!, Opacity = null!,
                                 RainSpeed = null!, SnowSpeed = null!, WindLean = null!, Soft = null!, Drips = null!, Backscatter = null!, SnowAngle = null!;
     internal static Knob<int> MaxCount = null!, Viz = null!;
 
     private static bool _failed;
 
     /// <summary>The most lattice points one draw walks, and so the most records the Vulkan cull keeps for it.</summary>
-    internal const int CountCap = 40000;
+    internal const int CountCap = 400000;
+
+    /// <summary>The fall-aligned box the lattice wraps in, centred on the camera: room for the whole near tier, whose drops
+    /// thin out to none 25 m away (<c>CxWxNearKeep</c>), so its edge never shows and the far veil takes over from there.</summary>
+    internal const float Box = 52f;
 
     /// <summary>The density knob's ceiling, a multiple of the area's own weather.</summary>
     private const float DensityMax = 3f;
@@ -58,8 +62,6 @@ internal static unsafe partial class Weather
         Brightness = G.Slider("bright", "Brightness", 0f, 3f, 0.1f, 0.6f, tier: Tier.ChatOnly, help: "Streaks and flakes take the light where they fall (sun, shadow, lamps); this scales it.");
         Opacity = G.Slider("opacity", "Rain opacity", 0.02f, 1f, 0.02f, 0.7f, tier: Tier.ChatOnly,
                            help: "How strongly one streak shows: the share of the scene it hides, the sky seen through it and the light it throws.");
-        Range = G.Slider("range", "Range", 6f, 40f, 1f, 20f, "m", Tier.ChatOnly, help: "Size of the box around the camera the field fills.")
-                 .Ladder(Quality.Weather, 12f, 16f, 20f, 28f);
         RainSpeed = G.Slider("rainspeed", "Rain speed", 2f, 30f, 0.5f, 12f, "m/s", Tier.ChatOnly);
         SnowSpeed = G.Slider("snowspeed", "Snow speed", 0.2f, 6f, 0.1f, 1.2f, "m/s", Tier.ChatOnly);
         WindLean = G.Slider("windlean", "Wind lean", 0f, 3f, 0.05f, 0.6f, tier: Tier.ChatOnly,
@@ -70,8 +72,8 @@ internal static unsafe partial class Weather
                                help: "A flake between you and a light glows, lit from behind. 0 = off.");
         Soft = G.Slider("soft", "Contact fade", 0f, 20f, 0.5f, 6f, tier: Tier.ChatOnly,
                         help: "How sharply a streak fades where it meets geometry (1/m).");
-        MaxCount = G.Slider("count", "count", 500, CountCap, 500, 16000, tier: Tier.ChatOnly)
-                    .Ladder(Quality.Weather, 4000, 8000, 16000, 24000);
+        MaxCount = G.Slider("count", "count", 500, CountCap, 500, 200000, tier: Tier.ChatOnly)
+                    .Ladder(Quality.Weather, 60000, 120000, 200000, 280000);
         Viz = G.Slider("viz", "viz", 0, VizMax, 1, 0, tier: Tier.ChatOnly, help: "1 streak contact fade, 2 exposure on the world, 3 record class (red creature, green object, blue tileset), 4 the wetness map (red wet, green fill, blue standing water; black = not latched)");
     }
 
@@ -102,7 +104,7 @@ internal static unsafe partial class Weather
         Vector3 f = new(wind.X * WindLean.V, wind.Y * WindLean.V, -1f);
         _fall = Vector3.Normalize(f);
         float speed = CurrentKind == Kind.Snow ? SnowSpeed.V : RainSpeed.V;
-        double wrap = Range.V * PhaseWrapLengths;
+        double wrap = PhaseWrap;
         _phase = (_phase + dt * speed) % wrap;
         _wobble = (_wobble + dt) % WobbleWrap;
         SplashTick(dt);
@@ -112,7 +114,7 @@ internal static unsafe partial class Weather
     internal static double Phase => _phase;
 
     /// <summary>Where <see cref="Phase"/> wraps.</summary>
-    internal static double PhaseWrap => Range.V * PhaseWrapLengths;
+    internal static double PhaseWrap => Box * PhaseWrapLengths;
 
     /// <summary>Whether the frame records rain's own motion: only a temporal resolve, FSR or TAA, reads it.</summary>
     internal static bool MotionWanted(bool fsr, bool taa) => fsr || taa;

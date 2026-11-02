@@ -255,7 +255,7 @@ internal static unsafe partial class Weather
         check.Expect(lit.Contains("uniform int uOit;") && lit.IndexOf("uniform int uOit;", StringComparison.Ordinal) < lit.IndexOf("uCoverEsmP.z > 0.5 && uOit == 0", StringComparison.Ordinal),
           "the exposure read sees the OIT mode before it picks the filtered map");
         check.Expect(WeatherCull.Contains("uniform float uBack;") && WeatherCull.Contains("CxWxPhase(-uAreaDir, V, g) * CxSunShadow(P, uAreaDir, 1.0, 1.0)"), "the sun reaches a drop through its phase lobe and the cascades");
-        check.Expect(WeatherCull.Contains("uniform sampler2DArrayShadow uCover;") && WeatherCull.Contains("CxCovered(Pc)) >= 0.5") && WeatherCull.Contains("if (!keep) return;"),
+        check.Expect(WeatherCull.Contains("uniform sampler2DArrayShadow uCover;") && WeatherCull.Contains("CxCovered(Pc)) >= 0.5") && WeatherCull.Contains("if (!keep ||"),
           "the precipitation cull tests each drop against the cover map and drops the covered");
         check.Expect(WeatherCull.Contains("uKind == 3 ? CxLip(P, R, U)") && WeatherCull.Contains("if (CxCovered(P) >= 0.5) return 0.0;"),
           "a drip instance survives only under a lip: covered here, open within the feather");

@@ -49,8 +49,12 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The bytes of one cull survivor's record.</summary>
     private const int VkWxRecordBytes = 3 * 16;
 
+    /// <summary>The most survivors one command keeps: a ceiling on the drops drawn, not on the field. ponytail: a frame
+    /// that would keep more draws an arbitrary subset; raise it, or cap by distance, if a real area reaches it.</summary>
+    private const int VkWxRecCap = 1 << 17;
+
     /// <summary>The first record the roof drips take: past the most the fall can keep.</summary>
-    private const int VkWxDripBase = Weather.FallCap;
+    private const int VkWxDripBase = VkWxRecCap;
 
     private static VkWxState _vkWx = new();
 
@@ -224,7 +228,7 @@ public sealed unsafe partial class AlloyRenderer
         if (content != null) s.Cull = VkWxCullBuild(vk, content, units, label, log);
         if (content != null && s.Cull == null) log.Always($"AlloyRenderer: {label}'s override did not build (logged above) -- building the embedded stage");
         s.Cull ??= VkWxCullBuild(vk, ShaderStages.Source(Weather.ShdWeatherCull), units, label, log);
-        s.Drops = vk.CreateBuffer(new BufferDesc((long)(Weather.FallCap + Weather.CountCap) * VkWxRecordBytes, BufferUse.Storage, MemoryKind.Device, "vk weather drops"));
+        s.Drops = vk.CreateBuffer(new BufferDesc(2L * VkWxRecCap * VkWxRecordBytes, BufferUse.Storage, MemoryKind.Device, "vk weather drops"));
         s.Cmd = vk.CreateBuffer(new BufferDesc(8 * sizeof(uint), BufferUse.Storage | BufferUse.Indirect | BufferUse.CopyDst,
                                                MemoryKind.Device, "vk weather commands"));
         if (s.Cull == null || s.Drops.IsNull || s.Cmd.IsNull)
@@ -242,7 +246,7 @@ public sealed unsafe partial class AlloyRenderer
     private static VkDefStage? VkWxCullBuild(VkBackend vk, string text, System.Collections.Generic.Dictionary<string, uint> units,
                                             string label, ExtenderLog log)
     {
-        string src = ShaderResource.Tokens(ShaderSource.Content(text, log));
+        string src = ShaderStages.AfterVersion(ShaderResource.Tokens(ShaderSource.Content(text, log)), $"#define CX_WX_REC_CAP {VkWxRecCap}u\n");
         return VkDefCompile(vk, VkGlsl.TranslateCompute(src, units), src, label, log);
     }
 

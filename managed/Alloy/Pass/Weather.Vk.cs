@@ -65,12 +65,11 @@ internal static unsafe partial class Weather
         LooseBlock.Set(l.View, *view);
         LooseBlock.Set(l.Proj, *proj);
         LooseBlock.Set(l.Eye, [eye.X, eye.Y, eye.Z]);
-        Vector3 centre = FrameInputs.HasFocus ? FrameInputs.Focus : eye;
-        LooseBlock.Set(l.Centre, [centre.X, centre.Y, centre.Z]);
+        LooseBlock.Set(l.Centre, [eye.X, eye.Y, eye.Z]);
         LooseBlock.Set(l.Fall, [_fall.X, _fall.Y, _fall.Z]);
         LooseBlock.Set(l.Phase, (float)_phase);
         LooseBlock.Set(l.Time, _wobble);
-        LooseBlock.Set(l.Box, [Range.V, Range.V]);
+        LooseBlock.Set(l.Box, [Box, Box]);
         LooseBlock.Set(l.Size, [snow ? FlakeSize.V : kind == 3 ? StreakLen.V * 0.25f : StreakLen.V, snow ? FlakeSize.V : kind == 3 ? 0.03f : 0.02f]);
         LooseBlock.Set(l.Kind, kind);
         LooseBlock.Set(l.Drift, snow ? 0.4f : 0f);

@@ -936,8 +936,8 @@ quarter.
 `grass.lod` 15 / 25 / 40 / 60 m · `grass.bladelod` 10 / 20 / 30 / 45 m · `grass.shade` 15 / 25 /
 40 / 60 m · `grass.vlight` on / on / on / off.
 
-**quality.weather** → `weather.density` 0.5 / 0.8 / 1 / 1.5 · `weather.range` 12 / 16 / 20 /
-28 m · `weather.count` 4000 / 8000 / 16000 / 24000 · `weather.impacts` 0 / 0.35 / 0.6 / 1 ·
+**quality.weather** → `weather.density` 0.5 / 0.8 / 1 / 1.5 ·
+`weather.count` 60000 / 120000 / 200000 / 280000 · `weather.impacts` 0 / 0.35 / 0.6 / 1 ·
 `weather.splash` 0 / 1 / 1 / 1 · `weather.edgetaps` 3 / 5 / 8 / 12 · `weather.snowsteps` 4 / 6 /
 10 / 16 · `weather.mapres` 1.5 / 2 / 3 / 4 texels/m · `weather.mapcadence` 8 / 6 / 4 / 2 frames
 · `weather.filmlights` off / on / on / on.

@@ -615,7 +615,7 @@ def programs(g):
         "ssao visibility": (g["cx_post_vs"], g["cx_ssao_fs"]),
         "ssao blur": (g["cx_post_vs"], g["cx_ssaoblur_fs"]),
         "halos": (g["cx_halo_vs"], g["cx_halo_fs"]),
-        "weather cull": (g["cx_wx_cull_cs"],),
+        "weather cull": (define(g["cx_wx_cull_cs"], "CX_WX_REC_CAP 131072u"),),
         "weather rain": (g["cx_weather_vs"], g["cx_rain_fs"]),
         "weather snow": (g["cx_weather_vs"], g["cx_snow_fs"]),
         "weather splash": (g["cx_splash_vs"], g["cx_splash_fs"]),

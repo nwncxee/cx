@@ -1,7 +1,7 @@
 uniform mat4 uView;
 uniform mat4 uProj;
 uniform vec3 uEye;
-uniform vec3 uCentre;    // the field's centre: the camera's follow target
+uniform vec3 uCentre;    // the field's centre: the camera
 uniform vec3 uFall;      // unit fall direction: gravity leaning into the area wind
 uniform float uPhase;    // metres fallen, wrapped at 1024 box lengths
 uniform float uTime;     // wobble clock, seconds

@@ -239,3 +239,5 @@ post\.taa\b	CX-394
 /(alloy scale|post taa)\b	CX-394
 # The frame lands in the window's own image (the screen); the composite the present blitted from is gone.
 (Vulkan.s|the) composite image|composite Vulkan presents|present blit of the composite	CX-437
+# The precipitation box is sized by the near tier it holds, a constant, not a knob.
+\bweather\.range\b	CX-429

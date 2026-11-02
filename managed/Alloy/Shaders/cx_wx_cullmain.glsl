@@ -37,11 +37,9 @@ void main()
         if (uKind == 2) q.xy += vec2(sin(uTime + h.y * 6.2832), cos(uTime * 1.5 + h.z * 6.2832)) * uDrift;
         vec3 P = R * q.x + U * q.y + F * q.z;
         float len = uKind != 2 ? uQuad.x * (0.5 + 0.8 * h.y) : uQuad.x;
-        // no edge: the field thins RADIALLY from 40% of the half-width out, by drop COUNT (a hashed keep)
-        // and not by a brightness ramp -- a ramp on a square box read as a band with a corner in it,
-        // fewer drops reads as distance
-        vec2 rel = (q.xy - c.xy) / (size.xy * 0.5);
-        float edge = 1.0 - smoothstep(0.4, 1.0, length(rel));
+        // the near tier thins by drop COUNT (a hashed keep), not by brightness, to none 25 m from the camera, where the
+        // fog's veil has taken over the same share: fewer drops reads as distance, and the box's edge is past the last
+        float edge = CxWxNearKeep(length(uEye - P));
         vec4 cv = uView * vec4(P, 1.0);
         vec4 cc = uProj * cv;
         float r = len + uQuad.y;
@@ -71,9 +69,13 @@ void main()
     // compaction: one atomic per subgroup, each survivor at its rank among the subgroup's
     uvec4 ballot = subgroupBallot(keep);
     uint n = subgroupBallotBitCount(ballot), first = 0u;
-    if (subgroupElect() && n > 0u) first = atomicAdd(uCmd[uSlot * 4 + 1], n);
+    if (subgroupElect() && n > 0u)
+    {
+        first = atomicAdd(uCmd[uSlot * 4 + 1], n);
+        if (first + n > CX_WX_REC_CAP) atomicMin(uCmd[uSlot * 4 + 1], CX_WX_REC_CAP);
+    }
     first = subgroupBroadcastFirst(first);
-    if (!keep) return;
+    if (!keep || first + subgroupBallotExclusiveBitCount(ballot) >= CX_WX_REC_CAP) return;
     uint at3 = (uint(uBase) + first + subgroupBallotExclusiveBitCount(ballot)) * 3u;
     uDropsOut[at3] = at;
     uDropsOut[at3 + 1u] = lit;
