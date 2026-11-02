@@ -57,7 +57,7 @@ public sealed unsafe partial class AlloyRenderer
     private const int VkWxCmdWords = 10;
 
     /// <summary>How often, in frames that culled, the commands are read back to see whether the cap bound.</summary>
-    private const int VkWxSamplePeriod = 120;
+    private const int VkWxSamplePeriod = 30;
 
     /// <summary>The bytes of one cull survivor's record.</summary>
     private const int VkWxRecordBytes = 3 * 16;
@@ -255,18 +255,15 @@ public sealed unsafe partial class AlloyRenderer
         cl.BindSet(0, new BindSet(ubo[..nu], ssbo[..ns], sampled[..nt], default));
     }
 
-    /// <summary>The cull stage and its two buffers, made once per device; refused, nothing falls this session, said once.
-    /// A content override that does not build falls back, logged, to the embedded stage.</summary>
+    /// <summary>The cull stage and its buffers, made once per device through the compute path every resref takes, so a
+    /// content override gets its guards and its fallback to the embedded stage; refused, nothing falls this session,
+    /// said once, and nothing it made is kept.</summary>
     private static bool VkWxCullEnsure(VkBackend vk, VkWxState s, ExtenderLog log)
     {
         if (s.CullTried) return s.Cull != null;
         s.CullTried = true;
-        var units = new System.Collections.Generic.Dictionary<string, uint>(VkPrograms.Units) { ["uCover"] = TextureSlots.CoverEsm };
-        string label = "vk weather cull";
-        string? content = ShaderResource.Override(Weather.ShdWeatherCull, log);
-        if (content != null) s.Cull = VkWxCullBuild(vk, content, units, label, log);
-        if (content != null && s.Cull == null) log.Always($"AlloyRenderer: {label}'s override did not build (logged above) -- building the embedded stage");
-        s.Cull ??= VkWxCullBuild(vk, ShaderStages.Source(Weather.ShdWeatherCull), units, label, log);
+        string define = $"CX_WX_REC_CAP {VkWxRecCap}u" + (vk.WaveOps ? "\nCX_WX_WAVE 1" : "");
+        s.Cull = VkDefBuild(vk, Weather.ShdWeatherCull, define, "vk weather cull", log);
         s.Drops = vk.CreateBuffer(new BufferDesc(2L * VkWxRecCap * VkWxRecordBytes, BufferUse.Storage, MemoryKind.Device, "vk weather drops"));
         s.Cmd = vk.CreateBuffer(new BufferDesc(VkWxCmdWords * sizeof(uint), BufferUse.Storage | BufferUse.Indirect | BufferUse.CopyDst
                                                | BufferUse.CopySrc, MemoryKind.Device, "vk weather commands"));
@@ -274,21 +271,15 @@ public sealed unsafe partial class AlloyRenderer
                                                    "vk weather commands readback"));
         if (s.Cull == null || s.Drops.IsNull || s.Cmd.IsNull || s.CmdRead.IsNull)
         {
-            s.Cull = null;
+            if (s.Cull != null) { vk.Destroy(s.Cull.Pipe); vk.Destroy(s.Cull.Cs); }
+            vk.Destroy(s.Drops); vk.Destroy(s.Cmd); vk.Destroy(s.CmdRead);
+            s.Cull = null; s.Drops = default; s.Cmd = default; s.CmdRead = default;
             log.Always("AlloyRenderer: the Vulkan weather cull or its buffers were REFUSED (logged above) -- nothing falls on Vulkan this session");
             return false;
         }
         VkWxState w = s;
         LooseBlock.Resolve(s.Cull.Names, () => w.CullL = Weather.VkLocs());
         return true;
-    }
-
-    /// <summary>The cull stage from <paramref name="text"/>, translated with the cover map on its unit; null when refused.</summary>
-    private static VkDefStage? VkWxCullBuild(VkBackend vk, string text, System.Collections.Generic.Dictionary<string, uint> units,
-                                            string label, ExtenderLog log)
-    {
-        string src = ShaderStages.AfterVersion(ShaderResource.Tokens(ShaderSource.Content(text, log)), $"#define CX_WX_REC_CAP {VkWxRecCap}u\n");
-        return VkDefCompile(vk, VkGlsl.TranslateCompute(src, units), src, label, log);
     }
 
     /// <summary>The splash program's slot in <see cref="VkWxState"/>, past rain's and snow's.</summary>
@@ -327,8 +318,7 @@ public sealed unsafe partial class AlloyRenderer
         s.Side ??= new CommandList("vulkan weather", 1 << 14, log);
         (string vs, string fs) = k == VkSplashProg ? Weather.VkSplashTexts(log) : Weather.VkTexts(k == 1, log);
         string label = k == VkSplashProg ? "splash" : k == 1 ? "snow" : "rain";
-        var units = new System.Collections.Generic.Dictionary<string, uint>(VkPrograms.Units) { ["uCover"] = TextureSlots.CoverEsm };
-        VkProgramText t = WorldDepth.Translate(ShaderResource.Tokens(vs), ShaderResource.Tokens(fs), units);
+        VkProgramText t = WorldDepth.Translate(ShaderResource.Tokens(vs), ShaderResource.Tokens(fs), VkPrograms.Units);
         VkProg? p = VkBuild(vk, t, label, true, log);
         if (p != null)
         {

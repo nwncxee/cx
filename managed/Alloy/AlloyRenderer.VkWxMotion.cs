@@ -74,8 +74,7 @@ public sealed unsafe partial class AlloyRenderer
         s.MotionSide = new CommandList("vulkan weather velocity", 1 << 12, log);
         (string vs, _) = Weather.VkTexts(false, log);
         vs = ShaderStages.AfterVersion(vs, "#define CX_MOTION 1\n");
-        var units = new System.Collections.Generic.Dictionary<string, uint>(VkPrograms.Units) { ["uCover"] = TextureSlots.CoverEsm };
-        VkProgramText t = WorldDepth.Translate(ShaderResource.Tokens(vs), ShaderResource.Tokens(Weather.MotionFs), units);
+        VkProgramText t = WorldDepth.Translate(ShaderResource.Tokens(vs), ShaderResource.Tokens(Weather.MotionFs), VkPrograms.Units);
         VkProg? p = VkBuild(vk, t, "weather velocity", true, log);
         if (p != null)
         {

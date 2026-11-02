@@ -14,6 +14,8 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The copy, the mask, the pass's program and its pipeline on one device.</summary>
     private sealed class VkReactState
     {
+        /// <summary>Last frame's four passes drew anything, and so this frame took the copy the mask is measured against.</summary>
+        public bool EffectsLast, Copied;
         public VkBackend? Dev;
         public ImageId Copy, Mask;
         public int W, H;
@@ -39,16 +41,19 @@ public sealed unsafe partial class AlloyRenderer
     internal static ImageId VkReactiveMask => _vkReact.Armed ? _vkReact.Mask : default;
 
     /// <summary>The scene colour as it stands before the four passes the mask covers. Nothing when neither FSR nor
-    /// TAA draws: the mask has no reader then, and a frame copy is not free.</summary>
+    /// TAA draws, or when none of the four drew last frame: the mask is cleared then, and a frame copy is not free. The
+    /// first frame of a new effect is one FSR and TAA have no history of yet.</summary>
     private static void VkReactiveCopy(VkBackend vk, CommandList cl, VkColourState c, ExtenderLog log)
     {
         VkReactState s = _vkReact;
         if (s.Dev != vk) _vkReact = s = new VkReactState { Dev = vk };
         s.Armed = false;
         if (_capturing || !(Fsr.On || PostChain.TaaOn) || !VkReactiveEnsure(vk, s, c.W, c.H, log)) return;
+        s.Armed = true;
+        s.Copied = s.EffectsLast;
+        if (!s.Copied) return;
         var whole = new ImageRegion(0, 0, 0, 0);
         cl.CopyImage(new CopyImageCmd(c.Hdr, whole, s.Copy, whole, c.W, c.H, 1));
-        s.Armed = true;
     }
 
     /// <summary>The mask those four passes earned, in a pass of its own. Nothing drew: the target is cleared to zero
@@ -61,7 +66,8 @@ public sealed unsafe partial class AlloyRenderer
         side.Reset();
         side.SetViewport(0, 0, s.W, s.H);
         int arena0 = c.ArenaUsed;
-        if (c.Effects)
+        s.EffectsLast = c.Effects;
+        if (c.Effects && s.Copied)
         {
             ReadOnlySpan<ImageId> read = [c.Hdr, s.Copy];
             cl.ReadImages(read);

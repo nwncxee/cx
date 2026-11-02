@@ -1,5 +1,7 @@
 #version 460 core
+#ifdef CX_WX_WAVE
 #extension GL_KHR_shader_subgroup_ballot : require
+#endif
 // The precipitation cull: one lane per lattice point. It places the drop, keeps it only when it is on screen, in the
 // thinned field and under open sky (or, for a roof drip, under a lip), lights it once, and appends the survivors to
 // the records the vertex stage reads by instance, counting them into the indirect draw's command.

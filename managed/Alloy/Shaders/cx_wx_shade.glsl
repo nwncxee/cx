@@ -14,8 +14,10 @@ float CxWxCover(int kind, vec2 uv, float k, float seed)
 /// share, and throws `scatter` toward the eye. `cov` is the share of the pixel it covers.
 vec4 CxWxShade(int kind, float cov, vec3 scatter, vec3 behind)
 {
-    float ext = kind == 2 ? 0.18 : kind == 3 ? 0.1 : 0.06;
-    float albedo = kind == 2 ? 0.8 : 0.25;
+    // the share of the scene each kind hides, and how much of the light on it it throws back
+    const float extRain = 0.06, extSnow = 0.18, extDrip = 0.1, albedoWater = 0.25, albedoSnow = 0.8;
+    float ext = kind == 2 ? extSnow : kind == 3 ? extDrip : extRain;
+    float albedo = kind == 2 ? albedoSnow : albedoWater;
     return vec4((scatter * albedo + behind * ext) * cov, ext * cov);
 }
 

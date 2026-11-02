@@ -1,3 +1,5 @@
+#ifndef CX_PROBESHAPE_LIB
+#define CX_PROBESHAPE_LIB
 /// CX-46: the probe's SH9 irradiance, written by cx_probe_sh after each capture with the cosine lobe and basis
 /// constants folded in, and the world point the capture stood at. Read only under uProbeMips > 0.
 layout(std140, binding = 1) uniform CxProbeSh { vec4 uProbeSh[9]; vec4 uProbeAt; };
@@ -17,3 +19,4 @@ vec3 CxAmbientShape(vec3 N)
     float la = dot(a, lum);
     return min(a / max(la, 1e-4), vec3(2.0)) * (2.0 * la / max(la + dot(b, lum), 1e-4));
 }
+#endif

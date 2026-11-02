@@ -119,7 +119,7 @@ internal static unsafe partial class Weather
     internal static void ContextLost() => MapLost();
     internal static void ResetPeriod() => _drawn = 0;
     internal static string Stats() => _off ? "weather unavailable" : !Enabled.V ? "weather off"
-        : $"weather {CurrentKind} {Density * 100f:F0}% {_count} instances, {_drips} drips{SplashStats()}{CoverStats()}{SurfaceStats()}{MapStats()}{ShelterStats()}, records {AlloyRenderer.RecCreature} creature / {AlloyRenderer.RecObject} object / {AlloyRenderer.RecTile} tile";
+        : $"weather {CurrentKind} {Density * 100f:F0}% {_count} lattice points, {_drips} drips{SplashStats()}{CoverStats()}{SurfaceStats()}{MapStats()}{ShelterStats()}, records {AlloyRenderer.RecCreature} creature / {AlloyRenderer.RecObject} object / {AlloyRenderer.RecTile} tile";
     private static string DescribeDraw() => $" fall ({_fall.X:F2} {_fall.Y:F2} {_fall.Z:F2}) count {_count} drips {_drips}{SplashStats()}{CoverStats()}";
 
     /// <summary>One instanced quad per drop or flake the cull kept, read from its record by instance: the vertex

@@ -68,6 +68,7 @@ void main()
             lit = vec4(light, 0.3 + 0.7 * fract(h.x * 7.31));
         }
     }
+#ifdef CX_WX_WAVE
     // compaction: one atomic per subgroup, each survivor at its rank among the subgroup's
     uvec4 ballot = subgroupBallot(keep);
     uint n = subgroupBallotBitCount(ballot), first = 0u;
@@ -77,9 +78,16 @@ void main()
         first = atomicAdd(uCmd[uSlot * 4 + 1], n);
         if (first + n > CX_WX_REC_CAP) atomicMin(uCmd[uSlot * 4 + 1], CX_WX_REC_CAP);
     }
-    first = subgroupBroadcastFirst(first);
-    if (!keep || first + subgroupBallotExclusiveBitCount(ballot) >= CX_WX_REC_CAP) return;
-    uint at3 = (uint(uSlot) * CX_WX_REC_CAP + first + subgroupBallotExclusiveBitCount(ballot)) * 3u;
+    uint rank = subgroupBroadcastFirst(first) + subgroupBallotExclusiveBitCount(ballot);
+    if (!keep || rank >= CX_WX_REC_CAP) return;
+#else
+    // a device without subgroup ballot in compute: one atomic per survivor
+    if (!keep) return;
+    atomicAdd(uCmd[CX_WX_WANTED + uSlot], 1u);
+    uint rank = atomicAdd(uCmd[uSlot * 4 + 1], 1u);
+    if (rank >= CX_WX_REC_CAP) { atomicMin(uCmd[uSlot * 4 + 1], CX_WX_REC_CAP); return; }
+#endif
+    uint at3 = (uint(uSlot) * CX_WX_REC_CAP + rank) * 3u;
     uDropsOut[at3] = at;
     uDropsOut[at3 + 1u] = lit;
     uDropsOut[at3 + 2u] = sky;
