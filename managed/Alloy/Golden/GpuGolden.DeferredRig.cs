@@ -13,26 +13,42 @@ namespace CX.Alloy;
 /// here, never a knob, so the user's own <c>cx.cfg</c> cannot move the answer.</summary>
 internal sealed class DeferredRigScene
 {
-    /// <summary>Floats per pixel in <see cref="Pixels"/>: the <c>CxGbuf</c> fields the twin packs, the record texel's
-    /// four slots and visibilities, then how far the frame depth sits past the record's (a share of it).</summary>
-    internal const int PixelFloats = 39;
     /// <summary>Floats per light in <see cref="Lights"/>: position and radius, then colour and the slot word.</summary>
     internal const int LightFloats = 8;
-    /// <summary>The <c>CxDraw</c> record's floats and where its <c>ext1</c> (the sheen) starts in it.</summary>
-    internal const int DrawFloats = 72, DrawExt1 = 64;
 
     internal int W, H;
     internal Matrix4x4 View, Proj;
     internal Vector3 Eye;
     internal float Near, Far;
     internal float[] Lights = [];
-    internal float[] Pixels = [];
+    internal RigPixel[] Pixels = [];
     /// <summary>One <c>ext1</c> per ownership slot: rgb the sheen colour, w its roughness.</summary>
     internal Vector4[] Sheen = [];
     /// <summary>Shadow-casting cube slots in use, each at its light's position.</summary>
     internal Vector4[] Cubes = [];
     /// <summary>A content author's <c>cx_deferred_cs</c> text standing in for the shipped walk; null = the shipped one.</summary>
     internal string? WalkOverride;
+    /// <summary>Set by the run: the walk it drew with was <see cref="WalkOverride"/>'s, not the shipped stage it falls back to.</summary>
+    internal bool WalkFromContent;
+}
+
+/// <summary>One pixel of a rig scene, in the order <c>CxRigPixel</c> reads it: the <c>CxGbuf</c> fields the twin packs,
+/// the record texel's four slots and visibilities, then how far the frame depth sits past the record's (a share).</summary>
+[StructLayout(LayoutKind.Sequential)]
+internal struct RigPixel
+{
+    public float Flags;
+    public Vector3 N;
+    public float Rough, Spec, Fresnel, Coat, CoatRough;
+    public Vector3 SpecC;
+    public float Slot, SpecT;
+    public Vector3 DiffT;
+    public float LmLum;
+    public Vector4 LmMover;
+    public float ViewDepth;
+    public Vector3 LmShare;
+    public Vector4 SurfFade, ShSlots, ShVis;
+    public float Skew;
 }
 
 public sealed unsafe partial class AlloyRenderer
@@ -44,9 +60,13 @@ public sealed unsafe partial class AlloyRenderer
     /// depth from the projection's depth row, and at each even pixel the record texel it heads.</summary>
     private static string RigFillText()
         => "#version 460 core\nlayout(local_size_x = 8, local_size_y = 8) in;\n"
-         + GpuGolden.CaseBlocks(DeferredRigScene.PixelFloats, 1)
-         + "struct CxChart { vec4 rec; vec4 pick; };\nCxChart uChart[1];\nfloat CxLmTexelWorld(vec4 rec) { return 0.0; }\n"
-         + ShaderSource.Get("cx_gbuf.glsl") + ShaderSource.Get("cx_shrec.glsl") + """
+         + "struct CxRigPixel { float flags, nx, ny, nz, rough, spec, fresnel, coat, coatRough, specCr, specCg, specCb, slot, specT,"
+         + " diffTr, diffTg, diffTb, lmLum, lmMover0, lmMover1, lmMover2, lmMover3, viewDepth, lmShareR, lmShareG, lmShareB,"
+         + " fadeX, fadeY, fadeZ, fadeW, sl0, sl1, sl2, sl3, vis0, vis1, vis2, vis3, skew; };\n"
+         // uLmPages gates the lightmap samplers, which the fill never reaches: a const 0 folds them out
+         + ShaderSource.Get("cx_chartbuf.glsl").Replace("uniform int uLmPages;", "const int uLmPages = 0;", StringComparison.Ordinal)
+         + ShaderSource.Get("cx_gbuf.glsl") + ShaderSource.Get("cx_shrec.glsl")
+         + $"layout(std430, binding = {SsboSlots.GoldenIn}) readonly buffer CxRigPixels {{ CxRigPixel uPx[]; }};\n" + """
            layout(rgba32ui, binding = 0) uniform writeonly uimage2D uG0;
            layout(rgba32ui, binding = 1) uniform writeonly uimage2D uG1;
            layout(r32ui, binding = 2) uniform writeonly uimage2D uG2;
@@ -54,39 +74,38 @@ public sealed unsafe partial class AlloyRenderer
            layout(rgba8, binding = 4) uniform writeonly image2D uVisOut;
            layout(rg32ui, binding = 5) uniform writeonly uimage2D uKeyOut;
            layout(push_constant) uniform CxRigFill { int uW, uH; float uPzz, uPzw; };
-           float F(uint i, int k) { return uIn[i * uint(CX_GOLD_IN) + uint(k)]; }
            void main()
            {
                ivec2 p = ivec2(gl_GlobalInvocationID.xy);
                if (p.x >= uW || p.y >= uH) return;
-               uint i = uint(p.y * uW + p.x);
+               CxRigPixel r = uPx[p.y * uW + p.x];
                CxGbuf g;
-               g.flags = uint(F(i, 0));
-               g.N = vec3(F(i, 1), F(i, 2), F(i, 3));
-               g.rough = F(i, 4); g.spec = F(i, 5); g.fresnel = F(i, 6);
-               g.coat = F(i, 7); g.coatRough = F(i, 8);
-               g.specC = vec3(F(i, 9), F(i, 10), F(i, 11));
-               g.slot = int(F(i, 12));
-               g.specT = F(i, 13);
-               g.diffT = vec3(F(i, 14), F(i, 15), F(i, 16));
-               g.lmLum = F(i, 17);
+               g.flags = uint(r.flags);
+               g.N = vec3(r.nx, r.ny, r.nz);
+               g.rough = r.rough; g.spec = r.spec; g.fresnel = r.fresnel;
+               g.coat = r.coat; g.coatRough = r.coatRough;
+               g.specC = vec3(r.specCr, r.specCg, r.specCb);
+               g.slot = int(r.slot);
+               g.specT = r.specT;
+               g.diffT = vec3(r.diffTr, r.diffTg, r.diffTb);
+               g.lmLum = r.lmLum;
                g.lmTexel = 0.0;
-               g.lmMover = vec4(F(i, 18), F(i, 19), F(i, 20), F(i, 21));
+               g.lmMover = vec4(r.lmMover0, r.lmMover1, r.lmMover2, r.lmMover3);
                g.lmPick = vec4(-1.0);
-               g.viewDepth = F(i, 22);
-               g.lmShare = vec3(F(i, 23), F(i, 24), F(i, 25));
-               g.surfFade = vec4(F(i, 26), F(i, 27), F(i, 28), F(i, 29));
+               g.viewDepth = r.viewDepth;
+               g.lmShare = vec3(r.lmShareR, r.lmShareG, r.lmShareB);
+               g.surfFade = vec4(r.fadeX, r.fadeY, r.fadeZ, r.fadeW);
                uvec4 w0, w1; uint w2;
                CxGbufPack(g, w0, w1, w2);
                imageStore(uG0, p, w0);
                imageStore(uG1, p, w1);
                imageStore(uG2, p, uvec4(w2));
-               float d = g.viewDepth > 0.0 ? uPzw / (g.viewDepth * (1.0 + F(i, 38))) - uPzz : 0.0;
+               float d = g.viewDepth > 0.0 ? uPzw / (g.viewDepth * (1.0 + r.skew)) - uPzz : 0.0;
                imageStore(uDepthOut, p, vec4(d));
                if ((p.x & 1) == 0 && (p.y & 1) == 0)
                {
-                   ivec4 sl = ivec4(F(i, 30), F(i, 31), F(i, 32), F(i, 33));
-                   imageStore(uVisOut, p >> 1, vec4(F(i, 34), F(i, 35), F(i, 36), F(i, 37)));
+                   ivec4 sl = ivec4(r.sl0, r.sl1, r.sl2, r.sl3);
+                   imageStore(uVisOut, p >> 1, vec4(r.vis0, r.vis1, r.vis2, r.vis3));
                    imageStore(uKeyOut, p >> 1, uvec4(CxShPackSlots(sl), g.viewDepth > 0.0 ? CxShPackKey(g.viewDepth, g.N) : 0u, 0u, 0u));
                }
            }
@@ -113,12 +132,9 @@ public sealed unsafe partial class AlloyRenderer
     /// row from the top; null (logged) when a stage or a resource was refused.</summary>
     internal static float[]? DeferredRig(VkBackend vk, DeferredRigScene sc, ExtenderLog log)
     {
-        VkDefStage? walk = sc.WalkOverride == null
-            ? VkDefBuild(vk, DeferredLights.ShdCs, null, "rig walk", log)
-            : VkDefText(DeferredLights.ShdCs, null, "rig walk", log, sc.WalkOverride) is ({ } t, { } src)
-                ? VkDefCompile(vk, t, src, "rig walk", log) : null;
-        VkDefStage? film = VkDefBuild(vk, DeferredLights.ShdCs, "CX_FILM_PASS 1", "rig film", log);
-        VkDefStage? build = VkDefBuild(vk, AlloyLights.ShdClusterCs, null, "rig froxel build", log);
+        VkDefStage? walk = VkDefBuild(vk, DeferredLights.ShdCs, null, "rig walk", log, sc.WalkOverride, out sc.WalkFromContent);
+        VkDefStage? film = VkDefBuild(vk, DeferredLights.ShdCs, "CX_FILM_PASS 1", "rig film", log, null, out _);
+        VkDefStage? build = VkDefBuild(vk, AlloyLights.ShdClusterCs, null, "rig froxel build", log, null, out _);
         PipelineId fill = vk.CreateCompute(RigFillText(), "rig fill");
         var f = new RigFrame();
         float[]? got = null;
@@ -142,28 +158,24 @@ public sealed unsafe partial class AlloyRenderer
     private static bool RigMake(VkBackend vk, DeferredRigScene sc, RigFrame f)
     {
         int w = sc.W, h = sc.H, rw = (w + 1) / 2, rh = (h + 1) / 2;
-        const ImageUse rw2 = ImageUse.Storage | ImageUse.Sampled;
-        f.G0 = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba32Ui, w, h, 1, 1, 1, 1, rw2, "rig g0"));
-        f.G1 = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba32Ui, w, h, 1, 1, 1, 1, rw2, "rig g1"));
-        f.G2 = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.R32Ui, w, h, 1, 1, 1, 1, rw2, "rig g2"));
-        f.Depth = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.R32F, w, h, 1, 1, 1, 1, rw2, "rig depth"));
-        f.Vis = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba8, rw, rh, 1, 1, 1, 1, rw2, "rig shadow record"));
-        f.Key = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rg32Ui, rw, rh, 1, 1, 1, 1, rw2, "rig shadow key"));
-        f.Hdr = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, w, h, 1, 1, 1, 1, rw2 | ImageUse.CopySrc, "rig hdr"));
-        f.Rec = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba32Ui, w, h, 1, 1, 1, 1, rw2, "rig light record"));
+        const ImageUse both = ImageUse.Storage | ImageUse.Sampled;
+        f.G0 = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba32Ui, w, h, 1, 1, 1, 1, both, "rig g0"));
+        f.G1 = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba32Ui, w, h, 1, 1, 1, 1, both, "rig g1"));
+        f.G2 = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.R32Ui, w, h, 1, 1, 1, 1, both, "rig g2"));
+        f.Depth = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.R32F, w, h, 1, 1, 1, 1, both, "rig depth"));
+        f.Vis = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba8, rw, rh, 1, 1, 1, 1, both, "rig shadow record"));
+        f.Key = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rg32Ui, rw, rh, 1, 1, 1, 1, both, "rig shadow key"));
+        f.Hdr = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, w, h, 1, 1, 1, 1, both | ImageUse.CopySrc, "rig hdr"));
+        f.Rec = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba32Ui, w, h, 1, 1, 1, 1, both, "rig light record"));
         int clusters = RigGridX * RigGridY * RigGridZ;
         f.Lights = RigBuffer(vk, MemoryMarshal.AsBytes(sc.Lights.AsSpan()), BufferUse.Storage, "rig lights");
         f.Counts = vk.CreateBuffer(new BufferDesc(clusters * AlloyLights.ClusterHeadWords * sizeof(uint), BufferUse.Storage, MemoryKind.Device, "rig froxel heads"));
         f.Idx = vk.CreateBuffer(new BufferDesc((long)clusters * AlloyLights.ClusterCap * sizeof(uint), BufferUse.Storage, MemoryKind.Device, "rig froxel lists"));
         f.Movers = vk.CreateBuffer(new BufferDesc(CasterPass.MaxCubes * CasterPass.DynSpheres * 16, BufferUse.Storage, MemoryKind.Device, "rig movers"));
-        f.Stats = vk.CreateBuffer(new BufferDesc(64, BufferUse.Storage, MemoryKind.Device, "rig stats"));
+        f.Stats = vk.CreateBuffer(new BufferDesc(VkDefStatsWords * sizeof(uint), BufferUse.Storage, MemoryKind.Device, "rig stats"));
         int slots = Math.Max(sc.Sheen.Length, 1);
-        var draws = new float[slots * DeferredRigScene.DrawFloats];
-        for (int i = 0; i < sc.Sheen.Length; i++)
-        {
-            int at = i * DeferredRigScene.DrawFloats + DeferredRigScene.DrawExt1;
-            draws[at] = sc.Sheen[i].X; draws[at + 1] = sc.Sheen[i].Y; draws[at + 2] = sc.Sheen[i].Z; draws[at + 3] = sc.Sheen[i].W;
-        }
+        var draws = new DrawRecordBlock[slots];
+        for (int i = 0; i < sc.Sheen.Length; i++) draws[i].Ext.Ext1 = sc.Sheen[i];
         f.Draws = RigBuffer(vk, MemoryMarshal.AsBytes(draws.AsSpan()), BufferUse.Storage, "rig draws");
         f.Chart = vk.CreateBuffer(new BufferDesc(slots * LightmapBake.RecFloats * sizeof(float) * 2, BufferUse.Storage, MemoryKind.Device, "rig chart"));
         f.Pass = vk.CreateBuffer(new BufferDesc(PassBytes, BufferUse.Uniform, MemoryKind.Upload, "rig pass block"));
@@ -171,7 +183,7 @@ public sealed unsafe partial class AlloyRenderer
         f.ZeroUbo = vk.CreateBuffer(new BufferDesc(ZeroUboBytes, BufferUse.Uniform, MemoryKind.Device, "rig zero block"));
         f.Read = vk.CreateBuffer(new BufferDesc((long)w * h * 8, BufferUse.CopyDst | BufferUse.CopySrc, MemoryKind.Device, "rig hdr read"));
         f.Linear = vk.CreateSampler(new SamplerDesc(Filter.Linear, Filter.Linear, MipMode.None, Wrap.Clamp));
-        f.Shadow = vk.CreateSampler(new SamplerDesc(Filter.Linear, Filter.Linear, MipMode.None, Wrap.Clamp, WorldDepth.NearerOrEqual));
+        f.Shadow = vk.CreateSampler(new SamplerDesc(Filter.Linear, Filter.Linear, MipMode.None, Wrap.Clamp, GlDepth.NearerOrEqual));
         f.Tex2D = VkStandIn(vk, ImageKind.Tex2D, Format.Rgba8, 1, "rig 2D");
         f.TexU2D = VkStandIn(vk, ImageKind.Tex2D, Format.Rgba32Ui, 1, "rig uint 2D");
         f.Tex2DArray = VkStandIn(vk, ImageKind.Tex2DArray, Format.Rgba8, 1, "rig 2D array");
@@ -195,7 +207,9 @@ public sealed unsafe partial class AlloyRenderer
         var cl = new CommandList(label, Math.Max(bytes.Length, 16) + 4096);
         cl.ZeroBuffer(b);
         if (bytes.Length > 0) cl.UpdateBuffer(b, 0, bytes);
-        return vk.Submit(cl) ? b : default;
+        if (vk.Submit(cl)) return b;
+        vk.Destroy(b);
+        return default;
     }
 
     /// <summary>The fill, the froxel build, the walk and the film pass in one submit, then the HDR target read back.</summary>
@@ -214,7 +228,7 @@ public sealed unsafe partial class AlloyRenderer
         cl.ClearImage(f.Hdr);
 
         cl.SetPipeline(fill);
-        cl.BindSet(0, new BindSet(default, [new BufferBinding(SsboSlots.GoldenIn, cases), new BufferBinding(SsboSlots.GoldenOut, f.Stats)],
+        cl.BindSet(0, new BindSet(default, [new BufferBinding(SsboSlots.GoldenIn, cases), new BufferBinding(SsboSlots.Chart, f.Chart)],
             default, [new ImageBinding(0, f.G0), new ImageBinding(1, f.G1), new ImageBinding(2, f.G2), new ImageBinding(3, f.Depth),
                       new ImageBinding(4, f.Vis), new ImageBinding(5, f.Key)]));
         cl.PushConstants(0, MemoryMarshal.AsBytes((ReadOnlySpan<int>)[w, h, BitConverter.SingleToInt32Bits(sc.Proj.M33),
@@ -320,8 +334,8 @@ public sealed unsafe partial class AlloyRenderer
     /// the rig's own resources and stand-ins.</summary>
     private static void RigBind(CommandList cl, VkDefStage st, RigFrame f, BufferId loose)
     {
-        Span<BufferBinding> ubo = stackalloc BufferBinding[12];
-        Span<BufferBinding> ssbo = stackalloc BufferBinding[16];
+        Span<BufferBinding> ubo = stackalloc BufferBinding[(int)UboSlots.Budget];
+        Span<BufferBinding> ssbo = stackalloc BufferBinding[(int)SsboSlots.Budget];
         Span<ImageBinding> sampled = stackalloc ImageBinding[48];
         Span<ImageBinding> images = stackalloc ImageBinding[8];
         int nu = 0, ns = 0, nt = 0, ni = 0;

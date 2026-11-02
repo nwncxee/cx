@@ -67,8 +67,9 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>Invocations per group per axis, each stage's own <c>local_size</c>.</summary>
     private const int VkDefGroup = 16, VkShGroup = 8;
 
-    /// <summary>The counters' words, as <c>cx_deferred_cs</c> declares the block.</summary>
-    private const int VkDefStatsWords = 4;
+    /// <summary>The counters' words: the four <c>cx_deferred_cs</c> writes, and the four a walk written against an
+    /// older library still adds its census to.</summary>
+    private const int VkDefStatsWords = 8;
 
     /// <summary>The two dispatches into <paramref name="cl"/>, between the colour pass and the blended one -- the
     /// frame-order place GL runs them. <paramref name="vp"/> is the view-projection the prepass rasterised with
@@ -339,23 +340,35 @@ public sealed unsafe partial class AlloyRenderer
         cl.BindSet(0, new BindSet(ubo[..nu], ssbo[..ns], sampled[..nt], images[..ni]));
     }
 
-    /// <summary>Stage <paramref name="resref"/>'s text as GL would compile it -- its override (or <paramref name="content"/>),
-    /// the library swaps inside it, the embedded stage for an override that moved a block's term out of it -- with
-    /// <paramref name="define"/> on top, translated for Vulkan. Null when the record contract refused it (logged).</summary>
+    /// <summary>Stage <paramref name="resref"/>'s text as GL would compile it -- its override, the library swaps inside
+    /// it -- with <paramref name="define"/> on top, translated for Vulkan; the embedded stage, logged, for an override the
+    /// block or record contract refuses. Null when the embedded stage itself is refused (logged).</summary>
+    private static (VkProgramText Text, string Src)? VkDefText(string resref, string? define, string label, ExtenderLog log)
+        => VkDefText(resref, define, label, log, ShaderResource.Override(resref, log), out _);
+
+    /// <summary><see cref="VkDefText(string, string?, string, ExtenderLog)"/> over <paramref name="content"/> in place of the
+    /// resource chain's override (null = the embedded stage); <paramref name="fromContent"/> says whose text it is.</summary>
     private static (VkProgramText Text, string Src)? VkDefText(string resref, string? define, string label, ExtenderLog log,
-                                                              string? content = null)
+                                                              string? content, out bool fromContent)
     {
         string embedded = ShaderStages.Source(resref);
-        string src = ShaderSource.Content(content ?? ShaderResource.Override(resref, log) ?? embedded, log);
-        if (!ShaderContract.BlocksSafe(embedded, src))
+        fromContent = content != null;
+        string src = ShaderSource.Content(content ?? embedded, log);
+        if (fromContent && !ShaderContract.BlocksSafe(embedded, src))
         {
             log.Always($"AlloyRenderer: {label}'s override reads a uniform block's terms outside the block -- building the embedded stage");
-            src = embedded;
+            src = ShaderSource.Content(embedded, log);
+            fromContent = false;
         }
         if (!ShaderContract.RecordSafe(src) || !ShaderContract.RecordSafe(src, "CxChart", LightmapBake.RecFloats))
         {
-            log.Always($"AlloyRenderer: {label}'s CxDraw or CxChart record disagrees with the extender's (an override older than it)");
-            return null;
+            if (!fromContent)
+            {
+                log.Always($"AlloyRenderer: {label}'s CxDraw or CxChart record disagrees with the extender's");
+                return null;
+            }
+            log.Always($"AlloyRenderer: {label}'s override declares a CxDraw or CxChart record older than the extender's -- building the embedded stage");
+            return VkDefText(resref, define, label, log, null, out fromContent);
         }
         if (define != null) src = ShaderStages.WithDefine(src, define);
         // the compile-time text GL's own compute build makes: the vanilla splice, then the sizing tokens
@@ -367,8 +380,19 @@ public sealed unsafe partial class AlloyRenderer
     /// translated, compiled and linked, its loose block reflected and its locations resolved. Null, logged, for a
     /// text the contract guard, the translator or the toolchain refused.</summary>
     private static VkDefStage? VkDefBuild(VkBackend vk, string resref, string? define, string label, ExtenderLog log)
-        => VkDefText(resref, define, label, log) is ({ } t, { } src)
-            ? VkDefCompile(vk, t, src, label, log, define == null ? resref : null) : null;
+        => VkDefBuild(vk, resref, define, label, log, ShaderResource.Override(resref, log), out _);
+
+    /// <summary><see cref="VkDefBuild(VkBackend, string, string?, string, ExtenderLog)"/> over <paramref name="content"/>
+    /// (null = the embedded stage): an override that does not build falls back, logged, to the embedded stage.</summary>
+    private static VkDefStage? VkDefBuild(VkBackend vk, string resref, string? define, string label, ExtenderLog log,
+                                          string? content, out bool fromContent)
+    {
+        if (VkDefText(resref, define, label, log, content, out fromContent) is not ({ } t, { } src)) return null;
+        VkDefStage? st = VkDefCompile(vk, t, src, label, log, define == null ? resref : null);
+        if (st != null || !fromContent) return st;
+        log.Always($"AlloyRenderer: {label}'s override did not build (logged above) -- building the embedded stage");
+        return VkDefBuild(vk, resref, define, label, log, null, out fromContent);
+    }
 
     /// <summary>A translated compute stage compiled and linked, its loose block reflected against
     /// <paramref name="src"/> (the text it came from) and its locations resolved. A SPIR-V <c>&lt;resref&gt;.shd</c>

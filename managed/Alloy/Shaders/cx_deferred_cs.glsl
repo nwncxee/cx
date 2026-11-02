@@ -73,7 +73,8 @@ layout(rgba32ui, binding = 1) uniform writeonly uimage2D uLightRec;   // cx_gbuf
 #include "cx_defblk.glsl"
 
 /// Lights a tile may hold -- the froxel cap, so one number sizes both list sources and CxFilmStatics' own
-/// clamp against CX_CLUSTER_CAP still bounds the tiled walk. 512 bytes of shared memory at the shipped 128.
+/// clamp against CX_CLUSTER_CAP still bounds the tiled walk. 512 bytes of shared memory at the shipped 128, beside
+/// the record window's 3.6 KB.
 const uint CX_TILE_CAP = CX_CLUSTER_CAP;
 /// Float slack on the tile's view-space box, both sides: cx_lightbuild's own, and for its reason -- the walk
 /// measures in world space and the cull in view space.
@@ -123,8 +124,20 @@ bool cxShHave = false;
 /// The nearest record texel's slot set, whether or not its surface matched: what a missed pixel taps itself.
 ivec4 cxShNear = ivec4(-1);
 
-/// One record texel: its slots, its visibilities and its weight, 0 where it holds no record or holds another
-/// surface's. <paramref name="w"/> is the bilinear share before the bilateral terms.
+/// One decoded record texel's slots and weight, 0 where it holds no record (<paramref name="rd"/> 0) or another
+/// surface's; true when the weight is positive and its visibilities are wanted. <paramref name="w"/> is the
+/// bilinear share before the bilateral terms.
+bool CxShWeigh(float rd, vec3 rn, uint slots, float w, float viewDepth, vec3 N, inout ivec4 sl, inout float wo)
+{
+    if (!(rd > 0.0)) return false;   // no record was written there
+    // set before the bilateral test: a rejected texel still names its lights for cxShNear
+    sl = CxShUnpackSlots(slots);
+    float dw = 1.0 - min(abs(rd - viewDepth) / max(viewDepth * CX_SH_DEPTH, 1e-4), 1.0);
+    wo = w * dw * smoothstep(CX_SH_NORMAL.x, CX_SH_NORMAL.y, dot(rn, N));
+    return wo > 0.0;
+}
+
+/// One record texel fetched and weighed: its slots, its visibilities and its weight (CxShWeigh).
 void CxShTap(ivec2 q, float w, float viewDepth, vec3 N, out ivec4 sl, out vec4 vi, out float wo)
 {
     sl = ivec4(-1); vi = vec4(1.0); wo = 0.0;
@@ -132,13 +145,7 @@ void CxShTap(ivec2 q, float w, float viewDepth, vec3 N, out ivec4 sl, out vec4 v
     uvec2 k = texelFetch(uShKey, q, 0).xy;
     float rd; vec3 rn;
     CxShUnpackKey(k.y, rd, rn);
-    if (!(rd > 0.0)) return;   // no record was written there
-    // set before the bilateral test: a rejected texel still names its lights for cxShNear
-    sl = CxShUnpackSlots(k.x);
-    float dw = 1.0 - min(abs(rd - viewDepth) / max(viewDepth * CX_SH_DEPTH, 1e-4), 1.0);
-    wo = w * dw * smoothstep(CX_SH_NORMAL.x, CX_SH_NORMAL.y, dot(rn, N));
-    if (wo <= 0.0) return;
-    vi = texelFetch(uShVis, q, 0);
+    if (CxShWeigh(rd, rn, k.x, w, viewDepth, N, sl, wo)) vi = texelFetch(uShVis, q, 0);
 }
 
 /// One texel folded into the pixel's own four lanes: its visibility for each slot <paramref name="want"/>
@@ -154,8 +161,8 @@ void CxShFold(ivec4 sl, vec4 vi, float w, ivec4 want, inout vec4 num, inout vec4
     m = vec4(equal(sl, ivec4(want.w))); num.w += w * dot(m, vi); den.w += w * dot(m, vec4(1.0));
 }
 
-/// The half-resolution record texels this group's taps can reach: its own 8x8 and the ring either side.
-const int CX_SH_WIN = 10;
+/// The half-resolution record texels this group's taps can reach: its own half-size square and the ring either side.
+const int CX_SH_WIN = int(gl_WorkGroupSize.x) / 2 + 2;
 /// Those texels decoded once a group: the view depth (0 = no record there, or outside the record), the normal,
 /// the packed slots and the visibilities. Each pixel's four taps read these instead of fetching and decoding.
 shared float sShD[CX_SH_WIN * CX_SH_WIN];
@@ -168,7 +175,7 @@ shared vec4 sShV[CX_SH_WIN * CX_SH_WIN];
 void CxShLoad(uint lane)
 {
     if (uShRes != 2 || lane >= uint(CX_SH_WIN * CX_SH_WIN)) return;
-    ivec2 q = ivec2(gl_WorkGroupID.xy) * 8 - 1 + ivec2(int(lane) % CX_SH_WIN, int(lane) / CX_SH_WIN);
+    ivec2 q = ivec2(gl_WorkGroupID.xy) * (CX_SH_WIN - 2) - 1 + ivec2(int(lane) % CX_SH_WIN, int(lane) / CX_SH_WIN);
     float rd = 0.0; vec3 rn = vec3(0.0); uint sl = 0u; vec4 vi = vec4(1.0);
     if (all(greaterThanEqual(q, ivec2(0))) && all(lessThan(q, uShSize)))
     {
@@ -180,19 +187,13 @@ void CxShLoad(uint lane)
     sShD[lane] = rd; sShN[lane] = rn; sShS[lane] = sl; sShV[lane] = vi;
 }
 
-/// <see cref="CxShTap"/> off the group's decoded window: the same test in the same order on the same values.
+/// <see cref="CxShTap"/> off the group's decoded window.
 void CxShTapWin(ivec2 q, float w, float viewDepth, vec3 N, out ivec4 sl, out vec4 vi, out float wo)
 {
     sl = ivec4(-1); vi = vec4(1.0); wo = 0.0;
-    ivec2 t = q - (ivec2(gl_WorkGroupID.xy) * 8 - 1);
+    ivec2 t = q - (ivec2(gl_WorkGroupID.xy) * (CX_SH_WIN - 2) - 1);
     int i = t.y * CX_SH_WIN + t.x;
-    float rd = sShD[i];
-    if (!(rd > 0.0)) return;
-    sl = CxShUnpackSlots(sShS[i]);
-    float dw = 1.0 - min(abs(rd - viewDepth) / max(viewDepth * CX_SH_DEPTH, 1e-4), 1.0);
-    wo = w * dw * smoothstep(CX_SH_NORMAL.x, CX_SH_NORMAL.y, dot(sShN[i], N));
-    if (wo <= 0.0) return;
-    vi = sShV[i];
+    if (CxShWeigh(sShD[i], sShN[i], sShS[i], w, viewDepth, N, sl, wo)) vi = sShV[i];
 }
 
 /// The pixel's record. Full resolution is its own texel and nothing else; half resolution reads the 2x2
@@ -210,7 +211,7 @@ void CxShGather(ivec2 p, float viewDepth, vec3 N)
     ivec4 s0, s1 = ivec4(-1), s2 = ivec4(-1), s3 = ivec4(-1);
     vec4 v0, v1 = vec4(1.0), v2 = vec4(1.0), v3 = vec4(1.0), w = vec4(0.0);
     if (uShRes == 1) CxShTap(p, 1.0, viewDepth, N, s0, v0, w.x);
-    else
+    else if (uShRes == 2)
     {
         ivec2 q = p >> 1;
         ivec2 s = (p & 1) * 2 - 1;   // -1 toward the previous texel, +1 toward the next
@@ -218,6 +219,16 @@ void CxShGather(ivec2 p, float viewDepth, vec3 N)
         CxShTapWin(q + ivec2(s.x, 0), 0.1875, viewDepth, N, s1, v1, w.y);
         CxShTapWin(q + ivec2(0, s.y), 0.1875, viewDepth, N, s2, v2, w.z);
         CxShTapWin(q + s,             0.0625, viewDepth, N, s3, v3, w.w);
+    }
+    else
+    {
+        // a divisor the window was not sized for: the half-resolution taps, fetched rather than read from the window
+        ivec2 q = p >> 1;
+        ivec2 s = (p & 1) * 2 - 1;
+        CxShTap(q,                 0.5625, viewDepth, N, s0, v0, w.x);
+        CxShTap(q + ivec2(s.x, 0), 0.1875, viewDepth, N, s1, v1, w.y);
+        CxShTap(q + ivec2(0, s.y), 0.1875, viewDepth, N, s2, v2, w.z);
+        CxShTap(q + s,             0.0625, viewDepth, N, s3, v3, w.w);
     }
     ivec4 want = s0;
     if (w.x <= 0.0) want = w.y >= w.z && w.y >= w.w ? s1 : w.z >= w.w ? s2 : s3;

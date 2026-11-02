@@ -42,15 +42,18 @@ internal static partial class GpuGolden
         // Given 130 lamps all reaching one patch of floor
         // When the deferred lights draw it
         // Then no lamp that the previous build lights there goes dark
-        DwNoDarker(vk, check, log, "crowd", DwCrowd(), "E7 130 lamps on one patch");
+        DwMatch(vk, check, log, "crowd", DwCrowd(), "E7 130 lamps on one patch", brighter: true);
 
         // Given a hak shipping cx_deferred_cs.shd written for the previous build
         // When an area with lamps draws
         // Then the area lights with the hak's shader, or, if it no longer fits, cx.log names it as refused and the stock walk lights the area
         DeferredRigScene hak = DwWall();
-        hak.WalkOverride = DwResource("golden/DeferredWalkHak") is { } text ? System.Text.Encoding.UTF8.GetString(text) : null;
+        hak.WalkOverride = DwResource("golden/DeferredWalkHak") is { } text
+            ? ShaderSource.Expand(System.Text.Encoding.UTF8.GetString(text), "cx_deferred_cs") : null;
         check.Expect(hak.WalkOverride != null, "E9: the hak fixture (main 65203c28's cx_deferred_cs) is embedded");
-        if (hak.WalkOverride != null) DwMatch(vk, check, log, "wall", hak, "E9 a hak's walk from main 65203c28");
+        if (hak.WalkOverride == null) return;
+        DwMatch(vk, check, log, "wall", hak, "E9 a hak's walk from main 65203c28");
+        check.Expect(hak.WalkFromContent, "E9: the hak's own walk drew the frame, not the shipped stage it falls back to");
     }
 
     /// <summary>The rig's frame for <paramref name="sc"/>, or null with the check failed.</summary>
@@ -61,8 +64,10 @@ internal static partial class GpuGolden
         return got;
     }
 
-    /// <summary>Every channel of the frame against the recording for <paramref name="name"/>.</summary>
-    private static void DwMatch(VkBackend vk, Checker check, ExtenderLog log, string name, DeferredRigScene sc, string what)
+    /// <summary>Every channel of the frame against the recording for <paramref name="name"/>: within the tolerance
+    /// either way, or with <paramref name="brighter"/> no darker than it less the tolerance.</summary>
+    private static void DwMatch(VkBackend vk, Checker check, ExtenderLog log, string name, DeferredRigScene sc, string what,
+                                bool brighter = false)
     {
         if (DwFrame(vk, check, log, sc, what) is not { } got || DwRecorded(check, log, name, got, what) is not { } want) return;
         int bad = 0, first = -1;
@@ -70,29 +75,15 @@ internal static partial class GpuGolden
         for (int i = 0; i < got.Length; i++)
         {
             if ((i & 3) == 3) continue;
-            float d = MathF.Abs(got[i] - want[i]);
-            if (d <= DwRel * MathF.Max(MathF.Abs(got[i]), MathF.Abs(want[i])) + DwAbs) continue;
+            float tol = DwRel * MathF.Max(MathF.Abs(got[i]), MathF.Abs(want[i])) + DwAbs;
+            if (brighter ? got[i] >= want[i] - tol : MathF.Abs(got[i] - want[i]) <= tol) continue;
             if (bad++ == 0) first = i;
-            worst = MathF.Max(worst, d);
+            worst = MathF.Max(worst, MathF.Abs(got[i] - want[i]));
         }
-        log.Info($"GpuGolden: deferred walk {what}, {bad} channel(s) off the recording, worst {worst:G4}");
-        check.Expect(bad == 0, $"{what}: {bad} channel(s) differ from main 65203c28's frame, first at pixel "
+        string how = brighter ? "darker than" : "off";
+        log.Info($"GpuGolden: deferred walk {what}, {bad} channel(s) {how} the recording, worst {worst:G4}");
+        check.Expect(bad == 0, $"{what}: {bad} channel(s) {how} main 65203c28's frame, first at pixel "
                              + $"({first / 4 % DwW}, {first / 4 / DwW}) {(first >= 0 ? got[first] : 0f):G6} against {(first >= 0 ? want[first] : 0f):G6}, worst {worst:G4}");
-    }
-
-    /// <summary>Every channel of the frame at least the recording's, less the same tolerance.</summary>
-    private static void DwNoDarker(VkBackend vk, Checker check, ExtenderLog log, string name, DeferredRigScene sc, string what)
-    {
-        if (DwFrame(vk, check, log, sc, what) is not { } got || DwRecorded(check, log, name, got, what) is not { } want) return;
-        int dark = 0, first = -1;
-        for (int i = 0; i < got.Length; i++)
-        {
-            if ((i & 3) == 3 || got[i] >= want[i] - (DwRel * MathF.Abs(want[i]) + DwAbs)) continue;
-            if (dark++ == 0) first = i;
-        }
-        log.Info($"GpuGolden: deferred walk {what}, {dark} channel(s) darker than the recording");
-        check.Expect(dark == 0, $"{what}: {dark} channel(s) darker than main 65203c28's frame, first at pixel "
-                              + $"({first / 4 % DwW}, {first / 4 / DwW}) {(first >= 0 ? got[first] : 0f):G6} against {(first >= 0 ? want[first] : 0f):G6}");
     }
 
     /// <summary>The recorded frame for <paramref name="name"/>; when none is embedded, <paramref name="got"/> is
@@ -125,7 +116,7 @@ internal static partial class GpuGolden
         using Stream? s = typeof(GpuGolden).Assembly.GetManifestResourceStream(name);
         if (s == null) return null;
         using var ms = new MemoryStream();
-        if (name.StartsWith("golden/DeferredWalk.", StringComparison.Ordinal))
+        if (name.EndsWith(".bin", StringComparison.Ordinal))
         {
             using var gz = new GZipStream(s, CompressionMode.Decompress);
             gz.CopyTo(ms);

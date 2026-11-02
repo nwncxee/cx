@@ -34,6 +34,9 @@ internal static partial class GpuGolden
     private sealed record DwPlane(Vector3 At, Vector3 N, Func<int, int, DwMat> Mat, Func<int, int, bool>? Where = null,
                                   Func<int, int, float>? Skew = null);
 
+    /// <summary>The sheen records the scenes' slots 1 and 2 name: a cloth's blue sheen, a skin's warm one.</summary>
+    private static readonly Vector4[] DwSheenRecords = [Vector4.Zero, new(0.6f, 0.5f, 0.4f, 0.5f), new(0.5f, 0.3f, 0.25f, 0.6f)];
+
     /// <summary>The scene camera: 60 degrees vertical, reversed depth, looking from <paramref name="eye"/> at
     /// <paramref name="target"/>; the near and far planes the froxel grid spans.</summary>
     private static DeferredRigScene DwCamera(Vector3 eye, Vector3 target)
@@ -45,7 +48,7 @@ internal static partial class GpuGolden
         return new DeferredRigScene
         {
             W = DwW, H = DwH, Eye = eye, Near = near, Far = far, Proj = proj,
-            View = Matrix4x4.CreateLookAt(eye, target, Vector3.UnitY),
+            View = Matrix4x4.CreateLookAt(eye, target, Vector3.UnitY), Sheen = DwSheenRecords,
         };
     }
 
@@ -55,7 +58,7 @@ internal static partial class GpuGolden
     {
         Matrix4x4.Invert(sc.View * sc.Proj, out Matrix4x4 inv);
         Vector3 fwd = Vector3.Normalize(new Vector3(-sc.View.M13, -sc.View.M23, -sc.View.M33));
-        sc.Pixels = new float[DwW * DwH * DeferredRigScene.PixelFloats];
+        sc.Pixels = new RigPixel[DwW * DwH];
         for (int y = 0; y < DwH; y++)
             for (int x = 0; x < DwW; x++)
             {
@@ -77,23 +80,17 @@ internal static partial class GpuGolden
                 float depth = Vector3.Dot(pos - sc.Eye, fwd);
                 if (depth <= sc.Near || depth >= sc.Far) continue;
                 DwMat m = hit.Mat(x, y);
-                int at = (y * DwW + x) * DeferredRigScene.PixelFloats;
-                float[] px = sc.Pixels;
-                px[at] = GbDeferred | m.Flags;
-                px[at + 1] = hit.N.X; px[at + 2] = hit.N.Y; px[at + 3] = hit.N.Z;
-                px[at + 4] = m.Rough; px[at + 5] = m.Spec; px[at + 6] = m.Fresnel; px[at + 7] = m.Coat; px[at + 8] = m.CoatRough;
-                px[at + 9] = m.SpecC.X; px[at + 10] = m.SpecC.Y; px[at + 11] = m.SpecC.Z;
-                px[at + 12] = m.Slot;
-                px[at + 13] = 1f;
-                px[at + 14] = m.Albedo.X; px[at + 15] = m.Albedo.Y; px[at + 16] = m.Albedo.Z;
-                px[at + 22] = depth;
-                px[at + 38] = hit.Skew?.Invoke(x, y) ?? 0f;
-                bool left = x < DwW / 2;
-                for (int k = 0; k < 4; k++)
+                bool baked = (m.Flags & GbBaked) != 0, left = x < DwW / 2;
+                var vis = new Vector4(((x / 6 + y / 5) % 3) * 0.5f, ((x / 6 + y / 5 + 1) % 3) * 0.5f,
+                                      ((x / 6 + y / 5 + 2) % 3) * 0.5f, ((x / 6 + y / 5) % 3) * 0.5f);
+                sc.Pixels[y * DwW + x] = new RigPixel
                 {
-                    px[at + 30 + k] = left ? k : 4 + k;
-                    px[at + 34 + k] = ((x / 6 + y / 5 + k) % 3) * 0.5f;
-                }
+                    Flags = GbDeferred | m.Flags, N = hit.N, Rough = m.Rough, Spec = m.Spec, Fresnel = m.Fresnel,
+                    Coat = m.Coat, CoatRough = m.CoatRough, SpecC = m.SpecC, Slot = m.Slot, SpecT = 1f, DiffT = m.Albedo,
+                    LmLum = baked ? 0.5f : 0f, LmShare = baked ? new Vector3(0.2f) : Vector3.Zero, ViewDepth = depth,
+                    ShSlots = left ? new Vector4(0f, 1f, 2f, 3f) : new Vector4(4f, 5f, 6f, 7f), ShVis = vis,
+                    Skew = hit.Skew?.Invoke(x, y) ?? 0f,
+                };
             }
     }
 
@@ -120,9 +117,6 @@ internal static partial class GpuGolden
         }
     }
 
-    /// <summary>The sheen records the scenes' slots 1 and 2 name: a cloth's blue sheen, a skin's warm one.</summary>
-    private static readonly Vector4[] DwSheenRecords = [Vector4.Zero, new(0.6f, 0.5f, 0.4f, 0.5f), new(0.5f, 0.3f, 0.25f, 0.6f)];
-
     /// <summary>E3: a stone wall and its baked floor, 40 lights of mixed colour and reach, 8 casting shadows. Every
     /// other floor column's record sits 1.5% off the frame depth: past the bare tolerance, inside the floor's slope.</summary>
     private static DeferredRigScene DwWall()
@@ -132,7 +126,6 @@ internal static partial class GpuGolden
                         new(Vector3.Zero, Vector3.UnitY, (_, _) => DwStone with { Flags = GbBaked },
                             Skew: (x, _) => (x & 1) * 0.015f)]);
         DwLights(sc, 40, new Vector3(-8f, 0.3f, 0.3f), new Vector3(8f, 4f, 3f), 2f, 8f, 8, 5, 3889u);
-        sc.Sheen = DwSheenRecords;
         return sc;
     }
 
@@ -149,7 +142,6 @@ internal static partial class GpuGolden
                         4.5f, 2f, 1f, 7f, 1f, 1f, 1f, 260f];
         sc.Lights = [.. sc.Lights, .. film];
         sc.Cubes = [.. sc.Cubes, new Vector4(4.5f, 2f, 1f, 7f)];
-        sc.Sheen = DwSheenRecords;
         return sc;
     }
 
@@ -159,7 +151,6 @@ internal static partial class GpuGolden
         DeferredRigScene sc = DwCamera(new Vector3(0f, 1.5f, 4f), new Vector3(0f, 1.5f, 0f));
         DwSurfaces(sc, [new(Vector3.Zero, Vector3.UnitZ, (x, _) => (x / 3) % 2 == 0 ? DwSkin : DwRing)]);
         DwLights(sc, 12, new Vector3(-3f, 0.5f, 0.5f), new Vector3(3f, 3f, 2.5f), 2f, 6f, 4, 0, 77u);
-        sc.Sheen = DwSheenRecords;
         return sc;
     }
 
@@ -176,7 +167,6 @@ internal static partial class GpuGolden
         lamp.CopyTo(sc.Lights, 2 * DeferredRigScene.LightFloats);
         Array.Resize(ref sc.Cubes, 3);
         sc.Cubes[2] = new Vector4(0f, 1.8f, 5.5f, 30f);
-        sc.Sheen = DwSheenRecords;
         return sc;
     }
 
@@ -186,7 +176,6 @@ internal static partial class GpuGolden
         DeferredRigScene sc = DwCamera(new Vector3(0f, 6f, 6f), new Vector3(0f, 0f, 0f));
         DwSurfaces(sc, [new(Vector3.Zero, Vector3.UnitY, (_, _) => DwStone)]);
         DwLights(sc, 130, new Vector3(-2f, 0.5f, -2f), new Vector3(2f, 1.5f, 2f), 6f, 8f, 4, 0, 130u);
-        sc.Sheen = DwSheenRecords;
         return sc;
     }
 }

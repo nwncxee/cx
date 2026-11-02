@@ -153,22 +153,25 @@ bool CxGbufReadWalk(uvec4 g0, uint g1w, float frameDepth, float slack, out CxGbu
     return true;
 }
 
-/// <see cref="CxGbufReadWalk"/> with the slack fetched only when the record misses the bare tolerance: the slack is
-/// never negative, so a record inside CX_GB_RECORD alone owns the pixel either way, and its four neighbour
-/// fetches go to the records that need them. The same verdict, pixel for pixel.
-bool CxGbufReadWalk(uvec4 g0, uint g1w, float frameDepth, sampler2D depth, ivec2 p, mat4 proj, out CxGbuf g)
+/// The slack <paramref name="g0"/>'s record needs: none for a record inside the bare CX_GB_RECORD tolerance, or one
+/// that is no deferred record at all, else CxGbufDepthSlack. The slack is never negative, so a record inside the bare
+/// tolerance owns the pixel either way: the same verdict, with the four neighbour fetches only where they decide it.
+float CxGbufSlackIf(uvec4 g0, float frameDepth, sampler2D depth, ivec2 p, mat4 proj)
 {
-    float off = abs(unpackHalf2x16(g0.y).x - frameDepth);
-    bool bare = (g0.x & CX_GB_DEFERRED) == 0u || off < CX_GB_RECORD * max(frameDepth, 1e-6);
-    return CxGbufReadWalk(g0, g1w, frameDepth, bare ? 0.0 : CxGbufDepthSlack(depth, p, frameDepth, proj), g);
+    bool bare = (g0.x & CX_GB_DEFERRED) == 0u || abs(unpackHalf2x16(g0.y).x - frameDepth) < CX_GB_RECORD * max(frameDepth, 1e-6);
+    return bare ? 0.0 : CxGbufDepthSlack(depth, p, frameDepth, proj);
 }
 
-/// <see cref="CxGbufReadHead"/> with the slack fetched lazily, as the walk's own read above.
+/// <see cref="CxGbufReadWalk"/> with the slack fetched only where it decides ownership (CxGbufSlackIf).
+bool CxGbufReadWalk(uvec4 g0, uint g1w, float frameDepth, sampler2D depth, ivec2 p, mat4 proj, out CxGbuf g)
+{
+    return CxGbufReadWalk(g0, g1w, frameDepth, CxGbufSlackIf(g0, frameDepth, depth, p, proj), g);
+}
+
+/// <see cref="CxGbufReadHead"/> with the slack fetched only where it decides ownership (CxGbufSlackIf).
 bool CxGbufReadHead(uvec4 g0, float frameDepth, sampler2D depth, ivec2 p, mat4 proj, out CxGbuf g)
 {
-    float off = abs(unpackHalf2x16(g0.y).x - frameDepth);
-    bool bare = (g0.x & CX_GB_DEFERRED) == 0u || off < CX_GB_RECORD * max(frameDepth, 1e-6);
-    return CxGbufReadHead(g0, frameDepth, bare ? 0.0 : CxGbufDepthSlack(depth, p, frameDepth, proj), g);
+    return CxGbufReadHead(g0, frameDepth, CxGbufSlackIf(g0, frameDepth, depth, p, proj), g);
 }
 
 /// The transfer weights (G1.xyz), for a reader that applies them only once its walk is done: decoded at the
@@ -192,14 +195,6 @@ void CxGbufFade(uint g2, inout CxGbuf g)
 bool CxGbufRead(uvec4 g0, uvec4 g1, float frameDepth, float slack, out CxGbuf g)
 {
     if (!CxGbufReadWalk(g0, g1.w, frameDepth, slack, g)) return false;
-    CxGbufWeights(g1, g);
-    return true;
-}
-
-/// <see cref="CxGbufRead"/> with the slack fetched lazily, as the walk's own read above.
-bool CxGbufRead(uvec4 g0, uvec4 g1, float frameDepth, sampler2D depth, ivec2 p, mat4 proj, out CxGbuf g)
-{
-    if (!CxGbufReadWalk(g0, g1.w, frameDepth, depth, p, proj, g)) return false;
     CxGbufWeights(g1, g);
     return true;
 }

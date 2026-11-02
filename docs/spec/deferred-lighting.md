@@ -357,17 +357,13 @@ The hot, pair and mirror taps are separate budgets and keep their own semantics;
 `shadow.perpixel`. A pixel's worst case is therefore `shadow.perpixel` record lanes, plus one mirror tap, plus
 the pair-debt dispatch's own `min()` over the pairs covering it -- three budgets, each with a counter.
 
-### What the period line says
+### What the counters hold
 
-`DeferredLights`' `[alloy]` clause carries the two numbers the budget is about, sampled over the harvested
-frames: **`N lights/px`** -- the average lights that actually lit a deferred pixel, which no longer grows with
-the area's lamp count -- and **`N hard taps/px`**, the cube taps the walk still paid, which the per-pixel shadow
-budget holds near zero. Beside them: the lights the budget left unshadowed (its spend), the pixels that found no
-usable record (the record's reach), and the tile-list overflow. The walked count is accumulated in the shader's
-own sixteens (`CX_WALK_UNIT`) so a 32-bit counter cannot wrap between harvests, which makes it read about a
-percent low: an average, not an audit. **`N entries/px (M rejected)`** beside them is the list length the walk
-indexed and how much of it lit nothing (reach, relevance, facing): the price of a long list is paid per entry,
-lit or not.
+The walk and the record writer add four counters to the stats buffer: the tiles whose list overflowed, the lights
+they dropped, the pixels that found no usable record (the record's reach), and the lights the budget left
+unshadowed (its spend). The Vulkan host writes them and does not read them back yet, so no period line carries
+them. The walk keeps no per-pixel census: counting lights, taps and list entries cost four same-address shared
+atomics a pixel, and the passtime layer measures the walk from the outside instead.
 
 `/alloy bench` prices the passes from the outside: it steps the knobs that turn each one on and off and reads
 every GPU term per step. There is no per-stage ladder — swapping a pass's program was a GL-renderer trick, and

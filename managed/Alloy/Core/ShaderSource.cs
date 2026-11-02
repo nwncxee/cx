@@ -27,6 +27,10 @@ internal static class ShaderSource
     /// per-frame caller ever appears.</summary>
     internal static string Get(string name) => Get(name, 0);
 
+    /// <summary>A content override's text with its includes spliced as an embedded stage's are: what
+    /// <see cref="ShaderResource.Override"/> hands back, and what a golden standing one in hands over.</summary>
+    internal static string Expand(string src, string name) => Expand(src, name, 0);
+
     private static string Get(string name, int depth)
     {
         string? src = Read(name);
