@@ -139,8 +139,12 @@ internal static unsafe partial class GuiPassVk
     /// Depth, culling, winding, the viewport and the depth range are dynamic, so one pipeline covers a layer's
     /// per-draw state.</summary>
     private static PipelineId Pipeline(GuiVkProg p, VertexLayoutId layout, int blend, Topology topo, ExtenderLog log)
+        => Pipeline(p, layout, blend, topo, _s.Fmt, log);
+
+    /// <summary><see cref="Pipeline(GuiVkProg, VertexLayoutId, int, Topology, ExtenderLog)"/> into format
+    /// <paramref name="f"/>, whatever pass is open.</summary>
+    private static PipelineId Pipeline(GuiVkProg p, VertexLayoutId layout, int blend, Topology topo, Format f, ExtenderLog log)
     {
-        Format f = _s.Fmt;
         long key = layout.Value | (long)blend << 32 | (long)topo << 40 | (long)f << 48;
         if (p.Pipes.TryGetValue(key, out PipelineId id)) return id;
         var d = new PipelineDesc

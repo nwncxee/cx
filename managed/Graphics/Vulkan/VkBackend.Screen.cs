@@ -46,6 +46,10 @@ internal sealed unsafe partial class VkBackend
     /// <summary>The present target is sized: <see cref="Screen()"/> has an answer. Asks for no window image.</summary>
     internal bool HasScreen => !_spare.IsNull;
 
+    /// <summary>The format every image <see cref="Screen()"/> answers is in, the spare screen's; asks for no window
+    /// image. Unknown before the present target sized it.</summary>
+    internal Format ScreenFormat => DescOf(_spare, out ImageDesc d) ? d.Fmt : Format.Unknown;
+
     /// <summary>What <see cref="Screen()"/> answered this frame, without asking; null when nothing has.</summary>
     internal ImageId ScreenNow => _scr.Now;
 

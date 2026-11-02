@@ -25,6 +25,9 @@ internal static unsafe partial class Particles
     /// <summary>The alpha cut of the punch-through class and of every other.</summary>
     internal const float VkPunchCut = PunchDiscard, VkNoCut = NoDiscard;
 
+    /// <summary>The Vulkan pass draws particles: switched on and not stood down. Off, it builds nothing.</summary>
+    internal static bool VkOn => !_off && Enabled.V;
+
     /// <summary>The pass's staging for the Vulkan frame: the records built, the draw-order list filled with the blended
     /// groups sorted back to front on the CPU (GL's compute sort, same key), and every emitter stamped as drawn.
     /// The particles placed; 0 = nothing to draw. ponytail: a CPU sort, a few thousand keys a frame at most.</summary>
@@ -32,7 +35,7 @@ internal static unsafe partial class Particles
     {
         _frame++;
         eye = default; lit = false; groups = 0;
-        if (_off || !Enabled.V || _orderN == 0) return 0;
+        if (!VkOn || _orderN == 0) return 0;
         int at = Build(view, lightingOn, out eye, out lit, out groups);
         if (at == 0) return 0;
         for (int i = 0; i < _drawN; i++)

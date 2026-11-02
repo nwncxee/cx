@@ -44,9 +44,8 @@ public sealed unsafe partial class AlloyRenderer
     private static bool VkParticlePass(VkBackend vk, CommandList cl, VkColourState c, in Matrix4x4 view, in Matrix4x4 proj,
                                        int* viewport, float near, float far, bool lightingOn, ExtenderLog log)
     {
-        VkPartState s = _vkPart;
-        if (s.Dev != vk) _vkPart = s = new VkPartState { Dev = vk };
-        if (_capturing || !VkPartEnsure(vk, s, log)) return true;
+        VkPartState s = VkPartOwner(vk);
+        if (_capturing || !Particles.VkOn || !VkPartEnsure(vk, s, log)) return true;
         Matrix4x4 v = view, p = proj;
         int at = Particles.StageVk(&v, lightingOn, out Vector3 eye, out bool lit, out int groups);
         if (at == 0) return true;
@@ -177,6 +176,14 @@ public sealed unsafe partial class AlloyRenderer
             }
         }
         side.BindSet(0, new BindSet(ubo[..nu], ssbo[..ns], sampled[..nt], default));
+    }
+
+    /// <summary>The pass's state on <paramref name="vk"/>, replaced whole when the device is another.</summary>
+    private static VkPartState VkPartOwner(VkBackend vk)
+    {
+        VkPartState s = _vkPart;
+        if (s.Dev != vk) _vkPart = s = new VkPartState { Dev = vk };
+        return s;
     }
 
     /// <summary>The program, its three pipelines and the un-mipmapped clamp sampler, made once per device. A refusal is

@@ -53,12 +53,7 @@ public sealed unsafe partial class AlloyRenderer
     /// passes, which have read the previous cube. The frame's counters and eye come back as they were.</summary>
     private static void VkProbeCapture(VkBackend vk, CommandList cl, VkColourState c, float far, bool lightingOn, ExtenderLog log)
     {
-        VkProbeState s = _vkProbe;
-        if (s.Dev != vk)
-        {
-            _vkProbe = s = new VkProbeState { Dev = vk };
-            EnvProbe.Revoke();
-        }
+        VkProbeState s = VkProbeOwner(vk);
         if (!lightingOn || s.Failed || ArenaCap - c.ArenaUsed < VkProbeArenaNeed) return;
         bool domeArrived = EnvProbe.Ready && !_probeDome && _skyN > 0;
         if (!domeArrived && !EnvProbe.Wanted(_eyePos, _frameSeq)) return;
@@ -199,6 +194,17 @@ public sealed unsafe partial class AlloyRenderer
             }
         }
         cl.BindSet(0, new BindSet(ubo[..nu], ssbo[..ns], sampled[..nt], images[..ni]));
+    }
+
+    /// <summary>The probe's state on <paramref name="vk"/>, replaced whole, and the last capture revoked, when the device
+    /// is another.</summary>
+    private static VkProbeState VkProbeOwner(VkBackend vk)
+    {
+        VkProbeState s = _vkProbe;
+        if (s.Dev == vk) return s;
+        _vkProbe = s = new VkProbeState { Dev = vk };
+        EnvProbe.Revoke();
+        return s;
     }
 
     /// <summary>The three stages, the two cubes, the face depth and the SH9 block, once per device; a refusal is said

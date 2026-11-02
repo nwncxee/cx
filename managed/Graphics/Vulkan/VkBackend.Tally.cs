@@ -19,6 +19,21 @@ internal sealed unsafe partial class VkBackend
         /// <summary>The first material pipelines the window counted, by label: what the prewarm missed; and the first
         /// of the rest, which no prewarm builds yet.</summary>
         public readonly List<string> Missed = new(), Others = new();
+        /// <summary>Per <see cref="Features"/> entry, the pipelines built from the last hold's start: under it, and on
+        /// the frame in the window after it.</summary>
+        public readonly int[] FeatHeld = new int[Features.Length], FeatFrame = new int[Features.Length];
+    }
+
+    /// <summary>The passes the hold prewarms beside the materials, each told by the label prefix its pipelines carry.</summary>
+    private static readonly (string Name, string Prefix)[] Features =
+        [("grass", "vk grass"), ("particles", "vk particles"), ("environment probe", "vk probe"), ("CX windows", "vk CX window")];
+
+    /// <summary>The <see cref="Features"/> entry pipeline <paramref name="what"/> belongs to, or -1.</summary>
+    private static int FeatureOf(string what)
+    {
+        for (int i = 0; i < Features.Length; i++)
+            if (what.StartsWith(Features[i].Prefix, System.StringComparison.Ordinal)) return i;
+        return -1;
     }
 
     private readonly TallyState _tally = new();
@@ -36,6 +51,7 @@ internal sealed unsafe partial class VkBackend
         {
             TallyState t = _tally;
             if (t.UnderHold && !value) { t.LiftedAt = Stopwatch.GetTimestamp(); t.AfterLift = t.OthersAfterLift = 0; t.Missed.Clear(); t.Others.Clear(); }
+            if (!t.UnderHold && value) { System.Array.Clear(t.FeatHeld); System.Array.Clear(t.FeatFrame); }
             t.UnderHold = value;
         }
     }
@@ -51,7 +67,14 @@ internal sealed unsafe partial class VkBackend
     private void Tallied(long since, bool material, string what = "")
     {
         TallyState t = _tally;
-        if (t.UnderHold) { t.Held++; return; }
+        int feat = FeatureOf(what);
+        if (t.UnderHold)
+        {
+            t.Held++;
+            if (feat >= 0) t.FeatHeld[feat]++;
+            return;
+        }
+        if (feat >= 0 && InWindow(t)) t.FeatFrame[feat]++;
         double ms = Stopwatch.GetElapsedTime(since).TotalMilliseconds;
         t.Frame++;
         t.FrameMs += ms;
@@ -69,6 +92,20 @@ internal sealed unsafe partial class VkBackend
         if (t.Missed.Count < MissedNamed) t.Missed.Add(what);
     }
 
+    /// <summary>The by-feature line the window after a lift closes with: each <see cref="Features"/> entry's pipelines
+    /// built from the last hold's start, under it and on the frame since it lifted.</summary>
+    internal string FeatureLine
+    {
+        get
+        {
+            TallyState t = _tally;
+            var feats = new string[Features.Length];
+            for (int i = 0; i < feats.Length; i++)
+                feats[i] = $"{Features[i].Name} {t.FeatHeld[i]} under the hold, {t.FeatFrame[i]} on the frame";
+            return $"[vkpipe] by feature, from the hold to {AfterLiftSeconds:F0} s after it: {string.Join("; ", feats)}";
+        }
+    }
+
     /// <summary>The period's line: pipelines built on the frame, their milliseconds and the slowest, the material ones
     /// among them, and those built under the loading hold; once the window after a lift has closed, its own line goes
     /// to the log first. Starts the next period.</summary>
@@ -82,6 +119,7 @@ internal sealed unsafe partial class VkBackend
                       + (t.Missed.Count > 0 ? $", the first {string.Join("; ", t.Missed)}" : "")
                       + $"; {t.OthersAfterLift} other pipeline{(t.OthersAfterLift == 1 ? "" : "s")}"
                       + (t.Others.Count > 0 ? $", the first {string.Join("; ", t.Others)}" : ""));
+            _log.Always($"VkBackend: {FeatureLine}");
             t.LiftedAt = 0;
         }
         string line = $"[vkpipe] {t.Frame} pipeline{(t.Frame == 1 ? "" : "s")} built on the frame in {t.FrameMs:F2} ms "

@@ -62,9 +62,8 @@ public sealed unsafe partial class AlloyRenderer
     private static bool VkGrassPass(VkBackend vk, CommandList cl, VkColourState c, in Matrix4x4 vp, int* viewport,
                                     float near, float far, bool lightingOn, ExtenderLog log)
     {
-        VkGrassState g = _vkGrass;
-        if (g.Dev != vk) _vkGrass = g = new VkGrassState { Dev = vk };
-        if (_capturing || !VkGrassEnsure(vk, g, log)) return true;
+        VkGrassState g = VkGrassOwner(vk);
+        if (_capturing || !GrassField.VkOn || !VkGrassEnsure(vk, g, log)) return true;
         Matrix4x4 m = vp, gl = WorldDepth.Unfold(vp);
         if (!GrassField.StageVk(&gl, g.Blades != null, out GrassField.VkFrame f) || f.Patches == 0) return true;
         ReadOnlySpan<byte> faces = GrassField.VkNewFaces(out long faceAt);
@@ -372,6 +371,14 @@ public sealed unsafe partial class AlloyRenderer
                                                 ImageUse.Sampled | ImageUse.CopyDst, "vk grass ground copy", AliasLanes.Wide));
         g.GroundW = w; g.GroundH = h;
         return !g.Ground.IsNull;
+    }
+
+    /// <summary>The class's state on <paramref name="vk"/>, replaced whole when the device is another.</summary>
+    private static VkGrassState VkGrassOwner(VkBackend vk)
+    {
+        VkGrassState g = _vkGrass;
+        if (g.Dev != vk) _vkGrass = g = new VkGrassState { Dev = vk };
+        return g;
     }
 
     /// <summary>The scatter, the stages, their pipelines and the class's buffers, made once per device. Without the

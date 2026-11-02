@@ -161,6 +161,16 @@ internal static unsafe partial class GuiPassVk
         return true;
     }
 
+    /// <summary>Under the loading hold: the window programs, and each one's pipeline into the screen's format, so the
+    /// first windows past the hold build none. Nothing before the GUI's first flush has made its state.</summary>
+    internal static void PrewarmWindows(VkBackend vk, ExtenderLog log)
+    {
+        GuiVkState s = _s;
+        Format f = vk.ScreenFormat;
+        if (s.Dev != vk || f == Format.Unknown || !WinEnsure(vk, s.Win, log)) return;
+        foreach (WinProg? w in s.Win.Progs) if (w != null) Pipeline(w.P, s.Win.Layout, WinBlend, Topology.Triangles, f, log);
+    }
+
     /// <summary>The window programs and the UI vertex layout (pos2, uv2, rgb3, alpha1), made on the first replay. A
     /// refusal is said once and CX's windows are NOT DRAWN on Vulkan for the session.</summary>
     private static bool WinEnsure(VkBackend vk, WinState w, ExtenderLog log)

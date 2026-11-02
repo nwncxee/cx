@@ -8,9 +8,9 @@ namespace CX.Alloy;
 
 /// <summary>
 /// The loading hold's pipeline prewarm on Vulkan: every frame the hold is up, each colour-bracket program asks for its
-/// pipeline into the target sets <see cref="VkPrewarmSets"/> pairs it with, for every arena format holding a mesh, so the
-/// first frame past the loading screen finds them built. It asks for blend 0 alone, which covers every blend mode where
-/// blend is dynamic state and only the unblended one where it is baked. It never keeps the hold up.
+/// pipeline into the sets <see cref="VkPrewarmSets"/> pairs it with, per arena format holding a mesh, and the passes
+/// drawn beside them make theirs. Blend 0 alone covers every blend mode where blend is dynamic state and only the
+/// unblended one where it is baked. It never keeps the hold up.
 /// </summary>
 public sealed unsafe partial class AlloyRenderer
 {
@@ -37,28 +37,52 @@ public sealed unsafe partial class AlloyRenderer
         FeatDepthSets = [VkTargets.Prepass, VkTargets.ForwardDepth], DecalSets = [VkTargets.Decal], MaskSets = [VkTargets.Mask],
         VelocitySets = [VkTargets.Velocity];
 
-    /// <summary>Every pipeline the hold should leave built, under the hold: the stock programs, the optional passes'
-    /// programs (built here if their pass has not run yet; none of their sized targets) and every content program the
-    /// area's batches built.</summary>
+    /// <summary>Every pipeline the hold should leave built, under the hold: the materials', then the passes' that draw
+    /// beside them.</summary>
     private static void VkPrewarm(VkBackend vk, ExtenderLog log)
     {
         if (!vk.UnderHold) return;
+        long since = Stopwatch.GetTimestamp();
+        if (VkPrewarmMaterials(vk, log, since)) VkPrewarmPasses(vk, log, since);
+    }
+
+    /// <summary>The stock programs, the optional passes' programs (built here if their pass has not run yet; none of
+    /// their sized targets) and every content program the area's batches built. False once the frame has spent its
+    /// budget since <paramref name="since"/>.</summary>
+    private static bool VkPrewarmMaterials(VkBackend vk, ExtenderLog log, long since)
+    {
         VkColourState s = _vkc;
         Span<bool> live = stackalloc bool[MeshArena.Formats];
         int formats = 0;
         for (int f = 0; f < MeshArena.Formats; f++) formats += (live[f] = !MeshArena.VkVbo((MeshArena.Fmt)f).IsNull && !s.Layouts[f].IsNull) ? 1 : 0;
-        if (formats == 0) return;
+        if (formats == 0) return true;
         bool rate = vk.ShadingRateTexel > 0;
-        long since = Stopwatch.GetTimestamp();
-        foreach (VkProg? p in s.Progs) if (p != null && !VkPrewarmProgram(p, live, rate, since)) return;
+        foreach (VkProg? p in s.Progs) if (p != null && !VkPrewarmProgram(p, live, rate, since)) return false;
         VkDecalState d = VkDecalOwner(vk);
-        if (VkDecalWriter(vk, d, log) && !VkPrewarmProgram(d.Prog!, live, rate, since)) return;
+        if (VkDecalWriter(vk, d, log) && !VkPrewarmProgram(d.Prog!, live, rate, since)) return false;
         VkMvState mv = VkMvOwner(vk);
-        if (VkMvEnsure(vk, mv, log) && !VkPrewarmProgram(mv.Prog!, live, rate, since)) return;
+        if (VkMvEnsure(vk, mv, log) && !VkPrewarmProgram(mv.Prog!, live, rate, since)) return false;
         VkHlState hl = VkHlOwner(vk);
-        if (VkHlPrograms(vk, hl, log) && !VkPrewarmProgram(hl.Mask!, live, rate, since)) return;
-        foreach (VkProg? p in s.Content.Values) if (p != null && !VkPrewarmProgram(p, live, rate, since)) return;
+        if (VkHlPrograms(vk, hl, log) && !VkPrewarmProgram(hl.Mask!, live, rate, since)) return false;
+        foreach (VkProg? p in s.Content.Values) if (p != null && !VkPrewarmProgram(p, live, rate, since)) return false;
+        return true;
     }
+
+    /// <summary>The once-per-device setup of each pass that will draw: grass, particles, the environment probe, then
+    /// CX's windows. Each is a lookup once made; the next waits for the next frame once the budget is spent.</summary>
+    private static void VkPrewarmPasses(VkBackend vk, ExtenderLog log, long since)
+    {
+        if (GrassField.VkOn) VkGrassEnsure(vk, VkGrassOwner(vk), log);
+        if (Spent(since)) return;
+        if (Particles.VkOn) VkPartEnsure(vk, VkPartOwner(vk), log);
+        if (Spent(since)) return;
+        if (Lighting.Probe.V) VkProbeEnsure(vk, VkProbeOwner(vk), log);
+        if (Spent(since)) return;
+        GuiPassVk.PrewarmWindows(vk, log);
+    }
+
+    /// <summary>The hold frame has spent <see cref="VkPrewarmBudgetMs"/> since <paramref name="since"/>.</summary>
+    private static bool Spent(long since) => Stopwatch.GetElapsedTime(since).TotalMilliseconds > VkPrewarmBudgetMs;
 
     /// <summary>Milliseconds of building one hold frame spends before the rest waits for the next, so a device that
     /// compiles whole pipelines keeps the loading screen drawing.</summary>
@@ -79,7 +103,7 @@ public sealed unsafe partial class AlloyRenderer
                 if (t == VkTargets.Cover && _vkCover.Samples <= 0) continue;
                 VkPipeline(p, f, t, 0, rated: false);
                 if (rate && t is VkTargets.Colour or VkTargets.ColourRefl) VkPipeline(p, f, t, 0, rated: true);
-                if (Stopwatch.GetElapsedTime(since).TotalMilliseconds > VkPrewarmBudgetMs) return false;
+                if (Spent(since)) return false;
             }
         }
         return true;

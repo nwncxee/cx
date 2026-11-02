@@ -56,6 +56,9 @@ internal static unsafe partial class GrassField
     internal const long VkRecordBytes = (long)RecordCap * InstFloats * sizeof(float);
     internal const int VkPushRes = PushRes;
 
+    /// <summary>The Vulkan pass draws grass: switched on, the player's option on, not stood down. Off, it builds nothing.</summary>
+    internal static bool VkOn => !_off && Grass.Enabled.V && !_down.Failed && !_binBucket.IsNull && *_grassEnabled != 0;
+
     /// <summary>Gate, bake and plan the frame for the Vulkan pass as <see cref="Draw"/> does for GL. False hands the
     /// class back to the engine (switched off, the player's option off, stood down); true owns it this pass, with
     /// <c>Patches</c> 0 when nothing is drawn. <paramref name="bladeProg"/>: the blade program built on Vulkan.</summary>
@@ -63,7 +66,7 @@ internal static unsafe partial class GrassField
     {
         f = default;
         _vkg.Drawn = default;
-        if (_off || !Grass.Enabled.V || _down.Failed || _binBucket.IsNull || *_grassEnabled == 0) return false;
+        if (!VkOn) return false;
         EnsureCpu();
         _drawnGen = AlloyRenderer.PassGen;
         if (Grass.Density.V <= 0f || Prepare(vp) == 0) return true;
