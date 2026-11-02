@@ -76,6 +76,10 @@ Vanilla draws the blade from `Specularity`/`Roughness`/`Metallicness` and the sp
 reads metalness and roughness per texel from `w_sword_orm`: the blade is metal and the grip is
 leather in one texture, with ambient occlusion from its R channel.
 
+That occlusion channel shades the ambient term and nothing else, the same term the engine's own height-map
+occlusion scales ([ADR 0021](../adr/0021-ambient-occlusion-is-a-lighting-input.md)). It does not darken the
+sun, a lamp or the baked light, so an AO map cannot leave a surface dark under a light that reaches it.
+
 ## Example: a velvet cloak and a varnished table
 
 ```

@@ -4,8 +4,8 @@ namespace CX.Alloy;
 
 /// <summary>The <c>ao</c> group (spec §4.3): the storage <see cref="SsaoPass"/> reads. No master -- the
 /// game's own Ambient Occlusion video option is the switch; <see cref="On"/> is the chat-only bypass for an
-/// A/B. <c>radius</c> is world-space (NWN units are metres), so the 0.6 default is contact occlusion rather
-/// than room-scale gloom, and <c>direct</c> 1 is what makes the effect visible in a lamp-lit interior.</summary>
+/// A/B. <c>radius</c> is world-space (NWN units are metres), so 0.6 is contact occlusion rather than
+/// room-scale gloom, and <c>direct</c> ships at 0: the ambient term alone, as ADR 0021 has it.</summary>
 internal static class Ao
 {
     internal static readonly KnobGroup G;
@@ -30,8 +30,8 @@ internal static class Ao
         Steps = G.Slider("steps", "Steps", 1, 8, 1, 3, tier: Tier.Advanced,
                          help: "Samples along each direction. More reaches further out accurately, and costs that much more.")
                  .Ladder(Quality.Ao, 2, 2, 3, 4);
-        Direct = G.Slider("direct", "Darken lit surfaces", 0f, 1f, 0.05f, 1f, tier: Tier.ChatOnly,
-                          help: "0 = ambient only (invisible indoors).");
+        Direct = G.Slider("direct", "Darken lit surfaces", 0f, 1f, 0.05f, 0f, tier: Tier.ChatOnly,
+                          help: "How much of the occlusion the sun, the lamps and the baked light take: 0 is the ambient term alone, which is what the game does.");
         Cutout = G.Slider("cutout", "On cutout surfaces", 0f, 1f, 0.05f, 1f, tier: Tier.ChatOnly,
                           help: "How much occlusion leaf and grass cards take: 1 = full (a card stamps its silhouette on the card behind it).");
         MaxPx = G.Slider("maxpx", "Screen radius cap", 16f, 256f, 8f, 96f, "px", Tier.ChatOnly)

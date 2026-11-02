@@ -37,7 +37,7 @@ internal struct SsaoBlock
 /// <summary>Screen-space ambient occlusion as a LIGHTING INPUT, not a post stage (ADR 0021). The client's SSAO
 /// option is bit 0 of <c>Camera::m_nFramebufferEffectsEnabled</c>; vanilla runs its pass over the finished
 /// frame and darkens direct light with it, while Alloy computes horizon-based visibility (GTAO) from the depth
-/// prepass and scales the lit stage's AMBIENT term by it. <c>/ao direct</c> carries it onto the direct terms.</summary>
+/// prepass and scales the lit stage's AMBIENT term by it. <c>/ao direct</c>, 0 as shipped, carries it further.</summary>
 internal static unsafe class SsaoPass
 {
     private static ExtenderLog? _log;
@@ -135,8 +135,8 @@ internal static unsafe class SsaoPass
             check.Expect(!Post.HalfRes.Default, "post.halfres ships OFF -- the 4-tap upsample costs every lit fragment more than the quarter-size pass saves");
             check.Expect(AlloyRenderer.OwnedLitFsMain.Contains("float dirOcc = mix(1.0, occl, uAoDirect);")
               && AlloyRenderer.OwnedLitFsMain.Contains("vec3 diffuse = (sun + sunSss + point) * dirOcc;"),
-              "/ao direct is the only route to the DIRECT terms, and 0 leaves them exactly as ADR 0021 had them");
-            check.Expect(Ao.Direct.Default == 1f, "...and it ships at 1: ambient-only is invisible in a dark-ambient area (ADR 0021, amended)");
+              "/ao direct is the only route to the DIRECT terms, and 0 leaves them exactly as ADR 0021 has them");
+            check.Expect(Ao.Direct.Default == 0f, "...and it ships at 0, so the shipped frame is ADR 0021's: the ambient term alone, as the engine's own shaders occlude");
             check.Expect(AlloyRenderer.OwnedLitFsMain.Contains("bool aoMine = uSsaoOn > 0 && aoDz < CX_AO_DEPTH_EPS + 0.5 * aoSlope;")
               && AlloyRenderer.OwnedLitFsMain.Contains("if (aoMine) occl *="),
               "the fetch is per FRAGMENT: the pixel's occlusion must have been computed from this surface's own depth, "

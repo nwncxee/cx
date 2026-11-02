@@ -133,11 +133,10 @@
     // The engine's split: every light accumulates its own lobe, then ONE view-side normalisation
     // (fSpecularBaseModifier) and the material's specular colour scale the sum
     // (inc_lighting.shd:545 and :653). fSpecularity is already inside the lobe via the Fresnel term.
-    // ADR 0021 gives occlusion to the ambient term alone, which is right and is invisible wherever
-    // the area ambient is dark -- every interior, where the light is lamps and the corners are
-    // exactly what wants occluding. /ao direct is the dial back toward vanilla's post-multiply:
-    // 0 is ADR 0021 untouched, 1 occludes the direct terms outright. The probe term below picks it
-    // up through `diffuse` at no extra cost.
+    // ADR 0021 gives occlusion to the ambient term alone, as the engine's own shaders do
+    // (inc_lighting.shd:599-601 scales AmbientLight and nothing else). /ao direct is the chat-only
+    // dial past that -- 0, the shipped value, leaves the direct terms alone; 1 occludes them
+    // outright. The probe term below picks it up through `diffuse` at no extra cost.
     float dirOcc = mix(1.0, occl, uAoDirect);
     vec3 specLight = (sunSpec * CxLoopSpec(CxSpecLobe(N, V, uAreaDir, rough, spec), N, V, uAreaDir) + pointSpec)
                      * dirOcc;
