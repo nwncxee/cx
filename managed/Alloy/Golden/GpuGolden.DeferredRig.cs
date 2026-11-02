@@ -57,8 +57,9 @@ internal struct RigPixel
 
 public sealed unsafe partial class AlloyRenderer
 {
-    /// <summary>Froxel grid and group sizes the rig builds its table with, at <see cref="DeferredRigScene"/>'s size.</summary>
-    private const int RigGridX = 2, RigGridY = 1, RigGridZ = 24;
+    /// <summary>Froxel grid the rig builds its table with, at <see cref="DeferredRigScene"/>'s size: three columns, so a
+    /// froxel edge falls inside a 16-pixel tile as it does on a real screen.</summary>
+    private const int RigGridX = 3, RigGridY = 1, RigGridZ = 24;
 
     /// <summary>The fill stage: each pixel's <c>CxGbuf</c> packed by the library's own <c>CxGbufPack</c>, its frame
     /// depth from the projection's depth row, and at each even pixel the record texel it heads.</summary>

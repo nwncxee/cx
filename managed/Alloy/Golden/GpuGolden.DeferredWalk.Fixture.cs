@@ -10,7 +10,7 @@ namespace CX.Alloy;
 /// </summary>
 internal static partial class GpuGolden
 {
-    /// <summary>The rig's frame size: eight by four 16-pixel groups, two froxel columns.</summary>
+    /// <summary>The rig's frame size: eight by four 16-pixel groups, three froxel columns.</summary>
     private const int DwW = 128, DwH = 64;
 
     /// <summary><c>cx_gbuf</c>'s flag bits the scenes set.</summary>
