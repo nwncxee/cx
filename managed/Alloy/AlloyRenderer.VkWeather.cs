@@ -46,13 +46,19 @@ public sealed unsafe partial class AlloyRenderer
         public CommandList? MotionSide;
         /// <summary>The camera the weather pass drew with, for the velocity's contact fade and the late draw.</summary>
         public Matrix4x4 View, Proj;
-        /// <summary>This frame's fall and drips wait for the late draw after the upscale, lit or flat; the late pipelines
-        /// were refused once, so the fall draws in the scene for the rest of the session.</summary>
+        /// <summary>This frame's fall, drips and crowns wait for the late draw after the temporal resolve, lit or flat; a late
+        /// pipeline or the overlay was refused once, so they draw in the scene for the rest of the session.</summary>
         public bool Late, Lit, LateFailed;
-        /// <summary>The fall and drip pipelines without depth, for the display-size frame after the upscale.</summary>
-        public readonly PipelineId[] LatePipe = new PipelineId[2];
+        /// <summary>This frame's crowns wait for the late draw.</summary>
+        public bool Splashed;
+        /// <summary>The rain, snow and splash pipelines without depth, for the frame after the resolve.</summary>
+        public readonly PipelineId[] LatePipe = new PipelineId[3];
         public CommandList? LateSide;
-        public bool LateLive;
+        /// <summary>Where the late draw last said it drew: 1 after the upscale, 2 after the TAA resolve, -1 not yet.</summary>
+        public int LateSaid = -1;
+        /// <summary>The display-size overlay the taa stage composites the precipitation from, and its size.</summary>
+        public ImageId Over;
+        public int OverW, OverH;
         /// <summary>The commands' readback copy, the frame whose copy is in flight (0 = none), and whether the
         /// record cap has been reported.</summary>
         public BufferId CmdRead;
@@ -87,7 +93,7 @@ public sealed unsafe partial class AlloyRenderer
     {
         VkWxState s = _vkWx;
         if (s.Dev != vk) _vkWx = s = new VkWxState { Dev = vk };
-        s.Fell = s.Dripped = false;
+        s.Fell = s.Dripped = s.Splashed = false;
         if (_capturing || c.DepthRead.IsNull) { s.CulledLast = false; return true; }
         int count = Weather.StageVk(AreaWind(), out bool snow, out int drips);
         int k = snow ? 1 : 0;
@@ -107,12 +113,14 @@ public sealed unsafe partial class AlloyRenderer
         side.Reset();
         int arena0 = c.ArenaUsed;
         side.SetViewport(0, 0, viewport[2], viewport[3]);
-        // FSR reconstructs from history, and a streak in that history smears over the ground: hold the fall for after it
-        bool late = Fsr.On && !s.LateFailed;
+        // FSR and TAA reconstruct from history, and a streak or a crown in it smears over the ground: hold them for after the resolve
+        bool late = Weather.DrawsWhere(Fsr.On, PostChain.TaaOn) != Weather.Site.Scene && !s.LateFailed;
         s.Late = late; s.Lit = lit;
         if (!late && fall && !VkWxDraw(side, s, c, k, snow ? 2 : 1, 0, view, proj, viewport, near, far, lit)) return false;
         if (!late && drip && !VkWxDraw(side, s, c, 0, 3, 1, view, proj, viewport, near, far, lit)) return false;
-        if (VkWxEnsure(vk, s, VkSplashProg, log) && !VkSplashDraw(side, s, c, view, proj, viewport, near, far, lit)) return false;
+        bool splash = VkWxEnsure(vk, s, VkSplashProg, log);
+        s.Splashed = late && splash;
+        if (!late && splash && !VkSplashDraw(side, s, c, view, proj, viewport, near, far, lit)) return false;
         ReadOnlySpan<ColorAttachment> colors = [new(c.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default)];
         VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear)));
         if (!s.Live)

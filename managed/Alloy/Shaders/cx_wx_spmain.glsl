@@ -238,5 +238,7 @@ void main()
         vec3 sun = uAreaDiffuse * (ndl * CxSunShadow(P, N, ndl, ndl));
         vLight = uAreaAmbient * mix(CX_SPLASH_AMB, 1.0, ndl) + sun + CxClusteredDiffuse(P, N, max(-cv.z, 1e-3));
     }
-    gl_Position = alive && dim > 0.0 ? uProj * (uView * vec4(pos, 1.0)) : vec4(2.0, 2.0, 2.0, 1.0);
+    vec4 pv = uView * vec4(pos, 1.0);
+    vViewZ = pv.z;
+    gl_Position = alive && dim > 0.0 ? uProj * pv : vec4(2.0, 2.0, 2.0, 1.0);
 }

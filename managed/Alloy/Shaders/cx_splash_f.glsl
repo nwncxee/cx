@@ -2,16 +2,20 @@
 // CX-102: one part of a rain crown. Index 0 is a ring on the ground, the rest are droplet streaks; both are
 // scatter, premultiplied like the streak and the flake, so an unlit impact is nothing rather than a grey
 // mark on the stone. No contact fade here: a splash SITS on the surface, and the fade that saves a falling
-// streak from a hard intersection line would erase the whole thing. The hardware depth test is what puts a
-// splash behind a wall in front of it.
+// streak from a hard intersection line would erase the whole thing. In the scene the hardware depth test puts
+// a splash behind a wall in front of it; drawn after the temporal resolve there is no depth target, and this
+// stage tests the depth copy itself.
 in vec2 vUV;
 in float vSeed;
 in float vAge;
 in float vPart;
 in vec3 vLight;
+in float vViewZ;
 uniform vec3 uTint;
 uniform float uAlpha;
-out vec4 frag;
+uniform int uLate;       // 1 = drawn after the upscale or the TAA resolve, with no depth target
+uniform vec2 uScreen;    // the target being drawn, pixels: the depth copy is sampled across it whatever its own size
+#include "cx_scenedepth.glsl"
 
 /// Rec.709 luminance: how much of its own scatter a splash also occludes.
 const vec3 CX_WX_LUMA = vec3(0.2126, 0.7152, 0.0722);
@@ -24,9 +28,20 @@ const float CX_SPLASH_RINGW = 0.13;
 const float CX_SPLASH_RINGR = 0.87;
 /// The ring is the faint half of an impact: the crown is what the eye reads, the ring only says "on water".
 const float CX_SPLASH_RINGA = 0.5;
+/// Metres, plus a share of the scene's distance, a part may stand behind the depth copy and still be ON the
+/// surface there: the ring stands off it and the copy is the render size's, so one of its texels spans more
+/// than one target pixel.
+const vec2 CX_SPLASH_HIDE = vec2(0.1, 0.01);
+
+/// True when a part `splash` metres away stands behind the scene the depth copy holds `scene` metres away.
+bool CxSplashHidden(float scene, float splash)
+{
+    return splash - scene > CX_SPLASH_HIDE.x + CX_SPLASH_HIDE.y * scene;
+}
 
 void main()
 {
+    if (uLate != 0 && CxSplashHidden(CxSceneViewZ(gl_FragCoord.xy / uScreen), -vViewZ)) discard;
     float a;
     if (vPart < 0.5)
     {

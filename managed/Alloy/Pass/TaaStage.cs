@@ -1,4 +1,5 @@
 using CX.Framework;
+using CX.Graphics.Rhi;
 
 namespace CX.Alloy;
 
@@ -13,6 +14,24 @@ internal static class TaaStage
     /// thing TAA gets held against SMAA for; <c>post.taasharp</c> is a cross-tap unsharp mask that puts the
     /// contrast back. The taps are texel-exact fetches: the history is NEAREST at this stage's own size.</summary>
     internal static string StageFs => ShaderSource.Get("cx_taastage_f.glsl");
+
+    /// <summary>The copy-out's precipitation terms: whether <c>uWx</c> holds this frame's, and the resolve's exposure and
+    /// tone curve its light takes. <see cref="On"/> below 0 = an override that composites none.</summary>
+    internal readonly record struct WxLocs(int On, int Exposure, int Mode, int Knee, int AcesMix);
+
+    /// <summary>...resolved inside the stage program's open resolve.</summary>
+    internal static WxLocs LocateWxVk(GuiVkProg p)
+        => new(p.Loc("uWxOn"), p.Loc("uExposure"), p.Loc("uMode"), p.Loc("uKnee"), p.Loc("uAcesMix"));
+
+    /// <summary>The copy-out's precipitation terms into the open capture: <paramref name="on"/> when the overlay holds any.</summary>
+    internal static void WriteWxVk(in WxLocs l, bool on)
+    {
+        LooseBlock.Set(l.On, on ? 1 : 0);
+        LooseBlock.Set(l.Exposure, Post.Exposure.V);
+        LooseBlock.Set(l.Mode, Post.Tonemap.V);
+        LooseBlock.Set(l.Knee, Post.TmKnee.V);
+        LooseBlock.Set(l.AcesMix, Post.AcesMix.V);
+    }
 
     /// <summary>History invalid: the next resolve takes the current frame whole. World edge (area transition)
     /// and every post.aa change.</summary>

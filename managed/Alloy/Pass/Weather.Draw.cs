@@ -113,9 +113,16 @@ internal static unsafe partial class Weather
     /// <summary>Where <see cref="Phase"/> wraps.</summary>
     internal static double PhaseWrap => Box * PhaseWrapLengths;
 
-    /// <summary>Whether the frame records rain's own motion: only TAA reads it with rain in the frame it resolves. Under
-    /// FSR the rain draws after the upscale, so its motion would only drag the ground under it.</summary>
-    internal static bool MotionWanted(bool fsr, bool taa) => taa && !fsr;
+    /// <summary>Where the precipitation draws: the scene, or out of the history a temporal resolve keeps.</summary>
+    internal enum Site : byte { Scene, AfterUpscale, AfterTaa }
+
+    /// <summary>Where the fall, the drips and the crowns draw under <paramref name="fsr"/> or <paramref name="taa"/>: after
+    /// the resolve that would otherwise smear them over the ground, or in the scene when neither runs.</summary>
+    internal static Site DrawsWhere(bool fsr, bool taa) => fsr ? Site.AfterUpscale : taa ? Site.AfterTaa : Site.Scene;
+
+    /// <summary>Whether the frame records rain's own motion: only when TAA resolves a frame the rain was drawn into, which
+    /// is the session its after-the-resolve pipeline was refused (<paramref name="late"/> false).</summary>
+    internal static bool MotionWanted(bool fsr, bool taa, bool late) => taa && !fsr && !late;
 
     internal static void ContextLost() => MapLost();
     internal static void ResetPeriod() => _drawn = 0;
