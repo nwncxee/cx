@@ -68,14 +68,10 @@ public sealed unsafe partial class AlloyRenderer
         return true;
     }
 
-    /// <summary>The once-per-device setup of each pass that will draw: grass, particles, the environment probe, then
-    /// CX's windows. Each is a lookup once made; the next waits for the next frame once the budget is spent.</summary>
+    /// <summary>The setup of the passes that do not draw under the hold: the environment probe, which stands down
+    /// there, then CX's windows, which only the cover draws. Grass and particles draw, so they build their own.</summary>
     private static void VkPrewarmPasses(VkBackend vk, ExtenderLog log, long since)
     {
-        if (GrassField.VkOn) VkGrassEnsure(vk, VkGrassOwner(vk), log);
-        if (Spent(since)) return;
-        if (Particles.VkOn) VkPartEnsure(vk, VkPartOwner(vk), log);
-        if (Spent(since)) return;
         if (Lighting.Probe.V) VkProbeEnsure(vk, VkProbeOwner(vk), log);
         if (Spent(since)) return;
         GuiPassVk.PrewarmWindows(vk, log);
