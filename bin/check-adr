@@ -1,33 +1,44 @@
 #!/usr/bin/env bash
-# Copied from vicky-skills@8fe6877022a3895980b33ed6643f14d6decbc48e,
+# Copied from vicky-skills@110ddfc3d0c9f9ebda50268773e29f05945d0732,
 # plugins/vicky-skills/skills/engineering/true-names/scripts/check-adr.sh.
 # Every repository carries this same copy. Fix a bug upstream, then copy it
 # here.
 # Checks decision records against ADR-FORMAT.md: a "# ADR-NNNN: " title, a
-# "Category: <name>." line from the fixed list, a "Decided YYYY-MM-DD." line and
-# a "Because " line, once each and in that order, then an optional
-# "Superseded by [<repo> ]ADR-NNNN." line. No other line, no backticks, and at most 55
-# words. Prints one line per problem and exits 1 when any record fails.
+# "Category: <name>." line from the fixed list and a "Decided YYYY-MM-DD." line,
+# then a "## Brief" and a "## Rationale" section of one paragraph each, in at
+# most 100 words. The older shape, a "Because " line in place of the two
+# sections and at most 55 words, still passes. Either takes an optional last
+# "Superseded by [<repo> ]ADR-NNNN." line. No other line and no backticks.
+# Prints one line per problem and exits 1 when any record fails.
 set -u
 [ $# -gt 0 ] || { echo "usage: check-adr.sh <record>..." >&2; exit 2; }
 categories='Architecture|Data|Interface|Infrastructure|Security|Dependencies|Tooling|Process|Other'
 fail=0
 for f in "$@"; do
   [ -r "$f" ] || { echo "$f: cannot read"; fail=1; continue; }
-  shape=$(grep -v '^[[:space:]]*$' "$f" | sed -E \
-    -e 's/^# ADR-[0-9]{4}: .+/what/' \
-    -e "s/^Category: ($categories)\.\$/category/" \
-    -e 's/^Decided [0-9]{4}-[0-9]{2}-[0-9]{2}\.$/when/' \
-    -e 's/^Because .+/why/' \
-    -e 's/^Superseded by ([a-z0-9][a-z0-9-]* )?ADR-[0-9]{4}\.$/superseded/' \
-    -e '/^(what|category|when|why|superseded)$/!s/.*/other/' \
-    | uniq -c | awk '{ printf "%s%s ", $2, ($1 > 1 ? "(x" $1 ")" : "") }')
+  # One word per line or paragraph. Text inside a section is a paragraph,
+  # however many lines it wraps over; text outside one is "other".
+  shape=$(awk -v cats="$categories" '
+    /^[[:space:]]*$/ { inpara = 0; next }
+    /^# ADR-[0-9][0-9][0-9][0-9]: ./ { print "what"; next }
+    $0 ~ "^Category: (" cats ")\\.$" { print "category"; next }
+    /^Decided [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\.$/ { print "when"; next }
+    /^Superseded by ([a-z0-9][a-z0-9-]* )?ADR-[0-9][0-9][0-9][0-9]\.$/ { print "superseded"; sec = 0; next }
+    /^## Brief$/ { print "brief"; sec = 1; inpara = 0; next }
+    /^## Rationale$/ { print "rationale"; sec = 1; inpara = 0; next }
+    /^#/ { print "other"; sec = 0; next }
+    sec { if (!inpara) print "para"; inpara = 1; next }
+    /^Because ./ { print "why"; next }
+    { print "other" }
+  ' "$f" | uniq -c | awk '{ printf "%s%s ", $2, ($1 > 1 ? "(x" $1 ")" : "") }')
+  limit=100
   case "$shape" in
-    "what category when why "|"what category when why superseded ") ;;
-    *) echo "$f: needs what, category, when, why and nothing else; found: $shape"; fail=1 ;;
+    "what category when brief para rationale para "|"what category when brief para rationale para superseded ") ;;
+    "what category when why "|"what category when why superseded ") limit=55 ;;
+    *) echo "$f: needs what, category, when, then a Brief and a Rationale of one paragraph each, and nothing else; found: $shape"; fail=1 ;;
   esac
   grep -q '`' "$f" && { echo "$f: names code in backticks: that belongs in the code"; fail=1; }
   words=$(wc -w < "$f")
-  [ "$words" -le 55 ] || { echo "$f: $words words, the limit is 55"; fail=1; }
+  [ "$words" -le "$limit" ] || { echo "$f: $words words, the limit is $limit"; fail=1; }
 done
 exit $fail
