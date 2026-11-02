@@ -83,6 +83,7 @@ internal static partial class GpuGolden
         // Given a snow flake or a roof drip instead of a rain drop
         // When it is shaded in each of the three cases above
         // Then it follows the same three rules
-        check.Expect(got.Length == 36, "rain look E4: rain, snow and drips each ran the three cases above");
+        check.Expect(got[2] != got[14] && got[2] != got[26] && got[14] != got[26],
+            $"rain look E4: rain, snow and drips must each take their own shading, not one copied across: daylight alphas {got[2]:F3}, {got[14]:F3}, {got[26]:F3}");
     }
 }
