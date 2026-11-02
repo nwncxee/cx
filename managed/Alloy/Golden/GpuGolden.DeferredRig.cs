@@ -32,6 +32,8 @@ internal sealed class DeferredRigScene
     internal bool WalkFromContent;
     /// <summary>The walk built without wave lockstep, as a device whose subgroups offer no ballot builds it.</summary>
     internal bool NoWave;
+    /// <summary>The walk built with wave lockstep where this device offers ballot (<c>light.deferredwave 1</c>).</summary>
+    internal bool Wave;
     /// <summary>Set by the run: the period line's counters -- pixels the walk lit, the entries they walked, the most one walked.</summary>
     internal (uint Pixels, uint Sum, uint Most) Walked;
 }
@@ -137,9 +139,9 @@ public sealed unsafe partial class AlloyRenderer
     /// row from the top; null (logged) when a stage or a resource was refused.</summary>
     internal static float[]? DeferredRig(VkBackend vk, DeferredRigScene sc, ExtenderLog log)
     {
-        string? wave = sc.NoWave ? null : VkDefWaveOr(vk, null);
+        string? wave = sc.Wave && !sc.NoWave ? VkDefWaveOr(vk, null) : null;
         VkDefStage? walk = VkDefBuild(vk, DeferredLights.ShdCs, wave, "rig walk", log, sc.WalkOverride, out sc.WalkFromContent);
-        VkDefStage? film = VkDefBuild(vk, DeferredLights.ShdCs, sc.NoWave ? "CX_FILM_PASS 1" : VkDefWaveOr(vk, "CX_FILM_PASS 1"),
+        VkDefStage? film = VkDefBuild(vk, DeferredLights.ShdCs, sc.Wave && !sc.NoWave ? VkDefWaveOr(vk, "CX_FILM_PASS 1") : "CX_FILM_PASS 1",
                                       "rig film", log, null, out _);
         VkDefStage? build = VkDefBuild(vk, AlloyLights.ShdClusterCs, null, "rig froxel build", log, null, out _);
         PipelineId fill = vk.CreateCompute(RigFillText(), "rig fill");

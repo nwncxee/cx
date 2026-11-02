@@ -79,10 +79,10 @@ internal static class Lighting
         // froxel changes slice every few pixels down a sloped floor, so a wave walked several lists at once; the
         // tile's list is one, and its depth bound is the surface's own.</para>
         DeferredTiles = G.Toggle("deferredtiles", "deferredtiles", true, Tier.ChatOnly);
-        // On a device whose subgroups offer ballot, a wave reads each light index once and broadcasts it, and reduces the
-        // tile's depth slab before one atomic. Chat-only, the A/B for how the walk scales in a crowded area: on the docks
-        // save the wave walk was the slower (1.00 ms against 0.81), and the question is whether it holds as lights grow.
-        DeferredWave = G.Toggle("deferredwave", "deferredwave", true, Tier.ChatOnly);
+        // On a device whose subgroups offer ballot, 1 has a wave read each light index once and broadcast it, and reduce the
+        // tile's depth slab before one atomic. Chat-only, an A/B. OFF by default: it was the slower walk both on the docks
+        // save (1.00 ms against 0.81) and in a crowded multiplayer area (1.80 against 1.49).
+        DeferredWave = G.Toggle("deferredwave", "deferredwave", false, Tier.ChatOnly);
         // CX-188: the light record's A/B -- off, every blended lit fragment walks the lights again, even one lying on
         // a surface the deferred pass already lit (a floor decal). Chat-only, a bench question like the one above.
         LightRec = G.Toggle("lightrec", "lightrec", true, Tier.ChatOnly);

@@ -23,6 +23,9 @@ internal static partial class GpuGolden
         // When the deferred lights draw it
         // Then every pixel matches what the previous build draws
         DwMatch(vk, check, log, "wall", DwWall(), "E3 stone wall under 40 lamps");
+        DeferredRigScene waved = DwWall();
+        waved.Wave = true;
+        DwMatch(vk, check, log, "wall", waved, "E3 stone wall under 40 lamps, the walk with wave lockstep");
 
         // Given plain, glossy, clear-coated, sheen, skin and iridescent-film surfaces side by side under the same lamps
         // When the deferred lights draw them

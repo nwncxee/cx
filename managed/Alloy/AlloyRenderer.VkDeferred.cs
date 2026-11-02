@@ -50,10 +50,10 @@ public sealed unsafe partial class AlloyRenderer
         /// built on the first frame an "every light" escape asks for it (<c>shadow.cap 0</c>).</summary>
         public VkDefStage? Walk, Film, Shadow, InLoop;
         public bool InLoopFailed;
-        /// <summary>The walk and film pass without wave lockstep, built the first frame <c>light.deferredwave 0</c> asks
-        /// for them on a device whose <see cref="Walk"/> and <see cref="Film"/> have it.</summary>
-        public VkDefStage? Plain, PlainFilm;
-        public bool PlainFailed;
+        /// <summary>The walk and film pass with wave lockstep, built the first frame <c>light.deferredwave 1</c> asks for
+        /// them on a device whose subgroups offer ballot.</summary>
+        public VkDefStage? Wave, WaveFilm;
+        public bool WaveFailed;
         /// <summary>The light records this frame, the counters both dispatches add to, and <see cref="DeferredBlock"/>.</summary>
         public BufferId Lights, Stats, Block;
         public long LightCap;
@@ -182,25 +182,25 @@ public sealed unsafe partial class AlloyRenderer
         }
     }
 
-    /// <summary>The walk and film pass this frame: the device's own, or the pair without wave lockstep while
-    /// <c>light.deferredwave</c> is 0 on a device that has it -- the A/B for how the walk scales in a crowded area.</summary>
+    /// <summary>The walk and film pass this frame: the shipped pair, or the pair with wave lockstep while
+    /// <c>light.deferredwave</c> is 1 on a device that has ballot -- the A/B for how the walk scales in a crowded area.</summary>
     private static (VkDefStage Walk, VkDefStage? Film) VkDefPick(VkBackend vk, ExtenderLog log)
     {
         VkDeferredState d = _vkdef;
-        if (!vk.WaveOps || Lighting.DeferredWave.V || d.PlainFailed) return (d.Walk!, d.Film);
-        if (d.Plain == null)
+        if (!vk.WaveOps || !Lighting.DeferredWave.V || d.WaveFailed) return (d.Walk!, d.Film);
+        if (d.Wave == null)
         {
-            d.Plain = VkDefBuild(vk, DeferredLights.ShdCs, null, "vk deferred walk without wave lockstep", log);
-            d.PlainFilm = VkDefBuild(vk, DeferredLights.ShdCs, "CX_FILM_PASS 1", "vk deferred film without wave lockstep", log);
-            if (d.Plain == null || d.PlainFilm == null)
+            d.Wave = VkDefBuild(vk, DeferredLights.ShdCs, VkDefWave, "vk deferred walk with wave lockstep", log);
+            d.WaveFilm = VkDefBuild(vk, DeferredLights.ShdCs, "CX_FILM_PASS 1\n" + VkDefWave, "vk deferred film with wave lockstep", log);
+            if (d.Wave == null || d.WaveFilm == null)
             {
-                d.PlainFailed = true;
-                log.Always("AlloyRenderer: the Vulkan deferred walk without wave lockstep did not build (logged above) -- "
-                         + "light.deferredwave 0 keeps the wave walk");
+                d.WaveFailed = true;
+                log.Always("AlloyRenderer: the Vulkan deferred walk with wave lockstep did not build (logged above) -- "
+                         + "light.deferredwave 1 keeps the shipped walk");
                 return (d.Walk!, d.Film);
             }
         }
-        return (d.Plain, d.PlainFilm);
+        return (d.Wave, d.WaveFilm);
     }
 
     /// <summary>The walk this frame binds: the in-loop-tap variant while an "every light" escape is on
@@ -211,7 +211,7 @@ public sealed unsafe partial class AlloyRenderer
         if (AlloyLights.ShadowCap > 0f && AlloyLights.ShadowPerPixel > 0f) return shipped;
         if (d.InLoop == null && !d.InLoopFailed)
         {
-            d.InLoop = VkDefBuild(vk, DeferredLights.ShdCs, VkDefWaveOr(vk, "CX_SH_INLOOP 1"), "vk deferred in-loop taps", log);
+            d.InLoop = VkDefBuild(vk, DeferredLights.ShdCs, "CX_SH_INLOOP 1", "vk deferred in-loop taps", log);
             if (d.InLoop == null)
             {
                 d.InLoopFailed = true;
@@ -268,8 +268,8 @@ public sealed unsafe partial class AlloyRenderer
         if (d.Shadow == null)
         {
             d.Shadow = VkDefBuild(vk, DeferredShadows.ShdCs, null, "vk deferred shadow record", log);
-            d.Walk = VkDefBuild(vk, DeferredLights.ShdCs, VkDefWaveOr(vk, null), "vk deferred walk", log);
-            d.Film = VkDefBuild(vk, DeferredLights.ShdCs, VkDefWaveOr(vk, "CX_FILM_PASS 1"), "vk deferred film", log);
+            d.Walk = VkDefBuild(vk, DeferredLights.ShdCs, null, "vk deferred walk", log);
+            d.Film = VkDefBuild(vk, DeferredLights.ShdCs, "CX_FILM_PASS 1", "vk deferred film", log);
             if (VkDefWaveNote(vk.WaveOps, ref d.WaveNoted) is { } note) log.Always(note);
             d.Stats = vk.CreateBuffer(new BufferDesc(VkDefStatsWords * sizeof(uint), BufferUse.Storage | BufferUse.CopySrc,
                                                      MemoryKind.Device, "vk deferred stats"));
