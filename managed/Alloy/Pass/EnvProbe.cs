@@ -66,7 +66,7 @@ internal static class EnvProbe
     }
     /// <summary><c>light.probe</c>: gates <see cref="Wanted"/>, which is re-asked every frame, so the probe
     /// idles rather than un-arming and a re-enable captures at the next edge.</summary>
-    private static bool _on => Lighting.Probe.V;
+    internal static bool On => Lighting.Probe.V;
     private static int _lastFrame = -MinFrames;
     private static ExtenderLog? _log;
     private static float _far = 500f;
@@ -141,7 +141,7 @@ internal static class EnvProbe
     /// has walked <see cref="MoveDist"/> out of the last one. The frame floor sits in front of both.</summary>
     internal static bool Wanted(Vector3 eye, int frame)
     {
-        if (!_on || LightmapBake.Held) return false;
+        if (!On || LightmapBake.Held) return false;
         if (frame - _lastFrame < MinFrames) return false;
         return !Ready || Vector3.DistanceSquared(eye, Origin) > MoveDist * MoveDist;
     }

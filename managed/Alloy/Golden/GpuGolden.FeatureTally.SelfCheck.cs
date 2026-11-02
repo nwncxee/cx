@@ -15,11 +15,13 @@ internal static partial class GpuGolden
     {
         if (!BlendStages(vk, log, out ShaderId vs, out ShaderId fs)) { check.Expect(false, "the feature tally golden's stages were refused (logged above)"); return; }
         bool held = vk.UnderHold;
+        // the counts start again on the edge into a hold, so it has to be crossed, not set
         vk.UnderHold = false;
         vk.UnderHold = true;
-        PipelineId grass = BlendPipeline(vk, vs, fs, "vk grass golden", Format.Rg16F, BlendFactor.One, BlendFactor.One);
+        // each pipeline its own target format: equal descs share one pipeline, which is built, and counted, once
+        PipelineId grass = BlendPipeline(vk, vs, fs, PipeFeatures.Grass + "golden", Format.Rg16F, BlendFactor.One, BlendFactor.One);
         vk.UnderHold = false;
-        PipelineId probe = BlendPipeline(vk, vs, fs, "vk probe golden", Format.R32F, BlendFactor.One, BlendFactor.One);
+        PipelineId probe = BlendPipeline(vk, vs, fs, PipeFeatures.Probe + "golden", Format.R32F, BlendFactor.One, BlendFactor.One);
         PipelineId other = BlendPipeline(vk, vs, fs, "golden no feature", Format.R16F, BlendFactor.One, BlendFactor.One);
         string line = vk.FeatureLine;
         check.Expect(!grass.IsNull && !probe.IsNull && !other.IsNull, "a feature tally golden pipeline was refused (logged above)");
@@ -32,6 +34,8 @@ internal static partial class GpuGolden
         string again = vk.FeatureLine;
         check.Expect(again.Contains(": grass 0 under the hold, 0 on the frame;") && again.Contains("; environment probe 0 under the hold, 0 on the frame;"),
             $"a new hold starts the counts again: \"{again}\"");
+        ExtenderLog.Flush();
+        check.Expect(ExtenderLog.TailHas(line), $"a hold that begins inside the last lift's window writes that window's line first: \"{line}\"");
         vk.Destroy(grass); vk.Destroy(probe); vk.Destroy(other); vk.Destroy(vs); vk.Destroy(fs);
         vk.UnderHold = held;
         log.Info($"GpuGolden: feature tally -- \"{line}\", then \"{again}\"");

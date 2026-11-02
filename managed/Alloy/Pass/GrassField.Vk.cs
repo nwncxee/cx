@@ -99,7 +99,7 @@ internal static unsafe partial class GrassField
     /// <summary>Does sun cascade <paramref name="i"/> take last pass's blades as casters? Under <see cref="Grass.Shadow"/>,
     /// with grass drawn. A grass cascade's moving-caster layer re-bakes every frame: the sway is continuous motion.</summary>
     internal static bool CastsInto(int i)
-        => i < Grass.Shadow.V && _vkg.Drawn.Patches > 0 && Grass.Enabled.V && !_off && !_down.Failed && AlloyRenderer.VkGrassCasts;
+        => i < Grass.Shadow.V && _vkg.Drawn.Patches > 0 && VkOn && AlloyRenderer.VkGrassCasts;
 
     /// <summary>This frame's visible-patch table, two uvec4 a patch.</summary>
     internal static ReadOnlySpan<uint> VkPatches(int n) => new(_visTable, 0, n * 8);

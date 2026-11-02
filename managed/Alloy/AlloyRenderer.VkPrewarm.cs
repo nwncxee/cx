@@ -37,13 +37,17 @@ public sealed unsafe partial class AlloyRenderer
         FeatDepthSets = [VkTargets.Prepass, VkTargets.ForwardDepth], DecalSets = [VkTargets.Decal], MaskSets = [VkTargets.Mask],
         VelocitySets = [VkTargets.Velocity];
 
-    /// <summary>Every pipeline the hold should leave built, under the hold: the materials', then the passes' that draw
-    /// beside them.</summary>
+    /// <summary>Every pipeline the hold should leave built, under the hold: the materials', then those of the passes
+    /// that do not draw there -- the probe, which stands down, and CX's windows, which only the cover draws. Grass and
+    /// particles draw under the hold, so they build their own.</summary>
     private static void VkPrewarm(VkBackend vk, ExtenderLog log)
     {
         if (!vk.UnderHold) return;
         long since = Stopwatch.GetTimestamp();
-        if (VkPrewarmMaterials(vk, log, since)) VkPrewarmPasses(vk, log, since);
+        if (!VkPrewarmMaterials(vk, log, since) || VkPrewarmSpent(since)) return;
+        // ponytail: the probe's three stages build in one frame, past the budget on a slow compiler; split it if one stalls
+        if (EnvProbe.On) VkProbeEnsure(vk, VkProbeOwner(vk), log);
+        if (!VkPrewarmSpent(since)) GuiPassVk.PrewarmWindows(vk, since, log);
     }
 
     /// <summary>The stock programs, the optional passes' programs (built here if their pass has not run yet; none of
@@ -68,17 +72,8 @@ public sealed unsafe partial class AlloyRenderer
         return true;
     }
 
-    /// <summary>The setup of the passes that do not draw under the hold: the environment probe, which stands down
-    /// there, then CX's windows, which only the cover draws. Grass and particles draw, so they build their own.</summary>
-    private static void VkPrewarmPasses(VkBackend vk, ExtenderLog log, long since)
-    {
-        if (Lighting.Probe.V) VkProbeEnsure(vk, VkProbeOwner(vk), log);
-        if (Spent(since)) return;
-        GuiPassVk.PrewarmWindows(vk, log);
-    }
-
     /// <summary>The hold frame has spent <see cref="VkPrewarmBudgetMs"/> since <paramref name="since"/>.</summary>
-    private static bool Spent(long since) => Stopwatch.GetElapsedTime(since).TotalMilliseconds > VkPrewarmBudgetMs;
+    internal static bool VkPrewarmSpent(long since) => Stopwatch.GetElapsedTime(since).TotalMilliseconds > VkPrewarmBudgetMs;
 
     /// <summary>Milliseconds of building one hold frame spends before the rest waits for the next, so a device that
     /// compiles whole pipelines keeps the loading screen drawing.</summary>
@@ -99,7 +94,7 @@ public sealed unsafe partial class AlloyRenderer
                 if (t == VkTargets.Cover && _vkCover.Samples <= 0) continue;
                 VkPipeline(p, f, t, 0, rated: false);
                 if (rate && t is VkTargets.Colour or VkTargets.ColourRefl) VkPipeline(p, f, t, 0, rated: true);
-                if (Spent(since)) return false;
+                if (VkPrewarmSpent(since)) return false;
             }
         }
         return true;

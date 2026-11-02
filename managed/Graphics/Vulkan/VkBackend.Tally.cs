@@ -1,5 +1,7 @@
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using CX.Rhi;
 
 namespace CX.Graphics.Rhi;
 
@@ -24,15 +26,16 @@ internal sealed unsafe partial class VkBackend
         public readonly int[] FeatHeld = new int[Features.Length], FeatFrame = new int[Features.Length];
     }
 
-    /// <summary>The passes the hold prewarms beside the materials, each told by the label prefix its pipelines carry.</summary>
+    /// <summary>The passes the by-feature line counts, each told by the label prefix its pipelines carry.</summary>
     private static readonly (string Name, string Prefix)[] Features =
-        [("grass", "vk grass"), ("particles", "vk particles"), ("environment probe", "vk probe"), ("CX windows", "vk CX window")];
+        [("grass", PipeFeatures.Grass), ("particles", PipeFeatures.Particles), ("environment probe", PipeFeatures.Probe),
+         ("CX windows", PipeFeatures.CxWindow)];
 
     /// <summary>The <see cref="Features"/> entry pipeline <paramref name="what"/> belongs to, or -1.</summary>
     private static int FeatureOf(string what)
     {
         for (int i = 0; i < Features.Length; i++)
-            if (what.StartsWith(Features[i].Prefix, System.StringComparison.Ordinal)) return i;
+            if (what.StartsWith(Features[i].Prefix, StringComparison.Ordinal)) return i;
         return -1;
     }
 
@@ -51,7 +54,12 @@ internal sealed unsafe partial class VkBackend
         {
             TallyState t = _tally;
             if (t.UnderHold && !value) { t.LiftedAt = Stopwatch.GetTimestamp(); t.AfterLift = t.OthersAfterLift = 0; t.Missed.Clear(); t.Others.Clear(); }
-            if (!t.UnderHold && value) { System.Array.Clear(t.FeatHeld); System.Array.Clear(t.FeatFrame); }
+            if (!t.UnderHold && value)
+            {
+                if (t.LiftedAt != 0) CloseWindow(t);
+                Array.Clear(t.FeatHeld);
+                Array.Clear(t.FeatFrame);
+            }
             t.UnderHold = value;
         }
     }
@@ -106,22 +114,26 @@ internal sealed unsafe partial class VkBackend
         }
     }
 
+    /// <summary>The window after the last lift's two lines to the log, and the window shut: when it has run its length,
+    /// or when the next hold begins first, before that hold's counts start again.</summary>
+    private void CloseWindow(TallyState t)
+    {
+        _log.Always($"VkBackend: [vkpipe] after the loading screen: {t.AfterLift} material pipeline{(t.AfterLift == 1 ? "" : "s")} "
+                  + $"built on the frame in the first {AfterLiftSeconds:F0} s"
+                  + (t.Missed.Count > 0 ? $", the first {string.Join("; ", t.Missed)}" : "")
+                  + $"; {t.OthersAfterLift} other pipeline{(t.OthersAfterLift == 1 ? "" : "s")}"
+                  + (t.Others.Count > 0 ? $", the first {string.Join("; ", t.Others)}" : ""));
+        _log.Always($"VkBackend: {FeatureLine}");
+        t.LiftedAt = 0;
+    }
+
     /// <summary>The period's line: pipelines built on the frame, their milliseconds and the slowest, the material ones
     /// among them, and those built under the loading hold; once the window after a lift has closed, its own line goes
     /// to the log first. Starts the next period.</summary>
     internal string PipelinePeriod()
     {
         TallyState t = _tally;
-        if (t.LiftedAt != 0 && !InWindow(t))
-        {
-            _log.Always($"VkBackend: [vkpipe] after the loading screen: {t.AfterLift} material pipeline{(t.AfterLift == 1 ? "" : "s")} "
-                      + $"built on the frame in the first {AfterLiftSeconds:F0} s"
-                      + (t.Missed.Count > 0 ? $", the first {string.Join("; ", t.Missed)}" : "")
-                      + $"; {t.OthersAfterLift} other pipeline{(t.OthersAfterLift == 1 ? "" : "s")}"
-                      + (t.Others.Count > 0 ? $", the first {string.Join("; ", t.Others)}" : ""));
-            _log.Always($"VkBackend: {FeatureLine}");
-            t.LiftedAt = 0;
-        }
+        if (t.LiftedAt != 0 && !InWindow(t)) CloseWindow(t);
         string line = $"[vkpipe] {t.Frame} pipeline{(t.Frame == 1 ? "" : "s")} built on the frame in {t.FrameMs:F2} ms "
                     + $"(worst {t.WorstMs:F2} ms), {t.Material} of them a material's; {t.Held} under the loading hold";
         t.Frame = t.Material = t.Held = 0;

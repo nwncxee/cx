@@ -247,14 +247,16 @@ The approved examples for the loading hold's pipeline prewarm. It copies the doc
 quicksave` in the user directory, `savenfo.txt` naming Waterdeep) or takes `--saves DIR`, loads it through
 `perf-save.sh`, whose throwaway home starts with an empty shader and pipeline cache, and reads the
 `[vkpipe] after the loading screen` line. PASS means no material pipeline was built on the frame in the first 10 s
-past the hold. The line also names the other pipelines the frame still built.
+past the hold. The line also names the other pipelines the frame still built; outside the four features below,
+nothing grades those yet.
 
-`tools/live/hold_prewarm_approved_examples.sh` grades the passes the hold prewarms beside the materials, from the
-`[vkpipe] by feature` line written with it: grass, particles, the environment probe and CX's windows, each counted
-under the hold and on the frame in the 10 s after. Its first example passes when none of the four built on the
-frame; its second runs with `grass.enabled=false` and passes when no grass pipeline was built at all. `--only 1|2`
-runs one. `tools/live/hold_length_regression.sh --before LOG` checks that the hold lifts no later than it did in
-`LOG`, a docks run's `cx.log` on the build before.
+`tools/live/hold_prewarm_approved_examples.sh` (run it with `bash`) reads the `[vkpipe] by feature` line written
+beside it: grass, particles, the environment probe and CX's windows, each counted under the hold and on the frame
+in the 10 s after. Its first example passes when each of the four was built and none on the frame; its second runs
+with `grass.enabled=false` and passes when no grass pipeline was built at all. `--only 1|2` runs one.
+`tools/live/hold_length_regression.sh --before LOG [--before LOG ...] [--rounds N]` checks that the median hold
+over N docks runs (3 by default) lifts no later than the median of the `LOG`s, docks runs' `cx.log` on the build
+before. The hold varies by seconds from run to run, so give it more than one of each.
 
 ## Deferred walk A/B (`tools/live/deferred_walk_*.sh`)
 

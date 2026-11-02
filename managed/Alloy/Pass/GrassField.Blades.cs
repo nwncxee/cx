@@ -122,7 +122,7 @@ internal static unsafe partial class GrassField
         if (s.Buf.IsNull || s.Cap < bytes)
         {
             vk.Destroy(s.Buf);
-            s.Buf = vk.CreateBuffer(new BufferDesc(bytes, BufferUse.CopyDst, MemoryKind.Readback, "vk grass atlas readback"));
+            s.Buf = vk.CreateBuffer(new BufferDesc(bytes, BufferUse.CopyDst, MemoryKind.Readback, PipeFeatures.Grass + "atlas readback"));
             s.Cap = s.Buf.IsNull ? 0 : bytes;
             if (s.Buf.IsNull) { why = "the readback buffer was refused"; return false; }
         }

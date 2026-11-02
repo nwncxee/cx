@@ -147,7 +147,7 @@ public sealed class ExtenderLog
     }
 
     /// <summary>Does the log file's last few KiB hold <paramref name="text"/>? Off-device only.</summary>
-    private static bool TailHas(string text)
+    internal static bool TailHas(string text)
     {
         try
         {

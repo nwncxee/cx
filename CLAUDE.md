@@ -240,6 +240,9 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
   (`docs/adr/`, `docs/handoff/` exempt); a machine's paths go through `tools/paths.py`.
 - `compute-pipes.sh`: a `ShaderDesc(ShaderStage.Compute ...)` under `managed/` outside `VkBackend.Pipeline.cs` fails; a
   compute pipeline from GLSL is `VkBackend.CreateCompute`.
+- `pipe-features.sh`: a string literal under `managed/` that starts with a pipeline feature prefix the tally counts by
+  (`vk grass `, `vk particles `, `vk probe `, `vk CX window `, `CX window `) fails outside `Rhi/PipeFeatures.cs`;
+  a label takes its prefix from `PipeFeatures`, so a rename cannot leave the by-feature count at zero.
 - `adr.sh`: a decision record under `docs/adr/` that `bin/check-adr` refuses (its shape, backticks, over 55 words) fails.
 - `world-depth.sh`: a world depth read decoded as GL's (`d * 2.0 - 1.0`) or tested against GL's far plane (1.0) fails --
   in a `.glsl` under `managed/Alloy/Shaders/`, in a helper a world depth reaches through a parameter, or in a GLSL string
