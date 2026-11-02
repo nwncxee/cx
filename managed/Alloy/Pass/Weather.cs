@@ -40,6 +40,12 @@ internal static unsafe partial class Weather
     internal static byte Type;
     internal static Kind CurrentKind;
     internal static float Density;
+    /// <summary>The share of one whole rain the far veil in the fog froxels carries: the area's density times the
+    /// density dial, halved for snow as the lattice's own instance count is, and 0 wherever Alloy draws nothing.</summary>
+    internal static float VeilShare => _off || _failed || !Enabled.V || FrameInputs.Interior
+                                    || CurrentKind == Kind.None || Density <= 0f
+        ? 0f : Math.Clamp(Density * DensityScale.V * (CurrentKind == Kind.Snow ? 0.5f : 1f), 0f, 1f);
+
     /// <summary>The area the state belongs to; a SetWeather from another area resets it.</summary>
     private static IntPtr _area;
     private static int _sets;

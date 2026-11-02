@@ -34,6 +34,10 @@ internal static unsafe class FogVolume
     private const float Rise = 0.1f;
     /// <summary>The ramp's horizon band a pass that cannot read the volume (a probe face, a reflection) fogs its sky with.</summary>
     internal const float CaptureBand = 0.15f;
+    /// <summary><c>uVFog.x</c> where the volume IS the fog: the area's ramp is replaced by it.</summary>
+    private const float WholeMode = 1f;
+    /// <summary><c>uVFog.x</c> where the volume carries the far rain veil alone, over the ramp the area draws.</summary>
+    private const float VeilMode = 2f;
 
     /// <summary>The medium's extinction, per metre: <see cref="Haze"/> at the haze floor, <see cref="Wall"/> from
     /// <see cref="End"/> on, rising from nothing at <see cref="Start"/>; both distances from the player.</summary>
@@ -44,6 +48,7 @@ internal static unsafe class FogVolume
     {
         internal GridLocs Grid;
         internal int Height, Noise, Drift, Ambient, Sun, Local, Phase, Jitter, PrevVp, PrevZ, Cubes;
+        internal int Rain, CoverVp, CoverLayer;
     }
 
     /// <summary>Locations of the grid and medium uniforms both passes declare (<c>cx_vfogmed.glsl</c>).</summary>
@@ -55,6 +60,8 @@ internal static unsafe class FogVolume
     {
         public int D;
         public bool CurA, History;
+        /// <summary>The last build carried the rain veil alone, with no haze and no lamps.</summary>
+        public bool Veil;
         public Matrix4x4 PrevVp;
         public float PrevInvLog;
         public long Frame;
@@ -83,6 +90,10 @@ internal static unsafe class FogVolume
     /// <summary>The mode is chosen: the far plane, the cull and the sky band follow the volume's shape rather
     /// than the ramp's.</summary>
     internal static bool On => VolumetricFog.Enabled.V;
+
+    /// <summary>Does the froxel pass run this frame: the fog knob draws the volume, or it is raining and the far
+    /// rain veil needs the froxels. Pure, so a golden judges the same choice the pass makes.</summary>
+    internal static bool Runs(bool raining, bool vfogOn) => vfogOn || raining;
 
     internal static void Attach(ExtenderLog log) => _s.Log = log;
 
@@ -145,18 +156,27 @@ internal static unsafe class FogVolume
         public Vector2 Height, Noise;
         public float Phase;
         public Matrix4x4 PrevVp;
+        /// <summary>The share of one whole rain the far veil carries, 0..1.</summary>
+        public float Rain;
+        /// <summary>This build is the veil alone: no haze, no fog wall, no lamp gather.</summary>
+        public bool Veil;
     }
 
-    /// <summary>This frame's terms for the main view, the drift and the dawn stepped; false (history dropped) when no
-    /// volume is built this frame -- a capture, no perspective, a camera that does not invert.</summary>
+    /// <summary>This frame's terms for the main view, the drift and the dawn stepped, carrying <paramref name="rain"/>
+    /// of a whole rain; false (history dropped) when no volume is built this frame -- a capture, no perspective, a
+    /// camera that does not invert.</summary>
     internal static bool Prepare(in Matrix4x4 view, in Matrix4x4 vpClean, int* viewport, float far, bool main, bool lightingOn,
-                                 out Terms t)
+                                 float rain, out Terms t)
     {
         t = default;
         // a frame without a volume leaves last frame's medium describing a camera from frames ago
         if (!main || viewport[2] <= 0 || viewport[3] <= 0
             || !Matrix4x4.Invert(vpClean, out Matrix4x4 invVp) || !Matrix4x4.Invert(view, out Matrix4x4 camToWorld))
         { _b.History = false; return false; }
+        t.Rain = Math.Clamp(rain, 0f, 1f);
+        t.Veil = !VolumetricFog.Enabled.V;
+        // the two forms are different air: last frame's volume is not this one's history across the edge
+        if (t.Veil != _b.Veil) _b.History = false;
         (t.W, t.H, t.D) = VolumetricFog.Grid;
         float dt = Tick();
         t.InvVp = invVp;
@@ -165,7 +185,9 @@ internal static unsafe class FogVolume
         t.Far = MathF.Max(far, Near * 2f);
         t.LogZ = MathF.Log(t.Far / Near);
         t.Origin = SceneFog.Origin(out _);
-        t.M = MediumFor(FrameInputs.FogOn, FrameInputs.FogStart, FrameInputs.FogEnd, t.Far, VolumetricFog.Haze.V);
+        // a veil build holds neither haze nor fog wall: the area's own ramp still draws, under the veil
+        t.M = t.Veil ? MediumFor(false, 0f, 0f, t.Far, 0f)
+                     : MediumFor(FrameInputs.FogOn, FrameInputs.FogStart, FrameInputs.FogEnd, t.Far, VolumetricFog.Haze.V);
         bool outdoors = !FrameInputs.Interior && !FrameInputs.Blind;
         bool haveSky = SceneFog.TrySky(out Vector3 sky) && outdoors;
         t.Ambient = Ambient(FrameInputs.FogOn, FrameInputs.FogColor, haveSky, sky,
@@ -184,7 +206,7 @@ internal static unsafe class FogVolume
         t.Jit = temporal ? Jitter(_b.Frame) : new Vector3(0f, 0f, 0.5f);
         t.Height = new Vector2(t.Origin.Z + VolumetricFog.Floor.V, VolumetricFog.Height.V);
         t.Noise = new Vector2(VolumetricFog.Noise.V, 1f / MathF.Max(VolumetricFog.NoiseSize.V, 0.5f));
-        t.Local = new Vector3(lightingOn ? VolumetricFog.Lights.V : 0f, VolumetricFog.LightShadows.V ? 1f : 0f, VolumetricFog.Reach.V);
+        t.Local = new Vector3(lightingOn && !t.Veil ? VolumetricFog.Lights.V : 0f, VolumetricFog.LightShadows.V ? 1f : 0f, VolumetricFog.Reach.V);
         t.Phase = VolumetricFog.Aniso.V;
         t.PrevVp = _b.PrevVp;
         t.PrevZ = new Vector4(Near, _b.PrevInvLog, VolumetricFog.Temporal.V, _b.History && temporal ? 1f : 0f);
@@ -207,6 +229,11 @@ internal static unsafe class FogVolume
         LooseBlock.Set(l.Jitter, t.Jit.X, t.Jit.Y, t.Jit.Z);
         LooseBlock.Set(l.PrevVp, prevVp);
         LooseBlock.Set(l.PrevZ, t.PrevZ.X, t.PrevZ.Y, t.PrevZ.Z, t.PrevZ.W);
+        LooseBlock.Set(l.Rain, t.Rain, t.Veil ? 0f : 1f);
+        // the precipitation pass's own map and layer: outside it, and with none baked, the shader reads open sky
+        bool cover = t.Rain > 0f && Weather.Cover.V && CasterPass.CoverFresh;
+        LooseBlock.Set(l.CoverVp, cover ? CasterPass.CoverVp : default);
+        LooseBlock.Set(l.CoverLayer, (float)CasterPass.CoverLayer);
     }
 
     /// <summary>The integration pass's terms, into the open loose block.</summary>
@@ -219,7 +246,7 @@ internal static unsafe class FogVolume
     /// <summary>A built volume: the readers' camera and slice mapping, and next frame's history.</summary>
     internal static void Finish(in Terms t, in Matrix4x4 vpClean)
     {
-        _b.Vp = vpClean; _b.InvLog = 1f / t.LogZ; _b.D = t.D; _b.Built = true;
+        _b.Vp = vpClean; _b.InvLog = 1f / t.LogZ; _b.D = t.D; _b.Built = true; _b.Veil = t.Veil;
         _b.PrevVp = vpClean; _b.PrevInvLog = _b.InvLog; _b.History = true;
         _b.CurA = !_b.CurA; _b.Frame++;
         _s.Runs++;
@@ -238,6 +265,7 @@ internal static unsafe class FogVolume
         Drift = LooseBlock.Loc("uVfDrift"), Ambient = LooseBlock.Loc("uVfAmbient"), Sun = LooseBlock.Loc("uVfSun"),
         Local = LooseBlock.Loc("uVfLocal"), Phase = LooseBlock.Loc("uVfPhase"), Jitter = LooseBlock.Loc("uVfJitter"),
         PrevVp = LooseBlock.Loc("uVfPrevVp"), PrevZ = LooseBlock.Loc("uVfPrevZ"), Cubes = LooseBlock.Loc("uLocalCubes"),
+        Rain = LooseBlock.Loc("uVfRain"), CoverVp = LooseBlock.Loc("uVfCoverVp"), CoverLayer = LooseBlock.Loc("uVfCoverLayer"),
     };
 
     /// <inheritdoc cref="LightLocsOf"/>
@@ -278,19 +306,21 @@ internal static unsafe class FogVolume
     }
 
     /// <summary>The LINEAR light fully fogged geometry converges to, averaged over view directions, while this frame's
-    /// volume is built: the area's fog colour as the medium scatters it.</summary>
+    /// volume is the whole fog: the area's fog colour as the medium scatters it. False under the veil alone, where
+    /// the area's ramp still decides what the horizon converges to.</summary>
     internal static bool Horizon(out Vector3 lin)
     {
         lin = _s.LastAmbient;
-        return _b.Built;
+        return _b.Built && !_b.Veil;
     }
 
-    /// <summary>Push this frame's volume at one program (its <c>uVFog</c> and <c>uVFogVp</c>), or stand it down
-    /// (<c>uVFog.x</c> 0) where none was built or <paramref name="capture"/> says the pass is another camera's.</summary>
+    /// <summary>Push this frame's volume at one program (its <c>uVFog</c> and <c>uVFogVp</c>), as the whole fog or as
+    /// the rain veil over the area's ramp, or stand it down (<c>uVFog.x</c> 0) where none was built or
+    /// <paramref name="capture"/> says the pass is another camera's.</summary>
     internal static void Upload(int vfog, int vfogVp, bool capture)
     {
         bool on = _b.Built && !capture;
-        LooseBlock.Set(vfog, on ? 1f : 0f, _b.D, Near, _b.InvLog);
+        LooseBlock.Set(vfog, on ? (_b.Veil ? VeilMode : WholeMode) : 0f, _b.D, Near, _b.InvLog);
         if (on) LooseBlock.Set(vfogVp, _b.Vp);
     }
 
@@ -307,11 +337,12 @@ internal static unsafe class FogVolume
     /// <summary>A device edge: the history belongs to the volumes that went with it.</summary>
     internal static void Forget() => _b = new FogVolumeBuildState();
 
-    /// <summary>The period line's clause: nothing while the mode is off.</summary>
+    /// <summary>The period line's clause: nothing while the mode is off and no rain asked for the veil.</summary>
     internal static string Stats(int frames)
     {
         (int gw, int gh, int gd) = VolumetricFog.Grid;
-        string s = !VolumetricFog.Enabled.V ? "" : $"vfog {gw}x{gh}x{gd} ({_s.Runs} builds in {frames} frames)";
+        string s = !VolumetricFog.Enabled.V && _s.Runs == 0 ? ""
+                 : $"vfog {gw}x{gh}x{gd} ({_s.Runs} builds in {frames} frames{(VolumetricFog.Enabled.V ? "" : ", rain veil only")})";
         _s.Runs = 0;
         return s;
     }
@@ -411,10 +442,13 @@ internal static unsafe class FogVolume
 
     internal static string Describe()
     {
-        if (!VolumetricFog.Enabled.V) return "OFF -- the fog group draws the fog";
+        (int gw, int gh, int gd) = VolumetricFog.Grid;
+        if (!VolumetricFog.Enabled.V)
+            return _b.Built && _b.Veil
+                 ? $"OFF -- the fog group draws the fog; the {gw}x{gh}x{gd} froxels carry the far rain veil alone"
+                 : "OFF -- the fog group draws the fog";
         Medium m = _s.Last;
         float opaque = OpaqueDistance(FrameInputs.FogOn, FrameInputs.FogStart, FrameInputs.FogEnd, VolumetricFog.Haze.V);
-        (int gw, int gh, int gd) = VolumetricFog.Grid;
         return $"{gw}x{gh}x{gd}  haze {m.Haze:F4}/m  wall {m.Wall:F3}/m over {m.Start:F0}..{m.End:F0} m, bank top {VolumetricFog.Top.V:F0} m  "
              + $"[opaque {(float.IsInfinity(opaque) ? "--" : opaque.ToString("F0"))} m]  "
              + $"ambient {_s.LastAmbient.X:F2},{_s.LastAmbient.Y:F2},{_s.LastAmbient.Z:F2}  "

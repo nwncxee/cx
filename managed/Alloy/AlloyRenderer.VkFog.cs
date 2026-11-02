@@ -23,6 +23,8 @@ public sealed unsafe partial class AlloyRenderer
         public FogVolume.GridLocs S;
         public int SunMedia = -1, LocalMedia = -1;
         public bool Tried, Live;
+        /// <summary>The form the LIVE line last named, so a knob flip says which one draws now.</summary>
+        public bool LiveVeil;
         public ImageId MedA, MedB, SumA, SumB;
         /// <summary>The sum this frame's pass wrote, or last frame's until it runs.</summary>
         public ImageId Total;
@@ -37,8 +39,8 @@ public sealed unsafe partial class AlloyRenderer
     internal static ImageId VkFogVolume => _vkFog.Built ? _vkFog.Total : default;
 
     /// <summary>The volume into <paramref name="cl"/>, the frame's async list: every stage recorded before it reads last
-    /// frame's sum, every one after it this one. Nothing (every reader on the ramp) when the mode is off, the view is a
-    /// capture, or a stage was refused.</summary>
+    /// frame's sum, every one after it this one. Nothing (every reader on the ramp) when neither the mode nor the
+    /// rain asks for it, the view is a capture, or a stage was refused.</summary>
     private static void VkFogPass(VkBackend vk, CommandList cl, in Matrix4x4 view, in Matrix4x4 vpClean, int* viewport,
                                   float near, float far, bool main, bool lightingOn, ExtenderLog log)
     {
@@ -46,8 +48,9 @@ public sealed unsafe partial class AlloyRenderer
         if (s.Dev != vk) _vkFog = s = new VkFogState { Dev = vk };
         s.Built = false;
         FogVolume.NotBuilt();
-        if (!VolumetricFog.Enabled.V || !VkFogEnsure(vk, s, log)) return;
-        if (!FogVolume.Prepare(view, vpClean, viewport, far, main && !_capturing, lightingOn, out FogVolume.Terms t)) return;
+        float rain = Weather.VeilShare;
+        if (!FogVolume.Runs(rain > 0f, VolumetricFog.Enabled.V) || !VkFogEnsure(vk, s, log)) return;
+        if (!FogVolume.Prepare(view, vpClean, viewport, far, main && !_capturing, lightingOn, rain, out FogVolume.Terms t)) return;
         if (!VkFogVolumes(vk, s, t.W, t.H, t.D, log)) return;
         bool a = FogVolume.CurrentIsA;
         ImageId cur = a ? s.MedA : s.MedB, prev = a ? s.MedB : s.MedA;
@@ -90,10 +93,12 @@ public sealed unsafe partial class AlloyRenderer
 
         FogVolume.Finish(in t, vpClean);
         s.Built = true;
-        if (!s.Live)
+        if (!s.Live || s.LiveVeil != t.Veil)
         {
             s.Live = true;
-            log.Always($"AlloyRenderer: the Vulkan volumetric fog is LIVE -- {t.W}x{t.H}x{t.D} froxels, in-scatter then the integral");
+            s.LiveVeil = t.Veil;
+            log.Always($"AlloyRenderer: the Vulkan volumetric fog is LIVE -- {t.W}x{t.H}x{t.D} froxels, "
+                     + (t.Veil ? "the far rain veil alone over the area's ramp" : "in-scatter then the integral"));
         }
     }
 
