@@ -68,7 +68,7 @@ public sealed unsafe partial class AlloyRenderer
     private const int VkDefGroup = 16, VkShGroup = 8;
 
     /// <summary>The counters' words, as <c>cx_deferred_cs</c> declares the block.</summary>
-    private const int VkDefStatsWords = 8;
+    private const int VkDefStatsWords = 4;
 
     /// <summary>The two dispatches into <paramref name="cl"/>, between the colour pass and the blended one -- the
     /// frame-order place GL runs them. <paramref name="vp"/> is the view-projection the prepass rasterised with

@@ -153,6 +153,24 @@ bool CxGbufReadWalk(uvec4 g0, uint g1w, float frameDepth, float slack, out CxGbu
     return true;
 }
 
+/// <see cref="CxGbufReadWalk"/> with the slack fetched only when the record misses the bare tolerance: the slack is
+/// never negative, so a record inside CX_GB_RECORD alone owns the pixel either way, and its four neighbour
+/// fetches go to the records that need them. The same verdict, pixel for pixel.
+bool CxGbufReadWalk(uvec4 g0, uint g1w, float frameDepth, sampler2D depth, ivec2 p, mat4 proj, out CxGbuf g)
+{
+    float off = abs(unpackHalf2x16(g0.y).x - frameDepth);
+    bool bare = (g0.x & CX_GB_DEFERRED) == 0u || off < CX_GB_RECORD * max(frameDepth, 1e-6);
+    return CxGbufReadWalk(g0, g1w, frameDepth, bare ? 0.0 : CxGbufDepthSlack(depth, p, frameDepth, proj), g);
+}
+
+/// <see cref="CxGbufReadHead"/> with the slack fetched lazily, as the walk's own read above.
+bool CxGbufReadHead(uvec4 g0, float frameDepth, sampler2D depth, ivec2 p, mat4 proj, out CxGbuf g)
+{
+    float off = abs(unpackHalf2x16(g0.y).x - frameDepth);
+    bool bare = (g0.x & CX_GB_DEFERRED) == 0u || off < CX_GB_RECORD * max(frameDepth, 1e-6);
+    return CxGbufReadHead(g0, frameDepth, bare ? 0.0 : CxGbufDepthSlack(depth, p, frameDepth, proj), g);
+}
+
 /// The transfer weights (G1.xyz), for a reader that applies them only once its walk is done: decoded at the
 /// top, these seven floats sit live across the whole walk and cost the deferred pass its occupancy.
 void CxGbufWeights(uvec4 g1, inout CxGbuf g)
@@ -174,6 +192,14 @@ void CxGbufFade(uint g2, inout CxGbuf g)
 bool CxGbufRead(uvec4 g0, uvec4 g1, float frameDepth, float slack, out CxGbuf g)
 {
     if (!CxGbufReadWalk(g0, g1.w, frameDepth, slack, g)) return false;
+    CxGbufWeights(g1, g);
+    return true;
+}
+
+/// <see cref="CxGbufRead"/> with the slack fetched lazily, as the walk's own read above.
+bool CxGbufRead(uvec4 g0, uvec4 g1, float frameDepth, sampler2D depth, ivec2 p, mat4 proj, out CxGbuf g)
+{
+    if (!CxGbufReadWalk(g0, g1.w, frameDepth, depth, p, proj, g)) return false;
     CxGbufWeights(g1, g);
     return true;
 }

@@ -163,22 +163,9 @@ float CxLightRank(float att, vec3 cLin, float f2)
 }
 /// The score's own "nothing yet", below every value it can take (-f2 reaches -1 at a light's own reach).
 const float CX_RANK_NONE = -1e30;
-// CX-188 budget: the walk's own census -- x = lights that LIT this pixel, y = hardware shadow taps it still
-// paid, z = list ENTRIES the main loop touched -- for the period line's lights-per-pixel, taps-per-pixel and
-// entries-per-pixel. `x` counts lights that reached the pixel and faced it; `z` counts every entry the loop
-// read, so z - x is what the reach window, the relevance cut and the facing test rejected -- the number the
-// walk pays for and gets nothing back from. The relevance PRE-pass's own touches are not in z: it is a
-// separate walk of the candidate runs. Only cx_deferred_cs defines
-// CX_WALK_STATS; every other program compiles the walk with the three adds absent, not merely unexecuted.
+// A walk written against an older library counts into this; the library itself counts nothing, so it stays zero.
 #ifdef CX_WALK_STATS
 vec3 cxWalkStats = vec3(0.0);
-#define CX_WALK_LIT() cxWalkStats.x += 1.0
-#define CX_WALK_TAP() cxWalkStats.y += 1.0
-#define CX_WALK_ENTRY() cxWalkStats.z += 1.0
-#else
-#define CX_WALK_LIT()
-#define CX_WALK_TAP()
-#define CX_WALK_ENTRY()
 #endif
 uint CxCluster(float viewDepth)
 {
@@ -606,7 +593,6 @@ vec3 CxClusteredLightLm(vec3 worldPos, vec3 N, vec3 V, float viewDepth, float on
     for (uint k = 0u; k < n; k++)
     {
         uint li = CxListIdx(cl, k);
-        CX_WALK_ENTRY();
         // this light's share of the pixel's brightest: light.relevance's own quantity, and with it
         // light.fullmodel's. Continuous in position and in the light set, so neither cut has an edge to draw
         // and no light can POP as the ordering changes -- the share moves, it does not step.
@@ -681,7 +667,6 @@ vec3 CxClusteredLightLm(vec3 worldPos, vec3 N, vec3 V, float viewDepth, float on
         // slot -2 = ambient class: vanilla adds c*att to the ambient term, no N.L, no shadow
         if (slot == -2) { if (!inPages) acc += c * att; continue; }
         if (ndl <= 0.0) continue;   // facing away: no light, and no reason to pay for a cube fetch
-        CX_WALK_LIT();
 #ifndef CX_NO_HOT
         if (hot)
         {
@@ -753,7 +738,6 @@ vec3 CxClusteredLightLm(vec3 worldPos, vec3 N, vec3 V, float viewDepth, float on
 #ifdef CX_SH_INLOOP
             if (!have && (cxShMiss > 0.0 || uShBudget <= 0.0))
             {
-                CX_WALK_TAP();
                 v = CxLocalShadowQ(slot, worldPos, N, ndlRaw, onMover, viewDepth, false);
             }
 #endif

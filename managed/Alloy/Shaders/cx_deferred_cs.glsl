@@ -35,9 +35,6 @@ layout(local_size_x = 16, local_size_y = 16) in;
 // CX-188 step 3: ...and its shadows from the per-pixel visibility record cx_defshadow_cs wrote, not from the
 // walk's own per-fragment cap. CxShadowFetch below is what the walk calls.
 #define CX_SHADOW_SOURCE 1
-// CX-188 budget: ...and the walk counts what it spent here -- lights lit and hardware taps paid, per pixel --
-// so the period line can say the two numbers the budget is about instead of asserting them.
-#define CX_WALK_STATS 1
 
 /// This invocation's pixel CENTRE in window pixels -- the gl_FragCoord.xy of the fragment that wrote the record,
 /// which is what the froxel lookup and the shadow dither are both defined in terms of. Set first in main.
@@ -89,26 +86,14 @@ shared uint sLive, sN;
 /// Lights this tile could not hold, and the min/max of its DEFERRED pixels' linear view depth as float bits
 /// (every depth here is positive, where the bit order is the float order).
 shared uint sDrop, sMinZ, sMaxZ;
-/// CX-188 budget: this tile's census -- lights lit, hardware taps paid, list ENTRIES touched, pixels shaded.
-shared uint sWalk, sTaps, sEntry, sPix;
-/// Lights -- or taps -- one uDefStats[4] / [5] count stands for. 24.5M lights a frame over a 64-frame harvest
-/// would wrap a 32-bit counter outright; in sixteens it has three orders of headroom. Rounded rather than
-/// truncated per group, so neither counter carries a systematic undercount, and a group's error is at most
-/// half a unit against a 256-pixel denominator.
-const uint CX_WALK_UNIT = 16u;
 /// CX-188 step 3: this tile's deferred pixels that found no usable visibility record -- a half-resolution
 /// texel whose own pixel was not deferred, or one no depth/normal weight accepted. They fall back to the
 /// single hardware tap per light, which is a harder shadow rather than a missing one; counted all the same.
 shared uint sMiss;
 
 /// [0] tiles whose list overflowed, [1] the lights they dropped, [2] pixels with no usable shadow record,
-/// [3] lights cx_defshadow_cs left unshadowed past shadow.perpixel's budget, [4] lights LIT, [5] hardware
-/// shadow taps the walk still paid and [7] list ENTRIES the walk touched -- ALL THREE in units of
-/// CX_WALK_UNIT, rounded per group, which is what keeps a 32-bit counter from wrapping between harvests --
-/// and [6] deferred pixels shaded, the denominator of all three. [7] minus [4] is what the walk read and
-/// threw away: the reach window's, the relevance cut's and the facing test's own rejects.
-/// Averages for the period line, not an audit: the quotients resolve to about CX_WALK_UNIT / (pixels in a
-/// group) = 1/16 of a light, a tap or an entry per pixel. Loud by the period line, never silent.
+/// [3] lights cx_defshadow_cs left unshadowed past shadow.perpixel's budget.
+// ponytail: the Vulkan host writes these and harvests none of them; reading them back onto the period line is the upgrade.
 layout(std430, binding = 14) buffer CxDeferredStats { uint uDefStats[]; };
 
 // ---- the list source ------------------------------------------------------------------------------------
@@ -318,8 +303,7 @@ void main()
     // pixels turn out: a group where some lane had returned early would hang on the first one.
     uint lane = gl_LocalInvocationIndex;
     if (lane == 0u)
-    { sMinZ = 0xffffffffu; sMaxZ = 0u; sLive = 0u; sN = 0u; sDrop = 0u; sMiss = 0u;
-      sWalk = 0u; sTaps = 0u; sEntry = 0u; sPix = 0u; }
+    { sMinZ = 0xffffffffu; sMaxZ = 0u; sLive = 0u; sN = 0u; sDrop = 0u; sMiss = 0u; }
     barrier();
 
     ivec2 p = ivec2(gl_GlobalInvocationID.xy) + uRect.xy;
@@ -330,18 +314,26 @@ void main()
     bool inRect = mine;
     if (mine)
     {
-        ndcZ = texelFetch(uGbDepth, p, 0).r;
-        // the forward stage's vDepth: gl_Position.w, which for a perspective projection IS the linear view depth
-        viewDepth = CxDepthViewZ(ndcZ, uProj);
-        mine = CxGbufReadWalk(texelFetch(uGb0, p, 0), texelFetch(uGb1, p, 0).w, viewDepth,
-                              CxGbufDepthSlack(uGbDepth, p, viewDepth, uProj), g);
+        uvec4 g0 = texelFetch(uGb0, p, 0);
+#ifdef CX_FILM_PASS
+        // the film's pixels are the few: its flag first, so every other pixel skips the depth and the record
+        if ((g0.x & CX_GB_FILM) == 0u) mine = false;
+        else
+#endif
+        {
+            ndcZ = texelFetch(uGbDepth, p, 0).r;
+            // the forward stage's vDepth: gl_Position.w, which for a perspective projection IS the linear view depth
+            viewDepth = CxDepthViewZ(ndcZ, uProj);
+            mine = CxGbufReadWalk(g0, texelFetch(uGb1, p, 0).w, viewDepth, uGbDepth, p, uProj, g);
+        }
     }
 #ifndef CX_FILM_PASS
     // a zero where no walk will run: last frame's record must never read as this one's
     if (inRect && !mine) imageStore(uLightRec, p, uvec4(0u));
 #endif
-    // the tile's depth slab is its OWN pixels' -- the one bound a froxel grid cannot have
-    if (mine) { atomicMin(sMinZ, floatBitsToUint(viewDepth)); atomicMax(sMaxZ, floatBitsToUint(viewDepth)); }
+    // the tile's depth slab is its OWN pixels' -- the one bound a froxel grid cannot have. Only the per-tile list
+    // reads it: two same-address atomics a pixel are not free, so the froxel lists' default skips them
+    if (mine && uTiles != 0) { atomicMin(sMinZ, floatBitsToUint(viewDepth)); atomicMax(sMaxZ, floatBitsToUint(viewDepth)); }
     barrier();
 
     // sMinZ > sMaxZ = no deferred pixel in this tile, so there is nothing to cull a light against.
@@ -478,24 +470,6 @@ void main()
 #endif
     }
     if (miss != 0u) atomicAdd(sMiss, miss);
-#ifndef CX_FILM_PASS
-    if (mine)
-    {
-        atomicAdd(sPix, 1u);
-        if (cxWalkStats.x > 0.0) atomicAdd(sWalk, uint(cxWalkStats.x));
-        if (cxWalkStats.y > 0.0) atomicAdd(sTaps, uint(cxWalkStats.y));
-        if (cxWalkStats.z > 0.0) atomicAdd(sEntry, uint(cxWalkStats.z));
-    }
-#endif
     barrier();
-    if (lane == 0u)
-    {
-        if (sMiss != 0u) atomicAdd(uDefStats[2], sMiss);
-        uint walkU = (sWalk + CX_WALK_UNIT / 2u) / CX_WALK_UNIT, tapU = (sTaps + CX_WALK_UNIT / 2u) / CX_WALK_UNIT;
-        uint entU = (sEntry + CX_WALK_UNIT / 2u) / CX_WALK_UNIT;
-        if (walkU != 0u) atomicAdd(uDefStats[4], walkU);
-        if (tapU != 0u) atomicAdd(uDefStats[5], tapU);
-        if (sPix != 0u) atomicAdd(uDefStats[6], sPix);
-        if (entU != 0u) atomicAdd(uDefStats[7], entU);
-    }
+    if (lane == 0u && sMiss != 0u) atomicAdd(uDefStats[2], sMiss);
 }
