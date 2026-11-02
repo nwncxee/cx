@@ -249,6 +249,10 @@ internal static unsafe class PostChain
     /// roll-off, reading neither <c>uKnee</c> nor <c>uAcesMix</c>.</summary>
     internal static string ResolveFs => ShaderSource.Get("cx_resolve_f.glsl");
 
+    /// <summary>The resolve's one call into <c>cx_tonemap</c>: the frame's tone curve lives there and nowhere else,
+    /// so the reactive mask measures the change through the very same call.</summary>
+    internal const string ToneCall = "c = CxTonemap(c, uMode, uKnee, uAcesMix);";
+
     /// <summary>Off-device (run-demo.sh): the knob table has the shape the frame relies on and the shoulder
     /// really is the identity below its knee -- which is the whole parity argument, and the one property no
     /// compile check covers. Writes <c>V</c> directly (a Set would run Changed and arm the cfg writer) and
@@ -314,21 +318,24 @@ internal static unsafe class PostChain
               "Describe names every knob group");
             check.Expect(ResolveFs.Contains("if (uViz == 4)") && ResolveFs.Contains("textureLod(uBloom, vUV, 0.0).rg"),
               "viz 4 paints the velocity target off the bloom unit");
+            check.Expect(ResolveFs.Contains(ToneCall) && AlloyRenderer.ReactiveFs.Contains("CxTonemap(")
+              && !ResolveFs.Contains("uMode == 1"),
+              "the resolve and the reactive mask both grade through CxTonemap, and the resolve keeps no mode chain of its own");
             // Exposure is scene-referred: it multiplies the linear frame BEFORE the tonemap and the encode,
             // never the display value -- a gain after the encode is a gamma-wrong brightness slider.
             check.Expect(ResolveFs.IndexOf("c *= uExposure;", StringComparison.Ordinal)
-              < ResolveFs.IndexOf("if (uMode == 1) c = CxShoulder", StringComparison.Ordinal)
+              < ResolveFs.IndexOf(ToneCall, StringComparison.Ordinal)
               && ResolveFs.IndexOf("c *= uExposure;", StringComparison.Ordinal)
               < ResolveFs.IndexOf("vec3 outc = CxEncode(c);", StringComparison.Ordinal),
               "exposure is applied in linear, before the tonemap and the encode");
-            check.Expect(ResolveFs.Contains("mix(CxShoulder(c, uKnee), CxAces(c), uAcesMix)"),
+            check.Expect(ResolveFs.Contains("if (mode == 2) return mix(CxShoulder(c, knee), CxAces(c), acesMix);"),
               "ACES is mixed against the shoulder, so the darks below the knee are never crushed past the mix");
-            check.Expect(ResolveFs.Contains("else if (uMode == 3) c = CxNeutral(c);")
-              && ResolveFs.IndexOf("else if (uMode == 3) c = CxNeutral(c);", StringComparison.Ordinal)
+            check.Expect(ResolveFs.Contains("if (mode == 3) return CxNeutral(c);")
+              && ResolveFs.IndexOf(ToneCall, StringComparison.Ordinal)
               < ResolveFs.IndexOf("vec3 outc = CxEncode(c);", StringComparison.Ordinal),
-              "mode 3 is PBR Neutral, in the tonemap block before the encode");
+              "mode 3 is PBR Neutral, in the one tone curve the resolve calls before the encode");
             check.Expect(ResolveFs.IndexOf("c += overlay;", StringComparison.Ordinal)
-                         > ResolveFs.IndexOf("else if (uMode == 3) c = CxNeutral(c);", StringComparison.Ordinal)
+                         > ResolveFs.IndexOf(ToneCall, StringComparison.Ordinal)
               && ResolveFs.IndexOf("c += overlay;", StringComparison.Ordinal)
                  < ResolveFs.IndexOf("vec3 outc = CxEncode(c);", StringComparison.Ordinal)
               && ResolveFs.Contains("raw = CxEncode(c + g + overlay);"),

@@ -1,5 +1,7 @@
-// The frame's tone curves, in one place: the resolve grades the frame with them and the reactive mask
-// measures the change the last four passes made through the same curve, so the two cannot drift.
+// The frame's tone curves, in one place: the resolve grades the frame with CxTonemap and the reactive mask
+// measures the change the last four passes made through the same call, so the two cannot drift.
+#ifndef CX_TONEMAP
+#define CX_TONEMAP
 vec3 CxShoulder(vec3 c, float k)
 {
     if (k <= 0.0) return c;
@@ -39,7 +41,10 @@ vec3 CxNeutral(vec3 c)
 vec3 CxTonemap(vec3 c, int mode, float knee, float acesMix)
 {
     if (mode == 1) return CxShoulder(c, knee);
+    // ACES against the SHOULDER, not the raw value: the shoulder is the identity below its knee, so
+    // the mix keeps the darks the ACES toe would crush and takes only the roll-off and colour.
     if (mode == 2) return mix(CxShoulder(c, knee), CxAces(c), acesMix);
     if (mode == 3) return CxNeutral(c);
     return c;
 }
+#endif

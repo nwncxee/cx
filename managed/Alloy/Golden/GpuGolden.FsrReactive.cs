@@ -31,8 +31,11 @@ internal static partial class GpuGolden
         BufferId rb = vk.CreateBuffer(new BufferDesc(FsrDw * FsrDh * 8, BufferUse.CopyDst | BufferUse.CopySrc, MemoryKind.Device, "golden reactive read"));
         try
         {
-            if (vk.FsrReady(FsrRw, FsrRh, FsrDw, FsrDh) != null) return;
-            if (color.IsNull || depth.IsNull || vel.IsNull || react.IsNull || output.IsNull || rb.IsNull) return;
+            // every refusal leaves got at NaN, which E5 reports as a failure; each says why first, so the
+            // log names the step rather than leaving a bare NaN to read
+            if (vk.FsrReady(FsrRw, FsrRh, FsrDw, FsrDh) is string why) { log.Always($"GpuGolden: reactive, FSR is not ready here ({why})"); return; }
+            if (color.IsNull || depth.IsNull || vel.IsNull || react.IsNull || output.IsNull || rb.IsNull)
+            { log.Always("GpuGolden: reactive, an image or the readback buffer was refused (logged above)"); return; }
             var d = new float[FsrRw * FsrRh];
             Array.Fill(d, 0.5f);
             var v = new Half[FsrRw * FsrRh * 2];
@@ -40,7 +43,8 @@ internal static partial class GpuGolden
             Array.Fill(m, (byte)Math.Clamp((int)MathF.Round(mask * 255f), 0, 255));
             if (!vk.Upload(depth, 0, 0, MemoryMarshal.AsBytes(d.AsSpan()))
                 || !vk.Upload(vel, 0, 0, MemoryMarshal.AsBytes(v.AsSpan()))
-                || !vk.Upload(react, 0, 0, m)) return;
+                || !vk.Upload(react, 0, 0, m))
+            { log.Always("GpuGolden: reactive, the depth, velocity or mask upload was refused (logged above)"); return; }
             var px = new Half[FsrRw * FsrRh * 4];
             for (int n = 0; n < ReactFrames + 1; n++)
             {
@@ -51,14 +55,16 @@ internal static partial class GpuGolden
                         int at = (j * FsrRw + i) * 4;
                         px[at] = px[at + 1] = px[at + 2] = g; px[at + 3] = (Half)1f;
                     }
-                if (!vk.Upload(color, 0, 0, MemoryMarshal.AsBytes(px.AsSpan()))) return;
+                if (!vk.Upload(color, 0, 0, MemoryMarshal.AsBytes(px.AsSpan())))
+                { log.Always($"GpuGolden: reactive, frame {n}'s colour upload was refused (logged above)"); return; }
                 PostChain.Jitter(n, FsrRw, FsrRh, PostChain.JitterPhases(FsrDw), out float jx, out float jy);
                 var cl = new CommandList("golden reactive fsr", 1 << 10, log);
                 cl.Upscale(Fsr.Command(color, depth, vel, default, output, FsrRw, FsrRh, jx, jy, 16.6f, 0.1f, 100f, 1f,
                                        n == 0, react));
-                if (!vk.Submit(cl)) return;
+                if (!vk.Submit(cl)) { log.Always($"GpuGolden: reactive, frame {n}'s upscale was refused (logged above)"); return; }
             }
-            if (PostRead(vk, log, output, FsrDw, FsrDh, 8, rb) is not { } bytes) return;
+            if (PostRead(vk, log, output, FsrDw, FsrDh, 8, rb) is not { } bytes)
+            { log.Always("GpuGolden: reactive, the output read-back was refused (logged above)"); return; }
             ReadOnlySpan<Half> o = MemoryMarshal.Cast<byte, Half>(bytes);
             got = (float)o[((FsrDh / 2) * FsrDw + FsrDw / 2) * 4];
         }

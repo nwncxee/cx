@@ -22,7 +22,9 @@ float CxReactiveMask(vec3 toneFinal, vec3 toneCopy)
 void main()
 {
     // the bloom the resolve adds is computed from the finished frame, so it is not here to add: this
-    // measures the passes' own contribution, which is what the history has no record of
+    // measures the passes' own contribution, which is what the history has no record of. A SKY pixel the
+    // resolve grades raw is graded here too, so over sky the change is reported through a curve the frame
+    // does not apply -- monotonic either way, so the mask still rises where a streak crossed.
     vec3 fin = CxTonemap(textureLod(uSrc, vUV, 0.0).rgb * uExposure, uMode, uKnee, uAcesMix);
     vec3 was = CxTonemap(textureLod(uCopy, vUV, 0.0).rgb * uExposure, uMode, uKnee, uAcesMix);
     frag = vec4(CxReactiveMask(fin, was), 0.0, 0.0, 1.0);

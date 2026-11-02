@@ -76,11 +76,7 @@ void main()
     }
     c += b;
     c *= uExposure;
-    if (uMode == 1) c = CxShoulder(c, uKnee);
-    // ACES against the SHOULDER, not the raw value: the shoulder is the identity below its knee, so
-    // the mix keeps the darks the ACES toe would crush and takes only the roll-off and colour.
-    else if (uMode == 2) c = mix(CxShoulder(c, uKnee), CxAces(c), uAcesMix);
-    else if (uMode == 3) c = CxNeutral(c);
+    c = CxTonemap(c, uMode, uKnee, uAcesMix);
     c += overlay;
     vec3 outc = CxEncode(c);
     if (graded < 1.0) outc = mix(raw, outc, graded);

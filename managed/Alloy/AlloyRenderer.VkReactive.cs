@@ -20,7 +20,7 @@ public sealed unsafe partial class AlloyRenderer
         public GuiVkProg? Prog;
         public PipelineId Pipe;
         public CommandList? Side;
-        public bool Tried, Live;
+        public bool Tried, Live, Failed;
         /// <summary>This frame's copy was taken, so the mask is written and its readers may have it.</summary>
         public bool Armed;
         public int Mode = -1, Knee = -1, AcesMix = -1, Exposure = -1;
@@ -110,15 +110,16 @@ public sealed unsafe partial class AlloyRenderer
     }
 
     /// <summary>The program, its pipeline and the two targets at the render size, made once per device and resized
-    /// with the view. False (said once) stands the mask down.</summary>
+    /// with the view. A refusal is said once and stands the mask down for the device.</summary>
     private static bool VkReactiveEnsure(VkBackend vk, VkReactState s, int w, int h, ExtenderLog log)
     {
-        if (w <= 0 || h <= 0) return false;
+        if (s.Failed || w <= 0 || h <= 0) return false;
         if (!s.Tried)
         {
             s.Tried = true;
             s.Side = new CommandList("vulkan reactive", ReactArenaBytes, log);
-            s.Prog = PostChainVk.Program(vk, PostChain.FullscreenVs, ReactiveFs, "reactive mask", q =>
+            // through Content as the resolve's text is: a hak that ships cx_tonemap.shd regrades both, or neither
+            s.Prog = PostChainVk.Program(vk, PostChain.FullscreenVs, ShaderSource.Content(ReactiveFs, log), "reactive mask", q =>
             {
                 s.Mode = q.Loc("uMode"); s.Knee = q.Loc("uKnee");
                 s.AcesMix = q.Loc("uAcesMix"); s.Exposure = q.Loc("uExposure");
@@ -134,6 +135,7 @@ public sealed unsafe partial class AlloyRenderer
             if (s.Prog == null || s.Pipe.IsNull)
             {
                 s.Prog = null;
+                s.Failed = true;
                 log.Always("AlloyRenderer: the Vulkan reactive mask was REFUSED (logged above) -- FSR 3.1 and the TAA "
                          + "resolve keep their own history rules, and a streak may drag over the ground behind it");
             }
@@ -152,7 +154,10 @@ public sealed unsafe partial class AlloyRenderer
         if (!s.Copy.IsNull && !s.Mask.IsNull) return true;
         log.Always($"AlloyRenderer: the Vulkan reactive mask at {w}x{h} was REFUSED (logged above) -- the frame draws "
                  + "without it, as it did before the mask existed");
-        s.Mask = default;
+        vk.Destroy(s.Copy);
+        vk.Destroy(s.Mask);
+        s.Copy = s.Mask = default;
+        s.Failed = true;
         return false;
     }
 }
