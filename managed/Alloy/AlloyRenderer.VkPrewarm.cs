@@ -37,14 +37,14 @@ public sealed unsafe partial class AlloyRenderer
         FeatDepthSets = [VkTargets.Prepass, VkTargets.ForwardDepth], DecalSets = [VkTargets.Decal], MaskSets = [VkTargets.Mask],
         VelocitySets = [VkTargets.Velocity];
 
-    /// <summary>Every pipeline the hold should leave built, under the hold: the materials', then those of the passes
-    /// that do not draw there -- the probe, which stands down, and CX's windows, which only the cover draws. Grass and
-    /// particles draw under the hold, so they build their own.</summary>
+    /// <summary>Every pipeline the hold should leave built, under the hold: the materials' and the shadow casters' for
+    /// any caster yet unseen, then the probe's, which stands down there, and CX's windows', which only the cover draws.
+    /// Grass and particles draw under the hold, so they build their own.</summary>
     private static void VkPrewarm(VkBackend vk, ExtenderLog log)
     {
         if (!vk.UnderHold) return;
         long since = Stopwatch.GetTimestamp();
-        if (!VkPrewarmMaterials(vk, log, since) || VkPrewarmSpent(since)) return;
+        if (!VkPrewarmMaterials(vk, log, since) || !CasterPass.VkPrewarm(vk, since) || VkPrewarmSpent(since)) return;
         // ponytail: the probe's three stages build in one frame, past the budget on a slow compiler; split it if one stalls
         if (EnvProbe.On) VkProbeEnsure(vk, VkProbeOwner(vk), log);
         if (!VkPrewarmSpent(since)) GuiPassVk.PrewarmWindows(vk, since, log);
