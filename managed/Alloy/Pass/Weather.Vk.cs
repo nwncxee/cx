@@ -38,18 +38,20 @@ internal static unsafe partial class Weather
     {
         View = LooseBlock.Loc("uView"), Proj = LooseBlock.Loc("uProj"), Eye = LooseBlock.Loc("uEye"),
         Centre = LooseBlock.Loc("uCentre"), Fall = LooseBlock.Loc("uFall"), Phase = LooseBlock.Loc("uPhase"),
-        Time = LooseBlock.Loc("uTime"), Box = LooseBlock.Loc("uBox"), Size = LooseBlock.Loc("uSize"),
+        Time = LooseBlock.Loc("uTime"), Box = LooseBlock.Loc("uBox"), Size = LooseBlock.Loc("uQuad"),
         Kind = LooseBlock.Loc("uKind"), Drift = LooseBlock.Loc("uDrift"), Tint = LooseBlock.Loc("uTint"),
         Alpha = LooseBlock.Loc("uAlpha"), Soft = LooseBlock.Loc("uSoft"), Viz = LooseBlock.Loc("uViz"),
         CoverLayer = LooseBlock.Loc("uCoverLayer"), Lit = LooseBlock.Loc("uLit"), Back = LooseBlock.Loc("uBack"),
         CoverVp = LooseBlock.Loc("uCoverVp"), CoverSoft = LooseBlock.Loc("uCoverSoft"),
-        Count = LooseBlock.Loc("uCount"), Slot = LooseBlock.Loc("uSlot"), Base = LooseBlock.Loc("uBase"),
+        Count = LooseBlock.Loc("uCount"), Slot = LooseBlock.Loc("uSlot"), Base = LooseBlock.Loc("uBase"), FallStep = LooseBlock.Loc("uFallStep"),
     };
 
     /// <summary>The cull's own terms into the open capture: the <paramref name="count"/> lattice points it walks, the
-    /// draw command <paramref name="slot"/> its survivors count into and the first record <paramref name="first"/> they take.</summary>
-    internal static void WriteCullVk(in Loc l, int count, int slot, int first)
+    /// draw command <paramref name="slot"/> its survivors count into, the first record <paramref name="first"/> they take,
+    /// and the metres <paramref name="fallStep"/> the field fell since the last frame at speed 1.</summary>
+    internal static void WriteCullVk(in Loc l, int count, int slot, int first, float fallStep)
     {
+        LooseBlock.Set(l.FallStep, fallStep);
         LooseBlock.Set(l.Count, count);
         LooseBlock.Set(l.Slot, slot);
         LooseBlock.Set(l.Base, first);

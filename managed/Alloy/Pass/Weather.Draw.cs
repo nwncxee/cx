@@ -36,7 +36,7 @@ internal static unsafe partial class Weather
     internal const int FallCap = (int)(CountCap * DensityMax);
 
     /// <summary>The precipitation program's uniform locations, resolved once per program.</summary>
-    internal struct Loc { public int View, Proj, Eye, Centre, Fall, Phase, Time, Box, Size, Kind, Drift, Depth, Tint, Alpha, Soft, Viz, Cover, CoverVp, CoverLayer, CoverSoft, Lit, Back, Count, Slot, Base; }
+    internal struct Loc { public int View, Proj, Eye, Centre, Fall, Phase, Time, Box, Size, Kind, Drift, Depth, Tint, Alpha, Soft, Viz, Cover, CoverVp, CoverLayer, CoverSoft, Lit, Back, Count, Slot, Base, FallStep; }
     private static double _phase;
     private static float _wobble;
     private static long _ticks;
@@ -108,6 +108,15 @@ internal static unsafe partial class Weather
         SplashTick(dt);
     }
 
+    /// <summary>Metres the field has fallen at speed 1, wrapped at <see cref="PhaseWrap"/>.</summary>
+    internal static double Phase => _phase;
+
+    /// <summary>Where <see cref="Phase"/> wraps.</summary>
+    internal static double PhaseWrap => Range.V * PhaseWrapLengths;
+
+    /// <summary>Whether the frame records rain's own motion: only a temporal resolve, FSR or TAA, reads it.</summary>
+    internal static bool MotionWanted(bool fsr, bool taa) => fsr || taa;
+
     internal static void ContextLost() => MapLost();
     internal static void ResetPeriod() => _drawn = 0;
     internal static string Stats() => _off ? "weather unavailable" : !Enabled.V ? "weather off"
@@ -124,6 +133,9 @@ internal static unsafe partial class Weather
     /// <summary>A rain streak: a thin bright core tapered at both ends, faded where it meets geometry.
     /// Linear, alpha over. <c>/weather viz 1</c> paints the contact fade alone. The colour is the vertex stage's light times the brightness scalar.</summary>
     internal static string RainFs => ShaderSource.Get("cx_rain_f.glsl");
+
+    /// <summary>The velocity stage: a streak's or flake's own fall, written in its core and nowhere on its edge.</summary>
+    internal static string MotionFs => ShaderSource.Get("cx_wx_mot_f.glsl");
 
     /// <summary>A snowflake: a soft white disc, faded where it meets geometry. Linear, alpha over.</summary>
     internal static string SnowFs => ShaderSource.Get("cx_snow_f.glsl");

@@ -256,7 +256,7 @@ internal static unsafe partial class PostStack
     }
 
     /// <summary>The camera velocity, painted off the finished depth into the render-size velocity target, with the
-    /// movers and the grass over it: what TAA and FSR both reproject through. False when its pass did not build.</summary>
+    /// movers, the grass and the precipitation over it: what TAA and FSR both reproject through. False when its pass did not build.</summary>
     private static bool VelocityReady(VkBackend vk, StackVkState s, int* viewport, Matrix4x4* vp, Matrix4x4* vpClean,
                                       ImageId depth, CommandList cl, ExtenderLog log)
     {
@@ -294,6 +294,7 @@ internal static unsafe partial class PostStack
                          new PostChainVk.Inputs(default, default, depth), log);
         AlloyRenderer.VkMoverMotion(vk, cl, s.Vel, w, h, vp, prev, log);
         AlloyRenderer.VkGrassMotion(vk, cl, s.Vel, w, h, vp, prev);
+        AlloyRenderer.VkWeatherMotion(vk, cl, s.Vel, w, h, vp, prev, log);
         cl.EndLabel();
         return true;
     }

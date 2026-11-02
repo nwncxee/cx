@@ -8,12 +8,17 @@ void main()
     vec3 axis, side;
     if (uKind != 2) { axis = uFall; side = normalize(cross(uFall, toCam)); }
     else { side = normalize(cross(vec3(0.0, 0.0, 1.0), toCam)); axis = normalize(cross(toCam, side)); }
-    vec3 pos = P + axis * (corner.y * at.w * 0.5) + side * (corner.x * uSize.y * 0.5);
+    vec3 pos = P + axis * (corner.y * at.w * 0.5) + side * (corner.x * uQuad.y * 0.5);
     vUV = corner;
     vSeed = lit.w;
     vLight = lit.rgb;
     vBehind = uDrops[id + 2u].rgb;
+#ifdef CX_MOTION
+    gl_Position = uVp * vec4(pos, 1.0);
+    vVel = CxMotionVec(gl_Position, uPrevVP * vec4(pos - uFall * uDrops[id + 2u].w, 1.0));
+#else
     vec4 vp = uView * vec4(pos, 1.0);
     vViewZ = vp.z;
     gl_Position = uProj * vp;
+#endif
 }

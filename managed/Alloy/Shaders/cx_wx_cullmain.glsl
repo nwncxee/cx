@@ -22,6 +22,7 @@ void main()
     uint id = gl_GlobalInvocationID.x;
     bool keep = false;
     vec4 at = vec4(0.0), lit = vec4(0.0), sky = vec4(0.0);
+    float speed = 0.75 + float(id & 3u) * 0.125;    // eighths: continuous at the phase wrap
     if (id < uint(uCount))
     {
         vec3 h = CxHash3(id * 2654435761u + 1u);
@@ -29,14 +30,13 @@ void main()
         vec3 R = normalize(cross(F, abs(F.z) < 0.99 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0)));
         vec3 U = cross(R, F);
         vec3 size = vec3(uBox.x, uBox.x, uBox.y);
-        float speed = 0.75 + float(id & 3u) * 0.125;    // eighths: continuous at the phase wrap
         vec3 home = h * size;
         home.z = mod(home.z + uPhase * speed, size.z);
         vec3 c = vec3(dot(uCentre, R), dot(uCentre, U), dot(uCentre, F));
         vec3 q = home + size * floor((c - home) / size + 0.5);
         if (uKind == 2) q.xy += vec2(sin(uTime + h.y * 6.2832), cos(uTime * 1.5 + h.z * 6.2832)) * uDrift;
         vec3 P = R * q.x + U * q.y + F * q.z;
-        float len = uKind != 2 ? uSize.x * (0.5 + 0.8 * h.y) : uSize.x;
+        float len = uKind != 2 ? uQuad.x * (0.5 + 0.8 * h.y) : uQuad.x;
         // no edge: the field thins RADIALLY from 40% of the half-width out, by drop COUNT (a hashed keep)
         // and not by a brightness ramp -- a ramp on a square box read as a band with a corner in it,
         // fewer drops reads as distance
@@ -44,7 +44,7 @@ void main()
         float edge = 1.0 - smoothstep(0.4, 1.0, length(rel));
         vec4 cv = uView * vec4(P, 1.0);
         vec4 cc = uProj * cv;
-        float r = len + uSize.y;
+        float r = len + uQuad.y;
         bool seen = cc.w > -r && abs(cc.x) - r * abs(uProj[0][0]) <= cc.w && abs(cc.y) - r * abs(uProj[1][1]) <= cc.w;
         // the cover test at a hashed offset in the fall-normal plane: wind and splash feather a roof's edge
         vec3 Pc = P + (R * (h.y - 0.5) + U * (h.z - 0.5)) * uCoverSoft * 2.0;
@@ -54,7 +54,7 @@ void main()
             // no surface normal: the sun reaches a drop through a forward-scattering lobe, a lamp from wherever it stands
             vec3 V = normalize(uEye - P);
             vec3 up = normalize(vec3(0.0, 0.0, 1.0) - V);
-            sky = vec4(uAreaAmbient * (uProbeMips > 0.0 ? CxAmbientShape(up) : vec3(1.0)), 0.0);
+            sky = vec4(uAreaAmbient * (uProbeMips > 0.0 ? CxAmbientShape(up) : vec3(1.0)), uFallStep * speed);
             vec3 light = uAreaAmbient + uAreaDiffuse * 0.5;
             if (uLit != 0)
             {

@@ -32,6 +32,18 @@ public sealed unsafe partial class AlloyRenderer
         public bool CullTried;
         /// <summary>The cull's survivors, three vec4 each, and its two draw commands: the fall, then the drips.</summary>
         public BufferId Drops, Cmd;
+        /// <summary>This frame's cull kept a fall of <see cref="Kind"/> and drips, so the velocity can draw them again.</summary>
+        public bool Fell, Dripped;
+        public int Kind;
+        /// <summary>The phase the last cull saw, and whether a cull ran then: a frame after none takes no fall step.</summary>
+        public double LastPhase;
+        public bool CulledLast;
+        public VkProg? Motion;
+        public PipelineId MotionPipe;
+        public Weather.Loc ML;
+        public int MVp, MPrevVp, MJitter, MSize;
+        public bool MotionTried, MotionLive;
+        public CommandList? MotionSide;
     }
 
     /// <summary>The bytes of one cull survivor's record.</summary>
@@ -48,15 +60,18 @@ public sealed unsafe partial class AlloyRenderer
     {
         VkWxState s = _vkWx;
         if (s.Dev != vk) _vkWx = s = new VkWxState { Dev = vk };
-        if (_capturing || c.DepthRead.IsNull) return true;
+        s.Fell = s.Dripped = false;
+        if (_capturing || c.DepthRead.IsNull) { s.CulledLast = false; return true; }
         int count = Weather.StageVk(AreaWind(), out bool snow, out int drips);
         int k = snow ? 1 : 0;
-        if (count < 0) return true;
+        if (count < 0) { s.CulledLast = false; return true; }
         bool culls = (count > 0 || drips > 0) && VkWxCullEnsure(vk, s, log);
         bool fall = culls && count > 0 && VkWxEnsure(vk, s, k, log), drip = culls && drips > 0 && VkWxEnsure(vk, s, 0, log);
         bool lit = lightingOn && AlloyLights.Ready;
-        if ((fall || drip) && !VkWxCull(cl, s, c, snow ? 2 : 1, fall ? count : 0, drip ? drips : 0, view, proj, viewport, near, far, lit))
+        float step = VkWxFallStep(s, fall || drip);
+        if ((fall || drip) && !VkWxCull(cl, s, c, snow ? 2 : 1, fall ? count : 0, drip ? drips : 0, step, view, proj, viewport, near, far, lit))
             return false;
+        s.Fell = fall; s.Dripped = drip; s.Kind = snow ? 2 : 1;
         cl.CopyImage(new CopyImageCmd(c.Depth, new ImageRegion(0, 0, 0, 0), c.DepthRead, new ImageRegion(0, 0, 0, 0), c.W, c.H, 1));
         ReadOnlySpan<ImageId> read = [c.DepthRead];
         cl.ReadImages(read);
@@ -104,15 +119,15 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>The cull into <paramref name="cl"/>: both commands reset, then one dispatch for the fall's
     /// <paramref name="count"/> lattice points and one for the <paramref name="drips"/>; false only when the arena is full.</summary>
-    private static bool VkWxCull(CommandList cl, VkWxState s, VkColourState c, int kind, int count, int drips, in Matrix4x4 view,
+    private static bool VkWxCull(CommandList cl, VkWxState s, VkColourState c, int kind, int count, int drips, float step, in Matrix4x4 view,
                                  in Matrix4x4 proj, int* viewport, float near, float far, bool lit)
     {
         ReadOnlySpan<uint> cmd = [4, 0, 0, 0, 4, 0, 0, VkWxDripBase];
         cl.UpdateBuffer(s.Cmd, 0, MemoryMarshal.AsBytes(cmd));
         int arena0 = c.ArenaUsed;
-        int fall = count > 0 ? VkWxCullBlock(s, kind, count, 0, view, proj, viewport, near, far, lit) : 0;
+        int fall = count > 0 ? VkWxCullBlock(s, kind, count, 0, step, view, proj, viewport, near, far, lit) : 0;
         int fallPass = count > 0 ? VkArenaPass() : 0;
-        int drip = drips > 0 ? VkWxCullBlock(s, 3, drips, 1, view, proj, viewport, near, far, lit) : 0;
+        int drip = drips > 0 ? VkWxCullBlock(s, 3, drips, 1, step, view, proj, viewport, near, far, lit) : 0;
         int dripPass = drips > 0 ? VkArenaPass() : 0;
         if (fall < 0 || fallPass < 0 || drip < 0 || dripPass < 0) return false;
         int len = (c.ArenaUsed - arena0 + 3) & ~3;
@@ -125,7 +140,7 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>One cull dispatch's loose block, the pass block staged inside it: <paramref name="kind"/>'s terms, the
     /// <paramref name="count"/> it walks and the command <paramref name="slot"/> its survivors count into.</summary>
-    private static int VkWxCullBlock(VkWxState s, int kind, int count, int slot, in Matrix4x4 view, in Matrix4x4 proj,
+    private static int VkWxCullBlock(VkWxState s, int kind, int count, int slot, float step, in Matrix4x4 view, in Matrix4x4 proj,
                                      int* viewport, float near, float far, bool lit)
     {
         VkDefStage st = s.Cull!;
@@ -136,10 +151,22 @@ public sealed unsafe partial class AlloyRenderer
         {
             BindPass(st.L.Cubes, viewport, near, far);
             Weather.WriteVk(in s.CullL, kind, &v, &pr, _eyePos, lit);
-            Weather.WriteCullVk(in s.CullL, count, slot, slot == 0 ? 0 : VkWxDripBase);
+            Weather.WriteCullVk(in s.CullL, count, slot, slot == 0 ? 0 : VkWxDripBase, step);
         }
         finally { LooseBlock.EndCapture(); }
         return VkArena(st.Block);
+    }
+
+    /// <summary>Metres the field fell since the last frame's cull at speed 1, across the phase's wrap; 0 when
+    /// <paramref name="culls"/> is false or no cull ran last frame, so a drop that just appeared does not streak.</summary>
+    private static float VkWxFallStep(VkWxState s, bool culls)
+    {
+        double now = Weather.Phase, d = now - s.LastPhase;
+        if (d < 0) d += Weather.PhaseWrap;
+        bool had = s.CulledLast;
+        s.LastPhase = now;
+        s.CulledLast = culls;
+        return had && culls && d < Weather.PhaseWrap * 0.5 ? (float)d : 0f;
     }
 
     /// <summary>The cull's set: its two blocks, the probe's SH where it is live, the light rig, the records and commands
