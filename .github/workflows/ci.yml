@@ -51,6 +51,8 @@ jobs:
             'tools/gates/*'
             tools/build-openal.sh
             tools/approved-examples.sh
+            tools/no-loaded-runtime.sh
+            'tools/*_approved_examples*'
             'tools/ffx/*'
             tools/deps.json
             tools/deps.py
