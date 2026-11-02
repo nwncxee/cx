@@ -273,13 +273,12 @@ public sealed unsafe partial class AlloyRenderer
         // and every program a probe face or a reflection draws, reads this one camera (the cx* frame uniforms).
         if (!_capturing) StageResources.NoteView(viewport, &vpClean, _eyePos);
         StageSky();
-        bool drawsUp = Issue.UploadDraws();
+        Issue.UploadDraws();
         Db.PltColors.Upload();   // the frame-start push ran before this frame's PLT rows were staged
         Db.ContentTable.Upload();
         // CX-120: with the frame's records staged AND pushed, a record that still differs from the mirror is
         // one the dirty list never named -- the change-driven build's own bug class.
         StaleAuditTick();
-        if (!drawsUp) return false;
         FrameZones.Add(FrameZones.Zone.Upload, tUp);
         // The frame's head for native stages: every stage a host staged above or drew last frame gets its images
         // (re)made and its passes run here, before the first draw pass and outside every other GPU term.
