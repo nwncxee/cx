@@ -154,6 +154,47 @@ void CxShFold(ivec4 sl, vec4 vi, float w, ivec4 want, inout vec4 num, inout vec4
     m = vec4(equal(sl, ivec4(want.w))); num.w += w * dot(m, vi); den.w += w * dot(m, vec4(1.0));
 }
 
+/// The half-resolution record texels this group's taps can reach: its own 8x8 and the ring either side.
+const int CX_SH_WIN = 10;
+/// Those texels decoded once a group: the view depth (0 = no record there, or outside the record), the normal,
+/// the packed slots and the visibilities. Each pixel's four taps read these instead of fetching and decoding.
+shared float sShD[CX_SH_WIN * CX_SH_WIN];
+shared vec3 sShN[CX_SH_WIN * CX_SH_WIN];
+shared uint sShS[CX_SH_WIN * CX_SH_WIN];
+shared vec4 sShV[CX_SH_WIN * CX_SH_WIN];
+
+/// This group's record window, one texel a lane, at half resolution only (a full-resolution pixel taps its own
+/// texel alone). Every lane calls it, ahead of a barrier.
+void CxShLoad(uint lane)
+{
+    if (uShRes != 2 || lane >= uint(CX_SH_WIN * CX_SH_WIN)) return;
+    ivec2 q = ivec2(gl_WorkGroupID.xy) * 8 - 1 + ivec2(int(lane) % CX_SH_WIN, int(lane) / CX_SH_WIN);
+    float rd = 0.0; vec3 rn = vec3(0.0); uint sl = 0u; vec4 vi = vec4(1.0);
+    if (all(greaterThanEqual(q, ivec2(0))) && all(lessThan(q, uShSize)))
+    {
+        uvec2 k = texelFetch(uShKey, q, 0).xy;
+        CxShUnpackKey(k.y, rd, rn);
+        sl = k.x;
+        vi = texelFetch(uShVis, q, 0);
+    }
+    sShD[lane] = rd; sShN[lane] = rn; sShS[lane] = sl; sShV[lane] = vi;
+}
+
+/// <see cref="CxShTap"/> off the group's decoded window: the same test in the same order on the same values.
+void CxShTapWin(ivec2 q, float w, float viewDepth, vec3 N, out ivec4 sl, out vec4 vi, out float wo)
+{
+    sl = ivec4(-1); vi = vec4(1.0); wo = 0.0;
+    ivec2 t = q - (ivec2(gl_WorkGroupID.xy) * 8 - 1);
+    int i = t.y * CX_SH_WIN + t.x;
+    float rd = sShD[i];
+    if (!(rd > 0.0)) return;
+    sl = CxShUnpackSlots(sShS[i]);
+    float dw = 1.0 - min(abs(rd - viewDepth) / max(viewDepth * CX_SH_DEPTH, 1e-4), 1.0);
+    wo = w * dw * smoothstep(CX_SH_NORMAL.x, CX_SH_NORMAL.y, dot(sShN[i], N));
+    if (wo <= 0.0) return;
+    vi = sShV[i];
+}
+
 /// The pixel's record. Full resolution is its own texel and nothing else; half resolution reads the 2x2
 /// neighbourhood, each texel weighted as if it sat at the CENTRE of its own 2x2 block of pixels -- so every
 /// pixel sits three quarters along each axis toward its own texel and the weights are 9/16, 3/16, 3/16, 1/16.
@@ -173,10 +214,10 @@ void CxShGather(ivec2 p, float viewDepth, vec3 N)
     {
         ivec2 q = p >> 1;
         ivec2 s = (p & 1) * 2 - 1;   // -1 toward the previous texel, +1 toward the next
-        CxShTap(q,                 0.5625, viewDepth, N, s0, v0, w.x);
-        CxShTap(q + ivec2(s.x, 0), 0.1875, viewDepth, N, s1, v1, w.y);
-        CxShTap(q + ivec2(0, s.y), 0.1875, viewDepth, N, s2, v2, w.z);
-        CxShTap(q + s,             0.0625, viewDepth, N, s3, v3, w.w);
+        CxShTapWin(q,                 0.5625, viewDepth, N, s0, v0, w.x);
+        CxShTapWin(q + ivec2(s.x, 0), 0.1875, viewDepth, N, s1, v1, w.y);
+        CxShTapWin(q + ivec2(0, s.y), 0.1875, viewDepth, N, s2, v2, w.z);
+        CxShTapWin(q + s,             0.0625, viewDepth, N, s3, v3, w.w);
     }
     ivec4 want = s0;
     if (w.x <= 0.0) want = w.y >= w.z && w.y >= w.w ? s1 : w.z >= w.w ? s2 : s3;
@@ -334,6 +375,9 @@ void main()
     // the tile's depth slab is its OWN pixels' -- the one bound a froxel grid cannot have. Only the per-tile list
     // reads it: two same-address atomics a pixel are not free, so the froxel lists' default skips them
     if (mine && uTiles != 0) { atomicMin(sMinZ, floatBitsToUint(viewDepth)); atomicMax(sMaxZ, floatBitsToUint(viewDepth)); }
+#ifndef CX_FILM_PASS
+    CxShLoad(lane);
+#endif
     barrier();
 
     // sMinZ > sMaxZ = no deferred pixel in this tile, so there is nothing to cull a light against.
