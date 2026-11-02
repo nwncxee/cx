@@ -99,19 +99,17 @@ internal static unsafe class Issue
         }
     }
 
-    /// <summary>Hand the moved records and this pass's draw order to the Vulkan frame. False = the frame sits out.</summary>
-    internal static bool UploadDraws() => VkHandOff(_recOwnCap + MaxSkyDraws);
-
-    /// <summary><see cref="UploadDraws"/> on Vulkan: no GL record table, handle table or stream ring -- the moved
-    /// records go to the Vulkan table's dirty list, which uploads them in its own frame.</summary>
-    private static bool VkHandOff(int cap)
+    /// <summary>Hand the moved records and this pass's draw order to the Vulkan frame: the moved records go to
+    /// the Vulkan table's dirty list, which uploads them in its own frame. The whole table goes up when a
+    /// restage is pending or the capacity grew; the GPU capacity is a high-water mark.</summary>
+    internal static void UploadDraws()
     {
+        int cap = _recOwnCap + MaxSkyDraws;
         bool whole = _recDirtyAll || cap > _recCapGpu;
         if (cap > _recCapGpu) _recCapGpu = cap;
         StaleMirrorRecords(cap, whole, _recDirty, _recDirtyN);
         VkNoteDirty(_recDirty, Math.Min(_recDirtyN, _recDirty.Length), whole);
         _recDirtyN = 0; _recDirtyAll = false; _texHDirty = false;
-        return true;
     }
 
     /// <summary>One period's record-table uploads: the whole ones by reason, the bytes the whole record and handle

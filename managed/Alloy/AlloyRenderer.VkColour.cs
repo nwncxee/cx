@@ -85,7 +85,7 @@ public sealed unsafe partial class AlloyRenderer
         /// <summary>The PLT rows' and master palette's send counts last mirrored; -1 = never.</summary>
         public long PltSends = -1, PaletteSends = -1;
         public ImageId Palette;
-        /// <summary>Records the GL upload named since the last Vulkan one; <see cref="DirtyAll"/> when it overflowed.</summary>
+        /// <summary>Record slots moved since the last upload; <see cref="DirtyAll"/> when the list overflowed.</summary>
         public int[] Dirty = new int[1024];
         public int DirtyN;
         public bool DirtyAll = true;
@@ -150,8 +150,8 @@ public sealed unsafe partial class AlloyRenderer
         public int Decal, Solid, OitGob;
     }
 
-    /// <summary>The GL upload's dirty records, handed over before it clears them: the Vulkan record table follows the
-    /// same moves a frame later in the same frame. <paramref name="whole"/> = GL sent the table whole.</summary>
+    /// <summary>The slots <see cref="Issue.UploadDraws"/> moved, handed over before it clears them.
+    /// <paramref name="whole"/> = send the whole table instead of these runs.</summary>
     internal static void VkNoteDirty(int[] dirty, int n, bool whole)
     {
         VkColourState s = _vkc;
