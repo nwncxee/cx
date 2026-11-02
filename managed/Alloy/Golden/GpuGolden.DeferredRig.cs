@@ -136,8 +136,10 @@ public sealed unsafe partial class AlloyRenderer
     /// row from the top; null (logged) when a stage or a resource was refused.</summary>
     internal static float[]? DeferredRig(VkBackend vk, DeferredRigScene sc, ExtenderLog log)
     {
-        VkDefStage? walk = VkDefBuild(vk, DeferredLights.ShdCs, null, "rig walk", log, sc.WalkOverride, out sc.WalkFromContent);
-        VkDefStage? film = VkDefBuild(vk, DeferredLights.ShdCs, "CX_FILM_PASS 1", "rig film", log, null, out _);
+        string? wave = sc.NoWave ? null : VkDefWaveOr(vk, null);
+        VkDefStage? walk = VkDefBuild(vk, DeferredLights.ShdCs, wave, "rig walk", log, sc.WalkOverride, out sc.WalkFromContent);
+        VkDefStage? film = VkDefBuild(vk, DeferredLights.ShdCs, sc.NoWave ? "CX_FILM_PASS 1" : VkDefWaveOr(vk, "CX_FILM_PASS 1"),
+                                      "rig film", log, null, out _);
         VkDefStage? build = VkDefBuild(vk, AlloyLights.ShdClusterCs, null, "rig froxel build", log, null, out _);
         PipelineId fill = vk.CreateCompute(RigFillText(), "rig fill");
         var f = new RigFrame();
@@ -176,7 +178,8 @@ public sealed unsafe partial class AlloyRenderer
         f.Counts = vk.CreateBuffer(new BufferDesc(clusters * AlloyLights.ClusterHeadWords * sizeof(uint), BufferUse.Storage, MemoryKind.Device, "rig froxel heads"));
         f.Idx = vk.CreateBuffer(new BufferDesc((long)clusters * AlloyLights.ClusterCap * sizeof(uint), BufferUse.Storage, MemoryKind.Device, "rig froxel lists"));
         f.Movers = vk.CreateBuffer(new BufferDesc(CasterPass.MaxCubes * CasterPass.DynSpheres * 16, BufferUse.Storage, MemoryKind.Device, "rig movers"));
-        f.Stats = vk.CreateBuffer(new BufferDesc(VkDefStatsWords * sizeof(uint), BufferUse.Storage, MemoryKind.Device, "rig stats"));
+        f.Stats = vk.CreateBuffer(new BufferDesc(VkDefStatsWords * sizeof(uint), BufferUse.Storage | BufferUse.CopySrc,
+                                                 MemoryKind.Device, "rig stats"));
         int slots = Math.Max(sc.Sheen.Length, 1);
         var draws = new DrawRecordBlock[slots];
         for (int i = 0; i < sc.Sheen.Length; i++) draws[i].Ext.Ext1 = sc.Sheen[i];
@@ -230,6 +233,7 @@ public sealed unsafe partial class AlloyRenderer
         cl.UpdateBuffer(f.Pass, 0, pass);
         cl.UpdateBuffer(f.Def, 0, def);
         cl.ClearImage(f.Hdr);
+        cl.ZeroBuffer(f.Stats);
 
         cl.SetPipeline(fill);
         cl.BindSet(0, new BindSet(default, [new BufferBinding(SsboSlots.GoldenIn, cases), new BufferBinding(SsboSlots.Chart, f.Chart)],
@@ -255,7 +259,10 @@ public sealed unsafe partial class AlloyRenderer
         cl.Dispatch((w + VkDefGroup - 1) / VkDefGroup, (h + VkDefGroup - 1) / VkDefGroup);
         cl.CopyImageToBuffer(new CopyToBufferCmd(f.Hdr, new ImageRegion(0, 0, 0, 0), w, h, f.Read, 0));
         var halves = new Half[w * h * 4];
-        bool ok = vk.Submit(cl) && vk.ReadBack(f.Read, MemoryMarshal.AsBytes(halves.AsSpan()));
+        var stats = new uint[VkDefStatsWords];
+        bool ok = vk.Submit(cl) && vk.ReadBack(f.Read, MemoryMarshal.AsBytes(halves.AsSpan()))
+                  && vk.ReadBack(f.Stats, MemoryMarshal.AsBytes(stats.AsSpan()));
+        sc.Walked = (stats[VkDefWalkWord], stats[VkDefWalkWord + 1], stats[VkDefWalkWord + 2]);
         vk.Destroy(cases);
         if (!ok) return null;
         var px = new float[halves.Length];
@@ -294,7 +301,7 @@ public sealed unsafe partial class AlloyRenderer
 
         var b = new DeferredBlock
         {
-            InvVp = invVp, Proj = sc.Proj, View = sc.View, EyePos = sc.Eye, Tiles = 0,
+            InvVp = invVp, Proj = sc.Proj, View = sc.View, EyePos = sc.Eye, Tiles = VkDefTiles(true, true, lights),
             Rect = new Int4(0, 0, w, h), ShSize = new Int2((w + 1) / 2, (h + 1) / 2), LightCount = lights, ShRes = 2,
         };
         def = new byte[Std140.BlockBytes<DeferredBlock>()];
@@ -329,6 +336,7 @@ public sealed unsafe partial class AlloyRenderer
             LooseBlock.Set(st.L.Rel, (ReadOnlySpan<float>)[0.01f, 0.8f]);
             LooseBlock.Set(st.L.Pad, (ReadOnlySpan<float>)[2f / w, 2f / sc.H]);
             LooseBlock.Set(st.L.Tally, 0);
+            LooseBlock.Set(st.L.WalkCount, 1);
         }
         finally { LooseBlock.EndCapture(); }
         return RigBuffer(vk, st.Block, BufferUse.Uniform, "rig loose");

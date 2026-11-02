@@ -33,7 +33,7 @@ def programs():
         if len(stages) != 1:
             continue
         src = stages[0]
-        for tok, val in cs.DRIVER_TOKENS.items():
+        for tok, val in getattr(cs, "DRIVER_TOKENS", cs.TOKENS).items():
             src = src.replace(tok, val)
         out[name] = src
     return out

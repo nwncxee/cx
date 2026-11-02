@@ -479,12 +479,29 @@ internal sealed unsafe partial class VkBackend : IDevice
         MakeBindlessZero();
         Caps = CapsOf(l, has.samplerAnisotropy);
         _maxDrawIndirect = l.maxDrawIndirectCount;
+        _waveOps = WaveOpsOf(phys);
         log.Always($"VkBackend: LIVE -- {Caps}, {_bindlessCap} bindless textures, debug labels "
                  + $"{(_labels ? "on" : "off")}, async compute {(_async != null ? $"on queue family {_async.Family}" : "on the graphics queue (no compute-only family)")}, "
                  + $"first fills {(_transfer != null ? $"on transfer queue family {_transfer.Family}" : "on the graphics queue (no copy-only family)")}, "
                  + (_rateTexel > 0 ? $"shading-rate image in {_rateTexel} px tiles" : $"no shading-rate image ({rateWhy}): the G-buffer pass shades every pixel")
                  + $"; {BlendPathLine(_canDynBlend)}; {PipelinePathLine(_canLibraries)}"
                  + "; Vulkan presents the frame itself");
+    }
+
+    /// <summary>The device runs ballot and arithmetic subgroup operations in compute stages: what a stage whose waves
+    /// walk one list in lockstep needs.</summary>
+    private readonly bool _waveOps;
+    /// <inheritdoc cref="_waveOps"/>
+    internal bool WaveOps => _waveOps;
+
+    /// <summary><see cref="_waveOps"/> as <paramref name="d"/> reports it.</summary>
+    private bool WaveOpsOf(VkPhysicalDevice d)
+    {
+        var p11 = new VkPhysicalDeviceVulkan11Properties();
+        var p2 = new VkPhysicalDeviceProperties2 { pNext = &p11 };
+        _vki.vkGetPhysicalDeviceProperties2(d, &p2);
+        const VkSubgroupFeatureFlags want = VkSubgroupFeatureFlags.Ballot | VkSubgroupFeatureFlags.Arithmetic;
+        return (p11.subgroupSupportedOperations & want) == want && (p11.subgroupSupportedStages & VkShaderStageFlags.Compute) != 0;
     }
 
     /// <summary>The edge of a shading-rate image's texel in pixels, 0 when the device cannot read one.</summary>

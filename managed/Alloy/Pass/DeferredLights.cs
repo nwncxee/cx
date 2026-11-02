@@ -62,10 +62,18 @@ internal static unsafe class DeferredLights
 
     internal static void Attach(ExtenderLog log) => _log = log;
 
-    /// <summary>The period line's lights per pixel (not built yet).</summary>
-    internal static string WalkedText(uint pixels, uint walked, uint most) => "";
+    /// <summary>Lights the walk's tile lists can name (<c>cx_deferred_cs</c>'s <c>CX_TILE_LIGHTS</c>): an area with more
+    /// walks each pixel's froxel list instead.</summary>
+    internal const int TileLights = 4096;
 
     internal static string Stats(int frames)
         => $"deferred lights {(!Lighting.Deferred.V ? "off" : Lighting.DeferredTiles.V ? "on, tiled" : "on, froxel lists")}"
+         + (Lighting.Deferred.V ? ", " + AlloyRenderer.VkDefWalked() : "")
          + (_down.Reason.Length > 0 ? ", last refusal: " + _down.Reason : "");
+
+    /// <summary>The period line's lights per pixel: <paramref name="pixels"/> deferred pixels lit on the sampled frame,
+    /// <paramref name="walked"/> list entries they walked between them, <paramref name="most"/> the most one walked.</summary>
+    internal static string WalkedText(uint pixels, uint walked, uint most)
+        => pixels == 0 ? "no deferred pixel sampled yet"
+         : $"a deferred pixel walked {(double)walked / pixels:F1} lights on average, {most} at most";
 }

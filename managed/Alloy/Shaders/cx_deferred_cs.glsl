@@ -4,14 +4,18 @@
 // target. The arithmetic IS the forward loop's: this stage composes cx_lightfrag and cx_material and calls
 // CxClusteredLightLm and CxFilmStatics on the lanes the twin wrote, so there is no second copy of either to
 // drift. docs/spec/deferred-lighting.md is the contract; cx_gbuf.glsl is the format.
-// Two light LISTS, and light.deferredtiles is the A/B between them. OFF -- the default -- each pixel walks its
-// own froxel's list, the forward loop's own input, which is what makes that mode the parity case. On, each group
-// culls the area's lights once against the view-space slab between its own pixels' min and max depth, into a
-// shared list every pixel of the tile then walks: a 16x16 tile is a small fraction of a froxel's screen area and
-// its depth bound is the surface's own rather than a grid slice's, so the list is shorter than any froxel's.
-// It is nonetheless the slower of the two here (-0.8 ms with it off): the cull re-walks every light of the area
-// per group where the froxel table is built once for the whole grid. See light.deferredtiles' own declaration.
+// Two light LISTS, and light.deferredtiles is the A/B between them. ON -- the default -- each group gathers the
+// froxels its own pixels read, tests every entry against the view-space slab between its nearest and farthest
+// pixel, and writes one list in index order that every pixel of the tile walks in step: no wave walks two lists
+// where a sloped floor crosses a slice. OFF, each pixel walks its own froxel's list, the forward loop's own input,
+// which is what makes that mode the parity case. See light.deferredtiles' own declaration.
 #version 460 core
+// L1: a wave walks the tile's list in lockstep, the light index broadcast from one lane so the record it names is
+// loaded once a wave. Defined by the host on a device whose subgroups offer ballot; the walk is the same without it.
+#ifdef CX_WALK_WAVE
+#extension GL_KHR_shader_subgroup_ballot : require
+#extension GL_KHR_shader_subgroup_arithmetic : require
+#endif
 layout(local_size_x = 16, local_size_y = 16) in;
 
 // cx_material's material SYNTHESIS belongs to a fragment stage (the lit stage's slot constants, a screen
@@ -72,15 +76,18 @@ layout(rgba32ui, binding = 1) uniform writeonly uimage2D uLightRec;   // cx_gbuf
 
 #include "cx_defblk.glsl"
 
-/// Lights a tile may hold -- the froxel cap, so one number sizes both list sources and CxFilmStatics' own
-/// clamp against CX_CLUSTER_CAP still bounds the tiled walk. 512 bytes of shared memory at the shipped 128, beside
-/// the record window's 3.6 KB.
-const uint CX_TILE_CAP = CX_CLUSTER_CAP;
+/// Lights a tile may hold: twice the froxel cap, since a tile's list is the union of the froxels its pixels read.
+/// A kilobyte of shared memory at the shipped 128, beside the record window's 3.6 KB.
+const uint CX_TILE_CAP = 2u * CX_CLUSTER_CAP;
+/// Lights the tile gather's bitmasks span. The host walks the froxel lists per pixel past it (DeferredLights.TileLights).
+const uint CX_TILE_LIGHTS = 4096u;
 /// Float slack on the tile's view-space box, both sides: cx_lightbuild's own, and for its reason -- the walk
 /// measures in world space and the cull in view space.
 const float CX_TILE_SLACK = 1e-3;
 
 shared uint sList[CX_TILE_CAP];
+/// The gather's two runs as one bit a light, so each comes out in index order whichever froxel named it first.
+shared uint sLiveBits[CX_TILE_LIGHTS / 32u], sColdBits[CX_TILE_LIGHTS / 32u];
 /// The list's two runs: [0, sLive) the live lights, [sLive, sN) every cold static. Nothing is culled and every
 /// entry is a relevance candidate, so liveCand = sLive and coldCand = kept = sN.
 shared uint sLive, sN;
@@ -91,11 +98,15 @@ shared uint sDrop, sMinZ, sMaxZ;
 /// texel whose own pixel was not deferred, or one no depth/normal weight accepted. They fall back to the
 /// single hardware tap per light, which is a harder shadow rather than a missing one; counted all the same.
 shared uint sMiss;
+/// The period line's count without wave operations: this tile's walking pixels, the entries they walked, the most one walked.
+shared uint sWalkPx, sWalkSum, sWalkMax;
 
 /// [0] tiles whose list overflowed, [1] the lights they dropped, [2] pixels with no usable shadow record,
-/// [3] lights cx_defshadow_cs left unshadowed past shadow.perpixel's budget.
-// ponytail: the Vulkan host writes these and harvests none of them; reading them back onto the period line is the upgrade.
+/// [3] lights cx_defshadow_cs left unshadowed past shadow.perpixel's budget; [4..7] an older walk's census;
+/// [8] pixels the walk lit, [9] the list entries they walked, [10] the most one pixel walked.
 layout(std430, binding = 14) buffer CxDeferredStats { uint uDefStats[]; };
+/// 1 on the frame the host samples the counters: the walk counts its lights per pixel then and only then.
+uniform int uWalkCount;
 
 // ---- the list source ------------------------------------------------------------------------------------
 // cx_lightfrag declares these; the walk reads nothing else. uTiles is a uniform, so the branch is coherent
@@ -107,6 +118,10 @@ uint CxListColdCand(uint cl) { return uTiles != 0 ? sN : CxClusterColdCand(cl); 
 uint CxListWalk(uint cl) { return uTiles != 0 ? sN : CxClusterWalk(cl); }
 uint CxListIdx(uint cl, uint k)
 {
+#ifdef CX_WALK_WAVE
+    // every lane still in the loop is at the same k of the same list: one lane's read is the wave's
+    if (uTiles != 0) return subgroupBroadcastFirst(sList[min(k, CX_TILE_CAP - 1u)]);
+#endif
     return uTiles != 0 ? sList[min(k, CX_TILE_CAP - 1u)] : uClIdx[cl * CX_CLUSTER_CAP + k];
 }
 
@@ -349,13 +364,75 @@ bool CxTileReaches(int i, vec3 lo, vec3 hi, vec3 fcw, float fr, bool hotOn, out 
     return true;
 }
 
+/// Light <paramref name="i"/> into the tile's live or cold bitmask when it reaches the tile's box.
+void CxTileMark(int i, vec3 lo, vec3 hi, vec3 fcw, float fr, bool hotOn)
+{
+    bool live;
+    if (!CxTileReaches(i, lo, hi, fcw, fr, hotOn, live)) return;
+    if (live) atomicOr(sLiveBits[i >> 5], 1u << uint(i & 31));
+    else atomicOr(sColdBits[i >> 5], 1u << uint(i & 31));
+}
+
+/// L2: the froxels this tile's pixels read -- every column its rect crosses, every slice between its nearest and
+/// farthest deferred pixel -- each walked to its kept prefix, every entry tested against the tile's own box. A light
+/// the box test drops is outside its own window at every pixel of the tile, and one the pixel's froxel culled while
+/// another kept it has no share there, so the walk over the union adds what the walk over the froxel did.
+void CxTileGather(uint lane, vec3 lo, vec3 hi, vec3 fcw, float fr, bool hotOn)
+{
+    vec2 a = vec2(gl_WorkGroupID.xy * gl_WorkGroupSize.xy + uvec2(uRect.xy)) + 0.5;
+    vec2 b = min(a + vec2(gl_WorkGroupSize.xy) - 1.0, vec2(uRect.xy + uRect.zw) - 0.5);
+    ivec2 c0 = clamp(ivec2((a - uTile.xy) / uTile.zw), ivec2(0), uGrid.xy - 1);
+    ivec2 c1 = clamp(ivec2((b - uTile.xy) / uTile.zw), ivec2(0), uGrid.xy - 1);
+    int z1 = CxClusterSlice(uintBitsToFloat(sMaxZ));
+    for (int z = CxClusterSlice(uintBitsToFloat(sMinZ)); z <= z1; z++)
+        for (int y = c0.y; y <= c1.y; y++)
+            for (int x = c0.x; x <= c1.x; x++)
+            {
+                uint cl = uint(x + uGrid.x * (y + uGrid.y * z));
+                uint n = CxClusterWalk(cl);
+                for (uint k = lane; k < n; k += gl_WorkGroupSize.x * gl_WorkGroupSize.y)
+                    CxTileMark(int(uClIdx[cl * CX_CLUSTER_CAP + k]), lo, hi, fcw, fr, hotOn);
+            }
+}
+
+/// The two bitmasks into sList, the live run first and each in index order, one bitmask word a lane; lane 0 settles
+/// the counts and the overflow.
+void CxTileCompact(uint lane)
+{
+    uint words = min((uint(uLightCount) + 31u) / 32u, CX_TILE_LIGHTS / 32u);
+    if (lane >= words) return;
+    uint liveAll = 0u, coldAll = 0u, liveAt = 0u, coldAt = 0u;
+    for (uint w = 0u; w < words; w++)
+    {
+        uint l = uint(bitCount(sLiveBits[w])), c = uint(bitCount(sColdBits[w]));
+        if (w < lane) { liveAt += l; coldAt += c; }
+        liveAll += l; coldAll += c;
+    }
+    coldAt += liveAll;
+    for (uint m = sLiveBits[lane]; m != 0u; m &= m - 1u, liveAt++)
+        if (liveAt < CX_TILE_CAP) sList[liveAt] = lane * 32u + uint(findLSB(m));
+    for (uint m = sColdBits[lane]; m != 0u; m &= m - 1u, coldAt++)
+        if (coldAt < CX_TILE_CAP) sList[coldAt] = lane * 32u + uint(findLSB(m));
+    if (lane != 0u) return;
+    sLive = min(liveAll, CX_TILE_CAP);
+    sN = min(liveAll + coldAll, CX_TILE_CAP);
+    sDrop = liveAll + coldAll - sN;
+#ifndef CX_FILM_PASS
+    // the overflow is a budget with a counter, not a budget with a silence (the VAO drip's lesson)
+    if (sDrop != 0u) { atomicAdd(uDefStats[0], 1u); atomicAdd(uDefStats[1], sDrop); }
+#endif
+}
+
 void main()
 {
     // Every barrier below sits at the top level of main and runs for every invocation, however the tile's own
     // pixels turn out: a group where some lane had returned early would hang on the first one.
     uint lane = gl_LocalInvocationIndex;
     if (lane == 0u)
-    { sMinZ = 0xffffffffu; sMaxZ = 0u; sLive = 0u; sN = 0u; sDrop = 0u; sMiss = 0u; }
+    { sMinZ = 0xffffffffu; sMaxZ = 0u; sLive = 0u; sN = 0u; sDrop = 0u; sMiss = 0u; sWalkPx = 0u; sWalkSum = 0u; sWalkMax = 0u; }
+    if (uTiles != 0)
+        for (uint w = lane; w < CX_TILE_LIGHTS / 32u; w += gl_WorkGroupSize.x * gl_WorkGroupSize.y)
+        { sLiveBits[w] = 0u; sColdBits[w] = 0u; }
     barrier();
 
     ivec2 p = ivec2(gl_GlobalInvocationID.xy) + uRect.xy;
@@ -385,7 +462,16 @@ void main()
 #endif
     // the tile's depth slab is its OWN pixels' -- the one bound a froxel grid cannot have. Only the per-tile list
     // reads it: two same-address atomics a pixel are not free, so the froxel lists' default skips them
+#ifdef CX_WALK_WAVE
+    if (uTiles != 0)
+    {
+        uint zLo = subgroupMin(mine ? floatBitsToUint(viewDepth) : 0xffffffffu);
+        uint zHi = subgroupMax(mine ? floatBitsToUint(viewDepth) : 0u);
+        if (subgroupElect()) { atomicMin(sMinZ, zLo); atomicMax(sMaxZ, zHi); }
+    }
+#else
     if (mine && uTiles != 0) { atomicMin(sMinZ, floatBitsToUint(viewDepth)); atomicMax(sMaxZ, floatBitsToUint(viewDepth)); }
+#endif
 #ifndef CX_FILM_PASS
     CxShLoad(lane);
 #endif
@@ -404,45 +490,18 @@ void main()
 #ifndef CX_NO_HOT
         hotOn = uLmMovers != 0 && !(uLocalPcss.w > 0.0 && uintBitsToFloat(sMinZ) >= uLocalPcss.w);
 #endif
-        // the live run first, so the two runs come out contiguous and in the order every walk expects
-        for (int i = int(lane); i < uLightCount; i += int(gl_WorkGroupSize.x * gl_WorkGroupSize.y))
-        {
-            bool live;
-            if (!CxTileReaches(i, lo, hi, fcw, fr, hotOn, live) || !live) continue;
-            uint at = atomicAdd(sLive, 1u);
-            if (at < CX_TILE_CAP) sList[at] = uint(i);
-        }
+        // uTiles 1 gathers the froxels' lists; 2, a frame with no froxel table, tests every light of the area
+        if (uTiles == 1) CxTileGather(lane, lo, hi, fcw, fr, hotOn);
+        else for (int i = int(lane); i < min(uLightCount, int(CX_TILE_LIGHTS)); i += int(gl_WorkGroupSize.x * gl_WorkGroupSize.y))
+            CxTileMark(i, lo, hi, fcw, fr, hotOn);
     }
     barrier();
-    if (lane == 0u)
-    {
-        sDrop = sLive > CX_TILE_CAP ? sLive - CX_TILE_CAP : 0u;
-        sLive = min(sLive, CX_TILE_CAP);
-        sN = sLive;
-    }
-    barrier();
-    if (tiled)
-        for (int i = int(lane); i < uLightCount; i += int(gl_WorkGroupSize.x * gl_WorkGroupSize.y))
-        {
-            bool live;
-            if (!CxTileReaches(i, lo, hi, fcw, fr, hotOn, live) || live) continue;
-            uint at = atomicAdd(sN, 1u);
-            if (at < CX_TILE_CAP) sList[at] = uint(i);
-        }
-    barrier();
-    if (lane == 0u)
-    {
-        sDrop += sN > CX_TILE_CAP ? sN - CX_TILE_CAP : 0u;
-        sN = min(sN, CX_TILE_CAP);
-        // the overflow is a budget with a counter, not a budget with a silence (the VAO drip's lesson)
-#ifndef CX_FILM_PASS
-        if (sDrop != 0u) { atomicAdd(uDefStats[0], 1u); atomicAdd(uDefStats[1], sDrop); }
-#endif
-    }
+    if (tiled) CxTileCompact(lane);
     barrier();
 
     // Not an early return: the record-miss reduce below is a barrier every invocation of the group reaches.
-    uint miss = 0u;
+    uint miss = 0u, walked = 0u;
+    bool walking = false;
     vec4 h = mine ? uInvVp * vec4(2.0 * (cxPixel - vec2(uRect.xy)) / vec2(uRect.zw) - 1.0, ndcZ, 1.0) : vec4(0.0);
     if (mine && abs(h.w) > 1e-6)
     {
@@ -506,6 +565,8 @@ void main()
         vec3 spec, lmSub;
         vec3 acc = CxClusteredLightLm(worldPos, g.N, V, viewDepth, onMover, g.rough, g.spec, baked,
                                       g.lmTexel, g.lmMover, g.lmPick, spec, lmSub);
+        walking = true;
+        walked = cxWalkN;
         // the weights are fetched again here, after the walk; the offset (0, since a view depth's sign bit is
         // clear) is one the compiler cannot prove, so it cannot merge this fetch with the top one and hold G1 live
         CxGbufWeights(texelFetch(uGb1, p + ivec2(int(sMaxZ >> 31u), 0), 0), g);
@@ -525,6 +586,23 @@ void main()
 #endif
     }
     if (miss != 0u) atomicAdd(sMiss, miss);
+#ifndef CX_FILM_PASS
+    // the period line's lights per pixel, reduced a wave (or a tile) before one atomic each reaches the buffer
+    if (uWalkCount != 0)
+    {
+#ifdef CX_WALK_WAVE
+        uint wPx = subgroupAdd(walking ? 1u : 0u), wSum = subgroupAdd(walked), wMax = subgroupMax(walked);
+        if (subgroupElect() && wPx != 0u)
+        { atomicAdd(uDefStats[8], wPx); atomicAdd(uDefStats[9], wSum); atomicMax(uDefStats[10], wMax); }
+#else
+        if (walking) { atomicAdd(sWalkPx, 1u); atomicAdd(sWalkSum, walked); atomicMax(sWalkMax, walked); }
+#endif
+    }
+#endif
     barrier();
     if (lane == 0u && sMiss != 0u) atomicAdd(uDefStats[2], sMiss);
+#if !defined(CX_FILM_PASS) && !defined(CX_WALK_WAVE)
+    if (lane == 0u && sWalkPx != 0u)
+    { atomicAdd(uDefStats[8], sWalkPx); atomicAdd(uDefStats[9], sWalkSum); atomicMax(uDefStats[10], sWalkMax); }
+#endif
 }

@@ -13,7 +13,7 @@ public enum Op : byte
     End, BeginRenderPass, EndRenderPass, SetPipeline, SetViewport, SetScissor, SetDepthBias, BindSet,
     BindIndexBuffer, Draw, DrawIndexed, DrawIndexedIndirect, Dispatch, CopyImage, BlitImage, UpdateBuffer, ZeroBuffer,
     PushConstants, BindVertexBuffer, DrawIndexedMulti, SetDepthState, SetRasterState, SetDepthRange, ReadImages,
-    DrawIndirect, CopyImageToBuffer, ClearImage, GenerateMips, BeginLabel, EndLabel, SetShadingRate, Upscale,
+    DrawIndirect, CopyImageToBuffer, ClearImage, GenerateMips, BeginLabel, EndLabel, SetShadingRate, Upscale, CopyBuffer,
 }
 
 /// <summary>An index element's width.</summary>
@@ -64,6 +64,8 @@ public readonly record struct ZeroBufferCmd(BufferId Buffer, long Offset, long B
 /// <summary><see cref="Op.CopyImageToBuffer"/>: a <see cref="W"/> x <see cref="H"/> block of one mip and layer into a
 /// buffer at <see cref="Offset"/>, tightly packed (block rows for a compressed format).</summary>
 public readonly record struct CopyToBufferCmd(ImageId Src, ImageRegion From, int W, int H, BufferId Dst, long Offset);
+/// <summary><see cref="Op.CopyBuffer"/>: <see cref="Bytes"/> bytes of one buffer into another, whole words.</summary>
+public readonly record struct CopyBufferCmd(BufferId Src, long SrcOffset, BufferId Dst, long DstOffset, long Bytes);
 /// <summary><see cref="Op.BeginLabel"/>'s header; the UTF-8 name follows it, <see cref="Bytes"/> long with its NUL.</summary>
 public readonly record struct LabelCmd(int Bytes);
 /// <summary><see cref="Op.ReadImages"/>'s header; the ids follow it. <see cref="Access"/> says which read the
@@ -302,6 +304,7 @@ public sealed class CommandList
     public void CopyImage(in CopyImageCmd c) { Head(Op.CopyImage); Put(c); Sent(); }
     public void BlitImage(in BlitImageCmd c) { Head(Op.BlitImage); Put(c); Sent(); }
     public void CopyImageToBuffer(in CopyToBufferCmd c) { Head(Op.CopyImageToBuffer); Put(c); Sent(); }
+    public void CopyBuffer(in CopyBufferCmd c) { Head(Op.CopyBuffer); Put(c); Sent(); }
 
     /// <summary>Write <paramref name="src"/> into <paramref name="b"/> at <paramref name="offset"/>; the bytes are copied now.</summary>
     public void UpdateBuffer(BufferId b, long offset, ReadOnlySpan<byte> src)
