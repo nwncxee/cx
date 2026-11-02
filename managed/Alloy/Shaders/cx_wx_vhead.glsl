@@ -15,13 +15,16 @@ uniform mat4 uCoverVp;   // world -> the cover view's clip space; zero matrix = 
 uniform float uCoverLayer;
 uniform float uCoverSoft;    // metres of feather at a cover edge
 uniform int uLit;        // 1 = take the light rig; 0 = flat area terms
-uniform float uBack;     // snow: light from behind the flake glows through it
+uniform float uBack;     // snow: how strongly a flake scatters light forward, toward an eye looking at the light
 // CX-43: uAreaAmbient / uAreaDiffuse / uAreaDir ride the pass block.
 #include "cx_pass.glsl"
 out vec2 vUV;
 out float vViewZ;
 out float vSeed;
 out vec3 vLight;         // linear light at this drop or flake
+out vec3 vBehind;        // linear sky seen through it
+/// The forward lobe of a rain drop's sun scatter (Henyey-Greenstein g).
+const float CX_WX_RAIN_G = 0.35;
 
 vec2 cxClusterXY;
 #define CX_CLUSTER_XY cxClusterXY

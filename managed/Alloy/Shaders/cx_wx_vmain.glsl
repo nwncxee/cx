@@ -53,23 +53,18 @@ void main()
     vec3 Pc = P + (R * (h.y - 0.5) + U * (h.z - 0.5)) * uCoverSoft * 2.0;
     float shown = fract(h.z * 91.7) > edge ? 0.0 : uKind == 3 ? CxLip(P, R, U) : CxCovered(Pc);
     gl_Position = shown < 0.5 ? vec4(2.0, 2.0, 2.0, 1.0) : uProj * vp;
-    // a drop has no surface: the camera-facing direction stands in for its normal, so a lamp behind the
-    // camera lights it and one behind the drop does not -- the cheapest read of "wet glints towards you"
-    vLight = uAreaAmbient + uAreaDiffuse * (uKind == 2 ? 1.0 : 0.5);
+    // no surface normal: the sun reaches a drop through a forward-scattering lobe, a lamp from wherever it stands
+    vec3 V = normalize(toCam);
+    vec3 sky = normalize(vec3(0.0, 0.0, 1.0) - V);
+    vBehind = uAreaAmbient * (uProbeMips > 0.0 ? CxAmbientShape(sky) : vec3(1.0));
+    vLight = uAreaAmbient + uAreaDiffuse * 0.5;
     if (uLit != 0 && shown >= 0.5)
     {
-        vec3 N = normalize(toCam);
         vec4 cv = uView * vec4(P, 1.0);
         vec4 cc = uProj * cv;
         cxClusterXY = (cc.xy / max(cc.w, 1e-3) * 0.5 + 0.5) * vec2(uGrid.xy);
-        float ndl = clamp(dot(N, uAreaDir), 0.0, 1.0);
-        vec3 sun = uAreaDiffuse * (ndl * CxSunShadow(P, N, ndl, ndl));
-        vec3 point = CxClusteredDiffuse(P, N, max(-cv.z, 1e-3));
-        vLight = uAreaAmbient * mix(0.15, 1.0, ndl) + sun + point;
-        if (uBack > 0.0)
-        {
-            float back = pow(max(dot(-N, uAreaDir), 0.0), 4.0);
-            vLight += uBack * (uAreaDiffuse * back * CxSunShadow(P, -N, back, back) + CxClusteredDiffuse(P, -N, max(-cv.z, 1e-3)));
-        }
+        float g = uKind == 2 ? clamp(uBack * 0.5, 0.0, 0.8) : CX_WX_RAIN_G;
+        vec3 sun = uAreaDiffuse * (CxWxPhase(-uAreaDir, V, g) * CxSunShadow(P, uAreaDir, 1.0, 1.0));
+        vLight = uAreaAmbient + sun + CxWxLamps(P, max(-cv.z, 1e-3));
     }
 }

@@ -50,9 +50,7 @@ float CxGgxD(float NoH, float a)
     return a2 / max(3.14159265 * d * d, 1e-8);
 }
 
-/// CX-46: the probe's SH9 irradiance, written by cx_probe_sh after each capture with the cosine lobe and basis
-/// constants folded in, and the world point the capture stood at. Read only under uProbeMips > 0.
-layout(std140, binding = 1) uniform CxProbeSh { vec4 uProbeSh[9]; vec4 uProbeAt; };
+#include "cx_probeshape.glsl"
 
 /// The probe's radiance along R from world point P, parallax-corrected. The cube's alpha is 1 / the distance to
 /// what the capture saw each way, so the lookup turns toward where the ray meets that surface instead of reading

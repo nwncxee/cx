@@ -49,7 +49,7 @@ internal static unsafe partial class Weather
         FlakeSize = G.Slider("flake", "Snowflake size", 0.01f, 0.2f, 0.01f, 0.05f, "m", Tier.ChatOnly, help: "Diameter of one flake.");
         Brightness = G.Slider("bright", "Brightness", 0f, 3f, 0.1f, 0.6f, tier: Tier.ChatOnly, help: "Streaks and flakes take the light where they fall (sun, shadow, lamps); this scales it.");
         Opacity = G.Slider("opacity", "Rain opacity", 0.02f, 1f, 0.02f, 0.7f, tier: Tier.ChatOnly,
-                           help: "How much of the scene one lit streak hides. A streak with no light on it is invisible whatever this says.");
+                           help: "How strongly one streak shows: the share of the scene it hides, the sky seen through it and the light it throws.");
         Range = G.Slider("range", "Range", 6f, 40f, 1f, 20f, "m", Tier.ChatOnly, help: "Size of the box around the camera the field fills.")
                  .Ladder(Quality.Weather, 12f, 16f, 20f, 28f);
         RainSpeed = G.Slider("rainspeed", "Rain speed", 2f, 30f, 0.5f, 12f, "m/s", Tier.ChatOnly);

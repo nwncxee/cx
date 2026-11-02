@@ -3,4 +3,7 @@
 #include "cx_localshadow.glsl"
 #include "cx_lightfrag.glsl"
 #include "cx_sunshadow.glsl"
+#include "cx_probeshape.glsl"
+#define CX_WX_LAMPS 1
+#include "cx_wx_shade.glsl"
 #include "cx_wx_vmain.glsl"
