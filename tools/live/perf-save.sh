@@ -73,8 +73,8 @@ for l in lines:
     if 'UiHostService: [frame]' in l and (m := re.search(r'avg ([\d,]+)ms', l)):
         frames.append(num(m.group(1)))
         if (e := re.search(r'OVER BUDGET by (\d+)MiB', l)): over = max(over, int(e.group(1)))
-    elif 'gpu terms total' in l:
-        gpus.append(num(re.search(r'gpu terms total ([\d,]+)', l).group(1)))
+    elif '[vkgpu]' in l and (m := re.search(r'\[vkgpu\] ([\d,]+) ms GPU per frame', l)):
+        gpus.append(num(m.group(1)))
     elif 'FrameZones: [zones]' in l:
         zones.append({k: num(v) for k, v in re.findall(r'(\w+):(-?[\d,]+)', l.split('[zones]')[1].split(' || worst')[0])})
 # The first periods cover the menu and the load; keep only the last periods that follow it.
