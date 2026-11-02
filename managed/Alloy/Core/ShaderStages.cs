@@ -206,7 +206,7 @@ internal static class ShaderStages
     /// that declares it. A missing switch arm is otherwise invisible until a program builds from "".</summary>
     internal static bool SelfCheck(ExtenderLog log)
     {
-        bool ok = All.Length == 42 && BindlessRef.Length <= ShaderResource.ResRefBytes;
+        bool ok = All.Length == 43 && BindlessRef.Length <= ShaderResource.ResRefBytes;
         foreach ((string r, string header) in All)
         {
             string src = Source(r);
