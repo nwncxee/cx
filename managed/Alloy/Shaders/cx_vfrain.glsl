@@ -1,7 +1,7 @@
 // The far rain veil the volumetric fog's froxels carry, where the near lattice has thinned out, and what a
 // rain-only build of that volume scatters. Every function below is self-contained -- it reads no uniform and
 // no file constant -- so the precipitation pass can include this for CxWxNearKeep alone and nothing here
-// needs a second home. Needs CxVfHaze (cx_vfog_cs) ahead of it.
+// needs a second home. A stage that declares the fog's own haze says CX_VFRAIN_HAZE and gets CxVfDensity too.
 #ifndef CX_VFRAIN_LIB
 #define CX_VFRAIN_LIB
 
@@ -23,6 +23,7 @@ float CxVfRain(float dist, float open)
     return (1.0 - CxWxNearKeep(dist)) * mix(roofed, 1.0, clamp(open, 0.0, 1.0));
 }
 
+#ifdef CX_VFRAIN_HAZE
 /// The air's extinction per metre at `world`: the fog's own haze where `haze` says this build draws it, plus
 /// `rain` of a whole rain's veil.
 float CxVfDensity(vec3 world, float dist, float open, float rain, float haze)
@@ -31,6 +32,7 @@ float CxVfDensity(vec3 world, float dist, float open, float rain, float haze)
     const float fall = 0.005;
     return haze * CxVfHaze(world) + rain * fall * CxVfRain(dist, open);
 }
+#endif
 
 /// The light the air scatters toward the eye: `sun` the ambient and the sun's beam, `lamps` the clustered
 /// lamps' glow. A rain-only build (`haze` 0) carries none of it -- a veil is not the fog a lamp lights.

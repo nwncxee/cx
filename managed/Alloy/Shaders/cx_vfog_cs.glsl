@@ -77,6 +77,7 @@ float CxVfHaze(vec3 world)
     return h;
 }
 
+#define CX_VFRAIN_HAZE 1
 #include "cx_vfrain.glsl"
 
 /// 1 = open sky above this point along the fall vector, 0 = roofed. No map, or a point past its edge, is open --
