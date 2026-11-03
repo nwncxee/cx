@@ -127,7 +127,7 @@ public sealed unsafe partial class AlloyRenderer
         VkCopyDepth(cl, c);
         ReadOnlySpan<ImageId> read = [c.DepthRead, c.G3];
         cl.ReadImages(c.GbufWritten ? read : read[..1]);
-        CommandList side = s.Side!;
+        CommandList side = s.Side ??= new CommandList("vulkan weather", 1 << 14, log);
         side.Reset();
         int arena0 = c.ArenaUsed;
         side.SetViewport(0, 0, viewport[2], viewport[3]);
@@ -383,7 +383,6 @@ public sealed unsafe partial class AlloyRenderer
     {
         if (s.Tried[k]) return s.Prog[k] != null;
         s.Tried[k] = true;
-        s.Side ??= new CommandList("vulkan weather", 1 << 14, log);
         (string vs, string fs) = k == VkSplashProg ? Weather.VkSplashTexts(log) : Weather.VkTexts(k == 1, log);
         string label = VkWxLabel(k);
         VkProgramText t = WorldDepth.Translate(ShaderResource.Tokens(vs), ShaderResource.Tokens(fs), VkPrograms.Units);
