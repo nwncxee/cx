@@ -241,3 +241,5 @@ post\.taa\b	CX-394
 (Vulkan.s|the) composite image|composite Vulkan presents|present blit of the composite	CX-437
 # The precipitation box is sized by the near tier it holds, a constant, not a knob.
 \bweather\.range\b	CX-429
+# CX-456: a rain drop is a water bead now, sized by its own diameter and weather.blur; nothing reads a streak length.
+weather\.streak\b|Rain streak length|Streaks and flakes|each streak	CX-456

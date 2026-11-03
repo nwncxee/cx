@@ -65,4 +65,11 @@ float CxWxMicro(float depth, float puddles, float coarse, float fine, float poro
     float swing = (1.0 - CX_WX_FINE_W) * coarse + CX_WX_FINE_W * fine - 0.5;
     return depth * (CX_WX_MICRO_MEAN * 2.0 * (1.0 - puddles) + CX_WX_MICRO_AMP * swing) * (1.0 + poro);
 }
+
+/// The water standing over a point, 0 none to 1 a full <c>pool</c> metres: its basin's level <c>basin</c> less the
+/// metres <c>micro</c> it stands above the basin's low point (<see cref="CxWxMicro"/>).
+float CxWxStanding(float basin, float micro, float pool)
+{
+    return smoothstep(0.0, pool, basin - micro);
+}
 #endif

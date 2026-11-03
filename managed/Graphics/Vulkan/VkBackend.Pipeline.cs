@@ -85,8 +85,11 @@ internal sealed unsafe partial class VkBackend
             Name(VkObjectType.Pipeline, pipe.Handle, what);
             return new PipelineId(_pipelines.Add(new VkPipe(new PipeObj(pipe, null), true, default, default)));
         }
-        if (!_shaders.TryGet(d.Vs.Value, out _) || !_shaders.TryGet(d.Fs.Value, out _))
-            return Refused<PipelineId>($"{what}: a graphics pipeline needs a live vertex and fragment stage");
+        bool mesh = !d.Ms.IsNull;
+        if (mesh && !_mesh) return Refused<PipelineId>($"{what}: a mesh pipeline on a device without mesh shaders ({_meshWhy})");
+        if (!_shaders.TryGet((mesh ? d.Ms : d.Vs).Value, out _) || !_shaders.TryGet(d.Fs.Value, out _))
+            return Refused<PipelineId>($"{what}: a graphics pipeline needs a live vertex or mesh stage and a fragment stage");
+        if (!d.Ts.IsNull && !_shaders.TryGet(d.Ts.Value, out _)) return Refused<PipelineId>($"{what}: stale task stage");
         if (!d.Gs.IsNull && !_shaders.TryGet(d.Gs.Value, out _)) return Refused<PipelineId>($"{what}: stale geometry stage");
         if (!d.Layout.IsNull && !_layouts.TryGet(d.Layout.Value, out _)) return Refused<PipelineId>($"{what}: stale vertex layout");
         if (d.Raster.DepthClamp && !_depthClamp) return Refused<PipelineId>($"{what}: this device has no depth clamp");
@@ -97,7 +100,8 @@ internal sealed unsafe partial class VkBackend
         if (_shared.TryGetValue(key, out PipeObj? obj)) obj.Refs++;
         else
         {
-            bool linked = Libraries;
+            // ponytail: a mesh pipeline is built whole on the frame, once per device, against ADR 0054's library link; libraries would cover it once the pre-raster part takes task and mesh stages
+            bool linked = Libraries && !mesh;
             _pipeCacheDirty = true;
             pipe = linked ? Linked(d, rate, dyn, what) : default;
             if (linked && pipe.IsNull)
@@ -130,7 +134,7 @@ internal sealed unsafe partial class VkBackend
     {
         string r = rate ? " r" : "";
         return ($"vi {d.Layout.Value} {(int)d.Topo}",
-                $"pr {d.Vs.Value} {d.Gs.Value} {(d.Raster.DepthClamp ? 'c' : '-')}{r}",
+                $"pr {d.Vs.Value} {d.Gs.Value} {d.Ts.Value} {d.Ms.Value} {(d.Raster.DepthClamp ? 'c' : '-')}{r}",
                 $"fs {d.Fs.Value} s{Math.Max(d.Targets.Samples, 1)}{(d.AlphaToCoverage ? " a2c" : "")}{r}",
                 OutputKey(d, rate, dyn));
     }
@@ -174,7 +178,8 @@ internal sealed unsafe partial class VkBackend
         int ns = 0;
         if (libs == null && (parts & Part.PreRaster) != 0)
         {
-            stages[ns++] = Stage(ShaderOf(d.Vs), &spec.Info);
+            if (!d.Ts.IsNull) stages[ns++] = Stage(ShaderOf(d.Ts), &spec.Info);
+            stages[ns++] = Stage(ShaderOf(d.Ms.IsNull ? d.Vs : d.Ms), &spec.Info);
             if (!d.Gs.IsNull) stages[ns++] = Stage(ShaderOf(d.Gs), &spec.Info);
         }
         if (libs == null && (parts & Part.Fragment) != 0) stages[ns++] = Stage(ShaderOf(d.Fs), &spec.Info);
@@ -263,7 +268,7 @@ internal sealed unsafe partial class VkBackend
         };
         // a library gets only its part's state: NVIDIA bakes a pre-raster library's vertex input, which others share
         Part own = libs != null ? Part.None : parts;
-        if ((own & Part.VertexInput) == 0) { gci.pVertexInputState = null; gci.pInputAssemblyState = null; }
+        if ((own & Part.VertexInput) == 0 || !d.Ms.IsNull) { gci.pVertexInputState = null; gci.pInputAssemblyState = null; }
         if ((own & Part.PreRaster) == 0) { gci.pViewportState = null; gci.pRasterizationState = null; }
         if ((own & Part.Fragment) == 0) gci.pDepthStencilState = null;
         if ((own & (Part.Fragment | Part.Output)) == 0) gci.pMultisampleState = null;
@@ -326,6 +331,8 @@ internal sealed unsafe partial class VkBackend
                 ShaderStage.Vertex => VkShaderStageFlags.Vertex,
                 ShaderStage.Geometry => VkShaderStageFlags.Geometry,
                 ShaderStage.Compute => VkShaderStageFlags.Compute,
+                ShaderStage.Task => VkShaderStageFlags.TaskEXT,
+                ShaderStage.Mesh => VkShaderStageFlags.MeshEXT,
                 _ => VkShaderStageFlags.Fragment,
             },
             module = s.Module, pSpecializationInfo = spec,

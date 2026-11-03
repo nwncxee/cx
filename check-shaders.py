@@ -622,6 +622,9 @@ def programs(g):
         "weather cull (wave)": (define(define(g["cx_wx_cull_cs"], f"CX_WX_REC_CAP {WX_REC_CAP}u"), "CX_WX_WAVE 1"),),
         "weather rain": (g["cx_weather_vs"], g["cx_rain_fs"]),
         "weather snow": (g["cx_weather_vs"], g["cx_snow_fs"]),
+        # AlloyRenderer.VkWxMeshEnsure: the same field through task and mesh stages where the device offers them
+        "weather rain (mesh)": (g["cx_wx_task"], g["cx_wx_mesh"], g["cx_rain_fs"]),
+        "weather snow (mesh)": (g["cx_wx_task"], g["cx_wx_mesh"], g["cx_snow_fs"]),
         "weather splash": (g["cx_splash_vs"], g["cx_splash_fs"]),
         "weather motion vectors": (define(g["cx_weather_vs"], "CX_MOTION 1"), g["cx_wx_mot_f"]),
         "motion vectors": (g["cx_fullscreen_v"], g["cx_motioncam_f"]),
@@ -685,7 +688,7 @@ def programs(g):
 
 
 # Stage count -> the file extensions glslangValidator infers each stage from.
-EXTS = {1: ("comp",), 2: ("vert", "frag"), 4: ("vert", "tesc", "tese", "frag")}
+EXTS = {1: ("comp",), 2: ("vert", "frag"), 3: ("task", "mesh", "frag"), 4: ("vert", "tesc", "tese", "frag")}
 
 
 SIDE_EFFECTS = re.compile(r"\b(atomic\w*|imageStore|imageAtomic\w*|gl_FragDepth)\b|\blayout\([^)]*\)\s*(?!readonly)(?:coherent\s+|volatile\s+|restrict\s+)*buffer\b")

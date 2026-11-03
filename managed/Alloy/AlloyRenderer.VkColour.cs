@@ -36,6 +36,8 @@ public sealed unsafe partial class AlloyRenderer
         public ContentVariant Variant;
         public string Label = "";
         public ShaderId Vs, Fs;
+        /// <summary>A mesh program's task and mesh stages, in place of <see cref="Vs"/>.</summary>
+        public ShaderId Ts, Ms;
         public LooseBlock.Member[] Members = [];
         public Dictionary<string, int> Names = new();
         public byte[] Block = [];
@@ -76,6 +78,9 @@ public sealed unsafe partial class AlloyRenderer
         public int EngineAt = -1;
         public readonly VertexLayoutId[] Layouts = new VertexLayoutId[MeshArena.Formats];
         public ImageId Hdr, Depth, G0, G1, G2;
+        /// <summary>The standing water the deferred twin records per pixel, read by the rain splash after the walk: its
+        /// own memory, since the splash reads it after the frame's resolve.</summary>
+        public ImageId G3;
         /// <summary>The prepass depth as a SAMPLED copy: the colour pass's draws cannot sample their own depth
         /// attachment, and the lit stage tests every AO fetch against the depth the estimate was computed from.</summary>
         public ImageId DepthRead;
@@ -136,8 +141,9 @@ public sealed unsafe partial class AlloyRenderer
     private const int ZeroUboBytes = 16384, ZeroSsboBytes = 1 << 20;
     /// <summary>The draw buffer the G-buffer's first lane sits on, as GBuffer attaches it on GL.</summary>
     private const int GbufFirst = 4;
-    /// <summary>Attachments the colour pass names: scene colour, three slots routed nowhere, the G-buffer's three.</summary>
-    private const int ColourTargets = 7;
+    /// <summary>Attachments the colour pass names: scene colour, three slots routed nowhere, the G-buffer's four.
+    /// ponytail: eight is every colour attachment the RHI seats; the next lane needs a packed one or two passes.</summary>
+    private const int ColourTargets = 8;
 
     /// <summary>Which attachment set a pipeline draws into.</summary>
     private enum VkTargets : byte { Prepass, Colour, Forward, Decal, Mask, Velocity, ColourRefl, Probe, Oit, ForwardDepth, Cover }
@@ -174,7 +180,7 @@ public sealed unsafe partial class AlloyRenderer
         if (s.ZeroUbo.IsNull && !VkMakeStatic(vk, s, log)) { s.Failed = true; return false; }
         if (s.W != w || s.H != h)
         {
-            vk.Destroy(s.Hdr); vk.Destroy(s.Depth); vk.Destroy(s.G0); vk.Destroy(s.G1); vk.Destroy(s.G2);
+            vk.Destroy(s.Hdr); vk.Destroy(s.Depth); vk.Destroy(s.G0); vk.Destroy(s.G1); vk.Destroy(s.G2); vk.Destroy(s.G3);
             vk.Destroy(s.DepthRead);
             // the deferred dispatch loads and stores the scene colour as an image, so it is a storage image too
             s.Hdr = VkTarget(vk, Format.Rgba16F, w, h, "vk scene colour", ImageUse.Storage);
@@ -182,11 +188,12 @@ public sealed unsafe partial class AlloyRenderer
             s.G0 = VkTarget(vk, Format.Rgba32Ui, w, h, "vk g-buffer 0", alias: AliasLanes.Wide);
             s.G1 = VkTarget(vk, Format.Rgba32Ui, w, h, "vk g-buffer 1", alias: AliasLanes.Second);
             s.G2 = VkTarget(vk, Format.Rg32Ui, w, h, "vk g-buffer 2", alias: AliasLanes.Narrow);
+            s.G3 = VkTarget(vk, Format.R8, w, h, "vk g-buffer standing water");
             s.DepthRead = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.D32F, w, h, 1, 1, 1, 1,
                                                        ImageUse.Sampled | ImageUse.CopyDst, "vk scene depth copy"));
             s.W = w; s.H = h;
             s.DepthFilled = false;
-            if (s.Hdr.IsNull || s.Depth.IsNull || s.G0.IsNull || s.G1.IsNull || s.G2.IsNull || s.DepthRead.IsNull)
+            if (s.Hdr.IsNull || s.Depth.IsNull || s.G0.IsNull || s.G1.IsNull || s.G2.IsNull || s.G3.IsNull || s.DepthRead.IsNull)
             {
                 s.Failed = true;
                 log.Always($"AlloyRenderer: the Vulkan scene targets at {w}x{h} were REFUSED (logged above)");
@@ -627,6 +634,7 @@ public sealed unsafe partial class AlloyRenderer
         if (VkIsWaterTex(o.Name) && VkWaterTex(o.Name) is { IsNull: false } wat)
             return new ImageBinding(o.Binding, wat, VkWaterSampler(o.Name));
         if (o.Name == "uSceneDepth" && s.DepthFilled) return new ImageBinding(o.Binding, s.DepthRead);
+        if (o.Name == "uWxStand" && !s.G3.IsNull && s.GbufWritten) return new ImageBinding(o.Binding, s.G3, s.Raw);
         return VkStandInOf(in o, s);
     }
 
@@ -701,6 +709,7 @@ public sealed unsafe partial class AlloyRenderer
             d.Targets.Colors[GbufFirst] = Format.Rgba32Ui;
             d.Targets.Colors[GbufFirst + 1] = Format.Rgba32Ui;
             d.Targets.Colors[GbufFirst + 2] = Format.Rg32Ui;
+            d.Targets.Colors[GbufFirst + 3] = Format.R8;
             bool twin = p.Deferred;
             for (int i = GbufFirst; i < ColourTargets; i++) d.Blend[i] = new AttachmentBlend(Masked: twin ? ColorMask.None : ColorMask.All);
             if (targets == VkTargets.ColourRefl)

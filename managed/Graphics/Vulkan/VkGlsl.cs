@@ -26,6 +26,8 @@ internal sealed class VkProgramText
     public string Vs = "", Fs = "";
     /// <summary>The one stage of a COMPUTE translation (<see cref="VkGlsl.TranslateCompute"/>); empty otherwise.</summary>
     public string Cs = "";
+    /// <summary>A mesh program's task and mesh stages (<see cref="VkGlsl.TranslateMesh"/>); empty otherwise.</summary>
+    public string Ts = "", Ms = "";
     /// <summary><see cref="VkGlsl.LooseBlock"/>'s members, in declaration order: vertex stage first.</summary>
     public readonly List<VkLoose> Loose = new();
     /// <summary>Every sampler, image and block either stage declares, deduped by stage-independent identity.</summary>

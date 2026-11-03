@@ -10,7 +10,7 @@ namespace CX.Alloy;
 
 /// <summary>
 /// Falling rain and snow (<see cref="PassId.WeatherOwned"/>) on Vulkan: a compute cull places, tests and lights every
-/// drop of <see cref="Weather"/>'s lattice once, keeps those on screen and under open sky, and the streaks and flakes
+/// drop of <see cref="Weather"/>'s lattice once, keeps those on screen and under open sky, and the drops and flakes
 /// draw indirect from its records, premultiplied over the scene colour, faded against a depth copy. The roof drips are
 /// rain's program again, kept only under a lip.
 /// </summary>
@@ -26,7 +26,6 @@ public sealed unsafe partial class AlloyRenderer
         public Weather.SpLoc Sp;
         public readonly bool[] Tried = new bool[3];
         public CommandList? Side;
-        public bool Live;
         public VkDefStage? Cull;
         public Weather.Loc CullL;
         public bool CullTried;
@@ -38,6 +37,17 @@ public sealed unsafe partial class AlloyRenderer
         /// <summary>The phase the last cull saw, and whether a cull ran then: a frame after none takes no fall step.</summary>
         public double LastPhase;
         public bool CulledLast;
+        /// <summary>The mesh path's programs, made the first time the device offers it.</summary>
+        public VkWxMeshState? MeshState;
+        /// <summary>This frame drew through the mesh path, and the lattice points and drips it walked and the fall step it
+        /// took, for the late draw to walk again.</summary>
+        public bool Mesh;
+        public int Count, Drips;
+        public float Step;
+        /// <summary>The path the last line named; null until one was said.</summary>
+        public Weather.WxPath? SaidPath;
+        /// <summary>A splash drew with no standing water recorded, and the line saying so is out.</summary>
+        public bool BareSaid;
         public VkProg? Motion;
         public PipelineId MotionPipe;
         public Weather.Loc ML;
@@ -76,8 +86,8 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>How often, in frames that culled, the commands are read back to see whether the cap bound.</summary>
     private const int VkWxSamplePeriod = 30;
 
-    /// <summary>The bytes of one cull survivor's record.</summary>
-    private const int VkWxRecordBytes = 3 * 16;
+    /// <summary>The bytes of one cull survivor's record: five vec4s (<c>CxWxPlace</c>).</summary>
+    private const int VkWxRecordBytes = 5 * 16;
 
     /// <summary>The most survivors one command keeps: a ceiling on the drops drawn, not on the field. ponytail: a frame
     /// that would keep more draws an arbitrary subset; raise it, or cap by distance, if a real area reaches it.</summary>
@@ -99,44 +109,48 @@ public sealed unsafe partial class AlloyRenderer
         int count = Weather.StageVk(AreaWind(), out bool snow, out int drips);
         int k = snow ? 1 : 0;
         if (count < 0) { s.CulledLast = false; s.Walked = 0; return true; }
-        bool culls = (count > 0 || drips > 0) && VkWxCullEnsure(vk, s, log);
-        bool fall = culls && count > 0 && VkWxEnsure(vk, s, k, log), drip = culls && drips > 0 && VkWxEnsure(vk, s, 0, log);
+        // FSR and TAA reconstruct from history, and a drop or a crown in it smears over the ground: hold them for after the resolve
+        bool late = Weather.DrawsWhere(Fsr.On, PostChain.TaaOn) != Weather.Site.Scene && !s.LateFailed;
+        bool any = count > 0 || drips > 0;
+        // rain's own motion is drawn again from the cull's records, which only the compute path keeps
+        bool mesh = any && VkWxMeshPath(vk, s, k, drips, Weather.MotionWanted(Fsr.On, PostChain.TaaOn, late), log);
+        bool culls = !mesh && any && VkWxCullEnsure(vk, s, log);
+        bool fall = count > 0 && (mesh || culls && VkWxEnsure(vk, s, k, log));
+        bool drip = drips > 0 && (mesh || culls && VkWxEnsure(vk, s, 0, log));
         bool lit = lightingOn && AlloyLights.Ready;
         float step = VkWxFallStep(s, fall || drip);
-        if ((fall || drip) && !VkWxCull(cl, s, c, snow ? 2 : 1, fall ? count : 0, drip ? drips : 0, step, view, proj, viewport, near, far, lit))
+        if (!mesh && (fall || drip) && !VkWxCull(cl, s, c, snow ? 2 : 1, fall ? count : 0, drip ? drips : 0, step, view, proj, viewport, near, far, lit))
             return false;
         s.Fell = fall; s.Dripped = drip; s.Kind = snow ? 2 : 1;
+        s.Mesh = mesh; s.Count = count; s.Drips = drips; s.Step = step;
         s.View = view; s.Proj = proj;
         VkCopyDepth(cl, c);
-        ReadOnlySpan<ImageId> read = [c.DepthRead];
-        cl.ReadImages(read);
-        CommandList side = s.Side!;
+        ReadOnlySpan<ImageId> read = [c.DepthRead, c.G3];
+        cl.ReadImages(c.GbufWritten ? read : read[..1]);
+        CommandList side = s.Side ??= new CommandList("vulkan weather", 1 << 14, log);
         side.Reset();
         int arena0 = c.ArenaUsed;
         side.SetViewport(0, 0, viewport[2], viewport[3]);
-        // FSR and TAA reconstruct from history, and a streak or a crown in it smears over the ground: hold them for after the resolve
-        bool late = Weather.DrawsWhere(Fsr.On, PostChain.TaaOn) != Weather.Site.Scene && !s.LateFailed;
         s.Late = late; s.Lit = lit;
-        if (!late && fall && !VkWxDraw(side, s, c, k, snow ? 2 : 1, 0, view, proj, viewport, near, far, lit)) return false;
-        if (!late && drip && !VkWxDraw(side, s, c, 0, 3, 1, view, proj, viewport, near, far, lit)) return false;
+        Matrix4x4 mv = view, mp = proj;
+        if (!late && fall && !(mesh ? VkWxMeshDraw(vk, side, s, c, k, s.Kind, count, false, &mv, &mp, viewport, near, far, lit, log)
+                                    : VkWxDraw(side, s, c, k, s.Kind, 0, view, proj, viewport, near, far, lit))) return false;
+        if (!late && drip && !(mesh ? VkWxMeshDraw(vk, side, s, c, 0, 3, drips, false, &mv, &mp, viewport, near, far, lit, log)
+                                    : VkWxDraw(side, s, c, 0, 3, 1, view, proj, viewport, near, far, lit))) return false;
         bool splash = VkWxEnsure(vk, s, VkSplashProg, log);
         s.Splashed = splash;
         if (!late && splash && !VkSplashDraw(side, s, c, view, proj, viewport, near, far, lit, s.Pipe[VkSplashProg], false)) return false;
         ReadOnlySpan<ColorAttachment> colors = [new(c.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default)];
         VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear)));
-        if (!s.Live)
-        {
-            s.Live = true;
-            log.Always($"AlloyRenderer: the Vulkan {(snow ? "snow" : "rain")} is LIVE -- {count} lattice point(s) and {drips} drip(s) "
-                     + "culled and lit once each in compute, stopped under the cover map, drawn indirect");
-        }
+        if ((fall || drip) && VkWxPathLine(s, vk, mesh ? Weather.WxPath.Mesh : Weather.WxPath.Compute) is { } said)
+            log.Always($"{said} -- the {(snow ? "snow" : "rain")} is LIVE, {count} lattice point(s) and {drips} drip(s)");
         return true;
     }
 
     /// <summary>The draw of <paramref name="kind"/> (1 rain, 2 snow, 3 drips) through program <paramref name="k"/>, its own
     /// loose block, indirect from the cull's command <paramref name="slot"/>; false only when the arena is full.</summary>
     private static bool VkWxDraw(CommandList side, VkWxState s, VkColourState c, int k, int kind, int slot, in Matrix4x4 view,
-                                 in Matrix4x4 proj, int* viewport, float near, float far, bool lit)
+                                 in Matrix4x4 proj, int* viewport, float near, float far, bool lit, ReadOnlySpan<ImageBinding> own = default)
     {
         VkProg p = s.Prog[k]!;
         side.SetPipeline(s.Pipe[k]);
@@ -146,14 +160,14 @@ public sealed unsafe partial class AlloyRenderer
         try
         {
             BindPass(p.L.CubeCount, viewport, near, far);
-            Weather.WriteVk(in s.L[k], kind, &v, &pr, _eyePos, lit);
+            Weather.WriteVk(in s.L[k], kind, &v, &pr, _eyePos, lit, viewport[3]);
             LooseBlock.Set(s.L[k].Screen, [(float)viewport[2], viewport[3]]);
         }
         finally { LooseBlock.EndCapture(); }
         int loose = VkArena(p.Block), pass = VkArenaPass();
         if (loose < 0 || pass < 0) return false;
         ReadOnlySpan<BufferBinding> drops = [new(SsboSlots.WxDrops, s.Drops)];
-        VkBindSet(side, p, c, loose, pass, c.Slots, 0, default, drops);
+        VkBindSet(side, p, c, loose, pass, c.Slots, 0, default, drops, own);
         side.DrawIndirect(s.Cmd, slot * 4 * sizeof(uint), 1);
         c.Effects = true;
         return true;
@@ -162,7 +176,7 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The cull into <paramref name="cl"/>: both commands reset, then one dispatch for the fall's
     /// <paramref name="count"/> lattice points and one for the <paramref name="drips"/>; false only when the arena is full.</summary>
     private static bool VkWxCull(CommandList cl, VkWxState s, VkColourState c, int kind, int count, int drips, float step, in Matrix4x4 view,
-                                 in Matrix4x4 proj, int* viewport, float near, float far, bool lit)
+                                 in Matrix4x4 proj, int* viewport, float near, float far, bool lit, ReadOnlySpan<ImageBinding> own = default)
     {
         ReadOnlySpan<uint> cmd = [4, 0, 0, 0, 4, 0, 0, VkWxDripBase, 0, 0];
         cl.UpdateBuffer(s.Cmd, 0, MemoryMarshal.AsBytes(cmd));
@@ -175,8 +189,8 @@ public sealed unsafe partial class AlloyRenderer
         int len = (c.ArenaUsed - arena0 + 3) & ~3;
         cl.UpdateBuffer(c.Arena, arena0, c.ArenaBytes.AsSpan(arena0, Math.Min(len, ArenaCap - arena0)));
         cl.SetPipeline(s.Cull!.Pipe);
-        if (count > 0) { VkWxCullBind(cl, s, c, fall, fallPass); cl.Dispatch((count + 63) / 64); }
-        if (drips > 0) { VkWxCullBind(cl, s, c, drip, dripPass); cl.Dispatch((drips + 63) / 64); }
+        if (count > 0) { VkWxCullBind(cl, s, c, fall, fallPass, own); cl.Dispatch((count + 63) / 64); }
+        if (drips > 0) { VkWxCullBind(cl, s, c, drip, dripPass, own); cl.Dispatch((drips + 63) / 64); }
         if (++s.Frames % VkWxSamplePeriod == 0 && s.SampleGen == 0)
         {
             s.SampleWalked = (uint)count;
@@ -222,7 +236,7 @@ public sealed unsafe partial class AlloyRenderer
         try
         {
             BindPass(st.L.Cubes, viewport, near, far);
-            Weather.WriteVk(in s.CullL, kind, &v, &pr, _eyePos, lit);
+            Weather.WriteVk(in s.CullL, kind, &v, &pr, _eyePos, lit, viewport[3]);
             Weather.WriteCullVk(in s.CullL, count, slot, step);
         }
         finally { LooseBlock.EndCapture(); }
@@ -243,7 +257,8 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>The cull's set: its two blocks, the probe's SH where it is live, the light rig, the records and commands
     /// it writes, and each sampler by name as the draws bind it.</summary>
-    private static void VkWxCullBind(CommandList cl, VkWxState s, VkColourState c, int loose, int pass)
+    private static void VkWxCullBind(CommandList cl, VkWxState s, VkColourState c, int loose, int pass,
+                                     ReadOnlySpan<ImageBinding> own = default)
     {
         VkDefStage st = s.Cull!;
         Span<BufferBinding> ubo = stackalloc BufferBinding[12];
@@ -277,7 +292,7 @@ public sealed unsafe partial class AlloyRenderer
                 case VkBindKind.StorageImage:
                     break;
                 default:
-                    sampled[nt++] = VkSampled(o, c, 0);
+                    sampled[nt++] = Own(own, o.Binding) ?? VkSampled(o, c, 0);
                     break;
             }
         }
@@ -329,6 +344,13 @@ public sealed unsafe partial class AlloyRenderer
             BindPass(p.L.CubeCount, viewport, near, far);
             n = Weather.WriteSplashVk(in s.Sp, &v, &pr, viewport, _eyePos, lit);
             LooseBlock.Set(s.Sp.Late, late ? 1 : 0);
+            LooseBlock.Set(s.Sp.StandOn, c.GbufWritten ? 1 : 0);
+            LooseBlock.Set(s.Sp.Viz, Weather.Viz.V);
+            if (!c.GbufWritten && !s.BareSaid)
+            {
+                s.BareSaid = true;
+                _log?.Always("AlloyRenderer: the rain crowns read every landing point as bare ground -- this frame recorded no standing water (the deferred G-buffer is off), so puddles throw full crowns");
+            }
             LooseBlock.Set(s.Sp.Screen, [(float)viewport[2], viewport[3]]);
         }
         finally { LooseBlock.EndCapture(); }
@@ -367,7 +389,6 @@ public sealed unsafe partial class AlloyRenderer
     {
         if (s.Tried[k]) return s.Prog[k] != null;
         s.Tried[k] = true;
-        s.Side ??= new CommandList("vulkan weather", 1 << 14, log);
         (string vs, string fs) = k == VkSplashProg ? Weather.VkSplashTexts(log) : Weather.VkTexts(k == 1, log);
         string label = VkWxLabel(k);
         VkProgramText t = WorldDepth.Translate(ShaderResource.Tokens(vs), ShaderResource.Tokens(fs), VkPrograms.Units);

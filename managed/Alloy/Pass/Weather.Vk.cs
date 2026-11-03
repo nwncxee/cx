@@ -24,6 +24,33 @@ internal static unsafe partial class Weather
         return count;
     }
 
+    /// <summary>For the mesh path golden: a field held still, its fall, phase and cover view written in place of the
+    /// frame's, so the fixture draws one field the same way through either path.</summary>
+    internal sealed class WxHoldState
+    {
+        public Vector3 Fall;
+        public double Phase;
+        public Matrix4x4 CoverVp;
+    }
+
+    private static WxHoldState? _hold;
+
+    /// <summary>Holds the field at <paramref name="h"/>; null lets it fall with the frame again.</summary>
+    internal static void Hold(WxHoldState? h) => _hold = h;
+
+    internal const string ShdWxTask = "cx_wx_task", ShdWxMesh = "cx_wx_mesh";
+
+    /// <summary>The task, mesh and fragment stages for rain or snow on the mesh path; a content override of the mesh and
+    /// fragment pair is taken as the vertex and fragment pair is.</summary>
+    internal static (string Ts, string Ms, string Fs) VkMeshTexts(bool snow, ExtenderLog log)
+    {
+        string fs = snow ? ShdSnowFs : ShdRainFs;
+        string ts = ShaderResource.Override(ShdWxTask, log) is { } o ? ShaderSource.Content(o, log) : ShaderStages.Source(ShdWxTask);
+        ShaderTexts.Pair(ShdWxMesh, ShaderStages.Source(ShdWxMesh), fs, ShaderStages.Source(fs), log, "Weather mesh",
+                        out string m, out string f);
+        return (ts, m, f);
+    }
+
     /// <summary>The stage pair for rain or snow, as GL builds it.</summary>
     internal static (string Vs, string Fs) VkTexts(bool snow, ExtenderLog log)
     {
@@ -44,6 +71,7 @@ internal static unsafe partial class Weather
         CoverLayer = LooseBlock.Loc("uCoverLayer"), Lit = LooseBlock.Loc("uLit"), Back = LooseBlock.Loc("uBack"),
         CoverVp = LooseBlock.Loc("uCoverVp"), CoverSoft = LooseBlock.Loc("uCoverSoft"),
         Count = LooseBlock.Loc("uCount"), Slot = LooseBlock.Loc("uSlot"), FallStep = LooseBlock.Loc("uFallStep"), Screen = LooseBlock.Loc("uScreen"),
+        Speed = LooseBlock.Loc("uSpeed"), Blur = LooseBlock.Loc("uBlur"), PxScale = LooseBlock.Loc("uPxScale"),
     };
 
     /// <summary>The cull's own terms into the open capture: the <paramref name="count"/> lattice points it walks, the
@@ -56,20 +84,24 @@ internal static unsafe partial class Weather
         LooseBlock.Set(l.Slot, slot);
     }
 
-    /// <summary>The draw's terms into the open capture, as <see cref="Submit"/> sets them, for <paramref name="kind"/>
-    /// (1 rain, 2 snow, 3 drips).</summary>
-    internal static void WriteVk(in Loc l, int kind, Matrix4x4* view, Matrix4x4* proj, Vector3 eye, bool lit)
+    /// <summary>The draw's terms into the open capture for <paramref name="kind"/> (1 rain, 2 snow, 3 drips), drawn into a
+    /// target <paramref name="screenH"/> pixels tall.</summary>
+    internal static void WriteVk(in Loc l, int kind, Matrix4x4* view, Matrix4x4* proj, Vector3 eye, bool lit, float screenH)
     {
         bool snow = kind == 2;
+        LooseBlock.Set(l.Speed, snow ? SnowSpeed.V : RainSpeed.V);
+        LooseBlock.Set(l.Blur, Blur.V);
+        LooseBlock.Set(l.PxScale, MathF.Abs(proj->M22) * screenH * 0.5f);
         LooseBlock.Set(l.View, *view);
         LooseBlock.Set(l.Proj, *proj);
         LooseBlock.Set(l.Eye, [eye.X, eye.Y, eye.Z]);
         LooseBlock.Set(l.Centre, [eye.X, eye.Y, eye.Z]);
-        LooseBlock.Set(l.Fall, [_fall.X, _fall.Y, _fall.Z]);
-        LooseBlock.Set(l.Phase, (float)_phase);
+        Vector3 fall = _hold?.Fall ?? _fall;
+        LooseBlock.Set(l.Fall, [fall.X, fall.Y, fall.Z]);
+        LooseBlock.Set(l.Phase, (float)(_hold?.Phase ?? _phase));
         LooseBlock.Set(l.Time, _wobble);
         LooseBlock.Set(l.Box, [Box, Box]);
-        LooseBlock.Set(l.Size, [snow ? FlakeSize.V : kind == 3 ? StreakLen.V * 0.25f : StreakLen.V, snow ? FlakeSize.V : kind == 3 ? 0.03f : 0.02f]);
+        LooseBlock.Set(l.Size, [snow ? FlakeSize.V : 0f, snow ? FlakeSize.V : 0f]);
         LooseBlock.Set(l.Kind, kind);
         LooseBlock.Set(l.Drift, snow ? 0.4f : 0f);
         float c = snow ? Brightness.V * 1.67f : Brightness.V;
@@ -80,8 +112,16 @@ internal static unsafe partial class Weather
         LooseBlock.Set(l.Soft, Soft.V);
         LooseBlock.Set(l.Viz, Viz.V);
         bool cover = Cover.V && CasterPass.CoverFresh;
-        LooseBlock.Set(l.CoverVp, cover ? CasterPass.CoverVp : default);
-        LooseBlock.Set(l.CoverLayer, (float)CasterPass.CoverLayer);
+        if (_hold != null)
+        {
+            LooseBlock.Set(l.CoverVp, _hold.CoverVp);
+            LooseBlock.Set(l.CoverLayer, 0f);
+        }
+        else
+        {
+            LooseBlock.Set(l.CoverVp, cover ? CasterPass.CoverVp : default);
+            LooseBlock.Set(l.CoverLayer, (float)CasterPass.CoverLayer);
+        }
         LooseBlock.Set(l.CoverSoft, CoverSoft.V);
     }
 
@@ -102,8 +142,19 @@ internal static unsafe partial class Weather
         Tint = LooseBlock.Loc("uTint"), Alpha = LooseBlock.Loc("uAlpha"), Rain = LooseBlock.Loc("uSplashRain"),
         Foot = LooseBlock.Loc("uFoot"), FootW = LooseBlock.Loc("uFootW"),
         WxMapXf = LooseBlock.Loc("uWxMapXf"), WxMapP = LooseBlock.Loc("uWxMapP"),
-        Late = LooseBlock.Loc("uLate"), Screen = LooseBlock.Loc("uScreen"),
+        Late = LooseBlock.Loc("uLate"), Screen = LooseBlock.Loc("uScreen"), StandOn = LooseBlock.Loc("uStandOn"), Viz = LooseBlock.Loc("uViz"),
     };
+
+    /// <summary>Logs the rain crowns' gates each time one flips while rain wants crowns: whether impacts can show, and
+    /// which of the cover map and its filtered copy stands in the way.</summary>
+    private static void CrownGateSay(bool cover)
+    {
+        if (SplashWanted() <= 0) return;
+        int gate = (cover ? 1 : 0) | (CoverWanted ? 2 : 0) | (CasterPass.CoverFresh ? 4 : 0) | (CoverDepthOk ? 8 : 0);
+        if (gate == _vks.CrownGate) return;
+        _vks.CrownGate = gate;
+        _log?.Always($"Weather: rain impacts {(cover ? "SHOW" : "HELD")} -- cover wanted {CoverWanted}, baked this frame {CasterPass.CoverFresh}, filtered {CoverDepthOk}");
+    }
 
     /// <summary>The splash draw's terms into the open capture: its instance count,
     /// 0 when nothing lands this frame. Called after <see cref="StageVk"/>, which stepped the splash clock.</summary>
@@ -115,6 +166,7 @@ internal static unsafe partial class Weather
         bool cover = Cover.V && CasterPass.CoverFresh && CoverDepthOk && Matrix4x4.Invert(CasterPass.CoverVp, out inv);
         if (cover) vp = CasterPass.CoverVp;
         else crowns = 0;
+        CrownGateSay(cover);
         if (crowns + feet <= 0 || !AlloyLights.TryPerspective(WorldDepth.Unfold(*proj), out _, out float p11, out _, out _)) return 0;
         LooseBlock.Set(l.View, *view);
         LooseBlock.Set(l.Proj, *proj);

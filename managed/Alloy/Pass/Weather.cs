@@ -55,7 +55,7 @@ internal static unsafe partial class Weather
     static Weather()
     {
         G = KnobGroup.Declare("weather", "Graphics", "World", master: "Weather",
-            masterHelp: "Rain and snow drawn by CX: wind-leaning streaks and flakes that stop under cover, and ground "
+            masterHelp: "Rain and snow drawn by CX: wind-leaning drops and flakes that stop under cover, and ground "
                       + "that wets, puddles and snows over. Off, the game's own rain and snow sheets fall instead.",
             masterChanged: MasterChanged, order: 342, title: "Weather");
         Enabled = G.Master!.Ladder(Quality.Preset, Quality.Classic(false, true));

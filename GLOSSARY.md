@@ -434,7 +434,7 @@ What a server can ask the client to draw in and beside its NUI windows. The cont
 - **Rain occlusion map** (#617) — one orthographic depth view of the still casters, looking along the
   **fall vector**, baked and held exactly as a sun cascade is (the texel-snapped fit matrix is the key) and
   stored as the spare layer of the sun array. The one primitive of Alloy weather: a shadow-map test against
-  it answers "is this point under cover" for a falling streak and for a surface alike. Avoid: roof mask.
+  it answers "is this point under cover" for a falling drop and for a surface alike. Avoid: roof mask.
 - **Fall vector** — the unit direction precipitation travels: gravity leaning into the area wind the
   renderer already uploads (`normalize(wind * lean, -1)`). What the field falls along and what the rain
   occlusion map looks along, so an overhang shelters downwind and not upwind.
@@ -449,6 +449,19 @@ What a server can ask the client to draw in and beside its NUI windows. The cont
   "no weather" path (it deletes its six fx objects itself). Nothing downstream is suppressed, and an
   un-mapped row (fog, a dry storm) keeps its stock emitter. Distinct from the particle pass's per-emitter
   decline, which suppresses a build the engine still owns.
+- **Water bead** — how Alloy shades a rain drop and every bead a splash throws: a small water sphere that
+  reflects the sky round its rim, shows the sky bent through its body, and glints toward a lamp or the sun.
+  The motion blur setting smears it along its fall. Avoid: streak.
+- **Standing water** — how deep water stands over a surface point, from 0 for none to 1 for the puddle-depth
+  setting: the wetness map's level less the point's own relief. The deferred twin records it in G3, and an
+  impact reads it where it lands.
+- **Crown** (rain impact) — what a drop throws up where it lands: a thin sheet of water that rises a couple
+  of centimetres and sinks back, with a few **lip beads** breaking from its rim. It thins and lowers as the
+  standing water deepens. In a formed puddle no crown rises; a **rebound column** comes up out of the drop's
+  dip instead, and a ring spreads round it.
+- **Mesh path** (weather) — precipitation drawn through task and mesh shaders, which decide and emit each
+  drop in one draw. A device without `VK_EXT_mesh_shader`, or a frame that writes rain's own motion, takes
+  the **compute path** instead: a cull dispatch and an indirect draw.
 - **Static set** (lightmap) — the geometry a bake may light: tile geometry plus placeables flagged
   Static, each keeping its real world transform. Anything a script moves, hides or destroys leaves the
   set for good. Redrawn in #656 from "tiles only": areas are a flat tile plane plus Static placeables.

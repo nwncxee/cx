@@ -6,7 +6,7 @@
             float wxWet = 0.0, wxSnow = 0.0, wxFilm = 0.0, wxPile = 0.0, wxFilmRough = 0.0, wxShore = 0.0, wxPoro = 0.0;
             vec2 wxDriftDir = vec2(0.0), wxP = vWorld.xy;
             vec3 wxTrack = vec3(0.0);
-            if (uWeather.w > 3.5)
+            if (abs(uWeather.w - 4.0) < 0.5)
             {
                 // /weather viz 4: the map. Red the damp wetness, green the basin's level, blue the metres of
                 // standing water over this point; BLACK where the cover view has not latched this texel yet.
@@ -14,8 +14,8 @@
                 frag = vec4(CxWetMapped(vm) ? vec3(vm.x, vm.y, CxWetDepth(vm) / max(uWxMapP.x, 1e-4)) : vec3(0.0), 1.0);
                 return;
             }
-            if (uWeather.w > 2.5) { frag = d.emi.w < -0.5 ? vec4(1.0, 0.0, 0.0, 1.0) : d.emi.w > 0.5 ? vec4(0.0, 0.0, 1.0, 1.0) : vec4(0.0, 1.0, 0.0, 1.0); return; }
-            if (uWeather.x > 0.0 || uWeather.y > 0.0 || uWeather.w > 1.5)
+            if (abs(uWeather.w - 3.0) < 0.5) { frag = d.emi.w < -0.5 ? vec4(1.0, 0.0, 0.0, 1.0) : d.emi.w > 0.5 ? vec4(0.0, 0.0, 1.0, 1.0) : vec4(0.0, 1.0, 0.0, 1.0); return; }
+            if (uWeather.x > 0.0 || uWeather.y > 0.0 || abs(uWeather.w - 2.0) < 0.5)
             {
                 vec3 Ng = normalize(vNrm);
                 float up = clamp(Ng.z, 0.0, 1.0);
@@ -23,10 +23,10 @@
                 vec4 wxM = CxWetMap(vWorld.xy);
                 bool wxMapped = CxWetMapped(wxM);
                 // the filtered (variance) exposure: snow's amount, and the fallback where the map has not latched
-                float wxExp = uWeather.y > 0.0 || !wxMapped || uWeather.w > 1.5 ? CxWeatherExposure(vWorld, N) : 1.0;
+                float wxExp = uWeather.y > 0.0 || !wxMapped || abs(uWeather.w - 2.0) < 0.5 ? CxWeatherExposure(vWorld, N) : 1.0;
                 // /weather viz 2 paints the test that decides WETNESS -- the shelter cache where this is the
                 // surface the rain lands on, the live disk (cx_wx_edge) everywhere else.
-                if (uWeather.w > 1.5) { frag = vec4(vec3(CxWetOpenFast(vWorld, Ng, wxExp)), 1.0); return; }
+                if (abs(uWeather.w - 2.0) < 0.5) { frag = vec4(vec3(CxWetOpenFast(vWorld, Ng, wxExp)), 1.0); return; }
                 float wxPx = CxWeatherImpactPx(vWorld, V);
                 vec4 wxNz = CxWxNoise(vWorld.xy, CxWxNoiseLod(wxPx));
                 float n1 = wxNz.x, n2 = wxNz.y;
@@ -129,7 +129,7 @@
                         }
                         float wxMicro = CxWxMicro(uWxMapP.x, uWxMapP.w, n1, wxFine, wxPoro);
                         float wxD = CxWetDepth(wxM) - wxMicro;
-                        wxFilm = wxWetExp * wxFlat * smoothstep(0.0, uWxMapP.y, wxD);
+                        wxFilm = wxWetExp * wxFlat * CxWxStanding(CxWetDepth(wxM), wxMicro, uWxMapP.y);
                         // R5: the SHORELINE. Ground the water has just left, or has not quite reached, is
                         // soaked right through -- darker and more saturated than the dry stone outside it
                         // and than the film over it, which is what gives a real puddle its rim.
@@ -146,6 +146,7 @@
                     }
                 }
                 wxWet = clamp(max(wxWet, wxShore * wxWetAmt), 0.0, 1.0);
+                cxWxStand = wxFilm;
                 if (wxSnow > 0.0)
                 {
                     albedo = mix(albedo, vec3(uWeatherLook.y), wxSnow);

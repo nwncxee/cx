@@ -10,7 +10,7 @@ namespace CX.Alloy;
 /// <summary>
 /// The precipitation after the temporal resolve: this frame's cull records and crowns drawn onto the display-size frame
 /// after FSR 3.1's upscale, or into an overlay the taa stage composites after its resolve, unjittered, with no depth
-/// target. A drop behind the scene fades out against the render-size depth copy the way every streak meets geometry, and
+/// target. A drop behind the scene fades out against the render-size depth copy the way every drop meets geometry, and
 /// a crown behind it is discarded against the same copy, so neither resolve holds them in the history it reconstructs from.
 /// </summary>
 public sealed unsafe partial class AlloyRenderer
@@ -106,6 +106,7 @@ public sealed unsafe partial class AlloyRenderer
     private static bool VkWxLateDraw(VkBackend vk, CommandList side, VkWxState s, VkColourState c, int k, int kind, int slot,
                                      Matrix4x4* view, Matrix4x4* proj, int* full, float near, float far, ExtenderLog log)
     {
+        if (s.Mesh) return VkWxMeshDraw(vk, side, s, c, k, kind, kind == 3 ? s.Drips : s.Count, true, view, proj, full, near, far, s.Lit, log);
         VkProg? p = s.Prog[k];
         if (p == null) return true;
         PipelineId pipe = VkWxLatePipe(vk, s, k, log);
@@ -116,7 +117,7 @@ public sealed unsafe partial class AlloyRenderer
         try
         {
             BindPass(p.L.CubeCount, full, near, far);
-            Weather.WriteVk(in s.L[k], kind, view, proj, _eyePos, s.Lit);
+            Weather.WriteVk(in s.L[k], kind, view, proj, _eyePos, s.Lit, full[3]);
             LooseBlock.Set(s.L[k].Screen, [(float)full[2], full[3]]);
         }
         finally { LooseBlock.EndCapture(); }

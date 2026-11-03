@@ -70,6 +70,10 @@ internal static partial class GpuGolden
         RainLateApprovedSelfCheck(vk, check, log);
         FarRainApprovedSelfCheck(vk, check, log);
         RainOnlyFogApprovedSelfCheck(vk, check, log);
+        RainDropletApprovedSelfCheck(vk, check, log);
+        RainImpactApprovedSelfCheck(vk, check, log);
+        SnowFlakeSelfCheck(vk, check, log);
+        RainMeshApprovedSelfCheck(vk, check, log);
         NearTierSelfCheck(vk, check, log);
         ShadingParitySelfCheck(vk, check, log);
         AmbientClassApprovedSelfCheck(vk, check, log);

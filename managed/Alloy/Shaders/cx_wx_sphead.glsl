@@ -16,6 +16,9 @@ uniform sampler2D uCoverDepth; // the cover layer as plain depth (Weather.Esm's 
 uniform mat4 uCoverVp;         // world -> the cover view's clip space; zero matrix = no map, and nothing draws
 uniform mat4 uCoverVpInv;      // ...and back, for the landing point
 uniform sampler2D uSceneDepth; // the finished frame's depth copy: a landing point it shows nothing at hangs in the air
+layout(binding = 4) uniform sampler2D uWxStand; // the water standing over each pixel, as the deferred twin recorded it
+uniform int uViz;              // /weather viz
+uniform int uStandOn;          // 1 = this frame's G-buffer recorded it; 0 = every landing point reads as bare
 // Footstep splashes (Weather.Tracks): instances past uSplashRain are CX_FOOT_CROWNS crowns per footfall.
 uniform int uSplashRain;       // instances that are rain crowns
 const int CX_FOOT_MAX = 16;
@@ -27,9 +30,15 @@ uniform vec2 uFootW;           // x = the wetness where the area map has not lat
 out vec2 vUV;
 out float vSeed;               // per-crown brightness, times the distance fade
 out float vAge;                // 0..1 through the crown's life
-out float vPart;               // 0 = the ring on the ground, >0 = a droplet streak
+out float vPart;               // the part's kind, CX_PART_* (cx_wx_hit)
 out vec3 vLight;               // linear light at this splash
 out float vViewZ;              // view z of this vertex (negative ahead): the late draw's own depth test
+out vec3 vSide;                // the quad's axes: a bead's across and along, facing the camera; the sheet's across and the surface normal
+out vec3 vUp;
+out vec3 vSkyUp;               // linear sky over the water part, and at the horizon behind it
+out vec3 vSkyLow;
+out vec3 vLampDir;             // toward the lamps lighting the water part
+out float vSunVis;             // the sun's visibility at the water part
 
 vec2 cxClusterXY;
 #define CX_CLUSTER_XY cxClusterXY

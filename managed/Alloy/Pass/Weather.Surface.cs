@@ -254,14 +254,14 @@ internal static unsafe partial class Weather
           "the snow light block sees the sky colour, the sun visibility and the ambient it adds to");
         check.Expect(lit.Contains("uniform int uOit;") && lit.IndexOf("uniform int uOit;", StringComparison.Ordinal) < lit.IndexOf("uCoverEsmP.z > 0.5 && uOit == 0", StringComparison.Ordinal),
           "the exposure read sees the OIT mode before it picks the filtered map");
-        check.Expect(WeatherCull.Contains("uniform float uBack;") && WeatherCull.Contains("CxWxPhase(-uAreaDir, V, g) * CxSunShadow(P, uAreaDir, 1.0, 1.0)"), "the sun reaches a drop through its phase lobe and the cascades");
+        check.Expect(WeatherCull.Contains("uniform float uBack;") && WeatherCull.Contains("sunVis = CxSunShadow(P, uAreaDir, 1.0, 1.0);") && WeatherCull.Contains("CxWxPhase(-uAreaDir, V, g) * sunVis"), "the sun reaches a drop through its phase lobe and the cascades");
         check.Expect(WeatherCull.Contains("uniform sampler2DArrayShadow uCover;") && WeatherCull.Contains("CxCovered(Pc)) >= 0.5") && WeatherCull.Contains("if (!keep ||"),
           "the precipitation cull tests each drop against the cover map and drops the covered");
         check.Expect(WeatherCull.Contains("uKind == 3 ? CxLip(P, R, U)") && WeatherCull.Contains("if (CxCovered(P) >= 0.5) return 0.0;"),
           "a drip instance survives only under a lip: covered here, open within the feather");
         check.Expect(ShaderContract.LinearSafe(RainFs) && ShaderContract.LinearSafe(SnowFs), "the precipitation stages stay linear");
-        check.Expect(WeatherCull.IndexOf("vec3 CxWxLamps(", StringComparison.Ordinal) < WeatherCull.IndexOf("if (uLit != 0)", StringComparison.Ordinal)
-          && WeatherCull.Contains("#define CX_CLUSTER_XY cxClusterXY") && WeatherVs.Contains("vLight = lit.rgb;")
+        check.Expect(WeatherCull.IndexOf("vec3 CxWxLampsDir(", StringComparison.Ordinal) < WeatherCull.IndexOf("if (uLit != 0)", StringComparison.Ordinal)
+          && WeatherCull.Contains("#define CX_CLUSTER_XY cxClusterXY") && WeatherVs.Contains("vLight = q.light;")
           && RainFs.Contains("uTint * vLight") && SnowFs.Contains("uTint * vLight"),
           "rain and snow take the light rig once per drop in the cull and both fragment stages multiply it in");
         check.Expect(KindOf(1) == Kind.Rain && KindOf(2) == Kind.Snow && KindOf(0) == Kind.None && KindOf(7) == Kind.None,

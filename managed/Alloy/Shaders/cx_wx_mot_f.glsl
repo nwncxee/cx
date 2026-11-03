@@ -1,5 +1,5 @@
 #version 460 core
-// The precipitation's velocity: each streak or flake's own fall over the ground's vector, in its core alone.
+// The precipitation's velocity: each drop or flake's own fall over the ground's vector, in its core alone.
 in vec2 vUV;
 in float vSeed;
 in float vViewZ;

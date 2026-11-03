@@ -14,6 +14,7 @@ public enum Op : byte
     BindIndexBuffer, Draw, DrawIndexed, DrawIndexedIndirect, Dispatch, CopyImage, BlitImage, UpdateBuffer, ZeroBuffer,
     PushConstants, BindVertexBuffer, DrawIndexedMulti, SetDepthState, SetRasterState, SetDepthRange, ReadImages,
     DrawIndirect, CopyImageToBuffer, ClearImage, GenerateMips, BeginLabel, EndLabel, SetShadingRate, Upscale, CopyBuffer,
+    DrawMeshTasks,
 }
 
 /// <summary>An index element's width.</summary>
@@ -267,6 +268,9 @@ public sealed class CommandList
     }
 
     public void Dispatch(int x, int y = 1, int z = 1) { Head(Op.Dispatch); Put(new DispatchCmd(x, y, z)); Sent(); }
+
+    /// <summary><paramref name="x"/> task workgroups through the bound mesh pipeline, inside a render pass.</summary>
+    public void DrawMeshTasks(int x) { Head(Op.DrawMeshTasks); Put(new DispatchCmd(x, 1, 1)); Sent(); }
 
     /// <summary>Every image in <paramref name="images"/> is read as <paramref name="access"/> from here on: a pass
     /// that wrote one as a target hands it over outside any render pass, so a later bind of it needs no barrier

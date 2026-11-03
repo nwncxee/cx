@@ -150,6 +150,7 @@ public sealed unsafe partial class AlloyRenderer
             colors[GbufFirst] = new ColorAttachment(s.G0, 0, 0, LoadOp.Clear, StoreOp.Store, default);
             colors[GbufFirst + 1] = new ColorAttachment(s.G1, 0, 0, LoadOp.DontCare, StoreOp.Store, default);
             colors[GbufFirst + 2] = new ColorAttachment(s.G2, 0, 0, LoadOp.DontCare, StoreOp.Store, default);
+            colors[GbufFirst + 3] = new ColorAttachment(s.G3, 0, 0, LoadOp.Clear, StoreOp.Store, default);
             if (refl) VkSsrAttachments(colors);
         }
         VkFlushPass(cl, side, arena0, new RenderPassDesc(colors[..n], new DepthAttachment(s.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear))

@@ -115,8 +115,11 @@ keep the full walk's registers allocated in the very programs the step exists to
 the light walk (`DeferredLights`, `cx_deferred_cs`), each with its own GPU term.
 
 - The frame clears G0 to zero before the opaque batches. G1 and G2 are never cleared: G0's flag byte
-  gates every read.
-- `OpaqueOwned` and `CutoutOwned` attach G0..G2 at COLOR4..6 (draw buffers `{0, NONE, 2, 3, 4, 5, 6}`
+  gates every read. G3, the standing water, is cleared to zero too: a pixel no twin covered reads as bare ground.
+- G3 (R8, COLOR7) is not the walk's. The twin records `cxWxStand` there, the water standing over the surface, and the
+  rain splash reads it at each landing point after the walk, so a crown thins where a puddle has formed. It has
+  memory of its own and no alias lane, because the splash may draw after the frame's resolve.
+- `OpaqueOwned` and `CutoutOwned` attach G0..G2 at COLOR4..6, and on Vulkan G3 at COLOR7 (draw buffers `{0, NONE, 2, 3, 4, 5, 6}`
   while Ssr's records are attached, `{0, NONE, NONE, NONE, 4, 5, 6}` otherwise) and detach after
   `CutoutOwned`. A prepassed batch draws at `GL_EQUAL`, a non-prepassed one at `LEQUAL` with depth writes, so
   the nearest writer wins either way. The sky draws between them and writes no G-buffer: its pixels keep G0 = 0.
@@ -169,6 +172,7 @@ Known deviations), so the twin writes the derivatives:
 | `viewDepth` | the twin's linear view depth, `1 / gl_FragCoord.w` -- the record's ownership test |
 | `ambT` (Wa, G2.y) | d(final pixel) / d(`cxAmbWalk`), the walk's ambient-class lights: they join `ambient` before matAmbient and the occlusion, so Wa is albedo x matAmbient x occl x kd x coatT x wxTransmit, plus the same couplings as Wd, x keyhole x fog transmittance. No dirOcc and no matDiffuse |
 | `surfFade` (G2.x) | `cxSurfFade`: the geometric normal and stock's per-light surface fade (`fSurfaceFadeModifier`, `inc_lighting.shd:341`), which `CxPointLight` multiplies into each light's wrapped N.L; 0 on a surface with no normal or height map. The reader sets `cxSurfFade` from it before the walk and the pair debt |
+| `water` (G3) | `cxWxStand`: the water standing over the surface, 0 none to 1 the puddle-depth setting. Read by the rain splash, not the walk |
 
 The compute pass then adds, per pixel:
 

@@ -90,6 +90,8 @@ public struct AttachmentFormats
 public struct PipelineDesc
 {
     public ShaderId Vs, Gs, Fs, Cs;
+    /// <summary>A mesh pipeline's task and mesh stages, in place of <see cref="Vs"/>; the task stage is optional.</summary>
+    public ShaderId Ts, Ms;
     /// <summary>The vertex input the draws read; the null id is attribute-less.</summary>
     public VertexLayoutId Layout;
     public Topology Topo;

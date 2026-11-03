@@ -160,7 +160,7 @@ internal sealed unsafe partial class VkBackend
         b.newLayout = VkImageLayout.ShaderReadOnlyOptimal;
         b.srcQueueFamilyIndex = _transfer!.Family;
         b.dstQueueFamilyIndex = _family;
-        if (acquire) { b.dstStageMask = ShaderStages; b.dstAccessMask = VkAccessFlags2.ShaderSampledRead; }
+        if (acquire) { b.dstStageMask = ShaderStages | _meshStages; b.dstAccessMask = VkAccessFlags2.ShaderSampledRead; }
         else { b.srcStageMask = VkPipelineStageFlags2.AllTransfer; b.srcAccessMask = VkAccessFlags2.TransferWrite; }
         return b;
     }
