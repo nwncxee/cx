@@ -244,15 +244,17 @@ public sealed unsafe partial class AlloyRenderer
         var retNames = new List<uint> { 78 };
         NoteOwnedNamesRetired(retNames, new HashSet<uint>());
         ok &= _gate[2].TexStale && _recTexStamp[2] == 0 && !_gate[1].TexStale && _recTexStamp[1] == _stageTexSerial;
-        // CX-302: a Vulkan-only name sits far past any GL one, and must still be marked PER SLOT. Unstamping
-        // every record instead costs the whole table on the next frame that draws, so the epoch must hold.
-        uint vkRetired = VkTextures.FirstName + 5;
+        // CX-302: a Vulkan-only name sits far past any GL one, and must still be marked PER SLOT -- through the
+        // batch's own mark set, which a two-name batch takes. Unstamping every record instead costs the whole
+        // table on the next frame that draws, so the epoch must hold, and an unbound slot reads 0 and is nobody.
+        uint vkRetired = VkTextures.FirstName + 5, vkOther = VkTextures.FirstName + 9;
         for (int i = 0; i < 4; i++) { _gate[i].TexStale = false; _recTexStamp[i] = _stageTexSerial; }
         int svEpoch = RecordEpoch;
-        _recTid[2] = (int)vkRetired;
-        NoteOwnedNamesRetired(new List<uint> { vkRetired }, new HashSet<uint>());
-        ok &= _gate[2].TexStale && _recTexStamp[2] == 0 && !_gate[1].TexStale && RecordEpoch == svEpoch;
-        _recTid[2] = 78;
+        _recTid[2] = (int)vkRetired; _recTidS[3 * MapSlots + 4] = (int)vkOther;
+        NoteOwnedNamesRetired(new List<uint> { vkRetired }, new HashSet<uint> { vkOther });
+        ok &= _gate[2].TexStale && _recTexStamp[2] == 0 && _gate[3].TexStale && _recTexStamp[3] == 0
+              && !_gate[0].TexStale && !_gate[1].TexStale && RecordEpoch == svEpoch;
+        _recTid[2] = 78; _recTidS[3 * MapSlots + 4] = 0;
         // ZeroHandle's own funnel: the dying VALUE is matched in the handle block, so the slot it sits in is
         // marked AND un-memoised -- a zeroed handle that is never re-resolved is the radeonsi page fault.
         const ulong fakeDying = 0xD1E1A5E0u;   // not-an-offset: a stand-in handle value, never dereferenced
@@ -353,15 +355,22 @@ public sealed unsafe partial class AlloyRenderer
     internal static void NoteOwnedNamesRetired(List<uint> names, HashSet<uint> handles)
     {
         if (names.Count == 0 && handles.Count == 0) return;
+        // one name is the common batch, and the sibling's plain compares beat a probe per slot at that size
+        if (names.Count == 1 && handles.Count == 0) { NoteOwnedNameRetired(names[0]); return; }
         NoteTexStalePending();
         _nameMark.Clear();
         foreach (uint n in names) _nameMark.Add((int)n);
         foreach (uint n in handles) _nameMark.Add((int)n);
         for (int i = 0; i < _ownCount; i++)
         {
-            if (_nameMark.Contains(_recTid[i])) { MarkTexStale(i); continue; }
+            int t = _recTid[i];
+            if (t != 0 && _nameMark.Contains(t)) { MarkTexStale(i); continue; }
             for (int k = 0; k < MapSlots; k++)
-                if (_nameMark.Contains(_recTidS[i * MapSlots + k])) { MarkTexStale(i); break; }
+            {
+                t = _recTidS[i * MapSlots + k];
+                // an unbound slot reads 0, which no minted texture name ever is -- no probe for the empties
+                if (t != 0 && _nameMark.Contains(t)) { MarkTexStale(i); break; }
+            }
         }
         _nameMark.Clear();
     }

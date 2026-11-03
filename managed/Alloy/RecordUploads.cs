@@ -22,8 +22,6 @@ internal enum RecordWhole : byte
     Handles,
     /// <summary>The render device went, and with it everything the table described.</summary>
     Device,
-    /// <summary>A retired texture name sat past the mark table, so no per-slot scan could find it.</summary>
-    Names,
     /// <summary>A debug dial changed what a record means.</summary>
     Knob,
     /// <summary>More slots moved in one frame than the hand-over list seats.</summary>
@@ -40,7 +38,9 @@ internal sealed class RecordUploadState
     public RecordWhole Why = RecordWhole.First;
     public readonly long[] Wholes = new long[RecordUploads.WhyCount];
     public long WholeBytes, Deltas, DeltaRuns, DeltaBytes, Marks;
-    /// <summary>The most slots any one frame handed over, against the list's seats.</summary>
+    /// <summary>Slots marked since the last upload -- the span the hand-over list's own overflow test covers.</summary>
+    public int Pending;
+    /// <summary>The most slots one upload's worth of staging marked, uncapped: the figure the seats are set from.</summary>
     public int MarksMax;
 }
 
@@ -48,8 +48,8 @@ internal sealed class RecordUploadState
 /// capacity in bytes; a delta sends the merged runs of the slots that moved.</summary>
 internal static class RecordUploads
 {
-    /// <summary>One slot per <see cref="RecordWhole"/> member.</summary>
-    internal const int WhyCount = 11;
+    /// <summary>One slot per <see cref="RecordWhole"/> member, which the members run up to contiguously.</summary>
+    internal const int WhyCount = (int)RecordWhole.Marks + 1;
 
     private static RecordUploadState _recUp = new();
 
@@ -61,12 +61,9 @@ internal static class RecordUploads
         if (_recUp.Why == RecordWhole.None) _recUp.Why = why;
     }
 
-    /// <summary>The slots one pass handed to the Vulkan frame, and the list's seats.</summary>
-    internal static void NoteMarks(int n, int seats)
-    {
-        _recUp.Marks += n;
-        _recUp.MarksMax = Math.Max(_recUp.MarksMax, Math.Min(n, seats));
-    }
+    /// <summary>The slots one staging marked, counted whether or not the pending upload has already gone whole:
+    /// what a crowded frame really moves is the figure the seats are set from.</summary>
+    internal static void NoteMarks(int n) => _recUp.Pending += n;
 
     /// <summary>This upload sent the whole table, <paramref name="bytes"/> of records and handles.</summary>
     internal static void NoteWhole(long bytes)
@@ -75,6 +72,7 @@ internal static class RecordUploads
         s.Wholes[(int)(s.Why == RecordWhole.None ? RecordWhole.Grew : s.Why)]++;
         s.WholeBytes += bytes;
         s.Why = RecordWhole.None;
+        TakePending(s);
     }
 
     /// <summary>This upload sent <paramref name="runs"/> merged runs, <paramref name="bytes"/> in all.</summary>
@@ -85,6 +83,15 @@ internal static class RecordUploads
         s.DeltaRuns += runs;
         s.DeltaBytes += bytes;
         s.Why = RecordWhole.None;
+        TakePending(s);
+    }
+
+    /// <summary>The upload closes the span the marks accumulated over, so the worst one is a whole frame's.</summary>
+    private static void TakePending(RecordUploadState s)
+    {
+        s.Marks += s.Pending;
+        s.MarksMax = Math.Max(s.MarksMax, s.Pending);
+        s.Pending = 0;
     }
 
     internal static void ResetPeriod()
@@ -93,10 +100,11 @@ internal static class RecordUploads
         Array.Clear(s.Wholes);
         s.WholeBytes = s.Deltas = s.DeltaRuns = s.DeltaBytes = s.Marks = 0;
         s.MarksMax = 0;
+        s.Pending = 0;
     }
 
     /// <summary>The period's record traffic: the whole uploads by reason with their bytes, then what the delta
-    /// path moved on the frames that stayed on it, and how close the hand-over list came to its seats.</summary>
+    /// path moved on the frames that stayed on it, and the worst frame's marks against the hand-over seats.</summary>
     internal static string Stats(long frames, int seats)
     {
         RecordUploadState s = _recUp;
@@ -107,29 +115,31 @@ internal static class RecordUploads
             if (s.Wholes[w] > 0) sb.Append($", {(RecordWhole)w} {s.Wholes[w]}");
         float f = Math.Max(frames, 1);
         return sb.Append($") + {s.Deltas} delta(s) ({s.DeltaBytes / 1048576.0:F1} MiB, {s.DeltaRuns / f:F0} runs/frame), "
-                       + $"{s.Marks / f:F0} slots/frame handed over, most {s.MarksMax} of {seats}").ToString();
+                       + $"{s.Marks / f:F0} slots/frame marked, worst frame {s.MarksMax} of {seats} hand-over seats").ToString();
     }
 
     /// <summary>The tally against a hand-made sequence: two claimed whole uploads, one unclaimed (which reads as
     /// the reallocation it can only be), and one delta. Oracle: the counts and byte totals as literals.</summary>
     internal static void SelfCheck(ExtenderLog log)
     {
-        var check = new Checker(log, "RecordUploads");
+        var check = new Checker(log);
         RecordUploadState was = _recUp;
         _recUp = new RecordUploadState { Why = RecordWhole.None };
         try
         {
-            const int sevenRuns = 7, fourSlots = 4, eightSeats = 8;
+            const int sevenRuns = 7, fourSlots = 4, nineSlots = 9;
             const long oneMiB = 1048576, halfMiB = 524288;
+            check.Expect(_recUp.Wholes.Length == Enum.GetValues<RecordWhole>().Length,
+                         $"every reason has a tally slot ({_recUp.Wholes.Length} for the enum's {Enum.GetValues<RecordWhole>().Length})");
             Claim(RecordWhole.Owners);
             Claim(RecordWhole.Handover);
             NoteWhole(oneMiB);
             check.Expect(_recUp.Wholes[(int)RecordWhole.Owners] == 1 && _recUp.Wholes[(int)RecordWhole.Handover] == 0,
                          "the first claim holds and the second is not counted");
-            NoteMarks(fourSlots, eightSeats);
+            NoteMarks(fourSlots);
             NoteDelta(sevenRuns, halfMiB);
             check.Expect(_recUp.Deltas == 1 && _recUp.DeltaRuns == sevenRuns && _recUp.MarksMax == fourSlots,
-                         "a delta counts its runs and the slots handed over");
+                         "a delta counts its runs and the slots the staging marked");
             NoteWhole(oneMiB);
             check.Expect(_recUp.Wholes[(int)RecordWhole.Grew] == 1,
                          "an upload no edge claimed is the reallocation that needs no claim");
@@ -137,8 +147,11 @@ internal static class RecordUploads
             NoteWhole(halfMiB);
             check.Expect(_recUp.WholeBytes == oneMiB + oneMiB + halfMiB && _recUp.Wholes[(int)RecordWhole.AreaEdge] == 1,
                          $"three whole uploads carry 2.5 MiB between them (got {_recUp.WholeBytes} bytes)");
-            NoteMarks(eightSeats + 1, eightSeats);
-            check.Expect(_recUp.MarksMax == eightSeats, "a pass that outruns the seats is capped at them");
+            NoteMarks(fourSlots);
+            NoteMarks(nineSlots);
+            NoteWhole(halfMiB);
+            check.Expect(_recUp.MarksMax == fourSlots + nineSlots && _recUp.Marks == fourSlots + fourSlots + nineSlots,
+                         $"one frame's marks accumulate and are reported uncapped (worst {_recUp.MarksMax})");
             ResetPeriod();
             check.Expect(_recUp.Wholes[(int)RecordWhole.AreaEdge] == 0 && _recUp.Deltas == 0 && _recUp.MarksMax == 0,
                          "the next period starts from zero");

@@ -169,7 +169,7 @@ public sealed unsafe partial class AlloyRenderer
     internal static void VkNoteDirty(int[] dirty, int n, bool whole)
     {
         VkColourState s = _vkc;
-        RecordUploads.NoteMarks(n, s.Dirty.Length);
+        RecordUploads.NoteMarks(n);
         if (s.DirtyAll) return;
         if (whole || s.DirtyN + n > s.Dirty.Length)
         {
