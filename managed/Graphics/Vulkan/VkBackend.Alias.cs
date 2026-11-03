@@ -8,7 +8,8 @@ namespace CX.Graphics.Rhi;
 /// <summary>
 /// Alias groups: the images that name one <see cref="ImageDesc.Alias"/> are bound to one VMA allocation sized to
 /// the largest of them. The group's owner is the member used last; a use of any other member starts it from layout
-/// UNDEFINED behind a barrier on everything before, so no member keeps contents past another's use.
+/// UNDEFINED behind a barrier on everything before, so no member keeps contents past another's use. A member a submit
+/// of the frame used stays on its memory when a larger one grows the group, and moves at the frame's end.
 /// </summary>
 internal sealed unsafe partial class VkBackend
 {
@@ -26,6 +27,8 @@ internal sealed unsafe partial class VkBackend
         public VkImg? Owner;
         /// <summary>A member was destroyed and the allocation may now be larger than the rest need.</summary>
         public bool Shrink;
+        /// <summary>Allocations the group grew off while a member this frame used was still bound into them.</summary>
+        public readonly List<VmaAllocation> Behind = new();
     }
 
     private readonly Dictionary<string, AliasGroup> _alias = new();
@@ -91,16 +94,17 @@ internal sealed unsafe partial class VkBackend
     {
         if (Vma.vmaBindImageMemory(_vma, g.Alloc, img.Image) != VkResult.Success) return false;
         img.View = View(img.Image, img.Desc, -1);
+        img.Home = g.Alloc;
         img.Layout = VkImageLayout.Undefined;
         img.Written = false;
         img.BarBatch = -1;
         return true;
     }
 
-    /// <summary>A new allocation of <paramref name="size"/> bytes for <paramref name="g"/>; every member but
-    /// <paramref name="fresh"/> gets a new image on it, the old images and memory freed once no submit can reach them.
-    /// A member the device refuses an image or a binding for leaves the group (<see cref="Orphan"/>). Cold: a resize
-    /// or a pass's first target.</summary>
+    /// <summary>A new allocation of <paramref name="size"/> bytes for <paramref name="g"/>, <paramref name="fresh"/> bound
+    /// into it and every other member remade on it -- but, while <paramref name="fresh"/> grows the group mid-frame, one a
+    /// submit of this frame used, which keeps its image, layout and bytes until <see cref="ShrinkGroups"/>. A member the
+    /// device refuses an image or a binding for leaves the group (<see cref="Orphan"/>). Cold: a resize or a pass's first target.</summary>
     private bool Rehome(AliasGroup g, ulong size, uint bits, VkImg? fresh)
     {
         var req = new VkMemoryRequirements { size = size, alignment = 1, memoryTypeBits = bits };
@@ -109,20 +113,18 @@ internal sealed unsafe partial class VkBackend
             VkMemoryRequirements r;
             _vkd.vkGetImageMemoryRequirements(m.Image, &r);
             req.alignment = Math.Max(req.alignment, r.alignment);
-            if (m.Live)
-                Fault($"alias group {g.Name}: {m.Desc.Label} was written this frame and the group's memory moves under "
-                    + "it -- its contents are gone, and the read that wanted them is refused too");
         }
         // memory of its own: a lane slot carved out of a shared block leaves its old slot as slack the driver keeps
         var aci = new VmaAllocationCreateInfo { preferredFlags = VkMemoryPropertyFlags.DeviceLocal, flags = VmaAllocationCreateFlags.DedicatedMemory };
         if (Vma.vmaAllocateMemory(_vma, &req, &aci, out VmaAllocation a, out _) != VkResult.Success) return false;
         Vma.vmaSetAllocationName(_vma, a, "alias " + g.Name);
-        VmaAllocation old = g.Alloc;
-        g.Alloc = a; g.Size = size; g.Align = req.alignment; g.TypeBits = bits; g.Owner = null; g.Shrink = false;
+        if (g.Alloc.IsNotNull) g.Behind.Add(g.Alloc);
+        g.Alloc = a; g.Size = size; g.Align = req.alignment; g.TypeBits = bits; g.Shrink = false;
         _sets.Stale = true;
         for (int i = g.Members.Count - 1; i >= 0; i--)
         {
             VkImg m = g.Members[i];
+            if (m != fresh && fresh != null && m.InFrame) continue;
             if (m != fresh)
             {
                 VkImage was = m.Image;
@@ -134,8 +136,25 @@ internal sealed unsafe partial class VkBackend
             }
             if (!BindInto(m, g)) Orphan(g, i, "could not be bound");
         }
-        if (old.IsNotNull) LaterThanBindless(() => Vma.vmaFreeMemory(_vma, old));
+        // a remade owner holds nothing; one left behind still holds its bytes
+        if (g.Owner?.Home == g.Alloc) g.Owner = null;
+        Release(g);
         return true;
+    }
+
+    /// <summary>Every allocation <paramref name="g"/> grew off that no member is bound into any more, freed once no
+    /// submit can reach it.</summary>
+    private void Release(AliasGroup g)
+    {
+        for (int i = g.Behind.Count - 1; i >= 0; i--)
+        {
+            VmaAllocation a = g.Behind[i];
+            bool held = false;
+            foreach (VkImg m in g.Members) held |= m.Home == a;
+            if (held) continue;
+            g.Behind.RemoveAt(i);
+            LaterThanBindless(() => Vma.vmaFreeMemory(_vma, a));
+        }
     }
 
     /// <summary>The member at <paramref name="at"/> leaves <paramref name="g"/> with no image and no view, loudly:
@@ -147,6 +166,7 @@ internal sealed unsafe partial class VkBackend
         if (m.Image.IsNotNull) _vkd.vkDestroyImage(m.Image);
         if (g.Owner == m) g.Owner = null;
         m.Group = null;
+        m.Home = default;
         m.Image = default; m.View = default; m.MipViews = null; m.LayerViews = null;
         m.Live = false;
         Fault($"alias group {g.Name}: {m.Desc.Label} {why} -- it is out of the group, and every use of it is refused");
@@ -166,10 +186,10 @@ internal sealed unsafe partial class VkBackend
         AliasGroup g = img.Group!;
         g.Members.Remove(img);
         if (g.Owner == img) g.Owner = null;
-        if (g.Members.Count > 0) { g.Shrink = true; return; }
+        if (g.Members.Count > 0) { g.Shrink = true; Release(g); return; }
         _alias.Remove(g.Name);
-        VmaAllocation a = g.Alloc;
-        if (a.IsNotNull) LaterThanBindless(() => Vma.vmaFreeMemory(_vma, a));
+        if (g.Alloc.IsNotNull) g.Behind.Add(g.Alloc);
+        Release(g);
     }
 
     /// <summary>One frame's use of the lanes is over: no member holds contents into the next frame, and a group that
@@ -181,20 +201,20 @@ internal sealed unsafe partial class VkBackend
         foreach (AliasGroup g in _alias.Values)
         {
             g.Owner = null;
-            foreach (VkImg m in g.Members) m.Live = false;
+            foreach (VkImg m in g.Members) m.Live = m.InFrame = false;
         }
     }
 
     /// <summary>Groups that lost a member move onto an allocation the size the rest need, so a smaller render size
-    /// gives its memory back. Only at the head of the first graphics submit of a frame: the move remakes every
-    /// member's image, so between two submits of one frame it would take a written member's bytes away.</summary>
+    /// gives its memory back, and groups a mid-frame grow left members behind on gather them. Only at the head of the
+    /// first graphics submit of a frame: the move remakes every member's image, which no submit of the frame used.</summary>
     private void ShrinkGroups()
     {
         if (!_shrinkDue) return;
         _shrinkDue = false;
         foreach (AliasGroup g in _alias.Values)
         {
-            if (!g.Shrink) continue;
+            if (!g.Shrink && g.Behind.Count == 0) continue;
             g.Shrink = false;
             ulong need = 0;
             foreach (VkImg m in g.Members)
@@ -203,7 +223,8 @@ internal sealed unsafe partial class VkBackend
                 _vkd.vkGetImageMemoryRequirements(m.Image, &r);
                 need = Math.Max(need, r.size);
             }
-            if (need < g.Size && !Rehome(g, need, g.TypeBits, null)) Fault($"alias group {g.Name}: shrinking to {need} bytes was refused");
+            if ((need < g.Size || g.Behind.Count > 0) && !Rehome(g, need, g.TypeBits, null))
+                Fault($"alias group {g.Name}: moving onto {need} bytes was refused");
         }
     }
 
@@ -215,6 +236,7 @@ internal sealed unsafe partial class VkBackend
     {
         AliasGroup? g = img.Group;
         if (g == null) return false;
+        img.InFrame = true;
         bool overwrites = to switch
         {
             VkImageLayout.ShaderReadOnlyOptimal or VkImageLayout.TransferSrcOptimal
