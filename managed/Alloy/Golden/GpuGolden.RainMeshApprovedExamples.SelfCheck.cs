@@ -6,7 +6,7 @@ using CX.Rhi;
 namespace CX.Alloy;
 
 /// <summary>
-/// The mesh path golden (approved-spec, A1-A3): the weather pass's own path choice and programs on this device and on
+/// The mesh path golden (approved-spec, A1-A3 and Q1): the weather pass's own path choice and programs on this device and on
 /// one opened without mesh shaders, and the field each path draws. Oracle: the driver's own extension list, the
 /// extension's name, and the compute path's coverage of a fixed field as the image the mesh path must match.
 /// </summary>
@@ -23,8 +23,16 @@ internal static partial class GpuGolden
             log.Info($"GpuGolden: rain mesh, this device: {path} -- {line}");
             check.Expect(path == Weather.WxPath.Mesh && line.Contains("mesh shaders", StringComparison.Ordinal) && !again,
                 $"rain mesh A1: this device offers VK_EXT_mesh_shader, so rain must draw through mesh shaders; the path is {path}, the line \"{line}\", said again {again}");
+
+            // Given a GPU that offers mesh shaders, rain falling, and TAA on so the frame writes rain's own motion
+            // When the frame draws
+            // Then the rain falls in the same places as without TAA, and cx.log says once why the mesh path sat out
+            Weather.WxPath moving = AlloyRenderer.VkWxPath(vk, log, out string why, out bool twice, motion: true);
+            log.Info($"GpuGolden: rain mesh, this device writing rain motion: {moving} -- {why}");
+            check.Expect(moving == Weather.WxPath.Compute && why.Contains("writes its own motion", StringComparison.Ordinal) && !twice,
+                $"rain mesh Q1: writing rain's motion, rain must take the compute path (whose field A3 holds to the mesh path's) and say why once; the path is {moving}, the line \"{why}\", said again {twice}");
         }
-        else check.Skip("rain mesh A1: this device offers no VK_EXT_mesh_shader");
+        else check.Skip("rain mesh A1 and Q1: this device offers no VK_EXT_mesh_shader");
 
         // Given a GPU that does not offer mesh shaders and rain falling
         // When the frame draws

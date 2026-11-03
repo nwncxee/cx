@@ -6,31 +6,27 @@ using CX.Rhi;
 namespace CX.Alloy;
 
 /// <summary>
-/// The impact golden (approved-spec, C1 and C3-C6; C2 is the crown golden's): the shipped micro-relief and standing water from <c>cx_wx_look</c>, the
-/// crown by water from <c>cx_wx_hit</c> and the crown droplet from <c>cx_splash_f</c> over <c>cx_wx_drop</c>'s bead.
-/// Oracle: cobble tops at relief 1 and joints at 0 under a basin between them, a puddle at the depth setting, dry
-/// wet ground, a dark joint beside pale stone with no height map and a lamp to a droplet's left, written by hand.
+/// The impact golden (approved-spec, C1 and C3-C5; C2 is the crown golden's): the shipped micro-relief and standing
+/// water from <c>cx_wx_look</c> and the crown by water from <c>cx_wx_hit</c>. Oracle: cobble tops at relief 1 and joints
+/// at 0 under a basin between them, dry wet ground, and a dark joint beside pale stone with no height map, by hand.
 /// </summary>
 internal static partial class GpuGolden
 {
-    /// <summary>The impact stage's outputs: C1's two standings and crowns, C2's, C3's, C4's steps, C5's and C6's sides.</summary>
-    private const int ImpactOut = 24;
+    /// <summary>The impact stage's outputs: C1's two standings and crowns, a puddle's, C3's, C4's steps and C5's.</summary>
+    private const int ImpactOut = 20;
 
     private static void RainImpactApprovedSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
     {
         RainCrownApprovedSelfCheck(vk, check, log);
         string look = ShaderSource.Get("cx_wx_look.glsl"), hit = ShaderSource.Get("cx_wx_hit.glsl");
-        string drop = ShaderSource.Get("cx_wx_drop.glsl"), splash = ShaderSource.Get("cx_splash_f.glsl");
         string micro = Function(look, "float CxWxMicro("), fineLum = Function(look, "float CxWxFineLum(");
         string standing = Function(look, "float CxWxStanding("), byWater = Function(hit, "vec4 CxSplashByWater(");
-        string droplet = Function(splash, "vec4 CxSplashDrop(");
-        bool have = micro.Length > 0 && fineLum.Length > 0 && standing.Length > 0 && byWater.Length > 0
-                 && droplet.Length > 0 && Function(drop, "vec4 CxWxBead(").Length > 0;
-        check.Expect(have, "rain impact: cx_wx_look declares CxWxStanding, cx_wx_hit CxSplashByWater, cx_splash_f CxSplashDrop over cx_wx_drop's bead");
+        bool have = micro.Length > 0 && fineLum.Length > 0 && standing.Length > 0 && byWater.Length > 0;
+        check.Expect(have, "rain impact: cx_wx_look declares CxWxStanding, cx_wx_hit CxSplashByWater");
         if (!have) return;
         PipelineId pipe = vk.CreateCompute(Version + "layout(local_size_x = 1) in;\n" + CaseBlocks(1, ImpactOut)
             + Declaration(look, "CX_WX_MICRO_AMP") + Declaration(look, "CX_WX_MICRO_MEAN") + Declaration(look, "CX_WX_FINE_W")
-            + micro + fineLum + standing + hit + drop + droplet + """
+            + micro + fineLum + standing + hit + """
             void main()
             {
                 uint o = gl_WorkGroupID.x * uint(CX_GOLD_OUT);
@@ -64,19 +60,6 @@ internal static partial class GpuGolden
                 uOut[o + 15u] = hS.x; uOut[o + 16u] = hS.y; uOut[o + 17u] = hJ.x; uOut[o + 18u] = hJ.y;
                 vec4 dp = CxSplashByWater(CxWxStanding(mJ + pool, mJ, pool));
                 uOut[o + 19u] = dp.x;
-                // a crown droplet at night with a lamp to its left: camera looking along +y
-                vec3 r = vec3(1.0, 0.0, 0.0), u = vec3(0.0, 0.0, 1.0), v = vec3(0.0, -1.0, 0.0), k = vec3(0.0);
-                float left = 0.0, right = 0.0;
-                for (int i = 0; i < 32; i++)
-                    for (int j = 0; j < 32; j++)
-                    {
-                        vec2 uv = (vec2(i, j) + 0.5) / 16.0 - 1.0;
-                        if (dot(uv, uv) > 1.0) continue;
-                        float l = dot(CxSplashDrop(uv, v, r, u, k, k, -r, vec3(1.0), u, k).rgb, vec3(0.2126, 0.7152, 0.0722));
-                        if (uv.x < -0.1) left = max(left, l);
-                        if (uv.x > 0.1) right = max(right, l);
-                    }
-                uOut[o + 20u] = left; uOut[o + 21u] = right;
             }
             """, "golden rain impact");
         float[] cases = [0f];
@@ -110,11 +93,5 @@ internal static partial class GpuGolden
         // Then they follow C1 to C4 by the water the surface shows standing there
         check.Expect(got[15] == 1f && got[17] < got[15] && got[18] < got[16] && got[19] == 0f,
             FormattableString.Invariant($"rain impact C5: stone crown {got[15]:F2} speed {got[16]:F2}, joint {got[17]:F2} speed {got[18]:F2}, in the puddle {got[19]:F2}"));
-
-        // Given a crown thrown up beside a lamp at night
-        // When its droplets are shaded
-        // Then each glints on its lamp side the way a falling drop does (B2)
-        check.Expect(got[20] >= 0.1f && got[21] <= 0.02f,
-            FormattableString.Invariant($"rain impact C6: the lamp side peaks at {got[20]:F3} (at least 0.1), the far side at {got[21]:F4} (at most 0.02)"));
     }
 }

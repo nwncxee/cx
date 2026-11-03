@@ -12,7 +12,7 @@ namespace CX.Alloy;
 /// </summary>
 internal static partial class GpuGolden
 {
-    /// <summary>The crown stage's outputs: E1's height, end and life, E2's worst aspects, E3's rim, middle and see-through,
+    /// <summary>The crown stage's outputs: E1's height and what is left at 0.2 s, E2's worst aspects, E3's rim, middle and see-through,
     /// E4's farthest bead, E5's crown and drop, C2's crown, ring, rebound and column.</summary>
     private const int CrownOut = 20;
 
@@ -50,7 +50,8 @@ internal static partial class GpuGolden
                 uint o = gl_WorkGroupID.x * uint(CX_GOLD_OUT);
                 float tall = 0.0;
                 for (int i = 0; i <= 200; i++) tall = max(tall, CxCrownShape(float(i) / 200.0).x);
-                uOut[o] = tall; uOut[o + 1u] = CxCrownShape(1.0).x; uOut[o + 2u] = CX_GOLD_LIFE;
+                // a fifth of a second after the drop lands, as a share of the splash's life
+                uOut[o] = tall; uOut[o + 1u] = CxCrownShape(min(0.2 / CX_GOLD_LIFE, 1.0)).x;
                 // the worst bead aspect from rest to 6 m/s, 1 m to 60 m away; the worst column aspect over its life
                 float bead = 0.0, column = 0.0;
                 for (int i = 0; i <= 12; i++)
@@ -114,13 +115,13 @@ internal static partial class GpuGolden
         check.Expect(got != null, "rain crown: the stage was refused (logged above)");
         if (got == null) return;
         log.Info(FormattableString.Invariant(
-            $"GpuGolden: rain crown, {got[0] * 100:F1} cm tall over {got[2]:F2} s, bead aspect {got[3]:F2} column {got[4]:F2}, rim {got[5]:F3} middle {got[6]:F3} a {got[7]:F2}, reach {got[8] * 100:F1} cm, night crown {got[9]:F4} drop {got[10]:F4}, column {got[14] * 100:F1} cm"));
+            $"GpuGolden: rain crown, {got[0] * 100:F1} cm tall, {got[1] * 100:F2} cm at 0.2 s, bead aspect {got[3]:F2} column {got[4]:F2}, rim {got[5]:F3} middle {got[6]:F3} a {got[7]:F2}, reach {got[8] * 100:F1} cm, night crown {got[9]:F4} drop {got[10]:F4}, column {got[14] * 100:F1} cm"));
 
         // Given a drop landing on bare wet stone 2 m from the camera, in daylight
         // When it lands
         // Then a thin, see-through crown of water rises from where it hit, a few centimetres tall at most, and falls back within a fifth of a second
-        check.Expect(got[0] >= 0.005f && got[0] <= 0.05f && got[1] <= 1e-4f && got[2] <= 0.2f,
-            FormattableString.Invariant($"rain crown E1: {got[0] * 100:F2} cm at its tallest (0.5 to 5), {got[1] * 100:F3} cm left at the end of a {got[2]:F3} s life (none, within 0.2 s)"));
+        check.Expect(got[0] >= 0.005f && got[0] <= 0.05f && got[1] <= 1e-4f,
+            FormattableString.Invariant($"rain crown E1: {got[0] * 100:F2} cm at its tallest (0.5 to 5), {got[1] * 100:F3} cm left a fifth of a second after it landed (none)"));
 
         // Given any impact at the default settings, on stone or in a puddle
         // When it is drawn

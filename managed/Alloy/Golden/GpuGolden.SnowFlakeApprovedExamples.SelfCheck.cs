@@ -6,8 +6,7 @@ using CX.Rhi;
 namespace CX.Alloy;
 
 /// <summary>
-/// Snow keeps its flakes: a regression check, not an approved example's red test, because the behaviour holds where it
-/// lands. The shipped <c>CxWxCover</c> for kind 2 against a soft disc. Oracle: full at the centre, half-way up its
+/// The snow flake golden (approved-spec, B6): the shipped <c>CxWxCover</c> for kind 2 against a soft disc. Oracle: full at the centre, half-way up its
 /// ramp at three quarters out, nothing at the rim and past it, written by hand.
 /// </summary>
 internal static partial class GpuGolden
@@ -32,7 +31,11 @@ internal static partial class GpuGolden
         vk.Destroy(pipe);
         check.Expect(got != null, "snow flake: the stage was refused (logged above)");
         if (got == null) return;
+
+        // Given snow falling instead of rain
+        // When it is drawn
+        // Then each flake is the soft white disc it is today
         check.Expect(got[0] == 1f && MathF.Abs(got[1] - 0.5f) <= 0.01f && got[2] == 0f && got[3] == 0f,
-            FormattableString.Invariant($"snow flake: a soft white disc, centre {got[0]:F3} (1), three quarters out {got[1]:F3} (0.5), rim {got[2]:F3} and corner {got[3]:F3} (0)"));
+            FormattableString.Invariant($"snow flake B6: a soft white disc, centre {got[0]:F3} (1), three quarters out {got[1]:F3} (0.5), rim {got[2]:F3} and corner {got[3]:F3} (0)"));
     }
 }
