@@ -40,6 +40,7 @@
 1 managed/Alloy/Golden/GpuGolden.FsrReactive.cs
 3 managed/Alloy/Golden/GpuGolden.Lightmap.Fixture.cs
 9 managed/Alloy/Golden/GpuGolden.Lightmap.SelfCheck.cs
+3 managed/Alloy/Golden/GpuGolden.MipChain.SelfCheck.cs
 4 managed/Alloy/Golden/GpuGolden.Parallax.SelfCheck.cs
 1 managed/Alloy/Golden/GpuGolden.PostApprovedExamples.SelfCheck.cs
 10 managed/Alloy/Golden/GpuGolden.ReversedZApprovedExamples.SelfCheck.cs
@@ -87,12 +88,12 @@
 5 managed/Alloy/Scene/AlloyRenderer.DbStage.cs
 1 managed/Alloy/Scene/AlloyRenderer.Route.cs
 1 managed/Alloy/Scene/AlloyRenderer.Slots.cs
-9 managed/Alloy/Scene/AlloyRenderer.Table.cs
+11 managed/Alloy/Scene/AlloyRenderer.Table.cs
 1 managed/Alloy/Scene/AlloyWind.cs
 6 managed/Alloy/Seam/TexSeam.cs
 17 managed/Alloy/TexScan.cs
 6 managed/Graphics/NullGl.Snapshot.cs
-6 managed/Graphics/Vulkan/VkBackend.Copy.cs
+10 managed/Graphics/Vulkan/VkBackend.Copy.cs
 7 managed/Services/Anim/KeyCurves.cs
 1 managed/Services/Camera/AimAssist.cs
 5 managed/Services/Nui/NuiItemIcons.cs
