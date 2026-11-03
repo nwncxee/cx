@@ -70,6 +70,7 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>The fill stage's push block, <c>CxRigFill</c>: the rig's size and the two projection depth-row
     /// terms its frame depth comes from.</summary>
+    [StructLayout(LayoutKind.Sequential)]
     private struct RigFillPush
     {
         public int W, H;

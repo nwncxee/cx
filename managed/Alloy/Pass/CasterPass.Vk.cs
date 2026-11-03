@@ -388,6 +388,7 @@ public sealed unsafe partial class CasterPass
 
     /// <summary>The slice of the translated push block a caster depth stage writes, staged at
     /// <see cref="CutPushAt"/>.</summary>
+    [StructLayout(LayoutKind.Sequential)]
     private struct VkCutPush
     {
         public float AlphaCut;

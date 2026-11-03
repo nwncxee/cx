@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using System.Linq;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
 
@@ -62,12 +63,16 @@ public sealed class PushBlock : DiagnosticAnalyzer
         return op;
     }
 
+    /// <summary>The <c>MemoryMarshal</c> calls that only reinterpret: whatever they are handed is the layout, so this
+    /// rule reads through them to the span at the call site.</summary>
+    private static readonly ImmutableHashSet<string> Reinterprets = ImmutableHashSet.Create("AsBytes", "Cast");
+
     /// <summary>What the push stages the block as, when that is a span of primitives; null when it is a struct
     /// (or anything this rule cannot read, which it leaves alone).</summary>
     private static string? Staged(IOperation data)
     {
         if (Literal(data) is { } lit) return lit;
-        if (data is IInvocationOperation inv && inv.TargetMethod.Name == "AsBytes"
+        if (data is IInvocationOperation inv && Reinterprets.Contains(inv.TargetMethod.Name)
             && inv.TargetMethod.ContainingType?.ToDisplayString() == "System.Runtime.InteropServices.MemoryMarshal")
         {
             IOperation arg = Bare(inv.Arguments[0].Value);
@@ -79,10 +84,14 @@ public sealed class PushBlock : DiagnosticAnalyzer
     private static readonly ImmutableHashSet<OperationKind> Lists = ImmutableHashSet.Create(
         OperationKind.CollectionExpression, OperationKind.ArrayCreation);
 
-    /// <summary>A list written at the call site -- a collection expression or an array -- named by its element
-    /// type; null when the data is not one.</summary>
+    /// <summary>A list of words written at the call site -- a collection expression, an array or a stackalloc --
+    /// named by its element type; null when the data is not one. Roslyn models a stackalloc as no operation kind at
+    /// all, so that shape is recognised by its syntax.</summary>
     private static string? Literal(IOperation data)
-        => Lists.Contains(data.Kind) ? Element(data.Type) ?? "literals" : null;
+        => Lists.Contains(data.Kind) ? Element(data.Type) ?? "literals"
+         : data.Syntax is StackAllocArrayCreationExpressionSyntax or ImplicitStackAllocArrayCreationExpressionSyntax
+             ? Element(data.Type)
+             : null;
 
     /// <summary>The primitive element name of a span, array or pointer type; null when its element is a struct,
     /// or when the type is not one this rule reads.</summary>

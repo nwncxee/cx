@@ -99,8 +99,13 @@ EOF
 
 out=$(dotnet build "$tmp/fixture.csproj" -nologo -v q -clp:NoSummary 2>&1)
 cx=$(printf '%s\n' "$out" | grep -o '[A-Za-z0-9.]*\.cs([0-9]*,[0-9]*): error CX0007' | sort -u)
-if printf '%s\n' "$out" | grep -q 'error NU\|error MSB\|MSB9008\|error CS'; then
-  echo "!! push block approved examples: the fixture project did not restore, load or compile -- $out" >&2; exit 2
+# The only error this fixture is MEANT to print is CX0007. Anything else -- a restore failure, a CS error, or
+# another CX rule firing on the real managed/Rhi/ tree -- leaves the CX0007 lines readable and every check below
+# passing over a build that never completed, so any other code is the fixture's own failure, not an example's.
+other=$(printf '%s\n' "$out" | grep -oE 'error [A-Z]+[0-9]+' | grep -vx 'error CX0007' | sort -u)
+if [ -n "$other" ] || printf '%s\n' "$out" | grep -q 'MSB9008'; then
+  echo "!! push block approved examples: the fixture project did not restore, load or compile" \
+       "(${other:-MSB9008}) -- $out" >&2; exit 2
 fi
 expect_line() {
   printf '%s\n' "$cx" | grep -q "^$1($2," || { echo "!! $3: no CX0007 at $1 line $2 -- the compiler printed: ${cx:-no CX0007 at all}"; rc=1; }

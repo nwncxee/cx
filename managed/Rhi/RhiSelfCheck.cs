@@ -92,6 +92,7 @@ public static class RhiSelfCheck
 
     /// <summary>The two words this file's pushes stage, so the bytes that reach the stream come from a layout with
     /// named members rather than a positional list.</summary>
+    [StructLayout(LayoutKind.Sequential)]
     private struct PushProbe
     {
         public int First;
