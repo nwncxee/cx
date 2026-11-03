@@ -124,8 +124,8 @@ internal static unsafe partial class Weather
         check.Expect(v.Contains("if (length(xp + xn - 2.0 * p) + length(yp + yn - 2.0 * p) > CX_SPLASH_FLAT_M) return p;"),
           "no crown on an edge texel, where the filtered depth blends a roof with the ground under it and the point hangs in the air");
         check.Expect(v.Contains("up = normalize(cross(xp - xn, yp - yn));")
-          && v.Contains("vec3 dir = jet ? up : T * (cos(a) * sin(theta)) + B * (sin(a) * sin(theta)) + up * cos(theta);")
-          && v.Contains("if (dot(P - L, up) < 0.0) alive = false;"),
+          && v.Contains("P = L + away * f.x + up * f.y;") && v.Contains("if (t < 0.0 || f.y < 0.0) alive = false;")
+          && v.Contains("side = cross(up, toCam);"),
           "a crown stands on the surface it hit: the ring lies in its plane and the sheet and beads rise along its normal");
         check.Expect(v.Contains("if (onPlane && abs(ground.z - L.z) < CX_FOOT_GROUND_M) { L = ground; up = n; }"),
           "a footfall's crowns stand on the ground under the foot too, unless the cover map's hit there is a roof over it");
