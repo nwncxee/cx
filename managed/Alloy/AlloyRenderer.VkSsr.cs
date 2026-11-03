@@ -19,7 +19,7 @@ public sealed unsafe partial class AlloyRenderer
     private sealed class VkSsrState
     {
         public VkBackend? Dev;
-        public VkDefStage? HiZ, Mip;
+        public PipelineId HiZ, Mip;
         public GuiVkProg? Trace, Res, Hist;
         public bool Tried, Live, Armed;
         public ImageId RecN, RecW, Pyr, Col, Out, Resolved;
@@ -38,7 +38,6 @@ public sealed unsafe partial class AlloyRenderer
         public float PlZ;
         public SamplerId Point, Trilinear;
         public PipelineId TracePipe, ResPipe, HistPipe;
-        public int HLevel = -1, HNf = -1, MLevel = -1;
         public int TProj = -1, TInvProj = -1, TView = -1, TNf = -1, TSsr = -1, TFrame = -1;
         public int RInvProj = -1, RView = -1, RInvView = -1, RCap = -1, RProbeMips = -1, RShift = -1, RPlane = -1, RColShift = -1, RFrame = -1;
         public int PInvProj = -1, PInvView = -1, PPrevVp = -1, PHistOn = -1;
@@ -83,27 +82,7 @@ public sealed unsafe partial class AlloyRenderer
         if (!Matrix4x4.Invert(proj, out Matrix4x4 invProj) || !Matrix4x4.Invert(view, out Matrix4x4 invView)) return;
         s.PlOn = mirror && VkPlanarPass(vk, cl, s, vp, viewport, near, far, log);
         VkColourState c = _vkc;
-        VkDefStage hz = s.HiZ!, mp = s.Mip!;
         int arena0 = c.ArenaUsed;
-        Span<int> hzAt = stackalloc int[s.Levels];
-        Span<int> mpAt = stackalloc int[s.ColLevels];
-        for (int i = 0; i < s.Levels; i++)
-        {
-            Array.Clear(hz.Block);
-            LooseBlock.Capture(hz.Members, hz.Block);
-            LooseBlock.Set(s.HLevel, i);
-            LooseBlock.Set(s.HNf, [near, far]);
-            LooseBlock.EndCapture();
-            if ((hzAt[i] = VkArena(hz.Block)) < 0) return;
-        }
-        for (int i = 0; i < s.ColLevels; i++)
-        {
-            Array.Clear(mp.Block);
-            LooseBlock.Capture(mp.Members, mp.Block);
-            LooseBlock.Set(s.MLevel, i);
-            LooseBlock.EndCapture();
-            if ((mpAt[i] = VkArena(mp.Block)) < 0) return;
-        }
         GuiVkProg tr = s.Trace!, rs = s.Res!, hs = s.Hist!;
         int frame = _frameSeq;
         Array.Clear(tr.Block);
@@ -141,27 +120,12 @@ public sealed unsafe partial class AlloyRenderer
         int len = (c.ArenaUsed - arena0 + 3) & ~3;
         cl.UpdateBuffer(c.Arena, arena0, c.ArenaBytes.AsSpan(arena0, Math.Min(len, ArenaCap - arena0)));
 
-        cl.SetPipeline(hz.Pipe);
-        for (int i = 0; i < s.Levels; i++)
-        {
-            int lw = Math.Max(s.W >> i, 1), lh = Math.Max(s.H >> i, 1);
-            VkSsrCompute(cl, hz, hzAt[i], c.Depth, s.Point, s.Pyr, i, Math.Max(i - 1, 0));
-            cl.Dispatch((lw + SkyView.Group - 1) / SkyView.Group, (lh + SkyView.Group - 1) / SkyView.Group, 1);
-        }
-        cl.SetPipeline(mp.Pipe);
-        for (int i = 0; i < s.ColLevels; i++)
-        {
-            int lw = Math.Max((s.W >> s.ColShift) >> i, 1), lh = Math.Max((s.H >> s.ColShift) >> i, 1);
-            VkSsrCompute(cl, mp, mpAt[i], c.Hdr, c.Linear, s.Col, i, Math.Max(i - 1, 0));
-            cl.Dispatch((lw + SkyView.Group - 1) / SkyView.Group, (lh + SkyView.Group - 1) / SkyView.Group, 1);
-        }
-        // the mirror's chain off its draw, through the colour copy's stage: never more levels than that copy, its source
-        for (int i = 0; s.PlOn && i < s.PlLevels; i++)
-        {
-            int lw = Math.Max(s.PlW >> i, 1), lh = Math.Max(s.PlH >> i, 1);
-            VkSsrCompute(cl, mp, mpAt[i], s.PlCol, c.Linear, s.PlMip, i, Math.Max(i - 1, 0));
-            cl.Dispatch((lw + SkyView.Group - 1) / SkyView.Group, (lh + SkyView.Group - 1) / SkyView.Group, 1);
-        }
+        var nf = new Vector2(near, far);
+        VkSpdChain(cl, s.HiZ, c.Depth, s.Point, s.Pyr, s.W, s.H, s.Levels, nf);
+        VkSpdChain(cl, s.Mip, c.Hdr, c.Linear, s.Col, Math.Max(s.W >> s.ColShift, 1), Math.Max(s.H >> s.ColShift, 1),
+                   s.ColLevels, nf);
+        // the mirror's chain off its draw, through the colour copy's downsampler: never more levels than that copy
+        if (s.PlOn) VkSpdChain(cl, s.Mip, s.PlCol, c.Linear, s.PlMip, s.PlW, s.PlH, s.PlLevels, nf);
         ImageId prev = s.HistAt == 0 ? s.Hist0 : s.Hist1, next = s.HistAt == 0 ? s.Hist1 : s.Hist0;
         ReadOnlySpan<ImageId> read = [s.Pyr, s.Col, s.RecN, s.RecW, c.Depth, s.PlOn ? s.PlMip : s.Col, prev];
         cl.ReadImages(read);
@@ -178,7 +142,8 @@ public sealed unsafe partial class AlloyRenderer
         {
             s.Live = true;
             log.Always($"AlloyRenderer: the Vulkan screen-space reflections are LIVE -- {s.W}x{s.H} records, a {s.Levels}-level "
-                     + $"hi-Z, the colour copy at 1/{1 << s.ColShift} with {s.ColLevels} mips, a ray per {1 << s.BlkShift}x{1 << s.BlkShift} "
+                     + $"hi-Z in {SpdPasses(s.Levels)} dispatch(es), the colour copy at 1/{1 << s.ColShift} with {s.ColLevels} mips in "
+                     + $"{SpdPasses(s.ColLevels)}, a ray per {1 << s.BlkShift}x{1 << s.BlkShift} "
                      + $"block ({s.Ow}x{s.Oh}), resolved and kept over frames at {s.W}x{s.H}");
         }
         if (s.PlOn && !s.PlLive)
@@ -187,28 +152,6 @@ public sealed unsafe partial class AlloyRenderer
             log.Always($"AlloyRenderer: the Vulkan planar mirror is LIVE -- the opaque set mirrored across the ground at the "
                      + $"player's feet into {s.PlW}x{s.PlH}, {s.PlLevels} mips (the whole opaque list draws; no mirror re-cull on Vulkan)");
         }
-    }
-
-    /// <summary>One pyramid level: the source sampled for level 0, level <paramref name="prev"/> through its storage
-    /// view above it, level <paramref name="mip"/> stored.</summary>
-    private static void VkSsrCompute(CommandList cl, VkDefStage st, int at, ImageId src, SamplerId smp, ImageId img, int mip, int prev)
-    {
-        VkColourState c = _vkc;
-        Span<BufferBinding> ubo = stackalloc BufferBinding[4];
-        Span<ImageBinding> sampled = stackalloc ImageBinding[4];
-        Span<ImageBinding> images = stackalloc ImageBinding[2];
-        int nu = 0, nt = 0, ni = 0;
-        foreach (VkOpaque o in st.Opaques)
-        {
-            if (o.Set != 0) continue;
-            if (o.Kind == VkBindKind.UniformBlock)
-                ubo[nu++] = o.Binding == UboSlots.Loose ? new BufferBinding(o.Binding, c.Arena, at, st.Block.Length)
-                                                        : new BufferBinding(o.Binding, c.ZeroUbo);
-            else if (o.Kind == VkBindKind.StorageImage)
-                images[ni++] = new ImageBinding(o.Binding, img, default, o.Binding == 0 ? mip : prev);
-            else if (o.Kind == VkBindKind.Sampled) sampled[nt++] = new ImageBinding(o.Binding, src, smp);
-        }
-        cl.BindSet(0, new BindSet(ubo[..nu], default, sampled[..nt], images[..ni]));
     }
 
     /// <summary>One full-screen triangle of <paramref name="p"/> into <paramref name="colors"/>, each sampler on the image
@@ -263,8 +206,8 @@ public sealed unsafe partial class AlloyRenderer
     {
         if (s.Tried) return s.Hist != null;
         s.Tried = true;
-        s.HiZ = VkDefBuild(vk, SsrHiZ, "CX_SSR_STORAGE", "vk ssr hi-Z", log);
-        s.Mip = VkDefBuild(vk, SsrHiZ, "CX_SSR_COLOUR", "vk ssr colour chain", log);
+        s.HiZ = VkSpdPipe(vk, true, "vk ssr hi-Z", log);
+        s.Mip = VkSpdPipe(vk, false, "vk ssr colour chain", log);
         s.Trace = PostChainVk.Program(vk, PostChain.FullscreenVs, ShaderSource.Get("cx_ssrtrace_f.glsl"), "ssr trace", p =>
         {
             s.TProj = p.Loc("uProj"); s.TInvProj = p.Loc("uInvProj"); s.TView = p.Loc("uView");
@@ -279,20 +222,12 @@ public sealed unsafe partial class AlloyRenderer
         {
             s.PInvProj = p.Loc("uInvProj"); s.PInvView = p.Loc("uInvView"); s.PPrevVp = p.Loc("uPrevVp"); s.PHistOn = p.Loc("uHistOn");
         }, log);
-        if (s.HiZ != null)
-            LooseBlock.Resolve(s.HiZ.Names, () =>
-            {
-                s.HLevel = LooseBlock.Loc("uLevel");
-                s.HNf = LooseBlock.Loc("uNf");
-            });
-        if (s.Mip != null)
-            LooseBlock.Resolve(s.Mip.Names, () => s.MLevel = LooseBlock.Loc("uLevel"));
         s.Point = vk.CreateSampler(new SamplerDesc(Filter.Nearest, Filter.Nearest, MipMode.Nearest, Wrap.Clamp));
         s.Trilinear = vk.CreateSampler(new SamplerDesc(Filter.Linear, Filter.Linear, MipMode.Linear, Wrap.Clamp));
         if (s.Trace != null) s.TracePipe = VkSsrPipe(vk, s.Trace, Format.Rgba32F, false);
         if (s.Res != null) s.ResPipe = VkSsrPipe(vk, s.Res, Format.Rgba16F, false);
         if (s.Hist != null) s.HistPipe = VkSsrPipe(vk, s.Hist, Format.Rgba16F, true);
-        if (s.HiZ == null || s.Mip == null || s.Trace == null || s.Res == null || s.Hist == null || s.TracePipe.IsNull
+        if (s.HiZ.IsNull || s.Mip.IsNull || s.Trace == null || s.Res == null || s.Hist == null || s.TracePipe.IsNull
             || s.ResPipe.IsNull || s.HistPipe.IsNull || s.Point.IsNull || s.Trilinear.IsNull)
         {
             s.Hist = null;
@@ -429,9 +364,6 @@ public sealed unsafe partial class AlloyRenderer
         while ((w >> levels) > 0 || (h >> levels) > 0) levels++;
         return levels;
     }
-
-    /// <summary>The hi-Z stage's resref, both Vulkan variants of which build off it.</summary>
-    private const string SsrHiZ = "cx_ssrhiz_c";
 
     /// <summary>The first of the colour pass's two attachments the record pair rides: draw buffers 2 and 3, as on GL.</summary>
     private const int SsrRecFirst = 2;
