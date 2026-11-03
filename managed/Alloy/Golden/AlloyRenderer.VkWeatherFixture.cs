@@ -30,7 +30,7 @@ public sealed unsafe partial class AlloyRenderer
         int k = kind == 2 ? 1 : 0;
         bool built = path == Weather.WxPath.Mesh ? VkWxMeshEnsure(vk, s, k, log)
                                                  : VkWxCullEnsure(vk, s, log) && VkWxEnsure(vk, s, k, log);
-        ImageId col = VkTarget(vk, Format.Rgba16F, n, n, "golden weather colour");
+        ImageId col = VkTarget(vk, Format.Rgba16F, n, n, "golden weather colour", ImageUse.CopySrc);
         ImageId cover = vk.CreateImage(new ImageDesc(ImageKind.Tex2DArray, Format.D32F, n, n, 1, 1, 1, 1,
                                                      ImageUse.Sampled | ImageUse.CopyDst, "golden weather cover"));
         BufferId rb = vk.CreateBuffer(new BufferDesc(n * n * 8, BufferUse.CopyDst, MemoryKind.Readback, "golden weather read"));
