@@ -1,6 +1,6 @@
 #version 460 core
-// CX-102: one part of a rain crown. Index 0 is a ring on the ground, the rest are droplet streaks; both are
-// scatter, premultiplied like the streak and the flake, so an unlit impact is nothing rather than a grey
+// CX-102: one part of a rain crown: the ring on the ground, the crown's sheet of water or a puddle's rebound column,
+// or a bead off the lip; all are premultiplied like the streak and the flake, so an unlit impact is nothing rather than a grey
 // mark on the stone. No contact fade here: a splash SITS on the surface, and the fade that saves a falling
 // streak from a hard intersection line would erase the whole thing. In the scene the hardware depth test puts
 // a splash behind a wall in front of it; drawn after the temporal resolve there is no depth target, and this
@@ -24,6 +24,7 @@ uniform vec2 uScreen;    // the target being drawn, pixels: the depth copy is sa
 // uAreaDiffuse / uAreaDir ride the pass block.
 #include "cx_pass.glsl"
 #include "cx_scenedepth.glsl"
+#include "cx_wx_hit.glsl"
 #include "cx_wx_drop.glsl"
 
 /// Rec.709 luminance: how much of its own scatter a splash also occludes.
@@ -42,8 +43,8 @@ const float CX_SPLASH_RINGA = 0.5;
 /// than one target pixel.
 const vec2 CX_SPLASH_HIDE = vec2(0.1, 0.01);
 
-/// A crown droplet at `uv` on its quad: the falling drop's own water bead, so a lamp beside a splash glints on every
-/// droplet it throws as it does on the rain coming down.
+/// A bead off a crown's lip at `uv` on its quad: the falling drop's own water bead, so a lamp beside a splash glints on
+/// every bead it throws as it does on the rain coming down.
 vec4 CxSplashDrop(vec2 uv, vec3 V, vec3 right, vec3 up, vec3 skyUp, vec3 skyLow, vec3 lampDir, vec3 lampCol, vec3 sunDir, vec3 sunCol)
 {
     return CxWxBead(uv, V, right, up, skyUp, skyLow, lampDir, lampCol, sunDir, sunCol);
@@ -67,9 +68,22 @@ void main()
         float u = (r - CX_SPLASH_RINGR * sqrt(vAge)) / CX_SPLASH_RINGW;
         a = exp(-u * u) * (1.0 - vAge) * CX_SPLASH_RINGA;
     }
+    else if (vPart < 2.5)
+    {
+        // the crown's sheet, or the rebound column out of a puddle, sinking back as it ages
+        float solid = vPart > 1.5 ? 1.0 : 0.0;
+        vec2 shape = solid > 0.5 ? CxSplashColumn(vAge) : CxCrownShape(vAge);
+        vec3 V = normalize(cross(vSide, vUp));
+        vec4 c = CxCrownSheet(vUV, shape, solid, V, vSide, vUp, vSkyUp, vSkyLow, vLampDir, uTint * vLight);
+        if (c.a <= 0.0) discard;
+        if (uViz == 5) { frag = vec4(vLight, 1.0) * (c.a * vSeed); return; }
+        c.rgb += CxCrownSheet(vUV, shape, solid, V, vSide, vUp, vec3(0.0), vec3(0.0), uAreaDir, uTint * uAreaDiffuse * vSunVis).rgb;
+        frag = vec4(c.rgb, c.a * uAlpha) * vSeed;
+        return;
+    }
     else
     {
-        // a droplet: the falling drop's bead, fading as it spends itself
+        // a bead off the lip: the falling drop's own water bead, fading as it spends itself
         if (dot(vUV, vUV) >= 1.0) discard;
         if (uViz == 5) { frag = vec4(vLight, 1.0) * vSeed; return; }
         vec3 V = normalize(cross(vSide, vUp));

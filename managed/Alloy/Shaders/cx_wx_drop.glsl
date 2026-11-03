@@ -85,4 +85,35 @@ vec4 CxWxBead(vec2 uv, vec3 V, vec3 right, vec3 up, vec3 skyUp, vec3 skyLow, vec
     c += CX_WX_BEAD_GLOW * CxWxSkyAlong(N, skyUp, skyLow);
     return vec4(c, CX_WX_BEAD_EXT);
 }
+
+/// The light one wall of a crown's sheet stops seen face-on; seen edge-on it crosses more water and stops more.
+const float CX_CROWN_FILM = 0.08;
+/// The same for the rebound column, which is solid water.
+const float CX_COLUMN_FILM = 0.6;
+/// How far a crown's sheet narrows from its lip down to its foot, as a share of the lip's radius.
+const float CX_CROWN_TAPER = 0.4;
+
+/// A crown's sheet (<c>solid</c> 0) or a rebound column (1) as premultiplied colour at <c>q</c> metres across and up
+/// from where the drop hit, on an upright quad facing <c>V</c> with <c>right</c>: <c>shape</c> its height and lip radius
+/// (the column's width), the sky reflected off its walls, and one light.
+vec4 CxCrownSheet(vec2 q, vec2 shape, float solid, vec3 V, vec3 right, vec3 up, vec3 skyUp, vec3 skyLow, vec3 lampDir, vec3 lampCol)
+{
+    float h = shape.x;
+    if (h <= 1e-5 || q.y < 0.0 || q.y > h) return vec4(0.0);
+    float y = q.y / h;
+    bool column = solid > 0.5;
+    float r = column ? 0.5 * shape.y * sqrt(max(1.0 - pow(y, 6.0), 0.0)) : shape.y * (1.0 - CX_CROWN_TAPER * (1.0 - y));
+    float u = q.x / max(r, 1e-6);
+    if (abs(u) >= 1.0) return vec4(0.0);
+    float c = sqrt(1.0 - u * u);
+    vec3 N = normalize(right * u + V * c);
+    float f = CX_WX_WATER_F0 + (1.0 - CX_WX_WATER_F0) * pow(1.0 - c, 5.0);
+    float wall = 1.0 - exp(-(column ? CX_COLUMN_FILM : CX_CROWN_FILM) / max(c, 0.05));
+    // a sheet is a front wall and a back one seen through it; the column is one body of water
+    float a = column ? wall : 1.0 - (1.0 - wall) * (1.0 - wall);
+    float walls = column ? 1.0 : 2.0 - wall;
+    vec3 col = walls * f * CxWxSkyAlong(reflect(-V, N), skyUp, skyLow) + a * CX_WX_BEAD_GLOW * CxWxSkyAlong(N, skyUp, skyLow);
+    col += max(a, f) * CxWxBeadLight(N, V, -V, f, lampDir, lampCol);
+    return vec4(col, a);
+}
 #endif

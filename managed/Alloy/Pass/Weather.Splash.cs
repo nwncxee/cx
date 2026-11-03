@@ -14,13 +14,13 @@ internal static unsafe partial class Weather
 {
     internal const string ShdSplashVs = "cx_splash_vs", ShdSplashFs = "cx_splash_fs";
 
-    /// <summary>Quads per crown: the ring plus <c>CX_SPLASH_DROPS</c> droplets. This IS the shader's
+    /// <summary>Quads per crown: the ring, the sheet or rebound column, and <c>CX_SPLASH_BEADS</c> beads. This IS the shader's
     /// <c>CX_SPLASH_PARTS</c> -- the draw's instance count is a multiple of it and the stage divides the
     /// instance id by it, so the two disagreeing shears every crown apart. <see cref="SplashSelfCheck"/>
     /// reads the constant back out of the GLSL.</summary>
     internal const int SplashParts = 6;
     /// <summary>One crown's life, seconds: the leap, the fall and the ring, start to finish.</summary>
-    internal const float SplashLifeSec = 0.22f;
+    internal const float SplashLifeSec = 0.2f;
     /// <summary>Lifetimes the splash clock is wrapped at. A whole number of them, so the slice index the
     /// stage floors out of the clock is continuous across the wrap and no frame re-rolls the whole field.</summary>
     private const int SplashWrapSlices = 8192;
@@ -88,7 +88,7 @@ internal static unsafe partial class Weather
     /// all a function of the instance id, plus the drops' own per-vertex light rig.</summary>
     internal static string SplashVs => ShaderSource.Get("cx_wx_sv.glsl");
 
-    /// <summary>One crown part: a ring on the ground as premultiplied scatter, or a droplet as a water bead.</summary>
+    /// <summary>One crown part: a ring on the ground as premultiplied scatter, or the crown's sheet, a rebound column or a bead as water.</summary>
     internal static string SplashFs => ShaderSource.Get("cx_splash_f.glsl");
 
     /// <summary>What about this pass cannot be seen going wrong, against the GLSL text and hand-written literals:
@@ -98,8 +98,8 @@ internal static unsafe partial class Weather
     private static void SplashSelfCheck(Checker check)
     {
         string v = SplashVs;
-        check.Expect(v.Contains($"const int CX_SPLASH_DROPS = {SplashParts - 1};")
-          && v.Contains("const int CX_SPLASH_PARTS = CX_SPLASH_DROPS + 1;")
+        check.Expect(v.Contains($"const int CX_SPLASH_BEADS = {SplashParts - 2};")
+          && v.Contains("const int CX_SPLASH_PARTS = CX_SPLASH_BEADS + 2;")
           && v.Contains("int part = int(id % uint(CX_SPLASH_PARTS));"),
           $"the stage splits each instance id into the {SplashParts} parts the draw counts in");
         check.Expect(GlslConst(v, "CX_SPLASH_RING_M") == GlslConst(RippleLib, "CX_RIPPLE_REACH_M"),
@@ -109,11 +109,12 @@ internal static unsafe partial class Weather
           && v.Contains("ringM = CX_SPLASH_RING_M * mix(CX_FOOT_RING.x, CX_FOOT_RING.y, pool);")
           && v.Contains("dim = smoothstep(CX_SPLASH_PX.x, CX_SPLASH_PX.y, ringM * CX_SPLASH_CREST * px) * hit.z;")
           && v.Contains("pos = P + (T * corner.x + B * corner.y) * (ringM * 1.15) + up * CX_SPLASH_LIFT;")
-          && v.Contains("vSeed = (0.4 + 0.6 * fract(hc.x * 7.31)) * dim;"),
+          && v.Contains("float seed = 0.4 + 0.6 * fract(hc.x * 7.31);") && v.Contains("vSeed = seed * dim;"),
           "the ring is strictly world-sized: its screen size only FADES it");
-        check.Expect(v.Contains("float floorM = CX_SPLASH_MINPX / max(px, 1e-3);")
-          && v.Contains("dim = (CX_SPLASH_DROP_M * len) / (w * l);"),
-          "a sub-pixel DROPLET widens to a pixel and gives back the area in scatter, rather than flickering");
+        check.Expect(v.Contains("dim = (truth.x * truth.y) / (b.x * b.y);")
+          && v.Contains("float grow = max(CX_SPLASH_MINPX / max(min(2.0 * quad.x, quad.y) * px, 1e-6), 1.0);")
+          && v.Contains("dim = 1.0 / (grow * grow);"),
+          "a sub-pixel bead or crown widens to a pixel and gives back the area in scatter, rather than flickering");
         check.Expect(v.Contains("const vec2 CX_SPLASH_NEAR = vec2(0.5, 1.0);")
           && v.Contains("dim *= gain * smoothstep(CX_SPLASH_NEAR.x, CX_SPLASH_NEAR.y, -cv.z);"),
           "a crown inside a metre of the lens fades out rather than filling the screen (a camera in a wall sits on the surface the rain lands on)");
@@ -125,7 +126,7 @@ internal static unsafe partial class Weather
         check.Expect(v.Contains("up = normalize(cross(xp - xn, yp - yn));")
           && v.Contains("vec3 dir = jet ? up : T * (cos(a) * sin(theta)) + B * (sin(a) * sin(theta)) + up * cos(theta);")
           && v.Contains("if (dot(P - L, up) < 0.0) alive = false;"),
-          "a crown stands on the surface it hit: the ring lies in its plane and the droplets leave along its normal");
+          "a crown stands on the surface it hit: the ring lies in its plane and the sheet and beads rise along its normal");
         check.Expect(v.Contains("if (onPlane && abs(ground.z - L.z) < CX_FOOT_GROUND_M) { L = ground; up = n; }"),
           "a footfall's crowns stand on the ground under the foot too, unless the cover map's hit there is a roof over it");
         float steep = MathF.Acos(GlslConst(v, "CX_SPLASH_STEEP")) * (180f / MathF.PI);

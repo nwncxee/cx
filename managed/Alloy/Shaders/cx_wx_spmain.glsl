@@ -6,20 +6,15 @@
 // No CPU work per splash and no buffer: the instance id hashes to a point on a camera-centred disc and to
 // a time slice, and each slice re-draws the point, so the field never strobes in fixed spots.
 
-/// Droplets in one crown. The last two are each dropped on their own hash, so a crown is three to five.
-const int CX_SPLASH_DROPS = 5;
-/// Parts per crown: the ring on the ground (index 0), then the droplets. The C# side sizes the draw by this.
-const int CX_SPLASH_PARTS = CX_SPLASH_DROPS + 1;
+/// Beads off one crown's lip. The last is dropped on its own hash, so a crown throws three or four.
+const int CX_SPLASH_BEADS = 4;
+/// Parts per crown: the ring on the ground (index 0), the sheet or the rebound column (1), then the beads. The C#
+/// side sizes the draw by this.
+const int CX_SPLASH_PARTS = CX_SPLASH_BEADS + 2;
 const float CX_SPLASH_G = 9.81;
-/// Launch speed of a crown droplet, m/s: what a rain drop throws back up off a hard surface.
-const vec2 CX_SPLASH_V0 = vec2(1.1, 1.9);
 /// The ring's own reach, metres. Pinned to the puddle rings' CX_RIPPLE_REACH_M -- the same drop makes both,
 /// so the one on the water and the one on the stone beside it may not be different sizes (Weather.SelfCheck).
 const float CX_SPLASH_RING_M = 0.08;
-/// Width of a droplet streak, metres. Its LENGTH is the distance it covers in one exposure.
-const float CX_SPLASH_DROP_M = 0.008;
-/// Seconds of travel one streak is drawn over: its own motion blur.
-const float CX_SPLASH_BLUR_S = 0.025;
 /// Share of the area ambient a crown takes with the sun straight behind it: the floor that keeps an impact
 /// readable in dim light. Premultiplied scatter means it can only ADD -- where the area ambient is nothing
 /// so is the splash, so this never becomes a grey film in the dark.
@@ -32,11 +27,12 @@ const float CX_SPLASH_CREST = 0.3;
 /// Crest widths on screen: under the first the ring is gone, past the second it is at full strength. The
 /// ring's WORLD size never moves with distance -- this only fades it, which is the whole point of CX-102.
 const vec2 CX_SPLASH_PX = vec2(1.0, 2.5);
-/// Screen width a droplet streak is never drawn narrower than, in pixels. A millimetre-scale droplet is a
-/// fraction of a pixel past a few metres, and a sub-pixel quad does not dim -- it FLICKERS, as the rasteriser
-/// catches and misses it. Widening it to about a pixel and dividing the scatter by the area that added is
-/// the energy-conserving answer, and it is the DROPLETS only; the ring above never moves.
+/// Screen size the crown's quad is never drawn smaller than, in pixels. A crown a couple of centimetres tall is under
+/// a pixel past a few tens of metres, and a sub-pixel quad does not dim -- it FLICKERS; the quad grows to this and the
+/// crown's light is divided by the area that added. The ring never moves.
 const float CX_SPLASH_MINPX = 1.2;
+/// The parts' kinds, as the fragment stage reads them.
+const float CX_PART_SHEET = 1.0, CX_PART_COLUMN = 2.0, CX_PART_BEAD = 3.0;
 /// View depths, metres, over which a crown fades in from the lens: nearer than the first it is not drawn. A
 /// world-sized crown that close is a screen-wide smear, which is what a camera inside a wall sees.
 const vec2 CX_SPLASH_NEAR = vec2(0.5, 1.0);
@@ -59,7 +55,7 @@ const float CX_FOOT_SPREAD = 0.12;
 /// Metres the cover map's hit under a footfall may sit from the foot and still be the ground it stands on;
 /// farther, it is a roof over the foot, and the crown keeps world up.
 const float CX_FOOT_GROUND_M = 0.3;
-/// Droplet launch speed, as a share of a rain crown's: damp ground (x) flicks, standing water (y) throws.
+/// A footfall crown's size, as a share of a rain crown's: damp ground (x) flicks, standing water (y) throws.
 const vec2 CX_FOOT_V0 = vec2(0.9, 1.6);
 /// Ring reach, as a share of a rain drop's: a foot displaces far more water.
 const vec2 CX_FOOT_RING = vec2(1.5, 3.0);
@@ -126,9 +122,6 @@ bool CxSplashSeen(vec3 p)
 /// /weather viz 5: every impact unlit, green on bare ground through blue in standing water, as it read the water.
 const int CX_SPLASH_VIZ = 5;
 
-/// Metres per second a rebound jet leaves the water at: a few centimetres of rise, well under a crown's.
-const float CX_SPLASH_JET_V = 0.9;
-
 /// The water standing where a crown lands at `p`, as the deferred twin recorded it under that pixel; 0 off screen or
 /// when this frame recorded none.
 float CxSplashStanding(vec3 p)
@@ -151,7 +144,7 @@ void main()
     float slice = floor(ph);
     float age = fract(ph);
     float life = uSplashP.y, gain = 1.0, v0k = 1.0, ringM = CX_SPLASH_RING_M;
-    // what the water standing where it lands makes of a drop: crown share, launch speed, ring, rebound jet
+    // what the water standing where it lands makes of a drop: crown strength, height, ring, rebound column
     vec4 hit = vec4(1.0, 1.0, 1.0, 0.0);
     float standing = 0.0;
     vec3 L, up = vec3(0.0, 0.0, 1.0);
@@ -204,29 +197,44 @@ void main()
     // the crown's frame on the surface it hit; on level ground T and B are world x and y
     vec3 T = normalize(cross(vec3(0.0, 1.0, 0.0), up)), B = cross(up, T);
     vec3 N = up;
-    float len = 0.0;
-    if (part > 0)
+    float k = hit.y * v0k, kind = 0.0;
+    vec2 quad = vec2(0.0), q = vec2(0.0);
+    float seed = 0.4 + 0.6 * fract(hc.x * 7.31);
+    if (part == 1)
+    {
+        // the crown's sheet, or in standing water the column its dip throws back up: an upright quad over the landing
+        // point turned to the camera, the shape itself drawn in the fragment stage
+        vec3 hd = CxHash3(crown * 2246822519u + uint(slice) * 3266489917u + 1u);
+        bool column = hit.w > 0.0 && hd.y < hit.w / CX_HIT_JET.y;
+        kind = column ? CX_PART_COLUMN : CX_PART_SHEET;
+        if (!column) alive = alive && hit.x > 0.01;
+        quad = column ? vec2(0.5 * CX_COLUMN.y, CX_COLUMN.x)
+                      : vec2(CX_CROWN_R * CX_CROWN_SPREAD, CX_CROWN_H) * k;
+        vec3 toCam = uEye - L;
+        side = cross(up, toCam);
+        side = dot(side, side) > 1e-10 ? normalize(side) : T;
+        P = L + up * (0.5 * quad.y);
+        seed = column ? 1.0 : hit.x;
+    }
+    else if (part > 1)
     {
         vec3 hd = CxHash3(crown * 2246822519u + uint(slice) * 3266489917u + uint(part));
-        // in standing water the first droplet is the jet the drop's cavity throws back up; the crown thins as it deepens
-        bool jet = part == 1 && hit.w > 0.0;
-        if (jet) alive = alive && hd.y < hit.w / CX_HIT_JET.y;
-        else if ((part >= CX_SPLASH_DROPS - 1 && hd.z > 0.5) || fract(hd.z * 13.7) >= hit.x) alive = false;
-        float a = (float(part) - 0.5 + hc.y) * 6.2831853 / float(CX_SPLASH_DROPS);
-        float theta = 0.5 + 0.45 * hd.x;          // radians off the normal: a crown leans out 29 to 54 degrees
-        vec3 dir = jet ? up : T * (cos(a) * sin(theta)) + B * (sin(a) * sin(theta)) + up * cos(theta);
-        float v0 = jet ? CX_SPLASH_JET_V : mix(CX_SPLASH_V0.x, CX_SPLASH_V0.y, hd.y) * v0k * hit.y;
-        float t = age * life;
-        vec3 vel = dir * v0 - vec3(0.0, 0.0, CX_SPLASH_G * t);
-        P = L + dir * (v0 * t) - vec3(0.0, 0.0, 0.5 * CX_SPLASH_G * t * t);
-        if (dot(P - L, up) < 0.0) alive = false;  // back in the water: the droplet is spent
-        vec3 toCam = uEye - P;
+        kind = CX_PART_BEAD;
+        if ((part == CX_SPLASH_PARTS - 1 && hd.z > 0.5) || fract(hd.z * 13.7) >= hit.x) alive = false;
+        float a = (float(part) - 1.5 + hc.y) * 6.2831853 / float(CX_SPLASH_BEADS);
+        float v = mix(CX_BEAD_V.x, CX_BEAD_V.y, hd.y) * k, tilt = mix(CX_BEAD_TILT.x, CX_BEAD_TILT.y, hd.x);
+        float t = (age - CX_BEAD_BREAK) * life;
+        vec2 rim = CxCrownShape(CX_BEAD_BREAK) * k;
+        vec2 f = CxBeadFlight(max(t, 0.0), v, tilt, vec2(rim.y, rim.x));
+        if (t < 0.0 || f.y < 0.0) alive = false;   // still part of the lip, or landed
+        vec3 away = T * cos(a) + B * sin(a);
+        P = L + away * f.x + up * f.y;
+        vec3 vel = away * (v * cos(tilt)) + up * (v * sin(tilt) - CX_SPLASH_G * max(t, 0.0));
         axis = normalize(vel);
-        side = normalize(cross(axis, toCam));
-        len = clamp(length(vel) * CX_SPLASH_BLUR_S, CX_SPLASH_DROP_M, CX_SPLASH_DROP_M * 5.0);
-        // a droplet has no surface: the camera-facing direction stands in for its normal, so a lamp behind
-        // the camera lights it and one behind the droplet does not -- the drop stage's own read
-        N = normalize(toCam);
+        side = normalize(cross(axis, uEye - P));
+        quad = vec2(length(vel), 0.0);
+        // a bead has no surface: the camera-facing direction stands in for its normal, as on a falling drop
+        N = normalize(uEye - P);
     }
 
     vec4 cv = uView * vec4(P, 1.0);
@@ -240,19 +248,27 @@ void main()
         dim = smoothstep(CX_SPLASH_PX.x, CX_SPLASH_PX.y, ringM * CX_SPLASH_CREST * px) * hit.z;
         pos = P + (T * corner.x + B * corner.y) * (ringM * 1.15) + up * CX_SPLASH_LIFT;
     }
+    else if (part == 1)
+    {
+        float grow = max(CX_SPLASH_MINPX / max(min(2.0 * quad.x, quad.y) * px, 1e-6), 1.0);
+        dim = 1.0 / (grow * grow);
+        // q is in a full crown's metres, so the fragment stage draws the shipped shape whatever this crown's size
+        q = vec2(corner.x * quad.x, (corner.y * 0.5 + 0.5) * quad.y) / (kind == CX_PART_COLUMN ? 1.0 : max(k, 1e-3));
+        pos = L + (side * (corner.x * quad.x) + up * ((corner.y * 0.5 + 0.5) * quad.y - 0.5 * quad.y)) * grow
+            + up * (0.5 * quad.y);
+    }
     else
     {
-        float floorM = CX_SPLASH_MINPX / max(px, 1e-3);
-        float w = max(CX_SPLASH_DROP_M, floorM), l = max(len, floorM);
-        dim = (CX_SPLASH_DROP_M * len) / (w * l);
-        pos = P + axis * (corner.y * l * 0.5) + side * (corner.x * w * 0.5);
+        vec2 b = CxSplashBeadSize(quad.x, px), truth = CxSplashBeadSize(quad.x, 1.0e9);
+        dim = (truth.x * truth.y) / (b.x * b.y);
+        pos = P + axis * (corner.y * b.x * 0.5) + side * (corner.x * b.y * 0.5);
     }
 
     dim *= gain * smoothstep(CX_SPLASH_NEAR.x, CX_SPLASH_NEAR.y, -cv.z);
-    vUV = corner;
+    vUV = part == 1 ? q : corner;
     vAge = age;
-    vPart = float(part);
-    vSeed = (0.4 + 0.6 * fract(hc.x * 7.31)) * dim;
+    vPart = kind;
+    vSeed = seed * dim;
     vLight = uAreaAmbient + uAreaDiffuse * 0.5;
     vSide = side;
     vUp = vec3(0.0, 0.0, 1.0);
@@ -262,9 +278,9 @@ void main()
     vSkyLow = vec3(0.0);
     if (part > 0)
     {
-        // a droplet is a water bead like a falling drop: camera-facing axes, the sky over it and behind it, the lamps
+        // the sheet, the column and the beads are water like a falling drop: their axes, the sky over them, the lamps
         vec3 toEye = uEye - P;
-        vUp = normalize(cross(toEye, side));
+        vUp = part == 1 ? up : normalize(cross(toEye, side));
         vec3 low = vec3(-toEye.xy, 0.0);
         low = dot(low, low) > 1e-8 ? normalize(low) : vec3(1.0, 0.0, 0.0);
         vSkyUp = CxWxSky(vec3(0.0, 0.0, 1.0));
