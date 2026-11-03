@@ -119,7 +119,7 @@ internal static unsafe class SsaoPass
               && SsaoBlurFs.Contains($"layout(binding = {SlotSrc}) uniform sampler2D uSrc;"),
               "every sampler the two stages read sits on the slot the recorded BindSet names (the seam sets no sampler uniform)");
             check.Expect(AlloyRenderer.OwnedLitFsMain.Contains("occl *= mix(1.0, CxSsaoAt(ivec2(gl_FragCoord.xy), aoDepth, aoSlope), uAlphaCut >= 0.0 ? uAoCutout : 1.0);")
-              && AlloyRenderer.OwnedLitFsMain.Contains("* ambShape * occl"), "the lit stage folds it into occl, which scales the AMBIENT term");
+              && AlloyRenderer.OwnedLitFsMain.Contains("+ cxAmbWalk) * matAmbient * occl;"), "the lit stage folds it into occl, which scales the AMBIENT term");
             // post.halfres: the pass is a quarter of the pixels and the LIT stage is the upsampler -- there
             // is no apply pass to put a bilateral filter in, the consumer fetches per fragment.
             check.Expect(AlloyRenderer.OwnedLitFsHead.Contains("float CxSsaoAt(ivec2 pix, float myDepth, float slope)")

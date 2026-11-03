@@ -70,6 +70,11 @@ internal static partial class GpuGolden
         FarRainApprovedSelfCheck(vk, check, log);
         RainOnlyFogApprovedSelfCheck(vk, check, log);
         NearTierSelfCheck(vk, check, log);
+        ShadingParitySelfCheck(vk, check, log);
+        AmbientClassApprovedSelfCheck(vk, check, log);
+        SofteningApprovedSelfCheck(vk, check, log);
+        TranslucenceApprovedSelfCheck(vk, check, log);
+        DisplacementApprovedSelfCheck(vk, check, log);
         vk.PresentDeviceCheck(check, log);
         vk.PresentHoldCheck(check, log);
         vk.ScreenCheck(check, log);

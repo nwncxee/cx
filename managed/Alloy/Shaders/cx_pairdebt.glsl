@@ -179,6 +179,7 @@ void main()
     if ((g.flags & CX_GB_BAKED) == 0u || !(g.lmLum > 0.0)) return;
     CxGbufFade(texelFetch(uGb2, p, 0).r, g);
     cxSurfFade = g.surfFade;
+    cxFragNormal = (g.flags & CX_GB_NORMALMAP) != 0u;
     vec4 h = uInvVp * vec4(2.0 * (cxPixel - vec2(uRect.xy)) / vec2(uRect.zw) - 1.0, ndcZ, 1.0);
     if (!(abs(h.w) > 1e-6)) return;
     vec3 worldPos = h.xyz / h.w;

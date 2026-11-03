@@ -8,8 +8,8 @@ using CX.Graphics.Rhi;
 namespace CX.Alloy;
 
 /// <summary>
-/// Regression goldens for the deferred walk (they hold on main 65203c28, so they carry no approved-spec mark): each
-/// scene's HDR target against the one main 65203c28 drew, recorded on this card and embedded gzipped. Oracle: that
+/// Regression goldens for the deferred walk (they held when recorded, so they carry no approved-spec mark): each
+/// scene's HDR target against the recorded one, the softened N.L's frame, embedded gzipped. Oracle: that
 /// recorded image, golden data. A scene with no recording writes one under <c>.scratch/</c> and fails.
 /// </summary>
 internal static partial class GpuGolden
@@ -85,7 +85,7 @@ internal static partial class GpuGolden
         }
         string how = brighter ? "darker than" : "off";
         log.Info($"GpuGolden: deferred walk {what}, {bad} channel(s) {how} the recording, worst {worst:G4}");
-        check.Expect(bad == 0, $"{what}: {bad} channel(s) {how} main 65203c28's frame, first at pixel "
+        check.Expect(bad == 0, $"{what}: {bad} channel(s) {how} the recorded frame, first at pixel "
                              + $"({first / 4 % DwW}, {first / 4 / DwW}) {(first >= 0 ? got[first] : 0f):G6} against {(first >= 0 ? want[first] : 0f):G6}, worst {worst:G4}");
     }
 

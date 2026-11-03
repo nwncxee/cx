@@ -42,7 +42,7 @@ internal static partial class GpuGolden
 
     /// <summary>Floats in and out per case: the record's lanes in, then everything read back plus the three
     /// ownership answers, the chart's record and the fade.</summary>
-    private const int GbufIn = 32, GbufOut = 41;
+    private const int GbufIn = 32, GbufOut = 44;
 
     /// <summary>The chart record a baked slot gets -- page 2 at (16, 32) with a quarter of a page texel per atlas
     /// texel, picking channels 3, none, 7 and 254 -- and an unbaked one, as the buffer holds them.</summary>
@@ -77,8 +77,9 @@ internal static partial class GpuGolden
                          g.lmMover = vec4(uIn[b + 19], uIn[b + 20], uIn[b + 21], uIn[b + 22]);
                          g.lmShare = vec3(uIn[b + 23], uIn[b + 24], uIn[b + 25]);
                          g.surfFade = vec4(normalize(vec3(uIn[b + 26], uIn[b + 27], uIn[b + 28])), uIn[b + 29]);
+                         g.ambT = g.lmShare.bgr;
                          uvec4 w0, w1;
-                         uint w2;
+                         uvec2 w2;
                          CxGbufPack(g, w0, w1, w2);
                          CxGbuf r, x;
                          bool ok = CxGbufRead(w0, w1, g.viewDepth, 0.0, r);
@@ -98,7 +99,9 @@ internal static partial class GpuGolden
                          uOut[o + 22] = r.lmMover.w; uOut[o + 23] = r.lmShare.r; uOut[o + 24] = r.lmShare.g; uOut[o + 25] = r.lmShare.b;
                          uOut[o + 29] = r.lmTexel; uOut[o + 30] = r.lmPick.x; uOut[o + 31] = r.lmPick.y; uOut[o + 32] = r.lmPick.z;
                          uOut[o + 33] = r.lmPick.w;
-                         CxGbufFade(w2, r);
+                         CxGbufFade(w2.x, r);
+                         vec3 at = CxGbufAmbT(w2.y);
+                         uOut[o + 41] = at.r; uOut[o + 42] = at.g; uOut[o + 43] = at.b;
                          uOut[o + 34] = r.surfFade.x; uOut[o + 35] = r.surfFade.y; uOut[o + 36] = r.surfFade.z; uOut[o + 37] = r.surfFade.w;
                      }
                      """;
@@ -206,6 +209,8 @@ internal static partial class GpuGolden
             // the weights go out as shared-exponent RGB: nine mantissa bits against the block's largest channel
             for (int j = 0; j < 3; j++) Near(check, $"{tag}: diffT", r[15 + j], c.DiffT[j], Max(c.DiffT) / 400 + 1e-9);
             for (int j = 0; j < 3; j++) Near(check, $"{tag}: lmShare", r[23 + j], c.LmShare[j], Max(c.LmShare) / 400 + 1e-9);
+            // G2.y: the ambient weight, written as the case's lmShare turned round so a lane swap shows
+            for (int j = 0; j < 3; j++) Near(check, $"{tag}: ambT", r[41 + j], c.LmShare[2 - j], Max(c.LmShare) / 400 + 1e-9);
             // G2: the fade in 8 bits over [0, 10], and the geometric normal at G0's own precision where there is one
             Near(check, $"{tag}: surfFade", r[37], c.SurfFade.W, 0.5 / 255 * 10.0 + 1e-6);
             if (c.SurfFade.W > 0)

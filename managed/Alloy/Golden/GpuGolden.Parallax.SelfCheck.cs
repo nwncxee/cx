@@ -62,7 +62,7 @@ internal static partial class GpuGolden
                          mat3 tsb = mat3(uIn[b + 2], uIn[b + 3], uIn[b + 4], uIn[b + 5], uIn[b + 6], uIn[b + 7],
                                          uIn[b + 8], uIn[b + 9], uIn[b + 10]);
                          vec2 r = CxDisplace(vec2(uIn[b], uIn[b + 1]), tsb, vec3(uIn[b + 11], uIn[b + 12], uIn[b + 13]),
-                                             uIn[b + 14], uIn[b + 15], vec2(0.0), vec2(0.0));
+                                             uIn[b + 14], uIn[b + 15], vec2(0.0), vec2(0.0), vec2(0.0));
                          uOut[o] = r.x; uOut[o + 1] = r.y;
                      }
                      """;
@@ -121,14 +121,16 @@ internal static partial class GpuGolden
     /// up to 32 dependent steps, where the oracle runs in double.</summary>
     private const double DisplaceTol = 1e-4;
 
-    /// <summary><c>inc_displacement.shd</c>'s <c>DisplaceTextureCoords</c> at SHADER_QUALITY_MODE 2, offset 0 and
-    /// multiplier 0 (so the 1.0 default) with the identity texture matrix -- the oracle, written from the stock
-    /// shader. Returns the case's own coordinate where the stock march takes no step.</summary>
-    private static (double U, double V) StockDisplace(in DisplaceCase c)
+    /// <summary><c>inc_displacement.shd</c>'s <c>DisplaceTextureCoords</c> at SHADER_QUALITY_MODE 2 with the identity
+    /// texture matrix -- the oracle, written from the stock shader: <paramref name="offset"/> and <paramref name="mult"/> are
+    /// the material's <c>DisplacementOffset</c> and <c>DisplacementMultiplier</c>, a multiplier of 0 the 1.0 default.
+    /// Returns the case's own coordinate where the stock march takes no step.</summary>
+    private static (double U, double V) StockDisplace(in DisplaceCase c, double offset = 0.0, double mult = 0.0)
     {
+        double dm = mult != 0.0 ? mult : 1.0;
         double m = 1.0 - 0.5 * Dot(c.Eye, c.N);   // 1 + 0.5 * dot(vViewToSurface_n, ng)
         m *= m / (c.Depth * 0.125);               // -vPosView.z
-        double it = 32.0 * Math.Clamp(m * c.ScreenH / 1080.0, 0.0, 1.0);
+        double it = 32.0 * dm * Math.Clamp(m * c.ScreenH / 1080.0, 0.0, 1.0);
         if (!(it > 0.5)) return (c.U, c.V);
         // transpose(mTSB) * -vViewToSurface_n: the frame's columns against the eye direction
         double vdT = Dot(c.T, c.Eye), vdB = Dot(c.B, c.Eye), vdN = Dot(c.N, c.Eye);
@@ -137,15 +139,17 @@ internal static partial class GpuGolden
         double zh = 0.5 * vdN + 0.5;
         double k = 0.05 * ((1.0 - vdN) / (zh * zh) + 1.0);
         double dx = vdT * k, dy = vdB * k;
-        double cur = (1.0 - Height(c.U, c.V)) * seg;
+        double u0 = c.U + offset * dx, v0 = c.V + offset * dy;
+        dx *= dm; dy *= dm;
+        double cur = (1.0 - Height(u0, v0)) * seg;
         for (int i = (int)it; i > 1; i--)
         {
-            double delta = 1.0 - Height(c.U - dx * cur, c.V - dy * cur) - cur;
+            double delta = 1.0 - Height(u0 - dx * cur, v0 - dy * cur) - cur;
             if (delta < 0.0) { delta /= cur; seg *= 0.5; }
             else delta /= 1.0 - cur;
             cur += delta * seg;
         }
-        return (c.U - dx * cur, c.V - dy * cur);
+        return (u0 - dx * cur, v0 - dy * cur);
     }
 
     /// <summary>A dot product in double, so the oracle's precision is the oracle's and not the march's.</summary>

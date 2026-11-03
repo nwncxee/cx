@@ -521,6 +521,8 @@ void main()
         cxFresnel = g.fresnel;
         cxModern = (g.flags & CX_GB_STOCKLOBE) != 0u ? 0.0 : 1.0;
         cxRecvShadow = (g.flags & CX_GB_NOSHADOW) != 0u ? 0.0 : 1.0;
+        cxFragNormal = (g.flags & CX_GB_NORMALMAP) != 0u;
+        cxTransl = 1.0 - clamp(uDraw[g.slot].rot.w, 0.0, 1.0);
         CxGbufFade(texelFetch(uGb2, p, 0).r, g);
         cxSurfFade = g.surfFade;
 
@@ -573,7 +575,9 @@ void main()
         // The exact linear correction the twin's weights were written for (docs/spec/deferred-lighting.md). The
         // film's own term, g.specT x CxFilmStatics, is the CX_FILM_PASS dispatch's: linear, so it adds exactly.
         float owe = min(lmSub.x / max(g.lmLum, 1e-5) + lmSub.y, 1.0);
-        vec3 add = g.diffT * acc + g.specT * spec - g.lmShare * owe;
+        // the ambient class leaves the diffuse weight for its own (Wa), as stock's AmbientLight does
+        vec3 add = g.diffT * (acc - cxAmbWalk) + g.specT * spec - g.lmShare * owe
+                 + CxGbufAmbT(texelFetch(uGb2, p + ivec2(int(sMaxZ >> 31u), 0), 0).g) * cxAmbWalk;
         // stored the moment it exists: carried to the end of main, its four words sat live across the whole walk
         // and the mirror tap's rung went from 0.0 to 2.2 ms (82b7b4e)
         imageStore(uLightRec, p, CxLightRecPack(acc, spec, viewDepth, baked > 0.5, owe));

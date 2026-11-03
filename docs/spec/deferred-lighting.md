@@ -160,20 +160,21 @@ Known deviations), so the twin writes the derivatives:
 | `coat`, `coatRough` | `cxCoat`, `cxCoatRough` |
 | `specC` | `cxF0` under the modern model, the specular colour under the engine's: the one colour each model's lobe reads. The reader rebuilds `cxSpecScale` from it with the lit stage's own `CxSpecScaleOf(specC, N.V, rough, coat)` instead of storing the product |
 | `slot` | the draw's ownership slot. The reader fetches what is per draw rather than per pixel by it: `cxSheen`/`cxSheenRough` (`CxSheenOf(uDraw[slot].ext1)`), `lmTexel` and `lmPick` (`uChart[slot]`) |
-| `flags` | `CX_GB_DEFERRED`; `CX_GB_BAKED` (the loop's `baked`); `CX_GB_ONMOVER` (`onMover`); `CX_GB_FILM` (the `CxFilmStatics` gate: `wxFilm > 0 && baked && cxCoat > 0 && !CxGlossy(rough)`, a glossy base's mirror pass taking every static itself); `CX_GB_NOSHADOW` (`cxRecvShadow == 0`); `CX_GB_STOCKLOBE` (`cxModern == 0`: the engine's grazing forms) |
+| `flags` | `CX_GB_DEFERRED`; `CX_GB_BAKED` (the loop's `baked`); `CX_GB_ONMOVER` (`onMover`); `CX_GB_FILM` (the `CxFilmStatics` gate: `wxFilm > 0 && baked && cxCoat > 0 && !CxGlossy(rough)`, a glossy base's mirror pass taking every static itself); `CX_GB_NOSHADOW` (`cxRecvShadow == 0`); `CX_GB_STOCKLOBE` (`cxModern == 0`: the engine's grazing forms); `CX_GB_NORMALMAP` (`cxFragNormal`: a normal-mapped fragment, where the softened N.L stops at the terminator) |
 | `diffT` (Wd) | d(final pixel) / d(`point`): albedo x matDiffuse x kd x coatT x wxTransmit x dirOcc, plus the couplings through `diffuse` (the legacy env pattern's `(ambient + diffuse) * pat`, the coat probe's `(ambient + diffuse) * cenv`), x keyhole x fog transmittance (`1 - CxFogRevealFactor`, the ramp the pixel took) |
 | `specT` (P) | d(final pixel) / d(`pointSpec`) = d/d(film): dirOcc x the ghost divide (`1/partA`, the part's own alpha `rot.w`, never the texture's coverage) x keyhole x fog transmittance (`1 - CxFogRevealFactor`, the ramp the pixel took) |
 | `lmLum` | luminance of the undimmed `lm` (the `lmSub.x` denominator); 0 on an unbaked pixel |
 | `lmShare` (L) | the full contribution of `lm` to the final pixel (its diffuse through Wd and its lobe through P), so the debt is `final -= L * min(lmSub.x / lmLum + lmSub.y, 1)` |
 | `lmMover` | `CxLightmapMover(chart.rec, vChart)` |
 | `viewDepth` | the twin's linear view depth, `1 / gl_FragCoord.w` -- the record's ownership test |
-| `surfFade` (G2) | `cxSurfFade`: the geometric normal and stock's per-light surface fade (`fSurfaceFadeModifier`, `inc_lighting.shd:341`), which `CxPointLight` multiplies into each light's wrapped N.L; 0 on a surface with no normal or height map. The reader sets `cxSurfFade` from it before the walk and the pair debt |
+| `ambT` (Wa, G2.y) | d(final pixel) / d(`cxAmbWalk`), the walk's ambient-class lights: they join `ambient` before matAmbient and the occlusion, so Wa is albedo x matAmbient x occl x kd x coatT x wxTransmit, plus the same couplings as Wd, x keyhole x fog transmittance. No dirOcc and no matDiffuse |
+| `surfFade` (G2.x) | `cxSurfFade`: the geometric normal and stock's per-light surface fade (`fSurfaceFadeModifier`, `inc_lighting.shd:341`), which `CxPointLight` multiplies into each light's wrapped N.L; 0 on a surface with no normal or height map. The reader sets `cxSurfFade` from it before the walk and the pair debt |
 
 The compute pass then adds, per pixel:
 
-    hdr.rgb += Wd * acc + P * (spec + film) - L * min(lmSub.x / max(lmLum, 1e-5) + lmSub.y, 1)
+    hdr.rgb += Wd * (acc - amb) + Wa * amb + P * (spec + film) - L * min(lmSub.x / max(lmLum, 1e-5) + lmSub.y, 1)
 
-where `acc`, `spec`, `lmSub` are what `CxClusteredLightLm` returns for (worldPos, N, V, viewDepth, onMover,
+where `acc`, `spec`, `lmSub` are what `CxClusteredLightLm` returns, `amb` the share of `acc` its ambient-class lights make up (`cxAmbWalk`), for (worldPos, N, V, viewDepth, onMover,
 rough, spec, baked, lmTexel, lmMover, lmPick), and `film` is `CxFilmStatics(...)` when `CX_GB_FILM` is set.
 The sum is taken in two dispatches of `cx_deferred_cs`: the walk adds every term but `P * film`, and the same
 stage compiled with `CX_FILM_PASS` adds `P * film` on the `CX_GB_FILM` pixels alone, only while
@@ -248,6 +249,9 @@ The debt is taken instead by **`cx_pairdebt`**, a second 16x16 compute dispatch 
 - **A light past the atlas, too crowded (more than `CasterPass.DynSpheres` creatures) or unframeable (a
   creature engulfing its own light) keeps its page** -- and the deferred frame then owes it nothing, because
   the walk's hot branch is gone. Counted on `CasterPass`'s period line, never silent.
+- **A forward decal over a deferred surface** reads the light record (`acc`, the ambient class inside it) and
+  lights a tile light through its own diffuse weight, as every light was lit before the ambient class had its own.
+  The record has no lane for the split; a decal's material colours sit close to the surface's.
 - **Fog** mixes in display space (cx_tail's own ponytail on `CxReflOut`), so the transmittance in Wd and P is
   the linear approximation `1 - CxFogRevealFactor` (the fog-of-war reveal ramp where it applies). Same approximation Ssr already takes.
 - **Display overlays** (noir, racial vision, targeting shape) apply after the fog in the forward stage. They
@@ -257,7 +261,7 @@ The debt is taken instead by **`cx_pairdebt`**, a second 16x16 compute dispatch 
   quantisation into V, the attenuation distance and the cube-shadow geometry. "Bit-for-bit on the same inputs"
   holds for every input but this one.
 - **Precision**: N is 12-bit snorm octahedral, `specC` sqrt-encoded unorm8, the coat and its alpha 7-bit (the
-  alpha sqrt-encoded), Wd and L shared-exponent RGB (9-bit mantissas), P and `lmLum` half floats. `specC` is
+  alpha sqrt-encoded), Wd, Wa and L shared-exponent RGB (9-bit mantissas), P and `lmLum` half floats. `specC` is
   clamped to 1, so an engine-model specular colour a content body raised past 1 is held at 1. `cxSpecScale` is
   rebuilt on the reconstructed V rather than the interpolated one (the worldPos deviation below). A highlight off a near-mirror film is where it would show first. `rough` within 1/255 of the
   `light.hidden` ceiling can fall on the other side of `CxGlossy`/`CxGlossW` than it did forward.

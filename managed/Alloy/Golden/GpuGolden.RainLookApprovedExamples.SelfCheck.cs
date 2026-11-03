@@ -31,7 +31,8 @@ internal static partial class GpuGolden
             const float uReach = 0.0, uLightFloor = 0.0, uWrap = 0.0, uWrapN = 0.0, uDayDim = 1.0, cxLod = 1.0;
             vec3 CxLinear(vec3 c) { return pow(max(c, vec3(0.0)), vec3(2.2)); }
             float CxSurfFade(vec3 L) { return 1.0; }
-            """ + cut + wrap + point + shade + lamp + """
+            bool cxFragNormal = false;
+            """ + Declaration(lf, "CX_SOFTEN") + cut + wrap + point + shade + lamp + """
             void main()
             {
                 int kind = int(uIn[gl_WorkGroupID.x * uint(CX_GOLD_IN)]);

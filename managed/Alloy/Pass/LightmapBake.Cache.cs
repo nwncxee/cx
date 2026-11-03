@@ -18,8 +18,8 @@ internal sealed class BakeCache
     /// <summary>Bumped with every change to what a baked texel holds or how the file is laid out: a file from
     /// an older bake is stale, whatever its key. 9 = the header carries the union's page and origin, so an
     /// area cache uploads a union whole instead of per rect; 10 = a third plane, C, the mover shares;
-    /// 11 = C by each rect's pick, not an area channel; 12 = A and B as BC6H/BC7 blocks, unions whole blocks.</summary>
-    internal const int Version = 12;
+    /// 11 = C by each rect's pick, not an area channel; 12 = A and B as BC6H/BC7 blocks, unions whole blocks; 13 = the softened N.L.</summary>
+    internal const int Version = 13;
     /// <summary>Blobs written between prunes (a blob is a page: 32 is a budget's worth).</summary>
     private const int PruneEvery = 32;
     internal const string Ext = ".lmp";

@@ -576,7 +576,6 @@ public sealed unsafe partial class AlloyRenderer
         // feat.w = -1 marks a DANGLY part for the receiver gate, exactly as the engine path's vtable probe did.
         r.FeatW = (DrawRecipe.Flags(recipe) & RecipeFlag.Dangly) != 0 ? -1f : _oFeat[fo + 3];
         if (!_oLit[i]) return;
-        r.AmbW = 1f; r.DifW = 1f;
         // emi.w, the contact-shadow receiver class and the snow gate: 1 tileset, 0 object, -1 creature. Up the
         // ATTACHMENT chain (CreaturePart), because a body piece, a held weapon or a creature's VFX is its own
         // object and only the body carries the flag -- the object's own flags snowed on every PC's limbs. An
@@ -588,6 +587,7 @@ public sealed unsafe partial class AlloyRenderer
         r.PbrR = p.Specularity; r.PbrG = p.Roughness; r.PbrB = p.Metallicness;
         r.PbrX = p.CustomR; r.PbrY = p.CustomG; r.PbrZ = p.CustomB; r.PbrW = p.CustomDeclared;
         r.Ext = p.Ext;
+        r.AmbW = p.DisplacementOffset; r.DifW = p.DisplacementMultiplier;
     }
 
     /// <summary>The DB-mode cull sphere: the recipe's model-space centre and radius through the part's world

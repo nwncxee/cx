@@ -167,7 +167,7 @@ internal static unsafe class SkyView
                      "neither stage dithers or rotates per frame -- the term must look right with TAA off");
 
         // --- the stages that apply it, and the normal each applies it with
-        check.Expect(AlloyRenderer.OwnedLitFsMain.Contains("* ambShape * occl * CxSkyView(vWorld, normalize(vNrm));"),
+        check.Expect(AlloyRenderer.OwnedLitFsMain.Contains("(uAreaAmbient * ambShape * CxSkyView(vWorld, normalize(vNrm)) + cxAmbWalk)"),
                      "the lit stage folds it into the AMBIENT term alone, off the geometric normal");
         // the heads come back SPLICED, so the library's own text is what proves it reached the stage
         check.Expect(AlloyRenderer.OwnedLitFsHead.Contains("float CxSkyView(vec3 P, vec3 N)")

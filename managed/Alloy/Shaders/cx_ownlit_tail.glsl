@@ -129,7 +129,8 @@
                 | (onMover > 0.0 ? CX_GB_ONMOVER : 0u)
                 | (wxFilm > 0.0 && baked && cxCoat > 0.0 && !CxGlossy(rough) ? CX_GB_FILM : 0u)
                 | (cxRecvShadow == 0.0 ? CX_GB_NOSHADOW : 0u)
-                | (cxModern < 0.5 ? CX_GB_STOCKLOBE : 0u);
+                | (cxModern < 0.5 ? CX_GB_STOCKLOBE : 0u)
+                | (cxFragNormal ? CX_GB_NORMALMAP : 0u);
         g.N = N; g.rough = rough; g.spec = spec; g.fresnel = cxFresnel;
         g.coat = cxCoat; g.coatRough = cxCoatRough;
         // the reader rebuilds cxSpecScale and fetches the sheen by slot (cx_gbuf)
@@ -148,8 +149,11 @@
         // the albedo multiply (`total`'s matDiffuse x kd x coatT x wxTransmit), and as ARRIVING light in the
         // two terms that read it so: the coat's probe reflection and the legacy env pattern, both of which
         // land in specLight and therefore take the ghost divide too.
-        g.diffT = dirOcc * thru * (albedo * (matDiffuse * (kd * coatT * wxTransmit))
-                                   + (gCoatProbe + reflW * (CX_ENV_GREY_LIN * (gEnvPat * envMix))) / ghost);
+        vec3 couple = (gCoatProbe + reflW * (CX_ENV_GREY_LIN * (gEnvPat * envMix))) / ghost;
+        g.diffT = dirOcc * thru * (albedo * (matDiffuse * (kd * coatT * wxTransmit)) + couple);
+        // Wa: an ambient-class light joins `ambient` before matAmbient and the occlusion, so it reaches the pixel
+        // the way `diffuse` does but through those two instead of matDiffuse and dirOcc
+        g.ambT = thru * matAmbient * occl * (albedo * (kd * coatT * wxTransmit) + couple);
         g.lmLum = gLmLum;
         g.lmMover = baked ? CxLightmapMover(chart.rec, vChart) : vec4(0.0);
         g.viewDepth = 1.0 / gl_FragCoord.w;

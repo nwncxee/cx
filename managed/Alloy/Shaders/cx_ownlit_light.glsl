@@ -45,14 +45,11 @@
     float kd = physical ? (1.0 - metal) * (1.0 - max(spec * (1.0 - metal), CX_DIELECTRIC_F0))
                         : 1.0 - mix(mix(spec, 1.0, CxFresnel(NoV) * cxFresnel), spec, sqrt(rough));
 
-    // the sun is a light like any other to the surface fade (inc_lighting.shd:486); its subsurface leak is not
+    // the sun is a light like any other to the surface fade (inc_lighting.shd:486); its subsurface leak is not.
+    // The wrap is a DIFFUSE fix, so the highlight takes the softened dot unwrapped (CxSunLight).
     float sunFade = CxSurfFade(uAreaDir);
-    vec3 sun = uAreaDiffuse * (sunNdl * sunVis * sunFade);
-    // #143's wrap is a DIFFUSE fix -- it stands in for light bleeding across a low-poly terminator,
-    // which is a subsurface/interreflection effect. A specular highlight has no such excuse: fed the
-    // wrapped dot, a glossy face angled away from the sun picks up a lobe it cannot geometrically
-    // see. The lobe takes the raw dot, the way the ambient hemisphere already does.
-    vec3 sunSpec = uAreaDiffuse * (sunRaw * sunVis * sunFade);
+    vec3 sunSpec;
+    vec3 sun = CxSunLight(N, sunVis, sunFade, sunSpec);
     vec3 sunSss = uAreaDiffuse * (sunVis * max(dot(N, uAreaDir) + uSss.x, 0.0) * uSss.y);
     vec3 pointSpec;
     // #308 follow-up: 1 on a creature fragment (skinmesh, or the dangly marker in feat.w) -- the
@@ -91,8 +88,11 @@
     // carries), yellow baked and walked, red unbaked and walked
     vec3 cxLightFrom = fromRec ? vec3(0.0, 1.0 - 0.8 * owe, 0.0) : baked ? vec3(1.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
     if (!fromRec && uCapture != 2)
+    {
         point = CxClusteredLightLm(vWorld, N, V, vDepth, onMover, rough, spec, baked ? 1.0 : 0.0, CxLmTexelWorld(chart.rec),
                                    baked ? CxLightmapMover(chart.rec, vChart) : vec4(0.0), chart.pick, pointSpec, lmSub);
+        point -= cxAmbWalk;   // the ambient class joins `ambient` below, as stock's AmbientLight does
+    }
 #endif
     vec3 lm = vec3(0.0);
     if (baked)
@@ -160,7 +160,9 @@
     if (uMaterial.y > 0.0 && uCapture != 1 && uProbeMips > 0.0)
         ambShape = mix(ambShape, max(CxAmbientShape(N), vec3(0.15)), uMaterial.y);
     // The GEOMETRIC normal, not the shading one: a normal map must not move where the sky lookup lands.
-    vec3 ambient = uAreaAmbient * matAmbient * ambShape * occl * CxSkyView(vWorld, normalize(vNrm));
+    // the walk's ambient-class lights join the area ambient before the material and the occlusion, as stock's
+    // AmbientLight does (inc_lighting.shd:402-405, :512, :600); the floor, the shape and the sky are the area's
+    vec3 ambient = (uAreaAmbient * ambShape * CxSkyView(vWorld, normalize(vNrm)) + cxAmbWalk) * matAmbient * occl;
     // 34 = the ONLY term occlusion can move inside `total` (the (1-spec) share of the ambient).
     //      Black at both /ao on 0 and /ao on 1 means AO has nothing to scale here, however bright
     //      viz 8 reads -- which no other view in the ladder can say.

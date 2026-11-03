@@ -36,6 +36,10 @@ internal sealed class DeferredRigScene
     internal bool Wave;
     /// <summary>Set by the run: the period line's counters -- pixels the walk lit, the entries they walked, the most one walked.</summary>
     internal (uint Pixels, uint Sum, uint Most) Walked;
+    /// <summary>One part opacity per ownership slot (the record's <c>rot.w</c>); a slot past the end draws opaque.</summary>
+    internal float[] PartAlpha = [];
+    /// <summary>The stock point-light curve alone: no near-field core, no subsurface leak, no wrap of either kind.</summary>
+    internal bool Plain;
 }
 
 /// <summary>One pixel of a rig scene, in the order <c>CxRigPixel</c> reads it: the <c>CxGbuf</c> fields the twin packs,
@@ -55,6 +59,7 @@ internal struct RigPixel
     public Vector3 LmShare;
     public Vector4 SurfFade, ShSlots, ShVis;
     public float Skew;
+    public Vector3 AmbT;
 }
 
 public sealed unsafe partial class AlloyRenderer
@@ -69,14 +74,14 @@ public sealed unsafe partial class AlloyRenderer
         => "#version 460 core\nlayout(local_size_x = 8, local_size_y = 8) in;\n"
          + "struct CxRigPixel { float flags, nx, ny, nz, rough, spec, fresnel, coat, coatRough, specCr, specCg, specCb, slot, specT,"
          + " diffTr, diffTg, diffTb, lmLum, lmMover0, lmMover1, lmMover2, lmMover3, viewDepth, lmShareR, lmShareG, lmShareB,"
-         + " fadeX, fadeY, fadeZ, fadeW, sl0, sl1, sl2, sl3, vis0, vis1, vis2, vis3, skew; };\n"
+         + " fadeX, fadeY, fadeZ, fadeW, sl0, sl1, sl2, sl3, vis0, vis1, vis2, vis3, skew, ambTr, ambTg, ambTb; };\n"
          // uLmPages gates the lightmap samplers, which the fill never reaches: a const 0 folds them out
          + ShaderSource.Get("cx_chartbuf.glsl").Replace("uniform int uLmPages;", "const int uLmPages = 0;", StringComparison.Ordinal)
          + ShaderSource.Get("cx_gbuf.glsl") + ShaderSource.Get("cx_shrec.glsl")
          + $"layout(std430, binding = {SsboSlots.GoldenIn}) readonly buffer CxRigPixels {{ CxRigPixel uPx[]; }};\n" + """
            layout(rgba32ui, binding = 0) uniform writeonly uimage2D uG0;
            layout(rgba32ui, binding = 1) uniform writeonly uimage2D uG1;
-           layout(r32ui, binding = 2) uniform writeonly uimage2D uG2;
+           layout(rg32ui, binding = 2) uniform writeonly uimage2D uG2;
            layout(r32f, binding = 3) uniform writeonly image2D uDepthOut;
            layout(rgba8, binding = 4) uniform writeonly image2D uVisOut;
            layout(rg32ui, binding = 5) uniform writeonly uimage2D uKeyOut;
@@ -102,11 +107,12 @@ public sealed unsafe partial class AlloyRenderer
                g.viewDepth = r.viewDepth;
                g.lmShare = vec3(r.lmShareR, r.lmShareG, r.lmShareB);
                g.surfFade = vec4(r.fadeX, r.fadeY, r.fadeZ, r.fadeW);
-               uvec4 w0, w1; uint w2;
+               g.ambT = vec3(r.ambTr, r.ambTg, r.ambTb);
+               uvec4 w0, w1; uvec2 w2;
                CxGbufPack(g, w0, w1, w2);
                imageStore(uG0, p, w0);
                imageStore(uG1, p, w1);
-               imageStore(uG2, p, uvec4(w2));
+               imageStore(uG2, p, uvec4(w2, 0u, 0u));
                float d = g.viewDepth > 0.0 ? uPzw / (g.viewDepth * (1.0 + r.skew)) - uPzz : 0.0;
                imageStore(uDepthOut, p, vec4(d));
                if ((p.x & 1) == 0 && (p.y & 1) == 0)
@@ -170,7 +176,7 @@ public sealed unsafe partial class AlloyRenderer
         const ImageUse both = ImageUse.Storage | ImageUse.Sampled;
         f.G0 = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba32Ui, w, h, 1, 1, 1, 1, both, "rig g0"));
         f.G1 = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba32Ui, w, h, 1, 1, 1, 1, both, "rig g1"));
-        f.G2 = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.R32Ui, w, h, 1, 1, 1, 1, both, "rig g2"));
+        f.G2 = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rg32Ui, w, h, 1, 1, 1, 1, both, "rig g2"));
         f.Depth = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.R32F, w, h, 1, 1, 1, 1, both, "rig depth"));
         f.Vis = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba8, rw, rh, 1, 1, 1, 1, both, "rig shadow record"));
         f.Key = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rg32Ui, rw, rh, 1, 1, 1, 1, both, "rig shadow key"));
@@ -184,7 +190,9 @@ public sealed unsafe partial class AlloyRenderer
         f.Stats = vk.CreateBuffer(new BufferDesc(VkDefStatsWords * sizeof(uint), BufferUse.Storage | BufferUse.CopySrc,
                                                  MemoryKind.Device, "rig stats"));
         int slots = Math.Max(sc.Sheen.Length, 1);
+        slots = Math.Max(slots, sc.PartAlpha.Length);
         var draws = new DrawRecordBlock[slots];
+        for (int i = 0; i < slots; i++) draws[i].Alpha = i < sc.PartAlpha.Length ? sc.PartAlpha[i] : 1f;
         for (int i = 0; i < sc.Sheen.Length; i++) draws[i].Ext.Ext1 = sc.Sheen[i];
         f.Draws = RigBuffer(vk, MemoryMarshal.AsBytes(draws.AsSpan()), BufferUse.Storage, "rig draws");
         f.Chart = vk.CreateBuffer(new BufferDesc(slots * LightmapBake.RecFloats * sizeof(float) * 2, BufferUse.Storage, MemoryKind.Device, "rig chart"));
@@ -295,6 +303,7 @@ public sealed unsafe partial class AlloyRenderer
         pb.Sss = new Vector2(0.2f, 0.25f);
         pb.WrapN = 0.05f;
         pb.DayDim = 1f;
+        if (sc.Plain) { pb.Hot = Vector2.Zero; pb.Sss = Vector2.Zero; pb.Wrap = 0f; pb.WrapN = 0f; }
         pb.Relevance = new Vector2(0.01f, 0.02f);
         pb.Bounds = 1f;
         pb.ShBudget = 4f;

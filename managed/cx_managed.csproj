@@ -66,8 +66,8 @@
     <!-- The charter self-check's real curved placeable (plc_x0_jar's jar_base trimesh), 4 KiB gzipped. WithCulture:
          MSBuild on Windows reads the ".bin" in the name as the culture "bin" and ships it in a satellite. -->
     <EmbeddedResource Include="Alloy/ChartFixture.bin.gz" LogicalName="ChartFixture" WithCulture="false" />
-    <!-- The deferred walk goldens: each scene's frame as main 65203c28 drew it (RGBA halves, gzipped), and that
-         commit's cx_deferred_cs standing in for a hak written against it. -->
+    <!-- The deferred walk goldens: each scene's frame as recorded with the softened N.L (RGBA halves, gzipped), and
+         main 65203c28's cx_deferred_cs standing in for a hak written against it. -->
     <EmbeddedResource Include="Alloy/Golden/Fixtures/DeferredWalk.*.bin.gz" LogicalName="golden/%(Filename)" WithCulture="false" />
     <EmbeddedResource Include="Alloy/Golden/Fixtures/DeferredWalkHak.txt" LogicalName="golden/DeferredWalkHak" />
   </ItemGroup>

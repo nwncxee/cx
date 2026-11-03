@@ -23,6 +23,8 @@ internal struct ParamRow
     /// <summary>(CxMetallic, CxRoughness, CxClearcoat, CxClearcoatRoughness), (CxSheenColor.rgb, CxSheenRoughness),
     /// (CxEmissiveStrength, CxOrm, _, _).</summary>
     public MaterialExt Ext;
+    /// <summary><c>DisplacementOffset</c> and <c>DisplacementMultiplier</c>: the height map's march, 0 = not declared.</summary>
+    public float DisplacementOffset, DisplacementMultiplier;
 
     /// <summary>Set the first component of <paramref name="name"/>, as the engine's own setter does.</summary>
     public void Set(ParamName name, float v)

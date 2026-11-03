@@ -324,15 +324,17 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         // #571: the stock-settings reader forges a std::string for the engine; a header packed wrong is a
         // crash on the first world frame, not a misrender, so it joins the gating chain.
         StockConfig.Attach(log);
-        if (!CutCensusSelfCheck(log) || !CasterBoundSelfCheck(log) || !SortSelfCheck(log) || !OitOrderSelfCheck(log) || !CullSortSelfCheck(log) || !SplitSelfCheck(log) || !MtrParams.SelfCheck(log) || !ChaseSelfCheck(log) || !KeyholeBoxSelfCheck(log) || !SphereRectSelfCheck(log)
+        if (!CutCensusSelfCheck(log) || !CasterBoundSelfCheck(log) || !SortSelfCheck(log) || !OitOrderSelfCheck(log) || !CullSortSelfCheck(log) || !SplitSelfCheck(log) || !MtrParams.SelfCheck(log) || !Db.MapGateApprovedExamples.SelfCheck(log) || !ChaseSelfCheck(log) || !KeyholeBoxSelfCheck(log) || !SphereRectSelfCheck(log)
             || !AreaGrid.SelfCheck(log)
             || !DbSelfChecks(log)
-            || !Issue.RunsSelfCheck(log) || !Submit.SelfCheck(log)
+            || !Submit.SelfCheck(log)
             || !ShaderContract.SelfCheck(log)
             || !StockConfig.SelfCheck(log)) return;
         // NOT in the chain above: those two guard what reaches the screen, and this one guards a debug dump.
         // A regression in the canonicaliser should cost /alloy framedump, not drop every user back to vanilla.
         FrameDump.SelfCheck(log);
+        // Nor this: a knob's shipped default moves the look a player starts from, and they can set it back.
+        WrapDefaultApprovedExamples.SelfCheck(log);
         // #128: same rule. A wrong gob offset draws a creature at the wrong alpha and a leaky refused-gob set
         // half-owns one -- both misrenders, neither of which errors.
         if (!AlloyCensus.SelfCheck(log)) return;
@@ -536,7 +538,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         Counters._skipForeignScene = 0;
         ResetChasePeriod();
         Counters._ownDissolve = 0; Counters._ownFade = 0; Counters._skipFogTile = Counters._skipFogGob = 0;
-        Counters._recWritten = 0; Counters._recStable = 0; PassBinds = 0; PassUploads = 0; PassBindsBorrowed = 0; Issue.ResetPeriod();
+        Counters._recWritten = 0; Counters._recStable = 0; PassBinds = 0; PassUploads = 0; PassBindsBorrowed = 0;
         Counters._nrmDeclared = Counters._nrmBound = 0;
         Array.Clear(Counters._drawsByClass);
         Counters._clusterOverflow = 0;

@@ -30,6 +30,10 @@ vec2 cxHotViz = vec2(0.0);
 float cxLod = 1.0;
 /// The entries this fragment's full walk took from its list: what the deferred stage counts onto its period line.
 uint cxWalkN = 0u;
+/// The full walk's ambient-class lights (tile lights), already inside its result: a caller that lights them as stock
+/// does takes them back out of the diffuse and into its ambient term; one that does not (a stage written before the
+/// split) draws them through the diffuse, as every light was drawn before.
+vec3 cxAmbWalk = vec3(0.0);
 // inc_lighting.shd:336-341's per-light surface fade: xyz the GEOMETRIC normal, w fSurfaceFadeModifier (w 0 = off --
 // the bake, the fog, every surface with no normal or height map). CxPointLight spends it on the wrapped dot.
 vec4 cxSurfFade = vec4(0.0);
@@ -53,17 +57,40 @@ const int CX_CAP_MAX = 2;   // #336: the shadow cap's ceiling -- two NAMED candi
 // legacy-pipeline build ever needs the Alloy path.
 vec3 CxLinear(vec3 c) { return pow(max(c, vec3(0.0)), vec3($SRGB$)); }
 
-// #143: energy-conserving wrapped diffuse. NWN's meshes are low-poly with smoothed vertex normals,
-// so a punctual terminator lands mid-facet as a straight hard crease -- the artifact the community's
-// GL 3.3 "light wrapping" shaders exist to hide. Widening the band by `w` and dividing the result by
-// (1 + w) is the standard half-Lambert generalisation: the PEAK is unchanged, so a fully lit surface
-// is bit-identical to the punctual one and only the band around the terminator moves.
+// The diffuse N.L every light takes: stock's softened curve (inc_lighting.shd:324-347 at quality 2), which
+// already reaches a little past the terminator, over a dot widened by `w` and divided by (1 + w) -- the
+// half-Lambert generalisation #143 added for NWN's low-poly, smooth-normal meshes, whose terminator otherwise
+// lands mid-facet as a hard crease. The peak stays at 1 whatever `w` is, so only the band moves.
 // ponytail: one global wrap for every material. The modern refinement is pre-integrated skin
 // (Penner 2011) -- a curvature-driven terminator LUT -- but it is per-material by nature and NWN
 // carries no "this part is skin" tag; on armour and stone it reads wrong. Tag materials first.
+// inc_config.shd's LIGHT_SOFTENING_VALUE: how far past the terminator the stock softened N.L reaches
+const float CX_SOFTEN = 0.25;
+// true on a normal-mapped fragment, where stock gates the softened term at the terminator (FRAGMENT_NORMAL)
+bool cxFragNormal = false;
+// w = 0 is the stock curve exactly: 0.43 at N.L 0.5, 0.056 at the terminator, 0 from -0.25 (from 0 when normal-mapped).
 float CxWrap(float ndl, float w)
 {
-    return w <= 0.0 ? clamp(ndl, 0.0, 1.0) : clamp((ndl + w) / (1.0 + w), 0.0, 1.0);
+    float t = w <= 0.0 ? ndl : (ndl + w) / (1.0 + w);
+    if (t <= (cxFragNormal ? 0.0 : -CX_SOFTEN)) return 0.0;
+    return min(smoothstep(0.0, 2.0, t * (1.0 / (1.0 + CX_SOFTEN)) + CX_SOFTEN / (1.0 + CX_SOFTEN)) * 2.0, 1.0);
+}
+
+// 1 - the part's own opacity (rot.w), never the texel's: what inc_lighting.shd:305-319 lets through from behind
+float cxTransl = 0.0;
+// The light a transparent surface takes from a light behind it, unshadowed: the surface would shadow itself.
+vec3 CxTranslucent(vec3 c, float att, float ndlRaw)
+{
+    return c * (att * max(-ndlRaw, 0.0) * cxTransl);
+}
+
+// The area sun's diffuse on N, through the softened, wrapped dot and the light through a transparent part
+// (inc_lighting.shd:426-429); `spec` the light its highlight takes, softened but never wrapped.
+vec3 CxSunLight(vec3 N, float vis, float fade, out vec3 spec)
+{
+    float ndl = dot(N, uAreaDir);
+    spec = uAreaDiffuse * (CxWrap(ndl, 0.0) * vis * fade);
+    return uAreaDiffuse * (CxWrap(ndl, uWrapN) * vis * fade) + CxTranslucent(uAreaDiffuse, 1.0, ndl);
 }
 
 // #132: there is no encode here any more, and no highlight shoulder either. Every Alloy stage
@@ -451,6 +478,9 @@ uniform int uLmMovers;
 /// CX-188 step 5: the walk the FORWARD consumers get -- grass cards and blades, water, particles, weather.
 /// Same signature and same per-light arithmetic as the full walk below; what it leaves out is everything that
 /// exists for a BAKED opaque receiver, which now goes deferred (ADR 0029).
+/// <para>Two surface terms stay with the full walk too: the ambient class is not reported in cxAmbWalk, so a tile
+/// light lights grass, water and particles through their diffuse, and no light comes through from behind. None of
+/// these stages has a material ambient colour or a part opacity of its own to spend them on.</para>
 /// <para>Unreachable here, so not compiled: every one of these calls arrives through CxClusteredLight or
 /// CxClusteredDiffuse, whose `baked` is 0, so `inPages` is false and with it the hot-light branch, its
 /// 16-sphere mover ray test, the CxMoverOwe debt and the mirror walk of baked statics -- `lmSub` is 0 by
@@ -553,6 +583,7 @@ vec3 CxClusteredLightLm(vec3 worldPos, vec3 N, vec3 V, float viewDepth, float on
     uint n = baked > 0.5 && !glossy ? CxListLive(cl) : CxListWalk(cl);
     cxWalkN = n;
     vec3 acc = vec3(0.0);
+    cxAmbWalk = vec3(0.0);
     // #336: /shadow cap -- the cube taps a fragment may pay, chosen PER FRAGMENT by its CONTRIBUTION there
     // (CxLightRank, the unshadowed diffuse's luminance): the capN lights lighting this fragment most strongly
     // get a cube fetch, the rest draw unshadowed. Per fragment, never per froxel -- a per-froxel choice put the
@@ -675,7 +706,8 @@ vec3 CxClusteredLightLm(vec3 worldPos, vec3 N, vec3 V, float viewDepth, float on
         float rank = CxLightRank(att, c, f2);
         c *= relW;
         // slot -2 = ambient class: vanilla adds c*att to the ambient term, no N.L, no shadow
-        if (slot == -2) { if (!inPages) acc += c * att; continue; }
+        if (slot == -2) { if (!inPages) { acc += c * att; cxAmbWalk += c * att; } continue; }
+        if (!inPages) acc += CxTranslucent(c, att, ndlRaw);
         if (ndl <= 0.0) continue;   // facing away: no light, and no reason to pay for a cube fetch
 #ifndef CX_NO_HOT
         if (hot)
@@ -809,6 +841,7 @@ vec3 CxClusteredLightLm(vec3 worldPos, vec3 N, vec3 V, float viewDepth, float on
     // the daylight ratio; lmSub stays in the undimmed units the caller's baked term is compared in
     cxLod = 1.0;   // the walk's last light must not shade a later caller of the shared body (cx_material's film)
     spec *= uDayDim;
+    cxAmbWalk *= uDayDim;
     return acc * uDayDim;
 }
 #endif

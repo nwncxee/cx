@@ -53,7 +53,7 @@ internal static class Lighting
                        help: "Light wrapping past the shadow line on characters. 0 is flat; stock lighting has none outside water, content lighting forks use 0.38.");
         Wrap = G.Slider("wrap", "Sphere-light wrap", 0f, 4f, 0.05f, 1f, tier: Tier.ChatOnly,
                         help: "Near lights soften the shadow line on low-poly models; 0 = point lights.");
-        WrapNdl = G.Slider("wrapndl", "Diffuse wrap", 0f, 2f, 0.05f, 1f, tier: Tier.ChatOnly,
+        WrapNdl = G.Slider("wrapndl", "Diffuse wrap", 0f, 2f, 0.05f, 0f, tier: Tier.ChatOnly,
                            help: "Distance-independent softening of every terminator.");
         Hot = G.Slider("hot", "Near-field core", 0f, 2f, 0.05f, 0f, tier: Tier.ChatOnly,
                        help: "Adds intensity at a light's centre only.");
