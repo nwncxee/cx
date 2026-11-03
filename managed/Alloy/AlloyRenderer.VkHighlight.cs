@@ -73,8 +73,8 @@ public sealed unsafe partial class AlloyRenderer
                 bound = colour;
                 Array.Clear(p.Block);
                 LooseBlock.Capture(p.Members, p.Block);
-                fixed (Matrix4x4* m = &vp) LooseBlock.Set(p.Vp, new ReadOnlySpan<float>(m, 16));
-                LooseBlock.Set(s.Color, [colour.X, colour.Y, colour.Z]);
+                LooseBlock.Set(p.Vp, vp);
+                LooseBlock.Set(s.Color, colour);
                 LooseBlock.EndCapture();
                 int loose = VkArena(p.Block);
                 if (loose < 0) return false;

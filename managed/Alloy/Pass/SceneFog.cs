@@ -88,22 +88,15 @@ internal static unsafe class SceneFog
         // author exactly where it has no evidence. The sun lobe goes with it, because AreaDiffuse is the
         // directional light indoors too and a cave does not have a sun in its fog.
         bool useSky = _haveSky && !capture && !FrameInputs.Blind;
-        float* v = stackalloc float[4];
-        v[0] = useSky ? SkyMix : 0f; v[1] = HeightK; v[2] = playerZ + FloorOffset;
-        LooseBlock.Set(loc.FogSky, new ReadOnlySpan<float>(v, 3));
-        Vector3 sky = _sky;
-        v[0] = sky.X; v[1] = sky.Y; v[2] = sky.Z;
-        LooseBlock.Set(loc.FogSkyColor, new ReadOnlySpan<float>(v, 3));
+        LooseBlock.Set(loc.FogSky, useSky ? SkyMix : 0f, HeightK, playerZ + FloorOffset);
+        LooseBlock.Set(loc.FogSkyColor, _sky);
 
         Vector3 dir = FrameInputs.AreaDiffuseDir;
         float len = dir.Length();
-        v[0] = len > 0f ? dir.X / len : 0f; v[1] = len > 0f ? dir.Y / len : 0f;
-        v[2] = len > 0f ? dir.Z / len : 1f; v[3] = MathF.Max(SunExp, 1f);
-        LooseBlock.Set(loc.FogSun, new ReadOnlySpan<float>(v, 4));
-        Vector3 sun = FrameInputs.HasAreaDiffuse && len > 0f && useSky
-            ? FrameInputs.AreaDiffuse * (AlloyLights.SunScale * SunAmount) : default;
-        v[0] = sun.X; v[1] = sun.Y; v[2] = sun.Z;
-        LooseBlock.Set(loc.FogSunColor, new ReadOnlySpan<float>(v, 3));
+        LooseBlock.Set(loc.FogSun, new Vector4(len > 0f ? dir.X / len : 0f, len > 0f ? dir.Y / len : 0f,
+                                               len > 0f ? dir.Z / len : 1f, MathF.Max(SunExp, 1f)));
+        LooseBlock.Set(loc.FogSunColor, FrameInputs.HasAreaDiffuse && len > 0f && useSky
+            ? FrameInputs.AreaDiffuse * (AlloyLights.SunScale * SunAmount) : default);
     }
 
     /// <summary>The display-space colour the skyfade gob is painted in: what fully fogged geometry converges to at the

@@ -426,7 +426,7 @@ public static partial class TextSlots
     {
         if (!d.InfoOut) return;
         byte* p = (byte*)d.InfoBuf;
-        new Span<byte>(p, DisplayInfoSize).Clear();
+        NativeMemory.Clear(p, (nuint)DisplayInfoSize);
         var info = (TextDisplayInfo*)p;
         info->TopLine = d.TopLine; info->VisibleLines = d.VisibleLines; info->ScrollBudget = d.ScrollBudget;
         info->Width = d.InfoW = d.MaxWidth; info->Height = d.InfoH = d.MaxHeight;

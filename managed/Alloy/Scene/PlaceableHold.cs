@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using System.Diagnostics;
 using System.Numerics;
 using CX.Engine;
@@ -241,8 +242,8 @@ internal static unsafe class PlaceableHold
 
         byte* gob = stackalloc byte[0x500];
         byte* obj = stackalloc byte[0x200];
-        new Span<byte>(gob, 0x500).Clear();
-        new Span<byte>(obj, 0x200).Clear();
+        NativeMemory.Clear(gob, 0x500);
+        NativeMemory.Clear(obj, 0x200);
         var gv = new Gob((IntPtr)gob);
         var ov = new CNWCObject((IntPtr)obj);
         gv.ExternalType = TypePlaceable;

@@ -168,7 +168,7 @@ public sealed unsafe class AtlasSheet
             {
                 FaceRequest r = reqs[f];
                 byte* fi = (byte*)(infos[f] = Marshal.AllocHGlobal(FontInfoBytes));
-                new Span<byte>(fi, FontInfoBytes).Clear();   // InitFont fills what it uses; zero the rest to be version-proof
+                NativeMemory.Clear(fi, (nuint)FontInfoBytes);   // InitFont fills what it uses; zero the rest to be version-proof
                 byte* fn = (byte*)(fonts[f] = Marshal.AllocHGlobal(r.Font.Length));   // stbtt keeps a pointer into this
                 Marshal.Copy(r.Font, 0, fonts[f], r.Font.Length);
                 if (EngineFn.StbttInitFont(fi, fn, 0) == 0) { log.Info($"AtlasSheet: stbtt_InitFont failed for {r.Typeface}"); return null; }

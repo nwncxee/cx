@@ -232,7 +232,7 @@ internal static unsafe partial class OwnedTextures
         _dripFrame = svDrip;
         // the warm fill over a stand-in object
         byte* obj = stackalloc byte[0x100];
-        new Span<byte>(obj, 0x100).Clear();
+        NativeMemory.Clear(obj, 0x100);
         uint* arr = stackalloc uint[2] { 7, 8 };
         var m = new TexMeta { W = 64, H = 32, Bpp = 4, Compressed = 0, NumX = 2, NumY = 1, Alpha = 0.5f };
         FillWarm((IntPtr)obj, (IntPtr)arr, in m);
@@ -243,7 +243,7 @@ internal static unsafe partial class OwnedTextures
         // the key: an anagram family (the engine's hash folds these to ONE value) is two resources, case is
         // not, and the cell lives in the low field
         byte* obj2 = stackalloc byte[0x100];
-        new Span<byte>(obj2, 0x100).Clear();
+        NativeMemory.Clear(obj2, 0x100);
         static void Name(byte* o, string n) { byte* d = NameOf((IntPtr)o); for (int i = 0; i < n.Length; i++) d[i] = (byte)n[i]; d[n.Length] = 0; }
         Name(obj, "tex_core_0145_d"); Name(obj2, "tex_core_0154_d");
         ok &= Key((IntPtr)obj, 0) != Key((IntPtr)obj2, 0);

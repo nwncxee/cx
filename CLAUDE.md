@@ -235,6 +235,11 @@ the cleanup that earned it. Adding a rule means adding its gate in the same chan
   freed one past its submit ring, and the GL that stays owns its objects for the session -- so
   `gpu-frees.baseline` is empty and the ratchet now refuses every site;
   `python3 tools/gates/gpu-frees.py -v` lists any it finds.
+- `span-ptr.sh`: a `new Span<T>(p, n)` / `new ReadOnlySpan<T>(p, n)` outside `managed/Framework/` counts against
+  `span-ptr.baseline`, which may only shrink. Two arguments is always the pointer constructor (the array one takes
+  one or three), and a caller-supplied length checks nothing -- `.Slice(i * size, size)` on it is the pointer plus
+  an offset ADR 0031 refuses. A view builds its span from its count row and a `NativeBuffer<T>` from its
+  allocation; `python3 tools/gates/span-ptr.py -v` lists each site.
 - `compiler-rules.sh`: a `#pragma warning disable` or `SuppressMessage` of a `CX` rule, an RS0030 pragma outside
   `managed/Framework/` or with no `// <reason>` on its line, or a `NoWarn`/severity override lowering either in build config, fails.
 - `local-paths.sh`: a home directory, mount point or personal checkout path in a tracked file fails

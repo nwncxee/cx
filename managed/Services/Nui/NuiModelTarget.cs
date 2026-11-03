@@ -130,8 +130,8 @@ internal static unsafe class NuiModelTarget
         if (table == IntPtr.Zero || EngineFn.ExoStringInit == null || EngineFn.C2DAGetCExoStringEntry == null) return null;
         byte* col = stackalloc byte[ExoSize];
         byte* cell = stackalloc byte[ExoSize];
-        new Span<byte>(col, ExoSize).Clear();
-        new Span<byte>(cell, ExoSize).Clear();
+        NativeMemory.Clear(col, (nuint)ExoSize);
+        NativeMemory.Clear(cell, (nuint)ExoSize);
         Span<byte> name = stackalloc byte[column.Length + 1];
         AsciiZ(column, name);
         fixed (byte* n = name) EngineFn.ExoStringInit((IntPtr)col, n, uint.MaxValue);

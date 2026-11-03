@@ -136,7 +136,7 @@ internal static unsafe partial class Weather
     {
         if (twoda == IntPtr.Zero) return false;
         byte* exo = stackalloc byte[ExoSize];
-        new Span<byte>(exo, ExoSize).Clear();   // the engine frees a non-null buffer first
+        NativeMemory.Clear(exo, (nuint)ExoSize);   // the engine frees a non-null buffer first
         bool ok = false;
         if (EngineFn.C2DAGetCExoStringEntry(twoda, row, column, (IntPtr)exo) != 0)
         {

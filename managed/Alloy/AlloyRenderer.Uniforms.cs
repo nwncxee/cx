@@ -27,23 +27,18 @@ public sealed unsafe partial class AlloyRenderer
     private static void UploadFogColour(int loc)
     {
         Vector3 src = FrameInputs.FogColor;
-        float* c = stackalloc float[4];
-        c[0] = MathF.Pow(MathF.Max(src.X, 0f), AlloyLights.SrgbGamma);
-        c[1] = MathF.Pow(MathF.Max(src.Y, 0f), AlloyLights.SrgbGamma);
-        c[2] = MathF.Pow(MathF.Max(src.Z, 0f), AlloyLights.SrgbGamma);
-        c[3] = 1f;
-        LooseBlock.Set(loc, new ReadOnlySpan<float>(c, 4));
+        LooseBlock.Set(loc, new Vector4(MathF.Pow(MathF.Max(src.X, 0f), AlloyLights.SrgbGamma),
+                                        MathF.Pow(MathF.Max(src.Y, 0f), AlloyLights.SrgbGamma),
+                                        MathF.Pow(MathF.Max(src.Z, 0f), AlloyLights.SrgbGamma), 1f));
     }
 
     /// <summary>This frame's fog, packed the way every Alloy stage reads it -- enable, start, end and
     /// 1/(end-start). Read out of <see cref="FrameInputs"/> (straight off <c>Scene+0x140</c>) rather than
     /// <c>GLRender::m_fog</c>, so a frame where the engine drew nothing still fogs correctly.</summary>
-    private static void PackFog(float* px)
+    private static Vector4 PackFog()
     {
-        px[0] = FrameInputs.FogOn ? 1f : 0f;
-        px[1] = FrameInputs.FogStart; px[2] = FrameInputs.FogEnd;
-        float span = px[2] - px[1];
-        px[3] = span != 0f ? 1f / span : 0f;
+        float start = FrameInputs.FogStart, end = FrameInputs.FogEnd, span = end - start;
+        return new Vector4(FrameInputs.FogOn ? 1f : 0f, start, end, span != 0f ? 1f / span : 0f);
     }
 
     /// <summary>Just the scene fog -- the ramp's terms, an eye position and the volume's two (<see cref="FogVolume"/>) --
@@ -51,11 +46,9 @@ public sealed unsafe partial class AlloyRenderer
     /// takes all of them from here, or two stages fog the same fragment differently.</summary>
     internal static void UploadFog(in FeatLoc loc)
     {
-        float* px = stackalloc float[4];
-        PackFog(px);
-        LooseBlock.Set(loc.Fog, new ReadOnlySpan<float>(px, 4));
+        LooseBlock.Set(loc.Fog, PackFog());
         UploadFogColour(loc.FogColor);
-        fixed (Vector3* eye = &_eyePos) LooseBlock.Set(loc.Eye, new ReadOnlySpan<float>((float*)eye, 3));
+        LooseBlock.Set(loc.Eye, _eyePos);
         Vector3 origin = SceneFog.Origin(out bool radial);
         LooseBlock.Set(loc.FogOrigin, origin.X, origin.Y, origin.Z, radial ? 1f : 0f);
         // The height layer is anchored to the player's feet: an area carries no ground plane to read, and
@@ -73,17 +66,14 @@ public sealed unsafe partial class AlloyRenderer
         // window size, and this pass may be rendering into the probe cube instead, so it comes from the
         // viewport actually bound. Everything else below is the engine's own live value.
         float w = viewport[2] > 0 ? viewport[2] : 1f, h = viewport[3] > 0 ? viewport[3] : 1f;
-        float* px = stackalloc float[4];
-        px[0] = 1f / w; px[1] = 1f / h; px[2] = w / h;
-        LooseBlock.Set(loc.Pixel, new ReadOnlySpan<float>(px, 3));
+        LooseBlock.Set(loc.Pixel, 1f / w, 1f / h, w / h);
         LooseBlock.Set(loc.LodBias, PostChain.LodBias);   // -1 where the stage declares none; the block drops it
         LooseBlock.Set(loc.Now, TexStream.Clock);
         UploadFog(loc);
         if (_shaderConstF != null)
         {
             float a = _shaderConstF[KeyholeDiaA], b = _shaderConstF[KeyholeDiaB];
-            px[0] = MathF.Min(a, b); px[1] = MathF.Max(a, b); px[2] = _shaderConstF[KeyholeMinZ];
-            LooseBlock.Set(loc.KhDia, new ReadOnlySpan<float>(px, 3));
+            LooseBlock.Set(loc.KhDia, MathF.Min(a, b), MathF.Max(a, b), _shaderConstF[KeyholeMinZ]);
         }
         UploadTargetShape(loc);
         UploadVanillaEnv(loc);
@@ -91,13 +81,12 @@ public sealed unsafe partial class AlloyRenderer
         ShaderExposedRuntimeData rt = Rt;
         LooseBlock.Set(loc.Time, rt.TimeOfDay);
 
-        LooseBlock.Set(loc.Wind, new ReadOnlySpan<float>((float*)Unsafe.AsPointer(ref rt.AreaWind), 3));
+        LooseBlock.Set(loc.Wind, rt.AreaWind);
         LooseBlock.Set(loc.Flags, rt.AreaFlags);
-        LooseBlock.Set(loc.Cam, new ReadOnlySpan<float>((float*)Unsafe.AsPointer(ref rt.CamPos), 3));
-        LooseBlock.Set(loc.CamFocus, new ReadOnlySpan<float>((float*)Unsafe.AsPointer(ref rt.CamFocus), 3));
-        LooseBlock.Set(loc.Player, new ReadOnlySpan<float>((float*)Unsafe.AsPointer(ref rt.PlayerPos), 3));
-        px[0] = rt.CamDist; px[1] = rt.CamPitch;
-        LooseBlock.Set(loc.KhCam, new ReadOnlySpan<float>(px, 2));
+        LooseBlock.Set(loc.Cam, rt.CamPos);
+        LooseBlock.Set(loc.CamFocus, rt.CamFocus);
+        LooseBlock.Set(loc.Player, rt.PlayerPos);
+        LooseBlock.Set(loc.KhCam, rt.CamDist, rt.CamPitch);
     }
 
     /// <summary>The spell-targeting shape's terms, straight out of the engine's global-constant tables, under
@@ -116,8 +105,8 @@ public sealed unsafe partial class AlloyRenderer
         LooseBlock.Set(loc.TgtSizeXL, _shaderConstF[TgtSizeX]);
         LooseBlock.Set(loc.TgtSizeYL, _shaderConstF[TgtSizeY]);
         LooseBlock.Set(loc.TgtRangeL, _shaderConstF[TgtRange]);
-        LooseBlock.Set(loc.TgtColL, new ReadOnlySpan<float>(&_shaderConstV4[TgtColour].X, 4));
-        LooseBlock.Set(loc.TgtWorldL, new ReadOnlySpan<float>(_shaderConstV, 3));
+        LooseBlock.Set(loc.TgtColL, _shaderConstV4[TgtColour]);
+        LooseBlock.Set(loc.TgtWorldL, _shaderConstV[0], _shaderConstV[1], _shaderConstV[2]);
     }
 
     /// <summary>The rest of the shared vanilla environment -- the <c>CxEngine</c> block (the projection, the
@@ -138,7 +127,7 @@ public sealed unsafe partial class AlloyRenderer
             for (int m = l->SFloatLive; m != 0; m &= m - 1)
             { int i = BitOperations.TrailingZeroCount(m); LooseBlock.Set(l->SFloat[i], _shaderConstF[SFloatBase + i]); }
             for (int m = l->SVecLive; m != 0; m &= m - 1)
-            { int i = BitOperations.TrailingZeroCount(m); LooseBlock.Set(l->SVec[i], new ReadOnlySpan<float>(&_shaderConstV4[SVecBase + i].X, 4)); }
+            { int i = BitOperations.TrailingZeroCount(m); LooseBlock.Set(l->SVec[i], _shaderConstV4[SVecBase + i]); }
         }
     }
 
@@ -180,8 +169,8 @@ public sealed unsafe partial class AlloyRenderer
            $"uAreaDiffuse=({_rxAreaDif.X:F3},{_rxAreaDif.Y:F3},{_rxAreaDif.Z:F3}) " +
            $"uAreaDir=({_rxAreaDir.X:F2},{_rxAreaDir.Y:F2},{_rxAreaDir.Z:F2}) binds={PassBinds} sends={PassUploads}";
 
-    /// <summary>The block as staged and as last sent. Native, allocated once, so a refill allocates nothing.</summary>
-    private static byte* _passStage, _passSent;
+    /// <summary>The block as staged. Native, taken once, so a refill allocates nothing.</summary>
+    private static NativeBuffer<byte> _passStage;
     private static uint _passBuf;
     /// <summary>This period's <see cref="BindPass"/> calls and the block sends (theirs and the lightmap bake's):
     /// a pass costs one send, a pass whose terms did not change none, and every other bind is a fill and a compare.</summary>
@@ -207,14 +196,12 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The staging block, zeroed, for a caller that fills it itself (the lightmap bake's one light).</summary>
     internal static byte* PassBegin()
     {
-        if (_passStage == null)
-        {
-            _passStage = (byte*)NativeMemory.AllocZeroed(PassBytes);
-            _passSent = (byte*)NativeMemory.AllocZeroed(PassBytes);
-        }
-        new Span<byte>(_passStage, PassBytes).Clear();
-        return _passStage;
+        _passStage.Take(PassBytes);
+        return _passStage.Pointer;
     }
+
+    /// <summary>The staged block's bytes, as long as the allocation; empty before the first <see cref="PassBegin"/>.</summary>
+    internal static ReadOnlySpan<byte> PassStaged => _passStage.Span;
 
     /// <summary>Every <c>CxPass</c> member from this pass's state: the engine's area terms, the cascade and
     /// cube receivers as <see cref="CasterPass"/> published them, and the probe. A stale cascade or cube set
