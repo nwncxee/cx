@@ -95,7 +95,7 @@ public sealed unsafe partial class AlloyRenderer
         ReadOnlySpan<ColorAttachment> none = [];
         cl.BeginRenderPass(new RenderPassDesc(none, new DepthAttachment(c.Depth, 0, 0, LoadOp.Clear, StoreOp.Store, WorldDepth.Clear)));
         cl.EndRenderPass();
-        cl.CopyImage(new CopyImageCmd(c.Depth, new ImageRegion(0, 0, 0, 0), c.DepthRead, new ImageRegion(0, 0, 0, 0), n, n, 1));
+        VkCopyDepth(cl, c);
         ReadOnlySpan<ImageId> read = [c.DepthRead, cover];
         cl.ReadImages(read);
         CommandList side = new("golden weather draw", 1 << 14, log);
