@@ -46,5 +46,34 @@ internal static partial class GpuGolden
         if (got == null) return;
         check.Expect(got[0] > 0.056f && got[1] == 1f,
                      FormattableString.Invariant($"CX-448 E10: wrap 1 gives {got[0]:F4} at 90 degrees (over 0.056) and {got[1]:F4} head-on (exactly 1)"));
+        DisplaceBothSelfCheck(vk, check, log);
+    }
+
+    /// <summary>An offset and a multiplier together: stock shifts the start by the UNscaled reach, then scales the
+    /// march. Oracle: <see cref="StockDisplace"/> with both terms.</summary>
+    private static void DisplaceBothSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
+    {
+        string march = Function(ShaderSource.Get("cx_ownlit_synth.glsl"), "vec2 CxDisplace(");
+        string steps = Declaration(ShaderSource.Get("cx_ownlit_head.glsl"), "CX_DISPLACE_STEPS");
+        check.Expect(march.Length > 0 && steps.Length > 0, "CX-450: cx_ownlit_synth declares CxDisplace");
+        if (march.Length == 0 || steps.Length == 0) return;
+        PipelineId pipe = vk.CreateCompute(Version + "layout(local_size_x = 1) in;\n" + steps
+            + $"float cxH(vec2 p) {{ return {HeightGlsl}; }}\n"
+            + "#define textureGrad(t, p, a, b) vec4(cxH(p))\n" + march + CaseBlocks(2, 2) + """
+            void main()
+            {
+                vec2 r = CxDisplace(vec2(0.3, 0.7), mat3(1.0), normalize(vec3(0.6, 0.2, 0.7)), 3.0, 1080.0, vec2(0.0), vec2(0.0),
+                                    vec2(uIn[0], uIn[1]));
+                uOut[0] = r.x; uOut[1] = r.y;
+            }
+            """, "golden displacement both");
+        float[]? got = pipe.IsNull ? null : RunCases(vk, log, pipe, 1, [0.5f, 2f], 2, "golden displacement both");
+        vk.Destroy(pipe);
+        check.Expect(got != null, "CX-450: the displacement stage was refused (logged above)");
+        if (got == null) return;
+        (double U, double V) w = StockDisplace(new DisplaceCase(0.3f, 0.7f, Vector3.UnitX, Vector3.UnitY, Vector3.UnitZ,
+                                               Vector3.Normalize(new Vector3(0.6f, 0.2f, 0.7f)), 3f, 1080f), 0.5, 2.0);
+        check.Expect(Math.Abs(got[0] - w.U) <= DisplaceTol && Math.Abs(got[1] - w.V) <= DisplaceTol,
+                     FormattableString.Invariant($"CX-450: offset 0.5 with multiplier 2 lands on ({got[0]:F5}, {got[1]:F5}), stock ({w.U:F5}, {w.V:F5})"));
     }
 }
