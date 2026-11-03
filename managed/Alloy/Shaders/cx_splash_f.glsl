@@ -16,6 +16,7 @@ uniform float uAlpha;
 uniform int uLate;       // 1 = drawn after the upscale or the TAA resolve, with no depth target
 uniform vec2 uScreen;    // the target being drawn, pixels: the depth copy is sampled across it whatever its own size
 #include "cx_scenedepth.glsl"
+#include "cx_wx_drop.glsl"
 
 /// Rec.709 luminance: how much of its own scatter a splash also occludes.
 const vec3 CX_WX_LUMA = vec3(0.2126, 0.7152, 0.0722);
@@ -32,6 +33,13 @@ const float CX_SPLASH_RINGA = 0.5;
 /// surface there: the ring stands off it and the copy is the render size's, so one of its texels spans more
 /// than one target pixel.
 const vec2 CX_SPLASH_HIDE = vec2(0.1, 0.01);
+
+/// A crown droplet at `uv` on its quad: the falling drop's own water bead, so a lamp beside a splash glints on every
+/// droplet it throws as it does on the rain coming down.
+vec4 CxSplashDrop(vec2 uv, vec3 V, vec3 right, vec3 up, vec3 skyUp, vec3 skyLow, vec3 lampDir, vec3 lampCol, vec3 sunDir, vec3 sunCol)
+{
+    return CxWxBead(uv, V, right, up, skyUp, skyLow, lampDir, lampCol, sunDir, sunCol);
+}
 
 /// True when a part `splash` metres away stands behind the scene the depth copy holds `scene` metres away.
 bool CxSplashHidden(float scene, float splash)

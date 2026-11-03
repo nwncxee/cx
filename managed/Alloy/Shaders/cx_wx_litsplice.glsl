@@ -129,7 +129,7 @@
                         }
                         float wxMicro = CxWxMicro(uWxMapP.x, uWxMapP.w, n1, wxFine, wxPoro);
                         float wxD = CxWetDepth(wxM) - wxMicro;
-                        wxFilm = wxWetExp * wxFlat * smoothstep(0.0, uWxMapP.y, wxD);
+                        wxFilm = wxWetExp * wxFlat * CxWxStanding(CxWetDepth(wxM), wxMicro, uWxMapP.y);
                         // R5: the SHORELINE. Ground the water has just left, or has not quite reached, is
                         // soaked right through -- darker and more saturated than the dry stone outside it
                         // and than the film over it, which is what gives a real puddle its rim.

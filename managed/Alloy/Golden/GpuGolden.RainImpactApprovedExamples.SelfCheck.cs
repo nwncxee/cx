@@ -66,10 +66,10 @@ internal static partial class GpuGolden
                 // a crown droplet at night with a lamp to its left: camera looking along +y
                 vec3 r = vec3(1.0, 0.0, 0.0), u = vec3(0.0, 0.0, 1.0), v = vec3(0.0, -1.0, 0.0), k = vec3(0.0);
                 float left = 0.0, right = 0.0;
-                for (int i = 0; i < 16; i++)
-                    for (int j = 0; j < 16; j++)
+                for (int i = 0; i < 32; i++)
+                    for (int j = 0; j < 32; j++)
                     {
-                        vec2 uv = (vec2(i, j) + 0.5) / 8.0 - 1.0;
+                        vec2 uv = (vec2(i, j) + 0.5) / 16.0 - 1.0;
                         if (dot(uv, uv) > 1.0) continue;
                         float l = dot(CxSplashDrop(uv, v, r, u, k, k, -r, vec3(1.0), u, k).rgb, vec3(0.2126, 0.7152, 0.0722));
                         if (uv.x < -0.1) left = max(left, l);

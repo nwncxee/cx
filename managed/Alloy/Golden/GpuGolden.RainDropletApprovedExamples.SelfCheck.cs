@@ -36,10 +36,10 @@ internal static partial class GpuGolden
                 vec3 black = vec3(0.0), dusk = vec3(0.003, 0.004, 0.005);
                 vec3 skyUp = vec3(0.3, 0.5, 0.9), skyLow = vec3(0.35, 0.4, 0.45);
                 float left = 0.0, right = 0.0, night = 0.0;
-                for (int i = 0; i < 16; i++)
-                    for (int j = 0; j < 16; j++)
+                for (int i = 0; i < 32; i++)
+                    for (int j = 0; j < 32; j++)
                     {
-                        vec2 uv = (vec2(i, j) + 0.5) / 8.0 - 1.0;
+                        vec2 uv = (vec2(i, j) + 0.5) / 16.0 - 1.0;
                         if (dot(uv, uv) > 1.0) continue;
                         vec4 lamp = CxWxBead(uv, cxV, cxRight, cxUp, black, black, -cxRight, vec3(1.0), cxUp, black);
                         if (uv.x < -0.1) left = max(left, Lum(lamp));
