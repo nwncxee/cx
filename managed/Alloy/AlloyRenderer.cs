@@ -327,7 +327,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         if (!CutCensusSelfCheck(log) || !CasterBoundSelfCheck(log) || !SortSelfCheck(log) || !OitOrderSelfCheck(log) || !CullSortSelfCheck(log) || !SplitSelfCheck(log) || !MtrParams.SelfCheck(log) || !ChaseSelfCheck(log) || !KeyholeBoxSelfCheck(log) || !SphereRectSelfCheck(log)
             || !AreaGrid.SelfCheck(log)
             || !DbSelfChecks(log)
-            || !Issue.RunsSelfCheck(log) || !Submit.SelfCheck(log)
+            || !Submit.SelfCheck(log)
             || !ShaderContract.SelfCheck(log)
             || !StockConfig.SelfCheck(log)) return;
         // NOT in the chain above: those two guard what reaches the screen, and this one guards a debug dump.
@@ -538,7 +538,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         Counters._skipForeignScene = 0;
         ResetChasePeriod();
         Counters._ownDissolve = 0; Counters._ownFade = 0; Counters._skipFogTile = Counters._skipFogGob = 0;
-        Counters._recWritten = 0; Counters._recStable = 0; PassBinds = 0; PassUploads = 0; PassBindsBorrowed = 0; Issue.ResetPeriod();
+        Counters._recWritten = 0; Counters._recStable = 0; PassBinds = 0; PassUploads = 0; PassBindsBorrowed = 0;
         Counters._nrmDeclared = Counters._nrmBound = 0;
         Array.Clear(Counters._drawsByClass);
         Counters._clusterOverflow = 0;

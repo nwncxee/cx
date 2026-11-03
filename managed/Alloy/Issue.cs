@@ -33,45 +33,6 @@ internal static unsafe class Issue
         Array.Clear(_hTid, 0, _hTid.Length);
     }
 
-    /// <summary>The run of consecutive (or repeated) slots starting at sorted <c>_recDirty[d]</c>; returns
-    /// the index past it.</summary>
-    private static int NextRun(int[] dirty, int n, int d, out int first, out int last)
-    {
-        first = dirty[d]; last = first;
-        while (++d < n && dirty[d] <= last + 1) last = dirty[d];
-        return d;
-    }
-
-    /// <summary>The runs <see cref="NextRun"/> walks in the first <paramref name="n"/> of sorted
-    /// <paramref name="dirty"/>.</summary>
-    private static int CountRuns(int[] dirty, int n)
-    {
-        int runs = 0;
-        for (int d = 0; d < n; runs++) d = NextRun(dirty, n, d, out _, out _);
-        return runs;
-    }
-
-    /// <summary>The most runs one delta upload sends; past it the whole table goes up in one copy. A delta
-    /// costs its copy count, so the budget is in runs, not in a share of the view's draws.</summary>
-    // ponytail: a guessed break-even; tune it from the period line's runs.
-    internal const int RunBudget = 512;
-
-    /// <summary>A wrong run uploads a stale record over a live slot, silently, so this joins the disarm
-    /// chain: duplicates collapse, adjacent slots merge, a gap splits, and a prefix counts only its own runs.
-    /// Oracle: the hand-counted runs of the literal lists below.</summary>
-    internal static bool RunsSelfCheck(ExtenderLog log)
-    {
-        int[] dirty = { 5, 3, 4, 9, 3, 11, 10 };
-        Array.Sort(dirty);
-        int d = NextRun(dirty, dirty.Length, 0, out int f0, out int l0);
-        d = NextRun(dirty, dirty.Length, d, out int f1, out int l1);
-        int[] three = { 3, 3, 4, 5, 9, 10, 11, 20 };
-        bool ok = f0 == 3 && l0 == 5 && f1 == 9 && l1 == 11 && d == dirty.Length
-               && CountRuns(three, three.Length) == 3 && CountRuns(three, 4) == 1 && CountRuns(three, 0) == 0;
-        if (!ok) log.Info("AlloyRenderer.RunsSelfCheck: FAILED -- the dirty-slot runs do not merge or count as sorted");
-        return ok;
-    }
-
     /// <summary>The record upload's own decision, which no other check reaches: the table goes up WHOLE when a
     /// restage is pending or the capacity grew, the GPU capacity is a high-water mark that never shrinks, and
     /// the dirty list and both flags come back clear. Oracle: the slot counts and flags set before each call.</summary>
@@ -111,22 +72,6 @@ internal static unsafe class Issue
         VkNoteDirty(_recDirty, Math.Min(_recDirtyN, _recDirty.Length), whole);
         _recDirtyN = 0; _recDirtyAll = false; _texHDirty = false;
     }
-
-    /// <summary>One period's record-table uploads: the whole ones by reason, the bytes the whole record and handle
-    /// tables sent (each one SubData into a buffer the GPU may still be reading), the deltas by their runs, and the
-    /// most runs any upload had. <c>EpochSent</c> spans periods: a whole upload on a newer epoch is a restage.</summary>
-    internal sealed class UploadState
-    {
-        internal long Growth, Overflow, Restage, OverBudget, RecordBytes, HandleBytes, Deltas, DeltaRuns;
-        internal int MaxRuns, EpochSent;
-        internal long Whole => Growth + Overflow + Restage + OverBudget;
-    }
-
-    /// <summary>This period's upload tallies; <see cref="ResetPeriod"/> replaces it.</summary>
-    internal static UploadState Uploads = new();
-
-    /// <summary>Start a period's tallies, keeping the record epoch the last upload sent.</summary>
-    internal static void ResetPeriod() => Uploads = new() { EpochSent = Uploads.EpochSent };
 
     /// <summary>Did a batch write the depth <see cref="SsaoPass"/> read, and if not, WHICH of the prepass's
     /// exclusions caught it? A batch the prepass skipped must not consume the visibility buffer at all. The
