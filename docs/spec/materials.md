@@ -16,11 +16,26 @@ drops. Rough highlights keep their energy, reflections brighten at grazing angle
 crevices, shading takes its direction from the surroundings, and highlights no longer sparkle at a
 distance.
 
-Metal reflects the scene. The engine reads a spec-map pixel as partly metal at any value, on the curve
-`metal = 25s² / (1 + 24s²)`: s = 0.05 is about 6 % metal, s = 0.1 a fifth, s = 0.2 half and s = 0.5 nine
-tenths. Alloy reflects its surroundings on those pixels in proportion, whether or not the material names an
-environment map. Keep matte surfaces near s = 0 and they stay matte. To make metal shinier without making it
-a mirror, raise its spec value and control the blur with a roughness map.
+Every surface reflects the scene, whether or not the material names an environment map. Two inputs set how
+strongly: the spec value (`Specularity`, or the spec map's red channel) and the specular colour
+(`CustomSpecularColor`, or the colour the engine makes when you declare none). The reflection is their
+product. To make a surface more reflective, raise its spec value. Keep matte surfaces near s = 0 and they
+stay matte. To keep a shiny surface from turning into a mirror, control the blur with a roughness map.
+
+Metalness tints the reflection. It does not strengthen it. The engine reads a spec-map pixel as partly metal on
+the curve `metal = 25s² / (1 + 24s²)`: s = 0.05 is about 6 % metal, s = 0.1 a fifth, s = 0.2 half and
+s = 0.5 nine tenths. The more metal a pixel is, the more its reflection takes the surface's own colour
+instead of white, so gold reflects gold and steel reflects grey.
+
+The maps follow the shader the engine picks. A model compiled without tangents draws with `fslit`, which
+never reads `texture2` to `texture5`, so a spec, roughness, height or self-illumination map on it shows
+nothing in vanilla, and Alloy drops it the same way. Give the model tangents (`renderhint
+NormalAndSpecMapped` in the model or in the material), or name a shader pair that reads those maps, and they
+draw in both.
+
+`DisplacementOffset` and `DisplacementMultiplier` tune a height map's relief as they do in vanilla. The
+offset shifts where the relief starts, and the multiplier scales its depth and how finely it is traced. A
+multiplier of 0 counts as 1.
 
 A model with no `.mtr`, or one that sets no `Specularity` and binds no spec or roughness map, keeps
 vanilla's generated look head-on but gets no brighter at low angles. To give it a grazing sheen, give it a
