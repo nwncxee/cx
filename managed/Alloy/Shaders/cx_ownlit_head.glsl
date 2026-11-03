@@ -65,6 +65,9 @@ uniform vec3 uHlColor;
 // CX-188 (ADR 0029): the deferred G-buffer's lanes. CX_GBUF_OUT -- which only the CX_DEFERRED twin is built
 // with -- is what turns its two outputs on at locations 4..5; without it this is the reader's half alone.
 #include "cx_gbuf.glsl"
+/// The water standing over this fragment, 0 none to 1 the puddle-depth setting: the weather splice sets it, the
+/// deferred twin records it for the rain splash that lands here.
+float cxWxStand = 0.0;
 // CX-188: the deferred pass's light record, read by a forward fragment lying on a deferred surface (blended only)
 layout(binding = 26) uniform usampler2D uLightRec;
 uniform int uLightRecOn;

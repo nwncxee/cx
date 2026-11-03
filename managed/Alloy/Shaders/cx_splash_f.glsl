@@ -11,10 +11,18 @@ in float vAge;
 in float vPart;
 in vec3 vLight;
 in float vViewZ;
+in vec3 vSide;
+in vec3 vUp;
+in vec3 vSkyUp;
+in vec3 vSkyLow;
+in vec3 vLampDir;
+in float vSunVis;
 uniform vec3 uTint;
 uniform float uAlpha;
 uniform int uLate;       // 1 = drawn after the upscale or the TAA resolve, with no depth target
 uniform vec2 uScreen;    // the target being drawn, pixels: the depth copy is sampled across it whatever its own size
+// uAreaDiffuse / uAreaDir ride the pass block.
+#include "cx_pass.glsl"
 #include "cx_scenedepth.glsl"
 #include "cx_wx_drop.glsl"
 
@@ -61,8 +69,12 @@ void main()
     }
     else
     {
-        float s = (1.0 - vUV.x * vUV.x) * (1.0 - vUV.y * vUV.y);
-        a = s * s * (1.0 - vAge * vAge);
+        // a droplet: the falling drop's bead, fading as it spends itself
+        if (dot(vUV, vUV) >= 1.0) discard;
+        vec3 V = normalize(cross(vSide, vUp));
+        vec4 b = CxSplashDrop(vUV, V, vSide, vUp, vSkyUp, vSkyLow, vLampDir, uTint * vLight, uAreaDir, uTint * uAreaDiffuse * vSunVis);
+        frag = vec4(b.rgb, b.a * uAlpha) * ((1.0 - vAge * vAge) * vSeed);
+        return;
     }
     if (a <= 0.01) discard;
     // R1: premultiplied scatter, blended ONE / ONE_MINUS_SRC_ALPHA -- the precipitation stages' contract.

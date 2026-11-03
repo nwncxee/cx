@@ -161,6 +161,7 @@
         // `pointSpec` into P. The twin left `lm` undebited, so this is exactly what the debt scales back.
         g.lmShare = g.diffT * lm + g.specT * gLmSpec;
         g.surfFade = cxSurfFade;
+        g.water = cxWxStand;
         CxGbufWrite(g);
     }
 #endif

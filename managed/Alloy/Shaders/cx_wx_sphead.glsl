@@ -16,6 +16,8 @@ uniform sampler2D uCoverDepth; // the cover layer as plain depth (Weather.Esm's 
 uniform mat4 uCoverVp;         // world -> the cover view's clip space; zero matrix = no map, and nothing draws
 uniform mat4 uCoverVpInv;      // ...and back, for the landing point
 uniform sampler2D uSceneDepth; // the finished frame's depth copy: a landing point it shows nothing at hangs in the air
+layout(binding = 4) uniform sampler2D uWxStand; // the water standing over each pixel, as the deferred twin recorded it
+uniform int uStandOn;          // 1 = this frame's G-buffer recorded it; 0 = every landing point reads as bare
 // Footstep splashes (Weather.Tracks): instances past uSplashRain are CX_FOOT_CROWNS crowns per footfall.
 uniform int uSplashRain;       // instances that are rain crowns
 const int CX_FOOT_MAX = 16;
@@ -30,6 +32,12 @@ out float vAge;                // 0..1 through the crown's life
 out float vPart;               // 0 = the ring on the ground, >0 = a droplet streak
 out vec3 vLight;               // linear light at this splash
 out float vViewZ;              // view z of this vertex (negative ahead): the late draw's own depth test
+out vec3 vSide;                // a droplet's quad axes, across and along, both facing the camera
+out vec3 vUp;
+out vec3 vSkyUp;               // linear sky over a droplet, and at the horizon behind it
+out vec3 vSkyLow;
+out vec3 vLampDir;             // toward the lamps lighting a droplet
+out float vSunVis;             // the sun's visibility at a droplet
 
 vec2 cxClusterXY;
 #define CX_CLUSTER_XY cxClusterXY

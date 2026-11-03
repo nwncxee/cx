@@ -434,7 +434,7 @@ What a server can ask the client to draw in and beside its NUI windows. The cont
 - **Rain occlusion map** (#617) — one orthographic depth view of the still casters, looking along the
   **fall vector**, baked and held exactly as a sun cascade is (the texel-snapped fit matrix is the key) and
   stored as the spare layer of the sun array. The one primitive of Alloy weather: a shadow-map test against
-  it answers "is this point under cover" for a falling streak and for a surface alike. Avoid: roof mask.
+  it answers "is this point under cover" for a falling drop and for a surface alike. Avoid: roof mask.
 - **Fall vector** — the unit direction precipitation travels: gravity leaning into the area wind the
   renderer already uploads (`normalize(wind * lean, -1)`). What the field falls along and what the rain
   occlusion map looks along, so an overhang shelters downwind and not upwind.

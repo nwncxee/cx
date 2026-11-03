@@ -125,8 +125,8 @@ public sealed unsafe partial class AlloyRenderer
         s.Mesh = mesh; s.Count = count; s.Drips = drips; s.Step = step;
         s.View = view; s.Proj = proj;
         VkCopyDepth(cl, c);
-        ReadOnlySpan<ImageId> read = [c.DepthRead];
-        cl.ReadImages(read);
+        ReadOnlySpan<ImageId> read = [c.DepthRead, c.G3];
+        cl.ReadImages(c.GbufWritten ? read : read[..1]);
         CommandList side = s.Side!;
         side.Reset();
         int arena0 = c.ArenaUsed;
@@ -344,6 +344,7 @@ public sealed unsafe partial class AlloyRenderer
             BindPass(p.L.CubeCount, viewport, near, far);
             n = Weather.WriteSplashVk(in s.Sp, &v, &pr, viewport, _eyePos, lit);
             LooseBlock.Set(s.Sp.Late, late ? 1 : 0);
+            LooseBlock.Set(s.Sp.StandOn, c.GbufWritten ? 1 : 0);
             LooseBlock.Set(s.Sp.Screen, [(float)viewport[2], viewport[3]]);
         }
         finally { LooseBlock.EndCapture(); }

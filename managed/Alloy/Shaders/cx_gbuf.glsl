@@ -56,6 +56,7 @@ struct CxGbuf
     vec4 surfFade;     // cxSurfFade: the geometric normal and the per-light surface fade, w 0 = none
     vec3 ambT;         // Wa: d(final pixel)/d(cxAmbWalk) -- albedo, matAmbient, occlusion, kd, coatT, wxTransmit, the
                        // env pattern and coat-probe couplings, keyhole, fog transmittance
+    float water;       // cxWxStand: the water standing over the surface, 0 none to 1 the puddle-depth setting
 };
 
 /// sqrt-encoded unorm for the small alphas and the colour, where a linear code would lose a film's 0.02.
@@ -105,8 +106,9 @@ void CxGbufPack(CxGbuf g, out uvec4 w0, out uvec4 w1, out uvec2 w2)
 layout(location = 4) out uvec4 oGb0;   // N + flags, viewDepth + rough + spec, specC + fresnel, slot + coat + coatRough
 layout(location = 5) out uvec4 oGb1;   // Wd, L, P + lmLum, lmMover
 layout(location = 6) out uvec2 oGb2;   // the geometric normal + the surface fade, Wa
+layout(location = 7) out float oGb3;   // the standing water a rain splash landing here reads
 
-void CxGbufWrite(CxGbuf g) { CxGbufPack(g, oGb0, oGb1, oGb2); }
+void CxGbufWrite(CxGbuf g) { CxGbufPack(g, oGb0, oGb1, oGb2); oGb3 = clamp(g.water, 0.0, 1.0); }
 #endif
 
 /// <see cref="CxDepthStepSlack"/> at pixel <paramref name="p"/> off the frame depth buffer, linearised by

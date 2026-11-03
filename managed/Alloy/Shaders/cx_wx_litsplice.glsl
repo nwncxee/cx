@@ -146,6 +146,7 @@
                     }
                 }
                 wxWet = clamp(max(wxWet, wxShore * wxWetAmt), 0.0, 1.0);
+                cxWxStand = wxFilm;
                 if (wxSnow > 0.0)
                 {
                     albedo = mix(albedo, vec3(uWeatherLook.y), wxSnow);

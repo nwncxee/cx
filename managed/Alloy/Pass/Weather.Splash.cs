@@ -40,7 +40,7 @@ internal static unsafe partial class Weather
     private const float SplashVelMax = 20f;
     private static int _splashes;
 
-    internal struct SpLoc { public int View, Proj, Eye, Lit, P, C, V, CoverDepth, CoverVp, CoverVpInv, Depth, Tint, Alpha, Rain, Foot, FootW, WxMapXf, WxMapP, Late, Screen; }
+    internal struct SpLoc { public int View, Proj, Eye, Lit, P, C, V, CoverDepth, CoverVp, CoverVpInv, Depth, Tint, Alpha, Rain, Foot, FootW, WxMapXf, WxMapP, Late, Screen, StandOn; }
 
     private static void DeclareSplashKnobs()
     {
@@ -107,7 +107,7 @@ internal static unsafe partial class Weather
         check.Expect(v.Contains("float px = uSplashP.w / max(-cv.z, 0.05);")
           && v.Contains("float life = uSplashP.y, gain = 1.0, v0k = 1.0, ringM = CX_SPLASH_RING_M;")
           && v.Contains("ringM = CX_SPLASH_RING_M * mix(CX_FOOT_RING.x, CX_FOOT_RING.y, pool);")
-          && v.Contains("dim = smoothstep(CX_SPLASH_PX.x, CX_SPLASH_PX.y, ringM * CX_SPLASH_CREST * px);")
+          && v.Contains("dim = smoothstep(CX_SPLASH_PX.x, CX_SPLASH_PX.y, ringM * CX_SPLASH_CREST * px) * hit.z;")
           && v.Contains("pos = P + (T * corner.x + B * corner.y) * (ringM * 1.15) + up * CX_SPLASH_LIFT;")
           && v.Contains("vSeed = (0.4 + 0.6 * fract(hc.x * 7.31)) * dim;"),
           "the ring is strictly world-sized: its screen size only FADES it");
@@ -123,7 +123,7 @@ internal static unsafe partial class Weather
         check.Expect(v.Contains("if (length(xp + xn - 2.0 * p) + length(yp + yn - 2.0 * p) > CX_SPLASH_FLAT_M) return p;"),
           "no crown on an edge texel, where the filtered depth blends a roof with the ground under it and the point hangs in the air");
         check.Expect(v.Contains("up = normalize(cross(xp - xn, yp - yn));")
-          && v.Contains("vec3 dir = T * (cos(a) * sin(theta)) + B * (sin(a) * sin(theta)) + up * cos(theta);")
+          && v.Contains("vec3 dir = jet ? up : T * (cos(a) * sin(theta)) + B * (sin(a) * sin(theta)) + up * cos(theta);")
           && v.Contains("if (dot(P - L, up) < 0.0) alive = false;"),
           "a crown stands on the surface it hit: the ring lies in its plane and the droplets leave along its normal");
         check.Expect(v.Contains("if (onPlane && abs(ground.z - L.z) < CX_FOOT_GROUND_M) { L = ground; up = n; }"),

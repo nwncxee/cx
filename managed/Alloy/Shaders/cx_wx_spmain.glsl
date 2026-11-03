@@ -123,6 +123,19 @@ bool CxSplashSeen(vec3 p)
     return scene + v.z < CX_SPLASH_CONTACT.x - CX_SPLASH_CONTACT.y * v.z;
 }
 
+/// Metres per second a rebound jet leaves the water at: a few centimetres of rise, well under a crown's.
+const float CX_SPLASH_JET_V = 0.9;
+
+/// The water standing where a crown lands at `p`, as the deferred twin recorded it under that pixel; 0 off screen or
+/// when this frame recorded none.
+float CxSplashStanding(vec3 p)
+{
+    if (uStandOn == 0) return 0.0;
+    vec4 c = uProj * (uView * vec4(p, 1.0));
+    if (c.w <= 0.0 || any(greaterThan(abs(c.xy), vec2(c.w)))) return 0.0;
+    return textureLod(uWxStand, c.xy / c.w * 0.5 + 0.5, 0.0).r;
+}
+
 void main()
 {
     uint id = uint(gl_InstanceID);
@@ -135,6 +148,8 @@ void main()
     float slice = floor(ph);
     float age = fract(ph);
     float life = uSplashP.y, gain = 1.0, v0k = 1.0, ringM = CX_SPLASH_RING_M;
+    // what the water standing where it lands makes of a drop: crown share, launch speed, ring, rebound jet
+    vec4 hit = vec4(1.0, 1.0, 1.0, 0.0);
     vec3 L, up = vec3(0.0, 0.0, 1.0);
     bool alive;
     if (foot)
@@ -176,6 +191,7 @@ void main()
         // a brightness ramp on a circle reads as a ring on the ground
         float edge = 1.0 - smoothstep(0.75, 1.0, rad / max(uSplashP.z, 1e-3));
         alive = ok && fract(hp.z * 91.7) <= edge && CxSplashSeen(L);
+        hit = CxSplashByWater(CxSplashStanding(L));
     }
 
     vec2 corner = vec2(float((gl_VertexID & 1) * 2 - 1), float((gl_VertexID >> 1) * 2 - 1));
@@ -187,11 +203,14 @@ void main()
     if (part > 0)
     {
         vec3 hd = CxHash3(crown * 2246822519u + uint(slice) * 3266489917u + uint(part));
-        if (part >= CX_SPLASH_DROPS - 1 && hd.z > 0.5) alive = false;
+        // in standing water the first droplet is the jet the drop's cavity throws back up; the crown thins as it deepens
+        bool jet = part == 1 && hit.w > 0.0;
+        if (jet) alive = alive && hd.y < hit.w / CX_HIT_JET.y;
+        else if ((part >= CX_SPLASH_DROPS - 1 && hd.z > 0.5) || fract(hd.z * 13.7) >= hit.x) alive = false;
         float a = (float(part) - 0.5 + hc.y) * 6.2831853 / float(CX_SPLASH_DROPS);
         float theta = 0.5 + 0.45 * hd.x;          // radians off the normal: a crown leans out 29 to 54 degrees
-        vec3 dir = T * (cos(a) * sin(theta)) + B * (sin(a) * sin(theta)) + up * cos(theta);
-        float v0 = mix(CX_SPLASH_V0.x, CX_SPLASH_V0.y, hd.y) * v0k;
+        vec3 dir = jet ? up : T * (cos(a) * sin(theta)) + B * (sin(a) * sin(theta)) + up * cos(theta);
+        float v0 = jet ? CX_SPLASH_JET_V : mix(CX_SPLASH_V0.x, CX_SPLASH_V0.y, hd.y) * v0k * hit.y;
         float t = age * life;
         vec3 vel = dir * v0 - vec3(0.0, 0.0, CX_SPLASH_G * t);
         P = L + dir * (v0 * t) - vec3(0.0, 0.0, 0.5 * CX_SPLASH_G * t * t);
@@ -213,7 +232,7 @@ void main()
     {
         // the ring: a quad in the surface plane over the landing point, its radius run out inside the fragment
         // stage so the quad never changes size. Strictly world-sized -- the footprint only FADES it.
-        dim = smoothstep(CX_SPLASH_PX.x, CX_SPLASH_PX.y, ringM * CX_SPLASH_CREST * px);
+        dim = smoothstep(CX_SPLASH_PX.x, CX_SPLASH_PX.y, ringM * CX_SPLASH_CREST * px) * hit.z;
         pos = P + (T * corner.x + B * corner.y) * (ringM * 1.15) + up * CX_SPLASH_LIFT;
     }
     else
@@ -230,7 +249,31 @@ void main()
     vPart = float(part);
     vSeed = (0.4 + 0.6 * fract(hc.x * 7.31)) * dim;
     vLight = uAreaAmbient + uAreaDiffuse * 0.5;
-    if (uLit != 0 && alive)
+    vSide = side;
+    vUp = vec3(0.0, 0.0, 1.0);
+    vLampDir = vec3(0.0, 0.0, 1.0);
+    vSunVis = 1.0;
+    vSkyUp = vec3(0.0);
+    vSkyLow = vec3(0.0);
+    if (part > 0)
+    {
+        // a droplet is a water bead like a falling drop: camera-facing axes, the sky over it and behind it, the lamps
+        vec3 toEye = uEye - P;
+        vUp = normalize(cross(toEye, side));
+        vec3 low = vec3(-toEye.xy, 0.0);
+        low = dot(low, low) > 1e-8 ? normalize(low) : vec3(1.0, 0.0, 0.0);
+        vSkyUp = uAreaAmbient * (uProbeMips > 0.0 ? CxAmbientShape(vec3(0.0, 0.0, 1.0)) : vec3(1.0));
+        vSkyLow = uAreaAmbient * (uProbeMips > 0.0 ? CxAmbientShape(low) : vec3(1.0));
+        vLight = vec3(0.0);
+        if (uLit != 0 && alive)
+        {
+            vec4 cc = uProj * cv;
+            cxClusterXY = (cc.xy / max(cc.w, 1e-3) * 0.5 + 0.5) * vec2(uGrid.xy);
+            vLight = CxWxLampsDir(P, max(-cv.z, 1e-3), vLampDir);
+            vSunVis = CxSunShadow(P, uAreaDir, 1.0, 1.0);
+        }
+    }
+    else if (uLit != 0 && alive)
     {
         vec4 cc = uProj * cv;
         cxClusterXY = (cc.xy / max(cc.w, 1e-3) * 0.5 + 0.5) * vec2(uGrid.xy);

@@ -142,7 +142,7 @@ internal static unsafe partial class Weather
         Tint = LooseBlock.Loc("uTint"), Alpha = LooseBlock.Loc("uAlpha"), Rain = LooseBlock.Loc("uSplashRain"),
         Foot = LooseBlock.Loc("uFoot"), FootW = LooseBlock.Loc("uFootW"),
         WxMapXf = LooseBlock.Loc("uWxMapXf"), WxMapP = LooseBlock.Loc("uWxMapP"),
-        Late = LooseBlock.Loc("uLate"), Screen = LooseBlock.Loc("uScreen"),
+        Late = LooseBlock.Loc("uLate"), Screen = LooseBlock.Loc("uScreen"), StandOn = LooseBlock.Loc("uStandOn"),
     };
 
     /// <summary>The splash draw's terms into the open capture: its instance count,
