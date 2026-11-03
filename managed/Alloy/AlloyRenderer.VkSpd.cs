@@ -16,11 +16,11 @@ public sealed unsafe partial class AlloyRenderer
     /// by box average.</summary>
     private const string SpdCs = "cx_spd_c";
 
-    /// <summary>Levels one dispatch writes, counting its base: the tile folded six times.</summary>
-    private const int SpdLevels = 7;
+    /// <summary>Levels one dispatch writes, counting its base: the tile folded five times.</summary>
+    private const int SpdLevels = 6;
 
     /// <summary>Base-level texels one group covers per axis.</summary>
-    private const int SpdTile = 64;
+    private const int SpdTile = 32;
 
     /// <summary><c>cx_spd_c</c>'s push block, member for member.</summary>
     private struct SpdPush
