@@ -120,7 +120,7 @@ internal static unsafe partial class Weather
         check.Expect(v.Contains("if (length(xp + xn - 2.0 * p) + length(yp + yn - 2.0 * p) > CX_SPLASH_FLAT_M) return p;"),
           "no crown on an edge texel, where the filtered depth blends a roof with the ground under it and the point hangs in the air");
         check.Expect(v.Contains("up = normalize(cross(xp - xn, yp - yn));"),
-          "a crown stands on the surface it hit: the ring lies in its plane and the sheet and beads rise along its normal");
+          "a crown stands on the plane it hit: its frame is that plane's normal");
         check.Expect(v.Contains("if (onPlane && abs(ground.z - L.z) < CX_FOOT_GROUND_M) { L = ground; up = n; }"),
           "a footfall's crowns stand on the ground under the foot too, unless the cover map's hit there is a roof over it");
         float steep = MathF.Acos(GlslConst(v, "CX_SPLASH_STEEP")) * (180f / MathF.PI);

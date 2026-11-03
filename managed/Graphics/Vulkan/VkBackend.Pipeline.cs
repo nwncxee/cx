@@ -100,7 +100,7 @@ internal sealed unsafe partial class VkBackend
         if (_shared.TryGetValue(key, out PipeObj? obj)) obj.Refs++;
         else
         {
-            // ponytail: a mesh pipeline is built whole on the frame, once per device; libraries would cover it once the pre-raster part takes task and mesh stages
+            // ponytail: a mesh pipeline is built whole on the frame, once per device, against ADR 0054's library link; libraries would cover it once the pre-raster part takes task and mesh stages
             bool linked = Libraries && !mesh;
             _pipeCacheDirty = true;
             pipe = linked ? Linked(d, rate, dyn, what) : default;

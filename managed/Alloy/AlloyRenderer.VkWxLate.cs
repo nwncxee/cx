@@ -10,7 +10,7 @@ namespace CX.Alloy;
 /// <summary>
 /// The precipitation after the temporal resolve: this frame's cull records and crowns drawn onto the display-size frame
 /// after FSR 3.1's upscale, or into an overlay the taa stage composites after its resolve, unjittered, with no depth
-/// target. A drop behind the scene fades out against the render-size depth copy the way every streak meets geometry, and
+/// target. A drop behind the scene fades out against the render-size depth copy the way every drop meets geometry, and
 /// a crown behind it is discarded against the same copy, so neither resolve holds them in the history it reconstructs from.
 /// </summary>
 public sealed unsafe partial class AlloyRenderer

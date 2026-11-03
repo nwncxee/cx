@@ -6,7 +6,7 @@
 #include "cx_wx_uni.glsl"
 #include "cx_pass.glsl"
 #include "cx_wx_drop.glsl"
-/// The forward lobe of a snowflake's sun scatter at no flake glow (Henyey-Greenstein g).
+/// The forward lobe of a rain drop's sun scatter (Henyey-Greenstein g); snow takes its lobe from the flake glow.
 const float CX_WX_RAIN_G = 0.35;
 /// Metres from the camera inside which no falling drop is kept, fading in over three times that: one by the lens is a
 /// bar across the screen. Roof drips keep to their lips.
@@ -76,7 +76,7 @@ bool CxWxPlace(uint id, out vec4 r0, out vec4 r1, out vec4 r2, out vec4 r3, out 
     bool keep = seen && fract(h.z * 91.7) <= edge && (uKind == 3 ? CxLip(P, R, U) : CxCovered(Pc)) >= 0.5;
     if (!keep) return false;
     vec3 V = normalize(uEye - P);
-    // the view ray bent up through a flake toward the sky; straight overhead it is the zenith
+    // the view ray bent up through a drop or flake toward the sky; straight overhead it is the zenith
     vec3 bent = vec3(0.0, 0.0, 1.0) - V;
     vec3 up = dot(bent, bent) > 1e-6 ? normalize(bent) : vec3(0.0, 0.0, 1.0);
     vec3 low = vec3(-V.xy, 0.0);
@@ -90,7 +90,7 @@ bool CxWxPlace(uint id, out vec4 r0, out vec4 r1, out vec4 r2, out vec4 r3, out 
         cxClusterXY = (cc.xy / max(cc.w, 1e-3) * 0.5 + 0.5) * vec2(uGrid.xy);
         lamps = CxWxLampsDir(P, max(-cv.z, 1e-3), lampDir);
         sunVis = CxSunShadow(P, uAreaDir, 1.0, 1.0);
-        // no surface normal: the sun reaches a flake through a forward-scattering lobe, a lamp from wherever it stands
+        // no surface normal: the sun reaches a drop or flake through a forward-scattering lobe, a lamp from wherever it stands
         float g = uKind == 2 ? clamp(uBack * 0.5, 0.0, 0.8) : CX_WX_RAIN_G;
         vec3 sun = uAreaDiffuse * (CxWxPhase(-uAreaDir, V, g) * sunVis);
         light = uAreaAmbient + sun + lamps;

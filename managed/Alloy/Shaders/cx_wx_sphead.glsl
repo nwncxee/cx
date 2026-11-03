@@ -33,12 +33,12 @@ out float vAge;                // 0..1 through the crown's life
 out float vPart;               // the part's kind, CX_PART_* (cx_wx_hit)
 out vec3 vLight;               // linear light at this splash
 out float vViewZ;              // view z of this vertex (negative ahead): the late draw's own depth test
-out vec3 vSide;                // a droplet's quad axes, across and along, both facing the camera
+out vec3 vSide;                // the quad's axes: a bead's across and along, facing the camera; the sheet's across and the surface normal
 out vec3 vUp;
-out vec3 vSkyUp;               // linear sky over a droplet, and at the horizon behind it
+out vec3 vSkyUp;               // linear sky over the water part, and at the horizon behind it
 out vec3 vSkyLow;
-out vec3 vLampDir;             // toward the lamps lighting a droplet
-out float vSunVis;             // the sun's visibility at a droplet
+out vec3 vLampDir;             // toward the lamps lighting the water part
+out float vSunVis;             // the sun's visibility at the water part
 
 vec2 cxClusterXY;
 #define CX_CLUSTER_XY cxClusterXY

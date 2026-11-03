@@ -50,7 +50,28 @@ public sealed unsafe partial class AlloyRenderer
             finally { _eyePos = saved; Weather.Hold(null); }
         }
         vk.Destroy(col); vk.Destroy(cover); vk.Destroy(rb);
+        VkWxFixtureFree(vk, s);
         return got;
+    }
+
+    /// <summary>Everything the fixture's own <see cref="VkWxState"/> made on <paramref name="vk"/>: the cull stage and its
+    /// buffers, and each program's shaders and pipelines on either path.</summary>
+    private static void VkWxFixtureFree(VkBackend vk, VkWxState s)
+    {
+        if (s.Cull != null) { vk.Destroy(s.Cull.Pipe); vk.Destroy(s.Cull.Cs); }
+        vk.Destroy(s.Drops); vk.Destroy(s.Cmd); vk.Destroy(s.CmdRead);
+        foreach (PipelineId pipe in s.Pipe) vk.Destroy(pipe);
+        foreach (VkProg? p in s.Prog) VkWxFixtureFree(vk, p);
+        if (s.MeshState is not { } m) return;
+        foreach (PipelineId pipe in m.Pipe) vk.Destroy(pipe);
+        foreach (PipelineId pipe in m.LatePipe) vk.Destroy(pipe);
+        foreach (VkProg? p in m.Prog) VkWxFixtureFree(vk, p);
+    }
+
+    private static void VkWxFixtureFree(VkBackend vk, VkProg? p)
+    {
+        if (p == null) return;
+        vk.Destroy(p.Vs); vk.Destroy(p.Fs); vk.Destroy(p.Ts); vk.Destroy(p.Ms);
     }
 
     /// <summary>The fixture's one frame: the field into <paramref name="col"/> over a far depth, its alpha read back.</summary>

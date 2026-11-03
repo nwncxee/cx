@@ -60,7 +60,6 @@ vec3 CxWxLampsDir(vec3 P, float viewDepth, out vec3 dir)
     return acc * uDayDim;
 }
 
-
 /// Henyey-Greenstein over 4 pi: how much of a light travelling along `travel` a drop sends toward the eye at `V`;
 /// averages 1 over the sphere, so the forward lobe is a redistribution and not extra light.
 float CxWxPhase(vec3 travel, vec3 V, float g)
