@@ -20,7 +20,7 @@ internal static unsafe partial class Weather
     /// reads the constant back out of the GLSL.</summary>
     internal const int SplashParts = 6;
     /// <summary>One crown's life, seconds: the leap, the fall and the ring, start to finish.</summary>
-    private const float SplashLifeSec = 0.22f;
+    internal const float SplashLifeSec = 0.22f;
     /// <summary>Lifetimes the splash clock is wrapped at. A whole number of them, so the slice index the
     /// stage floors out of the clock is continuous across the wrap and no frame re-rolls the whole field.</summary>
     private const int SplashWrapSlices = 8192;
