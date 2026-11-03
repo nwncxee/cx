@@ -123,6 +123,9 @@ bool CxSplashSeen(vec3 p)
     return scene + v.z < CX_SPLASH_CONTACT.x - CX_SPLASH_CONTACT.y * v.z;
 }
 
+/// /weather viz 5: every impact unlit, green on bare ground through blue in standing water, as it read the water.
+const int CX_SPLASH_VIZ = 5;
+
 /// Metres per second a rebound jet leaves the water at: a few centimetres of rise, well under a crown's.
 const float CX_SPLASH_JET_V = 0.9;
 
@@ -150,6 +153,7 @@ void main()
     float life = uSplashP.y, gain = 1.0, v0k = 1.0, ringM = CX_SPLASH_RING_M;
     // what the water standing where it lands makes of a drop: crown share, launch speed, ring, rebound jet
     vec4 hit = vec4(1.0, 1.0, 1.0, 0.0);
+    float standing = 0.0;
     vec3 L, up = vec3(0.0, 0.0, 1.0);
     bool alive;
     if (foot)
@@ -191,7 +195,8 @@ void main()
         // a brightness ramp on a circle reads as a ring on the ground
         float edge = 1.0 - smoothstep(0.75, 1.0, rad / max(uSplashP.z, 1e-3));
         alive = ok && fract(hp.z * 91.7) <= edge && CxSplashSeen(L);
-        hit = CxSplashByWater(CxSplashStanding(L));
+        standing = CxSplashStanding(L);
+        hit = CxSplashByWater(standing);
     }
 
     vec2 corner = vec2(float((gl_VertexID & 1) * 2 - 1), float((gl_VertexID >> 1) * 2 - 1));
@@ -281,6 +286,7 @@ void main()
         vec3 sun = uAreaDiffuse * (ndl * CxSunShadow(P, N, ndl, ndl));
         vLight = uAreaAmbient * mix(CX_SPLASH_AMB, 1.0, ndl) + sun + CxClusteredDiffuse(P, N, max(-cv.z, 1e-3));
     }
+    if (uViz == CX_SPLASH_VIZ) vLight = mix(vec3(0.0, 1.0, 0.0), vec3(0.0, 0.3, 1.0), standing);
     vec4 pv = uView * vec4(pos, 1.0);
     vViewZ = pv.z;
     gl_Position = alive && dim > 0.0 ? uProj * pv : vec4(2.0, 2.0, 2.0, 1.0);

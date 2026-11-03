@@ -345,6 +345,7 @@ public sealed unsafe partial class AlloyRenderer
             n = Weather.WriteSplashVk(in s.Sp, &v, &pr, viewport, _eyePos, lit);
             LooseBlock.Set(s.Sp.Late, late ? 1 : 0);
             LooseBlock.Set(s.Sp.StandOn, c.GbufWritten ? 1 : 0);
+            LooseBlock.Set(s.Sp.Viz, Weather.Viz.V);
             if (!c.GbufWritten && !s.BareSaid)
             {
                 s.BareSaid = true;

@@ -17,6 +17,7 @@ uniform mat4 uCoverVp;         // world -> the cover view's clip space; zero mat
 uniform mat4 uCoverVpInv;      // ...and back, for the landing point
 uniform sampler2D uSceneDepth; // the finished frame's depth copy: a landing point it shows nothing at hangs in the air
 layout(binding = 4) uniform sampler2D uWxStand; // the water standing over each pixel, as the deferred twin recorded it
+uniform int uViz;              // /weather viz
 uniform int uStandOn;          // 1 = this frame's G-buffer recorded it; 0 = every landing point reads as bare
 // Footstep splashes (Weather.Tracks): instances past uSplashRain are CX_FOOT_CROWNS crowns per footfall.
 uniform int uSplashRain;       // instances that are rain crowns

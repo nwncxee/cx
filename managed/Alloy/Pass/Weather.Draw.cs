@@ -73,7 +73,7 @@ internal static unsafe partial class Weather
                         help: "How sharply a drop or flake fades where it meets geometry (1/m).");
         MaxCount = G.Slider("count", "count", 500, CountCap, 500, 200000, tier: Tier.ChatOnly)
                     .Ladder(Quality.Weather, 60000, 120000, 200000, 280000);
-        Viz = G.Slider("viz", "viz", 0, VizMax, 1, 0, tier: Tier.ChatOnly, help: "1 drop contact fade, 2 exposure on the world, 3 record class (red creature, green object, blue tileset), 4 the wetness map (red wet, green fill, blue standing water; black = not latched)");
+        Viz = G.Slider("viz", "viz", 0, VizMax, 1, 0, tier: Tier.ChatOnly, help: "1 drop contact fade, 2 exposure on the world, 3 record class (red creature, green object, blue tileset), 4 the wetness map (red wet, green fill, blue standing water; black = not latched), 5 rain impacts by the water they land in (green bare ground, blue standing water)");
     }
 
     private static void InstallDraw(ExtenderLog log) => InstallCover(log);

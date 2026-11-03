@@ -71,6 +71,7 @@ void main()
     {
         // a droplet: the falling drop's bead, fading as it spends itself
         if (dot(vUV, vUV) >= 1.0) discard;
+        if (uViz == 5) { frag = vec4(vLight, 1.0) * vSeed; return; }
         vec3 V = normalize(cross(vSide, vUp));
         vec4 b = CxSplashDrop(vUV, V, vSide, vUp, vSkyUp, vSkyLow, vLampDir, uTint * vLight, uAreaDir, uTint * uAreaDiffuse * vSunVis);
         frag = vec4(b.rgb, b.a * uAlpha) * ((1.0 - vAge * vAge) * vSeed);
@@ -81,6 +82,7 @@ void main()
     // rgb is the light this part throws at the eye weighted by its coverage; alpha is the extinction behind
     // it, riding the SAME scatter, so a splash with no light on it neither adds nor hides anything.
     float cov = a * vSeed;
+    if (uViz == 5) { frag = vec4(vLight * cov, cov); return; }
     vec3 scatter = uTint * vLight;
     frag = vec4(scatter * cov, cov * uAlpha * min(dot(scatter, CX_WX_LUMA), 1.0));
 }

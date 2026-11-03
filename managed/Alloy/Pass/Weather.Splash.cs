@@ -40,7 +40,7 @@ internal static unsafe partial class Weather
     private const float SplashVelMax = 20f;
     private static int _splashes;
 
-    internal struct SpLoc { public int View, Proj, Eye, Lit, P, C, V, CoverDepth, CoverVp, CoverVpInv, Depth, Tint, Alpha, Rain, Foot, FootW, WxMapXf, WxMapP, Late, Screen, StandOn; }
+    internal struct SpLoc { public int View, Proj, Eye, Lit, P, C, V, CoverDepth, CoverVp, CoverVpInv, Depth, Tint, Alpha, Rain, Foot, FootW, WxMapXf, WxMapP, Late, Screen, StandOn, Viz; }
 
     private static void DeclareSplashKnobs()
     {
