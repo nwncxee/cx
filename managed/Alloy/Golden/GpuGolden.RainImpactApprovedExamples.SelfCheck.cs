@@ -6,7 +6,7 @@ using CX.Rhi;
 namespace CX.Alloy;
 
 /// <summary>
-/// The impact golden (approved-spec, C1-C6): the shipped micro-relief and standing water from <c>cx_wx_look</c>, the
+/// The impact golden (approved-spec, C1 and C3-C6; C2 is the crown golden's): the shipped micro-relief and standing water from <c>cx_wx_look</c>, the
 /// crown by water from <c>cx_wx_hit</c> and the crown droplet from <c>cx_splash_f</c> over <c>cx_wx_drop</c>'s bead.
 /// Oracle: cobble tops at relief 1 and joints at 0 under a basin between them, a puddle at the depth setting, dry
 /// wet ground, a dark joint beside pale stone with no height map and a lamp to a droplet's left, written by hand.
@@ -18,6 +18,7 @@ internal static partial class GpuGolden
 
     private static void RainImpactApprovedSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
     {
+        RainCrownApprovedSelfCheck(vk, check, log);
         string look = ShaderSource.Get("cx_wx_look.glsl"), hit = ShaderSource.Get("cx_wx_hit.glsl");
         string drop = ShaderSource.Get("cx_wx_drop.glsl"), splash = ShaderSource.Get("cx_splash_f.glsl");
         string micro = Function(look, "float CxWxMicro("), fineLum = Function(look, "float CxWxFineLum(");
@@ -88,15 +89,9 @@ internal static partial class GpuGolden
 
         // Given a cobbled street with a height map, water standing in the joints but not over the cobble tops
         // When one drop lands on a cobble top and another in a joint
-        // Then the cobble top throws a full crown of droplets, and the joint throws fewer, lower ones
+        // Then the cobble top raises a full crown, and the joint a lower, thinner one
         check.Expect(got[0] == 0f && got[1] > 0f && got[2] == 1f && got[4] < got[2] && got[5] < got[3],
             FormattableString.Invariant($"rain impact C1: water top {got[0]:F2} joint {got[1]:F2}; crown top {got[2]:F2} (must be 1) speed {got[3]:F2}, joint {got[4]:F2} speed {got[5]:F2} (both lower)"));
-
-        // Given a formed puddle as deep as the puddle-depth setting
-        // When a drop lands in its middle
-        // Then it leaves a ring on the water and at most a small rebound, with no crown of droplets
-        check.Expect(got[6] == 0f && got[7] > 0f && got[8] > 0f && got[8] <= 0.5f,
-            FormattableString.Invariant($"rain impact C2: crown {got[6]:F2} (must be 0), ring {got[7]:F2} (above 0), rebound {got[8]:F2} (above 0, at most 0.5)"));
 
         // Given ground wet from rain where no water stands yet
         // When drops land on it
