@@ -24,8 +24,8 @@ internal static unsafe partial class Weather
         return count;
     }
 
-    /// <summary>A field held still: its fall, phase and cover view written in place of the frame's, so a fixture draws one
-    /// field the same way twice.</summary>
+    /// <summary>For the mesh path golden: a field held still, its fall, phase and cover view written in place of the
+    /// frame's, so the fixture draws one field the same way through either path.</summary>
     internal sealed class WxHoldState
     {
         public Vector3 Fall;
@@ -101,7 +101,7 @@ internal static unsafe partial class Weather
         LooseBlock.Set(l.Phase, (float)(_hold?.Phase ?? _phase));
         LooseBlock.Set(l.Time, _wobble);
         LooseBlock.Set(l.Box, [Box, Box]);
-        LooseBlock.Set(l.Size, [snow ? FlakeSize.V : kind == 3 ? StreakLen.V * 0.25f : StreakLen.V, snow ? FlakeSize.V : kind == 3 ? 0.03f : 0.02f]);
+        LooseBlock.Set(l.Size, [snow ? FlakeSize.V : 0f, snow ? FlakeSize.V : 0f]);
         LooseBlock.Set(l.Kind, kind);
         LooseBlock.Set(l.Drift, snow ? 0.4f : 0f);
         float c = snow ? Brightness.V * 1.67f : Brightness.V;

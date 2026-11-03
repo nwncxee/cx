@@ -260,7 +260,7 @@ internal static unsafe partial class Weather
         check.Expect(WeatherCull.Contains("uKind == 3 ? CxLip(P, R, U)") && WeatherCull.Contains("if (CxCovered(P) >= 0.5) return 0.0;"),
           "a drip instance survives only under a lip: covered here, open within the feather");
         check.Expect(ShaderContract.LinearSafe(RainFs) && ShaderContract.LinearSafe(SnowFs), "the precipitation stages stay linear");
-        check.Expect(WeatherCull.IndexOf("vec3 CxWxLamps(", StringComparison.Ordinal) < WeatherCull.IndexOf("if (uLit != 0)", StringComparison.Ordinal)
+        check.Expect(WeatherCull.IndexOf("vec3 CxWxLampsDir(", StringComparison.Ordinal) < WeatherCull.IndexOf("if (uLit != 0)", StringComparison.Ordinal)
           && WeatherCull.Contains("#define CX_CLUSTER_XY cxClusterXY") && WeatherVs.Contains("vLight = q.light;")
           && RainFs.Contains("uTint * vLight") && SnowFs.Contains("uTint * vLight"),
           "rain and snow take the light rig once per drop in the cull and both fragment stages multiply it in");

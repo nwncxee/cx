@@ -9,8 +9,8 @@
 const float CX_HIT_DROWN = 0.85;
 /// The crown droplets' launch speed in the deepest water, as a share of a crown off bare stone.
 const float CX_HIT_SLOW = 0.6;
-/// The ring's strength on bare stone, as a share of its strength on a puddle: a wet mark, not a wave.
-const float CX_HIT_RING_DRY = 0.5;
+/// The ring's strength on bare stone, as a share of its strength on a puddle: as strong, as a crown's ring always was.
+const float CX_HIT_RING_DRY = 1.0;
 /// Standing water from which a rebound jet starts to rise, and its strength in the deepest water: one small droplet,
 /// well under a crown's.
 const vec2 CX_HIT_JET = vec2(0.3, 0.35);

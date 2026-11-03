@@ -31,20 +31,24 @@ public sealed unsafe partial class AlloyRenderer
     /// already said it for that path.</summary>
     private static string? VkWxPathLine(VkWxState s, VkBackend vk, Weather.WxPath path)
     {
-        if (s.PathSaid && s.SaidPath == path) return null;
-        s.PathSaid = true;
+        if (s.SaidPath == path) return null;
         s.SaidPath = path;
         return path == Weather.WxPath.Mesh
             ? "AlloyRenderer: the Vulkan precipitation draws through mesh shaders -- task stages cull and light each drop, mesh stages emit the kept ones, one draw"
             : $"AlloyRenderer: the Vulkan precipitation is culled and lit in compute and drawn indirect -- {vk.MeshRefusal ?? "mesh shaders sit out while rain writes its own motion"}";
     }
 
-    /// <summary>The path the weather pass takes on <paramref name="vk"/> once its programs are built, and the line it says
-    /// once about it; <paramref name="again"/> is whether a second ask would say it again.</summary>
+    /// <summary>Whether this frame's <paramref name="k"/> (0 rain, 1 snow) and its <paramref name="drips"/> draw through the
+    /// mesh path: the device offers it, its programs built, and the frame writes no rain motion (<paramref name="motion"/>).</summary>
+    private static bool VkWxMeshPath(VkBackend vk, VkWxState s, int k, int drips, bool motion, ExtenderLog log)
+        => !motion && VkWxMeshEnsure(vk, s, k, log) && (drips <= 0 || VkWxMeshEnsure(vk, s, 0, log));
+
+    /// <summary>For the mesh path golden: the path a rain frame with roof drips takes on <paramref name="vk"/>, and the line
+    /// the pass says once about it; <paramref name="again"/> is whether a second ask would say it again.</summary>
     internal static Weather.WxPath VkWxPath(VkBackend vk, ExtenderLog log, out string line, out bool again)
     {
         var s = new VkWxState { Dev = vk };
-        Weather.WxPath path = VkWxMeshEnsure(vk, s, 0, log) ? Weather.WxPath.Mesh : Weather.WxPath.Compute;
+        Weather.WxPath path = VkWxMeshPath(vk, s, 0, 1, false, log) ? Weather.WxPath.Mesh : Weather.WxPath.Compute;
         line = VkWxPathLine(s, vk, path) ?? "";
         again = VkWxPathLine(s, vk, path) != null;
         return path;

@@ -128,6 +128,8 @@ internal static class ShaderStages
         (Weather.ShdSnowFs,                Banner),
         (Weather.ShdSplashVs,              Banner),
         (Weather.ShdSplashFs,              Banner),
+        (Weather.ShdWxTask,                Banner),
+        (Weather.ShdWxMesh,                Banner),
     };
 
     /// <summary>The GLSL the extender compiles for one resref: the embedded <c>&lt;resref&gt;.glsl</c>
@@ -206,7 +208,7 @@ internal static class ShaderStages
     /// that declares it. A missing switch arm is otherwise invisible until a program builds from "".</summary>
     internal static bool SelfCheck(ExtenderLog log)
     {
-        bool ok = All.Length == 43 && BindlessRef.Length <= ShaderResource.ResRefBytes;
+        bool ok = All.Length == 45 && BindlessRef.Length <= ShaderResource.ResRefBytes;
         foreach ((string r, string header) in All)
         {
             string src = Source(r);

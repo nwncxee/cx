@@ -8,8 +8,8 @@ using CX.Rhi;
 namespace CX.Alloy;
 
 /// <summary>
-/// A fixed precipitation field drawn through one path into a small target and read back: the camera, the fall and a
-/// roof in the cover map held still, so the compute and mesh paths can be laid side by side.
+/// The mesh path golden's fixture: a fixed precipitation field drawn through one path into a small target and read back,
+/// the camera, the fall and a roof in the cover map held still, so the compute and mesh paths can be laid side by side.
 /// </summary>
 public sealed unsafe partial class AlloyRenderer
 {
@@ -60,7 +60,7 @@ public sealed unsafe partial class AlloyRenderer
         const int n = VkWxFixtureSide;
         // straight along the roof's lip, so the drips under it and the open rain beside it both fill the view
         Matrix4x4 view = Matrix4x4.CreateLookAt(_eyePos, _eyePos + new Vector3(0f, 1f, -0.15f), Vector3.UnitZ);
-        Matrix4x4 proj = WorldDepth.Fold(VkWxFixtureProj(MathF.PI / 3f, 0.1f, 100f));
+        Matrix4x4 proj = WorldDepth.Fold(AlloyCamera.Perspective(60f, 1f, 0.1f, 100f));
         int* viewport = stackalloc int[4] { 0, 0, n, n };
         uint coverAt = 0;
         VkProg? prog = path == Weather.WxPath.Mesh ? s.MeshState!.Prog[k] : null;
@@ -96,13 +96,6 @@ public sealed unsafe partial class AlloyRenderer
         return alpha;
     }
 
-    /// <summary>A GL perspective of <paramref name="fov"/> radians over a square target, as the engine hands one over.</summary>
-    private static Matrix4x4 VkWxFixtureProj(float fov, float near, float far)
-    {
-        float f = 1f / MathF.Tan(fov * 0.5f);
-        return new Matrix4x4(f, 0, 0, 0, 0, f, 0, 0, 0, 0, (far + near) / (near - far), -1, 0, 0, 2f * far * near / (near - far), 0);
-    }
-
     /// <summary>Half the fixture cover view's reach, metres: across and from its top to its floor.</summary>
     private const float VkWxFixtureReach = 20f;
 
@@ -110,8 +103,7 @@ public sealed unsafe partial class AlloyRenderer
     private static Matrix4x4 VkWxFixtureCoverVp(Vector3 eye)
     {
         const float r = VkWxFixtureReach;
-        // world x and y onto the view's -1..1, height onto GL clip z with the top of the reach at -1
-        return new Matrix4x4(1f / r, 0, 0, 0, 0, 1f / r, 0, 0, 0, 0, -1f / r, 0, -eye.X / r, -eye.Y / r, 0, 1);
+        return AlloyCamera.Ortho(eye.X - r, eye.X + r, eye.Y - r, eye.Y + r, -r, r);
     }
 
     /// <summary>The cover map's stored depth for a surface <paramref name="height"/> metres up in the fixture's view.</summary>

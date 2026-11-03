@@ -10,7 +10,7 @@ namespace CX.Alloy;
 
 /// <summary>
 /// Falling rain and snow (<see cref="PassId.WeatherOwned"/>) on Vulkan: a compute cull places, tests and lights every
-/// drop of <see cref="Weather"/>'s lattice once, keeps those on screen and under open sky, and the streaks and flakes
+/// drop of <see cref="Weather"/>'s lattice once, keeps those on screen and under open sky, and the drops and flakes
 /// draw indirect from its records, premultiplied over the scene colour, faded against a depth copy. The roof drips are
 /// rain's program again, kept only under a lip.
 /// </summary>
@@ -44,9 +44,8 @@ public sealed unsafe partial class AlloyRenderer
         public bool Mesh;
         public int Count, Drips;
         public float Step;
-        /// <summary>The path the last line named; whether any was said.</summary>
-        public Weather.WxPath SaidPath;
-        public bool PathSaid;
+        /// <summary>The path the last line named; null until one was said.</summary>
+        public Weather.WxPath? SaidPath;
         public VkProg? Motion;
         public PipelineId MotionPipe;
         public Weather.Loc ML;
@@ -112,8 +111,7 @@ public sealed unsafe partial class AlloyRenderer
         bool late = Weather.DrawsWhere(Fsr.On, PostChain.TaaOn) != Weather.Site.Scene && !s.LateFailed;
         bool any = count > 0 || drips > 0;
         // rain's own motion is drawn again from the cull's records, which only the compute path keeps
-        bool mesh = any && !Weather.MotionWanted(Fsr.On, PostChain.TaaOn, late) && VkWxMeshEnsure(vk, s, k, log)
-                    && (drips <= 0 || VkWxMeshEnsure(vk, s, 0, log));
+        bool mesh = any && VkWxMeshPath(vk, s, k, drips, Weather.MotionWanted(Fsr.On, PostChain.TaaOn, late), log);
         bool culls = !mesh && any && VkWxCullEnsure(vk, s, log);
         bool fall = count > 0 && (mesh || culls && VkWxEnsure(vk, s, k, log));
         bool drip = drips > 0 && (mesh || culls && VkWxEnsure(vk, s, 0, log));

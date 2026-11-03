@@ -340,6 +340,7 @@ internal static class TextureSlots
         check.Expect(ShaderStages.Source(Halos.ShdHaloFs).Contains("uniform sampler2D uFlare;"), $"{Diffuse} uFlare (flare program)");
         check.Expect(Weather.SplashVs.Contains("uniform sampler2D uCoverDepth;"), $"{CoverDepth} uCoverDepth (splash program)");
         check.Expect(Weather.SplashVs.Contains("uniform sampler2D uSceneDepth;"), $"{SceneDepth} uSceneDepth (splash program)");
+        check.Expect(Unit(Weather.SplashVs, "uWxStand") == WxStand, $"{WxStand} uWxStand (splash program)");
         // CX-188: the deferred pass declares its five by layout(binding), so nothing assigns them by name --
         // but the units still have to be the ones C# binds, which is what this pins.
         string deferred = ShaderStages.Source(DeferredLights.ShdCs);

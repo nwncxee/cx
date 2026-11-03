@@ -22,6 +22,7 @@ vec2 cxClusterXY;
 #include "cx_probeshape.glsl"
 #define CX_WX_LAMPS 1
 #include "cx_wx_shade.glsl"
+#include "cx_wx_sky.glsl"
 #include "cx_vfrain.glsl"
 
 // 1 = open sky above this point along the fall vector, 0 = covered. No map = open.
@@ -40,12 +41,6 @@ float CxLip(vec3 P, vec3 R, vec3 U)
     float e = max(uCoverSoft, 0.15);
     if (CxCovered(P) >= 0.5) return 0.0;
     return max(max(CxCovered(P + R * e), CxCovered(P - R * e)), max(CxCovered(P + U * e), CxCovered(P - U * e)));
-}
-
-/// The sky's light arriving along `d`: the area ambient shaped by the probe where one is captured.
-vec3 CxWxSky(vec3 d)
-{
-    return uAreaAmbient * (uProbeMips > 0.0 ? CxAmbientShape(d) : vec3(1.0));
 }
 
 /// Lattice point `id`: false when it is not kept, else its five records -- r0 (position, length), r1 (light, seed),
@@ -67,13 +62,14 @@ bool CxWxPlace(uint id, out vec4 r0, out vec4 r1, out vec4 r2, out vec4 r3, out 
     vec3 q = home + size * floor((c - home) / size + 0.5);
     if (uKind == 2) q.xy += vec2(sin(uTime + h.y * 6.2832), cos(uTime * 1.5 + h.z * 6.2832)) * uDrift;
     vec3 P = R * q.x + U * q.y + F * q.z;
-    float len = uKind != 2 ? uQuad.x * (0.5 + 0.8 * h.y) : uQuad.x;
+    // a flake's size, or a drop's longest smear under the blur setting: the screen test's bound
+    float len = uKind == 2 ? uQuad.x : CX_WX_DROP_M + uBlur * uSpeed * 1.125 * CX_WX_SHUTTER;
     // thinned by drop COUNT to none 25 m out, where the fog's veil holds the same share; CX_WX_LENS keeps the lens clear
     float dist = length(uEye - P);
     float edge = CxWxNearKeep(dist) * (uKind == 3 ? 1.0 : smoothstep(CX_WX_LENS, CX_WX_LENS * 3.0, dist));
     vec4 cv = uView * vec4(P, 1.0);
     vec4 cc = uProj * cv;
-    float r = max(len, CX_WX_DROP_M) + uQuad.y;
+    float r = len + uQuad.y;
     bool seen = cc.w > -r && abs(cc.x) - r * abs(uProj[0][0]) <= cc.w && abs(cc.y) - r * abs(uProj[1][1]) <= cc.w;
     // the cover test at a hashed offset in the fall-normal plane: wind and splash feather a roof's edge
     vec3 Pc = P + (R * (h.y - 0.5) + U * (h.z - 0.5)) * uCoverSoft * 2.0;

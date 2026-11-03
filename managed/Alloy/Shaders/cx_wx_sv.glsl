@@ -6,5 +6,6 @@
 #include "cx_probeshape.glsl"
 #define CX_WX_LAMPS 1
 #include "cx_wx_shade.glsl"
+#include "cx_wx_sky.glsl"
 #include "cx_wx_hit.glsl"
 #include "cx_wx_spmain.glsl"

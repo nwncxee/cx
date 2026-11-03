@@ -20,7 +20,7 @@ internal static unsafe partial class Weather
     /// <summary>The wobble clock wraps where both wobble frequencies (1.0 and 1.5 rad/s) complete whole turns.</summary>
     private const float WobbleWrap = 400f * MathF.PI;
 
-    internal static Knob<float> DensityScale = null!, StreakLen = null!, FlakeSize = null!, Brightness = null!, Opacity = null!,
+    internal static Knob<float> DensityScale = null!, FlakeSize = null!, Brightness = null!, Opacity = null!,
                                 RainSpeed = null!, SnowSpeed = null!, WindLean = null!, Soft = null!, Drips = null!, Backscatter = null!, SnowAngle = null!,
                                 Blur = null!;
     internal static Knob<int> MaxCount = null!, Viz = null!;
@@ -54,14 +54,13 @@ internal static unsafe partial class Weather
                         .Ladder(Quality.Weather, 0.5f, 0.8f, 1f, 1.5f);
         Drips = G.Slider("drips", "Roof drips", 0f, 1f, 0.05f, 0.25f, tier: Tier.Advanced,
                          help: "Drops fall from roof edges and overhangs while the roofs are wet, and keep falling for the dry-out time after the rain stops. 0 = off.");
-        G.Section("");
         Blur = G.Slider("blur", "Rain motion blur", 0f, 1f, 0.05f, 0f, tier: Tier.Advanced,
                         help: "How far each rain drop smears along its fall, the way a camera's shutter would draw it. 0 = round drops.");
-        StreakLen = G.Slider("streak", "Rain streak length", 0.1f, 2f, 0.05f, 0.35f, "m", Tier.ChatOnly, help: "Mean length of one rain streak (each varies 0.5x-1.3x).");
+        G.Section("");
         FlakeSize = G.Slider("flake", "Snowflake size", 0.01f, 0.2f, 0.01f, 0.05f, "m", Tier.ChatOnly, help: "Diameter of one flake.");
         Brightness = G.Slider("bright", "Brightness", 0f, 3f, 0.1f, 0.6f, tier: Tier.ChatOnly, help: "Streaks and flakes take the light where they fall (sun, shadow, lamps); this scales it.");
         Opacity = G.Slider("opacity", "Rain opacity", 0.02f, 1f, 0.02f, 0.7f, tier: Tier.ChatOnly,
-                           help: "How strongly one streak shows: the share of the scene it hides, the sky seen through it and the light it throws.");
+                           help: "How strongly one drop shows: the share of the scene it hides, the sky seen through it and the light it throws.");
         RainSpeed = G.Slider("rainspeed", "Rain speed", 2f, 30f, 0.5f, 12f, "m/s", Tier.ChatOnly);
         SnowSpeed = G.Slider("snowspeed", "Snow speed", 0.2f, 6f, 0.1f, 1.2f, "m/s", Tier.ChatOnly);
         WindLean = G.Slider("windlean", "Wind lean", 0f, 3f, 0.05f, 0.6f, tier: Tier.ChatOnly,
@@ -71,10 +70,10 @@ internal static unsafe partial class Weather
         Backscatter = G.Slider("backscatter", "Flake glow", 0f, 2f, 0.1f, 0.5f, tier: Tier.ChatOnly,
                                help: "A flake between you and a light glows, lit from behind. 0 = off.");
         Soft = G.Slider("soft", "Contact fade", 0f, 20f, 0.5f, 6f, tier: Tier.ChatOnly,
-                        help: "How sharply a streak fades where it meets geometry (1/m).");
+                        help: "How sharply a drop or flake fades where it meets geometry (1/m).");
         MaxCount = G.Slider("count", "count", 500, CountCap, 500, 200000, tier: Tier.ChatOnly)
                     .Ladder(Quality.Weather, 60000, 120000, 200000, 280000);
-        Viz = G.Slider("viz", "viz", 0, VizMax, 1, 0, tier: Tier.ChatOnly, help: "1 streak contact fade, 2 exposure on the world, 3 record class (red creature, green object, blue tileset), 4 the wetness map (red wet, green fill, blue standing water; black = not latched)");
+        Viz = G.Slider("viz", "viz", 0, VizMax, 1, 0, tier: Tier.ChatOnly, help: "1 drop contact fade, 2 exposure on the world, 3 record class (red creature, green object, blue tileset), 4 the wetness map (red wet, green fill, blue standing water; black = not latched)");
     }
 
     private static void InstallDraw(ExtenderLog log) => InstallCover(log);
@@ -144,11 +143,11 @@ internal static unsafe partial class Weather
     /// override can reshape the field but never grow a buffer; each drop tested against the cover map and lit once.</summary>
     internal static string WeatherCull => ShaderSource.Get(ShdWeatherCull + ".glsl");
 
-    /// <summary>A rain streak: a thin bright core tapered at both ends, faded where it meets geometry.
+    /// <summary>A rain drop: a water bead (cx_wx_drop), faded where it meets geometry.
     /// Linear, alpha over. <c>/weather viz 1</c> paints the contact fade alone. The colour is the vertex stage's light times the brightness scalar.</summary>
     internal static string RainFs => ShaderSource.Get("cx_rain_f.glsl");
 
-    /// <summary>The velocity stage: a streak's or flake's own fall, written in its core and nowhere on its edge.</summary>
+    /// <summary>The velocity stage: a drop's or flake's own fall, written in its core and nowhere on its edge.</summary>
     internal static string MotionFs => ShaderSource.Get("cx_wx_mot_f.glsl");
 
     /// <summary>A snowflake: a soft white disc, faded where it meets geometry. Linear, alpha over.</summary>

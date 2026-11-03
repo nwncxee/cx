@@ -25,7 +25,7 @@ internal static unsafe partial class Weather
     /// stage floors out of the clock is continuous across the wrap and no frame re-rolls the whole field.</summary>
     private const int SplashWrapSlices = 8192;
     /// <summary>Crowns at full rain per unit of the density knob, as a share of <see cref="MaxCount"/>: the
-    /// splash field is sized off the same budget the streaks are, so one knob still bounds the whole pass.</summary>
+    /// splash field is sized off the same budget the drops are, so one knob still bounds the whole pass.</summary>
     private const float SplashShare = 0.25f;
 
     internal static Knob<float> Impacts = null!, ImpactRange = null!;
@@ -88,7 +88,7 @@ internal static unsafe partial class Weather
     /// all a function of the instance id, plus the drops' own per-vertex light rig.</summary>
     internal static string SplashVs => ShaderSource.Get("cx_wx_sv.glsl");
 
-    /// <summary>One crown part: a ring on the ground or a droplet streak, as premultiplied scatter.</summary>
+    /// <summary>One crown part: a ring on the ground as premultiplied scatter, or a droplet as a water bead.</summary>
     internal static string SplashFs => ShaderSource.Get("cx_splash_f.glsl");
 
     /// <summary>What about this pass cannot be seen going wrong, against the GLSL text and hand-written literals:

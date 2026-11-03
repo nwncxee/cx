@@ -141,7 +141,8 @@ public sealed unsafe partial class AlloyRenderer
     private const int ZeroUboBytes = 16384, ZeroSsboBytes = 1 << 20;
     /// <summary>The draw buffer the G-buffer's first lane sits on, as GBuffer attaches it on GL.</summary>
     private const int GbufFirst = 4;
-    /// <summary>Attachments the colour pass names: scene colour, three slots routed nowhere, the G-buffer's three.</summary>
+    /// <summary>Attachments the colour pass names: scene colour, three slots routed nowhere, the G-buffer's four.
+    /// ponytail: eight is every colour attachment the RHI seats; the next lane needs a packed one or two passes.</summary>
     private const int ColourTargets = 8;
 
     /// <summary>Which attachment set a pipeline draws into.</summary>
@@ -633,7 +634,7 @@ public sealed unsafe partial class AlloyRenderer
         if (VkIsWaterTex(o.Name) && VkWaterTex(o.Name) is { IsNull: false } wat)
             return new ImageBinding(o.Binding, wat, VkWaterSampler(o.Name));
         if (o.Name == "uSceneDepth" && s.DepthFilled) return new ImageBinding(o.Binding, s.DepthRead);
-        if (o.Name == "uWxStand" && !s.G3.IsNull) return new ImageBinding(o.Binding, s.G3, s.Raw);
+        if (o.Name == "uWxStand" && !s.G3.IsNull && s.GbufWritten) return new ImageBinding(o.Binding, s.G3, s.Raw);
         return VkStandInOf(in o, s);
     }
 

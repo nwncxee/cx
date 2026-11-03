@@ -119,7 +119,7 @@ the light walk (`DeferredLights`, `cx_deferred_cs`), each with its own GPU term.
 - G3 (R8, COLOR7) is not the walk's. The twin records `cxWxStand` there, the water standing over the surface, and the
   rain splash reads it at each landing point after the walk, so a crown thins where a puddle has formed. It has
   memory of its own and no alias lane, because the splash may draw after the frame's resolve.
-- `OpaqueOwned` and `CutoutOwned` attach G0..G2 at COLOR4..6 (draw buffers `{0, NONE, 2, 3, 4, 5, 6}`
+- `OpaqueOwned` and `CutoutOwned` attach G0..G2 at COLOR4..6, and on Vulkan G3 at COLOR7 (draw buffers `{0, NONE, 2, 3, 4, 5, 6}`
   while Ssr's records are attached, `{0, NONE, NONE, NONE, 4, 5, 6}` otherwise) and detach after
   `CutoutOwned`. A prepassed batch draws at `GL_EQUAL`, a non-prepassed one at `LEQUAL` with depth writes, so
   the nearest writer wins either way. The sky draws between them and writes no G-buffer: its pixels keep G0 = 0.

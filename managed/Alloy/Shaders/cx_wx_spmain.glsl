@@ -262,8 +262,8 @@ void main()
         vUp = normalize(cross(toEye, side));
         vec3 low = vec3(-toEye.xy, 0.0);
         low = dot(low, low) > 1e-8 ? normalize(low) : vec3(1.0, 0.0, 0.0);
-        vSkyUp = uAreaAmbient * (uProbeMips > 0.0 ? CxAmbientShape(vec3(0.0, 0.0, 1.0)) : vec3(1.0));
-        vSkyLow = uAreaAmbient * (uProbeMips > 0.0 ? CxAmbientShape(low) : vec3(1.0));
+        vSkyUp = CxWxSky(vec3(0.0, 0.0, 1.0));
+        vSkyLow = CxWxSky(low);
         vLight = vec3(0.0);
         if (uLit != 0 && alive)
         {
