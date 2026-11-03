@@ -54,7 +54,7 @@ internal static unsafe partial class Weather
                         .Ladder(Quality.Weather, 0.5f, 0.8f, 1f, 1.5f);
         Drips = G.Slider("drips", "Roof drips", 0f, 1f, 0.05f, 0.25f, tier: Tier.Advanced,
                          help: "Drops fall from roof edges and overhangs while the roofs are wet, and keep falling for the dry-out time after the rain stops. 0 = off.");
-        Blur = G.Slider("blur", "Rain motion blur", 0f, 1f, 0.05f, 0f, tier: Tier.Advanced,
+        Blur = G.Slider("blur", "Rain motion blur", 0f, 1f, 0.05f, 0.5f, tier: Tier.Advanced,
                         help: "How far each rain drop smears along its fall, the way a camera's shutter would draw it. 0 = round drops.");
         G.Section("");
         FlakeSize = G.Slider("flake", "Snowflake size", 0.01f, 0.2f, 0.01f, 0.05f, "m", Tier.ChatOnly, help: "Diameter of one flake.");

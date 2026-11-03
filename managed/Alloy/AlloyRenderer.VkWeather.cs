@@ -46,6 +46,8 @@ public sealed unsafe partial class AlloyRenderer
         public float Step;
         /// <summary>The path the last line named; null until one was said.</summary>
         public Weather.WxPath? SaidPath;
+        /// <summary>A splash drew with no standing water recorded, and the line saying so is out.</summary>
+        public bool BareSaid;
         public VkProg? Motion;
         public PipelineId MotionPipe;
         public Weather.Loc ML;
@@ -343,6 +345,11 @@ public sealed unsafe partial class AlloyRenderer
             n = Weather.WriteSplashVk(in s.Sp, &v, &pr, viewport, _eyePos, lit);
             LooseBlock.Set(s.Sp.Late, late ? 1 : 0);
             LooseBlock.Set(s.Sp.StandOn, c.GbufWritten ? 1 : 0);
+            if (!c.GbufWritten && !s.BareSaid)
+            {
+                s.BareSaid = true;
+                _log?.Always("AlloyRenderer: the rain crowns read every landing point as bare ground -- this frame recorded no standing water (the deferred G-buffer is off), so puddles throw full crowns");
+            }
             LooseBlock.Set(s.Sp.Screen, [(float)viewport[2], viewport[3]]);
         }
         finally { LooseBlock.EndCapture(); }

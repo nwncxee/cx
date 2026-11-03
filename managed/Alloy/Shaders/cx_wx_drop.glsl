@@ -20,6 +20,9 @@ const float CX_WX_BEAD_EXT = 0.15;
 const float CX_WX_GLINT_ALPHA = 0.1;
 /// How tightly a light seen THROUGH the drop focuses: a cosine power over the angle off its bent view.
 const float CX_WX_CAUSTIC_POW = 2000.0;
+/// The share of a light a drop's lit side sends back by bouncing it round inside: what makes a drop in a lamp's beam
+/// glow as a whole and not only at its glint. Water's own, as the earlier drop shading took it.
+const float CX_WX_BEAD_GLOW = 0.25;
 
 /// One drop's extent on screen at <c>pxPerM</c> pixels per metre, falling <c>speed</c> m/s under the motion blur
 /// setting <c>blur</c> (0 none, 1 a full shutter): x metres along its fall, y across, both at least a pixel, and z
@@ -56,7 +59,7 @@ vec3 CxWxBeadLight(vec3 N, vec3 V, vec3 T, float fresnel, vec3 L, vec3 col)
     float f = CX_WX_WATER_F0 + (1.0 - CX_WX_WATER_F0) * pow(1.0 - vh, 5.0);
     float mirror = nl > 0.0 ? CxWxGlint(max(dot(N, H), 0.0)) * f / (4.0 * nv) : 0.0;
     float through = (1.0 - fresnel) * pow(max(dot(T, L), 0.0), CX_WX_CAUSTIC_POW);
-    return col * (mirror + through);
+    return col * (mirror + through + CX_WX_BEAD_GLOW * max(nl, 0.0));
 }
 
 /// A drop as premultiplied colour at <c>uv</c> on its quad (the unit disc is the bead), seen along <c>V</c> (toward
@@ -78,6 +81,8 @@ vec4 CxWxBead(vec2 uv, vec3 V, vec3 right, vec3 up, vec3 skyUp, vec3 skyLow, vec
     vec3 T = normalize(-V * cos(bend) + away * sin(bend));
     vec3 c = fresnel * CxWxSkyAlong(R, skyUp, skyLow) + (1.0 - fresnel) * CX_WX_BEAD_EXT * CxWxSkyAlong(T, skyUp, skyLow);
     c += CxWxBeadLight(N, V, T, fresnel, lampDir, lampCol) + CxWxBeadLight(N, V, T, fresnel, sunDir, sunCol);
+    // ...and the sky's own light, bounced round inside as a lamp's is
+    c += CX_WX_BEAD_GLOW * CxWxSkyAlong(N, skyUp, skyLow);
     return vec4(c, CX_WX_BEAD_EXT);
 }
 #endif
