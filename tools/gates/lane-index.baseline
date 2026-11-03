@@ -27,6 +27,7 @@
 6 managed/Alloy/Db/TextQuads.cs
 2 managed/Alloy/Db/TileBuild.Plan.cs
 2 managed/Alloy/Db/TileBuild.SelfCheck.cs
+1 managed/Alloy/Golden/AlloyRenderer.VkWeatherFixture.cs
 1 managed/Alloy/Golden/GpuGolden.DeferredRig.cs
 1 managed/Alloy/Golden/GpuGolden.DeferredWalk.Fixture.cs
 2 managed/Alloy/Golden/GpuGolden.DisplacementApprovedExamples.SelfCheck.cs

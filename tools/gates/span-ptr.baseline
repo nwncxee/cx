@@ -28,7 +28,7 @@
 13 managed/Alloy/RasterReader.cs
 5 managed/Alloy/RasterReader.Forced.cs
 1 managed/Alloy/Scene/AlloyEnvMap.cs
-3 managed/Alloy/Scene/EmitterSim.cs
+2 managed/Alloy/Scene/EmitterSim.cs
 2 managed/Alloy/Scene/GuiCapture.cs
 1 managed/Alloy/Seam/Facade.SelfCheck.cs
 1 managed/Alloy/Seam/Facade.Vtables.cs
