@@ -618,6 +618,8 @@ internal sealed unsafe partial class VkBackend
     private void MipsSettled(VkImg img)
     {
         VkImageLayout to = Settled(img.Desc.Use);
+        // the chain claimed an alias member at its first barrier; this closes that member's write, nothing more
+        Claim(img, to, writes: false);
         (VkPipelineStageFlags2 ds, VkAccessFlags2 da) = MeshScope(Scope(to));
         VkImageMemoryBarrier2 b = Whole(img);
         b.srcStageMask = VkPipelineStageFlags2.AllTransfer;
