@@ -347,8 +347,12 @@ internal sealed unsafe partial class VkBackend : IDevice
         return false;
     }
 
-    /// <summary>The device, or null -- logged -- when the probe refuses or a creation step fails.</summary>
-    public static VkBackend? TryCreate(ExtenderLog log)
+    /// <summary>The driver lists device extension <paramref name="name"/> (NUL-terminated) for this device.</summary>
+    internal bool Offers(ReadOnlySpan<byte> name) => HasExt(_vki, _phys, name);
+
+    /// <summary>The device, or null -- logged -- when the probe refuses or a creation step fails. <paramref name="meshShaders"/>
+    /// false opens it as a device without <c>VK_EXT_mesh_shader</c> would be.</summary>
+    public static VkBackend? TryCreate(ExtenderLog log, bool meshShaders = true)
     {
         if (Refusal(log) is string why) { log.Always($"VkBackend: REFUSED -- {why}"); return null; }
         if (Open(log, out VkInstance inst, out VkPhysicalDevice phys, out uint family, out VkPhysicalDeviceFeatures feats) is string late)

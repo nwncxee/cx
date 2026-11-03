@@ -113,6 +113,10 @@ internal static unsafe partial class Weather
     /// <summary>Where <see cref="Phase"/> wraps.</summary>
     internal static double PhaseWrap => Box * PhaseWrapLengths;
 
+    /// <summary>How the field reaches the rasteriser: a compute cull feeding an indirect draw, or task and mesh stages
+    /// that cull and emit in one draw.</summary>
+    internal enum WxPath : byte { Compute, Mesh }
+
     /// <summary>Where the precipitation draws: the scene, or out of the history a temporal resolve keeps.</summary>
     internal enum Site : byte { Scene, AfterUpscale, AfterTaa }
 
