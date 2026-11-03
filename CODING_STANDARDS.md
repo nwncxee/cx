@@ -33,6 +33,9 @@ rule and the gates.
   (CX0002).
 - **One layout, one declaration.** A hand-written struct does not restate a generated view, and two structs do
   not describe one GPU block.
+- **A push-constant block is a named struct (CX0007).** `CommandList.PushConstants` staged from a span of ints,
+  floats or bytes -- a collection expression, or `MemoryMarshal.AsBytes` of a primitive span -- is refused: declare
+  the block's members and push `MemoryMarshal.AsBytes(new ReadOnlySpan<T>(in x))`.
 - **A Framework container holds layout, not logic.** No Framework method takes a layout offset, a stride or a
   header size as a parameter: the offset comes from the type (a field, `sizeof(T)`, a view row). An offset the
   memory itself stores, such as nuklear's command `next`, is data and may be passed.

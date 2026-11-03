@@ -378,12 +378,19 @@ public sealed unsafe partial class CasterPass
             }
             if (want != pipe) { cl.SetPipeline(want); pipe = want; }
             if (fmt != boundFmt) { cl.BindVertexBuffer(MeshArena.VkVbo((MeshArena.Fmt)fmt)); boundFmt = fmt; }
-            float alphaCut = mode == 0 ? -1f : Threshold((CasterCut)cut);
-            cl.PushConstants(CutPushAt, MemoryMarshal.AsBytes(new ReadOnlySpan<float>(in alphaCut)));
+            var push = new VkCutPush { AlphaCut = mode == 0 ? -1f : Threshold((CasterCut)cut) };
+            cl.PushConstants(CutPushAt, MemoryMarshal.AsBytes(new ReadOnlySpan<VkCutPush>(in push)));
             cl.DrawIndexedIndirect(CasterGatherVk.LayerCommands, (long)_gStart[g] * vn * CasterGather.CmdBytes,
                                    _gLen[g] * vn, CasterGatherVk.LayerCounts, (long)g * sizeof(uint));
             _mdiCalls++;
         }
+    }
+
+    /// <summary>The slice of the translated push block a caster depth stage writes, staged at
+    /// <see cref="CutPushAt"/>.</summary>
+    private struct VkCutPush
+    {
+        public float AlphaCut;
     }
 
     /// <summary>Where the cut sits in the translated push block: every member of <c>VkGlsl.Push</c> is four bytes,

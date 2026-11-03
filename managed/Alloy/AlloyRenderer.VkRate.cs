@@ -23,7 +23,7 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary><c>cx_vrs_cs</c>'s push block.</summary>
     [StructLayout(LayoutKind.Sequential)]
-    private struct VkRatePush
+    internal struct VkRatePush
     {
         public float Contrast;
         public int Tile;

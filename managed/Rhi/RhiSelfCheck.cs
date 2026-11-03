@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using CX.Framework;
 
 namespace CX.Rhi;
@@ -89,12 +90,21 @@ public static class RhiSelfCheck
         check.Expect(!list.TakePending().Next(out _), "a command is handed out once");
     }
 
+    /// <summary>The two words this file's pushes stage, so the bytes that reach the stream come from a layout with
+    /// named members rather than a positional list.</summary>
+    private struct PushProbe
+    {
+        public int First;
+        public int Second;
+    }
+
     /// <summary>The batch pass's commands read back with their literals; a push past the block and a ragged multi-draw
     /// are refused and fault the list, recording nothing.</summary>
     private static void DrawRoundTrip(Checker check)
     {
+        var probe = new PushProbe { First = 1, Second = 2 };
         var list = new CommandList("selfcheck-draw");
-        list.PushConstants(4, [1, 0, 0, 0, 2, 0, 0, 0]);
+        list.PushConstants(4, MemoryMarshal.AsBytes(new ReadOnlySpan<PushProbe>(in probe)));
         list.BindVertexBuffer(new BufferId(3), 96);
         list.SetDepthState(new DepthState(true, false, CompareOp.Equal));
         list.SetRasterState(new RasterState(CullMode.Back, FrontCw: true, DepthBias: true));
@@ -117,7 +127,7 @@ public static class RhiSelfCheck
         check.Expect(!r.Next(out _), "nothing past the indirect draw");
 
         var bad = new CommandList("selfcheck-refusals");
-        bad.PushConstants(124, [1, 2, 3, 4, 5, 6, 7, 8]);
+        bad.PushConstants(124, MemoryMarshal.AsBytes(new ReadOnlySpan<PushProbe>(in probe)));
         check.Expect(bad.Faulted && bad.Length == 0, "a push past the 128-byte block faults and records nothing");
         bad.Reset();
         bad.DrawIndexedMulti([1, 2], [0], [0, 0]);
