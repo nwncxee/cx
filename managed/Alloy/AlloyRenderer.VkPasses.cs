@@ -354,6 +354,7 @@ public sealed unsafe partial class AlloyRenderer
             s.TexHTable = new uint[cap * TexHandles.MaterialSlots * 2];
             s.RecCap = cap;
             whole = true;
+            RecordUploads.Claim(RecordWhole.Grew);
             if (s.Records.IsNull || s.TexH.IsNull) { s.RecCap = 0; return false; }
         }
         s.WhiteIndex = VkTextures.Index(OwnedTextures.WhiteTid());
@@ -365,11 +366,14 @@ public sealed unsafe partial class AlloyRenderer
             for (int r = 0; r < cap; r++) VkHandles(r);
             cl.UpdateBuffer(s.Records, 0, rec);
             cl.UpdateBuffer(s.TexH, 0, MemoryMarshal.AsBytes(s.TexHTable.AsSpan()));
+            RecordUploads.NoteWhole((long)cap * (rb + hb));
         }
         else
         {
             int nd = Math.Min(s.DirtyN, s.Dirty.Length);
             Array.Sort(s.Dirty, 0, nd);
+            int runs = 0;
+            long sent = 0;
             for (int d = 0; d < nd;)
             {
                 int first = s.Dirty[d], last = first;
@@ -379,7 +383,10 @@ public sealed unsafe partial class AlloyRenderer
                 for (int r = first; r <= last; r++) VkHandles(r);
                 cl.UpdateBuffer(s.Records, (long)first * rb, rec.Slice(first * rb, (last - first + 1) * rb));
                 cl.UpdateBuffer(s.TexH, (long)first * hb, MemoryMarshal.AsBytes(s.TexHTable.AsSpan(first * TexHandles.MaterialSlots * 2, (last - first + 1) * TexHandles.MaterialSlots * 2)));
+                runs++;
+                sent += (long)(last - first + 1) * (rb + hb);
             }
+            RecordUploads.NoteDelta(runs, sent);
         }
         s.DirtyN = 0; s.DirtyAll = false;
         long slotBytes = Math.Max((long)_drawN * sizeof(int), 4);

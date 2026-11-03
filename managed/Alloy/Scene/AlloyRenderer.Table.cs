@@ -244,6 +244,15 @@ public sealed unsafe partial class AlloyRenderer
         var retNames = new List<uint> { 78 };
         NoteOwnedNamesRetired(retNames, new HashSet<uint>());
         ok &= _gate[2].TexStale && _recTexStamp[2] == 0 && !_gate[1].TexStale && _recTexStamp[1] == _stageTexSerial;
+        // CX-302: a Vulkan-only name sits far past any GL one, and must still be marked PER SLOT. Unstamping
+        // every record instead costs the whole table on the next frame that draws, so the epoch must hold.
+        uint vkRetired = VkTextures.FirstName + 5;
+        for (int i = 0; i < 4; i++) { _gate[i].TexStale = false; _recTexStamp[i] = _stageTexSerial; }
+        int svEpoch = RecordEpoch;
+        _recTid[2] = (int)vkRetired;
+        NoteOwnedNamesRetired(new List<uint> { vkRetired }, new HashSet<uint>());
+        ok &= _gate[2].TexStale && _recTexStamp[2] == 0 && !_gate[1].TexStale && RecordEpoch == svEpoch;
+        _recTid[2] = 78;
         // ZeroHandle's own funnel: the dying VALUE is matched in the handle block, so the slot it sits in is
         // marked AND un-memoised -- a zeroed handle that is never re-resolved is the radeonsi page fault.
         const ulong fakeDying = 0xD1E1A5E0u;   // not-an-offset: a stand-in handle value, never dereferenced
@@ -339,28 +348,22 @@ public sealed unsafe partial class AlloyRenderer
         }
     }
     /// <summary>The Drain-time form: every name about to lose its handle, marked in one scan. A swapped
-    /// record already holds its new name, so it matches nothing here.
-    /// ponytail: names past the mark table fall back to the epoch bump; GL names are small ints in practice.</summary>
+    /// record already holds its new name, so it matches nothing here. The mark set is keyed on the name
+    /// itself, so a name anywhere in the range <see cref="VkTextures.NewName"/> mints is marked per slot.</summary>
     internal static void NoteOwnedNamesRetired(List<uint> names, HashSet<uint> handles)
     {
         if (names.Count == 0 && handles.Count == 0) return;
         NoteTexStalePending();
-        foreach (uint n in names) if (n >= _nameMark.Length) { InvalidateRecords(); return; }
-        foreach (uint n in handles) if (n >= _nameMark.Length) { InvalidateRecords(); return; }
-        foreach (uint n in names) _nameMark[n] = 1;
-        foreach (uint n in handles) _nameMark[n] = 1;
+        _nameMark.Clear();
+        foreach (uint n in names) _nameMark.Add((int)n);
+        foreach (uint n in handles) _nameMark.Add((int)n);
         for (int i = 0; i < _ownCount; i++)
-            {
-                int t = _recTid[i];
-                if ((uint)t < _nameMark.Length && _nameMark[t] != 0) { MarkTexStale(i); continue; }
-                for (int k = 0; k < MapSlots; k++)
-                {
-                    t = _recTidS[i * MapSlots + k];
-                    if ((uint)t < _nameMark.Length && _nameMark[t] != 0) { MarkTexStale(i); break; }
-                }
-            }
-        foreach (uint n in names) _nameMark[n] = 0;
-        foreach (uint n in handles) _nameMark[n] = 0;
+        {
+            if (_nameMark.Contains(_recTid[i])) { MarkTexStale(i); continue; }
+            for (int k = 0; k < MapSlots; k++)
+                if (_nameMark.Contains(_recTidS[i * MapSlots + k])) { MarkTexStale(i); break; }
+        }
+        _nameMark.Clear();
     }
     /// <summary>A handle that just died must leave every record block NOW, not at the next colour build: the
     /// caster bake samples the GPU handle table off a STANDING staging, and a sample through a dead handle is
@@ -388,7 +391,8 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The handle table changed since its last upload. Apart from the shared record dirty list,
     /// which movers touch every frame -- the bake must not pay a handle upload for a matrix write.</summary>
     internal static bool _texHDirty;
-    private static readonly byte[] _nameMark = new byte[1 << 20];
+    /// <summary>The names one retire batch is marking records against, reused between batches.</summary>
+    private static readonly HashSet<int> _nameMark = new();
     private static readonly int[] _recTidS = new int[MaxOwned * MapSlots];
     private static readonly int[] _recSlotMask = new int[MaxOwned];
     /// <summary>How many record slots the persistent GPU buffer holds for OWNED parts, the sky's

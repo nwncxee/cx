@@ -635,15 +635,21 @@ public sealed unsafe partial class AlloyRenderer
         // reserve-then-write: workers append concurrently
         int n = System.Threading.Interlocked.Increment(ref _recDirtyN) - 1;
         if (n < _recDirty.Length) _recDirty[n] = slot;
-        else _recDirtyAll = true;
+        else { _recDirtyAll = true; RecordUploads.Claim(RecordWhole.Marks); }
     }
 
     /// <summary>Every persistent record is suspect -- rebuild them all on the next frame that draws. The edges
     /// that need it are the ones no per-part compare can see: a bindless handle wipe or context loss (a record
     /// holding a dead handle samples whatever took its name), and the debug toggles that change what a record
     /// means. Enrolment is NOT one of them: <see cref="UnstampRecord"/> invalidates a re-tenanted slot.</summary>
-    internal static void InvalidateRecords() => System.Threading.Interlocked.Increment(ref _recEpoch);
-                                              // Interlocked: /alloy runs on the input thread
+    internal static void InvalidateRecords() => InvalidateRecords(RecordWhole.Knob);
+
+    /// <summary>The same, for an edge that can say which one it is; the reason reaches the period line.</summary>
+    internal static void InvalidateRecords(RecordWhole why)
+    {
+        System.Threading.Interlocked.Increment(ref _recEpoch);   // Interlocked: /alloy runs on the input thread
+        RecordUploads.Claim(why);
+    }
 
     /// <summary>One routed part in this many carries the <c>Zone.Chase</c> timestamps. Power of two.</summary>
     internal const int ChaseEvery = 16;
@@ -671,7 +677,7 @@ public sealed unsafe partial class AlloyRenderer
         _mvN = 0; _mvSkinned = false; _mvDangly = false;   // #392: this pass's mover list, whether or not a velocity pass consumes it
         // #242: the persistent buffer grows to the high-water ownership count and never shrinks. A growth
         // reallocates it, so everything in it goes back up on this frame rather than only the movers.
-        if (_ownCount > _recOwnCap) { _recOwnCap = _ownCount; _recDirtyAll = true; }
+        if (_ownCount > _recOwnCap) { _recOwnCap = _ownCount; _recDirtyAll = true; RecordUploads.Claim(RecordWhole.Owners); }
         // #120: this part's live slot-1..5 tids. Declared ONCE, outside the loop -- a stackalloc per
         // iteration grows the frame by the part count.
         int* slotTid = stackalloc int[MapSlots];
