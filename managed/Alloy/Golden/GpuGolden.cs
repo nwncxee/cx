@@ -46,6 +46,7 @@ internal static partial class GpuGolden
         MipChainSelfCheck(vk, check, log);
         MipChainHiZSelfCheck(vk, check, log);
         TransferSelfCheck(vk, check, log);
+        BlitChainSelfCheck(vk, check, log);
         TransferAfterMips(vk, check, log);
         TransferRefill(vk, check);
         VmaSelfCheck(vk, check, log);

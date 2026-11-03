@@ -585,8 +585,9 @@ internal sealed unsafe partial class VkBackend
         u.Acquire.Clear();
     }
 
-    /// <summary>Each mip from the one above it by a linear blit, every layer at once; the image ends shader-readable.
-    /// False (logged) when it was not created as both ends of a copy, which the blit of itself onto itself needs.</summary>
+    /// <summary>Each mip from the one above it by a linear blit, every layer at once, with one barrier per level -- the
+    /// level the next blit reads into its source layout -- and one more for the whole chain at the end. False (logged)
+    /// when it was not created as both ends of a copy, which the blit of itself onto itself needs.</summary>
     private bool BlitMips(VkImg img)
     {
         if (MipsMissing(img) is { } why) return Fault($"GenerateMips: {img.Desc.Label} {why}");
@@ -595,7 +596,7 @@ internal sealed unsafe partial class VkBackend
         uint layers = (uint)(img.Desc.Kind is ImageKind.Cube or ImageKind.CubeArray ? img.Desc.Layers * 6 : img.Desc.Layers);
         for (int m = 1; m < img.Desc.Mips; m++)
         {
-            MipBarrier(img, m - 1, VkImageLayout.TransferDstOptimal, VkImageLayout.TransferSrcOptimal);
+            MipBarrier(img, m - 1);
             var b = new VkImageBlit
             {
                 srcSubresource = new VkImageSubresourceLayers { aspectMask = VkImageAspectFlags.Color, mipLevel = (uint)(m - 1), layerCount = layers },
@@ -605,15 +606,47 @@ internal sealed unsafe partial class VkBackend
             b.srcOffsets[1] = new VkOffset3D { x = Math.Max(img.Desc.W >> (m - 1), 1), y = Math.Max(img.Desc.H >> (m - 1), 1), z = vol ? Math.Max(img.Desc.D >> (m - 1), 1) : 1 };
             b.dstOffsets[1] = new VkOffset3D { x = Math.Max(img.Desc.W >> m, 1), y = Math.Max(img.Desc.H >> m, 1), z = vol ? Math.Max(img.Desc.D >> m, 1) : 1 };
             _vkd.vkCmdBlitImage(_cmd, img.Image, VkImageLayout.TransferSrcOptimal, img.Image, VkImageLayout.TransferDstOptimal, 1, &b, VkFilter.Linear);
-            MipBarrier(img, m - 1, VkImageLayout.TransferSrcOptimal, VkImageLayout.TransferDstOptimal);
         }
         img.Written = true;
-        Transition(img, Settled(img.Desc.Use));
+        MipsSettled(img);
         return true;
     }
 
-    private void MipBarrier(VkImg img, int mip, VkImageLayout from, VkImageLayout to)
+    /// <summary>The whole chain into the layout a filled image settles in, as one call: the levels the blits read from
+    /// the transfer-source layout each left them in, and the last level -- which nothing read -- from the destination.
+    /// Each level is written once, so nothing but this needs to put it back.</summary>
+    private void MipsSettled(VkImg img)
     {
+        VkImageLayout to = Settled(img.Desc.Use);
+        (VkPipelineStageFlags2 ds, VkAccessFlags2 da) = MeshScope(Scope(to));
+        VkImageMemoryBarrier2 b = Whole(img);
+        b.srcStageMask = VkPipelineStageFlags2.AllTransfer;
+        b.srcAccessMask = VkAccessFlags2.TransferWrite;
+        b.dstStageMask = ds;
+        b.dstAccessMask = da;
+        b.newLayout = to;
+        uint last = (uint)(img.Desc.Mips - 1);
+        if (last > 0)
+        {
+            b.oldLayout = VkImageLayout.TransferSrcOptimal;
+            b.subresourceRange.baseMipLevel = 0;
+            b.subresourceRange.levelCount = last;
+            Queue(b);
+        }
+        b.oldLayout = VkImageLayout.TransferDstOptimal;
+        b.subresourceRange.baseMipLevel = last;
+        b.subresourceRange.levelCount = 1;
+        Queue(b);
+        Flush();
+        img.Layout = to;
+        img.Written = false;
+    }
+
+    /// <summary><paramref name="mip"/> of <paramref name="img"/>, every layer, from the fill or blit that wrote it into
+    /// the source of the blit that reads it next.</summary>
+    private void MipBarrier(VkImg img, int mip)
+    {
+        const VkImageLayout from = VkImageLayout.TransferDstOptimal, to = VkImageLayout.TransferSrcOptimal;
         (VkPipelineStageFlags2 ss, VkAccessFlags2 sa) = MeshScope(Scope(from));
         (VkPipelineStageFlags2 ds, VkAccessFlags2 da) = MeshScope(Scope(to));
         var b = new VkImageMemoryBarrier2
