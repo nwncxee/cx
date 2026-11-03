@@ -134,8 +134,9 @@ public sealed unsafe partial class AlloyRenderer
     private sealed class EngineNamedState
     {
         public readonly UniformBlock<EngineBlockPacked> Blk = new();
-        /// <summary>Where the std140 expansion is staged, for a device without scalar block layout.</summary>
-        public readonly UniformBlock<EngineBlock> Pad = new();
+        /// <summary>Where the std140 expansion is staged, taken on the first stage for a device without scalar
+        /// block layout and never on one that offers it, the block being 10 KB of padding to hold.</summary>
+        public UniformBlock<EngineBlock>? Pad;
         public Matrix4x4 Proj;
         public ulong Noise;
         public int Frame = -1, Count;
@@ -190,7 +191,7 @@ public sealed unsafe partial class AlloyRenderer
     internal static ReadOnlySpan<byte> EngineBlockBytes(in EngineBlockPacked b)
     {
         if (VkGlsl.ScalarBlocks) return MemoryMarshal.AsBytes(new ReadOnlySpan<EngineBlockPacked>(in b));
-        ref EngineBlock pad = ref _engineU.Pad.Stage;
+        ref EngineBlock pad = ref (_engineU.Pad ??= new()).Stage;
         EngineBlockPacked.ToStd140(in b, ref pad);
         return MemoryMarshal.AsBytes(new ReadOnlySpan<EngineBlock>(in pad));
     }

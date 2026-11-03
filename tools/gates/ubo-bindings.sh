@@ -2,9 +2,10 @@
 # CX-316: every non-opaque uniform lives in a std140 or scalar block on an explicit binding point, and the points live in
 # managed/Alloy/Core/UboSlots.cs, read here by that file name. A point past the driver's budget fails to compile
 # and costs the whole program; two blocks on one point are no error at all -- the reader gets the other block.
-# Refused: a std140, scalar or layout-macro binding literal at or past the budget, a slot constant at or past it,
-# and a numeric index handed straight to BindBufferBase/BindBufferRange on UNIFORM_BUFFER, which no table or check
-# would ever see.
+# Refused: a std140, scalar or layout-macro UNIFORM block's binding literal at or past the budget (the qualifier
+# alone does not say which budget a block answers to -- `scalar` is legal on a storage block, which ssbo-bindings.sh
+# counts -- so the declaration kind is what each gate matches on), a slot constant at or past it, and a numeric index
+# handed straight to BindBufferBase/BindBufferRange on UNIFORM_BUFFER, which no table or check would ever see.
 cd "$(dirname "$0")/../.."
 python3 - <<'EOF' || exit 1
 import re, subprocess, sys
@@ -16,7 +17,7 @@ bad = []
 for f in files:
     if not f.endswith((".cs", ".glsl")): continue
     for n, line in enumerate(open(f, encoding="utf-8", errors="replace"), 1):
-        for m in re.finditer(r"(?:std140|scalar|CX_ENGBLK),\s*binding\s*=\s*(\d+)", line):
+        for m in re.finditer(r"(?:std140|scalar|CX_ENGBLK),\s*binding\s*=\s*(\d+)\s*\)\s*uniform", line):
             if int(m.group(1)) >= budget: bad.append(f"{f}:{n}: binding {m.group(1)}")
         if re.search(r"BindBuffer(Base|Range)\(Gl\.UNIFORM_BUFFER,\s*\d", line):
             bad.append(f"{f}:{n}: a literal uniform-block index -- name a UboSlots constant")

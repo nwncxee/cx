@@ -65,9 +65,7 @@ public sealed unsafe partial class AlloyRenderer
         side.SetViewport(0, 0, viewport[2], viewport[3]);
         side.SetPipeline(s.Pipe);
         VkProg p = s.Prog!;
-        int groups = 0, bare = 0;
-        int textured = VkHaloLoose(p, s, view, proj, textured: true), untextured = -1;
-        if (textured < 0) return false;
+        int groups = 0, bare = 0, textured = -1, untextured = -1;
         for (int at = 0; at < n;)
         {
             uint tex = Halos.VkTex(at);
@@ -75,6 +73,7 @@ public sealed unsafe partial class AlloyRenderer
             while (at + run < n && Halos.VkTex(at + run) == tex) run++;
             ImageId img = tex != 0 ? VkTextures.Image((int)tex) : default;
             if (img.IsNull && untextured < 0) untextured = VkHaloLoose(p, s, view, proj, textured: false);
+            if (!img.IsNull && textured < 0) textured = VkHaloLoose(p, s, view, proj, textured: true);
             int loose = img.IsNull ? untextured : textured;
             if (loose < 0) return false;
             Span<ImageBinding> sampled = stackalloc ImageBinding[8];
@@ -114,9 +113,9 @@ public sealed unsafe partial class AlloyRenderer
         return true;
     }
 
-    /// <summary>The halos' loose block for a draw with or without an authored texture, staged in this frame's arena.
-    /// The group's first element rides the draw's <c>firstInstance</c>, so nothing else in the block varies by group
-    /// and the whole pass stages at most two. Negative when the arena is full.</summary>
+    /// <summary>The halos' loose block for a draw with or without an authored texture, staged in this frame's arena
+    /// on first use of its kind. The group's first element rides the draw's <c>firstInstance</c>, so nothing else in
+    /// the block varies by group and a pass stages one slice per kind it draws. Negative when the arena is full.</summary>
     private static int VkHaloLoose(VkProg p, VkHaloState s, in Matrix4x4 view, in Matrix4x4 proj, bool textured)
     {
         Array.Clear(p.Block);
