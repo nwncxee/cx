@@ -21,11 +21,11 @@ public sealed unsafe partial class AlloyRenderer
         vk.DeviceLocalBytes(out long usage, out long budget, out long size, out _);
         long free = Math.Max(budget - usage, 0) / 1024, total = size / 1024;
         _vram.FreeKib = (int)Math.Min(free, int.MaxValue);
-        if (_vramProbed) return;
-        _vramProbed = true;
-        _vramExt = vk.MemoryBudget ? "VK_EXT_memory_budget" : "the Vulkan allocator's estimate (no VK_EXT_memory_budget)";
-        _vramTotalKib = (int)Math.Min(total, int.MaxValue);
-        _log.Info($"AlloyRenderer: [vram] {_vramExt}, {_vramTotalKib / 1024}MiB device-local, {_vram.FreeKib / 1024}MiB free");
+        if (_vram.Probed) return;
+        _vram.Probed = true;
+        _vram.Ext = vk.MemoryBudget ? "VK_EXT_memory_budget" : "the Vulkan allocator's estimate (no VK_EXT_memory_budget)";
+        _vram.TotalKib = (int)Math.Min(total, int.MaxValue);
+        _log.Info($"AlloyRenderer: [vram] {_vram.Ext}, {_vram.TotalKib / 1024}MiB device-local, {_vram.FreeKib / 1024}MiB free");
     }
 
     /// <summary>The frame line's memory part: what Alloy's allocations hold, the device's use against its budget, and
@@ -45,39 +45,40 @@ public sealed unsafe partial class AlloyRenderer
     /// makes the device and reads its figures.</summary>
     internal static string FrameVram()
     {
-        if (!_vramProbed || AlloyDevice.VulkanMade is not VkBackend vk) return "";
+        if (!_vram.Probed || AlloyDevice.VulkanMade is not VkBackend vk) return "";
         vk.DeviceLocalBytes(out long usage, out long budget, out _, out long held);
         return VramLine(held, usage, budget, vk.Largest(3));
     }
 
-    /// <summary>The device's memory figures as last sampled, KiB.</summary>
+    /// <summary>The device's memory figures as last sampled, KiB, and which query answered: what the probe
+    /// settled for the session, beside the free figure every bracket resamples.</summary>
     private sealed class VramState
     {
         public int FreeKib;
+        public bool Probed;
+        public string? Ext;
+        public int TotalKib;
     }
 
     private static readonly VramState _vram = new();
 
-    private static bool _vramProbed;
-    private static string? _vramExt;
-    private static int _vramTotalKib;
     /// <summary>The probe's total, MiB; 0 before the probe or when the device answers nothing.</summary>
-    internal static long VramTotalMib => _vramTotalKib / 1024;
+    internal static long VramTotalMib => _vram.TotalKib / 1024;
     /// <summary>Is the bindless path armed this session (probed at the first lit program build)?</summary>
     internal static bool Bindless => _bindless;
     /// <summary>ATI_meminfo (Mesa) answers FREE, never total; at probe time that is most of the card.</summary>
     internal static long VramFreeMib => _vram.FreeKib / 1024;
-    internal static bool VramProbed => _vramProbed;
+    internal static bool VramProbed => _vram.Probed;
 
     /// <summary>The <c>/knobs</c> residency line: what Alloy is holding, and what the device will say about
     /// the pool it is holding it in. Null until the bracket has probed, which is the honest answer before a
     /// frame has run.</summary>
     internal static string? VramNote()
     {
-        if (!_vramProbed) return null;
-        string device = _vramExt == null
+        if (!_vram.Probed) return null;
+        string device = _vram.Ext == null
             ? "the device answers no memory query"
-            : $"{_vramExt}: " + (_vramTotalKib > 0 ? $"{_vramTotalKib / 1024}MiB total, " : "")
+            : $"{_vram.Ext}: " + (_vram.TotalKib > 0 ? $"{_vram.TotalKib / 1024}MiB total, " : "")
               + $"{_vram.FreeKib / 1024}MiB free";
         return $"[vram] Alloy holds {OwnedTextures.PeakMib}MiB of textures at high water; {device}";
     }

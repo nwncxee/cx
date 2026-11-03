@@ -267,7 +267,7 @@ internal static partial class ContentStage
     /// lit vertex stage's text ahead of the region, as its own build sees it, since that decides the declarations it drops.</summary>
     private static Result VertexHalf(string vs, CX.Framework.ExtenderLog? log, int v, int rev)
     {
-        string lit = CX.Alloy.Programs._litVsSrc ?? AlloyRenderer.OwnedLitVs;
+        string lit = AlloyRenderer.OwnedLitVs;
         int at = lit.IndexOf(ShaderSource.LibMark + ContentPrograms.VsLib + "\n", StringComparison.Ordinal);
         return Translate(vs, false, VanillaShader.ChainText, Env(false, log), "", at < 0 ? lit : lit[..at], v, rev);
     }

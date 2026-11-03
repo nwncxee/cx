@@ -15,26 +15,29 @@ namespace CX.Alloy;
 /// partial: it owns the program handles and uniform locations, reaching renderer state through static use.</summary>
 internal static unsafe class Programs
 {
-    /// <summary>The lit stage's DEFERRED twin on the vanilla renderer's chain (ADR 0029): 0 = no twin, which is
-    /// what keeps that chain's deferred pass -- and the pair tiles it takes its debt from -- stood down.</summary>
-    internal static uint _progLitDef;
-    /// <summary>The vertex source the lit / fullbright programs actually compiled with (an override wins).</summary>
-    internal static string? _litVsSrc;
-    /// <summary>The fragment text the lit program compiled with: what every variant of it is spliced from (the
-    /// A2C mask, and whatever a diagnostic builds).</summary>
-    internal static string? _litFsSrc;
-    /// <summary>The spliced programs were built against a resource chain that is gone. Every program carrying
-    /// a <c>// $VANILLA</c> region (lit, content pairs, water, grass) compiles ONCE from whatever the chain held
-    /// then, so without this a session keeps the first server's display hooks running on the next one. Set on
-    /// the module-unload edge (outside the bracket), acted on by <see cref="DropSpliced"/> inside it.</summary>
-    internal static bool _spliceStale;
+    /// <summary>What the program build holds for the resource chain now loaded. The module edge replaces it, so
+    /// no name or latch from the chain that is gone survives as a field nobody remembered to clear.</summary>
+    internal sealed class ProgramsState
+    {
+        /// <summary>The lit stage's DEFERRED twin on the vanilla renderer's chain (ADR 0029): 0 = no twin, which
+        /// is what keeps that chain's deferred pass -- and the pair tiles it takes its debt from -- stood down.</summary>
+        public uint LitDeferred;
+        /// <summary>The spliced programs were built against a resource chain that is gone. Every program carrying
+        /// a <c>// $VANILLA</c> region compiles ONCE from whatever the chain held then, so without this a session
+        /// keeps the first server's display hooks running on the next one. Set on the module-unload edge (outside
+        /// the bracket), acted on by <see cref="DropSpliced"/> inside it.</summary>
+        public bool SpliceStale;
+    }
+
+    /// <summary>The program build's one lifetime owner.</summary>
+    internal static ProgramsState State = new();
 
     /// <summary>Delete every program that splices content and clear its failure latch, so each rebuilds
     /// on its next use from the module now loaded. Inside the bracket, which is why the edge only sets the
     /// flag. The fullbright and depth programs splice nothing and stay.</summary>
     internal static void DropSpliced()
     {
-        _spliceStale = false;
+        State = new ProgramsState();
         // grass splices content too; its stages rebuild from the module now loaded
         // the native stages' images and passes first: the hosts below re-attach their programs to them as they rebuild
         StageResources.DropAll();

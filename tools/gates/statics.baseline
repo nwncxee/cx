@@ -1,12 +1,9 @@
 10 managed/Alloy/AlloyRenderer.Batches.cs
-22 managed/Alloy/AlloyRenderer.Bench.cs
 4 managed/Alloy/AlloyRenderer.Bones.cs
 29 managed/Alloy/AlloyRenderer.cs
-3 managed/Alloy/AlloyRenderer.Device.cs
 7 managed/Alloy/AlloyRenderer.Frame.cs
 74 managed/Alloy/AlloyRenderer.Metrics.cs
 10 managed/Alloy/AlloyRenderer.Motion.cs
-7 managed/Alloy/AlloyRenderer.Target.cs
 11 managed/Alloy/AlloyRenderer.Uniforms.cs
 9 managed/Alloy/Core/AlloyGate.cs
 2 managed/Alloy/Core/AurXform.cs
@@ -164,7 +161,6 @@
 11 managed/Alloy/Pass/Weather.Tracks.cs
 6 managed/Alloy/Pass/Weather.WetStep.cs
 1 managed/Alloy/PresentTarget.cs
-4 managed/Alloy/Programs.cs
 16 managed/Alloy/RasterReader.cs
 9 managed/Alloy/RasterReader.Forced.cs
 2 managed/Alloy/ResLocate.cs
