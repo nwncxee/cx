@@ -81,7 +81,7 @@ public sealed unsafe partial class AlloyRenderer
          + $"layout(std430, binding = {SsboSlots.GoldenIn}) readonly buffer CxRigPixels {{ CxRigPixel uPx[]; }};\n" + """
            layout(rgba32ui, binding = 0) uniform writeonly uimage2D uG0;
            layout(rgba32ui, binding = 1) uniform writeonly uimage2D uG1;
-           layout(r32ui, binding = 2) uniform writeonly uimage2D uG2;
+           layout(rg32ui, binding = 2) uniform writeonly uimage2D uG2;
            layout(r32f, binding = 3) uniform writeonly image2D uDepthOut;
            layout(rgba8, binding = 4) uniform writeonly image2D uVisOut;
            layout(rg32ui, binding = 5) uniform writeonly uimage2D uKeyOut;
@@ -107,11 +107,12 @@ public sealed unsafe partial class AlloyRenderer
                g.viewDepth = r.viewDepth;
                g.lmShare = vec3(r.lmShareR, r.lmShareG, r.lmShareB);
                g.surfFade = vec4(r.fadeX, r.fadeY, r.fadeZ, r.fadeW);
-               uvec4 w0, w1; uint w2;
+               g.ambT = vec3(r.ambTr, r.ambTg, r.ambTb);
+               uvec4 w0, w1; uvec2 w2;
                CxGbufPack(g, w0, w1, w2);
                imageStore(uG0, p, w0);
                imageStore(uG1, p, w1);
-               imageStore(uG2, p, uvec4(w2));
+               imageStore(uG2, p, uvec4(w2, 0u, 0u));
                float d = g.viewDepth > 0.0 ? uPzw / (g.viewDepth * (1.0 + r.skew)) - uPzz : 0.0;
                imageStore(uDepthOut, p, vec4(d));
                if ((p.x & 1) == 0 && (p.y & 1) == 0)
@@ -175,7 +176,7 @@ public sealed unsafe partial class AlloyRenderer
         const ImageUse both = ImageUse.Storage | ImageUse.Sampled;
         f.G0 = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba32Ui, w, h, 1, 1, 1, 1, both, "rig g0"));
         f.G1 = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba32Ui, w, h, 1, 1, 1, 1, both, "rig g1"));
-        f.G2 = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.R32Ui, w, h, 1, 1, 1, 1, both, "rig g2"));
+        f.G2 = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rg32Ui, w, h, 1, 1, 1, 1, both, "rig g2"));
         f.Depth = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.R32F, w, h, 1, 1, 1, 1, both, "rig depth"));
         f.Vis = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba8, rw, rh, 1, 1, 1, 1, both, "rig shadow record"));
         f.Key = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rg32Ui, rw, rh, 1, 1, 1, 1, both, "rig shadow key"));

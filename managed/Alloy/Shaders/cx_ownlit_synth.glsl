@@ -8,18 +8,22 @@ bool CxCoverCut(float coverage, float alpha, vec2 du1, vec2 du2, vec2 cutSize, f
         || uSolid != 0 && s < CX_SOLID_ALPHA;
 }
 
-/// inc_displacement.shd's DisplaceTextureCoords (DisplacementOffset 0, multiplier 1): the height map's relief
-/// marched along the view ray in tangent space, the step count by view angle, distance and screen height.
+/// inc_displacement.shd's DisplaceTextureCoords: the height map's relief marched along the view ray in tangent
+/// space, the step count by view angle, distance and screen height. `om` is the material's DisplacementOffset and
+/// DisplacementMultiplier (0 = the stock 1), which shift the march's start and scale its reach and its steps.
 /// Explicit gradients: the count differs per fragment, so implicit ones would be undefined in the loop.
-vec2 CxDisplace(vec2 uv, mat3 tsb, vec3 V, float depth, float screenH, vec2 du1, vec2 du2)
+vec2 CxDisplace(vec2 uv, mat3 tsb, vec3 V, float depth, float screenH, vec2 du1, vec2 du2, vec2 om)
 {
+    float mul = om.y != 0.0 ? om.y : 1.0;
     float m = 1.0 - 0.5 * dot(V, tsb[2]);
     m *= m / (max(depth, 1e-4) * 0.125);
-    float it = floor(CX_DISPLACE_STEPS * clamp(m * screenH / 1080.0, 0.0, 1.0) + 0.5);
+    float it = floor(CX_DISPLACE_STEPS * mul * clamp(m * screenH / 1080.0, 0.0, 1.0) + 0.5);
     if (it < 1.0) return uv;
     vec3 v = transpose(tsb) * V;
     float zh = 0.5 * v.z + 0.5;
     vec2 disp = v.xy * 0.05 * ((1.0 - v.z) / max(zh * zh, 1e-4) + 1.0);
+    uv += om.x * disp;
+    disp *= mul;
     float seg = 1.0 / it;
     float cur = (1.0 - textureGrad(uHeightTex, uv, du1, du2).r) * seg;
     for (int i = int(it); i > 1; i--)
@@ -85,6 +89,8 @@ void main()
     // CX-273: a decal fragment the layer already folded into the surface under it draws nothing here
     if (uDecal == 2 && CxDecalOn(imageLoad(uDecalSurf, ivec2(gl_FragCoord.xy)).r, vDepth)) discard;
     int slots = int(d.pbr.w);
+    cxFragNormal = (slots & CX_SLOT_NORMAL) != 0;
+    cxTransl = 1.0 - clamp(d.rot.w, 0.0, 1.0);
     // 22 = normal-map coverage: magenta where the material's map REACHED the shader, grey where it
     // did not. The one thing viz 7 cannot say, because a mesh normal and a mapped one paint the same
     // way there -- and a map that dropped out at the per-slot re-fetch looks exactly like content
@@ -154,7 +160,7 @@ void main()
         {
             // inc_standard.shd:213-217: the displaced UV is what every later tap of the material reads;
             // the pass's own viewport height (uTile is the viewport over the grid), not a sampler only SSAO binds
-            uv = CxDisplace(uv, mat3(T * inv, B * inv, N), V, vDepth, uTile.w * float(uGrid.y), du1, du2);
+            uv = CxDisplace(uv, mat3(T * inv, B * inv, N), V, vDepth, uTile.w * float(uGrid.y), du1, du2, vec2(d.amb.w, d.dif.w));
             // inc_material.shd:307-311's SetupOcclusionFromTexture: the height against a blurrier tap of itself
             // IS the local self-occlusion, the blur shrinking with distance (OCCLUSION_VICINITT_RANGE 7.0
             // - log2 of the view depth), clamped to 0.9 and squared.

@@ -7,7 +7,7 @@ namespace CX.Alloy;
 
 /// <summary>
 /// The deferred walk's approved examples (approved-spec, E8 and E11) on this device, through the goldens' rig. Oracles:
-/// main 65203c28's recorded frame of the stone wall (E8), and the lamp count of a wall every lamp reaches (E11).
+/// the recorded frame of the stone wall (E8), and the lamp count of a wall every lamp reaches (E11).
 /// </summary>
 internal static partial class GpuGolden
 {

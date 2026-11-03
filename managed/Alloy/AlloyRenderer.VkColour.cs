@@ -178,7 +178,7 @@ public sealed unsafe partial class AlloyRenderer
             s.Depth = VkTarget(vk, Format.D32F, w, h, "vk scene depth");
             s.G0 = VkTarget(vk, Format.Rgba32Ui, w, h, "vk g-buffer 0", alias: AliasLanes.Wide);
             s.G1 = VkTarget(vk, Format.Rgba32Ui, w, h, "vk g-buffer 1", alias: AliasLanes.Second);
-            s.G2 = VkTarget(vk, Format.R32Ui, w, h, "vk g-buffer 2", alias: AliasLanes.Narrow);
+            s.G2 = VkTarget(vk, Format.Rg32Ui, w, h, "vk g-buffer 2", alias: AliasLanes.Narrow);
             s.DepthRead = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.D32F, w, h, 1, 1, 1, 1,
                                                        ImageUse.Sampled | ImageUse.CopyDst, "vk scene depth copy"));
             s.W = w; s.H = h;
@@ -689,7 +689,7 @@ public sealed unsafe partial class AlloyRenderer
             d.Targets.Colors[0] = Format.Rgba16F;
             d.Targets.Colors[GbufFirst] = Format.Rgba32Ui;
             d.Targets.Colors[GbufFirst + 1] = Format.Rgba32Ui;
-            d.Targets.Colors[GbufFirst + 2] = Format.R32Ui;
+            d.Targets.Colors[GbufFirst + 2] = Format.Rg32Ui;
             bool twin = p.Deferred;
             for (int i = GbufFirst; i < ColourTargets; i++) d.Blend[i] = new AttachmentBlend(Masked: twin ? ColorMask.None : ColorMask.All);
             if (targets == VkTargets.ColourRefl)

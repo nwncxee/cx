@@ -63,6 +63,8 @@ internal static class MtrParams
                 if (Is(name, "Specularity")) param.Specularity = v[0];
                 else if (Is(name, "Roughness")) param.Roughness = v[0];
                 else if (Is(name, "Metallicness")) param.Metallicness = v[0];
+                else if (Is(name, "DisplacementOffset")) param.DisplacementOffset = v[0];
+                else if (Is(name, "DisplacementMultiplier")) param.DisplacementMultiplier = v[0];
                 else if (Is(name, "CustomSpecularColor") && v.Length >= 3)
                 {
                     param.CustomR = v[0]; param.CustomG = v[1]; param.CustomB = v[2];
@@ -163,6 +165,17 @@ internal static class MtrParams
         check.Expect(DrawRecipe.SlotName(1, null, tanned) == "a_n", "a mesh whose file supplied tangents loses its texture1");
         MtrDef nm = MtrDef.Parse(System.Text.Encoding.ASCII.GetBytes("texture1 mtr_n\n"), "slotcheck");
         check.Expect(DrawRecipe.SlotName(1, nm, plain) == "mtr_n", "a .mtr's declared texture1 is gated on the MODEL's tangent frame");
+        // The maps fslit drops come back wherever the engine's stage reads them: a tangent frame, the material's
+        // own hint, or a named pair, which the engine runs whatever the mesh carries.
+        MtrDef maps = MtrDef.Parse(System.Text.Encoding.ASCII.GetBytes("texture2 m_s\ntexture5 m_g\n"), "gatecheck");
+        check.Expect(DrawRecipe.SlotName(2, maps, tanned) == "m_s" && DrawRecipe.SlotName(5, maps, hinted) == "m_g",
+                     "a mesh with a tangent frame loses its material's spec or self-illumination map");
+        MtrDef paired = MtrDef.Parse(System.Text.Encoding.ASCII.GetBytes("customshadervs vslit_nm\ncustomshaderfs fslit_nm\ntexture2 p_s\n"), "paircheck");
+        check.Expect(DrawRecipe.SlotName(2, paired, plain) == "p_s", "a material naming vslit_nm/fslit_nm loses its spec map on a tangentless mesh");
+        MtrDef half = MtrDef.Parse(System.Text.Encoding.ASCII.GetBytes("customshaderfs fslit_nm\ntexture2 h_s\n"), "halfcheck");
+        check.Expect(DrawRecipe.SlotName(2, half, plain) == "", "a material naming only an FS keeps its spec map on a tangentless mesh");
+        MtrDef hintMtr = MtrDef.Parse(System.Text.Encoding.ASCII.GetBytes("renderhint NormalAndSpecMapped\ntexture3 r_r\n"), "hintcheck");
+        check.Expect(DrawRecipe.SlotName(3, hintMtr, plain) == "r_r", "a material whose own hint gives the mesh tangents loses its roughness map");
         var nulled = new Mdl.MeshDef { RenderHintId = 2 };
         nulled.Textures[0] = "NULL"; nulled.Textures[1] = "null";
         check.Expect(DrawRecipe.SlotName(0, null, nulled) == "" && DrawRecipe.SlotName(1, null, nulled) == "",

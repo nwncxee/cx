@@ -62,7 +62,7 @@ internal static partial class GpuGolden
                          mat3 tsb = mat3(uIn[b + 2], uIn[b + 3], uIn[b + 4], uIn[b + 5], uIn[b + 6], uIn[b + 7],
                                          uIn[b + 8], uIn[b + 9], uIn[b + 10]);
                          vec2 r = CxDisplace(vec2(uIn[b], uIn[b + 1]), tsb, vec3(uIn[b + 11], uIn[b + 12], uIn[b + 13]),
-                                             uIn[b + 14], uIn[b + 15], vec2(0.0), vec2(0.0));
+                                             uIn[b + 14], uIn[b + 15], vec2(0.0), vec2(0.0), vec2(0.0));
                          uOut[o] = r.x; uOut[o + 1] = r.y;
                      }
                      """;

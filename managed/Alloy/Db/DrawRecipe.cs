@@ -46,11 +46,13 @@ internal static partial class DrawRecipe
 
     /// <summary>The resref recipe slot <paramref name="s"/> binds: the material's <c>textureN</c> where it
     /// declares one, else the MODEL's own word for that slot -- which past the diffuse only counts on a mesh
-    /// that has a tangent frame (<see cref="ModelMaps"/>).</summary>
+    /// that has a tangent frame (<see cref="ModelMaps"/>). The material's spec, roughness, height and
+    /// self-illumination maps count only where the engine's stage reads them (<see cref="StageReadsMaps"/>).</summary>
     internal static string SlotName(int s, MtrDef? mtr, MeshDef mesh)
     {
         int src = MtrTextureOf(s);
-        string name = mtr != null && mtr.Textures[src].Length > 0 ? mtr.Textures[src]
+        string name = mtr != null && mtr.Textures[src].Length > 0
+                      ? (s is >= SpecRecipeSlot and <= IllumRecipeSlot && !StageReadsMaps(mtr, mesh) ? "" : mtr.Textures[src])
                     : s != 0 && !ModelMaps(mesh) ? ""
                     : src < mesh.Textures.Length ? mesh.Textures[src] : "";
         // "null" is the MDL's NO TEXTURE; taken as a resref the slot fails and the part draws black
@@ -62,6 +64,16 @@ internal static partial class DrawRecipe
     /// object carrying both the tangent and bitangent streams, and no other stock program so much as declares
     /// those sampler units -- so on any other mesh the words name a texture the engine never reads.</summary>
     private static bool ModelMaps(MeshDef mesh) => mesh.Tangents.Length != 0 || mesh.RenderHintId is 2 or 3;
+
+    /// <summary>The recipe slots of <c>texture2</c> (spec) through <c>texture5</c> (self-illumination): the maps
+    /// <c>fslit</c> compiles out and every <c>*_nm</c> stage reads.</summary>
+    private const int SpecRecipeSlot = 2, IllumRecipeSlot = 5;
+
+    /// <summary>Does the stage the engine draws <paramref name="mesh"/> with read <paramref name="mtr"/>'s spec,
+    /// roughness, height and self-illumination maps? A named pair always runs (<c>GLRender::RenderVertexData</c>
+    /// @0x5d0570 skips <c>GetShaderByAttributes</c> for it); otherwise only a <c>*_nm</c> stage, a tangent frame's (the model's or the material's hint).</summary>
+    private static bool StageReadsMaps(MtrDef mtr, MeshDef mesh)
+        => mtr.ShaderVs.Length != 0 && mtr.ShaderFs.Length != 0 || mtr.RenderHint is 2 or 3 || ModelMaps(mesh);
 
     /// <summary>Palette slot <paramref name="k"/>'s bindless handle on recipe <paramref name="r"/>, for the
     /// one reader that takes them that way (<see cref="ContentTable.Upload"/>). 0 until the texture is resident.</summary>

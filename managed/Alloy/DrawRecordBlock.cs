@@ -28,7 +28,9 @@ internal struct DrawRecordBlock
 {
     public Matrix4x4 Model;
     public float Cos, Sin, Dissolve, Alpha;
+    /// <summary>The material's ambient colour; w its <c>DisplacementOffset</c>.</summary>
     public float AmbR, AmbG, AmbB, AmbW;
+    /// <summary>The material's diffuse colour; w its <c>DisplacementMultiplier</c> (0 = the stock 1).</summary>
     public float DifR, DifG, DifB, DifW;
     public float EmiR, EmiG, EmiB, EmiW;
     public float PbrR, PbrG, PbrB, Slots;

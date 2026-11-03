@@ -349,7 +349,7 @@ internal static class ShaderContract
                   && OwnedLitFsMain.Contains("vec3 orm = (slots & CX_SLOT_AO) != 0 ? texture(uAoTex, uv, uLodBias).rgb : vec3(1.0);")
                   && OwnedLitFsMain.Contains("occl *= orm.r;")
                   && OwnedLitFsMain.Contains("float ambDir = mix(0.15, 1.0, sunRaw);")
-                  && OwnedLitFsMain.Contains("* ambShape * occl")
+                  && OwnedLitFsMain.Contains("+ cxAmbWalk) * matAmbient * occl;")
                   && OwnedVs.Contains("uDrawBase + gl_DrawID") && OwnedLitVs.Contains("uDrawBase + gl_DrawID")
                   // #242: ...and every one of them reaches its record THROUGH the draw-to-slot index. The
                   // records are persistent and indexed by ownership slot now; a stage that still indexed by
@@ -390,10 +390,10 @@ internal static class ShaderContract
                   && AlloyLights.FragmentLib.Contains("float CxSpecLobe(")
                   && AlloyLights.FragmentLib.Contains("float CxSpecBase(")
                   && OwnedLitFsMain.Contains("sunSpec * CxLoopSpec(CxSpecLobe(N, V, uAreaDir")
-                  // ...fed the RAW dot. #143's wrap is diffuse-only; a lobe on the wrapped dot lights the
-                  // side of a glossy surface the sun cannot reach, and only at uWrapN > 0 -- invisible at
-                  // the default.
-                  && OwnedLitFsMain.Contains("vec3 sunSpec = uAreaDiffuse * (sunRaw * sunVis * sunFade);")
+                  // ...fed the softened dot, UNWRAPPED. #143's wrap is diffuse-only; a lobe on the wrapped dot
+                  // lights the side of a glossy surface the sun cannot reach, and only at uWrapN > 0.
+                  && OwnedLitFsMain.Contains("vec3 sun = CxSunLight(N, sunVis, sunFade, sunSpec);")
+                  && AlloyLights.FragmentLib.Contains("spec = uAreaDiffuse * (CxWrap(ndl, 0.0) * vis * fade);")
                   // ...and the base modifier is applied exactly once per lobe: ADR 0026 moved it INTO
                   // CxLoopSpec (distributed over the sum, the same product), so a second copy outside is
                   // silent and wrong by exactly itself.
