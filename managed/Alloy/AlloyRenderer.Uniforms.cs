@@ -1,7 +1,6 @@
 using System;
 using System.Numerics;
 using System.Runtime.InteropServices;
-using System.Runtime.CompilerServices;
 using CX.Engine;
 using CX.Framework;
 using CX.Graphics;
@@ -167,22 +166,19 @@ public sealed unsafe partial class AlloyRenderer
         => $"rx: uSunCascades={_rxSunN} uSunVp[0].col3=({_rxSunVp3.X:F3},{_rxSunVp3.Y:F3},{_rxSunVp3.Z:F3},{_rxSunVp3.W:F3}) " +
            $"uSunFocus=({_rxSunFocus.X:F1},{_rxSunFocus.Y:F1},{_rxSunFocus.Z:F1}) " +
            $"uAreaDiffuse=({_rxAreaDif.X:F3},{_rxAreaDif.Y:F3},{_rxAreaDif.Z:F3}) " +
-           $"uAreaDir=({_rxAreaDir.X:F2},{_rxAreaDir.Y:F2},{_rxAreaDir.Z:F2}) binds={PassBinds} sends={PassUploads}";
+           $"uAreaDir=({_rxAreaDir.X:F2},{_rxAreaDir.Y:F2},{_rxAreaDir.Z:F2}) binds={PassBinds}";
 
     /// <summary>The block as staged. Native, taken once, so a refill allocates nothing.</summary>
     private static NativeBuffer<byte> _passStage;
-    private static uint _passBuf;
-    /// <summary>This period's <see cref="BindPass"/> calls and the block sends (theirs and the lightmap bake's):
-    /// a pass costs one send, a pass whose terms did not change none, and every other bind is a fill and a compare.</summary>
-    internal static int PassBinds, PassUploads;
+    /// <summary>This period's <see cref="BindPass"/> calls -- every program switch that took the pass terms.</summary>
+    internal static int PassBinds;
     /// <summary>This period's binds that drew through another view's cluster table, walking it whole (the planar
     /// mirror). The screen's own passes must not be among them.</summary>
     internal static int PassBindsBorrowed;
 
-    /// <summary>This pass's shared scene terms into the <c>CxPass</c> block, then the shadow maps onto their
-    /// units and the program's own <c>uLocalCubes</c>. Called at each program switch; the block goes up only
-    /// when the refill differs from what is bound, so every switch after a pass's first costs a fill and a
-    /// compare and no GL uniform traffic. On Vulkan only the staging fill runs.</summary>
+    /// <summary>This pass's shared scene terms into the <c>CxPass</c> staging block, then the program's own
+    /// <c>uLocalCubes</c>. Called at each program switch; the fill is all it does -- the block reaches the GPU
+    /// when a pass copies it into the frame arena, so a switch costs the fill and nothing else.</summary>
     internal static void BindPass(int locCubes, int* viewport, float near, float far)
     {
         PassBinds++;

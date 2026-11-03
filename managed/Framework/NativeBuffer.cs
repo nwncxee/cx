@@ -21,13 +21,13 @@ internal unsafe struct NativeBuffer<T> where T : unmanaged
     internal T* Pointer => _at;
 
     /// <summary>Hold at least <paramref name="count"/> zeroed elements, reallocating only when the count grew.
-    /// False, and the buffer left as it was, when the count is not positive or the allocator refused.</summary>
+    /// False, and the buffer left as it was, when the count is not positive; an allocation that cannot be met
+    /// throws rather than answering false.</summary>
     internal bool Take(int count)
     {
         if (count <= 0) return false;
         if (_n >= count) { Span.Clear(); return true; }
         var at = (T*)NativeMemory.AllocZeroed((nuint)count, (nuint)sizeof(T));
-        if (at == null) return false;
         NativeMemory.Free(_at);
         _at = at; _n = count;
         return true;

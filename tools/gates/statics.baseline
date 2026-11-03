@@ -7,7 +7,7 @@
 74 managed/Alloy/AlloyRenderer.Metrics.cs
 10 managed/Alloy/AlloyRenderer.Motion.cs
 7 managed/Alloy/AlloyRenderer.Target.cs
-11 managed/Alloy/AlloyRenderer.Uniforms.cs
+8 managed/Alloy/AlloyRenderer.Uniforms.cs
 9 managed/Alloy/Core/AlloyGate.cs
 2 managed/Alloy/Core/AurXform.cs
 9 managed/Alloy/Core/StagePool.cs
