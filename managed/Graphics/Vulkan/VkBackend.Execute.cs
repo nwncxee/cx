@@ -597,7 +597,7 @@ internal sealed unsafe partial class VkBackend
         VkImageLayout want = storage ? VkImageLayout.General : VkImageLayout.ShaderReadOnlyOptimal;
         if (!_rendering) Transition(img, want);
         else if (img.Layout != want)
-            return Fault($"bind set: slot {s.Slot}'s image needs a barrier inside a begun render pass -- bind before the first draw");
+            return Fault($"bind set: slot {s.Slot}'s image {img.Desc.Label} needs a barrier inside a begun render pass -- bind before the first draw");
         if (storage && _setDraws) img.Written = true;
         else if (storage) _cImgs[_cImgN++] = img;
         VkSampler sampler = _nearest;

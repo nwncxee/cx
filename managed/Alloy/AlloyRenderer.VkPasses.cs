@@ -479,6 +479,8 @@ public sealed unsafe partial class AlloyRenderer
         Span<ColorAttachment> ids = stackalloc ColorAttachment[PrepassTargets];
         var rp = new RenderPassDesc(VkIdAttachments(ids, !retest),
                                     new DepthAttachment(s.Depth, 0, 0, retest ? LoadOp.Load : LoadOp.Clear, StoreOp.Store, WorldDepth.Clear));
+        // a feature program may bind the depth copy after a plain draw, and a resize remade it at UNDEFINED
+        if (!s.DepthRead.IsNull) cl.ReadImages([s.DepthRead]);
         VkFlushPass(cl, side, arena0, in rp);
         return true;
     }
