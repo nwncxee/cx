@@ -27,7 +27,7 @@ public sealed unsafe partial class AlloyRenderer
     {
         VkColourState s = _vkc;
         arena = s.Arena;
-        len = sizeof(EngineBlock);
+        len = EngineBytes;
         bool fresh = s.EngineAt == -1;
         int at = VkEngine();
         if (at >= 0 && fresh) cl.UpdateBuffer(s.Arena, at, s.ArenaBytes.AsSpan(at, (len + 3) & ~3));

@@ -68,6 +68,17 @@ internal static partial class VkGlsl
     /// content stage's own constants take.</summary>
     internal const uint BindlessCapConstant = 1000;
 
+    /// <summary>The macro a uniform block whose layout follows the device takes its qualifier from
+    /// (<c>cx_envblk.glsl</c>). The text defines it to <c>std140</c> itself, so a stage read on its own lays out the
+    /// same everywhere; a stage that names it gets the device's answer defined ahead of it instead.</summary>
+    internal const string LayoutMacro = "CX_ENGBLK";
+
+    /// <summary>The device lays out a block declared <c>scalar</c> -- <c>VK_EXT_scalar_block_layout</c>, core in
+    /// Vulkan 1.2 -- so <see cref="LayoutMacro"/> resolves to <c>scalar</c> and an array element costs its own size
+    /// rather than a whole vec4. The backend sets it as it opens, before any stage is translated, and the staged
+    /// struct follows it.</summary>
+    internal static bool ScalarBlocks { get; set; }
+
     private static readonly Regex Header = new(
         @"^\s*(?:layout\s*\((?<lq>[^()]*)\)\s*)?(?<q>(?:(?:flat|smooth|noperspective|invariant|centroid|sample|precise|highp|mediump|lowp|readonly|writeonly|coherent|volatile|restrict)\s+)*)(?<s>uniform|in|out|buffer)\b(?<rest>.*)$",
         RegexOptions.Singleline | RegexOptions.CultureInvariant);
@@ -261,6 +272,8 @@ internal static partial class VkGlsl
         var ext = new StringBuilder();
         if (bindless) ext.Append("#extension GL_EXT_nonuniform_qualifier : require\n");
         if (drawParams) ext.Append("#extension GL_ARB_shader_draw_parameters : require\n");
+        if (ScalarBlocks && src.Contains(LayoutMacro, StringComparison.Ordinal))
+            ext.Append("#extension GL_EXT_scalar_block_layout : require\n").Append("#define ").Append(LayoutMacro).Append(" scalar\n");
         return AfterVersion(o.ToString(), ext.ToString());
     }
 

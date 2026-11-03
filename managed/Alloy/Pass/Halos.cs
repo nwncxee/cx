@@ -258,10 +258,11 @@ internal static unsafe partial class Halos
                                     FlarePositions = new[] { 1f }, FlareColors = chain.FlareColors };
         check.Expect(Elements(short1) == 1, "an element no flarepositions entry names is not drawn");
         check.Expect(Elements(noShift) == 0, "nor is one with textures and nothing else");
-        // The draw is one instanced range per texture group, so the stage indexes from the group's first
-        // element; the fragment stage samples the element's own texture and shifts its depth read to the light.
+        // The draw is one instanced range per texture group, the group's first element its firstInstance, so the
+        // stage indexes from gl_BaseInstance; the fragment stage samples the element's own texture and shifts its
+        // depth read to the light.
         string vs = ShaderStages.Source(ShdHaloVs), fs = ShaderStages.Source(ShdHaloFs);
-        check.Expect(vs.Contains("(uFirst + gl_InstanceID) * 3"), "the vertex stage indexes from the group's first element");
+        check.Expect(vs.Contains("(gl_BaseInstance + gl_InstanceID) * 3"), "the vertex stage indexes from the group's first element");
         check.Expect(fs.Contains("uniform sampler2D uFlare;") && fs.Contains("texture(uFlare, vUV * 0.5 + 0.5)"),
                      "the fragment stage samples the element's authored texture");
         check.Expect(vs.Contains("out vec2 vOcc;") && fs.Contains("+ vOcc * 0.5"),

@@ -28,10 +28,23 @@ internal struct Int4(int x, int y, int z, int w)
     public int X = x, Y = y, Z = z, W = w;
 }
 
-/// <summary>std140 arithmetic over a uniform block as the GLSL declares it: the member list, each member's
-/// byte offset, and the pin that holds a C# staging struct to it.</summary>
+/// <summary>How a uniform block lays its members out: std140, which pads every array element and every vector
+/// smaller than a vec4 out to one, or scalar block layout, where each lands at its component's own
+/// alignment.</summary>
+internal enum BlockLayout { Std140, Scalar }
+
+/// <summary>Layout arithmetic over a uniform block as the GLSL declares it: the member list, each member's byte
+/// offset under a <see cref="BlockLayout"/>, and the pin that holds a C# staging struct to it.</summary>
 internal static class Std140
 {
+    /// <summary>The qualifier a block declared under <paramref name="layout"/> carries in its <c>layout()</c>.</summary>
+    internal static string Qualifier(BlockLayout layout) => layout == BlockLayout.Scalar ? "scalar" : "std140";
+
+    /// <summary><paramref name="src"/> with the device-following layout macro resolved to
+    /// <paramref name="layout"/>'s qualifier, as the translator resolves it for the device it opened on.</summary>
+    internal static string AsLayout(string src, BlockLayout layout)
+        => src.Replace("layout(" + CX.Graphics.Rhi.VkGlsl.LayoutMacro, "layout(" + Qualifier(layout), StringComparison.Ordinal);
+
     /// <summary>The bytes a buffer holding block <typeparamref name="T"/> needs: std140 rounds a block up to a whole
     /// vec4, so the staging struct -- which covers every member and nothing more -- fills its front.</summary>
     internal static int BlockBytes<T>() where T : unmanaged => (System.Runtime.CompilerServices.Unsafe.SizeOf<T>() + 15) & ~15;
@@ -75,9 +88,9 @@ internal static class Std140
         return names;
     }
 
-    /// <summary>std140 byte offset of <paramref name="name"/> in a <see cref="Members"/> body, and its size;
-    /// -1 when absent, -2 when a member's type is one this calculator does not know.</summary>
-    internal static int Offset(string members, string name, out int size)
+    /// <summary><paramref name="layout"/>'s byte offset of <paramref name="name"/> in a <see cref="Members"/> body,
+    /// and its size; -1 when absent, -2 when a member's type is one this calculator does not know.</summary>
+    internal static int Offset(string members, string name, out int size, BlockLayout layout = BlockLayout.Std140)
     {
         int off = 0;
         foreach (string m in members[(members.IndexOf('{') + 1)..].Split(';', StringSplitOptions.RemoveEmptyEntries))
@@ -96,8 +109,14 @@ internal static class Std140
                 _ => (-1, 0),
             };
             if (align < 0) { size = 0; return -2; }   // a type this calculator does not know fails the pin, never passes it
+            if (layout == BlockLayout.Scalar) align = 4;   // scalar block layout: every member at its component's own alignment
             int lb = m.IndexOf('[');
-            if (lb >= 0) { int count = int.Parse(m[(lb + 1)..m.IndexOf(']')]); align = 16; bytes = ((bytes + 15) & ~15) * count; }
+            if (lb >= 0)
+            {
+                int count = int.Parse(m[(lb + 1)..m.IndexOf(']')]);
+                if (layout == BlockLayout.Scalar) bytes *= count;
+                else { align = 16; bytes = ((bytes + 15) & ~15) * count; }
+            }
             off = (off + align - 1) & ~(align - 1);
             if (n >= 0 && (m.Length == n + name.Length || m[n + name.Length] == '[')) { size = bytes; return off; }
             off += bytes;
@@ -114,18 +133,20 @@ internal static class Std140
     /// <summary>Hold one block's GLSL to the struct that stages it: the binding point, every member's offset
     /// against the offset the C# compiler gave its field, and the staged size. Oracle: the GLSL text on one
     /// side, the compiler's own field offsets on the other, so a member moved in either file is named here.</summary>
-    internal static void Pin(Checker check, string src, string block, uint binding, int bytes, (string Name, int Offset)[] members)
+    internal static void Pin(Checker check, string src, string block, uint binding, int bytes, (string Name, int Offset)[] members,
+                             BlockLayout layout = BlockLayout.Std140)
     {
-        string? body = Members(src, block);
+        string q = Qualifier(layout);
+        string? body = Members(AsLayout(src, layout), block);
         check.Expect(body != null, $"{block}: the source declares no such block");
         if (body == null) return;
-        check.Expect(body.StartsWith($"layout(std140,binding={binding})uniform{block}{{", StringComparison.Ordinal),
-          $"{block}: not declared std140 on point {binding}");
+        check.Expect(body.StartsWith($"layout({q},binding={binding})uniform{block}{{", StringComparison.Ordinal),
+          $"{block}: not declared {q} on point {binding}");
         int end = 0;
         foreach ((string name, int off) in members)
         {
-            int at = Offset(body, name, out int size);
-            check.Expect(at == off, $"{block}.{name} at std140 {at}, C# stages {off}");
+            int at = Offset(body, name, out int size, layout);
+            check.Expect(at == off, $"{block}.{name} at {q} {at}, C# stages {off}");
             end = Math.Max(end, at + size);
         }
         check.Expect(end == bytes, $"{block}'s members reach {end}B, the struct staging it is {bytes}B");

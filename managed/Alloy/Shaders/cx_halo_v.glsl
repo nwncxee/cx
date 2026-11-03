@@ -10,8 +10,6 @@ layout(std430, binding = 9) readonly buffer CxHaloFade { float uFade[]; };
 uniform mat4 uView;
 uniform mat4 uProj;
 uniform float uGain;
-// First element of the instance range this draw covers: the list is grouped by texture, one draw a group.
-uniform int uFirst;
 out vec2 vUV;
 out vec3 vColor;
 out float vViewZ;     // the light's view-space z (negative forward)
@@ -22,7 +20,9 @@ out vec2 vOcc;
 
 void main()
 {
-    int h = (uFirst + gl_InstanceID) * 3;
+    // The list is grouped by texture, one draw a group, and the group's first element rides the draw's
+    // firstInstance -- gl_BaseInstance here -- so the instance id counts from it.
+    int h = (gl_BaseInstance + gl_InstanceID) * 3;
     vec4 a = uHalos[h], b = uHalos[h + 1], c = uHalos[h + 2];
     vec3 vp = (uView * vec4(a.xyz, 1.0)).xyz;
     float d = length(vp);
