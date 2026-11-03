@@ -28,6 +28,9 @@ internal sealed unsafe partial class VkBackend
         bool sc = src.Desc.Fmt.IsCompressed(), dc = dst.Desc.Fmt.IsCompressed();
         if (sc != dc && (sc ? src.Desc.Fmt : dst.Desc.Fmt).BlockBytes() != TexelBytes(sc ? dst.Desc.Fmt : src.Desc.Fmt))
             return Fault($"CopyImage {src.Desc.Label} ({src.Desc.Fmt}) to {dst.Desc.Label} ({dst.Desc.Fmt}): a block is not one texel's size");
+        if (sc == dc && src.Desc.Fmt != dst.Desc.Fmt && TexelOrBlockBytes(src.Desc.Fmt) != TexelOrBlockBytes(dst.Desc.Fmt))
+            return Fault($"CopyImage {src.Desc.Label} ({src.Desc.Fmt}) to {dst.Desc.Label} ({dst.Desc.Fmt}): a copy converts "
+                       + "nothing, so the two formats must be one size -- BlitImage converts");
         int dw = sc == dc ? c.W : dc ? c.W * 4 : c.W / 4, dh = sc == dc ? c.H : dc ? c.H * 4 : c.H / 4;
         if (!Inside(src, c.From, c.W, c.H, c.D, out string why)) return Fault($"CopyImage: the source block is {why} of {src.Desc.Label}");
         if (!Inside(dst, c.To, dw, dh, c.D, out why)) return Fault($"CopyImage: the destination block is {why} of {dst.Desc.Label}");
@@ -144,6 +147,10 @@ internal sealed unsafe partial class VkBackend
         return true;
     }
 
+    /// <summary>One texel's bytes, or one 4x4 block's for a compressed format: what a texel-for-texel copy between
+    /// two formats needs to match.</summary>
+    private static int TexelOrBlockBytes(Format f) => f.IsCompressed() ? f.BlockBytes() : TexelBytes(f);
+
     /// <summary>The copy stage's local size, as <c>cx_readback_c.glsl</c> declares it.</summary>
     private const int CopyCheckGroup = 8;
     /// <summary>The fixture's size: a 4x4 source, copied as a 2x2 block and blitted as a 2:1 reduction.</summary>
@@ -194,9 +201,48 @@ internal sealed unsafe partial class VkBackend
                 $"the 1:2 blit's first row is 1, 1, 2, 2 (got {grown[0]}, {grown[1]}, {grown[2]}, {grown[3]})");
             check.Expect(grown[n] == 1f && grown[n * 2] == 5f && grown[n * 3 + 3] == 6f,
                 $"...its second row repeats the first, and its lower half doubles 5 and 6 (got {grown[n]}, {grown[n * 2]}, {grown[n * 3 + 3]})");
+            PackedBlitCheck(check, copier, outBuf, log);
         }
         Destroy(src); Destroy(dst); Destroy(big); Destroy(outBuf); Destroy(copier);
         log.Info(check.Ok ? "VkBackend.CopyDeviceCheck: passed" : "VkBackend.CopyDeviceCheck: FAILED -- see above");
+    }
+
+    /// <summary>The 1:1 converting blit the grass ground copy makes -- half floats into three packed ones -- on this
+    /// device. Oracle: a red ramp of 1..16, a green one of 100 up and a flat blue 200, every value a step both formats
+    /// land on exactly, so red comes back unchanged and neither of the others comes back in its place.</summary>
+    private void PackedBlitCheck(Checker check, PipelineId copier, BufferId outBuf, ExtenderLog log)
+    {
+        const int n = CopyCheckSize;
+        const float green = 100f, blue = 200f;
+        ImageId wide = CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, n, n, 1, 1, 1, 1,
+                                                 ImageUse.Sampled | ImageUse.CopySrc | ImageUse.CopyDst, "copy check half source"));
+        ImageId packed = CreateImage(new ImageDesc(ImageKind.Tex2D, Format.R11G11B10F, n, n, 1, 1, 1, 1,
+                                                   ImageUse.Sampled | ImageUse.CopyDst, "copy check packed target"));
+        var texels = new Half[n * n * 4];
+        for (int i = 0; i < n * n; i++)
+        {
+            texels[i * 4] = (Half)(i + 1);
+            texels[i * 4 + 1] = (Half)(green + i);
+            texels[i * 4 + 2] = (Half)blue;
+            texels[i * 4 + 3] = (Half)1f;
+        }
+        bool made = !wide.IsNull && !packed.IsNull
+                 && Upload(wide, 0, 0, MemoryMarshal.AsBytes(texels.AsSpan()));
+        check.Expect(made, "the converting blit's half-float source and packed target exist and the ramp uploads");
+        if (made)
+        {
+            var cl = new CommandList("vk packed blit check", 1024, log);
+            var whole = new Rect(0, 0, n, n);
+            cl.BlitImage(new BlitImageCmd(wide, whole, packed, whole, Filter.Nearest));
+            var got = new float[n * n];
+            check.Expect(Submit(cl) && Read(cl, copier, packed, outBuf, n, n, got),
+                "the converting blit submits and the packed target reads back");
+            int bad = -1;
+            for (int i = 0; i < got.Length; i++) if (got[i] != i + 1) { bad = i; break; }
+            check.Expect(bad < 0, $"every packed red comes back as its 1..16 ramp (texel {bad} came back {(bad < 0 ? 0f : got[bad])}, "
+                                + $"not {bad + 1}; green was {green} up and blue {blue})");
+        }
+        Destroy(wide); Destroy(packed);
     }
 
     private ImageId Fixture(int w, int h, string label)
