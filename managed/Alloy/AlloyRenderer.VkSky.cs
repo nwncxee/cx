@@ -36,8 +36,10 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The sky dome into <paramref name="cl"/>: its own pass over the scene colour and depth -- or layer
     /// <paramref name="layer"/> of <paramref name="into"/> over <paramref name="depth"/>, a probe face -- depth test on and
     /// write off as GL's is, at window depth 1. False (logged) only when the device refused the recording.</summary>
+    /// <param name="depthStore">Whether anything after this pass reads the depth it drew against.</param>
     private static bool VkRecordSky(VkBackend vk, CommandList cl, VkColourState s, in Matrix4x4 vp, int* viewport,
-                                    ExtenderLog log, ImageId into = default, int layer = 0, ImageId depth = default)
+                                    ExtenderLog log, ImageId into = default, int layer = 0, ImageId depth = default,
+                                    StoreOp depthStore = StoreOp.Store)
     {
         if (_vkSky.Dev != vk) _vkSky = new VkSkyState { Dev = vk };
         VkSkyState k = _vkSky;
@@ -82,8 +84,7 @@ public sealed unsafe partial class AlloyRenderer
         Span<ColorAttachment> colors = stackalloc ColorAttachment[1];
         colors[0] = new ColorAttachment(into.IsNull ? s.Hdr : into, 0, layer, LoadOp.Load, StoreOp.Store, default);
         VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(depth.IsNull ? s.Depth : depth, 0, 0,
-                                                                                      LoadOp.Load, depth.IsNull ? StoreOp.Store : StoreOp.DontCare,
-                                                                                      WorldDepth.Clear)));
+                                                                                      LoadOp.Load, depthStore, WorldDepth.Clear)));
         if (!k.Live)
         {
             k.Live = true;

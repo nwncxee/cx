@@ -45,6 +45,11 @@ internal sealed unsafe partial class VkBackend
         check.Expect(CopyMissing(ImageUse.Sampled | ImageUse.ColorTarget, true) != null && CopyMissing(ImageUse.CopySrc, true) == null
                   && CopyMissing(ImageUse.CopySrc, false) != null && CopyMissing(ImageUse.CopyDst, false) == null,
             "a transfer is refused for the copy flag its image lacks: a plain target as a source, a source-only image as a destination");
+        check.Expect(Settled(ImageUse.Sampled | ImageUse.CopyDst) == VkImageLayout.ShaderReadOnlyOptimal
+                  && Settled(ImageUse.Grey | ImageUse.CopyDst) == VkImageLayout.ShaderReadOnlyOptimal
+                  && Settled(ImageUse.CopyDst) == VkImageLayout.TransferDstOptimal,
+            "a filled image settles in a layout its usage does not allow: the shader-readable one asks for the sampled "
+          + "usage an upload alone does not declare");
         CheckUsageMask(check);
         CheckSetCache(check);
         CheckAsyncFamily(check);

@@ -616,14 +616,14 @@ internal sealed unsafe partial class VkBackend
         return true;
     }
 
-    /// <summary>What an image made for <paramref name="use"/> lacks to be bound as a storage image or, without
-    /// <paramref name="storage"/>, sampled; null when it was made for that bind.</summary>
     /// <summary>Why an image may not be a render pass's colour or <paramref name="depth"/> attachment, or null: the usage
     /// it was created with has to say so, or the device begins rendering into an image it never allowed it for.</summary>
     internal static string? AttachMissing(ImageUse use, bool depth)
         => depth ? (use & ImageUse.DepthTarget) == 0 ? "was not created as a depth target" : null
                  : (use & ImageUse.ColorTarget) == 0 ? "was not created as a colour target" : null;
 
+    /// <summary>What an image made for <paramref name="use"/> lacks to be bound as a storage image or, without
+    /// <paramref name="storage"/>, sampled -- a grey image counts as sampled; null when it was made for that bind.</summary>
     internal static string? UsageMissing(ImageUse use, bool storage)
         => storage ? (use & ImageUse.Storage) == 0 ? "was not created for storage" : null
                    : (use & (ImageUse.Sampled | ImageUse.Grey)) == 0 ? "was not created for sampling" : null;

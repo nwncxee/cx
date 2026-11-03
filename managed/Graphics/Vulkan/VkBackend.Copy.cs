@@ -48,9 +48,6 @@ internal sealed unsafe partial class VkBackend
         return true;
     }
 
-    /// <summary>A scaled copy of <paramref name="c"/>'s source rectangle into its destination rectangle, mip 0 and
-    /// layer 0. A depth blit filters NEAREST whatever the command asked: Vulkan allows a linear filter on the colour
-    /// aspect alone.</summary>
     /// <summary><see cref="Op.ClearImage"/>: every mip and layer of a colour image zeroed.</summary>
     private bool ClearImg(ImageId i)
     {
@@ -77,13 +74,12 @@ internal sealed unsafe partial class VkBackend
         if (_inPass) return Fault("GenerateMips inside a render pass");
         if (_onAsync) return Fault("GenerateMips on the async compute queue, which cannot blit");
         if (!_images.TryGet(i.Value, out VkImg img)) return Fault("GenerateMips: stale image");
-        if (img.Desc.Mips == 1) return true;
-        if (CopyMissing(img.Desc.Use, true) is { } sw) return Fault($"GenerateMips: {img.Desc.Label} {sw}");
-        if (CopyMissing(img.Desc.Use, false) is { } dw) return Fault($"GenerateMips: {img.Desc.Label} {dw}");
-        BlitMips(img);
-        return true;
+        return img.Desc.Mips == 1 || BlitMips(img);
     }
 
+    /// <summary>A scaled copy of <paramref name="c"/>'s source rectangle into its destination rectangle, mip 0 and
+    /// layer 0. A depth blit filters NEAREST whatever the command asked: Vulkan allows a linear filter on the colour
+    /// aspect alone.</summary>
     private bool BlitImg(in BlitImageCmd c)
     {
         if (_inPass) return Fault("BlitImage inside a render pass -- a blit is not a draw, and its barriers cannot run there");
