@@ -25,11 +25,13 @@ internal sealed partial class DepthSnapshot
         Copies = 0;
     }
 
-    /// <summary>The target was remade at a new size, so nothing in it speaks for any depth.</summary>
+    /// <summary>The target was remade at a new size, so nothing in it speaks for any depth and the copy count the
+    /// frame line last named belongs to the old size.</summary>
     public void Remade()
     {
         Filled = false;
         Stale = true;
+        High = 0;
     }
 
     /// <summary>A pass wrote the scene depth.</summary>

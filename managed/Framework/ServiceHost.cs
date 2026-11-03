@@ -75,6 +75,7 @@ public static class ServiceHost
         CX.Graphics.Rhi.VkBackend.TransferSelfCheck(log);   // the copy-only queue family a device's table offers
         CX.Graphics.Rhi.VkBackend.CapsSelfCheck(log);   // a limit the driver reports unbounded never reads negative
         CX.Alloy.DepthSnapshot.SelfCheck(log);   // one scene-depth copy a frame: a reader past no depth write reuses the one standing
+        CX.Alloy.AlloyRenderer.FlushPassSelfCheck(log);   // ...and the flush that stales it: which passes do, and which say they write no depth
         CX.Alloy.AlloyRenderer.VramSelfCheck(log);   // the frame line's memory part: the largest allocations, an overrun, and the budget's own figure
         CX.Alloy.Db.MeshArena.ArenaSelfCheck(log);   // a freed mesh's gap is reused, so an area hop holds one area
         CX.Alloy.Db.MeshArena.SelfCheck(log);   // ...but not while a submit that may draw it is in flight, and a load sends its own bytes only
