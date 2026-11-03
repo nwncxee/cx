@@ -43,12 +43,12 @@ public sealed unsafe partial class AlloyRenderer
     private static bool VkWxMeshPath(VkBackend vk, VkWxState s, int k, int drips, bool motion, ExtenderLog log)
         => !motion && VkWxMeshEnsure(vk, s, k, log) && (drips <= 0 || VkWxMeshEnsure(vk, s, 0, log));
 
-    /// <summary>For the mesh path golden: the path a rain frame with roof drips takes on <paramref name="vk"/>, and the line
-    /// the pass says once about it; <paramref name="again"/> is whether a second ask would say it again.</summary>
-    internal static Weather.WxPath VkWxPath(VkBackend vk, ExtenderLog log, out string line, out bool again)
+    /// <summary>For the mesh path golden: the path a rain frame with roof drips takes on <paramref name="vk"/>, writing rain's
+    /// own motion or not, and the line the pass says once about it; <paramref name="again"/> is whether a second ask would say it again.</summary>
+    internal static Weather.WxPath VkWxPath(VkBackend vk, ExtenderLog log, out string line, out bool again, bool motion = false)
     {
         var s = new VkWxState { Dev = vk };
-        Weather.WxPath path = VkWxMeshPath(vk, s, 0, 1, false, log) ? Weather.WxPath.Mesh : Weather.WxPath.Compute;
+        Weather.WxPath path = VkWxMeshPath(vk, s, 0, 1, motion, log) ? Weather.WxPath.Mesh : Weather.WxPath.Compute;
         line = VkWxPathLine(s, vk, path) ?? "";
         again = VkWxPathLine(s, vk, path) != null;
         return path;
