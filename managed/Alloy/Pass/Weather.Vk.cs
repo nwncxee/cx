@@ -146,6 +146,20 @@ internal static unsafe partial class Weather
     };
 
     /// <summary>The splash draw's terms into the open capture: its instance count,
+    /// <summary>Logs the rain crowns' gates each time one flips while rain wants crowns: whether impacts can show, and
+    /// which of the cover map, its filtered copy and the sun that drives the shadow bracket stands in the way.</summary>
+    private static void CrownGateSay(bool cover)
+    {
+        if (SplashWanted() <= 0) return;
+        int gate = (cover ? 1 : 0) | (CoverWanted ? 2 : 0) | (CasterPass.CoverFresh ? 4 : 0) | (CoverDepthOk ? 8 : 0)
+                 | (FrameInputs.HasSun ? 16 : 0) | (FrameInputs.Interior ? 32 : 0) | (FrameInputs.HasCamera ? 64 : 0);
+        if (gate == _vks.CrownGate) return;
+        _vks.CrownGate = gate;
+        Vector3 d = FrameInputs.AreaDiffuseDir;
+        _log?.Always(FormattableString.Invariant(
+            $"Weather: rain impacts {(cover ? "SHOW" : "HELD")} -- cover wanted {CoverWanted}, baked this frame {CasterPass.CoverFresh}, filtered {CoverDepthOk}; sun captured {FrameInputs.HasSun}, interior {FrameInputs.Interior}, camera {FrameInputs.HasCamera}; area light toward ({d.X:F2}, {d.Y:F2}, {d.Z:F2})"));
+    }
+
     /// 0 when nothing lands this frame. Called after <see cref="StageVk"/>, which stepped the splash clock.</summary>
     internal static int WriteSplashVk(in SpLoc l, Matrix4x4* view, Matrix4x4* proj, int* viewport, Vector3 eye, bool lit)
     {
@@ -155,6 +169,7 @@ internal static unsafe partial class Weather
         bool cover = Cover.V && CasterPass.CoverFresh && CoverDepthOk && Matrix4x4.Invert(CasterPass.CoverVp, out inv);
         if (cover) vp = CasterPass.CoverVp;
         else crowns = 0;
+        CrownGateSay(cover);
         if (crowns + feet <= 0 || !AlloyLights.TryPerspective(WorldDepth.Unfold(*proj), out _, out float p11, out _, out _)) return 0;
         LooseBlock.Set(l.View, *view);
         LooseBlock.Set(l.Proj, *proj);

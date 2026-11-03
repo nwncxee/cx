@@ -25,6 +25,8 @@ internal static unsafe partial class Weather
         public float FilteredSoft = float.NaN;
         /// <summary>The whole print field owes an upload: a new image holds nothing.</summary>
         public bool TrackAll = true;
+        /// <summary>The rain crowns' gates as last logged (<see cref="CrownGateSay"/>); -1 = none yet.</summary>
+        public int CrownGate = -1;
     }
 
     private static WeatherVkState _vks = new();
