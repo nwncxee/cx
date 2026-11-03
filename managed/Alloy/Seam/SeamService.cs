@@ -160,16 +160,19 @@ public sealed unsafe class SeamService : IExtenderService
     private const int PeriodFrames = 600;
 
     /// <summary>The seam's census, once every <see cref="PeriodFrames"/> frames: the DB tables' live counts
-    /// beside the shells', then whatever the seam has REFUSED. A record count that only grows is a lifetime
-    /// bug, and this is where it shows.</summary>
+    /// beside the shells', the outline's claims, then whatever the seam has REFUSED. A record or claim count
+    /// that only grows is a lifetime bug, and this is where it shows.</summary>
     private static void Period()
     {
         if (++_periodFrames < PeriodFrames) return;
         _periodFrames = 0;
+        // Audited BEFORE the line, so the count it names is one the object table still answers for.
+        Highlight.AuditClaims();
         _log?.Info($"[seam] objects={SceneDb.Objects.Live} parts={SceneDb.Parts.Live} scenes={SceneDb.Scenes.Live} "
                  + $"cameras={SceneDb.Cameras.Live} | {Facade.Stats()} | parts-shells={PartShell.Alive} "
                  + $"(quarantined {PartShell.Quarantined}, gui-held {PartShell.Held}) | callbacks={CallbackList.Alive}"
-                 + $" | {ObjectFns.Stats()} | {ObjectSlots.TreeStats()} | tile-gobs={SceneSlots.TileShells}{Refused()}");
+                 + $" | {ObjectFns.Stats()} | {ObjectSlots.TreeStats()} | tile-gobs={SceneSlots.TileShells}"
+                 + $" | {Highlight.Stats()}{Refused()}");
     }
 
     /// <summary>What the seam turned away, named only when there is something: a call the game made that CX

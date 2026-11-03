@@ -572,6 +572,7 @@ internal static unsafe class FacadeSelfCheck
         GuiHold(check);
         PartHold(check);
         SceneHold(check);
+        Claims(check);
 
         Facade.InSelfCheck = false;
         SceneDb.Objects.Free(id);
@@ -789,5 +790,73 @@ internal static unsafe class FacadeSelfCheck
 
         SceneDb.Scenes.Free(world);
         SceneDb.Scenes.Free(gui);
+    }
+
+    /// <summary>The outline's claim list against both destroy paths CX models for a gob, against the audit that
+    /// finds a claim no record holds, and against the ceiling, which must refuse loudly rather than swallow a
+    /// claim. Oracle: the object table itself, which the claim list is never consulted for.</summary>
+    private static void Claims(Checker check)
+    {
+        var orphan = new ForeignBlock();
+        nint stale = (nint)(&orphan);
+        // On a claim list of its own: this spends the ceiling and makes the audit drop something, and the
+        // session's own counters are what the seam's period line reports to the user.
+        string wasReporting = CX.Alloy.Highlight.Stats();
+        CX.Alloy.Highlight.HlClaimState saved =
+            CX.Alloy.Highlight.SwapClaims(new CX.Alloy.Highlight.HlClaimState());
+        try
+        {
+            DbId id = SceneDb.Objects.Alloc();
+            if (id.IsNull) { check.Expect(false, "no record for the claim check"); return; }
+            nint shell = Facade.Mint(FacadeKind.Object, id);
+            if (shell == 0) { SceneDb.Objects.Free(id); check.Expect(false, "no shell for the claim check"); return; }
+            SeamShell.NoteScene(shell, world: true);
+
+            // Each phase below is judged against the count it started from, so one missing drop fails the one
+            // check that answers for it instead of cascading into the three after it.
+            int before = CX.Alloy.Highlight.ClaimCount;
+            CX.Alloy.Highlight.SetClaim(shell, true);
+            check.Expect(CX.Alloy.Highlight.ClaimCount == before + 1, "claiming a gob did not grow the claim list");
+            ObjectSlots.DestroyComplete(shell);
+            bool stillLive = SeamShell.Known(shell, out byte state, out _) && state == SeamShell.StateLive;
+            check.Expect(!CX.Alloy.Highlight.Claimed(shell) && CX.Alloy.Highlight.ClaimCount == before && stillLive,
+                "the complete-object destructor must drop the outline's claim while the shell is still LIVE: it "
+              + "is the one destroy path that never retires, so a claim it keeps is kept for the session");
+
+            DbId byHandle = SceneDb.Objects.Alloc();
+            nint handleShell = byHandle.IsNull ? 0 : Facade.Mint(FacadeKind.Object, byHandle);
+            if (handleShell == 0) { check.Expect(false, "no second record for the claim check"); return; }
+            SeamShell.NoteScene(handleShell, world: true);
+            before = CX.Alloy.Highlight.ClaimCount;
+            CX.Alloy.Highlight.SetClaim(handleShell, true);
+            ObjectSlots.DestroyRecord(byHandle);
+            check.Expect(!CX.Alloy.Highlight.Claimed(handleShell) && CX.Alloy.Highlight.ClaimCount == before,
+                "a destroy by HANDLE -- what a dying scene runs for each of its members -- must drop the claim too");
+
+            // A claim no object record holds, beside one a record does. Swept first, so the count answers for
+            // this entry and not for a drop a check above already failed on.
+            CX.Alloy.Highlight.AuditClaims();
+            DbId kept = SceneDb.Objects.Alloc();
+            nint keptShell = kept.IsNull ? 0 : Facade.Mint(FacadeKind.Object, kept);
+            if (keptShell == 0) { check.Expect(false, "no third record for the claim check"); return; }
+            SeamShell.NoteScene(keptShell, world: true);
+            CX.Alloy.Highlight.SetClaim(keptShell, true);
+            CX.Alloy.Highlight.SetClaim(stale, true);
+            check.Expect(CX.Alloy.Highlight.AuditClaims() == 1 && !CX.Alloy.Highlight.Claimed(stale)
+                      && CX.Alloy.Highlight.Claimed(keptShell),
+                "the audit must drop the claim no live object record holds and KEEP the one a record does, "
+              + "reading neither block");
+            ObjectSlots.DestroyRecord(kept);
+
+            for (nint k = 1; k <= CX.Alloy.Highlight.MaxHlRoots + 1; k++) CX.Alloy.Highlight.SetClaim(k * 8, true);
+            check.Expect(CX.Alloy.Highlight.ClaimCount == CX.Alloy.Highlight.MaxHlRoots
+                      && CX.Alloy.Highlight.ClaimsRefused == 1,
+                "a claim past the ceiling must be refused and COUNTED -- a budget with no counter is why a session "
+              + "stopped outlining anything and said nothing");
+        }
+        finally { CX.Alloy.Highlight.SwapClaims(saved); }
+        check.Expect(CX.Alloy.Highlight.Stats() == wasReporting,
+            "the claim check spent the session's OWN claim counters: every period line after it would report a "
+          + "refused or died-claimed claim the session never caused, and that line is this list's one diagnostic");
     }
 }

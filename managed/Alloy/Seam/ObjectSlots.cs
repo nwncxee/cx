@@ -124,11 +124,15 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
 
     // ---- lifecycle ----
 
-    /// <summary>The complete-object destructor (Linux slot 0). Everything the object owns goes now: its Part
-    /// shells, its callbacks, its model reference, its part range and its record. The shell itself is retired
-    /// and quarantined -- a later call through it is a named line, not a jump through freed memory.</summary>
+    /// <summary>The complete-object destructor (Linux slot 0).</summary>
     [UnmanagedCallersOnly]
-    private static void Destruct(nint self) => Destroy(self, freeing: false);
+    private static void Destruct(nint self) => DestroyComplete(self);
+
+    /// <summary>The complete-object destructor's body. Everything the object owns goes now: its Part shells,
+    /// its callbacks, its model reference, its part range and its record -- but the shell stays LIVE, because
+    /// its caller owns the storage. The one destroy path that never reaches <see cref="Facade.Retire"/>, so
+    /// whatever else still names the shell (the outline's claim) is dropped here or not at all.</summary>
+    internal static void DestroyComplete(nint self) => Destroy(self, freeing: false);
 
     /// <summary>The DELETING destructor (Linux slot 1, and the one Windows destructor slot after the pair
     /// collapses): the half that frees. <c>Gob::~Gob</c> @0x4443c0 is the body plus
