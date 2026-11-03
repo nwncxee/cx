@@ -165,7 +165,8 @@ exists, and give every "should have gone through X" review finding its ban in th
 A rule counts once a check refuses it. Each gate is `tools/gates/<rule>.sh`, run by `tools/gates/run.sh` from
 `build.sh`, CI and a Claude Code `PostToolUse` hook (`.claude/settings.json`), so a violation shows the moment
 it is written. An unfinished cleanup is a `<rule>.baseline` ratchet (`tools/gates/ratchet.sh`): it may only
-shrink. Adding a rule means adding its gate in the same change, and one line here:
+shrink, and a row naming a file that is no longer in the tree fails -- an allowance nothing can spend hides
+the cleanup that earned it. Adding a rule means adding its gate in the same change, and one line here:
 
 - `comments.sh`: a `///` block over 4 text lines, or a `///` line citing a ticket (`#n`, `CX-n`, `!n`), fails. No baseline.
 - `file-size.sh`: a `.cs` file under `managed/` over 1,500 lines fails -- past the cap, split by
@@ -230,10 +231,10 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
   (`LooseBlock`), so every site left is the vanilla CX-UI path drawing on the engine's own renderer, where
   sampler units are opaque and count too; `python3 tools/gates/uniform-blocks.py -v` lists each site.
 - `gpu-frees.sh`: an immediate `Gl.Delete{Textures,Buffers,Framebuffers,VertexArrays,Renderbuffers,Samplers}`
-  call site under `managed/` counts against `gpu-frees.baseline`, which may only shrink. Alloy's objects are
-  Vulkan's, destroyed through the backend, which holds a freed one past its submit ring, so every site left is
-  the vanilla CX-UI path -- which owns its objects for the session and frees them where they die;
-  `python3 tools/gates/gpu-frees.py -v` lists each site.
+  call site under `managed/` fails. Alloy's objects are Vulkan's, destroyed through the backend, which holds a
+  freed one past its submit ring, and the GL that stays owns its objects for the session -- so
+  `gpu-frees.baseline` is empty and the ratchet now refuses every site;
+  `python3 tools/gates/gpu-frees.py -v` lists any it finds.
 - `compiler-rules.sh`: a `#pragma warning disable` or `SuppressMessage` of a `CX` rule, an RS0030 pragma outside
   `managed/Framework/` or with no `// <reason>` on its line, or a `NoWarn`/severity override lowering either in build config, fails.
 - `local-paths.sh`: a home directory, mount point or personal checkout path in a tracked file fails

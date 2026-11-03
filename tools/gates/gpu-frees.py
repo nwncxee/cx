@@ -9,8 +9,8 @@ read by the frames in flight. Alloy's objects are Vulkan's, destroyed through th
 one past its submit ring, so this census is over the GL that stays: CX's own windows and the NUI model view on
 the engine's renderer, the files CX0003 lists.
 
-Those own their objects for the session and free them where they die, on a scratch target or a creation
-failure. So the ratchet is shrink-only, not a target of zero.
+Those own their objects for the session and never free one, so the census is empty and the shrink-only
+ratchet refuses every site it finds.
 """
 import re
 import subprocess
