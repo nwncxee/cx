@@ -268,7 +268,7 @@ internal sealed unsafe partial class VkBackend
             ColorAttachment c = _pend[i];
             // a null image routes the slot nowhere, so the slots after it keep their indices
             if (c.Image.IsNull) { att[i] = new VkRenderingAttachmentInfo { imageView = default, imageLayout = VkImageLayout.Undefined }; continue; }
-            if (!_images.TryGet(c.Image.Value, out VkImg img)) return Fault($"render pass colour {i}: stale image");
+            if (!_images.TryGet(c.Image.Value, out VkImg img)) return Fault($"render pass colour {i}: {StaleImage(c.Image)}");
             if (AttachMissing(img.Desc.Use, false) is { } colourWhy) return Fault($"render pass colour {i}: {img.Desc.Label} {colourWhy}");
             if (c.Mip != 0) return Fault($"render pass colour {i}: mip {c.Mip} -- only mip 0 on the Vulkan backend yet");
             VkImageView cv = AttachView(img, c.Layer);
@@ -293,7 +293,7 @@ internal sealed unsafe partial class VkBackend
         if (_pendHasDepth)
         {
             DepthAttachment d = _pendDepth;
-            if (!_images.TryGet(d.Image.Value, out VkImg img)) return Fault("render pass depth: stale image");
+            if (!_images.TryGet(d.Image.Value, out VkImg img)) return Fault($"render pass depth: {StaleImage(d.Image)}");
             if (AttachMissing(img.Desc.Use, true) is { } depthWhy) return Fault($"render pass depth: {img.Desc.Label} {depthWhy}");
             if (d.Mip != 0) return Fault($"render pass depth: mip {d.Mip} -- only mip 0 on the Vulkan backend yet");
             if (!img.Desc.Fmt.IsDepth()) return Fault($"render pass depth: {img.Desc.Label} is {img.Desc.Fmt}, not a depth format");
@@ -591,13 +591,13 @@ internal sealed unsafe partial class VkBackend
     private bool Img(ImageBinding s, uint at, VkDescriptorType type, VkWriteDescriptorSet* w, Span<VkDescriptorImageInfo> ii,
                      Span<BindingKey> key, ref int k, ref int t)
     {
-        if (!_images.TryGet(s.Image.Value, out VkImg img)) return Fault($"bind set: stale image on slot {s.Slot}");
+        if (!_images.TryGet(s.Image.Value, out VkImg img)) return Fault($"bind set: {StaleImage(s.Image)} on slot {s.Slot}");
         bool storage = type == VkDescriptorType.StorageImage;
         if (UsageMissing(img.Desc.Use, storage) is { } why) return Fault($"bind set: slot {s.Slot}'s image {img.Desc.Label} {why}");
         VkImageLayout want = storage ? VkImageLayout.General : VkImageLayout.ShaderReadOnlyOptimal;
         if (!_rendering) Transition(img, want);
         else if (img.Layout != want)
-            return Fault($"bind set: slot {s.Slot}'s image needs a barrier inside a begun render pass -- bind before the first draw");
+            return Fault($"bind set: slot {s.Slot}'s image {img.Desc.Label} needs a barrier inside a begun render pass -- bind before the first draw");
         if (storage && _setDraws) img.Written = true;
         else if (storage) _cImgs[_cImgN++] = img;
         VkSampler sampler = _nearest;

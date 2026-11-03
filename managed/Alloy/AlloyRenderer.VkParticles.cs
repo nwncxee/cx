@@ -60,7 +60,7 @@ public sealed unsafe partial class AlloyRenderer
         bool soft = Particles.SoftOn && !c.DepthRead.IsNull;
         if (soft)
         {
-            cl.CopyImage(new CopyImageCmd(c.Depth, new ImageRegion(0, 0, 0, 0), c.DepthRead, new ImageRegion(0, 0, 0, 0), c.W, c.H, 1));
+            VkCopyDepth(cl, c);
             ReadOnlySpan<ImageId> read = [c.DepthRead];
             cl.ReadImages(read);
         }
