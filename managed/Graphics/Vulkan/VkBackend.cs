@@ -46,6 +46,12 @@ internal sealed unsafe partial class VkBackend : IDevice
         public long BarBatch = -1;
         /// <summary>The alias group whose allocation it is bound into; null for an image with memory of its own.</summary>
         public AliasGroup? Group;
+        /// <summary>The alias allocation it is bound into: its group's own, or one the group moved off while this
+        /// frame was using it.</summary>
+        public VmaAllocation Home;
+        /// <summary>An alias member a submit of this frame used: a move of its group's memory leaves it on its own
+        /// until the frame ends.</summary>
+        public bool InFrame;
     }
 
     private sealed class VkBuf(VkBuffer buffer, VmaAllocation alloc, BufferDesc desc)

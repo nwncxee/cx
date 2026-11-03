@@ -22,7 +22,8 @@ internal static partial class GpuGolden
         AliasOneSubmit(vk, check, log);
         AliasTwoLive(vk, check, log);
         AliasStaleStorageRead(vk, check, log);
-        AliasLiveThroughRehome(vk, check, log, settle);
+        AliasUsedThroughGrow(vk, check, log, settle, handedOver: false);
+        AliasUsedThroughGrow(vk, check, log, settle, handedOver: true);
         AliasFollowsLargest(vk, check, log, settle, 4, 64, dropLarger: false);
         AliasFollowsLargest(vk, check, log, settle, 4, 64, dropLarger: true);
         vk.Destroy(settle);
@@ -126,32 +127,41 @@ internal static partial class GpuGolden
         finally { vk.Destroy(a); vk.Destroy(b); vk.Destroy(rb); }
     }
 
-    /// <summary>Holds that a group's memory moving under a member written this frame is refused, and so is the read
-    /// that wanted those bytes; turns red when a mid-frame grow takes a live member's contents silently.</summary>
-    private static void AliasLiveThroughRehome(VkBackend vk, Checker check, ExtenderLog log, BufferId settle)
+    /// <summary>Holds that a member a submit of this frame used keeps its bytes when a larger member grows its group
+    /// mid-frame, its write unread or already handed over for sampling, and that the group is one allocation again once
+    /// the frame ends; turns red when the grow remakes the used member on fresh memory.</summary>
+    private static void AliasUsedThroughGrow(VkBackend vk, Checker check, ExtenderLog log, BufferId settle, bool handedOver)
     {
-        ImageId a = Target(vk, 4, "golden rehome live small", "golden rehome live");
-        BufferId rb = vk.CreateBuffer(new BufferDesc(64, BufferUse.CopyDst | BufferUse.CopySrc, MemoryKind.Device, "golden rehome live back"));
+        string lane = handedOver ? "golden grow read" : "golden grow unread";
+        string how = handedOver ? "handed over for sampling" : "written and unread";
+        ImageId a = Target(vk, 4, lane + " small", lane);
+        BufferId rb = vk.CreateBuffer(new BufferDesc(64, BufferUse.CopyDst | BufferUse.CopySrc, MemoryKind.Device, lane + " back"));
         ImageId big = default;
         try
         {
-            check.Expect(!a.IsNull && !rb.IsNull, "a rehome-under-a-live-member target was refused (logged above)");
+            check.Expect(!a.IsNull && !rb.IsNull, $"a {lane} target was refused (logged above)");
             if (a.IsNull || rb.IsNull) return;
             vk.EndAliasFrame();
-            var cl = new CommandList("golden rehome live", 1 << 10, log);
+            Settle(vk, log, settle);
+            long held = vk.Allocations.Count;
+            var cl = new CommandList(lane, 1 << 10, log);
             ClearInto(cl, a, new Vector4(1, 0, 0, 1));
-            check.Expect(vk.Submit(cl), "the rehome-under-a-live-member clear was refused (logged above)");
+            if (handedOver) cl.ReadImages([a]);
+            check.Expect(vk.Submit(cl), $"the {lane} clear was refused (logged above)");
             int faults = vk.Faults;
-            big = Target(vk, 64, "golden rehome live large", "golden rehome live");
-            check.Expect(!big.IsNull, "the member that grows the group was refused (logged above)");
-            check.Expect(vk.Faults == faults + 1,
-                         $"the group's memory moved under a written member with {vk.Faults - faults} refusals, not 1");
-            faults = vk.Faults;
-            var after = new CommandList("golden rehome live read", 1 << 10, log);
+            big = Target(vk, 64, lane + " large", lane);
+            check.Expect(!big.IsNull, $"the member that grows the {lane} group was refused (logged above)");
+            var after = new CommandList(lane + " after", 1 << 10, log);
             after.CopyImageToBuffer(new CopyToBufferCmd(a, new ImageRegion(0, 0, 0, 0), 4, 4, rb, 0));
-            check.Expect(vk.Submit(after), "the read after the move was refused (logged above)");
-            check.Expect(vk.Faults == faults + 1,
-                         $"the read after the move logged {vk.Faults - faults} refusals, not 1");
+            check.Expect(vk.Submit(after), $"the {lane} read after the grow was refused (logged above)");
+            var got = new byte[64];
+            check.Expect(vk.ReadBack(rb, got) && Solid(got, 255, 0, 0, 255),
+                         $"a member {how} does not read back its red after a larger member grew its group mid-frame");
+            check.Expect(vk.Faults == faults, $"a mid-frame grow past a member {how} logged {vk.Faults - faults} refusals, not none");
+            vk.EndAliasFrame();
+            Settle(vk, log, settle);
+            check.Expect(vk.Allocations.Count == held,
+                         $"once the frame ended the {lane} group holds {vk.Allocations.Count - held} allocations more than one");
         }
         finally
         {
