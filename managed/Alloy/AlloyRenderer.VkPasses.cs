@@ -48,6 +48,7 @@ public sealed unsafe partial class AlloyRenderer
         s.EngineAt = -1;
         s.Drawn = s.Skipped = 0;
         s.Effects = false;
+        s.Snapshot.BeginFrame();
         cl.BeginLabel("uploads"u8);
         if (!VkUploads(vk, cl)) return false;
         cl.EndLabel();
@@ -295,6 +296,9 @@ public sealed unsafe partial class AlloyRenderer
         cl.BeginLabel("probe"u8);
         VkProbeCapture(vk, cl, s, far, lightingOn && perspective, log);
         cl.EndLabel();
+        if (s.Snapshot.TookMoreThanEver())
+            log.Always($"AlloyRenderer: {s.Snapshot.High} scene-depth snapshot(s) in a frame at {w}x{h} -- a pass that "
+                     + "samples the depth reuses the one standing until a pass writes depth again");
         if (!s.Live)
         {
             s.Live = true;
@@ -324,17 +328,19 @@ public sealed unsafe partial class AlloyRenderer
         s.LightRec = _vkdef.Wrote && !_capturing && Lighting.LightRec.V;
         if (s.LightRec) arm[n++] = _vkdef.LightRec;
         if (SsaoPassVk.Live) arm[n++] = SsaoPassVk.Visibility;
-        if (s.DepthFilled) arm[n++] = s.DepthRead;
+        if (s.Snapshot.Filled) arm[n++] = s.DepthRead;
         cl.ReadImages(arm[..n]);
         VkDecalHandOver(cl, s);
     }
 
-    /// <summary>The arena bytes the pass's binds gathered, uploaded ahead of it, then the pass and its draws.</summary>
-    private static void VkFlushPass(CommandList cl, CommandList side, int arena0, in RenderPassDesc rp)
+    /// <summary>The arena bytes the pass's binds gathered, uploaded ahead of it, then the pass and its draws. A pass
+    /// over the scene depth stales the snapshot unless <paramref name="writesDepth"/> says none of its draws write it.</summary>
+    private static void VkFlushPass(CommandList cl, CommandList side, int arena0, in RenderPassDesc rp, bool writesDepth = true)
     {
         VkColourState s = _vkc;
         int len = (s.ArenaUsed - arena0 + 3) & ~3;
         if (len > 0) cl.UpdateBuffer(s.Arena, arena0, s.ArenaBytes.AsSpan(arena0, Math.Min(len, ArenaCap - arena0)));
+        if (writesDepth && rp.HasDepth && rp.Depth.Image == s.Depth) s.Snapshot.Wrote();
         cl.BeginRenderPass(in rp);
         cl.Append(side);
         cl.EndRenderPass();
@@ -481,7 +487,7 @@ public sealed unsafe partial class AlloyRenderer
         var rp = new RenderPassDesc(VkIdAttachments(ids, !retest),
                                     new DepthAttachment(s.Depth, 0, 0, retest ? LoadOp.Load : LoadOp.Clear, StoreOp.Store, WorldDepth.Clear));
         // a feature program may bind the depth copy after a plain draw, where no barrier can move it
-        if (_depthPrepass && s.DepthFilled) cl.ReadImages([s.DepthRead]);
+        if (_depthPrepass && s.Snapshot.Filled) cl.ReadImages([s.DepthRead]);
         VkFlushPass(cl, side, arena0, in rp);
         return true;
     }

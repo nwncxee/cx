@@ -84,9 +84,9 @@ public sealed unsafe partial class AlloyRenderer
         /// <summary>The prepass depth as a SAMPLED copy: the colour pass's draws cannot sample their own depth
         /// attachment, and the lit stage tests every AO fetch against the depth the estimate was computed from.</summary>
         public ImageId DepthRead;
-        /// <summary>A copy into <see cref="DepthRead"/> has been recorded since it was made: until then it holds
-        /// nothing, and a stage that declares it gets the stand-in.</summary>
-        public bool DepthFilled;
+        /// <summary>What has been copied into <see cref="DepthRead"/> and whether it still speaks for
+        /// <see cref="Depth"/>.</summary>
+        public readonly DepthSnapshot Snapshot = new();
         public int W, H;
         public BufferId Records, Slots, Bones, TexH, Arena, ZeroUbo, ZeroSsbo, Plt;
         public long RecCap, SlotCap, BoneCap, TexHCap, PltCap;
@@ -192,7 +192,7 @@ public sealed unsafe partial class AlloyRenderer
             s.DepthRead = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.D32F, w, h, 1, 1, 1, 1,
                                                        ImageUse.Sampled | ImageUse.CopyDst, "vk scene depth copy"));
             s.W = w; s.H = h;
-            s.DepthFilled = false;
+            s.Snapshot.Remade();
             if (s.Hdr.IsNull || s.Depth.IsNull || s.G0.IsNull || s.G1.IsNull || s.G2.IsNull || s.G3.IsNull || s.DepthRead.IsNull)
             {
                 s.Failed = true;
@@ -203,12 +203,10 @@ public sealed unsafe partial class AlloyRenderer
         return true;
     }
 
-    /// <summary>The scene depth as it stands into <see cref="VkColourState.DepthRead"/>, outside any pass.</summary>
+    /// <summary>The scene depth as it stands into <see cref="VkColourState.DepthRead"/>, outside any pass. Nothing
+    /// when no pass has written depth since the last one: the snapshot there already IS that depth.</summary>
     private static void VkCopyDepth(CommandList cl, VkColourState s)
-    {
-        cl.CopyImage(new CopyImageCmd(s.Depth, new ImageRegion(0, 0, 0, 0), s.DepthRead, new ImageRegion(0, 0, 0, 0), s.W, s.H, 1));
-        s.DepthFilled = true;
-    }
+        => s.Snapshot.Take(cl, s.Depth, s.DepthRead, s.W, s.H);
 
     /// <summary>A scene target: sampled by the passes after it, and a copy source -- the depth's readable copy is
     /// taken from the attachment itself.</summary>
@@ -633,7 +631,7 @@ public sealed unsafe partial class AlloyRenderer
         if (VkWxSampled(o.Name, out ImageId wx, out SamplerId wxs)) return new ImageBinding(o.Binding, wx, wxs);
         if (VkIsWaterTex(o.Name) && VkWaterTex(o.Name) is { IsNull: false } wat)
             return new ImageBinding(o.Binding, wat, VkWaterSampler(o.Name));
-        if (o.Name == "uSceneDepth" && s.DepthFilled) return new ImageBinding(o.Binding, s.DepthRead);
+        if (o.Name == "uSceneDepth" && s.Snapshot.Filled) return new ImageBinding(o.Binding, s.DepthRead);
         if (o.Name == "uWxStand" && !s.G3.IsNull && s.GbufWritten) return new ImageBinding(o.Binding, s.G3, s.Raw);
         return VkStandInOf(in o, s);
     }

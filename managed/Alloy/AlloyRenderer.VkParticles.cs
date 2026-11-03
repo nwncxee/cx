@@ -69,6 +69,7 @@ public sealed unsafe partial class AlloyRenderer
         int arena0 = c.ArenaUsed;
         side.SetViewport(0, 0, viewport[2], viewport[3]);
         int cls = -1;
+        bool punched = false;
         bool? cull = null;
         for (int gi = 0; gi < groups; gi++)
         {
@@ -93,10 +94,13 @@ public sealed unsafe partial class AlloyRenderer
             if (loose < 0 || (groupLit && pass < 0)) return false;
             VkPartBind(side, s, c, loose, pass, g.Tex, soft);
             side.Draw(g.Parts * 6, 1, g.Start * 6, 0);
+            punched |= cls == Particles.VkPunch;
             c.Effects = true;
         }
         ReadOnlySpan<ColorAttachment> colors = [new(c.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default)];
-        VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear)));
+        // only the punch class writes depth, so without one the snapshot still speaks for the scene after this pass
+        VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear)),
+                    writesDepth: punched);
         if (!s.Live)
         {
             s.Live = true;

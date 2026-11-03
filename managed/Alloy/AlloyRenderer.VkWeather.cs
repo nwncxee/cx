@@ -141,7 +141,9 @@ public sealed unsafe partial class AlloyRenderer
         s.Splashed = splash;
         if (!late && splash && !VkSplashDraw(side, s, c, view, proj, viewport, near, far, lit, s.Pipe[VkSplashProg], false)) return false;
         ReadOnlySpan<ColorAttachment> colors = [new(c.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default)];
-        VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear)));
+        // every precipitation pipeline tests depth and writes none, so the snapshot still speaks for the scene after it
+        VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear)),
+                    writesDepth: false);
         if ((fall || drip) && VkWxPathLine(s, vk, mesh ? Weather.WxPath.Mesh : Weather.WxPath.Compute) is { } said)
             log.Always($"{said} -- the {(snow ? "snow" : "rain")} is LIVE, {count} lattice point(s) and {drips} drip(s)");
         return true;
