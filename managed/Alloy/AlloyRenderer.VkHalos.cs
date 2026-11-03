@@ -55,7 +55,7 @@ public sealed unsafe partial class AlloyRenderer
         ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(recs);
         if (!VkGrow(vk, ref s.Recs, ref s.RecCap, Math.Max(bytes.Length, 64), "vk halos")) return false;
         cl.UpdateBuffer(s.Recs, 0, bytes);
-        cl.CopyImage(new CopyImageCmd(c.Depth, new ImageRegion(0, 0, 0, 0), c.DepthRead, new ImageRegion(0, 0, 0, 0), c.W, c.H, 1));
+        VkCopyDepth(cl, c);
         ReadOnlySpan<ImageId> read = [c.DepthRead];
         cl.ReadImages(read);
         if (!VkHaloOcclude(vk, cl, s, c, view, proj, n)) return false;

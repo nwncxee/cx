@@ -103,7 +103,7 @@ public sealed unsafe partial class AlloyRenderer
         // as it stood when the prepass finished -- which is the depth the lit stage's ownership test is against
         cl.BeginLabel("AO"u8);
         if (_depthPrepass)
-            cl.CopyImage(new CopyImageCmd(s.Depth, new ImageRegion(0, 0, 0, 0), s.DepthRead, new ImageRegion(0, 0, 0, 0), w, h, 1));
+            VkCopyDepth(cl, s);
         fixed (Matrix4x4* pr = &proj) SsaoPassVk.Record(vk, cl, s.DepthRead, _depthPrepass, pr, viewport, log);
         cl.EndLabel();
         cl.BeginLabel("decals"u8);
@@ -323,7 +323,7 @@ public sealed unsafe partial class AlloyRenderer
         s.LightRec = _vkdef.Wrote && !_capturing && Lighting.LightRec.V;
         if (s.LightRec) arm[n++] = _vkdef.LightRec;
         if (SsaoPassVk.Live) arm[n++] = SsaoPassVk.Visibility;
-        if (!s.DepthRead.IsNull) arm[n++] = s.DepthRead;
+        if (s.DepthFilled) arm[n++] = s.DepthRead;
         cl.ReadImages(arm[..n]);
         VkDecalHandOver(cl, s);
     }
@@ -479,8 +479,8 @@ public sealed unsafe partial class AlloyRenderer
         Span<ColorAttachment> ids = stackalloc ColorAttachment[PrepassTargets];
         var rp = new RenderPassDesc(VkIdAttachments(ids, !retest),
                                     new DepthAttachment(s.Depth, 0, 0, retest ? LoadOp.Load : LoadOp.Clear, StoreOp.Store, WorldDepth.Clear));
-        // a feature program may bind the depth copy after a plain draw, and a resize remade it at UNDEFINED
-        if (!s.DepthRead.IsNull) cl.ReadImages([s.DepthRead]);
+        // a feature program may bind the depth copy after a plain draw, where no barrier can move it
+        if (_depthPrepass && s.DepthFilled) cl.ReadImages([s.DepthRead]);
         VkFlushPass(cl, side, arena0, in rp);
         return true;
     }

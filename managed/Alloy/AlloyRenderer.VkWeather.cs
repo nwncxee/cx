@@ -107,7 +107,7 @@ public sealed unsafe partial class AlloyRenderer
             return false;
         s.Fell = fall; s.Dripped = drip; s.Kind = snow ? 2 : 1;
         s.View = view; s.Proj = proj;
-        cl.CopyImage(new CopyImageCmd(c.Depth, new ImageRegion(0, 0, 0, 0), c.DepthRead, new ImageRegion(0, 0, 0, 0), c.W, c.H, 1));
+        VkCopyDepth(cl, c);
         ReadOnlySpan<ImageId> read = [c.DepthRead];
         cl.ReadImages(read);
         CommandList side = s.Side!;
