@@ -8,13 +8,17 @@ using CX.Rhi;
 
 namespace CX.Alloy;
 
-/// <summary>The single-pass mip downsampler (<c>cx_spd_c</c>): one dispatch folds a 64x64 tile of its base level
-/// down six times, so a chain costs a dispatch and a barrier per seven levels instead of one of each per level.</summary>
+/// <summary>The single-pass mip downsampler (<c>cx_spd_c</c>): one dispatch folds a 32x32 tile of its base level
+/// five times, so a chain costs a dispatch and a barrier per six levels -- its base and five folds -- instead of
+/// one of each per level.</summary>
 public sealed unsafe partial class AlloyRenderer
 {
     /// <summary>The downsampler's resref. Its hi-Z variant folds by MAX over inverse view depth; the plain one
     /// by box average.</summary>
-    private const string SpdCs = "cx_spd_c";
+    internal const string SpdCs = "cx_spd_c";
+
+    /// <summary>The define that picks the hi-Z variant out of the one text.</summary>
+    private const string SpdHiZ = "CX_SPD_HIZ 1";
 
     /// <summary>Levels one dispatch writes, counting its base: the tile folded five times.</summary>
     private const int SpdLevels = 6;
@@ -29,12 +33,17 @@ public sealed unsafe partial class AlloyRenderer
         public int Levels, Gen;
     }
 
-    /// <summary>The downsampler on one device, the hi-Z variant with <paramref name="hiZ"/>; a null id is the
-    /// backend's own refusal, already logged.</summary>
+    /// <summary>The downsampler on one device, the hi-Z variant with <paramref name="hiZ"/>: a content override
+    /// that does not build falls back, logged, to the embedded stage. A null id is the backend's own refusal,
+    /// already logged.</summary>
     internal static PipelineId VkSpdPipe(VkBackend vk, bool hiZ, string label, ExtenderLog log)
     {
-        string src = ShaderResource.Override(SpdCs, log) ?? ShaderStages.Source(SpdCs);
-        return vk.CreateCompute(hiZ ? ShaderStages.WithDefine(src, "CX_SPD_HIZ 1") : src, label);
+        string embedded = ShaderStages.Source(SpdCs);
+        string over = ShaderResource.Override(SpdCs, log) ?? embedded;
+        PipelineId pipe = vk.CreateCompute(hiZ ? ShaderStages.WithDefine(over, SpdHiZ) : over, label);
+        if (!pipe.IsNull || ReferenceEquals(over, embedded)) return pipe;
+        log.Always($"AlloyRenderer: {label}'s {SpdCs} override did not build (logged above) -- building the embedded stage");
+        return vk.CreateCompute(hiZ ? ShaderStages.WithDefine(embedded, SpdHiZ) : embedded, label);
     }
 
     /// <summary><paramref name="img"/>'s whole <paramref name="levels"/>-level chain: the first dispatch makes the

@@ -95,6 +95,7 @@ internal static class ShaderStages
         (GrassField.ShdGrassFs,            Banner),
         (GrassField.ShdBladeVs,            Banner + SelfInvariant),
         (GrassField.ShdBladeFs,            Banner),
+        (AlloyRenderer.SpdCs,              Banner),
         (AlloyLights.ShdClusterCs,         Banner),
         (DeferredLights.ShdCs,             Banner + Record),
         (DeferredShadows.ShdCs,            Banner),
@@ -208,7 +209,7 @@ internal static class ShaderStages
     /// that declares it. A missing switch arm is otherwise invisible until a program builds from "".</summary>
     internal static bool SelfCheck(ExtenderLog log)
     {
-        bool ok = All.Length == 45 && BindlessRef.Length <= ShaderResource.ResRefBytes;
+        bool ok = All.Length == 46 && BindlessRef.Length <= ShaderResource.ResRefBytes;
         foreach ((string r, string header) in All)
         {
             string src = Source(r);
