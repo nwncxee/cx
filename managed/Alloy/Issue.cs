@@ -18,7 +18,7 @@ internal static unsafe class Issue
     /// unconditionally, and nothing is made non-resident -- that would be a call on a dead device.</summary>
     internal static void ForgetHandles()
     {
-        InvalidateRecords();   // #242: the persistent records hold the handles this forgets
+        InvalidateRecords(RecordWhole.Handles);   // #242: the persistent records hold the handles this forgets
         Array.Clear(_hTid, 0, _hTid.Length);
         Array.Clear(_hVal, 0, _hVal.Length);
     }
@@ -29,7 +29,7 @@ internal static unsafe class Issue
     internal static void WipeHandles()
     {
         if (OwnedTextures.Armed) return;
-        InvalidateRecords();   // #242: same reason as ForgetHandles -- a record outlives the wipe otherwise
+        InvalidateRecords(RecordWhole.Handles);   // #242: same reason as ForgetHandles -- a record outlives the wipe otherwise
         Array.Clear(_hTid, 0, _hTid.Length);
     }
 

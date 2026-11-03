@@ -15,7 +15,7 @@ public sealed unsafe partial class AlloyRenderer
         // leaving the baseline bake to start from the new area's inputs rather than the old area's.
         LightmapBake.BeginAreaEdge();
         RevokeAll(why);                    // every pass's captured world
-        InvalidateRecords();               // ...and the per-slot draw-arg range cache (_cIdx/_cOff/_cBase)
+        InvalidateRecords(RecordWhole.AreaEdge);   // ...and the per-slot draw-arg range cache (_cIdx/_cOff/_cBase)
         FrameDiffAreaEdge();               // the diff's pass count is per AREA, not per session
         CreatureParityAreaEdge();          // ...and so is the creature dump's
         DbBlackProbeAreaEdge();            // ...and so is the black probe's budget

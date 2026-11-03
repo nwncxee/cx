@@ -94,7 +94,7 @@ public sealed unsafe partial class AlloyRenderer
         public long PltSends = -1, PaletteSends = -1;
         public ImageId Palette;
         /// <summary>Record slots moved since the last upload; <see cref="DirtyAll"/> when the list overflowed.</summary>
-        public int[] Dirty = new int[1024];
+        public int[] Dirty = new int[VkHandoverSeats];
         public int DirtyN;
         public bool DirtyAll = true;
         public uint[] TexHTable = [];
@@ -131,6 +131,11 @@ public sealed unsafe partial class AlloyRenderer
 
     private static VkColourState _vkc = new();
 
+    /// <summary>Slots the hand-over list seats between one pass's staging and the Vulkan frame's upload. Past
+    /// it the frame sends the table whole, so it is sized for the movers a crowded area stages, not the few a
+    /// quiet one does.</summary>
+    internal const int VkHandoverSeats = 1024;
+
     /// <summary>The Vulkan frame's scene depth, which CX's windows test their world anchors against; null id before one.</summary>
     internal static ImageId VkSceneDepth => _vkc.Depth;
 
@@ -164,8 +169,13 @@ public sealed unsafe partial class AlloyRenderer
     internal static void VkNoteDirty(int[] dirty, int n, bool whole)
     {
         VkColourState s = _vkc;
+        RecordUploads.NoteMarks(n);
         if (s.DirtyAll) return;
-        if (whole || s.DirtyN + n > s.Dirty.Length) { s.DirtyAll = true; s.DirtyN = 0; return; }
+        if (whole || s.DirtyN + n > s.Dirty.Length)
+        {
+            if (!whole) RecordUploads.Claim(RecordWhole.Handover);
+            s.DirtyAll = true; s.DirtyN = 0; return;
+        }
         Array.Copy(dirty, 0, s.Dirty, s.DirtyN, n);
         s.DirtyN += n;
     }
