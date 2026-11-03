@@ -86,6 +86,49 @@ internal static class E3
 }
 EOF
 
+# E5
+# Given a push whose data is a stackalloc of byte literals written at the call site
+# When the code compiles
+# Then the compiler refuses it at that line
+cat > "$tmp/planted/E5.cs" <<'EOF'
+using System;
+using System.Runtime.InteropServices;
+using CX.Rhi;
+namespace Planted;
+internal static class E5
+{
+    internal static void Push(CommandList cl) => cl.PushConstants(0, stackalloc byte[] { 1, 0, 0, 0 });
+    internal struct Block { public int Word; }
+    // Boundary: a stackalloc of a named struct compiles
+    internal static void Named(CommandList cl)
+    {
+        Span<Block> one = stackalloc Block[1];
+        one[0] = new Block { Word = 1 };
+        cl.PushConstants(0, MemoryMarshal.AsBytes(one));
+    }
+}
+EOF
+
+# E6
+# Given a push whose data is a span of ints reinterpreted as bytes
+# When the code compiles
+# Then the compiler refuses it at that line
+cat > "$tmp/planted/E6.cs" <<'EOF'
+using System;
+using System.Runtime.InteropServices;
+using CX.Rhi;
+namespace Planted;
+internal static class E6
+{
+    internal static void Push(CommandList cl, ReadOnlySpan<int> words)
+        => cl.PushConstants(0, MemoryMarshal.Cast<int, byte>(words));
+    internal struct Blk { public int A, B; }
+    // Boundary: the same cast of a span of a named struct compiles
+    internal static void Named(CommandList cl, ReadOnlySpan<Blk> blocks)
+        => cl.PushConstants(0, MemoryMarshal.Cast<Blk, byte>(blocks));
+}
+EOF
+
 # Boundary: bytes this rule cannot read -- a span handed over by something else -- compile
 cat > "$tmp/planted/E4.cs" <<'EOF'
 using System;
@@ -116,7 +159,11 @@ clean() {
 expect_line E1.cs 5 "E1"
 expect_line E2.cs 8 "E2"
 expect_line E3.cs 9 "E3"
+expect_line E5.cs 7 "E5"
+expect_line E6.cs 8 "E6"
 clean E3.cs 14 "E3 boundary"
+clean E5.cs 14 "E5 boundary"
+clean E6.cs 12 "E6 boundary"
 clean E4.cs "" "E4 boundary"
 clean CommandList.cs "" "the command list's own declaration"
 
