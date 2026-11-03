@@ -543,7 +543,7 @@ public sealed unsafe partial class CasterPass
         // shared with the async queue, whose fog samples the sun and cube maps -- concurrent sharing in place of an
         // ownership transfer, as the beside G-buffer pass samples them at the same time
         id = s.Dev.CreateImage(new ImageDesc(kind, Format.D32F, size, size, 1, 1, layers, 1,
-                                             ImageUse.DepthTarget | ImageUse.Sampled | ImageUse.Async, label));
+                                             ImageUse.DepthTarget | ImageUse.Sampled | ImageUse.CopySrc | ImageUse.Async, label));
         if (id.IsNull)
         {
             s.Failed = true;

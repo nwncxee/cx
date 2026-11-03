@@ -185,7 +185,7 @@ public sealed unsafe partial class AlloyRenderer
         {
             int n = Weather.NoiseSizeVk;
             s.NoiseTex = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, n, n, 1, BitOperations.Log2((uint)n) + 1, 1, 1,
-                                                      ImageUse.Sampled | ImageUse.Storage, "vk weather noise tile"));
+                                                      ImageUse.Sampled | ImageUse.Storage | ImageUse.CopySrc | ImageUse.CopyDst, "vk weather noise tile"));
             VkDefStage st = s.Noise!;
             int at = -1;
             if (!s.NoiseTex.IsNull)
@@ -222,7 +222,7 @@ public sealed unsafe partial class AlloyRenderer
         {
             int t = Weather.TrackSizeVk;
             if (Weather.TrackDirtyVk(false).IsEmpty) return;
-            s.Track = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba32F, t, t, 1, 1, 1, 1, ImageUse.Sampled, "vk weather prints"));
+            s.Track = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba32F, t, t, 1, 1, 1, 1, ImageUse.Sampled | ImageUse.CopyDst, "vk weather prints"));
             if (s.Track.IsNull) return;
             fresh = true;
         }

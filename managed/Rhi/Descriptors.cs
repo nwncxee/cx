@@ -63,6 +63,22 @@ public enum ImageUse : ushort
     Async = 128,
     /// <summary>Read by a render pass as its shading-rate image (<see cref="RenderPassDesc.ShadingRate"/>).</summary>
     ShadingRate = 256,
+    /// <summary>An attachment whose contents never leave the one render pass that writes them, so a device with
+    /// lazily allocated memory need back it with none. It names no other use and joins no alias group.</summary>
+    Transient = 512,
+}
+
+/// <summary>What an image use is, asked without a backend.</summary>
+public static class ImageUses
+{
+    /// <summary>Reached outside the pass that writes it: sampled, stored into, or either end of a copy. A
+    /// <see cref="ImageUse.Transient"/> attachment may name none of these.</summary>
+    public static bool LeavesItsPass(this ImageUse use)
+        => (use & (ImageUse.Sampled | ImageUse.Grey | ImageUse.Storage | ImageUse.CopySrc | ImageUse.CopyDst
+                 | ImageUse.ShadingRate)) != 0;
+
+    /// <summary>Attached by a render pass at the colour or depth point.</summary>
+    public static bool IsTarget(this ImageUse use) => (use & (ImageUse.ColorTarget | ImageUse.DepthTarget)) != 0;
 }
 
 /// <summary>An image to create. <see cref="Layers"/> counts whole cubes for the cube kinds; <see cref="D"/> is

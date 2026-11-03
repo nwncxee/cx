@@ -389,7 +389,7 @@ public sealed unsafe partial class AlloyRenderer
                          near, far, false);
             // alpha 0 where nothing mirrored: the trace keeps its own answer there
             ReadOnlySpan<ColorAttachment> colors = [new(s.PlCol, 0, 0, LoadOp.Clear, StoreOp.Store, default)];
-            VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(s.PlDepth, 0, 0, LoadOp.Clear, StoreOp.Store, WorldDepth.Clear)));
+            VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(s.PlDepth, 0, 0, LoadOp.Clear, StoreOp.DontCare, WorldDepth.Clear)));
         }
         finally
         {
@@ -410,7 +410,7 @@ public sealed unsafe partial class AlloyRenderer
         s.PlLevels = Math.Min(SsrLevels(w, h), s.ColLevels);
         s.PlCol = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, w, h, 1, 1, 1, 1,
                                                ImageUse.Sampled | ImageUse.ColorTarget, "vk ssr mirror"));
-        s.PlDepth = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.D32F, w, h, 1, 1, 1, 1, ImageUse.DepthTarget, "vk ssr mirror depth"));
+        s.PlDepth = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.D32F, w, h, 1, 1, 1, 1, ImageUse.DepthTarget | ImageUse.Transient, "vk ssr mirror depth"));
         s.PlMip = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, w, h, 1, s.PlLevels, 1, 1,
                                                ImageUse.Sampled | ImageUse.Storage, "vk ssr mirror chain"));
         s.PlW = w; s.PlH = h;

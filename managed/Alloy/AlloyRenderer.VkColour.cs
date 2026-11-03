@@ -183,8 +183,8 @@ public sealed unsafe partial class AlloyRenderer
             vk.Destroy(s.Hdr); vk.Destroy(s.Depth); vk.Destroy(s.G0); vk.Destroy(s.G1); vk.Destroy(s.G2); vk.Destroy(s.G3);
             vk.Destroy(s.DepthRead);
             // the deferred dispatch loads and stores the scene colour as an image, so it is a storage image too
-            s.Hdr = VkTarget(vk, Format.Rgba16F, w, h, "vk scene colour", ImageUse.Storage);
-            s.Depth = VkTarget(vk, Format.D32F, w, h, "vk scene depth");
+            s.Hdr = VkTarget(vk, Format.Rgba16F, w, h, "vk scene colour", ImageUse.Storage | ImageUse.CopySrc);
+            s.Depth = VkTarget(vk, Format.D32F, w, h, "vk scene depth", ImageUse.CopySrc);
             s.G0 = VkTarget(vk, Format.Rgba32Ui, w, h, "vk g-buffer 0", alias: AliasLanes.Wide);
             s.G1 = VkTarget(vk, Format.Rgba32Ui, w, h, "vk g-buffer 1", alias: AliasLanes.Second);
             s.G2 = VkTarget(vk, Format.Rg32Ui, w, h, "vk g-buffer 2", alias: AliasLanes.Narrow);
@@ -210,12 +210,12 @@ public sealed unsafe partial class AlloyRenderer
         s.DepthFilled = true;
     }
 
-    /// <summary>A scene target: sampled by the passes after it, and a copy source -- the depth's readable copy is
-    /// taken from the attachment itself.</summary>
+    /// <summary>A scene target: sampled by the passes after it, and nothing else unless <paramref name="extra"/>
+    /// says so -- a copy flag the target does not need costs it the device's framebuffer compression.</summary>
     private static ImageId VkTarget(VkBackend vk, Format f, int w, int h, string label, ImageUse extra = ImageUse.None, string? alias = null)
         => vk.CreateImage(new ImageDesc(ImageKind.Tex2D, f, w, h, 1, 1, 1, 1,
                                         (f.IsDepth() ? ImageUse.DepthTarget : ImageUse.ColorTarget)
-                                        | ImageUse.Sampled | ImageUse.CopySrc | extra, label, alias));
+                                        | ImageUse.Sampled | extra, label, alias));
 
     /// <summary>Everything that does not follow the render size: the programs, the layouts, the stand-ins, the arena.</summary>
     private static bool VkMakeStatic(VkBackend vk, VkColourState s, ExtenderLog log)

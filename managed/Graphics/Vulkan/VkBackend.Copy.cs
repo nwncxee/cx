@@ -22,6 +22,8 @@ internal sealed unsafe partial class VkBackend
         if (!_images.TryGet(c.Src.Value, out VkImg src)) return Fault("CopyImage: stale source image");
         if (!_images.TryGet(c.Dst.Value, out VkImg dst)) return Fault("CopyImage: stale destination image");
         if (c.W <= 0 || c.H <= 0 || c.D <= 0) return Fault($"CopyImage {src.Desc.Label} to {dst.Desc.Label}: a {c.W}x{c.H}x{c.D} block");
+        if (CopyMissing(src.Desc.Use, true) is { } sw) return Fault($"CopyImage: {src.Desc.Label} {sw}");
+        if (CopyMissing(dst.Desc.Use, false) is { } dwhy) return Fault($"CopyImage: {dst.Desc.Label} {dwhy}");
         if (Aspect(src.Desc.Fmt) != Aspect(dst.Desc.Fmt))
             return Fault($"CopyImage {src.Desc.Label} ({src.Desc.Fmt}) to {dst.Desc.Label} ({dst.Desc.Fmt}): different aspects");
         // a size-compatible copy between a block format and one texel per block counts its extent in the SOURCE's texels
@@ -55,6 +57,7 @@ internal sealed unsafe partial class VkBackend
         if (_inPass) return Fault("ClearImage inside a render pass");
         if (!_images.TryGet(i.Value, out VkImg img)) return Fault("ClearImage: stale image");
         if (Aspect(img.Desc.Fmt) != VkImageAspectFlags.Color) return Fault($"ClearImage: {img.Desc.Label} is not a colour image");
+        if (CopyMissing(img.Desc.Use, false) is { } why) return Fault($"ClearImage: {img.Desc.Label} {why} -- a clear outside a pass is a transfer");
         Transition(img, VkImageLayout.TransferDstOptimal);
         Flush();
         var zero = new VkClearColorValue();
@@ -74,7 +77,10 @@ internal sealed unsafe partial class VkBackend
         if (_inPass) return Fault("GenerateMips inside a render pass");
         if (_onAsync) return Fault("GenerateMips on the async compute queue, which cannot blit");
         if (!_images.TryGet(i.Value, out VkImg img)) return Fault("GenerateMips: stale image");
-        if (img.Desc.Mips > 1) BlitMips(img);
+        if (img.Desc.Mips == 1) return true;
+        if (CopyMissing(img.Desc.Use, true) is { } sw) return Fault($"GenerateMips: {img.Desc.Label} {sw}");
+        if (CopyMissing(img.Desc.Use, false) is { } dw) return Fault($"GenerateMips: {img.Desc.Label} {dw}");
+        BlitMips(img);
         return true;
     }
 
@@ -88,6 +94,8 @@ internal sealed unsafe partial class VkBackend
             return Fault($"BlitImage {src.Desc.Label} to {dst.Desc.Label}: {c.From.W}x{c.From.H} to {c.To.W}x{c.To.H}");
         if (src.Desc.Samples > 1)
             return Fault($"BlitImage: {src.Desc.Label} is multisampled, and a resolve takes vkCmdResolveImage, which is not on this backend");
+        if (CopyMissing(src.Desc.Use, true) is { } sw) return Fault($"BlitImage: {src.Desc.Label} {sw}");
+        if (CopyMissing(dst.Desc.Use, false) is { } dw) return Fault($"BlitImage: {dst.Desc.Label} {dw}");
         if (Aspect(src.Desc.Fmt) != Aspect(dst.Desc.Fmt))
             return Fault($"BlitImage {src.Desc.Label} ({src.Desc.Fmt}) to {dst.Desc.Label} ({dst.Desc.Fmt}): different aspects");
         Transition(src, VkImageLayout.TransferSrcOptimal);

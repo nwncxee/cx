@@ -82,7 +82,8 @@ public sealed unsafe partial class AlloyRenderer
         Span<ColorAttachment> colors = stackalloc ColorAttachment[1];
         colors[0] = new ColorAttachment(into.IsNull ? s.Hdr : into, 0, layer, LoadOp.Load, StoreOp.Store, default);
         VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(depth.IsNull ? s.Depth : depth, 0, 0,
-                                                                                      LoadOp.Load, StoreOp.Store, WorldDepth.Clear)));
+                                                                                      LoadOp.Load, depth.IsNull ? StoreOp.Store : StoreOp.DontCare,
+                                                                                      WorldDepth.Clear)));
         if (!k.Live)
         {
             k.Live = true;
