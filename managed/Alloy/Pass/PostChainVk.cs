@@ -14,12 +14,39 @@ namespace CX.Alloy;
 /// helpers every post program on Vulkan draws through.</summary>
 internal static unsafe class PostChainVk
 {
-    /// <summary>The resolve's loose terms.</summary>
+    /// <summary>The resolve's loose terms: the view and the fog, whose matrices and vectors a block carries. Its
+    /// scalars are <see cref="ResolvePush"/>'s.</summary>
     private sealed class ResolveLocs
     {
-        public int SkyRaw = -1, SkyBand = -1, InvVp = -1, Eye = -1, VFog = -1, VFogVp = -1, SkyBare = -1, OverlayOn = -1;
-        public int Strength = -1, Dither = -1, Viz = -1;
-        public PostChain.GradeLocs Grade = PostChain.GradeLocs.None;
+        public int SkyBand = -1, InvVp = -1, Eye = -1, VFog = -1, VFogVp = -1;
+    }
+
+    /// <summary>The resolve's per-pass scalars, pushed rather than staged: the sky's two gates, the bloom strength,
+    /// the grade, the output dither and the stage view.</summary>
+    private struct ResolvePush
+    {
+        public int SkyRaw, SkyBare;
+        public float Strength;
+        public PostChain.GradeTerms Grade;
+        public float Dither;
+        public int Viz, OverlayOn;
+    }
+
+    /// <summary><c>cx_resolve_f</c>'s own push members, each beside the field that fills it.</summary>
+    private static VkPushTail ResolveTail()
+    {
+        var p = new ResolvePush();
+        return VkPushTail.Of<ResolvePush>(
+            new VkPush("int", "uSkyRaw", Std140.At(ref p, ref p.SkyRaw)),
+            new VkPush("int", "uSkyBare", Std140.At(ref p, ref p.SkyBare)),
+            new VkPush("float", "uStrength", Std140.At(ref p, ref p.Strength)),
+            new VkPush("int", "uMode", Std140.At(ref p, ref p.Grade.Mode)),
+            new VkPush("float", "uKnee", Std140.At(ref p, ref p.Grade.Knee)),
+            new VkPush("float", "uExposure", Std140.At(ref p, ref p.Grade.Exposure)),
+            new VkPush("float", "uAcesMix", Std140.At(ref p, ref p.Grade.AcesMix)),
+            new VkPush("float", "uDither", Std140.At(ref p, ref p.Dither)),
+            new VkPush("int", "uViz", Std140.At(ref p, ref p.Viz)),
+            new VkPush("int", "uOverlayOn", Std140.At(ref p, ref p.OverlayOn)));
     }
 
     /// <summary>The bloom stages' loose terms.</summary>
@@ -116,16 +143,19 @@ internal static unsafe class PostChainVk
         Matrix4x4 invVp = AlloyRenderer.SkyInvVp;
         Vector3 eye = AlloyRenderer.EyePos;
         Open(s.Resolve!);
-        LooseBlock.Set(r.SkyRaw, Post.SkyRaw.V && invVp != default ? 1 : 0);
         LooseBlock.Set(r.SkyBand, FrameInputs.FogOn && invVp != default ? SceneFog.SkyBand : 0f);
         LooseBlock.Set(r.InvVp, invVp);
         LooseBlock.Set(r.Eye, [eye.X, eye.Y, eye.Z]);
         FogVolume.Upload(r.VFog, r.VFogVp, capture: false);
-        LooseBlock.Set(r.SkyBare, invVp == default ? 1 : 0);
-        LooseBlock.Set(r.OverlayOn, StageResources.VkOverlay.IsNull ? 0 : 1);
-        LooseBlock.Set(r.Strength, bloom ? Post.Bloom.V : 0f);
-        PostChain.WriteGrade(r.Grade);
-        LooseBlock.Set(r.Dither, last ? PostChain.DitherLsb : 0f);
+        var push = new ResolvePush
+        {
+            SkyRaw = Post.SkyRaw.V && invVp != default ? 1 : 0,
+            SkyBare = invVp == default ? 1 : 0,
+            OverlayOn = StageResources.VkOverlay.IsNull ? 0 : 1,
+            Strength = bloom ? Post.Bloom.V : 0f,
+            Grade = PostChain.GradeTerms.Now,
+            Dither = last ? PostChain.DitherLsb : 0f,
+        };
         bool motion = Post.Viz.V == PostChain.VizMotion;
         if (motion && vel.IsNull && !s.VizSaid)
         {
@@ -133,9 +163,11 @@ internal static unsafe class PostChainVk
             log.Always("PostChainVk: /post viz 4 shows NOTHING -- the velocity target is the taa stage's, and taa is not "
                      + "drawing this frame; the frame resolves as viz 0");
         }
-        LooseBlock.Set(r.Viz, motion && vel.IsNull ? 0 : Post.Viz.V);
+        push.Viz = motion && vel.IsNull ? 0 : Post.Viz.V;
         cl.BeginLabel("resolve"u8);
         int at = Close(cl, s.Resolve!);
+        // push constants are command-buffer state the render pass Draw opens does not reset
+        cl.PushConstants(VkGlsl.PushTailAt, System.Runtime.InteropServices.MemoryMarshal.AsBytes(new ReadOnlySpan<ResolvePush>(in push)));
         // the velocity viz rides the bloom input: the two views are exclusive by construction
         Draw(cl, s.Resolve!, FormatOf(into), Blend.None, into, LoadOp.Clear, new Rect(rect[0], rect[1], rect[2], rect[3]), at,
              new Inputs(hdr, motion && !vel.IsNull ? vel : bloom ? s.Bloom[0] : default, depth), log);
@@ -360,7 +392,7 @@ internal static unsafe class PostChainVk
     /// <summary>Post program <paramref name="label"/> from its two stages' GL text, its sizing tokens expanded as GL's
     /// compile expands them, translated and compiled. Null (logged) when a step refused.</summary>
     internal static GuiVkProg? Program(VkBackend vk, string vs, string fs, string label, Action<GuiVkProg> locate, ExtenderLog log,
-                                       int stage = -1)
+                                       int stage = -1, VkPushTail pushTail = default)
     {
         vs = ShaderResource.Tokens(vs);
         fs = ShaderResource.Tokens(fs);
@@ -370,7 +402,7 @@ internal static unsafe class PostChainVk
             log.Always($"PostChainVk: post {label} -- {why}");
             return null;
         }
-        GuiVkProg? p = GuiVkProg.Build(vk, vs, fs, units, $"post {label}", locate, log);
+        GuiVkProg? p = GuiVkProg.Build(vk, vs, fs, units, $"post {label}", locate, log, pushTail);
         if (p == null || stage < 0) return p;
         p.Stage = stage;
         p.StageBinds = StageResources.VkBinds(p.Opaques, stage, -1, draw: true);
@@ -461,11 +493,9 @@ internal static unsafe class PostChainVk
         s.Resolve = Make(vk, PostChain.ShdResolveFs, "resolve", out _, p =>
         {
             ResolveLocs r = s.R;
-            r.SkyRaw = p.Loc("uSkyRaw"); r.SkyBand = p.Loc("uSkyBand"); r.InvVp = p.Loc("uInvVP"); r.Eye = p.Loc("uEyePos");
-            r.VFog = p.Loc("uVFog"); r.VFogVp = p.Loc("uVFogVp"); r.SkyBare = p.Loc("uSkyBare"); r.OverlayOn = p.Loc("uOverlayOn");
-            r.Strength = p.Loc("uStrength"); r.Grade = PostChain.LocateGrade(p.Loc);
-            r.Dither = p.Loc("uDither"); r.Viz = p.Loc("uViz");
-        }, log);
+            r.SkyBand = p.Loc("uSkyBand"); r.InvVp = p.Loc("uInvVP"); r.Eye = p.Loc("uEyePos");
+            r.VFog = p.Loc("uVFog"); r.VFogVp = p.Loc("uVFogVp");
+        }, log, ResolveTail());
         s.Failed = s.Down == null || s.Up == null || s.Resolve == null || s.Ubo.IsNull;
         if (s.Failed) log.Always("PostChainVk: a post program or its block was REFUSED (logged above) -- the Vulkan frame cannot reach the screen");
         return !s.Failed;
@@ -473,11 +503,12 @@ internal static unsafe class PostChainVk
 
     /// <summary>Post stage <paramref name="fsRef"/> over the full-screen vertex stage, as GL compiles the pair;
     /// <paramref name="stock"/> when the embedded texts are built: no override reached either, or one was refused.</summary>
-    private static GuiVkProg? Make(VkBackend vk, string fsRef, string label, out bool stock, Action<GuiVkProg> locate, ExtenderLog log)
+    private static GuiVkProg? Make(VkBackend vk, string fsRef, string label, out bool stock, Action<GuiVkProg> locate,
+                                   ExtenderLog log, VkPushTail pushTail = default)
     {
         stock = ShaderTexts.Pair(PostChain.ShdPostVs, ShaderStages.Source(PostChain.ShdPostVs), fsRef, ShaderStages.Source(fsRef),
                                  log, $"PostChainVk {label}", out string vs, out string fs);
-        return Program(vk, vs, fs, label, locate, log);
+        return Program(vk, vs, fs, label, locate, log, pushTail: pushTail);
     }
 
     /// <summary>The bloom levels for a <paramref name="w"/> x <paramref name="h"/> scene, as GL sizes its chain.</summary>

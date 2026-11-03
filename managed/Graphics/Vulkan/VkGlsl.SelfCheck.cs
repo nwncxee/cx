@@ -73,6 +73,7 @@ internal static partial class VkGlsl
         VkProgramText bl = VkGlsl.Translate(BindlessVs.Replace("\r\n", "\n"), BindlessFsText.Replace("\r\n", "\n"), FixtureUnits);
         VkGlsl.BindlessCap = cap;
         Bindless(check, bl);
+        Tail(check);
         Errors(check);
         OpaqueList(check);
         if (Native.Sym(SymbolMap.AppManager) != IntPtr.Zero) { check.Skip("on-device: shaderc compiles nothing at boot in a game session"); return; }
@@ -123,6 +124,53 @@ internal static partial class VkGlsl
         check.Expect(r.Opaques.Contains(new VkOpaque("CxTexH", "CxTexH", 0, 3, VkBindKind.StorageBlock)), "a storage block's binding is reported");
         check.Expect(!r.Vs.Contains("CxLoose") && !r.Fs.Contains("CxLoose"), "a program with no loose uniform declares no loose block");
         check.Expect(r.Vs.Contains("vDraw = (gl_InstanceIndex - gl_BaseInstanceARB);"), "GL's instance id is Vulkan's index less the base instance");
+    }
+
+    /// <summary>The push-tail fixture's staging struct: the two scalars its tail declares and nothing more.</summary>
+    private struct TailProbe
+    {
+        public int Viz;
+        public float Dither;
+    }
+
+    private const string TailVs = "#version 460 core\nvoid main() { gl_Position = vec4(0.0); }\n";
+
+    private const string TailFs = """
+        #version 460 core
+        uniform int uViz;
+        uniform float uDither;
+        uniform vec4 uTint;
+        layout(location = 0) out vec4 o;
+        void main() { o = uTint * uDither * float(uViz); }
+        """;
+
+    /// <summary>A program's own push members: the two scalars of the fixture land in the push block rather than the
+    /// loose one, and five unsound tails are refused. Oracle: the declarations written out here by hand.</summary>
+    private static void Tail(Checker check)
+    {
+        VkPush viz = new("int", "uViz", 0), dither = new("float", "uDither", 4);
+        VkProgramText r = Translate(TailVs, TailFs.Replace("\r\n", "\n"), FixtureUnits, pushTail: VkPushTail.Of<TailProbe>(viz, dither));
+        check.Expect(r.Error == null, $"a program with a push tail translates ({r.Error})");
+        check.Expect(r.Fs.Contains("int uOitGob; int uViz; float uDither; };", StringComparison.Ordinal),
+            "the tail's members follow the fixed seven in the one push block");
+        check.Expect(r.Loose.Count == 1 && r.Loose[0] == new VkLoose("vec4", "uTint", ""),
+            $"a pushed scalar is no loose member: the block is the fixture's one vec4 ({string.Join(", ", r.Loose)})");
+        Refused(check, "a tail member that is not a scalar", "uTint", new VkPushTail([new VkPush("vec4", "uTint", 0)], 16));
+        Refused(check, "a tail member the fixed seven already name", "uSolid", new VkPushTail([new VkPush("int", "uSolid", 0)], 4));
+        Refused(check, "a tail member whose field is not where the block puts it", "uDither",
+                new VkPushTail([viz, new VkPush("float", "uDither", 8)], 8));
+        Refused(check, "a staging struct that is not the tail's members", "struct", new VkPushTail([viz, dither], 12));
+        var over = new VkPush[26];
+        for (int i = 0; i < over.Length; i++) over[i] = new VkPush("float", $"uOver{i}", i * 4);
+        Refused(check, "a tail past the push range the layout declares", "past", new VkPushTail(over, over.Length * 4));
+    }
+
+    /// <summary><paramref name="tail"/> refused, the message naming <paramref name="names"/>.</summary>
+    private static void Refused(Checker check, string what, string names, VkPushTail tail)
+    {
+        VkProgramText r = Translate(TailVs, TailFs.Replace("\r\n", "\n"), FixtureUnits, pushTail: tail);
+        check.Expect(r.Error != null && r.Error.Contains(names, StringComparison.Ordinal),
+            $"{what} is refused, naming it ({r.Error})");
     }
 
     private static void Errors(Checker check)

@@ -20,6 +20,23 @@ internal readonly record struct VkLoose(string Type, string Name, string Array)
     internal int Count => Array.Length == 0 ? 1 : int.Parse(Array.AsSpan(1, Array.Length - 2), System.Globalization.CultureInfo.InvariantCulture);
 }
 
+/// <summary>One push member a program adds after <see cref="VkGlsl.Push"/>'s seven: the GLSL type and name the
+/// block declares, and the byte offset the C# compiler gave the field that fills it.</summary>
+internal readonly record struct VkPush(string Type, string Name, int At);
+
+/// <summary>A program's own push members and the size of the struct that fills them. The translator refuses a tail
+/// whose offsets, size or types do not match the block it would declare, so neither side can move alone.</summary>
+internal readonly record struct VkPushTail(VkPush[] Members, int Bytes)
+{
+    /// <summary><paramref name="members"/> filled by <typeparamref name="T"/>, whose size the translator checks is
+    /// exactly those members.</summary>
+    internal static VkPushTail Of<T>(params VkPush[] members) where T : unmanaged
+        => new(members, System.Runtime.CompilerServices.Unsafe.SizeOf<T>());
+
+    /// <summary>The members, or none for a program that adds no push member of its own.</summary>
+    internal VkPush[] All => Members ?? [];
+}
+
 /// <summary>A program's two stages as Vulkan GLSL, what they declare, and why not when <see cref="Error"/> is set.</summary>
 internal sealed class VkProgramText
 {
@@ -30,6 +47,8 @@ internal sealed class VkProgramText
     public string Ts = "", Ms = "";
     /// <summary><see cref="VkGlsl.LooseBlock"/>'s members, in declaration order: vertex stage first.</summary>
     public readonly List<VkLoose> Loose = new();
+    /// <summary>Push members this program adds of its own, after <see cref="VkGlsl.Push"/>'s.</summary>
+    public VkPushTail Tail;
     /// <summary>Every sampler, image and block either stage declares, deduped by stage-independent identity.</summary>
     public readonly List<VkOpaque> Opaques = new();
     /// <summary>Loose uniforms that carried a GL initializer, as <c>name = text</c>: a block member has none, so
@@ -54,6 +73,37 @@ internal static partial class VkGlsl
         ("int", "uDrawBase"), ("float", "uAlphaCut"), ("int", "uSsaoOn"), ("float", "uAoDirect"),
         ("int", "uDecal"), ("int", "uSolid"), ("int", "uOitGob"),
     ];
+
+    /// <summary>Bytes one push member takes: every member of the block is a scalar.</summary>
+    private const int PushWord = 4;
+
+    /// <summary>Where a program's own push members start: after <see cref="Push"/>'s. A host pushing a tail writes
+    /// its struct at this offset.</summary>
+    internal static int PushTailAt => Push.Length * PushWord;
+
+    /// <summary>The types the push block carries. A vector or a matrix would take its own alignment in the block
+    /// and say nothing about where the staging struct put it, so a tail member is a scalar.</summary>
+    private static readonly HashSet<string> PushTypes = new(StringComparer.Ordinal) { "int", "uint", "float", "bool" };
+
+    /// <summary>Why <paramref name="tail"/> is not a push tail this translation can declare -- a member that is not a
+    /// scalar, one the fixed block already names, an offset that is not the block's, a staging struct that is not
+    /// those members, or a block past the range the layout declares; null when it is sound.</summary>
+    private static string? TailError(VkPushTail tail)
+    {
+        VkPush[] members = tail.All;
+        for (int i = 0; i < members.Length; i++)
+        {
+            (string type, string name, int at) = members[i];
+            if (!PushTypes.Contains(type)) return $"push member {name} is {type}; the block carries scalars only";
+            if (Array.FindIndex(Push, x => x.Name == name) >= 0) return $"push member {name} is already one of the per-batch seven";
+            if (at != i * PushWord) return $"push member {name} is member {i} of the tail, at {i * PushWord}, and its field stages {at}";
+        }
+        if (members.Length > 0 && tail.Bytes != members.Length * PushWord)
+            return $"the push tail's {members.Length} members are {members.Length * PushWord} bytes, the struct staging them {tail.Bytes}";
+        int bytes = PushTailAt + members.Length * PushWord;
+        return bytes <= CX.Rhi.PushConstants.Bytes ? null
+             : $"the push block would be {bytes} bytes, past the {CX.Rhi.PushConstants.Bytes} the pipeline layout declares";
+    }
 
     /// <summary>The bindless sampler array's name, on <see cref="VulkanToolchain.BindlessSet"/> binding 0, and the
     /// function every index into it goes through.</summary>
@@ -108,11 +158,13 @@ internal static partial class VkGlsl
     internal const string GlFragZ = "cxGlFragZ";
 
     /// <summary>Both stages of one program as Vulkan GLSL. <paramref name="samplerUnits"/> names the binding of every
-    /// sampler or image declared without one; a declaration it does not name is an error.</summary>
+    /// sampler or image declared without one; a declaration it does not name is an error. <paramref name="pushTail"/>
+    /// names the per-pass scalars this program takes from the push block instead of its loose one.</summary>
     internal static VkProgramText Translate(string vs, string fs, IReadOnlyDictionary<string, uint> samplerUnits,
-                                            bool glDepth = true)
+                                            bool glDepth = true, VkPushTail pushTail = default)
     {
-        var r = new VkProgramText();
+        var r = new VkProgramText { Tail = pushTail };
+        if (TailError(pushTail) is { } te) { r.Error = te; return r; }
         try
         {
             string tv = Builtins(Bindless(vs, out bool bv, r), out bool dv, r);
@@ -182,10 +234,9 @@ internal static partial class VkGlsl
             {
                 string a = arr.Length == 0 ? "" : $"[{ResolveInt(arr[1..^1], both) ?? throw new FormatException($"loose uniform {name}{arr}: the size does not resolve to a literal")}]";
                 if (init != null) r.Initializers.Add($"{name} = {init.Trim()}");
-                int p = Array.FindIndex(Push, x => x.Name == name);
-                if (p >= 0)
+                if (PushType(r, name) is { } pt)
                 {
-                    if (Push[p].Type != d.Type || a.Length > 0) r.Error ??= $"{name} is {d.Type}{a}, the push block's is {Push[p].Type}";
+                    if (pt != d.Type || a.Length > 0) r.Error ??= $"{name} is {d.Type}{a}, the push block's is {pt}";
                     continue;
                 }
                 if (idx.TryGetValue(name, out int i))
@@ -201,6 +252,16 @@ internal static partial class VkGlsl
     }
 
     private static bool IsLoose(string type) => !Opaque.IsMatch(type) && type != "atomic_uint";
+
+    /// <summary>The push block's type for a uniform named <paramref name="name"/> -- one of <see cref="Push"/> or of
+    /// this program's own tail; null when the block has no such member, which makes it a loose one.</summary>
+    private static string? PushType(VkProgramText r, string name)
+    {
+        int i = Array.FindIndex(Push, x => x.Name == name);
+        if (i >= 0) return Push[i].Type;
+        int j = Array.FindIndex(r.Tail.All, x => x.Name == name);
+        return j >= 0 ? r.Tail.All[j].Type : null;
+    }
 
     /// <summary>One stage rewritten: loose uniforms out, the shared declarations in at the first file-scope line,
     /// bindings and locations added, extensions after <c>#version</c>.</summary>
@@ -307,6 +368,7 @@ internal static partial class VkGlsl
               .Append($"uint {BindlessAt}(uint i) {{ return i < cxBindlessCap ? i : 0u; }}\n");
         sb.Append("layout(push_constant) uniform CxBatch {");
         foreach (var (t, n) in Push) sb.Append(' ').Append(t).Append(' ').Append(n).Append(';');
+        foreach ((string t, string n, _) in r.Tail.All) sb.Append(' ').Append(t).Append(' ').Append(n).Append(';');
         sb.Append(" };\n");
         if (r.Loose.Count > 0)
         {
