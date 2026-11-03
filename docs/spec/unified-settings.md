@@ -726,7 +726,7 @@ ChatOnly master and two diagnostics, so it has no submenu.
 | weather.density | Density | S | 0–3 step 0.1 · 1 | U | L | Precipitation | How much rain or snow falls, on top of the weather the area asks for. Ladders on `quality.weather`. |
 | weather.wet | Wet surfaces | S | 0–1 step 0.05 · 1 | U | L | Surfaces | Exposed ground and roofs darken and turn glossy in rain, reflecting the sky, and puddles pool in low ground. 0 = off. |
 | weather.snow | Snow cover | S | 0–1 step 0.05 · 1 | U | L | Surfaces | Exposed up-facing surfaces whiten in snow, with drifts banked against walls. 0 = off. |
-| weather.blur | Rain motion blur | S | 0–1 step 0.05 · 0.5 | A | L | Precipitation | How far each rain drop smears along its fall, the way a camera's shutter would draw it. 0 = round drops. |
+| weather.blur | Rain motion blur | S | 0–2 step 0.05 · 1.5 | A | L | Precipitation | How far each rain drop smears along its fall, the way a camera's shutter would draw it. 0 = round drops. |
 | weather.drips | Roof drips | S | 0–1 step 0.05 · 0.25 | A | L | Precipitation | Drops fall from roof edges and overhangs while the roofs are wet, and keep falling for the dry-out time after the rain stops. 0 = off. |
 | weather.cover | Shelter under roofs | T | on | A | L | Cover | Nothing falls under a roof, an awning or a doorway, and what they shelter stays dry. Off, it rains indoors. |
 | weather.accum | Soak / settle time | S | 5–600 s step 5 · 60 | A | L | Surfaces | Seconds of full-density weather to fully wet or snow the ground. |

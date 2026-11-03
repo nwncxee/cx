@@ -7,7 +7,7 @@
 
 /// A rain drop's diameter, metres.
 const float CX_WX_DROP_M = 0.003;
-/// Seconds of fall one drop smears over at the motion blur setting's top: a camera's shutter at 60 frames a second.
+/// Seconds of fall one drop smears over at motion blur 1: a camera's shutter at 60 frames a second.
 const float CX_WX_SHUTTER = 1.0 / 60.0;
 /// Water's reflectance looking straight at it.
 const float CX_WX_WATER_F0 = 0.02;
@@ -25,11 +25,11 @@ const float CX_WX_CAUSTIC_POW = 2000.0;
 const float CX_WX_BEAD_GLOW = 0.25;
 
 /// One drop's extent on screen at <c>pxPerM</c> pixels per metre, falling <c>speed</c> m/s under the motion blur
-/// setting <c>blur</c> (0 none, 1 a full shutter): x metres along its fall, y across, both at least a pixel, and z
+/// setting <c>blur</c> (0 none, 1 a 60 fps shutter, 2 at most): x metres along its fall, y across, both at least a pixel, and z
 /// the share of that quad the drop itself covers, so a widened drop dims by what it was widened by.
 vec3 CxWxDropSize(float pxPerM, float speed, float blur)
 {
-    float along = CX_WX_DROP_M + clamp(blur, 0.0, 1.0) * speed * CX_WX_SHUTTER;
+    float along = CX_WX_DROP_M + clamp(blur, 0.0, 2.0) * speed * CX_WX_SHUTTER;
     float px = 1.0 / max(pxPerM, 1e-3);
     float l = max(along, px), w = max(CX_WX_DROP_M, px);
     return vec3(l, w, (along * CX_WX_DROP_M) / (l * w));
