@@ -373,43 +373,40 @@ public sealed unsafe partial class AlloyRenderer
         LooseBlock.Capture(p.Members, p.Block);
         try
         {
-            fixed (Matrix4x4* m = &vp)
+            if (p.Id == VkPrograms.Id.Water) VkWaterTerms(p, in vp, viewport, near, far);
+            else if (lit)
             {
-                if (p.Id == VkPrograms.Id.Water) VkWaterTerms(p, in vp, viewport, near, far);
-                else if (lit)
-                {
-                    ref LitLoc L = ref p.L;
-                    LooseBlock.Set(L.Vp, new ReadOnlySpan<float>(m, 16));
-                    LooseBlock.Set(L.Viz, viz);
-                    LooseBlock.Set(L.AoCutout, Ao.Cutout.V);
-                    LooseBlock.Set(L.SsaoHalf, SsaoPassVk.Half ? 1 : 0);
-                    LooseBlock.Set(L.AlphaMip, Renderer.CutMip.V);
-                    LooseBlock.Set(L.MirrorZ, _mirrorZ);
-                    LooseBlock.Set(L.LightRecOn, s.LightRec ? 1 : 0);
-                    LooseBlock.Set(L.Oit, s.Oit ? 1 : 0);
-                    LooseBlock.Set(L.Capture, _capturing ? _planar ? 2 : 1 : 0);
-                    UploadFeatureTerms(L.Feat, viewport);
-                    BindPass(L.CubeCount, viewport, near, far);
-                    LooseBlock.Set(L.DecalZ, [DecalLayer.Z0, DecalLayer.Z1]);
-                    LooseBlock.Set(L.LightOcc, [Lighting.HiddenLights.V ? 1f : 0f, GlossyRough]);
-                    UploadMaterialModel(L.Material);
-                    bool wxOff = _capturing;
-                    Weather.UploadLit(L.Weather, L.WeatherLook, L.CoverVp, L.CoverLayer, L.SnowLook, L.SnowLight, L.SnowPom, L.WxEdge, L.WxRun, L.WxCache, wxOff);
-                    Weather.BindEsm(L.CoverEsm, s.Oit);
-                    Weather.UploadMap(L.WxMapXf, L.WxMapP, wxOff);
-                    SkyView.UploadLitVk(L.SkyVp, L.SkyTerm, VkSkyMap, _capturing && !_planar);
-                    LooseBlock.Set(L.LmPages, LightmapBake.VkLivePages);
-                    LooseBlock.Set(L.LmMovers, LightmapBake.MoverMode);
-                }
-                else
-                {
-                    LooseBlock.Set(p.Vp, new ReadOnlySpan<float>(m, 16));
-                    LooseBlock.Set(p.AlphaMip, Renderer.CutMip.V);
-                    LooseBlock.Set(p.Viz, viz);
-                    LooseBlock.Set(p.Tint, [1f, 1f, 1f]);
-                    LooseBlock.Set(p.Oit, s.Oit ? 1 : 0);
-                    UploadFeatureTerms(p.F, viewport);
-                }
+                ref LitLoc L = ref p.L;
+                LooseBlock.Set(L.Vp, vp);
+                LooseBlock.Set(L.Viz, viz);
+                LooseBlock.Set(L.AoCutout, Ao.Cutout.V);
+                LooseBlock.Set(L.SsaoHalf, SsaoPassVk.Half ? 1 : 0);
+                LooseBlock.Set(L.AlphaMip, Renderer.CutMip.V);
+                LooseBlock.Set(L.MirrorZ, _mirrorZ);
+                LooseBlock.Set(L.LightRecOn, s.LightRec ? 1 : 0);
+                LooseBlock.Set(L.Oit, s.Oit ? 1 : 0);
+                LooseBlock.Set(L.Capture, _capturing ? _planar ? 2 : 1 : 0);
+                UploadFeatureTerms(L.Feat, viewport);
+                BindPass(L.CubeCount, viewport, near, far);
+                LooseBlock.Set(L.DecalZ, [DecalLayer.Z0, DecalLayer.Z1]);
+                LooseBlock.Set(L.LightOcc, [Lighting.HiddenLights.V ? 1f : 0f, GlossyRough]);
+                UploadMaterialModel(L.Material);
+                bool wxOff = _capturing;
+                Weather.UploadLit(L.Weather, L.WeatherLook, L.CoverVp, L.CoverLayer, L.SnowLook, L.SnowLight, L.SnowPom, L.WxEdge, L.WxRun, L.WxCache, wxOff);
+                Weather.BindEsm(L.CoverEsm, s.Oit);
+                Weather.UploadMap(L.WxMapXf, L.WxMapP, wxOff);
+                SkyView.UploadLitVk(L.SkyVp, L.SkyTerm, VkSkyMap, _capturing && !_planar);
+                LooseBlock.Set(L.LmPages, LightmapBake.VkLivePages);
+                LooseBlock.Set(L.LmMovers, LightmapBake.MoverMode);
+            }
+            else
+            {
+                LooseBlock.Set(p.Vp, vp);
+                LooseBlock.Set(p.AlphaMip, Renderer.CutMip.V);
+                LooseBlock.Set(p.Viz, viz);
+                LooseBlock.Set(p.Tint, [1f, 1f, 1f]);
+                LooseBlock.Set(p.Oit, s.Oit ? 1 : 0);
+                UploadFeatureTerms(p.F, viewport);
             }
             VkStageFrame(p);
         }
@@ -523,8 +520,8 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The pass block <see cref="BindPass"/> just staged, into the arena with the probe as Vulkan has it.</summary>
     private static int VkArenaPass()
     {
-        if (_passStage == null) return -1;
-        int at = VkArena(new ReadOnlySpan<byte>(_passStage, PassBytes));
+        if (PassStaged.IsEmpty) return -1;
+        int at = VkArena(PassStaged);
         // the probe as Vulkan holds it, 0 mips for none, in place of GL's cube
         if (at >= 0) MemoryMarshal.Write(_vkc.ArenaBytes.AsSpan(at + PbProbeMips, sizeof(float)), VkProbeMips);
         return at;

@@ -138,8 +138,8 @@ public sealed unsafe partial class AlloyRenderer
                    // of ADR 0017 bought nothing, which no frame-time average would ever say out loud.
                    $"records {(float)Counters._recWritten / Counters._frames:F0}/frame written, " +
                    $"{(float)Counters._recStable / Counters._frames:F0} stable ({_recOwnCap} slots), " +
-                   // CX-43: program switches that took the pass terms, and how many of them had to send the block
-                   $"pass block {(float)PassBinds / Counters._frames:F1} binds/frame ({(float)PassBindsBorrowed / Counters._frames:F1} through another view's cluster table), {(float)PassUploads / Counters._frames:F1} sends/frame, " +
+                   // CX-43: program switches that took the pass terms, and which of them borrowed a cluster table
+                   $"pass block {(float)PassBinds / Counters._frames:F1} binds/frame ({(float)PassBindsBorrowed / Counters._frames:F1} through another view's cluster table), " +
                    $"over {Counters._frames} frames, " +
                    // #330: how much of the engine chase the view bounded away, and the poll audit.
                    ChaseNote() + ", " +

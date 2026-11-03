@@ -111,84 +111,62 @@ internal static unsafe class LooseBlock
     }
 
     /// <summary>An int member of the open block.</summary>
-    internal static void Set(int loc, int v) => Ints(loc, 1, 1, &v);
+    internal static void Set(int loc, int v) => Ints(loc, 1, 1, new ReadOnlySpan<int>(in v));
 
     /// <summary>A float member of the open block.</summary>
-    internal static void Set(int loc, float v) => Floats(loc, 1, 1, &v);
+    internal static void Set(int loc, float v) => Floats(loc, 1, 1, new ReadOnlySpan<float>(in v));
 
     /// <summary>A vec2 member, lane by lane.</summary>
-    internal static void Set(int loc, float a, float b)
-    {
-        float* v = stackalloc float[2] { a, b };
-        Floats(loc, 1, 2, v);
-    }
+    internal static void Set(int loc, float a, float b) => Floats(loc, 1, 2, [a, b]);
 
     /// <summary>A vec3 member, lane by lane.</summary>
-    internal static void Set(int loc, float a, float b, float c)
-    {
-        float* v = stackalloc float[3] { a, b, c };
-        Floats(loc, 1, 3, v);
-    }
+    internal static void Set(int loc, float a, float b, float c) => Floats(loc, 1, 3, [a, b, c]);
 
     /// <summary>A vec4 member, lane by lane.</summary>
-    internal static void Set(int loc, float a, float b, float c, float d)
-    {
-        float* v = stackalloc float[4] { a, b, c, d };
-        Floats(loc, 1, 4, v);
-    }
+    internal static void Set(int loc, float a, float b, float c, float d) => Floats(loc, 1, 4, [a, b, c, d]);
 
     /// <summary>An ivec2 member, lane by lane.</summary>
-    internal static void Set(int loc, int a, int b)
-    {
-        int* v = stackalloc int[2] { a, b };
-        Ints(loc, 1, 2, v);
-    }
+    internal static void Set(int loc, int a, int b) => Ints(loc, 1, 2, [a, b]);
 
     /// <summary>An ivec3 member, lane by lane.</summary>
-    internal static void Set(int loc, int a, int b, int c)
-    {
-        int* v = stackalloc int[3] { a, b, c };
-        Ints(loc, 1, 3, v);
-    }
+    internal static void Set(int loc, int a, int b, int c) => Ints(loc, 1, 3, [a, b, c]);
 
     /// <summary>A matrix member, its sixteen lanes in the order the struct stores them. Its size comes from the
     /// type, so no caller counts lanes.</summary>
-    internal static void Set(int loc, in Matrix4x4 m)
-    {
-        fixed (Matrix4x4* v = &m) Floats(loc, 1, 16, (float*)v);
-    }
+    internal static void Set(int loc, in Matrix4x4 m) => Floats(loc, 1, 16, Lanes(in m));
+
+    /// <summary>A vec2 member from the struct that names its lanes; the count comes from the type.</summary>
+    internal static void Set(int loc, in Vector2 v) => Floats(loc, 1, 2, Lanes(in v));
+
+    /// <summary>A vec3 member from the struct that names its lanes; the count comes from the type.</summary>
+    internal static void Set(int loc, in Vector3 v) => Floats(loc, 1, 3, Lanes(in v));
+
+    /// <summary>A vec4 member from the struct that names its lanes; the count comes from the type.</summary>
+    internal static void Set(int loc, in Vector4 v) => Floats(loc, 1, 4, Lanes(in v));
+
+    /// <summary>One value's floats, their count taken from its type rather than from a caller.</summary>
+    private static ReadOnlySpan<float> Lanes<T>(in T v) where T : unmanaged
+        => MemoryMarshal.Cast<T, float>(new ReadOnlySpan<T>(in v));
 
     /// <summary>Lanes of one element (a vec2, a vec3, a mat4) into the open block.</summary>
-    internal static void Set(int loc, ReadOnlySpan<float> lanes)
-    {
-        fixed (float* v = lanes) Floats(loc, 1, lanes.Length, v);
-    }
+    internal static void Set(int loc, ReadOnlySpan<float> lanes) => Floats(loc, 1, lanes.Length, lanes);
 
     /// <summary>Integer lanes of one element (an ivec2, an ivec4) into the open block.</summary>
-    internal static void Set(int loc, ReadOnlySpan<int> lanes)
-    {
-        fixed (int* v = lanes) Ints(loc, 1, lanes.Length, v);
-    }
+    internal static void Set(int loc, ReadOnlySpan<int> lanes) => Ints(loc, 1, lanes.Length, lanes);
 
     /// <summary>One float per ELEMENT of an array member, at that member's own stride: std140 pads every element of
     /// a float array to 16 bytes, so a contiguous copy would put all but the first in the padding.</summary>
-    internal static void SetEach(int loc, ReadOnlySpan<float> elements)
-    {
-        fixed (float* v = elements) Floats(loc, elements.Length, 1, v);
-    }
+    internal static void SetEach(int loc, ReadOnlySpan<float> elements) => Floats(loc, elements.Length, 1, elements);
 
     /// <summary>One int per ELEMENT of an array member, at that member's own stride (16 bytes under std140).</summary>
-    internal static void SetEach(int loc, ReadOnlySpan<int> elements)
-    {
-        fixed (int* v = elements) Ints(loc, elements.Length, 1, v);
-    }
+    internal static void SetEach(int loc, ReadOnlySpan<int> elements) => Ints(loc, elements.Length, 1, elements);
 
     /// <summary>One ELEMENT per <paramref name="lanes"/> floats of <paramref name="elements"/> -- a vec4 array is
     /// four -- each at the array member's own stride.</summary>
     internal static void SetEach(int loc, int lanes, ReadOnlySpan<float> elements)
     {
         if (lanes <= 0) return;
-        fixed (float* v = elements) Floats(loc, elements.Length / lanes, lanes, v);
+        Floats(loc, elements.Length / lanes, lanes, elements);
     }
 
     /// <summary>Writes that named a location the block does not have or overran it, since boot.</summary>
@@ -215,9 +193,8 @@ internal static unsafe class LooseBlock
 
     /// <summary><paramref name="count"/> elements of <paramref name="lanes"/> ints each, at the member's stride; into
     /// a float member each lane lands as the float it names, said once.</summary>
-    private static void Ints(int loc, int count, int lanes, int* v)
+    private static void Ints(int loc, int count, int lanes, ReadOnlySpan<int> src)
     {
-        var src = new ReadOnlySpan<int>(v, Math.Max(count, 0) * lanes);
         for (int e = 0; e < count; e++)
         {
             Span<byte> p = At(loc, e, lanes * sizeof(int));
@@ -232,9 +209,8 @@ internal static unsafe class LooseBlock
 
     /// <summary><paramref name="count"/> elements of <paramref name="lanes"/> floats each, at the member's stride; into
     /// an int member each lane lands truncated to the int it names, said once.</summary>
-    private static void Floats(int loc, int count, int lanes, float* v)
+    private static void Floats(int loc, int count, int lanes, ReadOnlySpan<float> src)
     {
-        var src = new ReadOnlySpan<float>(v, Math.Max(count, 0) * lanes);
         for (int e = 0; e < count; e++)
         {
             Span<byte> p = At(loc, e, lanes * sizeof(float));
@@ -282,6 +258,18 @@ internal static unsafe class LooseBlock
         check.Expect(MemoryMarshal.Read<int>(block) == 7, "an int lands at its member's offset 0");
         check.Expect(f[4] == 1f && f[8] == 5f && f[11] == 8f, "a vec4 array's two elements land at 16 and 32");
         check.Expect(Dropped - dropped == 1, $"a third element past the two-element array is counted, the location the block lacks ignored ({Dropped - dropped})");
+        Member[] vecs = [new("uV2", 0, 8, 0), new("uV3", 16, 12, 0), new("uV4", 32, 16, 0)];
+        var vb = new byte[48];
+        Capture(vecs, vb);
+        Set(0, new Vector2(11f, 12f));
+        Set(1, new Vector3(21f, 22f, 23f));
+        Set(2, new Vector4(31f, 32f, 33f, 34f));
+        EndCapture();
+        ReadOnlySpan<float> vf = MemoryMarshal.Cast<byte, float>(vb);
+        check.Expect(vf[0] == 11f && vf[1] == 12f, $"a Vector2 lands as its two lanes ({vf[0]}, {vf[1]})");
+        check.Expect(vf[4] == 21f && vf[6] == 23f, $"a Vector3 lands as three lanes at its member's offset ({vf[4]}, {vf[6]})");
+        check.Expect(vf[8] == 31f && vf[11] == 34f, $"a Vector4 lands as four lanes at its member's offset ({vf[8]}, {vf[11]})");
+        check.Expect(vf[3] == 0f && vf[7] == 0f, $"neither vector write spills into the padding after it ({vf[3]}, {vf[7]})");
         Member[] typed = [new("uSize", 0, 8, 0), new("uFlag", 8, 4, 0, Ints: true)];
         var tb = new byte[16];
         long mismatched = Mismatched;

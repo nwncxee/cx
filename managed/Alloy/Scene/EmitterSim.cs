@@ -572,7 +572,7 @@ internal static unsafe partial class EmitterSim
     /// <summary>Six inward-facing camera planes, rebuilt once per <see cref="StepDb"/>. False = no camera to
     /// build them from, and every registered emitter is stepped -- an instrument that cannot see may not hide
     /// the world.</summary>
-    private static readonly float[] _viewPlanes = new float[24];
+    private static readonly CullPlane[] _viewPlanes = new CullPlane[6];
     /// <summary>The viewer the emission cone clamps against (<c>Particle::randomDirection</c> @0x4ab160): the
     /// frame's own camera, as the walk resolved it.</summary>
     private static Vector3 _eye;
@@ -580,10 +580,8 @@ internal static unsafe partial class EmitterSim
     private static bool BuildViewPlanes()
     {
         if (!FrameInputs.HasCamera || !FrameInputs.HasPerspective) return false;
-        fixed (float* planes = _viewPlanes)
-            ShadowMath.ReceiverPlanes(FrameInputs.CameraPos, FrameInputs.SceneCamFwd, FrameInputs.CamFovy,
-                                      FrameInputs.CamAspect, FrameInputs.CamNear, FrameInputs.CamFar, 0f,
-                                      new Span<float>(planes, 24));
+        ShadowMath.ReceiverPlanes(FrameInputs.CameraPos, FrameInputs.SceneCamFwd, FrameInputs.CamFovy,
+                                  FrameInputs.CamAspect, FrameInputs.CamNear, FrameInputs.CamFar, 0f, _viewPlanes);
         return true;
     }
 
@@ -593,13 +591,8 @@ internal static unsafe partial class EmitterSim
     /// engine's, which also required the emitter's whole BSP node to be in the frustum.</summary>
     private static bool InView(Vector3 pos, float r)
     {
-        fixed (float* planes = _viewPlanes)
-            for (int i = 0; i < 6; i++)
-            {
-                float d = planes[i * 4] * pos.X + planes[i * 4 + 1] * pos.Y + planes[i * 4 + 2] * pos.Z
-                        + planes[i * 4 + 3];
-                if (d < -r) return false;
-            }
+        for (int i = 0; i < 6; i++)
+            if (_viewPlanes[i].SignedDistance(pos) < -r) return false;
         return true;
     }
 

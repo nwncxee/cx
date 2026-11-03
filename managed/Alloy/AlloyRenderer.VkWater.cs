@@ -168,9 +168,9 @@ public sealed unsafe partial class AlloyRenderer
     private static void VkWaterTerms(VkProg p, in Matrix4x4 vp, int* viewport, float near, float far)
     {
         VkWaterState s = _vkWater;
-        fixed (Matrix4x4* m = &vp) LooseBlock.Set(p.Vp, new ReadOnlySpan<float>(m, 16));
-        fixed (Matrix4x4* m = &s.View) LooseBlock.Set(s.ViewLoc, new ReadOnlySpan<float>(m, 16));
-        fixed (Matrix4x4* m = &s.Proj) LooseBlock.Set(s.ProjLoc, new ReadOnlySpan<float>(m, 16));
+        LooseBlock.Set(p.Vp, vp);
+        LooseBlock.Set(s.ViewLoc, s.View);
+        LooseBlock.Set(s.ProjLoc, s.Proj);
         LooseBlock.Set(s.NearFar, [near, far]);
         LooseBlock.Set(p.Viz, _capturing ? 0 : _lightViz);
         LooseBlock.Set(s.EnvOk, s.EnvLive ? 1 : 0);

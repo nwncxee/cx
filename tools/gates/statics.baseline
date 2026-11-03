@@ -4,7 +4,7 @@
 7 managed/Alloy/AlloyRenderer.Frame.cs
 74 managed/Alloy/AlloyRenderer.Metrics.cs
 10 managed/Alloy/AlloyRenderer.Motion.cs
-11 managed/Alloy/AlloyRenderer.Uniforms.cs
+8 managed/Alloy/AlloyRenderer.Uniforms.cs
 9 managed/Alloy/Core/AlloyGate.cs
 2 managed/Alloy/Core/AurXform.cs
 9 managed/Alloy/Core/StagePool.cs
@@ -140,7 +140,7 @@
 23 managed/Alloy/Pass/NuiFlush.cs
 17 managed/Alloy/Pass/PairShadows.cs
 37 managed/Alloy/Pass/Particles.cs
-7 managed/Alloy/Pass/PostChain.cs
+6 managed/Alloy/Pass/PostChain.cs
 8 managed/Alloy/Pass/PostStack.cs
 4 managed/Alloy/Pass/SceneFog.cs
 1 managed/Alloy/Pass/SkyBox.cs

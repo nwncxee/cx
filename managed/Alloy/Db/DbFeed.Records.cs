@@ -324,7 +324,7 @@ public static unsafe partial class DbFeed
     /// with an enabled part and a visible object in <paramref name="scene"/>. <see cref="VisibleSlot"/>(0..count);
     /// allocation-free, O(visible).</summary><remarks>Workers stage from these columns unlocked, sound only because
     /// the frame boundary freezes them: fold and publish precede the draw, and no seam setter runs inside it.</remarks>
-    internal static int Visible(DbId scene, ReadOnlySpan<Vector4> planes, float slack)
+    internal static int Visible(DbId scene, ReadOnlySpan<CullPlane> planes, float slack)
     {
         long t0 = FrameZones.Now;
         _visSlotN = 0;

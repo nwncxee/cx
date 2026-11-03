@@ -139,22 +139,20 @@ public sealed unsafe partial class AlloyRenderer
         LooseBlock.EndCapture();
         int arena0 = vc.ArenaUsed;
         int loose = VkArena(p.Block);
-        byte* pb = stackalloc byte[PassBytes];
-        new Span<byte>(pb, PassBytes).Clear();
+        PassBlock blk = default;
         int* vp = stackalloc int[4] { 0, 0, LightmapBake.PageSize, LightmapBake.PageSize };
-        AlloyLights.FillDraw(pb, vp, 1f, 100f);
-        var blk = (PassBlock*)pb;
+        AlloyLights.FillDraw((byte*)&blk, vp, 1f, 100f);
         if (!cover)
         {
             // the scratch cube as this step's slot, filtered as GL's bake filters its one cube (LightmapBake.BakeLight)
-            blk->Light[cube] = light;
-            blk->LocalPlane = new Vector2(MathF.Max(AlloyLights.ShadowNearWorld, CasterPass.CubeNearPlane), 1f / cubeSize);
-            blk->LocalSoft = new Vector4(AlloyLights.ShadowSoft, AlloyLights.ShadowNearWorld, 0f, 0f);
-            blk->LocalFloor = AlloyLights.ShadowFloor;
-            blk->LocalPcss = new Vector4(0f, 0f, Shadows.Taps.V, 0f);
-            blk->Fade[cube].Value = 1f;
+            blk.Light[cube] = light;
+            blk.LocalPlane = new Vector2(MathF.Max(AlloyLights.ShadowNearWorld, CasterPass.CubeNearPlane), 1f / cubeSize);
+            blk.LocalSoft = new Vector4(AlloyLights.ShadowSoft, AlloyLights.ShadowNearWorld, 0f, 0f);
+            blk.LocalFloor = AlloyLights.ShadowFloor;
+            blk.LocalPcss = new Vector4(0f, 0f, Shadows.Taps.V, 0f);
+            blk.Fade[cube].Value = 1f;
         }
-        int pass = VkArena(new ReadOnlySpan<byte>(pb, PassBytes));
+        int pass = VkArena(MemoryMarshal.AsBytes(new ReadOnlySpan<PassBlock>(in blk)));
         if (loose < 0 || pass < 0) return false;
         CommandList side = s.Side!;
         side.Reset();

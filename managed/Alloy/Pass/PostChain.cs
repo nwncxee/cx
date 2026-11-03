@@ -168,11 +168,6 @@ internal static unsafe class PostChain
         Armed = false; _down.Forget();
     }
 
-    /// <summary>The framebuffer the last composite wrote into -- 0 is the default framebuffer. Published so
-    /// the probe line can say whether a black frame is a frame that went somewhere else or one that was
-    /// lost.</summary>
-    internal static uint LastInto;
-
     /// <summary>The refusals decidable ahead of the colour bracket, from the engine's own state, before the
     /// Alloy pass pays for its preamble; false stands the whole pass down to vanilla.</summary>
     internal static bool Precheck(int* viewport)

@@ -65,6 +65,7 @@ public static class ServiceHost
         AurTex.Attach(log);
         AurTex.SelfCheck(log);
         Native.SelfCheck(log);   // the std::string readback behind the outbound codepage transcode
+        NativeBufferCheck.SelfCheck(log);   // a native pool's span comes from its allocation, not from a caller's count
         CommandRegistry.Global.Log = log;
         CommandRegistry.SelfCheck(log);   // registration/dispatch/enumeration proof, off-device
         ConfigFile.SelfCheck(log);   // the shared line walker, proven at the host

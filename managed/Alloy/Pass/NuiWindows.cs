@@ -385,7 +385,7 @@ internal static unsafe class NuiWindows
                 Head(q, 1, 4); Box(q, 1, 0x14, 100, 200, 300, 150); AlphaAt(q, 1, 0x1c) = 100;
                 Head(q, 2, 16); AlphaAt(q, 2, 0x18) = 80; AlphaAt(q, 2, 0x1c) = 255;
                 byte* win = stackalloc byte[0x200];
-                new Span<byte>(win, 0x200).Clear();
+                NativeMemory.Clear(win, 0x200);
                 var wnd = new NkWindow((IntPtr)win);
                 wnd.BufBegin = 0; wnd.BufEnd = 3 * S;
                 wnd.Bounds[0] = 100; wnd.Bounds[1] = 200; wnd.Bounds[2] = 300; wnd.Bounds[3] = 150;
