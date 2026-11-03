@@ -240,6 +240,12 @@ the cleanup that earned it. Adding a rule means adding its gate in the same chan
   one or three), and a caller-supplied length checks nothing -- `.Slice(i * size, size)` on it is the pointer plus
   an offset ADR 0031 refuses. A view builds its span from its count row and a `NativeBuffer<T>` from its
   allocation; `python3 tools/gates/span-ptr.py -v` lists each site.
+- `lane-index.sh`: an `a[i * N + k]` read outside `managed/Framework/` counts against `lane-index.baseline`,
+  which may only shrink. A record flattened into lanes asks every reader to know the stride and which lane is
+  which, and a wrong `k` stays inside the array; a record type with named fields (`Vector3`, `Vector4`,
+  `CullPlane`) and an array of it says the layout once, and `MemoryMarshal.Cast` reinterprets a byte buffer
+  that arrives from outside. An allocation length is a size, not a lane; `python3 tools/gates/lane-index.py -v`
+  lists each site.
 - `compiler-rules.sh`: a `#pragma warning disable` or `SuppressMessage` of a `CX` rule, an RS0030 pragma outside
   `managed/Framework/` or with no `// <reason>` on its line, or a `NoWarn`/severity override lowering either in build config, fails.
 - `local-paths.sh`: a home directory, mount point or personal checkout path in a tracked file fails

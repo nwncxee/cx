@@ -101,7 +101,7 @@ internal static unsafe class CasterGather
     internal static int Receiver => Shadows.Receiver.V ? 1 : 0;
     /// <summary>This frame's receiver frustum, six planes as <c>ShadowMath.ReceiverPlanes</c> writes
     /// them (already pushed out by the camera epoch's slack). Filled by <c>CasterPass</c> once per frame.</summary>
-    internal static readonly float[] Planes = new float[24];
+    internal static readonly CullPlane[] Planes = new CullPlane[6];
 
     private static ExtenderLog? _log;
     /// <summary>Dispatches that ran over the dynamic source rather than the full staging -- against
@@ -134,7 +134,7 @@ internal static unsafe class CasterGather
     internal static void View(ref GatherBlock b, int drawN, int groups, Vector3 focus, Vector3 dir, float reach,
                               float along, bool point, float lodR1, float lodR2, int set, bool receiver, int cull)
     {
-        MemoryMarshal.Cast<float, Vector4>(Planes).CopyTo(b.Planes);
+        MemoryMarshal.Cast<CullPlane, Vector4>(Planes).CopyTo(b.Planes);
         b.Focus = focus; b.Dir = dir; b.Reach = reach; b.Along = along;
         b.LodR1 = lodR1; b.LodR2 = lodR2;
         b.DrawN = drawN; b.ViewN = 0; b.Groups = groups;
@@ -145,7 +145,7 @@ internal static unsafe class CasterGather
     /// <summary>...and the layered dispatch's, whose per-view terms come out of the view table instead.</summary>
     internal static void Layer(ref GatherBlock b, int drawN, int viewN, int groups, int cull)
     {
-        MemoryMarshal.Cast<float, Vector4>(Planes).CopyTo(b.Planes);
+        MemoryMarshal.Cast<CullPlane, Vector4>(Planes).CopyTo(b.Planes);
         b.Focus = default; b.Dir = default; b.Reach = 0f; b.Along = 0f;
         b.LodR1 = 0f; b.LodR2 = 0f;
         b.DrawN = drawN; b.ViewN = viewN; b.Groups = groups;
