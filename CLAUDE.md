@@ -244,8 +244,9 @@ the cleanup that earned it. Adding a rule means adding its gate in the same chan
   which may only shrink. A record flattened into lanes asks every reader to know the stride and which lane is
   which, and a wrong `k` stays inside the array; a record type with named fields (`Vector3`, `Vector4`,
   `CullPlane`) and an array of it says the layout once, and `MemoryMarshal.Cast` reinterprets a byte buffer
-  that arrives from outside. An allocation length is a size, not a lane; `python3 tools/gates/lane-index.py -v`
-  lists each site.
+  that arrives from outside. The stride is what makes it a lane read, so lane 0 (`a[i * N]`) and the
+  transposed `a[at + k * N]` count too -- one read spelled three ways must not count three ways. An
+  allocation length is a size, not a lane; `python3 tools/gates/lane-index.py -v` lists each site.
 - `compiler-rules.sh`: a `#pragma warning disable` or `SuppressMessage` of a `CX` rule, an RS0030 pragma outside
   `managed/Framework/` or with no `// <reason>` on its line, or a `NoWarn`/severity override lowering either in build config, fails.
 - `local-paths.sh`: a home directory, mount point or personal checkout path in a tracked file fails
