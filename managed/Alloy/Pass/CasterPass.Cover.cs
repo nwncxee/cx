@@ -32,11 +32,11 @@ public sealed unsafe partial class CasterPass
     /// <summary>The cover light's <see cref="ShadowMath.LatchUpX"/> latch: rain falls within a few degrees of vertical.</summary>
     private static bool _coverUpX;
 
-    /// <summary>The shadow bracket's cover slot: bake or hold. <paramref name="sky"/> is the exterior gate: an
-    /// interior has no sky to fall from. No sun is needed -- rain falls at night too, and this view makes the array.</summary>
-    private static void CoverPass(Vector3 focus, bool sky)
+    /// <summary>The shadow bracket's cover slot: bake or hold. <paramref name="sun"/> is the cascades' own
+    /// exterior gate -- the array only exists past it, and an interior has no sky to fall from.</summary>
+    private static void CoverPass(Vector3 focus, bool sun)
     {
-        if (!sky || !Weather.CoverWanted || !VkArmed) { CoverVp = default; return; }
+        if (!sun || !Weather.CoverWanted || !VkArmed) { CoverVp = default; return; }
         Vector3 dir = Weather.CoverDir;
         float radius = Weather.CoverRange.V, margin = radius;
         float slack = radius * CoverSlack;

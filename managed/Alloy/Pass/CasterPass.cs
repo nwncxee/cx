@@ -257,17 +257,15 @@ public sealed unsafe partial class CasterPass : IExtenderService
         else if (!Refresh()) { FrameZones.Count(FrameZones.Ev.CollectRefresh); Collect(); }
         if (_dumpMovers) { _dumpMovers = false; DumpMovers(fresh); }
 
-        // The sun and the rain cover are the views with an exterior precondition; only the sun also needs a sun. The
-        // cubes light interiors -- which is where the AC lives (torchlight occluded by walls) -- so they must NOT
-        // sit behind this gate.
-        bool sky = FrameInputs.HasCamera && !FrameInputs.Interior;
-        bool sun = sky && FrameInputs.HasSun;
+        // The sun is the only view with an exterior precondition. The cubes light interiors -- which is where
+        // the AC lives (torchlight occluded by walls) -- so they must NOT sit behind this gate.
+        bool sun = FrameInputs.HasSun && FrameInputs.HasCamera && !FrameInputs.Interior;
         if (!sun && !_noSunLogged)
         {   // interiors have no sun: a normal state, not a fault. HasSun latches for the SESSION, so the
             // interior test is what stops an interior sampling the last exterior's cascades -- the stamp then
             // goes stale and the receiver drops the sun shadow term.
             _noSunLogged = true;
-            _log?.Info("CasterPass: no sun captured yet or interior area -- the sun cascades idle, cubes and the rain cover outdoors carry on");
+            _log?.Info("CasterPass: no sun captured yet or interior area -- the sun cascades idle, cubes carry on");
         }
         // The published shadow focus (the camera-follow target, i.e. the PC), falling back to the camera
         // itself. NOT ShadowMath.CameraGroundFocus: marching the camera forward needs the SCENE camera's
@@ -292,7 +290,7 @@ public sealed unsafe partial class CasterPass : IExtenderService
         // the Vulkan bake's own recording for this frame, which the colour frame appends ahead of its passes
         bool onVk = VkBegin(_log!);
         ReceiverFrame();
-        if (sun || (_cubeLights > 0 && FrameInputs.LocalLightCount > 0) || (sky && Weather.CoverWanted) || LightmapBake.WantsGather)
+        if (sun || (_cubeLights > 0 && FrameInputs.LocalLightCount > 0) || (sun && Weather.CoverWanted) || LightmapBake.WantsGather)
         {
             AlloyRenderer.Step("shadow bracket: caster programs and the gather staging");
             if (onVk) _gStaged = GatherStage();
@@ -318,7 +316,7 @@ public sealed unsafe partial class CasterPass : IExtenderService
                     if (onVk) CubePass(focus);
                     break;
                 case PassId.RainCover:
-                    CoverPass(focus, sky);
+                    CoverPass(focus, sun);
                     break;
                 case PassId.SkyMap:
                     SkyPass(sun);
