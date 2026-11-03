@@ -31,7 +31,7 @@ public sealed unsafe partial class AlloyRenderer
         public PipelineId Occ;
         public BufferId Fade;
         public long FadeCap;
-        public int View = -1, Proj = -1, Viz = -1, Gain = -1, First = -1, Textured = -1;
+        public int View = -1, Proj = -1, Viz = -1, Gain = -1, Textured = -1;
     }
 
     private static VkHaloState _vkHalo = new();
@@ -66,22 +66,16 @@ public sealed unsafe partial class AlloyRenderer
         side.SetPipeline(s.Pipe);
         VkProg p = s.Prog!;
         int groups = 0, bare = 0;
+        int textured = VkHaloLoose(p, s, view, proj, textured: true), untextured = -1;
+        if (textured < 0) return false;
         for (int at = 0; at < n;)
         {
             uint tex = Halos.VkTex(at);
             int run = 1;
             while (at + run < n && Halos.VkTex(at + run) == tex) run++;
             ImageId img = tex != 0 ? VkTextures.Image((int)tex) : default;
-            Array.Clear(p.Block);
-            LooseBlock.Capture(p.Members, p.Block);
-            LooseBlock.Set(s.View, view);
-            LooseBlock.Set(s.Proj, proj);
-            LooseBlock.Set(s.Viz, Effects.HaloViz.V);
-            LooseBlock.Set(s.Gain, Effects.Halos.V);
-            LooseBlock.Set(s.First, at);
-            LooseBlock.Set(s.Textured, img.IsNull ? 0 : 1);
-            LooseBlock.EndCapture();
-            int loose = VkArena(p.Block);
+            if (img.IsNull && untextured < 0) untextured = VkHaloLoose(p, s, view, proj, textured: false);
+            int loose = img.IsNull ? untextured : textured;
             if (loose < 0) return false;
             Span<ImageBinding> sampled = stackalloc ImageBinding[8];
             Span<BufferBinding> ubo = stackalloc BufferBinding[4];
@@ -101,7 +95,8 @@ public sealed unsafe partial class AlloyRenderer
                                   : VkSampled(o, c, 0);
             }
             side.BindSet(0, new BindSet(ubo[..nu], ssbo[..ns], sampled[..nt], default));
-            side.Draw(4, run, 0, 0);
+            // the group's first element IS the draw's firstInstance: the stage reads it as gl_BaseInstance
+            side.Draw(4, run, 0, at);
             c.Effects = true;
             if (img.IsNull) bare += run;
             groups++;
@@ -117,6 +112,22 @@ public sealed unsafe partial class AlloyRenderer
                      + $"occluded per pixel and faded by the occlusion probe over {Halos.FadeSlots} light slot(s)");
         }
         return true;
+    }
+
+    /// <summary>The halos' loose block for a draw with or without an authored texture, staged in this frame's arena.
+    /// The group's first element rides the draw's <c>firstInstance</c>, so nothing else in the block varies by group
+    /// and the whole pass stages at most two. Negative when the arena is full.</summary>
+    private static int VkHaloLoose(VkProg p, VkHaloState s, in Matrix4x4 view, in Matrix4x4 proj, bool textured)
+    {
+        Array.Clear(p.Block);
+        LooseBlock.Capture(p.Members, p.Block);
+        LooseBlock.Set(s.View, view);
+        LooseBlock.Set(s.Proj, proj);
+        LooseBlock.Set(s.Viz, Effects.HaloViz.V);
+        LooseBlock.Set(s.Gain, Effects.Halos.V);
+        LooseBlock.Set(s.Textured, textured ? 1 : 0);
+        LooseBlock.EndCapture();
+        return VkArena(p.Block);
     }
 
     /// <summary>The occlusion probe over this frame's <paramref name="n"/> elements, ahead of the draw that reads its
@@ -160,7 +171,7 @@ public sealed unsafe partial class AlloyRenderer
             LooseBlock.Resolve(p.Names, () =>
             {
                 s.View = LooseBlock.Loc("uView"); s.Proj = LooseBlock.Loc("uProj"); s.Viz = LooseBlock.Loc("uViz");
-                s.Gain = LooseBlock.Loc("uGain"); s.First = LooseBlock.Loc("uFirst"); s.Textured = LooseBlock.Loc("uTextured");
+                s.Gain = LooseBlock.Loc("uGain"); s.Textured = LooseBlock.Loc("uTextured");
             });
             var d = new PipelineDesc
             {

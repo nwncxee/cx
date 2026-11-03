@@ -432,11 +432,11 @@ public sealed unsafe partial class AlloyRenderer
     {
         VkColourState s = _vkc;
         if (s.EngineAt != -1) return s.EngineAt;
-        EngineBlock b = EngineBlockStaged();
-        ulong h = (ulong)b.Noise.Y << 32 | b.Noise.X;
-        b.Noise = new UInt2(h != 0 ? VkTextures.IndexOfHandle(h) : 0u, 0u);
-        if (b.Noise.X == 0) b.Noise.X = s.NullIndex;
-        int at = VkArena(MemoryMarshal.AsBytes(new ReadOnlySpan<EngineBlock>(in b)));
+        EngineBlockPacked b = EngineBlockStaged();
+        ulong h = (ulong)b.Tail.Noise.Y << 32 | b.Tail.Noise.X;
+        b.Tail.Noise = new UInt2(h != 0 ? VkTextures.IndexOfHandle(h) : 0u, 0u);
+        if (b.Tail.Noise.X == 0) b.Tail.Noise.X = s.NullIndex;
+        int at = VkArena(EngineBlockBytes(in b));
         // a full arena is remembered for the frame (-2), so no later batch stages the block again
         s.EngineAt = at >= 0 ? at : -2;
         return at;
@@ -559,7 +559,7 @@ public sealed unsafe partial class AlloyRenderer
                     ubo[nu++] = VkProbeSh(o.Binding) is { } sh ? sh
                               : o.Binding == UboSlots.Loose && loose >= 0 ? new BufferBinding(o.Binding, s.Arena, loose, p.Block.Length)
                               : o.Binding == UboSlots.Pass && pass >= 0 ? new BufferBinding(o.Binding, s.Arena, pass, PassBytes)
-                              : engine >= 0 ? new BufferBinding(o.Binding, s.Arena, engine, sizeof(EngineBlock))
+                              : engine >= 0 ? new BufferBinding(o.Binding, s.Arena, engine, EngineBytes)
                               : new BufferBinding(o.Binding, s.ZeroUbo);
                     break;
                 case VkBindKind.StorageBlock when Bound(storage, o.Binding) is { } own:

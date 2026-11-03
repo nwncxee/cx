@@ -313,6 +313,16 @@ internal sealed unsafe partial class VkBackend : IDevice
         return f12.shaderOutputViewportIndex;
     }
 
+    /// <summary>Does the device carry <c>scalarBlockLayout</c>? A block declared <c>scalar</c> then lays its members
+    /// out at their own alignment, which is what <see cref="VkGlsl.ScalarBlocks"/> hands the translator.</summary>
+    private bool ScalarBlockLayout(VkPhysicalDevice d)
+    {
+        var f12 = new VkPhysicalDeviceVulkan12Features();
+        var f2 = new VkPhysicalDeviceFeatures2 { pNext = &f12 };
+        _vki.vkGetPhysicalDeviceFeatures2(d, &f2);
+        return f12.scalarBlockLayout;
+    }
+
     /// <summary>major.minor.patch: the version's own formatting leads with the variant field.</summary>
     private static string Version(VkVersion v) => $"{v.Major}.{v.Minor}.{v.Patch}";
 
@@ -398,6 +408,9 @@ internal sealed unsafe partial class VkBackend : IDevice
             // as the EXT capability, so both features go on and the extension joins them where the device still
             // advertises it -- enabling it with only one of the pair is what the spec forbids.
             shaderOutputLayer = true, shaderOutputViewportIndex = ViewportIndex(phys),
+            // the engine block's five parallel wind lanes hold 512 B each: std140 pads every element out to a whole
+            // vec4 and charges 2 KB for it, scalar block layout packs them at their own size
+            scalarBlockLayout = ScalarBlockLayout(phys),
         };
         var f13 = new VkPhysicalDeviceVulkan13Features { pNext = &f12, dynamicRendering = true, synchronization2 = true };
         var feats = new VkPhysicalDeviceFeatures2 { pNext = &f13 };
@@ -495,6 +508,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         (_bindlessLayout, _bindlessPool, _bindlessSet, _bindlessCap) = MakeBindless();
         // every stage translated from here on bounds its bindless indices by what this device actually seats
         VkGlsl.BindlessCap = _bindlessCap;
+        VkGlsl.ScalarBlocks = f12.scalarBlockLayout;
         VkDescriptorSetLayout* sl = stackalloc VkDescriptorSetLayout[2] { _setLayout, _bindlessLayout };
         var push = new VkPushConstantRange { stageFlags = VkShaderStageFlags.All, offset = 0, size = PushConstants.Bytes };
         var plci = new VkPipelineLayoutCreateInfo { setLayoutCount = 2, pSetLayouts = sl, pushConstantRangeCount = 1, pPushConstantRanges = &push };
@@ -511,6 +525,7 @@ internal sealed unsafe partial class VkBackend : IDevice
                  + $"first fills {(_transfer != null ? $"on transfer queue family {_transfer.Family}" : "on the graphics queue (no copy-only family)")}, "
                  + (_rateTexel > 0 ? $"shading-rate image in {_rateTexel} px tiles" : $"no shading-rate image ({rateWhy}): the G-buffer pass shades every pixel")
                  + $"; {BlendPathLine(_canDynBlend)}; {PipelinePathLine(_canLibraries)}"
+                 + $"; the engine block in {(VkGlsl.ScalarBlocks ? "scalar" : "std140")} layout"
                  + "; Vulkan presents the frame itself");
     }
 

@@ -14,11 +14,18 @@
 // What inc_uniforms sizes its parallel arrays to, and the engine's own ceiling (SetUniforms clamps the point-source
 // list to 0x80). The block spells 128 literally: its member offsets are computed from this text.
 const int MAX_WINDS = 128;
-layout(std140, binding = 2) uniform CxEngine
+// The block's memory layout. std140 pads every array element out to a whole vec4, which costs the five parallel
+// wind lanes below 2 KB each for 512 B of data; scalar block layout packs them at their own size and the block
+// drops from about 10.3 KB to 3.7 KB. A device that offers scalarBlockLayout gets the macro defined to `scalar`
+// ahead of this file (VkGlsl); on its own -- a standalone compile, a content override read by itself -- the text
+// reads std140, which every device lays out alike.
+#ifndef CX_ENGBLK
+#define CX_ENGBLK std140
+#endif
+layout(CX_ENGBLK, binding = 2) uniform CxEngine
 {
     mat4 uEngProj;
-    // std140 pads an array element out to a whole vec4, so each of the five lanes below costs 2 KB for 128
-    // entries. That is the price of the engine's five PARALLEL arrays staying indexable under their own names.
+    // The engine's five PARALLEL arrays, each indexable under its own name, as its own shaders read them.
     vec3 uWindPos[128];
     float uWindRadius[128];
     float uWindDuration[128];

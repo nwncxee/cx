@@ -82,9 +82,14 @@ VK_BUILTINS = ((r"\bgl_DrawID\b", "gl_DrawIDARB"), (r"\bgl_BaseInstance\b", "gl_
                (r"\bgl_InstanceID\b", "(gl_InstanceIndex - gl_BaseInstanceARB)"))
 
 
+# The macro a block whose layout follows the device takes its qualifier from (VkGlsl.LayoutMacro).
+VK_LAYOUT_MACRO = "CX_ENGBLK"
+
+
 def vk_text(src):
     """Mirrors VkGlsl: every `sampler2D(handle)` construction as an index into the bindless sampler array, the
-    extension line that declared handles gone, and the draw and vertex built-ins in Vulkan's spellings."""
+    extension line that declared handles gone, the draw and vertex built-ins in Vulkan's spellings, and a block
+    whose layout follows the device resolved to scalar, as a device offering scalarBlockLayout resolves it."""
     out, at, s = [], 0, VK_BINDLESS_EXT.sub("", src)
     for m in VK_CONSTRUCT.finditer(s):
         if m.start() < at:
@@ -106,6 +111,9 @@ def vk_text(src):
         s = re.sub(pat, rep, s)
     head = ("#extension GL_EXT_nonuniform_qualifier : require\n"
             "#extension GL_ARB_shader_draw_parameters : require\n")
+    if VK_LAYOUT_MACRO in s:
+        head += ("#extension GL_EXT_scalar_block_layout : require\n"
+                 f"#define {VK_LAYOUT_MACRO} scalar\n")
     if f"{VK_BINDLESS_ARRAY}[" in s:
         head += f"layout(set = {VK_BINDLESS_SET}, binding = 0) uniform sampler2D {VK_BINDLESS_ARRAY}[];\n"
     v = s.index("#version")
@@ -735,8 +743,11 @@ def check_program(name, stages, tmp, validate):
         return (r.stdout + r.stderr).strip()
     if not validate:
         return None
+    # a block resolved to scalar breaks std140's "extended layout" rules on purpose, and spirv-val checks those
+    # unless told the device enables scalarBlockLayout -- which VkBackend enables wherever it resolves the macro
+    scalar = ["--scalar-block-layout"] if any(VK_LAYOUT_MACRO in src for src in stages) else []
     for ext in exts:
-        v = subprocess.run(["spirv-val", "--target-env", VK_ENV, os.path.join(d, ext + ".spv")],
+        v = subprocess.run(["spirv-val", "--target-env", VK_ENV] + scalar + [os.path.join(d, ext + ".spv")],
                            capture_output=True, text=True)
         if v.returncode:
             return f"{ext}'s module is not valid:\n" + (v.stdout + v.stderr).strip()

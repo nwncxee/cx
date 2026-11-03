@@ -220,7 +220,8 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
   Every point lives in `Alloy/Core/SsboSlots.cs`: 0..7 persistent and exclusive, 8..15 shared by readers that
   bind before they draw; `SsboSlots.Check` and `check-shaders.py` pin the GLSL to it, and `SsboSlots.CheckDevice`
   stands Alloy down on a device that seats fewer than the budget rather than finding out at the first bind.
-- `ubo-bindings.sh`: a `std140` binding, or a `UboSlots` constant, at or past `UboSlots.Budget` (12, Vulkan's
+- `ubo-bindings.sh`: a `std140` or `scalar` binding (or one on the layout macro a block whose layout follows the
+  device takes its qualifier from), or a `UboSlots` constant, at or past `UboSlots.Budget` (12, Vulkan's
   guaranteed `maxPerStageDescriptorUniformBuffers`, which `VkBackend` allocates per set), or a numeric
   uniform-block index passed straight to `BindBufferBase`/`BindBufferRange` under `managed/` fails. Every point lives in `Alloy/Core/UboSlots.cs`: 0..2 persistent and exclusive, 3..11 shared by
   passes that bind before they draw; `UboSlots.Check` pins the GLSL to it and `Std140.Pin` pins each block's

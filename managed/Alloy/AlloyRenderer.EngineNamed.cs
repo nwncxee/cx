@@ -1,56 +1,125 @@
 using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using CX.Engine;
 using CX.Framework;
+using CX.Graphics.Rhi;
 
 namespace CX.Alloy;
 
-/// <summary>One std140 lane array: an engine <c>windPointSources*</c> array, whose element std140 pads out to a
-/// whole vec4. A float array's lane uses <c>.X</c>, the position array's <c>.XYZ</c>.</summary>
+/// <summary>One engine <c>windPointSourcesPosition</c> array under scalar block layout: an element costs its own
+/// twelve bytes.</summary>
+[InlineArray(AlloyRenderer.MaxWindUniforms)]
+internal struct WindPosLane
+{
+    private Vector3 _e;
+}
+
+/// <summary>One engine <c>windPointSources*</c> float array under scalar block layout: an element costs its own
+/// four bytes.</summary>
 [InlineArray(AlloyRenderer.MaxWindUniforms)]
 internal struct WindLane
+{
+    private float _e;
+}
+
+/// <summary>One <c>windPointSources*</c> array under std140, which pads every element out to a whole vec4. A float
+/// array's lane uses <c>.X</c>, the position array's <c>.XYZ</c>.</summary>
+[InlineArray(AlloyRenderer.MaxWindUniforms)]
+internal struct WindPadLane
 {
     private Vector4 _e;
 }
 
-/// <summary>The <c>CxEngine</c> block (<c>cx_envblk.glsl</c>): the scene terms the engine's own <c>SetUniforms</c>
-/// hands every program by NAME and only a content stage reads -- the module calendar, the frame counter, the
-/// weather kind, the mouse, the wind's point sources, the engine's projection and the solid-noise handle. Every
-/// content environment declares the block, so a stage reads what it would in the engine.</summary>
-internal struct EngineBlock
+/// <summary>Everything the <c>CxEngine</c> block holds past the wind lanes -- the mouse, the noise handle, the module
+/// calendar, the frame counter and the weather. Every member is four-byte aligned and lands at the same offset within
+/// this run under either block layout, so both staging structs share it.</summary>
+internal struct EngineTail
 {
-    public Matrix4x4 Proj;
-    public WindLane Pos, Radius, Duration, Intensity, Remaining;
     public Int2 Mouse;
     public UInt2 Noise;
     public int MouseButtons, WindCount;
     public int Year, Month, Day, Hour, Dawn, Dusk, MinutesPerHour, Frame, WeatherType;
     public float IntoTransition, TransitionTime, WeatherDensity;
+}
 
-    /// <summary>The GLSL against this struct. A member moved in either file stages every term after it into its
-    /// neighbour -- a stage would read the calendar out of the wind.</summary>
+/// <summary>The <c>CxEngine</c> block (<c>cx_envblk.glsl</c>) as std140 lays it out: the scene terms the engine's own
+/// <c>SetUniforms</c> hands every program by NAME and only a content stage reads -- the module calendar, the frame
+/// counter, the weather kind, the mouse, the wind's point sources, the engine's projection and the solid-noise
+/// handle. A device without scalar block layout reads the block from here.</summary>
+internal struct EngineBlock
+{
+    public Matrix4x4 Proj;
+    public WindPadLane Pos, Radius, Duration, Intensity, Remaining;
+    public EngineTail Tail;
+}
+
+/// <summary>The same block as scalar block layout lays it out, which is what the frame fills: the five parallel wind
+/// lanes hold 512 B of data each instead of 2 KB, and the block is about 3.7 KB rather than 10.3 KB.</summary>
+internal struct EngineBlockPacked
+{
+    public Matrix4x4 Proj;
+    public WindPosLane Pos;
+    public WindLane Radius, Duration, Intensity, Remaining;
+    public EngineTail Tail;
+
+    /// <summary>The filled block for a device without scalar block layout: each wind lane element padded out to a
+    /// whole vec4, which is where std140 has the shader read it.</summary>
+    internal static void ToStd140(in EngineBlockPacked src, ref EngineBlock dst)
+    {
+        dst.Proj = src.Proj;
+        for (int i = 0; i < AlloyRenderer.MaxWindUniforms; i++)
+        {
+            dst.Pos[i] = new Vector4(src.Pos[i], 0f);
+            dst.Radius[i] = new Vector4(src.Radius[i], 0f, 0f, 0f);
+            dst.Duration[i] = new Vector4(src.Duration[i], 0f, 0f, 0f);
+            dst.Intensity[i] = new Vector4(src.Intensity[i], 0f, 0f, 0f);
+            dst.Remaining[i] = new Vector4(src.Remaining[i], 0f, 0f, 0f);
+        }
+        dst.Tail = src.Tail;
+    }
+
+    /// <summary>The GLSL against both staging structs, under both layouts a device may hand the block. A member
+    /// moved in either file stages every term after it into its neighbour -- a stage would read the calendar out of
+    /// the wind.</summary>
     internal static void Pin(Checker check)
     {
-        var b = default(EngineBlock);
-        Std140.Pin(check, ShaderSource.Get("cx_envblk.glsl"), "CxEngine", UboSlots.Engine, Unsafe.SizeOf<EngineBlock>(),
+        string src = ShaderSource.Get("cx_envblk.glsl");
+        var b = default(EngineBlockPacked);
+        Std140.Pin(check, src, "CxEngine", UboSlots.Engine, Unsafe.SizeOf<EngineBlockPacked>(),
         [
             ("uEngProj", Std140.At(ref b, ref b.Proj)),
             ("uWindPos", Std140.At(ref b, ref b.Pos)), ("uWindRadius", Std140.At(ref b, ref b.Radius)),
             ("uWindDuration", Std140.At(ref b, ref b.Duration)), ("uWindIntensity", Std140.At(ref b, ref b.Intensity)),
             ("uWindRemain", Std140.At(ref b, ref b.Remaining)),
-            ("uMouse", Std140.At(ref b, ref b.Mouse)), ("uConNoise", Std140.At(ref b, ref b.Noise)),
-            ("uMouseBtn", Std140.At(ref b, ref b.MouseButtons)), ("uWindCount", Std140.At(ref b, ref b.WindCount)),
-            ("uModYear", Std140.At(ref b, ref b.Year)), ("uModMonth", Std140.At(ref b, ref b.Month)),
-            ("uModDay", Std140.At(ref b, ref b.Day)), ("uModHour", Std140.At(ref b, ref b.Hour)),
-            ("uModDawn", Std140.At(ref b, ref b.Dawn)), ("uModDusk", Std140.At(ref b, ref b.Dusk)),
-            ("uModMinutes", Std140.At(ref b, ref b.MinutesPerHour)), ("uSceneFrame", Std140.At(ref b, ref b.Frame)),
-            ("uWeatherType", Std140.At(ref b, ref b.WeatherType)),
-            ("uModTransition", Std140.At(ref b, ref b.IntoTransition)),
-            ("uModTransTime", Std140.At(ref b, ref b.TransitionTime)),
-            ("uWeatherDensity", Std140.At(ref b, ref b.WeatherDensity)),
+            .. TailPins(Std140.At(ref b, ref b.Tail), ref b.Tail),
+        ], BlockLayout.Scalar);
+        var p = default(EngineBlock);
+        Std140.Pin(check, src, "CxEngine", UboSlots.Engine, Unsafe.SizeOf<EngineBlock>(),
+        [
+            ("uEngProj", Std140.At(ref p, ref p.Proj)),
+            ("uWindPos", Std140.At(ref p, ref p.Pos)), ("uWindRadius", Std140.At(ref p, ref p.Radius)),
+            ("uWindDuration", Std140.At(ref p, ref p.Duration)), ("uWindIntensity", Std140.At(ref p, ref p.Intensity)),
+            ("uWindRemain", Std140.At(ref p, ref p.Remaining)),
+            .. TailPins(Std140.At(ref p, ref p.Tail), ref p.Tail),
         ]);
     }
+
+    /// <summary>The tail's members, each at <paramref name="at"/> plus its own offset inside <paramref name="t"/>.</summary>
+    private static (string Name, int Offset)[] TailPins(int at, ref EngineTail t) =>
+    [
+        ("uMouse", at + Std140.At(ref t, ref t.Mouse)), ("uConNoise", at + Std140.At(ref t, ref t.Noise)),
+        ("uMouseBtn", at + Std140.At(ref t, ref t.MouseButtons)), ("uWindCount", at + Std140.At(ref t, ref t.WindCount)),
+        ("uModYear", at + Std140.At(ref t, ref t.Year)), ("uModMonth", at + Std140.At(ref t, ref t.Month)),
+        ("uModDay", at + Std140.At(ref t, ref t.Day)), ("uModHour", at + Std140.At(ref t, ref t.Hour)),
+        ("uModDawn", at + Std140.At(ref t, ref t.Dawn)), ("uModDusk", at + Std140.At(ref t, ref t.Dusk)),
+        ("uModMinutes", at + Std140.At(ref t, ref t.MinutesPerHour)), ("uSceneFrame", at + Std140.At(ref t, ref t.Frame)),
+        ("uWeatherType", at + Std140.At(ref t, ref t.WeatherType)),
+        ("uModTransition", at + Std140.At(ref t, ref t.IntoTransition)),
+        ("uModTransTime", at + Std140.At(ref t, ref t.TransitionTime)),
+        ("uWeatherDensity", at + Std140.At(ref t, ref t.WeatherDensity)),
+    ];
 }
 
 public sealed unsafe partial class AlloyRenderer
@@ -64,7 +133,9 @@ public sealed unsafe partial class AlloyRenderer
     /// <c>GLRender::CheckAndUpdateUniformDirtyDataForFrame</c> -- so an unchanged refill is skipped.</summary>
     private sealed class EngineNamedState
     {
-        public readonly UniformBlock<EngineBlock> Blk = new();
+        public readonly UniformBlock<EngineBlockPacked> Blk = new();
+        /// <summary>Where the std140 expansion is staged, for a device without scalar block layout.</summary>
+        public readonly UniformBlock<EngineBlock> Pad = new();
         public Matrix4x4 Proj;
         public ulong Noise;
         public int Frame = -1, Count;
@@ -105,10 +176,23 @@ public sealed unsafe partial class AlloyRenderer
     }
 
     /// <summary>The <c>CxEngine</c> block <see cref="BindEngineBlock"/> fills, as staged.</summary>
-    internal static ref EngineBlock EngineBlockStaged()
+    internal static ref EngineBlockPacked EngineBlockStaged()
     {
         FillEngineBlock();
         return ref _engineU.Blk.Stage;
+    }
+
+    /// <summary>The staged block's length, as the device's own block layout lays it out.</summary>
+    internal static int EngineBytes => VkGlsl.ScalarBlocks ? sizeof(EngineBlockPacked) : sizeof(EngineBlock);
+
+    /// <summary>Block <paramref name="b"/> as the bytes this device reads it from: the packed block itself where the
+    /// device offers scalar block layout, else its std140 expansion, staged in the block's own owner.</summary>
+    internal static ReadOnlySpan<byte> EngineBlockBytes(in EngineBlockPacked b)
+    {
+        if (VkGlsl.ScalarBlocks) return MemoryMarshal.AsBytes(new ReadOnlySpan<EngineBlockPacked>(in b));
+        ref EngineBlock pad = ref _engineU.Pad.Stage;
+        EngineBlockPacked.ToStd140(in b, ref pad);
+        return MemoryMarshal.AsBytes(new ReadOnlySpan<EngineBlock>(in pad));
     }
 
     /// <summary>Stage the block for this frame and pass; true when nothing changed since the last stage.</summary>
@@ -119,18 +203,19 @@ public sealed unsafe partial class AlloyRenderer
         if (e.Frame == _frameSeq && e.Proj == _projMtx && e.Noise == h) return true;
         bool fresh = e.Frame != _frameSeq;
         e.Frame = _frameSeq; e.Proj = _projMtx; e.Noise = h;
-        ref EngineBlock b = ref e.Blk.Stage;
+        ref EngineBlockPacked b = ref e.Blk.Stage;
+        ref EngineTail t = ref b.Tail;
         b.Proj = _projMtx;
-        b.Frame = _frameSeq;
-        b.Noise = new UInt2((uint)h, (uint)(h >> 32));
+        t.Frame = _frameSeq;
+        t.Noise = new UInt2((uint)h, (uint)(h >> 32));
         if (_runtime != null)
         {
             ShaderExposedRuntimeData rt = Rt;
-            b.Year = rt.ModuleYear; b.Month = rt.ModuleMonth; b.Day = rt.ModuleDay; b.Hour = rt.ModuleHour;
-            b.Dawn = rt.ModuleDawnHour; b.Dusk = rt.ModuleDuskHour; b.MinutesPerHour = rt.ModuleMinutesPerHour;
-            b.IntoTransition = rt.ModuleTimeIntoTransition; b.TransitionTime = rt.ModuleTransitionTime;
-            b.WeatherType = rt.AreaWeatherType; b.WeatherDensity = rt.AreaWeatherDensity;
-            b.Mouse = new Int2(rt.MouseX, rt.MouseY); b.MouseButtons = rt.MouseButtons;
+            t.Year = rt.ModuleYear; t.Month = rt.ModuleMonth; t.Day = rt.ModuleDay; t.Hour = rt.ModuleHour;
+            t.Dawn = rt.ModuleDawnHour; t.Dusk = rt.ModuleDuskHour; t.MinutesPerHour = rt.ModuleMinutesPerHour;
+            t.IntoTransition = rt.ModuleTimeIntoTransition; t.TransitionTime = rt.ModuleTransitionTime;
+            t.WeatherType = rt.AreaWeatherType; t.WeatherDensity = rt.AreaWeatherDensity;
+            t.Mouse = new Int2(rt.MouseX, rt.MouseY); t.MouseButtons = rt.MouseButtons;
         }
         if (fresh)
         {
@@ -141,14 +226,14 @@ public sealed unsafe partial class AlloyRenderer
             for (int i = 0; i < MaxWindUniforms; i++)
             {
                 bool live = i < e.Count;
-                b.Pos[i] = live ? new Vector4(pos[i], 0f) : default;
-                b.Radius[i] = new Vector4(live ? radius[i] : 0f, 0f, 0f, 0f);
-                b.Duration[i] = new Vector4(live ? duration[i] : 0f, 0f, 0f, 0f);
-                b.Intensity[i] = new Vector4(live ? intensity[i] : 0f, 0f, 0f, 0f);
-                b.Remaining[i] = new Vector4(live ? remaining[i] : 0f, 0f, 0f, 0f);
+                b.Pos[i] = live ? pos[i] : default;
+                b.Radius[i] = live ? radius[i] : 0f;
+                b.Duration[i] = live ? duration[i] : 0f;
+                b.Intensity[i] = live ? intensity[i] : 0f;
+                b.Remaining[i] = live ? remaining[i] : 0f;
             }
         }
-        b.WindCount = e.Count;
+        t.WindCount = e.Count;
         return false;
     }
 }
