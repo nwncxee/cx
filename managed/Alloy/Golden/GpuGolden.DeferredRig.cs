@@ -189,7 +189,7 @@ public sealed unsafe partial class AlloyRenderer
         f.Depth = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.R32F, w, h, 1, 1, 1, 1, both, "rig depth"));
         f.Vis = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba8, rw, rh, 1, 1, 1, 1, both, "rig shadow record"));
         f.Key = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rg32Ui, rw, rh, 1, 1, 1, 1, both, "rig shadow key"));
-        f.Hdr = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, w, h, 1, 1, 1, 1, both | ImageUse.CopySrc, "rig hdr"));
+        f.Hdr = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, w, h, 1, 1, 1, 1, both | ImageUse.CopySrc | ImageUse.CopyDst, "rig hdr"));
         f.Rec = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba32Ui, w, h, 1, 1, 1, 1, both, "rig light record"));
         int clusters = RigGridX * RigGridY * RigGridZ;
         f.Lights = RigBuffer(vk, MemoryMarshal.AsBytes(sc.Lights.AsSpan()), BufferUse.Storage, "rig lights");

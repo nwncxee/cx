@@ -492,7 +492,8 @@ internal static unsafe class PostChainVk
         s.Levels = Math.Max(levels, 1);
         for (int i = 0; i < s.Levels; i++)
         {
-            s.Bloom[i] = Target(vk, LevelW(s, i), LevelH(s, i), $"vk bloom {i}", ImageUse.Storage | ImageUse.CopySrc, i == 0 ? AliasLanes.Weight : null);
+            s.Bloom[i] = Target(vk, LevelW(s, i), LevelH(s, i), $"vk bloom {i}", i == 0 ? ImageUse.Storage | ImageUse.CopySrc : ImageUse.Storage,
+                                 i == 0 ? AliasLanes.Weight : null);
             if (s.Bloom[i].IsNull)
             {
                 s.Levels = 0;

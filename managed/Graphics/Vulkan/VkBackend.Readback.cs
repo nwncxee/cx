@@ -114,6 +114,7 @@ internal sealed unsafe partial class VkBackend
         if (!_images.TryGet(c.Src.Value, out VkImg src)) return Fault("CopyImageToBuffer: stale image");
         if (!_buffers.TryGet(c.Dst.Value, out VkBuf? dst)) return Fault("CopyImageToBuffer: stale buffer");
         if (!Inside(src, c.From, c.W, c.H, 1, out string why)) return Fault($"CopyImageToBuffer: the block is {why} of {src.Desc.Label}");
+        if (CopyMissing(src.Desc.Use, true) is { } sw) return Fault($"CopyImageToBuffer: {src.Desc.Label} {sw}");
         long bytes = LevelBytes(src.Desc with { W = c.W, H = c.H, D = 1 }, 0);
         if (c.Offset < 0 || c.Offset + bytes > dst.Desc.Bytes) return Fault($"CopyImageToBuffer: {bytes} bytes at {c.Offset} of {dst.Desc.Label}'s {dst.Desc.Bytes}");
         Transition(src, VkImageLayout.TransferSrcOptimal);

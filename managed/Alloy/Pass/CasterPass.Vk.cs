@@ -524,8 +524,9 @@ public sealed unsafe partial class CasterPass
         return map switch
         {
             // #617: the cover map rides the static array's last layer, as it does on GL
+            // the weather cover copies the cover layer out of this one array
             CasterMap.SunStatic => VkArray(ref s.Cascades, ref s.SunSize, ref s.SunLayers, ImageKind.Tex2DArray,
-                                           _mapSize, _cascades + CoverLayers, "vk sun cascades"),
+                                           _mapSize, _cascades + CoverLayers, "vk sun cascades", copySrc: true),
             CasterMap.SunDyn => VkArray(ref s.SunDyn, ref s.DynSize, ref s.DynLayers, ImageKind.Tex2DArray,
                                         _mapSize, _cascades, "vk sun movers"),
             CasterMap.Cubes => VkArray(ref s.Cubes, ref s.CubeSize, ref s.CubePages, ImageKind.CubeArray,
@@ -541,8 +542,9 @@ public sealed unsafe partial class CasterPass
 
     /// <summary>One depth array, remade when the size or layer count moved. Zero layers is no array at all -- the
     /// mover pool that <c>/shadow dyncount 0</c> switches off.</summary>
+    /// <param name="copySrc">Whether a layer of this array is copied out of it, which the others do not ask for.</param>
     private static ImageId VkArray(ref ImageId id, ref int madeSize, ref int madeLayers, ImageKind kind, int size,
-                                   int layers, string label)
+                                   int layers, string label, bool copySrc = false)
     {
         if (layers <= 0 || size <= 0) return default;
         if (!id.IsNull && madeSize == size && madeLayers == layers) return id;
@@ -551,7 +553,8 @@ public sealed unsafe partial class CasterPass
         // shared with the async queue, whose fog samples the sun and cube maps -- concurrent sharing in place of an
         // ownership transfer, as the beside G-buffer pass samples them at the same time
         id = s.Dev.CreateImage(new ImageDesc(kind, Format.D32F, size, size, 1, 1, layers, 1,
-                                             ImageUse.DepthTarget | ImageUse.Sampled | ImageUse.Async, label));
+                                             ImageUse.DepthTarget | ImageUse.Sampled | ImageUse.Async
+                                             | (copySrc ? ImageUse.CopySrc : ImageUse.None), label));
         if (id.IsNull)
         {
             s.Failed = true;

@@ -152,16 +152,17 @@ internal sealed unsafe partial class VkBackend
     }
 
     /// <summary>The whole of <paramref name="img"/> handed from the transfer family to the graphics one, out of the copy
-    /// layout into the sampled one: the release's half (on the transfer queue) or the <paramref name="acquire"/>'s.</summary>
+    /// layout into the one it settles in: the release's half (on the transfer queue) or the <paramref name="acquire"/>'s.</summary>
     private VkImageMemoryBarrier2 Handover(VkImg img, bool acquire)
     {
         VkImageMemoryBarrier2 b = Whole(img);
         b.oldLayout = VkImageLayout.TransferDstOptimal;
-        b.newLayout = VkImageLayout.ShaderReadOnlyOptimal;
+        b.newLayout = Settled(img.Desc.Use);
         b.srcQueueFamilyIndex = _transfer!.Family;
         b.dstQueueFamilyIndex = _family;
-        if (acquire) { b.dstStageMask = ShaderStages | _meshStages; b.dstAccessMask = VkAccessFlags2.ShaderSampledRead; }
-        else { b.srcStageMask = VkPipelineStageFlags2.AllTransfer; b.srcAccessMask = VkAccessFlags2.TransferWrite; }
+        if (!acquire) { b.srcStageMask = VkPipelineStageFlags2.AllTransfer; b.srcAccessMask = VkAccessFlags2.TransferWrite; }
+        else if (b.newLayout == VkImageLayout.ShaderReadOnlyOptimal) { b.dstStageMask = ShaderStages | _meshStages; b.dstAccessMask = VkAccessFlags2.ShaderSampledRead; }
+        else { b.dstStageMask = VkPipelineStageFlags2.AllTransfer; b.dstAccessMask = VkAccessFlags2.TransferWrite; }
         return b;
     }
 }

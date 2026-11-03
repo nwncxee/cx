@@ -139,11 +139,14 @@ internal sealed unsafe partial class VkBackend
                    || !BitOperations.IsPow2(d.Samples))
             || Of(d.Fmt) == VkFormat.Undefined || d.W <= 0 || d.H <= 0 || d.Mips < 1 || d.Layers < 1)
             return Refused<ImageId>($"image {d.Label}: {d.Kind} {d.Fmt} {d.W}x{d.H} x{d.Samples} with {d.Mips} mips, {d.Layers} layers");
+        if (UseRefusal(d) is { } bad) return Refused<ImageId>($"image {d.Label} {bad} ({d.Use})");
         if (d.Alias is string group) return CreateAliased(d, group);
         VkImageCreateInfo ici = ImageInfo(d, null);
         uint* fams = stackalloc uint[3];
         if ((d.Use & ImageUse.Async) != 0) Share(ref ici.sharingMode, ref ici.queueFamilyIndexCount, ref ici.pQueueFamilyIndices, fams, transfer: false);
         var aci = new VmaAllocationCreateInfo { usage = VmaMemoryUsage.AutoPreferDevice };
+        // a device with no lazily allocated type gives this image ordinary device memory, which is what it had before
+        if ((d.Use & ImageUse.Transient) != 0) aci.preferredFlags = VkMemoryPropertyFlags.LazilyAllocated;
         VkImage image;
         VmaAllocation a;
         if (Vma.vmaCreateImage(_vma, &ici, &aci, &image, &a, null) != VkResult.Success)
@@ -176,14 +179,31 @@ internal sealed unsafe partial class VkBackend
         };
     }
 
-    private static VkImageUsageFlags Usage(ImageUse use, Format f)
+    /// <summary>The usage mask <paramref name="use"/> declares and no more: a flag the device cannot rule out can
+    /// cost a target its framebuffer compression. A depth format attaches at the depth point whatever it names.</summary>
+    internal static VkImageUsageFlags Usage(ImageUse use, Format f)
     {
-        VkImageUsageFlags u = VkImageUsageFlags.Sampled | VkImageUsageFlags.TransferSrc | VkImageUsageFlags.TransferDst;
+        VkImageUsageFlags u = VkImageUsageFlags.None;
+        if ((use & (ImageUse.Sampled | ImageUse.Grey)) != 0) u |= VkImageUsageFlags.Sampled;
+        if ((use & ImageUse.CopySrc) != 0) u |= VkImageUsageFlags.TransferSrc;
+        if ((use & ImageUse.CopyDst) != 0) u |= VkImageUsageFlags.TransferDst;
         if ((use & ImageUse.ColorTarget) != 0 && !f.IsDepth()) u |= VkImageUsageFlags.ColorAttachment;
         if ((use & ImageUse.DepthTarget) != 0 || f.IsDepth()) u |= VkImageUsageFlags.DepthStencilAttachment;
         if ((use & ImageUse.Storage) != 0) u |= VkImageUsageFlags.Storage;
         if ((use & ImageUse.ShadingRate) != 0) u |= VkImageUsageFlags.FragmentShadingRateAttachmentKHR;
+        if ((use & ImageUse.Transient) != 0) u |= VkImageUsageFlags.TransientAttachment;
         return u;
+    }
+
+    /// <summary>Why <paramref name="d"/>'s uses cannot be one image's, or null: no use at all, or a transient
+    /// attachment that is reached outside its pass, is not an attachment, or shares an alias lane.</summary>
+    internal static string? UseRefusal(in ImageDesc d)
+    {
+        if (Usage(d.Use, d.Fmt) == VkImageUsageFlags.None) return "names no use at all";
+        if ((d.Use & ImageUse.Transient) == 0) return null;
+        if (d.Use.LeavesItsPass()) return "is transient and also reached outside its pass";
+        if (!d.Use.IsTarget()) return "is transient and no attachment";
+        return d.Alias != null ? "is transient and in an alias lane, whose memory outlives a pass" : null;
     }
 
     /// <summary>A view of every mip (<paramref name="mip"/> -1) or of one, typed as the shader declares the kind:
@@ -292,6 +312,7 @@ internal sealed unsafe partial class VkBackend
     {
         if (!OnThread("Upload") || !_images.TryGet(i.Value, out VkImg img)) return Fault("Upload: stale image");
         if (img.Group != null) return Fault($"Upload into {img.Desc.Label}: an alias group's image keeps no contents past another member's use");
+        if (CopyMissing(img.Desc.Use, false) is { } why) return Fault($"Upload into {img.Desc.Label}: it {why}");
         if (mip < 0 || mip >= img.Desc.Mips || bytes.Length != LevelBytes(img.Desc, mip))
             return Fault($"Upload into {img.Desc.Label}: {bytes.Length} bytes for mip {mip}, which holds {LevelBytes(img.Desc, Math.Clamp(mip, 0, img.Desc.Mips - 1))}");
         if (!Stage(bytes, out VkBuffer src, out ulong at)) return false;
@@ -302,8 +323,23 @@ internal sealed unsafe partial class VkBackend
     /// <summary>Fill <paramref name="i"/>'s mips past the base from it, linearly downsampled, after the uploads before it.</summary>
     internal void GenerateMips(ImageId i)
     {
-        if (OnThread("GenerateMips")) _upload.Copies.Add(new PendingCopy(i, default, 0, 0, 0, default, 0, 0, true));
+        if (!OnThread("GenerateMips")) return;
+        if (!_images.TryGet(i.Value, out VkImg img)) { Fault("GenerateMips: stale image"); return; }
+        if (img.Desc.Mips == 1) return;
+        if (MipsMissing(img) is { } why) { Fault($"GenerateMips: {img.Desc.Label} {why}"); return; }
+        _upload.Copies.Add(new PendingCopy(i, default, 0, 0, 0, default, 0, 0, true));
     }
+
+    /// <summary>Why <paramref name="img"/>'s chain cannot be blitted down from its base, or null: the blit reads the
+    /// image and writes it, so it has to be both ends of a copy.</summary>
+    private static string? MipsMissing(VkImg img)
+        => CopyMissing(img.Desc.Use, true) ?? CopyMissing(img.Desc.Use, false);
+
+    /// <summary>The layout a filled image settles in: shader-readable where anything samples it, and the transfer
+    /// destination it was filled in otherwise -- that layout asks for the sampled usage an upload alone does not.</summary>
+    internal static VkImageLayout Settled(ImageUse use)
+        => (use & (ImageUse.Sampled | ImageUse.Grey)) != 0
+            ? VkImageLayout.ShaderReadOnlyOptimal : VkImageLayout.TransferDstOptimal;
 
     /// <summary>Copy <paramref name="bytes"/> into <paramref name="b"/> at <paramref name="offset"/> at the head of the
     /// next submit: a large, cold write (a mesh arena's vertices) that a recorded update would carry inline.</summary>
@@ -481,7 +517,7 @@ internal sealed unsafe partial class VkBackend
                 if (!_images.TryGet(id.Value, out VkImg img)) continue;
                 Remember(img);
                 Queue(Handover(img, acquire: true));
-                img.Layout = VkImageLayout.ShaderReadOnlyOptimal;
+                img.Layout = Settled(img.Desc.Use);
                 img.Written = false;
             }
             // its own batch: a transition merged into an acquire would no longer match the release
@@ -519,7 +555,7 @@ internal sealed unsafe partial class VkBackend
             img.Written = true;
         }
         foreach (uint id in u.Touched)
-            if (_images.TryGet(id, out VkImg img)) Transition(img, VkImageLayout.ShaderReadOnlyOptimal);
+            if (_images.TryGet(id, out VkImg img)) Transition(img, Settled(img.Desc.Use));
     }
 
     /// <summary>The staged bytes of <paramref name="p"/> as one copy into its mip and layer of <paramref name="img"/>.</summary>
@@ -549,9 +585,11 @@ internal sealed unsafe partial class VkBackend
         u.Acquire.Clear();
     }
 
-    /// <summary>Each mip from the one above it by a linear blit, every layer at once; the image ends shader-readable.</summary>
-    private void BlitMips(VkImg img)
+    /// <summary>Each mip from the one above it by a linear blit, every layer at once; the image ends shader-readable.
+    /// False (logged) when it was not created as both ends of a copy, which the blit of itself onto itself needs.</summary>
+    private bool BlitMips(VkImg img)
     {
+        if (MipsMissing(img) is { } why) return Fault($"GenerateMips: {img.Desc.Label} {why}");
         Transition(img, VkImageLayout.TransferDstOptimal);
         Flush();
         uint layers = (uint)(img.Desc.Kind is ImageKind.Cube or ImageKind.CubeArray ? img.Desc.Layers * 6 : img.Desc.Layers);
@@ -570,7 +608,8 @@ internal sealed unsafe partial class VkBackend
             MipBarrier(img, m - 1, VkImageLayout.TransferSrcOptimal, VkImageLayout.TransferDstOptimal);
         }
         img.Written = true;
-        Transition(img, VkImageLayout.ShaderReadOnlyOptimal);
+        Transition(img, Settled(img.Desc.Use));
+        return true;
     }
 
     private void MipBarrier(VkImg img, int mip, VkImageLayout from, VkImageLayout to)
@@ -657,7 +696,7 @@ internal sealed unsafe partial class VkBackend
     /// which faults the device. Made with the device, uploaded at its first submit.</summary>
     private void MakeBindlessZero()
     {
-        ImageId zero = CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba8, 1, 1, 1, 1, 1, 1, ImageUse.Sampled, "bindless zero"));
+        ImageId zero = CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba8, 1, 1, 1, 1, 1, 1, ImageUse.Sampled | ImageUse.CopyDst, "bindless zero"));
         if (!_images.TryGet(zero.Value, out VkImg img)) throw new InvalidOperationException("the bindless zero texel was refused");
         Upload(zero, 0, 0, stackalloc byte[4]);
         _bindless.Zero = img.View;

@@ -511,6 +511,7 @@ internal sealed unsafe partial class VkBackend : IDevice
                  + $"first fills {(_transfer != null ? $"on transfer queue family {_transfer.Family}" : "on the graphics queue (no copy-only family)")}, "
                  + (_rateTexel > 0 ? $"shading-rate image in {_rateTexel} px tiles" : $"no shading-rate image ({rateWhy}): the G-buffer pass shades every pixel")
                  + $"; {BlendPathLine(_canDynBlend)}; {PipelinePathLine(_canLibraries)}"
+                 + (HasLazyMemory() ? "; transient targets take lazily allocated memory" : "; no lazily allocated memory type, so a transient target takes ordinary device memory")
                  + "; Vulkan presents the frame itself");
     }
 
