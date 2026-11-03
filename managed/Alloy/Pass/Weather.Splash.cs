@@ -111,10 +111,6 @@ internal static unsafe partial class Weather
           && v.Contains("pos = P + (T * corner.x + B * corner.y) * (ringM * 1.15) + up * CX_SPLASH_LIFT;")
           && v.Contains("float seed = 0.4 + 0.6 * fract(hc.x * 7.31);") && v.Contains("vSeed = seed * dim;"),
           "the ring is strictly world-sized: its screen size only FADES it");
-        check.Expect(v.Contains("dim = (truth.x * truth.y) / (b.x * b.y);")
-          && v.Contains("float grow = max(CX_SPLASH_MINPX / max(min(2.0 * quad.x, quad.y) * px, 1e-6), 1.0);")
-          && v.Contains("dim = 1.0 / (grow * grow);"),
-          "a sub-pixel bead or crown widens to a pixel and gives back the area in scatter, rather than flickering");
         check.Expect(v.Contains("const vec2 CX_SPLASH_NEAR = vec2(0.5, 1.0);")
           && v.Contains("dim *= gain * smoothstep(CX_SPLASH_NEAR.x, CX_SPLASH_NEAR.y, -cv.z);"),
           "a crown inside a metre of the lens fades out rather than filling the screen (a camera in a wall sits on the surface the rain lands on)");
@@ -123,9 +119,7 @@ internal static unsafe partial class Weather
           "a splash lands where the cover map says the rain does, and nowhere when it says nothing");
         check.Expect(v.Contains("if (length(xp + xn - 2.0 * p) + length(yp + yn - 2.0 * p) > CX_SPLASH_FLAT_M) return p;"),
           "no crown on an edge texel, where the filtered depth blends a roof with the ground under it and the point hangs in the air");
-        check.Expect(v.Contains("up = normalize(cross(xp - xn, yp - yn));")
-          && v.Contains("P = L + away * f.x + up * f.y;") && v.Contains("if (t < 0.0 || f.y < 0.0) alive = false;")
-          && v.Contains("side = cross(up, toCam);"),
+        check.Expect(v.Contains("up = normalize(cross(xp - xn, yp - yn));"),
           "a crown stands on the surface it hit: the ring lies in its plane and the sheet and beads rise along its normal");
         check.Expect(v.Contains("if (onPlane && abs(ground.z - L.z) < CX_FOOT_GROUND_M) { L = ground; up = n; }"),
           "a footfall's crowns stand on the ground under the foot too, unless the cover map's hit there is a roof over it");

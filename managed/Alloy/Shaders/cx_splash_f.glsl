@@ -1,8 +1,8 @@
 #version 460 core
 // CX-102: one part of a rain crown: the ring on the ground, the crown's sheet of water or a puddle's rebound column,
-// or a bead off the lip; all are premultiplied like the streak and the flake, so an unlit impact is nothing rather than a grey
+// or a bead off the lip; all are premultiplied like the drop and the flake, so an unlit impact is nothing rather than a grey
 // mark on the stone. No contact fade here: a splash SITS on the surface, and the fade that saves a falling
-// streak from a hard intersection line would erase the whole thing. In the scene the hardware depth test puts
+// drop from a hard intersection line would erase the whole thing. In the scene the hardware depth test puts
 // a splash behind a wall in front of it; drawn after the temporal resolve there is no depth target, and this
 // stage tests the depth copy itself.
 in vec2 vUV;
@@ -60,7 +60,8 @@ void main()
 {
     if (uLate != 0 && CxSplashHidden(CxSceneViewZ(gl_FragCoord.xy / uScreen), -vViewZ)) discard;
     float a;
-    if (vPart < 0.5)
+    int kind = int(vPart + 0.5);
+    if (kind == CX_PART_RING)
     {
         float r = length(vUV);
         if (r > 1.0) discard;
@@ -68,15 +69,15 @@ void main()
         float u = (r - CX_SPLASH_RINGR * sqrt(vAge)) / CX_SPLASH_RINGW;
         a = exp(-u * u) * (1.0 - vAge) * CX_SPLASH_RINGA;
     }
-    else if (vPart < 2.5)
+    else if (kind != CX_PART_BEAD)
     {
         // the crown's sheet, or the rebound column out of a puddle, sinking back as it ages
-        float solid = vPart > 1.5 ? 1.0 : 0.0;
+        float solid = kind == CX_PART_COLUMN ? 1.0 : 0.0;
         vec2 shape = solid > 0.5 ? CxSplashColumn(vAge) : CxCrownShape(vAge);
         vec3 V = normalize(cross(vSide, vUp));
         vec4 c = CxCrownSheet(vUV, shape, solid, V, vSide, vUp, vSkyUp, vSkyLow, vLampDir, uTint * vLight);
         if (c.a <= 0.0) discard;
-        if (uViz == 5) { frag = vec4(vLight, 1.0) * (c.a * vSeed); return; }
+        if (uViz == CX_SPLASH_VIZ) { frag = vec4(vLight, 1.0) * (c.a * vSeed); return; }
         c.rgb += CxCrownSheet(vUV, shape, solid, V, vSide, vUp, vec3(0.0), vec3(0.0), uAreaDir, uTint * uAreaDiffuse * vSunVis).rgb;
         frag = vec4(c.rgb, c.a * uAlpha) * vSeed;
         return;
@@ -85,7 +86,7 @@ void main()
     {
         // a bead off the lip: the falling drop's own water bead, fading as it spends itself
         if (dot(vUV, vUV) >= 1.0) discard;
-        if (uViz == 5) { frag = vec4(vLight, 1.0) * vSeed; return; }
+        if (uViz == CX_SPLASH_VIZ) { frag = vec4(vLight, 1.0) * vSeed; return; }
         vec3 V = normalize(cross(vSide, vUp));
         vec4 b = CxSplashDrop(vUV, V, vSide, vUp, vSkyUp, vSkyLow, vLampDir, uTint * vLight, uAreaDir, uTint * uAreaDiffuse * vSunVis);
         frag = vec4(b.rgb, b.a * uAlpha) * ((1.0 - vAge * vAge) * vSeed);
@@ -96,7 +97,7 @@ void main()
     // rgb is the light this part throws at the eye weighted by its coverage; alpha is the extinction behind
     // it, riding the SAME scatter, so a splash with no light on it neither adds nor hides anything.
     float cov = a * vSeed;
-    if (uViz == 5) { frag = vec4(vLight * cov, cov); return; }
+    if (uViz == CX_SPLASH_VIZ) { frag = vec4(vLight * cov, cov); return; }
     vec3 scatter = uTint * vLight;
     frag = vec4(scatter * cov, cov * uAlpha * min(dot(scatter, CX_WX_LUMA), 1.0));
 }

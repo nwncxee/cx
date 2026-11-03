@@ -11,7 +11,6 @@ const int CX_SPLASH_BEADS = 4;
 /// Parts per crown: the ring on the ground (index 0), the sheet or the rebound column (1), then the beads. The C#
 /// side sizes the draw by this.
 const int CX_SPLASH_PARTS = CX_SPLASH_BEADS + 2;
-const float CX_SPLASH_G = 9.81;
 /// The ring's own reach, metres. Pinned to the puddle rings' CX_RIPPLE_REACH_M -- the same drop makes both,
 /// so the one on the water and the one on the stone beside it may not be different sizes (Weather.SelfCheck).
 const float CX_SPLASH_RING_M = 0.08;
@@ -31,8 +30,6 @@ const vec2 CX_SPLASH_PX = vec2(1.0, 2.5);
 /// a pixel past a few tens of metres, and a sub-pixel quad does not dim -- it FLICKERS; the quad grows to this and the
 /// crown's light is divided by the area that added. The ring never moves.
 const float CX_SPLASH_MINPX = 1.2;
-/// The parts' kinds, as the fragment stage reads them.
-const float CX_PART_SHEET = 1.0, CX_PART_COLUMN = 2.0, CX_PART_BEAD = 3.0;
 /// View depths, metres, over which a crown fades in from the lens: nearer than the first it is not drawn. A
 /// world-sized crown that close is a screen-wide smear, which is what a camera inside a wall sees.
 const vec2 CX_SPLASH_NEAR = vec2(0.5, 1.0);
@@ -119,9 +116,6 @@ bool CxSplashSeen(vec3 p)
     return scene + v.z < CX_SPLASH_CONTACT.x - CX_SPLASH_CONTACT.y * v.z;
 }
 
-/// /weather viz 5: every impact unlit, green on bare ground through blue in standing water, as it read the water.
-const int CX_SPLASH_VIZ = 5;
-
 /// The water standing where a crown lands at `p`, as the deferred twin recorded it under that pixel; 0 off screen or
 /// when this frame recorded none.
 float CxSplashStanding(vec3 p)
@@ -197,7 +191,8 @@ void main()
     // the crown's frame on the surface it hit; on level ground T and B are world x and y
     vec3 T = normalize(cross(vec3(0.0, 1.0, 0.0), up)), B = cross(up, T);
     vec3 N = up;
-    float k = hit.y * v0k, kind = 0.0;
+    float k = hit.y * v0k;
+    int kind = CX_PART_RING;
     vec2 quad = vec2(0.0), q = vec2(0.0);
     float seed = 0.4 + 0.6 * fract(hc.x * 7.31);
     if (part == 1)
@@ -205,7 +200,7 @@ void main()
         // the crown's sheet, or in standing water the column its dip throws back up: an upright quad over the landing
         // point turned to the camera, the shape itself drawn in the fragment stage
         vec3 hd = CxHash3(crown * 2246822519u + uint(slice) * 3266489917u + 1u);
-        bool column = hit.w > 0.0 && hd.y < hit.w / CX_HIT_JET.y;
+        bool column = hd.y < hit.w;
         kind = column ? CX_PART_COLUMN : CX_PART_SHEET;
         if (!column) alive = alive && hit.x > 0.01;
         quad = column ? vec2(0.5 * CX_COLUMN.y, CX_COLUMN.x)
@@ -229,7 +224,7 @@ void main()
         if (t < 0.0 || f.y < 0.0) alive = false;   // still part of the lip, or landed
         vec3 away = T * cos(a) + B * sin(a);
         P = L + away * f.x + up * f.y;
-        vec3 vel = away * (v * cos(tilt)) + up * (v * sin(tilt) - CX_SPLASH_G * max(t, 0.0));
+        vec3 vel = away * (v * cos(tilt)) + up * (v * sin(tilt) - CX_HIT_G * max(t, 0.0));
         axis = normalize(vel);
         side = normalize(cross(axis, uEye - P));
         quad = vec2(length(vel), 0.0);
@@ -267,7 +262,7 @@ void main()
     dim *= gain * smoothstep(CX_SPLASH_NEAR.x, CX_SPLASH_NEAR.y, -cv.z);
     vUV = part == 1 ? q : corner;
     vAge = age;
-    vPart = kind;
+    vPart = float(kind);
     vSeed = seed * dim;
     vLight = uAreaAmbient + uAreaDiffuse * 0.5;
     vSide = side;

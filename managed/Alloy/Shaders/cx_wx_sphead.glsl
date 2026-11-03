@@ -30,7 +30,7 @@ uniform vec2 uFootW;           // x = the wetness where the area map has not lat
 out vec2 vUV;
 out float vSeed;               // per-crown brightness, times the distance fade
 out float vAge;                // 0..1 through the crown's life
-out float vPart;               // 0 = the ring on the ground, >0 = a droplet streak
+out float vPart;               // the part's kind, CX_PART_* (cx_wx_hit)
 out vec3 vLight;               // linear light at this splash
 out float vViewZ;              // view z of this vertex (negative ahead): the late draw's own depth test
 out vec3 vSide;                // a droplet's quad axes, across and along, both facing the camera

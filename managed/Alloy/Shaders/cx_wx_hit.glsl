@@ -25,6 +25,14 @@ vec4 CxSplashByWater(float standing)
     return vec4(crown, speed, mix(CX_HIT_RING_DRY, 1.0, s), CX_HIT_JET.y * smoothstep(CX_HIT_JET.x, 1.0, s));
 }
 
+/// Gravity, m/s².
+const float CX_HIT_G = 9.81;
+/// The impact's parts, as the splash's vertex stage hands them to its fragment stage: the ring, the crown's sheet,
+/// a puddle's rebound column, a bead off the lip.
+const int CX_PART_RING = 0, CX_PART_SHEET = 1, CX_PART_COLUMN = 2, CX_PART_BEAD = 3;
+/// /weather viz 5: every impact unlit, green on bare ground through blue in standing water, as it read the water.
+const int CX_SPLASH_VIZ = 5;
+
 /// The tallest a full crown rises off bare stone, metres.
 const float CX_CROWN_H = 0.02;
 /// A full crown's radius at its lip as it starts, metres, and how far the lip has spread by its life's end.
@@ -61,7 +69,7 @@ const vec2 CX_BEAD_TILT = vec2(0.4, 0.9);
 /// m/s tilted <c>tilt</c> above level: x how far out from where the drop hit, y its height; below 0 it has landed.
 vec2 CxBeadFlight(float t, float v, float tilt, vec2 rim)
 {
-    return vec2(rim.x + v * cos(tilt) * t, rim.y + v * sin(tilt) * t - 4.905 * t * t);
+    return vec2(rim.x + v * cos(tilt) * t, rim.y + v * sin(tilt) * t - 0.5 * CX_HIT_G * t * t);
 }
 
 /// A lip bead's diameter, metres.
