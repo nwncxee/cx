@@ -61,7 +61,8 @@ internal static partial class GpuGolden
             cl.ReadImages([scene]);
             cl.SetPipeline(pipe);
             cl.BindSet(0, new BindSet(default, default, [new ImageBinding(0, scene)], [new ImageBinding(0, rate)]));
-            cl.PushConstants(0, MemoryMarshal.AsBytes((ReadOnlySpan<int>)[BitConverter.SingleToInt32Bits(VrsContrast), VrsEdge]));
+            var push = new AlloyRenderer.VkRatePush { Contrast = VrsContrast, Tile = VrsEdge };
+            cl.PushConstants(0, MemoryMarshal.AsBytes(new ReadOnlySpan<AlloyRenderer.VkRatePush>(in push)));
             cl.Dispatch(tiles, 1);
             cl.CopyImageToBuffer(new CopyToBufferCmd(rate, new ImageRegion(0, 0, 0, 0), tiles, 1, outb, 0));
             var bytes = new byte[words];

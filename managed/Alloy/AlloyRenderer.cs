@@ -509,7 +509,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         // On the edge only: the owners' reset allocates, and the device stays lost for the session.
         if (lost) PassRegistry.Global.ContextLost();
         bool inModule = GameGate.InModule;
-        if (_was.InModule && !inModule) { RevokeAll("module unload"); Programs._spliceStale = true; OwnedTextures.ModuleUnloaded(); StockConfig.ModuleUnloaded(); AlloyEnvMap.ModuleUnloaded(); DbFeed.ModuleEdge(_log); }
+        if (_was.InModule && !inModule) { RevokeAll("module unload"); Programs.State.SpliceStale = true; OwnedTextures.ModuleUnloaded(); StockConfig.ModuleUnloaded(); AlloyEnvMap.ModuleUnloaded(); DbFeed.ModuleEdge(_log); }
         _was.InModule = inModule;
         if (inModule && !DbPassScene.IsNull) StockConfig.OnScene((IntPtr)DbPassScene.Value);
 

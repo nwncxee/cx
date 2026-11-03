@@ -48,17 +48,11 @@ internal static unsafe class DeferredLights
     private static ExtenderLog? _log;
     private static readonly StandDown _down = new("DeferredLights");
 
-    /// <summary>The two programs whose link the deferred verdict rests on, in one object: context loss
-    /// replaces it, so no name from the dead context survives as a field nobody remembered to zero.</summary>
-    private sealed class DeferredLightsState
-    {
-    }
-
     /// <summary>May the VANILLA renderer's chain draw opaque and cutout batches through the <c>CX_DEFERRED</c>
     /// twin? <c>light.deferred</c> on, a main-view pass, and that chain's own deferred twin linked -- which it
-    /// never is (<see cref="Programs._progLitDef"/>), so the pair tiles it would take its debt from stay down.</summary>
+    /// never is (<see cref="Programs.ProgramsState.LitDeferred"/>), so the pair tiles it would take its debt from stay down.</summary>
     internal static bool Active => Lighting.Deferred.V && (AlloyRenderer._lightViz == 0 || AlloyRenderer._lightViz == AlloyRenderer.VizLightFrom)
-                                   && Programs._progLitDef != 0;
+                                   && Programs.State.LitDeferred != 0;
 
     internal static void Attach(ExtenderLog log) => _log = log;
 

@@ -165,7 +165,7 @@ internal static class Renderer
                               effect: Effect.Restart, format: AutoInt, parse: ParseAutoInt);
         Bindless = G.Dropdown("bindless", "Bindless textures", new[] { -1, 1, 0 }, -1, tier: Tier.ChatOnly, effect: Effect.Restart,
                               help: "Auto arms them: Vulkan's descriptor table is bindless on every device.", format: AutoOnOff, parse: ParseAutoOnOff);
-        Native = G.Toggle("native", "Native shader stages", true, Tier.ChatOnly, changed: () => Programs._spliceStale = true,
+        Native = G.Toggle("native", "Native shader stages", true, Tier.ChatOnly, changed: () => Programs.State.SpliceStale = true,
                           help: "Run a content shader's native version (cx_<stage>) where the module ships one; off runs the "
                               + "stage the engine runs.");
         Bcn = G.Toggle("bcn", "Compress textures on load", true, Tier.ChatOnly, Effect.Restart,
