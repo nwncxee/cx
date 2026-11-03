@@ -43,13 +43,6 @@ const float CX_SPLASH_RINGA = 0.5;
 /// than one target pixel.
 const vec2 CX_SPLASH_HIDE = vec2(0.1, 0.01);
 
-/// A bead off a crown's lip at `uv` on its quad: the falling drop's own water bead, so a lamp beside a splash glints on
-/// every bead it throws as it does on the rain coming down.
-vec4 CxSplashDrop(vec2 uv, vec3 V, vec3 right, vec3 up, vec3 skyUp, vec3 skyLow, vec3 lampDir, vec3 lampCol, vec3 sunDir, vec3 sunCol)
-{
-    return CxWxBead(uv, V, right, up, skyUp, skyLow, lampDir, lampCol, sunDir, sunCol);
-}
-
 /// True when a part `splash` metres away stands behind the scene the depth copy holds `scene` metres away.
 bool CxSplashHidden(float scene, float splash)
 {
@@ -88,7 +81,7 @@ void main()
         if (dot(vUV, vUV) >= 1.0) discard;
         if (uViz == CX_SPLASH_VIZ) { frag = vec4(vLight, 1.0) * vSeed; return; }
         vec3 V = normalize(cross(vSide, vUp));
-        vec4 b = CxSplashDrop(vUV, V, vSide, vUp, vSkyUp, vSkyLow, vLampDir, uTint * vLight, uAreaDir, uTint * uAreaDiffuse * vSunVis);
+        vec4 b = CxWxBead(vUV, V, vSide, vUp, vSkyUp, vSkyLow, vLampDir, uTint * vLight, uAreaDir, uTint * uAreaDiffuse * vSunVis);
         frag = vec4(b.rgb, b.a * uAlpha) * ((1.0 - vAge * vAge) * vSeed);
         return;
     }
