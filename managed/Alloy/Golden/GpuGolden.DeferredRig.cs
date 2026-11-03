@@ -36,6 +36,10 @@ internal sealed class DeferredRigScene
     internal bool Wave;
     /// <summary>Set by the run: the period line's counters -- pixels the walk lit, the entries they walked, the most one walked.</summary>
     internal (uint Pixels, uint Sum, uint Most) Walked;
+    /// <summary>One part opacity per ownership slot (the record's <c>rot.w</c>); a slot past the end draws opaque.</summary>
+    internal float[] PartAlpha = [];
+    /// <summary>The stock point-light curve alone: no near-field core, no subsurface leak, no wrap of either kind.</summary>
+    internal bool Plain;
 }
 
 /// <summary>One pixel of a rig scene, in the order <c>CxRigPixel</c> reads it: the <c>CxGbuf</c> fields the twin packs,
@@ -55,6 +59,7 @@ internal struct RigPixel
     public Vector3 LmShare;
     public Vector4 SurfFade, ShSlots, ShVis;
     public float Skew;
+    public Vector3 AmbT;
 }
 
 public sealed unsafe partial class AlloyRenderer
@@ -69,7 +74,7 @@ public sealed unsafe partial class AlloyRenderer
         => "#version 460 core\nlayout(local_size_x = 8, local_size_y = 8) in;\n"
          + "struct CxRigPixel { float flags, nx, ny, nz, rough, spec, fresnel, coat, coatRough, specCr, specCg, specCb, slot, specT,"
          + " diffTr, diffTg, diffTb, lmLum, lmMover0, lmMover1, lmMover2, lmMover3, viewDepth, lmShareR, lmShareG, lmShareB,"
-         + " fadeX, fadeY, fadeZ, fadeW, sl0, sl1, sl2, sl3, vis0, vis1, vis2, vis3, skew; };\n"
+         + " fadeX, fadeY, fadeZ, fadeW, sl0, sl1, sl2, sl3, vis0, vis1, vis2, vis3, skew, ambTr, ambTg, ambTb; };\n"
          // uLmPages gates the lightmap samplers, which the fill never reaches: a const 0 folds them out
          + ShaderSource.Get("cx_chartbuf.glsl").Replace("uniform int uLmPages;", "const int uLmPages = 0;", StringComparison.Ordinal)
          + ShaderSource.Get("cx_gbuf.glsl") + ShaderSource.Get("cx_shrec.glsl")
@@ -184,7 +189,9 @@ public sealed unsafe partial class AlloyRenderer
         f.Stats = vk.CreateBuffer(new BufferDesc(VkDefStatsWords * sizeof(uint), BufferUse.Storage | BufferUse.CopySrc,
                                                  MemoryKind.Device, "rig stats"));
         int slots = Math.Max(sc.Sheen.Length, 1);
+        slots = Math.Max(slots, sc.PartAlpha.Length);
         var draws = new DrawRecordBlock[slots];
+        for (int i = 0; i < slots; i++) draws[i].Alpha = i < sc.PartAlpha.Length ? sc.PartAlpha[i] : 1f;
         for (int i = 0; i < sc.Sheen.Length; i++) draws[i].Ext.Ext1 = sc.Sheen[i];
         f.Draws = RigBuffer(vk, MemoryMarshal.AsBytes(draws.AsSpan()), BufferUse.Storage, "rig draws");
         f.Chart = vk.CreateBuffer(new BufferDesc(slots * LightmapBake.RecFloats * sizeof(float) * 2, BufferUse.Storage, MemoryKind.Device, "rig chart"));
@@ -295,6 +302,7 @@ public sealed unsafe partial class AlloyRenderer
         pb.Sss = new Vector2(0.2f, 0.25f);
         pb.WrapN = 0.05f;
         pb.DayDim = 1f;
+        if (sc.Plain) { pb.Hot = Vector2.Zero; pb.Sss = Vector2.Zero; pb.Wrap = 0f; pb.WrapN = 0f; }
         pb.Relevance = new Vector2(0.01f, 0.02f);
         pb.Bounds = 1f;
         pb.ShBudget = 4f;
