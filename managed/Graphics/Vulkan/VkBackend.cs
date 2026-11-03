@@ -155,6 +155,10 @@ internal sealed unsafe partial class VkBackend : IDevice
 
     private readonly HandleTable<VkBuf> _buffers = new();
     private readonly HandleTable<VkImg> _images = new();
+    /// <summary>The labels of the last images destroyed, by id, so a stale use can say which image it held.</summary>
+    private readonly (uint Id, string Label)[] _deadImages = new (uint, string)[DeadKept];
+    private int _deadImageAt;
+    private const int DeadKept = 32;
     private readonly HandleTable<VkSampler> _samplers = new();
     private readonly HandleTable<VkShader> _shaders = new();
     private readonly HandleTable<VkPipe> _pipelines = new();
@@ -704,7 +708,21 @@ internal sealed unsafe partial class VkBackend : IDevice
         if (!OnThread("Destroy") || !_images.Remove(i.Value, out VkImg g)) return;
         _sets.Stale = true;
         if (g.Group != null) Leave(g);
+        _deadImages[_deadImageAt] = (i.Value, g.Desc.Label);
+        _deadImageAt = (_deadImageAt + 1) % DeadKept;
         LaterThanBindless(() => Free(g));
+    }
+
+    /// <summary>What a refusal calls an image id that no longer resolves: its label while it is among the last
+    /// <see cref="DeadKept"/> destroyed.</summary>
+    private string StaleImage(ImageId i)
+    {
+        for (int k = 1; k <= DeadKept; k++)
+        {
+            (uint id, string label) = _deadImages[(_deadImageAt - k + DeadKept) % DeadKept];
+            if (id == i.Value && label != null) return $"stale image {label} (destroyed)";
+        }
+        return $"stale image {i.Value}";
     }
 
     /// <summary>An image's views, the image and its memory. An alias member holds no allocation of its own, so only
