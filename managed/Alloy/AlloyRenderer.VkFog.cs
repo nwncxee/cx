@@ -28,6 +28,9 @@ public sealed unsafe partial class AlloyRenderer
         public ImageId MedA, MedB, SumA, SumB;
         /// <summary>The sum this frame's pass wrote, or last frame's until it runs.</summary>
         public ImageId Total;
+        /// <summary>The sum a new grid replaced: this frame's earlier stages bound it as last frame's, so its id must
+        /// resolve until this frame's lists have run. Destroyed at the next pass.</summary>
+        public ImageId Retired;
         public int W, H, D;
         /// <summary>This frame's volume is built, so its readers may sample it.</summary>
         public bool Built;
@@ -46,6 +49,8 @@ public sealed unsafe partial class AlloyRenderer
     {
         VkFogState s = _vkFog;
         if (s.Dev != vk) _vkFog = s = new VkFogState { Dev = vk };
+        vk.Destroy(s.Retired);
+        s.Retired = default;
         s.Built = false;
         FogVolume.NotBuilt();
         float rain = Weather.VeilShare;
@@ -129,7 +134,10 @@ public sealed unsafe partial class AlloyRenderer
     private static bool VkFogVolumes(VkBackend vk, VkFogState s, int w, int h, int d, ExtenderLog log)
     {
         if (!s.SumA.IsNull && s.W == w && s.H == h && s.D == d) return true;
-        vk.Destroy(s.MedA); vk.Destroy(s.MedB); vk.Destroy(s.SumA); vk.Destroy(s.SumB);
+        s.Retired = s.Total;
+        vk.Destroy(s.MedA); vk.Destroy(s.MedB);
+        if (s.SumA != s.Retired) vk.Destroy(s.SumA);
+        if (s.SumB != s.Retired) vk.Destroy(s.SumB);
         s.MedA = Volume(vk, w, h, d, "vk vfog medium a");
         s.MedB = Volume(vk, w, h, d, "vk vfog medium b");
         s.SumA = Volume(vk, w, h, d, "vk vfog sum a");
