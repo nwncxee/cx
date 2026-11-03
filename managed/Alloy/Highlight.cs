@@ -22,7 +22,8 @@ internal static unsafe partial class Highlight
     /// Roots beyond the cap take the glow instead of silently vanishing.
     /// ponytail: the per-draw match below is a linear scan over these targets; if a census ever shows
     /// hundreds of simultaneous highlights mattering, swap it for a fixed-size open-addressed table.</summary>
-    private const int MaxHlRoots = 128, MaxHlTargets = 256;
+    internal const int MaxHlRoots = 128;
+    private const int MaxHlTargets = 256;
 
     /// <summary>The highlight CHANNELS as <c>CNWCAnimBase</c> lays them out: active flag at +0x9c[ch], colour
     /// at +0x60[ch] (12 bytes), "also add a glow gob" at +0xb0[ch], the winner's gob at +0xc8, and
@@ -37,9 +38,17 @@ internal static unsafe partial class Highlight
     internal const int DefHlChannels = 0b10111;
 
     /// <summary>Gobs whose winning channel the outline claims, refreshed from the engine's own verdict at
-    /// every <c>RefreshHilite</c>. Small and churn-free: an entry per highlighted object, not per part.</summary>
-    private static readonly IntPtr[] _ownedHl = new IntPtr[MaxHlRoots];
-    private static int _ownedHlN;
+    /// every <c>RefreshHilite</c>, beside what the list has turned away: a claim refused at the ceiling, and a
+    /// claim found on a record that had died. Small and churn-free: an entry per object, not per part.</summary>
+    private sealed class HlClaimState
+    {
+        public readonly IntPtr[] Gobs = new IntPtr[MaxHlRoots];
+        public int N;
+        public long Refused, Died;
+        public bool SaidFull;
+    }
+
+    private static readonly HlClaimState _claims = new();
 
     /// <summary><c>CNWCAnimBase::RefreshHilite</c>, after the original. The engine has just recomputed the
     /// winning channel and published (or withdrawn) the gob, so this reads the result instead of predicting
@@ -64,25 +73,87 @@ internal static unsafe partial class Highlight
         SetClaim(gob, claim);
         if (HlDiag)
             _log?.Info($"[hldiag] gob={gob:x} channel={win} glow={(win >= 0 ? glow[win] : 0)}"
-                       + $" -> {(claim ? "OWNED outline" : "engine glow")}");
+                       + $" -> {(claim ? "OWNED outline" : "engine glow")}, {Stats()}");
     }
 
     internal static RefreshHiliteFn _origRefreshHilite;
 
-    /// <summary>Add <paramref name="gob"/> to the claim list, or drop it. The facade's retire drops it too, so an
-    /// object the game destroys while highlighted leaves before its block can be handed to a new one.</summary>
+    /// <summary>Add <paramref name="gob"/> to the claim list, or drop it. Both death notices CX gets for a gob
+    /// -- the facade's retire and the Gob destructor -- drop it, so an object the game destroys while
+    /// highlighted leaves before its block can be handed to a new one.</summary>
     internal static void SetClaim(IntPtr gob, bool claim)
     {
-        int at = Array.IndexOf(_ownedHl, gob, 0, _ownedHlN);
-        if (claim)
+        HlClaimState s = _claims;
+        int at = Array.IndexOf(s.Gobs, gob, 0, s.N);
+        if (!claim)
         {
-            if (at < 0 && _ownedHlN < _ownedHl.Length) _ownedHl[_ownedHlN++] = gob;
+            if (at >= 0) s.Gobs[at] = s.Gobs[--s.N];
+            return;
         }
-        else if (at >= 0) _ownedHl[at] = _ownedHl[--_ownedHlN];
+        if (at >= 0) return;
+        if (s.N == s.Gobs.Length)
+        {
+            s.Refused++;
+            // Said once a session, not once a refusal: a crowd at the ceiling would churn claims every
+            // mouseover, and the period line's count is the running record.
+            if (s.SaidFull) return;
+            s.SaidFull = true;
+            _log?.Always($"Highlight: the outline's claim list is FULL ({s.N}) -- this highlight takes the engine"
+                       + " glow instead of the outline. A claim count that only grows is a death notice CX misses");
+            return;
+        }
+        s.Gobs[s.N++] = gob;
     }
 
     /// <summary>Is <paramref name="gob"/> in the claim list?</summary>
-    internal static bool Claimed(IntPtr gob) => Array.IndexOf(_ownedHl, gob, 0, _ownedHlN) >= 0;
+    internal static bool Claimed(IntPtr gob) => Array.IndexOf(_claims.Gobs, gob, 0, _claims.N) >= 0;
+
+    /// <summary>Claims held, against the <see cref="MaxHlRoots"/> ceiling.</summary>
+    internal static int ClaimCount => _claims.N;
+
+    /// <summary>Claims the ceiling turned away.</summary>
+    internal static long ClaimsRefused => _claims.Refused;
+
+    /// <summary>The claims for the seam's period line: how many the outline holds against its ceiling, and --
+    /// only when there is something to answer for -- what the ceiling refused and what died still claimed.</summary>
+    internal static string Stats()
+    {
+        HlClaimState s = _claims;
+        return $"outline-claims={s.N}/{s.Gobs.Length}"
+             + (s.Refused == 0 && s.Died == 0 ? "" : $" (refused={s.Refused} died-claimed={s.Died})");
+    }
+
+    /// <summary>Drop every claim no live object record holds, loudly; the count dropped. Only a death notice CX
+    /// never got puts one there, and a kept entry spends the ceiling for the rest of the session and lets a
+    /// reused block inherit the claim. Cold -- once a period line.</summary>
+    internal static int AuditClaims()
+    {
+        HlClaimState s = _claims;
+        if (s.N == 0) return 0;
+        Span<bool> held = stackalloc bool[MaxHlRoots];
+        held.Clear();
+        for (int o = 1; o < SceneDb.Objects.High; o++)
+        {
+            if (!SceneDb.Objects.LiveAt(o)) continue;
+            nint sh = SceneDb.ObjFacade[o];
+            if (sh == 0) continue;
+            int at = Array.IndexOf(s.Gobs, sh, 0, s.N);
+            if (at >= 0) held[at] = true;
+        }
+        int dropped = 0;
+        for (int i = s.N - 1; i >= 0; i--)
+        {
+            if (held[i]) continue;
+            _log?.Always($"Highlight: claim {s.Gobs[i]:x} names no live object record -- a destroy that never"
+                       + " reached the outline's claim list. DROPPED");
+            s.Gobs[i] = s.Gobs[--s.N];
+            s.Died++;
+            dropped++;
+        }
+        // A drop re-arms the FULL line: a ceiling reached again AFTER a leak was swept is a second bug.
+        if (dropped > 0) s.SaidFull = false;
+        return dropped;
+    }
 
     /// <summary>Did the source hook claim this record? A gob it never saw takes the glow. The claims are the
     /// facade shells the game holds (<c>CNWCAnimBase+0xc8</c>), so the record's own shell is compared by

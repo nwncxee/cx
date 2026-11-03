@@ -572,6 +572,7 @@ internal static unsafe class FacadeSelfCheck
         GuiHold(check);
         PartHold(check);
         SceneHold(check);
+        Claims(check);
 
         Facade.InSelfCheck = false;
         SceneDb.Objects.Free(id);
@@ -789,5 +790,44 @@ internal static unsafe class FacadeSelfCheck
 
         SceneDb.Scenes.Free(world);
         SceneDb.Scenes.Free(gui);
+    }
+
+    /// <summary>The outline's claim list against the OTHER death notice CX gets for a gob -- the Gob destructor,
+    /// which is what the engine's own model unload runs -- against the audit that finds a claim no record holds,
+    /// and against the ceiling, which must refuse loudly rather than swallow a claim. Oracle: the object table
+    /// itself, which the claim list is never consulted for.</summary>
+    private static void Claims(Checker check)
+    {
+        DbId id = SceneDb.Objects.Alloc();
+        if (id.IsNull) { check.Expect(false, "no record for the claim check"); return; }
+        nint shell = Facade.Mint(FacadeKind.Object, id);
+        if (shell == 0) { SceneDb.Objects.Free(id); check.Expect(false, "no shell for the claim check"); return; }
+        SeamShell.NoteScene(shell, world: true);
+
+        int held = CX.Alloy.Highlight.ClaimCount;
+        CX.Alloy.Highlight.SetClaim(shell, true);
+        check.Expect(CX.Alloy.Highlight.ClaimCount == held + 1, "claiming a gob did not grow the claim list");
+        ObjectSlots.DestroyRecord(id);
+        check.Expect(!CX.Alloy.Highlight.Claimed(shell) && CX.Alloy.Highlight.ClaimCount == held,
+            "the Gob destructor must drop the outline's claim: the engine's own model unload is what destroys a "
+          + "highlighted gob, and a kept claim spends the ceiling for the rest of the session");
+
+        // A claim no object record holds: the shape a death notice CX never got leaves behind. Swept clean
+        // first, so the count below answers for this entry and not for a drop the checks above already made.
+        CX.Alloy.Highlight.AuditClaims();
+        var orphan = new ForeignBlock();
+        nint stale = (nint)(&orphan);
+        CX.Alloy.Highlight.SetClaim(stale, true);
+        check.Expect(CX.Alloy.Highlight.AuditClaims() == 1 && !CX.Alloy.Highlight.Claimed(stale),
+            "the audit must drop a claim no live object record holds, without reading the block");
+
+        long refused = CX.Alloy.Highlight.ClaimsRefused;
+        for (nint k = 1; k <= CX.Alloy.Highlight.MaxHlRoots + 1; k++) CX.Alloy.Highlight.SetClaim(k * 8, true);
+        check.Expect(CX.Alloy.Highlight.ClaimCount == CX.Alloy.Highlight.MaxHlRoots
+                  && CX.Alloy.Highlight.ClaimsRefused == refused + 1,
+            "a claim past the ceiling must be refused and COUNTED -- a budget with no counter is why a session "
+          + "stopped outlining anything and said nothing");
+        for (nint k = 1; k <= CX.Alloy.Highlight.MaxHlRoots + 1; k++) CX.Alloy.Highlight.SetClaim(k * 8, false);
+        check.Expect(CX.Alloy.Highlight.ClaimCount == held, "the claim check left entries behind");
     }
 }
