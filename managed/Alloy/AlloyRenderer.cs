@@ -333,6 +333,8 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         // NOT in the chain above: those two guard what reaches the screen, and this one guards a debug dump.
         // A regression in the canonicaliser should cost /alloy framedump, not drop every user back to vanilla.
         FrameDump.SelfCheck(log);
+        Db.MapGateApprovedExamples.SelfCheck(log);
+        WrapDefaultApprovedExamples.SelfCheck(log);
         // #128: same rule. A wrong gob offset draws a creature at the wrong alpha and a leaky refused-gob set
         // half-owns one -- both misrenders, neither of which errors.
         if (!AlloyCensus.SelfCheck(log)) return;
