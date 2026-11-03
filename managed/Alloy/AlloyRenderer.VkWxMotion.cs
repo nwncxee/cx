@@ -51,7 +51,7 @@ public sealed unsafe partial class AlloyRenderer
         LooseBlock.Capture(p.Members, p.Block);
         try
         {
-            Weather.WriteVk(in s.ML, kind, &view, &proj, _eyePos, false);
+            Weather.WriteVk(in s.ML, kind, &view, &proj, _eyePos, false, h);
             LooseBlock.Set(s.MVp, *vp);
             LooseBlock.Set(s.MPrevVp, prevVp);
             LooseBlock.Set(s.MJitter, [PostChain.JitterX, PostChain.JitterY]);

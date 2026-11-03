@@ -21,7 +21,8 @@ internal static unsafe partial class Weather
     private const float WobbleWrap = 400f * MathF.PI;
 
     internal static Knob<float> DensityScale = null!, StreakLen = null!, FlakeSize = null!, Brightness = null!, Opacity = null!,
-                                RainSpeed = null!, SnowSpeed = null!, WindLean = null!, Soft = null!, Drips = null!, Backscatter = null!, SnowAngle = null!;
+                                RainSpeed = null!, SnowSpeed = null!, WindLean = null!, Soft = null!, Drips = null!, Backscatter = null!, SnowAngle = null!,
+                                Blur = null!;
     internal static Knob<int> MaxCount = null!, Viz = null!;
 
     private static bool _failed;
@@ -37,7 +38,7 @@ internal static unsafe partial class Weather
     private const float DensityMax = 3f;
 
     /// <summary>The precipitation program's uniform locations, resolved once per program.</summary>
-    internal struct Loc { public int View, Proj, Eye, Centre, Fall, Phase, Time, Box, Size, Kind, Drift, Depth, Tint, Alpha, Soft, Viz, Cover, CoverVp, CoverLayer, CoverSoft, Lit, Back, Count, Slot, FallStep, Screen; }
+    internal struct Loc { public int View, Proj, Eye, Centre, Fall, Phase, Time, Box, Size, Kind, Drift, Depth, Tint, Alpha, Soft, Viz, Cover, CoverVp, CoverLayer, CoverSoft, Lit, Back, Count, Slot, FallStep, Screen, Speed, Blur, PxScale; }
     private static double _phase;
     private static float _wobble;
     private static long _ticks;
@@ -54,6 +55,8 @@ internal static unsafe partial class Weather
         Drips = G.Slider("drips", "Roof drips", 0f, 1f, 0.05f, 0.25f, tier: Tier.Advanced,
                          help: "Drops fall from roof edges and overhangs while the roofs are wet, and keep falling for the dry-out time after the rain stops. 0 = off.");
         G.Section("");
+        Blur = G.Slider("blur", "Rain motion blur", 0f, 1f, 0.05f, 0f, tier: Tier.Advanced,
+                        help: "How far each rain drop smears along its fall, the way a camera's shutter would draw it. 0 = round drops.");
         StreakLen = G.Slider("streak", "Rain streak length", 0.1f, 2f, 0.05f, 0.35f, "m", Tier.ChatOnly, help: "Mean length of one rain streak (each varies 0.5x-1.3x).");
         FlakeSize = G.Slider("flake", "Snowflake size", 0.01f, 0.2f, 0.01f, 0.05f, "m", Tier.ChatOnly, help: "Diameter of one flake.");
         Brightness = G.Slider("bright", "Brightness", 0f, 3f, 0.1f, 0.6f, tier: Tier.ChatOnly, help: "Streaks and flakes take the light where they fall (sun, shadow, lamps); this scales it.");

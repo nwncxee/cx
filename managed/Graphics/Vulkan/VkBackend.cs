@@ -361,7 +361,7 @@ internal sealed unsafe partial class VkBackend : IDevice
             log.Always($"VkBackend: REFUSED in Alloy's context -- {late}");
             return null;
         }
-        try { return new VkBackend(log, inst, phys, family, feats); }
+        try { return new VkBackend(log, inst, phys, family, feats, meshShaders); }
         catch (InvalidOperationException e)
         {
             log.Always($"VkBackend: REFUSED -- {e.Message}");
@@ -369,7 +369,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         }
     }
 
-    private VkBackend(ExtenderLog log, VkInstance inst, VkPhysicalDevice phys, uint family, VkPhysicalDeviceFeatures has)
+    private VkBackend(ExtenderLog log, VkInstance inst, VkPhysicalDevice phys, uint family, VkPhysicalDeviceFeatures has, bool meshShaders)
     {
         _log = log;
         _thread = Environment.CurrentManagedThreadId;
@@ -420,9 +420,14 @@ internal sealed unsafe partial class VkBackend : IDevice
         var fsr = new VkPhysicalDeviceFragmentShadingRateFeaturesKHR { pipelineFragmentShadingRate = true, attachmentFragmentShadingRate = true };
         if (_rateTexel > 0) f11.pNext = &fsr;
         bool eds3Ext = HasExt(_vki, phys, Eds3Ext), gplExt = HasExt(_vki, phys, GplExt) && HasExt(_vki, phys, PipelineLibraryExt);
+        bool meshExt = meshShaders && HasExt(_vki, phys, MeshExt);
+        var meshAsk = new VkPhysicalDeviceMeshShaderFeaturesEXT();
         var eds3 = new VkPhysicalDeviceExtendedDynamicState3FeaturesEXT();
-        var gpl = new VkPhysicalDeviceGraphicsPipelineLibraryFeaturesEXT { pNext = eds3Ext ? &eds3 : null };
-        var asked = new VkPhysicalDeviceFeatures2 { pNext = gplExt ? &gpl : eds3Ext ? &eds3 : null };
+        var gpl = new VkPhysicalDeviceGraphicsPipelineLibraryFeaturesEXT();
+        void* chain = meshExt ? &meshAsk : null;
+        if (eds3Ext) { eds3.pNext = chain; chain = &eds3; }
+        if (gplExt) { gpl.pNext = chain; chain = &gpl; }
+        var asked = new VkPhysicalDeviceFeatures2 { pNext = chain };
         _vki.vkGetPhysicalDeviceFeatures2(phys, &asked);
         var gplProps = new VkPhysicalDeviceGraphicsPipelineLibraryPropertiesEXT();
         var props2 = new VkPhysicalDeviceProperties2 { pNext = gplExt ? &gplProps : null };
@@ -438,18 +443,25 @@ internal sealed unsafe partial class VkBackend : IDevice
         if (_canDynBlend) f11.pNext = &eds3On;
         var gplOn = new VkPhysicalDeviceGraphicsPipelineLibraryFeaturesEXT { pNext = f11.pNext, graphicsPipelineLibrary = true };
         if (_canLibraries) f11.pNext = &gplOn;
+        _mesh = meshExt && meshAsk.taskShader && meshAsk.meshShader;
+        _meshWhy = !meshShaders ? "opened without VK_EXT_mesh_shader" : !meshExt ? "the device lacks VK_EXT_mesh_shader"
+                 : _mesh ? null : "VK_EXT_mesh_shader offers no task and mesh stages";
+        var meshOn = new VkPhysicalDeviceMeshShaderFeaturesEXT { pNext = f11.pNext, taskShader = true, meshShader = true };
+        if (_mesh) { f11.pNext = &meshOn; _meshStages = VkPipelineStageFlags2.TaskShaderEXT | VkPipelineStageFlags2.MeshShaderEXT; }
         VkDevice device;
         fixed (byte* sw = SwapchainExt)
         fixed (byte* vl = "VK_EXT_shader_viewport_index_layer\0"u8) fixed (byte* mb = "VK_EXT_memory_budget\0"u8)
         fixed (byte* sr = RateExt) fixed (byte* e3 = Eds3Ext) fixed (byte* gl = GplExt) fixed (byte* plib = PipelineLibraryExt)
+        fixed (byte* mx = MeshExt)
         {
-            byte** exts = stackalloc byte*[7] { sw, null, null, null, null, null, null };
+            byte** exts = stackalloc byte*[8] { sw, null, null, null, null, null, null, null };
             uint n = 1;
             if (layerExt) exts[n++] = vl;
             if (_memBudget) exts[n++] = mb;
             if (_rateTexel > 0) exts[n++] = sr;
             if (_canDynBlend) exts[n++] = e3;
             if (_canLibraries) { exts[n++] = gl; exts[n++] = plib; }
+            if (_mesh) exts[n++] = mx;
             var dci = new VkDeviceCreateInfo
             {
                 pNext = &feats, queueCreateInfoCount = queues, pQueueCreateInfos = qci,
@@ -669,6 +681,8 @@ internal sealed unsafe partial class VkBackend : IDevice
             ShaderStage.Vertex => ShaderKind.VertexShader,
             ShaderStage.Geometry => ShaderKind.GeometryShader,
             ShaderStage.Compute => ShaderKind.ComputeShader,
+            ShaderStage.Task => ShaderKind.TaskShader,
+            ShaderStage.Mesh => ShaderKind.MeshShader,
             _ => ShaderKind.FragmentShader,
         };
         byte[]? spirv = VulkanToolchain.Compile(text, d.Label, kind, out string error);

@@ -18,3 +18,6 @@ uniform float uBack;     // snow: how strongly a flake scatters light forward, t
 uniform int uCount;      // the cull: how many lattice points this dispatch walks
 uniform int uSlot;       // ...the indirect command its survivors count into, and so their records
 uniform float uFallStep; // metres the field fell this frame at speed 1
+uniform float uSpeed;    // the field's fall speed, m/s; each drop falls at its own share of it
+uniform float uBlur;     // rain motion blur, 0 none to 1 a full shutter
+uniform float uPxScale;  // pixels per metre at unit view depth

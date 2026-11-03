@@ -575,8 +575,8 @@ internal sealed unsafe partial class VkBackend
 
     private void MipBarrier(VkImg img, int mip, VkImageLayout from, VkImageLayout to)
     {
-        (VkPipelineStageFlags2 ss, VkAccessFlags2 sa) = Scope(from);
-        (VkPipelineStageFlags2 ds, VkAccessFlags2 da) = Scope(to);
+        (VkPipelineStageFlags2 ss, VkAccessFlags2 sa) = MeshScope(Scope(from));
+        (VkPipelineStageFlags2 ds, VkAccessFlags2 da) = MeshScope(Scope(to));
         var b = new VkImageMemoryBarrier2
         {
             srcStageMask = ss, srcAccessMask = sa & WriteAccess, dstStageMask = ds, dstAccessMask = da,

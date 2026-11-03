@@ -1,11 +1,12 @@
 /// The share of a pixel a drop, flake or roof drip covers (kind 1 rain, 2 snow, 3 drips) at quad coordinate `uv`:
-/// its shape, its contact fade `k` against the scene behind, and its hashed brightness `seed`. Colour and velocity
-/// both read this one value, so the pixels that take a drop's motion are the ones that show it.
+/// its shape -- a soft disc for a flake, a bead's round edge for a drop -- its contact fade `k` against the scene
+/// behind, and `seed`, a flake's hashed brightness or a drop's share of its widened quad. Colour and velocity both
+/// read this one value, so the pixels that take a drop's motion are the ones that show it.
 float CxWxCover(int kind, vec2 uv, float k, float seed)
 {
-    float a;
-    if (kind == 2) { float r = length(uv); a = r >= 1.0 ? 0.0 : smoothstep(1.0, 0.5, r); seed = 0.5 + 0.5 * seed; }
-    else { a = (1.0 - uv.x * uv.x) * (1.0 - uv.y * uv.y); a = a * a; }
+    float r = length(uv), a;
+    if (kind == 2) { a = r >= 1.0 ? 0.0 : smoothstep(1.0, 0.5, r); seed = 0.5 + 0.5 * seed; }
+    else a = 1.0 - smoothstep(0.85, 1.0, r);
     return a * k * k * seed;
 }
 
@@ -33,9 +34,11 @@ vec3 CxWxLamp(vec4 pr, vec3 col, vec3 P)
 }
 
 /// Every lamp binned into P's cluster on a drop, each cube-shadowed with one tap as the forward walk does, and
-/// dimmed by day as the walk dims it. Ambient-class lights light it unshadowed, as vanilla lights them.
-vec3 CxWxLamps(vec3 P, float viewDepth)
+/// dimmed by day as the walk dims it; `dir` the way toward them, weighted by what each gives. Ambient-class lights
+/// light it unshadowed, as vanilla lights them.
+vec3 CxWxLampsDir(vec3 P, float viewDepth, out vec3 dir)
 {
+    dir = vec3(0.0);
     cxLod = 1.0;
     uint cl = CxCluster(viewDepth);
     uint n = CxListWalk(cl);
@@ -51,8 +54,17 @@ vec3 CxWxLamps(vec3 P, float viewDepth)
         if (slot >= 0)
             l *= mix(uLocalFloor, 1.0, CxLocalShadowQ(slot, P, normalize(pr.xyz - P), 1.0, 0.0, viewDepth, false));
         acc += l;
+        dir += normalize(pr.xyz - P) * dot(l, vec3(0.2126, 0.7152, 0.0722));
     }
+    dir = dot(dir, dir) > 1e-12 ? normalize(dir) : vec3(0.0, 0.0, 1.0);
     return acc * uDayDim;
+}
+
+/// <see cref="CxWxLampsDir"/>'s light alone.
+vec3 CxWxLamps(vec3 P, float viewDepth)
+{
+    vec3 dir;
+    return CxWxLampsDir(P, viewDepth, dir);
 }
 
 /// Henyey-Greenstein over 4 pi: how much of a light travelling along `travel` a drop sends toward the eye at `V`;

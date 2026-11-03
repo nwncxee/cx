@@ -207,6 +207,7 @@ internal sealed unsafe partial class VkBackend
                 Op.SetShadingRate => ShadingRate(r.Read<ShadingRateCmd>().Coarse),
                 Op.Upscale => Upscale(r.Read<UpscaleCmd>()),
                 Op.CopyBuffer => CopyBuf(r.Read<CopyBufferCmd>()),
+                Op.DrawMeshTasks => DrawMesh(r.Read<DispatchCmd>()),
                 _ => Fault($"{op} is not on the Vulkan backend yet"),
             };
             if (!ok) return false;
@@ -554,7 +555,7 @@ internal sealed unsafe partial class VkBackend
     {
         if (!_buffers.TryGet(u.Buffer.Value, out VkBuf? buf)) return Fault($"bind set: stale buffer on slot {u.Slot}");
         VkAccessFlags2 access = type == VkDescriptorType.StorageBuffer ? StorageAccess : VkAccessFlags2.UniformRead;
-        if (_setDraws) Use(buf, DrawStages, access);
+        if (_setDraws) Use(buf, DrawStages | _meshStages, access);
         else { _cBufs[_cBufN] = buf; _cAccess[_cBufN++] = access; }
         ulong offset = (ulong)u.Offset, range = u.Bytes == 0 ? Vortice.Vulkan.Vulkan.VK_WHOLE_SIZE : (ulong)u.Bytes;
         if (type == VkDescriptorType.UniformBuffer && u.Slot < _dynUbos)

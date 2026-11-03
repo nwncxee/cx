@@ -36,6 +36,8 @@ public sealed unsafe partial class AlloyRenderer
         public ContentVariant Variant;
         public string Label = "";
         public ShaderId Vs, Fs;
+        /// <summary>A mesh program's task and mesh stages, in place of <see cref="Vs"/>.</summary>
+        public ShaderId Ts, Ms;
         public LooseBlock.Member[] Members = [];
         public Dictionary<string, int> Names = new();
         public byte[] Block = [];

@@ -20,6 +20,7 @@ internal static partial class GpuGolden
             // When the frame draws
             // Then the rain draws through mesh shaders, and cx.log says so once
             Weather.WxPath path = AlloyRenderer.VkWxPath(vk, log, out string line, out bool again);
+            log.Info($"GpuGolden: rain mesh, this device: {path} -- {line}");
             check.Expect(path == Weather.WxPath.Mesh && line.Contains("mesh shaders", StringComparison.Ordinal) && !again,
                 $"rain mesh A1: this device offers VK_EXT_mesh_shader, so rain must draw through mesh shaders; the path is {path}, the line \"{line}\", said again {again}");
         }
@@ -35,6 +36,7 @@ internal static partial class GpuGolden
             try
             {
                 Weather.WxPath path = AlloyRenderer.VkWxPath(plain, log, out string line, out bool again);
+                log.Info($"GpuGolden: rain mesh, a device without mesh shaders: {path} -- {line}");
                 check.Expect(path == Weather.WxPath.Compute && line.Contains("VK_EXT_mesh_shader", StringComparison.Ordinal) && !again,
                     $"rain mesh A2: without mesh shaders rain must take the compute path and name the extension once; the path is {path}, the line \"{line}\", said again {again}");
                 foreach ((int kind, string name) in WxKinds)
@@ -51,16 +53,23 @@ internal static partial class GpuGolden
         {
             float[]? compute = AlloyRenderer.VkWxCoverage(vk, log, Weather.WxPath.Compute, kind);
             float[]? mesh = AlloyRenderer.VkWxCoverage(vk, log, Weather.WxPath.Mesh, kind);
+            int covered = 0, apart = 0;
             float total = compute == null ? 0f : Sum(compute), off = 0f;
             if (compute != null && mesh != null && mesh.Length == compute.Length)
-                for (int i = 0; i < compute.Length; i++) off += MathF.Abs(mesh[i] - compute[i]);
-            else off = float.PositiveInfinity;
+                for (int i = 0; i < compute.Length; i++)
+                {
+                    off += MathF.Abs(mesh[i] - compute[i]);
+                    if (compute[i] > 0f) covered++;
+                    if (compute[i] > 0f != mesh[i] > 0f) apart++;
+                }
+            else apart = int.MaxValue;
+            log.Info(FormattableString.Invariant($"GpuGolden: rain mesh, {name}: compute covers {covered} px ({total:F3}), the paths differ in {apart} px by {off:F4}"));
 
             // Given the same rain, snow or roof drips, camera and cover map
             // When the mesh path and today's path each draw them
             // Then the same drops stand in the same places
-            check.Expect(total > 0f && off <= total * 0.005f,
-                FormattableString.Invariant($"rain mesh A3 ({name}): the paths differ by {off:F1} of {total:F1} covered (at most 0.5%)"));
+            check.Expect(covered >= 20 && apart <= covered / 200 && off <= total * 0.005f,
+                FormattableString.Invariant($"rain mesh A3 ({name}): of {covered} px the compute path covers (at least 20), {apart} differ (at most 0.5%), and the coverage differs by {off:F4} of {total:F4}"));
         }
     }
 

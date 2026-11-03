@@ -89,7 +89,7 @@ public readonly record struct SamplerDesc(Filter Min, Filter Mag, MipMode Mip, W
                                           CompareOp? Compare = null, float Aniso = 1, float LodBias = 0, Wrap? WrapT = null);
 
 /// <summary>A programmable stage.</summary>
-public enum ShaderStage : byte { Vertex, Geometry, Fragment, Compute }
+public enum ShaderStage : byte { Vertex, Geometry, Fragment, Compute, Task, Mesh }
 
 /// <summary>One stage's GLSL. <see cref="Ref"/> is the <c>cx_*</c> resref content may override it by, or null for
 /// a stage that is not overridable.</summary>
