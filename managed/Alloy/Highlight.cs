@@ -40,7 +40,7 @@ internal static unsafe partial class Highlight
     /// <summary>Gobs whose winning channel the outline claims, refreshed from the engine's own verdict at
     /// every <c>RefreshHilite</c>, beside what the list has turned away: a claim refused at the ceiling, and a
     /// claim found on a record that had died. Small and churn-free: an entry per object, not per part.</summary>
-    private sealed class HlClaimState
+    internal sealed class HlClaimState
     {
         public readonly IntPtr[] Gobs = new IntPtr[MaxHlRoots];
         public int N;
@@ -48,7 +48,21 @@ internal static unsafe partial class Highlight
         public bool SaidFull;
     }
 
-    private static readonly HlClaimState _claims = new();
+    private static HlClaimState _claims = new();
+
+    /// <summary>Install <paramref name="fresh"/> as the claim list and hand back the one it displaced. A check
+    /// that spends the ceiling or makes the audit drop something works on a list of its own, so the session's
+    /// counters -- the ones the <c>[seam]</c> period line reports -- are exactly as it found them.</summary>
+    internal static HlClaimState SwapClaims(HlClaimState fresh)
+    {
+        HlClaimState old = _claims;
+        _claims = fresh;
+        return old;
+    }
+
+    /// <summary>Marks a refusal a self-check fired on purpose, the way the facade's own poison lines do, so a
+    /// boot's log cannot be read as a real ceiling hit or a real leak.</summary>
+    private static string OnPurpose => Facade.InSelfCheck ? " [self-check, on purpose]" : "";
 
     /// <summary><c>CNWCAnimBase::RefreshHilite</c>, after the original. The engine has just recomputed the
     /// winning channel and published (or withdrawn) the gob, so this reads the result instead of predicting
@@ -98,8 +112,9 @@ internal static unsafe partial class Highlight
             // mouseover, and the period line's count is the running record.
             if (s.SaidFull) return;
             s.SaidFull = true;
-            _log?.Always($"Highlight: the outline's claim list is FULL ({s.N}) -- this highlight takes the engine"
-                       + " glow instead of the outline. A claim count that only grows is a death notice CX misses");
+            _log?.Always($"Highlight:{OnPurpose} the outline's claim list is FULL ({s.N}) -- this highlight takes"
+                       + " the engine glow instead of the outline. A claim count that only grows is a death"
+                       + " notice CX misses");
             return;
         }
         s.Gobs[s.N++] = gob;
@@ -130,6 +145,11 @@ internal static unsafe partial class Highlight
     {
         HlClaimState s = _claims;
         if (s.N == 0) return 0;
+        // Sorted, then one binary search per record: the walk is over the OBJECT table, which runs to tens of
+        // thousands of slots, and a scan per slot costs most exactly when the list is leaking toward the
+        // ceiling. The order of the list is nobody's business -- a removal swaps with the last entry.
+        Span<IntPtr> claims = s.Gobs.AsSpan(0, s.N);
+        claims.Sort();
         Span<bool> held = stackalloc bool[MaxHlRoots];
         held.Clear();
         for (int o = 1; o < SceneDb.Objects.High; o++)
@@ -137,15 +157,15 @@ internal static unsafe partial class Highlight
             if (!SceneDb.Objects.LiveAt(o)) continue;
             nint sh = SceneDb.ObjFacade[o];
             if (sh == 0) continue;
-            int at = Array.IndexOf(s.Gobs, sh, 0, s.N);
+            int at = claims.BinarySearch(sh);
             if (at >= 0) held[at] = true;
         }
         int dropped = 0;
         for (int i = s.N - 1; i >= 0; i--)
         {
             if (held[i]) continue;
-            _log?.Always($"Highlight: claim {s.Gobs[i]:x} names no live object record -- a destroy that never"
-                       + " reached the outline's claim list. DROPPED");
+            _log?.Always($"Highlight:{OnPurpose} claim {s.Gobs[i]:x} names no live object record -- a destroy"
+                       + " that never reached the outline's claim list. DROPPED");
             s.Gobs[i] = s.Gobs[--s.N];
             s.Died++;
             dropped++;
