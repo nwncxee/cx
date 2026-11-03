@@ -24,13 +24,10 @@ internal sealed unsafe partial class VkBackend
         if (c.W <= 0 || c.H <= 0 || c.D <= 0) return Fault($"CopyImage {src.Desc.Label} to {dst.Desc.Label}: a {c.W}x{c.H}x{c.D} block");
         if (Aspect(src.Desc.Fmt) != Aspect(dst.Desc.Fmt))
             return Fault($"CopyImage {src.Desc.Label} ({src.Desc.Fmt}) to {dst.Desc.Label} ({dst.Desc.Fmt}): different aspects");
+        if (CopySizeMismatch(src.Desc.Fmt, dst.Desc.Fmt) is string size)
+            return Fault($"CopyImage {src.Desc.Label} ({src.Desc.Fmt}) to {dst.Desc.Label} ({dst.Desc.Fmt}): {size}");
         // a size-compatible copy between a block format and one texel per block counts its extent in the SOURCE's texels
         bool sc = src.Desc.Fmt.IsCompressed(), dc = dst.Desc.Fmt.IsCompressed();
-        if (sc != dc && (sc ? src.Desc.Fmt : dst.Desc.Fmt).BlockBytes() != TexelBytes(sc ? dst.Desc.Fmt : src.Desc.Fmt))
-            return Fault($"CopyImage {src.Desc.Label} ({src.Desc.Fmt}) to {dst.Desc.Label} ({dst.Desc.Fmt}): a block is not one texel's size");
-        if (sc == dc && src.Desc.Fmt != dst.Desc.Fmt && TexelOrBlockBytes(src.Desc.Fmt) != TexelOrBlockBytes(dst.Desc.Fmt))
-            return Fault($"CopyImage {src.Desc.Label} ({src.Desc.Fmt}) to {dst.Desc.Label} ({dst.Desc.Fmt}): a copy converts "
-                       + "nothing, so the two formats must be one size -- BlitImage converts");
         int dw = sc == dc ? c.W : dc ? c.W * 4 : c.W / 4, dh = sc == dc ? c.H : dc ? c.H * 4 : c.H / 4;
         if (!Inside(src, c.From, c.W, c.H, c.D, out string why)) return Fault($"CopyImage: the source block is {why} of {src.Desc.Label}");
         if (!Inside(dst, c.To, dw, dh, c.D, out why)) return Fault($"CopyImage: the destination block is {why} of {dst.Desc.Label}");
@@ -49,9 +46,6 @@ internal sealed unsafe partial class VkBackend
         return true;
     }
 
-    /// <summary>A scaled copy of <paramref name="c"/>'s source rectangle into its destination rectangle, mip 0 and
-    /// layer 0. A depth blit filters NEAREST whatever the command asked: Vulkan allows a linear filter on the colour
-    /// aspect alone.</summary>
     /// <summary><see cref="Op.ClearImage"/>: every mip and layer of a colour image zeroed.</summary>
     private bool ClearImg(ImageId i)
     {
@@ -81,6 +75,9 @@ internal sealed unsafe partial class VkBackend
         return true;
     }
 
+    /// <summary>A scaled copy of <paramref name="c"/>'s source rectangle into its destination rectangle, mip 0 and
+    /// layer 0. A depth blit filters NEAREST whatever the command asked: Vulkan allows a linear filter on the colour
+    /// aspect alone.</summary>
     private bool BlitImg(in BlitImageCmd c)
     {
         if (_inPass) return Fault("BlitImage inside a render pass -- a blit is not a draw, and its barriers cannot run there");
@@ -93,6 +90,10 @@ internal sealed unsafe partial class VkBackend
             return Fault($"BlitImage: {src.Desc.Label} is multisampled, and a resolve takes vkCmdResolveImage, which is not on this backend");
         if (Aspect(src.Desc.Fmt) != Aspect(dst.Desc.Fmt))
             return Fault($"BlitImage {src.Desc.Label} ({src.Desc.Fmt}) to {dst.Desc.Label} ({dst.Desc.Fmt}): different aspects");
+        if (!Inside(src, new ImageRegion(0, c.From.X, c.From.Y, 0), c.From.W, c.From.H, 1, out string why))
+            return Fault($"BlitImage: the source rectangle is {why} of {src.Desc.Label}");
+        if (!Inside(dst, new ImageRegion(0, c.To.X, c.To.Y, 0), c.To.W, c.To.H, 1, out why))
+            return Fault($"BlitImage: the destination rectangle is {why} of {dst.Desc.Label}");
         Transition(src, VkImageLayout.TransferSrcOptimal);
         Transition(dst, VkImageLayout.TransferDstOptimal);
         Flush();
@@ -150,6 +151,17 @@ internal sealed unsafe partial class VkBackend
     /// <summary>One texel's bytes, or one 4x4 block's for a compressed format: what a texel-for-texel copy between
     /// two formats needs to match.</summary>
     private static int TexelOrBlockBytes(Format f) => f.IsCompressed() ? f.BlockBytes() : TexelBytes(f);
+
+    /// <summary>Why a texel-for-texel copy between these two formats is illegal, or null where it is legal: Vulkan's
+    /// size compatibility, which asks only that one texel of each -- one 4x4 block where a format has them -- weigh
+    /// the same, and converts nothing, so two sizes need a blit.</summary>
+    private static string? CopySizeMismatch(Format src, Format dst)
+    {
+        if (TexelOrBlockBytes(src) == TexelOrBlockBytes(dst)) return null;
+        if (src.IsCompressed() != dst.IsCompressed()) return "a block is not one texel's size";
+        if (src.IsCompressed()) return "two block formats whose blocks are different sizes";
+        return "a copy converts nothing, so the two formats must be one size -- BlitImage converts";
+    }
 
     /// <summary>The copy stage's local size, as <c>cx_readback_c.glsl</c> declares it.</summary>
     private const int CopyCheckGroup = 8;

@@ -13,9 +13,9 @@ internal sealed unsafe partial class VkBackend
     private const uint OpDecorate = 71, DecorationBinding = 33;
 
     /// <summary>The present mode per swap interval and the ported passes' stages, proven off-device where shaderc loads.
-    /// Oracles: the interval-to-mode table written by hand; shaderc's acceptance of the translated text; SPIR-V binding
-    /// numbers read by the specification's opcodes against hand-written ones; format tokens and each layout's barrier
-    /// scope as vulkan_core.h's bits, by hand.</summary>
+    /// Oracles: the interval-to-mode table and the size-compatibility rule written by hand; shaderc's acceptance of the
+    /// translated text; SPIR-V binding numbers read by the specification's opcodes against hand-written ones; format
+    /// tokens and each layout's barrier scope as vulkan_core.h's bits, by hand.</summary>
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
@@ -42,6 +42,15 @@ internal sealed unsafe partial class VkBackend
         check.Expect(AttachMissing(ImageUse.Sampled | ImageUse.Storage, false) != null && AttachMissing(ImageUse.ColorTarget, false) == null
                   && AttachMissing(ImageUse.ColorTarget, true) != null && AttachMissing(ImageUse.DepthTarget, true) == null,
             "an attachment is refused for the usage its image lacks: a sampled and storage image as colour, a colour target as depth");
+        check.Expect(CopySizeMismatch(Format.Rgba16F, Format.R11G11B10F) != null && CopySizeMismatch(Format.Bc1, Format.Bc3) != null
+                  && CopySizeMismatch(Format.Rgba8, Format.Bgra8) == null && CopySizeMismatch(Format.Bc1, Format.Rgba16F) == null,
+            "a copy is refused between formats of unequal texel or block size alone: eight bytes into four and a BC1 block into a "
+          + "BC3 one are, four bytes into four of another channel order and a BC1 block into one eight-byte texel are not");
+        var eight = new VkImg { Desc = new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, 8, 8, 1, 1, 1, 1, ImageUse.CopySrc, "") };
+        check.Expect(!Inside(eight, new ImageRegion(0, 0, 0, 0), 9, 8, 1, out _) && !Inside(eight, new ImageRegion(0, 4, 0, 0), 8, 8, 1, out _)
+                  && !Inside(eight, new ImageRegion(0, 0, 0, 1), 8, 8, 1, out _) && Inside(eight, new ImageRegion(0, 4, 4, 0), 4, 4, 1, out _),
+            "a copy's or a blit's rectangle is refused where it is wider than its image, where its origin pushes it off the edge and "
+          + "where its layer is past the one, and allowed where it ends on the edge");
         CheckSetCache(check);
         CheckAsyncFamily(check);
         CheckTransferFamily(check);
