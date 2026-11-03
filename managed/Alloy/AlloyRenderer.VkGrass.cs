@@ -30,6 +30,8 @@ public sealed unsafe partial class AlloyRenderer
         public long PatchCap, MatCap;
         public ImageId Push, Ground;
         public int GroundW, GroundH;
+        /// <summary>The ground copy's format on this device, settled when the class opens.</summary>
+        public Format GroundFmt;
         /// <summary>The push field's generation the image holds; -1 = never sent.</summary>
         public long PushSent = -1;
         public SamplerId Clamp;
@@ -367,17 +369,16 @@ public sealed unsafe partial class AlloyRenderer
         cl.BindSet(0, new BindSet(ubo[..nu], ssbo[..ns], sampled[..nt], default));
     }
 
-    /// <summary>The ground copy's format: the blades read three channels of it and none of them negative, so it
-    /// holds three packed floats where the scene colour holds four halves.</summary>
-    private const Format GroundFmt = Format.R11G11B10F;
+    /// <summary>How the ground copy is reached: the scene colour blits into it and the blades sample it, filtered.</summary>
+    private const ImageUse GroundUse = ImageUse.Sampled | ImageUse.CopyDst;
 
     /// <summary>The ground copy at the scene's size, made on first ask and resized with the view.</summary>
     private static bool VkGrassGround(VkBackend vk, VkGrassState g, int w, int h)
     {
         if (!g.Ground.IsNull && g.GroundW == w && g.GroundH == h) return true;
         vk.Destroy(g.Ground);
-        g.Ground = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, GroundFmt, w, h, 1, 1, 1, 1,
-                                                ImageUse.Sampled | ImageUse.CopyDst, PipeFeatures.Grass + "ground copy", AliasLanes.Wide));
+        g.Ground = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, g.GroundFmt, w, h, 1, 1, 1, 1,
+                                                GroundUse, PipeFeatures.Grass + "ground copy", AliasLanes.Wide));
         g.GroundW = w; g.GroundH = h;
         return !g.Ground.IsNull;
     }
@@ -391,6 +392,8 @@ public sealed unsafe partial class AlloyRenderer
         g.Tried = true;
         g.Side = new CommandList("vulkan grass", GrassArenaBytes, log);
         g.Clamp = vk.CreateSampler(new SamplerDesc(Filter.Linear, Filter.Linear, MipMode.None, Wrap.Clamp));
+        // the blades read three channels of the ground and none of them negative, so it needs no alpha and no sign
+        g.GroundFmt = PackedColour.Or16F(vk, GroundUse, PipeFeatures.Grass + "ground copy", log);
         string src = ShaderResource.Tokens(GrassField.ScatterCs);
         g.Scatter = VkDefCompile(vk, VkGlsl.TranslateCompute(src, GrassField.VkUnits), src, PipeFeatures.Grass + "scatter", log);
         if (g.Scatter != null)
