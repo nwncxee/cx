@@ -190,7 +190,7 @@ void CxGbufWeights(uvec4 g1, inout CxGbuf g)
 vec3 CxGbufAmbT(uint g2y) { return CxGbUnpack9e5(g2y); }
 
 /// The whole record: the header, the weights, and the lightmap record the twin read by the same slot.
-/// G2: the surface fade the walk spends per light (cx_lightfrag's cxSurfFade), w 0 where the twin had none.
+/// G2.x: the surface fade the walk spends per light (cx_lightfrag's cxSurfFade), w 0 where the twin had none.
 void CxGbufFade(uint g2, inout CxGbuf g)
 {
     g.surfFade = vec4(CxOctDecode(vec2(ivec2(g2 & 4095u, (g2 >> 12u) & 4095u) - 2048) / 2047.0),

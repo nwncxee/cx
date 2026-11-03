@@ -172,9 +172,9 @@ Known deviations), so the twin writes the derivatives:
 
 The compute pass then adds, per pixel:
 
-    hdr.rgb += Wd * acc + Wa * amb + P * (spec + film) - L * min(lmSub.x / max(lmLum, 1e-5) + lmSub.y, 1)
+    hdr.rgb += Wd * (acc - amb) + Wa * amb + P * (spec + film) - L * min(lmSub.x / max(lmLum, 1e-5) + lmSub.y, 1)
 
-where `acc`, `spec`, `lmSub` are what `CxClusteredLightLm` returns, `amb` the `cxAmbWalk` it leaves behind, for (worldPos, N, V, viewDepth, onMover,
+where `acc`, `spec`, `lmSub` are what `CxClusteredLightLm` returns, `amb` the share of `acc` its ambient-class lights make up (`cxAmbWalk`), for (worldPos, N, V, viewDepth, onMover,
 rough, spec, baked, lmTexel, lmMover, lmPick), and `film` is `CxFilmStatics(...)` when `CX_GB_FILM` is set.
 The sum is taken in two dispatches of `cx_deferred_cs`: the walk adds every term but `P * film`, and the same
 stage compiled with `CX_FILM_PASS` adds `P * film` on the `CX_GB_FILM` pixels alone, only while
@@ -249,6 +249,9 @@ The debt is taken instead by **`cx_pairdebt`**, a second 16x16 compute dispatch 
 - **A light past the atlas, too crowded (more than `CasterPass.DynSpheres` creatures) or unframeable (a
   creature engulfing its own light) keeps its page** -- and the deferred frame then owes it nothing, because
   the walk's hot branch is gone. Counted on `CasterPass`'s period line, never silent.
+- **A forward decal over a deferred surface** reads the light record (`acc`, the ambient class inside it) and
+  lights a tile light through its own diffuse weight, as every light was lit before the ambient class had its own.
+  The record has no lane for the split; a decal's material colours sit close to the surface's.
 - **Fog** mixes in display space (cx_tail's own ponytail on `CxReflOut`), so the transmittance in Wd and P is
   the linear approximation `1 - CxFogRevealFactor` (the fog-of-war reveal ramp where it applies). Same approximation Ssr already takes.
 - **Display overlays** (noir, racial vision, targeting shape) apply after the fog in the forward stage. They

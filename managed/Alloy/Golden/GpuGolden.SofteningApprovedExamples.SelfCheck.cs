@@ -26,25 +26,9 @@ internal static partial class GpuGolden
 
     private static void SofteningApprovedSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
     {
-        string lf = ShaderSource.Get("cx_lightfrag.glsl");
-        string wrap = Function(lf, "float CxWrap("), soft = Declaration(lf, "CX_SOFTEN");
-        check.Expect(wrap.Length > 0, "CX-448: cx_lightfrag declares CxWrap");
-        if (wrap.Length == 0) return;
-        PipelineId pipe = vk.CreateCompute(Version + "layout(local_size_x = 1) in;\n" + CaseBlocks(3, 1) + soft
-            + "bool cxFragNormal = false;\n" + wrap + """
-            void main()
-            {
-                uint i = gl_WorkGroupID.x;
-                cxFragNormal = uIn[i * uint(CX_GOLD_IN) + 2u] > 0.5;
-                uOut[i] = CxWrap(uIn[i * uint(CX_GOLD_IN)], uIn[i * uint(CX_GOLD_IN) + 1u]);
-            }
-            """, "golden softening");
         // (N.L, wrap, normal-mapped): 60, 90, 105 and 95 degrees off the light, the last with and without a normal map
         float[] cases = [Off(60), 0f, 0f, Off(90), 0f, 0f, Off(105), 0f, 0f, Off(95), 0f, 1f, Off(95), 0f, 0f];
-        float[]? got = pipe.IsNull ? null : RunCases(vk, log, pipe, 5, cases, 5, "golden softening");
-        vk.Destroy(pipe);
-        check.Expect(got != null, "CX-448: the softening stage was refused (logged above)");
-        if (got == null) return;
+        if (WrapCases(vk, check, log, cases) is not { } got) return;
         log.Info(FormattableString.Invariant($"GpuGolden: softening {got[0]:F4} at 60, {got[1]:F4} at 90, {got[2]:F4} at 105, {got[3]:F4}/{got[4]:F4} at 95"));
 
         // Given a smooth surface with no normal map, lit by one distant placed light, with Diffuse wrap at 0
@@ -65,22 +49,18 @@ internal static partial class GpuGolden
         check.Expect(got[3] == 0f && Math.Abs(got[4] - StockSoft(Off(95), false)) < 1e-4 && got[4] > 0f,
                      FormattableString.Invariant($"CX-448 E6: 95 degrees takes {got[3]:F4} normal-mapped (stock 0), {got[4]:F4} without (stock {StockSoft(Off(95), false):F4})"));
 
-        SunSofteningApproved(vk, check, log, lf, wrap, soft);
+        SunSofteningApproved(vk, check, log);
     }
 
     /// <summary>E7 and E8: the shipped <c>CxSunLight</c> under a white sun at wrap 0, the surface 60 and 90 degrees
-    /// off it. Oracle: <see cref="StockSoft"/> for both the diffuse and the highlight's light.</summary>
-    private static void SunSofteningApproved(VkBackend vk, Checker check, ExtenderLog log, string lf, string wrap, string soft)
+    /// off it. Oracle: <see cref="StockSoft"/> for both the diffuse and the highlight's light. E8 names a placed light;
+    /// the walk's highlight rides the same softened dot by construction (<c>spc = dif * lobe</c>), the sun's is its own.</summary>
+    private static void SunSofteningApproved(VkBackend vk, Checker check, ExtenderLog log)
     {
-        string sun = Function(lf, "vec3 CxSunLight("), through = Function(lf, "vec3 CxTranslucent(");
-        check.Expect(sun.Length > 0 && through.Length > 0, "CX-448 E7: cx_lightfrag declares CxSunLight and CxTranslucent");
-        if (sun.Length == 0 || through.Length == 0) return;
-        PipelineId pipe = vk.CreateCompute(Version + "layout(local_size_x = 1) in;\n" + CaseBlocks(1, 2) + soft + """
-            const vec3 uAreaDiffuse = vec3(1.0), uAreaDir = vec3(0.0, 0.0, 1.0);
-            const float uWrapN = 0.0;
-            bool cxFragNormal = false;
-            float cxTransl = 0.0;
-            """ + wrap + through + sun + """
+        string stage = SunStage(ShaderSource.Get("cx_lightfrag.glsl"));
+        check.Expect(stage.Length > 0, "CX-448 E7: cx_lightfrag declares CxWrap, CxSunLight and CxTranslucent");
+        if (stage.Length == 0) return;
+        PipelineId pipe = vk.CreateCompute(Version + "layout(local_size_x = 1) in;\n" + CaseBlocks(1, 2) + stage + """
             void main()
             {
                 uint i = gl_WorkGroupID.x;

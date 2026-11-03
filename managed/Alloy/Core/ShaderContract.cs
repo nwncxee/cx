@@ -414,6 +414,12 @@ internal static class ShaderContract
                   && AlloyLights.FragmentLib.Contains("float CxWrap(float ndl, float w)")
                   && AlloyLights.FragmentLib.Contains("max(s, uWrapN)")
                   && OwnedLitFsMain.Contains("CxWrap(dot(N, uAreaDir), uWrapN)")
+                  // ...and every program that walks lights over a G-buffer pixel gates the softened dot as the lit stage
+                  // did: a reader that leaves cxFragNormal false keeps lights past a normal map's terminator the walk dropped
+                  && OwnedLitFsMain.Contains("cxFragNormal = (slots & CX_SLOT_NORMAL) != 0;")
+                  && ShaderSource.Get("cx_deferred_cs.glsl").Contains("cxFragNormal = (g.flags & CX_GB_NORMALMAP) != 0u;")
+                  && ShaderSource.Get("cx_pairdebt.glsl").Contains("cxFragNormal = (g.flags & CX_GB_NORMALMAP) != 0u;")
+                  && ShaderSource.Get("cx_defshadow_cs.glsl").Contains("cxFragNormal = (g.flags & CX_GB_NORMALMAP) != 0u;")
                   // ...while the ambient hemisphere keeps the RAW dot -- the hemisphere is Alloy's (stock's
                   // ambient is flat), and wrapping it would move every surface's shade side.
                   && OwnedLitFsMain.Contains("mix(0.15, 1.0, sunRaw)")

@@ -88,8 +88,11 @@
     // carries), yellow baked and walked, red unbaked and walked
     vec3 cxLightFrom = fromRec ? vec3(0.0, 1.0 - 0.8 * owe, 0.0) : baked ? vec3(1.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
     if (!fromRec && uCapture != 2)
+    {
         point = CxClusteredLightLm(vWorld, N, V, vDepth, onMover, rough, spec, baked ? 1.0 : 0.0, CxLmTexelWorld(chart.rec),
                                    baked ? CxLightmapMover(chart.rec, vChart) : vec4(0.0), chart.pick, pointSpec, lmSub);
+        point -= cxAmbWalk;   // the ambient class joins `ambient` below, as stock's AmbientLight does
+    }
 #endif
     vec3 lm = vec3(0.0);
     if (baked)

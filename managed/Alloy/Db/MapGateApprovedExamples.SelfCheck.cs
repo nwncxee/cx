@@ -13,7 +13,7 @@ internal static class MapGateApprovedExamples
     /// <summary>Recipe slots of <c>texture2</c> (the specular map) and <c>texture5</c> (self-illumination).</summary>
     private const int SpecSlot = 2, IllumSlot = 5;
 
-    internal static void SelfCheck(ExtenderLog log)
+    internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "MapGateApprovedExamples.SelfCheck");
         var plain = new Mdl.MeshDef();
@@ -33,5 +33,6 @@ internal static class MapGateApprovedExamples
         string g = DrawRecipe.SlotName(IllumSlot, glow, plain);
         check.Expect(g == "", $"CX-451 E21: a tangentless mesh binds its material's self-illumination map '{g}'");
         log.Info(check.Ok ? "MapGateApprovedExamples.SelfCheck: passed" : "MapGateApprovedExamples.SelfCheck: FAILED");
+        return check.Ok;
     }
 }

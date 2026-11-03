@@ -10,7 +10,7 @@ namespace CX.Alloy;
 /// Light through a transparent part (approved-spec, E11, E14, E15): the deferred rig's walk for a placed light
 /// and the shipped <c>CxSunLight</c> for the sun. Oracle: the same wall facing the light head-on and opaque, whose
 /// pixel is the head-on brightness the stock term takes its share of (<c>inc_lighting.shd</c>:305-319), and for the
-/// sun its colour, 1.
+/// sun its colour, 1. A ghost draws forward; the deferred walk's <c>CxTranslucent</c> is the term both paths take.
 /// </summary>
 internal static partial class GpuGolden
 {
@@ -41,18 +41,10 @@ internal static partial class GpuGolden
     /// <summary>E14: the shipped <c>CxSunLight</c> on a surface facing straight away from a white sun, at 50% opacity.</summary>
     private static void SunThroughApproved(VkBackend vk, Checker check, ExtenderLog log)
     {
-        string lf = ShaderSource.Get("cx_lightfrag.glsl");
-        string wrap = Function(lf, "float CxWrap("), sun = Function(lf, "vec3 CxSunLight("), through = Function(lf, "vec3 CxTranslucent(");
-        check.Expect(wrap.Length > 0 && sun.Length > 0 && through.Length > 0,
-                     "CX-449 E14: cx_lightfrag declares CxWrap, CxSunLight and CxTranslucent");
-        if (wrap.Length == 0 || sun.Length == 0 || through.Length == 0) return;
-        PipelineId pipe = vk.CreateCompute(Version + "layout(local_size_x = 1) in;\n" + CaseBlocks(1, 1)
-            + Declaration(lf, "CX_SOFTEN") + """
-            const vec3 uAreaDiffuse = vec3(1.0), uAreaDir = vec3(0.0, 0.0, 1.0);
-            const float uWrapN = 0.0;
-            bool cxFragNormal = false;
-            float cxTransl = 0.0;
-            """ + wrap + through + sun + """
+        string stage = SunStage(ShaderSource.Get("cx_lightfrag.glsl"));
+        check.Expect(stage.Length > 0, "CX-449 E14: cx_lightfrag declares CxWrap, CxSunLight and CxTranslucent");
+        if (stage.Length == 0) return;
+        PipelineId pipe = vk.CreateCompute(Version + "layout(local_size_x = 1) in;\n" + CaseBlocks(1, 1) + stage + """
             void main()
             {
                 cxTransl = 1.0 - uIn[0];

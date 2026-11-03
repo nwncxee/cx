@@ -31,7 +31,7 @@ The maps follow the shader the engine picks. A model compiled without tangents d
 never reads `texture2` to `texture5`, so a spec, roughness, height or self-illumination map on it shows
 nothing in vanilla, and Alloy drops it the same way. Give the model tangents (`renderhint
 NormalAndSpecMapped` in the model or in the material), or name a shader pair that reads those maps, and they
-draw in both.
+draw in both. A normal map (`texture1`) named in the `.mtr` is the exception: Alloy draws it on any model.
 
 `DisplacementOffset` and `DisplacementMultiplier` tune a height map's relief as they do in vanilla. The
 offset shifts where the relief starts, and the multiplier scales its depth and how finely it is traced. A

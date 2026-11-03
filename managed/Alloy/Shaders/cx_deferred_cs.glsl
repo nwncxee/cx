@@ -575,12 +575,12 @@ void main()
         // The exact linear correction the twin's weights were written for (docs/spec/deferred-lighting.md). The
         // film's own term, g.specT x CxFilmStatics, is the CX_FILM_PASS dispatch's: linear, so it adds exactly.
         float owe = min(lmSub.x / max(g.lmLum, 1e-5) + lmSub.y, 1.0);
-        vec3 add = g.diffT * acc + g.specT * spec - g.lmShare * owe
+        // the ambient class leaves the diffuse weight for its own (Wa), as stock's AmbientLight does
+        vec3 add = g.diffT * (acc - cxAmbWalk) + g.specT * spec - g.lmShare * owe
                  + CxGbufAmbT(texelFetch(uGb2, p + ivec2(int(sMaxZ >> 31u), 0), 0).g) * cxAmbWalk;
         // stored the moment it exists: carried to the end of main, its four words sat live across the whole walk
-        // and the mirror tap's rung went from 0.0 to 2.2 ms (82b7b4e). A forward decal over it reads the
-        // ambient class back through its own diffuse, as it read every light before the walk split them.
-        imageStore(uLightRec, p, CxLightRecPack(acc + cxAmbWalk, spec, viewDepth, baked > 0.5, owe));
+        // and the mirror tap's rung went from 0.0 to 2.2 ms (82b7b4e)
+        imageStore(uLightRec, p, CxLightRecPack(acc, spec, viewDepth, baked > 0.5, owe));
 #endif
         vec4 hdr = imageLoad(uHdr, p);
         // alpha is the probe capture's 1 / distance, which this pass never runs for: hand it back untouched

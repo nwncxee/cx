@@ -87,6 +87,7 @@ void main()
         if (CxGbufReadHead(texelFetch(uGb0, p, 0), viewDepth, uGbDepth, p, uProj, g))
         {
             cxRecvShadow = (g.flags & CX_GB_NOSHADOW) != 0u ? 0.0 : 1.0;
+            cxFragNormal = (g.flags & CX_GB_NORMALMAP) != 0u;
             // shadow.cubedist and the receiver's own flag, exactly as the walk computes them: a pixel that owes
             // no cube read at all gets no record, and the walk's own dfade then reads 1 for every light.
             float dfade = (uLocalPcss.w > 0.0 ? 1.0 - smoothstep(uLocalPcss.w * 0.75, uLocalPcss.w, viewDepth) : 1.0)

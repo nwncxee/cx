@@ -17,21 +17,6 @@ internal static partial class GpuGolden
 {
     private static void DisplacementApprovedSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
     {
-        string synth = ShaderSource.Get("cx_ownlit_synth.glsl"), head = ShaderSource.Get("cx_ownlit_head.glsl");
-        string march = Function(synth, "vec2 CxDisplace("), steps = Declaration(head, "CX_DISPLACE_STEPS");
-        check.Expect(march.Length > 0 && steps.Length > 0, "CX-450: cx_ownlit_synth declares CxDisplace and cx_ownlit_head CX_DISPLACE_STEPS");
-        if (march.Length == 0 || steps.Length == 0) return;
-        PipelineId pipe = vk.CreateCompute(Version + "layout(local_size_x = 1) in;\n" + steps
-            + $"float cxH(vec2 p) {{ return {HeightGlsl}; }}\n"
-            + "#define textureGrad(t, p, a, b) vec4(cxH(p))\n" + march + CaseBlocks(2, 2) + """
-            void main()
-            {
-                uint i = gl_WorkGroupID.x;
-                vec2 r = CxDisplace(vec2(0.3, 0.7), mat3(1.0), normalize(vec3(0.6, 0.2, 0.7)), 3.0, 1080.0, vec2(0.0), vec2(0.0),
-                                    vec2(uIn[i * uint(CX_GOLD_IN)], uIn[i * uint(CX_GOLD_IN) + 1u]));
-                uOut[i * uint(CX_GOLD_OUT)] = r.x; uOut[i * uint(CX_GOLD_OUT) + 1u] = r.y;
-            }
-            """, "golden displacement terms");
         string[] mtrs = ["", "parameter float DisplacementMultiplier 2\n", "parameter float DisplacementMultiplier 0\n",
                          "parameter float DisplacementOffset 0.5\n"];
         var cases = new float[mtrs.Length * 2];
@@ -45,14 +30,10 @@ internal static partial class GpuGolden
             cases[k * 2] = param.DisplacementOffset;
             cases[k * 2 + 1] = param.DisplacementMultiplier;
         }
-        float[]? got = pipe.IsNull ? null : RunCases(vk, log, pipe, mtrs.Length, cases, mtrs.Length * 2, "golden displacement terms");
-        vk.Destroy(pipe);
-        check.Expect(got != null, "CX-450: the displacement stage was refused (logged above)");
-        if (got == null) return;
-        var c = new DisplaceCase(0.3f, 0.7f, Vector3.UnitX, Vector3.UnitY, Vector3.UnitZ,
-                                 Vector3.Normalize(new Vector3(0.6f, 0.2f, 0.7f)), 3f, 1080f);
+        if (DisplaceRuns(vk, check, log, cases) is not { } got) return;
+        DisplaceCase c = DisplaceWall;
         (double U, double V) plain = StockDisplace(c), twice = StockDisplace(c, 0.0, 2.0), shifted = StockDisplace(c, 0.5, 0.0);
-        bool At(int k, (double U, double V) w) => Math.Abs(got[k * 2] - w.U) <= DisplaceTol && Math.Abs(got[k * 2 + 1] - w.V) <= DisplaceTol;
+        bool At(int k, (double U, double V) w) => DisplacedTo(got, k, w);
         string Say(int k) => FormattableString.Invariant($"({got[k * 2]:F5}, {got[k * 2 + 1]:F5})");
         log.Info($"GpuGolden: displacement terms, none {Say(0)}, multiplier 2 {Say(1)}, multiplier 0 {Say(2)}, offset 0.5 {Say(3)}");
 
