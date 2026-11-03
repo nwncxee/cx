@@ -86,7 +86,8 @@ public sealed unsafe partial class AlloyRenderer
                 ReadOnlySpan<ColorAttachment> colors = [new(s.Cap, 0, f, LoadOp.Clear, StoreOp.Store, clear)];
                 VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(s.Depth, 0, 0, LoadOp.Clear, StoreOp.Store, WorldDepth.Clear)));
                 // the real dome behind the world, parked at this frame's camera, which is where the probe stands
-                ok &= VkRecordSky(vk, cl, c, vp, faceVp, log, s.Cap, f, s.Depth);
+                // the next face clears this depth, and nothing else reads it
+                ok &= VkRecordSky(vk, cl, c, vp, faceVp, log, s.Cap, f, s.Depth, StoreOp.DontCare);
             }
             if (ok) ok = VkProbeFilter(cl, s);
         }

@@ -90,9 +90,9 @@ internal static partial class GpuGolden
         r.ScrB = LmPlane(vk, "golden lightmap scratch B");
         r.ScrC = LmPlane(vk, "golden lightmap scratch C");
         r.BlkA = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba32Ui, LmB, LmB, 1, 1, 1, 1,
-            ImageUse.Storage | ImageUse.CopySrc, "golden lightmap blocks A"));
+            ImageUse.Storage | ImageUse.CopySrc | ImageUse.CopyDst, "golden lightmap blocks A"));
         r.BlkB = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba32Ui, LmB, LmB, 1, 1, 1, 1,
-            ImageUse.Storage | ImageUse.CopySrc, "golden lightmap blocks B"));
+            ImageUse.Storage | ImageUse.CopySrc | ImageUse.CopyDst, "golden lightmap blocks B"));
         r.BcA = LmBc(vk, Format.Bc6U, "golden lightmap irradiance");
         r.BcB = LmBc(vk, Format.Bc7, "golden lightmap direction");
         r.PageC = vk.CreateImage(new ImageDesc(ImageKind.Tex2DArray, Format.Rgba8, LmN, LmN, 1, 1, 2, 1,

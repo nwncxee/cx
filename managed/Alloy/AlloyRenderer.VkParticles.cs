@@ -39,6 +39,10 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>Room for the pass's binds and draws: a bind and a draw a group.</summary>
     private const int PartArenaBytes = 1 << 16;
 
+    /// <summary>Class <paramref name="cls"/>'s depth: every class tests the scene's target and only punch-through
+    /// writes it. The pipeline, the per-group state and the flush all read it here.</summary>
+    private static DepthState VkPartDepth(int cls) => new(true, cls == Particles.VkPunch, WorldDepth.NearerOrEqual);
+
     /// <summary>The emitter pass into <paramref name="cl"/>. Nothing when no emitter placed a particle; false only when
     /// the device refused an upload (the frame then refuses, as every other Vulkan pass does).</summary>
     private static bool VkParticlePass(VkBackend vk, CommandList cl, VkColourState c, in Matrix4x4 view, in Matrix4x4 proj,
@@ -69,6 +73,7 @@ public sealed unsafe partial class AlloyRenderer
         int arena0 = c.ArenaUsed;
         side.SetViewport(0, 0, viewport[2], viewport[3]);
         int cls = -1;
+        bool punched = false;
         bool? cull = null;
         for (int gi = 0; gi < groups; gi++)
         {
@@ -80,7 +85,7 @@ public sealed unsafe partial class AlloyRenderer
             {
                 cls = g.Cls;
                 side.SetPipeline(pipe);
-                side.SetDepthState(new DepthState(true, cls == Particles.VkPunch, WorldDepth.NearerOrEqual));
+                side.SetDepthState(VkPartDepth(cls));
             }
             if (cull != g.Cull)
             {
@@ -93,10 +98,12 @@ public sealed unsafe partial class AlloyRenderer
             if (loose < 0 || (groupLit && pass < 0)) return false;
             VkPartBind(side, s, c, loose, pass, g.Tex, soft);
             side.Draw(g.Parts * 6, 1, g.Start * 6, 0);
+            punched |= VkPartDepth(cls).Write;
             c.Effects = true;
         }
         ReadOnlySpan<ColorAttachment> colors = [new(c.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default)];
-        VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear)));
+        VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear)),
+                    writesDepth: punched);
         if (!s.Live)
         {
             s.Live = true;
@@ -204,7 +211,7 @@ public sealed unsafe partial class AlloyRenderer
             var d = new PipelineDesc
             {
                 Vs = p.Vs, Fs = p.Fs, Topo = Topology.Triangles, Raster = new RasterState(CullMode.None),
-                Depth = new DepthState(true, cls == Particles.VkPunch, WorldDepth.NearerOrEqual), Label = $"{PipeFeatures.Particles}class {cls}",
+                Depth = VkPartDepth(cls), Label = $"{PipeFeatures.Particles}class {cls}",
             };
             d.Targets.ColorCount = 1;
             d.Targets.Colors[0] = Format.Rgba16F;

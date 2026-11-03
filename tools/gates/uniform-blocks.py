@@ -6,8 +6,8 @@
 
 A non-opaque uniform outside a block is GLSL that Vulkan refuses, and one glUniform call per term per
 program switch is CPU the frame does not have. Alloy writes the Vulkan block itself, so every site left is
-CX's own windows and the NUI model view drawn on the engine's renderer. Sampler units count too: they are
-opaque, so a file need not reach zero -- the ratchet is shrink-only, not a target of zero.
+CX's own text rig drawn on the engine's renderer. Sampler units count too: they are opaque, so a file need
+not reach zero -- the ratchet is shrink-only, not a target of zero.
 """
 import re
 import subprocess

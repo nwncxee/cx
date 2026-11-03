@@ -310,6 +310,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         GuiStream.SelfCheck(log);
         NuiFlush.SelfCheck(log);
         Issue.UploadSelfCheck(log);
+        RecordUploads.SelfCheck(log);
         // ADR 0012: the dump is how a customizer gets a current starting point. Ahead of every stand-down
         // below, so a session that owns nothing can still produce one.
         ShaderStages.DumpIfConfigured(log);
@@ -469,7 +470,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         // #242: ...and the persistent records went with the buffers that held them. Both halves matter -- the
         // capacity so the next upload reallocates rather than writing into a dead name, and the epoch so
         // every record is rebuilt rather than assumed still on the GPU.
-        _recCapGpu = 0; InvalidateRecords();
+        _recCapGpu = 0; InvalidateRecords(RecordWhole.Device);
         // #257: the target latch goes too -- every name in it belonged to the device that just went.
         ForgetTarget();
         DepthResource.Revoke();
@@ -509,7 +510,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         // On the edge only: the owners' reset allocates, and the device stays lost for the session.
         if (lost) PassRegistry.Global.ContextLost();
         bool inModule = GameGate.InModule;
-        if (_was.InModule && !inModule) { RevokeAll("module unload"); Programs._spliceStale = true; OwnedTextures.ModuleUnloaded(); StockConfig.ModuleUnloaded(); AlloyEnvMap.ModuleUnloaded(); DbFeed.ModuleEdge(_log); }
+        if (_was.InModule && !inModule) { RevokeAll("module unload"); Programs.State.SpliceStale = true; OwnedTextures.ModuleUnloaded(); StockConfig.ModuleUnloaded(); AlloyEnvMap.ModuleUnloaded(); DbFeed.ModuleEdge(_log); }
         _was.InModule = inModule;
         if (inModule && !DbPassScene.IsNull) StockConfig.OnScene((IntPtr)DbPassScene.Value);
 
@@ -538,7 +539,8 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         Counters._skipForeignScene = 0;
         ResetChasePeriod();
         Counters._ownDissolve = 0; Counters._ownFade = 0; Counters._skipFogTile = Counters._skipFogGob = 0;
-        Counters._recWritten = 0; Counters._recStable = 0; PassBinds = 0; PassUploads = 0; PassBindsBorrowed = 0;
+        Counters._recWritten = 0; Counters._recStable = 0; PassBinds = 0; PassBindsBorrowed = 0;
+        RecordUploads.ResetPeriod();
         Counters._nrmDeclared = Counters._nrmBound = 0;
         Array.Clear(Counters._drawsByClass);
         Counters._clusterOverflow = 0;

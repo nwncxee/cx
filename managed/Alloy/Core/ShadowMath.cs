@@ -194,49 +194,43 @@ public static partial class ShadowMath
         tanX = tanY * aspect;
     }
 
-    /// <summary>The camera frustum as six inward-facing planes (xyz = unit normal, w = offset, so
-    /// <c>dot(n, p) + w</c> is the signed distance) from the same roll-free basis
+    /// <summary>The camera frustum as six inward-facing planes from the same roll-free basis
     /// <see cref="SphereInCameraFrustum"/> builds, each pushed OUT by <paramref name="slack"/> world units.
-    /// Order: near, far, left, right, bottom, top. A degenerate forward keeps everything (all w = +inf).</summary>
-    public static void ReceiverPlanes(Vector3 camPos, Vector3 camFwd, float fovy, float aspect, float near,
-                                      float far, float slack, Span<float> planes)
+    /// Order: near, far, left, right, bottom, top. A degenerate forward keeps everything.</summary>
+    internal static void ReceiverPlanes(Vector3 camPos, Vector3 camFwd, float fovy, float aspect, float near,
+                                      float far, float slack, Span<CullPlane> planes)
     {
         if (camFwd.LengthSquared() < 1e-8f)
         {
-            for (int i = 0; i < 6; i++) { planes[i * 4] = 0f; planes[i * 4 + 1] = 0f; planes[i * 4 + 2] = 1f; planes[i * 4 + 3] = float.PositiveInfinity; }
+            for (int i = 0; i < 6; i++) planes[i] = CullPlane.KeepsEverything;
             return;
         }
         CameraBasis(camFwd, fovy, aspect, out Vector3 fwd, out Vector3 right, out Vector3 up, out float tanX, out float tanY);
-        Put(planes, 0, fwd, -Vector3.Dot(fwd, camPos) - near + slack);
-        Put(planes, 1, -fwd, Vector3.Dot(fwd, camPos) + far + slack);
+        planes[0] = new CullPlane(fwd, -Vector3.Dot(fwd, camPos) - near + slack);
+        planes[1] = new CullPlane(-fwd, Vector3.Dot(fwd, camPos) + far + slack);
         // side planes pass through the eye: n = normalize(fwd * tan -/+ axis), w = -dot(n, eye)
         Vector3 nl = Vector3.Normalize(fwd * tanX + right), nr = Vector3.Normalize(fwd * tanX - right);
         Vector3 nb = Vector3.Normalize(fwd * tanY + up), nt = Vector3.Normalize(fwd * tanY - up);
-        Put(planes, 2, nl, slack - Vector3.Dot(nl, camPos)); Put(planes, 3, nr, slack - Vector3.Dot(nr, camPos));
-        Put(planes, 4, nb, slack - Vector3.Dot(nb, camPos)); Put(planes, 5, nt, slack - Vector3.Dot(nt, camPos));
+        planes[2] = new CullPlane(nl, slack - Vector3.Dot(nl, camPos));
+        planes[3] = new CullPlane(nr, slack - Vector3.Dot(nr, camPos));
+        planes[4] = new CullPlane(nb, slack - Vector3.Dot(nb, camPos));
+        planes[5] = new CullPlane(nt, slack - Vector3.Dot(nt, camPos));
     }
-
-    private static void Put(Span<float> planes, int i, Vector3 n, float w)
-    { planes[i * 4] = n.X; planes[i * 4 + 1] = n.Y; planes[i * 4 + 2] = n.Z; planes[i * 4 + 3] = w; }
 
     /// <summary>Can a caster's shadow reach the receiver frustum? The C# twin of the gather dispatch's test,
     /// term for term: the shadow volume is bounded by the convex hull of two spheres -- the caster's own and
     /// the extrusion's end -- and that hull misses the frustum only if BOTH spheres sit wholly outside ONE
     /// plane. Conservative: a caster this rejects casts on no visible pixel; one it keeps may still not.</summary>
-    public static bool ShadowReaches(ReadOnlySpan<float> planes, Vector3 p0, float r0, Vector3 p1, float r1)
+    internal static bool ShadowReaches(ReadOnlySpan<CullPlane> planes, Vector3 p0, float r0, Vector3 p1, float r1)
     {
         for (int i = 0; i < 6; i++)
-        {
-            Vector3 n = new(planes[i * 4], planes[i * 4 + 1], planes[i * 4 + 2]);
-            float w = planes[i * 4 + 3];
-            if (Vector3.Dot(n, p0) + w < -r0 && Vector3.Dot(n, p1) + w < -r1) return false;
-        }
+            if (planes[i].SignedDistance(p0) < -r0 && planes[i].SignedDistance(p1) < -r1) return false;
         return true;
     }
 
     /// <summary>The sun extrusion -- the caster swept along the light to the fit's far extent
     /// (<paramref name="along"/> from <paramref name="focus"/>), radius unchanged.</summary>
-    public static bool SunShadowReaches(ReadOnlySpan<float> planes, Vector3 c, float r, Vector3 dir, Vector3 focus, float along)
+    internal static bool SunShadowReaches(ReadOnlySpan<CullPlane> planes, Vector3 c, float r, Vector3 dir, Vector3 focus, float along)
     {
         float t = Vector3.Dot(c - focus, dir);
         return ShadowReaches(planes, c, r, c + dir * MathF.Max(0f, along - t), r);
@@ -246,7 +240,7 @@ public static partial class ShadowMath
     /// to the light's reach. The cone is wider than the caster at the caster's own depth
     /// (<c>dist * tan(a) &gt; r</c>), so both end radii are inflated by <c>dist / (dist - r)</c>; a light
     /// inside the caster keeps it.</summary>
-    public static bool CubeShadowReaches(ReadOnlySpan<float> planes, Vector3 c, float r, Vector3 light, float reach)
+    internal static bool CubeShadowReaches(ReadOnlySpan<CullPlane> planes, Vector3 c, float r, Vector3 light, float reach)
     {
         Vector3 d = c - light;
         float dist = d.Length();

@@ -150,7 +150,7 @@ internal static unsafe partial class GrassField
         Frustum(in *vp, planes);
         FramePlan p = _vkg.Plan;
         Vector3 eye = p.Eye;
-        float* pw = stackalloc float[3] { _pushOriginX, _pushOriginY, _pushPerUnit / PushRes };
+        var pw = new Vector3(_pushOriginX, _pushOriginY, _pushPerUnit / PushRes);
         ScatterTerms(in l, planes, &eye, p.Near, p.Far, pw);
         LooseBlock.Set(l.Clamp, clamp);
     }
@@ -163,7 +163,7 @@ internal static unsafe partial class GrassField
     {
         FramePlan p = _vkg.Plan;
         Vector3 eye = p.Eye;
-        float* pw = stackalloc float[3] { _pushOriginX, _pushOriginY, _pushPerUnit / PushRes };
+        var pw = new Vector3(_pushOriginX, _pushOriginY, _pushPerUnit / PushRes);
         ColourUniforms(in v.L, in v.F, vp, &eye, p.Near, p.Far, pw, viewport, near, far, lightingOn, ground);
         if (!cards) return;
         LooseBlock.Set(v.L.Msaa, 0);
@@ -179,7 +179,7 @@ internal static unsafe partial class GrassField
     {
         FramePlan p = _vkg.Plan;
         Vector3 eye = p.Eye;
-        float* pw = stackalloc float[3] { _pushOriginX, _pushOriginY, _pushPerUnit / PushRes };
+        var pw = new Vector3(_pushOriginX, _pushOriginY, _pushPerUnit / PushRes);
         SharedUniforms(in v.L, in v.F, vp, &eye, p.Near, p.Far, false, pw, viewport, vlit: false);
         LooseBlock.Set(v.L.Cast, cast ? 1 : 0);
         LooseBlock.Set(v.L.SoftEdge, soft ? 1 : 0);

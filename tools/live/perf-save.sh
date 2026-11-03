@@ -3,6 +3,7 @@
 # the Load panel, soaks, and prints the steady-state frame, GPU and zone averages from the CX log.
 #
 #   tools/live/perf-save.sh --saves DIR [--soak N] [--label NAME] [--cfg 'key=value' ...]
+#   tools/live/perf-save.sh --showcase perf-grass [...]   # a scenario's own scene instead of a save
 #   --aniso N sets the anisotropic filtering mode. --override DIR copies its files into the throwaway override/ (e.g. a cx_*.shd shader variant).
 #   --keys SCRIPT runs (xtool grammar) once the area has settled, e.g. "key:Return;type:/alloy bench;key:Return"
 #   --passtime loads VK_LAYER_CX_passtime (tools/gpu-passtime) and prints GPU ms per debug label over the last
@@ -11,12 +12,16 @@
 # DIR holds ONE save folder (it is preselected on the Load panel). The user's real cx.cfg is passed through so
 # knobs match play; each --cfg replaces that key. Click points are pixel constants for 2544x1378 at the
 # copied settings.tml's UI scale. Steady state = every reporting period after the first two in the area.
+#
+# --showcase NAME hosts tools/live/showcase/NAME.{nss,policy} instead, so a scene the saves do not hold -- a
+# grass area, say -- is measurable: the script walks the PC and settles the scene itself, and no save is needed.
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-SAVES=""; SOAK=90; LABEL="run"; OVERRIDES=(); EXTRA=""; OVR=""; LIVE=(); PASSTIME=0
+SAVES=""; SHOW=""; SOAK=90; LABEL="run"; OVERRIDES=(); EXTRA=""; OVR=""; LIVE=(); PASSTIME=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --saves) SAVES="$2"; shift 2 ;;
+        --showcase) SHOW="$2"; shift 2 ;;
         --soak)  SOAK="$2"; shift 2 ;;
         --label) LABEL="$2"; shift 2 ;;
         --cfg)   OVERRIDES+=("$2"); shift 2 ;;
@@ -27,7 +32,7 @@ while [ $# -gt 0 ]; do
         *) echo "perf-save: unknown option $1" >&2; exit 2 ;;
     esac
 done
-[ -d "$SAVES" ] || { echo "perf-save: --saves DIR required" >&2; exit 2; }
+[ -n "$SHOW" ] || [ -d "$SAVES" ] || { echo "perf-save: --saves DIR or --showcase NAME required" >&2; exit 2; }
 pgrep -x nwmain-linux >/dev/null && { echo "perf-save: a client is running" >&2; exit 3; }
 
 USER_CFG="$(python3 "$ROOT/tools/paths.py" NWN_USERDIR 2>/dev/null || echo "$HOME/.local/share/Neverwinter Nights")/cx.cfg"
@@ -54,11 +59,27 @@ fi
 if [ -n "$OVR" ]; then
     mkdir -p "$OUT/home/.local/share/Neverwinter Nights/override" && cp "$OVR"/* "$OUT/home/.local/share/Neverwinter Nights/override/" || exit 2
 fi
-"$ROOT/tools/live/run-live.sh" --menu --saves "$SAVES" --width 2544 --height 1378 --seconds 6 --out "$OUT" --keep \
-    ${args+"${args[@]}"} ${LIVE+"${LIVE[@]}"} \
-    --keys "click:1269,705;sleep:3000;click:1410,914;sleep:20000;${EXTRA}sleep:$half;shot:$OUT/shot.png;sleep:$half" \
-    > "$OUT.harness.log" 2>&1
+# A save arrives through the Load panel's two clicks; a showcase's own script puts the PC where it wants it, so
+# the clicks go and the settle is the script's own jump and camera snap instead.
+if [ -n "$SHOW" ]; then
+    mode=(--showcase "$SHOW" --seconds $(( SOAK + 25 )))
+    script="sleep:25000;${EXTRA}sleep:$half;shot:$OUT/shot.png"
+else
+    mode=(--menu --saves "$SAVES" --seconds 6)
+    script="click:1269,705;sleep:3000;click:1410,914;sleep:20000;${EXTRA}sleep:$half;shot:$OUT/shot.png;sleep:$half"
+fi
+# The layer rewrites its report every 300 presents over a window of the last 1000, and the run ends by quitting
+# through the UI -- so the main menu, which presents far faster than the game, overwrites the report with its own
+# GUI-only frames before the process goes. The measurement is the last report written while the world still drew.
+if [ "$PASSTIME" = 1 ]; then
+    mkdir -p "$OUT"
+    ( while sleep 2; do grep -q '^vulkan frame' "$OUT/passtime.txt" 2>/dev/null && cp "$OUT/passtime.txt" "$OUT/passtime-world.txt"; done ) &
+    keeper=$!
+fi
+"$ROOT/tools/live/run-live.sh" "${mode[@]}" --width 2544 --height 1378 --out "$OUT" --keep \
+    ${args+"${args[@]}"} ${LIVE+"${LIVE[@]}"} --keys "$script" > "$OUT.harness.log" 2>&1
 rc=$?
+[ -n "${keeper:-}" ] && kill "$keeper" 2>/dev/null
 
 python3 - "$OUT/cx.log" "$LABEL" "$rc" "$OUT" <<'PY'
 import re, sys, statistics as st
@@ -93,6 +114,9 @@ if over:
 print(f"  out {out}  (shot.png, cx.log)  harness exit {rc}")
 PY
 if [ "$PASSTIME" = 1 ]; then
-    if [ -f "$OUT/passtime.txt" ]; then cat "$OUT/passtime.txt"
+    if [ -f "$OUT/passtime-world.txt" ]; then cat "$OUT/passtime-world.txt"
+    elif [ -f "$OUT/passtime.txt" ]; then
+        echo "perf-save: no report named 'vulkan frame' -- the world's labels never reached one; the last report as written:"
+        cat "$OUT/passtime.txt"
     else echo "perf-save: --passtime wrote no report ($OUT/passtime.txt) -- grep '[passtime]' $OUT/engine-stdout.log"; fi
 fi

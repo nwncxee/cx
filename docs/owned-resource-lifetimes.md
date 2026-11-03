@@ -154,10 +154,11 @@ Two things stay immediate, each for a reason:
   unaffected: a stale table entry is a correctness problem *now*, and nothing about the GPU's queue makes
   waiting safer.
 
-`tools/gates/gpu-frees.sh` counts the immediate frees that are left per file against `gpu-frees.baseline`,
-which may only shrink; `python3 tools/gates/gpu-frees.py -v` lists each one, and all of them are in the
-engine-GL path CX's own windows replay on when Alloy stands down. A Vulkan object
-never counts: the backend's own deferral is the mechanism.
+`tools/gates/gpu-frees.sh` counts the immediate frees left per file against `gpu-frees.baseline`, and that
+baseline is now empty: the GL that stays is the text rig CX replays on the engine's renderer when Alloy
+stands down, and it owns its objects for the session and frees none. So the gate refuses every site it finds;
+`python3 tools/gates/gpu-frees.py -v` lists any. A Vulkan object never counts: the backend's own deferral is
+the mechanism.
 
 Two notes for whoever reads this next. The `Part::~Part` death notice Part 2 inventories is gone: it went with
 the engine-scene path on 2026-10-07 and the DB object-destroy edge replaced it, and there is no GPU free on

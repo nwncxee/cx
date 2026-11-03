@@ -332,9 +332,9 @@ public static unsafe partial class DbFeed
             SceneDb.ObjPartCount[o] = Math.Abs(p1 - p0) + 1;
             TakeFrame();
 
-            Span<Vector4> planes = stackalloc Vector4[6];
-            planes.Fill(new Vector4(0f, 0f, 0f, 1f));
-            planes[0] = new Vector4(1f, 0f, 0f, -100f);   // keep x >= 100; the object sits at 305
+            Span<CullPlane> planes = stackalloc CullPlane[6];
+            planes.Fill(CullPlane.KeepsEverything);
+            planes[0] = new CullPlane(Vector3.UnitX, -100f);   // keep x >= 100; the object sits at 305
 
             int n = Visible(scene, planes, 0f);
             check.Expect(n == 1, $"only the part of the shown LOD alternate is visible (got {n})");
@@ -352,7 +352,7 @@ public static unsafe partial class DbFeed
             check.Expect(Visible(scene, planes, 0f) == 1 && VisibleSlot(0) == SceneDb.PartSlot[p1],
                          "switching the shown alternate switches which slot is visible, with no reseat");
 
-            planes[0] = new Vector4(1f, 0f, 0f, -1e9f);
+            planes[0] = new CullPlane(Vector3.UnitX, -1e9f);
             check.Expect(Visible(scene, planes, 0f) == 0, "a frustum that reaches nothing yields nothing");
 
             SceneDb.Parts.Free(h0);

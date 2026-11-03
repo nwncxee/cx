@@ -38,7 +38,7 @@ internal static unsafe class DbGrid
     internal static int Cell(float x, float y) => UniformGrid.Cell(x, y);
 
     /// <inheritdoc cref="UniformGrid.Query"/>
-    internal static int Query(ReadOnlySpan<Vector4> planes, float slack, int[] into, int n)
+    internal static int Query(ReadOnlySpan<CullPlane> planes, float slack, int[] into, int n)
         => G.Query(planes, slack, into, n);
 
     /// <summary>Off-device: a static comes back from a query containing its cell and not from one that does
@@ -57,9 +57,9 @@ internal static unsafe class DbGrid
         check.Expect(Cell(0f, 0f) != Cell(300f, 300f), "two tiles 30 apart are different cells");
         check.Expect(Cell(0f, 0f) == Cell(Dim * CellSize, 0f), "the grid wraps at its width");
 
-        Span<Vector4> planes = stackalloc Vector4[6];
-        planes.Fill(new Vector4(0f, 0f, 0f, 1f));
-        planes[0] = new Vector4(1f, 0f, 0f, -100f);          // keep x >= 100
+        Span<CullPlane> planes = stackalloc CullPlane[6];
+        planes.Fill(CullPlane.KeepsEverything);
+        planes[0] = new CullPlane(Vector3.UnitX, -100f);          // keep x >= 100
         int[] into = new int[16];
         int n = Query(planes, 0f, into, 0);
         bool near = false, far = false, unb = false, mov = false;

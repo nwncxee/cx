@@ -165,7 +165,8 @@ exists, and give every "should have gone through X" review finding its ban in th
 A rule counts once a check refuses it. Each gate is `tools/gates/<rule>.sh`, run by `tools/gates/run.sh` from
 `build.sh`, CI and a Claude Code `PostToolUse` hook (`.claude/settings.json`), so a violation shows the moment
 it is written. An unfinished cleanup is a `<rule>.baseline` ratchet (`tools/gates/ratchet.sh`): it may only
-shrink. Adding a rule means adding its gate in the same change, and one line here:
+shrink, and a row naming a file that is no longer in the tree fails -- an allowance nothing can spend hides
+the cleanup that earned it. Adding a rule means adding its gate in the same change, and one line here:
 
 - `comments.sh`: a `///` block over 4 text lines, or a `///` line citing a ticket (`#n`, `CX-n`, `!n`), fails. No baseline.
 - `file-size.sh`: a `.cs` file under `managed/` over 1,500 lines fails -- past the cap, split by
@@ -214,13 +215,15 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
 - `workflows.sh`: a workflow under `.github/workflows/` that actionlint or zizmor (offline) refuses fails --
   bad YAML or expressions, an unknown runner label, a shellcheck warning in a `run:`, a cache that feeds a
   release, a checkout that keeps its token.
-- `ssbo-bindings.sh`: an `std430` binding, a `SsboSlots` constant at or past `SsboSlots.Budget` (16, the
+- `ssbo-bindings.sh`: an `std430` or `scalar` STORAGE block's binding, a `SsboSlots` constant at or past `SsboSlots.Budget` (16, the
   storage-buffer descriptors `VkBackend` allocates per set -- it reads the budget, so the two are one number),
   or a numeric SSBO index passed straight to `BindBufferBase`/`BindBufferRange` under `managed/` fails.
   Every point lives in `Alloy/Core/SsboSlots.cs`: 0..7 persistent and exclusive, 8..15 shared by readers that
   bind before they draw; `SsboSlots.Check` and `check-shaders.py` pin the GLSL to it, and `SsboSlots.CheckDevice`
-  stands Alloy down on a device that seats fewer than the budget rather than finding out at the first bind.
-- `ubo-bindings.sh`: a `std140` binding, or a `UboSlots` constant, at or past `UboSlots.Budget` (12, Vulkan's
+  stands Alloy down on a device that seats fewer than the budget rather than finding out at the first bind. The
+  qualifier alone does not say which budget a block answers to, so each gate matches on the declaration kind.
+- `ubo-bindings.sh`: a `std140` or `scalar` UNIFORM block's binding (or one on the layout macro a block whose layout
+  follows the device takes its qualifier from), or a `UboSlots` constant, at or past `UboSlots.Budget` (12, Vulkan's
   guaranteed `maxPerStageDescriptorUniformBuffers`, which `VkBackend` allocates per set), or a numeric
   uniform-block index passed straight to `BindBufferBase`/`BindBufferRange` under `managed/` fails. Every point lives in `Alloy/Core/UboSlots.cs`: 0..2 persistent and exclusive, 3..11 shared by
   passes that bind before they draw; `UboSlots.Check` pins the GLSL to it and `Std140.Pin` pins each block's
@@ -230,10 +233,22 @@ shrink. Adding a rule means adding its gate in the same change, and one line her
   (`LooseBlock`), so every site left is the vanilla CX-UI path drawing on the engine's own renderer, where
   sampler units are opaque and count too; `python3 tools/gates/uniform-blocks.py -v` lists each site.
 - `gpu-frees.sh`: an immediate `Gl.Delete{Textures,Buffers,Framebuffers,VertexArrays,Renderbuffers,Samplers}`
-  call site under `managed/` counts against `gpu-frees.baseline`, which may only shrink. Alloy's objects are
-  Vulkan's, destroyed through the backend, which holds a freed one past its submit ring, so every site left is
-  the vanilla CX-UI path -- which owns its objects for the session and frees them where they die;
-  `python3 tools/gates/gpu-frees.py -v` lists each site.
+  call site under `managed/` fails. Alloy's objects are Vulkan's, destroyed through the backend, which holds a
+  freed one past its submit ring, and the GL that stays owns its objects for the session -- so
+  `gpu-frees.baseline` is empty and the ratchet now refuses every site;
+  `python3 tools/gates/gpu-frees.py -v` lists any it finds.
+- `span-ptr.sh`: a `new Span<T>(p, n)` / `new ReadOnlySpan<T>(p, n)` outside `managed/Framework/` counts against
+  `span-ptr.baseline`, which may only shrink. Two arguments is always the pointer constructor (the array one takes
+  one or three), and a caller-supplied length checks nothing -- `.Slice(i * size, size)` on it is the pointer plus
+  an offset ADR 0031 refuses. A view builds its span from its count row and a `NativeBuffer<T>` from its
+  allocation; `python3 tools/gates/span-ptr.py -v` lists each site.
+- `lane-index.sh`: an `a[i * N + k]` read outside `managed/Framework/` counts against `lane-index.baseline`,
+  which may only shrink. A record flattened into lanes asks every reader to know the stride and which lane is
+  which, and a wrong `k` stays inside the array; a record type with named fields (`Vector3`, `Vector4`,
+  `CullPlane`) and an array of it says the layout once, and `MemoryMarshal.Cast` reinterprets a byte buffer
+  that arrives from outside. The stride is what makes it a lane read, so lane 0 (`a[i * N]`) and the
+  transposed `a[at + k * N]` count too -- one read spelled three ways must not count three ways. An
+  allocation length is a size, not a lane; `python3 tools/gates/lane-index.py -v` lists each site.
 - `compiler-rules.sh`: a `#pragma warning disable` or `SuppressMessage` of a `CX` rule, an RS0030 pragma outside
   `managed/Framework/` or with no `// <reason>` on its line, or a `NoWarn`/severity override lowering either in build config, fails.
 - `local-paths.sh`: a home directory, mount point or personal checkout path in a tracked file fails

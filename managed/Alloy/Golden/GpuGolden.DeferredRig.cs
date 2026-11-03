@@ -68,6 +68,15 @@ public sealed unsafe partial class AlloyRenderer
     /// froxel edge falls inside a 16-pixel tile as it does on a real screen.</summary>
     private const int RigGridX = 3, RigGridY = 1, RigGridZ = 24;
 
+    /// <summary>The fill stage's push block, <c>CxRigFill</c>: the rig's size and the two projection depth-row
+    /// terms its frame depth comes from.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RigFillPush
+    {
+        public int W, H;
+        public float Pzz, Pzw;
+    }
+
     /// <summary>The fill stage: each pixel's <c>CxGbuf</c> packed by the library's own <c>CxGbufPack</c>, its frame
     /// depth from the projection's depth row, and at each even pixel the record texel it heads.</summary>
     private static string RigFillText()
@@ -180,7 +189,7 @@ public sealed unsafe partial class AlloyRenderer
         f.Depth = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.R32F, w, h, 1, 1, 1, 1, both, "rig depth"));
         f.Vis = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba8, rw, rh, 1, 1, 1, 1, both, "rig shadow record"));
         f.Key = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rg32Ui, rw, rh, 1, 1, 1, 1, both, "rig shadow key"));
-        f.Hdr = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, w, h, 1, 1, 1, 1, both | ImageUse.CopySrc, "rig hdr"));
+        f.Hdr = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, w, h, 1, 1, 1, 1, both | ImageUse.CopySrc | ImageUse.CopyDst, "rig hdr"));
         f.Rec = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba32Ui, w, h, 1, 1, 1, 1, both, "rig light record"));
         int clusters = RigGridX * RigGridY * RigGridZ;
         f.Lights = RigBuffer(vk, MemoryMarshal.AsBytes(sc.Lights.AsSpan()), BufferUse.Storage, "rig lights");
@@ -250,8 +259,8 @@ public sealed unsafe partial class AlloyRenderer
         cl.BindSet(0, new BindSet(default, [new BufferBinding(SsboSlots.GoldenIn, cases), new BufferBinding(SsboSlots.Chart, f.Chart)],
             default, [new ImageBinding(0, f.G0), new ImageBinding(1, f.G1), new ImageBinding(2, f.G2), new ImageBinding(3, f.Depth),
                       new ImageBinding(4, f.Vis), new ImageBinding(5, f.Key)]));
-        cl.PushConstants(0, MemoryMarshal.AsBytes((ReadOnlySpan<int>)[w, h, BitConverter.SingleToInt32Bits(sc.Proj.M33),
-                                                                      BitConverter.SingleToInt32Bits(sc.Proj.M43)]));
+        var fp = new RigFillPush { W = w, H = h, Pzz = sc.Proj.M33, Pzw = sc.Proj.M43 };
+        cl.PushConstants(0, MemoryMarshal.AsBytes(new ReadOnlySpan<RigFillPush>(in fp)));
         cl.Dispatch((w + 7) / 8, (h + 7) / 8);
 
         cl.SetPipeline(build.Pipe);

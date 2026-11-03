@@ -13,9 +13,9 @@ internal sealed unsafe partial class VkBackend
     private const uint OpDecorate = 71, DecorationBinding = 33;
 
     /// <summary>The present mode per swap interval and the ported passes' stages, proven off-device where shaderc loads.
-    /// Oracles: the interval-to-mode table written by hand; shaderc's acceptance of the translated text; SPIR-V binding
-    /// numbers read by the specification's opcodes against hand-written ones; format tokens and each layout's barrier
-    /// scope as vulkan_core.h's bits, by hand.</summary>
+    /// Oracles: the interval-to-mode table and the size-compatibility rule written by hand; shaderc's acceptance of the
+    /// translated text; SPIR-V binding numbers read by the specification's opcodes against hand-written ones; format
+    /// tokens and each layout's barrier scope as vulkan_core.h's bits, by hand.</summary>
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
@@ -42,6 +42,24 @@ internal sealed unsafe partial class VkBackend
         check.Expect(AttachMissing(ImageUse.Sampled | ImageUse.Storage, false) != null && AttachMissing(ImageUse.ColorTarget, false) == null
                   && AttachMissing(ImageUse.ColorTarget, true) != null && AttachMissing(ImageUse.DepthTarget, true) == null,
             "an attachment is refused for the usage its image lacks: a sampled and storage image as colour, a colour target as depth");
+        check.Expect(CopyMissing(ImageUse.Sampled | ImageUse.ColorTarget, true) != null && CopyMissing(ImageUse.CopySrc, true) == null
+                  && CopyMissing(ImageUse.CopySrc, false) != null && CopyMissing(ImageUse.CopyDst, false) == null,
+            "a transfer is refused for the copy flag its image lacks: a plain target as a source, a source-only image as a destination");
+        check.Expect(Settled(ImageUse.Sampled | ImageUse.CopyDst) == VkImageLayout.ShaderReadOnlyOptimal
+                  && Settled(ImageUse.Grey | ImageUse.CopyDst) == VkImageLayout.ShaderReadOnlyOptimal
+                  && Settled(ImageUse.CopyDst) == VkImageLayout.TransferDstOptimal,
+            "a filled image settles in a layout its usage does not allow: the shader-readable one asks for the sampled "
+          + "usage an upload alone does not declare");
+        CheckUsageMask(check);
+        check.Expect(CopySizeMismatch(Format.Rgba16F, Format.R11G11B10F) != null && CopySizeMismatch(Format.Bc1, Format.Bc3) != null
+                  && CopySizeMismatch(Format.Rgba8, Format.Bgra8) == null && CopySizeMismatch(Format.Bc1, Format.Rgba16F) == null,
+            "a copy is refused between formats of unequal texel or block size alone: eight bytes into four and a BC1 block into a "
+          + "BC3 one are, four bytes into four of another channel order and a BC1 block into one eight-byte texel are not");
+        var eight = new VkImg { Desc = new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, 8, 8, 1, 1, 1, 1, ImageUse.CopySrc, "") };
+        check.Expect(!Inside(eight, new ImageRegion(0, 0, 0, 0), 9, 8, 1, out _) && !Inside(eight, new ImageRegion(0, 4, 0, 0), 8, 8, 1, out _)
+                  && !Inside(eight, new ImageRegion(0, 0, 0, 1), 8, 8, 1, out _) && Inside(eight, new ImageRegion(0, 4, 4, 0), 4, 4, 1, out _),
+            "a copy's or a blit's rectangle is refused where it is wider than its image, where its origin pushes it off the edge and "
+          + "where its layer is past the one, and allowed where it ends on the edge");
         CheckSetCache(check);
         CheckAsyncFamily(check);
         CheckTransferFamily(check);
@@ -83,6 +101,27 @@ internal sealed unsafe partial class VkBackend
         check.Expect(CX.Alloy.ShaderSource.Get("cx_cull_c.glsl").Contains($"layout(binding = {CX.Alloy.CullPass.PyramidUnit}) uniform sampler2D uPyramid;"),
             "the cull stage's pyramid sampler sits on the unit both backends bind it to");
         log.Info(check.Ok ? "VkBackend.SelfCheck: passed" : "VkBackend.SelfCheck: FAILED");
+    }
+
+    /// <summary>Oracle: vulkan_core.h's usage bits by hand -- TRANSFER_SRC 1, TRANSFER_DST 2, SAMPLED 4, STORAGE 8,
+    /// COLOR 0x10, DEPTH_STENCIL 0x20, TRANSIENT 0x40, SHADING_RATE 0x100 -- against what each declared use asks for.</summary>
+    private static void CheckUsageMask(Checker check)
+    {
+        static uint U(ImageUse use, Format f = Format.Rgba8) => (uint)Usage(use, f);
+        check.Expect(U(ImageUse.Sampled | ImageUse.ColorTarget) == 0x14 && U(ImageUse.Grey) == 4
+                  && U(ImageUse.Storage | ImageUse.CopySrc | ImageUse.CopyDst) == 0xB && U(ImageUse.ShadingRate) == 0x100,
+            "a declared use asked for more or less than its own usage bits");
+        check.Expect(U(ImageUse.DepthTarget, Format.D32F) == 0x20 && U(ImageUse.ColorTarget, Format.D32F) == 0x20
+                  && U(ImageUse.Async) == 0 && U(ImageUse.DepthTarget | ImageUse.Transient, Format.D32F) == 0x60,
+            "a depth format did not attach at the depth point, or a queue flag or a transient target asked wrongly");
+        static string? R(ImageUse use, bool shared = false, Format f = Format.D32F)
+            => UseRefusal(new ImageDesc(ImageKind.Tex2D, f, 4, 4, 1, 1, 1, 1, use, "", shared ? nameof(AliasGroup) : null));
+        check.Expect(R(ImageUse.Async, f: Format.Rgba8) != null && R(ImageUse.DepthTarget) == null
+                  && R(ImageUse.DepthTarget | ImageUse.Transient) == null
+                  && R(ImageUse.DepthTarget | ImageUse.Transient | ImageUse.Sampled) != null
+                  && R(ImageUse.Transient) != null && R(ImageUse.DepthTarget | ImageUse.Transient, shared: true) != null,
+            "a useless or impossible image was not refused: no use at all, a transient target that is sampled, "
+          + "a transient non-attachment, or a transient target in an alias lane");
     }
 
     /// <summary>Oracle: hand-written binding strings and set handles. A set comes back only for the bindings it was

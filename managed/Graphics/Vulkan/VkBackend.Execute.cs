@@ -582,10 +582,14 @@ internal sealed unsafe partial class VkBackend
         ReadOnlySpan<ImageId> ids = r.Span<ImageId>(h.Images);
         if (_inPass) return Fault("ReadImages inside a render pass -- the hand-over is a barrier, which a pass forbids");
         // the layout a bind of that kind wants, so the bind itself finds the image already in it
-        VkImageLayout to = h.Access is Access.StorageRead or Access.StorageWrite
-            ? VkImageLayout.General : VkImageLayout.ShaderReadOnlyOptimal;
+        bool storage = h.Access is Access.StorageRead or Access.StorageWrite;
+        VkImageLayout to = storage ? VkImageLayout.General : VkImageLayout.ShaderReadOnlyOptimal;
         foreach (ImageId id in ids)
-            if (!id.IsNull && _images.TryGet(id.Value, out VkImg img)) Transition(img, to, h.Access != Access.StorageRead);
+            if (!id.IsNull && _images.TryGet(id.Value, out VkImg img))
+            {
+                if (UsageMissing(img.Desc.Use, storage) is { } why) return Fault($"ReadImages: {img.Desc.Label} {why}");
+                Transition(img, to, h.Access != Access.StorageRead);
+            }
         return true;
     }
 
@@ -612,17 +616,23 @@ internal sealed unsafe partial class VkBackend
         return true;
     }
 
-    /// <summary>What an image made for <paramref name="use"/> lacks to be bound as a storage image or, without
-    /// <paramref name="storage"/>, sampled; null when it was made for that bind.</summary>
     /// <summary>Why an image may not be a render pass's colour or <paramref name="depth"/> attachment, or null: the usage
     /// it was created with has to say so, or the device begins rendering into an image it never allowed it for.</summary>
     internal static string? AttachMissing(ImageUse use, bool depth)
         => depth ? (use & ImageUse.DepthTarget) == 0 ? "was not created as a depth target" : null
                  : (use & ImageUse.ColorTarget) == 0 ? "was not created as a colour target" : null;
 
+    /// <summary>What an image made for <paramref name="use"/> lacks to be bound as a storage image or, without
+    /// <paramref name="storage"/>, sampled -- a grey image counts as sampled; null when it was made for that bind.</summary>
     internal static string? UsageMissing(ImageUse use, bool storage)
         => storage ? (use & ImageUse.Storage) == 0 ? "was not created for storage" : null
-                   : (use & ImageUse.Sampled) == 0 ? "was not created for sampling" : null;
+                   : (use & (ImageUse.Sampled | ImageUse.Grey)) == 0 ? "was not created for sampling" : null;
+
+    /// <summary>Why an image may not be a transfer's source or, without <paramref name="src"/>, its destination, or
+    /// null: an image asks the device only for the usage it declares, so an undeclared copy is said here.</summary>
+    internal static string? CopyMissing(ImageUse use, bool src)
+        => src ? (use & ImageUse.CopySrc) == 0 ? "was not created as a copy source" : null
+               : (use & ImageUse.CopyDst) == 0 ? "was not created as a copy destination" : null;
 
     private bool IndexBuffer(IndexBufferCmd c)
     {

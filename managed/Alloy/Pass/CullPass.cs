@@ -8,9 +8,10 @@ using CX.Graphics;
 
 namespace CX.Alloy;
 
-/// <summary>The cull dispatch's six frustum planes, at std140's vec4 stride.</summary>
+/// <summary>The cull dispatch's six frustum planes, at std140's vec4 stride -- which is
+/// <see cref="CullPlane"/>'s own layout, so the block's member and the record are one declaration.</summary>
 [InlineArray(6)]
-internal struct CullPlanes { private Vector4 _e; }
+internal struct CullPlanes { private CullPlane _e; }
 
 /// <summary>The <c>CxCull</c> block in the GLSL's own member order (<c>cx_cullblk.glsl</c>). C# sequential
 /// layout IS std140 here: no member is a vec3 or an array of anything narrower than a vec4, so neither side
@@ -128,7 +129,7 @@ internal static unsafe class CullPass
     /// plane distance is in world units and the sphere test is a plain compare. Row-major here means the
     /// combination is <c>clip = v * VP</c>, so the planes come off the COLUMNS. <paramref name="eye"/> is the
     /// eye the caller's vp was built from: a mirrored subframe measuring from the wrong camera is the bug.</summary>
-    internal static void Planes(in Matrix4x4 m, Span<Vector4> p, Vector3 eye)
+    internal static void Planes(in Matrix4x4 m, Span<CullPlane> p, Vector3 eye)
     {
         // clip.c = sum_r v[r] * m.row[r].c, so a plane is built from column 3 and column c of every row.
         Vector4 r0 = new(m.M11, m.M12, m.M13, m.M14), r1 = new(m.M21, m.M22, m.M23, m.M24),
@@ -143,7 +144,7 @@ internal static unsafe class CullPass
             float w = r3.W + s * Col(r3, c);
             float len = MathF.Sqrt(x * x + y * y + z * z);
             if (len > 0f) { x /= len; y /= len; z /= len; w /= len; }
-            p[i] = new Vector4(x, y, z, w);
+            p[i] = new CullPlane(new Vector3(x, y, z), w);
         }
     }
 
@@ -161,12 +162,12 @@ internal static unsafe class CullPass
         Matrix4x4 view = Matrix4x4.CreateLookAt(new Vector3(0, 0, 0), new Vector3(0, 0, -10), Vector3.UnitY);
         Matrix4x4 proj = Matrix4x4.CreatePerspectiveFieldOfView(1.0f, 1.0f, 1f, 100f);
         Matrix4x4 vp = view * proj;
-        Vector4[] planes = new Vector4[6];
+        CullPlane[] planes = new CullPlane[6];
         Planes(in vp, planes, Vector3.Zero);
         bool Inside(Vector3 pt, float r)
         {
             for (int i = 0; i < 6; i++)
-                if (planes[i].X * pt.X + planes[i].Y * pt.Y + planes[i].Z * pt.Z + planes[i].W < -r) return false;
+                if (planes[i].SignedDistance(pt) < -r) return false;
             return true;
         }
         check.Expect(Inside(new Vector3(0, 0, -10), 1f), "a point straight ahead is inside the frustum");
@@ -221,7 +222,7 @@ internal static unsafe class CullPass
     /// <see cref="CullCs"/>'s <c>main</c>, run one invocation at a time -- which is what a sequential
     /// <c>atomicAdd</c> is. Two standards: a COMPACTING batch is asserted as a SET (the atomic's order is not
     /// deterministic on hardware), an ORDERED one as a SEQUENCE, which is the whole point of one.</summary>
-    private static bool Parity(ExtenderLog log, Matrix4x4 vp, Vector4[] planes)
+    private static bool Parity(ExtenderLog log, Matrix4x4 vp, CullPlane[] planes)
     {
         var check = new Checker(log, "CullPass.ParitySelfCheck");
 
@@ -335,7 +336,7 @@ internal static unsafe class CullPass
     /// other line is <see cref="CullCs"/>'s and <see cref="SortCs"/>'s, in order -- two loops because there
     /// are two dispatches, and the barrier between them is what the loop boundary stands for.
     /// <paramref name="scramble"/> runs the invocations backwards, which the sorted range must survive.</summary>
-    private static void Emulate(CullSrcRec* src, SphereRec* sph, int drawN, int groups, Vector4[] planes, Matrix4x4 vp,
+    private static void Emulate(CullSrcRec* src, SphereRec* sph, int drawN, int groups, CullPlane[] planes, Matrix4x4 vp,
                                 float lodPx, float lodScale, int compactBelow, Vector3 eye, float* key,
                                 DrawCmdRec* cmd, int* outSlot, uint* cnt, bool scramble = false,
                                 int rejMode = 0, uint* rej = null, bool* occ = null)
@@ -355,7 +356,7 @@ internal static unsafe class CullPass
             if (r < 1e29f)
             {
                 for (int p = 0; p < 6 && keep; p++)
-                    keep = !(planes[p].X * c.X + planes[p].Y * c.Y + planes[p].Z * c.Z + planes[p].W < -r);
+                    keep = !(planes[p].SignedDistance(c) < -r);
                 if (keep && !sorted && lodPx > 0f && lodScale > 0f)
                 {
                     float w = Vector4.Transform(new Vector4(c, 1f), vp).W;

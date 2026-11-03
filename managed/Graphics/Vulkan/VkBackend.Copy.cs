@@ -22,12 +22,14 @@ internal sealed unsafe partial class VkBackend
         if (!_images.TryGet(c.Src.Value, out VkImg src)) return Fault("CopyImage: stale source image");
         if (!_images.TryGet(c.Dst.Value, out VkImg dst)) return Fault("CopyImage: stale destination image");
         if (c.W <= 0 || c.H <= 0 || c.D <= 0) return Fault($"CopyImage {src.Desc.Label} to {dst.Desc.Label}: a {c.W}x{c.H}x{c.D} block");
+        if (CopyMissing(src.Desc.Use, true) is { } sw) return Fault($"CopyImage: {src.Desc.Label} {sw}");
+        if (CopyMissing(dst.Desc.Use, false) is { } dwhy) return Fault($"CopyImage: {dst.Desc.Label} {dwhy}");
         if (Aspect(src.Desc.Fmt) != Aspect(dst.Desc.Fmt))
             return Fault($"CopyImage {src.Desc.Label} ({src.Desc.Fmt}) to {dst.Desc.Label} ({dst.Desc.Fmt}): different aspects");
+        if (CopySizeMismatch(src.Desc.Fmt, dst.Desc.Fmt) is string size)
+            return Fault($"CopyImage {src.Desc.Label} ({src.Desc.Fmt}) to {dst.Desc.Label} ({dst.Desc.Fmt}): {size}");
         // a size-compatible copy between a block format and one texel per block counts its extent in the SOURCE's texels
         bool sc = src.Desc.Fmt.IsCompressed(), dc = dst.Desc.Fmt.IsCompressed();
-        if (sc != dc && (sc ? src.Desc.Fmt : dst.Desc.Fmt).BlockBytes() != TexelBytes(sc ? dst.Desc.Fmt : src.Desc.Fmt))
-            return Fault($"CopyImage {src.Desc.Label} ({src.Desc.Fmt}) to {dst.Desc.Label} ({dst.Desc.Fmt}): a block is not one texel's size");
         int dw = sc == dc ? c.W : dc ? c.W * 4 : c.W / 4, dh = sc == dc ? c.H : dc ? c.H * 4 : c.H / 4;
         if (!Inside(src, c.From, c.W, c.H, c.D, out string why)) return Fault($"CopyImage: the source block is {why} of {src.Desc.Label}");
         if (!Inside(dst, c.To, dw, dh, c.D, out why)) return Fault($"CopyImage: the destination block is {why} of {dst.Desc.Label}");
@@ -46,15 +48,13 @@ internal sealed unsafe partial class VkBackend
         return true;
     }
 
-    /// <summary>A scaled copy of <paramref name="c"/>'s source rectangle into its destination rectangle, mip 0 and
-    /// layer 0. A depth blit filters NEAREST whatever the command asked: Vulkan allows a linear filter on the colour
-    /// aspect alone.</summary>
     /// <summary><see cref="Op.ClearImage"/>: every mip and layer of a colour image zeroed.</summary>
     private bool ClearImg(ImageId i)
     {
         if (_inPass) return Fault("ClearImage inside a render pass");
         if (!_images.TryGet(i.Value, out VkImg img)) return Fault("ClearImage: stale image");
         if (Aspect(img.Desc.Fmt) != VkImageAspectFlags.Color) return Fault($"ClearImage: {img.Desc.Label} is not a colour image");
+        if (CopyMissing(img.Desc.Use, false) is { } why) return Fault($"ClearImage: {img.Desc.Label} {why} -- a clear outside a pass is a transfer");
         Transition(img, VkImageLayout.TransferDstOptimal);
         Flush();
         var zero = new VkClearColorValue();
@@ -74,10 +74,12 @@ internal sealed unsafe partial class VkBackend
         if (_inPass) return Fault("GenerateMips inside a render pass");
         if (_onAsync) return Fault("GenerateMips on the async compute queue, which cannot blit");
         if (!_images.TryGet(i.Value, out VkImg img)) return Fault("GenerateMips: stale image");
-        if (img.Desc.Mips > 1) BlitMips(img);
-        return true;
+        return img.Desc.Mips == 1 || BlitMips(img);
     }
 
+    /// <summary>A scaled copy of <paramref name="c"/>'s source rectangle into its destination rectangle, mip 0 and
+    /// layer 0. A depth blit filters NEAREST whatever the command asked: Vulkan allows a linear filter on the colour
+    /// aspect alone.</summary>
     private bool BlitImg(in BlitImageCmd c)
     {
         if (_inPass) return Fault("BlitImage inside a render pass -- a blit is not a draw, and its barriers cannot run there");
@@ -88,8 +90,14 @@ internal sealed unsafe partial class VkBackend
             return Fault($"BlitImage {src.Desc.Label} to {dst.Desc.Label}: {c.From.W}x{c.From.H} to {c.To.W}x{c.To.H}");
         if (src.Desc.Samples > 1)
             return Fault($"BlitImage: {src.Desc.Label} is multisampled, and a resolve takes vkCmdResolveImage, which is not on this backend");
+        if (CopyMissing(src.Desc.Use, true) is { } sw) return Fault($"BlitImage: {src.Desc.Label} {sw}");
+        if (CopyMissing(dst.Desc.Use, false) is { } dw) return Fault($"BlitImage: {dst.Desc.Label} {dw}");
         if (Aspect(src.Desc.Fmt) != Aspect(dst.Desc.Fmt))
             return Fault($"BlitImage {src.Desc.Label} ({src.Desc.Fmt}) to {dst.Desc.Label} ({dst.Desc.Fmt}): different aspects");
+        if (!Inside(src, new ImageRegion(0, c.From.X, c.From.Y, 0), c.From.W, c.From.H, 1, out string why))
+            return Fault($"BlitImage: the source rectangle is {why} of {src.Desc.Label}");
+        if (!Inside(dst, new ImageRegion(0, c.To.X, c.To.Y, 0), c.To.W, c.To.H, 1, out why))
+            return Fault($"BlitImage: the destination rectangle is {why} of {dst.Desc.Label}");
         Transition(src, VkImageLayout.TransferSrcOptimal);
         Transition(dst, VkImageLayout.TransferDstOptimal);
         Flush();
@@ -144,6 +152,21 @@ internal sealed unsafe partial class VkBackend
         return true;
     }
 
+    /// <summary>One texel's bytes, or one 4x4 block's for a compressed format: what a texel-for-texel copy between
+    /// two formats needs to match.</summary>
+    private static int TexelOrBlockBytes(Format f) => f.IsCompressed() ? f.BlockBytes() : TexelBytes(f);
+
+    /// <summary>Why a texel-for-texel copy between these two formats is illegal, or null where it is legal: Vulkan's
+    /// size compatibility, which asks only that one texel of each -- one 4x4 block where a format has them -- weigh
+    /// the same, and converts nothing, so two sizes need a blit.</summary>
+    private static string? CopySizeMismatch(Format src, Format dst)
+    {
+        if (TexelOrBlockBytes(src) == TexelOrBlockBytes(dst)) return null;
+        if (src.IsCompressed() != dst.IsCompressed()) return "a block is not one texel's size";
+        if (src.IsCompressed()) return "two block formats whose blocks are different sizes";
+        return "a copy converts nothing, so the two formats must be one size -- BlitImage converts";
+    }
+
     /// <summary>The copy stage's local size, as <c>cx_readback_c.glsl</c> declares it.</summary>
     private const int CopyCheckGroup = 8;
     /// <summary>The fixture's size: a 4x4 source, copied as a 2x2 block and blitted as a 2:1 reduction.</summary>
@@ -194,9 +217,48 @@ internal sealed unsafe partial class VkBackend
                 $"the 1:2 blit's first row is 1, 1, 2, 2 (got {grown[0]}, {grown[1]}, {grown[2]}, {grown[3]})");
             check.Expect(grown[n] == 1f && grown[n * 2] == 5f && grown[n * 3 + 3] == 6f,
                 $"...its second row repeats the first, and its lower half doubles 5 and 6 (got {grown[n]}, {grown[n * 2]}, {grown[n * 3 + 3]})");
+            PackedBlitCheck(check, copier, outBuf, log);
         }
         Destroy(src); Destroy(dst); Destroy(big); Destroy(outBuf); Destroy(copier);
         log.Info(check.Ok ? "VkBackend.CopyDeviceCheck: passed" : "VkBackend.CopyDeviceCheck: FAILED -- see above");
+    }
+
+    /// <summary>The 1:1 converting blit the grass ground copy makes -- half floats into three packed ones -- on this
+    /// device. Oracle: a red ramp of 1..16, a green one of 100 up and a flat blue 200, every value a step both formats
+    /// land on exactly, so red comes back unchanged and neither of the others comes back in its place.</summary>
+    private void PackedBlitCheck(Checker check, PipelineId copier, BufferId outBuf, ExtenderLog log)
+    {
+        const int n = CopyCheckSize;
+        const float green = 100f, blue = 200f;
+        ImageId wide = CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, n, n, 1, 1, 1, 1,
+                                                 ImageUse.Sampled | ImageUse.CopySrc | ImageUse.CopyDst, "copy check half source"));
+        ImageId packed = CreateImage(new ImageDesc(ImageKind.Tex2D, Format.R11G11B10F, n, n, 1, 1, 1, 1,
+                                                   ImageUse.Sampled | ImageUse.CopyDst, "copy check packed target"));
+        var texels = new Half[n * n * 4];
+        for (int i = 0; i < n * n; i++)
+        {
+            texels[i * 4] = (Half)(i + 1);
+            texels[i * 4 + 1] = (Half)(green + i);
+            texels[i * 4 + 2] = (Half)blue;
+            texels[i * 4 + 3] = (Half)1f;
+        }
+        bool made = !wide.IsNull && !packed.IsNull
+                 && Upload(wide, 0, 0, MemoryMarshal.AsBytes(texels.AsSpan()));
+        check.Expect(made, "the converting blit's half-float source and packed target exist and the ramp uploads");
+        if (made)
+        {
+            var cl = new CommandList("vk packed blit check", 1024, log);
+            var whole = new Rect(0, 0, n, n);
+            cl.BlitImage(new BlitImageCmd(wide, whole, packed, whole, Filter.Nearest));
+            var got = new float[n * n];
+            check.Expect(Submit(cl) && Read(cl, copier, packed, outBuf, n, n, got),
+                "the converting blit submits and the packed target reads back");
+            int bad = -1;
+            for (int i = 0; i < got.Length; i++) if (got[i] != i + 1) { bad = i; break; }
+            check.Expect(bad < 0, $"every packed red comes back as its 1..16 ramp (texel {bad} came back {(bad < 0 ? 0f : got[bad])}, "
+                                + $"not {bad + 1}; green was {green} up and blue {blue})");
+        }
+        Destroy(wide); Destroy(packed);
     }
 
     private ImageId Fixture(int w, int h, string label)

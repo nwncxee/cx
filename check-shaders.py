@@ -82,9 +82,15 @@ VK_BUILTINS = ((r"\bgl_DrawID\b", "gl_DrawIDARB"), (r"\bgl_BaseInstance\b", "gl_
                (r"\bgl_InstanceID\b", "(gl_InstanceIndex - gl_BaseInstanceARB)"))
 
 
-def vk_text(src):
+# The macro a block whose layout follows the device takes its qualifier from (VkGlsl.LayoutMacro).
+VK_LAYOUT_MACRO = "CX_ENGBLK"
+
+
+def vk_text(src, layout="scalar"):
     """Mirrors VkGlsl: every `sampler2D(handle)` construction as an index into the bindless sampler array, the
-    extension line that declared handles gone, and the draw and vertex built-ins in Vulkan's spellings."""
+    extension line that declared handles gone, the draw and vertex built-ins in Vulkan's spellings, and a block
+    whose layout follows the device resolved to `layout` -- scalar, as a device offering scalarBlockLayout
+    resolves it, or std140, where VkGlsl injects nothing and the text's own #ifndef answers."""
     out, at, s = [], 0, VK_BINDLESS_EXT.sub("", src)
     for m in VK_CONSTRUCT.finditer(s):
         if m.start() < at:
@@ -106,6 +112,9 @@ def vk_text(src):
         s = re.sub(pat, rep, s)
     head = ("#extension GL_EXT_nonuniform_qualifier : require\n"
             "#extension GL_ARB_shader_draw_parameters : require\n")
+    if VK_LAYOUT_MACRO in s and layout == "scalar":
+        head += ("#extension GL_EXT_scalar_block_layout : require\n"
+                 f"#define {VK_LAYOUT_MACRO} scalar\n")
     if f"{VK_BINDLESS_ARRAY}[" in s:
         head += f"layout(set = {VK_BINDLESS_SET}, binding = 0) uniform sampler2D {VK_BINDLESS_ARRAY}[];\n"
     v = s.index("#version")
@@ -631,8 +640,8 @@ def programs(g):
         "mover motion": (g["cx_motion_v"], g["cx_motion_f"]),
         "taa resolve": (g["cx_fullscreen_v"], g["cx_taa_f"]),
         "reactive mask": (g["cx_fullscreen_v"], g["cx_reactive_f"]),
-        "ssr hi-Z": (define(g["cx_ssrhiz_c"], "CX_SSR_STORAGE 1"),),
-        "ssr colour chain": (define(g["cx_ssrhiz_c"], "CX_SSR_COLOUR 1"),),
+        "mip chain (hi-Z)": (define(g["cx_spd_c"], "CX_SPD_HIZ 1"),),
+        "mip chain (colour)": (g["cx_spd_c"],),
         "ssr trace": (g["cx_fullscreen_v"], g["cx_ssrtrace_f"]),
         "ssr resolve": (g["cx_fullscreen_v"], g["cx_ssrres_f"]),
         "ssr history": (g["cx_fullscreen_v"], g["cx_ssrhist_f"]),
@@ -719,15 +728,26 @@ def check_early_z(progs):
 
 def check_program(name, stages, tmp, validate):
     """One program as Vulkan GLSL: its stages compiled to a SPIR-V module each, checked against one another as
-    one program, and every module validated. Compiling the stages together is what pairs a vertex stage's
-    outputs with the fragment stage's inputs. Returns what was refused, or None."""
-    d = os.path.join(tmp, re.sub(r"[^A-Za-z0-9_.()-]", "_", name))
+    one program, and every module validated. A program that declares the device-following block is checked under
+    BOTH layouts a device may hand it, since each is a different member arithmetic and only one runs on any one
+    machine. Returns what was refused, or None."""
+    both = any(VK_LAYOUT_MACRO in src for src in stages)
+    for layout in ("scalar", "std140") if both else ("scalar",):
+        bad = check_layout(name, stages, tmp, validate, layout)
+        if bad:
+            return f"under {layout} block layout:\n{bad}" if both else bad
+    return None
+
+
+def check_layout(name, stages, tmp, validate, layout):
+    """One program under one block layout: its stages to SPIR-V together, then each module validated."""
+    d = os.path.join(tmp, re.sub(r"[^A-Za-z0-9_.()-]", "_", name), layout)
     os.makedirs(d, exist_ok=True)
     exts = EXTS[len(stages)]
     for src, ext in zip(stages, exts):
         for tok, val in TOKENS.items():
             src = src.replace(tok, val)
-        open(os.path.join(d, f"stage.{ext}"), "w").write(vk_text(src))
+        open(os.path.join(d, f"stage.{ext}"), "w").write(vk_text(src, layout))
     # glslang names each module after its stage, so `stage.frag` compiles to `frag.spv` beside it.
     r = subprocess.run(["glslangValidator"] + VK_FLAGS + [f"stage.{e}" for e in exts],
                        cwd=d, capture_output=True, text=True)
@@ -735,8 +755,11 @@ def check_program(name, stages, tmp, validate):
         return (r.stdout + r.stderr).strip()
     if not validate:
         return None
+    # a block resolved to scalar breaks std140's "extended layout" rules on purpose, and spirv-val checks those
+    # unless told the device enables scalarBlockLayout -- which VkBackend enables wherever it resolves the macro
+    scalar = ["--scalar-block-layout"] if layout == "scalar" and any(VK_LAYOUT_MACRO in src for src in stages) else []
     for ext in exts:
-        v = subprocess.run(["spirv-val", "--target-env", VK_ENV, os.path.join(d, ext + ".spv")],
+        v = subprocess.run(["spirv-val", "--target-env", VK_ENV] + scalar + [os.path.join(d, ext + ".spv")],
                            capture_output=True, text=True)
         if v.returncode:
             return f"{ext}'s module is not valid:\n" + (v.stdout + v.stderr).strip()

@@ -451,10 +451,10 @@ internal static unsafe partial class GrassField
     }
 
     /// <summary>The scatter's terms but its pass switch (<c>uClamp</c>), into the open loose block.</summary>
-    private static void ScatterTerms(in ScatterLoc l, ReadOnlySpan<Vector4> planes, Vector3* eye, float fadeFrom, float farDist, float* pw)
+    private static void ScatterTerms(in ScatterLoc l, ReadOnlySpan<Vector4> planes, Vector3* eye, float fadeFrom, float farDist, in Vector3 pw)
     {
-        fixed (Vector4* pl = planes) LooseBlock.SetEach(l.Planes, 4, new ReadOnlySpan<float>((float*)pl, 24));
-        LooseBlock.Set(l.Eye, new ReadOnlySpan<float>((float*)eye, 3));
+        LooseBlock.SetEach(l.Planes, 4, MemoryMarshal.Cast<Vector4, float>(planes));
+        LooseBlock.Set(l.Eye, *eye);
         LooseBlock.Set(l.Lod, Grass.Lod.V, Grass.LodMin.V, Grass.LodWidth.V, Grass.LodHeight.V);
         LooseBlock.Set(l.Fade, fadeFrom, farDist);
         LooseBlock.Set(l.SnowThin, SnowThinShare(Weather.Snow, Weather.CurrentKind == Weather.Kind.Snow ? Weather.Density : 0f));
@@ -462,7 +462,7 @@ internal static unsafe partial class GrassField
         LooseBlock.Set(l.Clump, ClumpCell, Grass.Clump.V);
         LooseBlock.Set(l.CardKeep, 1f / MathF.Max(BladeMul, 1f));
         LooseBlock.Set(l.BladeCap, _bladeNear, _bladeFar);
-        LooseBlock.Set(l.PushWindow, new ReadOnlySpan<float>(pw, 3));
+        LooseBlock.Set(l.PushWindow, pw);
     }
 
     /// <summary>World size of a clump cell: procedural blades inside one share a lean and a height.</summary>
@@ -478,7 +478,7 @@ internal static unsafe partial class GrassField
     /// <summary>Everything a colour program reads beyond the shared terms: the light rig, the sun cascades,
     /// the local cubes, the ground copy.</summary>
     private static void ColourUniforms(in Loc loc, in AlloyRenderer.FeatLoc feat, Matrix4x4* vp, Vector3* eye,
-                                       float nearDist, float farDist, float* pw, int* viewport, float near, float far,
+                                       float nearDist, float farDist, in Vector3 pw, int* viewport, float near, float far,
                                        bool lightingOn, bool ground)
     {
         SharedUniforms(in loc, in feat, vp, eye, nearDist, farDist, false, pw, viewport, vlit: Grass.VLight.V && lightingOn);
@@ -502,9 +502,9 @@ internal static unsafe partial class GrassField
 
     /// <summary>The uniforms both grass programs read: camera, ladder, fade, wind, push map, feature terms.</summary>
     private static void SharedUniforms(in Loc loc, in AlloyRenderer.FeatLoc feat, Matrix4x4* vp, Vector3* eye,
-                                       float nearDist, float farDist, bool msaa, float* pw, int* viewport, bool vlit)
+                                       float nearDist, float farDist, bool msaa, in Vector3 pw, int* viewport, bool vlit)
     {
-        LooseBlock.Set(loc.Vp, new ReadOnlySpan<float>((float*)vp, 16));
+        LooseBlock.Set(loc.Vp, *vp);
         LooseBlock.Set(loc.Tuft, (float)Grass.Tuft.V);   // a float member: the int knob must not land as its bit pattern
         LooseBlock.Set(loc.Width, Grass.Width.V);
         LooseBlock.Set(loc.VLit, vlit ? 1 : 0);   // the depth program never lights: its vertex stage skips the rig
@@ -512,7 +512,7 @@ internal static unsafe partial class GrassField
         LooseBlock.Set(loc.CastWidth, Grass.CastWidth.V);
         // the snow on the ground (Weather's integrator) thins the field by rank and winters the survivors
         LooseBlock.Set(loc.Snow, SnowThinShare(Weather.Snow, Weather.CurrentKind == Weather.Kind.Snow ? Weather.Density : 0f), Weather.Snow * Grass.SnowLook.V);
-        LooseBlock.Set(loc.Eye, new ReadOnlySpan<float>((float*)eye, 3));
+        LooseBlock.Set(loc.Eye, *eye);
         LooseBlock.Set(loc.Fade, nearDist, farDist);
         LooseBlock.Set(loc.Frame, PostChain.TaaOn ? AlloyRenderer.FrameSeq & 63 : 0);
         LooseBlock.Set(loc.Lod, Grass.Lod.V, Grass.LodMin.V, Grass.LodWidth.V, Grass.LodHeight.V);
@@ -523,7 +523,7 @@ internal static unsafe partial class GrassField
         LooseBlock.Set(loc.Edge, MathF.Max(Grass.Edge.V, 0.01f));
         LooseBlock.Set(loc.PushTex, (int)PushUnit);
         LooseBlock.Set(loc.PushGain, Grass.Push.V);
-        LooseBlock.Set(loc.PushWindow, new ReadOnlySpan<float>(pw, 3));
+        LooseBlock.Set(loc.PushWindow, pw);
         AlloyRenderer.UploadFeatureTerms(feat, viewport);
     }
 

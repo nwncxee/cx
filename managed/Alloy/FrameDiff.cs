@@ -112,7 +112,7 @@ public sealed unsafe partial class AlloyRenderer
         P($"fi.fog={FrameInputs.FogOn} start={FrameInputs.FogStart:F3} end={FrameInputs.FogEnd:F3} col={F3(FrameInputs.FogColor)}");
         P($"fi.interior={FrameInputs.Interior} focus={F3(FrameInputs.Focus)} has={FrameInputs.HasFocus}");
         P("follow." + DbFollowDump());
-        ref Target t = ref _passTarget;
+        ref Target t = ref _tgt.Pass;
         P($"target.clear={t.Clear0:F4},{t.Clear1:F4},{t.Clear2:F4},{t.Clear3:F4} srgb={t.Srgb}");
         P($"target.vp={t.Vp0},{t.Vp1},{t.Vp2},{t.Vp3}");
 

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using CX.Framework;
+using CX.Graphics.Rhi;
 
 namespace CX.Alloy;
 
@@ -50,7 +51,10 @@ internal static class UboSlots
         ["CxGather"] = (Gather, ["cx_gatherblk.glsl", "CasterGather.GatherCs", "CasterGather.LayerCs"]),
     };
 
-    private static readonly Regex Decl = new(@"layout\(std140,\s*binding\s*=\s*(\d+)\)\s*uniform\s+(\w+)");
+    /// <summary>A uniform block's declaration: std140, scalar block layout, or the macro a block whose layout
+    /// follows the device takes its qualifier from.</summary>
+    private static readonly Regex Decl =
+        new(@"layout\((?:std140|scalar|" + VkGlsl.LayoutMacro + @"),\s*binding\s*=\s*(\d+)\)\s*uniform\s+(\w+)");
 
     /// <summary>Oracle: the GLSL text itself -- every embedded stage and library with its includes spliced,
     /// plus the stages composed in C#. Each declaration is under the budget, at its table point, and alone on
@@ -89,7 +93,7 @@ internal static class UboSlots
         foreach ((string block, (uint _, string[] texts)) in Blocks)
             foreach (string text in texts)
                 check.Expect(declared.Contains((block, text)), $"UboSlots lists {text} for {block}, which no longer declares it");
-        EngineBlock.Pin(check);
+        EngineBlockPacked.Pin(check);
         CullBlock.Pin(check);
         DeferredBlock.Pin(check);
         SsaoBlock.Pin(check);

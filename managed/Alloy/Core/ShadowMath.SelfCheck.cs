@@ -156,7 +156,7 @@ public static partial class ShadowMath
 
         // #488: the receiver cull. Camera at the origin looking +X, 90deg fov, square, far 100: the
         // frustum is |y|,|z| <= x. Sun straight down (-Z).
-        Span<float> pl = stackalloc float[24];
+        Span<CullPlane> pl = stackalloc CullPlane[6];
         ReceiverPlanes(Vector3.Zero, Vector3.UnitX, 90f, 1f, 0.1f, 100f, 0f, pl);
         Vector3 down = new(0f, 0f, -1f);
         check.Expect(ShadowReaches(pl, new Vector3(50f, 0f, 0f), 1f, new Vector3(50f, 0f, 0f), 1f), "receiver: a caster inside the frustum reaches");

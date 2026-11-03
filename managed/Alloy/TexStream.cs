@@ -331,13 +331,14 @@ internal static unsafe class TexStream
     internal static bool SelfCheck(ExtenderLog log)
     {
         const int n = 6, obj = 256;   // stand-in objects, past every CAurTextureBasic field read
-        byte* texs = (byte*)NativeMemory.AllocZeroed(n * obj);
+        var texs = default(NativeBuffer<byte>);
+        texs.Take(n * obj);
         IntPtr* items = stackalloc IntPtr[8];
         byte* head = stackalloc byte[16];
         IntPtr* built = stackalloc IntPtr[8];
         IntPtr T(int i)   // the queue array is rewritten in place, so compare against these
         {
-            fixed (byte* p = new Span<byte>(texs, n * obj).Slice(i * obj, obj)) return (IntPtr)p;
+            fixed (byte* p = texs.Span.Slice(i * obj, obj)) return (IntPtr)p;
         }
         for (int i = 0; i < n; i++) { items[i] = T(i); *(byte*)T(i) = (byte)(i == 1 || i == 5 ? 0 : 1); }   // byte 0 = world
         new CAurTextureBasic(T(3)).FlagNoDrain = 1;
@@ -353,7 +354,7 @@ internal static unsafe class TexStream
         got = Drain(_fakeQ, 0, &FakeClock, &FakeWorld, &FakeBuild, &FakeEngineDrain, hold);
         ok &= got == 1 && _fakeBuiltN == 1 && built[0] == T(0) && _fakeQ.Count == 0;
         log.Info(ok ? "TexStream.SelfCheck: passed" : "TexStream.SelfCheck: FAILED");
-        NativeMemory.Free(texs);
+        texs.Free();
         _fakeQ = default;
         return ok;
     }

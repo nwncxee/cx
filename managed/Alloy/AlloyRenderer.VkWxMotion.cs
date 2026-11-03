@@ -89,7 +89,7 @@ public sealed unsafe partial class AlloyRenderer
             var d = new PipelineDesc
             {
                 Vs = p.Vs, Fs = p.Fs, Topo = Topology.TriangleStrip, Raster = new RasterState(CullMode.None),
-                Depth = new DepthState(true, false, WorldDepth.NearerOrEqual), Label = "vk weather velocity",
+                Depth = VkWxDepth, Label = "vk weather velocity",
             };
             d.Targets.ColorCount = 1;
             d.Targets.Colors[0] = Format.Rg16F;

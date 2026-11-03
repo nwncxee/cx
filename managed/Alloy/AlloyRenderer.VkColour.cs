@@ -84,9 +84,9 @@ public sealed unsafe partial class AlloyRenderer
         /// <summary>The prepass depth as a SAMPLED copy: the colour pass's draws cannot sample their own depth
         /// attachment, and the lit stage tests every AO fetch against the depth the estimate was computed from.</summary>
         public ImageId DepthRead;
-        /// <summary>A copy into <see cref="DepthRead"/> has been recorded since it was made: until then it holds
-        /// nothing, and a stage that declares it gets the stand-in.</summary>
-        public bool DepthFilled;
+        /// <summary>What has been copied into <see cref="DepthRead"/> and whether it still speaks for
+        /// <see cref="Depth"/>.</summary>
+        public readonly DepthSnapshot Snapshot = new();
         public int W, H;
         public BufferId Records, Slots, Bones, TexH, Arena, ZeroUbo, ZeroSsbo, Plt;
         public long RecCap, SlotCap, BoneCap, TexHCap, PltCap;
@@ -94,7 +94,7 @@ public sealed unsafe partial class AlloyRenderer
         public long PltSends = -1, PaletteSends = -1;
         public ImageId Palette;
         /// <summary>Record slots moved since the last upload; <see cref="DirtyAll"/> when the list overflowed.</summary>
-        public int[] Dirty = new int[1024];
+        public int[] Dirty = new int[VkHandoverSeats];
         public int DirtyN;
         public bool DirtyAll = true;
         public uint[] TexHTable = [];
@@ -131,6 +131,11 @@ public sealed unsafe partial class AlloyRenderer
 
     private static VkColourState _vkc = new();
 
+    /// <summary>Slots the hand-over list seats between one pass's staging and the Vulkan frame's upload. Past
+    /// it the frame sends the table whole, so it is sized for the movers a crowded area stages, not the few a
+    /// quiet one does.</summary>
+    internal const int VkHandoverSeats = 1024;
+
     /// <summary>The Vulkan frame's scene depth, which CX's windows test their world anchors against; null id before one.</summary>
     internal static ImageId VkSceneDepth => _vkc.Depth;
 
@@ -164,8 +169,13 @@ public sealed unsafe partial class AlloyRenderer
     internal static void VkNoteDirty(int[] dirty, int n, bool whole)
     {
         VkColourState s = _vkc;
+        RecordUploads.NoteMarks(n);
         if (s.DirtyAll) return;
-        if (whole || s.DirtyN + n > s.Dirty.Length) { s.DirtyAll = true; s.DirtyN = 0; return; }
+        if (whole || s.DirtyN + n > s.Dirty.Length)
+        {
+            if (!whole) RecordUploads.Claim(RecordWhole.Handover);
+            s.DirtyAll = true; s.DirtyN = 0; return;
+        }
         Array.Copy(dirty, 0, s.Dirty, s.DirtyN, n);
         s.DirtyN += n;
     }
@@ -183,8 +193,8 @@ public sealed unsafe partial class AlloyRenderer
             vk.Destroy(s.Hdr); vk.Destroy(s.Depth); vk.Destroy(s.G0); vk.Destroy(s.G1); vk.Destroy(s.G2); vk.Destroy(s.G3);
             vk.Destroy(s.DepthRead);
             // the deferred dispatch loads and stores the scene colour as an image, so it is a storage image too
-            s.Hdr = VkTarget(vk, Format.Rgba16F, w, h, "vk scene colour", ImageUse.Storage);
-            s.Depth = VkTarget(vk, Format.D32F, w, h, "vk scene depth");
+            s.Hdr = VkTarget(vk, Format.Rgba16F, w, h, "vk scene colour", ImageUse.Storage | ImageUse.CopySrc);
+            s.Depth = VkTarget(vk, Format.D32F, w, h, "vk scene depth", ImageUse.CopySrc);
             s.G0 = VkTarget(vk, Format.Rgba32Ui, w, h, "vk g-buffer 0", alias: AliasLanes.Wide);
             s.G1 = VkTarget(vk, Format.Rgba32Ui, w, h, "vk g-buffer 1", alias: AliasLanes.Second);
             s.G2 = VkTarget(vk, Format.Rg32Ui, w, h, "vk g-buffer 2", alias: AliasLanes.Narrow);
@@ -192,7 +202,7 @@ public sealed unsafe partial class AlloyRenderer
             s.DepthRead = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.D32F, w, h, 1, 1, 1, 1,
                                                        ImageUse.Sampled | ImageUse.CopyDst, "vk scene depth copy"));
             s.W = w; s.H = h;
-            s.DepthFilled = false;
+            s.Snapshot.Remade();
             if (s.Hdr.IsNull || s.Depth.IsNull || s.G0.IsNull || s.G1.IsNull || s.G2.IsNull || s.G3.IsNull || s.DepthRead.IsNull)
             {
                 s.Failed = true;
@@ -203,19 +213,17 @@ public sealed unsafe partial class AlloyRenderer
         return true;
     }
 
-    /// <summary>The scene depth as it stands into <see cref="VkColourState.DepthRead"/>, outside any pass.</summary>
+    /// <summary>The scene depth as it stands into <see cref="VkColourState.DepthRead"/>, outside any pass. Nothing
+    /// when no pass has written depth since the last one: the snapshot there already IS that depth.</summary>
     private static void VkCopyDepth(CommandList cl, VkColourState s)
-    {
-        cl.CopyImage(new CopyImageCmd(s.Depth, new ImageRegion(0, 0, 0, 0), s.DepthRead, new ImageRegion(0, 0, 0, 0), s.W, s.H, 1));
-        s.DepthFilled = true;
-    }
+        => s.Snapshot.Take(cl, s.Depth, s.DepthRead, s.W, s.H);
 
-    /// <summary>A scene target: sampled by the passes after it, and a copy source -- the depth's readable copy is
-    /// taken from the attachment itself.</summary>
+    /// <summary>A scene target: sampled by the passes after it, and nothing else unless <paramref name="extra"/>
+    /// says so -- a copy flag the target does not need costs it the device's framebuffer compression.</summary>
     private static ImageId VkTarget(VkBackend vk, Format f, int w, int h, string label, ImageUse extra = ImageUse.None, string? alias = null)
         => vk.CreateImage(new ImageDesc(ImageKind.Tex2D, f, w, h, 1, 1, 1, 1,
                                         (f.IsDepth() ? ImageUse.DepthTarget : ImageUse.ColorTarget)
-                                        | ImageUse.Sampled | ImageUse.CopySrc | extra, label, alias));
+                                        | ImageUse.Sampled | extra, label, alias));
 
     /// <summary>Everything that does not follow the render size: the programs, the layouts, the stand-ins, the arena.</summary>
     private static bool VkMakeStatic(VkBackend vk, VkColourState s, ExtenderLog log)
@@ -373,43 +381,40 @@ public sealed unsafe partial class AlloyRenderer
         LooseBlock.Capture(p.Members, p.Block);
         try
         {
-            fixed (Matrix4x4* m = &vp)
+            if (p.Id == VkPrograms.Id.Water) VkWaterTerms(p, in vp, viewport, near, far);
+            else if (lit)
             {
-                if (p.Id == VkPrograms.Id.Water) VkWaterTerms(p, in vp, viewport, near, far);
-                else if (lit)
-                {
-                    ref LitLoc L = ref p.L;
-                    LooseBlock.Set(L.Vp, new ReadOnlySpan<float>(m, 16));
-                    LooseBlock.Set(L.Viz, viz);
-                    LooseBlock.Set(L.AoCutout, Ao.Cutout.V);
-                    LooseBlock.Set(L.SsaoHalf, SsaoPassVk.Half ? 1 : 0);
-                    LooseBlock.Set(L.AlphaMip, Renderer.CutMip.V);
-                    LooseBlock.Set(L.MirrorZ, _mirrorZ);
-                    LooseBlock.Set(L.LightRecOn, s.LightRec ? 1 : 0);
-                    LooseBlock.Set(L.Oit, s.Oit ? 1 : 0);
-                    LooseBlock.Set(L.Capture, _capturing ? _planar ? 2 : 1 : 0);
-                    UploadFeatureTerms(L.Feat, viewport);
-                    BindPass(L.CubeCount, viewport, near, far);
-                    LooseBlock.Set(L.DecalZ, [DecalLayer.Z0, DecalLayer.Z1]);
-                    LooseBlock.Set(L.LightOcc, [Lighting.HiddenLights.V ? 1f : 0f, GlossyRough]);
-                    UploadMaterialModel(L.Material);
-                    bool wxOff = _capturing;
-                    Weather.UploadLit(L.Weather, L.WeatherLook, L.CoverVp, L.CoverLayer, L.SnowLook, L.SnowLight, L.SnowPom, L.WxEdge, L.WxRun, L.WxCache, wxOff);
-                    Weather.BindEsm(L.CoverEsm, s.Oit);
-                    Weather.UploadMap(L.WxMapXf, L.WxMapP, wxOff);
-                    SkyView.UploadLitVk(L.SkyVp, L.SkyTerm, VkSkyMap, _capturing && !_planar);
-                    LooseBlock.Set(L.LmPages, LightmapBake.VkLivePages);
-                    LooseBlock.Set(L.LmMovers, LightmapBake.MoverMode);
-                }
-                else
-                {
-                    LooseBlock.Set(p.Vp, new ReadOnlySpan<float>(m, 16));
-                    LooseBlock.Set(p.AlphaMip, Renderer.CutMip.V);
-                    LooseBlock.Set(p.Viz, viz);
-                    LooseBlock.Set(p.Tint, [1f, 1f, 1f]);
-                    LooseBlock.Set(p.Oit, s.Oit ? 1 : 0);
-                    UploadFeatureTerms(p.F, viewport);
-                }
+                ref LitLoc L = ref p.L;
+                LooseBlock.Set(L.Vp, vp);
+                LooseBlock.Set(L.Viz, viz);
+                LooseBlock.Set(L.AoCutout, Ao.Cutout.V);
+                LooseBlock.Set(L.SsaoHalf, SsaoPassVk.Half ? 1 : 0);
+                LooseBlock.Set(L.AlphaMip, Renderer.CutMip.V);
+                LooseBlock.Set(L.MirrorZ, _mirrorZ);
+                LooseBlock.Set(L.LightRecOn, s.LightRec ? 1 : 0);
+                LooseBlock.Set(L.Oit, s.Oit ? 1 : 0);
+                LooseBlock.Set(L.Capture, _capturing ? _planar ? 2 : 1 : 0);
+                UploadFeatureTerms(L.Feat, viewport);
+                BindPass(L.CubeCount, viewport, near, far);
+                LooseBlock.Set(L.DecalZ, [DecalLayer.Z0, DecalLayer.Z1]);
+                LooseBlock.Set(L.LightOcc, [Lighting.HiddenLights.V ? 1f : 0f, GlossyRough]);
+                UploadMaterialModel(L.Material);
+                bool wxOff = _capturing;
+                Weather.UploadLit(L.Weather, L.WeatherLook, L.CoverVp, L.CoverLayer, L.SnowLook, L.SnowLight, L.SnowPom, L.WxEdge, L.WxRun, L.WxCache, wxOff);
+                Weather.BindEsm(L.CoverEsm, s.Oit);
+                Weather.UploadMap(L.WxMapXf, L.WxMapP, wxOff);
+                SkyView.UploadLitVk(L.SkyVp, L.SkyTerm, VkSkyMap, _capturing && !_planar);
+                LooseBlock.Set(L.LmPages, LightmapBake.VkLivePages);
+                LooseBlock.Set(L.LmMovers, LightmapBake.MoverMode);
+            }
+            else
+            {
+                LooseBlock.Set(p.Vp, vp);
+                LooseBlock.Set(p.AlphaMip, Renderer.CutMip.V);
+                LooseBlock.Set(p.Viz, viz);
+                LooseBlock.Set(p.Tint, [1f, 1f, 1f]);
+                LooseBlock.Set(p.Oit, s.Oit ? 1 : 0);
+                UploadFeatureTerms(p.F, viewport);
             }
             VkStageFrame(p);
         }
@@ -432,11 +437,11 @@ public sealed unsafe partial class AlloyRenderer
     {
         VkColourState s = _vkc;
         if (s.EngineAt != -1) return s.EngineAt;
-        EngineBlock b = EngineBlockStaged();
-        ulong h = (ulong)b.Noise.Y << 32 | b.Noise.X;
-        b.Noise = new UInt2(h != 0 ? VkTextures.IndexOfHandle(h) : 0u, 0u);
-        if (b.Noise.X == 0) b.Noise.X = s.NullIndex;
-        int at = VkArena(MemoryMarshal.AsBytes(new ReadOnlySpan<EngineBlock>(in b)));
+        EngineBlockPacked b = EngineBlockStaged();
+        ulong h = (ulong)b.Tail.Noise.Y << 32 | b.Tail.Noise.X;
+        b.Tail.Noise = new UInt2(h != 0 ? VkTextures.IndexOfHandle(h) : 0u, 0u);
+        if (b.Tail.Noise.X == 0) b.Tail.Noise.X = s.NullIndex;
+        int at = VkArena(EngineBlockBytes(in b));
         // a full arena is remembered for the frame (-2), so no later batch stages the block again
         s.EngineAt = at >= 0 ? at : -2;
         return at;
@@ -523,8 +528,8 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The pass block <see cref="BindPass"/> just staged, into the arena with the probe as Vulkan has it.</summary>
     private static int VkArenaPass()
     {
-        if (_passStage == null) return -1;
-        int at = VkArena(new ReadOnlySpan<byte>(_passStage, PassBytes));
+        if (PassStaged.IsEmpty) return -1;
+        int at = VkArena(PassStaged);
         // the probe as Vulkan holds it, 0 mips for none, in place of GL's cube
         if (at >= 0) MemoryMarshal.Write(_vkc.ArenaBytes.AsSpan(at + PbProbeMips, sizeof(float)), VkProbeMips);
         return at;
@@ -559,7 +564,7 @@ public sealed unsafe partial class AlloyRenderer
                     ubo[nu++] = VkProbeSh(o.Binding) is { } sh ? sh
                               : o.Binding == UboSlots.Loose && loose >= 0 ? new BufferBinding(o.Binding, s.Arena, loose, p.Block.Length)
                               : o.Binding == UboSlots.Pass && pass >= 0 ? new BufferBinding(o.Binding, s.Arena, pass, PassBytes)
-                              : engine >= 0 ? new BufferBinding(o.Binding, s.Arena, engine, sizeof(EngineBlock))
+                              : engine >= 0 ? new BufferBinding(o.Binding, s.Arena, engine, EngineBytes)
                               : new BufferBinding(o.Binding, s.ZeroUbo);
                     break;
                 case VkBindKind.StorageBlock when Bound(storage, o.Binding) is { } own:
@@ -633,7 +638,7 @@ public sealed unsafe partial class AlloyRenderer
         if (VkWxSampled(o.Name, out ImageId wx, out SamplerId wxs)) return new ImageBinding(o.Binding, wx, wxs);
         if (VkIsWaterTex(o.Name) && VkWaterTex(o.Name) is { IsNull: false } wat)
             return new ImageBinding(o.Binding, wat, VkWaterSampler(o.Name));
-        if (o.Name == "uSceneDepth" && s.DepthFilled) return new ImageBinding(o.Binding, s.DepthRead);
+        if (o.Name == "uSceneDepth" && s.Snapshot.Filled) return new ImageBinding(o.Binding, s.DepthRead);
         if (o.Name == "uWxStand" && !s.G3.IsNull && s.GbufWritten) return new ImageBinding(o.Binding, s.G3, s.Raw);
         return VkStandInOf(in o, s);
     }

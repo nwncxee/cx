@@ -17,6 +17,17 @@ internal sealed unsafe partial class VkBackend
         }
     }
 
+    /// <summary>The device has a lazily allocated memory type, so an <see cref="CX.Rhi.ImageUse.Transient"/> target can
+    /// be backed by none; false on a desktop GPU, where such a target takes ordinary device memory.</summary>
+    private bool HasLazyMemory()
+    {
+        VkPhysicalDeviceMemoryProperties mp;
+        _vki.vkGetPhysicalDeviceMemoryProperties(_phys, &mp);
+        for (int i = 0; i < mp.memoryTypeCount; i++)
+            if ((mp.memoryTypes[i].propertyFlags & VkMemoryPropertyFlags.LazilyAllocated) != 0) return true;
+        return false;
+    }
+
     /// <summary>The refusals this device has logged or counted.</summary>
     internal int Faults => _faults;
 

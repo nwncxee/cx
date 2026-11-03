@@ -229,6 +229,12 @@ With `--cfg alloy.enabled=0` the window draws as stock.
 loads it into the client and prints GPU milliseconds per debug label over the last 1000 presents: median, p90, mean and
 max, as a tree. This is the standard measurement for GPU work; compare two runs that both used it.
 
+The one quicksave the harness carries is the Waterdeep docks, so a class that area has none of reads 0.000 ms there.
+`perf-save.sh --showcase NAME` measures a scenario's own scene instead of a save: it hosts
+`tools/live/showcase/NAME.{nss,policy}`, whose script puts the PC where it wants and settles the scene, then soaks
+and reports the same way. `perf-grass` is that scene for the grass class -- the module's first outdoor area, which
+the stock content lays on a tileset that declares grass, at noon under clear weather with the camera snapped.
+
 The layer writes a timestamp at every label begin and end on live frames and reads them back when the client re-records
 that command buffer, so nothing is replayed and nothing stalls. A label's time is end minus begin, so siblings split
 their parent; `(gaps)` is the parent's time no child label claims, and a large one means a pass is missing a label.

@@ -243,3 +243,5 @@ post\.taa\b	CX-394
 \bweather\.range\b	CX-429
 # CX-456: a rain drop is a water bead now, sized by its own diameter and weather.blur; nothing reads a streak length.
 weather\.streak\b|Rain streak length|Streaks and flakes|each streak	CX-456
+# The mip chains are one single-pass downsampler (cx_spd_c), not a dispatch per level off the hi-Z stage.
+\bcx_ssrhiz_c\b|CX_SSR_STORAGE|CX_SSR_COLOUR	CX-419

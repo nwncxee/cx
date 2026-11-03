@@ -96,6 +96,10 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The first record the roof drips take: past the most the fall can keep.</summary>
     private const int VkWxDripBase = VkWxRecCap;
 
+    /// <summary>Every precipitation pipeline's depth: tested against the scene's target, never written. The pass
+    /// hands <see cref="DepthState.Write"/> to the flush, so this is the one place it is decided.</summary>
+    private static readonly DepthState VkWxDepth = new(true, false, WorldDepth.NearerOrEqual);
+
     private static VkWxState _vkWx = new();
 
     /// <summary>The precipitation into <paramref name="cl"/> as its own pass; false only when the arena is full.</summary>
@@ -141,7 +145,8 @@ public sealed unsafe partial class AlloyRenderer
         s.Splashed = splash;
         if (!late && splash && !VkSplashDraw(side, s, c, view, proj, viewport, near, far, lit, s.Pipe[VkSplashProg], false)) return false;
         ReadOnlySpan<ColorAttachment> colors = [new(c.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default)];
-        VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear)));
+        VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear)),
+                    writesDepth: VkWxDepth.Write);
         if ((fall || drip) && VkWxPathLine(s, vk, mesh ? Weather.WxPath.Mesh : Weather.WxPath.Compute) is { } said)
             log.Always($"{said} -- the {(snow ? "snow" : "rain")} is LIVE, {count} lattice point(s) and {drips} drip(s)");
         return true;
@@ -375,7 +380,7 @@ public sealed unsafe partial class AlloyRenderer
         {
             Vs = p.Vs, Fs = p.Fs, Topo = Topology.TriangleStrip, Raster = new RasterState(CullMode.None), Label = label,
         };
-        if (depth) d.Depth = new DepthState(true, false, WorldDepth.NearerOrEqual);
+        if (depth) d.Depth = VkWxDepth;
         d.Targets.ColorCount = 1;
         d.Targets.Colors[0] = Format.Rgba16F;
         if (depth) d.Targets.Depth = Format.D32F;

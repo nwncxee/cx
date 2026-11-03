@@ -81,7 +81,7 @@ public sealed unsafe partial class AlloyRenderer
         // Checked BEFORE anything stamps OwnGen: BuildBatches marks parts as drawn, which is only honest while
         // the issue phase cannot fail. Missing entry points are the one way it could.
         // #257: LatchFrameTarget read this from the engine's own state before the view's bracket opened.
-        ref Target t = ref _target;
+        ref Target t = ref _tgt.Frame;
         HoldPassTarget(in t);   // #375: the ONE read per pass; the post stack rebinds from this copy
         // #391: TWO viewports. `display` is the engine's -- where the resolve and the post stack go, and what
         // the 2D UI draws at. `viewport` is the RENDER one every owned pass sizes from: the display scaled by

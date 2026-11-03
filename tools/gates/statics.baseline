@@ -1,13 +1,10 @@
 10 managed/Alloy/AlloyRenderer.Batches.cs
-22 managed/Alloy/AlloyRenderer.Bench.cs
 4 managed/Alloy/AlloyRenderer.Bones.cs
 29 managed/Alloy/AlloyRenderer.cs
-3 managed/Alloy/AlloyRenderer.Device.cs
 7 managed/Alloy/AlloyRenderer.Frame.cs
 74 managed/Alloy/AlloyRenderer.Metrics.cs
 10 managed/Alloy/AlloyRenderer.Motion.cs
-7 managed/Alloy/AlloyRenderer.Target.cs
-11 managed/Alloy/AlloyRenderer.Uniforms.cs
+8 managed/Alloy/AlloyRenderer.Uniforms.cs
 9 managed/Alloy/Core/AlloyGate.cs
 2 managed/Alloy/Core/AurXform.cs
 9 managed/Alloy/Core/StagePool.cs
@@ -79,7 +76,7 @@
 4 managed/Alloy/DdsReader.Formats.cs
 12 managed/Alloy/DebugStringService.cs
 2 managed/Alloy/FrameDiff.cs
-2 managed/Alloy/Highlight.cs
+1 managed/Alloy/Highlight.cs
 5 managed/Alloy/MaterialExtraSlots.cs
 1 managed/Alloy/Mdl/MdlBinaryPayload.cs
 2 managed/Alloy/Mdl/MdlParser.cs
@@ -143,7 +140,7 @@
 23 managed/Alloy/Pass/NuiFlush.cs
 17 managed/Alloy/Pass/PairShadows.cs
 37 managed/Alloy/Pass/Particles.cs
-7 managed/Alloy/Pass/PostChain.cs
+6 managed/Alloy/Pass/PostChain.cs
 8 managed/Alloy/Pass/PostStack.cs
 4 managed/Alloy/Pass/SceneFog.cs
 1 managed/Alloy/Pass/SkyBox.cs
@@ -164,7 +161,6 @@
 11 managed/Alloy/Pass/Weather.Tracks.cs
 6 managed/Alloy/Pass/Weather.WetStep.cs
 1 managed/Alloy/PresentTarget.cs
-4 managed/Alloy/Programs.cs
 16 managed/Alloy/RasterReader.cs
 9 managed/Alloy/RasterReader.Forced.cs
 2 managed/Alloy/ResLocate.cs

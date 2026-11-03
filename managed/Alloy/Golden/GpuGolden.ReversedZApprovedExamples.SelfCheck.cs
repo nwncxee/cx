@@ -94,9 +94,13 @@ internal static partial class GpuGolden
         log.Info($"GpuGolden: E3 depth decode {got[0]}/{got[1]}/{got[2]} m, sky {got[3]} m");
     }
 
+    /// <summary>The hak quad's place in E4's draw, and the frame counter staged in the engine block's tail, which is
+    /// where that quad takes its id from: a tail read at the other layout's offset shows as a wrong id.</summary>
+    private const int ZHakQuad = 2;
+
     /// <summary>E4: a world wall at 30 m, then a hak's quad over the right half at 29.5 m projected by <c>m_proj</c> out
-    /// of the engine block a content stage reads, filled as the frame fills it; the hak quad covers columns 32 to 63
-    /// exactly and stands in front.</summary>
+    /// of the engine block a content stage reads, filled and staged as the frame does it; the hak quad covers columns 32
+    /// to 63 exactly, stands in front, and carries the id its <c>sceneCurrentFrame</c> holds.</summary>
     private static void ZHakCase(VkBackend vk, Checker check, ExtenderLog log, Matrix4x4 proj)
     {
         // Given that hak loaded and a placeable using the shader
@@ -108,8 +112,9 @@ internal static partial class GpuGolden
         int wrong = 0;
         for (int y = 0; y < ZSide; y++)
             for (int x = 0; x < ZSide; x++)
-                if (px[(y * ZSide + x) * 2] != (x < ZSide / 2 ? 1f : 2f)) wrong++;
-        check.Expect(wrong == 0, $"E4: {wrong} pixels are not the hak quad right of column 32 and the wall left of it");
+                if (px[(y * ZSide + x) * 2] != (x < ZSide / 2 ? 1f : ZHakQuad)) wrong++;
+        check.Expect(wrong == 0, $"E4: {wrong} pixels are not the hak quad right of column 32 (its id read out of the "
+                               + "engine block's tail) and the wall left of it");
     }
 
     /// <summary>E5: the GUI's and the casters' stages keep GL's window depth: clip z 0.5 and -0.5 at w 1 land at 0.75
@@ -144,9 +149,9 @@ internal static partial class GpuGolden
     private const string ZFs = Version + "flat in float vId;\nout vec2 cxOut;\nvoid main() { cxOut = vec2(vId, gl_FragCoord.z); }\n";
 
     /// <summary><paramref name="quads"/> in view space through <paramref name="proj"/>, as a world program draws them:
-    /// translated as the world's are, under the world's depth clear and test. With <paramref name="hak"/> every quad past
-    /// the first projects by the engine block's <c>m_proj</c>, as a hak's stage does; with <paramref name="sky"/> the last
-    /// draws as the sky pass draws its dome. Every pixel's id and depth, or null.</summary>
+    /// translated as the world's are, under the world's depth clear and test. With <paramref name="hak"/> a quad past the
+    /// first projects by the engine block's <c>m_proj</c> and quad <see cref="ZHakQuad"/> takes its id from the block's
+    /// tail, as a hak's stage reads them; with <paramref name="sky"/> the last draws as the sky pass does. Ids and depths.</summary>
     private static float[]? ZDraw(VkBackend vk, ExtenderLog log, ZQuad[] quads, in Matrix4x4 proj, string label, bool hak = false, bool sky = false)
     {
         var at = new List<string>();
@@ -154,31 +159,48 @@ internal static partial class GpuGolden
             foreach ((double x, double y) in (ReadOnlySpan<(double, double)>)[(z.X0, z.Y0), (z.X1, z.Y0), (z.X1, 1), (z.X0, z.Y0), (z.X1, 1), (z.X0, 1)])
                 at.Add($"vec3({G(x * z.Dist / proj.M11)}, {G(y * z.Dist / proj.M22)}, {G(-z.Dist)})");
         string by = hak ? "(vId > 1.5 ? m_proj : cxM)" : "cxM";
+        // the hak quad's id comes out of the block's TAIL, past all five wind lanes, so a member the staging struct
+        // and the compiled stage disagree on fails the golden rather than reading past uEngProj at offset 0
+        string id = hak ? $"(q == {ZHakQuad - 1} ? float(sceneCurrentFrame) : float(q + 1))" : "float(q + 1)";
         string vs = Version + (hak ? ShaderSource.Get("cx_envblk.glsl") + "\n" : "")
                   + $"const vec3 cxPos[{at.Count}] = vec3[]({string.Join(", ", at)});\nconst mat4 cxM = {Mat(proj)};\n"
-                  + $"flat out float vId;\nvoid main() {{ vId = float(gl_VertexID / 6 + 1); gl_Position = {by} * vec4(cxPos[gl_VertexID], 1.0); }}\n";
+                  + $"flat out float vId;\nvoid main() {{ int q = gl_VertexID / 6; vId = {id};"
+                  + $" gl_Position = {by} * vec4(cxPos[gl_VertexID], 1.0); }}\n";
         VkProgramText t = WorldDepth.Translate(vs, ZFs, new Dictionary<string, uint>());
         if (t.Error != null) { log.Always($"GpuGolden: {label} did not translate -- {t.Error}"); return null; }
         byte[]? vb = VulkanToolchain.Compile(VkBackend.Translate(t.Vs), $"{label} vs", ShaderKind.VertexShader, out string ve);
         byte[]? fb = VulkanToolchain.Compile(VkBackend.Translate(t.Fs), $"{label} fs", ShaderKind.FragmentShader, out string fe);
         if (vb == null || fb == null) { log.Always($"GpuGolden: {label} did not compile -- {(vb == null ? ve : fe)}"); return null; }
         ShaderId v = vk.CreateShader(ShaderStage.Vertex, vb, $"{label} vs"), f = vk.CreateShader(ShaderStage.Fragment, fb, $"{label} fs");
-        BufferId engine = hak ? EngineBlockFor(vk, proj, label) : default;
+        BufferId engine = hak ? EngineBlockFor(vk, proj, ZHakQuad, label) : default;
         float[]? px = v.IsNull || f.IsNull || hak && engine.IsNull ? null
                     : ZRun(vk, log, v, f, quads.Length - (sky ? 1 : 0), label, true, sky, engine);
         vk.Destroy(v); vk.Destroy(f); vk.Destroy(engine);
         return px;
     }
 
-    /// <summary>The <c>CxEngine</c> block a content stage reads, its <c>m_proj</c> the world's folded projection
-    /// <paramref name="proj"/>, which is what the frame hands content; the rest zero.</summary>
-    private static BufferId EngineBlockFor(VkBackend vk, in Matrix4x4 proj, string label)
+    /// <summary>The <c>CxEngine</c> block a content stage reads, staged the way the frame stages it -- packed where
+    /// the device lays a block out at scalar alignment, expanded to std140 where it does not. Its <c>m_proj</c> is the
+    /// world's folded projection <paramref name="proj"/> and its frame counter <paramref name="frame"/>; the rest zero.</summary>
+    private static BufferId EngineBlockFor(VkBackend vk, in Matrix4x4 proj, int frame, string label)
     {
-        var b = new EngineBlock { Proj = proj };
-        BufferId u = vk.CreateBuffer(new BufferDesc(Unsafe.SizeOf<EngineBlock>(), BufferUse.Uniform | BufferUse.CopyDst,
+        var b = new EngineBlockPacked { Proj = proj };
+        b.Tail.Frame = frame;
+        BufferId u = vk.CreateBuffer(new BufferDesc(AlloyRenderer.EngineBytes, BufferUse.Uniform | BufferUse.CopyDst,
                                                     MemoryKind.Device, label + " engine block"));
-        if (!u.IsNull && !vk.Upload(u, 0, MemoryMarshal.AsBytes(new ReadOnlySpan<EngineBlock>(in b)))) { vk.Destroy(u); return default; }
+        if (u.IsNull) return default;
+        if (!EngineBlockUpload(vk, u, in b)) { vk.Destroy(u); return default; }
         return u;
+    }
+
+    /// <summary>Block <paramref name="b"/> into <paramref name="u"/> as the bytes this device reads it from. The
+    /// std140 expansion is taken on the stack only on a device that needs it.</summary>
+    private static bool EngineBlockUpload(VkBackend vk, BufferId u, in EngineBlockPacked b)
+    {
+        if (VkGlsl.ScalarBlocks) return vk.Upload(u, 0, MemoryMarshal.AsBytes(new ReadOnlySpan<EngineBlockPacked>(in b)));
+        var pad = default(EngineBlock);
+        EngineBlockPacked.ToStd140(in b, ref pad);
+        return vk.Upload(u, 0, MemoryMarshal.AsBytes(new ReadOnlySpan<EngineBlock>(in pad)));
     }
 
     /// <summary><paramref name="quads"/> quads of stages <paramref name="v"/> and <paramref name="f"/> into an RG32F

@@ -142,9 +142,9 @@ public static unsafe class TextFontBake
         try
         {
             Marshal.Copy(ttf, 0, font, ttf.Length);
-            new Span<byte>((void*)cov, w * h).Clear();
-            new Span<byte>((void*)spc, PackContextBytes).Clear();
-            new Span<byte>((void*)range, sizeof(StbPackRange)).Clear();
+            NativeMemory.Clear((void*)cov, (nuint)(w * h));
+            NativeMemory.Clear((void*)spc, (nuint)PackContextBytes);
+            NativeMemory.Clear((void*)range, (nuint)sizeof(StbPackRange));
 
             int* cp = (int*)cps;
             for (int i = 0; i < glyphs; i++) cp[i] = Codepoint((byte)i);
@@ -226,7 +226,7 @@ public static unsafe class TextFontBake
         if (EngineFn.StbttInitFont == null || EngineFn.StbttGetFontVMetrics == null
             || EngineFn.StbttScaleForPixelHeight == null) return 0;
         byte* info = stackalloc byte[FontInfoBytes];
-        new Span<byte>(info, FontInfoBytes).Clear();
+        NativeMemory.Clear(info, (nuint)FontInfoBytes);
         if (EngineFn.StbttInitFont(info, (byte*)font, 0) == 0) return 0;
         int asc = 0;
         EngineFn.StbttGetFontVMetrics(info, &asc, null, null);
