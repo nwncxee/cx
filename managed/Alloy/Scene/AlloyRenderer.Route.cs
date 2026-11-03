@@ -26,7 +26,7 @@ public sealed unsafe partial class AlloyRenderer
     private static readonly IntPtr[] _oFadeTile = new IntPtr[MaxOwned];
     /// <summary>This pass's six frustum planes (<see cref="CullPass.Planes"/>), and whether the pass had a
     /// perspective projection to take them from. Without one every slot routes.</summary>
-    private static readonly Vector4[] _passPlanes = new Vector4[6];
+    private static readonly CullPlane[] _passPlanes = new CullPlane[6];
     private static bool _passFrustumOk;
     /// <summary>World units added to a slot's slack-scaled sphere before the plane test: one frame of camera
     /// motion, so a part entering the view is routed the frame it appears rather than the frame after.</summary>
@@ -78,7 +78,7 @@ public sealed unsafe partial class AlloyRenderer
     /// could have drifted past <see cref="VisDriftUnits"/> anywhere in view (<see cref="VisDrifted"/>).</summary>
     private static readonly int[] _vis = new int[MaxOwned];
     private static readonly int[] _visStart = new int[AlloyClasses.Count], _visEnd = new int[AlloyClasses.Count];
-    private static readonly Vector4[] _visPlanes = new Vector4[6];
+    private static readonly CullPlane[] _visPlanes = new CullPlane[6];
     private static int _visBuiltAt, _visEnrollGen = -1, _visEpoch = -1;
     /// <summary>Bumped by every <see cref="BuildIndex"/>: the set must be rebuilt WHOLE after one, even when
     /// no enrolment generation moved (a budgeted walk bumps it at its begin, frames before the finish that
@@ -217,13 +217,13 @@ public sealed unsafe partial class AlloyRenderer
         Array.Copy(_oBox, boxWas, boxWas.Length);
         var sphWas = new Sphere[4];
         Array.Copy(_dSph, sphWas, sphWas.Length);
-        Vector4[] planesWas = (Vector4[])_passPlanes.Clone();
+        CullPlane[] planesWas = (CullPlane[])_passPlanes.Clone();
         int[] visWas = { _vis[0], _vis[1], _vis[2], _vis[3] };
         bool mxWas = _oMx[mx];
 
         // Six planes keeping x >= 0 (five degenerate ones that keep everything), as AreaGrid's own check does.
-        Array.Fill(_passPlanes, new Vector4(0f, 0f, 0f, 1f));
-        _passPlanes[0] = new Vector4(1f, 0f, 0f, 0f);
+        Array.Fill(_passPlanes, CullPlane.KeepsEverything);
+        _passPlanes[0] = new CullPlane(Vector3.UnitX, 0f);
         void Slab(int i, float x0, float x1) => _oBox[i] = new Box { Min = new Vector3(x0, 0f, 0f), Max = new Vector3(x1, 1f, 1f) };
         Slab(inView, 10f, 20f);
         Slab(outView, -500f, -490f);
@@ -259,14 +259,12 @@ public sealed unsafe partial class AlloyRenderer
     private static bool VisDrifted()
     {
         Vector3 e = _eyePos;
-        Vector4 far = _passPlanes[5];
-        float reach = MathF.Max(0f, far.X * e.X + far.Y * e.Y + far.Z * e.Z + far.W)
-                      * VisReachScale;
+        float reach = MathF.Max(0f, _passPlanes[5].SignedDistance(e)) * VisReachScale;
         for (int f = 0; f < _passPlanes.Length; f++)
         {
-            float dx = _passPlanes[f].X - _visPlanes[f].X, dy = _passPlanes[f].Y - _visPlanes[f].Y;
-            float dz = _passPlanes[f].Z - _visPlanes[f].Z, dw = _passPlanes[f].W - _visPlanes[f].W;
-            if (MathF.Abs(dx * e.X + dy * e.Y + dz * e.Z + dw) + MathF.Sqrt(dx * dx + dy * dy + dz * dz) * reach > VisDriftUnits)
+            Vector3 dn = _passPlanes[f].Normal - _visPlanes[f].Normal;
+            float dd = _passPlanes[f].Offset - _visPlanes[f].Offset;
+            if (MathF.Abs(Vector3.Dot(dn, e) + dd) + dn.Length() * reach > VisDriftUnits)
                 return true;
         }
         return false;
@@ -377,7 +375,7 @@ public sealed unsafe partial class AlloyRenderer
                    + $"{_routedAvg}, visible set {total} ({(_visWhy == 0 ? "reused" : _visWhy == 1 ? "rebuilt from the index" : "rebuilt full")}, "
                    + $"built at {_visBuiltAt}, enrol gen {_visEnrollGen}/{_enrollGen}, epoch {_visEpoch}/{_recEpoch}), {_dynN} gob slots, "
                    + $"{AreaGrid.Filed} filed in {AreaGrid.Occupied} cells, {AreaGrid.Unboxed} unboxed, {missed} live slot(s) the set misses;"
-                   + where + $" eye ({_eyePos.X:F1},{_eyePos.Y:F1},{_eyePos.Z:F1}) near plane ({_passPlanes[4].X:F2},{_passPlanes[4].Y:F2},{_passPlanes[4].Z:F2},{_passPlanes[4].W:F1})");
+                   + where + $" eye ({_eyePos.X:F1},{_eyePos.Y:F1},{_eyePos.Z:F1}) near plane ({_passPlanes[4].Normal.X:F2},{_passPlanes[4].Normal.Y:F2},{_passPlanes[4].Normal.Z:F2},{_passPlanes[4].Offset:F1})");
     }
 
     /// <summary>Is a static slot's own world box in this pass's planes with the route slack? A gob slot or an
@@ -460,10 +458,7 @@ public sealed unsafe partial class AlloyRenderer
         if (s.Radius >= NeverCull) return true;
         float r = s.Radius * ShadowMath.FrustumCullSlack + RouteSlackUnits;
         for (int f = 0; f < 6; f++)
-        {
-            Vector4 pl = _passPlanes[f];
-            if (pl.X * s.Center.X + pl.Y * s.Center.Y + pl.Z * s.Center.Z + pl.W < -r) return false;
-        }
+            if (_passPlanes[f].SignedDistance(s.Center) < -r) return false;
         return true;
     }
 

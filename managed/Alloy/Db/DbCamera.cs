@@ -390,7 +390,7 @@ public static unsafe class DbCamera
     {
         if (!SceneDb.Cameras.Valid(cam) || !v.Valid) return;
         Matrix4x4 m = v.View * v.Proj;
-        Span<Vector4> p = stackalloc Vector4[6];
+        Span<CullPlane> p = stackalloc CullPlane[6];
         CullPass.Planes(m, p, PosOf(cam));
         int b = cam.Index * SceneDb.ViewPlanes;
         // CullPass emits left, right, bottom, top, near, far and inside-POSITIVE; the ENGINE's list -- which
@@ -398,8 +398,8 @@ public static unsafe class DbCamera
         // then the four sides, inside-NEGATIVE. So: permute, then negate.
         for (int k = 0; k < SceneDb.ViewPlanes; k++)
         {
-            Vector4 q = p[Order[k]];
-            SceneDb.CamVolume[b + k] = new Plane(-q.X, -q.Y, -q.Z, -q.W);
+            CullPlane q = p[Order[k]];
+            SceneDb.CamVolume[b + k] = new Plane(-q.Normal, -q.Offset);
         }
         SceneDb.CamVolumeSet[cam.Index] = true;
     }

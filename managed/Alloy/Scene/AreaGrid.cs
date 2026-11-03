@@ -38,7 +38,7 @@ internal static unsafe class AreaGrid
     internal static int Cell(float x, float y) => UniformGrid.Cell(x, y);
 
     /// <inheritdoc cref="UniformGrid.Query"/>
-    internal static int Query(ReadOnlySpan<Vector4> planes, float slack, int[] into, int n)
+    internal static int Query(ReadOnlySpan<CullPlane> planes, float slack, int[] into, int n)
         => G.Query(planes, slack, into, n);
 
     /// <inheritdoc cref="UniformGrid.StillFiled"/>
@@ -46,7 +46,7 @@ internal static unsafe class AreaGrid
         => G.StillFiled(slot, in box, out filed, out now, out covered);
 
     /// <inheritdoc cref="UniformGrid.BoxInFrustum"/>
-    internal static bool BoxInFrustum(ReadOnlySpan<Vector4> planes, in Box box, float slack)
+    internal static bool BoxInFrustum(ReadOnlySpan<CullPlane> planes, in Box box, float slack)
         => UniformGrid.BoxInFrustum(planes, in box, slack);
 
     /// <summary>Off-device: the two properties the index lives by -- a slot comes back from a query that
@@ -69,9 +69,9 @@ internal static unsafe class AreaGrid
                      "...and a negative coordinate wraps into the far corner rather than out of the table");
 
         // A half-space keeping x >= 100: the near cell is out, the far one is in, the unboundable one always in.
-        Span<Vector4> planes = stackalloc Vector4[6];
-        planes.Fill(new Vector4(0f, 0f, 0f, 1f));
-        planes[0] = new Vector4(1f, 0f, 0f, -100f);
+        Span<CullPlane> planes = stackalloc CullPlane[6];
+        planes.Fill(CullPlane.KeepsEverything);
+        planes[0] = new CullPlane(Vector3.UnitX, -100f);
         int[] into = new int[8];
         int n = Query(planes, 0f, into, 0);
         bool sawNear = false, sawFar = false, sawUnboxed = false;
@@ -83,7 +83,7 @@ internal static unsafe class AreaGrid
         for (int k = 0; k < n; k++) if (into[k] == 0) sawNear = true;
         check.Expect(sawNear, "the route slack yields a cell about to enter the view");
         // A plane nothing can satisfy empties the query but keeps the unboundable slots.
-        planes[0] = new Vector4(1f, 0f, 0f, -1e9f);
+        planes[0] = new CullPlane(Vector3.UnitX, -1e9f);
         n = Query(planes, 0f, into, 0);
         check.Expect(n == 1 && into[0] == 2, "a frustum that reaches nothing still yields the unboundable slots");
 

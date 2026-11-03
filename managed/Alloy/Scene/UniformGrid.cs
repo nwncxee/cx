@@ -138,11 +138,11 @@ internal sealed class UniformGrid
         return (iy << Bits) | ix;
     }
 
-    /// <summary>Append every entry whose cell survives <paramref name="planes"/> (six vec4s, the
+    /// <summary>Append every entry whose cell survives <paramref name="planes"/> (six planes, the
     /// <see cref="CullPass.Planes"/> convention: inside when <c>dot(n, p) + d &gt;= 0</c>), plus every mover and
     /// every unbounded entry, into <paramref name="into"/> from <paramref name="n"/>; <paramref name="slack"/>
     /// grows each cell box so a cell about to enter view is yielded a frame early. Returns the new count.</summary>
-    internal int Query(ReadOnlySpan<Vector4> planes, float slack, int[] into, int n)
+    internal int Query(ReadOnlySpan<CullPlane> planes, float slack, int[] into, int n)
     {
         for (int k = 0; k < _unboxedN && n < into.Length; k++) into[n++] = _unboxed[k];
         for (int k = 0; k < _moverN && n < into.Length; k++) into[n++] = _movers[k];
@@ -173,15 +173,15 @@ internal sealed class UniformGrid
 
     /// <summary>The standard n-vertex box test: for each plane, the box corner FARTHEST along the plane normal.
     /// Behind every one of the six and the box cannot be in view.</summary>
-    internal static bool BoxInFrustum(ReadOnlySpan<Vector4> planes, in Box box, float slack)
+    internal static bool BoxInFrustum(ReadOnlySpan<CullPlane> planes, in Box box, float slack)
     {
         for (int f = 0; f < 6; f++)
         {
-            Vector4 p = planes[f];
-            float x = p.X >= 0f ? box.Max.X + slack : box.Min.X - slack;
-            float y = p.Y >= 0f ? box.Max.Y + slack : box.Min.Y - slack;
-            float z = p.Z >= 0f ? box.Max.Z + slack : box.Min.Z - slack;
-            if (p.X * x + p.Y * y + p.Z * z + p.W < 0f) return false;
+            CullPlane p = planes[f];
+            float x = p.Normal.X >= 0f ? box.Max.X + slack : box.Min.X - slack;
+            float y = p.Normal.Y >= 0f ? box.Max.Y + slack : box.Min.Y - slack;
+            float z = p.Normal.Z >= 0f ? box.Max.Z + slack : box.Min.Z - slack;
+            if (p.SignedDistance(new Vector3(x, y, z)) < 0f) return false;
         }
         return true;
     }
