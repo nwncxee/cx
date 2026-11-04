@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using CX.Framework;
 using CX.Graphics;
 using CX.Graphics.Rhi;
@@ -25,7 +26,21 @@ public sealed unsafe partial class AlloyRenderer
         public BufferId Sh;
         public VkDefStage? Box, Ggx, Proj;
         public SamplerId Trilinear;
-        public int Size, Mips, GLevel = -1, POrigin = -1;
+        public int Size, Mips, POrigin = -1;
+    }
+
+    /// <summary>The GGX prefilter's push block, member for member: the level this dispatch writes, which is the only
+    /// term that differs from one level of the chain to the next.</summary>
+    private struct VkProbeGgxPush
+    {
+        public int Level;
+    }
+
+    /// <summary><c>cx_probe_ggx</c>'s own push member, beside the field that fills it.</summary>
+    private static VkPushTail VkProbeGgxTail()
+    {
+        var p = new VkProbeGgxPush();
+        return VkPushTail.Of<VkProbeGgxPush>(VkPush.Of("int", "uLevel", ref p, ref p.Level));
     }
 
     private static VkProbeState _vkProbe = new();
@@ -115,15 +130,6 @@ public sealed unsafe partial class AlloyRenderer
         VkColourState c = _vkc;
         VkDefStage box = s.Box!, ggx = s.Ggx!, proj = s.Proj!;
         int arena0 = c.ArenaUsed;
-        Span<int> at = stackalloc int[s.Mips];
-        for (int i = 0; i < s.Mips; i++)
-        {
-            Array.Clear(ggx.Block);
-            LooseBlock.Capture(ggx.Members, ggx.Block);
-            LooseBlock.Set(s.GLevel, i);
-            LooseBlock.EndCapture();
-            if ((at[i] = VkArena(ggx.Block)) < 0) return false;
-        }
         Array.Clear(proj.Block);
         LooseBlock.Capture(proj.Members, proj.Block);
         Vector3 o = EnvProbe.Origin;
@@ -143,7 +149,9 @@ public sealed unsafe partial class AlloyRenderer
         cl.SetPipeline(ggx.Pipe);
         for (int i = 0; i < s.Mips; i++)
         {
-            VkProbeBind(cl, s, ggx, at[i], i);
+            VkProbeBind(cl, s, ggx, -1, i);
+            var push = new VkProbeGgxPush { Level = i };
+            cl.PushConstants(VkGlsl.PushTailAt, MemoryMarshal.AsBytes(new ReadOnlySpan<VkProbeGgxPush>(in push)));
             VkProbeDispatch(cl, s.Size, i);
         }
         cl.SetPipeline(proj.Pipe);
@@ -217,10 +225,8 @@ public sealed unsafe partial class AlloyRenderer
         s.Size = EnvProbe.Size;
         s.Mips = EnvProbe.MipsOf(s.Size);
         s.Box = VkDefBuild(vk, "cx_probe_box_c", null, PipeFeatures.Probe + "box chain", log);
-        s.Ggx = VkDefBuild(vk, "cx_probe_ggx", null, PipeFeatures.Probe + "GGX prefilter", log);
+        s.Ggx = VkDefBuild(vk, "cx_probe_ggx", null, PipeFeatures.Probe + "GGX prefilter", log, VkProbeGgxTail());
         s.Proj = VkDefBuild(vk, "cx_probe_sh", null, PipeFeatures.Probe + "SH9 projection", log);
-        if (s.Ggx != null)
-            LooseBlock.Resolve(s.Ggx.Names, () => s.GLevel = LooseBlock.Loc("uLevel"));
         if (s.Proj != null)
             LooseBlock.Resolve(s.Proj.Names, () => s.POrigin = LooseBlock.Loc("uOrigin"));
         const ImageUse cube = ImageUse.Sampled | ImageUse.Storage;

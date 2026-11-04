@@ -102,8 +102,9 @@ GL GLSL into Vulkan GLSL before shaderc sees it, and `VulkanToolchain.CompileFre
 invocation: target environment Vulkan 1.3, locations auto-mapped, and GL's binding spaces shifted apart into
 the one descriptor set — samplers from 0, uniform blocks from 48, storage blocks from 64, storage images from
 80. Set 1 is the bindless sampler array. Every loose (non-block) uniform the stage declared is gathered into
-one std140 block the host fills by member name, so a module that drops it gets no uniforms. The entry point
-is `main`.
+one std140 block the host fills by member name, so a module that drops it gets no uniforms — except the
+scalars that stage names in the push block, which a few stages take per draw or per dispatch instead of
+re-staging a block for. The entry point is `main`.
 
 The practical route is therefore: edit the dumped `.shd`, let the extender translate and compile it once, and
 compile your module from the same text with the same options. Reach for a module when you want a compiler

@@ -117,13 +117,28 @@ internal static unsafe class PostChain
     internal static GradeLocs LocateGrade(Func<string, int> loc)
         => new(loc("uMode"), loc("uKnee"), loc("uExposure"), loc("uAcesMix"));
 
-    /// <summary>The frame's grade into the open capture: the resolve, the reactive mask and the taa copy-out take it here.</summary>
+    /// <summary>A program's grade values, in the order the stages declare them: the tone curve, its knee, the
+    /// exposure before it and the ACES mix.</summary>
+    internal struct GradeTerms
+    {
+        public int Mode;
+        public float Knee, Exposure, AcesMix;
+
+        /// <summary>The grade the knobs stand at, for the three stages that take it whole: the resolve, the
+        /// reactive mask and the taa copy-out.</summary>
+        internal static GradeTerms Now
+            => new() { Mode = Post.Tonemap.V, Knee = Post.TmKnee.V, Exposure = Post.Exposure.V, AcesMix = Post.AcesMix.V };
+    }
+
+    /// <summary>The frame's grade into the open capture: the reactive mask and the taa copy-out take it here, the
+    /// resolve pushes <see cref="GradeTerms"/> instead.</summary>
     internal static void WriteGrade(GradeLocs l)
     {
-        LooseBlock.Set(l.Mode, Post.Tonemap.V);
-        LooseBlock.Set(l.Knee, Post.TmKnee.V);
-        LooseBlock.Set(l.Exposure, Post.Exposure.V);
-        LooseBlock.Set(l.AcesMix, Post.AcesMix.V);
+        GradeTerms g = GradeTerms.Now;
+        LooseBlock.Set(l.Mode, g.Mode);
+        LooseBlock.Set(l.Knee, g.Knee);
+        LooseBlock.Set(l.Exposure, g.Exposure);
+        LooseBlock.Set(l.AcesMix, g.AcesMix);
     }
 
     internal static bool TaaOn => !PostStack.TaaVkFailed && Post.Aa.V == Post.AaFsr && !Fsr.On;
