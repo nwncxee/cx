@@ -43,6 +43,8 @@ internal static unsafe partial class Weather
     /// <summary>The wetness the lit stage's splice is handed (0 while the weather is off), for ground the
     /// wetness map has not reached and for stages that read neither map nor cover.</summary>
     internal static float WetShown => !_off && Enabled.V ? _wet * WetStrength.V : 0f;
+    /// <summary>The snow cover the lit stage's splice is handed (0 while the weather is off).</summary>
+    internal static float SnowShown => !_off && Enabled.V ? _snow * SnowStrength.V : 0f;
 
     private static void DeclareSurfaceKnobs()
     {
@@ -269,6 +271,8 @@ internal static unsafe partial class Weather
         RippleSelfCheck(check);
         SplashSelfCheck(check);
         TrackSelfCheck(check);
+        SnowStepApprovedExamples(check);
+        StepSelfCheck(check);
         float d = Density; Kind k = CurrentKind; bool en = Enabled.V;
         // the rates are the player's cx.cfg (weather.accum=5 reads 20x faster): pin the declared ones
         float accum = AccumSec.V, dry = DrySec.V, melt = MeltSec.V;

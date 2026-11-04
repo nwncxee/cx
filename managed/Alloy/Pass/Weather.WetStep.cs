@@ -30,17 +30,25 @@ internal static unsafe partial class Weather
     /// <summary>A CResRef is sixteen chars, not terminated when full. not-an-offset: its size.</summary>
     private const int ResRefSize = 16;
 
-    internal static Knob<bool> WetSteps = null!;
+    internal static Knob<bool> WetSteps = null!, SnowFootsteps = null!;
 
     private static readonly IntPtr _soundSym = Native.Sym(SymbolMap.ExoSound), _rulesSym2 = Native.Sym(SymbolMap.Rules);
     private static IntPtr _colType, _colSize;
     private static readonly IntPtr[] _colPud = new IntPtr[3];
     private static bool _wetArmed;
-    private static int _wetSteps, _sheltered;
+    /// <summary>What a footfall sounds of: the engine's own step for the surface, or a footstepsounds.2da column.</summary>
+    private enum StepKind { Engine, Puddles, Snow }
+    /// <summary>The weather steps taken and refused, for the stats line.</summary>
+    private sealed class StepCountState { public int Wet, Snow, Sheltered; }
+    private static StepCountState _stepCounts = new();
 
     private static void DeclareWetStepKnob()
-        => WetSteps = G.Toggle("wetsteps", "Wet footstep sounds", true, Tier.Advanced,
-                               help: "Steps on rain-wet ground make the game's own puddle sound for that creature, until the ground dries. Not under a roof.");
+    {
+        WetSteps = G.Toggle("wetsteps", "Wet footstep sounds", true, Tier.Advanced,
+                            help: "Steps on rain-wet ground make the game's own puddle sound for that creature, until the ground dries. Not under a roof.");
+        SnowFootsteps = G.Toggle("snowfootsteps", "Snow footstep sounds", true, Tier.Advanced,
+                                 help: "Steps on lying snow make the game's own snow sound for that creature, until the snow melts. Not under a roof.");
+    }
 
     /// <summary>Resolve what the wet step calls and build its column names once. Missing anything = the steps stay
     /// the engine's, said once.</summary>
@@ -54,7 +62,7 @@ internal static unsafe partial class Weather
             return;
         _colType = Column("FootstepType"u8);
         _colSize = Column("SIZECATEGORY"u8);
-        _colPud[0] = Column("Puddles0"u8); _colPud[1] = Column("Puddles1"u8); _colPud[2] = Column("Puddles2"u8);
+        for (int i = 0; i < _colPud.Length; i++) _colPud[i] = Column(StepColumnName(StepKind.Puddles, i));
         _wetArmed = true;
         static IntPtr Column(ReadOnlySpan<byte> name)
         {
@@ -74,10 +82,30 @@ internal static unsafe partial class Weather
         Vector3 p = o.Position, f = o.Orientation;
         bool wet = WetShown > FootMinWet && (FootSplash.V > 0f || WetSteps.V);
         bool open = wet && Open(p);
-        if (wet && !open) _sheltered++;
+        if (wet && !open) _stepCounts.Sheltered++;
         FootDown(p, new Vector2(f.X, f.Y), o.Id, TrackNow, open);
-        return open && WetSteps.V && WetShown > WetStepMin && WetSound(creature, o, p);
+        int surface = open && _wetArmed && o.AreaPtr != IntPtr.Zero ? SurfaceAt(o, p) : -1;
+        StepKind kind = ChooseStep(open, surface);
+        return kind != StepKind.Engine && StepSound(creature, o, p, kind);
     }
+
+    private static int SurfaceAt(CNWCObject o, Vector3 p)
+    {
+        Vec3 at = new() { X = p.X, Y = p.Y, Z = p.Z };
+        return EngineFn.AreaGetSurfaceMaterial(o.AreaPtr, VectorArg.Of(&at));
+    }
+
+    /// <summary>What a footfall on <paramref name="surface"/> sounds of. Only dry-sounding ground open to the sky
+    /// changes its sound.</summary>
+    private static StepKind ChooseStep(bool open, int surface)
+    {
+        if (!open || (uint)surface >= 64 || (DrySurfaces & (1UL << surface)) == 0) return StepKind.Engine;
+        return WetSteps.V && WetShown > WetStepMin ? StepKind.Puddles : StepKind.Engine;
+    }
+
+    /// <summary>The footstepsounds.2da column <paramref name="kind"/> plays, one of three by <paramref name="pick"/>.</summary>
+    private static ReadOnlySpan<byte> StepColumnName(StepKind kind, int pick)
+        => pick switch { 0 => "Puddles0"u8, 1 => "Puddles1"u8, _ => "Puddles2"u8 };
 
     /// <summary>Can the rain reach <paramref name="p"/>? One ray back up the cover bake's direction; a tile, a
     /// static or a placeable on it is a roof, anything else (a creature, a held item) is cast past.</summary>
@@ -98,9 +126,9 @@ internal static unsafe partial class Weather
         return true;
     }
 
-    /// <summary>Play this creature's <c>Puddles</c> step, as <c>PlayFootstep</c> would play its surface's. False =
-    /// not a dry-sounding surface, or nothing to play: the engine's own step goes ahead.</summary>
-    private static bool WetSound(IntPtr creature, CNWCObject o, Vector3 p)
+    /// <summary>Play this creature's <paramref name="kind"/> step, as <c>PlayFootstep</c> would play its surface's.
+    /// False = nothing to play: the engine's own step goes ahead.</summary>
+    private static bool StepSound(IntPtr creature, CNWCObject o, Vector3 p, StepKind kind)
     {
         if (!_wetArmed || o.FootstepSkip != 0 || o.AreaPtr == IntPtr.Zero) return false;
         IntPtr rules = _rulesSym2 == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)_rulesSym2;
@@ -109,8 +137,6 @@ internal static unsafe partial class Weather
         if (sound == IntPtr.Zero || tables == IntPtr.Zero) return false;
         var t = new CTwoDimArrays(tables);
         Vec3 at = new() { X = p.X, Y = p.Y, Z = p.Z };
-        int surface = EngineFn.AreaGetSurfaceMaterial(o.AreaPtr, VectorArg.Of(&at));
-        if ((uint)surface >= 64 || (DrySurfaces & (1UL << surface)) == 0) return false;
         var c = new CNWCCreature(creature);
         CPathfindInformation pf = c.Pathfind;
         int app = pf.IsNull ? -1 : pf.Appearance;
@@ -127,7 +153,7 @@ internal static unsafe partial class Weather
             group = (uint)(size - 1) < 3 ? GroupSmall : GroupLarge;
         }
         EngineFn.SoundPlay3DOneShot(sound, res, VectorArg.Of(&at), 0f, group, 0, 0);
-        _wetSteps++;
+        _stepCounts.Wet++;
         return true;
     }
 
@@ -139,16 +165,23 @@ internal static unsafe partial class Weather
         NativeMemory.Clear(exo, (nuint)ExoSize);   // the engine frees a non-null buffer first
         bool ok = false;
         if (EngineFn.C2DAGetCExoStringEntry(twoda, row, column, (IntPtr)exo) != 0)
-        {
-            byte* s = *(byte**)exo;
-            int n = 0;
-            for (; s != null && n < ResRefSize && s[n] != 0; n++) res[n] = (byte)char.ToLowerInvariant((char)s[n]);
-            for (int i = n; i < ResRefSize; i++) res[i] = 0;
-            ok = n > 0;
-        }
+            ok = CellResRef(*(byte**)exo, res);
         EngineFn.ExoStringDtor((IntPtr)exo);
         return ok;
     }
 
-    private static string WetStepStats() => $", {_wetSteps} wet steps, {_sheltered} sheltered";
+    /// <summary>A cell's text as a lower-case CResRef in <paramref name="res"/>; false when it names no sound, 2DA's
+    /// <c>****</c> included.</summary>
+    private static bool CellResRef(byte* s, byte* res)
+    {
+        int n = 0;
+        for (; s != null && n < ResRefSize && s[n] != 0; n++) res[n] = (byte)char.ToLowerInvariant((char)s[n]);
+        for (int i = n; i < ResRefSize; i++) res[i] = 0;
+        return n > 0 && !(n == 4 && res[0] == '*' && res[1] == '*' && res[2] == '*' && res[3] == '*');
+    }
+
+    private static string WetStepStats() => $", {_stepCounts.Wet} wet steps, {_stepCounts.Snow} snow steps, {_stepCounts.Sheltered} sheltered";
+
+    /// <summary>The approved snow-step examples; implemented in <c>SnowStepApprovedExamples.cs</c>.</summary>
+    static partial void SnowStepApprovedExamples(Checker check);
 }
