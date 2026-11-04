@@ -247,6 +247,10 @@ public static unsafe partial class DbAnim
         ViewLatch(Vector3.Zero, Vector3.UnitY, 45f, 1.8f, 0.1f, 200f, Vector3.Normalize(new Vector3(-1f, 0f, -0.1f)), hasSun: true, 60f);
         Step(obj, 0.25f);
         check.Expect(NearV(SceneDb.PartPos[first + 1], new Vector3(1.5f, 0f, 0f)), "a dawn shadow 40 heights long keeps its caster walking");
+        ViewLatch(Vector3.Zero, Vector3.UnitY, 45f, 1.8f, 0.1f, 200f, Vector3.Normalize(new Vector3(-1f, 0f, -0.1f)), hasSun: true, 10f);
+        SceneDb.ObjSphere[obj.Index] = upSun;
+        Step(obj, 0.25f);
+        check.Expect(NearV(SceneDb.PartPos[first + 1], new Vector3(1.5f, 0f, 0f)), "...and past the shadow distance the cascades bake it holds");
         ViewLatch(Vector3.Zero, Vector3.UnitY, 45f, 1.8f, 0.1f, 200f, default, hasSun: false, 0f);
     }
 
