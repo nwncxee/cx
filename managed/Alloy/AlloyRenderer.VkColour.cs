@@ -77,6 +77,9 @@ public sealed unsafe partial class AlloyRenderer
         /// <summary>This frame's <c>CxEngine</c> block in the arena, -1 until a program that reads it binds.</summary>
         public int EngineAt = -1;
         public readonly VertexLayoutId[] Layouts = new VertexLayoutId[MeshArena.Formats];
+        /// <summary>The reflection record pair's weight target on this device: the colour pass makes the image and
+        /// <see cref="VkPipeline"/> keys its attachment set on it, so the one answer settles both.</summary>
+        public Format SsrRecW;
         public ImageId Hdr, Depth, G0, G1, G2;
         /// <summary>The standing water the deferred twin records per pixel, read by the rain splash after the walk: its
         /// own memory, since the splash reads it after the frame's resolve.</summary>
@@ -259,6 +262,9 @@ public sealed unsafe partial class AlloyRenderer
         s.DepthCubeArray = VkStandIn(vk, ImageKind.CubeArray, Format.D32F, 6, "shadow cube array");
         s.DecalLayer = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, 1, 1, 1, 1, 1, 1, ImageUse.Storage, "vk decal layer stand-in"));
         s.DecalSurf = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rg32F, 1, 1, 1, 1, 1, 1, ImageUse.Storage, "vk decal surface stand-in"));
+        // the resolve reads three never-negative channels of the weight record and no alpha; settled before the
+        // prewarm builds a reflection-set pipeline, which keys on it
+        s.SsrRecW = PackedColour.Or16F(vk, SsrAttach, SsrRecWLabel, log, SsrRecUnneeded);
         s.Side = new CommandList("vulkan colour pass", 1 << 20, log);
         s.Async = new CommandList("vulkan async", 64 << 10, log) { Async = true };
         if (s.ZeroUbo.IsNull || s.ZeroSsbo.IsNull || s.Arena.IsNull || s.Tex2D.IsNull || s.TexU2D.IsNull || s.Tex2DArray.IsNull
@@ -720,7 +726,7 @@ public sealed unsafe partial class AlloyRenderer
             if (targets == VkTargets.ColourRefl)
             {
                 d.Targets.Colors[SsrRecFirst] = Format.Rgba16F;
-                d.Targets.Colors[SsrRecFirst + 1] = Format.R11G11B10F;
+                d.Targets.Colors[SsrRecFirst + 1] = s.SsrRecW;
                 for (int i = SsrRecFirst; i < SsrRecFirst + 2; i++) d.Blend[i] = new AttachmentBlend(Masked: p.Refl ? ColorMask.None : ColorMask.All);
             }
         }

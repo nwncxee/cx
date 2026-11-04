@@ -55,6 +55,33 @@ internal sealed unsafe partial class VkBackend
                   && CopySizeMismatch(Format.Rgba8, Format.Bgra8) == null && CopySizeMismatch(Format.Bc1, Format.Rgba16F) == null,
             "a copy is refused between formats of unequal texel or block size alone: eight bytes into four and a BC1 block into a "
           + "BC3 one are, four bytes into four of another channel order and a BC1 block into one eight-byte texel are not");
+        check.Expect((ulong)Needs(ImageUse.Sampled) == 0x1001 && (ulong)Needs(ImageUse.Grey) == 0x1001
+                  && (ulong)Needs(ImageUse.ColorTarget) == 0x180 && (ulong)Needs(ImageUse.DepthTarget) == 0x200
+                  && (ulong)Needs(ImageUse.Storage) == 0x2 && (ulong)Needs(ImageUse.CopySrc) == 0x4400
+                  && (ulong)Needs(ImageUse.CopyDst) == 0x8800 && (ulong)Needs(ImageUse.ShadingRate) == 0x40000000
+                  && (ulong)Needs(ImageUse.Transient | ImageUse.Async) == 0,
+            "a usage asks for the wrong format features: sampled = SAMPLED_IMAGE 0x1 | FILTER_LINEAR 0x1000; colour = "
+          + "COLOR_ATTACHMENT 0x80 | its BLEND 0x100; depth = DEPTH_STENCIL_ATTACHMENT 0x200; storage = STORAGE_IMAGE 0x2; "
+          + "a copy source = BLIT_SRC 0x400 | TRANSFER_SRC 0x4000 and a destination = BLIT_DST 0x800 | TRANSFER_DST 0x8000; "
+          + "a shading-rate attachment = FRAGMENT_SHADING_RATE_ATTACHMENT 0x40000000; a transient or async image asks for none");
+        ImageUse loose = 0;
+        for (int b = 0; b < 16; b++)
+        {
+            var one = (ImageUse)(1 << b);
+            if (((one & FeatureBound) != 0) != (Needs(one) != 0)) loose |= one;
+        }
+        check.Expect(loose == 0, $"a use is listed as mapped to a format feature and maps to none, or the other way about: {loose}");
+        check.Expect(UnmappedUse((ImageUse)(1 << 15)) != null && UnmappedUse(ImageUse.Sampled | ImageUse.Transient) == null,
+            "a use neither mapped to a format feature nor named feature-free passes as offered, rather than being the answer "
+          + "a format is refused with");
+        check.Expect((Needs(ImageUse.Sampled | ImageUse.ColorTarget)
+                    & ~(VkFormatFeatureFlags.SampledImageFilterLinear | VkFormatFeatureFlags.ColorAttachmentBlend))
+                   == (VkFormatFeatureFlags.SampledImage | VkFormatFeatureFlags.ColorAttachment),
+            "a sampled colour target that excuses the linear filter and the attachment blend -- the record pair, which "
+          + "every stage point-samples and no pass blends into -- asks for more than SAMPLED_IMAGE | COLOR_ATTACHMENT");
+        check.Expect((ulong)Needs(ImageUse.Sampled | ImageUse.ColorTarget | ImageUse.Storage | ImageUse.CopySrc) == 0x5583,
+            "a target that is sampled, attached, stored into and copied from asks for something other than the union "
+          + "of the four's features (0x5583)");
         var eight = new VkImg { Desc = new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, 8, 8, 1, 1, 1, 1, ImageUse.CopySrc, "") };
         check.Expect(!Inside(eight, new ImageRegion(0, 0, 0, 0), 9, 8, 1, out _) && !Inside(eight, new ImageRegion(0, 4, 0, 0), 8, 8, 1, out _)
                   && !Inside(eight, new ImageRegion(0, 0, 0, 1), 8, 8, 1, out _) && Inside(eight, new ImageRegion(0, 4, 4, 0), 4, 4, 1, out _),

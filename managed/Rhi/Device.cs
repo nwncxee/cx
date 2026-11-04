@@ -2,11 +2,13 @@ using System;
 
 namespace CX.Rhi;
 
-/// <summary>The limits a pass may plan against, read once when the device is made, so recording never queries.</summary>
+/// <summary>The limits a pass may plan against, read once when the device is made, so recording never queries.
+/// <see cref="MaxComputeInvocations"/> is the threads one group may hold, which Vulkan guarantees only 128 of; its
+/// per-axis ceiling is guaranteed 128 too, so the thread count is what a stage picks a square tile by.</summary>
 public readonly record struct DeviceCaps(
     int MaxTextureSize, int MaxArrayLayers, int MaxColorAttachments, int MaxSamples,
     int MaxFragmentTextureUnits, int MaxCombinedTextureUnits, int MaxStorageBindings, int MaxVertexStorageBlocks,
-    int UniformAlign, int StorageAlign, float MaxAniso);
+    int MaxComputeInvocations, int UniformAlign, int StorageAlign, float MaxAniso);
 
 /// <summary>A rendering backend: resources made cold, one <see cref="Submit"/> per recorded list (dispatch per
 /// pass, not per draw). Made inside the draw of the published frame and bound to that thread (the game thread),

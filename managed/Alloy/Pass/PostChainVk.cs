@@ -75,6 +75,8 @@ internal static unsafe class PostChainVk
         public bool ComputeSaid;
         public PipelineId BloomCs;
         public bool CsTried;
+        /// <summary>The tile <see cref="BloomCs"/> was built for, which its dispatch counts groups by.</summary>
+        public int BloomGroup;
     }
 
     /// <summary><c>cx_bloom_cs</c>'s push block, member for member.</summary>
@@ -133,7 +135,7 @@ internal static unsafe class PostChainVk
             bool compute = s.BloomStock && BloomCompute(vk, cl, s, hdr, log);
             if (!compute) Bloom(cl, s, hdr);
             if (!s.ComputeSaid && (compute || !s.BloomStock))
-                log.Always(compute ? "PostChainVk: the compute bloom is LIVE -- one dispatch per level, no render pass"
+                log.Always(compute ? $"PostChainVk: the compute bloom is LIVE -- one dispatch per level over a {s.BloomGroup}x{s.BloomGroup} tile, no render pass"
                                    : "PostChainVk: the compute bloom STOOD DOWN for the content override of a bloom stage -- it draws as fragments");
             s.ComputeSaid = true;
             cl.EndLabel();
@@ -229,7 +231,7 @@ internal static unsafe class PostChainVk
         if (!s.CsTried)
         {
             s.CsTried = true;
-            s.BloomCs = vk.CreateCompute(ShaderSource.Get("cx_bloom_cs.glsl"), "bloom compute", "cx_bloom_cs");
+            s.BloomCs = BloomPipe(vk, s, log);
             if (s.BloomCs.IsNull) log.Always("PostChainVk: the compute bloom was REFUSED (logged above) -- the bloom draws as fragments");
         }
         if (s.BloomCs.IsNull) return false;
@@ -252,8 +254,40 @@ internal static unsafe class PostChainVk
         return true;
     }
 
-    /// <summary>The 8x8 groups covering a <paramref name="w"/> x <paramref name="h"/> level.</summary>
-    private const int BloomGroup = 8;
+    /// <summary>The square tile of a level one group covers, in texels. The wide one is 256 threads, which a device
+    /// fills its warps with where 64 left them a quarter idle, and more than Vulkan guarantees a group may hold.</summary>
+    private const int BloomGroupWide = 16, BloomGroupNarrow = 8;
+
+    /// <summary>The define that hands <c>cx_bloom_cs</c> the tile the dispatch counts groups by.</summary>
+    private const string BloomGroupDefine = "CX_BLOOM_GROUP";
+
+    /// <summary>The tile a device whose group holds <paramref name="invocations"/> threads takes. Only the thread
+    /// count can refuse the wide tile: Vulkan guarantees a group 128 threads per axis, past either tile's side.</summary>
+    private static int BloomGroupFor(int invocations)
+        => invocations >= BloomGroupWide * BloomGroupWide ? BloomGroupWide : BloomGroupNarrow;
+
+    /// <summary><c>cx_bloom_cs</c> on one device, its group size the one <paramref name="s"/> then counts groups by.
+    /// The override is read here rather than left to the pipeline, since the define has to reach the text that is
+    /// built; one that does not build, or that does not take its group from the define, falls back to the embedded
+    /// stage, logged.</summary>
+    private static PipelineId BloomPipe(VkBackend vk, PostVkState s, ExtenderLog log)
+    {
+        s.BloomGroup = BloomGroupFor(vk.Caps.MaxComputeInvocations);
+        string embedded = ShaderStages.Source(PostChain.ShdBloomCs);
+        string over = ShaderResource.Override(PostChain.ShdBloomCs, log) ?? embedded;
+        if (!ReferenceEquals(over, embedded) && !over.Contains(BloomGroupDefine, StringComparison.Ordinal))
+        {
+            log.Always($"PostChainVk: the compute bloom's {PostChain.ShdBloomCs} override names no {BloomGroupDefine} -- a group "
+                     + "size of its own covers part of each level and leaves the rest unwritten, so the embedded stage builds");
+            over = embedded;
+        }
+        PipelineId pipe = vk.CreateCompute(BloomText(over, s.BloomGroup), "bloom compute");
+        if (!pipe.IsNull || ReferenceEquals(over, embedded)) return pipe;
+        log.Always($"PostChainVk: the compute bloom's {PostChain.ShdBloomCs} override did not build (logged above) -- building the embedded stage");
+        return vk.CreateCompute(BloomText(embedded, s.BloomGroup), "bloom compute");
+    }
+
+    private static string BloomText(string src, int group) => ShaderStages.WithDefine(src, $"{BloomGroupDefine} {group}");
 
     private static void BloomDispatch(CommandList cl, PostVkState s, in BloomPush p, ImageId src, ImageId dst, int w, int h)
     {
@@ -261,7 +295,7 @@ internal static unsafe class PostChainVk
         ReadOnlySpan<ImageBinding> storage = [new(0, dst)];
         cl.BindSet(0, new BindSet(default, default, sampled, storage));
         cl.PushConstants(0, System.Runtime.InteropServices.MemoryMarshal.AsBytes(new ReadOnlySpan<BloomPush>(in p)));
-        cl.Dispatch((w + BloomGroup - 1) / BloomGroup, (h + BloomGroup - 1) / BloomGroup);
+        cl.Dispatch((w + s.BloomGroup - 1) / s.BloomGroup, (h + s.BloomGroup - 1) / s.BloomGroup);
     }
 
     /// <summary>The attachment format a post draw into <paramref name="into"/> renders: the image's own (the screen's
@@ -350,8 +384,9 @@ internal static unsafe class PostChainVk
         return (n, ns, engine);
     }
 
-    /// <summary>Off-device: a post program that declares twenty samplers draws with all twenty bound. Oracle: the
-    /// twenty hand-written declarations, each on a binding of its own.</summary>
+    /// <summary>Off-device: a post program that declares twenty samplers draws with all twenty bound, and the bloom's
+    /// tile is one every device seats. Oracles: the twenty hand-written declarations, each on a binding of its own;
+    /// Vulkan's guaranteed 128 invocations a group and the threads each tile asks for, by hand.</summary>
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "PostChainVk.SelfCheck");
@@ -360,6 +395,12 @@ internal static unsafe class PostChainVk
         Span<ImageBinding> img = stackalloc ImageBinding[SampledMax];
         (int n, _, _) = Images(p, new Inputs(default), img, default);
         check.Expect(n == 20 && img[19].Slot == 19, $"a post program's twenty samplers are all bound, not {n}");
+        const int guaranteed = 128;
+        int floor = BloomGroupFor(guaranteed), seated = BloomGroupFor(1024);
+        check.Expect(floor * floor <= guaranteed, $"a device at Vulkan's guaranteed {guaranteed} invocations a group takes a "
+                                                + $"{floor}x{floor} bloom tile, which is {floor * floor} threads");
+        check.Expect(seated > floor && seated * seated > guaranteed, $"a device that seats 1024 threads a group takes the same "
+                                                                   + $"{seated}x{seated} tile the guaranteed one does");
         return check.Ok;
     }
 

@@ -4,6 +4,7 @@ using CX.Framework;
 using CX.Graphics;
 using CX.Graphics.Rhi;
 using CX.Rhi;
+using Vortice.Vulkan;
 
 namespace CX.Alloy;
 
@@ -44,6 +45,18 @@ public sealed unsafe partial class AlloyRenderer
     }
 
     private static VkSsrState _vkSsr = new();
+
+    /// <summary>How the record pair and the stages after it are reached: the colour pass attaches each, and the trace
+    /// and resolve sample them.</summary>
+    internal const ImageUse SsrAttach = ImageUse.Sampled | ImageUse.ColorTarget;
+
+    /// <summary>The two features <see cref="SsrAttach"/> stands for that the record pair asks of no format: every
+    /// stage reads it through <c>Point</c>, and the colour pass writes it with blend off.</summary>
+    internal const VkFormatFeatureFlags SsrRecUnneeded = VkFormatFeatureFlags.SampledImageFilterLinear
+                                                       | VkFormatFeatureFlags.ColorAttachmentBlend;
+
+    /// <summary>The weight half of the record pair, whose format <see cref="VkColourState.SsrRecW"/> settles.</summary>
+    internal const string SsrRecWLabel = "vk ssr record w";
 
     /// <summary>Ahead of the colour pass: the programs and targets at the frame's size, armed when the reflections are
     /// on and the pass writes the G-buffer -- the record pair rides that attachment set. False = no records this frame.</summary>
@@ -267,9 +280,9 @@ public sealed unsafe partial class AlloyRenderer
         s.Levels = SsrLevels(w, h);
         s.ColLevels = SsrLevels(cw, ch);
         s.Ow = (w + blk - 1) >> shift; s.Oh = (h + blk - 1) >> shift;
-        const ImageUse attach = ImageUse.Sampled | ImageUse.ColorTarget, store = ImageUse.Sampled | ImageUse.Storage;
+        const ImageUse attach = SsrAttach, store = ImageUse.Sampled | ImageUse.Storage;
         s.RecN = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, w, h, 1, 1, 1, 1, attach, "vk ssr record n", AliasLanes.Record));
-        s.RecW = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.R11G11B10F, w, h, 1, 1, 1, 1, attach, "vk ssr record w", AliasLanes.Weight));
+        s.RecW = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, _vkc.SsrRecW, w, h, 1, 1, 1, 1, attach, SsrRecWLabel, AliasLanes.Weight));
         s.Pyr = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.R32F, w, h, 1, s.Levels, 1, 1, store, "vk ssr hi-Z", AliasLanes.Second));
         s.Col = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, cw, ch, 1, s.ColLevels, 1, 1, store, "vk ssr colour", AliasLanes.Small));
         s.Out = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba32F, s.Ow, s.Oh, 1, 1, 1, 1, attach, "vk ssr trace", AliasLanes.Narrow));
