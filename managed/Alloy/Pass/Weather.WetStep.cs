@@ -7,10 +7,10 @@ using CX.Services.Camera;
 
 namespace CX.Alloy;
 
-/// <summary>Footsteps on rain-wet ground sound wet. Stock footstepsounds.2da carries a <c>Puddles0..2</c> sound
-/// no stock step can reach: <c>PlayFootstep</c> builds its column name from surfacemat.2da's <c>Name</c> plus a
-/// digit and the Puddles row is named <c>Puddle</c>, so <c>Puddle0</c> names no column. Here a footfall on wet,
-/// rain-open ground plays that sound instead, resolved the way <c>PlayFootstep</c> resolves its row.</summary>
+/// <summary>Footsteps in weather sound of it. Stock footstepsounds.2da carries a <c>Puddles0..2</c> sound no stock
+/// step can reach: <c>PlayFootstep</c> builds its column from surfacemat.2da's <c>Name</c> plus a digit, and the Puddles
+/// row is named <c>Puddle</c>. A footfall on wet, open ground plays that sound and one on lying snow <c>Snow0..2</c>,
+/// resolved the way <c>PlayFootstep</c> resolves its row.</summary>
 internal static unsafe partial class Weather
 {
     /// <summary>surfacemat.2da rows that sound dry and lie open to the weather: Dirt 1, Grass 3, Stone 4, Wood 5,
@@ -19,6 +19,8 @@ internal static unsafe partial class Weather
     private const ulong DrySurfaces = (1UL << 1) | (1UL << 3) | (1UL << 4) | (1UL << 5) | (1UL << 10) | (1UL << 14) | (1UL << 20) | (1UL << 22);
     /// <summary>Wetness from which a step sounds wet: the ground reads wet well before it pools.</summary>
     private const float WetStepMin = 0.35f;
+    /// <summary>Snow cover from which a step sounds of snow: the ground reads white well before it drifts.</summary>
+    private const float SnowStepMin = 0.35f;
     /// <summary>Metres above the foot the shelter ray starts (over a kerb or a doorstep) and how far it reaches.</summary>
     private const float ShelterLiftM = 0.5f, ShelterRayM = 40f;
     /// <summary>Creatures and items in the way are cast past, as the foot placement does, at most this often.</summary>
@@ -34,7 +36,7 @@ internal static unsafe partial class Weather
 
     private static readonly IntPtr _soundSym = Native.Sym(SymbolMap.ExoSound), _rulesSym2 = Native.Sym(SymbolMap.Rules);
     private static IntPtr _colType, _colSize;
-    private static readonly IntPtr[] _colPud = new IntPtr[3];
+    private static readonly IntPtr[] _colPud = new IntPtr[3], _colSnow = new IntPtr[3];
     private static bool _wetArmed;
     /// <summary>What a footfall sounds of: the engine's own step for the surface, or a footstepsounds.2da column.</summary>
     private enum StepKind { Engine, Puddles, Snow }
@@ -62,7 +64,7 @@ internal static unsafe partial class Weather
             return;
         _colType = Column("FootstepType"u8);
         _colSize = Column("SIZECATEGORY"u8);
-        for (int i = 0; i < _colPud.Length; i++) _colPud[i] = Column(StepColumnName(StepKind.Puddles, i));
+        for (int i = 0; i < _colPud.Length; i++) { _colPud[i] = Column(StepColumnName(StepKind.Puddles, i)); _colSnow[i] = Column(StepColumnName(StepKind.Snow, i)); }
         _wetArmed = true;
         static IntPtr Column(ReadOnlySpan<byte> name)
         {
@@ -73,21 +75,24 @@ internal static unsafe partial class Weather
     }
 
     /// <summary>A footfall, from <see cref="Services.Anim.Footfall"/>'s <c>PlayFootstep</c> forward: the print and the
-    /// splash, and the wet sound. True = the wet sound played, so the caller skips the engine's dry one. Cold: a
+    /// splash, and the weather sound. True = the weather sound played, so the caller skips the engine's dry one. Cold: a
     /// few per second per walking creature.</summary>
     internal static bool Footstep(IntPtr creature)
     {
         if (_off || !Enabled.V || FrameInputs.Interior || creature == IntPtr.Zero) return false;
         var o = new CNWCObject(creature);
         Vector3 p = o.Position, f = o.Orientation;
-        bool wet = WetShown > FootMinWet && (FootSplash.V > 0f || WetSteps.V);
-        bool open = wet && Open(p);
-        if (wet && !open) _stepCounts.Sheltered++;
+        bool weather = StepInWeather;
+        bool open = weather && Open(p);
+        if (weather && !open) _stepCounts.Sheltered++;
         FootDown(p, new Vector2(f.X, f.Y), o.Id, TrackNow, open);
         int surface = open && _wetArmed && o.AreaPtr != IntPtr.Zero ? SurfaceAt(o, p) : -1;
         StepKind kind = ChooseStep(open, surface);
         return kind != StepKind.Engine && StepSound(creature, o, p, kind);
     }
+
+    /// <summary>Is there weather a footfall could answer to? False saves the shelter ray.</summary>
+    private static bool StepInWeather => (WetShown > FootMinWet && (FootSplash.V > 0f || WetSteps.V)) || (SnowFootsteps.V && SnowShown > SnowStepMin);
 
     private static int SurfaceAt(CNWCObject o, Vector3 p)
     {
@@ -100,12 +105,15 @@ internal static unsafe partial class Weather
     private static StepKind ChooseStep(bool open, int surface)
     {
         if (!open || (uint)surface >= 64 || (DrySurfaces & (1UL << surface)) == 0) return StepKind.Engine;
+        if (SnowFootsteps.V && SnowShown > SnowStepMin) return StepKind.Snow;
         return WetSteps.V && WetShown > WetStepMin ? StepKind.Puddles : StepKind.Engine;
     }
 
     /// <summary>The footstepsounds.2da column <paramref name="kind"/> plays, one of three by <paramref name="pick"/>.</summary>
     private static ReadOnlySpan<byte> StepColumnName(StepKind kind, int pick)
-        => pick switch { 0 => "Puddles0"u8, 1 => "Puddles1"u8, _ => "Puddles2"u8 };
+        => kind == StepKind.Snow
+            ? pick switch { 0 => "Snow0"u8, 1 => "Snow1"u8, _ => "Snow2"u8 }
+            : pick switch { 0 => "Puddles0"u8, 1 => "Puddles1"u8, _ => "Puddles2"u8 };
 
     /// <summary>Can the rain reach <paramref name="p"/>? One ray back up the cover bake's direction; a tile, a
     /// static or a placeable on it is a roof, anything else (a creature, a held item) is cast past.</summary>
@@ -144,7 +152,7 @@ internal static unsafe partial class Weather
         if (row == -1 && (app < 0 || EngineFn.C2DAGetINTEntry(t.Appearance, app, _colType, &row) == 0)) return false;
         if (c.SoftStep == 1) row = 3;
         byte* res = stackalloc byte[ResRefSize];
-        if (!Cell(t.FootstepSounds, row, _colPud[Random.Shared.Next(3)], res)) return false;
+        if (!Cell(t.FootstepSounds, row, (kind == StepKind.Snow ? _colSnow : _colPud)[Random.Shared.Next(3)], res)) return false;
         byte group = GroupPlayer;
         if (creature != PlayerIdentity.Creature())
         {
@@ -153,7 +161,7 @@ internal static unsafe partial class Weather
             group = (uint)(size - 1) < 3 ? GroupSmall : GroupLarge;
         }
         EngineFn.SoundPlay3DOneShot(sound, res, VectorArg.Of(&at), 0f, group, 0, 0);
-        _stepCounts.Wet++;
+        if (kind == StepKind.Snow) _stepCounts.Snow++; else _stepCounts.Wet++;
         return true;
     }
 

@@ -30,6 +30,10 @@ internal static unsafe partial class Weather
     /// hand-written expected kinds, and for an empty cell the stock table's own text.</summary>
     private static void StepSelfCheck(Checker check) => WithStepScene(() =>
     {
+        check.Expect(!StepInWeather, "dry bare ground casts no shelter ray");
+        _snow = 1f;
+        check.Expect(StepInWeather, "lying snow on dry ground asks whether the sky is open");
+
         // Given the same ground after the snow has melted away
         // When my character walks across it
         // Then each step makes the ordinary stone sound
