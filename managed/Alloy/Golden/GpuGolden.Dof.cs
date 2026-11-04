@@ -149,5 +149,16 @@ internal static partial class GpuGolden
         DofPx[]? off = DofRun(vk, log, static (x, y) => (DofChecker(x, y), 0f, 0f), static (x, y) => 40f, DofCamera(8f, 70f), new DofSet(Enabled: false));
         check.Expect(off != null, "dof: the setting-off frame ran");
         if (off != null) check.Expect(DofContrast(off, 400, 600, 400, 600) > 0.99f, "dof: with the setting off nothing is blurred");
+        // an object nearer than the band spreads over the sharp ground behind it, which only a nearer-than-focus blur does.
+        // Oracle: the fixture's own colours, red only on the near side.
+        DofPx[]? near = DofRun(vk, log, static (x, y) => x < DofSide / 2 ? (1f, 0f, 0f) : (0f, DofChecker(x, y), 0f), static (x, y) => x < DofSide / 2 ? 5.5f : 19f,
+                               DofCamera(20f, 0f), new DofSet(Enabled: true, Focus: 0, NeverBlur: false));
+        check.Expect(near != null, "dof: the near-object frame ran");
+        if (near == null) return;
+        float over = DofAt(near, DofSide / 2 + 2, DofSide / 2), ground = 0f;
+        for (int y = 400; y < 600; y++)
+            for (int x = 800; x < 1000; x++) ground = MathF.Max(ground, MathF.Abs(DofAt(near, x + 1, y, 1) - DofAt(near, x, y, 1)));
+        check.Expect(over > 0.05f, $"dof: a near object's blur spreads over the ground behind it (red {over:F3})");
+        check.Expect(ground > 0.99f, $"dof: the ground in the band stays sharp (contrast {ground:F3})");
     }
 }

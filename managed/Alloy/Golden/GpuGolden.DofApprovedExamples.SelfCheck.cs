@@ -126,13 +126,14 @@ internal static partial class GpuGolden
         // Given depth of field is on and FSR is on at a render scale of 0.5
         // When the same scene draws
         // Then the same areas are sharp and blurred as with FSR off, with no bright or dark fringe where focus changes
-        static (float, float, float) Colour(int x, int y) => (x < DofSplit ? 4f * DofChecker(x, y) + 0.2f : 0.2f + DofChecker(x, y), 0f, 0f);
-        static float Z(int x, int y) => x < DofSplit ? 8f : 45f;
+        // the far field on the left: a coordinate read past the smaller depth's middle then finds the sharp side and shows
+        static (float, float, float) Colour(int x, int y) => (x >= DofSplit ? 4f * DofChecker(x, y) + 0.2f : 0.2f + DofChecker(x, y), 0f, 0f);
+        static float Z(int x, int y) => x >= DofSplit ? 8f : 45f;
         DofPx[]? off = DofRun(vk, log, Colour, Z, DofCamera(8f, 70f));
         DofPx[]? on = DofRun(vk, log, Colour, Z, DofCamera(8f, 70f), depthSide: DofSide / 2);
         check.Expect(off != null && on != null, "With FSR: the frames ran");
         if (off == null || on == null) return;
-        float blurredOff = DofContrast(off, 576, 960, 64, 960), blurredOn = DofContrast(on, 576, 960, 64, 960);
+        float blurredOff = DofContrast(off, 64, 448, 64, 960), blurredOn = DofContrast(on, 64, 448, 64, 960);
         check.Expect(blurredOff < 0.2f && blurredOn < 0.2f, $"With FSR: the far side is blurred either way (contrast {blurredOff:F3} off, {blurredOn:F3} on)");
         int differ = 0;
         float lo = float.MaxValue, hi = 0f;
@@ -154,7 +155,7 @@ internal static partial class GpuGolden
         // When the mouse moves from the character to a distant wall
         // Then the focus moves to the wall smoothly, with no jump
         var mouse = new DofSet(Focus: DofMouseFocus);
-        float onCharacter = DofWith(in mouse, () => DofProbe(vk, log, 100, 512)), onWall = DofWith(in mouse, () => DofProbe(vk, log, 900, 512));
+        float onCharacter = DofWith(in mouse, () => DofProbe(vk, log, 300, 512)), onWall = DofWith(in mouse, () => DofProbe(vk, log, 900, 512));
         check.Expect(MathF.Abs(onCharacter - 8f) < 0.1f, $"Focus choices: the depth under the mouse on the character reads 8 m (got {onCharacter:F2})");
         check.Expect(MathF.Abs(onWall - 30f) < 0.5f, $"Focus choices: the depth under the mouse on the wall reads 30 m (got {onWall:F2})");
     }
@@ -165,7 +166,7 @@ internal static partial class GpuGolden
         // When depth of field is on
         // Then the character the camera is on stays sharp
         DofPx[]? o = DofRun(vk, log, static (x, y) => (DofChecker(x, y), 0f, 0f), static (x, y) => x < DofSplit ? 3f : 45f,
-                            DofCamera(3f, 80f, dialog: true, mouseDepth: 30f), new DofSet(Focus: DofMouseFocus));
+                            DofCamera(3f, 80f, dialog: true, mouseDepth: 30f), new DofSet(Focus: DofMouseFocus, NeverBlur: false));
         check.Expect(o != null, "Conversation: the frame ran");
         if (o == null) return;
         float character = DofContrast(o, 64, 448, 64, 960), behind = DofContrast(o, 576, 960, 64, 960);
