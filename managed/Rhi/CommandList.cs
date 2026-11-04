@@ -14,7 +14,7 @@ public enum Op : byte
     BindIndexBuffer, Draw, DrawIndexed, DrawIndexedIndirect, Dispatch, CopyImage, BlitImage, UpdateBuffer, ZeroBuffer,
     PushConstants, BindVertexBuffer, DrawIndexedMulti, SetDepthState, SetRasterState, SetDepthRange, ReadImages,
     DrawIndirect, CopyImageToBuffer, ClearImage, GenerateMips, BeginLabel, EndLabel, SetShadingRate, Upscale, CopyBuffer,
-    DrawMeshTasks,
+    DrawMeshTasks, DepthOfField,
 }
 
 /// <summary>An index element's width.</summary>
@@ -79,6 +79,12 @@ public readonly record struct ReadImagesCmd(int Images, Access Access);
 public readonly record struct UpscaleCmd(ImageId Color, ImageId Depth, ImageId Motion, ImageId Exposure, ImageId Reactive,
                                          ImageId Output, float JitterX, float JitterY, float MvScaleX, float MvScaleY,
                                          int RenderW, int RenderH, float FrameMs, float Near, float Far, float FovY, bool Reset);
+
+/// <summary><see cref="Op.DepthOfField"/>: one FidelityFX DoF dispatch from <see cref="Color"/> and <see cref="Depth"/>,
+/// which may be smaller than the colour, into <see cref="Output"/>. The four terms are the circle of confusion's, as
+/// <see cref="CX.Alloy.DepthOfField.Command"/> works them out.</summary>
+public readonly record struct DofCmd(ImageId Color, ImageId Depth, ImageId Output, float CocScale, float FocusNear, float FocusFar,
+                                     float DepthA, float DepthB, float DepthMin, float DepthMax);
 
 /// <summary>CPU work waiting on a list's submit: <see cref="Fn"/> gets <see cref="Arg"/> and whether the GPU ran the
 /// submit (false: it was refused, or the device went away first).</summary>
@@ -303,6 +309,7 @@ public sealed class CommandList
     public void ClearImage(ImageId i) { Head(Op.ClearImage); Put(i); Sent(); }
     /// <summary>One FSR 3.1 upscale; the device must have said <c>FsrReady</c> for these sizes first.</summary>
     public void Upscale(in UpscaleCmd c) { Head(Op.Upscale); Put(c); Sent(); }
+    public void DepthOfField(in DofCmd c) { Head(Op.DepthOfField); Put(c); Sent(); }
     /// <summary><paramref name="i"/>'s mips past the base filled from it by linear blits, outside a pass; the image needs
     /// <c>CopySrc</c> and <c>CopyDst</c>.</summary>
     public void GenerateMips(ImageId i) { Head(Op.GenerateMips); Put(i); Sent(); }

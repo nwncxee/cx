@@ -233,6 +233,14 @@ internal static class RenderPasses
         }, log);
         r.Register(new PassLifecycle
         {
+            Name = "dof",
+            Attach = DepthOfField.Attach,
+            SelfCheck = DepthOfField.SelfCheck,
+            Revoke = DepthOfField.Revoke,
+            ContextLost = DepthOfField.Forget,
+        }, log);
+        r.Register(new PassLifecycle
+        {
             Name = "post",
             Attach = PostChain.Attach,
             SelfCheck = l => PostChain.SelfCheck(l),

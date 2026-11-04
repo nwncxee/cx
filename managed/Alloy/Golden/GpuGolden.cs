@@ -69,6 +69,8 @@ internal static partial class GpuGolden
         DeferredWalkSelfCheck(vk, check, log);
         DeferredWalkApprovedSelfCheck(vk, check, log);
         ReactiveApprovedSelfCheck(vk, check, log);
+        DofApprovedSelfCheck(vk, check, log);
+        DofRegressionSelfCheck(vk, check, log);
         RainLookApprovedSelfCheck(vk, check, log);
         RainMotionApprovedSelfCheck(vk, check, log);
         RainLateApprovedSelfCheck(vk, check, log);
