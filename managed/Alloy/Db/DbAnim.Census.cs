@@ -7,7 +7,7 @@ internal enum ComposeCause { Other, Stepped, DirtyList, PartMark, Child, Parent,
 internal sealed class AnimCensusState
 {
     public ComposeCause Cause;
-    public int WorldAnimates, PanelAnimates, WorldSteps, WorldStepsHeld;
+    public int WorldAnimates, PanelAnimates, WorldSteps, WorldStepsHeld, UngatedWalks;
     public readonly int[] Composes = new int[(int)ComposeCause.Count];
 }
 
@@ -39,7 +39,7 @@ public static unsafe partial class DbAnim
         _census = new AnimCensusState();
         int[] by = c.Composes;
         return $" | census: {c.WorldAnimates} world/{c.PanelAnimates} panel animate(s), "
-             + $"{c.WorldSteps} world step(s) ({c.WorldStepsHeld} held out of view), "
+             + $"{c.WorldSteps} world step(s) ({c.WorldStepsHeld} held out of view, {c.UngatedWalks} walk(s) with the view gate down), "
              + $"composes {by[(int)ComposeCause.Stepped]} stepped, {by[(int)ComposeCause.DirtyList]} dirty list, "
              + $"{by[(int)ComposeCause.PartMark]} part mark, {by[(int)ComposeCause.Child]} child, "
              + $"{by[(int)ComposeCause.Parent]} parent, {by[(int)ComposeCause.Other]} other";

@@ -55,7 +55,7 @@ public static unsafe partial class DbAnim
         _rate.Eye = inv.Translation;
         _rate.Pass++;
         _rate.On = true;
-        ViewBegin();
+        ViewBegin(in wv);
     }
 
     /// <summary>End of the member walk: nothing outside it bands, so an external animate of a world object

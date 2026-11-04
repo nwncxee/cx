@@ -36,6 +36,8 @@ public static unsafe partial class DbAnim
             LampShadowsKeepMoving(check, world);
             ExternalAnimateSteps(check, world);
             HoldForgetsTheRateBand(check, world);
+            HighSunShadowStops(check, world);
+            WorldViewDrivesTheGate(check, world);
         }
         finally
         {
@@ -257,13 +259,16 @@ public static unsafe partial class DbAnim
         FrameInputs.ResetLocalLights(4);
         FrameInputs.RecordLocalLight(1, new Vector3(47f, 50f, 0f), 15f, Vector3.One);
         FrameInputs.RecordLocalLight(2, new Vector3(120f, 50f, 0f), 5f, Vector3.One);
-        ViewGatherLamps();
+        ViewGatherLamps(Vector3.Zero, 0f);
         check.Expect(_view.LampCount == 1, "only a lamp whose lit sphere reaches the view can shade it");
+        ViewGatherLamps(Vector3.Zero, 30f);
+        check.Expect(_view.LampCount == 0, "a lamp past the point-light shadow distance casts no shadow");
+        ViewGatherLamps(Vector3.Zero, 0f);
         Step(obj, 0.25f);
         check.Expect(NearV(SceneDb.PartPos[first + 1], new Vector3(1.5f, 0f, 0f)), "a lamp throwing its shadow into view keeps it walking");
         FrameInputs.ResetLocalLights(4);
         FrameInputs.RecordLocalLight(1, new Vector3(100f, 50f, 0f), 60f, Vector3.One);
-        ViewGatherLamps();
+        ViewGatherLamps(Vector3.Zero, 0f);
         SceneDb.ObjSphere[obj.Index] = new Vector4(300f, 50f, 0f, 1.5f);
         Step(obj, 0.25f);
         check.Expect(NearV(SceneDb.PartPos[first + 1], new Vector3(1.5f, 0f, 0f)), "a lamp that never reaches the object holds it");
@@ -289,5 +294,43 @@ public static unsafe partial class DbAnim
         Step(obj, 0.25f);
         check.Expect(_rate.Band[obj.Index] == 0, "a held object comes back at full rate, so its cloak does not snap rigid");
         check.Expect(_rate.Held[obj.Index] == 0f, "...with no time banked");
+    }
+
+    /// <summary>A high sun's shadow stops at the ground under the object, not 120 m down. Oracle: the view's right edge
+    /// at 50 m is 37.3 m; 8.4 m along this sun moves a sphere at 60 m to 57.5 m, still out, where 120 m lands it at 24 m.</summary>
+    private static void HighSunShadowStops(Checker check, DbId world)
+    {
+        var offRight = new Vector4(60f, 50f, 0f, 1.5f);
+        DbId obj = Walker(Chain(), world, offRight, out int first);
+        ViewLatch(Vector3.Zero, Vector3.UnitY, 45f, 1.8f, 0.1f, 200f, Vector3.Normalize(new Vector3(-0.3f, 0f, -0.95f)), hasSun: true, 120f);
+        Step(obj, 0.25f);
+        check.Expect(NearV(SceneDb.PartPos[first + 1], new Vector3(1f, 0f, 0f)), "a shadow that lands short of the view holds its caster");
+        ViewLatch(Vector3.Zero, Vector3.UnitY, 45f, 1.8f, 0.1f, 200f, default, hasSun: false, 0f);
+    }
+
+    /// <summary>The gate reads the world's own view, whichever view drew last. Oracle: a camera at the origin looking
+    /// along +Y has a sphere at y = -100 behind it, and a wave held at half a second reads 1 m.</summary>
+    private static void WorldViewDrivesTheGate(Checker check, DbId world)
+    {
+        DbId obj = Walker(Chain(), world, BehindCamera, out int first);
+        var wv = new AlloyView
+        {
+            View = Matrix4x4.CreateLookAt(Vector3.Zero, Vector3.UnitY, Vector3.UnitZ),
+            Fovy = 45f, Aspect = 1.8f, Near = 0.1f, Far = 200f, Perspective = true, Valid = true,
+        };
+        bool perspective = FrameInputs.HasPerspective, sun = FrameInputs.HasSun;
+        FrameInputs.HasPerspective = false;
+        FrameInputs.HasSun = false;
+        ViewBegin(in wv);
+        Step(obj, 0.25f);
+        check.Expect(NearV(SceneDb.PartPos[first + 1], new Vector3(1f, 0f, 0f)), "a flat GUI view drawn last does not stand the world's gate down");
+        wv.Perspective = false;
+        int down = _census.UngatedWalks;
+        FrameInputs.HasPerspective = true;
+        ViewBegin(in wv);
+        check.Expect(!_view.On && _census.UngatedWalks == down + 1, "a world view with no perspective stands the gate down, and the period line says so");
+        FrameInputs.HasPerspective = perspective;
+        FrameInputs.HasSun = sun;
+        ViewLatch(Vector3.Zero, Vector3.UnitY, 45f, 1.8f, 0.1f, 200f, default, hasSun: false, 0f);
     }
 }

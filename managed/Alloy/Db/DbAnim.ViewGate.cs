@@ -9,8 +9,10 @@ internal sealed class ViewGateState
 {
     /// <summary>Near, far and the four sides, inward-facing.</summary>
     public readonly CullPlane[] Planes = new CullPlane[6];
-    /// <summary>The sun's travel over the longest shadow the cascades bake. Zero with no sun.</summary>
-    public Vector3 SunSweep;
+    /// <summary>The sun's unit travel, and the longest shadow the cascades bake: zero with no sun.</summary>
+    public Vector3 Sun;
+    /// <inheritdoc cref="Sun"/>
+    public float LongestShadow;
     /// <summary>The first <see cref="LampCount"/> lamps whose lit sphere reaches the view.</summary>
     public readonly Vector3[] LampPos = new Vector3[CasterPass.MaxCubes];
     /// <inheritdoc cref="LampPos"/>
@@ -27,17 +29,26 @@ internal sealed class ViewGateState
 /// also exempts an object and has no writer but the constructor in the dump, so nothing here reads it.</summary>
 public static unsafe partial class DbAnim
 {
+    /// <summary>How far below an object its shadow can still land, past the object's own height. ponytail: a shadow
+    /// thrown down a taller drop freezes at its edge; the area's height map is the upgrade if a cliff shows it.</summary>
+    private const float ShadowDrop = 5f;
+
     private static ViewGateState _view = new();
 
-    /// <summary>Latch the view from the frame's camera and sun for this world walk. No camera stands the gate down.</summary>
-    private static void ViewBegin()
+    /// <summary>Latch the world view for this walk. A view that is not a perspective one stands the gate down, and
+    /// the period line counts it. It is the world's by name: <c>FrameInputs</c> holds whichever view drew last.</summary>
+    private static void ViewBegin(in AlloyView wv)
     {
         _view.On = false;
-        if (!FrameInputs.HasCamera || !FrameInputs.HasPerspective) return;
-        ViewLatch(FrameInputs.CameraPos, FrameInputs.SceneCamFwd, FrameInputs.CamFovy, FrameInputs.CamAspect,
-                  FrameInputs.CamNear, FrameInputs.CamFar, FrameInputs.SunDir,
-                  FrameInputs.HasSun && !FrameInputs.Interior, Shadows.Dist.V);
-        ViewGatherLamps();
+        if (!wv.Perspective || !Matrix4x4.Invert(wv.View, out Matrix4x4 inv))
+        {
+            _census.UngatedWalks++;
+            return;
+        }
+        Vector3 eye = inv.Translation;
+        ViewLatch(eye, Vector3.TransformNormal(-Vector3.UnitZ, inv), wv.Fovy, wv.Aspect, wv.Near, wv.Far,
+                  FrameInputs.SunDir, FrameInputs.HasSun && !FrameInputs.Interior, Shadows.Dist.V);
+        ViewGatherLamps(FrameInputs.HasFocus ? FrameInputs.Focus : eye, Shadows.CubeDist.V);
     }
 
     /// <summary>Hold objects against a camera at <paramref name="pos"/> (angles in degrees) and a sun travelling
@@ -46,22 +57,25 @@ public static unsafe partial class DbAnim
                                   Vector3 sun, bool hasSun, float longestShadow)
     {
         ShadowMath.ReceiverPlanes(pos, fwd, fovy, aspect, near, far, 0f, _view.Planes);
-        _view.SunSweep = hasSun ? sun * longestShadow : Vector3.Zero;
+        _view.Sun = sun;
+        _view.LongestShadow = hasSun && sun.Z < 0f ? longestShadow : 0f;
         _view.LampCount = 0;
         _view.On = true;
     }
 
-    /// <summary>Take the lamps that can shade the view, by the test the cube pass claims a slot with. ponytail:
+    /// <summary>Take the lamps that can shade the view, by the tests the cube pass claims a slot with. ponytail:
     /// the first ones past the cap and not the nearest; ranking them as the cube pass does is the upgrade if an
     /// area holds more lit lamps in view than it has cube slots.</summary>
-    private static void ViewGatherLamps()
+    private static void ViewGatherLamps(Vector3 focus, float cubeDist)
     {
         ViewGateState g = _view;
         g.LampCount = 0;
+        float cubeDist2 = cubeDist > 0f ? cubeDist * cubeDist : float.PositiveInfinity;
         for (int i = 0; i < FrameInputs.LocalLightCount && g.LampCount < g.LampPos.Length; i++)
         {
             Vector3 p = FrameInputs.LocalLightPos[i];
             float reach = FrameInputs.LocalLightRange[i];
+            if ((p - focus).LengthSquared() > cubeDist2) continue;
             if (!ShadowMath.ShadowReaches(g.Planes, p, reach, p, reach)) continue;
             g.LampPos[g.LampCount] = p;
             g.LampReach[g.LampCount++] = reach;
@@ -101,7 +115,8 @@ public static unsafe partial class DbAnim
     private static bool ReachesView(Vector3 c, float r)
     {
         ViewGateState g = _view;
-        if (ShadowMath.ShadowReaches(g.Planes, c, r, c + g.SunSweep, r)) return true;
+        float run = MathF.Min(g.LongestShadow, (2f * r + ShadowDrop) / MathF.Max(-g.Sun.Z, 1e-3f));
+        if (ShadowMath.ShadowReaches(g.Planes, c, r, c + g.Sun * run, r)) return true;
         for (int k = 0; k < g.LampCount; k++)
         {
             float touch = g.LampReach[k] + r;
