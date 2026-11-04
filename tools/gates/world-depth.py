@@ -3,7 +3,8 @@
 z. GL's decode of it (`d * 2.0 - 1.0`) or GL's far plane (`d >= 1.0`) is a missed site: the frame goes wrong without
 a compile error, so this reads the text -- every Alloy shader, every GLSL string in the C#, and every helper a world
 depth reaches through a parameter. Shadow and cover maps keep GL's depth and are not named. A shader also turns world
-depth into a distance only through CxDepthViewZ (cx_depthlin.glsl), so the decode its golden holds is every reader's.
+depth into a distance only through CxDepthViewZ (cx_depthlin.glsl), so the decode its golden holds is every reader's, and
+C# takes the same decode's terms from the planes only through WorldDepth.Decode.
 
 usage: world-depth.py [root]   (default: the repository)
 """
@@ -17,6 +18,8 @@ GL_DECODE = r"\s*\*\s*2\.0\s*-\s*1\.0"
 GL_FAR = r"\s*(?:>=\s*1\.0|<\s*1\.0)"
 LINEAR = re.compile(r"\[3\]\s*(?:\.z|\[2\])\s*/\s*\(|\b(\w+)\.y\s*/\s*\([^()]*\+\s*\1\.x\s*\)")
 LINEAR_HOME = "cx_depthlin.glsl"
+CS_DECODE = re.compile(r"\bnear / \(far - near\)")
+CS_DECODE_HOME = os.path.join("Core", "WorldDepth.cs")
 FN_HEAD = re.compile(r"^\s*(?:\w+\s+)+?(\w+)\s*\(([^()]*)\)\s*\{?\s*$")
 CALL = re.compile(r"\b(\w+)\s*\(")
 KEYWORDS = {"if", "for", "while", "switch", "return", "texture", "textureLod", "texelFetch"}
@@ -132,7 +135,7 @@ def world_params(texts):
 
 def scan(root):
     shaders = os.path.join(root, "managed", "Alloy", "Shaders")
-    texts = {}
+    texts, raw = {}, {}
     if os.path.isdir(shaders):
         for f in sorted(os.listdir(shaders)):
             if f.endswith(".glsl"):
@@ -143,9 +146,16 @@ def scan(root):
         for f in sorted(files):
             if f.endswith(".cs"):
                 rel = os.path.relpath(os.path.join(d, f), root)
-                texts[rel] = [strings_of(l) for l in open(os.path.join(d, f), errors="replace").read().splitlines()]
+                raw[rel] = open(os.path.join(d, f), errors="replace").read().splitlines()
+                texts[rel] = [strings_of(l) for l in raw[rel]]
     reach = world_params(texts)
     bad = []
+    for path, lines in raw.items():
+        if path.endswith(CS_DECODE_HOME) or os.path.join("Alloy", "Golden") in path:
+            continue
+        for i, line in enumerate(lines, 1):
+            if CS_DECODE.search(code_of(line)):
+                bad.append(f"{path}:{i}: world depth's decode worked out from the planes by hand -- call WorldDepth.Decode")
     for path, lines in texts.items():
         fns = functions(lines)
         spans = [(a, b, reach.get(n, set())) for n, (a, b, _) in fns.items()]

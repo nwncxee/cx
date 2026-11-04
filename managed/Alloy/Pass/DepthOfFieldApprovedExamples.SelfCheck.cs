@@ -28,7 +28,7 @@ internal static partial class DepthOfField
         (float amount, float dead, int focus, bool never) = (Dof.Amount.V, Dof.DeadZone.V, Dof.Focus.V, Dof.NeverBlur.V);
         try
         {
-            Dof.Amount.V = 1f; Dof.DeadZone.V = 3f; Dof.Focus.V = 3; Dof.NeverBlur.V = false;
+            Dof.Amount.V = 1f; Dof.DeadZone.V = 3f; Dof.Focus.V = Dof.FocusMouse; Dof.NeverBlur.V = false;
             var onCharacter = new Scene(8f, 45f, false, false, 8f, 0f, 0f, 0f);
             var onWall = onCharacter with { MouseDepth = 30f };
             Band now = Focus(in onCharacter);

@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using CX.Engine;
 using CX.Framework;
 using CX.Graphics;
 using CX.Graphics.Rhi;
@@ -364,9 +365,9 @@ internal static unsafe partial class PostStack
     {
         if (!DepthOfField.Wanted || fovY <= 0f || vk.FrameSize != (dw, dh)) return;
         DepthOfField.Scene scene = DepthOfField.EngineScene();
-        DepthOfField.Record(vk, cl, ref hdr, depth, viewport[2], viewport[3], in scene, Fsr.FrameMs() / 1000f, near, far, fovY, log);
-        (int mx, int my) = DepthOfField.EngineMouse();
-        DepthOfField.AskDepths(vk, cl, depth, dw, dh, depthW, depthH, in scene, mx, my, near, far);
+        DepthOfField.Record(vk, cl, ref hdr, depth, viewport[2], viewport[3], in scene, Fsr.FrameMs() / 1000f, near, far, log);
+        ShaderExposedRuntimeData rt = AlloyRenderer.Rt;
+        DepthOfField.AskDepths(vk, cl, depth, dw, dh, depthW, depthH, in scene, rt.MouseX, rt.MouseY, near, far, log);
     }
 
     /// <summary>The accumulator: this frame against the reprojected, clipped history into the other history image,

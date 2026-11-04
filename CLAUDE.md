@@ -264,8 +264,8 @@ the cleanup that earned it. Adding a rule means adding its gate in the same chan
 - `adr.sh`: a decision record under `docs/adr/` that `bin/check-adr` refuses (its shape, backticks, over 55 words) fails.
 - `world-depth.sh`: a world depth read decoded as GL's (`d * 2.0 - 1.0`) or tested against GL's far plane (1.0) fails --
   in a `.glsl` under `managed/Alloy/Shaders/`, in a helper a world depth reaches through a parameter, or in a GLSL string
-  in C# -- and so does a `.glsl` linearisation written anywhere but `cx_depthlin.glsl`'s `CxDepthViewZ`. The world
-  depth samplers are a list in `world-depth.py`; a new one goes on it. Its approved examples are
+  in C# -- and so does a `.glsl` linearisation written anywhere but `cx_depthlin.glsl`'s `CxDepthViewZ`, or C# working the decode's
+  terms from the planes anywhere but `WorldDepth.Decode`. The world depth samplers are a list in `world-depth.py`; a new one goes on it. Its approved examples are
   `world_depth_approved_examples.sh` beside it, which `build.sh` runs.
 - `depth-confined.sh`: a file named in CX0006's `Allowed` that is not in the tree fails. The RULE -- GL's depth test and
   clear only in the files that keep GL depth (casters, shadow cascades, the GUI), and no depth test without its

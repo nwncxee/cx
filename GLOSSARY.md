@@ -136,6 +136,9 @@ detail, no decisions (those live in the Plane tracker and `docs/adr/`). Terms cr
 - **Focus** — the one **Window** that owns the keyboard at a time, across every service.
   Acquired per the **focus mode**: *click-to-focus* (default) or *hover-to-focus* (opt-in,
   user-configured).
+- **Focus distance** — where depth of field is sharp: a distance from the camera, set by the `dof.focus` rule. Not **Focus**, which is
+  about the keyboard.
+- **Sharp band** — the depth around the focus distance that depth of field leaves untouched, as deep as `dof.deadzone`.
 - **Input precedence** — the fixed order the **frame host** resolves every input event:
   (1) the focused Window's content, (2) registered **input consumers** (chords),
   (3) engine gameplay keybinds. Each layer consumes the event or passes it down. A global

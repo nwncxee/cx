@@ -9,7 +9,8 @@ AMD FidelityFX SDK 1.1.4 as CX builds FSR 3.1 and FidelityFX DoF: `patch -p1` in
    library needs no C++ runtime.
 7. ffx_vk.cpp: a permutation with no compiled shader fails pipeline creation, in release builds too.
 8. ffx_dof.h, ffx_dof_private.h, ffx_dof.cpp, ffx_dof_callbacks_glsl.h: the circle of confusion grows in metres past a
-   flat sharp band, as stock's confusion does, in place of the thin lens's scale and bias.
+   flat sharp band, as stock's confusion does, in place of the thin lens's scale and bias, and the helpers that worked
+   those out are gone.
 9. ffx_dof.cpp, ffx_dof_callbacks_glsl.h: the effect's images and its output are 16-bit floats at either precision.
 10. ffx_dof_callbacks_glsl.h: the composite and colour passes find depth from a colour pixel by its place in the frame,
     so depth may be smaller than colour, as it is under FSR.
@@ -196,11 +197,13 @@ AMD FidelityFX SDK 1.1.4 as CX builds FSR 3.1 and FidelityFX DoF: `patch -p1` in
  
  #if defined(__cplusplus)
  extern "C" {
-@@ -116,7 +116,12 @@
+@@ -115,8 +115,13 @@
+     FfxResource                 color;              ///< The <c><i>FfxResource</i></c> containing color information
      FfxResource                 depth;              ///< The <c><i>FfxResource</i></c> containing depth information
      FfxResource                 output;             ///< The <c><i>FfxResource</i></c> to output into. Can be the same as the color input.
-     float                       cocScale;           ///< The factor converting depth to circle of confusion size. Can be calculated using ffxDofCalculateCocScale.
+-    float                       cocScale;           ///< The factor converting depth to circle of confusion size. Can be calculated using ffxDofCalculateCocScale.
 -    float                       cocBias;            ///< The bias to apply to circle of confusion size. Can be calculated using ffxDofCalculateCocBias.
++    float                       cocScale;           ///< CX: half-size pixels of circle of confusion per metre past the sharp band.
 +    float                       cocFocusNear;       ///< CX: the nearer edge of the sharp band, in metres.
 +    float                       cocFocusFar;        ///< CX: the farther edge of the sharp band, in metres.
 +    float                       cocDepthA;          ///< CX: a reversed depth d is A / (d + B) metres from the eye.
@@ -210,6 +213,63 @@ AMD FidelityFX SDK 1.1.4 as CX builds FSR 3.1 and FidelityFX DoF: `patch -p1` in
  } FfxDofDispatchDescription;
  
  /// A structure encapsulating the FidelityFX Depth of Field context.
+@@ -208,56 +213,3 @@
+ #endif // #if defined(__cplusplus)
+ 
+ 
+-/// Calculates the scale parameter in the thin lens model according to lens and projection parameters.
+-/// @param aperture    Aperture radius in view space units
+-/// @param focus       Distance to focus plane in view space units
+-/// @param focalLength Lens focal length in view space units
+-/// @param conversion  Conversion factor for view units to pixels (i.e. image width in pixels / sensor size)
+-/// @param proj33      Element (3,3) of the projection matrix (z range scale)
+-/// @param proj34      Element (3,4) of the projection matrix (z range offset)
+-/// @param proj43      Element (4,3) of the projection matrix (typically 1 or -1)
+-/// 
+-/// @ingroup ffxDof
+-static inline float ffxDofCalculateCocScale(float aperture, float focus, float focalLength, float conversion,
+-	float proj33, float proj34, float proj43)
+-{
+-    (void)proj33;
+-    // z = (vd * proj33 + proj34) / (vd * proj43) = proj33/proj43 + proj34/(vd*proj43)
+-	// => view depth = proj34 / (z*proj43 - proj33)
+-	// C = (A * L * (F - D)) / (D * (F - L))
+-	//   = AL/(F-L) * (F/D - 1)
+-	//   = AL/(F-L) * (F(z*p43-p33)/p34 - 1) ignore non-factor terms
+-	//   = AL/(F-L) * (F(z*p43-.)/p34 - .)
+-	//   = AL/(F-L) * (F(z*p43-.)/p34 - .)
+-	//   = AL/(F-L) * F*z*p43/p34 + .
+-	//   = z * AL/(F-L) * F*p43/p34 + .
+-    float absFocus  = focus < 0 ? -focus : focus;
+-    float commonFactor = conversion * aperture * focalLength / (absFocus - focalLength);
+-    return commonFactor * focus * (proj43 / proj34);
+-}
+-
+-/// Calculates the bias parameter in the thin lens model according to lens and projection parameters.
+-/// @param aperture    Aperture radius in view space units
+-/// @param focus       Distance to focus plane in view space units
+-/// @param focalLength Lens focal length in view space units
+-/// @param conversion  Conversion factor for view units to pixels (i.e. image width in pixels / sensor size)
+-/// @param proj33      Element (3,3) of the projection matrix (a.k.a. z range scale)
+-/// @param proj34      Element (3,4) of the projection matrix (a.k.a. z range offset)
+-/// @param proj43      Element (4,3) of the projection matrix (typically 1 or -1)
+-/// 
+-/// @ingroup ffxDof
+-static inline float ffxDofCalculateCocBias(float aperture, float focus, float focalLength, float conversion,
+-	float proj33, float proj34, float proj43)
+-{
+-    (void)proj43;
+-    // z = (D * proj33 + proj34) / (D * proj43) = proj33/proj43 + proj34/(D*proj43)
+-	// => view depth D = proj34 / (z*proj43 - proj33)
+-	// C = (A * L * (F - D)) / (D * (F - L))
+-	//   = AL/(F-L) * (F/D - 1)
+-	//   = AL/(F-L) * (F(z*p43-p33)/p34 - 1) ignore factor terms
+-	//   = AL/(F-L) * (F(0*p43-p33)/p34 - 1)
+-	//   = AL/(F-L) * (-F*p33/p34 - 1)
+-    float absFocus  = focus < 0 ? -focus : focus;
+-    float commonFactor = conversion * aperture * focalLength / (absFocus - focalLength);
+-    return commonFactor * (-focus * (proj33 / proj34) - 1);
+-}
 --- a/sdk/src/components/dof/ffx_dof_private.h
 +++ b/sdk/src/components/dof/ffx_dof_private.h
 @@ -44,12 +44,17 @@

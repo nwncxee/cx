@@ -22,7 +22,7 @@ internal static partial class GpuGolden
     private const float DofNearPlane = 1f, DofFarPlane = 1000f;
 
     /// <summary>What a golden sets the group's knobs to; the defaults are vanilla's, with the effect on.</summary>
-    private readonly record struct DofSet(bool Enabled = true, float Amount = 1f, float DeadZone = 3f, int Focus = 1, bool NeverBlur = true);
+    private readonly record struct DofSet(bool Enabled = true, float Amount = 1f, float DeadZone = 3f, int Focus = Dof.FocusPitch, bool NeverBlur = true);
 
     /// <summary>Runs <paramref name="body"/> with the group's knobs at <paramref name="set"/>, and puts them back.</summary>
     private static T DofWith<T>(in DofSet set, Func<T> body)
@@ -46,10 +46,10 @@ internal static partial class GpuGolden
     /// <paramref name="z"/>, per pixel of a <see cref="DofSide"/> frame, with depth at <paramref name="depthSide"/>.
     /// RGBA of the image the frame leaves the pass in, or null when anything was refused (logged).</summary>
     private static DofPx[]? DofRun(VkBackend vk, ExtenderLog log, Func<int, int, (float R, float G, float B)> colour, Func<int, int, float> z,
-                                  DepthOfField.Scene scene, DofSet set = default, int depthSide = DofSide)
+                                  DepthOfField.Scene scene, DofSet? set = null, int depthSide = DofSide)
     {
-        if (set == default) set = new DofSet(Enabled: true);
-        return DofWith(in set, () => DofFrame(vk, log, colour, z, scene, depthSide));
+        DofSet settings = set ?? new DofSet(Enabled: true);
+        return DofWith(in settings, () => DofFrame(vk, log, colour, z, scene, depthSide));
     }
 
     private static DofPx[]? DofFrame(VkBackend vk, ExtenderLog log, Func<int, int, (float R, float G, float B)> colour, Func<int, int, float> z,
@@ -77,7 +77,7 @@ internal static partial class GpuGolden
             DepthOfField.Forget();
             ImageId into = hdr;
             var cl = new CommandList("golden dof", 1 << 12, log);
-            DepthOfField.Record(vk, cl, ref into, depth, DofSide, DofSide, in scene, 1f / 60f, DofNearPlane, DofFarPlane, 1f, log);
+            DepthOfField.Record(vk, cl, ref into, depth, DofSide, DofSide, in scene, 1f / 60f, DofNearPlane, DofFarPlane, log);
             if (!vk.Submit(cl)) { log.Always("GpuGolden: dof, the frame was refused (logged above)"); return null; }
             if (PostRead(vk, log, into, DofSide, DofSide, 8, rb) is not { } bytes) { log.Always("GpuGolden: dof, the read-back was refused (logged above)"); return null; }
             return MemoryMarshal.Cast<byte, DofPx>(bytes).ToArray();
@@ -96,20 +96,21 @@ internal static partial class GpuGolden
         return (float)(k == 0 ? p.R : k == 1 ? p.G : p.B);
     }
 
-    /// <summary>The largest red difference between neighbours over a block of the frame: 1 on an untouched checker, near 0
-    /// once the checker has been blurred away.</summary>
-    private static float DofContrast(DofPx[] o, int x0, int x1, int y0, int y1)
+    /// <summary>The largest difference in channel <paramref name="k"/> between neighbours over a block of the frame: 1 on an
+    /// untouched checker, near 0 once the checker has been blurred away.</summary>
+    private static float DofContrast(DofPx[] o, int x0, int x1, int y0, int y1, int k = 0)
     {
         float most = 0f;
         for (int y = y0; y < y1; y++)
             for (int x = x0; x < x1; x++)
-                most = MathF.Max(most, MathF.Abs(DofAt(o, x + 1, y) - DofAt(o, x, y)));
+                most = MathF.Max(most, MathF.Abs(DofAt(o, x + 1, y, k) - DofAt(o, x, y, k)));
         return most;
     }
 
     /// <summary>The depth <see cref="DepthOfField.AskDepths"/> reads under a mouse at (<paramref name="mx"/>, <paramref name="my"/>),
-    /// over a half-size depth with the character at 8 m on the left and a wall at 30 m on the right; NaN when refused.</summary>
-    private static float DofProbe(VkBackend vk, ExtenderLog log, int mx, int my)
+    /// over a half-size depth with the character at 8 m on the left, or the low rows, and a wall at 30 m on the right, or the
+    /// high rows; NaN when refused.</summary>
+    private static float DofProbe(VkBackend vk, ExtenderLog log, int mx, int my, bool byRow = false)
     {
         int side = DofSide / 2;
         ImageId depth = PostImage(vk, Format.R32F, side, side, ImageUse.Sampled | ImageUse.CopyDst | ImageUse.CopySrc, "golden dof probe depth");
@@ -118,12 +119,12 @@ internal static partial class GpuGolden
             var d = new float[side * side];
             for (int y = 0; y < side; y++)
                 for (int x = 0; x < side; x++)
-                    d.AsSpan(y * side, side)[x] = DofDepthOf(x < side / 2 ? 8f : 30f);
+                    d.AsSpan(y * side, side)[x] = DofDepthOf((byRow ? y : x) < side / 2 ? 8f : 30f);
             if (depth.IsNull || !vk.Upload(depth, 0, 0, MemoryMarshal.AsBytes(d.AsSpan())))
             { log.Always("GpuGolden: dof, the probe's depth was refused (logged above)"); return float.NaN; }
             DepthOfField.Forget();
             var cl = new CommandList("golden dof probe", 1 << 10, log);
-            DepthOfField.AskDepths(vk, cl, depth, DofSide, DofSide, side, side, DofCamera(8f, 45f), mx, my, DofNearPlane, DofFarPlane);
+            DepthOfField.AskDepths(vk, cl, depth, DofSide, DofSide, side, side, DofCamera(8f, 45f), mx, my, DofNearPlane, DofFarPlane, log);
             // the read lands in the WhenDone work the next submit runs
             if (!vk.Submit(cl) || !vk.WaitSubmitted() || !vk.Submit(new CommandList("golden dof probe landed", 1 << 10, log)))
             { log.Always("GpuGolden: dof, the probe was refused (logged above)"); return float.NaN; }
@@ -152,13 +153,15 @@ internal static partial class GpuGolden
         // an object nearer than the band spreads over the sharp ground behind it, which only a nearer-than-focus blur does.
         // Oracle: the fixture's own colours, red only on the near side.
         DofPx[]? near = DofRun(vk, log, static (x, y) => x < DofSide / 2 ? (1f, 0f, 0f) : (0f, DofChecker(x, y), 0f), static (x, y) => x < DofSide / 2 ? 5.5f : 19f,
-                               DofCamera(20f, 0f), new DofSet(Enabled: true, Focus: 0, NeverBlur: false));
+                               DofCamera(20f, 0f), new DofSet(Enabled: true, Focus: Dof.FocusPlayer, NeverBlur: false));
         check.Expect(near != null, "dof: the near-object frame ran");
         if (near == null) return;
-        float over = DofAt(near, DofSide / 2 + 2, DofSide / 2), ground = 0f;
-        for (int y = 400; y < 600; y++)
-            for (int x = 800; x < 1000; x++) ground = MathF.Max(ground, MathF.Abs(DofAt(near, x + 1, y, 1) - DofAt(near, x, y, 1)));
+        float over = DofAt(near, DofSide / 2 + 2, DofSide / 2), ground = DofContrast(near, 800, 1000, 400, 600, 1);
         check.Expect(over > 0.05f, $"dof: a near object's blur spreads over the ground behind it (red {over:F3})");
         check.Expect(ground > 0.99f, $"dof: the ground in the band stays sharp (contrast {ground:F3})");
+        // the mouse's rows run from the bottom, as the frame's do: no flip. Oracle: the fixture's own rows.
+        var mouse = new DofSet(Enabled: true, Focus: Dof.FocusMouse);
+        float low = DofWith(in mouse, () => DofProbe(vk, log, 512, 300, byRow: true)), high = DofWith(in mouse, () => DofProbe(vk, log, 512, 900, byRow: true));
+        check.Expect(MathF.Abs(low - 8f) < 0.1f && MathF.Abs(high - 30f) < 0.5f, $"dof: a low mouse row reads the low rows' depth, and a high one the high rows' (got {low:F2}, {high:F2})");
     }
 }

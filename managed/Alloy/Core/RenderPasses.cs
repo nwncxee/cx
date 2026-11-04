@@ -234,7 +234,6 @@ internal static class RenderPasses
         r.Register(new PassLifecycle
         {
             Name = "dof",
-            Attach = DepthOfField.Attach,
             SelfCheck = DepthOfField.SelfCheck,
             Revoke = DepthOfField.Revoke,
             ContextLost = DepthOfField.Forget,

@@ -691,7 +691,8 @@ so it adds no submenu content.
 | lighttrace.enabled | Trace every area-light change to cx.log | T | off | **C** | L | — | cfg-only diagnostic for area builders: every light, direction and fog packet the server sends, every day/night state change and transition, the lightning flash, and once a second the colours the engine applied to the area's sun next to the ones Alloy rendered -- all under the `[lighttrace]` prefix. Off costs nothing per frame. |
 
 **Image** — group `post` (330), no master (the resolve is the frame). Its `PanelStatus` is empty unless the device refused FSR,
-then "FSR 3.1 is off for this session: <why>."
+then "FSR 3.1 is off for this session: <why>." Group `dof` (332, *Depth of field*), master `dof.enabled`; its `PanelStatus` is
+empty unless the device refused the effect, then "Depth of field is off for this session: <why>."
 
 | key | label | kind | range · default | tier | eff | section | help |
 |---|---|---|---|---|---|---|---|
@@ -705,6 +706,11 @@ then "FSR 3.1 is off for this session: <why>."
 | post.knee | Bloom knee | S | 0–1 step 0.05 · 0.5 | A | L | Bloom | |
 | post.taasharp | TAA sharpness | S | 0–1 step 0.05 · 0.3 | A | L | Anti-aliasing | Undoes the softness the history blend leaves. 0 = the raw resolve. |
 | post.acesmix / tmknee / dither / taablend / taau / halfres / stack / fbpost / toonbands / toonink / toonedge / motion / viz / clearviz / skyraw | — | T, S | as declared | C | L | — | tone-curve details, the TAA history weight and upsample, half-resolution AO, the stock framebuffer effects (gamma, sharpen, vibrance, SMAA, toon) and the visualisers |
+| dof.enabled | Depth of field | T | off | U | L | — | Blurs what is nearer or farther than the focus, keeping the interface sharp. |
+| dof.amount | Amount | S | 0–5 step 0.05 · 1 | U | L | — | How quickly the blur grows with distance from the focus. |
+| dof.deadzone | Dead zone | S | 0–10 m step 0.1 · 3 | U | L | — | How deep the sharp band around the focus is. |
+| dof.focus | Focus type | D | Player Character / Camera Pitch / Dynamic / Mouse · Camera Pitch | U | L | — | What the camera focuses on. Camera Pitch looks farther away the lower the camera sits. Dynamic reads the distance ahead of the camera. Mouse focuses on what is under the mouse. |
+| dof.neverblur | Never blur the player | T | on | U | L | — | Keeps your character inside the sharp band, wherever the focus is. |
 
 **World** — groups `grass` (340), `weather` (342), `fog` (344), `vfog` (345, *Volumetric fog*). `water` (346) declares a
 ChatOnly master and two diagnostics, so it has no submenu.

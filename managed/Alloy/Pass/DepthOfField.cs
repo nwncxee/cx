@@ -44,12 +44,17 @@ internal static unsafe partial class DepthOfField
         public BufferId Read;
         public bool Reading;
         public int ReadGen;
-        public float A, B, MouseDepth, AheadU, AheadL, AheadR;
+        public float A, B, AheadU, AheadL, AheadR;
     }
 
     private static DofState _s = new();
 
-    internal static void Attach(ExtenderLog log) => _ = Dof.G;
+    /// <summary>The pass's state on <paramref name="vk"/>; a new device starts it over.</summary>
+    private static DofState On(VkBackend vk)
+    {
+        if (_s.Dev != vk) _s = new DofState { Dev = vk };
+        return _s;
+    }
 
     /// <summary>World edge, or a camera cut: the next frame takes its focus whole.</summary>
     internal static void Revoke() => _s.HasBand = false;
@@ -101,26 +106,26 @@ internal static unsafe partial class DepthOfField
     {
         if (_s.Refused != null) return;
         _s.Refused = why;
-        log.Always($"PostStack: depth of field is OFF for the session -- {why}. The frame draws with no blur.");
+        log.Always($"DepthOfField: OFF for the session -- {why}. The frame draws with no blur.");
     }
 
     /// <summary>The <c>dof</c> panel's line: why the effect is off for the session, or empty.</summary>
     internal static string PanelLine() => _s.Refused == null ? "" : $"Depth of field is off for this session: {_s.Refused}.";
 
-    /// <summary>One dispatch in AMD's terms from Alloy's. A world depth d is <c>M43 / (d + M33)</c> metres from the eye, the
-    /// folded projection's depth row, which are these from the planes.</summary>
+    /// <summary>One dispatch in AMD's terms from Alloy's.</summary>
     internal static DofCmd Command(ImageId color, ImageId depth, ImageId output, in Band band, int height, float near, float far)
-        => new(color, depth, output, Dof.Amount.V / band.Reference * BlurFraction * height, band.Near, band.Far,
-               far * near / (far - near), near / (far - near), MinDistance, MaxDistance);
-
-    /// <summary>The effect on this frame of <paramref name="w"/> x <paramref name="h"/>, when it is wanted and the view is a
-    /// perspective one: <paramref name="hdr"/> becomes the image it wrote. A refusal stands it down for the session.</summary>
-    internal static void Record(VkBackend vk, CommandList cl, ref ImageId hdr, ImageId depth, int w, int h, in Scene s, float dt,
-                                float near, float far, float fovY, ExtenderLog log)
     {
-        if (!Wanted || fovY <= 0f) return;
-        if (_s.Dev != vk) _s = new DofState { Dev = vk };
-        DofState d = _s;
+        (float a, float b) = WorldDepth.Decode(near, far);
+        return new(color, depth, output, Dof.Amount.V / band.Reference * BlurFraction * height, band.Near, band.Far, a, b, MinDistance, MaxDistance);
+    }
+
+    /// <summary>The effect on this frame of <paramref name="w"/> x <paramref name="h"/>, when it is wanted:
+    /// <paramref name="hdr"/> becomes the image it wrote. A refusal stands it down for the session.</summary>
+    internal static void Record(VkBackend vk, CommandList cl, ref ImageId hdr, ImageId depth, int w, int h, in Scene s, float dt,
+                                float near, float far, ExtenderLog log)
+    {
+        if (!Wanted) return;
+        DofState d = On(vk);
         if (vk.DofReady(w, h) is string why) { Refuse(why, log); return; }
         if (d.Out.IsNull || d.W != w || d.H != h)
         {
@@ -144,22 +149,20 @@ internal static unsafe partial class DepthOfField
     /// <summary>Copy out the depths the Mouse or Dynamic focus reads, landing a frame or more later with no wait: one read in flight
     /// at a time. The mouse is in rows from the bottom, as the frame's rows run, on the <paramref name="dw"/> x <paramref name="dh"/>
     /// display; depth is <paramref name="rw"/> x <paramref name="rh"/>. Off those focus types, or in a conversation, nothing is read.</summary>
-    internal static void AskDepths(VkBackend vk, CommandList cl, ImageId depth, int dw, int dh, int rw, int rh, in Scene s, int mouseX, int mouseY, float near, float far)
+    internal static void AskDepths(VkBackend vk, CommandList cl, ImageId depth, int dw, int dh, int rw, int rh, in Scene s, int mouseX, int mouseY, float near, float far, ExtenderLog log)
     {
         int type = Dof.Focus.V;
         if ((type != Dof.FocusMouse && type != Dof.FocusDynamic) || s.Dialog || s.Cutscene) return;
-        if (_s.Dev != vk) _s = new DofState { Dev = vk };
-        DofState d = _s;
+        DofState d = On(vk);
         if (d.Reading) return;
         if (d.Read.IsNull)
         {
             d.Read = vk.CreateBuffer(new BufferDesc(ReadBytes, BufferUse.CopyDst, MemoryKind.Readback, "vk dof focus read"));
-            if (d.Read.IsNull) return;
+            if (d.Read.IsNull) { Refuse("its focus read-back buffer was refused (logged above)", log); return; }
         }
-        d.A = far * near / (far - near);
-        d.B = near / (far - near);
+        (d.A, d.B) = WorldDepth.Decode(near, far);
         Span<(int X, int Y)> at = stackalloc (int, int)[Reads];
-        if (type == Dof.FocusMouse) at.Fill((Math.Clamp((int)((long)mouseX * rw / dw), 0, rw - 1), Math.Clamp((int)((long)mouseY * rh / dh), 0, rh - 1)));
+        if (type == Dof.FocusMouse) at.Fill(Texel((float)mouseX / dw, (float)mouseY / dh, rw, rh));
         else
         {
             float pitch = MathF.Abs(MathF.Cos(s.PitchDeg * MathF.PI / 180f));
@@ -188,25 +191,17 @@ internal static unsafe partial class DepthOfField
         d.AheadU = d.A / (got[0] + d.B);
         d.AheadL = d.A / (got[1] + d.B);
         d.AheadR = d.A / (got[2] + d.B);
-        d.MouseDepth = d.AheadU;
     }
 
-    /// <summary>The metres under the mouse, as last read.</summary>
-    internal static float MouseDepth => _s.MouseDepth;
+    /// <summary>The metres under the mouse, as last read: a Mouse focus reads the one texel three times.</summary>
+    internal static float MouseDepth => _s.AheadU;
 
     /// <summary>This frame's focus inputs: the engine's camera, and the depths last read.</summary>
     internal static Scene EngineScene()
     {
         ShaderExposedRuntimeData rt = AlloyRenderer.Rt;
         DofState d = _s;
-        return new Scene(rt.CamDist, rt.CamPitch, rt.DialogCamera != 0, rt.InCutscene != 0, d.MouseDepth, d.AheadU, d.AheadL, d.AheadR);
-    }
-
-    /// <summary>The engine's mouse, in window pixels with rows from the bottom.</summary>
-    internal static (int X, int Y) EngineMouse()
-    {
-        ShaderExposedRuntimeData rt = AlloyRenderer.Rt;
-        return (rt.MouseX, rt.MouseY);
+        return new Scene(rt.CamDist, rt.CamPitch, rt.DialogCamera != 0, rt.InCutscene != 0, d.AheadU, d.AheadU, d.AheadL, d.AheadR);
     }
 
     /// <summary>Destroys what the pass made on <paramref name="vk"/>, and forgets it.</summary>
@@ -222,6 +217,7 @@ internal static unsafe partial class DepthOfField
         var check = new Checker(log, "DepthOfField.SelfCheck");
         int skipped = Checker.Skipped;
         FocusRulesSelfCheck(check);
+        check.Expect(Dof.G.Get("vignette") == null, "vanilla's vignette has no setting");
         // the examples log a test refusal and read cx.log back: run-demo's own log, never a player's
         if (Native.Sym(SymbolMap.AppManager) != IntPtr.Zero) check.Skip("in a session: the depth of field examples run in run-demo");
         else Examples(check, log);

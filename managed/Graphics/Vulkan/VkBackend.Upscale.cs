@@ -39,7 +39,7 @@ internal sealed unsafe partial class VkBackend
     }
 
     [DllImport("cxfsr")] private static extern int cxfsr_create(FsrDevice* dev, uint maxW, uint maxH, uint displayW, uint displayH, nint* ctx);
-    [DllImport("cxfsr")] private static extern int cxfsr_ring();
+    [DllImport("cxfsr")] private static extern int cxffx_ring();
     [DllImport("cxfsr")] private static extern int cxfsr_phase_count(int renderW, int displayW);
 
     /// <summary>FSR's jitter sequence length for a <paramref name="renderW"/>-wide frame on a <paramref name="displayW"/>
@@ -57,7 +57,7 @@ internal sealed unsafe partial class VkBackend
         public string? Refused;
         /// <summary>The timeline value each of the last ring's worth of dispatches finishes at, by dispatch number: FSR's
         /// backend rings its constants and descriptor sets, so a dispatch rewrites what the one a ring back used.</summary>
-        public readonly long[] Ring = new long[cxfsr_ring()];
+        public readonly long[] Ring = new long[cxffx_ring()];
         public long Dispatches;
     }
 
@@ -77,11 +77,7 @@ internal sealed unsafe partial class VkBackend
             Later(() => cxfsr_destroy(old));
             f.Ctx = 0;
         }
-        var dev = new FsrDevice
-        {
-            Instance = _inst, Gipa = vkGetInstanceProcAddr(_inst, "vkGetInstanceProcAddr"u8), Physical = _phys, Device = _device,
-            Gdpa = vkGetInstanceProcAddr(_inst, "vkGetDeviceProcAddr"u8),
-        };
+        FsrDevice dev = FfxDevice();
         nint ctx;
         int e = cxfsr_create(&dev, (uint)maxW, (uint)maxH, (uint)displayW, (uint)displayH, &ctx);
         if (e != 0)
@@ -126,9 +122,8 @@ internal sealed unsafe partial class VkBackend
         if (exposure != null) Transition(exposure, VkImageLayout.ShaderReadOnlyOptimal, false);
         if (reactive != null) Transition(reactive, VkImageLayout.ShaderReadOnlyOptimal, false);
         Transition(output, VkImageLayout.General);
-        Flush();
         long slot = _fsr.Dispatches % _fsr.Ring.Length;
-        if (WaitFor(_fsr.Ring[slot]) != VkResult.Success) return Fault("Upscale: the dispatch whose FSR constants this one reuses never finished");
+        if (!FfxRingWait(_fsr.Ring, slot)) return Fault("Upscale: the dispatch whose FSR constants this one reuses never finished");
         var d = new FsrDispatch
         {
             Cmd = _cmd, Color = Image(color, 0), Depth = Image(depth, 0), Motion = Image(motion, 0),
@@ -145,6 +140,21 @@ internal sealed unsafe partial class VkBackend
         // FSR bound its own pipelines and sets on the compute point, which disturbs the bindless set there
         BindBindless();
         return e == 0 || Fault($"Upscale: FSR's dispatch returned FfxErrorCode {e}");
+    }
+
+    /// <summary>The device as AMD's backend takes it, for either effect.</summary>
+    private FsrDevice FfxDevice() => new()
+    {
+        Instance = _inst, Gipa = vkGetInstanceProcAddr(_inst, "vkGetInstanceProcAddr"u8), Physical = _phys, Device = _device,
+        Gdpa = vkGetInstanceProcAddr(_inst, "vkGetDeviceProcAddr"u8),
+    };
+
+    /// <summary>The barriers out, and the dispatch that last used this slot of an effect's ring finished: AMD's backend reuses
+    /// its constants and descriptor sets a ring later. False when it never did.</summary>
+    private bool FfxRingWait(long[] ring, long slot)
+    {
+        Flush();
+        return WaitFor(ring[slot]) == VkResult.Success;
     }
 
     private static FsrImage Image(VkImg i, uint uav) => new() { Image = i.Image, Format = Of(i.Desc.Fmt), W = (uint)i.Desc.W, H = (uint)i.Desc.H, Uav = uav };

@@ -212,8 +212,8 @@ uint64_t cxfsr_vram(CxFsr* f)
     return ffxFsr3UpscalerContextGetGpuMemoryUsage(&f->ctx, &u) == FFX_OK ? u.totalUsageInBytes : 0;
 }
 
-// The dispatches FSR's backend rings its constants and descriptor sets over.
-int cxfsr_ring() { return FFX_MAX_QUEUED_FRAMES; }
+// The dispatches AMD's backend rings its constants and descriptor sets over, for either effect.
+int cxffx_ring() { return FFX_MAX_QUEUED_FRAMES; }
 
 // FSR's jitter sequence length.
 int cxfsr_phase_count(int renderW, int displayW) { return ffxFsr3UpscalerGetJitterPhaseCount(renderW, displayW); }

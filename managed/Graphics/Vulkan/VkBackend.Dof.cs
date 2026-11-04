@@ -22,7 +22,7 @@ internal sealed unsafe partial class VkBackend
 
     /// <summary>The kernel's rings; past them the blur reads a coarser mip. About 130 samples at each half-size pixel it touches.</summary>
     private const uint DofRings = 6;
-    /// <summary>The blur's limit as a fraction of the frame's height, full-size pixels of radius being half of it again in AMD's terms.</summary>
+    /// <summary>The blur's limit as a fraction of the frame's height; AMD halves it for its half-size pixels.</summary>
     private const float DofCocLimitFactor = 0.016f;
 
     /// <summary>The device's DoF context and the size it was made for; a refusal holds for the device's life.</summary>
@@ -32,7 +32,7 @@ internal sealed unsafe partial class VkBackend
         public int W, H;
         public string? Refused;
         /// <summary>As <see cref="FsrState.Ring"/>: its backend rings its constants and descriptor sets the same way.</summary>
-        public readonly long[] Ring = new long[cxfsr_ring()];
+        public readonly long[] Ring = new long[cxffx_ring()];
         public long Dispatches;
     }
 
@@ -71,11 +71,7 @@ internal sealed unsafe partial class VkBackend
             d.Ctx = 0;
         }
         else if (DofDeviceRefusal() is string no) return d.Refused = no;
-        var dev = new FsrDevice
-        {
-            Instance = _inst, Gipa = vkGetInstanceProcAddr(_inst, "vkGetInstanceProcAddr"u8), Physical = _phys, Device = _device,
-            Gdpa = vkGetInstanceProcAddr(_inst, "vkGetDeviceProcAddr"u8),
-        };
+        FsrDevice dev = FfxDevice();
         nint ctx;
         int e = cxdof_create(&dev, (uint)w, (uint)h, DofRings, DofCocLimitFactor, &ctx);
         if (e != 0) return d.Refused = $"creating its context returned FfxErrorCode {e}";
@@ -105,9 +101,8 @@ internal sealed unsafe partial class VkBackend
         Transition(color, VkImageLayout.ShaderReadOnlyOptimal, false);
         Transition(depth, VkImageLayout.ShaderReadOnlyOptimal, false);
         Transition(output, VkImageLayout.General);
-        Flush();
         long slot = _dof.Dispatches % _dof.Ring.Length;
-        if (WaitFor(_dof.Ring[slot]) != VkResult.Success) return Fault("DepthOfField: the dispatch whose constants this one reuses never finished");
+        if (!FfxRingWait(_dof.Ring, slot)) return Fault("DepthOfField: the dispatch whose constants this one reuses never finished");
         var d = new DofDispatch
         {
             Cmd = _cmd, Color = Image(color, 0), Depth = Image(depth, 0), Output = Image(output, 1),

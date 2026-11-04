@@ -309,6 +309,7 @@ public sealed class CommandList
     public void ClearImage(ImageId i) { Head(Op.ClearImage); Put(i); Sent(); }
     /// <summary>One FSR 3.1 upscale; the device must have said <c>FsrReady</c> for these sizes first.</summary>
     public void Upscale(in UpscaleCmd c) { Head(Op.Upscale); Put(c); Sent(); }
+    /// <summary>One depth of field; the device must have said <c>DofReady</c> for this colour's size first.</summary>
     public void DepthOfField(in DofCmd c) { Head(Op.DepthOfField); Put(c); Sent(); }
     /// <summary><paramref name="i"/>'s mips past the base filled from it by linear blits, outside a pass; the image needs
     /// <c>CopySrc</c> and <c>CopyDst</c>.</summary>

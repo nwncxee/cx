@@ -13,9 +13,6 @@ internal static partial class GpuGolden
 {
     private const int DofSplit = DofSide / 2;
 
-    /// <summary>The focus type's value for Mouse, the stock shader's <c>DOF_FOCUS_TYPE_MOUSE</c>.</summary>
-    private const int DofMouseFocus = 3;
-
     static partial void DofApprovedSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
     {
         DofSharpExample(vk, check, log);
@@ -75,12 +72,9 @@ internal static partial class GpuGolden
         DofPx[]? o = DofRun(vk, log, static (x, y) => x < DofSplit ? (1f, 0f, 0f) : (0f, DofChecker(x, y), 0f), static (x, y) => x < DofSplit ? 8f : 45f, DofCamera(8f, 70f));
         check.Expect(o != null, "No halo: the frame ran");
         if (o == null) return;
-        float smear = 0f, ground = 0f;
+        float smear = 0f, ground = DofContrast(o, 600, 900, 64, 960, 1);
         for (int y = 64; y < 960; y++)
-        {
             for (int x = DofSplit + 2; x < DofSplit + 40; x++) smear = MathF.Max(smear, DofAt(o, x, y));
-            for (int x = 600; x < 900; x++) ground = MathF.Max(ground, MathF.Abs(DofAt(o, x + 1, y, 1) - DofAt(o, x, y, 1)));
-        }
         check.Expect(ground < 0.2f, $"No halo: the ground is blurred (contrast {ground:F3})");
         check.Expect(smear < 0.05f, $"No halo: the character's red stays off the ground beside them (got {smear:F3})");
     }
@@ -154,7 +148,7 @@ internal static partial class GpuGolden
         // Given the depth of field focus type is set to Mouse
         // When the mouse moves from the character to a distant wall
         // Then the focus moves to the wall smoothly, with no jump
-        var mouse = new DofSet(Focus: DofMouseFocus);
+        var mouse = new DofSet(Focus: Dof.FocusMouse);
         float onCharacter = DofWith(in mouse, () => DofProbe(vk, log, 300, 512)), onWall = DofWith(in mouse, () => DofProbe(vk, log, 900, 512));
         check.Expect(MathF.Abs(onCharacter - 8f) < 0.1f, $"Focus choices: the depth under the mouse on the character reads 8 m (got {onCharacter:F2})");
         check.Expect(MathF.Abs(onWall - 30f) < 0.5f, $"Focus choices: the depth under the mouse on the wall reads 30 m (got {onWall:F2})");
@@ -166,7 +160,7 @@ internal static partial class GpuGolden
         // When depth of field is on
         // Then the character the camera is on stays sharp
         DofPx[]? o = DofRun(vk, log, static (x, y) => (DofChecker(x, y), 0f, 0f), static (x, y) => x < DofSplit ? 3f : 45f,
-                            DofCamera(3f, 80f, dialog: true, mouseDepth: 30f), new DofSet(Focus: DofMouseFocus, NeverBlur: false));
+                            DofCamera(3f, 80f, dialog: true, mouseDepth: 30f), new DofSet(Focus: Dof.FocusMouse, NeverBlur: false));
         check.Expect(o != null, "Conversation: the frame ran");
         if (o == null) return;
         float character = DofContrast(o, 64, 448, 64, 960), behind = DofContrast(o, 576, 960, 64, 960);
@@ -189,13 +183,13 @@ internal static partial class GpuGolden
                     if (DofAt(o, x, y) > 0.1f) n++;
             return n;
         }
-        DofPx[]? weak = DofRun(vk, log, Lamp, static (x, y) => 20f, DofCamera(15f, 0f), new DofSet(Focus: 0, NeverBlur: false));
-        DofPx[]? strong = DofRun(vk, log, Lamp, static (x, y) => 20f, DofCamera(15f, 0f), new DofSet(Focus: 0, NeverBlur: false, Amount: 3f));
+        DofPx[]? weak = DofRun(vk, log, Lamp, static (x, y) => 20f, DofCamera(15f, 0f), new DofSet(Focus: Dof.FocusPlayer, NeverBlur: false));
+        DofPx[]? strong = DofRun(vk, log, Lamp, static (x, y) => 20f, DofCamera(15f, 0f), new DofSet(Focus: Dof.FocusPlayer, NeverBlur: false, Amount: 3f));
         check.Expect(weak != null && strong != null, "Settings work: the amount frames ran");
         if (weak != null && strong != null)
             check.Expect(Spread(strong) > Spread(weak) * 3 / 2, $"Settings work: Amount 3 spreads a lamp further than 1 ({Spread(strong)} pixels, {Spread(weak)})");
-        DofPx[]? thin = DofRun(vk, log, static (x, y) => (DofChecker(x, y), 0f, 0f), static (x, y) => 16.6f, DofCamera(15f, 0f), new DofSet(Focus: 0, NeverBlur: false, Amount: 5f));
-        DofPx[]? deep = DofRun(vk, log, static (x, y) => (DofChecker(x, y), 0f, 0f), static (x, y) => 16.6f, DofCamera(15f, 0f), new DofSet(Focus: 0, NeverBlur: false, Amount: 5f, DeadZone: 10f));
+        DofPx[]? thin = DofRun(vk, log, static (x, y) => (DofChecker(x, y), 0f, 0f), static (x, y) => 16.6f, DofCamera(15f, 0f), new DofSet(Focus: Dof.FocusPlayer, NeverBlur: false, Amount: 5f));
+        DofPx[]? deep = DofRun(vk, log, static (x, y) => (DofChecker(x, y), 0f, 0f), static (x, y) => 16.6f, DofCamera(15f, 0f), new DofSet(Focus: Dof.FocusPlayer, NeverBlur: false, Amount: 5f, DeadZone: 10f));
         check.Expect(thin != null && deep != null, "Settings work: the dead zone frames ran");
         if (thin == null || deep == null) return;
         float t = DofContrast(thin, 400, 600, 400, 600), d = DofContrast(deep, 400, 600, 400, 600);
@@ -210,8 +204,8 @@ internal static partial class GpuGolden
         // Then the character near the camera blurs, and with the setting on they stay sharp
         static (float, float, float) Colour(int x, int y) => (DofChecker(x, y), 0f, 0f);
         static float Z(int x, int y) => x < DofSplit ? 8f : 30f;
-        DofPx[]? off = DofRun(vk, log, Colour, Z, DofCamera(8f, 45f, mouseDepth: 30f), new DofSet(Focus: DofMouseFocus, NeverBlur: false));
-        DofPx[]? on = DofRun(vk, log, Colour, Z, DofCamera(8f, 45f, mouseDepth: 30f), new DofSet(Focus: DofMouseFocus, NeverBlur: true));
+        DofPx[]? off = DofRun(vk, log, Colour, Z, DofCamera(8f, 45f, mouseDepth: 30f), new DofSet(Focus: Dof.FocusMouse, NeverBlur: false));
+        DofPx[]? on = DofRun(vk, log, Colour, Z, DofCamera(8f, 45f, mouseDepth: 30f), new DofSet(Focus: Dof.FocusMouse, NeverBlur: true));
         check.Expect(off != null && on != null, "Never blur the player: the frames ran");
         if (off == null || on == null) return;
         float blurred = DofContrast(off, 64, 448, 64, 960), kept = DofContrast(on, 64, 448, 64, 960);
