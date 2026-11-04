@@ -3588,6 +3588,10 @@ public readonly unsafe partial struct ShaderExposedRuntimeData(IntPtr ptr)
     public ref float CamPitch => ref *(float*)(Ptr + EngineLayout.RtCamPitch);
     /// <inheritdoc cref="EngineLayout.RtCamPos"/>
     public ref System.Numerics.Vector3 CamPos => ref *(System.Numerics.Vector3*)(Ptr + EngineLayout.RtCamPos);
+    /// <inheritdoc cref="EngineLayout.RtDialogCamera"/>
+    public ref byte DialogCamera => ref *(byte*)(Ptr + EngineLayout.RtDialogCamera);
+    /// <inheritdoc cref="EngineLayout.RtInCutscene"/>
+    public ref int InCutscene => ref *(int*)(Ptr + EngineLayout.RtInCutscene);
     /// <inheritdoc cref="EngineLayout.RtModuleDawnHour"/>
     public ref int ModuleDawnHour => ref *(int*)(Ptr + EngineLayout.RtModuleDawnHour);
     /// <inheritdoc cref="EngineLayout.RtModuleDay"/>

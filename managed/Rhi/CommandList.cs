@@ -81,8 +81,8 @@ public readonly record struct UpscaleCmd(ImageId Color, ImageId Depth, ImageId M
                                          int RenderW, int RenderH, float FrameMs, float Near, float Far, float FovY, bool Reset);
 
 /// <summary><see cref="Op.DepthOfField"/>: one FidelityFX DoF dispatch from <see cref="Color"/> and <see cref="Depth"/>,
-/// which may be smaller than the colour, into <see cref="Output"/>. The four terms are the circle of confusion's, as
-/// <see cref="CX.Alloy.DepthOfField.Command"/> works them out.</summary>
+/// which may be smaller than the colour, into <see cref="Output"/>. The terms are the circle of confusion's: half-size pixels per metre past the sharp band,
+/// the band in metres, the depth decode (<c>A / (d + B)</c>) and the distances the decode clamps to.</summary>
 public readonly record struct DofCmd(ImageId Color, ImageId Depth, ImageId Output, float CocScale, float FocusNear, float FocusFar,
                                      float DepthA, float DepthB, float DepthMin, float DepthMax);
 

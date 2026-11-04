@@ -124,7 +124,9 @@ internal static partial class GpuGolden
             DepthOfField.Forget();
             var cl = new CommandList("golden dof probe", 1 << 10, log);
             DepthOfField.AskDepths(vk, cl, depth, DofSide, DofSide, side, side, DofCamera(8f, 45f), mx, my, DofNearPlane, DofFarPlane);
-            if (!vk.Submit(cl) || !vk.WaitSubmitted()) { log.Always("GpuGolden: dof, the probe was refused (logged above)"); return float.NaN; }
+            // the read lands in the WhenDone work the next submit runs
+            if (!vk.Submit(cl) || !vk.WaitSubmitted() || !vk.Submit(new CommandList("golden dof probe landed", 1 << 10, log)))
+            { log.Always("GpuGolden: dof, the probe was refused (logged above)"); return float.NaN; }
             return DepthOfField.MouseDepth;
         }
         finally

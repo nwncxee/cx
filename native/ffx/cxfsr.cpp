@@ -89,7 +89,7 @@ struct CxDofDispatch
 {
     VkCommandBuffer cmd;
     CxFsrImage color, depth, output;
-    float cocScale, cocFocusNear, cocFocusFar, cocNearClamp;
+    float cocScale, focusNear, focusFar, depthA, depthB, depthMin, depthMax;
 };
 
 struct CxFsrDispatch
@@ -266,9 +266,12 @@ int cxdof_dispatch(CxDof* c, const CxDofDispatch* d)
     x.depth = Wrap(d->depth, L"cx dof depth");
     x.output = Wrap(d->output, L"cx dof output");
     x.cocScale = d->cocScale;
-    x.cocFocusNear = d->cocFocusNear;
-    x.cocFocusFar = d->cocFocusFar;
-    x.cocNearClamp = d->cocNearClamp;
+    x.cocFocusNear = d->focusNear;
+    x.cocFocusFar = d->focusFar;
+    x.cocDepthA = d->depthA;
+    x.cocDepthB = d->depthB;
+    x.cocDepthMin = d->depthMin;
+    x.cocDepthMax = d->depthMax;
     return ffxDofContextDispatch(&c->ctx, &x);
 }
 

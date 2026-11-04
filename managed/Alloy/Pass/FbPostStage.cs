@@ -21,8 +21,8 @@ internal static unsafe class FbPostStage
     /// option mask != 0 OR <c>run-shader-even-with-no-effects</c> (+0x11c) -- so it is the engine's own
     /// answer to "does the post program run this session".</summary>
     internal const uint EffectPost = 1u << 2;
-    /// <summary>The option bits stripped from the hosted text -- ALL of them. DOF 0x02 and dynamic contrast
-    /// 0x04 have vertex halves this fullscreen triangle does not run; gamma 0x10, toon 0x20, sharpen 0x01 and
+    /// <summary>The option bits stripped from the hosted text -- ALL of them. Depth of field 0x02 is the <c>dof</c> group's
+    /// instead, and dynamic contrast 0x04 has a vertex half this fullscreen triangle does not run; gamma 0x10, toon 0x20, sharpen 0x01 and
     /// vibrance 0x08 are stages of Alloy's own. With the mask at 0 no option-gated stock pass compiles inside an Alloy
     /// program; the current <c>inc_postpr</c>'s tonemap and debug pass are unconditional, and both leave display-space input as it is.</summary>
     internal const int MaskStripped = 0x3f;   // not-an-offset: every inc_postpr.shd option bit

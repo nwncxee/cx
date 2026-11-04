@@ -19,6 +19,10 @@ public static unsafe partial class EngineLayout
     public static readonly int RtMouseX = Field<int>("ShaderExposedRuntimeData", "mouseX");
     /// <inheritdoc cref="RtMouseX"/>
     public static readonly int RtMouseY = Field<int>("ShaderExposedRuntimeData", "mouseY");
+    /// <summary><c>cameraDialogState</c> (a byte): the module's dialog camera state, nonzero while a conversation holds the camera.</summary>
+    public static readonly int RtDialogCamera = Field<byte>("ShaderExposedRuntimeData", "dialogCamera");
+    /// <summary><c>playerInCutscene</c>, <c>CClientExoApp::InCutscene</c>'s answer.</summary>
+    public static readonly int RtInCutscene = Field<int>("ShaderExposedRuntimeData", "inCutscene");
     /// <summary><c>userinputMouseButtons</c>, the button mask.</summary>
     public static readonly int RtMouseButtons = Field<int>("ShaderExposedRuntimeData", "mouseButtons");
 }

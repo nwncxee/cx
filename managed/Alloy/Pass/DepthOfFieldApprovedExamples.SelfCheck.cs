@@ -86,7 +86,8 @@ internal static partial class DepthOfField
         check.Expect(!Dof.Enabled.Default, "Vanilla's defaults: depth of field is off");
         check.Expect(Dof.Amount.Default == 1f, $"Vanilla's defaults: Amount is 1 (got {Dof.Amount.Default})");
         check.Expect(Dof.DeadZone.Default == 3f, $"Vanilla's defaults: Dead zone is 3 (got {Dof.DeadZone.Default})");
-        check.Expect(Dof.Focus.FormatDefault() == "Camera Pitch", $"Vanilla's defaults: Focus type is Camera Pitch (got {Dof.Focus.FormatDefault()})");
+        string focus = Dof.Focus.Choices[Array.IndexOf(Dof.Focus.Values, Dof.Focus.Default)];
+        check.Expect(focus == "Camera Pitch", $"Vanilla's defaults: Focus type is Camera Pitch (got {focus})");
         check.Expect(Dof.NeverBlur.Default, "Vanilla's defaults: Never blur the player is on");
     }
 

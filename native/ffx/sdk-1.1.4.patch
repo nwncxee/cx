@@ -8,8 +8,8 @@ AMD FidelityFX SDK 1.1.4 as CX builds FSR 3.1 and FidelityFX DoF: `patch -p1` in
 6. ffx_vk.cpp: off Windows, the debug-name conversions copy ASCII instead of calling std::wstring_convert, so the
    library needs no C++ runtime.
 7. ffx_vk.cpp: a permutation with no compiled shader fails pipeline creation, in release builds too.
-8. ffx_dof.h, ffx_dof_private.h, ffx_dof.cpp, ffx_dof_callbacks_glsl.h: the circle of confusion has a flat zero band
-   between two reversed depths and a ceiling on nearer ones, in place of the thin lens's scale and bias.
+8. ffx_dof.h, ffx_dof_private.h, ffx_dof.cpp, ffx_dof_callbacks_glsl.h: the circle of confusion grows in metres past a
+   flat sharp band, as stock's confusion does, in place of the thin lens's scale and bias.
 9. ffx_dof.cpp, ffx_dof_callbacks_glsl.h: the effect's images and its output are 16-bit floats at either precision.
 10. ffx_dof_callbacks_glsl.h: the composite and colour passes find depth from a colour pixel by its place in the frame,
     so depth may be smaller than colour, as it is under FSR.
@@ -196,30 +196,41 @@ AMD FidelityFX SDK 1.1.4 as CX builds FSR 3.1 and FidelityFX DoF: `patch -p1` in
  
  #if defined(__cplusplus)
  extern "C" {
-@@ -116,7 +116,9 @@
+@@ -116,7 +116,12 @@
      FfxResource                 depth;              ///< The <c><i>FfxResource</i></c> containing depth information
      FfxResource                 output;             ///< The <c><i>FfxResource</i></c> to output into. Can be the same as the color input.
      float                       cocScale;           ///< The factor converting depth to circle of confusion size. Can be calculated using ffxDofCalculateCocScale.
 -    float                       cocBias;            ///< The bias to apply to circle of confusion size. Can be calculated using ffxDofCalculateCocBias.
-+    float                       cocFocusNear;       ///< CX: the nearer edge of the zero band, as a reversed depth. No blur between this and cocFocusFar.
-+    float                       cocFocusFar;        ///< CX: the farther edge of the zero band, as a reversed depth.
-+    float                       cocNearClamp;       ///< CX: nearer depths blur as this depth does, so the near field's blur has a ceiling.
++    float                       cocFocusNear;       ///< CX: the nearer edge of the sharp band, in metres.
++    float                       cocFocusFar;        ///< CX: the farther edge of the sharp band, in metres.
++    float                       cocDepthA;          ///< CX: a reversed depth d is A / (d + B) metres from the eye.
++    float                       cocDepthB;          ///< CX: as cocDepthA.
++    float                       cocDepthMin;        ///< CX: nearer than this blurs as this distance does.
++    float                       cocDepthMax;        ///< CX: farther than this blurs as this distance does.
  } FfxDofDispatchDescription;
  
  /// A structure encapsulating the FidelityFX Depth of Field context.
 --- a/sdk/src/components/dof/ffx_dof_private.h
 +++ b/sdk/src/components/dof/ffx_dof_private.h
-@@ -44,7 +44,9 @@
+@@ -44,12 +44,17 @@
  typedef struct DofConstants
  {
      float       cocScale;
 -    float       cocBias;
 +    float       cocFocusNear;
-+    float       cocFocusFar;
-+    float       cocNearClamp;
      uint32_t    inputSizeHalf[2];
      uint32_t    inputSize[2];
      float       inputSizeHalfRcp[2];
+     float       cocLimit;
+     uint32_t    maxRings;
++    float       cocFocusFar;
++    float       cocDepthA;
++    float       cocDepthB;
++    float       cocDepthMin;
++    float       cocDepthMax;
+ } DofConstants;
+ 
+ struct FfxDofContextDescription;
 --- a/sdk/src/components/dof/ffx_dof.cpp
 +++ b/sdk/src/components/dof/ffx_dof.cpp
 @@ -24,6 +24,7 @@
@@ -230,18 +241,21 @@ AMD FidelityFX SDK 1.1.4 as CX builds FSR 3.1 and FidelityFX DoF: `patch -p1` in
  
  #define FFX_CPU
  #include <FidelityFX/host/ffx_dof.h>
-@@ -297,7 +298,9 @@
+@@ -297,7 +298,12 @@
      // Constant buffer
      DofConstants cbuffer = {};
      cbuffer.cocScale = params->cocScale;
 -    cbuffer.cocBias = params->cocBias;
 +    cbuffer.cocFocusNear = params->cocFocusNear;
 +    cbuffer.cocFocusFar = params->cocFocusFar;
-+    cbuffer.cocNearClamp = params->cocNearClamp;
++    cbuffer.cocDepthA = params->cocDepthA;
++    cbuffer.cocDepthB = params->cocDepthB;
++    cbuffer.cocDepthMin = params->cocDepthMin;
++    cbuffer.cocDepthMax = params->cocDepthMax;
      cbuffer.inputSize[0] = context->contextDescription.resolution.width;
      cbuffer.inputSize[1] = context->contextDescription.resolution.height;
      cbuffer.inputSizeHalf[0] = (cbuffer.inputSize[0] + 1) / 2;
-@@ -357,7 +360,8 @@
+@@ -357,7 +363,8 @@
      uint32_t halfHeight = (contextDescription->resolution.height + 1) / 2;
      uint32_t tileWidth = (halfWidth + 3) / 4;
      uint32_t tileHeight = (halfHeight + 4) / 4;
@@ -253,25 +267,28 @@ AMD FidelityFX SDK 1.1.4 as CX builds FSR 3.1 and FidelityFX DoF: `patch -p1` in
           L"DOF_InternalBilatColor",
 --- a/sdk/include/FidelityFX/gpu/dof/ffx_dof_callbacks_glsl.h
 +++ b/sdk/include/FidelityFX/gpu/dof/ffx_dof_callbacks_glsl.h
-@@ -32,13 +32,15 @@
+@@ -32,13 +32,18 @@
      layout (set = 0, binding = FFX_DOF_BIND_CB_DOF, std140) uniform cbDOF_t
      {
          FfxFloat32   cocScale;
 -        FfxFloat32   cocBias;
 +        FfxFloat32   cocFocusNear;
-+        FfxFloat32   cocFocusFar;
-+        FfxFloat32   cocNearClamp;
          FfxUInt32x2  inputSizeHalf;
          FfxUInt32x2  inputSize;
          FfxFloat32x2 inputSizeHalfRcp;
          FfxFloat32   cocLimit;
          FfxUInt32    maxRings;
 -    #define FFX_DOF_CONSTANT_BUFFER_1_SIZE 10  // Number of 32-bit values. This must be kept in sync with the cbDOF size.
-+    #define FFX_DOF_CONSTANT_BUFFER_1_SIZE 12  // Number of 32-bit values. This must be kept in sync with the cbDOF size.
++        FfxFloat32   cocFocusFar;
++        FfxFloat32   cocDepthA;
++        FfxFloat32   cocDepthB;
++        FfxFloat32   cocDepthMin;
++        FfxFloat32   cocDepthMax;
++    #define FFX_DOF_CONSTANT_BUFFER_1_SIZE 15  // Number of 32-bit values. This must be kept in sync with the cbDOF size.
      } cbDOF;
  #endif
  
-@@ -47,11 +49,6 @@
+@@ -47,11 +52,6 @@
      return cbDOF.cocScale;
  }
  
@@ -283,7 +300,7 @@ AMD FidelityFX SDK 1.1.4 as CX builds FSR 3.1 and FidelityFX DoF: `patch -p1` in
  FfxUInt32x2 InputSizeHalf()
  {
      return cbDOF.inputSizeHalf;
-@@ -82,11 +79,8 @@
+@@ -82,11 +82,8 @@
  layout (set = 0, binding = 1001)
  uniform sampler PointSampler;
  
@@ -296,7 +313,7 @@ AMD FidelityFX SDK 1.1.4 as CX builds FSR 3.1 and FidelityFX DoF: `patch -p1` in
  
  // SRVs
  #if defined(FFX_DOF_BIND_SRV_INPUT_DEPTH)
-@@ -112,11 +106,11 @@
+@@ -112,11 +109,11 @@
      uniform image2D rw_internal_bilat_color[4];
  #endif
  #if defined(FFX_DOF_BIND_UAV_INTERNAL_RADIUS)
@@ -310,7 +327,7 @@ AMD FidelityFX SDK 1.1.4 as CX builds FSR 3.1 and FidelityFX DoF: `patch -p1` in
      uniform image2D rw_internal_dilated_radius;
  #endif
  #if defined(FFX_DOF_BIND_UAV_INTERNAL_NEAR)
-@@ -128,7 +122,7 @@
+@@ -128,7 +125,7 @@
      uniform image2D rw_internal_far;
  #endif
  #if defined(FFX_DOF_BIND_UAV_OUTPUT_COLOR)
@@ -319,20 +336,20 @@ AMD FidelityFX SDK 1.1.4 as CX builds FSR 3.1 and FidelityFX DoF: `patch -p1` in
      uniform image2D rw_output_color;
  #endif
  #if defined(FFX_DOF_BIND_UAV_INTERNAL_GLOBALS)
-@@ -155,8 +149,11 @@
+@@ -155,8 +152,11 @@
  #if defined(FFX_DOF_BIND_CB_DOF)
  FfxFloat32 FfxDofGetCoc(FfxFloat32 depth)
  {
-+    // CX: no blur in the zero band; past it the circle grows with the depth's distance from the band's edge.
-+    FfxFloat32 d = min(depth, cbDOF.cocNearClamp);
-+    FfxFloat32 delta = d - clamp(d, cbDOF.cocFocusFar, cbDOF.cocFocusNear);
++    // CX: no blur in the sharp band; past it the circle grows with the metres from the band's edge, positive when nearer.
++    FfxFloat32 z = clamp(cbDOF.cocDepthA / (depth + cbDOF.cocDepthB), cbDOF.cocDepthMin, cbDOF.cocDepthMax);
++    FfxFloat32 delta = clamp(z, cbDOF.cocFocusNear, cbDOF.cocFocusFar) - z;
      // clamped for perf reasons
 -    return clamp(CocScale() * depth + CocBias(), -CocLimit(), CocLimit());
 +    return clamp(CocScale() * delta, -CocLimit(), CocLimit());
  }
  #endif // #if defined(FFX_DOF_BIND_CB_DOF)
  
-@@ -203,7 +200,10 @@
+@@ -203,7 +203,10 @@
  
  FfxFloat32 FfxDofLoadFullDepth(FfxUInt32x2 coord)
  {
