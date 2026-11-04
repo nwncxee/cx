@@ -13,10 +13,11 @@ internal static unsafe partial class Weather
         (DragonRow, "Snow0") => "fs_x0snw_drg1", (DragonRow, "Snow1") => "fs_x0snw_drg2", (DragonRow, "Snow2") => "fs_x0snw_drg3",
         _ => "",
     };
+    /// <summary>footstepsounds.2da rows the fixture holds; oracle: the stock table.</summary>
     private const int HorseRow = 17, DragonRow = 2;
 
     /// <summary>approved-spec: the examples that are false until snow steps exist. Oracle: the hand-written kinds and
-    /// the stock table's cells.</summary>
+    /// the stock table's cells. The creature's own row is the engine's table; only a live listen hears it.</summary>
     static partial void SnowStepApprovedExamples(Checker check) => WithStepScene(() =>
     {
         // Given snow lying on open stone ground
@@ -34,7 +35,7 @@ internal static unsafe partial class Weather
             string column = Encoding.ASCII.GetString(StepColumnName(StepKind.Snow, pick));
             ownSound &= StockCell(HorseRow, column) == $"fs_snow_horse{pick + 1}" && StockCell(DragonRow, column) == $"fs_x0snw_drg{pick + 1}";
         }
-        check.Expect(ownSound, "a snow step reads each creature's own snow cells");
+        check.Expect(ownSound, "a snow step names the columns where the stock table keeps each kind's snow sounds");
 
         // Given snow still lying on ground that rain is now wetting
         // When my character walks across it

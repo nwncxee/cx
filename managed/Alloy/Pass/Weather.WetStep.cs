@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using System.Text;
 using CX.Engine;
 using CX.Framework;
 using CX.Services.Camera;
@@ -82,23 +83,18 @@ internal static unsafe partial class Weather
         if (_off || !Enabled.V || FrameInputs.Interior || creature == IntPtr.Zero) return false;
         var o = new CNWCObject(creature);
         Vector3 p = o.Position, f = o.Orientation;
+        Vec3 at = new() { X = p.X, Y = p.Y, Z = p.Z };
         bool weather = StepInWeather;
         bool open = weather && Open(p);
         if (weather && !open) _stepCounts.Sheltered++;
         FootDown(p, new Vector2(f.X, f.Y), o.Id, TrackNow, open);
-        int surface = open && _wetArmed && o.AreaPtr != IntPtr.Zero ? SurfaceAt(o, p) : -1;
+        int surface = open && _wetArmed && o.AreaPtr != IntPtr.Zero ? EngineFn.AreaGetSurfaceMaterial(o.AreaPtr, VectorArg.Of(&at)) : -1;
         StepKind kind = ChooseStep(open, surface);
-        return kind != StepKind.Engine && StepSound(creature, o, p, kind);
+        return kind != StepKind.Engine && StepSound(creature, o, at, kind);
     }
 
     /// <summary>Is there weather a footfall could answer to? False saves the shelter ray.</summary>
     private static bool StepInWeather => (WetShown > FootMinWet && (FootSplash.V > 0f || WetSteps.V)) || (SnowFootsteps.V && SnowShown > SnowStepMin);
-
-    private static int SurfaceAt(CNWCObject o, Vector3 p)
-    {
-        Vec3 at = new() { X = p.X, Y = p.Y, Z = p.Z };
-        return EngineFn.AreaGetSurfaceMaterial(o.AreaPtr, VectorArg.Of(&at));
-    }
 
     /// <summary>What a footfall on <paramref name="surface"/> sounds of. Only dry-sounding ground open to the sky
     /// changes its sound.</summary>
@@ -136,7 +132,7 @@ internal static unsafe partial class Weather
 
     /// <summary>Play this creature's <paramref name="kind"/> step, as <c>PlayFootstep</c> would play its surface's.
     /// False = nothing to play: the engine's own step goes ahead.</summary>
-    private static bool StepSound(IntPtr creature, CNWCObject o, Vector3 p, StepKind kind)
+    private static bool StepSound(IntPtr creature, CNWCObject o, Vec3 at, StepKind kind)
     {
         if (!_wetArmed || o.FootstepSkip != 0 || o.AreaPtr == IntPtr.Zero) return false;
         IntPtr rules = _rulesSym2 == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)_rulesSym2;
@@ -144,7 +140,6 @@ internal static unsafe partial class Weather
         IntPtr tables = rules == IntPtr.Zero ? IntPtr.Zero : new CNWRules(rules).TwoDimArrays;
         if (sound == IntPtr.Zero || tables == IntPtr.Zero) return false;
         var t = new CTwoDimArrays(tables);
-        Vec3 at = new() { X = p.X, Y = p.Y, Z = p.Z };
         var c = new CNWCCreature(creature);
         CPathfindInformation pf = c.Pathfind;
         int app = pf.IsNull ? -1 : pf.Appearance;
@@ -192,4 +187,92 @@ internal static unsafe partial class Weather
 
     /// <summary>The approved snow-step examples; implemented in <c>SnowStepApprovedExamples.cs</c>.</summary>
     static partial void SnowStepApprovedExamples(Checker check);
+
+    /// <summary>surfacemat.2da rows the step checks stand on; oracle: the stock table.</summary>
+    private const int StoneRow = 4, WaterRow = 6, CarpetRow = 9, SnowRow = 19;
+
+    /// <summary>Runs <paramref name="body"/> with the weather on and every knob a footfall reads at its full value,
+    /// on bare dry ground, and restores all of it: the player's cx.cfg is live here.</summary>
+    private static void WithStepScene(Action body)
+    {
+        float snow = _snow, wet = _wet, ws = WetStrength.V, ss = SnowStrength.V, fill = TrackFill.V;
+        bool off = _off, en = Enabled.V, wetOn = WetSteps.V, snowOn = SnowFootsteps.V, tr = Tracks.V;
+        TrackTexel[]? track = _track; FootSideState sides = _side; int prints = _prints;
+        _off = false; Enabled.V = true; WetSteps.V = true; SnowFootsteps.V = true; Tracks.V = true;
+        WetStrength.V = 1f; SnowStrength.V = 1f; TrackFill.V = TrackFill.Default; _snow = 0f; _wet = 0f;
+        try { body(); }
+        finally
+        {
+            _snow = snow; _wet = wet; WetStrength.V = ws; SnowStrength.V = ss; TrackFill.V = fill;
+            _off = off; Enabled.V = en; WetSteps.V = wetOn; SnowFootsteps.V = snowOn; Tracks.V = tr;
+            _track = track; _side = sides; _prints = prints;
+        }
+    }
+
+    /// <summary>The approved examples that hold before snow steps exist, so they cannot go red first. Oracle: the
+    /// hand-written expected kinds, and for an empty cell the stock table's own text.</summary>
+    private static void StepSelfCheck(Checker check) => WithStepScene(() =>
+    {
+        check.Expect(!StepInWeather, "dry bare ground casts no shelter ray");
+        _snow = 1f;
+        check.Expect(StepInWeather, "lying snow on dry ground asks whether the sky is open");
+
+        // Given the same ground after the snow has melted away
+        // When my character walks across it
+        // Then each step makes the ordinary stone sound
+        _snow = 0f;
+        check.Expect(ChooseStep(true, StoneRow) == StepKind.Engine, "melted snow: an ordinary step");
+
+        // Given snow has only just started falling and the ground still looks bare
+        // When my character walks across it
+        // Then each step makes the ordinary sound for that ground
+        _snow = 0.1f;
+        check.Expect(ChooseStep(true, StoneRow) == StepKind.Engine, "a first dusting of snow: an ordinary step");
+
+        // Given snow lying in the open around a building with a roof over its porch
+        // When my character walks under the roof
+        // Then each step makes the ordinary sound for that ground
+        _snow = 1f;
+        check.Expect(ChooseStep(false, StoneRow) == StepKind.Engine, "under a roof: an ordinary step");
+
+        // Given a creature the game has no snow footstep sound for
+        // When it walks through lying snow
+        // Then it makes whatever sound it makes on that ground without the snow
+        byte* res = stackalloc byte[ResRefSize];
+        const string Hard = "fs_x0snw_hard1";
+        fixed (byte* empty = "****\0"u8, none = "\0"u8, hard = "FS_x0snw_hard1\0"u8)
+            check.Expect(!CellResRef(empty, res) && !CellResRef(none, res) && !CellResRef(null, res) && CellResRef(hard, res)
+              && Encoding.ASCII.GetString(res, Hard.Length) == Hard, "an empty footstep cell plays nothing, so the engine's step goes ahead");
+
+        // Given lying snow in an area with a stream, a carpet and a tile built as snow
+        // When my character walks on each
+        // Then each makes the same sound it makes with no weather
+        check.Expect(ChooseStep(true, WaterRow) == StepKind.Engine && ChooseStep(true, CarpetRow) == StepKind.Engine
+          && ChooseStep(true, SnowRow) == StepKind.Engine, "water, carpet and a snow tile keep their own steps under lying snow");
+
+        // Given lying snow and Snow footstep sounds switched off
+        // When my character walks across it
+        // Then each step makes the ordinary sound for that ground
+        SnowFootsteps.V = false;
+        check.Expect(ChooseStep(true, StoneRow) == StepKind.Engine, "the setting off: an ordinary step");
+
+        // Given lying snow and Snow footstep sounds switched off
+        // When my character walks across it
+        // Then footprints still press into the snow
+        _track = new TrackTexel[TrackSize * TrackSize];
+        _side = new FootSideState();
+        Vector2 h = Vector2.UnitX;
+        FootDown(new Vector3(20f, 20f, 0f), h, 7, 1f, StepInWeather);
+        check.Expect(MathF.Max(TrackAt(_track, new Vector2(20f + FootAhead + ToeAt, 20f - FootSide), 1f, 0.01f),
+                               TrackAt(_track, new Vector2(20f + FootAhead + ToeAt, 20f + FootSide), 1f, 0.01f)) > 0.5f,
+          "the setting off: footprints still press");
+        SnowFootsteps.V = true;
+
+        // Given snow falling and Snow cover set to 0, so nothing shows on the ground
+        // When my character walks across it
+        // Then each step makes the ordinary sound for that ground
+        SnowStrength.V = 0f;
+        check.Expect(ChooseStep(true, StoneRow) == StepKind.Engine, "snow cover at zero: an ordinary step");
+        SnowStrength.V = 1f;
+    });
 }
