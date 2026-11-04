@@ -4,7 +4,7 @@ using CX.Framework;
 
 namespace CX.Alloy.Db;
 
-/// <summary>The view gate as a player meets it. Oracle: the fixture's wave track moves its middle part 2 m per
+/// <summary>The view gate as a player meets it (approved-spec, E1 to E11). Oracle: the fixture's wave track moves its middle part 2 m per
 /// second, so a part's position is the animation's clock in a hand-derived literal; the camera at the origin looks
 /// along +Y, so which side of the frustum a sphere sits on is hand-derived too.</summary>
 public static unsafe partial class DbAnim

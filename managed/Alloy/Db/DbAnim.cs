@@ -488,7 +488,7 @@ public static unsafe partial class DbAnim
         // EVERY per-object column, because this index may be a recycled one: a leftover LOD level makes the
         // feed refuse every part of the new object (an INVISIBLE object with no error anywhere), and a
         // leftover compose stamp or placement makes its first matrix a stale one.
-        _flags[i] = ObjAnim.Animating | ObjAnim.Seated | ObjAnim.PoseOwed;
+        _flags[i] = ObjAnim.Animating | ObjAnim.Seated;
         _addIn[i] = null;
         _speed[i] = 1f; _speedTo[i] = 1f; _speedRate[i] = 0f;
         _visScale[i] = 1f; _visScaleTo[i] = 1f; _visScaleRate[i] = 0f;
