@@ -171,14 +171,14 @@ internal static partial class GpuGolden
         for (int d = -6; d <= 6; d += 3)
         {
             float lo = 2f, hi = -1f;
-            for (int x = 400; x < 800; x += 8)
+            for (int x = 400; x < 800; x++)
             {
                 float v = DofAt(o, x, (x + 3000) / 8 + d);
                 lo = MathF.Min(lo, v); hi = MathF.Max(hi, v);
             }
             stair = MathF.Max(stair, hi - lo);
         }
-        check.Expect(stair < 0.1f, $"dof: along the blurred edge the ramp holds its height (it moves by {stair:F3})");
+        check.Expect(stair < 0.08f, $"dof: along the blurred edge the ramp holds its height (it moves by {stair:F3})");
     }
 
     static partial void DofApprovedSelfCheck(VkBackend vk, Checker check, ExtenderLog log);
