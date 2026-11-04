@@ -26,7 +26,7 @@ internal static unsafe partial class DepthOfField
     /// <summary>The stock shader's offsets of the focus at a horizontal view, a vertical view, and past a read depth, in metres.</summary>
     private const float HorizontalOffset = 2.5f, VerticalOffset = -1f, ReadOffset = -1f;
     /// <summary>The blur's radius at the stock shader's confusion of 1, in half-size pixels per pixel of frame height.</summary>
-    private const float BlurFraction = 0.004f;
+    private const float BlurFraction = 0.0002f;
     /// <summary>How long the focus takes to cover about two thirds of a move, in seconds.</summary>
     private const float EaseSeconds = 0.25f;
     /// <summary>The three points the Dynamic focus reads, one per request, as (U, L, R).</summary>

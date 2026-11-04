@@ -15,6 +15,8 @@ AMD FidelityFX SDK 1.1.4 as CX builds FSR 3.1 and FidelityFX DoF: `patch -p1` in
 10. ffx_dof_callbacks_glsl.h: the composite and colour passes find depth from a colour pixel by its place in the frame,
     so depth may be smaller than colour, as it is under FSR.
 11. ffx_dof_blur.h: the per-pixel jitter on the kernel is gone. It shows as grain with no temporal pass after it.
+12. ffx_dof_callbacks_glsl.h: the kernel reads the colour mips filtered. Point-sampled, a blur wider than the kernel's rings
+    shows stairs along every edge.
 1 to 4 follow the fixes JonathanOrr/xplane-fsr3 found (MIT; its notice is in LICENSES.txt).
 
 --- a/sdk/include/FidelityFX/gpu/fsr3upscaler/ffx_fsr3upscaler_callbacks_glsl.h
@@ -409,6 +411,15 @@ AMD FidelityFX SDK 1.1.4 as CX builds FSR 3.1 and FidelityFX DoF: `patch -p1` in
  }
  #endif // #if defined(FFX_DOF_BIND_CB_DOF)
  
+@@ -190,7 +190,7 @@
+ #if defined(FFX_DOF_BIND_CB_DOF)
+ FfxHalfOpt4 FfxDofSampleInput(FfxFloat32x2 coord, FfxUInt32 mip)
+ {
+-    return FfxHalfOpt4(textureLod(sampler2D(r_internal_bilat_color, PointSampler), coord, mip));
++    return FfxHalfOpt4(textureLod(sampler2D(r_internal_bilat_color, LinearSampler), coord, mip));
+ }
+ #endif // #if defined(FFX_DOF_BIND_CB_DOF)
+ #endif // #if defined(FFX_DOF_BIND_SRV_INTERNAL_BILAT_COLOR)
 @@ -203,7 +203,10 @@
  
  FfxFloat32 FfxDofLoadFullDepth(FfxUInt32x2 coord)
