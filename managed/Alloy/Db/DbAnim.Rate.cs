@@ -2,8 +2,7 @@ using System.Numerics;
 
 namespace CX.Alloy.Db;
 
-/// <summary>How often an object's POSE is advanced, by its distance from the world eye -- the half of
-/// <see cref="VisibilityGateNotPorted"/>'s gate that needs no route stamp. Beyond <c>alloy.animdist</c> a step
+/// <summary>How often an object's POSE is advanced, by its distance from the world eye. Beyond <c>alloy.animdist</c> a step
 /// runs every second or fourth pass with the time between handed over in one piece, which is one slow frame to
 /// everything downstream; placement still composes every frame, so a creature walks where it walked.</summary>
 public static unsafe partial class DbAnim
@@ -48,6 +47,7 @@ public static unsafe partial class DbAnim
     private static void RateBegin(int sceneIndex)
     {
         _rate.On = false;
+        _view.On = false;
         if (!(Renderer.AnimDist.V > 0f)) return;
         if ((uint)sceneIndex >= SceneDb.MaxScenes || !SceneDb.SceneIsWorld[sceneIndex]) return;
         ref readonly AlloyView wv = ref AlloyCamera.WorldView;
@@ -55,11 +55,16 @@ public static unsafe partial class DbAnim
         _rate.Eye = inv.Translation;
         _rate.Pass++;
         _rate.On = true;
+        ViewBegin();
     }
 
     /// <summary>End of the member walk: nothing outside it bands, so an external animate of a world object
     /// (<see cref="AnimateOneExternal"/>) steps at full rate as it always did.</summary>
-    private static void RateEnd() => _rate.On = false;
+    private static void RateEnd()
+    {
+        _rate.On = false;
+        _view.On = false;
+    }
 
     /// <summary>The animation time object <paramref name="i"/> steps by this pass -- <paramref name="dt"/> plus
     /// what it has been holding -- or a NEGATIVE number when this is a pass it skips. The one writer of

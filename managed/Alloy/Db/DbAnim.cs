@@ -25,6 +25,8 @@ internal enum ObjAnim : uint
     /// compose ran inside the step and nothing has moved the object since. <see cref="DbAnim.Finish"/> consumes
     /// it. Set and cleared in the same step, so it needs no lifecycle edge beyond <c>OnCreate</c>'s reset.</summary>
     SkinDue = 1 << 6,
+    /// <summary>A new object, tree or run has not been posed yet, so the view gate must not hold it at rest.</summary>
+    PoseOwed = 1 << 7,
 }
 
 /// <summary>The engine's <c>AnimRun+0xc</c> flag bits, as <c>Gob::PlayAnimation</c> @0x49a750 and
@@ -258,9 +260,10 @@ public static unsafe partial class DbAnim
         if (Idle(i)) { _idle++; return true; }
         _animAt[i] = _frame;
         _objects++;
-        CensusStep(i, AlloyRenderer.FrameSeq);
+        CensusStep(i);
 
-        float step = RateStep(i, dt);
+        bool held = OffView(i);
+        float step = held ? dt : RateStep(i, dt);
         if (step < 0f)
         {
             // The part walk still runs: the dangly solve costs what it SIMULATES, so a stride buys it nothing,
@@ -278,6 +281,13 @@ public static unsafe partial class DbAnim
         if (!SceneDb.Objects.Valid(obj)) return false;
 
         if (!Gates(obj)) { Finish(obj); return true; }
+        if (held)
+        {
+            _census.WorldStepsHeld++;
+            _rate.Held[i] = 0f;
+            FinishTail(obj);
+            return true;
+        }
 
         // the pose layer puts its last corrections back BEFORE the pose: a crossfade blends from the column
         bool layer = PoseLayer(i);
@@ -285,6 +295,7 @@ public static unsafe partial class DbAnim
         int n = _runN[i];
         if (n != 0 && !StartQueued(obj, n - 1)) return false;
         if (!Advance(obj, SyncDt(i, dt), _runN[i])) return false;
+        _flags[i] &= ~ObjAnim.PoseOwed;
         // AFTER the queue: the engine's look-at is an add-in run at index 0, so it is the LAST thing to write
         // the head's pose. Before the advance it would be overwritten by the animation's own head track at
         // weight 1 and the head would never turn.
@@ -351,7 +362,7 @@ public static unsafe partial class DbAnim
     /// swap -- and nowhere else.</summary>
     private static void ScanTree(int i)
     {
-        bool dangly = false, skin = false;
+        bool dangly = false, skin = false, light = false;
         int first = SceneDb.ObjPartFirst[i], n = SceneDb.ObjPartCount[i];
         for (int k = 0; k < n; k++)
         {
@@ -362,10 +373,13 @@ public static unsafe partial class DbAnim
             if ((uint)node >= (uint)m.Nodes.Length) continue;
             NodeDef nd = m.Nodes[node];
             if (nd.Kind == NodeKind.Dangly) dangly = true;
+            if (nd.Kind == NodeKind.Light) light = true;
             if (nd.Skin != null) skin = true;
         }
         _hasDangly[i] = dangly;
         _hasSkin[i] = skin;
+        _view.HasLight[i] = light;
+        _flags[i] |= ObjAnim.PoseOwed;
         // The new tree owes a stitch and a palette, and the step tail is the only thing that pays them: a
         // reduced-rate object must not wear the old tree's skin for three more frames.
         RateForget(i);
@@ -380,14 +394,6 @@ public static unsafe partial class DbAnim
         if (SceneDb.Scenes.Valid(scene) && !SceneGate(scene) && (_flags[i] & ObjAnim.Forced) == 0) return false;
         return (_flags[i] & ObjAnim.Animating) != 0;
     }
-
-    /// <summary>
-    /// The gate the engine has and this does NOT: <c>Gob::Animate</c> @0x59d8c0 advances no clock and fires no
-    /// event when <c>Gob::IsInViewVolume</c> @0x544780 is false and the model is not effect-classified. Unportable
-    /// as written -- the flag is <c>ManageSceneBSP</c>'s @0x57fa80, from the render Alloy replaced. ponytail: a
-    /// per-object route stamp buys it, once <c>HitBounds</c>, <c>DbLights</c> and <c>CasterPass</c> are answered.
-    /// </summary>
-    private static void VisibilityGateNotPorted() { }
 
     /// <summary>The time a synchronised object advances by: its attach parent's own rate, so a head, a cloak
     /// and a held weapon stay on the body's frame (<c>Gob::SetSynchronizeAnimations</c>).</summary>
@@ -421,8 +427,15 @@ public static unsafe partial class DbAnim
     /// getter right after this answers from a current matrix.</summary>
     private static void Finish(DbId obj)
     {
-        int i = obj.Index;
         PartWalk(obj);
+        FinishTail(obj);
+    }
+
+    /// <summary>The compose and skin a step owes for what moved it. An object the view gate holds pays only this:
+    /// the engine's held object stops short of its part walk too, so a cloak does not swing out of view.</summary>
+    private static void FinishTail(DbId obj)
+    {
+        int i = obj.Index;
         ObjAnim f = _flags[i];
         if ((f & (ObjAnim.Moved | ObjAnim.SkinDue)) == 0) return;
         // Only when the matrices are actually out of date: ObjAnim.SkinDue says they are current and only the
@@ -471,7 +484,7 @@ public static unsafe partial class DbAnim
         // EVERY per-object column, because this index may be a recycled one: a leftover LOD level makes the
         // feed refuse every part of the new object (an INVISIBLE object with no error anywhere), and a
         // leftover compose stamp or placement makes its first matrix a stale one.
-        _flags[i] = ObjAnim.Animating | ObjAnim.Seated;
+        _flags[i] = ObjAnim.Animating | ObjAnim.Seated | ObjAnim.PoseOwed;
         _addIn[i] = null;
         _speed[i] = 1f; _speedTo[i] = 1f; _speedRate[i] = 0f;
         _visScale[i] = 1f; _visScaleTo[i] = 1f; _visScaleRate[i] = 0f;

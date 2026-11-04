@@ -40,6 +40,7 @@ public static unsafe partial class DbAnim
             Refilled(check);
             Still(check);
             Census(check);
+            ViewGate(check, log);
             SkinTail(check);
             Skin(check);
             DanglyMotions(check);
@@ -615,8 +616,8 @@ public static unsafe partial class DbAnim
 
     // ================= 5: change-driven =================
 
-    /// <summary>Which edge a compose is credited to, and which steps count as in view. Oracle: the counts are
-    /// hand-derived from each scripted edge, and the frame numbers are literals.</summary>
+    /// <summary>Which edge a compose is credited to, and which steps count as the world's. Oracle: the counts
+    /// are hand-derived from each scripted edge.</summary>
     private static void Census(Checker check)
     {
         ModelDef m = Chain();
@@ -661,17 +662,10 @@ public static unsafe partial class DbAnim
         ObjectWorld(parent);
         check.Expect(by[(int)ComposeCause.Other] == 1, "a getter's compose is credited to no edge");
 
-        NoteRouted(p, 41);
-        CensusStep(p, 41);
-        CensusStep(p, 42);
-        check.Expect(_census.WorldSteps == 2 && _census.WorldStepsInView == 2,
-                     "a step in the route's own frame and the one after it are both in view");
-        CensusStep(p, 43);
-        check.Expect(_census.WorldSteps == 3 && _census.WorldStepsInView == 2,
-                     "...and a step two frames after the route is out of view");
-        NoteRouted(inPanel.Index, 41);
-        CensusStep(inPanel.Index, 41);
-        check.Expect(_census.WorldSteps == 3, "a panel object's step is not a world step");
+        CensusStep(p);
+        check.Expect(_census.WorldSteps == 1, "a world object's step is a world step");
+        CensusStep(inPanel.Index);
+        check.Expect(_census.WorldSteps == 1, "a panel object's step is not a world step");
 
         CensusPeriod();
         check.Expect(_census.WorldSteps == 0 && _census.Composes[(int)ComposeCause.Other] == 0,

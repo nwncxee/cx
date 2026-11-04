@@ -166,7 +166,6 @@ public sealed unsafe partial class AlloyRenderer
         byte tree = SceneDb.PartLodTree[part];
         if (SceneDb.LodHidden(tree, SceneDb.ObjLodShown[obj.Index]))
         { Counters._skipLod++; SetCastOk(i, false); return false; }
-        DbAnim.NoteRouted(obj.Index, _frameSeq);
         if (samp) FrameZones.AddSampled(FrameZones.Zone.Ident, t0, ChaseEvery);
         return true;
     }

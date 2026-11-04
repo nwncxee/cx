@@ -243,7 +243,8 @@ internal static class Renderer
         AnimDist = G.Slider("animdist", "animdist", 0f, 160f, 5f, 30f, "m", tier: Tier.ChatOnly,
                             help: "Characters farther away than this move their limbs every second frame, and "
                                 + "past twice this every fourth, with their cloaks and hair held still. Where "
-                                + "they stand, what they do and when is unchanged. 0 animates everything every frame.");
+                                + "they stand, what they do and when is unchanged. Anything out of view pauses its animation "
+                                + "until you look at it. 0 animates everything every frame.");
         AuthoredLod = G.Toggle("authoredlod", "authoredlod", true, Tier.Hidden);
 
         Consts = G.Button("consts", "consts", AlloyRenderer.LogScriptables, Tier.ChatOnly);

@@ -115,6 +115,7 @@ public static unsafe partial class DbAnim
             _rFlags[b + j] = _rFlags[b + j - 1]; _rDone[b + j] = _rDone[b + j - 1];
         }
         _runN[i] = (byte)(n + 1);
+        _flags[i] |= ObjAnim.PoseOwed;
         return true;
     }
 
