@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Text;
+using CX.Alloy.Db;
 using CX.Engine;
 using CX.Framework;
 using CX.Services.Camera;
@@ -111,20 +112,30 @@ internal static unsafe partial class Weather
             ? pick switch { 0 => "Snow0"u8, 1 => "Snow1"u8, _ => "Snow2"u8 }
             : pick switch { 0 => "Puddles0"u8, 1 => "Puddles1"u8, _ => "Puddles2"u8 };
 
-    /// <summary>Can the rain reach <paramref name="p"/>? One ray back up the cover bake's direction; a tile, a
+    /// <summary>The segment weather takes to reach <paramref name="foot"/>, as <paramref name="from"/> to
+    /// <paramref name="to"/>. Cast downward along <paramref name="step"/>, because the hit test is one-sided and a
+    /// roof's faces look up.</summary>
+    private static void ShelterRay(Vector3 foot, Vector3 fall, out Vector3 from, out Vector3 to, out Vector3 step)
+    {
+        Vector3 up = -fall;
+        if (up.Z <= 0f) up = Vector3.UnitZ;
+        to = foot + new Vector3(0f, 0f, ShelterLiftM);
+        from = to + up * ShelterRayM;
+        step = -up;
+    }
+
+    /// <summary>Can the rain reach <paramref name="p"/>? One ray down the cover bake's direction; a tile, a
     /// static or a placeable on it is a roof, anything else (a creature, a held item) is cast past.</summary>
     private static bool Open(Vector3 p)
     {
         IntPtr scene = SceneRay.Armed ? SceneRay.WorldScene() : IntPtr.Zero;
         if (scene == IntPtr.Zero) return true;
-        Vector3 up = -CoverDir;
-        if (up.Z <= 0f) up = Vector3.UnitZ;
-        Vector3 from = p + new Vector3(0f, 0f, ShelterLiftM), to = from + up * ShelterRayM;
+        ShelterRay(p, CoverDir, out Vector3 from, out Vector3 to, out Vector3 step);
         for (int i = 0; i < ShelterCasts; i++)
         {
             if (!SceneRay.Cast(scene, from, to, IntPtr.Zero, out Vector3 hit, out IntPtr g, statics: true)) break;
             if (g == IntPtr.Zero || SceneRay.IsTile(g) || SceneRay.IsPlaceable(g)) { SceneRay.Release(); return false; }
-            from = hit + up * SceneRay.Nudge;
+            from = hit + step * SceneRay.Nudge;
         }
         SceneRay.Release();
         return true;
@@ -213,6 +224,16 @@ internal static unsafe partial class Weather
     /// hand-written expected kinds, and for an empty cell the stock table's own text.</summary>
     private static void StepSelfCheck(Checker check) => WithStepScene(() =>
     {
+        Vector3 foot = new(10f, 10f, 0f);
+        Vector3 ra = new(5f, 5f, 4f), rb = new(15f, 5f, 4f), rc = new(10f, 15f, 4f);
+        Vector3 fall = Vector3.Normalize(new Vector3(0.05f, 0f, -1f));
+        ShelterRay(foot, fall, out Vector3 from, out Vector3 to, out _);
+        check.Expect(HitTest.PolyHit(ra, rb, rc, from, ref to), "a roof whose faces look up shelters the foot below it");
+        ShelterRay(foot + new Vector3(30f, 0f, 0f), fall, out from, out to, out _);
+        check.Expect(!HitTest.PolyHit(ra, rb, rc, from, ref to), "ground beside that roof stays open to the sky");
+        ShelterRay(foot, fall, out from, out to, out Vector3 step);
+        check.Expect(step.Z < 0f && to.Z == ShelterLiftM, "the ray ends above the foot, so the ground under it is no roof");
+
         check.Expect(!StepInWeather, "dry bare ground casts no shelter ray");
         _snow = 1f;
         check.Expect(StepInWeather, "lying snow on dry ground asks whether the sky is open");
