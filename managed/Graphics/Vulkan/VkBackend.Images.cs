@@ -129,6 +129,50 @@ internal sealed unsafe partial class VkBackend
         => !f.IsDepth() ? VkImageAspectFlags.Color
          : f.HasStencil() ? VkImageAspectFlags.Depth | VkImageAspectFlags.Stencil : VkImageAspectFlags.Depth;
 
+    /// <summary>The format features <paramref name="use"/> asks of a format. A sampled image is filtered somewhere,
+    /// a colour target is blended into by some pass, and one copy flag stands for both a copy and a blit, which is
+    /// how <see cref="CopyMissing"/> reads it -- so each of those asks for the pair. A storage image asks for the
+    /// storage feature alone: the capability a packed format's qualifier declares is core Vulkan, not a device feature.</summary>
+    private static VkFormatFeatureFlags Needs(ImageUse use)
+    {
+        VkFormatFeatureFlags n = 0;
+        if ((use & (ImageUse.Sampled | ImageUse.Grey)) != 0)
+            n |= VkFormatFeatureFlags.SampledImage | VkFormatFeatureFlags.SampledImageFilterLinear;
+        if ((use & ImageUse.ColorTarget) != 0) n |= VkFormatFeatureFlags.ColorAttachment | VkFormatFeatureFlags.ColorAttachmentBlend;
+        if ((use & ImageUse.DepthTarget) != 0) n |= VkFormatFeatureFlags.DepthStencilAttachment;
+        if ((use & ImageUse.Storage) != 0) n |= VkFormatFeatureFlags.StorageImage;
+        if ((use & ImageUse.CopySrc) != 0) n |= VkFormatFeatureFlags.BlitSrc | VkFormatFeatureFlags.TransferSrc;
+        if ((use & ImageUse.CopyDst) != 0) n |= VkFormatFeatureFlags.BlitDst | VkFormatFeatureFlags.TransferDst;
+        if ((use & ImageUse.ShadingRate) != 0) n |= VkFormatFeatureFlags.FragmentShadingRateAttachmentKHR;
+        return n;
+    }
+
+    /// <summary>The uses <see cref="Needs"/> maps to a format feature, and the two it answers with none because
+    /// neither names a way a texel is read or written: one is a queue the image is reached from, the other is where
+    /// its memory comes from.</summary>
+    private const ImageUse FeatureBound = ImageUse.Sampled | ImageUse.Grey | ImageUse.ColorTarget | ImageUse.DepthTarget
+                                        | ImageUse.Storage | ImageUse.CopySrc | ImageUse.CopyDst | ImageUse.ShadingRate;
+    /// <inheritdoc cref="FeatureBound"/>
+    private const ImageUse FeatureFree = ImageUse.Async | ImageUse.Transient;
+
+    /// <summary>The uses in <paramref name="use"/> that <see cref="Needs"/> maps to no format feature and
+    /// <see cref="FeatureFree"/> does not excuse, named; null when every one of them is answered.</summary>
+    private static string? UnmappedUse(ImageUse use)
+        => (use & ~(FeatureBound | FeatureFree)) is var loose and not ImageUse.None
+         ? $"{loose} is reached in a way no format feature here stands for" : null;
+
+    /// <summary>What this device does not offer <paramref name="f"/> for every way <paramref name="use"/> reaches an
+    /// image of it, or null when it offers them all. A use mapped to no feature is itself the answer, so one added
+    /// later falls back rather than passing as offered.</summary>
+    internal string? FormatMissing(Format f, ImageUse use)
+    {
+        if (UnmappedUse(use) is string loose) return $"{loose}, so {f} is not settled for it";
+        VkFormatProperties p;
+        _vki.vkGetPhysicalDeviceFormatProperties(_phys, Of(f), &p);
+        VkFormatFeatureFlags missing = Needs(use) & ~p.optimalTilingFeatures;
+        return missing == 0 ? null : $"this device offers {f} as {p.optimalTilingFeatures}, which lacks {missing}";
+    }
+
     /// <summary>An image of any kind the seam names: 2D, arrays, cubes and cube arrays, 3D; any mip count; colour,
     /// depth or block-compressed. Its contents are undefined until a render pass or an <see cref="Upload"/> writes them.</summary>
     public ImageId CreateImage(in ImageDesc d)
