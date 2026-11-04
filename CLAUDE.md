@@ -49,6 +49,9 @@ the libraries out from under a running client; a build in another checkout or wo
 its own folder, so the check is `tools/no-loaded-runtime.sh` and not "is a client running".
 Launch the real client:  `NWN_BIN=/path/to/nwmain-linux ./cx-linux-x64/cx-launch`
 (Steam: put `"<abs>/cx-launch" %command%` in the game Launch Options.)
+Every report of work that sits in a worktree or a branch the user has not checked out ends with the output of
+`tools/where.sh <checkout>`: its absolute path, whether its `cx-linux-x64/` is the build of that commit
+(`build.sh` stamps `BUILT_FROM`), and the exact run command. Rebuild first when it says anything but CURRENT.
 
 First build fetches the funchook submodule and its nested diStorm if missing, then builds it. It also fetches AMD's FidelityFX SDK
 source (about 200 MB, pinned in `tools/deps.json`) once, for FSR 3.1.
