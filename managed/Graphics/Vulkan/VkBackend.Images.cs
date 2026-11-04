@@ -607,7 +607,6 @@ internal sealed unsafe partial class VkBackend
             b.dstOffsets[1] = new VkOffset3D { x = Math.Max(img.Desc.W >> m, 1), y = Math.Max(img.Desc.H >> m, 1), z = vol ? Math.Max(img.Desc.D >> m, 1) : 1 };
             _vkd.vkCmdBlitImage(_cmd, img.Image, VkImageLayout.TransferSrcOptimal, img.Image, VkImageLayout.TransferDstOptimal, 1, &b, VkFilter.Linear);
         }
-        img.Written = true;
         MipsSettled(img);
         return true;
     }

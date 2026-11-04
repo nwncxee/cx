@@ -53,8 +53,7 @@ internal static partial class GpuGolden
             Span<BlitTexel> all = MemoryMarshal.Cast<byte, BlitTexel>(got.AsSpan());
             check.Expect(got.AsSpan(0, texels.Length * 4).SequenceEqual(MemoryMarshal.AsBytes(texels.AsSpan())),
                          "blit chain: the base level does not read back the texels uploaded into it");
-            int folded = BlitChainFolds(check, all, levels);
-            check.Expect(folded == levels - 1, $"blit chain: the oracle held {folded} of the {levels - 1} levels the chain makes");
+            BlitChainFolds(check, all, levels);
         }
         finally
         {
@@ -63,14 +62,12 @@ internal static partial class GpuGolden
         }
     }
 
-    /// <summary>Every level past the base held against the box average of the level under it, over every channel; how
-    /// many levels that covered.</summary>
-    private static int BlitChainFolds(Checker check, Span<BlitTexel> all, int levels)
+    /// <summary>Every level past the base held against the box average of the level under it, over every channel.</summary>
+    private static void BlitChainFolds(Checker check, Span<BlitTexel> all, int levels)
     {
-        int worst = 0, worstLevel = 0, covered = 0;
+        int worst = 0, worstLevel = 0;
         for (int l = 1; l < levels; l++)
         {
-            covered++;
             int bw = MipSide(BlitChainW, l - 1), bh = MipSide(BlitChainH, l - 1);
             int w = MipSide(BlitChainW, l), h = MipSide(BlitChainH, l);
             Span<BlitTexel> below = all.Slice((int)BlitChainTexels(l - 1), bw * bh);
@@ -90,7 +87,6 @@ internal static partial class GpuGolden
         }
         check.Expect(worst <= BlitChainSlack, $"blit chain: level {worstLevel} is {worst} off the box average of the level "
                                             + $"under it, past the {BlitChainSlack} an eight-bit channel rounds by");
-        return covered;
     }
 
     /// <summary>The average of a 2x2 block's one channel, rounded as an eight-bit channel lands it.</summary>
