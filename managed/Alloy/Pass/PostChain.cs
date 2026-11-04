@@ -117,13 +117,28 @@ internal static unsafe class PostChain
     internal static GradeLocs LocateGrade(Func<string, int> loc)
         => new(loc("uMode"), loc("uKnee"), loc("uExposure"), loc("uAcesMix"));
 
-    /// <summary>The frame's grade into the open capture: the resolve, the reactive mask and the taa copy-out take it here.</summary>
+    /// <summary>A program's grade values, in the order the stages declare them: the tone curve, its knee, the
+    /// exposure before it and the ACES mix.</summary>
+    internal struct GradeTerms
+    {
+        public int Mode;
+        public float Knee, Exposure, AcesMix;
+
+        /// <summary>The grade the knobs stand at, for the three stages that take it whole: the resolve, the
+        /// reactive mask and the taa copy-out.</summary>
+        internal static GradeTerms Now
+            => new() { Mode = Post.Tonemap.V, Knee = Post.TmKnee.V, Exposure = Post.Exposure.V, AcesMix = Post.AcesMix.V };
+    }
+
+    /// <summary>The frame's grade into the open capture: the reactive mask and the taa copy-out take it here, the
+    /// resolve pushes <see cref="GradeTerms"/> instead.</summary>
     internal static void WriteGrade(GradeLocs l)
     {
-        LooseBlock.Set(l.Mode, Post.Tonemap.V);
-        LooseBlock.Set(l.Knee, Post.TmKnee.V);
-        LooseBlock.Set(l.Exposure, Post.Exposure.V);
-        LooseBlock.Set(l.AcesMix, Post.AcesMix.V);
+        GradeTerms g = GradeTerms.Now;
+        LooseBlock.Set(l.Mode, g.Mode);
+        LooseBlock.Set(l.Knee, g.Knee);
+        LooseBlock.Set(l.Exposure, g.Exposure);
+        LooseBlock.Set(l.AcesMix, g.AcesMix);
     }
 
     internal static bool TaaOn => !PostStack.TaaVkFailed && Post.Aa.V == Post.AaFsr && !Fsr.On;
@@ -229,6 +244,10 @@ internal static unsafe class PostChain
     /// vertex stage of all three at once.</summary>
     internal const string ShdPostVs = "cx_post_vs", ShdBloomDownFs = "cx_bloomdn_fs";
     internal const string ShdBloomUpFs = "cx_bloomup_fs", ShdResolveFs = "cx_resolve_fs";
+
+    /// <summary>The resref of the chain's compute stage, which folds the two fragment ones into one dispatch per
+    /// level on Vulkan. Overriding either fragment stage stands it down, so the three agree on what the chain is.</summary>
+    internal const string ShdBloomCs = "cx_bloom_cs";
 
     /// <summary>The full-screen triangle every post stage draws: three vertices, no buffers, no attributes.
     /// A triangle rather than a quad because the diagonal seam of a two-triangle quad costs a second

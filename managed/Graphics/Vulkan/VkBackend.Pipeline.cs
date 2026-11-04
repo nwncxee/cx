@@ -52,11 +52,12 @@ internal sealed unsafe partial class VkBackend
         b->Info = new VkSpecializationInfo { mapEntryCount = 1, pMapEntries = &b->Entry, dataSize = sizeof(uint), pData = &b->Cap };
     }
 
-    /// <summary>A compute pipeline over <paramref name="src"/> (or <paramref name="resref"/>'s content override); null
-    /// (logged) when the text or the pipeline is refused. The module goes once the pipeline holds it.</summary>
-    internal PipelineId CreateCompute(string src, string label, string? resref = null)
+    /// <summary>A compute pipeline over <paramref name="src"/>; null (logged) when the text or the pipeline is
+    /// refused. The module goes once the pipeline holds it. A caller whose stage content may override reads the
+    /// override itself, where the defines that reach the text are applied.</summary>
+    internal PipelineId CreateCompute(string src, string label)
     {
-        ShaderId cs = CreateShader(new ShaderDesc(ShaderStage.Compute, resref, src, label));
+        ShaderId cs = CreateShader(new ShaderDesc(ShaderStage.Compute, src, label));
         if (cs.IsNull) return default;
         PipelineId pipe = CreatePipeline(new PipelineDesc { Cs = cs, Label = label });
         Destroy(cs);

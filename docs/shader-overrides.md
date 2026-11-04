@@ -102,8 +102,9 @@ GL GLSL into Vulkan GLSL before shaderc sees it, and `VulkanToolchain.CompileFre
 invocation: target environment Vulkan 1.3, locations auto-mapped, and GL's binding spaces shifted apart into
 the one descriptor set — samplers from 0, uniform blocks from 48, storage blocks from 64, storage images from
 80. Set 1 is the bindless sampler array. Every loose (non-block) uniform the stage declared is gathered into
-one std140 block the host fills by member name, so a module that drops it gets no uniforms. The entry point
-is `main`.
+one std140 block the host fills by member name, so a module that drops it gets no uniforms — except the
+scalars that stage names in the push block, which a few stages take per draw or per dispatch instead of
+re-staging a block for. The entry point is `main`.
 
 The practical route is therefore: edit the dumped `.shd`, let the extender translate and compile it once, and
 compile your module from the same text with the same options. Reach for a module when you want a compiler
@@ -148,7 +149,7 @@ These are the stage resrefs. The libraries they include are listed by the dump; 
 | `cx_post_vs` | vertex | Fullscreen triangle shared by the whole post chain. |
 | `cx_bloomdn_fs` | fragment | Bloom downsample. Overriding it, `cx_bloomup_fs` or a library inside either (`cx_bloom_lib` holds the taps) keeps the bloom as fragment passes: the stock chain runs as `cx_bloom_cs`. |
 | `cx_bloomup_fs` | fragment | Bloom upsample. |
-| `cx_bloom_cs` | compute | The stock bloom: one dispatch per level, the same taps as the two stages above through `cx_bloom_lib`, the upsample added onto the level it writes. 8x8 groups. |
+| `cx_bloom_cs` | compute | The stock bloom: one dispatch per level, the same taps as the two stages above through `cx_bloom_lib`, the upsample added onto the level it writes. The square tile one group covers arrives as `CX_BLOOM_GROUP` -- 16x16 texels where the device seats 256 threads a group, 8x8 where it seats only Vulkan's guaranteed 128 -- and the dispatch counts its groups by the same number, so the stage declares `layout(local_size_x = CX_BLOOM_GROUP, local_size_y = CX_BLOOM_GROUP) in;` and keeps the `#ifndef CX_BLOOM_GROUP` guard. A size of its own would cover a fraction of every level and leave the rest unwritten, so a fork that does not name the macro is refused: the embedded stage builds instead, and `cx.log` says so. The levels' own format arrives as `CX_BLOOM_PACKED`, defined where the device offers `R11G11B10F` every way the chain reaches a level and absent where the levels are four half floats, so a fork keeps the `#ifdef CX_BLOOM_PACKED` pair around the `uDst` declaration: a storage qualifier that disagrees with the image makes every store undefined. |
 | `cx_resolve_fs` | fragment | The resolve: tonemap, dither, and the one stage that encodes to display space. |
 | `cx_postgam_fs` | fragment | The post stack's gamma stage (#375): the client's gamma option as `pow(c, g/2.2)`, display space in and out. |
 | `cx_smaaedge_fs` | fragment | The aa stage's first pass (#377): SMAA luma edges of the resolved frame. Carries the reference `SMAA.hlsl` under its GLSL port; `$AA$` is the preset the client's anti-aliasing option picked. |

@@ -30,11 +30,12 @@ internal sealed class GuiVkProg
 
     /// <summary>Program <paramref name="label"/> from the text of its two stages: translated, compiled to SPIR-V
     /// for both the module and the reflection, its loose block laid out, then <paramref name="locate"/> run with
-    /// locations answered from that block. Null (logged) when a step refused.</summary>
+    /// locations answered from that block. <paramref name="pushTail"/> names the per-pass scalars the program
+    /// pushes instead of staging. Null (logged) when a step refused.</summary>
     internal static GuiVkProg? Build(VkBackend vk, string vs, string fs, IReadOnlyDictionary<string, uint> units,
-                                     string label, Action<GuiVkProg> locate, ExtenderLog log)
+                                     string label, Action<GuiVkProg> locate, ExtenderLog log, VkPushTail pushTail = default)
     {
-        VkProgramText t = VkGlsl.Translate(vs, fs, units);
+        VkProgramText t = VkGlsl.Translate(vs, fs, units, pushTail: pushTail);
         if (t.Error != null) { log.Always($"GuiVkProg: {label} did not translate -- {t.Error}"); return null; }
         byte[]? vb = VulkanToolchain.Compile(VkBackend.Translate(t.Vs), $"vk {label} vs", ShaderKind.VertexShader, out string ve);
         byte[]? fb = VulkanToolchain.Compile(VkBackend.Translate(t.Fs), $"vk {label} fs", ShaderKind.FragmentShader, out string fe);

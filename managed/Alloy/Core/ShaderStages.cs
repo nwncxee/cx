@@ -107,6 +107,7 @@ internal static class ShaderStages
         (PostChain.ShdPostVs,              Banner),
         (PostChain.ShdBloomDownFs,         Banner),
         (PostChain.ShdBloomUpFs,           Banner),
+        (PostChain.ShdBloomCs,             Banner),
         (PostChain.ShdResolveFs,           Banner),
         (PostStack.ShdGammaFs,             Banner),
         (SmaaStage.ShdEdgeFs,              Banner),
@@ -209,7 +210,7 @@ internal static class ShaderStages
     /// that declares it. A missing switch arm is otherwise invisible until a program builds from "".</summary>
     internal static bool SelfCheck(ExtenderLog log)
     {
-        bool ok = All.Length == 46 && BindlessRef.Length <= ShaderResource.ResRefBytes;
+        bool ok = All.Length == 47 && BindlessRef.Length <= ShaderResource.ResRefBytes;
         foreach ((string r, string header) in All)
         {
             string src = Source(r);

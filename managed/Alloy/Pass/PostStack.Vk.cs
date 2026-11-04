@@ -232,8 +232,8 @@ internal static unsafe partial class PostStack
     {
         if (!s.A.IsNull && s.W == w && s.H == h) return true;
         vk.Destroy(s.A); vk.Destroy(s.B);
-        s.A = PostChainVk.Target(vk, w, h, "vk post stack 0", alias: AliasLanes.Wide);
-        s.B = PostChainVk.Target(vk, w, h, "vk post stack 1", alias: AliasLanes.Second);
+        s.A = PostChainVk.Target(vk, w, h, Format.Rgba16F, "vk post stack 0", alias: AliasLanes.Wide);
+        s.B = PostChainVk.Target(vk, w, h, Format.Rgba16F, "vk post stack 1", alias: AliasLanes.Second);
         s.W = w; s.H = h;
         if (!s.A.IsNull && !s.B.IsNull) return true;
         log.Always($"PostStack: the {w}x{h} stack pair was REFUSED on Vulkan (logged above) -- the frame resolves without its stages");
@@ -262,8 +262,8 @@ internal static unsafe partial class PostStack
         if (s.Hist0.IsNull || s.HistW != dw || s.HistH != dh)
         {
             vk.Destroy(s.Hist0); vk.Destroy(s.Hist1);
-            s.Hist0 = PostChainVk.Target(vk, dw, dh, "vk taa history 0");
-            s.Hist1 = PostChainVk.Target(vk, dw, dh, "vk taa history 1");
+            s.Hist0 = PostChainVk.Target(vk, dw, dh, Format.Rgba16F, "vk taa history 0");
+            s.Hist1 = PostChainVk.Target(vk, dw, dh, Format.Rgba16F, "vk taa history 1");
             s.HistW = dw; s.HistH = dh;
             s.HistValid = false;
             if (s.Hist0.IsNull || s.Hist1.IsNull) { s.Hist0 = default; return false; }

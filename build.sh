@@ -170,5 +170,7 @@ packaging/licenses.sh "$OUT/LICENSES.txt"
 chmod +x "$OUT/cx-launch"
 
 python3 -c "import shutil; shutil.make_archive('$OUT', 'zip', '$OUT')"
+# Written after the zip, so it ships in nothing: tools/where.sh reads it to say which commit the folder runs.
+{ git rev-parse HEAD; [ -n "$(git status --porcelain --untracked-files=no --ignore-submodules=all)" ] && echo dirty; } > "$OUT/BUILT_FROM" 2>/dev/null || true
 echo ">> artifacts ($OUT/, $OUT.zip):"
 ls -1 "$OUT"

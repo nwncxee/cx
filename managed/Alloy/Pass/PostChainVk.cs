@@ -5,6 +5,7 @@ using CX.Framework;
 using CX.Graphics;
 using CX.Graphics.Rhi;
 using CX.Rhi;
+using Vortice.Vulkan;
 
 namespace CX.Alloy;
 
@@ -14,12 +15,39 @@ namespace CX.Alloy;
 /// helpers every post program on Vulkan draws through.</summary>
 internal static unsafe class PostChainVk
 {
-    /// <summary>The resolve's loose terms.</summary>
+    /// <summary>The resolve's loose terms: the view and the fog, whose matrices and vectors a block carries. Its
+    /// scalars are <see cref="ResolvePush"/>'s.</summary>
     private sealed class ResolveLocs
     {
-        public int SkyRaw = -1, SkyBand = -1, InvVp = -1, Eye = -1, VFog = -1, VFogVp = -1, SkyBare = -1, OverlayOn = -1;
-        public int Strength = -1, Dither = -1, Viz = -1;
-        public PostChain.GradeLocs Grade = PostChain.GradeLocs.None;
+        public int SkyBand = -1, InvVp = -1, Eye = -1, VFog = -1, VFogVp = -1;
+    }
+
+    /// <summary>The resolve's per-pass scalars, pushed rather than staged: the sky's two gates, the bloom strength,
+    /// the grade, the output dither and the stage view.</summary>
+    private struct ResolvePush
+    {
+        public int SkyRaw, SkyBare;
+        public float Strength;
+        public PostChain.GradeTerms Grade;
+        public float Dither;
+        public int Viz, OverlayOn;
+    }
+
+    /// <summary><c>cx_resolve_f</c>'s own push members, each beside the field that fills it.</summary>
+    private static VkPushTail ResolveTail()
+    {
+        var p = new ResolvePush();
+        return VkPushTail.Of<ResolvePush>(
+            VkPush.Of("int", "uSkyRaw", ref p, ref p.SkyRaw),
+            VkPush.Of("int", "uSkyBare", ref p, ref p.SkyBare),
+            VkPush.Of("float", "uStrength", ref p, ref p.Strength),
+            VkPush.Of("int", "uMode", ref p, ref p.Grade.Mode),
+            VkPush.Of("float", "uKnee", ref p, ref p.Grade.Knee),
+            VkPush.Of("float", "uExposure", ref p, ref p.Grade.Exposure),
+            VkPush.Of("float", "uAcesMix", ref p, ref p.Grade.AcesMix),
+            VkPush.Of("float", "uDither", ref p, ref p.Dither),
+            VkPush.Of("int", "uViz", ref p, ref p.Viz),
+            VkPush.Of("int", "uOverlayOn", ref p, ref p.OverlayOn));
     }
 
     /// <summary>The bloom stages' loose terms.</summary>
@@ -37,6 +65,9 @@ internal static unsafe class PostChainVk
         public readonly ResolveLocs R = new();
         public bool Tried, Failed;
         public readonly ImageId[] Bloom = new ImageId[MaxLevels];
+        /// <summary>The levels' format on this device, settled once: both chains write it, and
+        /// <c>cx_bloom_cs</c>'s storage qualifier is built against it.</summary>
+        public Format BloomFmt;
         public int W, H, Levels;
         public BufferId Ubo;
         public int UboUsed;
@@ -48,6 +79,8 @@ internal static unsafe class PostChainVk
         public bool ComputeSaid;
         public PipelineId BloomCs;
         public bool CsTried;
+        /// <summary>The tile <see cref="BloomCs"/> was built for, which its dispatch counts groups by.</summary>
+        public int BloomGroup;
     }
 
     /// <summary><c>cx_bloom_cs</c>'s push block, member for member.</summary>
@@ -63,6 +96,15 @@ internal static unsafe class PostChainVk
 
     /// <summary>The chain's depth ceiling, as GL's.</summary>
     private const int MaxLevels = 6;
+
+    /// <summary>Every way a bloom level is reached: a draw blends into it or a dispatch stores into it, the next
+    /// level samples it filtered, and level 0 is copied out. One ask over the union settles the whole chain, and
+    /// each level takes the uses it has of it.</summary>
+    private const ImageUse BloomUse = ImageUse.Sampled | ImageUse.ColorTarget | ImageUse.Storage | ImageUse.CopySrc;
+
+    /// <summary>What a level asks of no format though <see cref="BloomUse"/> stands for it: level 0 is copied out
+    /// whole into a buffer and nothing blits it, so a device that cannot scale the format need not be refused.</summary>
+    private const VkFormatFeatureFlags BloomUnneeded = VkFormatFeatureFlags.BlitSrc;
 
     /// <summary>The loose blocks one frame's post programs fill: the bloom levels, the resolve and the stack.</summary>
     private const int UboBytes = 32 << 10;
@@ -106,7 +148,7 @@ internal static unsafe class PostChainVk
             bool compute = s.BloomStock && BloomCompute(vk, cl, s, hdr, log);
             if (!compute) Bloom(cl, s, hdr);
             if (!s.ComputeSaid && (compute || !s.BloomStock))
-                log.Always(compute ? "PostChainVk: the compute bloom is LIVE -- one dispatch per level, no render pass"
+                log.Always(compute ? $"PostChainVk: the compute bloom is LIVE -- one dispatch per level over a {s.BloomGroup}x{s.BloomGroup} tile, no render pass"
                                    : "PostChainVk: the compute bloom STOOD DOWN for the content override of a bloom stage -- it draws as fragments");
             s.ComputeSaid = true;
             cl.EndLabel();
@@ -116,16 +158,19 @@ internal static unsafe class PostChainVk
         Matrix4x4 invVp = AlloyRenderer.SkyInvVp;
         Vector3 eye = AlloyRenderer.EyePos;
         Open(s.Resolve!);
-        LooseBlock.Set(r.SkyRaw, Post.SkyRaw.V && invVp != default ? 1 : 0);
         LooseBlock.Set(r.SkyBand, FrameInputs.FogOn && invVp != default ? SceneFog.SkyBand : 0f);
         LooseBlock.Set(r.InvVp, invVp);
         LooseBlock.Set(r.Eye, [eye.X, eye.Y, eye.Z]);
         FogVolume.Upload(r.VFog, r.VFogVp, capture: false);
-        LooseBlock.Set(r.SkyBare, invVp == default ? 1 : 0);
-        LooseBlock.Set(r.OverlayOn, StageResources.VkOverlay.IsNull ? 0 : 1);
-        LooseBlock.Set(r.Strength, bloom ? Post.Bloom.V : 0f);
-        PostChain.WriteGrade(r.Grade);
-        LooseBlock.Set(r.Dither, last ? PostChain.DitherLsb : 0f);
+        var push = new ResolvePush
+        {
+            SkyRaw = Post.SkyRaw.V && invVp != default ? 1 : 0,
+            SkyBare = invVp == default ? 1 : 0,
+            OverlayOn = StageResources.VkOverlay.IsNull ? 0 : 1,
+            Strength = bloom ? Post.Bloom.V : 0f,
+            Grade = PostChain.GradeTerms.Now,
+            Dither = last ? PostChain.DitherLsb : 0f,
+        };
         bool motion = Post.Viz.V == PostChain.VizMotion;
         if (motion && vel.IsNull && !s.VizSaid)
         {
@@ -133,9 +178,11 @@ internal static unsafe class PostChainVk
             log.Always("PostChainVk: /post viz 4 shows NOTHING -- the velocity target is the taa stage's, and taa is not "
                      + "drawing this frame; the frame resolves as viz 0");
         }
-        LooseBlock.Set(r.Viz, motion && vel.IsNull ? 0 : Post.Viz.V);
+        push.Viz = motion && vel.IsNull ? 0 : Post.Viz.V;
         cl.BeginLabel("resolve"u8);
         int at = Close(cl, s.Resolve!);
+        // push constants are command-buffer state the render pass Draw opens does not reset
+        cl.PushConstants(VkGlsl.PushTailAt, System.Runtime.InteropServices.MemoryMarshal.AsBytes(new ReadOnlySpan<ResolvePush>(in push)));
         // the velocity viz rides the bloom input: the two views are exclusive by construction
         Draw(cl, s.Resolve!, FormatOf(into), Blend.None, into, LoadOp.Clear, new Rect(rect[0], rect[1], rect[2], rect[3]), at,
              new Inputs(hdr, motion && !vel.IsNull ? vel : bloom ? s.Bloom[0] : default, depth), log);
@@ -176,7 +223,7 @@ internal static unsafe class PostChainVk
             LooseBlock.Set(d.Texel, [1f / sw, 1f / sh]);
             LooseBlock.Set(d.Thresh, [Post.Threshold.V, MathF.Max(Post.Knee.V, 1e-4f)]);
             int at = Close(cl, s.Down!);
-            Draw(cl, s.Down!, Format.Rgba16F, Blend.None, s.Bloom[i], LoadOp.DontCare, new Rect(0, 0, LevelW(s, i), LevelH(s, i)),
+            Draw(cl, s.Down!, s.BloomFmt, Blend.None, s.Bloom[i], LoadOp.DontCare, new Rect(0, 0, LevelW(s, i), LevelH(s, i)),
                  at, new Inputs(i == 0 ? hdr : s.Bloom[i - 1]), null);
         }
         for (int i = s.Levels - 1; i > 0; i--)
@@ -185,7 +232,7 @@ internal static unsafe class PostChainVk
             LooseBlock.Set(u.Lod, 0);
             LooseBlock.Set(u.Texel, [1f / LevelW(s, i), 1f / LevelH(s, i)]);
             int at = Close(cl, s.Up!);
-            Draw(cl, s.Up!, Format.Rgba16F, Blend.Add, s.Bloom[i - 1], LoadOp.Load, new Rect(0, 0, LevelW(s, i - 1), LevelH(s, i - 1)),
+            Draw(cl, s.Up!, s.BloomFmt, Blend.Add, s.Bloom[i - 1], LoadOp.Load, new Rect(0, 0, LevelW(s, i - 1), LevelH(s, i - 1)),
                  at, new Inputs(s.Bloom[i]), null);
         }
     }
@@ -197,7 +244,7 @@ internal static unsafe class PostChainVk
         if (!s.CsTried)
         {
             s.CsTried = true;
-            s.BloomCs = vk.CreateCompute(ShaderSource.Get("cx_bloom_cs.glsl"), "bloom compute", "cx_bloom_cs");
+            s.BloomCs = BloomPipe(vk, s, log);
             if (s.BloomCs.IsNull) log.Always("PostChainVk: the compute bloom was REFUSED (logged above) -- the bloom draws as fragments");
         }
         if (s.BloomCs.IsNull) return false;
@@ -220,8 +267,54 @@ internal static unsafe class PostChainVk
         return true;
     }
 
-    /// <summary>The 8x8 groups covering a <paramref name="w"/> x <paramref name="h"/> level.</summary>
-    private const int BloomGroup = 8;
+    /// <summary>The square tile of a level one group covers, in texels. The wide one is 256 threads, which a device
+    /// fills its warps with where 64 left them a quarter idle, and more than Vulkan guarantees a group may hold.</summary>
+    private const int BloomGroupWide = 16, BloomGroupNarrow = 8;
+
+    /// <summary>The defines that hand <c>cx_bloom_cs</c> the tile the dispatch counts groups by and, where the
+    /// levels are packed, the storage qualifier that agrees with them.</summary>
+    private const string BloomGroupDefine = "CX_BLOOM_GROUP", BloomPackedDefine = "CX_BLOOM_PACKED";
+
+    /// <summary>The tile a device whose group holds <paramref name="invocations"/> threads takes. Only the thread
+    /// count can refuse the wide tile: Vulkan guarantees a group 128 threads per axis, past either tile's side.</summary>
+    private static int BloomGroupFor(int invocations)
+        => invocations >= BloomGroupWide * BloomGroupWide ? BloomGroupWide : BloomGroupNarrow;
+
+    /// <summary><c>cx_bloom_cs</c> on one device, its group size the one <paramref name="s"/> then counts groups by
+    /// and its storage qualifier the levels' own format. The override is read here rather than left to the pipeline,
+    /// since the defines have to reach the text that is built; one that does not build, or that does not take its
+    /// group from the define, falls back to the embedded stage, logged.</summary>
+    private static PipelineId BloomPipe(VkBackend vk, PostVkState s, ExtenderLog log)
+    {
+        s.BloomGroup = BloomGroupFor(vk.Caps.MaxComputeInvocations);
+        string embedded = ShaderStages.Source(PostChain.ShdBloomCs);
+        string over = ShaderResource.Override(PostChain.ShdBloomCs, log) ?? embedded;
+        if (!ReferenceEquals(over, embedded) && !over.Contains(BloomGroupDefine, StringComparison.Ordinal))
+        {
+            log.Always($"PostChainVk: the compute bloom's {PostChain.ShdBloomCs} override names no {BloomGroupDefine} -- a group "
+                     + "size of its own covers part of each level and leaves the rest unwritten, so the embedded stage builds");
+            over = embedded;
+        }
+        if (s.BloomFmt == PackedColour.Packed && !over.Contains(BloomPackedDefine, StringComparison.Ordinal))
+        {
+            log.Always($"PostChainVk: the compute bloom's {PostChain.ShdBloomCs} override names no {BloomPackedDefine} -- the "
+                     + "levels are packed on this device and a storage qualifier that disagrees with them stores nothing "
+                     + "defined, so the embedded stage builds");
+            over = embedded;
+        }
+        PipelineId pipe = vk.CreateCompute(BloomText(over, s), "bloom compute");
+        if (!pipe.IsNull || ReferenceEquals(over, embedded)) return pipe;
+        log.Always($"PostChainVk: the compute bloom's {PostChain.ShdBloomCs} override did not build (logged above) -- building the embedded stage");
+        return vk.CreateCompute(BloomText(embedded, s), "bloom compute");
+    }
+
+    /// <summary><paramref name="src"/> with the tile and, where the levels are packed, the qualifier spliced in. A
+    /// qualifier that disagrees with the view makes the store undefined, so the define follows the image.</summary>
+    private static string BloomText(string src, PostVkState s)
+    {
+        string t = ShaderStages.WithDefine(src, $"{BloomGroupDefine} {s.BloomGroup}");
+        return s.BloomFmt == PackedColour.Packed ? ShaderStages.WithDefine(t, $"{BloomPackedDefine} 1") : t;
+    }
 
     private static void BloomDispatch(CommandList cl, PostVkState s, in BloomPush p, ImageId src, ImageId dst, int w, int h)
     {
@@ -229,7 +322,7 @@ internal static unsafe class PostChainVk
         ReadOnlySpan<ImageBinding> storage = [new(0, dst)];
         cl.BindSet(0, new BindSet(default, default, sampled, storage));
         cl.PushConstants(0, System.Runtime.InteropServices.MemoryMarshal.AsBytes(new ReadOnlySpan<BloomPush>(in p)));
-        cl.Dispatch((w + BloomGroup - 1) / BloomGroup, (h + BloomGroup - 1) / BloomGroup);
+        cl.Dispatch((w + s.BloomGroup - 1) / s.BloomGroup, (h + s.BloomGroup - 1) / s.BloomGroup);
     }
 
     /// <summary>The attachment format a post draw into <paramref name="into"/> renders: the image's own (the screen's
@@ -318,8 +411,10 @@ internal static unsafe class PostChainVk
         return (n, ns, engine);
     }
 
-    /// <summary>Off-device: a post program that declares twenty samplers draws with all twenty bound. Oracle: the
-    /// twenty hand-written declarations, each on a binding of its own.</summary>
+    /// <summary>Off-device: a post program that declares twenty samplers draws with all twenty bound, the bloom's
+    /// tile is one every device seats, and the stage the levels' format builds declares that format. Oracles: the
+    /// twenty hand-written declarations; Vulkan's guaranteed 128 invocations a group, by hand; the two storage
+    /// qualifiers Vulkan spells the two formats, by hand.</summary>
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "PostChainVk.SelfCheck");
@@ -328,7 +423,33 @@ internal static unsafe class PostChainVk
         Span<ImageBinding> img = stackalloc ImageBinding[SampledMax];
         (int n, _, _) = Images(p, new Inputs(default), img, default);
         check.Expect(n == 20 && img[19].Slot == 19, $"a post program's twenty samplers are all bound, not {n}");
+        const int guaranteed = 128;
+        int floor = BloomGroupFor(guaranteed), seated = BloomGroupFor(1024);
+        check.Expect(floor * floor <= guaranteed, $"a device at Vulkan's guaranteed {guaranteed} invocations a group takes a "
+                                                + $"{floor}x{floor} bloom tile, which is {floor * floor} threads");
+        check.Expect(seated > floor && seated * seated > guaranteed, $"a device that seats 1024 threads a group takes the same "
+                                                                   + $"{seated}x{seated} tile the guaranteed one does");
+        string src = ShaderStages.Source(PostChain.ShdBloomCs);
+        string packed = BloomText(src, new PostVkState { BloomFmt = PackedColour.Packed, BloomGroup = seated });
+        string wide = BloomText(src, new PostVkState { BloomFmt = PackedColour.Wide, BloomGroup = seated });
+        check.Expect(packed.Contains($"#define {BloomPackedDefine} ", StringComparison.Ordinal)
+                  && !wide.Contains($"#define {BloomPackedDefine} ", StringComparison.Ordinal),
+            $"the compute bloom is built with {BloomPackedDefine} where the levels are {PackedColour.Packed} and without "
+          + $"it where they are {PackedColour.Wide}");
+        check.Expect(Declares(src, $"#ifdef {BloomPackedDefine}", "r11f_g11f_b10f") && Declares(src, "#else", "rgba16f"),
+            $"the compute bloom declares uDst r11f_g11f_b10f under {BloomPackedDefine} and rgba16f without it, so the "
+          + "define the levels' format splices picks the qualifier that agrees with them");
         return check.Ok;
+    }
+
+    /// <summary>The first <c>uDst</c> declaration after <paramref name="after"/> in <paramref name="src"/> carries
+    /// <paramref name="qualifier"/>, and no other declaration comes between.</summary>
+    private static bool Declares(string src, string after, string qualifier)
+    {
+        int at = src.IndexOf(after, StringComparison.Ordinal);
+        if (at < 0) return false;
+        int decl = src.IndexOf("uniform image2D uDst;", at, StringComparison.Ordinal);
+        return decl > 0 && src[at..decl].Contains($"layout({qualifier}, binding = 0) ", StringComparison.Ordinal);
     }
 
     /// <summary>Open a capture into <paramref name="p"/>'s loose block: the <c>LooseBlock.Set</c> calls until
@@ -360,7 +481,7 @@ internal static unsafe class PostChainVk
     /// <summary>Post program <paramref name="label"/> from its two stages' GL text, its sizing tokens expanded as GL's
     /// compile expands them, translated and compiled. Null (logged) when a step refused.</summary>
     internal static GuiVkProg? Program(VkBackend vk, string vs, string fs, string label, Action<GuiVkProg> locate, ExtenderLog log,
-                                       int stage = -1)
+                                       int stage = -1, VkPushTail pushTail = default)
     {
         vs = ShaderResource.Tokens(vs);
         fs = ShaderResource.Tokens(fs);
@@ -370,7 +491,7 @@ internal static unsafe class PostChainVk
             log.Always($"PostChainVk: post {label} -- {why}");
             return null;
         }
-        GuiVkProg? p = GuiVkProg.Build(vk, vs, fs, units, $"post {label}", locate, log);
+        GuiVkProg? p = GuiVkProg.Build(vk, vs, fs, units, $"post {label}", locate, log, pushTail);
         if (p == null || stage < 0) return p;
         p.Stage = stage;
         p.StageBinds = StageResources.VkBinds(p.Opaques, stage, -1, draw: true);
@@ -451,6 +572,8 @@ internal static unsafe class PostChainVk
         s.Linear = vk.CreateSampler(new SamplerDesc(Filter.Linear, Filter.Linear, MipMode.Nearest, Wrap.Clamp));
         s.Nearest = vk.CreateSampler(new SamplerDesc(Filter.Nearest, Filter.Nearest, MipMode.Nearest, Wrap.Clamp));
         s.Repeat = vk.CreateSampler(new SamplerDesc(Filter.Linear, Filter.Linear, MipMode.Linear, Wrap.Repeat));
+        // the chain carries three never-negative channels and no alpha: the threshold floors it and the tent adds
+        s.BloomFmt = PackedColour.Or16F(vk, BloomUse, "the bloom levels", log, BloomUnneeded);
         s.Down = Make(vk, PostChain.ShdBloomDownFs, "bloom downsample", out bool downStock, p =>
         {
             s.D.Lod = p.Loc("uLod"); s.D.Texel = p.Loc("uTexel"); s.D.First = p.Loc("uFirst");
@@ -461,11 +584,9 @@ internal static unsafe class PostChainVk
         s.Resolve = Make(vk, PostChain.ShdResolveFs, "resolve", out _, p =>
         {
             ResolveLocs r = s.R;
-            r.SkyRaw = p.Loc("uSkyRaw"); r.SkyBand = p.Loc("uSkyBand"); r.InvVp = p.Loc("uInvVP"); r.Eye = p.Loc("uEyePos");
-            r.VFog = p.Loc("uVFog"); r.VFogVp = p.Loc("uVFogVp"); r.SkyBare = p.Loc("uSkyBare"); r.OverlayOn = p.Loc("uOverlayOn");
-            r.Strength = p.Loc("uStrength"); r.Grade = PostChain.LocateGrade(p.Loc);
-            r.Dither = p.Loc("uDither"); r.Viz = p.Loc("uViz");
-        }, log);
+            r.SkyBand = p.Loc("uSkyBand"); r.InvVp = p.Loc("uInvVP"); r.Eye = p.Loc("uEyePos");
+            r.VFog = p.Loc("uVFog"); r.VFogVp = p.Loc("uVFogVp");
+        }, log, ResolveTail());
         s.Failed = s.Down == null || s.Up == null || s.Resolve == null || s.Ubo.IsNull;
         if (s.Failed) log.Always("PostChainVk: a post program or its block was REFUSED (logged above) -- the Vulkan frame cannot reach the screen");
         return !s.Failed;
@@ -473,11 +594,12 @@ internal static unsafe class PostChainVk
 
     /// <summary>Post stage <paramref name="fsRef"/> over the full-screen vertex stage, as GL compiles the pair;
     /// <paramref name="stock"/> when the embedded texts are built: no override reached either, or one was refused.</summary>
-    private static GuiVkProg? Make(VkBackend vk, string fsRef, string label, out bool stock, Action<GuiVkProg> locate, ExtenderLog log)
+    private static GuiVkProg? Make(VkBackend vk, string fsRef, string label, out bool stock, Action<GuiVkProg> locate,
+                                   ExtenderLog log, VkPushTail pushTail = default)
     {
         stock = ShaderTexts.Pair(PostChain.ShdPostVs, ShaderStages.Source(PostChain.ShdPostVs), fsRef, ShaderStages.Source(fsRef),
                                  log, $"PostChainVk {label}", out string vs, out string fs);
-        return Program(vk, vs, fs, label, locate, log);
+        return Program(vk, vs, fs, label, locate, log, pushTail: pushTail);
     }
 
     /// <summary>The bloom levels for a <paramref name="w"/> x <paramref name="h"/> scene, as GL sizes its chain.</summary>
@@ -492,7 +614,8 @@ internal static unsafe class PostChainVk
         s.Levels = Math.Max(levels, 1);
         for (int i = 0; i < s.Levels; i++)
         {
-            s.Bloom[i] = Target(vk, LevelW(s, i), LevelH(s, i), $"vk bloom {i}", i == 0 ? ImageUse.Storage | ImageUse.CopySrc : ImageUse.Storage,
+            s.Bloom[i] = Target(vk, LevelW(s, i), LevelH(s, i), s.BloomFmt, $"vk bloom {i}",
+                                 i == 0 ? BloomUse : BloomUse & ~ImageUse.CopySrc,
                                  i == 0 ? AliasLanes.Weight : null);
             if (s.Bloom[i].IsNull)
             {
@@ -504,8 +627,9 @@ internal static unsafe class PostChainVk
         return true;
     }
 
-    /// <summary>A half-float post image a pass renders and a later one samples, with <paramref name="extra"/> uses.</summary>
-    internal static ImageId Target(VkBackend vk, int w, int h, string label, ImageUse extra = ImageUse.None, string? alias = null)
-        => vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, w, h, 1, 1, 1, 1,
+    /// <summary>A post image of <paramref name="f"/> a pass renders and a later one samples, with
+    /// <paramref name="extra"/> uses.</summary>
+    internal static ImageId Target(VkBackend vk, int w, int h, Format f, string label, ImageUse extra = ImageUse.None, string? alias = null)
+        => vk.CreateImage(new ImageDesc(ImageKind.Tex2D, f, w, h, 1, 1, 1, 1,
                                        ImageUse.Sampled | ImageUse.ColorTarget | extra, label, alias));
 }

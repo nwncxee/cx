@@ -223,17 +223,24 @@ internal sealed unsafe partial class VkBackend
         log.Info(check.Ok ? "VkBackend.CopyDeviceCheck: passed" : "VkBackend.CopyDeviceCheck: FAILED -- see above");
     }
 
-    /// <summary>The 1:1 converting blit the grass ground copy makes -- half floats into three packed ones -- on this
-    /// device. Oracle: a red ramp of 1..16, a green one of 100 up and a flat blue 200, every value a step both formats
-    /// land on exactly, so red comes back unchanged and neither of the others comes back in its place.</summary>
+    /// <summary>The 1:1 converting blit the grass ground copy makes -- half floats into three packed ones -- on a
+    /// device that offers the packed format the way a ground copy is reached; nothing where one does not, since there
+    /// the copy takes half floats too. Oracle: a red ramp of 1..16, a green one of 100 up and a flat blue 200, every
+    /// value a step both formats land on exactly, so red comes back unchanged and neither other in its place.</summary>
     private void PackedBlitCheck(Checker check, PipelineId copier, BufferId outBuf, ExtenderLog log)
     {
         const int n = CopyCheckSize;
         const float green = 100f, blue = 200f;
+        const ImageUse packedUse = ImageUse.Sampled | ImageUse.CopyDst;
+        if (FormatMissing(Format.R11G11B10F, packedUse) is string why)
+        {
+            log.Info($"VkBackend.CopyDeviceCheck: no converting blit to check -- {why}, so no target takes it");
+            return;
+        }
         ImageId wide = CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, n, n, 1, 1, 1, 1,
                                                  ImageUse.Sampled | ImageUse.CopySrc | ImageUse.CopyDst, "copy check half source"));
         ImageId packed = CreateImage(new ImageDesc(ImageKind.Tex2D, Format.R11G11B10F, n, n, 1, 1, 1, 1,
-                                                   ImageUse.Sampled | ImageUse.CopyDst, "copy check packed target"));
+                                                   packedUse, "copy check packed target"));
         var texels = new Half[n * n * 4];
         for (int i = 0; i < n * n; i++)
         {
