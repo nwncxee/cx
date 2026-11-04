@@ -40,7 +40,7 @@ public sealed unsafe partial class AlloyRenderer
     private static VkPushTail VkProbeGgxTail()
     {
         var p = new VkProbeGgxPush();
-        return VkPushTail.Of<VkProbeGgxPush>(new VkPush("int", "uLevel", Std140.At(ref p, ref p.Level)));
+        return VkPushTail.Of<VkProbeGgxPush>(VkPush.Of("int", "uLevel", ref p, ref p.Level));
     }
 
     private static VkProbeState _vkProbe = new();

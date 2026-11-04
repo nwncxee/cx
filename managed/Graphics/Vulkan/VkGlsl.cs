@@ -21,8 +21,14 @@ internal readonly record struct VkLoose(string Type, string Name, string Array)
 }
 
 /// <summary>One push member a program adds after <see cref="VkGlsl.Push"/>'s seven: the GLSL type and name the
-/// block declares, and the byte offset the C# compiler gave the field that fills it.</summary>
-internal readonly record struct VkPush(string Type, string Name, int At);
+/// block declares, and the byte offset and CLR type the C# compiler gave the field that fills it.</summary>
+internal readonly record struct VkPush(string Type, string Name, int At, Type Fill)
+{
+    /// <summary>A member of GLSL type <paramref name="type"/> and name <paramref name="name"/>, taking both its
+    /// offset and its filling type from <paramref name="member"/>'s place in <paramref name="block"/>.</summary>
+    internal static VkPush Of<TBlock, TMember>(string type, string name, ref TBlock block, ref TMember member)
+        => new(type, name, CX.Alloy.Std140.At(ref block, ref member), typeof(TMember));
+}
 
 /// <summary>A program's own push members and the size of the struct that fills them. The translator refuses a tail
 /// whose offsets, size or types do not match the block it would declare, so neither side can move alone.</summary>
@@ -81,21 +87,30 @@ internal static partial class VkGlsl
     /// its struct at this offset.</summary>
     internal static int PushTailAt => Push.Length * PushWord;
 
-    /// <summary>The types the push block carries. A vector or a matrix would take its own alignment in the block
-    /// and say nothing about where the staging struct put it, so a tail member is a scalar.</summary>
-    private static readonly HashSet<string> PushTypes = new(StringComparer.Ordinal) { "int", "uint", "float", "bool" };
+    /// <summary>The types the push block carries, each against the CLR types that may fill it (the block's
+    /// <c>bool</c> is a 32-bit word). A vector or a matrix would take its own alignment in the block and say
+    /// nothing about where the staging struct put it, so a tail member is a scalar.</summary>
+    private static readonly Dictionary<string, Type[]> PushTypes = new(StringComparer.Ordinal)
+    {
+        ["int"] = [typeof(int)], ["uint"] = [typeof(uint)], ["float"] = [typeof(float)],
+        ["bool"] = [typeof(int), typeof(uint)],
+    };
 
     /// <summary>Why <paramref name="tail"/> is not a push tail this translation can declare -- a member that is not a
-    /// scalar, one the fixed block already names, an offset that is not the block's, a staging struct that is not
-    /// those members, or a block past the range the layout declares; null when it is sound.</summary>
+    /// scalar or that its field fills with another type, one the fixed block or the tail itself already names, an
+    /// offset that is not the block's, a staging struct that is not those members, or a block past the range the
+    /// layout declares; null when it is sound.</summary>
     private static string? TailError(VkPushTail tail)
     {
         VkPush[] members = tail.All;
         for (int i = 0; i < members.Length; i++)
         {
-            (string type, string name, int at) = members[i];
-            if (!PushTypes.Contains(type)) return $"push member {name} is {type}; the block carries scalars only";
+            (string type, string name, int at, Type fill) = members[i];
+            if (!PushTypes.TryGetValue(type, out Type[]? fills)) return $"push member {name} is {type}; the block carries scalars only";
+            if (Array.IndexOf(fills, fill) < 0) return $"push member {name} is {type} in the block and {fill.Name} in the struct that stages it";
             if (Array.FindIndex(Push, x => x.Name == name) >= 0) return $"push member {name} is already one of the per-batch seven";
+            for (int j = 0; j < i; j++)
+                if (members[j].Name == name) return $"push member {name} is declared twice in the tail";
             if (at != i * PushWord) return $"push member {name} is member {i} of the tail, at {i * PushWord}, and its field stages {at}";
         }
         if (members.Length > 0 && tail.Bytes != members.Length * PushWord)
@@ -368,7 +383,7 @@ internal static partial class VkGlsl
               .Append($"uint {BindlessAt}(uint i) {{ return i < cxBindlessCap ? i : 0u; }}\n");
         sb.Append("layout(push_constant) uniform CxBatch {");
         foreach (var (t, n) in Push) sb.Append(' ').Append(t).Append(' ').Append(n).Append(';');
-        foreach ((string t, string n, _) in r.Tail.All) sb.Append(' ').Append(t).Append(' ').Append(n).Append(';');
+        foreach ((string t, string n, _, _) in r.Tail.All) sb.Append(' ').Append(t).Append(' ').Append(n).Append(';');
         sb.Append(" };\n");
         if (r.Loose.Count > 0)
         {

@@ -82,6 +82,7 @@ internal static partial class VkGlsl
         if (!staged) { check.Skip("the staged shaderc did not load"); return; }
         Compiles(check, "the loose fixture", loose);
         Compiles(check, "the bindless fixture", bl);
+        Compiles(check, "the push-tail fixture", TailText(TailSound()));
         Layout(check);
         Utf8(check);
         log.Info(check.Ok ? "VkGlsl.SelfCheck: passed" : "VkGlsl.SelfCheck: FAILED");
@@ -144,31 +145,51 @@ internal static partial class VkGlsl
         void main() { o = uTint * uDither * float(uViz); }
         """;
 
+    /// <summary>The fixture's sound tail: its two scalars, each taking its offset and its filling type from the
+    /// field of <see cref="TailProbe"/> that stages it.</summary>
+    private static VkPushTail TailSound()
+    {
+        var p = new TailProbe();
+        return VkPushTail.Of<TailProbe>(VkPush.Of("int", "uViz", ref p, ref p.Viz),
+                                        VkPush.Of("float", "uDither", ref p, ref p.Dither));
+    }
+
+    /// <summary>The fixture translated with <paramref name="tail"/> as its program's own push members.</summary>
+    private static VkProgramText TailText(VkPushTail tail)
+        => Translate(TailVs, TailFs.Replace("\r\n", "\n"), FixtureUnits, pushTail: tail);
+
     /// <summary>A program's own push members: the two scalars of the fixture land in the push block rather than the
-    /// loose one, and five unsound tails are refused. Oracle: the declarations written out here by hand.</summary>
+    /// loose one, and seven unsound tails are refused. Oracle: the declarations written out here by hand.</summary>
     private static void Tail(Checker check)
     {
-        VkPush viz = new("int", "uViz", 0), dither = new("float", "uDither", 4);
-        VkProgramText r = Translate(TailVs, TailFs.Replace("\r\n", "\n"), FixtureUnits, pushTail: VkPushTail.Of<TailProbe>(viz, dither));
+        VkPush[] sound = TailSound().All;
+        VkPush viz = sound[0], dither = sound[1];
+        VkProgramText r = TailText(TailSound());
         check.Expect(r.Error == null, $"a program with a push tail translates ({r.Error})");
         check.Expect(r.Fs.Contains("int uOitGob; int uViz; float uDither; };", StringComparison.Ordinal),
             "the tail's members follow the fixed seven in the one push block");
         check.Expect(r.Loose.Count == 1 && r.Loose[0] == new VkLoose("vec4", "uTint", ""),
             $"a pushed scalar is no loose member: the block is the fixture's one vec4 ({string.Join(", ", r.Loose)})");
-        Refused(check, "a tail member that is not a scalar", "uTint", new VkPushTail([new VkPush("vec4", "uTint", 0)], 16));
-        Refused(check, "a tail member the fixed seven already name", "uSolid", new VkPushTail([new VkPush("int", "uSolid", 0)], 4));
+        Refused(check, "a tail member that is not a scalar", "uTint",
+                new VkPushTail([new VkPush("vec4", "uTint", 0, typeof(System.Numerics.Vector4))], 16));
+        Refused(check, "a tail member the struct fills with another type", "uViz",
+                new VkPushTail([new VkPush("float", "uViz", 0, typeof(int)), dither], 8));
+        Refused(check, "a tail member the fixed seven already name", "uSolid",
+                new VkPushTail([new VkPush("int", "uSolid", 0, typeof(int))], 4));
+        Refused(check, "a tail that declares a member twice", "twice",
+                new VkPushTail([viz, new VkPush("int", "uViz", 4, typeof(int))], 8));
         Refused(check, "a tail member whose field is not where the block puts it", "uDither",
-                new VkPushTail([viz, new VkPush("float", "uDither", 8)], 8));
+                new VkPushTail([viz, new VkPush("float", "uDither", 8, typeof(float))], 8));
         Refused(check, "a staging struct that is not the tail's members", "struct", new VkPushTail([viz, dither], 12));
         var over = new VkPush[26];
-        for (int i = 0; i < over.Length; i++) over[i] = new VkPush("float", $"uOver{i}", i * 4);
+        for (int i = 0; i < over.Length; i++) over[i] = new VkPush("float", $"uOver{i}", i * 4, typeof(float));
         Refused(check, "a tail past the push range the layout declares", "past", new VkPushTail(over, over.Length * 4));
     }
 
     /// <summary><paramref name="tail"/> refused, the message naming <paramref name="names"/>.</summary>
     private static void Refused(Checker check, string what, string names, VkPushTail tail)
     {
-        VkProgramText r = Translate(TailVs, TailFs.Replace("\r\n", "\n"), FixtureUnits, pushTail: tail);
+        VkProgramText r = TailText(tail);
         check.Expect(r.Error != null && r.Error.Contains(names, StringComparison.Ordinal),
             $"{what} is refused, naming it ({r.Error})");
     }

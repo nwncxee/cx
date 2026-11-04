@@ -124,7 +124,8 @@ internal static unsafe class PostChain
         public int Mode;
         public float Knee, Exposure, AcesMix;
 
-        /// <summary>The grade the knobs stand at: the one place the four are read.</summary>
+        /// <summary>The grade the knobs stand at, for the three stages that take it whole: the resolve, the
+        /// reactive mask and the taa copy-out.</summary>
         internal static GradeTerms Now
             => new() { Mode = Post.Tonemap.V, Knee = Post.TmKnee.V, Exposure = Post.Exposure.V, AcesMix = Post.AcesMix.V };
     }

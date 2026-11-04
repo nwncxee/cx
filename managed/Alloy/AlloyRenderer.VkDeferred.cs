@@ -439,7 +439,7 @@ public sealed unsafe partial class AlloyRenderer
                                                               VkPushTail pushTail = default)
         => VkDefText(resref, define, label, log, ShaderResource.Override(resref, log), out _, pushTail);
 
-    /// <summary><see cref="VkDefText(string, string?, string, ExtenderLog)"/> over <paramref name="content"/> in place of the
+    /// <summary><see cref="VkDefText(string, string?, string, ExtenderLog, VkPushTail)"/> over <paramref name="content"/> in place of the
     /// resource chain's override (null = the embedded stage); <paramref name="fromContent"/> says whose text it is.</summary>
     private static (VkProgramText Text, string Src)? VkDefText(string resref, string? define, string label, ExtenderLog log,
                                                               string? content, out bool fromContent, VkPushTail pushTail = default)
@@ -476,7 +476,7 @@ public sealed unsafe partial class AlloyRenderer
                                           VkPushTail pushTail = default)
         => VkDefBuild(vk, resref, define, label, log, ShaderResource.Override(resref, log), out _, pushTail);
 
-    /// <summary><see cref="VkDefBuild(VkBackend, string, string?, string, ExtenderLog)"/> over <paramref name="content"/>
+    /// <summary><see cref="VkDefBuild(VkBackend, string, string?, string, ExtenderLog, VkPushTail)"/> over <paramref name="content"/>
     /// (null = the embedded stage): an override that does not build falls back, logged, to the embedded stage.</summary>
     private static VkDefStage? VkDefBuild(VkBackend vk, string resref, string? define, string label, ExtenderLog log,
                                           string? content, out bool fromContent, VkPushTail pushTail = default)

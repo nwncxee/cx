@@ -37,16 +37,16 @@ internal static unsafe class PostChainVk
     {
         var p = new ResolvePush();
         return VkPushTail.Of<ResolvePush>(
-            new VkPush("int", "uSkyRaw", Std140.At(ref p, ref p.SkyRaw)),
-            new VkPush("int", "uSkyBare", Std140.At(ref p, ref p.SkyBare)),
-            new VkPush("float", "uStrength", Std140.At(ref p, ref p.Strength)),
-            new VkPush("int", "uMode", Std140.At(ref p, ref p.Grade.Mode)),
-            new VkPush("float", "uKnee", Std140.At(ref p, ref p.Grade.Knee)),
-            new VkPush("float", "uExposure", Std140.At(ref p, ref p.Grade.Exposure)),
-            new VkPush("float", "uAcesMix", Std140.At(ref p, ref p.Grade.AcesMix)),
-            new VkPush("float", "uDither", Std140.At(ref p, ref p.Dither)),
-            new VkPush("int", "uViz", Std140.At(ref p, ref p.Viz)),
-            new VkPush("int", "uOverlayOn", Std140.At(ref p, ref p.OverlayOn)));
+            VkPush.Of("int", "uSkyRaw", ref p, ref p.SkyRaw),
+            VkPush.Of("int", "uSkyBare", ref p, ref p.SkyBare),
+            VkPush.Of("float", "uStrength", ref p, ref p.Strength),
+            VkPush.Of("int", "uMode", ref p, ref p.Grade.Mode),
+            VkPush.Of("float", "uKnee", ref p, ref p.Grade.Knee),
+            VkPush.Of("float", "uExposure", ref p, ref p.Grade.Exposure),
+            VkPush.Of("float", "uAcesMix", ref p, ref p.Grade.AcesMix),
+            VkPush.Of("float", "uDither", ref p, ref p.Dither),
+            VkPush.Of("int", "uViz", ref p, ref p.Viz),
+            VkPush.Of("int", "uOverlayOn", ref p, ref p.OverlayOn));
     }
 
     /// <summary>The bloom stages' loose terms.</summary>
