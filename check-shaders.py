@@ -615,6 +615,7 @@ def programs(g):
         "post bloom downsample": (g["cx_post_vs"], g["cx_bloomdn_fs"]),
         "post bloom upsample": (g["cx_post_vs"], g["cx_bloomup_fs"]),
         "post bloom (compute)": (g["cx_bloom_cs"],),
+        "post bloom (compute, packed levels)": (define(g["cx_bloom_cs"], "CX_BLOOM_PACKED 1"),),
         "post resolve": (g["cx_post_vs"], g["cx_resolve_fs"]),
         "post stack gamma": (g["cx_post_vs"], g["cx_postgam_fs"]),
         "post stack toon": (g["cx_post_vs"], g["cx_toon_fs"]),

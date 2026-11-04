@@ -64,6 +64,9 @@ internal static unsafe class PostChainVk
         public readonly ResolveLocs R = new();
         public bool Tried, Failed;
         public readonly ImageId[] Bloom = new ImageId[MaxLevels];
+        /// <summary>The levels' format on this device, settled once: both chains write it, and
+        /// <c>cx_bloom_cs</c>'s storage qualifier is built against it.</summary>
+        public Format BloomFmt;
         public int W, H, Levels;
         public BufferId Ubo;
         public int UboUsed;
@@ -92,6 +95,10 @@ internal static unsafe class PostChainVk
 
     /// <summary>The chain's depth ceiling, as GL's.</summary>
     private const int MaxLevels = 6;
+
+    /// <summary>Every way a bloom level is reached: a draw blends into it or a dispatch stores into it, the next
+    /// level samples it filtered, and level 0 is copied out. One ask over the union settles the whole chain.</summary>
+    private const ImageUse BloomUse = ImageUse.Sampled | ImageUse.ColorTarget | ImageUse.Storage | ImageUse.CopySrc;
 
     /// <summary>The loose blocks one frame's post programs fill: the bloom levels, the resolve and the stack.</summary>
     private const int UboBytes = 32 << 10;
@@ -210,7 +217,7 @@ internal static unsafe class PostChainVk
             LooseBlock.Set(d.Texel, [1f / sw, 1f / sh]);
             LooseBlock.Set(d.Thresh, [Post.Threshold.V, MathF.Max(Post.Knee.V, 1e-4f)]);
             int at = Close(cl, s.Down!);
-            Draw(cl, s.Down!, Format.Rgba16F, Blend.None, s.Bloom[i], LoadOp.DontCare, new Rect(0, 0, LevelW(s, i), LevelH(s, i)),
+            Draw(cl, s.Down!, s.BloomFmt, Blend.None, s.Bloom[i], LoadOp.DontCare, new Rect(0, 0, LevelW(s, i), LevelH(s, i)),
                  at, new Inputs(i == 0 ? hdr : s.Bloom[i - 1]), null);
         }
         for (int i = s.Levels - 1; i > 0; i--)
@@ -219,7 +226,7 @@ internal static unsafe class PostChainVk
             LooseBlock.Set(u.Lod, 0);
             LooseBlock.Set(u.Texel, [1f / LevelW(s, i), 1f / LevelH(s, i)]);
             int at = Close(cl, s.Up!);
-            Draw(cl, s.Up!, Format.Rgba16F, Blend.Add, s.Bloom[i - 1], LoadOp.Load, new Rect(0, 0, LevelW(s, i - 1), LevelH(s, i - 1)),
+            Draw(cl, s.Up!, s.BloomFmt, Blend.Add, s.Bloom[i - 1], LoadOp.Load, new Rect(0, 0, LevelW(s, i - 1), LevelH(s, i - 1)),
                  at, new Inputs(s.Bloom[i]), null);
         }
     }
@@ -258,18 +265,19 @@ internal static unsafe class PostChainVk
     /// fills its warps with where 64 left them a quarter idle, and more than Vulkan guarantees a group may hold.</summary>
     private const int BloomGroupWide = 16, BloomGroupNarrow = 8;
 
-    /// <summary>The define that hands <c>cx_bloom_cs</c> the tile the dispatch counts groups by.</summary>
-    private const string BloomGroupDefine = "CX_BLOOM_GROUP";
+    /// <summary>The defines that hand <c>cx_bloom_cs</c> the tile the dispatch counts groups by and, where the
+    /// levels are packed, the storage qualifier that agrees with them.</summary>
+    private const string BloomGroupDefine = "CX_BLOOM_GROUP", BloomPackedDefine = "CX_BLOOM_PACKED 1";
 
     /// <summary>The tile a device whose group holds <paramref name="invocations"/> threads takes. Only the thread
     /// count can refuse the wide tile: Vulkan guarantees a group 128 threads per axis, past either tile's side.</summary>
     private static int BloomGroupFor(int invocations)
         => invocations >= BloomGroupWide * BloomGroupWide ? BloomGroupWide : BloomGroupNarrow;
 
-    /// <summary><c>cx_bloom_cs</c> on one device, its group size the one <paramref name="s"/> then counts groups by.
-    /// The override is read here rather than left to the pipeline, since the define has to reach the text that is
-    /// built; one that does not build, or that does not take its group from the define, falls back to the embedded
-    /// stage, logged.</summary>
+    /// <summary><c>cx_bloom_cs</c> on one device, its group size the one <paramref name="s"/> then counts groups by
+    /// and its storage qualifier the levels' own format. The override is read here rather than left to the pipeline,
+    /// since the defines have to reach the text that is built; one that does not build, or that does not take its
+    /// group from the define, falls back to the embedded stage, logged.</summary>
     private static PipelineId BloomPipe(VkBackend vk, PostVkState s, ExtenderLog log)
     {
         s.BloomGroup = BloomGroupFor(vk.Caps.MaxComputeInvocations);
@@ -281,13 +289,19 @@ internal static unsafe class PostChainVk
                      + "size of its own covers part of each level and leaves the rest unwritten, so the embedded stage builds");
             over = embedded;
         }
-        PipelineId pipe = vk.CreateCompute(BloomText(over, s.BloomGroup), "bloom compute");
+        PipelineId pipe = vk.CreateCompute(BloomText(over, s), "bloom compute");
         if (!pipe.IsNull || ReferenceEquals(over, embedded)) return pipe;
         log.Always($"PostChainVk: the compute bloom's {PostChain.ShdBloomCs} override did not build (logged above) -- building the embedded stage");
-        return vk.CreateCompute(BloomText(embedded, s.BloomGroup), "bloom compute");
+        return vk.CreateCompute(BloomText(embedded, s), "bloom compute");
     }
 
-    private static string BloomText(string src, int group) => ShaderStages.WithDefine(src, $"{BloomGroupDefine} {group}");
+    /// <summary><paramref name="src"/> with the tile and, where the levels are packed, the qualifier spliced in. A
+    /// qualifier that disagrees with the view makes the store undefined, so the define follows the image.</summary>
+    private static string BloomText(string src, PostVkState s)
+    {
+        string t = ShaderStages.WithDefine(src, $"{BloomGroupDefine} {s.BloomGroup}");
+        return s.BloomFmt == PackedColour.Packed ? ShaderStages.WithDefine(t, BloomPackedDefine) : t;
+    }
 
     private static void BloomDispatch(CommandList cl, PostVkState s, in BloomPush p, ImageId src, ImageId dst, int w, int h)
     {
@@ -524,6 +538,8 @@ internal static unsafe class PostChainVk
         s.Linear = vk.CreateSampler(new SamplerDesc(Filter.Linear, Filter.Linear, MipMode.Nearest, Wrap.Clamp));
         s.Nearest = vk.CreateSampler(new SamplerDesc(Filter.Nearest, Filter.Nearest, MipMode.Nearest, Wrap.Clamp));
         s.Repeat = vk.CreateSampler(new SamplerDesc(Filter.Linear, Filter.Linear, MipMode.Linear, Wrap.Repeat));
+        // the chain carries three never-negative channels and no alpha: the threshold floors it and the tent adds
+        s.BloomFmt = PackedColour.Or16F(vk, BloomUse, "the bloom levels", log);
         s.Down = Make(vk, PostChain.ShdBloomDownFs, "bloom downsample", out bool downStock, p =>
         {
             s.D.Lod = p.Loc("uLod"); s.D.Texel = p.Loc("uTexel"); s.D.First = p.Loc("uFirst");
@@ -564,7 +580,8 @@ internal static unsafe class PostChainVk
         s.Levels = Math.Max(levels, 1);
         for (int i = 0; i < s.Levels; i++)
         {
-            s.Bloom[i] = Target(vk, LevelW(s, i), LevelH(s, i), $"vk bloom {i}", i == 0 ? ImageUse.Storage | ImageUse.CopySrc : ImageUse.Storage,
+            s.Bloom[i] = Target(vk, LevelW(s, i), LevelH(s, i), s.BloomFmt, $"vk bloom {i}",
+                                 i == 0 ? ImageUse.Storage | ImageUse.CopySrc : ImageUse.Storage,
                                  i == 0 ? AliasLanes.Weight : null);
             if (s.Bloom[i].IsNull)
             {
@@ -576,8 +593,9 @@ internal static unsafe class PostChainVk
         return true;
     }
 
-    /// <summary>A half-float post image a pass renders and a later one samples, with <paramref name="extra"/> uses.</summary>
-    internal static ImageId Target(VkBackend vk, int w, int h, string label, ImageUse extra = ImageUse.None, string? alias = null)
-        => vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba16F, w, h, 1, 1, 1, 1,
+    /// <summary>A post image of <paramref name="f"/> a pass renders and a later one samples, with
+    /// <paramref name="extra"/> uses.</summary>
+    internal static ImageId Target(VkBackend vk, int w, int h, Format f, string label, ImageUse extra = ImageUse.None, string? alias = null)
+        => vk.CreateImage(new ImageDesc(ImageKind.Tex2D, f, w, h, 1, 1, 1, 1,
                                        ImageUse.Sampled | ImageUse.ColorTarget | extra, label, alias));
 }

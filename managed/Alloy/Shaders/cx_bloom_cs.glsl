@@ -10,7 +10,14 @@
 #endif
 layout(local_size_x = CX_BLOOM_GROUP, local_size_y = CX_BLOOM_GROUP) in;
 layout(binding = 0) uniform sampler2D uSrc;
+// CX_BLOOM_PACKED: the levels are three packed floats, which is what a device that offers that format every way the
+// chain reaches a level takes; otherwise four half floats. A qualifier that disagrees with the view's own format
+// makes the store undefined, so the dispatching side splices this define from the format it gave the levels.
+#ifdef CX_BLOOM_PACKED
+layout(r11f_g11f_b10f, binding = 0) uniform image2D uDst;
+#else
 layout(rgba16f, binding = 0) uniform image2D uDst;
+#endif
 layout(push_constant) uniform CxBloom { vec2 uTexel; vec2 uThresh; float uExposure; int uFirst; int uUp; };
 
 #include "cx_bloom_lib.glsl"
