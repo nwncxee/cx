@@ -157,6 +157,24 @@ internal static partial class GpuGolden
         check.Expect(reach <= 3, $"dof: at Amount 1 a far lamp reaches at most 3 pixels (reached {reach})");
     }
 
+    /// <summary>A regression on what the real client showed: a sharp head in front of a near-black far field leaves no block of
+    /// its colour in the dark around it. Oracle: the fixture's far field is 0.002 everywhere, and only the head holds red; measured
+    /// 0.224 when the kernel filters across the silhouette and 0.078 from a speck AMD's own blur leaves.</summary>
+    private static void DofLeakSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
+    {
+        const int headX = 512, headY = 512, head = 40;
+        static bool Head(int x, int y) => (x - headX) * (x - headX) + (y - headY) * (y - headY) < head * head;
+        DofPx[]? o = DofRun(vk, log, static (x, y) => Head(x, y) ? (1f, 0.4f, 0.05f) : (0.002f, 0.002f, 0.002f), static (x, y) => Head(x, y) ? 8f : 45f,
+                            DofCamera(8f, 0f), new DofSet(Focus: Dof.FocusPlayer, NeverBlur: false));
+        check.Expect(o != null, "dof: the head frame ran");
+        if (o == null) return;
+        float leak = 0f;
+        for (int y = 400; y < 624; y++)
+            for (int x = 400; x < 624; x++)
+                if (!Head(x, y) && MathF.Sqrt((x - headX) * (x - headX) + (y - headY) * (y - headY)) > head + 2) leak = MathF.Max(leak, DofAt(o, x, y));
+        check.Expect(leak < 0.1f, $"dof: the head's red stays out of the dark far field around it (got {leak:F4})");
+    }
+
     /// <summary>A regression on what the real client showed: a slanted edge blurred past the kernel's rings stays one smooth
     /// ramp, with no stairs from a coarse mip. Oracle: along a line parallel to the edge the fixture does not change, so the
     /// values along it should not either.</summary>
@@ -201,6 +219,7 @@ internal static partial class GpuGolden
         check.Expect(ground > 0.99f, $"dof: the ground in the band stays sharp (contrast {ground:F3})");
         DofStrengthSelfCheck(vk, check, log);
         DofStairsSelfCheck(vk, check, log);
+        DofLeakSelfCheck(vk, check, log);
         // the mouse's rows run from the bottom, as the frame's do: no flip. Oracle: the fixture's own rows.
         var mouse = new DofSet(Enabled: true, Focus: Dof.FocusMouse);
         float low = DofWith(in mouse, () => DofProbe(vk, log, 512, 300, byRow: true)), high = DofWith(in mouse, () => DofProbe(vk, log, 512, 900, byRow: true));
