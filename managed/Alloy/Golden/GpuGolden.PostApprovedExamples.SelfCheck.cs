@@ -43,8 +43,9 @@ internal static partial class GpuGolden
         return px;
     }
 
-    /// <summary>E2's bloom: the chain's level 0 after the downsample and the upsample back, drawn as fragments and
-    /// as compute over the same scene, held texel by texel to the precision the levels' own format holds.</summary>
+    /// <summary>E2's bloom: the chain's level 0 after the downsample and the upsample back, drawn as fragments and as
+    /// compute over the same scene, held texel by texel to the precision the levels' own format holds, and that
+    /// format's fields read off a word built by hand from Vulkan's own layout for it.</summary>
     private static void PostSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
     {
         ImageId hdr = PostImage(vk, Format.Rgba32F, BloomW, BloomH, ImageUse.Sampled | ImageUse.CopyDst, "golden bloom scene");
@@ -58,10 +59,12 @@ internal static partial class GpuGolden
             check.Expect(made, "E2 bloom: the golden's scene or readback was refused (logged above)");
             if (!made) return;
             (byte[]? frag, Format f) = PostBloomRun(vk, log, hdr, false, rb);
-            (byte[]? comp, _) = PostBloomRun(vk, log, hdr, true, rb);
+            (byte[]? comp, Format cf) = PostBloomRun(vk, log, hdr, true, rb);
             check.Expect(frag != null, "E2 bloom: the fragment chain (the oracle) was refused (logged above)");
             check.Expect(comp != null, "E2 bloom: the compute bloom was refused or is missing (logged above)");
             if (frag == null || comp == null) return;
+            check.Expect(cf == f, $"E2 bloom: both chains write level 0 in one format, not {f} and {cf}");
+            if (cf != f) return;
             // Given the bloom levels stored as R11G11B10F
             // When the compute chain's level 0 is compared with the fragment chain's
             // Then red and green differ by at most 1/64, relative

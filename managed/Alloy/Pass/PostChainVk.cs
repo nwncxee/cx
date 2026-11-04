@@ -5,6 +5,7 @@ using CX.Framework;
 using CX.Graphics;
 using CX.Graphics.Rhi;
 using CX.Rhi;
+using Vortice.Vulkan;
 
 namespace CX.Alloy;
 
@@ -97,8 +98,13 @@ internal static unsafe class PostChainVk
     private const int MaxLevels = 6;
 
     /// <summary>Every way a bloom level is reached: a draw blends into it or a dispatch stores into it, the next
-    /// level samples it filtered, and level 0 is copied out. One ask over the union settles the whole chain.</summary>
+    /// level samples it filtered, and level 0 is copied out. One ask over the union settles the whole chain, and
+    /// each level takes the uses it has of it.</summary>
     private const ImageUse BloomUse = ImageUse.Sampled | ImageUse.ColorTarget | ImageUse.Storage | ImageUse.CopySrc;
+
+    /// <summary>What a level asks of no format though <see cref="BloomUse"/> stands for it: level 0 is copied out
+    /// whole into a buffer and nothing blits it, so a device that cannot scale the format need not be refused.</summary>
+    private const VkFormatFeatureFlags BloomUnneeded = VkFormatFeatureFlags.BlitSrc;
 
     /// <summary>The loose blocks one frame's post programs fill: the bloom levels, the resolve and the stack.</summary>
     private const int UboBytes = 32 << 10;
@@ -267,7 +273,7 @@ internal static unsafe class PostChainVk
 
     /// <summary>The defines that hand <c>cx_bloom_cs</c> the tile the dispatch counts groups by and, where the
     /// levels are packed, the storage qualifier that agrees with them.</summary>
-    private const string BloomGroupDefine = "CX_BLOOM_GROUP", BloomPackedDefine = "CX_BLOOM_PACKED 1";
+    private const string BloomGroupDefine = "CX_BLOOM_GROUP", BloomPackedDefine = "CX_BLOOM_PACKED";
 
     /// <summary>The tile a device whose group holds <paramref name="invocations"/> threads takes. Only the thread
     /// count can refuse the wide tile: Vulkan guarantees a group 128 threads per axis, past either tile's side.</summary>
@@ -289,6 +295,13 @@ internal static unsafe class PostChainVk
                      + "size of its own covers part of each level and leaves the rest unwritten, so the embedded stage builds");
             over = embedded;
         }
+        if (s.BloomFmt == PackedColour.Packed && !over.Contains(BloomPackedDefine, StringComparison.Ordinal))
+        {
+            log.Always($"PostChainVk: the compute bloom's {PostChain.ShdBloomCs} override names no {BloomPackedDefine} -- the "
+                     + "levels are packed on this device and a storage qualifier that disagrees with them stores nothing "
+                     + "defined, so the embedded stage builds");
+            over = embedded;
+        }
         PipelineId pipe = vk.CreateCompute(BloomText(over, s), "bloom compute");
         if (!pipe.IsNull || ReferenceEquals(over, embedded)) return pipe;
         log.Always($"PostChainVk: the compute bloom's {PostChain.ShdBloomCs} override did not build (logged above) -- building the embedded stage");
@@ -300,7 +313,7 @@ internal static unsafe class PostChainVk
     private static string BloomText(string src, PostVkState s)
     {
         string t = ShaderStages.WithDefine(src, $"{BloomGroupDefine} {s.BloomGroup}");
-        return s.BloomFmt == PackedColour.Packed ? ShaderStages.WithDefine(t, BloomPackedDefine) : t;
+        return s.BloomFmt == PackedColour.Packed ? ShaderStages.WithDefine(t, $"{BloomPackedDefine} 1") : t;
     }
 
     private static void BloomDispatch(CommandList cl, PostVkState s, in BloomPush p, ImageId src, ImageId dst, int w, int h)
@@ -398,9 +411,10 @@ internal static unsafe class PostChainVk
         return (n, ns, engine);
     }
 
-    /// <summary>Off-device: a post program that declares twenty samplers draws with all twenty bound, and the bloom's
-    /// tile is one every device seats. Oracles: the twenty hand-written declarations, each on a binding of its own;
-    /// Vulkan's guaranteed 128 invocations a group and the threads each tile asks for, by hand.</summary>
+    /// <summary>Off-device: a post program that declares twenty samplers draws with all twenty bound, the bloom's
+    /// tile is one every device seats, and the stage the levels' format builds declares that format. Oracles: the
+    /// twenty hand-written declarations; Vulkan's guaranteed 128 invocations a group, by hand; the two storage
+    /// qualifiers Vulkan spells the two formats, by hand.</summary>
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "PostChainVk.SelfCheck");
@@ -415,7 +429,27 @@ internal static unsafe class PostChainVk
                                                 + $"{floor}x{floor} bloom tile, which is {floor * floor} threads");
         check.Expect(seated > floor && seated * seated > guaranteed, $"a device that seats 1024 threads a group takes the same "
                                                                    + $"{seated}x{seated} tile the guaranteed one does");
+        string src = ShaderStages.Source(PostChain.ShdBloomCs);
+        string packed = BloomText(src, new PostVkState { BloomFmt = PackedColour.Packed, BloomGroup = seated });
+        string wide = BloomText(src, new PostVkState { BloomFmt = PackedColour.Wide, BloomGroup = seated });
+        check.Expect(packed.Contains($"#define {BloomPackedDefine} ", StringComparison.Ordinal)
+                  && !wide.Contains($"#define {BloomPackedDefine} ", StringComparison.Ordinal),
+            $"the compute bloom is built with {BloomPackedDefine} where the levels are {PackedColour.Packed} and without "
+          + $"it where they are {PackedColour.Wide}");
+        check.Expect(Declares(src, $"#ifdef {BloomPackedDefine}", "r11f_g11f_b10f") && Declares(src, "#else", "rgba16f"),
+            $"the compute bloom declares uDst r11f_g11f_b10f under {BloomPackedDefine} and rgba16f without it, so the "
+          + "define the levels' format splices picks the qualifier that agrees with them");
         return check.Ok;
+    }
+
+    /// <summary>The first <c>uDst</c> declaration after <paramref name="after"/> in <paramref name="src"/> carries
+    /// <paramref name="qualifier"/>, and no other declaration comes between.</summary>
+    private static bool Declares(string src, string after, string qualifier)
+    {
+        int at = src.IndexOf(after, StringComparison.Ordinal);
+        if (at < 0) return false;
+        int decl = src.IndexOf("uniform image2D uDst;", at, StringComparison.Ordinal);
+        return decl > 0 && src[at..decl].Contains($"layout({qualifier}, binding = 0) ", StringComparison.Ordinal);
     }
 
     /// <summary>Open a capture into <paramref name="p"/>'s loose block: the <c>LooseBlock.Set</c> calls until
@@ -539,7 +573,7 @@ internal static unsafe class PostChainVk
         s.Nearest = vk.CreateSampler(new SamplerDesc(Filter.Nearest, Filter.Nearest, MipMode.Nearest, Wrap.Clamp));
         s.Repeat = vk.CreateSampler(new SamplerDesc(Filter.Linear, Filter.Linear, MipMode.Linear, Wrap.Repeat));
         // the chain carries three never-negative channels and no alpha: the threshold floors it and the tent adds
-        s.BloomFmt = PackedColour.Or16F(vk, BloomUse, "the bloom levels", log);
+        s.BloomFmt = PackedColour.Or16F(vk, BloomUse, "the bloom levels", log, BloomUnneeded);
         s.Down = Make(vk, PostChain.ShdBloomDownFs, "bloom downsample", out bool downStock, p =>
         {
             s.D.Lod = p.Loc("uLod"); s.D.Texel = p.Loc("uTexel"); s.D.First = p.Loc("uFirst");
@@ -581,7 +615,7 @@ internal static unsafe class PostChainVk
         for (int i = 0; i < s.Levels; i++)
         {
             s.Bloom[i] = Target(vk, LevelW(s, i), LevelH(s, i), s.BloomFmt, $"vk bloom {i}",
-                                 i == 0 ? ImageUse.Storage | ImageUse.CopySrc : ImageUse.Storage,
+                                 i == 0 ? BloomUse : BloomUse & ~ImageUse.CopySrc,
                                  i == 0 ? AliasLanes.Weight : null);
             if (s.Bloom[i].IsNull)
             {
