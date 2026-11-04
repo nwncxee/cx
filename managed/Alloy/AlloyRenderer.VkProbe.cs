@@ -29,8 +29,8 @@ public sealed unsafe partial class AlloyRenderer
         public int Size, Mips, POrigin = -1;
     }
 
-    /// <summary>The GGX prefilter's push block, member for member: the level this dispatch writes, which is all that
-    /// changed from one level to the next while it rode a block of its own.</summary>
+    /// <summary>The GGX prefilter's push block, member for member: the level this dispatch writes, which is the only
+    /// term that differs from one level of the chain to the next.</summary>
     private struct VkProbeGgxPush
     {
         public int Level;
