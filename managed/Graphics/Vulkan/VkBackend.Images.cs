@@ -163,13 +163,14 @@ internal sealed unsafe partial class VkBackend
 
     /// <summary>What this device does not offer <paramref name="f"/> for every way <paramref name="use"/> reaches an
     /// image of it, or null when it offers them all. A use mapped to no feature is itself the answer, so one added
-    /// later falls back rather than passing as offered.</summary>
-    internal string? FormatMissing(Format f, ImageUse use)
+    /// later falls back rather than passing as offered. <paramref name="unneeded"/> is what the caller's own image
+    /// asks of no format though its use stands for it -- a target nothing filters or blends into.</summary>
+    internal string? FormatMissing(Format f, ImageUse use, VkFormatFeatureFlags unneeded = 0)
     {
         if (UnmappedUse(use) is string loose) return $"{loose}, so {f} is not settled for it";
         VkFormatProperties p;
         _vki.vkGetPhysicalDeviceFormatProperties(_phys, Of(f), &p);
-        VkFormatFeatureFlags missing = Needs(use) & ~p.optimalTilingFeatures;
+        VkFormatFeatureFlags missing = Needs(use) & ~unneeded & ~p.optimalTilingFeatures;
         return missing == 0 ? null : $"this device offers {f} as {p.optimalTilingFeatures}, which lacks {missing}";
     }
 
@@ -317,6 +318,7 @@ internal sealed unsafe partial class VkBackend
             MaxCount(l.framebufferColorSampleCounts & l.framebufferDepthSampleCounts),
             Limit(l.maxPerStageDescriptorSampledImages), Limit(l.maxDescriptorSetSampledImages),
             Limit(l.maxPerStageDescriptorStorageBuffers), Limit(l.maxPerStageDescriptorStorageBuffers),
+            Limit(l.maxComputeWorkGroupInvocations),
             Limit(l.minUniformBufferOffsetAlignment), Limit(l.minStorageBufferOffsetAlignment), aniso ? l.maxSamplerAnisotropy : 1f);
 
     /// <summary>A device limit as an int: UINT32_MAX, which some drivers report for "unbounded", reads as int.MaxValue.</summary>

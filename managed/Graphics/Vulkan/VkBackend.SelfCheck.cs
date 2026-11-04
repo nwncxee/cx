@@ -74,6 +74,11 @@ internal sealed unsafe partial class VkBackend
         check.Expect(UnmappedUse((ImageUse)(1 << 15)) != null && UnmappedUse(ImageUse.Sampled | ImageUse.Transient) == null,
             "a use neither mapped to a format feature nor named feature-free passes as offered, rather than being the answer "
           + "a format is refused with");
+        check.Expect((Needs(ImageUse.Sampled | ImageUse.ColorTarget)
+                    & ~(VkFormatFeatureFlags.SampledImageFilterLinear | VkFormatFeatureFlags.ColorAttachmentBlend))
+                   == (VkFormatFeatureFlags.SampledImage | VkFormatFeatureFlags.ColorAttachment),
+            "a sampled colour target that excuses the linear filter and the attachment blend -- the record pair, which "
+          + "every stage point-samples and no pass blends into -- asks for more than SAMPLED_IMAGE | COLOR_ATTACHMENT");
         check.Expect((ulong)Needs(ImageUse.Sampled | ImageUse.ColorTarget | ImageUse.Storage | ImageUse.CopySrc) == 0x5583,
             "a target that is sampled, attached, stored into and copied from asks for something other than the union "
           + "of the four's features (0x5583)");

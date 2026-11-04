@@ -264,7 +264,7 @@ public sealed unsafe partial class AlloyRenderer
         s.DecalSurf = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rg32F, 1, 1, 1, 1, 1, 1, ImageUse.Storage, "vk decal surface stand-in"));
         // the resolve reads three never-negative channels of the weight record and no alpha; settled before the
         // prewarm builds a reflection-set pipeline, which keys on it
-        s.SsrRecW = PackedColour.Or16F(vk, SsrAttach, SsrRecWLabel, log);
+        s.SsrRecW = PackedColour.Or16F(vk, SsrAttach, SsrRecWLabel, log, SsrRecUnneeded);
         s.Side = new CommandList("vulkan colour pass", 1 << 20, log);
         s.Async = new CommandList("vulkan async", 64 << 10, log) { Async = true };
         if (s.ZeroUbo.IsNull || s.ZeroSsbo.IsNull || s.Arena.IsNull || s.Tex2D.IsNull || s.TexU2D.IsNull || s.Tex2DArray.IsNull

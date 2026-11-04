@@ -4,6 +4,7 @@ using CX.Framework;
 using CX.Graphics;
 using CX.Graphics.Rhi;
 using CX.Rhi;
+using Vortice.Vulkan;
 
 namespace CX.Alloy;
 
@@ -48,6 +49,11 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>How the record pair and the stages after it are reached: the colour pass attaches each, and the trace
     /// and resolve sample them.</summary>
     internal const ImageUse SsrAttach = ImageUse.Sampled | ImageUse.ColorTarget;
+
+    /// <summary>The two features <see cref="SsrAttach"/> stands for that the record pair asks of no format: every
+    /// stage reads it through <c>Point</c>, and the colour pass writes it with blend off.</summary>
+    internal const VkFormatFeatureFlags SsrRecUnneeded = VkFormatFeatureFlags.SampledImageFilterLinear
+                                                       | VkFormatFeatureFlags.ColorAttachmentBlend;
 
     /// <summary>The weight half of the record pair, whose format <see cref="VkColourState.SsrRecW"/> settles.</summary>
     internal const string SsrRecWLabel = "vk ssr record w";

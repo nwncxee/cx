@@ -686,12 +686,12 @@ internal sealed unsafe partial class VkBackend : IDevice
         return s;
     }
 
-    /// <summary>One stage compiled to SPIR-V now: the content override when the resref has one, GL's vertex index
-    /// spelled Vulkan's, GL's binding spaces shifted apart (<see cref="VulkanToolchain.Compile"/>).</summary>
+    /// <summary>One stage compiled to SPIR-V now: GL's vertex index spelled Vulkan's, GL's binding spaces shifted
+    /// apart (<see cref="VulkanToolchain.Compile"/>).</summary>
     public ShaderId CreateShader(in ShaderDesc d)
     {
         if (!OnThread("CreateShader")) return default;
-        string text = Translate((d.Ref != null ? CX.Alloy.ShaderResource.Override(d.Ref, _log) : null) ?? d.Source);
+        string text = Translate(d.Source);
         ShaderKind kind = d.Stage switch
         {
             ShaderStage.Vertex => ShaderKind.VertexShader,

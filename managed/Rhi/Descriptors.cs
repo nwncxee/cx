@@ -107,6 +107,6 @@ public readonly record struct SamplerDesc(Filter Min, Filter Mag, MipMode Mip, W
 /// <summary>A programmable stage.</summary>
 public enum ShaderStage : byte { Vertex, Geometry, Fragment, Compute, Task, Mesh }
 
-/// <summary>One stage's GLSL. <see cref="Ref"/> is the <c>cx_*</c> resref content may override it by, or null for
-/// a stage that is not overridable.</summary>
-public readonly record struct ShaderDesc(ShaderStage Stage, string? Ref, string Source, string Label);
+/// <summary>One stage's GLSL, already whole: a caller whose stage content may override reads the override and the
+/// defines that go with it before it gets here.</summary>
+public readonly record struct ShaderDesc(ShaderStage Stage, string Source, string Label);

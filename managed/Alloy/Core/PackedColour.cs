@@ -1,6 +1,7 @@
 using CX.Framework;
 using CX.Graphics.Rhi;
 using CX.Rhi;
+using Vortice.Vulkan;
 
 namespace CX.Alloy;
 
@@ -16,15 +17,17 @@ internal static class PackedColour
     /// <summary>What a target takes where the device falls short of <see cref="Packed"/>: four half floats.</summary>
     internal const Format Wide = Format.Rgba16F;
 
-    /// <summary>The format for <paramref name="what"/>, which is reached every way <paramref name="use"/> names:
-    /// <see cref="Packed"/>, or <see cref="Wide"/> where the device falls short of what
-    /// <see cref="VkBackend.FormatMissing"/> asks of it. Said either way, so a log names the device's answer rather
-    /// than leaving the bytes a guess. Cold: once a target.</summary>
-    internal static Format Or16F(VkBackend vk, ImageUse use, string what, ExtenderLog log)
+    /// <summary>The format for <paramref name="what"/>, which is reached every way <paramref name="use"/> names bar
+    /// the features <paramref name="unneeded"/> excuses: <see cref="Packed"/>, or <see cref="Wide"/> where the device
+    /// falls short of what <see cref="VkBackend.FormatMissing"/> then asks of it. Said either way, so a log names the
+    /// device's answer rather than leaving the bytes a guess. Cold: once a target.</summary>
+    internal static Format Or16F(VkBackend vk, ImageUse use, string what, ExtenderLog log,
+                                 VkFormatFeatureFlags unneeded = 0)
     {
-        if (vk.FormatMissing(Packed, use) is not string why)
+        if (vk.FormatMissing(Packed, use, unneeded) is not string why)
         {
-            log.Info($"Alloy: {Packed} for {what}, which this device offers for {use}");
+            log.Info($"Alloy: {Packed} for {what}, which this device offers for {use}"
+                   + (unneeded == 0 ? "" : $" (and asks {unneeded} of no format)"));
             return Packed;
         }
         log.Always($"Alloy: {Wide} for {what}, at twice the bytes a texel -- {why}");
