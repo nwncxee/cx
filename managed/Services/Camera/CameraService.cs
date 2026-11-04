@@ -532,6 +532,31 @@ public sealed unsafe class CameraService : IExtenderService
         return app == IntPtr.Zero ? IntPtr.Zero : _getModule(app);
     }
 
+    /// <summary>The object type id of a creature.</summary>
+    internal const byte CreatureType = 5;   // not-an-offset: CNWCObject::Type for a creature
+
+    /// <summary>Creatures in the current area's object list, or 0 outside an area. Walks the whole list, so it
+    /// is for a period line and never a frame.</summary>
+    internal static int AreaCreatures()
+    {
+        IntPtr app = App(), module = Module();
+        if (app == IntPtr.Zero || module == IntPtr.Zero) return 0;
+        IntPtr area = new CNWCModule(module).CurrentArea.Ptr;
+        if (area == IntPtr.Zero) return 0;
+        var av = new CNWCArea(area);
+        int n = av.ObjectCount, creatures = 0;
+        uint* ids = (uint*)av.ObjectIds;
+        if (n <= 0 || ids == null) return 0;
+        for (int i = 0; i < n; i++)
+        {
+            CGameObject go = new CClientExoApp(app).GetGameObject(ids[i]);
+            if (go.IsNull) continue;
+            CNWCObject o = go.AsNWCObject();
+            if (!o.IsNull && o.Type == CreatureType) creatures++;
+        }
+        return creatures;
+    }
+
     // ---- the maths: YawPitchRoll(yaw, pitch, 0) = qZ(yaw) * qX(pitch), Hamilton, (w,x,y,z) --------------
     // Axes are the engine's static-init globals (yaw 0x19e7ce8 = +Z, pitch 0x19e7d08 = +X); operator* @0x5b5c30
     // is the Hamilton product. So yaw 0 / pitch p puts the camera at focus + dist*(0, -sin p, cos p): south

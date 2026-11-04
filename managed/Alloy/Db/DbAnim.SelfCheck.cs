@@ -39,6 +39,7 @@ public static unsafe partial class DbAnim
             Carried(check);
             Refilled(check);
             Still(check);
+            Census(check);
             SkinTail(check);
             Skin(check);
             DanglyMotions(check);
@@ -613,6 +614,71 @@ public static unsafe partial class DbAnim
     }
 
     // ================= 5: change-driven =================
+
+    /// <summary>Which edge a compose is credited to, and which steps count as in view. Oracle: the counts are
+    /// hand-derived from each scripted edge, and the frame numbers are literals.</summary>
+    private static void Census(Checker check)
+    {
+        ModelDef m = Chain();
+        DbId world = SceneDb.Scenes.Alloc(), panel = SceneDb.Scenes.Alloc();
+        SceneDb.SceneIsWorld[world.Index] = true;
+        SceneDb.SceneIsWorld[panel.Index] = false;
+        DbId parent = Subject(m, world, out int pFirst);
+        DbId child = Subject(m, world, out _);
+        DbId inPanel = Subject(m, panel, out _);
+        int p = parent.Index, c = child.Index;
+        SceneDb.ObjAttachTo[c] = parent;
+        SceneDb.ObjAttachPart[c] = pFirst;
+        SceneDb.ObjAttachMode[c] = SceneDb.AttachTranslate;
+        Moved(c);
+        ComposePending();
+        SceneDb.Objects.TakeDirty();
+        _dirtyUpTo = 0;
+        CensusPeriod();
+
+        // The parent alone moves: one compose off the dirty list, and it carries the child with it.
+        _poseGen++;
+        SceneDb.ObjPos[p] = new Vector3(3f, -2f, 1f);
+        Moved(p);
+        ComposePending();
+        int[] by = _census.Composes;
+        check.Expect(by[(int)ComposeCause.DirtyList] == 1, "a moved object's compose is credited to the dirty list");
+        check.Expect(by[(int)ComposeCause.Child] == 1, "...and the child it carries to the child edge");
+        check.Expect(_census.Cause == ComposeCause.Other, "...and the cause is put back afterwards");
+
+        // A part-only setter marks the part and not its object.
+        SceneDb.Objects.TakeDirty();
+        _dirtyUpTo = 0;
+        SceneDb.Parts.TakeDirty();
+        _partDirtyUpTo = 0;
+        SceneDb.Parts.Mark(pFirst, Dirty.Anim);
+        ComposePending();
+        check.Expect(by[(int)ComposeCause.PartMark] == 1, "a part mark's compose is credited to the part mark");
+
+        // A getter composes outside every bracket.
+        SceneDb.ObjPos[p] = new Vector3(5f, 0f, 0f);
+        Moved(p);
+        ObjectWorld(parent);
+        check.Expect(by[(int)ComposeCause.Other] == 1, "a getter's compose is credited to no edge");
+
+        NoteRouted(p, 41);
+        CensusStep(p, 41);
+        CensusStep(p, 42);
+        check.Expect(_census.WorldSteps == 2 && _census.WorldStepsInView == 2,
+                     "a step in the route's own frame and the one after it are both in view");
+        CensusStep(p, 43);
+        check.Expect(_census.WorldSteps == 3 && _census.WorldStepsInView == 2,
+                     "...and a step two frames after the route is out of view");
+        NoteRouted(inPanel.Index, 41);
+        CensusStep(inPanel.Index, 41);
+        check.Expect(_census.WorldSteps == 3, "a panel object's step is not a world step");
+
+        CensusPeriod();
+        check.Expect(_census.WorldSteps == 0 && _census.Composes[(int)ComposeCause.Other] == 0,
+                     "the period line resets the census");
+        SceneDb.ObjAttachTo[c] = default;
+        SceneDb.ObjAttachPart[c] = -1;
+    }
 
     /// <summary>A still frame composes NOTHING -- the change-driven claim, and the one that is invisible when
     /// it breaks: a compose that runs over every object every frame still draws the right picture.</summary>

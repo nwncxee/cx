@@ -16,8 +16,7 @@ namespace CX.Alloy;
 /// the RESULT of all four. Armed by <c>alloy.paritydump</c>, the world pass to dump at: an area's first is early.</summary>
 public sealed unsafe partial class AlloyRenderer
 {
-    /// <summary>An object type id, not an offset.</summary>
-    private const byte ParityTypeCreature = 5;   // not-an-offset: CNWCObject::Type for a creature
+    private const byte ParityTypeCreature = CameraService.CreatureType;
 
     /// <summary>Creatures dumped, nearest the player first. Enough for the PC plus the NPCs around it; a
     /// whole area would bury the diff in border-ring extras nothing ever asks about.</summary>

@@ -165,6 +165,7 @@ public static unsafe partial class DbAnim
         _danglyDt = dt;
         _periodDt += dt; _periodCalls++;
         int si = scene.Index;
+        if (SceneDb.SceneIsWorld[si]) _census.WorldAnimates++; else _census.PanelAnimates++;
         DbList? members = SceneDb.SceneObjects[si];
         RateBegin(si);
         // Scene::Animate @0x469810: BACKWARDS, re-reading the count every step, so a member that removes
@@ -257,6 +258,7 @@ public static unsafe partial class DbAnim
         if (Idle(i)) { _idle++; return true; }
         _animAt[i] = _frame;
         _objects++;
+        CensusStep(i, AlloyRenderer.FrameSeq);
 
         float step = RateStep(i, dt);
         if (step < 0f)
@@ -296,7 +298,7 @@ public static unsafe partial class DbAnim
             // every creature's whole part tree twice a frame (ComposeIndex + SnapAttached, 5.4% of the game
             // thread measured, of which half was this).
             bool moved = (_flags[i] & ObjAnim.Moved) != 0;
-            ComposeObject(obj);
+            ComposeAs(ComposeCause.Stepped, i);
             if (PoseAfter(obj, dt)) Moved(i);
             else if (moved) _flags[i] |= ObjAnim.SkinDue;
         }
@@ -425,7 +427,7 @@ public static unsafe partial class DbAnim
         if ((f & (ObjAnim.Moved | ObjAnim.SkinDue)) == 0) return;
         // Only when the matrices are actually out of date: ObjAnim.SkinDue says they are current and only the
         // palette is owed (CX-188, the double compose).
-        if ((f & ObjAnim.Moved) != 0) ComposeObject(obj);
+        if ((f & ObjAnim.Moved) != 0) ComposeAs(ComposeCause.Stepped, i);
         else _skinOnly++;
         _flags[i] &= ~ObjAnim.SkinDue;
         // Before the palettes, because a stitch replaces the skin a palette is solved against. Rest-pose
@@ -636,6 +638,7 @@ public static unsafe partial class DbAnim
         if (_reanchored != 0) s += $", {_reanchored} rider(s) re-anchored after a tree change";
         int pieces = TakeComposedPieces();
         if (pieces != 0) s += $", {pieces} appended piece(s) posed with the object they are grafted onto";
+        s += CensusPeriod();
         _gusts = 0;
         _objects = _skipped = _runs = _crossfades = _dropped = _lookAts = _posed = _controllers = 0;
         _unbound = _queueFull = _noBlock = _bezier = _morphs = _traced = 0;

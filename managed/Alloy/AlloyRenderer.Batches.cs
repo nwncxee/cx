@@ -166,6 +166,7 @@ public sealed unsafe partial class AlloyRenderer
         byte tree = SceneDb.PartLodTree[part];
         if (SceneDb.LodHidden(tree, SceneDb.ObjLodShown[obj.Index]))
         { Counters._skipLod++; SetCastOk(i, false); return false; }
+        DbAnim.NoteRouted(obj.Index, _frameSeq);
         if (samp) FrameZones.AddSampled(FrameZones.Zone.Ident, t0, ChaseEvery);
         return true;
     }
@@ -535,7 +536,7 @@ public sealed unsafe partial class AlloyRenderer
         return m;
     }
 
-    /// <summary>Stable-record writes by emi.w class since arming (creature / object / tileset), for the weather line.</summary>
+    /// <summary>Stable-record writes by emi.w class since arming (creature / object / tileset), for the weather line. Cumulative, and VFX parts count as creature: not a population.</summary>
     internal static int RecCreature, RecObject, RecTile;
 
     /// <summary>Off-device, the split itself: every field of <see cref="RecordFrameState"/> is perturbed on
