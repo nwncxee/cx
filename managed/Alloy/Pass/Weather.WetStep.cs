@@ -1,11 +1,10 @@
 using System;
+using System.Globalization;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Text;
-using CX.Alloy.Db;
 using CX.Engine;
 using CX.Framework;
-using CX.Services.Camera;
 
 namespace CX.Alloy;
 
@@ -23,10 +22,6 @@ internal static unsafe partial class Weather
     private const float WetStepMin = 0.35f;
     /// <summary>Snow cover from which a step sounds of snow: the ground reads white well before it drifts.</summary>
     private const float SnowStepMin = 0.35f;
-    /// <summary>Metres above the foot the shelter ray starts (over a kerb or a doorstep) and how far it reaches.</summary>
-    private const float ShelterLiftM = 0.5f, ShelterRayM = 40f;
-    /// <summary>Creatures and items in the way are cast past, as the foot placement does, at most this often.</summary>
-    private const int ShelterCasts = 6;
     /// <summary><c>PlayFootstep</c>'s priority groups: the player's, then a non-player's by size category.</summary>
     private const byte GroupPlayer = 0x11, GroupSmall = 0x12, GroupLarge = 0x10;   // not-an-offset: CExoSound priority group ids
     /// <summary>A CExoString: <c>{char* buf; uint len; uint cap}</c>. not-an-offset: a caller-owned value's size.</summary>
@@ -85,17 +80,13 @@ internal static unsafe partial class Weather
         var o = new CNWCObject(creature);
         Vector3 p = o.Position, f = o.Orientation;
         Vec3 at = new() { X = p.X, Y = p.Y, Z = p.Z };
-        bool weather = StepInWeather;
-        bool open = weather && Open(p);
-        if (weather && !open) _stepCounts.Sheltered++;
+        bool open = Open(p);
+        if (!open) _stepCounts.Sheltered++;
         FootDown(p, new Vector2(f.X, f.Y), o.Id, TrackNow, open);
         int surface = open && _wetArmed && o.AreaPtr != IntPtr.Zero ? EngineFn.AreaGetSurfaceMaterial(o.AreaPtr, VectorArg.Of(&at)) : -1;
         StepKind kind = ChooseStep(open, surface);
         return kind != StepKind.Engine && StepSound(creature, o, at, kind);
     }
-
-    /// <summary>Is there weather a footfall could answer to? False saves the shelter ray.</summary>
-    private static bool StepInWeather => (WetShown > FootMinWet && (FootSplash.V > 0f || WetSteps.V)) || (SnowFootsteps.V && SnowShown > SnowStepMin);
 
     /// <summary>What a footfall on <paramref name="surface"/> sounds of. Only dry-sounding ground open to the sky
     /// changes its sound.</summary>
@@ -112,34 +103,42 @@ internal static unsafe partial class Weather
             ? pick switch { 0 => "Snow0"u8, 1 => "Snow1"u8, _ => "Snow2"u8 }
             : pick switch { 0 => "Puddles0"u8, 1 => "Puddles1"u8, _ => "Puddles2"u8 };
 
-    /// <summary>The segment weather takes to reach <paramref name="foot"/>, as <paramref name="from"/> to
-    /// <paramref name="to"/>. Cast downward along <paramref name="step"/>, because the hit test is one-sided and a
-    /// roof's faces look up.</summary>
-    private static void ShelterRay(Vector3 foot, Vector3 fall, out Vector3 from, out Vector3 to, out Vector3 step)
+    /// <summary>The map's stored depth for a plane at height <paramref name="z"/>: the check's own arithmetic.</summary>
+    private static float HandZ(in Matrix4x4 vp, float z)
     {
-        Vector3 up = -fall;
-        if (up.Z <= 0f) up = Vector3.UnitZ;
-        to = foot + new Vector3(0f, 0f, ShelterLiftM);
-        from = to + up * ShelterRayM;
-        step = -up;
+        Vector4 c = Vector4.Transform(new Vector4(20f, 20f, z, 1f), vp);
+        return c.Z / c.W * 0.5f + 0.5f;
     }
 
-    /// <summary>Can the rain reach <paramref name="p"/>? One ray down the cover bake's direction; a tile, a
-    /// static or a placeable on it is a roof, anything else (a creature, a held item) is cast past.</summary>
+    /// <summary>The bias <c>CxCovered</c> compares the cover map with.</summary>
+    private const float CoverBias = 0.002f;
+
+    /// <summary>Can the weather reach <paramref name="p"/>? The same read of the same cover map the stages make, so a
+    /// footfall answers as the snow on screen does; no map, or past its edge, is open as it is for them.</summary>
     private static bool Open(Vector3 p)
     {
-        IntPtr scene = SceneRay.Armed ? SceneRay.WorldScene() : IntPtr.Zero;
-        if (scene == IntPtr.Zero) return true;
-        ShelterRay(p, CoverDir, out Vector3 from, out Vector3 to, out Vector3 step);
-        for (int i = 0; i < ShelterCasts; i++)
-        {
-            if (!SceneRay.Cast(scene, from, to, IntPtr.Zero, out Vector3 hit, out IntPtr g, statics: true)) break;
-            if (g == IntPtr.Zero || SceneRay.IsTile(g) || SceneRay.IsPlaceable(g)) { SceneRay.Release(); return false; }
-            from = hit + step * SceneRay.Nudge;
-        }
-        SceneRay.Release();
+        int size = CasterPass.CoverReadSize;
+        return !CoverTexel(CasterPass.CoverReadVp, size, p, out int at, out float z)
+            || !CasterPass.CoverDepthAt(at, out float stored) || z - CoverBias <= stored;
+    }
+
+    /// <summary>Where <paramref name="p"/> falls in a <paramref name="size"/> square cover map, and its depth there, as
+    /// <c>CxCovered</c> works them out. False with no map, or past its edge.</summary>
+    private static bool CoverTexel(in Matrix4x4 vp, int size, Vector3 p, out int at, out float z)
+    {
+        at = 0; z = 0f;
+        if (vp.M44 == 0f || size <= 0) return false;
+        Vector4 c = Vector4.Transform(new Vector4(p, 1f), vp);
+        float x = c.X / c.W * 0.5f + 0.5f, y = c.Y / c.W * 0.5f + 0.5f;
+        if (!(x >= 0f && x <= 1f && y >= 0f && y <= 1f)) return false;
+        z = c.Z / c.W * 0.5f + 0.5f;
+        at = Math.Min((int)(y * size), size - 1) * size + Math.Min((int)(x * size), size - 1);
         return true;
     }
+
+    /// <summary>Is <paramref name="p"/> open in the <paramref name="size"/> square depth map <paramref name="depth"/>?</summary>
+    private static bool CoverOpenIn(ReadOnlySpan<float> depth, int size, in Matrix4x4 vp, Vector3 p)
+        => !CoverTexel(vp, size, p, out int at, out float z) || z - CoverBias <= depth[at];
 
     /// <summary>Play this creature's <paramref name="kind"/> step, as <c>PlayFootstep</c> would play its surface's.
     /// False = nothing to play: the engine's own step goes ahead.</summary>
@@ -224,19 +223,36 @@ internal static unsafe partial class Weather
     /// hand-written expected kinds, and for an empty cell the stock table's own text.</summary>
     private static void StepSelfCheck(Checker check) => WithStepScene(() =>
     {
-        Vector3 foot = new(10f, 10f, 0f);
-        Vector3 ra = new(5f, 5f, 4f), rb = new(15f, 5f, 4f), rc = new(10f, 15f, 4f);
-        Vector3 fall = Vector3.Normalize(new Vector3(0.05f, 0f, -1f));
-        ShelterRay(foot, fall, out Vector3 from, out Vector3 to, out _);
-        check.Expect(HitTest.PolyHit(ra, rb, rc, from, ref to), "a roof whose faces look up shelters the foot below it");
-        ShelterRay(foot + new Vector3(30f, 0f, 0f), fall, out from, out to, out _);
-        check.Expect(!HitTest.PolyHit(ra, rb, rc, from, ref to), "ground beside that roof stays open to the sky");
-        ShelterRay(foot, fall, out from, out to, out Vector3 step);
-        check.Expect(step.Z < 0f && to.Z == ShelterLiftM, "the ray ends above the foot, so the ground under it is no roof");
+        const int CoverSize = 64;
+        Matrix4x4 coverVp = ShadowMath.DirectionalLightViewProj(new Vector3(0f, 0f, -1f), new Vector3(20f, 20f, 0f), 16f, 16f, 0);
+        var coverDepth = new float[CoverSize * CoverSize];
+        Array.Fill(coverDepth, HandZ(coverVp, 0f));
+        // a 4 m high awning over x,y 16..24, written cell by cell through the matrix the map was baked with
+        for (float wy = 16f; wy < 24f; wy += 0.1f)
+        for (float wx = 16f; wx < 24f; wx += 0.1f)
+        {
+            Vector4 c = Vector4.Transform(new Vector4(wx, wy, 4f, 1f), coverVp);
+            int cx = (int)((c.X / c.W * 0.5f + 0.5f) * CoverSize), cy = (int)((c.Y / c.W * 0.5f + 0.5f) * CoverSize);
+            int at = cy * CoverSize + cx;
+            coverDepth[at] = c.Z / c.W * 0.5f + 0.5f;
+        }
+        check.Expect(!CoverOpenIn(coverDepth, CoverSize, coverVp, new Vector3(20f, 20f, 0f)), "the map shelters a foot under the awning");
+        check.Expect(CoverOpenIn(coverDepth, CoverSize, coverVp, new Vector3(28f, 20f, 0f)), "the map leaves ground beside the awning open");
+        check.Expect(CoverOpenIn(coverDepth, CoverSize, coverVp, new Vector3(20f, 20f, 4.1f)), "the map leaves the awning's own top open");
+        check.Expect(CoverOpenIn(coverDepth, CoverSize, coverVp, new Vector3(200f, 20f, 0f)), "past the map's edge a foot counts as open, as the stage reads it");
+        var allRoof = new float[CoverSize * CoverSize];
+        check.Expect(!CoverOpenIn(allRoof, CoverSize, coverVp, new Vector3(20f, 20f, 0f))
+          && CoverOpenIn(allRoof, CoverSize, coverVp, new Vector3(200f, 20f, 0f)), "past the map's edge a foot never borrows the edge texel's roof");
+        check.Expect(CoverOpenIn(coverDepth, CoverSize, default, new Vector3(20f, 20f, 0f)), "with no map a foot counts as open, as the stage reads it");
+        check.Expect(ShaderSource.Get("cx_wx_place.glsl").Contains("n.z - " + CoverBias.ToString("0.000", CultureInfo.InvariantCulture)), "the footfall reads the map with the stage's own bias");
 
-        check.Expect(!StepInWeather, "dry bare ground casts no shelter ray");
+        _track = new TrackTexel[TrackSize * TrackSize];
+        _side = new FootSideState();
         _snow = 1f;
-        check.Expect(StepInWeather, "lying snow on dry ground asks whether the sky is open");
+        FootDown(new Vector3(20f, 20f, 0f), Vector2.UnitX, 9, 1f, false);
+        check.Expect(MathF.Max(TrackAt(_track, new Vector2(20f + FootAhead + ToeAt, 20f - FootSide), 1f, 0.01f),
+                               TrackAt(_track, new Vector2(20f + FootAhead + ToeAt, 20f + FootSide), 1f, 0.01f)) == 0f,
+          "a sheltered foot presses no print, so none shows on the roof above it");
 
         // Given the same ground after the snow has melted away
         // When my character walks across it
@@ -283,7 +299,7 @@ internal static unsafe partial class Weather
         _track = new TrackTexel[TrackSize * TrackSize];
         _side = new FootSideState();
         Vector2 h = Vector2.UnitX;
-        FootDown(new Vector3(20f, 20f, 0f), h, 7, 1f, StepInWeather);
+        FootDown(new Vector3(20f, 20f, 0f), h, 7, 1f, true);
         check.Expect(MathF.Max(TrackAt(_track, new Vector2(20f + FootAhead + ToeAt, 20f - FootSide), 1f, 0.01f),
                                TrackAt(_track, new Vector2(20f + FootAhead + ToeAt, 20f + FootSide), 1f, 0.01f)) > 0.5f,
           "the setting off: footprints still press");

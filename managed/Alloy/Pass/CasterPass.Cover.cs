@@ -1,5 +1,9 @@
-using CX.Graphics;
+using System;
 using System.Numerics;
+using System.Runtime.InteropServices;
+using CX.Graphics;
+using CX.Graphics.Rhi;
+using CX.Rhi;
 
 namespace CX.Alloy;
 
@@ -59,7 +63,55 @@ public sealed unsafe partial class CasterPass
         else CoverVp = default;
     }
 
-    private static void CoverRelease() { _coverBaked = false; _coverCValid = false; _coverNew = false; CoverVp = default; Weather.EsmRelease(); }
+    private static void CoverRelease()
+    {
+        _coverBaked = false; _coverCValid = false; _coverNew = false; CoverVp = default; Weather.EsmRelease();
+        _vk.CoverReadGen++; _vk.CoverReadVp = default;
+    }
+
+    private static readonly Action<int, bool> _coverReadDone = (gen, ran) =>
+    {
+        if (ran && gen == _vk.CoverReadGen) _vk.CoverReadVp = _vk.CoverPendingVp;
+    };
+
+    /// <summary>Copy the bake just recorded to where a footfall can read it. A refused buffer is logged, and footfalls with
+    /// no copy count as open.
+    /// ponytail: one buffer, so a footfall in the two frames a copy is in flight may read the new bake under the old
+    /// view; a second buffer flipped on completion if a step ever lands wrong at a re-fit.</summary>
+    private static void CoverReadQueue(VkBackend vk, CommandList cl)
+    {
+        CasterVkState s = _vk;
+        _coverNew = false;
+        if (!vk.DescOf(s.Cascades, out ImageDesc d)) return;
+        if (s.CoverRead.IsNull || s.CoverReadSize != d.W)
+        {
+            vk.Destroy(s.CoverRead);
+            s.CoverReadVp = default;
+            s.CoverReadSize = d.W;
+            s.CoverRead = vk.CreateBuffer(new BufferDesc((long)d.W * d.W * sizeof(float), BufferUse.CopyDst, MemoryKind.Readback, "vk cover readback"));
+            if (s.CoverRead.IsNull)
+            {
+                s.CoverReadSize = 0;
+                _log?.Always("CasterPass: the cover readback buffer was refused -- footfalls count as open until a later bake gets one");
+                return;
+            }
+        }
+        cl.CopyImageToBuffer(new CopyToBufferCmd(s.Cascades, new ImageRegion(0, 0, 0, CoverLayer), d.W, d.W, s.CoverRead, 0));
+        s.CoverPendingVp = _coverKeyVp;
+        cl.WhenDone(_coverReadDone, s.CoverReadGen);
+    }
+
+    /// <summary>The view the CPU's copy of the cover map holds, zero with none or with the cover off.</summary>
+    internal static Matrix4x4 CoverReadVp => CoverVp.M44 == 0f ? default : _vk.CoverReadVp;
+    internal static int CoverReadSize => _vk.CoverReadSize;
+
+    /// <summary>One texel of the CPU's copy of the cover map. False when there is none to read.</summary>
+    internal static bool CoverDepthAt(int at, out float depth)
+    {
+        depth = 0f;
+        return _vk.Dev is VkBackend vk && !_vk.CoverRead.IsNull
+            && vk.ReadMapped(_vk.CoverRead, at * (long)sizeof(float), MemoryMarshal.AsBytes(new Span<float>(ref depth)));
+    }
 
     /// <summary>The cover-edge knob moved: filter the held bake again at its new width.</summary>
     internal static void RefilterCover() { if (_coverBaked) _coverNew = true; }

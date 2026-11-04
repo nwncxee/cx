@@ -80,7 +80,8 @@ internal static unsafe partial class Weather
     private static float TrackNow => (float)((Stopwatch.GetTimestamp() - _trackEpoch) / (double)Stopwatch.Frequency);
 
     /// <summary>A foot coming down at a creature at <paramref name="p"/> facing <paramref name="facing"/>: a print
-    /// while snow lies, a splash while the ground is wet. Split from the engine read so the self-check can drive it.</summary>
+    /// while snow lies and a splash while the ground is wet, both only under open sky: a print has no height, so one
+    /// pressed under a roof would show on the roof's snow. Split from the engine read so the self-check can drive it.</summary>
     private static void FootDown(Vector3 p, Vector2 facing, uint id, float now, bool open)
     {
         if (!float.IsFinite(p.X) || !float.IsFinite(p.Y) || !float.IsFinite(p.Z)) return;
@@ -94,7 +95,7 @@ internal static unsafe partial class Weather
         float side = ((fs.Bits >> bit) & 1) != 0 ? FootSide : -FootSide;
         Vector2 at = new Vector2(p.X, p.Y) + h * FootAhead + new Vector2(h.Y, -h.X) * side;
         Vector2 focus = FrameInputs.HasFocus ? new Vector2(FrameInputs.Focus.X, FrameInputs.Focus.Y) : at;
-        if (_track != null && Tracks.V && _snow > TrackMinSnow && SnowStrength.V > 0f && Vector2.Distance(at, focus) < TrackRangeM)
+        if (open && _track != null && Tracks.V && _snow > TrackMinSnow && SnowStrength.V > 0f && Vector2.Distance(at, focus) < TrackRangeM)
         {
             Print(_track, at, h, now, 1f / TrackFill.V, focus, ref _trackLo, ref _trackHi);
             _prints++;
