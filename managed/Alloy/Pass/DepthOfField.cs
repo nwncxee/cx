@@ -221,10 +221,35 @@ internal static unsafe partial class DepthOfField
     {
         var check = new Checker(log, "DepthOfField.SelfCheck");
         int skipped = Checker.Skipped;
+        FocusRulesSelfCheck(check);
         // the examples log a test refusal and read cx.log back: run-demo's own log, never a player's
         if (Native.Sym(SymbolMap.AppManager) != IntPtr.Zero) check.Skip("in a session: the depth of field examples run in run-demo");
         else Examples(check, log);
         log.Info(!check.Ok ? "DepthOfField.SelfCheck: FAILED" : Checker.Skipped > skipped ? "DepthOfField.SelfCheck: ran the rest (a skip above)" : "DepthOfField.SelfCheck: passed");
+    }
+
+    /// <summary>The focus rules no approved example names. Oracle: <c>inc_postpr_dof</c> worked by hand at a camera 8 m away and
+    /// pitched 70 degrees, where the view's offset makes that 10.007 m and the pitch rule 29.09 m, with a dead zone of 3 m.</summary>
+    private static void FocusRulesSelfCheck(Checker check)
+    {
+        (bool never, int focus, float dead) = (Dof.NeverBlur.V, Dof.Focus.V, Dof.DeadZone.V);
+        try
+        {
+            Dof.DeadZone.V = 3f; Dof.NeverBlur.V = false;
+            void Rule(string name, int type, in Scene s, float near, float far)
+            {
+                Dof.Focus.V = type;
+                Band b = Focus(in s);
+                check.Expect(MathF.Abs(b.Near - near) < 0.02f && MathF.Abs(b.Far - far) < 0.02f, $"{name}: the sharp band runs {near} to {far} m (got {b.Near:F2} to {b.Far:F2})");
+            }
+            var cam = new Scene(8f, 70f, false, false, 0f, 20f, 18f, 25f);
+            Rule("Player Character", Dof.FocusPlayer, in cam, 8.51f, 11.51f);
+            Rule("Camera Pitch", Dof.FocusPitch, in cam, 27.59f, 30.59f);
+            Rule("Dynamic", Dof.FocusDynamic, in cam, 17.5f, 20.5f);
+            Rule("A horizontal camera's focus stops at the far limit", Dof.FocusPitch, cam with { PitchDeg = 90f }, 43.5f, 45f);
+            Rule("A cutscene takes the pitch rule and keeps the character", Dof.FocusMouse, cam with { Cutscene = true }, 6.5f, 30.59f);
+        }
+        finally { Dof.NeverBlur.V = never; Dof.Focus.V = focus; Dof.DeadZone.V = dead; }
     }
 
     /// <summary>The approved examples that need no device.</summary>

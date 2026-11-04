@@ -54,7 +54,7 @@ Every report of work that sits in a worktree or a branch the user has not checke
 (`build.sh` stamps `BUILT_FROM`), and the exact run command. Rebuild first when it says anything but CURRENT.
 
 First build fetches the funchook submodule and its nested diStorm if missing, then builds it. It also fetches AMD's FidelityFX SDK
-source (about 200 MB, pinned in `tools/deps.json`) once, for FSR 3.1.
+source (about 200 MB, pinned in `tools/deps.json`) once, for FSR 3.1 and depth of field.
 
 Every version-bound number (EngineLayout offsets, SymbolMap `At()` RVAs, build keys) lives in
 `managed/Framework/Builds/<name>.tsv`, one complete file per supported client build; code
@@ -101,7 +101,7 @@ Read before working in the area: `docs/hook-pattern.md` (a real hook + trampolin
 `docs/owned-resource-lifetimes.md` (what creates and kills each owned table, per scene layer),
 `docs/alloy-refusals.md` (why a frame is the engine's), `docs/audio.md` (Steam Audio behind the engine's OpenAL).
 Every file under `managed/Alloy/Shaders/` is GLSL under a `cx_*` resref <= 16 chars -- the hak limit, so each
-is overridable as `<resref>.shd` -- translated and compiled to SPIR-V at runtime (`VkGlsl`, shaderc). FSR 3.1's shaders
+is overridable as `<resref>.shd` -- translated and compiled to SPIR-V at runtime (`VkGlsl`, shaderc). FSR 3.1's and FidelityFX DoF's shaders
 are the exception: AMD's GLSL, compiled when `build.sh` runs (`tools/ffx/`) and bound by AMD's backend, so
 `check-shaders.py`, the SSBO and UBO slot gates and the `cx_*.shd` contract never see them; they change through
 `native/ffx/sdk-1.1.4.patch`.
