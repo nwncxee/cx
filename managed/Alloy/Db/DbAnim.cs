@@ -25,6 +25,8 @@ internal enum ObjAnim : uint
     /// compose ran inside the step and nothing has moved the object since. <see cref="DbAnim.Finish"/> consumes
     /// it. Set and cleared in the same step, so it needs no lifecycle edge beyond <c>OnCreate</c>'s reset.</summary>
     SkinDue = 1 << 6,
+    /// <summary>A new object, tree or run has not been posed yet, so the view gate must not hold it at rest.</summary>
+    PoseOwed = 1 << 7,
 }
 
 /// <summary>The engine's <c>AnimRun+0xc</c> flag bits, as <c>Gob::PlayAnimation</c> @0x49a750 and
@@ -165,6 +167,7 @@ public static unsafe partial class DbAnim
         _danglyDt = dt;
         _periodDt += dt; _periodCalls++;
         int si = scene.Index;
+        if (SceneDb.SceneIsWorld[si]) _census.WorldAnimates++; else _census.PanelAnimates++;
         DbList? members = SceneDb.SceneObjects[si];
         RateBegin(si);
         // Scene::Animate @0x469810: BACKWARDS, re-reading the count every step, so a member that removes
@@ -235,7 +238,11 @@ public static unsafe partial class DbAnim
         // is exactly "let this one object step again". Forcing its own stamp says that without giving every
         // OTHER object a second step this frame.
         _animAt[obj.Index] = 0;
+        // The game asked for this step, possibly from inside the walk, and the gate would swallow it.
+        bool gate = _view.On;
+        _view.On = false;
         StepObject(obj, dt, 0);
+        _view.On = gate;
         ComposePending();
         FrameZones.Add(FrameZones.Zone.Anim, t0);
     }
@@ -257,8 +264,10 @@ public static unsafe partial class DbAnim
         if (Idle(i)) { _idle++; return true; }
         _animAt[i] = _frame;
         _objects++;
+        CensusStep(i);
 
-        float step = RateStep(i, dt);
+        bool held = OffView(i);
+        float step = held ? dt : RateStep(i, dt);
         if (step < 0f)
         {
             // The part walk still runs: the dangly solve costs what it SIMULATES, so a stride buys it nothing,
@@ -276,6 +285,13 @@ public static unsafe partial class DbAnim
         if (!SceneDb.Objects.Valid(obj)) return false;
 
         if (!Gates(obj)) { Finish(obj); return true; }
+        if (held)
+        {
+            _census.WorldStepsHeld++;
+            RateForget(i);
+            FinishTail(obj);
+            return true;
+        }
 
         // the pose layer puts its last corrections back BEFORE the pose: a crossfade blends from the column
         bool layer = PoseLayer(i);
@@ -283,6 +299,7 @@ public static unsafe partial class DbAnim
         int n = _runN[i];
         if (n != 0 && !StartQueued(obj, n - 1)) return false;
         if (!Advance(obj, SyncDt(i, dt), _runN[i])) return false;
+        _flags[i] &= ~ObjAnim.PoseOwed;
         // AFTER the queue: the engine's look-at is an add-in run at index 0, so it is the LAST thing to write
         // the head's pose. Before the advance it would be overwritten by the animation's own head track at
         // weight 1 and the head would never turn.
@@ -296,7 +313,7 @@ public static unsafe partial class DbAnim
             // every creature's whole part tree twice a frame (ComposeIndex + SnapAttached, 5.4% of the game
             // thread measured, of which half was this).
             bool moved = (_flags[i] & ObjAnim.Moved) != 0;
-            ComposeObject(obj);
+            ComposeAs(ComposeCause.Stepped, i);
             if (PoseAfter(obj, dt)) Moved(i);
             else if (moved) _flags[i] |= ObjAnim.SkinDue;
         }
@@ -349,7 +366,7 @@ public static unsafe partial class DbAnim
     /// swap -- and nowhere else.</summary>
     private static void ScanTree(int i)
     {
-        bool dangly = false, skin = false;
+        bool dangly = false, skin = false, light = false;
         int first = SceneDb.ObjPartFirst[i], n = SceneDb.ObjPartCount[i];
         for (int k = 0; k < n; k++)
         {
@@ -360,10 +377,13 @@ public static unsafe partial class DbAnim
             if ((uint)node >= (uint)m.Nodes.Length) continue;
             NodeDef nd = m.Nodes[node];
             if (nd.Kind == NodeKind.Dangly) dangly = true;
+            if (nd.Kind == NodeKind.Light) light = true;
             if (nd.Skin != null) skin = true;
         }
         _hasDangly[i] = dangly;
         _hasSkin[i] = skin;
+        _view.HasLight[i] = light;
+        _flags[i] |= ObjAnim.PoseOwed;
         // The new tree owes a stitch and a palette, and the step tail is the only thing that pays them: a
         // reduced-rate object must not wear the old tree's skin for three more frames.
         RateForget(i);
@@ -378,14 +398,6 @@ public static unsafe partial class DbAnim
         if (SceneDb.Scenes.Valid(scene) && !SceneGate(scene) && (_flags[i] & ObjAnim.Forced) == 0) return false;
         return (_flags[i] & ObjAnim.Animating) != 0;
     }
-
-    /// <summary>
-    /// The gate the engine has and this does NOT: <c>Gob::Animate</c> @0x59d8c0 advances no clock and fires no
-    /// event when <c>Gob::IsInViewVolume</c> @0x544780 is false and the model is not effect-classified. Unportable
-    /// as written -- the flag is <c>ManageSceneBSP</c>'s @0x57fa80, from the render Alloy replaced. ponytail: a
-    /// per-object route stamp buys it, once <c>HitBounds</c>, <c>DbLights</c> and <c>CasterPass</c> are answered.
-    /// </summary>
-    private static void VisibilityGateNotPorted() { }
 
     /// <summary>The time a synchronised object advances by: its attach parent's own rate, so a head, a cloak
     /// and a held weapon stay on the body's frame (<c>Gob::SetSynchronizeAnimations</c>).</summary>
@@ -419,13 +431,20 @@ public static unsafe partial class DbAnim
     /// getter right after this answers from a current matrix.</summary>
     private static void Finish(DbId obj)
     {
-        int i = obj.Index;
         PartWalk(obj);
+        FinishTail(obj);
+    }
+
+    /// <summary>The compose and skin a step owes for what moved it. An object the view gate holds pays only this:
+    /// the engine's held object stops short of its part walk too, so a cloak does not swing out of view.</summary>
+    private static void FinishTail(DbId obj)
+    {
+        int i = obj.Index;
         ObjAnim f = _flags[i];
         if ((f & (ObjAnim.Moved | ObjAnim.SkinDue)) == 0) return;
         // Only when the matrices are actually out of date: ObjAnim.SkinDue says they are current and only the
         // palette is owed (CX-188, the double compose).
-        if ((f & ObjAnim.Moved) != 0) ComposeObject(obj);
+        if ((f & ObjAnim.Moved) != 0) ComposeAs(ComposeCause.Stepped, i);
         else _skinOnly++;
         _flags[i] &= ~ObjAnim.SkinDue;
         // Before the palettes, because a stitch replaces the skin a palette is solved against. Rest-pose
@@ -636,6 +655,7 @@ public static unsafe partial class DbAnim
         if (_reanchored != 0) s += $", {_reanchored} rider(s) re-anchored after a tree change";
         int pieces = TakeComposedPieces();
         if (pieces != 0) s += $", {pieces} appended piece(s) posed with the object they are grafted onto";
+        s += CensusPeriod();
         _gusts = 0;
         _objects = _skipped = _runs = _crossfades = _dropped = _lookAts = _posed = _controllers = 0;
         _unbound = _queueFull = _noBlock = _bezier = _morphs = _traced = 0;

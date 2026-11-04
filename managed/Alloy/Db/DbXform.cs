@@ -51,7 +51,7 @@ public static unsafe partial class DbAnim
             int i = t.DirtyIndex(k);
             if (!t.LiveAt(i)) continue;
             if ((t.DirtyAt(i) & (Dirty.Xform | Dirty.Tree | Dirty.Anim | Dirty.Created)) == 0) continue;
-            ComposeIndex(i);
+            ComposeAs(ComposeCause.DirtyList, i);
         }
         _dirtyUpTo = n;
 
@@ -77,7 +77,7 @@ public static unsafe partial class DbAnim
             // language that test speaks. Exactly one compose per object: it re-stamps _partClock, and this
             // object's other newly marked parts are then older than the stamp.
             _flags[o.Index] |= ObjAnim.Moved;
-            ComposeIndex(o.Index);
+            ComposeAs(ComposeCause.PartMark, o.Index);
         }
         _partDirtyUpTo = pn;
     }
@@ -138,6 +138,7 @@ public static unsafe partial class DbAnim
         _fromAttach[i] = attach;
         _flags[i] &= ~ObjAnim.Moved;
         _composed++;
+        _census.Composes[(int)_census.Cause]++;
         ComposeCount[i]++;
 
         Vector3 pos = SceneDb.ObjPos[i];

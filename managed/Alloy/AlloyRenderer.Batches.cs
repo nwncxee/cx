@@ -535,7 +535,7 @@ public sealed unsafe partial class AlloyRenderer
         return m;
     }
 
-    /// <summary>Stable-record writes by emi.w class since arming (creature / object / tileset), for the weather line.</summary>
+    /// <summary>Stable-record writes by emi.w class since arming (creature / object / tileset), for the weather line. Cumulative, and VFX parts count as creature: not a population.</summary>
     internal static int RecCreature, RecObject, RecTile;
 
     /// <summary>Off-device, the split itself: every field of <see cref="RecordFrameState"/> is perturbed on

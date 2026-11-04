@@ -641,7 +641,7 @@ public static class FrameZones
     /// frame that actually rendered (dropped when it IS the worst frame, so its presence means the worst frame never
     /// reached the scene render). <c>other</c> is the residual, and a large one is itself the finding. With a render
     /// thread a fourth clause appears, its own row -- no residual, and a frame should cost <c>max</c> of the two.</summary>
-    public static string Period()
+    public static string Period(int creatures)
     {
         int frames = Math.Max(_frames, 1);
         string line = "FrameZones: [zones] " + Row(_sum, _dtSum, frames)
@@ -652,9 +652,16 @@ public static class FrameZones
         line += EnrollP99();
         line += HitchLine();
         line += $" || over {_frames} presents";
+        line += $" || creatures {creatures}: Seam:{PerCreatureUs(_sum[(int)Zone.Seam], frames, creatures):F1} "
+              + $"Anim:{PerCreatureUs(_sum[(int)Zone.Anim], frames, creatures):F1} "
+              + $"Alloy:{PerCreatureUs(_sum[(int)Zone.Alloy], frames, creatures):F1} us each";
         ResetPeriod();
         return line;
     }
+
+    /// <summary>Microseconds a frame per creature, for a zone's period total. 0 with no creature to divide by.</summary>
+    private static double PerCreatureUs(long ticks, int frames, int creatures)
+        => creatures <= 0 ? 0.0 : ticks * 1e6 / Stopwatch.Frequency / frames / creatures;
 
     /// <summary>Close the period without building its line: the adaptive hitch threshold and the blame baseline
     /// roll forward from it, every period accumulator clears. <see cref="Period"/> is this plus the line.</summary>
@@ -764,13 +771,13 @@ public static class FrameZones
         EndFrame(f);
         check.Expect(_sum[(int)Zone.Alloy] >= f && _sum[N + (int)Zone.Alloy] >= f,
                      "EndFrame folds BOTH rows into the period");
-        string line = Period();
+        string line = Period(0);
         check.Expect(line.Contains("render thread ") && line.Contains("other:"),
                      "the period line carries the render clause beside the game row's residual");
         // ...and with row 1 empty it must read exactly as it did before rows existed.
         Add(Zone.Alloy, Stopwatch.GetTimestamp() - f);
         EndFrame(f);
-        check.Expect(!Period().Contains("render thread "), "no render clause on a single-threaded period");
+        check.Expect(!Period(0).Contains("render thread "), "no render clause on a single-threaded period");
         Array.Clear(_frame, 0, Rows * N); Array.Clear(_sum, 0, Rows * N);
         Array.Clear(_worst, 0, Rows * N); Array.Clear(_worstDrew, 0, Rows * N);
         // ONE place, not a list to keep in step: a term this check leaves behind is one the suite below reads
@@ -794,6 +801,10 @@ public static class FrameZones
         RowSelfCheck(log);
 
         long f = Stopwatch.Frequency;
+        // Oracle: hand arithmetic. One second over 1000 frames is 1000 us a frame, over 10 creatures 100 us each.
+        double each = PerCreatureUs(f, 1000, 10);
+        if (Math.Abs(each - 100.0) > 1e-6 || PerCreatureUs(f, 1000, 0) != 0.0)
+            log.Info($"FrameZones.SelfCheck: FAILED -- per-creature figure read {each}, want 100");
         // A bracket whose child claimed more than the parent spent contributes NOTHING -- never a negative,
         // which would credit the parent's siblings with time nobody spent. The unsubtracted arm must still
         // record something, or the subtraction would be indistinguishable from a dead bracket.
@@ -834,7 +845,7 @@ public static class FrameZones
         h &= _hitchN == 1 && _hitch[(int)Zone.Alloy] == 100 && _evHitch[(int)Ev.Mint] == 3 && _evSum[(int)Ev.Mint] == 3;
         if (!h) log.Info("FrameZones.SelfCheck: FAILED -- the hitch ledger took a stall or missed the hitch");
 
-        string line = Period();
+        string line = Period(0);
         bool r = line.Contains("Enroll:") && line.Contains("other:") && line.Contains("worst frame")
                  && line.Contains("worst that RENDERED") && line.Contains("Enroll walks 1: p99 1000")
                  && line.Contains("hitch 1 frames") && line.Contains("events/frame all|hitch:")

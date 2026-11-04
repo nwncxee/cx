@@ -62,7 +62,7 @@ public static unsafe partial class DbAnim
             _inSnap[i] = true;
             // try/finally, not optimism: a throw that left the flag set would refuse this object's placement
             // for the rest of the session and report a cycle that is not there.
-            try { ComposeIndex(owner.Index); }
+            try { ComposeAs(ComposeCause.Parent, owner.Index); }
             finally { _inSnap[i] = false; _snapDepth--; }
         }
         Matrix4x4 m = SceneDb.PartWorld[part];
@@ -328,7 +328,7 @@ public static unsafe partial class DbAnim
                 // every one of them a placement that then happened anyway, and a real cycle lost among them.
                 if (_inSnap[c]) continue;
                 _kidPlaced++;
-                ComposeIndex(c);
+                ComposeAs(ComposeCause.Child, c);
             }
         }
         finally { _kidDepth--; }
