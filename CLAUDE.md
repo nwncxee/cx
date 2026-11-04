@@ -54,7 +54,7 @@ Every report of work that sits in a worktree or a branch the user has not checke
 (`build.sh` stamps `BUILT_FROM`), and the exact run command. Rebuild first when it says anything but CURRENT.
 
 First build fetches the funchook submodule and its nested diStorm if missing, then builds it. It also fetches AMD's FidelityFX SDK
-source (about 200 MB, pinned in `tools/deps.json`) once, for FSR 3.1.
+source (about 200 MB, pinned in `tools/deps.json`) once, for FSR 3.1 and depth of field.
 
 Every version-bound number (EngineLayout offsets, SymbolMap `At()` RVAs, build keys) lives in
 `managed/Framework/Builds/<name>.tsv`, one complete file per supported client build; code
@@ -101,7 +101,7 @@ Read before working in the area: `docs/hook-pattern.md` (a real hook + trampolin
 `docs/owned-resource-lifetimes.md` (what creates and kills each owned table, per scene layer),
 `docs/alloy-refusals.md` (why a frame is the engine's), `docs/audio.md` (Steam Audio behind the engine's OpenAL).
 Every file under `managed/Alloy/Shaders/` is GLSL under a `cx_*` resref <= 16 chars -- the hak limit, so each
-is overridable as `<resref>.shd` -- translated and compiled to SPIR-V at runtime (`VkGlsl`, shaderc). FSR 3.1's shaders
+is overridable as `<resref>.shd` -- translated and compiled to SPIR-V at runtime (`VkGlsl`, shaderc). FSR 3.1's and FidelityFX DoF's shaders
 are the exception: AMD's GLSL, compiled when `build.sh` runs (`tools/ffx/`) and bound by AMD's backend, so
 `check-shaders.py`, the SSBO and UBO slot gates and the `cx_*.shd` contract never see them; they change through
 `native/ffx/sdk-1.1.4.patch`.
@@ -264,8 +264,8 @@ the cleanup that earned it. Adding a rule means adding its gate in the same chan
 - `adr.sh`: a decision record under `docs/adr/` that `bin/check-adr` refuses (its shape, backticks, over 55 words) fails.
 - `world-depth.sh`: a world depth read decoded as GL's (`d * 2.0 - 1.0`) or tested against GL's far plane (1.0) fails --
   in a `.glsl` under `managed/Alloy/Shaders/`, in a helper a world depth reaches through a parameter, or in a GLSL string
-  in C# -- and so does a `.glsl` linearisation written anywhere but `cx_depthlin.glsl`'s `CxDepthViewZ`. The world
-  depth samplers are a list in `world-depth.py`; a new one goes on it. Its approved examples are
+  in C# -- and so does a `.glsl` linearisation written anywhere but `cx_depthlin.glsl`'s `CxDepthViewZ`, or C# working the decode's
+  terms from the planes anywhere but `WorldDepth.Decode`. The world depth samplers are a list in `world-depth.py`; a new one goes on it. Its approved examples are
   `world_depth_approved_examples.sh` beside it, which `build.sh` runs.
 - `depth-confined.sh`: a file named in CX0006's `Allowed` that is not in the tree fails. The RULE -- GL's depth test and
   clear only in the files that keep GL depth (casters, shadow cascades, the GUI), and no depth test without its

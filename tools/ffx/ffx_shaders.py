@@ -1,31 +1,47 @@
 #!/usr/bin/env python3
-"""The FSR 3.1 upscaler's Vulkan shader permutation headers, as AMD's FidelityFX_SC writes them for the GLSL path.
+"""FSR 3.1's and FidelityFX DoF's Vulkan shader permutation headers, as AMD's FidelityFX_SC writes them for the GLSL path.
 
     tools/ffx/ffx_shaders.py <glslang> <sdk dir> <out dir>
 
 FidelityFX_SC is a Windows program; this writes the same headers from glslangValidator and a reflection of the
 SPIR-V it emits, so both build hosts share one generator. Only the base set (wave32, fp32) is compiled: the
 wave64 and 16-bit names alias it, because native/ffx/cxfsr.cpp reports no extension to the backend and so it never
-picks them, and only the keys CXFSR_FLAGS reaches (KEYS below).
+picks them, and only the keys the flags in native/ffx/cxfsr.cpp reach (each effect's fixed options below).
 """
 import hashlib, os, pathlib, struct, subprocess, sys
 from concurrent.futures import ThreadPoolExecutor
 
-OPTIONS = ['FFX_FSR3UPSCALER_OPTION_REPROJECT_USE_LANCZOS_TYPE', 'FFX_FSR3UPSCALER_OPTION_HDR_COLOR_INPUT',
-           'FFX_FSR3UPSCALER_OPTION_LOW_RESOLUTION_MOTION_VECTORS', 'FFX_FSR3UPSCALER_OPTION_JITTERED_MOTION_VECTORS',
-           'FFX_FSR3UPSCALER_OPTION_INVERTED_DEPTH', 'FFX_FSR3UPSCALER_OPTION_APPLY_SHARPENING']
-BASE = ['-V', '--target-env', 'vulkan1.2', '-S', 'comp', '-Os', '-DFFX_GLSL=1', '-DFFX_GPU=1', '-DFFX_HALF=0',
-        '-DFFX_FSR3UPSCALER_OPTION_UPSAMPLE_SAMPLERS_USE_DATA_HALF=0',
-        '-DFFX_FSR3UPSCALER_OPTION_ACCUMULATE_SAMPLERS_USE_DATA_HALF=0',
-        '-DFFX_FSR3UPSCALER_OPTION_REPROJECT_SAMPLERS_USE_DATA_HALF=1',
-        '-DFFX_FSR3UPSCALER_OPTION_POSTPROCESSLOCKSTATUS_SAMPLERS_USE_DATA_HALF=0',
-        '-DFFX_FSR3UPSCALER_OPTION_UPSAMPLE_USE_LANCZOS_TYPE=2']
-# The options native/ffx/cxfsr.cpp's CXFSR_FLAGS fix at context creation: HDR colour, render-size and unjittered motion,
-# inverted depth. Only Lanczos and sharpening vary per pass, so 4 of the 64 keys are reachable. The rest index an empty
-# entry: a flag change there fails FSR's context creation, which CX refuses loudly, instead of running a wrong shader.
-FIXED = {'FFX_FSR3UPSCALER_OPTION_HDR_COLOR_INPUT': 1, 'FFX_FSR3UPSCALER_OPTION_LOW_RESOLUTION_MOTION_VECTORS': 1,
-         'FFX_FSR3UPSCALER_OPTION_JITTERED_MOTION_VECTORS': 0, 'FFX_FSR3UPSCALER_OPTION_INVERTED_DEPTH': 1}
-KEYS = [k for k in range(1 << len(OPTIONS)) if all((k >> OPTIONS.index(o)) & 1 == v for o, v in FIXED.items())]
+BASE = ['-V', '--target-env', 'vulkan1.2', '-S', 'comp', '-Os', '-DFFX_GLSL=1', '-DFFX_GPU=1', '-DFFX_HALF=0']
+
+
+class Effect:
+    """One SDK component: its options in key-bit order, the ones its context flags fix, and its own compile defines."""
+
+    def __init__(self, folder, options, fixed, defines=()):
+        self.folder, self.options, self.fixed, self.defines = folder, options, fixed, list(defines)
+        self.keys = [k for k in range(1 << len(options)) if all((k >> options.index(o)) & 1 == v for o, v in fixed.items())]
+
+
+# FSR: HDR colour, render-size and unjittered motion, inverted depth, as CXFSR_FLAGS fixes them at context creation. Only
+# Lanczos and sharpening vary per pass, so 4 of the 64 keys are reachable. The rest index an empty entry: a flag change
+# there fails the context's creation, which CX refuses loudly, instead of running a wrong shader.
+# DoF: reverse depth, rings merged and a separate output, as CXDOF_FLAGS fixes them: one key of the 8.
+EFFECTS = [
+    Effect('fsr3upscaler',
+           ['FFX_FSR3UPSCALER_OPTION_REPROJECT_USE_LANCZOS_TYPE', 'FFX_FSR3UPSCALER_OPTION_HDR_COLOR_INPUT',
+            'FFX_FSR3UPSCALER_OPTION_LOW_RESOLUTION_MOTION_VECTORS', 'FFX_FSR3UPSCALER_OPTION_JITTERED_MOTION_VECTORS',
+            'FFX_FSR3UPSCALER_OPTION_INVERTED_DEPTH', 'FFX_FSR3UPSCALER_OPTION_APPLY_SHARPENING'],
+           {'FFX_FSR3UPSCALER_OPTION_HDR_COLOR_INPUT': 1, 'FFX_FSR3UPSCALER_OPTION_LOW_RESOLUTION_MOTION_VECTORS': 1,
+            'FFX_FSR3UPSCALER_OPTION_JITTERED_MOTION_VECTORS': 0, 'FFX_FSR3UPSCALER_OPTION_INVERTED_DEPTH': 1},
+           ['-DFFX_FSR3UPSCALER_OPTION_UPSAMPLE_SAMPLERS_USE_DATA_HALF=0',
+            '-DFFX_FSR3UPSCALER_OPTION_ACCUMULATE_SAMPLERS_USE_DATA_HALF=0',
+            '-DFFX_FSR3UPSCALER_OPTION_REPROJECT_SAMPLERS_USE_DATA_HALF=1',
+            '-DFFX_FSR3UPSCALER_OPTION_POSTPROCESSLOCKSTATUS_SAMPLERS_USE_DATA_HALF=0',
+            '-DFFX_FSR3UPSCALER_OPTION_UPSAMPLE_USE_LANCZOS_TYPE=2']),
+    Effect('dof',
+           ['FFX_DOF_OPTION_MAX_RING_MERGE_LOG', 'FFX_DOF_OPTION_COMBINE_IN_PLACE', 'FFX_DOF_OPTION_REVERSE_DEPTH'],
+           {'FFX_DOF_OPTION_MAX_RING_MERGE_LOG': 1, 'FFX_DOF_OPTION_COMBINE_IN_PLACE': 0, 'FFX_DOF_OPTION_REVERSE_DEPTH': 1}),
+]
 VARIANTS = ['_wave64', '_16bit', '_wave64_16bit']
 KINDS = ['CBV', 'TextureSRV', 'TextureUAV', 'BufferSRV', 'BufferUAV', 'Sampler', 'RTAccelerationStructure']
 
@@ -75,11 +91,11 @@ def reflect(spv):
     return sorted(out, key=lambda r: (r[4], r[2]))
 
 
-def compile_pass(glslang, sdk, src, out, key):
+def compile_pass(glslang, sdk, effect, src, out, key):
     gpu = sdk / 'include/FidelityFX/gpu'
     tmp = out / f'{src.stem}_{key}.spv'
-    defs = [f'-D{o}={(key >> b) & 1}' for b, o in enumerate(OPTIONS)]
-    r = subprocess.run([glslang, *BASE, *defs, f'-I{gpu}', f'-I{gpu / "fsr3upscaler"}', '-o', str(tmp), str(src)],
+    defs = [f'-D{o}={(key >> b) & 1}' for b, o in enumerate(effect.options)]
+    r = subprocess.run([glslang, *BASE, *effect.defines, *defs, f'-I{gpu}', f'-I{gpu / effect.folder}', '-o', str(tmp), str(src)],
                        capture_output=True, text=True)
     if r.returncode != 0:
         sys.exit(f'!! {src.name} permutation {key}:\n{r.stdout}{r.stderr}')
@@ -88,8 +104,8 @@ def compile_pass(glslang, sdk, src, out, key):
     return spv
 
 
-def write_pass(name, perms, out):
-    unique, index = {}, [0] * (1 << len(OPTIONS))
+def write_pass(name, effect, perms, out):
+    unique, index = {}, [0] * (1 << len(effect.options))
     for key, spv in perms.items():
         digest = hashlib.md5(spv).hexdigest()
         unique.setdefault(digest, spv)
@@ -108,7 +124,7 @@ def write_pass(name, perms, out):
         lines.append(f'static const unsigned char g_{pn}_data[] = {{\n{body}\n}};\n')
         (out / f'{pn}.h').write_text('\n'.join(lines))
     hdr = ['#pragma once'] + [f'#include "{name}_{d}.h"' for d in unique] + ['', f'typedef union {name}_PermutationKey {{', '    struct {']
-    hdr += [f'        uint32_t {o} : 1;' for o in OPTIONS] + ['    };', '    uint32_t index;', f'}} {name}_PermutationKey;', '']
+    hdr += [f'        uint32_t {o} : 1;' for o in effect.options] + ['    };', '    uint32_t index;', f'}} {name}_PermutationKey;', '']
     hdr += [f'typedef struct {name}_PermutationInfo {{', '    const uint32_t       blobSize;', '    const unsigned char* blobData;', '']
     for field, cap in (('constantBuffer', 'ConstantBuffers'), ('srvTexture', 'SRVTextures'), ('uavTexture', 'UAVTextures'),
                        ('srvBuffer', 'SRVBuffers'), ('uavBuffer', 'UAVBuffers'), ('sampler', 'Samplers'),
@@ -139,11 +155,12 @@ def write_pass(name, perms, out):
 def main():
     glslang, sdk, out = sys.argv[1], pathlib.Path(sys.argv[2]), pathlib.Path(sys.argv[3])
     out.mkdir(parents=True, exist_ok=True)
-    srcs = sorted((sdk / 'src/backends/vk/shaders/fsr3upscaler').glob('*.glsl'))
     with ThreadPoolExecutor(os.cpu_count()) as pool:
-        jobs = {s: {k: pool.submit(compile_pass, glslang, sdk, s, out, k) for k in KEYS} for s in srcs}
-        for s, fs in jobs.items():
-            write_pass(s.stem, {k: f.result() for k, f in fs.items()}, out)
+        for effect in EFFECTS:
+            srcs = sorted((sdk / f'src/backends/vk/shaders/{effect.folder}').glob('*.glsl'))
+            jobs = {s: {k: pool.submit(compile_pass, glslang, sdk, effect, s, out, k) for k in effect.keys} for s in srcs}
+            for s, fs in jobs.items():
+                write_pass(s.stem, effect, {k: f.result() for k, f in fs.items()}, out)
 
 
 if __name__ == '__main__':

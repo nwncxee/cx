@@ -18,6 +18,10 @@ internal static partial class WorldDepth
     /// <summary>The test a fragment at or nearer than the stored depth passes.</summary>
     internal const CompareOp NearerOrEqual = CompareOp.GreaterEqual;
 
+    /// <summary>The terms of the one decode from a world depth d to metres from the eye, <c>A / (d + B)</c>, from the planes:
+    /// the folded projection's M43 and M33.</summary>
+    internal static (float A, float B) Decode(float near, float far) => (far * near / (far - near), near / (far - near));
+
     /// <summary>GL projection or view-projection <paramref name="gl"/> as the world programs draw with it: clip z
     /// becomes <c>(w - z) / 2</c>, so the near plane lands at depth 1 and the far at 0. Folded in double, before
     /// any vertex is multiplied, which is where reversed-Z's precision comes from.</summary>

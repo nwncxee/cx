@@ -299,6 +299,8 @@ offset	ShaderExposedRuntimeData	camPos	0x64	0x64	# RtCamPos
 offset	ShaderExposedRuntimeData	camPitch	0x84	0x84	# RtCamPitch
 offset	ShaderExposedRuntimeData	camDist	0x8c	0x8c	# RtCamDist
 offset	ShaderExposedRuntimeData	camFocus	0x90	0x90	# RtCamFocus
+offset	ShaderExposedRuntimeData	dialogCamera	0x9c	0x9c	# RtDialogCamera
+offset	ShaderExposedRuntimeData	inCutscene	0xa0	0xa0	# RtInCutscene
 offset	Material	slotStride	0x10	0x10	# MatSlotStride
 offset	SharedMaterial	slot0	0xd8	0xd8	# SharedSlot0
 offset	CRes	sizeof	0x60	0x60	# SizeOfCRes

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# FSR 3.1's sources for the native builds: AMD's SDK 1.1.4 fetched (tools/deps.json), patched
+# FSR 3.1's and FidelityFX DoF's sources for the native builds: AMD's SDK 1.1.4 fetched (tools/deps.json), patched
 # (native/ffx/sdk-1.1.4.patch) into build/ffx/sdk, and its Vulkan shader headers generated into
 # build/ffx/shaders. Each step reruns only when its inputs are newer. The caller compiles.
 # Usage: tools/ffx/prepare.sh <python> <glslang>
@@ -16,7 +16,7 @@ if [ ! -f build/ffx/sdk/.patched ] || [ native/ffx/sdk-1.1.4.patch -nt build/ffx
 fi
 if [ ! -f build/ffx/shaders/.stamp ] || [ tools/ffx/ffx_shaders.py -nt build/ffx/shaders/.stamp ] \
    || [ build/ffx/sdk/.patched -nt build/ffx/shaders/.stamp ]; then
-  echo ">> generating FSR 3.1's shader permutations (once)..."
+  echo ">> generating FSR 3.1's and DoF's shader permutations (once)..."
   rm -rf build/ffx/shaders
   "$PY" tools/ffx/ffx_shaders.py "$GLSLANG" build/ffx/sdk build/ffx/shaders
   touch build/ffx/shaders/.stamp

@@ -6,3 +6,5 @@ shared/ffx_assert.cpp
 shared/ffx_message.cpp
 shared/ffx_breadcrumbs_list.cpp
 shared/ffx_object_management.cpp
+components/dof/ffx_dof.cpp
+backends/shared/blob_accessors/ffx_dof_shaderblobs.cpp

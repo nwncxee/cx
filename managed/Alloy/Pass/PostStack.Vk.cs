@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using CX.Engine;
 using CX.Framework;
 using CX.Graphics;
 using CX.Graphics.Rhi;
@@ -89,7 +90,9 @@ internal static unsafe partial class PostStack
         if (!PostChainVk.Ensure(vk, log)) return false;
         int dw = display[2], dh = display[3];
         int* full = stackalloc int[4] { 0, 0, dw, dh };
+        int depthW = viewport[2], depthH = viewport[3];
         bool fsr = FsrVk(vk, s, cl, ref hdr, depth, vp, vpClean, ref viewport, full, near, far, fovY, log);
+        DofVk(vk, cl, ref hdr, depth, viewport, dw, dh, depthW, depthH, near, far, fovY, log);
         int live = 0;
         string missing = "";
         bool taa = false;
@@ -353,6 +356,18 @@ internal static unsafe partial class PostStack
         hdr = s.FsrOut;
         viewport = full;
         return true;
+    }
+
+    /// <summary>Depth of field on this frame's full-window perspective view, on the colour FSR left when it drew. Depth stays at
+    /// <paramref name="depthW"/> x <paramref name="depthH"/>, the render size.</summary>
+    private static void DofVk(VkBackend vk, CommandList cl, ref ImageId hdr, ImageId depth, int* viewport, int dw, int dh, int depthW, int depthH,
+                              float near, float far, float fovY, ExtenderLog log)
+    {
+        if (!DepthOfField.Wanted || fovY <= 0f || vk.FrameSize != (dw, dh)) return;
+        DepthOfField.Scene scene = DepthOfField.EngineScene();
+        DepthOfField.Record(vk, cl, ref hdr, depth, viewport[2], viewport[3], in scene, Fsr.FrameMs() / 1000f, near, far, log);
+        ShaderExposedRuntimeData rt = AlloyRenderer.Rt;
+        DepthOfField.AskDepths(vk, cl, depth, dw, dh, depthW, depthH, in scene, rt.MouseX, rt.MouseY, near, far, log);
     }
 
     /// <summary>The accumulator: this frame against the reprojected, clipped history into the other history image,

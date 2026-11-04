@@ -1,4 +1,4 @@
-AMD FidelityFX SDK 1.1.4 as CX builds its FSR 3.1 upscaler: `patch -p1` inside FidelityFX-SDK-1.1.4.
+AMD FidelityFX SDK 1.1.4 as CX builds FSR 3.1 and FidelityFX DoF: `patch -p1` inside FidelityFX-SDK-1.1.4.
 1. ffx_types.h: the default context size can be overridden (build.sh sets it on Linux).
 2. ffx_vk.cpp: the scratch arrays are 64-byte aligned.
 3. ffx_vk.cpp: the descriptor pool is sized for 16 descriptors per set, and counts all six of its sizes.
@@ -8,6 +8,15 @@ AMD FidelityFX SDK 1.1.4 as CX builds its FSR 3.1 upscaler: `patch -p1` inside F
 6. ffx_vk.cpp: off Windows, the debug-name conversions copy ASCII instead of calling std::wstring_convert, so the
    library needs no C++ runtime.
 7. ffx_vk.cpp: a permutation with no compiled shader fails pipeline creation, in release builds too.
+8. ffx_dof.h, ffx_dof_private.h, ffx_dof.cpp, ffx_dof_callbacks_glsl.h: the circle of confusion grows in metres past a
+   flat sharp band, as stock's confusion does, in place of the thin lens's scale and bias, and the helpers that worked
+   those out are gone.
+9. ffx_dof.cpp, ffx_dof_callbacks_glsl.h: the effect's images and its output are 16-bit floats at either precision.
+10. ffx_dof_callbacks_glsl.h: the composite and colour passes find depth from a colour pixel by its place in the frame,
+    so depth may be smaller than colour, as it is under FSR.
+11. ffx_dof_blur.h: the per-pixel jitter on the kernel is gone. It shows as grain with no temporal pass after it.
+12. ffx_dof_callbacks_glsl.h: the kernel reads the colour mips filtered where the circle is smooth. Point-sampled, a blur
+    wider than the kernel's rings shows stairs along every edge. Filtered across a silhouette, a sharp colour leaks.
 1 to 4 follow the fixes JonathanOrr/xplane-fsr3 found (MIT; its notice is in LICENSES.txt).
 
 --- a/sdk/include/FidelityFX/gpu/fsr3upscaler/ffx_fsr3upscaler_callbacks_glsl.h
@@ -179,3 +188,286 @@ AMD FidelityFX SDK 1.1.4 as CX builds its FSR 3.1 upscaler: `patch -p1` inside F
  
      //////////////////////////////////////////////////////////////////////////
      // One root signature (or pipeline layout) per pipeline
+--- a/sdk/include/FidelityFX/host/ffx_dof.h
++++ b/sdk/include/FidelityFX/host/ffx_dof.h
+@@ -58,7 +58,7 @@
+ /// The size of the context specified in 32bit values.
+ ///
+ /// @ingroup ffxDof
+-#define FFX_DOF_CONTEXT_SIZE  (45674)
++#define FFX_DOF_CONTEXT_SIZE  (45674 * 2)  // CX: a 4-byte wchar_t doubles the private context
+ 
+ #if defined(__cplusplus)
+ extern "C" {
+@@ -115,8 +115,13 @@
+     FfxResource                 color;              ///< The <c><i>FfxResource</i></c> containing color information
+     FfxResource                 depth;              ///< The <c><i>FfxResource</i></c> containing depth information
+     FfxResource                 output;             ///< The <c><i>FfxResource</i></c> to output into. Can be the same as the color input.
+-    float                       cocScale;           ///< The factor converting depth to circle of confusion size. Can be calculated using ffxDofCalculateCocScale.
+-    float                       cocBias;            ///< The bias to apply to circle of confusion size. Can be calculated using ffxDofCalculateCocBias.
++    float                       cocScale;           ///< CX: half-size pixels of circle of confusion per metre past the sharp band.
++    float                       cocFocusNear;       ///< CX: the nearer edge of the sharp band, in metres.
++    float                       cocFocusFar;        ///< CX: the farther edge of the sharp band, in metres.
++    float                       cocDepthA;          ///< CX: a reversed depth d is A / (d + B) metres from the eye.
++    float                       cocDepthB;          ///< CX: as cocDepthA.
++    float                       cocDepthMin;        ///< CX: nearer than this blurs as this distance does.
++    float                       cocDepthMax;        ///< CX: farther than this blurs as this distance does.
+ } FfxDofDispatchDescription;
+ 
+ /// A structure encapsulating the FidelityFX Depth of Field context.
+@@ -208,56 +213,3 @@
+ #endif // #if defined(__cplusplus)
+ 
+ 
+-/// Calculates the scale parameter in the thin lens model according to lens and projection parameters.
+-/// @param aperture    Aperture radius in view space units
+-/// @param focus       Distance to focus plane in view space units
+-/// @param focalLength Lens focal length in view space units
+-/// @param conversion  Conversion factor for view units to pixels (i.e. image width in pixels / sensor size)
+-/// @param proj33      Element (3,3) of the projection matrix (z range scale)
+-/// @param proj34      Element (3,4) of the projection matrix (z range offset)
+-/// @param proj43      Element (4,3) of the projection matrix (typically 1 or -1)
+-/// 
+-/// @ingroup ffxDof
+-static inline float ffxDofCalculateCocScale(float aperture, float focus, float focalLength, float conversion,
+-	float proj33, float proj34, float proj43)
+-{
+-    (void)proj33;
+-    // z = (vd * proj33 + proj34) / (vd * proj43) = proj33/proj43 + proj34/(vd*proj43)
+-	// => view depth = proj34 / (z*proj43 - proj33)
+-	// C = (A * L * (F - D)) / (D * (F - L))
+-	//   = AL/(F-L) * (F/D - 1)
+-	//   = AL/(F-L) * (F(z*p43-p33)/p34 - 1) ignore non-factor terms
+-	//   = AL/(F-L) * (F(z*p43-.)/p34 - .)
+-	//   = AL/(F-L) * (F(z*p43-.)/p34 - .)
+-	//   = AL/(F-L) * F*z*p43/p34 + .
+-	//   = z * AL/(F-L) * F*p43/p34 + .
+-    float absFocus  = focus < 0 ? -focus : focus;
+-    float commonFactor = conversion * aperture * focalLength / (absFocus - focalLength);
+-    return commonFactor * focus * (proj43 / proj34);
+-}
+-
+-/// Calculates the bias parameter in the thin lens model according to lens and projection parameters.
+-/// @param aperture    Aperture radius in view space units
+-/// @param focus       Distance to focus plane in view space units
+-/// @param focalLength Lens focal length in view space units
+-/// @param conversion  Conversion factor for view units to pixels (i.e. image width in pixels / sensor size)
+-/// @param proj33      Element (3,3) of the projection matrix (a.k.a. z range scale)
+-/// @param proj34      Element (3,4) of the projection matrix (a.k.a. z range offset)
+-/// @param proj43      Element (4,3) of the projection matrix (typically 1 or -1)
+-/// 
+-/// @ingroup ffxDof
+-static inline float ffxDofCalculateCocBias(float aperture, float focus, float focalLength, float conversion,
+-	float proj33, float proj34, float proj43)
+-{
+-    (void)proj43;
+-    // z = (D * proj33 + proj34) / (D * proj43) = proj33/proj43 + proj34/(D*proj43)
+-	// => view depth D = proj34 / (z*proj43 - proj33)
+-	// C = (A * L * (F - D)) / (D * (F - L))
+-	//   = AL/(F-L) * (F/D - 1)
+-	//   = AL/(F-L) * (F(z*p43-p33)/p34 - 1) ignore factor terms
+-	//   = AL/(F-L) * (F(0*p43-p33)/p34 - 1)
+-	//   = AL/(F-L) * (-F*p33/p34 - 1)
+-    float absFocus  = focus < 0 ? -focus : focus;
+-    float commonFactor = conversion * aperture * focalLength / (absFocus - focalLength);
+-    return commonFactor * (-focus * (proj33 / proj34) - 1);
+-}
+--- a/sdk/src/components/dof/ffx_dof_private.h
++++ b/sdk/src/components/dof/ffx_dof_private.h
+@@ -44,12 +44,17 @@
+ typedef struct DofConstants
+ {
+     float       cocScale;
+-    float       cocBias;
++    float       cocFocusNear;
+     uint32_t    inputSizeHalf[2];
+     uint32_t    inputSize[2];
+     float       inputSizeHalfRcp[2];
+     float       cocLimit;
+     uint32_t    maxRings;
++    float       cocFocusFar;
++    float       cocDepthA;
++    float       cocDepthB;
++    float       cocDepthMin;
++    float       cocDepthMax;
+ } DofConstants;
+ 
+ struct FfxDofContextDescription;
+--- a/sdk/src/components/dof/ffx_dof.cpp
++++ b/sdk/src/components/dof/ffx_dof.cpp
+@@ -24,6 +24,7 @@
+ #include <cstdlib>     // for _countof
+ #include <cmath>       // for fabs, abs, sinf, sqrt, etc.
+ #include <array>
++#include <new>         // CX: the placement new below
+ 
+ #define FFX_CPU
+ #include <FidelityFX/host/ffx_dof.h>
+@@ -297,7 +298,12 @@
+     // Constant buffer
+     DofConstants cbuffer = {};
+     cbuffer.cocScale = params->cocScale;
+-    cbuffer.cocBias = params->cocBias;
++    cbuffer.cocFocusNear = params->cocFocusNear;
++    cbuffer.cocFocusFar = params->cocFocusFar;
++    cbuffer.cocDepthA = params->cocDepthA;
++    cbuffer.cocDepthB = params->cocDepthB;
++    cbuffer.cocDepthMin = params->cocDepthMin;
++    cbuffer.cocDepthMax = params->cocDepthMax;
+     cbuffer.inputSize[0] = context->contextDescription.resolution.width;
+     cbuffer.inputSize[1] = context->contextDescription.resolution.height;
+     cbuffer.inputSizeHalf[0] = (cbuffer.inputSize[0] + 1) / 2;
+@@ -357,7 +363,8 @@
+     uint32_t halfHeight = (contextDescription->resolution.height + 1) / 2;
+     uint32_t tileWidth = (halfWidth + 3) / 4;
+     uint32_t tileHeight = (halfHeight + 4) / 4;
+-    bool is16bit = context->deviceCapabilities.fp16Supported;
++    // CX: 16-bit images whatever the shader's precision; cxfsr.cpp reports no device extension, so fp16Supported is false.
++    bool is16bit = true;
+     FfxInternalResourceDescription internalSurfaceDesc[] = {
+         {FFX_DOF_RESOURCE_IDENTIFIER_INTERNAL_BILAT_COLOR,
+          L"DOF_InternalBilatColor",
+--- a/sdk/include/FidelityFX/gpu/dof/ffx_dof_callbacks_glsl.h
++++ b/sdk/include/FidelityFX/gpu/dof/ffx_dof_callbacks_glsl.h
+@@ -32,13 +32,18 @@
+     layout (set = 0, binding = FFX_DOF_BIND_CB_DOF, std140) uniform cbDOF_t
+     {
+         FfxFloat32   cocScale;
+-        FfxFloat32   cocBias;
++        FfxFloat32   cocFocusNear;
+         FfxUInt32x2  inputSizeHalf;
+         FfxUInt32x2  inputSize;
+         FfxFloat32x2 inputSizeHalfRcp;
+         FfxFloat32   cocLimit;
+         FfxUInt32    maxRings;
+-    #define FFX_DOF_CONSTANT_BUFFER_1_SIZE 10  // Number of 32-bit values. This must be kept in sync with the cbDOF size.
++        FfxFloat32   cocFocusFar;
++        FfxFloat32   cocDepthA;
++        FfxFloat32   cocDepthB;
++        FfxFloat32   cocDepthMin;
++        FfxFloat32   cocDepthMax;
++    #define FFX_DOF_CONSTANT_BUFFER_1_SIZE 15  // Number of 32-bit values. This must be kept in sync with the cbDOF size.
+     } cbDOF;
+ #endif
+ 
+@@ -47,11 +52,6 @@
+     return cbDOF.cocScale;
+ }
+ 
+-FfxFloat32 CocBias()
+-{
+-    return cbDOF.cocBias;
+-}
+-
+ FfxUInt32x2 InputSizeHalf()
+ {
+     return cbDOF.inputSizeHalf;
+@@ -82,11 +82,8 @@
+ layout (set = 0, binding = 1001)
+ uniform sampler PointSampler;
+ 
+-#if FFX_HALF
++// CX: rgba16f at either precision, the format ffx_dof.cpp creates these images in.
+ #define FFX_DOF_HALF_OPT_LAYOUT rgba16f
+-#else // #if FFX_HALF
+-#define FFX_DOF_HALF_OPT_LAYOUT rgba32f
+-#endif // #if FFX_HALF #else
+ 
+ // SRVs
+ #if defined(FFX_DOF_BIND_SRV_INPUT_DEPTH)
+@@ -112,11 +109,11 @@
+     uniform image2D rw_internal_bilat_color[4];
+ #endif
+ #if defined(FFX_DOF_BIND_UAV_INTERNAL_RADIUS)
+-    layout (set = 0, binding = FFX_DOF_BIND_UAV_INTERNAL_RADIUS, rg32f)
++    layout (set = 0, binding = FFX_DOF_BIND_UAV_INTERNAL_RADIUS, rg16f)
+     uniform image2D rw_internal_radius;
+ #endif
+ #if defined(FFX_DOF_BIND_UAV_INTERNAL_DILATED_RADIUS)
+-    layout (set = 0, binding = FFX_DOF_BIND_UAV_INTERNAL_DILATED_RADIUS, rg32f)
++    layout (set = 0, binding = FFX_DOF_BIND_UAV_INTERNAL_DILATED_RADIUS, rg16f)
+     uniform image2D rw_internal_dilated_radius;
+ #endif
+ #if defined(FFX_DOF_BIND_UAV_INTERNAL_NEAR)
+@@ -128,7 +125,7 @@
+     uniform image2D rw_internal_far;
+ #endif
+ #if defined(FFX_DOF_BIND_UAV_OUTPUT_COLOR)
+-    layout (set = 0, binding = FFX_DOF_BIND_UAV_OUTPUT_COLOR, rgba32f)
++    layout (set = 0, binding = FFX_DOF_BIND_UAV_OUTPUT_COLOR, rgba16f)
+     uniform image2D rw_output_color;
+ #endif
+ #if defined(FFX_DOF_BIND_UAV_INTERNAL_GLOBALS)
+@@ -155,8 +152,11 @@
+ #if defined(FFX_DOF_BIND_CB_DOF)
+ FfxFloat32 FfxDofGetCoc(FfxFloat32 depth)
+ {
++    // CX: no blur in the sharp band; past it the circle grows with the metres from the band's edge, positive when nearer.
++    FfxFloat32 z = clamp(cbDOF.cocDepthA / (depth + cbDOF.cocDepthB), cbDOF.cocDepthMin, cbDOF.cocDepthMax);
++    FfxFloat32 delta = clamp(z, cbDOF.cocFocusNear, cbDOF.cocFocusFar) - z;
+     // clamped for perf reasons
+-    return clamp(CocScale() * depth + CocBias(), -CocLimit(), CocLimit());
++    return clamp(CocScale() * delta, -CocLimit(), CocLimit());
+ }
+ #endif // #if defined(FFX_DOF_BIND_CB_DOF)
+ 
+@@ -190,7 +190,11 @@
+ #if defined(FFX_DOF_BIND_CB_DOF)
+ FfxHalfOpt4 FfxDofSampleInput(FfxFloat32x2 coord, FfxUInt32 mip)
+ {
+-    return FfxHalfOpt4(textureLod(sampler2D(r_internal_bilat_color, PointSampler), coord, mip));
++    // CX: filtered, so a blur wider than the kernel's rings shows no stairs. Where the circle jumps a filtered texel mixes a sharp
++    // colour with a blurred circle, and the kernel would take it for the blurred side, so there it stays unmixed.
++    FfxHalfOpt4 filtered = FfxHalfOpt4(textureLod(sampler2D(r_internal_bilat_color, LinearSampler), coord, mip));
++    FfxHalfOpt4 nearest = FfxHalfOpt4(textureLod(sampler2D(r_internal_bilat_color, PointSampler), coord, mip));
++    return abs(filtered.a - nearest.a) > FfxHalfOpt(0.5) ? nearest : filtered;
+ }
+ #endif // #if defined(FFX_DOF_BIND_CB_DOF)
+ #endif // #if defined(FFX_DOF_BIND_SRV_INTERNAL_BILAT_COLOR)
+@@ -203,7 +207,10 @@
+ 
+ FfxFloat32 FfxDofLoadFullDepth(FfxUInt32x2 coord)
+ {
+-    return texelFetch(sampler2D(r_input_depth, LinearSampler), ivec2(coord), 0).r;
++    // CX: coord is a colour pixel, and under FSR depth stays at the render size. Filtered, so a silhouette has no stairs.
++    if (textureSize(r_input_depth, 0) == ivec2(InputSize()))
++        return texelFetch(sampler2D(r_input_depth, LinearSampler), ivec2(coord), 0).r;
++    return textureLod(sampler2D(r_input_depth, LinearSampler), (FfxFloat32x2(coord) + 0.5) / FfxFloat32x2(InputSize()), 0).r;
+ }
+ #endif // #if defined(FFX_DOF_BIND_SRV_INPUT_DEPTH)
+ 
+--- a/sdk/include/FidelityFX/gpu/dof/ffx_dof_blur.h
++++ b/sdk/include/FidelityFX/gpu/dof/ffx_dof_blur.h
+@@ -557,32 +557,6 @@
+ 	ins.tileCoc = tileRad;
+ 
+ 	FfxFloat32x2 texcoord = FfxFloat32x2(id) + FfxFloat32x2(0.25, 0.25); // shift to center of top-left pixel in quad
+-	// Add noise to reduce banding (if too noisy, this could be disabled)
+-	{
+-		/* hash22 adapted from https://www.shadertoy.com/view/4djSRW
+-		Copyright (c)2014 David Hoskins.
+-
+-Permission is hereby granted, free of charge, to any person obtaining a copy
+-of this software and associated documentation files (the "Software"), to deal
+-in the Software without restriction, including without limitation the rights
+-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+-copies of the Software, and to permit persons to whom the Software is
+-furnished to do so, subject to the following conditions:
+-
+-The above copyright notice and this permission notice shall be included in all
+-copies or substantial portions of the Software.
+-
+-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+-SOFTWARE.*/
+-		FfxFloat32x3 p3 = ffxFract(texcoord.xyx * FfxFloat32x3(0.1031, 0.1030, 0.0973));
+-		p3 += dot(p3, p3.yzx + 33.33);
+-		texcoord += ffxFract((p3.xx+p3.yz)*p3.zy) * 0.5 - 0.25;
+-	}
+ 	ins.pxCoord = texcoord;
+ 
+ 	FfxFloat32 centerCoc = FfxDofLoadInput(id).a;

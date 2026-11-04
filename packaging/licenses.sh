@@ -8,7 +8,7 @@ here=$(cd "$(dirname "$0")/.." && pwd)
   echo "==============================="
   echo
   echo "The extender itself is MIT licensed. It links funchook (GPLv2+ with a linking"
-  echo "exception), diStorm3 (BSD 3-clause), xatlas (MIT) and the FSR 3.1 upscaler from AMD's"
+  echo "exception), diStorm3 (BSD 3-clause), xatlas (MIT) and FSR 3.1 and depth of field from AMD's"
   echo "FidelityFX SDK 1.1.4 (MIT, with CX's patches in native/ffx), and embeds the SMAA lookup"
   echo "tables (MIT) and the DejaVu Sans font (Bitstream Vera license). It ships, as separate"
   echo "unmodified libraries, OpenAL Soft 1.25.2 (LGPL-2.1: libopenal.so.1 / cx_openal.dll,"
