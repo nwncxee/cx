@@ -20,7 +20,7 @@ public static unsafe partial class DbAnim
         SceneDb.SceneAnimOn[panel.Index] = true;
         try
         {
-            ViewLatch(Vector3.Zero, Vector3.UnitY, 45f, 1.8f, 0.1f, 200f, default, hasSun: false);
+            ViewLatch(Vector3.Zero, Vector3.UnitY, 45f, 1.8f, 0.1f, 200f, default, hasSun: false, 0f);
             ClockPausesOutOfView(check, world);
             ClockRunsInView(check, world);
             UnseenEventsAreSilent(check, log, world);
@@ -32,6 +32,10 @@ public static unsafe partial class DbAnim
             PanelsAlwaysAnimate(check, panel);
             NoRestPoseOnFirstLook(check, world);
             ClicksStillLand(check, world);
+            LongDawnShadow(check, world);
+            LampShadowsKeepMoving(check, world);
+            ExternalAnimateSteps(check, world);
+            HoldForgetsTheRateBand(check, world);
         }
         finally
         {
@@ -164,14 +168,14 @@ public static unsafe partial class DbAnim
     {
         var offRight = new Vector4(60f, 50f, 0f, 5f);
         DbId obj = Walker(Chain(), world, offRight, out int first);
-        ViewLatch(Vector3.Zero, Vector3.UnitY, 45f, 1.8f, 0.1f, 200f, Vector3.Normalize(new Vector3(-1f, 0f, -0.3f)), hasSun: true);
+        ViewLatch(Vector3.Zero, Vector3.UnitY, 45f, 1.8f, 0.1f, 200f, Vector3.Normalize(new Vector3(-1f, 0f, -0.3f)), hasSun: true, 60f);
         Step(obj, 0.25f);
         check.Expect(NearV(SceneDb.PartPos[first + 1], new Vector3(1.5f, 0f, 0f)), "a sun throwing its shadow into view keeps it walking");
-        ViewLatch(Vector3.Zero, Vector3.UnitY, 45f, 1.8f, 0.1f, 200f, Vector3.Normalize(new Vector3(1f, 0f, -0.3f)), hasSun: true);
+        ViewLatch(Vector3.Zero, Vector3.UnitY, 45f, 1.8f, 0.1f, 200f, Vector3.Normalize(new Vector3(1f, 0f, -0.3f)), hasSun: true, 60f);
         SceneDb.ObjSphere[obj.Index] = offRight;
         Step(obj, 0.25f);
         check.Expect(NearV(SceneDb.PartPos[first + 1], new Vector3(1.5f, 0f, 0f)), "a sun throwing it away from the view holds it");
-        ViewLatch(Vector3.Zero, Vector3.UnitY, 45f, 1.8f, 0.1f, 200f, default, hasSun: false);
+        ViewLatch(Vector3.Zero, Vector3.UnitY, 45f, 1.8f, 0.1f, 200f, default, hasSun: false, 0f);
     }
 
     // Given a flickering lamp outside the camera's view whose light reaches into it
@@ -230,5 +234,60 @@ public static unsafe partial class DbAnim
         HitBounds.Refresh(obj.Index);
         float away = (SceneDb.HitObjSphereC[obj.Index] - new Vector3(20f, 0f, 0f)).Length();
         check.Expect(away < 6f, $"the hit test's bounds follow a held object to where it stands ({away:F1} m off)");
+    }
+
+    /// <summary>A low sun's shadow runs as far as the cascades bake it, not a few of the caster's own heights.
+    /// Oracle: 65 m along the sun at 60 m of shadow lands 5.6 m right of centre, inside the 37 m half-width.</summary>
+    private static void LongDawnShadow(Checker check, DbId world)
+    {
+        var upSun = new Vector4(65f, 50f, 0f, 1.5f);
+        DbId obj = Walker(Chain(), world, upSun, out int first);
+        ViewLatch(Vector3.Zero, Vector3.UnitY, 45f, 1.8f, 0.1f, 200f, Vector3.Normalize(new Vector3(-1f, 0f, -0.1f)), hasSun: true, 60f);
+        Step(obj, 0.25f);
+        check.Expect(NearV(SceneDb.PartPos[first + 1], new Vector3(1.5f, 0f, 0f)), "a dawn shadow 40 heights long keeps its caster walking");
+        ViewLatch(Vector3.Zero, Vector3.UnitY, 45f, 1.8f, 0.1f, 200f, default, hasSun: false, 0f);
+    }
+
+    /// <summary>A lamp's shadow is the cube pass's cone. Oracle: the view's right edge at 50 m is 37.3 m, so a
+    /// sphere at 45 m is out, and a 15 m lamp 2 m past it throws the shadow back in to 32 m.</summary>
+    private static void LampShadowsKeepMoving(Checker check, DbId world)
+    {
+        var offRight = new Vector4(45f, 50f, 0f, 1.5f);
+        DbId obj = Walker(Chain(), world, offRight, out int first);
+        FrameInputs.ResetLocalLights(4);
+        FrameInputs.RecordLocalLight(1, new Vector3(47f, 50f, 0f), 15f, Vector3.One);
+        FrameInputs.RecordLocalLight(2, new Vector3(120f, 50f, 0f), 5f, Vector3.One);
+        ViewGatherLamps();
+        check.Expect(_view.LampCount == 1, "only a lamp whose lit sphere reaches the view can shade it");
+        Step(obj, 0.25f);
+        check.Expect(NearV(SceneDb.PartPos[first + 1], new Vector3(1.5f, 0f, 0f)), "a lamp throwing its shadow into view keeps it walking");
+        FrameInputs.ResetLocalLights(4);
+        FrameInputs.RecordLocalLight(1, new Vector3(100f, 50f, 0f), 60f, Vector3.One);
+        ViewGatherLamps();
+        SceneDb.ObjSphere[obj.Index] = new Vector4(300f, 50f, 0f, 1.5f);
+        Step(obj, 0.25f);
+        check.Expect(NearV(SceneDb.PartPos[first + 1], new Vector3(1.5f, 0f, 0f)), "a lamp that never reaches the object holds it");
+        FrameInputs.ResetLocalLights(0);
+        ViewLatch(Vector3.Zero, Vector3.UnitY, 45f, 1.8f, 0.1f, 200f, default, hasSun: false, 0f);
+    }
+
+    /// <summary>The game asking one object to step again, from inside the walk, gets that step. Oracle: the wave's 2 m/s.</summary>
+    private static void ExternalAnimateSteps(Checker check, DbId world)
+    {
+        DbId obj = Walker(Chain(), world, BehindCamera, out int first);
+        AnimateOneExternal(obj, 0.25f);
+        check.Expect(NearV(SceneDb.PartPos[first + 1], new Vector3(1.5f, 0f, 0f)), "an external animate steps an object out of view");
+        check.Expect(_view.On, "...and leaves the gate on for the rest of the walk");
+    }
+
+    /// <summary>A hold leaves no reduced rate behind. Oracle: band 2 is the far band, and 0 is full rate, at a stride of 1.</summary>
+    private static void HoldForgetsTheRateBand(Checker check, DbId world)
+    {
+        DbId obj = Walker(Chain(), world, BehindCamera, out _);
+        _rate.Band[obj.Index] = 2;
+        _rate.Held[obj.Index] = 0.05f;
+        Step(obj, 0.25f);
+        check.Expect(_rate.Band[obj.Index] == 0, "a held object comes back at full rate, so its cloak does not snap rigid");
+        check.Expect(_rate.Held[obj.Index] == 0f, "...with no time banked");
     }
 }

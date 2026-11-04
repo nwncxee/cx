@@ -238,7 +238,11 @@ public static unsafe partial class DbAnim
         // is exactly "let this one object step again". Forcing its own stamp says that without giving every
         // OTHER object a second step this frame.
         _animAt[obj.Index] = 0;
+        // The game asked for this step, possibly from inside the walk, and the gate would swallow it.
+        bool gate = _view.On;
+        _view.On = false;
         StepObject(obj, dt, 0);
+        _view.On = gate;
         ComposePending();
         FrameZones.Add(FrameZones.Zone.Anim, t0);
     }
@@ -284,7 +288,7 @@ public static unsafe partial class DbAnim
         if (held)
         {
             _census.WorldStepsHeld++;
-            _rate.Held[i] = 0f;
+            RateForget(i);
             FinishTail(obj);
             return true;
         }

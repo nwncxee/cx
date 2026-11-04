@@ -3,13 +3,19 @@ using CX.Alloy.Mdl;
 
 namespace CX.Alloy.Db;
 
-/// <summary>The gate's whole state: the view a world walk holds objects against and the tree fact it asks.</summary>
+/// <summary>The gate's whole state: the view a world walk holds objects against, the lights that throw shadows
+/// into it, and the tree fact it asks.</summary>
 internal sealed class ViewGateState
 {
     /// <summary>Near, far and the four sides, inward-facing.</summary>
     public readonly CullPlane[] Planes = new CullPlane[6];
-    /// <summary>Where the sun lands an object's shadow, per metre of the object's height.</summary>
-    public Vector3 ShadowPerHeight;
+    /// <summary>The sun's travel over the longest shadow the cascades bake. Zero with no sun.</summary>
+    public Vector3 SunSweep;
+    /// <summary>The first <see cref="LampCount"/> lamps whose lit sphere reaches the view.</summary>
+    public readonly Vector3[] LampPos = new Vector3[CasterPass.MaxCubes];
+    /// <inheritdoc cref="LampPos"/>
+    public readonly float[] LampReach = new float[CasterPass.MaxCubes];
+    public int LampCount;
     public bool On;
     /// <summary>The object holds a light part, scanned once per part range.</summary>
     public readonly bool[] HasLight = new bool[SceneDb.MaxObjects];
@@ -17,17 +23,10 @@ internal sealed class ViewGateState
 
 /// <summary><c>Gob::Animate</c> @0x59d8c0's gate: past the behaviour solve, an object out of view with a model not
 /// effect-classified advances no clock and fires no event. Alloy's view is the frustum, not the engine's BSP flag,
-/// widened by the lights and shadows it carries in. Off with <c>alloy.animdist</c> 0. ponytail: <c>Gob+0xf0</c>
+/// widened by the shadows and moving lights it carries in. Off with <c>alloy.animdist</c> 0. ponytail: <c>Gob+0xf0</c>
 /// also exempts an object and has no writer but the constructor in the dump, so nothing here reads it.</summary>
 public static unsafe partial class DbAnim
 {
-    /// <summary>How many object heights a low sun's shadow runs, at most: the sun's own stretch past this is a
-    /// shadow too faint to read.</summary>
-    private const float LongestShadowHeights = 4f;
-    /// <summary>How far a lamp's shadow of an object reaches, in sphere radii past the sphere. ponytail: a flat
-    /// estimate for every lamp; the cube pass's own fit is the upgrade if a lamp shadow is seen to freeze.</summary>
-    private const float LampShadowRadii = 2f;
-
     private static ViewGateState _view = new();
 
     /// <summary>Latch the view from the frame's camera and sun for this world walk. No camera stands the gate down.</summary>
@@ -36,25 +35,37 @@ public static unsafe partial class DbAnim
         _view.On = false;
         if (!FrameInputs.HasCamera || !FrameInputs.HasPerspective) return;
         ViewLatch(FrameInputs.CameraPos, FrameInputs.SceneCamFwd, FrameInputs.CamFovy, FrameInputs.CamAspect,
-                  FrameInputs.CamNear, FrameInputs.CamFar, FrameInputs.SunDir, FrameInputs.HasSun);
+                  FrameInputs.CamNear, FrameInputs.CamFar, FrameInputs.SunDir,
+                  FrameInputs.HasSun && !FrameInputs.Interior, Shadows.Dist.V);
+        ViewGatherLamps();
     }
 
+    /// <summary>Hold objects against a camera at <paramref name="pos"/> (angles in degrees) and a sun travelling
+    /// <paramref name="sun"/>, whose shadows run <paramref name="longestShadow"/> at most. Clears the lamps.</summary>
     private static void ViewLatch(Vector3 pos, Vector3 fwd, float fovy, float aspect, float near, float far,
-                                  Vector3 sun, bool hasSun)
+                                  Vector3 sun, bool hasSun, float longestShadow)
     {
         ShadowMath.ReceiverPlanes(pos, fwd, fovy, aspect, near, far, 0f, _view.Planes);
-        _view.ShadowPerHeight = hasSun && sun.Z < 0f ? ShadowPerHeight(sun) : Vector3.Zero;
+        _view.SunSweep = hasSun ? sun * longestShadow : Vector3.Zero;
+        _view.LampCount = 0;
         _view.On = true;
     }
 
-    /// <summary>The sun's travel, scaled so it falls one metre, with its run along the ground capped.</summary>
-    private static Vector3 ShadowPerHeight(Vector3 sun)
+    /// <summary>Take the lamps that can shade the view, by the test the cube pass claims a slot with. ponytail:
+    /// the first ones past the cap and not the nearest; ranking them as the cube pass does is the upgrade if an
+    /// area holds more lit lamps in view than it has cube slots.</summary>
+    private static void ViewGatherLamps()
     {
-        Vector3 s = sun / -sun.Z;
-        float run = new Vector2(s.X, s.Y).Length();
-        if (run <= LongestShadowHeights) return s;
-        float cut = LongestShadowHeights / run;
-        return new Vector3(s.X * cut, s.Y * cut, -1f);
+        ViewGateState g = _view;
+        g.LampCount = 0;
+        for (int i = 0; i < FrameInputs.LocalLightCount && g.LampCount < g.LampPos.Length; i++)
+        {
+            Vector3 p = FrameInputs.LocalLightPos[i];
+            float reach = FrameInputs.LocalLightRange[i];
+            if (!ShadowMath.ShadowReaches(g.Planes, p, reach, p, reach)) continue;
+            g.LampPos[g.LampCount] = p;
+            g.LampReach[g.LampCount++] = reach;
+        }
     }
 
     /// <summary>Does object <paramref name="i"/> sit this step out? Attached objects ask their run root, so a
@@ -68,11 +79,11 @@ public static unsafe partial class DbAnim
         if (!SceneDb.Scenes.Valid(scene) || !SceneDb.SceneIsWorld[scene.Index]) return false;
         ModelDef? m = SceneDb.ObjModel[i];
         if (m == null || (m.Classification & HitTest.ClassEffect) != 0) return false;
-                if (g.HasLight[i] && LightMoves(i)) return false;
+        if (g.HasLight[i] && LightMoves(i)) return false;
         DbId root = SceneDb.ObjRunRoot[i];
         Vector4 s = SceneDb.ObjSphere[SceneDb.Objects.Valid(root) ? root.Index : i];
         if (!(s.W > 0f)) return false;
-        return !ReachesView(new Vector3(s.X, s.Y, s.Z), s.W, g.Planes, g.ShadowPerHeight);
+        return !ReachesView(new Vector3(s.X, s.Y, s.Z), s.W);
     }
 
     /// <summary>Does a part of object <paramref name="i"/> keep its light moving? ponytail: asks no reach, so a
@@ -85,14 +96,18 @@ public static unsafe partial class DbAnim
         return false;
     }
 
-    /// <summary>Can a sphere, or the shadow it casts, land in the view? False only when it and its shadow's far
-    /// end both clear one plane. A plane's clearance is the sphere and a lamp's shadow of it. Pure.</summary>
-    internal static bool ReachesView(Vector3 centre, float radius, ReadOnlySpan<CullPlane> planes, Vector3 shadowPerHeight)
+    /// <summary>Can a sphere, or a shadow the sun or a lit lamp casts of it, land in the view? Conservative, as
+    /// the gather's own test is: a false here casts on no visible pixel.</summary>
+    private static bool ReachesView(Vector3 c, float r)
     {
-        float clear = radius * (1f + LampShadowRadii);
-        Vector3 tip = centre + shadowPerHeight * (2f * radius);
-        foreach (ref readonly CullPlane p in planes)
-            if (p.SignedDistance(centre) < -clear && p.SignedDistance(tip) < -clear) return false;
-        return true;
+        ViewGateState g = _view;
+        if (ShadowMath.ShadowReaches(g.Planes, c, r, c + g.SunSweep, r)) return true;
+        for (int k = 0; k < g.LampCount; k++)
+        {
+            float touch = g.LampReach[k] + r;
+            if ((c - g.LampPos[k]).LengthSquared() < touch * touch
+                && ShadowMath.CubeShadowReaches(g.Planes, c, r, g.LampPos[k], g.LampReach[k])) return true;
+        }
+        return false;
     }
 }
