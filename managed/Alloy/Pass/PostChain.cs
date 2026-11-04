@@ -230,6 +230,10 @@ internal static unsafe class PostChain
     internal const string ShdPostVs = "cx_post_vs", ShdBloomDownFs = "cx_bloomdn_fs";
     internal const string ShdBloomUpFs = "cx_bloomup_fs", ShdResolveFs = "cx_resolve_fs";
 
+    /// <summary>The resref of the chain's compute stage, which folds the two fragment ones into one dispatch per
+    /// level on Vulkan. Overriding either fragment stage stands it down, so the three agree on what the chain is.</summary>
+    internal const string ShdBloomCs = "cx_bloom_cs";
+
     /// <summary>The full-screen triangle every post stage draws: three vertices, no buffers, no attributes.
     /// A triangle rather than a quad because the diagonal seam of a two-triangle quad costs a second
     /// rasterisation of every pixel along it and buys nothing.</summary>

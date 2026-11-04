@@ -2,7 +2,12 @@
 // One bloom level as a dispatch: cx_bloomdown_f's 13-tap downsample (the Karis average and the soft-knee threshold
 // on the first level), or cx_bloomup_f's tent upsample added onto the level it writes. The same taps at the same
 // coordinates, so the chain reads as the fragment one does.
-layout(local_size_x = 8, local_size_y = 8) in;
+// CX_BLOOM_GROUP: the square tile one group covers, which the dispatching side counts groups by, so an override
+// that keeps the macro follows it. The value here is what a standalone compile sees.
+#ifndef CX_BLOOM_GROUP
+#define CX_BLOOM_GROUP 16
+#endif
+layout(local_size_x = CX_BLOOM_GROUP, local_size_y = CX_BLOOM_GROUP) in;
 layout(binding = 0) uniform sampler2D uSrc;
 layout(rgba16f, binding = 0) uniform image2D uDst;
 layout(push_constant) uniform CxBloom { vec2 uTexel; vec2 uThresh; float uExposure; int uFirst; int uUp; };

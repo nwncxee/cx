@@ -197,7 +197,7 @@ internal static unsafe class PostChainVk
         if (!s.CsTried)
         {
             s.CsTried = true;
-            s.BloomCs = vk.CreateCompute(ShaderSource.Get("cx_bloom_cs.glsl"), "bloom compute", "cx_bloom_cs");
+            s.BloomCs = BloomPipe(vk, log);
             if (s.BloomCs.IsNull) log.Always("PostChainVk: the compute bloom was REFUSED (logged above) -- the bloom draws as fragments");
         }
         if (s.BloomCs.IsNull) return false;
@@ -220,8 +220,27 @@ internal static unsafe class PostChainVk
         return true;
     }
 
-    /// <summary>The 8x8 groups covering a <paramref name="w"/> x <paramref name="h"/> level.</summary>
-    private const int BloomGroup = 8;
+    /// <summary>The square tile of a level one group covers, in texels: 256 threads a group, which the device fills
+    /// its warps with where 64 left them a quarter idle.</summary>
+    private const int BloomGroup = 16;
+
+    /// <summary>The define that hands <c>cx_bloom_cs</c> its <see cref="BloomGroup"/>.</summary>
+    private const string BloomGroupDefine = "CX_BLOOM_GROUP";
+
+    /// <summary><c>cx_bloom_cs</c> on one device, its group size the one this file counts groups by. The override is
+    /// read here rather than left to the pipeline, since the define has to reach the text that is built; one that
+    /// does not build falls back, logged, to the embedded stage.</summary>
+    private static PipelineId BloomPipe(VkBackend vk, ExtenderLog log)
+    {
+        string embedded = ShaderStages.Source(PostChain.ShdBloomCs);
+        string over = ShaderResource.Override(PostChain.ShdBloomCs, log) ?? embedded;
+        PipelineId pipe = vk.CreateCompute(BloomText(over), "bloom compute");
+        if (!pipe.IsNull || ReferenceEquals(over, embedded)) return pipe;
+        log.Always($"PostChainVk: the compute bloom's {PostChain.ShdBloomCs} override did not build (logged above) -- building the embedded stage");
+        return vk.CreateCompute(BloomText(embedded), "bloom compute");
+    }
+
+    private static string BloomText(string src) => ShaderStages.WithDefine(src, $"{BloomGroupDefine} {BloomGroup}");
 
     private static void BloomDispatch(CommandList cl, PostVkState s, in BloomPush p, ImageId src, ImageId dst, int w, int h)
     {
