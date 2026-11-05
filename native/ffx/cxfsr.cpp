@@ -108,7 +108,7 @@ struct CxSssrDispatch
     uint32_t envMips;
     float invViewProjection[16], projection[16], invProjection[16], view[16], invView[16], prevViewProjection[16];
     float mvScaleX, mvScaleY, thickness, stability, roughnessCap, variance;
-    uint32_t maxIterations, minOccupancy, samplesPerQuad;
+    uint32_t maxIterations, minOccupancy, samplesPerQuad, varianceGuided;
     float probeAt[3];
 };
 
@@ -367,7 +367,7 @@ int cxsssr_dispatch(CxSssr* c, const CxSssrDispatch* d)
     x.minTraversalOccupancy = d->minOccupancy;
     x.mostDetailedMip = 0;
     x.samplesPerQuad = d->samplesPerQuad;
-    x.temporalVarianceGuidedTracingEnabled = 1;
+    x.temporalVarianceGuidedTracingEnabled = d->varianceGuided;
     memcpy(x.probeAt, d->probeAt, sizeof(x.probeAt));
     return ffxSssrContextDispatch(&c->ctx, &x);
 }

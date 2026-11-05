@@ -93,7 +93,7 @@ public sealed unsafe partial class AlloyRenderer
         ImageId env = VkProbeLive ? _vkProbe.Tex : c.TexCube;
         cl.Sssr(new SssrCmd(c.Hdr, c.Depth, t.Motion, t.Normal, env, t.Out,
                             Ssr.AmdFlipInverse(invVp), Ssr.AmdFlip(proj), Ssr.AmdFlipInverse(invProj), view, invView, Ssr.AmdFlip(prev),
-                            1f / s.W, 1f / s.H, Lighting.SssrThick.V, Lighting.SssrStability.V, Lighting.SsrRough.V, Lighting.SssrSamples.V, EnvProbe.Origin));
+                            1f / s.W, 1f / s.H, Lighting.SssrThick.V, Lighting.SssrStability.V, Lighting.SsrRough.V, Lighting.SssrSamples.V, Lighting.SssrGuided.V, EnvProbe.Origin));
         cl.EndLabel();
         cl.BeginLabel("sssr composite"u8);
         cl.ReadImages([t.Out, s.Pyr, s.RecN, s.RecW, c.Depth]);

@@ -13,7 +13,7 @@ internal static class Lighting
                                          ProbeGain, BinReach, AmbientDir,
                                          Daylight, DayLow, DayHigh, Flicker, FlickerSpeed, SsrRough, Relevance, Floor, FullModel, SssrThick, SssrStability;
     internal static readonly Knob<int> Fadeout, ProbeSize, BinCap, SsrDetail, SsrPlanarRes, SssrSamples;
-    internal static readonly Knob<bool> Probe, ReachFade, HiddenLights, Brdf, Grazing, SpecAa, Ssr, Sssr, SsrPlanar,
+    internal static readonly Knob<bool> Probe, ReachFade, HiddenLights, Brdf, Grazing, SpecAa, Ssr, Sssr, SssrGuided, SsrPlanar,
                                         Deferred, DeferredTiles, DeferredWave, LightRec;
 
     static Lighting()
@@ -110,6 +110,8 @@ internal static class Lighting
                         help: "AMD's stochastic reflections and denoiser in place of Alloy's trace, resolve and history.");
         SssrSamples = G.Dropdown("sssrsamples", "SSSR rays per quad", new[] { 1, 2, 4 }, 1, new[] { "one", "two", "four" },
                                  tier: Tier.ChatOnly, help: "The fewest rays each 2x2 quad traces.");
+        SssrGuided = G.Toggle("sssrguided", "SSSR variance-guided rays", false, Tier.ChatOnly,
+                              help: "A pixel whose history varies traces a ray of its own. At a zero threshold that is nearly every pixel.");
         SssrThick = G.Slider("sssrthick", "SSSR hit thickness", 0.01f, 1f, 0.01f, 0.15f, " m", tier: Tier.ChatOnly,
                              help: "How far behind a surface a ray may land and still count as hitting it.");
         SssrStability = G.Slider("sssrstab", "SSSR temporal stability", 0f, 1f, 0.05f, 0.7f, tier: Tier.ChatOnly,

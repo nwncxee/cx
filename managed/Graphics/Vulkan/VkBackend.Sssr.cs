@@ -15,7 +15,7 @@ internal sealed unsafe partial class VkBackend
         public uint EnvMips;
         public System.Numerics.Matrix4x4 InvVp, Proj, InvProj, View, InvView, PrevVp;
         public float MvScaleX, MvScaleY, Thickness, Stability, RoughnessCap, Variance;
-        public uint MaxIterations, MinOccupancy, SamplesPerQuad;
+        public uint MaxIterations, MinOccupancy, SamplesPerQuad, VarianceGuided;
         public System.Numerics.Vector3 ProbeAt;
     }
 
@@ -95,7 +95,7 @@ internal sealed unsafe partial class VkBackend
             Env = Image(env, 0), Output = Image(output, 1), EnvMips = (uint)env.Desc.Mips,
             InvVp = c.InvVp, Proj = c.Proj, InvProj = c.InvProj, View = c.View, InvView = c.InvView, PrevVp = c.PrevVp,
             MvScaleX = c.MvScaleX, MvScaleY = c.MvScaleY, Thickness = c.Thickness, Stability = c.Stability, RoughnessCap = c.RoughnessCap,
-            Variance = SssrVariance, MaxIterations = SssrMaxIterations, MinOccupancy = SssrMinOccupancy, SamplesPerQuad = (uint)c.SamplesPerQuad,
+            Variance = SssrVariance, MaxIterations = SssrMaxIterations, MinOccupancy = SssrMinOccupancy, SamplesPerQuad = (uint)c.SamplesPerQuad, VarianceGuided = c.VarianceGuided ? 1u : 0u,
             ProbeAt = c.ProbeAt,
         };
         int e = cxsssr_dispatch(_sssr.Ctx, &d);

@@ -92,7 +92,7 @@ public readonly record struct SssrCmd(ImageId Color, ImageId Depth, ImageId Moti
                                       System.Numerics.Matrix4x4 InvVp, System.Numerics.Matrix4x4 Proj, System.Numerics.Matrix4x4 InvProj,
                                       System.Numerics.Matrix4x4 View, System.Numerics.Matrix4x4 InvView, System.Numerics.Matrix4x4 PrevVp,
                                       float MvScaleX, float MvScaleY, float Thickness, float Stability, float RoughnessCap,
-                                      int SamplesPerQuad, System.Numerics.Vector3 ProbeAt);
+                                      int SamplesPerQuad, bool VarianceGuided, System.Numerics.Vector3 ProbeAt);
 
 /// <summary>CPU work waiting on a list's submit: <see cref="Fn"/> gets <see cref="Arg"/> and whether the GPU ran the
 /// submit (false: it was refused, or the device went away first).</summary>
