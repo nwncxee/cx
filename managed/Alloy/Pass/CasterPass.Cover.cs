@@ -86,7 +86,7 @@ public sealed unsafe partial class CasterPass
         if (s.CoverWriting || !vk.DescOf(s.Cascades, out ImageDesc d)) return;
         _coverNew = false;
         int window = CoverWindow(d.W, Weather.CoverRange.V), off = (d.W - window) / 2;
-        if (s.CoverNext.IsNull || s.CoverReadSize != d.W || s.CoverReadWindow != window)
+        if (s.CoverReadSize != d.W || s.CoverReadWindow != window)
         {
             vk.Destroy(s.CoverHeld);
             vk.Destroy(s.CoverNext);
@@ -115,7 +115,7 @@ public sealed unsafe partial class CasterPass
     internal const float CoverBias = 0.002f;
     /// <summary>Metres a foot is read above where it stands, the lift <c>CxWetOpen</c> starts from: the bias is a share
     /// of the cover range, and at a short range it is less than a creature can sit under the drawn floor.</summary>
-    private const float CoverLiftM = 0.12f;
+    internal const float CoverLiftM = 0.12f;
 
     /// <summary>Can the weather reach <paramref name="p"/>? The map the stages read, one texel of it: the snow's own read
     /// feathers about 0.4 m around an eave, so the two can differ there. No map, or past its edge, is open.</summary>
@@ -141,7 +141,6 @@ public sealed unsafe partial class CasterPass
     internal static int CoverWindow(int size, float radius)
     {
         float half = CoverHearingM + radius * CoverSlack;
-        if (half >= radius) return size;
         int w = (int)MathF.Ceiling(size * half / radius);
         return Math.Min(w + (w & 1), size);
     }
@@ -150,7 +149,7 @@ public sealed unsafe partial class CasterPass
     private static bool CoverClears(float z, float stored) => z - CoverBias <= stored;
 
     /// <summary>Where <paramref name="p"/> falls in a <paramref name="size"/> square cover map, and its depth there, as
-    /// <c>CxCovered</c> works them out. False with no map, or past the square of side <paramref name="window"/> kept at its centre.</summary>
+    /// <c>CxCovered</c> works them out from <see cref="CoverLiftM"/> above it. False with no map, or past the square of side <paramref name="window"/> kept at its centre.</summary>
     private static bool CoverTexel(in Matrix4x4 vp, int size, int window, Vector3 p, out int at, out float z)
     {
         at = 0; z = 0f;
@@ -165,9 +164,6 @@ public sealed unsafe partial class CasterPass
         at = row * window + col;
         return true;
     }
-
-    /// <summary>The cover-edge knob moved: filter the held bake again at its new width, and copy it out again with it.</summary>
-    internal static void RefilterCover() { if (_coverBaked) _coverNew = true; }
 
     internal static string CoverStats() => $"cover {CoverBakes} bakes / {CoverHeld} held / {Weather.EsmBakes} filtered";
 }

@@ -107,7 +107,7 @@ internal static unsafe partial class Weather
     /// False = nothing to play: the engine's own step goes ahead.</summary>
     private static bool StepSound(IntPtr creature, CNWCObject o, Vec3 at, StepKind kind)
     {
-        if (!_wetArmed || o.FootstepSkip != 0 || o.AreaPtr == IntPtr.Zero) return false;
+        if (o.FootstepSkip != 0) return false;
         IntPtr rules = _rulesSym2 == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)_rulesSym2;
         IntPtr sound = _soundSym == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)_soundSym;
         IntPtr tables = rules == IntPtr.Zero ? IntPtr.Zero : new CNWRules(rules).TwoDimArrays;
@@ -211,6 +211,7 @@ internal static unsafe partial class Weather
         check.Expect(CasterPass.CoverOpenIn(coverDepth, CoverSize, CoverSize, default, new Vector3(20f, 20f, 0f)), "with no map a foot counts as open, as the stage reads it");
         check.Expect(ShaderSource.Get("cx_wx_place.glsl").Contains("n.z - " + CasterPass.CoverBias.ToString("0.000", CultureInfo.InvariantCulture)), "the footfall reads the map with the stage's own bias");
 
+        check.Expect(ShaderSource.Get("cx_wx_shape.glsl").Contains("CX_WX_EDGE_BIAS_M = " + CasterPass.CoverLiftM.ToString("0.00", CultureInfo.InvariantCulture)), "the footfall lifts as far as the snow's own read does");
         check.Expect(CasterPass.CoverWindow(2048, 60f) == 1024 && CasterPass.CoverWindow(2048, 128f) == 752 && CasterPass.CoverWindow(2048, 16f) == 2048,
           "the map keeps for footfalls 15 m of hearing plus the walk before a re-fit, and all of a short range");
         const int CoverHalf = CoverSize / 2;
