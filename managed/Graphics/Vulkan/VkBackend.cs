@@ -821,6 +821,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         RefuseWhenDone();
         DisposeFsr();
         DisposeDof();
+        DisposeCacao();
         SavePipelineCache();
         foreach (var d in _dead) d.Free();
         _dead.Clear();

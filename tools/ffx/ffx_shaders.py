@@ -26,6 +26,7 @@ class Effect:
 # Lanczos and sharpening vary per pass, so 4 of the 64 keys are reachable. The rest index an empty entry: a flag change
 # there fails the context's creation, which CX refuses loudly, instead of running a wrong shader.
 # DoF: reverse depth, rings merged and a separate output, as CXDOF_FLAGS fixes them: one key of the 8.
+# CACAO: its one option varies per pipeline, so both keys.
 EFFECTS = [
     Effect('fsr3upscaler',
            ['FFX_FSR3UPSCALER_OPTION_REPROJECT_USE_LANCZOS_TYPE', 'FFX_FSR3UPSCALER_OPTION_HDR_COLOR_INPUT',
@@ -41,6 +42,7 @@ EFFECTS = [
     Effect('dof',
            ['FFX_DOF_OPTION_MAX_RING_MERGE_LOG', 'FFX_DOF_OPTION_COMBINE_IN_PLACE', 'FFX_DOF_OPTION_REVERSE_DEPTH'],
            {'FFX_DOF_OPTION_MAX_RING_MERGE_LOG': 1, 'FFX_DOF_OPTION_COMBINE_IN_PLACE': 0, 'FFX_DOF_OPTION_REVERSE_DEPTH': 1}),
+    Effect('cacao', ['FFX_CACAO_OPTION_APPLY_SMART'], {}),
 ]
 VARIANTS = ['_wave64', '_16bit', '_wave64_16bit']
 KINDS = ['CBV', 'TextureSRV', 'TextureUAV', 'BufferSRV', 'BufferUAV', 'Sampler', 'RTAccelerationStructure']

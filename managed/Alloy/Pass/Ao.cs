@@ -9,9 +9,9 @@ namespace CX.Alloy;
 internal static class Ao
 {
     internal static readonly KnobGroup G;
-    internal static readonly Knob<float> Radius, Strength, Direct, Cutout, MaxPx;
-    internal static readonly Knob<int> Dirs, Steps;
-    internal static readonly Knob<bool> Blur, On;
+    internal static readonly Knob<float> Radius, Strength, Direct, Cutout, MaxPx, CacaoPower, CacaoMul, CacaoDetail;
+    internal static readonly Knob<int> Dirs, Steps, CacaoQuality, CacaoBlur;
+    internal static readonly Knob<bool> Blur, On, Cacao;
 
     static Ao()
     {
@@ -38,5 +38,11 @@ internal static class Ao
                  .Ladder(Quality.Ao, 48f, 64f, 96f, 128f);
         Blur = G.Toggle("blur", "Blur", true, Tier.ChatOnly);
         On = G.Toggle("on", "on", true, Tier.ChatOnly);
+        Cacao = G.Toggle("cacao", "FidelityFX CACAO", false, Tier.ChatOnly, Effect.Restart);
+        CacaoQuality = G.Slider("cacaoq", "CACAO quality", 0, 4, 1, 3, tier: Tier.ChatOnly);
+        CacaoBlur = G.Slider("cacaoblur", "CACAO blur passes", 0, 8, 1, 2, tier: Tier.ChatOnly);
+        CacaoPower = G.Slider("cacaopow", "CACAO power", 0.5f, 5f, 0.05f, 1.5f, tier: Tier.ChatOnly);
+        CacaoMul = G.Slider("cacaomul", "CACAO multiplier", 0f, 5f, 0.05f, 1f, tier: Tier.ChatOnly);
+        CacaoDetail = G.Slider("cacaodetail", "CACAO detail", 0f, 5f, 0.05f, 0.5f, tier: Tier.ChatOnly);
     }
 }

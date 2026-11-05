@@ -17,6 +17,7 @@ AMD FidelityFX SDK 1.1.4 as CX builds FSR 3.1 and FidelityFX DoF: `patch -p1` in
 11. ffx_dof_blur.h: the per-pixel jitter on the kernel is gone. It shows as grain with no temporal pass after it.
 12. ffx_dof_callbacks_glsl.h: the kernel reads the colour mips filtered where the circle is smooth. Point-sampled, a blur
     wider than the kernel's rings shows stairs along every edge. Filtered across a silhouette, a sharp colour leaks.
+13. ffx_cacao.h: the context is twice AMD's size, because a 4-byte wchar_t outgrows it. ffx_cacao_callbacks_glsl.h: the images are declared in the formats the host creates, and the output as Alloy's R8.
 1 to 4 follow the fixes JonathanOrr/xplane-fsr3 found (MIT; its notice is in LICENSES.txt).
 
 --- a/sdk/include/FidelityFX/gpu/fsr3upscaler/ffx_fsr3upscaler_callbacks_glsl.h
@@ -471,3 +472,53 @@ AMD FidelityFX SDK 1.1.4 as CX builds FSR 3.1 and FidelityFX DoF: `patch -p1` in
  	ins.pxCoord = texcoord;
  
  	FfxFloat32 centerCoc = FfxDofLoadInput(id).a;
+--- a/sdk/include/FidelityFX/gpu/cacao/ffx_cacao_callbacks_glsl.h
++++ b/sdk/include/FidelityFX/gpu/cacao/ffx_cacao_callbacks_glsl.h
+@@ -450,28 +450,28 @@
+     layout (set=0, binding = CACAO_BIND_UAV_LOAD_COUNTER, r32ui) uniform uimage1D g_RwLoadCounter;
+ #endif
+ #if defined CACAO_BIND_UAV_DEINTERLEAVED_DEPTHS
+-    layout (set=0, binding = CACAO_BIND_UAV_DEINTERLEAVED_DEPTHS, r32f) uniform image2DArray g_RwDeinterleavedDepth;
++    layout (set=0, binding = CACAO_BIND_UAV_DEINTERLEAVED_DEPTHS, r16f) uniform image2DArray g_RwDeinterleavedDepth;
+ #endif
+ #if defined CACAO_BIND_UAV_DEINTERLEAVED_NORMALS
+-    layout (set=0, binding = CACAO_BIND_UAV_DEINTERLEAVED_NORMALS, rgba32f) uniform image2DArray g_RwDeinterleavedNormals;
++    layout (set=0, binding = CACAO_BIND_UAV_DEINTERLEAVED_NORMALS, rgba8_snorm) uniform image2DArray g_RwDeinterleavedNormals;
+ #endif
+ #if defined CACAO_BIND_UAV_SSAO_BUFFER_PING
+-    layout (set=0, binding = CACAO_BIND_UAV_SSAO_BUFFER_PING, rg32f) uniform image2DArray g_RwSsaoBufferPing;
++    layout (set=0, binding = CACAO_BIND_UAV_SSAO_BUFFER_PING, rg8) uniform image2DArray g_RwSsaoBufferPing;
+ #endif
+ #if defined CACAO_BIND_UAV_SSAO_BUFFER_PONG
+-    layout (set=0, binding = CACAO_BIND_UAV_SSAO_BUFFER_PONG, rg32f) uniform image2DArray g_RwSsaoBufferPong;
++    layout (set=0, binding = CACAO_BIND_UAV_SSAO_BUFFER_PONG, rg8) uniform image2DArray g_RwSsaoBufferPong;
+ #endif
+ #if defined CACAO_BIND_UAV_IMPORTANCE_MAP
+-    layout (set = 0, binding = CACAO_BIND_UAV_IMPORTANCE_MAP, r32f) uniform image2D g_RwImportanceMap;
++    layout (set = 0, binding = CACAO_BIND_UAV_IMPORTANCE_MAP, r8) uniform image2D g_RwImportanceMap;
+ #endif
+ #if defined CACAO_BIND_UAV_IMPORTANCE_MAP_PONG
+-    layout (set = 0, binding = CACAO_BIND_UAV_IMPORTANCE_MAP_PONG, r32f) uniform image2D g_RwImportanceMapPong;
++    layout (set = 0, binding = CACAO_BIND_UAV_IMPORTANCE_MAP_PONG, r8) uniform image2D g_RwImportanceMapPong;
+ #endif
+ #if defined CACAO_BIND_UAV_OUTPUT
+-    layout (set = 0, binding = CACAO_BIND_UAV_OUTPUT, rgba16f) uniform image2D g_RwOutput;
++    layout (set = 0, binding = CACAO_BIND_UAV_OUTPUT, r8) uniform image2D g_RwOutput;
+ #endif
+ #if defined CACAO_BIND_UAV_DEPTH_DOWNSAMPLED_MIPS
+-    layout (set = 0, binding = CACAO_BIND_UAV_DEPTH_DOWNSAMPLED_MIPS, r32f) uniform image2DArray g_RwDepthMips[4];
++    layout (set = 0, binding = CACAO_BIND_UAV_DEPTH_DOWNSAMPLED_MIPS, r16f) uniform image2DArray g_RwDepthMips[4];
+ #endif
+ 
+ // =============================================================================
+--- a/sdk/include/FidelityFX/host/ffx_cacao.h
++++ b/sdk/include/FidelityFX/host/ffx_cacao.h
+@@ -184,7 +184,7 @@
+ /// The size of the context specified in 32bit values.
+ ///
+ /// @ingroup FfxCacao
+-#define FFX_CACAO_CONTEXT_SIZE (301054)
++#define FFX_CACAO_CONTEXT_SIZE (602108)
+ 
+ /// FidelityFX CACAO context count.
+ ///

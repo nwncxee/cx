@@ -4,8 +4,10 @@
 // to its wave32, fp32 permutations, the only ones tools/ffx/ffx_shaders.py compiles.
 #include <FidelityFX/host/ffx_fsr3upscaler.h>
 #include <FidelityFX/host/ffx_dof.h>
+#include <FidelityFX/host/ffx_cacao.h>
 #include <FidelityFX/host/backends/vk/ffx_vk.h>
 #include <stdlib.h>
+#include <string.h>
 
 // ponytail: one host device at a time; a second device would need these per context.
 static PFN_vkGetInstanceProcAddr s_gipa;
@@ -90,6 +92,22 @@ struct CxDofDispatch
     VkCommandBuffer cmd;
     CxFsrImage color, depth, output;
     float cocScale, focusNear, focusFar, depthA, depthB, depthMin, depthMax;
+};
+
+struct CxCacao
+{
+    FfxCacaoContext ctx;
+    CxBackend backend;
+    bool half;
+};
+
+struct CxCacaoDispatch
+{
+    VkCommandBuffer cmd;
+    CxFsrImage depth, output;
+    float projection[16];
+    float radius, multiplier, power, detail;
+    uint32_t quality, blurPasses;
 };
 
 struct CxFsrDispatch
@@ -273,6 +291,73 @@ int cxdof_dispatch(CxDof* c, const CxDofDispatch* d)
     x.cocDepthMin = d->depthMin;
     x.cocDepthMax = d->depthMax;
     return ffxDofContextDispatch(&c->ctx, &x);
+}
+
+// An FfxErrorCode: 0 is a context in *out for w x h frames. half generates the occlusion at half size inside AMD's own
+// passes, and it still writes a full-size output.
+int cxcacao_create(const CxFsrDevice* dev, uint32_t w, uint32_t h, uint32_t half, CxCacao** out)
+{
+    *out = nullptr;
+    CxCacao* c = (CxCacao*)calloc(1, sizeof(CxCacao));
+    if (!c) return FFX_ERROR_OUT_OF_MEMORY;
+    FfxErrorCode e = BackendCreate(dev, &c->backend);
+    if (e != FFX_OK)
+    {
+        free(c);
+        return e;
+    }
+    FfxCacaoContextDescription d = {};
+    d.width = w;
+    d.height = h;
+    d.useDownsampledSsao = half != 0;
+    d.backendInterface = c->backend.iface;
+    e = ffxCacaoContextCreate(&c->ctx, &d);
+    if (e != FFX_OK)
+    {
+        free(c->backend.scratch);
+        free(c);
+        return e;
+    }
+    c->half = half != 0;
+    *out = c;
+    return FFX_OK;
+}
+
+// One CACAO recorded into d->cmd; an FfxErrorCode. It reconstructs normals from depth, as Alloy's own pass does, and its
+// settings are AMD's defaults except those named here.
+int cxcacao_dispatch(CxCacao* c, const CxCacaoDispatch* d)
+{
+    FfxCacaoSettings s = FFX_CACAO_DEFAULT_SETTINGS;
+    s.radius = d->radius;
+    s.shadowMultiplier = d->multiplier;
+    s.shadowPower = d->power;
+    s.detailShadowStrength = d->detail;
+    s.qualityLevel = (FfxCacaoQuality)d->quality;
+    s.blurPassCount = d->blurPasses;
+    s.generateNormals = true;
+    FfxErrorCode e = ffxCacaoUpdateSettings(&c->ctx, &s, c->half);
+    if (e != FFX_OK) return e;
+    FfxCacaoDispatchDescription x = {};
+    x.commandList = ffxGetCommandListVK(d->cmd);
+    x.depthBuffer = Wrap(d->depth, L"cx cacao depth");
+    x.normalBuffer = FfxResource{};
+    x.outputBuffer = Wrap(d->output, L"cx cacao output");
+    FfxFloat32x4x4 proj;
+    memcpy(proj, d->projection, sizeof(proj));
+    x.proj = &proj;
+    x.normalsToView = nullptr;
+    x.normalUnpackMul = 1.0f;
+    x.normalUnpackAdd = 0.0f;
+    return ffxCacaoContextDispatch(&c->ctx, &x);
+}
+
+// Free a context once no submit can still reach it.
+void cxcacao_destroy(CxCacao* c)
+{
+    if (!c) return;
+    ffxCacaoContextDestroy(&c->ctx);
+    free(c->backend.scratch);
+    free(c);
 }
 
 // Free a context once no submit can still reach it.

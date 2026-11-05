@@ -14,7 +14,7 @@ public enum Op : byte
     BindIndexBuffer, Draw, DrawIndexed, DrawIndexedIndirect, Dispatch, CopyImage, BlitImage, UpdateBuffer, ZeroBuffer,
     PushConstants, BindVertexBuffer, DrawIndexedMulti, SetDepthState, SetRasterState, SetDepthRange, ReadImages,
     DrawIndirect, CopyImageToBuffer, ClearImage, GenerateMips, BeginLabel, EndLabel, SetShadingRate, Upscale, CopyBuffer,
-    DrawMeshTasks, DepthOfField,
+    DrawMeshTasks, DepthOfField, Cacao,
 }
 
 /// <summary>An index element's width.</summary>
@@ -85,6 +85,11 @@ public readonly record struct UpscaleCmd(ImageId Color, ImageId Depth, ImageId M
 /// the band in metres, the depth decode (<c>A / (d + B)</c>) and the distances the decode clamps to.</summary>
 public readonly record struct DofCmd(ImageId Color, ImageId Depth, ImageId Output, float CocScale, float FocusNear, float FocusFar,
                                      float DepthA, float DepthB, float DepthMin, float DepthMax);
+
+/// <summary><see cref="Op.Cacao"/>: one FidelityFX CACAO dispatch. <see cref="Proj"/> is in AMD's convention: its depth row
+/// decodes this depth by <c>-M43 / (M33 - d)</c>, and its two scale terms are positive.</summary>
+public readonly record struct CacaoCmd(ImageId Depth, ImageId Output, System.Numerics.Matrix4x4 Proj, float Radius, float Multiplier,
+                                       float Power, float Detail, int Quality, int BlurPasses);
 
 /// <summary>CPU work waiting on a list's submit: <see cref="Fn"/> gets <see cref="Arg"/> and whether the GPU ran the
 /// submit (false: it was refused, or the device went away first).</summary>
@@ -311,6 +316,8 @@ public sealed class CommandList
     public void Upscale(in UpscaleCmd c) { Head(Op.Upscale); Put(c); Sent(); }
     /// <summary>One depth of field; the device must have said <c>DofReady</c> for this colour's size first.</summary>
     public void DepthOfField(in DofCmd c) { Head(Op.DepthOfField); Put(c); Sent(); }
+    /// <summary>One CACAO; the device must have said <c>CacaoReady</c> for this output's size first.</summary>
+    public void Cacao(in CacaoCmd c) { Head(Op.Cacao); Put(c); Sent(); }
     /// <summary><paramref name="i"/>'s mips past the base filled from it by linear blits, outside a pass; the image needs
     /// <c>CopySrc</c> and <c>CopyDst</c>.</summary>
     public void GenerateMips(ImageId i) { Head(Op.GenerateMips); Put(i); Sent(); }

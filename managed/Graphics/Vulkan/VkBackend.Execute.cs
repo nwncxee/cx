@@ -207,6 +207,7 @@ internal sealed unsafe partial class VkBackend
                 Op.SetShadingRate => ShadingRate(r.Read<ShadingRateCmd>().Coarse),
                 Op.Upscale => Upscale(r.Read<UpscaleCmd>()),
                 Op.DepthOfField => DepthOfField(r.Read<DofCmd>()),
+                Op.Cacao => Cacao(r.Read<CacaoCmd>()),
                 Op.CopyBuffer => CopyBuf(r.Read<CopyBufferCmd>()),
                 Op.DrawMeshTasks => DrawMesh(r.Read<DispatchCmd>()),
                 _ => Fault($"{op} is not on the Vulkan backend yet"),

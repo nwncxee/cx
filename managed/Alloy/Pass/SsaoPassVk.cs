@@ -67,6 +67,7 @@ internal static unsafe class SsaoPassVk
         s.LiveFrame = -1;
         if (s.Failed || !SsaoPass.Active || !depthFilled || depth.IsNull) return;
         bool half = SsaoPass.Wanted;
+        if (Ao.Cacao.V) { RecordCacao(vk, cl, depth, proj, viewport, half, log); return; }
         if (!Ensure(vk, log) || !Targets(vk, viewport[2], viewport[3], half, log)) return;
 
         float w = s.W, h = s.H;
@@ -101,6 +102,36 @@ internal static unsafe class SsaoPassVk
             log.Always($"SsaoPassVk: LIVE -- horizon visibility at {s.W}x{s.H}"
                      + (half ? $" (HALF of {s.SrcW}x{s.SrcH})" : "") + (blur ? ", blurred" : ", unblurred")
                      + ", single-frame (the temporal accumulator wants the velocity target, which is not on Vulkan)");
+        }
+    }
+
+    /// <summary>AMD's CACAO in place of the two stages, into the same target. It reads the depth alone and writes a full-size
+    /// output even when <paramref name="half"/> runs its passes at half size, so the lit stage's half path stays off.</summary>
+    private static void RecordCacao(VkBackend vk, CommandList cl, ImageId depth, Matrix4x4* proj, int* viewport, bool half, ExtenderLog log)
+    {
+        SsaoVkState s = _s;
+        if (viewport[0] != 0 || viewport[1] != 0) return;
+        if (!Targets(vk, viewport[2], viewport[3], false, log, ImageUse.Storage)) return;
+        if (vk.CacaoReady(s.W, s.H, half) is string no)
+        {
+            s.Failed = true;
+            s.Out = default;
+            log.Always($"SsaoPassVk: FidelityFX CACAO refused -- {no}");
+            return;
+        }
+        Matrix4x4 amd = *proj;
+        amd.M11 = MathF.Abs(amd.M11);
+        amd.M22 = MathF.Abs(amd.M22);
+        amd.M33 = -amd.M33;
+        cl.Cacao(new CacaoCmd(depth, s.Out, amd, Ao.Radius.V, Ao.CacaoMul.V, Ao.CacaoPower.V * SsaoPass.Strength, Ao.CacaoDetail.V,
+                              Ao.CacaoQuality.V, Ao.CacaoBlur.V));
+        s.Half = false;
+        s.LiveFrame = AlloyRenderer.FrameSeq;
+        s.Runs++;
+        if (!s.Said)
+        {
+            s.Said = true;
+            log.Always($"SsaoPassVk: LIVE -- FidelityFX CACAO at {s.W}x{s.H}{(half ? ", generating at half size" : "")}, quality {Ao.CacaoQuality.V}");
         }
     }
 
@@ -171,7 +202,7 @@ internal static unsafe class SsaoPassVk
 
     /// <summary>The visibility targets at the extent this frame wants: the frame's, or half of it under
     /// <c>post.halfres</c>. A size change reallocates both.</summary>
-    private static bool Targets(VkBackend vk, int srcW, int srcH, bool half, ExtenderLog log)
+    private static bool Targets(VkBackend vk, int srcW, int srcH, bool half, ExtenderLog log, ImageUse extra = ImageUse.None)
     {
         SsaoVkState s = _s;
         int w = half ? (srcW + 1) / 2 : srcW, h = half ? (srcH + 1) / 2 : srcH;
@@ -179,8 +210,8 @@ internal static unsafe class SsaoPassVk
         if (w <= 0 || h <= 0) return false;
         s.SrcW = srcW; s.SrcH = srcH;
         vk.Destroy(s.Raw); vk.Destroy(s.Out);
-        s.Raw = Target(vk, w, h, "vk ssao raw", AliasLanes.Small);
-        s.Out = Target(vk, w, h, "vk ssao out");
+        s.Raw = Target(vk, w, h, "vk ssao raw", extra, AliasLanes.Small);
+        s.Out = Target(vk, w, h, "vk ssao out", extra);
         if (s.Raw.IsNull || s.Out.IsNull)
         {
             s.Failed = true;
@@ -194,7 +225,7 @@ internal static unsafe class SsaoPassVk
         return true;
     }
 
-    private static ImageId Target(VkBackend vk, int w, int h, string label, string? alias = null)
+    private static ImageId Target(VkBackend vk, int w, int h, string label, ImageUse extra, string? alias = null)
         => vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.R8, w, h, 1, 1, 1, 1,
-                                       ImageUse.Sampled | ImageUse.ColorTarget, label, alias));
+                                       ImageUse.Sampled | ImageUse.ColorTarget | extra, label, alias));
 }
