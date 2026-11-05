@@ -1,6 +1,7 @@
 # Releases. A v* tag builds the Linux extender on ubuntu-24.04 and the Windows one natively on
 # windows-2025-vs2026 (build-win-native.sh; the Linux cross-build, build-win.sh, is a dev tool and never
-# ships), zips the Moonglow Toolset plugin, attests where every zip came from, and uploads them with
+# ships), Authenticode-signs its version.dll once a maintainer approves the signing job, zips the Moonglow
+# Toolset plugin, attests where every zip came from, and uploads them with
 # SHA256SUMS to a draft release. Nothing is public yet: tools/release/sign.sh checks the draft on the
 # maintainer's machine, adds SHA256SUMS.sig and publishes it. Releases are immutable, so a published one can't gain, lose or swap an asset.
 # Every shipped byte is built in this run from the tagged source; no cache feeds a release.
@@ -107,8 +108,72 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: { name: windows, path: dist/*.zip, if-no-files-found: error }
 
+  # Signs version.dll with the Certum key held in SimplySign's cloud and replaces the windows artifact, so
+  # the checksums and the attestation publish makes describe the signed zip.
+  sign-windows:
+    needs: windows
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 20
+    # Required reviewers: the SimplySign login secrets reach a run only after a maintainer approves it.
+    environment: release-signing
+    env:
+      CERT_SHA1: 5A440C9F40A4DE1161142646A64C11E9E8221DF9
+      SSD_VERSION: 9.4.4.92
+      SSD_SHA256: 8ec420fc27798b86078b7bd02fe7152097e1b3005bab51820eaca8e57df84da3
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with: { name: windows, path: dist }
+
+      - name: Unpack
+        shell: bash
+        run: python -m zipfile -e "dist/cx-windows-x64-${TAG}.zip" stage
+
+      # The action installs SimplySign Desktop unchecked; installing it here first pins the installer's bytes.
+      - name: Install SimplySign Desktop
+        shell: pwsh
+        run: |
+          $msi = Join-Path $env:RUNNER_TEMP 'simplysign.msi'
+          Invoke-WebRequest -OutFile $msi -Uri "https://files.certum.eu/software/SimplySignDesktop/Windows/$env:SSD_VERSION/SimplySignDesktop-$env:SSD_VERSION-64-bit-en.msi"
+          $hash = (Get-FileHash $msi -Algorithm SHA256).Hash
+          if ($hash -ne $env:SSD_SHA256) { Write-Error "SimplySign installer hash $hash, expected $env:SSD_SHA256"; exit 1 }
+          $p = Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /qn /norestart" -Wait -PassThru
+          if ($p.ExitCode -notin 0, 3010) { Write-Error "msiexec exit $($p.ExitCode)"; exit 1 }
+
+      - id: certum
+        uses: jay0lee/certum-cloud-code-sign@a3324503499c49090869856eeeecfe95fb613d87 # main, 2026-09-24
+        with:
+          username: ${{ secrets.CERTUM_USERNAME }}
+          totp_secret: ${{ secrets.CERTUM_TOTP_SECRET }}
+          version: ${{ env.SSD_VERSION }}
+          cert_sha1: ${{ env.CERT_SHA1 }}
+
+      - name: Sign version.dll
+        shell: pwsh
+        env:
+          SIGNTOOL: ${{ steps.certum.outputs.signtool-path }}
+        run: |
+          & $env:SIGNTOOL sign /sha1 $env:CERT_SHA1 /tr http://time.certum.pl /td sha256 /fd sha256 /v stage\version.dll
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & $env:SIGNTOOL verify /pa /v stage\version.dll
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+      - name: Log out of SimplySign
+        if: always() && steps.certum.conclusion != 'skipped'
+        uses: jay0lee/certum-cloud-code-sign/teardown@a3324503499c49090869856eeeecfe95fb613d87 # main, 2026-09-24
+
+      # make_archive, as build-win-native.sh packs it: the zip holds the folder's contents, flat.
+      - name: Repack
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm "dist/cx-windows-x64-${TAG}.zip"
+          python -c "import shutil, sys; shutil.make_archive(sys.argv[1], 'zip', 'stage')" "dist/cx-windows-x64-${TAG}"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with: { name: windows, path: dist/*.zip, if-no-files-found: error, overwrite: true }
+
   publish:
-    needs: [linux, windows]
+    needs: [linux, sign-windows]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     # The environment admits v* tags only, and only admins can push one.
