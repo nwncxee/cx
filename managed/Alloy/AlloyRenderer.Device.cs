@@ -66,6 +66,9 @@ public sealed unsafe partial class AlloyRenderer
     internal static long VramTotalMib => _vram.TotalKib / 1024;
     /// <summary>Is the bindless path armed this session (probed at the first lit program build)?</summary>
     internal static bool Bindless => _bindless;
+
+    /// <summary>The session's bindless decision has been made; until then <see cref="Bindless"/> says nothing about it.</summary>
+    internal static bool BindlessDecided => _bindlessProbed;
     /// <summary>ATI_meminfo (Mesa) answers FREE, never total; at probe time that is most of the card.</summary>
     internal static long VramFreeMib => _vram.FreeKib / 1024;
     internal static bool VramProbed => _vram.Probed;

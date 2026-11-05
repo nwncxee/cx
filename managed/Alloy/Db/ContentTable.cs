@@ -349,7 +349,7 @@ internal static unsafe class ContentTable
         if (s.Used > 0)
         {
             bool handles = AlloyRenderer.Bindless;
-            if (!handles && !s.SaidNoBindless)
+            if (!handles && AlloyRenderer.BindlessDecided && !s.SaidNoBindless)
             {
                 s.SaidNoBindless = true;
                 s.Log?.Always("ContentTable: a content pair is in sight and the bindless handle table is OFF -- the lit stage "

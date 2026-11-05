@@ -430,11 +430,19 @@ internal static class MaterialParams
     internal static IReadOnlyList<ContentOverride>? ContentOverrides(uint obj)
         => obj != 0 && _content.ByObj.TryGetValue(obj, out List<ContentOverride>? l) ? l : null;
 
-    /// <summary>Set one material parameter on <paramref name="obj"/>, or with an empty <paramref name="value"/> reset
-    /// them. Game thread, cold.</summary>
+    /// <summary>Set one material parameter on <paramref name="obj"/> and on every piece grafted on it, or with an empty
+    /// <paramref name="value"/> reset them: <c>Part::SetMaterialParam</c> @0x53cab0 descends the part tree, which holds
+    /// what <c>Gob::Append</c> grafted, and a graft is a child object here. Game thread, cold.</summary>
     internal static void Set(DbId obj, string? paramName, string? value, string? materialFilter, ExtenderLog? log)
     {
         if (!SceneDb.Objects.Valid(obj)) return;
+        SetOne(obj, paramName, value, materialFilter, log);
+        for (DbId c = SceneDb.ObjSeamAppendHead[obj.Index]; !c.IsNull; c = SceneDb.ObjSeamAppendNext[c.Index])
+            Set(c, paramName, value, materialFilter, log);
+    }
+
+    private static void SetOne(DbId obj, string? paramName, string? value, string? materialFilter, ExtenderLog? log)
+    {
         // Material::SetMaterialParam @0x4c5d70 resets EVERY parameter of the matching materials on an empty value,
         // whatever the name -- the ("", "", "") every replay of an object's list opens with
         if (string.IsNullOrEmpty(value)) { Reset(obj, materialFilter ?? ""); return; }
@@ -613,6 +621,35 @@ internal static class MaterialParams
         Expect(!HasContent(obj), "the engine's reset-all left a content override standing");
         Set(obj, "Roughness", "not-a-number", null, null);
         Expect(!Any, "an unparseable value was recorded anyway");
+
+        // a body part grafted on is in the part tree the engine's walk descends, and a piece on that piece too
+        DbId piece = SceneDb.Objects.Alloc(), beside = SceneDb.Objects.Alloc(), inner = SceneDb.Objects.Alloc(), rider = SceneDb.Objects.Alloc();
+        if (piece.IsNull || beside.IsNull || inner.IsNull || rider.IsNull) { Expect(false, "the object table would not allocate"); return ok; }
+        foreach (DbId o in (ReadOnlySpan<DbId>)[piece, beside, inner, rider]) { SceneDb.ObjPartFirst[o.Index] = 0; SceneDb.ObjPartCount[o.Index] = 0; }
+        SceneDb.ObjSeamAppendHead[obj.Index] = piece;
+        SceneDb.ObjSeamAppendNext[piece.Index] = beside;
+        SceneDb.ObjSeamAppendHead[piece.Index] = inner;
+        SceneDb.SetAttachTo(rider.Index, obj);
+        Set(obj, "fRamboScale", "12.0", "", null);
+        Expect(ContentOverrides(piece.Value) is { Count: 1 } && ContentOverrides(beside.Value) is { Count: 1 } && ContentOverrides(inner.Value) is { Count: 1 },
+            "a value set on a body did not reach every piece grafted on it, or a piece on that piece");
+        Expect(!HasContent(rider), "a value set on a body reached an object merely attached to it, which is outside the part tree");
+        Set(obj, "CxRoughness", "0.25", null, null);
+        p = default;
+        Apply(piece, ref p);
+        Expect(Math.Abs(p.Ext.Ext0.Y - 0.25f) < 1e-6f, "a record's own parameter set on a body did not reach a grafted piece");
+        Set(piece, "fRamboScale", "13.0", "", null);
+        Expect(ContentOverrides(obj.Value) is { Count: 1 } up && up[0].Value == "12.0", "a value set on a piece climbed to its body");
+        Set(obj, "", "", "", null);
+        Expect(!HasContent(piece) && !HasContent(beside) && !HasContent(inner), "the engine's reset-all left a grafted piece's values standing");
+        SceneDb.ObjSeamAppendHead[obj.Index] = default;
+        SceneDb.ObjSeamAppendNext[piece.Index] = default;
+        SceneDb.ObjSeamAppendHead[piece.Index] = default;
+        SceneDb.SetAttachTo(rider.Index, default);
+        SceneDb.Objects.Free(rider);
+        SceneDb.Objects.Free(inner);
+        SceneDb.Objects.Free(beside);
+        SceneDb.Objects.Free(piece);
 
         SceneDb.Objects.Free(obj);
         SceneDb.Objects.TakeDirty();

@@ -20,7 +20,12 @@ public sealed unsafe partial class AlloyRenderer
         public VkProg? Prog;
         public ImageId Layer, Surf;
         public int W, H;
-        public bool Failed, Live, Logged;
+        public bool Failed, Logged;
+        /// <summary>The frame whose decal pass filled the layer. Only that frame may bind it: the pass may destroy
+        /// the layer on a resize, so a bind ahead of it would reach the submit naming a dead image.</summary>
+        public int LiveAt = -1;
+        /// <summary>This frame's decal pass filled the layer.</summary>
+        public bool Live => LiveAt == _frameSeq;
         /// <summary>The writer is recording: its binds take the stand-ins, because a colour attachment of the pass
         /// being recorded cannot also be one of its storage images.</summary>
         public bool Writing;
@@ -72,7 +77,7 @@ public sealed unsafe partial class AlloyRenderer
                                     float near, float far, bool can, bool indirect, ExtenderLog log)
     {
         VkDecalState d = VkDecalOwner(vk);
-        d.Live = false;
+        d.LiveAt = -1;
         if (!can || to <= from || d.Failed) return true;
         VkColourState s = _vkc;
         if (!VkDecalEnsure(vk, d, s, viewport[2], viewport[3], log)) return true;
@@ -82,7 +87,7 @@ public sealed unsafe partial class AlloyRenderer
         int arena0 = s.ArenaUsed;
         var b = new VkBound { Fmt = -1, Tex = -1 };
         VkPassStart(side, viewport[2], viewport[3]);
-        d.Live = true;
+        d.LiveAt = _frameSeq;
         d.Writing = true;
         // the writer's own CxDecalOn against the prepass depth is the visibility test: no depth attachment, so
         // neither the test nor the write has anything to reach
@@ -206,6 +211,18 @@ public sealed unsafe partial class AlloyRenderer
             + $"reached folds nothing (got {VkDecalClear(surf: true).X})");
         check.Expect(ShaderSource.Get("cx_oitout.glsl").Contains("layout(location = 1) out vec2 oDecalSurf;"),
             "the writer's second output is the surface pair on location 1, the attachment this pass puts there");
+        VkDecalState keep = _vkDecals;
+        var standIns = new VkColourState { DecalLayer = new ImageId(1), DecalSurf = new ImageId(2) };
+        _vkDecals = new VkDecalState { Layer = new ImageId(3), Surf = new ImageId(4), LiveAt = _frameSeq + 1 };
+        check.Expect(VkDecalImage(false, standIns).Value == 1 && VkDecalImage(true, standIns).Value == 2,
+            "a pass ahead of this frame's decal pass was handed the real layer, which that pass may destroy on a resize");
+        check.Expect(VkDecalFold == DecalLayer.ModeNone && VkDecalSkip == DecalLayer.ModeNone,
+            "a draw ahead of this frame's decal pass was told to read last frame's layer");
+        _vkDecals.LiveAt = _frameSeq;
+        check.Expect(VkDecalImage(false, standIns).Value == 3 && VkDecalImage(true, standIns).Value == 4,
+            "a pass after this frame's decal pass was not handed the layer it filled");
+        check.Expect(new VkDecalState().Live == false, "a state no decal pass has filled reads as live");
+        _vkDecals = keep;
         log.Info(check.Ok ? "AlloyRenderer.VkDecalSelfCheck: passed" : "AlloyRenderer.VkDecalSelfCheck: FAILED");
     }
 }
