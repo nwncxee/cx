@@ -4,8 +4,10 @@
 // to its wave32, fp32 permutations, the only ones tools/ffx/ffx_shaders.py compiles.
 #include <FidelityFX/host/ffx_fsr3upscaler.h>
 #include <FidelityFX/host/ffx_dof.h>
+#include <FidelityFX/host/ffx_sssr.h>
 #include <FidelityFX/host/backends/vk/ffx_vk.h>
 #include <stdlib.h>
+#include <string.h>
 
 // ponytail: one host device at a time; a second device would need these per context.
 static PFN_vkGetInstanceProcAddr s_gipa;
@@ -45,6 +47,7 @@ namespace std { void __throw_system_error(int) { abort(); } }
 // permutations these flags reach; change them together.
 #define CXFSR_FLAGS (FFX_FSR3UPSCALER_ENABLE_HIGH_DYNAMIC_RANGE | FFX_FSR3UPSCALER_ENABLE_DEPTH_INVERTED)
 #define CXDOF_FLAGS FFX_DOF_REVERSE_DEPTH
+#define CXSSSR_FLAGS FFX_SSSR_ENABLE_DEPTH_INVERTED
 
 // AMD's backend for one effect: its interface and the scratch memory it keeps its state in.
 struct CxBackend
@@ -92,6 +95,23 @@ struct CxDofDispatch
     float cocScale, focusNear, focusFar, depthA, depthB, depthMin, depthMax;
 };
 
+struct CxSssr
+{
+    FfxSssrContext ctx;
+    CxBackend backend;
+};
+
+struct CxSssrDispatch
+{
+    VkCommandBuffer cmd;
+    CxFsrImage color, depth, motion, normal, env, output;
+    uint32_t envMips;
+    float invViewProjection[16], projection[16], invProjection[16], view[16], invView[16], prevViewProjection[16];
+    float mvScaleX, mvScaleY, thickness, stability, roughnessCap, variance;
+    uint32_t maxIterations, minOccupancy, samplesPerQuad;
+    float probeAt[3];
+};
+
 struct CxFsrDispatch
 {
     VkCommandBuffer cmd;
@@ -117,15 +137,15 @@ static FfxResource Wrap(const CxFsrImage& i, const wchar_t* name)
 }
 
 // The device taken and AMD's backend made over zeroed scratch memory, for one effect's context.
-static FfxErrorCode BackendCreate(const CxFsrDevice* dev, CxBackend* b)
+static FfxErrorCode BackendCreate(const CxFsrDevice* dev, CxBackend* b, size_t contexts = 1)
 {
     s_instance = dev->instance; s_gipa = dev->gipa; s_gdpa = dev->gdpa;
-    size_t size = ffxGetScratchMemorySizeVK(dev->physical, 1);
+    size_t size = ffxGetScratchMemorySizeVK(dev->physical, contexts);
     // zeroed: the backend reads a reference count out of it before it writes one
     b->scratch = calloc(1, size);
     if (!b->scratch) return FFX_ERROR_OUT_OF_MEMORY;
     VkDeviceContext vk = { dev->device, dev->physical, dev->gdpa };
-    FfxErrorCode e = ffxGetInterfaceVK(&b->iface, ffxGetDeviceVK(&vk), b->scratch, size, 1);
+    FfxErrorCode e = ffxGetInterfaceVK(&b->iface, ffxGetDeviceVK(&vk), b->scratch, size, contexts);
     if (e != FFX_OK) free(b->scratch);
     return e;
 }
@@ -273,6 +293,92 @@ int cxdof_dispatch(CxDof* c, const CxDofDispatch* d)
     x.cocDepthMin = d->depthMin;
     x.cocDepthMax = d->depthMax;
     return ffxDofContextDispatch(&c->ctx, &x);
+}
+
+// An FfxErrorCode: 0 is a context in *out for w x h frames, its denoiser beside it on the same backend.
+int cxsssr_create(const CxFsrDevice* dev, uint32_t w, uint32_t h, CxSssr** out)
+{
+    *out = nullptr;
+    CxSssr* c = (CxSssr*)calloc(1, sizeof(CxSssr));
+    if (!c) return FFX_ERROR_OUT_OF_MEMORY;
+    FfxErrorCode e = BackendCreate(dev, &c->backend, FFX_SSSR_CONTEXT_COUNT);
+    if (e != FFX_OK)
+    {
+        free(c);
+        return e;
+    }
+    FfxSssrContextDescription d = {};
+    d.flags = CXSSSR_FLAGS;
+    d.renderSize = { w, h };
+    d.normalsHistoryBufferFormat = FFX_SURFACE_FORMAT_R16G16B16A16_FLOAT;
+    d.backendInterface = c->backend.iface;
+    e = ffxSssrContextCreate(&c->ctx, &d);
+    if (e != FFX_OK)
+    {
+        free(c->backend.scratch);
+        free(c);
+        return e;
+    }
+    *out = c;
+    return FFX_OK;
+}
+
+// One SSSR recorded into d->cmd; an FfxErrorCode. No BRDF texture: no pass of the effect binds it, and the record's
+// weight already carries the split-sum the composite would have read it for.
+int cxsssr_dispatch(CxSssr* c, const CxSssrDispatch* d)
+{
+    FfxSssrDispatchDescription x = {};
+    x.commandList = ffxGetCommandListVK(d->cmd);
+    x.color = Wrap(d->color, L"cx sssr colour");
+    x.depth = Wrap(d->depth, L"cx sssr depth");
+    x.motionVectors = Wrap(d->motion, L"cx sssr velocity");
+    x.normal = Wrap(d->normal, L"cx sssr normal");
+    x.materialParameters = Wrap(d->normal, L"cx sssr material");
+    VkImageCreateInfo cube = {};
+    cube.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+    cube.imageType = VK_IMAGE_TYPE_2D;
+    cube.format = d->env.format;
+    cube.extent = { d->env.width, d->env.height, 1 };
+    cube.mipLevels = d->envMips;
+    cube.arrayLayers = 6;
+    cube.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
+    x.environmentMap = ffxGetResourceVK((void*)d->env.image, ffxGetImageResourceDescriptionVK(d->env.image, cube), L"cx sssr probe",
+                                        FFX_RESOURCE_STATE_COMPUTE_READ);
+    x.brdfTexture = FfxResource{};
+    x.output = Wrap(d->output, L"cx sssr output");
+    memcpy(x.invViewProjection, d->invViewProjection, sizeof(float) * 16);
+    memcpy(x.projection, d->projection, sizeof(float) * 16);
+    memcpy(x.invProjection, d->invProjection, sizeof(float) * 16);
+    memcpy(x.view, d->view, sizeof(float) * 16);
+    memcpy(x.invView, d->invView, sizeof(float) * 16);
+    memcpy(x.prevViewProjection, d->prevViewProjection, sizeof(float) * 16);
+    x.renderSize = { d->output.width, d->output.height };
+    x.motionVectorScale = { d->mvScaleX, d->mvScaleY };
+    x.iblFactor = 1.0f;
+    x.normalUnPackMul = 1.0f;
+    x.normalUnPackAdd = 0.0f;
+    x.roughnessChannel = 3;
+    x.isRoughnessPerceptual = false;
+    x.temporalStabilityFactor = d->stability;
+    x.depthBufferThickness = d->thickness;
+    x.roughnessThreshold = d->roughnessCap;
+    x.varianceThreshold = d->variance;
+    x.maxTraversalIntersections = d->maxIterations;
+    x.minTraversalOccupancy = d->minOccupancy;
+    x.mostDetailedMip = 0;
+    x.samplesPerQuad = d->samplesPerQuad;
+    x.temporalVarianceGuidedTracingEnabled = 1;
+    memcpy(x.probeAt, d->probeAt, sizeof(x.probeAt));
+    return ffxSssrContextDispatch(&c->ctx, &x);
+}
+
+// Free a context once no submit can still reach it.
+void cxsssr_destroy(CxSssr* c)
+{
+    if (!c) return;
+    ffxSssrContextDestroy(&c->ctx);
+    free(c->backend.scratch);
+    free(c);
 }
 
 // Free a context once no submit can still reach it.

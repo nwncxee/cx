@@ -55,7 +55,7 @@ if [ ! -f build/cxfsr.lib ] || [ native/ffx/cxfsr.cpp -nt build/cxfsr.lib ] || [
   FI="$FI -I$F/src/backends/shared -I$F/src/components -Ibuild/ffx/shaders"
   mkdir -p build/ffx/objw && rm -f build/ffx/objw/*.obj
   for src in $(sed "s|^|$F/src/|" tools/ffx/sources.txt) native/ffx/cxfsr.cpp; do
-    cl -nologo -c -std:c++17 -O2 -MT -GS- -EHs-c- -GR- -DNDEBUG -D_HAS_EXCEPTIONS=0 -DFFX_FSR3UPSCALER -DFFX_DOF \
+    cl -nologo -c -std:c++17 -O2 -MT -GS- -EHs-c- -GR- -DNDEBUG -D_HAS_EXCEPTIONS=0 -DFFX_FSR3UPSCALER -DFFX_DOF -DFFX_SSSR -DFFX_DENOISER \
       $FI "$src" -Fo"build/ffx/objw/$(basename "$src" .cpp).obj"
   done
   lib -nologo -out:build/cxfsr.lib build/ffx/objw/*.obj

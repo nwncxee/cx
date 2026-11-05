@@ -1,3 +1,4 @@
+using System.Numerics;
 using CX.Framework;
 
 namespace CX.Alloy;
@@ -16,6 +17,12 @@ internal static class Ssr
     /// <summary>The period line's clause: whether the reflections are asked for at all.</summary>
     internal static string Stats(int frames) => $"ssr {(Lighting.Ssr.V ? "on" : "off")}";
 
+    /// <summary>A matrix AMD reads as Alloy's, under AMD's uv = (ndc.x, -ndc.y) * 0.5 + 0.5 against Alloy's ndc * 0.5 + 0.5.</summary>
+    internal static Matrix4x4 AmdFlip(in Matrix4x4 m) => m * Matrix4x4.CreateScale(1f, -1f, 1f);
+
+    /// <summary><see cref="AmdFlip"/>'s partner for an inverse matrix.</summary>
+    internal static Matrix4x4 AmdFlipInverse(in Matrix4x4 m) => Matrix4x4.CreateScale(1f, -1f, 1f) * m;
+
     /// <summary>Off-device: the ray budget has a rung for every <c>light.ssrdetail</c> choice (oracle: the knob's own
     /// declaration), and the trace samples no colour, probe or mirror (oracle: the trace's GLSL text).</summary>
     internal static void SelfCheck(ExtenderLog log)
@@ -25,6 +32,14 @@ internal static class Ssr
         check.Expect(Steps.Length == Lighting.SsrDetail.Values.Length, "every light.ssrdetail choice has its ray budget");
         check.Expect(!trace.Contains(" uColor;") && !trace.Contains("samplerCube uProbe;") && !trace.Contains(" uPlanar;"),
           "the trace fetches no colour, probe or mirror: it writes the hit and its pdf alone");
+        // oracle: worked by hand. x_c = 2x, y_c = 3y, w_c = -z; (1, 2, -5) gives ndc (0.4, 1.2), so Alloy's uv is (0.7, 1.1)
+        var proj = new Matrix4x4(2f, 0f, 0f, 0f, 0f, 3f, 0f, 0f, 0f, 0f, 0f, -1f, 0f, 0f, 1f, 0f);
+        Vector4 clip = Vector4.Transform(new Vector4(1f, 2f, -5f, 1f), AmdFlip(proj));
+        float ux = clip.X / clip.W * 0.5f + 0.5f, uy = 1f - (clip.Y / clip.W * 0.5f + 0.5f);
+        check.Expect(MathF.Abs(ux - 0.7f) < 1e-5f && MathF.Abs(uy - 1.1f) < 1e-5f, "a flipped projection lands on Alloy's uv through AMD's formula");
+        Matrix4x4.Invert(proj, out Matrix4x4 inv);
+        Vector4 back = Vector4.Transform(new Vector4(0.4f, -1.2f, clip.Z / clip.W, 1f), AmdFlipInverse(inv));
+        check.Expect(MathF.Abs(back.Y / back.W - 2f) < 1e-4f, "the flipped inverse takes AMD's NDC back to the view point");
         log.Info(check.Ok ? "Ssr.SelfCheck: passed" : "Ssr.SelfCheck: FAILED");
     }
 }

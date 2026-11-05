@@ -17,6 +17,11 @@ AMD FidelityFX SDK 1.1.4 as CX builds FSR 3.1 and FidelityFX DoF: `patch -p1` in
 11. ffx_dof_blur.h: the per-pixel jitter on the kernel is gone. It shows as grain with no temporal pass after it.
 12. ffx_dof_callbacks_glsl.h: the kernel reads the colour mips filtered where the circle is smooth. Point-sampled, a blur
     wider than the kernel's rings shows stairs along every edge. Filtered across a silhouette, a sharp colour leaks.
+13. ffx_sssr_callbacks_glsl.h: the radiance, variance, roughness and blue-noise images are declared in the formats the
+    host creates them in.
+14. ffx_sssr.h, ffx_denoiser.h: the context sizes fit a 4-byte wchar_t.
+15. ffx_sssr.h, ffx_sssr_private.h, ffx_sssr.cpp, ffx_sssr_callbacks_glsl.h, ffx_sssr_intersect.h: a miss reads the probe with
+    Alloy's parallax lookup from the capture's own place, not along the bare ray, so it is the term the composite subtracts.
 1 to 4 follow the fixes JonathanOrr/xplane-fsr3 found (MIT; its notice is in LICENSES.txt).
 
 --- a/sdk/include/FidelityFX/gpu/fsr3upscaler/ffx_fsr3upscaler_callbacks_glsl.h
@@ -471,3 +476,124 @@ AMD FidelityFX SDK 1.1.4 as CX builds FSR 3.1 and FidelityFX DoF: `patch -p1` in
  	ins.pxCoord = texcoord;
  
  	FfxFloat32 centerCoc = FfxDofLoadInput(id).a;
+--- a/sdk/include/FidelityFX/gpu/sssr/ffx_sssr_callbacks_glsl.h	2026-11-05 00:58:05.071358983 +0100
++++ b/sdk/include/FidelityFX/gpu/sssr/ffx_sssr_callbacks_glsl.h	2026-11-05 00:58:05.077359021 +0100
+@@ -318,10 +318,10 @@
+         layout (set = 0, binding = SSSR_BIND_UAV_OUTPUT, rgba32f)           uniform image2D rw_output;
+ #endif
+ #if defined SSSR_BIND_UAV_RADIANCE
+-        layout (set = 0, binding = SSSR_BIND_UAV_RADIANCE, rgba32f)         uniform image2D rw_radiance;
++        layout (set = 0, binding = SSSR_BIND_UAV_RADIANCE, rgba16f)         uniform image2D rw_radiance;
+ #endif
+ #if defined SSSR_BIND_UAV_VARIANCE
+-        layout (set = 0, binding = SSSR_BIND_UAV_VARIANCE, r32f)            uniform image2D rw_variance;
++        layout (set = 0, binding = SSSR_BIND_UAV_VARIANCE, r16f)            uniform image2D rw_variance;
+ #endif
+ #if defined SSSR_BIND_UAV_RAY_LIST
+         layout (set = 0, binding = SSSR_BIND_UAV_RAY_LIST, std430)          buffer rw_ray_list_t
+@@ -348,10 +348,10 @@
+         } rw_intersection_pass_indirect_args; 
+ #endif
+ #if defined SSSR_BIND_UAV_EXTRACTED_ROUGHNESS
+-        layout (set = 0, binding = SSSR_BIND_UAV_EXTRACTED_ROUGHNESS, r32f) uniform image2D rw_extracted_roughness;
++        layout (set = 0, binding = SSSR_BIND_UAV_EXTRACTED_ROUGHNESS, r8) uniform image2D rw_extracted_roughness;
+ #endif
+ #if defined SSSR_BIND_UAV_BLUE_NOISE_TEXTURE
+-        layout (set = 0, binding = SSSR_BIND_UAV_BLUE_NOISE_TEXTURE, rg32f) uniform image2D rw_blue_noise_texture;
++        layout (set = 0, binding = SSSR_BIND_UAV_BLUE_NOISE_TEXTURE, rg8) uniform image2D rw_blue_noise_texture;
+ #endif
+ #if defined SSSR_BIND_UAV_DEPTH_HIERARCHY
+         layout (set = 0, binding = SSSR_BIND_UAV_DEPTH_HIERARCHY, r32f)     uniform image2D rw_depth_hierarchy[13];
+--- a/sdk/include/FidelityFX/host/ffx_denoiser.h	2026-11-05 00:58:22.770471002 +0100
++++ b/sdk/include/FidelityFX/host/ffx_denoiser.h	2026-11-05 00:58:22.777471046 +0100
+@@ -55,7 +55,7 @@
+ /// The size of the context specified in 32bit values.
+ ///
+ /// @ingroup Denoiser
+-#define FFX_DENOISER_CONTEXT_SIZE (73098)
++#define FFX_DENOISER_CONTEXT_SIZE (160000)
+ 
+ #if defined(__cplusplus)
+ extern "C" {
+--- a/sdk/include/FidelityFX/host/ffx_sssr.h	2026-11-05 00:58:22.765470970 +0100
++++ b/sdk/include/FidelityFX/host/ffx_sssr.h	2026-11-05 00:58:22.774471027 +0100
+@@ -56,7 +56,7 @@
+ /// The size of the context specified in 32bit values.
+ ///
+ /// @ingroup FfxSssr
+-#define FFX_SSSR_CONTEXT_SIZE (118914)
++#define FFX_SSSR_CONTEXT_SIZE (260000)
+ 
+ #if defined(__cplusplus)
+ extern "C" {
+--- a/sdk/include/FidelityFX/gpu/sssr/ffx_sssr_callbacks_glsl.h	2026-11-05 01:32:50.325297643 +0100
++++ b/sdk/include/FidelityFX/gpu/sssr/ffx_sssr_callbacks_glsl.h	2026-11-05 01:32:50.350648177 +0100
+@@ -55,6 +55,7 @@
+         FfxUInt32       mostDetailedMip;
+         FfxUInt32       samplesPerQuad;
+         FfxUInt32       temporalVarianceGuidedTracingEnabled;
++        FfxFloat32x4    probeAt;
+     } cbSSSR;
+ 
+ FfxFloat32Mat4 InvViewProjection()
+@@ -420,6 +421,18 @@
+     FfxFloat32 lod = clamp(preceptualRoughness * FfxFloat32(maxMipLevel), 0.0, FfxFloat32(maxMipLevel));
+     return textureLod(samplerCube(r_input_environment_map, s_EnvironmentMapSampler), direction, lod).xyz * IBLFactor();
+ }
++// CX: the probe's alpha is 1 / the distance the capture saw each way: turn toward where the ray meets that surface.
++FfxFloat32x3 FFX_SSSR_SampleEnvironmentParallax(FfxFloat32x3 P, FfxFloat32x3 R)
++{
++    FfxFloat32x3 p = P - cbSSSR.probeAt.xyz, l = R;
++    FfxFloat32 b = -dot(p, R), c = dot(p, p);
++    for (FfxInt32 i = 0; i < 2; i++)
++    {
++        FfxFloat32 dist = 1.0 / max(textureLod(samplerCube(r_input_environment_map, s_EnvironmentMapSampler), l, 0.0).a, 1e-4);
++        l = p + R * (b + sqrt(max(b * b - c + dist * dist, 0.0)));
++    }
++    return min(textureLod(samplerCube(r_input_environment_map, s_EnvironmentMapSampler), l, 0.0).xyz, FfxFloat32x3(16.0)) * IBLFactor();
++}
+ #endif // #if defined(SSSR_BIND_SRV_INPUT_ENVIRONMENT_MAP)
+ 
+ #if defined (SSSR_BIND_UAV_RAY_COUNTER)
+--- a/sdk/include/FidelityFX/gpu/sssr/ffx_sssr_intersect.h	2026-11-05 01:32:50.328297663 +0100
++++ b/sdk/include/FidelityFX/gpu/sssr/ffx_sssr_intersect.h	2026-11-05 01:32:50.351266010 +0100
+@@ -318,7 +318,7 @@
+ 
+     // Sample environment map.
+     FfxFloat32x3 world_space_reflected_direction = FFX_MATRIX_MULTIPLY(InvView(), FfxFloat32x4(view_space_reflected_direction, 0)).xyz;
+-    FfxFloat32x3 environment_lookup = FFX_SSSR_SampleEnvironmentMap(world_space_reflected_direction, 0.0f);
++    FfxFloat32x3 environment_lookup = FFX_SSSR_SampleEnvironmentParallax(world_space_origin, normalize(world_space_reflected_direction));
+     reflection_radiance = ffxLerp(environment_lookup, reflection_radiance, confidence);
+ 
+     FfxFloat32x4 new_sample = FfxFloat32x4(reflection_radiance, world_ray_length);
+--- a/sdk/include/FidelityFX/host/ffx_sssr.h	2026-11-05 01:32:50.332297689 +0100
++++ b/sdk/include/FidelityFX/host/ffx_sssr.h	2026-11-05 01:32:50.351557879 +0100
+@@ -140,6 +140,7 @@
+     uint32_t            mostDetailedMip;                        ///< The most detailed MIP map level in the depth hierarchy. Perfect mirrors always use 0 as the most detailed level.
+     uint32_t            samplesPerQuad;                         ///< The minimum number of rays per quad. Variance guided tracing can increase this up to a maximum of 4.
+     uint32_t            temporalVarianceGuidedTracingEnabled;   ///< A boolean controlling whether a ray should be spawned on pixels where a temporal variance is detected or not.
++    float               probeAt[3];                             ///< CX: where the probe was captured.
+ } FfxSssrDispatchDescription;
+ 
+ /// A structure encapsulating the FidelityFX Stochastic Screen Space Reflections context.
+--- a/sdk/src/components/sssr/ffx_sssr.cpp	2026-11-05 01:32:50.339297733 +0100
++++ b/sdk/src/components/sssr/ffx_sssr.cpp	2026-11-05 01:32:50.352352825 +0100
+@@ -673,6 +673,7 @@
+     context->constants.mostDetailedMip                      = params->mostDetailedMip;
+     context->constants.samplesPerQuad                       = params->samplesPerQuad;
+     context->constants.temporalVarianceGuidedTracingEnabled = params->temporalVarianceGuidedTracingEnabled ? 1 : 0;
++    memcpy(context->constants.probeAt, params->probeAt, sizeof(params->probeAt));
+ 
+     // initialize constantBuffers data
+     context->contextDescription.backendInterface.fpStageConstantBufferDataFunc(&context->contextDescription.backendInterface, &context->constants, sizeof(context->constants), &context->constantBuffers[FFX_SSSR_CONSTANTBUFFER_IDENTIFIER_SSSR]);
+--- a/sdk/src/components/sssr/ffx_sssr_private.h	2026-11-05 01:32:50.335297708 +0100
++++ b/sdk/src/components/sssr/ffx_sssr_private.h	2026-11-05 01:32:50.351745322 +0100
+@@ -57,6 +57,8 @@
+     uint32_t        mostDetailedMip;
+     uint32_t        samplesPerQuad;
+     uint32_t        temporalVarianceGuidedTracingEnabled;
++    uint32_t        pad;
++    float           probeAt[4];
+ };
+ 
+ // FfxSsssr2Context_Private

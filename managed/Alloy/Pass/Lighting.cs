@@ -11,9 +11,9 @@ internal static class Lighting
     internal static readonly KnobGroup G;
     internal static readonly Knob<float> Gain, Ambient, Sun, Sky, Overbright, Sss, Wrap, WrapNdl, Hot, HotSize, Radius, Falloff,
                                          ProbeGain, BinReach, AmbientDir,
-                                         Daylight, DayLow, DayHigh, Flicker, FlickerSpeed, SsrRough, Relevance, Floor, FullModel;
-    internal static readonly Knob<int> Fadeout, ProbeSize, BinCap, SsrDetail, SsrPlanarRes;
-    internal static readonly Knob<bool> Probe, ReachFade, HiddenLights, Brdf, Grazing, SpecAa, Ssr, SsrPlanar,
+                                         Daylight, DayLow, DayHigh, Flicker, FlickerSpeed, SsrRough, Relevance, Floor, FullModel, SssrThick, SssrStability;
+    internal static readonly Knob<int> Fadeout, ProbeSize, BinCap, SsrDetail, SsrPlanarRes, SssrSamples;
+    internal static readonly Knob<bool> Probe, ReachFade, HiddenLights, Brdf, Grazing, SpecAa, Ssr, Sssr, SsrPlanar,
                                         Deferred, DeferredTiles, DeferredWave, LightRec;
 
     static Lighting()
@@ -106,6 +106,14 @@ internal static class Lighting
                                tier: Tier.Advanced,
                                help: "How many reflection rays are traced: one per pixel, per 2x2 or per 4x4 block. Lower is cheaper and noisier.")
                      .Ladder(Quality.Reflections, 2, 2, 1, 1);
+        Sssr = G.Toggle("sssr", "FidelityFX SSSR trial", false, Tier.ChatOnly,
+                        help: "AMD's stochastic reflections and denoiser in place of Alloy's trace, resolve and history.");
+        SssrSamples = G.Dropdown("sssrsamples", "SSSR rays per quad", new[] { 1, 2, 4 }, 1, new[] { "one", "two", "four" },
+                                 tier: Tier.ChatOnly, help: "The fewest rays each 2x2 quad traces.");
+        SssrThick = G.Slider("sssrthick", "SSSR hit thickness", 0.01f, 1f, 0.01f, 0.15f, " m", tier: Tier.ChatOnly,
+                             help: "How far behind a surface a ray may land and still count as hitting it.");
+        SssrStability = G.Slider("sssrstab", "SSSR temporal stability", 0f, 1f, 0.05f, 0.7f, tier: Tier.ChatOnly,
+                                 help: "How much of the denoiser's history is kept. Higher is steadier and ghosts more.");
         SsrPlanar = G.Toggle("ssrplanar", "Mirror reflections on flat ground", false,
                              help: "Wet ground at the player's height reflects a second, mirrored draw of the scene: no holes behind "
                                  + "figures, and undersides the camera never sees. Costs a low-resolution redraw of the opaque set, "

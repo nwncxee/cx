@@ -42,6 +42,9 @@ public sealed unsafe partial class AlloyRenderer
         public int TProj = -1, TInvProj = -1, TView = -1, TNf = -1, TSsr = -1, TFrame = -1;
         public int RInvProj = -1, RView = -1, RInvView = -1, RCap = -1, RProbeMips = -1, RShift = -1, RPlane = -1, RColShift = -1, RFrame = -1;
         public int PInvProj = -1, PInvView = -1, PPrevVp = -1, PHistOn = -1;
+        /// <summary>This frame's camera with no jitter; the trial's programs, targets and last frame's camera.</summary>
+        public Matrix4x4 VpClean;
+        public VkSssrState Trial = new();
     }
 
     private static VkSsrState _vkSsr = new();
@@ -93,6 +96,7 @@ public sealed unsafe partial class AlloyRenderer
         if (!s.Armed) return;
         s.Armed = false;
         if (!Matrix4x4.Invert(proj, out Matrix4x4 invProj) || !Matrix4x4.Invert(view, out Matrix4x4 invView)) return;
+        if (Lighting.Sssr.V && VkSssrRun(vk, cl, s, vp, view, proj, invProj, invView, near, far, log)) return;
         s.PlOn = mirror && VkPlanarPass(vk, cl, s, vp, viewport, near, far, log);
         VkColourState c = _vkc;
         int arena0 = c.ArenaUsed;
@@ -202,6 +206,7 @@ public sealed unsafe partial class AlloyRenderer
                 "uHist" => new ImageBinding(o.Binding, s.HistAt == 0 ? s.Hist0 : s.Hist1, c.Linear),
                 "uProbe" => VkProbeImage(o) ?? new ImageBinding(o.Binding, c.TexCube, c.Linear),
                 "uPlanar" when s.PlOn => new ImageBinding(o.Binding, s.PlMip, s.Trilinear),
+                "uSssr" => new ImageBinding(o.Binding, s.Trial.Out, s.Point),
                 _ => new ImageBinding(o.Binding, c.Tex2D, c.Linear),
             };
         }
@@ -300,7 +305,7 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>The world edge and a camera cut: the reflection history shows another place, so the next frame's
     /// resolve stands alone.</summary>
-    internal static void VkSsrRevoke() => _vkSsr.HistValid = false;
+    internal static void VkSsrRevoke() { _vkSsr.HistValid = false; _vkSsr.Trial.PrevOn = false; }
 
     /// <summary>The planar mirror -- the opaque set mirrored across the ground at the player's feet into a
     /// 1/<c>light.ssrplanarres</c> target, winding flipped, the lit stage dropping what lies under the plane.

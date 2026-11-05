@@ -8,3 +8,7 @@ shared/ffx_breadcrumbs_list.cpp
 shared/ffx_object_management.cpp
 components/dof/ffx_dof.cpp
 backends/shared/blob_accessors/ffx_dof_shaderblobs.cpp
+components/sssr/ffx_sssr.cpp
+backends/shared/blob_accessors/ffx_sssr_shaderblobs.cpp
+components/denoiser/ffx_denoiser.cpp
+backends/shared/blob_accessors/ffx_denoiser_shaderblobs.cpp

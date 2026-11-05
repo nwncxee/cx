@@ -14,7 +14,7 @@ public enum Op : byte
     BindIndexBuffer, Draw, DrawIndexed, DrawIndexedIndirect, Dispatch, CopyImage, BlitImage, UpdateBuffer, ZeroBuffer,
     PushConstants, BindVertexBuffer, DrawIndexedMulti, SetDepthState, SetRasterState, SetDepthRange, ReadImages,
     DrawIndirect, CopyImageToBuffer, ClearImage, GenerateMips, BeginLabel, EndLabel, SetShadingRate, Upscale, CopyBuffer,
-    DrawMeshTasks, DepthOfField,
+    DrawMeshTasks, DepthOfField, Sssr,
 }
 
 /// <summary>An index element's width.</summary>
@@ -85,6 +85,14 @@ public readonly record struct UpscaleCmd(ImageId Color, ImageId Depth, ImageId M
 /// the band in metres, the depth decode (<c>A / (d + B)</c>) and the distances the decode clamps to.</summary>
 public readonly record struct DofCmd(ImageId Color, ImageId Depth, ImageId Output, float CocScale, float FocusNear, float FocusFar,
                                      float DepthA, float DepthB, float DepthMin, float DepthMax);
+
+/// <summary><see cref="Op.Sssr"/>: one FidelityFX SSSR dispatch. <see cref="Normal"/> holds the world normal and the alpha
+/// roughness in its fourth channel. The matrices are in AMD's convention, whose NDC y runs opposite its uv.</summary>
+public readonly record struct SssrCmd(ImageId Color, ImageId Depth, ImageId Motion, ImageId Normal, ImageId Env, ImageId Output,
+                                      System.Numerics.Matrix4x4 InvVp, System.Numerics.Matrix4x4 Proj, System.Numerics.Matrix4x4 InvProj,
+                                      System.Numerics.Matrix4x4 View, System.Numerics.Matrix4x4 InvView, System.Numerics.Matrix4x4 PrevVp,
+                                      float MvScaleX, float MvScaleY, float Thickness, float Stability, float RoughnessCap,
+                                      int SamplesPerQuad, System.Numerics.Vector3 ProbeAt);
 
 /// <summary>CPU work waiting on a list's submit: <see cref="Fn"/> gets <see cref="Arg"/> and whether the GPU ran the
 /// submit (false: it was refused, or the device went away first).</summary>
@@ -311,6 +319,8 @@ public sealed class CommandList
     public void Upscale(in UpscaleCmd c) { Head(Op.Upscale); Put(c); Sent(); }
     /// <summary>One depth of field; the device must have said <c>DofReady</c> for this colour's size first.</summary>
     public void DepthOfField(in DofCmd c) { Head(Op.DepthOfField); Put(c); Sent(); }
+    /// <summary>One SSSR; the device must have said <c>SssrReady</c> for this output's size first.</summary>
+    public void Sssr(in SssrCmd c) { Head(Op.Sssr); Put(c); Sent(); }
     /// <summary><paramref name="i"/>'s mips past the base filled from it by linear blits, outside a pass; the image needs
     /// <c>CopySrc</c> and <c>CopyDst</c>.</summary>
     public void GenerateMips(ImageId i) { Head(Op.GenerateMips); Put(i); Sent(); }
