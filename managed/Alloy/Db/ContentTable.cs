@@ -362,14 +362,7 @@ internal static unsafe class ContentTable
             {
                 int owner = s.Owner[r];
                 if (owner < 0) continue;
-                int epoch = ContentPrograms.Epoch(DrawRecipe.Feat(owner));
-                if (s.Filled[r] != epoch)
-                {
-                    FillRowLocked(r, DrawRecipe.Mtr(owner), ContentPrograms.Params(DrawRecipe.Feat(owner)),
-                                  Seam.MaterialParams.ContentOverrides(s.Obj[r]));
-                    s.Filled[r] = epoch;
-                    s.ContentFills++;
-                }
+                FillIfDue(r, owner);
                 bool moved = false;
                 for (int k = 0; k < PalSlots; k++)
                 {
@@ -386,6 +379,29 @@ internal static unsafe class ContentTable
             }
         }
         s.DirtyLo = int.MaxValue; s.DirtyHi = -1;   // the Vulkan frame takes the rows through Snapshot
+    }
+
+    /// <summary>Fill every row whose layout or object values moved, for a reader with no world frame to do it: the GUI,
+    /// whose doll may be all there is on screen.</summary>
+    internal static void FillDue()
+    {
+        lock (_lock)
+            for (int r = 0; r < MaxRows; r++)
+                if (_st.Owner[r] >= 0) FillIfDue(r, _st.Owner[r]);
+    }
+
+    /// <summary>Row <paramref name="r"/>'s lanes, when they are older than its pair's layout. An owner past the recipe
+    /// table is a golden's, filled by hand.</summary>
+    private static void FillIfDue(int r, int owner)
+    {
+        TableState s = _st;
+        if ((uint)owner >= DrawRecipe.Max) return;
+        int epoch = ContentPrograms.Epoch(DrawRecipe.Feat(owner));
+        if (s.Filled[r] == epoch) return;
+        FillRowLocked(r, DrawRecipe.Mtr(owner), ContentPrograms.Params(DrawRecipe.Feat(owner)),
+                      Seam.MaterialParams.ContentOverrides(s.Obj[r]));
+        s.Filled[r] = epoch;
+        s.ContentFills++;
     }
 
     internal static long Version => Volatile.Read(ref _st.Version);

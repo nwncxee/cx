@@ -57,6 +57,7 @@ internal static partial class GpuGolden
         ReversedZSelfCheck(vk, check, log);
         ContentClipSelfCheck(vk, check, log);
         ContentLanesSelfCheck(vk, check, log);
+        GuiTwinSelfCheck(vk, check, log);
         FsrSelfCheck(vk, check, log);
         WetSelfCheck(vk, check, log);
         WetNearLamp(vk, check, log);

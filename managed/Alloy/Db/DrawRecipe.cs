@@ -35,6 +35,24 @@ internal static partial class DrawRecipe
         => s == AoRecipeSlot ? AlloyRenderer.AoTexture
          : s >= PalRecipeSlot0 ? AlloyRenderer.PalTexture0 + (s - PalRecipeSlot0) : s;
 
+    /// <summary>The recipe slot holding material unit <paramref name="unit"/> (<c>texUnit1</c>..<c>texUnit10</c>): the map
+    /// block's own index up to <c>texUnit6</c>, then the four palette slots past the AO slot.</summary>
+    internal static int SlotOfUnit(int unit) => unit < AlloyRenderer.PalTexture0 ? unit : PalRecipeSlot0 + unit - AlloyRenderer.PalTexture0;
+
+    /// <summary>The <see cref="ContentTable"/> row a part of object <paramref name="obj"/> reads on recipe
+    /// <paramref name="recipe"/>: the object's own when it carries values, else the material's. -1 for no content pair,
+    /// and for a full table with no material row.</summary>
+    internal static int ContentRowFor(int recipe, DbId obj)
+    {
+        if (!ShaderFeatures.IsContent((int)FeatF(recipe, 0))) return -1;
+        if (Seam.MaterialParams.HasContent(obj))
+        {
+            int own = ContentTable.ObjectRow(recipe, obj.Value);
+            if (own >= 0) return own;
+        }
+        return (int)FeatF(recipe, 2);
+    }
+
     /// <summary>The slot-mask bit a bound recipe slot sets: none for the diffuse, the slot-6 and the four palette
     /// slots only for a content pair, the stages that can name them (vanilla's own <c>texture6Bound</c> test), and AO
     /// on its own out-of-line bit.</summary>

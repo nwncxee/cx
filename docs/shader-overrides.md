@@ -302,6 +302,15 @@ rules:
   bindless handle table, `texUnitNoise` and `texture7`..`texture10` sample the diffuse.
 - A vertex half reads `texUnit0`..`texUnit10`. The probe and noise units reach the fragment half only.
 
+**On a GUI part.** A pair on a model in a GUI scene, such as a character panel's doll, runs one of three ways:
+
+- A pair that samples only `texUnit0` compiles as the engine compiles it, fed `m_mvp`, `m_mv`, `m_texture`, `globalColor`,
+  `screenParams` and `texUnit0`. A load screen runs this way.
+- A pair with a stock vertex half that samples any later unit runs its fragment half inside the GUI's own program. It
+  reads the same parameters, object values and `texUnit1`..`texUnit10` as in an area, and lights by the GUI's light. It
+  has no fog, keyhole, area light or probe, and a stage's own light loop finds no lights.
+- A pair that samples past `texUnit0` with its own vertex half draws its baked texture. `GuiContent` says so in the log.
+
 **Checking it.**
 
 - `grep "mtr shader:" cx.log` lists every pair a material named and what Alloy did with it.

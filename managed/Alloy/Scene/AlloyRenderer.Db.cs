@@ -227,11 +227,7 @@ public sealed unsafe partial class AlloyRenderer
         if (Seam.MaterialParams.Any) Seam.MaterialParams.Apply(SceneDb.PartObj[part], ref _oParam[i]);
         for (int k = 0; k < 4; k++) _oFeat[fo + k] = DrawRecipe.FeatF(recipe, k);
         // CX-303: ...and an object carrying SetMaterialShaderUniform values reads them from a side-table row of its own
-        if (ShaderFeatures.IsContent((int)_oFeat[fo]) && Seam.MaterialParams.HasContent(SceneDb.PartObj[part]))
-        {
-            int own = Db.ContentTable.ObjectRow(recipe, SceneDb.PartObj[part].Value);
-            if (own >= 0) _oFeat[fo + 2] = own;
-        }
+        if (ShaderFeatures.IsContent((int)_oFeat[fo])) _oFeat[fo + 2] = DrawRecipe.ContentRowFor(recipe, SceneDb.PartObj[part]);
     }
 
     /// <summary>A seated part's object changed its material values: the part keeps its slot, so these terms are asked

@@ -300,6 +300,7 @@ public static unsafe partial class DbFeed
             int own = AlloyRenderer.DbRowForSelfCheck(slot);
             check.Expect(own != MaterialRow && Db.ContentTable.ObjectRow(recipe, o.Value) == own,
                          $"a seated part did not take its object's row when values arrived (row {own})");
+            check.Expect(DbGui.ContentRowForSelfCheck(h.Index, recipe) == own, "the same part on a GUI draw does not read its object's row");
 
             Seam.MaterialParams.Set(o, "", "", "", null);
             int stolen = Db.ContentTable.ObjectRow(recipe, Other);
@@ -310,11 +311,13 @@ public static unsafe partial class DbFeed
                          $"after a replay the seated part reads row {again}, which its row {own} went to another object as {stolen}");
             check.Expect(AlloyRenderer.DbRecordRowCurrentForSelfCheck(slot),
                          "the seated part's record kept the row it held before the replay");
+            check.Expect(DbGui.ContentRowForSelfCheck(h.Index, recipe) == again, "a GUI draw kept the row its object held before the replay");
 
             Seam.MaterialParams.Set(o, "", "", "", null);
             TakeFrame();
             check.Expect(AlloyRenderer.DbRowForSelfCheck(slot) == MaterialRow,
                          "a part whose object has no values left did not go back to its material's row");
+            check.Expect(DbGui.ContentRowForSelfCheck(h.Index, recipe) == MaterialRow, "a GUI draw with no values left did not read its material's row");
 
             Seam.MaterialParams.Set(o, "CxRoughness", "0.25", null, null);
             TakeFrame();

@@ -246,6 +246,16 @@ internal static partial class ContentStage
         return r.Host;
     }
 
+    /// <summary>Fragment half <paramref name="fs"/> translated for a GUI part, in the world's environment and ahead of
+    /// that program's <paramref name="ahead"/>. It reads the rows the world's lanes laid out, so a name in
+    /// <paramref name="lanes"/> keeps its lane, and any other reads past a row's end, which is its own default.</summary>
+    internal static Result GuiHalf(string vs, string fs, ContentStage.Param[] lanes, Func<string, string?> chain,
+                                   string ahead, CX.Framework.ExtenderLog? log)
+    {
+        (int v, int rev) = Build();
+        return Translate(fs, true, chain, Env(true, log), AlloyRenderer.VanillaEnvDefs, ahead, v, rev, new Result { Params = lanes }, vs);
+    }
+
     /// <summary>What a function the stage defines is renamed to when the program already defines one by its name ahead
     /// of the region -- a monolithic fork's own copy of an <c>inc_common</c> helper. The stage keeps its own.</summary>
     internal const string OwnPrefix = "CxConOwn_";

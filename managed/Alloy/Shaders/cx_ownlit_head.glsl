@@ -98,18 +98,7 @@ bool CxDecalOn(float z, float d)
     return h > -eps && h < CX_DECAL_TOL_M + eps;
 }
 #include "cx_oitout.glsl"
-// Slot mask bits, matching AlloyRenderer's 1 << (slot - 1).
-const int CX_SLOT_NORMAL = 1, CX_SLOT_SPEC = 2, CX_SLOT_ROUGH = 4,
-          CX_SLOT_HEIGHT = 8, CX_SLOT_ILLUM = 16;
-// #146: bit 6, texture slot 7 -- the AO map. It multiplies the SAME occlusion factor the height
-// map's local term feeds, so a material carrying both gets one combined ambient scale.
-const int CX_SLOT_AO = 128;
-// bit 8: no shadow lands on this record (an untextured blended sheet: a door's transition sheen)
-const int CX_SLOT_NOSHADOW = 256;
-// bits 9..12, .mtr texture7..texture10 -- set only on a content pair's material, the stages that can name them, which
-// is the same reading the flow slot's bit takes. CX_SLOT_PAL0 is the first, declared in cx_conbuf.glsl because that
-// library is included ahead of this block.
-const int CX_SLOT_PAL_LAST = CX_SLOT_PAL0 << 3;
+#include "cx_slotbits.glsl"
 /// the depth encode's own rounding, nothing more: #119 makes a prepassed fragment's depth EQUAL
 const float CX_AO_DEPTH_EPS = 1e-5;
 /// The half-res upsample's depth tolerance, in fragment depth SLOPES: a neighbour more than this
@@ -125,13 +114,6 @@ const float CX_METAL_GAIN_MAP = 25.0, CX_METAL_SCALE_BARE = 10.0, CX_METAL_BIAS_
 // ApplyColorSpace(0.5) at the engine's 2.2 gamma -- the mid-grey inc_material.shd divides the
 // albedo's peak channel by when it synthesises a specular colour.
 const float CX_MID_GREY = 0.2176;
-// #121: bit 5 of the same slot mask -- the material declares an env map (Material::HasEnvMap, i.e.
-// mat+0x40). NO texture is bound for it: the probe replaces what it held. What survives is the
-// engine's own "this is shiny" flag on 2002 content, which drives the synthesis below.
-const int CX_SLOT_ENV = 64;
-// #123: bit 5, texture slot 6 -- the only slot outside the stock five, which a content pair's stage reads as
-// texUnit6. Enrolled only on such a part, so on everything else this bit is clear and uFlowTex is never sampled.
-const int CX_SLOT_FLOW = 32;
 // inc_material.shd:141-142 -- an env-mapped material with no specular map takes its specularity from
 // the diffuse alpha (fEnvMapLevel = 1 - alpha), and its roughness down toward the floor with it.
 // TWO modifiers, not one: fLegacyEnvMapSpecularityModifier 8.0 and fLegacyEnvMapRoughnessModifier

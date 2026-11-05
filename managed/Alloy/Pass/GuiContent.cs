@@ -6,6 +6,7 @@ using CX.Engine;
 using CX.Framework;
 using CX.Graphics;
 using CX.Graphics.Rhi;
+using CX.Alloy.Db;
 
 namespace CX.Alloy;
 
@@ -178,6 +179,15 @@ internal static unsafe partial class GuiContent
         int a = Key(Mtr("// a load screen's bar\ncustomshadervs LS_VS_Loader\ncustomshaderfs ls_fs_loader\n"));
         int b = Key(Mtr("customShaderVS ls_vs_loader\ncustomShaderFS LS_FS_LOADER\n"));
         check.Expect(a > 0 && a == b, "resrefs and keywords are case-blind: one pair, one key");
+
+        for (int unit = 1; unit <= GuiCapture.ConMapCount; unit++)
+            check.Expect(DrawRecipe.MtrTextureOf(DrawRecipe.SlotOfUnit(unit)) == unit, $"texUnit{unit} does not read the recipe slot of .mtr texture{unit}");
+
+        const string Unit0 = "uniform sampler2D texUnit0;\nvoid main() { }\n", Unit8 = "uniform sampler2D texUnit0;\nuniform sampler2D texUnit8;\nvoid main() { }\n";
+        check.Expect(RouteOf(Unit0, Unit0, true) == Route.Engine, "a pair reading only texUnit0 stays the engine's, as a load screen's is");
+        check.Expect(RouteOf(Unit0, Unit8, true) == Route.Twin, "a stock vertex half under a fragment half sampling texUnit8 runs in the GUI's program");
+        check.Expect(RouteOf(Unit8, Unit0, true) == Route.Twin, "...and a vertex half's sampler counts as well");
+        check.Expect(RouteOf(Unit0, Unit8, false) == Route.None, "a vertex half of its own has no host in the GUI's program");
         log.Info(check.Ok ? "GuiContent.SelfCheck: passed" : "GuiContent.SelfCheck: FAILED");
     }
 }

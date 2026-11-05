@@ -13,12 +13,12 @@ internal static unsafe partial class GuiPassVk
     /// <summary>Program <paramref name="p"/>'s set 0 for one draw: its loose block out of the arena, the records
     /// storage buffer, and each sampler it declares bound to the image that name means -- the draw's texture, the
     /// environment map it reflects, the master palette -- or the stand-in texel.</summary>
-    private static void BindSet(CommandList side, GuiVkProg p, int loose, int tex, int envTex)
+    private static void BindSet(CommandList side, GuiVkProg p, int loose, in GuiCapture.Draw d)
     {
         GuiVkState s = _s;
         Span<BufferBinding> ubo = stackalloc BufferBinding[4];
         Span<BufferBinding> ssbo = stackalloc BufferBinding[4];
-        Span<ImageBinding> sampled = stackalloc ImageBinding[8];
+        Span<ImageBinding> sampled = stackalloc ImageBinding[16];
         int nu = 0, ns = 0, nt = 0;
         foreach (VkOpaque o in p.Opaques)
         {
@@ -28,11 +28,17 @@ internal static unsafe partial class GuiPassVk
                 case VkBindKind.UniformBlock when o.Binding == UboSlots.Loose && loose >= 0 && nu < ubo.Length:
                     ubo[nu++] = new BufferBinding(o.Binding, s.Loose, loose, p.Block.Length);
                     break;
+                case VkBindKind.UniformBlock when o.Binding == UboSlots.Engine && s.EngineAt >= 0 && nu < ubo.Length:
+                    ubo[nu++] = new BufferBinding(o.Binding, s.Loose, s.EngineAt, AlloyRenderer.EngineBytes);
+                    break;
                 case VkBindKind.StorageBlock when o.Binding == SsboSlots.Gui && ns < ssbo.Length:
                     ssbo[ns++] = new BufferBinding(o.Binding, s.Recs);
                     break;
+                case VkBindKind.StorageBlock when o.Binding == SsboSlots.Content && ns < ssbo.Length:
+                    ssbo[ns++] = new BufferBinding(o.Binding, s.ConRows);
+                    break;
                 case VkBindKind.Sampled when nt < sampled.Length:
-                    sampled[nt++] = Sampled(o, s, tex, envTex);
+                    sampled[nt++] = Sampled(o, s, in d);
                     break;
             }
         }
@@ -41,14 +47,32 @@ internal static unsafe partial class GuiPassVk
 
     /// <summary>One sampler declaration's image: the draw's own texture for the GUI program's <c>uTex</c> and a
     /// content stage's <c>texUnit0</c>, the part's environment map, the master palette, else the stand-in.</summary>
-    private static ImageBinding Sampled(in VkOpaque o, GuiVkState s, int tex, int envTex)
+    private static ImageBinding Sampled(in VkOpaque o, GuiVkState s, in GuiCapture.Draw d)
         => o.Name switch
         {
-            "uTex" or "texUnit0" => Texture(s, tex),
-            "uEnvMap" => Texture(s, envTex),
+            "uTex" or "texUnit0" => Texture(s, d.Tex),
+            "uEnvMap" => Texture(s, d.EnvTex),
             "uPltPal" when !s.Palette.IsNull => new ImageBinding(o.Binding, s.Palette, s.Nearest),
+            "uProbe" => new ImageBinding(o.Binding, s.StandInCube, s.Nearest),
+            "uNrmTex" => Map(s, in d, 1),
+            "uSpecTex" => Map(s, in d, 2),
+            "uRoughTex" => Map(s, in d, 3),
+            "uHeightTex" => Map(s, in d, 4),
+            "uIllumTex" => Map(s, in d, 5),
+            "uFlowTex" => Map(s, in d, 6),
+            "uGuiPal0" => Map(s, in d, 7),
+            "uGuiPal1" => Map(s, in d, 8),
+            "uGuiPal2" => Map(s, in d, 9),
+            "uGuiPal3" => Map(s, in d, 10),
             _ => new ImageBinding(o.Binding, s.StandIn, s.Nearest),
         } with { Slot = o.Binding };
+
+    /// <summary>Material unit <paramref name="unit"/> of a content draw: <c>texUnit1</c> is 1. An empty unit takes the stand-in.</summary>
+    private static ImageBinding Map(GuiVkState s, in GuiCapture.Draw d, int unit)
+    {
+        int gl = d.ConAt >= 0 ? GuiCapture.Con.Draws[d.ConAt].Maps[unit - 1] : 0;
+        return gl != 0 ? Texture(s, gl) : new ImageBinding(0, s.StandIn, s.Nearest);
+    }
 
     /// <summary>GL texture name <paramref name="tex"/>'s Vulkan image: a CX font atlas, a model view's target, an
     /// owned texture's mirror, or an engine texture's copy. A name with none takes the stand-in, counted -- its part then draws untextured rather
@@ -85,6 +109,19 @@ internal static unsafe partial class GuiPassVk
         public void Write() => GuiContent.Feed(Terms, Draw, W, H, Gamma);
     }
 
+    /// <summary>A twin draw's terms: the GUI program's two, then what its pair reads.</summary>
+    private readonly record struct TwinFill(GuiContent.TwinTerms T, int Row, int Slots, int W, int H, bool Gamma) : IFill
+    {
+        public void Write()
+        {
+            LooseBlock.Set(T.BoneStart, GuiCapture.DrawN * (GuiCapture.RecFloats / 4));
+            LooseBlock.Set(T.Gamma, Gamma ? 1 : 0);
+            LooseBlock.Set(T.Row, Row);
+            LooseBlock.Set(T.Slots, Slots);
+            LooseBlock.Set(T.Screen, (float)W, H);
+        }
+    }
+
     /// <summary>The model-view solve's background.</summary>
     private readonly record struct SolveFill(int Bg, Vector4 Colour) : IFill
     {
@@ -103,7 +140,31 @@ internal static unsafe partial class GuiPassVk
     /// <summary>A content program's loose block for draw <paramref name="di"/>: the engine's own terms, written by
     /// <see cref="GuiContent.Feed"/> at the block's reflected offsets.</summary>
     private static int ContentBlock(GuiContent.VkPair pair, int di, int w, int h, bool gamma, ExtenderLog log)
-        => Block(pair.Program, new ContentFill(pair.Terms, di, w, h, gamma), log);
+    {
+        if (pair.Twin is not { } t) return Block(pair.Program, new ContentFill(pair.Terms, di, w, h, gamma), log);
+        GuiVkState s = _s;
+        if (s.EngineAt < 0)
+        {
+            s.EngineAt = Arena(AlloyRenderer.EngineBlockBytes(in AlloyRenderer.EngineBlockStaged()), log);
+            if (s.EngineAt < 0) return -1;
+        }
+        ref GuiCapture.ConDraw c = ref GuiCapture.Con.Draws[GuiCapture.Draws[di].ConAt];
+        return Block(pair.Program, new TwinFill(t, c.Row, c.Slots, w, h, gamma), log);
+    }
+
+    /// <summary>The content table a twin reads, sent when it moved. Its own copy, because a screen with a doll may have no
+    /// world frame to send the world's, and a twin takes its maps by name rather than as the handles that copy carries.</summary>
+    private static void ContentRows(VkBackend vk, CommandList cl, ExtenderLog log)
+    {
+        GuiVkState s = _s;
+        Db.ContentTable.FillDue();
+        long version = Db.ContentTable.Version;
+        if (version == s.ConVersion && !s.ConRows.IsNull) return;
+        int n = Db.ContentTable.Snapshot(ref s.ConStage);
+        if (!Grow(vk, ref s.ConRows, ref s.ConCap, n, BufferUse.Storage, "vk gui content table", log)) return;
+        cl.UpdateBuffer(s.ConRows, 0, s.ConStage.AsSpan(0, n));
+        s.ConVersion = version;
+    }
 
     /// <summary>Capture <paramref name="fill"/>'s writes into <paramref name="p"/>'s block and append it to the
     /// flush's arena; its offset, or -1 (logged) when the arena is full. Hot: once per content draw.</summary>
@@ -248,11 +309,13 @@ internal static unsafe partial class GuiPassVk
 
     /// <summary>Content key <paramref name="key"/>'s Vulkan program, built on its first draw; null = no program of
     /// its own (said once by the build), and those parts draw through Alloy's GUI program as GL's do.</summary>
-    private static GuiContent.VkPair? ContentProgram(VkBackend vk, int key, ExtenderLog log)
+    private static GuiContent.VkPair? ContentProgram(VkBackend vk, int key, int conAt, ExtenderLog log)
     {
         GuiVkState s = _s;
-        if (s.Content.TryGetValue(key, out GuiContent.VkPair? pair)) return pair;
-        pair = GuiContent.VkBuild(vk, key, log);
+        // a twin read the lanes of one layout: a later build of the pair is a new one
+        if (s.Content.TryGetValue(key, out GuiContent.VkPair? pair)
+            && (pair?.Twin == null || pair.Epoch == ContentPrograms.Epoch(pair.Feat))) return pair;
+        pair = GuiContent.VkBuild(vk, key, conAt >= 0 ? GuiCapture.Con.Draws[conAt].Feat : 0, log);
         s.Content[key] = pair;
         return pair;
     }

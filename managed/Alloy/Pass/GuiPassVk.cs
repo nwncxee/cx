@@ -65,8 +65,17 @@ internal static unsafe partial class GuiPassVk
         /// <summary>The master palette's Vulkan copy and the send count it came from.</summary>
         public ImageId Palette;
         public long PaletteSends = -1;
-        /// <summary>One transparent-black texel, for a draw whose texture has no Vulkan image.</summary>
-        public ImageId StandIn;
+        /// <summary>One transparent-black texel, for a draw whose texture has no Vulkan image, and the cube a twin
+        /// declares for the probe a GUI scene does not have.</summary>
+        public ImageId StandIn, StandInCube;
+        /// <summary>The size this flush's screen layers cover: the present target's, or the image they land in.</summary>
+        public int W, H;
+        /// <summary>The content table as a twin reads it, its staging, and the table version it holds.</summary>
+        public BufferId ConRows;
+        public long ConCap, ConVersion = -1;
+        public byte[] ConStage = [];
+        /// <summary>The engine block in this flush's arena, -1 until a twin stages it.</summary>
+        public int EngineAt = -1;
         public SamplerId Linear, Nearest;
         public readonly VertexLayoutId[] ArenaLayout = new VertexLayoutId[MeshArena.Formats];
         /// <summary>Stream layouts by (format, stride); a format the table cannot lay out has none.</summary>
@@ -111,6 +120,12 @@ internal static unsafe partial class GuiPassVk
     internal static bool Flush(int from, int mid, int to, bool windows, ExtenderLog log, ImageId into = default, bool clearBlack = false)
     {
         if (AlloyDevice.Vulkan(log) is not VkBackend vk) return false;
+        return FlushOn(vk, from, mid, to, windows, log, into, clearBlack);
+    }
+
+    /// <summary><see cref="Flush"/> on the device given.</summary>
+    internal static bool FlushOn(VkBackend vk, int from, int mid, int to, bool windows, ExtenderLog log, ImageId into = default, bool clearBlack = false)
+    {
         if (!vk.OnOwnThread)
         {
             if (!_s.OffThreadSaid)
@@ -121,10 +136,11 @@ internal static unsafe partial class GuiPassVk
             }
             return false;
         }
-        if (!Ensure(vk, log)) return false;
+        if (!Ensure(vk, into, log)) return false;
         GuiVkState s = _s;
         s.ArenaUsed = 0;
         s.GuiBlockAt = -1;
+        s.EngineAt = -1;
         foreach (View v in s.Views) v.Drawn = v.Solved = false;
         s.Into = into;
         s.Black = clearBlack;
@@ -138,7 +154,7 @@ internal static unsafe partial class GuiPassVk
             DrainEngine();
             CommandList cl = s.Cmds!;
             cl.Reset();
-            Uploads(cl);
+            Uploads(cl, log);
             ok = Record(vk, cl, from, mid, log)
                  && (!windows || Windows(vk, cl, CX.Ui.UiLayer.BelowNui, log))
                  && Record(vk, cl, mid, to, log)
@@ -181,14 +197,16 @@ internal static unsafe partial class GuiPassVk
 
     /// <summary>The device's programs, buffers, layouts and stand-ins, made once per device, and the depth and
     /// palette that follow the frame. False = the GUI cannot be drawn at all, which fails Alloy loudly.</summary>
-    private static bool Ensure(VkBackend vk, ExtenderLog log)
+    private static bool Ensure(VkBackend vk, ImageId into, ExtenderLog log)
     {
         if (_s.Dev != vk) _s = new GuiVkState { Dev = vk };
         GuiVkState s = _s;
         if (s.Failed) return false;
         if (s.Prog == null && !Make(vk, s, log)) { s.Failed = true; return false; }
         int w = PresentTarget.Width, h = PresentTarget.Height;
+        if (!into.IsNull && vk.DescOf(into, out ImageDesc id)) { w = id.W; h = id.H; }
         if (w <= 0 || h <= 0) return false;
+        s.W = w; s.H = h;
         if (s.Depth.IsNull || s.DepthW != w || s.DepthH != h)
         {
             vk.Destroy(s.Depth);
@@ -234,7 +252,9 @@ internal static unsafe partial class GuiPassVk
         s.StandIn = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba8, 1, 1, 1, 1, 1, 1,
                                                  ImageUse.Sampled | ImageUse.CopyDst, "vk gui stand-in"));
         s.Loose = vk.CreateBuffer(new BufferDesc(LooseCap, BufferUse.Uniform, MemoryKind.Device, "vk gui loose arena"));
-        if (s.Linear.IsNull || s.Nearest.IsNull || s.StandIn.IsNull || s.Loose.IsNull)
+        s.StandInCube = vk.CreateImage(new ImageDesc(ImageKind.Cube, Format.Rgba8, 1, 1, 1, 1, 1, 1,
+                                                     ImageUse.Sampled | ImageUse.CopyDst, "vk gui stand-in cube"));
+        if (s.Linear.IsNull || s.Nearest.IsNull || s.StandIn.IsNull || s.StandInCube.IsNull || s.Loose.IsNull)
         {
             Fail("the Vulkan GUI pass's constant resources were refused (logged above)", log);
             return false;
@@ -242,6 +262,7 @@ internal static unsafe partial class GuiPassVk
         Span<byte> texel = stackalloc byte[4];
         texel.Clear();
         vk.Upload(s.StandIn, 0, 0, texel);
+        for (int face = 0; face < 6; face++) vk.Upload(s.StandInCube, 0, face, texel);
         s.Cmds = new CommandList("vulkan gui", 1 << 18, log);
         s.Side = new CommandList("vulkan gui draws", 1 << 19, log);
         log.Info($"GuiPassVk: programs built -- the GUI is Vulkan's from this flush ({MeshArena.Formats} arena layouts)");
@@ -250,7 +271,7 @@ internal static unsafe partial class GuiPassVk
 
     /// <summary>A GUI stage's text as it is compiled: the library overrides, then the vanilla splice and the sizing
     /// tokens -- the same two steps <see cref="VkPrograms"/> takes.</summary>
-    private static string Text(string resref, ExtenderLog log)
+    internal static string Text(string resref, ExtenderLog log)
     {
         string what = $"GuiPassVk {resref}";
         return ShaderResource.Tokens(VanillaShader.Splice(ShaderTexts.Lib(ShaderSource.Get(resref), log, what), log, what, true, true));
@@ -276,6 +297,13 @@ internal static unsafe partial class GuiPassVk
         VertexAttrib paint = attribs.Find(a => a.Location == AlloyRenderer.LocPaint);
         attribs.Add(paint with { Location = GuiContent.UnusedLoc });
         return d with { Attribs = attribs.ToArray(), Label = $"gui arena {f}" };
+    }
+
+    /// <summary>A golden's twin for content key <paramref name="key"/>, drawn by its next <see cref="FlushOn"/>.</summary>
+    internal static void TwinForCheck(VkBackend vk, int key, GuiContent.VkPair pair)
+    {
+        if (_s.Dev != vk) _s = new GuiVkState { Dev = vk };
+        _s.Content[key] = pair;
     }
 
     /// <summary>GL names and the Vulkan device both die with the context: the state goes whole.</summary>
