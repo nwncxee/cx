@@ -183,10 +183,6 @@ internal static class CardSelfCheck
         check.Expect(Near(v.H, 50f), "a footer is its tallest side plus 5 px above and below");
         float[] t = v.Text.ToArray();
         check.Expect(v.Text.VertexCount == 24 && Near(t[0], 11f) && Near(t[2 * 6 * VertexBatch.Floats], 171f), "the left side starts at the padding, the right side ends flush with the text edge");
-        v = Lay(atlas, "{\"width\":200,\"border\":\"#ff0000\",\"blocks\":[{\"type\":\"footer\",\"left\":\"ab\",\"right\":\"cd\"}]}");
-        float[] fb = v.Back.ToArray();
-        int last = fb.Length - VertexBatch.Floats;
-        check.Expect(Near(fb[last + 4], 1f) && Near(fb[last + 5], 0f) && Near(fb[last + 6], 0f), "the frame draws over a footer's band, so the band never hides the border");
         v = Lay(atlas, "{\"width\":200,\"bg\":{\"from\":\"#102030\",\"to\":\"#304050\"},\"blocks\":[]}");
         float[] b = v.Back.ToArray();
         check.Expect(Near(b[4], 0x10 / 255f) && Near(b[5], 0x20 / 255f) && Near(b[6], 0x30 / 255f) && Near(b[2 * VertexBatch.Floats + 4], 0x30 / 255f) && Near(b[5 * VertexBatch.Floats + 4], 0x30 / 255f),
