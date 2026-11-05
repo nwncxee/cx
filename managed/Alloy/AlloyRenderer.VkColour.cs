@@ -412,6 +412,7 @@ public sealed unsafe partial class AlloyRenderer
                 SkyView.UploadLitVk(L.SkyVp, L.SkyTerm, VkSkyMap, _capturing && !_planar);
                 LooseBlock.Set(L.LmPages, LightmapBake.VkLivePages);
                 LooseBlock.Set(L.LmMovers, LightmapBake.MoverMode);
+                if (p.Variant == ContentVariant.Depth && p.Names.TryGetValue("uHlColor", out int hl)) LooseBlock.Set(hl, _vkHl.TwinColour);
             }
             else
             {

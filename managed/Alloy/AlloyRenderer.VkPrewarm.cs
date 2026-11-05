@@ -22,7 +22,8 @@ public sealed unsafe partial class AlloyRenderer
         (true, VkPrograms.Id.Lit or VkPrograms.Id.Fullbright, _) or (false, _, ContentVariant.Forward) =>
             LitSets,
         (true, VkPrograms.Id.LitDeferred, _) or (false, _, ContentVariant.Deferred) => GbufSets,
-        (true, VkPrograms.Id.Depth or VkPrograms.Id.DepthKey, _) or (false, _, ContentVariant.Depth) => PrepassSets,
+        (true, VkPrograms.Id.Depth or VkPrograms.Id.DepthKey, _) => PrepassSets,
+        (false, _, ContentVariant.Depth) => ContentDepthSets,
         (true, VkPrograms.Id.DepthFeat, _) => FeatDepthSets,
         (true, VkPrograms.Id.Decal, _) => DecalSets,
         (true, VkPrograms.Id.HighlightMask, _) => MaskSets,
@@ -34,6 +35,7 @@ public sealed unsafe partial class AlloyRenderer
     private static readonly VkTargets[] LitSets =
         [VkTargets.Colour, VkTargets.ColourRefl, VkTargets.Forward, VkTargets.Oit, VkTargets.Cover, VkTargets.Probe],
         GbufSets = [VkTargets.Colour, VkTargets.ColourRefl], PrepassSets = [VkTargets.Prepass],
+        ContentDepthSets = [VkTargets.Prepass, VkTargets.Mask],
         FeatDepthSets = [VkTargets.Prepass, VkTargets.ForwardDepth], DecalSets = [VkTargets.Decal], MaskSets = [VkTargets.Mask],
         VelocitySets = [VkTargets.Velocity];
 

@@ -26,8 +26,8 @@ internal static unsafe partial class Highlight
 
     /// <summary>The outline's draws on Vulkan, gathered off the staged batches: every
     /// highlighted root the source hook claimed and its attached children, matched against the staged batches up to
-    /// the blended class's end. A content pair's own depth twin is not on Vulkan, so its parts are not masked; a root
-    /// with no masked draw is left to <see cref="StageGlowVk"/>. The draws gathered.</summary>
+    /// the blended class's end. A content pair with depth of its own is masked through its depth twin, which keeps the
+    /// pair's cuts and vertex placement; a root with no masked draw is left to <see cref="StageGlowVk"/>. The draws gathered.</summary>
     internal static int GatherVk(int groups)
     {
         HlVkState s = _vkHl;
@@ -56,7 +56,7 @@ internal static unsafe partial class Highlight
         int end = groups < _gBlendEnd ? groups : _gBlendEnd;
         for (int g = 0; g < end && s.N < MaxHlDraws; g++)
         {
-            if (ShaderFeatures.OutOfPrepass(_gFeat[g])) continue;
+            if (ShaderFeatures.OutOfPrepass(_gFeat[g]) && !AlloyRenderer.VkMaskTwinReady(_gFeat[g])) continue;
             for (int j = _gStart[g]; j < _gStart[g] + _gLen[g] && s.N < MaxHlDraws; j++)
             {
                 int slot = _dSlot[j];
