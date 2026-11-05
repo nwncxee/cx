@@ -2791,6 +2791,17 @@ public readonly unsafe partial struct MaterialParameter(IntPtr ptr)
     public MaterialParameter this[int i] => new(Ptr + i * EngineLayout.ParamStride);
 }
 
+/// <summary>Typed view of an engine <c>MaterialShaderParam*</c>.</summary>
+public readonly unsafe partial struct MaterialShaderParam(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.MaterialParamStride"/>
+    public MaterialShaderParam this[int i] => new(Ptr + i * EngineLayout.MaterialParamStride);
+}
+
 /// <summary>Typed view of an engine <c>MdlNode*</c>.</summary>
 public readonly unsafe ref partial struct MdlNode(IntPtr ptr)
 {

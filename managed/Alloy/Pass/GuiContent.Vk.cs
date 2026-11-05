@@ -15,13 +15,14 @@ internal static unsafe partial class GuiContent
         /// <summary>This pair runs inside the GUI's own program: the terms that program reads. Null for a pair compiled
         /// the way the engine compiles it.</summary>
         public TwinTerms? Twin;
-        /// <summary>A twin's pair and the lane layout it was translated against.</summary>
-        public int Feat, Epoch;
     }
 
     /// <summary>The loose terms <c>cx_gui_v</c> and <c>cx_guicon_f</c> read: the GUI program's two, and the draw's row, slot
-    /// mask and view size.</summary>
-    internal sealed record TwinTerms(int BoneStart, int Gamma, int Row, int Slots, int Screen);
+    /// mask and view size. <see cref="Feat"/> and <see cref="Epoch"/> are the pair and the lane layout it was translated against.</summary>
+    internal sealed record TwinTerms(int BoneStart, int Gamma, int Row, int Slots, int Screen)
+    {
+        public int Feat, Epoch;
+    }
 
     /// <summary>How a pair runs on a GUI part. <see cref="Route.Engine"/>: as the engine compiles it, fed the terms
     /// <see cref="Feed"/> writes. <see cref="Route.Twin"/>: inside the GUI's program, because it samples a material unit
@@ -79,9 +80,8 @@ internal static unsafe partial class GuiContent
         return new VkPair(p, new Prog()) { Twin = terms };
     }
 
-    /// <summary>The samplers a content stage may declare without a binding, at the units the engine's program sets:
-    /// <c>GLRender</c> binds a GUI part's texture on unit 0 and a GUI content stage reads no other, so a pair that
-    /// declares one is refused rather than drawn against a texture nobody bound.</summary>
+    /// <summary>The samplers a pair on the engine's route may declare: a pair that declares another takes
+    /// <see cref="Route.Twin"/> or <see cref="Route.None"/>, so this route has nothing else to bind.</summary>
     private static readonly Dictionary<string, uint> VkUnits = new(StringComparer.Ordinal) { ["texUnit0"] = 0 };
 
     /// <summary>The engine's attribute declarations, which carry no location of their own: Vulkan has no attribute
@@ -109,7 +109,7 @@ internal static unsafe partial class GuiContent
                     return null;
                 }
                 VkPair? twin = VkTwin(vk, vsName, fsName, ContentPrograms.Params(feat), VanillaShader.ChainText, log);
-                if (twin != null) { twin.Feat = feat; twin.Epoch = ContentPrograms.Epoch(feat); }
+                if (twin?.Twin is { } t) { t.Feat = feat; t.Epoch = ContentPrograms.Epoch(feat); }
                 return twin;
         }
         Prog? terms = null;

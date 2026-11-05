@@ -157,6 +157,17 @@ internal static unsafe class ContentPrograms
         if (Of(feat) is { Failed: false, Plain: false, P.Fwd: 0 } s) s.Wanted = true;
     }
 
+    /// <summary>Splice the pair's halves into the lit pair and read their facts. False (logged, the stage failed) when a step refused.</summary>
+    private static bool ReadHalves(Stage s)
+    {
+        (string litVs, string litFs) = VkPrograms.LitPair(_reg.Log);
+        if (!Splice(s, litVs, litFs)) return false;
+        VkPrograms.Splice(s.VsSrc!, s.FsSrc!, _reg.Log, What(s));
+        if (Facts(s, out string? refused)) return true;
+        Fail(s, refused ?? "its halves did not translate (the lines above say why)");
+        return false;
+    }
+
     /// <summary>Has this pair's halves been read, so its lanes are known? Asks for them now where no batch has: a GUI
     /// part may be the pair's first draw, with no world frame coming. Its programs stay unbuilt, because the bindless
     /// decision their text rests on may not be made yet; the build that follows starts a new epoch. False when the pair
@@ -166,14 +177,7 @@ internal static unsafe class ContentPrograms
         if (Of(feat) is not { Failed: false, Plain: false } s) return false;
         if (s.P.Fwd != 0 || s.FactsRead) return true;
         bool wanted = s.Wanted;
-        (string litVs, string litFs) = VkPrograms.LitPair(_reg.Log);
-        if (!Splice(s, litVs, litFs)) return false;
-        VkPrograms.Splice(s.VsSrc!, s.FsSrc!, _reg.Log, What(s));
-        if (!Facts(s, out string? refused))
-        {
-            Fail(s, refused ?? "its halves did not translate (the lines above say why)");
-            return false;
-        }
+        if (!ReadHalves(s)) return false;
         s.Wanted = wanted;
         s.FactsRead = true;
         s.Epoch++;
@@ -258,15 +262,8 @@ internal static unsafe class ContentPrograms
     /// compiles each variant the first time a batch draws it.</summary>
     private static void StartVk(Stage s)
     {
-        (string litVs, string litFs) = VkPrograms.LitPair(_reg.Log);
-        if (!Splice(s, litVs, litFs)) return;
+        if (!ReadHalves(s)) return;
         string what = What(s);
-        VkPrograms.Splice(s.VsSrc!, s.FsSrc!, _reg.Log, what);
-        if (!Facts(s, out string? refused))
-        {
-            Fail(s, refused ?? "its halves did not translate (the lines above say why)");
-            return;
-        }
         var p = new ProgramSet { Fwd = VkReady };
         var built = new List<string>();
         foreach (var (twin, _, _, slot) in Twins(s))

@@ -1,12 +1,11 @@
 12 managed/Alloy/AlloyRenderer.Acoustic.cs
 5 managed/Alloy/AlloyRenderer.Batches.cs
-3 managed/Alloy/AlloyRenderer.VkPasses.cs
-17 managed/Alloy/BcnDecode.cs
-28 managed/Alloy/BcnEncode.cs
+2 managed/Alloy/AlloyRenderer.VkPasses.cs
+13 managed/Alloy/BcnDecode.cs
+26 managed/Alloy/BcnEncode.cs
 1 managed/Alloy/Core/SkyMath.cs
 1 managed/Alloy/Core/SkyMath.SelfCheck.cs
 1 managed/Alloy/CreatureParity.cs
-1 managed/Alloy/CubeStrip.cs
 5 managed/Alloy/Db/DbAnim.Dyn.cs
 1 managed/Alloy/Db/DbAnim.Pose.cs
 1 managed/Alloy/Db/DbAnim.Runs.cs
@@ -16,11 +15,11 @@
 4 managed/Alloy/Db/DbGui.cs
 1 managed/Alloy/Db/DbInputs.Flicker.cs
 4 managed/Alloy/Db/DbSelfCheck.cs
-16 managed/Alloy/Db/DrawRecipe.cs
+15 managed/Alloy/Db/DrawRecipe.cs
 1 managed/Alloy/Db/HitTest.Fixture.cs
 3 managed/Alloy/Db/MeshArena.cs
 2 managed/Alloy/Db/MeshArena.Dyn.cs
-15 managed/Alloy/Db/MeshArena.Host.cs
+14 managed/Alloy/Db/MeshArena.Host.cs
 2 managed/Alloy/Db/PartTree.cs
 7 managed/Alloy/Db/PltColors.cs
 5 managed/Alloy/Db/PltImage.cs
@@ -41,7 +40,6 @@
 1 managed/Alloy/Golden/GpuGolden.FsrReactive.cs
 3 managed/Alloy/Golden/GpuGolden.Lightmap.Fixture.cs
 9 managed/Alloy/Golden/GpuGolden.Lightmap.SelfCheck.cs
-4 managed/Alloy/Golden/GpuGolden.LinkedVertices.SelfCheck.cs
 3 managed/Alloy/Golden/GpuGolden.MipChain.SelfCheck.cs
 4 managed/Alloy/Golden/GpuGolden.Parallax.SelfCheck.cs
 1 managed/Alloy/Golden/GpuGolden.PostApprovedExamples.SelfCheck.cs
@@ -54,7 +52,7 @@
 4 managed/Alloy/Mdl/MdlBinaryPayload.cs
 15 managed/Alloy/Mdl/MdlPost.cs
 7 managed/Alloy/MdlParseCheck.cs
-18 managed/Alloy/MeshChart.cs
+17 managed/Alloy/MeshChart.cs
 4 managed/Alloy/MeshChart.Ledger.cs
 16 managed/Alloy/MeshChart.SelfCheck.cs
 42 managed/Alloy/MeshSimplify.cs
@@ -64,7 +62,7 @@
 1 managed/Alloy/Pass/CasterPass.cs
 52 managed/Alloy/Pass/CasterPass.Cube.cs
 6 managed/Alloy/Pass/CasterPass.SelfCheck.cs
-8 managed/Alloy/Pass/CasterPass.Sun.cs
+6 managed/Alloy/Pass/CasterPass.Sun.cs
 3 managed/Alloy/Pass/FrameTap.Vk.cs
 7 managed/Alloy/Pass/GrassAtlas.cs
 4 managed/Alloy/Pass/GrassField.Blades.cs
@@ -72,7 +70,6 @@
 2 managed/Alloy/Pass/GrassField.Push.cs
 5 managed/Alloy/Pass/GrassField.SelfCheck.cs
 4 managed/Alloy/Pass/GrassField.Vk.cs
-1 managed/Alloy/Pass/GuiPassVk.SelfCheck.cs
 3 managed/Alloy/Pass/LightmapBake.cs
 1 managed/Alloy/Pass/NuiWindows.cs
 7 managed/Alloy/Pass/PairShadows.cs
@@ -84,7 +81,7 @@
 2 managed/Alloy/Physics/DanglyRig.Build.cs
 1 managed/Alloy/Physics/DanglyRig.SelfCheck.cs
 13 managed/Alloy/Physics/DanglySelfCheck.cs
-3 managed/Alloy/RasterReader.cs
+1 managed/Alloy/RasterReader.cs
 2 managed/Alloy/RasterReader.Decode.cs
 2 managed/Alloy/Scene/AlloyRenderer.Casters.cs
 6 managed/Alloy/Scene/AlloyRenderer.Db.cs
@@ -94,7 +91,7 @@
 11 managed/Alloy/Scene/AlloyRenderer.Table.cs
 1 managed/Alloy/Scene/AlloyWind.cs
 6 managed/Alloy/Seam/TexSeam.cs
-18 managed/Alloy/TexScan.cs
+17 managed/Alloy/TexScan.cs
 6 managed/Graphics/NullGl.Snapshot.cs
 10 managed/Graphics/Vulkan/VkBackend.Copy.cs
 7 managed/Services/Anim/KeyCurves.cs
@@ -103,7 +100,6 @@
 8 managed/Services/Radial/IconFrames.cs
 4 managed/Ui/AtlasSheet.cs
 4 managed/Ui/CascadeMenu.SelfCheck.cs
-1 managed/Ui/FontRegistry.cs
 7 managed/Ui/Skin.cs
 2 managed/Ui/TextRig.Replay.cs
 4 managed/Ui/TextStyle.cs

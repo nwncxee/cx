@@ -41,7 +41,7 @@ const vec3 uKeyholeDia = vec3(0.0);
 const vec3 uAreaAmbient = vec3(0.0), uAreaDiffuse = vec3(0.0), uAreaDir = vec3(0.0, 0.0, 1.0);
 const vec2 uAtten = vec2(0.0);
 const vec4 uFogParams = vec4(0.0), uFogColor = vec4(0.0);
-const vec3 CX_ENV_GREY_LIN = vec3(0.41);
+const vec3 CX_ENV_GREY_LIN = vec3(0.4098);
 mat4 uVP;
 vec4 uPixel;
 
@@ -56,10 +56,12 @@ vec3 CxLinear(vec3 c) { return pow(max(c, vec3(0.0)), vec3($SRGB$)); }
 
 #include "cx_vanenv_f.glsl"
 
+#define CX_PLT_HEIGHT 1792.0
+
 // The engine's PLT scheme feed off this record's rows, as cx_plt's CxPltScheme reads a world record's.
 float CxPltScheme(int draw, int layer)
 {
-    return (int(uGui[cxGuiRec + 13].x) & 32) != 0 && layer >= 0 && layer < 10 ? GuiPltRow(cxGuiRec, layer) / 1792.0 : 0.0;
+    return (int(uGui[cxGuiRec + 13].x) & 32) != 0 && layer >= 0 && layer < 10 ? GuiPltRow(cxGuiRec, layer) / CX_PLT_HEIGHT : 0.0;
 }
 
 //$GUI-CONTENT-REGION

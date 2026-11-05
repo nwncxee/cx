@@ -50,6 +50,16 @@ internal sealed class GuiVkProg
         return p;
     }
 
+    /// <summary>The modules and every pipeline of a program being replaced. The backend holds them past the submit ring,
+    /// so a draw already recorded on them still runs.</summary>
+    internal void Destroy(VkBackend vk)
+    {
+        foreach (PipelineId pipe in Pipes.Values) vk.Destroy(pipe);
+        Pipes.Clear();
+        vk.Destroy(Vs);
+        vk.Destroy(Fs);
+    }
+
     /// <summary>Member <paramref name="name"/>'s index, or -1 where this program does not read it.</summary>
     internal int Loc(string name) => Names.TryGetValue(name, out int i) ? i : -1;
 }

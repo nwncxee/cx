@@ -497,6 +497,7 @@ offset	CGameObject	vtbl.AsNWCItem	0x70	0x68	# GameObjAsNWCItemSlot
 offset	CNWCObject	bubble	0xb8	0xb8	# ObjBubble
 offset	CNWCObject	retired	0x104	0x104	# ObjRetired
 offset	CNWCObject	materialParams	0x170	0x150	# ObjMaterialParams
+offset	MaterialShaderParam	stride	0x6c	0x6c	# MaterialParamStride
 offset	CNWCObject	fadeTarget	0xa9	0xa9	# ObjFadeTarget
 offset	CNWCObject	fadeExpire	0xac	0xac	# ObjFadeExpire
 offset	CNWCObject	fadeHoldMs	0xa4	0xa4	# ObjFadeHoldMs

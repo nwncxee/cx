@@ -434,7 +434,7 @@ internal static unsafe partial class NuiModelView
         }
         if (v.VfxAll && v.Tgt.FollowsCreature) NuiModelVfx.Follow(slot.Doll.Creature, who, v.Mirror, false, v.MuteVfx);
         if (v.Tgt.FollowsCreature && slot.Doll.Creature != IntPtr.Zero && NuiModelDoll.FollowValues(who, slot.Doll.Creature, ref v.Values))
-            s.Log?.Always($"NuiModelView: '{v.Key}' -- the doll takes {v.Values.Length / ExoArrayRec.MaterialParamBytes} material value(s) from its creature");
+            s.Log?.Always($"NuiModelView: '{v.Key}' -- the doll takes {v.Values.Length / EngineLayout.MaterialParamStride} material value(s) from its creature");
         NuiModelHelm.FollowValues(slot.Gear.Helm);
         PlayPose(s, v);
         FitCamera(s, v);

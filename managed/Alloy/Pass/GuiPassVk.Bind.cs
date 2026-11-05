@@ -54,16 +54,7 @@ internal static unsafe partial class GuiPassVk
             "uEnvMap" => Texture(s, d.EnvTex),
             "uPltPal" when !s.Palette.IsNull => new ImageBinding(o.Binding, s.Palette, s.Nearest),
             "uProbe" => new ImageBinding(o.Binding, s.StandInCube, s.Nearest),
-            "uNrmTex" => Map(s, in d, 1),
-            "uSpecTex" => Map(s, in d, 2),
-            "uRoughTex" => Map(s, in d, 3),
-            "uHeightTex" => Map(s, in d, 4),
-            "uIllumTex" => Map(s, in d, 5),
-            "uFlowTex" => Map(s, in d, 6),
-            "uGuiPal0" => Map(s, in d, 7),
-            "uGuiPal1" => Map(s, in d, 8),
-            "uGuiPal2" => Map(s, in d, 9),
-            "uGuiPal3" => Map(s, in d, 10),
+            _ when o.Binding is >= 1 and <= GuiCapture.ConMapCount => Map(s, in d, (int)o.Binding),
             _ => new ImageBinding(o.Binding, s.StandIn, s.Nearest),
         } with { Slot = o.Binding };
 
@@ -314,7 +305,8 @@ internal static unsafe partial class GuiPassVk
         GuiVkState s = _s;
         // a twin read the lanes of one layout: a later build of the pair is a new one
         if (s.Content.TryGetValue(key, out GuiContent.VkPair? pair)
-            && (pair?.Twin == null || pair.Epoch == ContentPrograms.Epoch(pair.Feat))) return pair;
+            && (pair?.Twin is not { } t || t.Epoch == ContentPrograms.Epoch(t.Feat))) return pair;
+        pair?.Program.Destroy(vk);
         pair = GuiContent.VkBuild(vk, key, conAt >= 0 ? GuiCapture.Con.Draws[conAt].Feat : 0, log);
         s.Content[key] = pair;
         return pair;

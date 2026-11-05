@@ -212,17 +212,19 @@ public sealed unsafe partial class AlloyRenderer
         check.Expect(ShaderSource.Get("cx_oitout.glsl").Contains("layout(location = 1) out vec2 oDecalSurf;"),
             "the writer's second output is the surface pair on location 1, the attachment this pass puts there");
         VkDecalState keep = _vkDecals;
-        var standIns = new VkColourState { DecalLayer = new ImageId(1), DecalSurf = new ImageId(2) };
-        _vkDecals = new VkDecalState { Layer = new ImageId(3), Surf = new ImageId(4), LiveAt = _frameSeq + 1 };
-        check.Expect(VkDecalImage(false, standIns).Value == 1 && VkDecalImage(true, standIns).Value == 2,
-            "a pass ahead of this frame's decal pass was handed the real layer, which that pass may destroy on a resize");
-        check.Expect(VkDecalFold == DecalLayer.ModeNone && VkDecalSkip == DecalLayer.ModeNone,
-            "a draw ahead of this frame's decal pass was told to read last frame's layer");
-        _vkDecals.LiveAt = _frameSeq;
-        check.Expect(VkDecalImage(false, standIns).Value == 3 && VkDecalImage(true, standIns).Value == 4,
-            "a pass after this frame's decal pass was not handed the layer it filled");
-        check.Expect(new VkDecalState().Live == false, "a state no decal pass has filled reads as live");
-        _vkDecals = keep;
+        try
+        {
+            var standIns = new VkColourState { DecalLayer = new ImageId(1), DecalSurf = new ImageId(2) };
+            _vkDecals = new VkDecalState { Layer = new ImageId(3), Surf = new ImageId(4), LiveAt = _frameSeq + 1 };
+            check.Expect(VkDecalImage(false, standIns).Value == 1 && VkDecalImage(true, standIns).Value == 2,
+                "a pass ahead of this frame's decal pass was handed the real layer, which that pass may destroy on a resize");
+            check.Expect(VkDecalFold == DecalLayer.ModeNone && VkDecalSkip == DecalLayer.ModeNone,
+                "a draw ahead of this frame's decal pass was told to read last frame's layer");
+            _vkDecals.LiveAt = _frameSeq;
+            check.Expect(VkDecalImage(false, standIns).Value == 3 && VkDecalImage(true, standIns).Value == 4,
+                "a pass after this frame's decal pass was not handed the layer it filled");
+        }
+        finally { _vkDecals = keep; }
         log.Info(check.Ok ? "AlloyRenderer.VkDecalSelfCheck: passed" : "AlloyRenderer.VkDecalSelfCheck: FAILED");
     }
 }

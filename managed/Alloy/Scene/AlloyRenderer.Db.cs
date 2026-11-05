@@ -211,7 +211,6 @@ public sealed unsafe partial class AlloyRenderer
         // pass for the life of the area. Correct either way, needlessly expensive one way.
         DbWriteWorldBox(i, recipe, SceneDb.PartWorld[part]);
         _oBx[i] = c.X; _oBy[i] = c.Y; _oBz[i] = c.Z; _oBr[i] = _oR[i];
-        int fo = i * 4;
         DbWriteObjectTerms(i, part, recipe);
         _oSlots[i] = DrawRecipe.Slots(recipe);
         UnstampRecord(i);

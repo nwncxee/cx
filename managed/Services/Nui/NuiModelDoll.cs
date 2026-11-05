@@ -141,49 +141,17 @@ internal static unsafe class NuiModelDoll
         log.Info(check.Ok ? "NuiModelDoll.SelfCheck: passed" : "NuiModelDoll.SelfCheck: FAILED");
     }
 
-    /// <summary>What the check's stand-in for the engine records: how many lists it was given, the last one's length, and the byte the check writes.</summary>
-    private struct GivenList
-    {
-        public int Calls, LastLen;
-        public byte Watched;
-    }
-
-    /// <summary>A byte inside the check's second record.</summary>
-    private const int WatchedByte = ExoArrayRec.MaterialParamBytes + 5;
-
-    private static void GiveForCheck(IntPtr to, IntPtr list)
-    {
-        var g = (GivenList*)to;
-        ReadOnlySpan<byte> bytes = ((ExoArrayRec*)list)->Bytes(ExoArrayRec.MaterialParamBytes);
-        g->Calls++;
-        g->LastLen = bytes.Length;
-        if (bytes.Length > WatchedByte) g->Watched = bytes[WatchedByte];
-    }
-
-    /// <summary>Oracle: hand-filled lists and a stand-in for the engine's setter, counting what reaches the doll.</summary>
+    /// <summary>Oracle: hand-written bytes. A list reads as moved only when it differs from what the doll was last given.</summary>
     private static void ValuesCheck(Checker check)
     {
-        byte[] store = new byte[2 * ExoArrayRec.MaterialParamBytes];
-        store.AsSpan().Fill(7);
-        fixed (byte* items = store)
-        {
-            GivenList g = default;
-            var list = new ExoArrayRec { Items = (IntPtr)items, Count = 0, Alloc = 2 };
-            byte[] had = Array.Empty<byte>();
-            IntPtr to = (IntPtr)(&g);
-            delegate*<IntPtr, IntPtr, void> give = &GiveForCheck;
-
-            check.Expect(!FollowValues(ref list, to, ref had, give) && g.Calls == 0, "a source with no values and a doll given none has nothing to carry");
-            list.Count = 2;
-            check.Expect(FollowValues(ref list, to, ref had, give) && g.Calls == 1 && g.LastLen == 2 * ExoArrayRec.MaterialParamBytes && g.Watched == 7,
-                "a new doll takes its source's values whole");
-            check.Expect(!FollowValues(ref list, to, ref had, give) && g.Calls == 1, "the same values are not given twice, or every frame would rebuild the doll's rows");
-            store[WatchedByte] = 9;
-            check.Expect(FollowValues(ref list, to, ref had, give) && g.Calls == 2 && g.Watched == 9, "a colour changed in the source's list reaches the doll");
-            check.Expect(!FollowValues(ref list, to, ref had, give) && g.Calls == 2, "...once");
-            list.Count = 0;
-            check.Expect(FollowValues(ref list, to, ref had, give) && g.Calls == 3 && g.LastLen == 0, "a source whose values were all reset resets the doll's too");
-        }
+        byte[] list = [7, 7, 7, 7], had = Array.Empty<byte>();
+        check.Expect(!ValuesMoved(default, ref had), "a source with no values and a doll given none has nothing to carry");
+        check.Expect(ValuesMoved(list, ref had) && had.AsSpan().SequenceEqual(list), "a new doll takes its source's values whole");
+        check.Expect(!ValuesMoved(list, ref had), "the same values are not given twice, or every frame would rebuild the doll's rows");
+        list[3] = 9;
+        check.Expect(ValuesMoved(list, ref had) && had[3] == 9, "a colour changed in the source's list reaches the doll");
+        check.Expect(!ValuesMoved(list, ref had), "...once");
+        check.Expect(ValuesMoved(default, ref had) && had.Length == 0, "a source whose values were all reset resets the doll's too");
     }
 
     internal static bool Init(ExtenderLog log)
@@ -196,7 +164,7 @@ internal static unsafe class NuiModelDoll
                                SymbolMap.GuiViewportDtor, SymbolMap.GuiViewportEnable, SymbolMap.GuiViewportDisable,
                                SymbolMap.GuiViewportSetViewport, SymbolMap.GuiViewportTakeModel, SymbolMap.GuiViewportGetCamera,
                                SymbolMap.ObjSetMaterialParamList)
-            || !EngineLayout.Require(log, "NuiModelDoll", "CNWCCreature", "CNWCObject", "CGuiViewport", "CCAppearanceInfo", "CAurCamera", "Gob", "CGameObject"))
+            || !EngineLayout.Require(log, "NuiModelDoll", "CNWCCreature", "CNWCObject", "MaterialShaderParam", "CGuiViewport", "CCAppearanceInfo", "CAurCamera", "Gob", "CGameObject"))
             return false;
         _o.AppMgr = SymbolMap.Resolve(SymbolMap.AppManager, log);
         return _o.AppMgr != IntPtr.Zero;
@@ -468,17 +436,18 @@ internal static unsafe class NuiModelDoll
     /// <summary>The material values <paramref name="from"/> holds reach the copy <paramref name="to"/> when they differ from <paramref name="had"/>, what it was
     /// last given. A doll is a creature of our own, so the server's values land on its source and only this carries them over. True when it gave them.</summary>
     internal static bool FollowValues(IntPtr from, IntPtr to, ref byte[] had)
-        => FollowValues(ref new CNWCObject(from).MaterialParams, to, ref had, &GiveToEngine);
-
-    private static void GiveToEngine(IntPtr to, IntPtr list) => EngineFn.ObjSetMaterialParamList(to, list);
-
-    /// <summary><see cref="FollowValues(IntPtr, IntPtr, ref byte[])"/> over the source's list itself, handing it to <paramref name="give"/>.</summary>
-    internal static bool FollowValues(ref ExoArrayRec list, IntPtr to, ref byte[] had, delegate*<IntPtr, IntPtr, void> give)
     {
-        ReadOnlySpan<byte> now = list.Bytes(ExoArrayRec.MaterialParamBytes);
+        var source = new CNWCObject(from);
+        if (!ValuesMoved(source.MaterialParamBytes, ref had)) return false;
+        fixed (ExoArrayRec* list = &source.MaterialParams) EngineFn.ObjSetMaterialParamList(to, (IntPtr)list);
+        return true;
+    }
+
+    /// <summary>Does <paramref name="now"/> differ from <paramref name="had"/>? Then <paramref name="had"/> becomes it.</summary>
+    internal static bool ValuesMoved(ReadOnlySpan<byte> now, ref byte[] had)
+    {
         if (now.SequenceEqual(had)) return false;
         had = now.ToArray();
-        fixed (ExoArrayRec* p = &list) give(to, (IntPtr)p);
         return true;
     }
 

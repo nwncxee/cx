@@ -415,10 +415,7 @@ internal static unsafe class DbGui
         con.Slots = DrawRecipe.Slots(recipe);
         for (int k = 0; k < GuiCapture.ConMapCount; k++)
         {
-            int slot = DrawRecipe.SlotOfUnit(k + 1);
-            int at = p * 4 + slot;
-            int ov = slot < 4 ? SceneDb.PartTexId[at] : 0;
-            TexId id = ov != 0 ? new TexId((uint)ov) : DrawRecipe.Tex(recipe, slot);
+            TexId id = SceneDb.PartTex(p, recipe, DrawRecipe.SlotOfUnit(k + 1));
             if (id.IsNull) continue;
             if (TexRegistry.TryResident(id, out uint name, out _)) con.Maps[k] = (int)name;
             else if (TexRegistry.StateOf(id) == TexState.Loading) return false;

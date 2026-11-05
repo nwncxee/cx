@@ -183,6 +183,16 @@ internal static unsafe partial class GuiContent
         for (int unit = 1; unit <= GuiCapture.ConMapCount; unit++)
             check.Expect(DrawRecipe.MtrTextureOf(DrawRecipe.SlotOfUnit(unit)) == unit, $"texUnit{unit} does not read the recipe slot of .mtr texture{unit}");
 
+        // the twin's bindings ARE its material units, which is what GuiPassVk.Sampled binds them by
+        string twin = ShaderSource.Get("cx_guicon_f.glsl"), lit = ShaderSource.Get("cx_ownlit_head.glsl");
+        string[] maps = ["uNrmTex", "uSpecTex", "uRoughTex", "uHeightTex", "uIllumTex", "uFlowTex", "uGuiPal0", "uGuiPal1", "uGuiPal2", "uGuiPal3"];
+        check.Expect(maps.Length == GuiCapture.ConMapCount, "the twin's material samplers are not one per unit a draw carries");
+        for (int i = 0; i < maps.Length; i++)
+            check.Expect(twin.Contains($"layout(binding = {i + 1}) uniform sampler2D {maps[i]};"), $"{maps[i]} is not on binding {i + 1}, its unit");
+        const string Grey = "const vec3 CX_ENV_GREY_LIN = vec3(0.4098);";
+        check.Expect(twin.Contains(Grey) && lit.Contains(Grey), "the twin's environment grey is not the lit stage's");
+        check.Expect(twin.Contains($"#define CX_PLT_HEIGHT {PltPalettes.Height}.0"), "the twin's PLT divisor is not the palette's height");
+
         const string Unit0 = "uniform sampler2D texUnit0;\nvoid main() { }\n", Unit8 = "uniform sampler2D texUnit0;\nuniform sampler2D texUnit8;\nvoid main() { }\n";
         check.Expect(RouteOf(Unit0, Unit0, true) == Route.Engine, "a pair reading only texUnit0 stays the engine's, as a load screen's is");
         check.Expect(RouteOf(Unit0, Unit8, true) == Route.Twin, "a stock vertex half under a fragment half sampling texUnit8 runs in the GUI's program");
