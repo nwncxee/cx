@@ -499,6 +499,15 @@ internal static unsafe class ContentTable
                 check.Expect(s.PoolTop == 0 && s.FreeSpans.Count == 0,
                              $"an empty table holds a pool of {s.PoolTop} entries and {s.FreeSpans.Count} free spans");
 
+                for (int r = 0; r < 4; r++) TakeSpan(r, 82);
+                ReleaseSpan(2);
+                ReleaseSpan(0);
+                ReleaseSpan(1);
+                check.Expect(TakeSpan(4, 246) && s.Rows[4].CpAt == 0 && s.PoolTop == 328,
+                             $"three spans freed out of order do not merge (at {s.Rows[4].CpAt}, top {s.PoolTop})");
+                ReleaseSpan(4);
+                ReleaseSpan(3);
+
                 byte[] into = new byte[49152 + 16];
                 check.Expect(Snapshot(ref into) == 49152 + 16 && into.Length == 49152 + 16,
                              "an empty table is not its 1024 headers and one zero entry, in the buffer it was given");
