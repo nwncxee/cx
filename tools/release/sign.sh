@@ -54,7 +54,7 @@ if osslsigncode verify -in stage/version.dll -require-leaf-hash "sha256:$cert_sh
   echo "$win: version.dll already carries the Certum signature"
 else
   [[ "$(ssign --version 2> /dev/null)" == "ssign $ssign_version" ]] ||
-    { echo "needs ssign $ssign_version (see the header of this script)" >&2; exit 1; }
+    { echo "needs ssign $ssign_version: cargo install ssign --version $ssign_version --locked" >&2; exit 1; }
   [[ -n "${CERTUM_EMAIL:-}" ]] || read -rp "Certum account e-mail: " CERTUM_EMAIL
   read -rsp "SimplySign 6-digit code: " code; echo
   CERTUM_EMAIL="$CERTUM_EMAIL" CERTUM_TOKEN="$code" ssign -n "NWNCX:EE" -u "https://github.com/$repo" stage/version.dll
