@@ -672,6 +672,11 @@ public static unsafe partial class DbAnim
                      "the period line resets the census");
         SceneDb.ObjAttachTo[c] = default;
         SceneDb.ObjAttachPart[c] = -1;
+        Drop(inPanel);
+        Drop(child);
+        Drop(parent);
+        SceneDb.Scenes.Free(world);
+        SceneDb.Scenes.Free(panel);
     }
 
     /// <summary>A still frame composes NOTHING -- the change-driven claim, and the one that is invisible when

@@ -42,6 +42,9 @@ public static unsafe partial class DbAnim
         finally
         {
             _view.On = false;
+            for (int o = 1; o < SceneDb.Objects.High; o++)
+                if (SceneDb.Objects.LiveAt(o) && (SceneDb.ObjScene[o] == world || SceneDb.ObjScene[o] == panel))
+                    Drop(SceneDb.Objects.IdAt(o));
             SceneDb.Scenes.Free(world);
             SceneDb.Scenes.Free(panel);
         }

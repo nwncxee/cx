@@ -174,25 +174,10 @@ internal static unsafe class SceneFns
     private static void OnSetTileFoggedByWar(Vec3* pos, byte fogged)
     {
         if (pos == null) return;
-        DbId world = WorldScene();
+        DbId world = DbScene.World();
         if (world.IsNull) return;
         TileBuild.SetFoggedByWar(world, new Vector3(pos->X, pos->Y, pos->Z), fogged != 0);
     }
-
-    /// <summary>The session's one world scene, cached. <c>AuroraSetTileFoggedByWar</c> is called per TILE as
-    /// the fog of war moves, so the linear scan this used to do was 256 slots per cell. The cache is
-    /// invalidated by the generation check alone: a scene that dies takes its handle with it.</summary>
-    private static DbId WorldScene()
-    {
-        if (SceneDb.Scenes.Valid(_world) && SceneDb.SceneIsWorld[_world.Index]) return _world;
-        _world = default;
-        for (int i = 1; i < SceneDb.Scenes.High; i++)
-            if (SceneDb.Scenes.LiveAt(i) && SceneDb.SceneIsWorld[i]) { _world = SceneDb.Scenes.IdAt(i); break; }
-        return _world;
-    }
-
-    private static DbId _world;
-
 
     /// <summary><c>setalpha(CAurObject*, float)</c> @0x4524d0 -- glue the game links non-virtually whose body
     /// reads <c>Gob+0x90</c> and RECURSES the part tree, writing each part's alpha. No vtable slot, so a facade

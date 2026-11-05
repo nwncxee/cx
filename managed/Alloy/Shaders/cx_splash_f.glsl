@@ -52,6 +52,12 @@ bool CxSplashHidden(float scene, float splash)
 void main()
 {
     if (uLate != 0 && CxSplashHidden(CxSceneViewZ(gl_FragCoord.xy / uScreen), -vViewZ)) discard;
+    if (uViz == CX_SPLASH_FATE_VIZ)
+    {
+        if (dot(vUV, vUV) >= 1.0) discard;
+        frag = vec4(vLight, 1.0);
+        return;
+    }
     float a;
     int kind = int(vPart + 0.5);
     if (kind == CX_PART_RING)
