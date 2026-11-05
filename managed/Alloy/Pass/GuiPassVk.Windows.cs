@@ -52,7 +52,7 @@ internal static unsafe partial class GuiPassVk
         vk = AlloyDevice.Vulkan(log);
         // before the first flush sizes the screen nothing is presented either (ScreenOwner says so)
         if (vk != null && !vk.HasScreen) return false;
-        if (vk == null || !vk.OnOwnThread || _s.Busy || !Ensure(vk, log))
+        if (vk == null || !vk.OnOwnThread || _s.Busy || !Ensure(vk, default, log))
         {
             if (!_s.NowSaid)
             {

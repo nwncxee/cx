@@ -1712,6 +1712,10 @@ internal static unsafe class SymbolMap
     /// <summary><c>CNWCObject::SetFadeState(uchar)</c> @0x7e7ba0 (Windows rva 0x765c80) -- 1 shows the object (its model's parts enabled, alpha from its fade), 0 hides it.</summary>
     [Fn("void(IntPtr self, byte state)")]
     public const string ObjSetFadeState = "_ZN10CNWCObject12SetFadeStateEh";
+    /// <summary><c>CNWCObject::SetMaterialShaderParamList(CExoArrayList const&amp;)</c> @0x7e9b90 (Windows rva 0x765f80): the object keeps a copy of the
+    /// list and replays it onto its model and the model's tail, wings, cloak and head. Every later rebuild of the model replays it again.</summary>
+    [Fn("void(IntPtr self, IntPtr list)")]
+    public const string ObjSetMaterialParamList = "_ZN10CNWCObject26SetMaterialShaderParamListERK13CExoArrayListI19MaterialShaderParamE";
     /// <summary><c>CClientExoApp::GetGameObjectArray()</c> @0x6377c0 (Windows rva 0x6abb70).</summary>
     [Fn("IntPtr(IntPtr app)")]
     public const string GetGameObjectArray = "_ZN13CClientExoApp18GetGameObjectArrayEv";
@@ -3087,6 +3091,7 @@ internal static unsafe class SymbolMap
         [ExoSoundPlay3DOneShot] = Nm("?Play3DOneShotSound@CExoSound@@QEAAXAEBVCResRef@@VVector@@MEIE@Z"),
         [ExoSoundSourcePlay] = Nm("?Play@CExoSoundSource@@QEAAIXZ"),
         [ObjSetFadeState] = At(),   // the function that tests +0x104 == 1, writes the state byte at +0xa8, and runs the show/hide virtuals; the Windows twin of 0x7e7ba0
+        [ObjSetMaterialParamList] = At(),   // the caller of the exported CExoArrayList<MaterialShaderParam>::Allocate that sizes its list at +0x150 from its argument's count; the Windows twin of 0x7e9b90
         [NwcCreatureCtor] = At(),   // the callee CCharacterGenerationPanel::CreateCharacterObject (the one citing "GUI_PO_NWNLOGO_" beside AddInternalObject) news 0x480 bytes for
         [NwcCreatureSetAppearance] = At(),   // a callee of the appearance update handler (the "HandleServerToPlayerCreatureUpdate_Appearance" string)
         [NwcCreatureEquip] = At(),   // the callee the appearance update handler calls with (creature, 2, item) beside CreateItem; it stores the slot's item id at creature+0x318 (right hand) and +0x31c (left)

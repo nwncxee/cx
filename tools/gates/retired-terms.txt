@@ -247,3 +247,5 @@ weather\.streak\b|Rain streak length|Streaks and flakes|each streak	CX-456
 \bcx_ssrhiz_c\b|CX_SSR_STORAGE|CX_SSR_COLOUR	CX-419
 # ADR 0056 replaced this record; only the decision records may still name it.
 ADR[- ]0021	#220
+# A content pair's lanes live in a pool sized to the pair, not in a fixed array on the row.
+twelve parameters per pair|\bCX_CP_LANES\b|\bContentLaneValues\b	#218

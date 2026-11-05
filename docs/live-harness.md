@@ -15,6 +15,9 @@ Options: `--module NAME` `--seconds N` `--cfg 'key=value'` (repeatable) `--out D
 `--char NAME` `--width W` `--height H` `--boot-timeout N` `--min-lit N` `--keep` `--ladder`.
 `--stock` runs the client without CX, to check that what a server sends a CX client does no harm to one without it. It needs
 OpenAL on the nix-ld path (`nixpkgs#openal.out`), which `cx-launch` otherwise brings, and grades no CX log line.
+`--connect HOST:PORT` joins a running server instead of hosting a module. It needs a copy-on-write filesystem: the run gets
+reflink copies of your `nwsync`, `hak`, `tlk` and `override`, and your originals stay untouched. It logs in with the copied `cdkey.ini`,
+under the player name `CX Harness` when `settings.tml` has none. It is graded as `--menu` is, so `--keys` drives the login, and it refuses `--stock`.
 Exit code 0 is PASS, 1 is FAIL, 2 is a setup problem (no build staged, no client, a client already
 running). It works from any worktree: it runs the `cx-linux-x64/` staged next to it, so build first.
 
@@ -353,7 +356,7 @@ Edit that file's `log_filename` to a path of your own first, and count only mess
   instead; nothing else changes.
 - **Module choice is not free.** A module that needs haks, NWSync or a server (a persistent world's own
   module) will not come up this way. Stock modules under `data/mod/` do.
-- **It is a single-player local-server session.** Anything that only happens against a real server --
+- **Without `--connect` it is a single-player local-server session.** Anything that only happens against a real server --
   packet handling, server-driven NUI, area transitions on a hop -- is not covered. The ladder's two
   transitions are local `JumpToLocation`s between areas of one hosted module, not a server hop.
 - **The ladder's shot times are open-loop.** They are sleeps measured from "reached an area", which is

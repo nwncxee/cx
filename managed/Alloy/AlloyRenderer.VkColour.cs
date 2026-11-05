@@ -412,6 +412,7 @@ public sealed unsafe partial class AlloyRenderer
                 SkyView.UploadLitVk(L.SkyVp, L.SkyTerm, VkSkyMap, _capturing && !_planar);
                 LooseBlock.Set(L.LmPages, LightmapBake.VkLivePages);
                 LooseBlock.Set(L.LmMovers, LightmapBake.MoverMode);
+                if (p.Variant == ContentVariant.Depth && p.Names.TryGetValue("uHlColor", out int hl)) LooseBlock.Set(hl, _vkHl.TwinColour);
             }
             else
             {
@@ -463,7 +464,7 @@ public sealed unsafe partial class AlloyRenderer
         int n = Db.ContentTable.Snapshot(ref s.ContentStage);
         Span<byte> rows = s.ContentStage.AsSpan(0, n);
         int rb = Db.ContentTable.RowBytes;
-        for (int at = 0; at < n; at += rb)
+        for (int at = 0; at < Db.ContentTable.HeaderBytes; at += rb)
             for (int k = 0; k < Db.ContentTable.PalSlots; k++)
             {
                 Span<byte> slot = rows.Slice(at + k * sizeof(ulong), sizeof(ulong));
@@ -478,9 +479,9 @@ public sealed unsafe partial class AlloyRenderer
         }
         if (s.ContentRows.IsNull || n > s.ContentSent.Length)
         {
-            s.ContentSent = new byte[n];
+            s.ContentSent = new byte[s.ContentStage.Length];
             vk.Destroy(s.ContentRows);
-            s.ContentRows = vk.CreateBuffer(new BufferDesc(n, BufferUse.Storage, MemoryKind.Device, "vk content table"));
+            s.ContentRows = vk.CreateBuffer(new BufferDesc(s.ContentStage.Length, BufferUse.Storage, MemoryKind.Device, "vk content table"));
             if (s.ContentRows.IsNull) return false;
         }
         cl.UpdateBuffer(s.ContentRows, 0, rows);

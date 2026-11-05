@@ -57,6 +57,9 @@ internal static class VkTextures
         return vk;
     }
 
+    /// <summary>A golden's device for the mirror, which it drops again with null: the session's gate never opens there.</summary>
+    internal static void DeviceForCheck(VkBackend? vk) => _s = new VkTexState { Dev = vk, Gen = _s.Gen + 1 };
+
     /// <summary>A new Vulkan image for owned name <paramref name="gl"/>, replacing whatever the name held; null id
     /// (counted, logged) when the device refuses it. The caller uploads its levels next.</summary>
     internal static ImageId Create(VkBackend vk, uint gl, Format f, int w, int h, int mips, bool grey, in SamplerDesc s, string label)

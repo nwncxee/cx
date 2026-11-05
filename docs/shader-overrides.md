@@ -286,7 +286,7 @@ rules:
 - a uniform no line states keeps its GLSL initialiser;
 - `SetMaterialShaderUniformInt/Vec4` on an object overrides a parameter its `.mtr` declares, for that
   object only, and an empty value resets them all;
-- twelve parameters per pair.
+- up to 1024 parameters per pair; one past that keeps its GLSL default, and `Alloy content pair` says so.
 
 **What differs from the engine.**
 
@@ -302,11 +302,25 @@ rules:
   bindless handle table, `texUnitNoise` and `texture7`..`texture10` sample the diffuse.
 - A vertex half reads `texUnit0`..`texUnit10`. The probe and noise units reach the fragment half only.
 
+**On a GUI part.** A pair on a model in a GUI scene, such as a character panel's doll, runs one of three ways:
+
+- A pair that samples only `texUnit0` compiles as the engine compiles it, fed `m_mvp`, `m_mv`, `m_texture`, `globalColor`,
+  `screenParams` and `texUnit0`. A load screen runs this way.
+- A pair with a stock vertex half that samples any later unit runs its fragment half inside the GUI's own program. It
+  reads the same parameters, object values and `texUnit1`..`texUnit10` as in an area, and lights by the GUI's light. It
+  has no fog, keyhole, area light or probe, and a stage's own light loop finds no lights.
+- A pair that samples past `texUnit0` with its own vertex half draws its baked texture. `GuiContent` says so in the log.
+
+A model view's doll is a creature of the client's own, so the server's object values land on the creature it copies. The
+doll follows that creature's values, and its helmet follows the real helmet's. Send values to the source and the doll shows them.
+
 **Checking it.**
 
 - `grep "mtr shader:" cx.log` lists every pair a material named and what Alloy did with it.
 - `grep "Alloy content pair" cx.log` says, per pair, which halves run, how many parameter lanes it took, which
   twins it built, and what the translation could only approximate. A pair that cannot run says why, as NOT RUN.
+- `grep "ContentTable:" cx.log` shows, for a material with an object override, each parameter's value or `off`, its palette
+  handles, and the pool running out, which leaves a further row on its uniforms' defaults.
 - Offline, `CX_CONTENT_STAGES=<dir> ./check-shaders.py` builds every material stage under `<dir>` the way the
   engine does (from the game's own shaders, `ovr.bif` over `base_shaders.bif` as the client resolves them) and as Alloy runs it, paired with its partner by name
   where the tree has one, twins included. It fails when Alloy cannot run a stage the engine can.

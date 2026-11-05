@@ -386,6 +386,8 @@ internal static unsafe class DbGui
                 Vector3 emi = SceneDb.PartSelfIllum[p] + SceneDb.ObjEmissive[o];
                 d.Emissive = new Vector4(emi, 1f);
             }
+            // a map still loading keeps the baked texel for now, rather than a stage reading its stand-in as black
+            if (d.Content != 0 && !ContentTerms(p, recipe, out d.Con)) d.Content = 0;
             if (_dumpLayer && _dumpPartN < DumpParts)
             {
                 _dumpPartN++;
@@ -401,6 +403,28 @@ internal static unsafe class DbGui
         }
         return issued;
     }
+
+    /// <summary>What part <paramref name="p"/>'s content pair reads beside its record, its object's own row included. A
+    /// replay of the object's values frees that row, so this is asked per draw and a seated doll follows them. False
+    /// while a map the material names is on its way.</summary>
+    private static bool ContentTerms(int p, int recipe, out GuiCapture.ConDraw con)
+    {
+        con = default;
+        con.Feat = DrawRecipe.Feat(recipe);
+        con.Row = DrawRecipe.ContentRowFor(recipe, SceneDb.PartObj[p]);
+        con.Slots = DrawRecipe.Slots(recipe);
+        for (int k = 0; k < GuiCapture.ConMapCount; k++)
+        {
+            TexId id = SceneDb.PartTex(p, recipe, DrawRecipe.SlotOfUnit(k + 1));
+            if (id.IsNull) continue;
+            if (TexRegistry.TryResident(id, out uint name, out _)) con.Maps[k] = (int)name;
+            else if (TexRegistry.StateOf(id) == TexState.Loading) return false;
+        }
+        return true;
+    }
+
+    /// <summary>The row <see cref="ContentTerms"/> gives part <paramref name="p"/> on <paramref name="recipe"/>.</summary>
+    internal static int ContentRowForSelfCheck(int p, int recipe) => ContentTerms(p, recipe, out GuiCapture.ConDraw c) ? c.Row : -2;
 
     /// <summary>The load screen panel's model, stock and every override of it that keeps the name.</summary>
     private const string LoadPanelModel = "pnl_loadscreen";

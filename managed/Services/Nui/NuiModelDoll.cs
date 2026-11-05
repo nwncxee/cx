@@ -137,7 +137,21 @@ internal static unsafe class NuiModelDoll
         foreach (ModelSlot s in taken) { s.Doll = new DollState(); Free(s); }
         check.Expect(Claim() == taken[0], "after every view is gone the first slot is free again");
         Free(taken[0]);
+        ValuesCheck(check);
         log.Info(check.Ok ? "NuiModelDoll.SelfCheck: passed" : "NuiModelDoll.SelfCheck: FAILED");
+    }
+
+    /// <summary>Oracle: hand-written bytes. A list reads as moved only when it differs from what the doll was last given.</summary>
+    private static void ValuesCheck(Checker check)
+    {
+        byte[] list = [7, 7, 7, 7], had = Array.Empty<byte>();
+        check.Expect(!ValuesMoved(default, ref had), "a source with no values and a doll given none has nothing to carry");
+        check.Expect(ValuesMoved(list, ref had) && had.AsSpan().SequenceEqual(list), "a new doll takes its source's values whole");
+        check.Expect(!ValuesMoved(list, ref had), "the same values are not given twice, or every frame would rebuild the doll's rows");
+        list[3] = 9;
+        check.Expect(ValuesMoved(list, ref had) && had[3] == 9, "a colour changed in the source's list reaches the doll");
+        check.Expect(!ValuesMoved(list, ref had), "...once");
+        check.Expect(ValuesMoved(default, ref had) && had.Length == 0, "a source whose values were all reset resets the doll's too");
     }
 
     internal static bool Init(ExtenderLog log)
@@ -148,8 +162,9 @@ internal static unsafe class NuiModelDoll
                                SymbolMap.GetGameObjectArray, SymbolMap.GetClientAIMaster, SymbolMap.AiMasterAddObject,
                                SymbolMap.GameObjectArrayAdd, SymbolMap.GameObjectArrayDelete, SymbolMap.GuiViewportCtor,
                                SymbolMap.GuiViewportDtor, SymbolMap.GuiViewportEnable, SymbolMap.GuiViewportDisable,
-                               SymbolMap.GuiViewportSetViewport, SymbolMap.GuiViewportTakeModel, SymbolMap.GuiViewportGetCamera)
-            || !EngineLayout.Require(log, "NuiModelDoll", "CNWCCreature", "CGuiViewport", "CCAppearanceInfo", "CAurCamera", "Gob", "CGameObject"))
+                               SymbolMap.GuiViewportSetViewport, SymbolMap.GuiViewportTakeModel, SymbolMap.GuiViewportGetCamera,
+                               SymbolMap.ObjSetMaterialParamList)
+            || !EngineLayout.Require(log, "NuiModelDoll", "CNWCCreature", "CNWCObject", "MaterialShaderParam", "CGuiViewport", "CCAppearanceInfo", "CAurCamera", "Gob", "CGameObject"))
             return false;
         _o.AppMgr = SymbolMap.Resolve(SymbolMap.AppManager, log);
         return _o.AppMgr != IntPtr.Zero;
@@ -415,6 +430,24 @@ internal static unsafe class NuiModelDoll
         if (model == IntPtr.Zero) return false;
         d.Model = model;
         EngineFn.GuiViewportTakeModel(d.Viewport, model);
+        return true;
+    }
+
+    /// <summary>The material values <paramref name="from"/> holds reach the copy <paramref name="to"/> when they differ from <paramref name="had"/>, what it was
+    /// last given. A doll is a creature of our own, so the server's values land on its source and only this carries them over. True when it gave them.</summary>
+    internal static bool FollowValues(IntPtr from, IntPtr to, ref byte[] had)
+    {
+        var source = new CNWCObject(from);
+        if (!ValuesMoved(source.MaterialParamBytes, ref had)) return false;
+        fixed (ExoArrayRec* list = &source.MaterialParams) EngineFn.ObjSetMaterialParamList(to, (IntPtr)list);
+        return true;
+    }
+
+    /// <summary>Does <paramref name="now"/> differ from <paramref name="had"/>? Then <paramref name="had"/> becomes it.</summary>
+    internal static bool ValuesMoved(ReadOnlySpan<byte> now, ref byte[] had)
+    {
+        if (now.SequenceEqual(had)) return false;
+        had = now.ToArray();
         return true;
     }
 

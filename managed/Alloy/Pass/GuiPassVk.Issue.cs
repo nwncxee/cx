@@ -49,7 +49,7 @@ internal static unsafe partial class GuiPassVk
     private static int IdxBytes => ((GuiCapture.IdxN + 1) & ~1) * sizeof(ushort);
 
     /// <summary>This flush's staged bytes into the buffers, recorded ahead of every pass that reads them.</summary>
-    private static void Uploads(CommandList cl)
+    private static void Uploads(CommandList cl, ExtenderLog log)
     {
         GuiVkState s = _s;
         int rec = GuiCapture.DrawN * GuiCapture.RecFloats * sizeof(float);
@@ -58,6 +58,7 @@ internal static unsafe partial class GuiPassVk
         if (bones > 0) cl.UpdateBuffer(s.Recs, rec, MemoryMarshal.AsBytes(GuiCapture.Bones.AsSpan(0, GuiCapture.SkinN)));
         if (GuiCapture.VtxN > 0) cl.UpdateBuffer(s.Vtx, 0, GuiCapture.Vtx.AsSpan(0, VtxBytes));
         if (GuiCapture.IdxN > 0) cl.UpdateBuffer(s.Idx, 0, MemoryMarshal.AsBytes(GuiCapture.Idx.AsSpan(0, IdxBytes / sizeof(ushort))));
+        if (GuiCapture.Con.N > 0 && s.Dev != null) ContentRows(s.Dev, cl, log);
     }
 
     private static bool Grow(VkBackend vk, ref BufferId id, ref long cap, long bytes, BufferUse use, string label, ExtenderLog log)
@@ -89,7 +90,7 @@ internal static unsafe partial class GuiPassVk
             s.ClearOwed = false;
             float[] c = ScreenOwner.ClearRgba;
             Vector4 clear = s.Black ? Zero : new Vector4(c[0], c[1], c[2], c[3]);
-            Open(cl, ref pass, ref b, screen, s.Depth, PresentTarget.Width, PresentTarget.Height, true, true, clear);
+            Open(cl, ref pass, ref b, screen, s.Depth, s.W, s.H, true, true, clear);
             Close(cl, ref pass);
         }
         // No target yet, which 0 does NOT mean here: 0 is the screen, so the first layer must open its pass. GL
@@ -147,7 +148,7 @@ internal static unsafe partial class GuiPassVk
                 }
                 // A screen pass clears the depth only where the layer asks, as GL's loop does; a model view's own
                 // depth is cleared with its colour above.
-                else Open(cl, ref pass, ref b, screen, s.Depth, PresentTarget.Width, PresentTarget.Height, l.Clear, false);
+                else Open(cl, ref pass, ref b, screen, s.Depth, s.W, s.H, l.Clear, false);
                 reopen = false;
             }
             else if (released) continue;
@@ -259,7 +260,9 @@ internal static unsafe partial class GuiPassVk
             if (layout.IsNull || vtx.IsNull || (d.Indexed && idx.IsNull)) { s.NoLayout++; continue; }
             if (Topo(d.Prim, log) is not { } topo) { s.Skipped++; continue; }
             if (Blend(in d, log) is not { } blend) { s.Skipped++; continue; }
-            GuiContent.VkPair? content = d.Content == 0 ? null : ContentProgram(vk, d.Content, log);
+            GuiContent.VkPair? content = d.Content == 0 ? null : ContentProgram(vk, d.Content, d.ConAt, log);
+            // a twin with no terms for this draw or no table to read takes the baked texel
+            if (content?.Twin != null && (d.ConAt < 0 || s.ConRows.IsNull)) content = null;
             GuiVkProg prog = content?.Program ?? s.Prog!;
             PipelineId pipe = Pipeline(prog, layout, blend, topo, log);
             if (pipe.IsNull) { s.Skipped++; continue; }
@@ -273,7 +276,7 @@ internal static unsafe partial class GuiPassVk
             b.StateSet = true;
             if (vtx != b.Vtx) { side.BindVertexBuffer(vtx); b.Vtx = vtx; }
             if (d.Indexed && idx != b.Idx) { side.BindIndexBuffer(idx, IndexType.U16, 0); b.Idx = idx; }
-            BindSet(side, prog, loose, d.Tex, d.EnvTex);
+            BindSet(side, prog, loose, in d);
             if (d.Indexed) side.DrawIndexed(d.Count, 1, (int)(d.Offset / sizeof(ushort)), d.BaseVertex, di);
             else side.Draw(d.Count, 1, (int)d.Offset, di);
             s.Drawn++;

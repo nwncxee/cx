@@ -29,6 +29,8 @@ public sealed unsafe partial class AlloyRenderer
         public CommandList? Side;
         /// <summary>This frame's mask holds at least one draw, so the composite runs.</summary>
         public bool Drawn;
+        /// <summary>The root colour a content pair's depth twin writes, as <c>uHlColor</c>, at its bind.</summary>
+        public Vector3 TwinColour;
     }
 
     private static VkHlState _vkHl = new();
@@ -43,7 +45,7 @@ public sealed unsafe partial class AlloyRenderer
         int n = Highlight.GatherVk(groups);
         if (n == 0) return true;
         if (!VkHlEnsure(vk, s, viewport[2], viewport[3], log)) { Highlight.UnmaskVk(); return true; }
-        VkProg p = s.Mask!;
+        VkProg plain = s.Mask!;
         CommandList side = s.Side!;
         side.Reset();
         int arena0 = c.ArenaUsed;
@@ -51,6 +53,7 @@ public sealed unsafe partial class AlloyRenderer
         // GL's offset pulls toward the eye by going down; the world's reversed depth goes up
         side.SetDepthBias(-Highlight.VkBiasFactor, -Highlight.VkBiasUnits);
         int fmt = -1, cut = -1;
+        VkProg? prog = null;
         Vector3 bound = new(float.NaN);
         var push = new VkBatchPush { AlphaCut = -1f };
         for (int k = 0; k < n; k++)
@@ -58,9 +61,18 @@ public sealed unsafe partial class AlloyRenderer
             (int j, int g, Vector3 colour, bool cutout) = Highlight.VkDraw(k);
             int f = _gVao[g] & ~DbArenaVaoBit;
             if ((uint)f >= MeshArena.Formats || MeshArena.VkVbo((MeshArena.Fmt)f).IsNull) continue;
+            VkProg? p = ShaderFeatures.OutOfPrepass(_gFeat[g]) ? VkContent(_gFeat[g], ContentVariant.Depth) : plain;
+            if (p == null) continue;
             PipelineId pipe = VkPipeline(p, f, VkTargets.Mask, 0);
             if (pipe.IsNull) continue;
-            if (f != fmt) { fmt = f; side.SetPipeline(pipe); side.BindVertexBuffer(MeshArena.VkVbo((MeshArena.Fmt)f)); cut = -1; }
+            if (f != fmt || p != prog)
+            {
+                if (f != fmt) side.BindVertexBuffer(MeshArena.VkVbo((MeshArena.Fmt)f));
+                if (p != prog) bound = new(float.NaN);
+                fmt = f; prog = p;
+                side.SetPipeline(pipe);
+                cut = -1;
+            }
             int wantCut = cutout ? 1 : 0;
             if (wantCut != cut)
             {
@@ -71,24 +83,38 @@ public sealed unsafe partial class AlloyRenderer
             if (colour != bound)
             {
                 bound = colour;
-                Array.Clear(p.Block);
-                LooseBlock.Capture(p.Members, p.Block);
-                LooseBlock.Set(p.Vp, vp);
-                LooseBlock.Set(s.Color, colour);
-                LooseBlock.EndCapture();
-                int loose = VkArena(p.Block);
-                if (loose < 0) return false;
-                VkBindSet(side, p, c, loose, -1, c.Slots, 0);
+                if (p == plain)
+                {
+                    Array.Clear(p.Block);
+                    LooseBlock.Capture(p.Members, p.Block);
+                    LooseBlock.Set(p.Vp, vp);
+                    LooseBlock.Set(s.Color, colour);
+                    LooseBlock.EndCapture();
+                    int loose = VkArena(p.Block);
+                    if (loose < 0) return false;
+                    VkBindSet(side, p, c, loose, -1, c.Slots, 0);
+                }
+                else
+                {
+                    s.TwinColour = colour;
+                    if (!VkBindProgram(side, p, in vp, viewport, near, far, c.Slots, 0)) return false;
+                }
             }
+            push.AlphaCut = p == plain ? -1f : AlloyClasses.Discard(_gCls[g]);
             push.DrawBase = j;
             side.PushConstants(0, MemoryMarshal.AsBytes(new ReadOnlySpan<VkBatchPush>(in push)));
             side.DrawIndexed(_dCount[j], 1, (int)(_dOff[j] / sizeof(ushort)), _dBase[j]);
             s.Drawn = true;
         }
+        // a twin may bind the depth copy, where no barrier can move it once the pass is open
+        if (c.Snapshot.Filled) cl.ReadImages([c.DepthRead]);
         ReadOnlySpan<ColorAttachment> colors = [new(s.Target, 0, 0, LoadOp.Clear, StoreOp.Store, default)];
         VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear)));
         return true;
     }
+
+    /// <summary>Can a part of content pair <paramref name="feat"/>, whose depth is its own, draw into the mask?</summary>
+    internal static bool VkMaskTwinReady(int feat) => VkContent(feat, ContentVariant.Depth) != null;
 
     /// <summary>The fill and outline over the screen, after the post stack, when this frame's mask drew.</summary>
     internal static void VkHighlightComposite(CommandList cl, ImageId screen, int* display, ExtenderLog log)

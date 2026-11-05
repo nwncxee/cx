@@ -287,6 +287,8 @@ One priority inversion worth knowing about: `MeshArena.Acquire` (from the fold, 
 | `MtrDef._cache` (parsed `.mtr`s, negative results memoised) | `MtrDef.Resolve`, under `lock (_cache)` | `MtrDef.Forget` — **no live caller**. Unbounded in distinct material names | none |
 | Animation bindings and resolution memos (`ModelCache.Anim`) | `Resolve`, `Bind`, `Children`, lazily | `ModelCache.Forget(ModelDef)` from `Evict`; `ClearBindings` from `Clear` | none |
 
+GUI content programs: `GuiPassVk`'s `Content` table keeps one `GuiVkProg` per pair. A twin whose pair starts a new lane epoch is destroyed through the backend before its replacement is built, and `ContextLost` drops the table.
+
 ### Textures, PLT and text
 
 | Resource | Created by | Killed by | Context loss |

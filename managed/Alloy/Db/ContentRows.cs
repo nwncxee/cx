@@ -6,7 +6,7 @@ using CX.Framework;
 
 namespace CX.Alloy.Db;
 
-/// <summary>A content stage's side-table lanes (<see cref="ContentTable.Row.Cp"/>): what each uniform the stage declares
+/// <summary>A content stage's side-table lanes (a <see cref="ContentTable"/> row's pool span): what each uniform the stage declares
 /// reads, from the material's <c>.mtr</c> <c>parameter</c> lines and the object's own <c>SetMaterialShaderUniform*</c>
 /// values, under the engine's own upload rules. Engine-free, so the self-check drives it on hand-written materials.</summary>
 internal static class ContentRows
@@ -15,18 +15,19 @@ internal static class ContentRows
     /// (<c>Material::SetMaterialParam</c> @0x4c5d70: <c>strncasecmp</c> over 0x40).</summary>
     private const int NameChars = 64;
 
-    /// <summary>Fill <paramref name="row"/>'s content lanes for a stage laid out as <paramref name="ps"/>. A lane the
-    /// material does not state -- or states in a shape its uniform cannot take -- stays off, and the stage reads the
-    /// uniform's own GLSL default there, as the engine's program would with no upload behind it.</summary>
-    internal static void Fill(ref ContentTable.Row row, MtrDef? mtr, ReadOnlySpan<ContentStage.Param> ps,
+    /// <summary>Fill <paramref name="lanes"/> and their on-masks <paramref name="on"/> for a stage
+    /// laid out as <paramref name="ps"/>. A lane the material does not state -- or states in a shape its uniform cannot
+    /// take -- stays off, and the stage reads the uniform's own GLSL default there, as the engine's program would with
+    /// no upload behind it.</summary>
+    internal static void Fill(Span<ContentTable.PoolEntry> on, Span<Vector4> lanes, MtrDef? mtr, ReadOnlySpan<ContentStage.Param> ps,
                               IReadOnlyList<Seam.MaterialParams.ContentOverride>? overs)
     {
-        row.CpOn = 0;
-        row.Cp = default;
+        on.Clear();
+        lanes.Clear();
         if (mtr == null) return;
         foreach (ContentStage.Param p in ps)
         {
-            if ((uint)p.Lane >= ContentTable.ContentLanes) continue;
+            if ((uint)p.Lane >= (uint)lanes.Length) continue;
             // the engine binds a parameter to the uniform its .mtr name spells, case for case (glGetUniformLocation);
             // the LAST such line wins, as each one re-uploads over the one before
             int at = -1;
@@ -39,9 +40,9 @@ internal static class ContentRows
                     if (o.Applies(mtr.Name) && string.Compare(o.Name, 0, name, 0, NameChars, StringComparison.OrdinalIgnoreCase) == 0)
                         values = Reparse(o.Value, isInt, values.Length) ?? values;
             if (!Fits(p.Kind, isInt, values.Length)) continue;
-            row.Cp[p.Lane] = new Vector4(values[0], values.Length > 1 ? values[1] : 0f,
-                                         values.Length > 2 ? values[2] : 0f, values.Length > 3 ? values[3] : 0f);
-            row.CpOn |= 1u << p.Lane;
+            lanes[p.Lane] = new Vector4(values[0], values.Length > 1 ? values[1] : 0f,
+                                        values.Length > 2 ? values[2] : 0f, values.Length > 3 ? values[3] : 0f);
+            ContentTable.MaskWord(on, p.Lane) |= ContentTable.MaskBit(p.Lane);
         }
     }
 
@@ -88,12 +89,13 @@ internal static class ContentRows
             new("iMode", ContentStage.ParamKind.Int, 2), new("vMis", ContentStage.ParamKind.Float, 3),
             new("fAbsent", ContentStage.ParamKind.Float, 4),
         ];
-        var row = default(ContentTable.Row);
-        Fill(ref row, mtr, ps, null);
-        check.Expect(row.Cp[0].X == 26f, "fScale is not the value its own-case .mtr line states (a differently cased line won)");
-        check.Expect(row.Cp[1] == new Vector4(0.58f, 0.60f, 0.43f, 0f), "a three-value line does not reach a vec4 as (r, g, b, 0)");
-        check.Expect(row.Cp[2].X == 1f, "an int line does not reach an int uniform");
-        check.Expect(row.CpOn == 0b0111, $"lanes on are {Convert.ToString(row.CpOn, 2)}: a two-value line fed a float, "
+        var cp = new Vector4[5];
+        var on = new ContentTable.PoolEntry[1];
+        Fill(on, cp, mtr, ps, null);
+        check.Expect(cp[0].X == 26f, "fScale is not the value its own-case .mtr line states (a differently cased line won)");
+        check.Expect(cp[1] == new Vector4(0.58f, 0.60f, 0.43f, 0f), "a three-value line does not reach a vec4 as (r, g, b, 0)");
+        check.Expect(cp[2].X == 1f, "an int line does not reach an int uniform");
+        check.Expect(on[0][0] == 0b0111, $"lanes on are {Convert.ToString(on[0][0], 2)}: a two-value line fed a float, "
                                          + "or a parameter the .mtr never states was stated");
         var overs = new List<Seam.MaterialParams.ContentOverride>
         {
@@ -102,11 +104,11 @@ internal static class ContentRows
             new("RAMBO_MAT", "iMode", "0"),
             new("", "fAbsent", "3.0"),
         };
-        Fill(ref row, mtr, ps, overs);
-        check.Expect(row.Cp[1] == new Vector4(0.1f, 0.2f, 0.3f, 1f), "a Vec4 override did not replace the vec4, case-blind on the name");
-        check.Expect(row.Cp[0].X == 26f, "an override filtered to another material reached this one");
-        check.Expect(row.Cp[2].X == 0f, "an override filtered to this material, in another case, did not reach it");
-        check.Expect((row.CpOn & (1u << 4)) == 0, "an override added a parameter the .mtr never declares");
+        Fill(on, cp, mtr, ps, overs);
+        check.Expect(cp[1] == new Vector4(0.1f, 0.2f, 0.3f, 1f), "a Vec4 override did not replace the vec4, case-blind on the name");
+        check.Expect(cp[0].X == 26f, "an override filtered to another material reached this one");
+        check.Expect(cp[2].X == 0f, "an override filtered to this material, in another case, did not reach it");
+        check.Expect((on[0][0] & (1u << 4)) == 0, "an override added a parameter the .mtr never declares");
         check.Expect(Reparse("7 8", isInt: false, count: 1) is [7f] && Reparse("x", isInt: true, count: 1) == null,
                      "a one-value float does not keep only its first token, or a non-number scanned");
         log.Info(check.Ok ? "ContentRows.SelfCheck: passed" : "ContentRows.SelfCheck: FAILED");

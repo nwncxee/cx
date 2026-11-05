@@ -211,6 +211,14 @@ public sealed unsafe partial class AlloyRenderer
         // pass for the life of the area. Correct either way, needlessly expensive one way.
         DbWriteWorldBox(i, recipe, SceneDb.PartWorld[part]);
         _oBx[i] = c.X; _oBy[i] = c.Y; _oBz[i] = c.Z; _oBr[i] = _oR[i];
+        DbWriteObjectTerms(i, part, recipe);
+        _oSlots[i] = DrawRecipe.Slots(recipe);
+        UnstampRecord(i);
+    }
+
+    /// <summary>What a draw reads of its object's own material values: the record's parameters and the content row.</summary>
+    private static void DbWriteObjectTerms(int i, int part, int recipe)
+    {
         int fo = i * 4;
         _oParam[i] = DrawRecipe.Params(recipe);
         // CX-117: Gob::SetMaterialParam's per-OBJECT overrides, over the recipe's shared floats. Gated on the
@@ -218,13 +226,21 @@ public sealed unsafe partial class AlloyRenderer
         if (Seam.MaterialParams.Any) Seam.MaterialParams.Apply(SceneDb.PartObj[part], ref _oParam[i]);
         for (int k = 0; k < 4; k++) _oFeat[fo + k] = DrawRecipe.FeatF(recipe, k);
         // CX-303: ...and an object carrying SetMaterialShaderUniform values reads them from a side-table row of its own
-        if (ShaderFeatures.IsContent((int)_oFeat[fo]) && Seam.MaterialParams.HasContent(SceneDb.PartObj[part]))
-        {
-            int own = Db.ContentTable.ObjectRow(recipe, SceneDb.PartObj[part].Value);
-            if (own >= 0) _oFeat[fo + 2] = own;
-        }
-        _oSlots[i] = DrawRecipe.Slots(recipe);
-        UnstampRecord(i);
+        if (ShaderFeatures.IsContent((int)_oFeat[fo])) _oFeat[fo + 2] = DrawRecipe.ContentRowFor(recipe, SceneDb.PartObj[part]);
+    }
+
+    /// <summary>A seated part's object changed its material values: the part keeps its slot, so these terms are asked
+    /// again, and the record is rebuilt only when an answer moved. A replay frees the object's row, and a part left
+    /// on it reads whatever row takes its place.</summary>
+    internal static void DbObjectValuesChanged(int i)
+    {
+        int fo = i * 4;
+        ParamRow wasParam = _oParam[i];
+        float wasRow = _oFeat[fo + 2];
+        DbWriteObjectTerms(i, _oDbPart[i], _oDbRecipe[i]);
+        if (wasRow != _oFeat[fo + 2]
+            || !MemoryMarshal.AsBytes(new ReadOnlySpan<ParamRow>(in wasParam)).SequenceEqual(MemoryMarshal.AsBytes(new ReadOnlySpan<ParamRow>(in _oParam[i]))))
+            UnstampRecord(i);
     }
 
     /// <summary>The slot's tile TEXTURE rotation, as the record's <c>rot.xy</c>: <c>orient * 90</c> degrees on
@@ -716,6 +732,20 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The ownership table's high-water mark, for the self-check that asserts a released DB slot is
     /// handed back out rather than the table only ever growing (R1-3).</summary>
     internal static int OwnHighForSelfCheck => _ownCount;
+
+    /// <summary>The content row a seated slot's draw reads, for the feed's check.</summary>
+    internal static int DbRowForSelfCheck(int slot)
+    {
+        int fo = slot * 4;
+        return (int)_oFeat[fo + 2];
+    }
+
+    /// <summary>The record parameters a seated slot holds, for the feed's check.</summary>
+    internal static ParamRow DbParamForSelfCheck(int slot) => _oParam[slot];
+
+    /// <summary>The slot's record says its current row, or will be rebuilt from it at its next stage.</summary>
+    internal static bool DbRecordRowCurrentForSelfCheck(int slot)
+        => _gate[slot].RecGen != _recEpoch || (int)_dData[slot].FeatZ == DbRowForSelfCheck(slot);
 
     /// <summary>The class a seated slot carries, for the order check's own assertions.</summary>
     internal static int ClsOfForSelfCheck(int slot) => _oCls[slot];

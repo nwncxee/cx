@@ -37,7 +37,35 @@ internal static unsafe class GuiCapture
         public int ArenaFmt;
         /// <summary>The content program this draw runs (<see cref="GuiContent.Key"/>); 0 = Alloy's GUI program.</summary>
         public int Content;
+        /// <summary>With <see cref="Content"/>: this draw's entry in <see cref="Con"/>, -1 for none.</summary>
+        public int ConAt;
     }
+
+    /// <summary>The material units past the diffuse a content stage can name: <c>texUnit1</c>..<c>texUnit10</c>.</summary>
+    internal const int ConMapCount = 10;
+
+    [System.Runtime.CompilerServices.InlineArray(ConMapCount)]
+    internal struct ConMaps { private int _first; }
+
+    /// <summary>What a GUI part's content pair reads beside its record: the pair's feature id, the <see cref="Db.ContentTable"/>
+    /// row, the recipe's slot mask and the GL name of each material unit, 0 where it binds nothing.</summary>
+    internal struct ConDraw
+    {
+        public int Feat, Row, Slots;
+        public ConMaps Maps;
+    }
+
+    /// <summary>A flush's content draws. Past it a part draws through Alloy's GUI program, said once.</summary>
+    internal const int MaxConDraws = 1024;
+
+    /// <summary>This flush's content draws and how many there are.</summary>
+    internal sealed class ConState
+    {
+        public readonly ConDraw[] Draws = new ConDraw[MaxConDraws];
+        public int N;
+    }
+
+    internal static readonly ConState Con = new();
 
     /// <summary>Floats per draw record, which is <see cref="GuiPass"/>'s SSBO stride (16 vec4): mvp, mv, the texture
     /// 2x2, globalColor, ambient, diffuse, emissive, (flags, bone base, 0, 0), padding.</summary>
@@ -202,6 +230,8 @@ internal static unsafe class GuiCapture
         public int Bones;
         /// <summary>The material's content-program key; 0 = Alloy's GUI program.</summary>
         public int Content;
+        /// <summary>With <see cref="Content"/>: what the pair reads beside the record.</summary>
+        public ConDraw Con;
         public long Offset;
         public Matrix4x4 Mvp, Mv;
         /// <summary>The record's <c>globalColor</c> lane: the object's tint, with the part's alpha folded in.</summary>
@@ -231,6 +261,12 @@ internal static unsafe class GuiCapture
         if (p.Count <= 0 || !p.Arena || LayerN == 0 || !Room()) return;
         ref Draw d = ref Draws[DrawN];
         d.Stream = false; d.Indexed = true; d.Stride = 0; d.Format = 0;
+        d.ConAt = -1;
+        if (p.Content != 0)
+        {
+            if (Con.N < MaxConDraws) { Con.Draws[Con.N] = p.Con; d.ConAt = Con.N++; }
+            else Overflow("content draws");
+        }
         d.Arena = p.Arena; d.ArenaFmt = p.ArenaFmt; d.Content = p.Content; d.Prim = p.Prim; d.Count = p.Count; d.Offset = p.Offset; d.BaseVertex = p.BaseVertex;
         d.Blend = p.Blend; d.Src = p.Src; d.Dst = p.Dst;
         d.DepthTest = p.DepthTest; d.DepthWrite = p.DepthWrite; d.Cull = p.Cull; d.Tex = p.Tex; d.EnvTex = p.Lit && p.EnvMap ? p.EnvTex : 0;
@@ -361,7 +397,7 @@ internal static unsafe class GuiCapture
     }
 
     /// <summary>Consumed by a flush: the next scene starts a fresh list.</summary>
-    internal static void Reset() { LayerN = 0; DrawN = 0; SkinN = 0; VtxN = 0; IdxN = 0; }
+    internal static void Reset() { LayerN = 0; DrawN = 0; SkinN = 0; VtxN = 0; IdxN = 0; Con.N = 0; }
 
     internal static string Stats()
         => $"{_layers} scenes, {_draws} draws listed"

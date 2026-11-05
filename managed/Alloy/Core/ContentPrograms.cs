@@ -53,6 +53,8 @@ internal static unsafe class ContentPrograms
         public ContentStage.Param[] Params = [];
         /// <summary>Bumped at every build: a content-table row filled against an older layout fills again.</summary>
         public int Epoch;
+        /// <summary><see cref="ReadFacts"/> has read the halves with no program behind them.</summary>
+        public bool FactsRead;
     }
 
     /// <summary>The registry: ids live for the session (a recipe holds one), programs for the context and module.</summary>
@@ -155,6 +157,33 @@ internal static unsafe class ContentPrograms
         if (Of(feat) is { Failed: false, Plain: false, P.Fwd: 0 } s) s.Wanted = true;
     }
 
+    /// <summary>Splice the pair's halves into the lit pair and read their facts. False (logged, the stage failed) when a step refused.</summary>
+    private static bool ReadHalves(Stage s)
+    {
+        (string litVs, string litFs) = VkPrograms.LitPair(_reg.Log);
+        if (!Splice(s, litVs, litFs)) return false;
+        VkPrograms.Splice(s.VsSrc!, s.FsSrc!, _reg.Log, What(s));
+        if (Facts(s, out string? refused)) return true;
+        Fail(s, refused ?? "its halves did not translate (the lines above say why)");
+        return false;
+    }
+
+    /// <summary>Has this pair's halves been read, so its lanes are known? Asks for them now where no batch has: a GUI
+    /// part may be the pair's first draw, with no world frame coming. Its programs stay unbuilt, because the bindless
+    /// decision their text rests on may not be made yet; the build that follows starts a new epoch. False when the pair
+    /// has no lanes to offer: refused, or the plain path.</summary>
+    internal static bool ReadFacts(int feat)
+    {
+        if (Of(feat) is not { Failed: false, Plain: false } s) return false;
+        if (s.P.Fwd != 0 || s.FactsRead) return true;
+        bool wanted = s.Wanted;
+        if (!ReadHalves(s)) return false;
+        s.Wanted = wanted;
+        s.FactsRead = true;
+        s.Epoch++;
+        return true;
+    }
+
     /// <summary>Has this pair's build happened -- its programs are up, or it is the plain path, or it was refused?
     /// Until then its pipeline keys are not knowable: the twins come off its translation.</summary>
     internal static bool Settled(int feat) => Of(feat) is { } s && (s.Failed || s.Plain || s.P.Fwd != 0);
@@ -233,15 +262,8 @@ internal static unsafe class ContentPrograms
     /// compiles each variant the first time a batch draws it.</summary>
     private static void StartVk(Stage s)
     {
-        (string litVs, string litFs) = VkPrograms.LitPair(_reg.Log);
-        if (!Splice(s, litVs, litFs)) return;
+        if (!ReadHalves(s)) return;
         string what = What(s);
-        VkPrograms.Splice(s.VsSrc!, s.FsSrc!, _reg.Log, what);
-        if (!Facts(s, out string? refused))
-        {
-            Fail(s, refused ?? "its halves did not translate (the lines above say why)");
-            return;
-        }
         var p = new ProgramSet { Fwd = VkReady };
         var built = new List<string>();
         foreach (var (twin, _, _, slot) in Twins(s))
@@ -387,7 +409,7 @@ internal static unsafe class ContentPrograms
     private static void Drop(Stage s)
     {
         s.P = new ProgramSet();
-        s.Failed = false; s.Plain = false; s.Cuts = false; s.Moves = false; s.Wanted = false;
+        s.Failed = false; s.Plain = false; s.Cuts = false; s.Moves = false; s.Wanted = false; s.FactsRead = false;
         s.NatVs = -1; s.NatFs = -1;
     }
 

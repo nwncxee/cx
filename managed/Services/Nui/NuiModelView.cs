@@ -90,6 +90,8 @@ internal static unsafe partial class NuiModelView
         public bool VfxAll;
         public readonly NuiModelVfx.Mirror Mirror = new();
         public byte[] Info = Array.Empty<byte>();
+        /// <summary>The material values the doll's creature was last given.</summary>
+        public byte[] Values = Array.Empty<byte>();
         /// <summary>The player's own turn on top of the server's <see cref="Yaw"/>, and the press that is turning it. <see cref="Drag"/> is the
         /// server's degrees a pixel, 0 for no drag.</summary>
         public float DragYaw;
@@ -400,6 +402,7 @@ internal static unsafe partial class NuiModelView
             RePose(v);
             NuiModelGear.TakeDirty(slot.Gear);
             if (v.Tgt.FollowsCreature) v.Info = NuiModelDoll.InfoOf(who).ToArray();
+            v.Values = Array.Empty<byte>();
             if (slot.Doll.Creature != IntPtr.Zero)
             {
                 NuiModelGear.Sync(slot.Gear, slot.Doll.Creature, who);
@@ -430,6 +433,9 @@ internal static unsafe partial class NuiModelView
             }
         }
         if (v.VfxAll && v.Tgt.FollowsCreature) NuiModelVfx.Follow(slot.Doll.Creature, who, v.Mirror, false, v.MuteVfx);
+        if (v.Tgt.FollowsCreature && slot.Doll.Creature != IntPtr.Zero && NuiModelDoll.FollowValues(who, slot.Doll.Creature, ref v.Values))
+            s.Log?.Always($"NuiModelView: '{v.Key}' -- the doll takes {v.Values.Length / EngineLayout.MaterialParamStride} material value(s) from its creature");
+        NuiModelHelm.FollowValues(slot.Gear.Helm);
         PlayPose(s, v);
         FitCamera(s, v);
         if (v.Dragging) Turn(v);

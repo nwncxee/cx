@@ -71,6 +71,11 @@ public static unsafe partial class EngineLayout
     /// <c>CNWCObject::AddVisualEffect</c> appends to and <c>KillAllVisualEffects</c> drains. Same offset on both builds
     /// (Linux nm @0x7e2f20, Windows rva 0x763a50).</summary>
     public static readonly int ObjEffects = Field<CX.Engine.CExoLinkedListInternal>("CNWCObject", "effects");
+    /// <summary>CNWCObject -> its material values as the server last sent them, an inline <c>CExoArrayList&lt;MaterialShaderParam&gt;</c> of
+    /// <see cref="MaterialParamStride"/> records (Linux nm @0x7e9b90, Windows rva 0x765f80).</summary>
+    public static readonly int ObjMaterialParams = Field<CX.Engine.ExoArrayRec>("CNWCObject", "materialParams");
+    /// <summary>One <c>MaterialShaderParam</c>, the step the setter walks its list by on both builds.</summary>
+    public static readonly int MaterialParamStride = Field("MaterialShaderParam", "stride");
     /// <summary>The engine's list: first node at +0, node count at +0x10. A node holds previous at +0, next at +8 and its object at +0x10
     /// (<c>AddTail</c> on both builds).</summary>
     public static readonly int ListHead = Field<CX.Engine.CExoLinkedListNode>("CExoLinkedListInternal", "head");
