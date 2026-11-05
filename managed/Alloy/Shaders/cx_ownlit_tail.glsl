@@ -82,7 +82,7 @@
     // ADR 0026: CxEmissiveStrength (KHR_materials_emissive_strength) scales the map into HDR, where the
     // bloom can see it; undeclared (-1) and the engine model take it at 1.
     if ((slots & CX_SLOT_ILLUM) != 0)
-        lit += CxLinear(texture(uIllumTex, uv, uLodBias).rgb) * (uMaterial.x > 0.5 && d.ext2.x >= 0.0 ? d.ext2.x : 1.0);
+        lit += CxLinear(textureGrad(uIllumTex, uv, tapDx, tapDy).rgb) * (uMaterial.x > 0.5 && d.ext2.x >= 0.0 ? d.ext2.x : 1.0);
     // #132: everything from here down stays LINEAR -- the screen and the probe want the same values
     // now, and PostChain's resolve does the frame's one encode. The probe never wanted anything else
     // (#121: glGenerateMipmap filters what is STORED, and filtering display-space values darkens
