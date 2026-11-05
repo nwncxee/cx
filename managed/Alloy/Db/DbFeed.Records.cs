@@ -192,6 +192,7 @@ public static unsafe partial class DbFeed
         // listed for the same reason.
         if ((d & (Dirty.Created | Dirty.Tree | Dirty.Texture | Dirty.Material)) != Dirty.None)
             AlloyRenderer.DbTexDirty(slot);
+        if (!fresh && (d & Dirty.Material) != 0) AlloyRenderer.DbObjectValuesChanged(slot);
         if (fresh) LastSeated++; else LastRewritten++;
         if (!AlloyRenderer.DbStage(slot)) Retry(p);
     }

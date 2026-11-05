@@ -24,6 +24,7 @@ public static unsafe partial class DbFeed
             ViewOrder(check);
             Records(check);
             Recycle(check);
+            ObjectValues(check);
             VisibleSet(check);
             DrawOrder(check, log);
             RecipeReuse(check);
@@ -268,6 +269,67 @@ public static unsafe partial class DbFeed
         }
         finally
         {
+            AlloyRenderer.DbTableRestore(snap);
+        }
+    }
+
+    /// <summary>A part keeps its slot while its object's material values change, and a replay opens with a reset that
+    /// frees the object's row for anyone to take. The seated part must follow, or it reads another row's lanes.</summary>
+    private static void ObjectValues(Checker check)
+    {
+        const int MaterialRow = 7;
+        const uint Other = uint.MaxValue;
+        const uint Pad = uint.MaxValue - 1;
+        AlloyRenderer.DbSnapshot snap = AlloyRenderer.DbTableSnapshot();
+        DbId o = SceneDb.Objects.Alloc(), h = SceneDb.Parts.Alloc();
+        int recipe = -1;
+        try
+        {
+            SetUp(o, h, TwoPartModel(), 1);
+            TakeFrame();
+            int slot = SceneDb.PartSlot[h.Index];
+            recipe = SceneDb.PartRecipe[h.Index];
+            check.Expect(slot >= 0 && recipe >= 0, "the fixture part is seated on a recipe");
+            if (slot < 0 || recipe < 0) return;
+            DrawRecipe.ContentForCheck(recipe, (int)ShaderFeature.Content0, MaterialRow);
+            // row 0 is what a slot reads before it asked for any, so the object must not land on it
+            Db.ContentTable.ObjectRow(recipe, Pad);
+
+            Seam.MaterialParams.Set(o, "rgbC0", "1.0", "", null);
+            TakeFrame();
+            int own = AlloyRenderer.DbRowForSelfCheck(slot);
+            check.Expect(own != MaterialRow && Db.ContentTable.ObjectRow(recipe, o.Value) == own,
+                         $"a seated part did not take its object's row when values arrived (row {own})");
+
+            Seam.MaterialParams.Set(o, "", "", "", null);
+            int stolen = Db.ContentTable.ObjectRow(recipe, Other);
+            Seam.MaterialParams.Set(o, "rgbC0", "2.0", "", null);
+            TakeFrame();
+            int again = AlloyRenderer.DbRowForSelfCheck(slot);
+            check.Expect(stolen == own && again != stolen && Db.ContentTable.ObjectRow(recipe, o.Value) == again,
+                         $"after a replay the seated part reads row {again}, which its row {own} went to another object as {stolen}");
+            check.Expect(AlloyRenderer.DbRecordRowCurrentForSelfCheck(slot),
+                         "the seated part's record kept the row it held before the replay");
+
+            Seam.MaterialParams.Set(o, "", "", "", null);
+            TakeFrame();
+            check.Expect(AlloyRenderer.DbRowForSelfCheck(slot) == MaterialRow,
+                         "a part whose object has no values left did not go back to its material's row");
+
+            Seam.MaterialParams.Set(o, "CxRoughness", "0.25", null, null);
+            TakeFrame();
+            check.Expect(AlloyRenderer.DbParamForSelfCheck(slot).Ext.Ext0.Y == 0.25f,
+                         "a record's own parameter set on a seated part did not reach its slot");
+        }
+        finally
+        {
+            Seam.MaterialParams.Forget(o);
+            Db.ContentTable.FreeObject(Other);
+            Db.ContentTable.FreeObject(Pad);
+            if (recipe >= 0) DrawRecipe.ContentForCheck(recipe, 0, 0);
+            SceneDb.Parts.Free(h);
+            SceneDb.Objects.Free(o);
+            TakeFrame();
             AlloyRenderer.DbTableRestore(snap);
         }
     }

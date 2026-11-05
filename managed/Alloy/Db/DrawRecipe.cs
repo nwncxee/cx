@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System;
 using System.Collections.Generic;
 using System.Numerics;
@@ -240,6 +241,17 @@ internal static partial class DrawRecipe
         _range[r] = -1;
         _flags[r] = flags;
         return r;
+    }
+
+    /// <summary>A recipe's four feature lanes, by what a content pair's record reads of them.</summary>
+    private struct FeatRow { public float Feat, Y, Row, W; }
+
+    /// <summary>Off-device: recipe <paramref name="r"/> reads as a content pair's, on material row <paramref name="row"/>.</summary>
+    internal static void ContentForCheck(int r, int feat, int row)
+    {
+        ref FeatRow f = ref MemoryMarshal.Cast<float, FeatRow>(_featF.AsSpan())[r];
+        f.Feat = feat;
+        f.Row = row;
     }
 
     /// <summary>Give back a slot <see cref="FlagsForCheck"/> handed out.</summary>
