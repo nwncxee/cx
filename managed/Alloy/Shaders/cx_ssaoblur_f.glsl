@@ -3,7 +3,7 @@ in vec2 vUV;
 out float frag;
 layout(binding = 1) uniform sampler2D uSrc;      // the raw visibility
 #include "cx_ssaolib.glsl"
-// A rejected texel below this weight hands its place to its best twin one pattern tile away.
+// A rejected texel below this weight hands its place to a twin one pattern tile away.
 const float CX_AO_TWIN_BELOW = 0.5;
 const ivec2 CX_AO_TILE[4] = ivec2[4](ivec2(-4, 0), ivec2(4, 0), ivec2(0, -4), ivec2(0, 4));
 
@@ -27,13 +27,12 @@ void main()
             ivec2 p = clamp(pix + ivec2(x, y), ivec2(0), sz - 1);
             float w = CxBlurWeight(p, inv, d0);
             // beside a silhouette the window loses part of the pattern: the same phase 4 texels on keeps all 16 in the sum
-            if (w < CX_AO_TWIN_BELOW)
-                for (int i = 0; i < 4; i++)
-                {
-                    ivec2 twin = clamp(pix + ivec2(x, y) + CX_AO_TILE[i], ivec2(0), sz - 1);
-                    float tw = CxBlurWeight(twin, inv, d0);
-                    if (tw > w) { w = tw; p = twin; }
-                }
+            for (int i = 0; i < 4 && w < CX_AO_TWIN_BELOW; i++)
+            {
+                ivec2 twin = clamp(pix + ivec2(x, y) + CX_AO_TILE[i], ivec2(0), sz - 1);
+                float tw = CxBlurWeight(twin, inv, d0);
+                if (tw > w) { w = tw; p = twin; }
+            }
             sum += texelFetch(uSrc, p, 0).r * w;
             wsum += w;
         }

@@ -78,7 +78,7 @@ internal static unsafe class SsaoPass
             : $"the client's SSAO video option (settings.tml graphics.fbo.ssao.enabled = {(OptionOn ? 1 : 0)}) is the Alloy "
             + $"lit pass's (#379): {(SsaoPassVk.Failed ? "the pass did NOT build -- the option is inert"
                                      : !Ao.On.V ? "BYPASSED by /ao on 0"
-                                     : OptionOn ? "horizon occlusion from the depth prepass scales the ambient term"
+                                     : OptionOn ? "horizon occlusion from the depth prepass scales the ambient and direct light"
                                      : "off")}");
         log.Info($"SsaoPass: attached -- {Describe()}");
     }
@@ -105,7 +105,7 @@ internal static unsafe class SsaoPass
     internal static string SsaoBlurFs => ShaderSource.Get("cx_ssaoblur_f.glsl");
 
     /// <summary>Off-device: the two stages compose on the shared reconstruction, the gate is the engine's
-    /// effect bit, and the lit stage takes the result on the ambient term only.</summary>
+    /// effect bit, and the lit stage takes the result on its ambient and direct terms.</summary>
     internal static bool SelfCheck(ExtenderLog log)
     {
         ExtenderLog? quiet = _log; _log = null;
@@ -138,7 +138,7 @@ internal static unsafe class SsaoPass
               "/ao direct is the only route to the DIRECT terms, and it spends the screen-space term alone: an AO map stays on the ambient");
             check.Expect(Ao.Direct.Default == 1f, "...and it ships at 1, so a lit corner shows its occlusion (ADR 0056)");
             check.Expect(AlloyRenderer.OwnedLitFsMain.Contains("bool aoMine = uSsaoOn > 0 && aoDz < CX_AO_DEPTH_EPS + 0.5 * aoSlope;")
-              && AlloyRenderer.OwnedLitFsMain.Contains("if (aoMine) screenAo =") && AlloyRenderer.OwnedLitFsMain.Contains("occl *= screenAo;"),
+              && AlloyRenderer.OwnedLitFsMain.Contains("if (aoMine) screenAo =") && AlloyRenderer.OwnedLitFsMain.Contains("float occl = screenAo;"),
               "the fetch is per FRAGMENT: the pixel's occlusion must have been computed from this surface's own depth, "
               + "within half the fragment's slope (a coarse fragment's depth sits at its area's centre)");
             check.Expect(Strength > 0f && Ao.Strength.Min > 0f, "the strength never reads 0 -- a zero exponent is pow(v, 0) = 1, no occlusion at all");

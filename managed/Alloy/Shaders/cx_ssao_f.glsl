@@ -1,6 +1,6 @@
 // GTAO on the frame depth (Jimenez et al. 2016, the XeGTAO reference's structure): per slice the
 // two horizons, cosine-weighted against the normal projected into the slice, falloff over the outer
-// 60% of the radius. Normals come from depth (the smaller-difference neighbour on each axis), a 4x4
+// 60% of the reach (the radius, or less where the screen cap binds). Normals come from depth (the smaller-difference neighbour on each axis), a 4x4
 // pattern rotates slices and steps, and the blur stage folds that pattern away.
 #version 460 core
 in vec2 vUV;
@@ -19,6 +19,8 @@ vec3 CxViewNormal(vec2 uv, vec3 P)
     return normalize(cross(dx, dy));
 }
 
+float CxSliceOpen(float projLen, float cosN, float n) { return projLen * (cosN + n * sin(n)); }
+
 // One slice's unoccluded estimate swings with its angle to the normal's tilt, and clamping it per pixel greys an angled
 // flat surface: this is that grey, the mean of the clamped estimate over the slice angles, with no pattern in it.
 float CxFlatGrey(float cosT)
@@ -28,7 +30,7 @@ float CxFlatGrey(float cosT)
     {
         float s = sinT * cos((float(i) + 0.5) * PI / 8.0);
         float n = atan(s, cosT);
-        sum += pow(min(length(vec2(s, cosT)) * (cos(n) + n * sin(n)), 1.0), uPower);
+        sum += pow(min(CxSliceOpen(length(vec2(s, cosT)), cos(n), n), 1.0), uPower);
     }
     return sum * 0.25;
 }
@@ -52,7 +54,8 @@ void main()
     float noiseSlice = fract(b / 16.0 + float(uFrame) * 0.618034), noiseStep = fract(b * 0.618034 + float(uFrame) * 0.381966);
     // the world reach the capped screen reach covers: fading over the whole radius would leave occlusion at full strength where the samples stop
     float reach = uRadius * rPx / rFull;
-    float falloffRange = 0.6 * reach, falloffMul = -1.0 / falloffRange, falloffAdd = 0.4 * reach / falloffRange + 1.0;
+    float falloffMul = -1.0 / (0.6 * reach);
+    const float falloffAdd = 0.4 / 0.6 + 1.0;
     float minS = 1.3 / rPx;
     float vis = 0.0, open = 0.0;
     for (int s = 0; s < uDirs; s++)
@@ -87,7 +90,7 @@ void main()
         float a0 = (cosN + 2.0 * h0 * sin(n) - cos(2.0 * h0 - n)) * 0.25;
         float a1 = (cosN + 2.0 * h1 * sin(n) - cos(2.0 * h1 - n)) * 0.25;
         vis += projLen * (a0 + a1);
-        open += projLen * (cosN + n * sin(n));
+        open += CxSliceOpen(projLen, cosN, n);
     }
     // occlusion as a share of what these slices see unoccluded, so an occluder counts in every slice angle
     vis = clamp(vis / max(open, 1e-4), 0.0, 1.0);

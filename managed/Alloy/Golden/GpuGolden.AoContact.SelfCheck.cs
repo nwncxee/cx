@@ -2,15 +2,14 @@ using System;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using CX.Framework;
-using CX.Graphics;
 using CX.Graphics.Rhi;
 using CX.Rhi;
 
 namespace CX.Alloy;
 
 /// <summary>
-/// The AO stages over depth built by hand. Oracle: the single-slice estimate integrated by hand, so open floor at 60 degrees
-/// and power 2.2 averages 0.758, and the slice facing a 4 cm block darkens. A flat wall behind a straight slanted silhouette
+/// The AO stages over depth built by hand. Oracle: the clamped single-slice estimate integrated over the slice angles by hand,
+/// so open floor at 60 degrees and power 2.2 averages 0.758, and the slice facing a 4 cm block darkens. A flat wall behind a straight slanted silhouette
 /// repeats along the edge, so pixels on one step of it must agree, and occlusion must fade before the screen reach cap ends it.
 /// </summary>
 internal static partial class GpuGolden
@@ -21,8 +20,10 @@ internal static partial class GpuGolden
     private const int AoBlockEdge = 61;
     /// <summary>The wall and the figure before it: far enough apart for the blur to keep them apart, near enough to occlude.</summary>
     private const float AoWallDist = 4f, AoFigureDist = 3.79f;
-    /// <summary>The close camera: the cap holds the reach to a third of the 76 px the radius would take, as it does up close.</summary>
+    /// <summary>The close camera: the cap holds the reach to about a third of the radius's own, as it does up close.</summary>
     private const float AoCloseMaxPx = 24f, AoCloseFigureDist = 3.85f;
+    /// <summary>A cap the open floor's scene never reaches: its radius takes about 31 px.</summary>
+    private const float AoOpenMaxPx = 96f;
     /// <summary>The screen reach cap of the fringe's scene, near the radius so the figure's occlusion stays strong.</summary>
     private const float AoFringeMaxPx = 64f;
     /// <summary>The hardest step allowed from one wall pixel to the next, past the blur's own reach from the silhouette.</summary>
@@ -32,13 +33,17 @@ internal static partial class GpuGolden
 
     private static void AoContactSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
     {
-        PipelineId pipe = SsaoPassVk.Pipeline(vk, SsaoPass.ShdSsaoFs, "golden ao", log);
-        check.Expect(!pipe.IsNull, "the AO golden's stage builds for the device");
-        if (pipe.IsNull) return;
-        byte[]? open = AoRun(vk, log, pipe, false), block = AoRun(vk, log, pipe, true);
-        vk.Destroy(pipe);
-        check.Expect(open != null && block != null, "AO golden: a fixture, draw or readback was refused (logged above)");
-        if (open == null || block == null) return;
+        PipelineId raw = SsaoPassVk.Pipeline(vk, SsaoPass.ShdSsaoFs, "golden ao raw", log);
+        PipelineId blur = SsaoPassVk.Pipeline(vk, SsaoPass.ShdSsaoBlurFs, "golden ao blur", log);
+        check.Expect(!raw.IsNull && !blur.IsNull, "the AO golden's stages build for the device");
+        if (raw.IsNull || blur.IsNull) return;
+        byte[]? open = AoRun(vk, log, raw, false), block = AoRun(vk, log, raw, true);
+        byte[]? fringe = AoDraw(vk, log, raw, blur, AoFigureScene(AoFigureDist), AoFringeMaxPx);
+        byte[]? close = AoDraw(vk, log, raw, blur, AoFigureScene(AoCloseFigureDist), AoCloseMaxPx);
+        vk.Destroy(blur);
+        vk.Destroy(raw);
+        check.Expect(open != null && block != null && fringe != null && close != null, "AO golden: a fixture, draw or readback was refused (logged above)");
+        if (open == null || block == null || fringe == null || close == null) return;
 
         float least = 1f, most = 0f, sum = 0f;
         for (int y = 64; y < 68; y++)
@@ -49,14 +54,15 @@ internal static partial class GpuGolden
                 most = MathF.Max(most, v);
                 sum += v;
             }
-        Near(check, "AO golden: open floor at 60 degrees keeps its grey", sum / 16f, 0.758, 0.015);
+        Near(check, "AO golden: open floor at 60 degrees keeps its grey", sum / 16f, 0.758, 0.01);
         check.Expect(most - least < 0.02f, $"AO golden: open floor shows no slice pattern, {least:F3}..{most:F3} over one tile");
 
         // pattern value 8 sits at x&3 == 1, y&3 == 0: its slice runs straight up and down the screen
         const int X = 65, Y = 64;
         float drop = AoAt(open, X, Y) - AoAt(block, X, Y);
         check.Expect(drop > 0.02f, $"AO golden: the slice facing a low block 3 pixels away darkens, by {drop:F3}");
-        AoFringeSelfCheck(vk, check, log);
+
+        AoFringeChecks(check, fringe, close);
     }
 
     /// <summary>The figure's first column on row <paramref name="y"/> past its slanted edge: 2 rows per column.</summary>
@@ -67,24 +73,16 @@ internal static partial class GpuGolden
     {
         var d = new float[AoSide * AoSide];
         for (int y = 0; y < AoSide; y++)
-            for (int x = 0; x < AoSide; x++)
-                d.AsSpan(y * AoSide, AoSide)[x] = AoNear / (x >= AoEdgeColumn(y) ? figureDist : AoWallDist);
+        {
+            Span<float> row = d.AsSpan(y * AoSide, AoSide);
+            row[..AoEdgeColumn(y)].Fill(AoNear / AoWallDist);
+            row[AoEdgeColumn(y)..].Fill(AoNear / figureDist);
+        }
         return d;
     }
 
-    private static void AoFringeSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
+    private static void AoFringeChecks(Checker check, byte[] px, byte[] close)
     {
-        PipelineId raw = SsaoPassVk.Pipeline(vk, SsaoPass.ShdSsaoFs, "golden ao raw", log);
-        PipelineId blur = SsaoPassVk.Pipeline(vk, SsaoPass.ShdSsaoBlurFs, "golden ao blur", log);
-        check.Expect(!raw.IsNull && !blur.IsNull, "the AO fringe golden's stages build for the device");
-        if (raw.IsNull || blur.IsNull) return;
-        byte[]? px = AoDraw(vk, log, raw, blur, AoFigureScene(AoFigureDist), AoFringeMaxPx);
-        byte[]? close = AoDraw(vk, log, raw, blur, AoFigureScene(AoCloseFigureDist), AoCloseMaxPx);
-        vk.Destroy(blur);
-        vk.Destroy(raw);
-        check.Expect(px != null && close != null, "AO fringe golden: a fixture, draw or readback was refused (logged above)");
-        if (px == null || close == null) return;
-
         // the same step of the stair repeats every 2 rows, so only the pattern can part rows of one parity
         for (int parity = 0; parity < 2; parity++)
         {
@@ -126,7 +124,7 @@ internal static partial class GpuGolden
             float z = AoNear / AoFloorDist(y, withBlock && y < AoBlockEdge ? AoBlockHeight : 0f);
             d.AsSpan(y * AoSide, AoSide).Fill(z);
         }
-        return AoDraw(vk, log, pipe, default, d, 96f);
+        return AoDraw(vk, log, pipe, default, d, AoOpenMaxPx);
     }
 
     /// <summary>The raw stage over <paramref name="d"/>, then <paramref name="blur"/> when it has one, as the pass records
@@ -135,15 +133,15 @@ internal static partial class GpuGolden
     {
         ImageId depth = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.R32F, AoSide, AoSide, 1, 1, 1, 1,
                                                      ImageUse.Sampled | ImageUse.CopyDst, "golden ao depth"));
-        ImageId rawOut = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.R8, AoSide, AoSide, 1, 1, 1, 1,
-                                                      ImageUse.ColorTarget | ImageUse.Sampled, "golden ao raw"));
+        ImageId rawOut = blur.IsNull ? default : vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.R8, AoSide, AoSide, 1, 1, 1, 1,
+                                                                              ImageUse.ColorTarget | ImageUse.Sampled, "golden ao raw"));
         ImageId target = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.R8, AoSide, AoSide, 1, 1, 1, 1,
                                                       ImageUse.ColorTarget | ImageUse.CopySrc, "golden ao target"));
         BufferId ubo = vk.CreateBuffer(new BufferDesc(Std140.BlockBytes<SsaoBlock>(), BufferUse.Uniform, MemoryKind.Upload, "golden ao block"));
         BufferId rb = vk.CreateBuffer(new BufferDesc(AoSide * AoSide, BufferUse.CopyDst | BufferUse.CopySrc, MemoryKind.Device, "golden ao read"));
         try
         {
-            if (depth.IsNull || rawOut.IsNull || target.IsNull || ubo.IsNull || rb.IsNull) return null;
+            if (depth.IsNull || (rawOut.IsNull && !blur.IsNull) || target.IsNull || ubo.IsNull || rb.IsNull) return null;
             if (!vk.Upload(depth, 0, 0, MemoryMarshal.AsBytes(d.AsSpan()))) return null;
 
             var b = new SsaoBlock
@@ -158,14 +156,7 @@ internal static partial class GpuGolden
             var cl = new CommandList("golden ao", 1 << 12, log);
             cl.UpdateBuffer(ubo, 0, blk);
             cl.ReadImages([depth]);
-            var vp = new Rect(0, 0, AoSide, AoSide);
-            ReadOnlySpan<BufferBinding> ubos = [new(UboSlots.Ssao, ubo)];
-            SsaoPassVk.Stage(cl, blur.IsNull ? target : rawOut, pipe, vp, ubos, [new(SsaoPass.SlotDepth, depth)]);
-            if (!blur.IsNull)
-            {
-                cl.ReadImages([rawOut]);
-                SsaoPassVk.Stage(cl, target, blur, vp, ubos, [new(SsaoPass.SlotDepth, depth), new(SsaoPass.SlotSrc, rawOut)]);
-            }
+            SsaoPassVk.RecordStages(cl, pipe, blur, rawOut, target, depth, new Rect(0, 0, AoSide, AoSide), [new(UboSlots.Ssao, ubo)]);
             return vk.Submit(cl) ? PostRead(vk, log, target, AoSide, AoSide, 1, rb) : null;
         }
         finally

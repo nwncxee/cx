@@ -29,8 +29,8 @@ internal enum PassId
     SkyMap,
     DepthPrepass,
     /// <summary>Screen-space ambient occlusion from the prepass depth, BEFORE the colour pass so the lit
-    /// stage reads it as a lighting input (its ambient term) rather than a post stage darkening the finished
-    /// frame the way vanilla's FB effect does (ADR 0021).</summary>
+    /// stage reads it as a lighting input rather than a post stage darkening the finished frame the way
+    /// vanilla's FB effect does (ADR 0056).</summary>
     AmbientOcclusion,
     /// <summary>The volumetric fog's volume (<see cref="FogVolume"/>): lit off this frame's light rig and sun
     /// cascades, and built BEFORE the first stage that fogs -- every colour pass from here reads it.</summary>

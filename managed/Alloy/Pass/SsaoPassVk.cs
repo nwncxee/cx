@@ -89,9 +89,7 @@ internal static unsafe class SsaoPassVk
         bool blur = Ao.Blur.V && !s.ProgBlur.IsNull;
         var vp = new Rect(half ? viewport[0] / 2 : viewport[0], half ? viewport[1] / 2 : viewport[1], s.W, s.H);
         ReadOnlySpan<BufferBinding> ubo = [new(UboSlots.Ssao, s.Ubo)];
-        Stage(cl, blur ? s.Raw : s.Out, s.Prog, vp, ubo, [new(SsaoPass.SlotDepth, depth)]);
-        // #390: the blur folds the Bayer pattern away; on Vulkan there is no accumulator behind it yet
-        if (blur) Stage(cl, s.Out, s.ProgBlur, vp, ubo, [new(SsaoPass.SlotDepth, depth), new(SsaoPass.SlotSrc, s.Raw)]);
+        RecordStages(cl, s.Prog, blur ? s.ProgBlur : default, s.Raw, s.Out, depth, vp, ubo);
         s.Half = half;
         s.LiveFrame = AlloyRenderer.FrameSeq;
         s.Runs++;
@@ -104,8 +102,17 @@ internal static unsafe class SsaoPassVk
         }
     }
 
+    /// <summary>The raw stage, then the blur when <paramref name="blur"/> is a pipeline; <paramref name="target"/> takes
+    /// the last of them. The blur folds the Bayer pattern away; on Vulkan there is no accumulator behind it yet.</summary>
+    internal static void RecordStages(CommandList cl, PipelineId prog, PipelineId blur, ImageId raw, ImageId target, ImageId depth,
+                                      Rect vp, ReadOnlySpan<BufferBinding> ubo)
+    {
+        Stage(cl, blur.IsNull ? target : raw, prog, vp, ubo, [new(SsaoPass.SlotDepth, depth)]);
+        if (!blur.IsNull) Stage(cl, target, blur, vp, ubo, [new(SsaoPass.SlotDepth, depth), new(SsaoPass.SlotSrc, raw)]);
+    }
+
     /// <summary>One full-screen stage into <paramref name="target"/>, which it overwrites whole.</summary>
-    internal static void Stage(CommandList cl, ImageId target, PipelineId p, Rect vp, ReadOnlySpan<BufferBinding> ubo,
+    private static void Stage(CommandList cl, ImageId target, PipelineId p, Rect vp, ReadOnlySpan<BufferBinding> ubo,
                               ReadOnlySpan<ImageBinding> sampled)
     {
         ReadOnlySpan<ColorAttachment> color = [new(target, 0, 0, LoadOp.DontCare, StoreOp.Store, default)];

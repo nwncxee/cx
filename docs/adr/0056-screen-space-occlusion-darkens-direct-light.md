@@ -4,4 +4,10 @@ Category: Architecture.
 
 Decided 2026-11-05.
 
-Because most surfaces are lit mainly by direct light, so ambient-only occlusion left low-poly models looking glued together, while an authored AO map must not darken a lit surface.
+## Brief
+
+Screen-space occlusion, computed before the colour pass, scales ambient and direct light, and its buffer carries a view-angle grey that dims open surfaces seen at an angle. AO maps scale ambient alone.
+
+## Rationale
+
+Most surfaces are lit mainly by direct light, so ambient-only occlusion left low-poly models looking glued together. An authored AO map must not darken a lit surface.
