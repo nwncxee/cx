@@ -119,6 +119,7 @@ public static class ServiceHost
         KnobGroup.SelfCheck(log);
         TextList.SelfCheck(log);
         KnobFile.SelfCheck(log);
+        CX.Alloy.Db.DbSceneSelfCheck.NoFixtureOutlived(log);   // the game has made no scene yet, so one still live is a suite's
 
         // the frame walk must be immutable before the present hook can fire. Sealing here is the
         // happens-before -- a registration after this point is refused, not silently dropped.

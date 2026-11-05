@@ -22,6 +22,7 @@ internal static unsafe class DbSceneSelfCheck
         ObjectBridge.MuteForSelfCheck();
         Camera(check);
         Names(check);
+        WorldScene(check);
         Order(check);
         PingPong(check, log);
         // The suite must give every slot back. Asserted rather than assumed: a leaked fixture record shows up
@@ -40,6 +41,34 @@ internal static unsafe class DbSceneSelfCheck
                           : "DbScene.SelfCheck: FAILED -- the CX scene database's camera math, draw order or "
                             + "snapshot handshake is wrong; in DB mode that is every view placed or sequenced wrong");
         return check.Ok;
+    }
+
+    /// <summary>After every suite and before the hooks commit: nothing the game made can be live yet, so a live scene or
+    /// object is a fixture still in the tables, which frame walks and world-scene lookups read as the game's. Oracle: the
+    /// empty table the engine has not touched.</summary>
+    internal static void NoFixtureOutlived(ExtenderLog log)
+    {
+        var check = new Checker(log, "DbScene.SelfCheck");
+        check.Expect(SceneDb.Scenes.Live == 0, $"no fixture scene outlives its suite ({SceneDb.Scenes.Live} live)");
+        check.Expect(SceneDb.Objects.Live == 0, $"no fixture object outlives its suite ({SceneDb.Objects.Live} live)");
+    }
+
+    /// <summary>A world flag on a scene the game holds no facade for is a fixture, never the world, and the lowest slot
+    /// does not win over the scene the game made. Oracle: hand-built records and a stand-in facade word, never read.</summary>
+    private static void WorldScene(Checker check)
+    {
+        DbId fixture = SceneDb.Scenes.Alloc(), game = SceneDb.Scenes.Alloc();
+        SceneDb.SceneIsWorld[fixture.Index] = SceneDb.SceneIsWorld[game.Index] = true;
+        SceneDb.SceneFacade[fixture.Index] = 0;
+        SceneDb.SceneFacade[game.Index] = 0;
+        check.Expect(DbScene.World().IsNull, "a flagged scene with no facade is not the world");
+        SceneDb.SceneFacade[game.Index] = 8;
+        check.Expect(DbScene.World().Value == game.Value, "the scene with the facade is, past the fixture in the lower slot");
+        SceneDb.SceneFacade[game.Index] = 0;
+        check.Expect(DbScene.World().IsNull, "a world whose facade died stops being the answer");
+        SceneDb.SceneIsWorld[fixture.Index] = SceneDb.SceneIsWorld[game.Index] = false;
+        SceneDb.Scenes.Free(fixture);
+        SceneDb.Scenes.Free(game);
     }
 
     /// <summary>The engine's naming rule and the camera member lookup. Oracle: hand-written names -- the

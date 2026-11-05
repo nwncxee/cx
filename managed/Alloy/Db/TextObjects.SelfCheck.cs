@@ -689,7 +689,8 @@ public static class TextObjectsSelfCheck
         c.Expect(d.LineCount == before + 1 && Encoding.Latin1.GetString(d.Lines[before].Span) == "zz",
           "inserting there APPENDS a line rather than refusing");
 
-        var noNl = TextObjects.Of(TextObjects.Create(default, 8))!;
+        DbId noNlId = TextObjects.Create(default, 8);
+        var noNl = TextObjects.Of(noNlId)!;
         noNl.Font = f;
         TextObjects.AddLine(noNl, Encoding.Latin1.GetBytes("ab"));
         c.Expect(noNl.LineCount == 1, "a line with no newline is one line");
@@ -734,6 +735,9 @@ public static class TextObjectsSelfCheck
         c.Expect(bare.VisibleLines == vis, "SetMaxHeight on another document changes nothing here");
         bare.MaxHeight = 0.05f;
         c.Expect(bare.VisibleLines == vis, "and setting it directly recomputes nothing: it is a bare store");
+
+        TextObjects.Destroy(noNlId);
+        TextObjects.Destroy(id);
     }
 
     private static void SlotTable(Checker c)
