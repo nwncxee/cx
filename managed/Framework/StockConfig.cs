@@ -108,7 +108,6 @@ public static unsafe class StockConfig
         public bool Keyholing;
         public double Gamma;
         public long TargetFps;
-        public long Aniso;
         /// <summary>True once a read has succeeded against the live engine.</summary>
         public bool Taken;
     }
@@ -128,12 +127,6 @@ public static unsafe class StockConfig
     public static bool HdrBloom
     {
         get { if (!_snap.Taken) Refresh("first verdict"); return _snap.HdrBloom; }
-    }
-
-    /// <summary>The stock anisotropic filtering level, same lazy rule.</summary>
-    public static long Aniso
-    {
-        get { if (!_snap.Taken) Refresh("first texture"); return _snap.Aniso; }
     }
 
     /// <summary>Where the snapshot lines go. Once, from the host that owns the world edge.</summary>
@@ -166,12 +159,11 @@ public static unsafe class StockConfig
         TryGetBool("graphics.keyholing.enabled"u8, ref s.Keyholing);
         TryGetDouble("graphics.gamma"u8, ref s.Gamma);
         TryGetLong("graphics.framelimiter.foreground.target-fps"u8, ref s.TargetFps);
-        TryGetLong("graphics.video.anisotropic-filtering.mode"u8, ref s.Aniso);
         s.Taken = true;
         _snap = s;
         _log?.Info($"[stock] {why}: grass {s.GrassMode} dist {s.GrassDistance:0.#} enhanced {(s.EnhancedLighting ? 1 : 0)} " +
                    $"maxlights {s.MaxLights} bloom {(s.HdrBloom ? 1 : 0)} keyhole {(s.Keyholing ? 1 : 0)} " +
-                   $"gamma {s.Gamma:0.00} fps {s.TargetFps} aniso {s.Aniso}");
+                   $"gamma {s.Gamma:0.00} fps {s.TargetFps}");
     }
 
     /// <summary>Off-device: the forged header packs the way each callee reads it. Linux: word 0 the pointer,
