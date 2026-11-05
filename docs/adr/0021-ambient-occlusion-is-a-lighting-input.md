@@ -5,3 +5,5 @@ Category: Architecture.
 Decided 2026-09-04.
 
 Because as a lighting input it scales only the ambient term beside the material's own map, and never darkens direct light.
+
+Superseded by ADR-0056.

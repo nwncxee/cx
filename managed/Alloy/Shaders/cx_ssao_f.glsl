@@ -1,6 +1,6 @@
 // GTAO on the frame depth (Jimenez et al. 2016, the XeGTAO reference's structure): per slice the
 // two horizons, cosine-weighted against the normal projected into the slice, falloff over the outer
-// 40% of the radius. Normals come from depth (the smaller-difference neighbour on each axis), a 4x4
+// 60% of the radius. Normals come from depth (the smaller-difference neighbour on each axis), a 4x4
 // pattern rotates slices and steps, and the blur stage folds that pattern away.
 #version 460 core
 in vec2 vUV;
@@ -19,6 +19,20 @@ vec3 CxViewNormal(vec2 uv, vec3 P)
     return normalize(cross(dx, dy));
 }
 
+// One slice's unoccluded estimate swings with its angle to the normal's tilt, and clamping it per pixel greys an angled
+// flat surface: this is that grey, the mean of the clamped estimate over the slice angles, with no pattern in it.
+float CxFlatGrey(float cosT)
+{
+    float sinT = sqrt(max(1.0 - cosT * cosT, 0.0)), sum = 0.0;
+    for (int i = 0; i < 4; i++)
+    {
+        float s = sinT * cos((float(i) + 0.5) * PI / 8.0);
+        float n = atan(s, cosT);
+        sum += pow(min(length(vec2(s, cosT)) * (cos(n) + n * sin(n)), 1.0), uPower);
+    }
+    return sum * 0.25;
+}
+
 void main()
 {
     float depth = textureLod(uDepth, vUV, 0.0).r;
@@ -28,16 +42,19 @@ void main()
     vec3 V = normalize(-P);
     float dist = -P.z;
     // world radius -> pixels: ndc spans 2 over h pixels, and x_ndc = x_v * M11 / dist
-    float rPx = min(uRadius * uProj[1].y / dist * 0.5 * uRt.w, uMaxPx);
+    float rFull = uRadius * uProj[1].y / dist * 0.5 * uRt.w;
+    float rPx = min(rFull, uMaxPx);
     if (rPx < 1.0) { frag = 1.0; return; }
     ivec2 pix = ivec2(gl_FragCoord.xy);
     float b = BAYER[(pix.x & 3) + ((pix.y & 3) << 2)];
     // #390: the phase walks the golden ratio per frame under the accumulator, so successive frames
     // sample different slices and steps; at uFrame 0 both are exactly the single-frame pattern.
     float noiseSlice = fract(b / 16.0 + float(uFrame) * 0.618034), noiseStep = fract(b * 0.618034 + float(uFrame) * 0.381966);
-    float falloffRange = 0.4 * uRadius, falloffMul = -1.0 / falloffRange, falloffAdd = 0.6 * uRadius / falloffRange + 1.0;
+    // the world reach the capped screen reach covers: fading over the whole radius would leave occlusion at full strength where the samples stop
+    float reach = uRadius * rPx / rFull;
+    float falloffRange = 0.6 * reach, falloffMul = -1.0 / falloffRange, falloffAdd = 0.4 * reach / falloffRange + 1.0;
     float minS = 1.3 / rPx;
-    float vis = 0.0;
+    float vis = 0.0, open = 0.0;
     for (int s = 0; s < uDirs; s++)
     {
         float phi = (float(s) + noiseSlice) / float(uDirs) * PI;
@@ -56,19 +73,23 @@ void main()
         {
             float t = (float(j) + fract(noiseStep + float(s) * 0.618034)) / float(uSteps);
             t = t * t + minS;
-            vec2 off = omega * (t * rPx) * uRt.xy;
+            // on a pixel centre: the position comes from this uv and the depth from a whole texel, so anything between them leaves the surface
+            vec2 off = round(omega * (t * rPx)) * uRt.xy;
             vec3 S0 = CxViewPos(vUV + off) - P, S1 = CxViewPos(vUV - off) - P;
             float l0 = max(length(S0), 1e-5), l1 = max(length(S1), 1e-5);
             float w0 = clamp(l0 * falloffMul + falloffAdd, 0.0, 1.0), w1 = clamp(l1 * falloffMul + falloffAdd, 0.0, 1.0);
-            hc0 = max(hc0, mix(low0, dot(S0, V) / l0, w0));
-            hc1 = max(hc1, mix(low1, dot(S1, V) / l1, w1));
+            // only what stands above this surface's own plane occludes it
+            hc0 = max(hc0, mix(low0, dot(S0, V) / l0, w0 * smoothstep(0.0, 0.05, dot(S0, N) / l0)));
+            hc1 = max(hc1, mix(low1, dot(S1, V) / l1, w1 * smoothstep(0.0, 0.05, dot(S1, N) / l1)));
         }
         float h0 = n + clamp(-acos(hc1) - n, -HALF_PI, HALF_PI);
         float h1 = n + clamp(acos(hc0) - n, -HALF_PI, HALF_PI);
         float a0 = (cosN + 2.0 * h0 * sin(n) - cos(2.0 * h0 - n)) * 0.25;
         float a1 = (cosN + 2.0 * h1 * sin(n) - cos(2.0 * h1 - n)) * 0.25;
         vis += projLen * (a0 + a1);
+        open += projLen * (cosN + n * sin(n));
     }
-    vis = clamp(vis / float(uDirs), 0.0, 1.0);
-    frag = max(pow(vis, uPower), 0.03);
+    // occlusion as a share of what these slices see unoccluded, so an occluder counts in every slice angle
+    vis = clamp(vis / max(open, 1e-4), 0.0, 1.0);
+    frag = max(pow(vis, uPower) * CxFlatGrey(clamp(dot(N, V), 0.0, 1.0)), 0.03);
 }

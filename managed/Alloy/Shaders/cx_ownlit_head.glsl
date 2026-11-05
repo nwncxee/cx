@@ -44,7 +44,7 @@ uniform sampler2D uSsao;       // #379: this frame's screen-space visibility (Ss
 uniform int uSsaoOn;           // >0 when this BATCH is in the depth SsaoPass read; <0 names why not (viz 35)
 uniform int uSsaoHalf;         // post.halfres: 1 = uSsao is half the frame's extent, read bilaterally
 uniform sampler2D uSceneDepth; // the prepass depth SsaoPass read, to check the pixel is OURS (viz 37)
-uniform float uAoDirect;       // /ao direct: how much of the occlusion the DIRECT terms take (0 = ADR 0021)
+uniform float uAoDirect;       // /ao direct: how much of the screen-space occlusion the DIRECT terms take (ADR 0056)
 uniform float uAoCutout;       // /ao cutout: how much of it a CUTOUT receiver takes (leaf cards over leaf cards)
 // #126: the engine's fAlphaDiscardValue, per batch -- 0.2 on the cutout and blended classes,
 // -1.0 (no test) on opaque and additive.

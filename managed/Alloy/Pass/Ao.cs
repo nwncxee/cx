@@ -5,7 +5,7 @@ namespace CX.Alloy;
 /// <summary>The <c>ao</c> group (spec §4.3): the storage <see cref="SsaoPass"/> reads. No master -- the
 /// game's own Ambient Occlusion video option is the switch; <see cref="On"/> is the chat-only bypass for an
 /// A/B. <c>radius</c> is world-space (NWN units are metres), so 0.6 is contact occlusion rather than
-/// room-scale gloom, and <c>direct</c> ships at 0: the ambient term alone, as ADR 0021 has it.</summary>
+/// room-scale gloom, and <c>direct</c> ships at 1, as ADR 0056 has it.</summary>
 internal static class Ao
 {
     internal static readonly KnobGroup G;
@@ -30,12 +30,12 @@ internal static class Ao
         Steps = G.Slider("steps", "Steps", 1, 8, 1, 3, tier: Tier.Advanced,
                          help: "Samples along each direction. More reaches further out accurately, and costs that much more.")
                  .Ladder(Quality.Ao, 2, 2, 3, 4);
-        Direct = G.Slider("direct", "Darken lit surfaces", 0f, 1f, 0.05f, 0f, tier: Tier.ChatOnly,
-                          help: "How much of the occlusion the sun, the lamps and the baked light take: 0 is the ambient term alone, which is what the game does.");
+        Direct = G.Slider("direct", "Darken lit surfaces", 0f, 1f, 0.05f, 1f, tier: Tier.ChatOnly,
+                          help: "How much of the occlusion the sun, the lamps and the baked light take: 1 is all of it, and 0 leaves occlusion on ambient light alone.");
         Cutout = G.Slider("cutout", "On cutout surfaces", 0f, 1f, 0.05f, 1f, tier: Tier.ChatOnly,
                           help: "How much occlusion leaf and grass cards take: 1 = full (a card stamps its silhouette on the card behind it).");
-        MaxPx = G.Slider("maxpx", "Screen radius cap", 16f, 256f, 8f, 96f, "px", Tier.ChatOnly)
-                 .Ladder(Quality.Ao, 48f, 64f, 96f, 128f);
+        MaxPx = G.Slider("maxpx", "Screen radius cap", 16f, 256f, 8f, 130f, "px", Tier.ChatOnly)
+                 .Ladder(Quality.Ao, 48f, 64f, 130f, 130f);
         Blur = G.Toggle("blur", "Blur", true, Tier.ChatOnly);
         On = G.Toggle("on", "on", true, Tier.ChatOnly);
     }

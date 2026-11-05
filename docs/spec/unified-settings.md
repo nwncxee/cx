@@ -936,7 +936,7 @@ the preset. Rungs, low / medium / high / ultra:
 quarter.
 
 **quality.ao** → `ao.radius` 0.5 / 0.6 / 0.6 / 0.8 m · `ao.dirs` 1 / 1 / 1 / 2 · `ao.steps`
-2 / 2 / 3 / 4 · `ao.maxpx` 48 / 64 / 96 / 128 px.
+2 / 2 / 3 / 4 · `ao.maxpx` 48 / 64 / 130 / 130 px.
 
 **quality.detail** → `lod.px1` 800 / 650 / 500 / 300 px · `lod.px2` 300 / 220 / 150 / 80 px ·
 `alloy.lod` 2 / 1.5 / 1 / 0.5 px.

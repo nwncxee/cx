@@ -105,7 +105,7 @@ internal static unsafe class SsaoPassVk
     }
 
     /// <summary>One full-screen stage into <paramref name="target"/>, which it overwrites whole.</summary>
-    private static void Stage(CommandList cl, ImageId target, PipelineId p, Rect vp, ReadOnlySpan<BufferBinding> ubo,
+    internal static void Stage(CommandList cl, ImageId target, PipelineId p, Rect vp, ReadOnlySpan<BufferBinding> ubo,
                               ReadOnlySpan<ImageBinding> sampled)
     {
         ReadOnlySpan<ColorAttachment> color = [new(target, 0, 0, LoadOp.DontCare, StoreOp.Store, default)];
@@ -140,7 +140,7 @@ internal static unsafe class SsaoPassVk
     /// <summary>The stage pair <paramref name="fsRef"/> names, as GL compiles it (its own override and library
     /// swaps), translated and compiled for Vulkan -- or a SPIR-V <c>&lt;fsRef&gt;.shd</c> as the fragment module. A
     /// null id, logged, for a text the toolchain refused.</summary>
-    private static PipelineId Pipeline(VkBackend vk, string fsRef, string label, ExtenderLog log)
+    internal static PipelineId Pipeline(VkBackend vk, string fsRef, string label, ExtenderLog log)
     {
         ShaderTexts.Pair(PostChain.ShdPostVs, ShaderStages.Source(PostChain.ShdPostVs), fsRef, ShaderStages.Source(fsRef),
                         log, label, out string vs, out string fs);
