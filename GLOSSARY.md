@@ -391,8 +391,8 @@ What a server can ask the client to draw in and beside its NUI windows. The cont
   correction that makes Alloy blending mathematically right, not a place for tonemapping, exposure,
   or bloom — those plug in later, at the same point.
 - **Ambient occlusion pass** — screen-space visibility (GTAO) computed from the depth prepass BEFORE the
-  colour pass and read by the lit stage as a scale on its ambient term, beside the material's AO map
-  (ADR 0021, #379). A lighting input, not a post stage: vanilla's SSAO darkens the finished frame.
+  colour pass and read by the lit stage as a scale on its ambient and direct terms; the material's AO map
+  scales ambient alone (ADR 0056, #379). It also carries a view-angle grey, so an open surface seen at an angle dims. A lighting input, not a post stage: vanilla's SSAO darkens the finished frame.
 - **World depth** — the depth the world's passes draw into and read: Alloy's own float target, *reversed*
   (near 1, far 0, cleared to 0, a nearer fragment tests GREATER) under a projection folded to match, so a stored
   value is the NDC z. Shadow cascades, caster maps and the GUI keep GL's depth (near 0, far 1) and are not world

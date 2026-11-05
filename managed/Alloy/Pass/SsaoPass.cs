@@ -34,10 +34,10 @@ internal struct SsaoBlock
     }
 }
 
-/// <summary>Screen-space ambient occlusion as a LIGHTING INPUT, not a post stage (ADR 0021). The client's SSAO
+/// <summary>Screen-space ambient occlusion as a LIGHTING INPUT, not a post stage (ADR 0056). The client's SSAO
 /// option is bit 0 of <c>Camera::m_nFramebufferEffectsEnabled</c>; vanilla runs its pass over the finished
 /// frame and darkens direct light with it, while Alloy computes horizon-based visibility (GTAO) from the depth
-/// prepass and scales the lit stage's AMBIENT term by it. <c>/ao direct</c>, 0 as shipped, carries it further.</summary>
+/// prepass and scales the lit stage's ambient and direct terms by it. <c>/ao direct</c> is the direct share.</summary>
 internal static unsafe class SsaoPass
 {
     private static ExtenderLog? _log;
@@ -78,7 +78,7 @@ internal static unsafe class SsaoPass
             : $"the client's SSAO video option (settings.tml graphics.fbo.ssao.enabled = {(OptionOn ? 1 : 0)}) is the Alloy "
             + $"lit pass's (#379): {(SsaoPassVk.Failed ? "the pass did NOT build -- the option is inert"
                                      : !Ao.On.V ? "BYPASSED by /ao on 0"
-                                     : OptionOn ? "horizon occlusion from the depth prepass scales the ambient term"
+                                     : OptionOn ? "horizon occlusion from the depth prepass scales the ambient and direct light"
                                      : "off")}");
         log.Info($"SsaoPass: attached -- {Describe()}");
     }
@@ -105,7 +105,7 @@ internal static unsafe class SsaoPass
     internal static string SsaoBlurFs => ShaderSource.Get("cx_ssaoblur_f.glsl");
 
     /// <summary>Off-device: the two stages compose on the shared reconstruction, the gate is the engine's
-    /// effect bit, and the lit stage takes the result on the ambient term only.</summary>
+    /// effect bit, and the lit stage takes the result on its ambient and direct terms.</summary>
     internal static bool SelfCheck(ExtenderLog log)
     {
         ExtenderLog? quiet = _log; _log = null;
@@ -118,7 +118,7 @@ internal static unsafe class SsaoPass
             check.Expect(ShaderSource.Get("cx_ssaolib.glsl").Contains($"layout(binding = {SlotDepth}) uniform sampler2D uDepth;")
               && SsaoBlurFs.Contains($"layout(binding = {SlotSrc}) uniform sampler2D uSrc;"),
               "every sampler the two stages read sits on the slot the recorded BindSet names (the seam sets no sampler uniform)");
-            check.Expect(AlloyRenderer.OwnedLitFsMain.Contains("occl *= mix(1.0, CxSsaoAt(ivec2(gl_FragCoord.xy), aoDepth, aoSlope), uAlphaCut >= 0.0 ? uAoCutout : 1.0);")
+            check.Expect(AlloyRenderer.OwnedLitFsMain.Contains("screenAo = mix(1.0, CxSsaoAt(ivec2(gl_FragCoord.xy), aoDepth, aoSlope), uAlphaCut >= 0.0 ? uAoCutout : 1.0);")
               && AlloyRenderer.OwnedLitFsMain.Contains("+ cxAmbWalk) * matAmbient * occl;"), "the lit stage folds it into occl, which scales the AMBIENT term");
             // post.halfres: the pass is a quarter of the pixels and the LIT stage is the upsampler -- there
             // is no apply pass to put a bilateral filter in, the consumer fetches per fragment.
@@ -133,12 +133,12 @@ internal static unsafe class SsaoPass
               "the tolerance is the surface's own depth slope, taken outside every branch (fwidth wants a defined neighbourhood)");
             check.Expect(!SsaoBlurFs.Contains("texelFetch(uDepth"), "the blur addresses the DEPTH by uv: at half res its own texel coordinates are another quarter of the screen");
             check.Expect(!Post.HalfRes.Default, "post.halfres ships OFF -- the 4-tap upsample costs every lit fragment more than the quarter-size pass saves");
-            check.Expect(AlloyRenderer.OwnedLitFsMain.Contains("float dirOcc = mix(1.0, occl, uAoDirect);")
+            check.Expect(AlloyRenderer.OwnedLitFsMain.Contains("float dirOcc = mix(1.0, screenAo, uAoDirect);")
               && AlloyRenderer.OwnedLitFsMain.Contains("vec3 diffuse = (sun + sunSss + point) * dirOcc;"),
-              "/ao direct is the only route to the DIRECT terms, and 0 leaves them exactly as ADR 0021 has them");
-            check.Expect(Ao.Direct.Default == 0f, "...and it ships at 0, so the shipped frame is ADR 0021's: the ambient term alone, as the engine's own shaders occlude");
+              "/ao direct is the only route to the DIRECT terms, and it spends the screen-space term alone: an AO map stays on the ambient");
+            check.Expect(Ao.Direct.Default == 1f, "...and it ships at 1, so a lit corner shows its occlusion (ADR 0056)");
             check.Expect(AlloyRenderer.OwnedLitFsMain.Contains("bool aoMine = uSsaoOn > 0 && aoDz < CX_AO_DEPTH_EPS + 0.5 * aoSlope;")
-              && AlloyRenderer.OwnedLitFsMain.Contains("if (aoMine) occl *="),
+              && AlloyRenderer.OwnedLitFsMain.Contains("if (aoMine) screenAo =") && AlloyRenderer.OwnedLitFsMain.Contains("float occl = screenAo;"),
               "the fetch is per FRAGMENT: the pixel's occlusion must have been computed from this surface's own depth, "
               + "within half the fragment's slope (a coarse fragment's depth sits at its area's centre)");
             check.Expect(Strength > 0f && Ao.Strength.Min > 0f, "the strength never reads 0 -- a zero exponent is pow(v, 0) = 1, no occlusion at all");

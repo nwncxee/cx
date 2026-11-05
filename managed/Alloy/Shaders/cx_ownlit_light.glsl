@@ -133,11 +133,10 @@
     // The engine's split: every light accumulates its own lobe, then ONE view-side normalisation
     // (fSpecularBaseModifier) and the material's specular colour scale the sum
     // (inc_lighting.shd:545 and :653). fSpecularity is already inside the lobe via the Fresnel term.
-    // ADR 0021 gives occlusion to the ambient term alone, as the engine's own shaders do
-    // (inc_lighting.shd:599-601 scales AmbientLight and nothing else). /ao direct is the chat-only
-    // dial past that -- 0, the shipped value, leaves the direct terms alone; 1 occludes them
-    // outright. The probe term below picks it up through `diffuse` at no extra cost.
-    float dirOcc = mix(1.0, occl, uAoDirect);
+    // ADR 0056: the screen-space term darkens direct light too, as vanilla's pass over the finished frame does;
+    // /ao direct is the chat-only dial, 1 as shipped. A material's AO map and the height map stay on the ambient
+    // term alone (inc_lighting.shd:599-601). The probe term below picks it up through `diffuse` at no extra cost.
+    float dirOcc = mix(1.0, screenAo, uAoDirect);
     vec3 specLight = (sunSpec * CxLoopSpec(CxSpecLobe(N, V, uAreaDir, rough, spec), N, V, uAreaDir) + pointSpec)
                      * dirOcc;
     // R4: the film's own highlights from the baked statics, cold and hot -- the loop gives a matte base the
@@ -163,9 +162,8 @@
     // the walk's ambient-class lights join the area ambient before the material and the occlusion, as stock's
     // AmbientLight does (inc_lighting.shd:402-405, :512, :600); the floor, the shape and the sky are the area's
     vec3 ambient = (uAreaAmbient * ambShape * CxSkyView(vWorld, normalize(vNrm)) + cxAmbWalk) * matAmbient * occl;
-    // 34 = the ONLY term occlusion can move inside `total` (the (1-spec) share of the ambient).
-    //      Black at both /ao on 0 and /ao on 1 means AO has nothing to scale here, however bright
-    //      viz 8 reads -- which no other view in the ladder can say.
+    // 34 = the ambient term alone inside `total` (the (1-spec) share of the ambient): the one term a material's
+    //      AO map and the height map can move.
     if (uViz == 34) { frag = vec4(ambient * (1.0 - spec), 1.0); return; }
     // ...and the clear coat reflects on its own lobe, on every material that declares one
 #ifdef CX_DEFERRED

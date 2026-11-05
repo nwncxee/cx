@@ -9,7 +9,7 @@ namespace CX.Alloy;
 
 /// <summary>The world's response -- wet, snowed and puddled surfaces in the lit stage. Exposure is the rain
 /// occlusion map sampled per fragment; HOW MUCH is three CPU integrators, uniforms the lit program reads, with
-/// no per-texel storage. Puddle placement is the AO the lit stage already receives (ADR 0021), gated on a flat
+/// no per-texel storage. Puddle placement is the AO the lit stage already receives (ADR 0056), gated on a flat
 /// up-facing normal, broken by world-space noise and ringed where the rain view's depth really is lower.</summary>
 internal static unsafe partial class Weather
 {

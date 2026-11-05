@@ -111,9 +111,9 @@ void main()
 #endif
     vec2 uv = vUV;
     vec3 V = normalize(uEyePos - vWorld);
-    float occl = 1.0;
     float surfAo = 1.0;   // the height map's own occlusion alone (stock's fAmbientOcclusionModifier)
-    // #379: the screen-space term, a lighting input like the map (ADR 0021)
+    float screenAo = 1.0; // the screen-space term alone: the one share of occl the direct terms take
+    // #379: the screen-space term, a lighting input like the map (ADR 0056)
     // ...and only where the visibility at this pixel was computed from THIS surface. The buffer comes
     // from the depth prepass, so a fragment the prepass never drew -- a blended door, anything the
     // sweep skipped, anything drawn over a hole -- would otherwise wear the occlusion of whatever
@@ -123,7 +123,8 @@ void main()
     float aoDepth = texelFetch(uSceneDepth, ivec2(gl_FragCoord.xy), 0).r;
     float aoDz = abs(aoDepth - gl_FragCoord.z);
     bool aoMine = uSsaoOn > 0 && aoDz < CX_AO_DEPTH_EPS + 0.5 * aoSlope;
-    if (aoMine) occl *= mix(1.0, CxSsaoAt(ivec2(gl_FragCoord.xy), aoDepth, aoSlope), uAlphaCut >= 0.0 ? uAoCutout : 1.0);
+    if (aoMine) screenAo = mix(1.0, CxSsaoAt(ivec2(gl_FragCoord.xy), aoDepth, aoSlope), uAlphaCut >= 0.0 ? uAoCutout : 1.0);
+    float occl = screenAo;
     if ((slots & (CX_SLOT_NORMAL | CX_SLOT_HEIGHT)) != 0)
     {
         // CX-221: the frame the MESH supplied, from the arena's packed tangent word, or -- for a mesh
