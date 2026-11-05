@@ -62,7 +62,7 @@ else
   # make_archive, as build-win-native.sh packs it: the zip holds the folder's contents, flat.
   rm "$win"
   python3 -c "import shutil, sys; shutil.make_archive(sys.argv[1], 'zip', 'stage')" "${win%.zip}"
-  sha256sum ./*.zip | sed 's#  \./#  #' > SHA256SUMS
+  sha256sum -- *.zip > SHA256SUMS
   uploads+=("$win" SHA256SUMS)
   echo "$win: signed version.dll"
 fi
