@@ -10,4 +10,4 @@ NWNCX:EE (CX) @VERSION@, a free add-on for the Neverwinter Nights: Enhanced Edit
 
 **Uninstall**: Windows, delete `version.dll`, `cx_openal.dll`, `phonon.dll`, `shaderc_shared.dll` and `vma.dll`. Linux, clear the launch option.
 
-**Verify**: `SHA256SUMS.sig` signs `SHA256SUMS` with the key in the repository's `packaging/allowed_signers`, and a build attestation proves GitHub built each zip from this tag. Steps in the README, under [Checking a download is genuine](https://github.com/nwncxee/cx#checking-a-download-is-genuine).
+**Verify**: `SHA256SUMS.sig` signs `SHA256SUMS` with the key in the repository's `packaging/allowed_signers`, and a build attestation proves GitHub built the Linux zip and the Moonglow plugin from this tag. `version.dll` in the Windows zip carries a Certum code signature, from `Open Source Developer Michał Piasecki`. Steps in the README, under [Checking a download is genuine](https://github.com/nwncxee/cx#checking-a-download-is-genuine).

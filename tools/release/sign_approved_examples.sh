@@ -2,7 +2,7 @@
 # sign.sh's approved examples (approved-spec, E1 and E3 to E5), run on a copy of sign.sh against the draft
 # release sign_harness.sh fakes. Oracle: the Certum certificate's SHA-256, worked out by hand from the issued
 # certificate, and the fixture zips plant() builds.
-cd "$(dirname "$0")/../.."
+cd "$(dirname "$0")/../.." || exit 1
 . tools/release/sign_harness.sh
 
 # Given a draft release whose Windows zip holds an unsigned version.dll

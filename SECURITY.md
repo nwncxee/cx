@@ -17,8 +17,9 @@ We fix the latest release only. Update before you report.
 Only an admin can push a `v*` tag, and the tag must point at a commit on `main`, which only changes
 through a pull request. GitHub's hosted runners build both zips from the tag with no cache, and
 the build attests where each zip came from. The release stays a draft until a maintainer checks that
-attestation and every checksum on their own machine and signs `SHA256SUMS`. Releases are immutable once
-published.
+attestation and every checksum on their own machine. The maintainer then signs `version.dll` in the
+Windows zip with a Certum code signing certificate, so that zip no longer matches its attestation, and
+signs `SHA256SUMS`. Releases are immutable once published.
 
 [Checking a download is genuine](README.md#checking-a-download-is-genuine) in the README shows how to
 verify a zip yourself.

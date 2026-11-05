@@ -102,6 +102,12 @@ gh attestation verify cx-linux-x64-<version>.zip -R nwncxee/cx \
 
 It must print `Verification succeeded!`.
 
+In releases after v0.12.0, the Windows zip is the exception. The maintainer adds a Windows code signature
+to its `version.dll` after GitHub builds it, so its attestation no longer matches, and `SHA256SUMS.sig`
+covers it instead. To check the code signature, right-click `version.dll`, open Properties, then Digital
+Signatures: the signer is `Open Source Developer Michał Piasecki`, issued by Certum. In PowerShell,
+`Get-AuthenticodeSignature version.dll` must print `Valid`.
+
 ## Reporting a problem
 
 CX writes no log by default. To get one, create `cx.cfg` next to `nwn.ini` (Windows: `Documents\Neverwinter Nights\`, Linux: `~/.local/share/Neverwinter Nights/`) with this line:

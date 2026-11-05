@@ -6,7 +6,8 @@
 cd "$(dirname "$0")/.."
 shopt -s nullglob
 rc=0
-tests=(tools/*_approved_examples* tools/gates/*_approved_examples* tools/analyzers/*_approved_examples*)
+tests=(tools/*_approved_examples* tools/gates/*_approved_examples* tools/analyzers/*_approved_examples*
+  tools/release/*_approved_examples* tools/release/sign_regression.sh)
 # An empty list would report every example as passing, so it is a failure rather than a quiet success.
 [ ${#tests[@]} -gt 0 ] || { echo "!! no approved-examples scripts found" >&2; exit 1; }
 for t in "${tests[@]}"; do

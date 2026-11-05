@@ -2,7 +2,7 @@
 # A regression test, not an approved one: example E2 already held before sign.sh signed anything, so it guards
 # that a draft whose version.dll CI already signed is left alone. Oracle: the Certum certificate's SHA-256,
 # worked out by hand from the issued certificate.
-cd "$(dirname "$0")/../.."
+cd "$(dirname "$0")/../.." || exit 1
 . tools/release/sign_harness.sh
 
 c=$(plant e2 "SIGNED-LEAF:$certum")

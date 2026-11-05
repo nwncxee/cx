@@ -1,3 +1,4 @@
+# shellcheck shell=bash disable=SC2034 # other and rc are read by the scripts that source this
 # Shared by sign.sh's approved examples and regression test: stub gh, ssign and osslsigncode on PATH stand in for
 # GitHub, Certum's cloud and the Authenticode check, and plant() fakes a draft release. ssh-keygen runs for real
 # with a throwaway key. Source it from the repo root; it sets repo, rc, tmp, tag, certum, other and $tmp/code.
