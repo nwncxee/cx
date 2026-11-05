@@ -14,16 +14,16 @@ void Walk(object oCre, location lA, location lB)
 
 void Pan(object oPC)
 {
-    AssignCommand(oPC, SetCameraFacing(110.0, 8.0, 70.0, CAMERA_TRANSITION_TYPE_VERY_SLOW));
+    AssignCommand(oPC, SetCameraFacing(290.0, 6.0, 65.0, CAMERA_TRANSITION_TYPE_VERY_SLOW));
     ShowMark("pan");
 }
 
 void Show(object oPC)
 {
     object oArea = GetArea(oPC);
-    AssignCommand(oPC, SetCameraFacing(20.0, 8.0, 70.0, CAMERA_TRANSITION_TYPE_SNAP));
+    AssignCommand(oPC, SetCameraFacing(200.0, 6.0, 65.0, CAMERA_TRANSITION_TYPE_SNAP));
     vector v = GetPosition(oPC);
     object oCre = PerfSpawn(oPC, "walker", "nw_elfmerc001", 4.0, 0.0);
-    Walk(oCre, Location(oArea, Vector(v.x + 4.0, v.y + 3.0, v.z), 0.0), Location(oArea, Vector(v.x + 4.0, v.y - 3.0, v.z), 0.0));
+    Walk(oCre, Location(oArea, Vector(v.x - 4.0, v.y + 3.0, v.z), 0.0), Location(oArea, Vector(v.x - 4.0, v.y - 3.0, v.z), 0.0));
     DelayCommand(37.0, Pan(oPC));
 }

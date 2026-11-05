@@ -26,7 +26,7 @@ void Rain(object oPC)
     AssignCommand(oPC, SetCameraFacing(200.0, 8.0, 74.0, CAMERA_TRANSITION_TYPE_SNAP));
     vector v = GetPosition(oPC);
     object oCre = PerfSpawn(oPC, "walker", "nw_elfmerc001", 5.0, 0.0);
-    Walk(oCre, Location(oArea, Vector(v.x + 5.0, v.y + 4.0, v.z), 0.0), Location(oArea, Vector(v.x + 5.0, v.y - 4.0, v.z), 0.0));
+    Walk(oCre, Location(oArea, Vector(v.x - 5.0, v.y + 4.0, v.z), 0.0), Location(oArea, Vector(v.x - 5.0, v.y - 4.0, v.z), 0.0));
     ShowMark("rain " + IntToString(GetWeather(oArea)) + " in " + GetName(oArea));
     DelayCommand(37.0, Pan(oPC));
 }
