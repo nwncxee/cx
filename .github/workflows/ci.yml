@@ -57,6 +57,7 @@ jobs:
             'tools/ffx/*'
             tools/deps.json
             tools/deps.py
+            tools/paths.py
             packaging/cx-launch
             packaging/licenses.sh
             packaging/README.txt

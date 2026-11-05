@@ -18,7 +18,8 @@ set -euo pipefail
 tag="${1:?usage: tools/release/sign.sh vX.Y.Z}"
 repo=nwncxee/cx
 ssign_version=0.1.8
-# SHA-256 of the Certum code signing certificate's DER. It renews every year: put the new one here.
+# SHA-256 of the Certum code signing certificate's DER. It renews every year: put the new one here and
+# in sign_harness.sh's certum.
 cert_sha256=6c1137379e841cac08898b423b1e8805aaff6f95ff5927a29b2678a4a8a99aa6
 command -v osslsigncode > /dev/null || { echo "osslsigncode is not on PATH (see the header of this script)" >&2; exit 1; }
 root=$(cd "$(dirname "$0")/../.." && pwd)
