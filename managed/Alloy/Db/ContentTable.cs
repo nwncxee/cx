@@ -86,6 +86,8 @@ internal static unsafe class ContentTable
         public int PoolTop;
         public readonly List<(int At, int Len)> FreeSpans = new();
         public long PoolSpilled;
+        /// <summary>The materials whose first filled object row has been logged, lane by lane.</summary>
+        public readonly HashSet<string> Said = new(StringComparer.Ordinal);
         public int Used, Sized, DirtyLo = int.MaxValue, DirtyHi = -1;
         public long Uploads, HandleWrites, Spilled, ContentFills;
         /// <summary>Bumped by every row edit, so a copy of the rows knows when it is stale without comparing them.</summary>
@@ -251,6 +253,21 @@ internal static unsafe class ContentTable
         int masks = SpanOf(n) - n;
         Span<uint> span = s.Pool.AsSpan(4 * (int)s.Rows[row].CpAt, 4 * SpanOf(n));
         ContentRows.Fill(span[..(4 * masks)], MemoryMarshal.Cast<uint, Vector4>(span[(4 * masks)..]), mtr, ps, overs);
+        if (s.Log != null && mtr != null && s.Obj[row] != 0 && s.Said.Add(mtr.Name)) SayRow(row, mtr.Name, ps, overs?.Count ?? 0);
+    }
+
+    /// <summary>One line per material, at its first object row: every lane as name=value, a lane its material does
+    /// not state as name=off, so a content pair that draws wrong shows what it was handed.</summary>
+    private static void SayRow(int row, string mtr, ReadOnlySpan<ContentStage.Param> ps, int overs)
+    {
+        var b = new System.Text.StringBuilder();
+        b.Append($"ContentTable: row {row} for {mtr}, object {_st.Obj[row]}, {overs} override(s), {_st.Rows[row].CpN} lanes at {_st.Rows[row].CpAt}:");
+        foreach (ContentStage.Param p in ps)
+        {
+            (bool on, Vector4 v) = LaneAt(row, p.Lane);
+            b.Append(on ? $" {p.Name}={v.X:G9}" : $" {p.Name}=off");
+        }
+        _st.Log!.Always(b.ToString());
     }
 
     /// <summary>One palette map's handle into row <paramref name="row"/>, slot <paramref name="k"/> of
@@ -314,7 +331,13 @@ internal static unsafe class ContentTable
                     ulong h = handles ? DrawRecipe.PalHandle(owner, k) : 0ul;
                     moved |= SetHandle(r, k, h != 0 ? h : nullH);
                 }
-                if (moved) Touch(r);
+                if (moved)
+                {
+                    Touch(r);
+                    if (s.Obj[r] != 0 && DrawRecipe.Mtr(owner) is { } m && s.Said.Add("pal " + m.Name))
+                        s.Log?.Always($"ContentTable: row {r} for {m.Name} palette handles texture7..10 = "
+                                    + $"{s.Rows[r].Pal[0]:x} {s.Rows[r].Pal[1]:x} {s.Rows[r].Pal[2]:x} {s.Rows[r].Pal[3]:x} (null stand-in {nullH:x})");
+                }
             }
         }
         s.DirtyLo = int.MaxValue; s.DirtyHi = -1;   // the Vulkan frame takes the rows through Snapshot

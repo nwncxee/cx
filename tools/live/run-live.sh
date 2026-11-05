@@ -60,6 +60,7 @@ SHOWCASE_DIR="$ROOT/tools/live/showcase"
 SHOWCASE_LATE=40
 MENU=0
 STOCK=0
+CONNECT=
 EXPECT_EXIT=0
 clicked_exit=0
 SECONDS_SET=0
@@ -86,6 +87,10 @@ while [ $# -gt 0 ]; do
         --menu)          MENU=1; shift ;;
         # The stock client, no CX loaded: for checking that what a server sends a CX client is harmless to one without it.
         # It waits on the module script's own enter marker in the engine log and grades no CX log line.
+        # Join a running server instead of hosting a module. Its NWSync data, haks, tlks and override are reflink copies of the user's,
+        # so the haks are there at once and the client's own writes never reach the original.
+        # The run is graded as --menu is: keys start at the first present, and the script drives the login.
+        --connect)       CONNECT="$2"; MENU=1; shift 2 ;;
         --stock)         STOCK=1; shift ;;
         # Seconds to wait for the client to quit ON ITS OWN after --keys has run. The main menu's Exit is
         # the one control whose success is unambiguous without looking at a pixel: either the click was
@@ -120,6 +125,7 @@ done
 [ "$MODULE" = "$LADDER_MODULE" ] && LADDER=1
 # --menu never hosts a module, so the ladder's module build and its rung grading are both off.
 if [ "$MENU" = 1 ]; then LADDER=0; MODULE="(main menu)"; fi
+[ -n "$CONNECT" ] && MODULE="(server $CONNECT)"
 if [ "$LADDER" = 1 ] && [ "$SECONDS_SET" = 0 ]; then SECONDS_IN=70; fi
 if [ "$LADDER" = 1 ] && [ "$SECONDS_IN" -lt 60 ]; then
     echo "run-live: --seconds $SECONDS_IN is shorter than the ladder (needs >= 60) -- raising it to 60"
@@ -172,8 +178,21 @@ done
 # character without asking, and a second one would put a selection panel in front of the harness.
 PREGEN="$NWN_DIR/data/lcv/$CHAR.bic"
 [ -f "$PREGEN" ] || { echo "run-live: no pregenerated character $PREGEN (--char)" >&2; exit 2; }
+# A server login asks for a player name when the identity has none, and that dialog would stop the run.
+if [ -n "$CONNECT" ] && [ -f "$USER_DIR/settings.tml" ]; then
+    sed -i '/^\s*\[client\.identity\]/,/^\[/ s/^\(\s*name = \)""/\1"CX Harness"/' "$USER_DIR/settings.tml"
+fi
+if [ -n "$CONNECT" ]; then
+    for d in nwsync hak tlk override; do
+        [ -d "$REAL_USER_DIR/$d" ] || continue
+        rm -rf "${USER_DIR:?}/$d"
+        cp -a --reflink=always "$REAL_USER_DIR/$d" "$USER_DIR/" \
+            || { echo "run-live: --connect needs a reflink copy of $d (a copy-on-write filesystem)" >&2; exit 2; }
+    done
+fi
 rm -f "$USER_DIR/localvault/"*.bic
-cp -f "$PREGEN" "$USER_DIR/localvault/"
+# A joined server picks its own character; a lone local one would be submitted to it unasked.
+[ -z "$CONNECT" ] && cp -f "$PREGEN" "$USER_DIR/localvault/"
 
 # Saved games, when the run asks for them (--saves). Copied, so the client's own writes land in the
 # throwaway dir and the source directory is only ever read.
@@ -301,13 +320,14 @@ START_EPOCH=$(date +%s.%N)
     live_isolate "$RUN_TAG"
     if [ "$MENU" = 1 ]; then
         exec gamescope --backend headless -W "$WIDTH" -H "$HEIGHT" -w "$WIDTH" -h "$HEIGHT" -- \
-            "$STAGE/cx-launch" ./nwmain-linux -userdirectory "$USER_DIR"
+            "$STAGE/cx-launch" ./nwmain-linux -userdirectory "$USER_DIR" ${CONNECT:++connect "$CONNECT"}
     fi
     LAUNCH=("$STAGE/cx-launch" ./nwmain-linux)
     [ "$STOCK" = 1 ] && LAUNCH=(./nwmain-linux)
+    ENTRY=(+TestNewModule "$MODULE")
+    [ -n "$CONNECT" ] && ENTRY=(+connect "$CONNECT")
     exec gamescope --backend headless -W "$WIDTH" -H "$HEIGHT" -w "$WIDTH" -h "$HEIGHT" -- \
-        "${LAUNCH[@]}" -userdirectory "$USER_DIR" \
-        +TestNewModule "$MODULE"
+        "${LAUNCH[@]}" -userdirectory "$USER_DIR" "${ENTRY[@]}"
 ) > "$GS_LOG" 2>&1 &
 GS_PID=$!
 
