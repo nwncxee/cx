@@ -19,6 +19,8 @@ internal static unsafe class NuiModelHelm
         public IntPtr Item, Replaced;
         public uint Id = NuiModelDoll.InvalidId, ReplacedId = NuiModelDoll.InvalidId, From = NuiModelDoll.InvalidId;
         public byte[] Last = Array.Empty<byte>();
+        /// <summary>The material values <see cref="Item"/> was last given.</summary>
+        public byte[] Values = Array.Empty<byte>();
     }
 
     /// <summary>Make <paramref name="record"/>'s helmet the doll's own: the target's helmet id becomes the id of a copy (kept while the target's
@@ -93,6 +95,15 @@ internal static unsafe class NuiModelHelm
         h.Item = copy;
         h.Id = id;
         h.From = real;
+        h.Values = Array.Empty<byte>();
         return true;
+    }
+
+    /// <summary>The real helmet holds its own material values, which the server sends apart from the creature's: its copy follows them.</summary>
+    internal static void FollowValues(HelmState h)
+    {
+        if (h.Item == IntPtr.Zero) return;
+        IntPtr real = NuiModelGear.Known(h.From);
+        if (real != IntPtr.Zero) NuiModelDoll.FollowValues(new CNWCItem(real).AsObject.Ptr, new CNWCItem(h.Item).AsObject.Ptr, ref h.Values);
     }
 }

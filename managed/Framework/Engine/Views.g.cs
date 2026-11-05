@@ -285,6 +285,7 @@ global using unsafe TransformCopyFn = delegate* unmanaged<nint, nint, nint, nint
 global using unsafe ExoSoundPlay3DOneShotFn = delegate* unmanaged<nint, nint, CX.Engine.VectorArg, float, byte, uint, byte, nint>;
 global using unsafe ExoSoundSourcePlayFn = delegate* unmanaged<nint, nint>;
 global using unsafe ObjSetFadeStateFn = delegate* unmanaged<nint, byte, void>;
+global using unsafe ObjSetMaterialParamListFn = delegate* unmanaged<nint, nint, void>;
 global using unsafe GetGameObjectArrayFn = delegate* unmanaged<nint, nint>;
 global using unsafe GetClientAIMasterFn = delegate* unmanaged<nint, nint>;
 global using unsafe AiMasterAddObjectFn = delegate* unmanaged<nint, nint, void>;
@@ -2161,6 +2162,8 @@ public readonly unsafe partial struct CNWCObject(IntPtr ptr)
     public ref uint Id => ref *(uint*)(Ptr + EngineLayout.ObjId);
     /// <inheritdoc cref="EngineLayout.ObjItemPlated"/>
     public ref int ItemPlated => ref *(int*)(Ptr + EngineLayout.ObjItemPlated);
+    /// <inheritdoc cref="EngineLayout.ObjMaterialParams"/>
+    public ref ExoArrayRec MaterialParams => ref *(ExoArrayRec*)(Ptr + EngineLayout.ObjMaterialParams);
     /// <inheritdoc cref="EngineLayout.ObjMouseOffSlot"/>
     public void MouseOff() => ((delegate* unmanaged<IntPtr, void>)MouseOffFn)(Ptr);
     /// <inheritdoc cref="EngineLayout.ObjMouseOffSlot"/>
@@ -5038,6 +5041,10 @@ public static unsafe class EngineFn
     private static bool _ObjSetFadeStateDone;
     /// <inheritdoc cref="SymbolMap.ObjSetFadeState"/>
     public static ObjSetFadeStateFn ObjSetFadeState => (ObjSetFadeStateFn)(_ObjSetFadeStateDone ? _ObjSetFadeState : Resolve(ref _ObjSetFadeState, ref _ObjSetFadeStateDone, SymbolMap.ObjSetFadeState));
+    private static IntPtr _ObjSetMaterialParamList;
+    private static bool _ObjSetMaterialParamListDone;
+    /// <inheritdoc cref="SymbolMap.ObjSetMaterialParamList"/>
+    public static ObjSetMaterialParamListFn ObjSetMaterialParamList => (ObjSetMaterialParamListFn)(_ObjSetMaterialParamListDone ? _ObjSetMaterialParamList : Resolve(ref _ObjSetMaterialParamList, ref _ObjSetMaterialParamListDone, SymbolMap.ObjSetMaterialParamList));
     private static IntPtr _GetGameObjectArray;
     private static bool _GetGameObjectArrayDone;
     /// <inheritdoc cref="SymbolMap.GetGameObjectArray"/>
@@ -7424,6 +7431,12 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.ObjSetFadeState"/>; returns the slot holding the next layer, or null.</summary>
     public static ObjSetFadeStateFn* ChainObjSetFadeState(this HookService h, ObjSetFadeStateFn handler, int priority) =>
         (ObjSetFadeStateFn*)h.Chain(SymbolMap.ObjSetFadeState, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.ObjSetMaterialParamList"/>; returns the original, or null.</summary>
+    public static ObjSetMaterialParamListFn InstallObjSetMaterialParamList(this HookService h, ObjSetMaterialParamListFn handler) =>
+        (ObjSetMaterialParamListFn)h.Install(SymbolMap.ObjSetMaterialParamList, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.ObjSetMaterialParamList"/>; returns the slot holding the next layer, or null.</summary>
+    public static ObjSetMaterialParamListFn* ChainObjSetMaterialParamList(this HookService h, ObjSetMaterialParamListFn handler, int priority) =>
+        (ObjSetMaterialParamListFn*)h.Chain(SymbolMap.ObjSetMaterialParamList, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.GetGameObjectArray"/>; returns the original, or null.</summary>
     public static GetGameObjectArrayFn InstallGetGameObjectArray(this HookService h, GetGameObjectArrayFn handler) =>
         (GetGameObjectArrayFn)h.Install(SymbolMap.GetGameObjectArray, (IntPtr)handler);

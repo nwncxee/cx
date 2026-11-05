@@ -311,6 +311,9 @@ rules:
   has no fog, keyhole, area light or probe, and a stage's own light loop finds no lights.
 - A pair that samples past `texUnit0` with its own vertex half draws its baked texture. `GuiContent` says so in the log.
 
+A model view's doll is a creature of the client's own, so the server's object values land on the creature it copies. The
+doll follows that creature's values, and its helmet follows the real helmet's. Send values to the source and the doll shows them.
+
 **Checking it.**
 
 - `grep "mtr shader:" cx.log` lists every pair a material named and what Alloy did with it.

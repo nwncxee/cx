@@ -496,6 +496,7 @@ offset	CGameObject	type	0xc	0xc	# GameObjType
 offset	CGameObject	vtbl.AsNWCItem	0x70	0x68	# GameObjAsNWCItemSlot
 offset	CNWCObject	bubble	0xb8	0xb8	# ObjBubble
 offset	CNWCObject	retired	0x104	0x104	# ObjRetired
+offset	CNWCObject	materialParams	0x170	0x150	# ObjMaterialParams
 offset	CNWCObject	fadeTarget	0xa9	0xa9	# ObjFadeTarget
 offset	CNWCObject	fadeExpire	0xac	0xac	# ObjFadeExpire
 offset	CNWCObject	fadeHoldMs	0xa4	0xa4	# ObjFadeHoldMs
@@ -1005,6 +1006,7 @@ offset	CAurCamera	vtbl.SetClipDist	0x88	0x80	# CameraSetClipDistSlot
 # NkImage: Load puts a movie player's texture at +0x50 and sets +0x3c to 1, and GetImage returns the nk_image while both hold (Linux Ghidra 0xf1c800; Windows rva 0xa93db0, same layout).
 offset	NkImage	glTexture	0x50	0x50	# NkImageGlTexture
 rva	_ZN10CNWCObject12SetFadeStateEh	0x765c80	# ObjSetFadeState
+rva	_ZN10CNWCObject26SetMaterialShaderParamListERK13CExoArrayListI19MaterialShaderParamE	0x765f80	# ObjSetMaterialParamList
 rva	_ZN10CNWCObject15AddVisualEffectEtijhh6Vector25ObjectVisualTransformData	0x762180	# ObjAddVisualEffect
 rva	_ZN10CNWCObject20KillAllVisualEffectsEv	0x763a50	# ObjKillAllVisualEffects
 rva	_ZN21CClientExoAppInternal27UpdateMouseCursorAppearanceEi	0x6f2830	# UpdateMouseCursorAppearance

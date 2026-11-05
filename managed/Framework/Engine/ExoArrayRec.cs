@@ -14,4 +14,11 @@ public unsafe struct ExoArrayRec
     public int Count;
     /// <summary>Entries allocated.</summary>
     public int Alloc;
+
+    /// <summary>One <c>MaterialShaderParam</c>: its name and value are inline, so the size is one number on both builds.</summary>
+    public const int MaterialParamBytes = 0x6c;   // not-an-offset: sizeof(MaterialShaderParam)
+
+    /// <summary>The items in use as raw bytes, for records of <paramref name="stride"/> bytes.</summary>
+    public readonly ReadOnlySpan<byte> Bytes(int stride)
+        => Items == IntPtr.Zero || Count <= 0 ? default : new ReadOnlySpan<byte>((void*)Items, Count * stride);
 }
