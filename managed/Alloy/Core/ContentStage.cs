@@ -32,8 +32,8 @@ internal static partial class ContentStage
     /// so it is one lane.</summary>
     internal readonly record struct Param(string Name, ParamKind Kind, int Lane);
 
-    /// <summary>Lanes a pair's parameters may take in its content-table row, which is
-    /// <see cref="Db.ContentTable.ContentLanes"/>. The whole corpus measured uses five at most.</summary>
+    /// <summary>Lanes a pair's parameters may take, which is <see cref="Db.ContentTable.ContentLanes"/>: what GL
+    /// guarantees a stage, so a pair stock NWN would run keeps every parameter.</summary>
     internal const int MaxLanes = Db.ContentTable.ContentLanes;
 
     /// <summary>What a translation produced. <see cref="Refused"/> non-null means the stage cannot run under Alloy

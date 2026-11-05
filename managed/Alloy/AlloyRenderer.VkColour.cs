@@ -463,7 +463,7 @@ public sealed unsafe partial class AlloyRenderer
         int n = Db.ContentTable.Snapshot(ref s.ContentStage);
         Span<byte> rows = s.ContentStage.AsSpan(0, n);
         int rb = Db.ContentTable.RowBytes;
-        for (int at = 0; at < n; at += rb)
+        for (int at = 0; at < Db.ContentTable.HeaderBytes; at += rb)
             for (int k = 0; k < Db.ContentTable.PalSlots; k++)
             {
                 Span<byte> slot = rows.Slice(at + k * sizeof(ulong), sizeof(ulong));
