@@ -53,9 +53,11 @@ jobs:
             tools/approved-examples.sh
             tools/no-loaded-runtime.sh
             'tools/*_approved_examples*'
+            'tools/release/*'
             'tools/ffx/*'
             tools/deps.json
             tools/deps.py
+            tools/paths.py
             packaging/cx-launch
             packaging/licenses.sh
             packaging/README.txt

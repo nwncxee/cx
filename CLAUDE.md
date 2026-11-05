@@ -27,7 +27,7 @@ user-visible, not renamed (#530).
 ## Build & run
 
     nix develop         # flake.nix: the pinned toolchain (.#ci is what CI builds in, .#gates the gate jobs)
-    ./build.sh          # needs: .NET 10 SDK, clang 21, gcc 15, ld.lld, zlib, cmake, pkg-config, audio headers, glslang
+    ./build.sh          # needs: .NET 10 SDK, clang 21, gcc 15, ld.lld, zlib, cmake, pkg-config, audio headers, glslang, ssh-keygen
     ./run-demo.sh       # boots the framework in a stub host + proves the rot refusal (no game needed)
     ./sym.sh [-m] <pat> # search client symbols; -m = mangled (for Install)
     tools/live/run-live.sh  # boots the REAL client headless into a playable area and grades the session

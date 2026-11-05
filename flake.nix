@@ -56,6 +56,8 @@
         pkgs.git
         # build.sh compiles FSR's shaders (tools/ffx/ffx_shaders.py).
         pkgs.glslang
+        # build.sh runs the release-signing tests, which sign SHA256SUMS with a throwaway key.
+        pkgs.openssh
         # build.sh runs tools/gates/run.sh, and its workflows gate needs all three.
         pkgs.actionlint
         pkgs.shellcheck
