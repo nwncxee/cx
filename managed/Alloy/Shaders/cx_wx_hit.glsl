@@ -32,6 +32,8 @@ const float CX_HIT_G = 9.81;
 const int CX_PART_RING = 0, CX_PART_SHEET = 1, CX_PART_COLUMN = 2, CX_PART_BEAD = 3;
 /// /weather viz 5: every impact unlit, green on bare ground through blue in standing water, as it read the water.
 const int CX_SPLASH_VIZ = 5;
+/// /weather viz 6: one dot per rain crown, whether it draws or not, coloured by what became of it.
+const int CX_SPLASH_FATE_VIZ = 6;
 
 /// The tallest a full crown rises off bare stone, metres.
 const float CX_CROWN_H = 0.02;

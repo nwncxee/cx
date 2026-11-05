@@ -53,6 +53,30 @@ public static unsafe class DbScene
         return id;
     }
 
+    /// <summary>The session's one world scene, cached until it dies. Only a scene the game holds a facade for can be it:
+    /// a bare world flag is what a self-check's fixture carries.</summary>
+    public static DbId World()
+    {
+        DbId w = _world.Scene;
+        if (IsGameWorld(w)) return w;
+        _world.Scene = default;
+        for (int i = 1; i < SceneDb.Scenes.High; i++)
+        {
+            if (!SceneDb.Scenes.LiveAt(i)) continue;
+            DbId id = SceneDb.Scenes.IdAt(i);
+            if (IsGameWorld(id)) { _world.Scene = id; break; }
+        }
+        return _world.Scene;
+    }
+
+    private static bool IsGameWorld(DbId s) =>
+        SceneDb.Scenes.Valid(s) && SceneDb.SceneIsWorld[s.Index] && SceneDb.SceneFacade[s.Index] != 0;
+
+    /// <summary>The world scene <see cref="World"/> last found.</summary>
+    private sealed class WorldState { public DbId Scene; }
+
+    private static readonly WorldState _world = new();
+
     /// <summary>The scene facade's destructor: every object still in the scene dies with it (ADR 0028's scene
     /// destroy edge), then the record. Its tiles and lights die as part of its objects.</summary>
     public static void Destroy(DbId scene)

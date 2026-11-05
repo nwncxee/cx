@@ -47,29 +47,12 @@ public static unsafe class SceneRay
         return s == IntPtr.Zero || new Scene(s).BspRoot == IntPtr.Zero ? IntPtr.Zero : s;
     }
 
-    /// <summary>DB mode's world scene, as the facade the game holds for it. Cached on the handle, which the
-    /// generation check invalidates by itself when the area changes.</summary>
+    /// <summary>DB mode's world scene, as the facade the game holds for it.</summary>
     private static IntPtr DbWorldShell()
     {
-        if (!SceneDb.Scenes.Valid(_dbWorld) || !SceneDb.SceneIsWorld[_dbWorld.Index])
-        {
-            _dbWorld = default;
-            for (int i = 1; i < SceneDb.Scenes.High; i++)
-                if (SceneDb.Scenes.LiveAt(i) && SceneDb.SceneIsWorld[i]) { _dbWorld = SceneDb.Scenes.IdAt(i); break; }
-        }
-        if (_dbWorld.IsNull) return IntPtr.Zero;
-        nint shell = SceneDb.SceneFacade[_dbWorld.Index];
-        if (shell == 0 && !_noShellSaid)
-        {
-            _noShellSaid = true;
-            HitTest.Log?.Always("SceneRay: the DB world scene has no facade shell -- the camera spring arm, the "
-                              + "occlusion fade and foot placement have nothing to cast against");
-        }
-        return (IntPtr)shell;
+        DbId world = DbScene.World();
+        return world.IsNull ? IntPtr.Zero : (IntPtr)SceneDb.SceneFacade[world.Index];
     }
-
-    private static DbId _dbWorld;
-    private static bool _noShellSaid;
 
     /// <summary>Nearest hit on <paramref name="from"/>-&gt;<paramref name="to"/>, skipping <paramref name="ignore"/>
     /// (the followed gob). <paramref name="gob"/> is the gob hit, zero for a tile part or a static placeable.

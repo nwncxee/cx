@@ -42,6 +42,8 @@ const float CX_SPLASH_STEEP = 0.17;
 /// How far past a landing point the frame may show the scene before the point hangs in the air: metres, plus a
 /// share of the view depth for the spread a grazing view puts across one pixel.
 const vec2 CX_SPLASH_CONTACT = vec2(0.25, 0.02);
+/// A viz 6 dot's radius, metres: big enough to read from the game's camera.
+const float CX_SPLASH_FATE_DOT_M = 0.1;
 /// Crowns one footfall throws, scattered over the sole (Weather.FootCrowns).
 const int CX_FOOT_CROWNS = 4;
 /// A foot crown's life and the spread of its births, seconds (Weather.FootLifeSec / FootStaggerSec).
@@ -58,6 +60,13 @@ const vec2 CX_FOOT_V0 = vec2(0.9, 1.6);
 const vec2 CX_FOOT_RING = vec2(1.5, 3.0);
 /// Wetness at the foot from which a crown starts to show, and at which it is full.
 const vec2 CX_FOOT_WET = vec2(0.15, 0.6);
+
+/// What became of a rain crown, for /weather viz 6: it draws, the cover map holds no surface under it, its four cover
+/// neighbours are no plane, the surface is too steep, or the frame shows the scene well past it.
+const vec3 CX_FATE_DRAWN = vec3(0.0, 1.0, 0.0), CX_FATE_NO_HIT = vec3(0.0, 0.3, 1.0), CX_FATE_EDGE = vec3(1.0, 1.0, 0.0),
+           CX_FATE_STEEP = vec3(1.0, 0.5, 0.0), CX_FATE_UNSEEN = vec3(1.0, 0.0, 0.0);
+/// The verdict the last CxSplashLand reached.
+vec3 cxLandFate = CX_FATE_NO_HIT;
 
 vec3 CxCoverWorld(vec2 uv, float d)
 {
@@ -94,10 +103,12 @@ vec3 CxSplashLand(vec2 xy, out vec3 up, out bool ok)
     vec2 e = 1.0 / vec2(textureSize(uCoverDepth, 0));
     vec3 xp = CxCoverAt(uv + vec2(e.x, 0.0)), xn = CxCoverAt(uv - vec2(e.x, 0.0));
     vec3 yp = CxCoverAt(uv + vec2(0.0, e.y)), yn = CxCoverAt(uv - vec2(0.0, e.y));
+    cxLandFate = CX_FATE_EDGE;
     if (length(xp + xn - 2.0 * p) + length(yp + yn - 2.0 * p) > CX_SPLASH_FLAT_M) return p;
     up = normalize(cross(xp - xn, yp - yn));
     if (up.z < 0.0) up = -up;
     ok = up.z >= CX_SPLASH_STEEP;
+    cxLandFate = ok ? CX_FATE_DRAWN : CX_FATE_STEEP;
     return p;
 }
 
@@ -182,6 +193,12 @@ void main()
         // a brightness ramp on a circle reads as a ring on the ground
         float edge = 1.0 - smoothstep(0.75, 1.0, rad / max(uSplashP.z, 1e-3));
         alive = ok && fract(hp.z * 91.7) <= edge && CxSplashSeen(L);
+        if (uViz == CX_SPLASH_FATE_VIZ)
+        {
+            alive = part == 0 && fract(hp.z * 91.7) <= edge;
+            if (cxLandFate == CX_FATE_DRAWN && !CxSplashSeen(L)) cxLandFate = CX_FATE_UNSEEN;
+            ringM = CX_SPLASH_FATE_DOT_M;
+        }
         standing = CxSplashStanding(L);
         hit = CxSplashByWater(standing);
     }
@@ -298,6 +315,12 @@ void main()
         vLight = uAreaAmbient * mix(CX_SPLASH_AMB, 1.0, ndl) + sun + CxClusteredDiffuse(P, N, max(-cv.z, 1e-3));
     }
     if (uViz == CX_SPLASH_VIZ) vLight = mix(vec3(0.0, 1.0, 0.0), vec3(0.0, 0.3, 1.0), standing);
+    if (uViz == CX_SPLASH_FATE_VIZ)
+    {
+        alive = alive && !foot;
+        vLight = cxLandFate;
+        dim = 1.0;
+    }
     vec4 pv = uView * vec4(pos, 1.0);
     vViewZ = pv.z;
     gl_Position = alive && dim > 0.0 ? uProj * pv : vec4(2.0, 2.0, 2.0, 1.0);

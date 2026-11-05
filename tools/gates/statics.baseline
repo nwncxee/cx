@@ -199,7 +199,6 @@
 1 managed/Alloy/Seam/ObjectSlots.Xform.cs
 1 managed/Alloy/Seam/PaletteFns.cs
 5 managed/Alloy/Seam/PartShell.cs
-1 managed/Alloy/Seam/SceneFns.cs
 2 managed/Alloy/Seam/SceneProvider.cs
 8 managed/Alloy/Seam/SceneSlots.cs
 8 managed/Alloy/Seam/SeamBridge.cs
@@ -238,7 +237,7 @@
 26 managed/Services/Camera/FreeCameraService.cs
 12 managed/Services/Camera/HeadTrackService.cs
 23 managed/Services/Camera/MouseLookService.cs
-7 managed/Services/Camera/SceneRay.cs
+5 managed/Services/Camera/SceneRay.cs
 8 managed/Services/Camera/StepGuardService.cs
 28 managed/Services/Camera/TabTargetService.cs
 3 managed/Services/Chat/ChatService.Config.cs
