@@ -1,7 +1,6 @@
 using System;
 using System.Numerics;
 using System.Runtime.InteropServices;
-using CX.Graphics;
 using CX.Graphics.Rhi;
 using CX.Rhi;
 
@@ -71,49 +70,84 @@ public sealed unsafe partial class CasterPass
 
     private static readonly Action<int, bool> _coverReadDone = (gen, ran) =>
     {
-        if (ran && gen == _vk.CoverReadGen) _vk.CoverReadVp = _vk.CoverPendingVp;
+        CasterVkState s = _vk;
+        s.CoverWriting = false;
+        if (!ran || gen != s.CoverReadGen) return;
+        (s.CoverHeld, s.CoverNext) = (s.CoverNext, s.CoverHeld);
+        s.CoverReadVp = s.CoverPendingVp;
     };
 
-    /// <summary>Copy the bake just recorded to where a footfall can read it. A refused buffer is logged, and footfalls with
-    /// no copy count as open.
-    /// ponytail: one buffer, so a footfall in the two frames a copy is in flight may read the new bake under the old
-    /// view; a second buffer flipped on completion if a step ever lands wrong at a re-fit.</summary>
+    /// <summary>Copy the bake just recorded to where a footfall can read it, into the buffer no footfall reads; it
+    /// takes over when the copy has landed. A later bake waits for that, since one flip per copy is what keeps the
+    /// held view with the held bytes.</summary>
     private static void CoverReadQueue(VkBackend vk, CommandList cl)
     {
         CasterVkState s = _vk;
+        if (s.CoverWriting || !vk.DescOf(s.Cascades, out ImageDesc d)) return;
         _coverNew = false;
-        if (!vk.DescOf(s.Cascades, out ImageDesc d)) return;
-        if (s.CoverRead.IsNull || s.CoverReadSize != d.W)
+        if (s.CoverNext.IsNull || s.CoverReadSize != d.W)
         {
-            vk.Destroy(s.CoverRead);
+            vk.Destroy(s.CoverHeld);
+            vk.Destroy(s.CoverNext);
             s.CoverReadVp = default;
             s.CoverReadSize = d.W;
-            s.CoverRead = vk.CreateBuffer(new BufferDesc((long)d.W * d.W * sizeof(float), BufferUse.CopyDst, MemoryKind.Readback, "vk cover readback"));
-            if (s.CoverRead.IsNull)
+            s.CoverHeld = CoverReadBuffer(vk, d.W);
+            s.CoverNext = CoverReadBuffer(vk, d.W);
+            if (s.CoverHeld.IsNull || s.CoverNext.IsNull)
             {
                 s.CoverReadSize = 0;
-                _log?.Always("CasterPass: the cover readback buffer was refused -- footfalls count as open until a later bake gets one");
+                _log?.Always("CasterPass: a cover readback buffer was refused -- footfalls count as open until a later bake gets both");
                 return;
             }
         }
-        cl.CopyImageToBuffer(new CopyToBufferCmd(s.Cascades, new ImageRegion(0, 0, 0, CoverLayer), d.W, d.W, s.CoverRead, 0));
+        cl.CopyImageToBuffer(new CopyToBufferCmd(s.Cascades, new ImageRegion(0, 0, 0, CoverLayer), d.W, d.W, s.CoverNext, 0));
         s.CoverPendingVp = _coverKeyVp;
+        s.CoverWriting = true;
         cl.WhenDone(_coverReadDone, s.CoverReadGen);
     }
 
-    /// <summary>The view the CPU's copy of the cover map holds, zero with none or with the cover off.</summary>
-    internal static Matrix4x4 CoverReadVp => CoverVp.M44 == 0f ? default : _vk.CoverReadVp;
-    internal static int CoverReadSize => _vk.CoverReadSize;
+    private static BufferId CoverReadBuffer(VkBackend vk, int size)
+        => vk.CreateBuffer(new BufferDesc((long)size * size * sizeof(float), BufferUse.CopyDst, MemoryKind.Readback, "vk cover readback"));
 
-    /// <summary>One texel of the CPU's copy of the cover map. False when there is none to read.</summary>
-    internal static bool CoverDepthAt(int at, out float depth)
+    /// <summary>The bias <c>CxCovered</c> compares the cover map with.</summary>
+    internal const float CoverBias = 0.002f;
+    /// <summary>Metres a foot is read above where it stands, the lift <c>CxWetOpen</c> starts from: the bias is a share
+    /// of the cover range, and at a short range it is less than a creature can sit under the drawn floor.</summary>
+    private const float CoverLiftM = 0.12f;
+
+    /// <summary>Can the weather reach <paramref name="p"/>? The map the stages read, one texel of it: the snow's own read
+    /// feathers about 0.4 m around an eave, so the two can differ there. No map, or past its edge, is open.</summary>
+    internal static bool CoverOpen(Vector3 p)
     {
-        depth = 0f;
-        return _vk.Dev is VkBackend vk && !_vk.CoverRead.IsNull
-            && vk.ReadMapped(_vk.CoverRead, at * (long)sizeof(float), MemoryMarshal.AsBytes(new Span<float>(ref depth)));
+        CasterVkState s = _vk;
+        Matrix4x4 vp = CoverVp.M44 == 0f ? default : s.CoverReadVp;
+        if (!CoverTexel(vp, s.CoverReadSize, p, out int at, out float z) || s.Dev is not VkBackend vk || s.CoverHeld.IsNull) return true;
+        float stored = 0f;
+        return !vk.ReadMapped(s.CoverHeld, at * (long)sizeof(float), MemoryMarshal.AsBytes(new Span<float>(ref stored))) || CoverClears(z, stored);
     }
 
-    /// <summary>The cover-edge knob moved: filter the held bake again at its new width.</summary>
+    /// <summary><see cref="CoverOpen"/> over a depth map in memory.</summary>
+    internal static bool CoverOpenIn(ReadOnlySpan<float> depth, int size, in Matrix4x4 vp, Vector3 p)
+        => !CoverTexel(vp, size, p, out int at, out float z) || CoverClears(z, depth[at]);
+
+    /// <summary>Does a point at map depth <paramref name="z"/> clear what the map holds? GL's depth, as the map's sampler compares it.</summary>
+    private static bool CoverClears(float z, float stored) => z - CoverBias <= stored;
+
+    /// <summary>Where <paramref name="p"/> falls in a <paramref name="size"/> square cover map, and its depth there, as
+    /// <c>CxCovered</c> works them out. False with no map, or past its edge.</summary>
+    private static bool CoverTexel(in Matrix4x4 vp, int size, Vector3 p, out int at, out float z)
+    {
+        at = 0; z = 0f;
+        if (vp.M44 == 0f || size <= 0) return false;
+        Vector4 c = Vector4.Transform(new Vector4(p.X, p.Y, p.Z + CoverLiftM, 1f), vp);
+        float x = c.X / c.W * 0.5f + 0.5f, y = c.Y / c.W * 0.5f + 0.5f;
+        if (!(x >= 0f && x <= 1f && y >= 0f && y <= 1f)) return false;
+        z = c.Z / c.W * 0.5f + 0.5f;
+        at = Math.Min((int)(y * size), size - 1) * size + Math.Min((int)(x * size), size - 1);
+        return true;
+    }
+
+    /// <summary>The cover-edge knob moved: filter the held bake again at its new width, and copy it out again with it.</summary>
     internal static void RefilterCover() { if (_coverBaked) _coverNew = true; }
 
     internal static string CoverStats() => $"cover {CoverBakes} bakes / {CoverHeld} held / {Weather.EsmBakes} filtered";

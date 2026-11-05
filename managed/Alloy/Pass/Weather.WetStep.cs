@@ -37,7 +37,7 @@ internal static unsafe partial class Weather
     private static bool _wetArmed;
     /// <summary>What a footfall sounds of: the engine's own step for the surface, or a footstepsounds.2da column.</summary>
     private enum StepKind { Engine, Puddles, Snow }
-    /// <summary>The weather steps taken and refused, for the stats line.</summary>
+    /// <summary>The weather steps taken, and every footfall the cover map sheltered, for the stats line.</summary>
     private sealed class StepCountState { public int Wet, Snow, Sheltered; }
     private static StepCountState _stepCounts = new();
 
@@ -80,7 +80,7 @@ internal static unsafe partial class Weather
         var o = new CNWCObject(creature);
         Vector3 p = o.Position, f = o.Orientation;
         Vec3 at = new() { X = p.X, Y = p.Y, Z = p.Z };
-        bool open = Open(p);
+        bool open = CasterPass.CoverOpen(p);
         if (!open) _stepCounts.Sheltered++;
         FootDown(p, new Vector2(f.X, f.Y), o.Id, TrackNow, open);
         int surface = open && _wetArmed && o.AreaPtr != IntPtr.Zero ? EngineFn.AreaGetSurfaceMaterial(o.AreaPtr, VectorArg.Of(&at)) : -1;
@@ -102,43 +102,6 @@ internal static unsafe partial class Weather
         => kind == StepKind.Snow
             ? pick switch { 0 => "Snow0"u8, 1 => "Snow1"u8, _ => "Snow2"u8 }
             : pick switch { 0 => "Puddles0"u8, 1 => "Puddles1"u8, _ => "Puddles2"u8 };
-
-    /// <summary>The map's stored depth for a plane at height <paramref name="z"/>: the check's own arithmetic.</summary>
-    private static float HandZ(in Matrix4x4 vp, float z)
-    {
-        Vector4 c = Vector4.Transform(new Vector4(20f, 20f, z, 1f), vp);
-        return c.Z / c.W * 0.5f + 0.5f;
-    }
-
-    /// <summary>The bias <c>CxCovered</c> compares the cover map with.</summary>
-    private const float CoverBias = 0.002f;
-
-    /// <summary>Can the weather reach <paramref name="p"/>? The same read of the same cover map the stages make, so a
-    /// footfall answers as the snow on screen does; no map, or past its edge, is open as it is for them.</summary>
-    private static bool Open(Vector3 p)
-    {
-        int size = CasterPass.CoverReadSize;
-        return !CoverTexel(CasterPass.CoverReadVp, size, p, out int at, out float z)
-            || !CasterPass.CoverDepthAt(at, out float stored) || z - CoverBias <= stored;
-    }
-
-    /// <summary>Where <paramref name="p"/> falls in a <paramref name="size"/> square cover map, and its depth there, as
-    /// <c>CxCovered</c> works them out. False with no map, or past its edge.</summary>
-    private static bool CoverTexel(in Matrix4x4 vp, int size, Vector3 p, out int at, out float z)
-    {
-        at = 0; z = 0f;
-        if (vp.M44 == 0f || size <= 0) return false;
-        Vector4 c = Vector4.Transform(new Vector4(p, 1f), vp);
-        float x = c.X / c.W * 0.5f + 0.5f, y = c.Y / c.W * 0.5f + 0.5f;
-        if (!(x >= 0f && x <= 1f && y >= 0f && y <= 1f)) return false;
-        z = c.Z / c.W * 0.5f + 0.5f;
-        at = Math.Min((int)(y * size), size - 1) * size + Math.Min((int)(x * size), size - 1);
-        return true;
-    }
-
-    /// <summary>Is <paramref name="p"/> open in the <paramref name="size"/> square depth map <paramref name="depth"/>?</summary>
-    private static bool CoverOpenIn(ReadOnlySpan<float> depth, int size, in Matrix4x4 vp, Vector3 p)
-        => !CoverTexel(vp, size, p, out int at, out float z) || z - CoverBias <= depth[at];
 
     /// <summary>Play this creature's <paramref name="kind"/> step, as <c>PlayFootstep</c> would play its surface's.
     /// False = nothing to play: the engine's own step goes ahead.</summary>
@@ -220,13 +183,15 @@ internal static unsafe partial class Weather
     }
 
     /// <summary>The approved examples that hold before snow steps exist, so they cannot go red first. Oracle: the
-    /// hand-written expected kinds, and for an empty cell the stock table's own text.</summary>
+    /// hand-written expected kinds, the stock table's text for an empty cell, a hand-built awning map for cover, and
+    /// the stage's GLSL for its bias.</summary>
     private static void StepSelfCheck(Checker check) => WithStepScene(() =>
     {
         const int CoverSize = 64;
         Matrix4x4 coverVp = ShadowMath.DirectionalLightViewProj(new Vector3(0f, 0f, -1f), new Vector3(20f, 20f, 0f), 16f, 16f, 0);
         var coverDepth = new float[CoverSize * CoverSize];
-        Array.Fill(coverDepth, HandZ(coverVp, 0f));
+        Vector4 ground = Vector4.Transform(new Vector4(20f, 20f, 0f, 1f), coverVp);
+        Array.Fill(coverDepth, ground.Z / ground.W * 0.5f + 0.5f);
         // a 4 m high awning over x,y 16..24, written cell by cell through the matrix the map was baked with
         for (float wy = 16f; wy < 24f; wy += 0.1f)
         for (float wx = 16f; wx < 24f; wx += 0.1f)
@@ -236,15 +201,15 @@ internal static unsafe partial class Weather
             int at = cy * CoverSize + cx;
             coverDepth[at] = c.Z / c.W * 0.5f + 0.5f;
         }
-        check.Expect(!CoverOpenIn(coverDepth, CoverSize, coverVp, new Vector3(20f, 20f, 0f)), "the map shelters a foot under the awning");
-        check.Expect(CoverOpenIn(coverDepth, CoverSize, coverVp, new Vector3(28f, 20f, 0f)), "the map leaves ground beside the awning open");
-        check.Expect(CoverOpenIn(coverDepth, CoverSize, coverVp, new Vector3(20f, 20f, 4.1f)), "the map leaves the awning's own top open");
-        check.Expect(CoverOpenIn(coverDepth, CoverSize, coverVp, new Vector3(200f, 20f, 0f)), "past the map's edge a foot counts as open, as the stage reads it");
+        check.Expect(!CasterPass.CoverOpenIn(coverDepth, CoverSize, coverVp, new Vector3(20f, 20f, 0f)), "the map shelters a foot under the awning");
+        check.Expect(CasterPass.CoverOpenIn(coverDepth, CoverSize, coverVp, new Vector3(28f, 20f, 0f)), "the map leaves ground beside the awning open");
+        check.Expect(CasterPass.CoverOpenIn(coverDepth, CoverSize, coverVp, new Vector3(20f, 20f, 4.1f)), "the map leaves the awning's own top open");
+        check.Expect(CasterPass.CoverOpenIn(coverDepth, CoverSize, coverVp, new Vector3(28f, 20f, -0.15f)), "a foot a little under the drawn floor still counts as open");
         var allRoof = new float[CoverSize * CoverSize];
-        check.Expect(!CoverOpenIn(allRoof, CoverSize, coverVp, new Vector3(20f, 20f, 0f))
-          && CoverOpenIn(allRoof, CoverSize, coverVp, new Vector3(200f, 20f, 0f)), "past the map's edge a foot never borrows the edge texel's roof");
-        check.Expect(CoverOpenIn(coverDepth, CoverSize, default, new Vector3(20f, 20f, 0f)), "with no map a foot counts as open, as the stage reads it");
-        check.Expect(ShaderSource.Get("cx_wx_place.glsl").Contains("n.z - " + CoverBias.ToString("0.000", CultureInfo.InvariantCulture)), "the footfall reads the map with the stage's own bias");
+        check.Expect(!CasterPass.CoverOpenIn(allRoof, CoverSize, coverVp, new Vector3(20f, 20f, 0f))
+          && CasterPass.CoverOpenIn(allRoof, CoverSize, coverVp, new Vector3(200f, 20f, 0f)), "past the map's edge a foot never borrows the edge texel's roof");
+        check.Expect(CasterPass.CoverOpenIn(coverDepth, CoverSize, default, new Vector3(20f, 20f, 0f)), "with no map a foot counts as open, as the stage reads it");
+        check.Expect(ShaderSource.Get("cx_wx_place.glsl").Contains("n.z - " + CasterPass.CoverBias.ToString("0.000", CultureInfo.InvariantCulture)), "the footfall reads the map with the stage's own bias");
 
         _track = new TrackTexel[TrackSize * TrackSize];
         _side = new FootSideState();
