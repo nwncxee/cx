@@ -15,11 +15,11 @@ internal static class ContentRows
     /// (<c>Material::SetMaterialParam</c> @0x4c5d70: <c>strncasecmp</c> over 0x40).</summary>
     private const int NameChars = 64;
 
-    /// <summary>Fill <paramref name="lanes"/> and their on-bits <paramref name="on"/> (bit n of word n / 32) for a stage
+    /// <summary>Fill <paramref name="lanes"/> and their on-masks <paramref name="on"/> for a stage
     /// laid out as <paramref name="ps"/>. A lane the material does not state -- or states in a shape its uniform cannot
     /// take -- stays off, and the stage reads the uniform's own GLSL default there, as the engine's program would with
     /// no upload behind it.</summary>
-    internal static void Fill(Span<uint> on, Span<Vector4> lanes, MtrDef? mtr, ReadOnlySpan<ContentStage.Param> ps,
+    internal static void Fill(Span<ContentTable.PoolEntry> on, Span<Vector4> lanes, MtrDef? mtr, ReadOnlySpan<ContentStage.Param> ps,
                               IReadOnlyList<Seam.MaterialParams.ContentOverride>? overs)
     {
         on.Clear();
@@ -27,7 +27,7 @@ internal static class ContentRows
         if (mtr == null) return;
         foreach (ContentStage.Param p in ps)
         {
-            if ((uint)p.Lane >= (uint)lanes.Length || p.Lane / 32 >= on.Length) continue;
+            if ((uint)p.Lane >= (uint)lanes.Length) continue;
             // the engine binds a parameter to the uniform its .mtr name spells, case for case (glGetUniformLocation);
             // the LAST such line wins, as each one re-uploads over the one before
             int at = -1;
@@ -42,7 +42,7 @@ internal static class ContentRows
             if (!Fits(p.Kind, isInt, values.Length)) continue;
             lanes[p.Lane] = new Vector4(values[0], values.Length > 1 ? values[1] : 0f,
                                         values.Length > 2 ? values[2] : 0f, values.Length > 3 ? values[3] : 0f);
-            on[p.Lane / 32] |= 1u << (p.Lane & 31);
+            ContentTable.MaskWord(on, p.Lane) |= ContentTable.MaskBit(p.Lane);
         }
     }
 
@@ -90,12 +90,12 @@ internal static class ContentRows
             new("fAbsent", ContentStage.ParamKind.Float, 4),
         ];
         var cp = new Vector4[5];
-        var on = new uint[1];
+        var on = new ContentTable.PoolEntry[1];
         Fill(on, cp, mtr, ps, null);
         check.Expect(cp[0].X == 26f, "fScale is not the value its own-case .mtr line states (a differently cased line won)");
         check.Expect(cp[1] == new Vector4(0.58f, 0.60f, 0.43f, 0f), "a three-value line does not reach a vec4 as (r, g, b, 0)");
         check.Expect(cp[2].X == 1f, "an int line does not reach an int uniform");
-        check.Expect(on[0] == 0b0111, $"lanes on are {Convert.ToString(on[0], 2)}: a two-value line fed a float, "
+        check.Expect(on[0][0] == 0b0111, $"lanes on are {Convert.ToString(on[0][0], 2)}: a two-value line fed a float, "
                                          + "or a parameter the .mtr never states was stated");
         var overs = new List<Seam.MaterialParams.ContentOverride>
         {
@@ -108,7 +108,7 @@ internal static class ContentRows
         check.Expect(cp[1] == new Vector4(0.1f, 0.2f, 0.3f, 1f), "a Vec4 override did not replace the vec4, case-blind on the name");
         check.Expect(cp[0].X == 26f, "an override filtered to another material reached this one");
         check.Expect(cp[2].X == 0f, "an override filtered to this material, in another case, did not reach it");
-        check.Expect((on[0] & (1u << 4)) == 0, "an override added a parameter the .mtr never declares");
+        check.Expect((on[0][0] & (1u << 4)) == 0, "an override added a parameter the .mtr never declares");
         check.Expect(Reparse("7 8", isInt: false, count: 1) is [7f] && Reparse("x", isInt: true, count: 1) == null,
                      "a one-value float does not keep only its first token, or a non-number scanned");
         log.Info(check.Ok ? "ContentRows.SelfCheck: passed" : "ContentRows.SelfCheck: FAILED");

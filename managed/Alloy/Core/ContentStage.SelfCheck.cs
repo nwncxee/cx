@@ -10,6 +10,10 @@ internal static partial class ContentStage
     /// so the offline mirror and this translation answer to the same facts.</summary>
     private static readonly Dictionary<string, string> Fixture = new()
     {
+        ["cx_fixwide"] = "#include \"inc_standard\"\n"
+                       + string.Concat(Enumerable.Range(0, 1025).Select(i => $"uniform float p{i};\n"))
+                       + "void main()\n{\n    FragmentColor = vec4(1.0);\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n"
+                       + "    gl_FragColor = FragmentColor;\n}\n",
         ["cx_fixture"] = "#define SHADER_TYPE 2\n#define LIGHTING 1\n#include \"inc_standard\"\n#include \"cx_fixinc\"\n"
                        + "uniform float fScale = 2.0;\nuniform int iMode;\nuniform vec4 vTint;\nuniform vec3 vNever;\n"
                        + "uniform sampler2D texUnit3;\nuniform sampler2D texMask;\nvarying float fVertexHeight;\n"
@@ -118,12 +122,7 @@ internal static partial class ContentStage
                      && mine.Host.Contains("vec4(CxConOwn_ApplyColorSpace(vec3(0.5)), 1.0)")
                      && !mine.Host.Contains("vec3 ApplyColorSpace(vec3 c) { return c * c; }"),
                      "a function the stage defines over one the program already has is not renamed, with its calls");
-        string wideSrc = "#include \"inc_standard\"\n"
-                       + string.Concat(Enumerable.Range(0, 1025).Select(i => $"uniform float p{i};\n"))
-                       + "void main()\n{\n    FragmentColor = vec4(1.0);\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n"
-                       + "    gl_FragColor = FragmentColor;\n}\n";
-        Result wide = Translate("cx_fixwide", true, n => n == "cx_fixwide" ? wideSrc : Chain(n), AlloyRenderer.ContentEnvFs,
-                                AlloyRenderer.VanillaEnvDefs, "", 8193, 37);
+        Result wide = Translate("cx_fixwide", true, Chain, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37);
         check.Expect(wide.Refused == null && wide.Params.Length == 1024 && wide.Params[79] == new Param("p79", ParamKind.Float, 79)
                      && wide.Notes.Any(n => n.Contains("declares more than 1024") && n.Contains("p1024")),
                      $"a 1025-uniform pair does not keep 1024 lanes and name the one held at its default: {wide.Refused ?? wide.Params.Length.ToString()}");

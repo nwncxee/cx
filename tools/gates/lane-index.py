@@ -13,13 +13,14 @@ MemoryMarshal.Cast reinterprets a byte buffer that arrives from outside. An allo
 The stride is what makes a read a lane read, so the lane term is optional: `a[i * N]` is lane 0 of the same
 record as `a[i * N + 1]`, and `a[at + k * N]` is the same read with its terms the other way round. Counting
 only the ones with a trailing `+ k` would leave every record's zeroth lane invisible and make two spellings
-of one read count differently.
+of one read count differently. A literal stride in an AsSpan or Slice offset is the same read outside brackets; its length is a size.
 """
 import re
 import subprocess
 import sys
 
 LANE = re.compile(r"\[[^\[\]\n]*?\*\s*(?:\d+|[A-Za-z_]\w*)\s*(?:\+[^\[\]\n]*?)?\]")
+SPAN = re.compile(r"\.(?:AsSpan|Slice)\([^,()\n]*?(?:\b\d+\s*\*|\*\s*\d+\b)")
 SIZE = re.compile(r"(?:\bnew\b|\bstackalloc\b)[\w.<>,?\s]*$")
 
 
@@ -29,6 +30,7 @@ def sites(line):
         if SIZE.search(line[:m.start()]):
             continue
         yield m
+    yield from SPAN.finditer(line)
 
 
 files = subprocess.run(["git", "ls-files", "--cached", "--others", "--exclude-standard", "managed"],

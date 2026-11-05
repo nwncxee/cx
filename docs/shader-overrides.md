@@ -286,7 +286,7 @@ rules:
 - a uniform no line states keeps its GLSL initialiser;
 - `SetMaterialShaderUniformInt/Vec4` on an object overrides a parameter its `.mtr` declares, for that
   object only, and an empty value resets them all;
-- twelve parameters per pair.
+- up to 1024 parameters per pair; one past that keeps its GLSL default, and `Alloy content pair` says so.
 
 **What differs from the engine.**
 
@@ -307,6 +307,8 @@ rules:
 - `grep "mtr shader:" cx.log` lists every pair a material named and what Alloy did with it.
 - `grep "Alloy content pair" cx.log` says, per pair, which halves run, how many parameter lanes it took, which
   twins it built, and what the translation could only approximate. A pair that cannot run says why, as NOT RUN.
+- `grep "ContentTable:" cx.log` shows, for a material with an object override, each parameter's value or `off`, its palette
+  handles, and the pool running out, which leaves a further row on its uniforms' defaults.
 - Offline, `CX_CONTENT_STAGES=<dir> ./check-shaders.py` builds every material stage under `<dir>` the way the
   engine does (from the game's own shaders, `ovr.bif` over `base_shaders.bif` as the client resolves them) and as Alloy runs it, paired with its partner by name
   where the tree has one, twins included. It fails when Alloy cannot run a stage the engine can.

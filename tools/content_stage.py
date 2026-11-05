@@ -694,6 +694,9 @@ FIXTURE = {
                    "void main()\n{\n    ApplyStandardShader();\n    vPosView += vec3(0.0, 0.0, fWave);\n"
                    "    gl_Position = m_proj * vec4(vPosView, 1.0);\n}\n"),
     "cx_fixown": "vec3 ApplyColorSpace(vec3 c) { return c * c; }\nvoid main()\n{\n    gl_FragColor = vec4(ApplyColorSpace(vec3(0.5)), 1.0);\n}\n",
+    "cx_fixwide": ('#include "inc_standard"\n' + "".join(f"uniform float p{i};\n" for i in range(1025)) + "void main()\n{\n"
+                   "    FragmentColor = vec4(1.0);\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n"
+                   "    gl_FragColor = FragmentColor;\n}\n"),
     "cx_fixmulti": ('#include "inc_standard"\nuniform float rgbP0; uniform float rgbP1;\nvoid main()\n{\n'
                     "    FragmentColor = vec4(1.0);\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n"
                     "    gl_FragColor = vec4(FragmentColor.rgb * (rgbP0 + rgbP1), 1.0);\n}\n"),
@@ -759,10 +762,7 @@ def selfcheck(env_fs, env_vs, defs, vanfs, std_fs, std_vs, lit_vs):
     multi = translate("cx_fixmulti", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
     if multi.refused or multi.params != [("rgbP0", "Float", 0), ("rgbP1", "Float", 1)]:
         bad.append(f"two uniforms on one line do not both take a lane: {multi.refused or multi.params}")
-    wide_src = ('#include "inc_standard"\n' + "".join(f"uniform float p{i};\n" for i in range(1025)) + "void main()\n{\n"
-                "    FragmentColor = vec4(1.0);\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n"
-                "    gl_FragColor = FragmentColor;\n}\n")
-    wide = translate("cx_fixwide", True, lambda n: wide_src if n == "cx_fixwide" else FIXTURE.get(n), env_fs, defs, vanfs, std_fs, "")
+    wide = translate("cx_fixwide", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
     if wide.refused or len(wide.params) != 1024 or wide.params[79] != ("p79", "Float", 79) \
        or not any("declares more than 1024" in n and "p1024" in n for n in wide.notes):
         bad.append(f"a pair past the first lanes does not keep 1024 of them: {wide.refused or len(wide.params)}")

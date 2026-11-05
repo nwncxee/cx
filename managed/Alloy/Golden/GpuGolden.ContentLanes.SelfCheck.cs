@@ -10,7 +10,8 @@ namespace CX.Alloy;
 internal static partial class GpuGolden
 {
     /// <summary>The shipped <c>CxCpOn</c> and <c>CxCp</c> reading what <see cref="Db.ContentTable"/> writes, across a second
-    /// row, a second on-mask entry and past each row's end. Oracle: hand-written <c>.mtr</c> lines and their values.</summary>
+    /// row, a second on-mask entry and past each row's end. Oracle: hand-written <c>.mtr</c> lines and their values.
+    /// Its rows go on the live table, freed again before it returns: the goldens never run in a session.</summary>
     private static void ContentLanesSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
     {
         string src = ShaderSource.Get("cx_conbuf.glsl");
@@ -18,8 +19,9 @@ internal static partial class GpuGolden
         const string BlockEnd = "uvec4 uConLanes[]; };\n";
         int to = src.IndexOf(BlockEnd, StringComparison.Ordinal);
         string on = Function(src, "bool CxCpOn("), value = Function(src, "vec4 CxCp(");
-        check.Expect(from >= 0 && to > from && on.Length > 0 && value.Length > 0, "cx_conbuf.glsl no longer declares the block and its two readers");
-        if (from < 0 || to <= from || on.Length == 0 || value.Length == 0) return;
+        bool found = from >= 0 && to > from && on.Length > 0 && value.Length > 0;
+        check.Expect(found, "cx_conbuf.glsl no longer declares the block and its two readers");
+        if (!found) return;
 
         int small = Db.ContentTable.Alloc(int.MaxValue - 1), wide = Db.ContentTable.Alloc(int.MaxValue - 2);
         check.Expect(small >= 0 && wide >= 0, "the table would not allocate the golden's rows");
@@ -48,7 +50,7 @@ internal static partial class GpuGolden
 
         const string Label = "golden content lanes";
         PipelineId pipe = vk.CreateCompute(Version + "layout(local_size_x = 1) in;\n" + CaseBlocks(2, 3)
-            + src[from..(to + BlockEnd.Length)] + "int cxConRow = -1;\n" + on + value
+            + src[from..(to + BlockEnd.Length)] + Declaration(src, "int cxConRow") + on + value
             + "void main() { int i = int(gl_WorkGroupID.x) * CX_GOLD_IN, o = int(gl_WorkGroupID.x) * CX_GOLD_OUT;\n"
             + "  cxConRow = int(uIn[i]); int l = int(uIn[i + 1]);\n"
             + "  vec4 v = CxCp(l); uOut[o] = CxCpOn(l) ? 1.0 : 0.0; uOut[o + 1] = v.x; uOut[o + 2] = v.w; }\n", Label);

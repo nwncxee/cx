@@ -23,15 +23,19 @@ internal static unsafe class ContentTable
     /// recipe or a released object hands its rows back. Spill is counted and named, never silent.</summary>
     internal const int MaxRows = 1024;
 
-    /// <summary>Parameter lanes one content pair may take: GL's guaranteed 1024 uniform components per stage, the most
-    /// a stock <c>.mtr</c>'s unbounded <c>parameter</c> list can ever reach a shader with.</summary>
+    /// <summary>Parameter lanes one content pair may take. A float parameter is one uniform component and one lane, so GL's
+    /// guaranteed 1024 components per stage are 1024 lanes; a vec4-only pair reaches the guarantee at 256.</summary>
     internal const int ContentLanes = 1024;
 
-    /// <summary>Lanes the pool holds across every row, in <c>uvec4</c>s (16 MiB). Spill is counted and named.</summary>
+    /// <summary>Entries the pool holds across every row (16 MiB): about <see cref="MaxRows"/> rows of
+    /// <see cref="ContentLanes"/> lanes. Spill is counted and named.</summary>
     internal const int MaxPool = 1 << 20;
 
     /// <summary>Lanes one <c>uvec4</c> of a row's on-mask covers.</summary>
     private const int LanesPerMask = 128;
+
+    /// <summary>Lanes a <see cref="SayRow"/> line names; a longer pair says how many it left out.</summary>
+    private const int SayLanes = 128;
 
     /// <summary>Palette map slots a row carries, which is <see cref="AlloyRenderer.PalSlots"/>.</summary>
     internal const int PalSlots = AlloyRenderer.PalSlots;
@@ -44,13 +48,25 @@ internal static unsafe class ContentTable
         /// <summary><c>texture7</c>..<c>texture10</c> as bindless handles: <c>pal01</c> then <c>pal23</c>, each
         /// 64-bit handle low word first, which is how a <c>uvec2</c> reads it.</summary>
         public PaletteHandles Pal;
-        /// <summary>The row's first pool entry (<c>cp.x</c>): its on-mask, then one lane per parameter.</summary>
+        /// <summary>The row's first pool entry (<c>cp.x</c>), where its on-mask starts.</summary>
         public uint CpAt;
         /// <summary>The row's lane count (<c>cp.y</c>); 0 = every parameter reads its GLSL default.</summary>
         public uint CpN;
-        /// <summary><c>cp.zw</c>, unused.</summary>
-        public uint CpPadZ, CpPadW;
+        /// <summary>The pool entry of the row's lane 0 (<c>cp.z</c>), past its on-mask.</summary>
+        public uint CpLanes;
+        /// <summary><c>cp.w</c>, unused.</summary>
+        public uint CpPadW;
     }
+
+    /// <summary>One pool entry, a <c>uvec4</c> of <c>uConLanes</c>: 128 on-bits, or one lane's four floats as bits.</summary>
+    [InlineArray(4)]
+    internal struct PoolEntry { private uint _word; }
+
+    /// <summary>The on-mask word holding lane <paramref name="lane"/>, in a row's <paramref name="masks"/>.</summary>
+    internal static ref uint MaskWord(Span<PoolEntry> masks, int lane) => ref masks[lane / LanesPerMask][(lane / 32) & 3];
+
+    /// <summary>Lane <paramref name="lane"/>'s bit in its <see cref="MaskWord"/>.</summary>
+    internal static uint MaskBit(int lane) => 1u << (lane & 31);
 
     /// <summary>The four palette handles of a row.</summary>
     [InlineArray(PalSlots)]
@@ -80,13 +96,13 @@ internal static unsafe class ContentTable
         public readonly int[] Filled = new int[MaxRows];
         /// <summary>The pool span each row holds, in entries; 0 = none.</summary>
         public readonly int[] SpanLen = new int[MaxRows];
-        /// <summary>The lane pool, four <c>uint</c>s an entry: masks as bits, lanes as float bits.</summary>
-        public uint[] Pool = new uint[4 * 256];
+        /// <summary>The lane pool: each row's on-mask entries, then its lanes.</summary>
+        public PoolEntry[] Pool = new PoolEntry[256];
         /// <summary>Entries in use from the pool's start, and the spans freed below that.</summary>
         public int PoolTop;
         public readonly List<(int At, int Len)> FreeSpans = new();
         public long PoolSpilled;
-        /// <summary>The materials whose first filled object row has been logged, lane by lane, and palette by palette.</summary>
+        /// <summary>The materials whose first filled object row has been logged, by lane and by palette map.</summary>
         public readonly HashSet<string> Said = new(StringComparer.Ordinal), SaidPal = new(StringComparer.Ordinal);
         public int Used, Sized, DirtyLo = int.MaxValue, DirtyHi = -1;
         public long Uploads, HandleWrites, Spilled, ContentFills;
@@ -199,8 +215,6 @@ internal static unsafe class ContentTable
         TableState s = _st;
         if (s.SpanLen[row] > 0) ReturnSpan((int)s.Rows[row].CpAt, s.SpanLen[row]);
         s.SpanLen[row] = 0;
-        s.Rows[row].CpAt = 0;
-        s.Rows[row].CpN = 0;
     }
 
     /// <summary>A span back on the free list, which stays sorted by start: merged with the neighbours it touches, and
@@ -249,13 +263,13 @@ internal static unsafe class ContentTable
             if (s.PoolTop + len > MaxPool)
             {
                 if (s.PoolSpilled++ == 0)
-                    s.Log?.Always($"ContentTable: the lane pool's {MaxPool} entries are spent -- a further content row reads "
+                    s.Log?.Always($"ContentTable: the pool's {MaxPool} entries are spent -- a further content row reads "
                                 + "its uniforms' defaults");
                 return false;
             }
             at = s.PoolTop;
             s.PoolTop += len;
-            if (s.Pool.Length < 4 * s.PoolTop) Array.Resize(ref s.Pool, Math.Max(4 * s.PoolTop, 2 * s.Pool.Length));
+            if (s.Pool.Length < s.PoolTop) Array.Resize(ref s.Pool, Math.Max(s.PoolTop, 2 * s.Pool.Length));
         }
         s.SpanLen[row] = len;
         s.Rows[row].CpAt = (uint)at;
@@ -266,36 +280,39 @@ internal static unsafe class ContentTable
     internal static void FillRow(int row, MtrDef? mtr, ReadOnlySpan<ContentStage.Param> ps,
                                  IReadOnlyList<Seam.MaterialParams.ContentOverride>? overs)
     {
-        lock (_lock) FillLanes(row, mtr, ps, overs);
+        lock (_lock) FillRowLocked(row, mtr, ps, overs);
     }
 
-    private static void FillLanes(int row, MtrDef? mtr, ReadOnlySpan<ContentStage.Param> ps,
-                                  IReadOnlyList<Seam.MaterialParams.ContentOverride>? overs)
+    private static void FillRowLocked(int row, MtrDef? mtr, ReadOnlySpan<ContentStage.Param> ps,
+                                      IReadOnlyList<Seam.MaterialParams.ContentOverride>? overs)
     {
         TableState s = _st;
+        Touch(row);
         int n = 0;
         foreach (ContentStage.Param p in ps) n = Math.Max(n, p.Lane + 1);
         n = Math.Min(n, ContentLanes);
         if (!TakeSpan(row, SpanOf(n))) { s.Rows[row].CpN = 0; return; }
         s.Rows[row].CpN = (uint)n;
-        if (n == 0) return;
         int masks = SpanOf(n) - n;
-        Span<uint> span = s.Pool.AsSpan(4 * (int)s.Rows[row].CpAt, 4 * SpanOf(n));
-        ContentRows.Fill(span[..(4 * masks)], MemoryMarshal.Cast<uint, Vector4>(span[(4 * masks)..]), mtr, ps, overs);
+        s.Rows[row].CpLanes = s.Rows[row].CpAt + (uint)masks;
+        if (n == 0) return;
+        Span<PoolEntry> span = s.Pool.AsSpan((int)s.Rows[row].CpAt, SpanOf(n));
+        ContentRows.Fill(span[..masks], MemoryMarshal.Cast<PoolEntry, Vector4>(span[masks..]), mtr, ps, overs);
         if (s.Log != null && mtr != null && s.Obj[row] != 0 && s.Said.Add(mtr.Name)) SayRow(row, mtr.Name, ps, overs?.Count ?? 0);
     }
 
-    /// <summary>One line per material, at its first object row: every lane as name=value, a lane its material does
-    /// not state as name=off, so a content pair that draws wrong shows what it was handed.</summary>
+    /// <summary>One line per material that has an object row, at the first: each lane as name=value, a lane its material
+    /// does not state as name=off, up to <see cref="SayLanes"/>, so a content pair that draws wrong shows what it was handed.</summary>
     private static void SayRow(int row, string mtr, ReadOnlySpan<ContentStage.Param> ps, int overs)
     {
         var b = new System.Text.StringBuilder();
         b.Append($"ContentTable: row {row} for {mtr}, object {_st.Obj[row]}, {overs} override(s), {_st.Rows[row].CpN} lanes at {_st.Rows[row].CpAt}:");
-        foreach (ContentStage.Param p in ps)
+        foreach (ContentStage.Param p in ps[..Math.Min(ps.Length, SayLanes)])
         {
             (bool on, Vector4 v) = LaneAt(row, p.Lane);
             b.Append(on ? $" {p.Name}={v.X:G9}" : $" {p.Name}=off");
         }
+        if (ps.Length > SayLanes) b.Append($" and {ps.Length - SayLanes} more");
         _st.Log!.Always(b.ToString());
     }
 
@@ -348,11 +365,10 @@ internal static unsafe class ContentTable
                 int epoch = ContentPrograms.Epoch(DrawRecipe.Feat(owner));
                 if (s.Filled[r] != epoch)
                 {
-                    FillLanes(r, DrawRecipe.Mtr(owner), ContentPrograms.Params(DrawRecipe.Feat(owner)),
-                              Seam.MaterialParams.ContentOverrides(s.Obj[r]));
+                    FillRowLocked(r, DrawRecipe.Mtr(owner), ContentPrograms.Params(DrawRecipe.Feat(owner)),
+                                  Seam.MaterialParams.ContentOverrides(s.Obj[r]));
                     s.Filled[r] = epoch;
                     s.ContentFills++;
-                    Touch(r);
                 }
                 bool moved = false;
                 for (int k = 0; k < PalSlots; k++)
@@ -372,20 +388,20 @@ internal static unsafe class ContentTable
         s.DirtyLo = int.MaxValue; s.DirtyHi = -1;   // the Vulkan frame takes the rows through Snapshot
     }
 
-    /// <summary>The GPU block -- every row header, then the lane pool (one zero entry when empty, so the runtime array
-    /// is never zero-length) -- copied into <paramref name="into"/> (grown to fit); its byte length. Handles are GL's.</summary>
     internal static long Version => Volatile.Read(ref _st.Version);
 
+    /// <summary>The GPU block -- every row header, then the lane pool (one zero entry when empty, so the runtime array
+    /// is never zero-length) -- copied into <paramref name="into"/> (grown to fit); its byte length. Handles are GL's.</summary>
     internal static int Snapshot(ref byte[] into)
     {
         lock (_lock)
         {
-            int pool = Math.Max(_st.PoolTop, 1), n = HeaderBytes + pool * 16;
+            int pool = Math.Max(_st.PoolTop, 1), n = HeaderBytes + pool * sizeof(PoolEntry);
             if (into.Length < n) into = new byte[Math.Max(n, 2 * into.Length)];
             MemoryMarshal.AsBytes(_st.Rows.AsSpan()).CopyTo(into);
-            Span<byte> lanes = into.AsSpan(HeaderBytes, pool * 16);
-            lanes.Clear();
-            MemoryMarshal.AsBytes(_st.Pool.AsSpan(0, 4 * _st.PoolTop)).CopyTo(lanes);
+            Span<byte> lanes = into.AsSpan(HeaderBytes, pool * sizeof(PoolEntry));
+            if (_st.PoolTop == 0) lanes.Clear();
+            else MemoryMarshal.AsBytes(_st.Pool.AsSpan(0, _st.PoolTop)).CopyTo(lanes);
             return n;
         }
     }
@@ -405,18 +421,16 @@ internal static unsafe class ContentTable
     internal static (bool On, Vector4 Value) LaneAt(int row, int lane)
     {
         if ((uint)row >= MaxRows || (uint)lane >= _st.Rows[row].CpN) return (false, default);
-        int at = (int)_st.Rows[row].CpAt, masks = SpanOf((int)_st.Rows[row].CpN) - (int)_st.Rows[row].CpN;
-        ReadOnlySpan<uint> mask = _st.Pool.AsSpan(4 * (at + lane / LanesPerMask), 4);
-        bool on = (mask[(lane / 32) & 3] & (1u << (lane & 31))) != 0;
-        return (on, MemoryMarshal.Cast<uint, Vector4>(_st.Pool.AsSpan())[at + masks + lane]);
+        bool on = (MaskWord(_st.Pool.AsSpan((int)_st.Rows[row].CpAt), lane) & MaskBit(lane)) != 0;
+        return (on, MemoryMarshal.Cast<PoolEntry, Vector4>(_st.Pool.AsSpan())[(int)_st.Rows[row].CpLanes + lane]);
     }
 
     internal static string Note()
         => _st.Used == 0 && _st.Uploads == 0 ? ""
          : $"contenttable: {_st.Used} rows, {_st.Uploads} uploads, {_st.HandleWrites} handle writes, {_st.ContentFills} content fills"
-         + $", {_st.PoolTop} pool lanes"
+         + $", {_st.PoolTop} pool entries"
          + (_st.Spilled == 0 ? "" : $", {_st.Spilled} SPILLED past {MaxRows}")
-         + (_st.PoolSpilled == 0 ? "" : $", {_st.PoolSpilled} SPILLED past the {MaxPool}-lane pool")
+         + (_st.PoolSpilled == 0 ? "" : $", {_st.PoolSpilled} SPILLED past the {MaxPool}-entry pool")
          + (_st.Short == 0 ? "" : $", {_st.Short} upload(s) HELD past the buffer's end");
 
     /// <summary>Off-device: the row layout against the GLSL declaration text, and the allocation contract. Oracle:
@@ -436,8 +450,8 @@ internal static unsafe class ContentTable
         // std430 over that member list, counted by hand: three 16-byte members
         check.Expect(RowBytes == 3 * 16
                      && Marshal.OffsetOf<Row>(nameof(Row.Pal)) == 0 && Marshal.OffsetOf<Row>(nameof(Row.CpAt)) == 32
-                     && Marshal.OffsetOf<Row>(nameof(Row.CpN)) == 36,
-          $"the row is {RowBytes} bytes, or a member is not where std430 puts it (pal 0, cp.x 32, cp.y 36)");
+                     && Marshal.OffsetOf<Row>(nameof(Row.CpN)) == 36 && Marshal.OffsetOf<Row>(nameof(Row.CpLanes)) == 40,
+          $"the row is {RowBytes} bytes, or a member is not where std430 puts it (pal 0, cp.x 32, cp.y 36, cp.z 40)");
         check.Expect(SpanOf(0) == 0 && SpanOf(1) == 2 && SpanOf(128) == 129 && SpanOf(129) == 131 && SpanOf(1024) == 1032,
           "a row's span is not ceil(lanes / 128) mask entries plus one entry a lane");
 
@@ -454,7 +468,9 @@ internal static unsafe class ContentTable
             "customshaderfs wide\nparameter float p0 -1\nparameter float p79 16711680\nparameter float p130 0.5\n"), "wide_mat");
         var wps = new ContentStage.Param[131];
         for (int i = 0; i < wps.Length; i++) wps[i] = new($"p{i}", ContentStage.ParamKind.Float, i);
+        long before = Version;
         FillRow(row, wide, wps, [new("", "p79", "255.000000 0.000000 0.000000 0.000000")]);
+        check.Expect(Version > before, "filling a row left its version, so the block on the GPU keeps the old lanes");
         check.Expect(RowAt(row).CpN == 131 && LaneAt(row, 0) == (true, new Vector4(-1f, 0, 0, 0))
                      && LaneAt(row, 79) == (true, new Vector4(255f, 0, 0, 0)) && LaneAt(row, 130) == (true, new Vector4(0.5f, 0, 0, 0))
                      && !LaneAt(row, 1).On && !LaneAt(row, 129).On,
@@ -469,8 +485,8 @@ internal static unsafe class ContentTable
         return check.Ok;
     }
 
-    /// <summary>The pool's books on a table of their own, so a session's rows are not in the sums. Oracle: spans worked
-    /// by hand, 82 entries each: one mask entry and 81 lanes.</summary>
+    /// <summary>The pool's books on a table of their own, so a session's rows are not in the sums; the swap needs no frame
+    /// in flight, which boot and run-demo give it. Oracle: spans worked by hand, 82 entries each: one mask, 81 lanes.</summary>
     private static void PoolSelfCheck(Checker check)
     {
         lock (_lock)
@@ -512,10 +528,10 @@ internal static unsafe class ContentTable
                 check.Expect(Snapshot(ref into) == 49152 + 16 && into.Length == 49152 + 16,
                              "an empty table is not its 1024 headers and one zero entry, in the buffer it was given");
                 check.Expect(TakeSpan(0, 82), "a span was refused on an empty pool");
-                s.Pool[4] = 0x3f800000;
+                s.Pool[1][0] = BitConverter.SingleToUInt32Bits(1f);
                 check.Expect(Snapshot(ref into) == 49152 + 82 * 16 && into.Length >= 2 * (49152 + 16),
                              $"a pool that outgrew the copy took {into.Length} bytes, which grows again at the next row");
-                check.Expect(MemoryMarshal.Read<uint>(into.AsSpan(49152 + 16)) == 0x3f800000, "the copy's lanes do not follow the 1024 headers");
+                check.Expect(MemoryMarshal.Read<float>(into.AsSpan(49152 + 16)) == 1f, "the copy's lanes do not follow the 1024 headers");
 
                 s.PoolTop = MaxPool;
                 s.Rows[6].CpN = 3;

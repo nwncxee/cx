@@ -5,7 +5,7 @@
 //
 // Lane map, which ContentTable writes and its self-check holds against this text:
 //   pal01 = texture7 and texture8 as bindless handles; pal23 = texture9 and texture10
-//   cp    = x: the row's first uConLanes entry, y: its lane count
+//   cp    = x: the row's first uConLanes entry, y: its lane count, z: the entry of its lane 0
 // A row's span in uConLanes: ceil(count / 128) on-mask entries (bit n = lane n), then one entry per lane, float bits.
 #define CX_CON_ROWS 1024
 #define CX_CP_MASK 128
@@ -17,7 +17,8 @@ layout(std430, binding = 15) readonly buffer CxContentBuf { CxConRow uConTab[CX_
 #define CX_SLOT_PAL0 512
 
 // This draw's row, or -1 -- for a record that is not a content pair's (feat.z means something else there), for a
-// table with no row for it, and for an index past the header array. The bound test is what makes these DEFINED.
+// table with no row for it, and for an index past the header array. The bound test is what makes these DEFINED; the
+// bind always covers the headers, so uConLanes.length() is the pool's real extent.
 int CxContentRow(int draw)
 {
     if (int(uDraw[draw].feat.x) < CX_FEAT_CONTENT0) return -1;
@@ -41,8 +42,7 @@ bool CxCpOn(int l)
 vec4 CxCp(int l)
 {
     if (cxConRow < 0 || l < 0 || uint(l) >= uConTab[cxConRow].cp.y) return vec4(0.0);
-    uint n = uConTab[cxConRow].cp.y;
-    int at = int(uConTab[cxConRow].cp.x + (n + uint(CX_CP_MASK - 1)) / uint(CX_CP_MASK)) + l;
+    int at = int(uConTab[cxConRow].cp.z) + l;
     return at < uConLanes.length() ? uintBitsToFloat(uConLanes[at]) : vec4(0.0);
 }
 

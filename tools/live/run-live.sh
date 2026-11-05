@@ -9,6 +9,7 @@
 #   tools/live/run-live.sh --nui --cfg 'nui.hitdebug=1' --keys 'sleep:...;move:x,y'   # a NUI window to point at
 #   tools/live/run-live.sh --showcase creatures   # tools/live/showcase/creatures.{nss,policy,keys}: wiki shots
 #   tools/live/run-live.sh --menu              # boot to the MAIN MENU and stop there (no module at all)
+#   tools/live/run-live.sh --connect HOST:PORT --keys 'script'   # join a running server; the keys drive the login
 #   tools/live/run-live.sh --menu --saves DIR  # ...with saved games copied in, so Load has something
 #   tools/live/run-live.sh --menu --expect-exit 25 --keys 'sleep:6000;click:640,524'
 #                                              # ...and PASS only if that click made the client quit: a
@@ -126,6 +127,7 @@ done
 # --menu never hosts a module, so the ladder's module build and its rung grading are both off.
 if [ "$MENU" = 1 ]; then LADDER=0; MODULE="(main menu)"; fi
 [ -n "$CONNECT" ] && MODULE="(server $CONNECT)"
+if [ -n "$CONNECT" ] && [ "$STOCK" = 1 ]; then echo "run-live: --connect runs CX, so it does not take --stock" >&2; exit 2; fi
 if [ "$LADDER" = 1 ] && [ "$SECONDS_SET" = 0 ]; then SECONDS_IN=70; fi
 if [ "$LADDER" = 1 ] && [ "$SECONDS_IN" -lt 60 ]; then
     echo "run-live: --seconds $SECONDS_IN is shorter than the ladder (needs >= 60) -- raising it to 60"
@@ -179,10 +181,8 @@ done
 PREGEN="$NWN_DIR/data/lcv/$CHAR.bic"
 [ -f "$PREGEN" ] || { echo "run-live: no pregenerated character $PREGEN (--char)" >&2; exit 2; }
 # A server login asks for a player name when the identity has none, and that dialog would stop the run.
-if [ -n "$CONNECT" ] && [ -f "$USER_DIR/settings.tml" ]; then
-    sed -i '/^\s*\[client\.identity\]/,/^\[/ s/^\(\s*name = \)""/\1"CX Harness"/' "$USER_DIR/settings.tml"
-fi
 if [ -n "$CONNECT" ]; then
+    [ -f "$USER_DIR/settings.tml" ] && sed -i '/^\s*\[client\.identity\]/,/^\[/ s/^\(\s*name = \)""/\1"CX Harness"/' "$USER_DIR/settings.tml"
     for d in nwsync hak tlk override; do
         [ -d "$REAL_USER_DIR/$d" ] || continue
         rm -rf "${USER_DIR:?}/$d"
