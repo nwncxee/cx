@@ -118,18 +118,25 @@ internal sealed class PanelLayout
                 case BgDir.Diagonal: uint mid = Mix(from, to, st.DiagMix); Gradient(0, 0, w, _v.H, from, mid, to, mid); break;
                 default: Gradient(0, 0, w, _v.H, from, from, to, to); break;
             }
-            Frame(0, 0, w, _v.H, st.Border, st.BorderW, st.Sides);
-            if (st.Border2.Set)
-            {
-                float i2 = st.Border2Inset * _s;
-                if (_v.W > 2f * i2 && _v.H > 2f * i2) Frame(i2, i2, w - i2, _v.H - i2, st.Border2, st.Border2W, st.Sides);
-            }
-            if (st.Corners.Set) Corners(w, _v.H);
         }
         if (_v.TabH > 0f) Tab(baseAtlas);
         foreach (PanelImage i in c.Images) Image(i);
         Stack(c.Blocks, pad, pad, w - 2f * pad, w, true);
+        // The frame goes on last: a full-width band (a footer, a section tint) would otherwise paint over its sides.
+        if (!_native) FrameOver(st, w);
         return _v;
+    }
+
+    /// <summary>The border, the inner frame and the corner brackets, over everything the blocks drew.</summary>
+    private void FrameOver(PanelStyle st, float w)
+    {
+        Frame(0, 0, w, _v.H, st.Border, st.BorderW, st.Sides);
+        if (st.Border2.Set)
+        {
+            float i2 = st.Border2Inset * _s;
+            if (_v.W > 2f * i2 && _v.H > 2f * i2) Frame(i2, i2, w - i2, _v.H - i2, st.Border2, st.Border2W, st.Sides);
+        }
+        if (st.Corners.Set) Corners(w, _v.H);
     }
 
     /// <summary>Each channel of <paramref name="a"/> moved <paramref name="t"/> of the way to <paramref name="b"/>.</summary>
