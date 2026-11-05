@@ -48,10 +48,10 @@ public sealed unsafe partial class CasterPass
         /// <summary>Views the bracket queued for the colour frame to flush; 0 = nothing to bake.</summary>
         public int Queued;
         public ImageId Cascades, SunDyn, Cubes, CubeDyn, Sky, Bake;
-        /// <summary>The CPU's copies of the cover layer: the one footfalls read and the one a copy lands in; their
-        /// side; the view each holds; and the generation an area edge moves on so a copy in flight never takes over.</summary>
+        /// <summary>The CPU's copies of the cover layer: the one footfalls read and the one a copy lands in; the
+        /// map's side and the kept square's; the view each holds; and the generation an area edge moves on so a copy in flight never takes over.</summary>
         public BufferId CoverHeld, CoverNext;
-        public int CoverReadSize, CoverReadGen;
+        public int CoverReadSize, CoverReadWindow, CoverReadGen;
         public Matrix4x4 CoverReadVp, CoverPendingVp;
         public bool CoverWriting;
         /// <summary>The lightmap bake's scratch cubes: the count and face size it last asked for, and what the array was made at.</summary>

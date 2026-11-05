@@ -85,14 +85,16 @@ public sealed unsafe partial class CasterPass
         CasterVkState s = _vk;
         if (s.CoverWriting || !vk.DescOf(s.Cascades, out ImageDesc d)) return;
         _coverNew = false;
-        if (s.CoverNext.IsNull || s.CoverReadSize != d.W)
+        int window = CoverWindow(d.W, Weather.CoverRange.V), off = (d.W - window) / 2;
+        if (s.CoverNext.IsNull || s.CoverReadSize != d.W || s.CoverReadWindow != window)
         {
             vk.Destroy(s.CoverHeld);
             vk.Destroy(s.CoverNext);
             s.CoverReadVp = default;
             s.CoverReadSize = d.W;
-            s.CoverHeld = CoverReadBuffer(vk, d.W);
-            s.CoverNext = CoverReadBuffer(vk, d.W);
+            s.CoverReadWindow = window;
+            s.CoverHeld = CoverReadBuffer(vk, window);
+            s.CoverNext = CoverReadBuffer(vk, window);
             if (s.CoverHeld.IsNull || s.CoverNext.IsNull)
             {
                 s.CoverReadSize = 0;
@@ -100,7 +102,7 @@ public sealed unsafe partial class CasterPass
                 return;
             }
         }
-        cl.CopyImageToBuffer(new CopyToBufferCmd(s.Cascades, new ImageRegion(0, 0, 0, CoverLayer), d.W, d.W, s.CoverNext, 0));
+        cl.CopyImageToBuffer(new CopyToBufferCmd(s.Cascades, new ImageRegion(0, off, off, CoverLayer), window, window, s.CoverNext, 0));
         s.CoverPendingVp = _coverKeyVp;
         s.CoverWriting = true;
         cl.WhenDone(_coverReadDone, s.CoverReadGen);
@@ -121,21 +123,35 @@ public sealed unsafe partial class CasterPass
     {
         CasterVkState s = _vk;
         Matrix4x4 vp = CoverVp.M44 == 0f ? default : s.CoverReadVp;
-        if (!CoverTexel(vp, s.CoverReadSize, p, out int at, out float z) || s.Dev is not VkBackend vk || s.CoverHeld.IsNull) return true;
+        if (!CoverTexel(vp, s.CoverReadSize, s.CoverReadWindow, p, out int at, out float z) || s.Dev is not VkBackend vk || s.CoverHeld.IsNull) return true;
         float stored = 0f;
         return !vk.ReadMapped(s.CoverHeld, at * (long)sizeof(float), MemoryMarshal.AsBytes(new Span<float>(ref stored))) || CoverClears(z, stored);
     }
 
     /// <summary><see cref="CoverOpen"/> over a depth map in memory.</summary>
-    internal static bool CoverOpenIn(ReadOnlySpan<float> depth, int size, in Matrix4x4 vp, Vector3 p)
-        => !CoverTexel(vp, size, p, out int at, out float z) || CoverClears(z, depth[at]);
+    internal static bool CoverOpenIn(ReadOnlySpan<float> depth, int size, int window, in Matrix4x4 vp, Vector3 p)
+        => !CoverTexel(vp, size, window, p, out int at, out float z) || CoverClears(z, depth[at]);
+
+    /// <summary>Metres from the player past which a footfall is not heard; the square kept for footfalls reaches this
+    /// far even when the player has walked to the edge of a re-fit. ponytail: a creature further off reads as open, so
+    /// it can press a print under a roof; widen the square if one shows.</summary>
+    private const float CoverHearingM = 15f;
+
+    /// <summary>The side of the square a <paramref name="size"/> map keeps for footfalls, at a cover range of <paramref name="radius"/>.</summary>
+    internal static int CoverWindow(int size, float radius)
+    {
+        float half = CoverHearingM + radius * CoverSlack;
+        if (half >= radius) return size;
+        int w = (int)MathF.Ceiling(size * half / radius);
+        return Math.Min(w + (w & 1), size);
+    }
 
     /// <summary>Does a point at map depth <paramref name="z"/> clear what the map holds? GL's depth, as the map's sampler compares it.</summary>
     private static bool CoverClears(float z, float stored) => z - CoverBias <= stored;
 
     /// <summary>Where <paramref name="p"/> falls in a <paramref name="size"/> square cover map, and its depth there, as
-    /// <c>CxCovered</c> works them out. False with no map, or past its edge.</summary>
-    private static bool CoverTexel(in Matrix4x4 vp, int size, Vector3 p, out int at, out float z)
+    /// <c>CxCovered</c> works them out. False with no map, or past the square of side <paramref name="window"/> kept at its centre.</summary>
+    private static bool CoverTexel(in Matrix4x4 vp, int size, int window, Vector3 p, out int at, out float z)
     {
         at = 0; z = 0f;
         if (vp.M44 == 0f || size <= 0) return false;
@@ -143,7 +159,10 @@ public sealed unsafe partial class CasterPass
         float x = c.X / c.W * 0.5f + 0.5f, y = c.Y / c.W * 0.5f + 0.5f;
         if (!(x >= 0f && x <= 1f && y >= 0f && y <= 1f)) return false;
         z = c.Z / c.W * 0.5f + 0.5f;
-        at = Math.Min((int)(y * size), size - 1) * size + Math.Min((int)(x * size), size - 1);
+        int off = (size - window) / 2;
+        int col = Math.Min((int)(x * size), size - 1) - off, row = Math.Min((int)(y * size), size - 1) - off;
+        if (col < 0 || row < 0 || col >= window || row >= window) return false;
+        at = row * window + col;
         return true;
     }
 

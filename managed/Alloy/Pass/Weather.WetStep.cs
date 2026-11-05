@@ -201,15 +201,29 @@ internal static unsafe partial class Weather
             int at = cy * CoverSize + cx;
             coverDepth[at] = c.Z / c.W * 0.5f + 0.5f;
         }
-        check.Expect(!CasterPass.CoverOpenIn(coverDepth, CoverSize, coverVp, new Vector3(20f, 20f, 0f)), "the map shelters a foot under the awning");
-        check.Expect(CasterPass.CoverOpenIn(coverDepth, CoverSize, coverVp, new Vector3(28f, 20f, 0f)), "the map leaves ground beside the awning open");
-        check.Expect(CasterPass.CoverOpenIn(coverDepth, CoverSize, coverVp, new Vector3(20f, 20f, 4.1f)), "the map leaves the awning's own top open");
-        check.Expect(CasterPass.CoverOpenIn(coverDepth, CoverSize, coverVp, new Vector3(28f, 20f, -0.15f)), "a foot a little under the drawn floor still counts as open");
+        check.Expect(!CasterPass.CoverOpenIn(coverDepth, CoverSize, CoverSize, coverVp, new Vector3(20f, 20f, 0f)), "the map shelters a foot under the awning");
+        check.Expect(CasterPass.CoverOpenIn(coverDepth, CoverSize, CoverSize, coverVp, new Vector3(28f, 20f, 0f)), "the map leaves ground beside the awning open");
+        check.Expect(CasterPass.CoverOpenIn(coverDepth, CoverSize, CoverSize, coverVp, new Vector3(20f, 20f, 4.1f)), "the map leaves the awning's own top open");
+        check.Expect(CasterPass.CoverOpenIn(coverDepth, CoverSize, CoverSize, coverVp, new Vector3(28f, 20f, -0.15f)), "a foot a little under the drawn floor still counts as open");
         var allRoof = new float[CoverSize * CoverSize];
-        check.Expect(!CasterPass.CoverOpenIn(allRoof, CoverSize, coverVp, new Vector3(20f, 20f, 0f))
-          && CasterPass.CoverOpenIn(allRoof, CoverSize, coverVp, new Vector3(200f, 20f, 0f)), "past the map's edge a foot never borrows the edge texel's roof");
-        check.Expect(CasterPass.CoverOpenIn(coverDepth, CoverSize, default, new Vector3(20f, 20f, 0f)), "with no map a foot counts as open, as the stage reads it");
+        check.Expect(!CasterPass.CoverOpenIn(allRoof, CoverSize, CoverSize, coverVp, new Vector3(20f, 20f, 0f))
+          && CasterPass.CoverOpenIn(allRoof, CoverSize, CoverSize, coverVp, new Vector3(200f, 20f, 0f)), "past the map's edge a foot never borrows the edge texel's roof");
+        check.Expect(CasterPass.CoverOpenIn(coverDepth, CoverSize, CoverSize, default, new Vector3(20f, 20f, 0f)), "with no map a foot counts as open, as the stage reads it");
         check.Expect(ShaderSource.Get("cx_wx_place.glsl").Contains("n.z - " + CasterPass.CoverBias.ToString("0.000", CultureInfo.InvariantCulture)), "the footfall reads the map with the stage's own bias");
+
+        check.Expect(CasterPass.CoverWindow(2048, 60f) == 1024 && CasterPass.CoverWindow(2048, 128f) == 752 && CasterPass.CoverWindow(2048, 16f) == 2048,
+          "the map keeps for footfalls 15 m of hearing plus the walk before a re-fit, and all of a short range");
+        const int CoverHalf = CoverSize / 2;
+        var halfRoof = new float[CoverHalf * CoverHalf];
+        check.Expect(!CasterPass.CoverOpenIn(halfRoof, CoverSize, CoverHalf, coverVp, new Vector3(20f, 20f, 0f)), "a foot inside the kept square reads it");
+        check.Expect(CasterPass.CoverOpenIn(halfRoof, CoverSize, CoverHalf, coverVp, new Vector3(30f, 20f, 0f)), "a foot on the map past the kept square counts as open");
+        Vector4 picked = Vector4.Transform(new Vector4(17f, 22f, 0f, 1f), coverVp);
+        int pickedAt = ((int)((picked.Y / picked.W * 0.5f + 0.5f) * CoverSize) - CoverHalf / 2) * CoverHalf + (int)((picked.X / picked.W * 0.5f + 0.5f) * CoverSize) - CoverHalf / 2;
+        var oneRoof = new float[CoverHalf * CoverHalf];
+        Array.Fill(oneRoof, 1f);
+        oneRoof[pickedAt] = 0f;
+        check.Expect(!CasterPass.CoverOpenIn(oneRoof, CoverSize, CoverHalf, coverVp, new Vector3(17f, 22f, 0f))
+          && CasterPass.CoverOpenIn(oneRoof, CoverSize, CoverHalf, coverVp, new Vector3(22f, 17f, 0f)), "the kept square holds each texel at the map's own place");
 
         _track = new TrackTexel[TrackSize * TrackSize];
         _side = new FootSideState();
