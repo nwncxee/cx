@@ -86,8 +86,8 @@ internal static unsafe class ContentTable
         public int PoolTop;
         public readonly List<(int At, int Len)> FreeSpans = new();
         public long PoolSpilled;
-        /// <summary>The materials whose first filled object row has been logged, lane by lane.</summary>
-        public readonly HashSet<string> Said = new(StringComparer.Ordinal);
+        /// <summary>The materials whose first filled object row has been logged, lane by lane, and palette by palette.</summary>
+        public readonly HashSet<string> Said = new(StringComparer.Ordinal), SaidPal = new(StringComparer.Ordinal);
         public int Used, Sized, DirtyLo = int.MaxValue, DirtyHi = -1;
         public long Uploads, HandleWrites, Spilled, ContentFills;
         /// <summary>Bumped by every row edit, so a copy of the rows knows when it is stale without comparing them.</summary>
@@ -197,10 +197,34 @@ internal static unsafe class ContentTable
     private static void ReleaseSpan(int row)
     {
         TableState s = _st;
-        if (s.SpanLen[row] > 0) s.FreeSpans.Add(((int)s.Rows[row].CpAt, s.SpanLen[row]));
+        if (s.SpanLen[row] > 0) ReturnSpan((int)s.Rows[row].CpAt, s.SpanLen[row]);
         s.SpanLen[row] = 0;
         s.Rows[row].CpAt = 0;
         s.Rows[row].CpN = 0;
+    }
+
+    /// <summary>A span back on the free list, which stays sorted by start: merged with the neighbours it touches, and
+    /// taken off the pool's top when it ends there, so the block the GPU copies shrinks with the rows it holds.</summary>
+    private static void ReturnSpan(int at, int len)
+    {
+        TableState s = _st;
+        List<(int At, int Len)> free = s.FreeSpans;
+        int i = 0;
+        while (i < free.Count && free[i].At < at) i++;
+        if (i > 0 && free[i - 1].At + free[i - 1].Len == at)
+        {
+            i--;
+            at = free[i].At;
+            len += free[i].Len;
+            free.RemoveAt(i);
+        }
+        if (i < free.Count && at + len == free[i].At)
+        {
+            len += free[i].Len;
+            free.RemoveAt(i);
+        }
+        if (at + len == s.PoolTop) s.PoolTop = at;
+        else free.Insert(i, (at, len));
     }
 
     /// <summary>A pool span of <paramref name="len"/> entries for row <paramref name="row"/>: a freed one that fits, else
@@ -210,7 +234,6 @@ internal static unsafe class ContentTable
         TableState s = _st;
         if (s.SpanLen[row] >= len) return true;
         ReleaseSpan(row);
-        if (len == 0) return true;
         int at = -1;
         for (int i = 0; i < s.FreeSpans.Count; i++)
             if (s.FreeSpans[i].Len >= len)
@@ -240,6 +263,12 @@ internal static unsafe class ContentTable
     }
 
     /// <summary>Fill row <paramref name="row"/>'s lanes for a stage laid out as <paramref name="ps"/>.</summary>
+    internal static void FillRow(int row, MtrDef? mtr, ReadOnlySpan<ContentStage.Param> ps,
+                                 IReadOnlyList<Seam.MaterialParams.ContentOverride>? overs)
+    {
+        lock (_lock) FillLanes(row, mtr, ps, overs);
+    }
+
     private static void FillLanes(int row, MtrDef? mtr, ReadOnlySpan<ContentStage.Param> ps,
                                   IReadOnlyList<Seam.MaterialParams.ContentOverride>? overs)
     {
@@ -334,7 +363,7 @@ internal static unsafe class ContentTable
                 if (moved)
                 {
                     Touch(r);
-                    if (s.Obj[r] != 0 && DrawRecipe.Mtr(owner) is { } m && s.Said.Add("pal " + m.Name))
+                    if (s.Obj[r] != 0 && DrawRecipe.Mtr(owner) is { } m && s.SaidPal.Add(m.Name))
                         s.Log?.Always($"ContentTable: row {r} for {m.Name} palette handles texture7..10 = "
                                     + $"{s.Rows[r].Pal[0]:x} {s.Rows[r].Pal[1]:x} {s.Rows[r].Pal[2]:x} {s.Rows[r].Pal[3]:x} (null stand-in {nullH:x})");
                 }
@@ -352,7 +381,7 @@ internal static unsafe class ContentTable
         lock (_lock)
         {
             int pool = Math.Max(_st.PoolTop, 1), n = HeaderBytes + pool * 16;
-            if (into.Length < n) into = new byte[n];
+            if (into.Length < n) into = new byte[Math.Max(n, 2 * into.Length)];
             MemoryMarshal.AsBytes(_st.Rows.AsSpan()).CopyTo(into);
             Span<byte> lanes = into.AsSpan(HeaderBytes, pool * 16);
             lanes.Clear();
@@ -425,7 +454,7 @@ internal static unsafe class ContentTable
             "customshaderfs wide\nparameter float p0 -1\nparameter float p79 16711680\nparameter float p130 0.5\n"), "wide_mat");
         var wps = new ContentStage.Param[131];
         for (int i = 0; i < wps.Length; i++) wps[i] = new($"p{i}", ContentStage.ParamKind.Float, i);
-        lock (_lock) FillLanes(row, wide, wps, [new("", "p79", "255.000000 0.000000 0.000000 0.000000")]);
+        FillRow(row, wide, wps, [new("", "p79", "255.000000 0.000000 0.000000 0.000000")]);
         check.Expect(RowAt(row).CpN == 131 && LaneAt(row, 0) == (true, new Vector4(-1f, 0, 0, 0))
                      && LaneAt(row, 79) == (true, new Vector4(255f, 0, 0, 0)) && LaneAt(row, 130) == (true, new Vector4(0.5f, 0, 0, 0))
                      && !LaneAt(row, 1).On && !LaneAt(row, 129).On,
@@ -434,8 +463,58 @@ internal static unsafe class ContentTable
         check.Expect(RowAt(row).Pal[2] == 0ul && _st.Owner[objRow] == -1 && Alloc(recipe: int.MaxValue) == row,
           "a freed row was not cleared, its object row outlived the recipe, or the row did not come back to the next ask");
         Free(row, int.MaxValue);
+        PoolSelfCheck(check);
         log.Info(check.Ok ? $"ContentTable.SelfCheck: passed ({MaxRows} rows of {RowBytes} bytes at binding {Binding})"
                           : "ContentTable.SelfCheck: FAILED");
         return check.Ok;
+    }
+
+    /// <summary>The pool's books on a table of their own, so a session's rows are not in the sums. Oracle: spans worked
+    /// by hand, 82 entries each: one mask entry and 81 lanes.</summary>
+    private static void PoolSelfCheck(Checker check)
+    {
+        lock (_lock)
+        {
+            TableState live = _st;
+            _st = new TableState();
+            try
+            {
+                TableState s = _st;
+                for (int r = 0; r < 3; r++) check.Expect(TakeSpan(r, 82), "a span under the pool's limit was refused");
+                check.Expect(s.Rows[0].CpAt == 0 && s.Rows[1].CpAt == 82 && s.Rows[2].CpAt == 164 && s.PoolTop == 246,
+                             $"three spans of 82 do not sit end to end from 0 (top {s.PoolTop})");
+
+                ReleaseSpan(1);
+                ReleaseSpan(0);
+                check.Expect(TakeSpan(3, 164) && s.Rows[3].CpAt == 0 && s.PoolTop == 246,
+                             $"two freed neighbours do not serve a span of both (at {s.Rows[3].CpAt}, top {s.PoolTop})");
+                ReleaseSpan(3);
+                check.Expect(TakeSpan(4, 10) && s.Rows[4].CpAt == 0 && TakeSpan(5, 10) && s.Rows[5].CpAt == 10 && s.PoolTop == 246,
+                             $"a freed span does not serve smaller rows from its start (at {s.Rows[4].CpAt}, {s.Rows[5].CpAt})");
+
+                ReleaseSpan(2);
+                check.Expect(s.PoolTop == 20, $"freeing the top span left the pool's top at {s.PoolTop}, not 20");
+                ReleaseSpan(5);
+                ReleaseSpan(4);
+                check.Expect(s.PoolTop == 0 && s.FreeSpans.Count == 0,
+                             $"an empty table holds a pool of {s.PoolTop} entries and {s.FreeSpans.Count} free spans");
+
+                byte[] into = new byte[49152 + 16];
+                check.Expect(Snapshot(ref into) == 49152 + 16 && into.Length == 49152 + 16,
+                             "an empty table is not its 1024 headers and one zero entry, in the buffer it was given");
+                check.Expect(TakeSpan(0, 82), "a span was refused on an empty pool");
+                s.Pool[4] = 0x3f800000;
+                check.Expect(Snapshot(ref into) == 49152 + 82 * 16 && into.Length >= 2 * (49152 + 16),
+                             $"a pool that outgrew the copy took {into.Length} bytes, which grows again at the next row");
+                check.Expect(MemoryMarshal.Read<uint>(into.AsSpan(49152 + 16)) == 0x3f800000, "the copy's lanes do not follow the 1024 headers");
+
+                s.PoolTop = MaxPool;
+                s.Rows[6].CpN = 3;
+                FillRow(6, null, [new("p2", ContentStage.ParamKind.Float, 2)], null);
+                check.Expect(s.PoolSpilled == 1 && s.Rows[6].CpN == 0 && s.SpanLen[6] == 0 && !LaneAt(6, 2).On,
+                             "a row past the pool's limit is not counted and off");
+            }
+            finally { _st = live; }
+        }
     }
 }

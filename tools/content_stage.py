@@ -123,7 +123,7 @@ def engine_text(resref, chain, depth=0):
 DROPPED = {"inc_common", "inc_uniforms", "inc_target", "inc_lighting", "inc_material", "inc_keyhole", "inc_fog",
            "inc_transform", "inc_envmap", "inc_random", "inc_tonemap", "inc_debug", "inc_displacement",
            "inc_framebuffer"}
-MAX_LANES = 12
+MAX_LANES = 1024
 PRE_FN, POST_FN, VERTEX_FN = "CxContentMain", "CxContentPost", "CxContentVertexMain"
 MAIN_FN = re.compile(r"\bvoid\s+main\s*\(\s*(?:void)?\s*\)")
 DIRECTIVE = re.compile(r"^[ \t]*#[ \t]*(?:version|extension)\b[^\n]*", re.M)
@@ -759,6 +759,13 @@ def selfcheck(env_fs, env_vs, defs, vanfs, std_fs, std_vs, lit_vs):
     multi = translate("cx_fixmulti", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
     if multi.refused or multi.params != [("rgbP0", "Float", 0), ("rgbP1", "Float", 1)]:
         bad.append(f"two uniforms on one line do not both take a lane: {multi.refused or multi.params}")
+    wide_src = ('#include "inc_standard"\n' + "".join(f"uniform float p{i};\n" for i in range(1025)) + "void main()\n{\n"
+                "    FragmentColor = vec4(1.0);\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n"
+                "    gl_FragColor = FragmentColor;\n}\n")
+    wide = translate("cx_fixwide", True, lambda n: wide_src if n == "cx_fixwide" else FIXTURE.get(n), env_fs, defs, vanfs, std_fs, "")
+    if wide.refused or len(wide.params) != 1024 or wide.params[79] != ("p79", "Float", 79) \
+       or not any("declares more than 1024" in n and "p1024" in n for n in wide.notes):
+        bad.append(f"a pair past the first lanes does not keep 1024 of them: {wide.refused or len(wide.params)}")
     engv = translate("cx_fixengv", False, FIXTURE.get, env_vs, "", "", std_vs, lit_vs)
     eng = translate("cx_fixeng", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "",
                     vertex=engv if not engv.refused else None)

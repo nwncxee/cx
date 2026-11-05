@@ -478,9 +478,9 @@ public sealed unsafe partial class AlloyRenderer
         }
         if (s.ContentRows.IsNull || n > s.ContentSent.Length)
         {
-            s.ContentSent = new byte[n];
+            s.ContentSent = new byte[s.ContentStage.Length];
             vk.Destroy(s.ContentRows);
-            s.ContentRows = vk.CreateBuffer(new BufferDesc(n, BufferUse.Storage, MemoryKind.Device, "vk content table"));
+            s.ContentRows = vk.CreateBuffer(new BufferDesc(s.ContentStage.Length, BufferUse.Storage, MemoryKind.Device, "vk content table"));
             if (s.ContentRows.IsNull) return false;
         }
         cl.UpdateBuffer(s.ContentRows, 0, rows);

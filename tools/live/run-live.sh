@@ -85,12 +85,12 @@ while [ $# -gt 0 ]; do
         # The main menu is the one screen +TestNewModule skips, and it is a GUI session of its own:
         # its own scenes, its own panel models, its own fonts. Nothing else about the run changes.
         --menu)          MENU=1; shift ;;
-        # The stock client, no CX loaded: for checking that what a server sends a CX client is harmless to one without it.
-        # It waits on the module script's own enter marker in the engine log and grades no CX log line.
         # Join a running server instead of hosting a module. Its NWSync data, haks, tlks and override are reflink copies of the user's,
         # so the haks are there at once and the client's own writes never reach the original.
         # The run is graded as --menu is: keys start at the first present, and the script drives the login.
         --connect)       CONNECT="$2"; MENU=1; shift 2 ;;
+        # The stock client, no CX loaded: for checking that what a server sends a CX client is harmless to one without it.
+        # It waits on the module script's own enter marker in the engine log and grades no CX log line.
         --stock)         STOCK=1; shift ;;
         # Seconds to wait for the client to quit ON ITS OWN after --keys has run. The main menu's Exit is
         # the one control whose success is unambiguous without looking at a pixel: either the click was
@@ -324,10 +324,9 @@ START_EPOCH=$(date +%s.%N)
     fi
     LAUNCH=("$STAGE/cx-launch" ./nwmain-linux)
     [ "$STOCK" = 1 ] && LAUNCH=(./nwmain-linux)
-    ENTRY=(+TestNewModule "$MODULE")
-    [ -n "$CONNECT" ] && ENTRY=(+connect "$CONNECT")
     exec gamescope --backend headless -W "$WIDTH" -H "$HEIGHT" -w "$WIDTH" -h "$HEIGHT" -- \
-        "${LAUNCH[@]}" -userdirectory "$USER_DIR" "${ENTRY[@]}"
+        "${LAUNCH[@]}" -userdirectory "$USER_DIR" \
+        +TestNewModule "$MODULE"
 ) > "$GS_LOG" 2>&1 &
 GS_PID=$!
 
