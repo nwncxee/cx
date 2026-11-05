@@ -61,11 +61,11 @@ internal static unsafe class PostChain
     private static RiGetGlobalShaderParamiFn _gammaParam;
     private const uint GammaParam = 0;
 
-    /// <summary>The RENDER scale -- the owned 3D frame's size as a fraction of the display target's,
-    /// per axis. Below 1 the world renders at fewer pixels and the resolve upscales it (bilinear); above 1 it
-    /// is supersampling. The engine's 2D UI never sees it. <c>post.scale</c>, live; the knob's range is
-    /// <see cref="MinScale"/>..<see cref="MaxScale"/> because a 0x0 target is a refusal, not a look.</summary>
-    private static float _scale => Post.Scale.V;
+    /// <summary>The RENDER scale -- the owned 3D frame's size as a fraction of the display target's, per axis.
+    /// <c>post.scale</c> under FSR, whose choice alone shows the slider and has a temporal upscaler to answer for it; 1
+    /// under SMAA and Off. The engine's 2D UI never sees it. The knob's range is <see cref="MinScale"/>..<see cref="MaxScale"/>
+    /// because a 0x0 target is a refusal, not a look.</summary>
+    private static float _scale => Post.Aa.V == Post.AaFsr ? Post.Scale.V : 1f;
     internal const float MinScale = 0.25f, MaxScale = 2f;
 
 
@@ -342,11 +342,23 @@ internal static unsafe class PostChain
             // #391: the render size and lod bias the scale produces never hit 0; the clamp itself is
             // post.scale's range, MinScale..MaxScale. Plain field writes on the knob: nothing runs or is written.
             check.Expect(Post.Scale.Min == MinScale && Post.Scale.Max == MaxScale, "post.scale spans exactly the resolve's range");
-            Post.Scale.V = 0.67f;
+            Post.Aa.V = Post.AaFsr; Post.Scale.V = 0.67f;
             check.Expect(RenderSize(2560) == 1715 && RenderSize(1) == 1, "render size rounds, never below one pixel");
-            check.Expect(MathF.Abs(LodBias - MathF.Log2(0.67f)) < 1e-6f, "the lod bias is log2(scale) below 1");
+            check.Expect(MathF.Abs(LodBias - (MathF.Log2(0.67f) - 1f)) < 1e-6f, "the lod bias under FSR is log2(scale) - 1 below 1");
             Post.Scale.V = 1.5f; check.Expect(LodBias == 0f, "...and 0 above it: supersampling keeps its detail");
-            Post.Scale.V = 1f; check.Expect(RenderSize(2560) == 2560 && LodBias == 0f, "1.0 is pixel-identical");
+            Post.Scale.V = 1f; check.Expect(RenderSize(2560) == 2560, "1.0 is pixel-identical");
+            // The panel hides the slider unless FSR is picked, so a scale stored under FSR must not reach any other choice.
+            // 0.25 x 1920 = 480 and 0.25 x 1013 = 253.25, worked by hand.
+            Post.Aa.V = Post.AaFsr; Post.Scale.V = 0.25f;
+            check.Expect(RenderSize(1920) == 480 && RenderSize(1013) == 253, $"post.aa fsr at 0.25: the world draws at 480x253 (got {RenderSize(1920)}x{RenderSize(1013)})");
+            Post.Aa.V = Post.AaOff;
+            check.Expect(RenderSize(1920) == 1920 && RenderSize(1013) == 1013, $"post.aa off with 0.25 stored: the world draws at 1920x1013 (got {RenderSize(1920)}x{RenderSize(1013)})");
+            check.Expect(LodBias == 0f, $"post.aa off with 0.25 stored: textures take no mip bias (got {LodBias:F2})");
+            Post.Aa.V = Post.AaSmaa;
+            check.Expect(RenderSize(1920) == 1920 && LodBias == 0f, $"post.aa smaa with 0.25 stored: full size, no mip bias (got {RenderSize(1920)}, {LodBias:F2})");
+            Post.Aa.V = Post.AaFsr;
+            check.Expect(RenderSize(1920) == 480, $"post.aa back to fsr: the stored 0.25 still answers (got {RenderSize(1920)})");
+            Post.Aa.V = Post.AaSmaa; Post.Scale.V = 1f;
             check.Expect(Describe().Contains("bloom") && Describe().Contains("tonemap") && Describe().Contains("dither")
               && Describe().Contains("exposure") && Describe().Contains("scale") && Describe().Contains("aa "),
               "Describe names every knob group");
