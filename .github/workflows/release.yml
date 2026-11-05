@@ -49,7 +49,7 @@ jobs:
       - name: Install native toolchain
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q clang lld zlib1g-dev cmake pkg-config \
+          sudo apt-get install -y -q clang lld zlib1g-dev cmake pkg-config glslang-tools \
             libpipewire-0.3-dev libpulse-dev libasound2-dev   # OpenAL Soft's backends
 
       - name: Build + package
