@@ -23,8 +23,7 @@ internal static unsafe partial class Weather
         WaterRoof = G.Toggle("waterroof", "Water sheds snow", true, Tier.ChatOnly,
                              help: "Water surfaces count as a roof: nothing wets or snows the bed beneath them.");
         CoverSoft = G.Slider("coversoft", "Cover edge", 0f, 4f, 0.05f, 1f, "m", Tier.ChatOnly,
-                             help: "How far a roof's shelter feathers at its edge: wind and splash make no hard line.",
-                             changed: CasterPass.RefilterCover);
+                             help: "How far a roof's shelter feathers at its edge: wind and splash make no hard line.");
         CoverRange = G.Slider("coverrange", "Cover range", 16f, 128f, 4f, 60f, "m", Tier.ChatOnly,
                               help: "Half-width of the cover map around the player. Resolution is the sun shadow map's (one allocation).");
     }

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """CX-200: refuse self-check assertions that cannot fail, and skip paths that pass silently.
 
-Scope: every `*SelfCheck*.cs` under managed/, plus the body of any method elsewhere whose name
+Scope: every `*SelfCheck*.cs` and `*ApprovedExamples*.cs` under managed/, plus the body of any method elsewhere whose name
 contains "SelfCheck". Inside that scope four shapes are refused:
 
   1. an Expect(...) whose condition is a compile-time constant (literal arithmetic only);
@@ -94,7 +94,7 @@ def mask(src: str, strings: bool = True) -> str:
 
 def regions(path: Path, masked: str):
     """(start, end) offsets of the self-check scope in this file."""
-    if "SelfCheck" in path.name:
+    if "SelfCheck" in path.name or "ApprovedExamples" in path.name:
         return [(0, len(masked))]
     out = []
     for m in re.finditer(r"\b[A-Za-z0-9_]*SelfCheck[A-Za-z0-9_]*\s*\(", masked):
@@ -289,7 +289,7 @@ def scan(path: Path, qualified=None):
     src = path.read_text(encoding="utf-8", errors="replace")
     # Cheap pre-filter before the character walk: nothing to say about a file with no self-check in it,
     # or one whose self-check asserts nothing and logs no skip.
-    if "SelfCheck" not in src or ("Expect(" not in src and "SKIPPED" not in src):
+    if ("SelfCheck" not in src and "ApprovedExamples" not in path.name) or ("Expect(" not in src and "SKIPPED" not in src):
         return []
     masked = mask(src)
     # Strings kept, so two calls that differ only in a string argument are not read as one text.

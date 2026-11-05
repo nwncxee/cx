@@ -205,7 +205,7 @@ the cleanup that earned it. Adding a rule means adding its gate in the same chan
   order) and a typo must not buy a second allocation in silence. Any parameter named `alias` declares one, so
   `ImageDesc`'s 11th positional and each pass's own `Target` helper are covered by the one rule;
   `managed/Alloy/Golden/` is exempt, its goldens inventing lanes to test the sharing itself.
-- `selfcheck.sh`: inside a `*SelfCheck*` file or a `SelfCheck` method, an `Expect` that cannot fail fails --
+- `selfcheck.sh`: inside a `*SelfCheck*` or `*ApprovedExamples*` file or a `SelfCheck` method, an `Expect` that cannot fail fails --
   a compile-time-constant condition, a `const` compared to its own kind of literal (over `==` `!=` `<` `>`
   `<=` `>=`, the const named bare or as `Type.CONST` from any file), or the same text on both sides of a
   comparison -- and so does a hand-written `SKIPPED` log line. The const-against-literal shape's standing

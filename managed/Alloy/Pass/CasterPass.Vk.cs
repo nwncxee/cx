@@ -48,6 +48,12 @@ public sealed unsafe partial class CasterPass
         /// <summary>Views the bracket queued for the colour frame to flush; 0 = nothing to bake.</summary>
         public int Queued;
         public ImageId Cascades, SunDyn, Cubes, CubeDyn, Sky, Bake;
+        /// <summary>The CPU's copies of the cover layer: the one footfalls read and the one a copy lands in; the
+        /// map's side and the kept square's; the view each holds; and the generation an area edge moves on so a copy in flight never takes over.</summary>
+        public BufferId CoverHeld, CoverNext;
+        public int CoverReadSize, CoverReadWindow, CoverReadGen;
+        public Matrix4x4 CoverReadVp, CoverPendingVp;
+        public bool CoverWriting;
         /// <summary>The lightmap bake's scratch cubes: the count and face size it last asked for, and what the array was made at.</summary>
         public int BakeWant, BakeSizeWant, BakeSize, BakeCubes;
         /// <summary>The size and layer count each array was made at: a knob change remakes it.</summary>
@@ -91,7 +97,10 @@ public sealed unsafe partial class CasterPass
         bool ok = n == 0 || VkFlushLayered(cl, n);
         // the grass into the cascades the flush just re-baked, while they are still depth targets
         if (ok && _vk.Dev is VkBackend vk)
+        {
             AlloyRenderer.VkGrassShadows(vk, cl, _vk.Cascades, _vk.GrassStatic, _vk.SunDyn, _vk.GrassDyn, _mapSize);
+            if (_coverNew) CoverReadQueue(vk, cl);
+        }
         _vk.GrassStatic = _vk.GrassDyn = 0;
         VkHandOver(cl);
         if (ok) return true;

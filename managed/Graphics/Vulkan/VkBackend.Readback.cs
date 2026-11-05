@@ -95,8 +95,8 @@ internal sealed unsafe partial class VkBackend
     }
 
     /// <summary><paramref name="dst"/>.Length bytes of the readback buffer <paramref name="b"/> from
-    /// <paramref name="offset"/>, made visible to the host. Only from <see cref="CommandList.WhenDone"/> work of the list
-    /// that wrote them, or after <see cref="WaitSubmitted"/>.</summary>
+    /// <paramref name="offset"/>, made visible to the host. Only once the list that wrote them has finished and before
+    /// another is recorded to write them: from its <see cref="CommandList.WhenDone"/> work, or after <see cref="WaitSubmitted"/>.</summary>
     internal bool ReadMapped(BufferId b, long offset, Span<byte> dst)
     {
         if (!_buffers.TryGet(b.Value, out VkBuf buf) || buf.Desc.Memory != MemoryKind.Readback || offset + dst.Length > buf.Desc.Bytes)
