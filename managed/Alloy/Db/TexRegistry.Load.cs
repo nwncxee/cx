@@ -75,6 +75,8 @@ internal static unsafe partial class TexRegistry
         public byte[]? Pixels;
         /// <summary>The <c>.txi</c> ripple words (<see cref="ParseArturo"/>), which decide the container.</summary>
         public ArturoTxi Arturo;
+        /// <summary>The running ripple <see cref="HoldRipple"/> built, which <see cref="FileArturo"/> files on the slot.</summary>
+        public Arturo? Ripple;
     }
 
     /// <summary>Does this texture's <c>.txi</c> name a <c>bumpyshinytexture</c>? That is the water class:
@@ -150,7 +152,7 @@ internal static unsafe partial class TexRegistry
         // resource tables, and a hak's .txi beats the base game's by the resman's own order.
         string? txi = ReadResourceText(resref, TextFontLoad.ResTxi);
         TxiSampler(i, txi);
-        j.Pixels = null; j.FullW = 0;
+        j.Pixels = null; j.FullW = 0; j.Ripple = null;
         TxiMaterial(i, txi, j);
         j.Compressed = false; j.GenMips = false; j.Clamp = _clamp[i]; j.Cov = TexCoverage.Unknown; j.MeanOk = false;
         j.Nearest = _nearest[i]; j.Mip = _mipmap[i];
@@ -366,6 +368,7 @@ internal static unsafe partial class TexRegistry
             j.CovWhy = TexCoverageOf.Why($"TGA, {r.Px} channel(s)", j.Cov);
             j.MeanOk = TexScan.MeanOfRaster(px, r.W, r.H, r.Px, out j.Mean);
             CutGrid(j);
+            HoldRipple(j);
             return;
         }
         byte* chain = DdsReader.Prepare(raw, out DdsReader.Info info, out string? dw);
@@ -513,6 +516,7 @@ internal static unsafe partial class TexRegistry
         }
         ApplySamplerWishes();
         StepCycles();
+        StepRipples();
         // ...and AGAIN: ApplySamplerWishes drops and re-mints handles of its own, and leaving those to the
         // next frame's drain is a whole frame of records pointing at a handle this one just retired.
         ZeroDyingHandles();
