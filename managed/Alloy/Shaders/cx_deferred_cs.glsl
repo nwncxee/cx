@@ -25,12 +25,8 @@ layout(local_size_x = 16, local_size_y = 16) in;
 #define CX_LIT_MATERIAL 1
 // ...and takes its light list from the CxList* this file defines, not from cx_lightfrag's froxel default.
 #define CX_LIGHT_LIST 1
-// CX-188 step 4: the walk's HOT branch is compiled OUT here. A baked receiver of this frame behaves toward a
-// static light exactly as it does toward a cold one -- no 16-sphere ray test, no dyn-page taps -- and `lmSub`
-// comes back zero. The debt those lights owe is taken once per pixel by cx_pairdebt, off the pair tiles
-// CasterPass bakes in place of their pages. A macro and not a uniform because the registers the branch costs
-// are charged to every pixel of the dispatch whether or not one is hot.
-#define CX_NO_HOT 1
+// A baked receiver takes a mover's shadow back out of its baked term through the walk's hot branch: this stage is
+// the only one that owes it, so the branch stays compiled in.
 // ...and this stage IS where an unbaked receiver is lit -- a creature is opaque, so the twin drew it and this
 // walk shades it -- so cx_localshadow's pair tap belongs here: a paired static light has no dyn page, and
 // without the tap a creature would take no shadow from another creature under a lamp. Nowhere else, which is
