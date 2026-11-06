@@ -30,7 +30,7 @@ internal static class Post
         Aa = G.Dropdown("aa", "Anti-aliasing", new[] { AaFsr, AaSmaa, AaOff }, AaFsr, new[] { "FSR 3.1", "SMAA", "Off" },
                         help: "How edges are smoothed. FSR 3.1 rebuilds the full-resolution picture from the render scale's smaller "
                             + "frame and the frames before it; at render scale 1 it is the anti-aliasing. SMAA smooths each frame "
-                            + "on its own, at full resolution: picking it sets the render scale to 1.",
+                            + "on its own, and Off does not smooth; both render at full resolution.",
                         changed: OnAa)
              .Ladder(Quality.Preset, Quality.Classic(AaSmaa, AaFsr));
         Smaa = G.Dropdown("smaa", "SMAA quality", new[] { 1, 2, 3 }, 2, new[] { "medium", "high", "ultra" },
@@ -79,11 +79,10 @@ internal static class Post
         SkyRaw = G.Toggle("skyraw", "skyraw", true, Tier.ChatOnly);
     }
 
-    /// <summary>A new anti-aliaser starts its history over; SMAA has no upscaler, so picking it renders at full resolution.</summary>
+    /// <summary>A new anti-aliaser starts its history over.</summary>
     private static void OnAa()
     {
         CX.Alloy.Fsr.Revoke();
         TaaStage.Reset();
-        if (Aa.V == AaSmaa && Scale.V != 1f) Scale.Set(1f);
     }
 }

@@ -35,6 +35,11 @@ internal static partial class GpuGolden
         new(0.6f, 0.2f, new(0, 1, 0), new(-1, 0, 0), new(0, 0, 1), new(0.5f, 0.3f, 0.8124038f), 6f, 2160f),
         new(0.9f, 0.55f, new(1, 0, 0), new(0, 0, 1), new(0, -1, 0), new(0.3f, -0.8f, 0.5196152f), 40f, 1080f),
         new(0.42f, 0.13f, new(1, 0, 0), new(0, 1, 0), new(0, 0, 1), new(0.5f, 0f, 0.8660254f), 200f, 1080f),
+        // E11, a plain regression because stock already holds here (the rest of the fade is GpuGolden.DisplacementFadeApprovedExamples):
+        // Given the same floor at 20 metres
+        // When it draws
+        // Then its relief moves the texture exactly as stock parallax does
+        new(0.15f, 0.4f, new(1, 0, 0), new(0, 1, 0), new(0, 0, 1), new(0f, -0.9848078f, 0.1736482f), 20f, 1080f),
     ];
 
     /// <summary>Floats in and out per case: the frame and the march's terms, then the coordinate it lands on.</summary>
@@ -94,7 +99,7 @@ internal static partial class GpuGolden
                 for (int k = 0; k < n; k++)
                 {
                     DisplaceCase c = DisplaceCases[k];
-                    (double wu, double wv) = StockDisplace(c);
+                    (double wu, double wv) = FadedStock(c);
                     double err = Math.Max(Math.Abs(got[k * DisplaceOut] - wu), Math.Abs(got[k * DisplaceOut + 1] - wv));
                     worst = Math.Max(worst, err);
                     if (wu != c.U || wv != c.V) moved++;
@@ -120,6 +125,18 @@ internal static partial class GpuGolden
     /// <summary>What a march may differ by and still be the same march: the GPU runs it in single precision over
     /// up to 32 dependent steps, where the oracle runs in double.</summary>
     private const double DisplaceTol = 1e-4;
+
+    /// <summary>The stock march's landing with Alloy's one departure written out by hand: the shift is whole from 4
+    /// steps up and reaches nothing at the half step where stock stops marching.</summary>
+    private static (double U, double V) FadedStock(in DisplaceCase c)
+    {
+        double m = 1.0 - 0.5 * Dot(c.Eye, c.N);
+        m *= m / (c.Depth * 0.125);
+        double t = Math.Clamp((32.0 * Math.Clamp(m * c.ScreenH / 1080.0, 0.0, 1.0) - 0.5) / 3.5, 0.0, 1.0);
+        double fade = t * t * (3.0 - 2.0 * t);
+        (double u, double v) = StockDisplace(c);
+        return (c.U + (u - c.U) * fade, c.V + (v - c.V) * fade);
+    }
 
     /// <summary><c>inc_displacement.shd</c>'s <c>DisplaceTextureCoords</c> at SHADER_QUALITY_MODE 2 with the identity
     /// texture matrix -- the oracle, written from the stock shader: <paramref name="offset"/> and <paramref name="mult"/> are

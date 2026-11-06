@@ -88,6 +88,8 @@ internal static partial class GpuGolden
         SofteningApprovedSelfCheck(vk, check, log);
         TranslucenceApprovedSelfCheck(vk, check, log);
         DisplacementApprovedSelfCheck(vk, check, log);
+        DisplacementFadeApprovedSelfCheck(vk, check, log);
+        ColourFilterApprovedSelfCheck(vk, check, log);
         AoContactSelfCheck(vk, check, log);
         vk.PresentDeviceCheck(check, log);
         vk.PresentHoldCheck(check, log);

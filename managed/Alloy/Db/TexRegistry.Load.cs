@@ -561,10 +561,9 @@ internal static unsafe partial class TexRegistry
         }
     }
 
-    /// <summary>The player's Game Options anisotropy (sampler creation clamps it to the device's ceiling): the level
-    /// <c>GLRender::SetTextureAnisotropicFiltering</c> @0x5ca100 gives every linear mipmapped texture.
-    /// ponytail: taken at upload/mint; a mid-area change reaches textures loaded after it.</summary>
-    internal static int Aniso() => (int)Math.Max(StockConfig.Aniso, 1);
+    /// <summary>The anisotropy every linear mipmapped texture gets, whatever Game Options says; sampler creation
+    /// clamps it to the device's ceiling.</summary>
+    internal const int Aniso = 16;
 
     /// <summary>One finished job, uploaded and published, at the frame's own point.</summary>
     private static void Finish(Job j)

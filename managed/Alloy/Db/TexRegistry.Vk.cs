@@ -13,7 +13,7 @@ internal static unsafe partial class TexRegistry
     {
         Filter f = nearest ? Filter.Nearest : Filter.Linear;
         return new SamplerDesc(f, f, !mip ? MipMode.None : nearest ? MipMode.Nearest : MipMode.Linear,
-                               clamp ? Wrap.Clamp : Wrap.Repeat, Aniso: mip && !nearest ? Aniso() : 1);
+                               clamp ? Wrap.Clamp : Wrap.Repeat, Aniso: mip && !nearest ? Aniso : 1);
     }
 
     /// <summary><paramref name="j"/>'s texels under GL name <paramref name="dst"/>, as <see cref="Upload"/> just sent

@@ -8,17 +8,28 @@ bool CxCoverCut(float coverage, float alpha, vec2 du1, vec2 du2, vec2 cutSize, f
         || uSolid != 0 && s < CX_SOLID_ALPHA;
 }
 
+/// The colour map at a pixel: two samples a quarter pixel either side on the diagonal, each with a footprint half the
+/// area, so grain finer than a pixel stays steady as the camera moves without softening what one sample resolves.
+vec4 CxColourTap(vec2 uv, vec2 dx, vec2 dy)
+{
+    vec2 off = 0.25 * (dx + dy);
+    return 0.5 * (textureGrad(uTex, uv + off, 0.7071 * dx, 0.7071 * dy) + textureGrad(uTex, uv - off, 0.7071 * dx, 0.7071 * dy));
+}
+
 /// inc_displacement.shd's DisplaceTextureCoords: the height map's relief marched along the view ray in tangent
 /// space, the step count by view angle, distance and screen height. `om` is the material's DisplacementOffset and
 /// DisplacementMultiplier (0 = the stock 1), which shift the march's start and scale its reach and its steps.
 /// Explicit gradients: the count differs per fragment, so implicit ones would be undefined in the loop.
+/// One departure from stock: the relief fades out below 4 steps, where each step turns height-map grain into shimmer.
 vec2 CxDisplace(vec2 uv, mat3 tsb, vec3 V, float depth, float screenH, vec2 du1, vec2 du2, vec2 om, float cap)
 {
     float mul = om.y != 0.0 ? om.y : 1.0;
     float m = 1.0 - 0.5 * dot(V, tsb[2]);
     m *= m / (max(depth, 1e-4) * 0.125);
-    float it = floor(cap * mul * clamp(m * screenH / 1080.0, 0.0, 1.0) + 0.5);
+    float steps = cap * mul * clamp(m * screenH / 1080.0, 0.0, 1.0);
+    float it = floor(steps + 0.5);
     if (it < 1.0) return uv;
+    vec2 start = uv;
     vec3 v = transpose(tsb) * V;
     float zh = 0.5 * v.z + 0.5;
     vec2 disp = v.xy * 0.05 * ((1.0 - v.z) / max(zh * zh, 1e-4) + 1.0);
@@ -33,7 +44,7 @@ vec2 CxDisplace(vec2 uv, mat3 tsb, vec3 V, float depth, float screenH, vec2 du1,
         else dd /= max(1.0 - cur, 1e-4);
         cur += dd * seg;
     }
-    return uv - disp * cur;
+    return mix(start, uv - disp * cur, smoothstep(0.5, 4.0, steps));
 }
 
 #ifdef CX_DECAL_WRITE
@@ -43,6 +54,8 @@ vec2 CxDisplace(vec2 uv, mat3 tsb, vec3 V, float depth, float screenH, vec2 du1,
 
 void main()
 {
+    // every /alloy viz view returns ahead of CxOitOut, and an output left unwritten is garbage on Vulkan
+    oReveal = 1.0;
     if (uCapture == 2 && vWorld.z < uMirrorZ) discard;
     // inc_standard.shd:182-183: a back face's frame, march and lighting all take the flipped normal
     vec3 N = normalize(gl_FrontFacing ? vNrm : -vNrm);
@@ -112,6 +125,8 @@ void main()
     }
 #endif
     vec2 uv = vUV;
+    // A displaced coordinate's derivatives jump with the relief, so every material tap takes the surface's footprint
+    vec2 tapDx = du1 * exp2(uLodBias), tapDy = du2 * exp2(uLodBias);
     vec3 V = normalize(uEyePos - vWorld);
     float surfAo = 1.0;   // the height map's own occlusion alone (stock's fAmbientOcclusionModifier)
     float screenAo = 1.0; // the screen-space term alone: the one share of occl the direct terms take
@@ -172,7 +187,7 @@ void main()
             // IS the local self-occlusion, the blur shrinking with distance (OCCLUSION_VICINITT_RANGE 7.0
             // - log2 of the view depth), clamped to 0.9 and squared.
             float far = max(0.0, CX_OCCL_VICINITY - log2(max(vDepth, 1e-4)));
-            float o = texture(uHeightTex, uv, far + uLodBias).r - texture(uHeightTex, uv, uLodBias).r;
+            float o = textureGrad(uHeightTex, uv, tapDx * exp2(far), tapDy * exp2(far)).r - textureGrad(uHeightTex, uv, tapDx, tapDy).r;
             float a = 1.0 - clamp(o, 0.0, 0.9);
             surfAo = a * a;
             occl *= surfAo;
@@ -180,7 +195,7 @@ void main()
         if ((slots & CX_SLOT_NORMAL) != 0)
         {
             vec3 nm;
-            nm.xy = texture(uNrmTex, uv, uLodBias).rg * 2.0 - 1.0;
+            nm.xy = textureGrad(uNrmTex, uv, tapDx, tapDy).rg * 2.0 - 1.0;
             nm.z = sqrt(max(1.0 - dot(nm.xy, nm.xy), 0.0));
             // 23 = the TANGENT-SPACE normal as sampled, before the frame touches it. Flat lavender
             //      means the map carries no signal (or is not the map we think it is), which viz 7
@@ -203,7 +218,7 @@ void main()
     // not see the contact detail a baked map carries.
     // ADR 0026: ...and on a CxOrm material the same texel is glTF's packed occlusion/roughness/metallic,
     // R still the occlusion, so the one fetch serves both readings.
-    vec3 orm = (slots & CX_SLOT_AO) != 0 ? texture(uAoTex, uv, uLodBias).rgb : vec3(1.0);
+    vec3 orm = (slots & CX_SLOT_AO) != 0 ? textureGrad(uAoTex, uv, tapDx, tapDy).rgb : vec3(1.0);
     occl *= orm.r;
     float ormOn = d.ext2.y > 0.5 && (slots & CX_SLOT_AO) != 0 ? 1.0 : 0.0;
     // 7 = the SHADING NORMAL as colour, AFTER the normal map. Flat wedges with straight edges
@@ -275,12 +290,14 @@ void main()
     // three samples.
     bool plt = CxPltOn(vDraw);
     float arriveBias = uLodBias + (1.0 - arrive) * (1.0 - arrive) * CX_ARRIVE_MIPS;
-    vec4 texel = plt ? CxPltResolve(uTex, uv, arriveBias, vDraw) : texture(uTex, uv, arriveBias);
+    vec4 texel = plt ? CxPltResolve(uTex, uv, arriveBias, vDraw)
+               : arrive < 1.0 ? textureGrad(uTex, uv, du1 * exp2(arriveBias), du2 * exp2(arriveBias))
+               : CxColourTap(uv, tapDx, tapDy);
     if (arrive < 1.0)
     {
         // A PLT's alpha comes out of the palette, not out of a mip of the pair texture, so the sharp-alpha
         // re-read the stand-in fade wants is already in `texel` -- one resolve, not two.
-        if (!plt) texel.a = texture(uTex, uv, uLodBias).a;
+        if (!plt) texel.a = textureGrad(uTex, uv, tapDx, tapDy).a;
         texel.rgb = mix(vec3(1.0), texel.rgb, smoothstep(0.0, 0.35, arrive));
     }
     if (earlyA >= 0.0) texel.a = earlyA;
@@ -352,8 +369,8 @@ void main()
     // #122: the maps are sampled here and the synthesis itself is a pure function -- it has to fold
     // to a constant off-device (check-shaders.py) for the declared-beats-synthesised rule to be
     // checkable at all. A slot with nothing bound is not sampled, exactly as before.
-    float specTexel = (slots & CX_SLOT_SPEC) != 0 ? texture(uSpecTex, uv, uLodBias).r : 0.0;
-    float roughTexel = (slots & CX_SLOT_ROUGH) != 0 ? texture(uRoughTex, uv, uLodBias).r : 0.0;
+    float specTexel = (slots & CX_SLOT_SPEC) != 0 ? textureGrad(uSpecTex, uv, tapDx, tapDy).r : 0.0;
+    float roughTexel = (slots & CX_SLOT_ROUGH) != 0 ? textureGrad(uRoughTex, uv, tapDx, tapDy).r : 0.0;
     vec3 pbr = CxSynthPbr(d.pbr.xyz, slots, envLevel, specTexel, roughTexel);
     // #350/CX-303: a content pair's fragment half, AFTER synthesis -- the point its stock body runs, with
     // SetupStandardShaderInputs's outputs in the engine's own names. The material globals are filled first

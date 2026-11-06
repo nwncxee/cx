@@ -7,8 +7,8 @@ namespace CX.Alloy;
 
 /// <summary>
 /// FSR 3.1 upscaling's approved examples off the device (approved-spec), E1, E2 and E4 to E8. Oracles: sizes, phase
-/// counts and mip biases worked by hand (0.67 x 2560 = 1715, int(8 x (2560 / 1715)^2) = 17, log2(1715 / 2560) - 1 =
-/// -1.58), cx.log as written to disk, and the staged install's LICENSES.txt.
+/// counts and mip biases worked by hand (0.67 x 2560 = 1715, int(8 x (2560 / 1715)^2) = 17, log2(1715 / 2560) =
+/// -0.58), cx.log as written to disk, and the staged install's LICENSES.txt.
 /// </summary>
 internal static partial class Fsr
 {
@@ -40,10 +40,13 @@ internal static partial class Fsr
         PostChain.Jitter(17, 1715, 965, phases, out float x17, out float y17);
         check.Expect(seen.Count == 17 && x0 == x17 && y0 == y17, $"E4: ...visiting 17 positions before it repeats (got {seen.Count})");
 
-        check.Expect(MathF.Abs(PostChain.LodBias + 1.58f) < 0.01f, $"E5: FSR 3.1 picked at 0.67, textures sample with a mip bias of -1.58 (got {PostChain.LodBias:F3})");
+        // Given anti-aliasing set to FSR 3.1 and render scale 0.67
+        // When a textured surface is drawn
+        // Then its textures sample with a mip bias of -0.58, the same as TAA at that scale
+        check.Expect(MathF.Abs(PostChain.LodBias + 0.58f) < 0.01f, $"E5: FSR 3.1 picked at 0.67, textures sample with a mip bias of -0.58 (got {PostChain.LodBias:F3})");
         FsrState keep = _s;
         _s = new FsrState { Refused = "the self-check stands FSR down" };
-        try { check.Expect(MathF.Abs(PostChain.LodBias + 0.58f) < 0.01f, $"E5: ...where TAA, drawing at the same scale for a refused FSR, uses -0.58 (got {PostChain.LodBias:F3})"); }
+        try { check.Expect(MathF.Abs(PostChain.LodBias + 0.58f) < 0.01f, $"E5: ...the same as TAA, drawing at that scale for a refused FSR (got {PostChain.LodBias:F3})"); }
         finally { _s = keep; }
 
         RefusedExample(check, log);

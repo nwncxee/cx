@@ -191,7 +191,7 @@ internal static class VkTextures
             _ => MipMode.None,
         };
         Wrap W(int w) => w == (int)EngineTokens.CLAMP_TO_EDGE ? Wrap.Clamp : Wrap.Repeat;
-        return new SamplerDesc(Of(min), Of(mag), mip, W(wrapS), Aniso: aniso ? TexRegistry.Aniso() : 1, WrapT: W(wrapT));
+        return new SamplerDesc(Of(min), Of(mag), mip, W(wrapS), Aniso: aniso ? TexRegistry.Aniso : 1, WrapT: W(wrapT));
     }
 
     /// <summary>The seam's twin of a GL compressed internal format an owned texture is stored in; Unknown for
