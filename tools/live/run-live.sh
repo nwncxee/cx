@@ -186,8 +186,9 @@ if [ -n "$CONNECT" ]; then
     [ -f "$USER_DIR/settings.tml" ] && sed -i '/^\s*\[client\.identity\]/,/^\[/ s/^\(\s*name = \)""/\1"CX Harness"/' "$USER_DIR/settings.tml"
     for d in nwsync hak tlk override; do
         [ -d "$REAL_USER_DIR/$d" ] || continue
-        rm -rf "${USER_DIR:?}/$d"
-        cp -a --reflink=always "$REAL_USER_DIR/$d" "$USER_DIR/" \
+        # a run's own override files, already in place, win over the user's
+        [ "$d" = override ] || rm -rf "${USER_DIR:?}/$d"
+        cp -an --reflink=always "$REAL_USER_DIR/$d" "$USER_DIR/" \
             || { echo "run-live: --connect needs a reflink copy of $d (a copy-on-write filesystem)" >&2; exit 2; }
     done
 fi

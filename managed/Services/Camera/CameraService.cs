@@ -343,6 +343,9 @@ public sealed unsafe class CameraService : IExtenderService
             return;
         }
         CameraModeKnobs m = CameraModes.ByMode[mode];
+        if (m.PinYaw.V >= 0f) { b.Yaw = m.PinYaw.V; b.YawVel = 0f; b.YawImpulse = 0f; }
+        if (m.PinPitch.V >= 0f) b.Pitch = m.PinPitch.V;
+        if (m.PinDist.V >= 0f) { b.Dist = m.PinDist.V; b.ZoomVel = 0f; }
         bool aim = TabTargetService.AimPoint(out float ax, out float ay, out float az);
         if (!aim) _aimBase = float.NaN;
         if (!aim && !m.Recenter.V) { _hold = Hold.Off; _pursuing = false; return; }
@@ -655,7 +658,7 @@ public sealed unsafe class CameraService : IExtenderService
         // Under logs=1, once per 600 presents.
         _log?.Info(Inv($"[camera] Control {_callsMin}..{_callsMax} call(s)/present over {_frames} presents; ")
                  + Inv($"view angle first read {_fovFirst:0.##}, {_fovRewrites} rewrite(s) between ours; gate: {GateNames[(int)_gate]}, ")
-                 + Inv($"mode {_mode}, offset {(_offsetOn ? "on" : "off")}; ")
+                 + Inv($"mode {_mode}, yaw {_yaw:0.#} pitch {_pitch:0.#} dist {_dist:0.#}, offset {(_offsetOn ? "on" : "off")}; ")
                  + Inv($"engine pull-ins {_pullIns} (offset off) / {_pullInsOffset} (offset on), arm {_arm:0.00} ")
                  + Inv($"over {_armCasts} casting frame(s)")
                  + (_armNoScene == 0 ? "" : Inv($" and {_armNoScene} with NO scene to cast against")));
