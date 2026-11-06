@@ -401,7 +401,6 @@ public sealed unsafe partial class NullGl
     {
         Dictionary<string, IntPtr> t = Procs();
         if (t.TryGetValue(name, out IntPtr p)) return p;
-        _s.Generic++;
         return (IntPtr)(delegate* unmanaged<nint>)&Noop;
     }
 

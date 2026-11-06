@@ -1,6 +1,5 @@
 using CX.Alloy.Db;
 using System;
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using CX.Engine;
@@ -41,11 +40,7 @@ internal static unsafe class RspShim
 
     /// <summary>Last period's refusal totals, so the period line can report the CHANGE. See <see cref="Period"/>.</summary>
     private static int _lastRefTex;
-    private static long _swallowed, _passed, _ticks, _frames;
-    /// <summary>Per-step tick sums over the period, indexed by <see cref="_stepNames"/>; the index order is
-    /// the period line's. What is left against <see cref="_ticks"/> is the shim's own bookkeeping.</summary>
-    private static readonly long[] _stepTicks = new long[6];
-    private static readonly string[] _stepNames = { "emit", "anchor", "sky", "bin", "present", "handback" };
+    private static long _swallowed, _passed, _frames;
 
     /// <summary>The invariants the shim cannot discover at runtime and would fail silently on:
     /// <see cref="SwallowPriority"/> must sit above DrawStatsService's, or the draw histogram counts draws that
@@ -158,30 +153,15 @@ internal static unsafe class RspShim
     /// thing this column exists for. The delta is signed, and a negative reads as recovery.</summary>
     internal static void Period()
     {
-        if (_frames < AlloyRenderer.LogEvery) return;
-        double ms = _ticks * 1000.0 / Stopwatch.Frequency / _frames;
+        if (++_frames < AlloyRenderer.LogEvery) return;
         if (ExtenderLog.Enabled)
             _log?.Info($"RspShim: [rspshim] {_frames} shim frames, {_swallowed / _frames} engine draws swallowed/frame, "
-                 + $"PASSED {_passed} (must be 0 unless a movie frame was handed back), {ms:F2}ms/frame in the shim ({StepLine()}), "
+                 + $"PASSED {_passed} (must be 0 unless a movie frame was handed back), "
                  + $"borrowed {OwnedTextures.Borrowed - _lastRefTex} textures this period (must be 0){OwnedTextures.BorrowNote()}"
                  // The ported light tick has no other visible surface: `moved` counting down to a handful
                  // once an area settles, and `focus` tracking day/night, is what says it is running.
                  + $"; {FrameDelta.Describe()}");
         _lastRefTex = OwnedTextures.Borrowed;
-        _swallowed = 0; _passed = 0; _ticks = 0; _frames = 0;
-        Array.Clear(_stepTicks);
-    }
-
-    /// <summary>The per-vcall halves of the shim number, ms/frame each.</summary>
-    private static string StepLine()
-    {
-        var sb = new System.Text.StringBuilder();
-        for (int i = 0; i < _stepTicks.Length; i++)
-        {
-            if (i > 0) sb.Append(' ');
-            sb.Append(_stepNames[i]).Append(':')
-              .Append((_stepTicks[i] * 1000.0 / Stopwatch.Frequency / _frames).ToString("F2"));
-        }
-        return sb.ToString();
+        _swallowed = 0; _passed = 0; _frames = 0;
     }
 }
