@@ -306,7 +306,7 @@ public static partial class PartTree
         SceneDb.PartEnabled[p] = true;
         SceneDb.PartMerged[p] = false;
         SceneDb.PartLodTree[p] = 0;
-        SceneDb.PartAlpha[p] = RestAlpha(n);
+        SceneDb.SetPartAlpha(p, RestAlpha(n));
         SceneDb.PartSelfIllum[p] = RestSelfIllum(n);
         SceneDb.PartKindOf[p] = Kind(n.Kind);
         // CX-114's stated refusal: the arena holds ONE immutable copy per distinct mesh, so a part whose

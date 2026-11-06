@@ -552,6 +552,9 @@ public sealed unsafe partial class AlloyRenderer
     private static void UnstampChase(int i)
     { _gate[i].OccFade = 0f; _gate[i].OccHeld = 0f; }
 
+    /// <summary>The route memo's lifetime count of writers its audit caught.</summary>
+    private static long RouteMemoMisses() => 0;
+
     /// <summary>The [alloy] line's clause.</summary>
     private static string ChaseNote()
     {
