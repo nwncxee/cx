@@ -143,6 +143,12 @@ public sealed unsafe partial class AlloyRenderer
         if (cls == (int)AlloyClass.Water && !_waterArmed) return Skipped;
         bool lit = _oLit[i];
         if (lit && !lightingOn) { Inc(ref Counters._skipNoLight); return Skipped; }
+        bool wasSettled = StageSettled(i, part, cls, k);
+        if (wasSettled && ((i + _frameSeq) & (SettledAuditEvery - 1)) != 0)
+        {
+            StageFromSettled(k, i, ref c);
+            return Staged;
+        }
         // The PLT stage is share-group work and a worker may not do it (ADR 0022). What else is main-only mutates
         // shared state: a dependent registration in DbStageHandles for a texture that has not landed, and the tile diagnostic.
         // The override counts as much as the recipe: armour reaches its PLT through ReplaceTexture, and a slot
@@ -370,7 +376,76 @@ public sealed unsafe partial class AlloyRenderer
         }
         _pkDis[k] = dis ? (byte)1 : (byte)0;
         WriteBatchRow(k, i, cls, lit, dis, tid, slots, idxCount, feat);
+        if (wasSettled && rec) NoteSettledMiss(i, part, why);
+        NoteSettled(k, i, o, rec);
         return Staged;
+    }
+
+    /// <summary>One frame in this many, a settled slot takes the full stage anyway, and a record it then rewrites
+    /// is a writer that changed a column without a mark. Power of two.</summary>
+    private const int SettledAuditEvery = 64;
+    private const int SettledMissLines = 8;
+
+    /// <summary>What a static part's last stable stage produced: the row it wrote and the mark clocks it read at.
+    /// A slot whose marks, record epoch and texture memo still agree would write this row again.</summary>
+    private struct SettledStage
+    {
+        public BatchRow Row;
+        public long PartClock, ObjClock;
+        public int RecGen, Enroll, Part;
+        public bool Valid;
+    }
+    /// <summary>One per ownership slot, so the worst case is resident rather than allocated in the walk.</summary>
+    private static readonly SettledStage[] _settled = new SettledStage[MaxOwned];
+    /// <summary>The mark clocks of this stage phase, and the settled audit's lifetime count of writers it caught.</summary>
+    private sealed class SettledClocks { public long Part, Obj, Misses; }
+    private static readonly SettledClocks _settledAt = new();
+
+    /// <summary>Would a full stage rewrite nothing for slot <paramref name="i"/>? Every column the stage reads for a
+    /// static part is written beside a part or object mark, and the rest sit behind the epoch and the texture stamp.</summary>
+    private static bool StageSettled(int i, int part, int cls, int k)
+    {
+        ref SettledStage s = ref _settled[i];
+        ref RouteGate g = ref _gate[i];
+        return s.Valid && s.Part == part && cls <= (int)AlloyClass.Blended && s.Row.Cls == cls && s.Row.Dis == _passDis[k]
+            && s.RecGen == _recEpoch && g.RecGen == _recEpoch && s.Enroll == g.EnrollGen && g.RecEnroll == g.EnrollGen
+            && _recTexStamp[i] == _stageTexSerial && _recTexStamp[i] != 0
+            && SceneDb.Parts.MarkAt(part) <= s.PartClock
+            && SceneDb.Objects.MarkAt(SceneDb.PartObj[part].Index) <= s.ObjClock;
+    }
+
+    /// <summary>The stage's outputs for a settled slot: its row, with only the camera-dependent level redone.</summary>
+    private static void StageFromSettled(int k, int i, ref StageCounters c)
+    {
+        ref BatchRow row = ref _bRow[k];
+        row = _settled[i].Row;
+        row.Lvl = RowLevel(i);
+        _pkDis[k] = row.Dis ? (byte)1 : (byte)0;
+        _gate[i].RecFrame = _frameSeq;
+        c.RecStable++; c.RecSettled++;
+    }
+
+    /// <summary>Keep a static part's row once a stage rewrote nothing for it. A mover, a palette reader, or a part
+    /// the record changed for stays out, so a settled row always follows a frame whose previous matrix rolled.</summary>
+    private static void NoteSettled(int k, int i, int o, bool rec)
+    {
+        ref BatchRow row = ref _bRow[k];
+        ref SettledStage s = ref _settled[i];
+        ref RouteGate g = ref _gate[i];
+        if (rec || row.Moved || row.Posed || row.Dangly || (SceneDb.ObjFlags[o] & ObjFlag.Static) == 0
+            || _recTexStamp[i] != _stageTexSerial || PltColors.Flagged(i)) { s.Valid = false; return; }
+        s.Row = row;
+        s.PartClock = _settledAt.Part; s.ObjClock = _settledAt.Obj;
+        s.RecGen = g.RecGen; s.Enroll = g.RecEnroll; s.Part = row.Item;
+        s.Valid = true;
+    }
+
+    /// <summary>A settled slot's audit rewrote its record, so a writer skipped its mark: named, because the
+    /// skip would have drawn the old record for as long as the slot's audit turn took to come round.</summary>
+    private static void NoteSettledMiss(int i, int part, int why)
+    {
+        long n = System.Threading.Interlocked.Increment(ref _settledAt.Misses);
+        if (n <= SettledMissLines) _log?.Info($"AlloyRenderer: [settled] MISS slot {i} part {part}: the record changed with no mark (why 0x{why:x})");
     }
 
     /// <summary>How many [db tiletex] lines the probe prints before it is done.</summary>

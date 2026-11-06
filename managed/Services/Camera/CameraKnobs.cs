@@ -78,7 +78,7 @@ public sealed class CameraModeKnobs
     public readonly Knob<bool> Enabled, Drive, Face, SideRun, Recenter;
     /// <summary><see cref="Smooth"/> is <see cref="LagPos"/>, the one panel row for the feel; a set carries the rotation
     /// and zoom lag along. The mode's User rows are exactly <see cref="KnobGroup.MaxUserRows"/>: a new one must replace one.</summary>
-    public readonly Knob<float> Fov, Smooth, LagPos, LagRot, LagZoom, PitchCurve, PitchRef, OffsetX, OffsetY;
+    public readonly Knob<float> PinYaw, PinPitch, PinDist, Fov, Smooth, LagPos, LagRot, LagZoom, PitchCurve, PitchRef, OffsetX, OffsetY;
     /// <summary>The Movement tuning for the drive and the recenter, per mode: every mode has its own toggles.</summary>
     public readonly Knob<float> Rate, DeadZone, Idle, Grace, IdleRate, Hz, Turn, KeyTurn;
     /// <summary>Mouse-look and the action camera, per mode; read through the <see cref="MouseLook"/> facade.</summary>
@@ -98,6 +98,10 @@ public sealed class CameraModeKnobs
                                                    : ModeLine(mode, submenu);
         Enabled = G.Master!;
         G.Section("View");
+        PinYaw = G.Slider("pinyaw", "Pinned heading", -1f, 360f, 1f, -1f, "deg", Tier.ChatOnly,
+                          help: "Holds the view for a repeatable measurement. -1 = off.");
+        PinPitch = G.Slider("pinpitch", "Pinned tilt", -1f, 180f, 1f, -1f, "deg", Tier.ChatOnly, help: "-1 = off.");
+        PinDist = G.Slider("pindist", "Pinned distance", -1f, 100f, 0.5f, -1f, "m", Tier.ChatOnly, help: "-1 = off.");
         Fov = G.Slider("fov", "Field of view", CameraKnobs.FovMin, CameraKnobs.FovMax, 1f, 45f, "deg",
                        help: "Vertical field of view. The game's own is 45.");
         PitchCurve = G.Slider("pitchcurve", "Tilt down when zoomed out", -10f, 10f, 0.5f, 0f, "deg/m", Tier.Advanced,

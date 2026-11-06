@@ -137,7 +137,7 @@ public sealed unsafe partial class AlloyRenderer
                    // owned count. If the two are the same the split has a permanent mover in it and step 2
                    // of ADR 0017 bought nothing, which no frame-time average would ever say out loud.
                    $"records {(float)Counters._recWritten / Counters._frames:F0}/frame written, " +
-                   $"{(float)Counters._recStable / Counters._frames:F0} stable ({_recOwnCap} slots), " +
+                   $"{(float)Counters._recStable / Counters._frames:F0} stable ({_recOwnCap} slots, {(float)Counters._recSettled / Counters._frames:F0} settled, {_settledAt.Misses} settled misses), " +
                    // CX-302: a whole upload sends the table's whole capacity, so the reason one fired is the
                    // number that tells a real table-wide edge from a hand-over ceiling set too low.
                    RecordUploads.Stats(Counters._frames, VkHandoverSeats) + ", " +
@@ -267,7 +267,7 @@ public sealed unsafe partial class AlloyRenderer
         internal static int _blendedDropped;
         /// <summary>Record writes should scale with the MOVER count. If "written" reads as the owned count, the
         /// per-frame/stable split has a permanent mover in it.</summary>
-        internal static long _recWritten, _recStable;
+        internal static long _recWritten, _recStable, _recSettled;
         /// <summary>The per-report bone-slot high-water mark, which keeps the ceiling counted rather than silent.</summary>
         internal static int _boneHigh;
         internal static long _skinDrawn, _skinNoPose;

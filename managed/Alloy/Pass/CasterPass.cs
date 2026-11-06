@@ -98,6 +98,8 @@ public sealed unsafe partial class CasterPass : IExtenderService
     // --- lifecycle + diagnostics
     private static readonly EdgeState _was = new();
     private static bool _loggedOnce, _noSunLogged;
+    /// <summary>Area diffuse under this on every channel lights nothing a display can show.</summary>
+    private const float SunDarkBelow = 1f / 1024f;
     private static int _frames;
     private static long _mdiCalls;
     /// <summary>Local light cubes baked, summed over the period: the period line prints the per-frame mean
@@ -290,7 +292,11 @@ public sealed unsafe partial class CasterPass : IExtenderService
         // the Vulkan bake's own recording for this frame, which the colour frame appends ahead of its passes
         bool onVk = VkBegin(_log!);
         ReceiverFrame();
-        if (sun || (_cubeLights > 0 && FrameInputs.LocalLightCount > 0) || (sun && Weather.CoverWanted) || LightmapBake.WantsGather)
+        // No light in the sun means no shadow of it, whatever the clock says: a server's moonlight is a colour here.
+        bool sunLit = sun && FrameInputs.HasAreaDiffuse && MathF.Max(FrameInputs.AreaDiffuse.X, MathF.Max(FrameInputs.AreaDiffuse.Y, FrameInputs.AreaDiffuse.Z)) > SunDarkBelow;
+        if (sunLit && _was.SunDark) _invalidate = true;
+        _was.SunDark = !sunLit;
+        if (sunLit || (_cubeLights > 0 && FrameInputs.LocalLightCount > 0) || (sun && Weather.CoverWanted) || LightmapBake.WantsGather)
         {
             AlloyRenderer.Step("shadow bracket: caster programs and the gather staging");
             if (onVk) _gStaged = GatherStage();
@@ -308,7 +314,7 @@ public sealed unsafe partial class CasterPass : IExtenderService
             {
                 case PassId.SunCascades:
                     // on Vulkan the arrays are the bake's own, made at the first view that names one
-                    if (!sun) break;
+                    if (!sunLit) { CascadeCount = 0; Array.Clear(SunDynMask); break; }
                     if (onVk) SunPass(focus);
                     break;
                 case PassId.LocalLightCubes:

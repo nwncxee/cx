@@ -4,5 +4,5 @@ namespace CX.Alloy;
 /// render device available. A tick acts on the change, not on the level.</summary>
 internal sealed class EdgeState
 {
-    public bool InModule, Available;
+    public bool InModule, Available, SunDark;
 }

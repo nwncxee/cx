@@ -18,6 +18,7 @@ OpenAL on the nix-ld path (`nixpkgs#openal.out`), which `cx-launch` otherwise br
 `--connect HOST:PORT` joins a running server instead of hosting a module. It needs a copy-on-write filesystem: the run gets
 reflink copies of your `nwsync`, `hak`, `tlk` and `override`, and your originals stay untouched. It logs in with the copied `cdkey.ini`,
 under the player name `CX Harness` when `settings.tml` has none. It is graded as `--menu` is, so `--keys` drives the login, and it refuses `--stock`.
+A `--keys` step `waitlog:<regex>:<timeout ms>` blocks until a `cx.log` line after the last match matches, so a login with uneven timing waits on the client rather than a guess; a timeout stops the script. `perf-save.sh --connect HOST:PORT --login SCRIPT` measures on a server.
 Exit code 0 is PASS, 1 is FAIL, 2 is a setup problem (no build staged, no client, a client already
 running). It works from any worktree: it runs the `cx-linux-x64/` staged next to it, so build first.
 
