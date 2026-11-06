@@ -12,6 +12,30 @@ public sealed unsafe partial class NullGl
     /// GL_RGB with unsigned bytes.</summary>
     private const int AuroraRgb = 1;
 
+    /// <summary>After every writer of the screen, the movie's last-before-present slot included.</summary>
+    private const int SnapshotPhase = 95;
+
+    /// <summary>A screenshot with no GL waits for the frame's screen: the main loop asks between presents, when Alloy
+    /// has drawn nothing yet. A panorama renders its own faces and goes straight through.</summary>
+    [UnmanagedCallersOnly]
+    private static void OnSnapshot(byte* path, byte pano)
+    {
+        NullGlState s = _s;
+        if (!s.Active || pano != 0 || path == null) { s.OrigSnapshot(path, pano); return; }
+        var name = MemoryMarshal.CreateReadOnlySpanFromNullTerminated(path);
+        s.SnapshotPath = new byte[name.Length + 1];
+        name.CopyTo(s.SnapshotPath);
+    }
+
+    /// <summary>The waiting screenshot, on the first frame with a screen to read.</summary>
+    private static void TakeSnapshot()
+    {
+        NullGlState s = _s;
+        if (s.SnapshotPath is not { } path || CX.Alloy.AlloyDevice.VulkanMade is not VkBackend { ScreenNow.IsNull: false }) return;
+        s.SnapshotPath = null;
+        fixed (byte* p = path) s.OrigSnapshot(p, 0);
+    }
+
     /// <summary>Screenshots and save thumbnails with no GL: the screen the frame drew, read back before its present in
     /// the engine's GL_RGB layout -- rows bottom-up, each padded to 4 bytes. A format other than RGB, no device on this
     /// thread, or no screen drawn yet leaves the buffer as the engine allocated it and says so once.</summary>

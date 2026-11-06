@@ -155,6 +155,7 @@ global using unsafe SdlGlSetSwapIntervalFn = delegate* unmanaged<int, int>;
 global using unsafe SdlGlGetDrawableSizeFn = delegate* unmanaged<nint, int*, int*, void>;
 global using unsafe SdlVulkanGetDrawableSizeFn = delegate* unmanaged<nint, int*, int*, void>;
 global using unsafe RiReadPixelsFromBufferFn = delegate* unmanaged<uint, int, int, int, int, int, byte*, void>;
+global using unsafe AurSnapshotFn = delegate* unmanaged<byte*, byte, void>;
 global using unsafe RiClearFn = delegate* unmanaged<uint, void>;
 global using unsafe RiSetClearColorFn = delegate* unmanaged<float, float, float, float, void>;
 global using unsafe RiDeleteTexturesFn = delegate* unmanaged<uint, uint*, void>;
@@ -4523,6 +4524,10 @@ public static unsafe class EngineFn
     private static bool _RiReadPixelsFromBufferDone;
     /// <inheritdoc cref="SymbolMap.RiReadPixelsFromBuffer"/>
     public static RiReadPixelsFromBufferFn RiReadPixelsFromBuffer => (RiReadPixelsFromBufferFn)(_RiReadPixelsFromBufferDone ? _RiReadPixelsFromBuffer : Resolve(ref _RiReadPixelsFromBuffer, ref _RiReadPixelsFromBufferDone, SymbolMap.RiReadPixelsFromBuffer));
+    private static IntPtr _AurSnapshot;
+    private static bool _AurSnapshotDone;
+    /// <inheritdoc cref="SymbolMap.AurSnapshot"/>
+    public static AurSnapshotFn AurSnapshot => (AurSnapshotFn)(_AurSnapshotDone ? _AurSnapshot : Resolve(ref _AurSnapshot, ref _AurSnapshotDone, SymbolMap.AurSnapshot));
     private static IntPtr _RiClear;
     private static bool _RiClearDone;
     /// <inheritdoc cref="SymbolMap.RiClear"/>
@@ -6662,6 +6667,12 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.RiReadPixelsFromBuffer"/>; returns the slot holding the next layer, or null.</summary>
     public static RiReadPixelsFromBufferFn* ChainRiReadPixelsFromBuffer(this HookService h, RiReadPixelsFromBufferFn handler, int priority) =>
         (RiReadPixelsFromBufferFn*)h.Chain(SymbolMap.RiReadPixelsFromBuffer, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.AurSnapshot"/>; returns the original, or null.</summary>
+    public static AurSnapshotFn InstallAurSnapshot(this HookService h, AurSnapshotFn handler) =>
+        (AurSnapshotFn)h.Install(SymbolMap.AurSnapshot, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.AurSnapshot"/>; returns the slot holding the next layer, or null.</summary>
+    public static AurSnapshotFn* ChainAurSnapshot(this HookService h, AurSnapshotFn handler, int priority) =>
+        (AurSnapshotFn*)h.Chain(SymbolMap.AurSnapshot, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.RiClear"/>; returns the original, or null.</summary>
     public static RiClearFn InstallRiClear(this HookService h, RiClearFn handler) =>
         (RiClearFn)h.Install(SymbolMap.RiClear, (IntPtr)handler);
