@@ -246,8 +246,7 @@ the part's coverage. `#define KEYHOLING 0` keeps the part from dissolving, as it
 **Its own depth.** A pair whose vertex half runs, or whose fragment half makes its own coverage (a discard, a
 written alpha, `ENVIRONMENT_MAP 1` or `NO_TEXTURE 1`), places or cuts its own depth. Its parts go through the
 pair's depth twin in the prepass and cast through its caster twins: the same vertex half and the same cut as
-the colour draw, so a swaying hedge's shadow sways and a hair card's shadow keeps its gaps. The caster twins
-need the bindless handle table; without it such a part casts off its diffuse alpha, unmoved.
+the colour draw, so a swaying hedge's shadow sways and a hair card's shadow keeps its gaps.
 
 **The environment.** The engine's prologue defines are there (`SHADER_QUALITY_MODE 2`, `NO_DISCARD 0`,
 `BUILD_VERSION`/`BUILD_REVISION` of the running client, `varying`, `texture2D`, `gl_FragColor`), and so is
@@ -298,8 +297,7 @@ rules:
 - With `alloy.a2cmask` on, a part in the antialiased coverage layer still draws its pair's own program, which
   writes no per-sample mask: its edges cover every sample its cut keeps, rather than the mask's dithered ones.
 - The stock helpers the stand-ins supply (`NoiseSimplex2D`/`3D`, `Random`, …) are Alloy's own, with the same
-  contract but not the same values. A stage that includes the engine's own file gets the engine's. Without the
-  bindless handle table, `texUnitNoise` and `texture7`..`texture10` sample the diffuse.
+  contract but not the same values. A stage that includes the engine's own file gets the engine's.
 - A vertex half reads `texUnit0`..`texUnit10`. The probe and noise units reach the fragment half only.
 
 **On a GUI part.** A pair on a model in a GUI scene, such as a character panel's doll, runs one of three ways:
@@ -308,7 +306,8 @@ rules:
   `screenParams` and `texUnit0`. A load screen runs this way.
 - A pair with a stock vertex half that samples any later unit runs its fragment half inside the GUI's own program. It
   reads the same parameters, object values and `texUnit1`..`texUnit10` as in an area, and lights by the GUI's light. It
-  has no fog, keyhole, area light or probe, and a stage's own light loop finds no lights.
+  has no fog, keyhole, area light or probe, and a stage's own light loop finds no lights. `texUnitNoise` samples the
+  diffuse there.
 - A pair that samples past `texUnit0` with its own vertex half draws its baked texture. `GuiContent` says so in the log.
 
 A model view's doll is a creature of the client's own, so the server's object values land on the creature it copies. The

@@ -249,3 +249,5 @@ weather\.streak\b|Rain streak length|Streaks and flakes|each streak	CX-456
 ADR[- ]0021	#220
 # A content pair's lanes live in a pool sized to the pair, not in a fixed array on the row.
 twelve parameters per pair|\bCX_CP_LANES\b|\bContentLaneValues\b	#218
+# Vulkan's lit stage reads its textures only through the handle table, so the knob's off state drew every lit surface white.
+alloy\.bindless\b|\bBindlessDecided\b|\bDecideBindlessVk\b|\bSaidNoBindless\b|bindless (is )?off\b|only under bindless|stands the bindless path down|when ARB_bindless_texture is available	CX-507

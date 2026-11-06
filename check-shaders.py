@@ -853,13 +853,14 @@ def content_pair(g, vs, fs, chain):
 def pair_programs(name, vtext, ftext, fres, vres):
     """The programs ContentPrograms.Twins builds for a pair, by the same facts."""
     vb = vs_bindless(vtext) if vres is not None else vtext
-    out = {f"{name}": (vtext, ftext), f"{name} (bindless)": (vb, bindless(ftext))}
+    fb = bindless(ftext)
+    out = {f"{name}": (vb, fb)}
     post = fres is not None and fres.post
     lights = fres is not None and fres.reads_lights
     if not post and not lights:
-        out[f"{name} (deferred twin)"] = (vtext, with_define(with_define(ftext, "CX_GBUF_OUT 1"), "CX_DEFERRED 1"))
+        out[f"{name} (deferred twin)"] = (vb, with_define(with_define(fb, "CX_GBUF_OUT 1"), "CX_DEFERRED 1"))
     if (fres is not None and fres.cuts) or vres is not None:
-        depth = with_define(bindless(ftext), "CX_DEPTH_ONLY 1")
+        depth = with_define(fb, "CX_DEPTH_ONLY 1")
         cast = with_define(depth, "CX_CAST 1")
         out[f"{name} (depth twin)"] = (vb, depth)
         out[f"{name} (caster twin)"] = (with_define(vb, "CX_CAST 1"), cast)

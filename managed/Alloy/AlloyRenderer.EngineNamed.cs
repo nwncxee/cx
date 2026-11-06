@@ -200,7 +200,7 @@ public sealed unsafe partial class AlloyRenderer
     private static bool FillEngineBlock()
     {
         EngineNamedState e = _engineU;
-        ulong h = Bindless ? HandleFor(FrameSnapshot.OwnNoise()) : 0ul;
+        ulong h = HandleFor(FrameSnapshot.OwnNoise());
         if (e.Frame == _frameSeq && e.Proj == _projMtx && e.Noise == h) return true;
         bool fresh = e.Frame != _frameSeq;
         e.Frame = _frameSeq; e.Proj = _projMtx; e.Noise = h;

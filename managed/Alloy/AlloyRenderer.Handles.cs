@@ -96,11 +96,7 @@ public sealed unsafe partial class AlloyRenderer
     internal static void DropHandle(uint name)
     {
         if (name == 0) return;
-        // #242: a persistent record carries its handles (and, bindless off, its cached tid) across frames, so a
-        // dying name must reach the records that hold it. That used to be an epoch bump here; under the texture
-        // cache names die every second or two, so it is now the per-slot mark NoteOwnedNamesRetired makes in
-        // Drain before this runs.
-        if (!_bindless) return;
+        // a record carries its handles across frames: NoteOwnedNamesRetired marks its slot in Drain before this runs
         int tid = (int)name, h = Slot(tid);
         for (int probes = 0; probes < (1 << HandleHashBits); probes++)
         {
@@ -116,16 +112,19 @@ public sealed unsafe partial class AlloyRenderer
         }
     }
 
+    /// <summary>What a stage that samples by handle opens with.</summary>
+    internal const string BindlessPrologue = "#define CX_BINDLESS 1\n#extension GL_ARB_bindless_texture : require\n";
+
     /// <summary>Rewrite a fragment stage's bound samplers into per-draw bindless handles. The stage already
     /// receives <c>vDraw</c> (the record index) for its material colours; the same index now selects its
     /// textures, which lets one multidraw span every texture in a class. Pure text: where the declarations
-    /// are not found the output lacks the handle block and the caller stands the bindless path down.</summary>
+    /// are not found the output is the input, with no handle block.</summary>
     internal static string BindlessFs(string fs)
     {
         string[] names = { "uTex", "uFlowTex", "uNrmTex", "uSpecTex", "uRoughTex", "uHeightTex", "uIllumTex", "uAoTex" };
         int[] slot = { 0, 6, 1, 2, 3, 4, 5, 7 };
         var sb = new System.Text.StringBuilder(
-            "#define CX_BINDLESS 1\n#extension GL_ARB_bindless_texture : require\n" +
+            BindlessPrologue +
             $"layout(std430, binding = {BindTexH}) readonly buffer CxTexH {{ uvec2 uTexH[]; }};\n");
         for (int i = 0; i < names.Length; i++)
             sb.Append($"#define {names[i]} sampler2D(uTexH[(vDraw << 3) + {slot[i]}])\n");

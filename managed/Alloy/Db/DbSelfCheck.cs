@@ -57,6 +57,7 @@ internal static class DbSelfCheck
             check.Expect(Sheets(), "a sheet is judged off its triangles, either side up, whatever its authored normals say; a decal hung on a wall is one, crossed cards are not");
             check.Expect(BlendIndices(), "the recipe's blend pair is an INDEX into the engine's blendTranslationTable, not a GL factor");
             check.Expect(Mtr(), "the .mtr parse: the eleven texture slots, the render hints ExtractRenderHint maps, the parameters and both flags");
+            check.Expect(StagedHandle(), "a staged part's record carries its diffuse's handle: a row left empty is the white stand-in on every lit surface");
             check.Expect(TexReplace(), "Gob::ReplaceTexture: a part already showing the texture asked for is refreshed to the model's own first, so the SAME pair issued twice swaps again");
             check.Expect(PltMtrDiffuse(), "a replace matches the slot's effective name: the .mtr's texture when the file supplies one, else the mesh bitmap or the graft model -- so a creature's PLT replace leaves an authored diffuse alone");
             check.Expect(LateCoverage(), "a .mtr that lands after a recipe was interned re-seeds the coverage mode, which no texture serial would move");
@@ -179,6 +180,26 @@ internal static class DbSelfCheck
     }
 
     // ---------------------------------------------------------------- checks
+
+    /// <summary>What a lit stage samples comes off the record's handle row, so staging fills it. Oracle: the handle
+    /// value typed here, landed through the registry as an arrival lands, and read back off the record.</summary>
+    private static bool StagedHandle()
+    {
+        const ulong Resident = 0xC0FFEE05u;   // not-an-offset: a stand-in handle value, never dereferenced
+        Reset();
+        var model = Model("stagedh", new[] { -1, 0 }, new[] { NodeKind.Dummy, NodeKind.TriMesh },
+                          new MeshDef?[] { null, Quad("cx_sc_stagedh") });
+        DbId o = NewObject();
+        if (!PartTree.Build(o, model)) return false;
+        int p = SceneDb.ObjPartFirst[o.Index] + 1;
+        int r = DrawRecipe.Intern(model, 1, plan: false);
+        if (r < 0) return false;
+        DrawRecipe.Assign(p, r);
+        TexRegistry.Land(DrawRecipe.Tex(r, 0), 4243u, 16, Resident);
+        bool ok = AlloyRenderer.SelfCheckStagedDiffuse(p) == Resident;
+        DrawRecipe.Assign(p, -1);
+        return ok;
+    }
 
     /// <summary><c>CreateInstanceTreeR</c> @0x43c6b0: a part per node, children in order after their parent.</summary>
     private static bool Twins()

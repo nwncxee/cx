@@ -1,6 +1,4 @@
 using System;
-using System.Numerics;
-using System.Runtime.InteropServices;
 using CX.Framework;
 using CX.Graphics;
 using CX.Graphics.Rhi;
@@ -47,17 +45,6 @@ internal static unsafe class Programs
         _log?.Info("AlloyRenderer: module changed (or alloy.native was edited) -- the spliced programs (lit, content pairs, "
                  + "water, grass, post, sky) and the native stages' images and passes are dropped and rebuild from this "
                  + "module's resource chain");
-    }
-
-    /// <summary>The bindless decision for a Vulkan session, whose descriptor table is bindless on every device: the
-    /// knob alone (<c>alloy.bindless off</c> still binds per batch), with no GL probe.</summary>
-    internal static void DecideBindlessVk()
-    {
-        if (_bindlessProbed) return;
-        _bindlessProbed = true;
-        _bindless = Renderer.Bindless.Boot != 0;
-        _log?.Info(_bindless ? "AlloyRenderer: Vulkan's bindless table armed -- lit batches merge across textures"
-                             : "AlloyRenderer: bindless texturing vetoed (alloy.bindless off) -- per-batch texture binds on Vulkan");
     }
 
     /// <summary>What the owned stages ask of the driver beyond its guaranteed floor: three vertex-stage SSBO

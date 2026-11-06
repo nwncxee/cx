@@ -136,13 +136,10 @@ public sealed unsafe partial class AlloyRenderer
             if (cpu[f] != gpu[f])
                 return $"record float {f} is {cpu[f]:R} on the CPU and {gpu[f]:R} on the GPU "
                      + "(the record changed without MarkRecordDirty)";
-        if (_bindless)
-        {
-            for (int s = 0; s < TexHandles.MaterialSlots; s++)
-                if (_dTexH[i][s] != _saTexH[i][s])
-                    return $"texture handle {s} is 0x{_dTexH[i][s]:x} on the CPU and 0x{_saTexH[i][s]:x} "
-                         + "on the GPU (the handle table changed without a dirty slot)";
-        }
+        for (int s = 0; s < TexHandles.MaterialSlots; s++)
+            if (_dTexH[i][s] != _saTexH[i][s])
+                return $"texture handle {s} is 0x{_dTexH[i][s]:x} on the CPU and 0x{_saTexH[i][s]:x} "
+                     + "on the GPU (the handle table changed without a dirty slot)";
         string? plt = PltColors.MirrorDiff(i);
         if (plt != null) return plt;
 

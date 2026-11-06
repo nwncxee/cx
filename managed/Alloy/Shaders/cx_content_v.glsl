@@ -37,9 +37,7 @@
 
 #include "cx_keyfogdecl.glsl"
 #include "cx_pass.glsl"
-#ifdef CX_BINDLESS
 layout(std430, binding = 3) readonly buffer CxTexH { uvec2 uTexH[]; };
-#endif
 #include "cx_conbuf.glsl"
 
 // ---- what the host region sets before the stage runs: the draw's record and slot, its bone base (-1 unposed), and
@@ -134,8 +132,7 @@ vec3 CxConClipV()
 #define bboxMin (vec3(0.0))
 #define bboxMax (vec3(0.0))
 // the material units: GLRender::ConnectShaderData @0x4ce8e0 pins texUnitN to unit N for the PROGRAM, so a vertex
-// stage samples them too -- off the record's handles under bindless, else the fragment stage's own sampler uniforms
-#ifdef CX_BINDLESS
+// stage samples them too -- off the record's handles
 #define CxConUnit(k) sampler2D(uTexH[(cxConDraw << 3) + (k)])
 #define texUnit0 CxConUnit(0)
 #define texUnit1 CxConUnit(1)
@@ -144,16 +141,6 @@ vec3 CxConClipV()
 #define texUnit4 CxConUnit(4)
 #define texUnit5 CxConUnit(5)
 #define texUnit6 CxConUnit(6)
-#else
-uniform sampler2D uTex, uNrmTex, uSpecTex, uRoughTex, uHeightTex, uIllumTex, uFlowTex;
-#define texUnit0 uTex
-#define texUnit1 uNrmTex
-#define texUnit2 uSpecTex
-#define texUnit3 uRoughTex
-#define texUnit4 uHeightTex
-#define texUnit5 uIllumTex
-#define texUnit6 uFlowTex
-#endif
 #define texUnit7  CxConPal(0)
 #define texUnit8  CxConPal(1)
 #define texUnit9  CxConPal(2)

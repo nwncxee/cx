@@ -206,7 +206,7 @@ public sealed unsafe partial class AlloyRenderer
         FrameZones.Add(FrameZones.Zone.Own, tOwn);
         long tPrep = FrameZones.Now, lights0 = FrameZones.Ticks(FrameZones.Zone.Lights);
         Step("EnsureProgram");
-        Programs.DecideBindlessVk(); ContentPrograms.EnsureWanted();
+        ContentPrograms.EnsureWanted();
         // #117/#119: the lighting rig, the draw state and the batch BUILD are bracket preamble -- both
         // colour-bracket passes draw the same staged batches, and building twice would revalidate (and
         // re-stamp OwnGen for) every Alloy part twice. The passes come off FrameGraph, not off call order.
@@ -424,7 +424,7 @@ public sealed unsafe partial class AlloyRenderer
     /// surface would stamp solid depth over everything drawn after it. A WASH is in -- vanilla draws that part
     /// alpha-tested and depth-writing in bucket 1; a content pair whose depth is its own is out, its draw moves it.</summary>
     private static bool BlendLaysDepth(int g)
-        => !ContentPrograms.OwnDepth(_gFeat[g]) && (!_bindless || _gLit[g]);
+        => !ContentPrograms.OwnDepth(_gFeat[g]) && _gLit[g];
 
     /// <summary>Does the feature sweep of the prepass take this batch? The cutout class, and every content pair whose
     /// depth is its own -- through the pair's depth twin, which runs its vertex half and its coverage, and only where the
@@ -436,7 +436,7 @@ public sealed unsafe partial class AlloyRenderer
         if (AlloyClasses.Blends(_gCls[g])) return false;
         // CX-189: nor a coverage cutout -- a 0.2-cut depth laid first would hide the background its fringe blends over
         if (_gA2c[g]) return false;
-        if (ContentPrograms.OwnDepth(f)) return _bindless && ContentPrograms.DepthProgram(f) != 0;
+        if (ContentPrograms.OwnDepth(f)) return ContentPrograms.DepthProgram(f) != 0;
         return _gCls[g] == (byte)AlloyClass.Cutout;
     }
 
