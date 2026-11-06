@@ -42,6 +42,11 @@ float CxSurfFade(vec3 L) { return cxSurfFade.w > 0.0 ? clamp(dot(cxSurfFade.xyz,
 const float CX_SURF_FADE_MIN = 0.1;
 // inc_material.shd:312: the fade from the height map's own occlusion (1 = open, SetupOcclusionBase's 1 / 0.1)
 float CxSurfFadeOf(float heightAo) { return 1.0 / mix(1.0, CX_SURF_FADE_MIN, heightAo * heightAo); }
+// inc_lighting.shd:336: the fade compiles in above quality 1; 0 is cxSurfFade's "none"
+float CxSurfFadeFor(int quality, float heightAo)
+{
+    return quality > 1 ? CxSurfFadeOf(heightAo) : 0.0;
+}
 // the share of a baked light's highlight the mirror lobes carry, the pages' one lobe the rest: 0 at the ceiling,
 // 1 at half of it. A cut there swapped the baked shadow for one cube tap wherever rain crossed the ceiling.
 float CxGlossW(float rough) { return uLightOcc.x > 0.0 ? 1.0 - smoothstep(0.5 * uLightOcc.y, uLightOcc.y, rough) : 0.0; }

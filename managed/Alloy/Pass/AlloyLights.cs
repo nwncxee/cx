@@ -116,6 +116,8 @@ internal static unsafe class AlloyLights
     /// <summary>The stock energy factor for the subsurface term at wrap <paramref name="w"/>:
     /// fEnergyPreservation / (1 + w) = 2 / (2 + PI * w).</summary>
     internal static float SssK(float w) => 2f / (2f + MathF.PI * w);
+    /// <summary>The client's shader quality; High Quality's 2 until the rig has resolved the engine's read.</summary>
+    internal static int ShaderQuality => _gspI == null ? 2 : _gspI(QualityParam);
     private static bool SssOn => _sss > 0f && (_gspI == null || _gspI(QualityParam) > 1);
     /// <summary>Local-cube PCF radius, in cube texels at the sample distance. 0 = the single hardware
     /// PCF tap this shipped with; anything above widens the filter with four more taps on a disc

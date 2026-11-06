@@ -90,9 +90,9 @@ internal static partial class DrawRecipe
 
     /// <summary>Does the stage the engine draws <paramref name="mesh"/> with read <paramref name="mtr"/>'s spec,
     /// roughness, height and self-illumination maps? A named pair always runs (<c>GLRender::RenderVertexData</c>
-    /// @0x5d0570 skips <c>GetShaderByAttributes</c> for it); otherwise only a <c>*_nm</c> stage, a tangent frame's (the model's or the material's hint).</summary>
+    /// @0x5d0570 skips <c>GetShaderByAttributes</c> for it); otherwise only a <c>*_nm</c> stage, a tangent frame's (the model's, or the material's hint where the node states none).</summary>
     private static bool StageReadsMaps(MtrDef mtr, MeshDef mesh)
-        => mtr.ShaderVs.Length != 0 && mtr.ShaderFs.Length != 0 || mtr.RenderHint is 2 or 3 || ModelMaps(mesh);
+        => mtr.ShaderVs.Length != 0 && mtr.ShaderFs.Length != 0 || mesh.RenderHintId == 0 && mtr.RenderHint is 2 or 3 || ModelMaps(mesh);
 
     /// <summary>Palette slot <paramref name="k"/>'s bindless handle on recipe <paramref name="r"/>, for the
     /// one reader that takes them that way (<see cref="ContentTable.Upload"/>). 0 until the texture is resident.</summary>

@@ -33,7 +33,8 @@ nothing in vanilla, and Alloy drops it the same way. Give the model tangents (`r
 NormalAndSpecMapped` in the model or in the material), or name a shader pair that reads those maps, and they
 draw in both. A normal map (`texture1`) named in the `.mtr` is the exception: Alloy draws it on any model.
 
-`DisplacementOffset` and `DisplacementMultiplier` tune a height map's relief as they do in vanilla. The
+`DisplacementOffset` and `DisplacementMultiplier` tune a height map's relief on a material that names both
+`customShaderVS` and `customShaderFS`, as they do in vanilla. On any other material they do nothing. The
 offset shifts where the relief starts, and the multiplier scales its depth and how finely it is traced. A
 multiplier of 0 counts as 1.
 

@@ -66,6 +66,7 @@ public sealed unsafe partial class AlloyRenderer
         // viewport actually bound. Everything else below is the engine's own live value.
         float w = viewport[2] > 0 ? viewport[2] : 1f, h = viewport[3] > 0 ? viewport[3] : 1f;
         LooseBlock.Set(loc.Pixel, 1f / w, 1f / h, w / h);
+        LooseBlock.Set(loc.ShaderQuality, AlloyLights.ShaderQuality);
         LooseBlock.Set(loc.LodBias, PostChain.LodBias);   // -1 where the stage declares none; the block drops it
         LooseBlock.Set(loc.Now, TexStream.Clock);
         UploadFog(loc);

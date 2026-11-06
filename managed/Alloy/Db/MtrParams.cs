@@ -50,6 +50,8 @@ internal static class MtrParams
     internal static void Fold(MtrDef? mtr, ref ParamRow param, Span<float> feat)
     {
         int f = (int)feat[0];
+        // the engine uploads a parameter only to a named pair (SharedMaterial::Init @0x5c6ff0); no stock stage hears these two
+        bool paired = mtr != null && mtr.ShaderVs.Length != 0 && mtr.ShaderFs.Length != 0;
         if (mtr != null)
             foreach ((string name, float[] v, bool isInt) in mtr.Parameters)
             {
@@ -63,8 +65,8 @@ internal static class MtrParams
                 if (Is(name, "Specularity")) param.Specularity = v[0];
                 else if (Is(name, "Roughness")) param.Roughness = v[0];
                 else if (Is(name, "Metallicness")) param.Metallicness = v[0];
-                else if (Is(name, "DisplacementOffset")) param.DisplacementOffset = v[0];
-                else if (Is(name, "DisplacementMultiplier")) param.DisplacementMultiplier = v[0];
+                else if (paired && Is(name, "DisplacementOffset")) param.DisplacementOffset = v[0];
+                else if (paired && Is(name, "DisplacementMultiplier")) param.DisplacementMultiplier = v[0];
                 else if (Is(name, "CustomSpecularColor") && v.Length >= 3)
                 {
                     param.CustomR = v[0]; param.CustomG = v[1]; param.CustomB = v[2];
@@ -181,6 +183,8 @@ internal static class MtrParams
         check.Expect(DrawRecipe.SlotName(2, half, plain) == "", "a material naming only an FS keeps its spec map on a tangentless mesh");
         MtrDef hintMtr = MtrDef.Parse(System.Text.Encoding.ASCII.GetBytes("renderhint NormalAndSpecMapped\ntexture3 r_r\n"), "hintcheck");
         check.Expect(DrawRecipe.SlotName(3, hintMtr, plain) == "r_r", "a material whose own hint gives the mesh tangents loses its roughness map");
+        var optedOut = new Mdl.MeshDef { RenderHintId = 1 };
+        check.Expect(DrawRecipe.SlotName(3, hintMtr, optedOut) == "", "a node's renderhint none does not win over its material's hint");
         var nulled = new Mdl.MeshDef { RenderHintId = 2 };
         nulled.Textures[0] = "NULL"; nulled.Textures[1] = "null";
         check.Expect(DrawRecipe.SlotName(0, null, nulled) == "" && DrawRecipe.SlotName(1, null, nulled) == "",

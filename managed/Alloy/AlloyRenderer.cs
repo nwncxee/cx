@@ -569,7 +569,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// included: the fog colour is direction-dependent, so every stage that fogs uploads the same five values
     /// through <see cref="UploadFog"/>.</summary>
     internal unsafe struct FeatLoc { internal int Time, Wind, Flags, Cam, CamFocus, Player, Fog, FogColor, KhDia, KhCam,
-                                       Pixel, Eye, FogSky, FogSkyColor, FogSun, FogSunColor, FogOrigin, VFog, VFogVp, LodBias,
+                                       Pixel, ShaderQuality, Eye, FogSky, FogSkyColor, FogSun, FogSunColor, FogOrigin, VFog, VFogVp, LodBias,
                                        TgtShapeL, TgtSelfL, TgtObjL, TgtSizeXL, TgtSizeYL, TgtRangeL,
                                        TgtColL, TgtWorldL, Now;
         /// <summary>The WHOLE scriptable block, by location. Picking entries one feature at a time was a

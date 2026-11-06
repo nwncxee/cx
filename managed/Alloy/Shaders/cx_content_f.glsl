@@ -129,7 +129,7 @@
 #define keyholeMinZOffset (uKeyholeDia.z)
 #define bboxMin (vec3(0.0))
 #define bboxMax (vec3(0.0))
-#define DisplacementOffset 0.0
+#define DisplacementOffset (uDraw[vDraw].amb.w)
 
 // ---- lighting: Alloy lights the surface after the body. A stage that reads the engine's per-light arrays itself (its
 // own lighting) gets them filled from the lights binned at this fragment, in the engine's gamma-correcting layout:
@@ -286,7 +286,7 @@ void SetupOcclusionFromTexture(vec2 uv, sampler2D height) { }
 #ifndef CX_CON_HAS_SetupTSB
 mat3 SetupTSB()
 {
-    vec3 n = normalize(vNrm);
+    vec3 n = normalize(gl_FrontFacing ? vNrm : -vNrm);
     vec3 t = vTan.w != 0.0 ? normalize(vTan.xyz - n * dot(n, vTan.xyz))
            : normalize(abs(n.z) < 0.999 ? cross(vec3(0.0, 0.0, 1.0), n) : vec3(1.0, 0.0, 0.0));
     return mat3(t, cross(n, t) * (vTan.w < 0.0 ? -1.0 : 1.0), n);
