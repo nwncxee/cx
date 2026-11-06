@@ -79,6 +79,7 @@ internal static class Quality
         check.Expect(CX.Alloy.Grass.Style.RungValue(classic) == 1 && CX.Alloy.Grass.Style.RungValue(Shipped) == 0,
           "grass.style: game textures under Classic, blades otherwise");
         check.Expect(!CX.Alloy.Weather.Enabled.RungValue(classic) && CX.Alloy.Weather.Enabled.RungValue(Shipped), "weather.enabled: off under Classic");
+        check.Expect(!Renderer.Vrs.RungValue(System.Array.IndexOf(Levels, "high")), "alloy.vrs: off at the shipped detail level, where it blurs textured ground");
         check.Expect(!Fog.Enabled.RungValue(classic) && Fog.Enabled.RungValue(Shipped), "fog.enabled: off under Classic");
         check.Expect(Post.Bloom.RungValue(classic) == 0f && Post.Bloom.RungValue(Shipped) == 0.06f, "post.bloom: 0 under Classic");
         check.Expect(Post.Aa.RungValue(classic) == "smaa" && Post.Aa.RungValue(Shipped) == "fsr", "post.aa: SMAA under Classic, FSR 3.1 shipped");
