@@ -47,7 +47,7 @@ public sealed unsafe partial class CasterPass
 
     /// <summary>The handle-sampling pair: <see cref="CastMaskVs"/> carrying the record index out, and
     /// <see cref="CastMaskFs"/> with <c>uTex</c> redirected through the handle block by
-    /// <see cref="AlloyRenderer.BindlessFs"/>. Text only; the programs exist only under bindless.</summary>
+    /// <see cref="AlloyRenderer.BindlessFs"/>. Text only.</summary>
     private static readonly string CastMaskHVs = CastMaskVs
         .Replace("out vec2 vUV;", "out vec2 vUV;\n        flat out int vDraw;")
         .Replace("vUV = aUV;", "vUV = aUV;\n            vDraw = gl_BaseInstance;");

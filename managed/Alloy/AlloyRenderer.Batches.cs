@@ -779,20 +779,15 @@ public sealed unsafe partial class AlloyRenderer
             bool a2c = cls == (int)AlloyClass.Cutout && _oA2c[i];
             // CX-273: ...and a ground decal draws in the layer's own pass, so it is a key term too
             bool decal = row.Decal;
-            // #153: under bindless a LIT batch no longer splits on its textures -- the handles ride the
-            // record, so one multidraw spans every texture in the class. Feat/dis stay in the key only for
-            // the depth prepass's whole-batch drop; unlit parts keep the bind path and the full key.
-            bool merge = _bindless && lit && cls != (int)AlloyClass.Water;
+            // a lit batch's handles ride the record, so one multidraw spans every texture in the class; unlit
+            // parts and water keep the bind path and the full key
+            bool merge = lit && cls != (int)AlloyClass.Water;
             int tidKey = merge ? -2 : tid;
-            bool sameSlots = groups != 0 && merge;
+            bool sameSlots = groups != 0;
             if (!merge)
             {
-                // CX-188: the map tids are gathered only for the batches that can CUT on them. A merged lit
-                // batch samples its maps off the handle block per draw, so Issue binds none of them
-                // (`handles` there is this same predicate) and _gTexN's row is dead state -- where the gather
-                // was six scattered loads and the compare six more, per draw, for every lit draw in the frame.
+                // the map tids, only for the batches that can cut on them: a merged lit batch reads its maps per draw
                 LoadSlotTids(i, slotTid);
-                sameSlots = groups != 0;
                 for (int s = 0; sameSlots && s < MapSlots; s++)
                     sameSlots = _gTexN[(groups - 1) * MapSlots + s] == slotTid[s];
             }

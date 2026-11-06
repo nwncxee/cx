@@ -169,9 +169,8 @@ internal static unsafe class ContentPrograms
     }
 
     /// <summary>Has this pair's halves been read, so its lanes are known? Asks for them now where no batch has: a GUI
-    /// part may be the pair's first draw, with no world frame coming. Its programs stay unbuilt, because the bindless
-    /// decision their text rests on may not be made yet; the build that follows starts a new epoch. False when the pair
-    /// has no lanes to offer: refused, or the plain path.</summary>
+    /// part may be the pair's first draw, with no world frame coming. Its programs stay unbuilt; the build that follows
+    /// starts a new epoch. False when the pair has no lanes to offer: refused, or the plain path.</summary>
     internal static bool ReadFacts(int feat)
     {
         if (Of(feat) is not { Failed: false, Plain: false } s) return false;
@@ -305,7 +304,8 @@ internal static unsafe class ContentPrograms
         }
         string? vs = vsStock ? litVs : WithRegion(litVs, VsLib, VanillaShader.ContentVsMark, s.HostVs, s.HostFs, VsStub);
         string? fs = fsStock ? litFs : WithRegion(litFs, FsLib, VanillaShader.ContentMark, s.HostFs, s.HostVs, RegionStub);
-        if (vs != null && !vsStock && AlloyRenderer.Bindless) vs = ShaderStages.AfterVersion(vs, VsBindless);
+        // a content vertex half samples by the record's handles; the lit vertex stage samples nothing
+        if (vs != null && !vsStock) vs = ShaderStages.AfterVersion(vs, AlloyRenderer.BindlessPrologue);
         if (vs != null && s.NatVs >= 0) vs = ShaderStages.WithDefine(vs, StageResources.NativeDefine);
         if (fs != null && s.NatFs >= 0) fs = ShaderStages.WithDefine(fs, StageResources.NativeDefine);
         if (vs == null || fs == null)
@@ -341,7 +341,7 @@ internal static unsafe class ContentPrograms
 
     /// <summary>The twins the pair's facts call for, beside its forward program: the deferred one unless it edits the lit
     /// colour or lights itself (only the forward program has either), and the depth and caster ones when its parts' depth
-    /// is its own -- the casters only with the handle table, the one way a caster stage reaches the pair's maps.</summary>
+    /// is its own.</summary>
     private static List<(string What, string Vs, string Fs, int Slot)> Twins(Stage s)
     {
         var list = new List<(string, string, string, int)>();
@@ -349,9 +349,9 @@ internal static unsafe class ContentPrograms
         if (!s.Post && !s.ReadsLights && LitDeferred(fs))
             list.Add(("deferred twin", vs, CX.Alloy.Programs.WithDeferred(fs), 1));
         if (!s.Cuts && !s.Moves) return list;
-        list.Add(("depth twin", vs, ShaderStages.WithDefine(fs, "CX_DEPTH_ONLY 1"), 2));
-        if (!AlloyRenderer.Bindless) return list;
-        string castFs = ShaderStages.WithDefine(ShaderStages.WithDefine(fs, "CX_DEPTH_ONLY 1"), "CX_CAST 1");
+        string depthFs = ShaderStages.WithDefine(fs, "CX_DEPTH_ONLY 1");
+        list.Add(("depth twin", vs, depthFs, 2));
+        string castFs = ShaderStages.WithDefine(depthFs, "CX_CAST 1");
         list.Add(("caster twin", ShaderStages.WithDefine(vs, "CX_CAST 1"), castFs, 3));
         list.Add(("layered caster twin", ShaderStages.WithDefine(vs, "CX_CAST_LAYER 1"), castFs, 4));
         return list;
@@ -433,10 +433,6 @@ internal static unsafe class ContentPrograms
 
     /// <summary>The libraries a content region replaces: the hosts that host nothing.</summary>
     internal const string FsLib = "cx_host_f", VsLib = "cx_host_v";
-
-    /// <summary>A content vertex half samples the material through the record's handles when the fragment stage
-    /// does: the lit vertex stage itself samples nothing, so only a content one is built with the extension.</summary>
-    private const string VsBindless = "#define CX_BINDLESS 1\n#extension GL_ARB_bindless_texture : require\n";
 
     /// <summary>What a region compiles to when its half is refused: no body.</summary>
     internal const string RegionStub = "bool CxHostSurface(int feat) { return false; }\n";

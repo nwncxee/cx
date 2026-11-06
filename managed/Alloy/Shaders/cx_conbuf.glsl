@@ -63,10 +63,6 @@ uvec2 CxConPalH(int draw, int k)
 #elif defined(CX_GUI_TWIN)
 // A GUI draw binds its maps by name per draw, so each palette map has a sampler of its own there.
 #define CxConPal(k) uGuiPal##k
-#else
-// No handle table, and the lit stage has spent units 0..30 -- the palette maps are out of reach. This keeps the
-// stage COMPILING, sampling the diffuse; ContentTable says so in the log.
-#define CxConPal(k) uTex
 #endif
 
 // The engine's per-stage `texture<N>Bound` flag for the four palette slots, off the record's slot mask -- vanilla's

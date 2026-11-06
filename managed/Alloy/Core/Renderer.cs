@@ -55,7 +55,7 @@ internal static class Renderer
     internal static readonly Knob<bool> Bcn, Hdr, OwnedTex, TexSingle, DdsRead, HandleDrop,
                                         Spirv, VanillaBridge, HostFs, OwnSkin, DumpShaders, GpuDebug, EngineZones,
                                         Gui, Movie;
-    internal static readonly Knob<int> Border, Oit, TexCache, Bindless, BcnDrip, TexDelete, MaxElements, RasterRead,
+    internal static readonly Knob<int> Border, Oit, TexCache, BcnDrip, TexDelete, MaxElements, RasterRead,
                                        ClusterCap, SkipBuckets, FrameDiff, ParityDump, StaleAudit;
     internal static readonly Knob<bool> Light, Prepass, Retest, HlDiag, Poll, PrepassKey, PrepassFeat, IdTarget,
                                         BlendDepth, VisList, WashTest, DepthEqual;
@@ -103,14 +103,6 @@ internal static class Renderer
     private static (bool, int) ParseAutoInt(string s)
         => s == "auto" ? (true, -1)
          : int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out int i) ? (true, i) : (false, 0);
-    private static string AutoOnOff(int v) => v < 0 ? "auto" : v != 0 ? "on" : "off";
-    private static (bool, int) ParseAutoOnOff(string s) => s switch
-    {
-        "auto" or "-1" => (true, -1),
-        "on" or "1" => (true, 1),
-        "off" or "0" => (true, 0),
-        _ => (false, 0),
-    };
 
     static Renderer()
     {
@@ -163,8 +155,6 @@ internal static class Renderer
                          help: "How overlapping transparent surfaces are combined.", changed: AlloyRenderer.InvalidateRecords);
         TexCache = G.Dropdown("texcache", "Texture memory budget", new[] { -1, 512, 1024, 2048, 4096, 8192 }, -1, tier: Tier.ChatOnly,
                               effect: Effect.Restart, format: AutoInt, parse: ParseAutoInt);
-        Bindless = G.Dropdown("bindless", "Bindless textures", new[] { -1, 1, 0 }, -1, tier: Tier.ChatOnly, effect: Effect.Restart,
-                              help: "Auto arms them: Vulkan's descriptor table is bindless on every device.", format: AutoOnOff, parse: ParseAutoOnOff);
         Native = G.Toggle("native", "Native shader stages", true, Tier.ChatOnly, changed: () => Programs.State.SpliceStale = true,
                           help: "Run a content shader's native version (cx_<stage>) where the module ships one; off runs the "
                               + "stage the engine runs.");

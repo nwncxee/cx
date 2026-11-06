@@ -418,11 +418,6 @@ public sealed unsafe partial class AlloyRenderer
     internal const int HandleHashBits = 15;
     internal static readonly int[] _hTid = new int[1 << HandleHashBits];
     internal static readonly ulong[] _hVal = new ulong[1 << HandleHashBits];
-    /// <summary>Is the bindless path live? Extension present, entry points resolved, not vetoed by
-    /// alloy.bindless=off, and the LIT program's actual sources carry the handle block. When false everything
-    /// draws exactly as before -- per-batch texture binds.</summary>
-    internal static bool _bindless;
-    internal static bool _bindlessProbed, _limitsProbed;
     /// <summary>This pass's draw order, rebuilt every pass from <see cref="_order"/> -- the opaque set
     /// first, then the blended members sorted back-to-front, then additive. It is a separate array from
     /// _order because the membership is per FRAME (a fading tile joins the blended run for the frames it

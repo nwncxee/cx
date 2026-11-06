@@ -76,8 +76,8 @@ internal static class ShaderStages
 
     internal const string BindlessNote = """
         // REFERENCE ONLY -- not a starting point for an override; the extender never loads this name. This is
-        // the lit fragment stage after the extender's own bindless rewrite (#153), which it applies to
-        // whatever cx_ownlit_fs supplies when ARB_bindless_texture is available. Override that instead.
+        // the lit fragment stage after the extender's own bindless rewrite, which it applies to whatever
+        // cx_ownlit_fs supplies. Override that instead.
 
         """;
 

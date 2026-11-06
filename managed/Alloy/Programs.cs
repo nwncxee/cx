@@ -1,8 +1,4 @@
 using System;
-using System.Numerics;
-using System.Runtime.InteropServices;
-using CX.Framework;
-using CX.Graphics;
 using CX.Graphics.Rhi;
 
 using static CX.Alloy.AlloyRenderer;
@@ -49,17 +45,6 @@ internal static unsafe class Programs
                  + "module's resource chain");
     }
 
-    /// <summary>The bindless decision for a Vulkan session, whose descriptor table is bindless on every device: the
-    /// knob alone (<c>alloy.bindless off</c> still binds per batch), with no GL probe.</summary>
-    internal static void DecideBindlessVk()
-    {
-        if (_bindlessProbed) return;
-        _bindlessProbed = true;
-        _bindless = Renderer.Bindless.Boot != 0;
-        _log?.Info(_bindless ? "AlloyRenderer: Vulkan's bindless table armed -- lit batches merge across textures"
-                             : "AlloyRenderer: bindless texturing vetoed (alloy.bindless off) -- per-batch texture binds on Vulkan");
-    }
-
     /// <summary>What the owned stages ask of the driver beyond its guaranteed floor: three vertex-stage SSBO
     /// blocks (draw, draw index, bones; floor 0) and the fragment sampler budget the lit stage declares. The
     /// bind sites spend units 0..15; past them the lit stage claims by <c>layout(binding)</c> up to the
@@ -69,7 +54,6 @@ internal static unsafe class Programs
     /// units Alloy binds. A driver short of these keeps the lit program -- <see cref="WithoutSunSoft"/> takes
     /// the define out so the two samplers are never declared -- and the sun falls back to its fixed cross.</summary>
     internal static readonly int SunSoftUnitsNeed = (int)TextureSlots.SunShadowDynRaw + 1;
-    private const int VsSsboNeed = 3;
 
     /// <summary>The define that compiles the sun's blocker search and disc into a stage. It lives in
     /// <c>cx_ownlit_head.glsl</c>, so a dumped stage and any override built from one carry it.</summary>

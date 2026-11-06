@@ -68,6 +68,70 @@ public sealed unsafe partial class AlloyRenderer
         return sb.ToString();
     }
 
+    /// <summary>The part's eight material handles onto its record, the only way a lit stage reaches its textures: an
+    /// empty diffuse draws the white stand-in. <paramref name="slots"/> loses each map with no handle, which draws
+    /// unbound. False when a worker met what only the main thread may do: register an arrival, or mint the stand-in.</summary>
+    private static bool DbStageHandles(int i, int part, int recipe, int tid, bool main, ref int slots, ref bool settled, ref StageCounters c)
+    {
+        ref TexHandles hh = ref _dTexH[i];
+        bool moved = false;
+        for (int s = 0; s < TexHandles.MaterialSlots; s++)
+        {
+            TexId id = DbTexOf(part, recipe, s);
+            ulong h = TexRegistry.Handle(id);
+            // 0 on the diffuse draws the white stand-in, 0 on a map slot draws it unbound; either way the
+            // record is told when the real one lands, which replaces a per-frame re-resolve of every slot.
+            // ...and a slot still LOADING with a handle is drawing its preview: the full chain is on its way.
+            if (!id.IsNull && (h == 0 || TexRegistry.StateOf(id) == TexState.Loading))
+            {
+                // Registering a dependent mutates the registry's own list; the main thread re-runs
+                // this part. Steady state is every texture resident, so this is the arrival window
+                // only -- not every frame.
+                if (!main) return false;
+                TexRegistry.AddDependent(id, part);
+                // ...and a map slot that has FAILED is final too: AddDependent no-ops on a
+                // non-loading slot, so nothing would ever come to repair the memo.
+                if (!TexRegistry.Final(id)) settled = false;
+            }
+            if (s == 0 && h == 0)
+            {
+                h = Handle(tid, main);
+                if (h == 0 && !main) return false;
+                if (h == 0) settled = false;
+            }
+            // stock's texture{N}Bound is enabled AND bound: a map with no handle (failed, loading) is unbound, not a 0 texel
+            if (h == 0) slots &= ~DrawRecipe.MaskBitOf(s, (int)DrawRecipe.FeatF(recipe, 0));
+            if (hh[s] != h) { hh[s] = h; moved = true; }
+        }
+        // only a moved handle dirties the table, and its slot goes on the list: a static part is on no other
+        if (moved) { _texHDirty = true; MarkRecordDirty(i, ref c); }
+        if (main)   // diagnostics: shared statics, main only
+        {
+            TileTexProbe(part, recipe, hh[0]);
+            DbBlackProbe(part, recipe, hh[0]);
+        }
+        return true;
+    }
+
+    /// <summary>The diffuse handle staging leaves on a record of <paramref name="part"/>, off a scratch slot put back
+    /// after. A worker's stage, so no diagnostic runs and nothing registers.</summary>
+    internal static ulong SelfCheckStagedDiffuse(int part)
+    {
+        const int Slot = 0;
+        TexHandles saved = _dTexH[Slot];
+        int dirtyN = _recDirtyN;
+        bool texDirty = _texHDirty;
+        _dTexH[Slot] = default;
+        int slots = 0;
+        bool settled = true;
+        var c = default(StageCounters);
+        ulong h = DbStageHandles(Slot, part, SceneDb.PartRecipe[part], 0, false, ref slots, ref settled, ref c) ? _dTexH[Slot][0] : 0;
+        _dTexH[Slot] = saved;
+        _recDirtyN = dirtyN;
+        _texHDirty = texDirty;
+        return h;
+    }
+
     /// <summary>One database part staged. Verdicts are <c>StagePart</c>'s: <c>Staged</c>, <c>Skipped</c> (this
     /// pass draws nothing for it) or <c>Deferred</c> (a worker could not take it; the main thread re-runs it).</summary>
     private static byte StageDbPart(int k, int i, bool lightingOn, ref StageCounters c, bool main)
@@ -79,13 +143,8 @@ public sealed unsafe partial class AlloyRenderer
         if (cls == (int)AlloyClass.Water && !_waterArmed) return Skipped;
         bool lit = _oLit[i];
         if (lit && !lightingOn) { Inc(ref Counters._skipNoLight); return Skipped; }
-        // The PLT stage is share-group work and a worker may not do it (ADR 0022). BINDLESS is not: this
-        // refusal was inherited from the engine path, whose reason (#220, minting a handle on a raw engine
-        // texture name) has no counterpart here -- CX-117's registry resolves handles in Alloy's own bracket
-        // and TexRegistry.Handle is a plain array read. Refusing on `_bindless` therefore deferred EVERY
-        // drawn DB part to the main thread and staged the frame twice: the forest measured 379 deferrals a
-        // frame against 379 draws. What is still main-only is the per-slot work below that mutates shared
-        // state -- a dependent registration for a texture that has not landed, and the tile diagnostic.
+        // The PLT stage is share-group work and a worker may not do it (ADR 0022). What else is main-only mutates
+        // shared state: a dependent registration in DbStageHandles for a texture that has not landed, and the tile diagnostic.
         // The override counts as much as the recipe: armour reaches its PLT through ReplaceTexture, and a slot
         // that WAS a PLT must be cleared on the main thread too -- PltColors' dirty range is unsynchronised, and
         // a lost update leaves the GPU drawing that record with a dead tenant's rows or no PLT flag at all.
@@ -145,12 +204,7 @@ public sealed unsafe partial class AlloyRenderer
             // main only: the route is shared, and a slot that is or was a PLT never stages on a worker (refused above)
             byte slotCls = main ? DbClsOf(part, recipe, _oWash[i] != 0, _oDecal[i] != 0) : _oCls[i];
             if (slotCls != _oCls[i]) { _oCls[i] = slotCls; UnstampRecord(i); DbSetGen++; }
-            // The GL NAME, not the registry id. `tid` is two things at once in this pipeline: the batch sort key
-            // AND what the non-bindless path actually binds (Issue: glBindTexture(GL_TEXTURE_2D, _gTex[g])).
-            // Handing it a TexId made every bind-path draw -- every unlit part, and every part at all when
-            // bindless is off -- bind a nonsense name and sample the white stand-in, which is what painted the
-            // floors and walls of the first lit DB area a flat lavender while the one bindless-lit chest in the
-            // room came out perfect.
+            // the owned name, not the registry id: `tid` is the batch sort key AND what the bind path binds
             TexRegistry.TryDrawable(diffuse, out uint diffuseName, out _);
             tid = (int)diffuseName;
             // CX-188: is this resolve FINAL -- can its answer change without a TableSerial bump? Only a
@@ -170,51 +224,7 @@ public sealed unsafe partial class AlloyRenderer
                 if (!main && OwnedTextures.WhiteName == 0) { c = snap; return Deferred; }
                 tid = main ? OwnedTextures.WhiteTid() : OwnedTextures.WhiteName;
             }
-            if (_bindless)
-                {
-                    ref TexHandles hh = ref _dTexH[i];
-                    bool moved = false;
-                    for (int s = 0; s < 8; s++)
-                    {
-                        TexId id = DbTexOf(part, recipe, s);
-                        ulong h = TexRegistry.Handle(id);
-                        // 0 on the diffuse draws the white stand-in, 0 on a map slot draws it unbound; either way the
-                        // record is told when the real one lands, which replaces a per-frame re-resolve of every slot.
-                        // ...and a slot still LOADING with a handle is drawing its preview: the full chain is on its way.
-                        if (!id.IsNull && (h == 0 || TexRegistry.StateOf(id) == TexState.Loading))
-                        {
-                            // Registering a dependent mutates the registry's own list; the main thread re-runs
-                            // this part. Steady state is every texture resident, so this is the arrival window
-                            // only -- not every frame.
-                            if (!main) { c = snap; return Deferred; }
-                            TexRegistry.AddDependent(id, part);
-                            // ...and a map slot that has FAILED is final too: AddDependent no-ops on a
-                            // non-loading slot, so nothing would ever come to repair the memo.
-                            if (!TexRegistry.Final(id)) settled = false;
-                        }
-                        if (s == 0 && h == 0)
-                        {
-                            h = Handle(tid, main);
-                            if (h == 0 && !main) { c = snap; return Deferred; }
-                            if (h == 0) settled = false;
-                        }
-                        // stock's texture{N}Bound is enabled AND bound: a map with no handle (failed, loading) is unbound, not a 0 texel
-                        if (h == 0) slots &= ~DrawRecipe.MaskBitOf(s, (int)DrawRecipe.FeatF(recipe, 0));
-                        if (hh[s] != h) { hh[s] = h; moved = true; }
-                    }
-                    // CX-188: ...and only a handle that actually MOVED dirties the table. The unconditional flag
-                    // made every frame re-upload the whole handle block -- and the caster bake reads that flag to
-                    // decide whether it has to re-upload before baking (BakeHandleUploads).
-                    // ...and the SLOT goes on the dirty list: a partial UploadHandles sends only _recDirty's runs, and a
-                    // static part whose record did not move is on no other list -- its GPU row kept the preview handle
-                    // Land had just made non-resident, black until it left view or a whole upload swept it up.
-                    if (moved) { _texHDirty = true; MarkRecordDirty(i, ref c); }
-                    if (main)   // diagnostics: shared statics, main only
-                    {
-                        TileTexProbe(part, recipe, hh[0]);
-                        DbBlackProbe(part, recipe, hh[0]);
-                    }
-                }
+            if (!DbStageHandles(i, part, recipe, tid, main, ref slots, ref settled, ref c)) { c = snap; return Deferred; }
             // CX-188: the record's own texture memos, written beside the resolve that produced them (they used to
             // sit at the tail of the function, which is the same point in the frame -- nothing between reads them).
             // The batch audit compares row.Tid against _recTid[i], and leaving it unwritten made every DB draw
@@ -227,13 +237,7 @@ public sealed unsafe partial class AlloyRenderer
                 TexRegistry.TryDrawable(DbTexOf(part, recipe, s + 1), out uint mapName, out _);
                 _recTidS[i * MapSlots + s] = (int)mapName;
             }
-            // CX-188: the staleness is REPAIRED here and nowhere earlier -- this is the last of the three things
-            // a retire invalidates (the bindless handle block above, the bind-path tid, and these map-slot tids),
-            // and no path between the resolve and this point returns. The clear lived in the deleted engine-path
-            // StagePart, so in DB mode nothing ever cleared it: a slot a retire marked failed RouteWanted's gate
-            // open for the rest of the session, and with a tileset texture on hundreds of parts that was ~13,6k
-            // slots a frame bypassing the frustum gate entirely. (With bindless OFF there is no handle block to
-            // repair and nothing samples one; `alloy.bindless` is Effect.Restart, so it cannot flip under us.)
+            // cleared only here, after all three things a retire invalidates: the handle row, the tid, the map tids
             _gate[i].TexStale = false;
             // The memo's own invalidation edges, both named on _recTexStamp: a registry write (TableSerial) and
             // this part's override column (DbTexDirty, from the Dirty.Texture fold). A resolve that did not

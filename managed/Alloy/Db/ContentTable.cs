@@ -110,7 +110,6 @@ internal static unsafe class ContentTable
         public long Version;
         /// <summary>Uploads whose dirty span reached past the buffer, and so were HELD rather than dropped.</summary>
         public long Short;
-        public bool SaidNoBindless;
         public ExtenderLog? Log;
 
         public TableState() { Array.Fill(Owner, -1); }
@@ -348,16 +347,8 @@ internal static unsafe class ContentTable
         TableState s = _st;
         if (s.Used > 0)
         {
-            bool handles = AlloyRenderer.Bindless;
-            if (!handles && AlloyRenderer.BindlessDecided && !s.SaidNoBindless)
-            {
-                s.SaidNoBindless = true;
-                s.Log?.Always("ContentTable: a content pair is in sight and the bindless handle table is OFF -- the lit stage "
-                            + "spends texture units 0..30, so texture7..texture10 have nowhere to sit and a stage that "
-                            + "samples them reads its diffuse; `alloy.bindless 1` plus a restart is what turns them on");
-            }
             // a null handle is a GPU fault on AMD's driver, so every empty slot takes a stand-in's instead
-            ulong nullH = handles ? AlloyRenderer.HandleFor(OwnedTextures.NullTid()) : 0ul;
+            ulong nullH = AlloyRenderer.HandleFor(OwnedTextures.NullTid());
             for (int r = 0; r < MaxRows; r++)
             {
                 int owner = s.Owner[r];
@@ -366,7 +357,7 @@ internal static unsafe class ContentTable
                 bool moved = false;
                 for (int k = 0; k < PalSlots; k++)
                 {
-                    ulong h = handles ? DrawRecipe.PalHandle(owner, k) : 0ul;
+                    ulong h = DrawRecipe.PalHandle(owner, k);
                     moved |= SetHandle(r, k, h != 0 ? h : nullH);
                 }
                 if (moved)

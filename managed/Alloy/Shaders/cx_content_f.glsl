@@ -106,6 +106,7 @@
 #define texUnitNoise (sampler2D(uConNoise != uvec2(0u) ? uConNoise : uTexH[vDraw << 3]))
 #define texNoiseBound (uConNoise != uvec2(0u) ? 1 : 0)
 #else
+// a GUI twin binds by unit and has no handle table (cx_guicon_f), so its noise unit reads the diffuse
 #define texUnitNoise uTex
 #define texNoiseBound 0
 #endif

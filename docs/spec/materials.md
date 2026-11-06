@@ -138,8 +138,7 @@ These are the engine's own last four material stages. A content pair's shader re
 names -- `texUnit7`..`texUnit10`, with `texture7Bound`..`texture10Bound` saying which of them the material
 actually stated -- and Alloy's own shading reads none of them. `texture11` is still the AO/ORM map and is not one
 of the four. They reach the shader as bindless texture handles, because the lit stage has already spent every
-ordinary texture unit; on a driver without `ARB_bindless_texture` (or with `alloy.bindless 0`) a stage that
-samples one reads its diffuse, and `cx.log` says so. How a content pair runs is `docs/shader-overrides.md`,
+ordinary texture unit. How a content pair runs is `docs/shader-overrides.md`,
 "Content shaders".
 
 ## Player settings
