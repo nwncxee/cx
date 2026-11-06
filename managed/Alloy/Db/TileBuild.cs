@@ -275,7 +275,7 @@ public static partial class TileBuild
         for (int k = 0; k < SceneDb.ObjPartCount[o]; k++)
         {
             int pk = SceneDb.ObjPartFirst[o] + k;
-            SceneDb.PartFade[pk] = 1f;
+            SceneDb.SetPartFade(pk, 1f);
             if (SceneDb.PartKindOf[pk] == PartKind.Aabb) _aabbParts++;
         }
         _partsMade += SceneDb.ObjPartCount[o];

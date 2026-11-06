@@ -79,7 +79,7 @@ public static partial class TileBuild
             ? Quaternion.Identity : Quaternion.CreateFromAxisAngle(Vector3.UnitZ, SceneDb.TileOrient[t] * 90f * (MathF.PI / 180f));
         SceneDb.ObjPos[o] = SceneDb.TilePos[t] + Vector3.Transform(nodePos, tileRot);
         SceneDb.ObjRot[o] = Quaternion.Normalize(tileRot * nodeRot);
-        SceneDb.ObjScene[o] = SceneDb.TileScene[t];
+        SceneDb.SetObjScene(o, SceneDb.TileScene[t]);
         SceneDb.ObjVisible[o] = true;
         Matrix4x4 w = Matrix4x4.CreateFromQuaternion(SceneDb.ObjRot[o]);
         w.Translation = SceneDb.ObjPos[o];

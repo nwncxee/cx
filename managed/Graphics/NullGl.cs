@@ -28,7 +28,7 @@ public sealed unsafe partial class NullGl : IExtenderService
         public AurSnapshotFn OrigSnapshot;
         public byte[]? SnapshotPath;
         public int SwapInterval;
-        public int Patched, Generic;
+        public int Patched;
         public readonly StubState Gl = new();
         public readonly HashSet<long> Said = new();
     }
@@ -151,12 +151,13 @@ public sealed unsafe partial class NullGl : IExtenderService
     internal static string Status()
     {
         NullGlState s = _s;
-        return !s.Decided ? "NullGl: undecided (no window yet)"
-            : !s.Active ? "NullGl: the engine has its GL context"
-            : $"NullGl: no GL context; {s.Patched} import(s) redirected, {s.Gl.Textures.Count} engine texture(s) held, "
-            + $"{s.Gl.Buffers.Count} engine buffer(s) in host memory";
+        return Describe(s.Decided, s.Active, s.Patched, s.Gl.Textures.Count, s.Gl.Buffers.Count);
     }
 
-    /// <summary>The swap interval the engine asked for, for the Vulkan present.</summary>
-    internal static int SwapInterval => _s.SwapInterval;
+    /// <summary><see cref="Status"/>'s text, over the numbers it reads.</summary>
+    internal static string Describe(bool decided, bool active, int patched, int textures, int buffers)
+        => !decided ? "NullGl: undecided (no window yet)"
+         : !active ? "NullGl: the engine has its GL context"
+         : $"NullGl: no GL context; {patched} import(s) redirected, {textures} engine texture(s) held, "
+         + $"{buffers} engine buffer(s) in host memory";
 }

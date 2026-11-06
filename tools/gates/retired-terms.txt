@@ -251,3 +251,5 @@ ADR[- ]0021	#220
 twelve parameters per pair|\bCX_CP_LANES\b|\bContentLaneValues\b	#218
 # Vulkan's lit stage reads its textures only through the handle table, so the knob's off state drew every lit surface white.
 alloy\.bindless\b|Dropdown\("bindless"|\bVsBindless\b|\b_bindlessProbed\b|\b_limitsProbed\b|\bBindlessDecided\b|\bDecideBindlessVk\b|\bSaidNoBindless\b|bindless (is )?off\b|only under bindless|stands the bindless path down|when ARB_bindless_texture is available	CX-507
+# The GL submission accounting printed a permanent zero once Alloy stopped submitting through GL.
+\bSubmit\.(Call|CallAt|At|Back|Line|ResetPeriod)\b	CX-517

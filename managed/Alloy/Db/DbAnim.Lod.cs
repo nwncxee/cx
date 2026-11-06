@@ -43,7 +43,7 @@ public static unsafe partial class DbAnim
     {
         if (_lodLevels[i] >= 2) _lodWanted--;
         _lodLevels[i] = 0;
-        SceneDb.ObjLodShown[i] = 0;
+        SceneDb.SetObjLodShown(i, 0);
     }
 
     private static void LodModels(DbId obj, ModelDef? level1, ModelDef? level2)
@@ -125,7 +125,7 @@ public static unsafe partial class DbAnim
             if (want > _lodLevels[i] - 1) want = _lodLevels[i] - 1;
             if (!enabled) want = 0;   // switched off mid-session: back to the authored model, not frozen where it was
             if (want == cur) { _lodPeriod.Held++; continue; }
-            SceneDb.ObjLodShown[i] = (byte)want;
+            SceneDb.SetObjLodShown(i, (byte)want);
             _lodPeriod.Swaps++; LodGen++;
             // Both alternates' records are live, so the only thing the renderer has to learn is which one to
             // draw -- an object edge, which the feed folds into its parts.

@@ -36,7 +36,7 @@ internal static unsafe class DoorFade
         int first = SceneDb.ObjPartFirst[o];
         for (int i = first; i < first + SceneDb.ObjPartCount[o]; i++)
         {
-            SceneDb.PartFade[i] = a;
+            SceneDb.SetPartFade(i, a);
             SceneDb.TouchPart(i, Dirty.Material);
         }
         SceneDb.Touch(obj, Dirty.Material);

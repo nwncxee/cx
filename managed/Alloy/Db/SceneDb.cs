@@ -973,6 +973,24 @@ public static class SceneDb
     /// <summary>Mark part <paramref name="p"/> (an absolute index into <see cref="Parts"/>) dirty.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void TouchPart(int p, Dirty d) { if ((uint)p < MaxParts && Parts.LiveAt(p)) Parts.Mark(p, d); }
+
+    /// <summary>The route terms' one way in: a part's own animated alpha.</summary>
+    public static void SetPartAlpha(int p, float alpha) => PartAlpha[p] = alpha;
+
+    /// <summary>The route terms' one way in: the fade of the tile or door a part belongs to.</summary>
+    public static void SetPartFade(int p, float fade) => PartFade[p] = fade;
+
+    /// <summary>The route terms' one way in: a part's keyhole verdict.</summary>
+    public static void SetPartDissolve(int p, float dissolve) => PartDissolve[p] = dissolve;
+
+    /// <summary>The route terms' one way in: the scene an object draws in.</summary>
+    public static void SetObjScene(int o, DbId scene) => ObjScene[o] = scene;
+
+    /// <summary>The route terms' one way in: the LOD alternate an object shows.</summary>
+    public static void SetObjLodShown(int o, byte shown) => ObjLodShown[o] = shown;
+
+    /// <summary>The route terms' one way in: an object's colour shift, whose w is its fade.</summary>
+    public static void SetObjTint(int o, Vector4 tint) => ObjTint[o] = tint;
 }
 /// <summary>A scene-sided ordered list of handles -- the member list, the highlight list. Grown on the game
 /// thread at a cold edge (an object joins or leaves a scene, the game reorders a draw), never per frame, so a

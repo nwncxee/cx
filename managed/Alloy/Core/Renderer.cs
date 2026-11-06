@@ -88,7 +88,7 @@ internal static class Renderer
                  : AlloyGate.Stand == AlloyStand.Idle ? $"World: idle — {AlloyGate.Reason}"
                  : $"Running: Vanilla — {AlloyGate.Reason}";
         if (AlloyGate.Failed) s += $" — the Alloy renderer FAILED: {AlloyGate.CapabilityReason}";
-        return s + " — " + GuiPass.Stats() + "; " + NuiFlush.Stats();
+        return s + " — " + GuiPass.Stats() + "; " + NuiFlush.Stats() + "; " + NullGl.Status();
     }
 
     /// <summary>The panel's line (ADR 0030): nothing while CX draws the world, and why it does not when it
