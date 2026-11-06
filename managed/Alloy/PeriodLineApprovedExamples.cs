@@ -34,7 +34,7 @@ public sealed unsafe partial class AlloyRenderer
 
     internal static bool PeriodLineSelfCheck(ExtenderLog log)
     {
-        var check = new Checker(log, "AlloyRenderer.PeriodLineApprovedExamples");
+        var check = new Checker(log, "AlloyRenderer.PeriodLineApprovedExamples.SelfCheck");
 
         // Given a client that has drawn 900 frames in a world
         // When the period ends
@@ -89,7 +89,7 @@ public sealed unsafe partial class AlloyRenderer
                          "E4: a session Vulkan refused says the engine has its GL context");
         }
 
-        log.Info(check.Ok ? "AlloyRenderer.PeriodLineApprovedExamples: passed" : "AlloyRenderer.PeriodLineApprovedExamples: FAILED -- see above");
+        log.Info(check.Ok ? "AlloyRenderer.PeriodLineApprovedExamples.SelfCheck: passed" : "AlloyRenderer.PeriodLineApprovedExamples.SelfCheck: FAILED -- see above");
         return check.Ok;
     }
 }

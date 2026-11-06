@@ -128,7 +128,7 @@ public sealed unsafe partial class AlloyRenderer
             if (obj != 0)
                 for (int n = 0; n < _occHitN && !hit; n++) hit = _occHitObj[n] == obj;
         }
-        if (hit) g.OccHeld = OccHold;
+        if (hit) { g.OccHeld = OccHold; g.Plain = false; }
         else if (g.OccHeld > 0f) { g.OccHeld -= _occT.Dt; hit = true; }
         if (!hit && f == 0f) return 0f;
         float target = hit ? 1f - _occT.Floor : 0f;

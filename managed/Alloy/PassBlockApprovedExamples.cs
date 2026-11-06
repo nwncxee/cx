@@ -29,7 +29,7 @@ public sealed unsafe partial class AlloyRenderer
 
     internal static bool PassBlockSelfCheck(ExtenderLog log)
     {
-        var check = new Checker(log, "AlloyRenderer.PassBlockApprovedExamples");
+        var check = new Checker(log, "AlloyRenderer.PassBlockApprovedExamples.SelfCheck");
         int frameWas = _frameSeq, bindsWas = PassBinds;
         var tapsWas = Shadows.Taps.V;
         _frameSeq = 1;
@@ -103,7 +103,7 @@ public sealed unsafe partial class AlloyRenderer
 
         _frameSeq = frameWas; PassBinds = bindsWas;
         ResetPassPeriod();
-        log.Info(check.Ok ? "AlloyRenderer.PassBlockApprovedExamples: passed" : "AlloyRenderer.PassBlockApprovedExamples: FAILED -- see above");
+        log.Info(check.Ok ? "AlloyRenderer.PassBlockApprovedExamples.SelfCheck: passed" : "AlloyRenderer.PassBlockApprovedExamples.SelfCheck: FAILED -- see above");
         return check.Ok;
     }
 }

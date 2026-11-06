@@ -178,28 +178,80 @@ public sealed unsafe partial class AlloyRenderer
     internal static int PassBindsBorrowed;
 
     /// <summary>Zero the pass block clause's period counts.</summary>
-    private static void ResetPassPeriod() { PassBinds = 0; PassBindsBorrowed = 0; }
+    private static void ResetPassPeriod() { PassBinds = 0; PassBindsBorrowed = 0; _ps.Built = 0; _ps.Misses = 0; }
 
     /// <summary>The [alloy] line's pass block clause.</summary>
     private static string PassNote()
-        => $"pass block {(float)PassBinds / Counters._frames:F1} binds/frame ({(float)PassBindsBorrowed / Counters._frames:F1} through another view's cluster table)";
+        => $"pass block {(float)PassBinds / Counters._frames:F1} binds/frame, {(float)_ps.Built / Counters._frames:F0} built/frame, {_ps.Misses} misses "
+         + $"({(float)PassBindsBorrowed / Counters._frames:F1} through another view's cluster table)";
+
+    /// <summary>Everything a pass block's bytes follow that can change inside a frame. A new frame always builds: the
+    /// temporal phase moves with it, and it is when a retuned knob lands.</summary>
+    private readonly record struct PassKey(int Frame, int X, int Y, int W, int H, float Near, float Far, float LodScale,
+                                           bool Capturing, bool Planar, bool ProbeReady, bool SceneEnv,
+                                           bool Cascades, bool Cubes, AlloyLights.TableKey Table);
+
+    /// <summary>One frame in this many, a bind that would reuse the block refills it anyway and compares. Power of two.</summary>
+    private const int PassAuditEvery = 64;
+    private const int PassMissLines = 8;
+
+    /// <summary>The staged block's key, its stamp for the arena's copy, and the period's counts.</summary>
+    private sealed class PassStageState
+    {
+        public PassKey Key;
+        public bool Valid, Borrowed;
+        public long Stamp, Built, Misses;
+    }
+    private static readonly PassStageState _ps = new();
 
     /// <summary>This pass's shared scene terms into the <c>CxPass</c> staging block, then the program's own
-    /// <c>uLocalCubes</c>. Called at each program switch; the fill is all it does -- the block reaches the GPU
-    /// when a pass copies it into the frame arena, so a switch costs the fill and nothing else.</summary>
+    /// <c>uLocalCubes</c>. Called at each program switch; a bind of the view already staged reuses the block, which
+    /// reaches the GPU when a pass copies it into the frame arena.</summary>
     internal static void BindPass(int locCubes, int* viewport, float near, float far)
     {
         PassBinds++;
-        byte* b = PassBegin();
-        FillPassBlock((PassBlock*)b);
-        if (!AlloyLights.FillDraw(b, viewport, near, far)) PassBindsBorrowed++;
+        PassStageState ps = _ps;
+        var key = new PassKey(_frameSeq, viewport[0], viewport[1], viewport[2], viewport[3], near, far, _lodScale,
+                              _capturing, _planar, EnvProbe.Ready, _sceneEnv,
+                              CasterPass.CascadesFresh, CasterPass.CubesFresh, AlloyLights.Table);
+        if (!ps.Valid || key != ps.Key)
+        {
+            ps.Borrowed = !FillPass(viewport, near, far);
+            ps.Key = key; ps.Valid = true;
+            ps.Built++;
+        }
+        else if ((_frameSeq & (PassAuditEvery - 1)) == 0) AuditPass(viewport, near, far);
+        if (ps.Borrowed) PassBindsBorrowed++;
         // a Vulkan pass reads the staged block and binds its own shadow maps
         LooseBlock.Set(locCubes, CasterPass.CubesFresh ? CasterPass.CubeCount : 0);
+    }
+
+    /// <summary>The whole block, from this pass's state. False when it draws through another view's cluster table.</summary>
+    private static bool FillPass(int* viewport, float near, float far)
+    {
+        byte* b = PassBegin();
+        FillPassBlock((PassBlock*)b);
+        return AlloyLights.FillDraw(b, viewport, near, far);
+    }
+
+    /// <summary>Refill a block the key called current and compare: a difference is an input the key does not hold, named
+    /// because the reuse would have drawn the old bytes until the next frame. The refill stands.</summary>
+    private static void AuditPass(int* viewport, float near, float far)
+    {
+        Span<byte> was = stackalloc byte[PassBytes];
+        PassStaged.CopyTo(was);
+        long stamp = _ps.Stamp;
+        FillPass(viewport, near, far);
+        _ps.Valid = true;
+        if (PassStaged.SequenceEqual(was)) { _ps.Stamp = stamp; return; }
+        if (++_ps.Misses <= PassMissLines) _log?.Info("AlloyRenderer: pass block MISS: an input changed inside the frame that the reuse key does not hold");
     }
 
     /// <summary>The staging block, zeroed, for a caller that fills it itself (the lightmap bake's one light).</summary>
     internal static byte* PassBegin()
     {
+        _ps.Valid = false;
+        _ps.Stamp++;
         _passStage.Take(PassBytes);
         return _passStage.Pointer;
     }

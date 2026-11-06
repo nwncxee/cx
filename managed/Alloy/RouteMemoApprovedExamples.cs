@@ -108,7 +108,7 @@ public sealed unsafe partial class AlloyRenderer
 
     internal static bool RouteMemoSelfCheck(ExtenderLog log)
     {
-        var check = new Checker(log, "AlloyRenderer.RouteMemoApprovedExamples");
+        var check = new Checker(log, "AlloyRenderer.RouteMemoApprovedExamples.SelfCheck");
         int frameWas = _frameSeq;
         DbId sceneWas = _dbPassScene;
         bool frustumWas = _passFrustumOk;
@@ -197,7 +197,7 @@ public sealed unsafe partial class AlloyRenderer
                     for (int a = 0; a < n; a++) all &= _passAlpha[a] == 0.25f;
                     return all;
                 },
-                () => _occHitN = 0, settle: 2);
+                () => _occHitN = 0, settle: 3);
             SceneDb.PartLodTree[p0] = 1;
             ExpectTakesEffect(check, rig, "lod swap", () => SceneDb.SetObjLodShown(o, 1), n => n == RigSlots - 1, () => SceneDb.SetObjLodShown(o, 0));
             SceneDb.PartLodTree[p0] = 0;
@@ -233,7 +233,7 @@ public sealed unsafe partial class AlloyRenderer
         RouteRigDown(rig);
         _frameSeq = frameWas; _dbPassScene = sceneWas; _passFrustumOk = frustumWas;
         _occT.Step = stepWas; _occT.Dt = dtWas; _occT.Floor = floorWas; _occHitN = 0;
-        log.Info(check.Ok ? "AlloyRenderer.RouteMemoApprovedExamples: passed" : "AlloyRenderer.RouteMemoApprovedExamples: FAILED -- see above");
+        log.Info(check.Ok ? "AlloyRenderer.RouteMemoApprovedExamples.SelfCheck: passed" : "AlloyRenderer.RouteMemoApprovedExamples.SelfCheck: FAILED -- see above");
         return check.Ok;
     }
 }

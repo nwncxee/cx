@@ -496,8 +496,14 @@ public sealed unsafe partial class AlloyRenderer
         /// record sampling a dropped handle. Routed and re-resolved regardless of the frustum, then cleared
         /// where the three memos it invalidates are rewritten -- <c>StageDbPart</c>'s tail. Per slot, not global.</summary>
         public bool TexStale;
+        /// <summary>The route memo: every route term of this part read plain when the walk last looked -- object
+        /// live, LOD alternate shown, alpha, fade and object fade 1, no dissolve, no occlusion ease. The setters on
+        /// <see cref="SceneDb"/> clear it, so animation, which writes none of those columns, keeps it.</summary>
+        public bool Plain;
+        /// <summary>The scene the walk read with <see cref="Plain"/>, so a foreign candidate is refused off this row.</summary>
+        public uint PlainScene;
     }
-    /// <summary>29 bytes of fields, padded to a 32-byte stride (0,47 MiB of padding over
+    /// <summary>32 bytes of fields, the whole of the stride (no padding over
     /// <see cref="MaxOwned"/>). Declared as the struct's <c>Size</c>, so a field appended past it cannot load;
     /// raise it with the field and <see cref="ChaseSelfCheck"/>'s loud line takes over.
     /// not-an-offset: a size, not an engine layout.</summary>
@@ -550,16 +556,40 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>A re-tenanted slot's caches describe the previous tenant.</summary>
     private static void UnstampChase(int i)
-    { _gate[i].OccFade = 0f; _gate[i].OccHeld = 0f; }
+    { _gate[i].OccFade = 0f; _gate[i].OccHeld = 0f; _gate[i].Plain = false; }
+
+    /// <summary>A route term of part <paramref name="part"/> moved, so its slot's memo no longer holds.</summary>
+    internal static void RouteTermMoved(int part)
+    {
+        int slot = SceneDb.PartSlot[part];
+        if (slot >= 0) _gate[slot].Plain = false;
+    }
+
+    /// <summary>One frame in this many, a plain slot takes the full walk anyway, and a term it then reads off plain
+    /// is a writer that went round the setters. Power of two.</summary>
+    private const int RouteAuditEvery = 64;
+    private const int RouteMissLines = 8;
+
+    /// <summary>The route memo's period and lifetime counts.</summary>
+    private sealed class RouteMemoState { public long Hits, Misses; }
+    private static readonly RouteMemoState _routeMemo = new();
 
     /// <summary>The route memo's lifetime count of writers its audit caught.</summary>
-    private static long RouteMemoMisses() => 0;
+    private static long RouteMemoMisses() => _routeMemo.Misses;
+
+    /// <summary>The audit's verdict on a slot the memo called plain: named, because the skip would have drawn the old
+    /// term until the slot's turn came round.</summary>
+    private static void NoteRouteMiss(int i, int part)
+    {
+        long n = ++_routeMemo.Misses;
+        if (n <= RouteMissLines) _log?.Info($"AlloyRenderer: route memo MISS slot {i} part {part}: a route term changed without its setter");
+    }
 
     /// <summary>The [alloy] line's clause.</summary>
     private static string ChaseNote()
     {
         long frames = Math.Max(1, Counters._frames);
-        string s = $"route {(float)_routeIn / frames:F0}/frame, {(float)_routeOut / frames:F0} off-frustum untouched"
+        string s = $"route {(float)_routeIn / frames:F0}/frame ({(float)_routeMemo.Hits / frames:F0} from the memo, {_routeMemo.Misses} memo misses), {(float)_routeOut / frames:F0} off-frustum untouched"
                  + $" ({(float)_routeStale / frames:F1}/frame forced by a retired texture name)"
                  + $"; texture memo: the registry serial moved on {_texSerialMoves} of {frames} frames"
                  + (_visList ? $", visible set rebuilt {_visRebuilds} of {frames} frames from "
@@ -584,6 +614,7 @@ public sealed unsafe partial class AlloyRenderer
     private static void ResetChasePeriod()
     {
         _disAsked = 0;
+        _routeMemo.Hits = 0;
         _routeIn = _routeOut = 0; _routeStale = 0; _texSerialMoves = 0; _visRebuilds = 0; _visIndexed = 0;
         _pollMissAlpha = 0;
         _visTrimmed = 0; _visBoxOnly = 0; _visSlices = 0;

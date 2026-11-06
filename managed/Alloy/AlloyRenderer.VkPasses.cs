@@ -45,6 +45,7 @@ public sealed unsafe partial class AlloyRenderer
         VkPrewarm(vk, log);
         VkColourState s = _vkc;
         s.ArenaUsed = 0;
+        s.PassAt = -1;
         s.EngineAt = -1;
         s.Drawn = s.Skipped = 0;
         s.Effects = false;

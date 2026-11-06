@@ -974,23 +974,61 @@ public static class SceneDb
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void TouchPart(int p, Dirty d) { if ((uint)p < MaxParts && Parts.LiveAt(p)) Parts.Mark(p, d); }
 
-    /// <summary>The route terms' one way in: a part's own animated alpha.</summary>
-    public static void SetPartAlpha(int p, float alpha) => PartAlpha[p] = alpha;
+    /// <summary>The route terms' one way in: a part's own animated alpha. Every setter here tells the route memo
+    /// when the value really moved, which is what lets the walk skip reading these columns.</summary>
+    public static void SetPartAlpha(int p, float alpha)
+    {
+        if (PartAlpha[p] == alpha) return;
+        PartAlpha[p] = alpha;
+        AlloyRenderer.RouteTermMoved(p);
+    }
 
     /// <summary>The route terms' one way in: the fade of the tile or door a part belongs to.</summary>
-    public static void SetPartFade(int p, float fade) => PartFade[p] = fade;
+    public static void SetPartFade(int p, float fade)
+    {
+        if (PartFade[p] == fade) return;
+        PartFade[p] = fade;
+        AlloyRenderer.RouteTermMoved(p);
+    }
 
     /// <summary>The route terms' one way in: a part's keyhole verdict.</summary>
-    public static void SetPartDissolve(int p, float dissolve) => PartDissolve[p] = dissolve;
+    public static void SetPartDissolve(int p, float dissolve)
+    {
+        if (PartDissolve[p] == dissolve) return;
+        PartDissolve[p] = dissolve;
+        AlloyRenderer.RouteTermMoved(p);
+    }
 
     /// <summary>The route terms' one way in: the scene an object draws in.</summary>
-    public static void SetObjScene(int o, DbId scene) => ObjScene[o] = scene;
+    public static void SetObjScene(int o, DbId scene)
+    {
+        if (ObjScene[o].Value == scene.Value) return;
+        ObjScene[o] = scene;
+        RouteObjMoved(o);
+    }
 
     /// <summary>The route terms' one way in: the LOD alternate an object shows.</summary>
-    public static void SetObjLodShown(int o, byte shown) => ObjLodShown[o] = shown;
+    public static void SetObjLodShown(int o, byte shown)
+    {
+        if (ObjLodShown[o] == shown) return;
+        ObjLodShown[o] = shown;
+        RouteObjMoved(o);
+    }
 
     /// <summary>The route terms' one way in: an object's colour shift, whose w is its fade.</summary>
-    public static void SetObjTint(int o, Vector4 tint) => ObjTint[o] = tint;
+    public static void SetObjTint(int o, Vector4 tint)
+    {
+        bool moved = ObjTint[o].W != tint.W;
+        ObjTint[o] = tint;
+        if (moved) RouteObjMoved(o);
+    }
+
+    /// <summary>An object-wide route term moved: every part in the object's range hears it.</summary>
+    private static void RouteObjMoved(int o)
+    {
+        int first = ObjPartFirst[o];
+        for (int p = first; p < first + ObjPartCount[o]; p++) AlloyRenderer.RouteTermMoved(p);
+    }
 }
 /// <summary>A scene-sided ordered list of handles -- the member list, the highlight list. Grown on the game
 /// thread at a cold edge (an object joins or leaves a scene, the game reorders a draw), never per frame, so a
