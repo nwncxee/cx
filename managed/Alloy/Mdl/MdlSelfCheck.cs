@@ -391,7 +391,7 @@ donemodel cx_body
 
     /// <summary>A hand-built binary model: a root dummy and one trimesh with three vertices, one face, one
     /// UV set and a stated surface area. Shared by the binary case and the hostile-input mutations.</summary>
-    private static byte[] BinaryFixture()
+    private static byte[] BinaryFixture(int meshType = 0x21)
     {
         // model block: header, root dummy, its child array, the trimesh, the face record.
         int rootAt = MHeader, kidsAt = rootAt + NHeader, meshAt = kidsAt + 4, facesAt = meshAt + TriBlock;
@@ -420,7 +420,7 @@ donemodel cx_body
         // the trimesh
         I32(model, meshAt + 0x1c, 1);
         Name(model, meshAt + 0x20, "mesh");
-        I32(model, meshAt + 0x6c, 0x21);
+        I32(model, meshAt + 0x6c, meshType);
         I32(model, meshAt + 0x78, facesAt);
         I32(model, meshAt + 0x7c, 1);
         F32(model, meshAt + 0xd0, 1f);         // shininess
@@ -490,6 +490,9 @@ donemodel cx_body
         expect(m.Nodes.Length == 2, $"{m.Nodes.Length} nodes, expected 2");
         if (m.Nodes.Length != 2) return;
         expect(m.Nodes[0].Name == "rootnode" && m.Nodes[1].Name == "mesh", "the node names are wrong");
+        ModelDef? walk = MdlParser.Parse(BinaryFixture(0x221), "cx_binwalk", out string? walkErr);
+        expect(walk?.Nodes[1].Mesh is { WalkMesh: true, Render: false, Shadow: false },
+               $"a compiled walkmesh saying render 1 must not draw or cast ({walkErr})");
         expect(m.Nodes[1].Parent == 0 && m.Nodes[0].Children.Length == 1, "the hierarchy is wrong");
         expect(m.Nodes[1].PartNumber == 1, $"part number {m.Nodes[1].PartNumber}");
         MeshDef? mesh = m.Nodes[1].Mesh;
