@@ -226,6 +226,11 @@ public static partial class PlateLayout
         check.Expect(Near(plc.PortraitY, 4f + (54f - plc.PortraitSize) * 0.5f) && Near(plc.PortraitY, 13f),
           "and its capped portrait centres against name plus override, not against the name alone");
 
+        check.Expect(!HasContent(false, false, 0, 0), "no name, band or override draws no plate");
+        check.Expect(HasContent(true, false, 0, 0) && HasContent(false, true, 0, 0), "a name or a band alone draws one");
+        check.Expect(HasContent(false, false, 1, 1), "a nameless object's override text still draws");
+        check.Expect(!HasContent(false, false, 1, 0) && !HasContent(false, false, 0, 1), "an override needs both a mode and text");
+
         // ---- PlaceOverride: which segment joins which plate line, per mode ----
         PlateSplice Placement(int mode, int paras, int nameLines, bool band, out bool sn, out bool sb,
                           out int si, out int pf, out int pt, out int qf, out int qt)

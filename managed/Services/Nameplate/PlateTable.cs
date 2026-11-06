@@ -288,12 +288,19 @@ public sealed partial class PlateTable
         Bank(in p);
     }
 
-    /// <summary>The creature's stats name, else the engine's own object name -- placeables, doors and items
-    /// have no creature stats and would otherwise plate as an empty box. COLD.</summary>
+    /// <summary>The creature's stats name, else the engine's own object name. A placeable answers with its own
+    /// name, blank included, as its stock plate does: the object name would fall back to <c>placeables.2da</c>'s
+    /// <c>StrRef</c>, and an empty cell there reads as strref 0, "Bad Strref". COLD.</summary>
+    internal static string RawName(IntPtr obj, byte type, uint id, Func<uint, string> objectName)
+    {
+        if (type == NameplateNative.TypePlaceable) return NameplateNative.PlaceableName(obj);
+        string n = NameplateNative.CreatureName(obj, type);
+        return n.Length != 0 ? n : objectName(id);
+    }
+
     private static string ResolveName(IntPtr obj, byte type, uint id, out uint[]? colours)
     {
-        string n = NameplateNative.CreatureName(obj, type);
-        if (n.Length == 0) n = Native.ObjectName(id);
+        string n = RawName(obj, type, id, Native.ObjectName);
         // COLD, and the only place a name acquires either its colours or its line breaks. Strip first: the
         // break rules count spaces, and a `<cRGB>` tag's raw bytes can BE spaces.
         n = PlateLayout.StripColours(n, out uint[]? cols);

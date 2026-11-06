@@ -127,6 +127,9 @@ Offsets (all verified in CX-179):
 - `CNWCCreature + 0x478` = area id; hide when != player's area (`module+0xf8`, `+0x118`)
 - `CNWCCreatureStats + 0x20/0x28` first name char*/len, `+0x30/0x38` last, `+0x40/0x48` override
   (override wins outright; else "first last"; else whichever is non-empty; else "")
+- `CNWCPlaceable + 0x190/0x198` own name char*/len (Windows `+0x170/0x178`): the plate's name, blank included. Stock's
+  plate reads only this; `GetObjectName` would fall back to `placeables.2da` `StrRef`, and an empty cell there is
+  strref 0, "Bad Strref". With no name, band or override text, a plate draws nothing.
 - `CNWCCreatureStats + 0x8e` = **damage-level byte**, 0..5
 - bubble `+0x154 / +0x158` = **projected screen anchor x/y** (floats, whole-pixel snapped)
 - bubble `+0x14c` = 1 while live chat text owns the bubble (see the reset below)

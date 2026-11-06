@@ -2208,6 +2208,10 @@ public readonly unsafe partial struct CNWCPlaceable(IntPtr ptr)
     public readonly IntPtr Ptr = ptr;
     /// <summary>No object.</summary>
     public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.PlaceableName"/>
+    public ref IntPtr Name => ref *(IntPtr*)(Ptr + EngineLayout.PlaceableName);
+    /// <inheritdoc cref="EngineLayout.PlaceableNameLen"/>
+    public ref uint NameLen => ref *(uint*)(Ptr + EngineLayout.PlaceableNameLen);
     /// <inheritdoc cref="SymbolMap.PlaceableShowFeedbackBubbleText"/>
     public void PlaceableShowFeedbackBubbleText() => EngineFn.PlaceableShowFeedbackBubbleText(Ptr);
     /// <inheritdoc cref="EngineLayout.PlaceablePlated"/>

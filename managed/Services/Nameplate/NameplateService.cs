@@ -558,9 +558,9 @@ public sealed unsafe class NameplateService : IExtenderService
         return w;
     }
 
-    /// <summary>Whether a plate for this entry has anything to show: a name, or a health band to colour.</summary>
     private static bool PlateHasContent(PlateTable.Entry e)
-        => e.Name.Length != 0 || (NameplateKnobs.HealthBand.V && e.Damage >= 0);
+        => PlateLayout.HasContent(e.Name.Length != 0, NameplateKnobs.HealthBand.V && e.Damage >= 0,
+                                  e.OverrideMode, e.ParaCount);
 
     /// <summary>The max width a plate name column and a bubble box share -- one knob, <c>nameplate.width</c>.</summary>
     private static float TextMaxW(float scale) => NameplateKnobs.Width.V * scale;

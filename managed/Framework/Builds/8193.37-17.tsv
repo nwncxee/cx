@@ -506,6 +506,8 @@ offset	CNWCObject	overrideMode	0x124	0x124	# ObjOverrideMode
 offset	CNWCObject	overrideText	0x128	0x128	# ObjOverrideText
 offset	CNWCObject	overrideLen	0x130	0x130	# ObjOverrideLen
 offset	CNWCObject	itemPlated	0x284	0x264	# ObjItemPlated
+offset	CNWCPlaceable	name	0x190	0x170	# PlaceableName
+offset	CNWCPlaceable	nameLen	0x198	0x178	# PlaceableNameLen
 offset	CNWCCreature	area	0x478	0x458	# CreatureArea
 offset	CNWCArea	id	0x118	0x118	# AreaId
 offset	CNWCArea	resref	0x128	0x128	# AreaResRef
