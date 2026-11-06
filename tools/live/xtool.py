@@ -7,7 +7,7 @@ Xwayland server gamescope nests for the client:
     xtool.py shot  :N out.png        one screenshot of the client window (root as a fallback)
     xtool.py keys  :N "<script>"     XTEST input, ';'-separated steps:
                                        key:<keysym> | hold:<keysym>:<ms> | type:<text> | sleep:<ms>
-                                       waitlog:<regex>:<timeout ms> (block until a NEW line of $XTOOL_LOG matches; a timeout ends
+                                       waitlog:<regex>:<timeout ms> (block until a line of $XTOOL_LOG after the last match matches; a timeout ends
                                                      the script with exit 1, so no later step acts on a state that never came)
                                        click:<x>,<y> | move:<x>,<y> (pointer only, for hover)
                                        rclick:<x>,<y> (button 3 -- the radial menu / use path)
@@ -141,7 +141,7 @@ def wait_log(arg, start):
 
 
 def cmd_keys(dpy, script):
-    log_pos = os.path.getsize(os.environ["XTOOL_LOG"]) if os.path.exists(os.environ.get("XTOOL_LOG", "")) else 0
+    log_pos = 0
     win = client_window(dpy)
     if win is not None:
         win.set_input_focus(X.RevertToParent, X.CurrentTime)
