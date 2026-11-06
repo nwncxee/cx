@@ -21,8 +21,8 @@ internal static partial class GpuGolden
     private static void DisplacementFadeApprovedSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
     {
         string march = Function(ShaderSource.Get("cx_ownlit_synth.glsl"), "vec2 CxDisplace(");
-        string steps = Declaration(ShaderSource.Get("cx_ownlit_head.glsl"), "CX_DISPLACE_STEPS");
-        check.Expect(march.Length > 0 && steps.Length > 0, "cx_ownlit_synth declares CxDisplace and cx_ownlit_head CX_DISPLACE_STEPS");
+        string steps = Function(ShaderSource.Get("cx_ownlit_head.glsl"), "float CxDisplaceCap(");
+        check.Expect(march.Length > 0 && steps.Length > 0, "cx_ownlit_synth declares CxDisplace and cx_ownlit_head CxDisplaceCap");
         if (march.Length == 0 || steps.Length == 0) return;
         PipelineId pipe = vk.CreateCompute(Version + "layout(local_size_x = 1) in;\n" + steps
             + $"float cxH(vec2 p) {{ return {HeightGlsl}; }}\n"
@@ -31,7 +31,7 @@ internal static partial class GpuGolden
             {
                 uint i = gl_WorkGroupID.x;
                 vec2 r = CxDisplace(vec2(0.15, 0.4), mat3(1.0), vec3(0.0, -0.9848078, 0.1736482), uIn[i * uint(CX_GOLD_IN)], 1080.0,
-                                    vec2(0.0), vec2(0.0), vec2(uIn[i * uint(CX_GOLD_IN) + 1u], 0.0));
+                                    vec2(0.0), vec2(0.0), vec2(uIn[i * uint(CX_GOLD_IN) + 1u], 0.0), CxDisplaceCap(2));
                 uOut[i * uint(CX_GOLD_OUT)] = r.x; uOut[i * uint(CX_GOLD_OUT) + 1u] = r.y;
             }
             """, "golden displacement fade");
