@@ -43,6 +43,8 @@ vec2 CxDisplace(vec2 uv, mat3 tsb, vec3 V, float depth, float screenH, vec2 du1,
 
 void main()
 {
+    // every /alloy viz view returns ahead of CxOitOut, and an output left unwritten is garbage on Vulkan
+    oReveal = 1.0;
     if (uCapture == 2 && vWorld.z < uMirrorZ) discard;
     // inc_standard.shd:182-183: a back face's frame, march and lighting all take the flipped normal
     vec3 N = normalize(gl_FrontFacing ? vNrm : -vNrm);
