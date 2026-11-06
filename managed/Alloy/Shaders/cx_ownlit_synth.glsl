@@ -12,13 +12,16 @@ bool CxCoverCut(float coverage, float alpha, vec2 du1, vec2 du2, vec2 cutSize, f
 /// space, the step count by view angle, distance and screen height. `om` is the material's DisplacementOffset and
 /// DisplacementMultiplier (0 = the stock 1), which shift the march's start and scale its reach and its steps.
 /// Explicit gradients: the count differs per fragment, so implicit ones would be undefined in the loop.
+/// One departure from stock: the relief fades out below 4 steps, where each step turns height-map grain into shimmer.
 vec2 CxDisplace(vec2 uv, mat3 tsb, vec3 V, float depth, float screenH, vec2 du1, vec2 du2, vec2 om, float cap)
 {
     float mul = om.y != 0.0 ? om.y : 1.0;
     float m = 1.0 - 0.5 * dot(V, tsb[2]);
     m *= m / (max(depth, 1e-4) * 0.125);
-    float it = floor(cap * mul * clamp(m * screenH / 1080.0, 0.0, 1.0) + 0.5);
+    float steps = cap * mul * clamp(m * screenH / 1080.0, 0.0, 1.0);
+    float it = floor(steps + 0.5);
     if (it < 1.0) return uv;
+    vec2 start = uv;
     vec3 v = transpose(tsb) * V;
     float zh = 0.5 * v.z + 0.5;
     vec2 disp = v.xy * 0.05 * ((1.0 - v.z) / max(zh * zh, 1e-4) + 1.0);
@@ -33,7 +36,7 @@ vec2 CxDisplace(vec2 uv, mat3 tsb, vec3 V, float depth, float screenH, vec2 du1,
         else dd /= max(1.0 - cur, 1e-4);
         cur += dd * seg;
     }
-    return uv - disp * cur;
+    return mix(start, uv - disp * cur, smoothstep(0.5, 4.0, steps));
 }
 
 #ifdef CX_DECAL_WRITE
