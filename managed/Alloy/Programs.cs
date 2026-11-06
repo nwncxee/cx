@@ -137,6 +137,7 @@ internal static unsafe class Programs
         KhCam = LooseBlock.Loc("uKeyholeCam"),
         Pixel = LooseBlock.Loc("uPixel"),
         LodBias = LooseBlock.Loc("uLodBias"),
+        ShaderQuality = LooseBlock.Loc("uShaderQuality"),
         Now = LooseBlock.Loc("uNow"),
         Eye = LooseBlock.Loc("uEyePos"),
         FogSky = LooseBlock.Loc("uFogSky"),

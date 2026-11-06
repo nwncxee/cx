@@ -12,12 +12,12 @@ bool CxCoverCut(float coverage, float alpha, vec2 du1, vec2 du2, vec2 cutSize, f
 /// space, the step count by view angle, distance and screen height. `om` is the material's DisplacementOffset and
 /// DisplacementMultiplier (0 = the stock 1), which shift the march's start and scale its reach and its steps.
 /// Explicit gradients: the count differs per fragment, so implicit ones would be undefined in the loop.
-vec2 CxDisplace(vec2 uv, mat3 tsb, vec3 V, float depth, float screenH, vec2 du1, vec2 du2, vec2 om)
+vec2 CxDisplace(vec2 uv, mat3 tsb, vec3 V, float depth, float screenH, vec2 du1, vec2 du2, vec2 om, float cap)
 {
     float mul = om.y != 0.0 ? om.y : 1.0;
     float m = 1.0 - 0.5 * dot(V, tsb[2]);
     m *= m / (max(depth, 1e-4) * 0.125);
-    float it = floor(CX_DISPLACE_STEPS * mul * clamp(m * screenH / 1080.0, 0.0, 1.0) + 0.5);
+    float it = floor(cap * mul * clamp(m * screenH / 1080.0, 0.0, 1.0) + 0.5);
     if (it < 1.0) return uv;
     vec3 v = transpose(tsb) * V;
     float zh = 0.5 * v.z + 0.5;
@@ -44,7 +44,9 @@ vec2 CxDisplace(vec2 uv, mat3 tsb, vec3 V, float depth, float screenH, vec2 du1,
 void main()
 {
     if (uCapture == 2 && vWorld.z < uMirrorZ) discard;
-    vec3 N = normalize(vNrm);
+    // inc_standard.shd:182-183: a back face's frame, march and lighting all take the flipped normal
+    vec3 N = normalize(gl_FrontFacing ? vNrm : -vNrm);
+    vec3 Ng = N;
     // /alloy viz: attribute a dim frame to a TERM instead of guessing from the composite.
     // 1 = point-light diffuse alone (torch bright here but the frame dark => the torch is fine and
     //     something else lost intensity); 2 = cluster occupancy, green empty -> red full (a black
@@ -136,12 +138,11 @@ void main()
         float inv;
         if (vTan.w != 0.0)
         {
-            // Gram-Schmidt against the shading normal (Alloy's: the current SetupTSB, inc_transform.shd:206-217,
-            // only normalises the tangent), then the handedness on the BITANGENT alone -- which is what SetupTSB
-            // spends it on, and it works out to +dP/dv, the same axis the derivative frame below builds.
-            T = vTan.xyz - N * dot(vTan.xyz, N);
+            // SetupTSB, inc_transform.shd:206-217: the tangent normalised and no more, the handedness on the
+            // BITANGENT alone, which works out to +dP/dv, the axis the derivative frame below builds.
+            T = normalize(vTan.xyz);
             B = cross(N, T) * vTan.w;
-            inv = inversesqrt(max(dot(T, T), 1e-12));
+            inv = 1.0;
         }
         else
         {
@@ -161,7 +162,12 @@ void main()
         {
             // inc_standard.shd:213-217: the displaced UV is what every later tap of the material reads;
             // the pass's own viewport height (uTile is the viewport over the grid), not a sampler only SSAO binds
-            uv = CxDisplace(uv, mat3(T * inv, B * inv, N), V, vDepth, uTile.w * float(uGrid.y), du1, du2, vec2(d.amb.w, d.dif.w));
+#ifndef CX_CON_HAS_DisplaceTextureCoords
+            // the gradients carry the bias a textureGrad tap cannot take
+            float lodScale = pow(2.0, uLodBias);
+            uv = CxDisplace(uv, mat3(T * inv, B * inv, N), V, vDepth, uTile.w * float(uGrid.y), du1 * lodScale, du2 * lodScale,
+                            vec2(d.amb.w, d.dif.w), CxDisplaceCap(uShaderQuality));
+#endif
             // inc_material.shd:307-311's SetupOcclusionFromTexture: the height against a blurrier tap of itself
             // IS the local self-occlusion, the blur shrinking with distance (OCCLUSION_VICINITT_RANGE 7.0
             // - log2 of the view depth), clamped to 0.9 and squared.
@@ -188,10 +194,10 @@ void main()
             N = normalize(mat3(T * inv, B * inv, N) * nm);
         }
     }
-    // inc_material.shd:312: the surface fade every light takes (cx_lightfrag), on any normal- or height-mapped
-    // surface -- SetupOcclusionBase's 1 / 0.1 where no height map says otherwise
-    if ((slots & (CX_SLOT_NORMAL | CX_SLOT_HEIGHT)) != 0)
-        cxSurfFade = vec4(normalize(vNrm), CxSurfFadeOf(surfAo));
+    // inc_material.shd:312: the surface fade every light takes (cx_lightfrag), on any surface of an _nm stage, which
+    // a tangent frame or a map marks -- SetupOcclusionBase's 1 / 0.1 where no height map says otherwise
+    if (vTan.w != 0.0 || (slots & (CX_SLOT_NORMAL | CX_SLOT_HEIGHT)) != 0)
+        cxSurfFade = vec4(Ng, CxSurfFadeFor(uShaderQuality, surfAo));
     // #146: outside the normal/height branch, at its displaced UV -- a material may declare an AO map and nothing
     // else, and the engine's screen-space SSAO (an FB effect, downstream of this pass entirely) does
     // not see the contact detail a baked map carries.

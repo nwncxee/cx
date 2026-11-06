@@ -42,13 +42,13 @@ internal static partial class GpuGolden
 
     /// <summary>Oracle: <see cref="StockDisplace"/>, which is <c>inc_displacement.shd</c>'s own march written out
     /// here -- a second shader, never ours. The subject is the shipped <c>CxDisplace</c> and the step count the
-    /// shipped <c>CX_DISPLACE_STEPS</c> gives it, both read out of the embedded GLSL.</summary>
+    /// shipped <c>CxDisplaceCap</c> gives it, both read out of the embedded GLSL.</summary>
     private static void ParallaxSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
     {
         string synth = ShaderSource.Get("cx_ownlit_synth.glsl"), head = ShaderSource.Get("cx_ownlit_head.glsl");
-        string march = Function(synth, "vec2 CxDisplace("), steps = Declaration(head, "CX_DISPLACE_STEPS");
+        string march = Function(synth, "vec2 CxDisplace("), steps = Function(head, "float CxDisplaceCap(");
         check.Expect(march.Length > 0 && steps.Length > 0,
-            "cx_ownlit_synth declares CxDisplace and cx_ownlit_head CX_DISPLACE_STEPS");
+            "cx_ownlit_synth declares CxDisplace and cx_ownlit_head CxDisplaceCap");
         if (march.Length == 0 || steps.Length == 0) return;
 
         // the macro drops its `t`, so no height sampler reaches the compiler and both sides march one field
@@ -62,7 +62,7 @@ internal static partial class GpuGolden
                          mat3 tsb = mat3(uIn[b + 2], uIn[b + 3], uIn[b + 4], uIn[b + 5], uIn[b + 6], uIn[b + 7],
                                          uIn[b + 8], uIn[b + 9], uIn[b + 10]);
                          vec2 r = CxDisplace(vec2(uIn[b], uIn[b + 1]), tsb, vec3(uIn[b + 11], uIn[b + 12], uIn[b + 13]),
-                                             uIn[b + 14], uIn[b + 15], vec2(0.0), vec2(0.0), vec2(0.0));
+                                             uIn[b + 14], uIn[b + 15], vec2(0.0), vec2(0.0), vec2(0.0), CxDisplaceCap(2));
                          uOut[o] = r.x; uOut[o + 1] = r.y;
                      }
                      """;
@@ -125,12 +125,12 @@ internal static partial class GpuGolden
     /// texture matrix -- the oracle, written from the stock shader: <paramref name="offset"/> and <paramref name="mult"/> are
     /// the material's <c>DisplacementOffset</c> and <c>DisplacementMultiplier</c>, a multiplier of 0 the 1.0 default.
     /// Returns the case's own coordinate where the stock march takes no step.</summary>
-    private static (double U, double V) StockDisplace(in DisplaceCase c, double offset = 0.0, double mult = 0.0)
+    private static (double U, double V) StockDisplace(in DisplaceCase c, double offset = 0.0, double mult = 0.0, double maxSteps = 32.0)
     {
         double dm = mult != 0.0 ? mult : 1.0;
         double m = 1.0 - 0.5 * Dot(c.Eye, c.N);   // 1 + 0.5 * dot(vViewToSurface_n, ng)
         m *= m / (c.Depth * 0.125);               // -vPosView.z
-        double it = 32.0 * dm * Math.Clamp(m * c.ScreenH / 1080.0, 0.0, 1.0);
+        double it = maxSteps * dm * Math.Clamp(m * c.ScreenH / 1080.0, 0.0, 1.0);
         if (!(it > 0.5)) return (c.U, c.V);
         // transpose(mTSB) * -vViewToSurface_n: the frame's columns against the eye direction
         double vdT = Dot(c.T, c.Eye), vdB = Dot(c.B, c.Eye), vdN = Dot(c.N, c.Eye);

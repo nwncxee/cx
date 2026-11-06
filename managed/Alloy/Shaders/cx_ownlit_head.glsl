@@ -45,6 +45,7 @@ uniform int uSsaoOn;           // >0 when this BATCH is in the depth SsaoPass re
 uniform int uSsaoHalf;         // post.halfres: 1 = uSsao is half the frame's extent, read bilaterally
 uniform sampler2D uSceneDepth; // the prepass depth SsaoPass read, to check the pixel is OURS (viz 37)
 uniform float uAoDirect;       // /ao direct: how much of the screen-space occlusion the DIRECT terms take (ADR 0056)
+uniform int uShaderQuality;    // the engine's SHADER_QUALITY_MODE
 uniform float uAoCutout;       // /ao cutout: how much of it a CUTOUT receiver takes (leaf cards over leaf cards)
 // #126: the engine's fAlphaDiscardValue, per batch -- 0.2 on the cutout and blended classes,
 // -1.0 (no test) on opaque and additive.
@@ -122,8 +123,11 @@ const float CX_MID_GREY = 0.2176;
 const float CX_ENV_SPEC_MAX = 0.98, CX_ENV_SPEC_SCALE = 8.0, CX_ENV_ROUGH_SCALE = 2.5;
 // inc_material.shd:301's OCCLUSION_VICINITT_RANGE: the height-occlusion tap's mip bias at a view depth of 1.
 const float CX_OCCL_VICINITY = 7.0;
-// inc_displacement.shd:30's fDisplacementMaximumIterations at SHADER_QUALITY_MODE > 1: the parallax march's cap.
-const float CX_DISPLACE_STEPS = 32.0;
+// inc_displacement.shd:29-33's fDisplacementMaximumIterations: the parallax march's cap at a shader quality.
+float CxDisplaceCap(int quality)
+{
+    return quality > 1 ? 32.0 : 16.0;
+}
 // inc_standard.shd:250-252: the albedo is desaturated toward this grey in proportion to reflectivity,
 // so the reflection is not counted twice. DISPLAY space -- the engine does it before the :253 linearise.
 const vec3 CX_ENV_GREY = vec3(0.666667);

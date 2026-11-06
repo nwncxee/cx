@@ -81,26 +81,45 @@ internal static partial class GpuGolden
 
     /// <summary>The shipped <c>CxDisplace</c> on <see cref="DisplaceWall"/> over the analytic height field, once per
     /// (offset, multiplier) pair in <paramref name="om"/>; two floats back per case, null with the check failed.</summary>
-    private static float[]? DisplaceRuns(VkBackend vk, Checker check, ExtenderLog log, float[] om)
+    private static float[]? DisplaceRuns(VkBackend vk, Checker check, ExtenderLog log, float[] om, int quality = 2)
     {
         string march = Function(ShaderSource.Get("cx_ownlit_synth.glsl"), "vec2 CxDisplace(");
-        string steps = Declaration(ShaderSource.Get("cx_ownlit_head.glsl"), "CX_DISPLACE_STEPS");
-        check.Expect(march.Length > 0 && steps.Length > 0, "cx_ownlit_synth declares CxDisplace and cx_ownlit_head CX_DISPLACE_STEPS");
+        string steps = Function(ShaderSource.Get("cx_ownlit_head.glsl"), "float CxDisplaceCap(");
+        check.Expect(march.Length > 0 && steps.Length > 0, "cx_ownlit_synth declares CxDisplace and cx_ownlit_head CxDisplaceCap");
         if (march.Length == 0 || steps.Length == 0) return null;
         PipelineId pipe = vk.CreateCompute(Version + "layout(local_size_x = 1) in;\n" + steps
             + $"float cxH(vec2 p) {{ return {HeightGlsl}; }}\n"
-            + "#define textureGrad(t, p, a, b) vec4(cxH(p))\n" + march + CaseBlocks(2, 2) + """
+            + $"#define CX_GOLD_QUALITY {quality}\n#define textureGrad(t, p, a, b) vec4(cxH(p))\n" + march + CaseBlocks(2, 2) + """
             void main()
             {
                 uint i = gl_WorkGroupID.x;
                 vec2 r = CxDisplace(vec2(0.3, 0.7), mat3(1.0), normalize(vec3(0.6, 0.2, 0.7)), 3.0, 1080.0, vec2(0.0), vec2(0.0),
-                                    vec2(uIn[i * uint(CX_GOLD_IN)], uIn[i * uint(CX_GOLD_IN) + 1u]));
+                                    vec2(uIn[i * uint(CX_GOLD_IN)], uIn[i * uint(CX_GOLD_IN) + 1u]), CxDisplaceCap(CX_GOLD_QUALITY));
                 uOut[i * uint(CX_GOLD_OUT)] = r.x; uOut[i * uint(CX_GOLD_OUT) + 1u] = r.y;
             }
             """, "golden displacement terms");
         float[]? got = pipe.IsNull ? null : RunCases(vk, log, pipe, om.Length / 2, om, om.Length, "golden displacement terms");
         vk.Destroy(pipe);
         check.Expect(got != null, "the displacement stage was refused (logged above)");
+        return got;
+    }
+
+    /// <summary>The shipped <c>CxSurfFadeFor</c> at Performance and at High Quality, or null with the check failed.</summary>
+    private static float[]? SurfaceFades(VkBackend vk, Checker check, ExtenderLog log)
+    {
+        string fade = Function(ShaderSource.Get("cx_lightfrag.glsl"), "float CxSurfFadeFor(");
+        check.Expect(fade.Length > 0, "cx_lightfrag declares CxSurfFadeFor");
+        if (fade.Length == 0) return null;
+        PipelineId pipe = vk.CreateCompute(Version + "layout(local_size_x = 1) in;\n#define CxSurfFadeOf(a) 7.0\n" + fade + CaseBlocks(1, 1) + """
+            void main()
+            {
+                uint i = gl_WorkGroupID.x;
+                uOut[i] = CxSurfFadeFor(int(uIn[i]), 1.0);
+            }
+            """, "golden surface fade");
+        float[]? got = pipe.IsNull ? null : RunCases(vk, log, pipe, 2, [1f, 2f], 2, "golden surface fade");
+        vk.Destroy(pipe);
+        check.Expect(got != null, "the surface fade stage was refused (logged above)");
         return got;
     }
 
