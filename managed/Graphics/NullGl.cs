@@ -28,7 +28,7 @@ public sealed unsafe partial class NullGl : IExtenderService
         public AurSnapshotFn OrigSnapshot;
         public byte[]? SnapshotPath;
         public int SwapInterval;
-        public int Patched, Generic;
+        public int Patched;
         public readonly StubState Gl = new();
         public readonly HashSet<long> Said = new();
     }
@@ -160,7 +160,4 @@ public sealed unsafe partial class NullGl : IExtenderService
          : !active ? "NullGl: the engine has its GL context"
          : $"NullGl: no GL context; {patched} import(s) redirected, {textures} engine texture(s) held, "
          + $"{buffers} engine buffer(s) in host memory";
-
-    /// <summary>The swap interval the engine asked for, for the Vulkan present.</summary>
-    internal static int SwapInterval => _s.SwapInterval;
 }

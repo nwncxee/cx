@@ -324,10 +324,9 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         // #571: the stock-settings reader forges a std::string for the engine; a header packed wrong is a
         // crash on the first world frame, not a misrender, so it joins the gating chain.
         StockConfig.Attach(log);
-        if (!CutCensusSelfCheck(log) || !CasterBoundSelfCheck(log) || !SortSelfCheck(log) || !OitOrderSelfCheck(log) || !CullSortSelfCheck(log) || !SplitSelfCheck(log) || !MtrParams.SelfCheck(log) || !Db.MapGateApprovedExamples.SelfCheck(log) || !(PeriodLineSelfCheck(log) & RouteMemoSelfCheck(log) & PassBlockSelfCheck(log)) || !ChaseSelfCheck(log) || !KeyholeBoxSelfCheck(log) || !SphereRectSelfCheck(log)
+        if (!CutCensusSelfCheck(log) || !CasterBoundSelfCheck(log) || !SortSelfCheck(log) || !OitOrderSelfCheck(log) || !CullSortSelfCheck(log) || !SplitSelfCheck(log) || !MtrParams.SelfCheck(log) || !Db.MapGateApprovedExamples.SelfCheck(log) || !PeriodLineSelfCheck(log) || !(PeriodLineSelfCheck(log) & RouteMemoSelfCheck(log) & PassBlockSelfCheck(log)) || !ChaseSelfCheck(log) || !KeyholeBoxSelfCheck(log) || !SphereRectSelfCheck(log)
             || !AreaGrid.SelfCheck(log)
             || !DbSelfChecks(log)
-            || !Submit.SelfCheck(log)
             || !ShaderContract.SelfCheck(log)
             || !StockConfig.SelfCheck(log)) return;
         // NOT in the chain above: those two guard what reaches the screen, and this one guards a debug dump.
@@ -517,14 +516,11 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         if (++Counters._frames < period) return;
         Diag._loggedOnce = true;
         PeriodReport();
-        Counters._frames = 0; Counters._draws = 0; Counters._batches = 0; Counters._revokes = 0; Counters._enrolls = 0;
+        Counters._frames = 0; Counters._draws = 0; Counters._batches = 0;
         Counters._twoSidedDraws = 0; Counters._cullCuts = 0;
         Array.Clear(Counters._cutBy); Array.Clear(Counters._cutByBlend);
         Counters._drawsGob = 0;
-        Counters._noDiffuseDraws = 0; Counters._skipTexNoId = 0; Counters._skipTexNoHandle = 0; Counters._skipTexNotOwned = 0;
-        Counters._nullTexDraws = 0;
         Counters._skinDrawn = 0; Counters._skinNoPose = 0; Counters._boneHigh = 0;
-        Submit.ResetPeriod();
         SkyBox.ResetPeriod();
         StageResources.ResetPeriod();
         GrassField.ResetPeriod();
@@ -533,7 +529,6 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         Weather.ResetPeriod();
         Particles.ResetPeriod();
         EmitterSim.ResetPeriod();
-        Counters._watchSubmitted = 0;
         Counters._skipNoLight = Counters._skipIdentity = Counters._skipNoMdl = Counters._skipTex = Counters._skipRange = Counters._skipVao = 0; Counters._skipLod = 0;
         Counters._skipForeignScene = 0;
         ResetChasePeriod();
@@ -543,7 +538,6 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         Counters._nrmDeclared = Counters._nrmBound = 0;
         Array.Clear(Counters._drawsByClass);
         Counters._clusterOverflow = 0;
-        Counters._prepassDraws = 0; Counters._prepassSkipped = 0; Counters._prepassKeyed = 0; Counters._prepassFeatDraws = 0;
     }
 
     /// <summary>R1-24: the scene database's checks. They GATE the renderer: a wrong answer is the whole world
