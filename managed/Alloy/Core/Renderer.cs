@@ -139,8 +139,7 @@ internal static class Renderer
         Vrs = G.Toggle("vrs", "Shade flat areas coarsely", false, Tier.Advanced, Effect.Live,
                        help: "Saves GPU time by shading low-contrast parts of the screen once per 2x2 pixels, with a texture one "
                            + "level blurrier. Dim or distant textured ground counts as low contrast, so it turns soft and "
-                           + "shimmers as the camera moves. Needs a GPU with variable-rate shading; elsewhere this does nothing.")
-              .Ladder(Quality.Detail, true, true, false, false);
+                           + "shimmers as the camera moves. Needs a GPU with variable-rate shading; elsewhere this does nothing.");
         VrsContrast = G.Slider("vrscontrast", "Coarse shading below contrast", 0f, 0.05f, 0.0025f, 0.01f, tier: Tier.Advanced,
                                help: "How flat a small tile of the screen must look to shade coarsely: the mean brightness step between "
                                    + "neighbouring pixels, 0 to 1. Lower keeps more detail, higher saves more.");
