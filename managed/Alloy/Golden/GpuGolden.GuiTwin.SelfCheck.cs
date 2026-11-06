@@ -22,13 +22,6 @@ internal static unsafe partial class GpuGolden
       + "    FragmentColor.rgb = ApplyColorSpace(display);\n    ApplyStandardShader();\n    FragmentColor.a = 1.0;\n"
       + "    FragmentColor.rgb += display * max(glow, 0.0);\n    gl_FragColor = FragmentColor;\n}\n";
 
-    /// <summary>A hand-written stage that reads the engine's noise unit and its flag, the shape a water stage has.</summary>
-    private const string GuiTwinNoiseStage =
-        "#define SHADER_TYPE 2\n#define LIGHTING 1\n#include \"inc_standard\"\nuniform sampler2D texUnitNoise;\n"
-      + "void main()\n{\n    FragmentColor = vec4(1.0);\n    SetupStandardShaderInputs();\n"
-      + "    if (texNoiseBound == 0) FragmentColor.rgb *= texture(texUnitNoise, vec2(0.0)).rgb;\n"
-      + "    ApplyStandardShader();\n    gl_FragColor = FragmentColor;\n}\n";
-
     /// <summary>One case: the object's values (null = its row is gone), the slot mask, and the colour worked out by
     /// hand from the three textures below.</summary>
     private readonly record struct GuiTwinCase(string What, string? Pick, string? Glow, int Slots, byte R, byte G, byte B, bool Due = false);
@@ -57,9 +50,6 @@ internal static unsafe partial class GpuGolden
         GuiContent.VkPair? pair = GuiContent.VkTwin(vk, "vslit", "golden_twin_f", lanes, n => chain.GetValueOrDefault(n), log);
         check.Expect(pair != null, "the GUI twin of a dye stage was refused (logged above)");
         if (pair == null) return;
-        chain["golden_noise_f"] = GuiTwinNoiseStage;
-        check.Expect(GuiContent.VkTwin(vk, "vslit", "golden_noise_f", [], n => chain.GetValueOrDefault(n), log) != null,
-                     "the GUI twin of a stage reading the engine's noise unit was refused (logged above)");
         int key = GuiContent.Key(MtrDef.Parse(System.Text.Encoding.ASCII.GetBytes("customshadervs vslit\ncustomshaderfs golden_twin_f\n"), "golden_twin"));
         GuiPassVk.TwinForCheck(vk, key, pair);
 

@@ -62,6 +62,7 @@ internal static unsafe partial class GuiPassVk
         Block(check, log, "the GUI program", ShaderSource.Get("cx_gui_v.glsl"), ShaderSource.Get("cx_gui_f.glsl"),
               new Dictionary<string, uint>(StringComparer.Ordinal), [("uBoneStart", 0, 4), ("uGamma", 4, 4)]);
         PltRows(check, log);
+        TwinNoise(check, log);
         log.Info(check.Ok ? "GuiPassVk.SelfCheck: passed" : "GuiPassVk.SelfCheck: FAILED");
     }
 
@@ -86,6 +87,21 @@ internal static unsafe partial class GuiPassVk
               + (l.Reflected.TryGetValue(name, out var g) ? $" (got {g.Offset}, {g.Size})" : " (absent)"));
         log.Info($"GuiPassVk.SelfCheck: {what} -- {t.Loose.Count} loose member(s) in {l.Bytes} bytes, {t.Opaques.Count} declaration(s)");
         return l.Members;
+    }
+
+    /// <summary>A hand-written stage that reads the engine's noise unit and its flag, the shape a water stage has.</summary>
+    private const string TwinNoiseStage =
+        "#define SHADER_TYPE 2\n#define LIGHTING 1\n#include \"inc_standard\"\nuniform sampler2D texUnitNoise;\n"
+      + "void main()\n{\n    FragmentColor = vec4(1.0);\n    SetupStandardShaderInputs();\n"
+      + "    if (texNoiseBound == 0) FragmentColor.rgb *= texture(texUnitNoise, vec2(0.0)).rgb;\n"
+      + "    ApplyStandardShader();\n    gl_FragColor = FragmentColor;\n}\n";
+
+    /// <summary>A GUI twin has no handle table, and a stage reading the noise unit still compiles in it. Oracle: shaderc.</summary>
+    private static void TwinNoise(Checker check, ExtenderLog log)
+    {
+        string? fs = GuiContent.TwinFs("vslit", "cx_sc_twinnoise", [], n => n == "cx_sc_twinnoise" ? TwinNoiseStage : null, log, out string why);
+        check.Expect(fs != null, $"the GUI twin of a stage reading the noise unit is translated ({why})");
+        if (fs != null) Block(check, log, "the noise-unit GUI twin", Text("cx_gui_v.glsl", log), fs, new Dictionary<string, uint>(StringComparer.Ordinal), []);
     }
 
     /// <summary>The PLT icon window program's ten palette rows, each written where the shader reads it. Oracle: std140
