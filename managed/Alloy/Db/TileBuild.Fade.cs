@@ -277,7 +277,7 @@ public static partial class TileBuild
         {
             int p = first + k;
             bool moved = false;
-            if (SceneDb.PartFade[p] != fade) { SceneDb.PartFade[p] = fade; moved = true; }
+            if (SceneDb.PartFade[p] != fade) { SceneDb.SetPartFade(p, fade); moved = true; }
             if (SceneDb.PartReveal[p] != reveal) { SceneDb.PartReveal[p] = reveal; moved = true; }
             if (moved) SceneDb.TouchPart(p, Dirty.Material);
         }

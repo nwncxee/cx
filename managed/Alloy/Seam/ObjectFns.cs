@@ -117,7 +117,7 @@ public sealed unsafe class ObjectFns : ISeamProvider
         SceneDb.ObjRot[i] = Quaternion.Identity;
         SceneDb.ObjScale[i] = 1f;
         SceneDb.ObjVisible[i] = true;
-        SceneDb.ObjTint[i] = Vector4.One;
+        SceneDb.SetObjTint(i, Vector4.One);
         SceneDb.ObjEmissive[i] = Vector3.Zero;
         SceneDb.ObjSeamPrevPos[i] = new Vector3(SceneDb.NoPrevPos);
         SceneDb.ObjSeamLod[i] = 0;

@@ -371,11 +371,11 @@ public static unsafe partial class DbFeed
         DbInputs.PartDestroyed(p);
         SceneDb.PartSlot[p] = -1;
         DrawRecipe.Assign(p, -1);
-        SceneDb.PartFade[p] = 1f;
-        SceneDb.PartDissolve[p] = 1f;
+        SceneDb.SetPartFade(p, 1f);
+        SceneDb.SetPartDissolve(p, 1f);
         DbAnim.DanglyPartRecycled(p);
         SceneDb.PartBoneBase[p] = -1;
-        SceneDb.PartAlpha[p] = 1f;
+        SceneDb.SetPartAlpha(p, 1f);
         // EXPLORED. The fog-of-war reveal belongs to a TILE and to nothing else -- vanilla fogs an unexplored
         // interior tile toward the fog colour in RenderDrawBucket @0x46d060 and has no such term for a
         // creature -- so every part that is not a tile part starts at 1 and only TileBuild lowers it. Left
@@ -403,7 +403,7 @@ public static unsafe partial class DbFeed
         SceneDb.ObjPartCount[o] = 0;
         SceneDb.ObjFlags[o] = ObjFlag.None;
         // ...and the scene: a record whose join is skipped otherwise points at the last tenant's scene.
-        SceneDb.ObjScene[o] = default;
+        SceneDb.SetObjScene(o, default);
         SceneDb.ObjCrossScene[o] = default;
         SceneDb.ObjSceneKinds[o] = 0;
         SceneDb.ObjWorldJoinBy[o] = null;
@@ -415,9 +415,9 @@ public static unsafe partial class DbFeed
         SceneDb.ObjTexRotate[o] = 0;
         // ...and the run root: the last tenant's may be a creature it rode, whose OIT id the next one would share.
         SceneDb.ObjRunRoot[o] = SceneDb.Objects.IdAt(o);
-        SceneDb.ObjLodShown[o] = 0;
+        SceneDb.SetObjLodShown(o, 0);
         SceneDb.ObjSphere[o] = default;
-        SceneDb.ObjTint[o] = Vector4.One;
+        SceneDb.SetObjTint(o, Vector4.One);
         SceneDb.ObjEmissive[o] = Vector3.Zero;
         SceneDb.ObjVisible[o] = true;
         // The attach VARIANT is the same kind of tenancy: a recycled slot that kept a translate attach would

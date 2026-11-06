@@ -177,6 +177,13 @@ public sealed unsafe partial class AlloyRenderer
     /// mirror). The screen's own passes must not be among them.</summary>
     internal static int PassBindsBorrowed;
 
+    /// <summary>Zero the pass block clause's period counts.</summary>
+    private static void ResetPassPeriod() { PassBinds = 0; PassBindsBorrowed = 0; }
+
+    /// <summary>The [alloy] line's pass block clause.</summary>
+    private static string PassNote()
+        => $"pass block {(float)PassBinds / Counters._frames:F1} binds/frame ({(float)PassBindsBorrowed / Counters._frames:F1} through another view's cluster table)";
+
     /// <summary>This pass's shared scene terms into the <c>CxPass</c> staging block, then the program's own
     /// <c>uLocalCubes</c>. Called at each program switch; the fill is all it does -- the block reaches the GPU
     /// when a pass copies it into the frame arena, so a switch costs the fill and nothing else.</summary>

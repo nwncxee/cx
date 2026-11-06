@@ -17,7 +17,7 @@ namespace CX.Alloy;
 internal static unsafe class RspShim
 {
 
-    private static ExtenderLog? _log;
+    internal static ExtenderLog? _log;
     private static GlRenderVertexDataFn* _vdoSlot, _vdoBottomSlot;
     private static int* _fullDynamicLighting;
     private static GlRenderVertexStreamDataFn _origStream;
@@ -124,15 +124,21 @@ internal static unsafe class RspShim
             if (next != null) next(vdo, item, prim, size, offset);
             return;
         }
-        _swallowed++;
+        CountSwallowed();
     }
+
+    /// <summary>One engine draw the funnel kept from the original.</summary>
+    internal static void CountSwallowed() => _swallowed++;
+
+    /// <summary>One engine draw that reached the original.</summary>
+    internal static void CountPassed() => _passed++;
 
     /// <summary>The acceptance counter, at the bottom of the same chain: a call reaching here reached the
     /// ORIGINAL, by whatever route. Zero is the claim, bar the movie quad of a handed-back frame.</summary>
     [UnmanagedCallersOnly]
     private static void OnVdoBottom(IntPtr vdo, uint item, uint prim, uint size, uint offset)
     {
-        _passed++;
+        CountPassed();
         GlRenderVertexDataFn next = *_vdoBottomSlot;
         if (next != null) next(vdo, item, prim, size, offset);
     }
@@ -143,14 +149,14 @@ internal static unsafe class RspShim
     private static void OnStreamDraw(IntPtr vsdo, uint prim, uint size, uint offset)
     {
         if (EngineOwnsDraw && _origStream != null) { _origStream(vsdo, prim, size, offset); return; }
-        _swallowed++;
+        CountSwallowed();
     }
 
     /// <summary>The acceptance line: <c>passed</c> is the exit bar's draw counter and must read 0. The borrowed
     /// count is a DELTA over the period, not a lifetime total -- a lifetime figure would let one transient
     /// refusal in one area taint every later line, and telling a new regression from a historic one is the only
     /// thing this column exists for. The delta is signed, and a negative reads as recovery.</summary>
-    private static void Period()
+    internal static void Period()
     {
         if (_frames < AlloyRenderer.LogEvery) return;
         double ms = _ticks * 1000.0 / Stopwatch.Frequency / _frames;

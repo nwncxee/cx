@@ -20,9 +20,15 @@ public sealed unsafe partial class AlloyRenderer
     /// state the enrollment radix cannot sort. ponytail: insertion sort, O(n^2) in the small blended count.</summary>
     private static int RouteParts()
     {
-        int n = 0, nb = 0, na = 0;
         PrepareVisible();
         OccludeFrame();   // #537: the hit fan this walk tags occluders from
+        return RouteWalk();
+    }
+
+    /// <summary>The walk itself, over the visible set and hit fan <see cref="RouteParts"/> settled.</summary>
+    private static int RouteWalk()
+    {
+        int n = 0, nb = 0, na = 0;
         {
         for (int c = (int)AlloyClass.Opaque; c <= (int)AlloyClass.Cutout; c++)
         {

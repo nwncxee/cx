@@ -84,7 +84,7 @@ public sealed unsafe partial class ObjectSlots
     }
 
     /// <summary>One object's own colour-shift or illumination words and columns.</summary>
-    private static void WriteShift(DbId id, nint shell, Vector3 colour, float alpha, bool illum)
+    internal static void WriteShift(DbId id, nint shell, Vector3 colour, float alpha, bool illum)
     {
         int i = id.Index;
         if (illum)
@@ -109,7 +109,7 @@ public sealed unsafe partial class ObjectSlots
         }
         // the pick reads the engine's alpha (a faded object is out of it); the draw, PlaceableHold's held one at 1
         SceneDb.HitObjAlpha[i] = alpha;
-        SceneDb.ObjTint[i] = new Vector4(colour, shell != 0 && PlaceableHold.Held(shell) ? 1f : alpha);
+        SceneDb.SetObjTint(i, new Vector4(colour, shell != 0 && PlaceableHold.Held(shell) ? 1f : alpha));
         Flag(id, SeamFlag.ColourShift, true);
         SceneDb.Touch(id, Dirty.Material);
     }

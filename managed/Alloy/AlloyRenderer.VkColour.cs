@@ -102,6 +102,8 @@ public sealed unsafe partial class AlloyRenderer
         public bool DirtyAll = true;
         public uint[] TexHTable = [];
         public byte[] ArenaBytes = new byte[ArenaCap];
+        /// <summary>The arena offset of the pass block staged last, -1 for none this frame.</summary>
+        public int PassAt = -1;
         public int ArenaUsed;
         public ImageId Tex2D, TexU2D, Tex2DArray, Tex3D, TexCube, TexCubeArray, Depth2DArray, DepthCubeArray, DecalLayer, DecalSurf;
         public SamplerId Linear, Shadow;
