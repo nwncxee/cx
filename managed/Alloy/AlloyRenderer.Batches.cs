@@ -345,7 +345,7 @@ public sealed unsafe partial class AlloyRenderer
     {
         int part = _oDbPart[i];
         DbId root = RunRoot(i);
-        int gob = SceneDb.Objects.Valid(root) && OitGrouped(DbObjAlpha(part), false, _oWash[i]) ? root.Index + 1 : 0;
+        int gob = OitPass.Dedupes && SceneDb.Objects.Valid(root) && OitGrouped(DbObjAlpha(part), false, _oWash[i]) ? root.Index + 1 : 0;
         return BlendRankOf(_oDecal[i] != 0, free, SlotSitsOitOut(i), gob, dis, _orderRank[i]);
     }
 
@@ -691,6 +691,7 @@ public sealed unsafe partial class AlloyRenderer
         _stageRouted = routed; _stageLighting = lightingOn;
         // CX-188: one read for the phase -- see _stageTexSerial.
         _stageTexSerial = TexRegistry.TableSerial;
+        _settledAt.Part = SceneDb.Parts.MarkClock; _settledAt.Obj = SceneDb.Objects.MarkClock;
         // ...and the instrument for the skip it gates: a serial that moves every frame re-resolves the whole
         // table every frame, which is the skip bought back. The period line carries both numbers.
         if (_stageTexSerial != _texSerialWas) { _texSerialMoves++; _texSerialWas = _stageTexSerial; }
@@ -935,7 +936,7 @@ public sealed unsafe partial class AlloyRenderer
         // wash's polygon offset, in any class
         row.Blend = (_oWash[i] << 16) | (AlloyClasses.Blends(cls) ? (_oSrc[i] << 8) | _oDst[i] : 0);
         // The OIT object id is one uniform per batch, so it is a key term and a tag on the batch.
-        row.GobKey = cls == (int)AlloyClass.Blended && OitGrouped(DbObjAlpha(_oDbPart[i]), _oDecal[i] != 0, _oWash[i])
+        row.GobKey = OitPass.Dedupes && cls == (int)AlloyClass.Blended && OitGrouped(DbObjAlpha(_oDbPart[i]), _oDecal[i] != 0, _oWash[i])
                    ? RunKey(i) : IntPtr.Zero;
         row.Decal = cls == (int)AlloyClass.Blended && _oDecal[i] != 0;
         // "has an instance behind it", which in DB mode is "is not tileset geometry".
@@ -943,22 +944,22 @@ public sealed unsafe partial class AlloyRenderer
                         : _oGob[i] != IntPtr.Zero;
         // Automatic mesh LOD: the screen radius of the sphere the cull already needs. The RANGE lookup stays on
         // the main thread (a dictionary and a shared counter); only the level is arithmetic.
-        int lvl = 0;
-        if (MeshLod.On && _lodScale > 0f)
-            {
-                ref Sphere lsp = ref _dSph[i];
-                if (lsp.Radius < NeverCull)
-                {
-                    float dx = lsp.Center.X - _eyePos.X, dy = lsp.Center.Y - _eyePos.Y, dz = lsp.Center.Z - _eyePos.Z;
-                    lvl = MeshLod.Level(lsp.Radius, MathF.Sqrt(dx * dx + dy * dy + dz * dz), _lodScale);
-                }
-            }
-        row.Lvl = lvl;
+        row.Lvl = RowLevel(i);
         // #392: a matrix mover this frame -- its record's prev lags its model by one frame, and the velocity
         // stage redraws it with both. CX-26: a posed skinmesh is one too when its palette changed.
         bool posed = _oBone[i] >= 0, dangly = !posed && DanglyPrevNow(i), recMoved = _recMovedAt[i] == _frameSeq;
         row.Posed = posed; row.Dangly = dangly;
         row.Moved = posed ? recMoved || _poseMovedAt[i] == _frameSeq : dangly || recMoved && _oMx[i];
+    }
+
+    /// <summary>The mesh LOD level a row draws at this frame, off the cull's own sphere and the pass's eye.</summary>
+    private static int RowLevel(int i)
+    {
+        if (!MeshLod.On || _lodScale <= 0f) return 0;
+        ref Sphere lsp = ref _dSph[i];
+        if (lsp.Radius >= NeverCull) return 0;
+        float dx = lsp.Center.X - _eyePos.X, dy = lsp.Center.Y - _eyePos.Y, dz = lsp.Center.Z - _eyePos.Z;
+        return MeshLod.Level(lsp.Radius, MathF.Sqrt(dx * dx + dy * dy + dz * dz), _lodScale);
     }
 
     /// <summary>BW2: one frame in this many rebuilds every staged <see cref="BatchRow"/> the old way and counts
@@ -986,7 +987,7 @@ public sealed unsafe partial class AlloyRenderer
             _bAudited++;
             int feat = ShaderFeatures.WithPose((int)_oFeat[i * 4], _oBone[i] >= 0);
             int blend = (_oWash[i] << 16) | (AlloyClasses.Blends(_passCls[k]) ? (_oSrc[i] << 8) | _oDst[i] : 0);
-            IntPtr gobKey = _passCls[k] == (int)AlloyClass.Blended
+            IntPtr gobKey = OitPass.Dedupes && _passCls[k] == (int)AlloyClass.Blended
                             && OitGrouped(DbObjAlpha(_oDbPart[i]), _oDecal[i] != 0, _oWash[i]) ? RunKey(i) : IntPtr.Zero;
             bool posed = _oBone[i] >= 0, dangly = !posed && DanglyPrevNow(i);
             bool recMoved = _recMovedAt[i] == _frameSeq;
@@ -1051,7 +1052,7 @@ public sealed unsafe partial class AlloyRenderer
     /// hot ones every part touches. Rare skip counters go through <see cref="Inc"/> instead.</summary>
     internal struct StageCounters
     {
-        public long OwnDissolve, NrmDeclared, NrmBound, RecStable, RecWritten;
+        public long OwnDissolve, NrmDeclared, NrmBound, RecStable, RecWritten, RecSettled;
         public long DisAsked, DisNoFeat, DisNoLit;
         public bool CastChanged;
     }
@@ -1059,7 +1060,7 @@ public sealed unsafe partial class AlloyRenderer
     private static void FoldCounters(ref StageCounters c)
     {
         Counters._ownDissolve += c.OwnDissolve; Counters._nrmDeclared += c.NrmDeclared; Counters._nrmBound += c.NrmBound;
-        Counters._recStable += c.RecStable; Counters._recWritten += c.RecWritten;
+        Counters._recStable += c.RecStable; Counters._recWritten += c.RecWritten; Counters._recSettled += c.RecSettled;
         _disAsked += c.DisAsked;
         _disNoFeat += c.DisNoFeat; _disNoLit += c.DisNoLit;
         if (c.CastChanged) CasterGen++;
