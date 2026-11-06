@@ -8,6 +8,14 @@ bool CxCoverCut(float coverage, float alpha, vec2 du1, vec2 du2, vec2 cutSize, f
         || uSolid != 0 && s < CX_SOLID_ALPHA;
 }
 
+/// The colour map at a pixel: two samples a quarter pixel either side on the diagonal, each with a footprint half the
+/// area, so grain finer than a pixel stays steady as the camera moves without softening what one sample resolves.
+vec4 CxColourTap(vec2 uv, vec2 dx, vec2 dy)
+{
+    vec2 off = 0.25 * (dx + dy);
+    return 0.5 * (textureGrad(uTex, uv + off, 0.7071 * dx, 0.7071 * dy) + textureGrad(uTex, uv - off, 0.7071 * dx, 0.7071 * dy));
+}
+
 /// inc_displacement.shd's DisplaceTextureCoords: the height map's relief marched along the view ray in tangent
 /// space, the step count by view angle, distance and screen height. `om` is the material's DisplacementOffset and
 /// DisplacementMultiplier (0 = the stock 1), which shift the march's start and scale its reach and its steps.
@@ -282,7 +290,9 @@ void main()
     // three samples.
     bool plt = CxPltOn(vDraw);
     float arriveBias = uLodBias + (1.0 - arrive) * (1.0 - arrive) * CX_ARRIVE_MIPS;
-    vec4 texel = plt ? CxPltResolve(uTex, uv, arriveBias, vDraw) : textureGrad(uTex, uv, du1 * exp2(arriveBias), du2 * exp2(arriveBias));
+    vec4 texel = plt ? CxPltResolve(uTex, uv, arriveBias, vDraw)
+               : arrive < 1.0 ? textureGrad(uTex, uv, du1 * exp2(arriveBias), du2 * exp2(arriveBias))
+               : CxColourTap(uv, tapDx, tapDy);
     if (arrive < 1.0)
     {
         // A PLT's alpha comes out of the palette, not out of a mip of the pair texture, so the sharp-alpha
