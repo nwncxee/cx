@@ -185,6 +185,11 @@ public static unsafe partial class EngineLayout
     /// does not, because MSVC hands the override the subobject directly.</summary>
     public static readonly int ObjItemPlated = Field<int>("CNWCObject", "itemPlated");
 
+    /// <summary>CNWCPlaceable's own name, <c>char*</c> + length: the only name its plate prints
+    /// (<c>ShowFeedbackBubbleText</c>, Linux disasm @0x7ea940, Windows @0x871c33).</summary>
+    public static readonly int PlaceableName = Field<IntPtr>("CNWCPlaceable", "name");
+    public static readonly int PlaceableNameLen = Field<uint>("CNWCPlaceable", "nameLen");
+
     /// <summary>CNWCCreature -&gt; the area id the plate is gated on: hidden when it differs from the player's.
     /// <c>CNWCCreature::UpdatePopUpBubble</c> (Linux nm @0x72e600, Windows rva 0x8107a0) is two reads on each
     /// build -- <c>this+area == module[currentArea][id]</c> -- and carries the class's usual Windows -0x20.</summary>
