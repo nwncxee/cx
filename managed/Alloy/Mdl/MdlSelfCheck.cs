@@ -490,6 +490,11 @@ donemodel cx_body
         expect(m.Nodes.Length == 2, $"{m.Nodes.Length} nodes, expected 2");
         if (m.Nodes.Length != 2) return;
         expect(m.Nodes[0].Name == "rootnode" && m.Nodes[1].Name == "mesh", "the node names are wrong");
+        ModelDef? asciiWalk = MdlParser.Parse(Encoding.ASCII.GetBytes(
+            "newmodel w\nbeginmodelgeom w\n node aabb wm\n  parent NULL\n  render 1\n  shadow 1\n endnode\nendmodelgeom w\ndonemodel w\n"),
+            "cx_asciiwalk", out string? asciiWalkErr);
+        expect(asciiWalk?.Nodes[0].Mesh is { WalkMesh: true, Render: false, Shadow: false },
+               $"an ASCII walkmesh saying render 1 must not draw or cast ({asciiWalkErr})");
         ModelDef? walk = MdlParser.Parse(BinaryFixture(0x221), "cx_binwalk", out string? walkErr);
         expect(walk?.Nodes[1].Mesh is { WalkMesh: true, Render: false, Shadow: false },
                $"a compiled walkmesh saying render 1 must not draw or cast ({walkErr})");
