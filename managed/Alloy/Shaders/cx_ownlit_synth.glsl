@@ -12,12 +12,12 @@ bool CxCoverCut(float coverage, float alpha, vec2 du1, vec2 du2, vec2 cutSize, f
 /// space, the step count by view angle, distance and screen height. `om` is the material's DisplacementOffset and
 /// DisplacementMultiplier (0 = the stock 1), which shift the march's start and scale its reach and its steps.
 /// Explicit gradients: the count differs per fragment, so implicit ones would be undefined in the loop.
-vec2 CxDisplace(vec2 uv, mat3 tsb, vec3 V, float depth, float screenH, vec2 du1, vec2 du2, vec2 om)
+vec2 CxDisplace(vec2 uv, mat3 tsb, vec3 V, float depth, float screenH, vec2 du1, vec2 du2, vec2 om, float cap)
 {
     float mul = om.y != 0.0 ? om.y : 1.0;
     float m = 1.0 - 0.5 * dot(V, tsb[2]);
     m *= m / (max(depth, 1e-4) * 0.125);
-    float it = floor(CX_DISPLACE_STEPS * mul * clamp(m * screenH / 1080.0, 0.0, 1.0) + 0.5);
+    float it = floor(cap * mul * clamp(m * screenH / 1080.0, 0.0, 1.0) + 0.5);
     if (it < 1.0) return uv;
     vec3 v = transpose(tsb) * V;
     float zh = 0.5 * v.z + 0.5;
@@ -161,7 +161,7 @@ void main()
         {
             // inc_standard.shd:213-217: the displaced UV is what every later tap of the material reads;
             // the pass's own viewport height (uTile is the viewport over the grid), not a sampler only SSAO binds
-            uv = CxDisplace(uv, mat3(T * inv, B * inv, N), V, vDepth, uTile.w * float(uGrid.y), du1, du2, vec2(d.amb.w, d.dif.w));
+            uv = CxDisplace(uv, mat3(T * inv, B * inv, N), V, vDepth, uTile.w * float(uGrid.y), du1, du2, vec2(d.amb.w, d.dif.w), CxDisplaceCap(2));
             // inc_material.shd:307-311's SetupOcclusionFromTexture: the height against a blurrier tap of itself
             // IS the local self-occlusion, the blur shrinking with distance (OCCLUSION_VICINITT_RANGE 7.0
             // - log2 of the view depth), clamped to 0.9 and squared.

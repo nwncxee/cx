@@ -122,8 +122,11 @@ const float CX_MID_GREY = 0.2176;
 const float CX_ENV_SPEC_MAX = 0.98, CX_ENV_SPEC_SCALE = 8.0, CX_ENV_ROUGH_SCALE = 2.5;
 // inc_material.shd:301's OCCLUSION_VICINITT_RANGE: the height-occlusion tap's mip bias at a view depth of 1.
 const float CX_OCCL_VICINITY = 7.0;
-// inc_displacement.shd:30's fDisplacementMaximumIterations at SHADER_QUALITY_MODE > 1: the parallax march's cap.
-const float CX_DISPLACE_STEPS = 32.0;
+// inc_displacement.shd:29-33's fDisplacementMaximumIterations: the parallax march's cap at a shader quality.
+float CxDisplaceCap(int quality)
+{
+    return 32.0;
+}
 // inc_standard.shd:250-252: the albedo is desaturated toward this grey in proportion to reflectivity,
 // so the reflection is not counted twice. DISPLAY space -- the engine does it before the :253 linearise.
 const vec3 CX_ENV_GREY = vec3(0.666667);
