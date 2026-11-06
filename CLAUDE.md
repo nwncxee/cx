@@ -177,8 +177,8 @@ the cleanup that earned it. Adding a rule means adding its gate in the same chan
   that grows with every hook) are exempt and `file-size.baseline` holds what is still over. `EngineLayout` is
   one partial class over `EngineLayout*.cs`, and every tool that reads its rows reads all of them: a new block
   of rows goes in a part of its own once `EngineLayout.cs` would grow past its baseline.
-- `retired-terms.sh`: a name listed in `tools/gates/retired-terms.txt` appearing under `managed/` or `docs/`
-  fails. Not scanned: that file, `docs/adr/` and `docs/handoff/` -- dated records of what was true then.
+- `retired-terms.sh`: a name listed in `tools/gates/retired-terms.txt` appearing under `managed/` or `docs/`, or in
+  `check-shaders.py`, fails. Not scanned: that file, `docs/adr/` and `docs/handoff/` -- dated records of what was true then.
 - `knob-refs.sh`: a `<group>.<knob>` key in a string literal under `managed/` naming no declared `Knob<T>`
   fails.
 - `engine-views.sh`: outside `Framework/`, `ptr +/- EngineLayout.X` fails when row X has a view member; a

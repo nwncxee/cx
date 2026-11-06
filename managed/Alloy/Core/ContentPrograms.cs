@@ -349,8 +349,9 @@ internal static unsafe class ContentPrograms
         if (!s.Post && !s.ReadsLights && LitDeferred(fs))
             list.Add(("deferred twin", vs, CX.Alloy.Programs.WithDeferred(fs), 1));
         if (!s.Cuts && !s.Moves) return list;
-        list.Add(("depth twin", vs, ShaderStages.WithDefine(fs, "CX_DEPTH_ONLY 1"), 2));
-        string castFs = ShaderStages.WithDefine(ShaderStages.WithDefine(fs, "CX_DEPTH_ONLY 1"), "CX_CAST 1");
+        string depthFs = ShaderStages.WithDefine(fs, "CX_DEPTH_ONLY 1");
+        list.Add(("depth twin", vs, depthFs, 2));
+        string castFs = ShaderStages.WithDefine(depthFs, "CX_CAST 1");
         list.Add(("caster twin", ShaderStages.WithDefine(vs, "CX_CAST 1"), castFs, 3));
         list.Add(("layered caster twin", ShaderStages.WithDefine(vs, "CX_CAST_LAYER 1"), castFs, 4));
         return list;

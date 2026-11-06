@@ -806,20 +806,24 @@ def with_define(src, define):
     return src.replace("#version 460 core\n", f"#version 460 core\n#define {define}\n", 1)
 
 
+# Mirrors AlloyRenderer.BindlessPrologue: what a stage that samples by handle opens with.
+BINDLESS_PROLOGUE = "#define CX_BINDLESS 1\n#extension GL_ARB_bindless_texture : require\n"
+
+
 def bindless(fs):
     names = (("uTex", 0), ("uFlowTex", 6), ("uNrmTex", 1), ("uSpecTex", 2), ("uRoughTex", 3),
              ("uHeightTex", 4), ("uIllumTex", 5), ("uAoTex", 7))
     for n, _ in names:
         fs = re.sub(rf"uniform sampler2D {n};[^\n]*\n", "", fs)
-    head = ("#version 460 core\n#define CX_BINDLESS 1\n#extension GL_ARB_bindless_texture : require\n"
+    head = ("#version 460 core\n" + BINDLESS_PROLOGUE +
             "layout(std430, binding = 3) readonly buffer CxTexH { uvec2 uTexH[]; };\n"
             + "".join(f"#define {n} sampler2D(uTexH[(vDraw << 3) + {k}])\n" for n, k in names))
     return fs.replace("#version 460 core\n", head, 1)
 
 
 def vs_bindless(vs):
-    """Mirrors ContentPrograms.VsBindless: a content vertex half samples by the record's handles."""
-    return vs.replace("#version 460 core\n", "#version 460 core\n#define CX_BINDLESS 1\n#extension GL_ARB_bindless_texture : require\n", 1)
+    """Mirrors ContentPrograms.Splice: a content vertex half samples by the record's handles."""
+    return vs.replace("#version 460 core\n", "#version 460 core\n" + BINDLESS_PROLOGUE, 1)
 
 
 def content_pair(g, vs, fs, chain):
@@ -854,7 +858,7 @@ def pair_programs(name, vtext, ftext, fres, vres):
     """The programs ContentPrograms.Twins builds for a pair, by the same facts."""
     vb = vs_bindless(vtext) if vres is not None else vtext
     fb = bindless(ftext)
-    out = {f"{name}": (vb, fb)}
+    out = {name: (vb, fb)}
     post = fres is not None and fres.post
     lights = fres is not None and fres.reads_lights
     if not post and not lights:

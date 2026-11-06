@@ -1,4 +1,4 @@
-# CX-195/CX-198: names this codebase has retired. A match under managed/ or docs/ fails the gate.
+# CX-195/CX-198: names this codebase has retired. A match under managed/ or docs/, or in check-shaders.py, fails the gate.
 #
 # Format, tab-separated:   <regex>  <ticket>  [exception regex]
 #   <regex>          extended regex, matched case-insensitively against every line
@@ -250,4 +250,4 @@ ADR[- ]0021	#220
 # A content pair's lanes live in a pool sized to the pair, not in a fixed array on the row.
 twelve parameters per pair|\bCX_CP_LANES\b|\bContentLaneValues\b	#218
 # Vulkan's lit stage reads its textures only through the handle table, so the knob's off state drew every lit surface white.
-alloy\.bindless\b|\bBindlessDecided\b|\bDecideBindlessVk\b|\bSaidNoBindless\b|bindless (is )?off\b|only under bindless|stands the bindless path down|when ARB_bindless_texture is available	CX-507
+alloy\.bindless\b|Dropdown\("bindless"|\bVsBindless\b|\b_bindlessProbed\b|\b_limitsProbed\b|\bBindlessDecided\b|\bDecideBindlessVk\b|\bSaidNoBindless\b|bindless (is )?off\b|only under bindless|stands the bindless path down|when ARB_bindless_texture is available	CX-507

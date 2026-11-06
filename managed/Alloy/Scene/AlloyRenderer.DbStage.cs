@@ -68,14 +68,14 @@ public sealed unsafe partial class AlloyRenderer
         return sb.ToString();
     }
 
-    /// <summary>The part's eight material handles onto its record, the only way a lit stage reaches its textures: a
-    /// row left empty draws the white stand-in and transparent-black maps. False when a worker met an arrival only the
-    /// main thread may register. <paramref name="slots"/> loses each map that has no handle.</summary>
+    /// <summary>The part's eight material handles onto its record, the only way a lit stage reaches its textures: an
+    /// empty diffuse draws the white stand-in. <paramref name="slots"/> loses each map with no handle, which draws
+    /// unbound. False when a worker met what only the main thread may do: register an arrival, or mint the stand-in.</summary>
     private static bool DbStageHandles(int i, int part, int recipe, int tid, bool main, ref int slots, ref bool settled, ref StageCounters c)
     {
         ref TexHandles hh = ref _dTexH[i];
         bool moved = false;
-        for (int s = 0; s < 8; s++)
+        for (int s = 0; s < TexHandles.MaterialSlots; s++)
         {
             TexId id = DbTexOf(part, recipe, s);
             ulong h = TexRegistry.Handle(id);
@@ -143,9 +143,8 @@ public sealed unsafe partial class AlloyRenderer
         if (cls == (int)AlloyClass.Water && !_waterArmed) return Skipped;
         bool lit = _oLit[i];
         if (lit && !lightingOn) { Inc(ref Counters._skipNoLight); return Skipped; }
-        // The PLT stage is share-group work and a worker may not do it (ADR 0022). Handles are a plain array
-        // read. What is still main-only is the per-slot work below that mutates shared
-        // state -- a dependent registration for a texture that has not landed, and the tile diagnostic.
+        // The PLT stage is share-group work and a worker may not do it (ADR 0022). What else is main-only mutates
+        // shared state: a dependent registration in DbStageHandles for a texture that has not landed, and the tile diagnostic.
         // The override counts as much as the recipe: armour reaches its PLT through ReplaceTexture, and a slot
         // that WAS a PLT must be cleared on the main thread too -- PltColors' dirty range is unsynchronised, and
         // a lost update leaves the GPU drawing that record with a dead tenant's rows or no PLT flag at all.

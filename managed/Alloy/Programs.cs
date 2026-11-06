@@ -1,6 +1,4 @@
 using System;
-using CX.Framework;
-using CX.Graphics;
 using CX.Graphics.Rhi;
 
 using static CX.Alloy.AlloyRenderer;
@@ -56,7 +54,6 @@ internal static unsafe class Programs
     /// units Alloy binds. A driver short of these keeps the lit program -- <see cref="WithoutSunSoft"/> takes
     /// the define out so the two samplers are never declared -- and the sun falls back to its fixed cross.</summary>
     internal static readonly int SunSoftUnitsNeed = (int)TextureSlots.SunShadowDynRaw + 1;
-    private const int VsSsboNeed = 3;
 
     /// <summary>The define that compiles the sun's blocker search and disc into a stage. It lives in
     /// <c>cx_ownlit_head.glsl</c>, so a dumped stage and any override built from one carry it.</summary>
