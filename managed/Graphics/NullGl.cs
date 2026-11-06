@@ -25,6 +25,8 @@ public sealed unsafe partial class NullGl : IExtenderService
         public SdlGlGetSwapIntervalFn OrigGetInterval;
         public SdlGlGetDrawableSizeFn OrigDrawable;
         public RiReadPixelsFromBufferFn OrigReadPixels;
+        public AurSnapshotFn OrigSnapshot;
+        public byte[]? SnapshotPath;
         public int SwapInterval;
         public int Patched, Generic;
         public readonly StubState Gl = new();
@@ -51,6 +53,8 @@ public sealed unsafe partial class NullGl : IExtenderService
         s.OrigGetInterval = hooks.InstallSdlGlGetSwapInterval(&OnGetSwapInterval);
         s.OrigDrawable = hooks.InstallSdlGlGetDrawableSize(&OnGetDrawableSize);
         s.OrigReadPixels = hooks.InstallRiReadPixelsFromBuffer(&OnReadPixels);
+        s.OrigSnapshot = hooks.InstallAurSnapshot(&OnSnapshot);
+        FrameRegistry.Global.Register(FramePhase.PrePresent, SnapshotPhase, TakeSnapshot, "NullGl.snapshot", log);
         if (s.OrigWindow == null || s.OrigContext == null || s.OrigSetInterval == null || s.OrigGetInterval == null
             || s.OrigDrawable == null)
             log.Always("NullGl: SDL_CreateWindow / SDL_GL_CreateContext / the swap-interval or drawable calls did not hook -- "

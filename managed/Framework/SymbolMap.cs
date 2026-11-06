@@ -716,6 +716,10 @@ internal static unsafe class SymbolMap
     /// GL the pixels come from Vulkan's screen.</summary>
     [Fn("void(uint fb, int x, int y, int w, int h, int format, byte* dst)")]
     public const string RiReadPixelsFromBuffer = "_ZN15RenderInterface20ReadPixelsFromBufferEjiiiiN6Aurora20AuroraTextureFormatsEPv";
+    /// <summary><c>AurSnapshot(path, pano)</c> @0x4867a0 -- writes a screenshot; the main loop calls it between presents,
+    /// where a session with no GL has no finished screen to read.</summary>
+    [Fn("void(byte* path, byte pano)")]
+    public const string AurSnapshot = "_Z11AurSnapshotPKcb";
     /// <summary><c>RenderInterface::Clear(uint mask)</c> @0x45d2a0 -- every engine clear (the frame's
     /// <c>Clear(3)</c> in <c>Update</c>, each GUI view's <c>Clear(2)</c>, snapshots) funnels through this static thunk
     /// to <c>GLRender::Clear</c>. Bits: 1 colour, 2 depth+stencil, 4 stencil.</summary>
@@ -2992,6 +2996,7 @@ internal static unsafe class SymbolMap
         [SdlGlSetSwapInterval] = Nm("SDL_GL_SetSwapInterval"),
         [SdlGlGetDrawableSize] = Nm("SDL_GL_GetDrawableSize"),
         [SdlVulkanGetDrawableSize] = Nm("SDL_Vulkan_GetDrawableSize"),
+        [AurSnapshot] = Nm("?AurSnapshot@@YAXPEBD_N@Z"),
         [RiReadPixelsFromBuffer] = Nm("?ReadPixelsFromBuffer@RenderInterface@@SAXIHHHHW4AuroraTextureFormats@Aurora@@PEAX@Z"),
         [RiClear] = Nm("?Clear@RenderInterface@@SAXI@Z"),
         [RiSetClearColor] = Nm("?SetClearColor@RenderInterface@@SAXMMMM@Z"),
