@@ -102,8 +102,8 @@ internal static unsafe class PostChain
 
     /// <summary>The texture LOD bias every owned material sample takes: <c>log2(scale)</c>, so a frame
     /// rendered at fewer pixels picks the mips the DISPLAY footprint would have, clamped at 0 so supersampling
-    /// keeps its detail. Under FSR one lower again, as AMD asks: its jittered frames rebuild the finer mip.</summary>
-    internal static float LodBias => Fsr.On ? MathF.Log2(_scale) - 1f : MathF.Min(MathF.Log2(_scale), 0f);
+    /// keeps its detail. FSR takes the same: AMD's further -1 makes distant textures shimmer in motion.</summary>
+    internal static float LodBias => MathF.Min(MathF.Log2(_scale), 0f);
 
     /// <summary>TAA draws and its stage can build: <c>post.aa</c> picks FSR while FSR cannot draw (a render scale
     /// above 1, or a refusal) -- the gate the jitter and the accumulator share.</summary>
@@ -344,7 +344,7 @@ internal static unsafe class PostChain
             check.Expect(Post.Scale.Min == MinScale && Post.Scale.Max == MaxScale, "post.scale spans exactly the resolve's range");
             Post.Aa.V = Post.AaFsr; Post.Scale.V = 0.67f;
             check.Expect(RenderSize(2560) == 1715 && RenderSize(1) == 1, "render size rounds, never below one pixel");
-            check.Expect(MathF.Abs(LodBias - (MathF.Log2(0.67f) - 1f)) < 1e-6f, "the lod bias under FSR is log2(scale) - 1 below 1");
+            check.Expect(MathF.Abs(LodBias + 0.578f) < 0.001f, $"the lod bias under FSR is log2(scale) below 1 (got {LodBias:F3})");
             Post.Scale.V = 1.5f; check.Expect(LodBias == 0f, "...and 0 above it: supersampling keeps its detail");
             Post.Scale.V = 1f; check.Expect(RenderSize(2560) == 2560, "1.0 is pixel-identical");
             // The panel hides the slider unless FSR is picked, so a scale stored under FSR must not reach any other choice.
