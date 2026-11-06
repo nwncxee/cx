@@ -9,6 +9,9 @@
 #   --passtime loads VK_LAYER_CX_passtime (tools/gpu-passtime) and prints GPU ms per debug label over the last
 #     1000 presents: live frames, a timestamp at each label edge, (gaps) = a parent's time no child label claims.
 #
+#   --connect HOST:PORT --login SCRIPT joins a running server instead: SCRIPT (xtool grammar) gets from the character
+#     panel to the login, and the soak starts when the log names an area other than the menu's backdrop.
+#
 # DIR holds ONE save folder (it is preselected on the Load panel). The user's real cx.cfg is passed through so
 # knobs match play; each --cfg replaces that key. Click points are pixel constants for 2544x1378 at the
 # copied settings.tml's UI scale. Steady state = every reporting period after the first two in the area.
@@ -17,7 +20,7 @@
 # grass area, say -- is measurable: the script walks the PC and settles the scene itself, and no save is needed.
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-SAVES=""; SHOW=""; SOAK=90; LABEL="run"; OVERRIDES=(); EXTRA=""; OVR=""; LIVE=(); PASSTIME=0
+SAVES=""; SHOW=""; SOAK=90; LABEL="run"; OVERRIDES=(); EXTRA=""; OVR=""; LIVE=(); PASSTIME=0; CONNECT=""; LOGIN=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --saves) SAVES="$2"; shift 2 ;;
@@ -29,10 +32,12 @@ while [ $# -gt 0 ]; do
         --override) OVR="$2"; shift 2 ;;
         --aniso) LIVE+=(--aniso "$2"); shift 2 ;;
         --passtime) PASSTIME=1; shift ;;
+        --connect) CONNECT="$2"; shift 2 ;;
+        --login) LOGIN="$2"; shift 2 ;;
         *) echo "perf-save: unknown option $1" >&2; exit 2 ;;
     esac
 done
-[ -n "$SHOW" ] || [ -d "$SAVES" ] || { echo "perf-save: --saves DIR or --showcase NAME required" >&2; exit 2; }
+[ -n "$SHOW" ] || [ -n "$CONNECT" ] || [ -d "$SAVES" ] || { echo "perf-save: --saves DIR, --showcase NAME or --connect HOST:PORT required" >&2; exit 2; }
 pgrep -x nwmain-linux >/dev/null && { echo "perf-save: a client is running" >&2; exit 3; }
 
 USER_CFG="$(python3 "$ROOT/tools/paths.py" NWN_USERDIR 2>/dev/null || echo "$HOME/.local/share/Neverwinter Nights")/cx.cfg"
@@ -61,7 +66,10 @@ if [ -n "$OVR" ]; then
 fi
 # A save arrives through the Load panel's two clicks; a showcase's own script puts the PC where it wants it, so
 # the clicks go and the settle is the script's own jump and camera snap instead.
-if [ -n "$SHOW" ]; then
+if [ -n "$CONNECT" ]; then
+    mode=(--connect "$CONNECT" --seconds 6)
+    script="${LOGIN};waitlog:AreaSettings: '(?!a_newchar):300000;sleep:20000;${EXTRA}sleep:$half;shot:$OUT/shot.png;sleep:$half"
+elif [ -n "$SHOW" ]; then
     mode=(--showcase "$SHOW" --seconds $(( SOAK + 25 )))
     script="sleep:25000;${EXTRA}sleep:$half;shot:$OUT/shot.png"
 else
@@ -80,6 +88,10 @@ fi
     ${args+"${args[@]}"} ${LIVE+"${LIVE[@]}"} --keys "$script" > "$OUT.harness.log" 2>&1
 rc=$?
 [ -n "${keeper:-}" ] && kill "$keeper" 2>/dev/null
+if grep -q 'waitlog TIMED OUT' "$OUT/xtool.log" 2>/dev/null; then
+    echo "perf-save: the run never reached the world: $(grep 'waitlog TIMED OUT' "$OUT/xtool.log") ($OUT)" >&2
+    exit 1
+fi
 
 python3 - "$OUT/cx.log" "$LABEL" "$rc" "$OUT" <<'PY'
 import re, sys, statistics as st
