@@ -561,6 +561,7 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>A route term of part <paramref name="part"/> moved, so its slot's memo no longer holds.</summary>
     internal static void RouteTermMoved(int part)
     {
+        if ((uint)part >= (uint)SceneDb.MaxParts) return;   // a range past the table is counted at the feed's clamp
         int slot = SceneDb.PartSlot[part];
         if (slot >= 0) _gate[slot].Plain = false;
     }
