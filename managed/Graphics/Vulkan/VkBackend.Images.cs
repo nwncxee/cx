@@ -388,14 +388,20 @@ internal sealed unsafe partial class VkBackend
             ? VkImageLayout.ShaderReadOnlyOptimal : VkImageLayout.TransferDstOptimal;
 
     /// <summary>Copy <paramref name="bytes"/> into <paramref name="b"/> at <paramref name="offset"/> at the head of the
-    /// next submit: a large, cold write (a mesh arena's vertices) that a recorded update would carry inline.</summary>
+    /// next submit: a large, cold write (a mesh arena's vertices) that a recorded update would carry inline. Staged a block
+    /// at a time, so a write past the staging budget waits out its earlier pieces rather than being refused.</summary>
     internal bool Upload(BufferId b, long offset, ReadOnlySpan<byte> bytes)
     {
         if (!OnThread("Upload") || !_buffers.TryGet(b.Value, out VkBuf buf)) return Fault("Upload: stale buffer");
         if (offset < 0 || offset + bytes.Length > buf.Desc.Bytes) return Fault($"Upload of {bytes.Length} bytes at {offset} into {buf.Desc.Label}'s {buf.Desc.Bytes}");
         if (bytes.IsEmpty) return true;
-        if (!Stage(bytes, out VkBuffer src, out ulong at)) return false;
-        _upload.Copies.Add(new PendingCopy(default, b, 0, 0, offset, src, at, (ulong)bytes.Length, false));
+        for (int sent = 0; sent < bytes.Length;)
+        {
+            int n = Math.Min(bytes.Length - sent, (int)UploadBlockBytes);
+            if (!Stage(bytes.Slice(sent, n), out VkBuffer src, out ulong at)) return false;
+            _upload.Copies.Add(new PendingCopy(default, b, 0, 0, offset + sent, src, at, (ulong)n, false));
+            sent += n;
+        }
         return true;
     }
 

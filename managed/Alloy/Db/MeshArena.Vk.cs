@@ -92,16 +92,18 @@ public static unsafe partial class MeshArena
                 if (v.Vbo[f].IsNull) { v.Capacity[f] = 0; continue; }
                 s.Dirty.All(s.High);   // a new buffer holds nothing of the old one
             }
+            int unsent = 0;
             for (int k = 0; k < s.Dirty.Count; k++)
             {
                 (int from, int to) = s.Dirty.At(k);
                 if (to > v.Capacity[f]) to = v.Capacity[f];
                 if (to <= from) continue;
-                vk.Upload(v.Vbo[f], (long)from * stride * 4,
-                          MemoryMarshal.AsBytes(s.Mirror.AsSpan((int)((long)from * stride), (to - from) * stride)));
-                v.Filled[f] = true;
+                if (vk.Upload(v.Vbo[f], (long)from * stride * 4,
+                              MemoryMarshal.AsBytes(s.Mirror.AsSpan((int)((long)from * stride), (to - from) * stride))))
+                    v.Filled[f] = true;
+                else s.Dirty.Keep(unsent++, k);
             }
-            s.Dirty.Clear();
+            s.Dirty.Cut(unsent);
         }
         if (_idx.High == 0) return;
         if (v.Ebo.IsNull || v.ICapacity < _idx.High)
@@ -113,15 +115,17 @@ public static unsafe partial class MeshArena
             if (v.Ebo.IsNull) { v.ICapacity = 0; return; }
             _idx.Dirty.All(_idx.High);
         }
+        int unsentIdx = 0;
         for (int k = 0; k < _idx.Dirty.Count; k++)
         {
             (int from, int to) = _idx.Dirty.At(k);
             if (to > v.ICapacity) to = v.ICapacity;
             if (to <= from) continue;
-            vk.Upload(v.Ebo, (long)from * 2, MemoryMarshal.AsBytes(_idx.Mirror.AsSpan(from, to - from)));
-            v.IFilled = true;
+            if (vk.Upload(v.Ebo, (long)from * 2, MemoryMarshal.AsBytes(_idx.Mirror.AsSpan(from, to - from))))
+                v.IFilled = true;
+            else _idx.Dirty.Keep(unsentIdx++, k);
         }
-        _idx.Dirty.Clear();
+        _idx.Dirty.Cut(unsentIdx);
     }
 
     /// <summary>A dynamic range's moved vertices into Vulkan's copy (<see cref="DynUpload"/>); false when the
