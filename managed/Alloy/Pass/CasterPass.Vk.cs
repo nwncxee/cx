@@ -54,6 +54,9 @@ public sealed unsafe partial class CasterPass
         public int CoverReadSize, CoverReadWindow, CoverReadGen;
         public Matrix4x4 CoverReadVp, CoverPendingVp;
         public bool CoverWriting;
+        /// <summary>A still caster reached the cover view since its last bake, and the frame that bake ran.</summary>
+        public bool CoverArrived;
+        public int CoverBakedAt;
         /// <summary>The lightmap bake's scratch cubes: the count and face size it last asked for, and what the array was made at.</summary>
         public int BakeWant, BakeSizeWant, BakeSize, BakeCubes;
         /// <summary>The size and layer count each array was made at: a knob change remakes it.</summary>

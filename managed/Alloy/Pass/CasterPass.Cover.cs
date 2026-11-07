@@ -32,6 +32,8 @@ public sealed unsafe partial class CasterPass
     private static Vector3 _coverC;
     private static bool _coverBaked, _coverCValid, _coverNew;
     private static int _coverStamp = -1;
+    /// <summary>Frames a late arrival waits for the next ones, so a stream of them costs one bake per this many frames.</summary>
+    internal const int CoverArrivalHold = 30;
     /// <summary>The cover light's <see cref="ShadowMath.LatchUpX"/> latch: rain falls within a few degrees of vertical.</summary>
     private static bool _coverUpX;
 
@@ -47,7 +49,9 @@ public sealed unsafe partial class CasterPass
         if (!_coverCValid || (focus - c).LengthSquared() > slack * slack) c = focus;
         Matrix4x4 vp = ShadowMath.DirectionalLightViewProj(dir, c, radius, margin, _mapSize,
                                                          ShadowMath.LatchUpX(ref _coverUpX, dir));
-        bool stale = _frameInvalidate || !_coverBaked || vp != _coverKeyVp;
+        CasterVkState st = _vk;
+        st.CoverArrived |= AnyInFit(_sMoverIdx, _sMoverCount, c, dir, radius, margin);
+        bool stale = CoverRebakes(_frameInvalidate, _coverBaked, vp != _coverKeyVp, st.CoverArrived, _frameSeq - st.CoverBakedAt);
         if (!stale) { CoverHeld++; CoverVp = vp; _coverStamp = _frameSeq; return; }
         // CX-50: full detail, like the lightmap's scratch cube. This map is not a shadow -- the weather
         // reads it as geometry, for where rain and snow stop, where a puddle may form and whether a grass
@@ -56,14 +60,22 @@ public sealed unsafe partial class CasterPass
         if (RenderView(CasterMap.SunStatic, _mapSize, CoverLayer, &vp, dir, c, radius, margin, point: false,
                        set: CasterGather.SetStatic, detail: false))
         {
+            st.CoverArrived = false; st.CoverBakedAt = _frameSeq;
             _coverBaked = true; _coverKeyVp = vp; _coverC = c; _coverCValid = true; _coverNew = true;
             CoverVp = vp; _coverStamp = _frameSeq; CoverBakes++;
         }
         else CoverVp = default;
     }
 
+    /// <summary>Must the cover map bake this frame? When its view changed, or a still caster reached the view since the last
+    /// bake, at most once per <see cref="CoverArrivalHold"/> frames: an area's ground arrives over many frames, and ground the
+    /// map never saw has no wetness record.</summary>
+    internal static bool CoverRebakes(bool invalidate, bool baked, bool viewChanged, bool arrived, int framesSinceBake)
+        => invalidate || !baked || viewChanged || arrived && framesSinceBake >= CoverArrivalHold;
+
     private static void CoverRelease()
     {
+        _vk.CoverArrived = false;
         _coverBaked = false; _coverCValid = false; _coverNew = false; CoverVp = default; Weather.EsmRelease();
         _vk.CoverReadGen++; _vk.CoverReadVp = default;
     }
