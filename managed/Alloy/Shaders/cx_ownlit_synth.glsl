@@ -1,3 +1,9 @@
+// Is this fragment outside a split part's solid interior? Coverage times the part's own opacity, so a ghost has none.
+bool CxSolidCut(float coverage, float alpha)
+{
+    return uSolid != 0 && coverage * alpha < CX_SOLID_ALPHA;
+}
+
 // The coverage discards: the cutout's, an OIT fragment's at zero coverage, a split wash's interior (uSolid).
 // One test, so main's early ask of a plain diffuse can never discard a texel the full one keeps.
 bool CxCoverCut(float coverage, float alpha, vec2 du1, vec2 du2, vec2 cutSize, float cutMip)
@@ -5,7 +11,7 @@ bool CxCoverCut(float coverage, float alpha, vec2 du1, vec2 du2, vec2 cutSize, f
     float s = coverage * alpha;
     return uAlphaCut >= 0.0 && CxAlphaMipAt(coverage, du1, du2, cutSize, uLodBias, cutMip) <= uAlphaCut
         || uOit != 0 && s <= 0.0
-        || uSolid != 0 && s < CX_SOLID_ALPHA;
+        || CxSolidCut(coverage, alpha);
 }
 
 /// The colour map at a pixel: two samples a quarter pixel either side on the diagonal, each with a footprint half the

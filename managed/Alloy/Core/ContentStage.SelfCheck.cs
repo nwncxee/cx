@@ -108,6 +108,23 @@ internal static partial class ContentStage
                      && post.Host.Contains("float other = 1.0;") && post.Host.Contains("FragmentColor.rgb += vec3(cxHoist_glow)")
                      && post.Host.Contains("CxConFillLights();"),
                      "a local the post body reads is not hoisted and renamed, one it does not read moved, or the lights are not filled");
+        // Given a material whose fragment shader changes the colour after ApplyStandardShader
+        // When the shader is translated
+        // Then cx.log calls it forward only, as it does today
+        check.Expect(post.ForwardOnly && post.RouteNote.Contains("edits on the lit colour (forward only)") && !post.AlphaPost,
+                     $"a stage that edits its lit colour routes as '{post.RouteNote}'");
+        // Given a transparent material on a shader that is forward only
+        // When it draws
+        // Then all of it blends, as it does today
+        check.Expect(!Issue.SplitsSolid(false, false, content: true, twin: false, decal: false, 0, 1), "a pair with no twin splits");
+        // Given a ground decal on a shader with a deferred twin
+        // When it draws
+        // Then it goes to the decal layer, as it does today, and has no solid middle
+        check.Expect(!Issue.SplitsSolid(false, false, content: true, twin: true, decal: true, 0, 1), "a ground decal splits");
+        // Given an additive material on a shader with a deferred twin
+        // When it draws
+        // Then all of it adds, as it does today
+        check.Expect(!Issue.SplitsSolid(false, false, content: true, twin: true, decal: false, 0, 2), "an additive part splits");
         Result envStage = Translate("cx_fixenv", true, Chain, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37);
         check.Expect(envStage.Refused == null && envStage.Host.Contains("#define CX_CONTENT_ENVMAP 1")
                      && !r.Host.Contains("CX_CONTENT_ENVMAP"),

@@ -105,6 +105,11 @@ internal static unsafe class Issue
     internal static bool SitsOitOut(bool content, int src, int dst)
         => content || src != AuroraSrcAlpha || dst != AuroraOneMinusSrcAlpha;
 
+    /// <summary>Does a blended batch draw its fully covered texels solid ahead of the rest? A wash marked to split does,
+    /// unless it sits OIT out under anything but the plain blend.</summary>
+    internal static bool SplitsSolid(bool washSplit, bool isWash, bool content, bool twin, bool decal, int src, int dst)
+        => washSplit && (!SitsOitOut(content, src, dst) || content && src == AuroraSrcAlpha && dst == AuroraOneMinusSrcAlpha);
+
     /// <summary>One <c>Aurora::AuroraBlendModes</c> value as its GL blend factor -- the engine's own
     /// translation table at 0x12f5040, which <c>GLRender::SetBlendFunc</c> @0x4cb0c0 indexes. Out-of-range
     /// values fall back to the pair the engine's own default is, rather than to whatever GL enum 0 means.</summary>
