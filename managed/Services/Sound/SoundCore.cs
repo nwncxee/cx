@@ -58,6 +58,7 @@ internal static unsafe class SoundCore
         public long Frames;
         public float RenderMsAvg, RenderMsMax, SimMsAvg, ReflMsAvg, CaptureMsMax;
         public int Underruns;
+        public int LateFrames, HeldFrames, RingLow, RingLead;
     }
 
     [DllImport(Lib)] internal static extern int cxa_bind(IntPtr phonon, IntPtr openal);
@@ -84,6 +85,7 @@ internal static unsafe class SoundCore
     [DllImport(Lib)] internal static extern void cxa_stats(Stats* s);
     [DllImport(Lib)] internal static extern int cxa_error(byte* buf, int len);
     [DllImport(Lib)] internal static extern int cxa_describe(byte* buf, int len);
+    [DllImport(Lib)] private static extern int cxa_render_priority(byte* buf, int len);
     [DllImport(Lib)] internal static extern int cxa_ready();
     [DllImport(Lib)] internal static extern int cxa_selfcheck(byte* msg, int len);
 
@@ -101,6 +103,14 @@ internal static unsafe class SoundCore
         byte* b = stackalloc byte[512];
         int n = cxa_describe(b, 512);
         return n <= 0 ? "" : new string((sbyte*)b, 0, n);
+    }
+
+    /// <summary>What the OS granted the render thread.</summary>
+    internal static string RenderPriority()
+    {
+        byte* b = stackalloc byte[32];
+        cxa_render_priority(b, 32);
+        return new string((sbyte*)b);
     }
 
     /// <summary>The core's pure pieces (distance curve, the engine's variance draw, axes and the listener frame,

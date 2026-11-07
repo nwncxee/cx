@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""CX-194 census: per .cs file under managed/, the doc-comment blocks over MAX_LINES text lines (bare
-<summary>/</summary> lines don't count) plus the `///` lines that
+"""CX-194 census: per .cs file under managed/ and C/C++ file under native/, the doc-comment blocks over MAX_LINES
+text lines (bare <summary>/</summary> lines don't count) plus the `///` lines that
 cite a ticket. Prints "<count> <file>" for tools/gates/ratchet.sh; `-v` lists each offending line instead."""
 import os, re, sys
 
@@ -9,9 +9,12 @@ TAG_ONLY = re.compile(r'^///\s*</?(summary|remarks|para)>\s*$')
 TICKET = re.compile(r'(?<![\w&])#\d+\b|\bCX-\d+\b|(?<![\w!=])!\d+\b')
 
 verbose = '-v' in sys.argv
-for root, _, files in os.walk('managed'):
+SOURCES = (('managed', ('.cs',)), ('native', ('.c', '.cpp', '.h')))
+for top, exts in SOURCES:
+  for root, dirs, files in os.walk(top):
+    dirs[:] = [d for d in dirs if not (top == 'native' and d in ('ffx', 'xatlas'))]
     for name in sorted(files):
-        if not name.endswith('.cs') or name.endswith('.g.cs'):
+        if not name.endswith(exts) or name.endswith('.g.cs'):
             continue
         path = os.path.join(root, name)
         hits, block = [], []

@@ -361,7 +361,9 @@ public sealed unsafe class SoundService : IExtenderService
         }
         _log?.Info($"[sound] voices {s.Voices}, captured {s.Blobs}, refused {s.SlotRefused} slot / {s.CaptureRefused} capture; "
                  + $"capture max {s.CaptureMsMax:F2} ms; "
-                 + $"render {s.RenderMsAvg:F2} ms/frame (max {s.RenderMsMax:F2}, {s.Underruns} underruns), sim {s.SimMsAvg:F2} ms, reflections {s.ReflMsAvg:F1} ms; "
+                 + $"render {s.RenderMsAvg:F2} ms/frame (max {s.RenderMsMax:F2}, {s.Underruns} underruns, {s.LateFrames} late, {s.HeldFrames} held), "
+                 + $"ring lead {s.RingLead} frames, low {(s.RingLow == int.MaxValue || s.BusRate == 0 ? "-" : $"{s.RingLow * 1000f / s.BusRate:F1} ms")}, thread {SoundCore.RenderPriority()}; "
+                 + $"sim {s.SimMsAvg:F2} ms, reflections {s.ReflMsAvg:F1} ms; "
                  + $"scene {s.SceneTris} tris, {s.Probes} probes (bake {s.BakeState}); bus {(s.BusOpen != 0 ? $"{s.BusRate} Hz x{s.BusChannels}" : "closed")}; "
                  + $"authored env row {_lastEnv}, reverb mode {ReverbMode(SoundKnobs.Reverb.V, _lastEnv)}");
     }

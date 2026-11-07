@@ -19,7 +19,8 @@ alSourcef(AL_GAIN) / Stop / Pause / Delete ► shims keep the slot in step
 alListenerfv  ─────────────────────────────► the listener
                                              │
 OpenAL mixer thread ── bus callback: copies from a ring, nothing else (no lock, no Steam Audio)
-"CX sound render" ── keeps the ring 3 frames (~32 ms) ahead (native/cxaudio.cpp, nothing allocated):
+"CX sound render" ── keeps the ring two OpenAL mix passes ahead, sized from ALC_REFRESH, raised as far as the OS lets it,
+   not waiting on the lock after its first frame (native/cxaudio.cpp, nothing allocated):
    per voice: resample + pitch -> gain (engine gain, category, loudness, duck, duplicates, drift) -> shelf/drift
    filters -> Steam Audio direct effect (distance curve, air, occlusion, transmission) -> HRTF or panning;
    reflections (per-source IR into the mixer, or a send to the listener-centred room IR); pathing where occluded
@@ -40,6 +41,19 @@ inside `iplReflectionEffectApply`, and the reflection effects and the mixer are 
 Without it the render went on convolving the released IRs until the new area published new ones -- the
 intermittent libphonon SIGSEGV on area transitions (CX-57, 2026-10-06). It is not a renderer bug: the area
 edge sends its empty scene whoever drew the frame.
+
+After its first frame the render does not wait on the lock the engine's threads share. A frame that finds it taken
+replays its last snapshot until the lock is free. A blob's last release only queues the free, and the sim thread does
+the free with the lock let go. The `[sound]` line counts it: `held` is a frame that replayed, `late` is a frame started
+with under one mix pass left in the ring, `low` is the fewest milliseconds a callback left behind, and `thread` is what
+the OS granted.
+
+A finished sound runs no effect over silence. Its HRTF, path and per-source IR tails read out through Steam Audio's
+`GetTail` calls, and under the room reverb the voice frees its slot once the HRTF tail is done. The room's echo outlives
+the last voice: the simulator stops tracing, and the render runs the room effect over silence for the length of its tail.
+
+"Reverb length" shortens the simulated tail and leaves the convolution's cost that of the 2 s IR, 0.08 ms per frame on a
+Ryzen 5 5600G. `MaxDuration` in `native/cxaudio.cpp` says why.
 
 Everything 2D the engine plays -- interface, music, ambience streams, dialog, movies -- stays OpenAL's,
 except a **placed non-Positional loop** (group 2, `Looping_AreaWide_Ambients`): the engine never range-culls a

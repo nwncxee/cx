@@ -66,12 +66,10 @@ extern char __ImageBase;                     /* this module, as the linker place
 /// The managed entry point, exported by the NativeAOT half of this same DLL.
 extern void CxInit(void);
 
-/// CX-57: nwmain.exe imports OpenAL32.dll, and the copy beside it is the game's own (OpenAL Soft 1.20.1), which
-/// Steam's verify would restore if we replaced it. So the import table is pointed at CX's pinned build instead
-/// (cx_openal.dll beside this DLL), here, before the game's first instruction: the loader has bound every
-/// import by the time DLL initializers run, and nwmain's entry point runs after them. Every OpenAL32.dll entry
-/// the game imports is redirected or none is -- a half-redirected table would hand one library's handles to the
-/// other. The managed side reads the outcome through cx_openal_redirect.
+/// nwmain.exe imports OpenAL32.dll, and Steam's verify would restore a replaced copy, so the import table points at
+/// CX's pinned build (cx_openal.dll beside this DLL) before the game's first instruction: the loader has bound every
+/// import by the time DLL initializers run. Every entry is redirected or none is, since a half-redirected table
+/// would hand one library's handles to the other. The managed side reads the outcome through cx_openal_redirect.
 static HANDLE cx_openal;
 static int cx_openal_patched = -1;   /* -1 not tried, 0 failed (and why in cx_openal_why), else entries patched */
 static const char *cx_openal_why = "not tried";
