@@ -78,6 +78,16 @@ public sealed unsafe partial class AlloyRenderer
                 check.Expect(t.Opaques.Exists(o => o.Set == 0 && o.Kind == VkBindKind.UniformBlock && o.Binding == UboSlots.Deferred),
                     $"{s.Label} reads the CxDeferred block the pass stages");
         }
+        CX.Rhi.BufferId lights = new(1), counts = new(2), idx = new(3), movers = new(4);
+        check.Expect(VkLitTable(SsboSlots.Lights, false, lights, counts, idx, movers) == lights
+                  && VkLitTable(SsboSlots.ClusterCount, false, lights, counts, idx, movers) == counts
+                  && VkLitTable(SsboSlots.ClusterIdx, false, lights, counts, idx, movers) == idx
+                  && VkLitTable(SsboSlots.Movers, false, lights, counts, idx, movers) == movers,
+                     "a forward-lit stage of the world frame walks the frame's lights and froxel table");
+        check.Expect(VkLitTable(SsboSlots.Lights, true, lights, counts, idx, movers) == null
+                  && VkLitTable(SsboSlots.ClusterCount, false, lights, default, idx, movers) == null
+                  && VkLitTable(SsboSlots.Draw, false, lights, counts, idx, movers) == null,
+                     "a capture, a frame with no table and every other binding keep the stand-in");
         log.Info(check.Ok ? "AlloyRenderer.VkDeferredSelfCheck: passed" : "AlloyRenderer.VkDeferredSelfCheck: FAILED");
     }
 }

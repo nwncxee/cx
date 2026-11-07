@@ -66,8 +66,12 @@ public sealed unsafe partial class AlloyRenderer
         cl.BeginLabel("lightmap bake"u8);
         if (lightingOn) LightmapBake.VkRun(vk, cl, _capturing, _frameSeq);
         cl.EndLabel();
-        // the submit the async froxel build and fog wait on: the bake and the uploads they read are in it, and the
-        // prepass through the sky run beside them
+        // the froxel table every lit stage walks: ahead of the opaque class, whose forward-only parts light themselves
+        cl.BeginLabel("light clusters"u8);
+        VkClusterBuild(vk, cl, log);
+        cl.EndLabel();
+        // the submit the async fog waits on: the bake, the froxel table and the uploads it reads are in it, and the
+        // prepass through the sky run beside it
         VkHandOverStandIns(cl);
         if (!vk.Submit(cl)) return false;
         bool indirect = CullPassVk.Ran;
@@ -164,14 +168,10 @@ public sealed unsafe partial class AlloyRenderer
         cl.BeginLabel("sky"u8);
         if (!VkRecordSky(vk, cl, s, vp, viewport, log)) return false;
         cl.EndLabel();
-        // the froxel table both deferred stages and the fog's local lights read, from this frame's own build, then the
-        // fog volume, on the async queue beside the prepass through the sky recorded above: those read neither, and
-        // fog through last frame's sum, so every stage that fogs itself after them reads this one
+        // the fog volume on the async queue, beside the prepass through the sky recorded above: those fog through last
+        // frame's sum, so every stage that fogs itself after them reads this one
         CommandList al = s.Async!;
         al.Reset();
-        al.BeginLabel("light clusters"u8);
-        VkClusterBuild(vk, al, log);
-        al.EndLabel();
         al.BeginLabel("fog volume"u8);
         VkFogPass(vk, al, view, vpClean, viewport, near, far, perspective, lightingOn, log);
         al.EndLabel();
