@@ -415,6 +415,14 @@ void main()
         // CX-303: a content stage's alpha IS its coverage -- a stage that cuts on another map hands that map back --
         // and it made its own cut; what is left is the OIT pass's zero-coverage drop
         coverage = FragmentColor.a;
+#ifdef CX_CONTENT_POST
+        // a post body a twin runs sets only the alpha and cuts: both are known before any light, as the depth twin's are
+#ifndef CX_DEFERRED
+        if (uSolid != 0)
+#endif
+            coverage = CxHostPost(FragmentColor).a;
+#endif
+        if (CxSolidCut(coverage, d.rot.w)) discard;
         if (uOit != 0 && coverage * d.rot.w <= 0.0) discard;
 #endif
     }

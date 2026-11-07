@@ -125,7 +125,10 @@ the light walk (`DeferredLights`, `cx_deferred_cs`), each with its own GPU term.
   the nearest writer wins either way. The sky draws between them and writes no G-buffer: its pixels keep G0 = 0.
 - A content pair (CX-303) draws through its own deferred twin: the pair's program text under the same two defines.
   Its fragment half's surface body only edits the surface inputs, so it writes the G-buffer like any other; a pair
-  that edits the lit colour or lights itself has no twin and draws forward.
+  that edits the lit colour or lights itself has no twin and draws forward. A post body that only sets its alpha and
+  cuts on it is no such edit: the twin runs it ahead of the lights, the way the depth twin does. A plain-blended
+  content part whose pair has a twin splits the way a wash does (`Issue.SplitsSolid`), with no polygon offset: its
+  fully covered texels draw through the twin and the rest blends.
 - A forward draw in those passes (a content pair with no twin, a viz batch) writes no G-buffer
   and can land on a pixel a twin already wrote. The record carries the twin's view depth; the reader drops it when the frame's depth no longer
   agrees within `CX_GB_RECORD` (Ssr's record test) plus `CxGbufDepthSlack`. A coarse fragment under the

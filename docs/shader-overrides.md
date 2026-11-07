@@ -240,8 +240,9 @@ those, Alloy then lights, deferred or forward. Where the engine would light it, 
 - a stage that never calls `ApplyStandardShader()` lights itself, so all of it runs on the lit colour and its
   result is drawn as it leaves it.
 
-A pair with statements after the call, or one that reads the engine's per-light arrays, draws forward only:
-the deferred path has no lit colour to give it. The alpha you leave in `FragmentColor` (or `gl_FragColor`) is
+A pair whose statements after the call change the colour, or one that reads the engine's per-light arrays, draws forward only:
+the deferred path has no lit colour to give it. Statements that only set the alpha and discard on it do not count, so such
+a pair stays deferred. The alpha you leave in `FragmentColor` (or `gl_FragColor`) is
 the part's coverage. `#define KEYHOLING 0` keeps the part from dissolving, as it does in the engine.
 
 **Its own depth.** A pair whose vertex half runs, or whose fragment half makes its own coverage (a discard, a

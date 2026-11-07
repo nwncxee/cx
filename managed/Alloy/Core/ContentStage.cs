@@ -57,9 +57,9 @@ internal static partial class ContentStage
         /// <summary>Does the post body only set the alpha and cut on it, so the deferred twin can run it ahead of the lights?</summary>
         public bool AlphaPost;
         /// <summary>Does the pair have to draw forward, with no deferred twin?</summary>
-        public bool ForwardOnly => Post || ReadsLights;
+        public bool ForwardOnly => Post && !AlphaPost || ReadsLights;
         /// <summary>What the pair's log line says about its route.</summary>
-        public string RouteNote => (Post ? ", edits on the lit colour (forward only)" : "") + (ReadsLights ? ", lights itself (forward only)" : "");
+        public string RouteNote => (!Post ? "" : AlphaPost ? ", sets its alpha after the lighting call" : ", edits on the lit colour (forward only)") + (ReadsLights ? ", lights itself (forward only)" : "");
         /// <summary>Does the fragment half switch keyholing off (<c>#define KEYHOLING 0</c>)? Its parts never dissolve.</summary>
         public bool NoKeyhole;
         /// <summary>The varyings a vertex half declares of its own, by name: the fragment half reads them as written.</summary>

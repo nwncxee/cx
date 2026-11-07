@@ -165,7 +165,7 @@ KEYWORD = re.compile(r"^(?:return|else|if|for|while|do|switch|case|discard|break
 class Result:
     def __init__(self):
         self.host, self.params, self.notes, self.refused = "", [], [], None
-        self.cuts = self.reads_plt = self.reads_lights = self.post = self.no_keyhole = False
+        self.cuts = self.reads_plt = self.reads_lights = self.post = self.alpha_post = self.no_keyhole = False
         self.outputs = set()
 
 
@@ -459,6 +459,21 @@ def edits_after(b, frm, to):
     return len(tail.strip(" \t\r\n;{}")) > 0
 
 
+PURE_CALLS = {"if", "float", "int", "bool", "vec2", "vec3", "vec4", "mat3", "mat4", "texture", "texture2D", "clamp", "min", "max",
+              "dot", "mix", "step", "smoothstep", "abs", "pow", "sqrt", "length", "floor", "fract", "sin", "cos"}
+
+
+def alpha_only(post):
+    """Mirrors ContentStage.AlphaOnly."""
+    held = re.sub(r"\bFragmentColor\s*=\s*vec4\s*\(\s*FragmentColor\s*\.\s*rgb\s*,", "cxHeld = vec4(", post)
+    held = re.sub(r"\bFragmentColor\s*\.\s*a\b", "cxHeld", held)
+    if re.search(r"\bFragmentColor\b", held):
+        return False
+    local = set(re.findall(r"\b(?:float|int|uint|bool|vec[234]|mat[234])\s+([A-Za-z_]\w*)", held)) | {"cxHeld"}
+    return all(n in local for n in re.findall(r"([A-Za-z_]\w*)(?:\s*\.\s*\w+|\s*\[[^\]]*\])?\s*[-+*/]?=(?!=)", held)) \
+        and all(n in PURE_CALLS for n in re.findall(r"([A-Za-z_]\w*)\s*\(", held))
+
+
 def split_main(text, r):
     """Mirrors ContentStage.SplitMain."""
     head = re.search(r"\bvoid\s+" + PRE_FN + r"\s*\(\s*\)", text)
@@ -489,6 +504,7 @@ def split_main(text, r):
     post_from = apply_end if apply >= 0 else b0
     pre_to = apply if apply >= 0 else b0
     r.post = True
+    r.alpha_post = apply >= 0 and alpha_only(b[post_from:close])
     if apply < 0:
         r.notes.append("never calls ApplyStandardShader(), so it lights itself: its colour is drawn as it leaves it")
     hoist, used = [], set(re.findall(r"(?<![.\w])[A-Za-z_]\w*", b[post_from:close]))
@@ -678,6 +694,9 @@ FIXTURE = {
                    "    gl_FragColor = FragmentColor;\n}\n"),
     "cx_fixenv": "#define ENVIRONMENT_MAP 1\n#include \"inc_standard\"\nvoid main()\n{\n    FragmentColor = vec4(1.0);\n"
                  "    SetupStandardShaderInputs();\n    ApplyStandardShader();\n}\n",
+    "cx_fixalpha": ('#include "inc_standard"\nvoid main()\n{\n    FragmentColor = vec4(1.0);\n    SetupStandardShaderInputs();\n'
+                    "    float a = texture2D(texUnit1, vTexCoords.xy).a;\n    ApplyStandardShader();\n"
+                    "    gl_FragColor = vec4(FragmentColor.rgb, a);\n    if (gl_FragColor.a < 0.5) { discard; }\n}\n"),
     "cx_fixwhole": "void main()\n{\n    gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);\n}\n",
     # The engine-named set declared the way stock content declares it: inc_uniforms' whole block, inc_sunm's lone
     # scalar, fswater's wind loop, vs_beamvol's inline m_proj.
@@ -752,6 +771,12 @@ def selfcheck(env_fs, env_vs, defs, vanfs, std_fs, std_vs, lit_vs):
     envs = translate("cx_fixenv", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
     if envs.refused or "#define CX_CONTENT_ENVMAP 1" not in envs.host or "CX_CONTENT_ENVMAP" in r.host:
         bad.append("a stage's own ENVIRONMENT_MAP 1 does not make its diffuse alpha an env level, or one without it does")
+    alpha = translate("cx_fixalpha", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
+    if alpha.refused or not alpha.post or not alpha.alpha_post or post.alpha_post:
+        bad.append("an alpha-only post body is not told from a colour edit")
+    if alpha_only("FragmentColor = vec4(FragmentColor.rgb, 0.5); fRoughness = 0.5;") \
+       or alpha_only("FragmentColor = vec4(FragmentColor.rgb, FixAlpha());"):
+        bad.append("a post body writing a global or calling the stage's own function counts as alpha only")
     whole = translate("cx_fixwhole", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
     if whole.refused or not whole.post or whole.cuts or "void CxContentMain()\n{\n}" not in whole.host:
         bad.append("a whole stage is not all post body")

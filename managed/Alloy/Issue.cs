@@ -106,9 +106,11 @@ internal static unsafe class Issue
         => content || src != AuroraSrcAlpha || dst != AuroraOneMinusSrcAlpha;
 
     /// <summary>Does a blended batch draw its fully covered texels solid ahead of the rest? A wash marked to split does,
-    /// unless it sits OIT out under anything but the plain blend.</summary>
+    /// unless it sits OIT out under anything but the plain blend; so does a plain-blended content part whose pair has a
+    /// deferred twin and is neither a wash nor a decal, which then pays the forward walk only at its edges.</summary>
     internal static bool SplitsSolid(bool washSplit, bool isWash, bool content, bool twin, bool decal, int src, int dst)
-        => washSplit && (!SitsOitOut(content, src, dst) || content && src == AuroraSrcAlpha && dst == AuroraOneMinusSrcAlpha);
+        => washSplit ? !SitsOitOut(content, src, dst) || content && src == AuroraSrcAlpha && dst == AuroraOneMinusSrcAlpha
+                     : !isWash && content && twin && !decal && src == AuroraSrcAlpha && dst == AuroraOneMinusSrcAlpha;
 
     /// <summary>One <c>Aurora::AuroraBlendModes</c> value as its GL blend factor -- the engine's own
     /// translation table at 0x12f5040, which <c>GLRender::SetBlendFunc</c> @0x4cb0c0 indexes. Out-of-range

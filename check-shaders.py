@@ -860,7 +860,7 @@ def pair_programs(name, vtext, ftext, fres, vres):
     vb = vs_bindless(vtext) if vres is not None else vtext
     fb = bindless(ftext)
     out = {name: (vb, fb)}
-    post = fres is not None and fres.post
+    post = fres is not None and fres.post and not fres.alpha_post
     lights = fres is not None and fres.reads_lights
     if not post and not lights:
         out[f"{name} (deferred twin)"] = (vb, with_define(with_define(fb, "CX_GBUF_OUT 1"), "CX_DEFERRED 1"))
