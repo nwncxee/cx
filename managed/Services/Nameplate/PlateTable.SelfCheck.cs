@@ -12,7 +12,7 @@ public sealed partial class PlateTable
     /// <summary>Off-device proof of the pure table mechanics that a live client would otherwise be the only
     /// witness to: queue rotation at the cap, decay expiry picking the newest survivor, and the colour pack.
     /// Native reads are not exercised (there is no client here); everything below is id/time arithmetic.</summary>
-    public static void SelfCheck(ExtenderLog log)
+    public static unsafe void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
 
@@ -316,6 +316,20 @@ public sealed partial class PlateTable
         for (int i = 0; i < MaxParas + 3; i++) sb3.Append("\nrow");
         SetOverride(ov, 3, sb3.ToString());
         check.Expect(ov.ParaCount == MaxParas, "an override past the paragraph ceiling stops at it rather than growing");
+
+        Func<uint, string> engineName = _ => "engine name";
+        byte* placeable = stackalloc byte[EngineLayout.PlaceableNameLen + sizeof(uint)];
+        System.Runtime.InteropServices.NativeMemory.Clear(placeable, (nuint)(EngineLayout.PlaceableNameLen + sizeof(uint)));
+        check.Expect(RawName((IntPtr)placeable, NameplateNative.TypePlaceable, 1, engineName) == "",
+                     "a nameless placeable plates blank, never the engine's 2DA fallback");
+        byte* bench = stackalloc byte[] { (byte)'B', (byte)'e', (byte)'n', (byte)'c', (byte)'h' };
+        CX.Engine.CNWCPlaceable view = new((IntPtr)placeable);
+        view.Name = (IntPtr)bench;
+        view.NameLen = 5;
+        check.Expect(RawName((IntPtr)placeable, NameplateNative.TypePlaceable, 1, engineName) == "Bench",
+                     "a named placeable plates its own name");
+        check.Expect(RawName(IntPtr.Zero, NameplateNative.TypeItem, 1, engineName) == "engine name",
+                     "an item still asks the engine for its name");
 
         log.Info(check.Ok ? "PlateTable.SelfCheck: passed" : "PlateTable.SelfCheck: FAILED");
     }

@@ -451,6 +451,11 @@ public static partial class PlateLayout
         return n;
     }
 
+    /// <summary>Whether a plate has anything to show: a name, a health band to colour, or the server's override
+    /// text. A plate with none of them draws no box, the portrait included.</summary>
+    public static bool HasContent(bool name, bool band, int overrideMode, int paraCount)
+        => name || band || (overrideMode != 0 && paraCount != 0);
+
     /// <summary>The mode-to-placement half of the <c>ObjectTextBubbleOverride</c> rule: which segment continues
     /// an existing line and which stand alone. The engine builds ONE string, <c>name\nband</c>, and joins the
     /// override to its head or tail -- so append's FIRST segment continues the last line, prepend's LAST runs

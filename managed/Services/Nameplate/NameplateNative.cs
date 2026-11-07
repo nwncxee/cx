@@ -347,6 +347,14 @@ public static unsafe class NameplateNative
     /// <summary>An engine <c>char* / len</c> pair copied out verbatim -- no trim, so anything whose leading or
     /// trailing whitespace is load-bearing can use it. "" when the length says the pointer is not what we
     /// think it is.</summary>
+    /// <summary>The placeable's own name, trimmed; "" when it has none. COLD.</summary>
+    public static string PlaceableName(IntPtr obj)
+    {
+        if (obj == IntPtr.Zero) return "";
+        CNWCPlaceable p = new CNWCPlaceable(obj);
+        return Chars((byte*)p.Name, (int)p.NameLen, MaxNameLen).Trim();
+    }
+
     private static string Chars(byte* p, int len, int maxLen)
     {
         if (p == null || len <= 0 || len > maxLen) return "";
