@@ -86,6 +86,20 @@ if ! grep -q '0 service(s) discovered, 0 hook(s) installed' "$ROTHOME/cx.log"; t
 fi
 echo ">> rot: extender stood down whole, nothing discovered."
 
+# Given Write cx.log for bug reports is off and a cx.log from the last launch
+# When the client launches
+# Then cx.log holds this launch's lines and cx.1.log holds the last launch's
+OFFHOME="${TMPDIR:-/tmp}/cx-demo-logs-off"
+rm -rf "$OFFHOME"; mkdir -p "$OFFHOME/.local/share/Neverwinter Nights"
+echo "general.logs=0" > "$OFFHOME/.local/share/Neverwinter Nights/cx.cfg"
+echo "the last launch" > "$OFFHOME/cx.log"
+HOME="$OFFHOME" XDG_DATA_HOME="$OFFHOME/.local/share" CX_MANAGED="$B/cx_managed.so" LD_LIBRARY_PATH="$B" LD_PRELOAD="$B/libcx.so" "$STUB" >/dev/null
+echo
+if [ "$(cat "$OFFHOME/cx.1.log" 2>/dev/null)" != "the last launch" ] || grep -q 'the last launch' "$OFFHOME/cx.log" || [ ! -s "$OFFHOME/cx.log" ]; then
+  echo ">> FAIL: with logs off, a launch did not rotate cx.log into cx.1.log ($OFFHOME)"; exit 1
+fi
+echo ">> logs off: the launch rotated cx.log."
+
 echo
 echo "Attach to the real client with the launcher:"
 echo "  NWN_BIN=/path/to/bin/linux-x86/nwmain-linux $B/cx-launch"
