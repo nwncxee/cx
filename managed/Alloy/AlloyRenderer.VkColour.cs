@@ -394,6 +394,7 @@ public sealed unsafe partial class AlloyRenderer
                 LooseBlock.Set(L.Vp, vp);
                 LooseBlock.Set(L.Viz, viz);
                 LooseBlock.Set(L.AoCutout, Ao.Cutout.V);
+                LooseBlock.Set(L.AoMapOff, Ao.Map.V ? 0f : 1f);
                 LooseBlock.Set(L.SsaoHalf, SsaoPassVk.Half ? 1 : 0);
                 LooseBlock.Set(L.AlphaMip, Renderer.CutMip.V);
                 LooseBlock.Set(L.MirrorZ, _mirrorZ);

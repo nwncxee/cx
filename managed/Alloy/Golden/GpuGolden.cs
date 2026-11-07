@@ -21,6 +21,7 @@ internal static partial class GpuGolden
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "GpuGolden.SelfCheck");
+        AoMapKnobApprovedSelfCheck(check);
         if (Native.Sym(SymbolMap.AppManager) != IntPtr.Zero)
         {
             check.Skip("in a session: the goldens run in run-demo, not on a player's first frame");
@@ -93,6 +94,7 @@ internal static partial class GpuGolden
         AoContactSelfCheck(vk, check, log);
         ContentSolidSelfCheck(vk, check, log);
         RainRingSelfCheck(vk, check, log);
+        AoMapApprovedSelfCheck(vk, check, log);
         vk.PresentDeviceCheck(check, log);
         vk.PresentHoldCheck(check, log);
         vk.UploadApprovedExamples(check);
