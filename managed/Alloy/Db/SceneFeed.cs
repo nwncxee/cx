@@ -144,11 +144,24 @@ public static class SceneFeed
 
     /// <summary>Which source the fold took: 1 the area, 2 the scene columns, 3 the scene shell.</summary>
     private static int _fogPath;
-    private static int _fogSaidPath = -1;
-    private static bool _fogSaidOn;
-    private static Vector3 _fogSaidCol;
-    private static float _fogSaidEnd;
-    private static bool _fogSaidSky;
+    private static readonly FogNoteState _fogSaid = new();
+
+    /// <summary>What the last fog line said, and whether the fog has left it.</summary>
+    internal sealed class FogNoteState
+    {
+        private int _path = -1;
+        private bool _on, _sky;
+        private Vector3 _col;
+        private float _end;
+
+        /// <summary>True, and remembered, when this fog differs from what the last line said.</summary>
+        internal bool Changed(int path, bool on, Vector3 col, float end, bool sky)
+        {
+            if (path == _path && on == _on && col == _col && end == _end && sky == _sky) return false;
+            _path = path; _on = on; _col = col; _end = end; _sky = sky;
+            return true;
+        }
+    }
 
     /// <summary>One line whenever the fog the frame will draw changes -- path, switch, colour, range, the
     /// area's day/night state and the engine's clear colour -- so a wrong fog in a player's session names its
@@ -159,9 +172,7 @@ public static class SceneFeed
         Vector3 col = FrameInputs.FogColor;
         float end = FrameInputs.FogEnd;
         bool haveSky = SceneFog.TrySky(out Vector3 sky);
-        if (_fogPath == _fogSaidPath && on == _fogSaidOn && col == _fogSaidCol && end == _fogSaidEnd
-            && haveSky == _fogSaidSky) return;
-        _fogSaidPath = _fogPath; _fogSaidOn = on; _fogSaidCol = col; _fogSaidEnd = end; _fogSaidSky = haveSky;
+        if (!_fogSaid.Changed(_fogPath, on, col, end, haveSky)) return;
         float[] clr = ScreenOwner.ClearRgba;
         // the area's terms as the FOLD read them, not a fresh walk. This line runs inside the draw,
         // which may be the render thread, where CurrentArea() is a read of the game thread's memory.
