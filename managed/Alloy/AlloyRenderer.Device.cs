@@ -47,7 +47,7 @@ public sealed unsafe partial class AlloyRenderer
     {
         if (!_vram.Probed || AlloyDevice.VulkanMade is not VkBackend vk) return "";
         vk.DeviceLocalBytes(out long usage, out long budget, out _, out long held);
-        return VramLine(held, usage, budget, vk.Largest(3));
+        return VramLine(held, usage, budget, vk.Largest(3)) + $"; host-visible {vk.HostHeldBytes() >> 20}MiB";
     }
 
     /// <summary>The device's memory figures as last sampled, KiB, and which query answered: what the probe

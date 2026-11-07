@@ -462,10 +462,28 @@ public static class FrameZones
         // this process's resident set, so a period that swaps can say whether it is OUR footprint growing
         long rss = 0;
         try { foreach (var l in System.IO.File.ReadLines("/proc/self/status")) if (l.StartsWith("VmRSS:")) { rss = long.Parse(l.AsSpan(6).Trim().TrimEnd(" kB".AsSpan())); break; } } catch { }
-        string r = $" box: rss {rss / 1024}MiB, swap in/out {si - _swpIn}/{so - _swpOut} pages, majflt {mf - _majF}, psi some cpu {(pc - _psiCpu) / 1000}ms mem {(pm - _psiMem) / 1000}ms";
+        string r = $" box: rss {rss / 1024}MiB{MemorySplit()}, swap in/out {si - _swpIn}/{so - _swpOut} pages, majflt {mf - _majF}, psi some cpu {(pc - _psiCpu) / 1000}ms mem {(pm - _psiMem) / 1000}ms";
         _swpIn = si; _swpOut = so; _majF = mf; _psiCpu = pc; _psiMem = pm;
         return r;
     }
+    /// <summary>The resident set by owner, MiB: anonymous, file and shared pages, the managed heap's committed and
+    /// live bytes, and malloc's use against what it holds. Says which allocator a growing footprint belongs to.</summary>
+    private static string MemorySplit()
+    {
+        const int Shift = 20;
+        string pages = "";
+        try
+        {
+            foreach (var l in System.IO.File.ReadLines("/proc/self/status"))
+                if (l.StartsWith("RssAnon:") || l.StartsWith("RssFile:") || l.StartsWith("RssShmem:"))
+                    pages += $" {l[3..l.IndexOf(':')].ToLowerInvariant()} {long.Parse(l.AsSpan(l.IndexOf(':') + 1).Trim().TrimEnd(" kB".AsSpan())) / 1024}";
+        }
+        catch { return ""; }
+        GCMemoryInfo gc = GC.GetGCMemoryInfo();
+        MemorySettle.Malloc(out long used, out long held, out _);
+        return $" ({pages.TrimStart()}; managed {gc.TotalCommittedBytes >> Shift} committed {GC.GetTotalMemory(false) >> Shift} live; malloc {used >> Shift} used {held >> Shift} held)";
+    }
+
     /// <summary>The THREAD table, once per period: every thread of this process that burned CPU or was preempted --
     /// name, CPU ms, involuntary switches, last CPU it ran on. Names the competitor the sched column only counts.
     /// Cold path; allocates freely.</summary>

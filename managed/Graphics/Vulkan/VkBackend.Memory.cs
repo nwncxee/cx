@@ -55,6 +55,19 @@ internal sealed unsafe partial class VkBackend
         }
     }
 
+    /// <summary>Bytes VMA holds on heaps that are not device-local: system RAM the frame's staging and mapped buffers
+    /// keep resident, which no VRAM figure counts.</summary>
+    internal long HostHeldBytes()
+    {
+        VkPhysicalDeviceMemoryProperties mp;
+        _vki.vkGetPhysicalDeviceMemoryProperties(_phys, &mp);
+        Vma.vmaCalculateStatistics(_vma, out VmaTotalStatistics t);
+        long held = 0;
+        for (int i = 0; i < mp.memoryHeapCount; i++)
+            if ((mp.memoryHeaps[i].flags & VkMemoryHeapFlags.DeviceLocal) == 0) held += (long)t.memoryHeap[i].statistics.blockBytes;
+        return held;
+    }
+
     /// <summary>The <paramref name="n"/> largest allocations by their bytes, each named by its label (an alias group by
     /// its group), largest first. Cold: a walk of every live image and buffer.</summary>
     internal (string Name, long Bytes)[] Largest(int n)
