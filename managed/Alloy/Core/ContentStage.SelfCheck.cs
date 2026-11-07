@@ -36,6 +36,10 @@ internal static partial class ContentStage
         ["cx_fixcallshelper"] = "#include \"inc_standard\"\nfloat FixAlpha() { FragmentColor.r = 0.0; return 0.5; }\nvoid main()\n{\n"
                               + "    FragmentColor = vec4(1.0);\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n"
                               + "    gl_FragColor = vec4(FragmentColor.rgb, FixAlpha());\n}\n",
+        ["cx_fixalphaoflit"] = "#include \"inc_standard\"\nvoid main()\n{\n    FragmentColor = vec4(1.0);\n    SetupStandardShaderInputs();\n"
+                             + "    ApplyStandardShader();\n    gl_FragColor = vec4(FragmentColor.rgb, FragmentColor.g);\n}\n",
+        ["cx_fixnocall"] = "#include \"inc_standard\"\nvoid main()\n{\n    FragmentColor = vec4(1.0);\n    SetupStandardShaderInputs();\n"
+                         + "    gl_FragColor = vec4(FragmentColor.rgb, 0.5);\n}\n",
         ["cx_fixenv"] = "#define ENVIRONMENT_MAP 1\n#include \"inc_standard\"\nvoid main()\n{\n    FragmentColor = vec4(1.0);\n"
                       + "    SetupStandardShaderInputs();\n    ApplyStandardShader();\n}\n",
         ["cx_fixwhole"] = "void main()\n{\n    gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);\n}\n",
@@ -136,6 +140,10 @@ internal static partial class ContentStage
         check.Expect(global.Refused == null && global.ForwardOnly, "a post body writing a global beside its alpha gets a twin");
         Result helper = Translate("cx_fixcallshelper", true, Chain, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37);
         check.Expect(helper.Refused == null && helper.ForwardOnly, "a post body calling the stage's own function gets a twin");
+        Result ofLit = Translate("cx_fixalphaoflit", true, Chain, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37);
+        check.Expect(ofLit.Refused == null && ofLit.ForwardOnly, "an alpha read off the lit colour gets a twin");
+        Result noCall = Translate("cx_fixnocall", true, Chain, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37);
+        check.Expect(noCall.Refused == null && noCall.ForwardOnly, "a stage that never asks for the lighting gets a twin");
         Result envStage = Translate("cx_fixenv", true, Chain, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37);
         check.Expect(envStage.Refused == null && envStage.Host.Contains("#define CX_CONTENT_ENVMAP 1")
                      && !r.Host.Contains("CX_CONTENT_ENVMAP"),
