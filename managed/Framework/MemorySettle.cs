@@ -62,8 +62,9 @@ internal static class MemorySettle
         return new Verdict(compact, trim);
     }
 
-    /// <summary>The per-present check, from the main thread: a timestamp compare until a period ends.</summary>
-    internal static void Frame(long now, ExtenderLog? log)
+    /// <summary>The per-present check, from the main thread: a timestamp compare until a period ends.
+    /// <paramref name="dropCaches"/> lets go of what a load kept for itself, just before the compaction.</summary>
+    internal static void Frame(long now, ExtenderLog? log, Action dropCaches)
     {
         SettleState s = _state;
         if (now < s.Next) return;
@@ -74,6 +75,7 @@ internal static class MemorySettle
         long t0 = Stopwatch.GetTimestamp(), before = Environment.WorkingSet;
         if (v.Compact)
         {
+            dropCaches();
             GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
             GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
         }

@@ -14,9 +14,23 @@ namespace CX.Alloy;
 /// </summary>
 internal static unsafe class TexScan
 {
-    /// <summary>Pixels on their way to the encoder. One array per size at most: the shared pool keeps eight per size per
-    /// core, which held half a gigabyte of a load's textures for the rest of the session.</summary>
-    internal static readonly ArrayPool<byte> PixelPool = ArrayPool<byte>.Create(1 << 28, 1);
+    /// <summary>The pool a load's pixels go through, and it alone: <see cref="DropPixelPool"/> lets go of everything it kept.</summary>
+    private sealed class PixelPoolState
+    {
+        public volatile ArrayPool<byte> Pool = NewPixelPool();
+    }
+
+    private static readonly PixelPoolState _pixels = new();
+    private const int PooledPerSize = 8;
+    private static ArrayPool<byte> NewPixelPool() => ArrayPool<byte>.Create(1 << 28, PooledPerSize);
+
+    /// <summary>Pixels on their way to the encoder. A load reuses its arrays across the decode workers instead of leaving
+    /// each as garbage; the shared pool would keep them for the session, so this one goes when the load has.</summary>
+    internal static ArrayPool<byte> PixelPool => _pixels.Pool;
+
+    /// <summary>A quiet moment after a load: what the pool kept becomes garbage. An array still rented returns to the new
+    /// pool, which holds the same sizes.</summary>
+    internal static void DropPixelPool() => _pixels.Pool = NewPixelPool();
 
     /// <summary>The engine's own format indices into its format translation table; it never uploads DXT3. An
     /// uncompressed sheet is cut into cells, compressed data is one image.</summary>

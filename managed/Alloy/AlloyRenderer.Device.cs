@@ -41,6 +41,13 @@ public sealed unsafe partial class AlloyRenderer
         return line.ToString();
     }
 
+    /// <summary>What a load kept for itself and no longer needs, let go before the heap compacts.</summary>
+    internal static void DropLoadCaches()
+    {
+        TexScan.DropPixelPool();
+        LightmapBake.ReleaseIdleReads();
+    }
+
     /// <summary>The frame line's memory part as the device reads now; empty before the first frame, which is what
     /// makes the device and reads its figures.</summary>
     internal static string FrameVram()
