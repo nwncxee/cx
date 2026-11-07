@@ -8,7 +8,7 @@ namespace CX.Alloy;
 
 /// <summary>The rain occlusion map -- one orthographic depth view of the still casters along the
 /// precipitation vector, baked the way a sun cascade is and held the same way: the texel-snapped fit matrix
-/// is the key, so it re-bakes on a focus latch, a wind change or an invalidate and on no other frame. It is
+/// is the key, so it re-bakes on a focus latch, a wind change, an invalidate or a still caster reaching the view. It is
 /// the layer past the cascades in the sun array, sampled through <c>uSunShadow</c> with no unit of its own.</summary>
 public sealed unsafe partial class CasterPass
 {
@@ -41,7 +41,8 @@ public sealed unsafe partial class CasterPass
     /// exterior gate -- the array only exists past it, and an interior has no sky to fall from.</summary>
     private static void CoverPass(Vector3 focus, bool sun)
     {
-        if (!sun || !Weather.CoverWanted || !VkArmed) { CoverVp = default; return; }
+        // what arrived while no weather wanted the map was never noted, so the next want bakes afresh
+        if (!sun || !Weather.CoverWanted || !VkArmed) { CoverVp = default; _coverBaked = false; return; }
         Vector3 dir = Weather.CoverDir;
         float radius = Weather.CoverRange.V, margin = radius;
         float slack = radius * CoverSlack;
@@ -50,7 +51,7 @@ public sealed unsafe partial class CasterPass
         Matrix4x4 vp = ShadowMath.DirectionalLightViewProj(dir, c, radius, margin, _mapSize,
                                                          ShadowMath.LatchUpX(ref _coverUpX, dir));
         CasterVkState st = _vk;
-        st.CoverArrived |= AnyInFit(_sMoverIdx, _sMoverCount, c, dir, radius, margin);
+        st.CoverArrived = st.CoverArrived || AnyInFit(_sMoverIdx, _sMoverCount, c, dir, radius, margin);
         bool stale = CoverRebakes(_frameInvalidate, _coverBaked, vp != _coverKeyVp, st.CoverArrived, _frameSeq - st.CoverBakedAt);
         if (!stale) { CoverHeld++; CoverVp = vp; _coverStamp = _frameSeq; return; }
         // CX-50: full detail, like the lightmap's scratch cube. This map is not a shadow -- the weather
@@ -75,7 +76,7 @@ public sealed unsafe partial class CasterPass
 
     private static void CoverRelease()
     {
-        _vk.CoverArrived = false;
+        _vk.CoverArrived = false; _vk.CoverBakedAt = 0;
         _coverBaked = false; _coverCValid = false; _coverNew = false; CoverVp = default; Weather.EsmRelease();
         _vk.CoverReadGen++; _vk.CoverReadVp = default;
     }

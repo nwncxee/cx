@@ -45,7 +45,6 @@ internal static unsafe class ContentPrograms
         /// is built for it.</summary>
         public bool Plain;
         public bool Cuts, Moves, ReadsPlt, ForwardOnly, NoKeyhole;
-        public string RouteNote = "";
         /// <summary>Is the vertex half known to add nothing to stock -- off the feed's text at registration, then the
         /// chain's at the build? A pair not known so may move its vertices, so its parts never frustum-cull.</summary>
         public bool VsStock;
@@ -334,15 +333,16 @@ internal static unsafe class ContentPrograms
         s.Cuts = f?.Cuts ?? false;
         s.ReadsPlt = (f?.ReadsPlt ?? false) || (v?.ReadsPlt ?? false);
         s.ForwardOnly = f?.ForwardOnly ?? false;
-        s.RouteNote = f?.RouteNote ?? "";
         s.NoKeyhole = f?.NoKeyhole ?? false;
         s.Params = f?.Params ?? v!.Params;
         return true;
     }
 
-    /// <summary>The twins the pair's facts call for, beside its forward program: the deferred one unless it edits the lit
-    /// colour or lights itself (only the forward program has either), and the depth and caster ones when its parts' depth
-    /// is its own.</summary>
+    /// <summary>Does a translated fragment half get a deferred twin on this lit stage? See <see cref="ContentStage.Result.ForwardOnly"/>.</summary>
+    internal static bool GetsDeferredTwin(ContentStage.Result r, string litFs) => !r.ForwardOnly && LitDeferred(litFs);
+
+    /// <summary>The twins the pair's facts call for, beside its forward program: the deferred one unless it must draw forward
+    /// (<see cref="ContentStage.Result.ForwardOnly"/>), and the depth and caster ones when its parts' depth is its own.</summary>
     private static List<(string What, string Vs, string Fs, int Slot)> Twins(Stage s)
     {
         var list = new List<(string, string, string, int)>();
@@ -375,7 +375,7 @@ internal static unsafe class ContentPrograms
         _reg.Log?.Always($"{what}: runs translated -- {(s.VsStock ? "stock" : "its own")} vertex half, "
                        + $"{(s.FsStock ? "stock" : "its own")} fragment half, {s.Params.Length} parameter lane(s)"
                        + (s.Cuts ? ", its own coverage" : "") + (s.Moves ? ", its own vertex placement" : "")
-                       + s.RouteNote
+                       + (f?.RouteNote ?? "")
                        + (s.NoKeyhole ? ", never dissolves" : "")
                        + (built.Count == 0 ? "" : "; " + string.Join(", ", built))
                        + (s.Cuts || s.Moves ? (p.Depth == 0 ? "; NO depth twin, so its parts stay out of the prepass" : "")

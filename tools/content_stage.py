@@ -168,6 +168,10 @@ class Result:
         self.cuts = self.reads_plt = self.reads_lights = self.post = self.alpha_post = self.no_keyhole = False
         self.outputs = set()
 
+    def forward_only(self):
+        """Mirrors ContentStage.Result.ForwardOnly."""
+        return self.post and not self.alpha_post or self.reads_lights
+
 
 def resolve(text, chain, std_text, stack, depth, count, optional=False):
     if "#include" not in text:
@@ -460,7 +464,7 @@ def edits_after(b, frm, to):
 
 
 PURE_CALLS = {"if", "float", "int", "bool", "vec2", "vec3", "vec4", "mat3", "mat4", "texture", "texture2D", "clamp", "min", "max",
-              "dot", "mix", "step", "smoothstep", "abs", "pow", "sqrt", "length", "floor", "fract", "sin", "cos"}
+              "dot", "mix", "step", "smoothstep", "abs", "pow", "sqrt", "exp", "length", "normalize", "floor", "fract", "sin", "cos"}
 
 
 def alpha_only(post):
@@ -666,6 +670,7 @@ def translate(resref, fragment, chain, env, vanilla_defs, vanilla_env_fs, std_te
     if fragment:
         host += (vanilla_defs + ("" if vanilla_defs.endswith("\n") else "\n")
                  + "#define CX_CONTENT_PROGRAM 1\n" + ("#define CX_CONTENT_POST 1\n" if r.post else "")
+                 + ("#define CX_CONTENT_ALPHA_POST 1\n" if r.alpha_post else "")
                  + ("#define CX_CONTENT_ENVMAP 1\n" if ENV_STAGE.search(flat) else "")
                  + "bool CxHostSurface(int feat)\n{\n    if (feat < CX_FEAT_CONTENT0) return false;\n"
                  + "    CxContentBody();\n    return true;\n}\n")
@@ -696,7 +701,20 @@ FIXTURE = {
                  "    SetupStandardShaderInputs();\n    ApplyStandardShader();\n}\n",
     "cx_fixalpha": ('#include "inc_standard"\nvoid main()\n{\n    FragmentColor = vec4(1.0);\n    SetupStandardShaderInputs();\n'
                     "    float a = texture2D(texUnit1, vTexCoords.xy).a;\n    ApplyStandardShader();\n"
-                    "    gl_FragColor = vec4(FragmentColor.rgb, a);\n    if (gl_FragColor.a < 0.5) { discard; }\n}\n"),
+                    "    gl_FragColor = vec4(FragmentColor.rgb, a);\n}\n"),
+    "cx_fixalphacut": ('#include "inc_standard"\nuniform float fCut;\nvoid main()\n{\n    FragmentColor = vec4(1.0);\n'
+                       "    SetupStandardShaderInputs();\n    ApplyStandardShader();\n"
+                       "    gl_FragColor = vec4(FragmentColor.rgb, texture2D(texUnit3, vTexCoords.xy).r);\n"
+                       "    if (gl_FragColor.a < fCut)\n    {\n        discard;\n    }\n}\n"),
+    "cx_fixsetsglobal": ('#include "inc_standard"\nvoid main()\n{\n    FragmentColor = vec4(1.0);\n    SetupStandardShaderInputs();\n'
+                         "    ApplyStandardShader();\n    fRoughness = 0.5;\n    gl_FragColor = vec4(FragmentColor.rgb, 0.5);\n}\n"),
+    "cx_fixcallshelper": ('#include "inc_standard"\nfloat FixAlpha() { FragmentColor.r = 0.0; return 0.5; }\nvoid main()\n{\n'
+                          "    FragmentColor = vec4(1.0);\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n"
+                          "    gl_FragColor = vec4(FragmentColor.rgb, FixAlpha());\n}\n"),
+    "cx_fixalphaoflit": ('#include "inc_standard"\nvoid main()\n{\n    FragmentColor = vec4(1.0);\n    SetupStandardShaderInputs();\n'
+                         "    ApplyStandardShader();\n    gl_FragColor = vec4(FragmentColor.rgb, FragmentColor.g);\n}\n"),
+    "cx_fixnocall": ('#include "inc_standard"\nvoid main()\n{\n    FragmentColor = vec4(1.0);\n    SetupStandardShaderInputs();\n'
+                     "    gl_FragColor = vec4(FragmentColor.rgb, 0.5);\n}\n"),
     "cx_fixwhole": "void main()\n{\n    gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);\n}\n",
     # The engine-named set declared the way stock content declares it: inc_uniforms' whole block, inc_sunm's lone
     # scalar, fswater's wind loop, vs_beamvol's inline m_proj.
@@ -774,9 +792,12 @@ def selfcheck(env_fs, env_vs, defs, vanfs, std_fs, std_vs, lit_vs):
     alpha = translate("cx_fixalpha", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
     if alpha.refused or not alpha.post or not alpha.alpha_post or post.alpha_post:
         bad.append("an alpha-only post body is not told from a colour edit")
-    if alpha_only("FragmentColor = vec4(FragmentColor.rgb, 0.5); fRoughness = 0.5;") \
-       or alpha_only("FragmentColor = vec4(FragmentColor.rgb, FixAlpha());"):
-        bad.append("a post body writing a global or calling the stage's own function counts as alpha only")
+    for name in ("cx_fixsetsglobal", "cx_fixcallshelper", "cx_fixalphaoflit", "cx_fixnocall"):
+        if translate(name, True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "").alpha_post:
+            bad.append(f"{name} counts as alpha only")
+    cut = translate("cx_fixalphacut", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
+    if cut.refused or not cut.alpha_post or not cut.cuts:
+        bad.append("a post body that cuts on its alpha is not alpha only")
     whole = translate("cx_fixwhole", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
     if whole.refused or not whole.post or whole.cuts or "void CxContentMain()\n{\n}" not in whole.host:
         bad.append("a whole stage is not all post body")

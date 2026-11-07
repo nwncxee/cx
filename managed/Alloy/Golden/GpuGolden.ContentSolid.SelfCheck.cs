@@ -5,7 +5,7 @@ using CX.Rhi;
 namespace CX.Alloy;
 
 /// <summary>
-/// The split's interior test, which held before the deferred route for hair (so it carries no approved-spec mark): the
+/// The split's interior test (E8, which held before the deferred route, so its test carries no approved-spec mark): the
 /// shipped <c>CxSolidCut</c> over coverage and part opacity. Oracle: the 1 / 0 verdicts written here by hand.
 /// </summary>
 internal static partial class GpuGolden
@@ -31,6 +31,7 @@ internal static partial class GpuGolden
         vk.Destroy(pipe);
         check.Expect(got != null, "the content solid golden's stage was refused (logged above)");
         if (got == null) return;
+        log.Info($"GpuGolden: content solid cut verdicts {got[0]} {got[1]} {got[2]} {got[3]} (want 0 1 1 0)");
         check.Expect(got[0] == 0f, "a fully covered texel is cut from the interior");
         check.Expect(got[1] == 1f, "a soft edge draws solid in the interior");
         // Given a ghosted creature, faded below full opacity, wearing such hair

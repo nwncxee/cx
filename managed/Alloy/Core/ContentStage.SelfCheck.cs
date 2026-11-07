@@ -125,24 +125,25 @@ internal static partial class ContentStage
         // Given a transparent material on a shader that is forward only
         // When it draws
         // Then all of it blends, as it does today
-        check.Expect(!Issue.SplitsSolid(false, false, content: true, twin: false, decal: false, 0, 1), "a pair with no twin splits");
+        check.Expect(!Issue.SplitsSolid(wash: 0, twin: false, decal: false, Issue.AuroraSrcAlpha, Issue.AuroraOneMinusSrcAlpha), "a pair with no twin splits");
         // Given a ground decal on a shader with a deferred twin
         // When it draws
         // Then it goes to the decal layer, as it does today, and has no solid middle
-        check.Expect(!Issue.SplitsSolid(false, false, content: true, twin: true, decal: true, 0, 1), "a ground decal splits");
+        check.Expect(!Issue.SplitsSolid(wash: 0, twin: true, decal: true, Issue.AuroraSrcAlpha, Issue.AuroraOneMinusSrcAlpha), "a ground decal splits");
         // Given an additive material on a shader with a deferred twin
         // When it draws
         // Then all of it adds, as it does today
-        check.Expect(!Issue.SplitsSolid(false, false, content: true, twin: true, decal: false, 0, 2), "an additive part splits");
-        check.Expect(!Issue.SplitsSolid(false, true, content: true, twin: true, decal: false, 0, 1), "a whole wash splits");
-        check.Expect(!Issue.SplitsSolid(false, false, content: false, twin: true, decal: false, 0, 1), "a stock blended part splits outside a wash");
-        Result global = Translate("cx_fixsetsglobal", true, Chain, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37);
+        check.Expect(!Issue.SplitsSolid(wash: 0, twin: true, decal: false, Issue.AuroraSrcAlpha, Issue.AuroraOne), "an additive part splits");
+        check.Expect(!Issue.SplitsSolid(AlloyRenderer.WashWhole, twin: true, decal: false, Issue.AuroraSrcAlpha, Issue.AuroraOneMinusSrcAlpha), "a whole wash splits");
+        check.Expect(Issue.SplitsSolid(AlloyRenderer.WashSplit, twin: false, decal: false, Issue.AuroraSrcAlpha, Issue.AuroraOneMinusSrcAlpha), "a split wash stops splitting");
+        Result Plain(string n) => Translate(n, true, Chain, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37);
+        Result global = Plain("cx_fixsetsglobal");
         check.Expect(global.Refused == null && global.ForwardOnly, "a post body writing a global beside its alpha gets a twin");
-        Result helper = Translate("cx_fixcallshelper", true, Chain, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37);
+        Result helper = Plain("cx_fixcallshelper");
         check.Expect(helper.Refused == null && helper.ForwardOnly, "a post body calling the stage's own function gets a twin");
-        Result ofLit = Translate("cx_fixalphaoflit", true, Chain, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37);
+        Result ofLit = Plain("cx_fixalphaoflit");
         check.Expect(ofLit.Refused == null && ofLit.ForwardOnly, "an alpha read off the lit colour gets a twin");
-        Result noCall = Translate("cx_fixnocall", true, Chain, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37);
+        Result noCall = Plain("cx_fixnocall");
         check.Expect(noCall.Refused == null && noCall.ForwardOnly, "a stage that never asks for the lighting gets a twin");
         Result envStage = Translate("cx_fixenv", true, Chain, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37);
         check.Expect(envStage.Refused == null && envStage.Host.Contains("#define CX_CONTENT_ENVMAP 1")

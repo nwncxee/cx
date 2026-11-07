@@ -116,7 +116,7 @@ internal static partial class ContentStage
     private static readonly HashSet<string> PureCalls =
     [
         "if", "float", "int", "bool", "vec2", "vec3", "vec4", "mat3", "mat4", "texture", "texture2D", "clamp", "min", "max", "dot",
-        "mix", "step", "smoothstep", "abs", "pow", "sqrt", "length", "floor", "fract", "sin", "cos",
+        "mix", "step", "smoothstep", "abs", "pow", "sqrt", "exp", "length", "normalize", "floor", "fract", "sin", "cos",
     ];
 
     /// <summary><paramref name="text"/> with every comment blanked to spaces, newlines kept: same length, same offsets.</summary>

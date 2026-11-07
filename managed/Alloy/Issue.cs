@@ -94,7 +94,7 @@ internal static unsafe class Issue
     internal const float WashOffsetFactor = -1f, WashOffsetUnits = -2f;
 
     /// <summary>Aurora blend-mode indices (see <see cref="BlendGl"/>) of the one pair OIT accumulates.</summary>
-    private const byte AuroraSrcAlpha = 0, AuroraOneMinusSrcAlpha = 1;
+    internal const byte AuroraSrcAlpha = 0, AuroraOneMinusSrcAlpha = 1, AuroraOne = 2;
 
     /// <summary>Does a lit, non-water batch draw a content pair's program -- built, and so its halves running?</summary>
     internal static bool HostedBody(bool lit, int feat) => lit && ShaderFeatures.IsContent(feat) && ContentPrograms.AskReady(feat);
@@ -105,12 +105,10 @@ internal static unsafe class Issue
     internal static bool SitsOitOut(bool content, int src, int dst)
         => content || src != AuroraSrcAlpha || dst != AuroraOneMinusSrcAlpha;
 
-    /// <summary>Does a blended batch draw its fully covered texels solid ahead of the rest? A wash marked to split does,
-    /// unless it sits OIT out under anything but the plain blend; so does a plain-blended content part whose pair has a
-    /// deferred twin and is neither a wash nor a decal, which then pays the forward walk only at its edges.</summary>
-    internal static bool SplitsSolid(bool washSplit, bool isWash, bool content, bool twin, bool decal, int src, int dst)
-        => washSplit ? !SitsOitOut(content, src, dst) || content && src == AuroraSrcAlpha && dst == AuroraOneMinusSrcAlpha
-                     : !isWash && content && twin && !decal && src == AuroraSrcAlpha && dst == AuroraOneMinusSrcAlpha;
+    /// <summary>Does a plain-blended batch draw its fully covered texels solid ahead of the rest? A wash marked to split does,
+    /// and so does a part whose pair's deferred twin this frame can draw, which then pays the forward walk only at its edges.</summary>
+    internal static bool SplitsSolid(byte wash, bool twin, bool decal, int src, int dst)
+        => src == AuroraSrcAlpha && dst == AuroraOneMinusSrcAlpha && (wash == AlloyRenderer.WashSplit || wash == 0 && twin && !decal);
 
     /// <summary>One <c>Aurora::AuroraBlendModes</c> value as its GL blend factor -- the engine's own
     /// translation table at 0x12f5040, which <c>GLRender::SetBlendFunc</c> @0x4cb0c0 indexes. Out-of-range

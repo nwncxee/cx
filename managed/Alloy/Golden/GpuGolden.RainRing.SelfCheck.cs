@@ -24,6 +24,7 @@ internal static partial class GpuGolden
         vk.Destroy(pipe);
         check.Expect(got != null, "the rain ring golden's stage was refused (logged above)");
         if (got == null) return;
+        log.Info($"GpuGolden: a rain ring under unit light sends {got[0]} to the eye");
         check.Expect(got[0] > 0f && got[0] < 0.1f, $"a ring under unit light sends {got[0]} to the eye, not under dirt's tenth");
     }
 }

@@ -528,8 +528,9 @@ public sealed unsafe partial class AlloyRenderer
             bool oitOut = Issue.SitsOitOut(content, _gSrc[g], _gDst[g]);
             if (r.Oit == VkOitPart.Accum && oitOut) { s.OitOut++; continue; }
             if (r.Oit == VkOitPart.Hosted && !oitOut) continue;
-            bool split = lit && g >= _gOpaqueEnd && Issue.SplitsSolid(_gWash[g] == WashSplit, _gWash[g] != 0, content, content && ContentPrograms.HasDeferred(_gFeat[g]),
-                                                                      _gDecal[g], _gSrc[g], _gDst[g]);
+            bool twin = content && s.GbufWritten && !_capturing && g >= _gOpaqueEnd && _gWash[g] == 0
+                        && ContentPrograms.HasDeferred(_gFeat[g]) && VkContent(_gFeat[g], ContentVariant.Deferred) != null;
+            bool split = lit && g >= _gOpaqueEnd && Issue.SplitsSolid(wash: _gWash[g], twin, decal: _gDecal[g], _gSrc[g], _gDst[g]);
             if (r.Interior && !split) continue;
             bool deferred = lit && r.Gbuf && (!content || ContentPrograms.HasDeferred(_gFeat[g])) && (viz == 0 || viz == VizLightFrom)
                             && !_capturing && (g < _gOpaqueEnd || r.Interior);

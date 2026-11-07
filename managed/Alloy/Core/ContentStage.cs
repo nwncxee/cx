@@ -161,6 +161,7 @@ internal static partial class ContentStage
             if (!vanillaDefs.EndsWith('\n')) sb.Append('\n');
             sb.Append("#define CX_CONTENT_PROGRAM 1\n");
             if (r.Post) sb.Append("#define CX_CONTENT_POST 1\n");
+            if (r.AlphaPost) sb.Append("#define CX_CONTENT_ALPHA_POST 1\n");
             if (EnvStage.IsMatch(flat)) sb.Append("#define CX_CONTENT_ENVMAP 1\n");
             sb.Append("bool CxHostSurface(int feat)\n{\n")
               .Append("    if (feat < CX_FEAT_CONTENT0) return false;\n")
