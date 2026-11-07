@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Runtime;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace CX.Framework;
 
@@ -18,6 +19,10 @@ internal static class MemorySettle
     /// <summary>New free bytes in malloc that make a trim worth its pause.</summary>
     private const long SlackBytes = 128 * MiB;
     private const int PeriodSeconds = 10;
+    /// <summary>Managed growth since the last collection that collects mid-load, the bound on a load's garbage: a load
+    /// stalls frames, so this is watched off the frame.</summary>
+    private const long LoadGrowthBytes = 768 * MiB;
+    private const int WatchMs = 250;
 
     /// <summary>What a period's end asks for.</summary>
     internal readonly record struct Verdict(bool Compact, bool Trim);
@@ -27,6 +32,7 @@ internal static class MemorySettle
     internal sealed class SettleState
     {
         public long Next, SettledAt, PeriodAt, TrimmedSlack;
+        public Thread? Watcher;
     }
 
     private static readonly SettleState _state = new();
@@ -67,6 +73,7 @@ internal static class MemorySettle
     internal static void Frame(long now, ExtenderLog? log, Action dropCaches)
     {
         SettleState s = _state;
+        if (s.Watcher == null) { s.Watcher = new Thread(() => Watch(log)) { IsBackground = true, Name = "cx-memwatch" }; s.Watcher.Start(); }
         if (now < s.Next) return;
         s.Next = now + PeriodSeconds * Stopwatch.Frequency;
         Malloc(out _, out _, out long slack);
@@ -76,11 +83,36 @@ internal static class MemorySettle
         if (v.Compact)
         {
             dropCaches();
-            GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
-            GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+            Compact();
         }
         if (v.Trim && OperatingSystem.IsLinux()) MallocTrim(0);
         log?.Info($"MemorySettle: {(v.Compact ? "compacted and " : "")}trimmed, rss {before / MiB} -> {Environment.WorkingSet / MiB} MiB in {(Stopwatch.GetTimestamp() - t0) * 1000 / Stopwatch.Frequency} ms");
+    }
+
+    private static void Compact()
+    {
+        GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+    }
+
+    /// <summary>Pure: the managed heap has grown far enough past <paramref name="floor"/> to collect now.</summary>
+    internal static bool LoadDue(long floor, long now) => now - floor >= LoadGrowthBytes;
+
+    /// <summary>The bound on a load's peak: a load's decode buffers die fast, and latency=Batch leaves them for a gen2
+    /// that may not come until the settle, a gigabyte or more later.</summary>
+    private static void Watch(ExtenderLog? log)
+    {
+        long floor = GC.GetTotalMemory(false);
+        for (;;)
+        {
+            BlockingWait.Sleep(WatchMs, "between looks at the managed heap's growth");
+            long now = GC.GetTotalMemory(false);
+            if (!LoadDue(floor, now)) { floor = Math.Min(floor, now); continue; }
+            long t0 = Stopwatch.GetTimestamp();
+            Compact();
+            floor = GC.GetTotalMemory(false);
+            log?.Info($"MemorySettle: mid-load collection, managed {now / MiB} -> {floor / MiB} MiB in {(Stopwatch.GetTimestamp() - t0) * 1000 / Stopwatch.Frequency} ms");
+        }
     }
 
     /// <summary>Off-device: when a period asks for what. Oracle: hand-written allocation totals in MiB.</summary>
@@ -96,6 +128,9 @@ internal static class MemorySettle
         check.Expect(At(2012, 300) == default, "free bytes mallinfo still counts after a trim trimmed again");
         check.Expect(At(2015, 100) == default, "malloc reusing its free bytes asked for a trim");
         check.Expect(At(2018, 240) == new Verdict(false, true), "free bytes returning after reuse were not trimmed");
+        check.Expect(!LoadDue(1000 * MiB, 1767 * MiB), "767 MiB of growth collected mid-load");
+        check.Expect(LoadDue(1000 * MiB, 1768 * MiB), "768 MiB of growth did not collect mid-load");
+        check.Expect(!LoadDue(1000 * MiB, 900 * MiB), "a shrinking heap collected mid-load");
         log.Info(check.Ok ? "MemorySettle.SelfCheck: passed" : "MemorySettle.SelfCheck: FAILED");
     }
 }
