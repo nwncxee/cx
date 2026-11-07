@@ -93,6 +93,7 @@ internal static partial class GpuGolden
         AoContactSelfCheck(vk, check, log);
         ContentSolidSelfCheck(vk, check, log);
         RainRingSelfCheck(vk, check, log);
+        AoMapApprovedSelfCheck(vk, check, log);
         vk.PresentDeviceCheck(check, log);
         vk.PresentHoldCheck(check, log);
         vk.UploadApprovedExamples(check);
