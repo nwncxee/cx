@@ -11,8 +11,6 @@ internal sealed class LogParts(string dir, long cap = LogParts.MaxPartBytes)
     internal const long MaxPartBytes = 10_000_000;
     /// <summary>cx.log plus the numbered parts; the oldest is deleted first.</summary>
     internal const int MaxParts = 5;
-    /// <summary>The most bytes UTF-8 spends on one UTF-16 unit.</summary>
-    private const int MaxBytesPerChar = 3;
 
     internal long Cap => cap;
     private StreamWriter? _file;
@@ -30,8 +28,10 @@ internal sealed class LogParts(string dir, long cap = LogParts.MaxPartBytes)
         int bytes = Encoding.UTF8.GetByteCount(line) + 1;
         if (bytes > cap)
         {
-            line = line[..(int)((cap - 1) / MaxBytesPerChar)];
-            bytes = Encoding.UTF8.GetByteCount(line) + 1;
+            var fit = new byte[cap - 1];
+            Encoding.UTF8.GetEncoder().Convert(line, fit, flush: true, out int chars, out int used, out _);
+            line = line[..chars];
+            bytes = used + 1;
         }
         if (_written + bytes > cap) Close();
         if (_file == null && !Open()) return;

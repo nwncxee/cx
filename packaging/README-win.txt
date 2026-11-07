@@ -35,5 +35,6 @@ REPORTING A PROBLEM
      general.hookdebug=1
 
   Play again, then open an issue at https://github.com/nwncxee/cx/issues with cx.log,
-  cx.1.log and funchook.log from Documents\Neverwinter Nights\, and what you did right before things went wrong.
+  cx.1.log and funchook.log from Documents\Neverwinter Nights\, and what you did right before things
+  went wrong.
   If you restarted the game after the problem, it is in cx.1.log.

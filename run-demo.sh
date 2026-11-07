@@ -11,17 +11,13 @@ B="$PWD/cx-linux-x64"
 [ -n "$CX_NO_BUILD" ] || ./build.sh
 [ -f "$B/libcx.so" ] || { echo "run ./build.sh first"; exit 1; }
 # ExtenderLog writes to $HOME/cx.log, which is where a real SESSION's log lives too -- a headless run
-# here would truncate the log the last game session left behind, which is the only evidence a live-verified
-# ticket has. Give the demo its own HOME so the two can never collide, and its own XDG_DATA_HOME: the
+# here would push the last game session's log along its parts. Give the demo its own HOME so the two can
+# never collide, and its own XDG_DATA_HOME: the
 # settings file sits in the client's user directory under it, and a player's cx.cfg moves the defaults
 # the SelfCheck suites assert.
 DEMOHOME="${TMPDIR:-/tmp}/cx-demo"
 mkdir -p "$DEMOHOME"
 LOG="$DEMOHOME/cx.log"
-# ROTATE, never delete. This is the same file the real client writes, and a client session's log is
-# the only record of what happened in a live area -- deleting it means a run-demo after a play session
-# destroys the evidence you were about to read. (It has: a large-area diagnosis was mid-flight.)
-[ -f "$LOG" ] && mv -f "$LOG" "$LOG.prev"
 
 # #457: rot stands the WHOLE extender down, before discovery, keyed on the host's .note.gnu.build-id.
 # /usr/bin/env is by definition a wrong build, so a demo that ran in it would prove the refusal and nothing

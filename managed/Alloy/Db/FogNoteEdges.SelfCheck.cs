@@ -3,13 +3,13 @@ using CX.Framework;
 
 namespace CX.Alloy.Db;
 
-/// <summary>Each thing the fog line says counts as a change, at the precision the line prints. Oracle: the steps written
-/// here by hand, against the line's <c>F3</c> colour and <c>F1</c> range.</summary>
+/// <summary>Each term the fog line compares counts as a change, by a whole step of its last printed digit. Oracle: the steps
+/// written here by hand, against the line's <c>F3</c> colour and <c>F1</c> range.</summary>
 internal static class FogNoteEdges
 {
     internal static bool SelfCheck(ExtenderLog log)
     {
-        var check = new Checker(log, "FogNoteEdges.SelfCheck");
+        var check = new Checker(log);
         var col = new Vector3(0.5f, 0.5f, 0.5f);
         var said = new SceneFeed.FogNoteState();
         check.Expect(said.Changed(1, true, col, 70f, false), "the first fog says its line");

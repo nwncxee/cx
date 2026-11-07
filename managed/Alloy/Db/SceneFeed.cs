@@ -146,8 +146,8 @@ public static class SceneFeed
     private static int _fogPath;
     private static readonly FogNoteState _fogSaid = new();
 
-    /// <summary>What the last fog line said, and whether the fog has left it, at the line's own precision: while a fade
-    /// runs the engine rewrites the colour every frame, and its rounding moves a colour that is not changing.</summary>
+    /// <summary>What the last fog line said, and whether the fog has moved a whole step of the line's last digit from it:
+    /// while a fade runs the engine rewrites the colour every frame, and its rounding moves a colour that is not changing.</summary>
     internal sealed class FogNoteState
     {
         private const float ColourStep = 0.001f, RangeStep = 0.1f;
@@ -171,9 +171,9 @@ public static class SceneFeed
             float.IsNaN(now) != float.IsNaN(said) || Math.Abs(now - said) >= step;
     }
 
-    /// <summary>One line whenever the fog the frame will draw changes -- path, switch, colour, range, the
-    /// area's day/night state and the engine's clear colour -- so a wrong fog in a player's session names its
-    /// source from cx.log. Cold: a still scene compares its values and writes nothing.</summary>
+    /// <summary>One line whenever the fog's source, switch, colour, far range or sky term changes, printing the area's
+    /// day/night state and the engine's clear colour beside them, so a wrong fog in a player's session names its source
+    /// from cx.log. Cold: a still scene compares its values and writes nothing.</summary>
     private static void FogNote(int i, in FrameHoist h)
     {
         bool on = FrameInputs.FogOn;

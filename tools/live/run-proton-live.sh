@@ -91,7 +91,7 @@ PFX="$OUT/pfx"; mkdir -p "$PFX"
 # in simply pushes it to ".0", then ".1", and the knobs are never read.
 DOCS="$PFX/pfx/drive_c/cxuser"
 mkdir -p "$DOCS"
-rm -f "$DOCS/cx.log" "$DOCS"/cx.{1,2,3,4}.log
+rm -f "$DOCS/cx.log" "$DOCS"/cx.[0-9].log
 if [ "$NUI" = 1 ]; then
     mkdir -p "$DOCS/modules"
     NWN_DIR="$NWN_DIR" "$ROOT/tools/live/ladder/build-ladder.sh" "$DOCS/modules" "$MODULE" ${SHOWCASE:+"$SHOW_SRC"} \

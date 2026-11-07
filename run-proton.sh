@@ -28,7 +28,7 @@ SAVES="${NWN_SAVES:-$HOME/.local/share/Neverwinter Nights/saves}"
 if [ -d "$SAVES" ]; then   # `[ ] &&` here would be a false command under set -e when there are no saves
   for d in "$DOCS" "$DOCS.0"; do mkdir -p "$d/saves"; cp -Ru "$SAVES/." "$d/saves/"; done
 else echo ">> no saves at $SAVES -- the same-save compare needs one (NWN_SAVES overrides)" >&2; fi
-rm -f "$DOCS/cx.log"
+rm -f "$DOCS/cx.log" "$DOCS"/cx.[0-9].log
 # Wine prefers its builtin version.dll; n,b makes the proxy beside nwmain.exe win.
 cd "$GAME" && STEAM_COMPAT_DATA_PATH="$PFX" STEAM_COMPAT_CLIENT_INSTALL_PATH="$HOME/.steam/root" \
   WINEDLLOVERRIDES="version=n,b" exec "$PROTON" run "$GAME/nwmain.exe" "$@"

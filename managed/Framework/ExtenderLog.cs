@@ -10,7 +10,6 @@ namespace CX.Framework;
 public sealed class ExtenderLog
 {
     private static readonly LogParts _parts = new(OperatingSystem.IsWindows() ? Native.DefaultUserDirectory() : HostEnv.Home);
-    private static readonly string LogPath = _parts.PathOf(0);
 
     /// <summary>The one gate every line passes: <c>general.logs=1</c> keeps it open, the default closes it once
     /// <see cref="Settings.Load"/> has read cx.cfg, and <c>General.Logs</c> flips it live. Off means off at the CALL
@@ -145,7 +144,7 @@ public sealed class ExtenderLog
     {
         try
         {
-            using var f = new FileStream(LogPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var f = new FileStream(_parts.PathOf(0), FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
             f.Seek(Math.Max(0, f.Length - 8192), SeekOrigin.Begin);
             return new StreamReader(f).ReadToEnd().Contains(text, StringComparison.Ordinal);
         }
