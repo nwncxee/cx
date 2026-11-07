@@ -170,7 +170,7 @@
     if (uViz == 52) lit = cxLightFrom * 0.5;   // through the blend/OIT tail, so a decal shows at its own coverage
 #endif
     vec4 outC = vec4(CxDisplayOverlays(CxFogReveal(lit * kh, vWorld, vDepth, d.ext2.w)), coverage * d.rot.w);
-#ifdef CX_CONTENT_POST
+#if defined(CX_CONTENT_POST) && !defined(CX_DEFERRED)
     // CX-303: what a content stage does after its ApplyStandardShader, on the colour that call hands back in the
     // engine: lit, dissolved and fogged, in display space (CxHostPost converts both ways)
     outC = CxHostPost(outC);

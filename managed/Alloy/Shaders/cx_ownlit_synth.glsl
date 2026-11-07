@@ -1,11 +1,17 @@
-// The coverage discards: the cutout's, an OIT fragment's at zero coverage, a split wash's interior (uSolid).
+/// Is this fragment outside a split part's solid interior? Coverage times the part's own opacity, so a ghost has none.
+bool CxSolidCut(float coverage, float alpha)
+{
+    return uSolid != 0 && coverage * alpha < CX_SOLID_ALPHA;
+}
+
+// The coverage discards: the cutout's, an OIT fragment's at zero coverage, a split part's interior (uSolid).
 // One test, so main's early ask of a plain diffuse can never discard a texel the full one keeps.
 bool CxCoverCut(float coverage, float alpha, vec2 du1, vec2 du2, vec2 cutSize, float cutMip)
 {
     float s = coverage * alpha;
     return uAlphaCut >= 0.0 && CxAlphaMipAt(coverage, du1, du2, cutSize, uLodBias, cutMip) <= uAlphaCut
         || uOit != 0 && s <= 0.0
-        || uSolid != 0 && s < CX_SOLID_ALPHA;
+        || CxSolidCut(coverage, alpha);
 }
 
 /// The colour map at a pixel: two samples a quarter pixel either side on the diagonal, each with a footprint half the
@@ -409,6 +415,14 @@ void main()
         // CX-303: a content stage's alpha IS its coverage -- a stage that cuts on another map hands that map back --
         // and it made its own cut; what is left is the OIT pass's zero-coverage drop
         coverage = FragmentColor.a;
+#ifdef CX_CONTENT_ALPHA_POST
+        // this post body sets only the alpha and cuts: both are known before any light, as the depth twin's are
+#ifndef CX_DEFERRED
+        if (uSolid != 0)
+#endif
+            coverage = CxHostPost(FragmentColor).a;
+#endif
+        if (CxSolidCut(coverage, d.rot.w)) discard;
         if (uOit != 0 && coverage * d.rot.w <= 0.0) discard;
 #endif
     }

@@ -138,7 +138,6 @@
 2 managed/Alloy/Pass/LightmapBake.Step.cs
 7 managed/Alloy/Pass/MotionVectors.cs
 23 managed/Alloy/Pass/NuiFlush.cs
-17 managed/Alloy/Pass/PairShadows.cs
 37 managed/Alloy/Pass/Particles.cs
 6 managed/Alloy/Pass/PostChain.cs
 8 managed/Alloy/Pass/PostStack.cs

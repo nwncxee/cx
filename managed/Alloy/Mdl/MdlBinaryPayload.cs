@@ -297,7 +297,8 @@ internal static class MdlBinaryPayload
     {
         var a = new AabbDef();
         n.Aabb = a;
-        if (n.Mesh != null) n.Mesh.WalkMesh = true;
+        // PartAABB::Draw is a debug view, so a walkmesh never draws or casts, whatever its render word says.
+        if (n.Mesh != null) { n.Mesh.WalkMesh = true; n.Mesh.Render = false; n.Mesh.Shadow = false; }
         int root = I(model, at + BRoot);
         if (root <= 0) return;
         var list = new System.Collections.Generic.List<AabbNode>();

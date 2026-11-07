@@ -1,16 +1,4 @@
 #include "cx_pass.glsl"
-// CX-188 step 4: the (static light, mover) pair tiles. A light that traded its dyn page for them publishes
-// uLocalDynPage[slot] NEGATIVE, so every `pg > 0.5` below reads it as pageless -- which is the truth, the page
-// is gone. CxPairVis is where this file gets those movers back for an UNBAKED receiver (a creature standing in
-// another creature's shadow under a lamp), in the stages that define CX_PAIR_RECV; a baked receiver of the
-// deferred frame takes the same tiles through the debt dispatch instead, once per pixel.
-// The include is inside the guard too, so a program that is not one of those two carries neither the pair
-// table nor the atlas sampler -- this library compiles into VERTEX stages as well (grass, weather, particles),
-// and an SSBO plus a unit-28 sampler there would be resources spent on code that cannot run. A hak override of
-// cx_pairshad therefore reaches exactly the stages that read it.
-#ifdef CX_PAIR_RECV
-#include "cx_pairshad.glsl"
-#endif
 uniform samplerCubeArrayShadow uLocalShadow;
 // CX-43: per PROGRAM, not in the pass block -- the particle pass zeroes it under /particles shadows 0
 // and the bake reads its one scratch cube. 0 = no cubes to sample (vanilla, no lights, not yet drawn).
@@ -191,17 +179,6 @@ float CxLocalShadowQ(int slot, vec3 worldPos, vec3 N, float ndlRaw, float onMove
     // see CX_LOCAL_DYN_NEAR. Ground and static receivers pass onMover 0 and are never gated.
     bool dyn = pg > 0.5 && !(onMover > 0.5 && m < CX_LOCAL_DYN_NEAR * uLocalSoft.y);
     float vd = dyn ? texture(uLocalDynShadow, vec4(d, pg - 1.0), ref) : 1.0;
-    // CX-188 step 4: a PAIRED light has no page (pg < 0) and its movers are in the pair tiles instead. Same
-    // carrier band as the page tap above -- a creature inside its own carried light does not self-shadow --
-    // and the raw worldPos, since CxPairTapAt applies the tile's own offsets rather than the cube's.
-    // ONLY where CX_PAIR_RECV says so, which is the deferred stage and nothing else. That is where an unbaked
-    // receiver is lit -- a creature is opaque and the twin draws it -- and keeping the tap out of every other
-    // program is the whole lesson of the reverted pair-shadow attempt (504b6e0): its branches were compiled
-    // into the forward light loop three times and the baseline with the feature OFF grew by 7.8 ms.
-#ifdef CX_PAIR_RECV
-    if (pg < -0.5 && !(onMover > 0.5 && m < CX_LOCAL_DYN_NEAR * uLocalSoft.y))
-        vd = CxPairVis(slot, worldPos, N, ndlRaw, soft);
-#endif
     float v = min(vs, vd);
     // #326: one tap when the disc is under its pixel budget on screen (z = px / lod scale) -- four of
     // every five cube fetches
@@ -394,14 +371,6 @@ float CxLocalShadowFast(int slot, vec3 worldPos, vec3 N, float ndlRaw, float onM
     float vs = texture(uLocalShadow, vec4(d, float(slot)), ref);
     bool dyn = pg > 0.5 && !(onMover > 0.5 && m < CX_LOCAL_DYN_NEAR * uLocalSoft.y);
     float vd = dyn ? texture(uLocalDynShadow, vec4(d, pg - 1.0), ref) : 1.0;
-    // CX-188 step 4: a PAIRED light has no page and its movers are in the pair tiles instead -- and on the
-    // deferred path THIS filter, not CxLocalShadowQ, is what writes an unbaked receiver's shadow verdict
-    // (cx_defshadow_cs), so the tap has to be here as well or a creature takes no shadow from another
-    // creature under a lamp. One tile tap, the lone hardware one, matching this filter's own cheapness.
-#ifdef CX_PAIR_RECV
-    if (pg < -0.5 && !(onMover > 0.5 && m < CX_LOCAL_DYN_NEAR * uLocalSoft.y))
-        vd = CxPairVis(slot, worldPos, N, ndlRaw, false);
-#endif
     float v = min(vs, vd);
     int taps = min(int(uLocalPcss.z), CX_LOCAL_FAST_TAPS);
     // #326's screen-radius gate and the softness knobs, read exactly as the live filter reads them

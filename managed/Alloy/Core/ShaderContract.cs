@@ -418,7 +418,7 @@ internal static class ShaderContract
                   // did: a reader that leaves cxFragNormal false keeps lights past a normal map's terminator the walk dropped
                   && OwnedLitFsMain.Contains("cxFragNormal = (slots & CX_SLOT_NORMAL) != 0;")
                   && ShaderSource.Get("cx_deferred_cs.glsl").Contains("cxFragNormal = (g.flags & CX_GB_NORMALMAP) != 0u;")
-                  && ShaderSource.Get("cx_pairdebt.glsl").Contains("cxFragNormal = (g.flags & CX_GB_NORMALMAP) != 0u;")
+                  && ShaderSource.Get("cx_moverdebt.glsl").Contains("cxFragNormal = (g.flags & CX_GB_NORMALMAP) != 0u;")
                   && ShaderSource.Get("cx_defshadow_cs.glsl").Contains("cxFragNormal = (g.flags & CX_GB_NORMALMAP) != 0u;")
                   // ...while the ambient hemisphere keeps the RAW dot -- the hemisphere is Alloy's (stock's
                   // ambient is flat), and wrapping it would move every surface's shade side.

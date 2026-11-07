@@ -54,6 +54,12 @@ internal static partial class ContentStage
         /// <summary>Does the fragment half run code on the LIT colour -- after its <c>ApplyStandardShader()</c>, or all of
         /// it for a stage that never calls it? Only the forward program has a lit colour to hand it.</summary>
         public bool Post;
+        /// <summary>Does the post body only set the alpha and cut on it, so the deferred twin can run it ahead of the lights?</summary>
+        public bool AlphaPost;
+        /// <summary>Does the pair have to draw forward, with no deferred twin?</summary>
+        public bool ForwardOnly => Post && !AlphaPost || ReadsLights;
+        /// <summary>What the pair's log line says about its route.</summary>
+        public string RouteNote => (!Post ? "" : AlphaPost ? ", sets its alpha after the lighting call" : ", edits on the lit colour (forward only)") + (ReadsLights ? ", lights itself (forward only)" : "");
         /// <summary>Does the fragment half switch keyholing off (<c>#define KEYHOLING 0</c>)? Its parts never dissolve.</summary>
         public bool NoKeyhole;
         /// <summary>The varyings a vertex half declares of its own, by name: the fragment half reads them as written.</summary>
@@ -155,6 +161,7 @@ internal static partial class ContentStage
             if (!vanillaDefs.EndsWith('\n')) sb.Append('\n');
             sb.Append("#define CX_CONTENT_PROGRAM 1\n");
             if (r.Post) sb.Append("#define CX_CONTENT_POST 1\n");
+            if (r.AlphaPost) sb.Append("#define CX_CONTENT_ALPHA_POST 1\n");
             if (EnvStage.IsMatch(flat)) sb.Append("#define CX_CONTENT_ENVMAP 1\n");
             sb.Append("bool CxHostSurface(int feat)\n{\n")
               .Append("    if (feat < CX_FEAT_CONTENT0) return false;\n")

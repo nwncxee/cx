@@ -208,7 +208,7 @@ bool CxGbufRead(uvec4 g0, uvec4 g1, float frameDepth, float slack, out CxGbuf g)
 
 /// The LIGHT RECORD (GBuffer.TexLight, RGBA32UI): what cx_deferred_cs's walk answered at the pixel -- the point
 /// and pointSpec sums before the transfer weights, the record's view depth (negative on a baked receiver) and
-/// the share of its baked term the movers took back (the walk's own, plus cx_pairdebt's). A blended fragment
+/// the share of its baked term the movers took back (the walk's own, plus cx_moverdebt's). A blended fragment
 /// lying on that same surface reads it instead of walking (cx_ownlit_light). All zero = no record.
 uvec4 CxLightRecPack(vec3 point, vec3 spec, float viewDepth, bool baked, float owe)
 {

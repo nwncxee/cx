@@ -38,6 +38,16 @@ const float CX_SPLASH_RINGW = 0.13;
 const float CX_SPLASH_RINGR = 0.87;
 /// The ring is the faint half of an impact: the crown is what the eye reads, the ring only says "on water".
 const float CX_SPLASH_RINGA = 0.5;
+/// The share of the light on it a ring sends back: a bent water surface's reflection, a little over flat water's 0.02.
+/// ponytail: a number chosen by eye at one spot, not a measurement; lobe it on the view if rings look wrong at a grazing camera.
+const float CX_SPLASH_RING_REFLECT = 0.06;
+
+/// The light a ring sends to the eye, from the light falling on it. A ring is water over the surface, not a white one.
+vec3 CxSplashRingLight(vec3 light)
+{
+    return light * CX_SPLASH_RING_REFLECT;
+}
+
 /// Metres, plus a share of the scene's distance, a part may stand behind the depth copy and still be ON the
 /// surface there: the ring stands off it and the copy is the render size's, so one of its texels spans more
 /// than one target pixel.
@@ -97,6 +107,6 @@ void main()
     // it, riding the SAME scatter, so a splash with no light on it neither adds nor hides anything.
     float cov = a * vSeed;
     if (uViz == CX_SPLASH_VIZ) { frag = vec4(vLight * cov, cov); return; }
-    vec3 scatter = uTint * vLight;
+    vec3 scatter = uTint * CxSplashRingLight(vLight);
     frag = vec4(scatter * cov, cov * uAlpha * min(dot(scatter, CX_WX_LUMA), 1.0));
 }

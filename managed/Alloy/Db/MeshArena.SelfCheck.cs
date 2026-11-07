@@ -20,9 +20,20 @@ public static partial class MeshArena
             HeldInFlight(check);
             check.Expect(ResetForCheck(), "the in-flight example left a mesh held");
             OwnBytesOnly(check);
+            RefusedSpanStaysDirty(check);
         }
         finally { check.Expect(ResetForCheck(), "the upload-span example left a mesh held"); }
         log.Info(check.Ok ? "MeshArena.SelfCheck: passed" : "MeshArena.SelfCheck: FAILED");
+    }
+
+    /// <summary>Of three spans the pump sent, the refused middle one is all that is left for the next pump.</summary>
+    private static void RefusedSpanStaysDirty(Checker check)
+    {
+        var d = new Spans();
+        d.Add(0, 10); d.Add(20, 30); d.Add(40, 50);
+        d.Keep(0, 1);
+        d.Cut(1);
+        check.Expect(d.Count == 1 && d.At(0) == (20, 30), $"a refused span stays dirty: one span, 20..30 (got {d.Count})");
     }
 
     /// <summary>B's place is not handed on while the submit that could still draw it is in flight: D lands

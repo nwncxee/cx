@@ -42,6 +42,7 @@ internal static partial class ContentStage
         int postFrom = apply >= 0 ? applyEnd : b0;
         int preTo = apply >= 0 ? apply : b0;
         r.Post = true;
+        r.AlphaPost = apply >= 0 && AlphaOnly(blank[postFrom..close]);
         if (apply < 0) r.Notes.Add("never calls ApplyStandardShader(), so it lights itself: its colour is drawn as it leaves it");
         var hoist = new List<(string Type, string Name, string? Arr)>();
         var used = Idents(blank[postFrom..close]);
@@ -93,6 +94,30 @@ internal static partial class ContentStage
         tail = Regex.Replace(tail, @"(?m)^[ \t]*#[^\n]*", "");
         return tail.Trim(' ', '\t', '\r', '\n', ';', '{', '}').Length > 0;
     }
+
+    /// <summary>Does a post body touch nothing but the alpha? It may write <c>FragmentColor = vec4(FragmentColor.rgb, x)</c>
+    /// or <c>FragmentColor.a</c>, its own locals, and discard; a call it could not be sure of, or any other write, says no.</summary>
+    private static bool AlphaOnly(string post)
+    {
+        string held = FragmentAlpha.Replace(KeepsRgb.Replace(post, "cxHeld = vec4("), "cxHeld");
+        if (Regex.IsMatch(held, @"\bFragmentColor\b")) return false;
+        var locals = new HashSet<string>(LocalNames.Matches(held).Select(m => m.Groups[1].Value)) { "cxHeld" };
+        return AssignTarget.Matches(held).All(m => locals.Contains(m.Groups[1].Value))
+            && CallName.Matches(held).All(m => PureCalls.Contains(m.Groups[1].Value));
+    }
+
+    private static readonly Regex KeepsRgb = new(@"\bFragmentColor\s*=\s*vec4\s*\(\s*FragmentColor\s*\.\s*rgb\s*,", RegexOptions.Compiled);
+    private static readonly Regex FragmentAlpha = new(@"\bFragmentColor\s*\.\s*a\b", RegexOptions.Compiled);
+    private static readonly Regex LocalNames = new(@"\b(?:float|int|uint|bool|vec[234]|mat[234])\s+([A-Za-z_]\w*)", RegexOptions.Compiled);
+    private static readonly Regex AssignTarget = new(@"([A-Za-z_]\w*)(?:\s*\.\s*\w+|\s*\[[^\]]*\])?\s*[-+*/]?=(?!=)", RegexOptions.Compiled);
+    private static readonly Regex CallName = new(@"([A-Za-z_]\w*)\s*\(", RegexOptions.Compiled);
+
+    /// <summary>What a post body that touches only the alpha may call: GLSL's own, which write nothing.</summary>
+    private static readonly HashSet<string> PureCalls =
+    [
+        "if", "float", "int", "bool", "vec2", "vec3", "vec4", "mat3", "mat4", "texture", "texture2D", "clamp", "min", "max", "dot",
+        "mix", "step", "smoothstep", "abs", "pow", "sqrt", "exp", "length", "normalize", "floor", "fract", "sin", "cos",
+    ];
 
     /// <summary><paramref name="text"/> with every comment blanked to spaces, newlines kept: same length, same offsets.</summary>
     private static string Blank(string text)

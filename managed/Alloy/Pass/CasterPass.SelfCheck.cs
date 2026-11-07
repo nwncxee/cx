@@ -180,6 +180,9 @@ public sealed unsafe partial class CasterPass
                     && ViewStale(false, false, true, false) && ViewStale(false, false, false, true)
                     && !ViewStale(false, false, false, false)))
         { ok = false; log.Info("CasterPass.SelfCheck FAIL: the view re-bake predicate lost an invalidation source"); }
+        if (ok && !(CoverRebakes(false, true, false, true, CoverArrivalHold) && !CoverRebakes(false, true, false, true, CoverArrivalHold - 1)
+                    && !CoverRebakes(false, true, false, false, 1000) && CoverRebakes(false, true, true, false, 0) && CoverRebakes(false, false, false, false, 0)))
+        { ok = false; log.Info("CasterPass.SelfCheck FAIL: ground that reaches the cover view after its bake stays out of the wetness map"); }
         if (ok && !(DegradeCounts(false, false, true) && DegradeCounts(false, true, false) && !DegradeCounts(false, false, false)))
         { ok = false; log.Info("CasterPass.SelfCheck FAIL: the sun degrade window counts a walking creature as a stale static half (far cascades stay combined)"); }
         if (ok)

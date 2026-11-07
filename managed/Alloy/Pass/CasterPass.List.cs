@@ -1,5 +1,4 @@
 using System;
-using System.Numerics;
 using System.Runtime.InteropServices;
 using CX.Engine;
 using CX.Framework;
@@ -47,15 +46,8 @@ public sealed unsafe partial class CasterPass
     /// under the <c>dynmin</c> floor: a still character is rigid parts a few decimetres across whose matrices
     /// stop, and run 17 lost its shadow to both rules (dyn pool 0/32, 0 posed casters, 4 dangly movers).</summary>
     private static readonly bool[] _liveCreature = new bool[MaxCasters];
-    /// <summary>Per live caster: the creature object it is a part of (<see cref="SceneDb"/> index), -1 for none.
-    /// Every part of one body folds into one pair-plan mover.</summary>
+    /// <summary>Per live caster: the creature object it is a part of (<see cref="SceneDb"/> index), -1 for none.</summary>
     private static readonly int[] _liveObj = new int[MaxCasters];
-    /// <summary>The pair plan's per-creature fold, indexed by object: the box round this frame's dynamic parts of
-    /// that body (<see cref="_aggSeq"/> = the frame it was opened), and the bodies opened, in walk order.</summary>
-    private static readonly Vector3[] _aggLo = new Vector3[SceneDb.MaxObjects], _aggHi = new Vector3[SceneDb.MaxObjects];
-    private static readonly int[] _aggSeq = new int[SceneDb.MaxObjects];
-    private static readonly int[] _aggObj = new int[MaxCasters];
-    private static int _aggN;
     /// <summary>The entry's slot stopped casting since the collect (a tile fade, a skip): it stays in the list
     /// with a zero-count draw until it turns back on or the next collect drops it.</summary>
     private static readonly bool[] _liveOff = new bool[MaxCasters];
@@ -214,7 +206,7 @@ public sealed unsafe partial class CasterPass
     private static long _submitMasked;
 
     /// <summary>The <c>shadow.movers</c> button: dump one frame's movers on the next bake.</summary>
-    internal static void DumpMoversNext() { _dumpMovers = true; PairShadows.Dump.Next = true; }
+    internal static void DumpMoversNext() => _dumpMovers = true;
 
     /// <summary>A mask dial moved: the caster list's per-record mask routing is stale.</summary>
     internal static void ListChanged() => _listVer++;

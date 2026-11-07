@@ -26,7 +26,7 @@ vec2 cxHotViz = vec2(0.0);
 // by the fifth lamp down the street: the near-field core (#142), the sphere-sized specular lobe (#139's
 // spread) and the subsurface leak (#375). The cluster walk sets it per light from the light's own share of the
 // pixel's brightest; every other caller of this library -- the bake, the shadow record, cx_material's film,
-// the pair debt -- leaves it 1, which is the pre-LOD body term for term.
+// the mover debt -- leaves it 1, which is the pre-LOD body term for term.
 float cxLod = 1.0;
 /// The entries this fragment's full walk took from its list: what the deferred stage counts onto its period line.
 uint cxWalkN = 0u;
@@ -476,7 +476,7 @@ uniform int uLmMovers;
 // A stage that defines CX_NO_HOT has the whole HOT branch compiled OUT of the walk below --
 // no 16-sphere ray test, no dyn-page taps for a static light on a baked receiver, no hot tap cap, and `lmSub`
 // comes back zero. A hot static light then behaves exactly as a cold one here, and the debt it owes is taken
-// in screen space instead (cx_pairdebt). The DEFERRED stage defines it; the forward loop does not, so the
+// in screen space instead (cx_moverdebt). The DEFERRED stage defines it; the forward loop does not, so the
 // A/B keeps today's path for the captures, the transparents and every /alloy viz mode.
 
 #ifdef CX_LIGHT_LITE

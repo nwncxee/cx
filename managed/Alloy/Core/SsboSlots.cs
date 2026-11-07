@@ -22,9 +22,9 @@ internal static class SsboSlots
     internal const uint Shared = 8;
 
     /// <summary>The light rig: one program reads all six, so they are distinct.</summary>
-    internal const uint Lights = 8, ClusterCount = 9, ClusterIdx = 10, Movers = 11, Pair = 12, Chart = 13;
+    internal const uint Lights = 8, ClusterCount = 9, ClusterIdx = 10, Movers = 11, Chart = 13;
     /// <summary>Above the rig, for a pass whose program also reads it.</summary>
-    internal const uint LightStats = 14, DeferredStats = 14, PairStats = 14, GrassMats = 14,
+    internal const uint LightStats = 14, DeferredStats = 14, GrassMats = 14,
                         ParticleRecs = 14, ParticleIdx = 15;
     /// <summary>The grass scatter's records as the Vulkan grass stages read them by instance, above the rig and the
     /// material table they read beside it.</summary>
@@ -61,8 +61,8 @@ internal static class SsboSlots
         ["CxBakeViews"] = ViewTbl, ["CxPltBuf"] = Plt,
         ["LightBuf"] = Lights, ["CxLightBuf"] = Lights, ["ClusterCount"] = ClusterCount, ["CxClusterCount"] = ClusterCount,
         ["ClusterIdx"] = ClusterIdx, ["CxClusterIdx"] = ClusterIdx, ["DynMovers"] = Movers, ["CxDynMovers"] = Movers,
-        ["CxPairBuf"] = Pair, ["CxChartBuf"] = Chart,
-        ["Stats"] = LightStats, ["CxDeferredStats"] = DeferredStats, ["CxPairStats"] = PairStats, ["CxGrassMats"] = GrassMats,
+        ["CxChartBuf"] = Chart,
+        ["Stats"] = LightStats, ["CxDeferredStats"] = DeferredStats, ["CxGrassMats"] = GrassMats,
         ["CxParticleBuf"] = ParticleRecs, ["CxParticleIdx"] = ParticleIdx,
         ["CxCullSrc"] = CullSrc, ["CxCullSphere"] = CullSphere, ["CxCullCmd"] = CullCmd, ["CxCullOutIdx"] = CullOut,
         ["CxCullCount"] = CullCount, ["CxCullKey"] = CullKey, ["CxCullRej"] = CullRej, ["CxReadbackOut"] = ReadbackOut,

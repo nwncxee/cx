@@ -126,7 +126,7 @@ public sealed unsafe partial class CasterPass
         if (!GatherActive) return ClearLayer(map, layer);   // an EMPTY world still bakes: the clear is the bake
         // CX-50: this view's two detail thresholds, where every other per-view term of the gather is resolved
         // -- one funnel, so the layered and per-view paths cannot pick different levels for one caster. An
-        // ORTHO view's texel is its fit over the map (CascadeTexel's own expression, and a pair tile's);
+        // ORTHO view's texel is its fit over the map (CascadeTexel's own expression);
         // a 90deg cube face spans 2d at depth d, so its texel is per unit of DISTANCE and the dispatch
         // divides the caster's bound by that distance.
         // /shadow detail 0 is the A/B for the whole of it: thresholds of 0 bake every caster's base run,
@@ -140,9 +140,6 @@ public sealed unsafe partial class CasterPass
         // inline rather than dropping a view.
         if (LayeredActive && _qN < MaxBakeViews)
         {
-            // a target the Vulkan bake has no array for -- the sky view's own, a pair tile -- is refused rather than
-            // queued: its caller must not publish a map nothing baked
-            if (map == CasterMap.Other) return VkNoTarget();
             _submitCreatures = _gCreatures;
             _qMap[_qN] = map;
             _qSize[_qN] = size; _qLayer[_qN] = layer; _qVp[_qN] = *vp;
@@ -158,5 +155,5 @@ public sealed unsafe partial class CasterPass
 
     /// <summary>Clear one depth layer to "nothing casts" without a bake: the static faces of a roaming light.</summary>
     private static bool ClearLayer(CasterMap map, int layer)
-        => map != CasterMap.Other ? VkClearLayer(map, layer) : VkNoTarget();
+        => VkClearLayer(map, layer);
 }

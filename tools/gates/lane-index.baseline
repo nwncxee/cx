@@ -72,7 +72,6 @@
 4 managed/Alloy/Pass/GrassField.Vk.cs
 3 managed/Alloy/Pass/LightmapBake.cs
 1 managed/Alloy/Pass/NuiWindows.cs
-7 managed/Alloy/Pass/PairShadows.cs
 7 managed/Alloy/Pass/Particles.cs
 2 managed/Alloy/Pass/Particles.Vk.cs
 2 managed/Alloy/Pass/Weather.Tracks.cs

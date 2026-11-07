@@ -301,8 +301,7 @@ public sealed unsafe partial class CasterPass
         CubeDynSphereGen++;
 
         // #322 review's visibility verdict, hoisted: ONE SphereInCameraFrustum per ranked light, read below
-        // where it used to be called inline. The hoist is what lets the pair plan (CX-188 step 4) ask the same
-        // question -- a hidden light must not be paired, for the same reason it must not hold a pool page.
+        // where it used to be called inline.
         bool* culled = stackalloc bool[MaxCubes];
         for (int rank = 0; rank < have; rank++)
         {
@@ -315,65 +314,6 @@ public sealed unsafe partial class CasterPass
                                                             camPos, camPos + camFwd, FrameInputs.CamFovy,
                                                             FrameInputs.CamAspect, FrameInputs.CamNear, camFar);
         }
-        // CX-188 step 4: the PER-MOVER light budget. The candidate lights come in rank order (so the atlas
-        // fills from the nearest), every dynamic mover then ranks them at its own position and keeps the
-        // lightmap.moverlights strongest, and Commit turns the survivors into pair tiles grouped by slot.
-        // Off unless the deferred pass is live, and then a paired light publishes no pool page below.
-        PairShadows.Begin(_frameSeq);
-        PairShadows.View(cull, camPos, camFwd, FrameInputs.CamFovy, FrameInputs.CamAspect, FrameInputs.CamNear, camFar);
-        if (PairShadows.On && split)
-        {
-            for (int rank = 0; rank < have; rank++)
-            {
-                int slot0 = slotOf[rank];
-                if (slot0 < 0 || culled[rank] || rank >= _dynRanks) continue;
-                int li0 = order[rank];
-                bool okL = PairShadows.AddLight(slot0, FrameInputs.LocalLightId[li0], FrameInputs.LocalLightPos[li0],
-                                     FrameInputs.LocalLightRange[li0]);
-                if (PairShadows.Dump.Next) PairShadows.Note($"  rank {rank} slot {slot0} pos {FrameInputs.LocalLightPos[li0]} far {FrameInputs.LocalLightRange[li0]:F1} -> {(okL ? "candidate" : "REFUSED by AddLight")}");
-            }
-            if (PairShadows.Dump.Next)
-                for (int rank = 0; rank < have; rank++)
-                    if (slotOf[rank] < 0 || culled[rank] || rank >= _dynRanks)
-                        PairShadows.Note($"  rank {rank} slot {slotOf[rank]} pos {FrameInputs.LocalLightPos[order[rank]]} NOT OFFERED ({(slotOf[rank] < 0 ? "no slot" : culled[rank] ? "culled" : $"rank past dynRanks {_dynRanks}")})");
-            // the same mover population the page claim walks, filtered the same way: a NaN sphere is no
-            // mover's, and a still lantern under dyn.min is not worth a tile any more than a page. A creature's
-            // parts (a player character is ~19 rigid meshes) fold into ONE mover, the box round them all: one tile
-            // per body, which the bake fills with every dynamic part inside it. Per part, a light's 16-mover list
-            // overflowed on a single character and the parts past it cast nothing.
-            _aggN = 0;
-            for (int q = 0; q < _dMoverCount; q++)
-            {
-                int m = _dMoverIdx[q];
-                int o = _liveObj[m];
-                if (o < 0 || !float.IsFinite(_liveCx[m] + _liveCy[m] + _liveCz[m] + _liveR[m])) continue;
-                // the FRAMING radius, not the cull's: a skinned part's pose slack (+2 m, at least 3) boxed over a
-                // body framed a 5.6 m ball, which every lamp within 7 m refused as too close to frame
-                float fr = MathF.Min(AlloyRenderer.CasterFrameRadius(_liveSlot[m]), _liveR[m]);
-                var lo = new Vector3(_liveCx[m] - fr, _liveCy[m] - fr, _liveCz[m] - fr);
-                var hi = new Vector3(_liveCx[m] + fr, _liveCy[m] + fr, _liveCz[m] + fr);
-                if (_aggSeq[o] != _frameSeq) { _aggSeq[o] = _frameSeq; _aggLo[o] = lo; _aggHi[o] = hi; if (_aggN < _aggObj.Length) _aggObj[_aggN++] = o; }
-                else { _aggLo[o] = Vector3.Min(_aggLo[o], lo); _aggHi[o] = Vector3.Max(_aggHi[o], hi); }
-            }
-            // ORDER: bodies before loose parts -- a light's mover list is first-come, and a plaza's swaying foliage
-            // fills every lamp's sixteen. A body's identity is its object, complemented so it never equals a slot.
-            for (int k = 0; k < _aggN; k++)
-            {
-                int o = _aggObj[k];
-                Vector3 c = (_aggLo[o] + _aggHi[o]) * 0.5f;
-                PairShadows.AddMover(c.X, c.Y, c.Z, (_aggHi[o] - _aggLo[o]).Length() * 0.5f, ~o);
-            }
-            // ...then the loose dynamic parts, with the caster's SLOT as identity: stable while it is enrolled,
-            // which is what lets a light's run keep its order and a tile's layer key still match next frame
-            for (int q = 0; q < _dMoverCount; q++)
-            {
-                int m = _dMoverIdx[q];
-                if (_liveObj[m] >= 0 || !float.IsFinite(_liveCx[m] + _liveCy[m] + _liveCz[m] + _liveR[m]) || _liveR[m] < Shadows.DynMin.V) continue;
-                PairShadows.AddMover(_liveCx[m], _liveCy[m], _liveCz[m], _liveR[m], _liveSlot[m]);
-            }
-            PairShadows.Commit();
-        }
-
         for (int rank = 0; rank < have; rank++)
         {
             int slot = slotOf[rank];
@@ -396,8 +336,7 @@ public sealed unsafe partial class CasterPass
             // #322 review: the visibility verdict, BEFORE any page claim. Hidden lights must not hold pool
             // pages (they never bake them, so holding one only starves a visible light into the combined
             // fallback -- a six-face re-bake every mover frame), and their split mode must not flap.
-            // ...the verdict itself taken in the hoisted pre-loop above, so the pair plan and this share one
-            // answer to "is this light visible" (two divergent ones starve a light the other keeps).
+            // ...the verdict itself taken in the hoisted pre-loop above.
             bool off = false, culledHere = false;
             if (culled[rank])
             {
@@ -439,13 +378,6 @@ public sealed unsafe partial class CasterPass
                     boxes = AddMoverBox(dynBox, boxes, _liveCx[m], _liveCy[m], _liveCz[m], _liveR[m]);
                 }
             WriteDynSpheres(slot, roam ? 0 : boxes, dynBox, pos, far);
-            // CX-188 step 4: a light the pair plan claimed needs NO pool page -- its movers are in tiles of
-            // their own, and the lane published below says so with a negative. A ROAMING light keeps its page:
-            // the pair views were framed on its movers from a position the roamer's own motion invalidates, and
-            // a roamer's static faces are cleared, so min() has nothing else to compose with.
-            int pairBase = PairShadows.Pairs(slot);
-            if (pairBase >= 0 && (off || roam)) { PairShadows.Drop(slot); pairBase = -1; }
-            if (pairBase >= 0) hasDyn = false;
             int page = _dynPageOf[slot];
             if (off && page >= 0)
             {   // hidden: the page returns to the pool now; re-entry reclaims one
@@ -616,42 +548,6 @@ public sealed unsafe partial class CasterPass
                 _dynPageValid[page] = true;
                 CubeDynPage[slot] = page + 1;
                 if (bake != 0) { _cubeDynBakedPages++; FrameZones.Count(FrameZones.Ev.CubeDyn); }
-            }
-            // CX-188 step 4: the PAIR TILES, in place of that page -- whatever the static branch above did,
-            // because their whole content is one mover each. The cull is the DIRECTIONAL one round the mover's
-            // own sphere (focus = its centre, reach = along = its radius), which is what keeps a tile to the
-            // one caster it frames, and the dynamic set is the only population it may admit. The lane goes
-            // NEGATIVE once they are queued: that is what makes every `uLocalDynPage[slot] > 0.5` reader treat
-            // this light as pageless (it is) and what tells CxPairBase and cx_pairdebt where its run starts.
-            // CX-188 CPU wave: ...and NOT every frame any more. A tile whose layer already holds this pair's
-            // depth is held exactly as a cube's dynamic face is: keyed on the pair, and re-baked on an EVENT
-            // inside its own cull volume -- which is why the event population here is the dynamic page's and
-            // not just this tile's own mover (a second mover walking through the tile, a mover leaving the
-            // dynamic set, a caster switched off) and why it unions this frame's with the baked frame's.
-            if (pairBase >= 0)
-            {
-                int pn = PairShadows.PairCountOf(slot);
-                bool pairWhole = true;
-                bool pairForce = invalidate || slotChanged || _rxForce;
-                for (int q = 0; q < pn && pairWhole; q++)
-                {
-                    int pi = pairBase + q;
-                    PairShadows.PairView(pi, out Matrix4x4 pvp, out Vector3 at, out float r);
-                    Vector3 dir = at - pos;
-                    float dl = dir.Length();
-                    Vector3 fwd = dl > 1e-4f ? dir / dl : new Vector3(0f, 0f, 1f);
-                    // the SAME predicate the sun's fits take, against the same (focus, reach, along) this
-                    // tile's own RenderView passes the gather -- so the tile's cull and its staleness test
-                    // cannot disagree except in the direction that costs a bake
-                    bool evt = EventInFit(at, fwd, r, 0f);
-                    if (!PairShadows.TileStale(pi, evt, pairForce)) { PairShadows.TileHeld(pi); continue; }
-                    pairWhole = RenderView(CasterMap.Other, PairShadows.TileSize, pi, &pvp,
-                                           fwd, at, r, 0f, point: false, set: CasterGather.SetDynamic);
-                    if (pairWhole) PairShadows.TileBaked(pi, evt);
-                    _pairBakedTiles++;
-                }
-                if (!pairWhole) { scannedAll = false; break; }
-                CubeDynPage[slot] = -(pairBase + 1);
             }
         }
         // Only a scan that reached every slot may consume the frame's invalidation: the break above leaves

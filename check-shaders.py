@@ -672,7 +672,8 @@ def programs(g):
         "deferred lights (wave lockstep)": (g["cx_deferred_cs"].replace("#version 460 core\n", "#version 460 core\n#define CX_WALK_WAVE 1\n", 1),),
         "deferred lights (film pass, wave lockstep)": (g["cx_deferred_cs"].replace("#version 460 core\n", "#version 460 core\n#define CX_FILM_PASS 1\n#define CX_WALK_WAVE 1\n", 1),),
         "deferred shadow record": (g["cx_defshadow_cs"],),
-        "pair debt": (g["cx_pairdebt"],),
+        "mover debt": (g["cx_moverdebt"],),
+        "mover apply": (g["cx_moverapply"],),
         "volumetric fog light": (g["cx_vfog_cs"],),
         "volumetric fog integrate": (g["cx_vfogsum_cs"],),
         "shading rate": (g["cx_vrs_cs"],),
@@ -859,9 +860,7 @@ def pair_programs(name, vtext, ftext, fres, vres):
     vb = vs_bindless(vtext) if vres is not None else vtext
     fb = bindless(ftext)
     out = {name: (vb, fb)}
-    post = fres is not None and fres.post
-    lights = fres is not None and fres.reads_lights
-    if not post and not lights:
+    if fres is None or not fres.forward_only():
         out[f"{name} (deferred twin)"] = (vb, with_define(with_define(fb, "CX_GBUF_OUT 1"), "CX_DEFERRED 1"))
     if (fres is not None and fres.cuts) or vres is not None:
         depth = with_define(fb, "CX_DEPTH_ONLY 1")

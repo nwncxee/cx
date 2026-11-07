@@ -251,3 +251,11 @@ ADR[- ]0021	#220
 twelve parameters per pair|\bCX_CP_LANES\b|\bContentLaneValues\b	#218
 # Vulkan's lit stage reads its textures only through the handle table, so the knob's off state drew every lit surface white.
 alloy\.bindless\b|Dropdown\("bindless"|\bVsBindless\b|\b_bindlessProbed\b|\b_limitsProbed\b|\bBindlessDecided\b|\bDecideBindlessVk\b|\bSaidNoBindless\b|bindless (is )?off\b|only under bindless|stands the bindless path down|when ARB_bindless_texture is available	CX-507
+# The (static light, mover) pair tiles, their atlas and their debt dispatch: the mover debt is cx_moverdebt's,
+# off the lights' own dynamic cube pages. The goldens' fixtures are exempt -- each is a copy of a shipped
+# build's stage text, kept to prove a hak override of it still draws.
+\bPairShadows\b|\bPairViewProj\b|\bPairMap\b|\bPairStats\b	pair tiles retired, cx_moverdebt
+cx_pair(shad|buf|debt)\b	pair tiles retired, cx_moverdebt	Golden/Fixtures/
+\bCX_PAIR_RECV\b|\bCxPair(Vis|Base|TapAt|Reach|Buf)\b	pair tiles retired, cx_moverdebt	Golden/Fixtures/
+\bpair tiles?\b|\bpair-tile\b|\bpair debt\b|\bpair-debt\b	pair tiles retired, cx_moverdebt	Golden/Fixtures/
+lightmap\.(moverlights|pairsize|paircount)\b	pair tiles retired, cx_moverdebt

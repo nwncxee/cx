@@ -376,7 +376,7 @@ internal static class MdlAscii
                 n.Mesh = new MeshDef { Raw = new MeshRaw(), Shininess = 1f, Render = true, Shadow = true };
                 if (kind == NodeKind.Aabb)
                 {
-                    // MdlNodeAABB's ctor forces both off, and no keyword can turn them back on before it.
+                    // MdlNodeAABB's ctor forces both off, and MeshField keeps them off: PartAABB::Draw is a debug view.
                     n.Mesh.Render = false;
                     n.Mesh.Shadow = false;
                     n.Mesh.WalkMesh = true;
@@ -569,9 +569,9 @@ internal static class MdlAscii
             if (MdlTok.Is(w, "ambient")) { m.Ambient = MdlTok.Vec3(line[7..], m.Ambient); return true; }
             if (MdlTok.Is(w, "specular")) { m.Specular = MdlTok.Vec3(line[8..], m.Specular); return true; }
             if (MdlTok.Is(w, "shininess")) { m.Shininess = MdlTok.Flt(line[9..], m.Shininess); return true; }
-            if (MdlTok.Is(w, "shadow")) { m.Shadow = MdlTok.Int(line[6..], m.Shadow ? 1 : 0) != 0; return true; }
+            if (MdlTok.Is(w, "shadow")) { m.Shadow = !m.WalkMesh && MdlTok.Int(line[6..], m.Shadow ? 1 : 0) != 0; return true; }
             if (MdlTok.Is(w, "beaming")) { m.Beaming = MdlTok.Int(line[7..], m.Beaming ? 1 : 0) != 0; return true; }
-            if (MdlTok.Is(w, "render")) { m.Render = MdlTok.Int(line[6..], m.Render ? 1 : 0) != 0; return true; }
+            if (MdlTok.Is(w, "render")) { m.Render = !m.WalkMesh && MdlTok.Int(line[6..], m.Render ? 1 : 0) != 0; return true; }
             if (MdlTok.Is(w, "transparencyhint")) { m.TransparencyHint = MdlTok.Int(line[16..], m.TransparencyHint); return true; }
             if (MdlTok.Is(w, "renderhint"))
             {
