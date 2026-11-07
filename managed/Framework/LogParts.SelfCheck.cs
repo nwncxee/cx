@@ -21,6 +21,30 @@ internal static class LogPartsEdges
             Directory.Delete(d, recursive: true);
 
             Directory.CreateDirectory(d);
+            var wide = new LogParts(d, TestCap);
+            wide.Write(new string('\u20ac', 500));
+            wide.Close();
+            check.Expect(new FileInfo(Path.Combine(d, "cx.log")).Length is > 90 and <= TestCap, "a cut counts bytes, not characters");
+            Directory.Delete(d, recursive: true);
+
+            Directory.CreateDirectory(d);
+            string full = new string('f', TestCap - 1);
+            var exact = new LogParts(d, TestCap);
+            exact.Write(full);
+            exact.Write(full);
+            exact.Close();
+            check.Expect(Read(d, "cx.1.log") == full + "\n" && Read(d, "cx.log") == full + "\n", "a line of exactly the cap fits, and a part exactly at the cap rolls whole");
+            Directory.Delete(d, recursive: true);
+
+            Directory.CreateDirectory(d);
+            File.WriteAllText(Path.Combine(d, "cx.log"), new string('n', 150) + new string('m', TestCap));
+            var noBreak = new LogParts(d, TestCap);
+            noBreak.Write("now");
+            noBreak.Close();
+            check.Expect(Read(d, "cx.1.log") == new string('m', TestCap), "an over-cap log with no line break keeps exactly its last bytes");
+            Directory.Delete(d, recursive: true);
+
+            Directory.CreateDirectory(d);
             File.WriteAllText(Path.Combine(d, "cx.log"), "last\n");
             File.WriteAllText(Path.Combine(d, "cx.2.log"), "older\n");
             string block = Path.Combine(d, "cx.1.log");

@@ -43,4 +43,5 @@ REPORTING A PROBLEM
      general.logs=1
 
   Play again, then open an issue at https://github.com/nwncxee/cx/issues
-  with ~/cx.log and what you did right before things went wrong.
+  with ~/cx.log and ~/cx.1.log and what you did right before things went wrong.
+  If you restarted the game after the problem, it is in ~/cx.1.log.

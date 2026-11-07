@@ -108,7 +108,6 @@ internal sealed class LogParts(string dir, long cap = LogParts.MaxPartBytes)
         int start = Array.IndexOf(tail, (byte)'\n') + 1;
         if (start == 0) start = 1;
         f.SetLength(0);
-        f.Position = 0;
         f.Write(tail, start, tail.Length - start);
     }
 }
