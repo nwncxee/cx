@@ -543,7 +543,7 @@ struct Voice
     unsigned gen;
     int playing, lastRefl;
     // what still rings after the sound ended, played through GetTail: no effect runs over silence
-    int tailDry, tailPath, tailRefl;
+    int tailDry, tailPath, tailRefl, tailReflIdx;
     float tailPathMix;
     int fresh;             // its first frame: duplicate gains land at once, not over the smoothing
     Blob* blob;
@@ -611,6 +611,7 @@ struct Sa
     IPLAudioBuffer in, dry, bus, tmp, amb, roomIn;
     float* ring;           // RingFrames rendered frames, interleaved; the render thread writes, the callback reads
     int64_t ringW, ringR;  // samples written / read, ever (atomics: one writer, one reader)
+    int roomTail;          // frames the room effect still has to ring after its last send (render-thread private)
     int primed;            // the ring has been full once: an empty one after that is an underrun
     int32_t lead;          // frames ring_fill keeps ready (atomic: the main thread refits it on a device reset)
     int32_t ringLow;       // see CxaStats (atomic: the callback lowers it, cxa_stats resets it)
@@ -868,6 +869,7 @@ static int render_take(unsigned gen)
             v.phase = v.blob && v.blob->frames ? (double)(sl.offset % v.blob->frames) : 0.0;
             v.gainSm = 0.0f; v.dupSm = 1.0f; v.lpState = 0.0f; v.fresh = 1;
             v.tailDry = v.tailPath = v.tailRefl = 0;
+            for (int k = 0; k < MaxRefl; k++) if (s.reflOwner[k] == i) s.reflOwner[k] = -1;   // GetTail left its dry blocks behind
             uint32_t r = sl.driftSeed | 1;
             v.lfoPhase = urand(&r) * 6.2831853f; v.lfoRate = 0.05f + urand(&r) * 0.15f;
             if (w.cfg.shelfDb != 0.0f) shelf_design(&v.shelf, (float)s.rate, 5000.0f, w.cfg.shelfDb);
@@ -909,7 +911,7 @@ static void render_publish(double ms)
 
 /// A finished voice: what its effects still hold, read out through GetTail. The per-source IR's tail goes on only
 /// while the pool entry is still this voice's and the scene swap has not taken reflections back.
-static void render_tail(Voice& v, int i, int reflMode, int ri)
+static void render_tail(Voice& v, int i, int reflMode)
 {
     Sa& s = g_sa;
     IPLAudioBuffer out = view(s.tmp, s.busCh);
@@ -926,8 +928,8 @@ static void render_tail(Voice& v, int i, int reflMode, int ri)
     if (v.tailRefl)
     {
         IPLAudioBuffer amb = view(s.amb, s.ambi);
-        v.tailRefl = reflMode == 2 && ri >= 0 && ri < MaxRefl && s.reflOwner[ri] == i
-            && p_iplReflectionEffectGetTail(s.refl[ri], &amb, s.mixer) == IPL_AUDIOEFFECTSTATE_TAILREMAINING;
+        v.tailRefl = reflMode == 2 && s.reflOwner[v.tailReflIdx] == i
+            && p_iplReflectionEffectGetTail(s.refl[v.tailReflIdx], &amb, s.mixer) == IPL_AUDIOEFFECTSTATE_TAILREMAINING;
     }
 }
 
@@ -985,13 +987,14 @@ static void render_frame(unsigned gen, float* dst)
     s.duck += (duckTarget - s.duck) * duckK;
 
     zero(&s.roomIn);
+    int roomSent = 0;
     for (int i = 0; i < MaxSlots; i++)
     {
         Voice& v = g_voices[i];
         const Slot& sl = snap[i];
         if (!v.playing)
         {
-            render_tail(v, i, reflMode, sl.simGen == sl.gen ? sl.reflIdx : -1);
+            render_tail(v, i, reflMode);
             continue;
         }
         Blob* b = v.blob;
@@ -1103,11 +1106,13 @@ static void render_frame(unsigned gen, float* dst)
             rp.irSize = (int)ceilf(cfg.duration * (float)s.rate);
             IPLAudioBuffer amb = view(s.amb, s.ambi);
             v.tailRefl = p_iplReflectionEffectApply(s.refl[ri], &rp, &s.in, &amb, s.mixer) == IPL_AUDIOEFFECTSTATE_TAILREMAINING;
+            v.tailReflIdx = ri;
         }
         else if (reflMode >= 1)
         {
             float send = sqrtf(dist_gain(1, d, sl.nearD, sl.farD, cfg.rolloff, cfg.taper)) * (sl.group == GroupOwnSteps ? OwnStepsSend : 1.0f);
             for (int n = 0; n < N; n++) s.roomIn.data[0][n] += in[n] * send;
+            roomSent = 1;
         }
         // pathing renders the direct path too while the source is in sight, so it only fills what occlusion took
         float pathMix = cfg.occlusion ? 1.0f - dp.occlusion : 0.0f;
@@ -1126,11 +1131,14 @@ static void render_frame(unsigned gen, float* dst)
         }
     }
 
-    // the reflected field: the room IR plus every per-source IR, one decode
+    // the reflected field: the room IR plus every per-source IR, one decode. The room runs over silence for its
+    // tail: its dry blocks must drain, or the next sound brings the old echo back
+    if (roomSent) s.roomTail = (int)(cfg.duration * s.rate / N) + 2;
+    else if (s.roomTail > 0) s.roomTail--;
     if (reflMode >= 1)
     {
         IPLAudioBuffer amb = view(s.amb, s.ambi);
-        if (roomValid && roomParams.ir)
+        if (roomValid && roomParams.ir && s.roomTail > 0)
         {
             IPLReflectionEffectParams rp = roomParams;
             rp.type = IPL_REFLECTIONEFFECTTYPE_CONVOLUTION;
@@ -1942,7 +1950,8 @@ static void sim_tick(void)
         in.deviationModel = &g_deviation;
         p_iplSourceSetInputs(s.reflSrc[r], IPL_SIMULATIONFLAGS_REFLECTIONS, &in);
     }
-    int room = (cfg.reflections == 1 || cfg.reflections == 2) && haveScene && nOrd > 0;
+    int roomMode = (cfg.reflections == 1 || cfg.reflections == 2) && haveScene;
+    int room = roomMode && nOrd > 0;
     {
         IPLSimulationInputs in;
         memset(&in, 0, sizeof in);
@@ -1990,7 +1999,8 @@ static void sim_tick(void)
             memcpy(sl.pathSh, outs[i].pathing.shCoeffs, sizeof(float) * (size_t)s.ambi);
         }
     }
-    s.roomValid = room;
+    // with no voice left there is nothing to trace, but the echo still rings on the last IR
+    s.roomValid = roomMode && (room || s.roomValid);
     if (room) s.roomParams = roomOut.reflections;
     g_stats.simMsAvg += ((float)ms - g_stats.simMsAvg) * 0.05f;
     if (ranRefl || ranPath) g_stats.reflMsAvg += ((float)reflMs - g_stats.reflMsAvg) * 0.2f;
@@ -2385,7 +2395,7 @@ CX_EXPORT int32_t cxa_describe(char* buf, int32_t len)
 // ---- SelfCheck: the pure pieces, headless ----
 /// Stand-ins for the Steam Audio calls render_frame makes, so its decisions run with no library loaded. They count
 /// calls and hand back what the phonon.h contract allows; the audio itself is not what these checks look at.
-struct FakeIpl { int direct, binaural, binauralTail, reflApply, reflTail, tailsLeft, interp; };
+struct FakeIpl { int direct, binaural, binauralTail, reflApply, reflTail, tailsLeft, interp, reflReset; };
 static FakeIpl g_fake;
 static IPLAudioEffectState IPLCALL fake_direct(IPLDirectEffect, IPLDirectEffectParams*, IPLAudioBuffer*, IPLAudioBuffer*) { g_fake.direct++; return IPL_AUDIOEFFECTSTATE_TAILCOMPLETE; }
 static IPLAudioEffectState IPLCALL fake_binaural(IPLBinauralEffect, IPLBinauralEffectParams* p, IPLAudioBuffer*, IPLAudioBuffer*) { g_fake.binaural++; g_fake.interp = (int)p->interpolation; return IPL_AUDIOEFFECTSTATE_TAILREMAINING; }
@@ -2398,7 +2408,11 @@ static void IPLCALL fake_reset_direct(IPLDirectEffect) {}
 static void IPLCALL fake_reset_binaural(IPLBinauralEffect) {}
 static void IPLCALL fake_reset_panning(IPLPanningEffect) {}
 static void IPLCALL fake_reset_path(IPLPathEffect) {}
-static void IPLCALL fake_reset_refl(IPLReflectionEffect) {}
+static void IPLCALL fake_reset_refl(IPLReflectionEffect) { g_fake.reflReset++; }
+static void IPLCALL fake_shared_inputs(IPLSimulator, IPLSimulationFlags, IPLSimulationSharedInputs*) {}
+static void IPLCALL fake_source_inputs(IPLSource, IPLSimulationFlags, IPLSimulationInputs*) {}
+static void IPLCALL fake_run(IPLSimulator) {}
+static void IPLCALL fake_outputs(IPLSource, IPLSimulationFlags, IPLSimulationOutputs* o) { o->reflections.ir = (IPLReflectionEffectIR)(uintptr_t)9; }
 static int prio_no(void) { return 0; }
 static int prio_yes(void) { return 1; }
 /// Runs render_take, or a whole frame, on a thread of its own: the lock's try is only defined against another thread's hold.
@@ -2445,6 +2459,8 @@ static float* fake_render_up(void)
     p_iplReflectionMixerApply = fake_mixer; p_iplAmbisonicsDecodeEffectApply = fake_decode;
     p_iplDirectEffectReset = fake_reset_direct; p_iplBinauralEffectReset = fake_reset_binaural;
     p_iplPanningEffectReset = fake_reset_panning; p_iplPathEffectReset = fake_reset_path;
+    p_iplSimulatorSetSharedInputs = fake_shared_inputs; p_iplSourceSetInputs = fake_source_inputs;
+    p_iplSimulatorRunReflections = fake_run; p_iplSourceGetOutputs = fake_outputs;
     g_cfg.enabled = 1; g_cfg.duration = 2.0f; g_cfg.dupCap = 0; g_cfg.reverbGain = 1.0f;
     g_busGen = 1;
     return pool;
@@ -2463,6 +2479,8 @@ static void fake_render_down(float* pool)
     p_iplReflectionMixerApply = NULL; p_iplAmbisonicsDecodeEffectApply = NULL;
     p_iplDirectEffectReset = NULL; p_iplBinauralEffectReset = NULL;
     p_iplPanningEffectReset = NULL; p_iplPathEffectReset = NULL;
+    p_iplSimulatorSetSharedInputs = NULL; p_iplSourceSetInputs = NULL;
+    p_iplSimulatorRunReflections = NULL; p_iplSourceGetOutputs = NULL;
 }
 /// Starts a one-shot of <paramref name="samples"/> samples on slot 0, the way sh_alSourcePlay would.
 static void fake_start(int samples, int reflIdx)
@@ -2701,6 +2719,45 @@ CX_EXPORT int32_t cxa_selfcheck(char* msg, int32_t len)
         g_reflFreeze = 1;
         render_frame(1, frame);
         CXA_EXPECT(g_fake.reflTail == 0 && !g_slots[0].busy, "a scene swap ends the tail: its IR is about to go");
+        g_reflFreeze = 0;
+        fake_render_down(pool);
+
+        // the room's echo outlives the last voice. Oracle: the 2 s tail by hand, 2 * 48000 / 512 + 2 = 189 frames
+        pool = fake_render_up();
+        frame = g_sa.ring;
+        g_cfg.reflections = 1;
+        g_sa.scene = (IPLScene)(uintptr_t)1;
+        g_sa.ready = 1;
+        fake_start(100, -1);
+        sim_tick();
+        CXA_EXPECT(g_sa.roomValid && g_sa.roomParams.ir == (IPLReflectionEffectIR)(uintptr_t)9, "a voice gets the room its IR");
+        g_slots[0].stopped = 1;
+        sim_tick();
+        CXA_EXPECT(g_sa.roomValid && g_sa.roomParams.ir == (IPLReflectionEffectIR)(uintptr_t)9, "the last voice stopping leaves the room's IR in place");
+        g_slots[0].stopped = 0;
+        for (int i = 0; i < 300; i++) render_frame(1, frame);
+        CXA_EXPECT(g_fake.reflApply == 189, "the room rings for its tail after the last sound, then rests");
+        g_cfg.reflections = 3;
+        sim_tick();
+        CXA_EXPECT(!g_sa.roomValid, "a reverb mode with no room takes the room away");
+        fake_render_down(pool);
+
+        // a stopped voice keeps its per-source tail, though the simulator has taken the pool entry back
+        pool = fake_render_up();
+        frame = g_sa.ring;
+        g_cfg.reflections = 2;
+        fake_start(48000, 1);
+        render_frame(1, frame);
+        g_slots[0].stopped = 1; g_slots[0].reflIdx = -1;
+        render_frame(1, frame);
+        CXA_EXPECT(g_fake.reflApply == 1 && g_fake.reflTail == 1, "a stopped voice reads out its per-source tail");
+        render_frame(1, frame);
+        render_frame(1, frame);
+        // a replay: GetTail never moved the effect's dry blocks, so it must start clean
+        int resets = g_fake.reflReset;
+        g_slots[0].stopped = 0; g_slots[0].reflIdx = 1; g_slots[0].gen = 2; g_slots[0].simGen = 2;
+        render_frame(1, frame);
+        CXA_EXPECT(g_fake.reflReset == resets + 1, "a replayed voice starts its reflection effect clean");
         fake_render_down(pool);
         blob_drain();
     }

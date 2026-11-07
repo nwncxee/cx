@@ -49,8 +49,8 @@ with under one mix pass left in the ring, `low` is the fewest milliseconds a cal
 the OS granted.
 
 A finished sound runs no effect over silence. Its HRTF, path and per-source IR tails read out through Steam Audio's
-`GetTail` calls, and under the room reverb the voice frees its slot once the HRTF tail is done. A stopped voice loses
-its per-source tail, since the simulator takes the pool entry back.
+`GetTail` calls, and under the room reverb the voice frees its slot once the HRTF tail is done. The room's echo outlives
+the last voice: the simulator stops tracing, and the render runs the room effect over silence for the length of its tail.
 
 "Reverb length" shortens the simulated tail and leaves the convolution's cost that of the 2 s IR, 0.08 ms per frame on a
 Ryzen 5 5600G. `MaxDuration` in `native/cxaudio.cpp` says why.
