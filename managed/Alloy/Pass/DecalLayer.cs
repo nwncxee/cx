@@ -101,7 +101,7 @@ internal static unsafe class DecalLayer
           "a split wash's interior and edge draws lay one depth, so GL_LESS drops exactly what the interior drew");
         check.Expect(synth.IndexOf("earlyA = texture(uTex, vUV, uLodBias).a;") is > 0 and var early
           && early < synth.IndexOf("CxSunShadow(") && early < synth.IndexOf("uNrmTex, uv, tapDx, tapDy).rg")
-          && synth.Contains("if (CxCoverCut(coverage, d.rot.w, du1, du2, cutSize, cutMip)) discard;"),
+          && synth.Contains("if (CxCoverCut(coverage, d.rot.w)) discard;"),
           "a plain-diffuse texel a pass discards on coverage never pays for the normal map or the sun's shadow taps");
         check.Expect(synth.IndexOf("if (earlyA >= 0.0) texel.a = earlyA;") is > 0 and var reuse
           && reuse > synth.IndexOf("vec4 texel = ") && reuse < synth.IndexOf("float coverage = "),

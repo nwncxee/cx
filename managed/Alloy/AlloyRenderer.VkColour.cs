@@ -46,7 +46,7 @@ public sealed unsafe partial class AlloyRenderer
         public bool ReadsEngine;
         public LitLoc L;
         public FeatLoc F;
-        public int Vp = -1, Tex = -1, Viz = -1, AlphaMip = -1, Tint = -1, SkyFog = -1, Oit = -1, OitDim = -1;
+        public int Vp = -1, Tex = -1, Viz = -1, Tint = -1, SkyFog = -1, Oit = -1, OitDim = -1;
         /// <summary>The sky wrapper's two: the engine's inverse view (its translation column alone) and the
         /// constant colour a content stage reads instead of the record's alpha. -1 on every other program.</summary>
         public int ViewInv = -1, Global = -1;
@@ -366,7 +366,7 @@ public sealed unsafe partial class AlloyRenderer
             else
             {
                 p.Vp = LooseBlock.Loc("uVP"); p.Tex = LooseBlock.Loc("uTex"); p.Viz = LooseBlock.Loc("uViz");
-                p.AlphaMip = LooseBlock.Loc("uAlphaMip"); p.Tint = LooseBlock.Loc("uTint");
+                p.Tint = LooseBlock.Loc("uTint");
                 p.SkyFog = LooseBlock.Loc("uSkyFog"); p.Oit = LooseBlock.Loc("uOit"); p.OitDim = LooseBlock.Loc("uOitDim");
                 p.ViewInv = LooseBlock.Loc("uViewInv"); p.Global = LooseBlock.Loc("globalColor");
                 p.F = Programs.FeatLocs();
@@ -396,7 +396,6 @@ public sealed unsafe partial class AlloyRenderer
                 LooseBlock.Set(L.AoCutout, Ao.Cutout.V);
                 LooseBlock.Set(L.AoMapOff, Ao.Map.V ? 0f : 1f);
                 LooseBlock.Set(L.SsaoHalf, SsaoPassVk.Half ? 1 : 0);
-                LooseBlock.Set(L.AlphaMip, Renderer.CutMip.V);
                 LooseBlock.Set(L.MirrorZ, _mirrorZ);
                 LooseBlock.Set(L.LightRecOn, s.LightRec ? 1 : 0);
                 LooseBlock.Set(L.Oit, s.Oit ? 1 : 0);
@@ -418,7 +417,6 @@ public sealed unsafe partial class AlloyRenderer
             else
             {
                 LooseBlock.Set(p.Vp, vp);
-                LooseBlock.Set(p.AlphaMip, Renderer.CutMip.V);
                 LooseBlock.Set(p.Viz, viz);
                 LooseBlock.Set(p.Tint, [1f, 1f, 1f]);
                 LooseBlock.Set(p.Oit, s.Oit ? 1 : 0);

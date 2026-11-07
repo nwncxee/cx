@@ -15,7 +15,6 @@ flat in int vDraw;             // this fragment's CxDraw record: the material co
 #include "cx_keyfogdecl.glsl"
 #include "cx_chartbuf.glsl"
 #include "cx_plt.glsl"
-#include "cx_alphamip.glsl"
 #include "cx_conbuf.glsl"
 uniform sampler2D uTex;
 #define CX_ARRIVE_SECONDS 0.6   // CX-52: a streamed diffuse's fade-in, see the diffuse sample

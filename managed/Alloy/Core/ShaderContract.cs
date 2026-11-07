@@ -317,7 +317,7 @@ internal static class ShaderContract
                   && !ShaderFeatures.OutOfPrepass((int)ShaderFeature.Content0)
                   && CoverageLayer.HasCoverageSource((int)ShaderFeature.Content0)
                   // ...a content program skips Alloy's own coverage cut for the stand-in's, and takes the body's alpha
-                  && OwnedLitFsMain.Contains("#ifndef CX_CONTENT_PROGRAM\n    if (CxCoverCut(coverage, d.rot.w, du1, du2, cutSize, cutMip)) discard;")
+                  && OwnedLitFsMain.Contains("#ifndef CX_CONTENT_PROGRAM\n    if (CxCoverCut(coverage, d.rot.w)) discard;")
                   && OwnedLitFsMain.Contains("        coverage = FragmentColor.a;\n")
                   && ContentStandardFs.Contains("void SetupStandardShaderInputs()")
                   && ContentStandardFs.Contains("#if ENVIRONMENT_MAP != 1 && NO_TEXTURE != 1")
@@ -554,12 +554,11 @@ internal static class ShaderContract
                   // #126: the cutout, in both colour stages -- and spelled the engine's way, so a stage that
                   // kept the uniform but lost the >= 0.0 guard would discard every fragment of the OPAQUE
                   // set (which passes -1.0) and render an empty world.
-                  // CX-191: through the mip-level compensation, the same call in the feature prepass so its
-                  // depth and the GL_EQUAL colour draw keep the same holes
-                  && OwnedFs.Contains("if (uAlphaCut >= 0.0 && CxAlphaMip(t.a, du1, du2, vec2(textureSize(uTex, 0)), uLodBias) <= uAlphaCut) discard;")
-                  && OwnedLitFsMain.Contains("return uAlphaCut >= 0.0 && CxAlphaMipAt(coverage, du1, du2, cutSize, uLodBias, cutMip) <= uAlphaCut")
-                  && OwnedLitFsMain.Contains("if (CxCoverCut(coverage, d.rot.w, du1, du2, cutSize, cutMip)) discard;")
-                  && DepthFeatFs.Contains("if (CxAlphaMip(CxDiffuse(uTex, vUV, uLodBias, vDraw).a, du1, du2, vec2(textureSize(uTex, 0)), uLodBias) * mul <= uAlphaCut) discard;")
+                  // ...the same alpha in the feature prepass, so its depth and the GL_EQUAL colour draw keep the same holes
+                  && OwnedFs.Contains("if (uAlphaCut >= 0.0 && t.a <= uAlphaCut) discard;")
+                  && OwnedLitFsMain.Contains("return uAlphaCut >= 0.0 && coverage <= uAlphaCut")
+                  && OwnedLitFsMain.Contains("if (CxCoverCut(coverage, d.rot.w)) discard;")
+                  && DepthFeatFs.Contains("if (CxDiffuse(uTex, vUV, uLodBias, vDraw).a * mul <= uAlphaCut) discard;")
                   // #294: and COVERAGE is what the lit stage cuts and blends on, never the raw texel alpha.
                   // On an env-mapped material that channel is reflectivity (it becomes envLevel), and the
                   // engine spends it once: inc_standard.shd:290 multiplies only .rgb through there. A stage

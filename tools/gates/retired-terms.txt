@@ -259,3 +259,5 @@ cx_pair(shad|buf|debt)\b	pair tiles retired, cx_moverdebt	Golden/Fixtures/
 \bCX_PAIR_RECV\b|\bCxPair(Vis|Base|TapAt|Reach|Buf)\b	pair tiles retired, cx_moverdebt	Golden/Fixtures/
 \bpair tiles?\b|\bpair-tile\b|\bpair debt\b|\bpair-debt\b	pair tiles retired, cx_moverdebt	Golden/Fixtures/
 lightmap\.(moverlights|pairsize|paircount)\b	pair tiles retired, cx_moverdebt
+# Coverage is baked per mip level at load, so the test no longer scales alpha per fragment.
+alloy\.cutmip\b|\bCutMip\b|\buAlphaMip\b|\bCxAlphaMip(At)?\b|\bcx_alphamip\b|\bCxHostCutAt\b	CX-330	Db/MipChainApprovedExamples

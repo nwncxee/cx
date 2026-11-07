@@ -27,7 +27,6 @@ vec4 CxHostTexel;
 // reads as vTexCoords, and the coverage cut's derivatives (du1, du2) and measure (map extent, mip scale).
 vec2 CxHostUV;
 vec4 CxHostDu;
-vec3 CxHostCutAt;
 // ...and the material terms as inc_material's generated globals: filled from Alloy's synthesis
 // before a hosted body runs, read back after it (see the MATERIAL_*_VALUE macros above).
 float fRoughness, fSpecularity, fMetallicness;

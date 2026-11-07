@@ -675,7 +675,7 @@ internal static partial class DrawRecipe
         {
             string name = SlotName(s, mtr, mesh);
             _tex[r * TexSlots + s] = name;
-            TexId id = string.IsNullOrEmpty(name) ? default : TexRegistry.Acquire(name);
+            TexId id = string.IsNullOrEmpty(name) ? default : TexRegistry.Acquire(name, cuts: s == 0 && !additive);
             _texId[r * TexSlots + s] = id.Value;
             bool wait = !id.IsNull && !TexRegistry.Resident(id);
             _texWait[r * TexSlots + s] = wait ? (byte)1 : (byte)0;

@@ -33,7 +33,7 @@ public sealed unsafe partial class CasterPass
         public VkOpaque[] Opaques = [];
         /// <summary>The loose block's size, and the byte offset of each member in it; -1 for one it does not declare.</summary>
         public int Bytes;
-        public int AtDither = -1, AtEnv = -1, AtMip = -1;
+        public int AtDither = -1, AtEnv = -1;
         public readonly Dictionary<int, PipelineId> Pipes = new();
     }
 
@@ -240,13 +240,12 @@ public sealed unsafe partial class CasterPass
             p.Bytes = l.Bytes;
             p.AtDither = l.Members.TryGetValue("uDither", out var d) ? d.Offset : -1;
             p.AtEnv = l.Members.TryGetValue("uEnvAlpha", out var e) ? e.Offset : -1;
-            p.AtMip = l.Members.TryGetValue("uAlphaMip", out var m) ? m.Offset : -1;
         }
         return p;
     }
 
     /// <summary>The three cut kinds' loose blocks for this frame -- the dither block and the env-alpha flag each kind
-    /// asks for, over this frame's mip compensation -- into the device's copy, once per flush.</summary>
+    /// asks for -- into the device's copy, once per flush.</summary>
     private static void VkCutBlocks(CommandList cl)
     {
         var s = _vk;
@@ -260,7 +259,6 @@ public sealed unsafe partial class CasterPass
             // the three loose members a masked stage reads; the solid stage declares none and reads this block never
             if (s.Mask!.AtDither >= 0) MemoryMarshal.Write(one[s.Mask.AtDither..], DitherFor(kind));
             if (s.Mask.AtEnv >= 0) MemoryMarshal.Write(one[s.Mask.AtEnv..], kind == CasterCut.EnvAlpha ? 1 : 0);
-            if (s.Mask.AtMip >= 0) MemoryMarshal.Write(one[s.Mask.AtMip..], Renderer.CutMip.V);
         }
         cl.UpdateBuffer(s.Cuts, 0, all);
     }
