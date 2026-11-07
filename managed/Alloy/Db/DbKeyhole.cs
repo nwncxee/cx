@@ -35,7 +35,7 @@ internal static unsafe class DbKeyhole
 
     /// <summary>The column itself, over camera words already read. Split from the shell read so the
     /// self-check can exercise both arms -- the shell is engine memory and there is none off-device.</summary>
-    internal static void Write(byte on, float cut, float p0, float p1, float p2, float p3,
+    private static void Write(byte on, float cut, float p0, float p1, float p2, float p3,
                              int[] order, int n, int[] slotPart, DbId camera)
     {
         // With the aperture shut the verdict is 1f for every part whatever the plane and the cut say, so the
@@ -66,7 +66,7 @@ internal static unsafe class DbKeyhole
             int i = order[k];
             int part = slotPart[i];
             if (part < 0) continue;
-            SceneDb.SetPartDissolve(part, on != 0 && Dissolves(part, i, on, p0, p1, p2, p3, cut) ? 0f : 1f);
+            SceneDb.PartDissolve[part] = on != 0 && Dissolves(part, i, on, p0, p1, p2, p3, cut) ? 0f : 1f;
         }
         _sweeps++;
     }
@@ -223,13 +223,13 @@ internal static unsafe class DbKeyhole
         var slotPart = new[] { part };
 
         // ---- the aperture SHUT ----
-        SceneDb.SetPartDissolve(part, 0f);
+        SceneDb.PartDissolve[part] = 0f;
         _lastSet = -1; _lastBox = -1; _lastLod = -1; _lastN = -1; _lastCam = 0;
         Write(0, 0f, 0f, 0f, 0f, 0f, order, 1, slotPart, default);
         check.Expect(SceneDb.PartDissolve[part] == 1f, "a shut aperture writes every ordered part opaque");
 
         // Nothing the verdict reads has moved, so the second pass must not touch the column at all.
-        SceneDb.SetPartDissolve(part, 0.25f);
+        SceneDb.PartDissolve[part] = 0.25f;
         Write(0, 0f, 0f, 0f, 0f, 0f, order, 1, slotPart, default);
         check.Expect(SceneDb.PartDissolve[part] == 0.25f,
                      "a pass with nothing changed re-wrote the dissolve column -- the skip is not skipping");
@@ -243,11 +243,11 @@ internal static unsafe class DbKeyhole
         AlloyRenderer.DbSetGen++;
         Write(0, 0f, 0f, 0f, 0f, 0f, order, 1, slotPart, default);
         check.Expect(SceneDb.PartDissolve[part] == 1f, "a slot-set edge did not re-write the column");
-        SceneDb.SetPartDissolve(part, 0.25f);
+        SceneDb.PartDissolve[part] = 0.25f;
         AlloyRenderer.BoxGen++;
         Write(0, 0f, 0f, 0f, 0f, 0f, order, 1, slotPart, default);
         check.Expect(SceneDb.PartDissolve[part] == 1f, "a world-box change did not re-write the column");
-        SceneDb.SetPartDissolve(part, 0.25f);
+        SceneDb.PartDissolve[part] = 0.25f;
         DbAnim.LodGen++;
         Write(0, 0f, 0f, 0f, 0f, 0f, order, 1, slotPart, default);
         check.Expect(SceneDb.PartDissolve[part] == 1f,
@@ -255,17 +255,17 @@ internal static unsafe class DbKeyhole
                    + "carries and moves neither DbSetGen nor the order's length");
 
         // ---- the aperture ARMED ----
-        SceneDb.SetPartDissolve(part, 0.25f);
+        SceneDb.PartDissolve[part] = 0.25f;
         Write(1, 3f, 0f, 0f, 1f, -2f, order, 1, slotPart, default);
         check.Expect(SceneDb.PartDissolve[part] == 1f,
                      "arming the aperture did not re-write the column (the ON byte is not in the key)");
-        SceneDb.SetPartDissolve(part, 0.25f);
+        SceneDb.PartDissolve[part] = 0.25f;
         Write(1, 3f, 0f, 0f, 1f, -2f, order, 1, slotPart, default);
         check.Expect(SceneDb.PartDissolve[part] == 0.25f, "an armed pass with the same camera words re-walked");
         Write(1, 4f, 0f, 0f, 1f, -2f, order, 1, slotPart, default);
         check.Expect(SceneDb.PartDissolve[part] == 1f, "the keyhole CUT is not in the key -- the hole would "
                                                      + "cut at the previous frame's depth");
-        SceneDb.SetPartDissolve(part, 0.25f);
+        SceneDb.PartDissolve[part] = 0.25f;
         Write(1, 4f, 0f, 0f, 1f, -2.5f, order, 1, slotPart, default);
         check.Expect(SceneDb.PartDissolve[part] == 1f, "the keyhole PLANE is not in the key -- the hole would "
                                                      + "stay where the camera last was");

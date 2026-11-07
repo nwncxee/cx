@@ -128,20 +128,18 @@ public sealed unsafe partial class AlloyRenderer
             if (obj != 0)
                 for (int n = 0; n < _occHitN && !hit; n++) hit = _occHitObj[n] == obj;
         }
-        if (hit) { g.OccHeld = OccHold; g.Plain = false; }
-        else if (g.OccHeld > 0f) { g.OccHeld -= _occT.Dt; hit = true; }
+        if (hit) g.OccHeld = OccHold;
+        else if (g.OccHeld > 0f) { g.OccHeld -= _occDt; hit = true; }
         if (!hit && f == 0f) return 0f;
-        float target = hit ? 1f - _occT.Floor : 0f;
-        f += (target - f) * _occT.Step;
+        float target = hit ? 1f - Walls.Floor.V : 0f;
+        f += (target - f) * _occStep;
         if (MathF.Abs(target - f) < 0.005f) f = target;
         g.OccFade = f;
         if (f > 0f) _occTagged++;
         return f;
     }
 
-    /// <summary>The ease's terms for this frame.</summary>
-    private sealed class OccFrameState { public float Step, Dt, Floor; }
-    private static readonly OccFrameState _occT = new();
+    private static float _occStep, _occDt;
 
     /// <summary>The easing step for this frame, from wall-clock dt (clamped so a hitch does not snap).</summary>
     private static void OccludeTick()
@@ -149,8 +147,7 @@ public sealed unsafe partial class AlloyRenderer
         long now = Stopwatch.GetTimestamp();
         float dt = _occLastTick == 0 ? 1f / 60f : (float)((now - _occLastTick) / (double)Stopwatch.Frequency);
         _occLastTick = now;
-        _occT.Dt = Math.Min(dt, 0.1f);
-        _occT.Step = Math.Clamp(_occT.Dt * OccRate, 0f, 1f);
-        _occT.Floor = Walls.Floor.V;
+        _occDt = Math.Min(dt, 0.1f);
+        _occStep = Math.Clamp(_occDt * OccRate, 0f, 1f);
     }
 }

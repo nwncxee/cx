@@ -20,15 +20,9 @@ public sealed unsafe partial class AlloyRenderer
     /// state the enrollment radix cannot sort. ponytail: insertion sort, O(n^2) in the small blended count.</summary>
     private static int RouteParts()
     {
+        int n = 0, nb = 0, na = 0;
         PrepareVisible();
         OccludeFrame();   // #537: the hit fan this walk tags occluders from
-        return RouteWalk();
-    }
-
-    /// <summary>The walk itself, over the visible set and hit fan <see cref="RouteParts"/> settled.</summary>
-    private static int RouteWalk()
-    {
-        int n = 0, nb = 0, na = 0;
         {
         for (int c = (int)AlloyClass.Opaque; c <= (int)AlloyClass.Cutout; c++)
         {
@@ -36,14 +30,7 @@ public sealed unsafe partial class AlloyRenderer
             int[] list = RouteRange(c, out int from, out int to);
             for (int k = from; k < to; k++)
             {
-                if (!RouteLive(list[k], k, out int i, out IntPtr tri, out bool plain)) continue;
-                if (plain && _occHitN == 0)
-                {
-                    _routeMemo.Hits++;
-                    if (_oA2c[i] && c == (int)AlloyClass.Cutout) { _a2cTmp[na] = i; _a2cDis[na] = false; na++; continue; }
-                    _pass[n] = i; _passCls[n] = _oCls[i]; _passAlpha[n] = 1f; _passDis[n] = false; n++;
-                    continue;
-                }
+                if (!RouteLive(list[k], k, out int i, out IntPtr tri)) continue;
                 bool samp = (k & (ChaseEvery - 1)) == 0;
                 long tFade = samp ? FrameZones.Now : 0;
                 // The fade overlay, and the part's own animated alpha with it: while its tile fades, an opaque
@@ -51,7 +38,7 @@ public sealed unsafe partial class AlloyRenderer
                 // alpha for the length of the draw (RenderDrawBucket @0x46d060, bucket 8 only) and draws it
                 // blended. So does this pass. Reading the part alpha live here (rather than trusting the class
                 // from the last enrollment) is also what keeps a part whose alpha animated below 1 from standing
-                // solid for up to an EnrollEvery cadence. The setters clear the memo above, so a change reaches here.
+                // solid for up to an EnrollEvery cadence.
                 // #328: the tile term is kept apart -- it is the one alpha term the shadow side refuses on (a
                 // part fading by its OWN alpha still casts), and this is the frame's one chase of it.
                 float fade = TileFade(i, tri);
@@ -88,9 +75,8 @@ public sealed unsafe partial class AlloyRenderer
         int[] list = RouteRange((int)AlloyClass.Blended, out int from, out int to);
         for (int k = from; k < to; k++)
         {
-            if (!RouteLive(list[k], k, out int i, out IntPtr tri, out bool plain)) continue;
-            if (plain) _routeMemo.Hits++;
-            float alpha = plain ? 1f : LiveAlpha(i, tri);
+            if (!RouteLive(list[k], k, out int i, out IntPtr tri)) continue;
+            float alpha = LiveAlpha(i, tri);
             if (alpha <= 0f && _oTile[i] != IntPtr.Zero) continue;   // #546
             _blend[nb] = i;
             _blendAlpha[nb] = alpha;
@@ -104,7 +90,7 @@ public sealed unsafe partial class AlloyRenderer
         for (int a = 0; a < nb; a++)
         {
             int i = _blend[a];
-            bool dis = !_gate[i].Plain && Dissolves(i, _oTri[i], ref _stageCounters[0]);
+            bool dis = Dissolves(i, _oTri[i], ref _stageCounters[0]);
             _sortComp[a] = BlendComp(BlendRank(i, dis, free), a, dis);
         }
         _sortComp.AsSpan(0, nb).Sort();
@@ -121,9 +107,8 @@ public sealed unsafe partial class AlloyRenderer
         int[] list = RouteRange((int)AlloyClass.Water, out int from, out int to);
         for (int k = from; k < to; k++)
         {
-            if (!RouteLive(list[k], k, out int i, out IntPtr tri, out bool plain)) continue;
-            if (plain) _routeMemo.Hits++;
-            float alpha = plain ? 1f : LiveAlpha(i, tri);
+            if (!RouteLive(list[k], k, out int i, out IntPtr tri)) continue;
+            float alpha = LiveAlpha(i, tri);
             if (alpha <= 0f && _oTile[i] != IntPtr.Zero) continue;   // #546
             _pass[n] = i; _passCls[n] = (byte)AlloyClass.Water;
             _passAlpha[n] = alpha;
@@ -134,12 +119,11 @@ public sealed unsafe partial class AlloyRenderer
         int[] list = RouteRange((int)AlloyClass.Additive, out int from, out int to);
         for (int k = from; k < to; k++)
         {
-            if (!RouteLive(list[k], k, out int i, out IntPtr tri, out bool plain)) continue;
-            if (plain) _routeMemo.Hits++;
+            if (!RouteLive(list[k], k, out int i, out IntPtr tri)) continue;
             // Additive fades too: the engine routes an additive part on a fading tile into bucket 8 like any
             // other, and IterSight suppresses it there, so a glow left at full brightness through a fade
             // would be ours to explain.
-            float alpha = plain ? 1f : LiveAlpha(i, tri);
+            float alpha = LiveAlpha(i, tri);
             if (alpha <= 0f && _oTile[i] != IntPtr.Zero) continue;   // #546
             _pass[n] = i; _passCls[n] = (byte)AlloyClass.Additive;
             _passAlpha[n] = alpha;
@@ -150,15 +134,15 @@ public sealed unsafe partial class AlloyRenderer
         return n;
     }
 
-    /// <summary>The route-time validation contract, shared by all four class runs: resolve the ordered slot, skip a
-    /// vacated one, refuse a failed identity, and say whether the memo answers every term (<paramref name="plain"/>).
-    /// Behind the frustum gate too: a slot this pass cannot see keeps last frame's record (<see cref="RouteWanted"/>).</summary>
-    private static bool RouteLive(int slot, int k, out int i, out IntPtr tri, out bool plain)
+    /// <summary>The route-time validation contract, shared by all four class runs -- resolve the ordered slot,
+    /// skip a vacated one, and REVOKE a failed identity, so every dereference the frame makes from here on
+    /// sits behind one verdict and the staging walk does not re-check. Behind the FRUSTUM GATE too: a slot
+    /// this pass cannot see keeps last frame's record untouched (see <see cref="RouteWanted"/>).</summary>
+    private static bool RouteLive(int slot, int k, out int i, out IntPtr tri)
     {
         // The Route sample -- taken on the slots the gate rejects, which is the walk's O(world) half
         bool samp = (k & (ChaseEvery - 1)) == 0;
         long t0 = samp ? FrameZones.Now : 0;
-        plain = false;
         i = slot;
         tri = _oTri[i];
         if (tri == IntPtr.Zero || !RouteWanted(i))
@@ -167,32 +151,20 @@ public sealed unsafe partial class AlloyRenderer
             
             return false;
         }
-        ref RouteGate g = ref _gate[i];
-        uint passScene = _dbPassScene.Value;
-        if (g.Plain && ((i + _frameSeq) & (RouteAuditEvery - 1)) != 0)
-        {
-            // The draw order is one table over every slot, so a world pass would otherwise walk every GUI panel's
-            // controls too (measured: 405 of 1830).
-            if (g.PlainScene != passScene) { Counters._skipForeignScene++; SetCastOk(i, false); return false; }
-            plain = true;
-            if (samp) FrameZones.AddSampled(FrameZones.Zone.Ident, t0, ChaseEvery);
-            return true;
-        }
-        // Not plain, or the audit's turn: every term off its column, and the row learns what they say.
+        // The draw order is one table over every slot, so a world pass would otherwise walk every GUI panel's
+        // controls too (measured: 405 of 1830). They all fail the frustum, so this costs work rather than
+        // correctness -- but it is work every frame, and the scene is the cheapest possible test. Read live
+        // rather than cached at seat time: an object can be re-parented between scenes.
+        // CX-188: both verdicts off ONE object chase. They were a function each, and each re-read
+        // _oDbPart[i], re-loaded SceneDb.PartObj[part] and re-asked DbTable.Valid for the same object: six
+        // dependent loads at a scattered index per routed candidate where four answer the pair.
         int part = _oDbPart[i];
         DbId obj = SceneDb.PartObj[part];
-        bool valid = SceneDb.Objects.Valid(obj);
-        uint scene = valid ? SceneDb.ObjScene[obj.Index].Value : 0u;
-        // CX-120: ...and the part's LOD ALTERNATE, 0 meaning "in every alternate".
-        bool hidden = valid && SceneDb.LodHidden(SceneDb.PartLodTree[part], SceneDb.ObjLodShown[obj.Index]);
-        bool plainNow = valid && !hidden && SceneDb.PartAlpha[part] == 1f && SceneDb.PartFade[part] == 1f
-                        && SceneDb.ObjTint[obj.Index].W == 1f && SceneDb.PartDissolve[part] >= 1f
-                        && g.OccFade == 0f && g.OccHeld <= 0f;
-        if (g.Plain && (!plainNow || g.PlainScene != scene)) NoteRouteMiss(i, part);
-        g.Plain = plainNow; g.PlainScene = scene;
-        if (!valid || scene != passScene)
+        if (!SceneDb.Objects.Valid(obj) || SceneDb.ObjScene[obj.Index].Value != _dbPassScene.Value)
         { Counters._skipForeignScene++; SetCastOk(i, false); return false; }
-        if (hidden)
+        // CX-120: ...and the part's LOD ALTERNATE, 0 meaning "in every alternate".
+        byte tree = SceneDb.PartLodTree[part];
+        if (SceneDb.LodHidden(tree, SceneDb.ObjLodShown[obj.Index]))
         { Counters._skipLod++; SetCastOk(i, false); return false; }
         if (samp) FrameZones.AddSampled(FrameZones.Zone.Ident, t0, ChaseEvery);
         return true;

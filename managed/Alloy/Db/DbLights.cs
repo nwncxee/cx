@@ -322,7 +322,7 @@ internal static class DbLights
         DbId scene = SceneDb.Scenes.Alloc();
         DbId obj = SceneDb.Objects.Alloc();
         DbFeed.InitObject(obj.Index);
-        SceneDb.SetObjScene(obj.Index, scene);
+        SceneDb.ObjScene[obj.Index] = scene;
         SceneDb.ObjVisible[obj.Index] = true;
         DbId h = SceneDb.Parts.Alloc();
         int p = h.Index;

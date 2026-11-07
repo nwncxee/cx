@@ -115,7 +115,7 @@ internal static class DbSky
         check.Expect(Roles(scene, roles) == 0, "'no current sky' is -1 and draws nothing, not box 0");
 
         // The cross-fade object is its own role, at its own alpha, and is independent of the boxes.
-        SceneDb.SetObjTint(fade.Index, new Vector4(1f, 1f, 1f, 0.4f));
+        SceneDb.ObjTint[fade.Index] = new Vector4(1f, 1f, 1f, 0.4f);
         SceneDb.SceneSkyFade[s] = fade;
         n = Roles(scene, roles);
         check.Expect(n == 1 && roles[0].Obj.Value == fade.Value && MathF.Abs(roles[0].Alpha - 0.4f) < 1e-5f,

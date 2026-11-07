@@ -191,7 +191,7 @@ internal static unsafe class SceneFns
         int first = SceneDb.ObjPartFirst[o.Index], n = SceneDb.ObjPartCount[o.Index];
         for (int i = 0; i < n; i++)
         {
-            SceneDb.SetPartAlpha(first + i, alpha);
+            SceneDb.PartAlpha[first + i] = alpha;
             SceneDb.TouchPart(first + i, Dirty.Material);
         }
     }

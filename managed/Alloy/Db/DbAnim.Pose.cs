@@ -374,7 +374,7 @@ public static unsafe partial class DbAnim
                     case CtlAlpha:
                     {
                         float v = SampleFloat(c, t), was = SceneDb.PartAlpha[p];
-                        SceneDb.SetPartAlpha(p, w * v + (1f - w) * was);
+                        SceneDb.PartAlpha[p] = w * v + (1f - w) * was;
                         if (SceneDb.PartAlpha[p] != was) SceneDb.Parts.Mark(p, Dirty.Material);
                         return;
                     }

@@ -157,7 +157,7 @@ public static unsafe class DbScene
         DbId was = SceneDb.ObjScene[obj.Index];
         if (!fresh && was.Value != scene.Value && Leave(was, obj)) Stranded(was, scene, obj);
         m.Add(obj);
-        SceneDb.SetObjScene(obj.Index, scene);
+        SceneDb.ObjScene[obj.Index] = scene;
         SceneDb.ObjCrossScene[obj.Index] = scene;
         Seam.Facade.NoteJoin(scene, obj, was);
         SceneDb.TouchScene(scene, Dirty.Tree);
@@ -173,7 +173,7 @@ public static unsafe class DbScene
     {
         if (!SceneDb.Scenes.Valid(scene)) return false;
         if (SceneDb.Objects.Valid(obj) && SceneDb.ObjScene[obj.Index].Value == scene.Value)
-            SceneDb.SetObjScene(obj.Index, default);
+            SceneDb.ObjScene[obj.Index] = default;
         int i = scene.Index;
         if (SceneDb.SceneObjects[i]?.Remove(obj) != true) return false;
         SceneDb.SceneHighlights[i]?.Remove(obj);

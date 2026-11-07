@@ -186,7 +186,7 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
     internal static void LeaveDeadScene(DbId id)
     {
         if (!SceneDb.Objects.Valid(id)) return;
-        SceneDb.SetObjScene(id.Index, default);
+        SceneDb.ObjScene[id.Index] = default;
         nint shell = Facade.ObjectShell(id);
         if (shell != 0) Facade.SetSceneWord(shell, 0);
         SceneDb.Touch(id, Dirty.Tree);
@@ -238,7 +238,7 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
         SceneDb.ObjSeamLodModel1[i] = null;
         SceneDb.ObjSeamLodModel2[i] = null;
         SceneDb.ObjSeamModelName[i] = null;
-        SceneDb.SetObjScene(i, default);
+        SceneDb.ObjScene[i] = default;
         SceneDb.SetAttachTo(i, default);
         SceneDb.ObjSeamFlags[i] = 0;
     }
@@ -372,7 +372,7 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
         DbId was = SceneDb.ObjScene[id.Index];
         if (!was.IsNull && was.Value != sc.Value) DbScene.Leave(was, id);
         if (!sc.IsNull) { DbScene.Join(sc, id); Flag(id, SeamFlag.EverAttached, true); }
-        else SceneDb.SetObjScene(id.Index, default);
+        else SceneDb.ObjScene[id.Index] = default;
         if (shell != 0) Facade.SetSceneWord(shell, sceneShell);
         SceneDb.Touch(id, Dirty.Tree);
         PropagateScene(id, shell, sc, sceneShell);
@@ -424,7 +424,7 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
                     DbId was = SceneDb.ObjScene[a.Index];
                     if (!was.IsNull) DbScene.Leave(was, a);
                     if (!psc.IsNull) { DbScene.Join(psc, a); Flag(a, SeamFlag.EverAttached, true); }
-                    else SceneDb.SetObjScene(a.Index, default);
+                    else SceneDb.ObjScene[a.Index] = default;
                     nint ashell = Facade.ObjectShell(a);
                     if (ashell != 0) Facade.SetSceneWord(ashell, pss);
                     SceneDb.Touch(a, Dirty.Tree);
@@ -471,7 +471,7 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
         if (was.Value == target.Value) return;
         if (!was.IsNull) DbScene.Leave(was, c);
         if (!target.IsNull) { DbScene.Join(target, c); Flag(c, SeamFlag.EverAttached, true); }
-        else SceneDb.SetObjScene(c.Index, default);
+        else SceneDb.ObjScene[c.Index] = default;
         Facade.SetSceneWord(child, targetShell);
         SceneDb.Touch(c, Dirty.Tree);
         Push(c, child, target, targetShell);
