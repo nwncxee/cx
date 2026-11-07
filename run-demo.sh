@@ -6,6 +6,12 @@ set -e
 cd "$(dirname "$0")"
 B="$PWD/cx-linux-x64"
 
+# A build and a boot take the machine from whoever is measuring or playing there, a session in another checkout included.
+if pgrep -x nwmain-linux >/dev/null; then
+  echo "run-demo: a client is running (pgrep nwmain-linux) -- refusing to start beside it" >&2
+  exit 3
+fi
+
 # Same reason as run-proton.sh: this runs the STAGED artifacts, so without a build it happily
 # smoke-tests the previous edit. ~20s when nothing changed; CX_NO_BUILD=1 to run what is staged.
 [ -n "$CX_NO_BUILD" ] || ./build.sh
