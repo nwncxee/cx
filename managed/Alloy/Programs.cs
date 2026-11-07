@@ -107,7 +107,7 @@ internal static unsafe class Programs
         L.SsaoHalf = LooseBlock.Loc("uSsaoHalf");
         L.LightOcc = LooseBlock.Loc("uLightOcc");
         L.Material = LooseBlock.Loc("uMaterial");
-        L.AoDirect = LooseBlock.Loc("uAoDirect"); L.AoCutout = LooseBlock.Loc("uAoCutout");
+        L.AoDirect = LooseBlock.Loc("uAoDirect"); L.AoCutout = LooseBlock.Loc("uAoCutout"); L.AoMapOff = LooseBlock.Loc("uAoMapOff");
         L.SkyVp = LooseBlock.Loc("uSkyVp"); L.SkyTerm = LooseBlock.Loc("uSkyTerm");
         L.Weather = LooseBlock.Loc("uWeather"); L.WeatherLook = LooseBlock.Loc("uWeatherLook");
         L.CoverVp = LooseBlock.Loc("uCoverVp"); L.CoverLayer = LooseBlock.Loc("uCoverLayer");

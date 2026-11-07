@@ -11,7 +11,7 @@ internal static class Ao
     internal static readonly KnobGroup G;
     internal static readonly Knob<float> Radius, Strength, Direct, Cutout, MaxPx;
     internal static readonly Knob<int> Dirs, Steps;
-    internal static readonly Knob<bool> Blur, On;
+    internal static readonly Knob<bool> Blur, On, Map;
 
     static Ao()
     {
@@ -38,5 +38,7 @@ internal static class Ao
                  .Ladder(Quality.Ao, 48f, 64f, 130f, 130f);
         Blur = G.Toggle("blur", "Blur", true, Tier.ChatOnly);
         On = G.Toggle("on", "on", true, Tier.ChatOnly);
+        Map = G.Toggle("map", "AO maps", true, Tier.ChatOnly,
+                       help: "Darken ambient light with each material's AO map (texture11). Turn it off to compare a model without its map.");
     }
 }

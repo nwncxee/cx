@@ -22,6 +22,15 @@ vec4 CxColourTap(vec2 uv, vec2 dx, vec2 dy)
     return 0.5 * (textureGrad(uTex, uv + off, 0.7071 * dx, 0.7071 * dy) + textureGrad(uTex, uv - off, 0.7071 * dx, 0.7071 * dy));
 }
 
+/// The material's AO map at `uv`, white when it declares none. `occl` takes its R unless `off` is 1 (/ao map 0);
+/// the returned texel stays whole, since a CxOrm map's G and B are roughness and metalness.
+vec3 CxMapOrm(int slots, vec2 uv, vec2 dx, vec2 dy, float off, inout float occl)
+{
+    vec3 orm = (slots & CX_SLOT_AO) != 0 ? textureGrad(uAoTex, uv, dx, dy).rgb : vec3(1.0);
+    occl *= mix(orm.r, 1.0, off);
+    return orm;
+}
+
 /// inc_displacement.shd's DisplaceTextureCoords: the height map's relief marched along the view ray in tangent
 /// space, the step count by view angle, distance and screen height. `om` is the material's DisplacementOffset and
 /// DisplacementMultiplier (0 = the stock 1), which shift the march's start and scale its reach and its steps.
@@ -224,8 +233,7 @@ void main()
     // not see the contact detail a baked map carries.
     // ADR 0026: ...and on a CxOrm material the same texel is glTF's packed occlusion/roughness/metallic,
     // R still the occlusion, so the one fetch serves both readings.
-    vec3 orm = (slots & CX_SLOT_AO) != 0 ? textureGrad(uAoTex, uv, tapDx, tapDy).rgb : vec3(1.0);
-    occl *= orm.r;
+    vec3 orm = CxMapOrm(slots, uv, tapDx, tapDy, uAoMapOff, occl);
     float ormOn = d.ext2.y > 0.5 && (slots & CX_SLOT_AO) != 0 ? 1.0 : 0.0;
     // 7 = the SHADING NORMAL as colour, AFTER the normal map. Flat wedges with straight edges
     //     here are the mesh's own normals: no diffuse term, #143's wrap included, can hide a
@@ -235,6 +243,8 @@ void main()
     //     things that write it, so a frame that is white everywhere means no material in sight
     //     declared either -- which is the state shipped content is in today.
     if (uViz == 8) { frag = vec4(vec3(occl), 1.0); return; }
+    // 54 = the AO map alone, what /ao map switches: white where the material declares none.
+    if (uViz == 54) { frag = vec4(vec3(orm.r), 1.0); return; }
     if (uViz == 38)
     {   // lights per pixel, from the froxel this fragment reads: black 0, blue 8, green 16, yellow 24, red 32+
         float t = clamp(float(CxClusterN(CxCluster(vDepth))) / 32.0, 0.0, 1.0);

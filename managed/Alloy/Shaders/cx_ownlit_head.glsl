@@ -46,6 +46,7 @@ uniform int uSsaoHalf;         // post.halfres: 1 = uSsao is half the frame's ex
 uniform sampler2D uSceneDepth; // the prepass depth SsaoPass read, to check the pixel is OURS (viz 37)
 uniform float uAoDirect;       // /ao direct: how much of the screen-space occlusion the DIRECT terms take (ADR 0056)
 uniform int uShaderQuality;    // the engine's SHADER_QUALITY_MODE
+uniform float uAoMapOff;       // /ao map 0: 1 takes the material AO map out of the occlusion factor
 uniform float uAoCutout;       // /ao cutout: how much of it a CUTOUT receiver takes (leaf cards over leaf cards)
 // #126: the engine's fAlphaDiscardValue, per batch -- 0.2 on the cutout and blended classes,
 // -1.0 (no test) on opaque and additive.

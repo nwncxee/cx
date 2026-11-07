@@ -346,8 +346,8 @@ internal static class ShaderContract
                   // which is what shipped content looks like today, so nothing would look wrong.
                   && OwnedLitFsHead.Contains($"CX_SLOT_AO = {AoBit};")
                   && OwnedLitFsHead.Contains($"CX_SLOT_ENV = {EnvSlot};")
-                  && OwnedLitFsMain.Contains("vec3 orm = (slots & CX_SLOT_AO) != 0 ? textureGrad(uAoTex, uv, tapDx, tapDy).rgb : vec3(1.0);")
-                  && OwnedLitFsMain.Contains("occl *= orm.r;")
+                  && OwnedLitFsMain.Contains("vec3 orm = CxMapOrm(slots, uv, tapDx, tapDy, uAoMapOff, occl);")
+                  && OwnedLitFsMain.Contains("occl *= mix(orm.r, 1.0, off);")
                   && OwnedLitFsMain.Contains("float ambDir = mix(0.15, 1.0, sunRaw);")
                   && OwnedLitFsMain.Contains("+ cxAmbWalk) * matAmbient * occl;")
                   && OwnedVs.Contains("uDrawBase + gl_DrawID") && OwnedLitVs.Contains("uDrawBase + gl_DrawID")
