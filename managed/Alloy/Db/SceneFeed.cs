@@ -146,9 +146,12 @@ public static class SceneFeed
     private static int _fogPath;
     private static readonly FogNoteState _fogSaid = new();
 
-    /// <summary>What the last fog line said, and whether the fog has left it.</summary>
+    /// <summary>What the last fog line said, and whether the fog has left it, at the line's own precision: while a fade
+    /// runs the engine rewrites the colour every frame, and its rounding moves a colour that is not changing.</summary>
     internal sealed class FogNoteState
     {
+        private const float ColourStep = 0.001f, RangeStep = 0.1f;
+
         private int _path = -1;
         private bool _on, _sky;
         private Vector3 _col;
@@ -157,15 +160,20 @@ public static class SceneFeed
         /// <summary>True, and remembered, when this fog differs from what the last line said.</summary>
         internal bool Changed(int path, bool on, Vector3 col, float end, bool sky)
         {
-            if (path == _path && on == _on && col == _col && end == _end && sky == _sky) return false;
+            if (path == _path && on == _on && sky == _sky && !Moved(end, _end, RangeStep)
+                && !Moved(col.X, _col.X, ColourStep) && !Moved(col.Y, _col.Y, ColourStep) && !Moved(col.Z, _col.Z, ColourStep)) return false;
             _path = path; _on = on; _col = col; _end = end; _sky = sky;
             return true;
         }
+
+        /// <summary>A NaN arriving or leaving counts once; a NaN staying does not repeat.</summary>
+        private static bool Moved(float now, float said, float step) =>
+            float.IsNaN(now) != float.IsNaN(said) || Math.Abs(now - said) >= step;
     }
 
     /// <summary>One line whenever the fog the frame will draw changes -- path, switch, colour, range, the
     /// area's day/night state and the engine's clear colour -- so a wrong fog in a player's session names its
-    /// source from cx.log. Cold: a still scene compares four values and writes nothing.</summary>
+    /// source from cx.log. Cold: a still scene compares its values and writes nothing.</summary>
     private static void FogNote(int i, in FrameHoist h)
     {
         bool on = FrameInputs.FogOn;

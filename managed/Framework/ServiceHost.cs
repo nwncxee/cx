@@ -72,6 +72,7 @@ public static class ServiceHost
         MemorySettle.SelfCheck(log);   // when a load's garbage and malloc's free pages go back, off-device
         ExtenderLog.SelfCheck(log);   // the disabled log evaluates nothing, the enabled one reaches the file
         LogPartsApprovedExamples.SelfCheck(log);   // launch rotation, rolling and the part cap
+        LogPartsEdges.SelfCheck(log);   // an over-long line, and a move that fails
         CX.Alloy.Db.FogNoteApprovedExamples.SelfCheck(log);   // the fog line writes when the fog moves, not when a float does
         CX.Graphics.VulkanToolchain.SelfCheck(log);   // the staged shaderc and the machine's loader, off-device only
         CX.Graphics.Rhi.VkBackend.SelfCheck(log);   // the pilot's stages compile for Vulkan with GL's bindings shifted apart

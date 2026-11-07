@@ -3,15 +3,14 @@ using System.Runtime.CompilerServices;
 
 namespace CX.Framework;
 
-/// <summary>Injected logger, writing stderr plus a log file. The file lands in $HOME (/tmp only if $HOME is unset)
-/// because the Steam Linux Runtime gives the game a container-private /tmp the host cannot see. Never blocks the
-/// caller: <see cref="Info(string)"/> enqueues and a background thread writes, so a line queued microseconds
-/// before a crash can be lost -- unless <see cref="Synchronous"/> or <see cref="AlwaysNow"/> wrote it.</summary>
+/// <summary>Injected logger, writing stderr plus the <see cref="LogParts"/>. The files land in $HOME (/tmp only if
+/// $HOME is unset) because the Steam Linux Runtime gives the game a container-private /tmp the host cannot see. Never
+/// blocks the caller: <see cref="Info(string)"/> enqueues and a background thread writes and rolls, so a line queued
+/// microseconds before a crash can be lost -- unless <see cref="Synchronous"/> or <see cref="AlwaysNow"/> wrote it.</summary>
 public sealed class ExtenderLog
 {
-    private static readonly string LogPath = OperatingSystem.IsWindows()
-        ? Path.Combine(Native.DefaultUserDirectory(), "cx.log")
-        : Path.Combine(HostEnv.Home, "cx.log");
+    private static readonly LogParts _parts = new(OperatingSystem.IsWindows() ? Native.DefaultUserDirectory() : HostEnv.Home);
+    private static readonly string LogPath = _parts.PathOf(0);
 
     /// <summary>The one gate every line passes: <c>general.logs=1</c> keeps it open, the default closes it once
     /// <see cref="Settings.Load"/> has read cx.cfg, and <c>General.Logs</c> flips it live. Off means off at the CALL
@@ -20,14 +19,13 @@ public sealed class ExtenderLog
     public static bool Enabled = true;
 
     /// <summary>Every line is on disk before its call returns: set by <c>alloy.gpudebug=1</c>, so the log of a crash
-    /// ends at the crash. Costs a file write per line on the caller's thread.</summary>
+    /// ends at the crash. Costs a file write per line on the caller's thread, and the roll when one falls due.</summary>
     public static bool Synchronous;
 
     private static readonly ConcurrentQueue<string> _queue = new();
     private static readonly AutoResetEvent _wake = new(false);
     private static readonly object _fileLock = new();
     private static Thread? _writer;
-    private static StreamWriter? _file;
 
     public void Info(string message)
     {
@@ -79,16 +77,12 @@ public sealed class ExtenderLog
     {
         lock (_fileLock)
         {
-            try { _file ??= new StreamWriter(new FileStream(LogPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete)) { NewLine = "\n" }; }
-            catch { /* log is best-effort */ }
             while (_queue.TryDequeue(out var l))
             {
                 Console.Error.WriteLine(l);
-                try { _file?.WriteLine(l); }
-                catch { _file = null; }
+                _parts.Write(l);
             }
-            try { _file?.Flush(); }
-            catch { _file = null; }
+            _parts.Flush();
         }
     }
 

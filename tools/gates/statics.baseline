@@ -55,7 +55,7 @@
 8 managed/Alloy/Db/PltVerify.cs
 10 managed/Alloy/Db/RenderSnapshot.cs
 1 managed/Alloy/Db/SceneDb.cs
-10 managed/Alloy/Db/SceneFeed.cs
+5 managed/Alloy/Db/SceneFeed.cs
 1 managed/Alloy/Db/SceneShell.cs
 15 managed/Alloy/Db/SeamDraw.cs
 31 managed/Alloy/Db/TexRegistry.cs

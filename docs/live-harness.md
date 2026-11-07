@@ -114,7 +114,7 @@ Every clause is graded and named in the FAIL list, so a failure says which one:
 | screenshots | at least one PNG captured off the client's own window |
 | self-checks | no `SelfCheck ... FAIL` and no `init threw` in `cx.log` |
 
-`$OUT` keeps `summary.txt`, `cx.log`, `engine-stdout.log`, `nwengineLog.txt`, `nwclientLog1.txt`,
+`$OUT/cx.log` joins every part of the session's rolled log, oldest first, and the checks above read it. `$OUT` keeps `summary.txt`, `cx.log`, `engine-stdout.log`, `nwengineLog.txt`, `nwclientLog1.txt`,
 `gamescope.log`, `xtool.log`, any crash report, and `shots/`. The summary also carries boot-to-area
 time, the last reported Alloy part count, the client's peak RSS (`VmHWM`) and how it was shut down.
 
