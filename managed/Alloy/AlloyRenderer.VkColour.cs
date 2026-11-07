@@ -523,7 +523,7 @@ public sealed unsafe partial class AlloyRenderer
     private static int VkArena(ReadOnlySpan<byte> bytes)
     {
         VkColourState s = _vkc;
-        int align = Math.Max(s.Dev!.UniformAlign, 16);
+        int align = Math.Max(s.Dev?.UniformAlign ?? 0, 16);
         int at = (s.ArenaUsed + align - 1) & ~(align - 1);
         if (at + bytes.Length > ArenaCap)
         {

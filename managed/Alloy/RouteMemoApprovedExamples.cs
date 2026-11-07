@@ -228,6 +228,7 @@ public sealed unsafe partial class AlloyRenderer
             drawn = false;
             for (int a = 0; a < n; a++) drawn |= _pass[a] == 0 && _passAlpha[a] == 0.5f;
             check.Expect(drawn, "E10: the part did not stay correct after the audit");
+            _routeMemo.Misses = missWas;   // the planted miss must not read as a real one on the session's period line
         }
 
         RouteRigDown(rig);
