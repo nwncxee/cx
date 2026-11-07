@@ -286,6 +286,21 @@ def since_lines(identifier, items, since):
     return [line for _, line in sorted(touched, key=lambda pair: pair[0], reverse=True)]
 
 
+def closed_lines(identifier, items, states_by_id, since):
+    """What `since --closed` prints: `PROJ-N  closed  title`, newest first.
+
+    Closed means the state group is `completed` and `completed_at` is after the
+    moment. A cancelled item is not closed: it was dropped, not finished."""
+    done = []
+    for item in items:
+        if states_by_id.get(str(item.get("state")), {}).get("group") != "completed":
+            continue
+        stamp = _stamp(item.get("completed_at"))
+        if stamp is not None and stamp > since:
+            done.append((stamp, f"{identifier}-{item['sequence_id']}  closed  {item.get('name') or ''}"))
+    return [line for _, line in sorted(done, key=lambda pair: pair[0], reverse=True)]
+
+
 def is_open(work_item, states_by_id):
     """Open means: its state is not in a completed or cancelled group."""
     state = states_by_id.get(str(work_item.get("state")))
@@ -1752,6 +1767,11 @@ def main(argv=None):
     )
     p.add_argument("project", help="project identifier, e.g. PLAT")
     p.add_argument("time", help="a date (read as local midnight) or an ISO 8601 time with an offset")
+    p.add_argument(
+        "--closed", action="store_true",
+        help="list items that reached a completed state after the time instead "
+        "(cancelled items do not count as closed)",
+    )
 
     sub.add_parser("whoami", help="the user who owns the API key, and their id")
 
@@ -1921,7 +1941,11 @@ def main(argv=None):
     if args.command == "since":
         moment = parse_since(args.time)
         project = client.project(args.project.upper())
-        lines = since_lines(project["identifier"], client.work_items(project["id"]), moment)
+        items = client.work_items(project["id"])
+        if args.closed:
+            lines = closed_lines(project["identifier"], items, client.states(project["id"]), moment)
+        else:
+            lines = since_lines(project["identifier"], items, moment)
         if args.json:
             _print(lines)
         else:
