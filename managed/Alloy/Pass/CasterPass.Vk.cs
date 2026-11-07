@@ -22,7 +22,7 @@ public sealed unsafe partial class CasterPass
 {
     /// <summary>Which depth array a queued view bakes into. The queue keys on a GL name, which Vulkan has none of;
     /// this is the key both flushes read, resolved from that name at the one place a view is queued.</summary>
-    private enum CasterMap : byte { SunStatic, SunDyn, Cubes, CubeDyn, Sky, Bake, Other }
+    private enum CasterMap : byte { SunStatic, SunDyn, Cubes, CubeDyn, Sky, Bake }
 
     /// <summary>One translated depth program: its modules, the pipelines it has made by state key, and the offsets
     /// of the three loose members a masked stage reads out of its own block.</summary>
@@ -42,7 +42,7 @@ public sealed unsafe partial class CasterPass
     {
         public VkBackend? Dev;
         /// <summary>A program or target was refused: the bake stands down for the session, loudly.</summary>
-        public bool Failed, Live, ContentSaid, OverflowSaid, NoTargetSaid;
+        public bool Failed, Live, ContentSaid, OverflowSaid;
         /// <summary>The bracket's uploads, appended by the colour frame ahead of its own passes.</summary>
         public CommandList? Cmds;
         /// <summary>Views the bracket queued for the colour frame to flush; 0 = nothing to bake.</summary>
@@ -170,19 +170,6 @@ public sealed unsafe partial class CasterPass
     private static void StandDynamicSource()
     {
         CasterGatherVk.StandDynamic();
-    }
-
-    /// <summary>A view whose target the Vulkan bake has no array for: refused, so its caller publishes nothing.
-    /// Said once per target, because the caller retries it every frame.</summary>
-    private static bool VkNoTarget()
-    {
-        if (!_vk.NoTargetSaid)
-        {
-            _vk.NoTargetSaid = true;
-            _log?.Info("CasterPass: a queued view's target is not on Vulkan yet (the overhead sky view, a pair tile) "
-                     + "-- that view is refused and its map stands down");
-        }
-        return false;
     }
 
     /// <summary>The frame queued more views than the queue holds. GL falls back to the per-view path; Vulkan has

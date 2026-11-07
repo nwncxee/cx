@@ -16,12 +16,12 @@ public sealed unsafe partial class AlloyRenderer
     [
         (VkBindKind.UniformBlock, [UboSlots.Pass, UboSlots.ProbeSh, UboSlots.Deferred, VkGlsl.LooseBinding]),
         (VkBindKind.StorageBlock, [SsboSlots.Draw, SsboSlots.DrawIdx, SsboSlots.Lights, SsboSlots.ClusterCount,
-                                   SsboSlots.ClusterIdx, SsboSlots.Movers, SsboSlots.Pair, SsboSlots.Chart,
+                                   SsboSlots.ClusterIdx, SsboSlots.Movers, SsboSlots.Chart,
                                    SsboSlots.DeferredStats]),
         (VkBindKind.Sampled, [TextureSlots.LocalShadow, TextureSlots.Gbuf0, TextureSlots.Gbuf1, TextureSlots.Gbuf2,
                               TextureSlots.GbufDepth, TextureSlots.ShadowVis, TextureSlots.ShadowKey,
                               TextureSlots.LocalShadowDyn, TextureSlots.LocalShadowRaw, TextureSlots.LocalShadowDynRaw,
-                              LightmapBake.UnitA, LightmapBake.UnitB, LightmapBake.UnitC, TextureSlots.PairMap]),
+                              LightmapBake.UnitA, LightmapBake.UnitB, LightmapBake.UnitC]),
         (VkBindKind.StorageImage, [0, 1]),
     ];
 

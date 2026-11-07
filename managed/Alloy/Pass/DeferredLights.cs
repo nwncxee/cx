@@ -48,12 +48,6 @@ internal static unsafe class DeferredLights
     private static ExtenderLog? _log;
     private static readonly StandDown _down = new("DeferredLights");
 
-    /// <summary>May the VANILLA renderer's chain draw opaque and cutout batches through the <c>CX_DEFERRED</c>
-    /// twin? <c>light.deferred</c> on, a main-view pass, and that chain's own deferred twin linked -- which it
-    /// never is (<see cref="Programs.ProgramsState.LitDeferred"/>), so the pair tiles it would take its debt from stay down.</summary>
-    internal static bool Active => Lighting.Deferred.V && (AlloyRenderer._lightViz == 0 || AlloyRenderer._lightViz == AlloyRenderer.VizLightFrom)
-                                   && Programs.State.LitDeferred != 0;
-
     internal static void Attach(ExtenderLog log) => _log = log;
 
     /// <summary>Lights the walk's tile lists can name (<c>cx_deferred_cs</c>'s <c>CX_TILE_LIGHTS</c>): an area with more

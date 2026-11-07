@@ -177,12 +177,6 @@ internal static class TextureSlots
     /// units, exactly as the soft sun's two raw views are.</summary>
     internal const uint SkyMap = 31;
 
-    /// <summary>The (static light, mover) pair depth atlas (<see cref="PairShadows"/>). Read by the debt
-    /// dispatch and -- for an unbaked receiver whose light traded its dyn page for tiles -- by
-    /// <c>CxLocalShadowQ</c>, so by every program that lights. Past the 0..15 budget for
-    /// <see cref="LocalShadowRaw"/>'s reason and declared with <c>layout(binding)</c>.</summary>
-    internal const uint PairMap = 28;
-
     /// <summary>The deferred pass's light record, read by the lit stage's
     /// blended draws. Past the 0..15 budget for <see cref="LocalShadowRaw"/>'s reason and declared with
     /// <c>layout(binding)</c> in <c>cx_ownlit_head.glsl</c>; bound for the blended class by <see cref="Issue"/>.</summary>
@@ -270,11 +264,9 @@ internal static class TextureSlots
         const string ImageClaim = "layout(binding = 5) uniform sampler2D uA;\nlayout(binding = 5, r32f) uniform image2D uImg;\n";
         check.Expect(DoubleClaimed(ImageClaim) is null, $"an image's binding is an image unit, not a texture unit: {DoubleClaimed(ImageClaim)}");
         // ...and the two unit BUDGETS the lit program is linked against. Every unit it claims is either under
-        // the plain program's need or one of the soft sun's two on top -- except uPairMap, which only the
-        // deferred shadow pass's CX_PAIR_RECV compiles in, so it is named here rather than counted.
-        check.Expect(!litDecls.Contains("#define CX_PAIR_RECV"), $"{PairMap} uPairMap is exempt only while the lit stage never defines CX_PAIR_RECV");
+        // the plain program's need or one of the soft sun's two on top.
         foreach (uint u in Claimed(litDecls))
-            check.Expect(u < Programs.LitUnitsNeed || u == SunShadowRaw || u == SunShadowDynRaw || u == PairMap
+            check.Expect(u < Programs.LitUnitsNeed || u == SunShadowRaw || u == SunShadowDynRaw
                       || u == SkyMap || u == VFog,
               $"unit {u} is claimed in {AlloyRenderer.ShdLitFs} but sits above Programs.LitUnitsNeed ({Programs.LitUnitsNeed})");
         // ...and every one of them under the units native stages' images stay bound on, for the whole frame.
@@ -402,13 +394,6 @@ internal static class TextureSlots
           && PltPalette != LightmapBake.UnitA && PltPalette != LightmapBake.UnitB && PltPalette != LightmapBake.UnitC,
           $"{PltPalette} uPltPal collides with a unit above the 0..15 budget (16/17 local shadow, 18 wetness, "
           + $"{LightmapBake.UnitA}..{LightmapBake.UnitC} the lightmap bake)");
-        // CX-188 step 4: the pair atlas and the pair table, against the GLSL every lighting program compiles.
-        check.Expect(ShaderSource.Get("cx_pairshad.glsl").Contains($"layout(binding = {PairMap}) uniform sampler2DArrayShadow uPairMap;"),
-          $"{PairMap} uPairMap (pair shadow atlas)");
-        check.Expect(ShaderSource.Get("cx_pairbuf.glsl").Contains($"layout(std430, binding = {PairShadows.Binding}) readonly buffer CxPairBuf"),
-          $"SSBO {PairShadows.Binding} CxPairBuf (this frame's pair tiles)");
-        check.Expect(PairMap > PltPalette && PairMap != LightmapBake.UnitA && PairMap != LightmapBake.UnitB
-          && PairMap != LightmapBake.UnitC, $"{PairMap} uPairMap collides with a unit above the 0..15 budget");
         return check.Ok;
     }
 }

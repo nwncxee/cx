@@ -26,12 +26,6 @@ vec2 cxPixel;
 #define CX_CLUSTER_XY ((cxPixel - uTile.xy) / uTile.zw)
 #define CX_CLUSTER_FRAG
 
-// CX-188 step 4: this pass IS the deferred path's shadow verdict for an unbaked receiver, so it compiles
-// cx_localshadow's pair tap -- a static light that traded its dyn page for (light, creature) tiles has its
-// movers there and nowhere else. Nowhere but here and cx_deferred_cs / cx_pairdebt, which is what keeps the
-// tap out of the forward loop's registers (the reverted attempt's lesson, 504b6e0).
-#define CX_PAIR_RECV 1
-
 #include "cx_pass.glsl"
 #include "cx_chartbuf.glsl"
 #include "cx_gbuf.glsl"

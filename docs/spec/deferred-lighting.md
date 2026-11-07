@@ -23,7 +23,7 @@ Forward, unchanged by this contract:
 The deferred walk also stores its own answer per pixel -- `point` and `pointSpec` before the transfer weights,
 the record's view depth (negative on a baked receiver) and the share of its baked term the movers took back --
 in `GBuffer.TexLight` (`CxLightRecPack`, cx_gbuf.glsl). `cx_deferred_cs` writes every pixel of the rect (zero
-where no walk ran) and `cx_pairdebt` adds its debt. During the blended pass only, a forward lit fragment whose
+where no walk ran) and `cx_moverapply` adds its debt. During the blended pass only, a forward lit fragment whose
 own view depth matches the record's (`CX_GB_RECORD`) and whose baked state is the record's takes that answer
 instead of walking the lights: a floor decal (`tts02_splotch01` cost 1.2 ms of a 1.6 ms blended pass walking
 the same lights the floor beneath it had just taken). Anything off a surface -- glass, a veil, smoke -- fails
@@ -139,7 +139,8 @@ the light walk (`DeferredLights`, `cx_deferred_cs`), each with its own GPU term.
 ## The twin
 
 The lit fragment stage compiled with `#define CX_DEFERRED` (and `CX_GBUF_OUT` for the outputs) is the
-**deferred twin**. Issue.cs draws an opaque or cutout batch with it when `DeferredLights.Active`. It:
+**deferred twin**. The pass picks it for an opaque or cutout batch when `light.deferred` is on, the view is the main
+perspective one and no `/alloy viz` mode is live (`AlloyRenderer.VkPasses`). It:
 
 1. skips `CxClusteredLightLm` and `CxFilmStatics` (`point`, `pointSpec`, `lmSub`, film all zero) -- the loop
    code is compiled out, not branched over: its registers are the reason this exists;
@@ -171,7 +172,7 @@ Known deviations), so the twin writes the derivatives:
 | `lmMover` | `CxLightmapMover(chart.rec, vChart)` |
 | `viewDepth` | the twin's linear view depth, `1 / gl_FragCoord.w` -- the record's ownership test |
 | `ambT` (Wa, G2.y) | d(final pixel) / d(`cxAmbWalk`), the walk's ambient-class lights: they join `ambient` before matAmbient and the occlusion, so Wa is albedo x matAmbient x occl x kd x coatT x wxTransmit, plus the same couplings as Wd, x keyhole x fog transmittance. No dirOcc and no matDiffuse |
-| `surfFade` (G2.x) | `cxSurfFade`: the geometric normal and stock's per-light surface fade (`fSurfaceFadeModifier`, `inc_lighting.shd:341`), which `CxPointLight` multiplies into each light's wrapped N.L; 0 on a surface with no normal or height map. The reader sets `cxSurfFade` from it before the walk and the pair debt |
+| `surfFade` (G2.x) | `cxSurfFade`: the geometric normal and stock's per-light surface fade (`fSurfaceFadeModifier`, `inc_lighting.shd:341`), which `CxPointLight` multiplies into each light's wrapped N.L; 0 on a surface with no normal or height map. The reader sets `cxSurfFade` from it before the walk and the mover debt |
 | `water` (G3) | `cxWxStand`: the water standing over the surface, 0 none to 1 the puddle-depth setting. Read by the rain splash, not the walk |
 
 The compute pass then adds, per pixel:
@@ -197,62 +198,46 @@ cull's own `CxTileHot` goes with it, so a tile no longer runs a 16-sphere loop p
 registers that branch cost every pixel of the dispatch are the reason it is a macro and not a uniform -- the
 same argument `CX_LIGHT_LITE` makes for the forward consumers.
 
-The debt is taken instead by **`cx_pairdebt`**, a second 16x16 compute dispatch immediately after
-`DeferredLights`, over the same G-buffer:
+The debt is taken instead by two compute dispatches that run after `DeferredLights` over the same G-buffer:
+**`cx_moverdebt`** at half resolution, which finds what the movers owe, and **`cx_moverapply`** at full
+resolution, which subtracts it.
 
-- `CasterPass` keeps a per-**creature** budget of the `lightmap.moverlights` (default 2) strongest static
-  lights whose reach holds it, ranked by the engine's curve times luma -- `cx_lightbuild`'s own `Importance`.
-  Only those (light, creature) **pairs** cast a creature shadow from a static light onto baked ground.
-  A creature is ONE mover: its parts (a player character is ~19 rigid meshes) fold into the box round them, so
-  a body keeps one set of lamps and one tile per lamp, which the bake fills with every dynamic part inside it.
-  A kept pair casts at `PairShadows.BudgetWeight` strength, 0 where its score meets the first light turned
-  away and 1 at half again over it, so a step that swaps the kept lights fades the shadows instead of
-  popping them. Movers past a light's `MaxPerLight`, and a mover too close to its lamp to frame
-  (`ShadowMath.ConeMaxSin`), go without that light's shadow, counted; the light's other pairs stand.
-- Each pair gets one small perspective depth tile in a 2D-array atlas (`lightmap.pairsize`,
-  `lightmap.paircount`), framed on the creature's sphere and fitted to the light's reach, baked through the
-  existing layered caster path over the DYNAMIC set alone. A light whose pairs all land **publishes no dynamic
-  cube page**: `uLocalDynPage[slot]` carries `-(first pair + 1)`, which every existing `< 0.5` / `> 0.5` reader
-  already treats as "no page" -- and that is the truth.
-- The debt dispatch culls those pairs per tile against the tile's own view-space box (the truncated shadow cone
-  vs the box's bounding sphere, `CxPairReach`), sorts the survivors so one light's pairs are adjacent, and for
-  each covering light takes `vis` as the **min** over its pairs' tile taps. A tile with no pair over it exits
-  at the first barrier having read no G-buffer texel.
-- The two quantities are `CxMoverOwe`'s, with the pair tile standing in for the dyn page:
+- `cx_moverdebt` runs 16x16 groups over the half-resolution rect. Each group builds its own world-space
+  bounding sphere from the depth slab its pixels span, then culls every static light's mover spheres
+  (`uDynMovers`, the table the forward walk's ray test reads) against it: a sphere is kept when the truncated
+  shadow cone it casts under its light reaches that sphere. A tile holds up to `CX_DEBT_TILE_CAP` (96) kept
+  (slot, sphere) hits and drops the rest.
+- A pixel then ray-tests the kept spheres from depth alone, and only one a sphere shadows reads the G-buffer
+  at all. A baked pixel taps the light's dynamic cube page once per covering light and takes the two
+  quantities from `CxMoverOwe`:
 
-      ch = CxPickChan(pair.set, lmPick)
+      ch = CxPickChan(light.set, lmPick)
       ch < 4:  lmSub.y += lmMover[ch] * dfade * uLocalFade[slot] * (1 - vis)
       else:    lmSub.x += lum * dfade * (1 - mix(1, 1 - CxLocalBakedVis(...) * (1 - vis), uLocalFade[slot]))
       lmSub.x *= 1 - uLocalFloor
 
-  and the subtraction is this page's own line: `hdr.rgb -= lmShare * min(lmSub.x / max(lmLum, 1e-5) + lmSub.y, 1)`.
-  `lightmap.moverlights 0` is the feature's A/B; `light.deferred 0` is the forward path, which still computes
-  the debt per fragment per light.
+  It stores `owe = min(lmSub.x / max(lmLum, 1e-5) + lmSub.y, 1)` and the view depth it was found at, as
+  `rg16f`.
+- `cx_moverapply` reads the four `cx_moverdebt` texels nearest each pixel, weighted 9/16, 3/16, 3/16, 1/16 and
+  again by how near each texel's depth lies to the pixel's own (`CX_DEBT_DEPTH`, a share of the view depth),
+  so a shadow on the ground does not bleed onto a creature or a wall in front of it. On a baked pixel it then
+  takes `hdr.rgb -= lmShare * owe` and adds `owe` into the pixel's light record, so a blended fragment lying
+  on that surface reads the debt as well.
+- `lightmap.movers 0` is the feature's A/B; `light.deferred 0` is the forward path, which computes the debt per
+  fragment per light instead.
 
 ## Known deviations
 
-- **The hot-light debt is a per-pixel min, not the forward loop's per-fragment cap.** The forward walk ranks
-  hot lights per fragment and gives the strongest `shadow.cap` of them the soft dyn filter and the rest one
-  hard tap; the debt pass gives every covering pair the same four-tap tile disc. Two creatures of one light
-  over a pixel fold into one `min()` rather than two `CxMoverOwe` calls.
+- **The mover debt is one page tap per covering light at half resolution, not the forward loop's per-fragment
+  cap.** The forward walk ranks hot lights per fragment and gives the strongest `shadow.cap` of them the soft
+  dyn filter and the rest one hard tap; the debt pass gives every covering light the dyn page's own four-tap
+  disc, and one texel of it answers for a 2x2 block of pixels.
 - **`light.relevance` is not applied to the debt.** The loop drops a light whose share of the fragment's
   brightest falls under the cut, and reproducing that per pixel needs the cluster walk the debt pass exists to
   avoid. A relevance-culled hot light therefore still owes its creature's shadow: slightly too dark, never
   missing.
-- **A baked receiver drawn FORWARD in a deferred frame owes nothing** -- a blended baked sheet, the probe
-  capture, a hosted opaque batch. Its light is paired, so it has no page and the forward hot gate reads it as
-  cold. `light.deferred 0` restores it; `/alloy viz` frames are never deferred, so no debug view is affected.
-- **An unbaked receiver** (a creature shadowed by another creature under a lamp) gets its movers back from the
-  pair tiles through `CxLocalShadowQ` and `CxLocalShadowFast`, but only in the stages that define
-  **`CX_PAIR_RECV`** -- `cx_defshadow_cs` (step 3's record, which is where the deferred path's verdict for such
-  a pixel actually comes from), `cx_deferred_cs` (its mirror tap) and `cx_pairdebt`. On the forward consumers
-  (grass, water, particles, weather, the transparents) a paired light's creature shadow on an unbaked surface
-  is lost for the frame. Keeping that tap out of the
-  forward loop is the lesson of the reverted pair-shadow attempt (`504b6e0`), whose always-compiled branches
-  grew the feature's own OFF baseline by 7.8 ms.
-- **A light past the atlas, too crowded (more than `CasterPass.DynSpheres` creatures) or unframeable (a
-  creature engulfing its own light) keeps its page** -- and the deferred frame then owes it nothing, because
-  the walk's hot branch is gone. Counted on `CasterPass`'s period line, never silent.
+- **A tile past `CX_DEBT_TILE_CAP` drops the hits over it**, and a dropped hit is that mover's shadow missing
+  from that tile's pixels. The cap is 96 (static light, sphere) pairs over a 16x16 block of one surface slab.
 - **A forward decal over a deferred surface** reads the light record (`acc`, the ambient class inside it) and
   lights a tile light through its own diffuse weight, as every light was lit before the ambient class had its own.
   The record has no lane for the split; a decal's material colours sit close to the surface's.
@@ -341,9 +326,9 @@ sets it:
 | **view depth past which a pixel reads no cube** | 30 m | no shadow at all, faded out over the last quarter | `shadow.cubedist` |
 | **lights that have a shadow cube at once** | 32 | no cube, so unshadowed everywhere | `shadow.cubes` |
 | **movers with a dynamic page** | every cube rank | the combined bake | `shadow.dynranks`, `shadow.dyncount` |
-| **mover spheres a hot light's ray test holds** | `CX_DYN_SPHERES` (`CasterPass.CubeDynSphere`) | the light keeps its page and the deferred frame owes it nothing; counted on `CasterPass`'s line | -- |
-| **static lights that cast a creature's shadow onto baked ground** | 2 per creature | no pair tile, so that (light, creature) pair owes no debt | `lightmap.moverlights` (0 = the feature off) |
-| **pair tiles in the atlas** | `lightmap.paircount` x `lightmap.pairsize` | the light keeps its page instead; counted | `lightmap.paircount` |
+| **mover spheres a hot light's ray test holds** | `CX_DYN_SPHERES` (`CasterPass.CubeDynSphere`) | a further mover folds into the box its extent grows least, so the test passes over a little more of the surface | -- |
+| **static lights that cast a creature's shadow onto baked ground** | every one holding a dynamic page | baked surfaces take no shadow from creatures under static lights | `lightmap.movers` |
+| **(static light, mover sphere) hits one debt tile keeps** | `CX_DEBT_TILE_CAP` (96) | dropped, so that mover owes nothing over that tile | -- |
 | **mirror (`light.hidden`) taps a pixel pays** | 1, for the strongest glossy lobe over `CX_MIRROR_FLOOR` | unshadowed reflection of the light | `light.hidden` |
 
 Three of those are per-pixel budgets on the SAME ranking -- `CxLightRank`: the light's **irradiance** at the
@@ -364,7 +349,7 @@ score now: one number was doing both jobs, so a change of ranking silently chang
 
 The hot, pair and mirror taps are separate budgets and keep their own semantics; they do NOT count against
 `shadow.perpixel`. A pixel's worst case is therefore `shadow.perpixel` record lanes, plus one mirror tap, plus
-the pair-debt dispatch's own `min()` over the pairs covering it -- three budgets, each with a counter.
+the debt dispatch's own page tap per light covering it -- three budgets.
 
 ### What the counters hold
 
@@ -387,7 +372,7 @@ Vulkan links its own pipelines.
 | 1 G-buffer writer | `cx_ownlit_*.glsl` (CX_DEFERRED blocks), `AlloyRenderer.VkDeferred.cs`, Ssr interplay |
 | 2 deferred compute | `Pass/DeferredLights.cs`, `cx_deferred_cs.glsl`, `cx_lightfrag.glsl` (list-source generalisation), `ShaderStages.All`, bench step, period line |
 | 3 shadows in compute | `Pass/DeferredShadows.cs`, `cx_defshadow_cs.glsl`, `cx_shrec.glsl` (the record's format), `cx_lightfrag.glsl` (the `CX_SHADOW_SOURCE` hook), `cx_localshadow.glsl` (`CxLocalShadowFast`), `cx_deferred_cs.glsl` (the reader) |
-| 4 hot-light debt | `Pass/PairShadows.cs`, `Pass/PairDebt.cs`, `cx_pairbuf/cx_pairshad/cx_pairdebt.glsl`, `ShadowMath.PairViewProj`, `CasterPass` (the hoisted cull verdict, the plan, the pair bakes), `cx_lightfrag.glsl` (`CX_NO_HOT` in the full body), `cx_localshadow.glsl` (`CX_PAIR_RECV` in `CxLocalShadowQ` and `CxLocalShadowFast`), `cx_deferred_cs.glsl` + `cx_defshadow_cs.glsl` (the define) |
+| 4 hot-light debt | `Pass/MoverDebt.cs`, `cx_moverdebt.glsl` + `cx_moverapply.glsl`, `cx_lightfrag.glsl` (`CX_NO_HOT` in the full body), `cx_deferred_cs.glsl` (the define) |
 | 5 forward slim loop | `cx_lightfrag.glsl` (the `CX_LIGHT_LITE` bracket), the nine consumer `*head` stages, `ShaderContract.cs` |
 
 `cx_gbuf.glsl` and this page are the seam: a change to either goes through the integration branch, never a
