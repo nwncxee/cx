@@ -77,9 +77,10 @@ internal static unsafe class MipChainApprovedExamples
         // Given a tree whose leaf texture is a compressed DDS with stored mips and a pale colour under its holes
         // When the player looks at it from far away
         // Then its leaf edges show no pale outline either
-        byte[]? dds = MipChain.Dds(StoredBc3(sheet), Side, Side, 7, DdsReader.Fmt.Bc3);
-        check.Expect(dds != null, "E4: a compressed sheet with holes got no chain of its own");
-        if (dds != null)
+        byte[] dds = StoredBc3(sheet);
+        bool rebuilt = MipChain.Dds(dds, Side, Side, 7, DdsReader.Fmt.Bc3);
+        check.Expect(rebuilt, "E4: a compressed sheet with holes got no chain of its own");
+        if (rebuilt)
         {
             long off = BcnEncode.LevelSize(Side, Side, true);
             var rgba = new byte[Side * Side * 4];

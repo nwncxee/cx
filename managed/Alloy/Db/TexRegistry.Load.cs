@@ -42,8 +42,8 @@ internal static unsafe partial class TexRegistry
         public TexLocation Loc;
         /// <summary>The decoded bytes, native and owned by the job until the upload or the recycle.</summary>
         public byte* Data;
-        /// <summary>The chain <see cref="MipChain"/> built in place of <see cref="Data"/>'s mips, whole; null when the file's or the device's stand.</summary>
-        public byte[]? Rebuilt;
+        /// <summary><see cref="Data"/> is a whole RGBA8 chain from <see cref="MipChain"/>, not one level for the device to mip.</summary>
+        public bool Chained;
         /// <summary>This texture cuts a surface: <see cref="TexRegistry.Acquire"/> says so.</summary>
         public bool Cuts;
         public int W, H, Levels, Channels;
@@ -149,7 +149,7 @@ internal static unsafe partial class TexRegistry
         string resref = _resref[i] ?? "";
         Job j = Rent();
         j.Slot = i; j.Gen = _gen[i] & 0xFFF; j.Resref = resref; j.Kind = _kind[i];
-        j.Data = null; j.Rebuilt = null; j.Cuts = _cuts[i]; j.Why = null; j.W = j.H = j.Levels = 0; j.Bytes = 0; j.Channels = 0; j.Fast = fast; j.Tail = false;
+        j.Data = null; j.Chained = false; j.Cuts = _cuts[i]; j.Why = null; j.W = j.H = j.Levels = 0; j.Bytes = 0; j.Channels = 0; j.Fast = fast; j.Tail = false;
         // The .txi is its own resource, and the only one the engine reads: CAurTextureBasic::Init @0x588940
         // and Material::Init @0x5c5b90 both take it from AurResGet(name, ".txi"), which reaches the resman's
         // CResHelper<CResTXI,2022> and nothing else. So it is looked up here, on the thread that may read the
@@ -274,7 +274,6 @@ internal static unsafe partial class TexRegistry
             else NativeMemory.Free(j.Data);
             j.Data = null;
         }
-        if (j.Rebuilt != null) { MipChain.Release(j.Rebuilt); j.Rebuilt = null; }
         lock (_gate) _pool.Push(j);
     }
 
@@ -373,7 +372,11 @@ internal static unsafe partial class TexRegistry
             j.Cov = TexCoverageOf.OfRaster(sheet, r.W, r.H, r.Px);
             j.CovWhy = TexCoverageOf.Why($"TGA, {r.Px} channel(s)", j.Cov);
             j.MeanOk = TexScan.MeanOfRaster(px, r.W, r.H, r.Px, out j.Mean);
-            if (j.Cuts && !j.EnvMap && r.Px == 4 && j.GridX * j.GridY <= 1) j.Rebuilt = MipChain.Raster(sheet, r.W, r.H);
+            if (j.Cuts && !j.EnvMap && r.Px == 4 && j.GridX * j.GridY <= 1 && MipChain.RasterNative(sheet, r.W, r.H, out long chainBytes) is var built && built != null)
+            {
+                NativeMemory.Free(px);
+                j.Data = px = built; j.Chained = true; j.Bytes = chainBytes;
+            }
             CutGrid(j);
             HoldRipple(j);
             return;
@@ -388,17 +391,14 @@ internal static unsafe partial class TexRegistry
         j.Channels = info.Channels; j.GlFmt = fmt; j.Compressed = true; j.GenMips = false;
         j.Bytes = info.ChainBytes;
         byte[] sc = _covScratch ?? Array.Empty<byte>();
-        j.Cov = TexCoverageOf.OfBcn(new ReadOnlySpan<byte>(chain, DdsReader.LevelSize(info.W, info.H, info.Channels)),
+        Span<byte> stored = new(chain, checked((int)info.ChainBytes));
+        j.Cov = TexCoverageOf.OfBcn(stored[..DdsReader.LevelSize(info.W, info.H, info.Channels)],
                                     info.W, info.H, info.Format, ref sc);
         j.CovWhy = TexCoverageOf.Why($"DDS {info.Format}, {info.Channels} channel(s)", j.Cov);
         _covScratch = sc;
         if (info.Format is DdsReader.Fmt.Bc1 or DdsReader.Fmt.Bc3)
             j.MeanOk = TexScan.MeanOfDxt(chain, info.W, info.H, info.Format == DdsReader.Fmt.Bc3, out j.Mean);
-        if (j.Cuts && !j.EnvMap && MipChain.Dds(raw.Slice(info.DataOffset), info.W, info.H, info.Present, info.Format) is { } rebuilt)
-        {
-            j.Rebuilt = rebuilt; j.Bytes = MipChain.Bc3Bytes(info.W, info.H, info.Present);
-            j.GlFmt = DdsReader.GlFormat(DdsReader.Fmt.Bc3); j.Channels = DdsReader.ChannelsOf(DdsReader.Fmt.Bc3);
-        }
+        if (j.Cuts && !j.EnvMap) MipChain.Dds(stored, info.W, info.H, info.Present, info.Format);
     }
 
     /// <summary>The fast pass's preview: the DDS's own mips from the first one at or under <see cref="PreviewSide"/>

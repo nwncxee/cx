@@ -16,6 +16,9 @@ internal static unsafe partial class TexRegistry
                                clamp ? Wrap.Clamp : Wrap.Repeat, Aniso: mip && !nearest ? Aniso : 1);
     }
 
+    /// <summary>One level of a job's decoded chain.</summary>
+    private static ReadOnlySpan<byte> Level(Job j, long off, int sz) => new ReadOnlySpan<byte>(j.Data, checked((int)(off + sz))).Slice((int)off);
+
     /// <summary><paramref name="j"/>'s texels under GL name <paramref name="dst"/>, as <see cref="Upload"/> just sent
     /// them: the compressed chain, the PLT's index chain, or the raw cell mipped on the device.</summary>
     private static void MirrorJob(uint dst, Job j)
@@ -32,11 +35,10 @@ internal static unsafe partial class TexRegistry
             ImageId id = VkTextures.Create(vk, dst, f, j.W, j.H, j.Levels, j.Channels == 1, s, label);
             if (id.IsNull) return;
             long off = 0;
-            ReadOnlySpan<byte> chain = j.Rebuilt != null ? j.Rebuilt : new ReadOnlySpan<byte>(j.Data, checked((int)j.Bytes));
             for (int l = 0, w = j.W, h = j.H; l < j.Levels; l++, w = Math.Max(1, w >> 1), h = Math.Max(1, h >> 1))
             {
                 int sz = DdsReader.LevelSize(w, h, j.Channels);
-                if (!vk.Upload(id, l, 0, chain.Slice((int)off, sz))) { VkTextures.Forget(dst); return; }
+                if (!vk.Upload(id, l, 0, Level(j, off, sz))) { VkTextures.Forget(dst); return; }
                 off += sz;
             }
             return;
@@ -49,12 +51,12 @@ internal static unsafe partial class TexRegistry
             for (int l = 0, w = j.W, h = j.H; l < j.Levels; l++, w = Math.Max(1, w >> 1), h = Math.Max(1, h >> 1))
             {
                 int sz = w * h * PltImage.BytesPerPixel;
-                if (!vk.Upload(id, l, 0, new ReadOnlySpan<byte>(j.Data, checked((int)(off + sz))).Slice((int)off))) { VkTextures.Forget(dst); return; }
+                if (!vk.Upload(id, l, 0, Level(j, off, sz))) { VkTextures.Forget(dst); return; }
                 off += sz;
             }
             return;
         }
-        if (j.Rebuilt != null)
+        if (j.Chained)
         {
             ImageId id = VkTextures.Create(vk, dst, Format.Rgba8, j.W, j.H, j.Levels, false, s, label);
             if (id.IsNull) return;
@@ -62,7 +64,7 @@ internal static unsafe partial class TexRegistry
             for (int l = 0, w = j.W, h = j.H; l < j.Levels; l++, w = Math.Max(1, w >> 1), h = Math.Max(1, h >> 1))
             {
                 int sz = w * h * 4;
-                if (!vk.Upload(id, l, 0, j.Rebuilt.AsSpan((int)off, sz))) { VkTextures.Forget(dst); return; }
+                if (!vk.Upload(id, l, 0, Level(j, off, sz))) { VkTextures.Forget(dst); return; }
                 off += sz;
             }
             return;
