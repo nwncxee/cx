@@ -25,11 +25,12 @@ internal static unsafe partial class LightmapBake
     private const int VramReserveMiB = 1024;
 
     /// <summary>From the frame's deferred work, which runs where the colour bracket does not: at the main menu, or with
-    /// the pass off or stood down, the pool's memory goes back. Never under the hold, which is an area loading.</summary>
+    /// the pass off or stood down, the pool's and the bake's memory goes back. Never under the hold, which is an area loading.</summary>
     internal static void ReleaseIdle()
     {
-        if (Layers == 0 || Held || (Enabled && GameGate.InModule)) return;
-        VkFreePages(); Revoke();
+        if (Held || (Enabled && GameGate.InModule)) return;
+        if (Layers != 0) { VkFreePages(); Revoke(); }
+        VkFreeScratch();
     }
 
     /// <summary>Pages up to the last one holding a placed rect (an evicted fine page leaves a hole below it).</summary>

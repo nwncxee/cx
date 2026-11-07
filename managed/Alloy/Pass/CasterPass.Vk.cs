@@ -496,6 +496,13 @@ public sealed unsafe partial class CasterPass
     /// <summary>The lightmap bake's scratch cubes on Vulkan, as the last flush left them; null before the first.</summary>
     internal static ImageId VkBakeCubes => _vk.Bake;
 
+    /// <summary>The lightmap bake is idle: its cube array goes back, and the next queued cube remakes it.</summary>
+    internal static void VkDropBakeCubes()
+    {
+        _vk.Dev?.Destroy(_vk.Bake);
+        _vk.Bake = default; _vk.BakeSize = 0; _vk.BakeCubes = 0;
+    }
+
     /// <summary>Queue one light step's static cube for the lightmap bake on Vulkan: the six faces of the static set
     /// from <paramref name="pos"/> into slot <paramref name="slot"/> of the bake's own <paramref name="cubes"/>-cube
     /// array, flushed with the frame's views at full detail. False = not
