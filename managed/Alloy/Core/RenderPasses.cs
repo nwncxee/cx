@@ -278,14 +278,6 @@ internal static class RenderPasses
             Name = "defshadow",
             Stats = DeferredShadows.Stats,
         }, log);
-        r.Register(new PassLifecycle
-        {
-            Name = "pairtiles",
-            Attach = PairShadows.Attach,
-            SelfCheck = l => PairShadows.SelfCheck(l),
-            ContextLost = PairShadows.Forget,
-            Stats = PairShadows.Stats,
-        }, log);
         r.Register(new PassLifecycle { Name = "a2c", Stats = CoverageLayer.Stats }, log);
         r.Register(new PassLifecycle { Name = "oit", Stats = OitPass.Stats }, log);
         // The sky-visibility map. Its depth view belongs to CasterPass (an ortho caster render); what is
@@ -438,7 +430,7 @@ internal static class RenderPasses
         {
             Name = "content",
             Attach = ContentPrograms.Attach,
-            SelfCheck = l => { ContentStage.SelfCheck(l); ContentPrograms.SelfCheck(l); Db.ContentRows.SelfCheck(l); },
+            SelfCheck = l => { ContentStage.SelfCheck(l); ContentStageApprovedExamples.SelfCheck(l); ContentPrograms.SelfCheck(l); Db.ContentRows.SelfCheck(l); },
             ContextLost = ContentPrograms.ContextLost,
             Stats = _ => ContentPrograms.Note(),
         }, log);

@@ -44,7 +44,8 @@ internal static unsafe class ContentPrograms
         /// <summary>Both halves add nothing to their stock counterparts: the pair IS the plain lit path, and no program
         /// is built for it.</summary>
         public bool Plain;
-        public bool Cuts, Moves, ReadsPlt, Post, ReadsLights, NoKeyhole;
+        public bool Cuts, Moves, ReadsPlt, ForwardOnly, NoKeyhole;
+        public string RouteNote = "";
         /// <summary>Is the vertex half known to add nothing to stock -- off the feed's text at registration, then the
         /// chain's at the build? A pair not known so may move its vertices, so its parts never frustum-cull.</summary>
         public bool VsStock;
@@ -332,8 +333,8 @@ internal static unsafe class ContentPrograms
         s.Moves = !vsStock;
         s.Cuts = f?.Cuts ?? false;
         s.ReadsPlt = (f?.ReadsPlt ?? false) || (v?.ReadsPlt ?? false);
-        s.Post = f?.Post ?? false;
-        s.ReadsLights = f?.ReadsLights ?? false;
+        s.ForwardOnly = f?.ForwardOnly ?? false;
+        s.RouteNote = f?.RouteNote ?? "";
         s.NoKeyhole = f?.NoKeyhole ?? false;
         s.Params = f?.Params ?? v!.Params;
         return true;
@@ -346,7 +347,7 @@ internal static unsafe class ContentPrograms
     {
         var list = new List<(string, string, string, int)>();
         string vs = s.VsSrc!, fs = s.FsSrc!;
-        if (!s.Post && !s.ReadsLights && LitDeferred(fs))
+        if (!s.ForwardOnly && LitDeferred(fs))
             list.Add(("deferred twin", vs, CX.Alloy.Programs.WithDeferred(fs), 1));
         if (!s.Cuts && !s.Moves) return list;
         string depthFs = ShaderStages.WithDefine(fs, "CX_DEPTH_ONLY 1");
@@ -374,7 +375,7 @@ internal static unsafe class ContentPrograms
         _reg.Log?.Always($"{what}: runs translated -- {(s.VsStock ? "stock" : "its own")} vertex half, "
                        + $"{(s.FsStock ? "stock" : "its own")} fragment half, {s.Params.Length} parameter lane(s)"
                        + (s.Cuts ? ", its own coverage" : "") + (s.Moves ? ", its own vertex placement" : "")
-                       + (s.Post ? ", edits on the lit colour (forward only)" : "") + (s.ReadsLights ? ", lights itself (forward only)" : "")
+                       + s.RouteNote
                        + (s.NoKeyhole ? ", never dissolves" : "")
                        + (built.Count == 0 ? "" : "; " + string.Join(", ", built))
                        + (s.Cuts || s.Moves ? (p.Depth == 0 ? "; NO depth twin, so its parts stay out of the prepass" : "")

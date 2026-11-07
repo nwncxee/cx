@@ -92,34 +92,6 @@ public static partial class ShadowMath
         return view * proj * D3DToGlClipZ;
     }
 
-    /// <summary>Widening on the framed half-angle: the PCF disc reads off the silhouette, and a sphere fitted
-    /// exactly to the tile edge has nothing there to read.</summary>
-    public const float ConeSlack = 1.15f;
-    /// <summary>The widest half-angle a pair view takes (sin; ~58 degrees): past it the projection's corners run
-    /// away. A mover too close to its lamp to fit is framed at this cone round its centre: the shadow it casts
-    /// lies along the same directions, so the clamp trims the shadow's rim, never the whole shadow.</summary>
-    public const float ConeMaxSin = 0.85f;
-
-    /// <summary>One (static light, mover) PAIR view -- a perspective from <paramref name="lightPos"/> framed
-    /// on the sphere (<paramref name="at"/>, <paramref name="radius"/>), clamped to <see cref="ConeMaxSin"/>,
-    /// and fitted out to the light's own reach. A light inside the sphere looks straight down, where a body
-    /// standing under it throws its shadow. False only for a degenerate sphere or depth range.</summary>
-    public static bool PairViewProj(Vector3 lightPos, Vector3 at, float radius, float near, float far,
-                                    out Matrix4x4 vp, out float halfSin)
-    {
-        vp = Matrix4x4.Identity; halfSin = 0f;
-        if (!(far > near) || !(radius > 0f)) return false;
-        Vector3 d = at - lightPos;
-        float dist = d.Length();
-        if (!(dist > radius)) { d = -Vector3.UnitZ; dist = 1f; at = lightPos + d; }
-        halfSin = MathF.Min(radius / dist * ConeSlack, ConeMaxSin);
-        Vector3 up = PerpendicularUp(d / dist);
-        Matrix4x4 view = Matrix4x4.CreateLookAt(lightPos, at, up);
-        Matrix4x4 proj = Matrix4x4.CreatePerspectiveFieldOfView(2f * MathF.Asin(halfSin), 1f, near, far);
-        vp = view * proj * D3DToGlClipZ;
-        return true;
-    }
-
     /// <summary>Inverse of the point-light face projection's stored depth: a device depth <paramref name="sd"/>
     /// -&gt; the view-space distance along that face's major axis (<c>sd=0</c> near, <c>sd=1</c> far). The
     /// receiver compares with the SAME formula against <c>max(|dx|,|dy|,|dz|)</c> of

@@ -51,7 +51,7 @@ public sealed unsafe partial class AlloyRenderer
                      Weather.FilmLights, Weather.Cover, Weather.WetStrength, Weather.RunOff, Weather.Map,
                      Weather.SnowDepth, Weather.SnowPile, Weather.Impacts, Weather.ShelterCache, Lightmap.MoverTaps,
                      Lighting.Deferred, Lighting.DeferredTiles, Shadows.DeferredRes,
-                     Lightmap.MoverLights, Shadows.PerPixel, Lighting.Floor, Lighting.FullModel, Renderer.Oit],
+                     Shadows.PerPixel, Lighting.Floor, Lighting.FullModel, Renderer.Oit],
             Steps =
             [
                 ("baseline", []),
@@ -62,21 +62,21 @@ public sealed unsafe partial class AlloyRenderer
                 ("shadow.cap 0 (every light one hard tap, no deferred shadow record)", [(10, "0")]),
                 ("shadow.deferredres full (the per-pixel shadow record at full resolution)", [(32, "1")]),
                 // The per-pixel shadow budget: 0 taps every shadowing light, 1 is the floor, one shadow a pixel.
-                ("shadow.perpixel 1 (one shadowed light a pixel)", [(34, "1")]),
-                ("shadow.perpixel 0 (no per-pixel shadow budget: every light tapped)", [(34, "0")]),
+                ("shadow.perpixel 1 (one shadowed light a pixel)", [(33, "1")]),
+                ("shadow.perpixel 0 (no per-pixel shadow budget: every light tapped)", [(33, "0")]),
                 ("shadow.cubedist 5 (cube shadows ~off)", [(1, "5")]),
                 ("shadow.cubedist 15", [(1, "15")]),
                 ("light.bincap 8", [(2, "8")]),
                 ("light.binreach 0.5", [(3, "0.5")]),
                 // The per-light reach cut: 0 is the authored radius, and the coarse step is the one that
                 // actually shortens an ordinary lamp.
-                ("light.floor 0 (no perceptual reach cut: every light to its authored radius)", [(35, "0")]),
-                ("light.floor 0.002 (a coarse, just-visible reach cut)", [(35, "0.002")]),
+                ("light.floor 0 (no perceptual reach cut: every light to its authored radius)", [(34, "0")]),
+                ("light.floor 0.002 (a coarse, just-visible reach cut)", [(34, "0.002")]),
                 ("light.relevance 0", [(11, "0")]),
                 // budget: the lighting LOD, off by default. The pair is the trade: what the refinements cost
                 // on the faint tail, and what the frame looks like without them.
-                ("light.fullmodel 0.05 (plain falloff under 5% of the brightest light)", [(36, "0.05")]),
-                ("light.fullmodel 0.25 (plain falloff under a quarter of the brightest)", [(36, "0.25")]),
+                ("light.fullmodel 0.05 (plain falloff under 5% of the brightest light)", [(35, "0.05")]),
+                ("light.fullmodel 0.25 (plain falloff under a quarter of the brightest)", [(35, "0.25")]),
                 ("light.hidden 0 (no mirror walk of baked statics)", [(13, "0")]),
                 // the whole move, read against the lit colour terms -- off puts the point-light loop back
                 // inside the lit stage and the deferred dispatch does nothing.
@@ -84,17 +84,9 @@ public sealed unsafe partial class AlloyRenderer
                 ("light.lightrec 0 (blended fragments on a deferred surface walk the lights again)", [(12, "0")]),
                 ("light.deferredtiles 0 (each deferred pixel walks its own froxel list, not its tile's)", [(31, "0")]),
                 ("lightmap.movertaps 0 (hot lights: ray test only, no light body or shadow reads)", [(29, "0")]),
-                // The pair tiles and the screen-space debt they feed. 0 is the whole feature off --
-                // the deferred frame then owes the baked receivers nothing and every static light keeps its page;
-                // 4 is the per-mover budget's ceiling, which is what the atlas and the debt walk cost at worst.
-                ("lightmap.moverlights 0 (deferred: no creature shadows from baked lights)", [(33, "0")]),
-                ("lightmap.moverlights 4 (deferred: four pair tiles per creature)", [(33, "4")]),
-                // The whole hot/mover path. On a deferred frame this knob removes THREE things --
-                // the pair-tile bakes (the shadow-bake meter on every line below), the pair-debt dispatch (its own
-                // GPU term, split further by the pairdebt ladder), and the cluster build's hot gate, which shortens
-                // every froxel's live run. The step above removes the first two alone, so the difference between
-                // the two steps is the build's.
-                ("lightmap.movers 0 (no hot static lights: no pair bakes, no debt dispatch, no hot gate)", [(4, "0")]),
+                // The whole hot/mover path. On a deferred frame this knob removes the mover-debt dispatches and
+                // the cluster build's hot gate, which shortens every froxel's live run.
+                ("lightmap.movers 0 (no hot static lights: no mover debt, no hot gate)", [(4, "0")]),
                 ("weather.edgetaps 1", [(14, "1")]),
                 ("weather.splash 0 (no ripples)", [(15, "0")]),
                 ("weather.filmlights 0 (no static highlights on puddles)", [(20, "0")]),
@@ -114,8 +106,8 @@ public sealed unsafe partial class AlloyRenderer
                 ("light.ssrplanar 0", [(7, "0")]),
                 ("light.ssr 0 + ssrplanar 0", [(6, "0"), (7, "0")]),
                 // oit 2 tests depth in the shader (no early-Z), so every blended fragment behind a wall is shaded
-                ("alloy.oit 1 (weighted OIT: hardware depth test, no lists)", [(37, "1")]),
-                ("alloy.oit 0 (sorted blending, no OIT)", [(37, "0")]),
+                ("alloy.oit 1 (weighted OIT: hardware depth test, no lists)", [(36, "1")]),
+                ("alloy.oit 0 (sorted blending, no OIT)", [(36, "0")]),
                 ("post.scale 0.5 (GPU unbound: frame = CPU)", [(8, "0.5")]),
                 ("baseline again (drift)", []),
             ],

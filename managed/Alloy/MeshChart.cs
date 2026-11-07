@@ -13,8 +13,7 @@ namespace CX.Alloy;
 internal static class Lightmap
 {
     internal static readonly KnobGroup G;
-    internal static readonly Knob<int> Density, Disk, Vram, Window, Near, Tiers, HoldSeconds,
-                                       MoverLights, PairSize, PairCount;
+    internal static readonly Knob<int> Density, Disk, Vram, Window, Near, Tiers, HoldSeconds;
     internal static readonly Knob<bool> Movers, MoverTaps;
 
     static Lightmap()
@@ -43,14 +42,6 @@ internal static class Lightmap
                           help: "A creature standing under a baked light casts its shadow on the baked surface. Off is cheaper: baked surfaces take no shadow from creatures under static lights.");
         MoverTaps = G.Toggle("movertaps", "movertaps", true, Tier.ChatOnly,
                              help: "Diagnostic: 0 keeps creature-hot baked lights in the light loop (the ray test) but skips their light body and shadow reads, so /alloy bench splits the creature-shadow cost.");
-        MoverLights = G.Slider("moverlights", "Baked lights per creature", 0, 4, 1, 2, tier: Tier.ChatOnly,
-                               help: "Baked lights a creature may cast a shadow from, strongest first, while deferred lighting is on. Each one gets a small shadow map of its own instead of the creature's shadow riding a whole depth cube. 0 is no creature shadows from baked lights on that path.");
-        PairSize = G.Slider("pairsize", "Creature tile size", 32, 512, 32, 128, "px", tier: Tier.ChatOnly,
-                            effect: Effect.Restart,
-                            help: "Side of one creature-and-light shadow tile. A restart knob: it sizes the atlas.");
-        PairCount = G.Slider("paircount", "Creature tiles", 16, global::CX.Alloy.PairShadows.MaxPairs, 16, 256,
-                             tier: Tier.ChatOnly, effect: Effect.Restart,
-                             help: "Creature-and-light tiles the atlas holds. A light whose creatures do not all fit keeps its depth cube, nearest lights first. A restart knob: it sizes the atlas.");
         // 2048: a smaller budget prunes the live files of the area being walked
         Disk = G.Slider("disk", "Chart cache size", 64, 8192, 64, 2048, "MiB", tier: Tier.ChatOnly,
                         help: "Disk the chart and bake caches may hold; the oldest files go first. One area's lightmap is roughly 500 MiB.");

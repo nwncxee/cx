@@ -16,12 +16,12 @@ public sealed unsafe partial class AlloyRenderer
     [
         (VkBindKind.UniformBlock, [UboSlots.Pass, UboSlots.ProbeSh, UboSlots.Deferred, VkGlsl.LooseBinding]),
         (VkBindKind.StorageBlock, [SsboSlots.Draw, SsboSlots.DrawIdx, SsboSlots.Lights, SsboSlots.ClusterCount,
-                                   SsboSlots.ClusterIdx, SsboSlots.Movers, SsboSlots.Pair, SsboSlots.Chart,
+                                   SsboSlots.ClusterIdx, SsboSlots.Movers, SsboSlots.Chart,
                                    SsboSlots.DeferredStats]),
         (VkBindKind.Sampled, [TextureSlots.LocalShadow, TextureSlots.Gbuf0, TextureSlots.Gbuf1, TextureSlots.Gbuf2,
                               TextureSlots.GbufDepth, TextureSlots.ShadowVis, TextureSlots.ShadowKey,
                               TextureSlots.LocalShadowDyn, TextureSlots.LocalShadowRaw, TextureSlots.LocalShadowDynRaw,
-                              LightmapBake.UnitA, LightmapBake.UnitB, LightmapBake.UnitC, TextureSlots.PairMap]),
+                              LightmapBake.UnitA, LightmapBake.UnitB, LightmapBake.UnitC]),
         (VkBindKind.StorageImage, [0, 1]),
     ];
 
@@ -47,7 +47,8 @@ public sealed unsafe partial class AlloyRenderer
 
         foreach ((string Ref, string? Define, string Label) s in (ReadOnlySpan<(string, string?, string)>)
                  [(DeferredLights.ShdCs, null, "deferred walk"), (DeferredLights.ShdCs, "CX_FILM_PASS 1", "deferred film"),
-                  (DeferredShadows.ShdCs, null, "deferred shadow record")])
+                  (DeferredShadows.ShdCs, null, "deferred shadow record"),
+                  (MoverDebt.ShdCs, null, "mover debt"), (MoverDebt.ApplyCs, null, "mover debt apply")])
         {
             if (VkDefText(s.Ref, s.Define, s.Label, log) is not ({ } t, { } src)) { check.Expect(false, $"{s.Label}: its record contract holds"); continue; }
             if (t.Error != null) { check.Expect(false, $"{s.Label} translates -- {t.Error}"); continue; }
@@ -61,6 +62,8 @@ public sealed unsafe partial class AlloyRenderer
                 check.Expect(listed != null && Array.IndexOf(listed, o.Binding) >= 0,
                     $"{s.Label}: {o.Name} declares {o.Kind} binding {o.Binding}, which VkDefBindSet has no row for");
             }
+            // the apply stage walks no light, so the lighting libraries' loose terms are not its to carry
+            if (s.Ref == MoverDebt.ApplyCs) continue;
             var names = new List<string>(t.Loose.Count);
             foreach (VkLoose u in t.Loose) names.Add(u.Name);
             var block = VkSpirv.Block(spirv, 0, VulkanToolchain.UniformBase + VkGlsl.LooseBinding, names);
@@ -75,6 +78,16 @@ public sealed unsafe partial class AlloyRenderer
                 check.Expect(t.Opaques.Exists(o => o.Set == 0 && o.Kind == VkBindKind.UniformBlock && o.Binding == UboSlots.Deferred),
                     $"{s.Label} reads the CxDeferred block the pass stages");
         }
+        CX.Rhi.BufferId lights = new(1), counts = new(2), idx = new(3), movers = new(4);
+        check.Expect(VkLitTable(SsboSlots.Lights, false, lights, counts, idx, movers) == lights
+                  && VkLitTable(SsboSlots.ClusterCount, false, lights, counts, idx, movers) == counts
+                  && VkLitTable(SsboSlots.ClusterIdx, false, lights, counts, idx, movers) == idx
+                  && VkLitTable(SsboSlots.Movers, false, lights, counts, idx, movers) == movers,
+                     "a forward-lit stage of the world frame walks the frame's lights and froxel table");
+        check.Expect(VkLitTable(SsboSlots.Lights, true, lights, counts, idx, movers) == null
+                  && VkLitTable(SsboSlots.ClusterCount, false, lights, default, idx, movers) == null
+                  && VkLitTable(SsboSlots.Draw, false, lights, counts, idx, movers) == null,
+                     "a capture, a frame with no table and every other binding keep the stand-in");
         log.Info(check.Ok ? "AlloyRenderer.VkDeferredSelfCheck: passed" : "AlloyRenderer.VkDeferredSelfCheck: FAILED");
     }
 }

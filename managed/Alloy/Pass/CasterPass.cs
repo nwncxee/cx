@@ -63,8 +63,6 @@ public sealed unsafe partial class CasterPass : IExtenderService
     /// Boot = every cube.</summary>
     private static int _dynRanks => Shadows.DynRanks.V;
     private static long _cubeDynBakedFaces;
-    /// <summary>Pair tiles this period's frames baked, for the period line's clause.</summary>
-    private static long _pairBakedTiles;
     /// <summary>Slot is in COMBINED mode: it has movers but no pool page (pool exhausted), so it bakes both
     /// halves into the static array every frame -- the per-slot fallback to pre-split behaviour. A mode
     /// change re-keys the slot, or a mover baked in while combined would outlive the mode.</summary>
@@ -340,7 +338,6 @@ public sealed unsafe partial class CasterPass : IExtenderService
             _layerFlushFails++;
             CascadeCount = 0; CubeCount = 0; CoverRelease(); SkyRelease();
             Array.Clear(SunDynMask); Array.Clear(CubeDynPage);
-            PairShadows.Stand();   // the pair tiles never landed either: no light may be read as paired this frame
             _invalidate = true; _sunScanned = false; _cubeScanned = false;
         }
         // ...and only now may the frame's invalidation be consumed: every pass that ran reached every one of
@@ -412,9 +409,6 @@ public sealed unsafe partial class CasterPass : IExtenderService
                    $"dynamic cube bakes ({(float)_cubeDynBakedFaces / _frames:F1} faces, {(float)_cubeDynSkipped / _frames:F1} pages held by cadence) per frame, dyn pool {DynPagesUsed()}/{_cubeDynPages} pages at " +
                    $"{_cubeDynSize}px = {_cubeDynPages * CubeFaces * (long)_cubeDynSize * _cubeDynSize * 4 / (1024 * 1024)} MB " +
                    $"beside the static array's {_cubeLights * CubeFaces * (long)_cubeSize * _cubeSize * 4 / (1024 * 1024)} MB) " +
-                   // CX-188 step 4: the tiles that stood in for those pages; PairShadows.Stats says over how
-                   // many lights.
-                   (_pairBakedTiles > 0 ? $"({(float)_pairBakedTiles / _frames:F1} pair tiles BAKED/frame) " : "") +
                    $"(sun {(float)_sunBakedViews / _frames:F1} re-baked, " +
                    $"{(float)_sunSkippedViews / _frames:F1} skipped" +
                    // #306: the static re-bake rate PER CASCADE LAYER is the texel snap's measured reuse
@@ -521,7 +515,7 @@ public sealed unsafe partial class CasterPass : IExtenderService
         CasterGather.DynDispatches = 0;
         _cubeLightsSum = 0; _viewSum = 0;
         _liveSum = 0; _visitSum = 0; _touchedSum = 0;
-        _cubeBakedSlots = 0; _cubeSkippedSlots = 0; _cubeOffSlots = 0; _cubeHeldSlots = 0; _cubeRoamSlots = 0; _cubeTurnovers = 0; _moverSum = 0; _ghostSum = 0; _cubeDynBakedPages = 0; _cubeDynBakedFaces = 0; _pairBakedTiles = 0;
+        _cubeBakedSlots = 0; _cubeSkippedSlots = 0; _cubeOffSlots = 0; _cubeHeldSlots = 0; _cubeRoamSlots = 0; _cubeTurnovers = 0; _moverSum = 0; _ghostSum = 0; _cubeDynBakedPages = 0; _cubeDynBakedFaces = 0;
         _sunBakedViews = 0; _sunSkippedViews = 0;
         Array.Clear(_sunStaticL); _sunDynBakedViews = 0; _sunDynSkipped = 0; _cubeDynSkipped = 0;
         CasterGather.LayerDispatches = 0; CasterGather.LayerViews = 0;

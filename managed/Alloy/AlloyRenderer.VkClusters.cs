@@ -38,6 +38,21 @@ public sealed unsafe partial class AlloyRenderer
     private static BufferId VkClusterIdx => _vkcl.Fresh ? _vkcl.Idx : default;
     private static BufferId VkMovers => _vkcl.Movers;
 
+    /// <summary>The buffer a colour-pass stage walks its lights from at storage <paramref name="binding"/>, or null to leave
+    /// it on the stand-in: a binding that is no light table, a frame with no froxel table, or a capture, whose view is not the one binned.</summary>
+    internal static BufferId? VkLitTable(uint binding, bool capturing, BufferId lights, BufferId counts, BufferId idx, BufferId movers)
+    {
+        if (capturing || counts.IsNull) return null;
+        return binding switch
+        {
+            SsboSlots.Lights when !lights.IsNull => lights,
+            SsboSlots.ClusterCount => counts,
+            SsboSlots.ClusterIdx when !idx.IsNull => idx,
+            SsboSlots.Movers when !movers.IsNull => movers,
+            _ => null,
+        };
+    }
+
     /// <summary>The build into <paramref name="cl"/>, ahead of everything that reads a froxel list. Records nothing
     /// (and leaves the readers on the stand-in) when the GL rig did not build this frame -- a probe capture, a
     /// stood-down rig -- or when the device refused the stage.</summary>

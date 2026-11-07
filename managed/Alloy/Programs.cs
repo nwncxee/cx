@@ -15,9 +15,6 @@ internal static unsafe class Programs
     /// no name or latch from the chain that is gone survives as a field nobody remembered to clear.</summary>
     internal sealed class ProgramsState
     {
-        /// <summary>The lit stage's DEFERRED twin on the vanilla renderer's chain (ADR 0029): 0 = no twin, which
-        /// is what keeps that chain's deferred pass -- and the pair tiles it takes its debt from -- stood down.</summary>
-        public uint LitDeferred;
         /// <summary>The spliced programs were built against a resource chain that is gone. Every program carrying
         /// a <c>// $VANILLA</c> region compiles ONCE from whatever the chain held then, so without this a session
         /// keeps the first server's display hooks running on the next one. Set on the module-unload edge (outside

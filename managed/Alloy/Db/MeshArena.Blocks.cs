@@ -120,5 +120,16 @@ public static unsafe partial class MeshArena
         }
 
         internal void Clear() => _n = 0;
+
+        /// <summary>A pump's walk: span <paramref name="from"/> stays dirty as span <paramref name="to"/>, which
+        /// is never past it, so a refused upload is sent again by the next pump.</summary>
+        internal void Keep(int to, int from)
+        {
+            _from[to] = _from[from];
+            _to[to] = _to[from];
+        }
+
+        /// <summary>The walk is over: only the first <paramref name="kept"/> spans are still dirty.</summary>
+        internal void Cut(int kept) => _n = kept;
     }
 }

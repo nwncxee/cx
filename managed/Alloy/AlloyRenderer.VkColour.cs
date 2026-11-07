@@ -577,6 +577,9 @@ public sealed unsafe partial class AlloyRenderer
                 case VkBindKind.StorageBlock when Bound(storage, o.Binding) is { } own:
                     ssbo[ns++] = own;
                     break;
+                case VkBindKind.StorageBlock when VkLitTable(o.Binding, _capturing, VkDeferredLights(), VkClusterCounts, VkClusterIdx, VkMovers) is { } table:
+                    ssbo[ns++] = new BufferBinding(o.Binding, table);
+                    break;
                 case VkBindKind.StorageBlock when o.Binding == Db.ContentTable.Binding && !s.ContentRows.IsNull:
                     ssbo[ns++] = new BufferBinding(o.Binding, s.ContentRows, 0, s.ContentSentN);
                     break;

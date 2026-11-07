@@ -141,7 +141,8 @@ These are the stage resrefs. The libraries they include are listed by the dump; 
 | `cx_cluster_cs` | compute | Builds the light cluster grid the lit and water stages read. |
 | `cx_deferred_cs` | compute | CX-188 (ADR 0029): the deferred point-light pass. One invocation per render pixel: reads the G-buffer the lit stage's `CX_DEFERRED` twin wrote (`cx_gbuf`), reconstructs the pixel's world position from the frame depth, walks the lights through the SAME `cx_lightfrag` the forward loop is, and adds the result into the HDR target. 16x16 groups, and `light.deferredtiles` picks its light list: one list per group gathered off the froxels its pixels read and bounded by their depth (the default), or each pixel's own froxel list, the one every forward stage reads. An override written before the ambient class had its own weight still draws tile lights, through the diffuse weight `Wd` as before: the walk keeps them inside its result and reports them apart in `cxAmbWalk`. |
 | `cx_defshadow_cs` | compute | CX-188 step 3 (ADR 0029): the shadow record. Per pixel of the G-buffer (half resolution under `shadow.deferredres`), the four strongest shadowed lights' visibility, filtered once, which `cx_deferred_cs` reads back instead of tapping a cube per light. A record that fails to link stands `light.deferred` down for the session. |
-| `cx_pairdebt` | compute | CX-188 step 4 (ADR 0029): the hot-light debt. The deferred stage has the walk's hot branch compiled out, so this dispatch is where a creature's shadow comes back out of the baked term: each 16x16 tile culls this frame's (static light, creature) pair tiles against its own view-space box, and the pixels of a tile that holds one evaluate the tile and subtract `lmShare * min(lmSub.x / lmLum + lmSub.y, 1)`. `lightmap.moverlights 0` is its A/B. |
+| `cx_moverdebt` | compute | CX-188 step 4 (ADR 0029): the mover debt, at half resolution. The deferred stage has the walk's hot branch compiled out, so this dispatch is where a creature's shadow comes back out of the baked term. Each 16x16 group culls the static lights' mover spheres (`uDynMovers`) against its own world-space bounding sphere; a pixel a kept sphere shadows reads the G-buffer, taps that light's dynamic cube page and writes what it owes -- `min(lmSub.x / lmLum + lmSub.y, 1)` -- with the view depth it was found at, as `rg16f`. `lightmap.movers 0` is its A/B. |
+| `cx_moverapply` | compute | CX-188 step 4 (ADR 0029): the debt subtracted, at full resolution. It upsamples `cx_moverdebt`'s four nearest texels, each weighted by how near its depth lies to the pixel's own so a shadow does not bleed onto a surface in front of it, takes `hdr.rgb -= lmShare * owe` on a baked pixel and adds `owe` into the pixel's light record for the blended fragments that read it. |
 | `cx_vfog_cs` | compute | The volumetric fog's lighting pass (`vfog.enabled`): one invocation per froxel of the main view's grid (`cx_vfogmed`). Writes the light the medium scatters toward the eye per unit of extinction (rgb, linear) and the haze's own extinction (a), at a point jittered inside the froxel and blended with last frame's answer re-projected onto it. The sun comes through `cx_sunshadow`, the lamps through `cx_lightfrag`'s cluster table: a lamp's curve sharpened toward an inverse square whose strength grows with its reach (`vfog.reach`), an ambient-class light (a tile's own) its surface curve with no direction or shadow. 8x8x1 groups. |
 | `cx_vfogsum_cs` | compute | The volumetric fog's integration: one invocation per froxel column, marching the slices from the eye, adding the area's fog wall to the haze and storing the in-scattered light and transmittance to each slice's far edge. The wall thins away across the fog bank's top (`vfog.top` above the eye), and the sky reads the last slice: the same air as the geometry in front of it. Every stage that fogs reads the result through `cx_vfog`. 8x8 groups. |
 | `cx_cast_vs` | vertex | Shadow-map depth bake: projects casters into a cascade or cube face. |
@@ -239,8 +240,9 @@ those, Alloy then lights, deferred or forward. Where the engine would light it, 
 - a stage that never calls `ApplyStandardShader()` lights itself, so all of it runs on the lit colour and its
   result is drawn as it leaves it.
 
-A pair with statements after the call, or one that reads the engine's per-light arrays, draws forward only:
-the deferred path has no lit colour to give it. The alpha you leave in `FragmentColor` (or `gl_FragColor`) is
+A pair whose statements after the call change the colour, or one that reads the engine's per-light arrays, draws forward only:
+the deferred path has no lit colour to give it. Statements that only set the alpha and discard on it do not count, so such
+a pair stays deferred. The alpha you leave in `FragmentColor` (or `gl_FragColor`) is
 the part's coverage. `#define KEYHOLING 0` keeps the part from dissolving, as it does in the engine.
 
 **Its own depth.** A pair whose vertex half runs, or whose fragment half makes its own coverage (a discard, a
@@ -740,7 +742,7 @@ zero has to mean "as before" in each of them.
 ### Not guarded
 
 `cx_post_vs`, `cx_grass_vs`, `cx_cluster_cs`, `cx_defshadow_cs`, `cx_vfog_cs` and `cx_vfogsum_cs` carry no guard.
-`cx_deferred_cs` and `cx_pairdebt` carry one: they read a G-buffer pixel's draw by its slot -- the lightmap record
+`cx_deferred_cs`, `cx_moverdebt` and `cx_moverapply` carry one: they read a G-buffer pixel's draw by its slot -- the lightmap record
 (`CxChart`), and for `cx_deferred_cs` the sheen in `CxDraw` too -- so each is held to those records' counts, and a
 stale one stands its pass down for the session.
 
@@ -759,12 +761,11 @@ arithmetic that turns the walk's result into the pixel. Neither is a text match 
 guard that does exist is the knob: `light.deferred 0` puts the whole frame back on the
 forward loop, which is the A/B to reach for when an override of this stage looks wrong.
 
-`cx_pairdebt` is the same case again, and the same two A/Bs bound it: `lightmap.moverlights 0`
-takes the pass out of the frame entirely (and with it the pair tiles the caster pass bakes),
-and `light.deferred 0` puts the hot-light debt back inside the forward light loop, where it
-is computed per fragment per light instead. An override that gets the subtraction wrong
-shows as creature shadows that are too dark, too light or in the wrong place on baked ground
--- never as a missing draw.
+`cx_moverdebt` and `cx_moverapply` are the same case again, and the same two A/Bs bound them:
+`lightmap.movers 0` takes both passes out of the frame entirely, and `light.deferred 0` puts the
+mover debt back inside the forward light loop, where it is computed per fragment per light
+instead. An override that gets the subtraction wrong shows as creature shadows that are too
+dark, too light or in the wrong place on baked ground -- never as a missing draw.
 
 `cx_vfog_cs` and `cx_vfogsum_cs` write only the fog volume, so an override that gets them wrong shows as wrong fog and
 nothing else, and `vfog.enabled 0` is the A/B: the fog group's ramp draws the fog again.
