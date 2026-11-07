@@ -4,10 +4,11 @@
 // geometry -- into ONE OpenAL source fed by an AL_SOFT_callback_buffer callback. The muted engine source keeps
 // playing, so every state/offset query the engine makes stays OpenAL's own answer.
 //
-// Threads: the AL shims run on whoever called AL (main thread, AsyncSoundStream); the render runs on OpenAL's
-// mixer thread inside the bus callback and never calls AL; the simulation runs on CX's own "CX sound sim"
-// thread and the pathing bake on "CX sound bake". One lock guards every table they share and is only ever held
-// for copies. Steam Audio objects the render touches are created up front, so the render allocates nothing.
+// Threads: the AL shims run on whoever called AL (main thread, AsyncSoundStream); the render runs on "CX sound
+// render" and never calls AL; OpenAL's mixer thread only copies from the render's ring; the simulation runs on CX's
+// own "CX sound sim" thread and the pathing bake on "CX sound bake". One lock guards every table they share and is
+// only ever held for copies. The render never waits on it: a frame that finds it taken replays its last snapshot.
+// Steam Audio objects the render touches are created up front, and it frees nothing, so it allocates nothing either.
 //
 // C-style C++ like cxatlas.cpp: no exceptions, no RTTI, no C++ runtime (decltype is the only reason this is not C:
 // it types the Steam Audio entry points resolved at run time).
@@ -33,6 +34,7 @@ struct Lock
 {
     SRWLOCK l;
     void on() { AcquireSRWLockExclusive(&l); }
+    int tryon() { return TryAcquireSRWLockExclusive(&l) != 0; }
     void off() { ReleaseSRWLockExclusive(&l); }
 };
 #define CXA_LOCK_INIT { SRWLOCK_INIT }
@@ -45,7 +47,7 @@ struct Wake
     void wait(int ms) { WaitForSingleObject(h, (DWORD)ms); }
 };
 static DWORD WINAPI render_main_w(LPVOID);
-static int start_thread() { HANDLE t = CreateThread(NULL, 0, render_main_w, NULL, 0, NULL); if (!t) return 0; SetThreadPriority(t, THREAD_PRIORITY_HIGHEST); CloseHandle(t); return 1; }
+static int start_thread() { HANDLE t = CreateThread(NULL, 0, render_main_w, NULL, 0, NULL); if (!t) return 0; CloseHandle(t); return 1; }
 static void* cxa_sym(void* lib, const char* n) { return (void*)GetProcAddress((HMODULE)lib, n); }
 /// Atomics as Interlocked ops, since MSVC has no __atomic builtins; each is a full barrier, at least the order a call site needs.
 static int64_t cxa_ld(int64_t* p) { return InterlockedCompareExchange64(p, 0, 0); }
@@ -67,12 +69,17 @@ static double cxa_now()
 #else
 #include <dlfcn.h>
 #include <pthread.h>
+#include <sched.h>
 #include <semaphore.h>
+#include <sys/resource.h>
+#include <sys/syscall.h>
 #include <time.h>
+#include <unistd.h>
 struct Lock
 {
     pthread_mutex_t m;
     void on() { pthread_mutex_lock(&m); }
+    int tryon() { return pthread_mutex_trylock(&m) == 0; }
     void off() { pthread_mutex_unlock(&m); }
 };
 #define CXA_LOCK_INIT { PTHREAD_MUTEX_INITIALIZER }
@@ -128,13 +135,13 @@ static double cxa_now()
 #define CXA_IPL(X) \
     X(iplContextCreate) X(iplContextRelease) X(iplHRTFCreate) X(iplHRTFRelease) \
     X(iplAudioBufferAllocate) X(iplAudioBufferFree) \
-    X(iplBinauralEffectCreate) X(iplBinauralEffectApply) X(iplBinauralEffectReset) \
+    X(iplBinauralEffectCreate) X(iplBinauralEffectApply) X(iplBinauralEffectGetTail) X(iplBinauralEffectReset) \
     X(iplPanningEffectCreate) X(iplPanningEffectApply) X(iplPanningEffectReset) \
     X(iplDirectEffectCreate) X(iplDirectEffectApply) X(iplDirectEffectReset) \
-    X(iplReflectionEffectCreate) X(iplReflectionEffectApply) X(iplReflectionEffectReset) \
+    X(iplReflectionEffectCreate) X(iplReflectionEffectApply) X(iplReflectionEffectGetTail) X(iplReflectionEffectReset) \
     X(iplReflectionMixerCreate) X(iplReflectionMixerApply) X(iplReflectionMixerReset) \
     X(iplAmbisonicsDecodeEffectCreate) X(iplAmbisonicsDecodeEffectApply) \
-    X(iplPathEffectCreate) X(iplPathEffectApply) X(iplPathEffectReset) \
+    X(iplPathEffectCreate) X(iplPathEffectApply) X(iplPathEffectGetTail) X(iplPathEffectReset) \
     X(iplAirAbsorptionCalculate) \
     X(iplSceneCreate) X(iplSceneRelease) X(iplSceneRetain) X(iplSceneCommit) \
     X(iplStaticMeshCreate) X(iplStaticMeshRelease) X(iplStaticMeshAdd) \
@@ -232,6 +239,12 @@ struct CxaStats
     float renderMsAvg, renderMsMax, simMsAvg, reflMsAvg;
     float captureMsMax;  // the slowest capture on the engine's sound-start path since the last read
     int32_t underruns;   // callbacks OpenAL asked for more than the render had ready (each one a click)
+    float renderMsPeak;  // the slowest frame of the session; unlike renderMsMax, a read never clears it
+    int32_t lateFrames;  // frames started with less than one OpenAL mix pass left in the ring: near misses
+    int32_t heldFrames;  // frames that found the lock taken and replayed their last snapshot
+    int32_t ringLow;     // the fewest samples a callback left in the ring since the last read; INT32_MAX = no callback
+    int32_t ringLead;    // frames the render keeps ready
+    int32_t renderPrio;  // RenderPrio: what the OS granted the render thread
 };
 
 // ---- pure helpers (SelfCheck covers each) ----
@@ -412,6 +425,7 @@ struct Blob
     float loudDb;
     uint64_t key;
     float* pcm;   // mono, [-1, 1]
+    Blob* nextDead;
 };
 
 /// The engine's four one-shot formats (PlaySourceOn3DVoice's alBufferData calls) to mono float, with a gated
@@ -467,17 +481,33 @@ static Blob* blob_make(ALenum fmt, const void* data, int size, int rate)
     b->pcm = p; b->frames = frames; b->rate = rate; b->key = h; b->refs = 1;
     return b;
 }
+/// Blobs no reference holds, waiting for blob_drain (under g_lk).
+static Blob* g_deadBlobs;
+/// The last reference only queues the free: its callers hold g_lk, and one of them is the render.
 static void blob_unref(Blob* b)
 {
-    if (b && --b->refs == 0) { free(b->pcm); free(b); }
+    if (b && --b->refs == 0) { b->nextDead = g_deadBlobs; g_deadBlobs = b; }
 }
 
 // ---- tables ----
-/// The render runs this many frames (~32 ms at 48 kHz) ahead of OpenAL on its own thread: a slow frame is absorbed
-/// instead of heard. It ran inside OpenAL's callback, where every wait on a lock or a swapped-out page was a click
-/// (CX-57 live: 5 ms average, 27 ms peaks, for 0.3 ms of work).
-enum { RingAhead = 3, RingFrames = 8 };
+/// The render runs ahead of OpenAL on its own thread, so a slow frame is absorbed instead of heard. It ran inside
+/// OpenAL's callback, where every wait on a lock or a swapped-out page was a click (CX-57 live: 5 ms average, 27 ms
+/// peaks, for 0.3 ms of work). The ring's capacity, which caps the lead ring_lead picks.
+enum { RingFrames = 32 };
+/// OpenAL Soft mixes at most this many samples in one pass (BufferLineSize, core/bufferline.h, 1.25.2).
+enum { MixPass = 1024 };
 enum { MaxSlots = 64, MaxBlobs = 256, MaxRefl = 4, MaxOrder = 2, MaxAmbi = (MaxOrder + 1) * (MaxOrder + 1), MaxBusCh = 8 };
+/// Frames of lead for a device period in samples: two passes of the mixer, each at least one MixPass long, so the
+/// ring survives one callback landing while the render is between frames.
+static int ring_lead(int frame, int period)
+{
+    int pass = period > MixPass ? period : MixPass;
+    int lead = (2 * pass + frame - 1) / frame;
+    return lead > RingFrames ? RingFrames : lead;
+}
+/// The reflection effects stay this long whatever "Reverb length" says. The convolution reads the effect's size, not
+/// the frame's irSize, but the effect swaps its FIR with the simulator's on every IR update (steam-audio 4.8.1,
+/// overlap_save_convolution_effect.cpp:234), so a later, longer effect would read past the shorter FIRs left behind.
 static const float MaxDuration = 2.0f;
 /// The pathing bake's probe budget per area.
 static const int MaxProbes = 1500;
@@ -512,7 +542,10 @@ struct Slot
 struct Voice
 {
     unsigned gen;
-    int playing, tailFrames, lastRefl;
+    int playing, lastRefl;
+    // what still rings after the sound ended, played through GetTail: no effect runs over silence
+    int tailDry, tailPath, tailRefl;
+    float tailPathMix;
     int fresh;             // its first frame: duplicate gains land at once, not over the smoothing
     Blob* blob;
     double phase;
@@ -579,6 +612,10 @@ struct Sa
     float* ring;           // RingFrames rendered frames, interleaved; the render thread writes, the callback reads
     int64_t ringW, ringR;  // samples written / read, ever (atomics: one writer, one reader)
     int primed;            // the ring has been full once: an empty one after that is an underrun
+    int32_t lead;          // frames ring_fill keeps ready (atomic: the main thread refits it on a device reset)
+    int32_t ringLow;       // see CxaStats (atomic: the callback lowers it, cxa_stats resets it)
+    float pendMsMax;       // what publish could not hand over yet, the lock being taken (render-thread private)
+    int pendFrames, pendLate, pendHeld;
     // simulation-thread state
     IPLScene scene;
     IPLStaticMesh mesh;
@@ -702,6 +739,7 @@ static int sa_init(int rate, int busCh, int binaural)
     s.in = abuf(1); s.dry = abuf(1); s.roomIn = abuf(1); s.bus = abuf(busCh); s.tmp = abuf(busCh); s.amb = abuf(s.ambi);
     s.ring = (float*)calloc((size_t)s.frame * RingFrames * busCh, sizeof(float));
     if (!s.ring) { set_err("the render ring failed to allocate"); return 0; }
+    s.ringLow = INT32_MAX;
     IPLSimulationSettings ss;
     memset(&ss, 0, sizeof ss);
     ss.flags = (IPLSimulationFlags)(IPL_SIMULATIONFLAGS_DIRECT | IPL_SIMULATIONFLAGS_REFLECTIONS | IPL_SIMULATIONFLAGS_PATHING);
@@ -771,56 +809,152 @@ static void mix_into(IPLAudioBuffer* dst, const IPLAudioBuffer* src, float g)
         for (int n = 0; n < dst->numSamples; n++) dst->data[c][n] += src->data[c][n] * g;
 }
 
-/// One frame: slots copied in under the lock, then every voice rendered with none held.
-static void render_frame(unsigned gen, float* dst)
+/// What a frame renders from: the shared tables as of the last time the render got the lock.
+struct RenderView
+{
+    int taken, stale, reflMode, roomValid;
+    CxaConfig cfg;
+    float lp[3], lat[3], lup[3], music;
+    IPLReflectionEffectParams roomParams;
+    Slot snap[MaxSlots];
+};
+static RenderView g_view;
+
+/// Copies the shared tables into g_view. 0 when the lock is taken: the frame replays the last view, a few
+/// milliseconds stale, and any IR in it is safe because g_reflHold stays up until a later snapshot lowers it.
+static int render_take(unsigned gen)
 {
     Sa& s = g_sa;
-    double t0 = cxa_now();
-    const int N = s.frame;
-    CxaConfig cfg;
-    float lp[3], lat[3], lup[3];
-    static Slot snap[MaxSlots];
-    g_lk.on();
-    int stale = gen != g_busGen;
-    cfg = g_cfg;
-    ac_tune(cfg);
+    RenderView& w = g_view;
+    if (!w.taken) g_lk.on();
+    else if (!g_lk.tryon()) { s.pendHeld++; return 0; }
+    w.taken = 1;
+    w.stale = gen != g_busGen;
+    w.cfg = g_cfg;
+    ac_tune(w.cfg);
     if (g_testReq) { g_testReq = 0; s.testAt = 0; }
-    float music = g_music;
-    cfg.reverbGain *= g_rain;
-    memcpy(lp, g_lpos, sizeof lp); memcpy(lat, g_lat, sizeof lat); memcpy(lup, g_lup, sizeof lup);
+    w.music = g_music;
+    w.cfg.reverbGain *= g_rain;
+    memcpy(w.lp, g_lpos, sizeof w.lp); memcpy(w.lat, g_lat, sizeof w.lat); memcpy(w.lup, g_lup, sizeof w.lup);
+    memcpy(w.snap, g_slots, sizeof w.snap);
+    int restart[MaxSlots];
     for (int i = 0; i < MaxSlots; i++)
     {
-        Slot& sl = g_slots[i];
+        const Slot& sl = g_slots[i];
         Voice& v = g_voices[i];
-        snap[i] = sl;
-        if (sl.src && sl.gen != v.gen)
+        restart[i] = sl.src && sl.gen != v.gen;
+        if (restart[i] && v.blob != sl.blob) { blob_unref(v.blob); v.blob = sl.blob; if (v.blob) v.blob->refs++; }
+    }
+    // reflections are decided, and the room's IR taken, under the same lock the scene swap freezes them with:
+    // past this point no frame can pick up an IR the swap is about to reallocate
+    w.reflMode = w.cfg.enabled && !w.stale && !g_reflFreeze && (w.cfg.reflections == 1 || w.cfg.reflections == 2) ? w.cfg.reflections : 0;
+    w.roomValid = w.reflMode >= 1 && s.roomValid;
+    w.roomParams = s.roomParams;
+    g_reflHold = w.reflMode >= 1;
+    g_lk.off();
+    for (int i = 0; i < MaxSlots; i++)
+    {
+        const Slot& sl = w.snap[i];
+        Voice& v = g_voices[i];
+        if (restart[i])
         {
             v.gen = sl.gen;
-            if (v.blob != sl.blob) { blob_unref(v.blob); v.blob = sl.blob; if (v.blob) v.blob->refs++; }
             v.playing = v.blob != NULL;
             v.phase = v.blob && v.blob->frames ? (double)(sl.offset % v.blob->frames) : 0.0;
-            v.gainSm = 0.0f; v.dupSm = 1.0f; v.lpState = 0.0f; v.tailFrames = 0; v.fresh = 1;
+            v.gainSm = 0.0f; v.dupSm = 1.0f; v.lpState = 0.0f; v.fresh = 1;
+            v.tailDry = v.tailPath = v.tailRefl = 0;
             uint32_t r = sl.driftSeed | 1;
             v.lfoPhase = urand(&r) * 6.2831853f; v.lfoRate = 0.05f + urand(&r) * 0.15f;
-            if (cfg.shelfDb != 0.0f) shelf_design(&v.shelf, (float)s.rate, 5000.0f, cfg.shelfDb);
+            if (w.cfg.shelfDb != 0.0f) shelf_design(&v.shelf, (float)s.rate, 5000.0f, w.cfg.shelfDb);
             v.shelf.z1 = v.shelf.z2 = 0.0f;
             p_iplDirectEffectReset(v.direct); p_iplBinauralEffectReset(v.binaural);
             p_iplPanningEffectReset(v.panning); p_iplPathEffectReset(v.path);
         }
         if (!sl.src || sl.stopped) v.playing = 0;
     }
-    // reflections are decided, and the room's IR taken, under the same lock the scene swap freezes them with:
-    // past this point no frame can pick up an IR the swap is about to reallocate
-    int reflMode = cfg.enabled && !stale && !g_reflFreeze && (cfg.reflections == 1 || cfg.reflections == 2) ? cfg.reflections : 0;
-    int roomValid = reflMode >= 1 && s.roomValid;
-    IPLReflectionEffectParams roomParams = s.roomParams;
-    g_reflHold = reflMode >= 1;
+    return 1;
+}
+
+/// A scene swap asked for the IRs back and no frame is due to answer it: the ring is full, or OpenAL stopped asking.
+static void render_idle(void)
+{
+    if (!g_lk.tryon()) return;
+    if (g_reflFreeze) { g_reflHold = 0; g_view.reflMode = 0; }
     g_lk.off();
+}
+
+/// Hands the frame's results to the shared tables; a frame that finds the lock taken leaves them for the next.
+static void render_publish(double ms)
+{
+    Sa& s = g_sa;
+    if ((float)ms > s.pendMsMax) s.pendMsMax = (float)ms;
+    s.pendFrames++;
+    if (!g_lk.tryon()) return;
+    int live = 0;
+    for (int i = 0; i < MaxSlots; i++)
+    {
+        Voice& v = g_voices[i];
+        int active = v.playing || v.tailDry || v.tailPath || v.tailRefl;
+        if (v.playing) live++;
+        g_slots[i].busy = active;
+        if (!active && v.blob && (!g_slots[i].src || g_slots[i].blob != v.blob)) { blob_unref(v.blob); v.blob = NULL; }
+    }
+    g_stats.voices = live;
+    g_stats.frames += s.pendFrames;
+    g_stats.renderMsAvg += ((float)ms - g_stats.renderMsAvg) * 0.01f;
+    if (s.pendMsMax > g_stats.renderMsMax) g_stats.renderMsMax = s.pendMsMax;
+    if (s.pendMsMax > g_stats.renderMsPeak) g_stats.renderMsPeak = s.pendMsMax;
+    g_stats.lateFrames += s.pendLate;
+    g_stats.heldFrames += s.pendHeld;
+    s.pendMsMax = 0.0f; s.pendFrames = s.pendLate = s.pendHeld = 0;
+    g_lk.off();
+}
+
+/// A finished voice: what its effects still hold, read out through GetTail. The per-source IR's tail goes on only
+/// while the pool entry is still this voice's and the scene swap has not taken reflections back.
+static void render_tail(Voice& v, int i, int reflMode, int ri)
+{
+    Sa& s = g_sa;
+    IPLAudioBuffer out = view(s.tmp, s.busCh);
+    if (v.tailDry)
+    {
+        v.tailDry = p_iplBinauralEffectGetTail(v.binaural, &out) == IPL_AUDIOEFFECTSTATE_TAILREMAINING;
+        mix_into(&s.bus, &out, 1.0f);
+    }
+    if (v.tailPath)
+    {
+        v.tailPath = p_iplPathEffectGetTail(v.path, &out) == IPL_AUDIOEFFECTSTATE_TAILREMAINING;
+        mix_into(&s.bus, &out, v.tailPathMix);
+    }
+    if (v.tailRefl)
+    {
+        IPLAudioBuffer amb = view(s.amb, s.ambi);
+        v.tailRefl = reflMode == 2 && ri >= 0 && ri < MaxRefl && s.reflOwner[ri] == i
+            && p_iplReflectionEffectGetTail(s.refl[ri], &amb, s.mixer) == IPL_AUDIOEFFECTSTATE_TAILREMAINING;
+    }
+}
+
+/// One frame: the view refreshed if the lock is free, then every voice rendered with none held.
+static void render_frame(unsigned gen, float* dst)
+{
+    Sa& s = g_sa;
+    double t0 = cxa_now();
+    const int N = s.frame;
+    render_take(gen);
+    const RenderView& w = g_view;
+    const CxaConfig& cfg = w.cfg;
+    const float* lp = w.lp;
+    const float* lat = w.lat;
+    const float* lup = w.lup;
+    const Slot* snap = w.snap;
+    const float music = w.music;
+    const int stale = w.stale, reflMode = w.reflMode, roomValid = w.roomValid;
+    const IPLReflectionEffectParams roomParams = w.roomParams;
 
     zero(&s.bus);
     if (stale || !cfg.enabled)
     {
-        for (int i = 0; i < MaxSlots; i++) { g_voices[i].playing = 0; g_voices[i].tailFrames = 0; }
+        for (int i = 0; i < MaxSlots; i++) { Voice& v = g_voices[i]; v.playing = v.tailDry = v.tailPath = v.tailRefl = 0; }
     }
 
     // duplicates: the dupCap nearest copies of one sound stay, the rest fade out; copies in lockstep sum by power
@@ -857,11 +991,14 @@ static void render_frame(unsigned gen, float* dst)
     {
         Voice& v = g_voices[i];
         const Slot& sl = snap[i];
-        int live = v.playing || v.tailFrames > 0;
-        if (!live) continue;
+        if (!v.playing)
+        {
+            render_tail(v, i, reflMode, sl.simGen == sl.gen ? sl.reflIdx : -1);
+            continue;
+        }
         Blob* b = v.blob;
         float dupTarget = 1.0f;
-        if (b && v.playing)
+        if (b)
         {
             int locked = 1;
             for (int j = 0; j < MaxSlots; j++)
@@ -909,8 +1046,6 @@ static void render_frame(unsigned gen, float* dst)
             float a = 1.0f - expf(-6.2831853f * fc / (float)s.rate);
             for (int n = 0; n < N; n++) { v.lpState += a * (in[n] - v.lpState); in[n] = v.lpState; }
         }
-        if (v.playing) v.tailFrames = (int)(cfg.duration * s.rate / N) + 2;
-        else if (v.tailFrames > 0) v.tailFrames--;
 
         // direct path
         float d = dist[i];
@@ -949,8 +1084,8 @@ static void render_frame(unsigned gen, float* dst)
             IPLBinauralEffectParams bp;
             memset(&bp, 0, sizeof bp);
             bp.direction = dir; bp.spatialBlend = sl.group == GroupOwnSteps ? OwnStepsBlend : 1.0f; bp.hrtf = s.hrtf;
-            bp.interpolation = sl.looping ? IPL_HRTFINTERPOLATION_BILINEAR : IPL_HRTFINTERPOLATION_NEAREST;
-            p_iplBinauralEffectApply(v.binaural, &bp, &s.dry, &out);
+            bp.interpolation = IPL_HRTFINTERPOLATION_BILINEAR;
+            v.tailDry = p_iplBinauralEffectApply(v.binaural, &bp, &s.dry, &out) == IPL_AUDIOEFFECTSTATE_TAILREMAINING;
         }
         else
         {
@@ -969,7 +1104,7 @@ static void render_frame(unsigned gen, float* dst)
             rp.numChannels = s.ambi;
             rp.irSize = (int)ceilf(cfg.duration * (float)s.rate);
             IPLAudioBuffer amb = view(s.amb, s.ambi);
-            p_iplReflectionEffectApply(s.refl[ri], &rp, &s.in, &amb, s.mixer);
+            v.tailRefl = p_iplReflectionEffectApply(s.refl[ri], &rp, &s.in, &amb, s.mixer) == IPL_AUDIOEFFECTSTATE_TAILREMAINING;
         }
         else if (reflMode >= 1)
         {
@@ -987,7 +1122,8 @@ static void render_frame(unsigned gen, float* dst)
             pp.order = s.order; pp.binaural = s.binaural ? IPL_TRUE : IPL_FALSE; pp.hrtf = s.hrtf;
             pp.listener = listener_space(lp, lat, lup);
             pp.normalizeEQ = IPL_TRUE;
-            p_iplPathEffectApply(v.path, &pp, &s.in, &out);
+            v.tailPath = p_iplPathEffectApply(v.path, &pp, &s.in, &out) == IPL_AUDIOEFFECTSTATE_TAILREMAINING;
+            v.tailPathMix = pathMix;
             mix_into(&s.bus, &out, pathMix);
         }
     }
@@ -1037,7 +1173,7 @@ static void render_frame(unsigned gen, float* dst)
             {
                 IPLBinauralEffectParams bp;
                 memset(&bp, 0, sizeof bp);
-                bp.direction = TestDirs[seg]; bp.spatialBlend = 1.0f; bp.hrtf = s.hrtf; bp.interpolation = IPL_HRTFINTERPOLATION_NEAREST;
+                bp.direction = TestDirs[seg]; bp.spatialBlend = 1.0f; bp.hrtf = s.hrtf; bp.interpolation = IPL_HRTFINTERPOLATION_BILINEAR;
                 p_iplBinauralEffectApply(s.testBin, &bp, &s.in, &out);
             }
             else
@@ -1062,23 +1198,7 @@ static void render_frame(unsigned gen, float* dst)
         for (int c = 0; c < s.busCh; c++) dst[n * s.busCh + c] = s.bus.data[c][n] * s.comp;
     }
 
-    double ms = (cxa_now() - t0) * 1000.0;
-    g_lk.on();
-    g_reflHold = 0;
-    int live = 0;
-    for (int i = 0; i < MaxSlots; i++)
-    {
-        Voice& v = g_voices[i];
-        int active = v.playing || v.tailFrames > 0;
-        if (v.playing) live++;
-        g_slots[i].busy = active;
-        if (!active && v.blob && (!g_slots[i].src || g_slots[i].blob != v.blob)) { blob_unref(v.blob); v.blob = NULL; }
-    }
-    g_stats.voices = live;
-    g_stats.frames++;
-    g_stats.renderMsAvg += ((float)ms - g_stats.renderMsAvg) * 0.01f;
-    if ((float)ms > g_stats.renderMsMax) g_stats.renderMsMax = (float)ms;
-    g_lk.off();
+    render_publish((cxa_now() - t0) * 1000.0);
 }
 
 static Wake g_wake;
@@ -1101,6 +1221,8 @@ static ALsizei AL_APIENTRY bus_callback(ALvoid* user, ALvoid* data, ALsizei byte
         done += n; r += n;
     }
     cxa_st(&s.ringR, r);
+    int32_t left = (int32_t)(w - r);
+    if (left < cxa_ld(&s.ringLow)) cxa_st(&s.ringLow, left);
     if (done < want)
     {
         memset(o + (size_t)done * s.busCh, 0, sizeof(float) * (size_t)(want - done) * s.busCh);
@@ -1110,23 +1232,114 @@ static ALsizei AL_APIENTRY bus_callback(ALvoid* user, ALvoid* data, ALsizei byte
     return bytes;
 }
 
-/// "CX sound render": keeps the ring RingAhead frames ahead of the callback, until the exit latch.
-static void render_main()
+/// Renders until the ring holds its lead. A frame that starts with less than one mix pass left is a near miss.
+static void ring_fill(unsigned gen)
 {
     Sa& s = g_sa;
     const int64_t N = s.frame;
+    int64_t w = s.ringW;
+    for (;;)
+    {
+        int64_t level = w - cxa_ld(&s.ringR);
+        if (level >= cxa_ld(&s.lead) * N) break;
+        if (s.primed && level < MixPass) s.pendLate++;
+        render_frame(gen, s.ring + (size_t)(w % (N * RingFrames)) * s.busCh);
+        w += N;
+        cxa_st(&s.ringW, w);
+    }
+    s.primed = 1;
+}
+
+/// What the OS granted the render thread, for the [sound] line. A refusal is reported, never fatal.
+enum RenderPrio { PrioNone, PrioFifo, PrioNice, PrioRtKit, PrioMmcss, PrioTimeCritical };
+struct PrioTier { int prio; int (*raise)(void); };
+/// The first tier that takes, best first.
+static int prio_walk(const PrioTier* tiers, int n)
+{
+    for (int i = 0; i < n; i++) if (tiers[i].raise()) return tiers[i].prio;
+    return PrioNone;
+}
+
+#ifdef _WIN32
+typedef HANDLE (WINAPI* AvSetMmFn)(LPCWSTR, LPDWORD);
+/// What OpenAL's own WASAPI mixer does, with its task name for a period of 10 ms or more (wasapi.cpp:1259-1276, 1.25.2).
+static int raise_mmcss(void)
+{
+    HMODULE avrt = LoadLibraryW(L"avrt.dll");
+    AvSetMmFn set = avrt ? (AvSetMmFn)GetProcAddress(avrt, "AvSetMmThreadCharacteristicsW") : NULL;
+    DWORD index = 0;
+    if (!set || !set(L"Audio", &index)) return 0;
+    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
+    return 1;
+}
+static int raise_critical(void) { return SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL) != 0; }
+static const PrioTier g_prioTiers[] = { { PrioMmcss, raise_mmcss }, { PrioTimeCritical, raise_critical } };
+#else
+/// The niceness asked of the kernel or of RTKit when SCHED_FIFO is refused; RTKit's stock floor is -15.
+static const int NiceBoost = -10;
+static int raise_fifo(void)
+{
+    struct sched_param p;
+    memset(&p, 0, sizeof p);
+    p.sched_priority = 1;
+    return pthread_setschedparam(pthread_self(), SCHED_FIFO | SCHED_RESET_ON_FORK, &p) == 0;
+}
+static int raise_nice(void) { return setpriority(PRIO_PROCESS, (id_t)syscall(SYS_gettid), NiceBoost) == 0; }
+/// RTKit's MakeThreadHighPriority over libdbus, opened by name since the game does not link it. Desktops give a
+/// plain user no RLIMIT_RTPRIO or RLIMIT_NICE, so this is the tier most of them reach. Blocks up to a second.
+static int raise_rtkit(void)
+{
+    void* lib = dlopen("libdbus-1.so.3", RTLD_NOW | RTLD_LOCAL);
+    if (!lib) return 0;
+    auto err_init = (void (*)(void*))dlsym(lib, "dbus_error_init");
+    auto err_free = (void (*)(void*))dlsym(lib, "dbus_error_free");
+    auto bus_get = (void* (*)(int, void*))dlsym(lib, "dbus_bus_get_private");
+    auto no_exit = (void (*)(void*, unsigned))dlsym(lib, "dbus_connection_set_exit_on_disconnect");
+    auto close_ = (void (*)(void*))dlsym(lib, "dbus_connection_close");
+    auto conn_unref = (void (*)(void*))dlsym(lib, "dbus_connection_unref");
+    auto call = (void* (*)(const char*, const char*, const char*, const char*))dlsym(lib, "dbus_message_new_method_call");
+    auto args = (unsigned (*)(void*, int, ...))dlsym(lib, "dbus_message_append_args");
+    auto send = (void* (*)(void*, void*, int, void*))dlsym(lib, "dbus_connection_send_with_reply_and_block");
+    auto msg_unref = (void (*)(void*))dlsym(lib, "dbus_message_unref");
+    if (!err_init || !err_free || !bus_get || !no_exit || !close_ || !conn_unref || !call || !args || !send || !msg_unref) return 0;
+    char err[128];   // a DBusError, which the caller owns; this is comfortably past its size
+    err_init(err);
+    enum { BusSystem = 1, TypeInvalid = 0, TypeInt32 = 'i', TypeUint64 = 't' };
+    void* conn = bus_get(BusSystem, err);
+    int ok = 0;
+    if (conn)
+    {
+        no_exit(conn, 0);
+        void* m = call("org.freedesktop.RealtimeKit1", "/org/freedesktop/RealtimeKit1", "org.freedesktop.RealtimeKit1", "MakeThreadHighPriority");
+        uint64_t tid = (uint64_t)syscall(SYS_gettid);
+        int32_t nice_ = NiceBoost;
+        if (m && args(m, TypeUint64, &tid, TypeInt32, &nice_, TypeInvalid))
+        {
+            void* reply = send(conn, m, 1000, err);
+            if (reply) { ok = 1; msg_unref(reply); }
+        }
+        if (m) msg_unref(m);
+        close_(conn);
+        conn_unref(conn);
+    }
+    err_free(err);
+    return ok;
+}
+static const PrioTier g_prioTiers[] = { { PrioFifo, raise_fifo }, { PrioNice, raise_nice }, { PrioRtKit, raise_rtkit } };
+#endif
+
+/// "CX sound render": raises itself, then keeps the ring its lead ahead of the callback, until the exit latch.
+static void render_main()
+{
+    int prio = prio_walk(g_prioTiers, (int)(sizeof g_prioTiers / sizeof g_prioTiers[0]));
+    g_lk.on();
+    g_stats.renderPrio = prio;
+    g_lk.off();
     while (!cxa_ld(&g_stop))
     {
         cxa_inc(&g_inside);
-        unsigned gen = cxa_ld(&g_busGen);
-        int64_t w = s.ringW;
-        while (w - cxa_ld(&s.ringR) < RingAhead * N)
-        {
-            render_frame(gen, s.ring + (size_t)(w % (N * RingFrames)) * s.busCh);
-            w += N;
-            cxa_st(&s.ringW, w);
-        }
-        s.primed = 1;
+        ring_fill(cxa_ld(&g_busGen));
+        render_idle();
         cxa_dec(&g_inside);
         g_wake.wait(5);
     }
@@ -1230,6 +1443,14 @@ static int device_channels(ALCdevice* dev)
     }
 }
 
+/// Fits the render's lead to the device's mix period, which ALC_REFRESH gives as rate / period (alc.cpp:2403, 1.25.2).
+static void ring_fit(ALCdevice* dev)
+{
+    ALCint refresh = 0;
+    p_alcGetIntegerv(dev, ALC_REFRESH, 1, &refresh);
+    cxa_st(&g_sa.lead, (int32_t)ring_lead(g_sa.frame, refresh > 0 ? g_sa.rate / refresh : MixPass));
+}
+
 static int g_busFailed;
 static void bus_open(ALCcontext* ctx)
 {
@@ -1253,6 +1474,7 @@ static void bus_open(ALCcontext* ctx)
     if (!g_sa.ready)
     {
         if (!sa_init(rate, ch, binaural)) return;
+        ring_fit(dev);
         g_wake.init();
         if (!start_thread()) { g_sa.ready = 0; set_err("the render thread failed to start"); return; }
         cxa_st(&g_renderLive, 1);
@@ -1294,6 +1516,7 @@ static void bus_open(ALCcontext* ctx)
     g_stats.busOpen = err == AL_NO_ERROR;
     g_stats.busRate = g_sa.rate; g_stats.busChannels = g_sa.busCh;
     g_lk.off();
+    ring_fit(dev);
     if (err != AL_NO_ERROR) set_err("the bus source refused to start (alGetError after alSourcePlay)");
     else g_busFailed = 0;
 }
@@ -1569,12 +1792,14 @@ static void scene_install(float* verts, int nv, int32_t* tris, int nt, int bake,
                 // one bake per area: a re-send (late placeables) keeps the probes the first one is baking
                 if (bake)
                 {
+                    IPLScene retained = p_iplSceneRetain(scene);
                     g_lk.on();
-                    if (g_bakeScene) p_iplSceneRelease(&g_bakeScene);
-                    g_bakeScene = p_iplSceneRetain(scene);
+                    IPLScene old = g_bakeScene;
+                    g_bakeScene = retained;
                     g_bakeMin = lo; g_bakeMax = hi;
                     if (g_baking) p_iplPathBakerCancelBake(s.ctx);
                     g_lk.off();
+                    if (old) p_iplSceneRelease(&old);
                 }
             }
             else p_iplSceneRelease(&scene);
@@ -1779,12 +2004,29 @@ static void sim_tick(void)
 // ---- the pathing bake (CX's "CX sound bake" thread) ----
 static void IPLCALL bake_progress(IPLfloat32 p, void* u) { (void)p; (void)u; }
 
+/// Frees the blobs blob_unref queued, with the lock let go first. Sim thread.
+static void blob_drain(void)
+{
+    g_lk.on();
+    Blob* b = g_deadBlobs;
+    g_deadBlobs = NULL;
+    g_lk.off();
+    while (b)
+    {
+        Blob* next = b->nextDead;
+        free(b->pcm);
+        free(b);
+        b = next;
+    }
+}
+
 /// "CX sound sim", every 15 ms: one simulation tick, unless the exit latch is set. The in-core count is what
 /// cxa_shutdown waits on, so the thread is never inside Steam Audio once the call returns.
 CX_EXPORT void cxa_sim_tick(void)
 {
     if (cxa_ld(&g_stop)) return;
     cxa_inc(&g_inside);
+    blob_drain();
     sim_tick();
     cxa_dec(&g_inside);
 }
@@ -1839,17 +2081,19 @@ static int32_t bake_tick(void)
     }
     if (arr) p_iplProbeArrayRelease(&arr);
     p_iplSceneRelease(&scene);
+    IPLProbeBatch replaced = NULL;
     g_lk.on();
     int superseded = g_bakeScene != NULL;
     g_baking = 0;
     if (ok && !superseded)
     {
-        if (g_bakeDone) p_iplProbeBatchRelease(&g_bakeDone);
+        replaced = g_bakeDone;
         g_bakeDone = batch; batch = NULL;
         g_stats.probes = n; g_stats.bakeState = 2;
     }
     else if (!superseded) g_stats.bakeState = n == 0 ? 3 : 0;
     g_lk.off();
+    if (replaced) p_iplProbeBatchRelease(&replaced);
     if (batch) p_iplProbeBatchRelease(&batch);
     return 1;
 }
@@ -1992,6 +2236,7 @@ CX_EXPORT void cxa_device(int32_t hrtf, int32_t limiter, float master, int32_t c
     {
         ALCint a[] = { ALC_HRTF_SOFT, g_devHrtf, ALC_OUTPUT_LIMITER_SOFT, g_devLimiter, ALC_OUTPUT_MODE_SOFT, g_devMode, 0 };
         p_alcResetDeviceSOFT(g_busDev, a);
+        ring_fit(g_busDev);
     }
     if (live && g_busCtx && p_alListenerf) p_alListenerf(AL_GAIN, master);
 }
@@ -2092,13 +2337,15 @@ CX_EXPORT int32_t cxa_scene(const float* verts, int32_t nv, const int32_t* tris,
         memcpy(t, tris, sizeof(int32_t) * 3 * (size_t)nt);
     }
     g_lk.on();
-    free(g_pendVerts); free(g_pendTris);
+    float* oldV = g_pendVerts;
+    int32_t* oldT = g_pendTris;
     // bake is sticky while a set waits: a send that overtakes the area edge's must not swallow the edge's
     // probe teardown, or the new area paths through the last one's probes
     g_pendBake = g_pendSet ? (g_pendBake || bake) : bake;
     g_pendVerts = v; g_pendTris = t; g_pendNv = v ? nv : 0; g_pendNt = t ? nt : 0; g_pendSet = 1;
     g_pendMat = material >= 0 && material < AcMatCount ? material : 0;
     g_lk.off();
+    free(oldV); free(oldT);
     return 1;
 }
 
@@ -2109,6 +2356,9 @@ CX_EXPORT void cxa_stats(CxaStats* out)
     g_stats.renderMsMax = 0.0f;
     g_stats.captureMsMax = 0.0f;
     g_lk.off();
+    out->ringLow = cxa_ld(&g_sa.ringLow);
+    out->ringLead = cxa_ld(&g_sa.lead);
+    cxa_st(&g_sa.ringLow, INT32_MAX);
 }
 
 CX_EXPORT int32_t cxa_error(char* buf, int32_t len)
@@ -2129,6 +2379,83 @@ CX_EXPORT int32_t cxa_describe(char* buf, int32_t len)
 }
 
 // ---- SelfCheck: the pure pieces, headless ----
+/// Stand-ins for the Steam Audio calls render_frame makes, so its decisions run with no library loaded. They count
+/// calls and hand back what the phonon.h contract allows; the audio itself is not what these checks look at.
+struct FakeIpl { int direct, binaural, binauralTail, reflApply, reflTail, tailsLeft, interp; };
+static FakeIpl g_fake;
+static IPLAudioEffectState IPLCALL fake_direct(IPLDirectEffect, IPLDirectEffectParams*, IPLAudioBuffer*, IPLAudioBuffer*) { g_fake.direct++; return IPL_AUDIOEFFECTSTATE_TAILCOMPLETE; }
+static IPLAudioEffectState IPLCALL fake_binaural(IPLBinauralEffect, IPLBinauralEffectParams* p, IPLAudioBuffer*, IPLAudioBuffer*) { g_fake.binaural++; g_fake.interp = (int)p->interpolation; return IPL_AUDIOEFFECTSTATE_TAILREMAINING; }
+static IPLAudioEffectState IPLCALL fake_binaural_tail(IPLBinauralEffect, IPLAudioBuffer*) { g_fake.binauralTail++; return --g_fake.tailsLeft > 0 ? IPL_AUDIOEFFECTSTATE_TAILREMAINING : IPL_AUDIOEFFECTSTATE_TAILCOMPLETE; }
+static IPLAudioEffectState IPLCALL fake_refl(IPLReflectionEffect, IPLReflectionEffectParams*, IPLAudioBuffer*, IPLAudioBuffer*, IPLReflectionMixer) { g_fake.reflApply++; return IPL_AUDIOEFFECTSTATE_TAILREMAINING; }
+static IPLAudioEffectState IPLCALL fake_refl_tail(IPLReflectionEffect, IPLAudioBuffer*, IPLReflectionMixer) { g_fake.reflTail++; return g_fake.reflTail < 3 ? IPL_AUDIOEFFECTSTATE_TAILREMAINING : IPL_AUDIOEFFECTSTATE_TAILCOMPLETE; }
+static IPLAudioEffectState IPLCALL fake_mixer(IPLReflectionMixer, IPLReflectionEffectParams*, IPLAudioBuffer*) { return IPL_AUDIOEFFECTSTATE_TAILCOMPLETE; }
+static IPLAudioEffectState IPLCALL fake_decode(IPLAmbisonicsDecodeEffect, IPLAmbisonicsDecodeEffectParams*, IPLAudioBuffer*, IPLAudioBuffer*) { return IPL_AUDIOEFFECTSTATE_TAILCOMPLETE; }
+static void IPLCALL fake_reset_direct(IPLDirectEffect) {}
+static void IPLCALL fake_reset_binaural(IPLBinauralEffect) {}
+static void IPLCALL fake_reset_panning(IPLPanningEffect) {}
+static void IPLCALL fake_reset_path(IPLPathEffect) {}
+static void IPLCALL fake_reset_refl(IPLReflectionEffect) {}
+static int prio_no(void) { return 0; }
+static int prio_yes(void) { return 1; }
+
+enum { FakeFrame = 512, FakeBusCh = 2 };
+/// Stands the render up on the stand-ins: one mono buffer each for the voice and the reflections, a stereo bus.
+static float* fake_render_up(void)
+{
+    Sa& s = g_sa;
+    memset(&g_fake, 0, sizeof g_fake);
+    static float* in[1], *dry[1], *room[1], *amb[1], *bus[FakeBusCh], *tmp[FakeBusCh];
+    float* pool = (float*)calloc((size_t)FakeFrame * (8 + FakeBusCh * RingFrames), sizeof(float));
+    float** chans[] = { in, dry, room, amb };
+    float* at = pool;
+    for (float** c : chans) { c[0] = at; at += FakeFrame; }
+    bus[0] = at; at += FakeFrame; bus[1] = at; at += FakeFrame;
+    tmp[0] = at; at += FakeFrame; tmp[1] = at; at += FakeFrame;
+    s.ring = at;
+    s.frame = FakeFrame; s.rate = 48000; s.busCh = FakeBusCh; s.binaural = 1; s.ambi = 1; s.order = 1;
+    s.in.numChannels = s.dry.numChannels = s.roomIn.numChannels = s.amb.numChannels = 1;
+    s.in.numSamples = s.dry.numSamples = s.roomIn.numSamples = s.amb.numSamples = FakeFrame;
+    s.in.data = in; s.dry.data = dry; s.roomIn.data = room; s.amb.data = amb;
+    s.bus.numChannels = s.tmp.numChannels = FakeBusCh;
+    s.bus.numSamples = s.tmp.numSamples = FakeFrame;
+    s.bus.data = bus; s.tmp.data = tmp;
+    s.lead = 4; s.ringLow = INT32_MAX; s.duck = 1.0f; s.comp = 1.0f; s.testAt = -1;
+    for (int i = 0; i < MaxRefl; i++) s.reflOwner[i] = -1;
+    p_iplDirectEffectApply = fake_direct; p_iplBinauralEffectApply = fake_binaural; p_iplBinauralEffectGetTail = fake_binaural_tail;
+    p_iplReflectionEffectApply = fake_refl; p_iplReflectionEffectGetTail = fake_refl_tail; p_iplReflectionEffectReset = fake_reset_refl;
+    p_iplReflectionMixerApply = fake_mixer; p_iplAmbisonicsDecodeEffectApply = fake_decode;
+    p_iplDirectEffectReset = fake_reset_direct; p_iplBinauralEffectReset = fake_reset_binaural;
+    p_iplPanningEffectReset = fake_reset_panning; p_iplPathEffectReset = fake_reset_path;
+    g_cfg.enabled = 1; g_cfg.duration = 2.0f; g_cfg.dupCap = 0; g_cfg.reverbGain = 1.0f;
+    g_busGen = 1;
+    return pool;
+}
+/// Every table the stand-in render touched, back to what a boot before cxa_bind expects.
+static void fake_render_down(float* pool)
+{
+    free(pool);
+    memset(&g_sa, 0, sizeof g_sa); memset(&g_view, 0, sizeof g_view); memset(g_voices, 0, sizeof g_voices);
+    memset(g_slots, 0, sizeof g_slots); memset(&g_stats, 0, sizeof g_stats); memset(&g_cfg, 0, sizeof g_cfg);
+    g_busGen = 0; g_reflHold = 0; g_reflFreeze = 0;
+    p_iplDirectEffectApply = NULL; p_iplBinauralEffectApply = NULL; p_iplBinauralEffectGetTail = NULL;
+    p_iplReflectionEffectApply = NULL; p_iplReflectionEffectGetTail = NULL; p_iplReflectionEffectReset = NULL;
+    p_iplReflectionMixerApply = NULL; p_iplAmbisonicsDecodeEffectApply = NULL;
+    p_iplDirectEffectReset = NULL; p_iplBinauralEffectReset = NULL;
+    p_iplPanningEffectReset = NULL; p_iplPathEffectReset = NULL;
+}
+/// Starts a one-shot of <paramref name="samples"/> samples on slot 0, the way sh_alSourcePlay would.
+static void fake_start(int samples, int reflIdx)
+{
+    int16_t* pcm = (int16_t*)calloc((size_t)samples, sizeof(int16_t));
+    Blob* b = blob_make(AL_FORMAT_MONO16, pcm, samples * (int)sizeof(int16_t), 48000);
+    free(pcm);
+    Slot& sl = g_slots[0];
+    memset(&sl, 0, sizeof sl);
+    sl.src = 7; sl.gen = 1; sl.blob = b; sl.pitch = 1.0f; sl.gain = 1.0f; sl.nearD = 1.0f; sl.farD = 30.0f;
+    sl.reflIdx = reflIdx; sl.simGen = 1;
+    if (reflIdx >= 0) sl.refl.ir = (IPLReflectionEffectIR)(uintptr_t)1;
+}
+
 #define CXA_EXPECT(c, what) do { if (!(c)) { snprintf(msg, (size_t)len, "%s", what); return 0; } } while (0)
 static int near_(float a, float b, float e) { return fabsf(a - b) <= e; }
 
@@ -2230,6 +2557,121 @@ CX_EXPORT int32_t cxa_selfcheck(char* msg, int32_t len)
     cxa_environment(-1);
     cxa_music(0.0f);
     CXA_EXPECT(!cxa_stopped() && g_envRow == -1 && g_music == 0.0f, "unlatched, the same two calls land");
+    // the lead: two mixer passes' worth of frames. Oracle: hand-worked literals
+    CXA_EXPECT(ring_lead(512, 480) == 4 && ring_lead(512, 1024) == 4, "a period under one mix pass leads by two passes");
+    CXA_EXPECT(ring_lead(512, 2048) == 8, "a long device period grows the lead");
+    CXA_EXPECT(ring_lead(1024, 1024) == 2, "a double-size frame halves the frame count");
+    CXA_EXPECT(ring_lead(512, 1000000) == RingFrames, "the lead stops at the ring's capacity");
+    // the priority tiers: the first that takes wins and nothing after it runs. Oracle: literal tier numbers
+    const PrioTier noYes[] = { { 1, prio_no }, { 2, prio_yes }, { 3, prio_no } };
+    const PrioTier allNo[] = { { 1, prio_no }, { 2, prio_no } };
+    CXA_EXPECT(prio_walk(noYes, 3) == 2, "priority falls to the first tier that takes");
+    CXA_EXPECT(prio_walk(allNo, 2) == PrioNone, "every tier refused reads as none");
+
+    // the render on stand-ins for Steam Audio. Oracle: call counts worked out by hand from one 100-sample one-shot
+    // inside a 512-sample frame
+    {
+        float* pool = fake_render_up();
+        Sa& s = g_sa;
+        g_cfg.reflections = 1;
+        fake_start(100, -1);
+        g_fake.tailsLeft = 2;
+        ring_fill(1);
+        CXA_EXPECT(s.ringW == 4 * FakeFrame, "the render fills exactly its lead");
+        CXA_EXPECT(g_fake.direct == 1 && g_fake.binaural == 1, "a finished one-shot runs no effect over silence");
+        CXA_EXPECT(g_fake.binauralTail == 2, "the HRTF's tail reads out through GetTail until it is done");
+        CXA_EXPECT(g_fake.interp == IPL_HRTFINTERPOLATION_BILINEAR, "one-shots take bilinear HRTF");
+        CXA_EXPECT(!g_slots[0].busy, "under the room reverb a finished voice frees its slot with its HRTF tail");
+        CXA_EXPECT(s.primed && g_stats.lateFrames == 0, "the first fill is not a late frame");
+
+        // the queue: the render's release frees nothing until the sim thread drains it
+        g_slots[0].src = 0;
+        Blob* held = g_slots[0].blob;
+        g_slots[0].blob = NULL;
+        blob_unref(held);
+        s.ringR = FakeFrame;
+        ring_fill(1);
+        CXA_EXPECT(g_voices[0].blob == NULL && g_deadBlobs == held, "the render queues the last release and frees nothing");
+        blob_drain();
+        CXA_EXPECT(g_deadBlobs == NULL, "the sim thread's drain empties the queue");
+
+        // near misses and the low-water mark: 2048 ready, a callback takes 1536, 512 left is under one mix pass
+        float sink[1536 * FakeBusCh];
+        s.ringR = 0; s.ringW = 2048;
+        bus_callback((ALvoid*)(uintptr_t)1, sink, (ALsizei)sizeof sink);
+        CXA_EXPECT(s.ringLow == 512 && g_stats.underruns == 0, "a callback records what it left in the ring");
+        s.ringLow = 100; s.ringR = 0; s.ringW = 2048;
+        bus_callback((ALvoid*)(uintptr_t)1, sink, (ALsizei)sizeof sink);
+        CXA_EXPECT(s.ringLow == 100, "the low-water mark only goes down");
+        s.ringLow = 512; s.ringR = 0; s.ringW = 2048;
+        bus_callback((ALvoid*)(uintptr_t)1, sink, (ALsizei)sizeof sink);
+        ring_fill(1);
+        CXA_EXPECT(g_stats.lateFrames == 1, "a frame started under one mix pass counts as late, and only the first");
+        s.ringR = s.ringW;
+        bus_callback((ALvoid*)(uintptr_t)1, sink, (ALsizei)sizeof sink);
+        CXA_EXPECT(g_stats.underruns == 1, "an empty ring is an underrun");
+
+        // the peak outlives a read, the interval's max does not
+        CxaStats st;
+        g_stats.renderMsMax = 40.0f; g_stats.renderMsPeak = 40.0f;
+        cxa_stats(&st);
+        CXA_EXPECT(st.renderMsMax == 40.0f && g_stats.renderMsMax == 0.0f && g_stats.renderMsPeak == 40.0f, "a read clears the max and keeps the peak");
+        CXA_EXPECT(st.ringLead == 4 && st.ringLow == 0 && s.ringLow == INT32_MAX, "a read reports the lead and restarts the low-water mark");
+
+        // the lock: a frame that finds it taken replays its view and keeps its IR guard up
+        g_view.taken = 1; g_view.reflMode = 1; g_reflHold = 1;
+        g_view.snap[3].gain = 0.25f;
+        g_slots[3].gain = 0.75f;
+        int heldBefore = s.pendHeld;
+        g_lk.on();
+        int took = render_take(1);
+        g_lk.off();
+        CXA_EXPECT(!took && s.pendHeld == heldBefore + 1 && g_view.snap[3].gain == 0.25f && g_reflHold == 1, "a taken lock does not stop a frame, and the view stands");
+        CXA_EXPECT(render_take(1) && g_view.snap[3].gain == 0.75f, "the next free lock refreshes the view");
+        // a scene swap: the next snapshot answers it, or the idle pass when no frame is due
+        g_reflFreeze = 1;
+        CXA_EXPECT(render_take(1) && g_view.reflMode == 0 && g_reflHold == 0, "a frozen scene takes the frame's reflections and lowers the guard");
+        g_reflHold = 1; g_view.reflMode = 1;
+        render_idle();
+        CXA_EXPECT(g_reflHold == 0 && g_view.reflMode == 0, "the idle pass answers a scene swap");
+        g_reflFreeze = 0;
+        fake_render_down(pool);
+
+        // the per-source IR rings on through its own GetTail while the pool entry is the voice's
+        pool = fake_render_up();
+        g_cfg.reflections = 2;
+        fake_start(100, 1);
+        g_fake.tailsLeft = 1;
+        ring_fill(1);
+        CXA_EXPECT(g_fake.reflApply == 1 && g_fake.reflTail == 3, "a per-source tail reads out through GetTail, with no apply over silence");
+        CXA_EXPECT(g_fake.direct == 1 && g_fake.binaural == 1, "the direct path stops when the sound does, whatever the reflections do");
+        CXA_EXPECT(!g_slots[0].busy, "the slot frees when the last tail is done");
+        fake_render_down(pool);
+
+        // a tail in progress holds its slot, and ends when its pool entry moves on or a scene swap takes reflections
+        float* frame = NULL;
+        pool = fake_render_up();
+        frame = g_sa.ring;
+        g_cfg.reflections = 2;
+        fake_start(100, 1);
+        render_frame(1, frame);
+        render_frame(1, frame);
+        CXA_EXPECT(g_fake.reflTail == 1 && g_slots[0].busy, "a voice still ringing keeps its slot");
+        g_sa.reflOwner[1] = 5;
+        render_frame(1, frame);
+        CXA_EXPECT(g_fake.reflTail == 1 && !g_slots[0].busy, "a pool entry given to another voice ends the tail");
+        fake_render_down(pool);
+        pool = fake_render_up();
+        frame = g_sa.ring;
+        g_cfg.reflections = 2;
+        fake_start(100, 1);
+        render_frame(1, frame);
+        g_reflFreeze = 1;
+        render_frame(1, frame);
+        CXA_EXPECT(g_fake.reflTail == 0 && !g_slots[0].busy, "a scene swap ends the tail: its IR is about to go");
+        fake_render_down(pool);
+        blob_drain();
+    }
     snprintf(msg, (size_t)len, "ok");
     return 1;
 }

@@ -58,6 +58,8 @@ internal static unsafe class SoundCore
         public long Frames;
         public float RenderMsAvg, RenderMsMax, SimMsAvg, ReflMsAvg, CaptureMsMax;
         public int Underruns;
+        public float RenderMsPeak;
+        public int LateFrames, HeldFrames, RingLow, RingLead, RenderPrio;
     }
 
     [DllImport(Lib)] internal static extern int cxa_bind(IntPtr phonon, IntPtr openal);
