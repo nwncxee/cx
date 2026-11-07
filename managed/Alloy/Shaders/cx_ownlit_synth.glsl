@@ -128,17 +128,18 @@ void main()
     if (uViz == 22) { frag = vec4((slots & CX_SLOT_NORMAL) != 0 ? vec3(1.0, 0.0, 1.0) : vec3(0.25), 1.0); return; }
     // A pass that discards on coverage asks it of a plain diffuse (no env, no PLT) here,
     // ahead of the maps, SSAO and the sun's taps. Uniform-gated: opaque skips it.
-    // CX-303: not in a content stage's program -- its setup stand-in makes the stock stage's own cut (cx_constd_f).
-    // The full test below reuses this alpha: a sample taken after the discard picks its mip from undefined quad
-    // derivatives, drops edge texels the depth prepass kept, and leaves the clear colour in their holes.
+    // CX-303: a content stage's program samples but does not cut -- its setup stand-in makes the stock stage's own cut (cx_constd_f).
+    // Every later test reuses this alpha, the one the depth prepass tested: a sample taken after the discard picks its
+    // mip from undefined quad derivatives, the colour taps read a finer footprint off the pixel's centre, and either
+    // drops edge texels the prepass kept, which leaves the clear colour in their holes.
     float earlyA = -1.0;
-#ifndef CX_CONTENT_PROGRAM
     if ((uAlphaCut >= 0.0 || uOit != 0 || uSolid != 0) && (slots & CX_SLOT_ENV) == 0 && !CxPltOn(vDraw))
     {
         earlyA = texture(uTex, vUV, uLodBias).a;
+#ifndef CX_CONTENT_PROGRAM
         if (CxCoverCut(earlyA, d.rot.w)) discard;
-    }
 #endif
+    }
     vec2 uv = vUV;
     // A displaced coordinate's derivatives jump with the relief, so every material tap takes the surface's footprint
     vec2 tapDx = du1 * exp2(uLodBias), tapDy = du2 * exp2(uLodBias);

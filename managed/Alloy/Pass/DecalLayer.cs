@@ -106,6 +106,8 @@ internal static unsafe class DecalLayer
         check.Expect(synth.IndexOf("if (earlyA >= 0.0) texel.a = earlyA;") is > 0 and var reuse
           && reuse > synth.IndexOf("vec4 texel = ") && reuse < synth.IndexOf("float coverage = "),
           "the full cut tests the alpha sampled before the early discard, the one the depth prepass tested");
+        check.Expect(synth.Contains("earlyA = texture(uTex, vUV, uLodBias).a;\n#ifndef CX_CONTENT_PROGRAM\n"),
+          "a content stage's program takes that sample too: its cut must test the alpha its depth prepass tested");
         log.Info(check.Ok ? "DecalLayer.SelfCheck: passed" : "DecalLayer.SelfCheck: FAILED");
     }
 }
