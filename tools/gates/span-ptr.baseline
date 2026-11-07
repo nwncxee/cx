@@ -9,7 +9,7 @@
 2 managed/Alloy/Db/PltVerify.cs
 1 managed/Alloy/Db/TexRegistry.Cycle.cs
 6 managed/Alloy/Db/TexRegistry.Load.cs
-2 managed/Alloy/Db/TexRegistry.Vk.cs
+1 managed/Alloy/Db/TexRegistry.Vk.cs
 1 managed/Alloy/Db/TextFontBake.cs
 3 managed/Alloy/DdsReader.cs
 2 managed/Alloy/DdsReader.Formats.cs

@@ -17,6 +17,10 @@ internal static unsafe partial class LightmapBake
     private const int VkCubes = 8;
 
     /// <summary>Everything the Vulkan bake owns on one device, replaced whole with the device.</summary>
+    /// <summary>Frames with no bake or readback before their memory goes back: long enough that a player walking
+    /// into new rects does not remake it for each.</summary>
+    private const int ScratchIdleFrames = 600;
+
     private sealed class BakeVkState
     {
         public VkBackend? Dev;
@@ -34,6 +38,9 @@ internal static unsafe partial class LightmapBake
         public long ReadBytes;
         public int ReadGen;
         public bool ReadQueued, Draining;
+        /// <summary>The bake's scratch planes and blocks exist, and the frames since anything last needed them.</summary>
+        public bool Scratched;
+        public int ScratchIdle;
         /// <summary>The light steps the shadow bracket queued cubes for: page, first light, static set, and each
         /// step's light index into the set.</summary>
         public readonly int[] QLight = new int[VkCubes];
@@ -108,6 +115,8 @@ internal static unsafe partial class LightmapBake
         try
         {
             RunInner(frame);
+            if (_bakePage >= 0 || _vkb.ReadQueued || _vkb.Draining) _vkb.ScratchIdle = 0;
+            else if (++_vkb.ScratchIdle >= ScratchIdleFrames) VkFreeScratch();
             // the pages leave this slot readable: a lit bind inside the colour pass cannot place their barrier
             BakeVkState s = _vkb;
             if (s.Layers > 0) cl.ReadImages([s.PageA, s.PageB, s.PageC]);
@@ -115,7 +124,7 @@ internal static unsafe partial class LightmapBake
         finally { _vkb.Cl = null; _allocRun += GC.GetAllocatedBytesForCurrentThread() - a0; }
     }
 
-    /// <summary>The scratch planes, the block images and the programs, once per device. Any refusal latches the bake
+    /// <summary>The sampler, the record buffer and the programs, once per device. Any refusal latches the bake
     /// off for the session with its reason; a cached bake is not read either, the pool being part of the build.</summary>
     private static bool VkEnsure()
     {
@@ -124,23 +133,53 @@ internal static unsafe partial class LightmapBake
         if (s.Built) return true;
         VkBackend vk = s.Dev!;
         if (!AlloyRenderer.VkLmReady(vk, _log!)) { s.Failed = true; return _down.Fail(_log, "the Vulkan bake or encoder program was refused", "every surface keeps the real-time loop"); }
+        s.Clamp = vk.CreateSampler(new SamplerDesc(Filter.Linear, Filter.Linear, MipMode.Nearest, Wrap.Clamp));
+        s.Chart = vk.CreateBuffer(new BufferDesc((long)_rec.Length * 4, BufferUse.Storage, MemoryKind.Upload, "vk lightmap records"));
+        if (s.Clamp.IsNull || s.Chart.IsNull)
+        {
+            s.Failed = true;
+            return _down.Fail(_log, "the Vulkan record buffer could not be allocated (out of video memory?)", "every surface keeps the real-time loop");
+        }
+        s.Built = true;
+        _log?.Info($"LightmapBake: armed on Vulkan -- page pool up to lightmap.vram {Lightmap.Vram.V} MiB, {VkCubes} scratch cubes, "
+                 + $"{Math.Min(Hold ? HoldLightsPerFrame : BackgroundLightsPerFrame, VkCubes)} light steps per frame");
+        return true;
+    }
+
+    /// <summary>A page is opening: the scratch planes and block images, made if the last ones were let go.</summary>
+    private static bool VkScratch()
+    {
+        BakeVkState s = _vkb;
+        s.ScratchIdle = 0;
+        if (s.Scratched) return true;
+        VkBackend vk = s.Dev!;
         s.ScrA = VkImage(vk, ImageKind.Tex2D, Format.Rgba16F, PageSize, 1, ImageUse.ColorTarget | ImageUse.Sampled, "vk lightmap scratch A");
         s.ScrB = VkImage(vk, ImageKind.Tex2D, Format.Rgba16F, PageSize, 1, ImageUse.ColorTarget | ImageUse.Sampled, "vk lightmap scratch B");
         s.ScrC = VkImage(vk, ImageKind.Tex2D, Format.Rgba16F, PageSize, 1, ImageUse.ColorTarget | ImageUse.Sampled, "vk lightmap scratch C");
         s.ScrZ = VkImage(vk, ImageKind.Tex2D, Format.D16, PageSize, 1, ImageUse.DepthTarget, "vk lightmap scratch depth");
         s.BlkA = VkImage(vk, ImageKind.Tex2D, Format.Rgba32Ui, PageSize / Block, 1, ImageUse.Storage | ImageUse.CopySrc, "vk lightmap blocks A");
         s.BlkB = VkImage(vk, ImageKind.Tex2D, Format.Rgba32Ui, PageSize / Block, 1, ImageUse.Storage | ImageUse.CopySrc, "vk lightmap blocks B");
-        s.Clamp = vk.CreateSampler(new SamplerDesc(Filter.Linear, Filter.Linear, MipMode.Nearest, Wrap.Clamp));
-        s.Chart = vk.CreateBuffer(new BufferDesc((long)_rec.Length * 4, BufferUse.Storage, MemoryKind.Upload, "vk lightmap records"));
-        if (s.ScrA.IsNull || s.ScrB.IsNull || s.ScrC.IsNull || s.ScrZ.IsNull || s.BlkA.IsNull || s.BlkB.IsNull || s.Clamp.IsNull || s.Chart.IsNull)
-        {
-            s.Failed = true;
-            return _down.Fail(_log, "the Vulkan scratch pages, blocks or record buffer could not be allocated (out of video memory?)", "every surface keeps the real-time loop");
-        }
-        s.Built = true;
-        _log?.Info($"LightmapBake: armed on Vulkan -- page pool up to lightmap.vram {Lightmap.Vram.V} MiB, {VkCubes} scratch cubes, "
-                 + $"{Math.Min(Hold ? HoldLightsPerFrame : BackgroundLightsPerFrame, VkCubes)} light steps per frame");
-        return true;
+        s.Scratched = true;
+        if (!s.ScrA.IsNull && !s.ScrB.IsNull && !s.ScrC.IsNull && !s.ScrZ.IsNull && !s.BlkA.IsNull && !s.BlkB.IsNull) return true;
+        VkFreeScratch();
+        s.Failed = true;
+        return _down.Fail(_log, "the Vulkan scratch pages or blocks could not be allocated (out of video memory?)", "every surface keeps the real-time loop");
+    }
+
+    /// <summary>What only a bake uses goes back: the scratch, the bake's cubes and the readback buffer. A page in
+    /// progress or a readback in flight keeps them.</summary>
+    private static void VkFreeScratch()
+    {
+        BakeVkState s = _vkb;
+        if (s.Dev == null || _bakePage >= 0 || s.ReadQueued || s.Draining) return;
+        s.ScratchIdle = 0;
+        if (!s.Read.IsNull) { s.Dev.Destroy(s.Read); s.Read = default; s.ReadBytes = 0; }
+        if (!s.Scratched) return;
+        s.Dev.Destroy(s.ScrA); s.Dev.Destroy(s.ScrB); s.Dev.Destroy(s.ScrC); s.Dev.Destroy(s.ScrZ); s.Dev.Destroy(s.BlkA); s.Dev.Destroy(s.BlkB);
+        s.ScrA = s.ScrB = s.ScrC = s.ScrZ = s.BlkA = s.BlkB = default;
+        s.Scratched = false;
+        CasterPass.VkDropBakeCubes();
+        _log?.Info("LightmapBake: the bake's scratch, cubes and readback buffer freed until the next bake");
     }
 
     private static ImageId VkImage(VkBackend vk, ImageKind kind, Format f, int size, int layers, ImageUse use, string label)

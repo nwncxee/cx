@@ -147,6 +147,7 @@ public sealed unsafe partial class AlloyRenderer
         Vector3 c = PostChain.LastClear;
         var clear = new Vector4(MathF.Pow(MathF.Max(c.X, 0f), AlloyLights.SrgbGamma), MathF.Pow(MathF.Max(c.Y, 0f), AlloyLights.SrgbGamma),
                                 MathF.Pow(MathF.Max(c.Z, 0f), AlloyLights.SrgbGamma), 1f);
+        if (Post.ClearViz.V) clear = new Vector4(1f, 0f, 1f, 1f);
         colors[0] = new ColorAttachment(s.Hdr, 0, 0, LoadOp.Clear, StoreOp.Store, clear);
         int n = 1;
         if (gbuf)

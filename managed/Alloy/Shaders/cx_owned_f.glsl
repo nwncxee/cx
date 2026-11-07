@@ -22,13 +22,11 @@ layout(location = 0) out vec4 frag;
 #include "cx_fogdecl.glsl"
 #include "cx_fogmix.glsl"
 #include "cx_oitout.glsl"
-#include "cx_alphamip.glsl"
 void main()
 {
-    vec2 du1 = dFdx(vUV), du2 = dFdy(vUV);
     if (uViz == 4) { frag = vec4(1.0, 0.0, 1.0, 1.0); return; }
     vec4 t = texture(uTex, vUV, uLodBias);
-    if (uAlphaCut >= 0.0 && CxAlphaMip(t.a, du1, du2, vec2(textureSize(uTex, 0)), uLodBias) <= uAlphaCut) discard;
+    if (uAlphaCut >= 0.0 && t.a <= uAlphaCut) discard;
     // #132: the target is LINEAR, so the texel's display-space encode comes off here too -- the
     // probe and the frame want the same thing now. Same exponent AlloyLights.CxLinear uses,
     // spelled out because this stage does not include that lib.

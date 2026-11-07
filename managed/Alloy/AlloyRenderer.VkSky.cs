@@ -166,7 +166,6 @@ public sealed unsafe partial class AlloyRenderer
         try
         {
             LooseBlock.Set(p.Vp, in vp);
-            LooseBlock.Set(p.AlphaMip, Renderer.CutMip.V);
             LooseBlock.Set(p.Viz, _capturing ? 0 : _lightViz);
             Vector3 t = _skTint[i];
             LooseBlock.Set(p.Tint, [t.X, t.Y, t.Z]);

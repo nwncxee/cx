@@ -41,13 +41,23 @@ public sealed unsafe partial class AlloyRenderer
         return line.ToString();
     }
 
+    /// <summary>What a load kept for itself and no longer needs, let go before the heap compacts.</summary>
+    internal static void DropLoadCaches()
+    {
+        TexScan.DropPixelPool();
+        LightmapBake.ReleaseIdleReads();
+    }
+
     /// <summary>The frame line's memory part as the device reads now; empty before the first frame, which is what
     /// makes the device and reads its figures.</summary>
+    /// <summary>Rows of the frame line's by-owner VRAM list.</summary>
+    private const int VramOwnerRows = 14;
+
     internal static string FrameVram()
     {
         if (!_vram.Probed || AlloyDevice.VulkanMade is not VkBackend vk) return "";
         vk.DeviceLocalBytes(out long usage, out long budget, out _, out long held);
-        return VramLine(held, usage, budget, vk.Largest(3));
+        return VramLine(held, usage, budget, vk.Largest(3)) + $"; host-visible {vk.HostHeldBytes() >> 20}MiB; device blocks {vk.DeviceBlockBytes() >> 20}MiB; owners {vk.Owners(VramOwnerRows)}";
     }
 
     /// <summary>The device's memory figures as last sampled, KiB, and which query answered: what the probe

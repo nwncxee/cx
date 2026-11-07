@@ -320,6 +320,7 @@ public sealed unsafe class UiHostService : IExtenderService
     private static void FrameStats()
     {
         long now = System.Diagnostics.Stopwatch.GetTimestamp();
+        MemorySettle.Frame(now, _log, CX.Alloy.AlloyRenderer.DropLoadCaches);
         if (_fsLast != 0 && GameGate.InModule)
         {
             long dt = now - _fsLast;

@@ -6,10 +6,10 @@ bool CxSolidCut(float coverage, float alpha)
 
 // The coverage discards: the cutout's, an OIT fragment's at zero coverage, a split part's interior (uSolid).
 // One test, so main's early ask of a plain diffuse can never discard a texel the full one keeps.
-bool CxCoverCut(float coverage, float alpha, vec2 du1, vec2 du2, vec2 cutSize, float cutMip)
+bool CxCoverCut(float coverage, float alpha)
 {
     float s = coverage * alpha;
-    return uAlphaCut >= 0.0 && CxAlphaMipAt(coverage, du1, du2, cutSize, uLodBias, cutMip) <= uAlphaCut
+    return uAlphaCut >= 0.0 && coverage <= uAlphaCut
         || uOit != 0 && s <= 0.0
         || CxSolidCut(coverage, alpha);
 }
@@ -128,17 +128,18 @@ void main()
     if (uViz == 22) { frag = vec4((slots & CX_SLOT_NORMAL) != 0 ? vec3(1.0, 0.0, 1.0) : vec3(0.25), 1.0); return; }
     // A pass that discards on coverage asks it of a plain diffuse (no env, no PLT) here,
     // ahead of the maps, SSAO and the sun's taps. Uniform-gated: opaque skips it.
-    // CX-303: not in a content stage's program -- its setup stand-in makes the stock stage's own cut (cx_constd_f).
-    // The full test below reuses this alpha: a sample taken after the discard picks its mip from undefined quad
-    // derivatives, drops edge texels the depth prepass kept, and leaves the clear colour in their holes.
+    // CX-303: a content stage's program samples but does not cut -- its setup stand-in makes the stock stage's own cut (cx_constd_f).
+    // Every later test reuses this alpha, the one the depth prepass tested: a sample taken after the discard picks its
+    // mip from undefined quad derivatives, the colour taps read a finer footprint off the pixel's centre, and either
+    // drops edge texels the prepass kept, which leaves the clear colour in their holes.
     float earlyA = -1.0;
-#ifndef CX_CONTENT_PROGRAM
     if ((uAlphaCut >= 0.0 || uOit != 0 || uSolid != 0) && (slots & CX_SLOT_ENV) == 0 && !CxPltOn(vDraw))
     {
         earlyA = texture(uTex, vUV, uLodBias).a;
-        if (CxCoverCut(earlyA, d.rot.w, du1, du2, vec2(textureSize(uTex, 0)), uAlphaMip)) discard;
-    }
+#ifndef CX_CONTENT_PROGRAM
+        if (CxCoverCut(earlyA, d.rot.w)) discard;
 #endif
+    }
     vec2 uv = vUV;
     // A displaced coordinate's derivatives jump with the relief, so every material tap takes the surface's footprint
     vec2 tapDx = du1 * exp2(uLodBias), tapDy = du2 * exp2(uLodBias);
@@ -337,13 +338,11 @@ void main()
     alphaIsEnv = alphaIsEnv || feat >= CX_FEAT_CONTENT0;
 #endif
     float coverage = alphaIsEnv ? 1.0 : texel.a;
-    float cutMip = uAlphaMip;
-    vec2 cutSize = vec2(textureSize(uTex, 0));
     // #126: the cutout, on the FINAL diffuse alpha and ahead of every other branch -- a discarded
     // fragment must cost neither the material synthesis nor a probe sample, and the probe capture
     // has to punch the same holes the screen does or the cube reflects solid foliage.
 #ifndef CX_CONTENT_PROGRAM
-    if (CxCoverCut(coverage, d.rot.w, du1, du2, cutSize, cutMip)) discard;
+    if (CxCoverCut(coverage, d.rot.w)) discard;
 #endif
     // #121: the diffuse ALPHA is the reflectivity mask on env-mapped content (inc_standard.shd:248,
     // fEnvMapLevel = 1 - alpha). A diffuse with no alpha channel reads 1.0, i.e. level 0 -- which is
@@ -390,7 +389,6 @@ void main()
     CxHostTexel = vec4(albedo, coverage);
     CxHostUV = uv;
     CxHostDu = vec4(du1, du2);
-    CxHostCutAt = vec3(cutSize, cutMip);
     FragmentColor = vec4(1.0);      // stock main's own opener, for a body that skips it
     vFragmentNormal = N;
     vSurfaceNormal = normalize(vNrm);

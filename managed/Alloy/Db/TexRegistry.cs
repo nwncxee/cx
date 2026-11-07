@@ -107,6 +107,8 @@ internal static unsafe partial class TexRegistry
     /// <summary>1 while the slot's sampler CLAMPS rather than repeats (a <c>.txi clamp</c>); staged into the
     /// PLT flag word, because <c>cx_plt.glsl</c> does its own addressing and cannot see a sampler.</summary>
     private static readonly bool[] _clamp = new bool[MaxSlots];
+    /// <summary>A diffuse of a part whose alpha cuts it, which earns <see cref="MipChain"/>.</summary>
+    private static readonly bool[] _cuts = new bool[MaxSlots];
     /// <summary>The slot's name and handle are its PREVIEW (the mip tail from 64 px down, <see cref="LandPreview"/>):
     /// drawable, but the slot is still <see cref="TexState.Loading"/> and the full chain replaces it in <see cref="Land"/>.</summary>
     private static readonly bool[] _preview = new bool[MaxSlots];
@@ -235,9 +237,10 @@ internal static unsafe partial class TexRegistry
     /// <summary>The texture named <paramref name="resref"/>, one reference added, loading if it was not
     /// already here. Game thread. Never null-handled quietly: a slot that cannot be allocated logs once and
     /// answers a null <see cref="TexId"/>, which draws the white stand-in and counts on the period line.</summary>
-    internal static TexId Acquire(string resref, TexKind kind = TexKind.Auto, int cell = 0)
+    internal static TexId Acquire(string resref, TexKind kind = TexKind.Auto, int cell = 0, bool cuts = false)
     {
         TexId id = Alloc(resref, kind, cell, out bool offer);
+        if (cuts && offer) _cuts[id.Index] = true;
         if (offer) Enqueue(id.Index);
         return id;
     }
@@ -298,7 +301,7 @@ internal static unsafe partial class TexRegistry
             }
             _key[i] = key; _state[i] = TexState.Loading; _kind[i] = kind; _refs[i] = 1;
             _name[i] = 0; _handle[i] = 0; _bytes[i] = 0; _preview[i] = false;
-            _resref[i] = resref; _cell[i] = cell; _depHead[i] = -1; _pend[i] = PendNone; _clamp[i] = false;
+            _resref[i] = resref; _cell[i] = cell; _depHead[i] = -1; _pend[i] = PendNone; _clamp[i] = false; _cuts[i] = false;
             _cov[i] = TexCoverage.Unknown; _bumpyShiny[i] = false; _envMap[i] = false; _meanOk[i] = false;
             _txiBlend[i] = 0; _txiDecal[i] = false; _cycle[i] = null; _artState.Slots[i] = null;
             CoverageSerial++; TableSerial++;

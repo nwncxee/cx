@@ -42,6 +42,10 @@ internal static unsafe partial class TexRegistry
         public TexLocation Loc;
         /// <summary>The decoded bytes, native and owned by the job until the upload or the recycle.</summary>
         public byte* Data;
+        /// <summary><see cref="Data"/> is a whole RGBA8 chain from <see cref="MipChain"/>, not one level for the device to mip.</summary>
+        public bool Chained;
+        /// <summary>This texture cuts a surface: <see cref="TexRegistry.Acquire"/> says so.</summary>
+        public bool Cuts;
         public int W, H, Levels, Channels;
         /// <summary>The GL internal format and the (format, type) pair of an uncompressed upload.</summary>
         public uint GlFmt;
@@ -145,7 +149,7 @@ internal static unsafe partial class TexRegistry
         string resref = _resref[i] ?? "";
         Job j = Rent();
         j.Slot = i; j.Gen = _gen[i] & 0xFFF; j.Resref = resref; j.Kind = _kind[i];
-        j.Data = null; j.Why = null; j.W = j.H = j.Levels = 0; j.Bytes = 0; j.Channels = 0; j.Fast = fast; j.Tail = false;
+        j.Data = null; j.Chained = false; j.Cuts = _cuts[i]; j.Why = null; j.W = j.H = j.Levels = 0; j.Bytes = 0; j.Channels = 0; j.Fast = fast; j.Tail = false;
         // The .txi is its own resource, and the only one the engine reads: CAurTextureBasic::Init @0x588940
         // and Material::Init @0x5c5b90 both take it from AurResGet(name, ".txi"), which reaches the resman's
         // CResHelper<CResTXI,2022> and nothing else. So it is looked up here, on the thread that may read the
@@ -364,9 +368,15 @@ internal static unsafe partial class TexRegistry
             j.GlFmt = r.Px switch { 1 => EngineTokens.R8, 3 => EngineTokens.RGB8, _ => EngineTokens.RGBA8 };
             j.Compressed = false; j.GenMips = true;
             j.Bytes = r.Bytes;
-            j.Cov = TexCoverageOf.OfRaster(new ReadOnlySpan<byte>(px, r.Bytes), r.W, r.H, r.Px);
+            ReadOnlySpan<byte> sheet = new(px, r.Bytes);
+            j.Cov = TexCoverageOf.OfRaster(sheet, r.W, r.H, r.Px);
             j.CovWhy = TexCoverageOf.Why($"TGA, {r.Px} channel(s)", j.Cov);
             j.MeanOk = TexScan.MeanOfRaster(px, r.W, r.H, r.Px, out j.Mean);
+            if (j.Cuts && !j.EnvMap && r.Px == 4 && j.GridX * j.GridY <= 1 && MipChain.RasterNative(sheet, r.W, r.H, out long chainBytes) is var built && built != null)
+            {
+                NativeMemory.Free(px);
+                j.Data = px = built; j.Chained = true; j.Bytes = chainBytes;
+            }
             CutGrid(j);
             HoldRipple(j);
             return;
@@ -381,12 +391,14 @@ internal static unsafe partial class TexRegistry
         j.Channels = info.Channels; j.GlFmt = fmt; j.Compressed = true; j.GenMips = false;
         j.Bytes = info.ChainBytes;
         byte[] sc = _covScratch ?? Array.Empty<byte>();
-        j.Cov = TexCoverageOf.OfBcn(new ReadOnlySpan<byte>(chain, DdsReader.LevelSize(info.W, info.H, info.Channels)),
+        Span<byte> stored = new(chain, checked((int)info.ChainBytes));
+        j.Cov = TexCoverageOf.OfBcn(stored[..DdsReader.LevelSize(info.W, info.H, info.Channels)],
                                     info.W, info.H, info.Format, ref sc);
         j.CovWhy = TexCoverageOf.Why($"DDS {info.Format}, {info.Channels} channel(s)", j.Cov);
         _covScratch = sc;
         if (info.Format is DdsReader.Fmt.Bc1 or DdsReader.Fmt.Bc3)
             j.MeanOk = TexScan.MeanOfDxt(chain, info.W, info.H, info.Format == DdsReader.Fmt.Bc3, out j.Mean);
+        if (j.Cuts && !j.EnvMap) MipChain.Dds(stored, info.W, info.H, info.Present, info.Format);
     }
 
     /// <summary>The fast pass's preview: the DDS's own mips from the first one at or under <see cref="PreviewSide"/>

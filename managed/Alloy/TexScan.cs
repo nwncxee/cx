@@ -14,6 +14,24 @@ namespace CX.Alloy;
 /// </summary>
 internal static unsafe class TexScan
 {
+    /// <summary>The pool a load's pixels go through, and it alone: <see cref="DropPixelPool"/> lets go of everything it kept.</summary>
+    private sealed class PixelPoolState
+    {
+        public volatile ArrayPool<byte> Pool = NewPixelPool();
+    }
+
+    private static readonly PixelPoolState _pixels = new();
+    private const int PooledPerSize = 8;
+    private static ArrayPool<byte> NewPixelPool() => ArrayPool<byte>.Create(1 << 28, PooledPerSize);
+
+    /// <summary>Pixels on their way to the encoder. A load reuses its arrays across the decode workers instead of leaving
+    /// each as garbage; the shared pool would keep them for the session, so this one goes when the load has.</summary>
+    internal static ArrayPool<byte> PixelPool => _pixels.Pool;
+
+    /// <summary>A quiet moment after a load: what the pool kept becomes garbage. An array still rented returns to the new
+    /// pool, which holds the same sizes.</summary>
+    internal static void DropPixelPool() => _pixels.Pool = NewPixelPool();
+
     /// <summary>The engine's own format indices into its format translation table; it never uploads DXT3. An
     /// uncompressed sheet is cut into cells, compressed data is one image.</summary>
     private const int FmtDxt1 = 7, FmtDxt5 = 8;
@@ -89,7 +107,7 @@ internal static unsafe class TexScan
         r.W = cw; r.H = ch;
         if (wantPixels && bpp >= 3)
         {
-            byte[] o = ArrayPool<byte>.Shared.Rent((int)ChainBytes(cw, ch, r.Mips));
+            byte[] o = PixelPool.Rent((int)ChainBytes(cw, ch, r.Mips));
             for (int y = 0; y < ch; y++)
             {
                 ReadOnlySpan<byte> s0 = image.Slice((int)((y0 + y) * stride + (long)x0 * bpp));
@@ -149,11 +167,11 @@ internal static unsafe class TexScan
     {
         if (!BcnDecode.Decodes(f)) { LastRefusedFormat = FmtDecodedBase + (int)f; return false; }
         int px = BcnDecode.PixelBytes(f), n = w * h * px;
-        byte[] buf = ArrayPool<byte>.Shared.Rent(n);
+        byte[] buf = PixelPool.Rent(n);
         int lvl = DdsReader.LevelSize(w, h, DdsReader.ChannelsOf(f));
         BcnDecode.Unpack(new ReadOnlySpan<byte>(image, hdr + lvl).Slice(hdr), w, h, f, buf.AsSpan(0, n));
         ScanRaw(buf.AsSpan(0, n), (long)w * px, px, 0, 0, w, h, cut, ref r);
-        ArrayPool<byte>.Shared.Return(buf);
+        PixelPool.Return(buf);
         return true;
     }
 

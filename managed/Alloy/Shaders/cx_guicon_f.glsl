@@ -67,7 +67,7 @@ float CxPltScheme(int draw, int layer)
 //$GUI-CONTENT-REGION
 
 // A GUI scene never alpha-tests (Scene::RenderOnlyGobs), so the stock setup's cut has nothing to do.
-bool CxCoverCut(float coverage, float alpha, vec2 du1, vec2 du2, vec2 cutSize, float cutMip) { return false; }
+bool CxCoverCut(float coverage, float alpha) { return false; }
 
 void main()
 {

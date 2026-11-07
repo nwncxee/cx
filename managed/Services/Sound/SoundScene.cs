@@ -21,7 +21,7 @@ internal static unsafe class SoundScene
     /// <summary>Triangles under this many square metres are dropped: prop detail no sound wave notices, and most of
     /// an area's triangle count.</summary>
     private const float MinTriArea = 0.25f;
-    /// <summary>Reused across sends: an area's soup is tens of megabytes, not worth a fresh pair each time.</summary>
+    /// <summary>Only live for a send: the native scene keeps its own copy, and an area's soup is hundreds of megabytes.</summary>
     private static readonly List<float> _verts = new();
     private static readonly List<int> _tris = new();
     /// <summary>Seconds into an area with nothing to send before the stand-down is said.</summary>
@@ -98,6 +98,8 @@ internal static unsafe class SoundScene
         _sentAt = Stopwatch.GetTimestamp();
         _log?.Info($"sound: acoustic scene {(first ? "sent" : "re-sent")} -- {count} triangles over {MinTriArea} m², "
                  + $"{_verts.Count / 3} vertices from {slots} static slots, {MaterialNames[mat]}, gathered in {Since(t0) * 1000:F1} ms");
+        _verts.Clear(); _verts.TrimExcess();
+        _tris.Clear(); _tris.TrimExcess();
     }
 
     /// <summary>ARE Flags bits, as the engine's own script commands read them (<c>GetIsAreaAboveGround</c> =

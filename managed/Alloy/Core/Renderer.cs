@@ -37,8 +37,6 @@ internal static class Renderer
         return why == null;
     }
     internal static readonly Knob<float> Lod;
-    /// <summary>How strongly the cutout test makes up for the alpha a mip averages away (<c>cx_alphamip.glsl</c>).</summary>
-    internal static readonly Knob<float> CutMip;
     /// <summary>How many layers of itself a see-through creature draws as, under the list resolve that composites it once.</summary>
     internal static readonly Knob<float> Ghost;
     internal static readonly Knob<string> Highlight, DrawHooks, DumpTex;
@@ -126,9 +124,6 @@ internal static class Renderer
                          help: "Materials that ask for alpha-to-coverage (often hair) get soft, layered edges from this many "
                              + "samples per pixel. Off draws them with the hard cutout edge every other leaf has.");
         A2cMask = G.Toggle("a2cmask", "a2cmask", false, Tier.ChatOnly);
-        CutMip = G.Slider("cutmip", "Distant cut-out fill", 0f, 1f, 0.05f, 0.25f, tier: Tier.Advanced,
-                          help: "Leaves, fences and other cut-out textures thin out and shimmer with distance as their alpha "
-                              + "averages away. This keeps them as full as they are up close. 0 is the stock test.");
         Ghost = G.Slider("ghost", "See-through creature thickness", 1f, 3f, 0.1f, 1.2f, "×", Tier.Advanced,
                          help: "A creature an effect such as Invisibility makes see-through draws as this many layers of "
                              + "itself, so its shape still shows. 1 is the effect's own transparency. A fully invisible "

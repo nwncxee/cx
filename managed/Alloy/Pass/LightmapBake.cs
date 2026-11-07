@@ -389,6 +389,14 @@ internal static unsafe partial class LightmapBake
         _vkb.Draining = true; _uDone = 0; _uBuf = b;
     }
 
+    /// <summary>A quiet moment after a load: the readback ring's idle arrays go, each up to a page's bytes. The next
+    /// landing allocates its own again.</summary>
+    internal static void ReleaseIdleReads()
+    {
+        if (_vkb.ReadQueued || _vkb.Draining) return;
+        for (int i = 0; i < ReadBufs; i++) if (_cache.Busy[i] == 0) _readBufs[i] = null!;
+    }
+
     /// <summary>Bytes a frame of a sliced readback copy moves: a small share normally, a large one under the
     /// hold, where the backdrop hides it.</summary>
     private const long ReadCopyPerFrame = 4L << 20, HoldReadCopyPerFrame = 48L << 20;

@@ -54,6 +54,7 @@ internal static partial class GpuGolden
         VmaMoreSelfCheck(vk, check, log);
         StaleNamedSelfCheck(vk, check, log);
         CopyFlagSelfCheck(vk, check, log);
+        DestroyedBufferSelfCheck(vk, check, log);
         WhenDoneSelfCheck(vk, check, log);
         ReversedZSelfCheck(vk, check, log);
         ContentClipSelfCheck(vk, check, log);

@@ -127,6 +127,7 @@ internal static unsafe partial class LightmapBake
                 if (Touches(l, r.C, r.R)) { _bakeLights.Add(l); break; }
             }
         }
+        if (!VkScratch()) return false;
         _bakePage = page; _bakeLight = 0;
         _pageT0 = Stopwatch.GetTimestamp();
         // the scratch planes: A' = sum rgb + coverage alpha, B' = sum luminance * direction, C' = per channel the mover's luminance

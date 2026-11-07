@@ -94,7 +94,7 @@ internal static unsafe class Programs
         var L = new LitLoc();
         L.Vp = LooseBlock.Loc("uVP"); L.Base = LooseBlock.Loc("uDrawBase");
         L.Tex = LooseBlock.Loc("uTex");
-        L.Cut = LooseBlock.Loc("uAlphaCut"); L.AlphaMip = LooseBlock.Loc("uAlphaMip");
+        L.Cut = LooseBlock.Loc("uAlphaCut");
         L.Viz = LooseBlock.Loc("uViz"); L.Oit = LooseBlock.Loc("uOit"); L.OitDim = LooseBlock.Loc("uOitDim"); L.OitGob = LooseBlock.Loc("uOitGob"); L.LightRecOn = LooseBlock.Loc("uLightRecOn");
         L.Decal = LooseBlock.Loc("uDecal"); L.DecalZ = LooseBlock.Loc("uDecalZ"); L.Solid = LooseBlock.Loc("uSolid");
         L.SunTex = LooseBlock.Loc("uSunShadow"); L.SunDynTex = LooseBlock.Loc("uSunDynShadow");

@@ -69,6 +69,7 @@ public static class ServiceHost
         CommandRegistry.Global.Log = log;
         CommandRegistry.SelfCheck(log);   // registration/dispatch/enumeration proof, off-device
         ConfigFile.SelfCheck(log);   // the shared line walker, proven at the host
+        MemorySettle.SelfCheck(log);   // when a load's garbage and malloc's free pages go back, off-device
         ExtenderLog.SelfCheck(log);   // the disabled log evaluates nothing, the enabled one reaches the file
         CX.Graphics.VulkanToolchain.SelfCheck(log);   // the staged shaderc and the machine's loader, off-device only
         CX.Graphics.Rhi.VkBackend.SelfCheck(log);   // the pilot's stages compile for Vulkan with GL's bindings shifted apart

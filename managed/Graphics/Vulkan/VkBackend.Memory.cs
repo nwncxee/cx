@@ -55,6 +55,61 @@ internal sealed unsafe partial class VkBackend
         }
     }
 
+    /// <summary>Bytes VMA holds on heaps that are not device-local: system RAM the frame's staging and mapped buffers
+    /// keep resident, which no VRAM figure counts.</summary>
+    internal long HostHeldBytes()
+    {
+        VkPhysicalDeviceMemoryProperties mp;
+        _vki.vkGetPhysicalDeviceMemoryProperties(_phys, &mp);
+        Vma.vmaCalculateStatistics(_vma, out VmaTotalStatistics t);
+        long held = 0;
+        for (int i = 0; i < mp.memoryHeapCount; i++)
+            if ((mp.memoryHeaps[i].flags & VkMemoryHeapFlags.DeviceLocal) == 0) held += (long)t.memoryHeap[i].statistics.blockBytes;
+        return held;
+    }
+
+    /// <summary>Bytes of device-local blocks VMA keeps from the driver, used or not: past the allocations they hold,
+    /// this is memory a freed resource left inside a block that is still partly in use.</summary>
+    internal long DeviceBlockBytes()
+    {
+        VkPhysicalDeviceMemoryProperties mp;
+        _vki.vkGetPhysicalDeviceMemoryProperties(_phys, &mp);
+        Vma.vmaCalculateStatistics(_vma, out VmaTotalStatistics t);
+        long blocks = 0;
+        for (int i = 0; i < mp.memoryHeapCount; i++)
+            if ((mp.memoryHeaps[i].flags & VkMemoryHeapFlags.DeviceLocal) != 0) blocks += (long)t.memoryHeap[i].statistics.blockBytes;
+        return blocks;
+    }
+
+    /// <summary>Every live allocation summed by its label, the digits taken out and every world texture one row,
+    /// largest first, past <paramref name="n"/> folded into one row. Cold: a walk of every live image and buffer.</summary>
+    internal string Owners(int n)
+    {
+        if (!OnThread("Owners")) return "";
+        var sum = new System.Collections.Generic.Dictionary<string, (int Count, long Bytes)>();
+        void Add(string label, VmaAllocation a)
+        {
+            VmaAllocationInfo info;
+            Vma.vmaGetAllocationInfo(_vma, a, &info);
+            string key = label.StartsWith("tex ", StringComparison.Ordinal) ? "tex" : string.Concat(System.Linq.Enumerable.Where(label, c => !char.IsAsciiDigit(c)));
+            sum.TryGetValue(key, out (int Count, long Bytes) was);
+            sum[key] = (was.Count + 1, was.Bytes + (long)info.size);
+        }
+        foreach (VkImg g in _images.Live()) if (g.Group == null && !g.Window) Add(g.Desc.Label, g.Alloc);
+        foreach (AliasGroup g in _alias.Values) Add("alias " + g.Name, g.Alloc);
+        foreach (VkBuf b in _buffers.Live()) Add(b.Desc.Label, b.Alloc);
+        var rows = System.Linq.Enumerable.ToArray(System.Linq.Enumerable.OrderByDescending(sum, r => r.Value.Bytes));
+        var line = new System.Text.StringBuilder();
+        long rest = 0; int others = 0;
+        for (int i = 0; i < rows.Length; i++)
+        {
+            if (i >= n) { rest += rows[i].Value.Bytes; others += rows[i].Value.Count; continue; }
+            line.Append(i == 0 ? "" : ", ").Append(rows[i].Key).Append(" x").Append(rows[i].Value.Count).Append(' ').Append(rows[i].Value.Bytes >> 20).Append("MiB");
+        }
+        if (others > 0) line.Append($", {others} others {rest >> 20}MiB");
+        return line.ToString();
+    }
+
     /// <summary>The <paramref name="n"/> largest allocations by their bytes, each named by its label (an alias group by
     /// its group), largest first. Cold: a walk of every live image and buffer.</summary>
     internal (string Name, long Bytes)[] Largest(int n)
