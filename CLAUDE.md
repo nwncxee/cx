@@ -171,7 +171,7 @@ it is written. An unfinished cleanup is a `<rule>.baseline` ratchet (`tools/gate
 shrink, and a row naming a file that is no longer in the tree fails -- an allowance nothing can spend hides
 the cleanup that earned it. Adding a rule means adding its gate in the same change, and one line here:
 
-- `comments.sh`: a `///` block over 4 text lines, or a `///` line citing a ticket (`#n`, `CX-n`, `!n`), fails. No baseline.
+- `comments.sh`: a `///` block over 4 text lines, or a `///` line citing a ticket (`#n`, `CX-n`, `!n`), under `managed/` or in `native/`'s own sources, fails. No baseline.
 - `file-size.sh`: a `.cs` file under `managed/` over 1,500 lines fails -- past the cap, split by
   responsibility the way `AlloyRenderer`'s partials are. `*.g.cs` and `SymbolMap.cs` (a flat symbol table
   that grows with every hook) are exempt and `file-size.baseline` holds what is still over. `EngineLayout` is

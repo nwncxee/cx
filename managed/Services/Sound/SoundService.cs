@@ -361,23 +361,12 @@ public sealed unsafe class SoundService : IExtenderService
         }
         _log?.Info($"[sound] voices {s.Voices}, captured {s.Blobs}, refused {s.SlotRefused} slot / {s.CaptureRefused} capture; "
                  + $"capture max {s.CaptureMsMax:F2} ms; "
-                 + $"render {s.RenderMsAvg:F2} ms/frame (max {s.RenderMsMax:F2}, peak {s.RenderMsPeak:F2}, {s.Underruns} underruns, {s.LateFrames} late, {s.HeldFrames} held), "
-                 + $"ring lead {s.RingLead} frames, low {(s.RingLow == int.MaxValue || s.BusRate == 0 ? "-" : $"{s.RingLow * 1000f / s.BusRate:F1} ms")}, thread {RenderPrioName(s.RenderPrio)}; "
+                 + $"render {s.RenderMsAvg:F2} ms/frame (max {s.RenderMsMax:F2}, {s.Underruns} underruns, {s.LateFrames} late, {s.HeldFrames} held), "
+                 + $"ring lead {s.RingLead} frames, low {(s.RingLow == int.MaxValue || s.BusRate == 0 ? "-" : $"{s.RingLow * 1000f / s.BusRate:F1} ms")}, thread {SoundCore.RenderPriority()}; "
                  + $"sim {s.SimMsAvg:F2} ms, reflections {s.ReflMsAvg:F1} ms; "
                  + $"scene {s.SceneTris} tris, {s.Probes} probes (bake {s.BakeState}); bus {(s.BusOpen != 0 ? $"{s.BusRate} Hz x{s.BusChannels}" : "closed")}; "
                  + $"authored env row {_lastEnv}, reverb mode {ReverbMode(SoundKnobs.Reverb.V, _lastEnv)}");
     }
-
-    /// <summary>The core's RenderPrio, in the [sound] line: what the OS granted the render thread.</summary>
-    private static string RenderPrioName(int prio) => prio switch
-    {
-        1 => "SCHED_FIFO",
-        2 => "nice",
-        3 => "RTKit nice",
-        4 => "MMCSS",
-        5 => "time-critical",
-        _ => "default priority",
-    };
 
     /// <summary>Both loops end at the core's exit latch, so neither is inside Steam Audio while the process
     /// finalizes (<c>cxa_shutdown</c> waits them out).</summary>

@@ -7,7 +7,8 @@
 // Threads: the AL shims run on whoever called AL (main thread, AsyncSoundStream); the render runs on "CX sound
 // render" and never calls AL; OpenAL's mixer thread only copies from the render's ring; the simulation runs on CX's
 // own "CX sound sim" thread and the pathing bake on "CX sound bake". One lock guards every table they share and is
-// only ever held for copies. The render never waits on it: a frame that finds it taken replays its last snapshot.
+// only ever held for copies. After its first frame the render never waits on it: a frame that finds it taken
+// replays its last snapshot.
 // Steam Audio objects the render touches are created up front, and it frees nothing, so it allocates nothing either.
 //
 // C-style C++ like cxatlas.cpp: no exceptions, no RTTI, no C++ runtime (decltype is the only reason this is not C:
@@ -239,12 +240,10 @@ struct CxaStats
     float renderMsAvg, renderMsMax, simMsAvg, reflMsAvg;
     float captureMsMax;  // the slowest capture on the engine's sound-start path since the last read
     int32_t underruns;   // callbacks OpenAL asked for more than the render had ready (each one a click)
-    float renderMsPeak;  // the slowest frame of the session; unlike renderMsMax, a read never clears it
     int32_t lateFrames;  // frames started with less than one OpenAL mix pass left in the ring: near misses
     int32_t heldFrames;  // frames that found the lock taken and replayed their last snapshot
-    int32_t ringLow;     // the fewest samples a callback left in the ring since the last read; INT32_MAX = no callback
+    int32_t ringLow;     // about the fewest samples a callback left since the last read (a race with the read can lose one); INT32_MAX = no callback
     int32_t ringLead;    // frames the render keeps ready
-    int32_t renderPrio;  // RenderPrio: what the OS granted the render thread
 };
 
 // ---- pure helpers (SelfCheck covers each) ----
@@ -490,20 +489,20 @@ static void blob_unref(Blob* b)
 }
 
 // ---- tables ----
-/// The render runs ahead of OpenAL on its own thread, so a slow frame is absorbed instead of heard. It ran inside
-/// OpenAL's callback, where every wait on a lock or a swapped-out page was a click (CX-57 live: 5 ms average, 27 ms
-/// peaks, for 0.3 ms of work). The ring's capacity, which caps the lead ring_lead picks.
+/// The ring's capacity in frames. The render runs ahead of OpenAL on its own thread, so a slow frame is absorbed
+/// instead of heard.
 enum { RingFrames = 32 };
 /// OpenAL Soft mixes at most this many samples in one pass (BufferLineSize, core/bufferline.h, 1.25.2).
 enum { MixPass = 1024 };
 enum { MaxSlots = 64, MaxBlobs = 256, MaxRefl = 4, MaxOrder = 2, MaxAmbi = (MaxOrder + 1) * (MaxOrder + 1), MaxBusCh = 8 };
 /// Frames of lead for a device period in samples: two passes of the mixer, each at least one MixPass long, so the
-/// ring survives one callback landing while the render is between frames.
+/// ring survives one callback landing while the render is between frames. One frame of capacity stays free: a reader
+/// mid-frame must not be overwritten.
 static int ring_lead(int frame, int period)
 {
     int pass = period > MixPass ? period : MixPass;
     int lead = (2 * pass + frame - 1) / frame;
-    return lead > RingFrames ? RingFrames : lead;
+    return lead > RingFrames - 1 ? RingFrames - 1 : lead;
 }
 /// The reflection effects stay this long whatever "Reverb length" says. The convolution reads the effect's size, not
 /// the frame's irSize, but the effect swaps its FIR with the simulator's on every IR update (steam-audio 4.8.1,
@@ -512,7 +511,7 @@ static const float MaxDuration = 2.0f;
 /// The pathing bake's probe budget per area.
 static const int MaxProbes = 1500;
 /// The simulation traces from this far above a sound's position: the engine places a sound at its object's feet,
-/// on the floor, where the floor (and a chest's own box) occluded it -- 35 dB off a sound in the open (CX-57 live).
+/// on the floor, where the floor (and a chest's own box) occluded it -- 35 dB off a sound in the open.
 static const float SimLift = 1.0f;
 
 struct BlobRef { ALuint buf; Blob* b; };
@@ -585,8 +584,9 @@ static float g_rain = 1.0f;   // the reverb's wet scale while it rains (under g_
 
 /// The reflection handoff (both under g_lk). An IR the render convolves is the simulator's own memory, so the
 /// render must be out of it while the scene is swapped: `freeze` stands its reflections down from the next frame,
-/// `hold` says a frame is between its snapshot and its last reflection call.
-static int g_reflFreeze, g_reflHold;
+/// `hold` says the render's view may name an IR, across frames. Set under g_lk; the render lowers hold without it
+/// (refl_answer), so a swap never waits on the lock the render could not get.
+static int32_t g_reflFreeze, g_reflHold;
 
 /// The 3D voice PlaySourceOn3DVoice is about to start, per thread: the engine starts one on the main thread
 /// while AsyncSoundStream starts its streams, and only the former may take the pending meta.
@@ -614,7 +614,7 @@ struct Sa
     int primed;            // the ring has been full once: an empty one after that is an underrun
     int32_t lead;          // frames ring_fill keeps ready (atomic: the main thread refits it on a device reset)
     int32_t ringLow;       // see CxaStats (atomic: the callback lowers it, cxa_stats resets it)
-    float pendMsMax;       // what publish could not hand over yet, the lock being taken (render-thread private)
+    float pendMsMax, pendMsSum;   // what publish could not hand over yet, the lock being taken (render-thread private)
     int pendFrames, pendLate, pendHeld;
     // simulation-thread state
     IPLScene scene;
@@ -820,8 +820,15 @@ struct RenderView
 };
 static RenderView g_view;
 
-/// Copies the shared tables into g_view. 0 when the lock is taken: the frame replays the last view, a few
-/// milliseconds stale, and any IR in it is safe because g_reflHold stays up until a later snapshot lowers it.
+/// A scene swap asked for the IRs back: the view stops naming them and the swap is told, lock or no lock. Runs at the
+/// head of every frame and between frames, so a swap waits for at most the frame already running.
+static void refl_answer(void)
+{
+    if (cxa_ld(&g_reflFreeze) && cxa_ld(&g_reflHold)) { g_view.reflMode = 0; cxa_st(&g_reflHold, 0); }
+}
+
+/// Copies the shared tables into g_view. 0 when the lock is taken: the frame replays the last view until the lock is
+/// free, and any IR in it is safe because g_reflHold stays up until refl_answer or a later snapshot lowers it.
 static int render_take(unsigned gen)
 {
     Sa& s = g_sa;
@@ -837,13 +844,11 @@ static int render_take(unsigned gen)
     w.cfg.reverbGain *= g_rain;
     memcpy(w.lp, g_lpos, sizeof w.lp); memcpy(w.lat, g_lat, sizeof w.lat); memcpy(w.lup, g_lup, sizeof w.lup);
     memcpy(w.snap, g_slots, sizeof w.snap);
-    int restart[MaxSlots];
     for (int i = 0; i < MaxSlots; i++)
     {
         const Slot& sl = g_slots[i];
         Voice& v = g_voices[i];
-        restart[i] = sl.src && sl.gen != v.gen;
-        if (restart[i] && v.blob != sl.blob) { blob_unref(v.blob); v.blob = sl.blob; if (v.blob) v.blob->refs++; }
+        if (sl.src && sl.gen != v.gen && v.blob != sl.blob) { blob_unref(v.blob); v.blob = sl.blob; if (v.blob) v.blob->refs++; }
     }
     // reflections are decided, and the room's IR taken, under the same lock the scene swap freezes them with:
     // past this point no frame can pick up an IR the swap is about to reallocate
@@ -856,7 +861,7 @@ static int render_take(unsigned gen)
     {
         const Slot& sl = w.snap[i];
         Voice& v = g_voices[i];
-        if (restart[i])
+        if (sl.src && sl.gen != v.gen)
         {
             v.gen = sl.gen;
             v.playing = v.blob != NULL;
@@ -875,19 +880,12 @@ static int render_take(unsigned gen)
     return 1;
 }
 
-/// A scene swap asked for the IRs back and no frame is due to answer it: the ring is full, or OpenAL stopped asking.
-static void render_idle(void)
-{
-    if (!g_lk.tryon()) return;
-    if (g_reflFreeze) { g_reflHold = 0; g_view.reflMode = 0; }
-    g_lk.off();
-}
-
 /// Hands the frame's results to the shared tables; a frame that finds the lock taken leaves them for the next.
 static void render_publish(double ms)
 {
     Sa& s = g_sa;
     if ((float)ms > s.pendMsMax) s.pendMsMax = (float)ms;
+    s.pendMsSum += (float)ms;
     s.pendFrames++;
     if (!g_lk.tryon()) return;
     int live = 0;
@@ -901,12 +899,11 @@ static void render_publish(double ms)
     }
     g_stats.voices = live;
     g_stats.frames += s.pendFrames;
-    g_stats.renderMsAvg += ((float)ms - g_stats.renderMsAvg) * 0.01f;
+    g_stats.renderMsAvg += (s.pendMsSum / (float)s.pendFrames - g_stats.renderMsAvg) * 0.01f;
     if (s.pendMsMax > g_stats.renderMsMax) g_stats.renderMsMax = s.pendMsMax;
-    if (s.pendMsMax > g_stats.renderMsPeak) g_stats.renderMsPeak = s.pendMsMax;
     g_stats.lateFrames += s.pendLate;
     g_stats.heldFrames += s.pendHeld;
-    s.pendMsMax = 0.0f; s.pendFrames = s.pendLate = s.pendHeld = 0;
+    s.pendMsMax = s.pendMsSum = 0.0f; s.pendFrames = s.pendLate = s.pendHeld = 0;
     g_lk.off();
 }
 
@@ -940,6 +937,7 @@ static void render_frame(unsigned gen, float* dst)
     Sa& s = g_sa;
     double t0 = cxa_now();
     const int N = s.frame;
+    refl_answer();
     render_take(gen);
     const RenderView& w = g_view;
     const CxaConfig& cfg = w.cfg;
@@ -1250,14 +1248,14 @@ static void ring_fill(unsigned gen)
     s.primed = 1;
 }
 
+struct PrioTier { const char* name; int (*raise)(void); };
 /// What the OS granted the render thread, for the [sound] line. A refusal is reported, never fatal.
-enum RenderPrio { PrioNone, PrioFifo, PrioNice, PrioRtKit, PrioMmcss, PrioTimeCritical };
-struct PrioTier { int prio; int (*raise)(void); };
-/// The first tier that takes, best first.
-static int prio_walk(const PrioTier* tiers, int n)
+static const char* g_renderPrio = "not started";
+/// The name of the first tier that takes, best first.
+static const char* prio_walk(const PrioTier* tiers, int n)
 {
-    for (int i = 0; i < n; i++) if (tiers[i].raise()) return tiers[i].prio;
-    return PrioNone;
+    for (int i = 0; i < n; i++) if (tiers[i].raise()) return tiers[i].name;
+    return "default priority";
 }
 
 #ifdef _WIN32
@@ -1268,12 +1266,12 @@ static int raise_mmcss(void)
     HMODULE avrt = LoadLibraryW(L"avrt.dll");
     AvSetMmFn set = avrt ? (AvSetMmFn)GetProcAddress(avrt, "AvSetMmThreadCharacteristicsW") : NULL;
     DWORD index = 0;
-    if (!set || !set(L"Audio", &index)) return 0;
+    if (!set || !set(L"Audio", &index)) { if (avrt) FreeLibrary(avrt); return 0; }
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
     return 1;
 }
 static int raise_critical(void) { return SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL) != 0; }
-static const PrioTier g_prioTiers[] = { { PrioMmcss, raise_mmcss }, { PrioTimeCritical, raise_critical } };
+static const PrioTier g_prioTiers[] = { { "MMCSS", raise_mmcss }, { "time-critical", raise_critical } };
 #else
 /// The niceness asked of the kernel or of RTKit when SCHED_FIFO is refused; RTKit's stock floor is -15.
 static const int NiceBoost = -10;
@@ -1291,8 +1289,6 @@ static int raise_rtkit(void)
 {
     void* lib = dlopen("libdbus-1.so.3", RTLD_NOW | RTLD_LOCAL);
     if (!lib) return 0;
-    auto err_init = (void (*)(void*))dlsym(lib, "dbus_error_init");
-    auto err_free = (void (*)(void*))dlsym(lib, "dbus_error_free");
     auto bus_get = (void* (*)(int, void*))dlsym(lib, "dbus_bus_get_private");
     auto no_exit = (void (*)(void*, unsigned))dlsym(lib, "dbus_connection_set_exit_on_disconnect");
     auto close_ = (void (*)(void*))dlsym(lib, "dbus_connection_close");
@@ -1301,11 +1297,9 @@ static int raise_rtkit(void)
     auto args = (unsigned (*)(void*, int, ...))dlsym(lib, "dbus_message_append_args");
     auto send = (void* (*)(void*, void*, int, void*))dlsym(lib, "dbus_connection_send_with_reply_and_block");
     auto msg_unref = (void (*)(void*))dlsym(lib, "dbus_message_unref");
-    if (!err_init || !err_free || !bus_get || !no_exit || !close_ || !conn_unref || !call || !args || !send || !msg_unref) return 0;
-    char err[128];   // a DBusError, which the caller owns; this is comfortably past its size
-    err_init(err);
+    if (!bus_get || !no_exit || !close_ || !conn_unref || !call || !args || !send || !msg_unref) return 0;
     enum { BusSystem = 1, TypeInvalid = 0, TypeInt32 = 'i', TypeUint64 = 't' };
-    void* conn = bus_get(BusSystem, err);
+    void* conn = bus_get(BusSystem, NULL);
     int ok = 0;
     if (conn)
     {
@@ -1315,32 +1309,34 @@ static int raise_rtkit(void)
         int32_t nice_ = NiceBoost;
         if (m && args(m, TypeUint64, &tid, TypeInt32, &nice_, TypeInvalid))
         {
-            void* reply = send(conn, m, 1000, err);
+            void* reply = send(conn, m, 1000, NULL);
             if (reply) { ok = 1; msg_unref(reply); }
         }
         if (m) msg_unref(m);
         close_(conn);
         conn_unref(conn);
     }
-    err_free(err);
     return ok;
 }
-static const PrioTier g_prioTiers[] = { { PrioFifo, raise_fifo }, { PrioNice, raise_nice }, { PrioRtKit, raise_rtkit } };
+static const PrioTier g_prioTiers[] = { { "SCHED_FIFO", raise_fifo }, { "nice", raise_nice }, { "RTKit nice", raise_rtkit } };
 #endif
 
-/// "CX sound render": raises itself, then keeps the ring its lead ahead of the callback, until the exit latch.
+/// "CX sound render": keeps the ring its lead ahead of the callback, until the exit latch. It raises itself after the
+/// first fill: RTKit's round trip can block, and OpenAL is already reading the ring.
 static void render_main()
 {
-    int prio = prio_walk(g_prioTiers, (int)(sizeof g_prioTiers / sizeof g_prioTiers[0]));
-    g_lk.on();
-    g_stats.renderPrio = prio;
-    g_lk.off();
+    int raised = 0;
     while (!cxa_ld(&g_stop))
     {
         cxa_inc(&g_inside);
         ring_fill(cxa_ld(&g_busGen));
-        render_idle();
+        refl_answer();
         cxa_dec(&g_inside);
+        if (!raised)
+        {
+            raised = 1;
+            g_renderPrio = prio_walk(g_prioTiers, (int)(sizeof g_prioTiers / sizeof g_prioTiers[0]));
+        }
         g_wake.wait(5);
     }
 }
@@ -1448,7 +1444,10 @@ static void ring_fit(ALCdevice* dev)
 {
     ALCint refresh = 0;
     p_alcGetIntegerv(dev, ALC_REFRESH, 1, &refresh);
-    cxa_st(&g_sa.lead, (int32_t)ring_lead(g_sa.frame, refresh > 0 ? g_sa.rate / refresh : MixPass));
+    int period = refresh > 0 ? g_sa.rate / refresh : MixPass;
+    int lead = ring_lead(g_sa.frame, period);
+    if (2 * period > lead * g_sa.frame) set_err("the device's mix period is longer than the sound ring can cover");
+    cxa_st(&g_sa.lead, (int32_t)lead);
 }
 
 static int g_busFailed;
@@ -1479,6 +1478,7 @@ static void bus_open(ALCcontext* ctx)
         if (!start_thread()) { g_sa.ready = 0; set_err("the render thread failed to start"); return; }
         cxa_st(&g_renderLive, 1);
     }
+    else ring_fit(dev);
     ALenum fmt = g_sa.busCh == 8 ? AL_FORMAT_71CHN32 : g_sa.busCh == 6 ? AL_FORMAT_51CHN32
                : g_sa.busCh == 4 ? AL_FORMAT_QUAD32 : AL_FORMAT_STEREO_FLOAT32;
     g_lk.on();
@@ -1516,7 +1516,6 @@ static void bus_open(ALCcontext* ctx)
     g_stats.busOpen = err == AL_NO_ERROR;
     g_stats.busRate = g_sa.rate; g_stats.busChannels = g_sa.busCh;
     g_lk.off();
-    ring_fit(dev);
     if (err != AL_NO_ERROR) set_err("the bus source refused to start (alGetError after alSourcePlay)");
     else g_busFailed = 0;
 }
@@ -1715,11 +1714,10 @@ static ALCboolean ALC_APIENTRY sh_alcMakeContextCurrent(ALCcontext* ctx) noexcep
 /// How long a scene swap waits for the render to leave its reflection section before it goes ahead anyway.
 static const double QuiesceSeconds = 2.0;
 
-/// Takes every simulator-owned IR out of the render's hands, for a caller about to commit the simulator.
-/// iplSimulatorCommit reallocates the reflection state those IRs live in (phonon.h: it "cannot be called while
-/// any simulation is running", and the handles it hands out do not outlive it), and the render convolves them on
-/// its own thread -- so the freeze stops the next frame from picking one up, the cleared params stop every frame
-/// after it, and the wait lets the frame that may already be inside iplReflectionEffectApply finish.
+/// Takes every simulator-owned IR out of the render's hands, for a caller about to commit the simulator, which
+/// reallocates the state those IRs live in (phonon.h). The freeze stops the next frame from picking one up, the
+/// cleared params stop every frame after it, and the wait lets the render answer once the frame that may already
+/// be inside iplReflectionEffectApply has finished.
 static void refl_quiesce(void)
 {
     Sa& s = g_sa;
@@ -1728,15 +1726,13 @@ static void refl_quiesce(void)
     for (int i = 0; i < MaxSlots; i++) { g_slots[i].reflIdx = -1; memset(&g_slots[i].refl, 0, sizeof g_slots[i].refl); }
     s.roomValid = 0;
     memset(&s.roomParams, 0, sizeof s.roomParams);
-    int held = g_reflHold;
     g_lk.off();
     double t0 = cxa_now();
+    int held = cxa_ld(&g_reflHold);
     while (held)
     {
         cxa_sleep_ms(1);
-        g_lk.on();
-        held = g_reflHold;
-        g_lk.off();
+        held = cxa_ld(&g_reflHold);
         if (held && cxa_now() - t0 > QuiesceSeconds)
         {
             set_err("the sound render did not hand its reflections back for the scene swap");
@@ -2368,6 +2364,14 @@ CX_EXPORT int32_t cxa_error(char* buf, int32_t len)
     return (int32_t)strlen(buf);
 }
 
+/// What the OS granted the render thread, for the [sound] line.
+CX_EXPORT int32_t cxa_render_priority(char* buf, int32_t len)
+{
+    if (!buf || len <= 0) return 0;
+    snprintf(buf, (size_t)len, "%s", g_renderPrio);
+    return (int32_t)strlen(buf);
+}
+
 CX_EXPORT int32_t cxa_ready(void) { return !cxa_ld(&g_stop) && g_sa.ready; }
 
 /// What OpenAL says it is, filled when the bus opens; "" before.
@@ -2397,6 +2401,20 @@ static void IPLCALL fake_reset_path(IPLPathEffect) {}
 static void IPLCALL fake_reset_refl(IPLReflectionEffect) {}
 static int prio_no(void) { return 0; }
 static int prio_yes(void) { return 1; }
+/// Runs render_take, or a whole frame, on a thread of its own: the lock's try is only defined against another thread's hold.
+static int g_tookOther, g_frameOther;
+static void other_work(void)
+{
+    if (g_frameOther) render_frame(1, g_sa.ring);
+    else g_tookOther = render_take(1);
+}
+#ifdef _WIN32
+static DWORD WINAPI take_other(LPVOID) { other_work(); return 0; }
+static void take_on_other_thread(void) { HANDLE t = CreateThread(NULL, 0, take_other, NULL, 0, NULL); WaitForSingleObject(t, INFINITE); CloseHandle(t); }
+#else
+static void* take_other(void*) { other_work(); return NULL; }
+static void take_on_other_thread(void) { pthread_t t; pthread_create(&t, NULL, take_other, NULL); pthread_join(t, NULL); }
+#endif
 
 enum { FakeFrame = 512, FakeBusCh = 2 };
 /// Stands the render up on the stand-ins: one mono buffer each for the voice and the reflections, a stereo bus.
@@ -2406,6 +2424,7 @@ static float* fake_render_up(void)
     memset(&g_fake, 0, sizeof g_fake);
     static float* in[1], *dry[1], *room[1], *amb[1], *bus[FakeBusCh], *tmp[FakeBusCh];
     float* pool = (float*)calloc((size_t)FakeFrame * (8 + FakeBusCh * RingFrames), sizeof(float));
+    if (!pool) return NULL;
     float** chans[] = { in, dry, room, amb };
     float* at = pool;
     for (float** c : chans) { c[0] = at; at += FakeFrame; }
@@ -2434,6 +2453,8 @@ static float* fake_render_up(void)
 static void fake_render_down(float* pool)
 {
     free(pool);
+    for (int i = 0; i < MaxSlots; i++) { blob_unref(g_voices[i].blob); blob_unref(g_slots[i].blob); }
+    blob_drain();
     memset(&g_sa, 0, sizeof g_sa); memset(&g_view, 0, sizeof g_view); memset(g_voices, 0, sizeof g_voices);
     memset(g_slots, 0, sizeof g_slots); memset(&g_stats, 0, sizeof g_stats); memset(&g_cfg, 0, sizeof g_cfg);
     g_busGen = 0; g_reflHold = 0; g_reflFreeze = 0;
@@ -2561,17 +2582,19 @@ CX_EXPORT int32_t cxa_selfcheck(char* msg, int32_t len)
     CXA_EXPECT(ring_lead(512, 480) == 4 && ring_lead(512, 1024) == 4, "a period under one mix pass leads by two passes");
     CXA_EXPECT(ring_lead(512, 2048) == 8, "a long device period grows the lead");
     CXA_EXPECT(ring_lead(1024, 1024) == 2, "a double-size frame halves the frame count");
-    CXA_EXPECT(ring_lead(512, 1000000) == RingFrames, "the lead stops at the ring's capacity");
+    CXA_EXPECT(ring_lead(512, 1000000) == 31, "the lead stops one frame short of the ring's capacity");
     // the priority tiers: the first that takes wins and nothing after it runs. Oracle: literal tier numbers
-    const PrioTier noYes[] = { { 1, prio_no }, { 2, prio_yes }, { 3, prio_no } };
-    const PrioTier allNo[] = { { 1, prio_no }, { 2, prio_no } };
-    CXA_EXPECT(prio_walk(noYes, 3) == 2, "priority falls to the first tier that takes");
-    CXA_EXPECT(prio_walk(allNo, 2) == PrioNone, "every tier refused reads as none");
+    const PrioTier noYes[] = { { "a", prio_no }, { "b", prio_yes }, { "c", prio_no } };
+    const PrioTier allNo[] = { { "a", prio_no }, { "b", prio_no } };
+    CXA_EXPECT(strcmp(prio_walk(noYes, 3), "b") == 0, "priority falls to the first tier that takes");
+    CXA_EXPECT(strcmp(prio_walk(allNo, 2), "default priority") == 0, "every tier refused reads as the default");
+    CXA_EXPECT(!g_sa.ready && !p_iplContextCreate, "the stand-in render below overwrites the core: it runs before cxa_bind");
 
     // the render on stand-ins for Steam Audio. Oracle: call counts worked out by hand from one 100-sample one-shot
     // inside a 512-sample frame
     {
         float* pool = fake_render_up();
+        CXA_EXPECT(pool, "the stand-in render allocates");
         Sa& s = g_sa;
         g_cfg.reflections = 1;
         fake_start(100, -1);
@@ -2611,11 +2634,8 @@ CX_EXPORT int32_t cxa_selfcheck(char* msg, int32_t len)
         bus_callback((ALvoid*)(uintptr_t)1, sink, (ALsizei)sizeof sink);
         CXA_EXPECT(g_stats.underruns == 1, "an empty ring is an underrun");
 
-        // the peak outlives a read, the interval's max does not
         CxaStats st;
-        g_stats.renderMsMax = 40.0f; g_stats.renderMsPeak = 40.0f;
         cxa_stats(&st);
-        CXA_EXPECT(st.renderMsMax == 40.0f && g_stats.renderMsMax == 0.0f && g_stats.renderMsPeak == 40.0f, "a read clears the max and keeps the peak");
         CXA_EXPECT(st.ringLead == 4 && st.ringLow == 0 && s.ringLow == INT32_MAX, "a read reports the lead and restarts the low-water mark");
 
         // the lock: a frame that finds it taken replays its view and keeps its IR guard up
@@ -2624,17 +2644,29 @@ CX_EXPORT int32_t cxa_selfcheck(char* msg, int32_t len)
         g_slots[3].gain = 0.75f;
         int heldBefore = s.pendHeld;
         g_lk.on();
-        int took = render_take(1);
+        take_on_other_thread();
         g_lk.off();
-        CXA_EXPECT(!took && s.pendHeld == heldBefore + 1 && g_view.snap[3].gain == 0.25f && g_reflHold == 1, "a taken lock does not stop a frame, and the view stands");
+        CXA_EXPECT(!g_tookOther && s.pendHeld == heldBefore + 1 && g_view.snap[3].gain == 0.25f && g_reflHold == 1, "a taken lock does not stop a frame, and the view stands");
         CXA_EXPECT(render_take(1) && g_view.snap[3].gain == 0.75f, "the next free lock refreshes the view");
         // a scene swap: the next snapshot answers it, or the idle pass when no frame is due
         g_reflFreeze = 1;
         CXA_EXPECT(render_take(1) && g_view.reflMode == 0 && g_reflHold == 0, "a frozen scene takes the frame's reflections and lowers the guard");
         g_reflHold = 1; g_view.reflMode = 1;
-        render_idle();
-        CXA_EXPECT(g_reflHold == 0 && g_view.reflMode == 0, "the idle pass answers a scene swap");
+        g_lk.on();
+        refl_answer();
+        g_lk.off();
+        CXA_EXPECT(g_reflHold == 0 && g_view.reflMode == 0, "the render answers a scene swap with the lock taken");
+        g_reflHold = 1; g_view.reflMode = 1;
+        g_frameOther = 1;
+        g_lk.on();
+        take_on_other_thread();
+        g_lk.off();
+        g_frameOther = 0;
+        CXA_EXPECT(g_reflHold == 0 && g_view.reflMode == 0, "a frame that cannot get the lock still answers a scene swap");
         g_reflFreeze = 0;
+        g_reflHold = 1; g_view.reflMode = 1;
+        refl_answer();
+        CXA_EXPECT(g_reflHold == 1 && g_view.reflMode == 1, "with no swap asked for, the guard stays up");
         fake_render_down(pool);
 
         // the per-source IR rings on through its own GetTail while the pool entry is the voice's
