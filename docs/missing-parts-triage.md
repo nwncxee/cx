@@ -135,9 +135,8 @@ whether they still vanish.
   name is gone -- CX-188.)
 
 - **Texture / a diffuse with no GL id.** That population no longer goes missing: a tid-0 diffuse draws on
-  the white stand-in (vanilla parity, the structural analysis's divergence A) and reads as
-  `null-tex N drawn white/frame`, outside the NOT DRAWN list. A `null-tex` count is "wrong colour", never
-  "absent" -- if the part is absent, it is another term.
+  the white stand-in (vanilla parity, the structural analysis's divergence A). Such a part is the wrong
+  colour, never absent -- if the part is absent, it is another term.
 - **The per-instance sweep** (`revoked by the per-instance sweep`) drops a gob WHOLE, so it cannot take
   the hands and leave the robe.
 - **`[unbound=N]`** on the census line is the structural whole-creature figure #317 already called a

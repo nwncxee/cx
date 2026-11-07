@@ -115,7 +115,7 @@ public static class ServiceHost
         foreach (IExtenderService service in all)
         {
             try { service.Initialize(log, hooks); }
-            catch (Exception e) { log.Info($"host: {service.GetType().Name} init threw: {e.Message}"); }
+            catch (Exception e) { log.Info($"host: {service.GetType().Name} init threw: {e}"); }
         }
         CX.Ui.TextRig.WarmStyles();   // after every Initialize: the styles are declared in the services' knob groups
 

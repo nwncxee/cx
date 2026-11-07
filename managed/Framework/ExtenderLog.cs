@@ -26,6 +26,10 @@ public sealed class ExtenderLog
     private static readonly object _fileLock = new();
     private static Thread? _writer;
 
+    /// <summary>A self-check's ear: an instance with a tap sends its lines here instead of to the file, so a
+    /// check gives its own instance one and no other line is diverted.</summary>
+    internal Action<string>? Tap;
+
     public void Info(string message)
     {
         if (!Enabled) return;
@@ -36,6 +40,7 @@ public sealed class ExtenderLog
     /// install's bug report needs, and a stock install has the gate closed.</summary>
     public void Always(string message)
     {
+        if (Tap != null) { Tap(message); return; }
         _queue.Enqueue($"{DateTime.Now:O} [cx] {message}");
         if (_writer == null)
         {

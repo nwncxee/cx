@@ -27,7 +27,6 @@ public sealed unsafe partial class NullGl
         c.Expect(Proc("glGetString") != Proc("glNoSuchEntry"), "a named stub has its own entry");
         c.Expect(Proc("glNoSuchEntry") == Proc("glAnotherUnknown"), "every unknown entry is the one no-op");
         c.Expect(Proc("wglGetProcAddress") == Proc("glXGetProcAddressARB"), "both GetProcAddress names are one stub");
-        _s.Generic = 0;
         if (c.Ok) log.Info("NullGl.SelfCheck: passed");
     }
 }

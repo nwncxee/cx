@@ -703,6 +703,10 @@ internal static unsafe class AlloyLights
         return own;
     }
 
+    /// <summary>Which cluster table a block drawn now would read: <see cref="FillDraw"/>'s other inputs.</summary>
+    internal readonly record struct TableKey(bool Borrowed, int W, int H, float Near, float Far);
+    internal static TableKey Table => new(BorrowedTable, _builtW, _builtH, _builtNear, _builtFar);
+
     /// <summary>The local-cube receiver's three softness terms -- PCF radius in texels, the screen
     /// radius in pixels below which that disc stands down, and the world distance inside which a fragment is
     /// reported lit outright. Read here so <c>/shadow</c> retunes all three live, like every other knob.</summary>

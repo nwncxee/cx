@@ -62,6 +62,8 @@ public sealed unsafe partial class AlloyRenderer
     private sealed class VkColourState
     {
         public VkBackend? Dev;
+        /// <summary>The arena's offset alignment: the device's uniform alignment, at least a vec4.</summary>
+        public int Align = 16;
         public bool Failed, Live;
         public readonly VkProg?[] Progs = new VkProg?[VkPrograms.All.Length];
         /// <summary>Content programs by <see cref="VkContentKey"/>; null for one that did not build (logged once).</summary>
@@ -102,6 +104,10 @@ public sealed unsafe partial class AlloyRenderer
         public bool DirtyAll = true;
         public uint[] TexHTable = [];
         public byte[] ArenaBytes = new byte[ArenaCap];
+        /// <summary>The arena offset of the pass block copied last, -1 for none this frame, and what it was copied from.</summary>
+        public int PassAt = -1;
+        public long PassStamp;
+        public float PassMips;
         public int ArenaUsed;
         public ImageId Tex2D, TexU2D, Tex2DArray, Tex3D, TexCube, TexCubeArray, Depth2DArray, DepthCubeArray, DecalLayer, DecalSurf;
         public SamplerId Linear, Shadow;
@@ -187,7 +193,7 @@ public sealed unsafe partial class AlloyRenderer
     /// refused. The targets follow the render size.</summary>
     private static bool VkEnsure(VkBackend vk, int w, int h, ExtenderLog log)
     {
-        if (_vkc.Dev != vk) _vkc = new VkColourState { Dev = vk };
+        if (_vkc.Dev != vk) _vkc = new VkColourState { Dev = vk, Align = Math.Max(vk.UniformAlign, 16) };
         VkColourState s = _vkc;
         if (s.Failed) return false;
         if (s.ZeroUbo.IsNull && !VkMakeStatic(vk, s, log)) { s.Failed = true; return false; }
@@ -519,7 +525,7 @@ public sealed unsafe partial class AlloyRenderer
     private static int VkArena(ReadOnlySpan<byte> bytes)
     {
         VkColourState s = _vkc;
-        int align = Math.Max(s.Dev!.UniformAlign, 16);
+        int align = s.Align;
         int at = (s.ArenaUsed + align - 1) & ~(align - 1);
         if (at + bytes.Length > ArenaCap)
         {
@@ -531,13 +537,18 @@ public sealed unsafe partial class AlloyRenderer
         return at;
     }
 
-    /// <summary>The pass block <see cref="BindPass"/> just staged, into the arena with the probe as Vulkan has it.</summary>
+    /// <summary>The pass block <see cref="BindPass"/> staged, in the arena with the probe as Vulkan has it: copied the
+    /// first time a block is asked for, and the same offset for every bind that reuses it.</summary>
     private static int VkArenaPass()
     {
         if (PassStaged.IsEmpty) return -1;
+        VkColourState s = _vkc;
+        float mips = VkProbeMips;
+        if (s.PassAt >= 0 && s.PassStamp == _ps.Stamp && s.PassMips == mips) return s.PassAt;
         int at = VkArena(PassStaged);
         // the probe as Vulkan holds it, 0 mips for none, in place of GL's cube
-        if (at >= 0) MemoryMarshal.Write(_vkc.ArenaBytes.AsSpan(at + PbProbeMips, sizeof(float)), VkProbeMips);
+        if (at >= 0) MemoryMarshal.Write(s.ArenaBytes.AsSpan(at + PbProbeMips, sizeof(float)), mips);
+        s.PassAt = at; s.PassStamp = _ps.Stamp; s.PassMips = mips;
         return at;
     }
 

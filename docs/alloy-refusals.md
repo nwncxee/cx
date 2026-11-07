@@ -205,12 +205,11 @@ vanilla. There is no walk. A decline is geometry that nothing renders, so each b
   classifying" could not be attributed without a Ghidra session. The census line now carries the cross:
   `[by gate: vdo/Water=87 empty-item/Cutout=87 …]`, printed only where a cell is nonzero, over the five gates
   that refuse a classified part (`vdo`, `scene-tint`, `empty-item`, `table-full`, `no-vao-slot`).
-- **Unbuilt diffuse textures** (`null-tex … drawn white/frame` on the `[alloy]` line). Not a refusal at all
+- **Unbuilt diffuse textures.** Not a refusal at all
   any more: `AurTextureGetTID` @0x48e080 returns 0 for the engine's shared `m_pNullTexture`, `CAurTexture::Bind`'s
   IsNull branch binds 0 and the draw is still issued, so vanilla renders such a part blank white. Alloy now
   draws it on a 1x1 white owned texture (`OwnedTextures.WhiteTid`) instead of deleting it from the frame, and
-  the record stays stale so a late GL id is picked up the frame it arrives. `no-gl-id` survives for the one
-  case that is still a hole -- the stand-in itself could not be minted.
+  the record stays stale so a late GL id is picked up the frame it arrives.
 
 ## The census holes, closed (CX-91)
 
@@ -237,9 +236,8 @@ nm addresses (the read-only dump in `$NWN_DECOMP/` prints them + 0x100000).
   which is `GLRender::SetTextureStageEnabled(unit, 0)` @0x4c93d0 — the stage leaves
   `m_bEnabledTextureStages`, so it contributes no multiply — and `PartTriMesh::Draw` @0x4513d0 calls
   `RenderFlat` regardless. That is a white surface, which is exactly the stand-in `OwnedTextures.WhiteTid`
-  already mints for a live diffuse with no GL id. Both ends take it now: `no-diffuse=N owned on the white
-  stand-in` on the census line, `no-diffuse N drawn untextured/frame` on the `[alloy]` line (it used to be
-  `tex (no-diffuse …)` under **NOT DRAWN**). Unlike the tid-0 case the record is *not* left stale: an absent
+  already mints for a live diffuse with no GL id, and the census line counts it as `no-diffuse=N owned on the
+  white stand-in`. Unlike the tid-0 case the record is *not* left stale: an absent
   slot is not a pending build, so nothing will ever arrive to re-resolve.
   The other two conditions (`v == 0`, `Mode != 1`) stay as a guard and are unreachable for a bound record —
   `SceneWalk.TryBind` releases a non-mode-1 VDO outright, and the drift gate above re-reads a vacated one — so
