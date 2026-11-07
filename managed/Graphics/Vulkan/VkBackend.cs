@@ -158,6 +158,10 @@ internal sealed unsafe partial class VkBackend : IDevice
     /// <summary>The labels of the last images destroyed, by id, so a stale use can say which image it held.</summary>
     private readonly (uint Id, string Label)[] _deadImages = new (uint, string)[DeadKept];
     private int _deadImageAt;
+    private readonly (uint Id, string Label)[] _deadBuffers = new (uint, string)[DeadKept];
+    private int _deadBufferAt;
+    /// <summary>Buffers <see cref="Destroy(BufferId)"/> has queued, so a second destroy of one does not free it twice.</summary>
+    private readonly HashSet<uint> _doomedBuffers = new();
     private const int DeadKept = 32;
     private readonly HandleTable<VkSampler> _samplers = new();
     private readonly HandleTable<VkShader> _shaders = new();
@@ -732,9 +736,34 @@ internal sealed unsafe partial class VkBackend : IDevice
     /// <summary>GL GLSL as Vulkan GLSL: the one built-in the SPIR-V environment renames.</summary>
     internal static string Translate(string glsl) => glsl.Replace("gl_VertexID", "gl_VertexIndex", StringComparison.Ordinal);
 
+    /// <summary>The buffer goes once the next submit has passed. Its id resolves until then, because a list recorded
+    /// before this call still names it: a pass may grow a buffer an earlier pass of the same frame already bound.</summary>
     public void Destroy(BufferId b)
     {
-        if (OnThread("Destroy") && _buffers.Remove(b.Value, out VkBuf g)) { _sets.Stale = true; Later(() => Vma.vmaDestroyBuffer(_vma, g.Buffer, g.Alloc)); }
+        uint id = b.Value;
+        if (!OnThread("Destroy") || !_buffers.TryGet(id, out VkBuf? g) || !_doomedBuffers.Add(id)) return;
+        _sets.Stale = true;
+        _deadBuffers[_deadBufferAt] = (id, g.Desc.Label);
+        _deadBufferAt = (_deadBufferAt + 1) % DeadKept;
+        Later(() =>
+        {
+            _doomedBuffers.Remove(id);
+            _buffers.Remove(id, out _);
+            _sets.Stale = true;
+            Vma.vmaDestroyBuffer(_vma, g.Buffer, g.Alloc);
+        });
+    }
+
+    /// <summary>What a refusal calls a buffer id that no longer resolves: its label while it is among the last
+    /// <see cref="DeadKept"/> destroyed.</summary>
+    private string StaleBuffer(uint id)
+    {
+        for (int k = 1; k <= DeadKept; k++)
+        {
+            (uint dead, string label) = _deadBuffers[(_deadBufferAt - k + DeadKept) % DeadKept];
+            if (dead == id && label != null) return $"stale buffer {label} (destroyed)";
+        }
+        return $"stale buffer {id}";
     }
 
     public void Destroy(ImageId i)

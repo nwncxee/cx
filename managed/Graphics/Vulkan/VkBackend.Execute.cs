@@ -554,7 +554,7 @@ internal sealed unsafe partial class VkBackend
     private bool Buf(BufferBinding u, uint at, VkDescriptorType type, VkWriteDescriptorSet* w, Span<VkDescriptorBufferInfo> bi,
                      Span<BindingKey> key, Span<uint> dyn, ref int k, ref int b)
     {
-        if (!_buffers.TryGet(u.Buffer.Value, out VkBuf? buf)) return Fault($"bind set: stale buffer on slot {u.Slot}");
+        if (!_buffers.TryGet(u.Buffer.Value, out VkBuf? buf)) return Fault($"bind set: {StaleBuffer(u.Buffer.Value)} on slot {u.Slot}");
         VkAccessFlags2 access = type == VkDescriptorType.StorageBuffer ? StorageAccess : VkAccessFlags2.UniformRead;
         if (_setDraws) Use(buf, DrawStages | _meshStages, access);
         else { _cBufs[_cBufN] = buf; _cAccess[_cBufN++] = access; }
