@@ -14,6 +14,10 @@ namespace CX.Alloy;
 /// </summary>
 internal static unsafe class TexScan
 {
+    /// <summary>Pixels on their way to the encoder. One array per size at most: the shared pool keeps eight per size per
+    /// core, which held half a gigabyte of a load's textures for the rest of the session.</summary>
+    internal static readonly ArrayPool<byte> PixelPool = ArrayPool<byte>.Create(1 << 28, 1);
+
     /// <summary>The engine's own format indices into its format translation table; it never uploads DXT3. An
     /// uncompressed sheet is cut into cells, compressed data is one image.</summary>
     private const int FmtDxt1 = 7, FmtDxt5 = 8;
@@ -89,7 +93,7 @@ internal static unsafe class TexScan
         r.W = cw; r.H = ch;
         if (wantPixels && bpp >= 3)
         {
-            byte[] o = ArrayPool<byte>.Shared.Rent((int)ChainBytes(cw, ch, r.Mips));
+            byte[] o = PixelPool.Rent((int)ChainBytes(cw, ch, r.Mips));
             for (int y = 0; y < ch; y++)
             {
                 ReadOnlySpan<byte> s0 = image.Slice((int)((y0 + y) * stride + (long)x0 * bpp));
@@ -149,11 +153,11 @@ internal static unsafe class TexScan
     {
         if (!BcnDecode.Decodes(f)) { LastRefusedFormat = FmtDecodedBase + (int)f; return false; }
         int px = BcnDecode.PixelBytes(f), n = w * h * px;
-        byte[] buf = ArrayPool<byte>.Shared.Rent(n);
+        byte[] buf = PixelPool.Rent(n);
         int lvl = DdsReader.LevelSize(w, h, DdsReader.ChannelsOf(f));
         BcnDecode.Unpack(new ReadOnlySpan<byte>(image, hdr + lvl).Slice(hdr), w, h, f, buf.AsSpan(0, n));
         ScanRaw(buf.AsSpan(0, n), (long)w * px, px, 0, 0, w, h, cut, ref r);
-        ArrayPool<byte>.Shared.Return(buf);
+        PixelPool.Return(buf);
         return true;
     }
 

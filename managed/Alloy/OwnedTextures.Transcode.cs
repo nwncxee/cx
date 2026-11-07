@@ -59,8 +59,8 @@ internal static unsafe partial class OwnedTextures
     /// sized by <see cref="TexScan.ChainBytes"/>) whether or not it is queued.</summary>
     private static void EnqueueTranscode(ulong key, int etid, uint src, long bytes, byte[] pixels, int w, int h, bool mips)
     {
-        if (w < TranscodeFloor || h < TranscodeFloor) { ArrayPool<byte>.Shared.Return(pixels); return; }
-        if (_transN >= TransQueue || _transPixelBytes + pixels.Length > TransPixelCap) { _transDropped++; ArrayPool<byte>.Shared.Return(pixels); return; }   // stays raw, as bcn=0 would leave it
+        if (w < TranscodeFloor || h < TranscodeFloor) { TexScan.PixelPool.Return(pixels); return; }
+        if (_transN >= TransQueue || _transPixelBytes + pixels.Length > TransPixelCap) { _transDropped++; TexScan.PixelPool.Return(pixels); return; }   // stays raw, as bcn=0 would leave it
         var job = new TransJob { Key = key, Etid = etid, Src = src, Bytes = bytes, Ctx = _transCtx, Pixels = pixels };
         fixed (int* lw = job.Lw, lh = job.Lh) fixed (long* off = job.Off)
             job.Levels = TexScan.Chain(w, h, mips, MaxLevels, lw, lh, off, out _);
@@ -104,7 +104,7 @@ internal static unsafe partial class OwnedTextures
                 long t0 = FrameZones.Now;
                 long blk = 0;
                 for (int i = 0; i < job.Levels; i++) blk += BcnEncode.LevelSize(job.Lw[i], job.Lh[i], true);
-                job.Blocks = ArrayPool<byte>.Shared.Rent((int)blk);
+                job.Blocks = TexScan.PixelPool.Rent((int)blk);
                 fixed (byte* px = job.Pixels)
                 fixed (int* lw = job.Lw, lh = job.Lh) fixed (long* offs = job.Off)
                 {
@@ -143,8 +143,8 @@ internal static unsafe partial class OwnedTextures
         _transN--;
         _transPixelBytes -= job.Pixels.Length;
         _inFlight.Remove(job.Key);
-        ArrayPool<byte>.Shared.Return(job.Pixels);
-        if (job.Blocks.Length > 0) ArrayPool<byte>.Shared.Return(job.Blocks);
+        TexScan.PixelPool.Return(job.Pixels);
+        if (job.Blocks.Length > 0) TexScan.PixelPool.Return(job.Blocks);
     }
 
     /// <summary>The NAME edge: every queued job names a source texture of the device that went, so the work is

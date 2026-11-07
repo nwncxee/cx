@@ -17,15 +17,6 @@ internal static unsafe class MipChain
     private const int Hole = 51;
     private const int MaxLevels = 16;
     private const int Bpp = 4;
-    /// <summary>One decode worker's scratch.</summary>
-    private sealed class MipChainState
-    {
-        /// <summary>The RGBA chain of a compressed rebuild, grown to the largest it has met.</summary>
-        public byte[] Work = [];
-    }
-
-    [ThreadStatic] private static MipChainState? _state;
-
     /// <summary>The texel at column <paramref name="x"/>, row <paramref name="y"/> of a level <paramref name="w"/> wide.</summary>
     internal static int Cell(int w, int x, int y) => y * w + x;
 
@@ -52,16 +43,21 @@ internal static unsafe class MipChain
     }
 
     /// <summary>A stored BC3 chain with holes, its mips rewritten in place and its level 0 blocks kept; false when it
-    /// stays as stored: no mips, no holes, or another format. The work is one scratch buffer per decode worker.
+    /// stays as stored: no mips, no holes, or another format. Its RGBA working copy is freed before this returns.
     /// ponytail: BC1's decoder drops punch-through alpha; decode it to reach BC1 cut-outs.</summary>
     internal static bool Dds(Span<byte> chain, int w, int h, int levels, DdsReader.Fmt f)
     {
         if (levels < 2 || f != DdsReader.Fmt.Bc3) return false;
         int top = w * h * Bpp;
         long need = TexScan.ChainBytes(w, h, true);
-        MipChainState state = _state ??= new MipChainState();
-        if (state.Work.Length < need) state.Work = new byte[need];
-        Span<byte> work = state.Work;
+        var scratch = new NativeBuffer<byte>();
+        scratch.Take(checked((int)need));
+        try { return Rewrite(chain, w, h, levels, f, top, scratch.Span); }
+        finally { scratch.Free(); }
+    }
+
+    private static bool Rewrite(Span<byte> chain, int w, int h, int levels, DdsReader.Fmt f, int top, Span<byte> work)
+    {
         BcnDecode.Unpack(chain[..BcnEncode.LevelSize(w, h, true)], w, h, f, work[..top]);
         if (!HasHoles(work[..top])) return false;
         Build(work[..top], w, h, work);

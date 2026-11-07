@@ -166,6 +166,9 @@ internal static unsafe partial class LightmapBake
                  + $"SetHash {SetHash:x16}, "
                  + $"charts {MeshChart.Done}/{MeshChart.Offered}, {_sharedEnrols} enrols shared a standing rect; census at the close static={_closeStatic} dynamic={_closeDynamic}, now static {CensusStatic} dynamic {CensusDynamic}"
                  + stages + AreaStats());
+        // the load's garbage goes while the screen is still the loading hold's; a gen2 would otherwise not come for minutes
+        System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
         // CX-54 step 0: the key sample is chosen over the whole area, so it is emitted here, not on the first rect.
         FlushKeySample();
         // the world the send places the player into is not the one any capture under the hold saw
