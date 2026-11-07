@@ -81,7 +81,7 @@ did not is the diagnosis. Capped at 32 gobs and 16 parts each.
 4. Leave `poll` on. The next `[alloy]` period line carries
    `POLL AUDIT misses (must be 0): matrix N keyhole N fade N box N alpha N` -- the cache that disagreed
    with a live read is the one that lost the part. Does the bug recur at all with `poll` on?
-5. `/alloy poll 0` when done. Keep `~/cx.log` and `frame.txt`.
+5. `/alloy poll 0` when done. Keep `~/cx.log`, any `~/cx.<n>.log` from the same session, and `frame.txt`.
 
 The bench plaza is the higher-rate repro: stand beside them with `poll 1` on from the start and see
 whether they still vanish.

@@ -52,6 +52,7 @@ jobs:
             tools/build-openal.sh
             tools/approved-examples.sh
             tools/no-loaded-runtime.sh
+            tools/live/session-log.sh
             'tools/*_approved_examples*'
             'tools/release/*'
             'tools/ffx/*'

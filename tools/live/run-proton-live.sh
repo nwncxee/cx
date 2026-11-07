@@ -91,7 +91,7 @@ PFX="$OUT/pfx"; mkdir -p "$PFX"
 # in simply pushes it to ".0", then ".1", and the knobs are never read.
 DOCS="$PFX/pfx/drive_c/cxuser"
 mkdir -p "$DOCS"
-rm -f "$DOCS/cx.log"
+rm -f "$DOCS/cx.log" "$DOCS"/cx.[0-9].log
 if [ "$NUI" = 1 ]; then
     mkdir -p "$DOCS/modules"
     NWN_DIR="$NWN_DIR" "$ROOT/tools/live/ladder/build-ladder.sh" "$DOCS/modules" "$MODULE" ${SHOWCASE:+"$SHOW_SRC"} \
@@ -184,7 +184,7 @@ survivors=$(live_survivors "$RUN_TAG" | tr '\n' ',' | sed 's/,$//')
 live_sweep "$RUN_TAG"
 
 # The Windows cx.log lives in the prefix, beside the Windows nwn.ini.
-[ -f "$DOCS/cx.log" ] && cp "$DOCS/cx.log" "$OUT/cx.log"
+"$ROOT/tools/live/session-log.sh" "$DOCS" "$OUT"
 # The hosted module's own marks (CXNUI:, CXSHOW:, CXLADDER:) are in the client log.
 [ -f "$DOCS/logs/nwclientLog1.txt" ] && cp "$DOCS/logs/nwclientLog1.txt" "$OUT/nwclientLog1.txt"
 shots=$(find "$SHOTS" -name '*.png' -size +1k 2>/dev/null | wc -l)

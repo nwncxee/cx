@@ -116,7 +116,7 @@ CX writes no log by default. To get one, create `cx.cfg` next to `nwn.ini` (Wind
 general.logs=1
 ```
 
-Play until the problem happens again, then open an [issue](https://github.com/nwncxee/cx/issues) with `cx.log` (next to `cx.cfg` on Windows, `~/cx.log` on Linux) and what you were doing right before things went wrong.
+Play until the problem happens again, then open an [issue](https://github.com/nwncxee/cx/issues) with `cx.log` and `cx.1.log` (next to `cx.cfg` on Windows, in your home folder on Linux) and what you were doing right before things went wrong. If you restarted the game after the problem, it is in `cx.1.log`.
 
 ## Build from source
 

@@ -6,22 +6,24 @@ set -e
 cd "$(dirname "$0")"
 B="$PWD/cx-linux-x64"
 
+# A build and a boot take the machine from whoever is measuring or playing there, a session in another checkout included.
+if pgrep -x nwmain-linux >/dev/null; then
+  echo "run-demo: a client is running (pgrep nwmain-linux) -- refusing to start beside it" >&2
+  exit 3
+fi
+
 # Same reason as run-proton.sh: this runs the STAGED artifacts, so without a build it happily
 # smoke-tests the previous edit. ~20s when nothing changed; CX_NO_BUILD=1 to run what is staged.
 [ -n "$CX_NO_BUILD" ] || ./build.sh
 [ -f "$B/libcx.so" ] || { echo "run ./build.sh first"; exit 1; }
 # ExtenderLog writes to $HOME/cx.log, which is where a real SESSION's log lives too -- a headless run
-# here would truncate the log the last game session left behind, which is the only evidence a live-verified
-# ticket has. Give the demo its own HOME so the two can never collide, and its own XDG_DATA_HOME: the
+# here would push the last game session's log along its parts. Give the demo its own HOME so the two can
+# never collide, and its own XDG_DATA_HOME: the
 # settings file sits in the client's user directory under it, and a player's cx.cfg moves the defaults
 # the SelfCheck suites assert.
 DEMOHOME="${TMPDIR:-/tmp}/cx-demo"
 mkdir -p "$DEMOHOME"
 LOG="$DEMOHOME/cx.log"
-# ROTATE, never delete. This is the same file the real client writes, and a client session's log is
-# the only record of what happened in a live area -- deleting it means a run-demo after a play session
-# destroys the evidence you were about to read. (It has: a large-area diagnosis was mid-flight.)
-[ -f "$LOG" ] && mv -f "$LOG" "$LOG.prev"
 
 # #457: rot stands the WHOLE extender down, before discovery, keyed on the host's .note.gnu.build-id.
 # /usr/bin/env is by definition a wrong build, so a demo that ran in it would prove the refusal and nothing
@@ -85,6 +87,20 @@ if ! grep -q '0 service(s) discovered, 0 hook(s) installed' "$ROTHOME/cx.log"; t
   echo ">> FAIL: the rot line did not report zero services and zero hooks"; exit 1
 fi
 echo ">> rot: extender stood down whole, nothing discovered."
+
+# Given Write cx.log for bug reports is off and a cx.log from the last launch
+# When the client launches
+# Then cx.log holds this launch's lines and cx.1.log holds the last launch's
+OFFHOME="${TMPDIR:-/tmp}/cx-demo-logs-off"
+rm -rf "$OFFHOME"; mkdir -p "$OFFHOME/.local/share/Neverwinter Nights"
+echo "general.logs=0" > "$OFFHOME/.local/share/Neverwinter Nights/cx.cfg"
+echo "the last launch" > "$OFFHOME/cx.log"
+HOME="$OFFHOME" XDG_DATA_HOME="$OFFHOME/.local/share" CX_MANAGED="$B/cx_managed.so" LD_LIBRARY_PATH="$B" LD_PRELOAD="$B/libcx.so" "$STUB" >/dev/null
+echo
+if [ "$(cat "$OFFHOME/cx.1.log" 2>/dev/null)" != "the last launch" ] || grep -q 'the last launch' "$OFFHOME/cx.log" || [ ! -s "$OFFHOME/cx.log" ]; then
+  echo ">> FAIL: with logs off, a launch did not rotate cx.log into cx.1.log ($OFFHOME)"; exit 1
+fi
+echo ">> logs off: the launch rotated cx.log."
 
 echo
 echo "Attach to the real client with the launcher:"

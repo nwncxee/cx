@@ -165,6 +165,8 @@ ENGINE_OUT="$OUT/engine-stdout.log"
 GS_LOG="$OUT/gamescope.log"
 SHOTS="$OUT/shots"
 mkdir -p "$USER_DIR/localvault" "$FAKE_HOME/.cache" "$FAKE_HOME/.config" "$SHOTS"
+# A reused --out must not join its last session's log into this one's verdict.
+rm -f "$CX_LOG" "$FAKE_HOME"/cx.[0-9].log
 
 # ---- the throwaway user directory -------------------------------------------------------------
 # nwn.ini is nothing but absolute Alias paths, so it is copied with every one of them rewritten --
@@ -417,6 +419,8 @@ if [ "$STOCK" = 1 ]; then
     CX_LOG="$USER_DIR/logs/nwclientLog1.txt"
     AREA_MARK='CX(SHOW|NUI|LADDER): enter '
 fi
+# A long session rolls cx.log, so a mark may already sit in an older part.
+log_has() { grep -q "$@" "$CX_LOG" "$FAKE_HOME"/cx.[0-9].log 2>/dev/null; }
 reached=0
 area_epoch=""
 peak_rss=0
@@ -429,14 +433,14 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
     alive "$CLIENT_PID" || break
     [ -r "/proc/$CLIENT_PID/status" ] && peak_rss=$(awk '/VmHWM/{print $2}' "/proc/$CLIENT_PID/status" 2>/dev/null || echo "$peak_rss")
     # The menu's own mark is the first present: no module loads, so no area mark will ever come.
-    if [ "$MENU" = 1 ] && grep -qF "$FRAME_MARK" "$CX_LOG" 2>/dev/null; then
+    if [ "$MENU" = 1 ] && log_has -F "$FRAME_MARK"; then
         menu_up=1
         area_epoch=$(date +%s.%N)
         break
     fi
-    if [ "$MENU" = 0 ] && { grep -qE "$AREA_MARK" "$CX_LOG" 2>/dev/null \
-       || { grep -q '\[alloygate\] alloy.enabled=0 -- the engine renders' "$CX_LOG" 2>/dev/null && grep -qE "$AREA_MARK_ENGINE" "$CX_LOG" 2>/dev/null; } \
-       || { grep -q 'the AreaLoaded send did not resolve' "$CX_LOG" 2>/dev/null && grep -qE "$AREA_MARK_NOHOLD" "$CX_LOG" 2>/dev/null; }; }; then
+    if [ "$MENU" = 0 ] && { log_has -E "$AREA_MARK" \
+       || { log_has '\[alloygate\] alloy.enabled=0 -- the engine renders' && log_has -E "$AREA_MARK_ENGINE"; } \
+       || { log_has 'the AreaLoaded send did not resolve' && log_has -E "$AREA_MARK_NOHOLD"; }; }; then
         reached=1
         area_epoch=$(date +%s.%N)
         break
@@ -604,7 +608,11 @@ survivors=$(live_survivors "$RUN_TAG" | tr '\n' ',' | sed 's/,$//')
 live_sweep "$RUN_TAG"
 
 # ---- collect ------------------------------------------------------------------------------------
-cp -f "$CX_LOG" "$OUT/cx.log" 2>/dev/null
+if [ "$STOCK" = 1 ]; then
+    cp -f "$CX_LOG" "$OUT/cx.log" 2>/dev/null
+else
+    "$ROOT/tools/live/session-log.sh" "$FAKE_HOME" "$OUT"
+fi
 grep -v '^\[cx\]' "$GS_LOG" > "$ENGINE_OUT" 2>/dev/null
 # nwclientLog1.txt is where the hosted module's own WriteTimestampedLogEntry lands in a +TestNewModule
 # session -- one process, one log, the client's. nwserverLog1.txt is listed because the client formats

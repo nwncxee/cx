@@ -128,6 +128,10 @@ def wait_log(arg, start):
     while time.monotonic() < deadline:
         try:
             with open(path, "rb") as f:
+                # A file shorter than the position is a new part: the log rolled.
+                # shortcut: lines written between the last poll and the roll are missed, read cx.1.log if a wait ever needs them.
+                if os.fstat(f.fileno()).st_size < pos:
+                    pos = 0
                 f.seek(pos)
                 chunk = f.read()
         except FileNotFoundError:

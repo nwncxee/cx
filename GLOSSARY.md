@@ -74,6 +74,9 @@ detail, no decisions (those live in the Plane tracker and `docs/adr/`). Terms cr
 - **Extender-optional** — a stock client plays vanilla; the extender only ever reuses
   existing wire opcodes, so an un-extended client loses nothing.
 
+- **Log part** — one of the files a session's log is kept in: `cx.log`, then `cx.1.log` to `cx.4.log`, oldest highest.
+  Each launch starts a new one and each holds at most 10 MB (`LogParts`). Unrelated to a scene part.
+
 ## Platform port
 
 - **Resolution** — how a Linux symbol lands on Windows: by *Name* (an MSVC export), by *RVA*

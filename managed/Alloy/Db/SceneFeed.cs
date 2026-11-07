@@ -144,24 +144,43 @@ public static class SceneFeed
 
     /// <summary>Which source the fold took: 1 the area, 2 the scene columns, 3 the scene shell.</summary>
     private static int _fogPath;
-    private static int _fogSaidPath = -1;
-    private static bool _fogSaidOn;
-    private static Vector3 _fogSaidCol;
-    private static float _fogSaidEnd;
-    private static bool _fogSaidSky;
+    private static readonly FogNoteState _fogSaid = new();
 
-    /// <summary>One line whenever the fog the frame will draw changes -- path, switch, colour, range, the
-    /// area's day/night state and the engine's clear colour -- so a wrong fog in a player's session names its
-    /// source from cx.log. Cold: a still scene compares four values and writes nothing.</summary>
+    /// <summary>What the last fog line said, and whether the fog has moved a whole step of the line's last digit from it:
+    /// while a fade runs the engine rewrites the colour every frame, and its rounding moves a colour that is not changing.</summary>
+    internal sealed class FogNoteState
+    {
+        private const float ColourStep = 0.001f, RangeStep = 0.1f;
+
+        private int _path = -1;
+        private bool _on, _sky;
+        private Vector3 _col;
+        private float _end;
+
+        /// <summary>True, and remembered, when this fog differs from what the last line said.</summary>
+        internal bool Changed(int path, bool on, Vector3 col, float end, bool sky)
+        {
+            if (path == _path && on == _on && sky == _sky && !Moved(end, _end, RangeStep)
+                && !Moved(col.X, _col.X, ColourStep) && !Moved(col.Y, _col.Y, ColourStep) && !Moved(col.Z, _col.Z, ColourStep)) return false;
+            _path = path; _on = on; _col = col; _end = end; _sky = sky;
+            return true;
+        }
+
+        /// <summary>A NaN arriving or leaving counts once; a NaN staying does not repeat.</summary>
+        private static bool Moved(float now, float said, float step) =>
+            float.IsNaN(now) != float.IsNaN(said) || Math.Abs(now - said) >= step;
+    }
+
+    /// <summary>One line whenever the fog's source, switch, colour, far range or sky term changes, printing the area's
+    /// day/night state and the engine's clear colour beside them, so a wrong fog in a player's session names its source
+    /// from cx.log. Cold: a still scene compares its values and writes nothing.</summary>
     private static void FogNote(int i, in FrameHoist h)
     {
         bool on = FrameInputs.FogOn;
         Vector3 col = FrameInputs.FogColor;
         float end = FrameInputs.FogEnd;
         bool haveSky = SceneFog.TrySky(out Vector3 sky);
-        if (_fogPath == _fogSaidPath && on == _fogSaidOn && col == _fogSaidCol && end == _fogSaidEnd
-            && haveSky == _fogSaidSky) return;
-        _fogSaidPath = _fogPath; _fogSaidOn = on; _fogSaidCol = col; _fogSaidEnd = end; _fogSaidSky = haveSky;
+        if (!_fogSaid.Changed(_fogPath, on, col, end, haveSky)) return;
         float[] clr = ScreenOwner.ClearRgba;
         // the area's terms as the FOLD read them, not a fresh walk. This line runs inside the draw,
         // which may be the render thread, where CurrentArea() is a read of the game thread's memory.
