@@ -274,7 +274,7 @@ internal static unsafe partial class TexRegistry
             else NativeMemory.Free(j.Data);
             j.Data = null;
         }
-        j.Rebuilt = null;
+        if (j.Rebuilt != null) { MipChain.Release(j.Rebuilt); j.Rebuilt = null; }
         lock (_gate) _pool.Push(j);
     }
 
@@ -396,7 +396,7 @@ internal static unsafe partial class TexRegistry
             j.MeanOk = TexScan.MeanOfDxt(chain, info.W, info.H, info.Format == DdsReader.Fmt.Bc3, out j.Mean);
         if (j.Cuts && !j.EnvMap && MipChain.Dds(raw.Slice(info.DataOffset), info.W, info.H, info.Present, info.Format) is { } rebuilt)
         {
-            j.Rebuilt = rebuilt; j.Bytes = rebuilt.Length;
+            j.Rebuilt = rebuilt; j.Bytes = MipChain.Bc3Bytes(info.W, info.H, info.Present);
             j.GlFmt = DdsReader.GlFormat(DdsReader.Fmt.Bc3); j.Channels = DdsReader.ChannelsOf(DdsReader.Fmt.Bc3);
         }
     }

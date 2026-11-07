@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Runtime.InteropServices;
 using CX.Framework;
 
@@ -21,7 +22,8 @@ internal static unsafe class MipChain
     /// <summary>The texel at column <paramref name="x"/>, row <paramref name="y"/> of a level <paramref name="w"/> wide.</summary>
     internal static int Cell(int w, int x, int y) => y * w + x;
 
-    /// <summary>The whole RGBA8 chain of a sheet with holes; null for one with none.</summary>
+    /// <summary>The whole RGBA8 chain of a sheet with holes, rented and possibly longer than the chain (hand it to
+    /// <see cref="Release"/>); null for one with none.</summary>
     internal static byte[]? Raster(ReadOnlySpan<byte> rgba, int w, int h)
     {
         ReadOnlySpan<Texel> top = MemoryMarshal.Cast<byte, Texel>(rgba);
@@ -32,7 +34,7 @@ internal static unsafe class MipChain
         int* lw = stackalloc int[MaxLevels], lh = stackalloc int[MaxLevels];
         long* off = stackalloc long[MaxLevels];
         int levels = TexScan.Chain(w, h, true, MaxLevels, lw, lh, off, out long total);
-        var chain = new byte[total];
+        byte[] chain = ArrayPool<byte>.Shared.Rent((int)total);
         rgba.CopyTo(chain);
         fixed (byte* px = chain) TexScan.BuildMips(px, levels, lw, lh, off);
         Span<byte> all = chain;
@@ -50,14 +52,14 @@ internal static unsafe class MipChain
     internal static byte[]? Dds(ReadOnlySpan<byte> chain, int w, int h, int levels, DdsReader.Fmt f)
     {
         if (levels < 2 || f != DdsReader.Fmt.Bc3) return null;
-        var rgba = new byte[w * h * Bpp];
-        BcnDecode.Unpack(chain[..BcnEncode.LevelSize(w, h, true)], w, h, f, rgba);
-        if (Raster(rgba, w, h) is not { } built) return null;
+        int bytes0 = w * h * Bpp;
+        byte[] rgba = ArrayPool<byte>.Shared.Rent(bytes0);
+        BcnDecode.Unpack(chain[..BcnEncode.LevelSize(w, h, true)], w, h, f, rgba.AsSpan(0, bytes0));
+        byte[]? built = Raster(rgba.AsSpan(0, bytes0), w, h);
+        ArrayPool<byte>.Shared.Return(rgba);
+        if (built == null) return null;
 
-        long total = 0;
-        for (int l = 0, lw = w, lh = h; l < levels; l++, lw = Math.Max(1, lw >> 1), lh = Math.Max(1, lh >> 1))
-            total += BcnEncode.LevelSize(lw, lh, true);
-        var o = new byte[total];
+        byte[] o = ArrayPool<byte>.Shared.Rent((int)Bc3Bytes(w, h, levels));
         long from = 0, to = 0;
         for (int l = 0, lw = w, lh = h; l < levels; l++, lw = Math.Max(1, lw >> 1), lh = Math.Max(1, lh >> 1))
         {
@@ -66,8 +68,21 @@ internal static unsafe class MipChain
             else BcnEncode.EncodeLevel(built.AsSpan((int)from, bytes), lw, lh, true, o.AsSpan((int)to, size));
             from += bytes; to += size;
         }
+        Release(built);
         return o;
     }
+
+    /// <summary>Bytes of a BC3 chain of <paramref name="levels"/> levels: a rented chain's real length.</summary>
+    internal static long Bc3Bytes(int w, int h, int levels)
+    {
+        long total = 0;
+        for (int l = 0; l < levels; l++, w = Math.Max(1, w >> 1), h = Math.Max(1, h >> 1))
+            total += BcnEncode.LevelSize(w, h, true);
+        return total;
+    }
+
+    /// <summary>A chain from <see cref="Raster"/> or <see cref="Dds"/> back to the pool: a load churns gigabytes of them.</summary>
+    internal static void Release(byte[] chain) => ArrayPool<byte>.Shared.Return(chain);
 
     /// <summary>Off-device: a sheet with no holes keeps the device's chain and a level 0 leaf keeps its texels. Oracle: hand-painted texels.</summary>
     internal static bool SelfCheck(ExtenderLog log)
@@ -85,7 +100,8 @@ internal static unsafe class MipChain
         t[0] = new Texel(10, 20, 30, 255);
         byte[]? chain = Raster(leaf, 8, 8);
         check.Expect(chain != null && chain[0] == 10 && chain[1] == 20 && chain[2] == 30 && chain[3] == 255, "level 0's leaf texel changed");
-        check.Expect(chain != null && chain.Length == (64 + 16 + 4 + 1) * Bpp, $"8x8 chain is {chain?.Length} bytes");
+        check.Expect(chain != null && chain.Length >= (64 + 16 + 4 + 1) * Bpp, $"8x8 chain is {chain?.Length} bytes");
+        check.Expect(Bc3Bytes(8, 8, 3) == 64 + 16 + 16, $"8x8 three-level BC3 is {Bc3Bytes(8, 8, 3)} bytes");
         check.Expect(Dds(stackalloc byte[16], 4, 4, 1, DdsReader.Fmt.Bc3) == null, "a one-level file was rebuilt");
         check.Expect(Dds(stackalloc byte[16], 4, 4, 3, DdsReader.Fmt.Bc7) == null, "a BC7 file was rebuilt");
         log.Info(check.Ok ? "MipChain.SelfCheck: passed" : "MipChain.SelfCheck: FAILED");
