@@ -36,7 +36,7 @@ public sealed unsafe partial class AlloyRenderer
     private struct VkDefLoc
     {
         public int Cubes, Material, LightOcc, LmMovers, Rect, InvVp, Proj, ShSize, ShRes;
-        public int View, Grid, ProjXY, Z, LightCount, Reach, LightFloor, BinCap, Atten, Hot, Rel, Pad, Tally, DynPage, WalkCount;
+        public int View, Grid, ProjXY, Z, LightCount, Reach, LightFloor, BinCap, Atten, Hot, Rel, Pad, Tally, DynPage, WalkCount, SlotLight;
     }
 
     /// <summary>The deferred path's resources on one device, replaced whole with the device.</summary>
@@ -48,7 +48,9 @@ public sealed unsafe partial class AlloyRenderer
         public bool Wrote;
         /// <summary>The shipped walk, the film pass, the record writer, and the walk's in-loop-tap variant --
         /// built on the first frame an "every light" escape asks for it (<c>shadow.cap 0</c>).</summary>
-        public VkDefStage? Walk, Film, Shadow, InLoop;
+        public VkDefStage? Walk, Film, Shadow, InLoop, Debt, DebtApply;
+        /// <summary>The light record index of the static light in each cube slot, -1 for none: the mover debt's <c>uSlotLight</c>.</summary>
+        public readonly float[] SlotLight = new float[CasterPass.MaxCubes];
         public bool InLoopFailed;
         /// <summary>The walk and film pass with wave lockstep, built the first frame <c>light.deferredwave 1</c> asks for
         /// them on a device whose subgroups offer ballot.</summary>
@@ -65,8 +67,8 @@ public sealed unsafe partial class AlloyRenderer
         /// <summary>The walk runs without wave lockstep on this device, and cx.log has said so.</summary>
         public bool WaveNoted;
         /// <summary>The light record the walk writes, and the visibility record's two lanes.</summary>
-        public ImageId LightRec, ShVis, ShKey;
-        public int W, H, ShW, ShH;
+        public ImageId LightRec, ShVis, ShKey, MoverOcc;
+        public int W, H, ShW, ShH, OccW, OccH;
         public DeferredBlock Blk;
     }
 
@@ -77,6 +79,14 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>Invocations per group per axis, each stage's own <c>local_size</c>.</summary>
     private const int VkDefGroup = 16, VkShGroup = 8;
+    /// <summary>The code in a light record's last float at and past which the light is static.</summary>
+    private const int StaticLightMin = 128;
+
+    /// <summary>One light record as the stage reads <c>uLights</c>: position and reach, then colour and code.</summary>
+    private readonly struct VkLightRecord
+    {
+        public readonly Vector4 PosReach, ColourCode;
+    }
 
     /// <summary>The counters' words, as <c>cx_deferred_cs</c> lays them out: four overflow and miss counts, the four an
     /// older walk's census adds to, then the period line's three.</summary>
@@ -118,10 +128,13 @@ public sealed unsafe partial class AlloyRenderer
 
         // one frame in VkDefStatsPeriod counts from zero and is copied out for the period line
         bool sample = ++d.Frames % VkDefStatsPeriod == 0 && d.StatsGen == 0;
-        int arena0 = s.ArenaUsed, pass = -1, looseFilm = 0;
+        bool debt = VkDefSlotLights(rig);
+        int arena0 = s.ArenaUsed, pass = -1, looseFilm = 0, looseDebt = 0, looseApply = 0;
         if (!VkDefBlocks(d.Shadow!, true, viewport, near, far, in invVp, in proj, rw, rh, div, out int looseSh, ref pass)
             || !VkDefBlocks(walk, false, viewport, near, far, in invVp, in proj, rw, rh, div, out int looseWalk, ref pass, sample)
-            || film && !VkDefBlocks(filmSt!, false, viewport, near, far, in invVp, in proj, rw, rh, div, out looseFilm, ref pass))
+            || film && !VkDefBlocks(filmSt!, false, viewport, near, far, in invVp, in proj, rw, rh, div, out looseFilm, ref pass)
+            || debt && !VkDefBlocks(d.Debt!, false, viewport, near, far, in invVp, in proj, rw, rh, div, out looseDebt, ref pass)
+            || debt && !VkDefBlocks(d.DebtApply!, false, viewport, near, far, in invVp, in proj, rw, rh, div, out looseApply, ref pass))
             return;
 
         ref DeferredBlock b = ref d.Blk;
@@ -155,6 +168,17 @@ public sealed unsafe partial class AlloyRenderer
         cl.Dispatch((w + VkDefGroup - 1) / VkDefGroup, (h + VkDefGroup - 1) / VkDefGroup);
         cl.EndLabel();
         d.Wrote = true;
+        if (debt)
+        {
+            cl.BeginLabel("mover debt"u8);
+            cl.SetPipeline(d.Debt!.Pipe);
+            VkDefBindSet(cl, d.Debt, d.MoverOcc, default, looseDebt, pass, slots);
+            cl.Dispatch(((w + 1) / 2 + VkDefGroup - 1) / VkDefGroup, ((h + 1) / 2 + VkDefGroup - 1) / VkDefGroup);
+            cl.SetPipeline(d.DebtApply!.Pipe);
+            VkDefBindSet(cl, d.DebtApply, s.Hdr, d.LightRec, looseApply, pass, slots);
+            cl.Dispatch((w + VkShGroup - 1) / VkShGroup, (h + VkShGroup - 1) / VkShGroup);
+            cl.EndLabel();
+        }
         if (film)
         {
             // the film's highlights on top: a linear term of the same pixel, so a second read-modify-write is exact
@@ -270,6 +294,8 @@ public sealed unsafe partial class AlloyRenderer
             d.Shadow = VkDefBuild(vk, DeferredShadows.ShdCs, null, "vk deferred shadow record", log);
             d.Walk = VkDefBuild(vk, DeferredLights.ShdCs, null, "vk deferred walk", log);
             d.Film = VkDefBuild(vk, DeferredLights.ShdCs, "CX_FILM_PASS 1", "vk deferred film", log);
+            d.Debt = VkDefBuild(vk, MoverDebt.ShdCs, null, "vk mover debt", log);
+            d.DebtApply = VkDefBuild(vk, MoverDebt.ApplyCs, null, "vk mover debt apply", log);
             if (VkDefWaveNote(vk.WaveOps, ref d.WaveNoted) is { } note) log.Always(note);
             d.Stats = vk.CreateBuffer(new BufferDesc(VkDefStatsWords * sizeof(uint), BufferUse.Storage | BufferUse.CopySrc,
                                                      MemoryKind.Device, "vk deferred stats"));
@@ -277,7 +303,7 @@ public sealed unsafe partial class AlloyRenderer
                                                          MemoryKind.Readback, "vk deferred stats readback"));
             d.Block = vk.CreateBuffer(new BufferDesc(Std140.BlockBytes<DeferredBlock>(), BufferUse.Uniform,
                                                      MemoryKind.Upload, "vk deferred block"));
-            if (d.Shadow == null || d.Walk == null || d.Film == null || d.Stats.IsNull || d.StatsRead.IsNull || d.Block.IsNull)
+            if (d.Shadow == null || d.Walk == null || d.Film == null || d.Debt == null || d.DebtApply == null || d.Stats.IsNull || d.StatsRead.IsNull || d.Block.IsNull)
             {
                 d.Failed = true;
                 log.Always("AlloyRenderer: the Vulkan deferred path did NOT build (logged above) -- the frame's twins "
@@ -292,6 +318,13 @@ public sealed unsafe partial class AlloyRenderer
             d.LightRec = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba32Ui, w, h, 1, 1, 1, 1,
                                                       ImageUse.Storage | ImageUse.Sampled, "vk light record"));
             d.W = w; d.H = h;
+        }
+        if (d.MoverOcc.IsNull || d.OccW != w || d.OccH != h)
+        {
+            vk.Destroy(d.MoverOcc);
+            d.MoverOcc = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rg16F, (w + 1) / 2, (h + 1) / 2, 1, 1, 1, 1,
+                                                      ImageUse.Storage | ImageUse.Sampled, "vk mover occlusion"));
+            d.OccW = w; d.OccH = h;
         }
         if (d.ShVis.IsNull || d.ShW != rw || d.ShH != rh)
         {
@@ -338,6 +371,26 @@ public sealed unsafe partial class AlloyRenderer
         return true;
     }
 
+    /// <summary>Which light record holds each cube slot's static light, off this frame's staged records. True when
+    /// a mover under one of them owes a baked surface a shadow, which is what the debt dispatch is for.</summary>
+    private static bool VkDefSlotLights(ReadOnlySpan<byte> rig)
+    {
+        float[] table = _vkdef.SlotLight;
+        Array.Fill(table, -1f);
+        ReadOnlySpan<VkLightRecord> lights = MemoryMarshal.Cast<byte, VkLightRecord>(rig);
+        for (int i = 0; i < lights.Length; i++)
+        {
+            int code = (int)lights[i].ColourCode.W;
+            if (code < StaticLightMin) continue;
+            int slot = (code - (int)AlloyLights.LightStatic) % (int)AlloyLights.LightSetStride;
+            if (slot >= 0 && slot < table.Length) table[slot] = i;
+        }
+        if (LightmapBake.MoverMode != 1 || !CasterPass.CubesFresh) return false;
+        for (int i = 0; i < CasterPass.CubeCount; i++)
+            if (table[i] >= 0f && CasterPass.CubeDynPage[i] > 0.5f) return true;
+        return false;
+    }
+
     /// <summary>Stage <paramref name="st"/>'s loose block and (once per frame) the <c>CxPass</c> block into the
     /// frame's arena -- the same writes a colour bind captures, with every term whose map is not on Vulkan left at
     /// zero. False (logged by the arena) when the arena is full.</summary>
@@ -356,6 +409,7 @@ public sealed unsafe partial class AlloyRenderer
             LooseBlock.Set(st.L.LightOcc, [Lighting.HiddenLights.V ? 1f : 0f, GlossyRough]);
             LooseBlock.Set(st.L.LmMovers, LightmapBake.MoverMode);
             LooseBlock.Set(st.L.WalkCount, count ? 1 : 0);
+            LooseBlock.SetEach(st.L.SlotLight, _vkdef.SlotLight.AsSpan());
             if (shadow)
             {
                 // the record writer's own five, which are loose there rather than a block of their own
@@ -415,7 +469,7 @@ public sealed unsafe partial class AlloyRenderer
                     images[ni++] = new ImageBinding(o.Binding, o.Binding == 0 ? img0 : img1, default, 0);
                     break;
                 default:
-                    sampled[nt++] = o.Binding switch
+                    sampled[nt++] = o.Name == "uMoverOcc" ? new ImageBinding(o.Binding, d.MoverOcc) : o.Binding switch
                     {
                         TextureSlots.Gbuf0 => new ImageBinding(o.Binding, s.G0),
                         TextureSlots.Gbuf1 => new ImageBinding(o.Binding, s.G1),
@@ -539,6 +593,7 @@ public sealed unsafe partial class AlloyRenderer
             st.L.Tally = LooseBlock.Loc("uTally");
             st.L.DynPage = LooseBlock.Loc("uDynPage");
             st.L.WalkCount = LooseBlock.Loc("uWalkCount");
+            st.L.SlotLight = LooseBlock.Loc("uSlotLight");
         });
         log.Info($"AlloyRenderer: {label} is built -- {st.Members.Length} loose members, {st.Opaques.Length} declarations");
         return st;

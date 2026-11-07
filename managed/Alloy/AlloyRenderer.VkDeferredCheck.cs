@@ -47,7 +47,8 @@ public sealed unsafe partial class AlloyRenderer
 
         foreach ((string Ref, string? Define, string Label) s in (ReadOnlySpan<(string, string?, string)>)
                  [(DeferredLights.ShdCs, null, "deferred walk"), (DeferredLights.ShdCs, "CX_FILM_PASS 1", "deferred film"),
-                  (DeferredShadows.ShdCs, null, "deferred shadow record")])
+                  (DeferredShadows.ShdCs, null, "deferred shadow record"),
+                  (MoverDebt.ShdCs, null, "mover debt"), (MoverDebt.ApplyCs, null, "mover debt apply")])
         {
             if (VkDefText(s.Ref, s.Define, s.Label, log) is not ({ } t, { } src)) { check.Expect(false, $"{s.Label}: its record contract holds"); continue; }
             if (t.Error != null) { check.Expect(false, $"{s.Label} translates -- {t.Error}"); continue; }
@@ -61,6 +62,8 @@ public sealed unsafe partial class AlloyRenderer
                 check.Expect(listed != null && Array.IndexOf(listed, o.Binding) >= 0,
                     $"{s.Label}: {o.Name} declares {o.Kind} binding {o.Binding}, which VkDefBindSet has no row for");
             }
+            // the apply stage walks no light, so the lighting libraries' loose terms are not its to carry
+            if (s.Ref == MoverDebt.ApplyCs) continue;
             var names = new List<string>(t.Loose.Count);
             foreach (VkLoose u in t.Loose) names.Add(u.Name);
             var block = VkSpirv.Block(spirv, 0, VulkanToolchain.UniformBase + VkGlsl.LooseBinding, names);

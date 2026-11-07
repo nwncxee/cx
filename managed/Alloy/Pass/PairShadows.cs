@@ -499,7 +499,6 @@ internal static unsafe class PairShadows
                                                           < ls.IndexOf("vd = CxPairVis", StringComparison.Ordinal),
                      "the pair tap is behind CX_PAIR_RECV, so only the deferred stages compile it");
         check.Expect(ShaderSource.Get("cx_deferred_cs.glsl").Contains("#define CX_PAIR_RECV 1")
-                  && ShaderSource.Get("cx_pairdebt.glsl").Contains("#define CX_PAIR_RECV 1")
                   // step 3's record pass is the deferred path's shadow verdict for an UNBAKED receiver, so it
                   // is the third stage that needs the tap -- CxLocalShadowQ is not what the walk calls there
                   && ShaderSource.Get("cx_defshadow_cs.glsl").Contains("#define CX_PAIR_RECV 1")
@@ -507,8 +506,8 @@ internal static unsafe class PairShadows
                      "CX_PAIR_RECV is the three deferred stages' and not the forward lit stage's");
         check.Expect(ls.Contains("vd = CxPairVis(slot, worldPos, N, ndlRaw, false);"),
                      "the FAST filter takes the pair tap too, which is where the deferred record comes from");
-        check.Expect(!ShaderSource.Get("cx_deferred_cs.glsl").Contains("#define CX_NO_HOT"),
-                     "the deferred stage keeps the walk's hot branch: no dispatch takes the mover debt in its place");
+        check.Expect(ShaderSource.Get("cx_deferred_cs.glsl").Contains("#define CX_NO_HOT 1"),
+                     "the deferred stage compiles the walk's hot branch out");
         check.Expect(ShaderSource.Get("cx_lightfrag.glsl").Contains("#ifdef CX_NO_HOT")
                   && ShaderSource.Get("cx_lightfrag.glsl").Contains("const bool hot = false;"),
                      "cx_lightfrag honours CX_NO_HOT");

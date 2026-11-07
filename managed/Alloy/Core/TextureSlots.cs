@@ -363,12 +363,12 @@ internal static class TextureSlots
           && defshadow.Contains("uniform samplerCubeArrayShadow uLocalShadow;")
           && defshadow.Contains("uniform samplerCubeArrayShadow uLocalDynShadow;"),
           $"{Gbuf0}/{GbufDepth} uGb0 + uGbDepth and the cube arrays (deferred shadow program)");
-        string pairdebt = ShaderStages.Source(PairDebt.ShdCs);
-        check.Expect(pairdebt.Contains($"layout(binding = {Gbuf0}) uniform usampler2D uGb0;")
-          && pairdebt.Contains($"layout(binding = {Gbuf1}) uniform usampler2D uGb1;")
-          && pairdebt.Contains($"layout(binding = {Gbuf2}) uniform usampler2D uGb2;")
-          && pairdebt.Contains($"layout(binding = {GbufDepth}) uniform sampler2D uGbDepth;"),
-          $"{Gbuf0}/{Gbuf1}/{Gbuf2}/{GbufDepth} uGb0 + uGb1 + uGb2 + uGbDepth (pair debt program)");
+        string moverdebt = ShaderStages.Source(MoverDebt.ShdCs);
+        check.Expect(moverdebt.Contains($"layout(binding = {Gbuf0}) uniform usampler2D uGb0;")
+          && moverdebt.Contains($"layout(binding = {Gbuf1}) uniform usampler2D uGb1;")
+          && moverdebt.Contains($"layout(binding = {Gbuf2}) uniform usampler2D uGb2;")
+          && moverdebt.Contains($"layout(binding = {GbufDepth}) uniform sampler2D uGbDepth;"),
+          $"{Gbuf0}/{Gbuf1}/{Gbuf2}/{GbufDepth} uGb0 + uGb1 + uGb2 + uGbDepth (mover debt program)");
         // the G-buffer's slot lane must hold every ownership slot, or the reader fetches another draw's sheen and chart
         var slotBits = Regex.Match(deferred, @"const uint CX_GB_SLOT_BITS = (\d+)u;");
         check.Expect(slotBits.Success && AlloyRenderer.MaxOwned <= 1 << int.Parse(slotBits.Groups[1].Value),
