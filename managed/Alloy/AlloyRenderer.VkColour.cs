@@ -62,6 +62,8 @@ public sealed unsafe partial class AlloyRenderer
     private sealed class VkColourState
     {
         public VkBackend? Dev;
+        /// <summary>The arena's offset alignment: the device's uniform alignment, at least a vec4.</summary>
+        public int Align = 16;
         public bool Failed, Live;
         public readonly VkProg?[] Progs = new VkProg?[VkPrograms.All.Length];
         /// <summary>Content programs by <see cref="VkContentKey"/>; null for one that did not build (logged once).</summary>
@@ -191,7 +193,7 @@ public sealed unsafe partial class AlloyRenderer
     /// refused. The targets follow the render size.</summary>
     private static bool VkEnsure(VkBackend vk, int w, int h, ExtenderLog log)
     {
-        if (_vkc.Dev != vk) _vkc = new VkColourState { Dev = vk };
+        if (_vkc.Dev != vk) _vkc = new VkColourState { Dev = vk, Align = Math.Max(vk.UniformAlign, 16) };
         VkColourState s = _vkc;
         if (s.Failed) return false;
         if (s.ZeroUbo.IsNull && !VkMakeStatic(vk, s, log)) { s.Failed = true; return false; }
@@ -523,7 +525,7 @@ public sealed unsafe partial class AlloyRenderer
     private static int VkArena(ReadOnlySpan<byte> bytes)
     {
         VkColourState s = _vkc;
-        int align = Math.Max(s.Dev?.UniformAlign ?? 0, 16);
+        int align = s.Align;
         int at = (s.ArenaUsed + align - 1) & ~(align - 1);
         if (at + bytes.Length > ArenaCap)
         {

@@ -2,7 +2,7 @@
 4 managed/Alloy/AlloyRenderer.Bones.cs
 29 managed/Alloy/AlloyRenderer.cs
 7 managed/Alloy/AlloyRenderer.Frame.cs
-74 managed/Alloy/AlloyRenderer.Metrics.cs
+31 managed/Alloy/AlloyRenderer.Metrics.cs
 10 managed/Alloy/AlloyRenderer.Motion.cs
 8 managed/Alloy/AlloyRenderer.Uniforms.cs
 9 managed/Alloy/Core/AlloyGate.cs
@@ -163,7 +163,7 @@
 16 managed/Alloy/RasterReader.cs
 9 managed/Alloy/RasterReader.Forced.cs
 2 managed/Alloy/ResLocate.cs
-11 managed/Alloy/RspShim.cs
+10 managed/Alloy/RspShim.cs
 20 managed/Alloy/Scene/AlloyCamera.cs
 13 managed/Alloy/Scene/AlloyEnvMap.cs
 7 managed/Alloy/Scene/AlloyRenderer.Casters.cs

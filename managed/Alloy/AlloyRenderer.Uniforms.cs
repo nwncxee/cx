@@ -178,7 +178,7 @@ public sealed unsafe partial class AlloyRenderer
     internal static int PassBindsBorrowed;
 
     /// <summary>Zero the pass block clause's period counts.</summary>
-    private static void ResetPassPeriod() { PassBinds = 0; PassBindsBorrowed = 0; _ps.Built = 0; _ps.Misses = 0; }
+    private static void ResetPassPeriod() { PassBinds = 0; PassBindsBorrowed = 0; _ps.Built = 0; _ps.Misses = 0; _ps.Valid = false; }
 
     /// <summary>The [alloy] line's pass block clause.</summary>
     private static string PassNote()
@@ -189,7 +189,9 @@ public sealed unsafe partial class AlloyRenderer
     /// temporal phase moves with it, and it is when a retuned knob lands.</summary>
     private readonly record struct PassKey(int Frame, int X, int Y, int W, int H, float Near, float Far, float LodScale,
                                            bool Capturing, bool Planar, bool ProbeReady, bool SceneEnv,
-                                           bool Cascades, bool Cubes, AlloyLights.TableKey Table);
+                                           bool Cascades, bool Cubes, int CascadeCount, int CubeCount,
+                                           bool HasAmbient, Vector3 Ambient, bool HasDiffuse, Vector3 Diffuse, Vector3 Dir,
+                                           AlloyLights.TableKey Table);
 
     /// <summary>One frame in this many, a bind that would reuse the block refills it anyway and compares. Power of two.</summary>
     private const int PassAuditEvery = 64;
@@ -213,7 +215,9 @@ public sealed unsafe partial class AlloyRenderer
         PassStageState ps = _ps;
         var key = new PassKey(_frameSeq, viewport[0], viewport[1], viewport[2], viewport[3], near, far, _lodScale,
                               _capturing, _planar, EnvProbe.Ready, _sceneEnv,
-                              CasterPass.CascadesFresh, CasterPass.CubesFresh, AlloyLights.Table);
+                              CasterPass.CascadesFresh, CasterPass.CubesFresh, CasterPass.CascadeCount, CasterPass.CubeCount,
+                              FrameInputs.HasAreaAmbient, FrameInputs.AreaAmbient, FrameInputs.HasAreaDiffuse,
+                              FrameInputs.AreaDiffuse, FrameInputs.AreaDiffuseDir, AlloyLights.Table);
         if (!ps.Valid || key != ps.Key)
         {
             ps.Borrowed = !FillPass(viewport, near, far);
@@ -241,10 +245,10 @@ public sealed unsafe partial class AlloyRenderer
         Span<byte> was = stackalloc byte[PassBytes];
         PassStaged.CopyTo(was);
         long stamp = _ps.Stamp;
-        FillPass(viewport, near, far);
+        _ps.Borrowed = !FillPass(viewport, near, far);
         _ps.Valid = true;
         if (PassStaged.SequenceEqual(was)) { _ps.Stamp = stamp; return; }
-        if (++_ps.Misses <= PassMissLines) _log?.Info("AlloyRenderer: pass block MISS: an input changed inside the frame that the reuse key does not hold");
+        if (++_ps.Misses <= PassMissLines) _log?.Always("AlloyRenderer: pass block MISS: an input changed inside the frame that the reuse key does not hold");
     }
 
     /// <summary>The staging block, zeroed, for a caller that fills it itself (the lightmap bake's one light).</summary>

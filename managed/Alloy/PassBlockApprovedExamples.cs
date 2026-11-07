@@ -32,6 +32,7 @@ public sealed unsafe partial class AlloyRenderer
         var check = new Checker(log, "AlloyRenderer.PassBlockApprovedExamples.SelfCheck");
         int frameWas = _frameSeq, bindsWas = PassBinds;
         var tapsWas = Shadows.Taps.V;
+        bool latchWas = Diag._ambientFallbackLogged;
         _frameSeq = 1;
 
         // Given a frame whose colour pass switches program many times
@@ -102,6 +103,7 @@ public sealed unsafe partial class AlloyRenderer
         }
 
         _frameSeq = frameWas; PassBinds = bindsWas;
+        Diag._ambientFallbackLogged = latchWas;
         ResetPassPeriod();
         log.Info(check.Ok ? "AlloyRenderer.PassBlockApprovedExamples.SelfCheck: passed" : "AlloyRenderer.PassBlockApprovedExamples.SelfCheck: FAILED -- see above");
         return check.Ok;

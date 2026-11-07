@@ -263,3 +263,5 @@ lightmap\.(moverlights|pairsize|paircount)\b	pair tiles retired, cx_moverdebt
 alloy\.cutmip\b|\bCutMip\b|\buAlphaMip\b|\bCxAlphaMip(At)?\b|\bcx_alphamip\b|\bCxHostCutAt\b	CX-330	Db/MipChainApprovedExamples
 # The GL submission accounting printed a permanent zero once Alloy stopped submitting through GL.
 \bSubmit\.(Call|CallAt|At|Back|Line|ResetPeriod)\b	CX-517
+# The [alloy] line's clauses that only dead counters fed.
+\bnull-tex\b|drawn (white|untextured)/frame|\bno-gl-id\b|mesh sharing|shape repeats|lit left to the engine|\benrolls=	CX-517	PeriodLineApprovedExamples
