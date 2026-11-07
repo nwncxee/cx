@@ -430,7 +430,7 @@ internal static class RenderPasses
         {
             Name = "content",
             Attach = ContentPrograms.Attach,
-            SelfCheck = l => { ContentStage.SelfCheck(l); ContentPrograms.SelfCheck(l); Db.ContentRows.SelfCheck(l); },
+            SelfCheck = l => { ContentStage.SelfCheck(l); ContentStageApprovedExamples.SelfCheck(l); ContentPrograms.SelfCheck(l); Db.ContentRows.SelfCheck(l); },
             ContextLost = ContentPrograms.ContextLost,
             Stats = _ => ContentPrograms.Note(),
         }, log);
