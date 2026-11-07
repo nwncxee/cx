@@ -239,12 +239,6 @@ void main()
     //     here are the mesh's own normals: no diffuse term, #143's wrap included, can hide a
     //     DISCONTINUITY in N, and nothing else tells that apart from a terminator crossing a facet.
     if (uViz == 7) { frag = vec4(N * 0.5 + 0.5, 1.0); return; }
-    // 8 = the occlusion factor: white unoccluded. #146's map and the height term are the only two
-    //     things that write it, so a frame that is white everywhere means no material in sight
-    //     declared either -- which is the state shipped content is in today.
-    if (uViz == 8) { frag = vec4(vec3(occl), 1.0); return; }
-    // 54 = the AO map alone, what /ao map switches: white where the material declares none.
-    if (uViz == 54) { frag = vec4(vec3(orm.r), 1.0); return; }
     if (uViz == 38)
     {   // lights per pixel, from the froxel this fragment reads: black 0, blue 8, green 16, yellow 24, red 32+
         float t = clamp(float(CxClusterN(CxCluster(vDepth))) / 32.0, 0.0, 1.0);

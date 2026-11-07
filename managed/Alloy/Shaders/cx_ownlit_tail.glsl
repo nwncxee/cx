@@ -166,6 +166,9 @@
     }
 #endif
 #ifndef CX_DEFERRED
+    // 8 = the occlusion factor (screen-space, height map and AO map), 54 = the AO map alone: both raw, and at the
+    // part's coverage, so a see-through sheet shows the ground's occlusion under it as the lit frame does.
+    if (uViz == 8 || uViz == 54) { frag = CxOitOut(vec4(vec3(uViz == 8 ? occl : orm.r), coverage * d.rot.w)); return; }
     if (uViz == 43) lit = cxLm;
     if (uViz == 52) lit = cxLightFrom * 0.5;   // through the blend/OIT tail, so a decal shows at its own coverage
 #endif
