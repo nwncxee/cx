@@ -8,20 +8,22 @@ using CX.Rhi;
 namespace CX.Alloy;
 
 /// <summary>
-/// The AO map switch and its view: the shipped <c>CxMapOrm</c> over a map whose every texel is hand-written. Oracle:
+/// The AO map switch and its view (approved-spec, E1 to E5 and E7 to E11): the shipped <c>CxMapOrm</c> over a map whose every texel is hand-written. Oracle:
 /// those literals, multiplied by hand. The same texel answers both, so what the switch leaves is read beside what the view shows.
 /// </summary>
 internal static partial class GpuGolden
 {
     /// <summary>The map every case reads: occlusion, roughness and metalness, one value each.</summary>
     private const float MapR = 0.25f, MapG = 0.5f, MapB = 0.75f;
+    /// <summary>The occlusion the height map leaves in the cases that have one.</summary>
+    private const float HeightOccl = 0.5f;
 
-    private static void AoMapApprovedSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
+    /// <summary>The examples that need no GPU, which run on a host the goldens skip. Oracle: the literals in each key.</summary>
+    private static void AoMapKnobApprovedSelfCheck(Checker check)
     {
-        string read = Function(ShaderSource.Get("cx_ownlit_synth.glsl"), "vec3 CxMapOrm(");
-        check.Expect(read.Length > 0, "cx_ownlit_synth declares CxMapOrm");
-        _ = Ao.On.V;
+        Knob declared = Ao.Map;   // first: reading it runs the static constructor that registers the key
         Knob? knob = KnobGroup.Find("ao.map");
+        check.Expect(ReferenceEquals(knob, declared), "the chat key ao.map is the knob the lit stage reads");
 
         // Given a client that has never used /ao map
         // When a model with an AO map draws
@@ -33,7 +35,13 @@ internal static partial class GpuGolden
         // Then AO maps are still off until I type /ao map 1
         check.Expect(knob is { Persisted: true }, "E11: ao.map is kept in cx.cfg");
 
-        check.Expect(Renderer.Viz.Max >= 54, $"E7: /alloy viz reaches 54, its ceiling is {Renderer.Viz.Max}");
+        check.Expect(Renderer.Viz.Max >= 54, $"/alloy viz reaches the AO map view at 54, its ceiling is {Renderer.Viz.Max}");
+    }
+
+    private static void AoMapApprovedSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
+    {
+        string read = Function(ShaderSource.Get("cx_ownlit_synth.glsl"), "vec3 CxMapOrm(");
+        check.Expect(read.Length > 0, "cx_ownlit_synth declares CxMapOrm");
         if (read.Length == 0) return;
 
         PipelineId pipe = vk.CreateCompute(Version + "layout(local_size_x = 1) in;\n" + CaseBlocks(3, 4)
@@ -54,7 +62,7 @@ internal static partial class GpuGolden
         // has a map, switched off, the occlusion the height map left
         Vector3[] cases =
         [
-            new(1f, 0f, 1f), new(1f, 1f, 1f), new(0f, 0f, 1f), new(0f, 1f, 1f), new(1f, 1f, 0.5f), new(1f, 0f, 0.5f),
+            new(1f, 0f, 1f), new(1f, 1f, 1f), new(0f, 0f, 1f), new(0f, 1f, 1f), new(1f, 1f, HeightOccl), new(1f, 0f, HeightOccl),
         ];
         ReadOnlySpan<float> input = MemoryMarshal.Cast<Vector3, float>(cases);
         float[]? run = pipe.IsNull ? null : RunCases(vk, log, pipe, cases.Length, input, cases.Length * 4, "golden ao map");
@@ -67,7 +75,7 @@ internal static partial class GpuGolden
         // Given a model in shade whose .mtr declares an AO map in texture11
         // When I type /ao map 0
         // Then the model's AO-darkened creases brighten, with no restart
-        check.Expect(Near(on.X, 0.25f) && Near(off.X, 1f), $"E1: the map's occlusion, on {on.X}, off {off.X}");
+        check.Expect(Near(on.X, MapR) && Near(off.X, 1f), $"E1: the map's occlusion, on {on.X}, off {off.X}");
 
         // Given the same model with AO maps switched off
         // When I type /ao map 1
@@ -82,17 +90,17 @@ internal static partial class GpuGolden
         // Given a sword whose .mtr sets CxOrm 1, so texture11 also holds its roughness and metalness
         // When I type /ao map 0
         // Then its highlights and metal look stay the same, and only the occlusion goes
-        check.Expect(Near(off.Z, 0.5f) && Near(off.W, 0.75f) && off.Z == on.Z && off.W == on.W, $"E4: roughness and metalness, on {on}, off {off}");
+        check.Expect(Near(off.Z, MapG) && Near(off.W, MapB) && off.Z == on.Z && off.W == on.W, $"E4: roughness and metalness, on {on}, off {off}");
 
         // Given a model whose .mtr declares a height map as well as an AO map
         // When I type /ao map 0
         // Then /alloy viz 8 still shows the occlusion from the height map
-        check.Expect(Near(offOverHeight.X, 0.5f), $"E5: the height map's 0.5 stays, {offOverHeight.X}");
+        check.Expect(Near(offOverHeight.X, HeightOccl), $"E5: the height map's 0.5 stays, {offOverHeight.X}");
 
         // Given a model whose .mtr declares both an AO map and a height map
         // When I type /alloy viz 54
         // Then the model shows its AO map in black to white, with no height occlusion in it
-        check.Expect(Near(onOverHeight.Y, 0.25f) && Near(onOverHeight.X, 0.125f), $"E7: the view reads {onOverHeight.Y} where the factor is {onOverHeight.X}");
+        check.Expect(Near(onOverHeight.Y, MapR) && Near(onOverHeight.X, MapR * HeightOccl), $"E7: the view reads {onOverHeight.Y} where the factor is {onOverHeight.X}");
 
         // Given a model whose .mtr declares no texture11
         // When I type /alloy viz 54
@@ -102,7 +110,7 @@ internal static partial class GpuGolden
         // Given AO maps switched off with /ao map 0
         // When I type /alloy viz 54
         // Then the model still shows its AO map, so I can see what is switched off
-        check.Expect(Near(off.Y, 0.25f), $"E9: switched off, the view reads {off.Y}");
+        check.Expect(Near(off.Y, MapR), $"E9: switched off, the view reads {off.Y}");
     }
 
     private static bool Near(float a, float b) => MathF.Abs(a - b) < 1e-4f;
