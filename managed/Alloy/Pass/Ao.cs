@@ -11,7 +11,9 @@ internal static class Ao
     internal static readonly KnobGroup G;
     internal static readonly Knob<float> Radius, Strength, Direct, Cutout, MaxPx;
     internal static readonly Knob<int> Dirs, Steps;
-    internal static readonly Knob<bool> Blur, On, Map;
+    internal static readonly Knob<bool> Blur, On;
+    /// <summary>The material AO map switch. The game's video option does not govern it: the map is not screen-space.</summary>
+    internal static readonly Knob<bool> Map;
 
     static Ao()
     {

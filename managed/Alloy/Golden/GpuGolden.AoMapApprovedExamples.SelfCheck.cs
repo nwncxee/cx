@@ -10,6 +10,7 @@ namespace CX.Alloy;
 /// <summary>
 /// The AO map switch and its view (approved-spec, E1 to E5 and E7 to E11): the shipped <c>CxMapOrm</c> over a map whose every texel is hand-written. Oracle:
 /// those literals, multiplied by hand. The same texel answers both, so what the switch leaves is read beside what the view shows.
+/// E6 is a look in the real client, since no golden here has screen-space AO.
 /// </summary>
 internal static partial class GpuGolden
 {
@@ -46,7 +47,7 @@ internal static partial class GpuGolden
 
         PipelineId pipe = vk.CreateCompute(Version + "layout(local_size_x = 1) in;\n" + CaseBlocks(3, 4)
             + Declaration(ShaderSource.Get("cx_slotbits.glsl"), "CX_SLOT_AO")
-            + $"#define textureGrad(t, p, a, b) vec4({F(MapR)}, {F(MapG)}, {F(MapB)}, 1.0)\n" + read + """
+            + $"#define textureGrad(t, p, a, b) vec4({G(MapR)}, {G(MapG)}, {G(MapB)}, 1.0)\n" + read + """
             void main()
             {
                 uint i = gl_WorkGroupID.x;
@@ -75,7 +76,7 @@ internal static partial class GpuGolden
         // Given a model in shade whose .mtr declares an AO map in texture11
         // When I type /ao map 0
         // Then the model's AO-darkened creases brighten, with no restart
-        check.Expect(Near(on.X, MapR) && Near(off.X, 1f), $"E1: the map's occlusion, on {on.X}, off {off.X}");
+        check.Expect(Close(on.X, MapR) && Close(off.X, 1f), $"E1: the map's occlusion, on {on.X}, off {off.X}");
 
         // Given the same model with AO maps switched off
         // When I type /ao map 1
@@ -85,36 +86,33 @@ internal static partial class GpuGolden
         // Given a model whose .mtr declares no texture11
         // When I type /ao map 0
         // Then the model looks the same as with AO maps on
-        check.Expect(bareOn == bareOff && Near(bareOff.X, 1f), $"E3: no map, on {bareOn}, off {bareOff}");
+        check.Expect(bareOn == bareOff && Close(bareOff.X, 1f), $"E3: no map, on {bareOn}, off {bareOff}");
 
         // Given a sword whose .mtr sets CxOrm 1, so texture11 also holds its roughness and metalness
         // When I type /ao map 0
         // Then its highlights and metal look stay the same, and only the occlusion goes
-        check.Expect(Near(off.Z, MapG) && Near(off.W, MapB) && off.Z == on.Z && off.W == on.W, $"E4: roughness and metalness, on {on}, off {off}");
+        check.Expect(Close(off.Z, MapG) && Close(off.W, MapB) && off.Z == on.Z && off.W == on.W, $"E4: roughness and metalness, on {on}, off {off}");
 
         // Given a model whose .mtr declares a height map as well as an AO map
         // When I type /ao map 0
         // Then /alloy viz 8 still shows the occlusion from the height map
-        check.Expect(Near(offOverHeight.X, HeightOccl), $"E5: the height map's 0.5 stays, {offOverHeight.X}");
+        check.Expect(Close(offOverHeight.X, HeightOccl), $"E5: the height map's 0.5 stays, {offOverHeight.X}");
 
         // Given a model whose .mtr declares both an AO map and a height map
         // When I type /alloy viz 54
         // Then the model shows its AO map in black to white, with no height occlusion in it
-        check.Expect(Near(onOverHeight.Y, MapR) && Near(onOverHeight.X, MapR * HeightOccl), $"E7: the view reads {onOverHeight.Y} where the factor is {onOverHeight.X}");
+        check.Expect(Close(onOverHeight.Y, MapR) && Close(onOverHeight.X, MapR * HeightOccl), $"E7: the view reads {onOverHeight.Y} where the factor is {onOverHeight.X}");
 
         // Given a model whose .mtr declares no texture11
         // When I type /alloy viz 54
         // Then the model is plain white
-        check.Expect(Near(bareOn.Y, 1f), $"E8: no map reads {bareOn.Y}");
+        check.Expect(Close(bareOn.Y, 1f), $"E8: no map reads {bareOn.Y}");
 
         // Given AO maps switched off with /ao map 0
         // When I type /alloy viz 54
         // Then the model still shows its AO map, so I can see what is switched off
-        check.Expect(Near(off.Y, MapR), $"E9: switched off, the view reads {off.Y}");
+        check.Expect(Close(off.Y, MapR), $"E9: switched off, the view reads {off.Y}");
     }
 
-    private static bool Near(float a, float b) => MathF.Abs(a - b) < 1e-4f;
-
-    /// <summary><paramref name="v"/> as a GLSL float literal, whatever the locale.</summary>
-    private static string F(float v) => v.ToString("0.0###", System.Globalization.CultureInfo.InvariantCulture);
+    private static bool Close(float a, float b) => MathF.Abs(a - b) < 1e-4f;
 }
