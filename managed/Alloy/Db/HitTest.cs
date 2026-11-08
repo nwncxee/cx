@@ -583,9 +583,11 @@ public static class HitTest
         // hitcheck_static_trimesh_parts (0 by default), the tile walkmesh behind hitcheck_static_bsp_parts (1).
         if (statics && !(trigger || (walkmesh ? q.WalkMesh : q.StaticPlaceables))) return false;
 
+        Vector3 from = q.From, end = to;
+        if (statics && walkmesh && !WalkCells.Clip(p, ref from, ref end)) return false;
         if (!Matrix4x4.Invert(SceneDb.PartWorld[p], out Matrix4x4 inv)) return false;
         PartTests++;
-        Vector3 a = Vector3.Transform(q.From, inv), b = Vector3.Transform(to, inv);
+        Vector3 a = Vector3.Transform(from, inv), b = Vector3.Transform(end, inv);
 
         // The trigger prism: its own surface bit gates it, as PartTrigger::HitCheckGeom @0x4d9cb0 does; it is
         // never box-tested (that function does not read CHitInfo+0x20 at all) and it ignores the accumulated

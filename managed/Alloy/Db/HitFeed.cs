@@ -57,6 +57,7 @@ public static class HitFeed
         ModelDef? m = SceneDb.ObjModel[i];
         SceneDb.HitObjClass[i] = m?.Classification ?? 0;
         SceneDb.HitObjStatic[i] = isStatic;
+        if (isStatic) WalkCells.Filed(o);
         // The engine's two alpha fields start opaque (Gob's constructor) and only a fade moves them. Seeded
         // here because a zero would read as "fully transparent" and take the object out of every pick.
         if (SceneDb.HitObjAlpha[i] <= 0f) SceneDb.HitObjAlpha[i] = 1f;
