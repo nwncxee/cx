@@ -129,13 +129,17 @@ internal static unsafe class PostChainVk
                                            ImageId Search = default, ImageId Weights = default,
                                            BufferBinding Storage = default, ImageId React = default, ImageId Wx = default);
 
+    /// <summary>What the resolve tells sky from scene by: the world depth, sky where it is 0, or (<paramref name="Cover"/>)
+    /// a sky coverage from 0 to 1 laid on the colour it grades.</summary>
+    internal readonly record struct SkyInput(ImageId Image, bool Cover = false);
+
     /// <summary>How a post draw meets its target: replacing it, adding to it, or alpha-over it.</summary>
     internal enum Blend : byte { None, Add, Over }
 
     /// <summary>Bloom, then the resolve of <paramref name="hdr"/> into <paramref name="into"/> at
-    /// <paramref name="rect"/>, dithered only when it is the frame's last write; <c>/post viz 4</c> paints <paramref name="vel"/>
+    /// <paramref name="rect"/>, telling sky from scene by <paramref name="sky"/>, dithered only when it is the frame's last write; <c>/post viz 4</c> paints <paramref name="vel"/>
     /// instead. False (logged) when a program or target was refused: the frame has no other way to the screen.</summary>
-    internal static bool Record(VkBackend vk, CommandList cl, ImageId hdr, ImageId depth, ImageId into, bool last,
+    internal static bool Record(VkBackend vk, CommandList cl, ImageId hdr, SkyInput sky, ImageId into, bool last,
                                 int* viewport, int* rect, ImageId vel, ExtenderLog log)
     {
         if (!Ensure(vk, log)) return false;
@@ -185,7 +189,7 @@ internal static unsafe class PostChainVk
         cl.PushConstants(VkGlsl.PushTailAt, System.Runtime.InteropServices.MemoryMarshal.AsBytes(new ReadOnlySpan<ResolvePush>(in push)));
         // the velocity viz rides the bloom input: the two views are exclusive by construction
         Draw(cl, s.Resolve!, FormatOf(into), Blend.None, into, LoadOp.Clear, new Rect(rect[0], rect[1], rect[2], rect[3]), at,
-             new Inputs(hdr, motion && !vel.IsNull ? vel : bloom ? s.Bloom[0] : default, depth), log);
+             new Inputs(hdr, motion && !vel.IsNull ? vel : bloom ? s.Bloom[0] : default, sky.Image), log);
         cl.EndLabel();
         if (!s.Said)
         {

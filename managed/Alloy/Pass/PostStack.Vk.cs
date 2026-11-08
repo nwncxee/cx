@@ -37,6 +37,8 @@ internal static unsafe partial class PostStack
         /// <summary>The exposure last written into <see cref="FsrExposure"/>; NaN before the first.</summary>
         public float FsrExposureSet = float.NaN;
         public bool HistValid, Up;
+        /// <summary>This frame's FSR dispatch started its history over.</summary>
+        public bool FsrReset;
         public GuiVkProg? Motion, Taa;
         public bool MotionTried, TaaTried;
         public int MInvVp = -1, MPrevVp = -1, MSize = -1, MJitter = -1;
@@ -141,13 +143,15 @@ internal static unsafe partial class PostStack
         if (!AlloyRenderer.VkWeatherLate(vk, cl, over ? wx : hdr, over, wide ? dw : viewport[2], wide ? dh : viewport[3], near, far, log))
             return false;
         ImageId vel = taa || fsr ? s.Vel : default;
+        PostChainVk.SkyInput sky = fsr ? FsrSkyVk(vk, cl, depth, s.Vel, depthW, depthH, dw, dh, PostChain.JitterX, PostChain.JitterY, s.FsrReset, log)
+                                       : new PostChainVk.SkyInput(depth);
         if (live == 0)
         {
             if (fsr) MotionVectors.RollHistory();
-            return PostChainVk.Record(vk, cl, hdr, depth, vk.Screen(), true, viewport, display, vel, log);
+            return PostChainVk.Record(vk, cl, hdr, sky, vk.Screen(), true, viewport, display, vel, log);
         }
         int* pair = stackalloc int[4] { 0, 0, s.W, s.H };
-        if (!PostChainVk.Record(vk, cl, hdr, depth, s.A, false, viewport, pair, vel, log)) return false;
+        if (!PostChainVk.Record(vk, cl, hdr, sky, s.A, false, viewport, pair, vel, log)) return false;
         ImageId read = s.A, write = s.B;
         int left = System.Numerics.BitOperations.PopCount((uint)live);
         for (int i = 0; i < _stages.Length; i++)
@@ -350,13 +354,21 @@ internal static unsafe partial class PostStack
         if (!VelocityReady(vk, s, viewport, vp, vpClean, depth, cl, log)) { Fsr.Refuse("the velocity pass did not build", log); return false; }
         Fsr.Note(rw, rh, dw, dh, log);
         cl.BeginLabel("fsr"u8);
+        s.FsrReset = Fsr.TakeReset();
         cl.Upscale(Fsr.Command(hdr, depth, s.Vel, s.FsrExposure, s.FsrOut, rw, rh, PostChain.JitterX, PostChain.JitterY,
-                               Fsr.FrameMs(), near, far, fovY, Fsr.TakeReset(), AlloyRenderer.VkReactiveMask));
+                               Fsr.FrameMs(), near, far, fovY, s.FsrReset, AlloyRenderer.VkReactiveMask));
         cl.EndLabel();
         hdr = s.FsrOut;
         viewport = full;
         return true;
     }
+
+    /// <summary>What the resolve tells sky from scene by on a frame FSR drew: <paramref name="depth"/>, this frame's
+    /// <paramref name="rw"/> x <paramref name="rh"/> world depth, jittered by NDC <paramref name="jitterX"/>,
+    /// <paramref name="jitterY"/>, for the <paramref name="dw"/> x <paramref name="dh"/> colour FSR rebuilt.</summary>
+    internal static PostChainVk.SkyInput FsrSkyVk(VkBackend vk, CommandList cl, ImageId depth, ImageId vel, int rw, int rh,
+                                                  int dw, int dh, float jitterX, float jitterY, bool reset, ExtenderLog log)
+        => new(depth);
 
     /// <summary>Depth of field on this frame's full-window perspective view, on the colour FSR left when it drew. Depth stays at
     /// <paramref name="depthW"/> x <paramref name="depthH"/>, the render size.</summary>
