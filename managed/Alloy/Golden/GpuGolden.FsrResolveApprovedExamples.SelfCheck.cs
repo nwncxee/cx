@@ -4,8 +4,8 @@ using CX.Graphics.Rhi;
 namespace CX.Alloy;
 
 /// <summary>
-/// The FSR sky golden (approved-spec), E13-E15 and E17: a still rope and mast against the sky through FSR 3.1 at render
-/// scale 0.9 and the resolve. Oracle: SMAA's still frame, which changes by nothing, and the same scene supersampled
+/// The FSR sky golden (approved-spec), E13-E15 and E17: a still rope and mast against the sky, in fog, through FSR 3.1 at
+/// render scale 0.9 and the resolve. Oracle: an unjittered still frame changes by nothing, and the same scene supersampled
 /// 4x4 through the resolve and averaged; the bounds are levels of the 8-bit frame, written by hand.
 /// </summary>
 internal static partial class GpuGolden
@@ -21,7 +21,7 @@ internal static partial class GpuGolden
 
     static partial void FsrResolveApprovedSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
     {
-        SkyRun? r = SkyRunScene(vk, check, log, fog: false);
+        SkyRun? r = SkyRunScene(vk, check, log, fog: true, dome: true);
         check.Expect(r != null, "FSR sky: the golden's run was refused (logged above)");
         if (r == null) return;
         float rope = SkyWorstStep(r, SkyInRope), edge = SkyWorstStep(r, SkyInEdge);
@@ -49,7 +49,7 @@ internal static partial class GpuGolden
             $"E15: the mast's edge changes by up to {edge:F1} levels between frames (at most {SkyStill}), its darkest pixel "
           + $"{eDark:F0} against the reference's {etDark:F0} (at most {SkyRim} darker)");
 
-        SkyRun? f = SkyRunScene(vk, check, log, fog: true);
+        SkyRun? f = SkyRunScene(vk, check, log, fog: true, dome: false, truth: false);
         check.Expect(f != null, "FSR sky: the fogged run was refused (logged above)");
         if (f == null) return;
         float fogRope = SkyWorstStep(f, SkyInRope);
