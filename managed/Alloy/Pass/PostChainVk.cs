@@ -22,11 +22,11 @@ internal static unsafe class PostChainVk
         public int SkyBand = -1, InvVp = -1, Eye = -1, VFog = -1, VFogVp = -1;
     }
 
-    /// <summary>The resolve's per-pass scalars, pushed rather than staged: the sky's two gates, the bloom strength,
+    /// <summary>The resolve's per-pass scalars, pushed rather than staged: the sky's gates and what tells it, the bloom strength,
     /// the grade, the output dither and the stage view.</summary>
     private struct ResolvePush
     {
-        public int SkyRaw, SkyBare;
+        public int SkyRaw, SkyBare, SkyCover;
         public float Strength;
         public PostChain.GradeTerms Grade;
         public float Dither;
@@ -40,6 +40,7 @@ internal static unsafe class PostChainVk
         return VkPushTail.Of<ResolvePush>(
             VkPush.Of("int", "uSkyRaw", ref p, ref p.SkyRaw),
             VkPush.Of("int", "uSkyBare", ref p, ref p.SkyBare),
+            VkPush.Of("int", "uSkyCover", ref p, ref p.SkyCover),
             VkPush.Of("float", "uStrength", ref p, ref p.Strength),
             VkPush.Of("int", "uMode", ref p, ref p.Grade.Mode),
             VkPush.Of("float", "uKnee", ref p, ref p.Grade.Knee),
@@ -170,6 +171,7 @@ internal static unsafe class PostChainVk
         {
             SkyRaw = Post.SkyRaw.V && invVp != default ? 1 : 0,
             SkyBare = invVp == default ? 1 : 0,
+            SkyCover = sky.Cover ? 1 : 0,
             OverlayOn = StageResources.VkOverlay.IsNull ? 0 : 1,
             Strength = bloom ? Post.Bloom.V : 0f,
             Grade = PostChain.GradeTerms.Now,

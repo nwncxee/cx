@@ -5,6 +5,7 @@ uniform sampler2D uHdr;
 uniform sampler2D uBloom;
 uniform sampler2D uDepth;  // CX-374: the owned depth, reversed; the sky sits at exactly 0.0 (SkyOwnedPass's DepthRange)
 uniform int uSkyRaw;      // CX-374: 1 = a sky pixel skips exposure and the tonemap (see main); 0 with no dome drawn
+uniform int uSkyCover;    // 1 = uDepth holds the sky's coverage of the pixel, 0..1, laid on an FSR frame's colour
 // The fog's horizon band (SceneFog.SkyBand; 0 = none): at and below the horizon a far-depth pixel is fog
 // over culled ground, not sky, and is graded like the fogged geometry beside it -- raw, it read as a hole.
 uniform float uSkyBand;
@@ -31,6 +32,13 @@ uniform int uOverlayOn;
 #include "cx_postdither.glsl"
 #include "cx_tonemap.glsl"
 
+// How much of this pixel is sky: the depth's answer, or the coverage FSR's frame came with.
+float CxSky()
+{
+    float d = texture(uDepth, vUV).r;
+    return uSkyCover != 0 ? clamp(d, 0.0, 1.0) : (d <= 0.0 ? 1.0 : 0.0);
+}
+
 void main()
 {
     // The stage views. Deliberately BEFORE the tonemap and the dither: the question they answer is
@@ -49,7 +57,8 @@ void main()
     if (uViz == 4) { frag = vec4(0.5 + textureLod(uBloom, vUV, 0.0).rg / 64.0, 0.5, 1.0); return; }
 
     vec3 c = texture(uHdr, vUV).rgb;
-    if (uSkyBare != 0 && CxVFogOn() && texture(uDepth, vUV).r <= 0.0) { vec4 v = CxVFogSkyUv(vUV); c = c * v.a + v.rgb; }
+    float sky = CxSky();
+    if (uSkyBare != 0 && CxVFogOn() && sky > 0.0) { vec4 v = CxVFogSkyUv(vUV); c = mix(c, c * v.a + v.rgb, sky); }
     vec3 b = uStrength > 0.0 ? textureLod(uBloom, vUV, 0.0).rgb * uStrength : vec3(0.0);
     // CX-374: the sky is display-referred as its shader authored it (vanilla encodes it straight),
     // and exposure + the tonemap re-graded it ~2x at night. A sky pixel keeps its own value and
@@ -57,7 +66,7 @@ void main()
     float graded = 1.0;
     vec3 raw = vec3(0.0);
     vec3 overlay = uOverlayOn != 0 ? max(textureLod(uOverlay, vUV, 0.0).rgb, vec3(0.0)) : vec3(0.0);
-    if (uSkyRaw != 0 && texture(uDepth, vUV).r <= 0.0)
+    if (uSkyRaw != 0 && sky > 0.0)
     {
         vec4 p = uInvVP * vec4(vUV * 2.0 - 1.0, 0.0, 1.0);
         const vec3 lum = vec3(0.2126, 0.7152, 0.0722);
@@ -66,6 +75,8 @@ void main()
         graded = CxVFogOn() ? clamp(dot(CxVFogSkyAt(p.xyz / p.w).rgb, lum) / max(dot(c, lum), 1e-6), 0.0, 1.0) : 0.0;
         if (!CxVFogWhole() && uSkyBand > 0.0)
             graded = 1.0 - (1.0 - graded) * smoothstep(0.0, uSkyBand, normalize(p.xyz / p.w - uEyePos).z);
+        // a pixel only part sky takes the sky's own grade for that part alone
+        graded = 1.0 - sky * (1.0 - graded);
         vec3 g = b * uExposure;
         raw = CxEncode(c + g + overlay);
         if (graded <= 0.0)

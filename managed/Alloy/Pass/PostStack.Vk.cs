@@ -39,6 +39,13 @@ internal static unsafe partial class PostStack
         public bool HistValid, Up;
         /// <summary>This frame's FSR dispatch started its history over.</summary>
         public bool FsrReset;
+        /// <summary>The sky coverage under FSR: its program, its two display-size images taking turns, and whether
+        /// the one last written holds a history.</summary>
+        public GuiVkProg? Cover;
+        public bool CoverTried, CoverValid;
+        public ImageId Cover0, Cover1;
+        public int CoverW, CoverH, CoverCur;
+        public int CRender = -1, CJitter = -1, CBlend = -1;
         public GuiVkProg? Motion, Taa;
         public bool MotionTried, TaaTried;
         public int MInvVp = -1, MPrevVp = -1, MSize = -1, MJitter = -1;
@@ -368,7 +375,49 @@ internal static unsafe partial class PostStack
     /// <paramref name="jitterY"/>, for the <paramref name="dw"/> x <paramref name="dh"/> colour FSR rebuilt.</summary>
     internal static PostChainVk.SkyInput FsrSkyVk(VkBackend vk, CommandList cl, ImageId depth, ImageId vel, int rw, int rh,
                                                   int dw, int dh, float jitterX, float jitterY, bool reset, ExtenderLog log)
-        => new(depth);
+    {
+        if (_vk.Dev != vk) _vk = new StackVkState { Dev = vk };
+        StackVkState s = _vk;
+        if (!s.CoverTried)
+        {
+            s.CoverTried = true;
+            s.Cover = PostChainVk.Program(vk, PostChain.FullscreenVs, ShaderSource.Get(SkyCoverFs), "sky coverage", p =>
+            {
+                s.CRender = p.Loc("uRenderSize"); s.CJitter = p.Loc("uJitterPx"); s.CBlend = p.Loc("uBlend");
+            }, log);
+            if (s.Cover == null)
+                log.Always("PostStack: the FSR sky coverage did not build (logged above) -- the resolve tells sky by this frame's "
+                         + "jittered depth, so thin far objects and edges against the sky flicker under FSR");
+        }
+        if (s.Cover == null) return new(depth);
+        if (s.Cover0.IsNull || s.CoverW != dw || s.CoverH != dh)
+        {
+            vk.Destroy(s.Cover0); vk.Destroy(s.Cover1);
+            s.Cover0 = PostChainVk.Target(vk, dw, dh, Format.R16F, "vk fsr sky coverage a");
+            s.Cover1 = PostChainVk.Target(vk, dw, dh, Format.R16F, "vk fsr sky coverage b");
+            s.CoverW = dw; s.CoverH = dh; s.CoverValid = false;
+            if (s.Cover0.IsNull || s.Cover1.IsNull) { vk.Destroy(s.Cover0); vk.Destroy(s.Cover1); s.Cover0 = s.Cover1 = default; return new(depth); }
+        }
+        ImageId read = s.CoverCur == 0 ? s.Cover0 : s.Cover1, write = s.CoverCur == 0 ? s.Cover1 : s.Cover0;
+        cl.BeginLabel("fsr sky coverage"u8);
+        PostChainVk.Open(s.Cover);
+        LooseBlock.Set(s.CRender, [(float)rw, rh]);
+        LooseBlock.Set(s.CJitter, [jitterX * rw * 0.5f, jitterY * rh * 0.5f]);
+        LooseBlock.Set(s.CBlend, reset || !s.CoverValid ? 1f : SkyCoverBlend);
+        int at = PostChainVk.Close(cl, s.Cover);
+        PostChainVk.Draw(cl, s.Cover, Format.R16F, PostChainVk.Blend.None, write, LoadOp.DontCare, new Rect(0, 0, dw, dh), at,
+                         new PostChainVk.Inputs(default, default, depth, read, vel, HistLinear: true), log);
+        cl.EndLabel();
+        s.CoverCur ^= 1;
+        s.CoverValid = true;
+        return new(write, Cover: true);
+    }
+
+    /// <summary>The sky coverage's fragment stage.</summary>
+    internal const string SkyCoverFs = "cx_skycov_f.glsl";
+
+    /// <summary>The share of this frame's sky coverage a still pixel takes: FSR's own pace, about ten frames to settle.</summary>
+    private const float SkyCoverBlend = 0.1f;
 
     /// <summary>Depth of field on this frame's full-window perspective view, on the colour FSR left when it drew. Depth stays at
     /// <paramref name="depthW"/> x <paramref name="depthH"/>, the render size.</summary>
