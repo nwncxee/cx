@@ -6,6 +6,7 @@ uniform sampler2D uBloom;
 uniform sampler2D uDepth;  // CX-374: the owned depth, reversed; the sky sits at exactly 0.0 (SkyOwnedPass's DepthRange)
 uniform int uSkyRaw;      // CX-374: 1 = a sky pixel skips exposure and the tonemap (see main); 0 with no dome drawn
 uniform int uSkyCover;    // 1 = uDepth holds the sky's coverage of the pixel, 0..1, laid on an FSR frame's colour
+uniform int uSkyFogged;   // 1 = the volumetric fog already lies on bare sky: an FSR frame's, laid before FSR (cx_skyfog_f)
 // The fog's horizon band (SceneFog.SkyBand; 0 = none): at and below the horizon a far-depth pixel is fog
 // over culled ground, not sky, and is graded like the fogged geometry beside it -- raw, it read as a hole.
 uniform float uSkyBand;
@@ -58,7 +59,7 @@ void main()
 
     vec3 c = texture(uHdr, vUV).rgb;
     float sky = CxSky();
-    if (uSkyBare != 0 && CxVFogOn() && sky > 0.0) { vec4 v = CxVFogSkyUv(vUV); c = mix(c, c * v.a + v.rgb, sky); }
+    if (uSkyBare != 0 && uSkyFogged == 0 && CxVFogOn() && sky > 0.0) { vec4 v = CxVFogSkyUv(vUV); c = mix(c, c * v.a + v.rgb, sky); }
     vec3 b = uStrength > 0.0 ? textureLod(uBloom, vUV, 0.0).rgb * uStrength : vec3(0.0);
     // CX-374: the sky is display-referred as its shader authored it (vanilla encodes it straight),
     // and exposure + the tonemap re-graded it ~2x at night. A sky pixel keeps its own value and

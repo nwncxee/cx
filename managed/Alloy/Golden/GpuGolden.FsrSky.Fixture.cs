@@ -45,18 +45,21 @@ internal static partial class GpuGolden
         return MathF.Sqrt(ex * ex + ey * ey);
     }
 
-    /// <summary>The scene at a display point: its colour and its reversed world depth, 0 for the sky.</summary>
-    private static (Vector3 C, float D) SkyScene(float x, float y)
+    /// <summary>The scene at a display point, against a sky of <paramref name="sky"/>: its colour and its reversed world depth, 0 for the sky.</summary>
+    private static (Vector3 C, float D) SkyScene(float x, float y, Vector3 sky)
     {
         if (x >= SkyMastX) return (MastColour, SkySceneDepth);
         if (SkyRopeDist(x, y) <= SkyRopeHalf) return (RopeColour, SkySceneDepth);
-        return (SkyColour, 0f);
+        return (sky, 0f);
     }
+
+    /// <summary>The fixture's sky as the fog leaves it: the share it keeps, and the light it scatters in.</summary>
+    private static Vector3 SkyFogged => SkyColour * SkyFogKeep + new Vector3(SkyFogLight);
 
     /// <summary>The scene point-sampled at <paramref name="w"/> x <paramref name="h"/> over the display, offset by
     /// <paramref name="jxPx"/>, <paramref name="jyPx"/> pixels the way the jitter moves a frame, the camera turned
-    /// <paramref name="turn"/> display pixels along the rows.</summary>
-    private static (Half[] Colour, float[] Depth) SkyDraw(int w, int h, float jxPx, float jyPx, float turn = 0f)
+    /// <paramref name="turn"/> display pixels along the rows, against a sky of <paramref name="sky"/>.</summary>
+    private static (Half[] Colour, float[] Depth) SkyDraw(int w, int h, float jxPx, float jyPx, float turn, Vector3 sky)
     {
         var c = new Half[w * h * 4];
         var d = new float[w * h];
@@ -64,7 +67,7 @@ internal static partial class GpuGolden
         for (int j = 0; j < h; j++)
             for (int i = 0; i < w; i++)
             {
-                (Vector3 col, float z) = SkyScene((i + 0.5f - jxPx) * sx + turn, (j + 0.5f - jyPx) * sy);
+                (Vector3 col, float z) = SkyScene((i + 0.5f - jxPx) * sx + turn, (j + 0.5f - jyPx) * sy, sky);
                 int p = j * w + i, at = p * 4;
                 c[at] = (Half)col.X; c[at + 1] = (Half)col.Y; c[at + 2] = (Half)col.Z; c[at + 3] = (Half)1f;
                 d[p] = z;
@@ -75,17 +78,18 @@ internal static partial class GpuGolden
     /// <summary>The scene through FSR 3.1 and the resolve, <see cref="SkyFrames"/> frames, and (<paramref name="truth"/>) its
     /// reference; null when refused (logged). <paramref name="fog"/> lays a uniform fog, <paramref name="dome"/> draws a dome,
     /// <paramref name="seed"/> fills the coverage history first, and <paramref name="pan"/> moves the rope and the mast that
-    /// many display pixels a frame across a sky that holds still.</summary>
+    /// many display pixels a frame across a sky that holds still; <paramref name="sky"/> replaces the fixture's sky colour.</summary>
     private static unsafe SkyRun? SkyRunScene(VkBackend vk, Checker check, ExtenderLog log, bool fog, bool dome,
-                                             Half? seed = null, bool truth = true, float pan = 0f)
+                                             Half? seed = null, bool truth = true, float pan = 0f, Vector3? sky = null)
     {
+        Vector3 skyCol = sky ?? SkyColour;
         string aa = Post.Aa.V;
         float scale = Post.Scale.V, bloom = Post.Bloom.V;
         bool skyRaw = Post.SkyRaw.V;
         Matrix4x4 skyInv = AlloyRenderer.SkyInvVp;
         float keepJx = PostChain.JitterX, keepJy = PostChain.JitterY;
         int sw = SkyDw * SkySuper, sh = SkyDh * SkySuper;
-        ImageId color = PostImage(vk, Format.Rgba16F, SkyRw, SkyRh, ImageUse.Sampled | ImageUse.CopyDst, "golden sky colour");
+        ImageId color = PostImage(vk, Format.Rgba16F, SkyRw, SkyRh, ImageUse.Sampled | ImageUse.CopyDst | ImageUse.ColorTarget, "golden sky colour");
         ImageId depth = PostImage(vk, Format.R32F, SkyRw, SkyRh, ImageUse.Sampled | ImageUse.CopyDst, "golden sky depth");
         ImageId vel = PostImage(vk, Format.Rg16F, SkyRw, SkyRh, ImageUse.Sampled | ImageUse.CopyDst, "golden sky velocity");
         ImageId up = PostImage(vk, Format.Rgba16F, SkyDw, SkyDh, ImageUse.Sampled | ImageUse.Storage | ImageUse.CopySrc, "golden sky fsr");
@@ -122,7 +126,7 @@ internal static partial class GpuGolden
             {
                 PostChain.Jitter(n, SkyRw, SkyRh, PostChain.JitterPhases(SkyDw), out float jx, out float jy);
                 PostChain.JitterX = jx; PostChain.JitterY = jy;
-                (Half[] c, float[] d) = SkyDraw(SkyRw, SkyRh, jx * SkyRw / 2f, jy * SkyRh / 2f, n * pan);
+                (Half[] c, float[] d) = SkyDraw(SkyRw, SkyRh, jx * SkyRw / 2f, jy * SkyRh / 2f, n * pan, skyCol);
                 if (!vk.Upload(color, 0, 0, MemoryMarshal.AsBytes(c.AsSpan())) || !vk.Upload(depth, 0, 0, MemoryMarshal.AsBytes(d.AsSpan())))
                     return null;
                 if (pan != 0f)
@@ -132,9 +136,10 @@ internal static partial class GpuGolden
                 }
                 var cl = new CommandList("golden sky", 1 << 14, log);
                 PostChainVk.BeginFrame();
+                bool fogged = PostStack.FsrSkyFogVk(vk, cl, color, depth, SkyRw, SkyRh, log);
                 cl.Upscale(Fsr.Command(color, depth, vel, default, up, SkyRw, SkyRh, jx, jy, 16.6f, 0.1f, 100f, 1f, n == 0));
-                PostChainVk.SkyInput sky = PostStack.FsrSkyVk(vk, cl, depth, vel, SkyRw, SkyRh, SkyDw, SkyDh, n == 0, log);
-                if (!PostChainVk.Record(vk, cl, up, sky, into, false, full, full, default, log) || !vk.Submit(cl)) return null;
+                PostChainVk.SkyInput cover = PostStack.FsrSkyVk(vk, cl, depth, vel, SkyRw, SkyRh, SkyDw, SkyDh, n == 0, log) with { Fogged = fogged };
+                if (!PostChainVk.Record(vk, cl, up, cover, into, false, full, full, default, log) || !vk.Submit(cl)) return null;
                 int k = n - (SkyFrames - SkyKept);
                 if (k < 0) continue;
                 byte[]? got = PostRead(vk, log, into, SkyDw, SkyDh, 4, rb);
@@ -142,7 +147,7 @@ internal static partial class GpuGolden
                 run.Frames[k] = SkyLevels(got);
             }
             if (!truth) return run;
-            (Half[] tc, float[] td) = SkyDraw(sw, sh, 0f, 0f, (SkyFrames - 1) * pan);
+            (Half[] tc, float[] td) = SkyDraw(sw, sh, 0f, 0f, (SkyFrames - 1) * pan, skyCol);
             if (!vk.Upload(sColor, 0, 0, MemoryMarshal.AsBytes(tc.AsSpan())) || !vk.Upload(sDepth, 0, 0, MemoryMarshal.AsBytes(td.AsSpan())))
                 return null;
             int* big = stackalloc int[4] { 0, 0, sw, sh };

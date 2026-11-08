@@ -4,7 +4,7 @@ using CX.Graphics.Rhi;
 namespace CX.Alloy;
 
 /// <summary>
-/// The FSR sky golden (approved-spec), E13-E15, E17 and E18: a still rope and mast against the sky, in fog, through FSR 3.1 at
+/// The FSR sky golden (approved-spec), E13-E15 and E18: a still rope and mast against the sky, in fog, through FSR 3.1 at
 /// render scale 0.9 and the resolve. Oracle: an unjittered still frame changes by nothing, and the same scene supersampled
 /// 4x4 through the resolve and averaged; the bounds are levels of the 8-bit frame, written by hand.
 /// </summary>
@@ -52,14 +52,8 @@ internal static partial class GpuGolden
         SkyRun? f = SkyRunScene(vk, check, log, fog: true, dome: false);
         check.Expect(f != null, "FSR sky: the fogged run was refused (logged above)");
         if (f == null) return;
-        float fogRope = SkyWorstStep(f, SkyInRope);
         (float fogMean, _, _, _) = SkyAgainstTruth(f, SkyInRope);
-        log.Info($"GpuGolden: FSR sky in the volumetric fog with no dome, rope steps {fogRope:F1} levels, {fogMean:F2} from the reference");
-
-        // Given FSR 3.1 at render scale 0.9, the volumetric fog on and an area with no sky dome
-        // When a thin far object stands against the fogged distance
-        // Then it keeps its shade from frame to frame, as still as under SMAA
-        check.Expect(fogRope <= SkyStill, $"E17: in the fog a still rope changes by up to {fogRope:F1} levels between frames (at most {SkyStill})");
+        log.Info($"GpuGolden: FSR sky in the volumetric fog with no dome, the rope {fogMean:F2} levels from the reference");
 
         // Given FSR 3.1 at render scale 0.9, the volumetric fog on and an area with no sky dome
         // When a thin far object stands against the fogged distance

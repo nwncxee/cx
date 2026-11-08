@@ -5,8 +5,9 @@ namespace CX.Alloy;
 
 /// <summary>
 /// Regression checks beside the FSR sky golden: E16, which held before FSR's sky coverage, open sky through FSR 3.1
-/// keeping the shade SMAA gives it, and the same over a coverage history of NaN; E19, which held when written. Oracle: the same scene supersampled
-/// 4x4 through the resolve and averaged, itself pinned to the sky's colour encoded by hand.
+/// keeping the shade SMAA gives it, and the same over a coverage history of NaN; E17, E19 and E20, which held when written. Oracle:
+/// the same scene supersampled 4x4 through the resolve and averaged, pinned to the sky's colour encoded by hand, and in the fog
+/// the same scene through FSR against a clear sky as bright as the fogged one.
 /// </summary>
 internal static partial class GpuGolden
 {
@@ -47,11 +48,11 @@ internal static partial class GpuGolden
         check.Expect(gWorst <= SkyOpenTol,
             $"FSR sky: over a coverage history of NaN, open sky differs from the reference by up to {gWorst:F1} levels (at most {SkyOpenTol})");
 
-        SkyRun? t = SkyRunScene(vk, check, log, fog: true, dome: false, pan: SkyTurn);
-        check.Expect(t != null, "FSR sky: the turning run was refused (logged above)");
-        if (t == null) return;
         const float moved = (SkyFrames - 1) * SkyTurn;
         Func<int, int, bool> trail = (x, y) => y >= 25 && y <= 155 && SkyRopeDist(x + 0.5f + moved, y + 0.5f) <= SkyTrail;
+        SkyRun? t = SkyRunScene(vk, check, log, fog: false, dome: false, pan: SkyTurn);
+        check.Expect(t != null, "FSR sky: the turning run was refused (logged above)");
+        if (t == null) return;
         (float tMean, float tWorst, _, _) = SkyAgainstTruth(t, trail);
         float tDarker = SkyWorstDarker(t, trail);
         log.Info($"GpuGolden: FSR sky turning, rope and trail {tMean:F2} levels from the reference, worst {tWorst:F1}, at most {tDarker:F1} darker");
@@ -60,5 +61,27 @@ internal static partial class GpuGolden
         // Then the rigging keeps its shade, with no dark trail behind it
         check.Expect(MathF.Abs(tMean) <= SkyShadeMean && tDarker <= SkyShadeDark,
             $"E19: turning, the rope and the sky beside it sit {tMean:F2} levels from the reference (at most {SkyShadeMean}), a pixel up to {tDarker:F1} darker (at most {SkyShadeDark})");
+
+        SkyRun? fs = SkyRunScene(vk, check, log, fog: true, dome: false, truth: false);
+        SkyRun? ps = SkyRunScene(vk, check, log, fog: false, dome: false, truth: false, sky: SkyFogged);
+        SkyRun? ft = SkyRunScene(vk, check, log, fog: true, dome: false, pan: SkyTurn);
+        SkyRun? pt = SkyRunScene(vk, check, log, fog: false, dome: false, pan: SkyTurn, sky: SkyFogged);
+        check.Expect(fs != null && ps != null && ft != null && pt != null, "FSR sky: a fogged run or its clear-sky partner was refused (logged above)");
+        if (fs == null || ps == null || ft == null || pt == null) return;
+        float fogStep = SkyWorstStep(fs, SkyInRope), plainStep = SkyWorstStep(ps, SkyInRope);
+        float fogDarker = SkyWorstDarker(ft, trail), plainDarker = SkyWorstDarker(pt, trail);
+        log.Info($"GpuGolden: FSR sky in the fog against a clear sky that bright, rope steps {fogStep:F1} against {plainStep:F1}, "
+               + $"turning at most {fogDarker:F1} darker against {plainDarker:F1}");
+        // Given FSR 3.1 at render scale 0.9, the volumetric fog on and an area with no sky dome
+        // When a thin far object stands against the fogged distance
+        // Then it keeps its shade from frame to frame, as still as FSR holds it against a clear sky that bright
+        check.Expect(fogStep <= plainStep + SkyOpenTol,
+            $"E17: in the fog a still rope changes by up to {fogStep:F1} levels between frames, against a clear sky that bright {plainStep:F1} (at most {SkyOpenTol} more)");
+
+        // Given FSR 3.1 at render scale 0.9, the volumetric fog on and an area with no sky dome
+        // When the camera turns slowly past a thin far object against the fogged distance
+        // Then it leaves no darker trail than FSR leaves against a clear sky that bright
+        check.Expect(fogDarker <= plainDarker + SkyOpenTol,
+            $"E20: turning in the fog, a pixel draws up to {fogDarker:F1} levels darker than the reference, against a clear sky that bright {plainDarker:F1} (at most {SkyOpenTol} more)");
     }
 }

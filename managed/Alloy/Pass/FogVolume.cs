@@ -255,6 +255,9 @@ internal static unsafe partial class FogVolume
     /// <summary>No volume this frame: every reader stays on the ramp.</summary>
     internal static void NotBuilt() => _b.Built = false;
 
+    /// <summary>This frame's volume is built: a reader that binds it fogs.</summary>
+    internal static bool Built => _b.Built;
+
     /// <summary>Which of the ping-pong pair this build writes; the other holds last frame's medium.</summary>
     internal static bool CurrentIsA => _b.CurA;
 

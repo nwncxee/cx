@@ -26,7 +26,7 @@ internal static unsafe class PostChainVk
     /// the grade, the output dither and the stage view.</summary>
     private struct ResolvePush
     {
-        public int SkyRaw, SkyBare, SkyCover;
+        public int SkyRaw, SkyBare, SkyCover, SkyFogged;
         public float Strength;
         public PostChain.GradeTerms Grade;
         public float Dither;
@@ -41,6 +41,7 @@ internal static unsafe class PostChainVk
             VkPush.Of("int", "uSkyRaw", ref p, ref p.SkyRaw),
             VkPush.Of("int", "uSkyBare", ref p, ref p.SkyBare),
             VkPush.Of("int", "uSkyCover", ref p, ref p.SkyCover),
+            VkPush.Of("int", "uSkyFogged", ref p, ref p.SkyFogged),
             VkPush.Of("float", "uStrength", ref p, ref p.Strength),
             VkPush.Of("int", "uMode", ref p, ref p.Grade.Mode),
             VkPush.Of("float", "uKnee", ref p, ref p.Grade.Knee),
@@ -131,11 +132,12 @@ internal static unsafe class PostChainVk
                                            BufferBinding Storage = default, ImageId React = default, ImageId Wx = default);
 
     /// <summary>What the resolve tells sky from scene by: the world depth, sky where it is 0, or (<paramref name="Cover"/>)
-    /// a sky coverage from 0 to 1 laid on the colour it grades.</summary>
-    internal readonly record struct SkyInput(ImageId Image, bool Cover = false);
+    /// a sky coverage from 0 to 1 laid on the colour it grades. <paramref name="Fogged"/>: the fog already lies on bare sky.</summary>
+    internal readonly record struct SkyInput(ImageId Image, bool Cover = false, bool Fogged = false);
 
-    /// <summary>How a post draw meets its target: replacing it, adding to it, or alpha-over it.</summary>
-    internal enum Blend : byte { None, Add, Over }
+    /// <summary>How a post draw meets its target: replacing it, adding to it, alpha-over it, or (<see cref="Fog"/>) scaling it
+    /// by the draw's alpha and adding its colour.</summary>
+    internal enum Blend : byte { None, Add, Over, Fog }
 
     /// <summary>Bloom, then the resolve of <paramref name="hdr"/> into <paramref name="into"/> at
     /// <paramref name="rect"/>, telling sky from scene by <paramref name="sky"/>, dithered only when it is the frame's last write; <c>/post viz 4</c> paints <paramref name="vel"/>
@@ -172,6 +174,7 @@ internal static unsafe class PostChainVk
             SkyRaw = Post.SkyRaw.V && invVp != default ? 1 : 0,
             SkyBare = invVp == default ? 1 : 0,
             SkyCover = sky.Cover ? 1 : 0,
+            SkyFogged = sky.Fogged ? 1 : 0,
             OverlayOn = StageResources.VkOverlay.IsNull ? 0 : 1,
             Strength = bloom ? Post.Bloom.V : 0f,
             Grade = PostChain.GradeTerms.Now,
@@ -558,6 +561,8 @@ internal static unsafe class PostChainVk
         if (add == Blend.Add) d.Blend[0] = new AttachmentBlend(true, BlendFactor.One, BlendFactor.One, BlendFactor.One, BlendFactor.One);
         else if (add == Blend.Over)
             d.Blend[0] = new AttachmentBlend(true, BlendFactor.SrcAlpha, BlendFactor.OneMinusSrcAlpha, BlendFactor.SrcAlpha, BlendFactor.OneMinusSrcAlpha);
+        else if (add == Blend.Fog)
+            d.Blend[0] = new AttachmentBlend(true, BlendFactor.One, BlendFactor.SrcAlpha, BlendFactor.Zero, BlendFactor.One);
         id = _s.Dev!.CreatePipeline(in d);
         if (id.IsNull) log?.Always($"PostChainVk: the device REFUSED pipeline {d.Label} (logged above) -- that post draw sits out");
         p.Pipes[key] = id;
