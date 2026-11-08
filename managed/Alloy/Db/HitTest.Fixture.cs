@@ -184,8 +184,8 @@ public static unsafe partial class HitTestCheck
                          Quaternion.CreateFromAxisAngle(Vector3.UnitZ, MathF.PI / 6f), 3f, 0, false);
             // The tile walkmesh: a PartAABB-shaped part (a mesh WITH an AabbDef), in the static set, lying in
             // the z=0 plane -- the surface a click-to-move pick lands on.
-            w.Floor = Obj(w.Scene, Model("floor", HitTest.ClassTile, Quad(150f, 0f, 6f, 2), NodeKind.Aabb),
-                          new Vector3(0, 0, 0), Quaternion.Identity, 1f, HitTest.ClassTile, true);
+            w.Floor = Obj(w.Scene, Model("floor", HitTest.ClassTile, Quad(0f, 0f, 6f, 2), NodeKind.Aabb),
+                          new Vector3(150, 0, 0), Quaternion.Identity, 1f, HitTest.ClassTile, true);
             // The same 2m trigger prism at scale 4: PartTrigger::HitCheckGeom ignores the accumulated scale
             // entirely, so this must still only cover its UNSCALED extent.
             w.BigTrigger = Obj(w.Scene, trig, new Vector3(200, 0, 0.5f), Quaternion.Identity, 4f, 0, false,
@@ -204,6 +204,27 @@ public static unsafe partial class HitTestCheck
             Array.Resize(ref _objs, _objs.Length + 1);
             _objs[^1] = o;
             return o;
+        }
+
+        internal struct Bridge { internal DbId Ramp, Deck, Neighbour; }
+
+        /// <summary>A walkmesh bridge as content builds one: a tile's ramp at z 9.67 in cell (7, 9), a static
+        /// deck at z 11 filed into the same cell after it and overhanging into (8, 9) by a metre, and the next
+        /// tile west with a floor of its own.</summary>
+        internal static Bridge BuildBridge(DbId scene)
+        {
+            var b = new Bridge
+            {
+                Ramp = Obj(scene, Model("bridgeramp", HitTest.ClassTile, Quad(0f, 9.67f, 5f, 1), NodeKind.Aabb),
+                           new Vector3(75, 95, 0), Quaternion.Identity, 1f, HitTest.ClassTile, true),
+                Neighbour = Obj(scene, Model("bridgebank", HitTest.ClassTile, Quad(0f, 9.67f, 5f, 1), NodeKind.Aabb),
+                                new Vector3(65, 95, 0), Quaternion.Identity, 1f, HitTest.ClassTile, true),
+            };
+            b.Deck = Obj(scene, Model("bridgedeck", HitTest.ClassTile, Quad(0f, 11f, 6f, 9), NodeKind.Aabb),
+                         new Vector3(75, 95, 0), Quaternion.Identity, 1f, HitTest.ClassTile, true);
+            Array.Resize(ref _objs, _objs.Length + 3);
+            _objs[^3] = b.Ramp; _objs[^2] = b.Neighbour; _objs[^1] = b.Deck;
+            return b;
         }
 
         /// <summary>A tile merge bucket's HEAD as <c>CombinePlan</c> leaves it: the node mesh lies at z 0.23 under

@@ -58,12 +58,41 @@ public static unsafe partial class HitTestCheck
         ok &= ReMark(log);
         ok &= Scene(log);
         ok &= MergedHead(log);
+        ok &= OneWalkmeshPerCell(log);
         ok &= Bench(log);
         log.Info(ok ? "HitTest.SelfCheck: passed" : "HitTest.SelfCheck: see failures above");
     }
 
     private static bool Fail(ExtenderLog log, string what)
     { log.Info("HitTest.SelfCheck: FAILED -- " + what); return false; }
+
+    /// <summary>A walkmesh bridge's floor casts, against the engine's BSP rule as the oracle: one walkmesh per
+    /// 10 m cell, the last filed (<c>SceneBSPAddPart</c>), tested only inside that cell (<c>HitPartOnBSPNode</c>).
+    /// The heights are the fixture's literals; the probes are <c>ComputeZValue</c>'s two shapes.</summary>
+    private static bool OneWalkmeshPerCell(ExtenderLog log)
+    {
+        bool ok = true;
+        var world = Fixture.Build();
+        var bridge = Fixture.BuildBridge(world.Scene);
+        HitQuery Probe(float x, float y, float top, float bottom)
+        {
+            HitQuery q = HitQuery.Ray(world.Scene, new Vector3(x, y, top), new Vector3(x, y, bottom));
+            q.Objects = false;
+            q.Ground = false;
+            return q;
+        }
+
+        if (HitTest.Cast(Probe(75f, 96.78f, 10.67f, 8.67f), out HitResult r))
+            ok = Fail(log, $"the hint-window probe landed at z={r.Point.Z:F2} on the ramp the deck replaced in its cell");
+        if (!HitTest.Cast(Probe(75f, 96.78f, 90f, -9f), out r) || r.Obj != bridge.Deck || MathF.Abs(r.Point.Z - 11f) > 0.01f)
+            ok = Fail(log, $"the top-down probe did not land on the deck at z=11 (hit {r.Kind}, z={r.Point.Z:F2})");
+        if (!HitTest.Cast(Probe(65f, 95f, 10.67f, 8.67f), out r) || r.Obj != bridge.Neighbour)
+            ok = Fail(log, "the next cell lost its own walkmesh to the deck filed beside it");
+        if (HitTest.Cast(Probe(80.5f, 95f, 90f, -9f), out r))
+            ok = Fail(log, $"the deck answered at x=80.5, outside the cell it is filed in (z={r.Point.Z:F2})");
+        Fixture.Tear();
+        return ok;
+    }
 
     /// <summary>The geometry primitives, against the engine's own semantics: a one-sided triangle, a box face
     /// code with its normal, the inside-the-box -1, and the sphere reject.</summary>
