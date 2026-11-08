@@ -25,5 +25,6 @@ void main()
     float cur = mix(mix(CxSkyAt(i), CxSkyAt(i + ivec2(1, 0)), f.x),
                     mix(CxSkyAt(i + ivec2(0, 1)), CxSkyAt(i + ivec2(1, 1)), f.x), f.y);
     float hist = texture(uHist, vUV + texture(uVel, vUV).rg / uRenderSize).r;
-    frag = mix(hist, cur, uBlend);
+    // a fresh start never reads the history: an image no frame wrote can hold NaN, which a zero weight keeps
+    frag = uBlend >= 1.0 ? cur : mix(hist, cur, uBlend);
 }
