@@ -47,16 +47,18 @@ internal static partial class GpuGolden
         check.Expect(gWorst <= SkyOpenTol,
             $"FSR sky: over a coverage history of NaN, open sky differs from the reference by up to {gWorst:F1} levels (at most {SkyOpenTol})");
 
-        SkyRun? t = SkyRunScene(vk, check, log, fog: true, dome: true, pan: SkyTurn);
+        SkyRun? t = SkyRunScene(vk, check, log, fog: true, dome: false, pan: SkyTurn);
         check.Expect(t != null, "FSR sky: the turning run was refused (logged above)");
         if (t == null) return;
         const float moved = (SkyFrames - 1) * SkyTurn;
-        (float tMean, float tWorst, float tDark, float tTruthDark) = SkyAgainstTruth(t, (x, y) => y >= 25 && y <= 155 && SkyRopeDist(x + 0.5f + moved, y + 0.5f) <= SkyTrail);
-        log.Info($"GpuGolden: FSR sky turning, rope and trail {tMean:F2} levels from the reference, worst {tWorst:F1}, darkest {tDark:F0} against {tTruthDark:F0}");
+        Func<int, int, bool> trail = (x, y) => y >= 25 && y <= 155 && SkyRopeDist(x + 0.5f + moved, y + 0.5f) <= SkyTrail;
+        (float tMean, float tWorst, _, _) = SkyAgainstTruth(t, trail);
+        float tDarker = SkyWorstDarker(t, trail);
+        log.Info($"GpuGolden: FSR sky turning, rope and trail {tMean:F2} levels from the reference, worst {tWorst:F1}, at most {tDarker:F1} darker");
         // Given FSR 3.1 at render scale 0.9
         // When the camera turns slowly past ship rigging against the sky
         // Then the rigging keeps its shade, with no dark trail behind it
-        check.Expect(MathF.Abs(tMean) <= SkyShadeMean && tDark >= tTruthDark - SkyShadeDark,
-            $"E19: turning, the rope and the sky beside it sit {tMean:F2} levels from the reference (at most {SkyShadeMean}), darkest {tDark:F0} against {tTruthDark:F0} (at most {SkyShadeDark} darker)");
+        check.Expect(MathF.Abs(tMean) <= SkyShadeMean && tDarker <= SkyShadeDark,
+            $"E19: turning, the rope and the sky beside it sit {tMean:F2} levels from the reference (at most {SkyShadeMean}), a pixel up to {tDarker:F1} darker (at most {SkyShadeDark})");
     }
 }

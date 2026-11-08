@@ -72,10 +72,10 @@ internal static partial class GpuGolden
         return (c, d);
     }
 
-    /// <summary>The scene through FSR 3.1 and the resolve, <see cref="SkyFrames"/> still frames, and (<paramref name="truth"/>)
-    /// its reference; null when a step was refused (logged). <paramref name="fog"/> lays a uniform volumetric fog,
-    /// <paramref name="dome"/> draws the area with a sky dome, and <paramref name="seed"/>, when given, fills the coverage
-    /// history first; <paramref name="pan"/> turns the camera by that many display pixels a frame.</summary>
+    /// <summary>The scene through FSR 3.1 and the resolve, <see cref="SkyFrames"/> frames, and (<paramref name="truth"/>) its
+    /// reference; null when refused (logged). <paramref name="fog"/> lays a uniform fog, <paramref name="dome"/> draws a dome,
+    /// <paramref name="seed"/> fills the coverage history first, and <paramref name="pan"/> moves the rope and the mast that
+    /// many display pixels a frame across a sky that holds still.</summary>
     private static unsafe SkyRun? SkyRunScene(VkBackend vk, Checker check, ExtenderLog log, bool fog, bool dome,
                                              Half? seed = null, bool truth = true, float pan = 0f)
     {
@@ -114,7 +114,6 @@ internal static partial class GpuGolden
                 FogVolume.FixtureBuilt(SkyFogSide);
             }
             var mv = new Half[SkyRw * SkyRh * 2];
-            for (int i = 0; i < mv.Length; i += 2) mv[i] = (Half)(pan * SkyRw / SkyDw);
             if (!vk.Upload(vel, 0, 0, MemoryMarshal.AsBytes(mv.AsSpan()))) return null;
             if (seed is Half h && !PostStack.SkyCoverFixture(vk, SkyDw, SkyDh, h)) return null;
             var run = new SkyRun();
@@ -126,6 +125,11 @@ internal static partial class GpuGolden
                 (Half[] c, float[] d) = SkyDraw(SkyRw, SkyRh, jx * SkyRw / 2f, jy * SkyRh / 2f, n * pan);
                 if (!vk.Upload(color, 0, 0, MemoryMarshal.AsBytes(c.AsSpan())) || !vk.Upload(depth, 0, 0, MemoryMarshal.AsBytes(d.AsSpan())))
                     return null;
+                if (pan != 0f)
+                {
+                    for (int i = 0, at = 0; i < d.Length; i++, at += 2) mv[at] = (Half)(d[i] > 0f ? pan * SkyRw / SkyDw : 0f);
+                    if (!vk.Upload(vel, 0, 0, MemoryMarshal.AsBytes(mv.AsSpan()))) return null;
+                }
                 var cl = new CommandList("golden sky", 1 << 14, log);
                 PostChainVk.BeginFrame();
                 cl.Upscale(Fsr.Command(color, depth, vel, default, up, SkyRw, SkyRh, jx, jy, 16.6f, 0.1f, 100f, 1f, n == 0));
@@ -197,6 +201,22 @@ internal static partial class GpuGolden
 
     /// <summary>The largest of a difference's three channels, by size.</summary>
     private static float SkyMax(Vector3 d) => MathF.Max(MathF.Abs(d.X), MathF.Max(MathF.Abs(d.Y), MathF.Abs(d.Z)));
+
+    /// <summary>The most any pixel of <paramref name="where"/> in the last frame sits below the reference, in levels.</summary>
+    private static float SkyWorstDarker(SkyRun r, Func<int, int, bool> where)
+    {
+        Vector3[] last = r.Frames[SkyKept - 1];
+        float worst = 0f;
+        for (int y = 0; y < SkyDh; y++)
+            for (int x = 0; x < SkyDw; x++)
+            {
+                if (!where(x, y)) continue;
+                int at = y * SkyDw + x;
+                Vector3 d = r.Truth[at] - last[at];
+                worst = MathF.Max(worst, MathF.Max(d.X, MathF.Max(d.Y, d.Z)));
+            }
+        return worst;
+    }
 
     /// <summary>The display pixels within <see cref="SkyRopeBand"/> of the rope, clear of its ends.</summary>
     private static bool SkyInRope(int x, int y) => y >= 25 && y <= 155 && SkyRopeDist(x + 0.5f, y + 0.5f) <= SkyRopeBand;
