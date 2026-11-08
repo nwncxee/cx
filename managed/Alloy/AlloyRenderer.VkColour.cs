@@ -538,13 +538,14 @@ public sealed unsafe partial class AlloyRenderer
     }
 
     /// <summary>The pass block <see cref="BindPass"/> staged, in the arena with the probe as Vulkan has it: copied the
-    /// first time a block is asked for, and the same offset for every bind that reuses it.</summary>
-    private static int VkArenaPass()
+    /// first time a block is asked for, and the same offset for every bind that reuses it. A list on another queue passes
+    /// the first offset its own upload covers: a copy below it rides a list that may still be running.</summary>
+    private static int VkArenaPass(int since = 0)
     {
         if (PassStaged.IsEmpty) return -1;
         VkColourState s = _vkc;
         float mips = VkProbeMips;
-        if (s.PassAt >= 0 && s.PassStamp == _ps.Stamp && s.PassMips == mips) return s.PassAt;
+        if (s.PassAt >= since && s.PassStamp == _ps.Stamp && s.PassMips == mips) return s.PassAt;
         int at = VkArena(PassStaged);
         // the probe as Vulkan holds it, 0 mips for none, in place of GL's cube
         if (at >= 0) MemoryMarshal.Write(s.ArenaBytes.AsSpan(at + PbProbeMips, sizeof(float)), mips);

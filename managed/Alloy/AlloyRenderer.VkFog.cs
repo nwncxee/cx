@@ -75,7 +75,7 @@ public sealed unsafe partial class AlloyRenderer
             LooseBlock.Set(s.LocalMedia, 1f);
         }
         finally { LooseBlock.EndCapture(); }
-        int loose = VkArena(l.Block), pass = VkArenaPass();
+        int loose = VkArena(l.Block), pass = VkArenaPass(since: arena0);
         Array.Clear(m.Block);
         LooseBlock.Capture(m.Members, m.Block);
         try { FogVolume.WriteSum(in t, in s.S); }
