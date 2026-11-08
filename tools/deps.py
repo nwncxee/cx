@@ -18,7 +18,7 @@ The archives cache in $CX_DEPS_CACHE (default ~/.cache/cx-deps), so a clean buil
   glslang-win  glslang 16.6.0 for Windows: build-win-native.sh compiles FSR's shaders with it; Linux takes the
                nix shell's.
 """
-import hashlib, json, os, pathlib, shutil, sys, tarfile, urllib.request, zipfile
+import hashlib, json, os, pathlib, shutil, sys, tarfile, time, urllib.error, urllib.request, zipfile
 
 DEPS = {name: (d['url'], d['sha256'], d['file'], d.get('members'))
         for name, d in json.loads((pathlib.Path(__file__).parent / 'deps.json').read_text()).items()}
@@ -32,6 +32,28 @@ def sha256(path):
     return h.hexdigest()
 
 
+ATTEMPTS = 5
+
+
+def download(url, tmp):
+    """A host's 5xx, 429 or dropped connection is retried with 1, 2, 4, 8 s waits; any other error stops at once."""
+    for attempt in range(ATTEMPTS):
+        try:
+            with urllib.request.urlopen(url, timeout=60) as r, open(tmp, 'wb') as f:
+                shutil.copyfileobj(r, f)
+            return
+        except urllib.error.HTTPError as e:
+            if e.code < 500 and e.code != 429:
+                sys.exit(f'!! {url}: HTTP {e.code}')
+            why = f'HTTP {e.code}'
+        except (urllib.error.URLError, OSError) as e:
+            why = str(e)
+        if attempt + 1 < ATTEMPTS:
+            print(f'>> {url}: {why}, retrying in {2 ** attempt} s', file=sys.stderr)
+            time.sleep(2 ** attempt)
+    sys.exit(f'!! {url}: {why} on all {ATTEMPTS} attempts')
+
+
 def fetch(name):
     url, want, file, _ = DEPS[name]
     cache = pathlib.Path(os.environ.get('CX_DEPS_CACHE', pathlib.Path.home() / '.cache' / 'cx-deps'))
@@ -40,8 +62,7 @@ def fetch(name):
     if not path.exists() or sha256(path) != want:
         print(f'>> fetching {url}', file=sys.stderr)
         tmp = path.with_suffix(f'.{os.getpid()}.part')  # two CI jobs can share one cache
-        with urllib.request.urlopen(url) as r, open(tmp, 'wb') as f:
-            shutil.copyfileobj(r, f)
+        download(url, tmp)
         got = sha256(tmp)
         if got != want:
             tmp.unlink()
