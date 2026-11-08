@@ -90,6 +90,10 @@ public static unsafe partial class HitTestCheck
             ok = Fail(log, "the next cell lost its own walkmesh to the deck filed beside it");
         if (HitTest.Cast(Probe(80.5f, 95f, 90f, -9f), out r))
             ok = Fail(log, $"the deck answered at x=80.5, outside the cell it is filed in (z={r.Point.Z:F2})");
+        if (!HitTest.Cast(Probe(82f, 115f, 90f, -9f), out r) || r.Obj != bridge.SeamFloor)
+            ok = Fail(log, $"a walkmesh pivoted on x=80 took cell (8, 11) from its floor (z={r.Point.Z:F2}); the boundary is the lower cell's");
+        if (!HitTest.Cast(Probe(78f, 115f, 90f, -9f), out r) || r.Obj != bridge.Seam)
+            ok = Fail(log, $"the walkmesh pivoted on x=80 did not answer in cell (7, 11) (z={r.Point.Z:F2})");
         Fixture.Tear();
         return ok;
     }

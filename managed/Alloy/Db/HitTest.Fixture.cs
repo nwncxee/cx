@@ -206,11 +206,12 @@ public static unsafe partial class HitTestCheck
             return o;
         }
 
-        internal struct Bridge { internal DbId Ramp, Deck, Neighbour; }
+        internal struct Bridge { internal DbId Ramp, Deck, Neighbour, SeamFloor, Seam; }
 
         /// <summary>A walkmesh bridge as content builds one: a tile's ramp at z 9.67 in cell (7, 9), a static
         /// deck at z 11 filed into the same cell after it and overhanging into (8, 9) by a metre, and the next
-        /// tile west with a floor of its own.</summary>
+        /// tile west with a floor of its own. On row 11, a static at z 4 pivoted ON the x = 80 cell boundary,
+        /// filed after cell (8, 11)'s floor at z 2.</summary>
         internal static Bridge BuildBridge(DbId scene)
         {
             var b = new Bridge
@@ -222,8 +223,12 @@ public static unsafe partial class HitTestCheck
             };
             b.Deck = Obj(scene, Model("bridgedeck", HitTest.ClassTile, Quad(0f, 11f, 6f, 9), NodeKind.Aabb),
                          new Vector3(75, 95, 0), Quaternion.Identity, 1f, HitTest.ClassTile, true);
-            Array.Resize(ref _objs, _objs.Length + 3);
-            _objs[^3] = b.Ramp; _objs[^2] = b.Neighbour; _objs[^1] = b.Deck;
+            b.SeamFloor = Obj(scene, Model("seamfloor", HitTest.ClassTile, Quad(0f, 2f, 5f, 1), NodeKind.Aabb),
+                              new Vector3(85, 115, 0), Quaternion.Identity, 1f, HitTest.ClassTile, true);
+            b.Seam = Obj(scene, Model("seamdeck", HitTest.ClassTile, Quad(0f, 4f, 4f, 9), NodeKind.Aabb),
+                         new Vector3(80, 115, 0), Quaternion.Identity, 1f, HitTest.ClassTile, true);
+            Array.Resize(ref _objs, _objs.Length + 5);
+            _objs[^5] = b.Ramp; _objs[^4] = b.Neighbour; _objs[^3] = b.Deck; _objs[^2] = b.SeamFloor; _objs[^1] = b.Seam;
             return b;
         }
 
