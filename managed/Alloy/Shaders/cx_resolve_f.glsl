@@ -36,7 +36,7 @@ uniform int uOverlayOn;
 float CxSky()
 {
     float d = texture(uDepth, vUV).r;
-    return uSkyCover != 0 ? clamp(d, 0.0, 1.0) : (d <= 0.0 ? 1.0 : 0.0);
+    return uSkyCover != 0 ? d : (d <= 0.0 ? 1.0 : 0.0);
 }
 
 void main()

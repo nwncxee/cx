@@ -17,18 +17,13 @@ internal static partial class GpuGolden
     private const int SkyRw = 288, SkyRh = 162, SkyDw = 320, SkyDh = 180, SkyFrames = 48, SkyKept = 16, SkySuper = 4;
     private const float SkyRopeX0 = 40f, SkyRopeY0 = 20f, SkyRopeX1 = 130f, SkyRopeY1 = 160f, SkyRopeHalf = 0.25f, SkyMastX = 220.4f;
     private const float SkyRopeBand = 1.5f, SkySceneDepth = 0.5f;
+    /// <summary>The fog fixture's volume edge, in froxels.</summary>
+    private const int SkyFogSide = 4;
     private static readonly Vector3 SkyColour = new(0.20f, 0.22f, 0.17f), RopeColour = new(0.12f, 0.12f, 0.11f),
                                      MastColour = new(0.10f, 0.09f, 0.08f);
 
     /// <summary>The approved examples over this fixture.</summary>
     static partial void FsrResolveApprovedSelfCheck(VkBackend vk, Checker check, ExtenderLog log);
-
-    /// <summary>One display pixel of a read-back 8-bit frame.</summary>
-    [StructLayout(LayoutKind.Sequential)]
-    private readonly struct SkyPx
-    {
-        public readonly byte R, G, B, A;
-    }
 
     /// <summary>The last <see cref="SkyKept"/> resolved frames, and the supersampled reference, in 0..255 per channel.</summary>
     private sealed class SkyRun
@@ -72,15 +67,18 @@ internal static partial class GpuGolden
         return (c, d);
     }
 
-    /// <summary>The scene through FSR 3.1 and the resolve, <see cref="SkyFrames"/> still frames, and its reference;
-    /// null when a step was refused (logged). <paramref name="fog"/> lays a uniform volumetric fog over an area with
-    /// no sky dome; <paramref name="seed"/>, when given, fills the coverage history first.</summary>
-    private static unsafe SkyRun? SkyRunScene(VkBackend vk, Checker check, ExtenderLog log, bool fog, Half? seed = null)
+    /// <summary>The scene through FSR 3.1 and the resolve, <see cref="SkyFrames"/> still frames, and (<paramref name="truth"/>)
+    /// its reference; null when a step was refused (logged). <paramref name="fog"/> lays a uniform volumetric fog,
+    /// <paramref name="dome"/> draws the area with a sky dome, and <paramref name="seed"/>, when given, fills the coverage
+    /// history first.</summary>
+    private static unsafe SkyRun? SkyRunScene(VkBackend vk, Checker check, ExtenderLog log, bool fog, bool dome,
+                                             Half? seed = null, bool truth = true)
     {
         string aa = Post.Aa.V;
         float scale = Post.Scale.V, bloom = Post.Bloom.V;
         bool skyRaw = Post.SkyRaw.V;
         Matrix4x4 skyInv = AlloyRenderer.SkyInvVp;
+        float keepJx = PostChain.JitterX, keepJy = PostChain.JitterY;
         int sw = SkyDw * SkySuper, sh = SkyDh * SkySuper;
         ImageId color = PostImage(vk, Format.Rgba16F, SkyRw, SkyRh, ImageUse.Sampled | ImageUse.CopyDst, "golden sky colour");
         ImageId depth = PostImage(vk, Format.R32F, SkyRw, SkyRh, ImageUse.Sampled | ImageUse.CopyDst, "golden sky depth");
@@ -90,13 +88,13 @@ internal static partial class GpuGolden
         ImageId sColor = PostImage(vk, Format.Rgba16F, sw, sh, ImageUse.Sampled | ImageUse.CopyDst, "golden sky truth colour");
         ImageId sDepth = PostImage(vk, Format.R32F, sw, sh, ImageUse.Sampled | ImageUse.CopyDst, "golden sky truth depth");
         ImageId sInto = PostImage(vk, Format.Rgba8, sw, sh, ImageUse.ColorTarget | ImageUse.CopySrc, "golden sky truth resolve");
-        ImageId vol = vk.CreateImage(new ImageDesc(ImageKind.Tex3D, Format.Rgba16F, 4, 4, 4, 1, 1, 1,
+        ImageId vol = vk.CreateImage(new ImageDesc(ImageKind.Tex3D, Format.Rgba16F, SkyFogSide, SkyFogSide, SkyFogSide, 1, 1, 1,
                                                    ImageUse.Sampled | ImageUse.CopyDst, "golden sky fog"));
         BufferId rb = vk.CreateBuffer(new BufferDesc(sw * sh * 4, BufferUse.CopyDst | BufferUse.CopySrc, MemoryKind.Device, "golden sky read"));
         try
         {
             Post.Aa.V = Post.AaFsr; Post.Scale.V = 0.9f; Post.Bloom.V = 0f; Post.SkyRaw.V = true;
-            AlloyRenderer.SkyInvVp = fog ? default : Matrix4x4.Identity;
+            AlloyRenderer.SkyInvVp = dome ? Matrix4x4.Identity : default;
             string? why = vk.FsrReady(SkyRw, SkyRh, SkyDw, SkyDh);
             bool made = AlloyRenderer.VkFixtureEnsure(vk, SkyDw, SkyDh, log) && !color.IsNull && !depth.IsNull && !vel.IsNull && !up.IsNull && !into.IsNull && !sColor.IsNull
                      && !sDepth.IsNull && !sInto.IsNull && !vol.IsNull && !rb.IsNull;
@@ -104,11 +102,11 @@ internal static partial class GpuGolden
             if (why != null || !made) return null;
             if (fog)
             {
-                var v = new Half[4 * 4 * 4 * 4];
+                var v = new Half[SkyFogSide * SkyFogSide * SkyFogSide * 4];
                 for (int i = 0; i < v.Length; i += 4) { v[i] = v[i + 1] = v[i + 2] = (Half)0.05f; v[i + 3] = (Half)0.7f; }
                 if (!vk.Upload(vol, 0, 0, MemoryMarshal.AsBytes(v.AsSpan()))) return null;
                 AlloyRenderer.VkFogFixture(vk, vol);
-                FogVolume.FixtureBuilt(true, 4, Matrix4x4.Identity);
+                FogVolume.FixtureBuilt(SkyFogSide);
             }
             if (!vk.Upload(vel, 0, 0, MemoryMarshal.AsBytes(new Half[SkyRw * SkyRh * 2].AsSpan()))) return null;
             if (seed is Half h && !PostStack.SkyCoverFixture(vk, SkyDw, SkyDh, h)) return null;
@@ -117,13 +115,14 @@ internal static partial class GpuGolden
             for (int n = 0; n < SkyFrames; n++)
             {
                 PostChain.Jitter(n, SkyRw, SkyRh, PostChain.JitterPhases(SkyDw), out float jx, out float jy);
+                PostChain.JitterX = jx; PostChain.JitterY = jy;
                 (Half[] c, float[] d) = SkyDraw(SkyRw, SkyRh, jx * SkyRw / 2f, jy * SkyRh / 2f);
                 if (!vk.Upload(color, 0, 0, MemoryMarshal.AsBytes(c.AsSpan())) || !vk.Upload(depth, 0, 0, MemoryMarshal.AsBytes(d.AsSpan())))
                     return null;
                 var cl = new CommandList("golden sky", 1 << 14, log);
                 PostChainVk.BeginFrame();
                 cl.Upscale(Fsr.Command(color, depth, vel, default, up, SkyRw, SkyRh, jx, jy, 16.6f, 0.1f, 100f, 1f, n == 0));
-                PostChainVk.SkyInput sky = PostStack.FsrSkyVk(vk, cl, depth, vel, SkyRw, SkyRh, SkyDw, SkyDh, jx, jy, n == 0, log);
+                PostChainVk.SkyInput sky = PostStack.FsrSkyVk(vk, cl, depth, vel, SkyRw, SkyRh, SkyDw, SkyDh, n == 0, log);
                 if (!PostChainVk.Record(vk, cl, up, sky, into, false, full, full, default, log) || !vk.Submit(cl)) return null;
                 int k = n - (SkyFrames - SkyKept);
                 if (k < 0) continue;
@@ -131,6 +130,7 @@ internal static partial class GpuGolden
                 if (got == null) return null;
                 run.Frames[k] = SkyLevels(got);
             }
+            if (!truth) return run;
             (Half[] tc, float[] td) = SkyDraw(sw, sh, 0f, 0f);
             if (!vk.Upload(sColor, 0, 0, MemoryMarshal.AsBytes(tc.AsSpan())) || !vk.Upload(sDepth, 0, 0, MemoryMarshal.AsBytes(td.AsSpan())))
                 return null;
@@ -139,25 +139,27 @@ internal static partial class GpuGolden
             PostChainVk.BeginFrame();
             if (!PostChainVk.Record(vk, tl, sColor, new PostChainVk.SkyInput(sDepth), sInto, false, big, big, default, log) || !vk.Submit(tl))
                 return null;
-            byte[]? truth = PostRead(vk, log, sInto, sw, sh, 4, rb);
-            if (truth == null) return null;
-            run.Truth = SkyAverage(SkyLevels(truth), sw);
+            byte[]? big8 = PostRead(vk, log, sInto, sw, sh, 4, rb);
+            if (big8 == null) return null;
+            run.Truth = SkyAverage(SkyLevels(big8), sw);
             return run;
         }
         finally
         {
-            if (fog) { FogVolume.FixtureBuilt(false, 0, default); AlloyRenderer.VkFogFixture(vk, default); }
+            if (fog) { FogVolume.NotBuilt(); AlloyRenderer.VkFogFixture(vk, default); }
+            PostStack.SkyCoverForget(vk);
             vk.Destroy(rb); vk.Destroy(vol); vk.Destroy(sInto); vk.Destroy(sDepth); vk.Destroy(sColor);
             vk.Destroy(into); vk.Destroy(up); vk.Destroy(vel); vk.Destroy(depth); vk.Destroy(color);
             Post.Aa.V = aa; Post.Scale.V = scale; Post.Bloom.V = bloom; Post.SkyRaw.V = skyRaw;
             AlloyRenderer.SkyInvVp = skyInv;
+            PostChain.JitterX = keepJx; PostChain.JitterY = keepJy;
         }
     }
 
     /// <summary>A read-back 8-bit frame as levels 0..255 a pixel.</summary>
     private static Vector3[] SkyLevels(byte[] bytes)
     {
-        ReadOnlySpan<SkyPx> px = MemoryMarshal.Cast<byte, SkyPx>(bytes);
+        ReadOnlySpan<BlitTexel> px = MemoryMarshal.Cast<byte, BlitTexel>(bytes);
         var o = new Vector3[px.Length];
         for (int i = 0; i < px.Length; i++) o[i] = new Vector3(px[i].R, px[i].G, px[i].B);
         return o;

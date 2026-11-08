@@ -337,13 +337,13 @@ internal static unsafe class PostChainVk
         => _s.Dev is { } vk && vk.DescOf(into, out ImageDesc d) ? d.Fmt : Format.Rgba16F;
 
     /// <summary>One full-screen triangle of <paramref name="p"/> into <paramref name="into"/> at <paramref name="vp"/>,
-    /// its loose block at <paramref name="at"/>, sampling <paramref name="t"/>. Nothing (logged) when the device
-    /// refused the pipeline.</summary>
-    internal static void Draw(CommandList cl, GuiVkProg p, Format f, Blend add, ImageId into, LoadOp load, Rect vp, int at,
+    /// its loose block at <paramref name="at"/>, sampling <paramref name="t"/>. False, with nothing drawn (logged), when
+    /// the device refused the pipeline.</summary>
+    internal static bool Draw(CommandList cl, GuiVkProg p, Format f, Blend add, ImageId into, LoadOp load, Rect vp, int at,
                               in Inputs t, ExtenderLog? log)
     {
         PipelineId pipe = Pipe(p, f, add, log);
-        if (pipe.IsNull) return;
+        if (pipe.IsNull) return false;
         PostVkState s = _s;
         Span<ImageBinding> img = stackalloc ImageBinding[SampledMax];
         Span<ImageBinding> sti = stackalloc ImageBinding[(int)StageResources.DrawImgUnits];
@@ -358,7 +358,7 @@ internal static unsafe class PostChainVk
             {
                 if (!s.EngineSaid) log?.Always($"PostChainVk: post {p.Label} NOT DRAWN -- the frame's uniform arena could not stage the engine block it reads");
                 s.EngineSaid = true;
-                return;
+                return false;
             }
             ubo[nu++] = new(UboSlots.Engine, arena, e, len);
         }
@@ -370,6 +370,7 @@ internal static unsafe class PostChainVk
         cl.BindSet(0, new BindSet(ubo[..nu], sto, img[..n], sti[..ns]));
         cl.Draw(3);
         cl.EndRenderPass();
+        return true;
     }
 
     /// <summary>Sampled images one post draw binds: every sampled binding the set has.</summary>
