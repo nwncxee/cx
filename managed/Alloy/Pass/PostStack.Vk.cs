@@ -435,8 +435,9 @@ internal static unsafe partial class PostStack
     /// <summary>The sky coverage's fragment stage.</summary>
     internal const string SkyCoverFs = "cx_skycov_f.glsl";
 
-    /// <summary>The share of this frame's sky coverage a still pixel takes: FSR's own pace, about ten frames to settle.</summary>
-    private const float SkyCoverBlend = 0.1f;
+    /// <summary>The share of this frame's sky coverage a still pixel takes, about twenty frames to settle: at FSR's own
+    /// pace of 0.1 the coverage still ripples with the jitter where the sky and the scene grade far apart.</summary>
+    private const float SkyCoverBlend = 0.05f;
 
     /// <summary>Depth of field on this frame's full-window perspective view, on the colour FSR left when it drew. Depth stays at
     /// <paramref name="depthW"/> x <paramref name="depthH"/>, the render size.</summary>

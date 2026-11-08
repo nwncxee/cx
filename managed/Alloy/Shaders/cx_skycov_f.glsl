@@ -10,11 +10,19 @@ uniform vec2 uRenderSize;   // the render size, pixels
 uniform vec2 uJitterPx;     // this frame's jitter, render pixels
 uniform float uBlend;       // this frame's share: 1 starts the history over
 
+float CxSkyAt(ivec2 p)
+{
+    return texelFetch(uDepth, clamp(p, ivec2(0), ivec2(uRenderSize) - 1), 0).r <= 0.0 ? 1.0 : 0.0;
+}
+
 void main()
 {
     // a render texel holds the scene a jitter's width behind its centre, so the unjittered point sits a jitter ahead
-    ivec2 at = clamp(ivec2(floor(vUV * uRenderSize + uJitterPx)), ivec2(0), ivec2(uRenderSize) - 1);
-    float cur = texelFetch(uDepth, at, 0).r <= 0.0 ? 1.0 : 0.0;
+    vec2 p = vUV * uRenderSize + uJitterPx - 0.5;
+    ivec2 i = ivec2(floor(p));
+    vec2 f = p - vec2(i);
+    float cur = mix(mix(CxSkyAt(i), CxSkyAt(i + ivec2(1, 0)), f.x),
+                    mix(CxSkyAt(i + ivec2(0, 1)), CxSkyAt(i + ivec2(1, 1)), f.x), f.y);
     float hist = texture(uHist, vUV + texture(uVel, vUV).rg / uRenderSize).r;
     // a fresh start never reads the history: an image no frame wrote can hold NaN, which a zero weight keeps
     frag = uBlend >= 1.0 ? cur : mix(hist, cur, uBlend);
