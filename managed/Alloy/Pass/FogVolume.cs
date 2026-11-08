@@ -11,7 +11,7 @@ namespace CX.Alloy;
 /// the sun through its cascades and every clustered lamp and filtered over frames (<c>cx_vfog_cs</c>), then integrated
 /// from the eye with the area's fog wall (<c>cx_vfogsum_cs</c>) into the one volume every fogging stage reads
 /// (<c>cx_vfog.glsl</c>). The area's fog start and end shape the wall; nothing here reproduces the ramp's look.</summary>
-internal static unsafe class FogVolume
+internal static unsafe partial class FogVolume
 {
     internal const string ShdLightCs = "cx_vfog_cs", ShdSumCs = "cx_vfogsum_cs";
     /// <summary>The transmittance the fog leaves at the area's fog end, out from the player: the far plane sits past it.</summary>
