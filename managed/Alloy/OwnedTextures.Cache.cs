@@ -48,7 +48,22 @@ internal static unsafe partial class OwnedTextures
     /// writes back into a fresh <c>CAurTextureBasic</c> so the engine believes it built the texture. Captured
     /// from the object after its cold build -- nothing here is derived, every field is what the engine's own
     /// loader left (numX/numY included; their writer is outside the class and was not chased).</summary>
-    private struct TexMeta { public int W, H, Bpp, Compressed, NumX, NumY; public float Alpha; }
+    private struct TexMeta { public int W, H, Bpp, Compressed, NumX, NumY; public float Alpha; public TexSource Source; }
+
+    /// <summary>The file a resref resolves to: the format that won the engine's race and that key entry's <c>RESID</c>.
+    /// Default = it resolves to nothing the race knows.</summary>
+    internal readonly record struct TexSource(ushort ResType, uint R0, uint R1, uint R2, uint R3);
+
+    /// <summary>Where a name resolves now; the self-check swaps in its own table.</summary>
+    private static delegate*<byte*, TexSource> _sourceOf = &EngineSource;
+
+    private static TexSource EngineSource(byte* name)
+    {
+        ushort rt = TexLoad.Winner(name, out _, out IntPtr entry);
+        if (rt == 0) return default;
+        Span<uint> id = new CKeyTableEntry(entry).ResId;
+        return new TexSource(rt, id[0], id[1], id[2], id[3]);
+    }
     private static readonly Dictionary<ulong, TexMeta> _meta = new();
     /// <summary>Content keys with a transcode queued or in flight: not warm-eligible (the pipeline is about
     /// to retire the name the engine would be handed).</summary>
@@ -90,6 +105,7 @@ internal static unsafe partial class OwnedTextures
             W = b.Width, H = b.Height, Bpp = b.Bpp,
             Compressed = b.CompressedSize, NumX = nx, NumY = ny,
             Alpha = b.AlphaMean,
+            Source = _sourceOf(NameOf(tex)),
         };
     }
 
@@ -101,7 +117,7 @@ internal static unsafe partial class OwnedTextures
     {
         if (_znam == null || !AurTex.IsBasic(tex) || new CAurTextureBasic(tex).ResolvedName == 0) return false;   // the resolved name is empty until LoadImage fills it: no identity yet
         ulong k0 = Key(tex, 0);
-        if (!_meta.TryGetValue(k0, out TexMeta m)) { _cacheMisses++; return false; }
+        if (!WarmMeta(k0, NameOf(tex), out TexMeta m)) { _cacheMisses++; return false; }
         int cells = m.NumX * m.NumY;
         if (cells <= 0 || cells > 4096) return false;
         uint* names = stackalloc uint[cells > 64 ? 1 : cells];
@@ -130,6 +146,9 @@ internal static unsafe partial class OwnedTextures
         FrameZones.Count(FrameZones.Ev.TexWarm);
         return true;
     }
+
+    /// <summary>What the cold build of <paramref name="k0"/> left, for a warm build of <paramref name="name"/>.</summary>
+    private static bool WarmMeta(ulong k0, byte* name, out TexMeta m) => _meta.TryGetValue(k0, out m);
 
     /// <summary>The field writes alone, so the self-check can run them over a stand-in object.</summary>
     private static void FillWarm(IntPtr tex, IntPtr names, in TexMeta m)
