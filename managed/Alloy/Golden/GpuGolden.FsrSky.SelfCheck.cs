@@ -5,7 +5,7 @@ namespace CX.Alloy;
 
 /// <summary>
 /// Regression checks beside the FSR sky golden: E16, which held before FSR's sky coverage, open sky through FSR 3.1
-/// keeping the shade SMAA gives it, and the same over a coverage history of NaN. Oracle: the same scene supersampled
+/// keeping the shade SMAA gives it, and the same over a coverage history of NaN; E19, which held when written. Oracle: the same scene supersampled
 /// 4x4 through the resolve and averaged, itself pinned to the sky's colour encoded by hand.
 /// </summary>
 internal static partial class GpuGolden
@@ -14,6 +14,12 @@ internal static partial class GpuGolden
     private const float SkyOpenTol = 1f;
 
     /// <summary>The fixture's sky, 0.20 0.22 0.17, at gamma 2.2 in 8-bit levels: what raw open sky must come out as.</summary>
+    /// <summary>A slow turn: the scene slides this many display pixels a frame.</summary>
+    private const float SkyTurn = 0.37f;
+
+    /// <summary>How far either side of a turning rope a dark trail is looked for, in display pixels.</summary>
+    private const float SkyTrail = 4f;
+
     /// <summary>A pixel of open sky, row 90 and column 175 of the display.</summary>
     private const int SkyOpenAt = 90 * SkyDw + 175;
 
@@ -40,5 +46,17 @@ internal static partial class GpuGolden
         (_, float gWorst, _, _) = SkyAgainstTruth(g, SkyInOpen);
         check.Expect(gWorst <= SkyOpenTol,
             $"FSR sky: over a coverage history of NaN, open sky differs from the reference by up to {gWorst:F1} levels (at most {SkyOpenTol})");
+
+        SkyRun? t = SkyRunScene(vk, check, log, fog: true, dome: true, pan: SkyTurn);
+        check.Expect(t != null, "FSR sky: the turning run was refused (logged above)");
+        if (t == null) return;
+        const float moved = (SkyFrames - 1) * SkyTurn;
+        (float tMean, float tWorst, float tDark, float tTruthDark) = SkyAgainstTruth(t, (x, y) => y >= 25 && y <= 155 && SkyRopeDist(x + 0.5f + moved, y + 0.5f) <= SkyTrail);
+        log.Info($"GpuGolden: FSR sky turning, rope and trail {tMean:F2} levels from the reference, worst {tWorst:F1}, darkest {tDark:F0} against {tTruthDark:F0}");
+        // Given FSR 3.1 at render scale 0.9
+        // When the camera turns slowly past ship rigging against the sky
+        // Then the rigging keeps its shade, with no dark trail behind it
+        check.Expect(MathF.Abs(tMean) <= SkyShadeMean && tDark >= tTruthDark - SkyShadeDark,
+            $"E19: turning, the rope and the sky beside it sit {tMean:F2} levels from the reference (at most {SkyShadeMean}), darkest {tDark:F0} against {tTruthDark:F0} (at most {SkyShadeDark} darker)");
     }
 }
