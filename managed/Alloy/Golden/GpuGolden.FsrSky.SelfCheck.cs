@@ -4,8 +4,9 @@ using CX.Graphics.Rhi;
 namespace CX.Alloy;
 
 /// <summary>
-/// A regression check beside the FSR sky golden, E16, which held before FSR's sky coverage: open sky through FSR 3.1
-/// keeps the shade SMAA gives it. Oracle: the same scene supersampled 4x4 through the resolve and averaged.
+/// Regression checks beside the FSR sky golden: E16, which held before FSR's sky coverage, open sky through FSR 3.1
+/// keeping the shade SMAA gives it, and the same over a coverage history of NaN. Oracle: the same scene supersampled
+/// 4x4 through the resolve and averaged.
 /// </summary>
 internal static partial class GpuGolden
 {
@@ -22,5 +23,13 @@ internal static partial class GpuGolden
         // When a stretch of sky has nothing in front of it
         // Then that sky is the shade SMAA draws it
         check.Expect(worst <= SkyOpenTol, $"E16: open sky differs from the reference by up to {worst:F1} levels (at most {SkyOpenTol})");
+
+        // a coverage image no frame has written yet can hold anything, NaN included; a fresh start must not read it
+        SkyRun? g = SkyRunScene(vk, check, log, fog: false, seed: Half.NaN);
+        check.Expect(g != null, "FSR sky: the run over a garbage history was refused (logged above)");
+        if (g == null) return;
+        (_, float gWorst, _, _) = SkyAgainstTruth(g, SkyInOpen);
+        check.Expect(gWorst <= SkyOpenTol,
+            $"FSR sky: over a coverage history of NaN, open sky differs from the reference by up to {gWorst:F1} levels (at most {SkyOpenTol})");
     }
 }

@@ -74,8 +74,8 @@ internal static partial class GpuGolden
 
     /// <summary>The scene through FSR 3.1 and the resolve, <see cref="SkyFrames"/> still frames, and its reference;
     /// null when a step was refused (logged). <paramref name="fog"/> lays a uniform volumetric fog over an area with
-    /// no sky dome.</summary>
-    private static unsafe SkyRun? SkyRunScene(VkBackend vk, Checker check, ExtenderLog log, bool fog)
+    /// no sky dome; <paramref name="seed"/>, when given, fills the coverage history first.</summary>
+    private static unsafe SkyRun? SkyRunScene(VkBackend vk, Checker check, ExtenderLog log, bool fog, Half? seed = null)
     {
         string aa = Post.Aa.V;
         float scale = Post.Scale.V, bloom = Post.Bloom.V;
@@ -111,6 +111,7 @@ internal static partial class GpuGolden
                 FogVolume.FixtureBuilt(true, 4, Matrix4x4.Identity);
             }
             if (!vk.Upload(vel, 0, 0, MemoryMarshal.AsBytes(new Half[SkyRw * SkyRh * 2].AsSpan()))) return null;
+            if (seed is Half h && !PostStack.SkyCoverFixture(vk, SkyDw, SkyDh, h)) return null;
             var run = new SkyRun();
             int* full = stackalloc int[4] { 0, 0, SkyDw, SkyDh };
             for (int n = 0; n < SkyFrames; n++)
