@@ -17,6 +17,7 @@ public static class HitBounds
     public static void Refresh(int o)
     {
         Refreshed++;
+        if (SceneDb.HitObjStatic[o]) WalkCells.Offer(o);
         Vector3 lo = new(float.MaxValue), hi = new(float.MinValue);
         int first = SceneDb.ObjPartFirst[o], count = SceneDb.ObjPartCount[o];
         for (int p = first; p < first + count; p++)

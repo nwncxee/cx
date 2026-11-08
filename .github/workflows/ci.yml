@@ -54,6 +54,7 @@ jobs:
             tools/no-loaded-runtime.sh
             tools/live/session-log.sh
             'tools/*_approved_examples*'
+            'tools/*_regression*'
             'tools/release/*'
             'tools/ffx/*'
             tools/deps.json
