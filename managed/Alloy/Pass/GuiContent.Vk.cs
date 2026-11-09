@@ -33,7 +33,7 @@ internal static unsafe partial class GuiContent
     /// <summary>Does this stage text, with its includes resolved, declare a sampler <see cref="VkUnits"/> does not name?</summary>
     private static bool SamplesPastUnit0(string stage)
     {
-        foreach ((_, string name, string? binding) in VkGlsl.Opaques(stage))
+        foreach ((_, string name, uint? binding, _) in VkGlsl.Opaques(stage))
             if (binding == null && !VkUnits.ContainsKey(name)) return true;
         return false;
     }

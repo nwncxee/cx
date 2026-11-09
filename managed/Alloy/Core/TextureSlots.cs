@@ -45,13 +45,11 @@ internal static class TextureSlots
     /// <summary>A native stage's overlay at the resolve (<c>cx_overlay</c>). <see cref="SnapshotColor"/>'s unit on
     /// <see cref="PostDepth"/>'s argument: the resolve is its own program, and the snapshot is not bound there.</summary>
     internal const uint PostOverlay = SnapshotColor;
-    /// <summary>The aa stage's own passes, post stack only -- after the world pass, so the probe and snapshot
-    /// units are free on the same argument as <see cref="PostHdr"/>: edges then weights on 12, the area
-    /// table on 13, the search table on 14.</summary>
-    internal const uint AaEdges = 12, AaBlend = 12, AaArea = 13, AaSearch = 14;
-    /// <summary>The taa stage's history. <see cref="AaSearch"/>'s unit: the accumulate and the copy-out also read
-    /// <see cref="PostDepth"/>, and no program that reads the history reads the search table.</summary>
-    internal const uint PostHist = AaSearch;
+    /// <summary>The taa stage's history, post stack only -- after the world pass, so the probe and snapshot units
+    /// are free on the same argument as <see cref="PostHdr"/>. The accumulate and the copy-out also read
+    /// <see cref="PostDepth"/>. The aa stage's own tables take units of their own from
+    /// <c>PostChainVk.UnitsFor</c>, which names no unit this table does.</summary>
+    internal const uint PostHist = 14;
     /// <summary>The taa accumulate's velocity. <see cref="SceneDepth"/>'s unit: no post program reads the scene depth,
     /// and every other post sampler, <see cref="PostOverlay"/> among them, sits below it.</summary>
     internal const uint PostVel = SceneDepth;
@@ -217,11 +215,12 @@ internal static class TextureSlots
         return null;
     }
 
-    /// <summary>Each sampler <paramref name="src"/> declares on a literal <c>layout(binding)</c>, with its unit.</summary>
+    /// <summary>Each sampler or separate texture <paramref name="src"/> declares on a literal
+    /// <c>layout(binding)</c>, with the texture unit it claims. A storage image's binding is an image unit.</summary>
     private static System.Collections.Generic.IEnumerable<(uint Unit, string Name)> Bound(string src)
     {
-        foreach ((string type, string name, string? binding) in VkGlsl.Opaques(src))
-            if (type.Contains("sampler", StringComparison.Ordinal) && uint.TryParse(binding, out uint unit)) yield return (unit, name);
+        foreach ((_, string name, uint? binding, VkBindKind kind) in VkGlsl.Opaques(src))
+            if (kind == VkBindKind.Sampled && binding is { } unit) yield return (unit, name);
     }
 
     /// <summary>Assert the table against the GLSL that actually compiled: every slot's sampler must be
@@ -311,10 +310,10 @@ internal static class TextureSlots
         // #375: the post stack reuses the resolve's two units, after it and in the same bracket.
         check.Expect(PostStack.PostStageHead.Contains("uniform sampler2D uSrc;"), $"{PostHdr} uSrc (post stack)");
         check.Expect(PostStack.PostStageHead.Contains("uniform sampler2D uDepth;"), $"{PostBloom} uDepth (post stack)");
-        check.Expect(SmaaStage.WeightFs.Contains("uniform sampler2D uEdges;"), $"{AaEdges} uEdges (aa weights)");
-        check.Expect(SmaaStage.WeightFs.Contains("uniform sampler2D uArea;"), $"{AaArea} uArea (aa weights)");
-        check.Expect(SmaaStage.WeightFs.Contains("uniform sampler2D uSearch;"), $"{AaSearch} uSearch (aa weights)");
-        check.Expect(SmaaStage.BlendStageFs.Contains("uniform sampler2D uBlend;"), $"{AaBlend} uBlend (aa stage)");
+        check.Expect(SmaaStage.WeightFs.Contains("uniform sampler2D uEdges;"), "uEdges (aa weights)");
+        check.Expect(SmaaStage.WeightFs.Contains("uniform sampler2D uArea;"), "uArea (aa weights)");
+        check.Expect(SmaaStage.WeightFs.Contains("uniform sampler2D uSearch;"), "uSearch (aa weights)");
+        check.Expect(SmaaStage.BlendStageFs.Contains("uniform sampler2D uBlend;"), "uBlend (aa stage)");
         check.Expect(AlloyRenderer.OwnedLitFsHead.Contains("uniform sampler2D uSsao;"), $"{Ssao} uSsao (lit program)");
         check.Expect(AlloyRenderer.OwnedLitFsHead.Contains($"layout(binding = {LightRec}) uniform usampler2D uLightRec;"), $"{LightRec} uLightRec (lit program)");
         check.Expect(AlloyRenderer.OwnedLitFsHead.Contains("uniform sampler2D uSceneDepth;"), $"{SsaoDepth} uSceneDepth (lit program)");
