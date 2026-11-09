@@ -98,6 +98,20 @@ public static unsafe class Native
     /// <summary>Longest CExoString <see cref="ReadExo"/> trusts; a length past this is a stale or foreign pointer.</summary>
     private const uint MaxExoLen = 4096;
 
+    /// <summary>A NUL-terminated engine string as the codepage bytes a reader works in -- the span's length is
+    /// the distance to the NUL, measured here rather than by each caller, and a null pointer reads as empty.
+    /// No transcode: the engine's text is a single-byte codepage and the span is read, not stored.</summary>
+    public static ReadOnlySpan<byte> Chars(byte* text)
+    {
+        if (text == null) return default;
+        int n = 0;
+        while (text[n] != 0) n++;
+        return new ReadOnlySpan<byte>(text, n);
+    }
+
+    /// <inheritdoc cref="Chars(byte*)"/>
+    public static ReadOnlySpan<byte> Chars(nint text) => Chars((byte*)text);
+
     /// <summary>Decode a <c>CExoString</c> {char* buf@0; uint len@8} to a string: Latin1 keeps colour bytes intact.
     /// Copies out immediately, never holds the engine char*. Allocates, so COLD paths only. A Win64 by-value arg
     /// must be read BEFORE forwarding -- the callee destroys it.</summary>
@@ -223,6 +237,13 @@ public static unsafe class Native
             check.Expect(buf == (IntPtr)(s + 8) && len == 20 && heap == buf, "libstdc++ heap");
         }
         check.Expect(Encoding.Latin1.GetString(EngineBytes("abc")) == "abc", "ascii passes through");
+        byte* nul = stackalloc byte[5];
+        nul[0] = (byte)'N'; nul[1] = (byte)'W'; nul[2] = (byte)'N'; nul[3] = 0; nul[4] = (byte)'!';
+        ReadOnlySpan<byte> measured = Chars(nul);
+        check.Expect(measured.Length == 3 && measured[0] == (byte)'N' && measured[2] == (byte)'N',
+                     $"a NUL-terminated engine string measures itself ({measured.Length} bytes to the NUL)");
+        check.Expect(Chars(nul + 3).IsEmpty && Chars((byte*)null).IsEmpty,
+                     "an empty string and a null pointer both read as no bytes");
         log.Info(check.Ok ? "Native.SelfCheck: passed" : "Native.SelfCheck: FAILED");
     }
 

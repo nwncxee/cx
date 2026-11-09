@@ -99,10 +99,10 @@ internal static unsafe partial class ModelLoad
         IntPtr msg = ClientApi.Message();
         if (msg == IntPtr.Zero) { StandTile("the client's CNWCMessage did not resolve"); return; }
         var m = new CNWMessage(msg);
-        byte* buf = (byte*)m.Buffer;
-        uint len = m.Length, cursor = m.Cursor;
-        if (buf == null || cursor > len) { StandTile("the message buffer is not readable"); return; }
-        if (!_tilePeeked) { PeekTiles(buf, len, cursor, id); return; }
+        ReadOnlySpan<byte> buf = m.Bytes;
+        uint cursor = m.Cursor;
+        if (buf.IsEmpty || cursor > (uint)buf.Length) { StandTile("the message buffer is not readable"); return; }
+        if (!_tilePeeked) { PeekTiles(buf, cursor, id); return; }
 
         _tileSeen++;
         if (_tileSeen >= _tileTotal || _tileIds[_tileSeen] != id)
@@ -112,7 +112,7 @@ internal static unsafe partial class ModelLoad
 
     /// <summary>Read the grid out of the message and offer its models in the loop's own order, so the worker
     /// stays one record ahead of the engine rather than racing it (the job queue is FIFO).</summary>
-    private static void PeekTiles(byte* buf, uint len, uint cursor, int id)
+    private static void PeekTiles(ReadOnlySpan<byte> buf, uint cursor, int id)
     {
         long t0 = Stopwatch.GetTimestamp();
         if (_tileArea == IntPtr.Zero) { StandTile("LoadArea's area never reached the read-ahead"); return; }
@@ -125,8 +125,8 @@ internal static unsafe partial class ModelLoad
         }
         int n = (int)grid, tiles = new CNWTileSet(_tileSet).TileCount;
         if (tiles <= 0) { StandTile("the tileset reports no tiles"); return; }
-        if (!WalkTiles(buf, len, cursor, id, false, n, tiles)
-            && !WalkTiles(buf, len, cursor, id, true, n, tiles))
+        if (!WalkTiles(buf, cursor, id, false, n, tiles)
+            && !WalkTiles(buf, cursor, id, true, n, tiles))
         {
             StandTile($"the bytes before cursor {cursor} do not read back as {n} tile record(s) of tileset {tiles}");
             return;
@@ -148,13 +148,13 @@ internal static unsafe partial class ModelLoad
     /// is, every record of the grid fits the buffer and names a tile the tileset has. A record is a whole number
     /// of bytes -- <c>3*int + word + popcount(flags &amp; 0xff) * byte</c> -- where each width carries
     /// <c>ExpectType</c>'s leading type byte or does not, one global for the whole stream.</summary>
-    private static bool WalkTiles(byte* buf, uint len, uint cursor, int id, bool typed, int n, int tiles)
+    private static bool WalkTiles(ReadOnlySpan<byte> b, uint cursor, int id, bool typed, int n, int tiles)
     {
         uint type = typed ? 1u : 0u;                     // ExpectType's leading byte, one per typed read
         uint step = 4 + type, ints = (uint)TileInts * step, word = 2 + type, one = 1 + type;
+        uint len = (uint)b.Length;
         if (cursor < ints) return false;
         uint p = cursor - ints;
-        var b = new ReadOnlySpan<byte>(buf, (int)len);
         if (I32(b, p + type) != id) return false;
         if (_tileIds.Length < n) _tileIds = new int[n];
         ulong fold = FoldSeed;
@@ -219,9 +219,8 @@ internal static unsafe partial class ModelLoad
             int len = Pad;
             for (int k = 0; k < Records; k++)
                 len += (int)(ints + word + (uint)BitOperations.PopCount(flags[k] & (uint)TileFlagMask) * one);
-            byte* buf = stackalloc byte[len];
-            for (int i = 0; i < len; i++) buf[i] = 0;
-            var bs = new Span<byte>(buf, len);
+            Span<byte> bs = stackalloc byte[len];
+            bs.Clear();
             uint p = Pad;
             for (int k = 0; k < Records; k++)
             {
@@ -232,17 +231,17 @@ internal static unsafe partial class ModelLoad
             }
 
             uint cursor = Pad + ints;
-            check.Expect(WalkTiles(buf, (uint)len, cursor, ids[0], typed, Records, Tiles),
+            check.Expect(WalkTiles(bs, cursor, ids[0], typed, Records, Tiles),
                          $"typed={typed}: the first tile's shape is recognised");
             check.Expect(_tileIds[0] == ids[0] && _tileIds[Records - 1] == ids[Records - 1],
                          $"typed={typed}: every record reads back at the flags-dependent stride");
-            check.Expect(!WalkTiles(buf, (uint)len, cursor, ids[0] + 1, typed, Records, Tiles),
+            check.Expect(!WalkTiles(bs, cursor, ids[0] + 1, typed, Records, Tiles),
                          $"typed={typed}: a different tile id is not this shape");
-            check.Expect(!WalkTiles(buf, (uint)len, cursor, ids[0], typed, Records + 1, Tiles),
+            check.Expect(!WalkTiles(bs, cursor, ids[0], typed, Records + 1, Tiles),
                          $"typed={typed}: a grid running past the buffer is refused");
-            check.Expect(!WalkTiles(buf, (uint)len, cursor, ids[0], typed, Records, 499),
+            check.Expect(!WalkTiles(bs, cursor, ids[0], typed, Records, 499),
                          $"typed={typed}: an id the tileset does not have is refused");
-            check.Expect(!WalkTiles(buf, (uint)len, (uint)(ints - 1), ids[0], typed, Records, Tiles),
+            check.Expect(!WalkTiles(bs, (uint)(ints - 1), ids[0], typed, Records, Tiles),
                          $"typed={typed}: a cursor with no room for a record ahead of it is refused");
         }
         ResetTiles();

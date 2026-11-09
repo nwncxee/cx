@@ -4,6 +4,7 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using CX.Alloy.Db;
 using CX.Engine;
+using CX.Framework;
 
 namespace CX.Alloy.Seam;
 
@@ -34,7 +35,16 @@ public static unsafe class PartShell
         public uint Pad;
     }
 
-    private static nint _table;
+    /// <summary>The Part vtable's one allocation, on the boundary an address point is taken on. Empty until
+    /// <see cref="Build"/> has filled it, and emptied again when it refuses to.</summary>
+    private static NativeBuffer<nint> _block;
+    /// <summary>The built table's address point -- the value a shell's vptr carries -- or 0 while none is
+    /// built. The two words before it are the Itanium prefix.</summary>
+    private static nint Table => _block.Length == 0 ? 0 : (nint)Unsafe.AsPointer(ref _block[PrefixWords]);
+    /// <summary>The Itanium prefix before an address point: offset-to-top, then a null typeinfo.</summary>
+    private const int PrefixWords = 2;
+    /// <inheritdoc cref="_block"/>
+    private const int PointAlign = 64;
     private static long _alive;
 
     /// <summary>Part shells alive, for the period line.</summary>
@@ -43,13 +53,13 @@ public static unsafe class PartShell
     /// <summary>Build the Part vtable. Called by the seam once the facade tables exist.</summary>
     internal static void Build()
     {
-        if (_table != 0) return;
-        void* block = NativeMemory.AlignedAlloc((nuint)((2 + Slots) * sizeof(nint)), 64);
-        if (block == null) { Facade.Log?.Always("seam: no memory for the Part vtable -- GetPart will refuse"); return; }
-        NativeMemory.Fill(block, (nuint)((2 + Slots) * sizeof(nint)), 0);
-        var words = new Span<nint>(block, 2 + Slots);
-        Span<nint> slots = words[2..];
-        nint point = (nint)Unsafe.AsPointer(ref slots[0]);
+        if (Table != 0) return;
+        if (!_block.TakeAligned(PrefixWords + Slots, PointAlign))
+        {
+            Facade.Log?.Always("seam: no memory for the Part vtable -- GetPart will refuse");
+            return;
+        }
+        Span<nint> slots = _block.Span[PrefixWords..];
         nint refuse = (nint)(delegate* unmanaged<nint, nint>)&Refuse;
         for (int i = 0; i < Slots; i++) slots[i] = refuse;
         int world = GetWorldSlot;
@@ -60,18 +70,17 @@ public static unsafe class PartShell
             Facade.Log?.Always($"seam: Part::GetWorld resolves to slot {world} (vtbl.GetWorld = "
                              + $"{CX.Framework.EngineLayout.PartGetWorldSlot}), which is not a slot of the "
                              + $"{Slots}-slot Part table -- GetPart refuses rather than build a wrong table");
-            NativeMemory.AlignedFree(block);
+            _block.Free();
             return;
         }
         slots[world] = (nint)(delegate* unmanaged<nint, nint, nint, void>)&GetWorld;
-        _table = point;
     }
 
     /// <summary>The <c>CAurPart*</c> for part <paramref name="part"/> of <paramref name="obj"/>, minted once
     /// and kept for the object's life so the game's stored copies stay valid; 0 when it cannot be had.</summary>
     public static nint For(DbId obj, int part)
     {
-        if (_table == 0 || !SceneDb.Objects.Valid(obj)) return 0;
+        if (Table == 0 || !SceneDb.Objects.Valid(obj)) return 0;
         for (nint p = SceneDb.ObjSeamPartShells[obj.Index]; p != 0; p = Headroom<Head>.Header(p)->Next)
             if (Headroom<Head>.Header(p)->Part == part) return p;
         void* block = NativeMemory.AlignedAlloc((nuint)(Headroom<Head>.Size + sizeof(nint)), 16);
@@ -83,7 +92,7 @@ public static unsafe class PartShell
         h->Part = part;
         h->Next = SceneDb.ObjSeamPartShells[obj.Index];
         h->RetiredAt = 0;
-        *(nint*)shell = _table;
+        *(nint*)shell = Table;
         SceneDb.ObjSeamPartShells[obj.Index] = shell;
         _alive++;
         return shell;
