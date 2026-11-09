@@ -108,9 +108,9 @@ internal static class ShaderContract
 
     /// <summary>The sampler guard against declarations written the ways GLSL allows. Oracle: the five
     /// hand-written stages below, each a shape a content override may use and a text match does not see.</summary>
-    private static bool SlotSafeCheck(ExtenderLog log)
+    private static bool SlotSafeSelfCheck(ExtenderLog log)
     {
-        var check = new Checker(log, "ShaderContract.SlotSafeCheck");
+        var check = new Checker(log, "ShaderContract.SlotSafeSelfCheck");
         check.Expect(SlotSafe("uniform sampler2DArray uSunShadowRaw;\nvoid main() { }\n", "uSunShadowRaw"),
           "an array sampler is a declaration");
         check.Expect(!SlotSafe("/* uniform sampler2D uSrc; */\nvoid main() { }\n", "uSrc"),
@@ -269,7 +269,7 @@ internal static class ShaderContract
         bool ssbo = SsboSlots.Check(log);
         bool ubo = UboSlots.Check(log);
         bool pass = PassCheck(log);
-        bool slotSafe = SlotSafeCheck(log);
+        bool slotSafe = SlotSafeSelfCheck(log);
         bool eng = AlloyRenderer.EngineBlockSelfCheck(log);
         // the record's field list, counted by field size: the 288-byte stride staged above (#392 and ADR 0026 grew it)
         bool ok = slots && ssbo && ubo && pass && slotSafe && eng && DrawBufDecl.Contains($"binding = {BindDraw})")

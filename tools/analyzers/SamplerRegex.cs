@@ -21,8 +21,8 @@ public sealed class SamplerRegex : DiagnosticAnalyzer
     /// however it is written.</summary>
     private const string Home = "/managed/Graphics/Vulkan/VkGlsl";
 
-    /// <summary>Who REWRITES such a declaration rather than reading it, which no reader can do for them: the
-    /// bindless handle rewrite and the content translation's two declaration passes.
+    /// <summary>The bindless handle rewrite, and the content translation, which REWRITES every file-scope
+    /// declaration and reads the general global ones <see cref="Home"/>'s opaque reader does not answer for.
     /// <c>tools/gates/sampler-regex.sh</c> reads this list and refuses a name no file answers to.</summary>
     private static readonly string[] Allowed =
     {
@@ -61,7 +61,9 @@ public sealed class SamplerRegex : DiagnosticAnalyzer
         var at = (AttributeSyntax)c.Node;
         if (!at.Name.ToString().Contains("GeneratedRegex")) return;
         AttributeArgumentSyntax? first = at.ArgumentList?.Arguments.Count > 0 ? at.ArgumentList.Arguments[0] : null;
-        if (first is null || !ReadsOpaqueDecl(first.Expression.ToString())) return;
+        if (first is null) return;
+        string text = c.SemanticModel.GetConstantValue(first.Expression).Value as string ?? first.Expression.ToString();
+        if (!ReadsOpaqueDecl(text)) return;
         if (!Permitted(c.Node.SyntaxTree.FilePath)) c.ReportDiagnostic(Diagnostic.Create(Rule, first.GetLocation()));
     }
 
@@ -83,7 +85,9 @@ public sealed class SamplerRegex : DiagnosticAnalyzer
         foreach (IArgumentOperation a in args)
         {
             if (a.Parameter?.Name != "pattern") continue;
-            if (ReadsOpaqueDecl(a.Value.Syntax.ToString()) && !Permitted(a.Syntax.SyntaxTree.FilePath))
+            // the folded constant first: a pattern held in a const reaches here as the name, which reads nothing
+            string text = a.Value.ConstantValue.Value as string ?? a.Value.Syntax.ToString();
+            if (ReadsOpaqueDecl(text) && !Permitted(a.Syntax.SyntaxTree.FilePath))
                 c.ReportDiagnostic(Diagnostic.Create(Rule, a.Value.Syntax.GetLocation()));
         }
     }

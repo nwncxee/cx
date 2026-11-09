@@ -18,7 +18,7 @@ internal static partial class GpuGolden
     private const int BlendSide = 4;
     private const float BlendDst = 0.25f, BlendSrc = 0.5f;
 
-    private const string BlendVs = "#version 460 core\n"
+    private const string BlendVs = Version
         + "void main() { vec2 p = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2); gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }\n";
     private const string BlendFs = "#version 460 core\nlayout(location = 0) out vec4 o;\nvoid main() { o = vec4(0.5); }\n";
 
