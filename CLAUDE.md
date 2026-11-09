@@ -181,6 +181,11 @@ the cleanup that earned it. Adding a rule means adding its gate in the same chan
   `check-shaders.py`, fails. Not scanned: that file, `docs/adr/` and `docs/handoff/` -- dated records of what was true then.
 - `knob-refs.sh`: a `<group>.<knob>` key in a string literal under `managed/` naming no declared `Knob<T>`
   fails.
+- `knob-spec-rows.sh`: a declared knob with no row in `docs/spec/unified-settings.md`, or a key the spec rows
+  that nothing declares, fails. The spec is the settings tree's one description, so a knob with no row is a
+  feature nobody can read about. A ChatOnly family may share one summary row (`group.a / b / c`), a
+  `group.prefix<...>` row stands for its family and `<mode>.x` for all three camera modes;
+  `python3 tools/gates/knob-spec-rows.py -v` prints the whole census.
 - `engine-views.sh`: outside `Framework/`, `ptr +/- EngineLayout.X` fails when row X has a view member; a
   `not-an-offset:` marker on a line that dereferences `ptr + 0x...` fails.
 - `statics.sh`: a file under `managed/Alloy` or `managed/Services` with more non-readonly `static` fields
