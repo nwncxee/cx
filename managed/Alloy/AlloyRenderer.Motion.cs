@@ -61,9 +61,12 @@ public sealed unsafe partial class AlloyRenderer
     private static bool DanglyPrevNow(int i) => _oDpAt[i] == _frameSeq && _dpSeq == _frameSeq;
 
     /// <summary>A camera CUT -- the camera layer snapping after a stand-down gate lifts, or a mode switch.
-    /// Drops the reprojection history so neither the motion vectors, TAA nor the reflections carry one frame of the wrong
-    /// camera. Flag writes only; safe from any point of the frame.</summary>
-    public static void CameraCut() { MotionVectors.Revoke(); TaaStage.Reset(); Fsr.Revoke(); VkSsrRevoke(); }
+    /// Drops every reprojection history, so none of the motion vectors, TAA, the reflections or the occlusion
+    /// accumulator carries one frame of the wrong camera. Flag writes only; safe from any point of the frame.</summary>
+    public static void CameraCut()
+    {
+        MotionVectors.Revoke(); TaaStage.Reset(); Fsr.Revoke(); VkSsrRevoke(); SsaoPassVk.Revoke();
+    }
 
     private static void NoteMoverDraw(int n, bool skinned, bool dangly)
     {

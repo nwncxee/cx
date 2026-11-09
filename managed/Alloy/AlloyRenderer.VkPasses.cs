@@ -110,7 +110,7 @@ public sealed unsafe partial class AlloyRenderer
         cl.BeginLabel("AO"u8);
         if (_depthPrepass)
             VkCopyDepth(cl, s);
-        fixed (Matrix4x4* pr = &proj) SsaoPassVk.Record(vk, cl, s.DepthRead, _depthPrepass, pr, viewport, log);
+        fixed (Matrix4x4* pr = &proj) SsaoPassVk.Record(vk, cl, s.DepthRead, _depthPrepass, pr, vp, vpClean, viewport, log);
         cl.EndLabel();
         cl.BeginLabel("decals"u8);
         // CX-273: the ground decals into their layer, off the list the cull just compacted and against the prepass
