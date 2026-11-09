@@ -100,8 +100,7 @@ public static unsafe partial class DbAnim
         SceneDb.PartParent[mesh] = first;
         ScanTree(pi);
         SceneDb.ObjSeamFlags[pi] |= (uint)SeamFlag.Composed;
-        SceneDb.ObjSeamAppendHead[body.Index] = piece;
-        SceneDb.ObjSeamAppendNext[pi] = default;
+        check.Expect(SceneDb.PieceLink(body, piece), "the piece would not link onto the body");
         SceneDb.SetAttachTo(pi, body);
         SceneDb.SetAttachPart(pi, bodyFirst);
         Moved(body.Index); ComposeObject(body);
@@ -136,7 +135,7 @@ public static unsafe partial class DbAnim
         finally { NativeMemory.Free(dst); }
 
         Unskin(mesh);
-        SceneDb.ObjSeamAppendHead[body.Index] = default;
+        SceneDb.PieceDropAll(body);
         SceneDb.ObjSeamFlags[pi] &= ~(uint)SeamFlag.Composed;
         SceneDb.SetAttachTo(pi, default);
         Drop(piece);
@@ -213,8 +212,7 @@ public static unsafe partial class DbAnim
         SceneDb.PartParent[bodyFirst + 2] = bodyFirst;
         ScanTree(pi);
         SceneDb.ObjSeamFlags[pi] |= (uint)SeamFlag.Composed;
-        SceneDb.ObjSeamAppendHead[body.Index] = piece;
-        SceneDb.ObjSeamAppendNext[pi] = default;
+        check.Expect(SceneDb.PieceLink(body, piece), "the piece would not link onto the body");
 
         BonePalette* dst = (BonePalette*)NativeMemory.Alloc((nuint)sizeof(BonePalette));
         try
@@ -265,7 +263,7 @@ public static unsafe partial class DbAnim
         finally { NativeMemory.Free(dst); }
 
         Unskin(mesh);
-        SceneDb.ObjSeamAppendHead[body.Index] = default;
+        SceneDb.PieceDropAll(body);
         SceneDb.ObjSeamFlags[pi] &= ~(uint)SeamFlag.Composed;
         SceneDb.SetAttachTo(pi, default);
         Drop(piece);
@@ -313,8 +311,7 @@ public static unsafe partial class DbAnim
         SceneDb.SetAttachTo(pi, body);
         SceneDb.SetAttachPart(pi, bodyFirst + 2);
         SceneDb.ObjSeamFlags[pi] |= (uint)SeamFlag.Composed;
-        SceneDb.ObjSeamAppendHead[body.Index] = piece;
-        SceneDb.ObjSeamAppendNext[pi] = default;
+        check.Expect(SceneDb.PieceLink(body, piece), "the piece would not link onto the body");
         Moved(body.Index); ComposeObject(body);
         Moved(pi); ComposeObject(piece);
 
@@ -348,7 +345,7 @@ public static unsafe partial class DbAnim
         }
         finally { NativeMemory.Free(dst); }
         Unskin(mesh);
-        SceneDb.ObjSeamAppendHead[body.Index] = default;
+        SceneDb.PieceDropAll(body);
         SceneDb.ObjSeamFlags[pi] &= ~(uint)SeamFlag.Composed;
         SceneDb.SetAttachTo(pi, default);
         Drop(piece);
@@ -556,8 +553,7 @@ public static unsafe partial class DbAnim
         SceneDb.PartParent[skinB] = pieceFirst;
         ScanTree(pi);
         SceneDb.ObjSeamFlags[pi] |= (uint)SeamFlag.Composed;
-        SceneDb.ObjSeamAppendHead[body.Index] = piece;
-        SceneDb.ObjSeamAppendNext[pi] = default;
+        check.Expect(SceneDb.PieceLink(body, piece), "the piece would not link onto the body");
         SceneDb.SetAttachTo(pi, body);
         SceneDb.SetAttachPart(pi, bodyFirst);
         // the bone "mid" moves, which only the piece's ring is weighted to
@@ -627,7 +623,7 @@ public static unsafe partial class DbAnim
         }
         finally { NativeMemory.Free(dst); }
 
-        SceneDb.ObjSeamAppendHead[body.Index] = default;
+        SceneDb.PieceDropAll(body);
         SceneDb.ObjSeamFlags[pi] &= ~(uint)SeamFlag.Composed;
         // The piece retires while it is still attached, which is the edge a re-equip takes: the neighbour it
         // leaves behind has a ring unified with vertices that no longer exist.

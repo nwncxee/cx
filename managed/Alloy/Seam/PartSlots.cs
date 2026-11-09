@@ -46,11 +46,7 @@ internal static class PartSlots
         v.Done(obj, changed);
         if (!grafts) return changed;
         int total = changed;
-        for (DbId c = SceneDb.ObjSeamAppendHead[obj.Index]; !c.IsNull; c = SceneDb.ObjSeamAppendNext[c.Index])
-        {
-            if (!SceneDb.Objects.Valid(c)) break;
-            total += ForEach(c, slot, grafts, ref v, depth + 1);
-        }
+        foreach (DbId c in SceneDb.Pieces(obj)) total += ForEach(c, slot, grafts, ref v, depth + 1);
         return total;
     }
 }

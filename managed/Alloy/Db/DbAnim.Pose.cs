@@ -202,9 +202,8 @@ public static unsafe partial class DbAnim
     /// </summary>
     private static void PoseComposition(ModelDef model, int[] baseInv, AnimDef anim, DbId obj, float t, float scale, float w)
     {
-        for (DbId c = SceneDb.ObjSeamAppendHead[obj.Index]; !c.IsNull; c = SceneDb.ObjSeamAppendNext[c.Index])
+        foreach (DbId c in SceneDb.Pieces(obj))
         {
-            if (!SceneDb.Objects.Valid(c)) break;
             int ci = c.Index;
             ModelDef? cm = SceneDb.ObjModel[ci];
             int first = SceneDb.ObjPartFirst[ci], n = SceneDb.ObjPartCount[ci];

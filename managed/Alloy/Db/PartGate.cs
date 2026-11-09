@@ -95,10 +95,8 @@ internal static class PartGate
         _objs[0] = root;
         int count = 1;
         for (int i = 0; i < count; i++)
-            for (DbId c = SceneDb.ObjSeamAppendHead[_objs[i].Index]; !c.IsNull;
-                 c = SceneDb.ObjSeamAppendNext[c.Index])
+            foreach (DbId c in SceneDb.Pieces(_objs[i]))
             {
-                if (!SceneDb.Objects.Valid(c)) break;
                 if (count >= MaxObjects) { Overflowed++; return count; }
                 _objs[count++] = c;
             }

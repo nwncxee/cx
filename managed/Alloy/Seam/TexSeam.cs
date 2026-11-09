@@ -434,11 +434,13 @@ internal static class MaterialParams
     /// <paramref name="value"/> reset them: <c>Part::SetMaterialParam</c> @0x53cab0 descends the part tree, which holds
     /// what <c>Gob::Append</c> grafted, and a graft is a child object here. Game thread, cold.</summary>
     internal static void Set(DbId obj, string? paramName, string? value, string? materialFilter, ExtenderLog? log)
+        => Set(obj, paramName, value, materialFilter, log, 0);
+
+    private static void Set(DbId obj, string? paramName, string? value, string? materialFilter, ExtenderLog? log, int depth)
     {
-        if (!SceneDb.Objects.Valid(obj)) return;
+        if (depth >= SceneDb.PieceDepthCap || !SceneDb.Objects.Valid(obj)) return;
         SetOne(obj, paramName, value, materialFilter, log);
-        for (DbId c = SceneDb.ObjSeamAppendHead[obj.Index]; !c.IsNull; c = SceneDb.ObjSeamAppendNext[c.Index])
-            Set(c, paramName, value, materialFilter, log);
+        foreach (DbId c in SceneDb.Pieces(obj)) Set(c, paramName, value, materialFilter, log, depth + 1);
     }
 
     private static void SetOne(DbId obj, string? paramName, string? value, string? materialFilter, ExtenderLog? log)
@@ -626,9 +628,8 @@ internal static class MaterialParams
         DbId piece = SceneDb.Objects.Alloc(), beside = SceneDb.Objects.Alloc(), inner = SceneDb.Objects.Alloc(), rider = SceneDb.Objects.Alloc();
         if (piece.IsNull || beside.IsNull || inner.IsNull || rider.IsNull) { Expect(false, "the object table would not allocate"); return ok; }
         foreach (DbId o in (ReadOnlySpan<DbId>)[piece, beside, inner, rider]) { SceneDb.ObjPartFirst[o.Index] = 0; SceneDb.ObjPartCount[o.Index] = 0; }
-        SceneDb.ObjSeamAppendHead[obj.Index] = piece;
-        SceneDb.ObjSeamAppendNext[piece.Index] = beside;
-        SceneDb.ObjSeamAppendHead[piece.Index] = inner;
+        Expect(SceneDb.PieceLink(obj, beside) && SceneDb.PieceLink(obj, piece) && SceneDb.PieceLink(piece, inner),
+            "the composition would not link");
         SceneDb.SetAttachTo(rider.Index, obj);
         Set(obj, "fRamboScale", "12.0", "", null);
         Expect(ContentOverrides(piece.Value) is { Count: 1 } && ContentOverrides(beside.Value) is { Count: 1 } && ContentOverrides(inner.Value) is { Count: 1 },
@@ -642,9 +643,37 @@ internal static class MaterialParams
         Expect(ContentOverrides(obj.Value) is { Count: 1 } up && up[0].Value == "12.0", "a value set on a piece climbed to its body");
         Set(obj, "", "", "", null);
         Expect(!HasContent(piece) && !HasContent(beside) && !HasContent(inner), "the engine's reset-all left a grafted piece's values standing");
-        SceneDb.ObjSeamAppendHead[obj.Index] = default;
-        SceneDb.ObjSeamAppendNext[piece.Index] = default;
-        SceneDb.ObjSeamAppendHead[piece.Index] = default;
+        // A composition grafted deeper than the depth cap: the descent stops AT the cap rather than following
+        // the data down, so the far end of the chain keeps nothing.
+        DbId[] chain = new DbId[SceneDb.PieceDepthCap + 2];
+        bool built = true;
+        for (int i = 0; i < chain.Length; i++)
+        {
+            chain[i] = SceneDb.Objects.Alloc();
+            built &= !chain[i].IsNull;
+            if (!built) break;
+            SceneDb.PieceForget(chain[i].Index);
+            SceneDb.ObjPartFirst[chain[i].Index] = 0;
+            SceneDb.ObjPartCount[chain[i].Index] = 0;
+            if (i > 0) built &= SceneDb.PieceLink(chain[i - 1], chain[i]);
+        }
+        Expect(built, "the deep composition would not build");
+        if (built)
+        {
+            Set(chain[0], "fRamboScale", "14.0", "", null);
+            Expect(HasContent(chain[SceneDb.PieceDepthCap - 1]), "the descent stopped short of the depth cap");
+            Expect(!HasContent(chain[SceneDb.PieceDepthCap]), "the descent went past the depth cap");
+            Set(chain[0], "", "", "", null);
+        }
+        for (int i = chain.Length - 1; i >= 0; i--)
+        {
+            if (chain[i].IsNull) continue;
+            SceneDb.PieceForget(chain[i].Index);
+            SceneDb.Objects.Free(chain[i]);
+        }
+
+        SceneDb.PieceForget(obj.Index);
+        SceneDb.PieceForget(piece.Index);
         SceneDb.SetAttachTo(rider.Index, default);
         SceneDb.Objects.Free(rider);
         SceneDb.Objects.Free(inner);

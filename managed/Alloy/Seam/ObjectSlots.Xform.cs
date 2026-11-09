@@ -257,7 +257,10 @@ public sealed unsafe partial class ObjectSlots
     /// -1. <c>Gob::GetPart</c> @0x43c630 matches <c>"root"</c> case-insensitively to the root and otherwise
     /// runs <c>FindPart</c> over LOD 0's tree only, so the seam searches the object's one part range. Matches
     /// the engine's NUL-terminated bytes directly: it is called every update, so it may not allocate.</summary>
-    internal static int PartByName(DbId obj, byte* name)
+    internal static int PartByName(DbId obj, byte* name) => PartByName(obj, name, 0);
+
+    /// <inheritdoc cref="PartByName(DbId, byte*)"/>
+    private static int PartByName(DbId obj, byte* name, int depth)
     {
         if (!SceneDb.Objects.Valid(obj)) return -1;
         int first = SceneDb.ObjPartFirst[obj.Index], count = SceneDb.ObjPartCount[obj.Index];
@@ -272,10 +275,10 @@ public sealed unsafe partial class ObjectSlots
         }
         // Not in the object's own range: a composed body part (Gob::Append) keeps its own range, and the
         // game addresses the whole composition by name.
-        for (DbId c = SceneDb.ObjSeamAppendHead[obj.Index]; !c.IsNull; c = SceneDb.ObjSeamAppendNext[c.Index])
+        if (depth >= SceneDb.PieceDepthCap) return -1;
+        foreach (DbId c in SceneDb.Pieces(obj))
         {
-            if (!SceneDb.Objects.Valid(c)) break;
-            int p = PartByName(c, name);
+            int p = PartByName(c, name, depth + 1);
             if (p >= 0) return p;
         }
         return -1;
@@ -302,7 +305,10 @@ public sealed unsafe partial class ObjectSlots
     /// <c>Gob::Append</c> is its caller, a creature's body parts are appended one after another, and an anchor
     /// node in a piece already appended -- a forearm under a bicep -- must resolve or the append refuses and
     /// that piece of the creature never exists. Two overloads of one question must not give two answers.</summary>
-    internal static int PartByName(DbId obj, string? name)
+    internal static int PartByName(DbId obj, string? name) => PartByName(obj, name, 0);
+
+    /// <inheritdoc cref="PartByName(DbId, string?)"/>
+    private static int PartByName(DbId obj, string? name, int depth)
     {
         if (!SceneDb.Objects.Valid(obj)) return -1;
         int first = SceneDb.ObjPartFirst[obj.Index], count = SceneDb.ObjPartCount[obj.Index];
@@ -316,10 +322,10 @@ public sealed unsafe partial class ObjectSlots
             if ((uint)n < (uint)m.Nodes.Length
                 && string.Equals(m.Nodes[n].Name, name, StringComparison.OrdinalIgnoreCase)) return p;
         }
-        for (DbId c = SceneDb.ObjSeamAppendHead[obj.Index]; !c.IsNull; c = SceneDb.ObjSeamAppendNext[c.Index])
+        if (depth >= SceneDb.PieceDepthCap) return -1;
+        foreach (DbId c in SceneDb.Pieces(obj))
         {
-            if (!SceneDb.Objects.Valid(c)) break;
-            int p = PartByName(c, name);
+            int p = PartByName(c, name, depth + 1);
             if (p >= 0) return p;
         }
         return -1;

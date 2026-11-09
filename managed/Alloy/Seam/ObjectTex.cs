@@ -133,11 +133,7 @@ internal static class ObjectTex
             Facade.Log?.Info($"seam: env map {(name == null ? "cleared" : $"\"{name}\"")} on o={i} -- kept in "
                              + "its own column; material slot 3 stays the roughness map");
         }
-        for (DbId c = SceneDb.ObjSeamAppendHead[i]; !c.IsNull; c = SceneDb.ObjSeamAppendNext[c.Index])
-        {
-            if (!SceneDb.Objects.Valid(c)) break;
-            SetEnvMapIn(c, name, depth + 1);
-        }
+        foreach (DbId c in SceneDb.Pieces(obj)) SetEnvMapIn(c, name, depth + 1);
     }
 
     /// <summary>Point every part of <paramref name="obj"/> whose RESOLVED texture name in slot

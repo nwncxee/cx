@@ -258,6 +258,11 @@ the cleanup that earned it. Adding a rule means adding its gate in the same chan
   (`docs/adr/`, `docs/handoff/` exempt); a machine's paths go through `tools/paths.py`.
 - `compute-pipes.sh`: a `ShaderDesc(ShaderStage.Compute ...)` under `managed/` outside `VkBackend.Pipeline.cs` fails; a
   compute pipeline from GLSL is `VkBackend.CreateCompute`.
+- `piece-links.sh`: a raw `ObjSeamAppendHead`/`ObjSeamAppendNext` read or write under `managed/` outside
+  `SceneDb.Pieces.cs` and its self-check fails. Both columns are keyed by record INDEX, so a second link of one
+  index rings the list and every walk over it then runs forever on the game thread: `SceneDb.PieceLink` refuses
+  that shape, and `SceneDb.Pieces` walks with a cap, a ring check and each piece's next link latched before its
+  body runs.
 - `pipe-features.sh`: a string literal under `managed/` that starts with a pipeline feature prefix the tally counts by
   (`vk grass `, `vk particles `, `vk probe `, `vk CX window `, `CX window `) fails outside `Rhi/PipeFeatures.cs`;
   a label takes its prefix from `PipeFeatures`, so a rename cannot leave the by-feature count at zero.

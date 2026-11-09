@@ -142,11 +142,7 @@ public sealed unsafe partial class AlloyRenderer
     private static void ParityComposition(DbId id, HashSet<int> into, int depth)
     {
         if (depth > ParityMaxGraft || !SceneDb.Objects.Valid(id) || !into.Add(id.Index)) return;
-        for (DbId c = SceneDb.ObjSeamAppendHead[id.Index]; !c.IsNull; c = SceneDb.ObjSeamAppendNext[c.Index])
-        {
-            if (!SceneDb.Objects.Valid(c)) break;
-            ParityComposition(c, into, depth + 1);
-        }
+        foreach (DbId c in SceneDb.Pieces(id)) ParityComposition(c, into, depth + 1);
     }
 
     /// <summary>The body-part id of the cloak, as <c>CNWCAnimBaseParts::GetModel</c> answers it.</summary>
@@ -199,11 +195,8 @@ public sealed unsafe partial class AlloyRenderer
             outp.Add(ParityLine(key, graft, node, SceneDb.PartEnabled[p],
                                 ParityHasMesh(p), tex, cnt, rows, SceneDb.PartPos[p]));
         }
-        for (DbId c = SceneDb.ObjSeamAppendHead[i]; !c.IsNull; c = SceneDb.ObjSeamAppendNext[c.Index])
-        {
-            if (!SceneDb.Objects.Valid(c)) break;
+        foreach (DbId c in SceneDb.Pieces(id))
             ParityDbObject(outp, key, c, SceneDb.ObjModel[c.Index]?.Nodes[0].Name ?? "?", depth + 1);
-        }
     }
 
     /// <summary>The instance environment map, which is what <c>PartTriMesh::Draw</c> routes on
@@ -233,11 +226,7 @@ public sealed unsafe partial class AlloyRenderer
     private static int ParityAppendCount(DbId id)
     {
         int n = 0;
-        for (DbId c = SceneDb.ObjSeamAppendHead[id.Index]; !c.IsNull; c = SceneDb.ObjSeamAppendNext[c.Index])
-        {
-            if (!SceneDb.Objects.Valid(c)) break;
-            n++;
-        }
+        foreach (DbId _ in SceneDb.Pieces(id)) n++;
         return n;
     }
 
