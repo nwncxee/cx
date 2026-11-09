@@ -29,6 +29,17 @@ internal static unsafe class MipChain
         return chain;
     }
 
+    /// <summary>The mips of a chain buffer whose level 0 is already in it, rewritten alpha-weighted in place; false
+    /// for a sheet with no holes, whose levels the caller fills its own way. The buffer holds the whole chain
+    /// (<see cref="TexScan.ChainBytes"/>).</summary>
+    internal static bool Chained(Span<byte> chain, int w, int h)
+    {
+        int top = w * h * Bpp;
+        if (w <= 0 || h <= 0 || chain.Length < TexScan.ChainBytes(w, h, true) || !HasHoles(chain[..top])) return false;
+        Build(chain[..top], w, h, chain);
+        return true;
+    }
+
     /// <summary><see cref="Raster"/> into a native allocation the caller frees, for a decoded job's data to become:
     /// no second managed copy waits beside it for the upload. Null for a sheet with no holes.</summary>
     internal static byte* RasterNative(ReadOnlySpan<byte> rgba, int w, int h, out long bytes)
@@ -116,6 +127,19 @@ internal static unsafe class MipChain
         check.Expect(chain != null && chain.Length == (64 + 16 + 4 + 1) * Bpp, $"8x8 chain is {chain?.Length} bytes");
         check.Expect(!Dds(stackalloc byte[16], 4, 4, 1, DdsReader.Fmt.Bc3), "a one-level file was rebuilt");
         check.Expect(!Dds(stackalloc byte[16], 4, 4, 3, DdsReader.Fmt.Bc7), "a BC7 file was rebuilt");
+        check.Expect(!Dds(stackalloc byte[16], 4, 4, 3, DdsReader.Fmt.Bc1), "a BC1 file was rebuilt");
+        // the chain a decoded cell is encoded from: level 0 kept, the level under it the leaf's own colour
+        var buf = new byte[TexScan.ChainBytes(8, 8, true)];
+        leaf.CopyTo(buf.AsSpan());
+        check.Expect(Chained(buf, 8, 8), "a chain buffer whose sheet has holes was left alone");
+        Span<Texel> made = MemoryMarshal.Cast<byte, Texel>(buf.AsSpan());
+        check.Expect(made[0].R == 10 && made[0].G == 20 && made[0].B == 30, "level 0's leaf texel changed in place");
+        Texel under = made[Cell(8, 0, 8)];   // one row past the 8x8 level: the first texel of the level under it
+        check.Expect(under.R == 10 && under.G == 20 && under.B == 30,
+            $"the level under it reads {under.R},{under.G},{under.B}, not the leaf's colour alone");
+        stone.CopyTo(buf.AsSpan());
+        check.Expect(!Chained(buf, 8, 8), "an opaque sheet's chain was rebuilt");
+        check.Expect(!Chained(leaf, 8, 8), "a buffer holding level 0 alone was treated as a whole chain");
         log.Info(check.Ok ? "MipChain.SelfCheck: passed" : "MipChain.SelfCheck: FAILED");
         return check.Ok;
     }

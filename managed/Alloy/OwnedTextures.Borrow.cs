@@ -61,6 +61,9 @@ internal static unsafe partial class OwnedTextures
         public bool Refreshed;
         /// <summary>Textures given a zeroed Alloy texture because the engine's own upload produces no pixels either.</summary>
         public long Empty;
+        /// <summary>Cut-out sheets uploaded with an alpha-weighted chain of their own instead of the device's filter
+        /// or the file's stored mips.</summary>
+        public long CutoutChains;
     }
     private static BorrowState _borrow = new();
 

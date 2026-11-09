@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
+using CX.Alloy.Db;
 using CX.Engine;
 using CX.Framework;
 using CX.Graphics;
@@ -108,7 +109,11 @@ internal static unsafe partial class OwnedTextures
                 fixed (byte* px = job.Pixels)
                 fixed (int* lw = job.Lw, lh = job.Lh) fixed (long* offs = job.Off)
                 {
-                    TexScan.BuildMips(px, job.Levels, lw, lh, offs);
+                    // A cut-out's mips are the alpha-weighted ones or the matte bleeds into a minified texel; the
+                    // chain is built where the rebuild knows the level geometry, so only a sheet without holes
+                    // takes the plain average here.
+                    if (job.Levels < 2 || !MipChain.Chained(job.Pixels.AsSpan(), job.Lw[0], job.Lh[0]))
+                        TexScan.BuildMips(px, job.Levels, lw, lh, offs);
                     bool bc3 = false;
                     for (long i = 3, end = (long)job.Lw[0] * job.Lh[0] * 4; i < end; i += 4)
                         if (px[i] != 255) { bc3 = true; break; }

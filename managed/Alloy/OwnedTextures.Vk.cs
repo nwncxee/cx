@@ -1,5 +1,6 @@
 using System;
 using CX.Engine;
+using CX.Framework;
 using CX.Graphics.Rhi;
 using CX.Rhi;
 
@@ -21,6 +22,7 @@ internal static unsafe partial class OwnedTextures
         byte[] px = VkTextures.Pack(img, w, cx, cy, cw, ch, bpp, nibbles: bpp == 2, out Format f);
         ImageId id = VkTextures.Create(vk, dst, f, cw, ch, levels, grey, VkSampler(s), $"owned {dst}");
         if (id.IsNull) return;
+        if (f == Format.Rgba8 && MirrorRasterChain(vk, dst, id, px, cw, ch, levels)) return;
         if (!vk.Upload(id, 0, 0, px)) { VkTextures.Forget(dst); return; }
         if (levels > 1) vk.GenerateMips(id);
     }
@@ -33,6 +35,15 @@ internal static unsafe partial class OwnedTextures
         if (f == Format.Unknown) { VkTextures.Refuse($"owned {dst}: GL format 0x{glFmt:x}"); return; }
         ImageId id = VkTextures.Create(vk, dst, f, w, h, levels, red, VkSampler(s), $"owned {dst}");
         if (id.IsNull) return;
+        if (f == Format.Bc3 && levels > 1)
+        {
+            var chain = new NativeBuffer<byte>();
+            try
+            {
+                if (StoredChain(t, w, h, levels, ref chain)) { MirrorStoredChain(vk, dst, id, chain.Span, w, h, levels); return; }
+            }
+            finally { chain.Free(); }
+        }
         for (int l = 0; l < levels; l++)
         {
             byte* level = t.CompressedLevel(l, out _, out _, out int size);
