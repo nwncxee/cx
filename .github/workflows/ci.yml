@@ -53,6 +53,7 @@ jobs:
             tools/approved-examples.sh
             tools/no-loaded-runtime.sh
             tools/live/session-log.sh
+            tools/live/docks_run.sh
             'tools/*_approved_examples*'
             'tools/*_regression*'
             'tools/release/*'
