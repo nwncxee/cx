@@ -191,6 +191,12 @@ Ceiling: the day two knobs must flip together, that pair becomes one `Knob<T>` w
   the registry, `Format()`s each knob, writes `cx.cfg.tmp`, then `File.Move(overwrite)`. Last
   writer wins. No write-if-changed compare. The render thread never touches the disk; the input
   thread only arms the timer.
+- **Boot holds the writer.** Until the host finishes booting, an arm is counted and dropped, not
+  scheduled: boot's own sets are self-checks moving a real knob and putting it back, and no player
+  chose any of those values, so the file keeps the text it was read from however long boot takes.
+  `cx.log` names the held count when the hold lifts. The one arm that outlives the hold is the
+  first run's, where there was no file to keep; off-device the write stands down entirely, because
+  there the path is the real user's.
 - **Boot keys** are renamed `<group>.<knob>` (`alloy.hdr`, `shadow.size`, `mouselook.sens`,
   `general.logs`) with **no legacy read** of the flat name. `general.logs` is still consumed
   inside `Settings.Load`.

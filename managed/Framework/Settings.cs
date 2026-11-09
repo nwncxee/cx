@@ -40,7 +40,7 @@ public static class Settings
         ConfigFile.ForEachPair(ConfigFile.ReadTextNow(FileName, log, out _path), (k, v) => _values[k] = v);
         if (_values.Count > 0) log?.Info($"settings: {_values.Count} key(s) from {_path}");
         // On-device only: off-device the path is the real user's, and the demo never writes it.
-        if (!File.Exists(_path) && Native.Sym(SymbolMap.AppManager) != IntPtr.Zero) KnobFile.Arm();
+        if (!File.Exists(_path) && Native.Sym(SymbolMap.AppManager) != IntPtr.Zero) KnobFile.ArmFirstRun();
         // Off-device (run-demo: no engine symbols resolve) the log stays open -- it is the self-check gate.
         // general.logs is General.Logs's key, read here before any knob exists (spec §2): the launch lines.
         bool logs = Raw("general.logs") is string raw && KnobCodec<bool>.Parse!(raw) is (true, true)

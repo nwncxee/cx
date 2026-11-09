@@ -124,6 +124,7 @@ public static class ServiceHost
         KnobGroup.SelfCheck(log);
         TextList.SelfCheck(log);
         KnobFile.SelfCheck(log);
+        KnobFileBootApprovedExamples.SelfCheck(log);   // boot's own sets are held: cx.cfg is not rewritten at boot
         CX.Alloy.Db.DbSceneSelfCheck.NoFixtureOutlived(log);   // the game has made no scene yet, so one still live is a suite's
 
         // the frame walk must be immutable before the present hook can fire. Sealing here is the
@@ -134,6 +135,9 @@ public static class ServiceHost
         // a skip is not a pass: a suite that stood down has to say so where the boot lines are read
         if (Checker.Skipped > 0) log.Always($"host: {Checker.Skipped} self-check suite(s) SKIPPED");
         hooks.Commit();
+        // Boot is over here, so a set from now on is a player's: every group has declared and every self-check
+        // has put back what it moved.
+        KnobFile.BootEnded(log);
         ExtenderLog.Flush();   // boot lines on disk before the host returns: the demo exits right after
     }
 }
