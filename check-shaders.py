@@ -627,6 +627,7 @@ def programs(g):
         "post stack aa blend": (g["cx_post_vs"], g["cx_smaablend_fs"]),
         "ssao visibility": (g["cx_post_vs"], g["cx_ssao_fs"]),
         "ssao blur": (g["cx_post_vs"], g["cx_ssaoblur_fs"]),
+        "ssao accumulate": (g["cx_fullscreen_v"], g["cx_aoaccum_f"]),
         "halos": (g["cx_halo_vs"], g["cx_halo_fs"]),
         "weather cull": (define(g["cx_wx_cull_cs"], f"CX_WX_REC_CAP {WX_REC_CAP}u"),),
         "weather cull (wave)": (define(define(g["cx_wx_cull_cs"], f"CX_WX_REC_CAP {WX_REC_CAP}u"), "CX_WX_WAVE 1"),),

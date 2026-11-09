@@ -9,11 +9,10 @@ using Vortice.ShaderCompiler;
 
 namespace CX.Alloy;
 
-/// <summary><see cref="SsaoPass"/> on Vulkan: the same horizon estimate and depth-aware blur, from the same
-/// <see cref="SsaoBlock"/> and the same two overridable stages, over the Vulkan frame's prepass depth, then the
-/// accumulator over its own history pair -- which is what the lit stage samples as <c>uSsao</c>. The
-/// reprojection is the camera's own, worked from this frame's depth, since the frame's velocity target is
-/// painted after the colour pass this estimate is read in.</summary>
+/// <summary><see cref="SsaoPass"/> on Vulkan: the same horizon estimate and depth-aware blur from the same
+/// <see cref="SsaoBlock"/> and overridable stages, over the frame's prepass depth, then the accumulator over its
+/// own history pair -- which is what the lit stage samples as <c>uSsao</c>. It reprojects through the CAMERA: the
+/// velocity target is painted after the colour pass this estimate is read in.</summary>
 internal static unsafe class SsaoPassVk
 {
     /// <summary>Everything on one device, replaced whole when the device is.</summary>

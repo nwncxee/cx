@@ -47,7 +47,7 @@ internal static class UboSlots
         ["CxCull"] = (Cull, ["cx_cullblk.glsl", "cx_cull_c.glsl", "cx_cullsort_c.glsl"]),
         ["CxDeferred"] = (Deferred, ["cx_defblk.glsl", "cx_deferred_cs.glsl", "cx_moverdebt.glsl", "cx_moverapply.glsl"]),
         ["CxSsao"] = (Ssao, ["cx_ssaolib.glsl", "cx_ssao_f.glsl", "cx_ssao_fs.glsl", "cx_ssaoblur_f.glsl",
-                             "cx_ssaoblur_fs.glsl"]),
+                             "cx_ssaoblur_fs.glsl", "cx_aoaccum_f.glsl"]),
         ["CxGather"] = (Gather, ["cx_gatherblk.glsl", "CasterGather.GatherCs", "CasterGather.LayerCs"]),
     };
 

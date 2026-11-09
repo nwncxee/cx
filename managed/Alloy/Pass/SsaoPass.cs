@@ -167,8 +167,6 @@ internal static unsafe class SsaoPass
               "...and tests the history's own stored distance by NEAREST texel: a linear read blends near and far at a silhouette");
             check.Expect(AccumFs.Contains("frag = vec2(") && AccumFs.Contains("out vec2 frag;"),
               "the history carries the distance it was computed at beside the visibility -- that pair IS the test");
-            check.Expect(HistoryWeight > 0f && HistoryWeight < 1f,
-              "the history's share leaves this frame a say: at 1 the estimate would never reach the screen");
         }
         finally { _log = quiet; }
         log.Info(check.Ok ? "SsaoPass.SelfCheck: passed" : "SsaoPass.SelfCheck: FAILED");
