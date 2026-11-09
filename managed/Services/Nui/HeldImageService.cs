@@ -215,7 +215,7 @@ public sealed unsafe class HeldImageService : IExtenderService
         s.SeenDrawn = drawn;
         if (s.ProbeDone || !drawing || Environment.TickCount64 - s.Born < ProbeAfterMs) return;
         s.ProbeDone = true;
-        string probe = NuiKnobs.HeldProbe.V;
+        string probe = NuiKnobs.HeldProbe.Boot;
         if (probe.Length > 0) ServerPolicy.Set(Key, probe);
     }
 }

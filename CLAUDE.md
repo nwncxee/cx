@@ -186,6 +186,10 @@ the cleanup that earned it. Adding a rule means adding its gate in the same chan
   feature nobody can read about. A ChatOnly family may share one summary row (`group.a / b / c`), a
   `group.prefix<...>` row stands for its family and `<mode>.x` for all three camera modes;
   `python3 tools/gates/knob-spec-rows.py -v` prints the whole census.
+- `knob-effect.sh`: a knob declared `Effect.Live` whose every reader takes `Boot`, or one declared
+  `Effect.Restart` read through `V` outside the file it is declared in, fails. The declared effect is what the
+  panel badge and the chat reply promise, so a reader on the wrong one is a promise nothing keeps;
+  `python3 tools/gates/knob-effect.py -v` adds the field names two classes both declare.
 - `engine-views.sh`: outside `Framework/`, `ptr +/- EngineLayout.X` fails when row X has a view member; a
   `not-an-offset:` marker on a line that dereferences `ptr + 0x...` fails.
 - `statics.sh`: a file under `managed/Alloy` or `managed/Services` with more non-readonly `static` fields

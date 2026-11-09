@@ -792,7 +792,7 @@ internal static unsafe partial class TexRegistry
     /// evicts an idle slot as soon as it is idle.</summary>
     private static long BudgetBytes()
     {
-        int mb = Renderer.TexCache.V;
+        int mb = Renderer.TexCache.Boot;
         if (mb > 0) return (long)mb << 20;
         if (mb == 0) return 0;
         long vram = AlloyRenderer.VramTotalMib > 0 ? AlloyRenderer.VramTotalMib : AlloyRenderer.VramFreeMib;
