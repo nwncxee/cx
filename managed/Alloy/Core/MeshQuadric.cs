@@ -41,8 +41,8 @@ internal struct Quadric
         Zz += o.Zz; Zw += o.Zw; Ww += o.Ww;
     }
 
-    /// <summary>The sum of two quadrics, written straight into the caller's slot. Both sides come in by
-    /// reference and nothing is copied, which is what keeps a merged vertex's score off the stack.</summary>
+    /// <summary>The sum of two quadrics: the quadric of a merged vertex, which neither end's own slot may
+    /// hold. Both operands come in by reference, so summing them copies neither.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static Quadric Sum(in Quadric a, in Quadric b)
     {
@@ -64,8 +64,3 @@ internal struct Quadric
         return r > 0d ? r : 0d;
     }
 }
-
-/// <summary>One triangle's three corner indices, laid out exactly as a triangle list is, so an index run
-/// reinterprets into a span of these with <c>MemoryMarshal.Cast</c> and no copy.</summary>
-[StructLayout(LayoutKind.Sequential)]
-internal readonly record struct TriCorners(ushort A, ushort B, ushort C);

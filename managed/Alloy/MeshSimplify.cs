@@ -329,8 +329,9 @@ internal static class MeshSimplify
         double both = Quadric.Sum(in zPlane, in xPlane).At(3d, 0d, 4d);
         check.Expect(Math.Abs(both - 8d) < 1e-12d, $"two quadrics did not sum field by field: {both}, not 4 + 4");
         zPlane.Add(in xPlane);
-        check.Expect(Math.Abs(zPlane.At(3d, 0d, 4d) - both) < 1e-12d,
-                     "folding a quadric in place does not agree with summing the pair");
+        double folded = zPlane.At(3d, 0d, 4d);
+        check.Expect(Math.Abs(folded - 8d) < 1e-12d,
+                     $"folding a quadric in place scores {folded}, not the 4 + 4 the pair summed to");
 
         var run = new ushort[] { 10, 11, 12, 20, 21, 22, 30, 31, 32 };
         var runTris = MemoryMarshal.Cast<ushort, TriCorners>(run.AsSpan());

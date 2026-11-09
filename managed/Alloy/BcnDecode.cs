@@ -1,6 +1,5 @@
 using System;
 using System.Buffers.Binary;
-using System.Runtime.InteropServices;
 using Fmt = CX.Alloy.DdsReader.Fmt;
 
 namespace CX.Alloy;
@@ -22,7 +21,7 @@ internal static class BcnDecode
     internal static void Unpack(ReadOnlySpan<byte> blocks, int w, int h, Fmt f, Span<byte> dst)
     {
         int bw = (w + 3) / 4, bh = (h + 3) / 4, bytes = f == Fmt.Bc1 ? 8 : 16, px = PixelBytes(f);
-        Span<Rgba32> tile = stackalloc Rgba32[16];
+        Span<Rgba8> tile = stackalloc Rgba8[16];
         for (int by = 0; by < bh; by++)
             for (int bx = 0; bx < bw; bx++)
             {
@@ -34,7 +33,7 @@ internal static class BcnDecode
                     int x = bx * 4 + (t & 3), y = by * 4 + (t >> 2);
                     if (x >= w || y >= h) continue;
                     int at = (y * w + x) * px;
-                    Rgba32 c = tile[t];
+                    Rgba8 c = tile[t];
                     dst[at] = c.R; dst[at + 1] = c.G; dst[at + 2] = c.B;
                     if (px == 4) dst[at + 3] = c.A;
                 }
@@ -45,18 +44,18 @@ internal static class BcnDecode
     /// widened by bit replication, interpolants at (2a+b)/3 and (a+2b)/3. A BC1 block with c0 &lt;= c1 takes the
     /// half-way colour and black -- the engine uploads DXT1 as <c>COMPRESSED_RGB_S3TC_DXT1</c>, so there is no
     /// punch-through alpha; a BC2/BC3 colour block is always four-colour, and BC2's alpha nibble widens by 17.</summary>
-    private static void S3tc(ReadOnlySpan<byte> b, Fmt f, Span<Rgba32> tile)
+    private static void S3tc(ReadOnlySpan<byte> b, Fmt f, Span<Rgba8> tile)
     {
-        Span<Rgb24> pal = stackalloc Rgb24[4];
+        Span<Rgb8> pal = stackalloc Rgb8[4];
         Span<byte> alpha = stackalloc byte[8];
         var c = f == Fmt.Bc1 ? b : b[8..];
         int c0 = BinaryPrimitives.ReadUInt16LittleEndian(c), c1 = BinaryPrimitives.ReadUInt16LittleEndian(c[2..]);
         pal[0] = Expand(c0); pal[1] = Expand(c1);
         bool four = f != Fmt.Bc1 || c0 > c1;
-        Rgb24 e0 = pal[0], e1 = pal[1];
-        pal[2] = four ? new Rgb24(Third(2, e0.R, e1.R), Third(2, e0.G, e1.G), Third(2, e0.B, e1.B))
-                      : new Rgb24(Half(e0.R, e1.R), Half(e0.G, e1.G), Half(e0.B, e1.B));
-        pal[3] = four ? new Rgb24(Third(1, e0.R, e1.R), Third(1, e0.G, e1.G), Third(1, e0.B, e1.B))
+        Rgb8 e0 = pal[0], e1 = pal[1];
+        pal[2] = four ? new Rgb8(Third(2, e0.R, e1.R), Third(2, e0.G, e1.G), Third(2, e0.B, e1.B))
+                      : new Rgb8(Half(e0.R, e1.R), Half(e0.G, e1.G), Half(e0.B, e1.B));
+        pal[3] = four ? new Rgb8(Third(1, e0.R, e1.R), Third(1, e0.G, e1.G), Third(1, e0.B, e1.B))
                       : default;
         uint idx = BinaryPrimitives.ReadUInt32LittleEndian(c[4..]);
         ulong abits = 0;
@@ -71,14 +70,14 @@ internal static class BcnDecode
         ulong a4 = f == Fmt.Bc2 ? BinaryPrimitives.ReadUInt64LittleEndian(b) : 0;
         for (int t = 0; t < 16; t++)
         {
-            Rgb24 p = pal[(int)((idx >> (2 * t)) & 3)];
+            Rgb8 p = pal[(int)((idx >> (2 * t)) & 3)];
             byte a = f switch
             {
                 Fmt.Bc3 => alpha[(int)((abits >> (3 * t)) & 7)],
                 Fmt.Bc2 => (byte)(((a4 >> (4 * t)) & 15) * 17),
-                _ => Rgba32.Opaque,
+                _ => Rgba8.Opaque,
             };
-            tile[t] = new Rgba32(p.R, p.G, p.B, a);
+            tile[t] = new Rgba8(p.R, p.G, p.B, a);
         }
     }
 
@@ -90,10 +89,10 @@ internal static class BcnDecode
     private static byte Half(byte e0, byte e1) => (byte)((e0 + e1) / 2);
 
     /// <summary>An RGB565 endpoint to 8-bit R, G, B by bit replication.</summary>
-    private static Rgb24 Expand(int c)
+    private static Rgb8 Expand(int c)
     {
         int r = c >> 11, g = (c >> 5) & 63, b = c & 31;
-        return new Rgb24((byte)((r << 3) | (r >> 2)), (byte)((g << 2) | (g >> 4)), (byte)((b << 3) | (b >> 2)));
+        return new Rgb8((byte)((r << 3) | (r >> 2)), (byte)((g << 2) | (g >> 4)), (byte)((b << 3) | (b >> 2)));
     }
 
     /// <summary>BC7 mode table, one row per mode: subsets, partition bits, rotation bits, index-selection bit,
@@ -176,7 +175,7 @@ internal static class BcnDecode
     /// <summary>One BC7 block to 16 RGBA texels, per the BPTC spec (GL 4.6 appendix C.2): eight modes, the 64
     /// two- and three-subset partitions and their anchors, 6-bit weights and
     /// <c>(e0*(64-w) + e1*w + 32) &gt;&gt; 6</c>. A reserved mode-8 block decodes to 0,0,0,0, not opaque black.</summary>
-    private static void Bc7(ReadOnlySpan<byte> b, Span<Rgba32> tile)
+    private static void Bc7(ReadOnlySpan<byte> b, Span<Rgba8> tile)
     {
         var v = BinaryPrimitives.ReadUInt128LittleEndian(b);
         int mode = 0;
@@ -192,7 +191,7 @@ internal static class BcnDecode
         for (int e = 0; e < ends; e++) ep[e].R = Bits(v, ref pos, cb);
         for (int e = 0; e < ends; e++) ep[e].G = Bits(v, ref pos, cb);
         for (int e = 0; e < ends; e++) ep[e].B = Bits(v, ref pos, cb);
-        for (int e = 0; e < ends; e++) ep[e].A = ab > 0 ? Bits(v, ref pos, ab) : Rgba32.Opaque;
+        for (int e = 0; e < ends; e++) ep[e].A = ab > 0 ? Bits(v, ref pos, ab) : Rgba8.Opaque;
         int cbits = cb, abits = ab;
         if (m[6] != 0 || m[7] != 0)
         {
@@ -225,13 +224,13 @@ internal static class BcnDecode
             else { cw = Weight(ib2, i2[t]); aw = Weight(ib, i1[t]); }
             int at = s * 2;
             Endpoint lo = ep[at], hi = ep[at + 1];
-            var d = new Rgba32(Blend(lo.R, hi.R, cw), Blend(lo.G, hi.G, cw), Blend(lo.B, hi.B, cw), Blend(lo.A, hi.A, aw));
+            var d = new Rgba8(Blend(lo.R, hi.R, cw), Blend(lo.G, hi.G, cw), Blend(lo.B, hi.B, cw), Blend(lo.A, hi.A, aw));
             // A rotation swaps alpha with the named channel, so the pair that was coded together decodes together.
             tile[t] = rot switch
             {
-                1 => new Rgba32(d.A, d.G, d.B, d.R),
-                2 => new Rgba32(d.R, d.A, d.B, d.G),
-                3 => new Rgba32(d.R, d.G, d.A, d.B),
+                1 => new Rgba8(d.A, d.G, d.B, d.R),
+                2 => new Rgba8(d.R, d.A, d.B, d.G),
+                3 => new Rgba8(d.R, d.G, d.A, d.B),
                 _ => d,
             };
         }

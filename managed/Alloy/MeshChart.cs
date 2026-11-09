@@ -406,15 +406,13 @@ internal static unsafe partial class MeshChart
         finally { cx_chart_free(&r); }
     }
 
-    /// <summary>De-interleaved positions of the charted vertices, for the simplifier.</summary>
+    /// <summary>The charted vertices' positions, gathered through the chart's cross-reference, for the
+    /// simplifier. The input positions arrive as xyz triples, which is a span of <see cref="Vector3"/>.</summary>
     private static void Expand(Job j)
     {
         Grow(ref j.OutPos, j.OutVerts);
-        for (int i = 0; i < j.OutVerts; i++)
-        {
-            int s = j.Xref[i] * 3;
-            j.OutPos[i] = new Vector3(j.Pos[s], j.Pos[s + 1], j.Pos[s + 2]);
-        }
+        ReadOnlySpan<Vector3> src = MemoryMarshal.Cast<float, Vector3>(j.Pos.AsSpan(0, j.VertCount * 3));
+        for (int i = 0; i < j.OutVerts; i++) j.OutPos[i] = src[j.Xref[i]];
     }
 
     /// <summary>MeshLod's two levels over the CHARTED mesh -- simplify runs after the chart, so every level carries

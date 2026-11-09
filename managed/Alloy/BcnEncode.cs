@@ -19,8 +19,8 @@ internal static class BcnEncode
     /// <summary>Encode one RGBA8 level into <paramref name="out"/> (sized by <see cref="LevelSize"/>).</summary>
     internal static void EncodeLevel(ReadOnlySpan<byte> src, int w, int h, bool bc3, Span<byte> @out)
     {
-        ReadOnlySpan<Rgba32> image = MemoryMarshal.Cast<byte, Rgba32>(src);
-        Span<Rgba32> px = stackalloc Rgba32[16];
+        ReadOnlySpan<Rgba8> image = MemoryMarshal.Cast<byte, Rgba8>(src);
+        Span<Rgba8> px = stackalloc Rgba8[16];
         int o = 0;
         for (int by = 0; by < h; by += 4)
         for (int bx = 0; bx < w; bx += 4)
@@ -46,7 +46,7 @@ internal static class BcnEncode
 
     /// <summary>One 4x4 colour block -&gt; 8 bytes of BC1, always in 4-colour mode (c0 &gt; c1, or equal
     /// endpoints with every index 0, whose palette is degenerate either way).</summary>
-    private static void Bc1Block(ReadOnlySpan<Rgba32> px, Span<byte> dst)
+    private static void Bc1Block(ReadOnlySpan<Rgba8> px, Span<byte> dst)
     {
         int rMin = 255, gMin = 255, bMin = 255, rMax = 0, gMax = 0, bMax = 0;
         // Two attempts: the visible texels alone, then -- only if the block has none -- all sixteen, whose
@@ -56,7 +56,7 @@ internal static class BcnEncode
             int seen = 0;
             for (int i = 0; i < 16; i++)
             {
-                Rgba32 p = px[i];
+                Rgba8 p = px[i];
                 if (pass == 0 && p.A <= MatteAlpha) continue;
                 seen++;
                 if (p.R < rMin) rMin = p.R; if (p.R > rMax) rMax = p.R;
@@ -79,7 +79,7 @@ internal static class BcnEncode
             int len = dr * dr + dg * dg + db * db;
             for (int i = 0; i < 16; i++)
             {
-                Rgba32 p = px[i];
+                Rgba8 p = px[i];
                 int dot = (p.R - rMin) * dr + (p.G - gMin) * dg + (p.B - bMin) * db;
                 int t = (dot * 3 + len / 2) / len;               // 0..3 along c1->c0
                 t = t < 0 ? 0 : t > 3 ? 3 : t;
@@ -91,7 +91,7 @@ internal static class BcnEncode
     }
 
     /// <summary>One 4x4 alpha block -&gt; 8 bytes of BC4, always in the 8-value (a0 &gt; a1) mode.</summary>
-    private static void Bc4Block(ReadOnlySpan<Rgba32> px, Span<byte> dst)
+    private static void Bc4Block(ReadOnlySpan<Rgba8> px, Span<byte> dst)
     {
         int aMin = 255, aMax = 0;
         for (int i = 0; i < 16; i++)
@@ -122,31 +122,31 @@ internal static class BcnEncode
     /// endpoint line. Fails if the index mapping, palette order, or bit packing drifts.</summary>
     internal static bool SelfCheck(ExtenderLog log)
     {
-        Span<Rgba32> rgba = stackalloc Rgba32[16];
+        Span<Rgba8> rgba = stackalloc Rgba8[16];
         Span<byte> blk = stackalloc byte[16];
-        Span<Rgba32> outPx = stackalloc Rgba32[16];
+        Span<Rgba8> outPx = stackalloc Rgba8[16];
 
         // The codecs read the engine's raster by reinterpreting it, so a texel has to be exactly its four
         // bytes in upload order and a three-byte one exactly its three: a padding byte would shear the image.
         Span<byte> raw = stackalloc byte[] { 1, 2, 3, 4, 5, 6, 7, 8 };
-        ReadOnlySpan<Rgba32> asRgba = MemoryMarshal.Cast<byte, Rgba32>(raw);
-        ReadOnlySpan<Rgb24> asRgb = MemoryMarshal.Cast<byte, Rgb24>(raw);
-        bool cast = asRgba.Length == 2 && asRgba[0] == new Rgba32(1, 2, 3, 4) && asRgba[1] == new Rgba32(5, 6, 7, 8)
-                 && asRgb.Length == 2 && asRgb[0] == new Rgb24(1, 2, 3) && asRgb[1] == new Rgb24(4, 5, 6);
+        ReadOnlySpan<Rgba8> asRgba = MemoryMarshal.Cast<byte, Rgba8>(raw);
+        ReadOnlySpan<Rgb8> asRgb = MemoryMarshal.Cast<byte, Rgb8>(raw);
+        bool cast = asRgba.Length == 2 && asRgba[0] == new Rgba8(1, 2, 3, 4) && asRgba[1] == new Rgba8(5, 6, 7, 8)
+                 && asRgb.Length == 2 && asRgb[0] == new Rgb8(1, 2, 3) && asRgb[1] == new Rgb8(4, 5, 6);
 
         // Solid colour + solid alpha: both endpoints collapse, every pixel decodes to the quantized colour.
-        rgba.Fill(new Rgba32(96, 160, 224, 200));
+        rgba.Fill(new Rgba8(96, 160, 224, 200));
         EncodeLevel(MemoryMarshal.AsBytes(rgba), 4, 4, true, blk);
         DecodeBc3(blk, outPx);
         bool ok = cast;
-        var want = new Rgba32((byte)((96 >> 3) * 255 / 31), (byte)((160 >> 2) * 255 / 63), (byte)((224 >> 3) * 255 / 31), 200);
+        var want = new Rgba8((byte)((96 >> 3) * 255 / 31), (byte)((160 >> 2) * 255 / 63), (byte)((224 >> 3) * 255 / 31), 200);
         for (int i = 0; i < 16; i++) ok &= outPx[i] == want;
 
         // Black-to-white gradient with a ramping alpha: every decoded texel within one palette step.
         for (int i = 0; i < 16; i++)
         {
             byte v = (byte)(i * 17);
-            rgba[i] = new Rgba32(v, v, v, (byte)(255 - i * 16));
+            rgba[i] = new Rgba8(v, v, v, (byte)(255 - i * 16));
         }
         EncodeLevel(MemoryMarshal.AsBytes(rgba), 4, 4, true, blk);
         DecodeBc3(blk, outPx);
@@ -167,7 +167,7 @@ internal static class BcnEncode
         {
             bool leaf = i < 8;
             byte v = leaf ? (byte)40 : (byte)255;
-            rgba[i] = new Rgba32(v, v, v, leaf ? (byte)255 : (byte)0);
+            rgba[i] = new Rgba8(v, v, v, leaf ? (byte)255 : (byte)0);
         }
         EncodeLevel(MemoryMarshal.AsBytes(rgba), 4, 4, true, blk);
         DecodeBc3(blk, outPx);
@@ -188,7 +188,7 @@ internal static class BcnEncode
     }
 
     /// <summary>Spec-faithful BC3 decode of one block, for the self-check only.</summary>
-    private static void DecodeBc3(ReadOnlySpan<byte> blk, Span<Rgba32> outPx)
+    private static void DecodeBc3(ReadOnlySpan<byte> blk, Span<Rgba8> outPx)
     {
         int a0 = blk[0], a1 = blk[1];
         ulong aIdx = 0;
@@ -200,7 +200,7 @@ internal static class BcnEncode
             int ai = (int)((aIdx >> (i * 3)) & 7);
             byte a = (byte)(ai == 0 ? a0 : ai == 1 ? a1 : ((8 - ai) * a0 + (ai - 1) * a1) / 7);
             int ci = (int)((cIdx >> (i * 2)) & 3);
-            outPx[i] = new Rgba32(Lerp(ci, Chan(c0, 0), Chan(c1, 0)), Lerp(ci, Chan(c0, 1), Chan(c1, 1)),
+            outPx[i] = new Rgba8(Lerp(ci, Chan(c0, 0), Chan(c1, 0)), Lerp(ci, Chan(c0, 1), Chan(c1, 1)),
                                   Lerp(ci, Chan(c0, 2), Chan(c1, 2)), a);
         }
     }

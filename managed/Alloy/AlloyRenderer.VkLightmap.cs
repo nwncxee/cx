@@ -145,7 +145,7 @@ public sealed unsafe partial class AlloyRenderer
         if (!cover)
         {
             // the scratch cube as this step's slot, filtered as GL's bake filters its one cube (LightmapBake.BakeLight)
-            blk.Light[cube] = light;
+            blk.Light[cube] = new CubeCaster(new Vector3(light.X, light.Y, light.Z), light.W);
             blk.LocalPlane = new Vector2(MathF.Max(AlloyLights.ShadowNearWorld, CasterPass.CubeNearPlane), 1f / cubeSize);
             blk.LocalSoft = new Vector4(AlloyLights.ShadowSoft, AlloyLights.ShadowNearWorld, 0f, 0f);
             blk.LocalFloor = AlloyLights.ShadowFloor;

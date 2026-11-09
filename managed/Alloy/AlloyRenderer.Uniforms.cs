@@ -337,7 +337,7 @@ public sealed unsafe partial class AlloyRenderer
         if (CasterPass.CubesFresh)
         {
             int n = CasterPass.CubeCount;
-            MemoryMarshal.Cast<CubeCaster, Vector4>(CasterPass.CubeLight.AsSpan(0, n)).CopyTo((Span<Vector4>)blk->Light);
+            CasterPass.CubeLight.AsSpan(0, n).CopyTo((Span<CubeCaster>)blk->Light);
             for (int i = 0; i < n; i++) { blk->DynPage[i].Value = CasterPass.CubeDynPage[i]; blk->Fade[i].Value = CasterPass.CubeFade[i]; }
             blk->LocalPlane = new Vector2(CasterPass.CubeNearPlane, 1f / CasterPass.CubeFaceSize);
         }
