@@ -54,10 +54,8 @@ internal static unsafe partial class OwnedTextures
     /// Default = it resolves to nothing the race knows.</summary>
     internal readonly record struct TexSource(ushort ResType, uint R0, uint R1, uint R2, uint R3);
 
-    /// <summary>Where a name resolves now; the self-check swaps in its own table.</summary>
-    private static delegate*<byte*, TexSource> _sourceOf = &EngineSource;
-
-    private static TexSource EngineSource(byte* name)
+    /// <summary>Where <paramref name="name"/> resolves now.</summary>
+    private static TexSource SourceOf(byte* name)
     {
         ushort rt = TexLoad.Winner(name, out _, out IntPtr entry);
         if (rt == 0) return default;
@@ -105,7 +103,7 @@ internal static unsafe partial class OwnedTextures
             W = b.Width, H = b.Height, Bpp = b.Bpp,
             Compressed = b.CompressedSize, NumX = nx, NumY = ny,
             Alpha = b.AlphaMean,
-            Source = _sourceOf(NameOf(tex)),
+            Source = SourceOf(NameOf(tex)),
         };
     }
 
@@ -117,7 +115,7 @@ internal static unsafe partial class OwnedTextures
     {
         if (_znam == null || !AurTex.IsBasic(tex) || new CAurTextureBasic(tex).ResolvedName == 0) return false;   // the resolved name is empty until LoadImage fills it: no identity yet
         ulong k0 = Key(tex, 0);
-        if (!WarmMeta(k0, NameOf(tex), out TexMeta m)) { _cacheMisses++; return false; }
+        if (!WarmMeta(k0, SourceOf(NameOf(tex)), out TexMeta m)) { _cacheMisses++; return false; }
         int cells = m.NumX * m.NumY;
         if (cells <= 0 || cells > 4096) return false;
         uint* names = stackalloc uint[cells > 64 ? 1 : cells];
@@ -147,8 +145,8 @@ internal static unsafe partial class OwnedTextures
         return true;
     }
 
-    /// <summary>What the cold build of <paramref name="k0"/> left, for a warm build of <paramref name="name"/>.</summary>
-    private static bool WarmMeta(ulong k0, byte* name, out TexMeta m) => _meta.TryGetValue(k0, out m);
+    /// <summary>What the cold build of <paramref name="k0"/> left, for a warm build of a name that resolves to <paramref name="now"/>.</summary>
+    private static bool WarmMeta(ulong k0, in TexSource now, out TexMeta m) => _meta.TryGetValue(k0, out m);
 
     /// <summary>The field writes alone, so the self-check can run them over a stand-in object.</summary>
     private static void FillWarm(IntPtr tex, IntPtr names, in TexMeta m)

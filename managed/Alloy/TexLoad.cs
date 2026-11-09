@@ -180,7 +180,7 @@ internal static unsafe partial class TexLoad
         table = entry = IntPtr.Zero;
         Span<IntPtr> tables = stackalloc IntPtr[FormatOrder.Length];
         Span<IntPtr> entries = stackalloc IntPtr[FormatOrder.Length];
-        int* kinds = stackalloc int[FormatOrder.Length];
+        Span<int> kinds = stackalloc int[FormatOrder.Length];
         IntPtr resman = ResLocate.ResMan;
         if (resman == IntPtr.Zero) return 0;
         for (int f = 0; f < FormatOrder.Length; f++)
@@ -191,7 +191,7 @@ internal static unsafe partial class TexLoad
                 if (EngineFn.ResManGetKeyEntry(resman, name, FormatOrder[f], tp, ep, 0) == 0) continue;
             kinds[f] = new CExoKeyTable(tables[f]).Kind;
         }
-        int won = Pick(new ReadOnlySpan<int>(kinds, FormatOrder.Length));
+        int won = Pick(kinds);
         if (won < 0) return 0;
         table = tables[won]; entry = entries[won];
         return FormatOrder[won];
