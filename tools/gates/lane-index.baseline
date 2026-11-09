@@ -17,7 +17,6 @@
 4 managed/Alloy/Db/DbSelfCheck.cs
 15 managed/Alloy/Db/DrawRecipe.cs
 1 managed/Alloy/Db/HitTest.Fixture.cs
-3 managed/Alloy/Db/MeshArena.cs
 2 managed/Alloy/Db/MeshArena.Dyn.cs
 14 managed/Alloy/Db/MeshArena.Host.cs
 2 managed/Alloy/Db/PartTree.cs
@@ -52,10 +51,9 @@
 4 managed/Alloy/Mdl/MdlBinaryPayload.cs
 15 managed/Alloy/Mdl/MdlPost.cs
 7 managed/Alloy/MdlParseCheck.cs
-17 managed/Alloy/MeshChart.cs
+14 managed/Alloy/MeshChart.cs
 4 managed/Alloy/MeshChart.Ledger.cs
 16 managed/Alloy/MeshChart.SelfCheck.cs
-42 managed/Alloy/MeshSimplify.cs
 8 managed/Alloy/MovieFrame.cs
 2 managed/Alloy/OwnedTextures.cs
 1 managed/Alloy/Pass/AreaBorder.cs
