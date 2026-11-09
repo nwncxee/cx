@@ -41,21 +41,24 @@ internal static partial class GpuGolden
             vk.GenerateMips(img);
             return true;
         });
+        int deviceRed = device == null ? 0 : CutBrightest(device, side);
         if (device != null)
-            check.Expect(CutBrightest(device, side) > CutLeafLimit,
-                $"cut-out mips: the driver's own level {CutLevel} keeps the leaf's red ({CutBrightest(device, side)}), so this "
+            check.Expect(deviceRed > CutLeafLimit,
+                $"cut-out mips: the driver's own level {CutLevel} keeps the leaf's red ({deviceRed}), so this "
               + "fixture does not reproduce the darkening the rebuild is for");
 
         // When the owned upload builds the sheet's chain instead
         // Then every kept texel at that level is the leaf's own colour, and the card keeps its share of texels
         byte[]? own = CutLevelRgba(vk, check, log, "owned chain", levels,
                                    img => OwnedTextures.MirrorRasterChain(vk, 0, img, sheet, CutSide, CutSide, levels));
+        int ownRed = own == null ? 0 : CutBrightest(own, side);
+        float ownKept = own == null ? 0f : CutKept(own);
         if (own != null)
         {
-            check.Expect(CutBrightest(own, side) <= CutLeafLimit,
-                $"cut-out mips: a kept texel of the owned chain's level {CutLevel} is red {CutBrightest(own, side)}, past the leaf's {CutLeafR}");
-            check.Expect(Math.Abs(CutKept(own) - CutCoverage) <= 0.1f,
-                $"cut-out mips: level {CutLevel} keeps {CutKept(own):F2} of its texels, not about {CutCoverage:F2}");
+            check.Expect(ownRed <= CutLeafLimit,
+                $"cut-out mips: a kept texel of the owned chain's level {CutLevel} is red {ownRed}, past the leaf's {CutLeafR}");
+            check.Expect(Math.Abs(ownKept - CutCoverage) <= 0.1f,
+                $"cut-out mips: level {CutLevel} keeps {ownKept:F2} of its texels, not about {CutCoverage:F2}");
         }
 
         // Given a sheet with no holes at all
@@ -68,20 +71,25 @@ internal static partial class GpuGolden
                      "cut-out mips: a sheet with no holes was given a chain of its own");
         vk.Destroy(plain);
 
-        CutoutStoredSelfCheck(vk, check, log, sheet, levels, side);
+        CutoutStoredSelfCheck(vk, check, log, sheet, levels, side, out int storedRed, out int bc3Red);
+        log.Info($"GpuGolden: cut-out mips, level {CutLevel} kept red {ownRed} against the driver's {deviceRed} over a leaf of "
+               + $"{CutLeafR}, coverage {ownKept:F2}; stored BC3 {storedRed}, rewritten {bc3Red}");
     }
 
     /// <summary>The same sheet as a file's stored BC3 chain, box-filtered over its holes the way a texture tool
     /// leaves it: the stored mips read pale through the driver's decoder, the rewritten ones do not.</summary>
-    private static void CutoutStoredSelfCheck(VkBackend vk, Checker check, ExtenderLog log, byte[] sheet, int levels, int side)
+    private static void CutoutStoredSelfCheck(VkBackend vk, Checker check, ExtenderLog log, byte[] sheet, int levels, int side,
+                                              out int storedRed, out int bc3Red)
     {
+        bc3Red = 0;
         byte[] stored = CutStoredBc3(sheet, levels);
         var asStored = new byte[side * side * 4];
         long at = 0;
         for (int l = 0, w = CutSide; l < CutLevel; l++, w >>= 1) at += BcnEncode.LevelSize(w, w, true);
         BcnDecode.Unpack(stored.AsSpan((int)at, BcnEncode.LevelSize(side, side, true)), side, side, DdsReader.Fmt.Bc3, asStored);
-        check.Expect(CutBrightest(asStored, side) > CutLeafLimit,
-            $"cut-out mips: the stored BC3 level {CutLevel} keeps the leaf's red ({CutBrightest(asStored, side)}), so the stored "
+        storedRed = CutBrightest(asStored, side);
+        check.Expect(storedRed > CutLeafLimit,
+            $"cut-out mips: the stored BC3 level {CutLevel} keeps the leaf's red ({storedRed}), so the stored "
           + "chain does not reproduce the darkening either");
 
         byte[] rewritten = (byte[])stored.Clone();
@@ -90,8 +98,9 @@ internal static partial class GpuGolden
         if (blocks == null) return;
         var got = new byte[side * side * 4];
         BcnDecode.Unpack(blocks, side, side, DdsReader.Fmt.Bc3, got);
-        check.Expect(CutBrightest(got, side) <= CutLeafLimit,
-            $"cut-out mips: a kept texel of the uploaded BC3 level {CutLevel} is red {CutBrightest(got, side)}, past the leaf's {CutLeafR}");
+        bc3Red = CutBrightest(got, side);
+        check.Expect(bc3Red <= CutLeafLimit,
+            $"cut-out mips: a kept texel of the uploaded BC3 level {CutLevel} is red {bc3Red}, past the leaf's {CutLeafR}");
     }
 
     /// <summary>Level <see cref="CutLevel"/> of an RGBA8 texture <paramref name="fill"/> filled, read back through
