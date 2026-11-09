@@ -347,6 +347,7 @@ internal static unsafe class RadialIcons
     public static void SelfCheck(ExtenderLog log)
     {
         IconFrames.SelfCheck(log);
+        IconFrames.SelfCheckDevTga(log);
         if (AurTex.Ready) { log.Info("RadialIcons.SelfCheck: skipped (AurTex armed -- the fake walk would count refusals)"); return; }
         var check = new Checker(log);
 

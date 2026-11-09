@@ -119,7 +119,8 @@ internal static unsafe partial class IconFrames
     }
 
     /// <summary>The formats to read, in turn, for a name whose race went to <paramref name="winner"/> (0 = unknown).</summary>
-    internal static ReadOnlySpan<ushort> ReadOrder(ushort winner) => [DdsResType, TgaResType];
+    internal static ReadOnlySpan<ushort> ReadOrder(ushort winner) =>
+        winner == TgaResType ? [TgaResType, DdsResType] : [DdsResType, TgaResType];
 
     private static Frame FromDds(byte[] dds, out string? why)
     {

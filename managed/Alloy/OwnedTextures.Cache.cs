@@ -145,8 +145,16 @@ internal static unsafe partial class OwnedTextures
         return true;
     }
 
-    /// <summary>What the cold build of <paramref name="k0"/> left, for a warm build of a name that resolves to <paramref name="now"/>.</summary>
-    private static bool WarmMeta(ulong k0, in TexSource now, out TexMeta m) => _meta.TryGetValue(k0, out m);
+    /// <summary>What the cold build of <paramref name="k0"/> left, while its name still resolves to <paramref name="now"/>, the
+    /// file that build read. The engine re-reads a loose folder whose files change, so a TGA dropped into development over
+    /// a BIF DDS moves the name: its record goes, the engine builds it cold, and that build's capture records the TGA.</summary>
+    private static bool WarmMeta(ulong k0, in TexSource now, out TexMeta m)
+    {
+        if (!_meta.TryGetValue(k0, out m)) return false;
+        if (m.Source == now) return true;
+        _meta.Remove(k0);
+        return false;
+    }
 
     /// <summary>The field writes alone, so the self-check can run them over a stand-in object.</summary>
     private static void FillWarm(IntPtr tex, IntPtr names, in TexMeta m)
