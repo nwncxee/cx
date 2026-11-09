@@ -14,7 +14,7 @@ namespace CX.Services.Nui;
 /// suffix bump gets past the per-window image cache. <see cref="SymbolMap.NkLoadImg"/> composites the layers into a
 /// TGA under a synthetic resref the <see cref="SymbolMap.ExoResManGet"/> hook answers once. Cold, so it may allocate.
 /// </summary>
-internal static unsafe class NuiItemIcons
+internal static unsafe partial class NuiItemIcons
 {
     private const ushort ResAny = ushort.MaxValue;
     private const int RefLen = RadialIcons.ResRefLen, LogCap = 20;
@@ -588,6 +588,16 @@ internal static unsafe class NuiItemIcons
             Blend(w * h);
         }
         ((delegate* unmanaged<byte*, int, int, int, int, int, void>)*_releaseRaster)(px, w, h, bpp, size, container);
+    }
+
+    /// <summary>Whether a plain layer is read from its DDS: true when the race gives the layer's name to a DDS.</summary>
+    internal static bool LayerFromDds(ushort winner) => false;
+
+    /// <summary>A DDS layer's texels, RGBA with R in the low byte, rows as the engine uploads them. Null = not a DDS this decodes.</summary>
+    internal static uint[]? DdsLayer(byte[] dds, out int w, out int h)
+    {
+        w = h = 0;
+        return null;
     }
 
     /// <summary>The first layer sets the canvas; a later one of another size is left out, loudly.</summary>
