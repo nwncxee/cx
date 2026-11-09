@@ -35,7 +35,7 @@ public sealed unsafe partial class AlloyRenderer
         /// <see cref="PlH"/>; <see cref="PlOn"/> = this frame's chain holds the mirror at <see cref="PlZ"/>.</summary>
         public ImageId PlCol, PlDepth, PlMip;
         public int PlW, PlH, PlLevels;
-        public bool PlOn, PlFailed, PlLive, PlCulled;
+        public bool PlOn, PlFailed, PlLive, PlCulled, PlSourceSaid;
         public float PlZ;
         public SamplerId Point, Trilinear;
         public PipelineId TracePipe, ResPipe, HistPipe;
@@ -163,8 +163,7 @@ public sealed unsafe partial class AlloyRenderer
         {
             s.PlLive = true;
             log.Always($"AlloyRenderer: the Vulkan planar mirror is LIVE -- the opaque set mirrored across the ground at the "
-                     + $"player's feet into {s.PlW}x{s.PlH}, {s.PlLevels} mips, drawn from "
-                     + (s.PlCulled ? "the cull's own mirror phase" : "the staged opaque list (the cull stood down)"));
+                     + $"player's feet into {s.PlW}x{s.PlH}, {s.PlLevels} mips");
         }
     }
 
@@ -336,7 +335,14 @@ public sealed unsafe partial class AlloyRenderer
             int arena0 = c.ArenaUsed;
             var b = new VkBound { Fmt = -1, Tex = -1 };
             VkPassStart(side, pw, ph);
-            s.PlCulled = indirect;
+            if (!s.PlSourceSaid || s.PlCulled != indirect)
+            {
+                s.PlSourceSaid = true;
+                s.PlCulled = indirect;
+                log.Always(indirect
+                    ? "AlloyRenderer: the planar mirror draws what its own cull phase kept"
+                    : "AlloyRenderer: the planar mirror draws the staged opaque list -- the cull has nothing staged for this frame");
+            }
             ok = VkIssue(side, ref b, 0, _gOpaqueEnd, new VkRange(false, true, false, false, VkTargets.Forward, false), mVp, pvp,
                          near, far, indirect, CullPassVk.PhaseMirror);
             // alpha 0 where nothing mirrored: the trace keeps its own answer there
