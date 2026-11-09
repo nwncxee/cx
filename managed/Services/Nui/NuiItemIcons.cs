@@ -14,7 +14,7 @@ namespace CX.Services.Nui;
 /// suffix bump gets past the per-window image cache. <see cref="SymbolMap.NkLoadImg"/> composites the layers into a
 /// TGA under a synthetic resref the <see cref="SymbolMap.ExoResManGet"/> hook answers once. Cold, so it may allocate.
 /// </summary>
-internal static unsafe class NuiItemIcons
+internal static unsafe partial class NuiItemIcons
 {
     private const ushort ResAny = ushort.MaxValue;
     private const int RefLen = RadialIcons.ResRefLen, LogCap = 20;
@@ -564,11 +564,24 @@ internal static unsafe class NuiItemIcons
         return palette != null && (uint)row < (uint)rows ? palette[(row << (PaletteRowShift - 2)) + index] : 0;
     }
 
-    /// <summary>One plain layer, uncompressed through the engine's reader (TGA/4PC; a DDS-only one is skipped).</summary>
+    /// <summary>One plain layer: from its DDS when the race gives the name to a DDS, since the engine's uncompressed reader
+    /// skips a DDS and would hand back the TGA beside it, a 1x1 stub for a replacement item icon; else uncompressed through
+    /// the engine's reader (TGA/4PC).</summary>
     private static void AddPlain(ReadOnlySpan<byte> name)
     {
         byte* c = stackalloc byte[RefLen + 1];
         if (RadialIcons.CName(name, c) == 0) return;
+        if (LayerFromDds(CX.Alloy.TexLoad.Winner(c, out _, out _)))
+        {
+            byte[]? dds = CX.Alloy.Db.TexRegistry.ReadResourceBytes(Marshal.PtrToStringAnsi((IntPtr)c) ?? "", ResTypes.Dds, out _);
+            int dw = 0, dh = 0;
+            uint[]? texels = dds == null ? null : DdsLayer(dds, out dw, out dh);
+            if (texels != null)
+            {
+                if (Fit(dw, dh, c)) { texels.CopyTo(_layer!, 0); Blend(dw * dh); }
+                return;
+            }
+        }
         int w, h, bpp, size, container, format;
         float alpha = 0;
         byte* px = (byte*)_getImage((IntPtr)c, &w, &h, &bpp, &size, &container, &format, &alpha, 0);
@@ -588,6 +601,28 @@ internal static unsafe class NuiItemIcons
             Blend(w * h);
         }
         ((delegate* unmanaged<byte*, int, int, int, int, int, void>)*_releaseRaster)(px, w, h, bpp, size, container);
+    }
+
+    /// <summary>Whether a plain layer is read from its DDS: true when the race gives the layer's name to a DDS.</summary>
+    internal static bool LayerFromDds(ushort winner) => winner == ResTypes.Dds;
+
+    /// <summary>A DDS layer's texels, RGBA with R in the low byte, rows as the engine uploads them. Null = not a DDS this decodes.</summary>
+    internal static uint[]? DdsLayer(byte[] dds, out int w, out int h)
+    {
+        w = h = 0;
+        if (!CX.Alloy.DdsReader.Parse(dds, out CX.Alloy.DdsReader.Info info, out _) || !CX.Alloy.BcnDecode.Decodes(info.Format)
+            || info.Faces != 1 || info.Present < 1) return null;
+        int bpp = CX.Alloy.BcnDecode.PixelBytes(info.Format);
+        byte[] px = new byte[info.W * info.H * bpp];
+        CX.Alloy.BcnDecode.Unpack(dds.AsSpan(info.DataOffset), info.W, info.H, info.Format, px);
+        uint[] texels = new uint[info.W * info.H];
+        for (int i = 0; i < texels.Length; i++)
+        {
+            int o = i * bpp;
+            texels[i] = (uint)(px[o] | px[o + 1] << 8 | px[o + 2] << 16 | (bpp == 4 ? px[o + 3] : 255) << 24);
+        }
+        w = info.W; h = info.H;
+        return texels;
     }
 
     /// <summary>The first layer sets the canvas; a later one of another size is left out, loudly.</summary>
@@ -685,6 +720,7 @@ internal static unsafe class NuiItemIcons
     /// slot * 256 + colour, with a stale buffer grown only to its highest set slot. The two hooks and the icon walk are live-unverified here.</summary>
     internal static void SelfCheck(ExtenderLog log)
     {
+        SelfCheckDevTga(log);
         var check = new Checker(log);
         byte* s = stackalloc byte[32];
         uint oid;
