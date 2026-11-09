@@ -19,7 +19,13 @@ public sealed unsafe partial class CasterPass
         // ...and the cutout stage really discards, at the engine's own threshold. A masked batch drawn by a
         // stage that lost the test writes the whole quad into the shadow map, which is the artefact the
         // masked path exists to remove and looks exactly like the pass working.
-        bool ok = CastMaskFs.Contains("if (t <= uAlphaCut) discard;")
+        // A published cube slot IS the vec4 the receiver samples: position in xyz, reach in w. A record whose
+        // fields reordered or gained padding would upload a light's reach as a coordinate and misplace every
+        // cube shadow in the frame, with nothing to error on.
+        Span<CubeCaster> one = stackalloc CubeCaster[1] { new CubeCaster(new Vector3(7f, 8f, 9f), 11f) };
+        ReadOnlySpan<Vector4> asVec4 = MemoryMarshal.Cast<CubeCaster, Vector4>(one);
+        bool ok = asVec4.Length == 1 && asVec4[0] == new Vector4(7f, 8f, 9f, 11f)
+                  && CastMaskFs.Contains("if (t <= uAlphaCut) discard;")
                   && CastMaskFs.Contains("uniform float uAlphaCut;")
                   && CastMaskFs.Contains("uniform int uDither;") && CastMaskHFs.Contains("uniform int uDither;")
                   // #363: the stochastic discard, on the SAME sampled alpha, in both mask stages

@@ -56,7 +56,6 @@
 2 managed/Alloy/OwnedTextures.cs
 1 managed/Alloy/Pass/AreaBorder.cs
 1 managed/Alloy/Pass/CasterPass.cs
-52 managed/Alloy/Pass/CasterPass.Cube.cs
 6 managed/Alloy/Pass/CasterPass.SelfCheck.cs
 6 managed/Alloy/Pass/CasterPass.Sun.cs
 3 managed/Alloy/Pass/FrameTap.Vk.cs
