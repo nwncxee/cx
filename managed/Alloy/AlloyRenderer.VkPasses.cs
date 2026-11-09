@@ -515,11 +515,11 @@ public sealed unsafe partial class AlloyRenderer
     /// cut, the blend pair, the depth rule, the wash offset, the cull. Water sits out (its pass is not on Vulkan); a
     /// content pair draws through the plain lit program until content programs port. False only on a refused bind.</summary>
     private static bool VkIssue(CommandList side, ref VkBound b, int from, int to, VkRange r, in Matrix4x4 vp, int* viewport,
-                                float near, float far, bool indirect)
+                                float near, float far, bool indirect, int phase = CullPassVk.PhaseColour)
     {
         VkColourState s = _vkc;
         int viz = _capturing ? 0 : _lightViz;
-        BufferId slots = indirect ? CullPassVk.Slots(CullPassVk.PhaseColour) : s.Slots;
+        BufferId slots = indirect ? CullPassVk.Slots(phase) : s.Slots;
         var push = new VkBatchPush { Solid = r.Interior ? 1 : 0 };
         for (int g = from; g < to; g++)
         {
@@ -552,7 +552,7 @@ public sealed unsafe partial class AlloyRenderer
             // CX-273: fold the layer (a surface pass), or drop a decal batch's fragments it already took
             push.Decal = r.Decal == DecalLayer.ModeSkip && !_gDecal[g] ? DecalLayer.ModeNone : r.Decal;
             if (!VkBatch(side, ref b, p, g, r.Targets, blendKey, depth, VkRaster(g, wash), slots, lit ? 0 : _gTex[g], ref push,
-                         vp, viewport, near, far, CullPassVk.PhaseColour, indirect)) continue;
+                         vp, viewport, near, far, phase, indirect)) continue;
             Counters._batches++;
             Counters._draws += _gLen[g];
             if (!r.Interior) Counters._drawsByClass[cls] += _gLen[g];

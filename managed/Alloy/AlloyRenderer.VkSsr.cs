@@ -35,7 +35,7 @@ public sealed unsafe partial class AlloyRenderer
         /// <see cref="PlH"/>; <see cref="PlOn"/> = this frame's chain holds the mirror at <see cref="PlZ"/>.</summary>
         public ImageId PlCol, PlDepth, PlMip;
         public int PlW, PlH, PlLevels;
-        public bool PlOn, PlFailed, PlLive;
+        public bool PlOn, PlFailed, PlLive, PlCulled;
         public float PlZ;
         public SamplerId Point, Trilinear;
         public PipelineId TracePipe, ResPipe, HistPipe;
@@ -163,7 +163,8 @@ public sealed unsafe partial class AlloyRenderer
         {
             s.PlLive = true;
             log.Always($"AlloyRenderer: the Vulkan planar mirror is LIVE -- the opaque set mirrored across the ground at the "
-                     + $"player's feet into {s.PlW}x{s.PlH}, {s.PlLevels} mips (the whole opaque list draws; no mirror re-cull on Vulkan)");
+                     + $"player's feet into {s.PlW}x{s.PlH}, {s.PlLevels} mips, drawn from "
+                     + (s.PlCulled ? "the cull's own mirror phase" : "the staged opaque list (the cull stood down)"));
         }
     }
 
@@ -303,9 +304,9 @@ public sealed unsafe partial class AlloyRenderer
     internal static void VkSsrRevoke() => _vkSsr.HistValid = false;
 
     /// <summary>The planar mirror -- the opaque set mirrored across the ground at the player's feet into a
-    /// 1/<c>light.ssrplanarres</c> target, winding flipped, the lit stage dropping what lies under the plane.
-    /// False = no mirror this frame. ponytail: one plane, the player's; no mirror re-cull, the whole opaque list
-    /// draws (a mirror phase in the cull pass is the upgrade).</summary>
+    /// 1/<c>light.ssrplanarres</c> target, winding flipped, the lit stage dropping what lies under the plane, and the
+    /// cull's own mirror phase deciding what is issued. False = no mirror this frame. ponytail: one plane, the
+    /// player's.</summary>
     private static bool VkPlanarPass(VkBackend vk, CommandList cl, VkSsrState s, in Matrix4x4 vp, int* viewport, float near,
                                      float far, ExtenderLog log)
     {
@@ -328,13 +329,16 @@ public sealed unsafe partial class AlloyRenderer
         bool ok;
         try
         {
+            // the mirror's own verdicts, recorded ahead of the draws that read them; a stood-down cull draws the list
+            bool indirect = CullPassVk.RecordMirror(cl, mVp, _eyePos, z, _lodScale / div);
             CommandList side = c.Side!;
             side.Reset();
             int arena0 = c.ArenaUsed;
             var b = new VkBound { Fmt = -1, Tex = -1 };
             VkPassStart(side, pw, ph);
+            s.PlCulled = indirect;
             ok = VkIssue(side, ref b, 0, _gOpaqueEnd, new VkRange(false, true, false, false, VkTargets.Forward, false), mVp, pvp,
-                         near, far, false);
+                         near, far, indirect, CullPassVk.PhaseMirror);
             // alpha 0 where nothing mirrored: the trace keeps its own answer there
             ReadOnlySpan<ColorAttachment> colors = [new(s.PlCol, 0, 0, LoadOp.Clear, StoreOp.Store, default)];
             VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(s.PlDepth, 0, 0, LoadOp.Clear, StoreOp.DontCare, WorldDepth.Clear)));
