@@ -1199,6 +1199,10 @@ public static unsafe partial class DbAnim
         SceneDb.Scenes.Free(scene);
     }
 
+    /// <summary>Vertex 0 of a part's dynamic UV buffer, re-read each time so a morph that re-took the buffer
+    /// is not read through a stale span.</summary>
+    private static Vector2 Uv0(int part) => _dynUv[part].Span[0];
+
     /// <summary>An animmesh whose <c>animtverts</c> pool is its ONLY pool scrolls its UVs: the frame index,
     /// the lerp between two frames and the weight blend, over a node with no position frames at all -- which
     /// is the shape the load screen's smoke has, and the one that used to morph nothing.</summary>
@@ -1212,25 +1216,24 @@ public static unsafe partial class DbAnim
         PlayAnimation(obj, "smoke", 1f, RunFlags.NoFadeIn, 0f);
         _rTime[Slot(obj.Index, 0)] = 0f;
         Pose(obj, m.Anims[0], Slot(obj.Index, 0), 1f);
-        float* uv = (float*)_dynUv[part];
-        check.Expect(uv != null, "an animmesh with UV frames and no position frames still morphs");
-        if (uv != null)
+        check.Expect(_dynUv[part].Length != 0, "an animmesh with UV frames and no position frames still morphs");
+        if (_dynUv[part].Length != 0)
         {
-            check.Expect(MathF.Abs(uv[0] - 0f) < 1e-4f && MathF.Abs(uv[1] - 0f) < 1e-4f,
+            check.Expect(MathF.Abs(Uv0(part).X - 0f) < 1e-4f && MathF.Abs(Uv0(part).Y - 0f) < 1e-4f,
                          "...frame 0 of the UV pool at t=0");
             _rTime[Slot(obj.Index, 0)] = 0.5f;
             Pose(obj, m.Anims[0], Slot(obj.Index, 0), 1f);
-            check.Expect(MathF.Abs(uv[0] - 0.5f) < 1e-4f, "...halfway between frames 0 and 1 at t=0.5");
+            check.Expect(MathF.Abs(Uv0(part).X - 0.5f) < 1e-4f, "...halfway between frames 0 and 1 at t=0.5");
             _rTime[Slot(obj.Index, 0)] = 5f;
             Pose(obj, m.Anims[0], Slot(obj.Index, 0), 1f);
-            check.Expect(MathF.Abs(uv[0] - 1f) < 1e-4f, "...and the LAST frame past the end, never past it");
+            check.Expect(MathF.Abs(Uv0(part).X - 1f) < 1e-4f, "...and the LAST frame past the end, never past it");
             _rTime[Slot(obj.Index, 0)] = 0f;
             Pose(obj, m.Anims[0], Slot(obj.Index, 0), 0.5f);
-            check.Expect(MathF.Abs(uv[0] - 0.5f) < 1e-4f, "a half-weight run blends the UVs, as it does positions");
+            check.Expect(MathF.Abs(Uv0(part).X - 0.5f) < 1e-4f, "a half-weight run blends the UVs, as it does positions");
         }
 
         Drop(obj);
-        check.Expect(_dynUv[part] == 0, "the UV buffer goes back with the part's dynamic state");
+        check.Expect(_dynUv[part].Length == 0, "the UV buffer goes back with the part's dynamic state");
         SceneDb.Scenes.Free(scene);
     }
 

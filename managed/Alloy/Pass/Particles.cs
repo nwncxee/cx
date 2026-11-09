@@ -195,8 +195,8 @@ internal static unsafe partial class Particles
     private static bool _off;
     /// <summary>The CPU shadow of the record buffer, addressed by <see cref="Emit.RecBase"/>. The build
     /// writes here; only the blocks whose hash moved are sent to GL.</summary>
-    private static ParticleRec* _recs;
-    private static int _recsCap, _recTop;
+    private static NativeBuffer<ParticleRec> _recs;
+    private static int _recTop;
     /// <summary>Record indices in DRAW order, one per particle. The WRITE of this list is the GPU's, so the
     /// CPU shadow is only the <c>/particles sort 0</c> path's staging area -- kept because that dial is the
     /// escape hatch for a driver where the compute program does not build.</summary>
@@ -360,7 +360,7 @@ internal static unsafe partial class Particles
             // stale one -- the compute pass walks spans by group membership, not by what was written.
             _span[i * 4] = 0; _span[i * 4 + 1] = 0; _span[i * 4 + 2] = (uint)at; _span[i * 4 + 3] = 0;
             if (!EnsureBlock(ref e, _sCount[k])) { _wrote[i] = 0; continue; }
-            Span<ParticleRec> block = new Span<ParticleRec>(_recs, _recsCap).Slice(e.RecBase, e.RecCap);
+            Span<ParticleRec> block = _recs.Span.Slice(e.RecBase, e.RecCap);
             int wrote = BuildEmitter(ref e, block, _sCount[k],
                                      camFwd, camQ, axisY, axisX, eye,
                                      lit && _sCls[k] == ClsBlend);
@@ -961,15 +961,12 @@ internal static unsafe partial class Particles
         }
         // The record store is sized off the ALLOCATOR's high-water mark, not off this frame's particle
         // count: blocks are persistent, so an emitter that went off screen still owns its slice.
-        if (_recsCap < _recTop + parts)
+        if (_recs.Length < _recTop + parts)
         {
-            int want = _recsCap > 0 ? _recsCap : MinRecs;
+            int want = _recs.Length > 0 ? _recs.Length : MinRecs;
             while (want < _recTop + parts && want < MaxRecs) want *= 2;
             if (want < _recTop + parts) { ResetBlocks(); return false; }
-            ParticleRec* grown = (ParticleRec*)NativeMemory.Alloc((nuint)((long)want * sizeof(ParticleRec)));
-            if (_recs != null) NativeMemory.Free(_recs);
-            _recs = grown;
-            _recsCap = want;
+            if (!_recs.Take(want)) return false;
             // The new store holds nothing, so every block is stale by construction.
             for (int i = 0; i < _tabN; i++) _tab[i].Hash = 0;
         }
@@ -987,7 +984,7 @@ internal static unsafe partial class Particles
         // Unreachable in practice -- EnsureBuffers already grew the store to _recTop + this frame's whole
         // particle count before the loop, which bounds every bump below. A decline rather than a reset
         // because a reset here would rebase blocks the loop has already written into the index list.
-        if (_recTop + count > _recsCap) { _declined++; _decFull++; return false; }
+        if (_recTop + count > _recs.Length) { _declined++; _decFull++; return false; }
         e.RecBase = _recTop; e.RecCap = count; e.Hash = 0;
         _recTop += count;
         return true;
@@ -1017,9 +1014,9 @@ internal static unsafe partial class Particles
     internal static void ContextLost()
     {
         Forget();
-        if (_recs != null) { NativeMemory.Free(_recs); _recs = null; }
+        _recs.Free();
         if (_idx != null) { NativeMemory.Free(_idx); _idx = null; }
-        _recsCap = 0; _idxCap = 0;
+        _idxCap = 0;
     }
 
     /// <summary>One line for the <c>/particles</c> status and the arm-time log.</summary>

@@ -530,11 +530,11 @@ public sealed unsafe partial class AlloyRenderer
     /// stage is native and GROWS (<c>EnsureBoneSlots</c>) rather than dropping a crowd past the budget;
     /// <c>Counters._boneHigh</c> is the per-report high-water mark that keeps the ceiling counted.</summary>
     internal static uint _boneBuf;
-    internal static BonePalette* _boneStage;
-    internal static int _boneSlots, _boneCap;
+    internal static NativeBuffer<BonePalette> _boneStage;
+    internal static int _boneSlots;
     /// <summary>Last frame's palette, slot for slot beside <see cref="_boneStage"/> (the two swap
     /// once a frame), for the mover sweep's previous clip position. Streamed only when a skinned mover draws.</summary>
-    internal static BonePalette* _bonePrevStage;
+    internal static NativeBuffer<BonePalette> _bonePrevStage;
     /// <summary>The frame a posed record's palette last differed from the one before it -- the
     /// skinned twin of <c>_recMovedAt</c>, read by the mover pick.</summary>
     private static readonly int[] _poseMovedAt = new int[MaxOwned];

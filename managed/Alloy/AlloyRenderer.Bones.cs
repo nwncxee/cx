@@ -44,7 +44,7 @@ public sealed unsafe partial class AlloyRenderer
         {
             if (!EnsureBoneSlots(_boneTop + 1)) return -1;
             s = _boneTop++;
-            if (s >= _boneOwner.Length) Array.Resize(ref _boneOwner, _boneCap);
+            if (s >= _boneOwner.Length) Array.Resize(ref _boneOwner, _boneStage.Length);
         }
         _boneOwner[s] = owner;
         return s;
@@ -66,7 +66,7 @@ public sealed unsafe partial class AlloyRenderer
         // CX-26: once a FRAME -- a second pose in the same frame (a reflection subframe) re-solves the same
         // animation state and must not make it its own history.
         bool roll = _poseRollSeq != _frameSeq;
-        if (roll) { _poseRollSeq = _frameSeq; BonePalette* t = _boneStage; _boneStage = _bonePrevStage; _bonePrevStage = t; }
+        if (roll) { _poseRollSeq = _frameSeq; (_boneStage, _bonePrevStage) = (_bonePrevStage, _boneStage); }
         // CX-120 seam-anim: a DB palette is solved on the game thread, before this swap, so it lives in the
         // DB stage and is copied into whichever buffer THIS frame uploads -- here, the one moment both
         // buffers mean what their names say (Scene/AlloyRenderer.DbBones.cs).
@@ -101,23 +101,14 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>Room for <paramref name="want"/> bone slots, doubling the stage rather than dropping a
     /// creature past a fixed budget. Native memory on purpose: the growth is rare but happens on the render
-    /// thread, where a managed array of this size would hand the collector a gen-2 allocation. The catch is
-    /// the point -- <c>NativeMemory.Realloc</c> THROWS rather than returning null, inside the present hook.</summary>
+    /// thread, where a managed array of this size would hand the collector a gen-2 allocation -- and a grow
+    /// KEEPS the palettes already in the stage, which sticky slots depend on.</summary>
     private static bool EnsureBoneSlots(int want)
     {
-        if (want <= _boneCap) return true;
-        int cap = _boneCap == 0 ? MaxBoneSlots : _boneCap;
+        if (want <= _boneStage.Length) return true;
+        int cap = _boneStage.Length == 0 ? MaxBoneSlots : _boneStage.Length;
         while (cap < want) cap *= 2;
-        BonePalette* next, prev;
-        nuint bytes = (nuint)cap * (nuint)sizeof(BonePalette);
-        try { next = (BonePalette*)NativeMemory.Realloc(_boneStage, bytes); }
-        catch (OutOfMemoryException) { return false; }
-        if (next == null) return false;
-        _boneStage = next;
-        try { prev = (BonePalette*)NativeMemory.Realloc(_bonePrevStage, bytes); }
-        catch (OutOfMemoryException) { return false; }
-        if (prev == null) return false;
-        _bonePrevStage = prev; _boneCap = cap;
-        return true;
+        // History first, so the stage is never longer than the buffer it swaps with.
+        return _bonePrevStage.Grow(cap) && _boneStage.Grow(cap);
     }
 }

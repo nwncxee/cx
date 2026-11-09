@@ -115,8 +115,8 @@ internal static unsafe partial class EmitterSim
     private static int _orderN;
 
     private static byte* _pool;
-    private static IntPtr* _ptrs;
-    private static int _slotCap, _slotTop;
+    private static NativeBuffer<IntPtr> _ptrs;
+    private static int _slotTop;
 
     private static ExtenderLog? _log;
     private static EngineList _bucket;
@@ -332,7 +332,7 @@ internal static unsafe partial class EmitterSim
         for (int i = 0; i < _orderN; i++)
         {
             ref Slot slot = ref _tab[_order[i]];
-            fixed (IntPtr* block = new Span<IntPtr>(_ptrs, _slotCap).Slice(slot.Base))
+            fixed (IntPtr* block = _ptrs.Span[slot.Base..])
                 Particles.Enroll(IntPtr.Zero, slot.Part, TexNameOf(ref slot), IntPtr.Zero, block, slot.Live);
         }
         if (stepping) Reclaim();
@@ -515,17 +515,17 @@ internal static unsafe partial class EmitterSim
 
     private static void EnsureChunkTable()
     {
-        if (_chunkObj.Length >= _slotCap) return;
-        Array.Resize(ref _chunkObj, _slotCap);
-        Array.Resize(ref _chunkIn, _slotCap);
+        if (_chunkObj.Length >= _ptrs.Length) return;
+        Array.Resize(ref _chunkObj, _ptrs.Length);
+        Array.Resize(ref _chunkIn, _ptrs.Length);
     }
 
     /// <summary>Free the chunk objects bound to the records behind pointer-table entries
     /// <c>[from, from + n)</c> -- the slot's block is being dropped, so its pooled gobs go with it.</summary>
     private static void FreeChunks(int from, int n)
     {
-        if (_chunkObj.Length == 0 || _ptrs == null) return;
-        for (int k = from; k < from + n && k < _slotCap; k++)
+        if (_chunkObj.Length == 0 || _ptrs.Length == 0) return;
+        for (int k = from; k < from + n && k < _ptrs.Length; k++)
         {
             int r = RecIndex(_ptrs[k]);
             if ((uint)r >= (uint)_chunkObj.Length || _chunkObj[r].IsNull) continue;
@@ -805,14 +805,15 @@ internal static unsafe partial class EmitterSim
         _slotTop += want;
         // The old block is abandoned rather than freed: the arena is a bump allocator and its only reclaim
         // is the whole-arena reset below, which is exactly the trade Particles' record blocks already make.
-        Span<IntPtr> pt = new Span<IntPtr>(_ptrs, _slotCap).Slice(at, want);
+        Span<IntPtr> all = _ptrs.Span;
+        Span<IntPtr> pt = all.Slice(at, want);
         var records = new Particle((IntPtr)_pool);
         for (int i = 0; i < want; i++) pt[i] = records[at + i].Ptr;
         // Carry the live particles across. A controller animates birthrate and lifespan, so an emitter's
         // ceiling moves while it burns -- and a grow that dropped its population would make a ramping
         // fountain visibly restart, which is the wrong kind of cheap.
         for (int i = 0; i < had; i++)
-            NativeMemory.Copy((void*)_ptrs[from + i], (void*)pt[i], (nuint)EngineLayout.ParticleStride);
+            NativeMemory.Copy((void*)all[from + i], (void*)pt[i], (nuint)EngineLayout.ParticleStride);
         if (slot.Chunk) MoveChunks(from, had, slot.Cap, at);
         slot.Base = at; slot.Cap = want; slot.Live = had;
         return true;
@@ -823,24 +824,23 @@ internal static unsafe partial class EmitterSim
     /// fallback, because the arena being full is our own limit and the period line names it.</summary>
     private static bool Reserve(int want)
     {
-        if (_slotTop + want <= _slotCap) return true;
-        int cap = _slotCap > 0 ? _slotCap : MinSlots;
+        if (_slotTop + want <= _ptrs.Length) return true;
+        int cap = _ptrs.Length > 0 ? _ptrs.Length : MinSlots;
         while (cap < _slotTop + want && cap < MaxSlots) cap <<= 1;
-        if (cap > _slotCap && cap <= MaxSlots)
+        if (cap > _ptrs.Length && cap <= MaxSlots)
         {
-            byte* pool = (byte*)NativeMemory.Alloc((nuint)((long)cap * EngineLayout.ParticleStride));
-            IntPtr* ptrs = (IntPtr*)NativeMemory.Alloc((nuint)((long)cap * sizeof(IntPtr)));
-            NativeMemory.Clear(pool, (nuint)((long)cap * EngineLayout.ParticleStride));
+            byte* pool = (byte*)NativeMemory.AllocZeroed((nuint)cap, (nuint)EngineLayout.ParticleStride);
             // Every live block's records MOVE, so every pointer table entry has to be rewritten -- which is
             // what dropping the whole arena does, at the cost of one frame. Copying instead would mean
             // rebasing each emitter's pointers, for a path that runs a handful of times per session.
-            if (_pool != null) { NativeMemory.Free(_pool); NativeMemory.Free(_ptrs); Empty(); }
-            _pool = pool; _ptrs = ptrs; _slotCap = cap; _slotTop = 0;
+            if (_pool != null) { NativeMemory.Free(_pool); Empty(); }
+            _pool = pool; _slotTop = 0;
+            if (!_ptrs.Take(cap)) return false;
             _log?.Info($"EmitterSim: the particle arena grew to {cap} particles "
                      + $"({(long)cap * EngineLayout.ParticleStride >> 20} MiB) -- one frame of missing particles");
             return want <= cap;
         }
-        if (_slotCap == 0) return false;
+        if (_ptrs.Length == 0) return false;
         Empty();
         _slotTop = 0;
         _poolResets++;
@@ -852,7 +852,7 @@ internal static unsafe partial class EmitterSim
                        + "That ceiling is the draw path's record buffer (Particles.MaxRecs): a particle past it "
                        + "could be stepped but never drawn (pool-reset= on the [emitsim] line counts it)");
         }
-        return want <= _slotCap;
+        return want <= _ptrs.Length;
     }
 
     /// <summary>Drop every emitter's block. The slots survive so their mode/mover verdicts do; only the

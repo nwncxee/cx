@@ -182,8 +182,8 @@ public static unsafe partial class DbAnim
         DanglyDropRig(part);
         int n = Math.Min(mesh.Positions.Length, dn.Constraints.Length);
         if (n <= 0) return;
-        float* dst = DynTake(part, mesh.Positions);
-        if (dst == null) return;
+        Span<Vector3> dst = DynTake(part, mesh.Positions);
+        if (dst.IsEmpty) return;
         VanillaDanglyState? st = _dangly.Stock[part];
         if (st == null || st.Cur.Length != mesh.Positions.Length)
             _dangly.Stock[part] = st = new VanillaDanglyState(mesh.Positions.Length);
@@ -195,10 +195,10 @@ public static unsafe partial class DbAnim
         Quaternion wrot = RotOf(world);
         // ponytail: the snapshot stage is game-thread state the motion sweep reads; on a render thread it
         // would need the arena's publish handoff (MeshArena.WriteDynamic) before that sweep may run off-thread.
-        AlloyRenderer.NoteDanglyPrev(part, dst, n);
+        AlloyRenderer.NoteDanglyPrev(part, dst[..n]);
         float move = VanillaDangly.Run(mesh.Positions, dn.Constraints, dn.Displacement, dn.Tightness, dn.Period,
                                        st, wpos, wrot, DanglyWind(in world, dt, windy), dt,
-                                       new Span<Vector3>(dst, n));
+                                       dst[..n]);
         _dangly.Parts++; _dangly.Stocked++; _dangly.Verts += n;
         AlloyRenderer.NoteDanglyMoved(part, move, Dangly.Still.V);
         if (!(move > 0f)) return;
