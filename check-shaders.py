@@ -638,6 +638,8 @@ def programs(g):
         "weather splash": (g["cx_splash_vs"], g["cx_splash_fs"]),
         "weather motion vectors": (define(g["cx_weather_vs"], "CX_MOTION 1"), g["cx_wx_mot_f"]),
         "motion vectors": (g["cx_fullscreen_v"], g["cx_motioncam_f"]),
+        "fsr sky coverage": (g["cx_fullscreen_v"], g["cx_skycov_f"]),
+        "fsr bare-sky fog": (g["cx_fullscreen_v"], g["cx_skyfog_f"]),
         "mover motion": (g["cx_motion_v"], g["cx_motion_f"]),
         "taa resolve": (g["cx_fullscreen_v"], g["cx_taa_f"]),
         "reactive mask": (g["cx_fullscreen_v"], g["cx_reactive_f"]),

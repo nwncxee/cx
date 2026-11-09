@@ -22,11 +22,11 @@ internal static unsafe class PostChainVk
         public int SkyBand = -1, InvVp = -1, Eye = -1, VFog = -1, VFogVp = -1;
     }
 
-    /// <summary>The resolve's per-pass scalars, pushed rather than staged: the sky's two gates, the bloom strength,
+    /// <summary>The resolve's per-pass scalars, pushed rather than staged: the sky's gates and what tells it, the bloom strength,
     /// the grade, the output dither and the stage view.</summary>
     private struct ResolvePush
     {
-        public int SkyRaw, SkyBare;
+        public int SkyRaw, SkyBare, SkyCover, SkyFogged;
         public float Strength;
         public PostChain.GradeTerms Grade;
         public float Dither;
@@ -40,6 +40,8 @@ internal static unsafe class PostChainVk
         return VkPushTail.Of<ResolvePush>(
             VkPush.Of("int", "uSkyRaw", ref p, ref p.SkyRaw),
             VkPush.Of("int", "uSkyBare", ref p, ref p.SkyBare),
+            VkPush.Of("int", "uSkyCover", ref p, ref p.SkyCover),
+            VkPush.Of("int", "uSkyFogged", ref p, ref p.SkyFogged),
             VkPush.Of("float", "uStrength", ref p, ref p.Strength),
             VkPush.Of("int", "uMode", ref p, ref p.Grade.Mode),
             VkPush.Of("float", "uKnee", ref p, ref p.Grade.Knee),
@@ -129,13 +131,18 @@ internal static unsafe class PostChainVk
                                            ImageId Search = default, ImageId Weights = default,
                                            BufferBinding Storage = default, ImageId React = default, ImageId Wx = default);
 
-    /// <summary>How a post draw meets its target: replacing it, adding to it, or alpha-over it.</summary>
-    internal enum Blend : byte { None, Add, Over }
+    /// <summary>What the resolve tells sky from scene by: the world depth, sky where it is 0, or (<paramref name="Cover"/>)
+    /// a sky coverage from 0 to 1 laid on the colour it grades. <paramref name="Fogged"/>: the fog already lies on bare sky.</summary>
+    internal readonly record struct SkyInput(ImageId Image, bool Cover = false, bool Fogged = false);
+
+    /// <summary>How a post draw meets its target: replacing it, adding to it, alpha-over it, or (<see cref="Fog"/>) scaling it
+    /// by the draw's alpha and adding its colour.</summary>
+    internal enum Blend : byte { None, Add, Over, Fog }
 
     /// <summary>Bloom, then the resolve of <paramref name="hdr"/> into <paramref name="into"/> at
-    /// <paramref name="rect"/>, dithered only when it is the frame's last write; <c>/post viz 4</c> paints <paramref name="vel"/>
+    /// <paramref name="rect"/>, telling sky from scene by <paramref name="sky"/>, dithered only when it is the frame's last write; <c>/post viz 4</c> paints <paramref name="vel"/>
     /// instead. False (logged) when a program or target was refused: the frame has no other way to the screen.</summary>
-    internal static bool Record(VkBackend vk, CommandList cl, ImageId hdr, ImageId depth, ImageId into, bool last,
+    internal static bool Record(VkBackend vk, CommandList cl, ImageId hdr, SkyInput sky, ImageId into, bool last,
                                 int* viewport, int* rect, ImageId vel, ExtenderLog log)
     {
         if (!Ensure(vk, log)) return false;
@@ -166,6 +173,8 @@ internal static unsafe class PostChainVk
         {
             SkyRaw = Post.SkyRaw.V && invVp != default ? 1 : 0,
             SkyBare = invVp == default ? 1 : 0,
+            SkyCover = sky.Cover ? 1 : 0,
+            SkyFogged = sky.Fogged ? 1 : 0,
             OverlayOn = StageResources.VkOverlay.IsNull ? 0 : 1,
             Strength = bloom ? Post.Bloom.V : 0f,
             Grade = PostChain.GradeTerms.Now,
@@ -185,7 +194,7 @@ internal static unsafe class PostChainVk
         cl.PushConstants(VkGlsl.PushTailAt, System.Runtime.InteropServices.MemoryMarshal.AsBytes(new ReadOnlySpan<ResolvePush>(in push)));
         // the velocity viz rides the bloom input: the two views are exclusive by construction
         Draw(cl, s.Resolve!, FormatOf(into), Blend.None, into, LoadOp.Clear, new Rect(rect[0], rect[1], rect[2], rect[3]), at,
-             new Inputs(hdr, motion && !vel.IsNull ? vel : bloom ? s.Bloom[0] : default, depth), log);
+             new Inputs(hdr, motion && !vel.IsNull ? vel : bloom ? s.Bloom[0] : default, sky.Image), log);
         cl.EndLabel();
         if (!s.Said)
         {
@@ -331,13 +340,13 @@ internal static unsafe class PostChainVk
         => _s.Dev is { } vk && vk.DescOf(into, out ImageDesc d) ? d.Fmt : Format.Rgba16F;
 
     /// <summary>One full-screen triangle of <paramref name="p"/> into <paramref name="into"/> at <paramref name="vp"/>,
-    /// its loose block at <paramref name="at"/>, sampling <paramref name="t"/>. Nothing (logged) when the device
-    /// refused the pipeline.</summary>
-    internal static void Draw(CommandList cl, GuiVkProg p, Format f, Blend add, ImageId into, LoadOp load, Rect vp, int at,
+    /// its loose block at <paramref name="at"/>, sampling <paramref name="t"/>. False, with nothing drawn (logged), when
+    /// the device refused the pipeline.</summary>
+    internal static bool Draw(CommandList cl, GuiVkProg p, Format f, Blend add, ImageId into, LoadOp load, Rect vp, int at,
                               in Inputs t, ExtenderLog? log)
     {
         PipelineId pipe = Pipe(p, f, add, log);
-        if (pipe.IsNull) return;
+        if (pipe.IsNull) return false;
         PostVkState s = _s;
         Span<ImageBinding> img = stackalloc ImageBinding[SampledMax];
         Span<ImageBinding> sti = stackalloc ImageBinding[(int)StageResources.DrawImgUnits];
@@ -352,7 +361,7 @@ internal static unsafe class PostChainVk
             {
                 if (!s.EngineSaid) log?.Always($"PostChainVk: post {p.Label} NOT DRAWN -- the frame's uniform arena could not stage the engine block it reads");
                 s.EngineSaid = true;
-                return;
+                return false;
             }
             ubo[nu++] = new(UboSlots.Engine, arena, e, len);
         }
@@ -364,6 +373,7 @@ internal static unsafe class PostChainVk
         cl.BindSet(0, new BindSet(ubo[..nu], sto, img[..n], sti[..ns]));
         cl.Draw(3);
         cl.EndRenderPass();
+        return true;
     }
 
     /// <summary>Sampled images one post draw binds: every sampled binding the set has.</summary>
@@ -551,6 +561,8 @@ internal static unsafe class PostChainVk
         if (add == Blend.Add) d.Blend[0] = new AttachmentBlend(true, BlendFactor.One, BlendFactor.One, BlendFactor.One, BlendFactor.One);
         else if (add == Blend.Over)
             d.Blend[0] = new AttachmentBlend(true, BlendFactor.SrcAlpha, BlendFactor.OneMinusSrcAlpha, BlendFactor.SrcAlpha, BlendFactor.OneMinusSrcAlpha);
+        else if (add == Blend.Fog)
+            d.Blend[0] = new AttachmentBlend(true, BlendFactor.One, BlendFactor.SrcAlpha, BlendFactor.Zero, BlendFactor.One);
         id = _s.Dev!.CreatePipeline(in d);
         if (id.IsNull) log?.Always($"PostChainVk: the device REFUSED pipeline {d.Label} (logged above) -- that post draw sits out");
         p.Pipes[key] = id;

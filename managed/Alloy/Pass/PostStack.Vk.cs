@@ -37,6 +37,19 @@ internal static unsafe partial class PostStack
         /// <summary>The exposure last written into <see cref="FsrExposure"/>; NaN before the first.</summary>
         public float FsrExposureSet = float.NaN;
         public bool HistValid, Up;
+        /// <summary>The last FSR dispatch started its history over, and took a colour whose bare sky was already fogged.</summary>
+        public bool FsrReset, FsrFogged;
+        /// <summary>The bare-sky fog laid before FSR: its program and its loose terms.</summary>
+        public GuiVkProg? SkyFog;
+        public bool SkyFogTried, SkyFogSaid;
+        public int FJitter = -1, FVFog = -1, FVFogVp = -1;
+        /// <summary>The sky coverage under FSR: its program, its two display-size images taking turns, and whether
+        /// the one last written holds a history.</summary>
+        public GuiVkProg? Cover;
+        public bool CoverTried, CoverValid, CoverSaid;
+        public ImageId Cover0, Cover1;
+        public int CoverW, CoverH, CoverCur;
+        public int CRender = -1, CJitter = -1, CBlend = -1;
         public GuiVkProg? Motion, Taa;
         public bool MotionTried, TaaTried;
         public int MInvVp = -1, MPrevVp = -1, MSize = -1, MJitter = -1;
@@ -61,8 +74,12 @@ internal static unsafe partial class PostStack
     private static bool OnVulkan(Stage st) => st.Name is "gamma" or "toon" or "sharpen" or "vibrance" or "taa" or "aa"
                                               || st == _fbpost;
 
-    /// <summary>The TAA history on Vulkan starts over: the next resolve takes the current frame whole.</summary>
-    internal static void ResetVk() => _vk.HistValid = false;
+    /// <summary>Every history on Vulkan starts over, TAA's and the FSR sky coverage's: the next frame takes the current one whole.</summary>
+    internal static void ResetVk()
+    {
+        _vk.HistValid = false;
+        _vk.CoverValid = false;
+    }
 
     /// <summary>The module changed under the hosted chain: its program is spliced from the resource chain, so it
     /// is dropped and rebuilt from the new module's.</summary>
@@ -141,13 +158,15 @@ internal static unsafe partial class PostStack
         if (!AlloyRenderer.VkWeatherLate(vk, cl, over ? wx : hdr, over, wide ? dw : viewport[2], wide ? dh : viewport[3], near, far, log))
             return false;
         ImageId vel = taa || fsr ? s.Vel : default;
+        PostChainVk.SkyInput sky = fsr ? FsrSkyVk(vk, cl, depth, s.Vel, depthW, depthH, dw, dh, s.FsrReset, log) with { Fogged = s.FsrFogged }
+                                       : new PostChainVk.SkyInput(depth);
         if (live == 0)
         {
             if (fsr) MotionVectors.RollHistory();
-            return PostChainVk.Record(vk, cl, hdr, depth, vk.Screen(), true, viewport, display, vel, log);
+            return PostChainVk.Record(vk, cl, hdr, sky, vk.Screen(), true, viewport, display, vel, log);
         }
         int* pair = stackalloc int[4] { 0, 0, s.W, s.H };
-        if (!PostChainVk.Record(vk, cl, hdr, depth, s.A, false, viewport, pair, vel, log)) return false;
+        if (!PostChainVk.Record(vk, cl, hdr, sky, s.A, false, viewport, pair, vel, log)) return false;
         ImageId read = s.A, write = s.B;
         int left = System.Numerics.BitOperations.PopCount((uint)live);
         for (int i = 0; i < _stages.Length; i++)
@@ -350,13 +369,118 @@ internal static unsafe partial class PostStack
         if (!VelocityReady(vk, s, viewport, vp, vpClean, depth, cl, log)) { Fsr.Refuse("the velocity pass did not build", log); return false; }
         Fsr.Note(rw, rh, dw, dh, log);
         cl.BeginLabel("fsr"u8);
+        s.FsrReset = Fsr.TakeReset();
+        s.FsrFogged = FsrSkyFogVk(vk, cl, hdr, depth, rw, rh, log);
         cl.Upscale(Fsr.Command(hdr, depth, s.Vel, s.FsrExposure, s.FsrOut, rw, rh, PostChain.JitterX, PostChain.JitterY,
-                               Fsr.FrameMs(), near, far, fovY, Fsr.TakeReset(), AlloyRenderer.VkReactiveMask));
+                               Fsr.FrameMs(), near, far, fovY, s.FsrReset, AlloyRenderer.VkReactiveMask));
         cl.EndLabel();
         hdr = s.FsrOut;
         viewport = full;
         return true;
     }
+
+    /// <summary>What the resolve tells sky from scene by on a frame FSR drew: <paramref name="depth"/>, this frame's
+    /// <paramref name="rw"/> x <paramref name="rh"/> world depth under <see cref="PostChain.JitterX"/>, laid as a coverage on the
+    /// <paramref name="dw"/> x <paramref name="dh"/> colour FSR rebuilt, which the resolve then draws whole. The depth when refused (logged).</summary>
+    internal static PostChainVk.SkyInput FsrSkyVk(VkBackend vk, CommandList cl, ImageId depth, ImageId vel, int rw, int rh,
+                                                  int dw, int dh, bool reset, ExtenderLog log)
+    {
+        if (_vk.Dev != vk) _vk = new StackVkState { Dev = vk };
+        StackVkState s = _vk;
+        if (!s.CoverTried)
+        {
+            s.CoverTried = true;
+            s.Cover = PostChainVk.Program(vk, PostChain.FullscreenVs, ShaderSource.Get(SkyCoverFs), "sky coverage", p =>
+            {
+                s.CRender = p.Loc("uRenderSize"); s.CJitter = p.Loc("uJitterPx"); s.CBlend = p.Loc("uBlend");
+            }, log);
+        }
+        if (s.Cover == null || !CoverPair(vk, s, dw, dh)) return SkyRefused(s, depth, "its program or its images were refused", log);
+        ImageId read = s.CoverCur == 0 ? s.Cover0 : s.Cover1, write = s.CoverCur == 0 ? s.Cover1 : s.Cover0;
+        cl.BeginLabel("fsr sky coverage"u8);
+        PostChainVk.Open(s.Cover);
+        LooseBlock.Set(s.CRender, new Vector2(rw, rh));
+        LooseBlock.Set(s.CJitter, new Vector2(PostChain.JitterX * rw * 0.5f, PostChain.JitterY * rh * 0.5f));
+        LooseBlock.Set(s.CBlend, reset || !s.CoverValid ? 1f : SkyCoverBlend);
+        int at = PostChainVk.Close(cl, s.Cover);
+        bool drew = PostChainVk.Draw(cl, s.Cover, Format.R16F, PostChainVk.Blend.None, write, LoadOp.DontCare, new Rect(0, 0, dw, dh), at,
+                                     new PostChainVk.Inputs(default, default, depth, read, vel, HistLinear: true), log);
+        cl.EndLabel();
+        if (!drew) return SkyRefused(s, depth, "its pipeline was refused", log);
+        s.CoverCur ^= 1;
+        s.CoverValid = true;
+        return new(write, Cover: true);
+    }
+
+    /// <summary>The volumetric fog laid over <paramref name="hdr"/>'s bare-sky texels at <paramref name="rw"/> x <paramref name="rh"/>,
+    /// before FSR, where no dome drew and the volume is built: by this frame's exact depth, so FSR's history carries the fog
+    /// and the resolve fogs nothing again. False when it laid none (a refusal logged once).</summary>
+    internal static bool FsrSkyFogVk(VkBackend vk, CommandList cl, ImageId hdr, ImageId depth, int rw, int rh, ExtenderLog log)
+    {
+        if (AlloyRenderer.SkyInvVp != default || !FogVolume.Built) return false;
+        if (_vk.Dev != vk) _vk = new StackVkState { Dev = vk };
+        StackVkState s = _vk;
+        if (!s.SkyFogTried)
+        {
+            s.SkyFogTried = true;
+            s.SkyFog = PostChainVk.Program(vk, PostChain.FullscreenVs, ShaderSource.Get(SkyFogFs), "bare-sky fog", p =>
+            {
+                s.FJitter = p.Loc("uJitterUv"); s.FVFog = p.Loc("uVFog"); s.FVFogVp = p.Loc("uVFogVp");
+            }, log);
+        }
+        bool drew = false;
+        if (s.SkyFog != null)
+        {
+            cl.BeginLabel("fsr bare-sky fog"u8);
+            PostChainVk.Open(s.SkyFog);
+            LooseBlock.Set(s.FJitter, new Vector2(PostChain.JitterX * 0.5f, PostChain.JitterY * 0.5f));
+            FogVolume.Upload(s.FVFog, s.FVFogVp, capture: false);
+            int at = PostChainVk.Close(cl, s.SkyFog);
+            drew = PostChainVk.Draw(cl, s.SkyFog, Format.Rgba16F, PostChainVk.Blend.Fog, hdr, LoadOp.Load, new Rect(0, 0, rw, rh), at,
+                                    new PostChainVk.Inputs(default, default, depth), log);
+            cl.EndLabel();
+        }
+        if (!drew && !s.SkyFogSaid)
+            log.Always("PostStack: the FSR bare-sky fog is OFF -- its program or its pipeline was refused (logged above). The resolve "
+                     + "fogs bare sky on FSR's colour, so thin far objects in the fog draw brighter under FSR");
+        s.SkyFogSaid |= !drew;
+        return drew;
+    }
+
+    /// <summary>The coverage pair at <paramref name="w"/> x <paramref name="h"/>, made anew with no history when the size
+    /// changed, with <paramref name="extra"/> uses; false when refused.</summary>
+    private static bool CoverPair(VkBackend vk, StackVkState s, int w, int h, ImageUse extra = ImageUse.None)
+    {
+        if (!s.Cover0.IsNull && s.CoverW == w && s.CoverH == h) return true;
+        vk.Destroy(s.Cover0); vk.Destroy(s.Cover1);
+        s.Cover0 = PostChainVk.Target(vk, w, h, Format.R16F, "vk fsr sky coverage a", extra);
+        s.Cover1 = PostChainVk.Target(vk, w, h, Format.R16F, "vk fsr sky coverage b", extra);
+        s.CoverW = w; s.CoverH = h; s.CoverValid = false;
+        if (!s.Cover0.IsNull && !s.Cover1.IsNull) return true;
+        vk.Destroy(s.Cover0); vk.Destroy(s.Cover1);
+        s.Cover0 = s.Cover1 = default;
+        return false;
+    }
+
+    /// <summary>The sky coverage stood down this frame: said once, and the resolve tells sky by <paramref name="depth"/>.</summary>
+    private static PostChainVk.SkyInput SkyRefused(StackVkState s, ImageId depth, string why, ExtenderLog log)
+    {
+        if (!s.CoverSaid)
+            log.Always($"PostStack: the FSR sky coverage is OFF -- {why} (logged above). The resolve tells sky by this frame's "
+                     + "jittered depth, so thin far objects and edges against the sky flicker under FSR");
+        s.CoverSaid = true;
+        return new(depth);
+    }
+
+    /// <summary>The sky coverage's fragment stage.</summary>
+    internal const string SkyCoverFs = "cx_skycov_f.glsl";
+
+    /// <summary>The bare-sky fog's fragment stage.</summary>
+    internal const string SkyFogFs = "cx_skyfog_f.glsl";
+
+    /// <summary>The share of this frame's sky coverage a still pixel takes, about twenty frames to settle: at FSR's own
+    /// pace of 0.1 the coverage still ripples with the jitter where the sky and the scene grade far apart.</summary>
+    private const float SkyCoverBlend = 0.05f;
 
     /// <summary>Depth of field on this frame's full-window perspective view, on the colour FSR left when it drew. Depth stays at
     /// <paramref name="depthW"/> x <paramref name="depthH"/>, the render size.</summary>
