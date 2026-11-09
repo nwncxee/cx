@@ -17,7 +17,7 @@ internal static partial class IconFrames
         // Then it measures the TGA
         check.Expect(won == 3, $"the race gives a development folder TGA over a base BIF DDS (format {won})");
         check.Expect(order.Length > 0 && order[0] == 3, $"a frame whose race went to the TGA reads the TGA first (restype {(order.Length > 0 ? order[0] : 0)})");
-        check.Expect(ReadOrder(0x7f1)[0] == 0x7f1 && ReadOrder(0)[0] == 0x7f1, "a DDS winner, or no answer, still reads the DDS first");
+        check.Expect(ReadOrder(0x7f1)[0] == 0x7f1 && ReadOrder(0)[0] == 0x7f1, "a DDS winner, or no answer, still reads the DDS first");   // not-an-offset: the DDS restype id
         log.Info(check.Ok ? "IconFrames.DevTgaApprovedExamples.SelfCheck: passed" : "IconFrames.DevTgaApprovedExamples.SelfCheck: FAILED");
     }
 }
