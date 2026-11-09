@@ -286,7 +286,7 @@ internal static unsafe partial class TexRegistry
         if (_worker) return;
         _worker = true;
         for (int w = 0; w < Workers; w++)
-            new Thread(static () =>
+            Worker.Start(w == 0 ? "cx-tex" : $"cx-tex-{w}", static () =>
             {
                 while (true)
                 {
@@ -300,7 +300,7 @@ internal static unsafe partial class TexRegistry
                     catch (Exception e) { j.Why = $"{e.GetType().Name}: {e.Message}"; }
                     lock (_gate) (j.Fast ? _outFast : _out).Enqueue(j);
                 }
-            }) { IsBackground = true, Name = w == 0 ? "cx-tex" : $"cx-tex-{w}" }.Start();
+            });
     }
 
     /// <summary>The worker: read and decode. No GL, no engine memory -- everything it reads was copied for it

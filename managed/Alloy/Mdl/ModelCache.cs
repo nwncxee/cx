@@ -700,8 +700,7 @@ public static partial class ModelCache
             _queue.Enqueue(j);
             if (_worker == null)
             {
-                _worker = new Thread(WorkerLoop) { IsBackground = true, Name = "cx-model" };
-                _worker.Start();
+                _worker = Worker.Start("cx-model", WorkerLoop);
             }
             Monitor.PulseAll(Gate);
         }

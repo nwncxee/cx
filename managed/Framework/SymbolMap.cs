@@ -3483,14 +3483,14 @@ internal static unsafe class SymbolMap
         if (!OperatingSystem.IsWindows()) return;
         // An escaping exception on a bare thread kills the process -- the one outcome the build lock exists
         // to prevent. Nothing here is worth a crash.
-        new System.Threading.Thread(() =>
+        Worker.Start("cx-rot-notice", () =>
         {
             try
             {
                 MessageBoxW(IntPtr.Zero, text, "NWNCX:EE", MB_ICONWARNING);
             }
             catch { }
-        }) { IsBackground = true, Name = "cx-rot-notice" }.Start();
+        });
     }
 
     private const uint MB_ICONWARNING = 0x30;  // not-an-offset: a Win32 MessageBox flag

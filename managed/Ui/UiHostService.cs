@@ -22,6 +22,7 @@ public sealed unsafe class UiHostService : IExtenderService
         Capabilities.Register("palette", 1, static () => true);
         UiHost.SelfCheck(log);   // arbiter + draw roll-call proof (off-device)
         FrameZones.SelfCheck(log);   // frame-split instrument (off-device)
+        Worker.SelfCheck(log);       // a worker does not inherit the main-thread pin (Linux only)
         ScrollColumn.SelfCheck(log);    // scroll column: offset, thumb, wheel, zero-alloc draw (off-device)
         Dropdown.SelfCheck(log);        // dropdown list: 27 entries, scroll, pick, outside press (off-device)
         Tooltip.SelfCheck(log);         // tooltip: dwell, tick, wrap, zero-alloc draw (off-device)

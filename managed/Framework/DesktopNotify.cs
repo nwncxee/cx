@@ -54,8 +54,7 @@ public static unsafe class DesktopNotify
         if (_s.Worker == null)
         {
             _s.Log = log;
-            _s.Worker = new Thread(Run) { IsBackground = true, Name = "cx-notify" };
-            _s.Worker.Start();
+            _s.Worker = Worker.Start("cx-notify", Run);
         }
         _s.Wake.Set();
     }
@@ -74,7 +73,6 @@ public static unsafe class DesktopNotify
     // shutdown hook if that shows.
     private static void Run()
     {
-        Affinity.ClearThis();
         try
         {
             while (_s.Failed == null)

@@ -771,7 +771,7 @@ public static class FrameZones
         check.Expect(gameAlloy >= f, "the calling thread accumulates into row 0 with no claim of its own");
 
         long childSeen = -1, rowSeen = -1;
-        var t = new Thread(() =>
+        Thread t = Worker.Start("FrameZones.SelfCheck.row", () =>
         {
             UseRow(RowRender);
             rowSeen = CurrentRow;
@@ -780,7 +780,7 @@ public static class FrameZones
             childSeen = Ticks(Zone.Alloy);
             Add(Zone.Alloy, Stopwatch.GetTimestamp() - f);
         });
-        t.Start(); t.Join();
+        t.Join();
         check.Expect(rowSeen == RowRender, "a thread that claims a row keeps it");
         check.Expect(childSeen == 0, "Ticks() is the CALLING thread's row, so a parent subtracts only its own child");
         check.Expect(_frame[(int)Zone.Alloy] == gameAlloy, "the render thread's bracket did not land in the game row");
