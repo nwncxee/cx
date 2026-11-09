@@ -461,7 +461,6 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// short-circuiting on a handle and drawing through a dead one.</summary>
     internal static void ContextLost()
     {
-        _drawBuf = 0; _texHBuf = 0; _boneBuf = 0;
         MotionContextLost();
         DbFeed.ContextLost();   // R1-30: the feed's own device-backed tables
         CX.Alloy.Db.DbAnim.DanglyBonesContextLost();

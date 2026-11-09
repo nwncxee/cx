@@ -520,16 +520,12 @@ public sealed unsafe partial class AlloyRenderer
     internal const int MaxEngTex = 4;
     private static readonly SkyTexUnits[] _skTex = new SkyTexUnits[MaxSkyDraws];
     private static int _skyFirst, _skyN;
-    internal static uint _drawBuf;
-    /// <summary>The per-draw texture-handle SSBO (binding <see cref="BindTexH"/>).</summary>
-    internal static uint _texHBuf;
-    /// <summary>How many records the GPU side of <see cref="_drawBuf"/>/<see cref="_texHBuf"/> currently
+    /// <summary>How many records the GPU side of the per-draw record and texture-handle blocks currently
     /// holds. A capacity growth reallocates both, which is why it forces a wholesale re-send.</summary>
     internal static int _recCapGpu;
-    /// <summary>The bone block and the CPU stage behind it. One region, rewritten every colour pass. The
-    /// stage is native and GROWS (<c>EnsureBoneSlots</c>) rather than dropping a crowd past the budget;
+    /// <summary>The CPU stage behind the bone block. One region, rewritten every colour pass. It is native
+    /// and GROWS (<c>EnsureBoneSlots</c>) rather than dropping a crowd past the budget;
     /// <c>Counters._boneHigh</c> is the per-report high-water mark that keeps the ceiling counted.</summary>
-    internal static uint _boneBuf;
     internal static BonePalette* _boneStage;
     internal static int _boneSlots, _boneCap;
     /// <summary>Last frame's palette, slot for slot beside <see cref="_boneStage"/> (the two swap

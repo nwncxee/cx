@@ -175,7 +175,7 @@
 11 managed/Alloy/Scene/AlloyRenderer.Occlude.cs
 29 managed/Alloy/Scene/AlloyRenderer.Route.cs
 3 managed/Alloy/Scene/AlloyRenderer.Slots.cs
-35 managed/Alloy/Scene/AlloyRenderer.Table.cs
+32 managed/Alloy/Scene/AlloyRenderer.Table.cs
 24 managed/Alloy/Scene/AlloyWind.cs
 63 managed/Alloy/Scene/EmitterSim.cs
 1 managed/Alloy/Scene/EmitterSim.Move.cs
