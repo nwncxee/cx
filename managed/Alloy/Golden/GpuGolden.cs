@@ -55,6 +55,7 @@ internal static partial class GpuGolden
         StaleNamedSelfCheck(vk, check, log);
         CopyFlagSelfCheck(vk, check, log);
         DestroyedBufferSelfCheck(vk, check, log);
+        AlloyRenderer.VkComputeModuleCheck(vk, check, log);
         WhenDoneSelfCheck(vk, check, log);
         ReversedZSelfCheck(vk, check, log);
         ContentClipSelfCheck(vk, check, log);

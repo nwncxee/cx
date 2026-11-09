@@ -263,6 +263,8 @@ internal static class TextureSlots
         check.Expect(DoubleClaimed(CommentedClaim) is null, $"a declaration inside a comment claims no unit: {DoubleClaimed(CommentedClaim)}");
         const string ImageClaim = "layout(binding = 5) uniform sampler2D uA;\nlayout(binding = 5, r32f) uniform image2D uImg;\n";
         check.Expect(DoubleClaimed(ImageClaim) is null, $"an image's binding is an image unit, not a texture unit: {DoubleClaimed(ImageClaim)}");
+        const string TextureClaim = "layout(binding = 7) uniform texture2D uTexOnly;\nlayout(binding = 7) uniform sampler2D uB;\n";
+        check.Expect(DoubleClaimed(TextureClaim) is not null, "a separate texture claims a texture unit beside a sampler on it");
         // ...and the two unit BUDGETS the lit program is linked against. Every unit it claims is either under
         // the plain program's need or one of the soft sun's two on top.
         foreach (uint u in Claimed(litDecls))

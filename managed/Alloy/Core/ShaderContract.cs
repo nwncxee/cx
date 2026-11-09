@@ -105,6 +105,24 @@ internal static class ShaderContract
         return true;
     }
 
+    /// <summary>The sampler guard against declarations written the ways GLSL allows. Oracle: the five
+    /// hand-written stages below, each a shape a content override may use and a text match does not see.</summary>
+    private static bool SlotSafeCheck(ExtenderLog log)
+    {
+        var check = new Checker(log, "ShaderContract.SlotSafeCheck");
+        check.Expect(SlotSafe("uniform sampler2DArray uSunShadowRaw;\nvoid main() { }\n", "uSunShadowRaw"),
+          "an array sampler is a declaration");
+        check.Expect(!SlotSafe("/* uniform sampler2D uSrc; */\nvoid main() { }\n", "uSrc"),
+          "a commented-out declaration declares nothing");
+        check.Expect(SlotSafe("uniform  sampler2D  uSrc;\nvoid main() { }\n", "uSrc"),
+          "the whitespace between the words is the author's");
+        check.Expect(SlotSafe("uniform sampler2D uA, uSrc;\nvoid main() { }\n", "uSrc"),
+          "the second declarator on a line is a declaration");
+        check.Expect(!SlotSafe("uniform sampler2D uSrcAtlas;\nvoid main() { }\n", "uSrc"),
+          "a name is not a prefix of another name");
+        return check.Ok;
+    }
+
     /// <summary>A stage that derives a draw index must reach its record THROUGH the slot map: the records are
     /// indexed by ownership slot and the draw order is not that order, so a stage still spelling
     /// <c>uDraw[uDrawBase + gl_DrawID]</c> reads a NEIGHBOUR's model matrix and textures while passing every
@@ -254,9 +272,10 @@ internal static class ShaderContract
         bool ssbo = SsboSlots.Check(log);
         bool ubo = UboSlots.Check(log);
         bool pass = PassCheck(log);
+        bool slotSafe = SlotSafeCheck(log);
         bool eng = AlloyRenderer.EngineBlockSelfCheck(log);
         // the record's field list, counted by field size: the 288-byte stride staged above (#392 and ADR 0026 grew it)
-        bool ok = slots && ssbo && ubo && pass && eng && DrawBufDecl.Contains($"binding = {BindDraw})")
+        bool ok = slots && ssbo && ubo && pass && slotSafe && eng && DrawBufDecl.Contains($"binding = {BindDraw})")
                   && RecordSafe(DrawBufDecl) && DrawBufDecl.Contains("vec4 feat; mat4 prev; vec4 ext0; vec4 ext1; vec4 ext2; }")
                   && DrawBufDecl.Contains("vec4 emi") && DrawBufDecl.Contains("vec4 spc")
                   && DrawBufDecl.Contains("vec4 feat")
