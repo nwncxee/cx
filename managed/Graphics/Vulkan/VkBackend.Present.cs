@@ -18,6 +18,11 @@ internal sealed unsafe partial class VkBackend
         public VkFormat Format;
         public VkPresentModeKHR Mode;
         public int W, H;
+        /// <summary>The surface gave the chain its extent rather than taking the frame's, so no remake of it can
+        /// land on another size.</summary>
+        public bool Dictated;
+        /// <summary>The frame reaching this chain scaled is already said.</summary>
+        public bool SaidScaled;
         /// <summary>The window changed under the chain (out of date or suboptimal): remade at the next present.</summary>
         public bool Stale, Refused;
         /// <summary>The window has no area (minimised): there is no chain and nothing to show until it has one.</summary>
@@ -156,13 +161,49 @@ internal sealed unsafe partial class VkBackend
     {
         SwapState s = _swap;
         if (s.Refused) return false;
-        if (s.Chain.IsNotNull && !s.Stale && s.Mode == mode && s.W == w && s.H == h) return true;
+        if (ChainFits(new ChainShape(s.Chain.IsNotNull, s.Stale, s.Dictated, s.Mode, s.W, s.H), mode, w, h))
+        {
+            if (s.W != w || s.H != h) SayScaled(w, h, log);
+            return true;
+        }
         string? why = s.Surface.IsNull ? MakeSurface() : null;
         why ??= MakeSwapchain(mode, w, h, log);
         if (why == null) return s.Chain.IsNotNull;
         s.Refused = true;
         log.Always($"VkBackend: the game window cannot take Vulkan's present -- {why}");
         return false;
+    }
+
+    /// <summary>What a live chain was made for, as the one test over it reads: whether there is one, whether the
+    /// window went stale under it, whether the surface dictated its extent, and the mode and size it holds.</summary>
+    internal readonly record struct ChainShape(bool Live, bool Stale, bool Dictated, VkPresentModeKHR Mode, int W, int H);
+
+    /// <summary>Does the chain <paramref name="have"/> describes still answer a frame of <paramref name="w"/> x
+    /// <paramref name="h"/> in <paramref name="want"/>? A dictated extent is not the frame's to change, so only the
+    /// window going stale remakes that chain and the frame reaches it scaled.</summary>
+    internal static bool ChainFits(in ChainShape have, VkPresentModeKHR want, int w, int h)
+        => have.Live && !have.Stale && have.Mode == want && (have.Dictated || (have.W == w && have.H == h));
+
+    /// <summary>The extent a chain is made at over a surface whose capabilities are <paramref name="caps"/> for a
+    /// frame of <paramref name="w"/> x <paramref name="h"/>: the surface's own where it dictates one
+    /// (<paramref name="dictated"/>), else the frame's clamped into the bounds it allows.</summary>
+    internal static VkExtent2D SurfaceExtent(in VkSurfaceCapabilitiesKHR caps, int w, int h, out bool dictated)
+    {
+        dictated = caps.currentExtent.width != uint.MaxValue;
+        return dictated ? caps.currentExtent
+            : new VkExtent2D((uint)Math.Clamp(w, (int)caps.minImageExtent.width, (int)caps.maxImageExtent.width),
+                             (uint)Math.Clamp(h, (int)caps.minImageExtent.height, (int)caps.maxImageExtent.height));
+    }
+
+    /// <summary>Said once per chain: the window holds a size the frame is not, so the frame reaches it through the
+    /// spare screen's scaled blit rather than a remake that would land on the same size.</summary>
+    private void SayScaled(int w, int h, ExtenderLog log)
+    {
+        SwapState s = _swap;
+        if (s.SaidScaled) return;
+        s.SaidScaled = true;
+        log.Always($"VkBackend: the window holds {s.W}x{s.H} and the frame is {w}x{h} -- the surface dictates its "
+                 + "extent, so the chain stays and the frame reaches the window scaled");
     }
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr GetModuleHandleW(string? name);
@@ -205,9 +246,9 @@ internal sealed unsafe partial class VkBackend
         if (fmt.format == VkFormat.Undefined) return "the surface offers no 8-bit UNORM format";
         VkPresentModeKHR mode = HasMode(want) ? want : want == VkPresentModeKHR.Immediate && HasMode(VkPresentModeKHR.Mailbox)
                                                      ? VkPresentModeKHR.Mailbox : VkPresentModeKHR.Fifo;
-        VkExtent2D ext = caps.currentExtent.width != uint.MaxValue ? caps.currentExtent
-            : new VkExtent2D((uint)Math.Clamp(w, (int)caps.minImageExtent.width, (int)caps.maxImageExtent.width),
-                             (uint)Math.Clamp(h, (int)caps.minImageExtent.height, (int)caps.maxImageExtent.height));
+        VkExtent2D ext = SurfaceExtent(caps, w, h, out bool dictated);
+        s.Dictated = dictated;
+        s.SaidScaled = false;
         s.Empty = ext.width == 0 || ext.height == 0;
         if (s.Empty) { DropChain(); return null; }
         uint count = Math.Max(caps.minImageCount + 1, SwapImages);
