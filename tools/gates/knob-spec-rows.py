@@ -17,8 +17,10 @@ A group declared with `master:` also declares `<group>.enabled`. A `new KnobGrou
 throwaway, registered nowhere, so an unattributed factory call is reported only under `-v` and fails nothing.
 
 Rows: a table row's first cell, `group.knob`, or a summary cell naming a family (`group.a / b / c`). A
-`group.prefix<...>` cell stands for its whole family (`ui.custom_<role>`, `radial.p<N>.*`), and `<mode>.x`
-stands for all three camera modes.
+`group.prefix<...>` cell stands for its whole family and for the bag key it is named after, and `<mode>.x`
+stands for all three camera modes. A family covers the SHAPE its cell declares and nothing else:
+`ui.custom_<role>` covers `ui.custom_hilite` but not `ui.customfrom`, and `chat.w<N>.*` covers `chat.w3.rect`
+but not a future `chat.wrap` -- a stem taken as a bare prefix would exempt the whole family tree.
 
 Prints one line per key with no row and per row with no key; `-v` prints the whole census."""
 import os, re, sys, collections
@@ -183,17 +185,32 @@ if not groups_declared or len(knobs) < 100:
           'the collector is broken', file=sys.stderr)
     sys.exit(2)
 
+FAMILY = re.compile(r'^([a-z0-9]+\.[a-z0-9_]*)(<[A-Za-z]+>)((?:\.\*)?)')
+
+
+def family_shape(head):
+    """The anchored pattern a `group.prefix<...>` cell declares, or None. `<N>` is an index, any other
+    placeholder one key segment, and a trailing `.*` the rest of the family's path."""
+    m = FAMILY.match(head)
+    if not m:
+        return None, None
+    stem, place, tail = m.group(1), m.group(2), m.group(3)
+    mid = r'\d+' if re.fullmatch(r'<[A-Z]>', place) else r'[a-z0-9_]+'
+    return stem, re.compile('^' + re.escape(stem) + mid + (r'\..+' if tail else '') + '$')
+
+
 spec_path = os.path.join(ROOT, 'docs/spec/unified-settings.md')
-rowed, prefix_rows = {}, {}
+rowed, families = {}, []
 for n, line in enumerate(open(spec_path, encoding='utf-8').read().splitlines(), 1):
     if not line.startswith('|'):
         continue
     first = [c.strip() for c in line.strip().strip('|').split('|')][0]
     first = first.strip('`').replace('&lt;', '<').replace('&gt;', '>')
     head = first.split('/')[0].strip().strip('`')
-    pfx = re.match(r'([a-z0-9]+\.[a-z0-9_]*)<', head)
-    if pfx:
-        prefix_rows[pfx.group(1)] = n
+    stem, shape = family_shape(head)
+    if shape:
+        families.append((shape, n))
+        rowed[stem] = n
     is_mode = head.startswith('<mode>.')
     if is_mode:
         head = 'chase.' + head.split('.', 1)[1]
@@ -214,7 +231,7 @@ for n, line in enumerate(open(spec_path, encoding='utf-8').read().splitlines(), 
 
 
 def covered(key):
-    return key in rowed or any(key.startswith(p) or p.startswith(key) for p in prefix_rows)
+    return key in rowed or any(shape.match(key) for shape, _n in families)
 
 
 verbose = '-v' in sys.argv

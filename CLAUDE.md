@@ -184,12 +184,15 @@ the cleanup that earned it. Adding a rule means adding its gate in the same chan
 - `knob-spec-rows.sh`: a declared knob with no row in `docs/spec/unified-settings.md`, or a key the spec rows
   that nothing declares, fails. The spec is the settings tree's one description, so a knob with no row is a
   feature nobody can read about. A ChatOnly family may share one summary row (`group.a / b / c`), a
-  `group.prefix<...>` row stands for its family and `<mode>.x` for all three camera modes;
+  `group.prefix<...>` row stands for the shape it spells (`chat.w<N>.*` covers `chat.w3.rect`, not a future
+  `chat.wrap`) plus the bag key it is named after, and `<mode>.x` for all three camera modes;
   `python3 tools/gates/knob-spec-rows.py -v` prints the whole census.
 - `knob-effect.sh`: a knob declared `Effect.Live` whose every reader takes `Boot`, or one declared
   `Effect.Restart` read through `V` outside the file it is declared in, fails. The declared effect is what the
-  panel badge and the chat reply promise, so a reader on the wrong one is a promise nothing keeps;
-  `python3 tools/gates/knob-effect.py -v` adds the field names two classes both declare.
+  panel badge and the chat reply promise, so a reader on the wrong one is a promise nothing keeps. A read is
+  attributed to its declaration by qualifier, class or file; a bare read of a field several classes declare
+  (`Size.V`, `Fov.V`) names no one declaration and counts against `knob-effect.baseline`, which may only
+  shrink. `python3 tools/gates/knob-effect.py -v` lists each such read.
 - `engine-views.sh`: outside `Framework/`, `ptr +/- EngineLayout.X` fails when row X has a view member; a
   `not-an-offset:` marker on a line that dereferences `ptr + 0x...` fails.
 - `statics.sh`: a file under `managed/Alloy` or `managed/Services` with more non-readonly `static` fields
