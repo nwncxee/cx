@@ -11,9 +11,9 @@ namespace CX.Services.Radial;
 /// <summary>
 /// The part of an icon sheet its art fills, read from the art itself: the 32-texel cells holding every visible texel,
 /// counted from the sheet's top-left the way the engine's icon crop counts them. Read once per resref from the file the
-/// texture registry would load (DDS, then TGA; PLT for a tinted layer), so the art decides its shape, not its base item.
+/// engine's format race picks (DDS or TGA; PLT for a tinted layer), so the art decides its shape, not its base item.
 /// </summary>
-internal static unsafe class IconFrames
+internal static unsafe partial class IconFrames
 {
     /// <summary>A sheet <see cref="Tw"/> x <see cref="Th"/> whose art fills its top-left <see cref="Cw"/> x <see cref="Ch"/>
     /// texels. Zero cells = unknown, and the caller keeps its own crop.</summary>
@@ -86,7 +86,7 @@ internal static unsafe class IconFrames
         if (edge != s.Edge) { s.ByName.Clear(); s.Edge = edge; }
         if (s.ByName.TryGetValue(key, out Frame f)) return f;
         string n = Marshal.PtrToStringAnsi((IntPtr)name) ?? "";
-        f = Load(n, plt, out string? why);
+        f = Load(name, n, plt, out string? why);
         if (!f.Known && !ResLocate.Ready) return f;
         if (s.ByName.Count >= MaxCached) s.ByName.Clear();
         s.ByName[key] = f;
@@ -95,7 +95,7 @@ internal static unsafe class IconFrames
         return f;
     }
 
-    private static Frame Load(string name, bool plt, out string? why)
+    private static Frame Load(byte* resref, string name, bool plt, out string? why)
     {
         why = null;
         if (!ResLocate.Ready && !ResLocate.Attach(out why)) return default;
@@ -109,19 +109,32 @@ internal static unsafe class IconFrames
             else raw.AsSpan(PltImage.HeaderBytes, pairs.Length).CopyTo(pairs);
             return ScanPlt(pairs, w, h);
         }
-        byte[]? dds = TexRegistry.ReadResourceBytes(name, DdsResType, out why);
-        if (dds != null)
+        foreach (ushort resType in ReadOrder(TexLoad.Winner(resref, out _, out _)))
         {
-            if (!DdsReader.Parse(dds, out DdsReader.Info info, out why)) return default;
-            if (!BcnDecode.Decodes(info.Format) || info.W > MaxSide || info.H > MaxSide) { why = $"a {info.Format} DDS"; return default; }
-            if (info.Present < 1 || info.Faces != 1 || (long)dds.Length < (long)info.DataOffset + info.Level0) { why = "a DDS shorter than its first level"; return default; }
-            int bpp = BcnDecode.PixelBytes(info.Format);
-            byte[] px = new byte[info.W * info.H * bpp];
-            BcnDecode.Unpack(dds.AsSpan(info.DataOffset), info.W, info.H, info.Format, px);
-            return ScanRaster(px, info.W, info.H, bpp);
+            byte[]? raw = TexRegistry.ReadResourceBytes(name, resType, out why);
+            if (raw != null) return resType == DdsResType ? FromDds(raw, out why) : FromTga(raw, out why);
         }
-        byte[]? tga = TexRegistry.ReadResourceBytes(name, TgaResType, out why);
-        if (tga == null) { why ??= "no DDS or TGA"; return default; }
+        why ??= "no DDS or TGA";
+        return default;
+    }
+
+    /// <summary>The formats to read, in turn, for a name whose race went to <paramref name="winner"/> (0 = unknown).</summary>
+    internal static ReadOnlySpan<ushort> ReadOrder(ushort winner) =>
+        winner == TgaResType ? [TgaResType, DdsResType] : [DdsResType, TgaResType];
+
+    private static Frame FromDds(byte[] dds, out string? why)
+    {
+        if (!DdsReader.Parse(dds, out DdsReader.Info info, out why)) return default;
+        if (!BcnDecode.Decodes(info.Format) || info.W > MaxSide || info.H > MaxSide) { why = $"a {info.Format} DDS"; return default; }
+        if (info.Present < 1 || info.Faces != 1 || (long)dds.Length < (long)info.DataOffset + info.Level0) { why = "a DDS shorter than its first level"; return default; }
+        int bpp = BcnDecode.PixelBytes(info.Format);
+        byte[] px = new byte[info.W * info.H * bpp];
+        BcnDecode.Unpack(dds.AsSpan(info.DataOffset), info.W, info.H, info.Format, px);
+        return ScanRaster(px, info.W, info.H, bpp);
+    }
+
+    private static Frame FromTga(byte[] tga, out string? why)
+    {
         if (RasterReader.ParseTga(tga, out RasterReader.Tga t, out why) != RasterReader.Verdict.Pixels) return default;
         if (t.Px is not (3 or 4) || t.W > MaxSide || t.H > MaxSide) { why = $"a {t.Px * 8}-bit TGA"; return default; }
         byte[] dst = new byte[t.Bytes];

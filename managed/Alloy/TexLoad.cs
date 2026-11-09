@@ -22,9 +22,9 @@ internal static unsafe partial class TexLoad
     /// <summary>The four restypes <c>CAuroraInterface::GetHighestPriorityTextureFormat</c> @0x1125480 probes,
     /// in its own order. Alloy prepares <see cref="DdsResType"/> and <see cref="TgaResType"/>.</summary>
     private const ushort KtxResType = 0x819, DdsResType = 0x7f1, Pc4ResType = 0x80b, TgaResType = 3;   // not-an-offset: restype ids
-    /// <summary>Container kinds in the engine's priority order: a hak beats NWSync beats a loose file beats the
-    /// base BIF (<c>CExoResMan::Exists</c>'s out-parameter is <see cref="EngineLayout.KeyTableKind"/>, not the
-    /// priority -- the race compares container quality, and that is what this order is).</summary>
+    /// <summary>Container kinds in the engine's priority order: a loose folder (development, override) beats NWSync beats
+    /// a hak beats the base BIF. The numbers are <see cref="EngineLayout.KeyTableKind"/> as <c>CExoKeyTable::BuildNewTable</c>
+    /// sets it (1 key/BIF, 2 directory, 3 ERF, 5 NWSync manifest); the RESID's kind byte swaps 2 and 3 and is not this.</summary>
     private static ReadOnlySpan<int> KindOrder => [2, 5, 3, 1];
     private static ReadOnlySpan<ushort> FormatOrder => [KtxResType, DdsResType, Pc4ResType, TgaResType];
 
@@ -180,7 +180,7 @@ internal static unsafe partial class TexLoad
         table = entry = IntPtr.Zero;
         Span<IntPtr> tables = stackalloc IntPtr[FormatOrder.Length];
         Span<IntPtr> entries = stackalloc IntPtr[FormatOrder.Length];
-        int* kinds = stackalloc int[FormatOrder.Length];
+        Span<int> kinds = stackalloc int[FormatOrder.Length];
         IntPtr resman = ResLocate.ResMan;
         if (resman == IntPtr.Zero) return 0;
         for (int f = 0; f < FormatOrder.Length; f++)
@@ -191,14 +191,20 @@ internal static unsafe partial class TexLoad
                 if (EngineFn.ResManGetKeyEntry(resman, name, FormatOrder[f], tp, ep, 0) == 0) continue;
             kinds[f] = new CExoKeyTable(tables[f]).Kind;
         }
+        int won = Pick(kinds);
+        if (won < 0) return 0;
+        table = tables[won]; entry = entries[won];
+        return FormatOrder[won];
+    }
+
+    /// <summary>The race's verdict over the container kind each of <see cref="FormatOrder"/> was found in (0 = absent):
+    /// the index of the winning format, -1 for none. Kind first, then format order inside a kind.</summary>
+    internal static int Pick(ReadOnlySpan<int> kinds)
+    {
         foreach (int k in KindOrder)
             for (int f = 0; f < FormatOrder.Length; f++)
-                if (kinds[f] == k)
-                {
-                    table = tables[f]; entry = entries[f];
-                    return FormatOrder[f];
-                }
-        return 0;
+                if (kinds[f] == k) return f;
+        return -1;
     }
 
     /// <summary>[diag] What each format probe found: the container kind per restype, 0 for absent.</summary>
