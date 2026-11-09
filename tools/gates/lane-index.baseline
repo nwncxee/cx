@@ -1,8 +1,6 @@
 12 managed/Alloy/AlloyRenderer.Acoustic.cs
 5 managed/Alloy/AlloyRenderer.Batches.cs
 2 managed/Alloy/AlloyRenderer.VkPasses.cs
-13 managed/Alloy/BcnDecode.cs
-26 managed/Alloy/BcnEncode.cs
 1 managed/Alloy/Core/SkyMath.cs
 1 managed/Alloy/Core/SkyMath.SelfCheck.cs
 1 managed/Alloy/CreatureParity.cs
@@ -88,7 +86,6 @@
 11 managed/Alloy/Scene/AlloyRenderer.Table.cs
 1 managed/Alloy/Scene/AlloyWind.cs
 6 managed/Alloy/Seam/TexSeam.cs
-17 managed/Alloy/TexScan.cs
 6 managed/Graphics/NullGl.Snapshot.cs
 10 managed/Graphics/Vulkan/VkBackend.Copy.cs
 7 managed/Services/Anim/KeyCurves.cs

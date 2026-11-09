@@ -1,3 +1,5 @@
+using System;
+using System.Runtime.InteropServices;
 using CX.Framework;
 
 namespace CX.Alloy;
@@ -8,20 +10,17 @@ namespace CX.Alloy;
 /// endpoints little-endian then sixteen 2-bit indices LSB-first; BC3 prepends an eight-byte BC4 alpha block, and
 /// a partial edge block clamp-samples. Cold load path, whatever thread the upload funnel fired on, no allocation.
 /// </summary>
-internal static unsafe class BcnEncode
+internal static class BcnEncode
 {
     /// <summary>Encoded byte size of one level: ceil-to-block grid times 8 (BC1) or 16 (BC3).</summary>
     internal static int LevelSize(int w, int h, bool bc3)
         => ((w + 3) / 4) * ((h + 3) / 4) * (bc3 ? 16 : 8);
 
-    /// <summary>Encode one RGBA8 level into <paramref name="dst"/> (sized by <see cref="LevelSize"/>).</summary>
-    internal static void EncodeLevel(byte* rgba, int w, int h, bool bc3, byte* dst)
-        => EncodeLevel(new ReadOnlySpan<byte>(rgba, w * h * 4), w, h, bc3, new Span<byte>(dst, LevelSize(w, h, bc3)));
-
-    /// <summary>The span form of <see cref="EncodeLevel(byte*, int, int, bool, byte*)"/>.</summary>
+    /// <summary>Encode one RGBA8 level into <paramref name="out"/> (sized by <see cref="LevelSize"/>).</summary>
     internal static void EncodeLevel(ReadOnlySpan<byte> src, int w, int h, bool bc3, Span<byte> @out)
     {
-        Span<byte> px = stackalloc byte[64];
+        ReadOnlySpan<Rgba32> image = MemoryMarshal.Cast<byte, Rgba32>(src);
+        Span<Rgba32> px = stackalloc Rgba32[16];
         int o = 0;
         for (int by = 0; by < h; by += 4)
         for (int bx = 0; bx < w; bx += 4)
@@ -31,9 +30,8 @@ internal static unsafe class BcnEncode
             {
                 // clamp-sample: an edge block repeats its last row/column
                 int sx = bx + x >= w ? w - 1 : bx + x, sy = by + y >= h ? h - 1 : by + y;
-                ReadOnlySpan<byte> s = src.Slice((sy * w + sx) * 4, 4);
-                Span<byte> d = px.Slice((y * 4 + x) * 4, 4);
-                d[0] = s[0]; d[1] = s[1]; d[2] = s[2]; d[3] = s[3];
+                int at = sy * w + sx, into = y * 4 + x;
+                px[into] = image[at];
             }
             if (bc3) { Bc4Block(px, @out.Slice(o)); o += 8; }
             Bc1Block(px, @out.Slice(o)); o += 8;
@@ -48,7 +46,7 @@ internal static unsafe class BcnEncode
 
     /// <summary>One 4x4 colour block -&gt; 8 bytes of BC1, always in 4-colour mode (c0 &gt; c1, or equal
     /// endpoints with every index 0, whose palette is degenerate either way).</summary>
-    private static void Bc1Block(ReadOnlySpan<byte> px, Span<byte> dst)
+    private static void Bc1Block(ReadOnlySpan<Rgba32> px, Span<byte> dst)
     {
         int rMin = 255, gMin = 255, bMin = 255, rMax = 0, gMax = 0, bMax = 0;
         // Two attempts: the visible texels alone, then -- only if the block has none -- all sixteen, whose
@@ -58,12 +56,12 @@ internal static unsafe class BcnEncode
             int seen = 0;
             for (int i = 0; i < 16; i++)
             {
-                ReadOnlySpan<byte> p = px.Slice(i * 4, 4);
-                if (pass == 0 && p[3] <= MatteAlpha) continue;
+                Rgba32 p = px[i];
+                if (pass == 0 && p.A <= MatteAlpha) continue;
                 seen++;
-                if (p[0] < rMin) rMin = p[0]; if (p[0] > rMax) rMax = p[0];
-                if (p[1] < gMin) gMin = p[1]; if (p[1] > gMax) gMax = p[1];
-                if (p[2] < bMin) bMin = p[2]; if (p[2] > bMax) bMax = p[2];
+                if (p.R < rMin) rMin = p.R; if (p.R > rMax) rMax = p.R;
+                if (p.G < gMin) gMin = p.G; if (p.G > gMax) gMax = p.G;
+                if (p.B < bMin) bMin = p.B; if (p.B > bMax) bMax = p.B;
             }
             if (seen > 0) break;
         }
@@ -81,8 +79,8 @@ internal static unsafe class BcnEncode
             int len = dr * dr + dg * dg + db * db;
             for (int i = 0; i < 16; i++)
             {
-                ReadOnlySpan<byte> p = px.Slice(i * 4, 4);
-                int dot = (p[0] - rMin) * dr + (p[1] - gMin) * dg + (p[2] - bMin) * db;
+                Rgba32 p = px[i];
+                int dot = (p.R - rMin) * dr + (p.G - gMin) * dg + (p.B - bMin) * db;
                 int t = (dot * 3 + len / 2) / len;               // 0..3 along c1->c0
                 t = t < 0 ? 0 : t > 3 ? 3 : t;
                 // palette order for rising t: c1, (c0+2c1)/3, (2c0+c1)/3, c0 = indices 1,3,2,0
@@ -93,12 +91,12 @@ internal static unsafe class BcnEncode
     }
 
     /// <summary>One 4x4 alpha block -&gt; 8 bytes of BC4, always in the 8-value (a0 &gt; a1) mode.</summary>
-    private static void Bc4Block(ReadOnlySpan<byte> px, Span<byte> dst)
+    private static void Bc4Block(ReadOnlySpan<Rgba32> px, Span<byte> dst)
     {
         int aMin = 255, aMax = 0;
         for (int i = 0; i < 16; i++)
         {
-            byte a = px[i * 4 + 3];
+            byte a = px[i].A;
             if (a < aMin) aMin = a; if (a > aMax) aMax = a;
         }
         dst[0] = (byte)aMax; dst[1] = (byte)aMin;
@@ -108,7 +106,7 @@ internal static unsafe class BcnEncode
             int d = aMax - aMin;
             for (int i = 0; i < 16; i++)
             {
-                int t = ((px[i * 4 + 3] - aMin) * 7 + d / 2) / d;   // 0..7 along a1->a0
+                int t = ((px[i].A - aMin) * 7 + d / 2) / d;   // 0..7 along a1->a0
                 // palette: idx0=a0, idx1=a1, idx2..7 descend from a0 -- rising t maps 1,7,6,5,4,3,2,0
                 idx |= (ulong)(t == 0 ? 1 : t == 7 ? 0 : 8 - t) << (i * 3);
             }
@@ -124,35 +122,42 @@ internal static unsafe class BcnEncode
     /// endpoint line. Fails if the index mapping, palette order, or bit packing drifts.</summary>
     internal static bool SelfCheck(ExtenderLog log)
     {
-        byte* rgba = stackalloc byte[64];
-        byte* blk = stackalloc byte[16];
-        byte* outPx = stackalloc byte[64];
+        Span<Rgba32> rgba = stackalloc Rgba32[16];
+        Span<byte> blk = stackalloc byte[16];
+        Span<Rgba32> outPx = stackalloc Rgba32[16];
+
+        // The codecs read the engine's raster by reinterpreting it, so a texel has to be exactly its four
+        // bytes in upload order and a three-byte one exactly its three: a padding byte would shear the image.
+        Span<byte> raw = stackalloc byte[] { 1, 2, 3, 4, 5, 6, 7, 8 };
+        ReadOnlySpan<Rgba32> asRgba = MemoryMarshal.Cast<byte, Rgba32>(raw);
+        ReadOnlySpan<Rgb24> asRgb = MemoryMarshal.Cast<byte, Rgb24>(raw);
+        bool cast = asRgba.Length == 2 && asRgba[0] == new Rgba32(1, 2, 3, 4) && asRgba[1] == new Rgba32(5, 6, 7, 8)
+                 && asRgb.Length == 2 && asRgb[0] == new Rgb24(1, 2, 3) && asRgb[1] == new Rgb24(4, 5, 6);
 
         // Solid colour + solid alpha: both endpoints collapse, every pixel decodes to the quantized colour.
-        for (int i = 0; i < 16; i++) { rgba[i * 4] = 96; rgba[i * 4 + 1] = 160; rgba[i * 4 + 2] = 224; rgba[i * 4 + 3] = 200; }
-        EncodeLevel(rgba, 4, 4, true, blk);
+        rgba.Fill(new Rgba32(96, 160, 224, 200));
+        EncodeLevel(MemoryMarshal.AsBytes(rgba), 4, 4, true, blk);
         DecodeBc3(blk, outPx);
-        bool ok = true;
-        for (int i = 0; i < 16; i++)
-            ok &= outPx[i * 4] == (96 >> 3) * 255 / 31 && outPx[i * 4 + 1] == (160 >> 2) * 255 / 63
-               && outPx[i * 4 + 2] == (224 >> 3) * 255 / 31 && outPx[i * 4 + 3] == 200;
+        bool ok = cast;
+        var want = new Rgba32((byte)((96 >> 3) * 255 / 31), (byte)((160 >> 2) * 255 / 63), (byte)((224 >> 3) * 255 / 31), 200);
+        for (int i = 0; i < 16; i++) ok &= outPx[i] == want;
 
         // Black-to-white gradient with a ramping alpha: every decoded texel within one palette step.
         for (int i = 0; i < 16; i++)
         {
             byte v = (byte)(i * 17);
-            rgba[i * 4] = v; rgba[i * 4 + 1] = v; rgba[i * 4 + 2] = v; rgba[i * 4 + 3] = (byte)(255 - i * 16);
+            rgba[i] = new Rgba32(v, v, v, (byte)(255 - i * 16));
         }
-        EncodeLevel(rgba, 4, 4, true, blk);
+        EncodeLevel(MemoryMarshal.AsBytes(rgba), 4, 4, true, blk);
         DecodeBc3(blk, outPx);
         for (int i = 0; i < 16; i++)
         {
-            int e = rgba[i * 4] - outPx[i * 4];
-            int a = rgba[i * 4 + 3] - outPx[i * 4 + 3];
+            int e = rgba[i].R - outPx[i].R;
+            int a = rgba[i].A - outPx[i].A;
             // ALPHA everywhere, colour only where the texel is visible: the endpoint fit stops at
             // MatteAlpha on purpose (see there), so a texel under it has no colour promise to keep.
             ok &= (a < 0 ? -a : a) <= 24;                             // one BC4 palette step
-            if (rgba[i * 4 + 3] > MatteAlpha) ok &= (e < 0 ? -e : e) <= 48;   // one BC1 palette step
+            if (rgba[i].A > MatteAlpha) ok &= (e < 0 ? -e : e) <= 48;   // one BC1 palette step
         }
 
         // #357: the matte. Half a foliage block is dark leaf, half is the white the artist left under
@@ -162,11 +167,11 @@ internal static unsafe class BcnEncode
         {
             bool leaf = i < 8;
             byte v = leaf ? (byte)40 : (byte)255;
-            rgba[i * 4] = v; rgba[i * 4 + 1] = v; rgba[i * 4 + 2] = v; rgba[i * 4 + 3] = leaf ? (byte)255 : (byte)0;
+            rgba[i] = new Rgba32(v, v, v, leaf ? (byte)255 : (byte)0);
         }
-        EncodeLevel(rgba, 4, 4, true, blk);
+        EncodeLevel(MemoryMarshal.AsBytes(rgba), 4, 4, true, blk);
         DecodeBc3(blk, outPx);
-        for (int i = 0; i < 8; i++) ok &= outPx[i * 4] < 80;
+        for (int i = 0; i < 8; i++) ok &= outPx[i].R < 80;
 
         // The edge clamp: a 5x5 level is four blocks whose overhang repeats the last row/column, so a solid
         // image stays solid and the size math agrees with the block grid.
@@ -183,7 +188,7 @@ internal static unsafe class BcnEncode
     }
 
     /// <summary>Spec-faithful BC3 decode of one block, for the self-check only.</summary>
-    private static void DecodeBc3(byte* blk, byte* outPx)
+    private static void DecodeBc3(ReadOnlySpan<byte> blk, Span<Rgba32> outPx)
     {
         int a0 = blk[0], a1 = blk[1];
         ulong aIdx = 0;
@@ -193,15 +198,16 @@ internal static unsafe class BcnEncode
         for (int i = 0; i < 16; i++)
         {
             int ai = (int)((aIdx >> (i * 3)) & 7);
-            outPx[i * 4 + 3] = (byte)(ai == 0 ? a0 : ai == 1 ? a1 : ((8 - ai) * a0 + (ai - 1) * a1) / 7);
+            byte a = (byte)(ai == 0 ? a0 : ai == 1 ? a1 : ((8 - ai) * a0 + (ai - 1) * a1) / 7);
             int ci = (int)((cIdx >> (i * 2)) & 3);
-            for (int ch = 0; ch < 3; ch++)
-            {
-                int e0 = Chan(c0, ch), e1 = Chan(c1, ch);
-                outPx[i * 4 + ch] = (byte)(ci == 0 ? e0 : ci == 1 ? e1 : ci == 2 ? (2 * e0 + e1) / 3 : (e0 + 2 * e1) / 3);
-            }
+            outPx[i] = new Rgba32(Lerp(ci, Chan(c0, 0), Chan(c1, 0)), Lerp(ci, Chan(c0, 1), Chan(c1, 1)),
+                                  Lerp(ci, Chan(c0, 2), Chan(c1, 2)), a);
         }
     }
+
+    /// <summary>One channel off the BC1 palette at index <paramref name="ci"/>.</summary>
+    private static byte Lerp(int ci, int e0, int e1)
+        => (byte)(ci == 0 ? e0 : ci == 1 ? e1 : ci == 2 ? (2 * e0 + e1) / 3 : (e0 + 2 * e1) / 3);
 
     private static int Chan(int c565, int ch) => ch == 0 ? ((c565 >> 11) & 31) * 255 / 31
         : ch == 1 ? ((c565 >> 5) & 63) * 255 / 63 : (c565 & 31) * 255 / 31;
