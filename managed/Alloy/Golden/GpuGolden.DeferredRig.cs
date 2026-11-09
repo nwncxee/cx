@@ -172,7 +172,7 @@ public sealed unsafe partial class AlloyRenderer
             f.Destroy(vk);
             vk.Destroy(fill);
             foreach (VkDefStage? s in (ReadOnlySpan<VkDefStage?>)[walk, film, build])
-                if (s != null) { vk.Destroy(s.Pipe); vk.Destroy(s.Cs); }
+                if (s != null) vk.Destroy(s.Pipe);
         }
         return got;
     }

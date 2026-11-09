@@ -18,7 +18,7 @@ internal static unsafe partial class FrameTap
     /// built, so a second reader of the same stage cannot drift from the frame tap's own.</summary>
     internal static string ReadbackCs(int words)
     {
-        const string Version = "#version 460 core\n";
+        const string Version = VkGlsl.Version;
         return ShaderSource.Get("cx_readback_c.glsl")
             .Replace(Version, Version + $"#define CX_READBACK_WORDS {words}\n", StringComparison.Ordinal);
     }

@@ -173,7 +173,7 @@ internal static class CullPassVk
     private static string HiZCs => ShaderSource.Get("cx_hiz_c.glsl");
 
     /// <summary>The first line of every embedded stage; a variant's define goes right after it.</summary>
-    private const string VersionLine = "#version 460 core\n";
+    private const string VersionLine = VkGlsl.Version;
 
     /// <summary>The pyramid's local size, as <c>cx_hiz_c.glsl</c> declares it.</summary>
     private const int HiZGroup = 8;

@@ -109,7 +109,7 @@ internal static partial class GpuGolden
     static partial void FsrSelfCheck(VkBackend vk, Checker check, ExtenderLog log);
 
     /// <summary>The version line every golden stage opens with, and the one the shipped libraries open with.</summary>
-    private const string Version = "#version 460 core\n";
+    private const string Version = VkGlsl.Version;
 
     /// <summary>The storage block pair every case-per-group golden reads and writes, on the points
     /// <see cref="SsboSlots"/> names -- interpolated, so the GLSL and the bind are one number. Internal because
