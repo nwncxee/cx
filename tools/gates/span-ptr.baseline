@@ -34,7 +34,7 @@
 2 managed/Graphics/NullGl.Stubs.cs
 1 managed/Graphics/Vulkan/VkBackend.Cache.cs
 2 managed/Graphics/Vulkan/VkBackend.cs
-3 managed/Services/Anim/KeyCurves.cs
+2 managed/Services/Anim/KeyCurves.cs
 2 managed/Services/Camera/ActionFeedback.cs
 1 managed/Services/Camera/TabTargetService.cs
 2 managed/Services/Chat/ChatService.Edit.cs

@@ -175,7 +175,7 @@ public sealed unsafe class KeyCurveService : IExtenderService
     public static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
-        float* t = stackalloc float[8];
+        Span<float> t = stackalloc float[8];
         float* p = stackalloc float[8 * 3];
         float* q = stackalloc float[8 * 4];
         Span<Quaternion> qk = new(q, 8);
@@ -185,7 +185,7 @@ public sealed unsafe class KeyCurveService : IExtenderService
         bool held = true;
         for (float x = 0.01f; x < 3f; x += 0.01f)
         {
-            if (!Position(new(t, 8), new(p, 24), 4, x, out Vector3 v)) { held = false; break; }
+            if (!Position(t, new(p, 24), 4, x, out Vector3 v)) { held = false; break; }
             held &= v.X <= 1f + 1e-5f && v.X >= -1e-5f && (x < 1f || x > 2f || MathF.Abs(v.X - 1f) < 1e-5f);
         }
         check.Expect(held, "positions: a hold between two equal keys stays put, and the curve never passes it");
@@ -194,10 +194,10 @@ public sealed unsafe class KeyCurveService : IExtenderService
         Along(p, 0f, 2f, 2.1f, 5f, 5.2f);
         bool through = true, rising = true;
         float last = 0f;
-        for (int k = 1; k < 5; k++) through &= Position(new(t, 8), new(p, 24), 5, t[k], out Vector3 v) && MathF.Abs(v.X - p[3 * k]) < 1e-5f;
+        for (int k = 1; k < 5; k++) through &= Position(t, new(p, 24), 5, t[k], out Vector3 v) && MathF.Abs(v.X - p[3 * k]) < 1e-5f;
         for (float x = 0.005f; x < 2f; x += 0.005f)
         {
-            if (!Position(new(t, 8), new(p, 24), 5, x, out Vector3 v)) { rising = false; break; }
+            if (!Position(t, new(p, 24), 5, x, out Vector3 v)) { rising = false; break; }
             rising &= v.X >= last - 1e-5f;
             last = v.X;
         }
@@ -207,12 +207,12 @@ public sealed unsafe class KeyCurveService : IExtenderService
         for (int k = 0; k < 5; k++) { p[3 * k] = k; p[3 * k + 1] = -2f * k; p[3 * k + 2] = 0.5f * k; }
         bool straight = true;
         for (float x = 0.01f; x < 2f; x += 0.01f)
-            straight &= Position(new(t, 8), new(p, 24), 5, x, out Vector3 v) && Vector3.Distance(v, new Vector3(2f * x, -4f * x, x)) < 1e-4f;
+            straight &= Position(t, new(p, 24), 5, x, out Vector3 v) && Vector3.Distance(v, new Vector3(2f * x, -4f * x, x)) < 1e-4f;
         check.Expect(straight, "positions: evenly paced keys in a line give the engine's own straight segment");
 
         Keys(t, 0f, 1f, 2f, 3f, 4f);
         Along(p, 0f, 2f, 0f, -1f, 0f);
-        bool seam = Position(new(t, 8), new(p, 24), 5, 3.999f, out Vector3 end) && Position(new(t, 8), new(p, 24), 5, 0.001f, out Vector3 start)
+        bool seam = Position(t, new(p, 24), 5, 3.999f, out Vector3 end) && Position(t, new(p, 24), 5, 0.001f, out Vector3 start)
                     && MathF.Abs((0f - end.X) / 0.001f - start.X / 0.001f) < 0.01f;
         check.Expect(seam, "positions: a loop leaves its last key at the speed it enters its first");
 
@@ -221,7 +221,7 @@ public sealed unsafe class KeyCurveService : IExtenderService
         bool turnHeld = true;
         for (float x = 0.01f; x < 3f; x += 0.01f)
         {
-            if (!Turn(new(t, 8), new(q, 32), 4, x, out Quaternion r)) { turnHeld = false; break; }
+            if (!Turn(t, new(q, 32), 4, x, out Quaternion r)) { turnHeld = false; break; }
             if (r.W < 0f) r = Quaternion.Negate(r);
             float a = 2f * MathF.Atan2(r.Z, r.W);
             turnHeld &= MathF.Abs(r.Length() - 1f) < 1e-4f && a <= 0.5f + 1e-4f && a >= -1e-4f
@@ -235,9 +235,9 @@ public sealed unsafe class KeyCurveService : IExtenderService
         for (int k = 0; k < 5; k++) flip[k] = k % 2 == 1 ? Quaternion.Negate(qk[k]) : qk[k];
         bool keysHit = true, signFree = true;
         for (int k = 1; k < 5; k++)
-            keysHit &= Turn(new(t, 8), new(q, 32), 5, t[k], out Quaternion r) && MathF.Abs(Quaternion.Dot(r, qk[k])) > 1f - 1e-5f;
+            keysHit &= Turn(t, new(q, 32), 5, t[k], out Quaternion r) && MathF.Abs(Quaternion.Dot(r, qk[k])) > 1f - 1e-5f;
         for (float x = 0.01f; x < 2f; x += 0.01f)
-            signFree &= Turn(new(t, 8), new(q, 32), 5, x, out Quaternion a) && Turn(new(t, 8), new((float*)flip, 20), 5, x, out Quaternion b)
+            signFree &= Turn(t, new(q, 32), 5, x, out Quaternion a) && Turn(t, new((float*)flip, 20), 5, x, out Quaternion b)
                         && MathF.Abs(Quaternion.Dot(a, b)) > 1f - 1e-5f;
         check.Expect(keysHit && signFree, "rotations: squad passes through every key and does not care which sign a key is stored with");
 
@@ -245,15 +245,15 @@ public sealed unsafe class KeyCurveService : IExtenderService
         Spun(qk, 0f, 0.3f, 0.6f, 0.9f, 1.2f);
         bool slerped = true;
         for (float x = 0.01f; x < 2f; x += 0.01f)
-            slerped &= Turn(new(t, 8), new(q, 32), 5, x, out Quaternion r) && MathF.Abs(Quaternion.Dot(r, Quaternion.CreateFromAxisAngle(Vector3.UnitZ, 0.6f * x))) > 1f - 1e-6f;
+            slerped &= Turn(t, new(q, 32), 5, x, out Quaternion r) && MathF.Abs(Quaternion.Dot(r, Quaternion.CreateFromAxisAngle(Vector3.UnitZ, 0.6f * x))) > 1f - 1e-6f;
         check.Expect(slerped, "rotations: an even spin about one axis gives the engine's own slerp");
 
-        check.Expect(!Position(new(t, 8), new(p, 24), 2, 0.5f, out _) && !Position(new(t, 8), new(p, 24), 5, 0f, out _) && !Position(new(t, 8), new(p, 24), 5, 3f, out _),
+        check.Expect(!Position(t, new(p, 24), 2, 0.5f, out _) && !Position(t, new(p, 24), 5, 0f, out _) && !Position(t, new(p, 24), 5, 3f, out _),
                      "a track under three keys, and a time at or past an end key, keep the engine's value");
         log.Info(check.Ok ? "KeyCurves.SelfCheck: passed" : "KeyCurves.SelfCheck: FAILED");
     }
 
-    private static void Keys(float* t, params ReadOnlySpan<float> at) => at.CopyTo(new Span<float>(t, at.Length));
+    private static void Keys(Span<float> t, params ReadOnlySpan<float> at) => at.CopyTo(t);
 
     /// <summary>Vector keys with <paramref name="x"/> on X and the other axes at rest.</summary>
     private static void Along(float* p, params ReadOnlySpan<float> x)
