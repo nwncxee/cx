@@ -11,6 +11,8 @@
 #   --only  run one mutant by name: acquire, wait, order, release or bindless
 #   --list  print the mutants and exit
 #
+# CX_GPU_LOCK and CX_BUILD_WRAP guard the card and the memory on a shared box; see the two below.
+#
 # Each mutant names the pass it belongs to: the four transfer ones are synchronization validation's (pass a), the
 # bindless one GPU-assisted validation's (pass b), whose instrumented shaders are what see a descriptor read.
 set -uo pipefail
@@ -31,7 +33,7 @@ while [ $# -gt 0 ]; do
     --out) out=$2; shift 2 ;;
     --only) only=$2; shift 2 ;;
     --list) for m in "${MUTANTS[@]}"; do IFS='~' read -r n p f _ _ <<<"$m"; printf '%-9s pass %s  %s\n' "$n" "$p" "$f"; done; exit 0 ;;
-    -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
+    -h|--help) sed -n "2,19p" "$0"; exit 0 ;;
     *) echo ">> unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -44,12 +46,13 @@ echo ">> work dir: $out"
 # A pass's distinct message ids, so a mutant counted as caught is caught by a NEW id and not by one the unmutated
 # tree already leaves.
 ids() { grep -oP '^Validation (Error|Warning|Performance Warning): \[ \K[^ ]+' "$1" 2>/dev/null | sort -u; }
-build() { nix develop -c ./build.sh > "$1" 2>&1; }
-
-# CX_GPU_LOCK names a lock file one GPU job at a time is taken under, for a box where other runs share the card; the
-# builds stay outside it, since they want the CPU and the card is idle through them.
-gpu=()
-[ -n "${CX_GPU_LOCK:-}" ] && gpu=(flock "$CX_GPU_LOCK")
+# On a box where other work shares the card and the memory, each step runs behind its own guard: CX_GPU_LOCK is a lock
+# file one GPU job at a time is taken under, CX_BUILD_WRAP a command each build is run through (the box's build-slot
+# limiter, since a NativeAOT build takes GBs). The two are separate because a build wants the CPU while the card is
+# idle, and holding the card through six builds would starve everything else of it.
+gpu=(); [ -n "${CX_GPU_LOCK:-}" ] && gpu=(flock "$CX_GPU_LOCK")
+wrap=(); read -r -a wrap <<<"${CX_BUILD_WRAP:-}"
+build() { "${wrap[@]}" nix develop -c ./build.sh > "$1" 2>&1; }
 validate() { "${gpu[@]}" tools/vk/validate.sh "$@"; }
 
 echo ">> baseline: building and running both passes on the unmutated tree"
