@@ -47,6 +47,12 @@ float CxSurfFadeFor(int quality, float heightAo)
 {
     return quality > 1 ? CxSurfFadeOf(heightAo) : 0.0;
 }
+/// inc_standard.shd:182-183: the shading frame takes the vertex normal, negated on a back face, so the far
+/// side of a two-sided card lights from its own side. `front` is <c>gl_FrontFacing</c>.
+vec3 CxFaceNormal(vec3 n, bool front)
+{
+    return normalize(front ? n : -n);
+}
 // the share of a baked light's highlight the mirror lobes carry, the pages' one lobe the rest: 0 at the ceiling,
 // 1 at half of it. A cut there swapped the baked shadow for one cube tap wherever rain crossed the ceiling.
 float CxGlossW(float rough) { return uLightOcc.x > 0.0 ? 1.0 - smoothstep(0.5 * uLightOcc.y, uLightOcc.y, rough) : 0.0; }
@@ -306,7 +312,8 @@ float CxSpecLobe(vec3 N, vec3 V, vec3 L, float rough, float spec) { return CxSpe
 // The half that does not vary per light: alpha^2/4 and the view-side shadowing term. N.V floors at 0, as
 // inc_lighting.shd:436-441 leaves it; the shadowing term's k keeps the divisor off zero.
 // ponytail: stock also bends a shading normal that faces away from the eye into the view plane before any
-// light reads it; this only floors the dot. Bend N in the lit main ahead of the sun terms if it shows.
+// light reads it; this only floors the dot. Measured, that bend RAISES this lobe on a grazing normal -- it
+// is not the fix for a single-pixel highlight, so it waits on a decision about the lobe's own ceiling.
 float CxSpecBase(float NdotV, float rough)
 {
     return rough * rough * 0.25 / mix(max(NdotV, 0.0), 1.0, CxSmithK(rough));
