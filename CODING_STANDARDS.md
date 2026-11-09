@@ -62,6 +62,10 @@ rule and the gates.
   to `WorldDepth.Clear`. GL's less and less-or-equal tests, a clear to a literal 1 and a depth test that names no
   comparison are refused outside the backend; the casters, shadow cascades and the GUI keep GL's depth through
   `GlDepth`, in the files CX0006's `Allowed` names (ADR 0053).
+- **A sampler declaration is read by `VkGlsl.Opaques` (CX0008).** It lexes the stage, so a comment, doubled
+  spaces, a second declarator on a line and an array type all answer correctly, and it hands back each
+  declaration's name, binding and bind kind. A regex naming `uniform` or `binding` beside `sampler` or `image` is
+  refused outside that reader and the files CX0008's `Allowed` names, which rewrite a declaration rather than read one.
 - **A render target's alias lane is an `AliasLanes` member.** Two targets share one allocation when their
   `Alias` strings are equal, so a lane is declared once, in frame order, and never spelled at the call site;
   `tools/gates/alias-lanes.sh` refuses a literal, the goldens excepted.

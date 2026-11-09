@@ -16,3 +16,5 @@ dotnet_diagnostic.CX0005.severity = error
 dotnet_diagnostic.CX0006.severity = error
 # A push-constant block staged as a span of primitives rather than a named struct.
 dotnet_diagnostic.CX0007.severity = error
+# A regex that reads a GLSL sampler or image declaration outside VkGlsl and the rewriting sites.
+dotnet_diagnostic.CX0008.severity = error

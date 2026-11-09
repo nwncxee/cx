@@ -270,6 +270,12 @@ the cleanup that earned it. Adding a rule means adding its gate in the same chan
 - `depth-confined.sh`: a file named in CX0006's `Allowed` that is not in the tree fails. The RULE -- GL's depth test and
   clear only in the files that keep GL depth (casters, shadow cascades, the GUI), and no depth test without its
   comparison -- is CX0006 (`tools/analyzers/DepthConvention.cs`); its approved examples need the SDK, so `build.sh` runs them.
+- `sampler-regex.sh`: a file named in CX0008's `Allowed` that is not in the tree fails. The RULE -- one reader of
+  GLSL sampler and image declarations -- is CX0008 (`tools/analyzers/SamplerRegex.cs`), which the compiler checks
+  because it can tell a regex pattern argument from any other string: a pattern naming `uniform` or `binding`
+  beside `sampler` or `image` is refused outside `VkGlsl` (whose `Opaques` lexes the stage and answers with each
+  declaration's name, binding and bind kind) and the files that REWRITE a declaration. This gate refuses a
+  permission that outlived its file; the list is read out of `SamplerRegex.cs`, never restated.
 - `content-fixtures.sh`: a `cx_fix*` stage the C# self-checks translate that `tools/content_stage.py`'s `FIXTURE` lacks, or the reverse, fails: the two translations answer to one set of stages.
 - `golden-glsl.sh`: a golden under `managed/Alloy/Golden/` declaring a `CX_*` constant a shipped shader declares (splice it
   with `GpuGolden.Declaration`), indexing `uIn`/`uOut` with a literal stride (use `CX_GOLD_IN`/`CX_GOLD_OUT`), or a shader
