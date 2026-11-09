@@ -31,6 +31,10 @@ internal static partial class ContentStage
                        + "    SetupStandardShaderInputs();\n    float glow = 0.5, other = 1.0;\n    FragmentColor.rgb *= other;\n"
                        + "    ApplyStandardShader();\n    FragmentColor.rgb += vec3(glow) * float(numLights);\n"
                        + "    gl_FragColor = FragmentColor;\n}\n",
+        ["cx_fixcutpre"] = "#include \"inc_standard\"\nvoid main()\n{\n    FragmentColor = vec4(1.0);\n"
+                         + "    SetupStandardShaderInputs();\n    float fAlphaFromTexture = texture2D(texUnit1, vTexCoords.xy).a;\n"
+                         + "    if (fAlphaFromTexture < 0.6)\n    {\n        discard;\n    }\n    ApplyStandardShader();\n"
+                         + "    gl_FragColor = vec4(FragmentColor.rgb, fAlphaFromTexture);\n}\n",
         ["cx_fixsetsglobal"] = "#include \"inc_standard\"\nvoid main()\n{\n    FragmentColor = vec4(1.0);\n    SetupStandardShaderInputs();\n"
                              + "    ApplyStandardShader();\n    fRoughness = 0.5;\n    gl_FragColor = vec4(FragmentColor.rgb, 0.5);\n}\n",
         ["cx_fixcallshelper"] = "#include \"inc_standard\"\nfloat FixAlpha() { FragmentColor.r = 0.0; return 0.5; }\nvoid main()\n{\n"
@@ -145,6 +149,19 @@ internal static partial class ContentStage
         check.Expect(ofLit.Refused == null && ofLit.ForwardOnly, "an alpha read off the lit colour gets a twin");
         Result noCall = Plain("cx_fixnocall");
         check.Expect(noCall.Refused == null && noCall.ForwardOnly, "a stage that never asks for the lighting gets a twin");
+        // A skinned part whose stage cuts on the normal map's alpha at its own literal, ahead of the lighting call:
+        // the threshold is the stage's, carried through translation, so no table of coverage sources holds one for it.
+        Result cutPre = Plain("cx_fixcutpre");
+        check.Expect(cutPre.Refused == null && cutPre.Cuts && cutPre.Host.Contains("0.6"),
+                     $"a stage's own cut threshold survives translation ('{cutPre.Refused}')");
+        int body = cutPre.Host.IndexOf("void CxContentMain()", StringComparison.Ordinal);
+        // from the body's own opening: the environment spliced ahead of it discards too
+        int cutAt = body < 0 ? -1 : cutPre.Host.IndexOf("discard;", body, StringComparison.Ordinal);
+        int postAt = body < 0 ? -1 : cutPre.Host.IndexOf("void CxContentPost()", body, StringComparison.Ordinal);
+        check.Expect(cutAt > body && (postAt < 0 || cutAt < postAt),
+                     "a pre-apply cut lands in the body the depth and caster twins run, not the post half");
+        check.Expect(cutPre.Refused == null && cutPre.AlphaPost && !cutPre.ForwardOnly,
+                     $"a pre-apply cut routes as '{cutPre.RouteNote}'");
         Result envStage = Translate("cx_fixenv", true, Chain, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37);
         check.Expect(envStage.Refused == null && envStage.Host.Contains("#define CX_CONTENT_ENVMAP 1")
                      && !r.Host.Contains("CX_CONTENT_ENVMAP"),
