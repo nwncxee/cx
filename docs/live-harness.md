@@ -356,8 +356,21 @@ A mutant counts as caught only on a message id the unmutated tree does not leave
 from a baseline run of its own. A mutant that no longer applies to the file (the code moved under it) is a
 failure, not a pass: a control nothing can trip hides the thing it was meant to prove.
 
+What the sweep measured on an RTX 3070 under layer 1.4.341: sync validation catches the dropped acquire, the
+dropped timeline wait and the dropped release barrier, and for the acquire and the release it is the only
+thing that does -- `run-demo.sh` passes on both. Two do not trip their pass. The missing order between repeat
+fills of one buffer leaves the layer silent and the transfer golden still reads the later fill, so nothing
+holds that order on this hardware. The bindless-guard mutant is caught by `VkGlsl.SelfCheck`, which reads the
+emitted text before any GPU work, so GPU-assisted validation still has no control of its own: that wants a
+mutant which leaves the translated text alone and reads past the table at runtime.
+
+So the sweep exits non-zero as it stands, on those two. It is the record of which faults each pass sees, not
+a check to make green by weakening a mutant.
+
 Six builds and six passes, so set `CX_BUILD_WRAP` to the box's build-slot limiter and `CX_GPU_LOCK` to a lock
-file when anything else on the machine shares the card or the memory.
+file when anything else on the machine shares the card or the memory. One more trap: `run-demo.sh` reads the
+machine's real `cx.cfg`, so a `KnobFile.SelfCheck` failure in a sweep log is someone else editing settings
+on the box, not the mutant.
 
 ## Limits
 

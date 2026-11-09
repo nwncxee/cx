@@ -15,6 +15,17 @@
 #
 # Each mutant names the pass it belongs to: the four transfer ones are synchronization validation's (pass a), the
 # bindless one GPU-assisted validation's (pass b), whose instrumented shaders are what see a descriptor read.
+#
+# Measured on an RTX 3070, layer 1.4.341, with the goldens otherwise clean:
+#   acquire   CAUGHT  VUID-vkCmdDraw-None-09600, and run-demo passes -- the layer alone sees it
+#   wait      CAUGHT  SYNC-HAZARD-READ-RACING-WRITE and six more
+#   release   CAUGHT  VUID-vkQueueSubmit2-commandBuffer-03879, and run-demo passes -- the layer alone sees it
+#   order     NOT     the pass stays silent and the transfer golden still reads the later fill, so nothing holds
+#                     the order of repeat fills of one buffer on this hardware
+#   bindless  NOT     by the pass: VkGlsl.SelfCheck fails on the emitted text first, so GPU-AV's own control is
+#                     still owed -- it wants a mutant that leaves the text alone and reads past the table
+# So the sweep exits non-zero as it stands, on those last two. Read it as the record of which faults each pass
+# sees, not as a check to make green by weakening a mutant.
 set -uo pipefail
 cd "$(dirname "$0")/../.." || exit 2
 
@@ -33,7 +44,7 @@ while [ $# -gt 0 ]; do
     --out) out=$2; shift 2 ;;
     --only) only=$2; shift 2 ;;
     --list) for m in "${MUTANTS[@]}"; do IFS='~' read -r n p f _ _ <<<"$m"; printf '%-9s pass %s  %s\n' "$n" "$p" "$f"; done; exit 0 ;;
-    -h|--help) sed -n "2,19p" "$0"; exit 0 ;;
+    -h|--help) sed -n "2,33p" "$0"; exit 0 ;;
     *) echo ">> unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -45,7 +56,9 @@ echo ">> work dir: $out"
 
 # A pass's distinct message ids, so a mutant counted as caught is caught by a NEW id and not by one the unmutated
 # tree already leaves.
-ids() { grep -oP '^Validation (Error|Warning|Performance Warning): \[ \K[^ ]+' "$1" 2>/dev/null | sort -u; }
+# report.py reads the log, not a grep here: a layer log carries object names out of the engine and is not text, and
+# `grep -oP` over one prints nothing at all, which reads exactly like a clean log.
+ids() { python3 -I tools/vk/report.py --ids "$1" 2>/dev/null | sort -u; }
 # On a box where other work shares the card and the memory, each step runs behind its own guard: CX_GPU_LOCK is a lock
 # file one GPU job at a time is taken under, CX_BUILD_WRAP a command each build is run through (the box's build-slot
 # limiter, since a NativeAOT build takes GBs). The two are separate because a build wants the CPU while the card is

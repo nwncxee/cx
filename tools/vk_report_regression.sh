@@ -15,6 +15,13 @@ fails=0
 ok() { echo "  ok: $1"; }
 bad() { echo "FAIL: $1" >&2; fails=$((fails + 1)); }
 
+# report.py over log $2, expecting exit $1; $3 says what the case shows.
+verdict() {
+    local want=$1 log=$2 msg=$3 got=0
+    python3 -I "$R" "$log" "pass a" "${4:-$SYNC}" >/dev/null 2>&1 || got=$?
+    if [ "$got" = "$want" ]; then ok "$msg"; else bad "$msg -- report.py exited $got, wanted $want"; fi
+}
+
 # A log holding the layer's Active notice, $2's Current Enables, and the finding blocks named in $3...; a NUL byte
 # goes in an object name, as the layer writes it when the engine's own name holds one.
 fixture() {
@@ -41,32 +48,28 @@ if [ "$got" = "$want" ]; then ok "a log with a NUL byte in an object name yields
 else bad "the ids of a log with a NUL byte came out as '$got', wanted '$want'"; fi
 
 # ... and the grep that reads as clean is why: this is the shape --ids replaced, kept as the comparison
+# shellcheck disable=SC2143 # `grep -q` still MATCHES a binary file; the bug is that -oP prints nothing, so the
+# output is what this case tests, not the exit code
 if [ -z "$(grep -oP '^Validation Error: \[ \K[^ ]+' "$log" 2>/dev/null)" ]; then
     ok "grep -oP over the same log prints nothing, which is the bug --ids exists for"
 else bad "grep -oP read the fixture log after all, so this case no longer shows what it was for"; fi
 
 # 2. A clean log is a pass, a log with a finding is not
 clean="$(fixture clean "$SYNC")"
-python3 -I "$R" "$clean" "pass a" "$SYNC" >/dev/null 2>&1
-[ $? = 0 ] && ok "a log with the notice, the right Enables and no finding passes" || bad "a clean log did not pass"
-python3 -I "$R" "$log" "pass a" "$SYNC" >/dev/null 2>&1
-[ $? = 1 ] && ok "a log with findings fails" || bad "a log with two findings did not fail"
+verdict 0 "$clean" "a log with the notice, the right Enables and no finding passes"
+verdict 1 "$log" "a log with findings fails"
 
 # 3. The three positive controls: a missing log, a missing Active notice, and the wrong feature all fail
-python3 -I "$R" "$WORK/not-here" "pass a" "$SYNC" >/dev/null 2>&1
-[ $? = 1 ] && ok "a log the layer never wrote fails" || bad "a missing log did not fail"
+verdict 1 "$WORK/not-here" "a log the layer never wrote fails"
 # no findings in it, so the missing notice is the only thing left to fail on
 printf 'something else wrote this file\n' > "$WORK/silent"
-python3 -I "$R" "$WORK/silent" "pass a" "$SYNC" >/dev/null 2>&1
-[ $? = 1 ] && ok "a log with no Active notice fails even with no finding in it" || bad "a log the layer was never in did not fail"
+verdict 1 "$WORK/silent" "a log with no Active notice fails even with no finding in it"
 other="$(fixture other VK_VALIDATION_FEATURE_ENABLE_GPU_ASSISTED_EXT)"
-python3 -I "$R" "$other" "pass a" "$SYNC" >/dev/null 2>&1
-[ $? = 1 ] && ok "a log whose Enables names another feature fails" || bad "the wrong pass's log did not fail"
+verdict 1 "$other" "a log whose Enables names another feature fails"
 
 # 4. The layer's own notices are not findings
 own="$(fixture own "$SYNC" WARNING-CreateDevice-status-message VALIDATION-SETTINGS WARNING-Setting-Limit-Adjusted)"
-python3 -I "$R" "$own" "pass a" "$SYNC" >/dev/null 2>&1
-[ $? = 0 ] && ok "the layer talking about itself is not a finding" || bad "the layer's own notices were read as findings"
+verdict 0 "$own" "the layer talking about itself is not a finding"
 
 [ "$fails" = 0 ] && { echo "PASS: report.py answers all 8 cases"; exit 0; }
 echo "FAIL: $fails of the report.py cases" >&2
