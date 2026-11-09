@@ -58,10 +58,21 @@ public sealed unsafe partial class AlloyRenderer
         {
             "uFbColor" => w.Col,
             "uFbDepth" => w.Dep,
-            "uNoise" => VkTextures.Image(FrameSnapshot.NoiseTid),
+            "uNoise" => VkWaveNoise(),
             _ => w.EnvLive ? VkTextures.Image(AlloyEnvMap.Tid()) : default,
         };
     }
+
+    /// <summary>The wave field's <c>solid_noise</c> mirror: the engine's where the resman has loaded it and the
+    /// mirror is up, else CX's own copy of the same resref, which its loader holds for the frames before the
+    /// engine's arrives. Null id only when neither is.</summary>
+    private static ImageId VkWaveNoise()
+        => WaveNoise(VkTextures.Image(FrameSnapshot.NoiseTid), VkTextures.Image(FrameSnapshot.OwnNoise()));
+
+    /// <summary>Which of the two mirrors the field draws with, given the engine's <paramref name="engine"/> and
+    /// CX's own <paramref name="own"/>: the engine's wins where it is up, as the one the vanilla sea is sampled
+    /// from.</summary>
+    internal static ImageId WaveNoise(ImageId engine, ImageId own) => engine.IsNull ? own : engine;
 
     /// <summary>The sampler a water read takes: the snapshot pair filters linearly, as GL's copy does, and the
     /// engine's noise repeats, as the pass's own sampler object makes it.</summary>
@@ -81,15 +92,15 @@ public sealed unsafe partial class AlloyRenderer
         s.Ready = false;
         if (s.Failed || !FrameSnapshot.Usable || !_waterArmed) return false;
         if (!VkWaterEnsure(vk, s, w, h, log)) return false;
-        // the wave field IS the engine's noise texture at four scales, so a stand-in is a different sea rather
+        // the wave field IS the solid_noise texture at four scales, so a stand-in is a different sea rather
         // than a slightly wrong one: the class sits out instead, named
-        if (VkTextures.Image(FrameSnapshot.NoiseTid).IsNull)
+        if (VkWaveNoise().IsNull)
         {
             if (!s.NoiseMissed)
             {
                 s.NoiseMissed = true;
-                log.Always("AlloyRenderer: the Vulkan water class sits out -- the engine's noise texture is not "
-                         + "mirrored on Vulkan, and without it the wave field has no amplitude");
+                log.Always("AlloyRenderer: the Vulkan water class sits out -- neither the engine's solid_noise nor "
+                         + "CX's own copy of it is mirrored on Vulkan, and without one the wave field has no amplitude");
             }
             return false;
         }
