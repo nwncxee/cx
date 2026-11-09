@@ -456,9 +456,9 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
          + "else draws the world, so those parts are NOT RENDERED AT ALL, and the spill set re-picks itself "
          + "every enrollment, so which geometry is missing changes as you watch)";
 
-    /// <summary>This pass's device-loss slot. Every name here belonged to the device that went, so nothing is
-    /// deleted -- the objects went with it -- and the names are dropped so each Ensure rebuilds rather than
-    /// short-circuiting on a handle and drawing through a dead one.</summary>
+    /// <summary>The renderer's device-loss edge: it rings every part that latched something on the device that
+    /// went. Nothing is deleted -- the objects went with it -- and each latch clears itself here or in its own
+    /// slot, so the next Ensure rebuilds rather than short-circuiting on a name and drawing through a dead one.</summary>
     internal static void ContextLost()
     {
         MotionContextLost();
