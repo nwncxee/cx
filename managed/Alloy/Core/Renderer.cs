@@ -44,6 +44,9 @@ internal static class Renderer
     /// shapes the mask itself (per-primitive rotation, so stacked equal-alpha cards both show).</summary>
     internal static readonly Knob<int> A2c;
     internal static readonly Knob<bool> A2cMask;
+    /// <summary>Anisotropic samples a linear mipmapped texture's sampler asks for; clamped to the device's
+    /// ceiling at sampler creation. Samplers are minted with the texture, so this is read as <c>Boot</c>.</summary>
+    internal static readonly Knob<int> Aniso;
     internal static readonly Knob<bool> PltVerify;
     /// <summary>Content stages' native versions (<c>cx_&lt;stage&gt;</c>) and the images and passes they declare.</summary>
     internal static readonly Knob<bool> Native;
@@ -124,6 +127,11 @@ internal static class Renderer
                          help: "Materials that ask for alpha-to-coverage (often hair) get soft, layered edges from this many "
                              + "samples per pixel. Off draws them with the hard cutout edge every other leaf has.");
         A2cMask = G.Toggle("a2cmask", "a2cmask", false, Tier.ChatOnly);
+        Aniso = G.Dropdown("aniso", "Texture filtering", new[] { 1, 2, 4, 8, 16 }, 16,
+                           new[] { "off", "2x", "4x", "8x", "16x" }, tier: Tier.Advanced, effect: Effect.Restart,
+                           help: "How sharp a textured floor or wall stays where it slants away from the camera. Higher is "
+                               + "sharper into the distance and costs GPU time in every world pass; off is the blurriest and "
+                               + "the cheapest. Takes effect at the next launch.");
         Ghost = G.Slider("ghost", "See-through creature thickness", 1f, 3f, 0.1f, 1.2f, "×", Tier.Advanced,
                          help: "A creature an effect such as Invisibility makes see-through draws as this many layers of "
                              + "itself, so its shape still shows. 1 is the effect's own transparency. A fully invisible "
