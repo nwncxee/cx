@@ -677,7 +677,7 @@ internal static unsafe class NwSyncReader
         var threads = new Thread[CheckReaders];
         for (int t = 0; t < CheckReaders; t++)
         {
-            threads[t] = Worker.Start($"cx-nwsync-check-{t}", () =>
+            threads[t] = new Thread(() =>
             {
                 for (int i = 0; i < CheckReads; i++)
                 {
@@ -687,7 +687,8 @@ internal static unsafe class NwSyncReader
                     if (got != null) NativeMemory.Free(got);
                 }
                 CloseThread();
-            });
+            }) { IsBackground = true, Name = $"cx-nwsync-check-{t}" };
+            threads[t].Start();
         }
         foreach (Thread th in threads) th.Join();
         if (bad != 0) log.Always($"NwSyncReader.SelfCheck: FAILED -- {bad} of {CheckReaders * CheckReads} concurrent reads did not come back whole");

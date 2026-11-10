@@ -56,7 +56,7 @@ public static class HistoryFile
         if (path.Length == 0) return;
         string[] snap = new string[lines.Count];
         for (int i = 0; i < snap.Length; i++) snap[i] = Encode(lines[i]);
-        Worker.Queue(() =>
+        ThreadPool.QueueUserWorkItem(_ =>
         {
             try
             {

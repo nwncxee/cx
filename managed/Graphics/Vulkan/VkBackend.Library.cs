@@ -104,7 +104,8 @@ internal sealed unsafe partial class VkBackend
         l.InFlight++;
         if (l.Worker == null)
         {
-            l.Worker = CX.Framework.Worker.Start("cx-pipelines", LinkWorker);
+            l.Worker = new Thread(LinkWorker) { IsBackground = true, Name = "cx-pipelines" };
+            l.Worker.Start();
         }
         l.Wake.Set();
     }
@@ -112,6 +113,7 @@ internal sealed unsafe partial class VkBackend
     /// <summary>The worker: every queued job's optimised link, onto the done queue, until the backend goes.</summary>
     private void LinkWorker()
     {
+        Affinity.ClearThis();   // created by the (possibly pinned) main thread; the links must not share its core
         LibraryState l = _lib;
         while (!l.Stop)
         {

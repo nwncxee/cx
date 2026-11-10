@@ -73,7 +73,7 @@ internal static class MemorySettle
     internal static void Frame(long now, ExtenderLog? log, Action dropCaches)
     {
         SettleState s = _state;
-        s.Watcher ??= Worker.Start("cx-memwatch", () => Watch(log));
+        if (s.Watcher == null) { s.Watcher = new Thread(() => Watch(log)) { IsBackground = true, Name = "cx-memwatch" }; s.Watcher.Start(); }
         if (now < s.Next) return;
         s.Next = now + PeriodSeconds * Stopwatch.Frequency;
         Malloc(out _, out _, out long slack);

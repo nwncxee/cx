@@ -55,13 +55,3 @@ P:CX.Engine.CGuiMan.ModalCount;Ask Native.ModalPanelUp whether a stock modal is 
 M:CX.Engine.Material.Slot(System.Int32);The raw slot table has no bound; read a texture slot through Material.TextureAt
 M:CX.Engine.SharedMaterial.Slot(System.Int32);The raw slot table has no bound; read a texture slot through Material.TextureAt
 P:CX.Engine.CExoMoviePlayerInternal.Texture;The movie frame comes from the decode through MovieFrame.Upload; the engine's movie texture is not sampled
-M:System.Threading.Thread.#ctor(System.Threading.ThreadStart);Start a thread through Worker.Start, which clears the affinity mask the creator's pin would hand it
-M:System.Threading.Thread.#ctor(System.Threading.ThreadStart,System.Int32);Start a thread through Worker.Start, which clears the affinity mask the creator's pin would hand it
-M:System.Threading.Thread.#ctor(System.Threading.ParameterizedThreadStart);Start a thread through Worker.Start, which clears the affinity mask the creator's pin would hand it
-M:System.Threading.Thread.#ctor(System.Threading.ParameterizedThreadStart,System.Int32);Start a thread through Worker.Start, which clears the affinity mask the creator's pin would hand it
-M:System.Threading.ThreadPool.QueueUserWorkItem(System.Threading.WaitCallback);Queue pool work through Worker.Queue, which clears the affinity mask the queueing thread's pin would hand the pool thread
-M:System.Threading.ThreadPool.QueueUserWorkItem(System.Threading.WaitCallback,System.Object);Queue pool work through Worker.Queue, which clears the affinity mask the queueing thread's pin would hand the pool thread
-M:System.Threading.ThreadPool.QueueUserWorkItem``1(System.Action{``0},``0,System.Boolean);Queue pool work through Worker.Queue, which clears the affinity mask the queueing thread's pin would hand the pool thread
-M:System.Threading.ThreadPool.UnsafeQueueUserWorkItem(System.Threading.WaitCallback,System.Object);Queue pool work through Worker.Queue, which clears the affinity mask the queueing thread's pin would hand the pool thread
-M:System.Threading.ThreadPool.UnsafeQueueUserWorkItem``1(System.Action{``0},``0,System.Boolean);Queue pool work through Worker.Queue, which clears the affinity mask the queueing thread's pin would hand the pool thread
-M:System.Threading.ThreadPool.UnsafeQueueUserWorkItem(System.Threading.IThreadPoolWorkItem,System.Boolean);Queue pool work through Worker.Queue, which clears the affinity mask the queueing thread's pin would hand the pool thread

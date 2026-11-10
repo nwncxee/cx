@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using CX.Framework;
 
 namespace CX.Alloy;
 
@@ -40,7 +39,7 @@ internal sealed class SlotJobTable<TJob, TEntry>
         if (_started) return;
         _started = true;
         for (int i = 0; i < workers; i++)
-            Worker.Start(workers == 1 ? name : $"{name}-{i}", () =>
+            new Thread(() =>
             {
                 while (true)
                 {
@@ -53,7 +52,7 @@ internal sealed class SlotJobTable<TJob, TEntry>
                     body(j);
                     lock (_gate) _out.Enqueue(j);
                 }
-            });
+            }) { IsBackground = true, Name = workers == 1 ? name : $"{name}-{i}" }.Start();
     }
 
     /// <summary>The queue IS the pending budget: an offer is refused here, before an entry is claimed.</summary>

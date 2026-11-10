@@ -83,8 +83,8 @@ public sealed unsafe class SoundService : IExtenderService
         _armed = true;
         Push();
         PushDevice();
-        Worker.Start("CX sound sim", SimLoop);
-        Worker.Start("CX sound bake", BakeLoop);
+        new Thread(SimLoop) { IsBackground = true, Name = "CX sound sim" }.Start();
+        new Thread(BakeLoop) { IsBackground = true, Name = "CX sound bake" }.Start();
         SoundScene.Arm(log);
         log.Info("sound: armed -- positional voices render through Steam Audio 4.8.1 on OpenAL Soft 1.25.2 (docs/audio.md)");
     }

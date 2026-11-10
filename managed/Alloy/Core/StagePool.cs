@@ -135,12 +135,15 @@ internal static class StagePool
         if (_threads[w] != null) return;
         _go[w] = new SemaphoreSlim(0, 1);
         _seenAtStart[w] = Volatile.Read(ref _gen);
-        int at = w;
-        _threads[w] = Worker.Start($"cx-stage-{w}", () => Loop(at));
+        var t = new Thread(Loop) { IsBackground = true, Name = $"cx-stage-{w}" };
+        _threads[w] = t;
+        t.Start(w);
     }
 
-    private static void Loop(int w)
+    private static void Loop(object? arg)
     {
+        int w = (int)arg!;
+        Affinity.ClearThis();   // created by the (possibly pinned) main thread; the workers must not share its core
         int seen = _seenAtStart[w];
         while (true)
         {

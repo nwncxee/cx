@@ -32,7 +32,8 @@ internal static class ServerPing
     {
         Interlocked.Exchange(ref _endpoint, ReadEndpoint());
         if (_thread != null) return;
-        _thread = Worker.Start("cx-ping", Loop);
+        _thread = new Thread(Loop) { IsBackground = true, Name = "cx-ping" };
+        _thread.Start();
     }
 
     /// <summary><see cref="PlayerIdentity.ServerAddress"/>, parsed; the address call is the one allocation.</summary>
@@ -74,6 +75,7 @@ internal static class ServerPing
     /// <summary>Probe once a second for as long as the client is in a game. Background thread.</summary>
     private static void Loop()
     {
+        Affinity.ClearThis();
         using var sock = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp)
         { ReceiveTimeout = TimeoutMs };
         byte[] tx = new byte[ProbeLen], rx = new byte[64];

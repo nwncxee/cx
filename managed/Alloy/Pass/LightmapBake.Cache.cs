@@ -68,7 +68,8 @@ internal sealed class BakeCache
     {
         _log = log;
         if (_thread != null) return;
-        _thread = Worker.Start("cx-lmcache", Work);
+        _thread = new Thread(Work) { IsBackground = true, Name = "cx-lmcache" };
+        _thread.Start();
     }
 
     /// <summary>Ask for a key's rect; the answer (a union and the rect's place in it, or null for a miss) comes

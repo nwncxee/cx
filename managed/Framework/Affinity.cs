@@ -10,11 +10,8 @@ namespace CX.Framework;
 public static unsafe class Affinity
 {
     [DllImport("libc.so.6")] private static extern int sched_setaffinity(int pid, nuint size, byte* mask);
-    [DllImport("libc.so.6")] private static extern int sched_getaffinity(int pid, nuint size, byte* mask);
     [DllImport("libc.so.6")] private static extern int sched_getcpu();
-
-    /// <summary>A mask buffer's size: 1024 CPUs, glibc's <c>cpu_set_t</c>.</summary>
-    public const int MaskBytes = 128;
+    private const int MaskBytes = 128;   // 1024 CPUs, glibc's cpu_set_t
 
     /// <summary>Pin the calling thread to one CPU. False if the kernel refused.</summary>
     public static bool PinThis(int cpu)
@@ -36,22 +33,6 @@ public static unsafe class Affinity
         for (int c = 0; c < n; c++) m[c >> 3] |= (byte)(1 << (c & 7));
         sched_setaffinity(0, MaskBytes, m);
     }
-
-    /// <summary>Reads the calling thread's mask into <paramref name="mask"/> (<see cref="MaskBytes"/> bytes)
-    /// and answers how many CPUs it holds, or -1 where there is no mask to read.</summary>
-    public static int ReadThis(byte* mask)
-    {
-        if (OperatingSystem.IsWindows()) return -1;
-        for (int i = 0; i < MaskBytes; i++) mask[i] = 0;
-        if (sched_getaffinity(0, MaskBytes, mask) != 0) return -1;
-        int n = 0;
-        for (int i = 0; i < MaskBytes; i++) n += System.Numerics.BitOperations.PopCount(mask[i]);
-        return n;
-    }
-
-    /// <summary>Puts a mask read by <see cref="ReadThis"/> back on the calling thread.</summary>
-    public static bool SetThis(byte* mask)
-        => !OperatingSystem.IsWindows() && sched_setaffinity(0, MaskBytes, mask) == 0;
 
     public static int CurrentCpu => OperatingSystem.IsWindows() ? -1 : sched_getcpu();
 }

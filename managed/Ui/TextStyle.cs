@@ -114,7 +114,7 @@ public sealed class TextStyle
         if (TextRig.BakedFace(name, px) is GlyphAtlas f) return f;
         if (name == _askedName && px == _askedPx) return ui;
         _askedName = name; _askedPx = px;
-        if (!cold) { Worker.Queue(Bake, (this, name, px)); return ui; }
+        if (!cold) { ThreadPool.QueueUserWorkItem(Bake, (this, name, px), preferLocal: false); return ui; }
         Bake((this, name, px));
         return TextRig.BakedFace(name, px) ?? ui;
     }

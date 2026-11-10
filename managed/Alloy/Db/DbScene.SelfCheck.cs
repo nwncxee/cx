@@ -455,7 +455,7 @@ internal static unsafe class DbSceneSelfCheck
         var started = new ManualResetEventSlim(false);
         RenderSnapshot.Frame? holding = null;
 
-        Thread consumer = CX.Framework.Worker.Start("DbScene.SelfCheck.consumer", () =>
+        var consumer = new Thread(() =>
         {
             started.Set();
             while (consumed < Frames)
@@ -471,7 +471,8 @@ internal static unsafe class DbSceneSelfCheck
                 consumed++;
                 RenderSnapshot.Release();
             }
-        });
+        }) { IsBackground = true, Name = "DbScene.SelfCheck.consumer" };
+        consumer.Start();
         started.Wait(1000);
 
         DbId scene = DbScene.Create("pingpong");

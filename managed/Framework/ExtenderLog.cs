@@ -44,7 +44,8 @@ public sealed class ExtenderLog
         _queue.Enqueue($"{DateTime.Now:O} [cx] {message}");
         if (_writer == null)
         {
-            _writer = Worker.Start("cx-log", Drain);
+            _writer = new Thread(Drain) { IsBackground = true, Name = "cx-log" };
+            _writer.Start();
         }
         if (Synchronous) WriteQueued();
         else _wake.Set();
@@ -66,6 +67,7 @@ public sealed class ExtenderLog
 
     private static void Drain()
     {
+        Affinity.ClearThis();
         while (true)
         {
             _wake.WaitOne();
