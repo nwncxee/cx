@@ -311,9 +311,8 @@ float CxSpecLobe(vec3 N, vec3 V, vec3 L, float rough, float spec) { return CxSpe
 
 // The half that does not vary per light: alpha^2/4 and the view-side shadowing term. N.V floors at 0, as
 // inc_lighting.shd:436-441 leaves it; the shadowing term's k keeps the divisor off zero.
-// ponytail: stock also bends a shading normal that faces away from the eye into the view plane before any
-// light reads it; this only floors the dot. Measured, that bend RAISES this lobe on a grazing normal -- it
-// is not the fix for a single-pixel highlight, so it waits on a decision about the lobe's own ceiling.
+// Stock bends a shading normal that faces away from the eye into the view plane before any light reads it;
+// this floors the dot instead, which keeps the bend's own grazing spike out of the lobe.
 float CxSpecBase(float NdotV, float rough)
 {
     return rough * rough * 0.25 / mix(max(NdotV, 0.0), 1.0, CxSmithK(rough));
