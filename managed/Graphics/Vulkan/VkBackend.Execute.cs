@@ -212,6 +212,7 @@ internal sealed unsafe partial class VkBackend
                 _ => Fault($"{op} is not on the Vulkan backend yet"),
             };
             if (!ok) return false;
+            if (!_timing) continue;
             long now = System.Diagnostics.Stopwatch.GetTimestamp();
             _opTicks[(int)op] += now - t;
             _opN[(int)op]++;
