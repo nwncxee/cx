@@ -74,6 +74,11 @@ internal static unsafe class SsaoPassVk
     /// next frame's estimate stands alone.</summary>
     internal static void Revoke() => _s.HistValid = false;
 
+    /// <summary>Is this the first world view of its present? The history pair holds ONE camera's visibility, and
+    /// the pass records once per world view, so only the first view of a present may accumulate into it and
+    /// publish the camera the next present reprojects through. A later view takes a single-frame estimate.</summary>
+    internal static bool FirstViewOfFrame(int prevSeq, int seq) => prevSeq != seq;
+
     /// <summary>The frame's estimate into <paramref name="cl"/>, between the depth prepass and the colour pass,
     /// off <paramref name="depth"/> -- the sampled copy of the prepass depth, which is what the lit stage tests
     /// each pixel's ownership against. <paramref name="vp"/> and <paramref name="vpClean"/> are this frame's
@@ -91,7 +96,8 @@ internal static unsafe class SsaoPassVk
 
         int seq = AlloyRenderer.FrameSeq;
         bool reproject = Matrix4x4.Invert(vp, out Matrix4x4 inv);
-        bool accum = !s.ProgAccum.IsNull && reproject;
+        bool first = FirstViewOfFrame(s.PrevSeq, seq);
+        bool accum = !s.ProgAccum.IsNull && reproject && first;
         float w = s.W, h = s.H;
         ref SsaoBlock b = ref s.Blk;
         b.Proj = *proj;
@@ -119,16 +125,20 @@ internal static unsafe class SsaoPassVk
         if (accum)
         {
             ImageId read = s.HistAt == 0 ? s.Hist0 : s.Hist1, write = s.HistAt == 0 ? s.Hist1 : s.Hist0;
-            Stage(cl, write, s.ProgAccum, rect, ubo,
-                  [new(SsaoPass.SlotDepth, depth), new(SsaoPass.SlotSrc, s.Out), new(SsaoPass.SlotHist, read, s.Linear)]);
+            RecordAccum(cl, s.ProgAccum, write, s.Out, read, depth, s.Linear, rect, ubo);
             s.HistAt ^= 1;
             s.HistValid = true;
             s.Accumulated = true;
             s.AccumRuns++;
         }
-        else s.HistValid = false;
-        s.PrevVpClean = vpClean;
-        s.PrevSeq = seq;
+        else if (first) s.HistValid = false;
+        // Order: only the view that may accumulate publishes the camera its history was seen through, so a later
+        // view of the same present cannot hand the next present its own camera to reproject the first view's through.
+        if (first)
+        {
+            s.PrevVpClean = vpClean;
+            s.PrevSeq = seq;
+        }
         s.Half = half;
         s.LiveFrame = seq;
         s.Runs++;
@@ -260,7 +270,9 @@ internal static unsafe class SsaoPassVk
     }
 
     /// <summary>The visibility targets at the extent this frame wants: the frame's, or half of it under
-    /// <c>post.halfres</c>. A size change reallocates both.</summary>
+    /// <c>post.halfres</c>. A size change reallocates both.
+    /// ponytail: one set at one extent, so two world views of different sizes in one present remake all four
+    /// images per view; give the pass a target set per view slot to lift it.</summary>
     private static bool Targets(VkBackend vk, int srcW, int srcH, bool half, ExtenderLog log)
     {
         SsaoVkState s = _s;

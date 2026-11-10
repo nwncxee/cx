@@ -161,6 +161,10 @@ internal static unsafe class SsaoPass
             check.Expect(PassRegistry.Global.Find("ao")?.Revoke != null,
               "the pass's own lifecycle registers a revoke: that walk is the only thing that reaches the accumulator at "
               + "an area transition, where the history is another place's");
+            // Two world views of one present share the one history pair (SeamDraw's [worldviews]), so only the
+            // first of them may accumulate into it and publish the camera the next present reprojects through.
+            check.Expect(SsaoPassVk.FirstViewOfFrame(-2, 0) && SsaoPassVk.FirstViewOfFrame(3, 4) && !SsaoPassVk.FirstViewOfFrame(3, 3),
+              "the first world view of a present accumulates, and a later view of that same present does not");
             // The accumulator's own arithmetic -- the reprojection, the clamp, the nearest disocclusion fetch and the
             // pair it writes -- is proven on the device by GpuGolden's ao accumulator, not restated here.
         }
