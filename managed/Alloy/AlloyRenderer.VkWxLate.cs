@@ -39,7 +39,9 @@ public sealed unsafe partial class AlloyRenderer
         if (s.Splashed && VkWxLatePipe(vk, s, VkSplashProg, log) is { IsNull: false } sp
             && !VkSplashDraw(side, s, c, view, proj, full, near, far, s.Lit, sp, true)) return false;
         ReadOnlySpan<ColorAttachment> colors = [new(into, 0, 0, clear ? LoadOp.Clear : LoadOp.Load, StoreOp.Store, default)];
+        cl.BeginLabel("weather late"u8);
         VkFlushPass(cl, side, arena0, new RenderPassDesc(colors));
+        cl.EndLabel();
         // the taa stage samples the overlay inside its own render pass, where no barrier can be placed
         if (clear) cl.ReadImages([into]);
         Weather.Site site = clear ? Weather.Site.AfterTaa : Weather.Site.AfterUpscale;

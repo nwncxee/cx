@@ -26,7 +26,7 @@ internal static unsafe partial class Weather
     private const int SplashWrapSlices = 8192;
     /// <summary>Crowns at full rain per unit of the density knob, as a share of <see cref="MaxCount"/>: the
     /// splash field is sized off the same budget the drops are, so one knob still bounds the whole pass.</summary>
-    private const float SplashShare = 0.25f;
+    private const float SplashShare = 0.05f;
 
     internal static Knob<float> Impacts = null!, ImpactRange = null!;
 
