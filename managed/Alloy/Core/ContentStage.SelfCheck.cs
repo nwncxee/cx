@@ -158,7 +158,7 @@ internal static partial class ContentStage
         // from the body's own opening: the environment spliced ahead of it discards too
         int cutAt = body < 0 ? -1 : cutPre.Host.IndexOf("discard;", body, StringComparison.Ordinal);
         int postAt = body < 0 ? -1 : cutPre.Host.IndexOf("void CxContentPost()", body, StringComparison.Ordinal);
-        check.Expect(cutAt > body && (postAt < 0 || cutAt < postAt),
+        check.Expect(cutAt > body && cutAt < postAt,
                      "a pre-apply cut lands in the body the depth and caster twins run, not the post half");
         check.Expect(cutPre.Refused == null && cutPre.AlphaPost && !cutPre.ForwardOnly,
                      $"a pre-apply cut routes as '{cutPre.RouteNote}'");

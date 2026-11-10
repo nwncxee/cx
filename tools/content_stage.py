@@ -808,8 +808,10 @@ def selfcheck(env_fs, env_vs, defs, vanfs, std_fs, std_vs, lit_vs):
         bad.append("a cut at the stage's own literal, ahead of the lighting call, does not translate with its threshold")
     else:
         # from the body's own opening: the environment spliced ahead of it discards too
-        at = pre.host.index("void CxContentMain()")
-        if not at < pre.host.index("discard;", at) < pre.host.index("void CxContentPost()", at):
+        at = pre.host.find("void CxContentMain()")
+        cut_at = pre.host.find("discard;", at) if at >= 0 else -1
+        post_at = pre.host.find("void CxContentPost()", at) if at >= 0 else -1
+        if not at < cut_at < post_at:
             bad.append("a pre-apply cut does not land in the body the depth and caster twins run")
     whole = translate("cx_fixwhole", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
     if whole.refused or not whole.post or whole.cuts or "void CxContentMain()\n{\n}" not in whole.host:

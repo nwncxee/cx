@@ -910,7 +910,7 @@ def content_programs(g):
     # block's reads are compiled -- the wind arrays no corpus stage happens to read.
     vt, ft, vr, fr = content_pair(g, "cx_fixengv", "cx_fixeng", fix)
     progs.update(pair_programs("content pair cx_fixengv/cx_fixeng", vt, ft, fr, vr))
-    for f in ("cx_fixpost", "cx_fixwhole"):
+    for f in ("cx_fixpost", "cx_fixwhole", "cx_fixcutpre"):
         vt, ft, vr, fr = content_pair(g, None, f, fix)
         progs.update(pair_programs(f"content pair stock/{f}", vt, ft, fr, vr))
     stock = content_stage.stock_shaders(paths.get("NWN_DIR") or "")
