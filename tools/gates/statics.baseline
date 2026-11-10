@@ -194,7 +194,6 @@
 5 managed/Alloy/Seam/Facade.Vtables.cs
 5 managed/Alloy/Seam/ObjectFns.cs
 2 managed/Alloy/Seam/ObjectSlots.cs
-11 managed/Alloy/Seam/ObjectSlots.Tree.cs
 1 managed/Alloy/Seam/ObjectSlots.Xform.cs
 1 managed/Alloy/Seam/PaletteFns.cs
 5 managed/Alloy/Seam/PartShell.cs
