@@ -2,8 +2,16 @@
 """A back face's shading normal is the vertex normal negated, and that flip is ONE declaration: `CxFaceNormal`
 in cx_lightfrag.glsl, which a GPU golden runs on the device. A second copy spelled inline compiles fine and
 answers to nothing -- drop the `normalize` from one of them and the two sides of a leaf card disagree with no
-error -- so this reads the shipped GLSL and refuses the inline shapes. ALLOWED names the declaration's own file
-and the content stand-in, which the GUI twin builds without the light library and so cannot reach the function.
+error -- so this reads the shipped GLSL and refuses the inline shapes.
+
+ALLOWED names the declaration's own file and the content stand-in. The content environment keeps its own copy
+because it has nowhere to reach this one from: cx_content_f.glsl is the environment for BOTH the world content
+stage and the GUI twin (cx_guicon_f.glsl), the twin compiles without the light library and answers its names
+with its own stand-ins, and a stand-in for this one would BE the second copy. Hoisting the declaration into a
+file both reach does not work either -- ShaderSource.Expand splices every #include with no once-guard, so a
+library that two programs in one unit reach would define it twice. Lift the exemption by giving the include a
+once-guard, not by planting a stand-in.
+
 FLIP_CALLERS names the file whose shading frame must come through it; a new one goes on the list.
 
 usage: face-normal.py [root]   (default: the repository)
