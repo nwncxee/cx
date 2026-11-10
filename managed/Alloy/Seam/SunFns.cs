@@ -55,7 +55,6 @@ public sealed unsafe class SunFns : ISeamProvider
 
     private static byte* Say(ReadOnlySpan<byte> z) => (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(z));
 
-
     /// <summary>The next whitespace-separated token of <paramref name="s"/>, consuming it.</summary>
     private static bool Next(ref ReadOnlySpan<byte> s, out ReadOnlySpan<byte> tok)
     {

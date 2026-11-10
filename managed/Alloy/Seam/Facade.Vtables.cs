@@ -72,7 +72,9 @@ public static unsafe partial class Facade
             return -1;
         }
         _tableBase = (nint)_block.Pointer;
-        _pointBits = new ulong[(words + 63) / 64];
+        // Off the BLOCK's length, not off `words`: Shell admits any offset under TableBytes, so a bitmap
+        // sized from the smaller of the two would be indexed past its end by a vptr inside the live block.
+        _pointBits = new ulong[(_block.Length + 63) / 64];
 
         // One refusal stub PER TABLE. A shared stub cannot say which slot was called -- it is handed only
         // `this` -- but it can say which interface, and the boot census already lists that table's
@@ -130,7 +132,7 @@ public static unsafe partial class Facade
         }
         _built = true;
         if (census) log.Info($"seam: {tables.Length} vtables built for {(OperatingSystem.IsWindows() ? "Windows" : "Linux")} slot order, "
-               + $"{words - 2 * tables.Length} slots, {missing} unimplemented, {_block.Length * sizeof(nint)} bytes");
+               + $"{words - 2 * tables.Length} slots, {missing} unimplemented, {TableBytes} bytes");
         return missing;
     }
 

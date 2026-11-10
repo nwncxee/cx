@@ -43,7 +43,7 @@ public static unsafe class PartShell
     private static nint Table => _block.Length == 0 ? 0 : (nint)Unsafe.AsPointer(ref _block[PrefixWords]);
     /// <summary>The Itanium prefix before an address point: offset-to-top, then a null typeinfo.</summary>
     private const int PrefixWords = 2;
-    /// <inheritdoc cref="_block"/>
+    /// <summary>The boundary an address point is taken on.</summary>
     private const int PointAlign = 64;
     private static long _alive;
 
