@@ -100,6 +100,7 @@ internal static partial class GpuGolden
         AoContactSelfCheck(vk, check, log);
         AoAccumSelfCheck(vk, check, log);
         CullPassVk.GoldenCheck(vk, check, log);
+        CasterGatherVk.GoldenCheck(vk, check, log);
         ContentSolidSelfCheck(vk, check, log);
         RainRingSelfCheck(vk, check, log);
         AoMapApprovedSelfCheck(vk, check, log);

@@ -26,9 +26,20 @@ internal static class CullPassVk
         public bool Failed, Live;
         /// <summary>This frame's lists were recorded: the passes draw from them rather than from the staged order.</summary>
         public bool Ran;
-        public BufferId Ubo, Src, Sph, Key, Rej;
-        public long SrcCap, SphCap;
+        public BufferId Ubo, Src, Key, Rej;
+        public long SrcCap;
         public int CmdCap, CntCap;
+        /// <summary>The bounds table as a two-generation ring: a build publishes into <see cref="SphAt"/> and the
+        /// shadow bake, recorded ahead of the next build, reads the slot as it stands then -- the generation the
+        /// previous build published, which is the bound the GL bake reads too. <see cref="SphSlots"/> is each slot's
+        /// published slot count, 0 for a slot nothing has published.</summary>
+        public readonly BufferId[] Sph = new BufferId[2];
+        public readonly long[] SphCap = new long[2];
+        public readonly int[] SphSlots = new int[2];
+        public int SphAt;
+        /// <summary>The sphere buffer a growth replaced: the bake this frame recorded ahead of the build named it, so
+        /// its id must resolve until that recording has run. Destroyed at the next publish.</summary>
+        public BufferId SphRetired;
         /// <summary>Indexed by <see cref="Prepass"/>, <see cref="Colour"/>, <see cref="Retest"/> and
         /// <see cref="Mirror"/>, whose set is allocated only once <see cref="MirrorAsked"/>.</summary>
         public readonly BufferId[] Cmd = new BufferId[Phases], Slot = new BufferId[Phases], Cnt = new BufferId[Phases];
@@ -50,6 +61,8 @@ internal static class CullPassVk
         /// <summary>This frame's list, staged at the cull site; <see cref="Groups"/> 0 means nothing to cut.</summary>
         public CullSrcRec[]? Records;
         public Sphere[]? Spheres;
+        /// <summary>The staged bounds are this pass's to publish: a world pass's are, a capture pass's are not.</summary>
+        public bool Publish;
         public int Groups, DrawN, SphereSlots, RunGroups;
         public CullBlock Block;
     }
@@ -81,20 +94,58 @@ internal static class CullPassVk
 
     /// <summary>The first sorted batch: from here up a batch is dense, its dropped draws zero-instance commands.</summary>
     internal static int CompactBelow => _s.Block.CompactBelow;
+
+    /// <summary>The bounds generation most recently published. The shadow bracket records ahead of this frame's
+    /// build, so this is the PREVIOUS frame's bounds there -- which is what the bake culls against by design. Null
+    /// until a build has published one.</summary>
+    internal static BufferId PublishedSpheres => _s.Sph[_s.SphAt];
+
+    /// <summary>...and how many slots that generation holds: a bake naming a higher slot has no bound for it.</summary>
+    internal static int PublishedSphereSlots => _s.SphSlots[_s.SphAt];
+
+    /// <summary>Publish <paramref name="sph"/> as this build's bounds generation: the ring advances and the slot it
+    /// moves to takes the bytes, so the slot it left is still the one a bake recorded before this build reads. False
+    /// when the device refused the buffer (it logged), and that slot then holds no generation.</summary>
+    internal static bool PublishSpheres(VkBackend vk, CommandList cl, ReadOnlySpan<Sphere> sph)
+    {
+        if (_s.Dev != vk) _s = new CullVkState { Dev = vk };
+        var s = _s;
+        vk.Destroy(s.SphRetired);
+        s.SphRetired = default;
+        int at = s.SphAt ^ 1;
+        ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(sph);
+        if (s.Sph[at].IsNull || bytes.Length > s.SphCap[at])
+        {
+            // retired, not destroyed: this frame's bake recorded the slot it is replacing and runs in the same submit
+            s.SphRetired = s.Sph[at];
+            s.SphCap[at] = Math.Max(bytes.Length, 4);
+            s.Sph[at] = vk.CreateBuffer(new BufferDesc(s.SphCap[at], BufferUse.Storage, MemoryKind.Upload, "cull bounds"));
+            if (s.Sph[at].IsNull) s.SphCap[at] = 0;
+        }
+        s.SphSlots[at] = 0;
+        if (s.Sph[at].IsNull) return false;
+        cl.UpdateBuffer(s.Sph[at], 0, bytes);
+        s.SphSlots[at] = sph.Length;
+        s.SphAt = at;
+        return true;
+    }
     /// <summary>Room for the fixture's uploads, blocks and binds; the frame's own list is <see cref="VulkanFrame"/>'s.</summary>
     private const int ArenaBytes = 4096;
     /// <summary>The mirror-plane height that clips nothing: only the planar reflection's dispatch sets one.</summary>
     private const float NoClipPlane = -1e30f;
 
     /// <summary>Stage this frame's draw list for <see cref="Record"/>. Zero groups (a probe capture, or
-    /// <c>/alloy cull 0</c>) stages nothing, so no list from an older pass stays armed.</summary>
+    /// <c>/alloy cull 0</c>) stages no list, so none from an older pass stays armed -- but a world pass still
+    /// publishes its bounds, which the shadow bake reads whether or not this pass cuts anything with them.</summary>
     internal static unsafe void Stage(int groups, int drawN, CullSrcRec[] src, Sphere[] sph, int sphereSlots,
                                       float lodScale, int compactBelow, Vector3 eye, Matrix4x4* vp)
     {
         var s = _s;
+        s.Spheres = sph; s.SphereSlots = sphereSlots;
+        s.Publish = groups > 0 && drawN > 0;
         s.Groups = CullPass.Mode > CullPass.ModeOff && drawN > 0 ? groups : 0;
         if (s.Groups <= 0) return;
-        s.Records = src; s.Spheres = sph; s.DrawN = drawN; s.SphereSlots = sphereSlots;
+        s.Records = src; s.DrawN = drawN;
         s.Block = new CullBlock
         {
             DrawN = drawN, Vp = *vp, PyrVp = *vp, LodPx = MathF.Max(CullPass.LodPx, 0f), LodScale = lodScale,
@@ -115,10 +166,17 @@ internal static class CullPassVk
         if (!Ensure(vk, log)) return false;
         var s = _s;
         int groups = s.Groups;
+        bool publish = s.Publish;
         s.Groups = 0;
+        s.Publish = false;
         s.Ran = s.Fresh = s.RetestPending = false;
-        if (groups <= 0 || s.Records == null || s.Spheres == null) return true;
-        if (!Upload(vk, cl, groups, s.DrawN, s.Records, s.Spheres, s.SphereSlots)) return false;
+        if (publish && s.Spheres != null && !PublishSpheres(vk, cl, s.Spheres.AsSpan(0, s.SphereSlots)))
+        {
+            log.Always("CullPassVk: the device REFUSED the cull bounds buffer -- no visibility test and no shadow bounds");
+            return false;
+        }
+        if (groups <= 0 || s.Records == null) return true;
+        if (!Upload(vk, cl, groups, s.DrawN, s.Records)) return false;
         s.RunGroups = groups;
         Phase(cl, Prepass, groups, ref s.Block, Occludes && CullPass.Retest);
         s.Ran = true;
@@ -212,16 +270,14 @@ internal static class CullPassVk
     /// <summary>The pyramid's local size, as <c>cx_hiz_c.glsl</c> declares it.</summary>
     private const int HiZGroup = 8;
 
-    /// <summary>Upload the draw list and spheres into <paramref name="cl"/>, every phase's sets sized for it. False
-    /// when the device refused a buffer (logged).</summary>
-    private static bool Upload(VkBackend vk, CommandList cl, int groups, int drawN, CullSrcRec[] src, Sphere[] sph, int sphereSlots)
+    /// <summary>Upload the draw list into <paramref name="cl"/>, every phase's sets sized for it; the bounds are
+    /// <see cref="PublishSpheres"/>'s. False when the device refused a buffer (logged).</summary>
+    private static bool Upload(VkBackend vk, CommandList cl, int groups, int drawN, CullSrcRec[] src)
     {
         var s = _s;
         ReadOnlySpan<byte> srcBytes = MemoryMarshal.AsBytes(src.AsSpan(0, drawN));
-        ReadOnlySpan<byte> sphBytes = MemoryMarshal.AsBytes(sph.AsSpan(0, sphereSlots));
         bool growCmd = drawN > s.CmdCap, growCnt = groups > s.CntCap;
         Grow(vk, ref s.Src, ref s.SrcCap, srcBytes.Length, "cull source");
-        Grow(vk, ref s.Sph, ref s.SphCap, sphBytes.Length, "cull bounds");
         const BufferUse Out = BufferUse.Storage | BufferUse.Indirect | BufferUse.CopySrc;
         int phases = s.MirrorAsked ? Phases : Mirror;
         for (int p = 0; p < phases; p++)
@@ -232,12 +288,11 @@ internal static class CullPassVk
         }
         Make(vk, cl, ref s.Key, growCmd, (long)drawN * sizeof(float), BufferUse.Storage, "cull sort keys");
         Make(vk, cl, ref s.Rej, growCmd, (long)drawN * sizeof(uint), BufferUse.Storage, "cull hi-Z verdicts");
-        if (s.Src.IsNull || s.Sph.IsNull || s.Key.IsNull || s.Rej.IsNull) return false;
+        if (s.Src.IsNull || s.Key.IsNull || s.Rej.IsNull) return false;
         for (int p = 0; p < phases; p++) if (s.Cmd[p].IsNull || s.Slot[p].IsNull || s.Cnt[p].IsNull) return false;
         if (growCmd) s.CmdCap = drawN;
         if (growCnt) s.CntCap = groups;
         cl.UpdateBuffer(s.Src, 0, srcBytes);
-        cl.UpdateBuffer(s.Sph, 0, sphBytes);
         return true;
     }
 
@@ -268,7 +323,7 @@ internal static class CullPassVk
         cl.UpdateBuffer(s.Ubo, 0, blk);
         ReadOnlySpan<BufferBinding> storage =
         [
-            new(CullPass.BindSrc, s.Src), new(CullPass.BindSphere, s.Sph), new(CullPass.BindCmd, s.Cmd[p]),
+            new(CullPass.BindSrc, s.Src), new(CullPass.BindSphere, s.Sph[s.SphAt]), new(CullPass.BindCmd, s.Cmd[p]),
             new(CullPass.BindOutSlot, s.Slot[p]), new(CullPass.BindCount, s.Cnt[p]), new(CullPass.BindKey, s.Key),
             new(CullPass.BindRej, s.Rej),
         ];
@@ -426,7 +481,7 @@ internal static class CullPassVk
     {
         CommandList cl = _s.Cmds!;
         cl.Reset();
-        bool ran = Upload(vk, cl, cnt.Length, src.Length, src, sph, sph.Length);
+        bool ran = PublishSpheres(vk, cl, sph) && Upload(vk, cl, cnt.Length, src.Length, src);
         if (ran) { Phase(cl, Prepass, cnt.Length, ref b, false); Phase(cl, Colour, cnt.Length, ref b, false); }
         ran = ran && vk.Submit(cl);
         check.Expect(ran, "the fixture's submit runs");
@@ -513,7 +568,7 @@ internal static class CullPassVk
         CommandList cl = _s.Cmds!;
         cl.Reset();
         _s.MirrorAsked = true;
-        bool ran = Upload(vk, cl, col.Length, src.Length, src, sph, sph.Length);
+        bool ran = PublishSpheres(vk, cl, sph) && Upload(vk, cl, col.Length, src.Length, src);
         if (ran)
         {
             Phase(cl, Prepass, col.Length, ref b, false);
@@ -578,7 +633,8 @@ internal static class CullPassVk
         var s = _s;
         CommandList cl = _s.Cmds!;
         cl.Reset();
-        bool ran = vk.Upload(depth, 0, 0, MemoryMarshal.AsBytes(texels.AsSpan())) && Upload(vk, cl, cnt.Length, src.Length, src, sph, sph.Length);
+        bool ran = vk.Upload(depth, 0, 0, MemoryMarshal.AsBytes(texels.AsSpan())) && PublishSpheres(vk, cl, sph)
+                && Upload(vk, cl, cnt.Length, src.Length, src);
         if (ran)
         {
             Reduce(cl, depth);

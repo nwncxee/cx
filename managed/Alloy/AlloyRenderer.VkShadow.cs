@@ -40,13 +40,12 @@ public sealed unsafe partial class AlloyRenderer
         _ => default,
     };
 
-    /// <summary>The caster cull's two sphere buffers into <paramref name="cl"/>. Called at the head of the shadow
-    /// bracket, which runs ahead of the colour build that publishes this frame's bounds -- so the bake culls against
-    /// the previous frame's, as the GL bake does, and every dispatch recorded after this names a live buffer.</summary>
+    /// <summary>The caster cull's geometric bounds into <paramref name="cl"/>. Called at the head of the shadow
+    /// bracket, which runs ahead of the colour build -- so the colour-cull bounds the bake tests are that build's
+    /// published generation from the previous frame, as the GL bake's are, and are not copied again here.</summary>
     internal static void VkRecordCasterBounds(VkBackend vk, CommandList cl)
     {
-        fixed (Sphere* cull = _dSph) fixed (Sphere* cast = _dCastSph)
-            CasterGatherVk.RecordSpheres(vk, cl, cull, cast, _recOwnCap + MaxSkyDraws);
+        fixed (Sphere* cast = _dCastSph) CasterGatherVk.RecordSpheres(vk, cl, cast, _recOwnCap + MaxSkyDraws);
     }
 
     /// <summary>The bake the shadow bracket recorded aside, between the frame's uploads and its first colour pass: it

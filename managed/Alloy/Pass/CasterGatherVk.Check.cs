@@ -56,6 +56,9 @@ internal static unsafe partial class CasterGatherVk
         check.Expect(!ok || cnt[0] == 2 && cnt[1] == 1,
             $"the static half admits casters 0 and 2 in batch 0 and caster 3 in batch 1 -- 1 is off axis, 5 past the "
           + $"extent, 4 a mover (got {cnt[0]}, {cnt[1]})");
+        check.Expect(!ok || cnt[0] + cnt[1] == 3,
+            $"the bake culls against the generation standing when it records: the decoy under the fixture's puts "
+          + $"every sphere off the light axis, so a dispatch on the older slot admits nothing (got {cnt[0]}, {cnt[1]})");
         check.Expect(!ok || cmd[0].InstanceCount == 1u && cmd[3].Count == src[3].IndexCount
                      && cmd[3].FirstIndex == src[3].FirstIndex && cmd[3].BaseVertex == src[3].BaseVertex
                      && cmd[3].BaseInstance == 3u,
@@ -138,10 +141,22 @@ internal static unsafe partial class CasterGatherVk
         return true;
     }
 
-    /// <summary>The fixture's bounds and source into <paramref name="cl"/>, sized for it.</summary>
+    /// <summary>The decoy generation the fixture's bounds are published over: every sphere far off the fixture
+    /// light's axis, so a dispatch that bound the slot beside the live one admits no caster at all.</summary>
+    private static Sphere[] Decoy(int n)
+    {
+        var d = new Sphere[n];
+        for (int i = 0; i < n; i++) d[i] = new Sphere { Center = new Vector3(5000f, 0f, -10f), Radius = 1f };
+        return d;
+    }
+
+    /// <summary>The fixture's bounds and source into <paramref name="cl"/>, sized for it: a <see cref="Decoy"/>
+    /// generation first and the fixture's own over it, since what a bake binds is the generation standing when it
+    /// records.</summary>
     private static bool Stage(VkBackend vk, CommandList cl, CasterSrcRec[] src, Sphere[] cull, Sphere[] cast)
     {
-        fixed (Sphere* c = cull) fixed (Sphere* g = cast) RecordSpheres(vk, cl, c, g, cull.Length);
+        if (!CullPassVk.PublishSpheres(vk, cl, Decoy(cull.Length)) || !CullPassVk.PublishSpheres(vk, cl, cull)) return false;
+        fixed (Sphere* g = cast) RecordSpheres(vk, cl, g, cull.Length);
         _s.SrcDirty = true;
         bool ok;
         fixed (CasterSrcRec* s = src) ok = Begin(vk, cl, src.Length, FixtureGroups, s, true);
