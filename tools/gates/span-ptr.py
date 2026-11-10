@@ -6,8 +6,11 @@
 
 `new Span<T>(p, n)` checks nothing: the caller supplies the length, and `.Slice(i * size, size)` on the
 result is `p + i * size` one step removed, which ADR 0031 decision 3 refuses outside Framework/. Two
-arguments is always the pointer constructor -- the array one takes one argument or three -- so the shape
-counts exactly. A view builds its span from its count row and a NativeBuffer<T> from its allocation.
+arguments is always the pointer constructor -- the array one takes one argument or three. A view builds its
+span from its count row and a NativeBuffer<T> from its allocation.
+
+A count here is a FLOOR, not the file's total: the type has to be written out to be counted, so the
+target-typed `new(p, n)` in an argument or an initialiser is invisible to a regex and needs the compiler.
 """
 import re
 import subprocess
