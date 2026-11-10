@@ -472,11 +472,58 @@ public sealed unsafe partial class CasterPass
         // would swallow.
         ok &= PcssCheck(log);
         ok &= KeySafe(log);
+        ok &= ClearRunsSafe(log);
 
         log.Info(ok
             ? "CasterPass.SelfCheck: passed"
             : $"CasterPass.SelfCheck: FAILED -- indirect/per-draw contract drifted (command {CmdBytes}B, " +
               "gl_BaseInstance-as-ownership-slot indexing); standing down");
+        return ok;
+    }
+
+    /// <summary>The stale-layer runs cover exactly the queued layers, each once: a run that overreached would clear a
+    /// layer this frame is not re-baking -- last frame's shadow gone, with nothing to error on -- and one that fell
+    /// short would leave a stale layer holding last frame's depth. Graded against a per-layer mark of the input, not
+    /// against the folding loop.</summary>
+    private static bool ClearRunsSafe(ExtenderLog log)
+    {
+        const int span = 24;
+        // out of order, duplicated, a gap, and a run that reaches the last layer: the shapes a cube pool queues
+        int[][] cases = [[], [5], [3, 1, 2, 0], [7, 7, 8], [0, 1, 4, 5, 6, 23], [23, 0, 12, 11, 13]];
+        bool ok = true;
+        foreach (int[] input in cases)
+        {
+            Span<int> layers = stackalloc int[input.Length];
+            input.CopyTo(layers);
+            Span<int> first = stackalloc int[span], count = stackalloc int[span];
+            int runs = ClearRuns(layers, first, count);
+            Span<bool> cleared = stackalloc bool[span];
+            bool once = runs >= 0;
+            for (int r = 0; r < runs; r++)
+            {
+                if (count[r] <= 0 || first[r] < 0 || first[r] + count[r] > span) { once = false; break; }
+                // ...and the runs ascend with a gap between them, so the fold really is minimal
+                if (r > 0 && first[r] <= first[r - 1] + count[r - 1]) once = false;
+                for (int l = first[r]; l < first[r] + count[r]; l++)
+                {
+                    if (cleared[l]) once = false;
+                    cleared[l] = true;
+                }
+            }
+            int marked = 0;
+            for (int l = 0; l < span; l++)
+            {
+                bool wanted = Array.IndexOf(input, l) >= 0;
+                if (cleared[l] != wanted) once = false;
+                if (wanted) marked++;
+            }
+            if (!once || runs > marked)
+            {
+                log.Info($"CasterPass.SelfCheck FAIL: the stale-layer fold of [{string.Join(',', input)}] came back as "
+                       + $"{runs} run(s) that do not cover those layers exactly once");
+                ok = false;
+            }
+        }
         return ok;
     }
 

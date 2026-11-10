@@ -303,8 +303,28 @@ public sealed unsafe partial class CasterPass
         cl.ReadImages(maps);
     }
 
-    /// <summary>One target's queued views: every stale layer cleared on its own, then one layered pass per chunk over
-    /// the whole array, the stages routing by <c>gl_Layer</c> out of the chunk's view table.</summary>
+    /// <summary>The queued layers folded into ascending contiguous runs, duplicates dropped. Returns the run count;
+    /// -1 = more runs than <paramref name="first"/> holds, which the caller must refuse.</summary>
+    private static int ClearRuns(Span<int> layers, Span<int> first, Span<int> count)
+    {
+        layers.Sort();
+        int runs = 0;
+        for (int i = 0; i < layers.Length; i++)
+        {
+            if (i > 0 && layers[i] == layers[i - 1]) continue;
+            if (runs > 0 && layers[i] == first[runs - 1] + count[runs - 1]) { count[runs - 1]++; continue; }
+            if (runs == first.Length || runs == count.Length) return -1;
+            first[runs] = layers[i];
+            count[runs] = 1;
+            runs++;
+        }
+        return runs;
+    }
+
+    /// <summary>One target's queued views: the stale layers cleared by one transfer clear per contiguous run, then one
+    /// layered pass per chunk over the whole array, the stages routing by <c>gl_Layer</c> out of the chunk's view
+    /// table. A layered attachment clears every layer at once, fresh ones included, so the stale set cannot be a
+    /// pass's own clear -- but it needs as many clears as it has gaps, not one per layer.</summary>
     private static bool VkFlushTarget(VkBackend vk, CommandList cl, CasterMap map, int n, int chunk)
     {
         ImageId img = VkMapOf(map);
@@ -315,13 +335,13 @@ public sealed unsafe partial class CasterPass
         {
             if (_qMap[k] != map) continue;
             size = _qSize[k];
-            // one pass per stale layer, cleared and nothing drawn: a layered attachment clears every layer at once,
-            // fresh ones included, so the per-layer loop here is correctness rather than thrift
-            cl.BeginRenderPass(new RenderPassDesc(default, new DepthAttachment(img, 0, _qLayer[k], LoadOp.Clear, StoreOp.Store, GlDepth.Clear)));
-            cl.EndRenderPass();
-            _vk.Baked++;
-            views++;
+            _clrLayer[views++] = _qLayer[k];
         }
+        int runs = ClearRuns(_clrLayer.AsSpan(0, views), _clrFirst, _clrCount);
+        if (runs < 0) return false;
+        for (int r = 0; r < runs; r++)
+            cl.ClearDepthLayers(new ClearDepthCmd(img, _clrFirst[r], _clrCount[r], GlDepth.Clear));
+        _vk.Baked += views;
         if ((_vk.Said & (1 << (int)map)) == 0)
         {
             _vk.Said |= 1 << (int)map;
@@ -544,7 +564,8 @@ public sealed unsafe partial class CasterPass
         // shared with the async queue, whose fog samples the sun and cube maps -- concurrent sharing in place of an
         // ownership transfer, as the beside G-buffer pass samples them at the same time
         id = s.Dev.CreateImage(new ImageDesc(kind, Format.D32F, size, size, 1, 1, layers, 1,
-                                             ImageUse.DepthTarget | ImageUse.Sampled | ImageUse.Async
+                                             // CopyDst: the stale layers clear as a transfer, not as a pass per layer
+                                             ImageUse.DepthTarget | ImageUse.Sampled | ImageUse.Async | ImageUse.CopyDst
                                              | (copySrc ? ImageUse.CopySrc : ImageUse.None), label));
         if (id.IsNull)
         {

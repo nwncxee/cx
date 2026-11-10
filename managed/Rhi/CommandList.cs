@@ -14,7 +14,7 @@ public enum Op : byte
     BindIndexBuffer, Draw, DrawIndexed, DrawIndexedIndirect, Dispatch, CopyImage, BlitImage, UpdateBuffer, ZeroBuffer,
     PushConstants, BindVertexBuffer, DrawIndexedMulti, SetDepthState, SetRasterState, SetDepthRange, ReadImages,
     DrawIndirect, CopyImageToBuffer, ClearImage, GenerateMips, BeginLabel, EndLabel, SetShadingRate, Upscale, CopyBuffer,
-    DrawMeshTasks, DepthOfField,
+    DrawMeshTasks, DepthOfField, ClearDepthLayers,
 }
 
 /// <summary>An index element's width.</summary>
@@ -58,6 +58,9 @@ public readonly record struct DispatchCmd(int X, int Y, int Z);
 public readonly record struct CopyImageCmd(ImageId Src, ImageRegion From, ImageId Dst, ImageRegion To, int W, int H, int D);
 /// <summary><see cref="Op.BlitImage"/>: a scaled copy of mip 0, layer 0; also resolves a multisampled source.</summary>
 public readonly record struct BlitImageCmd(ImageId Src, Rect From, ImageId Dst, Rect To, Filter Filter);
+/// <summary><see cref="Op.ClearDepthLayers"/>: <see cref="Layers"/> array layers from <see cref="First"/>, every mip,
+/// set to <see cref="Depth"/>.</summary>
+public readonly record struct ClearDepthCmd(ImageId Image, int First, int Layers, float Depth);
 /// <summary><see cref="Op.UpdateBuffer"/>'s header; the bytes follow it.</summary>
 public readonly record struct UpdateBufferCmd(BufferId Buffer, long Offset, int Bytes);
 /// <summary><see cref="Op.ZeroBuffer"/>: <see cref="Bytes"/> zero bytes from <see cref="Offset"/>, 0 meaning to the end.</summary>
@@ -307,6 +310,9 @@ public sealed class CommandList
 
     /// <summary>Every mip and layer of <paramref name="i"/> set to zero, outside a pass; the image needs <c>CopyDst</c>.</summary>
     public void ClearImage(ImageId i) { Head(Op.ClearImage); Put(i); Sent(); }
+    /// <summary>A run of a depth image's array layers set to one depth value, outside a pass; the image needs
+    /// <c>CopyDst</c>. One of these replaces a begin/clear/end pass per layer.</summary>
+    public void ClearDepthLayers(in ClearDepthCmd c) { Head(Op.ClearDepthLayers); Put(c); Sent(); }
     /// <summary>One FSR 3.1 upscale; the device must have said <c>FsrReady</c> for these sizes first.</summary>
     public void Upscale(in UpscaleCmd c) { Head(Op.Upscale); Put(c); Sent(); }
     /// <summary>One depth of field; the device must have said <c>DofReady</c> for this colour's size first.</summary>

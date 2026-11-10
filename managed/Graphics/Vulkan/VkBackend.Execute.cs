@@ -201,6 +201,7 @@ internal sealed unsafe partial class VkBackend
                 Op.BlitImage => BlitImg(r.Read<BlitImageCmd>()),
                 Op.CopyImageToBuffer => CopyToBuf(r.Read<CopyToBufferCmd>()),
                 Op.ClearImage => ClearImg(r.Read<ImageId>()),
+                Op.ClearDepthLayers => ClearDepthLayersImg(r.Read<ClearDepthCmd>()),
                 Op.GenerateMips => MipsImg(r.Read<ImageId>()),
                 Op.BeginLabel => Label(r.Read<LabelCmd>(), ref r),
                 Op.EndLabel => Unlabel(),
