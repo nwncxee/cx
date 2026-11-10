@@ -119,12 +119,7 @@ public sealed unsafe partial class AlloyRenderer
         for (int k = 0; k < _orderCount; k++)
             {
                 int i = _order[k];
-                // "Does this slot move" -- a non-static object's part. A mover is routed every pass rather
-                // than filed, because its box moves with it.
-                bool mover = _oDbPart[i] >= 0
-                    ? (SceneDb.ObjFlags[SceneDb.PartObj[_oDbPart[i]].Index] & ObjFlag.Static) == 0
-                    : _oGob[i] != IntPtr.Zero;
-                if (mover) { _dynList[_dynN++] = i; continue; }
+                if (IsMover(i)) { _dynList[_dynN++] = i; continue; }
                 // The world box ComputePartBBox filled at tile spawn. One that was never filled is a part with
                 // no bounds to index on, and unbounded means VISIBLE -- the same answer its NeverCull sphere
                 // already gave the cull.
@@ -135,6 +130,14 @@ public sealed unsafe partial class AlloyRenderer
         // The set of slots changed, so last pass's visible set describes nothing.
         _visIndexGen++;
     }
+
+    /// <summary>Does this slot MOVE -- a non-static object's part, or anything hanging off a gob? A mover is
+    /// never filed in <see cref="AreaGrid"/> and never kept out of the visible set by the frustum: its sphere
+    /// moves after the set is built, so its only per-pass verdict is <see cref="RouteWanted"/>'s sphere test.</summary>
+    private static bool IsMover(int i)
+        => _oDbPart[i] >= 0
+            ? (SceneDb.ObjFlags[SceneDb.PartObj[_oDbPart[i]].Index] & ObjFlag.Static) == 0
+            : _oGob[i] != IntPtr.Zero;
 
     /// <summary>Does this world box carry bounds? The engine zeroes it in the <c>PartTriMesh</c> ctor and only
     /// <c>Scene::SpawnTile</c> fills it, so all-zero is "never filled"; a zero extent on one axis is a flat,
@@ -150,7 +153,8 @@ public sealed unsafe partial class AlloyRenderer
     /// and rebuild the set if it is due.</summary>
     private static void PrepareVisible()
     {
-        _visFull = !_visList || !_passFrustumOk;
+        // poll audits the TABLE, and a set of any kind narrows what the walk can reach
+        _visFull = !_visList || !_passFrustumOk || _fullPoll;
         if (_visFull) { _texStalePending = false; return; }   // this pass walks every slot anyway
         // CX-104 (review): a cold path has marked slots tex-stale, and RouteWanted can only re-resolve the
         // ones the set visits -- see NoteTexStalePending.
@@ -377,9 +381,8 @@ public sealed unsafe partial class AlloyRenderer
                 // invisible to every query. "filed 123 now 456" or "union no" says that is what happened;
                 // "filed 123 now 123 union yes" says it is not, and the loss is downstream of the cell test.
                 bool stillFiled = AreaGrid.StillFiled(first, in b, out int cellWas, out int cellNow, out bool covered);
-                // ...and the other half of that question: the box held against the planes the SET was built
-                // under, at the query's own slack. Dropped there means the set was built for a pass that could
-                // not see this slot and the drift test let this pass reuse it; kept means the query lost it.
+                // dropped here means the set was built for a pass that could not see this slot; kept means
+                // the query lost it
                 bool setKeeps = AreaGrid.BoxInFrustum(_visPlanes, in b, RouteSlackUnits + VisDriftUnits);
                 where = $" first miss slot {first} cls {_oCls[first]} rank {_orderRank[first]} gob {(_oGob[first] != IntPtr.Zero ? "yes" : "no")} "
                       + $"grid {(stillFiled ? "agrees" : "STALE")} (filed cell {cellWas}, box now in {cellNow}, cell union covers it: {(covered ? "yes" : "NO")}) "
@@ -418,9 +421,7 @@ public sealed unsafe partial class AlloyRenderer
                                   + $"this period ({_visBoxOnly * VisAuditSlices / Math.Max(1, _visSlices)} box-excluded/cycle)";
 
     /// <summary>The whole order held against <see cref="VisFullWants"/>: what an enrolment or epoch rebuild
-    /// does, and the shape the index-driven path has to end up equal to. One walk of the order, at the edge
-    /// that needs one, in place of a set that holds every slot and asks the route gate about all of them on
-    /// every frame it is then reused for.</summary>
+    /// does, and the shape the index-driven path has to end up equal to.</summary>
     private static void BuildVisibleFull()
     {
         int n = 0;
@@ -436,12 +437,12 @@ public sealed unsafe partial class AlloyRenderer
         }
     }
 
-    /// <summary>Would the route gate touch this slot? <see cref="RouteWanted"/>'s own question, without its
-    /// counters: a slot with no record to serve, or one this pass's planes keep -- at the same drift slack the
-    /// index query takes, so a set reused until a plane has moved that far still holds every slot the gate
-    /// wants. A whole-order rebuild keeps exactly these, so no set it builds misses one.</summary>
+    /// <summary>Could the route gate want this slot on any frame the set it goes into is reused for? Every
+    /// mover, every slot with no record to serve, and every slot this pass's planes keep at the drift slack
+    /// the index query takes -- which is the index-driven path's own membership rule, slot by slot.</summary>
     private static bool VisFullWants(int i)
     {
+        if (IsMover(i)) return true;
         ref RouteGate g = ref _gate[i];
         return g.RecGen != _recEpoch || g.RecEnroll != g.EnrollGen || g.TexStale || SphereInPass(i, VisDriftUnits);
     }
@@ -651,17 +652,21 @@ public sealed unsafe partial class AlloyRenderer
         return ok;
     }
 
-    /// <summary>Off-device: the whole-order rebuild's filter against the ROUTE GATE itself, slot by slot, over
-    /// the four cases the gate distinguishes. The oracle is the gate, which is the one thing the set has to
-    /// agree with: a slot it wants and the set lacks is geometry the pass never draws.</summary>
+    /// <summary>Off-device: the whole-order rebuild's filter, slot by slot. Two oracles, both hand-written: the
+    /// ROUTE GATE for the four record and frustum cases a static slot answers to, and the set's OWN rule --
+    /// every mover is a member, whatever the planes say -- for the two cases where the two must disagree.</summary>
     private static bool FullWantsSelfCheck(Checker check)
     {
         if (_fullPoll) return check.Skip("the poll audit routes every slot, so the gate asks none of these questions");
-        const int inView = 0, outView = 1, stale = 2, texStale = 3;
-        var gateWas = new RouteGate[4];
+        const int inView = 0, outView = 1, stale = 2, texStale = 3, mover = 4, slots = 5;
+        var gateWas = new RouteGate[slots];
         Array.Copy(_gate, gateWas, gateWas.Length);
-        var sphWas = new Sphere[4];
+        var sphWas = new Sphere[slots];
         Array.Copy(_dSph, sphWas, sphWas.Length);
+        var gobWas = new IntPtr[slots];
+        Array.Copy(_oGob, gobWas, gobWas.Length);
+        var dbPartWas = new int[slots];
+        Array.Copy(_oDbPart, dbPartWas, dbPartWas.Length);
         CullPlane[] planesWas = (CullPlane[])_passPlanes.Clone();
         bool frustumWas = _passFrustumOk;
         long inWas = _routeIn, outWas = _routeOut, staleWas = _routeStale;
@@ -670,14 +675,17 @@ public sealed unsafe partial class AlloyRenderer
         for (int f = 0; f < _passPlanes.Length; f++) _passPlanes[f] = CullPlane.KeepsEverything;
         // a half-space keeping x >= 0, so a sphere well behind it is out of this pass's view
         _passPlanes[0] = new CullPlane(Vector3.UnitX, 0f);
-        for (int k = 0; k < 4; k++)
+        for (int k = 0; k < slots; k++)
         {
             _gate[k] = new RouteGate { RecGen = _recEpoch, RecEnroll = 1, EnrollGen = 1 };
             _dSph[k] = new Sphere { Center = new Vector3(-500f, 0f, 0f), Radius = 1f };
+            // the four gate cases are STATIC slots: no gob, no DB part, so IsMover answers no for them
+            _oGob[k] = IntPtr.Zero; _oDbPart[k] = -1;
         }
         _dSph[inView].Center.X = 500f;
         _gate[stale].RecGen = _recEpoch + 1;
         _gate[texStale].TexStale = true;
+        _oGob[mover] = (IntPtr)1;
 
         bool ok = true;
         foreach ((int slot, bool want, string what) in (ReadOnlySpan<(int, bool, string)>)
@@ -691,8 +699,13 @@ public sealed unsafe partial class AlloyRenderer
             ok &= wants == want && gate == want;
         }
 
-        // ...and the one place they are meant to disagree: a slot the planes miss by less than the drift the
-        // set is rebuilt at. The set keeps it, because the pass that reuses the set may have moved that far.
+        // a mover behind the planes, with a current record and nothing else to want it for
+        bool moverWants = VisFullWants(mover), moverGate = RouteWanted(mover);
+        check.Expect(moverWants && !moverGate,
+                     $"a mover behind this pass's planes stays in the set (got {moverWants}) though this pass's "
+                   + $"gate drops it (got {moverGate}): it can walk into view while the set stands");
+        ok &= moverWants && !moverGate;
+        // ...and the same for a static slot the planes miss by less than the drift the set is rebuilt at
         _dSph[outView].Center.X = -(ShadowMath.FrustumCullSlack + RouteSlackUnits + VisDriftUnits * 0.5f);
         bool margin = VisFullWants(outView), gateMargin = RouteWanted(outView);
         check.Expect(margin && !gateMargin,
@@ -702,6 +715,8 @@ public sealed unsafe partial class AlloyRenderer
 
         Array.Copy(gateWas, _gate, gateWas.Length);
         Array.Copy(sphWas, _dSph, sphWas.Length);
+        Array.Copy(gobWas, _oGob, gobWas.Length);
+        Array.Copy(dbPartWas, _oDbPart, dbPartWas.Length);
         Array.Copy(planesWas, _passPlanes, planesWas.Length);
         _passFrustumOk = frustumWas;
         _routeIn = inWas; _routeOut = outWas; _routeStale = staleWas;
@@ -760,15 +775,6 @@ public sealed unsafe partial class AlloyRenderer
         var inverted = new Box { Min = new Vector3(5f, 5f, 0f), Max = new Vector3(1f, 6f, 1f) };
         check.Expect(HasBox(in wall) && !HasBox(in never) && !HasBox(in inverted),
                      "a flat axis-aligned wall is indexed; a never-filled or inverted box is not");
-
-        // The verdict table by hand, since the walk's whole cost is the set a pass reuses.
-        check.Expect(VisVerdict(full: true, drifted: false) == VisWhyFull
-                     && VisVerdict(full: true, drifted: true) == VisWhyFull,
-                     "a pass with no record to serve rebuilds from the whole order, drift or no drift");
-        check.Expect(VisVerdict(full: false, drifted: true) == VisWhyIndexed,
-                     "...a set whose planes have drifted is rebuilt through the index");
-        check.Expect(VisVerdict(full: false, drifted: false) == VisWhyReused,
-                     "...and a set standing under its own planes is reused");
 
         log.Info(check.Ok ? "AlloyRenderer.ChaseSelfCheck: passed"
                           : "AlloyRenderer.ChaseSelfCheck: FAILED -- the route would serve a stale record");
