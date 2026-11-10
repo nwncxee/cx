@@ -39,6 +39,19 @@ internal unsafe struct NativeBuffer<T> where T : unmanaged
         return true;
     }
 
+    /// <summary>Hold EXACTLY <paramref name="count"/> zeroed elements, reallocating when the held count differs
+    /// either way, so <see cref="Length"/> reads back as the count. For a buffer whose length IS the record
+    /// count a caller would otherwise carry beside it.</summary>
+    internal bool TakeExact(int count)
+    {
+        if (count <= 0) return false;
+        if (_n == count) { Span.Clear(); return true; }
+        T* at = Fresh(count);
+        if (at == null) return false;
+        Adopt(at, count);
+        return true;
+    }
+
     /// <summary>Hold at least <paramref name="count"/> elements, KEEPING the ones already held and zeroing the
     /// rest. False, and the buffer left exactly as it was, when the count is not positive or the allocation
     /// cannot be met: a stage grows mid-frame on the render thread, where a throw is not survivable and the
@@ -124,6 +137,7 @@ internal static unsafe class NativeBufferCheck
         check.Expect(buf.Take(2) && buf.Length == 2, $"...and can be taken again ({buf.Length})");
         buf.Free();
         Grows(check);
+        Exact(check);
         Aligns(check);
         log.Info(check.Ok ? "NativeBuffer.SelfCheck: passed" : "NativeBuffer.SelfCheck: FAILED");
     }
@@ -151,6 +165,23 @@ internal static unsafe class NativeBufferCheck
         buf.Free();
         check.Expect(buf.Grow(2) && buf.Length == 2 && buf.Span[0] == 0 && buf.Span[1] == 0,
                      "a freed buffer grows from nothing into zeroed elements");
+        buf.Free();
+    }
+
+    /// <summary>An exact take's length is the count asked for, whichever way the held count differs. Oracle:
+    /// the counts asked for, read back off a buffer a plain <see cref="NativeBuffer{T}.Take"/> would have left
+    /// longer.</summary>
+    private static void Exact(Checker check)
+    {
+        var buf = default(NativeBuffer<int>);
+        check.Expect(!buf.TakeExact(0) && !buf.TakeExact(-2) && buf.Length == 0, "an exact take of nothing is refused");
+        check.Expect(buf.TakeExact(9) && buf.Length == 9, $"an exact take of a fresh buffer is its count ({buf.Length})");
+        buf.Span[2] = 1781;
+        check.Expect(buf.TakeExact(4) && buf.Length == 4, $"...and SHRINKS to a smaller count, which Take would keep ({buf.Length})");
+        bool zeroed = true;
+        for (int i = 0; i < buf.Length; i++) zeroed &= buf.Span[i] == 0;
+        check.Expect(zeroed, "...handing back zeroed elements");
+        check.Expect(buf.TakeExact(12) && buf.Length == 12, $"...and grows to a bigger one ({buf.Length})");
         buf.Free();
     }
 

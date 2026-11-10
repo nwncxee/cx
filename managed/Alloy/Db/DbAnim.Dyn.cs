@@ -12,8 +12,8 @@ namespace CX.Alloy.Db;
 /// own, so the arena never holds rest data for it. Layout and ownership: <c>Db/DbPose.LAYOUT.md</c>.</summary>
 public static unsafe partial class DbAnim
 {
-    /// <summary>Per part: the dynamic position buffer, model space, as long as the part's vertex count. Each
-    /// buffer answers for its own length, so no caller carries one beside it.</summary>
+    /// <summary>Per part: the dynamic position buffer, model space, taken EXACTLY as long as the part's vertex
+    /// count -- the buffer's own length is that count, so no caller carries one beside it.</summary>
     private static readonly NativeBuffer<Vector3>[] _dyn = new NativeBuffer<Vector3>[SceneDb.MaxParts];
     /// <summary>The same part's dynamic UV buffer, empty when nothing animates its UVs. It hangs off the
     /// position buffer -- same vertex count, same list slot, same arena range -- so only
@@ -68,7 +68,7 @@ public static unsafe partial class DbAnim
                            + "draw their REST geometry (a still cloak, not a hole). Counted on [dbanim].");
             return default;
         }
-        if (!_dyn[part].Take(rest.Length)) return default;
+        if (!_dyn[part].TakeExact(rest.Length)) return default;
         rest.CopyTo(_dyn[part].Span);
         _dynList[_dynCount++] = part;
         TakeRange(part);
@@ -82,7 +82,7 @@ public static unsafe partial class DbAnim
     {
         if (_dynUv[part].Length != 0) return _dynUv[part].Span;
         int n = _dyn[part].Length;
-        if (n == 0 || !_dynUv[part].Take(n)) return default;
+        if (n == 0 || !_dynUv[part].TakeExact(n)) return default;
         Span<Vector2> buf = _dynUv[part].Span;
         rest.AsSpan(0, Math.Min(n, rest.Length)).CopyTo(buf);
         return buf;
