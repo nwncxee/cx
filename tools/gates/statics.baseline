@@ -1,6 +1,6 @@
 10 managed/Alloy/AlloyRenderer.Batches.cs
 4 managed/Alloy/AlloyRenderer.Bones.cs
-29 managed/Alloy/AlloyRenderer.cs
+26 managed/Alloy/AlloyRenderer.cs
 7 managed/Alloy/AlloyRenderer.Frame.cs
 31 managed/Alloy/AlloyRenderer.Metrics.cs
 10 managed/Alloy/AlloyRenderer.Motion.cs

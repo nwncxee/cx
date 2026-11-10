@@ -59,10 +59,10 @@ public sealed unsafe partial class AlloyRenderer
 
     private static void PoseSkinned()
     {
-        // Nothing to pose for if the pass cannot draw: DrawOwned bails on these two without stamping a
-        // single part, so the engine walks every one of them itself -- and would then solve each pose a
-        // second time.
-        if (!_skinning || _batchUnavailable) { _boneSlots = 0; return; }
+        // Nothing to pose for if the pass cannot draw: DrawOwned bails on this without stamping a single
+        // part, so the engine walks every one of them itself -- and would then solve each pose a second
+        // time.
+        if (!_skinning) { _boneSlots = 0; return; }
         // CX-26: once a FRAME -- a second pose in the same frame (a reflection subframe) re-solves the same
         // animation state and must not make it its own history.
         bool roll = _poseRollSeq != _frameSeq;

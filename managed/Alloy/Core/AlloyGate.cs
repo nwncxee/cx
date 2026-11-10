@@ -117,8 +117,6 @@ internal static class AlloyGate
         if (!GameGate.InModule) { why = NoModule; return AlloyStand.Idle; }
         if (!FramePump.Available)
         { why = "the render device did not come up (cx.log's Vulkan verdict says why)"; return AlloyStand.Incapable; }
-        if (!AlloyRenderer.DrawCapable)
-        { why = "an Alloy program did not build, or the batch path could not arm"; return AlloyStand.Incapable; }
         if (PostChain.Failed)
         { why = "the HDR target cannot arm on this device"; return AlloyStand.Incapable; }
         why = "";

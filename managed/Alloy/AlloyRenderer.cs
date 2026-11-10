@@ -194,18 +194,11 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// <summary>The planar mirror's world z while <see cref="_planar"/> is set: its draw drops what lies under it.</summary>
     internal static float _mirrorZ;
     internal static bool Capturing => _capturing;
-    /// <summary>GL_BLEND as the pass last set it, so <see cref="Issue.IssueBatches"/>' per-batch toggle starts from
-    /// the truth instead of assuming.</summary>
-    internal static bool _blendOn;
     /// <summary>Does the area declare an environment map at all? Read off the enrolled Scene each pass.
     /// <c>RenderFlat</c> @0x450eb0 binds <c>currentscene+0x1e8</c> to the env sampler only where that field is
     /// set, and most areas leave it null -- so where it is, ambient specular is a term vanilla does not have
     /// and only genuinely env-mapped materials get the probe.</summary>
     private static bool _sceneEnv;
-    /// <summary>The driver has no glMultiDrawElementsBaseVertex or no glBindBufferBase, so batched submission
-    /// cannot run at all. Latched, and EndFrame disarms on it by name rather than drawing nothing forever
-    /// while the iterator keeps suppressing parts.</summary>
-    private static bool _batchUnavailable;
     /// <summary><c>/alloy light 0</c> forces every Alloy part back to the fullbright variant (the lighting A/B).</summary>
     internal static bool _lighting => Renderer.Light.V;
     /// <summary>RenderInterface::IsEnabled -- queried for cap 5 (LIGHTING) once per Alloy pass.</summary>
@@ -428,11 +421,9 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// numbers a hosted content stage gates on (snow, wet, rain).</summary>
     internal static void LogScriptables() => _log?.Info("AlloyRenderer: " + DescribeScriptables());
 
-    /// <summary>The terms <see cref="AlloyGate"/> reads out of this class. <c>_armed</c> is "the hooks
-    /// installed"; the capability pair is "a program built and the multidraw entry points exist", both of
-    /// which latch and are deliberately never cleared by a context loss (see <see cref="ContextLost"/>).</summary>
+    /// <summary>The term <see cref="AlloyGate"/> reads out of this class: "the hooks installed", which
+    /// latches and is deliberately never cleared by a context loss (see <see cref="ContextLost"/>).</summary>
     internal static bool ArmedForFrame => _armed;
-    internal static bool DrawCapable => !_batchUnavailable;
 
     /// <summary>Inside the world view's colour pass (<see cref="DbWorldPass"/>), which is the only place
     /// Alloy draws: nothing of Alloy's runs inside the engine's own RenderSinglePass.</summary>
@@ -490,17 +481,6 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         AlloyWind.NewFrame();
         if (!_armed) return;
         _frameSeq++;
-        // Disarming must never be silent: the [alloy] period line is the only evidence this pass runs at
-        // all, so its ABSENCE has to name a reason rather than read as "no news". RevokeAll only speaks when
-        // something was owned, which is exactly not the case when the program failed before the first enroll.
-        if (_batchUnavailable)
-        {
-            RevokeAll("multidraw unavailable");
-            _armed = false;
-            _log?.Info("AlloyRenderer: DISARMED (glMultiDrawElementsBaseVertex or glBindBufferBase missing)"
-                     + " -- the Alloy world pass is off for this session and no [alloy] lines will follow");
-            return;
-        }
         bool lost = _was.Available && !FramePump.Available;
         _was.Available = FramePump.Available;
         if (!FramePump.Available) RevokeAll("render device lost");

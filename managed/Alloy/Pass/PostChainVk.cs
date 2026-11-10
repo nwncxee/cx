@@ -141,9 +141,10 @@ internal static unsafe class PostChainVk
 
     /// <summary>Bloom, then the resolve of <paramref name="hdr"/> into <paramref name="into"/> at
     /// <paramref name="rect"/>, telling sky from scene by <paramref name="sky"/>, dithered only when it is the frame's last write; <c>/post viz 4</c> paints <paramref name="vel"/>
-    /// instead. False (logged) when a program or target was refused: the frame has no other way to the screen.</summary>
+    /// instead. False (logged) when a program or target was refused: the frame has no other way to the screen.
+    /// <paramref name="load"/> is <see cref="LoadOp.DontCare"/> only where <paramref name="rect"/> is the whole of <paramref name="into"/>: a rect inside a larger target needs the clear for its margin.</summary>
     internal static bool Record(VkBackend vk, CommandList cl, ImageId hdr, SkyInput sky, ImageId into, bool last,
-                                int* viewport, int* rect, ImageId vel, ExtenderLog log)
+                                int* viewport, int* rect, ImageId vel, ExtenderLog log, LoadOp load = LoadOp.Clear)
     {
         if (!Ensure(vk, log)) return false;
         PostVkState s = _s;
@@ -193,7 +194,7 @@ internal static unsafe class PostChainVk
         // push constants are command-buffer state the render pass Draw opens does not reset
         cl.PushConstants(VkGlsl.PushTailAt, System.Runtime.InteropServices.MemoryMarshal.AsBytes(new ReadOnlySpan<ResolvePush>(in push)));
         // the velocity viz rides the bloom input: the two views are exclusive by construction
-        Draw(cl, s.Resolve!, FormatOf(into), Blend.None, into, LoadOp.Clear, new Rect(rect[0], rect[1], rect[2], rect[3]), at,
+        Draw(cl, s.Resolve!, FormatOf(into), Blend.None, into, load, new Rect(rect[0], rect[1], rect[2], rect[3]), at,
              new Inputs(hdr, motion && !vel.IsNull ? vel : bloom ? s.Bloom[0] : default, sky.Image), log);
         cl.EndLabel();
         if (!s.Said)

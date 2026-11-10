@@ -4,11 +4,11 @@ using CX.Rhi;
 
 namespace CX.Alloy.Db;
 
-/// <summary>The registry's uploads into <see cref="VkTextures"/>, beside GL's and from the same decoded job: every level
-/// a scene part's texture reaches GL with, under the sampler GL gives it. No texel is read back from GL.</summary>
+/// <summary>The registry's uploads into <see cref="VkTextures"/>, off the decoded job: every level a scene
+/// part's texture has, under the sampler the job asks for. No texel is read back off the device.</summary>
 internal static unsafe partial class TexRegistry
 {
-    /// <summary>A job's sampler as <see cref="Upload"/> sets it on GL: a PLT is always nearest and mipped.</summary>
+    /// <summary>A job's sampler as <see cref="Upload"/> asks for it: a PLT is always nearest and mipped.</summary>
     private static SamplerDesc VkSampler(bool clamp, bool nearest, bool mip)
     {
         Filter f = nearest ? Filter.Nearest : Filter.Linear;
@@ -19,8 +19,8 @@ internal static unsafe partial class TexRegistry
     /// <summary>One level of a job's decoded chain.</summary>
     private static ReadOnlySpan<byte> Level(Job j, long off, int sz) => new ReadOnlySpan<byte>(j.Data, checked((int)(off + sz))).Slice((int)off);
 
-    /// <summary><paramref name="j"/>'s texels under GL name <paramref name="dst"/>, as <see cref="Upload"/> just sent
-    /// them: the compressed chain, the PLT's index chain, or the raw cell mipped on the device.</summary>
+    /// <summary><paramref name="j"/>'s texels on the device under owned name <paramref name="dst"/>: the compressed
+    /// chain, the PLT's index chain, or the raw cell mipped on the device.</summary>
     private static void MirrorJob(uint dst, Job j)
     {
         if (VkTextures.Device(_log) is not VkBackend vk) return;

@@ -44,6 +44,7 @@ internal static partial class GpuGolden
         LightmapSelfCheck(vk, check, log);
         VrsSelfCheck(vk, check, log);
         PostSelfCheck(vk, check, log);
+        FullCoverLoadSelfCheck(vk, check, log);
         MipChainSelfCheck(vk, check, log);
         CutoutMipsSelfCheck(vk, check, log);
         MipChainHiZSelfCheck(vk, check, log);

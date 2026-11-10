@@ -103,10 +103,10 @@ internal static unsafe class NuiFlush
         _frames++;
     }
 
-    /// <summary>The net effect the function we replaced had on <c>GLRender</c>'s state caches, and therefore the
-    /// contract the engine's overlay views and <c>AurRenderStrings</c> are entitled to: blend and scissor off,
-    /// cull and depth on, the current-VDO latch cleared. Cached, so each is a no-op when it already holds. The
-    /// raw GL leaks <c>nk_sdl_render</c> left behind are deliberately NOT reproduced: nothing downstream reads them.</summary>
+    /// <summary>The net effect the function we replaced had on <c>GLRender</c>'s state caches: blend and scissor
+    /// off, cull and depth on, the current-VDO latch cleared. Kept to leave those caches as the engine's own code
+    /// expects to find them, not because a consumer still draws from it -- on Vulkan the overlay views and
+    /// <c>AurRenderStrings</c> draw nothing. Cached, so each is a no-op when it already holds.</summary>
     private static void HandBackEngineState()
     {
         const int CapBlend = 0, CapCull = 3, CapDepthTest = 0xb, CapScissor = 0xd;   // not-an-offset: engine cap enum
