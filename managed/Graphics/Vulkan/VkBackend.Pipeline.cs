@@ -64,6 +64,17 @@ internal sealed unsafe partial class VkBackend
         return pipe;
     }
 
+    /// <summary>A compute pipeline over SPIR-V already compiled or loaded; null (logged) when the pipeline is refused.
+    /// The module goes once the pipeline holds it, so a caller keeps the pipeline and no shader handle.</summary>
+    internal PipelineId CreateCompute(byte[] spirv, string label)
+    {
+        ShaderId cs = CreateShader(ShaderStage.Compute, spirv, label);
+        if (cs.IsNull) return default;
+        PipelineId pipe = CreatePipeline(new PipelineDesc { Cs = cs, Label = label });
+        Destroy(cs);
+        return pipe;
+    }
+
     /// <summary>A pipeline on the one shared layout. Graphics pipelines bake the target formats for dynamic rendering
     /// and leave viewport, scissor, depth, raster and (where the device can) blend dynamic, as a bind restates them; a
     /// desc whose compiled pipeline already exists shares it.</summary>

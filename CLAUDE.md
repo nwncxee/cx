@@ -256,13 +256,18 @@ the cleanup that earned it. Adding a rule means adding its gate in the same chan
   `managed/Framework/` or with no `// <reason>` on its line, or a `NoWarn`/severity override lowering either in build config, fails.
 - `local-paths.sh`: a home directory, mount point or personal checkout path in a tracked file fails
   (`docs/adr/`, `docs/handoff/` exempt); a machine's paths go through `tools/paths.py`.
-- `compute-pipes.sh`: a `ShaderDesc(ShaderStage.Compute ...)` under `managed/` outside `VkBackend.Pipeline.cs` fails; a
-  compute pipeline from GLSL is `VkBackend.CreateCompute`.
+- `compute-pipes.sh`: a `ShaderDesc(ShaderStage.Compute ...)` or a `CreateShader(ShaderStage.Compute ...)` under
+  `managed/` outside `VkBackend.Pipeline.cs` fails; a compute pipeline, from GLSL or from SPIR-V, is
+  `VkBackend.CreateCompute`, which frees the module the pipeline no longer needs.
 - `piece-links.sh`: a raw `ObjSeamAppendHead`/`ObjSeamAppendNext`/`ObjSeamAppendOwner` read or write under
   `managed/` outside `SceneDb.Pieces.cs` and its self-check fails. The columns are keyed by record INDEX, so a
   second link of one index rings the list and every walk over it then runs forever on the game thread:
   `SceneDb.PieceLink` refuses that shape, a second owner and a link that closes a cycle, and `SceneDb.Pieces`
   walks with a cap, a ring check and each piece's next link latched before its body runs.
+- `version-line.sh`: a string literal under `managed/` that IS the version line (`#version 460 core`), outside
+  `VkGlsl.cs` and the self-checks whose hand-written literal is their oracle, fails: `VkGlsl.Version` is its one
+  declaration, so a stage composed in C# and a stage spliced into a shipped library open with the same line. The
+  first line of a stage's own text -- a `.glsl` file, or a multi-line GLSL literal -- is GLSL, not a declaration.
 - `pipe-features.sh`: a string literal under `managed/` that starts with a pipeline feature prefix the tally counts by
   (`vk grass `, `vk particles `, `vk probe `, `vk CX window `, `CX window `) fails outside `Rhi/PipeFeatures.cs`;
   a label takes its prefix from `PipeFeatures`, so a rename cannot leave the by-feature count at zero.
@@ -275,6 +280,14 @@ the cleanup that earned it. Adding a rule means adding its gate in the same chan
 - `depth-confined.sh`: a file named in CX0006's `Allowed` that is not in the tree fails. The RULE -- GL's depth test and
   clear only in the files that keep GL depth (casters, shadow cascades, the GUI), and no depth test without its
   comparison -- is CX0006 (`tools/analyzers/DepthConvention.cs`); its approved examples need the SDK, so `build.sh` runs them.
+- `sampler-regex.sh`: a file named in CX0008's `Allowed` that is not in the tree fails. The RULE -- no regex reads
+  a GLSL sampler or image declaration -- is CX0008 (`tools/analyzers/SamplerRegex.cs`), which the compiler checks
+  because it can tell a regex pattern argument from any other string and can fold a pattern held in a `const`: a
+  pattern naming `uniform` or `binding` beside `sampler` or `image` is refused outside `VkGlsl` (whose `Opaques`
+  lexes the stage and answers with each declaration's name, binding and bind kind) and the files that REWRITE
+  every declaration or read the general global ones. A `Contains` pin on CX's own embedded stage text is not a
+  read of a declaration and is not refused (`CODING_STANDARDS.md` says why). This gate refuses a permission that
+  outlived its file; the list is read out of `SamplerRegex.cs`, never restated.
 - `content-fixtures.sh`: a `cx_fix*` stage the C# self-checks translate that `tools/content_stage.py`'s `FIXTURE` lacks, or the reverse, fails: the two translations answer to one set of stages.
 - `face-normal.sh`: a `.glsl` under `managed/Alloy/Shaders/` that flips a back face's normal inline
   (`gl_FrontFacing ? n : -n`, its negated spelling, or the sign a caller multiplies by) fails, and so does a lit

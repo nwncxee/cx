@@ -69,6 +69,10 @@ internal sealed class VkProgramText
 /// units the caller names, and GL's draw built-ins Vulkan's spellings. Pure text; cold.</summary>
 internal static partial class VkGlsl
 {
+    /// <summary>The version line the translation reads and writes, and the one every stage composed in C# opens
+    /// with: one declaration, so a stage built here and a stage spliced into a shipped library agree.</summary>
+    internal const string Version = "#version 460 core\n";
+
     /// <summary>The block a stage's loose uniforms are gathered into, on <c>UboSlots.Loose</c>.</summary>
     internal const string LooseBlock = "CxLoose";
     internal const uint LooseBinding = 4;
@@ -413,7 +417,7 @@ internal static partial class VkGlsl
     /// the caller's unit for its name.</summary>
     private static string OpaqueDecl(Decl d, IReadOnlyDictionary<string, uint> units, VkProgramText r)
     {
-        bool image = d.Type.Contains("image", StringComparison.Ordinal);
+        VkBindKind kind = OpaqueKind(d.Type);
         Match bm = BindingQ.Match(d.LayoutInner);
         uint set = SetQ.Match(d.LayoutInner) is { Success: true } sm && uint.TryParse(sm.Groups[1].Value, out uint sv) ? sv : 0;
         var sb = new StringBuilder();
@@ -431,22 +435,29 @@ internal static partial class VkGlsl
                 if (!units.TryGetValue(name, out b)) { r.Error ??= $"{d.Type} {name} has no binding and the unit table does not name it"; return ""; }
                 inner = d.HasLayout ? $"{d.LayoutInner}, binding = {b}" : $"binding = {b}";
             }
-            AddOpaque(r, new VkOpaque(name, d.Type, set, b, image ? VkBindKind.StorageImage : VkBindKind.Sampled));
+            AddOpaque(r, new VkOpaque(name, d.Type, set, b, kind));
             sb.Append($"layout({inner}) {d.Quals}uniform {d.Type} {name}{arr}; ");
         }
         return sb.ToString().TrimEnd();
     }
 
-    /// <summary>Every sampler, image and texture <paramref name="src"/> declares at file scope, in order: its type, name
-    /// and the <c>binding</c> its layout names (null when it names none). Comments are not read.</summary>
-    internal static List<(string Type, string Name, string? Binding)> Opaques(string src)
+    /// <summary>What a sampler, image or texture declaration of this GLSL type binds as: a storage image, or a
+    /// unit a sampler and a separate texture both claim.</summary>
+    private static VkBindKind OpaqueKind(string type)
+        => type.Contains("image", StringComparison.Ordinal) ? VkBindKind.StorageImage : VkBindKind.Sampled;
+
+    /// <summary>Every sampler, image and texture <paramref name="src"/> declares at file scope, in order: its type,
+    /// name, the literal <c>binding</c> its layout names (null when it names none or names a non-literal) and what it
+    /// binds as. Comments are not read, and a caller that asks the kind need not match the type as text.</summary>
+    internal static List<(string Type, string Name, uint? Binding, VkBindKind Kind)> Opaques(string src)
     {
-        var list = new List<(string, string, string?)>();
+        var list = new List<(string, string, uint?, VkBindKind)>();
         foreach (Stmt st in Statements(src))
         {
             if (st.Term != ';' || !Parse(st, out Decl d) || d.Storage != "uniform" || !Opaque.IsMatch(d.Type)) continue;
             Match bm = BindingQ.Match(d.LayoutInner);
-            foreach (var (name, _, _) in d.Names) list.Add((d.Type, name, bm.Success ? bm.Groups[1].Value : null));
+            uint? b = bm.Success && uint.TryParse(bm.Groups[1].Value, out uint bv) ? bv : null;
+            foreach (var (name, _, _) in d.Names) list.Add((d.Type, name, b, OpaqueKind(d.Type)));
         }
         return list;
     }

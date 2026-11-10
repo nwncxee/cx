@@ -228,8 +228,10 @@ internal static partial class VkGlsl
     {
         var got = Opaques(LooseFs.Replace("\r\n", "\n") + "/* uniform sampler2D uGone; */\n// layout(binding = 9) uniform image2D uGoneToo;\n");
         string seen = string.Join(", ", got);
-        check.Expect(got.Count == 4 && got[0] == ("sampler2D", "uTex", null) && got[1] == ("sampler2D", "uNrmTex", null)
-                  && got[2] == ("sampler2D", "uSpecTex", null) && got[3] == ("usampler2D", "uLightRec", "26"),
+        check.Expect(got.Count == 4 && got[0] == ("sampler2D", "uTex", null, VkBindKind.Sampled)
+                  && got[1] == ("sampler2D", "uNrmTex", null, VkBindKind.Sampled)
+                  && got[2] == ("sampler2D", "uSpecTex", null, VkBindKind.Sampled)
+                  && got[3] == ("usampler2D", "uLightRec", 26u, VkBindKind.Sampled),
             $"the opaque list is the fixture's four samplers, its one binding kept and no comment read (got {seen})");
     }
 

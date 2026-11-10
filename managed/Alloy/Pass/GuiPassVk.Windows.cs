@@ -212,6 +212,7 @@ internal static unsafe partial class GuiPassVk
         return w.Ok;
     }
 
-    /// <summary>The replay's GL 3.3 text at the version the Vulkan translation targets.</summary>
-    private static string Vk460(string glsl) => glsl.Replace("#version 330 core", "#version 460 core", StringComparison.Ordinal);
+    /// <summary>The replay's GL 3.3 text at the version the Vulkan translation targets. The newline is part of the
+    /// match, so the line goes as a line and <see cref="VkGlsl.Version"/> arrives whole.</summary>
+    private static string Vk460(string glsl) => glsl.Replace("#version 330 core\n", VkGlsl.Version, StringComparison.Ordinal);
 }

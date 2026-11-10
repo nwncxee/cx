@@ -275,7 +275,7 @@ internal sealed unsafe partial class VkBackend
     /// <summary>The one-word float copy stage of <c>cx_readback_c.glsl</c>.</summary>
     private PipelineId CopyChecker()
     {
-        const string Version = "#version 460 core\n";
+        const string Version = VkGlsl.Version;
         string src = CX.Alloy.ShaderSource.Get("cx_readback_c.glsl").Replace(Version, Version + "#define CX_READBACK_WORDS 1\n");
         return CreateCompute(src, "vk copy check reader");
     }

@@ -22,7 +22,6 @@ public sealed unsafe partial class AlloyRenderer
     /// with the locations the per-frame fill writes through.</summary>
     private sealed class VkDefStage
     {
-        public ShaderId Cs;
         public PipelineId Pipe;
         public VkOpaque[] Opaques = [];
         public LooseBlock.Member[] Members = [];
@@ -554,10 +553,7 @@ public sealed unsafe partial class AlloyRenderer
                                            label, log, out string e);
         if (spirv == null) { log.Always($"AlloyRenderer: {label} did not compile -- {e}"); return null; }
         var st = new VkDefStage { Opaques = t.Opaques.ToArray() };
-        st.Cs = vk.CreateShader(ShaderStage.Compute, spirv, label);
-        if (st.Cs.IsNull) return null;
-        var pd = new PipelineDesc { Cs = st.Cs, Label = label };
-        st.Pipe = vk.CreatePipeline(in pd);
+        st.Pipe = vk.CreateCompute(spirv, label);
         if (st.Pipe.IsNull) return null;
         var names = new List<string>(t.Loose.Count);
         foreach (VkLoose u in t.Loose) names.Add(u.Name);

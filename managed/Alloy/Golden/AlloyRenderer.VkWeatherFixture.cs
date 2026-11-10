@@ -58,7 +58,7 @@ public sealed unsafe partial class AlloyRenderer
     /// buffers, and each program's shaders and pipelines on either path.</summary>
     private static void VkWxFixtureFree(VkBackend vk, VkWxState s)
     {
-        if (s.Cull != null) { vk.Destroy(s.Cull.Pipe); vk.Destroy(s.Cull.Cs); }
+        if (s.Cull != null) vk.Destroy(s.Cull.Pipe);
         vk.Destroy(s.Drops); vk.Destroy(s.Cmd); vk.Destroy(s.CmdRead);
         foreach (PipelineId pipe in s.Pipe) vk.Destroy(pipe);
         foreach (VkProg? p in s.Prog) VkWxFixtureFree(vk, p);
