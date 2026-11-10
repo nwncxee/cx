@@ -136,6 +136,7 @@ internal sealed unsafe partial class VkBackend
         if (_inPass) return Fault("CopyBuffer inside a render pass");
         if (!_buffers.TryGet(c.Src.Value, out VkBuf? src)) return Fault("CopyBuffer: stale source buffer");
         if (!_buffers.TryGet(c.Dst.Value, out VkBuf? dst)) return Fault("CopyBuffer: stale destination buffer");
+        if (CopyMissing(src.Desc.Use, src.Desc.Memory) is { } sw) return Fault($"CopyBuffer: {src.Desc.Label} {sw}");
         if (c.Bytes <= 0 || ((c.SrcOffset | c.DstOffset | c.Bytes) & 3) != 0 || c.SrcOffset < 0 || c.DstOffset < 0
             || c.SrcOffset + c.Bytes > src.Desc.Bytes || c.DstOffset + c.Bytes > dst.Desc.Bytes)
             return Fault($"CopyBuffer: {c.Bytes} bytes from {src.Desc.Label} at {c.SrcOffset} to {dst.Desc.Label} at {c.DstOffset}, in whole words");

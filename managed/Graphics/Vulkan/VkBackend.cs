@@ -260,8 +260,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         var f13 = new VkPhysicalDeviceVulkan13Features { pNext = &f12 };
         var f2 = new VkPhysicalDeviceFeatures2 { pNext = &f13 };
         vki.vkGetPhysicalDeviceFeatures2(d, &f2);
-        // maintenance4: every compute stage CX compiles states its workgroup through OpExecutionMode LocalSizeId,
-        // which a device without the feature refuses at vkCreateShaderModule
+        // every compute stage CX compiles states its workgroup through maintenance4's OpExecutionMode LocalSizeId
         if (!f13.dynamicRendering || !f13.synchronization2 || !f13.maintenance4)
             return "lacks dynamic rendering, synchronization2 or maintenance4";
         if (Lacks(in f2.features, in f11, in f12) is string lack) return $"lacks {lack}";

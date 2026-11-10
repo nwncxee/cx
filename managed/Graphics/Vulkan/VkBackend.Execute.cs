@@ -635,6 +635,12 @@ internal sealed unsafe partial class VkBackend
         => src ? (use & ImageUse.CopySrc) == 0 ? "was not created as a copy source" : null
                : (use & ImageUse.CopyDst) == 0 ? "was not created as a copy destination" : null;
 
+    /// <summary>Why a buffer made for <paramref name="use"/> in <paramref name="memory"/> may not be a transfer's
+    /// source, or null: a buffer asks the device for the usage it declares, and a readback one is a copy source
+    /// whatever it declared, since that is the only way its bytes reach the host.</summary>
+    internal static string? CopyMissing(BufferUse use, MemoryKind memory)
+        => (use & BufferUse.CopySrc) == 0 && memory != MemoryKind.Readback ? "was not created as a copy source" : null;
+
     private bool IndexBuffer(IndexBufferCmd c)
     {
         if (!_buffers.TryGet(c.Buffer.Value, out VkBuf? b)) return Fault("BindIndexBuffer: stale buffer");
