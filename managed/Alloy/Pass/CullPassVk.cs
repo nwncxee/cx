@@ -411,6 +411,10 @@ internal static class CullPassVk
         check.Expect(cnt[2] == 3, "...and nothing in the sorted batch, which runs no LOD test");
         b.LodPx = 0f; b.LodScale = 0f;
         if (!MirrorPhase(vk, check, src, sph, ref b)) return false;
+        if (!Run(vk, check, src, sph, ref b, cnt, slot, cmd)) return false;
+        check.Expect(_s.Cmd[Mirror].IsNull,
+            "an upload after the mirror fixture buys no mirror set: the ask is a session's own, so one that never "
+            + "reflects holds no output set and its first mirror frame is the frame that asks");
         if (!Occlusion(vk, check, src, sph, ref b)) return false;
         log.Info(check.Ok ? "CullPassVk.DeviceCheck: passed" : "CullPassVk.DeviceCheck: FAILED -- see above");
         return check.Ok;
@@ -446,6 +450,21 @@ internal static class CullPassVk
     /// wholly past the plane, a mirrored view facing the other way keeps only the never-culled one, the colour set is
     /// untouched either way, and the mirror's own LOD scale drops a draw the full-size view keeps.</summary>
     private static bool MirrorPhase(VkBackend vk, Checker check, CullSrcRec[] src, Sphere[] sph, ref CullBlock b)
+    {
+        bool asked = _s.MirrorAsked;
+        try { return MirrorRuns(vk, check, src, sph, ref b); }
+        finally
+        {
+            // The live state is the session's: a fixture that left the ask latched would buy every session a
+            // mirror set, and one sized for the fixture's ten draws, which the frame's own list overruns.
+            _s.MirrorAsked = asked;
+            vk.Destroy(_s.Cmd[Mirror]); vk.Destroy(_s.Slot[Mirror]); vk.Destroy(_s.Cnt[Mirror]);
+            _s.Cmd[Mirror] = default; _s.Slot[Mirror] = default; _s.Cnt[Mirror] = default;
+        }
+    }
+
+    /// <inheritdoc cref="MirrorPhase"/>
+    private static bool MirrorRuns(VkBackend vk, Checker check, CullSrcRec[] src, Sphere[] sph, ref CullBlock b)
     {
         const int Groups = 3;
         var col = new uint[Groups];
