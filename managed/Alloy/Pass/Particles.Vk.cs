@@ -40,7 +40,7 @@ internal static unsafe partial class Particles
         if (at == 0) return 0;
         for (int i = 0; i < _drawN; i++)
             for (int j = 0; j < _wrote[i]; j++)
-                _idx[_span[i * 4 + 2] + j] = _span[i * 4] + (uint)j;
+                _idx[(int)_span[i * 4 + 2] + j] = _span[i * 4] + (uint)j;
         PartVkState s = _vk;
         for (int gi = 0; gi < groups; gi++)
         {
@@ -69,7 +69,7 @@ internal static unsafe partial class Particles
     internal static ReadOnlySpan<ParticleRec> VkRecords => _recs.Span[.._recTop];
 
     /// <summary>This frame's draw-order list, <paramref name="at"/> entries.</summary>
-    internal static ReadOnlySpan<uint> VkIndices(int at) => new(_idx, at);
+    internal static ReadOnlySpan<uint> VkIndices(int at) => _idx.Span[..at];
 
     /// <summary>Draw group <paramref name="gi"/>: a DB emitter's texture is its registry name, an engine emitter's
     /// none (it draws the stand-in, counted by the caller).</summary>

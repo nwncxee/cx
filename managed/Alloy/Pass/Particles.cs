@@ -200,8 +200,7 @@ internal static unsafe partial class Particles
     /// <summary>Record indices in DRAW order, one per particle. The WRITE of this list is the GPU's, so the
     /// CPU shadow is only the <c>/particles sort 0</c> path's staging area -- kept because that dial is the
     /// escape hatch for a driver where the compute program does not build.</summary>
-    private static uint* _idx;
-    private static int _idxCap;
+    private static NativeBuffer<uint> _idx;
 
     private static int _frame;
     private static int _captured, _declined, _emitters, _groups, _suppressed, _overflow;
@@ -951,13 +950,11 @@ internal static unsafe partial class Particles
     private static bool EnsureBuffers(int parts)
     {
         if (parts <= 0 || parts > MaxRecs) { if (parts > MaxRecs) _overflow++; return false; }
-        if (_idxCap < parts)
+        if (_idx.Length < parts)
         {
-            int want = _idxCap > 0 ? _idxCap : MinRecs;
+            int want = _idx.Length > 0 ? _idx.Length : MinRecs;
             while (want < parts) want *= 2;
-            if (_idx != null) NativeMemory.Free(_idx);
-            _idx = (uint*)NativeMemory.Alloc((nuint)((long)want * sizeof(uint)));
-            _idxCap = want;
+            if (!_idx.Take(want)) return false;
         }
         // The record store is sized off the ALLOCATOR's high-water mark, not off this frame's particle
         // count: blocks are persistent, so an emitter that went off screen still owns its slice.
@@ -1015,8 +1012,7 @@ internal static unsafe partial class Particles
     {
         Forget();
         _recs.Free();
-        if (_idx != null) { NativeMemory.Free(_idx); _idx = null; }
-        _idxCap = 0;
+        _idx.Free();
     }
 
     /// <summary>One line for the <c>/particles</c> status and the arm-time log.</summary>
