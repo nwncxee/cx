@@ -97,6 +97,8 @@ internal static partial class GpuGolden
         DisplacementFadeApprovedSelfCheck(vk, check, log);
         ColourFilterApprovedSelfCheck(vk, check, log);
         AoContactSelfCheck(vk, check, log);
+        AoAccumSelfCheck(vk, check, log);
+        CullPassVk.GoldenCheck(vk, check, log);
         ContentSolidSelfCheck(vk, check, log);
         RainRingSelfCheck(vk, check, log);
         AoMapApprovedSelfCheck(vk, check, log);

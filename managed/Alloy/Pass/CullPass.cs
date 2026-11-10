@@ -80,10 +80,11 @@ internal static unsafe class CullPass
     /// <summary>Compute workgroup size; the dispatch is 1D over draws.</summary>
     internal const int GroupSize = 64;
 
-    /// <summary>The three dispatch phases, and the three output sets they fill. <see cref="PhaseRetest"/> is
-    /// the prepass's second phase, with a set of its own because <c>MultiDrawElementsIndirectCount</c> takes a
-    /// CPU byte offset for the start and phase one's count never comes back to say where its survivors end.</summary>
-    internal const int PhasePrepass = 0, PhaseColour = 1, PhaseRetest = 2;
+    /// <summary>The dispatch phases, and the <see cref="PhaseCount"/> output sets they fill. Each holds its own
+    /// verdicts: <see cref="PhaseRetest"/> is the prepass's second phase, because an indirect-count draw takes a
+    /// CPU byte offset for the start and phase one's count never comes back to say where its survivors end, and
+    /// <see cref="PhaseMirror"/> is the planar mirror's, recorded after the colour pass has drawn.</summary>
+    internal const int PhasePrepass = 0, PhaseColour = 1, PhaseRetest = 2, PhaseMirror = 3, PhaseCount = 4;
     /// <summary>The shader's <c>uRej</c> mode per phase: the colour phase ignores the verdict buffer, phase
     /// one WRITES it, phase two READS it and tests only the marked draws.</summary>
     internal const int RejOff = 0, RejWrite = 1, RejRead = 2;
