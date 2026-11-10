@@ -5,8 +5,9 @@ using CX.Framework;
 namespace CX.Alloy.Db;
 
 /// <summary>The mip chain of a texture whose alpha holes cut a surface: built on the decode worker, in place of the
-/// device's alpha-blind filter and a file's stored mips. Colour never comes from under a hole, and each level keeps
-/// level 0's share of texels past the cut, so the fragment test needs no distance term.</summary>
+/// device's alpha-blind filter and a file's stored mips. Colour never comes from under a hole; and where the alpha
+/// is binary, every level keeps level 0's share of texels past the cut, so the fragment test needs no distance
+/// term. Fractional alpha keeps its own, which is the opacity a blended draw shows.</summary>
 internal static unsafe class MipChain
 {
     /// <summary>One RGBA8 texel, as a chain lays them out.</summary>
@@ -27,6 +28,17 @@ internal static unsafe class MipChain
         var chain = new byte[TexScan.ChainBytes(w, h, true)];
         Build(rgba, w, h, chain);
         return chain;
+    }
+
+    /// <summary>The mips of a chain buffer whose level 0 is already in it, rewritten alpha-weighted in place; false
+    /// for a sheet with no holes, whose levels the caller fills its own way. The buffer holds the whole chain
+    /// (<see cref="TexScan.ChainBytes"/>).</summary>
+    internal static bool Chained(Span<byte> chain, int w, int h)
+    {
+        int top = w * h * Bpp;
+        if (w <= 0 || h <= 0 || chain.Length < TexScan.ChainBytes(w, h, true) || !HasHoles(chain[..top])) return false;
+        Build(chain[..top], w, h, chain);
+        return true;
     }
 
     /// <summary><see cref="Raster"/> into a native allocation the caller frees, for a decoded job's data to become:
@@ -71,19 +83,28 @@ internal static unsafe class MipChain
         return true;
     }
 
-    private static bool HasHoles(ReadOnlySpan<byte> rgba)
+    /// <summary>Does any texel fall at or under the cut? What makes a chain worth rebuilding, so a caller asks
+    /// before it pays for a chain-sized buffer.</summary>
+    internal static bool HasHoles(ReadOnlySpan<byte> rgba)
     {
         foreach (Texel t in MemoryMarshal.Cast<byte, Texel>(rgba)) if (t.A <= Hole) return true;
         return false;
     }
 
     /// <summary>Level 0 from <paramref name="rgba"/> (it may already sit at the front of <paramref name="chain"/>), the
-    /// levels below alpha-weighted, holes filled from above, each level holding level 0's coverage.</summary>
+    /// levels below alpha-weighted and their holes filled from above; a sheet whose alpha is binary also holds level
+    /// 0's share of texels past the cut in every level.</summary>
     private static void Build(ReadOnlySpan<byte> rgba, int w, int h, Span<byte> chain)
     {
         ReadOnlySpan<Texel> top = MemoryMarshal.Cast<byte, Texel>(rgba);
         int kept = 0;
-        foreach (Texel t in top) if (t.A > Hole) kept++;
+        bool binary = true;
+        foreach (Texel t in top)
+        {
+            if (t.A <= Hole) continue;
+            kept++;
+            if (t.A < TexCoverageOf.OpaqueAt) binary = false;
+        }
         double share = (double)kept / top.Length;
         int* lw = stackalloc int[MaxLevels], lh = stackalloc int[MaxLevels];
         long* off = stackalloc long[MaxLevels];
@@ -93,6 +114,7 @@ internal static unsafe class MipChain
         for (int l = levels - 2; l >= 0; l--)
             FillHoles(MemoryMarshal.Cast<byte, Texel>(chain.Slice((int)off[l], lw[l] * lh[l] * Bpp)), lw[l], lh[l],
                       MemoryMarshal.Cast<byte, Texel>(chain.Slice((int)off[l + 1], lw[l + 1] * lh[l + 1] * Bpp)), lw[l + 1], lh[l + 1]);
+        if (!binary) return;
         for (int l = 1; l < levels; l++)
             KeepCoverage(MemoryMarshal.Cast<byte, Texel>(chain.Slice((int)off[l], lw[l] * lh[l] * Bpp)), share);
     }
@@ -116,6 +138,29 @@ internal static unsafe class MipChain
         check.Expect(chain != null && chain.Length == (64 + 16 + 4 + 1) * Bpp, $"8x8 chain is {chain?.Length} bytes");
         check.Expect(!Dds(stackalloc byte[16], 4, 4, 1, DdsReader.Fmt.Bc3), "a one-level file was rebuilt");
         check.Expect(!Dds(stackalloc byte[16], 4, 4, 3, DdsReader.Fmt.Bc7), "a BC7 file was rebuilt");
+        check.Expect(!Dds(stackalloc byte[16], 4, 4, 3, DdsReader.Fmt.Bc1), "a BC1 file was rebuilt");
+        // the chain a decoded cell is encoded from: level 0 kept, the level under it the leaf's own colour
+        var buf = new byte[TexScan.ChainBytes(8, 8, true)];
+        leaf.CopyTo(buf.AsSpan());
+        check.Expect(Chained(buf, 8, 8), "a chain buffer whose sheet has holes was left alone");
+        Span<Texel> made = MemoryMarshal.Cast<byte, Texel>(buf.AsSpan());
+        check.Expect(made[0].R == 10 && made[0].G == 20 && made[0].B == 30, "level 0's leaf texel changed in place");
+        Texel under = made[Cell(8, 0, 8)];   // one row past the 8x8 level: the first texel of the level under it
+        check.Expect(under.R == 10 && under.G == 20 && under.B == 30,
+            $"the level under it reads {under.R},{under.G},{under.B}, not the leaf's colour alone");
+        // The coverage rescale, which binary alpha alone takes. Oracle: the box mean of one 255 and three 0s is
+        // alpha 64, of 255 and 150 is 101, and only the rescale moves a level off its mean.
+        var soft = (byte[])leaf.Clone();
+        MemoryMarshal.Cast<byte, Texel>(soft.AsSpan())[1] = new Texel(10, 20, 30, 150);
+        byte[]? gradedChain = Raster(soft, 8, 8);
+        int lvl1 = Cell(8, 0, 8);
+        byte binA = chain == null ? (byte)0 : MemoryMarshal.Cast<byte, Texel>(chain.AsSpan())[lvl1].A;
+        byte gradA = gradedChain == null ? (byte)0 : MemoryMarshal.Cast<byte, Texel>(gradedChain.AsSpan())[lvl1].A;
+        check.Expect(binA != 64, $"binary alpha: the level under reads the box mean {binA}, so no coverage was held");
+        check.Expect(gradA == 101, $"fractional alpha: the level under reads {gradA}, not the box mean 101 -- its opacity was rescaled");
+        stone.CopyTo(buf.AsSpan());
+        check.Expect(!Chained(buf, 8, 8), "an opaque sheet's chain was rebuilt");
+        check.Expect(!Chained(leaf, 8, 8), "a buffer holding level 0 alone was treated as a whole chain");
         log.Info(check.Ok ? "MipChain.SelfCheck: passed" : "MipChain.SelfCheck: FAILED");
         return check.Ok;
     }

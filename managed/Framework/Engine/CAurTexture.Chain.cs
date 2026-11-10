@@ -20,6 +20,14 @@ public readonly unsafe ref partial struct CAurTexture
         return p;
     }
 
+    /// <summary>Level <paramref name="level"/>'s compressed bytes, where <see cref="CompressedLevel"/> finds them
+    /// and as long as it says; empty when the texture holds no image.</summary>
+    public System.ReadOnlySpan<byte> CompressedBytes(int level, out int w, out int h)
+    {
+        byte* p = CompressedLevel(level, out w, out h, out int size);
+        return p == null || size <= 0 ? default : new System.ReadOnlySpan<byte>(p, size);
+    }
+
     /// <summary>An uncompressed image's pixels as <c>GLRender::CreateCubeTexture</c> @0x4caab0 reads them:
     /// <c>GetWidth() * GetHeight() * GetBPP()</c> bytes from <c>GetImage()</c>; empty when there is none.</summary>
     public System.ReadOnlySpan<byte> Pixels

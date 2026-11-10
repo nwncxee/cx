@@ -17,7 +17,7 @@ internal static unsafe partial class GrassField
     /// <summary>One material slot's verdict, keyed by the texture it was read from: the GL name and a hash of
     /// the resref. Either changing (an override, an area transition re-uploading under a recycled name)
     /// re-classifies; <c>Done</c> with no blade bits is also the failure latch, so an unreadable atlas is asked
-    /// once, not every frame (the <see cref="HasMips"/> per-frame-rebuild trap).</summary>
+    /// once per upload rather than every frame.</summary>
     private struct Cls { public int Tid; public uint Name; public int Kinds; public bool Done; }
     private static readonly Cls[] _cls = new Cls[MaxGrassMaterials];
     /// <summary>Root/mid/tip per cell per material, display space.</summary>

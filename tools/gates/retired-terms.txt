@@ -265,3 +265,7 @@ alloy\.cutmip\b|\bCutMip\b|\buAlphaMip\b|\bCxAlphaMip(At)?\b|\bcx_alphamip\b|\bC
 \bSubmit\.(Call|CallAt|At|Back|Line|ResetPeriod)\b	CX-517
 # The [alloy] line's clauses that only dead counters fed.
 \bnull-tex\b|drawn (white|untextured)/frame|\bno-gl-id\b|mesh sharing|shape repeats|lit left to the engine|\benrolls=	CX-517	PeriodLineApprovedExamples
+# The grass sampler's own two dials and the sampler pair that carried them: they went with the GL sampler
+# code. Anisotropy is pinned for every mipped texture, and the darkening the mip bias leaned against is kept
+# out of the chain at upload instead.
+grass\.(aniso|soften)\b|\bGrass\.(Aniso|Soften)\b|\bSampFlat\b|\bSampMip\b	CX-313
