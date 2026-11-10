@@ -16,6 +16,11 @@ public sealed unsafe partial class CasterPass
     /// compacts the command buffer. False = do not arm, per the house rule.</summary>
     private static bool SelfCheck(ExtenderLog log)
     {
+        // A published cube slot IS the vec4 the receiver samples: position in xyz, reach in w. A record whose
+        // fields reordered or gained padding would upload a light's reach as a coordinate and misplace every
+        // cube shadow in the frame, with nothing to error on.
+        Span<CubeCaster> one = stackalloc CubeCaster[1] { new CubeCaster(new Vector3(7f, 8f, 9f), 11f) };
+        ReadOnlySpan<Vector4> asVec4 = MemoryMarshal.Cast<CubeCaster, Vector4>(one);
         // ...and the cutout stage really discards, at the engine's own threshold. A masked batch drawn by a
         // stage that lost the test writes the whole quad into the shadow map, which is the artefact the
         // masked path exists to remove and looks exactly like the pass working.
@@ -85,6 +90,7 @@ public sealed unsafe partial class CasterPass
                   // same pin on the cube side: uLocalLight is indexed by a slot the CPU hands out, so a
                   // shorter array reads out of bounds the moment the count passes it
                   && AlloyLights.LocalShadowLib.Contains($"uLocalLight[{MaxCubes}]")
+                  && asVec4.Length == 1 && asVec4[0] == new Vector4(7f, 8f, 9f, 11f)
                   // #305: the dynamic half. The page array is slot-indexed like uLocalLight; the compose is
                   // min() (depth is a min-of-blockers -- any other operator double-counts or hides one
                   // array); and the page guard reads "none" from the ZERO a program that never sets the

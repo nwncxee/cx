@@ -1,7 +1,6 @@
 2 managed/Alloy/AlloyRenderer.Motion.cs
 2 managed/Alloy/AlloyRenderer.VkMotion.cs
 1 managed/Alloy/AlloyRenderer.VkPasses.cs
-2 managed/Alloy/BcnEncode.cs
 1 managed/Alloy/Core/ShaderResource.cs
 1 managed/Alloy/Db/DbAnim.Dangly.cs
 2 managed/Alloy/Db/PltImage.cs

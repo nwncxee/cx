@@ -12,5 +12,6 @@
     <Compile Include="../../managed/Alloy/RasterReader.Decode.cs" />
     <Compile Include="../../managed/Alloy/DdsReader.Parse.cs" />
     <Compile Include="../../managed/Alloy/BcnDecode.cs" />
+    <Compile Include="../../managed/Alloy/Core/Texel.cs" />
   </ItemGroup>
 </Project>

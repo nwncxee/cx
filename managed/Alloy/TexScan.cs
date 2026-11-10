@@ -1,6 +1,7 @@
 using System;
 using System.Buffers;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using CX.Engine;
 using CX.Framework;
 
@@ -153,11 +154,10 @@ internal static unsafe class TexScan
     /// <summary>RGB or RGBA texels into RGBA8, alpha 255 where the source has none.</summary>
     internal static void Widen(ReadOnlySpan<byte> src, int bpp, Span<byte> dst)
     {
-        for (int i = 0, n = dst.Length / 4; i < n; i++)
-        {
-            dst[i * 4] = src[i * bpp]; dst[i * 4 + 1] = src[i * bpp + 1]; dst[i * 4 + 2] = src[i * bpp + 2];
-            dst[i * 4 + 3] = bpp == 4 ? src[i * bpp + 3] : (byte)255;
-        }
+        Span<Rgba8> o = MemoryMarshal.Cast<byte, Rgba8>(dst);
+        if (bpp == 4) { MemoryMarshal.Cast<byte, Rgba8>(src).Slice(0, o.Length).CopyTo(o); return; }
+        ReadOnlySpan<Rgb8> rgb = MemoryMarshal.Cast<byte, Rgb8>(src);
+        for (int i = 0; i < o.Length; i++) { Rgb8 c = rgb[i]; o[i] = new Rgba8(c.R, c.G, c.B); }
     }
 
     /// <summary>A format the engine names by its same-sized stand-in (BC7 as DXT5 and so on) is scanned from its
@@ -190,8 +190,9 @@ internal static unsafe class TexScan
         if (bpp == 4)
             for (int y = 0; y < ch; y++)
             {
-                ReadOnlySpan<byte> s = px.Slice((int)((y0 + y) * stride + (long)x0 * 4 + 3));
-                for (int x = 0; x < cw; x++) { int a = s[x * 4]; if (a < cut) dropped++; else if (a < OpaqueAlpha) graded++; }
+                ReadOnlySpan<Rgba8> row =
+                    MemoryMarshal.Cast<byte, Rgba8>(px.Slice((int)((y0 + y) * stride + (long)x0 * 4)));
+                for (int x = 0; x < cw; x++) { int a = row[x].A; if (a < cut) dropped++; else if (a < OpaqueAlpha) graded++; }
             }
         r.Holes = dropped / (float)((long)cw * ch);
         r.Graded = graded / (float)((long)cw * ch);
@@ -352,17 +353,18 @@ internal static unsafe class TexScan
         int n = Chain(8, 2, true, 16, lw, lh, off, out long total);
         check.Expect(n == 4 && lw[3] == 1 && lh[3] == 1 && total == (16 + 4 + 2 + 1) * 4 && ChainBytes(8, 2, true) == total, $"chain 8x2: {n} levels, {total} bytes");
         check.Expect(Chain(64, 64, false, 16, lw, lh, off, out _) == 1, "no mips = one level");
-        byte* px = stackalloc byte[(4 + 1) * 4];
-        for (int i = 0; i < 4; i++) { px[i * 4] = (byte)(i * 85); px[i * 4 + 1] = 255; px[i * 4 + 2] = 0; px[i * 4 + 3] = 255; }
+        // Five texels: the 2x2 base level, then the one texel BuildMips writes for level 1.
+        Span<Rgba8> texels = stackalloc Rgba8[4 + 1];
+        for (int i = 0; i < 4; i++) texels[i] = new Rgba8((byte)(i * 85), 255, 0, 255);
         n = Chain(2, 2, true, 16, lw, lh, off, out _);
-        BuildMips(px, n, lw, lh, off);
-        check.Expect(px[16] == 128 && px[17] == 255 && px[18] == 0 && px[19] == 255, $"box mip: {px[16]},{px[17]},{px[18]},{px[19]}");
+        fixed (byte* px = MemoryMarshal.AsBytes(texels)) BuildMips(px, n, lw, lh, off);
+        check.Expect(texels[4] == new Rgba8(128, 255, 0, 255), $"box mip: {texels[4]}");
         // #499: a transparent black texel must not pull the level's colour toward black -- the alpha-weighted
         // mean keeps the covered colour, and only the alpha averages down.
-        for (int i = 0; i < 4; i++) { px[i * 4] = 200; px[i * 4 + 1] = 100; px[i * 4 + 2] = 0; px[i * 4 + 3] = 255; }
-        px[12] = 0; px[13] = 0; px[14] = 0; px[15] = 0;
-        BuildMips(px, n, lw, lh, off);
-        check.Expect(px[16] == 200 && px[17] == 100 && px[18] == 0 && px[19] == 191, $"alpha-weighted mip: {px[16]},{px[17]},{px[18]},{px[19]}");
+        for (int i = 0; i < 4; i++) texels[i] = new Rgba8(200, 100, 0, 255);
+        texels[3] = default;
+        fixed (byte* px = MemoryMarshal.AsBytes(texels)) BuildMips(px, n, lw, lh, off);
+        check.Expect(texels[4] == new Rgba8(200, 100, 0, 191), $"alpha-weighted mip: {texels[4]}");
         log.Info(check.Ok ? "TexScan.SelfCheck: passed" : "TexScan.SelfCheck: FAILED");
         return check.Ok;
     }

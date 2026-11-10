@@ -25,9 +25,9 @@ internal struct CascadeMatrices { private Matrix4x4 _e; }
 [InlineArray(64)]
 internal struct CubeFloats { private PackedFloat _e; }
 
-/// <summary>One position-and-reach vec4 per local shadow cube.</summary>
+/// <summary>One <see cref="CubeCaster"/> per local shadow cube: the vec4 array the receiver samples.</summary>
 [InlineArray(64)]
-internal struct CubeLights { private Vector4 _e; }
+internal struct CubeLights { private CubeCaster _e; }
 
 /// <summary>The members of the <c>CxPass</c> uniform block the renderer's own fill touches, at the std140 offsets
 /// <c>AlloyRenderer.Pb*</c> pin against the shader. The rest of the block belongs to the light fill.</summary>

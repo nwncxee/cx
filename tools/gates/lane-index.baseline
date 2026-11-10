@@ -1,8 +1,6 @@
 12 managed/Alloy/AlloyRenderer.Acoustic.cs
 5 managed/Alloy/AlloyRenderer.Batches.cs
 2 managed/Alloy/AlloyRenderer.VkPasses.cs
-13 managed/Alloy/BcnDecode.cs
-26 managed/Alloy/BcnEncode.cs
 1 managed/Alloy/Core/SkyMath.cs
 1 managed/Alloy/Core/SkyMath.SelfCheck.cs
 1 managed/Alloy/CreatureParity.cs
@@ -17,7 +15,6 @@
 4 managed/Alloy/Db/DbSelfCheck.cs
 15 managed/Alloy/Db/DrawRecipe.cs
 1 managed/Alloy/Db/HitTest.Fixture.cs
-3 managed/Alloy/Db/MeshArena.cs
 2 managed/Alloy/Db/MeshArena.Dyn.cs
 14 managed/Alloy/Db/MeshArena.Host.cs
 2 managed/Alloy/Db/PartTree.cs
@@ -52,15 +49,13 @@
 4 managed/Alloy/Mdl/MdlBinaryPayload.cs
 15 managed/Alloy/Mdl/MdlPost.cs
 7 managed/Alloy/MdlParseCheck.cs
-17 managed/Alloy/MeshChart.cs
+14 managed/Alloy/MeshChart.cs
 4 managed/Alloy/MeshChart.Ledger.cs
 16 managed/Alloy/MeshChart.SelfCheck.cs
-42 managed/Alloy/MeshSimplify.cs
 8 managed/Alloy/MovieFrame.cs
 2 managed/Alloy/OwnedTextures.cs
 1 managed/Alloy/Pass/AreaBorder.cs
 1 managed/Alloy/Pass/CasterPass.cs
-52 managed/Alloy/Pass/CasterPass.Cube.cs
 6 managed/Alloy/Pass/CasterPass.SelfCheck.cs
 6 managed/Alloy/Pass/CasterPass.Sun.cs
 3 managed/Alloy/Pass/FrameTap.Vk.cs
@@ -90,7 +85,6 @@
 11 managed/Alloy/Scene/AlloyRenderer.Table.cs
 1 managed/Alloy/Scene/AlloyWind.cs
 6 managed/Alloy/Seam/TexSeam.cs
-17 managed/Alloy/TexScan.cs
 6 managed/Graphics/NullGl.Snapshot.cs
 10 managed/Graphics/Vulkan/VkBackend.Copy.cs
 7 managed/Services/Anim/KeyCurves.cs

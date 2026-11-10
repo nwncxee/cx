@@ -103,14 +103,14 @@ internal static partial class GpuGolden
         uint s = seed;
         float Next() { s = s * 1664525u + 1013904223u; return (s >> 8) / 16777216f; }
         sc.Lights = new float[n * DeferredRigScene.LightFloats];
-        sc.Cubes = new Vector4[cubes];
+        sc.Cubes = new CubeCaster[cubes];
         for (int i = 0; i < n; i++)
         {
             var p = new Vector3(lo.X + (hi.X - lo.X) * Next(), lo.Y + (hi.Y - lo.Y) * Next(), lo.Z + (hi.Z - lo.Z) * Next());
             float r = r0 + (r1 - r0) * Next();
             var c = new Vector3(0.3f + 0.7f * Next(), 0.3f + 0.7f * Next(), 0.3f + 0.7f * Next());
             float word = i < cubes ? i : staticEvery > 0 && (i - cubes) % staticEvery == staticEvery - 1 ? 255f : -1f;
-            if (i < cubes) sc.Cubes[i] = new Vector4(p, r);
+            if (i < cubes) sc.Cubes[i] = new CubeCaster(p, r);
             int at = i * DeferredRigScene.LightFloats;
             sc.Lights[at] = p.X; sc.Lights[at + 1] = p.Y; sc.Lights[at + 2] = p.Z; sc.Lights[at + 3] = r;
             sc.Lights[at + 4] = c.X; sc.Lights[at + 5] = c.Y; sc.Lights[at + 6] = c.Z; sc.Lights[at + 7] = word;
@@ -141,7 +141,7 @@ internal static partial class GpuGolden
         float[] film = [5f, 1f, 1.5f, 6f, 1f, 0.9f, 0.7f, 255f,  6f, 0.5f, 2f, 6f, 0.7f, 0.8f, 1f, 255f,
                         4.5f, 2f, 1f, 7f, 1f, 1f, 1f, 260f];
         sc.Lights = [.. sc.Lights, .. film];
-        sc.Cubes = [.. sc.Cubes, new Vector4(4.5f, 2f, 1f, 7f)];
+        sc.Cubes = [.. sc.Cubes, new CubeCaster(new Vector3(4.5f, 2f, 1f), 7f)];
         return sc;
     }
 
@@ -166,7 +166,7 @@ internal static partial class GpuGolden
         float[] lamp = [0f, 1.8f, 5.5f, 30f, 1f, 0.8f, 0.5f, 2f];
         lamp.CopyTo(sc.Lights, 2 * DeferredRigScene.LightFloats);
         Array.Resize(ref sc.Cubes, 3);
-        sc.Cubes[2] = new Vector4(0f, 1.8f, 5.5f, 30f);
+        sc.Cubes[2] = new CubeCaster(new Vector3(0f, 1.8f, 5.5f), 30f);
         return sc;
     }
 

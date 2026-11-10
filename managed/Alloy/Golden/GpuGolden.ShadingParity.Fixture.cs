@@ -13,7 +13,7 @@ namespace CX.Alloy;
 internal static partial class GpuGolden
 {
     /// <summary>The light every parity scene hangs in front of the wall's centre: position and reach, white.</summary>
-    private static readonly Vector4 ParityLamp = new(0f, 0f, 2f, 20f);
+    private static readonly CubeCaster ParityLamp = new(new Vector3(0f, 0f, 2f), 20f);
 
     /// <summary>A parity scene: the wall's pixels face <paramref name="n"/> and read slot 3, opaque unless
     /// <paramref name="alpha"/> says otherwise; the lamp's slot word is <paramref name="word"/> (-1 casts no shadow,
@@ -30,7 +30,7 @@ internal static partial class GpuGolden
             p.ShSlots = new Vector4(0f, 1f, 2f, 3f); p.ShVis = Vector4.Zero;
             sc.Pixels[i] = edit(p);
         }
-        sc.Lights = [ParityLamp.X, ParityLamp.Y, ParityLamp.Z, ParityLamp.W, 1f, 1f, 1f, word];
+        sc.Lights = [ParityLamp.At.X, ParityLamp.At.Y, ParityLamp.At.Z, ParityLamp.Reach, 1f, 1f, 1f, word];
         sc.Cubes = word >= 0f ? [ParityLamp] : [];
         sc.PartAlpha = [1f, 1f, 1f, alpha];
         sc.Plain = true;

@@ -150,7 +150,7 @@ internal static unsafe partial class MeshChart
         internal ushort[] Xref = Array.Empty<ushort>();
         internal float[] ChartUv = Array.Empty<float>();
         internal ushort[] Out0 = Array.Empty<ushort>(), Out1 = Array.Empty<ushort>(), Out2 = Array.Empty<ushort>();
-        internal float[] OutPos = Array.Empty<float>();
+        internal Vector3[] OutPos = Array.Empty<Vector3>();
         /// <summary>Positions rebased to the mesh's min corner and quantised to <see cref="Grid"/> -- what the
         /// content key and xatlas see. Tile geometry arrives in WORLD space, so without the rebase every placement
         /// of one tile model is its own content; a chart is translation-invariant, so the rebased mesh's chart is
@@ -281,6 +281,7 @@ internal static unsafe partial class MeshChart
 
     private static void Grow(ref ushort[] a, int n) { if (a.Length < n) a = new ushort[n]; }
     private static void Grow(ref float[] a, int n) { if (a.Length < n) a = new float[n]; }
+    private static void Grow(ref Vector3[] a, int n) { if (a.Length < n) a = new Vector3[n]; }
 
     /// <summary>A worker: content key, ledger probe, xatlas on a miss, then the two LOD runs over the charted mesh.
     /// No GL and no engine memory -- everything it reads was copied at the offer, and its only calls out are xatlas
@@ -405,15 +406,13 @@ internal static unsafe partial class MeshChart
         finally { cx_chart_free(&r); }
     }
 
-    /// <summary>De-interleaved positions of the charted vertices, for the simplifier.</summary>
+    /// <summary>The charted vertices' positions, gathered through the chart's cross-reference, for the
+    /// simplifier. The input positions arrive as xyz triples, which is a span of <see cref="Vector3"/>.</summary>
     private static void Expand(Job j)
     {
-        Grow(ref j.OutPos, j.OutVerts * 3);
-        for (int i = 0; i < j.OutVerts; i++)
-        {
-            int s = j.Xref[i] * 3;
-            j.OutPos[i * 3] = j.Pos[s]; j.OutPos[i * 3 + 1] = j.Pos[s + 1]; j.OutPos[i * 3 + 2] = j.Pos[s + 2];
-        }
+        Grow(ref j.OutPos, j.OutVerts);
+        ReadOnlySpan<Vector3> src = MemoryMarshal.Cast<float, Vector3>(j.Pos.AsSpan(0, j.VertCount * 3));
+        for (int i = 0; i < j.OutVerts; i++) j.OutPos[i] = src[j.Xref[i]];
     }
 
     /// <summary>MeshLod's two levels over the CHARTED mesh -- simplify runs after the chart, so every level carries
@@ -425,9 +424,11 @@ internal static unsafe partial class MeshChart
         j.Out1N = j.Out2N = 0;
         if (tris < MeshLod.MinTris) return;
         Grow(ref j.Out1, j.Out0N); Grow(ref j.Out2, j.Out0N);
-        j.Out1N = MeshSimplify.Run(j.Out0, j.Out0N, j.OutPos, j.OutVerts, (int)(tris * MeshLod.Target1), MeshLod.Error1, j.Out1);
+        j.Out1N = MeshSimplify.Run(j.Out0.AsSpan(0, j.Out0N), j.OutPos.AsSpan(0, j.OutVerts),
+                                   (int)(tris * MeshLod.Target1), MeshLod.Error1, j.Out1);
         if (j.Out1N > tris * 3 * (1f - MeshLod.MinSaving)) j.Out1N = 0;
-        j.Out2N = MeshSimplify.Run(j.Out0, j.Out0N, j.OutPos, j.OutVerts, (int)(tris * MeshLod.Target2), MeshLod.Error2, j.Out2);
+        j.Out2N = MeshSimplify.Run(j.Out0.AsSpan(0, j.Out0N), j.OutPos.AsSpan(0, j.OutVerts),
+                                   (int)(tris * MeshLod.Target2), MeshLod.Error2, j.Out2);
         if (j.Out2N > tris * 3 * (1f - MeshLod.MinSaving) || j.Out2N >= j.Out1N && j.Out1N > 0) j.Out2N = 0;
     }
 
