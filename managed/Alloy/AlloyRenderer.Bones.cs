@@ -99,16 +99,18 @@ public sealed unsafe partial class AlloyRenderer
         if (_boneTop > Counters._boneHigh) Counters._boneHigh = _boneTop;
     }
 
-    /// <summary>Room for <paramref name="want"/> bone slots, doubling the stage rather than dropping a
-    /// creature past a fixed budget. Native memory on purpose: the growth is rare but happens on the render
-    /// thread, where a managed array of this size would hand the collector a gen-2 allocation -- and a grow
-    /// KEEPS the palettes already in the stage, which sticky slots depend on.</summary>
+    /// <summary>Room for <paramref name="want"/> slots in EACH half of the pose pair, doubling rather than
+    /// dropping a creature past a fixed budget. Native memory on purpose: the growth is rare but happens on
+    /// the render thread, where a managed array of this size would hand the collector a gen-2 allocation --
+    /// and a grow KEEPS the palettes already staged, which sticky slots depend on.</summary>
     private static bool EnsureBoneSlots(int want)
     {
-        if (want <= _boneStage.Length) return true;
-        int cap = _boneStage.Length == 0 ? MaxBoneSlots : _boneStage.Length;
+        // BOTH, not just the stage: the pair swaps once a frame, so a grow that met one and not the other
+        // would hand the next frame's stage a length its history cannot answer for.
+        if (want <= _boneStage.Length && want <= _bonePrevStage.Length) return true;
+        int cap = Math.Max(_boneStage.Length, _bonePrevStage.Length);
+        if (cap == 0) cap = MaxBoneSlots;
         while (cap < want) cap *= 2;
-        // History first, so the stage is never longer than the buffer it swaps with.
         return _bonePrevStage.Grow(cap) && _boneStage.Grow(cap);
     }
 }

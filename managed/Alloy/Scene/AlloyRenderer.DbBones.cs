@@ -23,12 +23,10 @@ public sealed unsafe partial class AlloyRenderer
     internal static int DbAllocBone()
     {
         int s = AllocBoneSlot(DbBoneOwner);
-        if (s >= 0)
-        {
-            EnsureDbStage(s + 1);
-            _dbLive.Add(s);
-            _dbFresh.Add(s);
-        }
+        if (s < 0) return -1;
+        if (!EnsureDbStage(s + 1)) { DbFreeBone(s); return -1; }
+        _dbLive.Add(s);
+        _dbFresh.Add(s);
         return s;
     }
 
@@ -40,6 +38,7 @@ public sealed unsafe partial class AlloyRenderer
     /// </summary>
     internal static ref BonePalette DbBoneStage(int slot)
     {
+        // A DbAllocBone slot already has its room; this is the belt, the bounds-checked index the brace.
         EnsureDbStage(slot + 1);
         return ref _dbStage.Span[slot];
     }
@@ -49,8 +48,7 @@ public sealed unsafe partial class AlloyRenderer
     /// slot; a whole skin's base is its slot's bone 0.</summary>
     internal static Span<Matrix4x4> DbBoneCell(int at, int count)
     {
-        if (at < 0 || count <= 0) return default;
-        EnsureDbStage(at / BoneCount + 1);
+        if (at < 0 || count <= 0 || !EnsureDbStage(at / BoneCount + 1)) return default;
         return Cell(_dbStage.Span, at, count);
     }
 
@@ -79,14 +77,15 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>Slots claimed but not yet published, whose motion-vector history is their own first pose.</summary>
     private static readonly System.Collections.Generic.HashSet<int> _dbFresh = new();
 
-    /// <summary>Room for <paramref name="want"/> slots in the DB stage, doubling as the engine path's does.</summary>
-    private static void EnsureDbStage(int want)
+    /// <summary>Room for <paramref name="want"/> slots in the DB stage and its history, doubling as the engine
+    /// path's does. False, and neither stage offering the slot, when the allocation cannot be met.</summary>
+    private static bool EnsureDbStage(int want)
     {
-        if (want <= _dbStage.Length) return;
+        if (want <= _dbStage.Length) return true;
         int cap = _dbStage.Length == 0 ? FirstDbSlots : _dbStage.Length;
         while (cap < want) cap *= 2;
         // History first: a stage longer than its history would offer a slot the history cannot answer for.
-        if (_dbPrev.Grow(cap)) _dbStage.Grow(cap);
+        return _dbPrev.Grow(cap) && _dbStage.Grow(cap);
     }
 
     /// <summary>
