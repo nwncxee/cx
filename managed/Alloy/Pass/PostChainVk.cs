@@ -399,7 +399,7 @@ internal static unsafe class PostChainVk
             {
                 "uSrc" or "uHdr" or "uCur" or "texFBColor" => (t.Src, s.Linear),
                 "texFBDepth" => (t.Depth, s.Nearest),
-                "texUnitNoise" => (VkTextures.Image(FrameSnapshot.NoiseTid), s.Repeat),
+                "texUnitNoise" => (VkTextures.Image(FrameSnapshot.Noise), s.Repeat),
                 "uBloom" => (t.Bloom, s.Linear),
                 "uDepth" or "uTrigDepth" => (t.Depth, s.Nearest),
                 "uHist" => (t.Hist, t.HistLinear ? s.Linear : s.Nearest),

@@ -80,9 +80,13 @@ public static class ServiceHost
         CX.Graphics.Rhi.VkBackend.RateSelfCheck(log);   // the shading-rate tile follows the device's texel range
         CX.Graphics.Rhi.VkBackend.TransferSelfCheck(log);   // the copy-only queue family a device's table offers
         CX.Graphics.Rhi.VkBackend.CapsSelfCheck(log);   // a limit the driver reports unbounded never reads negative
+        CX.Graphics.Rhi.VkBackend.SwapSelfCheck(log);   // which chain the surface's extent leaves standing
+        CX.Graphics.Rhi.VkBackend.SwapShapeEdgesSelfCheck(log);   // ...and the swap state read into the shape that test takes
         CX.Alloy.DepthSnapshot.SelfCheck(log);   // one scene-depth copy a frame: a reader past no depth write reuses the one standing
         CX.Alloy.AlloyRenderer.FlushPassSelfCheck(log);   // ...and the flush that stales it: which passes do, and which say they write no depth
         CX.Alloy.AlloyRenderer.VramSelfCheck(log);   // the frame line's memory part: the largest allocations, an overrun, and the budget's own figure
+        CX.Alloy.AlloyRenderer.VkWaveNoiseSelfCheck(log);   // which solid_noise mirror the wave field takes, and when it has none
+        CX.Alloy.AlloyRenderer.VkWaveNoiseEdgesSelfCheck(log);   // ...and that a name the resman holds is not a mirror
         CX.Alloy.Db.MeshArena.ArenaSelfCheck(log);   // a freed mesh's gap is reused, so an area hop holds one area
         CX.Alloy.Db.MeshArena.SelfCheck(log);   // ...but not while a submit that may draw it is in flight, and a load sends its own bytes only
         CX.Graphics.Rhi.VkGlsl.SelfCheck(log);   // the GL-to-Vulkan GLSL rules on fixtures, and the std140 reflection
