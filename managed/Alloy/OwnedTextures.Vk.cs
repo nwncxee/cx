@@ -35,7 +35,7 @@ internal static unsafe partial class OwnedTextures
         if (f == Format.Unknown) { VkTextures.Refuse($"owned {dst}: GL format 0x{glFmt:x}"); return; }
         ImageId id = VkTextures.Create(vk, dst, f, w, h, levels, red, VkSampler(s), $"owned {dst}");
         if (id.IsNull) return;
-        if (f == Format.Bc3 && levels > 1)
+        if (f == Format.Bc3 && levels > 1 && StoredCuts(t, w, h))
         {
             var chain = new NativeBuffer<byte>();
             try

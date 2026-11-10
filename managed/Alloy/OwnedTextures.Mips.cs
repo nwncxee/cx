@@ -15,20 +15,34 @@ internal static unsafe partial class OwnedTextures
 {
     /// <summary>An uncompressed cell's own chain instead of the device's filter. True = this sheet cuts and its
     /// chain is what went up, and <see cref="VkTextures.Has"/> says whether the device took every level; false =
-    /// a sheet with no holes, which the caller mips its own way.</summary>
+    /// a sheet with no holes, which the caller mips its own way. The chain is native: nothing the game thread
+    /// allocates waits beside the upload.</summary>
     internal static bool MirrorRasterChain(VkBackend vk, uint dst, ImageId id, ReadOnlySpan<byte> level0, int w, int h, int levels)
     {
-        if (levels < 2 || MipChain.Raster(level0, w, h) is not byte[] chain) return false;
-        if (UploadChain(vk, dst, id, chain, Format.Rgba8, w, h, levels)) _borrow.CutoutChains++;
-        return true;
+        int top = w * h * 4;
+        long bytes = TexScan.ChainBytes(w, h, true);
+        if (levels < 2 || top <= 0 || level0.Length < top || bytes > int.MaxValue) return false;
+        if (!MipChain.HasHoles(level0[..top])) return false;   // before the buffer: a slab must cost nothing
+        var chain = new NativeBuffer<byte>();
+        try
+        {
+            if (!chain.Take((int)bytes)) return false;
+            level0[..top].CopyTo(chain.Span);
+            if (!MipChain.Chained(chain.Span, w, h)) return false;
+            if (UploadChain(vk, dst, id, chain.Span, Format.Rgba8, w, h, levels)) _borrow.CutoutChains++;
+            return true;
+        }
+        finally { chain.Free(); }
     }
 
     /// <summary>A stored compressed chain, its mips rewritten alpha-weighted first when the sheet cuts. False = the
-    /// device refused a level and the name is forgotten.</summary>
+    /// device refused a level and the name is forgotten; a rewrite counts once the levels are on the device.</summary>
     internal static bool MirrorStoredChain(VkBackend vk, uint dst, ImageId id, Span<byte> chain, int w, int h, int levels)
     {
-        if (MipChain.Dds(chain, w, h, levels, DdsReader.Fmt.Bc3)) _borrow.CutoutChains++;
-        return UploadChain(vk, dst, id, chain, Format.Bc3, w, h, levels);
+        bool rebuilt = MipChain.Dds(chain, w, h, levels, DdsReader.Fmt.Bc3);
+        if (!UploadChain(vk, dst, id, chain, Format.Bc3, w, h, levels)) return false;
+        if (rebuilt) _borrow.CutoutChains++;
+        return true;
     }
 
     /// <summary>Every level of <paramref name="chain"/> into <paramref name="id"/>, level 0 first. A level the chain
@@ -51,6 +65,15 @@ internal static unsafe partial class OwnedTextures
 
     /// <summary>One level's bytes as a chain lays them out: a BC3 block grid, or four channels a texel.</summary>
     private static int ChainLevel(Format f, int w, int h) => f == Format.Bc3 ? BcnEncode.LevelSize(w, h, true) : w * h * 4;
+
+    /// <summary>Is a stored BC3 level 0 worth a rebuild? Read off its alpha blocks alone: an opaque chain -- which
+    /// is most of what ships as DXT5 -- must not pay for a chain-sized copy and a level-0 decode to find out.</summary>
+    private static bool StoredCuts(CAurTexture t, int w, int h)
+    {
+        byte[] noDecode = Array.Empty<byte>();
+        return TexCoverageOf.OfBcn(t.CompressedBytes(0, out _, out _), w, h, DdsReader.Fmt.Bc3, ref noDecode)
+               is TexCoverage.Cutout or TexCoverage.Blended;
+    }
 
     /// <summary>The engine's compressed levels as one chain, each read from behind its own header run. False when a
     /// level is not the size BC3 gives it, which is a layout the rebuild does not transcribe; the buffer is the

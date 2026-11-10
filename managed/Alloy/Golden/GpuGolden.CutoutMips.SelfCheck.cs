@@ -115,7 +115,11 @@ internal static partial class GpuGolden
         try
         {
             check.Expect(!img.IsNull && !rb.IsNull, $"cut-out mips: the {what} texture or its readback was refused (logged above)");
-            if (img.IsNull || rb.IsNull || !fill(img)) return null;
+            if (img.IsNull || rb.IsNull) return null;
+            // A refused fill is the regression this golden is for: the rebuild declining leaves nothing to read.
+            bool filled = fill(img);
+            check.Expect(filled, $"cut-out mips: the {what} fill did not run -- its levels never reached the device");
+            if (!filled) return null;
             var cl = new CommandList($"golden cutout mips {what}", 1 << 10, log);
             cl.CopyImageToBuffer(new CopyToBufferCmd(img, new ImageRegion(CutLevel, 0, 0, 0), side, side, rb, 0));
             var got = new byte[side * side * 4];

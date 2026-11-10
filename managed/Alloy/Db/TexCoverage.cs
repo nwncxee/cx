@@ -53,7 +53,7 @@ internal static unsafe class TexCoverageOf
     }
 
     /// <summary>The verdict for a BCn level 0. BC1 and the single/two-channel and HDR formats carry no alpha
-    /// the sampler will return; BC2, BC3 and BC7 are decoded and read.</summary>
+    /// the sampler will return; BC3 is read off its alpha blocks alone, BC2 and BC7 are decoded and read.</summary>
     internal static TexCoverage OfBcn(ReadOnlySpan<byte> blocks, int w, int h, Fmt f, ref byte[] scratch)
     {
         switch (f)
@@ -72,10 +72,44 @@ internal static unsafe class TexCoverageOf
         long want = (long)w * h * 4;
         if (w <= 0 || h <= 0 || want > int.MaxValue) return TexCoverage.Unknown;
         if (blocks.Length < LevelSize(w, h, Channels(f))) return TexCoverage.Unknown;
+        if (f == Fmt.Bc3) return OfBc3(blocks, w, h);
         if (scratch.Length < want) scratch = new byte[want];
         BcnDecode.Unpack(blocks, w, h, f, scratch.AsSpan(0, (int)want));
         return OfRaster(scratch.AsSpan(0, (int)want), w, h, 4);
     }
+
+    /// <summary>A BC3 level's verdict off its alpha blocks: the colour half of a block says nothing about what
+    /// alpha means, so this reads neither it nor a decode buffer. Each block carries two endpoints and sixteen
+    /// 3-bit indices into the ramp they name.</summary>
+    private static TexCoverage OfBc3(ReadOnlySpan<byte> blocks, int w, int h)
+    {
+        int bw = (w + 3) / 4, bh = (h + 3) / 4;
+        Span<int> alpha = stackalloc int[8];
+        bool anyOut = false;
+        for (int by = 0; by < bh; by++)
+            for (int bx = 0; bx < bw; bx++)
+            {
+                ReadOnlySpan<byte> b = blocks.Slice((by * bw + bx) * Bc3Block, Bc3Block);
+                int a0 = b[0], a1 = b[1];
+                alpha[0] = a0; alpha[1] = a1;
+                if (a0 > a1) for (int i = 2; i < 8; i++) alpha[i] = ((8 - i) * a0 + (i - 1) * a1) / 7;
+                else { for (int i = 2; i < 6; i++) alpha[i] = ((6 - i) * a0 + (i - 1) * a1) / 5; alpha[6] = 0; alpha[7] = 255; }
+                ulong bits = 0;
+                for (int i = 0; i < 6; i++) bits |= (ulong)b[2 + i] << (8 * i);
+                for (int t = 0; t < 16; t++)
+                {
+                    if (bx * 4 + (t & 3) >= w || by * 4 + (t >> 2) >= h) continue;
+                    int a = alpha[(int)((bits >> (3 * t)) & 7)];
+                    if (a >= OpaqueAt) continue;
+                    if (a > CutoutAt) return TexCoverage.Blended;   // one fractional texel settles it
+                    anyOut = true;
+                }
+            }
+        return anyOut ? TexCoverage.Cutout : TexCoverage.Opaque;
+    }
+
+    /// <summary>A BC3 block: an alpha block then a colour block.</summary>
+    private const int Bc3Block = 16;
 
     /// <summary>The engine's own channel count for a format, which is what <see cref="LevelSize"/> wants.</summary>
     private static int Channels(Fmt f) => f is Fmt.Bc1 ? 3 : f is Fmt.Bc4 or Fmt.Bc4S ? 1 : 4;
@@ -151,6 +185,13 @@ internal static unsafe class TexCoverageOf
         idx1.CopyTo(bc3, 2);
         Expect(OfBcn(bc3, 4, 4, Fmt.Bc3, ref scratch) == TexCoverage.Cutout,
             "a BC3 block of 255/0 endpoints read at index 1 is not Cutout");
+        // The same block read at index 2, which the a0 > a1 ramp puts at (6*255 + 0)/7 = 218: fractional.
+        byte[] idx2 = { 0x92, 0x24, 0x49, 0x92, 0x24, 0x49 };   // not-an-offset: packed 3-bit index fields
+        idx2.CopyTo(bc3, 2);
+        var noDecode = Array.Empty<byte>();
+        Expect(OfBcn(bc3, 4, 4, Fmt.Bc3, ref noDecode) == TexCoverage.Blended,
+            "a BC3 ramp texel between the endpoints is not Blended");
+        Expect(noDecode.Length == 0, "the BC3 verdict took a decode buffer -- its alpha blocks say it alone");
         Expect(OfBcn(new byte[4], 4, 4, Fmt.Bc3, ref scratch) == TexCoverage.Unknown, "a short BC3 block was not refused");
         Expect(OfBcn(new byte[16], 4, 4, Fmt.None, ref scratch) == TexCoverage.Unknown, "an unknown format answered");
 

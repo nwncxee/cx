@@ -33,6 +33,8 @@ internal static unsafe partial class OwnedTextures
         /// <summary>Rented by the encoder; the encoded levels, level i at <see cref="Off"/>[i].</summary>
         public byte[] Blocks = Array.Empty<byte>();
         public bool Bc3; public long Compressed;
+        /// <summary>The encoder built this job's chain alpha-weighted: the sheet cuts.</summary>
+        public bool Chained;
     }
     /// <summary>RGBA held by jobs between the funnel and the upload; past this the texture stays raw rather than
     /// holding the area's whole decoded set in memory at load.</summary>
@@ -109,11 +111,9 @@ internal static unsafe partial class OwnedTextures
                 fixed (byte* px = job.Pixels)
                 fixed (int* lw = job.Lw, lh = job.Lh) fixed (long* offs = job.Off)
                 {
-                    // A cut-out's mips are the alpha-weighted ones or the matte bleeds into a minified texel; the
-                    // chain is built where the rebuild knows the level geometry, so only a sheet without holes
-                    // takes the plain average here.
-                    if (job.Levels < 2 || !MipChain.Chained(job.Pixels.AsSpan(), job.Lw[0], job.Lh[0]))
-                        TexScan.BuildMips(px, job.Levels, lw, lh, offs);
+                    // A cut-out re-encoded off the plain average bleeds the matte back into its minified texels.
+                    job.Chained = job.Levels > 1 && MipChain.Chained(job.Pixels.AsSpan(), job.Lw[0], job.Lh[0]);
+                    if (!job.Chained) TexScan.BuildMips(px, job.Levels, lw, lh, offs);
                     bool bc3 = false;
                     for (long i = 3, end = (long)job.Lw[0] * job.Lh[0] * 4; i < end; i += 4)
                         if (px[i] != 255) { bc3 = true; break; }
@@ -181,6 +181,7 @@ internal static unsafe partial class OwnedTextures
             return;
         }
         Replace(job.Key, job.Etid, dst, job.Compressed);
+        if (job.Chained) _borrow.CutoutChains++;
         if (scanned) _stats[dst] = st; else _stats.Remove(dst);
         FrameZones.Count(FrameZones.Ev.Transcode);
         _transDone++;
