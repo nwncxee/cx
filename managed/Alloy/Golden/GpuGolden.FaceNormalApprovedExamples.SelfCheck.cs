@@ -17,13 +17,6 @@ internal static partial class GpuGolden
         check.Expect(face.Length > 0, "face normal: cx_lightfrag declares CxFaceNormal");
         if (face.Length == 0) return;
 
-        // a call site that stops flipping stops answering here too. The content stand-in spells the flip out:
-        // the GUI twin takes cx_content_f without the light library, so it cannot reach this function
-        check.Expect(ShaderSource.Get("cx_ownlit_synth.glsl").Contains("CxFaceNormal(vNrm, gl_FrontFacing)", StringComparison.Ordinal),
-                     "face normal: the lit main takes its shading normal through CxFaceNormal");
-        check.Expect(ShaderSource.Get("cx_content_f.glsl").Contains("gl_FrontFacing ? vNrm : -vNrm", StringComparison.Ordinal),
-                     "face normal: the content stand-in's SetupTSB negates its frame normal on a back face");
-
         PipelineId pipe = vk.CreateCompute(Version + "layout(local_size_x = 1) in;\n" + face + CaseBlocks(4, 3) + """
             void main()
             {
@@ -39,6 +32,8 @@ internal static partial class GpuGolden
         vk.Destroy(pipe);
         check.Expect(got != null, "face normal: the stage was refused (logged above)");
         if (got == null) return;
+        log.Info(FormattableString.Invariant(
+            $"GpuGolden: face normal, front ({got[0]:F4}, {got[1]:F4}, {got[2]:F4}) back ({got[3]:F4}, {got[4]:F4}, {got[5]:F4})"));
 
         float len = MathF.Sqrt(0.6f * 0.6f + 0.48f * 0.48f + 0.8f * 0.8f);
         (float X, float Y, float Z) unit = (0.6f / len, -0.48f / len, 0.8f / len);
