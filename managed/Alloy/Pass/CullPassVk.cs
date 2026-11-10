@@ -29,8 +29,12 @@ internal static class CullPassVk
         public BufferId Ubo, Src, Sph, Key, Rej;
         public long SrcCap, SphCap;
         public int CmdCap, CntCap;
-        /// <summary>Indexed by <see cref="Prepass"/>, <see cref="Colour"/> and <see cref="Retest"/>.</summary>
+        /// <summary>Indexed by <see cref="Prepass"/>, <see cref="Colour"/>, <see cref="Retest"/> and
+        /// <see cref="Mirror"/>, whose set is allocated only once <see cref="MirrorAsked"/>.</summary>
         public readonly BufferId[] Cmd = new BufferId[Phases], Slot = new BufferId[Phases], Cnt = new BufferId[Phases];
+        /// <summary>A mirror phase has asked to be recorded: a session with no planar reflection never buys its
+        /// output set, and the first mirror frame falls back to the staged list.</summary>
+        public bool MirrorAsked;
         /// <summary>A 1x1 stand-in on the pyramid's slot while no pyramid is built: the cull stage names the sampler
         /// whether or not it tests occlusion, and Vulkan wants every descriptor a pipeline uses written.</summary>
         public ImageId Stand;
@@ -55,7 +59,7 @@ internal static class CullPassVk
     /// <summary>This port's output sets: the prepass's (which writes the hi-Z verdicts), the colour pass's, the
     /// retest's (the prepass's stale rejections the fresh pyramid clears), and the planar mirror's own.</summary>
     private const int Prepass = CullPass.PhasePrepass, Colour = CullPass.PhaseColour, Retest = CullPass.PhaseRetest,
-                      Mirror = 3, Phases = 4;
+                      Mirror = CullPass.PhaseMirror, Phases = CullPass.PhaseCount;
 
     /// <summary>The sets a pass draws.</summary>
     internal const int PhasePrepass = Prepass, PhaseColour = Colour, PhaseRetest = Retest, PhaseMirror = Mirror;
@@ -144,11 +148,15 @@ internal static class CullPassVk
 
     /// <summary>The planar mirror's own set into <paramref name="cl"/>: this frame's list against the mirrored
     /// view-projection, from <paramref name="eye"/>, with everything wholly below <paramref name="clipZ"/> dropped and
-    /// the sub-pixel test at the mirror target's <paramref name="lodScale"/>. False = draw the staged list.</summary>
+    /// the sub-pixel test at the mirror target's <paramref name="lodScale"/>. False = draw the staged list, which is
+    /// also the first mirror frame of a session: that one asks for the set the next upload allocates.</summary>
     internal static bool RecordMirror(CommandList cl, in Matrix4x4 vp, Vector3 eye, float clipZ, float lodScale)
     {
         var s = _s;
         if (!s.Ran) return false;
+        // the ask is what buys the set, so the first mirror frame of a session draws the staged list
+        s.MirrorAsked = true;
+        if (s.Cmd[Mirror].IsNull) return false;
         // a copy: the colour set the frame already drew from keeps its own block and its own verdicts
         CullBlock b = s.Block;
         b.Vp = b.PyrVp = vp;
@@ -215,7 +223,8 @@ internal static class CullPassVk
         Grow(vk, ref s.Src, ref s.SrcCap, srcBytes.Length, "cull source");
         Grow(vk, ref s.Sph, ref s.SphCap, sphBytes.Length, "cull bounds");
         const BufferUse Out = BufferUse.Storage | BufferUse.Indirect | BufferUse.CopySrc;
-        for (int p = 0; p < Phases; p++)
+        int phases = s.MirrorAsked ? Phases : Mirror;
+        for (int p = 0; p < phases; p++)
         {
             Make(vk, cl, ref s.Cmd[p], growCmd, (long)drawN * CullPass.CmdUints * sizeof(uint), Out, "cull commands");
             Make(vk, cl, ref s.Slot[p], growCmd, (long)drawN * sizeof(uint), Out, "cull slots");
@@ -224,7 +233,7 @@ internal static class CullPassVk
         Make(vk, cl, ref s.Key, growCmd, (long)drawN * sizeof(float), BufferUse.Storage, "cull sort keys");
         Make(vk, cl, ref s.Rej, growCmd, (long)drawN * sizeof(uint), BufferUse.Storage, "cull hi-Z verdicts");
         if (s.Src.IsNull || s.Sph.IsNull || s.Key.IsNull || s.Rej.IsNull) return false;
-        for (int p = 0; p < Phases; p++) if (s.Cmd[p].IsNull || s.Slot[p].IsNull || s.Cnt[p].IsNull) return false;
+        for (int p = 0; p < phases; p++) if (s.Cmd[p].IsNull || s.Slot[p].IsNull || s.Cnt[p].IsNull) return false;
         if (growCmd) s.CmdCap = drawN;
         if (growCnt) s.CntCap = groups;
         cl.UpdateBuffer(s.Src, 0, srcBytes);
@@ -376,6 +385,8 @@ internal static class CullPassVk
         var cmd = new DrawCmdRec[drawN];
         if (!Run(vk, check, src, sph, ref b, cnt, slot, cmd)) return false;
 
+        check.Expect(_s.Cmd[Mirror].IsNull && !_s.Cmd[Colour].IsNull,
+            "no mirror has asked yet, so the frame's phases hold their sets and the mirror's is not allocated");
         check.Expect(cnt[0] == 2 && cnt[1] == 3 && cnt[2] == 3,
             $"survivors per batch are 2, 3, 3 (got {cnt[0]}, {cnt[1]}, {cnt[2]}): the off-frustum draws 1 and 9 are dropped, nothing else");
         check.Expect((slot[0], slot[1]) is (0, 2) or (2, 0), "batch 0 compacts draws 0 and 2, in either order");
@@ -442,6 +453,7 @@ internal static class CullPassVk
         CullBlock m = b;
         m.ClipZ = MirrorClipZ;
         if (!MirrorRun(vk, check, src, sph, ref b, ref m, col, mir)) return false;
+        check.Expect(!_s.Cmd[Mirror].IsNull, "a mirror that asked has its own set from the next upload on");
         check.Expect(mir[0] == 2 && mir[1] == 3 && mir[2] == 1,
             $"the mirror drops the two draws wholly past its plane: 2, 3, 1 survive (got {mir[0]}, {mir[1]}, {mir[2]})");
         check.Expect(col[0] == 2 && col[1] == 3 && col[2] == 3,
@@ -481,6 +493,7 @@ internal static class CullPassVk
     {
         CommandList cl = _s.Cmds!;
         cl.Reset();
+        _s.MirrorAsked = true;
         bool ran = Upload(vk, cl, col.Length, src.Length, src, sph, sph.Length);
         if (ran)
         {
