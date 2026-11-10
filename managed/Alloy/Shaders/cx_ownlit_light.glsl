@@ -97,7 +97,9 @@
     vec3 lm = vec3(0.0);
     if (baked)
     {
-        // the static lights' fade along their dominant direction, as stock fades its vertex static light (:479)
+        // the static lights' fade along their dominant direction, as stock fades its vertex static light (:479).
+        // The divisor is the normal the BAKE used (cx_bake_f: the unflipped varying), so a back face rebalances
+        // against the same value its texel was baked with, not against its own flipped frame.
         lm = CxLightmapLit(lmIrr, lmDir, N, normalize(vNrm)) * CxSurfFade(lmDir);
 #ifdef CX_DEFERRED
         // full strength: the hot-light debt is the compute pass's to take, through lmShare. The denominator
@@ -158,10 +160,11 @@
     vec3 ambShape = vec3(ambDir);
     if (uMaterial.y > 0.0 && uCapture != 1 && uProbeMips > 0.0)
         ambShape = mix(ambShape, max(CxAmbientShape(N), vec3(0.15)), uMaterial.y);
-    // The GEOMETRIC normal, not the shading one: a normal map must not move where the sky lookup lands.
+    // Ng, the GEOMETRIC normal: a normal map must not move where the sky lookup lands, and a back face
+    // steps off the surface on the side being shaded, not through it.
     // the walk's ambient-class lights join the area ambient before the material and the occlusion, as stock's
     // AmbientLight does (inc_lighting.shd:402-405, :512, :600); the floor, the shape and the sky are the area's
-    vec3 ambient = (uAreaAmbient * ambShape * CxSkyView(vWorld, normalize(vNrm)) + cxAmbWalk) * matAmbient * occl;
+    vec3 ambient = (uAreaAmbient * ambShape * CxSkyView(vWorld, Ng) + cxAmbWalk) * matAmbient * occl;
     // 34 = the ambient term alone inside `total` (the (1-spec) share of the ambient): the one term a material's
     //      AO map and the height map can move.
     if (uViz == 34) { frag = vec4(ambient * (1.0 - spec), 1.0); return; }
