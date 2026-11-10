@@ -26,31 +26,19 @@ public sealed unsafe partial class CasterPass
         // masked path exists to remove and looks exactly like the pass working.
         bool ok = CastMaskFs.Contains("if (t <= uAlphaCut) discard;")
                   && CastMaskFs.Contains("uniform float uAlphaCut;")
-                  && CastMaskFs.Contains("uniform int uDither;") && CastMaskHFs.Contains("uniform int uDither;")
+                  && CastMaskFs.Contains("uniform int uDither;")
                   // #363: the stochastic discard, on the SAME sampled alpha, in both mask stages
                   && CastMaskFs.Contains("if (uDither > 0 && cxHash(uvec2(gl_FragCoord.xy) / uDither) > a) discard;")
-                  && CastMaskHFs.Contains("if (uDither > 0 && cxHash(uvec2(gl_FragCoord.xy) / uDither) > a) discard;")
-                  // The handle-masked stages: the same discard, the mask off the record's handle block at
-                  // slot 0, the record index from gl_BaseInstance in both packings.
-                  && CastMaskHFs != CastMaskHFsSrc
-                  && CastMaskHFs.Contains("if (t <= uAlphaCut) discard;")
-                  // ...the handle stage samples the record's own diffuse; a content pair whose coverage is its own casts
-                  // through the pair's caster twin instead (CasterPass.Content), whose cut is the colour program's
-                  && CastMaskHFs.Contains("#define CX_CAST_HANDLE 1")
+                  // The mask is a BOUND texture and nothing else: a stage that sampled the record's handle block
+                  // would read a zero handle as opaque, and no caster batch declares one to sample.
+                  && !CastMaskFs.Contains("uTexH") && !CastMaskFs.Contains("vDraw")
+                  && !CastLayerMaskVs.Contains("vDraw")
                   && AlloyRenderer.OwnedLitVs.Contains("#elif defined(CX_CAST)\n    int id = gl_BaseInstance;")
                   && AlloyRenderer.OwnedLitVs.Contains($"int vi = gl_BaseInstance >> {CasterGather.ViewShift};\n    int id = gl_BaseInstance & 0x3ffff;")
-                  && !CastMaskFs.Contains("#define CX_CAST_HANDLE")
                   && CastMaskFs.Contains("float t = texture(uTex, vUV).a;")
                   // ...and both dither on the colour pass's blend weight, the record alpha included
                   && CastMaskFs.Contains("float a = (uEnvAlpha != 0 ? 1.0 : t) * vAlpha;")
-                  && CastMaskHFs.Contains("float a = (uEnvAlpha != 0 ? 1.0 : t) * vAlpha;")
                   && CastMaskVs.Contains("vAlpha = d.rot.w;") && CastLayerMaskVs.Contains("vAlpha = d.rot.w;")
-                  && CastMaskHFs.Contains($"binding = {AlloyRenderer.BindTexH})")
-                  && CastMaskHFs.Contains("(vDraw << 3) + 0]")
-                  && CastMaskHVs.Contains("vDraw = gl_BaseInstance;")
-                  && CastMaskHVs.Contains("CxDraw d = uDraw[gl_BaseInstance];")
-                  && CastLayerMaskHVs.Contains("vDraw = gl_BaseInstance & 0x3ffff;")
-                  && CastLayerMaskHVs.Contains("uDraw[gl_BaseInstance & 0x3ffff]")
                   && CastVs.Contains("gl_BaseInstance") && !CastVs.Contains("gl_DrawID")
                   // ...and the masked stage indexes its record the same way, for the same M4 reason
                   && CastMaskVs.Contains("gl_BaseInstance") && !CastMaskVs.Contains("gl_DrawID")
@@ -483,11 +471,35 @@ public sealed unsafe partial class CasterPass
         // CX-49: run unconditionally and last -- it names the pin that drifted, which the && chain above
         // would swallow.
         ok &= PcssCheck(log);
+        ok &= KeySafe(log);
 
         log.Info(ok
             ? "CasterPass.SelfCheck: passed"
             : $"CasterPass.SelfCheck: FAILED -- indirect/per-draw contract drifted (command {CmdBytes}B, " +
               "gl_BaseInstance-as-ownership-slot indexing); standing down");
+        return ok;
+    }
+
+    /// <summary>Every field a batch key writes is one the grouping loop decodes, and back. Decoded from the field
+    /// positions, not from the packing expression: a flag written above the mask name and read nowhere splits the
+    /// list into batches identical to draw, and one read there and never written is a stage no frame reaches.</summary>
+    private static bool KeySafe(ExtenderLog log)
+    {
+        const int tex = 4660, vao = 7, prim = 4;   // tex is a GL texture name, any non-zero one
+        long solid = BatchKey(0, (int)CasterCut.Cutout, vao, prim);
+        long cut = BatchKey(tex, (int)CasterCut.Cutout, vao, prim);
+        // the window between the mask name and the (VAO, prim) pair: no field lives there, so no key may set it
+        long spare = ((1L << KeyPrim) - 1) & ~0xffffffffL;
+        bool ok = (solid & 0xffffffffL) == 0 && (cut & 0xffffffffL) == tex
+                  && (solid & spare) == 0 && (cut & spare) == 0
+                  && StageForTex((int)(solid & 0xffffffffL)) == 0
+                  && StageForTex((int)(cut & 0xffffffffL)) == 1
+                  // ...and the masked bit sorts every cutout batch above every solid one of the same kind
+                  && cut > solid
+                  && ((solid >> KeyVao) & 0xffff) == vao && ((solid >> KeyPrim) & 0xff) == prim
+                  && ((solid >> KeyCut) & 3) == (long)CasterCut.Cutout;
+        if (!ok) log.Info("CasterPass.SelfCheck FAIL: a caster batch key field is written and not decoded, or decoded "
+                        + "and not written -- the draw loop would pick a stage no key can name");
         return ok;
     }
 }

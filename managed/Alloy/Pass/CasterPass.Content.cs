@@ -1,15 +1,24 @@
 namespace CX.Alloy;
 
-/// <summary>The caster pass's CONTENT stage: a content pair whose depth is its own (it moves its vertices or cuts its
-/// own coverage) is its own caster batch, so a plain stage cannot cast it unmoved off its diffuse.</summary>
+/// <summary>The caster pass's CONTENT stand-down: a content pair whose depth is its own (it moves its vertices or cuts
+/// its own coverage) has a caster twin the pass does not run, so its parts cast through the plain stages instead.</summary>
 public sealed unsafe partial class CasterPass
 {
-    /// <summary>The draw loops' stage number for a content pair's twin: this plus its feature id. Above the plain
-    /// stages' 0..2, so a mode compare still tells a program switch.</summary>
-    private const int ContentMode = 16;
+    /// <summary>Said once a session, from the staging walk, for the first content pair's caster that the pass admits:
+    /// its twin is not run, so the part casts off its diffuse, unmoved. The twins exist in
+    /// <see cref="ContentPrograms"/>; nothing here reaches them yet.</summary>
+    private static void NoteContentTwin()
+    {
+        if (_vk.ContentSaid) return;
+        _vk.ContentSaid = true;
+        _log?.Always("CasterPass: a content pair's caster twin is NOT RUN -- its parts cast through the plain "
+                   + "stages, so a stage that moves its vertices or cuts its own coverage casts them unmoved");
+    }
 
-    /// <summary>The stage batch <paramref name="g"/> draws through, as both draw loops number them: 0 the solid stage, 1
-    /// the bound-texture mask, 2 the handle mask, <see cref="ContentMode"/> plus the pair's id a content caster twin.</summary>
-    private static int StageOf(int g)
-        => _gContent[g] != 0 ? ContentMode + _gContent[g] : _gH[g] ? 2 : _gTex[g] != 0 ? 1 : 0;
+    /// <summary>The stage batch <paramref name="g"/> draws through, as the draw loop numbers them: 0 the solid
+    /// stage, 1 the bound-texture mask.</summary>
+    private static int StageOf(int g) => StageForTex(_gTex[g]);
+
+    /// <summary>...for a mask name read straight out of a batch key.</summary>
+    private static int StageForTex(int tex) => tex != 0 ? 1 : 0;
 }

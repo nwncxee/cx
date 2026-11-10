@@ -165,18 +165,24 @@ public sealed unsafe partial class CasterPass
     private static uint BatchMode(int g)
         => AlloyRenderer.IsArenaVao(_gVao[g]) ? EngineTokens.TRIANGLES : _primTable[_gPrim[g]];
 
-    /// <summary>Per batch: the mask is sampled through the record's handle (no texture in the key).</summary>
-    private static readonly bool[] _gH = new bool[MaxCasters];
-    /// <summary>Per batch: the content pair whose caster twin draws it, or 0 for the plain stages. In the key's low word,
-    /// which a handle batch leaves free.</summary>
-    private static readonly int[] _gContent = new int[MaxCasters];
-    /// <summary>Batches that bind a mask texture (one indirect call per flush each) and batches that sample
-    /// it through the handle block (merged per VAO and primitive).</summary>
+    /// <summary>Where each field of a batch key sits. Bit 32 up to <see cref="KeyPrim"/> is UNUSED and must stay
+    /// so: the decode reads only these, and a field written above the mask name that nothing decodes sorts the
+    /// list into batches the draw loop then cannot tell apart.</summary>
+    private const int KeyMasked = 62, KeyCut = 60, KeyVao = 44, KeyPrim = 36;
+
+    /// <summary>One staged caster's sort key. Its own function because <see cref="SelfCheck"/> decodes it: a field
+    /// the key writes and the decode drops splits the batch list on something no stage can act on.</summary>
+    private static long BatchKey(int masked, int cut, int vao, int prim)
+        => ((masked != 0 ? 1L : 0L) << KeyMasked) | ((long)cut << KeyCut)
+           | ((long)vao << KeyVao) | ((long)prim << KeyPrim) | (uint)masked;
+
+    /// <summary>Batches that bind a mask texture: the mask is a key field, so this is also how many of the
+    /// flush's indirect calls exist only because two casters cut against different textures.</summary>
     private static string MaskedBatches()
     {
-        int b = 0, h = 0;
-        for (int g = 0; g < _gGroups; g++) { if (_gH[g]) h++; else if (_gTex[g] != 0) b++; }
-        return $"{b} masked bound, {h} by handle";
+        int b = 0;
+        for (int g = 0; g < _gGroups; g++) if (_gTex[g] != 0) b++;
+        return $"{b} masked bound";
     }
     /// <summary>The frame produced a coherent staging -- a non-empty one the gather accepted, or a
     /// genuinely empty world. False = the gather refused a non-empty staging (no program, no sphere buffer
@@ -281,6 +287,7 @@ public sealed unsafe partial class CasterPass
             // with no alpha at all, or an env reflectivity mask), so a hole fraction could never vouch for it.
             // CX-303: ...and so is a content pair's caster, whose twin computes the pair's own coverage.
             bool content = _liveContent[i] != 0;
+            if (content) NoteContentTwin();
             bool cover = drawTex != 0 && (_liveCut[i] == CasterCut.Coverage || content);
             int masked = drawTex != 0 && _vk.Mask != null && _maskMode != 0
                          && (cover || glass || (db ? dbHoles > 0f : TexHasAlpha(drawTex))) ? drawTex : 0;
@@ -298,10 +305,8 @@ public sealed unsafe partial class CasterPass
             // #302: the cutout threshold is a per-BATCH uniform now, exactly as the colour path spells it
             // (uAlphaCut), so it joins the key rather than riding in a per-draw record. The batch takes the
             // kind of its first entry, so the KIND is a key field: two bits at 60, with masked above it,
-            // the (VAO, prim) pair below, the handle flag at 32 and the texture name in the low 32.
-            _gKey[n] = ((masked != 0 ? 1L : 0L) << 62) | ((long)_liveCut[i] << 60)
-                       | ((long)_liveVao[i] << 44) | ((long)_livePrim[i] << 36)
-                       | (uint)masked;
+            // the (VAO, prim) pair below and the mask texture name in the low 32.
+            _gKey[n] = BatchKey(masked, (int)_liveCut[i], _liveVao[i], _livePrim[i]);
             n++;
             if (i < _liveCreatures) creatures++;
         }
@@ -318,8 +323,6 @@ public sealed unsafe partial class CasterPass
                     g++;
                     _gStart[g] = d; _gVao[g] = _liveVao[i]; _gPrim[g] = _livePrim[i];
                     _gTex[g] = (int)(_gKey[d] & 0xffffffffL);
-                    _gH[g] = (_gKey[d] & (1L << 32)) != 0;
-                    _gContent[g] = _gH[g] ? (int)(_gKey[d] & 0xffffffffL) : 0;
                     _gCut[g] = _liveCut[i];
                     _gDynN[g] = 0;
                 }

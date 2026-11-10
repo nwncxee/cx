@@ -120,6 +120,9 @@ alloy\.(backend|renderthread|rhiimmediate|gpumeter)\b	CX-313
 # built, the per-view fallback its extension probe chose, and the GL-vs-Vulkan bake reading. Vulkan bakes every view.
 \bshadow\.(layered|maskh)\b|\bHandleMaskReady\b|\bEnsureHandleMask\b|\bDepthArray\b|\bFboChecked\b	GL sweep 4
 \bCasterPass\.(CascadeTex|SunDynTex|CubeTex|CubeDynTex)\b|\bVkProbeAgainstGl\b|\bBindSunMaps\b|\bBindCubeMaps\b	GL sweep 4
+# ...and the handle-sampled mask stage itself, whose batch key flag no frame ever set: its program was built every
+# session, bound by nothing, and a failure to build it stood the whole caster pass down.
+\bcx_castmaskh_f\b|\bCastMaskHFs?\b|\bCastMaskHVs\b|\bCastLayerMaskHVs\b|\bCX_CAST_HANDLE\b|\bRecordHandle0\b	CX-530
 # The per-pixel linked-list transparency mode (alloy.oit 2) and the two SSBO points its head table and node pool
 # claimed: nothing allocated them and the resolve never selected them. The weighted pair is the one composite.
 \bOitHeads\b|\bOitNodes\b|\bCxOitHeads\b|\bCxOitNodes\b|per-pixel linked lists	GL sweep 4

@@ -45,18 +45,6 @@ public sealed unsafe partial class CasterPass
     private static string CastMaskVs => ShaderSource.Get("cx_castmask_v.glsl");
     private static string CastMaskFs => ShaderSource.Get("cx_castmask_f.glsl");
 
-    /// <summary>The handle-sampling pair: <see cref="CastMaskVs"/> carrying the record index out, and
-    /// <see cref="CastMaskFs"/> with <c>uTex</c> redirected through the handle block by
-    /// <see cref="AlloyRenderer.BindlessFs"/>. Text only.</summary>
-    private static readonly string CastMaskHVs = CastMaskVs
-        .Replace("out vec2 vUV;", "out vec2 vUV;\n        flat out int vDraw;")
-        .Replace("vUV = aUV;", "vUV = aUV;\n            vDraw = gl_BaseInstance;");
-    private static string CastMaskHFsSrc => ShaderSource.Get("cx_castmaskh_f.glsl");
-    private static readonly string CastMaskHFs = AlloyRenderer.BindlessFs(CastMaskHFsSrc);
-    private static readonly string CastLayerMaskHVs = CastLayerMaskVs
-        .Replace("out vec2 vUV;", "out vec2 vUV;\n        flat out int vDraw;")
-        .Replace("vUV = aUV;", "vUV = aUV;\n            vDraw = gl_BaseInstance & 0x3ffff;");
-
     /// <summary>The layered depth stage. <c>baseInstance</c> packs the view-table index above the ownership
     /// slot (<see cref="CasterGather.ViewShift"/>); the stage routes to its layer and takes its fit matrix
     /// from the view table, so no per-view uniform exists. <c>uVP</c> is deliberately spelled as a LOCAL so

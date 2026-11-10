@@ -282,7 +282,7 @@ public sealed unsafe partial class AlloyRenderer
         if (cls != (byte)AlloyClass.Opaque) return cls;
         TexId diffuse = DbTexOf(part, recipe, 0);
         // ponytail: the shadow keeps the solid silhouette -- the caster cut samples the pair texture, whose alpha
-        // is 1; resolve the palette in cx_castmaskcut's handle stage if a ragged cloak's shadow ever matters.
+        // is 1; resolve the palette in cx_castmaskcut if a ragged cloak's shadow ever matters.
         return TexRegistry.KindOf(diffuse) == TexKind.Plt && !DbEnvMapped(part, diffuse) ? (byte)AlloyClass.Cutout : cls;
     }
 
