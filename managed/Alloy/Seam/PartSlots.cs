@@ -22,10 +22,6 @@ internal interface IPartSlots
 /// creature's torso, arms and cloak are each a child object, so the base range alone is not the wardrobe.</summary>
 internal static class PartSlots
 {
-    /// <summary>How deep a composition may be grafted before the walk gives up. A creature is one hop; the
-    /// bound is a cycle guard, not a budget.</summary>
-    internal const int MaxGraft = 8;
-
     /// <summary>Texture slots a part carries -- the stride of <see cref="SceneDb.PartTexId"/>, slot 0 the
     /// diffuse one.</summary>
     internal const int Slots = 4;
@@ -36,7 +32,7 @@ internal static class PartSlots
     internal static int ForEach<T>(DbId obj, int slot, bool grafts, ref T v, int depth = 0)
         where T : struct, IPartSlots, allows ref struct
     {
-        if (depth > MaxGraft || !SceneDb.Objects.Valid(obj)) return 0;
+        if (depth >= SceneDb.PieceDepthCap || !SceneDb.Objects.Valid(obj)) return 0;
         int first = SceneDb.ObjPartFirst[obj.Index], count = SceneDb.ObjPartCount[obj.Index];
         int lo = slot < 0 ? 0 : slot, hi = slot < 0 ? Slots : slot + 1;
         int changed = 0;
@@ -46,11 +42,7 @@ internal static class PartSlots
         v.Done(obj, changed);
         if (!grafts) return changed;
         int total = changed;
-        for (DbId c = SceneDb.ObjSeamAppendHead[obj.Index]; !c.IsNull; c = SceneDb.ObjSeamAppendNext[c.Index])
-        {
-            if (!SceneDb.Objects.Valid(c)) break;
-            total += ForEach(c, slot, grafts, ref v, depth + 1);
-        }
+        foreach (DbId c in SceneDb.Pieces(obj)) total += ForEach(c, slot, grafts, ref v, depth + 1);
         return total;
     }
 }

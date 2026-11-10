@@ -95,8 +95,24 @@ public static unsafe class Native
         return ((IntPtr)q, (uint)*(ulong*)(s + 8), q == s + 0x10 ? IntPtr.Zero : (IntPtr)q);
     }
 
-    /// <summary>Longest CExoString <see cref="ReadExo"/> trusts; a length past this is a stale or foreign pointer.</summary>
+    /// <summary>Longest engine string <see cref="ReadExo"/> and <see cref="Chars"/> trust; a length past this is
+    /// a stale or foreign pointer.</summary>
     private const uint MaxExoLen = 4096;
+
+    /// <summary>A NUL-terminated engine string as the codepage bytes a reader works in -- the distance to the
+    /// NUL measured here rather than by each caller, a null pointer read as empty, and the walk stopped at
+    /// <see cref="MaxExoLen"/> so a stale or foreign pointer costs a truncated span and not a walk off the
+    /// mapping. No transcode: the engine's text is a single-byte codepage and the span is read, not stored.</summary>
+    public static ReadOnlySpan<byte> Chars(byte* text)
+    {
+        if (text == null) return default;
+        int n = 0;
+        while (n < MaxExoLen && text[n] != 0) n++;
+        return new ReadOnlySpan<byte>(text, n);
+    }
+
+    /// <inheritdoc cref="Chars(byte*)"/>
+    public static ReadOnlySpan<byte> Chars(nint text) => Chars((byte*)text);
 
     /// <summary>Decode a <c>CExoString</c> {char* buf@0; uint len@8} to a string: Latin1 keeps colour bytes intact.
     /// Copies out immediately, never holds the engine char*. Allocates, so COLD paths only. A Win64 by-value arg
@@ -223,6 +239,13 @@ public static unsafe class Native
             check.Expect(buf == (IntPtr)(s + 8) && len == 20 && heap == buf, "libstdc++ heap");
         }
         check.Expect(Encoding.Latin1.GetString(EngineBytes("abc")) == "abc", "ascii passes through");
+        byte* nul = stackalloc byte[5];
+        nul[0] = (byte)'N'; nul[1] = (byte)'W'; nul[2] = (byte)'N'; nul[3] = 0; nul[4] = (byte)'!';
+        ReadOnlySpan<byte> measured = Chars(nul);
+        check.Expect(measured.Length == 3 && measured[0] == (byte)'N' && measured[2] == (byte)'N',
+                     $"a NUL-terminated engine string measures itself ({measured.Length} bytes to the NUL)");
+        check.Expect(Chars(nul + 3).IsEmpty && Chars((byte*)null).IsEmpty,
+                     "an empty string and a null pointer both read as no bytes");
         log.Info(check.Ok ? "Native.SelfCheck: passed" : "Native.SelfCheck: FAILED");
     }
 

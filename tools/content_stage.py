@@ -706,6 +706,11 @@ FIXTURE = {
                        "    SetupStandardShaderInputs();\n    ApplyStandardShader();\n"
                        "    gl_FragColor = vec4(FragmentColor.rgb, texture2D(texUnit3, vTexCoords.xy).r);\n"
                        "    if (gl_FragColor.a < fCut)\n    {\n        discard;\n    }\n}\n"),
+    # a skinned part's coverage: the normal map's alpha, cut at the stage's own literal BEFORE the lighting call
+    "cx_fixcutpre": ('#include "inc_standard"\nvoid main()\n{\n    FragmentColor = vec4(1.0);\n'
+                     "    SetupStandardShaderInputs();\n    float fAlphaFromTexture = texture2D(texUnit1, vTexCoords.xy).a;\n"
+                     "    if (fAlphaFromTexture < 0.6)\n    {\n        discard;\n    }\n    ApplyStandardShader();\n"
+                     "    gl_FragColor = vec4(FragmentColor.rgb, fAlphaFromTexture);\n}\n"),
     "cx_fixsetsglobal": ('#include "inc_standard"\nvoid main()\n{\n    FragmentColor = vec4(1.0);\n    SetupStandardShaderInputs();\n'
                          "    ApplyStandardShader();\n    fRoughness = 0.5;\n    gl_FragColor = vec4(FragmentColor.rgb, 0.5);\n}\n"),
     "cx_fixcallshelper": ('#include "inc_standard"\nfloat FixAlpha() { FragmentColor.r = 0.0; return 0.5; }\nvoid main()\n{\n'
@@ -798,6 +803,16 @@ def selfcheck(env_fs, env_vs, defs, vanfs, std_fs, std_vs, lit_vs):
     cut = translate("cx_fixalphacut", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
     if cut.refused or not cut.alpha_post or not cut.cuts:
         bad.append("a post body that cuts on its alpha is not alpha only")
+    pre = translate("cx_fixcutpre", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
+    if pre.refused or not pre.cuts or not pre.alpha_post or "0.6" not in pre.host:
+        bad.append("a cut at the stage's own literal, ahead of the lighting call, does not translate with its threshold")
+    else:
+        # from the body's own opening: the environment spliced ahead of it discards too
+        at = pre.host.find("void CxContentMain()")
+        cut_at = pre.host.find("discard;", at) if at >= 0 else -1
+        post_at = pre.host.find("void CxContentPost()", at) if at >= 0 else -1
+        if not at < cut_at < post_at:
+            bad.append("a pre-apply cut does not land in the body the depth and caster twins run")
     whole = translate("cx_fixwhole", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
     if whole.refused or not whole.post or whole.cuts or "void CxContentMain()\n{\n}" not in whole.host:
         bad.append("a whole stage is not all post body")

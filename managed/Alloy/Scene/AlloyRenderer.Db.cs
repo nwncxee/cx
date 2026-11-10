@@ -403,8 +403,7 @@ public sealed unsafe partial class AlloyRenderer
     private static void PcBelow(DbId obj, int depth)
     {
         if (depth > 3) return;
-        for (DbId c = SceneDb.ObjSeamAppendHead[obj.Index]; !c.IsNull && SceneDb.Objects.Valid(c);
-             c = SceneDb.ObjSeamAppendNext[c.Index]) Pc(c, "append", depth);
+        foreach (DbId c in SceneDb.Pieces(obj)) Pc(c, "append", depth);
         for (int o = 0; o < SceneDb.MaxObjects; o++)
             if (SceneDb.Objects.LiveAt(o) && SceneDb.ObjAttachTo[o].Value == obj.Value
                 && (SceneDb.ObjSeamFlags[o] & (uint)SeamFlag.Composed) == 0)

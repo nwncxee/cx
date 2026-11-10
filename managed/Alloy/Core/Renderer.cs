@@ -242,7 +242,7 @@ internal static class Renderer
         // CX-118: chain the engine's own Scene::HitCheck to measure what a vanilla cast costs and to print
         // the records it fills -- the live cross-check on the CHitInfo layout rows and the only number the
         // CX cast's own benchmark can honestly be compared against.
-        HitCheck = G.Toggle("hitcheck", "hitcheck", false, Tier.ChatOnly);
+        HitCheck = G.Toggle("hitcheck", "hitcheck", false, Tier.ChatOnly, Effect.Restart);
         // CX-118: re-run the pick benchmark on demand. The boot-time run is measured against a CPU still
         // loading an area, so it reads pessimistically; this is the settled number. It REFUSES while the
         // scene database holds records, because its fixture writes to the real tables.

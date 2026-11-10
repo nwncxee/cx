@@ -124,8 +124,7 @@ internal static unsafe class FacadeSelfCheck
                 "the unreadable-model refusal must be counted on the period line");
             DbId child = Facade.Object(ObjectFns.CreateForCheck("cx_present_unreadable"), SeamSlot.Unnamed);
             check.Expect(!child.IsNull, "the owned child was not minted");
-            SceneDb.ObjSeamAppendNext[child.Index] = default;
-            SceneDb.ObjSeamAppendHead[id.Index] = child;
+            check.Expect(SceneDb.PieceLink(id, child), "the owned child would not link onto the record");
             ObjectSlots.DestroyRecord(id);
             check.Expect(SceneDb.Objects.Live == objects && !SceneDb.Objects.Valid(child),
                 "the minted record and the child it owns were not both released");

@@ -315,7 +315,7 @@ public sealed class DbTable
 /// driven by the game layer through the Aurora seam and read by the renderer, in place of the engine's
 /// <c>Scene</c>/<c>Gob</c>/<c>Part</c> objects. The GAME thread is the only writer and the renderer reads a
 /// per-frame <c>RenderSnapshot</c> of the dirty lists, so neither waits. A stream adds columns here, appended.</summary>
-public static class SceneDb
+public static partial class SceneDb
 {
     /// <summary>Records held at once. Objects: every creature, placeable, item, door, VFX, GUI control and text
     /// across every live scene (the heaviest measured area ~3k gobs, GUI ~2k). Parts: the instance trees.</summary>
@@ -535,12 +535,6 @@ public static class SceneDb
     /// <summary>Head of the object's intrusive list of Part shells (the <c>CAurPart*</c> values handed to the
     /// game), freed when the object retires.</summary>
     public static readonly nint[] ObjSeamPartShells = new nint[MaxObjects];
-    /// <summary>The objects this one OWNS, as an intrusive list: the head is here and each member's next is
-    /// in <see cref="ObjSeamAppendNext"/>. Two kinds, one lifetime rule -- they die with their parent: what
-    /// <c>Gob::Append</c> composed onto it (CX composes child records where the engine grew one part tree),
-    /// and what a reference node instanced (<c>CreateReferenceObjects</c> @0x5421e0).</summary>
-    public static readonly DbId[] ObjSeamAppendHead = new DbId[MaxObjects], ObjSeamAppendNext = new DbId[MaxObjects];
-
     /// <summary>The engine's model name is the MODEL's, not the object's (<c>Gob::GetModelName</c> is
     /// <c>model + 0x10</c>), so a text or empty object has none; this is the resref the object was asked for,
     /// which is what every caller actually wants.</summary>

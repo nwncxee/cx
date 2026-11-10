@@ -320,7 +320,7 @@ public sealed unsafe partial class AlloyRenderer
                                                    "vk weather commands readback"));
         if (s.Cull == null || s.Drops.IsNull || s.Cmd.IsNull || s.CmdRead.IsNull)
         {
-            if (s.Cull != null) { vk.Destroy(s.Cull.Pipe); vk.Destroy(s.Cull.Cs); }
+            if (s.Cull != null) vk.Destroy(s.Cull.Pipe);
             vk.Destroy(s.Drops); vk.Destroy(s.Cmd); vk.Destroy(s.CmdRead);
             s.Cull = null; s.Drops = default; s.Cmd = default; s.CmdRead = default;
             log.Always("AlloyRenderer: the Vulkan weather cull or its buffers were REFUSED (logged above) -- nothing falls on Vulkan this session");

@@ -33,7 +33,7 @@ internal static unsafe partial class GuiContent
     /// <summary>Does this stage text, with its includes resolved, declare a sampler <see cref="VkUnits"/> does not name?</summary>
     private static bool SamplesPastUnit0(string stage)
     {
-        foreach ((_, string name, string? binding) in VkGlsl.Opaques(stage))
+        foreach ((_, string name, uint? binding, _) in VkGlsl.Opaques(stage))
             if (binding == null && !VkUnits.ContainsKey(name)) return true;
         return false;
     }
@@ -55,7 +55,7 @@ internal static unsafe partial class GuiContent
         if (r.Refused != null) { why = r.Refused; return null; }
         why = "";
         string what = $"GuiContent twin {vs}/{fs}";
-        string text = "#version 460 core\n" + head[..at] + r.Host + head[(at + TwinMark.Length)..];
+        string text = VkGlsl.Version + head[..at] + r.Host + head[(at + TwinMark.Length)..];
         return ShaderResource.Tokens(VanillaShader.Splice(ShaderTexts.Lib(text, log, what), log, what, true, true));
     }
 
@@ -127,7 +127,7 @@ internal static unsafe partial class GuiContent
     /// <summary>The engine's own version line (<c>#version 330 core</c>, from <see cref="Prologue"/>) raised to the
     /// one the loose block's <c>binding</c> qualifier needs. The prologue's own defines carry 330's spellings --
     /// <c>attribute</c>, <c>varying</c>, <c>texture2D</c>, <c>gl_FragColor</c> -- so the stage's text is unchanged.</summary>
-    internal static string Vulkan(string stage) => Version.Replace(stage, "#version 460 core\n", 1);
+    internal static string Vulkan(string stage) => Version.Replace(stage, VkGlsl.Version, 1);
 
     private static readonly Regex Version = new(@"^[ \t]*#version[ \t]+\d+(?:[ \t]+\w+)?[ \t]*\r?\n", RegexOptions.CultureInvariant);
 

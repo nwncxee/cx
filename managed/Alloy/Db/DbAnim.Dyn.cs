@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using CX.Alloy.Mdl;
+using CX.Framework;
 
 namespace CX.Alloy.Db;
 
@@ -11,14 +12,13 @@ namespace CX.Alloy.Db;
 /// own, so the arena never holds rest data for it. Layout and ownership: <c>Db/DbPose.LAYOUT.md</c>.</summary>
 public static unsafe partial class DbAnim
 {
-    /// <summary>Per part: the dynamic position buffer (<c>3 * Count</c> floats, model space) and its vertex
-    /// count.</summary>
-    private static readonly nint[] _dyn = new nint[SceneDb.MaxParts];
-    /// <summary>The same part's dynamic UV buffer (<c>2 * Count</c> floats), or 0 when nothing animates its
-    /// UVs. It hangs off the position buffer -- same vertex count, same list slot, same arena range -- so only
+    /// <summary>Per part: the dynamic position buffer, model space, taken EXACTLY as long as the part's vertex
+    /// count -- the buffer's own length is that count, so no caller carries one beside it.</summary>
+    private static readonly NativeBuffer<Vector3>[] _dyn = new NativeBuffer<Vector3>[SceneDb.MaxParts];
+    /// <summary>The same part's dynamic UV buffer, empty when nothing animates its UVs. It hangs off the
+    /// position buffer -- same vertex count, same list slot, same arena range -- so only
     /// <see cref="DynTakeUv"/> and <see cref="DynDropAt"/> know it exists.</summary>
-    private static readonly nint[] _dynUv = new nint[SceneDb.MaxParts];
-    private static readonly int[] _dynN = new int[SceneDb.MaxParts];
+    private static readonly NativeBuffer<Vector2>[] _dynUv = new NativeBuffer<Vector2>[SceneDb.MaxParts];
     /// <summary>Parts holding a dynamic buffer, so a wipe does not walk the whole part table.</summary>
     private static readonly int[] _dynList = new int[MaxDynParts];
     private static int _dynCount;
@@ -44,56 +44,47 @@ public static unsafe partial class DbAnim
 
     /// <summary>The private arena range holding <paramref name="part"/>'s solved vertices, or -1.</summary>
     public static int DynRange(int part)
-        => (uint)part < (uint)SceneDb.MaxParts && _dyn[part] != 0 ? _dynRange[part] - 1 : -1;
+        => (uint)part < (uint)SceneDb.MaxParts && _dyn[part].Length != 0 ? _dynRange[part] - 1 : -1;
 
-    /// <summary>Give <paramref name="part"/> a dynamic buffer seeded from <paramref name="rest"/>, or null when
-    /// the table is full (said once, counted).</summary>
-    private static float* DynTake(int part, Vector3[] rest)
+    /// <summary>Give <paramref name="part"/> a dynamic buffer seeded from <paramref name="rest"/>, or an empty
+    /// span when the table is full (said once, counted).</summary>
+    private static Span<Vector3> DynTake(int part, Vector3[] rest)
     {
-        nint had = _dyn[part];
         // A buffer this part already holds is only its buffer while the VERTEX COUNT still matches: a tree
         // change re-tenants the part index, and a cloak replaced by a robe keeps the old, shorter allocation
         // while the solve writes the new mesh's count past the end of it. OnTreeChanged drops these too; this
         // is the belt to that brace, because a part range can also be re-tenanted by a fresh object.
-        if (had != 0)
+        if (_dyn[part].Length != 0)
         {
-            if (_dynN[part] == rest.Length) return (float*)had;
+            if (_dyn[part].Length == rest.Length) return _dyn[part].Span;
             DynDrop(part);
-            had = 0;
         }
-        if (rest.Length == 0) return null;
+        if (rest.Length == 0) return default;
         if (_dynCount >= MaxDynParts)
         {
             _dynFull++;
             if (_dynFull == 1)
                 _log?.Always($"DbAnim: more than {MaxDynParts} parts want a dynamic vertex buffer -- the rest "
                            + "draw their REST geometry (a still cloak, not a hole). Counted on [dbanim].");
-            return null;
+            return default;
         }
-        nuint bytes = (nuint)rest.Length * 3 * sizeof(float);
-        float* buf = (float*)NativeMemory.Alloc(bytes);
-        fixed (Vector3* src = rest) Buffer.MemoryCopy(src, buf, (long)bytes, (long)bytes);
-        _dyn[part] = (nint)buf;
-        _dynN[part] = rest.Length;
+        if (!_dyn[part].TakeExact(rest.Length)) return default;
+        rest.CopyTo(_dyn[part].Span);
         _dynList[_dynCount++] = part;
         TakeRange(part);
-        return buf;
+        return _dyn[part].Span;
     }
 
-    /// <summary>The part's dynamic UV buffer, seeded from the mesh's rest set, or null when the part holds no
+    /// <summary>The part's dynamic UV buffer, seeded from the mesh's rest set, or empty when the part holds no
     /// position buffer to hang it off (the caller has already taken one, so that is a refusal it counted).
     /// A vertex the rest set does not reach keeps 0,0, which is what the arena wrote for it.</summary>
-    private static float* DynTakeUv(int part, Vector2[] rest)
+    private static Span<Vector2> DynTakeUv(int part, Vector2[] rest)
     {
-        nint had = _dynUv[part];
-        if (had != 0) return (float*)had;
-        int n = _dynN[part];
-        if (_dyn[part] == 0 || n == 0) return null;
-        nuint bytes = (nuint)n * 2 * sizeof(float);
-        var buf = (float*)NativeMemory.AllocZeroed(bytes);
-        int seed = Math.Min(n, rest.Length);
-        for (int i = 0; i < seed; i++) { buf[i * 2] = rest[i].X; buf[i * 2 + 1] = rest[i].Y; }
-        _dynUv[part] = (nint)buf;
+        if (_dynUv[part].Length != 0) return _dynUv[part].Span;
+        int n = _dyn[part].Length;
+        if (n == 0 || !_dynUv[part].TakeExact(n)) return default;
+        Span<Vector2> buf = _dynUv[part].Span;
+        rest.AsSpan(0, Math.Min(n, rest.Length)).CopyTo(buf);
         return buf;
     }
 
@@ -140,7 +131,7 @@ public static unsafe partial class DbAnim
     {
         int range = _dynRange[part] - 1;
         if (range < 0) return;
-        MeshArena.WriteDynamic(range, (float*)_dyn[part], (float*)_dynUv[part], _dynN[part]);
+        MeshArena.WriteDynamic(range, (float*)_dyn[part].Pointer, (float*)_dynUv[part].Pointer, _dyn[part].Length);
     }
 
     /// <summary>Release every dynamic buffer of <paramref name="obj"/>'s part range (object retirement, a tree
@@ -173,8 +164,8 @@ public static unsafe partial class DbAnim
     /// one per cloak swap ends with every dangly part on rest geometry.</summary>
     private static void DynDropAt(int part, int k)
     {
-        if (_dyn[part] != 0) NativeMemory.Free((void*)_dyn[part]);
-        if (_dynUv[part] != 0) NativeMemory.Free((void*)_dynUv[part]);
+        _dyn[part].Free();
+        _dynUv[part].Free();
         if (_dynRecipe.Recipe[part] > 0)
         {
             int r = _dynRecipe.Recipe[part] - 1;
@@ -182,7 +173,6 @@ public static unsafe partial class DbAnim
             DrawRecipe.RetireDynamic(r, _dynRecipe.Gen[part]);
         }
         _dynRecipe.Recipe[part] = 0;
-        _dyn[part] = 0; _dynUv[part] = 0; _dynN[part] = 0;
         _dynRange[part] = 0;
         SceneDb.PartLitAnim[part] = 0;
         _dynList[k] = _dynList[--_dynCount];
@@ -201,9 +191,8 @@ public static unsafe partial class DbAnim
         if (frames.Length == 0 && uvFrames.Length == 0) return;
         MeshDef? rest = SceneDb.PartModel[part]?.Nodes[SceneDb.PartNode[part]].Mesh;
         if (rest == null) return;
-        float* dst = DynTake(part, rest.Positions);
-        if (dst == null) return;
-        int n = _dynN[part];
+        Span<Vector3> dst = DynTake(part, rest.Positions);
+        int n = dst.Length;
         if (n == 0) return;
 
         float period = mesh.SamplePeriod;
@@ -228,18 +217,17 @@ public static unsafe partial class DbAnim
             for (int v = 0; v < verts; v++)
             {
                 Vector3 src = lerp ? k0[v] * (1f - a) + k1[v] * a : k0[v];
-                int o = v * 3;
-                float x = dst[o] * u + src.X * w, y = dst[o + 1] * u + src.Y * w, z = dst[o + 2] * u + src.Z * w;
-                if (dst[o] == x && dst[o + 1] == y && dst[o + 2] == z) continue;
-                dst[o] = x; dst[o + 1] = y; dst[o + 2] = z;
+                Vector3 now = dst[v] * u + src * w;
+                if (dst[v] == now) continue;
+                dst[v] = now;
                 moved = true;
             }
         }
 
         if (uvFrames.Length != 0)
         {
-            float* uvDst = DynTakeUv(part, rest.Uv[0]);
-            if (uvDst != null)
+            Span<Vector2> uvDst = DynTakeUv(part, rest.Uv[0]);
+            if (!uvDst.IsEmpty)
             {
                 bool uvMoved = false;
                 int tf = uvFrames.Length;
@@ -253,10 +241,9 @@ public static unsafe partial class DbAnim
                 for (int v = 0; v < verts; v++)
                 {
                     Vector2 src = lerp ? k0[v] * (1f - a) + k1[v] * a : k0[v];
-                    int o = v * 2;
-                    float x = uvDst[o] * u + src.X * w, y = uvDst[o + 1] * u + src.Y * w;
-                    if (uvDst[o] == x && uvDst[o + 1] == y) continue;
-                    uvDst[o] = x; uvDst[o + 1] = y;
+                    Vector2 now = uvDst[v] * u + src * w;
+                    if (uvDst[v] == now) continue;
+                    uvDst[v] = now;
                     moved = true;
                     uvMoved = true;
                 }
@@ -278,15 +265,15 @@ public static unsafe partial class DbAnim
     /// nearest hit. A GUI scrollbar's thumb is a morph-stretched sliver, so its rest faces are not its shape.</summary>
     public static bool CastMorphed(int part, MeshDef mesh, Vector3 from, ref Vector3 to)
     {
-        float* d = (uint)part < (uint)SceneDb.MaxParts && _dynN[part] == mesh.Positions.Length ? (float*)_dyn[part] : null;
+        ReadOnlySpan<Vector3> d = (uint)part < (uint)SceneDb.MaxParts && _dyn[part].Length == mesh.Positions.Length
+                                  ? _dyn[part].Span : default;
         bool hit = false;
         foreach (FaceDef f in mesh.Faces)
             hit |= HitTest.PolyHit(Vert(d, mesh, f.V0), Vert(d, mesh, f.V1), Vert(d, mesh, f.V2), from, ref to);
         return hit;
     }
 
-    private static Vector3 Vert(float* d, MeshDef mesh, int i)
-        => d == null ? mesh.Positions[i] : new Vector3(d[i * 3], d[i * 3 + 1], d[i * 3 + 2]);
+    private static Vector3 Vert(ReadOnlySpan<Vector3> d, MeshDef mesh, int i) => d.IsEmpty ? mesh.Positions[i] : d[i];
 
     /// <summary>Said once, at the end of the first period that produced dynamic vertices no part ever drew:
     /// the buffers are computed and the parts draw their rest geometry, which is a visible difference and not

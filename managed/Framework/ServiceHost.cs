@@ -66,6 +66,7 @@ public static class ServiceHost
         AurTex.SelfCheck(log);
         Native.SelfCheck(log);   // the std::string readback behind the outbound codepage transcode
         NativeBufferCheck.SelfCheck(log);   // a native pool's span comes from its allocation, not from a caller's count
+        CX.Engine.MessageBytesCheck.SelfCheck(log);   // ...and a message's from its own length row
         CommandRegistry.Global.Log = log;
         CommandRegistry.SelfCheck(log);   // registration/dispatch/enumeration proof, off-device
         ConfigFile.SelfCheck(log);   // the shared line walker, proven at the host
@@ -80,9 +81,13 @@ public static class ServiceHost
         CX.Graphics.Rhi.VkBackend.RateSelfCheck(log);   // the shading-rate tile follows the device's texel range
         CX.Graphics.Rhi.VkBackend.TransferSelfCheck(log);   // the copy-only queue family a device's table offers
         CX.Graphics.Rhi.VkBackend.CapsSelfCheck(log);   // a limit the driver reports unbounded never reads negative
+        CX.Graphics.Rhi.VkBackend.SwapSelfCheck(log);   // which chain the surface's extent leaves standing
+        CX.Graphics.Rhi.VkBackend.SwapShapeEdgesSelfCheck(log);   // ...and the swap state read into the shape that test takes
         CX.Alloy.DepthSnapshot.SelfCheck(log);   // one scene-depth copy a frame: a reader past no depth write reuses the one standing
         CX.Alloy.AlloyRenderer.FlushPassSelfCheck(log);   // ...and the flush that stales it: which passes do, and which say they write no depth
         CX.Alloy.AlloyRenderer.VramSelfCheck(log);   // the frame line's memory part: the largest allocations, an overrun, and the budget's own figure
+        CX.Alloy.AlloyRenderer.VkWaveNoiseSelfCheck(log);   // which solid_noise mirror the wave field takes, and when it has none
+        CX.Alloy.AlloyRenderer.VkWaveNoiseEdgesSelfCheck(log);   // ...and that a name the resman holds is not a mirror
         CX.Alloy.Db.MeshArena.ArenaSelfCheck(log);   // a freed mesh's gap is reused, so an area hop holds one area
         CX.Alloy.Db.MeshArena.SelfCheck(log);   // ...but not while a submit that may draw it is in flight, and a load sends its own bytes only
         CX.Graphics.Rhi.VkGlsl.SelfCheck(log);   // the GL-to-Vulkan GLSL rules on fixtures, and the std140 reflection
@@ -124,6 +129,7 @@ public static class ServiceHost
         KnobGroup.SelfCheck(log);
         TextList.SelfCheck(log);
         KnobFile.SelfCheck(log);
+        KnobFileBootApprovedExamples.SelfCheck(log);   // boot's own sets are held: cx.cfg is not rewritten at boot
         CX.Alloy.Db.DbSceneSelfCheck.NoFixtureOutlived(log);   // the game has made no scene yet, so one still live is a suite's
 
         // the frame walk must be immutable before the present hook can fire. Sealing here is the
@@ -134,6 +140,9 @@ public static class ServiceHost
         // a skip is not a pass: a suite that stood down has to say so where the boot lines are read
         if (Checker.Skipped > 0) log.Always($"host: {Checker.Skipped} self-check suite(s) SKIPPED");
         hooks.Commit();
+        // Boot is over here, so a set from now on is a player's: every group has declared and every self-check
+        // has put back what it moved.
+        KnobFile.BootEnded(log);
         ExtenderLog.Flush();   // boot lines on disk before the host returns: the demo exits right after
     }
 }

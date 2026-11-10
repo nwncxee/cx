@@ -631,15 +631,18 @@ public sealed unsafe partial class AlloyRenderer
     }
 
     /// <summary>A sampler declaration's binding: the batch's diffuse for a bound <c>uTex</c>, an engine unit out of
-    /// <paramref name="extra"/> (unit 1 first) for a <c>texUnit</c><i>n</i> a hosted stage declares, the engine noise for
-    /// <c>texUnitNoise</c>, else the stand-in of its type.</summary>
+    /// <paramref name="extra"/> (unit 1 first) for a <c>texUnit</c><i>n</i> a hosted stage declares,
+    /// <see cref="FrameSnapshot.Noise"/> for <c>texUnitNoise</c>, else the stand-in of its type.</summary>
     private static ImageBinding VkSampled(in VkOpaque o, VkColourState s, int tex, ReadOnlySpan<int> extra = default)
     {
         if (o.Name.Length == "texUnit1".Length && o.Name.StartsWith("texUnit", StringComparison.Ordinal)
             && o.Name[7] - '1' is var u && (uint)u < (uint)extra.Length && extra[u] != 0 && !VkTextures.Image(extra[u]).IsNull)
             return new ImageBinding(o.Binding, VkTextures.Image(extra[u]), VkTextures.SamplerId(extra[u]));
-        if (o.Name == "texUnitNoise" && !VkTextures.Image(FrameSnapshot.NoiseTid).IsNull)
-            return new ImageBinding(o.Binding, VkTextures.Image(FrameSnapshot.NoiseTid), VkTextures.SamplerId(FrameSnapshot.NoiseTid));
+        if (o.Name == "texUnitNoise")
+        {
+            int noise = FrameSnapshot.Noise;
+            if (noise != 0) return new ImageBinding(o.Binding, VkTextures.Image(noise), VkTextures.SamplerId(noise));
+        }
         if (o.Name == "uTex" && tex != 0 && !VkTextures.Image(tex).IsNull)
             return new ImageBinding(o.Binding, VkTextures.Image(tex), VkTextures.SamplerId(tex));
         if (o.Name == "uPltPal" && !s.Palette.IsNull) return new ImageBinding(o.Binding, s.Palette);

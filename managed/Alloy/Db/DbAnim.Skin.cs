@@ -172,8 +172,7 @@ public static unsafe partial class DbAnim
     private static void SkinPieces(DbId obj, int depth)
     {
         if (depth > 3) return;
-        for (DbId c = SceneDb.ObjSeamAppendHead[obj.Index]; !c.IsNull && SceneDb.Objects.Valid(c);
-             c = SceneDb.ObjSeamAppendNext[c.Index])
+        foreach (DbId c in SceneDb.Pieces(obj))
         {
             if (_hasSkin[c.Index]) { ComposeObject(c); SkinObject(c); }
             SkinPieces(c, depth + 1);

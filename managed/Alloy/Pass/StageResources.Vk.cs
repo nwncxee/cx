@@ -22,7 +22,6 @@ internal static unsafe partial class StageResources
     /// <summary>One pass as a compute pipeline, its loose block and the locations its uploads write.</summary>
     private sealed class VkPassProg
     {
-        public ShaderId Cs;
         public PipelineId Pipe;
         public VkOpaque[] Opaques = [];
         public VkBind[] Binds = [];
@@ -130,7 +129,7 @@ internal static unsafe partial class StageResources
         uint tex = TextureSlots.ResourceBase, img = 0;
         var opaques = VkGlsl.Opaques(text);
         foreach (bool images in (ReadOnlySpan<bool>)[true, false])
-        foreach ((string type, string name, _) in opaques)
+        foreach ((string type, string name, _, _) in opaques)
         {
             if (type.StartsWith("image", StringComparison.Ordinal) != images) continue;
             if (!StageImageType(type) || !FindImage(a, b, name, out int stage, out int image, out bool prev) || !taken.Add(name)) continue;
@@ -249,7 +248,6 @@ internal static unsafe partial class StageResources
         {
             if (p == null) continue;
             vk.Destroy(p.Pipe);
-            vk.Destroy(p.Cs);
         }
         r.Passes = null;
     }
@@ -488,11 +486,8 @@ internal static unsafe partial class StageResources
         if (spirv == null) { log?.Always($"StageResources: {what} did not compile -- {e}"); return null; }
         List<uint> used = VkPrograms.Bindings(spirv);
         var q = new VkPassProg { Opaques = t.Opaques.FindAll(o => o.Set != 0 || used.Contains(VkPrograms.Shifted(o))).ToArray() };
-        q.Cs = vk.CreateShader(ShaderStage.Compute, spirv, what);
-        if (q.Cs.IsNull) return null;
-        var pd = new PipelineDesc { Cs = q.Cs, Label = what };
-        q.Pipe = vk.CreatePipeline(in pd);
-        if (q.Pipe.IsNull) { vk.Destroy(q.Cs); return null; }
+        q.Pipe = vk.CreateCompute(spirv, what);
+        if (q.Pipe.IsNull) return null;
         var names = new List<string>(t.Loose.Count);
         foreach (VkLoose u in t.Loose) names.Add(u.Name);
         if (VkSpirv.Block(spirv, 0, VulkanToolchain.UniformBase + VkGlsl.LooseBinding, names) is { } l)

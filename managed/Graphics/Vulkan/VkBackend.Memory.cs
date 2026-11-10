@@ -34,6 +34,10 @@ internal sealed unsafe partial class VkBackend
     /// <summary>The words the last refusal put in cx.log (or would have, past the logged few).</summary>
     internal string LastFault => _lastFault;
 
+    /// <summary>Shader modules this device still holds. A module is only wanted while a pipeline is being built,
+    /// so a build that leaves one behind leaves driver memory with no owner and nothing in the log.</summary>
+    internal int LiveShaders => _shaders.Count;
+
     /// <summary>What the device-local heaps hold, their budget, their size and what Alloy's own allocations in them
     /// take, bytes: the driver's figures with VK_EXT_memory_budget, the allocator's estimate without. One walk, so
     /// the frame line reads every figure of one moment. Any thread that owns the device.</summary>

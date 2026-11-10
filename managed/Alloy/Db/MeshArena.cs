@@ -636,13 +636,11 @@ public static unsafe partial class MeshArena
         o1 = null; o2 = null; c1 = 0; c2 = 0;
         int n0 = i0.Length, tris = n0 / 3;
         if (tris < MeshLod.MinTris || !MeshLod.On) return;
-        var flat = new float[pos.Length * 3];
-        for (int i = 0; i < pos.Length; i++) { flat[i * 3] = pos[i].X; flat[i * 3 + 1] = pos[i].Y; flat[i * 3 + 2] = pos[i].Z; }
         var a = new ushort[n0];
         var b = new ushort[n0];
-        int ca = MeshSimplify.Run(i0, n0, flat, pos.Length, (int)(tris * MeshLod.Target1), MeshLod.Error1, a);
+        int ca = MeshSimplify.Run(i0, pos, (int)(tris * MeshLod.Target1), MeshLod.Error1, a);
         if (ca > tris * 3 * (1f - MeshLod.MinSaving)) ca = 0;
-        int cb = MeshSimplify.Run(i0, n0, flat, pos.Length, (int)(tris * MeshLod.Target2), MeshLod.Error2, b);
+        int cb = MeshSimplify.Run(i0, pos, (int)(tris * MeshLod.Target2), MeshLod.Error2, b);
         if (cb > tris * 3 * (1f - MeshLod.MinSaving) || (cb >= ca && ca > 0)) cb = 0;
         if (ca > 0) { o1 = a; c1 = ca; }
         if (cb > 0) { o2 = b; c2 = cb; }

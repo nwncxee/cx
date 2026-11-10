@@ -456,12 +456,11 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
          + "else draws the world, so those parts are NOT RENDERED AT ALL, and the spill set re-picks itself "
          + "every enrollment, so which geometry is missing changes as you watch)";
 
-    /// <summary>This pass's device-loss slot. Every name here belonged to the device that went, so nothing is
-    /// deleted -- the objects went with it -- and the names are dropped so each Ensure rebuilds rather than
-    /// short-circuiting on a handle and drawing through a dead one.</summary>
+    /// <summary>The renderer's device-loss edge: it rings every part that latched something on the device that
+    /// went. Nothing is deleted -- the objects went with it -- and each latch clears itself here or in its own
+    /// slot, so the next Ensure rebuilds rather than short-circuiting on a name and drawing through a dead one.</summary>
     internal static void ContextLost()
     {
-        _drawBuf = 0; _texHBuf = 0; _boneBuf = 0;
         MotionContextLost();
         DbFeed.ContextLost();   // R1-30: the feed's own device-backed tables
         CX.Alloy.Db.DbAnim.DanglyBonesContextLost();
@@ -545,7 +544,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     private static bool DbSelfChecks(ExtenderLog log)
         => DbGrid.SelfCheck(log) & DbFeed.SelfCheck(log) & DbInputs.SelfCheck(log) & DbGui.SelfCheck(log)
            & DbLights.SelfCheck(log) & DbSky.SelfCheck(log) & DbEmitterChannels.SelfCheck(log)
-           & DbKeyhole.SelfCheck(log) & Db.FrameHoist.SelfCheck(log);
+           & DbKeyhole.SelfCheck(log) & Db.FrameHoist.SelfCheck(log) & SceneDb.PieceSelfCheck(log);
 
     internal static bool _waterArmed;
     /// <summary>The engine's water draw bucket (<c>Scene::RenderSinglePass</c> @0x46e5f0's "Water" scope).

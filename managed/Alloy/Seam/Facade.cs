@@ -48,7 +48,7 @@ public static unsafe partial class Facade
         if (self == 0) return 0;
         nint vptr = *(nint*)self;
         nint off = vptr - _tableBase;
-        if ((nuint)off >= (nuint)_tableBytes || (off & 7) != 0) return 0;
+        if ((nuint)off >= (nuint)TableBytes || (off & 7) != 0) return 0;
         int w = (int)(off >> 3);
         if ((_pointBits[w >> 6] & (1UL << (w & 63))) == 0) return 0;
         return self + Itanium.OffsetToTop(vptr);

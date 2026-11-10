@@ -9,7 +9,25 @@ namespace CX.Alloy.Seam;
 
 public sealed unsafe partial class ObjectSlots
 {
-    private static long _appendRefusals, _amputateRefusals;
+    /// <summary>The composition seam's tallies for the period line, and the name each kind of refusal has
+    /// already said: one owner, so the counts a line reads are one object's and a new one resets them all.</summary>
+    private sealed class TreeState
+    {
+        public long Appends, Amputations, BaseAmputations, ContainedAmputations;
+        public long AppendRefusals, DoubledGrafts, GatesOn, GatesOff, GatesRefused;
+        public int Noted;
+        /// <summary>An amputation that named no piece, no part of one, and no part of the object's own model.</summary>
+        public long UnmatchedAmputations;
+        /// <summary>An amputation that found its piece and could not take it off the owned list -- the opposite
+        /// diagnosis, counted apart because the piece is KEPT rather than missing.</summary>
+        public long UnlinkRefusals;
+        public readonly System.Collections.Generic.HashSet<string> SaidGateRefusal = new();
+        public readonly System.Collections.Generic.HashSet<string> SaidAppendRefusal = new();
+        public readonly System.Collections.Generic.HashSet<string> SaidUnmatched = new();
+        public readonly System.Collections.Generic.HashSet<string> SaidUnlink = new();
+    }
+
+    private static readonly TreeState _tree = new();
 
     /// <summary><c>Gob::SetSubtreeEnabled(char const*, int)</c> @0x43c670 writes ONE byte, <c>Part+0x34</c>, on
     /// the named part -- not recursively. The name is about what that byte means to the draw: the engine's
@@ -22,7 +40,7 @@ public sealed unsafe partial class ObjectSlots
         string? nm = Str(name);
         int p = PartByName(id, nm);
         if (p < 0) { GateRefused(nm, on); return 0; }
-        if (on == 0) _gatesOff++; else _gatesOn++;
+        if (on == 0) _tree.GatesOff++; else _tree.GatesOn++;
         SceneDb.PartEnabled[p] = on != 0;
         SceneDb.Touch(id, Dirty.Visible | Dirty.Tree);
         return 1;
@@ -34,14 +52,12 @@ public sealed unsafe partial class ObjectSlots
     /// this gate is how that happens, so it is named and counted rather than returning 0 in silence.</summary>
     private static void GateRefused(string? name, int on)
     {
-        _gatesRefused++;
-        if (name != null && _saidGateRefusal.Count < 16 && _saidGateRefusal.Add(name))
+        _tree.GatesRefused++;
+        if (name != null && _tree.SaidGateRefusal.Count < 16 && _tree.SaidGateRefusal.Add(name))
             Facade.Log?.Always($"seam: Gob::SetSubtreeEnabled(\"{name}\", {on}) matched no part -- the gate the "
                              + "game set is LOST. Counted on /alloy as a refused subtree gate.");
     }
 
-    private static readonly System.Collections.Generic.HashSet<string> _saidGateRefusal = new();
-    private static long _gatesOn, _gatesOff, _gatesRefused;
 
     /// <summary><c>Gob::Append(char const* model, char const* parentPart)</c> @0x4422a0: load a second model
     /// and graft its tree under the named part -- the composite BODY-PART loader
@@ -63,8 +79,7 @@ public sealed unsafe partial class ObjectSlots
         Doubled(id, at, resref!, anchor);
         DbId child = ObjectFns.Compose(resref!, id, at);
         if (child.IsNull) { Refuse(resref, anchor, "the model would not load"); return 0; }
-        SceneDb.ObjSeamAppendNext[child.Index] = SceneDb.ObjSeamAppendHead[id.Index];
-        SceneDb.ObjSeamAppendHead[id.Index] = child;
+        if (!SceneDb.PieceLink(id, child)) { DestroyRecord(child); Refuse(resref, anchor, "the piece would ring the owned list"); return 0; }
         PltColors.Inherit(child, id);
         ObjectTex.InheritEnvMap(child, id);
         InheritShift(child, id);
@@ -77,7 +92,7 @@ public sealed unsafe partial class ObjectSlots
         DbAnim.TreeChanged(id);
         HitFeed.NoteObject(id);
         SceneDb.Touch(id, Dirty.Tree);
-        _appends++;
+        _tree.Appends++;
         Note(id, resref!, anchor, at);
         return 1;
     }
@@ -87,28 +102,26 @@ public sealed unsafe partial class ObjectSlots
     /// a creature is actually built out of, which is the first thing a missing or wrong body part needs.</summary>
     private static void Note(DbId id, string model, string? anchor, int at)
     {
-        if (_noted >= MaxNoted) return;
-        _noted++;
+        if (_tree.Noted >= MaxNoted) return;
+        _tree.Noted++;
         DbId owner = SceneDb.PartObj[at];
-        Facade.Log?.Info($"seam: graft {_noted}/{MaxNoted}: \"{model}\" onto \"{anchor}\" of "
+        Facade.Log?.Info($"seam: graft {_tree.Noted}/{MaxNoted}: \"{model}\" onto \"{anchor}\" of "
                          + $"\"{SceneDb.ObjModel[id.Index]?.Name ?? "-"}\" (o={id.Index}) -- part {at}, owned by "
                          + (owner.Value == id.Value ? "the base model" : $"o={owner.Index} "
                            + $"(\"{(SceneDb.Objects.Valid(owner) ? SceneDb.ObjModel[owner.Index]?.Name : null) ?? "-"}\")"));
     }
 
-    private static int _noted;
     private const int MaxNoted = 120;
 
     /// <summary>Is a piece already grafted at <paramref name="at"/>? Counted always, said the first few
     /// times with both models named, because which pair it is is the whole question.</summary>
     private static void Doubled(DbId id, int at, string model, string? anchor)
     {
-        for (DbId c = SceneDb.ObjSeamAppendHead[id.Index]; !c.IsNull; c = SceneDb.ObjSeamAppendNext[c.Index])
+        foreach (DbId c in SceneDb.Pieces(id))
         {
-            if (!SceneDb.Objects.Valid(c)) break;
             if (SceneDb.ObjAttachPart[c.Index] != at) continue;
-            _doubledGrafts++;
-            if (_doubledGrafts <= 8)
+            _tree.DoubledGrafts++;
+            if (_tree.DoubledGrafts <= 8)
                 Facade.Log?.Always($"seam: \"{model}\" is the SECOND piece grafted onto \"{anchor}\" of "
                                  + $"\"{SceneDb.ObjModel[id.Index]?.Name ?? "-"}\" -- "
                                  + $"\"{SceneDb.ObjModel[c.Index]?.Name ?? "-"}\" is still there, so the "
@@ -119,19 +132,17 @@ public sealed unsafe partial class ObjectSlots
 
     /// <summary>Appends onto a node that already carried a graft: a body part the game meant to REPLACE and
     /// did not.</summary>
-    private static long _doubledGrafts;
 
     /// <summary>An append the engine would have made and CX did not: the composition is short a piece, which
     /// on a creature is a missing body part. Said once per reason, counted always.</summary>
     private static void Refuse(string? model, string? anchor, string why)
     {
-        _appendRefusals++;
-        if (_saidAppendRefusal.Add(why))
+        _tree.AppendRefusals++;
+        if (_tree.SaidAppendRefusal.Add(why))
             Facade.Log?.Always($"seam: Gob::Append(\"{model}\", \"{anchor}\") REFUSED -- {why}. The "
                              + "composition is short that piece. Counted on /alloy as an append refusal.");
     }
 
-    private static readonly System.Collections.Generic.HashSet<string> _saidAppendRefusal = new();
 
     /// <summary><c>Gob::Amputate(char const*)</c> @0x443fa0: delete the named subtree and release the model
     /// the matching <c>Append</c> took. Returns 1, or 0 when the name does not resolve. The subtree IS a child
@@ -153,23 +164,24 @@ public sealed unsafe partial class ObjectSlots
         DbId take = AmputateTarget(id, name!, out bool byContainment);
         if (!take.IsNull)
         {
-            if (_noted < MaxNoted)
+            if (_tree.Noted < MaxNoted)
             {
-                _noted++;
-                Facade.Log?.Info($"seam: cut {_noted}/{MaxNoted}: \"{name}\" off "
+                _tree.Noted++;
+                Facade.Log?.Info($"seam: cut {_tree.Noted}/{MaxNoted}: \"{name}\" off "
                                  + $"\"{SceneDb.ObjModel[id.Index]?.Name ?? "-"}\" (o={id.Index}) -- takes o={take.Index} "
                                  + $"(\"{SceneDb.ObjModel[take.Index]?.Name ?? "-"}\")"
                                  + (byContainment ? ", matched by CONTAINMENT" : ""));
             }
-            DbId prev = default;
-            for (DbId c = SceneDb.ObjSeamAppendHead[id.Index]; !c.IsNull; c = SceneDb.ObjSeamAppendNext[c.Index])
+            // Order: destroying a piece still ON the list leaves a dead link every walk stops at.
+            if (!SceneDb.PieceUnlink(id, take))
             {
-                if (c.Value == take.Value) break;
-                prev = c;
+                _tree.UnlinkRefusals++;
+                if (_tree.SaidUnlink.Add(name!))
+                    Facade.Log?.Always($"seam: Gob::Amputate(\"{name}\") found its piece (o={take.Index}) and could "
+                                     + "NOT take it off the owned list -- the piece is KEPT rather than destroyed, "
+                                     + "because a dead link would hide every piece behind it. Counted on /alloy.");
+                return 0;
             }
-            DbId next = SceneDb.ObjSeamAppendNext[take.Index];
-            if (prev.IsNull) SceneDb.ObjSeamAppendHead[id.Index] = next;
-            else SceneDb.ObjSeamAppendNext[prev.Index] = next;
             DestroyRecord(take);
             // The piece's geometry is gone, so the path that carried it gates off again (Gob::Amputate sets
             // the process flag the same way Gob::Append does).
@@ -178,8 +190,8 @@ public sealed unsafe partial class ObjectSlots
             DbAnim.TreeChanged(id);
             HitFeed.NoteObject(id);
             SceneDb.Touch(id, Dirty.Tree);
-            _amputations++;
-            if (byContainment) _containedAmputations++;
+            _tree.Amputations++;
+            if (byContainment) _tree.ContainedAmputations++;
             return 1;
         }
 
@@ -189,8 +201,8 @@ public sealed unsafe partial class ObjectSlots
         {
             // The engine's FindPart would have answered, so a piece the game means to replace is STILL THERE
             // -- new armour over the old chest. Naming it is the only way to tell which name went unmatched.
-            _amputateRefusals++;
-            if (_saidAmputateRefusal.Add(name!))
+            _tree.UnmatchedAmputations++;
+            if (_tree.SaidUnmatched.Add(name!))
                 Facade.Log?.Info($"seam: Gob::Amputate(\"{name}\") matched NOTHING -- neither a grafted "
                                  + "piece's root, nor a part of one, nor a part of the object's own model. The "
                                  + "piece it names is still in the composition. Counted on /alloy.");
@@ -198,10 +210,10 @@ public sealed unsafe partial class ObjectSlots
         }
         SceneDb.PartEnabled[p] = false;
         SceneDb.Touch(id, Dirty.Tree | Dirty.Visible);
-        _baseAmputations++;
-        if ((_baseAmputations & (_baseAmputations - 1)) == 0)
+        _tree.BaseAmputations++;
+        if ((_tree.BaseAmputations & (_tree.BaseAmputations - 1)) == 0)
             Facade.Log?.Info($"seam: Gob::Amputate(\"{name}\") names a part of the object's OWN model, not an "
-                             + $"appended one -- the subtree is disabled rather than deleted ({_baseAmputations} so far)");
+                             + $"appended one -- the subtree is disabled rather than deleted ({_tree.BaseAmputations} so far)");
         return 1;
     }
 
@@ -214,9 +226,8 @@ public sealed unsafe partial class ObjectSlots
         byContainment = false;
         if (!SceneDb.Objects.Valid(id) || string.IsNullOrEmpty(name)) return default;
         for (int pass = 0; pass < 2; pass++)
-            for (DbId c = SceneDb.ObjSeamAppendHead[id.Index]; !c.IsNull; c = SceneDb.ObjSeamAppendNext[c.Index])
+            foreach (DbId c in SceneDb.Pieces(id))
             {
-                if (!SceneDb.Objects.Valid(c)) break;
                 if (pass == 0 ? RootNamed(c, name) : PartNamed(c, name))
                 {
                     byContainment = pass != 0;
@@ -238,20 +249,18 @@ public sealed unsafe partial class ObjectSlots
     /// <summary>Does appended child <paramref name="c"/> hold a part named <paramref name="name"/>?</summary>
     private static bool PartNamed(DbId c, string name) => PartByName(c, name) >= 0;
 
-    private static long _appends, _amputations, _baseAmputations, _containedAmputations;
 
-    /// <summary>Appends, amputations, amputations that named the base model's own part, and the ones that
-    /// matched a piece by CONTAINMENT because no piece was rooted at the name -- the ambiguous arm.</summary>
-    private static readonly System.Collections.Generic.HashSet<string> _saidAmputateRefusal = new();
 
     public static string TreeStats()
-        => $"tree: {_appends} appends, {_amputations} amputations, {_baseAmputations} base-part amputations"
-         + (_containedAmputations == 0 ? "" : $", {_containedAmputations} matched by containment")
-         + (_appendRefusals == 0 ? "" : $", {_appendRefusals} APPENDS REFUSED")
-         + (_amputateRefusals == 0 ? "" : $", {_amputateRefusals} AMPUTATIONS MATCHED NOTHING")
-         + (_doubledGrafts == 0 ? "" : $", {_doubledGrafts} DOUBLED GRAFTS (a piece appended over one still there)")
-         + $" | subtree gates: {_gatesOn} on, {_gatesOff} off"
-         + (_gatesRefused == 0 ? "" : $", {_gatesRefused} REFUSED (matched no part)");
+        => $"tree: {_tree.Appends} appends, {_tree.Amputations} amputations, {_tree.BaseAmputations} base-part amputations"
+         + (_tree.ContainedAmputations == 0 ? "" : $", {_tree.ContainedAmputations} matched by containment")
+         + (_tree.AppendRefusals == 0 ? "" : $", {_tree.AppendRefusals} APPENDS REFUSED")
+         + (_tree.UnmatchedAmputations == 0 ? "" : $", {_tree.UnmatchedAmputations} AMPUTATIONS MATCHED NOTHING")
+         + (_tree.UnlinkRefusals == 0 ? "" : $", {_tree.UnlinkRefusals} AMPUTATIONS KEPT (the piece matched and would not unlink)")
+         + (_tree.DoubledGrafts == 0 ? "" : $", {_tree.DoubledGrafts} DOUBLED GRAFTS (a piece appended over one still there)")
+         + SceneDb.PieceStats()
+         + $" | subtree gates: {_tree.GatesOn} on, {_tree.GatesOff} off"
+         + (_tree.GatesRefused == 0 ? "" : $", {_tree.GatesRefused} REFUSED (matched no part)");
 
     /// <summary>Recompute the object's bounds after a composition change.</summary>
     private static void Bounds(DbId id, nint shell) => RecomputeBounds(id, shell);

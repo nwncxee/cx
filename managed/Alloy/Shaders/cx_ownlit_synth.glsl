@@ -73,7 +73,7 @@ void main()
     oReveal = 1.0;
     if (uCapture == 2 && vWorld.z < uMirrorZ) discard;
     // inc_standard.shd:182-183: a back face's frame, march and lighting all take the flipped normal
-    vec3 N = normalize(gl_FrontFacing ? vNrm : -vNrm);
+    vec3 N = CxFaceNormal(vNrm, gl_FrontFacing);
     vec3 Ng = N;
     // /alloy viz: attribute a dim frame to a TERM instead of guessing from the composite.
     // 1 = point-light diffuse alone (torch bright here but the frame dark => the torch is fine and

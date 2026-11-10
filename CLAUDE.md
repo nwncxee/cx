@@ -181,6 +181,18 @@ the cleanup that earned it. Adding a rule means adding its gate in the same chan
   `check-shaders.py`, fails. Not scanned: that file, `docs/adr/` and `docs/handoff/` -- dated records of what was true then.
 - `knob-refs.sh`: a `<group>.<knob>` key in a string literal under `managed/` naming no declared `Knob<T>`
   fails.
+- `knob-spec-rows.sh`: a declared knob with no row in `docs/spec/unified-settings.md`, or a key the spec rows
+  that nothing declares, fails. The spec is the settings tree's one description, so a knob with no row is a
+  feature nobody can read about. A ChatOnly family may share one summary row (`group.a / b / c`), a
+  `group.prefix<...>` row stands for the shape it spells (`chat.w<N>.*` covers `chat.w3.rect`, not a future
+  `chat.wrap`) plus the bag key it is named after, and `<mode>.x` for all three camera modes;
+  `python3 tools/gates/knob-spec-rows.py -v` prints the whole census.
+- `knob-effect.sh`: a knob declared `Effect.Live` whose every reader takes `Boot`, or one declared
+  `Effect.Restart` read through `V` outside the file it is declared in, fails. The declared effect is what the
+  panel badge and the chat reply promise, so a reader on the wrong one is a promise nothing keeps. A read is
+  attributed to its declaration by qualifier, class or file; a bare read of a field several classes declare
+  (`Size.V`, `Fov.V`) names no one declaration and counts against `knob-effect.baseline`, which may only
+  shrink. `python3 tools/gates/knob-effect.py -v` lists each such read.
 - `engine-views.sh`: outside `Framework/`, `ptr +/- EngineLayout.X` fails when row X has a view member; a
   `not-an-offset:` marker on a line that dereferences `ptr + 0x...` fails.
 - `statics.sh`: a file under `managed/Alloy` or `managed/Services` with more non-readonly `static` fields
@@ -256,8 +268,18 @@ the cleanup that earned it. Adding a rule means adding its gate in the same chan
   `managed/Framework/` or with no `// <reason>` on its line, or a `NoWarn`/severity override lowering either in build config, fails.
 - `local-paths.sh`: a home directory, mount point or personal checkout path in a tracked file fails
   (`docs/adr/`, `docs/handoff/` exempt); a machine's paths go through `tools/paths.py`.
-- `compute-pipes.sh`: a `ShaderDesc(ShaderStage.Compute ...)` under `managed/` outside `VkBackend.Pipeline.cs` fails; a
-  compute pipeline from GLSL is `VkBackend.CreateCompute`.
+- `compute-pipes.sh`: a `ShaderDesc(ShaderStage.Compute ...)` or a `CreateShader(ShaderStage.Compute ...)` under
+  `managed/` outside `VkBackend.Pipeline.cs` fails; a compute pipeline, from GLSL or from SPIR-V, is
+  `VkBackend.CreateCompute`, which frees the module the pipeline no longer needs.
+- `piece-links.sh`: a raw `ObjSeamAppendHead`/`ObjSeamAppendNext`/`ObjSeamAppendOwner` read or write under
+  `managed/` outside `SceneDb.Pieces.cs` and its self-check fails. The columns are keyed by record INDEX, so a
+  second link of one index rings the list and every walk over it then runs forever on the game thread:
+  `SceneDb.PieceLink` refuses that shape, a second owner and a link that closes a cycle, and `SceneDb.Pieces`
+  walks with a cap, a ring check and each piece's next link latched before its body runs.
+- `version-line.sh`: a string literal under `managed/` that IS the version line (`#version 460 core`), outside
+  `VkGlsl.cs` and the self-checks whose hand-written literal is their oracle, fails: `VkGlsl.Version` is its one
+  declaration, so a stage composed in C# and a stage spliced into a shipped library open with the same line. The
+  first line of a stage's own text -- a `.glsl` file, or a multi-line GLSL literal -- is GLSL, not a declaration.
 - `pipe-features.sh`: a string literal under `managed/` that starts with a pipeline feature prefix the tally counts by
   (`vk grass `, `vk particles `, `vk probe `, `vk CX window `, `CX window `) fails outside `Rhi/PipeFeatures.cs`;
   a label takes its prefix from `PipeFeatures`, so a rename cannot leave the by-feature count at zero.
@@ -270,7 +292,21 @@ the cleanup that earned it. Adding a rule means adding its gate in the same chan
 - `depth-confined.sh`: a file named in CX0006's `Allowed` that is not in the tree fails. The RULE -- GL's depth test and
   clear only in the files that keep GL depth (casters, shadow cascades, the GUI), and no depth test without its
   comparison -- is CX0006 (`tools/analyzers/DepthConvention.cs`); its approved examples need the SDK, so `build.sh` runs them.
+- `sampler-regex.sh`: a file named in CX0008's `Allowed` that is not in the tree fails. The RULE -- no regex reads
+  a GLSL sampler or image declaration -- is CX0008 (`tools/analyzers/SamplerRegex.cs`), which the compiler checks
+  because it can tell a regex pattern argument from any other string and can fold a pattern held in a `const`: a
+  pattern naming `uniform` or `binding` beside `sampler` or `image` is refused outside `VkGlsl` (whose `Opaques`
+  lexes the stage and answers with each declaration's name, binding and bind kind) and the files that REWRITE
+  every declaration or read the general global ones. A `Contains` pin on CX's own embedded stage text is not a
+  read of a declaration and is not refused (`CODING_STANDARDS.md` says why). This gate refuses a permission that
+  outlived its file; the list is read out of `SamplerRegex.cs`, never restated.
 - `content-fixtures.sh`: a `cx_fix*` stage the C# self-checks translate that `tools/content_stage.py`'s `FIXTURE` lacks, or the reverse, fails: the two translations answer to one set of stages.
+- `face-normal.sh`: a `.glsl` under `managed/Alloy/Shaders/` that flips a back face's normal inline
+  (`gl_FrontFacing ? n : -n`, its negated spelling, or the sign a caller multiplies by) fails, and so does a lit
+  main that stops taking its shading normal through `CxFaceNormal`. The flip is one declaration, in
+  `cx_lightfrag.glsl`, which a GPU golden runs on the device; a second copy compiles fine and answers to nothing.
+  `ALLOWED` in `face-normal.py` names that file and the content stand-in `cx_content_f.glsl`, which the GUI twin
+  builds without the light library and so cannot reach the function, and `FLIP_CALLERS` names the lit mains.
 - `golden-glsl.sh`: a golden under `managed/Alloy/Golden/` declaring a `CX_*` constant a shipped shader declares (splice it
   with `GpuGolden.Declaration`), indexing `uIn`/`uOut` with a literal stride (use `CX_GOLD_IN`/`CX_GOLD_OUT`), or a shader
   comparing a light record's `w` with 128 (ask `CxLightIsStatic`) counts against `golden-glsl.baseline`, which may only shrink.

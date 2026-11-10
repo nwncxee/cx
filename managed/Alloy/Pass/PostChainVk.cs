@@ -399,7 +399,7 @@ internal static unsafe class PostChainVk
             {
                 "uSrc" or "uHdr" or "uCur" or "texFBColor" => (t.Src, s.Linear),
                 "texFBDepth" => (t.Depth, s.Nearest),
-                "texUnitNoise" => (VkTextures.Image(FrameSnapshot.NoiseTid), s.Repeat),
+                "texUnitNoise" => (VkTextures.Image(FrameSnapshot.Noise), s.Repeat),
                 "uBloom" => (t.Bloom, s.Linear),
                 "uDepth" or "uTrigDepth" => (t.Depth, s.Nearest),
                 "uHist" => (t.Hist, t.HistLinear ? s.Linear : s.Nearest),
@@ -523,11 +523,12 @@ internal static unsafe class PostChainVk
         return null;
     }
 
-    /// <summary>The samplers <paramref name="fs"/> declares without a binding, in order.</summary>
+    /// <summary>The samplers <paramref name="fs"/> declares without a binding, in order: the names the host owes a
+    /// texture unit, which is every sampled declaration and no storage image.</summary>
     private static IEnumerable<string> Unbound(string fs)
     {
-        foreach ((string type, string name, string? binding) in VkGlsl.Opaques(fs))
-            if (binding == null && type.Contains("sampler", StringComparison.Ordinal)) yield return name;
+        foreach ((_, string name, uint? binding, VkBindKind kind) in VkGlsl.Opaques(fs))
+            if (binding == null && kind == VkBindKind.Sampled) yield return name;
     }
 
     /// <summary>The first unit a content stage's own unbound sampler takes: past every unit Alloy names.</summary>

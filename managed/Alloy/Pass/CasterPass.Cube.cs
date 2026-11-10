@@ -32,7 +32,7 @@ public sealed unsafe partial class CasterPass
     /// <summary>Per cube slot: the position the cube was baked from (xyz) and its far plane (w). The receiver
     /// reads the light's geometry from HERE, never from the live light, so its depth comparison stays welded
     /// to the depth it samples.</summary>
-    internal static readonly float[] CubeLight = new float[MaxCubes * 4];
+    internal static readonly CubeCaster[] CubeLight = new CubeCaster[MaxCubes];
     /// <summary>Engine light identity per cube slot (equality only, never dereferenced -- the engine frees
     /// PartLight on area boundaries). This is what binds a light in the walk's snapshot to its cube.</summary>
     internal static readonly IntPtr[] CubeLightId = new IntPtr[MaxCubes];
@@ -55,7 +55,7 @@ public sealed unsafe partial class CasterPass
     /// <summary>The bake state of one cube slot, all of it carried across frames. Separate storage from
     /// <see cref="CubeLight"/>/<see cref="CubeLightId"/>, which the publish loop wipes every frame.</summary>
     private static readonly IntPtr[] _cubeKeyId = new IntPtr[MaxCubes];
-    private static readonly float[] _cubeKeyPos = new float[MaxCubes * 3];
+    private static readonly Vector3[] _cubeKeyPos = new Vector3[MaxCubes];
     private static readonly float[] _cubeKeyFar = new float[MaxCubes];
     /// <summary>Does this slot hold a complete, usable bake? False after a ring-fence timeout, a release, or
     /// any (re)creation of the array -- all of which leave the layers holding depth nobody may sample.</summary>
@@ -73,7 +73,7 @@ public sealed unsafe partial class CasterPass
     /// static pages are cleared and everything in reach bakes into its dynamic page every frame. The
     /// last-seen position is the motion term, never the bake key (a demoted slot keys nothing, so the key
     /// would read as moving forever); the count saturates at 2 so an early break cannot lose the level.</summary>
-    private static readonly float[] _cubeLastPos = new float[MaxCubes * 3];
+    private static readonly Vector3[] _cubeLastPos = new Vector3[MaxCubes];
     /// <summary>The scans of the last two registered moves. Roaming = both within <c>dynhold</c> frames: the
     /// same hold the casters' dynamic set has, so a light that pauses for a frame does not flap between a
     /// 512px static bake and six clears. Registered = <see cref="RoamEpsilon"/> or more from the latched last
@@ -153,8 +153,6 @@ public sealed unsafe partial class CasterPass
     internal static bool CubesFresh
         => CubeCount > 0 && !_vk.Cubes.IsNull && _cubeStamp == _frameSeq;
 
-    /// <summary>Cube slot holding <paramref name="id"/>'s shadow, or -1. Called once per area light from the
-    /// light walk, so it is O(lights * cubes) = a few hundred comparisons a frame, alloc-free.</summary>
     /// <summary>The slot lost its light: whatever depth it holds describes a light no longer in the budget,
     /// and the next light to take it must not inherit it -- nor its dynamic page, mode or fade.</summary>
     private static void FreeCubeSlot(int j)
@@ -166,12 +164,18 @@ public sealed unsafe partial class CasterPass
         if (_dynPageOf[j] >= 0) { _dynPageSlot[_dynPageOf[j]] = -1; _dynPageOf[j] = -1; }
     }
 
+    /// <summary>Cube slot holding <paramref name="id"/>'s shadow, or -1. Called once per area light from the
+    /// light walk, so it is O(lights * cubes) = a few hundred comparisons a frame, alloc-free.</summary>
     internal static int CubeSlotOf(IntPtr id)
     {
         if (!CubesFresh || id == IntPtr.Zero) return -1;
         for (int i = 0; i < CubeCount; i++) if (CubeLightId[i] == id) return i;
         return -1;
     }
+
+    /// <summary>What a slot publishes when its six faces still stand: the bake key, never the live light,
+    /// so the receiver's depth comparison stays welded to the depth it samples.</summary>
+    private static CubeCaster Published(int slot) => new(_cubeKeyPos[slot], _cubeKeyFar[slot]);
 
     /// <summary>The local-light cubes: six faces per light, budget spent nearest the shadow focus first. A
     /// slot's six faces are baked only when the predicate says its recorded depth no longer describes the
@@ -275,10 +279,9 @@ public sealed unsafe partial class CasterPass
         // receiver reads far <= near as "lit", so holes in the slot array are free.
         for (int j = 0; j < _cubeLights; j++)
         {
-            CubeLight[j * 4 + 3] = 0f; CubeLightId[j] = IntPtr.Zero; CubeDynPage[j] = 0f;
+            CubeLight[j] = CubeLight[j] with { Reach = 0f }; CubeLightId[j] = IntPtr.Zero; CubeDynPage[j] = 0f;
             if (pick[j] != -2 || !_cubeBaked[j]) continue;
-            CubeLight[j * 4] = _cubeKeyPos[j * 3]; CubeLight[j * 4 + 1] = _cubeKeyPos[j * 3 + 1];
-            CubeLight[j * 4 + 2] = _cubeKeyPos[j * 3 + 2]; CubeLight[j * 4 + 3] = _cubeKeyFar[j];
+            CubeLight[j] = Published(j);
             CubeLightId[j] = _cubeKeyId[j];
         }
 
@@ -331,8 +334,7 @@ public sealed unsafe partial class CasterPass
             // Exact on purpose: a cube face is a 90-degree perspective, so a world-space slack of one texel at
             // reach is far/d texels for a caster at distance d. A light that moves is a roamer (below).
             bool slotChanged = !_cubeBaked[slot] || _cubeKeyId[slot] != id || _cubeKeyFar[slot] != far
-                               || _cubeKeyPos[slot * 3] != pos.X || _cubeKeyPos[slot * 3 + 1] != pos.Y
-                               || _cubeKeyPos[slot * 3 + 2] != pos.Z;
+                               || _cubeKeyPos[slot] != pos;
             // #322 review: the visibility verdict, BEFORE any page claim. Hidden lights must not hold pool
             // pages (they never bake them, so holding one only starves a visible light into the combined
             // fallback -- a six-face re-bake every mover frame), and their split mode must not flap.
@@ -349,11 +351,12 @@ public sealed unsafe partial class CasterPass
             // page claim, because a roaming light needs a page whether or not any caster near it moves.
             // Off the CULLED verdict, not the drained one: a roaming slot is never baked, so the drain would
             // pick it every frame and bake six page faces nobody sees while every other hidden slot starved.
-            float lx = _cubeLastPos[slot * 3] - pos.X, ly = _cubeLastPos[slot * 3 + 1] - pos.Y, lz = _cubeLastPos[slot * 3 + 2] - pos.Z;
+            Vector3 moved = _cubeLastPos[slot] - pos;
             if (_cubeKeyId[slot] != id) _cubeMovedAt[slot] = _cubeMovedPrev[slot] = NeverMoved;
-            if (lx * lx + ly * ly + lz * lz > RoamEpsilon * RoamEpsilon || _cubeKeyId[slot] != id)
+            if (moved.X * moved.X + moved.Y * moved.Y + moved.Z * moved.Z > RoamEpsilon * RoamEpsilon
+                || _cubeKeyId[slot] != id)
             {
-                _cubeLastPos[slot * 3] = pos.X; _cubeLastPos[slot * 3 + 1] = pos.Y; _cubeLastPos[slot * 3 + 2] = pos.Z;
+                _cubeLastPos[slot] = pos;
                 if (_cubeKeyId[slot] == id) { _cubeMovedPrev[slot] = _cubeMovedAt[slot]; _cubeMovedAt[slot] = _frameSeq; }
             }
             // The gap term at dynhold 0 would be unsatisfiable (two stamps are never equal): 1 is the floor.
@@ -433,10 +436,7 @@ public sealed unsafe partial class CasterPass
                 if (stale) _cubeBaked[slot] = false;
                 if (_cubeBaked[slot])
                 {
-                    CubeLight[slot * 4] = _cubeKeyPos[slot * 3];
-                    CubeLight[slot * 4 + 1] = _cubeKeyPos[slot * 3 + 1];
-                    CubeLight[slot * 4 + 2] = _cubeKeyPos[slot * 3 + 2];
-                    CubeLight[slot * 4 + 3] = _cubeKeyFar[slot];
+                    CubeLight[slot] = Published(slot);
                     CubeLightId[slot] = id;
                 }
                 done++;
@@ -453,8 +453,7 @@ public sealed unsafe partial class CasterPass
                 _cubeBaked[slot] = false;
                 if (!cleared) { scannedAll = false; break; }   // _cubeRoam stays false: the clear is retried
                 _cubeRoam[slot] = true;
-                CubeLight[slot * 4] = pos.X; CubeLight[slot * 4 + 1] = pos.Y; CubeLight[slot * 4 + 2] = pos.Z;
-                CubeLight[slot * 4 + 3] = far;
+                CubeLight[slot] = new CubeCaster(pos, far);
                 CubeLightId[slot] = id;
                 done++;
             }
@@ -463,8 +462,7 @@ public sealed unsafe partial class CasterPass
                 _cubeRoam[slot] = false;
                 // reads the light's geometry out of CubeLight, and it must keep matching the depth it samples.
                 _cubeSkippedSlots++;
-                CubeLight[slot * 4] = _cubeKeyPos[slot * 3]; CubeLight[slot * 4 + 1] = _cubeKeyPos[slot * 3 + 1];
-                CubeLight[slot * 4 + 2] = _cubeKeyPos[slot * 3 + 2]; CubeLight[slot * 4 + 3] = _cubeKeyFar[slot];
+                CubeLight[slot] = Published(slot);
                 CubeLightId[slot] = id;
                 done++;
             }
@@ -472,8 +470,7 @@ public sealed unsafe partial class CasterPass
             {   // Held for the cap: the standing page stays published; hadMover = true is what carries the staleness.
                 _cubeRoam[slot] = false; _cubeHadMover[slot] = true; _cubeHeldRun[slot]++;
                 _cubeHeldSlots++; FrameZones.Count(FrameZones.Ev.CubeHeld);
-                CubeLight[slot * 4] = _cubeKeyPos[slot * 3]; CubeLight[slot * 4 + 1] = _cubeKeyPos[slot * 3 + 1];
-                CubeLight[slot * 4 + 2] = _cubeKeyPos[slot * 3 + 2]; CubeLight[slot * 4 + 3] = _cubeKeyFar[slot];
+                CubeLight[slot] = Published(slot);
                 CubeLightId[slot] = id;
                 done++;
             }
@@ -501,11 +498,10 @@ public sealed unsafe partial class CasterPass
                 // evidence must not be consumed on their behalf.
                 if (!whole) { scannedAll = false; break; }
                 _cubeKeyId[slot] = id; _cubeKeyFar[slot] = far;
-                _cubeKeyPos[slot * 3] = pos.X; _cubeKeyPos[slot * 3 + 1] = pos.Y; _cubeKeyPos[slot * 3 + 2] = pos.Z;
+                _cubeKeyPos[slot] = pos;
                 frameCreatures += lightCreatures;
                 if (rank == 0) { nearestCreatures = lightCreatures; nearestBaked = true; }
-                CubeLight[slot * 4] = pos.X; CubeLight[slot * 4 + 1] = pos.Y; CubeLight[slot * 4 + 2] = pos.Z;
-                CubeLight[slot * 4 + 3] = far;
+                CubeLight[slot] = new CubeCaster(pos, far);
                 CubeLightId[slot] = id;
                 done++;
             }
@@ -519,7 +515,7 @@ public sealed unsafe partial class CasterPass
             {
                 // From the position the receiver SAMPLES with (CubeLight): the published key, which the texel
                 // slack lets differ from pos by under a texel. A roamer publishes pos itself.
-                Vector3 dpos = roam ? pos : new Vector3(_cubeKeyPos[slot * 3], _cubeKeyPos[slot * 3 + 1], _cubeKeyPos[slot * 3 + 2]);
+                Vector3 dpos = roam ? pos : _cubeKeyPos[slot];
                 int now = _dynEvents && !roam ? EventFaceMask(dpos, far) : AllFaces;
                 bool forced = invalidate || slotChanged || roam || _rxForce;
                 int bake = forced ? AllFaces : now | _dynPageMask[page];

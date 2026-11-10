@@ -1199,6 +1199,10 @@ public static unsafe partial class DbAnim
         SceneDb.Scenes.Free(scene);
     }
 
+    /// <summary>Vertex 0 of a part's dynamic UV buffer, re-read each time so a morph that re-took the buffer
+    /// is not read through a stale span.</summary>
+    private static Vector2 Uv0(int part) => _dynUv[part].Span[0];
+
     /// <summary>An animmesh whose <c>animtverts</c> pool is its ONLY pool scrolls its UVs: the frame index,
     /// the lerp between two frames and the weight blend, over a node with no position frames at all -- which
     /// is the shape the load screen's smoke has, and the one that used to morph nothing.</summary>
@@ -1212,25 +1216,24 @@ public static unsafe partial class DbAnim
         PlayAnimation(obj, "smoke", 1f, RunFlags.NoFadeIn, 0f);
         _rTime[Slot(obj.Index, 0)] = 0f;
         Pose(obj, m.Anims[0], Slot(obj.Index, 0), 1f);
-        float* uv = (float*)_dynUv[part];
-        check.Expect(uv != null, "an animmesh with UV frames and no position frames still morphs");
-        if (uv != null)
+        check.Expect(_dynUv[part].Length != 0, "an animmesh with UV frames and no position frames still morphs");
+        if (_dynUv[part].Length != 0)
         {
-            check.Expect(MathF.Abs(uv[0] - 0f) < 1e-4f && MathF.Abs(uv[1] - 0f) < 1e-4f,
+            check.Expect(MathF.Abs(Uv0(part).X - 0f) < 1e-4f && MathF.Abs(Uv0(part).Y - 0f) < 1e-4f,
                          "...frame 0 of the UV pool at t=0");
             _rTime[Slot(obj.Index, 0)] = 0.5f;
             Pose(obj, m.Anims[0], Slot(obj.Index, 0), 1f);
-            check.Expect(MathF.Abs(uv[0] - 0.5f) < 1e-4f, "...halfway between frames 0 and 1 at t=0.5");
+            check.Expect(MathF.Abs(Uv0(part).X - 0.5f) < 1e-4f, "...halfway between frames 0 and 1 at t=0.5");
             _rTime[Slot(obj.Index, 0)] = 5f;
             Pose(obj, m.Anims[0], Slot(obj.Index, 0), 1f);
-            check.Expect(MathF.Abs(uv[0] - 1f) < 1e-4f, "...and the LAST frame past the end, never past it");
+            check.Expect(MathF.Abs(Uv0(part).X - 1f) < 1e-4f, "...and the LAST frame past the end, never past it");
             _rTime[Slot(obj.Index, 0)] = 0f;
             Pose(obj, m.Anims[0], Slot(obj.Index, 0), 0.5f);
-            check.Expect(MathF.Abs(uv[0] - 0.5f) < 1e-4f, "a half-weight run blends the UVs, as it does positions");
+            check.Expect(MathF.Abs(Uv0(part).X - 0.5f) < 1e-4f, "a half-weight run blends the UVs, as it does positions");
         }
 
         Drop(obj);
-        check.Expect(_dynUv[part] == 0, "the UV buffer goes back with the part's dynamic state");
+        check.Expect(_dynUv[part].Length == 0, "the UV buffer goes back with the part's dynamic state");
         SceneDb.Scenes.Free(scene);
     }
 
@@ -1348,8 +1351,7 @@ public static unsafe partial class DbAnim
         DbId scene = SceneDb.Scenes.Alloc();
         DbId body = Subject(Chain(), scene, out _);
         DbId piece = Subject(Graft(), scene, out int pieceFirst);
-        SceneDb.ObjSeamAppendHead[body.Index] = piece;
-        SceneDb.ObjSeamAppendNext[piece.Index] = default;
+        check.Expect(SceneDb.PieceLink(body, piece), "the piece would not link onto the body");
 
         check.Expect(CX.Alloy.Seam.ObjectSlots.PartByName(body, "gmid") == pieceFirst + 1,
                      "a part only an appended piece carries resolves against the composition");
@@ -1358,10 +1360,44 @@ public static unsafe partial class DbAnim
         check.Expect(CX.Alloy.Seam.ObjectSlots.PartByName(body, "no_such_node") < 0,
                      "...while a name nothing carries is still -1");
 
-        SceneDb.ObjSeamAppendHead[body.Index] = default;
+        SceneDb.PieceDropAll(body);
         Drop(piece);
         Drop(body);
         SceneDb.Scenes.Free(scene);
+        CompositionDepth(check);
+    }
+
+    /// <summary>The name search stops at the 8 levels of composition every piece walk covers, whatever the
+    /// data does: a chain grafted deeper answers for the levels inside it and -1 for the ones past it. It is
+    /// asked on every update, so following a corrupt chain down is the game thread.</summary>
+    private static void CompositionDepth(Checker check)
+    {
+        DbId scene = SceneDb.Scenes.Alloc();
+        DbId[] chain = new DbId[10];   // deeper than the 8 levels the search covers
+        bool built = true;
+        for (int i = 0; i < chain.Length; i++)
+        {
+            chain[i] = Subject(Graft($"deep{i}_g"), scene, out _);
+            if (i > 0) built &= SceneDb.PieceLink(chain[i - 1], chain[i]);
+        }
+        check.Expect(built, "the deep composition would not link");
+        check.Expect(CX.Alloy.Seam.ObjectSlots.PartByName(chain[0], "deep7_g") >= 0,
+                     "the search stopped short of the 8 levels of composition it covers");
+        check.Expect(CX.Alloy.Seam.ObjectSlots.PartByName(chain[0], "deep8_g") < 0,
+                     "the search went past the 8 levels of composition it covers");
+
+        for (int i = chain.Length - 1; i >= 0; i--)
+        {
+            SceneDb.PieceDropAll(chain[i]);
+            SceneDb.PieceForget(chain[i].Index);
+            Drop(chain[i]);
+        }
+        SceneDb.Scenes.Free(scene);
+        // Ten records created and freed leave that many marks and a reader's cursor past them; the next
+        // check's compose reads both, so this fixture closes on a frame boundary.
+        SceneDb.Objects.TakeDirty();
+        SceneDb.Parts.TakeDirty();
+        _dirtyUpTo = 0;
     }
 
     /// <summary>An amputation takes the piece ROOTED at the name, not the first that merely holds a part of
@@ -1375,9 +1411,8 @@ public static unsafe partial class DbAnim
         DbId chest = Subject(Graft("chest_g"), scene, out _);
         DbId arm = Subject(Graft("arm_g"), scene, out _);
         // Appended head-first, as Gob::Append links them: arm, then chest.
-        SceneDb.ObjSeamAppendHead[body.Index] = chest;
-        SceneDb.ObjSeamAppendNext[chest.Index] = arm;
-        SceneDb.ObjSeamAppendNext[arm.Index] = default;
+        check.Expect(SceneDb.PieceLink(body, arm) && SceneDb.PieceLink(body, chest),
+                     "both pieces would not link onto the body");
 
         DbId take = CX.Alloy.Seam.ObjectSlots.AmputateTarget(body, "arm_g", out bool byContainment);
         check.Expect(take.Value == arm.Value, "an amputation takes the piece ROOTED at the name");
@@ -1390,7 +1425,7 @@ public static unsafe partial class DbAnim
         check.Expect(CX.Alloy.Seam.ObjectSlots.AmputateTarget(body, "no_such_node", out _).IsNull,
                      "...and a name nothing carries takes nothing");
 
-        SceneDb.ObjSeamAppendHead[body.Index] = default;
+        SceneDb.PieceDropAll(body);
         Drop(arm);
         Drop(chest);
         Drop(body);

@@ -8,24 +8,19 @@
 #   tools/live/hold_length_regression.sh --before LOG [--before LOG ...] [--rounds N] [--saves DIR]
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+DOCKS_WHO=hold-length
+. "$ROOT/tools/live/docks_run.sh"
 BEFORE=() SAVES="" ROUNDS=3
 while [ $# -gt 0 ]; do
     case "$1" in
         --before) BEFORE+=("${2:-}"); shift 2 ;;
         --rounds) ROUNDS="${2:-}"; shift 2 ;;
-        --saves)  SAVES="${2:-}"; shift 2 ;;
+        --saves)  SAVES="$(docks_saves_arg "${2:-}")" || exit 2; shift 2 ;;
         *) echo "hold-length: unknown argument $1" >&2; exit 2 ;;
     esac
 done
 [ "${#BEFORE[@]}" -gt 0 ] || { echo "hold-length: --before needs the build-before runs' cx.log" >&2; exit 2; }
-if [ -z "$SAVES" ]; then
-    USERDIR="$(python3 "$ROOT/tools/paths.py" NWN_USERDIR)" || exit 2
-    SAVE="$USERDIR/saves/000000 - quicksave"
-    grep -q Waterdeep "$SAVE/savenfo.txt" 2>/dev/null || { echo "hold-length: $SAVE is not the docks save (savenfo.txt)" >&2; exit 2; }
-    SAVES="$(mktemp -d "${TMPDIR:-/tmp}/cx-hold-length-saves-XXXX")"
-    trap 'rm -rf "$SAVES"' EXIT
-    cp -a "$SAVE" "$SAVES/" || exit 2
-fi
+docks_saves "$SAVES" || exit 2
 # The log writes seconds in the machine's locale, so "19,7" as often as "19.7".
 held() { grep -aoP "LightmapBake: hold released after \K[0-9]+[.,][0-9]+(?= s)" "$1" | tail -1 | tr , .; }
 median() { sort -g | awk '{ v[NR] = $1 } END { print (NR % 2) ? v[(NR + 1) / 2] : (v[NR / 2] + v[NR / 2 + 1]) / 2 }'; }
@@ -37,11 +32,7 @@ for log in "${BEFORE[@]}"; do
 done
 now=()
 for _ in $(seq "$ROUNDS"); do
-    before="$(date +%s)"
-    "$ROOT/tools/live/perf-save.sh" --saves "$SAVES" --soak 30 --label holdlen >/dev/null
-    rc=$?
-    [ "$rc" = 0 ] || { echo "hold-length: perf-save.sh exited $rc" >&2; exit 2; }
-    OUT="$(find "${TMPDIR:-/tmp}" -maxdepth 1 -type d -name 'cx-perf-holdlen-*' -newermt "@$before" | sort | tail -1)"
+    OUT="$(docks_run holdlen)" || exit 2
     s="$(held "$OUT/cx.log" 2>/dev/null)"
     [ -n "$s" ] || { echo "hold-length: the run left no hold release line ($OUT)" >&2; exit 2; }
     now+=("$s")

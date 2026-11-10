@@ -13,8 +13,9 @@ namespace CX.Alloy;
 [StructLayout(LayoutKind.Sequential)]
 internal struct SsaoBlock
 {
-    public Matrix4x4 Proj;
+    public Matrix4x4 Proj, Reproj;
     public Vector4 Rt;
+    public Vector2 Jitter;
     public float Radius, Power, MaxPx, Weight;
     public int Dirs, Steps, Frame;
 
@@ -25,7 +26,8 @@ internal struct SsaoBlock
         var b = default(SsaoBlock);
         Std140.Pin(check, ShaderSource.Get("cx_ssaolib.glsl"), "CxSsao", UboSlots.Ssao, Unsafe.SizeOf<SsaoBlock>(),
         [
-            ("uProj", Std140.At(ref b, ref b.Proj)), ("uRt", Std140.At(ref b, ref b.Rt)),
+            ("uProj", Std140.At(ref b, ref b.Proj)), ("uReproj", Std140.At(ref b, ref b.Reproj)),
+            ("uRt", Std140.At(ref b, ref b.Rt)), ("uJitter", Std140.At(ref b, ref b.Jitter)),
             ("uRadius", Std140.At(ref b, ref b.Radius)), ("uPower", Std140.At(ref b, ref b.Power)),
             ("uMaxPx", Std140.At(ref b, ref b.MaxPx)), ("uWeight", Std140.At(ref b, ref b.Weight)),
             ("uDirs", Std140.At(ref b, ref b.Dirs)), ("uSteps", Std140.At(ref b, ref b.Steps)),
@@ -55,7 +57,7 @@ internal static unsafe class SsaoPass
 
     /// <summary>Texture slots, the <c>layout(binding)</c> of each sampler in the three stages. Read by
     /// <see cref="SsaoPassVk"/> too: one declaration, two recorders.</summary>
-    internal const uint SlotDepth = 0, SlotSrc = 1;
+    internal const uint SlotDepth = 0, SlotSrc = 1, SlotHist = 2;
 
     /// <summary>The lit stage's <c>uAoDirect</c>, read at every lit program bind.</summary>
     internal static float Direct => Ao.Direct.V;
@@ -66,6 +68,14 @@ internal static unsafe class SsaoPass
     internal static bool Wanted => Post.HalfRes.V;
 
     internal const string ShdSsaoFs = "cx_ssao_fs", ShdSsaoBlurFs = "cx_ssaoblur_fs";
+
+    /// <summary>The accumulator's own stage. Embedded, not a <c>.shd</c> override point: it is the pass's
+    /// history bookkeeping rather than a look, and the two overridable stages above are the look.</summary>
+    internal static string AccumFs => ShaderSource.Get("cx_aoaccum_f.glsl");
+
+    /// <summary>The history's share of a pixel that reprojected onto a surface at its own distance. One
+    /// number, not a knob: the accumulator is how a one-slice horizon becomes a quiet one.</summary>
+    internal const float HistoryWeight = 0.8f;
 
     internal static void Attach(ExtenderLog log)
     {
@@ -114,10 +124,13 @@ internal static unsafe class SsaoPass
         {
             string fs = ShaderStages.Source(ShdSsaoFs), bl = ShaderStages.Source(ShdSsaoBlurFs);
             check.Expect(fs.Contains("float CxViewDist(float depth)") && bl.Contains("float CxViewDist(float depth)"), "both stages carry the reconstruction");
-            check.Expect(ShaderContract.SlotSafe(fs, "uDepth") && ShaderContract.SlotSafe(bl, "uSrc", "uDepth"), "the samplers the C# side binds are declared");
+            check.Expect(ShaderContract.SlotSafe(fs, "uDepth") && ShaderContract.SlotSafe(bl, "uSrc", "uDepth")
+              && ShaderContract.SlotSafe(AccumFs, "uSrc", "uHist", "uDepth"), "the samplers the C# side binds are declared");
             check.Expect(ShaderSource.Get("cx_ssaolib.glsl").Contains($"layout(binding = {SlotDepth}) uniform sampler2D uDepth;")
-              && SsaoBlurFs.Contains($"layout(binding = {SlotSrc}) uniform sampler2D uSrc;"),
-              "every sampler the two stages read sits on the slot the recorded BindSet names (the seam sets no sampler uniform)");
+              && SsaoBlurFs.Contains($"layout(binding = {SlotSrc}) uniform sampler2D uSrc;")
+              && AccumFs.Contains($"layout(binding = {SlotSrc}) uniform sampler2D uSrc;")
+              && AccumFs.Contains($"layout(binding = {SlotHist}) uniform sampler2D uHist;"),
+              "every sampler the three stages read sits on the slot the recorded BindSet names (the seam sets no sampler uniform)");
             check.Expect(AlloyRenderer.OwnedLitFsMain.Contains("screenAo = mix(1.0, CxSsaoAt(ivec2(gl_FragCoord.xy), aoDepth, aoSlope), uAlphaCut >= 0.0 ? uAoCutout : 1.0);")
               && AlloyRenderer.OwnedLitFsMain.Contains("+ cxAmbWalk) * matAmbient * occl;"), "the lit stage folds it into occl, which scales the AMBIENT term");
             // post.halfres: the pass is a quarter of the pixels and the LIT stage is the upsampler -- there
@@ -145,6 +158,15 @@ internal static unsafe class SsaoPass
             check.Expect(Describe().Contains("radius") && Describe().Contains("strength") && Describe().Contains("dirs"), "/ao reports its dials");
             check.Expect(fs.Contains("fract(b / 16.0 + float(uFrame) * 0.618034)"), "the raw stage's noise phase rotates with uFrame, which the single-frame estimate leaves at 0");
             check.Expect(Ao.Dirs.Default == 1 && Ao.Steps.Default == 3, "one slice at its full step count is the per-frame horizon");
+            check.Expect(PassRegistry.Global.Find("ao")?.Revoke != null,
+              "the pass's own lifecycle registers a revoke: that walk is the only thing that reaches the accumulator at "
+              + "an area transition, where the history is another place's");
+            // Two world views of one present share the one history pair (SeamDraw's [worldviews]), so only the
+            // first of them may accumulate into it and publish the camera the next present reprojects through.
+            check.Expect(SsaoPassVk.FirstViewOfFrame(-2, 0) && SsaoPassVk.FirstViewOfFrame(3, 4) && !SsaoPassVk.FirstViewOfFrame(3, 3),
+              "the first world view of a present accumulates, and a later view of that same present does not");
+            // The accumulator's own arithmetic -- the reprojection, the clamp, the nearest disocclusion fetch and the
+            // pair it writes -- is proven on the device by GpuGolden's ao accumulator, not restated here.
         }
         finally { _log = quiet; }
         log.Info(check.Ok ? "SsaoPass.SelfCheck: passed" : "SsaoPass.SelfCheck: FAILED");

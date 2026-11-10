@@ -25,7 +25,7 @@ internal sealed class DeferredRigScene
     /// <summary>One <c>ext1</c> per ownership slot: rgb the sheen colour, w its roughness.</summary>
     internal Vector4[] Sheen = [];
     /// <summary>Shadow-casting cube slots in use, each at its light's position.</summary>
-    internal Vector4[] Cubes = [];
+    internal CubeCaster[] Cubes = [];
     /// <summary>A content author's <c>cx_deferred_cs</c> text standing in for the shipped walk; null = the shipped one.</summary>
     internal string? WalkOverride;
     /// <summary>Set by the run: the walk it drew with was <see cref="WalkOverride"/>'s, not the shipped stage it falls back to.</summary>
@@ -172,7 +172,7 @@ public sealed unsafe partial class AlloyRenderer
             f.Destroy(vk);
             vk.Destroy(fill);
             foreach (VkDefStage? s in (ReadOnlySpan<VkDefStage?>)[walk, film, build])
-                if (s != null) { vk.Destroy(s.Pipe); vk.Destroy(s.Cs); }
+                if (s != null) vk.Destroy(s.Pipe);
         }
         return got;
     }

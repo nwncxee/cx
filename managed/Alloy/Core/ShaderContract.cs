@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using CX.Framework;
 using CX.Graphics;
+using CX.Graphics.Rhi;
 
 namespace CX.Alloy;
 
@@ -99,10 +100,28 @@ internal static class ShaderContract
     /// lit draw is dropped. Bound samplers only (meaningless under bindless); the names are the CALLER's.</summary>
     public static bool SlotSafe(string fs, params string[] samplers)
     {
+        var declared = VkGlsl.Opaques(fs);
         foreach (string s in samplers)
-            if (!fs.Contains($"uniform sampler2D {s};") && !fs.Contains($"uniform samplerCube {s};"))
-                return false;
+            if (!declared.Exists(d => d.Kind == VkBindKind.Sampled && d.Name == s)) return false;
         return true;
+    }
+
+    /// <summary>The sampler guard against declarations written the ways GLSL allows. Oracle: the five
+    /// hand-written stages below, each a shape a content override may use and a text match does not see.</summary>
+    private static bool SlotSafeSelfCheck(ExtenderLog log)
+    {
+        var check = new Checker(log, "ShaderContract.SlotSafeSelfCheck");
+        check.Expect(SlotSafe("uniform sampler2DArray uSunShadowRaw;\nvoid main() { }\n", "uSunShadowRaw"),
+          "an array sampler is a declaration");
+        check.Expect(!SlotSafe("/* uniform sampler2D uSrc; */\nvoid main() { }\n", "uSrc"),
+          "a commented-out declaration declares nothing");
+        check.Expect(SlotSafe("uniform  sampler2D  uSrc;\nvoid main() { }\n", "uSrc"),
+          "the whitespace between the words is the author's");
+        check.Expect(SlotSafe("uniform sampler2D uA, uSrc;\nvoid main() { }\n", "uSrc"),
+          "the second declarator on a line is a declaration");
+        check.Expect(!SlotSafe("uniform sampler2D uSrcAtlas;\nvoid main() { }\n", "uSrc"),
+          "a name is not a prefix of another name");
+        return check.Ok;
     }
 
     /// <summary>A stage that derives a draw index must reach its record THROUGH the slot map: the records are
@@ -230,10 +249,6 @@ internal static class ShaderContract
         return bad.Count == 0;
     }
 
-    /// <summary>The lit stage's whole sampler set: the diffuse, the map ladder and the probe cube.</summary>
-    public static bool LitSlotSafe(string fs)
-        => SlotSafe(fs, "uTex") && SlotSafe(fs, TextureSlots.MapSamplers) && SlotSafe(fs, "uProbe");
-
     /// <summary>The flare pair's own contract. The list is drawn one texture group at a time, the group's first
     /// element the draw's <c>firstInstance</c>, so a vertex stage that indexes the raw <c>gl_InstanceID</c> draws
     /// the first group's elements for every group -- silently -- and a fragment stage with no
@@ -254,9 +269,10 @@ internal static class ShaderContract
         bool ssbo = SsboSlots.Check(log);
         bool ubo = UboSlots.Check(log);
         bool pass = PassCheck(log);
+        bool slotSafe = SlotSafeSelfCheck(log);
         bool eng = AlloyRenderer.EngineBlockSelfCheck(log);
         // the record's field list, counted by field size: the 288-byte stride staged above (#392 and ADR 0026 grew it)
-        bool ok = slots && ssbo && ubo && pass && eng && DrawBufDecl.Contains($"binding = {BindDraw})")
+        bool ok = slots && ssbo && ubo && pass && slotSafe && eng && DrawBufDecl.Contains($"binding = {BindDraw})")
                   && RecordSafe(DrawBufDecl) && DrawBufDecl.Contains("vec4 feat; mat4 prev; vec4 ext0; vec4 ext1; vec4 ext2; }")
                   && DrawBufDecl.Contains("vec4 emi") && DrawBufDecl.Contains("vec4 spc")
                   && DrawBufDecl.Contains("vec4 feat")
@@ -627,9 +643,11 @@ internal static class ShaderContract
                   // #208: the slot guard, both directions. The embedded lit stage must pass it (a guard its
                   // own text trips rebuilds from that text every session), and a stage with one sampler
                   // renamed must fail -- which is the only case it exists for.
-                  && LitSlotSafe(OwnedLitFsHead)
-                  && !LitSlotSafe(OwnedLitFsHead.Replace("uniform sampler2D uAoTex;", "uniform sampler2D uNope;"))
-                  && !LitSlotSafe(OwnedLitFsHead.Replace("uniform samplerCube uProbe;", ""))
+                  && SlotSafe(OwnedLitFsHead, "uTex") && SlotSafe(OwnedLitFsHead, TextureSlots.MapSamplers)
+                  && SlotSafe(OwnedLitFsHead, "uProbe")
+                  && !SlotSafe(OwnedLitFsHead.Replace("uniform sampler2D uAoTex;", "uniform sampler2D uNope;"),
+                               TextureSlots.MapSamplers)
+                  && !SlotSafe(OwnedLitFsHead.Replace("uniform samplerCube uProbe;", ""), "uProbe")
                   // ...and the same over every other overridable stage that binds a unit, so the embedded
                   // text of each passes the guard its own override will be held to.
                   // the flare pair's own guard, and a stage override that predates the element chain failing it

@@ -117,24 +117,24 @@ internal static unsafe partial class ModelLoad
         IntPtr msg = ClientApi.Message();
         if (msg == IntPtr.Zero) { Stand("the client's CNWCMessage did not resolve"); return; }
         var m = new CNWMessage(msg);
-        byte* buf = (byte*)m.Buffer;
-        uint len = m.Length, cursor = m.Cursor;
-        if (buf == null || cursor > len) { Stand("the message buffer is not readable"); return; }
-        if (!_peeked) { Peek(buf, len, cursor, appearance); return; }
+        ReadOnlySpan<byte> buf = m.Bytes;
+        uint cursor = m.Cursor;
+        if (buf.IsEmpty || cursor > (uint)buf.Length) { Stand("the message buffer is not readable"); return; }
+        if (!_peeked) { Peek(buf, cursor, appearance); return; }
 
         _seen++;
         uint at = _rec0 + (uint)_seen * (uint)_stride + (uint)_appearanceAt;
-        if (_seen >= _count || at + CountBytes > len || U16(new ReadOnlySpan<byte>(buf, (int)len), at) != appearance)
+        if (_seen >= _count || at + CountBytes > (uint)buf.Length || U16(buf, at) != appearance)
             Stand($"record {_seen} of {_count} arrived as appearance {appearance}, not the one read ahead");
         else if (_seen == _count - 1) Reset();
     }
 
     /// <summary>Read the block out of the message and offer its models. The engine has just read record 0, so
     /// the cursor is one record past its start and the count sits before it.</summary>
-    private static void Peek(byte* buf, uint len, uint cursor, ushort appearance)
+    private static void Peek(ReadOnlySpan<byte> buf, uint cursor, ushort appearance)
     {
-        if (!Shape(buf, len, cursor, appearance, PlainStride, PlainAppearanceAt)
-            && !Shape(buf, len, cursor, appearance, TypedStride, TypedAppearanceAt))
+        if (!Shape(buf, cursor, appearance, PlainStride, PlainAppearanceAt)
+            && !Shape(buf, cursor, appearance, TypedStride, TypedAppearanceAt))
         {
             Stand($"the bytes before cursor {cursor} do not read back as a static-placeable record array");
             return;
@@ -145,9 +145,8 @@ internal static unsafe partial class ModelLoad
         int stride = _stride, at = _appearanceAt;
         ObjectOffers = 0;
         AreaKeyObjects(FoldPlaceables(buf, rec0, count, (uint)stride, (uint)at), (int)count);
-        var b = new ReadOnlySpan<byte>(buf, (int)len);
         for (uint k = 1; k < count && !_blockOff; k++)
-            OfferAppearance(U16(b, rec0 + k * (uint)stride + (uint)at));
+            OfferAppearance(U16(buf, rec0 + k * (uint)stride + (uint)at));
         if (_blockOff) return;
         _objLog?.Info($"ModelLoad.Objects: {count} static placeable(s) ahead, {_kinds.Count} appearance(s), "
                       + $"{ObjectOffers} model(s) offered");
@@ -156,13 +155,13 @@ internal static unsafe partial class ModelLoad
 
     /// <summary>Accept a record shape only when the appearance the engine was handed reads back where that
     /// shape says it is and the whole block fits the buffer.</summary>
-    private static bool Shape(byte* buf, uint len, uint cursor, ushort appearance, int stride, int at)
+    private static bool Shape(ReadOnlySpan<byte> buf, uint cursor, ushort appearance, int stride, int at)
     {
+        uint len = (uint)buf.Length;
         if (cursor > len || cursor < (uint)stride + CountBytes) return false;
         uint rec0 = cursor - (uint)stride;
-        var b = new ReadOnlySpan<byte>(buf, (int)len);
-        if (U16(b, rec0 + at) != appearance) return false;
-        uint count = U16(b, rec0 - CountBytes);
+        if (U16(buf, rec0 + at) != appearance) return false;
+        uint count = U16(buf, rec0 - CountBytes);
         if (count == 0 || count > MaxRecords || (ulong)rec0 + (ulong)count * (ulong)stride > len) return false;
         _rec0 = rec0; _stride = stride; _appearanceAt = at; _count = count;
         return true;
@@ -220,25 +219,24 @@ internal static unsafe partial class ModelLoad
             int stride = typed ? TypedStride : PlainStride, at = typed ? TypedAppearanceAt : PlainAppearanceAt;
             uint rec0 = Pad + (typed ? 1u : 0u) + CountBytes;
             uint len = rec0 + (uint)(Records * stride);
-            byte* buf = stackalloc byte[(int)len];
-            for (uint i = 0; i < len; i++) buf[i] = 0;
-            var bs = new Span<byte>(buf, (int)len);
+            Span<byte> bs = stackalloc byte[(int)len];
+            bs.Clear();
             Put(bs, rec0 - CountBytes, (ushort)Records);
             for (int k = 0; k < Records; k++) Put(bs, rec0 + k * stride + at, kinds[k]);
 
             uint cursor = rec0 + (uint)stride;
             Reset();
-            check.Expect(Shape(buf, len, cursor, kinds[0], stride, at), $"typed={typed}: the first record's shape is recognised");
+            check.Expect(Shape(bs, cursor, kinds[0], stride, at), $"typed={typed}: the first record's shape is recognised");
             check.Expect(_rec0 == rec0 && _count == Records, $"typed={typed}: record 0 and the count come back off the cursor");
             check.Expect(U16(bs, _rec0 + 2 * (uint)_stride + (uint)_appearanceAt) == kinds[2],
                          $"typed={typed}: the last record reads ahead at the same stride");
             Reset();
-            check.Expect(!Shape(buf, len, cursor, (ushort)(kinds[0] + 1), stride, at), $"typed={typed}: a different appearance is not this shape");
+            check.Expect(!Shape(bs, cursor, (ushort)(kinds[0] + 1), stride, at), $"typed={typed}: a different appearance is not this shape");
             Reset();
-            check.Expect(!Shape(buf, cursor, cursor, kinds[0], stride, at), $"typed={typed}: a block running past the buffer is refused");
+            check.Expect(!Shape(bs[..(int)cursor], cursor, kinds[0], stride, at), $"typed={typed}: a block running past the buffer is refused");
             Put(bs, rec0 - CountBytes, (ushort)0);
             Reset();
-            check.Expect(!Shape(buf, len, cursor, kinds[0], stride, at), $"typed={typed}: a zero count is refused");
+            check.Expect(!Shape(bs, cursor, kinds[0], stride, at), $"typed={typed}: a zero count is refused");
         }
         Reset();
         log.Info(check.Ok ? "ModelLoad.Objects.SelfCheck: passed" : "ModelLoad.Objects.SelfCheck: FAILED");

@@ -12,8 +12,8 @@ vec4 CxGrassTexel()
     // the black dashes riding the far field's tips.
     vec2 inset = exp2(textureQueryLod(uTex, uv).x) / vec2(textureSize(uTex, 0));
     uv = clamp(uv, vCellBase + inset, vCellBase + 0.5 - inset);
-    // #371/#499: the soften darkening is fixed where the mips are BUILT (TexScan.BuildMips averages
-    // colour alpha-weighted); an in-shader division by the level's alpha over-brightened straight-alpha
-    // atlases 1.25x field-wide and 2x on the fringe, which read as fullbright, jagged grass.
+    // The matte under the holes is kept out of a coarse level where the atlas is UPLOADED (OwnedTextures
+    // builds a cut-out's chain alpha-weighted); an in-shader division by the level's alpha over-brightened
+    // straight-alpha atlases 1.25x field-wide and 2x on the fringe, which read as fullbright, jagged grass.
     return textureGrad(uTex, uv, gx, gy);
 }

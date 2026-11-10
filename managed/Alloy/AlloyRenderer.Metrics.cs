@@ -40,7 +40,7 @@ public sealed unsafe partial class AlloyRenderer
                       : Counters._skinDrawn == 0 && Counters._skinNoPose == 0 ? ""
                       : $", {(float)Counters._skinDrawn / Counters._frames:F1} skinmeshes posed/frame" +
                         (Counters._skinNoPose == 0 ? "" : $", {Counters._skinNoPose} drawn rigid (no pose yet)") +
-                        $", {Counters._boneHigh} bone slots peak of {_boneCap}") +
+                        $", {Counters._boneHigh} bone slots peak of {_boneStage.Length}") +
                    // #284: session totals, so a creature that is STILL a hole three periods later is
                    // visible as one rather than being reset out of the line every period.
                    "), " +

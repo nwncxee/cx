@@ -627,6 +627,7 @@ def programs(g):
         "post stack aa blend": (g["cx_post_vs"], g["cx_smaablend_fs"]),
         "ssao visibility": (g["cx_post_vs"], g["cx_ssao_fs"]),
         "ssao blur": (g["cx_post_vs"], g["cx_ssaoblur_fs"]),
+        "ssao accumulate": (g["cx_fullscreen_v"], g["cx_aoaccum_f"]),
         "halos": (g["cx_halo_vs"], g["cx_halo_fs"]),
         "weather cull": (define(g["cx_wx_cull_cs"], f"CX_WX_REC_CAP {WX_REC_CAP}u"),),
         "weather cull (wave)": (define(define(g["cx_wx_cull_cs"], f"CX_WX_REC_CAP {WX_REC_CAP}u"), "CX_WX_WAVE 1"),),
@@ -910,7 +911,7 @@ def content_programs(g):
     # block's reads are compiled -- the wind arrays no corpus stage happens to read.
     vt, ft, vr, fr = content_pair(g, "cx_fixengv", "cx_fixeng", fix)
     progs.update(pair_programs("content pair cx_fixengv/cx_fixeng", vt, ft, fr, vr))
-    for f in ("cx_fixpost", "cx_fixwhole"):
+    for f in ("cx_fixpost", "cx_fixwhole", "cx_fixcutpre"):
         vt, ft, vr, fr = content_pair(g, None, f, fix)
         progs.update(pair_programs(f"content pair stock/{f}", vt, ft, fr, vr))
     stock = content_stage.stock_shaders(paths.get("NWN_DIR") or "")

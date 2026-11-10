@@ -175,7 +175,7 @@
 11 managed/Alloy/Scene/AlloyRenderer.Occlude.cs
 29 managed/Alloy/Scene/AlloyRenderer.Route.cs
 3 managed/Alloy/Scene/AlloyRenderer.Slots.cs
-35 managed/Alloy/Scene/AlloyRenderer.Table.cs
+31 managed/Alloy/Scene/AlloyRenderer.Table.cs
 24 managed/Alloy/Scene/AlloyWind.cs
 63 managed/Alloy/Scene/EmitterSim.cs
 1 managed/Alloy/Scene/EmitterSim.Move.cs
@@ -194,7 +194,6 @@
 5 managed/Alloy/Seam/Facade.Vtables.cs
 5 managed/Alloy/Seam/ObjectFns.cs
 2 managed/Alloy/Seam/ObjectSlots.cs
-11 managed/Alloy/Seam/ObjectSlots.Tree.cs
 1 managed/Alloy/Seam/ObjectSlots.Xform.cs
 1 managed/Alloy/Seam/PaletteFns.cs
 5 managed/Alloy/Seam/PartShell.cs

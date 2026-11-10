@@ -40,17 +40,18 @@ internal static unsafe partial class Particles
         if (at == 0) return 0;
         for (int i = 0; i < _drawN; i++)
             for (int j = 0; j < _wrote[i]; j++)
-                _idx[_span[i * 4 + 2] + j] = _span[i * 4] + (uint)j;
+                _idx[(int)_span[i * 4 + 2] + j] = _span[i * 4] + (uint)j;
         PartVkState s = _vk;
         for (int gi = 0; gi < groups; gi++)
         {
             int n = _gParts[gi], from = _gStart[gi];
             if (!Sort.V || !WillSort(_gCls[gi], n)) continue;
             if (s.Keys.Length < n) { s.Keys = new float[n * 2]; s.Vals = new uint[n * 2]; }
+            ReadOnlySpan<ParticleRec> recs = _recs.Span;
             for (int k = 0; k < n; k++)
             {
                 uint r = _idx[from + k];
-                Vector3 d = _recs[r].Centre - eye;
+                Vector3 d = recs[(int)r].Centre - eye;
                 s.Keys[k] = -d.LengthSquared();
                 s.Vals[k] = r;
             }
@@ -65,10 +66,10 @@ internal static unsafe partial class Particles
     }
 
     /// <summary>Every record block allocated, as the vertex stage indexes them.</summary>
-    internal static ReadOnlySpan<ParticleRec> VkRecords => new(_recs, _recTop);
+    internal static ReadOnlySpan<ParticleRec> VkRecords => _recs.Span[.._recTop];
 
     /// <summary>This frame's draw-order list, <paramref name="at"/> entries.</summary>
-    internal static ReadOnlySpan<uint> VkIndices(int at) => new(_idx, at);
+    internal static ReadOnlySpan<uint> VkIndices(int at) => _idx.Span[..at];
 
     /// <summary>Draw group <paramref name="gi"/>: a DB emitter's texture is its registry name, an engine emitter's
     /// none (it draws the stand-in, counted by the caller).</summary>

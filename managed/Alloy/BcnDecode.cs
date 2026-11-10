@@ -13,6 +13,26 @@ internal static class BcnDecode
     /// <summary>Formats this decoder takes.</summary>
     internal static bool Decodes(Fmt f) => f is Fmt.Bc1 or Fmt.Bc2 or Fmt.Bc3 or Fmt.Bc7;
 
+    /// <summary>A BC2/BC3 or BC7 block, and a BC3 alpha block on its own: an alpha block then a colour block.</summary>
+    internal const int BlockBytes = 16;
+
+    /// <summary>A BC3 alpha block's eight-entry ramp into <paramref name="ramp"/> and its sixteen 3-bit indices
+    /// into <paramref name="bits"/>: the two endpoints, then six interpolants, or four and the 0/255 pair the
+    /// low-endpoint form carries. The one place that arithmetic is written, so a reader of alpha alone takes it
+    /// from here rather than decoding a block's colour it has no use for.</summary>
+    internal static void AlphaBlock(ReadOnlySpan<byte> block, Span<byte> ramp, out ulong bits)
+    {
+        int a0 = block[0], a1 = block[1];
+        ramp[0] = (byte)a0; ramp[1] = (byte)a1;
+        if (a0 > a1) for (int i = 2; i < 8; i++) ramp[i] = (byte)(((8 - i) * a0 + (i - 1) * a1) / 7);
+        else { for (int i = 2; i < 6; i++) ramp[i] = (byte)(((6 - i) * a0 + (i - 1) * a1) / 5); ramp[6] = 0; ramp[7] = 255; }
+        bits = 0;
+        for (int i = 0; i < 6; i++) bits |= (ulong)block[2 + i] << (8 * i);
+    }
+
+    /// <summary>Texel <paramref name="t"/>'s alpha out of the ramp and index bits <see cref="AlphaBlock"/> read.</summary>
+    internal static byte AlphaAt(ReadOnlySpan<byte> ramp, ulong bits, int t) => ramp[(int)((bits >> (3 * t)) & 7)];
+
     /// <summary>Bytes per decoded pixel: BC1 comes out RGB (the engine never sees its alpha), the rest RGBA.</summary>
     internal static int PixelBytes(Fmt f) => f == Fmt.Bc1 ? 3 : 4;
 
@@ -21,16 +41,21 @@ internal static class BcnDecode
     internal static void Unpack(ReadOnlySpan<byte> blocks, int w, int h, Fmt f, Span<byte> dst)
     {
         int bw = (w + 3) / 4, bh = (h + 3) / 4, bytes = f == Fmt.Bc1 ? 8 : 16, px = PixelBytes(f);
-        Span<byte> tile = stackalloc byte[64];
+        Span<Rgba8> tile = stackalloc Rgba8[16];
         for (int by = 0; by < bh; by++)
             for (int bx = 0; bx < bw; bx++)
             {
-                var b = blocks.Slice((by * bw + bx) * bytes, bytes);
+                int block = by * bw + bx;
+                var b = blocks.Slice(block * bytes, bytes);
                 if (f == Fmt.Bc7) Bc7(b, tile); else S3tc(b, f, tile);
                 for (int t = 0; t < 16; t++)
                 {
                     int x = bx * 4 + (t & 3), y = by * 4 + (t >> 2);
-                    if (x < w && y < h) tile.Slice(t * 4, px).CopyTo(dst.Slice((y * w + x) * px, px));
+                    if (x >= w || y >= h) continue;
+                    int at = (y * w + x) * px;
+                    Rgba8 c = tile[t];
+                    dst[at] = c.R; dst[at + 1] = c.G; dst[at + 2] = c.B;
+                    if (px == 4) dst[at + 3] = c.A;
                 }
             }
     }
@@ -39,47 +64,48 @@ internal static class BcnDecode
     /// widened by bit replication, interpolants at (2a+b)/3 and (a+2b)/3. A BC1 block with c0 &lt;= c1 takes the
     /// half-way colour and black -- the engine uploads DXT1 as <c>COMPRESSED_RGB_S3TC_DXT1</c>, so there is no
     /// punch-through alpha; a BC2/BC3 colour block is always four-colour, and BC2's alpha nibble widens by 17.</summary>
-    private static void S3tc(ReadOnlySpan<byte> b, Fmt f, Span<byte> tile)
+    private static void S3tc(ReadOnlySpan<byte> b, Fmt f, Span<Rgba8> tile)
     {
-        Span<byte> pal = stackalloc byte[12];
+        Span<Rgb8> pal = stackalloc Rgb8[4];
         Span<byte> alpha = stackalloc byte[8];
         var c = f == Fmt.Bc1 ? b : b[8..];
         int c0 = BinaryPrimitives.ReadUInt16LittleEndian(c), c1 = BinaryPrimitives.ReadUInt16LittleEndian(c[2..]);
-        Expand(c0, pal); Expand(c1, pal[3..]);
+        pal[0] = Expand(c0); pal[1] = Expand(c1);
         bool four = f != Fmt.Bc1 || c0 > c1;
-        for (int k = 0; k < 3; k++)
-        {
-            pal[6 + k] = (byte)(four ? (2 * pal[k] + pal[3 + k]) / 3 : (pal[k] + pal[3 + k]) / 2);
-            pal[9 + k] = (byte)(four ? (pal[k] + 2 * pal[3 + k]) / 3 : 0);
-        }
+        Rgb8 e0 = pal[0], e1 = pal[1];
+        pal[2] = four ? new Rgb8(Third(2, e0.R, e1.R), Third(2, e0.G, e1.G), Third(2, e0.B, e1.B))
+                      : new Rgb8(Half(e0.R, e1.R), Half(e0.G, e1.G), Half(e0.B, e1.B));
+        pal[3] = four ? new Rgb8(Third(1, e0.R, e1.R), Third(1, e0.G, e1.G), Third(1, e0.B, e1.B))
+                      : default;
         uint idx = BinaryPrimitives.ReadUInt32LittleEndian(c[4..]);
         ulong abits = 0;
-        if (f == Fmt.Bc3)
-        {
-            int a0 = b[0], a1 = b[1];
-            alpha[0] = (byte)a0; alpha[1] = (byte)a1;
-            if (a0 > a1) for (int i = 2; i < 8; i++) alpha[i] = (byte)(((8 - i) * a0 + (i - 1) * a1) / 7);
-            else { for (int i = 2; i < 6; i++) alpha[i] = (byte)(((6 - i) * a0 + (i - 1) * a1) / 5); alpha[6] = 0; alpha[7] = 255; }
-            for (int i = 0; i < 6; i++) abits |= (ulong)b[2 + i] << (8 * i);
-        }
+        if (f == Fmt.Bc3) AlphaBlock(b, alpha, out abits);
         ulong a4 = f == Fmt.Bc2 ? BinaryPrimitives.ReadUInt64LittleEndian(b) : 0;
         for (int t = 0; t < 16; t++)
         {
-            pal.Slice((int)((idx >> (2 * t)) & 3) * 3, 3).CopyTo(tile.Slice(t * 4, 3));
-            tile[t * 4 + 3] = f switch
+            Rgb8 p = pal[(int)((idx >> (2 * t)) & 3)];
+            byte a = f switch
             {
-                Fmt.Bc3 => alpha[(int)((abits >> (3 * t)) & 7)],
+                Fmt.Bc3 => AlphaAt(alpha, abits, t),
                 Fmt.Bc2 => (byte)(((a4 >> (4 * t)) & 15) * 17),
-                _ => 255,
+                _ => Rgba8.Opaque,
             };
+            tile[t] = new Rgba8(p.R, p.G, p.B, a);
         }
     }
 
+    /// <summary>The interpolant <paramref name="num"/> thirds of the way from <paramref name="e1"/> to
+    /// <paramref name="e0"/>, in the spec's integer arithmetic.</summary>
+    private static byte Third(int num, byte e0, byte e1) => (byte)((num * e0 + (3 - num) * e1) / 3);
+
+    /// <summary>The half-way colour a three-colour BC1 block takes.</summary>
+    private static byte Half(byte e0, byte e1) => (byte)((e0 + e1) / 2);
+
     /// <summary>An RGB565 endpoint to 8-bit R, G, B by bit replication.</summary>
-    private static void Expand(int c, Span<byte> rgb)
+    private static Rgb8 Expand(int c)
     {
         int r = c >> 11, g = (c >> 5) & 63, b = c & 31;
-        rgb[0] = (byte)((r << 3) | (r >> 2)); rgb[1] = (byte)((g << 2) | (g >> 4)); rgb[2] = (byte)((b << 3) | (b >> 2));
+        return new Rgb8((byte)((r << 3) | (r >> 2)), (byte)((g << 2) | (g >> 4)), (byte)((b << 3) | (b >> 2)));
     }
 
     /// <summary>BC7 mode table, one row per mode: subsets, partition bits, rotation bits, index-selection bit,
@@ -162,7 +188,7 @@ internal static class BcnDecode
     /// <summary>One BC7 block to 16 RGBA texels, per the BPTC spec (GL 4.6 appendix C.2): eight modes, the 64
     /// two- and three-subset partitions and their anchors, 6-bit weights and
     /// <c>(e0*(64-w) + e1*w + 32) &gt;&gt; 6</c>. A reserved mode-8 block decodes to 0,0,0,0, not opaque black.</summary>
-    private static void Bc7(ReadOnlySpan<byte> b, Span<byte> tile)
+    private static void Bc7(ReadOnlySpan<byte> b, Span<Rgba8> tile)
     {
         var v = BinaryPrimitives.ReadUInt128LittleEndian(b);
         int mode = 0;
@@ -172,25 +198,32 @@ internal static class BcnDecode
         int ns = m[0], cb = m[4], ab = m[5], ib = m[8], ib2 = m[9];
         int pos = mode + 1;
         int part = Bits(v, ref pos, m[1]), rot = Bits(v, ref pos, m[2]), isel = Bits(v, ref pos, m[3]);
-        Span<int> ep = stackalloc int[6 * 4];   // endpoint e (0..2ns-1) channel c at e*4+c
-        for (int c = 0; c < 3; c++)
-            for (int e = 0; e < ns * 2; e++) ep[e * 4 + c] = Bits(v, ref pos, cb);
-        for (int e = 0; e < ns * 2; e++) ep[e * 4 + 3] = ab > 0 ? Bits(v, ref pos, ab) : 255;
+        // Channel-major on the wire: every endpoint's red, then every green, then every blue, then alpha.
+        Span<Endpoint> ep = stackalloc Endpoint[6];
+        int ends = ns * 2;
+        for (int e = 0; e < ends; e++) ep[e].R = Bits(v, ref pos, cb);
+        for (int e = 0; e < ends; e++) ep[e].G = Bits(v, ref pos, cb);
+        for (int e = 0; e < ends; e++) ep[e].B = Bits(v, ref pos, cb);
+        for (int e = 0; e < ends; e++) ep[e].A = ab > 0 ? Bits(v, ref pos, ab) : Rgba8.Opaque;
         int cbits = cb, abits = ab;
         if (m[6] != 0 || m[7] != 0)
         {
             Span<int> p = stackalloc int[6];
-            if (m[6] != 0) for (int e = 0; e < ns * 2; e++) p[e] = Bits(v, ref pos, 1);
-            else for (int s = 0; s < ns; s++) p[2 * s] = p[2 * s + 1] = Bits(v, ref pos, 1);
-            for (int e = 0; e < ns * 2; e++)
-                for (int c = 0; c < 4; c++)
-                    if (c < 3 || ab > 0) ep[e * 4 + c] = (ep[e * 4 + c] << 1) | p[e];
+            if (m[6] != 0) for (int e = 0; e < ends; e++) p[e] = Bits(v, ref pos, 1);
+            else for (int sub = 0; sub < ns; sub++) { int at = sub * 2; p[at] = p[at + 1] = Bits(v, ref pos, 1); }
+            for (int e = 0; e < ends; e++)
+            {
+                ref Endpoint q = ref ep[e];
+                q.R = (q.R << 1) | p[e]; q.G = (q.G << 1) | p[e]; q.B = (q.B << 1) | p[e];
+                if (ab > 0) q.A = (q.A << 1) | p[e];
+            }
             cbits++; if (ab > 0) abits++;
         }
-        for (int e = 0; e < ns * 2; e++)
+        for (int e = 0; e < ends; e++)
         {
-            for (int c = 0; c < 3; c++) ep[e * 4 + c] = Widen(ep[e * 4 + c], cbits);
-            if (ab > 0) ep[e * 4 + 3] = Widen(ep[e * 4 + 3], abits);
+            ref Endpoint q = ref ep[e];
+            q.R = Widen(q.R, cbits); q.G = Widen(q.G, cbits); q.B = Widen(q.B, cbits);
+            if (ab > 0) q.A = Widen(q.A, abits);
         }
         Span<byte> i1 = stackalloc byte[16], i2 = stackalloc byte[16];
         for (int t = 0; t < 16; t++) i1[t] = (byte)Bits(v, ref pos, IsAnchor(ns, part, t) ? ib - 1 : ib);
@@ -202,14 +235,29 @@ internal static class BcnDecode
             if (ib2 == 0) cw = aw = Weight(ib, i1[t]);
             else if (isel == 0) { cw = Weight(ib, i1[t]); aw = Weight(ib2, i2[t]); }
             else { cw = Weight(ib2, i2[t]); aw = Weight(ib, i1[t]); }
-            var d = tile.Slice(t * 4, 4);
-            for (int c = 0; c < 4; c++)
+            int at = s * 2;
+            Endpoint lo = ep[at], hi = ep[at + 1];
+            var d = new Rgba8(Blend(lo.R, hi.R, cw), Blend(lo.G, hi.G, cw), Blend(lo.B, hi.B, cw), Blend(lo.A, hi.A, aw));
+            // A rotation swaps alpha with the named channel, so the pair that was coded together decodes together.
+            tile[t] = rot switch
             {
-                int wt = c < 3 ? cw : aw, e0 = ep[(2 * s) * 4 + c], e1 = ep[(2 * s + 1) * 4 + c];
-                d[c] = (byte)((e0 * (64 - wt) + e1 * wt + 32) >> 6);
-            }
-            if (rot != 0) (d[3], d[rot - 1]) = (d[rot - 1], d[3]);
+                1 => new Rgba8(d.A, d.G, d.B, d.R),
+                2 => new Rgba8(d.R, d.A, d.B, d.G),
+                3 => new Rgba8(d.R, d.G, d.A, d.B),
+                _ => d,
+            };
         }
+    }
+
+    /// <summary>One channel of a subset's pair at weight <paramref name="w"/>, in the spec's 6-bit
+    /// fixed point: <c>(e0*(64-w) + e1*w + 32) &gt;&gt; 6</c>.</summary>
+    private static byte Blend(int e0, int e1, int w) => (byte)((e0 * (64 - w) + e1 * w + 32) >> 6);
+
+    /// <summary>One BC7 endpoint, a channel per field, at the block's own precision until
+    /// <see cref="Widen"/> raises each to 8 bits.</summary>
+    private struct Endpoint
+    {
+        internal int R, G, B, A;
     }
 
     /// <summary>An <paramref name="bits"/>-bit endpoint to 8 bits by bit replication.</summary>

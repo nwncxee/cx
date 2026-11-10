@@ -329,6 +329,39 @@ public sealed unsafe partial class RasterReader : IExtenderService
         var two = new byte[8];
         BcnDecode.Unpack(blk, 2, 1, DdsReader.Fmt.Bc7, two);
         ok &= two.AsSpan().SequenceEqual(new byte[] { 120, 120, 120, 120, 255, 255, 255, 255 });
+        // BC7 mode 1: two subsets over partition 0, p-bits shared by each subset's pair, no alpha channel.
+        // Subset 1's endpoints differ from subset 0's only by that shared bit, and texels 1 and 2 take the top
+        // index while 0 and 3 take the bottom, so a per-endpoint p-bit, a skipped one, a crossed subset pair or
+        // an alpha field read where there is none all change the row. Pillow decodes it to these texels.
+        UInt128 bc7m1 = (UInt128)1 << 1;
+        foreach (int at in (ReadOnlySpan<int>)[14, 26, 38, 44, 62]) bc7m1 |= (UInt128)63 << at;
+        bc7m1 |= ((UInt128)1 << 81) | ((UInt128)7 << 84) | ((UInt128)7 << 87);
+        BinaryPrimitives.WriteUInt128LittleEndian(blk, bc7m1);
+        var quad = new byte[64];
+        BcnDecode.Unpack(blk, 4, 4, DdsReader.Fmt.Bc7, quad);
+        ok &= quad.AsSpan(0, 16).SequenceEqual(new byte[] { 0, 0, 0, 255, 253, 253, 253, 255, 255, 2, 2, 255, 2, 255, 2, 255 })
+              && quad.AsSpan(60, 4).SequenceEqual(new byte[] { 2, 255, 2, 255 });
+        // BC7 mode 5: one subset, a separate 8-bit alpha, and the two rotation bits. Both endpoints of every
+        // channel are equal, so each texel is colour (64, 32, 16) over alpha 200 whatever its index, and the
+        // rotation alone decides which named channel alpha trades places with. Pillow's four decodes.
+        for (int rot = 0; rot < 4; rot++)
+        {
+            UInt128 bc7m5 = ((UInt128)1 << 5) | ((UInt128)rot << 6)
+                            | ((UInt128)32 << 8) | ((UInt128)32 << 15)
+                            | ((UInt128)16 << 22) | ((UInt128)16 << 29)
+                            | ((UInt128)8 << 36) | ((UInt128)8 << 43)
+                            | ((UInt128)200 << 50) | ((UInt128)200 << 58);
+            BinaryPrimitives.WriteUInt128LittleEndian(blk, bc7m5);
+            BcnDecode.Unpack(blk, 1, 1, DdsReader.Fmt.Bc7, rgba);
+            byte[] want = rot switch
+            {
+                1 => [200, 32, 16, 64],
+                2 => [64, 200, 16, 32],
+                3 => [64, 32, 200, 16],
+                _ => [64, 32, 16, 200],
+            };
+            ok &= rgba.AsSpan().SequenceEqual(want);
+        }
         ok &= CubeStrip.SelfCheck();
 
         log.Info(ok ? "RasterReader.SelfCheck: passed" : "RasterReader.SelfCheck: FAILED");

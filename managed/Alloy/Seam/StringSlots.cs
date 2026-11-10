@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using CX.Alloy.Db;
+using CX.Framework;
 
 namespace CX.Alloy.Seam;
 
@@ -145,17 +146,6 @@ public sealed unsafe class StringSlots : ISeamProvider
         DbId id = Facade.StringRecord(self, SeamVtables.Logical(T, linuxSlot));
         if (!id.IsNull) { TextSlots.SyncItemOrder(id); TextSlots.SyncDisplayInfo(id); }
         return id;
-    }
-
-    /// <summary>A NUL-terminated engine string as the codepage bytes the text layout works in -- no transcode,
-    /// because the engine's text is a single-byte codepage and the span is read, not stored.</summary>
-    private static ReadOnlySpan<byte> Bytes(nint p)
-    {
-        if (p == 0) return default;
-        int n = 0;
-        byte* s = (byte*)p;
-        while (s[n] != 0) n++;
-        return new ReadOnlySpan<byte>(s, n);
     }
 
     private static string Text(nint p) => p == 0 ? "" : Marshal.PtrToStringUTF8(p) ?? "";
@@ -410,14 +400,14 @@ public sealed unsafe class StringSlots : ISeamProvider
     private static byte SetText(nint self, nint text)
     {
         DbId id = Id(self, 27);
-        return id.IsNull ? (byte)0 : TextSlots.SetText(id, Bytes(text)) ? (byte)1 : (byte)0;
+        return id.IsNull ? (byte)0 : TextSlots.SetText(id, Native.Chars(text)) ? (byte)1 : (byte)0;
     }
 
     [UnmanagedCallersOnly]
     private static byte AddText(nint self, nint text)
     {
         DbId id = Id(self, 28);
-        return id.IsNull ? (byte)0 : TextSlots.AddText(id, Bytes(text)) ? (byte)1 : (byte)0;
+        return id.IsNull ? (byte)0 : TextSlots.AddText(id, Native.Chars(text)) ? (byte)1 : (byte)0;
     }
 
     /// <summary>Slot 29 returns a <c>char const*</c> the caller may hold past the call, so the line's bytes are
@@ -499,14 +489,14 @@ public sealed unsafe class StringSlots : ISeamProvider
     private static int AddLine(nint self, nint text)
     {
         DbId id = Id(self, 37);
-        return id.IsNull ? 0 : TextSlots.AddLine(id, Bytes(text));
+        return id.IsNull ? 0 : TextSlots.AddLine(id, Native.Chars(text));
     }
 
     [UnmanagedCallersOnly]
     private static void InsertLine(nint self, nint text, int at)
     {
         DbId id = Id(self, 38);
-        if (!id.IsNull) TextSlots.InsertLine(id, Bytes(text), at);
+        if (!id.IsNull) TextSlots.InsertLine(id, Native.Chars(text), at);
     }
 
     [UnmanagedCallersOnly]
@@ -520,14 +510,14 @@ public sealed unsafe class StringSlots : ISeamProvider
     private static void SetLine(nint self, int at, nint text)
     {
         DbId id = Id(self, 40);
-        if (!id.IsNull) TextSlots.SetLine(id, at, Bytes(text));
+        if (!id.IsNull) TextSlots.SetLine(id, at, Native.Chars(text));
     }
 
     [UnmanagedCallersOnly]
     private static byte InsertTextAtCaret(nint self, nint text)
     {
         DbId id = Id(self, 41);
-        return id.IsNull ? (byte)0 : TextSlots.InsertTextAtCaret(id, Bytes(text)) ? (byte)1 : (byte)0;
+        return id.IsNull ? (byte)0 : TextSlots.InsertTextAtCaret(id, Native.Chars(text)) ? (byte)1 : (byte)0;
     }
 
     [UnmanagedCallersOnly]

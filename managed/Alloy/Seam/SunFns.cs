@@ -25,7 +25,7 @@ public sealed unsafe class SunFns : ISeamProvider
     private static byte* ControlPart(byte* text)
     {
         if (text == null) return Say("usage:  setcolor objectname partname r g b\0"u8);
-        switch (Parse(new ReadOnlySpan<byte>(text, (int)Strlen(text)), out bool amb, out Vector3 c))
+        switch (Parse(Native.Chars(text), out bool amb, out Vector3 c))
         {
             case Verdict.Usage: return Say("usage:  setcolor objectname partname r g b\0"u8);
             case Verdict.NoObject: return Say("no object by that name\0"u8);
@@ -54,8 +54,6 @@ public sealed unsafe class SunFns : ISeamProvider
     }
 
     private static byte* Say(ReadOnlySpan<byte> z) => (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(z));
-
-    private static nuint Strlen(byte* p) { nuint n = 0; while (p[n] != 0) n++; return n; }
 
     /// <summary>The next whitespace-separated token of <paramref name="s"/>, consuming it.</summary>
     private static bool Next(ref ReadOnlySpan<byte> s, out ReadOnlySpan<byte> tok)

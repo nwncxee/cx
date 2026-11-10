@@ -303,6 +303,8 @@ internal static class RenderPasses
             Attach = SsaoPass.Attach,
             SelfCheck = l => SsaoPass.SelfCheck(l),
             // No ContextLost: everything the estimate owns is the Vulkan device's, replaced whole with it.
+            // The accumulator's history is another area's after a transition; the first frame there stands alone.
+            Revoke = SsaoPassVk.Revoke,
             Stats = SsaoPassVk.Stats,
         }, log);
         r.Register(new PassLifecycle

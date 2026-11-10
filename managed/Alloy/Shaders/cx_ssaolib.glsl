@@ -6,14 +6,16 @@ layout(binding = 0) uniform sampler2D uDepth;    // the frame depth after the pr
 layout(std140, binding = 3) uniform CxSsao
 {
     mat4 uProj;      // this pass's projection, raw engine bytes (see CxViewDist)
+    mat4 uReproj;    // this frame's inverse view-projection folded into the previous frame's: ndc -> previous clip
     vec4 uRt;        // (1/w, 1/h, w, h) of the pass's own target
+    vec2 uJitter;    // this frame's sub-pixel jitter, NDC (0 with no temporal upscaler)
     float uRadius;   // world units
     float uPower;    // visibility exponent, the option's intensity folded in
     float uMaxPx;    // screen-radius clamp
-    float uWeight;   // #390: the history's share; 0 = take the frame whole
+    float uWeight;   // the history's share; 0 = take the frame whole
     int uDirs;       // slices
     int uSteps;      // steps per side
-    int uFrame;      // #390: the noise phase; 0 on the single-frame path
+    int uFrame;      // the noise phase; 0 on the single-frame path
 };
 
 #include "cx_depthlin.glsl"

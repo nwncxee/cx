@@ -29,8 +29,12 @@ internal static class CullPassVk
         public BufferId Ubo, Src, Sph, Key, Rej;
         public long SrcCap, SphCap;
         public int CmdCap, CntCap;
-        /// <summary>Indexed by <see cref="Prepass"/>, <see cref="Colour"/> and <see cref="Retest"/>.</summary>
+        /// <summary>Indexed by <see cref="Prepass"/>, <see cref="Colour"/>, <see cref="Retest"/> and
+        /// <see cref="Mirror"/>, whose set is allocated only once <see cref="MirrorAsked"/>.</summary>
         public readonly BufferId[] Cmd = new BufferId[Phases], Slot = new BufferId[Phases], Cnt = new BufferId[Phases];
+        /// <summary>A mirror phase has asked to be recorded: a session with no planar reflection never buys its
+        /// output set, and the first mirror frame falls back to the staged list.</summary>
+        public bool MirrorAsked;
         /// <summary>A 1x1 stand-in on the pyramid's slot while no pyramid is built: the cull stage names the sampler
         /// whether or not it tests occlusion, and Vulkan wants every descriptor a pipeline uses written.</summary>
         public ImageId Stand;
@@ -52,12 +56,13 @@ internal static class CullPassVk
 
     private static CullVkState _s = new();
 
-    /// <summary>This port's output sets: the prepass's (which writes the hi-Z verdicts), the colour pass's, and the
-    /// retest's (the prepass's stale rejections the fresh pyramid clears). GL's numbering.</summary>
-    private const int Prepass = CullPass.PhasePrepass, Colour = CullPass.PhaseColour, Retest = CullPass.PhaseRetest, Phases = 3;
+    /// <summary>This port's output sets: the prepass's (which writes the hi-Z verdicts), the colour pass's, the
+    /// retest's (the prepass's stale rejections the fresh pyramid clears), and the planar mirror's own.</summary>
+    private const int Prepass = CullPass.PhasePrepass, Colour = CullPass.PhaseColour, Retest = CullPass.PhaseRetest,
+                      Mirror = CullPass.PhaseMirror, Phases = CullPass.PhaseCount;
 
     /// <summary>The sets a pass draws.</summary>
-    internal const int PhasePrepass = Prepass, PhaseColour = Colour, PhaseRetest = Retest;
+    internal const int PhasePrepass = Prepass, PhaseColour = Colour, PhaseRetest = Retest, PhaseMirror = Mirror;
 
     /// <summary>The prepass cull marked draws the stale pyramid rejected: the frame retests them once it is rebuilt.</summary>
     internal static bool RetestPending => _s.RetestPending;
@@ -141,6 +146,35 @@ internal static class CullPassVk
         if (s.Ran) Phase(cl, Colour, s.RunGroups, ref s.Block, Occludes);
     }
 
+    /// <summary>The planar mirror's own set into <paramref name="cl"/>: this frame's list against the mirrored
+    /// view-projection, from <paramref name="eye"/>, with everything wholly below <paramref name="clipZ"/> dropped and
+    /// the sub-pixel test at the mirror target's <paramref name="lodScale"/>. False = draw the staged list, which is
+    /// also the first mirror frame of a session: that one asks for the set the next upload allocates.</summary>
+    internal static bool RecordMirror(CommandList cl, in Matrix4x4 vp, Vector3 eye, float clipZ, float lodScale)
+    {
+        var s = _s;
+        if (!s.Ran) return false;
+        // the ask is what buys the set, so the first mirror frame of a session draws the staged list
+        s.MirrorAsked = true;
+        if (s.Cmd[Mirror].IsNull) return false;
+        // a copy: the colour set the frame already drew from keeps its own block and its own verdicts
+        CullBlock b = s.Block;
+        b.Vp = b.PyrVp = vp;
+        b.Eye = new Vector4(eye, 0f);
+        b.ClipZ = clipZ;
+        b.LodScale = MathF.Max(lodScale, 0f);
+        // the fog's horizon is the real camera's; the mirrored eye would measure it from the wrong side
+        b.FogCull = 0f;
+        CullPass.Planes(in vp, b.Planes, eye);
+        Phase(cl, Mirror, s.RunGroups, ref b, false);
+        return true;
+    }
+
+    /// <summary>The cull's own fixture on a device with no game behind it, for the goldens: the same build and the
+    /// same <see cref="DeviceCheck"/> a session runs at its first frame, on <paramref name="vk"/>.</summary>
+    internal static void GoldenCheck(VkBackend vk, Checker check, ExtenderLog log)
+        => check.Expect(Ensure(vk, log), "the cull builds on this device and its fixture agrees with the reference list");
+
     /// <summary>The device's pipelines and constant resources, then the on-device check, once per device.</summary>
     private static bool Ensure(VkBackend vk, ExtenderLog log)
     {
@@ -173,7 +207,7 @@ internal static class CullPassVk
     private static string HiZCs => ShaderSource.Get("cx_hiz_c.glsl");
 
     /// <summary>The first line of every embedded stage; a variant's define goes right after it.</summary>
-    private const string VersionLine = "#version 460 core\n";
+    private const string VersionLine = VkGlsl.Version;
 
     /// <summary>The pyramid's local size, as <c>cx_hiz_c.glsl</c> declares it.</summary>
     private const int HiZGroup = 8;
@@ -189,7 +223,8 @@ internal static class CullPassVk
         Grow(vk, ref s.Src, ref s.SrcCap, srcBytes.Length, "cull source");
         Grow(vk, ref s.Sph, ref s.SphCap, sphBytes.Length, "cull bounds");
         const BufferUse Out = BufferUse.Storage | BufferUse.Indirect | BufferUse.CopySrc;
-        for (int p = 0; p < Phases; p++)
+        int phases = s.MirrorAsked ? Phases : Mirror;
+        for (int p = 0; p < phases; p++)
         {
             Make(vk, cl, ref s.Cmd[p], growCmd, (long)drawN * CullPass.CmdUints * sizeof(uint), Out, "cull commands");
             Make(vk, cl, ref s.Slot[p], growCmd, (long)drawN * sizeof(uint), Out, "cull slots");
@@ -198,7 +233,7 @@ internal static class CullPassVk
         Make(vk, cl, ref s.Key, growCmd, (long)drawN * sizeof(float), BufferUse.Storage, "cull sort keys");
         Make(vk, cl, ref s.Rej, growCmd, (long)drawN * sizeof(uint), BufferUse.Storage, "cull hi-Z verdicts");
         if (s.Src.IsNull || s.Sph.IsNull || s.Key.IsNull || s.Rej.IsNull) return false;
-        for (int p = 0; p < Phases; p++) if (s.Cmd[p].IsNull || s.Slot[p].IsNull || s.Cnt[p].IsNull) return false;
+        for (int p = 0; p < phases; p++) if (s.Cmd[p].IsNull || s.Slot[p].IsNull || s.Cnt[p].IsNull) return false;
         if (growCmd) s.CmdCap = drawN;
         if (growCnt) s.CntCap = groups;
         cl.UpdateBuffer(s.Src, 0, srcBytes);
@@ -350,6 +385,8 @@ internal static class CullPassVk
         var cmd = new DrawCmdRec[drawN];
         if (!Run(vk, check, src, sph, ref b, cnt, slot, cmd)) return false;
 
+        check.Expect(_s.Cmd[Mirror].IsNull && !_s.Cmd[Colour].IsNull,
+            "no mirror has asked yet, so the frame's phases hold their sets and the mirror's is not allocated");
         check.Expect(cnt[0] == 2 && cnt[1] == 3 && cnt[2] == 3,
             $"survivors per batch are 2, 3, 3 (got {cnt[0]}, {cnt[1]}, {cnt[2]}): the off-frustum draws 1 and 9 are dropped, nothing else");
         check.Expect((slot[0], slot[1]) is (0, 2) or (2, 0), "batch 0 compacts draws 0 and 2, in either order");
@@ -373,6 +410,11 @@ internal static class CullPassVk
         check.Expect(cnt[1] == 2 && Same(slot.AsSpan(3, 2), [3, 4]), $"a sub-pixel draw is LOD-culled and 3, 4 survive (got {cnt[1]})");
         check.Expect(cnt[2] == 3, "...and nothing in the sorted batch, which runs no LOD test");
         b.LodPx = 0f; b.LodScale = 0f;
+        if (!MirrorPhase(vk, check, src, sph, ref b)) return false;
+        if (!Run(vk, check, src, sph, ref b, cnt, slot, cmd)) return false;
+        check.Expect(_s.Cmd[Mirror].IsNull,
+            "an upload after the mirror fixture buys no mirror set: the ask is a session's own, so one that never "
+            + "reflects holds no output set and its first mirror frame is the frame that asks");
         if (!Occlusion(vk, check, src, sph, ref b)) return false;
         log.Info(check.Ok ? "CullPassVk.DeviceCheck: passed" : "CullPassVk.DeviceCheck: FAILED -- see above");
         return check.Ok;
@@ -393,6 +435,97 @@ internal static class CullPassVk
             && vk.ReadBack(_s.Slot[Colour], MemoryMarshal.AsBytes(slot.AsSpan()))
             && vk.ReadBack(_s.Cmd[Colour], MemoryMarshal.AsBytes(cmd.AsSpan()));
         check.Expect(!ran || read, "the colour set reads back");
+        return read;
+    }
+
+    /// <summary>The fixture's mirror plane: above the near spheres, below the two at 30 units, so those two are
+    /// wholly past it.</summary>
+    private const float MirrorClipZ = -10.5f;
+    /// <summary>The fixture's mirror target divisor, the sub-pixel radius it culls at that scale and the full-size
+    /// scale it survives at.</summary>
+    private const int MirrorRes = 8;
+    private const float MirrorLodRadius = 0.05f, MirrorLodScale = 540f;
+
+    /// <summary>The mirror phase on this device. Oracle: hand-worked -- the clip drops the two draws whose spheres lie
+    /// wholly past the plane, a mirrored view facing the other way keeps only the never-culled one, the colour set is
+    /// untouched either way, and the mirror's own LOD scale drops a draw the full-size view keeps.</summary>
+    private static bool MirrorPhase(VkBackend vk, Checker check, CullSrcRec[] src, Sphere[] sph, ref CullBlock b)
+    {
+        bool asked = _s.MirrorAsked;
+        try { return MirrorRuns(vk, check, src, sph, ref b); }
+        finally
+        {
+            // The live state is the session's: a fixture that left the ask latched would buy every session a
+            // mirror set, and one sized for the fixture's ten draws, which the frame's own list overruns.
+            _s.MirrorAsked = asked;
+            vk.Destroy(_s.Cmd[Mirror]); vk.Destroy(_s.Slot[Mirror]); vk.Destroy(_s.Cnt[Mirror]);
+            _s.Cmd[Mirror] = default; _s.Slot[Mirror] = default; _s.Cnt[Mirror] = default;
+        }
+    }
+
+    /// <inheritdoc cref="MirrorPhase"/>
+    private static bool MirrorRuns(VkBackend vk, Checker check, CullSrcRec[] src, Sphere[] sph, ref CullBlock b)
+    {
+        const int Groups = 3;
+        var col = new uint[Groups];
+        var mir = new uint[Groups];
+        CullBlock m = b;
+        m.ClipZ = MirrorClipZ;
+        if (!MirrorRun(vk, check, src, sph, ref b, ref m, col, mir)) return false;
+        check.Expect(!_s.Cmd[Mirror].IsNull, "a mirror that asked has its own set from the next upload on");
+        check.Expect(mir[0] == 2 && mir[1] == 3 && mir[2] == 1,
+            $"the mirror drops the two draws wholly past its plane: 2, 3, 1 survive (got {mir[0]}, {mir[1]}, {mir[2]})");
+        check.Expect(col[0] == 2 && col[1] == 3 && col[2] == 3,
+            $"...and the colour set the frame draws from is untouched: 2, 3, 3 (got {col[0]}, {col[1]}, {col[2]})");
+
+        m = b;
+        // the mirrored camera turned to face the other way: every sphere but the never-culled one is behind it
+        m.Vp = Matrix4x4.CreateLookAt(Vector3.Zero, new Vector3(0, 0, 10), Vector3.UnitY)
+             * Matrix4x4.CreatePerspectiveFieldOfView(1.0f, 1.0f, 1f, 100f);
+        CullPass.Planes(in m.Vp, m.Planes, Vector3.Zero);
+        if (!MirrorRun(vk, check, src, sph, ref b, ref m, col, mir)) return false;
+        check.Expect(mir[0] == 0 && mir[1] == 1 && mir[2] == 0,
+            $"behind the mirrored camera only the never-culled draw survives (got {mir[0]}, {mir[1]}, {mir[2]})");
+        check.Expect(col[0] == 2 && col[1] == 3 && col[2] == 3,
+            $"...while the same spheres stay in the colour set: 2, 3, 3 (got {col[0]}, {col[1]}, {col[2]})");
+
+        float keep = sph[0].Radius;
+        sph[0].Radius = MirrorLodRadius;
+        CullBlock full = b;
+        full.LodPx = 1f;
+        full.LodScale = MirrorLodScale;
+        m = full;
+        m.LodScale = MirrorLodScale / MirrorRes;
+        bool ok = MirrorRun(vk, check, src, sph, ref full, ref m, col, mir);
+        sph[0].Radius = keep;
+        if (!ok) return false;
+        check.Expect(col[0] == 2 && mir[0] == 1,
+            $"a draw too small to see in a 1/{MirrorRes} mirror is culled there and kept full size (got {col[0]}, {mir[0]})");
+        return true;
+    }
+
+    /// <summary>One fixture submit of the prepass and colour sets under <paramref name="b"/> and the mirror set under
+    /// <paramref name="mirror"/>, in that order, then both counts read back -- the frame's own order, so a mirror phase
+    /// that trod on the colour set's buffers shows up here.</summary>
+    private static bool MirrorRun(VkBackend vk, Checker check, CullSrcRec[] src, Sphere[] sph, ref CullBlock b,
+                                  ref CullBlock mirror, uint[] col, uint[] mir)
+    {
+        CommandList cl = _s.Cmds!;
+        cl.Reset();
+        _s.MirrorAsked = true;
+        bool ran = Upload(vk, cl, col.Length, src.Length, src, sph, sph.Length);
+        if (ran)
+        {
+            Phase(cl, Prepass, col.Length, ref b, false);
+            Phase(cl, Colour, col.Length, ref b, false);
+            Phase(cl, Mirror, col.Length, ref mirror, false);
+        }
+        ran = ran && vk.Submit(cl);
+        check.Expect(ran, "the mirror fixture's submit runs");
+        bool read = ran
+            && vk.ReadBack(_s.Cnt[Colour], MemoryMarshal.AsBytes(col.AsSpan()))
+            && vk.ReadBack(_s.Cnt[Mirror], MemoryMarshal.AsBytes(mir.AsSpan()));
+        check.Expect(!ran || read, "the colour and mirror sets both read back");
         return read;
     }
 

@@ -6,7 +6,7 @@
 
 `a[i * N + k]` is a record flattened into lanes: every reader has to know the stride and which lane is which,
 and a wrong k stays inside the array, so nothing catches it. A record type with named fields (Vector3,
-Vector4, Matrix4x4, Rgba32, a named struct) and an array of it says the same thing once, and
+Vector4, Matrix4x4, Rgba8, a named struct) and an array of it says the same thing once, and
 MemoryMarshal.Cast reinterprets a byte buffer that arrives from outside. An allocation length (`new T[n * 4
 + 1]`) is a size, not a lane, and is not counted.
 

@@ -1,4 +1,5 @@
 using CX.Engine;
+using CX.Framework;
 using System;
 using System.Numerics;
 using System.Runtime.InteropServices;
@@ -14,17 +15,18 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The owner marker a database bone slot carries.</summary>
     private const int DbBoneOwner = -2;
 
+    /// <summary>Slots the database stage starts at before it doubles.</summary>
+    private const int FirstDbSlots = 16;
+
     /// <summary>Claim a bone slot for a database part, or -1 when the stage cannot grow (the caller counts it
     /// and the part draws rigid, which is its rest pose).</summary>
     internal static int DbAllocBone()
     {
         int s = AllocBoneSlot(DbBoneOwner);
-        if (s >= 0)
-        {
-            EnsureDbStage(s + 1);
-            _dbLive.Add(s);
-            _dbFresh.Add(s);
-        }
+        if (s < 0) return -1;
+        if (!EnsureDbStage(s + 1)) { DbFreeBone(s); return -1; }
+        _dbLive.Add(s);
+        _dbFresh.Add(s);
         return s;
     }
 
@@ -36,8 +38,9 @@ public sealed unsafe partial class AlloyRenderer
     /// </summary>
     internal static ref BonePalette DbBoneStage(int slot)
     {
+        // A DbAllocBone slot already has its room; this is the belt, the bounds-checked index the brace.
         EnsureDbStage(slot + 1);
-        return ref _dbStage[slot];
+        return ref _dbStage.Span[slot];
     }
 
     /// <summary>The <paramref name="count"/> matrices at ABSOLUTE bone index <paramref name="at"/> in the DB
@@ -45,9 +48,8 @@ public sealed unsafe partial class AlloyRenderer
     /// slot; a whole skin's base is its slot's bone 0.</summary>
     internal static Span<Matrix4x4> DbBoneCell(int at, int count)
     {
-        if (at < 0 || count <= 0) return default;
-        EnsureDbStage(at / BoneCount + 1);
-        return Cell(_dbStage, at, count);
+        if (at < 0 || count <= 0 || !EnsureDbStage(at / BoneCount + 1)) return default;
+        return Cell(_dbStage.Span, at, count);
     }
 
     /// <summary>Make the <paramref name="count"/> bones at <paramref name="at"/> their own history. The first
@@ -56,36 +58,34 @@ public sealed unsafe partial class AlloyRenderer
     internal static void DbBoneSeedPrev(int at, int count)
     {
         Span<Matrix4x4> now = DbBoneCell(at, count);
-        Span<Matrix4x4> prev = Cell(_dbPrev, at, count);
+        Span<Matrix4x4> prev = Cell(_dbPrev.Span, at, count);
         if (!now.IsEmpty && prev.Length == now.Length) now.CopyTo(prev);
     }
 
     /// <summary>One run of matrices inside <paramref name="stage"/>, bounded by the slot it starts in.</summary>
-    private static Span<Matrix4x4> Cell(BonePalette* stage, int at, int count)
+    private static Span<Matrix4x4> Cell(Span<BonePalette> stage, int at, int count)
     {
-        if (stage == null || at < 0 || count <= 0) return default;
+        if (at < 0 || count <= 0 || at / BoneCount >= stage.Length) return default;
         ref BonePalette p = ref stage[at / BoneCount];
         Span<Matrix4x4> all = p;
         int off = at % BoneCount;
         return all.Slice(off, Math.Min(count, BoneCount - off));
     }
 
-    private static BonePalette* _dbStage, _dbPrev;
-    private static int _dbStageSlots;
+    private static NativeBuffer<BonePalette> _dbStage, _dbPrev;
     private static readonly System.Collections.Generic.HashSet<int> _dbLive = new();
     /// <summary>Slots claimed but not yet published, whose motion-vector history is their own first pose.</summary>
     private static readonly System.Collections.Generic.HashSet<int> _dbFresh = new();
 
-    /// <summary>Room for <paramref name="want"/> slots in the DB stage, doubling as the engine path's does.</summary>
-    private static void EnsureDbStage(int want)
+    /// <summary>Room for <paramref name="want"/> slots in the DB stage and its history, doubling as the engine
+    /// path's does. False, and neither stage offering the slot, when the allocation cannot be met.</summary>
+    private static bool EnsureDbStage(int want)
     {
-        if (want <= _dbStageSlots) return;
-        int cap = _dbStageSlots == 0 ? 16 : _dbStageSlots;
+        if (want <= _dbStage.Length) return true;
+        int cap = _dbStage.Length == 0 ? FirstDbSlots : _dbStage.Length;
         while (cap < want) cap *= 2;
-        nuint bytes = (nuint)cap * (nuint)sizeof(BonePalette);
-        _dbStage = (BonePalette*)NativeMemory.Realloc(_dbStage, bytes);
-        _dbPrev = (BonePalette*)NativeMemory.Realloc(_dbPrev, bytes);
-        _dbStageSlots = cap;
+        // History first: a stage longer than its history would offer a slot the history cannot answer for.
+        return _dbPrev.Grow(cap) && _dbStage.Grow(cap);
     }
 
     /// <summary>
@@ -95,17 +95,17 @@ public sealed unsafe partial class AlloyRenderer
     /// </summary>
     internal static void DbBonePublish()
     {
-        if (_dbStage == null || _dbLive.Count == 0) return;
+        if (_dbStage.Length == 0 || _dbLive.Count == 0) return;
         foreach (int slot in _dbLive)
         {
-            if (slot < 0 || slot >= _boneTop || !EnsureBoneSlots(slot + 1)) continue;
-            ref BonePalette now = ref _dbStage[slot];
-            ref BonePalette prev = ref _dbPrev[slot];
+            if (slot < 0 || slot >= _boneTop || slot >= _dbStage.Length || !EnsureBoneSlots(slot + 1)) continue;
+            ref BonePalette now = ref _dbStage.Span[slot];
+            ref BonePalette prev = ref _dbPrev.Span[slot];
             // A FRESH slot's history is its own pose, or a creature's first frame smears from whatever the
             // slot held before it.
             if (_dbFresh.Remove(slot)) prev = now;
-            _bonePrevStage[slot] = prev;
-            _boneStage[slot] = now;
+            _bonePrevStage.Span[slot] = prev;
+            _boneStage.Span[slot] = now;
             prev = now;
         }
     }
