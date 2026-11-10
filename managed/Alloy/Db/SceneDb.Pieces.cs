@@ -1,5 +1,3 @@
-using CX.Framework;
-
 namespace CX.Alloy.Db;
 
 public static partial class SceneDb
@@ -10,18 +8,26 @@ public static partial class SceneDb
     /// and what a reference node instanced (<c>CreateReferenceObjects</c> @0x5421e0).</summary>
     internal static readonly DbId[] ObjSeamAppendHead = new DbId[MaxObjects], ObjSeamAppendNext = new DbId[MaxObjects];
 
+    /// <summary>Which record owns each piece. One piece, one owner: the next column holds one link per index,
+    /// so a second owner splices the first owner's tail onto its own list, and an owner chain that closes is a
+    /// release with no bottom -- the release walks what a record owns and destroys it, with no depth of its
+    /// own. A stale owner (its record recycled) reads as unowned, so nothing has to clean up after a leak.</summary>
+    internal static readonly DbId[] ObjSeamAppendOwner = new DbId[MaxObjects];
+
     /// <summary>How many pieces one walk visits before it gives up. A composition is a handful of body parts
     /// and reference instances; a list this long is corrupt, and a walk that stops is better than one that
     /// runs forever on the game thread.</summary>
     public const int PieceWalkCap = 256;
 
-    /// <summary>How deep a descent into a composition goes. A piece may own pieces, but not past this.</summary>
+    /// <summary>How deep a descent into a composition goes: every walk that follows pieces onto pieces stops
+    /// at this many levels, this one comparison. A creature is one hop, so the bound is a cycle guard, not a
+    /// budget -- and two bounds over one composition answer one question two ways.</summary>
     public const int PieceDepthCap = 8;
 
     /// <summary>What the two link columns refused or survived, for <c>/alloy</c>.</summary>
     private sealed class PieceState
     {
-        public long Capped, Rings, IndexRefusals, SelfRefusals, DeadRefusals;
+        public long Capped, Rings, IndexRefusals, SelfRefusals, DeadRefusals, OwnerRefusals, CycleRefusals, UnlinkRefusals;
         public bool SaidCapped, SaidRing;
     }
 
@@ -34,9 +40,9 @@ public static partial class SceneDb
     public static PieceWalk Pieces(DbId parent)
         => new((uint)parent.Index < MaxObjects ? ObjSeamAppendHead[parent.Index] : default);
 
-    /// <summary>One capped, ring-checked walk over a piece list. Floyd's two pointers find the ring at its
-    /// first lap, which is what keeps a recursive descent over a ringed list from multiplying the cap by
-    /// itself at every level.</summary>
+    /// <summary>One capped, ring-checked walk over a piece list: it hands back at most
+    /// <see cref="PieceWalkCap"/> pieces, and Floyd's two pointers end a ring at its first lap rather than at
+    /// the cap, so a ringed list costs a log line instead of 256 reads at every level of a descent.</summary>
     public struct PieceWalk
     {
         private DbId _next, _slow;
@@ -83,8 +89,9 @@ public static partial class SceneDb
     }
 
     /// <summary>Links <paramref name="piece"/> onto the head of what <paramref name="parent"/> owns, or
-    /// refuses. The columns are keyed by record INDEX, so a second link of one index is what makes a ring: the
-    /// piece's next would be the head that is already that index. Refused and named rather than written.</summary>
+    /// refuses. The columns are keyed by record INDEX, so the shapes that break a walk or a release are all
+    /// writes of one index twice: onto its own list, onto a second owner, or onto something it already owns
+    /// above. Each is refused and named rather than written.</summary>
     public static bool PieceLink(DbId parent, DbId piece)
     {
         if (!Objects.Valid(parent) || !Objects.Valid(piece))
@@ -99,6 +106,31 @@ public static partial class SceneDb
             _pieces.SelfRefusals++;
             Say(_pieces.SelfRefusals, $"seam: o={parent.Index} was asked to own ITSELF -- refused. Counted on /alloy.");
             return false;
+        }
+        DbId owner = PieceOwner(piece);
+        if (!owner.IsNull && owner.Value != parent.Value)
+        {
+            _pieces.OwnerRefusals++;
+            Say(_pieces.OwnerRefusals, $"seam: o={piece.Index} is already owned by o={owner.Index}, so o={parent.Index} "
+                                     + "cannot own it too -- refused. One next link per index means the second owner "
+                                     + "would splice the first one's list onto its own. Counted on /alloy.");
+            return false;
+        }
+        // Owners walk UP, one per piece: the chain is the whole cycle test, and a release that follows what a
+        // record owns has no depth of its own to stop at.
+        DbId up = PieceOwner(parent);
+        for (int n = 0; n <= PieceWalkCap; n++)
+        {
+            if (up.IsNull) break;
+            if (up.Index == piece.Index || n == PieceWalkCap)
+            {
+                _pieces.CycleRefusals++;
+                Say(_pieces.CycleRefusals, $"seam: o={parent.Index} is owned, above itself, by o={piece.Index}, so owning "
+                                         + "it would make a CYCLE -- refused. A release of either record would then "
+                                         + "destroy the other and come back round. Counted on /alloy.");
+                return false;
+            }
+            up = PieceOwner(up);
         }
         // Every LINK on the list, live or not: a dead handle whose index has been recycled is exactly the one
         // that rings it, and the walk stops at a dead link rather than reading past it.
@@ -117,50 +149,75 @@ public static partial class SceneDb
         }
         ObjSeamAppendNext[piece.Index] = ObjSeamAppendHead[parent.Index];
         ObjSeamAppendHead[parent.Index] = piece;
+        ObjSeamAppendOwner[piece.Index] = parent;
         return true;
+    }
+
+    /// <summary>Which record owns <paramref name="piece"/>, where both columns agree. The owner column is a
+    /// back link, so it answers only while that owner's own list still names the index: a freed owner, or one
+    /// whose list has moved on, owns nothing -- so a recycled index never inherits the last tenant's owner.</summary>
+    private static DbId PieceOwner(DbId piece)
+    {
+        if ((uint)piece.Index >= MaxObjects) return default;
+        DbId owner = ObjSeamAppendOwner[piece.Index];
+        if (!Objects.Valid(owner)) return default;
+        foreach (DbId c in Pieces(owner))
+            if (c.Index == piece.Index) return owner;
+        return default;
     }
 
     /// <summary>Splices <paramref name="piece"/> out of what <paramref name="parent"/> owns and answers
     /// whether it was there. The piece's own next link is left alone: the caller destroys it next, and the
-    /// record reset clears both columns.</summary>
+    /// record reset clears every column. A refusal is counted -- the piece is still on the list, so a caller
+    /// that destroys it anyway leaves a dead link the walk stops at, with the rest of the list behind it.</summary>
     public static bool PieceUnlink(DbId parent, DbId piece)
     {
-        if ((uint)parent.Index >= MaxObjects || piece.IsNull) return false;
-        DbId prev = default;
-        foreach (DbId c in Pieces(parent))
+        if ((uint)parent.Index < MaxObjects && !piece.IsNull)
         {
-            if (c.Value == piece.Value)
+            DbId prev = default;
+            foreach (DbId c in Pieces(parent))
             {
-                DbId next = ObjSeamAppendNext[piece.Index];
-                if (prev.IsNull) ObjSeamAppendHead[parent.Index] = next;
-                else ObjSeamAppendNext[prev.Index] = next;
-                return true;
+                if (c.Value == piece.Value)
+                {
+                    DbId next = ObjSeamAppendNext[piece.Index];
+                    if (prev.IsNull) ObjSeamAppendHead[parent.Index] = next;
+                    else ObjSeamAppendNext[prev.Index] = next;
+                    ObjSeamAppendOwner[piece.Index] = default;
+                    return true;
+                }
+                prev = c;
             }
-            prev = c;
         }
+        _pieces.UnlinkRefusals++;
+        Say(_pieces.UnlinkRefusals, $"seam: o={piece.Index} was asked off o={parent.Index}'s owned list and was not on "
+                                  + "it -- refused. Counted on /alloy.");
         return false;
     }
 
-    /// <summary>Drops the whole list: the parent owns nothing after this. The pieces themselves are the
-    /// caller's to destroy.</summary>
+    /// <summary>Drops the whole list: the parent owns nothing after this, and nothing on it is owned. The
+    /// pieces themselves are the caller's to destroy.</summary>
     public static void PieceDropAll(DbId parent)
     {
-        if ((uint)parent.Index < MaxObjects) ObjSeamAppendHead[parent.Index] = default;
+        if ((uint)parent.Index >= MaxObjects) return;
+        foreach (DbId c in Pieces(parent)) ObjSeamAppendOwner[c.Index] = default;
+        ObjSeamAppendHead[parent.Index] = default;
     }
 
-    /// <summary>Clears both columns for a recycled record index: inherited, the next tenant's scene moves
-    /// drag the last one's pieces along.</summary>
+    /// <summary>Clears every link column for a recycled record index: inherited, the next tenant's scene
+    /// moves drag the last one's pieces along.</summary>
     public static void PieceForget(int index)
     {
         if ((uint)index >= MaxObjects) return;
         ObjSeamAppendHead[index] = default;
         ObjSeamAppendNext[index] = default;
+        ObjSeamAppendOwner[index] = default;
     }
 
-    /// <summary>Are both of a record index's link columns clear -- it owns nothing, and is in no owner's
+    /// <summary>Are all of a record index's link columns clear -- it owns nothing, and is in no owner's
     /// list? What a recycled index must start as.</summary>
     internal static bool PieceLinksCleared(int index)
-        => (uint)index < MaxObjects && ObjSeamAppendHead[index].IsNull && ObjSeamAppendNext[index].IsNull;
+        => (uint)index < MaxObjects && ObjSeamAppendHead[index].IsNull && ObjSeamAppendNext[index].IsNull
+           && ObjSeamAppendOwner[index].IsNull;
 
     /// <summary>Plants a ring: the shape no writer will make, which is the only way to check that the walks
     /// survive one. Self-checks only.</summary>
@@ -177,7 +234,10 @@ public static partial class SceneDb
          + (_pieces.Rings == 0 ? "" : $", {_pieces.Rings} RINGED LISTS")
          + (_pieces.IndexRefusals == 0 ? "" : $", {_pieces.IndexRefusals} LINKS REFUSED (index already owned)")
          + (_pieces.SelfRefusals == 0 ? "" : $", {_pieces.SelfRefusals} SELF-LINKS REFUSED")
-         + (_pieces.DeadRefusals == 0 ? "" : $", {_pieces.DeadRefusals} LINKS REFUSED (record not live)");
+         + (_pieces.DeadRefusals == 0 ? "" : $", {_pieces.DeadRefusals} LINKS REFUSED (record not live)")
+         + (_pieces.OwnerRefusals == 0 ? "" : $", {_pieces.OwnerRefusals} LINKS REFUSED (piece already owned)")
+         + (_pieces.CycleRefusals == 0 ? "" : $", {_pieces.CycleRefusals} LINKS REFUSED (would make a cycle)")
+         + (_pieces.UnlinkRefusals == 0 ? "" : $", {_pieces.UnlinkRefusals} UNLINKS REFUSED (piece not on the list)");
 
     /// <summary>Said the first time and at every power of two after it, so a storm costs a handful of lines.</summary>
     private static void Say(long n, string line)

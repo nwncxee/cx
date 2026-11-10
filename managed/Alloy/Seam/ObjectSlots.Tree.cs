@@ -159,7 +159,16 @@ public sealed unsafe partial class ObjectSlots
                                  + $"(\"{SceneDb.ObjModel[take.Index]?.Name ?? "-"}\")"
                                  + (byContainment ? ", matched by CONTAINMENT" : ""));
             }
-            SceneDb.PieceUnlink(id, take);
+            // Order: destroying a piece still ON the list leaves a dead link every walk stops at.
+            if (!SceneDb.PieceUnlink(id, take))
+            {
+                _amputateRefusals++;
+                if (_saidAmputateRefusal.Add(name!))
+                    Facade.Log?.Always($"seam: Gob::Amputate(\"{name}\") found its piece (o={take.Index}) and could "
+                                     + "NOT take it off the owned list -- the piece is KEPT rather than destroyed, "
+                                     + "because a dead link would hide every piece behind it. Counted on /alloy.");
+                return 0;
+            }
             DestroyRecord(take);
             // The piece's geometry is gone, so the path that carried it gates off again (Gob::Amputate sets
             // the process flag the same way Gob::Append does).

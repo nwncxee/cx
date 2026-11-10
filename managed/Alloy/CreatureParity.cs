@@ -20,9 +20,6 @@ public sealed unsafe partial class AlloyRenderer
     /// whole area would bury the diff in border-ring extras nothing ever asks about.</summary>
     private const int ParityCreatures = 16;
 
-    /// <summary>Graft depth the walk descends -- a creature is one hop, so this is a cycle guard.</summary>
-    private const int ParityMaxGraft = 8;
-
     private static bool _parityDone;
     private static long _parityPass;
 
@@ -141,7 +138,7 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>The object indices the composition covers: the record and every piece grafted onto it.</summary>
     private static void ParityComposition(DbId id, HashSet<int> into, int depth)
     {
-        if (depth > ParityMaxGraft || !SceneDb.Objects.Valid(id) || !into.Add(id.Index)) return;
+        if (depth >= SceneDb.PieceDepthCap || !SceneDb.Objects.Valid(id) || !into.Add(id.Index)) return;
         foreach (DbId c in SceneDb.Pieces(id)) ParityComposition(c, into, depth + 1);
     }
 
@@ -172,10 +169,10 @@ public sealed unsafe partial class AlloyRenderer
     }
 
     /// <summary>One DB record's parts, then every piece grafted onto it -- the composition as
-    /// <c>ObjSeamAppendHead</c> holds it.</summary>
+    /// <c>SceneDb.Pieces</c> walks it.</summary>
     private static void ParityDbObject(List<string> outp, string key, DbId id, string graft, int depth)
     {
-        if (depth > ParityMaxGraft) return;
+        if (depth >= SceneDb.PieceDepthCap) return;
         if (!SceneDb.Objects.Valid(id)) { outp.Add($"cre={key} graft={graft} NO DB RECORD"); return; }
         int i = id.Index;
         int first = SceneDb.ObjPartFirst[i], count = SceneDb.ObjPartCount[i];

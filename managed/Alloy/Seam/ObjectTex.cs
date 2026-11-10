@@ -123,7 +123,7 @@ internal static class ObjectTex
     /// creature's torso, arms and cloak, each of which is a child object here.</summary>
     private static void SetEnvMapIn(DbId obj, string? name, int depth)
     {
-        if (depth > PartSlots.MaxGraft || !SceneDb.Objects.Valid(obj)) return;
+        if (depth >= SceneDb.PieceDepthCap || !SceneDb.Objects.Valid(obj)) return;
         int i = obj.Index;
         if (!string.Equals(SceneDb.ObjEnvMap[i], name, StringComparison.Ordinal))
         {

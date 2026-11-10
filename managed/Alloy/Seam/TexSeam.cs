@@ -645,7 +645,7 @@ internal static class MaterialParams
         Expect(!HasContent(piece) && !HasContent(beside) && !HasContent(inner), "the engine's reset-all left a grafted piece's values standing");
         // A composition grafted deeper than the depth cap: the descent stops AT the cap rather than following
         // the data down, so the far end of the chain keeps nothing.
-        DbId[] chain = new DbId[SceneDb.PieceDepthCap + 2];
+        DbId[] chain = new DbId[10];   // deeper than the 8 levels a descent covers
         bool built = true;
         for (int i = 0; i < chain.Length; i++)
         {
@@ -661,8 +661,8 @@ internal static class MaterialParams
         if (built)
         {
             Set(chain[0], "fRamboScale", "14.0", "", null);
-            Expect(HasContent(chain[SceneDb.PieceDepthCap - 1]), "the descent stopped short of the depth cap");
-            Expect(!HasContent(chain[SceneDb.PieceDepthCap]), "the descent went past the depth cap");
+            Expect(HasContent(chain[7]), "the descent stopped short of the 8 levels of composition it covers");
+            Expect(!HasContent(chain[8]), "the descent went past the 8 levels of composition it covers");
             Set(chain[0], "", "", "", null);
         }
         for (int i = chain.Length - 1; i >= 0; i--)

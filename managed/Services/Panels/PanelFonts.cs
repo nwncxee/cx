@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
+using CX.Framework;
 using CX.Ui;
 
 namespace CX.Services.Panels;
@@ -42,7 +42,7 @@ internal static class PanelFonts
             gone.RemoveAll(px => _f.Held.ContainsValue(px));
         }
         foreach (float px in gone) TextRig.ReleaseFace(px, Owner);
-        foreach (float px in fresh) ThreadPool.QueueUserWorkItem(static p => Bake(p), px, preferLocal: false);
+        foreach (float px in fresh) Worker.Queue(static p => Bake(p), px);
         return true;
     }
 

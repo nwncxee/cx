@@ -65,9 +65,11 @@ rule and the gates.
 - **A render target's alias lane is an `AliasLanes` member.** Two targets share one allocation when their
   `Alias` strings are equal, so a lane is declared once, in frame order, and never spelled at the call site;
   `tools/gates/alias-lanes.sh` refuses a literal, the goldens excepted.
-- **A thread starts through `Worker.Start(name, body)`.** A new thread inherits its creator's CPU affinity
-  mask, so a worker the pinned main thread starts would sit on the game's core; the helper clears the mask
-  inside the thread before its body runs, and the `Thread` constructors are banned (RS0030).
+- **A thread starts through `Worker.Start(name, body)`, and pool work is queued through `Worker.Queue`.** A new
+  thread inherits its creator's CPU affinity mask, and the runtime grows a pool thread as a child of whichever
+  thread queued the work, so either one started from the pinned main thread sits on the game's core; both
+  helpers clear the mask inside the thread before the body runs, and the `Thread` constructors and
+  `ThreadPool.QueueUserWorkItem` / `UnsafeQueueUserWorkItem` are banned (RS0030).
 - **A thread blocks through `BlockingWait.Sleep(ms, why)`.** The game's main thread never blocks.
 - **No tasks.** The extender has no async path, so the `Task` and `ValueTask` types are banned.
 - **The environment is read through `HostEnv`.** A setting is a knob, never an environment variable (ADR 0025).

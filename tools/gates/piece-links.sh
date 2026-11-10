@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # The owned-piece list is keyed by record INDEX, so a second link of one index rings it and every walk over it
-# then runs forever on the game thread. One file owns both columns: SceneDb.Pieces.cs links, unlinks and walks
-# them with a cap and a ring check. A raw read or write anywhere else is a walk nothing bounds.
+# then runs forever on the game thread. One file owns the three columns: SceneDb.Pieces.cs links, unlinks and
+# walks them with a cap, a ring check and one owner per piece. A raw read or write anywhere else is a walk
+# nothing bounds, or an owner column that stops agreeing with the lists it answers for.
 cd "$(dirname "$0")/../.."
-hits=$(git -c color.grep=never grep --untracked -nIE 'ObjSeamAppend(Head|Next)' -- managed \
+hits=$(git -c color.grep=never grep --untracked -nIE 'ObjSeamAppend(Head|Next|Owner)' -- managed \
   ':!managed/Alloy/Db/SceneDb.Pieces.cs' ':!managed/Alloy/Db/SceneDb.Pieces.SelfCheck.cs' \
   | grep -vE ':[0-9]+: *///?' || true)
 [ -z "$hits" ] && exit 0

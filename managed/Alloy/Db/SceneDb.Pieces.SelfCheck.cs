@@ -18,6 +18,7 @@ public static partial class SceneDb
             PieceRefusals(check);
             PieceRingWalk(check);
             PieceCappedWalk(check);
+            PieceOwnerRefusals(check);
             PieceLatchedNext(check);
             PieceDepth(check);
         }
@@ -58,7 +59,8 @@ public static partial class SceneDb
         check.Expect(at == 2, $"a two-piece list walked {at} pieces");
         check.Expect(seen[0].Value == first.Value && seen[1].Value == second.Value,
                      "the walk did not yield the last-linked piece first");
-        check.Expect(_pieces is { Capped: 0, Rings: 0, IndexRefusals: 0, SelfRefusals: 0, DeadRefusals: 0 },
+        check.Expect(_pieces is { Capped: 0, Rings: 0, IndexRefusals: 0, SelfRefusals: 0, DeadRefusals: 0,
+                                  OwnerRefusals: 0, CycleRefusals: 0, UnlinkRefusals: 0 },
                      "an ordinary list moved one of the refusal tallies");
         PieceDropAll(body);
         Objects.Free(second); Objects.Free(first); Objects.Free(body);
@@ -123,7 +125,7 @@ public static partial class SceneDb
     private static void PieceCappedWalk(Checker check)
     {
         DbId body = PieceSubject();
-        DbId[] made = new DbId[PieceWalkCap + 4];
+        DbId[] made = new DbId[260];   // longer than the 256 the walk hands back
         bool linked = true;
         for (int i = 0; i < made.Length; i++)
         {
@@ -132,7 +134,7 @@ public static partial class SceneDb
         }
         check.Expect(linked, "the long list would not build");
         int n = PieceCount(body);
-        check.Expect(n == PieceWalkCap && _pieces.Capped == 1,
+        check.Expect(n == 256 && _pieces.Capped == 1,
                      $"a list of {made.Length} pieces walked {n}, cap {PieceWalkCap}, counted {_pieces.Capped}");
         check.Expect(PieceStats().Contains("CAPPED"), "a capped walk is not named on the period line");
         PieceDropAll(body);
@@ -143,6 +145,36 @@ public static partial class SceneDb
             Objects.Free(made[i]);
         }
         Objects.Free(body);
+    }
+
+    /// <summary>The links no walk can survive and no cap bounds: a piece owned twice, whose one next link the
+    /// second owner would splice its list onto, and a cycle, which a release follows round until the stack
+    /// runs out. Each list here is one piece long, so Floyd and the cap both see a good list.</summary>
+    private static void PieceOwnerRefusals(Checker check)
+    {
+        DbId a = PieceSubject(), b = PieceSubject(), c = PieceSubject(), other = PieceSubject();
+        check.Expect(PieceLink(a, b) && PieceLink(b, c), "the two-level composition would not link");
+
+        check.Expect(!PieceLink(b, a) && _pieces.CycleRefusals == 1,
+                     "a piece was allowed to own the record that owns it -- a release of either never ends");
+        check.Expect(PieceCount(b) == 1 && ObjSeamAppendNext[a.Index].IsNull,
+                     "the refused cycle wrote a link anyway");
+        check.Expect(!PieceLink(c, a) && _pieces.CycleRefusals == 2,
+                     "a cycle two levels up was allowed, so only the parent was checked");
+
+        check.Expect(!PieceLink(other, b) && _pieces.OwnerRefusals == 1,
+                     "a piece was allowed a second owner -- its one next link then splices one list onto the other");
+        check.Expect(PieceCount(other) == 0 && PieceCount(a) == 1,
+                     "the refused second link moved a list");
+
+        check.Expect(!PieceUnlink(a, other) && _pieces.UnlinkRefusals == 1,
+                     "taking a piece off a list it is not on answered that it was there");
+        check.Expect(PieceUnlink(a, b) && PieceLink(other, b),
+                     "a piece taken off its owner's list could not be given to another owner");
+
+        PieceDropAll(other); PieceDropAll(b); PieceDropAll(a);
+        PieceForget(c.Index); PieceForget(b.Index);
+        Objects.Free(other); Objects.Free(c); Objects.Free(b); Objects.Free(a);
     }
 
     /// <summary>The release walks this list and destroys what it is handed, which clears the piece's own next
@@ -167,7 +199,7 @@ public static partial class SceneDb
     /// not by how deep the data goes.</summary>
     private static void PieceDepth(Checker check)
     {
-        int levels = PieceDepthCap + 4;
+        int levels = 12;   // deeper than the 8 levels a descent covers
         DbId[] chain = new DbId[levels];
         bool built = true;
         for (int i = 0; i < levels; i++)
@@ -179,8 +211,8 @@ public static partial class SceneDb
         check.Expect(built, "the deep chain would not build");
         var v = new PieceDepthVisitor();
         PartSlots.ForEach(chain[0], 0, true, ref v);
-        check.Expect(v.Levels == PartSlots.MaxGraft + 1,
-                     $"a descent over {levels} levels reached {v.Levels}, cap {PartSlots.MaxGraft}");
+        check.Expect(v.Levels == 8,
+                     $"a descent over {levels} levels reached {v.Levels}, cap {PieceDepthCap}");
         for (int i = levels - 1; i >= 0; i--)
         {
             if (chain[i].IsNull) continue;

@@ -22,9 +22,12 @@ public static unsafe class Worker
             return true;
         }
         int cpu = Affinity.CurrentCpu;
+        bool pinned = Affinity.PinThis(cpu);
+        bool restored;
         try
         {
-            check.Expect(Affinity.PinThis(cpu), $"the kernel refused a pin to cpu {cpu}");
+            // A host that will not pin cannot be asked whether a child inherits the pin: nothing is pinned.
+            if (!pinned) return check.Skip($"the kernel refused a pin of this thread to cpu {cpu}");
             check.Expect(Cpus() == 1, "the pinned thread may still run on more than one CPU, so the pin did not take");
             int childCpus = 0;
             Start("cx-worker-check", () => childCpus = Cpus()).Join();
@@ -34,8 +37,13 @@ public static unsafe class Worker
         }
         finally
         {
-            Affinity.SetThis(saved);
+            restored = Affinity.SetThis(saved);
         }
+        // This runs ON the thread that becomes the game's main thread: a mask not given back is the session.
+        check.Expect(restored, $"the mask this check pinned to cpu {cpu} could not be given back");
+        if (!restored)
+            log.Always($"Worker.SelfCheck: the CPU mask of THIS thread could not be restored after the pin to cpu "
+                       + $"{cpu} -- it may run on one core for the rest of the session");
         log.Info(check.Ok ? "Worker.SelfCheck: passed"
                           : "Worker.SelfCheck: FAILED -- a CX worker would share the pinned main thread's core");
         return check.Ok;
@@ -63,5 +71,24 @@ public static unsafe class Worker
         if (priority != ThreadPriority.Normal) t.Priority = priority;
         t.Start();
         return t;
+    }
+
+    /// <summary>Queues one piece of work on the thread pool, with the mask cleared inside it. The runtime
+    /// grows a pool thread as a child of whichever thread queued the work, so work queued from the pinned main
+    /// thread lands on the game's core -- and stays there, for as long as the pool keeps that thread.</summary>
+    public static void Queue<T>(Action<T> body, T state)
+    {
+        ArgumentNullException.ThrowIfNull(body);
+#pragma warning disable RS0030 // the one pool queue: it is what wraps every body in the mask clear
+        ThreadPool.QueueUserWorkItem(static a => { Affinity.ClearThis(); a.Body(a.State); },
+                                     (Body: body, State: state), preferLocal: false);
+#pragma warning restore RS0030
+    }
+
+    /// <inheritdoc cref="Queue{T}(Action{T}, T)"/>
+    public static void Queue(Action body)
+    {
+        ArgumentNullException.ThrowIfNull(body);
+        Queue(static b => b(), body);
     }
 }

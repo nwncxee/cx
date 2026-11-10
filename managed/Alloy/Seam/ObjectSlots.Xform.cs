@@ -262,7 +262,7 @@ public sealed unsafe partial class ObjectSlots
     /// <inheritdoc cref="PartByName(DbId, byte*)"/>
     private static int PartByName(DbId obj, byte* name, int depth)
     {
-        if (!SceneDb.Objects.Valid(obj)) return -1;
+        if (depth >= SceneDb.PieceDepthCap || !SceneDb.Objects.Valid(obj)) return -1;
         int first = SceneDb.ObjPartFirst[obj.Index], count = SceneDb.ObjPartCount[obj.Index];
         if (count <= 0) return -1;
         if (name == null || *name == 0 || AsciiEq(name, "root")) return first;
@@ -275,7 +275,6 @@ public sealed unsafe partial class ObjectSlots
         }
         // Not in the object's own range: a composed body part (Gob::Append) keeps its own range, and the
         // game addresses the whole composition by name.
-        if (depth >= SceneDb.PieceDepthCap) return -1;
         foreach (DbId c in SceneDb.Pieces(obj))
         {
             int p = PartByName(c, name, depth + 1);
@@ -310,7 +309,7 @@ public sealed unsafe partial class ObjectSlots
     /// <inheritdoc cref="PartByName(DbId, string?)"/>
     private static int PartByName(DbId obj, string? name, int depth)
     {
-        if (!SceneDb.Objects.Valid(obj)) return -1;
+        if (depth >= SceneDb.PieceDepthCap || !SceneDb.Objects.Valid(obj)) return -1;
         int first = SceneDb.ObjPartFirst[obj.Index], count = SceneDb.ObjPartCount[obj.Index];
         if (count <= 0) return -1;
         if (string.IsNullOrEmpty(name) || string.Equals(name, "root", StringComparison.OrdinalIgnoreCase)) return first;
@@ -322,7 +321,6 @@ public sealed unsafe partial class ObjectSlots
             if ((uint)n < (uint)m.Nodes.Length
                 && string.Equals(m.Nodes[n].Name, name, StringComparison.OrdinalIgnoreCase)) return p;
         }
-        if (depth >= SceneDb.PieceDepthCap) return -1;
         foreach (DbId c in SceneDb.Pieces(obj))
         {
             int p = PartByName(c, name, depth + 1);
