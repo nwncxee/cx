@@ -191,6 +191,12 @@ Ceiling: the day two knobs must flip together, that pair becomes one `Knob<T>` w
   the registry, `Format()`s each knob, writes `cx.cfg.tmp`, then `File.Move(overwrite)`. Last
   writer wins. No write-if-changed compare. The render thread never touches the disk; the input
   thread only arms the timer.
+- **Boot holds the writer.** Until the host finishes booting, an arm is counted and dropped, not
+  scheduled: boot's own sets are self-checks moving a real knob and putting it back, and no player
+  chose any of those values, so the file keeps the text it was read from however long boot takes.
+  `cx.log` names the held count when the hold lifts. The one arm that outlives the hold is the
+  first run's, where there was no file to keep; off-device the write stands down entirely, because
+  there the path is the real user's.
 - **Boot keys** are renamed `<group>.<knob>` (`alloy.hdr`, `shadow.size`, `mouselook.sens`,
   `general.logs`) with **no legacy read** of the flat name. `general.logs` is still consumed
   inside `Settings.Load`.
@@ -294,7 +300,7 @@ its own, and *no CX* is an uninstall."
 |---|---|---|---|---|---|---|---|
 | general.commands | Enable chat commands | T | off | U | L | — | Lets `/grass`, `/shadow` and the other CX commands work in chat. Off, they go to the server like any other text — some servers use the same names. `/settings` always works. |
 | general.logs | Write cx.log for bug reports | T | off | A | L | — | Writes what CX is doing to cx.log (beside cx.cfg on Windows, in your home folder on Linux) from now on; restart to capture the launch lines too. Attach cx.log and cx.1.log to a bug report. |
-| general.hookdebug / pin / resizeat | — | T, S | as declared | C | R | — | funchook trace, main-thread affinity, the timed window resize |
+| general.hookdebug / pin / resizeat / frametimes | — | T, S | as declared | C | R, `frametimes` L | — | funchook trace, main-thread affinity, the timed window resize, and the per-frame time list in the log |
 
 `general.logs` is live because `ExtenderLog.Enabled` is one static bool. No ↻ badge.
 
@@ -333,6 +339,10 @@ copy.
 | ui.hoverfocus | Focus a window by hovering | T | off | A | L | — | A CX window takes the keyboard when the pointer rests on it, without a click. |
 | ui.snap | Snap windows to a grid | T | off | A | L | — | Dragged windows land on grid points. |
 | ui.gridpx | Grid size | D | 25 / 50 / 75 / 100 / 150 / 200 px · 50 | A | L | — | Spacing of the grid points, in screen px. |
+| ui.consolescale | Console text size | S | 1–3 × step 0.25 · 1.5 | A | L | — | Size of the ~ console and the other text the game prints on screen, over the game's own 14 px grid. Needs the Alloy renderer. |
+| ui.consoleoutline | Console text outline | D | Off / Thin / Thick · Thin | A | L | — | A dark edge around the letters of the ~ console and the other text the game prints on screen, so they read over a bright scene. Needs the Alloy renderer. |
+| ui.tipdelay | Tooltip delay | S | 0–2 s step 0.05 · `Tooltip.DelaySec` | A | L | Tooltips | How long the pointer rests on something before its tooltip shows, in every CX window and on the CX quickbar. Moving to a neighbour while one shows skips the wait. |
+| ui.tipfadein / tipfadeout | Tooltip fade in / Tooltip fade out | S | 0–1 s step 0.01 · `Tooltip.FadeInSec` / `Tooltip.FadeOutSec` | A | L | Tooltips | How long a tooltip takes to fade in, and to fade out once the pointer leaves. 0 is instant. |
 | fps.enabled | Show FPS and ping | T | **off** | U | L | — | Frame rate, frame time and server round-trip in the top-right corner. |
 | fps.font / typeface / outline | Text size / Typeface / Text outline | D | 14 · default · off | A | L | Text | the readout's element text rows (below) |
 | nui.enabled | Enable CX NUI fixes | T | on | U | L | — | Speed and usability fixes for the windows servers build with NUI. Off, they behave exactly as in the stock client. |
@@ -342,7 +352,13 @@ copy.
 | nui.itemicons | Item icons in NUI windows | T | on | U | L | — | A server's NUI window can show an item's own icon in its real colours, as the inventory does. Off, those images show the stock error sprite. |
 | nui.explain | Explain broken layouts | T | on | A | L | — | Lists the rules that contradict each other and the elements they belong to, instead of only "The constraint can not be satisfied." |
 | nui.thumb | Shortest scrollbar handle | S | 0 … 4 × its width, step 0.5 · 2 | A | L | — | A long list's scrollbar handle never gets shorter than this. 0 = stock. |
+| nui.cards | Rich cards on NUI elements | T | on | U | L | — | A server can declare a card for a NUI element, such as an item's details, and it shows beside the element while the pointer rests on it. Off, the server's plain tooltip is all you get. |
+| nui.heldimage | Show what the server says you are holding | T | on | U | L | — | When a server's NUI window says you picked something up, its image follows the pointer until you place it. Off, nothing follows the pointer. |
+| nui.modelview | Live models in NUI windows | T | on | A | L | — | A server's NUI window can show a character as a live, animated model, as the character screen does. Off, those images stay empty. |
+| nui.cxjson | Settings inside a server's windows | T | on | A | L | — | A server's NUI window can carry CX settings in its own JSON: a card, a live model, a themed frame. Off, those members are ignored and the window is the stock one. |
+| nui.hitdebug | Log the NUI element under the pointer | T | off | A | L | — | Writes a line to cx.log each time the pointer moves onto another element of a NUI window: its id, list row and rectangle. For people building windows. |
 | nui.cull / solve / solvecheck | — | T | on / on / off | C | L | — | the widget skip, the fast layout solve and its step-by-step check |
+| nui.cardfile / cardlatefile / cardlatesec / cardforce / policyprobe / heldprobe | — | X, S | empty, except the late file's 0 s delay | C | L, `heldprobe` R | — | the card and window-property test files a server's lines are read from, the late file's delay, and the held-image probe |
 
 Bare `/nui` prints how many widget draws the skip saved since the last ask, and how many
 tableau rows the layout solves visited of how many. The `@item:` contract: a NUI image whose
@@ -375,7 +391,7 @@ scrollbar, which the text width reserves and the thumb hit-test shares.
 | chat.rows | Arrow keys move through a long message | T | on | A | L | Editing | Up and Down move the cursor between a wrapped line's rows; they reach the history only from the first or last row. |
 | chat.histsearch | Search history by what you typed | T | on | A | L | History | With text in the line, Up recalls only earlier lines that start with it. |
 | chat.emotecol / speechcol / ooccol | Emote / Speech / OOC colour | Sw | e0b872ff / f2f2e6ff / 8c96a0ff | A | L | Markup colours | alpha ignored (text draws opaque) |
-| `w<N>.*` (rect, toggles, inputtop, sendch, anim, hold, fade, tau, outline, font, typeface, tsfmt, tssrc, align, bgmode, bgangle, bgstart, bgend, autohide, autohideframe, locked, tellshere, t<M>.*) | — | per-window state (`KnobBag "w"`) | | H | | — | edited on the window; a submenu reset leaves it alone. A per-window colour key from an older file is counted, logged once and dropped |
+| `chat.w<N>.*` (rect, toggles, inputtop, sendch, anim, hold, fade, tau, outline, font, typeface, tsfmt, tssrc, align, bgmode, bgangle, bgstart, bgend, autohide, autohideframe, locked, tellshere, t<M>.*) | — | per-window state (`KnobBag "w"`) | | H | | — | edited on the window; a submenu reset leaves it alone. A per-window colour key from an older file is counted, logged once and dropped |
 | snippets.enabled | Expand chat shortcuts | T | on | U | L | — | Type a shortcut, then a space (or Enter), and it turns into its text. Ctrl+Z right after takes it back. |
 | snippets.list | Shortcuts | L | empty, hint `;bow *bows deeply*` | U | L | — | Each entry is the word to type, a space, then what it becomes. Enter adds the next one; clear an entry or press × to remove it. |
 
@@ -430,11 +446,24 @@ closing is the window category's *Close this window* (two presses; Main has no r
 
 | key | label | kind | range · default | tier | eff | section | help |
 |---|---|---|---|---|---|---|---|
-| quickbar.enabled | Enable the CX quickbar layout | T | on | U | L | — | Centres the quickbar correctly and lets it sit left or right with background bars. Off, the stock quickbar position is used. |
-| quickbar.align | Position | D | left / centre / right · centre | U | L | Quickbar | Where the quickbar sits along the bottom edge. |
-| quickbar.bars | Black bars | T | on | U | L | Quickbar | Full-width bars behind the quickbar and under the chat. |
-| quickbar.hidden | Hide the quickbar | T | off | U | L | Quickbar | Moves the quickbar off-screen. |
+| quickbar.enabled | Quickbar and compass changes | T | on | U | L | — | Off, the game's own quickbar and compass are left exactly as they are and the CX quickbar is off. |
+| quickbar.replace | Use the CX quickbar | T | **off** | U | L | CX quickbar | CX draws the quickbar in place of the game's: drag it by its grip, show more sets at once, bind keys on it. Clicks, right-click menus and drag and drop stay the game's own. |
+| quickbar.hidden | Hide the quickbar | T | off | U | L | CX quickbar | Moves the quickbar off-screen, CX's or the game's. The CX quickbar's keys still work. |
+| quickbar.locked | Lock its position | T | off | U | L | CX quickbar | Hides the grip on the bar's left edge, so it cannot be dragged by accident. |
+| quickbar.lockslots | Lock its buttons | T | off | U | L | CX quickbar | Stops dragging one button onto another, so the bar's contents cannot be rearranged by accident. Dropping from the inventory or a spellbook still works. |
+| quickbar.bind | Bind keys on the bar | B | — | U | — | CX quickbar | Hover a button on the CX quickbar and press a key (with Shift, Ctrl or Alt if you like) to bind it. Backspace clears a button; Esc or a click elsewhere finishes. |
+| quickbar.rows | Sets shown | D | 1 (as vanilla) / 2 (+ Shift) / 3 (+ Shift, Ctrl) · 1 | U | L | CX quickbar | More sets show the Shift and Ctrl buttons all the time instead of on the modifier press. One set swaps while Shift or Ctrl is held, as the game's bar does. |
+| quickbar.arrange | Arrange sets | D | Stacked / Side by side · Stacked | U | L | CX quickbar | Stacked puts Shift above plain and Ctrl above Shift; side by side lines them up plain, Shift, Ctrl from the left. |
+| quickbar.size | Size | S | 0.5–3 × step 0.05 · 1 | U | L | CX quickbar | Scale over the UI font scale. |
+| quickbar.labels | Show key labels | T | on | U | L | CX quickbar | Each button's key in its corner. |
+| quickbar.typeface / outline | — | D | default · thin | U | L | CX quickbar | the bar's element text rows; unsized, because *Size* scales it |
+| quickbar.gapx / gapy | Spacing across / Spacing down | S | 0–24 px step 1 · `QuickbarLayout.GapPx` | A | L | CX quickbar | Space between two buttons side by side, and between two stacked rows, before *Size* scales it. |
+| quickbar.keys / shiftkeys / ctrlkeys | Plain keys / Shift set keys / Ctrl set keys | X | F1–F12, then the same with Shift and with Ctrl | A | L | CX quickbar keys | Twelve keys, left to right, space-separated: SDL key names with Ctrl+, Shift+ or Alt+ in front, `-` for none. *Bind keys on the bar* writes these. |
+| quickbar.resetkeys | Reset keys to F1-F12 | B | — | A | — | CX quickbar keys | Confirms first. Plain F1..F12, then the same with Shift and with Ctrl, as the game's bar. |
+| quickbar.align | Position | D | left / centre / right · centre | A | L | Game's quickbar | Where the game's quickbar sits along the bottom edge. |
+| quickbar.bars | Black bars | T | on | A | L | Game's quickbar | Full-width bars beside the game's quickbar and under the chat. |
 | quickbar.compass | Show the compass | T | on | U | L | Compass | The compass panel of the stock HUD. |
+| quickbar.x / y / placed | — | S, T | 0 / 0 / off | H | L | — | where the player dragged the CX bar, and whether they ever did |
 | radial.enabled | Enable the CX radial menu | T | on | U | L | — | Right-click menus as a nested dropdown drawn by CX. Off, the stock radial menu runs. |
 | radial.lock | Lock the layout | T | off | U | L | — | Rows cannot be dragged and right-clicking one opens no edit popup. Turn off to rearrange again. |
 | radial.mode | Submenus | D | Cascade beside the row / Drill down in place · cascade | U | L | — | Cascade: a submenu opens beside its row, on hover. Drill down: it replaces the list where it is, on click, with a Back row on top -- the pointer never travels. |
@@ -633,7 +662,7 @@ rung). `alloy`'s `PanelStatus` is the renderer's own line ("Running: Alloy / Van
 | alloy.vrscontrast | Coarse shading below contrast | S | 0–0.05 step 0.0025 · 0.01 | A | L | — | How flat a small tile of the screen must look to shade coarsely: the mean brightness step between neighbouring pixels, 0 to 1. Lower keeps more detail, higher saves more. |
 | alloy.a2c | Alpha-to-coverage samples | D | off / 2x / 4x / 8x · 4x | A | L | — | Materials that ask for alpha-to-coverage (`NWN_ALPHA_MODE 2`, often hair) get soft, layered edges from this many samples per pixel. Off draws them with the hard cutout edge every other leaf has. |
 | alloy.gui / border / oit / texcache / bcn / hdr / drawhooks / ownedtex / pltverify / bcndrip / texsingle / ddsread / rasterread / texdelete / handledrop / maxelements / spirv / vanillabridge / hostfs / ownskin / clustercap / dumptex / dumpshaders / gpudebug / framediff / paritydump / staleaudit / skipbuckets / enginezones | — | T, S, D, X | as declared | C | mostly R | — | capability gates, budgets and bisects |
-| alloy.movie / a2cmask / light / prepass / viz / threads / cull / retest / hldiag / hlchan / poll / prepasskey / prepassfeat / depthequal / idtarget / blenddepth / vislist / washtest / oitviz / cullwatch / lodhyst / hitcheck | — | T, S | as declared | C | L | — | live path switches and visualisers |
+| alloy.movie / a2cmask / light / prepass / viz / threads / cull / retest / hldiag / hlchan / poll / prepasskey / prepassfeat / depthequal / idtarget / blenddepth / vislist / washtest / oitviz / cullwatch / lodhyst / hitcheck / animdist / native | — | T, S | as declared | C | L, `hitcheck` **R** | — | live path switches and visualisers, the distance past which a character's limbs animate every second frame, and the native version of a content shader stage |
 | alloy.authoredlod | authoredlod | T | on | H | L | — | cfg-only: authored `.lod` alternates are loaded and switched for every object, non-static placeables included, whatever the game's own LOD option says. Off is for debugging; the switch distances still follow the game's LOD scale setting. |
 | alloy.consts / framedump / bench / shaderdump / snap / hitbench | — | B | — | C | — | — | dumps and measurements (`bench` steps the GPU-cost settings and logs a `[bench]` table) |
 | lod.enabled | Automatic mesh detail | T | on | **C** | L | — | cfg-only: distant walls and floors are drawn from a simplified copy of their own mesh. Off draws every model at full detail at every distance, which is what the game does. |
@@ -664,7 +693,7 @@ so it adds no submenu content.
 | light.probesize | Reflection capture size | D | 64 / 128 / 256 / 512 px · 64 | A | R | Reflections | Resolution the surroundings are captured at. Ladders on `quality.reflections`. |
 | light.ssrdetail | Screen-space reflection detail | D | full / half / quarter · half | A | L | Reflections | How many reflection rays are traced: one per pixel, per 2x2 or per 4x4 block. Lower is cheaper and noisier. Ladders on `quality.reflections`. |
 | light.ambientdir | Directional ambient | S | 0–1 step 0.05 · 0.5 | A | L | Materials | Ambient light takes its direction from the surroundings (sky above, ground below) at the area's own brightness. 0 is the stock sun-facing shading. |
-| light.daylow / dayhigh / wrap / wrapndl / hot / hotsize / radius / falloff / fadeout / deferred / deferredtiles / deferredwave / lightrec / probegain / ssrrough / ssrplanarres / hidden / brdf / specaa / binreach / bincap / relevance / floor / fullmodel / reachfade | — | T, S, D | as declared | C | L | — | the lit stage's tuning: the day curve, the sphere-light shape, the deferred path, reflection cost, the modern BRDF (ADR 0026) and the cluster/relevance budgets |
+| light.daylow / dayhigh / wrap / wrapndl / grazing / hot / hotsize / radius / falloff / fadeout / deferred / deferredtiles / deferredwave / lightrec / probegain / ssrrough / ssrplanarres / hidden / brdf / specaa / binreach / bincap / relevance / floor / fullmodel / reachfade | — | T, S, D | as declared | C | L | — | the lit stage's tuning: the day curve, the sphere-light shape, the deferred path, reflection cost, the modern BRDF (ADR 0026) and the cluster/relevance budgets |
 | shadow.enabled | Enable Alloy shadows | T | on | **C** | R | — | cfg-only: real-time sun cascades and point-light shadow cubes. Off, no surface takes a shadow from CX at all. |
 | shadow.dist | Sun shadow distance | S | 20–400 m step 10 · 120 | A | L | Sun | How far from you the sun casts shadows. Cost does not depend on area size. Ladders on `quality.shadows`. |
 | shadow.size | Sun shadow resolution | D | 512 / 1024 / 2048 / 4096 · 2048 | A | R | Sun | Per-cascade map size. Larger is sharper and slower. Ladders on `quality.shadows`. |
@@ -674,7 +703,7 @@ so it adds no submenu content.
 | shadow.cubedist | Point-light shadow distance | S | 0–200 m step 5 · 30 | A | L | Point lights | A light farther than this casts no shadow, and no fragment farther than this reads one; shadows fade over the last quarter. 0 = every light in the budget. Ladders on `quality.shadows`. |
 | shadow.soft | Shadow softness | S | 0–16 step 0.25 · 4 | A | L | Point lights | Widest blur of point-light and sun shadows, in shadow-map texels; the blur narrows toward the caster's contact. 0 is hard-edged and cheapest. Ladders on `quality.shadows`. |
 | shadow.search | Blocker search taps | S | 1–16 step 1 · 16 | C | L | Point lights | How many taps look for what is casting the shadow, which is what lets the blur narrow toward the caster. Fewer is cheaper and guesses the width off less of the map. Ladders on `quality.shadows`. |
-| shadow.cascades / floor / dynsize / dyncount / dynmin / sundyn / discpx / taps / cap / perpixel / deferredres / near / csmbias / fade / fadeslots / mask / maskholes / maskgraded / maskdither / focusdist / staticcap / dynhold / dynfull / sunfull / sunlatch / dynranks / casters / stage / gather / receiver / rebake / split / layered / refreshall / dynsrc / dynevents / flipcollect / maskh / trace / detail | — | T, S, D | as declared | C | casters / stage / dynsize / dyncount / sundyn R, rest L | — | cascade count, the per-pixel and mover budgets, the cut-out masks, the bake cadence, the bisects |
+| shadow.cascades / floor / dynsize / dyncount / dynmin / sundyn / discpx / taps / cap / perpixel / deferredres / near / csmbias / fade / fadeslots / mask / maskholes / maskgraded / maskdither / focusdist / staticcap / dynhold / dynfull / sunfull / sunlatch / dynranks / casters / stage / gather / receiver / rebake / split / refreshall / dynsrc / dynevents / flipcollect / trace / detail | — | T, S, D | as declared | C | casters / stage / dynsize / dyncount / sundyn R, rest L | — | cascade count, the per-pixel and mover budgets, the cut-out masks, the bake cadence, the bisects |
 | shadow.movers | — | B | — | C | — | — | dump the mover list next frame |
 | ao.radius | Radius | S | 0.1–2 m step 0.05 · 0.6 | U | L | — | How far occlusion reaches: 0.6 darkens corners and feet; larger is a room-wide gloom. Ladders on `quality.ao`. |
 | ao.strength | Strength | S | 0.5–4 step 0.1 · 2.2 | U | L | — | Multiplied by the game's AO intensity slider. |
@@ -704,7 +733,7 @@ empty unless the device refused the effect, then "Depth of field is off for this
 | post.threshold | Bloom threshold | S | 0–4 step 0.05 · 1 | A | L | Bloom | |
 | post.knee | Bloom knee | S | 0–1 step 0.05 · 0.5 | A | L | Bloom | |
 | post.taasharp | TAA sharpness | S | 0–1 step 0.05 · 0.3 | A | L | Anti-aliasing | Undoes the softness the history blend leaves. 0 = the raw resolve. |
-| post.acesmix / tmknee / dither / taablend / taau / halfres / stack / fbpost / toonbands / toonink / toonedge / motion / viz / clearviz / skyraw | — | T, S | as declared | C | L | — | tone-curve details, the TAA history weight and upsample, half-resolution AO, the stock framebuffer effects (gamma, sharpen, vibrance, SMAA, toon) and the visualisers |
+| post.acesmix / tmknee / dither / taablend / taau / halfres / stack / fbpost / toonbands / toonink / toonedge / viz / clearviz / skyraw | — | T, S | as declared | C | L | — | tone-curve details, the TAA history weight and upsample, half-resolution AO, the stock framebuffer effects (gamma, sharpen, vibrance, SMAA, toon) and the visualisers |
 | dof.enabled | Depth of field | T | off | U | L | — | Blurs what is nearer or farther than the focus, keeping the interface sharp. |
 | dof.amount | Amount | S | 0–5 step 0.05 · 1 | U | L | — | How quickly the blur grows with distance from the focus. |
 | dof.deadzone | Dead zone | S | 0–10 m step 0.1 · 3 | U | L | — | How deep the sharp band around the focus is. |
@@ -717,6 +746,7 @@ ChatOnly master and two diagnostics, so it has no submenu.
 | key | label | kind | range · default | tier | eff | section | help |
 |---|---|---|---|---|---|---|---|
 | grass.enabled | Grass | T | on | U | L | — | Grass on the ground: denser than the stock game's, wind-swayed, lit and shadowed. Off, no grass is drawn at all. The game's own Grass option still has to be on either way. |
+| grass.shadow | Grass casts shadows | D | none / 1 / 2 / 3 / 4 · 1 | A | L | Field | How many sun cascades the blades are drawn into. More is sharper far away and costlier. Ladders on `quality.grass`. |
 | grass.style | Grass style | D | Procedural blades / Game textures · Procedural blades | U | L | Field | Procedural blades: dense, individually shaded 3D blades coloured from the area's grass. Game textures: the area's own grass pictures, as the stock game draws them. Grass textures that look like flowers stay as pictures either way. |
 | grass.density | Density | S | 0–4 step 0.25 · 2 | U | L | Field | Blades per patch relative to the stock game. Ladders on `quality.grass`. |
 | grass.far | Distance | S | 0–1000 m step 10 · 0 | U | L | Field | How far grass draws. 0 follows the game's Grass Distance option (which stops at 173). |
@@ -734,6 +764,8 @@ ChatOnly master and two diagnostics, so it has no submenu.
 | weather.blur | Rain motion blur | S | 0–2 step 0.05 · 1.5 | A | L | Precipitation | How far each rain drop smears along its fall, the way a camera's shutter would draw it. 0 = round drops. |
 | weather.drips | Roof drips | S | 0–1 step 0.05 · 0.25 | A | L | Precipitation | Drops fall from roof edges and overhangs while the roofs are wet, and keep falling for the dry-out time after the rain stops. 0 = off. |
 | weather.cover | Shelter under roofs | T | on | A | L | Cover | Nothing falls under a roof, an awning or a doorway, and what they shelter stays dry. Off, it rains indoors. |
+| weather.tracks | Footprints in snow | T | on | A | L | Footsteps | Every step a creature takes presses a print into lying snow, which the snow slowly fills back in. |
+| weather.footsplash | Footstep splashes | S | 0–1 step 0.05 · 0.8 | A | L | Footsteps | Water kicks up where a creature steps on rain-wet ground: a flick on damp stone, a sheet out of a puddle. Lasts until the ground dries. 0 = off. |
 | weather.accum | Soak / settle time | S | 5–600 s step 5 · 60 | A | L | Surfaces | Seconds of full-density weather to fully wet or snow the ground. |
 | weather.dry | Dry-out time | S | 10–1800 s step 10 · 180 | A | L | Surfaces | Seconds for wet ground to dry after the rain stops. |
 | weather.melt | Melt time | S | 30–7200 s step 30 · 900 | A | L | Surfaces | Seconds for snow cover to melt after the snowfall ends. |
@@ -741,7 +773,7 @@ ChatOnly master and two diagnostics, so it has no submenu.
 | weather.impacts | Splash impacts | S | 0–1 step 0.05 · 0.6 | A | L | Impacts | Water leaps where each drop lands -- on the ground, on roofs, on ledges, wherever the rain reaches. 0 = off. Ladders on `quality.weather`. |
 | weather.wetsteps | Wet footstep sounds | T | on | A | L | — | Steps on rain-wet ground make the game's own puddle sound for that creature, until the ground dries. Not under a roof. |
 | weather.snowfootsteps | Snow footstep sounds | T | on | A | L | — | Steps on lying snow make the game's own snow sound for that creature, until the snow melts. Not under a roof. |
-| weather.flake / bright / opacity / range / rainspeed / snowspeed / windlean / snowangle / backscatter / soft / count / viz / waterroof / coversoft / coverrange / shelcache / arrive / splash / edgebreak / edgetaps / runoff / shorerim / snowalbedo / snowslope / snowpile / snowpilewidth / snowvary / snowdepth / snowsteps / snowbump / snowsparkle / snowwrap / snowsky / puddle / puddleedge / impactrange / map / mapres / mapcadence / basin / puddledepth / filmrough / filmlights / wetdark / rainrows / snowrows / snowskip | — | T, S, X | as declared | C | L | — | the fall's look and speed, the cover map, the shelter edge, the snow relief, the wetness map and its puddles, and the `weathertypes.2da` row lists (`range`, `count`, `splash`, `edgetaps`, `snowsteps`, `mapres`, `mapcadence`, `filmlights` ladder on `quality.weather`) |
+| weather.flake / bright / opacity / rainspeed / snowspeed / windlean / snowangle / backscatter / soft / count / viz / waterroof / coversoft / coverrange / shelcache / arrive / splash / edgebreak / edgetaps / runoff / shorerim / snowalbedo / snowslope / snowpile / snowpilewidth / snowvary / snowdepth / snowsteps / snowbump / snowsparkle / snowwrap / snowsky / puddle / puddleedge / impactrange / map / mapres / mapcadence / basin / puddledepth / filmrough / filmlights / wetdark / rainrows / snowrows / snowskip / trackfill | — | T, S, X | as declared | C | L | — | the fall's look and speed, the cover map, the shelter edge, the snow relief, the wetness map and its puddles, the footprint refill time, and the `weathertypes.2da` row lists (`count`, `splash`, `edgetaps`, `snowsteps`, `mapres`, `mapcadence`, `filmlights` ladder on `quality.weather`) |
 | fog.enabled | Fog | T | on | U | L | — | Fog that takes the sky's colour, glows toward the sun and thins with height. Off, every dial below reads 0 and the area author's own flat fog colour draws, as the stock game shows it. |
 | fog.sky | Fog takes the sky colour | S | 0–1 step 0.05 · 0.75 | U | L | Colour | How far the fog colour moves from the area's flat colour toward the sky. 0 is the stock look. |
 | fog.sun | Sun glow in fog | S | 0–2 step 0.05 · 0.35 | U | L | Colour | Fog brightens toward the sun. |
@@ -782,17 +814,23 @@ ChatOnly master alone, so it has no submenu.
 | dangly.tilt | Gravity | S | 0–1 step 0.05 · 1 | U | L | Forces | How fully a part on a tipped-over object falls toward the ground. 0 = it keeps hanging the way its model authored it. |
 | dangly.breeze | Base breeze | S | 0–2 step 0.05 · 0.5 | U | L | Forces | The least wind an outdoor area blows, so a still one is not frozen: 1 = an area set to weak wind, 2 = strong. 0 = only what the area sets. Automatic motion only. |
 | dangly.cage | Freedom of movement | S | 0.5–4 step 0.1 · 1.5 | A | L | Movement | How far hair, body parts and short plants may move from where the model puts them: ×the authored limit. Cloth and tall plants swing freely. Automatic motion only. |
-| dangly.sway / swing / jiggle / still | — | T, S | each on / as declared | C | L | — | one kind stood down to stock motion, and the displacement a part has to cross to count as a shadow mover |
+| dangly.strand | Hair swing | S | 0–2 step 0.05 · 1 | U | L | Movement | How freely long hair, braids and tails swing on a moving character, and they rest against the body instead of passing through it. Higher is looser. 0 = held like clothing. Automatic motion only. |
+| dangly.sway / swing / jiggle / collide / still | — | T, S | each on / as declared | C | L | — | one kind stood down to stock motion, whether hanging cloth keeps clear of the walls it hangs beside, and the displacement a part has to cross to count as a shadow mover |
 | particles.enabled | Particles | T | on | **C** | L | — | cfg-only: draw spell effects, smoke and fire. Off, no particles are drawn at all -- nothing else draws them any more. |
 | particles.soft | Soft edges | T | on | U | L | — | Particles fade where they meet geometry instead of cutting through it. Ladders on `quality.effects`. |
 | particles.lit | Lit particles | T | on | U | L | — | Smoke and dust take the scene's light. Ladders on `quality.effects`. |
 | particles.shadows / sort / grid / guard / batch / sampler / diag / viz | — | T, S | as declared | C | batch / sampler R, rest L | — | shadowed particles (ladders on `quality.effects`), the GPU sort, the batch and sampler paths, the visualiser |
 | emitsim.enabled | Simulate particles in CX | T | on | **C** | L | — | cfg-only: CX moves, spawns and retires every particle. Off, nothing steps them -- they freeze where they are. |
 
-**Not panel content.** `view` (CX computes the view and projection; CX runs the wind), `models`
-(the model cache's budget, the parse-ahead and the animation-set check), `mdl` (the parse
-comparison) and `dbtiles` (the CX tile build's report) declare ChatOnly knobs and a diagnostic
-`Status` only: `/view`, `/models`, `/mdl`, `/dbtiles` and `/knobs` are their whole surface.
+**Not panel content.** `view`, `models`, `mdl` and `dbtiles` declare ChatOnly knobs and a
+diagnostic `Status` only: `/view`, `/models`, `/mdl`, `/dbtiles` and `/knobs` are their whole
+surface. Their rows:
+
+| key | label | kind | range · default | tier | eff | section | help |
+|---|---|---|---|---|---|---|---|
+| view.cameraloop / wind | — | T | on / on | C | L | — | CX derives each view's viewport, projection and depth range from the camera itself, and runs the wind clock and noise field; off hands either back to the engine |
+| models.budget / prefetch / verify | — | T, S | 192 MiB / off / off | C | L | — | the parsed-model memory kept after the last user lets go, the parse-ahead on the area message, and the animation-set comparison against the engine |
+| mdl.check | — | T | off | C | L | — | parse every model the engine reads a second time and compare the two trees node for node |
 
 ### 4.4 Audio
 
@@ -846,7 +884,7 @@ between Driving and the other one you picked. Each mode keeps its own settings h
 | `<mode>.assist` | Aim assist | T | on | A | L | Action camera | The crosshair snaps its aim to the nearest creature, placeable or door within a few pixels of the centre. The camera never moves; only what you point at changes. |
 | `<mode>.autotarget` | Cast at the crosshair | T | on | A | L | Action camera | A spell, feat or item that asks you to pick a target fires straight away on whatever the crosshair is pointing at. A ground-targeted spell still asks you to aim it. |
 | `<mode>.headtrack` | Head follows the crosshair | T | on | A | L | Action camera | Your character turns their head toward whatever you are aiming at. Only you see it. |
-| `<mode>.pitchref / lagrot / lagzoom / deadzone / idle / grace / idlerate / keyturn / hz / turn / threshold / alttoggle / assistpx / feedback / headyaw / headpitch` | — | T, S | as declared | C | L | — | the two lag keys *Smoothing* carries, the recenter and heading-send tuning, and the action camera's fine dials |
+| `<mode>.pinyaw / pinpitch / pindist / pitchref / lagrot / lagzoom / deadzone / idle / grace / idlerate / keyturn / hz / turn / threshold / alttoggle / assistpx / feedback / headyaw / headpitch` | — | T, S | as declared | C | L | — | the view held for a repeatable measurement (-1 = off), the two lag keys *Smoothing* carries, the recenter and heading-send tuning, and the action camera's fine dials |
 
 Build notes: the master is a ninth `Gate` value consulted at the pre-Control recenter and the
 post-Control Adjust/SettleCollision; FOV `Camera+0x4c4` has no engine restorer, so off restores

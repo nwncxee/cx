@@ -32,7 +32,8 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
         # Only a build input builds: the sources, the build scripts, the toolchain pin and the tools build.sh
         # runs. When build.sh, or a script it calls, reads a file outside this list, add the file here.
-        # LICENSE and third_party/ are here because packaging/licenses.sh copies their notices into LICENSES.txt.
+        # LICENSE and third_party/ are here because packaging/licenses.sh copies their notices into LICENSES.txt,
+        # and the settings spec because the knob-spec-rows gate reads its rows.
         run: |
           set -euo pipefail
           inputs=(
@@ -64,6 +65,7 @@ jobs:
             tools/deps.json
             tools/deps.py
             tools/paths.py
+            docs/spec/unified-settings.md
             packaging/cx-launch
             packaging/licenses.sh
             packaging/README.txt
