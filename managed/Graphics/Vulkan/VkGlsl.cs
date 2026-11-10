@@ -137,6 +137,29 @@ internal static partial class VkGlsl
     /// content stage's own constants take.</summary>
     internal const uint BindlessCapConstant = 1000;
 
+    /// <summary>The diagnostic-view selector every Alloy stage reads (<c>/alloy viz</c> and its per-pass twins). Its
+    /// value stays a block member -- one pass draws a view while the probe capture beside it draws none -- and the
+    /// name the stage uses becomes a macro over <see cref="VizOnConstant"/>: with the constant false the whole ladder
+    /// of comparisons, and every term only a view reads, folds out of the pipeline.</summary>
+    internal const string VizUniform = "uViz", VizMember = "cxVizLive", VizOn = "cxVizOn";
+
+    /// <summary>The specialization constant that says a diagnostic view is being drawn, false by default. The backend
+    /// sets it for every pipeline at once and rebuilds the cache when it turns over, so a stage's text, and the
+    /// module cached from it, is the same either way.</summary>
+    internal const uint VizOnConstant = 1001;
+
+    /// <summary>The declarations a program that reads <see cref="VizUniform"/> gets ahead of its body; "" for one
+    /// that does not declare it.</summary>
+    private static string VizDecl(VkProgramText r)
+        => r.Loose.Exists(l => l.Name == VizUniform) || Array.Exists(r.Tail.All, m => m.Name == VizUniform)
+         ? $"layout(constant_id = {VizOnConstant}) const bool {VizOn} = false;\n"
+         + $"#define {VizUniform} ({VizOn} ? {VizMember} : 0)\n"
+         : "";
+
+    /// <summary>A stage's own <c>#define uViz</c> -- the decal writer's, which bakes the views out of a variant that
+    /// draws none -- which must undefine the macro <see cref="VizDecl"/> wrote before redefining it.</summary>
+    private static readonly Regex VizRedefine = new($@"^[ \t]*#define[ \t]+{VizUniform}\b", RegexOptions.Multiline);
+
     /// <summary>The macro a uniform block whose layout follows the device takes its qualifier from
     /// (<c>cx_envblk.glsl</c>). The text defines it to <c>std140</c> itself, so a stage read on its own lays out the
     /// same everywhere; a stage that names it gets the device's answer defined ahead of it instead.</summary>
@@ -346,6 +369,9 @@ internal static partial class VkGlsl
             edits.Add((st.Start, st.End, sb.ToString().TrimEnd()));
         }
         edits.Add((BodyStart(src), BodyStart(src), Shared(bindless, r)));
+        if (VizDecl(r).Length > 0)
+            foreach (Match m in VizRedefine.Matches(src))
+                edits.Add((m.Index, m.Index, $"#undef {VizUniform}\n"));
         edits.Sort((a, b) => a.Start != b.Start ? b.Start.CompareTo(a.Start) : (b.End - b.Start).CompareTo(a.End - a.Start));
         var o = new StringBuilder(src);
         foreach (var (s, e, t) in edits) o.Remove(s, e - s).Insert(s, t);
@@ -387,18 +413,24 @@ internal static partial class VkGlsl
               .Append($"uint {BindlessAt}(uint i) {{ return i < cxBindlessCap ? i : 0u; }}\n");
         sb.Append("layout(push_constant) uniform CxBatch {");
         foreach (var (t, n) in Push) sb.Append(' ').Append(t).Append(' ').Append(n).Append(';');
-        foreach ((string t, string n, _, _) in r.Tail.All) sb.Append(' ').Append(t).Append(' ').Append(n).Append(';');
+        foreach ((string t, string n, _, _) in r.Tail.All) sb.Append(' ').Append(t).Append(' ').Append(Spelling(n)).Append(';');
         sb.Append(" };\n");
         if (r.Loose.Count > 0)
         {
             // the block this writes is a declaration like any other: its host has to bind it
             AddOpaque(r, new VkOpaque(LooseBlock, LooseBlock, 0, LooseBinding, VkBindKind.UniformBlock));
             sb.Append($"layout(std140, binding = {LooseBinding}) uniform {LooseBlock} {{\n");
-            foreach (VkLoose l in r.Loose) sb.Append("    ").Append(l.Type).Append(' ').Append(l.Name).Append(l.Array).Append(";\n");
+            foreach (VkLoose l in r.Loose) sb.Append("    ").Append(l.Type).Append(' ').Append(Spelling(l.Name)).Append(l.Array).Append(";\n");
             sb.Append("};\n");
         }
+        sb.Append(VizDecl(r));
         return sb.ToString();
     }
+
+    /// <summary>How a block spells the member reported as <paramref name="name"/>: its own name, except that the
+    /// diagnostic-view selector gives its name up to <see cref="VizDecl"/>'s macro. What the backend's member table
+    /// calls it is unchanged either way, so the host writes it by the name the stage declared.</summary>
+    internal static string Spelling(string name) => name == VizUniform ? VizMember : name;
 
     /// <summary>A uniform or storage block's binding into <paramref name="r"/>; one with none is an error.</summary>
     private static void Block(Stmt st, Decl d, VkProgramText r)

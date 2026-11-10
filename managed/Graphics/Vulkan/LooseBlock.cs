@@ -38,7 +38,8 @@ internal static unsafe class LooseBlock
     {
         if (t.Loose.Count == 0) return null;
         var names = new List<string>(t.Loose.Count);
-        foreach (VkLoose u in t.Loose) names.Add(u.Name);
+        // the module names a member as the block spells it, which is not the declared name for every member
+        foreach (VkLoose u in t.Loose) names.Add(VkGlsl.Spelling(u.Name));
         uint at = VulkanToolchain.UniformBase + VkGlsl.LooseBinding;
         if ((VkSpirv.Block(fs, 0, at, names) ?? VkSpirv.Block(vs, 0, at, names)) is not { } l) return null;
         return (l.Members, l.Bytes, Members(t.Loose, l.Members));
@@ -51,7 +52,7 @@ internal static unsafe class LooseBlock
         var members = new List<Member>(reflected.Count);
         foreach (VkLoose u in loose)
         {
-            if (!reflected.TryGetValue(u.Name, out var m)) continue;
+            if (!reflected.TryGetValue(VkGlsl.Spelling(u.Name), out var m)) continue;
             int count = u.Count;
             members.Add(new Member(u.Name, m.Offset, m.Size, count > 1 ? m.Size / count : 0, IntKind(u.Type)));
         }

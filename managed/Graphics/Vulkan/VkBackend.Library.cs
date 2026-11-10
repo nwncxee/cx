@@ -17,9 +17,11 @@ namespace CX.Graphics.Rhi;
 internal sealed unsafe partial class VkBackend
 {
     /// <summary>One optimised link to make: the shared pipeline it replaces, a copy of the desc, and the four libraries.</summary>
-    private sealed class LinkJob(PipeObj obj, PipelineDesc desc, bool rate, bool dyn, VkPipeline[] libs, string what)
+    private sealed class LinkJob(PipeObj obj, PipelineDesc desc, bool rate, bool dyn, VkPipeline[] libs, string what, int gen)
     {
         public readonly PipeObj Obj = obj;
+        /// <summary>The specialization generation the libraries were built at; a result from an older one is dropped.</summary>
+        public readonly int Gen = gen;
         public readonly PipelineDesc Desc = desc;
         public readonly bool Rate = rate, Dyn = dyn;
         public readonly VkPipeline[] Libs = libs;
@@ -100,7 +102,7 @@ internal sealed unsafe partial class VkBackend
         LibraryState l = _lib;
         VkPipeline* libs = stackalloc VkPipeline[4];
         if (!LibrariesOf(d, rate, dyn, what, libs)) return;
-        l.Jobs.Enqueue(new LinkJob(obj, d, rate, dyn, [libs[0], libs[1], libs[2], libs[3]], what));
+        l.Jobs.Enqueue(new LinkJob(obj, d, rate, dyn, [libs[0], libs[1], libs[2], libs[3]], what, _specGen));
         l.InFlight++;
         if (l.Worker == null)
         {
@@ -139,7 +141,8 @@ internal sealed unsafe partial class VkBackend
             if (job.Result.IsNull) continue;
             PipeObj o = job.Obj;
             VkPipeline old = o.Handle, fresh = job.Result;
-            if (o.Dead) { Later(() => _vkd.vkDestroyPipeline(fresh)); continue; }
+            // a link made before the view turned over carries the specialization of the pipeline Respecialize replaced
+            if (o.Dead || job.Gen != _specGen) { Later(() => _vkd.vkDestroyPipeline(fresh)); continue; }
             o.Handle = fresh;
             o.Optimised = true;
             _pipeCacheDirty = true;

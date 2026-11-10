@@ -183,6 +183,13 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// <see cref="FrameSnapshot.SelfCheck"/> asserts the water stage's highest view against this.</summary>
     internal const int LightVizMax = 54;   // 54 = a material's AO map alone; 53 = the CX-273 decal layer folded into each surface (white = all decal); 52 = a forward fragment's light source (green deferred record, yellow baked walk, red unbaked walk); 51 = the hot-light path per fragment (red tested, green ray hit); 40 = the #493 vis-ID target (IdTarget.VizMode); 43/44 = the #674 lightmap term and its texel grid; 47..50 = CX-117's PLT forensics
     internal static int _lightViz => Renderer.Viz.V;
+
+    /// <summary>Any stage's diagnostic view is asked for: the world's, the transparency resolve's, the halos', the
+    /// particles', the weather's or the post chain's. The pipelines carry the view ladder only while this holds, so
+    /// it answers for every stage at once rather than per pass.</summary>
+    internal static bool VizAsked => Renderer.Viz.V != 0 || Renderer.OitViz.V != 0 || Effects.HaloViz.V != 0
+                                  || Particles.Viz.V != 0 || Weather.Viz.V != 0 || Post.Viz.V != 0;
+
     /// <summary>This draw is going into the <see cref="EnvProbe"/> cube, not onto the screen. The lit and
     /// water stages read it, so a capture never samples the probe -- which is an attachment of the framebuffer
     /// being drawn into. It says nothing about COLOUR SPACE: the screen target is linear too, so the capture

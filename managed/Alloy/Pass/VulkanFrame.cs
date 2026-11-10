@@ -48,6 +48,7 @@ internal static class VulkanFrame
         cl.Reset();
         vk.TimeFrame = true;
         vk.UnderHold = LightmapBake.Held;
+        vk.ShaderViz = AlloyRenderer.VizAsked;
         cl.BeginLabel("cull"u8);
         if (!CullPassVk.Record(vk, cl, log))
         {

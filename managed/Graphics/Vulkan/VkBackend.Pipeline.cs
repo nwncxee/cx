@@ -17,6 +17,11 @@ internal sealed unsafe partial class VkBackend
         public readonly string? Key = key;
         public int Refs = 1;
         public bool Optimised, Dead;
+        /// <summary>What a graphics pipeline was built from, with the two state bits a key folds in and the label its
+        /// handle is named by, so the backend can build it again at another specialization. Unset for a compute one.</summary>
+        public PipelineDesc Desc;
+        public bool Rate, Dyn;
+        public string What = "";
     }
 
     /// <summary>Compiled graphics pipelines by <see cref="PipeKey"/>: a second desc with the same key names the first one's.
@@ -35,21 +40,87 @@ internal sealed unsafe partial class VkBackend
     internal static string BlendPathLine(bool dynamic)
         => dynamic ? "blend is dynamic state, one pipeline for every blend mode" : "blend is baked into each pipeline";
 
-    /// <summary>The specialization every stage takes: the bindless seat count on <see cref="VkGlsl.BindlessCapConstant"/>,
-    /// in a block on the caller's stack, which the create call reads and lets go. A stage without the constant ignores it.</summary>
+    /// <summary>The specialization every stage takes: the bindless seat count on <see cref="VkGlsl.BindlessCapConstant"/>
+    /// and whether a diagnostic view is drawn on <see cref="VkGlsl.VizOnConstant"/>, in a block on the caller's stack,
+    /// which the create call reads and lets go. A stage without a constant ignores it.</summary>
     private struct SpecBlock
     {
         public VkSpecializationInfo Info;
-        public VkSpecializationMapEntry Entry;
-        public uint Cap;
+        public VkSpecializationMapEntry Cap, Viz;
+        public uint CapValue, VizValue;
     }
 
-    /// <summary><paramref name="b"/> filled with the device's seat count, its info pointing into itself.</summary>
+    /// <summary><paramref name="b"/> filled with the device's seat count and the view now drawn, its info pointing
+    /// into itself.</summary>
     private void Specialize(SpecBlock* b)
     {
-        b->Cap = _bindlessCap;
-        b->Entry = new VkSpecializationMapEntry { constantID = VkGlsl.BindlessCapConstant, offset = 0, size = sizeof(uint) };
-        b->Info = new VkSpecializationInfo { mapEntryCount = 1, pMapEntries = &b->Entry, dataSize = sizeof(uint), pData = &b->Cap };
+        b->CapValue = _bindlessCap;
+        b->VizValue = _specViz;
+        b->Cap = new VkSpecializationMapEntry { constantID = VkGlsl.BindlessCapConstant, offset = 0, size = sizeof(uint) };
+        b->Viz = new VkSpecializationMapEntry { constantID = VkGlsl.VizOnConstant, offset = sizeof(uint), size = sizeof(uint) };
+        b->Info = new VkSpecializationInfo
+        {
+            mapEntryCount = 2, pMapEntries = &b->Cap, dataSize = 2 * sizeof(uint), pData = &b->CapValue,
+        };
+    }
+
+    /// <summary>1 while a diagnostic view is drawn, 0 otherwise: the value every pipeline in the cache carries now.</summary>
+    private uint _specViz;
+
+    /// <summary>Which turn of <see cref="_specViz"/> the pipelines in the cache were built at, so an optimised link
+    /// the worker finished against the turn before it is dropped instead of swapped in.</summary>
+    private int _specGen;
+
+    /// <summary>A diagnostic view is being drawn, so every stage's view ladder has to be live. Off, the ladder and
+    /// the terms only a view reads fold out of each pipeline, which is what the whole cache is rebuilt for when this
+    /// turns over -- the cost of one chat command, paid once, and said out loud.</summary>
+    internal bool ShaderViz
+    {
+        get => _specViz != 0;
+        set
+        {
+            uint want = value ? 1u : 0u;
+            if (want == _specViz || !OnThread("ShaderViz")) return;
+            _specViz = want;
+            _specGen++;
+            Respecialize(value);
+        }
+    }
+
+    /// <summary>Every shared graphics pipeline built again at the specialization now set, its handle swapped under the
+    /// ids that name it the way an optimised link's is. The libraries go with them: a library carries the
+    /// specialization of the build that made it. A pipeline whose stages are gone keeps the handle it has, and says so.</summary>
+    private void Respecialize(bool viz)
+    {
+        LibraryState l = _lib;
+        foreach (VkPipeline lib in l.Libs.Values) l.Grave.Add(lib);
+        l.Libs.Clear();
+        l.ByShader.Clear();
+        int made = 0, kept = 0;
+        foreach (PipeObj o in _shared.Values)
+        {
+            if (o.Dead) continue;
+            if (!_shaders.TryGet((o.Desc.Ms.IsNull ? o.Desc.Vs : o.Desc.Ms).Value, out _) || !_shaders.TryGet(o.Desc.Fs.Value, out _))
+            {
+                kept++;
+                _log.Always($"VkBackend: {o.What} keeps the view ladder it was built with -- the stages it was built from are gone");
+                continue;
+            }
+            bool linked = Libraries && o.Desc.Ms.IsNull;
+            VkPipeline fresh = linked ? Linked(o.Desc, o.Rate, o.Dyn, o.What) : Build(o.Desc, o.Rate, o.Dyn, Part.Whole, null, 0, o.What);
+            if (fresh.IsNull) { kept++; continue; }
+            VkPipeline old = o.Handle;
+            o.Handle = fresh;
+            o.Optimised = false;
+            _pipeCacheDirty = true;
+            Name(VkObjectType.Pipeline, fresh.Handle, o.What);
+            Later(() => _vkd.vkDestroyPipeline(old));
+            made++;
+            if (linked) QueueOptimised(o, o.Desc, o.Rate, o.Dyn, o.What);
+        }
+        _log.Always($"VkBackend: a diagnostic view is {(viz ? "ON" : "off")} -- {made} pipeline(s) rebuilt with the view "
+                  + $"ladder {(viz ? "live" : "folded out")}"
+                  + (kept > 0 ? $"; {kept} could not be rebuilt (each said so above)" : ""));
     }
 
     /// <summary>A compute pipeline over <paramref name="src"/>; null (logged) when the text or the pipeline is
@@ -126,7 +197,7 @@ internal sealed unsafe partial class VkBackend
             if (pipe.IsNull) return default;
             Tallied(since, d.Prewarmed, what);
             Name(VkObjectType.Pipeline, pipe.Handle, what);
-            obj = new PipeObj(pipe, key);
+            obj = new PipeObj(pipe, key) { Desc = d, Rate = rate, Dyn = dyn, What = what };
             _shared[key] = obj;
             if (linked) QueueOptimised(obj, d, rate, dyn, what);
         }

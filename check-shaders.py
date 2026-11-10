@@ -85,6 +85,15 @@ VK_BUILTINS = ((r"\bgl_DrawID\b", "gl_DrawIDARB"), (r"\bgl_BaseInstance\b", "gl_
 # The macro a block whose layout follows the device takes its qualifier from (VkGlsl.LayoutMacro).
 VK_LAYOUT_MACRO = "CX_ENGBLK"
 
+# The diagnostic-view selector, read out of VkGlsl so the offline text is the one the runtime compiles: the
+# block carries it under its own name and the name the stages use is a macro over a specialization constant.
+_VK_GLSL_SRC = open(os.path.join(MANAGED, "Graphics/Vulkan/VkGlsl.cs")).read()
+VK_VIZ, VK_VIZ_MEMBER, VK_VIZ_ON = re.search(
+    r'VizUniform = "(\w+)", VizMember = "(\w+)", VizOn = "(\w+)"', _VK_GLSL_SRC).groups()
+VK_VIZ_CONSTANT = re.search(r"VizOnConstant = (\d+)", _VK_GLSL_SRC).group(1)
+VK_VIZ_DECL = re.compile(rf"\buniform\s+int\s+{VK_VIZ}\s*;")
+VK_VIZ_REDEFINE = re.compile(rf"^[ \t]*#define[ \t]+{VK_VIZ}\b", re.M)
+
 
 def vk_text(src, layout="scalar"):
     """Mirrors VkGlsl: every `sampler2D(handle)` construction as an index into the bindless sampler array, the
@@ -117,6 +126,11 @@ def vk_text(src, layout="scalar"):
                  f"#define {VK_LAYOUT_MACRO} scalar\n")
     if f"{VK_BINDLESS_ARRAY}[" in s:
         head += f"layout(set = {VK_BINDLESS_SET}, binding = 0) uniform sampler2D {VK_BINDLESS_ARRAY}[];\n"
+    if VK_VIZ_DECL.search(s):
+        s = VK_VIZ_DECL.sub(f"uniform int {VK_VIZ_MEMBER};", s)
+        s = VK_VIZ_REDEFINE.sub(lambda m: f"#undef {VK_VIZ}\n" + m.group(0), s)
+        head += (f"layout(constant_id = {VK_VIZ_CONSTANT}) const bool {VK_VIZ_ON} = false;\n"
+                 f"#define {VK_VIZ} ({VK_VIZ_ON} ? {VK_VIZ_MEMBER} : 0)\n")
     v = s.index("#version")
     e = s.index("\n", v) + 1
     return s[:e] + head + s[e:]
