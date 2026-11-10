@@ -274,7 +274,7 @@
 7 managed/Services/Nui/NuiService.cs
 14 managed/Services/Nui/NuiSolver.cs
 12 managed/Services/Perf/DrawStatsService.cs
-24 managed/Services/Perf/EngineZonesService.cs
+13 managed/Services/Perf/EngineZonesService.cs
 9 managed/Services/Perf/FpsOverlayService.cs
 26 managed/Services/Perf/ModelZonesService.cs
 3 managed/Services/Perf/ServerPing.cs
