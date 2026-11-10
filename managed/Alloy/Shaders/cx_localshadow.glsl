@@ -177,7 +177,12 @@ float CxLocalShadowQ(int slot, vec3 worldPos, vec3 N, float ndlRaw, float onMove
     float vs = texture(uLocalShadow, vec4(d, float(slot)), ref);
     // #308 follow-up: the dyn tap stands down for a CREATURE fragment inside the carrier band --
     // see CX_LOCAL_DYN_NEAR. Ground and static receivers pass onMover 0 and are never gated.
+#ifdef CX_LOCAL_NO_DYN
+    // a stage whose receivers are too small to show a mover's shadow takes the static cube alone
+    bool dyn = false;
+#else
     bool dyn = pg > 0.5 && !(onMover > 0.5 && m < CX_LOCAL_DYN_NEAR * uLocalSoft.y);
+#endif
     float vd = dyn ? texture(uLocalDynShadow, vec4(d, pg - 1.0), ref) : 1.0;
     float v = min(vs, vd);
     // #326: one tap when the disc is under its pixel budget on screen (z = px / lod scale) -- four of

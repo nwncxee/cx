@@ -15,6 +15,7 @@ const float CX_WX_LENS = 1.0;
 vec2 cxClusterXY;
 #define CX_CLUSTER_XY cxClusterXY
 #define CX_LIGHT_LITE 1   // cx_lightfrag's slimmed walk -- not a baked receiver, one shadow tap per light
+#define CX_LOCAL_NO_DYN 1 // a drop or a crown is too small to show a creature's shadow: one cube tap per lamp
 #include "cx_wx_hash.glsl"
 #include "cx_localshadow.glsl"
 #include "cx_lightfrag.glsl"

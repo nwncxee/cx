@@ -43,3 +43,4 @@ out float vSunVis;             // the sun's visibility at the water part
 vec2 cxClusterXY;
 #define CX_CLUSTER_XY cxClusterXY
 #define CX_LIGHT_LITE 1   // CX-188: cx_lightfrag's slimmed walk -- not a baked receiver, one shadow tap per light
+#define CX_LOCAL_NO_DYN 1 // a drop or a crown is too small to show a creature's shadow: one cube tap per lamp
