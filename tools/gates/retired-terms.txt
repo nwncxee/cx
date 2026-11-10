@@ -273,3 +273,6 @@ grass\.(aniso|soften)\b|\bGrass\.(Aniso|Soften)\b|\bSampFlat\b|\bSampMip\b	CX-31
 # Vulkan holds all three (the VkColourState's Records, TexH and Bones), and the bake binds them by those names.
 # The cx_drawbuf stage is a live shader resref and is a different word.
 \b_drawBuf\b|\b_texHBuf\b|\b_boneBuf\b|\bDrawRecordBuf\b|\bBoneBlockBuf\b|\bTexHandleBuf\b	CX-460
+# The chain builder's own name for an RGBA8 texel. One layout, one declaration: CX.Alloy.Rgba8 is the
+# record every raster the engine hands over reinterprets into, and the chain lays its texels out the same way.
+\bMipChain\.Texel\b	CX-467

@@ -158,12 +158,12 @@ internal static partial class GpuGolden
     private static byte[] CutSheet(bool onlyLeaf)
     {
         var px = new byte[CutSide * CutSide * 4];
-        Span<CX.Alloy.Db.MipChain.Texel> t = MemoryMarshal.Cast<byte, CX.Alloy.Db.MipChain.Texel>(px.AsSpan());
+        Span<Rgba8> t = MemoryMarshal.Cast<byte, Rgba8>(px.AsSpan());
         for (int y = 0; y < CutSide; y++)
             for (int x = 0; x < CutSide; x++)
                 t[CX.Alloy.Db.MipChain.Cell(CutSide, x, y)] = onlyLeaf || (x + y) % 3 == 0
-                    ? new CX.Alloy.Db.MipChain.Texel(CutLeafR, CutLeafG, CutLeafB, 255)
-                    : new CX.Alloy.Db.MipChain.Texel(CutMatteR, CutMatteG, CutMatteB, 0);
+                    ? new Rgba8(CutLeafR, CutLeafG, CutLeafB, 255)
+                    : new Rgba8(CutMatteR, CutMatteG, CutMatteB, 0);
         return px;
     }
 
@@ -192,15 +192,15 @@ internal static partial class GpuGolden
     {
         int n = w / 2;
         var next = new byte[n * n * 4];
-        ReadOnlySpan<CX.Alloy.Db.MipChain.Texel> from = MemoryMarshal.Cast<byte, CX.Alloy.Db.MipChain.Texel>(level.AsSpan());
-        Span<CX.Alloy.Db.MipChain.Texel> to = MemoryMarshal.Cast<byte, CX.Alloy.Db.MipChain.Texel>(next.AsSpan());
+        ReadOnlySpan<Rgba8> from = MemoryMarshal.Cast<byte, Rgba8>(level.AsSpan());
+        Span<Rgba8> to = MemoryMarshal.Cast<byte, Rgba8>(next.AsSpan());
         for (int y = 0; y < n; y++)
             for (int x = 0; x < n; x++)
             {
                 int x2 = x + x, y2 = y + y;
-                CX.Alloy.Db.MipChain.Texel a = from[CX.Alloy.Db.MipChain.Cell(w, x2, y2)], b = from[CX.Alloy.Db.MipChain.Cell(w, x2 + 1, y2)];
-                CX.Alloy.Db.MipChain.Texel c = from[CX.Alloy.Db.MipChain.Cell(w, x2, y2 + 1)], d = from[CX.Alloy.Db.MipChain.Cell(w, x2 + 1, y2 + 1)];
-                to[CX.Alloy.Db.MipChain.Cell(n, x, y)] = new CX.Alloy.Db.MipChain.Texel((byte)((a.R + b.R + c.R + d.R + 2) >> 2), (byte)((a.G + b.G + c.G + d.G + 2) >> 2),
+                Rgba8 a = from[CX.Alloy.Db.MipChain.Cell(w, x2, y2)], b = from[CX.Alloy.Db.MipChain.Cell(w, x2 + 1, y2)];
+                Rgba8 c = from[CX.Alloy.Db.MipChain.Cell(w, x2, y2 + 1)], d = from[CX.Alloy.Db.MipChain.Cell(w, x2 + 1, y2 + 1)];
+                to[CX.Alloy.Db.MipChain.Cell(n, x, y)] = new Rgba8((byte)((a.R + b.R + c.R + d.R + 2) >> 2), (byte)((a.G + b.G + c.G + d.G + 2) >> 2),
                                                                 (byte)((a.B + b.B + c.B + d.B + 2) >> 2), (byte)((a.A + b.A + c.A + d.A + 2) >> 2));
             }
         return next;
@@ -209,12 +209,12 @@ internal static partial class GpuGolden
     /// <summary>The worst kept texel's red over a level, and over the midpoints a bilinear read keeps.</summary>
     private static int CutBrightest(ReadOnlySpan<byte> level, int w)
     {
-        ReadOnlySpan<CX.Alloy.Db.MipChain.Texel> t = MemoryMarshal.Cast<byte, CX.Alloy.Db.MipChain.Texel>(level);
+        ReadOnlySpan<Rgba8> t = MemoryMarshal.Cast<byte, Rgba8>(level);
         int worst = 0;
         for (int y = 0; y < w; y++)
             for (int x = 0; x < w; x++)
             {
-                CX.Alloy.Db.MipChain.Texel o = t[CX.Alloy.Db.MipChain.Cell(w, x, y)], e = t[CX.Alloy.Db.MipChain.Cell(w, (x + 1) % w, y)];
+                Rgba8 o = t[CX.Alloy.Db.MipChain.Cell(w, x, y)], e = t[CX.Alloy.Db.MipChain.Cell(w, (x + 1) % w, y)];
                 if (o.A > CutHole) worst = Math.Max(worst, o.R);
                 if ((o.A + e.A) / 2 > CutHole) worst = Math.Max(worst, (o.R + e.R) / 2);
             }
@@ -224,9 +224,9 @@ internal static partial class GpuGolden
     /// <summary>The share of a level's texels that stand past the discard.</summary>
     private static float CutKept(ReadOnlySpan<byte> level)
     {
-        ReadOnlySpan<CX.Alloy.Db.MipChain.Texel> t = MemoryMarshal.Cast<byte, CX.Alloy.Db.MipChain.Texel>(level);
+        ReadOnlySpan<Rgba8> t = MemoryMarshal.Cast<byte, Rgba8>(level);
         int kept = 0;
-        foreach (CX.Alloy.Db.MipChain.Texel p in t) if (p.A > CutHole) kept++;
+        foreach (Rgba8 p in t) if (p.A > CutHole) kept++;
         return (float)kept / t.Length;
     }
 }

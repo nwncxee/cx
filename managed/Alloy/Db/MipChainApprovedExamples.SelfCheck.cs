@@ -24,22 +24,22 @@ internal static unsafe class MipChainApprovedExamples
     internal static byte[] Sheet()
     {
         var px = new byte[Side * Side * 4];
-        Span<MipChain.Texel> t = MemoryMarshal.Cast<byte, MipChain.Texel>(px.AsSpan());
+        Span<Rgba8> t = MemoryMarshal.Cast<byte, Rgba8>(px.AsSpan());
         for (int y = 0; y < Side; y++)
             for (int x = 0; x < Side; x++)
-                t[MipChain.Cell(Side, x, y)] = (x + y) % 3 == 0 ? new MipChain.Texel(LeafR, LeafG, LeafB, 255) : new MipChain.Texel(MatteR, MatteG, MatteB, 0);
+                t[MipChain.Cell(Side, x, y)] = (x + y) % 3 == 0 ? new Rgba8(LeafR, LeafG, LeafB, 255) : new Rgba8(MatteR, MatteG, MatteB, 0);
         return px;
     }
 
     /// <summary>The worst kept texel's red over a level, and over the bilinear midpoints the cut would keep.</summary>
     private static int BrightestKept(ReadOnlySpan<byte> level, int w, int h)
     {
-        ReadOnlySpan<MipChain.Texel> t = MemoryMarshal.Cast<byte, MipChain.Texel>(level);
+        ReadOnlySpan<Rgba8> t = MemoryMarshal.Cast<byte, Rgba8>(level);
         int worst = 0;
         for (int y = 0; y < h; y++)
             for (int x = 0; x < w; x++)
             {
-                MipChain.Texel o = t[MipChain.Cell(w, x, y)], e = t[MipChain.Cell(w, (x + 1) % w, y)];
+                Rgba8 o = t[MipChain.Cell(w, x, y)], e = t[MipChain.Cell(w, (x + 1) % w, y)];
                 if (o.A > Hole) worst = Math.Max(worst, o.R);
                 if ((o.A + e.A) / 2 > Hole) worst = Math.Max(worst, (o.R + e.R) / 2);
             }
@@ -48,9 +48,9 @@ internal static unsafe class MipChainApprovedExamples
 
     private static float Kept(ReadOnlySpan<byte> level)
     {
-        ReadOnlySpan<MipChain.Texel> t = MemoryMarshal.Cast<byte, MipChain.Texel>(level);
+        ReadOnlySpan<Rgba8> t = MemoryMarshal.Cast<byte, Rgba8>(level);
         int kept = 0;
-        foreach (MipChain.Texel p in t) if (p.A > Hole) kept++;
+        foreach (Rgba8 p in t) if (p.A > Hole) kept++;
         return (float)kept / t.Length;
     }
 
@@ -131,14 +131,14 @@ internal static unsafe class MipChainApprovedExamples
             if (w == 1) break;
             int n = w / 2;
             var next = new byte[n * n * 4];
-            ReadOnlySpan<MipChain.Texel> from = MemoryMarshal.Cast<byte, MipChain.Texel>(level);
-            Span<MipChain.Texel> to = MemoryMarshal.Cast<byte, MipChain.Texel>(next.AsSpan());
+            ReadOnlySpan<Rgba8> from = MemoryMarshal.Cast<byte, Rgba8>(level);
+            Span<Rgba8> to = MemoryMarshal.Cast<byte, Rgba8>(next.AsSpan());
             for (int y = 0; y < n; y++)
                 for (int x = 0; x < n; x++)
                 {
                     int x2 = x + x, y2 = y + y;
-                    MipChain.Texel a = from[MipChain.Cell(w, x2, y2)], b = from[MipChain.Cell(w, x2 + 1, y2)], c = from[MipChain.Cell(w, x2, y2 + 1)], d = from[MipChain.Cell(w, x2 + 1, y2 + 1)];
-                    to[MipChain.Cell(n, x, y)] = new MipChain.Texel((byte)((a.R + b.R + c.R + d.R + 2) >> 2), (byte)((a.G + b.G + c.G + d.G + 2) >> 2),
+                    Rgba8 a = from[MipChain.Cell(w, x2, y2)], b = from[MipChain.Cell(w, x2 + 1, y2)], c = from[MipChain.Cell(w, x2, y2 + 1)], d = from[MipChain.Cell(w, x2 + 1, y2 + 1)];
+                    to[MipChain.Cell(n, x, y)] = new Rgba8((byte)((a.R + b.R + c.R + d.R + 2) >> 2), (byte)((a.G + b.G + c.G + d.G + 2) >> 2),
                                                        (byte)((a.B + b.B + c.B + d.B + 2) >> 2), (byte)((a.A + b.A + c.A + d.A + 2) >> 2));
                 }
             level = next;

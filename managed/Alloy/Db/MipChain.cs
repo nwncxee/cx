@@ -10,10 +10,6 @@ namespace CX.Alloy.Db;
 /// term. Fractional alpha keeps its own, which is the opacity a blended draw shows.</summary>
 internal static unsafe class MipChain
 {
-    /// <summary>One RGBA8 texel, as a chain lays them out.</summary>
-    [StructLayout(LayoutKind.Sequential)]
-    internal readonly record struct Texel(byte R, byte G, byte B, byte A);
-
     /// <summary>The engine's 0.2 discard as a byte: a texel at or under it is a hole.</summary>
     private const int Hole = 51;
     private const int MaxLevels = 16;
@@ -87,7 +83,7 @@ internal static unsafe class MipChain
     /// before it pays for a chain-sized buffer.</summary>
     internal static bool HasHoles(ReadOnlySpan<byte> rgba)
     {
-        foreach (Texel t in MemoryMarshal.Cast<byte, Texel>(rgba)) if (t.A <= Hole) return true;
+        foreach (Rgba8 t in MemoryMarshal.Cast<byte, Rgba8>(rgba)) if (t.A <= Hole) return true;
         return false;
     }
 
@@ -96,10 +92,10 @@ internal static unsafe class MipChain
     /// 0's share of texels past the cut in every level.</summary>
     private static void Build(ReadOnlySpan<byte> rgba, int w, int h, Span<byte> chain)
     {
-        ReadOnlySpan<Texel> top = MemoryMarshal.Cast<byte, Texel>(rgba);
+        ReadOnlySpan<Rgba8> top = MemoryMarshal.Cast<byte, Rgba8>(rgba);
         int kept = 0;
         bool binary = true;
-        foreach (Texel t in top)
+        foreach (Rgba8 t in top)
         {
             if (t.A <= Hole) continue;
             kept++;
@@ -112,11 +108,11 @@ internal static unsafe class MipChain
         rgba.CopyTo(chain);
         fixed (byte* px = chain) TexScan.BuildMips(px, levels, lw, lh, off);
         for (int l = levels - 2; l >= 0; l--)
-            FillHoles(MemoryMarshal.Cast<byte, Texel>(chain.Slice((int)off[l], lw[l] * lh[l] * Bpp)), lw[l], lh[l],
-                      MemoryMarshal.Cast<byte, Texel>(chain.Slice((int)off[l + 1], lw[l + 1] * lh[l + 1] * Bpp)), lw[l + 1], lh[l + 1]);
+            FillHoles(MemoryMarshal.Cast<byte, Rgba8>(chain.Slice((int)off[l], lw[l] * lh[l] * Bpp)), lw[l], lh[l],
+                      MemoryMarshal.Cast<byte, Rgba8>(chain.Slice((int)off[l + 1], lw[l + 1] * lh[l + 1] * Bpp)), lw[l + 1], lh[l + 1]);
         if (!binary) return;
         for (int l = 1; l < levels; l++)
-            KeepCoverage(MemoryMarshal.Cast<byte, Texel>(chain.Slice((int)off[l], lw[l] * lh[l] * Bpp)), share);
+            KeepCoverage(MemoryMarshal.Cast<byte, Rgba8>(chain.Slice((int)off[l], lw[l] * lh[l] * Bpp)), share);
     }
 
     /// <summary>Off-device: a sheet with no holes keeps the device's chain and a level 0 leaf keeps its texels. Oracle: hand-painted texels.</summary>
@@ -124,15 +120,15 @@ internal static unsafe class MipChain
     {
         var check = new Checker(log, "MipChain.SelfCheck");
         var stone = new byte[8 * 8 * Bpp];
-        MemoryMarshal.Cast<byte, Texel>(stone.AsSpan()).Fill(new Texel(90, 90, 90, 255));
+        MemoryMarshal.Cast<byte, Rgba8>(stone.AsSpan()).Fill(new Rgba8(90, 90, 90, 255));
         check.Expect(Raster(stone, 8, 8) == null, "an opaque sheet was rebuilt");
         var edge = new byte[8 * 8 * Bpp];
-        MemoryMarshal.Cast<byte, Texel>(edge.AsSpan()).Fill(new Texel(90, 90, 90, Hole + 1));
+        MemoryMarshal.Cast<byte, Rgba8>(edge.AsSpan()).Fill(new Rgba8(90, 90, 90, Hole + 1));
         check.Expect(Raster(edge, 8, 8) == null, "a sheet with every texel just past the cut was rebuilt");
         var leaf = new byte[8 * 8 * Bpp];
-        Span<Texel> t = MemoryMarshal.Cast<byte, Texel>(leaf.AsSpan());
-        t.Fill(new Texel(200, 200, 200, 0));
-        t[0] = new Texel(10, 20, 30, 255);
+        Span<Rgba8> t = MemoryMarshal.Cast<byte, Rgba8>(leaf.AsSpan());
+        t.Fill(new Rgba8(200, 200, 200, 0));
+        t[0] = new Rgba8(10, 20, 30, 255);
         byte[]? chain = Raster(leaf, 8, 8);
         check.Expect(chain != null && chain[0] == 10 && chain[1] == 20 && chain[2] == 30 && chain[3] == 255, "level 0's leaf texel changed");
         check.Expect(chain != null && chain.Length == (64 + 16 + 4 + 1) * Bpp, $"8x8 chain is {chain?.Length} bytes");
@@ -143,19 +139,19 @@ internal static unsafe class MipChain
         var buf = new byte[TexScan.ChainBytes(8, 8, true)];
         leaf.CopyTo(buf.AsSpan());
         check.Expect(Chained(buf, 8, 8), "a chain buffer whose sheet has holes was left alone");
-        Span<Texel> made = MemoryMarshal.Cast<byte, Texel>(buf.AsSpan());
+        Span<Rgba8> made = MemoryMarshal.Cast<byte, Rgba8>(buf.AsSpan());
         check.Expect(made[0].R == 10 && made[0].G == 20 && made[0].B == 30, "level 0's leaf texel changed in place");
-        Texel under = made[Cell(8, 0, 8)];   // one row past the 8x8 level: the first texel of the level under it
+        Rgba8 under = made[Cell(8, 0, 8)];   // one row past the 8x8 level: the first texel of the level under it
         check.Expect(under.R == 10 && under.G == 20 && under.B == 30,
             $"the level under it reads {under.R},{under.G},{under.B}, not the leaf's colour alone");
         // The coverage rescale, which binary alpha alone takes. Oracle: the box mean of one 255 and three 0s is
         // alpha 64, of 255 and 150 is 101, and only the rescale moves a level off its mean.
         var soft = (byte[])leaf.Clone();
-        MemoryMarshal.Cast<byte, Texel>(soft.AsSpan())[1] = new Texel(10, 20, 30, 150);
+        MemoryMarshal.Cast<byte, Rgba8>(soft.AsSpan())[1] = new Rgba8(10, 20, 30, 150);
         byte[]? gradedChain = Raster(soft, 8, 8);
         int lvl1 = Cell(8, 0, 8);
-        byte binA = chain == null ? (byte)0 : MemoryMarshal.Cast<byte, Texel>(chain.AsSpan())[lvl1].A;
-        byte gradA = gradedChain == null ? (byte)0 : MemoryMarshal.Cast<byte, Texel>(gradedChain.AsSpan())[lvl1].A;
+        byte binA = chain == null ? (byte)0 : MemoryMarshal.Cast<byte, Rgba8>(chain.AsSpan())[lvl1].A;
+        byte gradA = gradedChain == null ? (byte)0 : MemoryMarshal.Cast<byte, Rgba8>(gradedChain.AsSpan())[lvl1].A;
         check.Expect(binA != 64, $"binary alpha: the level under reads the box mean {binA}, so no coverage was held");
         check.Expect(gradA == 101, $"fractional alpha: the level under reads {gradA}, not the box mean 101 -- its opacity was rescaled");
         stone.CopyTo(buf.AsSpan());
@@ -167,25 +163,25 @@ internal static unsafe class MipChain
 
     /// <summary>A hole's colour from the coarser level above it, which holds the covered colour of its whole
     /// neighbourhood: a filter across an edge mixes leaf with leaf, never with whatever was painted under the hole.</summary>
-    private static void FillHoles(Span<Texel> level, int w, int h, ReadOnlySpan<Texel> above, int aw, int ah)
+    private static void FillHoles(Span<Rgba8> level, int w, int h, ReadOnlySpan<Rgba8> above, int aw, int ah)
     {
         for (int y = 0; y < h; y++)
             for (int x = 0; x < w; x++)
             {
                 int at = Cell(w, x, y);
                 if (level[at].A > Hole) continue;
-                Texel p = above[Cell(aw, Math.Min(x >> 1, aw - 1), Math.Min(y >> 1, ah - 1))];
-                level[at] = new Texel(p.R, p.G, p.B, level[at].A);
+                Rgba8 p = above[Cell(aw, Math.Min(x >> 1, aw - 1), Math.Min(y >> 1, ah - 1))];
+                level[at] = new Rgba8(p.R, p.G, p.B, level[at].A);
             }
     }
 
     /// <summary>Scales a level's alpha so <paramref name="share"/> of its texels stand past the cut, as they do at level
     /// 0 (Castano, "Computing Alpha Mipmaps"). The histogram names the alpha that lands just past it; no search needed.</summary>
-    private static void KeepCoverage(Span<Texel> level, double share)
+    private static void KeepCoverage(Span<Rgba8> level, double share)
     {
         Span<int> histogram = stackalloc int[256];
         histogram.Clear();
-        foreach (Texel t in level) histogram[t.A]++;
+        foreach (Rgba8 t in level) histogram[t.A]++;
         int want = (int)Math.Round(share * level.Length), have = 0, edge = 256;
         for (int a = 255; a >= 1 && have < want; a--)
         {
@@ -196,8 +192,8 @@ internal static unsafe class MipChain
         const int PastCut = Hole + 1;
         for (int i = 0; i < level.Length; i++)
         {
-            Texel t = level[i];
-            level[i] = new Texel(t.R, t.G, t.B, (byte)Math.Min(255, t.A * PastCut / edge));
+            Rgba8 t = level[i];
+            level[i] = new Rgba8(t.R, t.G, t.B, (byte)Math.Min(255, t.A * PastCut / edge));
         }
     }
 }
