@@ -813,6 +813,9 @@ def with_define(src, define):
 # Mirrors AlloyRenderer.BindlessPrologue: what a stage that samples by handle opens with.
 BINDLESS_PROLOGUE = "#define CX_BINDLESS 1\n#extension GL_ARB_bindless_texture : require\n"
 
+# Mirrors AlloyRenderer.TexHandleFn: a table entry as the handle a stage constructs a sampler from.
+TEX_HANDLE_FN = "uvec2 CxTexHandle(uint i) { return uvec2(i, 0u); }\n"
+
 
 def bindless(fs):
     names = (("uTex", 0), ("uFlowTex", 6), ("uNrmTex", 1), ("uSpecTex", 2), ("uRoughTex", 3),
@@ -820,8 +823,8 @@ def bindless(fs):
     for n, _ in names:
         fs = re.sub(rf"uniform sampler2D {n};[^\n]*\n", "", fs)
     head = ("#version 460 core\n" + BINDLESS_PROLOGUE +
-            "layout(std430, binding = 3) readonly buffer CxTexH { uvec2 uTexH[]; };\n"
-            + "".join(f"#define {n} sampler2D(uTexH[(vDraw << 3) + {k}])\n" for n, k in names))
+            "layout(std430, binding = 3) readonly buffer CxTexH { uint uTexH[]; };\n" + TEX_HANDLE_FN
+            + "".join(f"#define {n} sampler2D(CxTexHandle(uTexH[(vDraw << 3) + {k}]))\n" for n, k in names))
     return fs.replace("#version 460 core\n", head, 1)
 
 

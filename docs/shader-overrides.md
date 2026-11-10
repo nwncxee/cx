@@ -101,7 +101,9 @@ Compile the **translated** stage, not the dumped one. `VkGlsl` (`managed/Graphic
 GL GLSL into Vulkan GLSL before shaderc sees it, and `VulkanToolchain.CompileFresh` is the exact
 invocation: target environment Vulkan 1.3, locations auto-mapped, and GL's binding spaces shifted apart into
 the one descriptor set — samplers from 0, uniform blocks from 48, storage blocks from 64, storage images from
-80. Set 1 is the bindless sampler array. Every loose (non-block) uniform the stage declared is gathered into
+80. Set 1 is the bindless sampler array, and the per-draw handle table (`uTexH`) is one `uint` per material
+slot — a descriptor index, which `CxTexHandle` widens to the `uvec2` a `sampler2D(...)` construction takes, so
+`CxConUnit`, `texUnit0`..`texUnit10` and a handle a stage carries itself read as they always have. Every loose (non-block) uniform the stage declared is gathered into
 one std140 block the host fills by member name, so a module that drops it gets no uniforms — except the
 scalars that stage names in the push block, which a few stages take per draw or per dispatch instead of
 re-staging a block for. The entry point is `main`.

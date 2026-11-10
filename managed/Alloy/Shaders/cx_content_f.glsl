@@ -103,7 +103,7 @@
 // The engine's solid_noise, the texture its own water samples here, as the handle the CxEngine block carries.
 #ifdef CX_BINDLESS
 // a null handle is a GPU fault on AMD's driver, so a program bound before its handle went up samples the diffuse's
-#define texUnitNoise (sampler2D(uConNoise != uvec2(0u) ? uConNoise : uTexH[vDraw << 3]))
+#define texUnitNoise (sampler2D(uConNoise != uvec2(0u) ? uConNoise : CxTexHandle(uTexH[vDraw << 3])))
 #define texNoiseBound (uConNoise != uvec2(0u) ? 1 : 0)
 #else
 // a GUI twin binds by unit and has no handle table (cx_guicon_f), so its noise unit reads the diffuse

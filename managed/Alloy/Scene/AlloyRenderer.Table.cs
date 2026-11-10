@@ -259,8 +259,8 @@ public sealed unsafe partial class AlloyRenderer
         // marked AND un-memoised -- a zeroed handle that is never re-resolved is the radeonsi page fault.
         const ulong fakeDying = 0xD1E1A5E0u;   // not-an-offset: a stand-in handle value, never dereferenced
         for (int i = 0; i < 4; i++) { _gate[i].TexStale = false; _recTexStamp[i] = _stageTexSerial; }
-        ulong svH = _dTexH[2][3]; long svZeroed = HandlesZeroed;
-        _dTexH[2][3] = fakeDying;
+        uint svH = _dTexH[2][3]; long svZeroed = HandlesZeroed;
+        _dTexH[2][3] = (uint)fakeDying;
         ZeroHandle(fakeDying);
         ok &= _gate[2].TexStale && _recTexStamp[2] == 0 && _dTexH[2][3] == 0
               && !_gate[1].TexStale && _recTexStamp[1] == _stageTexSerial;
@@ -315,8 +315,8 @@ public sealed unsafe partial class AlloyRenderer
             if (_oTri[i] == IntPtr.Zero) continue;
             ref TexHandles hh = ref _dTexH[i];
             if (hh[0] == 0) continue;
-            hh[0] = HandleFor(_recTid[i]);
-            for (int s = 0; s < MapSlots; s++) hh[1 + s] = _recTidS[i * MapSlots + s] != 0 ? HandleFor(_recTidS[i * MapSlots + s]) : 0;
+            hh[0] = (uint)HandleFor(_recTid[i]);
+            for (int s = 0; s < MapSlots; s++) hh[1 + s] = _recTidS[i * MapSlots + s] != 0 ? (uint)HandleFor(_recTidS[i * MapSlots + s]) : 0;
             _texHDirty = true;
             MarkRecordDirty(i);
         }
@@ -381,11 +381,12 @@ public sealed unsafe partial class AlloyRenderer
     internal static void ZeroHandle(ulong v)
     {
         if (v == 0) return;
+        uint name = (uint)v;   // the record block carries the handle's low word, which is the owned name
         NoteTexStalePending();
         for (int j = 0; j < _ownCount; j++)
             for (int s = 0; s < TexHandles.MaterialSlots; s++)
             {
-                if (_dTexH[j][s] != v) continue;
+                if (_dTexH[j][s] != name) continue;
                 _dTexH[j][s] = 0;
                 // the full re-resolve, not ApplySwaps: that one skips a block whose slot 0 reads 0 as "unlit"
                 MarkTexStale(j);

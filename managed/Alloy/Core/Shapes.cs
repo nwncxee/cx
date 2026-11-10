@@ -24,13 +24,15 @@ internal struct Box
     public Vector3 Max;
 }
 
-/// <summary>One bindless handle per material slot of a draw: the diffuse, then slots 1 to 7.</summary>
+/// <summary>One bindless handle per material slot of a draw: the diffuse, then slots 1 to 7. The low word of
+/// the handle, which is the owned texture NAME -- the upload resolves it to the frame's descriptor index, and
+/// the high word GL's handle carried was always zero.</summary>
 [InlineArray(MaterialSlots)]
 internal struct TexHandles
 {
     /// <summary>Handles per draw.</summary>
     public const int MaterialSlots = 8;
-    private ulong _e;
+    private uint _e;
 }
 
 /// <summary>The engine texture object bound on each unit of one sky draw.</summary>

@@ -101,7 +101,7 @@ public sealed unsafe partial class AlloyRenderer
             }
             // stock's texture{N}Bound is enabled AND bound: a map with no handle (failed, loading) is unbound, not a 0 texel
             if (h == 0) slots &= ~DrawRecipe.MaskBitOf(s, (int)DrawRecipe.FeatF(recipe, 0));
-            if (hh[s] != h) { hh[s] = h; moved = true; }
+            if (hh[s] != (uint)h) { hh[s] = (uint)h; moved = true; }
         }
         // only a moved handle dirties the table, and its slot goes on the list: a static part is on no other
         if (moved) { _texHDirty = true; MarkRecordDirty(i, ref c); }
@@ -115,7 +115,7 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>The diffuse handle staging leaves on a record of <paramref name="part"/>, off a scratch slot put back
     /// after. A worker's stage, so no diagnostic runs and nothing registers.</summary>
-    internal static ulong SelfCheckStagedDiffuse(int part)
+    internal static uint SelfCheckStagedDiffuse(int part)
     {
         const int Slot = 0;
         TexHandles saved = _dTexH[Slot];
@@ -125,7 +125,7 @@ public sealed unsafe partial class AlloyRenderer
         int slots = 0;
         bool settled = true;
         var c = default(StageCounters);
-        ulong h = DbStageHandles(Slot, part, SceneDb.PartRecipe[part], 0, false, ref slots, ref settled, ref c) ? _dTexH[Slot][0] : 0;
+        uint h = DbStageHandles(Slot, part, SceneDb.PartRecipe[part], 0, false, ref slots, ref settled, ref c) ? _dTexH[Slot][0] : 0;
         _dTexH[Slot] = saved;
         _recDirtyN = dirtyN;
         _texHDirty = texDirty;
@@ -462,7 +462,7 @@ public sealed unsafe partial class AlloyRenderer
     /// Prints the whole chain once the records have settled: the recipe's diffuse id, the registry's state
     /// for it, whether a handle exists, the per-part override, and how many times this population has been
     /// staged at all -- a record that is staged ONCE and never again cannot pick up a late arrival.</summary>
-    private static void TileTexProbe(int part, int recipe, ulong h0)
+    private static void TileTexProbe(int part, int recipe, uint h0)
     {
         // Both one-shots have printed: there is nothing left to measure, and this runs per part per frame
         // for the rest of the session (review #5).

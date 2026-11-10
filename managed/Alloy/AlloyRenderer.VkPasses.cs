@@ -358,8 +358,8 @@ public sealed unsafe partial class AlloyRenderer
         {
             vk.Destroy(s.Records); vk.Destroy(s.TexH);
             s.Records = vk.CreateBuffer(new BufferDesc((long)cap * DrawFloats * sizeof(float), BufferUse.Storage, MemoryKind.Upload, "vk draw records"));
-            s.TexH = vk.CreateBuffer(new BufferDesc((long)cap * TexHandles.MaterialSlots * 8, BufferUse.Storage, MemoryKind.Upload, "vk handle table"));
-            s.TexHTable = new uint[cap * TexHandles.MaterialSlots * 2];
+            s.TexH = vk.CreateBuffer(new BufferDesc((long)cap * TexHandles.MaterialSlots * sizeof(uint), BufferUse.Storage, MemoryKind.Upload, "vk handle table"));
+            s.TexHTable = new uint[cap * TexHandles.MaterialSlots];
             s.RecCap = cap;
             whole = true;
             RecordUploads.Claim(RecordWhole.Grew);
@@ -368,7 +368,7 @@ public sealed unsafe partial class AlloyRenderer
         s.WhiteIndex = VkTextures.Index(OwnedTextures.WhiteTid());
         s.NullIndex = VkTextures.Index(OwnedTextures.NullTid());
         ReadOnlySpan<byte> rec = MemoryMarshal.AsBytes(_dData.AsSpan(0, cap));
-        int rb = DrawFloats * sizeof(float), hb = TexHandles.MaterialSlots * 8;
+        int rb = DrawFloats * sizeof(float), hb = TexHandles.MaterialSlots * sizeof(uint);
         if (whole)
         {
             for (int r = 0; r < cap; r++) VkHandles(r);
@@ -390,7 +390,7 @@ public sealed unsafe partial class AlloyRenderer
                 last = Math.Min(last, cap - 1);
                 for (int r = first; r <= last; r++) VkHandles(r);
                 cl.UpdateBuffer(s.Records, (long)first * rb, rec.Slice(first * rb, (last - first + 1) * rb));
-                cl.UpdateBuffer(s.TexH, (long)first * hb, MemoryMarshal.AsBytes(s.TexHTable.AsSpan(first * TexHandles.MaterialSlots * 2, (last - first + 1) * TexHandles.MaterialSlots * 2)));
+                cl.UpdateBuffer(s.TexH, (long)first * hb, MemoryMarshal.AsBytes(s.TexHTable.AsSpan(first * TexHandles.MaterialSlots, (last - first + 1) * TexHandles.MaterialSlots)));
                 runs++;
                 sent += (long)(last - first + 1) * (rb + hb);
             }
@@ -428,13 +428,12 @@ public sealed unsafe partial class AlloyRenderer
     private static void VkHandles(int r)
     {
         VkColourState s = _vkc;
-        int at = r * TexHandles.MaterialSlots * 2;
+        int at = r * TexHandles.MaterialSlots;
         for (int k = 0; k < TexHandles.MaterialSlots; k++)
         {
-            ulong v = _dTexH[r][k];
-            uint i = v != 0 ? VkTextures.IndexOfHandle(v) : 0;
-            s.TexHTable[at + 2 * k] = i != 0 ? i : k == 0 ? s.WhiteIndex : s.NullIndex;
-            s.TexHTable[at + 2 * k + 1] = 0;
+            uint v = _dTexH[r][k];
+            uint i = v != 0 ? VkTextures.Index((int)v) : 0;
+            s.TexHTable[at + k] = i != 0 ? i : k == 0 ? s.WhiteIndex : s.NullIndex;
         }
     }
 

@@ -44,11 +44,13 @@ internal static partial class VkGlsl
         #version 460 core
         #define CX_BINDLESS 1
         #extension GL_ARB_bindless_texture : require
-        layout(std430, binding = 3) readonly buffer CxTexH { uvec2 uTexH[]; };
-        #define uTex sampler2D(uTexH[(vDraw << 3) + 0])
+        layout(std430, binding = 3) readonly buffer CxTexH { uint uTexH[]; };
+        uvec2 CxTexHandle(uint i) { return uvec2(i, 0u); }
+        #define uTex sampler2D(CxTexHandle(uTexH[(vDraw << 3) + 0]))
+        #define uPal(h) sampler2D(h)
         flat in int vDraw;
         out vec4 frag;
-        void main() { frag = texture(uTex, vec2(0.5)); }
+        void main() { frag = texture(uTex, vec2(0.5)) + texture(uPal(uvec2(2u, 0u)), vec2(0.5)); }
         """;
 
     /// <summary>A block whose std140 offsets were worked out by hand: a 0, b 16 (a vec3 aligns to 16), m 32 (64 bytes),
@@ -116,7 +118,10 @@ internal static partial class VkGlsl
     private static void Bindless(Checker check, VkProgramText r)
     {
         check.Expect(r.Error == null, $"the bindless fixture translates ({r.Error})");
-        check.Expect(r.Fs.Contains("#define uTex cxTex2D[nonuniformEXT(cxTex2DAt((uTexH[(vDraw << 3) + 0]).x))]"), "a handle construction indexes set 1's array by the handle's low word");
+        check.Expect(r.Fs.Contains("#define uTex cxTex2D[nonuniformEXT(cxTex2DAt((CxTexHandle(uTexH[(vDraw << 3) + 0])).x))]"),
+            "a handle construction indexes set 1's array by the handle's low word, through the parentheses of the table's widener");
+        check.Expect(r.Fs.Contains("#define uPal(h) cxTex2D[nonuniformEXT(cxTex2DAt((h).x))]"),
+            "a construction over a uvec2 the stage hands it -- what a content stage writes -- is rewritten the same way");
         check.Expect(r.Fs.Contains("layout(constant_id = 1000) const uint cxBindlessCap = 1u;")
                   && r.Fs.Contains("uint cxTex2DAt(uint i) { return i < cxBindlessCap ? i : 0u; }") && !r.Fs.Contains("11u"),
             "an index past the descriptors the device seats samples the zero texel, the seat count a specialization constant, not text");

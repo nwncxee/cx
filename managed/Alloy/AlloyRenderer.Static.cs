@@ -16,8 +16,12 @@ public sealed unsafe partial class AlloyRenderer
           "ADR 0026's ext0..ext2 do not sit between prev and the record's end");
         var rec = new DrawRecordBlock();
         check.Expect(sizeof(DrawRecordBlock) == 288 && (byte*)&rec.Prev - (byte*)&rec == 176 && (byte*)&rec.Ext - (byte*)&rec == 240
-                     && sizeof(BonePalette) == 4096 && sizeof(Sphere) == 16 && sizeof(Box) == 24 && sizeof(TexHandles) == 64,
+                     && sizeof(BonePalette) == 4096 && sizeof(Sphere) == 16 && sizeof(Box) == 24 && sizeof(TexHandles) == 32,
           "the draw record, the bone palette, the sphere, the box or the handle block is not the size the shaders stride by");
+        check.Expect(ShaderSource.Get("cx_content_v.glsl").Contains("buffer CxTexH { uint uTexH[]; };")
+                  && ShaderSource.Get("cx_content_v.glsl").Contains(TexHandleFn.TrimEnd('\n'))
+                  && !ShaderSource.Get("cx_conbuf.glsl").Contains("uvec2 uTexH"),
+          "the handle table is not one uint per slot widened by the one CxTexHandle a content sampler2D takes");
         check.Expect(ShaderContract.RecordSafe(DrawBufDecl), "the GLSL CxDraw declaration does not add up to DrawFloats");
         check.Expect(DrawBufDecl.Contains($"binding = {BindDraw})"), $"CxDrawBuf is not declared at binding {BindDraw}");
         check.Expect(DrawBufDecl.Contains($"binding = {BindDrawIdx})"), $"CxDrawIdxBuf is not declared at binding {BindDrawIdx}");

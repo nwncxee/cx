@@ -112,6 +112,10 @@ public sealed unsafe partial class AlloyRenderer
         }
     }
 
+    /// <summary>A handle-table entry widened to the <c>uvec2</c> a content stage constructs a sampler from.
+    /// The table is one index per slot; the handle shape is the override contract, so it stays.</summary>
+    internal const string TexHandleFn = "uvec2 CxTexHandle(uint i) { return uvec2(i, 0u); }\n";
+
     /// <summary>What a stage that samples by handle opens with.</summary>
     internal const string BindlessPrologue = "#define CX_BINDLESS 1\n#extension GL_ARB_bindless_texture : require\n";
 
@@ -125,9 +129,9 @@ public sealed unsafe partial class AlloyRenderer
         int[] slot = { 0, 6, 1, 2, 3, 4, 5, 7 };
         var sb = new System.Text.StringBuilder(
             BindlessPrologue +
-            $"layout(std430, binding = {BindTexH}) readonly buffer CxTexH {{ uvec2 uTexH[]; }};\n");
+            $"layout(std430, binding = {BindTexH}) readonly buffer CxTexH {{ uint uTexH[]; }};\n" + TexHandleFn);
         for (int i = 0; i < names.Length; i++)
-            sb.Append($"#define {names[i]} sampler2D(uTexH[(vDraw << 3) + {slot[i]}])\n");
+            sb.Append($"#define {names[i]} sampler2D(CxTexHandle(uTexH[(vDraw << 3) + {slot[i]}]))\n");
         string outFs = fs;
         foreach (string nm in names)
             outFs = System.Text.RegularExpressions.Regex.Replace(outFs, $@"uniform sampler2D {nm};[^\n]*\n", "");
