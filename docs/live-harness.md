@@ -354,7 +354,15 @@ bounds.
 
 A mutant counts as caught only on a message id the unmutated tree does not leave, which the sweep works out
 from a baseline run of its own. A mutant that no longer applies to the file (the code moved under it) is a
-failure, not a pass: a control nothing can trip hides the thing it was meant to prove.
+failure, not a pass: a control nothing can trip hides the thing it was meant to prove. For the same reason the
+sweep refuses a baseline whose log does not hold the layer's own `Khronos Validation Layer Active` notice --
+compared against an empty id set every mutant reads as caught -- and an `--only` naming no mutant, which would
+otherwise run nothing and exit 0. What it compares is id sets, so a mutant whose only effect is more of an id a
+dirty baseline already holds reads NOT CAUGHT; run it on a baseline that validates clean.
+
+A sweep cut short puts its mutant back on the way out, so Ctrl-C does not leave a mutated file for the next
+build to stage. `tools/vk_mutants_regression.sh`, which `build.sh` runs, holds the sweep to those four guards
+against a fixture tree with a stub build and a stub pass.
 
 What the sweep measured on an RTX 3070 under layer 1.4.341: sync validation catches the dropped acquire, the
 dropped timeline wait and the dropped release barrier, and for the acquire and the release it is the only
@@ -367,8 +375,9 @@ mutant which leaves the translated text alone and reads past the table at runtim
 So the sweep exits non-zero as it stands, on those two. It is the record of which faults each pass sees, not
 a check to make green by weakening a mutant.
 
-Six builds and six passes, so set `CX_BUILD_WRAP` to the box's build-slot limiter and `CX_GPU_LOCK` to a lock
-file when anything else on the machine shares the card or the memory. One more trap: `run-demo.sh` reads the
+Seven builds and seven passes -- the baseline, which runs both, one per mutant, and the restore build -- so set
+`CX_BUILD_WRAP` to the box's build-slot limiter and `CX_GPU_LOCK` to a lock file when anything else on the
+machine shares the card or the memory. One more trap: `run-demo.sh` reads the
 machine's real `cx.cfg`, so a `KnobFile.SelfCheck` failure in a sweep log is someone else editing settings
 on the box, not the mutant.
 

@@ -55,6 +55,8 @@ jobs:
             tools/live/session-log.sh
             tools/live/docks_run.sh
             tools/vk/report.py
+            tools/vk/mutants.sh
+            tools/vk/mutate.py
             'tools/*_approved_examples*'
             'tools/*_regression*'
             'tools/release/*'

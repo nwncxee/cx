@@ -34,7 +34,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --out) out=$2; shift 2 ;;
     --pass) which_pass=$2; shift 2 ;;
-    -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
+    -h|--help) awk 'NR > 1 { if (!/^#/) exit; print }' "$0"; exit 0 ;;
     *) echo ">> unknown argument: $1" >&2; exit 2 ;;
   esac
 done
