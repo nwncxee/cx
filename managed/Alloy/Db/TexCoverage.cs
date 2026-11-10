@@ -84,22 +84,17 @@ internal static unsafe class TexCoverageOf
     private static TexCoverage OfBc3(ReadOnlySpan<byte> blocks, int w, int h)
     {
         int bw = (w + 3) / 4, bh = (h + 3) / 4;
-        Span<int> alpha = stackalloc int[8];
+        Span<byte> alpha = stackalloc byte[8];
         bool anyOut = false;
         for (int by = 0; by < bh; by++)
             for (int bx = 0; bx < bw; bx++)
             {
-                ReadOnlySpan<byte> b = blocks.Slice((by * bw + bx) * Bc3Block, Bc3Block);
-                int a0 = b[0], a1 = b[1];
-                alpha[0] = a0; alpha[1] = a1;
-                if (a0 > a1) for (int i = 2; i < 8; i++) alpha[i] = ((8 - i) * a0 + (i - 1) * a1) / 7;
-                else { for (int i = 2; i < 6; i++) alpha[i] = ((6 - i) * a0 + (i - 1) * a1) / 5; alpha[6] = 0; alpha[7] = 255; }
-                ulong bits = 0;
-                for (int i = 0; i < 6; i++) bits |= (ulong)b[2 + i] << (8 * i);
+                ReadOnlySpan<byte> b = blocks.Slice((by * bw + bx) * BcnDecode.BlockBytes, BcnDecode.BlockBytes);
+                BcnDecode.AlphaBlock(b, alpha, out ulong bits);
                 for (int t = 0; t < 16; t++)
                 {
                     if (bx * 4 + (t & 3) >= w || by * 4 + (t >> 2) >= h) continue;
-                    int a = alpha[(int)((bits >> (3 * t)) & 7)];
+                    int a = BcnDecode.AlphaAt(alpha, bits, t);
                     if (a >= OpaqueAt) continue;
                     if (a > CutoutAt) return TexCoverage.Blended;   // one fractional texel settles it
                     anyOut = true;
@@ -107,9 +102,6 @@ internal static unsafe class TexCoverageOf
             }
         return anyOut ? TexCoverage.Cutout : TexCoverage.Opaque;
     }
-
-    /// <summary>A BC3 block: an alpha block then a colour block.</summary>
-    private const int Bc3Block = 16;
 
     /// <summary>The engine's own channel count for a format, which is what <see cref="LevelSize"/> wants.</summary>
     private static int Channels(Fmt f) => f is Fmt.Bc1 ? 3 : f is Fmt.Bc4 or Fmt.Bc4S ? 1 : 4;

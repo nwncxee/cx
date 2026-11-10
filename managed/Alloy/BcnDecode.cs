@@ -13,6 +13,26 @@ internal static class BcnDecode
     /// <summary>Formats this decoder takes.</summary>
     internal static bool Decodes(Fmt f) => f is Fmt.Bc1 or Fmt.Bc2 or Fmt.Bc3 or Fmt.Bc7;
 
+    /// <summary>A BC2/BC3 or BC7 block, and a BC3 alpha block on its own: an alpha block then a colour block.</summary>
+    internal const int BlockBytes = 16;
+
+    /// <summary>A BC3 alpha block's eight-entry ramp into <paramref name="ramp"/> and its sixteen 3-bit indices
+    /// into <paramref name="bits"/>: the two endpoints, then six interpolants, or four and the 0/255 pair the
+    /// low-endpoint form carries. The one place that arithmetic is written, so a reader of alpha alone takes it
+    /// from here rather than decoding a block's colour it has no use for.</summary>
+    internal static void AlphaBlock(ReadOnlySpan<byte> block, Span<byte> ramp, out ulong bits)
+    {
+        int a0 = block[0], a1 = block[1];
+        ramp[0] = (byte)a0; ramp[1] = (byte)a1;
+        if (a0 > a1) for (int i = 2; i < 8; i++) ramp[i] = (byte)(((8 - i) * a0 + (i - 1) * a1) / 7);
+        else { for (int i = 2; i < 6; i++) ramp[i] = (byte)(((6 - i) * a0 + (i - 1) * a1) / 5); ramp[6] = 0; ramp[7] = 255; }
+        bits = 0;
+        for (int i = 0; i < 6; i++) bits |= (ulong)block[2 + i] << (8 * i);
+    }
+
+    /// <summary>Texel <paramref name="t"/>'s alpha out of the ramp and index bits <see cref="AlphaBlock"/> read.</summary>
+    internal static byte AlphaAt(ReadOnlySpan<byte> ramp, ulong bits, int t) => ramp[(int)((bits >> (3 * t)) & 7)];
+
     /// <summary>Bytes per decoded pixel: BC1 comes out RGB (the engine never sees its alpha), the rest RGBA.</summary>
     internal static int PixelBytes(Fmt f) => f == Fmt.Bc1 ? 3 : 4;
 
@@ -59,21 +79,14 @@ internal static class BcnDecode
                       : default;
         uint idx = BinaryPrimitives.ReadUInt32LittleEndian(c[4..]);
         ulong abits = 0;
-        if (f == Fmt.Bc3)
-        {
-            int a0 = b[0], a1 = b[1];
-            alpha[0] = (byte)a0; alpha[1] = (byte)a1;
-            if (a0 > a1) for (int i = 2; i < 8; i++) alpha[i] = (byte)(((8 - i) * a0 + (i - 1) * a1) / 7);
-            else { for (int i = 2; i < 6; i++) alpha[i] = (byte)(((6 - i) * a0 + (i - 1) * a1) / 5); alpha[6] = 0; alpha[7] = 255; }
-            for (int i = 0; i < 6; i++) abits |= (ulong)b[2 + i] << (8 * i);
-        }
+        if (f == Fmt.Bc3) AlphaBlock(b, alpha, out abits);
         ulong a4 = f == Fmt.Bc2 ? BinaryPrimitives.ReadUInt64LittleEndian(b) : 0;
         for (int t = 0; t < 16; t++)
         {
             Rgb8 p = pal[(int)((idx >> (2 * t)) & 3)];
             byte a = f switch
             {
-                Fmt.Bc3 => alpha[(int)((abits >> (3 * t)) & 7)],
+                Fmt.Bc3 => AlphaAt(alpha, abits, t),
                 Fmt.Bc2 => (byte)(((a4 >> (4 * t)) & 15) * 17),
                 _ => Rgba8.Opaque,
             };
