@@ -45,6 +45,10 @@ internal sealed unsafe partial class VkBackend
         check.Expect(CopyMissing(ImageUse.Sampled | ImageUse.ColorTarget, true) != null && CopyMissing(ImageUse.CopySrc, true) == null
                   && CopyMissing(ImageUse.CopySrc, false) != null && CopyMissing(ImageUse.CopyDst, false) == null,
             "a transfer is refused for the copy flag its image lacks: a plain target as a source, a source-only image as a destination");
+        check.Expect(CopyMissing(BufferUse.Storage, MemoryKind.Device) != null && CopyMissing(BufferUse.Storage | BufferUse.CopySrc, MemoryKind.Device) == null
+                  && CopyMissing(BufferUse.CopyDst, MemoryKind.Readback) == null,
+            "a buffer copy is refused for the copy flag its source lacks: a storage-only buffer as a source, where a readback "
+          + "buffer is one whatever it declared");
         check.Expect(Settled(ImageUse.Sampled | ImageUse.CopyDst) == VkImageLayout.ShaderReadOnlyOptimal
                   && Settled(ImageUse.Grey | ImageUse.CopyDst) == VkImageLayout.ShaderReadOnlyOptimal
                   && Settled(ImageUse.CopyDst) == VkImageLayout.TransferDstOptimal,

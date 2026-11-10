@@ -260,7 +260,9 @@ internal sealed unsafe partial class VkBackend : IDevice
         var f13 = new VkPhysicalDeviceVulkan13Features { pNext = &f12 };
         var f2 = new VkPhysicalDeviceFeatures2 { pNext = &f13 };
         vki.vkGetPhysicalDeviceFeatures2(d, &f2);
-        if (!f13.dynamicRendering || !f13.synchronization2) return "lacks dynamic rendering or synchronization2";
+        // every compute stage CX compiles states its workgroup through maintenance4's OpExecutionMode LocalSizeId
+        if (!f13.dynamicRendering || !f13.synchronization2 || !f13.maintenance4)
+            return "lacks dynamic rendering, synchronization2 or maintenance4";
         if (Lacks(in f2.features, in f11, in f12) is string lack) return $"lacks {lack}";
         uint qn = 0;
         vki.vkGetPhysicalDeviceQueueFamilyProperties(d, &qn, null);
@@ -416,7 +418,10 @@ internal sealed unsafe partial class VkBackend : IDevice
             // vec4 and charges 2 KB for it, scalar block layout packs them at their own size
             scalarBlockLayout = ScalarBlockLayout(phys),
         };
-        var f13 = new VkPhysicalDeviceVulkan13Features { pNext = &f12, dynamicRendering = true, synchronization2 = true };
+        var f13 = new VkPhysicalDeviceVulkan13Features
+        {
+            pNext = &f12, dynamicRendering = true, synchronization2 = true, maintenance4 = true,
+        };
         var feats = new VkPhysicalDeviceFeatures2 { pNext = &f13 };
         feats.features.depthClamp = has.depthClamp;
         feats.features.samplerAnisotropy = has.samplerAnisotropy;
@@ -645,6 +650,8 @@ internal sealed unsafe partial class VkBackend : IDevice
         if ((d.Use & BufferUse.CopySrc) != 0) use |= VkBufferUsageFlags.TransferSrc;
         if (d.Memory == MemoryKind.Readback)
         {
+            // ReadBack copies out of it into its own scratch, so a readback buffer is a copy source whatever it declared
+            use |= VkBufferUsageFlags.TransferSrc;
             if (!HostBuffer((ulong)d.Bytes, use, VmaAllocationCreateFlags.HostAccessRandom, out VkBuffer hb, out VmaAllocation ha))
                 return Refused<BufferId>($"readback buffer {d.Label}: VMA refused {d.Bytes} bytes");
             Name(VkObjectType.Buffer, hb.Handle, d.Label);

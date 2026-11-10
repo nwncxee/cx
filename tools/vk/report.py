@@ -3,11 +3,16 @@
 first few distinct messages; exits non-zero when anything is left after the layer's own notices.
 
 Usage: report.py <log> <label> <expected VK_VALIDATION_FEATURE_ENABLE_* token>
+       report.py --ids <log>     # every distinct message id in it, one per line, sorted
 
 Two positive controls, because "no findings" is otherwise indistinguishable from "the layer never ran": the
 log has to hold the layer's `Khronos Validation Layer Active` notice (which is why the passes report at info
 severity), and its `Current Enables` line has to name the feature the pass is for. A log that fails either is
-a FAILURE, not a clean run."""
+a FAILURE, not a clean run.
+
+A layer log carries object names straight out of the engine and is not text: `grep -oP` over one silently
+prints nothing, which reads exactly like a clean log. That is why --ids is here rather than a grep in the
+caller -- one parser for the file, in Python, which reads the bytes it is given."""
 import re, sys
 
 HEAD = re.compile(r'Validation (Error|Warning|Performance Warning|Information):\s*\[\s*([^\]]+?)\s*\]')
@@ -32,9 +37,21 @@ def blocks(text):
     return out
 
 
+def read(path):
+    return open(path, encoding='utf-8', errors='replace').read()
+
+
+def ids(path):
+    """Every distinct id in the log, the layer's own notices included: a caller comparing two runs wants the
+    whole set, so it can tell a new id from one both runs leave."""
+    for mid in sorted({mid for _, mid, _ in blocks(read(path))}):
+        print(mid)
+    return 0
+
+
 def main(path, label, expect):
     try:
-        text = open(path, encoding='utf-8', errors='replace').read()
+        text = read(path)
     except OSError:
         print(f'>>   FAIL: {label}: no log at {path} -- the layer never loaded, so nothing was validated',
               file=sys.stderr)
@@ -68,4 +85,9 @@ def main(path, label, expect):
     return 1 if findings else 0
 
 
+if len(sys.argv) == 3 and sys.argv[1] == '--ids':
+    sys.exit(ids(sys.argv[2]))
+if len(sys.argv) != 4:
+    print(__doc__, file=sys.stderr)
+    sys.exit(2)
 sys.exit(main(sys.argv[1], sys.argv[2], sys.argv[3]))

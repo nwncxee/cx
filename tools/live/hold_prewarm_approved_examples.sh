@@ -6,6 +6,8 @@
 #   tools/live/hold_prewarm_approved_examples.sh [--saves DIR] [--only 1|2]   # DIR holds the docks save folder alone
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+DOCKS_WHO=hold-prewarm
+. "$ROOT/tools/live/docks_run.sh"
 SAVES="" ONLY=""
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -14,29 +16,14 @@ while [ $# -gt 0 ]; do
         *) echo "hold-prewarm: unknown argument $1" >&2; exit 2 ;;
     esac
 done
-if [ -n "$SAVES" ]; then
-    [ -d "$SAVES" ] || { echo "hold-prewarm: --saves needs a folder holding the docks save" >&2; exit 2; }
-else
-    USERDIR="$(python3 "$ROOT/tools/paths.py" NWN_USERDIR)" || exit 2
-    SAVE="$USERDIR/saves/000000 - quicksave"
-    grep -q Waterdeep "$SAVE/savenfo.txt" 2>/dev/null || { echo "hold-prewarm: $SAVE is not the docks save (savenfo.txt)" >&2; exit 2; }
-    SAVES="$(mktemp -d "${TMPDIR:-/tmp}/cx-hold-prewarm-saves-XXXX")"
-    cp -a "$SAVE" "$SAVES/" || exit 2
-fi
+docks_saves "$SAVES" || exit 2
 
 # The docks entered once with an empty cache and the given --cfg overrides; prints the feature lines of its cx.log.
 enter_docks() {
     local label="$1"; shift
-    local before rc out log
-    before="$(date +%s)"
-    "$ROOT/tools/live/perf-save.sh" --saves "$SAVES" --soak 30 --label "$label" "$@" >/dev/null
-    rc=$?
-    [ "$rc" = 3 ] && { echo "hold-prewarm: a client is already running" >&2; return 2; }
-    out="$(find "${TMPDIR:-/tmp}" -maxdepth 1 -type d -name "cx-perf-$label-*" -newermt "@$before" | sort | tail -1)"
+    local out log lines
+    out="$(docks_run "$label" "$@")" || return 2
     log="$out/cx.log"
-    [ -f "$log" ] || { echo "hold-prewarm: no cx.log from the run ($out)" >&2; return 2; }
-    grep -q "LightmapBake: hold released" "$log" || { echo "hold-prewarm: the area never left its loading screen ($log)" >&2; return 2; }
-    local lines
     lines="$(grep -a "\[vkpipe\] by feature" "$log")"
     [ -n "$lines" ] || { echo "FAIL: cx.log has no '[vkpipe] by feature' line ($log)"; return 1; }
     echo "$lines"

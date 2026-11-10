@@ -338,6 +338,49 @@ the same settings go on a live run, which is manual -- `perf-save.sh` passes the
 
 Edit that file's `log_filename` to a path of your own first, and count only messages after `VkBackend: LIVE`.
 
+### Proving the passes still see a fault (`tools/vk/mutants.sh`)
+
+"Fails on any message" is worth nothing on its own: a layer that never loaded fails nothing either. So the
+passes have positive controls, one line changed at a time, built, run, and put back:
+
+    tools/vk/mutants.sh --list                   # the five, and which pass each belongs to
+    tools/vk/mutants.sh --out DIR [--only NAME]  # outside nix develop, from a clean tree
+
+Four are synchronization validation's, each a piece of the transfer queue: the acquire of a released image at
+the graphics head, the graphics submit's wait on the transfer timeline, the order between repeat fills of one
+buffer, and the release barrier. The fifth is GPU-assisted validation's -- the bounds guard the translator
+puts on a bindless index -- and the golden that samples an index past the table is what then reads out of
+bounds.
+
+A mutant counts as caught only on a message id the unmutated tree does not leave, which the sweep works out
+from a baseline run of its own. A mutant that no longer applies to the file (the code moved under it) is a
+failure, not a pass: a control nothing can trip hides the thing it was meant to prove. For the same reason the
+sweep refuses a baseline whose log does not hold the layer's own `Khronos Validation Layer Active` notice --
+compared against an empty id set every mutant reads as caught -- and an `--only` naming no mutant, which would
+otherwise run nothing and exit 0. What it compares is id sets, so a mutant whose only effect is more of an id a
+dirty baseline already holds reads NOT CAUGHT; run it on a baseline that validates clean.
+
+A sweep cut short puts its mutant back on the way out, so Ctrl-C does not leave a mutated file for the next
+build to stage. `tools/vk_mutants_regression.sh`, which `build.sh` runs, holds the sweep to those four guards
+against a fixture tree with a stub build and a stub pass.
+
+What the sweep measured on an RTX 3070 under layer 1.4.341: sync validation catches the dropped acquire, the
+dropped timeline wait and the dropped release barrier, and for the acquire and the release it is the only
+thing that does -- `run-demo.sh` passes on both. Two do not trip their pass. The missing order between repeat
+fills of one buffer leaves the layer silent and the transfer golden still reads the later fill, so nothing
+holds that order on this hardware. The bindless-guard mutant is caught by `VkGlsl.SelfCheck`, which reads the
+emitted text before any GPU work, so GPU-assisted validation still has no control of its own: that wants a
+mutant which leaves the translated text alone and reads past the table at runtime.
+
+So the sweep exits non-zero as it stands, on those two. It is the record of which faults each pass sees, not
+a check to make green by weakening a mutant.
+
+Seven builds and seven passes -- the baseline, which runs both, one per mutant, and the restore build -- so set
+`CX_BUILD_WRAP` to the box's build-slot limiter and `CX_GPU_LOCK` to a lock file when anything else on the
+machine shares the card or the memory. One more trap: `run-demo.sh` reads the
+machine's real `cx.cfg`, so a `KnobFile.SelfCheck` failure in a sweep log is someone else editing settings
+on the box, not the mutant.
+
 ## Limits
 
 - **One client at a time.** The harness refuses to start if `nwmain-linux` is already running. Two

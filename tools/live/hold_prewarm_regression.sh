@@ -10,33 +10,23 @@
 #   tools/live/hold_prewarm_regression.sh [--saves DIR] [--only 1|2]
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+DOCKS_WHO=hold-regression
+. "$ROOT/tools/live/docks_run.sh"
 SAVES="" ONLY=""
 while [ $# -gt 0 ]; do
     case "$1" in
-        --saves) SAVES="${2:-}"; shift 2 ;;
+        --saves) SAVES="$(docks_saves_arg "${2:-}")" || exit 2; shift 2 ;;
         --only)  ONLY="${2:-}"; shift 2 ;;
         *) echo "hold-regression: unknown argument $1" >&2; exit 2 ;;
     esac
 done
-if [ -z "$SAVES" ]; then
-    USERDIR="$(python3 "$ROOT/tools/paths.py" NWN_USERDIR)" || exit 2
-    SAVE="$USERDIR/saves/000000 - quicksave"
-    grep -q Waterdeep "$SAVE/savenfo.txt" 2>/dev/null || { echo "hold-regression: $SAVE is not the docks save (savenfo.txt)" >&2; exit 2; }
-    SAVES="$(mktemp -d "${TMPDIR:-/tmp}/cx-hold-regression-saves-XXXX")"
-    trap 'rm -rf "$SAVES"' EXIT
-    cp -a "$SAVE" "$SAVES/" || exit 2
-fi
+docks_saves "$SAVES" || exit 2
 
 # The by-feature lines of one docks run with the given --cfg overrides.
 enter_docks() {
     local label="$1"; shift
-    local before rc out
-    before="$(date +%s)"
-    "$ROOT/tools/live/perf-save.sh" --saves "$SAVES" --soak 30 --label "$label" "$@" >/dev/null
-    rc=$?
-    [ "$rc" = 0 ] || { echo "hold-regression: perf-save.sh exited $rc" >&2; return 2; }
-    out="$(find "${TMPDIR:-/tmp}" -maxdepth 1 -type d -name "cx-perf-$label-*" -newermt "@$before" | sort | tail -1)"
-    grep -q "LightmapBake: hold released" "$out/cx.log" 2>/dev/null || { echo "hold-regression: the area never left its loading screen ($out)" >&2; return 2; }
+    local out
+    out="$(docks_run "$label" "$@")" || return 2
     grep -a "\[vkpipe\] by feature" "$out/cx.log" || { echo "FAIL: cx.log has no '[vkpipe] by feature' line ($out)"; return 1; }
 }
 
