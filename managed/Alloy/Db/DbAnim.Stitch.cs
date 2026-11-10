@@ -127,9 +127,7 @@ public static unsafe partial class DbAnim
             if (ModelSkin(p) == null || ModelMesh(p) == null) continue;
             into.Add(p);
         }
-        for (DbId c = SceneDb.ObjSeamAppendHead[i]; !c.IsNull && SceneDb.Objects.Valid(c);
-             c = SceneDb.ObjSeamAppendNext[c.Index])
-            CollectSkinned(c, into, depth + 1);
+        foreach (DbId c in SceneDb.Pieces(obj)) CollectSkinned(c, into, depth + 1);
     }
 
     /// <summary>The part's own model's skin, never the stitched one: a re-stitch starts from what the file

@@ -45,9 +45,7 @@ public static unsafe partial class DbAnim
                 body.AddBox(SceneDb.PartBMin[p], SceneDb.PartBMax[p], in SceneDb.PartWorld[p]);
             }
         }
-        for (DbId c = SceneDb.ObjSeamAppendHead[o]; !c.IsNull && SceneDb.Objects.Valid(c);
-             c = SceneDb.ObjSeamAppendNext[c.Index])
-            BodyParts(body, c, self, depth + 1);
+        foreach (DbId c in SceneDb.Pieces(obj)) BodyParts(body, c, self, depth + 1);
     }
 
     /// <summary>The period's body clause, empty when no worn strand swung.</summary>

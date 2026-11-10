@@ -63,8 +63,7 @@ public sealed unsafe partial class ObjectSlots
         Doubled(id, at, resref!, anchor);
         DbId child = ObjectFns.Compose(resref!, id, at);
         if (child.IsNull) { Refuse(resref, anchor, "the model would not load"); return 0; }
-        SceneDb.ObjSeamAppendNext[child.Index] = SceneDb.ObjSeamAppendHead[id.Index];
-        SceneDb.ObjSeamAppendHead[id.Index] = child;
+        if (!SceneDb.PieceLink(id, child)) { DestroyRecord(child); Refuse(resref, anchor, "the piece would ring the owned list"); return 0; }
         PltColors.Inherit(child, id);
         ObjectTex.InheritEnvMap(child, id);
         InheritShift(child, id);
@@ -103,9 +102,8 @@ public sealed unsafe partial class ObjectSlots
     /// times with both models named, because which pair it is is the whole question.</summary>
     private static void Doubled(DbId id, int at, string model, string? anchor)
     {
-        for (DbId c = SceneDb.ObjSeamAppendHead[id.Index]; !c.IsNull; c = SceneDb.ObjSeamAppendNext[c.Index])
+        foreach (DbId c in SceneDb.Pieces(id))
         {
-            if (!SceneDb.Objects.Valid(c)) break;
             if (SceneDb.ObjAttachPart[c.Index] != at) continue;
             _doubledGrafts++;
             if (_doubledGrafts <= 8)
@@ -161,15 +159,16 @@ public sealed unsafe partial class ObjectSlots
                                  + $"(\"{SceneDb.ObjModel[take.Index]?.Name ?? "-"}\")"
                                  + (byContainment ? ", matched by CONTAINMENT" : ""));
             }
-            DbId prev = default;
-            for (DbId c = SceneDb.ObjSeamAppendHead[id.Index]; !c.IsNull; c = SceneDb.ObjSeamAppendNext[c.Index])
+            // Order: destroying a piece still ON the list leaves a dead link every walk stops at.
+            if (!SceneDb.PieceUnlink(id, take))
             {
-                if (c.Value == take.Value) break;
-                prev = c;
+                _amputateRefusals++;
+                if (_saidAmputateRefusal.Add(name!))
+                    Facade.Log?.Always($"seam: Gob::Amputate(\"{name}\") found its piece (o={take.Index}) and could "
+                                     + "NOT take it off the owned list -- the piece is KEPT rather than destroyed, "
+                                     + "because a dead link would hide every piece behind it. Counted on /alloy.");
+                return 0;
             }
-            DbId next = SceneDb.ObjSeamAppendNext[take.Index];
-            if (prev.IsNull) SceneDb.ObjSeamAppendHead[id.Index] = next;
-            else SceneDb.ObjSeamAppendNext[prev.Index] = next;
             DestroyRecord(take);
             // The piece's geometry is gone, so the path that carried it gates off again (Gob::Amputate sets
             // the process flag the same way Gob::Append does).
@@ -214,9 +213,8 @@ public sealed unsafe partial class ObjectSlots
         byContainment = false;
         if (!SceneDb.Objects.Valid(id) || string.IsNullOrEmpty(name)) return default;
         for (int pass = 0; pass < 2; pass++)
-            for (DbId c = SceneDb.ObjSeamAppendHead[id.Index]; !c.IsNull; c = SceneDb.ObjSeamAppendNext[c.Index])
+            foreach (DbId c in SceneDb.Pieces(id))
             {
-                if (!SceneDb.Objects.Valid(c)) break;
                 if (pass == 0 ? RootNamed(c, name) : PartNamed(c, name))
                 {
                     byContainment = pass != 0;
@@ -250,6 +248,7 @@ public sealed unsafe partial class ObjectSlots
          + (_appendRefusals == 0 ? "" : $", {_appendRefusals} APPENDS REFUSED")
          + (_amputateRefusals == 0 ? "" : $", {_amputateRefusals} AMPUTATIONS MATCHED NOTHING")
          + (_doubledGrafts == 0 ? "" : $", {_doubledGrafts} DOUBLED GRAFTS (a piece appended over one still there)")
+         + SceneDb.PieceStats()
          + $" | subtree gates: {_gatesOn} on, {_gatesOff} off"
          + (_gatesRefused == 0 ? "" : $", {_gatesRefused} REFUSED (matched no part)");
 

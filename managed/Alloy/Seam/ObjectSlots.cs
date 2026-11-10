@@ -217,13 +217,8 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
         DbScene.ObjectDied(id);
         // What it owns dies with it, as the engine's one tree did (Gob::~Gob, PartReference::~PartReference):
         // nothing else holds an appended piece or a reference instance, so left alone they lived for the session.
-        for (DbId c = SceneDb.ObjSeamAppendHead[i]; SceneDb.Objects.Valid(c); )
-        {
-            DbId next = SceneDb.ObjSeamAppendNext[c.Index];
-            DestroyRecord(c);
-            c = next;
-        }
-        SceneDb.ObjSeamAppendHead[i] = default;
+        foreach (DbId c in SceneDb.Pieces(id)) DestroyRecord(c);
+        SceneDb.PieceDropAll(id);
         DbAnim.ObjectRetired(id);
         ObjectTex.Free(id);
         TexSeam.ObjectDied(id);   // CX-117: the PLT colour rows and any material-param override
@@ -415,10 +410,8 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
             // each a child object, where the engine grew one part range), so they are not in GobAttachList. A
             // creature is built BEFORE it joins a scene -- the game appends the head, torso, arms and legs and
             // only then places it -- so without this every body part stayed in scene 0 and never drew.
-            for (DbId a = SceneDb.ObjSeamAppendHead[pid.Index]; !a.IsNull; )
+            foreach (DbId a in SceneDb.Pieces(pid))
             {
-                if (!SceneDb.Objects.Valid(a)) break;
-                DbId next = SceneDb.ObjSeamAppendNext[a.Index];
                 if (SceneDb.ObjScene[a.Index].Value != psc.Value)
                 {
                     DbId was = SceneDb.ObjScene[a.Index];
@@ -430,7 +423,6 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
                     SceneDb.Touch(a, Dirty.Tree);
                     Push(a, ashell, psc, pss);
                 }
-                a = next;
             }
         }
     }
@@ -891,14 +883,10 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
     /// body, under the right armour model.</summary>
     private static void PltRowsOn(DbId id, ReadOnlySpan<int> rows, int depth)
     {
-        if (depth > 8 || !SceneDb.Objects.Valid(id)) return;   // not-an-offset: the composition's cycle guard
+        if (depth >= SceneDb.PieceDepthCap || !SceneDb.Objects.Valid(id)) return;
         PltColors.SetRows(id, rows);
         SceneDb.Touch(id, Dirty.Material);
-        for (DbId c = SceneDb.ObjSeamAppendHead[id.Index]; !c.IsNull; c = SceneDb.ObjSeamAppendNext[c.Index])
-        {
-            if (!SceneDb.Objects.Valid(c)) break;
-            PltRowsOn(c, rows, depth + 1);
-        }
+        foreach (DbId c in SceneDb.Pieces(id)) PltRowsOn(c, rows, depth + 1);
     }
 
     /// <summary>Calls whose PLT layer count exceeded the database's.</summary>

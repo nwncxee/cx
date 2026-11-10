@@ -545,7 +545,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     private static bool DbSelfChecks(ExtenderLog log)
         => DbGrid.SelfCheck(log) & DbFeed.SelfCheck(log) & DbInputs.SelfCheck(log) & DbGui.SelfCheck(log)
            & DbLights.SelfCheck(log) & DbSky.SelfCheck(log) & DbEmitterChannels.SelfCheck(log)
-           & DbKeyhole.SelfCheck(log) & Db.FrameHoist.SelfCheck(log);
+           & DbKeyhole.SelfCheck(log) & Db.FrameHoist.SelfCheck(log) & SceneDb.PieceSelfCheck(log);
 
     internal static bool _waterArmed;
     /// <summary>The engine's water draw bucket (<c>Scene::RenderSinglePass</c> @0x46e5f0's "Water" scope).

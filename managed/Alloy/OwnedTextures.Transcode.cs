@@ -72,8 +72,7 @@ internal static unsafe partial class OwnedTextures
         _inFlight.Add(key);
         if (_encoder == null)
         {
-            _encoder = new Thread(EncodeLoop) { IsBackground = true, Name = "cx-bcn", Priority = ThreadPriority.BelowNormal };
-            _encoder.Start();
+            _encoder = Worker.Start("cx-bcn", EncodeLoop, ThreadPriority.BelowNormal);
         }
         _encodeQ.Enqueue(job);
         _encodeWake.Release();
@@ -98,7 +97,6 @@ internal static unsafe partial class OwnedTextures
 
     private static void EncodeLoop()
     {
-        Affinity.ClearThis();
         while (true)
         {
             _encodeWake.Wait();

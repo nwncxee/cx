@@ -319,8 +319,7 @@ public sealed unsafe class ObjectFns : ISeamProvider
         // "diewithoutparent 1" message sets it.) So a reference child goes on the same owned list as an
         // appended one, and the parent's release destroys both -- without this it outlived its parent for
         // the session and the object table grew across every area change.
-        SceneDb.ObjSeamAppendNext[child.Index] = SceneDb.ObjSeamAppendHead[obj.Index];
-        SceneDb.ObjSeamAppendHead[obj.Index] = child;
+        if (!SceneDb.PieceLink(obj, child)) { ObjectSlots.DestroyRecord(child); return; }
         // The engine's PartReference+0x68: the part keeps its instance, which is what Gob::ReattachReference
         // re-points and what SetEmitterTarget reads back as a p2p emitter's target.
         if ((uint)part < (uint)SceneDb.MaxParts) SceneDb.PartRefObj[part] = child;

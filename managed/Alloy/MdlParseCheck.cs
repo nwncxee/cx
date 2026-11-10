@@ -222,8 +222,7 @@ internal static unsafe class MdlParseCheck
     private static void Start()
     {
         if (_worker != null) return;
-        _worker = new Thread(Loop) { IsBackground = true, Name = "cx-mdlcheck" };
-        _worker.Start();
+        _worker = Worker.Start("cx-mdlcheck", Loop);
     }
 
     private static void Loop()
