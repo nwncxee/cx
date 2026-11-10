@@ -24,14 +24,14 @@ userdir() {
 # docks_saves / docks_out in a subshell of their own, so one case's traps and temporary folders cannot reach the next.
 # `staged` prints the DOCKS_SAVES it set and exits with its status; `outdir` prints what docks_out printed. A staged
 # copy is removed when its subshell exits, so the case that reads the copy reads it inside one (see `staging`).
-staged() { ( set +u; DOCKS_WHO=regression; . "$ROOT/tools/live/docks_run.sh"
+staged() { ( DOCKS_WHO=regression; . "$ROOT/tools/live/docks_run.sh"
              docks_saves "${1-}" || exit $?; printf '%s\n' "$DOCKS_SAVES" ); }
-outdir() { ( set +u; DOCKS_WHO=regression; . "$ROOT/tools/live/docks_run.sh"; docks_out "$1" "$2" ); }
+outdir() { ( DOCKS_WHO=regression; . "$ROOT/tools/live/docks_run.sh"; docks_out "$1" "$2" ); }
 
 # Stages the user's quicksave, writes DOCKS_SAVES to $1 and, while that copy still exists, whether it holds the
 # save's savenfo.txt to $2.
 staging() {
-    ( set +u; DOCKS_WHO=regression; . "$ROOT/tools/live/docks_run.sh"
+    ( DOCKS_WHO=regression; . "$ROOT/tools/live/docks_run.sh"
       docks_saves || exit $?
       printf '%s\n' "$DOCKS_SAVES" > "$1"
       [ -f "$DOCKS_SAVES/000000 - quicksave/savenfo.txt" ] && printf 'copied\n' > "$2"
@@ -91,15 +91,20 @@ if [ "$rc" != 0 ]; then bad "an explicit --saves folder exited $rc"
 elif [ "$got" != "$WORK/given" ]; then bad "an explicit --saves folder came back as '$got'"
 else ok "an explicit --saves folder is used as given"; fi
 
-# 6. Given an older output folder for label L and one this run left
+# 6. Given an older output folder for label L and two this run left
 #    When a docks script asks for its run's output folder
-#    Then it is handed the one this run left, not the older one
-runs="$WORK/runs"; mkdir -p "$runs/cx-perf-fixture-old" "$runs/cx-perf-fixture-new" "$runs/cx-perf-other-new"
+#    Then it is handed the newest of them, not an older one and not whichever sorts last by name
+# The two this run left are named against the clock order on purpose: `zzz` is the older one, so a search that takes
+# the last name, or the first of the newest-first order, answers with the wrong folder.
+runs="$WORK/runs"
+mkdir -p "$runs/cx-perf-fixture-old" "$runs/cx-perf-fixture-zzz" "$runs/cx-perf-fixture-aaa" "$runs/cx-perf-other-aaa"
 touch -d "@$(($(date +%s) - 600))" "$runs/cx-perf-fixture-old"
-mark=$(date +%s); sleep 1; touch "$runs/cx-perf-fixture-new" "$runs/cx-perf-other-new"
+mark=$(date +%s); sleep 1
+touch -d "@$((mark + 1))" "$runs/cx-perf-fixture-zzz" "$runs/cx-perf-other-aaa"
+touch -d "@$((mark + 2))" "$runs/cx-perf-fixture-aaa"
 got="$(TMPDIR="$runs" outdir fixture "$mark")"; rc=$?
 if [ "$rc" != 0 ]; then bad "finding the run's output folder exited $rc"
-elif [ "$got" != "$runs/cx-perf-fixture-new" ]; then bad "the run's output folder came back as '$got', not the one this run left"
+elif [ "$got" != "$runs/cx-perf-fixture-aaa" ]; then bad "the run's output folder came back as '$got', not the newest one this run left"
 else ok "the newest output folder for the label, made after the run started, is the one found"; fi
 
 # 7. Given no output folder for label L newer than the run started
@@ -110,6 +115,18 @@ got="$(TMPDIR="$runs" outdir fixture "$(date +%s)" 2>/dev/null)"; rc=$?
 if [ "$rc" != 2 ]; then bad "no output folder for this run exited $rc, not 2 (it printed '$got')"
 else ok "no output folder newer than the run refuses with 2"; fi
 
-[ "$fails" = 0 ] && { echo "PASS: the docks staging helper answers all 8 examples"; exit 0; }
+# 8. Given `--saves` with no folder after it
+#    When a docks script reads its options
+#    Then it refuses with exit 2, rather than reading as "no --saves" and staging the user's own save
+savesarg() { ( DOCKS_WHO=regression; . "$ROOT/tools/live/docks_run.sh"; docks_saves_arg "${1-}" ); }
+got="$(savesarg 2>/dev/null)"; rc=$?
+if [ "$rc" != 2 ]; then bad "--saves with no folder after it exited $rc, not 2 (it printed '$got')"
+elif [ -n "$got" ]; then bad "--saves with no folder after it came back as '$got'"
+else ok "--saves with no folder after it refuses with 2"; fi
+got="$(savesarg "$WORK/given")"; rc=$?
+if [ "$rc" != 0 ] || [ "$got" != "$WORK/given" ]; then bad "--saves with a folder exited $rc and printed '$got'"
+else ok "--saves with a folder hands that folder on"; fi
+
+[ "$fails" = 0 ] && { echo "PASS: the docks staging helper answers all 10 examples"; exit 0; }
 echo "FAIL: $fails of the docks staging examples" >&2
 exit 1

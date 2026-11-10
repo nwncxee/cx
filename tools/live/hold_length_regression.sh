@@ -15,7 +15,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --before) BEFORE+=("${2:-}"); shift 2 ;;
         --rounds) ROUNDS="${2:-}"; shift 2 ;;
-        --saves)  SAVES="${2:-}"; shift 2 ;;
+        --saves)  SAVES="$(docks_saves_arg "${2:-}")" || exit 2; shift 2 ;;
         *) echo "hold-length: unknown argument $1" >&2; exit 2 ;;
     esac
 done

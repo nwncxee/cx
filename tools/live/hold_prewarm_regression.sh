@@ -15,7 +15,7 @@ DOCKS_WHO=hold-regression
 SAVES="" ONLY=""
 while [ $# -gt 0 ]; do
     case "$1" in
-        --saves) SAVES="${2:-}"; shift 2 ;;
+        --saves) SAVES="$(docks_saves_arg "${2:-}")" || exit 2; shift 2 ;;
         --only)  ONLY="${2:-}"; shift 2 ;;
         *) echo "hold-regression: unknown argument $1" >&2; exit 2 ;;
     esac

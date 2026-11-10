@@ -9,12 +9,22 @@
 # docks_saves copies the save rather than loading the user's own, and removes the copy when the script exits; it sets
 # DOCKS_SAVES rather than printing it, because a copy staged inside a command substitution would be removed the moment
 # that subshell ended. perf-save.sh gives the run a throwaway home, so nothing of the user's is read or written.
+#
+# Removing the copy is an EXIT trap, and it REPLACES the sourcing script's own: a caller that wants one installs it
+# before staging and removes the copy itself, or chains the two.
 : "${DOCKS_WHO:=docks}"
 DOCKS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 # The seconds a docks run is soaked for, long enough for the area's loading hold to lift and the first ten seconds
 # after it to be counted.
 DOCKS_SOAK=30
+
+# The folder behind a `--saves` option, or 2 when the option was given with nothing after it: an empty value reads as
+# "no --saves" to docks_saves, which would stage the user's own save -- the one thing the option is there to avoid.
+docks_saves_arg() {
+    [ -n "${1:-}" ] || { echo "$DOCKS_WHO: --saves needs a folder holding the docks save" >&2; return 2; }
+    printf '%s\n' "$1"
+}
 
 # Sets DOCKS_SAVES to the folder perf-save.sh loads the docks save out of: $1 when the caller was given one, else a
 # throwaway copy of the user's own quicksave, removed when this script exits. 2 when there is no docks save to copy.
@@ -36,11 +46,14 @@ docks_saves() {
     DOCKS_SAVES=$saves
 }
 
-# The output folder perf-save.sh left for label $1 after epoch second $2: the newest, since a label is reused run to
-# run. 2 when there is none, rather than an earlier run's folder.
+# The output folder perf-save.sh left for label $1 after epoch second $2: the newest by modification time, since a
+# label is reused run to run. 2 when there is none, rather than an earlier run's folder.
+# perf-save.sh names the folder after the clock time, which only sorts by name within one day, so this sorts by the
+# time the folder was actually made.
 docks_out() {
     local out
-    out="$(find "${TMPDIR:-/tmp}" -maxdepth 1 -type d -name "cx-perf-$1-*" -newermt "@$2" | sort | tail -1)"
+    out="$(find "${TMPDIR:-/tmp}" -maxdepth 1 -type d -name "cx-perf-$1-*" -newermt "@$2" -printf '%T@\t%p\n' \
+           | sort -n | tail -1 | cut -f2-)"
     [ -n "$out" ] || { echo "$DOCKS_WHO: the run left no output folder for $1" >&2; return 2; }
     printf '%s\n' "$out"
 }
