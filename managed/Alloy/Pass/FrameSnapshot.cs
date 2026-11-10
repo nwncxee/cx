@@ -11,15 +11,15 @@ namespace CX.Alloy;
 /// water stage can march them. The engine takes TWO such copies per frame because its bucket order is fixed,
 /// not because two are needed; ours holds LINEAR HDR, so no engine draw could have read it anyway.
 /// </summary>
-internal static unsafe class FrameSnapshot
+internal static unsafe partial class FrameSnapshot
 {
     /// <summary>Texture units the copy binds on -- above the probe's cube, and clear of the grass push map
     /// and the resolve even though those are other programs. <see cref="TextureSlots"/> is the ladder
     /// and the only place it is written down; do not paraphrase it here.</summary>
     internal const uint ColorUnit = TextureSlots.SnapshotColor, DepthUnit = TextureSlots.SnapshotDepth;
 
-    /// <summary>The unit the engine's own noise texture binds on. The vanilla wave field IS that
-    /// texture at four scales, so the stage cannot draw without it.</summary>
+    /// <summary>The unit the <c>solid_noise</c> texture binds on. The vanilla wave field IS that texture at
+    /// four scales, so the stage cannot draw without <see cref="Noise"/> answering.</summary>
     internal const uint NoiseUnit = TextureSlots.WaterNoise;
 
     /// <summary>The resref vanilla's water shader samples as <c>texUnitNoise</c>. Not a guess and not a
@@ -30,7 +30,41 @@ internal static unsafe class FrameSnapshot
 
     /// <summary>The engine's noise texture as the resman has it now, re-resolved per ask for <see cref="Bind"/>'s
     /// reason: a <c>CAurTexture*</c> is borrowed and an area transition frees it.</summary>
-    internal static int NoiseTid => CX.Framework.AurTex.Tid(CX.Framework.AurTex.FindByName(NoiseResref));
+    private static int EngineNoiseTid => CX.Framework.AurTex.Tid(CX.Framework.AurTex.FindByName(NoiseResref));
+
+    /// <summary>Is <paramref name="gl"/>'s Vulkan mirror up? A name the engine has but <see cref="VkTextures"/>
+    /// has not mirrored is no more use to a Vulkan read than no name at all.</summary>
+    private static bool Mirrored(int gl) => !VkTextures.Image(gl).IsNull;
+
+    /// <summary>The <c>solid_noise</c> every Vulkan read of the resref binds, as a GL name: the engine's mirror
+    /// where it is up, else CX's own copy. Zero only when neither is, which is what the water class sits out
+    /// for.</summary>
+    internal static int Noise
+    {
+        get
+        {
+            int engine = EngineNoiseTid, own = OwnNoise();
+            return WhichNoise(engine, Mirrored(engine), own, Mirrored(own));
+        }
+    }
+
+    /// <summary>Which <c>solid_noise</c> a read binds, given the engine's name <paramref name="engine"/> and
+    /// whether its mirror is up (<paramref name="engineUp"/>) and CX's own <paramref name="own"/> and
+    /// <paramref name="ownUp"/>: the engine's wins, as the one the vanilla sea is sampled from.</summary>
+    internal static int WhichNoise(int engine, bool engineUp, int own, bool ownUp)
+        => engineUp ? engine : ownUp ? own : 0;
+
+    /// <summary>Which mirror the wave field is drawing from, for the census lines: the GL name and whose it is,
+    /// or that neither is up and there is no field at all.</summary>
+    private static string NoiseStanding
+    {
+        get
+        {
+            int take = Noise;
+            return take == 0 ? "NO WAVE FIELD -- neither the engine's solid_noise nor CX's own copy is mirrored"
+                 : take == EngineNoiseTid ? $"{take} (the engine's)" : $"{take} (CX's own)";
+        }
+    }
 
     /// <summary>The unit the SCENE's environment map binds on -- the reflection vanilla's water
     /// carries.</summary>
@@ -47,10 +81,10 @@ internal static unsafe class FrameSnapshot
     internal static void Attach(ExtenderLog log) => _log = log;
     private static ExtenderLog? _log;
 
-    /// <summary>CX's own <c>solid_noise</c>: for the frames the engine's has no id in, and a content stage's
-    /// <c>texUnitNoise</c> (owned, so it has a bindless handle). CX's own loader answers rather than the engine, which
-    /// loads that resref only in <c>Scene::Render</c> and would leave a <c>CAurTexture</c> queued on its
-    /// <c>RefreshTextures</c> list. Acquired once per session.</summary>
+    /// <summary>CX's own <c>solid_noise</c>, acquired once per session: the fallback behind <see cref="Noise"/>,
+    /// and the only candidate on the bindless path, where <c>HandleFor</c> refuses a name Alloy does not own.
+    /// CX's loader answers rather than the engine, which loads that resref only in <c>Scene::Render</c> and
+    /// would leave a <c>CAurTexture</c> queued on its <c>RefreshTextures</c> list.</summary>
     internal static int OwnNoise()
     {
         if (!_ownNoiseAsked) { _ownNoiseAsked = true; _ownNoise = Db.TexRegistry.Acquire(NoiseResref); }
@@ -62,7 +96,7 @@ internal static unsafe class FrameSnapshot
     /// <inheritdoc cref="OwnNoise"/>
     private static bool _ownNoiseAsked;
     internal static string Describe()
-        => $"water {(On ? "on" : "off")} (vanilla fswater)  noise tid {NoiseTid} on unit {NoiseUnit} "
+        => $"water {(On ? "on" : "off")} (vanilla fswater)  noise {NoiseStanding} on unit {NoiseUnit} "
          + $"rect {(Rect ? 1 : 0)}";
 
     /// <summary>Copy only the rows and columns the water can cover (<c>/water rect 0</c> = whole frame).</summary>
@@ -82,7 +116,7 @@ internal static unsafe class FrameSnapshot
         _todLast = tod;
         return $"water: {(On ? "on" : "off")}" + (frames > 0 ? $" over {frames} frames" : "")
              + $", tod {tod} ({(delta >= 0 ? "+" : "")}{delta} since last)"
-             + $", noise {NoiseTid}{(NoiseTid == 0 ? " -- NO WAVE FIELD" : "")}";
+             + $", noise {NoiseStanding}";
     }
 
     private static int _todLast;
@@ -117,10 +151,10 @@ internal static unsafe class FrameSnapshot
         check.Expect(fs.Contains("uniform sampler2D uFbColor") && fs.Contains("uniform sampler2D uFbDepth"),
           "the stage declares the copy pair it marches");
         // #339's own criterion, as a text check: the shading is stock fswater's, not a look of ours. The
-        // march is vanilla's GetRayIntersectCoords, the wave field reads the ENGINE's noise texture, and the
+        // march is vanilla's GetRayIntersectCoords, the wave field reads the solid_noise texture, and the
         // reflection's fallback is the shaded surface -- a probe here would be the custom look coming back.
         check.Expect(fs.Contains("CxRayIntersect("), "the stage marches with stock's own ray intersection");
-        check.Expect(fs.Contains("texture(uNoise,"), "the wave field reads the engine's noise texture");
+        check.Expect(fs.Contains("texture(uNoise,"), "the wave field reads the solid_noise texture");
         check.Expect(!fs.Contains("samplerCube uProbe"), "the probe is NOT the reflection's fallback -- vanilla falls back to the surface");
         // Colour space: since #132 the whole Alloy frame is linear, so the copy is linear and a decode on
         // read would be a second linearisation. Sampling it in the wrong space is a whole-image error that

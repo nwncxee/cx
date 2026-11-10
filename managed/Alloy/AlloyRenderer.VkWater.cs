@@ -58,24 +58,13 @@ public sealed unsafe partial class AlloyRenderer
         {
             "uFbColor" => w.Col,
             "uFbDepth" => w.Dep,
-            "uNoise" => VkWaveNoise(),
+            "uNoise" => VkTextures.Image(FrameSnapshot.Noise),
             _ => w.EnvLive ? VkTextures.Image(AlloyEnvMap.Tid()) : default,
         };
     }
 
-    /// <summary>The wave field's <c>solid_noise</c> mirror: the engine's where the resman has loaded it and the
-    /// mirror is up, else CX's own copy of the same resref, which its loader holds for the frames before the
-    /// engine's arrives. Null id only when neither is.</summary>
-    private static ImageId VkWaveNoise()
-        => WaveNoise(VkTextures.Image(FrameSnapshot.NoiseTid), VkTextures.Image(FrameSnapshot.OwnNoise()));
-
-    /// <summary>Which of the two mirrors the field draws with, given the engine's <paramref name="engine"/> and
-    /// CX's own <paramref name="own"/>: the engine's wins where it is up, as the one the vanilla sea is sampled
-    /// from.</summary>
-    internal static ImageId WaveNoise(ImageId engine, ImageId own) => engine.IsNull ? own : engine;
-
     /// <summary>The sampler a water read takes: the snapshot pair filters linearly, as GL's copy does, and the
-    /// engine's noise repeats, as the pass's own sampler object makes it.</summary>
+    /// noise repeats, as the pass's own sampler object makes it.</summary>
     private static SamplerId VkWaterSampler(string name)
         => name == "uNoise" ? _vkWater.Noise : _vkWater.Snap;
 
@@ -94,7 +83,7 @@ public sealed unsafe partial class AlloyRenderer
         if (!VkWaterEnsure(vk, s, w, h, log)) return false;
         // the wave field IS the solid_noise texture at four scales, so a stand-in is a different sea rather
         // than a slightly wrong one: the class sits out instead, named
-        if (VkWaveNoise().IsNull)
+        if (FrameSnapshot.Noise == 0)
         {
             if (!s.NoiseMissed)
             {
@@ -233,7 +222,7 @@ public sealed unsafe partial class AlloyRenderer
         check.Expect(main.Contains("texture(uFbColor, uv).rgb") && main.Contains("CxMarchZ(uFbDepth, uNearFar, uv)"),
             "...with texture(), not texelFetch, so both halves are filtered and the copy's sampler must be linear");
         check.Expect(head.Contains("uniform sampler2D uNoise;") && head.Contains("uniform int uEnvOk;"),
-            "the wave field is the engine's noise texture and the env term is a switch, not a black texel");
+            "the wave field is the solid_noise texture and the env term is a switch, not a black texel");
         check.Expect(Weather.RippleLib.Contains("uniform float uSplash;"),
             "the rain impact rings on Vulkan: the water's rate is set and the ripple tile is bound by name");
         log.Info(check.Ok ? "AlloyRenderer.VkWaterSelfCheck: passed" : "AlloyRenderer.VkWaterSelfCheck: FAILED");
