@@ -42,11 +42,11 @@ public sealed unsafe partial class AlloyRenderer
         {
             long bytes = (long)_boneSlots * BoneFloats * sizeof(float);
             if (!VkGrow(vk, ref s.PrevBones, ref s.PrevCap, bytes, "vk bones prev")) return;
-            cl.UpdateBuffer(s.PrevBones, 0, new ReadOnlySpan<byte>(_bonePrevStage, (int)bytes));
+            cl.UpdateBuffer(s.PrevBones, 0, MemoryMarshal.AsBytes(_bonePrevStage.Span[.._boneSlots]));
         }
         else if (!VkGrow(vk, ref s.PrevBones, ref s.PrevCap, 64, "vk bones prev")) return;
         if (!VkGrow(vk, ref s.Dangly, ref s.DanglyCap, Math.Max((long)_dpUsed * sizeof(float), 64), "vk dangly prev")) return;
-        if (_mvDangly && _dpUsed > 0) cl.UpdateBuffer(s.Dangly, 0, new ReadOnlySpan<byte>(_dpStage, _dpUsed * sizeof(float)));
+        if (_mvDangly && _dpUsed > 0) cl.UpdateBuffer(s.Dangly, 0, MemoryMarshal.AsBytes(_dpStage.Span[.._dpUsed]));
         ReadOnlySpan<BufferBinding> own = [new(BindBonesPrev, s.PrevBones), new(BindDanglyPrev, s.Dangly)];
         VkProg p = s.Prog!;
         CommandList side = s.Side!;

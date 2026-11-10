@@ -166,7 +166,7 @@ public static unsafe partial class DbAnim
     /// private recipe that draws it.</summary>
     private static void DanglyDropStock(int part)
     {
-        if (_dyn[part] == 0 && _dangly.Stock[part] == null) return;
+        if (_dyn[part].Length == 0 && _dangly.Stock[part] == null) return;
         DynDrop(part);
         _dangly.Stock[part] = null;
     }

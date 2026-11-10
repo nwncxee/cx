@@ -419,7 +419,7 @@ public sealed unsafe partial class AlloyRenderer
         if (!VkContentRows(vk, cl)) return false;
         long boneBytes = _skinning ? (long)_boneSlots * BoneFloats * sizeof(float) : 0;
         if (!VkGrow(vk, ref s.Bones, ref s.BoneCap, Math.Max(boneBytes, 64), "vk bones")) return false;
-        if (boneBytes > 0) cl.UpdateBuffer(s.Bones, 0, new ReadOnlySpan<byte>(_boneStage, (int)boneBytes));
+        if (boneBytes > 0) cl.UpdateBuffer(s.Bones, 0, MemoryMarshal.AsBytes(_boneStage.Span[.._boneSlots]));
         return true;
     }
 

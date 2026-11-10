@@ -177,13 +177,13 @@ public static unsafe partial class DbAnim
 
     private static float StagedX(int slot, int bone)
     {
-        ref BonePalette p = ref AlloyRenderer._boneStage[slot];
+        ref BonePalette p = ref AlloyRenderer._boneStage.Span[slot];
         return p[bone].M41;
     }
 
     private static float PrevX(int slot, int bone)
     {
-        ref BonePalette p = ref AlloyRenderer._bonePrevStage[slot];
+        ref BonePalette p = ref AlloyRenderer._bonePrevStage.Span[slot];
         return p[bone].M41;
     }
 

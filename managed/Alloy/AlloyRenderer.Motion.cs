@@ -25,35 +25,28 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>Dangly positions from before this frame's solve, part-local xyz, appended per owned part by
     /// <see cref="NoteDanglyPrev"/> and reset by the first append of a new frame. Native and growing for
     /// <c>EnsureBoneSlots</c>' reason.</summary>
-    private static float* _dpStage;
-    private static int _dpUsed, _dpCap, _dpSeq = -1;
+    private static NativeBuffer<float> _dpStage;
+    private static int _dpUsed, _dpSeq = -1;
     /// <summary>Per ownership slot: the frame its snapshot is from, and where in <see cref="_dpStage"/> and
     /// how many vertices.</summary>
     private static readonly int[] _oDpAt = new int[MaxOwned], _oDpBase = new int[MaxOwned], _oDpN = new int[MaxOwned];
     /// <summary>Last frame's dangly vertices, read by the mover sweep alone.</summary>
     internal const uint BindDanglyPrev = SsboSlots.DanglyPrev;
 
-    /// <summary>The dangly solve's hand-off, called before it overwrites <paramref name="dst"/>: keep the
+    /// <summary>The dangly solve's hand-off, called before it overwrites <paramref name="outgoing"/>: keep the
     /// outgoing positions of an OWNED part for the mover sweep. Main thread, per dangly part per frame;
     /// allocates only when the stage grows, and a refused grow drops the part to its rigid vectors.</summary>
-    internal static void NoteDanglyPrev(int part, float* dst, int n)
+    internal static void NoteDanglyPrev(int part, ReadOnlySpan<Vector3> outgoing)
     {
         // Unarmed, _frameSeq stands still and the stage would never reset.
         int i = _armed ? SlotOfPart(part) : -1;
         if (i < 0) return;
         if (_dpSeq != _frameSeq) { _dpSeq = _frameSeq; _dpUsed = 0; }
-        int need = _dpUsed + n * 3;
-        if (need > _dpCap)
-        {
-            int cap = Math.Max(_dpCap * 2, Math.Max(need, 1 << 16));
-            float* next;
-            try { next = (float*)NativeMemory.Realloc(_dpStage, (nuint)cap * sizeof(float)); }
-            catch (OutOfMemoryException) { return; }
-            if (next == null) return;
-            _dpStage = next; _dpCap = cap;
-        }
-        new ReadOnlySpan<float>(dst, n * 3).CopyTo(new Span<float>(_dpStage, _dpCap).Slice(_dpUsed, n * 3));
-        _oDpAt[i] = _frameSeq; _oDpBase[i] = _dpUsed; _oDpN[i] = n;
+        int need = _dpUsed + outgoing.Length * 3;
+        if (need > _dpStage.Length
+            && !_dpStage.Grow(Math.Max(_dpStage.Length * 2, Math.Max(need, 1 << 16)))) return;
+        MemoryMarshal.Cast<Vector3, float>(outgoing).CopyTo(_dpStage.Span.Slice(_dpUsed, outgoing.Length * 3));
+        _oDpAt[i] = _frameSeq; _oDpBase[i] = _dpUsed; _oDpN[i] = outgoing.Length;
         _dpUsed = need;
     }
 

@@ -14,7 +14,12 @@ public static unsafe partial class Facade
     public struct Quad { public float X, Y, Z, W; }
 
     private static nint _tableBase;
-    private static nint _tableBytes;
+    /// <summary>Every facade vtable in one allocation, on a boundary the engine's own tables sit on.</summary>
+    private static NativeBuffer<nint> _block;
+    /// <summary>The boundary an address point is taken on.</summary>
+    private const int PointAlign = 64;
+    /// <summary>The block's size, which <c>Shell</c>'s range test reads; 0 while no block exists.</summary>
+    internal static nint TableBytes => (nint)_block.Length * sizeof(nint);
     private static bool _built;
     private static readonly nint[] _table = new nint[6];
     private static readonly nint[] _poison = new nint[6];
@@ -59,19 +64,17 @@ public static unsafe partial class Facade
 
         int words = 0;
         foreach (SeamTable t in tables) words += 2 * (2 + SeamVtables.Order(t).Length);   // live + poison twin
-        _tableBytes = words * sizeof(nint);
-        void* block = NativeMemory.AlignedAlloc((nuint)_tableBytes, 64);
-        // _tableBytes back to 0 with it: Shell's range test is what keeps it off the (still empty) point
-        // bitmap, so a block that never existed must read as a block of no bytes.
-        if (block == null)
+        // Shell's range test is what keeps a block that never existed off the (still empty) point bitmap, so
+        // the byte count is the buffer's own and reads as 0 when the take is refused.
+        if (!_block.TakeAligned(words, PointAlign))
         {
-            _tableBytes = 0;
             log.Always("seam: could not allocate the vtable block -- the seam stands down");
             return -1;
         }
-        NativeMemory.Fill(block, (nuint)_tableBytes, 0);
-        _tableBase = (nint)block;
-        _pointBits = new ulong[(words + 63) / 64];
+        _tableBase = (nint)_block.Pointer;
+        // Off the BLOCK's length, not off `words`: Shell admits any offset under TableBytes, so a bitmap
+        // sized from the smaller of the two would be indexed past its end by a vptr inside the live block.
+        _pointBits = new ulong[(_block.Length + 63) / 64];
 
         // One refusal stub PER TABLE. A shared stub cannot say which slot was called -- it is handed only
         // `this` -- but it can say which interface, and the boot census already lists that table's
@@ -81,7 +84,7 @@ public static unsafe partial class Facade
             : (nint)(delegate* unmanaged<nint, Quad>)&PoisonQuad;
 
         int missing = 0;
-        var slots = new Span<nint>(block, words);
+        Span<nint> slots = _block.Span;
         int cursor = 0;
         foreach (SeamTable t in tables)
         {
@@ -129,15 +132,15 @@ public static unsafe partial class Facade
         }
         _built = true;
         if (census) log.Info($"seam: {tables.Length} vtables built for {(OperatingSystem.IsWindows() ? "Windows" : "Linux")} slot order, "
-               + $"{words - 2 * tables.Length} slots, {missing} unimplemented, {_tableBytes} bytes");
+               + $"{words - 2 * tables.Length} slots, {missing} unimplemented, {TableBytes} bytes");
         return missing;
     }
 
     /// <summary>Hand the vtable block back; only the self-check and shutdown call this.</summary>
     internal static void DropTables()
     {
-        if (_tableBase != 0) NativeMemory.AlignedFree((void*)_tableBase);
-        _tableBase = 0; _tableBytes = 0; _built = false;
+        _block.Free();
+        _tableBase = 0; _built = false;
         _pointBits = Array.Empty<ulong>();
         Array.Clear(_table);
     }
