@@ -371,12 +371,6 @@ public sealed unsafe partial class AlloyRenderer
         live = _oDbPart[slot] >= 0 ? SceneDb.PartWorld[_oDbPart[slot]].Translation : Vector3.Zero;
     }
 
-    /// <summary>The shadow pass's own copy of the buffer names it binds: the persistent per-draw records and
-    /// the bone block, both of which the bake reads through the SAME bindings the colour path uses.</summary>
-    internal static uint DrawRecordBuf => _drawBuf;
-    internal static uint BoneBlockBuf => _boneBuf;
-    /// <summary>The bindless handle block the lit stages sample through; 0 until the first bindless upload.</summary>
-    internal static uint TexHandleBuf => _texHBuf;
     /// <summary>The slot's diffuse handle as the block holds it; 0 = never minted (unlit, unmerged, or
     /// refused), which a sampler reads as black.</summary>
     internal static ulong RecordHandle0(int slot) => _dTexH[slot][0];
