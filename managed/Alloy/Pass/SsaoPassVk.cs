@@ -34,8 +34,8 @@ internal static unsafe class SsaoPassVk
         /// history is only a frame old while the number is this frame's minus one.</summary>
         public Matrix4x4 PrevVpClean;
         public int PrevSeq = -2;
-        /// <summary>The nearest sampler the accumulator reads the history through for its blend; its depth test
-        /// fetches the texel instead.</summary>
+        /// <summary>The sampler the accumulator blends the history through, filtered: the reprojected spot lands
+        /// between texels. Its depth test fetches a whole texel instead, which no sampler decides.</summary>
         public SamplerId Linear;
         public int W, H, SrcW, SrcH, Runs, AccumRuns;
         /// <summary>The <see cref="AlloyRenderer.FrameSeq"/> whose estimate is in <see cref="Visibility"/>; -1 = none.</summary>

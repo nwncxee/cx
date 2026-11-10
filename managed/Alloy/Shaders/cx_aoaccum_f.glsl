@@ -35,13 +35,17 @@ void main()
     vec2 huv = CxAoPrevUv(vUV, worldDepth);
     float w = uWeight;
     if (dist <= 0.0 || any(lessThan(huv, vec2(0.0))) || any(greaterThan(huv, vec2(1.0)))) w = 0.0;
+    // the pair holds whatever the allocation held until a frame writes it: a zero share must not even fetch it,
+    // since one NaN texel carries through the blend and back into the history
+    if (w <= 0.0) { frag = vec2(raw, dist); return; }
     ivec2 hsz = textureSize(uHist, 0);
     vec2 h = textureLod(uHist, huv, 0.0).rg;
     // the depth test reads the NEAREST texel: LINEAR blends near and far at a silhouette and would reject
     // every edge pixel every frame
     float hd = texelFetch(uHist, clamp(ivec2(huv * vec2(hsz)), ivec2(0), hsz - 1), 0).g;
     w *= 1.0 - clamp(abs(hd - dist) / (CX_AO_DISOCCLUDE * max(dist, 1e-3)), 0.0, 1.0);
-    ivec2 pix = ivec2(gl_FragCoord.xy), sz = textureSize(uSrc, 0);
+    // by uv like every other term here: a viewport origin the pass inherits is not in the texel grid
+    ivec2 sz = textureSize(uSrc, 0), pix = ivec2(vUV * vec2(sz));
     float mn = raw, mx = raw;
     for (int y = -1; y <= 1; y++)
         for (int x = -1; x <= 1; x++)

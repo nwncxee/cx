@@ -35,6 +35,9 @@ internal static partial class GpuGolden
     private const float AccDisocclude = 0.1f, AccPad = 0.1f;
     /// <summary>The reprojection the camera case drives: this many texels to the right in the history.</summary>
     private const int AccShift = 4;
+    /// <summary>Where the nearest-fetch case's reprojection lands, in texels: past the next texel's centre, so a
+    /// nearest fetch and a filtered one cannot answer alike.</summary>
+    private const float AccNearestShift = 0.6f;
     /// <summary>What a texel may differ from the oracle by: the R8 estimate and the Rg16F history each quantise.</summary>
     private const double AccTol = 2e-3;
 
@@ -43,7 +46,7 @@ internal static partial class GpuGolden
         PipelineId accum = SsaoPassVk.AccumPipeline(vk, log);
         SamplerId linear = vk.CreateSampler(new SamplerDesc(Filter.Linear, Filter.Linear, MipMode.None, Wrap.Clamp));
         check.Expect(!accum.IsNull && !linear.IsNull, "the accumulator golden's stage and sampler build for the device");
-        if (accum.IsNull || linear.IsNull) { vk.Destroy(accum); return; }
+        if (accum.IsNull || linear.IsNull) { vk.Destroy(accum); vk.Destroy(linear); return; }
         float raw = AccRawByte / 255f;
         try
         {
@@ -65,14 +68,42 @@ internal static partial class GpuGolden
                 check.Expect(most - least < AccTol, $"AO accumulator golden: {name} is even across the flat surface, {least:F4}..{most:F4}");
                 Near(check, $"AO accumulator golden: {name} stores the distance it was computed at", got.Value.Dist[AccAt(16, 16)], AccDist, 1e-2);
             }
-            AccCameraCheck(vk, log, accum, linear, check, raw);
+            AccCameraCheck(vk, log, accum, linear, check, raw, cases.Length);
+            AccNearestCheck(vk, log, accum, linear, check, raw);
         }
-        finally { vk.Destroy(accum); }
+        finally { vk.Destroy(accum); vk.Destroy(linear); }
     }
+
+    /// <summary>The disocclusion test's nearest fetch: a stored distance that alternates per column, read through a
+    /// reprojection landing <see cref="AccNearestShift"/> of a texel past its own. A nearest fetch takes the
+    /// neighbour's distance whole, so the share alternates with it; a filtered one would average the two neighbours
+    /// and leave every column a middling share.</summary>
+    private static void AccNearestCheck(VkBackend vk, ExtenderLog log, PipelineId accum, SamplerId linear, Checker check, float raw)
+    {
+        var dist = new float[AccSide * AccSide];
+        for (int y = 0; y < AccSide; y++)
+            for (int x = 0; x < AccSide; x++)
+                dist[AccAt(x, y)] = AccColumnDist(x);
+        Matrix4x4 shift = Matrix4x4.CreateTranslation(2f * AccNearestShift / AccSide, 0f, 0f);
+        (float[] Vis, float[] Dist)? got = AccRun(vk, log, accum, linear, AccFill(AccHist), dist, shift, AccWeight);
+        check.Expect(got != null, "AO accumulator golden: the nearest-fetch case's draw was refused (logged above)");
+        if (got == null) return;
+        for (int x = 4; x < AccSide - 4; x++)
+        {
+            bool kept = AccColumnDist(x + 1) == AccDist;
+            Near(check, $"AO accumulator golden: the disocclusion test reads column {x}'s own neighbour, {(kept ? "which agrees" : "which is another surface")}",
+                 got.Value.Vis[AccAt(x, 16)], kept ? AccBlend(raw, AccHist, AccWeight) : raw, AccTol);
+        }
+        log.Info("GpuGolden: ao accumulator, the disocclusion test's nearest fetch over a per-column distance");
+    }
+
+    /// <summary>The history distance per column: this surface's own, or far enough past it to be another.</summary>
+    private static float AccColumnDist(int x) => (x & 1) == 0 ? AccDist : AccDist * 1.3f;
 
     /// <summary>The camera case: a history whose visibility ramps across the surface, read through a reprojection that
     /// slides it <see cref="AccShift"/> texels, so each pixel answers with the ramp at its own shifted texel.</summary>
-    private static void AccCameraCheck(VkBackend vk, ExtenderLog log, PipelineId accum, SamplerId linear, Checker check, float raw)
+    private static void AccCameraCheck(VkBackend vk, ExtenderLog log, PipelineId accum, SamplerId linear, Checker check,
+                                       float raw, int blends)
     {
         var vis = new float[AccSide * AccSide];
         for (int y = 0; y < AccSide; y++)
@@ -92,7 +123,7 @@ internal static partial class GpuGolden
             Near(check, $"AO accumulator golden: a camera that moved reads it {AccShift} texels over, column {x}",
                  moved.Value.Vis[AccAt(x, 16)], AccBlend(raw, AccRamp(x + AccShift), AccWeight), AccTol);
         }
-        log.Info($"GpuGolden: ao accumulator, 5 blends and the camera's own reprojection over {AccSide}x{AccSide}");
+        log.Info($"GpuGolden: ao accumulator, {blends} blends and the camera's own reprojection over {AccSide}x{AccSide}");
     }
 
     /// <summary>The history ramp, inside the pad the clamp allows around a uniform estimate so the ramp itself

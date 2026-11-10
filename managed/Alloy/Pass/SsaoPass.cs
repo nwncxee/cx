@@ -158,15 +158,11 @@ internal static unsafe class SsaoPass
             check.Expect(Describe().Contains("radius") && Describe().Contains("strength") && Describe().Contains("dirs"), "/ao reports its dials");
             check.Expect(fs.Contains("fract(b / 16.0 + float(uFrame) * 0.618034)"), "the raw stage's noise phase rotates with uFrame, which the single-frame estimate leaves at 0");
             check.Expect(Ao.Dirs.Default == 1 && Ao.Steps.Default == 3, "one slice at its full step count is the per-frame horizon");
-            check.Expect(AccumFs.Contains("prev.xy / prev.w - (ndc.xy - uJitter)"),
-              "the accumulator reprojects on the velocity convention -- previous minus current, the current unjittered");
-            check.Expect(AccumFs.Contains("mix(raw, clamp(h.r, mn - CX_AO_CLAMP_PAD, mx + CX_AO_CLAMP_PAD), w)"),
-              "...blends, never replaces, and clamps the history into the estimate's own 3x3 range");
-            check.Expect(AccumFs.Contains("float hd = texelFetch(uHist, clamp(ivec2(huv * vec2(hsz)), ivec2(0), hsz - 1), 0).g;")
-              && AccumFs.Contains("w *= 1.0 - clamp(abs(hd - dist) / (CX_AO_DISOCCLUDE * max(dist, 1e-3)), 0.0, 1.0);"),
-              "...and tests the history's own stored distance by NEAREST texel: a linear read blends near and far at a silhouette");
-            check.Expect(AccumFs.Contains("frag = vec2(") && AccumFs.Contains("out vec2 frag;"),
-              "the history carries the distance it was computed at beside the visibility -- that pair IS the test");
+            check.Expect(PassRegistry.Global.Find("ao")?.Revoke != null,
+              "the pass's own lifecycle registers a revoke: that walk is the only thing that reaches the accumulator at "
+              + "an area transition, where the history is another place's");
+            // The accumulator's own arithmetic -- the reprojection, the clamp, the nearest disocclusion fetch and the
+            // pair it writes -- is proven on the device by GpuGolden's ao accumulator, not restated here.
         }
         finally { _log = quiet; }
         log.Info(check.Ok ? "SsaoPass.SelfCheck: passed" : "SsaoPass.SelfCheck: FAILED");
