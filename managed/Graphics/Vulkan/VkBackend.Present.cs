@@ -161,7 +161,7 @@ internal sealed unsafe partial class VkBackend
     {
         SwapState s = _swap;
         if (s.Refused) return false;
-        if (ChainFits(new ChainShape(s.Chain.IsNotNull, s.Stale, s.Dictated, s.Mode, s.W, s.H), mode, w, h))
+        if (ChainFits(Shape(s), mode, w, h))
         {
             if (s.W != w || s.H != h) SayScaled(w, h, log);
             return true;
@@ -177,6 +177,11 @@ internal sealed unsafe partial class VkBackend
     /// <summary>What a live chain was made for, as the one test over it reads: whether there is one, whether the
     /// window went stale under it, whether the surface dictated its extent, and the mode and size it holds.</summary>
     internal readonly record struct ChainShape(bool Live, bool Stale, bool Dictated, VkPresentModeKHR Mode, int W, int H);
+
+    /// <summary>The shape the chain <paramref name="s"/> holds, for <see cref="ChainFits"/>: the one place a
+    /// <see cref="SwapState"/>'s fields are read into one, so three adjacent flags are ordered once.</summary>
+    private static ChainShape Shape(SwapState s)
+        => new(Live: s.Chain.IsNotNull, Stale: s.Stale, Dictated: s.Dictated, Mode: s.Mode, W: s.W, H: s.H);
 
     /// <summary>Does the chain <paramref name="have"/> describes still answer a frame of <paramref name="w"/> x
     /// <paramref name="h"/> in <paramref name="want"/>? A dictated extent is not the frame's to change, so only the
