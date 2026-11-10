@@ -95,17 +95,19 @@ public static unsafe class Native
         return ((IntPtr)q, (uint)*(ulong*)(s + 8), q == s + 0x10 ? IntPtr.Zero : (IntPtr)q);
     }
 
-    /// <summary>Longest CExoString <see cref="ReadExo"/> trusts; a length past this is a stale or foreign pointer.</summary>
+    /// <summary>Longest engine string <see cref="ReadExo"/> and <see cref="Chars"/> trust; a length past this is
+    /// a stale or foreign pointer.</summary>
     private const uint MaxExoLen = 4096;
 
-    /// <summary>A NUL-terminated engine string as the codepage bytes a reader works in -- the span's length is
-    /// the distance to the NUL, measured here rather than by each caller, and a null pointer reads as empty.
-    /// No transcode: the engine's text is a single-byte codepage and the span is read, not stored.</summary>
+    /// <summary>A NUL-terminated engine string as the codepage bytes a reader works in -- the distance to the
+    /// NUL measured here rather than by each caller, a null pointer read as empty, and the walk stopped at
+    /// <see cref="MaxExoLen"/> so a stale or foreign pointer costs a truncated span and not a walk off the
+    /// mapping. No transcode: the engine's text is a single-byte codepage and the span is read, not stored.</summary>
     public static ReadOnlySpan<byte> Chars(byte* text)
     {
         if (text == null) return default;
         int n = 0;
-        while (text[n] != 0) n++;
+        while (n < MaxExoLen && text[n] != 0) n++;
         return new ReadOnlySpan<byte>(text, n);
     }
 
