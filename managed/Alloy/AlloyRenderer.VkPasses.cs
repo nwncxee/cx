@@ -551,7 +551,7 @@ public sealed unsafe partial class AlloyRenderer
             push.AoDirect = push.SsaoOn > 0 ? SsaoPass.Direct : 0f;
             // CX-273: fold the layer (a surface pass), or drop a decal batch's fragments it already took
             push.Decal = r.Decal == DecalLayer.ModeSkip && !_gDecal[g] ? DecalLayer.ModeNone : r.Decal;
-            if (!VkBatch(side, ref b, p, g, r.Targets, blendKey, depth, VkRaster(g, wash), slots, lit ? 0 : _gTex[g], ref push,
+            if (!VkBatch(side, ref b, p, g, r.Targets, blendKey, depth, VkRaster(g, wash), slots, p.TexBound ? _gTex[g] : 0, ref push,
                          vp, viewport, near, far, phase, indirect)) continue;
             Counters._batches++;
             Counters._draws += _gLen[g];

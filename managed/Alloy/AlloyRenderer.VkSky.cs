@@ -62,7 +62,7 @@ public sealed unsafe partial class AlloyRenderer
         for (int i = 0; i < _skyN; i++)
         {
             VkProg? p = _skProg[i] != 0 ? VkSkyHosted(k, _skProg[i], log)
-                                        : s.Progs[(int)VkPrograms.Id.Fullbright];
+                                        : s.Progs[(int)VkPrograms.Id.SkyDome];
             int fmt = _skFmt[i];
             if (p == null || (uint)fmt >= MeshArena.Formats || MeshArena.VkVbo((MeshArena.Fmt)fmt).IsNull) { k.SatOut++; continue; }
             PipelineId id = VkSkyPipeline(p, fmt, 1 + Math.Min(_skSrc[i], 7) * 8 + Math.Min(_skDst[i], 7), _capturing);

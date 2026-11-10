@@ -44,6 +44,9 @@ public sealed unsafe partial class AlloyRenderer
         public VkOpaque[] Opaques = [];
         /// <summary>Declares the <c>CxEngine</c> block, so a bind needs the frame's copy staged.</summary>
         public bool ReadsEngine;
+        /// <summary>Still declares <c>uTex</c> as a bound sampler, so its batches take the diffuse the issue loop
+        /// binds. False once the bindless rewrite reached it: the diffuse then rides the record, per draw.</summary>
+        public bool TexBound;
         public LitLoc L;
         public FeatLoc F;
         public int Vp = -1, Tex = -1, Viz = -1, Tint = -1, SkyFog = -1, Oit = -1, OitDim = -1;
@@ -361,6 +364,7 @@ public sealed unsafe partial class AlloyRenderer
         if (vs == null || fs == null) { log.Always($"AlloyRenderer: the Vulkan {label} program did not compile -- {(vs == null ? ve : fe)}"); return null; }
         var p = new VkProg { Lit = lit, Label = label, Opaques = t.Opaques.ToArray(), Refl = t.Fs.Contains("oReflN", StringComparison.Ordinal) };
         p.ReadsEngine = Array.Exists(p.Opaques, o => o.Set == 0 && o.Kind == VkBindKind.UniformBlock && o.Binding == UboSlots.Engine);
+        p.TexBound = Array.Exists(p.Opaques, o => o.Set == 0 && o.Name == "uTex");
         p.Vs = vk.CreateShader(ShaderStage.Vertex, vs, $"vk {label} vs");
         p.Fs = vk.CreateShader(ShaderStage.Fragment, fs, $"vk {label} fs");
         if (p.Vs.IsNull || p.Fs.IsNull) return null;

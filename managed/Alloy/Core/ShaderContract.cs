@@ -374,7 +374,7 @@ internal static class ShaderContract
                   // that literal) for the same reason BindDraw does.
                   && DrawBufDecl.Contains($"binding = {BindDrawIdx})")
                   && DrawBufDecl.Contains("int CxSlot(int draw) { return uDrawIdx[draw]; }")
-                  && OwnedVs.Contains("uDraw[CxSlot(uDrawBase + gl_DrawID)]")
+                  && OwnedVs.Contains("int id = CxSlot(uDrawBase + gl_DrawID);")
                   && DepthVs.Contains("int id = CxSlot(uDrawBase + gl_DrawID);")
                   && OwnedLitVs.Contains("int id = CxSlot(uDrawBase + gl_DrawID);")
                   && DepthKeyVs.Contains("int id = CxSlot(uDrawBase + gl_DrawID);")
@@ -609,6 +609,13 @@ internal static class ShaderContract
                   && !BindlessFs(OwnedLitFsHead + MaterialLib).Contains("uniform sampler2D uTex;")
                   && !BindlessFs(OwnedLitFsHead + MaterialLib).Contains("uniform sampler2D uAoTex;")
                   && BindlessFs("void main() { }") == "void main() { }"
+                  // ...and the same swap on the embedded UNLIT stage, whose vertex half forwards the record
+                  // index for it. Without the varying the rewrite must leave the bound declaration standing:
+                  // that is what tells the issue loop to keep binding the diffuse (VkProg.TexBound).
+                  && BindlessFs(OwnedFs).Contains("CxTexH")
+                  && !BindlessFs(OwnedFs).Contains("uniform sampler2D uTex;")
+                  && OwnedVs.Contains("flat out int vDraw;") && OwnedFs.Contains("flat in int vDraw;")
+                  && BindlessFs(OwnedFs.Replace("flat in int vDraw;", "")).Contains("uniform sampler2D uTex;")
                   && LinearSafe(FrameSnapshot.Fs) && LinearSafe(GrassField.EmbeddedFs)
                   // #161: the record guard reaches every stage that declares the record, and the embedded
                   // text passes it, for the same reason as above: a guard its own defaults trip rebuilds

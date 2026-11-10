@@ -12,16 +12,16 @@ namespace CX.Alloy;
 /// <see cref="VkGlsl"/>. Built without GL: Vulkan always takes the bindless path and the sky-visibility unit.</summary>
 internal static class VkPrograms
 {
-    /// <summary>The programs the Vulkan passes draw through. Those past <see cref="Id.DepthFeat"/> are not among
+    /// <summary>The programs the Vulkan passes draw through. Those past <see cref="Id.SkyDome"/> are not among
     /// <see cref="All"/>: each is optional, built at its own pass's first frame, and a refusal stands
     /// that pass down rather than failing the frame.</summary>
     internal enum Id
     {
-        Fullbright, Lit, LitDeferred, Depth, DepthKey, DepthFeat, Decal, Water, HighlightMask, Motion, Grass, GrassBlade,
-        GrassDepth, GrassBladeDepth, GrassMotion, GrassBladeMotion,
+        Fullbright, Lit, LitDeferred, Depth, DepthKey, DepthFeat, SkyDome, Decal, Water, HighlightMask, Motion, Grass,
+        GrassBlade, GrassDepth, GrassBladeDepth, GrassMotion, GrassBladeMotion,
     }
 
-    internal static readonly Id[] All = [Id.Fullbright, Id.Lit, Id.LitDeferred, Id.Depth, Id.DepthKey, Id.DepthFeat];
+    internal static readonly Id[] All = [Id.Fullbright, Id.Lit, Id.LitDeferred, Id.Depth, Id.DepthKey, Id.DepthFeat, Id.SkyDome];
 
     /// <summary>The binding each sampler these stages declare without a <c>layout(binding)</c> takes -- the one
     /// table for them: a declaration it does not name is a translation error, not a silent unit 0.</summary>
@@ -78,11 +78,15 @@ internal static class VkPrograms
         string what = $"VkPrograms {id}";
         switch (id)
         {
-            case Id.Fullbright:
+            case Id.Fullbright or Id.SkyDome:
             {
                 ShaderTexts.Pair(AlloyRenderer.ShdFullbrightVs, ShaderStages.Source(AlloyRenderer.ShdFullbrightVs),
                                 AlloyRenderer.ShdFullbrightFs, ShaderStages.Source(AlloyRenderer.ShdFullbrightFs),
                                 log, what, out string v, out string f);
+                // The world's unlit class samples its diffuse by handle, so one multidraw spans every texture in
+                // it. The sky dome does not: its records live in the reserved block, which carries no handle row,
+                // so its own program keeps the bound declaration and takes the unit the pass binds.
+                if (id == Id.Fullbright) f = AlloyRenderer.BindlessFs(f);
                 return (Final(v, log, what, true), Final(f, log, what, true));
             }
             case Id.Lit or Id.LitDeferred or Id.Decal:

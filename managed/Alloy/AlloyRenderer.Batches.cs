@@ -654,6 +654,32 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>One routed part in this many carries the <c>Zone.Chase</c> timestamps. Power of two.</summary>
     internal const int ChaseEvery = 16;
 
+    /// <summary>Does a batch of class <paramref name="cls"/> leave the diffuse tid out of its key, so one multidraw
+    /// spans every texture in the class? A lit batch always does: its handles ride the record. An unlit one does
+    /// once its own program samples by handle too. Water keeps the bind path and the full key either way.</summary>
+    internal static bool MergesTextures(bool lit, int cls, bool unlitByHandle)
+        => cls != (int)AlloyClass.Water && (lit || unlitByHandle);
+
+    /// <summary>Does the unlit colour program read its diffuse out of the record's handle row? False before it is
+    /// built and in a session Vulkan refused, where the bound unit is still what an unlit batch draws with.</summary>
+    private static bool UnlitSamplesByHandle => _vkc.Progs[(int)VkPrograms.Id.Fullbright] is { TexBound: false };
+
+    /// <summary>Off-device: which classes drop the diffuse tid from the batch key. Oracle: the four answers
+    /// written out by hand, each with the class that must disagree with it.</summary>
+    private static bool BatchMergeSelfCheck(ExtenderLog log)
+    {
+        var check = new Checker(log, "AlloyRenderer.BatchMergeSelfCheck");
+        check.Expect(MergesTextures(true, (int)AlloyClass.Opaque, false),
+                     "a lit batch merges across textures whatever the unlit program does");
+        check.Expect(!MergesTextures(true, (int)AlloyClass.Water, true),
+                     "water never does: its pass binds the diffuse");
+        check.Expect(!MergesTextures(false, (int)AlloyClass.Additive, false),
+                     "an unlit batch cuts on the tid while its program samples a bound unit");
+        check.Expect(MergesTextures(false, (int)AlloyClass.Additive, true),
+                     "...and merges once that program reads the handle row instead");
+        return check.Ok;
+    }
+
     /// <summary>Phase A of the Alloy block: walk this pass's order (<see cref="RouteParts"/>), revalidate every
     /// part, and stage the survivors into the multidraw argument arrays plus one per-draw SSBO record each,
     /// cutting a batch whenever the (class, program, VDO, texture, primitive, blend) key changes. Primitive
@@ -681,6 +707,8 @@ public sealed unsafe partial class AlloyRenderer
         // #120: this part's live slot-1..5 tids. Declared ONCE, outside the loop -- a stackalloc per
         // iteration grows the frame by the part count.
         int* slotTid = stackalloc int[MapSlots];
+        // read once: the answer is a property of the built program, not of the part
+        bool unlitByHandle = UnlitSamplesByHandle;
         // #287: the cull's bounds diagnostic, measured by the walk that already touches every sphere it
         // covers, rather than by a second walk of the staged list.
         float lox = float.MaxValue, loy = float.MaxValue, loz = float.MaxValue;
@@ -780,9 +808,7 @@ public sealed unsafe partial class AlloyRenderer
             bool a2c = cls == (int)AlloyClass.Cutout && _oA2c[i];
             // CX-273: ...and a ground decal draws in the layer's own pass, so it is a key term too
             bool decal = row.Decal;
-            // a lit batch's handles ride the record, so one multidraw spans every texture in the class; unlit
-            // parts and water keep the bind path and the full key
-            bool merge = lit && cls != (int)AlloyClass.Water;
+            bool merge = MergesTextures(lit, cls, unlitByHandle);
             int tidKey = merge ? -2 : tid;
             bool sameSlots = groups != 0;
             if (!merge)

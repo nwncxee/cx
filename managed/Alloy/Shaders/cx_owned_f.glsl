@@ -2,6 +2,7 @@
 in vec2 vUV;
 flat in float vAlpha;
 in vec3 vWorld;
+flat in int vDraw;
 uniform sampler2D uTex;
 uniform float uLodBias;        // #391
 uniform int uViz;
