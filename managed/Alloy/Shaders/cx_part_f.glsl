@@ -4,4 +4,5 @@
 #include "cx_lightfrag.glsl"
 #include "cx_sunshadow.glsl"
 #include "cx_fog.glsl"
+#include "cx_reactive.glsl"
 #include "cx_part_fmain.glsl"

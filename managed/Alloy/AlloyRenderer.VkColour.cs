@@ -30,6 +30,9 @@ public sealed unsafe partial class AlloyRenderer
         public bool Deferred;
         /// <summary>Writes the reflection record (<c>oReflN</c>/<c>oReflW</c>); every other program leaves the pair alone.</summary>
         public bool Refl;
+        /// <summary>Writes the reactive mask (<c>fragReact</c>, from <c>cx_reactive.glsl</c>); a content override of
+        /// an effect stage that declares no second output leaves the mask alone.</summary>
+        public bool React;
         /// <summary>A content pair's program: its feature id and the pair's build generation it came from; 0 otherwise.</summary>
         public int Feat, Epoch;
         /// <summary>The variant a content program was built as; <see cref="ContentVariant.Forward"/> for a stock one.</summary>
@@ -106,6 +109,12 @@ public sealed unsafe partial class AlloyRenderer
         /// <summary>The standing water the deferred twin records per pixel, read by the rain splash after the walk: its
         /// own memory, since the splash reads it after the frame's resolve.</summary>
         public ImageId G3;
+        /// <summary>The reactive mask the beam, particle, halo and weather passes accumulate their coverage into,
+        /// beside <see cref="Hdr"/>: its own memory, because it is written from the first of those passes to the last
+        /// and read in the post pair, which leaves no window a lane could hand to anything else.</summary>
+        public ImageId React;
+        /// <summary>The mask has been said to be live on this device.</summary>
+        public bool ReactLive;
         /// <summary>The prepass depth as a SAMPLED copy: the colour pass's draws cannot sample their own depth
         /// attachment, and the lit stage tests every AO fetch against the depth the estimate was computed from.</summary>
         public ImageId DepthRead;
@@ -139,9 +148,6 @@ public sealed unsafe partial class AlloyRenderer
         public CommandList? Async;
         public uint WhiteIndex, NullIndex;
         public long Drawn, Skipped;
-        /// <summary>This frame's beam, particle, halo or weather pass drew: when none did, the reactive mask has nothing
-        /// to measure and is cleared instead of written.</summary>
-        public bool Effects;
         /// <summary>This frame's colour pass wrote the G-buffer.</summary>
         public bool GbufWritten;
         /// <summary>The blended range is being issued and this frame's deferred walk wrote the light record it reads.</summary>
@@ -221,6 +227,7 @@ public sealed unsafe partial class AlloyRenderer
         {
             vk.Destroy(s.Hdr); vk.Destroy(s.Depth); vk.Destroy(s.G0); vk.Destroy(s.G1); vk.Destroy(s.G2); vk.Destroy(s.G3);
             vk.Destroy(s.DepthRead);
+            vk.Destroy(s.React);
             // the deferred dispatch loads and stores the scene colour as an image, so it is a storage image too
             s.Hdr = VkTarget(vk, Format.Rgba16F, w, h, "vk scene colour", ImageUse.Storage | ImageUse.CopySrc);
             s.Depth = VkTarget(vk, Format.D32F, w, h, "vk scene depth", ImageUse.CopySrc);
@@ -228,11 +235,14 @@ public sealed unsafe partial class AlloyRenderer
             s.G1 = VkTarget(vk, Format.Rgba32Ui, w, h, "vk g-buffer 1", alias: AliasLanes.Second);
             s.G2 = VkTarget(vk, Format.Rg32Ui, w, h, "vk g-buffer 2", alias: AliasLanes.Narrow);
             s.G3 = VkTarget(vk, Format.R8, w, h, "vk g-buffer standing water");
+            // cleared once a frame outside any pass, which is a transfer
+            s.React = VkTarget(vk, Format.R8, w, h, "vk reactive mask", ImageUse.CopyDst);
             s.DepthRead = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.D32F, w, h, 1, 1, 1, 1,
                                                        ImageUse.Sampled | ImageUse.CopyDst, "vk scene depth copy"));
             s.W = w; s.H = h;
             s.Snapshot.Remade();
-            if (s.Hdr.IsNull || s.Depth.IsNull || s.G0.IsNull || s.G1.IsNull || s.G2.IsNull || s.G3.IsNull || s.DepthRead.IsNull)
+            if (s.Hdr.IsNull || s.Depth.IsNull || s.G0.IsNull || s.G1.IsNull || s.G2.IsNull || s.G3.IsNull
+                || s.React.IsNull || s.DepthRead.IsNull)
             {
                 s.Failed = true;
                 log.Always($"AlloyRenderer: the Vulkan scene targets at {w}x{h} were REFUSED (logged above)");
@@ -379,7 +389,8 @@ public sealed unsafe partial class AlloyRenderer
         byte[]? vs = VulkanToolchain.Compile(VkBackend.Translate(t.Vs), $"vk {label} vs", ShaderKind.VertexShader, out string ve);
         byte[]? fs = VulkanToolchain.Compile(VkBackend.Translate(t.Fs), $"vk {label} fs", ShaderKind.FragmentShader, out string fe);
         if (vs == null || fs == null) { log.Always($"AlloyRenderer: the Vulkan {label} program did not compile -- {(vs == null ? ve : fe)}"); return null; }
-        var p = new VkProg { Lit = lit, Label = label, Opaques = t.Opaques.ToArray(), Refl = t.Fs.Contains("oReflN", StringComparison.Ordinal) };
+        var p = new VkProg { Lit = lit, Label = label, Opaques = t.Opaques.ToArray(), Refl = t.Fs.Contains("oReflN", StringComparison.Ordinal),
+                          React = t.Fs.Contains("fragReact", StringComparison.Ordinal) };
         p.ReadsEngine = Array.Exists(p.Opaques, o => o.Set == 0 && o.Kind == VkBindKind.UniformBlock && o.Binding == UboSlots.Engine);
         p.TexBound = Array.Exists(p.Opaques, o => o.Set == 0 && o.Name == "uTex");
         p.Vs = vk.CreateShader(ShaderStage.Vertex, vs, $"vk {label} vs");

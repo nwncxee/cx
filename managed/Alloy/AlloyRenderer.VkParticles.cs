@@ -99,9 +99,8 @@ public sealed unsafe partial class AlloyRenderer
             VkPartBind(side, s, c, loose, pass, g.Tex, soft);
             side.Draw(g.Parts * 6, 1, g.Start * 6, 0);
             punched |= VkPartDepth(cls).Write;
-            c.Effects = true;
         }
-        ReadOnlySpan<ColorAttachment> colors = [new(c.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default)];
+        ReadOnlySpan<ColorAttachment> colors = [new(c.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default), VkReactiveAttach(c)];
         VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear)),
                     writesDepth: punched);
         if (!s.Live)
@@ -214,8 +213,9 @@ public sealed unsafe partial class AlloyRenderer
                 Vs = p.Vs, Fs = p.Fs, Topo = Topology.Triangles, Raster = new RasterState(CullMode.None),
                 Depth = VkPartDepth(cls), Label = $"{PipeFeatures.Particles}class {cls}",
             };
-            d.Targets.ColorCount = 1;
+            d.Targets.ColorCount = 2;
             d.Targets.Colors[0] = Format.Rgba16F;
+            d.Targets.Colors[1] = Format.R8;
             d.Targets.Depth = Format.D32F;
             d.Targets.Samples = 1;
             if (cls != Particles.VkPunch)
@@ -223,6 +223,7 @@ public sealed unsafe partial class AlloyRenderer
                 BlendFactor dst = cls == Particles.VkAdd ? BlendFactor.One : BlendFactor.OneMinusSrcAlpha;
                 d.Blend[0] = new AttachmentBlend(true, BlendFactor.SrcAlpha, dst, BlendFactor.SrcAlpha, dst);
             }
+            d.Blend[1] = ReactiveBlend(p);
             s.Pipes[cls] = vk.CreatePipeline(in d);
             if (s.Pipes[cls].IsNull) p = null;
         }

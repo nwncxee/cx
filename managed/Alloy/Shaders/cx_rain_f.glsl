@@ -19,8 +19,10 @@ uniform vec2 uScreen;    // the target being drawn, pixels: the depth copy is sa
 #include "cx_scenedepth.glsl"
 #include "cx_wx_shade.glsl"
 #include "cx_wx_drop.glsl"
+#include "cx_reactive.glsl"
 void main()
 {
+    fragReact = 0.0;
     if (CxWxCover(uKind, vUV, 1.0, 1.0) <= 0.01) discard;
     float gap = CxSceneViewZ(gl_FragCoord.xy / uScreen) + vViewZ;
     float k = clamp(gap * uSoft, 0.0, 1.0);
@@ -29,4 +31,5 @@ void main()
     vec3 V = normalize(cross(vSide, vUp));
     vec4 bead = CxWxBead(vUV, V, vSide, vUp, vBehind, vSkyLow, vLampDir, uTint * vLight, uAreaDir, uTint * uAreaDiffuse * vSunVis);
     frag = vec4(bead.rgb, bead.a * uAlpha) * CxWxCover(uKind, vUV, k, vSeed);
+    fragReact = CxReactive(CxReactiveShare(frag.rgb, frag.a, false));
 }

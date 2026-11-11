@@ -81,9 +81,9 @@ public sealed unsafe partial class AlloyRenderer
     }
 
     /// <summary><see cref="VkWxPipeDesc"/> over a mesh program's task and mesh stages.</summary>
-    private static PipelineDesc VkWxMeshPipeDesc(VkProg p, string label, bool depth)
+    private static PipelineDesc VkWxMeshPipeDesc(VkProg p, string label, bool scene)
     {
-        PipelineDesc d = VkWxPipeDesc(p, label, depth);
+        PipelineDesc d = VkWxPipeDesc(p, label, scene);
         d.Vs = default; d.Ts = p.Ts; d.Ms = p.Ms;
         return d;
     }
@@ -155,7 +155,6 @@ public sealed unsafe partial class AlloyRenderer
         if (!VkMovers.IsNull) storage[n++] = new BufferBinding(SsboSlots.Movers, VkMovers);
         VkBindSet(side, p, c, loose, pass, c.Slots, 0, default, storage[..n], own);
         side.DrawMeshTasks((count + VkWxTaskGroup - 1) / VkWxTaskGroup);
-        c.Effects |= !late;
         return true;
     }
 }

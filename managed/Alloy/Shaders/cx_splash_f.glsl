@@ -26,6 +26,7 @@ uniform vec2 uScreen;    // the target being drawn, pixels: the depth copy is sa
 #include "cx_scenedepth.glsl"
 #include "cx_wx_hit.glsl"
 #include "cx_wx_drop.glsl"
+#include "cx_reactive.glsl"
 
 /// Rec.709 luminance: how much of its own scatter a splash also occludes.
 const vec3 CX_WX_LUMA = vec3(0.2126, 0.7152, 0.0722);
@@ -61,6 +62,7 @@ bool CxSplashHidden(float scene, float splash)
 
 void main()
 {
+    fragReact = 0.0;
     if (uLate != 0 && CxSplashHidden(CxSceneViewZ(gl_FragCoord.xy / uScreen), -vViewZ)) discard;
     if (uViz == CX_SPLASH_FATE_VIZ)
     {
@@ -89,6 +91,7 @@ void main()
         if (uViz == CX_SPLASH_VIZ) { frag = vec4(vLight, 1.0) * (c.a * vSeed); return; }
         c.rgb += CxCrownSheet(vUV, shape, solid, V, vSide, vUp, vec3(0.0), vec3(0.0), uAreaDir, uTint * uAreaDiffuse * vSunVis).rgb;
         frag = vec4(c.rgb, c.a * uAlpha) * vSeed;
+        fragReact = CxReactive(CxReactiveShare(frag.rgb, frag.a, false));
         return;
     }
     else
@@ -99,6 +102,7 @@ void main()
         vec3 V = normalize(cross(vSide, vUp));
         vec4 b = CxWxBead(vUV, V, vSide, vUp, vSkyUp, vSkyLow, vLampDir, uTint * vLight, uAreaDir, uTint * uAreaDiffuse * vSunVis);
         frag = vec4(b.rgb, b.a * uAlpha) * ((1.0 - vAge * vAge) * vSeed);
+        fragReact = CxReactive(CxReactiveShare(frag.rgb, frag.a, false));
         return;
     }
     if (a <= 0.01) discard;
@@ -109,4 +113,5 @@ void main()
     if (uViz == CX_SPLASH_VIZ) { frag = vec4(vLight * cov, cov); return; }
     vec3 scatter = uTint * CxSplashRingLight(vLight);
     frag = vec4(scatter * cov, cov * uAlpha * min(dot(scatter, CX_WX_LUMA), 1.0));
+    fragReact = CxReactive(CxReactiveShare(frag.rgb, frag.a, false));
 }

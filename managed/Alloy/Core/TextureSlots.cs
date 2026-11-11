@@ -53,10 +53,9 @@ internal static class TextureSlots
     /// <summary>The taa accumulate's velocity. <see cref="SceneDepth"/>'s unit: no post program reads the scene depth,
     /// and every other post sampler, <see cref="PostOverlay"/> among them, sits below it.</summary>
     internal const uint PostVel = SceneDepth;
-    /// <summary>The colour copy the reactive mask pass measures the frame against, and the mask itself at the taa
-    /// accumulate. <see cref="PostBloom"/>'s unit on <see cref="PostHdr"/>'s argument: neither program reads the
-    /// bloom, and the two names never meet in one program.</summary>
-    internal const uint PostCopy = PostBloom, PostReact = PostBloom;
+    /// <summary>The reactive mask at the taa accumulate. <see cref="PostBloom"/>'s unit on <see cref="PostHdr"/>'s
+    /// argument: that program reads no bloom.</summary>
+    internal const uint PostReact = PostBloom;
     /// <summary>The precipitation the taa stage's copy-out composites after the resolve. <see cref="PostBloom"/>'s unit:
     /// the copy-out reads no bloom.</summary>
     internal const uint PostWx = PostBloom;
@@ -303,7 +302,6 @@ internal static class TextureSlots
         check.Expect(PostChain.ResolveFs.Contains("uniform sampler2D uHdr;"), $"{PostHdr} uHdr");
         check.Expect(TaaStage.TaaFs.Contains("uniform sampler2D uVel;"), $"{PostVel} uVel (taa accumulate)");
         check.Expect(TaaStage.TaaFs.Contains("uniform sampler2D uReact;"), $"{PostReact} uReact (taa accumulate)");
-        check.Expect(AlloyRenderer.ReactiveFs.Contains("uniform sampler2D uCopy;"), $"{PostCopy} uCopy (reactive mask)");
         check.Expect(PostChain.ResolveFs.Contains("uniform sampler2D uBloom;"), $"{PostBloom} uBloom");
         check.Expect(PostChain.ResolveFs.Contains("uniform sampler2D uDepth;"), $"{PostDepth} uDepth");
         check.Expect(PostChain.ResolveFs.Contains("uniform sampler2D uOverlay;"), $"{PostOverlay} uOverlay");

@@ -48,7 +48,6 @@ public sealed unsafe partial class AlloyRenderer
         s.PassAt = -1;
         s.EngineAt = -1;
         s.Drawn = s.Skipped = 0;
-        s.Effects = false;
         s.Snapshot.BeginFrame();
         cl.BeginLabel("uploads"u8);
         if (!VkUploads(vk, cl)) return false;
@@ -248,10 +247,9 @@ public sealed unsafe partial class AlloyRenderer
             cl.EndLabel();
         }
 
-        // the four passes the reactive mask covers: the colour they start from is copied here and the change they
-        // made measured once they are all down
-        cl.BeginLabel("reactive copy"u8);
-        VkReactiveCopy(vk, cl, s, log);
+        // the four passes the reactive mask covers write their own coverage into it as they draw, so it starts at zero
+        cl.BeginLabel("reactive clear"u8);
+        VkReactiveBegin(cl, s, log);
         cl.EndLabel();
         cl.BeginLabel("beams"u8);
         if (!VkBeamPass(vk, cl, s, view, proj, viewport, log)) return false;
@@ -264,9 +262,6 @@ public sealed unsafe partial class AlloyRenderer
         cl.EndLabel();
         cl.BeginLabel("weather"u8);
         if (!VkWeatherPass(vk, cl, s, view, proj, viewport, near, far, lightingOn, log)) return false;
-        cl.EndLabel();
-        cl.BeginLabel("reactive mask"u8);
-        VkReactiveWrite(cl, s, log);
         cl.EndLabel();
         cl.BeginLabel("highlight mask"u8);
         if (!VkHighlightMask(vk, cl, s, vp, viewport, near, far, groups, log)) return false;

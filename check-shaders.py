@@ -657,7 +657,6 @@ def programs(g):
         "fsr bare-sky fog": (g["cx_fullscreen_v"], g["cx_skyfog_f"]),
         "mover motion": (g["cx_motion_v"], g["cx_motion_f"]),
         "taa resolve": (g["cx_fullscreen_v"], g["cx_taa_f"]),
-        "reactive mask": (g["cx_fullscreen_v"], g["cx_reactive_f"]),
         "mip chain (hi-Z)": (define(g["cx_spd_c"], "CX_SPD_HIZ 1"),),
         "mip chain (colour)": (g["cx_spd_c"],),
         "ssr trace": (g["cx_fullscreen_v"], g["cx_ssrtrace_f"]),

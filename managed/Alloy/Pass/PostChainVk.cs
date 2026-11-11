@@ -118,7 +118,7 @@ internal static unsafe class PostChainVk
         ["uSrc"] = TextureSlots.PostHdr, ["uHdr"] = TextureSlots.PostHdr, ["uCur"] = TextureSlots.PostHdr,
         ["uBloom"] = TextureSlots.PostBloom, ["uDepth"] = TextureSlots.PostDepth, ["uOverlay"] = TextureSlots.PostOverlay,
         ["uHist"] = TextureSlots.PostHist, ["uVel"] = TextureSlots.PostVel, ["uMask"] = TextureSlots.PostHdr,
-        ["uCopy"] = TextureSlots.PostCopy, ["uReact"] = TextureSlots.PostReact, ["uWx"] = TextureSlots.PostWx,
+        ["uReact"] = TextureSlots.PostReact, ["uWx"] = TextureSlots.PostWx,
         ["texFBColor"] = TextureSlots.PostHdr, ["texFBDepth"] = TextureSlots.PostDepth,
     };
 

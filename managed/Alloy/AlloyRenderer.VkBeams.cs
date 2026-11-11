@@ -69,9 +69,8 @@ public sealed unsafe partial class AlloyRenderer
             side.BindSet(0, new BindSet(ubo, default, default, default));
             side.DrawIndexed(count, 1, (int)(off / sizeof(ushort)), baseVertex);
             drawn++;
-            c.Effects = true;
         }
-        ReadOnlySpan<ColorAttachment> colors = [new(c.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default)];
+        ReadOnlySpan<ColorAttachment> colors = [new(c.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default), VkReactiveAttach(c)];
         VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear)));
         if (!s.Live && drawn > 0)
         {
@@ -103,11 +102,13 @@ public sealed unsafe partial class AlloyRenderer
                 Vs = p.Vs, Fs = p.Fs, Layout = c.Layouts[f], Topo = Topology.Triangles, Raster = new RasterState(CullMode.None),
                 Depth = new DepthState(true, false, WorldDepth.NearerOrEqual), Label = $"vk beams {(MeshArena.Fmt)f}",
             };
-            d.Targets.ColorCount = 1;
+            d.Targets.ColorCount = 2;
             d.Targets.Colors[0] = Format.Rgba16F;
+            d.Targets.Colors[1] = Format.R8;
             d.Targets.Depth = Format.D32F;
             d.Targets.Samples = 1;
             d.Blend[0] = new AttachmentBlend(true, BlendFactor.SrcAlpha, BlendFactor.One, BlendFactor.SrcAlpha, BlendFactor.One);
+            d.Blend[1] = ReactiveBlend(p);
             s.Pipes[f] = vk.CreatePipeline(in d);
         }
         s.Prog = p;

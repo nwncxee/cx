@@ -144,7 +144,7 @@ public sealed unsafe partial class AlloyRenderer
         bool splash = VkWxEnsure(vk, s, VkSplashProg, log);
         s.Splashed = splash;
         if (!late && splash && !VkSplashDraw(side, s, c, view, proj, viewport, near, far, lit, s.Pipe[VkSplashProg], false)) return false;
-        ReadOnlySpan<ColorAttachment> colors = [new(c.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default)];
+        ReadOnlySpan<ColorAttachment> colors = [new(c.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default), VkReactiveAttach(c)];
         VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear)),
                     writesDepth: VkWxDepth.Write);
         if ((fall || drip) && VkWxPathLine(s, vk, mesh ? Weather.WxPath.Mesh : Weather.WxPath.Compute) is { } said)
@@ -174,7 +174,6 @@ public sealed unsafe partial class AlloyRenderer
         ReadOnlySpan<BufferBinding> drops = [new(SsboSlots.WxDrops, s.Drops)];
         VkBindSet(side, p, c, loose, pass, c.Slots, 0, default, drops, own);
         side.DrawIndirect(s.Cmd, slot * 4 * sizeof(uint), 1);
-        c.Effects = true;
         return true;
     }
 
@@ -366,27 +365,30 @@ public sealed unsafe partial class AlloyRenderer
         side.SetPipeline(pipe);
         VkBindSet(side, p, c, loose, pass, c.Slots, 0);
         side.Draw(4, n, 0, 0);
-        c.Effects |= !late;
         return true;
     }
 
     /// <summary>Program <paramref name="k"/>'s name in logs and pipeline labels.</summary>
     private static string VkWxLabel(int k) => k == VkSplashProg ? "splash" : k == 1 ? "snow" : "rain";
 
-    /// <summary>The precipitation's premultiplied pipeline over <paramref name="p"/>: depth-tested against the scene's target,
-    /// or with no depth target for the frame after the resolve.</summary>
-    private static PipelineDesc VkWxPipeDesc(VkProg p, string label, bool depth)
+    /// <summary>The precipitation's premultiplied pipeline over <paramref name="p"/>: in the <paramref name="scene"/> it is
+    /// depth-tested against the frame's target and writes the reactive mask beside the colour; after the resolve it has
+    /// neither.</summary>
+    private static PipelineDesc VkWxPipeDesc(VkProg p, string label, bool scene)
     {
         var d = new PipelineDesc
         {
             Vs = p.Vs, Fs = p.Fs, Topo = Topology.TriangleStrip, Raster = new RasterState(CullMode.None), Label = label,
         };
-        if (depth) d.Depth = VkWxDepth;
-        d.Targets.ColorCount = 1;
+        if (scene) d.Depth = VkWxDepth;
+        // after the resolve there is no mask to write: the stage's second output has no attachment there, and a
+        // fragment output with none is discarded
+        d.Targets.ColorCount = scene ? 2 : 1;
         d.Targets.Colors[0] = Format.Rgba16F;
-        if (depth) d.Targets.Depth = Format.D32F;
+        if (scene) { d.Targets.Colors[1] = Format.R8; d.Targets.Depth = Format.D32F; }
         d.Targets.Samples = 1;
         d.Blend[0] = new AttachmentBlend(true, BlendFactor.One, BlendFactor.OneMinusSrcAlpha, BlendFactor.One, BlendFactor.OneMinusSrcAlpha);
+        if (scene) d.Blend[1] = ReactiveBlend(p);
         return d;
     }
 

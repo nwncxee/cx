@@ -283,3 +283,7 @@ grass\.(aniso|soften)\b|\bGrass\.(Aniso|Soften)\b|\bSampFlat\b|\bSampMip\b	CX-31
 # Alloy shades every pixel. VkRateState/VkRatePush were its lifetime owner and push block, RateTexel
 # the tile size it asked the device for.
 alloy\.vrs(contrast)?\b|\bcx_vrs_cs\b|\bVkRate(State|Push)?\b|\bRateTexel\b|\bShadingRateTexel\b|\bShadingRateCmd\b|\bSetShadingRate\b|ImageUse\.ShadingRate\b|\bRateSupport\b	CX-530
+# The full-screen stage that measured the reactive mask by diffing the scene colour against a copy of it, and
+# the copy's own sampler. The four effect passes write their coverage into the mask as they draw now
+# (cx_reactive.glsl), so there is no copy to diff and no stage to override.
+\bcx_reactive_f\b|\bCxReactiveMask\b|\bReactiveFs\b|\buCopy\b|\bPostCopy\b	CX-530
