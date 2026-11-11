@@ -20,7 +20,7 @@ internal sealed unsafe partial class VkBackend
         /// <summary>What a graphics pipeline was built from, with the two state bits a key folds in and the label its
         /// handle is named by, so the backend can build it again at another specialization. Unset for a compute one.</summary>
         public PipelineDesc Desc;
-        public bool Rate, Dyn;
+        public bool Dyn;
         public string What = "";
     }
 
@@ -107,7 +107,7 @@ internal sealed unsafe partial class VkBackend
                 continue;
             }
             bool linked = Libraries && o.Desc.Ms.IsNull;
-            VkPipeline fresh = linked ? Linked(o.Desc, o.Rate, o.Dyn, o.What) : Build(o.Desc, o.Rate, o.Dyn, Part.Whole, null, 0, o.What);
+            VkPipeline fresh = linked ? Linked(o.Desc, o.Dyn, o.What) : Build(o.Desc, o.Dyn, Part.Whole, null, 0, o.What);
             if (fresh.IsNull) { kept++; continue; }
             VkPipeline old = o.Handle;
             o.Handle = fresh;
@@ -116,7 +116,7 @@ internal sealed unsafe partial class VkBackend
             Name(VkObjectType.Pipeline, fresh.Handle, o.What);
             Later(() => _vkd.vkDestroyPipeline(old));
             made++;
-            if (linked) QueueOptimised(o, o.Desc, o.Rate, o.Dyn, o.What);
+            if (linked) QueueOptimised(o, o.Desc, o.Dyn, o.What);
         }
         _log.Always($"VkBackend: a diagnostic view is {(viz ? "ON" : "off")} -- {made} pipeline(s) rebuilt with the view "
                   + $"ladder {(viz ? "live" : "folded out")}"
@@ -176,59 +176,56 @@ internal sealed unsafe partial class VkBackend
         if (!d.Gs.IsNull && !_shaders.TryGet(d.Gs.Value, out _)) return Refused<PipelineId>($"{what}: stale geometry stage");
         if (!d.Layout.IsNull && !_layouts.TryGet(d.Layout.Value, out _)) return Refused<PipelineId>($"{what}: stale vertex layout");
         if (d.Raster.DepthClamp && !_depthClamp) return Refused<PipelineId>($"{what}: this device has no depth clamp");
-        // a pass with a rate image binds only pipelines made for one: the pipeline's own rate is 1x1 and the
-        // attachment's REPLACEs it, per draw, through the dynamic combiner SetShadingRate records
-        bool rate = d.ShadingRate && _rateTexel > 0, dyn = DynamicBlend;
-        string key = PipeKey(d, rate, dyn);
+        bool dyn = DynamicBlend;
+        string key = PipeKey(d, dyn);
         if (_shared.TryGetValue(key, out PipeObj? obj)) obj.Refs++;
         else
         {
             // ponytail: a mesh pipeline is built whole on the frame, once per device, against ADR 0054's library link; libraries would cover it once the pre-raster part takes task and mesh stages
             bool linked = Libraries && !mesh;
             _pipeCacheDirty = true;
-            pipe = linked ? Linked(d, rate, dyn, what) : default;
+            pipe = linked ? Linked(d, dyn, what) : default;
             if (linked && pipe.IsNull)
             {
                 _librariesOn = linked = false;
                 _log.Always($"VkBackend: REFUSED the pipeline library path at {what} (logged above) -- every pipeline is built "
                           + "whole on the frame from here on, as on a device without libraries");
             }
-            if (!linked) pipe = Build(d, rate, dyn, Part.Whole, null, 0, what);
+            if (!linked) pipe = Build(d, dyn, Part.Whole, null, 0, what);
             if (pipe.IsNull) return default;
             Tallied(since, d.Prewarmed, what);
             Name(VkObjectType.Pipeline, pipe.Handle, what);
-            obj = new PipeObj(pipe, key) { Desc = d, Rate = rate, Dyn = dyn, What = what };
+            obj = new PipeObj(pipe, key) { Desc = d, Dyn = dyn, What = what };
             _shared[key] = obj;
-            if (linked) QueueOptimised(obj, d, rate, dyn, what);
+            if (linked) QueueOptimised(obj, d, dyn, what);
         }
-        return new PipelineId(_pipelines.Add(new VkPipe(obj, false, d.Depth, d.Raster, rate, dyn, d.Blend, d.Targets.ColorCount, d.Targets.Colors[0])));
+        return new PipelineId(_pipelines.Add(new VkPipe(obj, false, d.Depth, d.Raster, dyn, d.Blend, d.Targets.ColorCount, d.Targets.Colors[0])));
     }
 
     /// <summary>What a compiled pipeline is made of: its four parts' keys, so a pipeline and the libraries it links from
     /// are told apart by the same things. Depth, cull, winding and bias are restated per bind, and blend when dynamic.</summary>
-    private static string PipeKey(in PipelineDesc d, bool rate, bool dyn)
+    private static string PipeKey(in PipelineDesc d, bool dyn)
     {
-        (string vi, string pr, string fs, string fo) = PartKeys(d, rate, dyn);
+        (string vi, string pr, string fs, string fo) = PartKeys(d, dyn);
         return $"{vi} | {pr} | {fs} | {fo}";
     }
 
     /// <summary>The key of each library part: vertex input, the vertex stages, the fragment stage, the output interface.</summary>
-    private static (string Vi, string Pr, string Fs, string Fo) PartKeys(in PipelineDesc d, bool rate, bool dyn)
+    private static (string Vi, string Pr, string Fs, string Fo) PartKeys(in PipelineDesc d, bool dyn)
     {
-        string r = rate ? " r" : "";
         return ($"vi {d.Layout.Value} {(int)d.Topo}",
-                $"pr {d.Vs.Value} {d.Gs.Value} {d.Ts.Value} {d.Ms.Value} {(d.Raster.DepthClamp ? 'c' : '-')}{r}",
-                $"fs {d.Fs.Value} s{Math.Max(d.Targets.Samples, 1)}{(d.AlphaToCoverage ? " a2c" : "")}{r}",
-                OutputKey(d, rate, dyn));
+                $"pr {d.Vs.Value} {d.Gs.Value} {d.Ts.Value} {d.Ms.Value} {(d.Raster.DepthClamp ? 'c' : '-')}",
+                $"fs {d.Fs.Value} s{Math.Max(d.Targets.Samples, 1)}{(d.AlphaToCoverage ? " a2c" : "")}",
+                OutputKey(d, dyn));
     }
 
-    /// <summary>The fragment output interface's part of a key: formats, samples, coverage, rate and the baked blend.</summary>
-    private static string OutputKey(in PipelineDesc d, bool rate, bool dyn)
+    /// <summary>The fragment output interface's part of a key: formats, samples, coverage and the baked blend.</summary>
+    private static string OutputKey(in PipelineDesc d, bool dyn)
     {
         var sb = new StringBuilder("o");
         for (int i = 0; i < d.Targets.ColorCount; i++) sb.Append(' ').Append((int)d.Targets.Colors[i]);
         sb.Append(" d").Append((int)d.Targets.Depth).Append(" s").Append(Math.Max(d.Targets.Samples, 1))
-          .Append(d.AlphaToCoverage ? " a2c" : "").Append(rate ? " r" : "").Append(dyn ? " dyn" : " baked");
+          .Append(d.AlphaToCoverage ? " a2c" : "").Append(dyn ? " dyn" : " baked");
         if (!dyn)
             for (int i = 0; i < d.Targets.ColorCount; i++)
             {
@@ -253,7 +250,7 @@ internal sealed unsafe partial class VkBackend
     /// that keeps what an optimised link needs. Given <paramref name="libs"/> it links those <paramref name="nlibs"/>
     /// libraries instead, optimised when <paramref name="parts"/> is <see cref="Part.Whole"/>. Null (logged) when refused.
     /// On the worker it writes only the cache object, which Vulkan synchronises; the frame thread marks it dirty.</summary>
-    private VkPipeline Build(in PipelineDesc d, bool rate, bool dyn, Part parts, VkPipeline* libs, int nlibs, string what)
+    private VkPipeline Build(in PipelineDesc d, bool dyn, Part parts, VkPipeline* libs, int nlibs, string what)
     {
         SpecBlock spec;
         Specialize(&spec);
@@ -282,10 +279,8 @@ internal sealed unsafe partial class VkBackend
                 colorBlendOp = Equation(a.Op), alphaBlendOp = Equation(a.Op), colorWriteMask = Mask(a),
             };
         }
-        var fsr = new VkPipelineFragmentShadingRateStateCreateInfoKHR { fragmentSize = new VkExtent2D(1, 1) };
         var rendering = new VkPipelineRenderingCreateInfo
         {
-            pNext = rate ? &fsr : null,
             colorAttachmentCount = (uint)colors, pColorAttachmentFormats = fmts,
             depthAttachmentFormat = Of(d.Targets.Depth),
             stencilAttachmentFormat = d.Targets.Depth.HasStencil() ? Of(d.Targets.Depth) : VkFormat.Undefined,
@@ -325,12 +320,12 @@ internal sealed unsafe partial class VkBackend
         };
         var cb = new VkPipelineColorBlendStateCreateInfo { attachmentCount = (uint)colors, pAttachments = blend };
         VkDynamicState* dynamic = stackalloc VkDynamicState[MaxDynamicStates];
-        uint nd = libs == null ? DynamicStatesOf(parts, rate, dyn && colors > 0, dynamic) : 0;
+        uint nd = libs == null ? DynamicStatesOf(parts, dyn && colors > 0, dynamic) : 0;
         var dy = new VkPipelineDynamicStateCreateInfo { dynamicStateCount = nd, pDynamicStates = dynamic };
 
         var lib = new VkGraphicsPipelineLibraryCreateInfoEXT { pNext = &rendering, flags = LibraryFlags(parts) };
         var link = new VkPipelineLibraryCreateInfoKHR { pNext = &rendering, libraryCount = (uint)nlibs, pLibraries = libs };
-        VkPipelineCreateFlags flags = rate ? VkPipelineCreateFlags.RenderingFragmentShadingRateAttachmentKHR : VkPipelineCreateFlags.None;
+        VkPipelineCreateFlags flags = VkPipelineCreateFlags.None;
         void* next = &rendering;
         if (libs != null)
         {
@@ -376,9 +371,9 @@ internal sealed unsafe partial class VkBackend
     }
 
     /// <summary>The states <paramref name="parts"/> leaves dynamic, each in the part its state belongs to: viewport,
-    /// scissor, bias, cull and winding with the vertex stages, depth with the fragment stage, the shading-rate combiner
-    /// with both, blend with the output. Written into <paramref name="into"/>; the count returned.</summary>
-    private static uint DynamicStatesOf(Part parts, bool rate, bool dyn, VkDynamicState* into)
+    /// scissor, bias, cull and winding with the vertex stages, depth with the fragment stage, blend with the
+    /// output. Written into <paramref name="into"/>; the count returned.</summary>
+    private static uint DynamicStatesOf(Part parts, bool dyn, VkDynamicState* into)
     {
         uint n = 0;
         if ((parts & Part.PreRaster) != 0)
@@ -390,7 +385,6 @@ internal sealed unsafe partial class VkBackend
         {
             into[n++] = VkDynamicState.DepthTestEnable; into[n++] = VkDynamicState.DepthWriteEnable; into[n++] = VkDynamicState.DepthCompareOp;
         }
-        if (rate && (parts & (Part.PreRaster | Part.Fragment)) != 0) into[n++] = VkDynamicState.FragmentShadingRateKHR;
         if (dyn && (parts & Part.Output) != 0)
         {
             into[n++] = VkDynamicState.ColorBlendEnableEXT; into[n++] = VkDynamicState.ColorBlendEquationEXT;
@@ -423,14 +417,6 @@ internal sealed unsafe partial class VkBackend
         fixed (byte* main = "main\0"u8) st.pName = main;   // a u8 literal lives in the image: the pointer outlives the call
         return st;
     }
-
-    /// <summary>The shading-rate tile edge for a device whose texels run <paramref name="min"/>..<paramref name="max"/>
-    /// pixels: 16 where it can, the nearest end otherwise, 0 for an empty range.</summary>
-    internal static int RateTexel(int min, int max) => min > max ? 0 : Math.Clamp(PreferredRateTexel, min, max);
-
-    /// <summary>The tile edge the rate stage is tuned for: big enough to hold a contrast estimate, small enough to
-    /// follow an edge.</summary>
-    private const int PreferredRateTexel = 16;
 
     internal static VkBlendFactor Factor(BlendFactor f) => f switch
     {

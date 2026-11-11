@@ -13,7 +13,7 @@ public enum Op : byte
     End, BeginRenderPass, EndRenderPass, SetPipeline, SetViewport, SetScissor, SetDepthBias, BindSet,
     BindIndexBuffer, Draw, DrawIndexed, DrawIndexedIndirect, Dispatch, CopyImage, BlitImage, UpdateBuffer, ZeroBuffer,
     PushConstants, BindVertexBuffer, DrawIndexedMulti, SetDepthState, SetRasterState, SetDepthRange, ReadImages,
-    DrawIndirect, CopyImageToBuffer, ClearImage, GenerateMips, BeginLabel, EndLabel, SetShadingRate, Upscale, CopyBuffer,
+    DrawIndirect, CopyImageToBuffer, ClearImage, GenerateMips, BeginLabel, EndLabel, Upscale, CopyBuffer,
     DrawMeshTasks, DepthOfField, ClearDepthLayers,
 }
 
@@ -27,9 +27,7 @@ public readonly record struct Rect(int X, int Y, int W, int H);
 public readonly record struct ImageRegion(int Mip, int X, int Y, int Z);
 
 /// <summary><see cref="Op.BeginRenderPass"/>'s header; the attachments follow it.</summary>
-public readonly record struct RenderPassCmd(int Colors, bool HasDepth, DepthAttachment Depth, ImageId ShadingRate);
-/// <summary><see cref="Op.SetShadingRate"/>: the pass's rate image REPLACEs the 1x1 pipeline rate when <see cref="Coarse"/>.</summary>
-public readonly record struct ShadingRateCmd(bool Coarse);
+public readonly record struct RenderPassCmd(int Colors, bool HasDepth, DepthAttachment Depth);
 /// <summary><see cref="Op.SetDepthBias"/>'s constants.</summary>
 public readonly record struct DepthBiasCmd(float Factor, float Units);
 /// <summary><see cref="Op.SetDepthRange"/>: the window-depth range the viewport maps clip z into.</summary>
@@ -184,16 +182,13 @@ public sealed class CommandList
     public void BeginRenderPass(in RenderPassDesc d)
     {
         Head(Op.BeginRenderPass);
-        Put(new RenderPassCmd(d.Colors.Length, d.HasDepth, d.Depth, d.ShadingRate));
+        Put(new RenderPassCmd(d.Colors.Length, d.HasDepth, d.Depth));
         Put(d.Colors);
         Sent();
     }
 
     public void EndRenderPass() { Head(Op.EndRenderPass); Sent(); }
 
-    /// <summary>The draws after it shade at the pass's <see cref="RenderPassDesc.ShadingRate"/> image's rate when
-    /// <paramref name="coarse"/>, else at one invocation per pixel. A no-op on a pass without one, or a device without it.</summary>
-    public void SetShadingRate(bool coarse) { Head(Op.SetShadingRate); Put(new ShadingRateCmd(coarse)); Sent(); }
     public void SetPipeline(PipelineId p) { Head(Op.SetPipeline); Put(p); Sent(); }
     public void SetViewport(int x, int y, int w, int h) { Head(Op.SetViewport); Put(new Rect(x, y, w, h)); Sent(); }
     public void SetScissor(int x, int y, int w, int h) { Head(Op.SetScissor); Put(new Rect(x, y, w, h)); Sent(); }

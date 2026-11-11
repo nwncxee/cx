@@ -62,12 +62,12 @@ internal sealed unsafe partial class VkBackend
         check.Expect((ulong)Needs(ImageUse.Sampled) == 0x1001 && (ulong)Needs(ImageUse.Grey) == 0x1001
                   && (ulong)Needs(ImageUse.ColorTarget) == 0x180 && (ulong)Needs(ImageUse.DepthTarget) == 0x200
                   && (ulong)Needs(ImageUse.Storage) == 0x2 && (ulong)Needs(ImageUse.CopySrc) == 0x4400
-                  && (ulong)Needs(ImageUse.CopyDst) == 0x8800 && (ulong)Needs(ImageUse.ShadingRate) == 0x40000000
+                  && (ulong)Needs(ImageUse.CopyDst) == 0x8800
                   && (ulong)Needs(ImageUse.Transient | ImageUse.Async) == 0,
             "a usage asks for the wrong format features: sampled = SAMPLED_IMAGE 0x1 | FILTER_LINEAR 0x1000; colour = "
           + "COLOR_ATTACHMENT 0x80 | its BLEND 0x100; depth = DEPTH_STENCIL_ATTACHMENT 0x200; storage = STORAGE_IMAGE 0x2; "
           + "a copy source = BLIT_SRC 0x400 | TRANSFER_SRC 0x4000 and a destination = BLIT_DST 0x800 | TRANSFER_DST 0x8000; "
-          + "a shading-rate attachment = FRAGMENT_SHADING_RATE_ATTACHMENT 0x40000000; a transient or async image asks for none");
+          + "a transient or async image asks for none");
         ImageUse loose = 0;
         for (int b = 0; b < 16; b++)
         {
@@ -135,12 +135,12 @@ internal sealed unsafe partial class VkBackend
     }
 
     /// <summary>Oracle: vulkan_core.h's usage bits by hand -- TRANSFER_SRC 1, TRANSFER_DST 2, SAMPLED 4, STORAGE 8,
-    /// COLOR 0x10, DEPTH_STENCIL 0x20, TRANSIENT 0x40, SHADING_RATE 0x100 -- against what each declared use asks for.</summary>
+    /// COLOR 0x10, DEPTH_STENCIL 0x20, TRANSIENT 0x40 -- against what each declared use asks for.</summary>
     private static void CheckUsageMask(Checker check)
     {
         static uint U(ImageUse use, Format f = Format.Rgba8) => (uint)Usage(use, f);
         check.Expect(U(ImageUse.Sampled | ImageUse.ColorTarget) == 0x14 && U(ImageUse.Grey) == 4
-                  && U(ImageUse.Storage | ImageUse.CopySrc | ImageUse.CopyDst) == 0xB && U(ImageUse.ShadingRate) == 0x100,
+                  && U(ImageUse.Storage | ImageUse.CopySrc | ImageUse.CopyDst) == 0xB,
             "a declared use asked for more or less than its own usage bits");
         check.Expect(U(ImageUse.DepthTarget, Format.D32F) == 0x20 && U(ImageUse.ColorTarget, Format.D32F) == 0x20
                   && U(ImageUse.Async) == 0 && U(ImageUse.DepthTarget | ImageUse.Transient, Format.D32F) == 0x60,

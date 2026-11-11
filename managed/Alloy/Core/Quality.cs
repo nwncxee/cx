@@ -88,8 +88,6 @@ internal static class Quality
         // Classic leaves these to the Low area rung, which must keep them off.
         check.Expect(!CX.Alloy.Lighting.Probe.RungValue(0) && !CX.Alloy.Lighting.Ssr.RungValue(0) && !CX.Alloy.Lighting.SsrPlanar.RungValue(0)
           && CX.Alloy.Effects.Halos.RungValue(0) == 0f, "light.probe/ssr/ssrplanar and effects.halos: off at the Low area rung");
-        check.Expect(!Renderer.Vrs.Default && (Detail.Members == null || !System.Linq.Enumerable.Contains(Detail.Members, Renderer.Vrs)),
-          "alloy.vrs: off, and no quality level turns it on");
         log.Info(check.Ok ? "Quality.SelfCheck: passed" : "Quality.SelfCheck: FAILED");
         return check.Ok;
     }

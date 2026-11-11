@@ -10,7 +10,7 @@ This turns that into a build-time error.
 The job here is text and SPIR-V: every stage parses as GLSL and compiles to a module the Vulkan
 environment accepts. What only a device can answer is `./run-demo.sh`'s: a pipeline refused at
 creation (`VkBackend.SelfCheck.Stage`), and the goldens that run a stage on the GPU and judge
-what it answered -- the lightmap block encoder, the G-buffer's lanes, the parallax march, the shading rate (`GpuGolden`).
+what it answered -- the lightmap block encoder, the G-buffer's lanes, the parallax march (`GpuGolden`).
 
 Composition is not written down here. Every stage is a `managed/Alloy/Shaders/*.glsl` file whose
 `#include` lines name the libraries it is built from (#707), and this script compiles those same
@@ -693,7 +693,6 @@ def programs(g):
         "mover apply": (g["cx_moverapply"],),
         "volumetric fog light": (g["cx_vfog_cs"],),
         "volumetric fog integrate": (g["cx_vfogsum_cs"],),
-        "shading rate": (g["cx_vrs_cs"],),
         "halo occlusion fade": (g["cx_haloocc_c"],),
         "gui": (g["cx_gui_v"], g["cx_gui_f"]),
         "trigger highlight": (g["cx_fullscreen_v"], g["cx_hilitetrig_f"]),

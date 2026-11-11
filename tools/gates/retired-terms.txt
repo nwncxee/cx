@@ -279,3 +279,7 @@ grass\.(aniso|soften)\b|\bGrass\.(Aniso|Soften)\b|\bSampFlat\b|\bSampMip\b	CX-31
 # The chain builder's own name for an RGBA8 texel. One layout, one declaration: CX.Alloy.Rgba8 is the
 # record every raster the engine hands over reinterprets into, and the chain lays its texels out the same way.
 \bMipChain\.Texel\b	CX-467
+# Variable-rate shading: the knobs, the contrast stage and the backend's whole shading-rate path.
+# Alloy shades every pixel. VkRateState/VkRatePush were its lifetime owner and push block, RateTexel
+# the tile size it asked the device for.
+alloy\.vrs(contrast)?\b|\bcx_vrs_cs\b|\bVkRate(State|Push)?\b|\bRateTexel\b|\bShadingRateTexel\b|\bShadingRateCmd\b|\bSetShadingRate\b|ImageUse\.ShadingRate\b|\bRateSupport\b	CX-530

@@ -144,8 +144,6 @@ public sealed unsafe partial class AlloyRenderer
         public bool Effects;
         /// <summary>This frame's colour pass wrote the G-buffer.</summary>
         public bool GbufWritten;
-        /// <summary>The shading-rate image the G-buffer pass being issued reads, or null: its pipelines are made for it.</summary>
-        public ImageId Rate;
         /// <summary>The blended range is being issued and this frame's deferred walk wrote the light record it reads.</summary>
         public bool LightRec;
         /// <summary>The OIT accumulation is being issued: the lit and unlit stages write the weighted pair (<c>uOit</c> 1).</summary>
@@ -745,20 +743,18 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>The pipeline for program <paramref name="p"/> drawing arena format <paramref name="fmt"/> into
     /// <paramref name="targets"/> under blend <paramref name="blend"/> (0 = off, else 1 + src * 8 + dst over the engine's
-    /// blend-mode indices), made on first ask; <paramref name="rated"/> overrides the pass's own shading-rate verdict,
-    /// as the prewarm asks for both. Null id when the device refused it.</summary>
-    private static PipelineId VkPipeline(VkProg p, int fmt, VkTargets targets, int blend, bool? rated = null)
+    /// blend-mode indices), made on first ask. Null id when the device refused it.</summary>
+    private static PipelineId VkPipeline(VkProg p, int fmt, VkTargets targets, int blend)
     {
         int samples = targets == VkTargets.Cover ? _vkCover.Samples : 1;
-        bool rate = targets is VkTargets.Colour or VkTargets.ColourRefl && (rated ?? !_vkc.Rate.IsNull);
-        long key = fmt | (long)targets << 4 | (long)blend << 8 | (long)samples << 24 | (rate ? 1L << 32 : 0);
+        long key = fmt | (long)targets << 4 | (long)blend << 8 | (long)samples << 24;
         if (p.Pipes.TryGetValue(key, out PipelineId id)) return id;
         VkColourState s = _vkc;
         var d = new PipelineDesc
         {
             Vs = p.Vs, Fs = p.Fs, Layout = s.Layouts[fmt], Topo = Topology.Triangles,
             Raster = new RasterState(CullMode.Back), Depth = new DepthState(true, true, WorldDepth.NearerOrEqual),
-            Label = $"vk {p.Label} {(MeshArena.Fmt)fmt} {targets} blend {blend}{(rate ? " rated" : "")}", ShadingRate = rate, Prewarmed = true,
+            Label = $"vk {p.Label} {(MeshArena.Fmt)fmt} {targets} blend {blend}", Prewarmed = true,
         };
         d.Targets.Depth = Format.D32F;
         d.Targets.Samples = samples;

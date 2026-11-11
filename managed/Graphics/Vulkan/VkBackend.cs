@@ -69,7 +69,7 @@ internal sealed unsafe partial class VkBackend : IDevice
     private readonly record struct VkShader(VkShaderModule Module, ShaderStage Stage);
     /// <summary>A pipeline id: the compiled pipeline it names, and the depth, raster and (when <see cref="BlendDyn"/>)
     /// blend its desc named, which a bind restates dynamically.</summary>
-    private readonly record struct VkPipe(PipeObj Obj, bool Compute, DepthState Depth, RasterState Raster, bool Rated = false,
+    private readonly record struct VkPipe(PipeObj Obj, bool Compute, DepthState Depth, RasterState Raster,
                                           bool BlendDyn = false, BlendSet Blend = default, int Colors = 0, Format Color0 = Format.Unknown);
 
     /// <summary>One submit's recording resources, reused once the timeline passes <see cref="Done"/>: the value its
@@ -438,9 +438,6 @@ internal sealed unsafe partial class VkBackend : IDevice
         feats.features.geometryShader = true;
         bool layerExt = ViewportIndex(phys) && HasExt(_vki, phys, "VK_EXT_shader_viewport_index_layer\0"u8);
         _memBudget = HasExt(_vki, phys, "VK_EXT_memory_budget\0"u8);
-        _rateTexel = RateSupport(phys, out string? rateWhy);
-        var fsr = new VkPhysicalDeviceFragmentShadingRateFeaturesKHR { pipelineFragmentShadingRate = true, attachmentFragmentShadingRate = true };
-        if (_rateTexel > 0) f11.pNext = &fsr;
         bool eds3Ext = HasExt(_vki, phys, Eds3Ext), gplExt = HasExt(_vki, phys, GplExt) && HasExt(_vki, phys, PipelineLibraryExt);
         bool meshExt = meshShaders && HasExt(_vki, phys, MeshExt);
         var meshAsk = new VkPhysicalDeviceMeshShaderFeaturesEXT();
@@ -473,14 +470,13 @@ internal sealed unsafe partial class VkBackend : IDevice
         VkDevice device;
         fixed (byte* sw = SwapchainExt)
         fixed (byte* vl = "VK_EXT_shader_viewport_index_layer\0"u8) fixed (byte* mb = "VK_EXT_memory_budget\0"u8)
-        fixed (byte* sr = RateExt) fixed (byte* e3 = Eds3Ext) fixed (byte* gl = GplExt) fixed (byte* plib = PipelineLibraryExt)
+        fixed (byte* e3 = Eds3Ext) fixed (byte* gl = GplExt) fixed (byte* plib = PipelineLibraryExt)
         fixed (byte* mx = MeshExt)
         {
             byte** exts = stackalloc byte*[8] { sw, null, null, null, null, null, null, null };
             uint n = 1;
             if (layerExt) exts[n++] = vl;
             if (_memBudget) exts[n++] = mb;
-            if (_rateTexel > 0) exts[n++] = sr;
             if (_canDynBlend) exts[n++] = e3;
             if (_canLibraries) { exts[n++] = gl; exts[n++] = plib; }
             if (_mesh) exts[n++] = mx;
@@ -532,8 +528,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         log.Always($"VkBackend: LIVE -- {Caps}, {_bindlessCap} bindless textures, debug labels "
                  + $"{(_labels ? "on" : "off")}, async compute {(_async != null ? $"on queue family {_async.Family}" : "on the graphics queue (no compute-only family)")}, "
                  + $"first fills {(_transfer != null ? $"on transfer queue family {_transfer.Family}" : "on the graphics queue (no copy-only family)")}, "
-                 + (_rateTexel > 0 ? $"shading-rate image in {_rateTexel} px tiles" : $"no shading-rate image ({rateWhy}): the G-buffer pass shades every pixel")
-                 + $"; {BlendPathLine(_canDynBlend)}; {PipelinePathLine(_canLibraries)}"
+                 + $"{BlendPathLine(_canDynBlend)}; {PipelinePathLine(_canLibraries)}"
                  + (HasLazyMemory() ? "; transient targets take lazily allocated memory" : "; no lazily allocated memory type, so a transient target takes ordinary device memory")
                  + $"; the engine block in {(VkGlsl.ScalarBlocks ? "scalar" : "std140")} layout"
                  + "; Vulkan presents the frame itself");
@@ -555,36 +550,10 @@ internal sealed unsafe partial class VkBackend : IDevice
         return (p11.subgroupSupportedOperations & want) == want && (p11.subgroupSupportedStages & VkShaderStageFlags.Compute) != 0;
     }
 
-    /// <summary>The edge of a shading-rate image's texel in pixels, 0 when the device cannot read one.</summary>
-    private readonly int _rateTexel;
-    /// <inheritdoc cref="_rateTexel"/>
-    internal int ShadingRateTexel => _rateTexel;
-
-    private static ReadOnlySpan<byte> RateExt => "VK_KHR_fragment_shading_rate\0"u8;
-
     /// <summary>Dynamic blend state, and graphics pipeline libraries with the extension they build on.</summary>
     private static ReadOnlySpan<byte> Eds3Ext => "VK_EXT_extended_dynamic_state3\0"u8;
     private static ReadOnlySpan<byte> GplExt => "VK_EXT_graphics_pipeline_library\0"u8;
     private static ReadOnlySpan<byte> PipelineLibraryExt => "VK_KHR_pipeline_library\0"u8;
-
-    /// <summary>The square texel edge <paramref name="d"/> takes a shading-rate image in, or 0 with why not: the
-    /// extension, its attachment feature, and a square size <see cref="RateTexel"/> accepts.</summary>
-    private int RateSupport(VkPhysicalDevice d, out string? why)
-    {
-        why = null;
-        if (!HasExt(_vki, d, RateExt)) { why = "lacks VK_KHR_fragment_shading_rate"; return 0; }
-        var feats = new VkPhysicalDeviceFragmentShadingRateFeaturesKHR();
-        var f2 = new VkPhysicalDeviceFeatures2 { pNext = &feats };
-        _vki.vkGetPhysicalDeviceFeatures2(d, &f2);
-        if (!feats.attachmentFragmentShadingRate || !feats.pipelineFragmentShadingRate) { why = "lacks attachmentFragmentShadingRate"; return 0; }
-        var props = new VkPhysicalDeviceFragmentShadingRatePropertiesKHR();
-        var p2 = new VkPhysicalDeviceProperties2 { pNext = &props };
-        _vki.vkGetPhysicalDeviceProperties2(d, &p2);
-        VkExtent2D lo = props.minFragmentShadingRateAttachmentTexelSize, hi = props.maxFragmentShadingRateAttachmentTexelSize;
-        int t = RateTexel((int)Math.Max(lo.width, lo.height), (int)Math.Min(hi.width, hi.height));
-        if (t == 0) why = $"no square texel between {lo.width}x{lo.height} and {hi.width}x{hi.height}";
-        return t;
-    }
 
     /// <summary>The device takes VK_EXT_memory_budget, so <see cref="DeviceLocalBytes"/> reads the driver's own figures.</summary>
     private bool _memBudget;

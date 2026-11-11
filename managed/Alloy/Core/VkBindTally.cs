@@ -17,7 +17,7 @@ internal enum VkBindBy
     Casters,
     /// <summary>CX's own windows and the vanilla GUI on the Vulkan path.</summary>
     Gui,
-    /// <summary>The cull, the clusters, the deferred walk, AO, the depth pyramid and the shading-rate build.</summary>
+    /// <summary>The cull, the clusters, the deferred walk, AO and the depth pyramid.</summary>
     Compute,
     /// <summary>The post chain, the OIT resolve, reflections, glow and the reactive mask.</summary>
     Post,
