@@ -169,6 +169,18 @@ public static unsafe partial class EngineLayout
     /// <c>dt_ms / 2000</c> and lands the fade the step it crosses <c>GetFinalFadeAlpha</c>.</summary>
     public static readonly int ObjFadeAlpha = Field<float>("CNWCObject", "fadeAlpha");
 
+    /// <summary>CNWCCreature -&gt; its perception list, an array of <c>CNWVisibilityNode*</c>, and the count. Read off
+    /// <c>CNWCObject::GetFinalFadeAlpha</c> (Linux nm @0x7e7610, Windows rva 0x7630e0), which walks the player
+    /// creature's list for the object it is fading.</summary>
+    public static readonly int CreaturePerception = Field<IntPtr>("CNWCCreature", "perception");
+    /// <inheritdoc cref="CreaturePerception"/>
+    public static readonly int CreaturePerceptionCount = Field<int>("CNWCCreature", "perceptionCount");
+    /// <summary>CNWVisibilityNode -&gt; the game object id it is about (uint), the same on both builds.</summary>
+    public static readonly int VisNodeOid = Field<uint>("CNWVisibilityNode", "oid");
+    /// <summary>CNWVisibilityNode -&gt; its marks (byte): bit 0 seen, bit 1 heard, bit 4 invisible, as the same function
+    /// tests them on both builds.</summary>
+    public static readonly int VisNodeMarks = Field<byte>("CNWVisibilityNode", "marks");
+
     /// <summary><c>ObjectTextBubbleOverride</c> -- the module's own plate text: mode <c>int</c>, then a
     /// <c>CExoString</c> (<c>char*</c> + a dword length). 1 = replace, 2 = prepend, 3 = append, anything
     /// else = leave alone. All three are read at the same offsets by both

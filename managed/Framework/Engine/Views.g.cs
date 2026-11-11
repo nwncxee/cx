@@ -1966,6 +1966,10 @@ public readonly unsafe partial struct CNWCCreature(IntPtr ptr)
     public ref int PathFromServer => ref *(int*)(Ptr + EngineLayout.CreaturePathFromServer);
     /// <inheritdoc cref="EngineLayout.CreaturePathfind"/>
     public ref CPathfindInformation Pathfind => ref *(CPathfindInformation*)(Ptr + EngineLayout.CreaturePathfind);
+    /// <inheritdoc cref="EngineLayout.CreaturePerception"/>
+    public ref IntPtr Perception => ref *(IntPtr*)(Ptr + EngineLayout.CreaturePerception);
+    /// <inheritdoc cref="EngineLayout.CreaturePerceptionCount"/>
+    public ref int PerceptionCount => ref *(int*)(Ptr + EngineLayout.CreaturePerceptionCount);
     /// <inheritdoc cref="EngineLayout.CreaturePlated"/>
     public ref int Plated => ref *(int*)(Ptr + EngineLayout.CreaturePlated);
     /// <inheritdoc cref="SymbolMap.PlayFootstep"/>
@@ -2310,6 +2314,19 @@ public readonly unsafe partial struct CNWTileSet(IntPtr ptr)
     public void TileSetGetEnvMapResRef(void* ret) => EngineFn.TileSetGetEnvMapResRef(ret, Ptr);
     /// <inheritdoc cref="SymbolMap.TileSetGetTileData"/>
     public IntPtr TileSetGetTileData(int id) => EngineFn.TileSetGetTileData(Ptr, id);
+}
+
+/// <summary>Typed view of an engine <c>CNWVisibilityNode*</c>.</summary>
+public readonly unsafe partial struct CNWVisibilityNode(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.VisNodeMarks"/>
+    public ref byte Marks => ref *(byte*)(Ptr + EngineLayout.VisNodeMarks);
+    /// <inheritdoc cref="EngineLayout.VisNodeOid"/>
+    public ref uint Oid => ref *(uint*)(Ptr + EngineLayout.VisNodeOid);
 }
 
 /// <summary>Typed view of an engine <c>CNetLayer*</c>.</summary>
