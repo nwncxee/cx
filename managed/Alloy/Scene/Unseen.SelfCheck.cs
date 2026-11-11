@@ -140,42 +140,81 @@ internal static class UnseenSelfCheck
         }
         finally { Unseen.Enabled.Set(had); }
 
-        if (Array.TrueForAll(CX.Graphics.VulkanToolchain.Libraries, CX.Graphics.VulkanToolchain.Load))
-        {
-            try
-            {
-                bool worn = Unseen.Wear("#pragma cx_silhouette opacity 20\n" + UnseenServerLookApprovedExamples.Blue, log);
-                Unseen.Frame([heard], Whole);
-                float on = Drawn(body);
-                Unseen.Enabled.Set(false);
-                Unseen.Frame([heard], Whole);
-                check.Expect(worn && on == 0.2f && Plain(body) && Drawn(body) == 0.5f,
-                             $"a player who switched silhouettes off sees the stock see-through creature under a server's look too: worn {worn}, on {on}, off {Drawn(body)}");
-            }
-            finally { Unseen.Enabled.Set(had); Unseen.Undress(); }
-
-            const string blue = UnseenServerLookApprovedExamples.Blue;
-            check.Expect(!Unseen.Wear("#pragma cx_silhouette opacity 150\n" + blue, log) && !Unseen.Wear("#pragma cx_silhouette sparkle\n" + blue, log)
-                         && !Unseen.Wear("#pragma cx_silhouette glow 1\n" + blue, log) && Unseen.Worn() == Unseen.LookText(null),
-                         "a look with a declaration line CX cannot read is refused whole");
-            bool plain = Unseen.Wear(blue, log);
-            string lit = VkPrograms.LitPair(log).Fs;
-            Unseen.Undress();
-            check.Expect(plain && lit.Contains("vec3(0.0, 0.02, 0.3)") && !VkPrograms.LitPair(log).Fs.Contains("vec3(0.0, 0.02, 0.3)"),
-                         "the lit stage carries the look that is worn, and the stock one once it is taken off");
-        }
-        else check.Skip("the staged shaderc did not load");
-
         Unseen.Frame([heard], Whole);
         DbFeed.InitObject(body.Index);
         check.Expect(SceneDb.ObjUnseen[body.Index].Amount == 0f, "a recycled object record starts unmarked");
     });
 }
 
-/// <summary>The stock look on the device, with no server file: a plain regression test. Oracle: the grey written by hand.</summary>
+/// <summary>The edges of a server's silhouette look: plain regression tests, found while building it. Oracle: look
+/// files written here by hand, the alphas their lines ask for, and the stock look's own text.</summary>
+internal static class UnseenLookSelfCheck
+{
+    private const uint Oid = 8642;
+
+    internal static bool Run(ExtenderLog log) => UnseenFixture.Run(log, "UnseenLookSelfCheck", 1, (check, o) =>
+    {
+        if (!Array.TrueForAll(CX.Graphics.VulkanToolchain.Libraries, CX.Graphics.VulkanToolchain.Load))
+        {
+            check.Skip("the staged shaderc did not load");
+            return;
+        }
+        DbId body = o[0];
+        const string blue = UnseenServerLookApprovedExamples.Blue;
+        Unseen.Sight heard = new(Oid, Unseen.Heard, body);
+        bool had = Unseen.Enabled.V;
+        try
+        {
+            GameAlpha(body, 0.5f);
+            bool worn = Unseen.Wear("#pragma cx_silhouette opacity 20\n" + blue, log);
+            Unseen.Frame([heard], Whole);
+            float on = Drawn(body);
+            Unseen.Enabled.Set(false);
+            Unseen.Frame([heard], Whole);
+            check.Expect(worn && on == 0.2f && !Marked(body.Index) && Drawn(body) == 0.5f,
+                         $"a player who switched silhouettes off sees the stock see-through creature under a server's look too: worn {worn}, on {on}, off {Drawn(body)}");
+        }
+        finally { Unseen.Enabled.Set(had); }
+
+        int named = 0;
+        Action<string>? tap = log.Tap;
+        log.Tap = line => { if (line.Contains("Unseen: cx_silhouette.shd is refused")) named++; };
+        bool refused;
+        try
+        {
+            refused = !Unseen.Wear("#pragma cx_silhouette opacity 150\n" + blue, log) && !Unseen.Wear("#pragma cx_silhouette sparkle\n" + blue, log)
+                   && !Unseen.Wear("#pragma cx_silhouette glow 1\n" + blue, log);
+        }
+        finally { log.Tap = tap; }
+        check.Expect(refused && named == 3 && Unseen.Worn().Contains("CX_SILHOUETTE_RGB") && !Unseen.Worn().Contains("vec3(0.0, 0.02, 0.3)"),
+                     $"a look with a declaration line CX cannot read is refused whole, and the log names the file each time: refused {refused}, named {named}");
+
+        bool plain = Unseen.Wear(blue, log);
+        string lit = VkPrograms.LitPair(log).Fs;
+        Unseen.Undress();
+        check.Expect(plain && lit.Contains("vec3(0.0, 0.02, 0.3)") && !VkPrograms.LitPair(log).Fs.Contains("vec3(0.0, 0.02, 0.3)"),
+                     "the lit stage carries the look that is worn, and the stock one once it is taken off");
+    });
+}
+
+/// <summary>The silhouette library on the device beyond its approved examples: plain regression tests. Oracle: the grey
+/// and the shares written by hand.</summary>
 internal static partial class GpuGolden
 {
-    private static void UnseenStockLookSelfCheck(CX.Graphics.Rhi.VkBackend vk, Checker check, ExtenderLog log)
+    /// <summary>The stage the first silhouette goldens run: a case's lit colour and slot mask in, its colour out.</summary>
+    private const string SlotCase = """
+        void main()
+        {
+            int i = int(gl_WorkGroupID.x) * CX_GOLD_IN, o = int(gl_WorkGroupID.x) * CX_GOLD_OUT;
+            vec3 lit = vec3(uIn[i], uIn[i + 1], uIn[i + 2]);
+            float own;
+            vec3 r = CxSilhouetteApply(CxSilhouetteSurface(lit, lit, vec3(0.0, 0.0, 1.0), vec3(0.0, 0.0, 1.0), vec3(0.0),
+                                                           CxSilhouetteAmount(int(uIn[i + 3])), 0.0), own);
+            uOut[o] = r.x; uOut[o + 1] = r.y; uOut[o + 2] = r.z;
+        }
+        """;
+
+    private static void UnseenLookEdgesSelfCheck(CX.Graphics.Rhi.VkBackend vk, Checker check, ExtenderLog log)
     {
         float[] cases =
         [

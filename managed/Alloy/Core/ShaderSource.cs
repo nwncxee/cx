@@ -84,9 +84,7 @@ internal static class ShaderSource
         => HasLibs(src) ? Content(src, r => r == Unseen.LookRef ? Unseen.LookFile(log) : ShaderResource.Override(r, log), 0) : src;
 
     /// <summary><see cref="Content(string, ExtenderLog?)"/> with the resource chain stood in by <paramref name="lookup"/>.</summary>
-    internal static string Content(string src, Func<string, string?> lookup) => Content(src, lookup, 0);
-
-    private static string Content(string src, Func<string, string?> lookup, int depth)
+    internal static string Content(string src, Func<string, string?> lookup, int depth = 0)
     {
         if (depth >= MaxDepth) return src;
         StringBuilder? sb = null;

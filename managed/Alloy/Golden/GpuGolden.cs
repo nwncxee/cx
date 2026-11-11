@@ -107,7 +107,7 @@ internal static partial class GpuGolden
         UnseenSilhouetteApprovedSelfCheck(vk, check, log);
         UnseenFadeApprovedSelfCheck(vk, check, log);
         UnseenServerLookApprovedSelfCheck(vk, check, log);
-        UnseenStockLookSelfCheck(vk, check, log);
+        UnseenLookEdgesSelfCheck(vk, check, log);
         vk.PresentDeviceCheck(check, log);
         vk.PresentHoldCheck(check, log);
         vk.UploadApprovedExamples(check);
