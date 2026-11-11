@@ -103,10 +103,18 @@ internal static unsafe partial class Weather
                               help: "Softness of a puddle's shoreline, as a share of its depth.");
     }
 
-    /// <summary>The integrators, by wall clock. Called from every lit upload; the small deltas between two
-    /// uploads of one frame sum to the frame, so nothing needs a frame stamp.</summary>
-    private static void TickSurface()
+    /// <summary>The surface integrator's own lifetime: the frame it last integrated. A frame makes as many lit
+    /// uploads as the issue loop has program switches, and the wetness must not follow that count.</summary>
+    private sealed class SurfaceTickState { public int Frame = -1; }
+    private static SurfaceTickState _surfTick = new();
+
+    /// <summary>The integrators, by wall clock, ONCE in frame <paramref name="frame"/>: every later lit upload in
+    /// the same frame integrates nothing, so wetness and snow follow elapsed time and not how many times the frame
+    /// bound a lit program.</summary>
+    private static void TickSurface(int frame)
     {
+        if (frame == _surfTick.Frame) return;
+        _surfTick.Frame = frame;
         long now = Stopwatch.GetTimestamp();
         float dt = _surfTicks == 0 ? 0f : MathF.Min((float)(now - _surfTicks) / Stopwatch.Frequency, 0.25f);
         _surfTicks = now;
@@ -130,7 +138,7 @@ internal static unsafe partial class Weather
     internal static void UploadLit(int locWeather, int locLook, int locCoverVp, int locCoverLayer, int locSnowLook, int locSnowLight, int locSnowPom, int locEdge, int locRun, int locCache, bool capturing)
     {
         if (locWeather < 0) return;
-        TickSurface();
+        TickSurface(AlloyRenderer.FrameSeq);
         bool on = !capturing && !_off && Enabled.V;
         LooseBlock.Set(locWeather, on ? _wet * WetStrength.V : 0f, on ? _snow * SnowStrength.V : 0f, on ? _puddle : 0f, on ? Viz.V : 0f);
         float radius = MathF.Max(CoverRange.V, 1f);
@@ -192,7 +200,7 @@ internal static unsafe partial class Weather
                                           System.Globalization.CultureInfo.InvariantCulture, out float v) ? v : float.NaN;
     }
 
-    private static void ResetSurface() { _wet = _snow = _puddle = 0f; _enterTicks = Stopwatch.GetTimestamp(); MapReset(); TrackReset(); }
+    private static void ResetSurface() { _wet = _snow = _puddle = 0f; _enterTicks = Stopwatch.GetTimestamp(); _surfTick = new SurfaceTickState(); MapReset(); TrackReset(); }
 
     private static string SurfaceStats() => $" wet {_wet:F2} snow {_snow:F2} puddle {_puddle:F2}{TrackStats()}";
 
@@ -278,14 +286,25 @@ internal static unsafe partial class Weather
         float accum = AccumSec.V, dry = DrySec.V, melt = MeltSec.V;
         AccumSec.V = AccumSec.Default; DrySec.V = DrySec.Default; MeltSec.V = MeltSec.Default;
         Enabled.V = true; Density = 1f; CurrentKind = Kind.Rain; _wet = 0f; _surfTicks = Stopwatch.GetTimestamp() - Stopwatch.Frequency / 10;
-        TickSurface(); check.Expect(_wet > 0f && _wet < 0.01f, $"one 100ms rain tick soaks a little, not a lot (wet {_wet:F4}, accum {AccumSec.V:F0}s, interior {FrameInputs.Interior}, enter {_enterTicks != 0})");
+        TickSurface(1); check.Expect(_wet > 0f && _wet < 0.01f, $"one 100ms rain tick soaks a little, not a lot (wet {_wet:F4}, accum {AccumSec.V:F0}s, interior {FrameInputs.Interior}, enter {_enterTicks != 0})");
         CurrentKind = Kind.None; Density = 0f; float w = _wet; _surfTicks = Stopwatch.GetTimestamp() - Stopwatch.Frequency / 10;
-        TickSurface(); check.Expect(_wet < w, "a dry tick decays");
+        TickSurface(2); check.Expect(_wet < w, "a dry tick decays");
         ResetSurface(); Density = 1f; CurrentKind = Kind.Snow; _surfTicks = Stopwatch.GetTimestamp() - Stopwatch.Frequency / 10;
-        TickSurface(); check.Expect(_snow == 1f && _wet == 0f, "snow already running at the area edge arrives fully settled");
+        TickSurface(3); check.Expect(_snow == 1f && _wet == 0f, "snow already running at the area edge arrives fully settled");
         _enterTicks = Stopwatch.GetTimestamp() - Stopwatch.Frequency * 60; _snow = 0f; _surfTicks = Stopwatch.GetTimestamp() - Stopwatch.Frequency / 10;
-        TickSurface(); check.Expect(_snow > 0f && _snow < 0.01f, $"snow starting a minute after the edge accumulates from nothing (snow {_snow:F4})");
+        TickSurface(4); check.Expect(_snow > 0f && _snow < 0.01f, $"snow starting a minute after the edge accumulates from nothing (snow {_snow:F4})");
+        // CX-530: the oracle is elapsed time, not the call count -- a frame that binds the lit program forty times
+        // must soak exactly as much as one that binds it once, which is what lets the bind reuse its staged block
+        _enterTicks = 0; _wet = 0f; Density = 1f; CurrentKind = Kind.Rain;
+        _surfTicks = Stopwatch.GetTimestamp() - Stopwatch.Frequency / 10;
+        TickSurface(5); float once = _wet;
+        _surfTicks = Stopwatch.GetTimestamp() - Stopwatch.Frequency / 10;
+        TickSurface(5);
+        check.Expect(_wet == once, $"a second lit upload inside frame 5 integrates nothing (wet {_wet:F5}, was {once:F5})");
+        TickSurface(6);
+        check.Expect(_wet > once, $"frame 6 integrates the 100 ms that passed (wet {_wet:F5}, was {once:F5})");
         Density = d; CurrentKind = k; Enabled.V = en; _wet = _snow = _puddle = 0f; _surfTicks = 0; _enterTicks = 0;
+        _surfTick = new SurfaceTickState();
         AccumSec.V = accum; DrySec.V = dry; MeltSec.V = melt;
         MapSelfCheck(check, lit);
         SurfaceLookSelfCheck(check, lit);

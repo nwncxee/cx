@@ -37,7 +37,10 @@
 
 #include "cx_keyfogdecl.glsl"
 #include "cx_pass.glsl"
-layout(std430, binding = 3) readonly buffer CxTexH { uvec2 uTexH[]; };
+layout(std430, binding = 3) readonly buffer CxTexH { uint uTexH[]; };
+// A table entry as the handle a content stage constructs a sampler from: the descriptor index in x, as
+// GL's 64-bit handle carried it, so CxConUnit and every sampler2D(handle) in content reads unchanged.
+uvec2 CxTexHandle(uint i) { return uvec2(i, 0u); }
 #include "cx_conbuf.glsl"
 
 // ---- what the host region sets before the stage runs: the draw's record and slot, its bone base (-1 unposed), and
@@ -133,7 +136,7 @@ vec3 CxConClipV()
 #define bboxMax (vec3(0.0))
 // the material units: GLRender::ConnectShaderData @0x4ce8e0 pins texUnitN to unit N for the PROGRAM, so a vertex
 // stage samples them too -- off the record's handles
-#define CxConUnit(k) sampler2D(uTexH[(cxConDraw << 3) + (k)])
+#define CxConUnit(k) sampler2D(CxTexHandle(uTexH[(cxConDraw << 3) + (k)]))
 #define texUnit0 CxConUnit(0)
 #define texUnit1 CxConUnit(1)
 #define texUnit2 CxConUnit(2)

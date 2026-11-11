@@ -9,10 +9,10 @@ using CX.Rhi;
 namespace CX.Alloy;
 
 /// <summary>
-/// Every owned texture on Vulkan too, on Vulkan: the bytes each of <see cref="OwnedTextures"/>'
-/// upload sites hands GL go up again as a Vulkan image with the same levels and sampler, and the image takes a
-/// bindless index. Keyed by the owned name the batch tables carry: a GL name, or on Vulkan one <see cref="NewName"/>
-/// hands out with no GL texture behind it.
+/// Every owned texture on the device: the bytes each of <see cref="OwnedTextures"/>' upload sites decodes go up
+/// as a Vulkan image with the same levels and sampler, and the image takes a bindless index. Keyed by the owned
+/// name the batch tables carry, whether an engine texture's name or one <see cref="NewName"/> hands out for an
+/// image no engine texture stands behind.
 /// </summary>
 internal static class VkTextures
 {
@@ -180,8 +180,9 @@ internal static class VkTextures
                                 + (_s.Refused == RefusalLines ? "; further refusals are only counted" : ""));
     }
 
-    /// <summary>The engine's sampler state (GL enums, <c>OwnedTextures.EngineSampler</c>) as the seam's.</summary>
-    internal static SamplerDesc Sampler(int min, int mag, int wrapS, int wrapT, bool aniso)
+    /// <summary>The engine's sampler state (GL enums, <c>OwnedTextures.EngineSampler</c>) as the seam's, asking
+    /// for <paramref name="aniso"/> samples (1 = none): the level is the caller's, not this translation's.</summary>
+    internal static SamplerDesc Sampler(int min, int mag, int wrapS, int wrapT, float aniso)
     {
         Filter Of(int f) => f is (int)EngineTokens.LINEAR or (int)EngineTokens.LINEAR_MIPMAP_LINEAR or (int)EngineTokens.LINEAR_MIPMAP_NEAREST ? Filter.Linear : Filter.Nearest;
         MipMode mip = min switch
@@ -191,7 +192,7 @@ internal static class VkTextures
             _ => MipMode.None,
         };
         Wrap W(int w) => w == (int)EngineTokens.CLAMP_TO_EDGE ? Wrap.Clamp : Wrap.Repeat;
-        return new SamplerDesc(Of(min), Of(mag), mip, W(wrapS), Aniso: aniso ? TexRegistry.Aniso : 1, WrapT: W(wrapT));
+        return new SamplerDesc(Of(min), Of(mag), mip, W(wrapS), Aniso: aniso, WrapT: W(wrapT));
     }
 
     /// <summary>The seam's twin of a GL compressed internal format an owned texture is stored in; Unknown for
@@ -214,11 +215,16 @@ internal static class VkTextures
         check.Expect(Compressed(0x83F0) == Format.Bc1 && Compressed(0x83F3) == Format.Bc3 && Compressed(0x8DBD) == Format.Bc5
                   && Compressed(0x8E8C) == Format.Bc7 && Compressed(0x9274) == Format.Unknown,
             "DXT1 0x83F0 is BC1, DXT5 0x83F3 BC3, RG_RGTC2 0x8DBD BC5, RGBA_BPTC 0x8E8C BC7; ETC2 0x9274 has no Vulkan twin");
-        SamplerDesc s = Sampler(0x2703, 0x2601, 0x812F, 0x2901, aniso: false);
+        SamplerDesc s = Sampler(0x2703, 0x2601, 0x812F, 0x2901, aniso: 1f);
         check.Expect(s.Min == Filter.Linear && s.Mip == MipMode.Linear && s.Mag == Filter.Linear && s.Wrap == Wrap.Clamp && s.WrapT == Wrap.Repeat,
             "LINEAR_MIPMAP_LINEAR 0x2703 / LINEAR 0x2601 / CLAMP_TO_EDGE 0x812F on S / REPEAT 0x2901 on T read as trilinear, clamped on S only");
-        check.Expect(Sampler(0x2700, 0x2600, 0x2901, 0x2901, false).Mip == MipMode.Nearest && Sampler(0x2600, 0x2600, 0x2901, 0x2901, false).Mip == MipMode.None,
+        check.Expect(Sampler(0x2700, 0x2600, 0x2901, 0x2901, 1f).Mip == MipMode.Nearest && Sampler(0x2600, 0x2600, 0x2901, 0x2901, 1f).Mip == MipMode.None,
             "NEAREST_MIPMAP_NEAREST 0x2700 picks the nearest mip; plain NEAREST 0x2600 reads the base level only");
+        check.Expect(Post.Aniso.Default == 16 && string.Join(' ', Post.Aniso.Values) == "1 2 4 8 16",
+            $"post.aniso offers 1, 2, 4, 8 and 16 and defaults to 16x, so today's image is unchanged (offers: {string.Join(' ', Post.Aniso.Values)}, default {Post.Aniso.Default}x)");
+        check.Expect(Math.Abs(Sampler(0x2703, 0x2601, 0x2901, 0x2901, aniso: 4f).Aniso - 4f) < 1e-6f
+                  && Math.Abs(s.Aniso - 1f) < 1e-6f,
+            "the sampler asks for the level its caller named -- four samples for 4, and one where the caller takes no anisotropy");
         log.Info(check.Ok ? "VkTextures.SelfCheck: passed" : "VkTextures.SelfCheck: FAILED");
         return check.Ok;
     }

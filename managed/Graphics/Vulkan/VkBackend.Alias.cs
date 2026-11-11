@@ -239,8 +239,7 @@ internal sealed unsafe partial class VkBackend
         img.InFrame = true;
         bool overwrites = to switch
         {
-            VkImageLayout.ShaderReadOnlyOptimal or VkImageLayout.TransferSrcOptimal
-                or VkImageLayout.FragmentShadingRateAttachmentOptimalKHR => false,
+            VkImageLayout.ShaderReadOnlyOptimal or VkImageLayout.TransferSrcOptimal => false,
             VkImageLayout.General => writes,
             _ => true,
         };

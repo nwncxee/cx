@@ -10,7 +10,7 @@ This turns that into a build-time error.
 The job here is text and SPIR-V: every stage parses as GLSL and compiles to a module the Vulkan
 environment accepts. What only a device can answer is `./run-demo.sh`'s: a pipeline refused at
 creation (`VkBackend.SelfCheck.Stage`), and the goldens that run a stage on the GPU and judge
-what it answered -- the lightmap block encoder, the G-buffer's lanes, the parallax march, the shading rate (`GpuGolden`).
+what it answered -- the lightmap block encoder, the G-buffer's lanes, the parallax march (`GpuGolden`).
 
 Composition is not written down here. Every stage is a `managed/Alloy/Shaders/*.glsl` file whose
 `#include` lines name the libraries it is built from (#707), and this script compiles those same
@@ -85,6 +85,15 @@ VK_BUILTINS = ((r"\bgl_DrawID\b", "gl_DrawIDARB"), (r"\bgl_BaseInstance\b", "gl_
 # The macro a block whose layout follows the device takes its qualifier from (VkGlsl.LayoutMacro).
 VK_LAYOUT_MACRO = "CX_ENGBLK"
 
+# The diagnostic-view selector, read out of VkGlsl so the offline text is the one the runtime compiles: the
+# block carries it under its own name and the name the stages use is a macro over a specialization constant.
+_VK_GLSL_SRC = open(os.path.join(MANAGED, "Graphics/Vulkan/VkGlsl.cs")).read()
+VK_VIZ, VK_VIZ_MEMBER, VK_VIZ_ON = re.search(
+    r'VizUniform = "(\w+)", VizMember = "(\w+)", VizOn = "(\w+)"', _VK_GLSL_SRC).groups()
+VK_VIZ_CONSTANT = re.search(r"VizOnConstant = (\d+)", _VK_GLSL_SRC).group(1)
+VK_VIZ_DECL = re.compile(rf"\buniform\s+int\s+{VK_VIZ}\s*;")
+VK_VIZ_REDEFINE = re.compile(rf"^[ \t]*#define[ \t]+{VK_VIZ}\b", re.M)
+
 
 def vk_text(src, layout="scalar"):
     """Mirrors VkGlsl: every `sampler2D(handle)` construction as an index into the bindless sampler array, the
@@ -117,6 +126,11 @@ def vk_text(src, layout="scalar"):
                  f"#define {VK_LAYOUT_MACRO} scalar\n")
     if f"{VK_BINDLESS_ARRAY}[" in s:
         head += f"layout(set = {VK_BINDLESS_SET}, binding = 0) uniform sampler2D {VK_BINDLESS_ARRAY}[];\n"
+    if VK_VIZ_DECL.search(s):
+        s = VK_VIZ_DECL.sub(f"uniform int {VK_VIZ_MEMBER};", s)
+        s = VK_VIZ_REDEFINE.sub(lambda m: f"#undef {VK_VIZ}\n" + m.group(0), s)
+        head += (f"layout(constant_id = {VK_VIZ_CONSTANT}) const bool {VK_VIZ_ON} = false;\n"
+                 f"#define {VK_VIZ} ({VK_VIZ_ON} ? {VK_VIZ_MEMBER} : 0)\n")
     v = s.index("#version")
     e = s.index("\n", v) + 1
     return s[:e] + head + s[e:]
@@ -643,7 +657,6 @@ def programs(g):
         "fsr bare-sky fog": (g["cx_fullscreen_v"], g["cx_skyfog_f"]),
         "mover motion": (g["cx_motion_v"], g["cx_motion_f"]),
         "taa resolve": (g["cx_fullscreen_v"], g["cx_taa_f"]),
-        "reactive mask": (g["cx_fullscreen_v"], g["cx_reactive_f"]),
         "mip chain (hi-Z)": (define(g["cx_spd_c"], "CX_SPD_HIZ 1"),),
         "mip chain (colour)": (g["cx_spd_c"],),
         "ssr trace": (g["cx_fullscreen_v"], g["cx_ssrtrace_f"]),
@@ -679,7 +692,6 @@ def programs(g):
         "mover apply": (g["cx_moverapply"],),
         "volumetric fog light": (g["cx_vfog_cs"],),
         "volumetric fog integrate": (g["cx_vfogsum_cs"],),
-        "shading rate": (g["cx_vrs_cs"],),
         "halo occlusion fade": (g["cx_haloocc_c"],),
         "gui": (g["cx_gui_v"], g["cx_gui_f"]),
         "trigger highlight": (g["cx_fullscreen_v"], g["cx_hilitetrig_f"]),
@@ -813,6 +825,9 @@ def with_define(src, define):
 # Mirrors AlloyRenderer.BindlessPrologue: what a stage that samples by handle opens with.
 BINDLESS_PROLOGUE = "#define CX_BINDLESS 1\n#extension GL_ARB_bindless_texture : require\n"
 
+# Mirrors AlloyRenderer.TexHandleFn: a table entry as the handle a stage constructs a sampler from.
+TEX_HANDLE_FN = "uvec2 CxTexHandle(uint i) { return uvec2(i, 0u); }\n"
+
 
 def bindless(fs):
     names = (("uTex", 0), ("uFlowTex", 6), ("uNrmTex", 1), ("uSpecTex", 2), ("uRoughTex", 3),
@@ -820,8 +835,8 @@ def bindless(fs):
     for n, _ in names:
         fs = re.sub(rf"uniform sampler2D {n};[^\n]*\n", "", fs)
     head = ("#version 460 core\n" + BINDLESS_PROLOGUE +
-            "layout(std430, binding = 3) readonly buffer CxTexH { uvec2 uTexH[]; };\n"
-            + "".join(f"#define {n} sampler2D(uTexH[(vDraw << 3) + {k}])\n" for n, k in names))
+            "layout(std430, binding = 3) readonly buffer CxTexH { uint uTexH[]; };\n" + TEX_HANDLE_FN
+            + "".join(f"#define {n} sampler2D(CxTexHandle(uTexH[(vDraw << 3) + {k}]))\n" for n, k in names))
     return fs.replace("#version 460 core\n", head, 1)
 
 

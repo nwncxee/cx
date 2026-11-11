@@ -55,7 +55,7 @@ uvec2 CxConPalH(int draw, int k)
 {
     // a null handle is a GPU fault on AMD's driver, so a record with no row of its own falls back to its DIFFUSE's
     // handle, which that table guarantees is non-null; the bound flag below asks the slot mask
-    if (cxConRow < 0) return uTexH[draw << 3];
+    if (cxConRow < 0) return CxTexHandle(uTexH[draw << 3]);
     uvec4 h = k < 2 ? uConTab[cxConRow].pal01 : uConTab[cxConRow].pal23;
     return (k & 1) == 0 ? h.xy : h.zw;
 }

@@ -61,6 +61,7 @@ public sealed unsafe partial class AlloyRenderer
             int n = Math.Min(SpdLevels, levels - at);
             // a level the pass does not write still needs a bound view: the last one it does write stands in
             for (int i = 0; i < SpdLevels; i++) store[i] = new ImageBinding((uint)i, img, default, at + Math.Min(i, n - 1));
+            VkBindTally.Count(VkBindBy.Compute);
             cl.BindSet(0, new BindSet(default, default, sampled, store));
             var p = new SpdPush { Nf = nf, Levels = n, Gen = at == 0 ? 1 : 0 };
             cl.PushConstants(0, MemoryMarshal.AsBytes(new ReadOnlySpan<SpdPush>(in p)));

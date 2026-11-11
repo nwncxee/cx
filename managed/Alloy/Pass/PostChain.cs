@@ -364,9 +364,8 @@ internal static unsafe class PostChain
               "Describe names every knob group");
             check.Expect(ResolveFs.Contains("if (uViz == 4)") && ResolveFs.Contains("textureLod(uBloom, vUV, 0.0).rg"),
               "viz 4 paints the velocity target off the bloom unit");
-            check.Expect(ResolveFs.Contains(ToneCall) && AlloyRenderer.ReactiveFs.Contains("CxTonemap(")
-              && !ResolveFs.Contains("uMode == 1"),
-              "the resolve and the reactive mask both grade through CxTonemap, and the resolve keeps no mode chain of its own");
+            check.Expect(ResolveFs.Contains(ToneCall) && !ResolveFs.Contains("uMode == 1"),
+              "the resolve grades through CxTonemap and keeps no mode chain of its own");
             // Exposure is scene-referred: it multiplies the linear frame BEFORE the tonemap and the encode,
             // never the display value -- a gain after the encode is a gamma-wrong brightness slider.
             check.Expect(ResolveFs.IndexOf("c *= uExposure;", StringComparison.Ordinal)

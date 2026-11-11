@@ -7,7 +7,7 @@ namespace CX.Rhi;
 public enum Format : byte
 {
     Unknown, R8, Rg8, Rgba8, Rgba8Srgb, R16F, Rg16F, Rgba16F, R32F, Rg32F, Rgba32F, R32Ui, Rg32Ui, Rgba32Ui, R11G11B10F,
-    /// <summary>One unsigned byte, read as an integer: a shading-rate image.</summary>
+    /// <summary>One unsigned byte, read as an integer rather than a normalised value.</summary>
     R8Ui,
     /// <summary>8-bit UNORM stored blue first: a window's own order, which a draw into it writes as RGBA.</summary>
     Bgra8,
@@ -61,8 +61,6 @@ public enum ImageUse : ushort
     Grey = 64,
     /// <summary>Read or written by an <see cref="CommandList.Async"/> list as well as the graphics queue's.</summary>
     Async = 128,
-    /// <summary>Read by a render pass as its shading-rate image (<see cref="RenderPassDesc.ShadingRate"/>).</summary>
-    ShadingRate = 256,
     /// <summary>An attachment whose contents never leave the one render pass that writes them, so a device with
     /// lazily allocated memory need back it with none. It names no other use and joins no alias group.</summary>
     Transient = 512,
@@ -74,8 +72,7 @@ public static class ImageUses
     /// <summary>Reached outside the pass that writes it: sampled, stored into, or either end of a copy. A
     /// <see cref="ImageUse.Transient"/> attachment may name none of these.</summary>
     public static bool LeavesItsPass(this ImageUse use)
-        => (use & (ImageUse.Sampled | ImageUse.Grey | ImageUse.Storage | ImageUse.CopySrc | ImageUse.CopyDst
-                 | ImageUse.ShadingRate)) != 0;
+        => (use & (ImageUse.Sampled | ImageUse.Grey | ImageUse.Storage | ImageUse.CopySrc | ImageUse.CopyDst)) != 0;
 
     /// <summary>Attached by a render pass at the colour or depth point.</summary>
     public static bool IsTarget(this ImageUse use) => (use & (ImageUse.ColorTarget | ImageUse.DepthTarget)) != 0;

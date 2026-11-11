@@ -65,6 +65,7 @@ public sealed unsafe partial class AlloyRenderer
             else if (o.Kind == VkBindKind.Sampled && nt < sampled.Length) sampled[nt++] = new ImageBinding(o.Binding, depth, c.Raw);
         }
         cl.SetPipeline(st.Pipe);
+        VkBindTally.Count(VkBindBy.Effects);
         cl.BindSet(0, new BindSet(ubo[..nu], default, sampled[..nt], images[..ni]));
         int g = (SkyView.MapSize + SkyView.Group - 1) / SkyView.Group;
         cl.Dispatch(g, g, 1);

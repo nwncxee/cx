@@ -143,7 +143,6 @@ internal sealed unsafe partial class VkBackend
         if ((use & ImageUse.Storage) != 0) n |= VkFormatFeatureFlags.StorageImage;
         if ((use & ImageUse.CopySrc) != 0) n |= VkFormatFeatureFlags.BlitSrc | VkFormatFeatureFlags.TransferSrc;
         if ((use & ImageUse.CopyDst) != 0) n |= VkFormatFeatureFlags.BlitDst | VkFormatFeatureFlags.TransferDst;
-        if ((use & ImageUse.ShadingRate) != 0) n |= VkFormatFeatureFlags.FragmentShadingRateAttachmentKHR;
         return n;
     }
 
@@ -151,7 +150,7 @@ internal sealed unsafe partial class VkBackend
     /// neither names a way a texel is read or written: one is a queue the image is reached from, the other is where
     /// its memory comes from.</summary>
     private const ImageUse FeatureBound = ImageUse.Sampled | ImageUse.Grey | ImageUse.ColorTarget | ImageUse.DepthTarget
-                                        | ImageUse.Storage | ImageUse.CopySrc | ImageUse.CopyDst | ImageUse.ShadingRate;
+                                        | ImageUse.Storage | ImageUse.CopySrc | ImageUse.CopyDst;
     /// <inheritdoc cref="FeatureBound"/>
     private const ImageUse FeatureFree = ImageUse.Async | ImageUse.Transient;
 
@@ -235,7 +234,6 @@ internal sealed unsafe partial class VkBackend
         if ((use & ImageUse.ColorTarget) != 0 && !f.IsDepth()) u |= VkImageUsageFlags.ColorAttachment;
         if ((use & ImageUse.DepthTarget) != 0 || f.IsDepth()) u |= VkImageUsageFlags.DepthStencilAttachment;
         if ((use & ImageUse.Storage) != 0) u |= VkImageUsageFlags.Storage;
-        if ((use & ImageUse.ShadingRate) != 0) u |= VkImageUsageFlags.FragmentShadingRateAttachmentKHR;
         if ((use & ImageUse.Transient) != 0) u |= VkImageUsageFlags.TransientAttachment;
         return u;
     }

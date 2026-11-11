@@ -2,7 +2,8 @@
 // by CasterGather.GatherBlock and bound before it. Members are in the block's std140 order, which is also the
 // staging struct's field order; UboSlots.Check pins the two together. uViewN belongs to the LAYERED dispatch
 // alone and the per-view one leaves it unread; uFocus, uDir, uReach, uAlong, uPoint, uSet and the two detail
-// thresholds are the per-view dispatch's, which the layered one reads out of the view table instead.
+// thresholds are the per-view dispatch's, which the layered one reads out of the view table instead. uSphN is
+// how many slots the bound colour-cull generation holds: a caster above it has no bound there and is exempt.
 #ifndef CX_GATHER_BLOCK
 #define CX_GATHER_BLOCK
 layout(std140, binding = 3) uniform CxGather
@@ -21,5 +22,6 @@ layout(std140, binding = 3) uniform CxGather
     int uSet;
     int uRx;
     int uGroups;
+    int uSphN;
 };
 #endif

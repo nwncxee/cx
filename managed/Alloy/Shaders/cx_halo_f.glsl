@@ -12,8 +12,10 @@ in vec2 vOcc;
 uniform sampler2D uFlare;
 uniform int uTextured;
 #include "cx_scenedepth.glsl"
+#include "cx_reactive.glsl"
 void main()
 {
+    fragReact = 0.0;
     float r = length(vUV);
     if (uTextured == 0 && r >= 1.0) discard;
     vec2 at = gl_FragCoord.xy / vec2(textureSize(uSceneDepth, 0)) + vOcc * 0.5;
@@ -36,4 +38,5 @@ void main()
         profile = core + skirt + streak;
     }
     frag = vec4(vColor * profile * vis, 1.0);
+    fragReact = CxReactive(CxReactiveShare(frag.rgb, 1.0, true));
 }

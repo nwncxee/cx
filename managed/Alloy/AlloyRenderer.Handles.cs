@@ -112,27 +112,33 @@ public sealed unsafe partial class AlloyRenderer
         }
     }
 
+    /// <summary>A handle-table entry widened to the <c>uvec2</c> a content stage constructs a sampler from.
+    /// The table is one index per slot; the handle shape is the override contract, so it stays.</summary>
+    internal const string TexHandleFn = "uvec2 CxTexHandle(uint i) { return uvec2(i, 0u); }\n";
+
     /// <summary>What a stage that samples by handle opens with.</summary>
     internal const string BindlessPrologue = "#define CX_BINDLESS 1\n#extension GL_ARB_bindless_texture : require\n";
 
     /// <summary>Rewrite a fragment stage's bound samplers into per-draw bindless handles. The stage already
     /// receives <c>vDraw</c> (the record index) for its material colours; the same index now selects its
-    /// textures, which lets one multidraw span every texture in a class. Pure text: where the declarations
-    /// are not found the output is the input, with no handle block.</summary>
-    internal static string BindlessFs(string fs)
+    /// textures, which lets one multidraw span every texture in a class. The decision reads the PAIR --
+    /// <paramref name="vs"/> has to write the varying -- and a missing declaration hands back the input.</summary>
+    internal static string BindlessFs(string vs, string fs)
     {
         string[] names = { "uTex", "uFlowTex", "uNrmTex", "uSpecTex", "uRoughTex", "uHeightTex", "uIllumTex", "uAoTex" };
         int[] slot = { 0, 6, 1, 2, 3, 4, 5, 7 };
         var sb = new System.Text.StringBuilder(
             BindlessPrologue +
-            $"layout(std430, binding = {BindTexH}) readonly buffer CxTexH {{ uvec2 uTexH[]; }};\n");
+            $"layout(std430, binding = {BindTexH}) readonly buffer CxTexH {{ uint uTexH[]; }};\n" + TexHandleFn);
         for (int i = 0; i < names.Length; i++)
-            sb.Append($"#define {names[i]} sampler2D(uTexH[(vDraw << 3) + {slot[i]}])\n");
+            sb.Append($"#define {names[i]} sampler2D(CxTexHandle(uTexH[(vDraw << 3) + {slot[i]}]))\n");
         string outFs = fs;
         foreach (string nm in names)
             outFs = System.Text.RegularExpressions.Regex.Replace(outFs, $@"uniform sampler2D {nm};[^\n]*\n", "");
         if (outFs == fs) return fs;   // nothing replaced -- foreign text, leave it alone
-        if (!outFs.Contains("flat in int vDraw;")) return fs;   // no record index to sample by
+        // no record index to sample by: the fragment has to read the varying AND the vertex half that won the
+        // override has to write it, or the handle row comes out of whatever vDraw happens to hold
+        if (!outFs.Contains("flat in int vDraw;") || !vs.Contains("flat out int vDraw;")) return fs;
         // GLSL: #extension must precede every non-preprocessor token, so the whole block goes immediately
         // after #version. The #defines are preprocessor (position-free) and only reference vDraw at their
         // EXPANSION sites, which sit far below its declaration; the SSBO decl merely has to precede use.

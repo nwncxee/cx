@@ -119,6 +119,7 @@ public sealed unsafe partial class AlloyRenderer
             else if (op.Kind == VkBindKind.Sampled && ni < img.Length) { img[ni] = new ImageBinding(op.Binding, ni == 0 ? a : b, s.Raw); ni++; }
         }
         side.SetPipeline(pipe);
+        VkBindTally.Count(VkBindBy.Effects);
         side.BindSet(0, new BindSet(ubo[..nu], default, img[..ni], default));
         side.Draw(3);
         return true;

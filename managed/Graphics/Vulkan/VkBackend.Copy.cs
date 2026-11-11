@@ -68,6 +68,32 @@ internal sealed unsafe partial class VkBackend
         return true;
     }
 
+    /// <summary><see cref="Op.ClearDepthLayers"/>: a run of a depth array's layers set to one depth, as a transfer.
+    /// The barrier it takes still covers the whole image, so the run is thrift in passes and clears, not in ordering.</summary>
+    private bool ClearDepthLayersImg(in ClearDepthCmd c)
+    {
+        if (_inPass) return Fault("ClearDepthLayers inside a render pass");
+        if (!_images.TryGet(c.Image.Value, out VkImg img)) return Fault("ClearDepthLayers: stale image");
+        if ((Aspect(img.Desc.Fmt) & VkImageAspectFlags.Depth) == 0)
+            return Fault($"ClearDepthLayers: {img.Desc.Label} is not a depth image");
+        if (CopyMissing(img.Desc.Use, false) is { } why)
+            return Fault($"ClearDepthLayers: {img.Desc.Label} {why} -- a clear outside a pass is a transfer");
+        int layers = Layers(img.Desc);
+        if (c.First < 0 || c.Layers <= 0 || c.First + c.Layers > layers)
+            return Fault($"ClearDepthLayers: layers {c.First}..{c.First + c.Layers - 1} of {img.Desc.Label}, which has {layers}");
+        Transition(img, VkImageLayout.TransferDstOptimal);
+        Flush();
+        var value = new VkClearDepthStencilValue(c.Depth, 0);
+        var range = new VkImageSubresourceRange
+        {
+            aspectMask = Aspect(img.Desc.Fmt), levelCount = Vortice.Vulkan.Vulkan.VK_REMAINING_MIP_LEVELS,
+            baseArrayLayer = (uint)c.First, layerCount = (uint)c.Layers,
+        };
+        _vkd.vkCmdClearDepthStencilImage(_cmd, img.Image, VkImageLayout.TransferDstOptimal, &value, 1, &range);
+        img.Written = true;
+        return true;
+    }
+
     /// <summary><see cref="Op.GenerateMips"/>: the chain blitted down from the base, the image left shader-readable.</summary>
     private bool MipsImg(ImageId i)
     {

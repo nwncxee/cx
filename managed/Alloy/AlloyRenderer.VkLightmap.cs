@@ -224,6 +224,7 @@ public sealed unsafe partial class AlloyRenderer
                 img[ni++] = new ImageBinding(o.Binding, o.Binding == 0 ? blkA : o.Binding == 1 ? blkB : pageC);
         }
         cl.SetPipeline(st.Pipe);
+        VkBindTally.Count(VkBindBy.Effects);
         cl.BindSet(0, new BindSet(ubo[..nu], default, tex[..nt], img[..ni]));
         cl.Dispatch((bw + LightmapBake.EncGroup - 1) / LightmapBake.EncGroup, (bh + LightmapBake.EncGroup - 1) / LightmapBake.EncGroup);
         return true;

@@ -21,6 +21,13 @@ internal static partial class VkGlsl
             List<Stmt> stmts = Statements(t);
             Gather(stmts, t, r, new Dictionary<string, int>(StringComparer.Ordinal));
             if (r.Error != null) return r;
+            // the backend rebuilds the graphics pipelines when the view turns over; a compute one is not in that cache
+            if (r.Loose.Exists(l => l.Name == VizUniform) || Array.Exists(r.Tail.All, m => m.Name == VizUniform))
+            {
+                r.Error = $"{VizUniform} in a compute stage: the diagnostic-view selector is a specialization constant "
+                        + "the graphics pipelines carry, and a compute pipeline would keep whichever value it was built with";
+                return r;
+            }
             r.Cs = Emit(t, stmts, false, bindless, drawParams, samplerUnits, new Dictionary<string, int>(StringComparer.Ordinal), r);
         }
         catch (FormatException e) { r.Error = e.Message; }

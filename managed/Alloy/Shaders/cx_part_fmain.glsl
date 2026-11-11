@@ -1,5 +1,6 @@
 void main()
 {
+    fragReact = 0.0;
     vec4 c = vColor * texture(uTex, vUv);
 #ifdef CX_MOTION
     // CX-48: the velocity FIELD, not the colour. Written only where the sprite is most of the pixel: anywhere
@@ -58,4 +59,5 @@ void main()
     if (uAdditive != 0) c.a *= 1.0 - f;
     else c.rgb = CxFog(c.rgb, vWorld, vViewZ);
     frag = c;
+    fragReact = CxReactive(CxReactiveShare(c.rgb, c.a, uAdditive != 0));
 }

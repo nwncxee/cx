@@ -4,7 +4,7 @@
 #
 #   tools/live/perf-save.sh --saves DIR [--soak N] [--label NAME] [--cfg 'key=value' ...]
 #   tools/live/perf-save.sh --showcase perf-grass [...]   # a scenario's own scene instead of a save
-#   --aniso N sets the anisotropic filtering mode. --override DIR copies its files into the throwaway override/ (e.g. a cx_*.shd shader variant).
+#   --aniso N sets the anisotropic filtering mode, in the engine's options and in Alloy's own samplers (post.aniso). --override DIR copies its files into the throwaway override/ (e.g. a cx_*.shd shader variant).
 #   --keys SCRIPT runs (xtool grammar) once the area has settled, e.g. "key:Return;type:/alloy bench;key:Return"
 #   --passtime loads VK_LAYER_CX_passtime (tools/gpu-passtime) and prints GPU ms per debug label over the last
 #     1000 presents: live frames, a timestamp at each label edge, (gaps) = a parent's time no child label claims.

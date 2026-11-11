@@ -62,15 +62,14 @@ public sealed unsafe partial class AlloyRenderer
         int formats = 0;
         for (int f = 0; f < MeshArena.Formats; f++) formats += (live[f] = !MeshArena.VkVbo((MeshArena.Fmt)f).IsNull && !s.Layouts[f].IsNull) ? 1 : 0;
         if (formats == 0) return true;
-        bool rate = vk.ShadingRateTexel > 0;
-        foreach (VkProg? p in s.Progs) if (p != null && !VkPrewarmProgram(p, live, rate, since)) return false;
+        foreach (VkProg? p in s.Progs) if (p != null && !VkPrewarmProgram(p, live, since)) return false;
         VkDecalState d = VkDecalOwner(vk);
-        if (VkDecalWriter(vk, d, log) && !VkPrewarmProgram(d.Prog!, live, rate, since)) return false;
+        if (VkDecalWriter(vk, d, log) && !VkPrewarmProgram(d.Prog!, live, since)) return false;
         VkMvState mv = VkMvOwner(vk);
-        if (VkMvEnsure(vk, mv, log) && !VkPrewarmProgram(mv.Prog!, live, rate, since)) return false;
+        if (VkMvEnsure(vk, mv, log) && !VkPrewarmProgram(mv.Prog!, live, since)) return false;
         VkHlState hl = VkHlOwner(vk);
-        if (VkHlPrograms(vk, hl, log) && !VkPrewarmProgram(hl.Mask!, live, rate, since)) return false;
-        foreach (VkProg? p in s.Content.Values) if (p != null && !VkPrewarmProgram(p, live, rate, since)) return false;
+        if (VkHlPrograms(vk, hl, log) && !VkPrewarmProgram(hl.Mask!, live, since)) return false;
+        foreach (VkProg? p in s.Content.Values) if (p != null && !VkPrewarmProgram(p, live, since)) return false;
         return true;
     }
 
@@ -81,10 +80,9 @@ public sealed unsafe partial class AlloyRenderer
     /// compiles whole pipelines keeps the loading screen drawing.</summary>
     private const double VkPrewarmBudgetMs = 25;
 
-    /// <summary>Program <paramref name="p"/> into each of its sets, for each live format; the colour sets both rated and
-    /// not on a device with a rate image, since a pass binds only the one its own verdict names. False once the frame
+    /// <summary>Program <paramref name="p"/> into each of its sets, for each live format. False once the frame
     /// has spent its budget since <paramref name="since"/>.</summary>
-    private static bool VkPrewarmProgram(VkProg p, ReadOnlySpan<bool> live, bool rate, long since)
+    private static bool VkPrewarmProgram(VkProg p, ReadOnlySpan<bool> live, long since)
     {
         ReadOnlySpan<VkTargets> sets = VkPrewarmSets(p);
         for (int f = 0; f < live.Length; f++)
@@ -94,8 +92,7 @@ public sealed unsafe partial class AlloyRenderer
             {
                 // the coverage pass's sample count is its own, known once it has run
                 if (t == VkTargets.Cover && _vkCover.Samples <= 0) continue;
-                VkPipeline(p, f, t, 0, rated: false);
-                if (rate && t is VkTargets.Colour or VkTargets.ColourRefl) VkPipeline(p, f, t, 0, rated: true);
+                VkPipeline(p, f, t, 0);
                 if (VkPrewarmSpent(since)) return false;
             }
         }

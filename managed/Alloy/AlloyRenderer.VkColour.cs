@@ -30,6 +30,9 @@ public sealed unsafe partial class AlloyRenderer
         public bool Deferred;
         /// <summary>Writes the reflection record (<c>oReflN</c>/<c>oReflW</c>); every other program leaves the pair alone.</summary>
         public bool Refl;
+        /// <summary>Writes the reactive mask (<c>fragReact</c>, from <c>cx_reactive.glsl</c>); a content override of
+        /// an effect stage that declares no second output leaves the mask alone.</summary>
+        public bool React;
         /// <summary>A content pair's program: its feature id and the pair's build generation it came from; 0 otherwise.</summary>
         public int Feat, Epoch;
         /// <summary>The variant a content program was built as; <see cref="ContentVariant.Forward"/> for a stock one.</summary>
@@ -44,6 +47,9 @@ public sealed unsafe partial class AlloyRenderer
         public VkOpaque[] Opaques = [];
         /// <summary>Declares the <c>CxEngine</c> block, so a bind needs the frame's copy staged.</summary>
         public bool ReadsEngine;
+        /// <summary>Still declares <c>uTex</c> as a bound sampler, so its batches take the diffuse the issue loop
+        /// binds. False once the bindless rewrite reached it: the diffuse then rides the record, per draw.</summary>
+        public bool TexBound;
         public LitLoc L;
         public FeatLoc F;
         public int Vp = -1, Tex = -1, Viz = -1, Tint = -1, SkyFog = -1, Oit = -1, OitDim = -1;
@@ -56,7 +62,14 @@ public sealed unsafe partial class AlloyRenderer
         public int StageA = -1, StageB = -1;
         public StageResources.VkBind[] StageBinds = [];
         public FrameLoc StageFrame;
+        /// <summary>The frame arena offset this program's loose block was last staged at (-1: none), and the frame
+        /// and arena generation that staging belongs to. A refill equal to those bytes reuses the slice.</summary>
+        public int LooseAt = -1;
+        public int LooseFrame = -1, LooseGen = -1;
     }
+
+    /// <summary>Changes of a loose block inside one frame named in the period line, per device.</summary>
+    private const int VkLooseChangeNames = 1;
 
     /// <summary>The colour bracket's resources on one device, replaced whole with the device.</summary>
     private sealed class VkColourState
@@ -86,6 +99,12 @@ public sealed unsafe partial class AlloyRenderer
         /// <summary>The standing water the deferred twin records per pixel, read by the rain splash after the walk: its
         /// own memory, since the splash reads it after the frame's resolve.</summary>
         public ImageId G3;
+        /// <summary>The reactive mask the beam, particle, halo and weather passes accumulate their coverage into,
+        /// beside <see cref="Hdr"/>: its own memory, because it is written from the first of those passes to the last
+        /// and read in the post pair, which leaves no window a lane could hand to anything else.</summary>
+        public ImageId React;
+        /// <summary>The mask has been said to be live on this device.</summary>
+        public bool ReactLive;
         /// <summary>The prepass depth as a SAMPLED copy: the colour pass's draws cannot sample their own depth
         /// attachment, and the lit stage tests every AO fetch against the depth the estimate was computed from.</summary>
         public ImageId DepthRead;
@@ -109,6 +128,9 @@ public sealed unsafe partial class AlloyRenderer
         public long PassStamp;
         public float PassMips;
         public int ArenaUsed;
+        /// <summary>How many times the arena has been rewound. Every memo of an arena OFFSET carries it, so a
+        /// rewind cannot leave a program reusing a slice another pass has since written over.</summary>
+        public int ArenaGen;
         public ImageId Tex2D, TexU2D, Tex2DArray, Tex3D, TexCube, TexCubeArray, Depth2DArray, DepthCubeArray, DecalLayer, DecalSurf;
         public SamplerId Linear, Shadow;
         /// <summary>The blocker search's sampler: no compare and NEAREST, so a raw view reads one stored depth
@@ -119,13 +141,8 @@ public sealed unsafe partial class AlloyRenderer
         public CommandList? Async;
         public uint WhiteIndex, NullIndex;
         public long Drawn, Skipped;
-        /// <summary>This frame's beam, particle, halo or weather pass drew: when none did, the reactive mask has nothing
-        /// to measure and is cleared instead of written.</summary>
-        public bool Effects;
         /// <summary>This frame's colour pass wrote the G-buffer.</summary>
         public bool GbufWritten;
-        /// <summary>The shading-rate image the G-buffer pass being issued reads, or null: its pipelines are made for it.</summary>
-        public ImageId Rate;
         /// <summary>The blended range is being issued and this frame's deferred walk wrote the light record it reads.</summary>
         public bool LightRec;
         /// <summary>The OIT accumulation is being issued: the lit and unlit stages write the weighted pair (<c>uOit</c> 1).</summary>
@@ -134,6 +151,10 @@ public sealed unsafe partial class AlloyRenderer
         public int OitOut;
         /// <summary>The shadow terms a lit bind was handed have been said once.</summary>
         public bool ShadowSaid;
+        /// <summary>Binds whose refilled loose block differed from the one already staged this frame, this device,
+        /// and the first one named: its program, the byte that differed and the member holding it.</summary>
+        public int LooseChanges;
+        public string LooseChangeNote = "";
         /// <summary>A CPU multi-draw's index-buffer byte offsets as element indices, per call.</summary>
         public int[] Firsts = new int[4096];
     }
@@ -201,6 +222,7 @@ public sealed unsafe partial class AlloyRenderer
         {
             vk.Destroy(s.Hdr); vk.Destroy(s.Depth); vk.Destroy(s.G0); vk.Destroy(s.G1); vk.Destroy(s.G2); vk.Destroy(s.G3);
             vk.Destroy(s.DepthRead);
+            vk.Destroy(s.React);
             // the deferred dispatch loads and stores the scene colour as an image, so it is a storage image too
             s.Hdr = VkTarget(vk, Format.Rgba16F, w, h, "vk scene colour", ImageUse.Storage | ImageUse.CopySrc);
             s.Depth = VkTarget(vk, Format.D32F, w, h, "vk scene depth", ImageUse.CopySrc);
@@ -208,11 +230,14 @@ public sealed unsafe partial class AlloyRenderer
             s.G1 = VkTarget(vk, Format.Rgba32Ui, w, h, "vk g-buffer 1", alias: AliasLanes.Second);
             s.G2 = VkTarget(vk, Format.Rg32Ui, w, h, "vk g-buffer 2", alias: AliasLanes.Narrow);
             s.G3 = VkTarget(vk, Format.R8, w, h, "vk g-buffer standing water");
+            // cleared once a frame outside any pass, which is a transfer
+            s.React = VkTarget(vk, Format.R8, w, h, "vk reactive mask", ImageUse.CopyDst);
             s.DepthRead = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.D32F, w, h, 1, 1, 1, 1,
                                                        ImageUse.Sampled | ImageUse.CopyDst, "vk scene depth copy"));
             s.W = w; s.H = h;
             s.Snapshot.Remade();
-            if (s.Hdr.IsNull || s.Depth.IsNull || s.G0.IsNull || s.G1.IsNull || s.G2.IsNull || s.G3.IsNull || s.DepthRead.IsNull)
+            if (s.Hdr.IsNull || s.Depth.IsNull || s.G0.IsNull || s.G1.IsNull || s.G2.IsNull || s.G3.IsNull
+                || s.React.IsNull || s.DepthRead.IsNull)
             {
                 s.Failed = true;
                 log.Always($"AlloyRenderer: the Vulkan scene targets at {w}x{h} were REFUSED (logged above)");
@@ -359,8 +384,10 @@ public sealed unsafe partial class AlloyRenderer
         byte[]? vs = VulkanToolchain.Compile(VkBackend.Translate(t.Vs), $"vk {label} vs", ShaderKind.VertexShader, out string ve);
         byte[]? fs = VulkanToolchain.Compile(VkBackend.Translate(t.Fs), $"vk {label} fs", ShaderKind.FragmentShader, out string fe);
         if (vs == null || fs == null) { log.Always($"AlloyRenderer: the Vulkan {label} program did not compile -- {(vs == null ? ve : fe)}"); return null; }
-        var p = new VkProg { Lit = lit, Label = label, Opaques = t.Opaques.ToArray(), Refl = t.Fs.Contains("oReflN", StringComparison.Ordinal) };
+        var p = new VkProg { Lit = lit, Label = label, Opaques = t.Opaques.ToArray(), Refl = t.Fs.Contains("oReflN", StringComparison.Ordinal),
+                          React = t.Fs.Contains("fragReact", StringComparison.Ordinal) };
         p.ReadsEngine = Array.Exists(p.Opaques, o => o.Set == 0 && o.Kind == VkBindKind.UniformBlock && o.Binding == UboSlots.Engine);
+        p.TexBound = Array.Exists(p.Opaques, o => o.Set == 0 && o.Name == "uTex");
         p.Vs = vk.CreateShader(ShaderStage.Vertex, vs, $"vk {label} vs");
         p.Fs = vk.CreateShader(ShaderStage.Fragment, fs, $"vk {label} fs");
         if (p.Vs.IsNull || p.Fs.IsNull) return null;
@@ -381,15 +408,72 @@ public sealed unsafe partial class AlloyRenderer
         return p;
     }
 
-    /// <summary>Capture one program's bind into its loose block -- its terms in the order the issue loop writes
-    /// them -- then the pass block, both appended to the arena, then the bind set. False (logged) when the arena is full.</summary>
+    /// <summary>One program's bind: its loose block refilled, staged into the frame's arena -- or, byte for byte what
+    /// the program's own slice already holds this frame, that slice again -- then the pass block, then the bind set.
+    /// False (logged) when the arena is full.</summary>
     private static bool VkBindProgram(CommandList cl, VkProg p, in Matrix4x4 vp, int* viewport, float near, float far,
                                       BufferId slots, int tex)
     {
         VkColourState s = _vkc;
-        Array.Clear(p.Block);
         int viz = _capturing ? 0 : _lightViz;
         bool lit = p.Lit;
+        // the water stage is not the lit table's, but it takes the pass block's sun, ambient and fog as the lit stage does
+        bool passed = lit || p.Id == VkPrograms.Id.Water;
+        // Every bind refills: the fill reads a free-running clock, the engine's own constant tables and whatever the
+        // bake, the weather and the sky have published since the last bind, and no cheap key holds all of that. The
+        // bytes themselves decide whether the slice already in the arena is this bind's.
+        VkFillLoose(p, in vp, viewport, near, far, viz, lit);
+        int loose = VkLooseStage(p, s);
+        int pass = passed ? VkArenaPass() : -1;
+        if (loose < 0 || (passed && pass < 0) || (p.ReadsEngine && VkEngine() < 0)) return false;
+        VkBindSet(cl, p, s, loose, pass, slots, tex, by: VkBindBy.Colour);
+        return true;
+    }
+
+    /// <summary>The just-filled block of <paramref name="p"/> in the frame's arena: its own slice again when the fill
+    /// landed on the same bytes, else a fresh one. Its offset, or -1 (said by the arena) when the arena is full.</summary>
+    private static int VkLooseStage(VkProg p, VkColourState s)
+    {
+        bool mine = p.LooseAt >= 0 && p.LooseFrame == _frameSeq && p.LooseGen == s.ArenaGen;
+        if (mine && p.Block.AsSpan().SequenceEqual(s.ArenaBytes.AsSpan(p.LooseAt, p.Block.Length)))
+        {
+            VkBindTally.CountReused();
+            return p.LooseAt;
+        }
+        VkBindTally.CountStaged();
+        if (mine) VkLooseChanged(p, s);
+        int at = VkArena(p.Block);
+        p.LooseAt = at;
+        p.LooseFrame = _frameSeq;
+        p.LooseGen = s.ArenaGen;
+        return at;
+    }
+
+    /// <summary>Count a block that came out different inside one frame and, for the first few, name the program, the
+    /// byte that differed and the member it falls in -- the term that moves within a frame, for the period line.</summary>
+    private static void VkLooseChanged(VkProg p, VkColourState s)
+    {
+        if (s.LooseChanges++ >= VkLooseChangeNames) return;
+        ReadOnlySpan<byte> now = p.Block, was = s.ArenaBytes.AsSpan(p.LooseAt, p.Block.Length);
+        int at = 0;
+        while (at < now.Length && now[at] == was[at]) at++;
+        string member = "past its members";
+        foreach (LooseBlock.Member m in p.Members)
+            if (at >= m.Offset && at < m.Offset + m.Bytes) { member = m.Name; break; }
+        s.LooseChangeNote = $"{p.Label} {member} at byte {at}";
+    }
+
+    /// <summary>The period line's clause for the blocks that changed inside a frame: how many, and the first named.</summary>
+    private static string VkLooseNote()
+        => _vkc.LooseChanges == 0 ? "no loose block changed inside a frame"
+           : $"{_vkc.LooseChanges} loose blocks changed inside a frame (first: {_vkc.LooseChangeNote})";
+
+    /// <summary>Program <paramref name="p"/>'s loose block refilled from this bind's state -- its terms in the order
+    /// the issue loop writes them. Hot: one clear, one capture bracket and the program's own setters.</summary>
+    private static void VkFillLoose(VkProg p, in Matrix4x4 vp, int* viewport, float near, float far, int viz, bool lit)
+    {
+        VkColourState s = _vkc;
+        Array.Clear(p.Block);
         LooseBlock.Capture(p.Members, p.Block);
         try
         {
@@ -434,13 +518,6 @@ public sealed unsafe partial class AlloyRenderer
         // the terms whose resources are not on Vulkan yet read as absent: no cube, no lightmap, no sky map, no weather,
         // no fog volume -- every one gates on the value it is zeroed to
         VkShadowSay(p);
-        int loose = VkArena(p.Block);
-        // the water stage is not the lit table's, but it reads the pass block's sun, ambient and fog as the lit stage does
-        bool passed = lit || p.Id == VkPrograms.Id.Water;
-        int pass = passed ? VkArenaPass() : -1;
-        if (loose < 0 || (passed && pass < 0) || (p.ReadsEngine && VkEngine() < 0)) return false;
-        VkBindSet(cl, p, s, loose, pass, slots, tex);
-        return true;
     }
 
     /// <summary>This frame's <c>CxEngine</c> block in the arena, staged at the first program that reads it, its noise
@@ -521,6 +598,17 @@ public sealed unsafe partial class AlloyRenderer
             p.Block.AsSpan(p.Members[i].Offset, Math.Min(p.Members[i].Bytes, p.Block.Length - p.Members[i].Offset)).Clear();
     }
 
+    /// <summary>Rewind the frame's uniform arena, and with it every memo of an offset in it: the pass block, the
+    /// engine block and each program's loose block, which the generation on <see cref="VkProg.LooseGen"/> retires.</summary>
+    private static void VkArenaRewind()
+    {
+        VkColourState s = _vkc;
+        s.ArenaUsed = 0;
+        s.PassAt = -1;
+        s.EngineAt = -1;
+        s.ArenaGen++;
+    }
+
     /// <summary>Append <paramref name="bytes"/> to the frame's arena at the device's alignment; its offset, or -1 (logged) when full.</summary>
     private static int VkArena(ReadOnlySpan<byte> bytes)
     {
@@ -565,8 +653,9 @@ public sealed unsafe partial class AlloyRenderer
     /// <paramref name="storage"/> and <paramref name="sampledOwn"/> are the caller's buffers and images by binding.</summary>
     private static void VkBindSet(CommandList cl, VkProg p, VkColourState s, int loose, int pass, BufferId slots, int tex,
                                   ReadOnlySpan<int> extra = default, ReadOnlySpan<BufferBinding> storage = default,
-                                  ReadOnlySpan<ImageBinding> sampledOwn = default)
+                                  ReadOnlySpan<ImageBinding> sampledOwn = default, VkBindBy by = VkBindBy.Effects)
     {
+        VkBindTally.Count(by);
         Span<BufferBinding> ubo = stackalloc BufferBinding[12];
         Span<BufferBinding> ssbo = stackalloc BufferBinding[16];
         Span<ImageBinding> sampled = stackalloc ImageBinding[48];
@@ -685,20 +774,18 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>The pipeline for program <paramref name="p"/> drawing arena format <paramref name="fmt"/> into
     /// <paramref name="targets"/> under blend <paramref name="blend"/> (0 = off, else 1 + src * 8 + dst over the engine's
-    /// blend-mode indices), made on first ask; <paramref name="rated"/> overrides the pass's own shading-rate verdict,
-    /// as the prewarm asks for both. Null id when the device refused it.</summary>
-    private static PipelineId VkPipeline(VkProg p, int fmt, VkTargets targets, int blend, bool? rated = null)
+    /// blend-mode indices), made on first ask. Null id when the device refused it.</summary>
+    private static PipelineId VkPipeline(VkProg p, int fmt, VkTargets targets, int blend)
     {
         int samples = targets == VkTargets.Cover ? _vkCover.Samples : 1;
-        bool rate = targets is VkTargets.Colour or VkTargets.ColourRefl && (rated ?? !_vkc.Rate.IsNull);
-        long key = fmt | (long)targets << 4 | (long)blend << 8 | (long)samples << 24 | (rate ? 1L << 32 : 0);
+        long key = fmt | (long)targets << 4 | (long)blend << 8 | (long)samples << 24;
         if (p.Pipes.TryGetValue(key, out PipelineId id)) return id;
         VkColourState s = _vkc;
         var d = new PipelineDesc
         {
             Vs = p.Vs, Fs = p.Fs, Layout = s.Layouts[fmt], Topo = Topology.Triangles,
             Raster = new RasterState(CullMode.Back), Depth = new DepthState(true, true, WorldDepth.NearerOrEqual),
-            Label = $"vk {p.Label} {(MeshArena.Fmt)fmt} {targets} blend {blend}{(rate ? " rated" : "")}", ShadingRate = rate, Prewarmed = true,
+            Label = $"vk {p.Label} {(MeshArena.Fmt)fmt} {targets} blend {blend}", Prewarmed = true,
         };
         d.Targets.Depth = Format.D32F;
         d.Targets.Samples = samples;

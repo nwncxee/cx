@@ -44,11 +44,13 @@ internal static partial class VkGlsl
         #version 460 core
         #define CX_BINDLESS 1
         #extension GL_ARB_bindless_texture : require
-        layout(std430, binding = 3) readonly buffer CxTexH { uvec2 uTexH[]; };
-        #define uTex sampler2D(uTexH[(vDraw << 3) + 0])
+        layout(std430, binding = 3) readonly buffer CxTexH { uint uTexH[]; };
+        uvec2 CxTexHandle(uint i) { return uvec2(i, 0u); }
+        #define uTex sampler2D(CxTexHandle(uTexH[(vDraw << 3) + 0]))
+        #define uPal(h) sampler2D(h)
         flat in int vDraw;
         out vec4 frag;
-        void main() { frag = texture(uTex, vec2(0.5)); }
+        void main() { frag = texture(uTex, vec2(0.5)) + texture(uPal(uvec2(2u, 0u)), vec2(0.5)); }
         """;
 
     /// <summary>A block whose std140 offsets were worked out by hand: a 0, b 16 (a vec3 aligns to 16), m 32 (64 bytes),
@@ -74,6 +76,8 @@ internal static partial class VkGlsl
         VkGlsl.BindlessCap = cap;
         Bindless(check, bl);
         Tail(check);
+        VkProgramText viz = VkGlsl.Translate(VizVs, VizFs.Replace("\r\n", "\n"), FixtureUnits);
+        Viz(check, viz);
         Errors(check);
         OpaqueList(check);
         if (Native.Sym(SymbolMap.AppManager) != IntPtr.Zero) { check.Skip("on-device: shaderc compiles nothing at boot in a game session"); return; }
@@ -83,6 +87,11 @@ internal static partial class VkGlsl
         Compiles(check, "the loose fixture", loose);
         Compiles(check, "the bindless fixture", bl);
         Compiles(check, "the push-tail fixture", TailText(TailSound()));
+        var vizSpirv = new Dictionary<ShaderKind, byte[]>();
+        if (Compiles(check, "the viz fixture", viz, vizSpirv)) VizReflects(check, viz, vizSpirv);
+        Compiles(check, "the viz fixture's own-define variant",
+                 VkGlsl.Translate(VizVs, VizFs.Replace("\r\n", "\n").Replace("#version 460 core\n", "#version 460 core\n#define CX_DECAL_WRITE 1\n",
+                                                                             StringComparison.Ordinal), FixtureUnits));
         Layout(check);
         Utf8(check);
         log.Info(check.Ok ? "VkGlsl.SelfCheck: passed" : "VkGlsl.SelfCheck: FAILED");
@@ -116,7 +125,10 @@ internal static partial class VkGlsl
     private static void Bindless(Checker check, VkProgramText r)
     {
         check.Expect(r.Error == null, $"the bindless fixture translates ({r.Error})");
-        check.Expect(r.Fs.Contains("#define uTex cxTex2D[nonuniformEXT(cxTex2DAt((uTexH[(vDraw << 3) + 0]).x))]"), "a handle construction indexes set 1's array by the handle's low word");
+        check.Expect(r.Fs.Contains("#define uTex cxTex2D[nonuniformEXT(cxTex2DAt((CxTexHandle(uTexH[(vDraw << 3) + 0])).x))]"),
+            "a handle construction indexes set 1's array by the handle's low word, through the parentheses of the table's widener");
+        check.Expect(r.Fs.Contains("#define uPal(h) cxTex2D[nonuniformEXT(cxTex2DAt((h).x))]"),
+            "a construction over a uvec2 the stage hands it -- what a content stage writes -- is rewritten the same way");
         check.Expect(r.Fs.Contains("layout(constant_id = 1000) const uint cxBindlessCap = 1u;")
                   && r.Fs.Contains("uint cxTex2DAt(uint i) { return i < cxBindlessCap ? i : 0u; }") && !r.Fs.Contains("11u"),
             "an index past the descriptors the device seats samples the zero texel, the seat count a specialization constant, not text");
@@ -130,7 +142,7 @@ internal static partial class VkGlsl
     /// <summary>The push-tail fixture's staging struct: the two scalars its tail declares and nothing more.</summary>
     private struct TailProbe
     {
-        public int Viz;
+        public int Bias;
         public float Dither;
     }
 
@@ -138,11 +150,11 @@ internal static partial class VkGlsl
 
     private const string TailFs = """
         #version 460 core
-        uniform int uViz;
+        uniform int uBias;
         uniform float uDither;
         uniform vec4 uTint;
         layout(location = 0) out vec4 o;
-        void main() { o = uTint * uDither * float(uViz); }
+        void main() { o = uTint * uDither * float(uBias); }
         """;
 
     /// <summary>The fixture's sound tail: its two scalars, each taking its offset and its filling type from the
@@ -150,7 +162,7 @@ internal static partial class VkGlsl
     private static VkPushTail TailSound()
     {
         var p = new TailProbe();
-        return VkPushTail.Of<TailProbe>(VkPush.Of("int", "uViz", ref p, ref p.Viz),
+        return VkPushTail.Of<TailProbe>(VkPush.Of("int", "uBias", ref p, ref p.Bias),
                                         VkPush.Of("float", "uDither", ref p, ref p.Dither));
     }
 
@@ -163,24 +175,24 @@ internal static partial class VkGlsl
     private static void Tail(Checker check)
     {
         VkPush[] sound = TailSound().All;
-        VkPush viz = sound[0], dither = sound[1];
+        VkPush bias = sound[0], dither = sound[1];
         VkProgramText r = TailText(TailSound());
         check.Expect(r.Error == null, $"a program with a push tail translates ({r.Error})");
-        check.Expect(r.Fs.Contains("int uOitGob; int uViz; float uDither; };", StringComparison.Ordinal),
+        check.Expect(r.Fs.Contains("int uOitGob; int uBias; float uDither; };", StringComparison.Ordinal),
             "the tail's members follow the fixed seven in the one push block");
         check.Expect(r.Loose.Count == 1 && r.Loose[0] == new VkLoose("vec4", "uTint", ""),
             $"a pushed scalar is no loose member: the block is the fixture's one vec4 ({string.Join(", ", r.Loose)})");
         Refused(check, "a tail member that is not a scalar", "uTint",
                 new VkPushTail([new VkPush("vec4", "uTint", 0, typeof(System.Numerics.Vector4))], 16));
-        Refused(check, "a tail member the struct fills with another type", "uViz",
-                new VkPushTail([new VkPush("float", "uViz", 0, typeof(int)), dither], 8));
+        Refused(check, "a tail member the struct fills with another type", "uBias",
+                new VkPushTail([new VkPush("float", "uBias", 0, typeof(int)), dither], 8));
         Refused(check, "a tail member the fixed seven already name", "uSolid",
                 new VkPushTail([new VkPush("int", "uSolid", 0, typeof(int))], 4));
         Refused(check, "a tail that declares a member twice", "twice",
-                new VkPushTail([viz, new VkPush("int", "uViz", 4, typeof(int))], 8));
+                new VkPushTail([bias, new VkPush("int", "uBias", 4, typeof(int))], 8));
         Refused(check, "a tail member whose field is not where the block puts it", "uDither",
-                new VkPushTail([viz, new VkPush("float", "uDither", 8, typeof(float))], 8));
-        Refused(check, "a staging struct that is not the tail's members", "struct", new VkPushTail([viz, dither], 12));
+                new VkPushTail([bias, new VkPush("float", "uDither", 8, typeof(float))], 8));
+        Refused(check, "a staging struct that is not the tail's members", "struct", new VkPushTail([bias, dither], 12));
         var over = new VkPush[26];
         for (int i = 0; i < over.Length; i++) over[i] = new VkPush("float", $"uOver{i}", i * 4, typeof(float));
         Refused(check, "a tail past the push range the layout declares", "past", new VkPushTail(over, over.Length * 4));
@@ -192,6 +204,68 @@ internal static partial class VkGlsl
         VkProgramText r = TailText(tail);
         check.Expect(r.Error != null && r.Error.Contains(names, StringComparison.Ordinal),
             $"{what} is refused, naming it ({r.Error})");
+    }
+
+    private const string VizVs = "#version 460 core\nvoid main() { gl_Position = vec4(0.0); }\n";
+
+    /// <summary>A stage shaped like the lit chain's: the view selector declared as a plain uniform, a term only a view
+    /// reads, a ladder over it, and -- as the decal writer does -- a variant that bakes the selector to 0 itself.</summary>
+    private const string VizFs = """
+        #version 460 core
+        uniform int uViz;
+        uniform vec4 uTint;
+        layout(location = 0) out vec4 frag;
+        #ifdef CX_DECAL_WRITE
+        #define uViz 0
+        #endif
+        void main()
+        {
+            float hot = 0.0;
+            for (int i = 0; i < 4; i++) hot += 1.0;
+            if (uViz == 51) { frag = vec4(hot, 0.0, 0.0, 1.0); return; }
+            frag = uTint;
+        }
+        """;
+
+    /// <summary>The view selector: a block member under a name of its own, a macro over a specialization constant in
+    /// its place, and a stage that defines the name itself undefining the macro first. Oracle: the declarations
+    /// written out here by hand, and off-device shaderc's verdict on both variants of the fixture.</summary>
+    private static void Viz(Checker check, VkProgramText r)
+    {
+        check.Expect(r.Error == null, $"the viz fixture translates ({r.Error})");
+        check.Expect(r.Fs.Contains($"    int {VizMember};\n", StringComparison.Ordinal) && !r.Fs.Contains($"int {VizUniform};", StringComparison.Ordinal),
+            "the block carries the selector under the name the macro reads, not the stage's own");
+        check.Expect(r.Loose.Contains(new VkLoose("int", VizUniform, "")),
+            $"the member is still reported as {VizUniform}, so the host writes it by the name the stage declared");
+        check.Expect(r.Fs.Contains($"layout(constant_id = {VizOnConstant}) const bool {VizOn} = false;\n#define {VizUniform} ({VizOn} ? {VizMember} : 0)\n",
+                                   StringComparison.Ordinal),
+            "the selector is a macro over a specialization constant that is false by default, so the ladder folds out");
+        check.Expect(r.Fs.Contains($"#undef {VizUniform}\n#define {VizUniform} 0", StringComparison.Ordinal),
+            "a stage that bakes the selector to 0 itself undefines the macro first");
+        VkProgramText none = Translate(VizVs, "#version 460 core\nlayout(location = 0) out vec4 frag;\n#define uViz 0\nvoid main() { frag = vec4(float(uViz)); }\n", FixtureUnits);
+        check.Expect(none.Error == null && !none.Fs.Contains(VizOn, StringComparison.Ordinal) && !none.Fs.Contains($"#undef {VizUniform}", StringComparison.Ordinal),
+            $"a program that declares no selector gets neither the constant nor an undef ({none.Error})");
+        VkProgramText cs = TranslateCompute("#version 460\nlayout(local_size_x = 1) in;\nuniform int uViz;\nvoid main() { if (uViz == 1) { } }\n", FixtureUnits);
+        check.Expect(cs.Error != null && cs.Error.Contains(VizUniform, StringComparison.Ordinal),
+            $"a compute stage declaring the selector is refused: it is not in the cache the backend rebuilds ({cs.Error})");
+    }
+
+    /// <summary>The selector's member is found in the compiled module and lands in the capture table under the name
+    /// the stage declared: a host writing it by that name reaches the bytes the block reserves for it. Oracle: the
+    /// module's own reflection, read back by <see cref="VkSpirv"/>.</summary>
+    private static void VizReflects(Checker check, VkProgramText r, Dictionary<ShaderKind, byte[]> spirv)
+    {
+        var l = CX.Graphics.Rhi.LooseBlock.Layout(r, spirv[ShaderKind.VertexShader], spirv[ShaderKind.FragmentShader]);
+        check.Expect(l != null, "the viz fixture's loose block reflects out of its module");
+        if (l is not { } got) return;
+        // the fixture's block by hand: the int at 0, four bytes, the vec4 that follows it aligned to 16
+        int at = Array.FindIndex(got.Members, m => m.Name == VizUniform);
+        int tint = Array.FindIndex(got.Members, m => m.Name == "uTint");
+        check.Expect(at >= 0 && got.Members[at] == new CX.Graphics.Rhi.LooseBlock.Member(VizUniform, 0, 4, 0, true),
+            $"the capture table carries the selector under {VizUniform} at the offset the module gives it, so a host "
+          + $"writes it by the name the stage declared (got {string.Join(", ", got.Members)})");
+        check.Expect(tint >= 0 && got.Members[tint].Offset == 16 && got.Bytes == 32,
+            $"the member beside it keeps its own place, so the rename moved nothing ({string.Join(", ", got.Members)}; {got.Bytes} bytes)");
     }
 
     private static void Errors(Checker check)

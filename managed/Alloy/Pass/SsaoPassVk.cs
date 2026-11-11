@@ -178,6 +178,7 @@ internal static unsafe class SsaoPassVk
         cl.BeginRenderPass(new RenderPassDesc(color));
         cl.SetPipeline(p);
         cl.SetViewport(vp.X, vp.Y, vp.W, vp.H);
+        VkBindTally.Count(VkBindBy.Compute);
         cl.BindSet(0, new BindSet(ubo, default, sampled, default));
         cl.Draw(3);
         cl.EndRenderPass();

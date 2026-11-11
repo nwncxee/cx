@@ -92,6 +92,7 @@ public sealed unsafe partial class AlloyRenderer
                               : o.Name == "uTex" ? new ImageBinding(o.Binding, img, VkTextures.SamplerId((int)tex))
                               : VkSampled(o, c, 0);
         }
+        VkBindTally.Count(VkBindBy.Post);
         side.BindSet(0, new BindSet(ubo[..nu], ssbo[..ns], sampled[..nt], default));
         side.Draw(4, n, 0, 0);
         ReadOnlySpan<ColorAttachment> colors = [new(screen, 0, 0, LoadOp.Load, StoreOp.Store, default)];

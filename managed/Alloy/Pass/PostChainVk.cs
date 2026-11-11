@@ -118,7 +118,7 @@ internal static unsafe class PostChainVk
         ["uSrc"] = TextureSlots.PostHdr, ["uHdr"] = TextureSlots.PostHdr, ["uCur"] = TextureSlots.PostHdr,
         ["uBloom"] = TextureSlots.PostBloom, ["uDepth"] = TextureSlots.PostDepth, ["uOverlay"] = TextureSlots.PostOverlay,
         ["uHist"] = TextureSlots.PostHist, ["uVel"] = TextureSlots.PostVel, ["uMask"] = TextureSlots.PostHdr,
-        ["uCopy"] = TextureSlots.PostCopy, ["uReact"] = TextureSlots.PostReact, ["uWx"] = TextureSlots.PostWx,
+        ["uReact"] = TextureSlots.PostReact, ["uWx"] = TextureSlots.PostWx,
         ["texFBColor"] = TextureSlots.PostHdr, ["texFBDepth"] = TextureSlots.PostDepth,
     };
 
@@ -141,9 +141,10 @@ internal static unsafe class PostChainVk
 
     /// <summary>Bloom, then the resolve of <paramref name="hdr"/> into <paramref name="into"/> at
     /// <paramref name="rect"/>, telling sky from scene by <paramref name="sky"/>, dithered only when it is the frame's last write; <c>/post viz 4</c> paints <paramref name="vel"/>
-    /// instead. False (logged) when a program or target was refused: the frame has no other way to the screen.</summary>
+    /// instead. False (logged) when a program or target was refused: the frame has no other way to the screen.
+    /// <paramref name="load"/> is <see cref="LoadOp.DontCare"/> only where <paramref name="rect"/> is the whole of <paramref name="into"/>: a rect inside a larger target needs the clear for its margin.</summary>
     internal static bool Record(VkBackend vk, CommandList cl, ImageId hdr, SkyInput sky, ImageId into, bool last,
-                                int* viewport, int* rect, ImageId vel, ExtenderLog log)
+                                int* viewport, int* rect, ImageId vel, ExtenderLog log, LoadOp load = LoadOp.Clear)
     {
         if (!Ensure(vk, log)) return false;
         PostVkState s = _s;
@@ -193,7 +194,7 @@ internal static unsafe class PostChainVk
         // push constants are command-buffer state the render pass Draw opens does not reset
         cl.PushConstants(VkGlsl.PushTailAt, System.Runtime.InteropServices.MemoryMarshal.AsBytes(new ReadOnlySpan<ResolvePush>(in push)));
         // the velocity viz rides the bloom input: the two views are exclusive by construction
-        Draw(cl, s.Resolve!, FormatOf(into), Blend.None, into, LoadOp.Clear, new Rect(rect[0], rect[1], rect[2], rect[3]), at,
+        Draw(cl, s.Resolve!, FormatOf(into), Blend.None, into, load, new Rect(rect[0], rect[1], rect[2], rect[3]), at,
              new Inputs(hdr, motion && !vel.IsNull ? vel : bloom ? s.Bloom[0] : default, sky.Image), log);
         cl.EndLabel();
         if (!s.Said)
@@ -329,6 +330,7 @@ internal static unsafe class PostChainVk
     {
         ReadOnlySpan<ImageBinding> sampled = [new(0, src, s.Linear)];
         ReadOnlySpan<ImageBinding> storage = [new(0, dst)];
+        VkBindTally.Count(VkBindBy.Post);
         cl.BindSet(0, new BindSet(default, default, sampled, storage));
         cl.PushConstants(0, System.Runtime.InteropServices.MemoryMarshal.AsBytes(new ReadOnlySpan<BloomPush>(in p)));
         cl.Dispatch((w + s.BloomGroup - 1) / s.BloomGroup, (h + s.BloomGroup - 1) / s.BloomGroup);
@@ -370,6 +372,7 @@ internal static unsafe class PostChainVk
         cl.SetPipeline(pipe);
         cl.SetViewport(vp.X, vp.Y, vp.W, vp.H);
         ReadOnlySpan<BufferBinding> sto = t.Storage.Buffer.IsNull ? default : [t.Storage];
+        VkBindTally.Count(VkBindBy.Post);
         cl.BindSet(0, new BindSet(ubo[..nu], sto, img[..n], sti[..ns]));
         cl.Draw(3);
         cl.EndRenderPass();

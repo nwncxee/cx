@@ -482,6 +482,7 @@ public sealed unsafe partial class AlloyRenderer
                     break;
             }
         }
+        VkBindTally.Count(VkBindBy.Compute);
         cl.BindSet(0, new BindSet(ubo[..nu], ssbo[..ns], sampled[..nt], images[..ni]));
     }
 

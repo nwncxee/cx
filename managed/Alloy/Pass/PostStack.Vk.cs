@@ -166,7 +166,8 @@ internal static unsafe partial class PostStack
             return PostChainVk.Record(vk, cl, hdr, sky, vk.Screen(), true, viewport, display, vel, log);
         }
         int* pair = stackalloc int[4] { 0, 0, s.W, s.H };
-        if (!PostChainVk.Record(vk, cl, hdr, sky, s.A, false, viewport, pair, vel, log)) return false;
+        // the pair is exactly s.W x s.H and the resolve draws all of it, so nothing of the clear would survive
+        if (!PostChainVk.Record(vk, cl, hdr, sky, s.A, false, viewport, pair, vel, log, LoadOp.DontCare)) return false;
         ImageId read = s.A, write = s.B;
         int left = System.Numerics.BitOperations.PopCount((uint)live);
         for (int i = 0; i < _stages.Length; i++)
@@ -193,7 +194,9 @@ internal static unsafe partial class PostStack
             if (i == TaaAt) TaaStage.WriteWxVk(in v.Wx, !wx.IsNull);
             if (aa) SmaaStage.WriteVk(v.Rt);
             int at = PostChainVk.Close(cl, v.P!);
-            PostChainVk.Draw(cl, v.P!, PostChainVk.FormatOf(into), PostChainVk.Blend.None, into, LoadOp.Clear, last ? rect : new Rect(0, 0, s.W, s.H),
+            // the last stage draws the display rect, which may sit inside a larger screen image and needs the
+            // clear for its margin; every earlier one draws the whole of the pair
+            PostChainVk.Draw(cl, v.P!, PostChainVk.FormatOf(into), PostChainVk.Blend.None, into, last ? LoadOp.Clear : LoadOp.DontCare, last ? rect : new Rect(0, 0, s.W, s.H),
                              at, new PostChainVk.Inputs(read, default, depth, hist, Weights: aa ? SmaaStage.VkWeights : default,
                                                         Wx: i == TaaAt ? wx : default), log);
             cl.EndLabel();

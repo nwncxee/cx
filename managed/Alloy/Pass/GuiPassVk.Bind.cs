@@ -42,6 +42,7 @@ internal static unsafe partial class GuiPassVk
                     break;
             }
         }
+        VkBindTally.Count(VkBindBy.Gui);
         side.BindSet(0, new BindSet(ubo[..nu], ssbo[..ns], sampled[..nt], default));
     }
 

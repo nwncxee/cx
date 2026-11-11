@@ -95,6 +95,7 @@ public sealed unsafe partial class AlloyRenderer
         cl.SetPipeline(s.Viz);
         cl.SetViewport(0, 0, c.W, c.H);
         ReadOnlySpan<ImageBinding> tex = [new(0, s.Tex, s.Nearest)];
+        VkBindTally.Count(VkBindBy.Compute);
         cl.BindSet(0, new BindSet(default, default, tex, default));
         cl.Draw(3);
         cl.EndRenderPass();

@@ -9,10 +9,13 @@ invariant gl_Position;
 out vec2 vUV;
 flat out float vAlpha;         // #126: the per-draw alpha multiplier, forwarded rather than re-read
 out vec3 vWorld;               // the sky band's ray
+flat out int vDraw;            // the record slot, which is also what the bindless rewrite samples by
 #include "cx_bone_v.glsl"
 void main()
 {
-    CxDraw d = uDraw[CxSlot(uDrawBase + gl_DrawID)];
+    int id = CxSlot(uDrawBase + gl_DrawID);
+    CxDraw d = uDraw[id];
+    vDraw = id;
     vec4 pos = vec4(aPos, 1.0);
     int bb = CxBoneBase(d);
     if (bb >= 0) pos = CxSkinMat(bb) * vec4(aPos, 1.0);

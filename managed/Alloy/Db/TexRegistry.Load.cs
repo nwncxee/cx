@@ -573,9 +573,9 @@ internal static unsafe partial class TexRegistry
         }
     }
 
-    /// <summary>The anisotropy every linear mipmapped texture gets, whatever Game Options says; sampler creation
-    /// clamps it to the device's ceiling.</summary>
-    internal const int Aniso = 16;
+    /// <summary>The anisotropy every linear mipmapped texture gets: the player's <c>post.aniso</c> level, bound at
+    /// launch because a sampler is minted with its texture. Sampler creation clamps it to the device's ceiling.</summary>
+    internal static int Aniso => Post.Aniso.Boot;
 
     /// <summary>One finished job, uploaded and published, at the frame's own point.</summary>
     private static void Finish(Job j)

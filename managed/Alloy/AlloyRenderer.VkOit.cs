@@ -121,6 +121,7 @@ public sealed unsafe partial class AlloyRenderer
         }
         side.SetPipeline(OitPass.Viz == 0 ? o.Blended : o.Plain);
         side.SetViewport(0, 0, w, h);
+        VkBindTally.Count(VkBindBy.Post);
         side.BindSet(0, new BindSet(ubo[..nu], ssbo[..ns], img[..ni], default));
         side.Draw(3);
         ReadOnlySpan<ImageId> read = [o.Accum, o.Reveal];

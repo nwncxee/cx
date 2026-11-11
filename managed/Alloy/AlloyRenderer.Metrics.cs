@@ -96,6 +96,12 @@ public sealed unsafe partial class AlloyRenderer
                    RecordUploads.Stats(Counters._frames, VkHandoverSeats) + ", " +
                    // CX-43: program switches that took the pass terms, and which of them borrowed a cluster table
                    PassNote() + ", " +
+                   // CX-530: where the frame's descriptor-set binds come from, and how many of the
+                   // colour path's re-staged a loose block instead of reusing the frame's slice.
+                   VkBindTally.Note(Counters._frames) + ", " +
+                   // CX-530: a program whose refilled block differs from the one it staged earlier in the same
+                   // frame, named down to the member -- the term that moves between two binds of one view.
+                   VkLooseNote() + ", " +
                    $"over {Counters._frames} frames, " +
                    // #330: how much of the engine chase the view bounded away, and the poll audit.
                    ChaseNote() + ", " +

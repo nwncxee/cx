@@ -61,7 +61,7 @@ public sealed unsafe partial class CasterPass
         public int BakeWant, BakeSizeWant, BakeSize, BakeCubes;
         /// <summary>The size and layer count each array was made at: a knob change remakes it.</summary>
         public int SunSize, SunLayers, DynSize, DynLayers, CubeSize, CubePages, CubeDynSize, CubeDynPages, SkySize, SkyLayers;
-        public VkCastProg? Plain, Mask, MaskH;
+        public VkCastProg? Plain, Mask;
         /// <summary>The three cut kinds' loose blocks, one after another at the device's alignment.</summary>
         public BufferId Cuts;
         public int CutStride;
@@ -141,9 +141,12 @@ public sealed unsafe partial class CasterPass
         s.Baked = s.Chunks = 0;
         s.GrassStatic = s.GrassDyn = 0;
         if (!CasterGatherVk.Ensure(vk, log)) { s.Failed = true; return false; }
-        // the bounds FIRST: the colour build publishes them after this bracket, so these are the previous frame's
-        // -- which is what the GL bake reads too -- and sizing them here keeps every dispatch below naming a live id
+        // the bounds FIRST: sizing them here keeps every dispatch below naming a live id
         AlloyRenderer.VkRecordCasterBounds(vk, s.Cmds);
+        long n = CasterGatherVk.BoundsStanding ? 0L : CasterGatherVk.NoteNoBounds();
+        if (n > 0)
+            log.Always($"CasterGatherVk: no colour build has published cull bounds yet -- this frame's bake sits out "
+                     + $"and the next one with a published generation has them ({n} such frames this session)");
         return true;
     }
 
@@ -199,18 +202,17 @@ public sealed unsafe partial class CasterPass
         }
         s.Plain = VkCastBuild(vk, CastLayerVs, CastFs, "caster layered depth", log);
         s.Mask = VkCastBuild(vk, CastLayerMaskVs, CastMaskFs, "caster layered masked depth", log);
-        s.MaskH = VkCastBuild(vk, CastLayerMaskHVs, CastMaskHFs, "caster layered handle-masked depth", log);
         s.CutStride = Math.Max(Math.Max(s.Plain?.Bytes ?? 0, s.Mask?.Bytes ?? 0), 16);
         s.CutStride = (s.CutStride + Math.Max(vk.UniformAlign, 16) - 1) & ~(Math.Max(vk.UniformAlign, 16) - 1);
         s.Cuts = vk.CreateBuffer(new BufferDesc((long)s.CutStride * CutKinds, BufferUse.Uniform, MemoryKind.Upload, "caster cut blocks"));
-        if (s.Plain == null || s.Mask == null || s.MaskH == null || s.Cuts.IsNull)
+        if (s.Plain == null || s.Mask == null || s.Cuts.IsNull)
         {
             log.Always("CasterPass: a Vulkan caster depth program or its cut block was REFUSED (logged above) -- no Alloy "
                      + "shadow is baked this session");
             return false;
         }
-        log.Info("CasterPass: the Vulkan caster depth programs are built -- the solid stage, the bound-texture mask and "
-               + "the handle mask, each layered off the view table");
+        log.Info("CasterPass: the Vulkan caster depth programs are built -- the solid stage and the bound-texture "
+               + "mask, each layered off the view table");
         return true;
     }
 
@@ -302,8 +304,28 @@ public sealed unsafe partial class CasterPass
         cl.ReadImages(maps);
     }
 
-    /// <summary>One target's queued views: every stale layer cleared on its own, then one layered pass per chunk over
-    /// the whole array, the stages routing by <c>gl_Layer</c> out of the chunk's view table.</summary>
+    /// <summary>The queued layers folded into ascending contiguous runs, duplicates dropped. Returns the run count;
+    /// -1 = more runs than <paramref name="first"/> holds, which the caller must refuse.</summary>
+    private static int ClearRuns(Span<int> layers, Span<int> first, Span<int> count)
+    {
+        layers.Sort();
+        int runs = 0;
+        for (int i = 0; i < layers.Length; i++)
+        {
+            if (i > 0 && layers[i] == layers[i - 1]) continue;
+            if (runs > 0 && layers[i] == first[runs - 1] + count[runs - 1]) { count[runs - 1]++; continue; }
+            if (runs == first.Length || runs == count.Length) return -1;
+            first[runs] = layers[i];
+            count[runs] = 1;
+            runs++;
+        }
+        return runs;
+    }
+
+    /// <summary>One target's queued views: the stale layers cleared by one transfer clear per contiguous run, then one
+    /// layered pass per chunk over the whole array, the stages routing by <c>gl_Layer</c> out of the chunk's view
+    /// table. A layered attachment clears every layer at once, fresh ones included, so the stale set cannot be a
+    /// pass's own clear -- but it needs as many clears as it has gaps, not one per layer.</summary>
     private static bool VkFlushTarget(VkBackend vk, CommandList cl, CasterMap map, int n, int chunk)
     {
         ImageId img = VkMapOf(map);
@@ -314,13 +336,13 @@ public sealed unsafe partial class CasterPass
         {
             if (_qMap[k] != map) continue;
             size = _qSize[k];
-            // one pass per stale layer, cleared and nothing drawn: a layered attachment clears every layer at once,
-            // fresh ones included, so the per-layer loop here is correctness rather than thrift
-            cl.BeginRenderPass(new RenderPassDesc(default, new DepthAttachment(img, 0, _qLayer[k], LoadOp.Clear, StoreOp.Store, GlDepth.Clear)));
-            cl.EndRenderPass();
-            _vk.Baked++;
-            views++;
+            _clrLayer[views++] = _qLayer[k];
         }
+        int runs = ClearRuns(_clrLayer.AsSpan(0, views), _clrFirst, _clrCount);
+        if (runs < 0) return false;
+        for (int r = 0; r < runs; r++)
+            cl.ClearDepthLayers(new ClearDepthCmd(img, _clrFirst[r], _clrCount[r], GlDepth.Clear));
+        _vk.Baked += views;
         if ((_vk.Said & (1 << (int)map)) == 0)
         {
             _vk.Said |= 1 << (int)map;
@@ -362,8 +384,8 @@ public sealed unsafe partial class CasterPass
             if (BatchIdle(g, sets)) { _mdiSkipped++; continue; }
             int fmt = _gVao[g] - AlloyRenderer.DbVaoBase;
             if ((uint)fmt >= MeshArena.Formats || MeshArena.VkVbo((MeshArena.Fmt)fmt).IsNull) { _mdiSkipped++; continue; }
-            int mode = VkStageOf(g);
-            VkCastProg p = mode == 1 ? s.Mask! : mode == 2 ? s.MaskH! : s.Plain!;
+            int mode = StageOf(g);
+            VkCastProg p = mode == 1 ? s.Mask! : s.Plain!;
             PipelineId want = VkCastPipeline(p, fmt, clamp);
             if (want.IsNull) { _mdiSkipped++; continue; }
             int tex = mode == 1 ? _gTex[g] : 0;
@@ -395,21 +417,6 @@ public sealed unsafe partial class CasterPass
     /// so taking the offset from that table rather than restating it is what keeps the two from drifting. The cut is
     /// the only member a caster depth stage names; the rest stay at the zero no draw here writes.</summary>
     private static int CutPushAt => Array.FindIndex(VkGlsl.Push, x => x.Name == "uAlphaCut") * sizeof(float);
-
-    /// <summary>Batch <paramref name="g"/>'s stage on Vulkan: <see cref="StageOf"/>'s, with a content pair's twin
-    /// falling back to the plain stage of its kind -- the twins are not translated yet, and the fallback casts the
-    /// part unmoved rather than not at all, which is what GL does when a pair's twin did not build.</summary>
-    private static int VkStageOf(int g)
-    {
-        if (_gContent[g] == 0) return StageOf(g);
-        if (!_vk.ContentSaid)
-        {
-            _vk.ContentSaid = true;
-            _log?.Always("CasterPass: a content pair's caster twin is NOT RUN on Vulkan -- its parts cast through the "
-                       + "plain stage, so a stage that moves its vertices casts them unmoved");
-        }
-        return _gH[g] ? 2 : _gTex[g] != 0 ? 1 : 0;
-    }
 
     /// <summary>One program's set 0: the records, bones and handles the vertex stage reads, the chunk's view table,
     /// the cut kind's loose block and the batch's bound mask, each where the program declares it.</summary>
@@ -447,6 +454,7 @@ public sealed unsafe partial class CasterPass
                     break;
             }
         }
+        VkBindTally.Count(VkBindBy.Casters);
         cl.BindSet(0, new BindSet(ubo[..nu], ssbo[..ns], sampled[..nt], default));
     }
 
@@ -457,7 +465,7 @@ public sealed unsafe partial class CasterPass
     {
         var s = _vk;
         if (s.Dev != vk || s.Failed) return true;
-        foreach (VkCastProg? p in (ReadOnlySpan<VkCastProg?>)[s.Plain, s.Mask, s.MaskH])
+        foreach (VkCastProg? p in (ReadOnlySpan<VkCastProg?>)[s.Plain, s.Mask])
         {
             if (p == null) continue;
             for (int f = 0; f < MeshArena.Formats; f++)
@@ -557,7 +565,8 @@ public sealed unsafe partial class CasterPass
         // shared with the async queue, whose fog samples the sun and cube maps -- concurrent sharing in place of an
         // ownership transfer, as the beside G-buffer pass samples them at the same time
         id = s.Dev.CreateImage(new ImageDesc(kind, Format.D32F, size, size, 1, 1, layers, 1,
-                                             ImageUse.DepthTarget | ImageUse.Sampled | ImageUse.Async
+                                             // CopyDst: the stale layers clear as a transfer, not as a pass per layer
+                                             ImageUse.DepthTarget | ImageUse.Sampled | ImageUse.Async | ImageUse.CopyDst
                                              | (copySrc ? ImageUse.CopySrc : ImageUse.None), label));
         if (id.IsNull)
         {

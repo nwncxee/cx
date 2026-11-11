@@ -282,7 +282,7 @@ public sealed unsafe partial class AlloyRenderer
         if (cls != (byte)AlloyClass.Opaque) return cls;
         TexId diffuse = DbTexOf(part, recipe, 0);
         // ponytail: the shadow keeps the solid silhouette -- the caster cut samples the pair texture, whose alpha
-        // is 1; resolve the palette in cx_castmaskcut's handle stage if a ragged cloak's shadow ever matters.
+        // is 1; resolve the palette in cx_castmaskcut if a ragged cloak's shadow ever matters.
         return TexRegistry.KindOf(diffuse) == TexKind.Plt && !DbEnvMapped(part, diffuse) ? (byte)AlloyClass.Cutout : cls;
     }
 
@@ -348,7 +348,7 @@ public sealed unsafe partial class AlloyRenderer
     /// shade to nothing, which look identical on screen -- so this names the model, node, texture asked for,
     /// what the registry did with it, and the terms, for the first few NON-TILE offenders. One-shot per AREA,
     /// so the first area cannot spend the whole budget.</summary>
-    internal static void DbBlackProbe(int part, int recipe, ulong h0)
+    internal static void DbBlackProbe(int part, int recipe, uint h0)
     {
         if (_blackProbed >= BlackProbes || _dbPasses < 300) return;
         DbId po = SceneDb.PartObj[part];

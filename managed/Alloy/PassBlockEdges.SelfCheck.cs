@@ -29,7 +29,7 @@ public sealed unsafe partial class AlloyRenderer
         check.Expect(PassNoteOne().Contains("3 built/frame"), "a cube count that moved inside one frame reused a block staged at the old count");
 
         // the fog's async list runs beside the graphics list that uploaded the first copy, so it may not reuse it
-        _vkc.ArenaUsed = 0; _vkc.PassAt = -1;
+        VkArenaRewind();
         PassBinds2(0, 0, 640, 480, 1);
         int graphics = VkArenaPass();
         int own = _vkc.ArenaUsed;
@@ -37,7 +37,7 @@ public sealed unsafe partial class AlloyRenderer
         int async = VkArenaPass(since: own);
         check.Expect(graphics >= 0 && async >= own, $"the async list reused the copy at {graphics}, below its own upload at {own}");
         check.Expect(VkArenaPass() == async, "a graphics bind after the async list took a third copy");
-        _vkc.ArenaUsed = 0; _vkc.PassAt = -1;
+        VkArenaRewind();
 
         CasterPass.CubeCount = cubesWas;
         FrameInputs.HasAreaAmbient = hasWas; FrameInputs.AreaAmbient = ambWas;

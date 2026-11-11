@@ -89,7 +89,7 @@ public sealed unsafe partial class AlloyRenderer
             if (o.Name == "uCover") coverAt = o.Binding;
         ReadOnlySpan<ImageBinding> own = [new ImageBinding(coverAt, cover, c.Shadow)];
         int fall = kind == 3 ? 0 : VkWxFixtureCount, drips = kind == 3 ? VkWxFixtureCount : 0;
-        c.ArenaUsed = 0; c.PassAt = -1;
+        VkArenaRewind();
         var cl = new CommandList("golden weather", 1 << 16, log);
         // the depth copy the contact fade reads: cleared to the far plane, so nothing stands in front of a drop
         ReadOnlySpan<ColorAttachment> none = [];

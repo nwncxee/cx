@@ -64,12 +64,12 @@ rather than a device verdict, because nothing the player does mid-session can ch
 | 5c | the scene seam did not install (`SeamService.Db` false: the facade self-check or an object/scene factory failed). Alloy draws only the CX scene database, so there is nothing to draw without it | Incapable |
 | 6 | no module loaded — **narrowed by CX-95**: it now means only "there is no world frame". The GUI scenes, the menus included, are Alloy's on their own verdict (`GuiPass.Capturing`: Alloy on for the session, the GUI pass armed and not failed, `alloy.gui` on), and so are the screen clears and the present (`ScreenOwner.Owned`) | Idle |
 | 7 | the render device did not come up (`FramePump.Available`), which `cx.log`'s Vulkan verdict says the reason for. `Available` is set at the first present and never cleared, so this can only answer in the frames before it. The capability question proper is entry 1's | Incapable |
-| 8 | an Alloy program did not build, or the batch path could not arm. Dead as written: nothing sets the flag behind `AlloyRenderer.DrawCapable` any more. A pipeline or shader the backend refuses is a `Fail` (below), not a verdict | Incapable |
-| 9 | the HDR target latched a stand-down (`PostChain.Failed`) | Incapable |
+| 8 | the HDR target latched a stand-down (`PostChain.Failed`) | Incapable |
 
-**Entries 8 and 9 answer here only in principle.** Programs build on first use, which is inside the first
-frame the decision already froze on, so in practice those two flags latch *after* the freeze and reach the
-player as a `Fail` (below) rather than as a verdict.
+**Entry 8 answers here only in principle.** The target arms on first use, which is inside the first
+frame the decision already froze on, so in practice the flag latches *after* the freeze and reaches the
+player as a `Fail` (below) rather than as a verdict. A pipeline or shader the backend refuses is a `Fail`
+too, never a verdict.
 
 **Stock Enhanced Lighting is not a refusal.** Its setting writes both `g_bFullDynamicLighting` and the engine's
 gamma parameter (`GetGlobalShaderParami(0)`), and both only steer engine shaders and `Scene` code the scene
@@ -101,8 +101,8 @@ refused at the window's size, and `MeshArena` when VMA gives it no virtual block
 **Work that cannot be done this frame is not a `Fail`.** The pass sits the frame out, says so in full the
 first time and is counted after that; there is no fallback path that draws it some other way. The GL stream
 ring whose push failures this section used to enumerate went with the GL backend — a Vulkan upload is a copy
-recorded into the frame's list, and a refusal there is the backend's fault counter. Entries 8 and 9 above
-read latches taken on first use, inside the very frame the decision froze on, so nothing re-reads them:
+recorded into the frame's list, and a refusal there is the backend's fault counter. Entry 8 above
+reads a latch taken on first use, inside the very frame the decision froze on, so nothing re-reads it:
 without the `Fail` call a broken pipeline is a permanently bare world with no line in the log.
 
 **A `Fail` does not move the verdict.** There is nothing behind an Alloy frame

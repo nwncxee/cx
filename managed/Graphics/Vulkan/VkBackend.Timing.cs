@@ -27,8 +27,9 @@ internal sealed unsafe partial class VkBackend
     /// the last take: the CPU half of a Vulkan frame that is neither a wait nor Alloy's own recording.</summary>
     private long _translateTicks;
     private int _setN, _setMadeN, _drawN, _translateN;
-    /// <summary>Translation ticks and commands per <see cref="Op"/> since the last take. Each op's time includes the
-    /// clock read that ends it, ~20 ns, so the translation total carries one per command too.</summary>
+    /// <summary>Translation ticks and commands per <see cref="Op"/> since the last take, over the timed recordings only
+    /// -- a list submitted outside a timed frame is in the translation total and not here. Each op's time includes the
+    /// clock read that ends it, ~20 ns, so a timed recording's total carries one per command.</summary>
     private readonly long[] _opTicks = new long[OpCount];
     private readonly int[] _opN = new int[OpCount];
     /// <summary>Buffer-update bytes since the last take, inline and staged, and the worst frame's bytes and translation
@@ -52,6 +53,9 @@ internal sealed unsafe partial class VkBackend
     /// <summary>At slot <paramref name="s"/>'s begin, its last submit finished: bank the pair it wrote, then open a new one.</summary>
     private void TimeBegin(Slot s)
     {
+        // the latch says "this recording is timed", which the per-op table reads; a device that cannot write
+        // timestamps still times the CPU side, so it is set before the pool is consulted
+        _timing = TimeFrame;
         if (_timePool.IsNull) return;
         uint slot = (uint)s.Index;
         if (s.Timed)
@@ -61,7 +65,6 @@ internal sealed unsafe partial class VkBackend
                 _gpuMsSum += (t[1] - t[0]) * _tickNs / 1e6;
             s.Timed = false;
         }
-        _timing = TimeFrame;
         if (!_timing) return;
         _vkd.vkCmdResetQueryPool(_cmd, _timePool, slot * 2, 2);
         _vkd.vkCmdWriteTimestamp(_cmd, VkPipelineStageFlags.TopOfPipe, _timePool, slot * 2);
@@ -158,7 +161,8 @@ internal sealed unsafe partial class VkBackend
 
     /// <summary>The translation counters against hand-made lists, once per device, two frames and a take apart. Oracle:
     /// the byte counts and labels the lists are built from, as literals -- frame one 4,608 inline over two labels and
-    /// 98,304 staged (the worst, 102,912), frame two 256 more; after the take one 256-byte frame alone.</summary>
+    /// 98,304 staged (the worst, 102,912), frame two 256 more; after the take one 256-byte frame alone, then the same
+    /// list with the frame untimed, which the totals hold and the per-op table does not.</summary>
     internal void TallyDeviceCheck(ExtenderLog log)
     {
         var check = new Checker(log, "VkBackend.TallyDeviceCheck");
@@ -179,10 +183,12 @@ internal sealed unsafe partial class VkBackend
             cl.UpdateBuffer(s2, 0, new byte[TallySmall]);
             cl.UpdateBuffer(big, 0, new byte[TallyInline]);
             cl.UpdateBuffer(big, TallyInline, new byte[TallyStaged]);
+            TimeFrame = true;
             check.Expect(Submit(cl), "the first frame's list submits");
             FrameTimed();
             cl.Reset();
             cl.UpdateBuffer(s1, 0, new byte[TallySmall]);
+            TimeFrame = true;
             check.Expect(Submit(cl), "the second frame's list submits");
             FrameTimed();
             List<UploadTop> top = TakeUploads(out long inl, out long st, out long peak);
@@ -200,6 +206,7 @@ internal sealed unsafe partial class VkBackend
                 $"the ops' times are parts of the translation's, and one frame's is some of it, not all ({parts:F4} and {peakMs:F4} of {whole:F4} ms)");
             cl.Reset();
             cl.UpdateBuffer(s1, 0, new byte[TallySmall]);
+            TimeFrame = true;
             check.Expect(Submit(cl), "the list after the take submits");
             FrameTimed();
             top = TakeUploads(out inl, out st, out peak);
@@ -208,6 +215,17 @@ internal sealed unsafe partial class VkBackend
             check.Expect(inl == 256 && st == 0 && peak == 256 && peakMs > 0 && top.Count == 1 && top[0] == new UploadTop("tally check small", 256, 1)
                       && ops[(int)Op.UpdateBuffer].N == 1,
                 $"a take starts the next period from zero: one 256-byte update is all it holds, its frame the worst (got {inl}, {st}, {peak}, {peakMs:F4} ms, {string.Join(", ", top)}, {ops[(int)Op.UpdateBuffer].N} ops)");
+            cl.Reset();
+            cl.UpdateBuffer(s1, 0, new byte[TallySmall]);
+            check.Expect(Submit(cl), "the untimed list submits");
+            FrameTimed();
+            top = TakeUploads(out inl, out _, out _);
+            TakeOps(ops, out _);
+            whole = TakeTranslateMs(out _, out _, out _, out _, out int lists, out _);
+            check.Expect(ops[(int)Op.UpdateBuffer].N == 0 && whole > 0 && lists == 1 && inl == 256
+                      && top.Count == 1 && top[0] == new UploadTop("tally check small", 256, 1),
+                $"a list outside a timed frame is counted and timed whole, with no per-op clock read: no ops, one list "
+              + $"of 256 bytes in {whole:F4} ms (got {ops[(int)Op.UpdateBuffer].N} ops, {lists} list(s), {inl} bytes, {string.Join(", ", top)})");
             TakeGpuMs(out _);
         }
         Destroy(s1); Destroy(s2); Destroy(big);
@@ -215,5 +233,5 @@ internal sealed unsafe partial class VkBackend
     }
 
     /// <summary>One counter per <see cref="Op"/>: the enum is contiguous from 0, and the check pins this to its length.</summary>
-    internal const int OpCount = (int)Op.DepthOfField + 1;
+    internal const int OpCount = (int)Op.ClearDepthLayers + 1;
 }

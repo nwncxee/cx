@@ -81,7 +81,9 @@ while [ $# -gt 0 ]; do
         --showcase-late) SHOWCASE_LATE="$2"; shift 2 ;;
         # The client's UI scale (settings.tml ui.scale, 1.0 to 8.0), for a run that checks a layout at another scale.
         --ui-scale)      UI_SCALE="$2"; shift 2 ;;
-        # The anisotropic filtering mode (settings.tml, 1 2 4 8 16), for a run that compares texture filtering.
+        # The anisotropic filtering mode (1 2 4 8 16), for a run that compares texture filtering. Written both to
+        # settings.tml, for a stock-renderer session, and to cx.cfg as post.aniso, which is what Alloy's own
+        # samplers read -- a flag that reached only one of the two compared identical frames.
         --aniso)         ANISO="$2"; shift 2 ;;
         # The main menu is the one screen +TestNewModule skips, and it is a GUI session of its own:
         # its own scenes, its own panel models, its own fonts. Nothing else about the run changes.
@@ -273,6 +275,8 @@ fi
 # general.logs=1 is not a nicety: every marker this harness grades on is a CX log line.
 {
     echo "general.logs=1"
+    # --aniso is Alloy's sampler level too, not only the engine's option; an explicit --cfg line after it wins.
+    [ -n "$ANISO" ] && echo "post.aniso=$ANISO"
     for l in ${CFG_LINES+"${CFG_LINES[@]}"}; do echo "$l"; done
 } > "$USER_DIR/cx.cfg"
 

@@ -36,6 +36,10 @@ public sealed unsafe partial class CasterPass
     /// per-view term is -- so the layered and per-view paths pick the same level for the same caster.</summary>
     private static readonly float[] _qLodR1 = new float[MaxBakeViews], _qLodR2 = new float[MaxBakeViews];
     private static int _qN;
+    /// <summary>One target's stale layers, and the ascending contiguous runs they fold into: the scratch
+    /// <see cref="ClearRuns"/> works in, so the per-target flush allocates nothing.</summary>
+    private static readonly int[] _clrLayer = new int[MaxBakeViews], _clrFirst = new int[MaxBakeViews],
+                                 _clrCount = new int[MaxBakeViews];
     /// <summary>One chunk's staged view table.</summary>
     private static readonly CasterViewRec[] _viewStage = new CasterViewRec[MaxBakeViews];
     private static long _layerFlushFails;

@@ -120,6 +120,9 @@ alloy\.(backend|renderthread|rhiimmediate|gpumeter)\b	CX-313
 # built, the per-view fallback its extension probe chose, and the GL-vs-Vulkan bake reading. Vulkan bakes every view.
 \bshadow\.(layered|maskh)\b|\bHandleMaskReady\b|\bEnsureHandleMask\b|\bDepthArray\b|\bFboChecked\b	GL sweep 4
 \bCasterPass\.(CascadeTex|SunDynTex|CubeTex|CubeDynTex)\b|\bVkProbeAgainstGl\b|\bBindSunMaps\b|\bBindCubeMaps\b	GL sweep 4
+# ...and the handle-sampled mask stage itself, whose batch key flag no frame ever set: its program was built every
+# session, bound by nothing, and a failure to build it stood the whole caster pass down.
+\bcx_castmaskh_f\b|\bCastMaskHFs?\b|\bCastMaskHVs\b|\bCastLayerMaskHVs\b|\bCX_CAST_HANDLE\b|\bRecordHandle0\b	CX-530
 # The per-pixel linked-list transparency mode (alloy.oit 2) and the two SSBO points its head table and node pool
 # claimed: nothing allocated them and the resolve never selected them. The weighted pair is the one composite.
 \bOitHeads\b|\bOitNodes\b|\bCxOitHeads\b|\bCxOitNodes\b|per-pixel linked lists	GL sweep 4
@@ -276,3 +279,13 @@ grass\.(aniso|soften)\b|\bGrass\.(Aniso|Soften)\b|\bSampFlat\b|\bSampMip\b	CX-31
 # The chain builder's own name for an RGBA8 texel. One layout, one declaration: CX.Alloy.Rgba8 is the
 # record every raster the engine hands over reinterprets into, and the chain lays its texels out the same way.
 \bMipChain\.Texel\b	CX-467
+# Variable-rate shading: the knobs, the contrast stage and the backend's whole shading-rate path.
+# Alloy shades every pixel. VkRateState/VkRatePush were its lifetime owner and push block, RateTexel
+# the tile size it asked the device for.
+alloy\.vrs(contrast)?\b|\bcx_vrs_cs\b|\bVkRate(State|Push)?\b|\bRateTexel\b|\bShadingRateTexel\b|\bShadingRateCmd\b|\bSetShadingRate\b|ImageUse\.ShadingRate\b|\bRateSupport\b	CX-530
+# The full-screen stage that measured the reactive mask by diffing the scene colour against a copy of it, and
+# the copy's own sampler. The four effect passes write their coverage into the mask as they draw now
+# (cx_reactive.glsl), so there is no copy to diff and no stage to override.
+\bcx_reactive_f\b|\bCxReactiveMask\b|\bReactiveFs\b|\buCopy\b|\bPostCopy\b	CX-530
+# The anisotropic filtering level moved beside the anti-aliasing rows, so its key is post.aniso.
+alloy\.aniso\b	CX-530

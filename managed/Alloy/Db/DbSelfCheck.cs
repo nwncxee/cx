@@ -185,7 +185,7 @@ internal static class DbSelfCheck
     /// value typed here, landed through the registry as an arrival lands, and read back off the record.</summary>
     private static bool StagedHandle()
     {
-        const ulong Resident = 0xC0FFEE05u;   // not-an-offset: a stand-in handle value, never dereferenced
+        const uint Resident = 0xC0FFEE05u;   // not-an-offset: a stand-in handle value, never dereferenced
         Reset();
         var model = Model("stagedh", new[] { -1, 0 }, new[] { NodeKind.Dummy, NodeKind.TriMesh },
                           new MeshDef?[] { null, Quad("cx_sc_stagedh") });

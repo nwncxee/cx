@@ -370,8 +370,4 @@ public sealed unsafe partial class AlloyRenderer
         // _oTri below is a sentinel that would fault if this diagnostic dereferenced it.
         live = _oDbPart[slot] >= 0 ? SceneDb.PartWorld[_oDbPart[slot]].Translation : Vector3.Zero;
     }
-
-    /// <summary>The slot's diffuse handle as the block holds it; 0 = never minted (unlit, unmerged, or
-    /// refused), which a sampler reads as black.</summary>
-    internal static ulong RecordHandle0(int slot) => _dTexH[slot][0];
 }

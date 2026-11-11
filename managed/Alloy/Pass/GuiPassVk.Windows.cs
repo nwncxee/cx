@@ -153,6 +153,7 @@ internal static unsafe partial class GuiPassVk
                 };
                 img[nt++] = t with { Slot = o.Binding };
             }
+            VkBindTally.Count(VkBindBy.Gui);
             side.BindSet(0, new BindSet(ubo, default, img[..nt], default));
             side.Draw(c.Count, 1, c.First, 0);
             s.Drawn++;

@@ -12,16 +12,16 @@ namespace CX.Alloy;
 /// <see cref="VkGlsl"/>. Built without GL: Vulkan always takes the bindless path and the sky-visibility unit.</summary>
 internal static class VkPrograms
 {
-    /// <summary>The programs the Vulkan passes draw through. Those past <see cref="Id.DepthFeat"/> are not among
+    /// <summary>The programs the Vulkan passes draw through. Those past <see cref="Id.SkyDome"/> are not among
     /// <see cref="All"/>: each is optional, built at its own pass's first frame, and a refusal stands
     /// that pass down rather than failing the frame.</summary>
     internal enum Id
     {
-        Fullbright, Lit, LitDeferred, Depth, DepthKey, DepthFeat, Decal, Water, HighlightMask, Motion, Grass, GrassBlade,
-        GrassDepth, GrassBladeDepth, GrassMotion, GrassBladeMotion,
+        Fullbright, Lit, LitDeferred, Depth, DepthKey, DepthFeat, SkyDome, Decal, Water, HighlightMask, Motion, Grass,
+        GrassBlade, GrassDepth, GrassBladeDepth, GrassMotion, GrassBladeMotion,
     }
 
-    internal static readonly Id[] All = [Id.Fullbright, Id.Lit, Id.LitDeferred, Id.Depth, Id.DepthKey, Id.DepthFeat];
+    internal static readonly Id[] All = [Id.Fullbright, Id.Lit, Id.LitDeferred, Id.Depth, Id.DepthKey, Id.DepthFeat, Id.SkyDome];
 
     /// <summary>The binding each sampler these stages declare without a <c>layout(binding)</c> takes -- the one
     /// table for them: a declaration it does not name is a translation error, not a silent unit 0.</summary>
@@ -78,11 +78,15 @@ internal static class VkPrograms
         string what = $"VkPrograms {id}";
         switch (id)
         {
-            case Id.Fullbright:
+            case Id.Fullbright or Id.SkyDome:
             {
                 ShaderTexts.Pair(AlloyRenderer.ShdFullbrightVs, ShaderStages.Source(AlloyRenderer.ShdFullbrightVs),
                                 AlloyRenderer.ShdFullbrightFs, ShaderStages.Source(AlloyRenderer.ShdFullbrightFs),
                                 log, what, out string v, out string f);
+                // The world's unlit class samples its diffuse by handle, so one multidraw spans every texture in
+                // it. The sky dome does not: its records live in the reserved block, which carries no handle row,
+                // so its own program keeps the bound declaration and takes the unit the pass binds.
+                if (id == Id.Fullbright) f = AlloyRenderer.BindlessFs(v, f);
                 return (Final(v, log, what, true), Final(f, log, what, true));
             }
             case Id.Lit or Id.LitDeferred or Id.Decal:
@@ -121,7 +125,7 @@ internal static class VkPrograms
             default:
             {
                 (string v, _) = LitTexts(log, what);
-                string f = AlloyRenderer.BindlessFs(AlloyRenderer.DepthFeatFs);
+                string f = AlloyRenderer.BindlessFs(v, AlloyRenderer.DepthFeatFs);
                 return (Final(ShaderSource.Content(v, log), log, what, true), Final(ShaderSource.Content(f, log), log, what, true));
             }
         }
@@ -191,10 +195,13 @@ internal static class VkPrograms
     /// its twins start from.</summary>
     private static (string Vs, string Fs) LitTexts(ExtenderLog? log, string what)
     {
-        string fs = AlloyRenderer.BindlessFs(ShaderStages.Source(AlloyRenderer.ShdLitFs));
-        ShaderTexts.Pair(AlloyRenderer.ShdLitVs, ShaderStages.Source(AlloyRenderer.ShdLitVs), AlloyRenderer.ShdLitFs, fs,
-                        log, what, out string v, out string f);
-        return (v, f);
+        // the pair FIRST: the bindless rewrite is a fact about both halves, so the fragment it rewrites is the
+        // embedded one and only when no override won either stage -- an override vertex that writes no vDraw
+        // would otherwise leave the rewritten fragment sampling by an index nothing wrote
+        bool plain = ShaderTexts.Pair(AlloyRenderer.ShdLitVs, ShaderStages.Source(AlloyRenderer.ShdLitVs),
+                                     AlloyRenderer.ShdLitFs, ShaderStages.Source(AlloyRenderer.ShdLitFs),
+                                     log, what, out string v, out string f);
+        return (v, plain ? AlloyRenderer.BindlessFs(v, f) : f);
     }
 
     /// <summary>A stage's compile-time text: the vanilla splice, then the sizing tokens, as GL's compile makes it.</summary>

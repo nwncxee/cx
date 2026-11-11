@@ -11,8 +11,8 @@ namespace CX.Alloy;
 /// <summary>
 /// <see cref="CasterGather"/> on Vulkan: the same two compute stages over the same staged records and the same
 /// bounds, recorded into the shadow bracket's command list. Both dispatches read the <c>CxGather</c> block
-/// <see cref="GatherBlock"/> stages, and both sphere buffers are this port's own -- the shadow bracket runs ahead
-/// of the colour build, so nothing is shared with the Vulkan cull's.
+/// <see cref="GatherBlock"/> stages. The geometric caster bounds are this port's own; the colour-cull bounds are
+/// the generation the previous build published, the bracket running ahead of this build's.
 /// </summary>
 internal static unsafe partial class CasterGatherVk
 {
@@ -25,8 +25,11 @@ internal static unsafe partial class CasterGatherVk
         public PipelineId Prog, LayerProg;
         /// <summary>The pipelines did not build or the on-device check disagreed: the bake stands down, loudly.</summary>
         public bool Failed;
-        public BufferId Ubo, Src, DynSrc, ViewTbl, Cull, Cast;
-        public long SrcCap, DynSrcCap, ViewCap, CullCap, CastCap;
+        public BufferId Ubo, Src, DynSrc, ViewTbl, Cast;
+        public long SrcCap, DynSrcCap, ViewCap, CastCap;
+        /// <summary>Bakes that sat out for want of any published bounds generation, and the count the last
+        /// line said.</summary>
+        public long NoBounds, NoBoundsSaid;
         /// <summary>Command/count pairs rotated per view, <see cref="CasterGather.Rotation"/>'s argument.</summary>
         public readonly BufferId[] Cmd = new BufferId[Rotation], Cnt = new BufferId[Rotation],
                                    LyCmd = new BufferId[Rotation], LyCnt = new BufferId[Rotation];
@@ -69,6 +72,11 @@ internal static unsafe partial class CasterGatherVk
     /// <summary>The view table the layered depth stages read their fit matrix and layer out of.</summary>
     internal static BufferId Views => _s.ViewTbl;
 
+    /// <summary>The caster cull's own fixture on a device with no game behind it, for the goldens: the same build and
+    /// the same <see cref="DeviceCheck"/> a session runs at its first bake, on <paramref name="vk"/>.</summary>
+    internal static void GoldenCheck(VkBackend vk, Checker check, ExtenderLog log)
+        => check.Expect(Ensure(vk, log), "the caster cull builds on this device and its fixture agrees with the reference list");
+
     /// <summary>The device's pipelines and constant resources, then the on-device check, once per device. False
     /// (logged) when the device refused one: the caller stands the whole bake down.</summary>
     internal static bool Ensure(VkBackend vk, ExtenderLog log)
@@ -96,20 +104,38 @@ internal static unsafe partial class CasterGatherVk
         return true;
     }
 
-    /// <summary>The frame's bounds into this port's own pair of sphere buffers: the colour cull's spheres, which
-    /// the cull test reads, and the caster pass's geometric ones, which stand in wherever the colour cull exempted
-    /// a bound. Recorded by the colour frame, ahead of the bake that reads them.</summary>
-    internal static void RecordSpheres(VkBackend vk, CommandList cl, Sphere* cull, Sphere* cast, int slots)
+    /// <summary>The frame's geometric caster bounds into this port's own buffer: they stand in wherever the colour
+    /// cull exempted a bound. The colour cull's own spheres are NOT copied here -- the bake binds
+    /// <see cref="CullPassVk.PublishedSpheres"/>, the generation the previous colour build published, which is the
+    /// frame-behind bound the GL bake reads too.</summary>
+    internal static void RecordSpheres(VkBackend vk, CommandList cl, Sphere* cast, int slots)
     {
         if (slots <= 0) return;
         var s = _s;
         long bytes = (long)slots * sizeof(Sphere);
-        Grow(vk, ref s.Cull, ref s.CullCap, bytes, BufferUse.Storage, "gather cull bounds");
         Grow(vk, ref s.Cast, ref s.CastCap, bytes, BufferUse.Storage, "gather caster bounds");
-        if (s.Cull.IsNull || s.Cast.IsNull) return;
-        cl.UpdateBuffer(s.Cull, 0, Native.Records(cull, slots));
+        if (s.Cast.IsNull) return;
         cl.UpdateBuffer(s.Cast, 0, Native.Records(cast, slots));
     }
+
+    /// <summary>There is a published colour-cull generation to bind. A generation SHORTER than this frame's
+    /// slot count still stands: the dispatches take its length and leave a slot above it exempt from the cull,
+    /// so a frame whose ownership table grew bakes rather than sitting out.</summary>
+    internal static bool BoundsStanding => !CullPassVk.PublishedSpheres.IsNull;
+
+    /// <summary>Count a bake that sat out for want of any published bounds generation, and say so at the first
+    /// one and then once per <see cref="NoBoundsEvery"/>: the n-th, so a run of them cannot read as one.
+    /// 0 = say nothing this frame.</summary>
+    internal static long NoteNoBounds()
+    {
+        long n = ++_s.NoBounds;
+        if (n != 1 && n - _s.NoBoundsSaid < NoBoundsEvery) return 0;
+        _s.NoBoundsSaid = n;
+        return n;
+    }
+
+    /// <summary>Frames between two lines about the want of bounds -- ten seconds of a 60 Hz session.</summary>
+    private const int NoBoundsEvery = 600;
 
     /// <summary>Publish one frame's staging into <paramref name="cl"/>:
     /// the source buffer is persistent and a frame whose caller reports no changed bytes sends nothing.</summary>
@@ -119,7 +145,7 @@ internal static unsafe partial class CasterGatherVk
         s.DrawN = 0;
         s.SrcDirty |= changed;
         if (drawN <= 0 || groups <= 0) return false;
-        if (s.Cull.IsNull || s.Cast.IsNull) return false;   // no colour build yet: no bounds to cull against
+        if (!BoundsStanding || s.Cast.IsNull) return false;   // no published generation yet: nothing to cull against
         long bytes = (long)drawN * sizeof(CasterSrcRec);
         bool grow = bytes > s.SrcCap;
         Grow(vk, ref s.Src, ref s.SrcCap, bytes, BufferUse.Storage, "gather source");
@@ -173,8 +199,8 @@ internal static unsafe partial class CasterGatherVk
         bool dyn = dynSrc && DynamicReady;
         int drawN = dyn ? s.DynDrawN : s.DrawN;
         if (dyn) CasterGather.DynDispatches++;
-        CasterGather.View(ref s.Block, drawN, s.Groups, focus, dir, reach, along, point, lodR1, lodR2, set, receiver,
-                          CasterGather.Mode != 0 ? 1 : 0);
+        CasterGather.View(ref s.Block, drawN, s.Groups, CullPassVk.PublishedSphereSlots, focus, dir, reach, along,
+                          point, lodR1, lodR2, set, receiver, CasterGather.Mode != 0 ? 1 : 0);
         cl.ZeroBuffer(s.Cnt[s.At], 0, CountBytes(s.Groups));
         Block(cl);
         cl.SetPipeline(s.Prog);
@@ -190,7 +216,7 @@ internal static unsafe partial class CasterGatherVk
                                       int maxViews = 0, int cull = -1)
     {
         var s = _s;
-        if (s.LayerProg.IsNull || s.DrawN <= 0 || viewN <= 0 || s.Cull.IsNull || s.Cast.IsNull) return false;
+        if (s.LayerProg.IsNull || s.DrawN <= 0 || viewN <= 0 || !BoundsStanding || s.Cast.IsNull) return false;
         bool dyn = dynSrc && DynamicReady;
         int srcN = dyn ? s.DynDrawN : s.DrawN;
         if (dyn) CasterGather.DynDispatches++;
@@ -215,7 +241,8 @@ internal static unsafe partial class CasterGatherVk
         }
         if (growCmd) s.LyCmdCap = cmds;
         if (growCnt) s.LyCntCap = s.Groups;
-        CasterGather.Layer(ref s.Block, srcN, viewN, s.Groups, cull >= 0 ? cull : CasterGather.Mode != 0 ? 1 : 0);
+        CasterGather.Layer(ref s.Block, srcN, viewN, s.Groups, CullPassVk.PublishedSphereSlots,
+                           cull >= 0 ? cull : CasterGather.Mode != 0 ? 1 : 0);
         cl.ZeroBuffer(s.LyCnt[s.LyAt], 0, CountBytes(s.Groups));
         Block(cl);
         cl.SetPipeline(s.LayerProg);
@@ -244,17 +271,20 @@ internal static unsafe partial class CasterGatherVk
         {
             ReadOnlySpan<BufferBinding> plain =
             [
-                new(CasterGather.BindSrc, src), new(CullPass.BindSphere, s.Cull), new(CasterGather.BindCast, s.Cast),
-                new(CasterGather.BindCmd, cmd), new(CasterGather.BindCount, cnt),
+                new(CasterGather.BindSrc, src), new(CullPass.BindSphere, CullPassVk.PublishedSpheres),
+                new(CasterGather.BindCast, s.Cast), new(CasterGather.BindCmd, cmd), new(CasterGather.BindCount, cnt),
             ];
+            VkBindTally.Count(VkBindBy.Casters);
             cl.BindSet(0, new BindSet(ubo, plain, default, default));
             return;
         }
         ReadOnlySpan<BufferBinding> layered =
         [
-            new(CasterGather.BindSrc, src), new(CullPass.BindSphere, s.Cull), new(CasterGather.BindCast, s.Cast),
-            new(CasterGather.BindCmd, cmd), new(CasterGather.BindCount, cnt), new(CasterGather.BindView, views),
+            new(CasterGather.BindSrc, src), new(CullPass.BindSphere, CullPassVk.PublishedSpheres),
+            new(CasterGather.BindCast, s.Cast), new(CasterGather.BindCmd, cmd), new(CasterGather.BindCount, cnt),
+            new(CasterGather.BindView, views),
         ];
+        VkBindTally.Count(VkBindBy.Casters);
         cl.BindSet(0, new BindSet(ubo, layered, default, default));
     }
 

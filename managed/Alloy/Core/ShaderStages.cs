@@ -175,7 +175,7 @@ internal static class ShaderStages
                 n++;
             }
             File.WriteAllText(Path.Combine(dir, BindlessRef + ".shd"),
-                              BindlessNote + AlloyRenderer.BindlessFs(Source(AlloyRenderer.ShdLitFs)));
+                              BindlessNote + AlloyRenderer.BindlessFs(Source(AlloyRenderer.ShdLitVs), Source(AlloyRenderer.ShdLitFs)));
             n++;
             log?.Info($"ShaderStages: dumped {n} stages to {dir}");
             return n;

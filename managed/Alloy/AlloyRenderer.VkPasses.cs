@@ -44,11 +44,8 @@ public sealed unsafe partial class AlloyRenderer
         if (!VkEnsure(vk, w, h, log)) return false;
         VkPrewarm(vk, log);
         VkColourState s = _vkc;
-        s.ArenaUsed = 0;
-        s.PassAt = -1;
-        s.EngineAt = -1;
+        VkArenaRewind();
         s.Drawn = s.Skipped = 0;
-        s.Effects = false;
         s.Snapshot.BeginFrame();
         cl.BeginLabel("uploads"u8);
         if (!VkUploads(vk, cl)) return false;
@@ -121,22 +118,17 @@ public sealed unsafe partial class AlloyRenderer
         cl.EndLabel();
 
         cl.BeginLabel("G-buffer"u8);
-        s.Rate = gbuf ? VkRateImage(vk, cl, w, h, log) : default;
         CommandList side = s.Side!;
         side.Reset();
         int arena0 = s.ArenaUsed;
         var b = new VkBound { Fmt = -1, Tex = -1 };
         VkPassStart(side, w, h);
-        // the opaque class alone shades at the tile rates: a coarse alpha test would cut whole 2x2 blocks
-        bool rated = !s.Rate.IsNull && Renderer.Vrs.V && !_capturing;
-        side.SetShadingRate(rated);
         // the record is this frame's deferred walk's, which runs after these draws; a resize remakes it there
         _vkdef.Wrote = false;
         VkHandOverReads(cl, s);
         bool ok = true;
         var plain = new VkRange(_depthEqual, true, false, false, colour, gbuf, VkDecalFold);
         ok &= VkIssueClass(side, ref b, 0, _gCutoutStart, plain, vp, viewport, near, far, indirect);
-        side.SetShadingRate(false);
         ok &= VkIssueClass(side, ref b, _gCutoutStart, _gA2cStart, plain, vp, viewport, near, far, indirect);
         // the coverage tail waits for its layer whenever one arms; otherwise it draws here, cut
         bool cover = VkCoverArm(vk, vp, viewport, log);
@@ -160,9 +152,7 @@ public sealed unsafe partial class AlloyRenderer
             colors[GbufFirst + 3] = new ColorAttachment(s.G3, 0, 0, LoadOp.Clear, StoreOp.Store, default);
             if (refl) VkSsrAttachments(colors);
         }
-        VkFlushPass(cl, side, arena0, new RenderPassDesc(colors[..n], new DepthAttachment(s.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear))
-                                     { ShadingRate = s.Rate });
-        s.Rate = default;
+        VkFlushPass(cl, side, arena0, new RenderPassDesc(colors[..n], new DepthAttachment(s.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear)));
         cl.EndLabel();
 
         // the sky after the G-buffer writers rather than between them as GL's graph has it: the dome draws only
@@ -255,10 +245,9 @@ public sealed unsafe partial class AlloyRenderer
             cl.EndLabel();
         }
 
-        // the four passes the reactive mask covers: the colour they start from is copied here and the change they
-        // made measured once they are all down
-        cl.BeginLabel("reactive copy"u8);
-        VkReactiveCopy(vk, cl, s, log);
+        // the four passes the reactive mask covers write their own coverage into it as they draw, so it starts at zero
+        cl.BeginLabel("reactive clear"u8);
+        VkReactiveBegin(cl, s, log);
         cl.EndLabel();
         cl.BeginLabel("beams"u8);
         if (!VkBeamPass(vk, cl, s, view, proj, viewport, log)) return false;
@@ -271,9 +260,6 @@ public sealed unsafe partial class AlloyRenderer
         cl.EndLabel();
         cl.BeginLabel("weather"u8);
         if (!VkWeatherPass(vk, cl, s, view, proj, viewport, near, far, lightingOn, log)) return false;
-        cl.EndLabel();
-        cl.BeginLabel("reactive mask"u8);
-        VkReactiveWrite(cl, s, log);
         cl.EndLabel();
         cl.BeginLabel("highlight mask"u8);
         if (!VkHighlightMask(vk, cl, s, vp, viewport, near, far, groups, log)) return false;
@@ -290,9 +276,6 @@ public sealed unsafe partial class AlloyRenderer
         VkHighlightComposite(cl, screen, display, log);
         if (!VkGlowPass(vk, cl, s, screen, view, proj, display, log)) return false;
         TriggerHighlight.DrawVk(vk, cl, screen, s.Depth, vp, display, log);
-        cl.EndLabel();
-        cl.BeginLabel("shading rate"u8);
-        VkRatePass(cl, s.Hdr, rated);
         cl.EndLabel();
         // the probe last: this frame's lit stages read the cube as it stood, and its faces reuse the frame's side list
         cl.BeginLabel("probe"u8);
@@ -358,8 +341,8 @@ public sealed unsafe partial class AlloyRenderer
         {
             vk.Destroy(s.Records); vk.Destroy(s.TexH);
             s.Records = vk.CreateBuffer(new BufferDesc((long)cap * DrawFloats * sizeof(float), BufferUse.Storage, MemoryKind.Upload, "vk draw records"));
-            s.TexH = vk.CreateBuffer(new BufferDesc((long)cap * TexHandles.MaterialSlots * 8, BufferUse.Storage, MemoryKind.Upload, "vk handle table"));
-            s.TexHTable = new uint[cap * TexHandles.MaterialSlots * 2];
+            s.TexH = vk.CreateBuffer(new BufferDesc((long)cap * TexHandles.MaterialSlots * sizeof(uint), BufferUse.Storage, MemoryKind.Upload, "vk handle table"));
+            s.TexHTable = new uint[cap * TexHandles.MaterialSlots];
             s.RecCap = cap;
             whole = true;
             RecordUploads.Claim(RecordWhole.Grew);
@@ -368,7 +351,7 @@ public sealed unsafe partial class AlloyRenderer
         s.WhiteIndex = VkTextures.Index(OwnedTextures.WhiteTid());
         s.NullIndex = VkTextures.Index(OwnedTextures.NullTid());
         ReadOnlySpan<byte> rec = MemoryMarshal.AsBytes(_dData.AsSpan(0, cap));
-        int rb = DrawFloats * sizeof(float), hb = TexHandles.MaterialSlots * 8;
+        int rb = DrawFloats * sizeof(float), hb = TexHandles.MaterialSlots * sizeof(uint);
         if (whole)
         {
             for (int r = 0; r < cap; r++) VkHandles(r);
@@ -390,7 +373,7 @@ public sealed unsafe partial class AlloyRenderer
                 last = Math.Min(last, cap - 1);
                 for (int r = first; r <= last; r++) VkHandles(r);
                 cl.UpdateBuffer(s.Records, (long)first * rb, rec.Slice(first * rb, (last - first + 1) * rb));
-                cl.UpdateBuffer(s.TexH, (long)first * hb, MemoryMarshal.AsBytes(s.TexHTable.AsSpan(first * TexHandles.MaterialSlots * 2, (last - first + 1) * TexHandles.MaterialSlots * 2)));
+                cl.UpdateBuffer(s.TexH, (long)first * hb, MemoryMarshal.AsBytes(s.TexHTable.AsSpan(first * TexHandles.MaterialSlots, (last - first + 1) * TexHandles.MaterialSlots)));
                 runs++;
                 sent += (long)(last - first + 1) * (rb + hb);
             }
@@ -428,13 +411,12 @@ public sealed unsafe partial class AlloyRenderer
     private static void VkHandles(int r)
     {
         VkColourState s = _vkc;
-        int at = r * TexHandles.MaterialSlots * 2;
+        int at = r * TexHandles.MaterialSlots;
         for (int k = 0; k < TexHandles.MaterialSlots; k++)
         {
-            ulong v = _dTexH[r][k];
-            uint i = v != 0 ? VkTextures.IndexOfHandle(v) : 0;
-            s.TexHTable[at + 2 * k] = i != 0 ? i : k == 0 ? s.WhiteIndex : s.NullIndex;
-            s.TexHTable[at + 2 * k + 1] = 0;
+            uint v = _dTexH[r][k];
+            uint i = v != 0 ? VkTextures.Index((int)v) : 0;
+            s.TexHTable[at + k] = i != 0 ? i : k == 0 ? s.WhiteIndex : s.NullIndex;
         }
     }
 
@@ -551,7 +533,7 @@ public sealed unsafe partial class AlloyRenderer
             push.AoDirect = push.SsaoOn > 0 ? SsaoPass.Direct : 0f;
             // CX-273: fold the layer (a surface pass), or drop a decal batch's fragments it already took
             push.Decal = r.Decal == DecalLayer.ModeSkip && !_gDecal[g] ? DecalLayer.ModeNone : r.Decal;
-            if (!VkBatch(side, ref b, p, g, r.Targets, blendKey, depth, VkRaster(g, wash), slots, lit ? 0 : _gTex[g], ref push,
+            if (!VkBatch(side, ref b, p, g, r.Targets, blendKey, depth, VkRaster(g, wash), slots, p.TexBound ? _gTex[g] : 0, ref push,
                          vp, viewport, near, far, phase, indirect)) continue;
             Counters._batches++;
             Counters._draws += _gLen[g];

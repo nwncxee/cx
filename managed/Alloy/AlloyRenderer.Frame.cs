@@ -77,9 +77,6 @@ public sealed unsafe partial class AlloyRenderer
         // #129: last pass's snapshot is not this pass's. Revoked first thing, so every path out of here that
         // never reaches PassId.FbCopy leaves Alloy water disarmed -- and BucketGate's bucket-6 gate reads
         // the same flag, so water is simply not drawn on exactly those passes (#285: a hole, not vanilla).
-        if (_batchUnavailable) { DbNoDraw("multidraw unavailable"); return false; }   // EndFrame revokes + disarms; never pay the bracket for nothing
-        // Checked BEFORE anything stamps OwnGen: BuildBatches marks parts as drawn, which is only honest while
-        // the issue phase cannot fail. Missing entry points are the one way it could.
         // #257: LatchFrameTarget read this from the engine's own state before the view's bracket opened.
         ref Target t = ref _tgt.Frame;
         HoldPassTarget(in t);   // #375: the ONE read per pass; the post stack rebinds from this copy
@@ -221,11 +218,6 @@ public sealed unsafe partial class AlloyRenderer
             lightingOn = AlloyLights.Build(view, p00, p11, near, far, viewport[2], viewport[3], tally: true);
             FrameZones.Add(FrameZones.Zone.Lights, tLights);
         }
-        // #292: cull ON is the engine's default -- Scene::RenderDrawBucket @0x46d060 leaves
-        // Enable(CULL_FACE) + SetCullFace(BACK) behind on every exit, and that is the state its
-        // sub-list 0 (everything not marked `twosided`) draws in. The batch loops override it per batch;
-        // this states the default the passes with no batch of their own inherit (GlPreamble).
-        _blendOn = false;
         Counters._lastPixels = viewport[2] * viewport[3];
         // #129: built HERE, not at the pass, because staging has to know. A water part staged for a pass
         // whose program never built would be stamped as owned (and so suppressed in the engine's walk)

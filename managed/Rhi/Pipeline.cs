@@ -101,9 +101,6 @@ public struct PipelineDesc
     public AttachmentFormats Targets;
     /// <summary>Coverage from the first colour output's alpha, over <see cref="AttachmentFormats.Samples"/> samples.</summary>
     public bool AlphaToCoverage;
-    /// <summary>Draws inside a pass that has a <see cref="RenderPassDesc.ShadingRate"/> image; ignored by a device
-    /// without one.</summary>
-    public bool ShadingRate;
     /// <summary>A pipeline an area's loading hold builds ahead (the colour bracket's, which the tally calls material
     /// pipelines): one built on the frame past the hold is a prewarm miss, and the tally says so.</summary>
     public bool Prewarmed;
@@ -131,9 +128,6 @@ public readonly ref struct RenderPassDesc
     public readonly ReadOnlySpan<ColorAttachment> Colors;
     public readonly bool HasDepth;
     public readonly DepthAttachment Depth;
-    /// <summary>A per-tile shading-rate image made <see cref="ImageUse.ShadingRate"/>, or null; every pipeline the pass
-    /// binds must then be made with <see cref="PipelineDesc.ShadingRate"/>, and none may without one.</summary>
-    public ImageId ShadingRate { get; init; }
 
     public RenderPassDesc(ReadOnlySpan<ColorAttachment> colors) { Colors = colors; }
     public RenderPassDesc(ReadOnlySpan<ColorAttachment> colors, DepthAttachment depth)

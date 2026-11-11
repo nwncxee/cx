@@ -110,6 +110,7 @@ public sealed unsafe partial class AlloyRenderer
             new(SsboSlots.Lights, VkDeferredLights()), new(SsboSlots.ClusterCount, c.Counts),
             new(SsboSlots.ClusterIdx, c.Idx), new(SsboSlots.Movers, c.Movers), new(SsboSlots.LightStats, c.Stats),
         ];
+        VkBindTally.Count(VkBindBy.Compute);
         cl.BindSet(0, new BindSet(ubo, ssbo, default, default));
         cl.Dispatch((AlloyLights.Clusters + AlloyLights.GroupSize - 1) / AlloyLights.GroupSize);
         c.Fresh = true;

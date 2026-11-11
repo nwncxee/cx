@@ -25,108 +25,11 @@ public sealed unsafe class EngineZonesService : IExtenderService
         _gui = hooks.InstallGuiUpdateAndRender(&OnGui);
         _demand = hooks.InstallResManDemand(&OnDemand);
         _image = hooks.ChainAurGetImageWrapper(&OnImage, ImagePriority);
-        _bsp = hooks.InstallManageSceneBSP(&OnBsp);
-        _buckets = hooks.InstallAddPartsToDrawBuckets(&OnBuckets);
-        // 3 by default: both engine walks stand down on an Alloy world frame. 2 keeps ManageSceneBSP and
-        // thins only the bucket build's tile loops (the 2026-09-06 default: Buckets 0,7 -> 0,2-0,3ms), 0 is
-        // the full A/B, and 1 is the old experiment that empties the world of gob parts.
-        int skip = Alloy.Renderer.SkipBuckets.Boot;
-        _skipBuckets = skip == 1 || skip == 3;
-        _bucketsCadence = skip == 2;
-        // 3 skips the BSP walk as well. Everything it produced for the FRAME is Alloy's (the tile
-        // fade ramp, the grass bins, the emitter/trigger/beam lists, the visible-gob list, ProcessGob and the
-        // LOD call), and everything it produced for the rest of the CLIENT is CX.Alloy.ScenePrep's (the
-        // in-view byte, gobbucket, the three LightManager steps). ScenePrep.Needed is the per-frame veto:
-        // any /buckets A/B or validator that wants an engine list re-arms both walks.
-        _skipBsp = skip == 3;
-        if (_bucketsCadence)
-        {
-            _meshBuckets = (byte*)Native.Sym(SymbolMap.MeshBuckets); _fadeBuckets = (byte*)Native.Sym(SymbolMap.FadeBuckets);
-            _capBuckets = (byte*)Native.Sym(SymbolMap.CapBuckets); _staticShadowBucket = (byte*)Native.Sym(SymbolMap.StaticShadowBucket);
-            _meshShadowBucket = (byte*)Native.Sym(SymbolMap.MeshShadowBucket);
-            string missing = (_meshBuckets == null ? " meshbuckets" : "") + (_fadeBuckets == null ? " fadebuckets" : "")
-                           + (_capBuckets == null ? " capbuckets" : "") + (_staticShadowBucket == null ? " staticshadowbucket" : "")
-                           + (_meshShadowBucket == null ? " meshshadowbucket" : "");
-            if (missing.Length > 0)
-            { _bucketsCadence = false; log.Info($"EngineZones: alloy.skipbuckets=2 refused -- unresolved:{missing}"); }
-        }
-        log.Info("EngineZones: timing the engine loop's net / resman / AI / GUI steps and resource demands into [zones] (config alloy.enginezones=0 disables)" +
-                 (_skipBuckets && !_skipBsp ? " -- EXPERIMENT alloy.skipbuckets=1: the world scene's AddPartsToDrawBuckets is SKIPPED while Alloy draws (expect no gob parts)" : "") +
-                 (_bucketsCadence ? $" -- alloy.skipbuckets=2: the tile-part loops of AddPartsToDrawBuckets run every {BucketsEvery}th frame while Alloy draws (alloy.skipbuckets=0 restores them)" : "") +
-                 (_skipBsp ? " -- alloy.skipbuckets=3 (default): ManageSceneBSP and AddPartsToDrawBuckets both stand down on an Alloy world frame, and CX.Alloy.ScenePrep owns what they did for the rest of the client (the in-view byte, gobbucket, the LightManager steps); /buckets reports it, and any A/B there re-arms both walks" : ""));
+        log.Info("EngineZones: timing the engine loop's net / resman / AI / GUI steps and resource demands into [zones] (config alloy.enginezones=0 disables)");
     }
 
     private static ResManDemandFn _demand;
-    private static ManageSceneBSPFn _bsp;
-    private static AddPartsToDrawBucketsFn _buckets;
 
-    /// <summary>The world scene's render preparation, timed and not subtracted. A GUI 3D panel's Scene has
-    /// no tile BSP root and is left out, so the two zones read the world walk alone.</summary>
-    [UnmanagedCallersOnly]
-    private static long OnBsp(IntPtr scene)
-    {
-        bool world = new CX.Engine.Scene(scene).BspRoot != IntPtr.Zero;
-        if (world && _skipBsp && CX.Alloy.AlloyGate.Alloy) return 0;
-        long t = world ? FrameZones.Now : 0;
-        long r = _bsp != null ? _bsp(scene) : 0;
-        if (world) FrameZones.Add(FrameZones.Zone.Bsp, t);
-        return r;
-    }
-
-    /// <summary>EXPERIMENT: <c>alloy.skipbuckets=1</c> in cx.cfg skips the world scene's draw-bucket build while Alloy
-    /// draws the frame. It freezes every gob part's transform (the build is the sole writer of the model matrix Alloy
-    /// draws with), which is the measurement: Ai drops by the Buckets figure, and what breaks names the load-bearing
-    /// half. Never on a GUI panel's scene and never while the engine renders (<c>alloy.enabled=0</c>).</summary>
-    private static bool _skipBuckets;
-    /// <summary><c>alloy.skipbuckets=3</c> -- the whole BSP walk stands down on an Alloy world frame. What it produced
-    /// is Alloy's: the tile fade ramp, the grass bins, the emitter, trigger and beam lists, the visible-gob list, the
-    /// per-gob LOD call and <c>Gob::ProcessGob</c>. Its side effects left with no owner are the BSP RE-FILING of moved
-    /// parts and gobs (<c>SceneBSPUpdatePart</c>/<c>Gob</c>, which hit testing walks), the fade planes and <c>gob+0x1b</c>.</summary>
-    private static bool _skipBsp;
-    /// <summary><c>alloy.skipbuckets=2</c>: the six flat loops over the BSP walk's tile-part lists (matrix rewrite of
-    /// STATIC parts plus the filing of buckets nothing reads) run every <see cref="BucketsEvery"/>th frame, the gob and
-    /// beam loops every frame, done by zeroing the lists' counts ahead of the call; a freshly spawned tile's parts
-    /// carry no matrix until the next full frame. ponytail: a fixed cadence, no knob.</summary>
-    private static bool _bucketsCadence;
-    private const int BucketsEvery = 8;
-    private static int _bucketsFrame;
-    private static byte* _meshBuckets, _fadeBuckets, _capBuckets, _staticShadowBucket, _meshShadowBucket;
-
-    /// <summary>meshbuckets and fadebuckets are <c>List&lt;Bucket&gt;</c> objects in .bss -- CExoArrayList {items at
-    /// +0, count at +8, alloc at +0xc} -- whose 16-byte {items, count} pairs live on the HEAP, indexed by texture id
-    /// (ClearBuckets @0x47f4e0, CheckBucketArraySize @0x47f420, alloc &gt;= 5000), NOT inline in .bss. Every count on
-    /// the heap pairs is cleared, as the engine's own clear does; the three single lists carry their count at +8.</summary>
-    private static void ThinTileLists()
-    {
-        if (_meshBuckets == null) return;
-        ClearPairCounts(_meshBuckets);
-        ClearPairCounts(_fadeBuckets);
-        ((ExoArrayRec*)_capBuckets)->Count = 0;
-        ((ExoArrayRec*)_staticShadowBucket)->Count = 0;
-        ((ExoArrayRec*)_meshShadowBucket)->Count = 0;
-    }
-
-    private static void ClearPairCounts(byte* list)
-    {
-        var head = (ExoArrayRec*)list;
-        var pairs = (ExoArrayRec*)head->Items;
-        if (pairs == null) return;
-        for (int k = 0; k < head->Alloc; k++) pairs[k].Count = 0;
-    }
-
-    [UnmanagedCallersOnly]
-    private static long OnBuckets(IntPtr scene)
-    {
-        bool world = new CX.Engine.Scene(scene).BspRoot != IntPtr.Zero;
-        // Under 3 the two skips travel together: the bucket build's inputs are the lists the BSP visitor
-        // fills, so re-arming the walk without re-arming this would leave an A/B reading half a frame.
-        if (world && _skipBuckets && CX.Alloy.AlloyGate.Alloy) return 0;
-        if (world && _bucketsCadence && CX.Alloy.AlloyGate.Alloy && (++_bucketsFrame % BucketsEvery) != 0) ThinTileLists();
-        long t = world ? FrameZones.Now : 0;
-        long r = _buckets != null ? _buckets(scene) : 0;
-        if (world) FrameZones.Add(FrameZones.Zone.Buckets, t);
-        return r;
-    }
     private static int _demandDepth;
     /// <summary>Outermost demands since boot: ticks in all, in models, in restypes step 0 does not name, and calls.
     /// Never reset (a load-screen present clears the frame zones mid-<c>LoadArea</c>), so a caller samples deltas.</summary>

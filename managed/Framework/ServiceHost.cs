@@ -78,10 +78,11 @@ public static class ServiceHost
         CX.Alloy.Db.FogNoteEdges.SelfCheck(log);   // each thing the line says, at the line's precision
         CX.Graphics.VulkanToolchain.SelfCheck(log);   // the staged shaderc and the machine's loader, off-device only
         CX.Graphics.Rhi.VkBackend.SelfCheck(log);   // the pilot's stages compile for Vulkan with GL's bindings shifted apart
-        CX.Graphics.Rhi.VkBackend.RateSelfCheck(log);   // the shading-rate tile follows the device's texel range
         CX.Graphics.Rhi.VkBackend.TransferSelfCheck(log);   // the copy-only queue family a device's table offers
         CX.Graphics.Rhi.VkBackend.CapsSelfCheck(log);   // a limit the driver reports unbounded never reads negative
         CX.Graphics.Rhi.VkBackend.SwapSelfCheck(log);   // which chain the surface's extent leaves standing
+        CX.Graphics.Rhi.VkBackend.CacheWriteSelfCheck(log);   // the pipeline-cache blob a worker writes lands whole, and a refused path is loud
+        CX.Graphics.ShaderCache.SelfCheck(log);   // ...and which blob the folder retires beside the one this driver reads
         CX.Graphics.Rhi.VkBackend.SwapShapeEdgesSelfCheck(log);   // ...and the swap state read into the shape that test takes
         CX.Alloy.DepthSnapshot.SelfCheck(log);   // one scene-depth copy a frame: a reader past no depth write reuses the one standing
         CX.Alloy.AlloyRenderer.FlushPassSelfCheck(log);   // ...and the flush that stales it: which passes do, and which say they write no depth
@@ -104,7 +105,7 @@ public static class ServiceHost
         CX.Alloy.VkTextures.SelfCheck(log);   // the GL tokens an owned texture is stored in, as the formats and sampler Vulkan mirrors
         CX.Graphics.Rhi.LooseBlock.Attach(log);
         CX.Graphics.Rhi.LooseBlock.SelfCheck(log);   // a loose uniform lands at its member's std140 offset
-        CX.Alloy.GpuGolden.SelfCheck(log);   // ...and the goldens that have to run on a GPU: the lightmap encoder, the G-buffer lanes, parallax, the shading rate
+        CX.Alloy.GpuGolden.SelfCheck(log);   // ...and the goldens that have to run on a GPU: the lightmap encoder, the G-buffer lanes, parallax
         Settings.SelfCheck(log);   // the prefixed read leaves no probe behind
         KnobSurface.Register();
         EngineLayout.SelfCheck(log);   // the three resolution forms, the counter, and a probe that fires

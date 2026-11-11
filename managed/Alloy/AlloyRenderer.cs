@@ -183,6 +183,13 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// <see cref="FrameSnapshot.SelfCheck"/> asserts the water stage's highest view against this.</summary>
     internal const int LightVizMax = 54;   // 54 = a material's AO map alone; 53 = the CX-273 decal layer folded into each surface (white = all decal); 52 = a forward fragment's light source (green deferred record, yellow baked walk, red unbaked walk); 51 = the hot-light path per fragment (red tested, green ray hit); 40 = the #493 vis-ID target (IdTarget.VizMode); 43/44 = the #674 lightmap term and its texel grid; 47..50 = CX-117's PLT forensics
     internal static int _lightViz => Renderer.Viz.V;
+
+    /// <summary>Any stage's diagnostic view is asked for: the world's, the transparency resolve's, the halos', the
+    /// particles', the weather's or the post chain's. The pipelines carry the view ladder only while this holds, so
+    /// it answers for every stage at once rather than per pass.</summary>
+    internal static bool VizAsked => Renderer.Viz.V != 0 || Renderer.OitViz.V != 0 || Effects.HaloViz.V != 0
+                                  || Particles.Viz.V != 0 || Weather.Viz.V != 0 || Post.Viz.V != 0;
+
     /// <summary>This draw is going into the <see cref="EnvProbe"/> cube, not onto the screen. The lit and
     /// water stages read it, so a capture never samples the probe -- which is an attachment of the framebuffer
     /// being drawn into. It says nothing about COLOUR SPACE: the screen target is linear too, so the capture
@@ -194,18 +201,11 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// <summary>The planar mirror's world z while <see cref="_planar"/> is set: its draw drops what lies under it.</summary>
     internal static float _mirrorZ;
     internal static bool Capturing => _capturing;
-    /// <summary>GL_BLEND as the pass last set it, so <see cref="Issue.IssueBatches"/>' per-batch toggle starts from
-    /// the truth instead of assuming.</summary>
-    internal static bool _blendOn;
     /// <summary>Does the area declare an environment map at all? Read off the enrolled Scene each pass.
     /// <c>RenderFlat</c> @0x450eb0 binds <c>currentscene+0x1e8</c> to the env sampler only where that field is
     /// set, and most areas leave it null -- so where it is, ambient specular is a term vanilla does not have
     /// and only genuinely env-mapped materials get the probe.</summary>
     private static bool _sceneEnv;
-    /// <summary>The driver has no glMultiDrawElementsBaseVertex or no glBindBufferBase, so batched submission
-    /// cannot run at all. Latched, and EndFrame disarms on it by name rather than drawing nothing forever
-    /// while the iterator keeps suppressing parts.</summary>
-    private static bool _batchUnavailable;
     /// <summary><c>/alloy light 0</c> forces every Alloy part back to the fullbright variant (the lighting A/B).</summary>
     internal static bool _lighting => Renderer.Light.V;
     /// <summary>RenderInterface::IsEnabled -- queried for cap 5 (LIGHTING) once per Alloy pass.</summary>
@@ -324,7 +324,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         // #571: the stock-settings reader forges a std::string for the engine; a header packed wrong is a
         // crash on the first world frame, not a misrender, so it joins the gating chain.
         StockConfig.Attach(log);
-        if (!CutCensusSelfCheck(log) || !CasterBoundSelfCheck(log) || !SortSelfCheck(log) || !OitOrderSelfCheck(log) || !CullSortSelfCheck(log) || !SplitSelfCheck(log) || !MtrParams.SelfCheck(log) || !Db.MapGateApprovedExamples.SelfCheck(log) || !PeriodLineSelfCheck(log) || !PassBlockSelfCheck(log) || !PassBlockEdgesSelfCheck(log) || !ChaseSelfCheck(log) || !KeyholeBoxSelfCheck(log) || !SphereRectSelfCheck(log)
+        if (!CutCensusSelfCheck(log) || !CasterBoundSelfCheck(log) || !SortSelfCheck(log) || !OitOrderSelfCheck(log) || !BatchMergeSelfCheck(log) || !CullSortSelfCheck(log) || !SplitSelfCheck(log) || !MtrParams.SelfCheck(log) || !Db.MapGateApprovedExamples.SelfCheck(log) || !PeriodLineSelfCheck(log) || !PassBlockSelfCheck(log) || !PassBlockEdgesSelfCheck(log) || !LooseStagingSelfCheck(log) || !ChaseSelfCheck(log) || !KeyholeBoxSelfCheck(log) || !SphereRectSelfCheck(log)
             || !AreaGrid.SelfCheck(log)
             || !DbSelfChecks(log)
             || !ShaderContract.SelfCheck(log)
@@ -332,6 +332,8 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         // NOT in the chain above: those two guard what reaches the screen, and this one guards a debug dump.
         // A regression in the canonicaliser should cost /alloy framedump, not drop every user back to vanilla.
         FrameDump.SelfCheck(log);
+        // Nor this: the bind tally is a census on the period line, so a wrong count costs a number and no pixel.
+        VkBindTally.SelfCheck(log);
         // Nor this: a knob's shipped default moves the look a player starts from, and they can set it back.
         WrapDefaultApprovedExamples.SelfCheck(log);
         // #128: same rule. A wrong gob offset draws a creature at the wrong alpha and a leaky refused-gob set
@@ -428,11 +430,9 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
     /// numbers a hosted content stage gates on (snow, wet, rain).</summary>
     internal static void LogScriptables() => _log?.Info("AlloyRenderer: " + DescribeScriptables());
 
-    /// <summary>The terms <see cref="AlloyGate"/> reads out of this class. <c>_armed</c> is "the hooks
-    /// installed"; the capability pair is "a program built and the multidraw entry points exist", both of
-    /// which latch and are deliberately never cleared by a context loss (see <see cref="ContextLost"/>).</summary>
+    /// <summary>The term <see cref="AlloyGate"/> reads out of this class: "the hooks installed", which
+    /// latches and is deliberately never cleared by a context loss (see <see cref="ContextLost"/>).</summary>
     internal static bool ArmedForFrame => _armed;
-    internal static bool DrawCapable => !_batchUnavailable;
 
     /// <summary>Inside the world view's colour pass (<see cref="DbWorldPass"/>), which is the only place
     /// Alloy draws: nothing of Alloy's runs inside the engine's own RenderSinglePass.</summary>
@@ -490,17 +490,6 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         AlloyWind.NewFrame();
         if (!_armed) return;
         _frameSeq++;
-        // Disarming must never be silent: the [alloy] period line is the only evidence this pass runs at
-        // all, so its ABSENCE has to name a reason rather than read as "no news". RevokeAll only speaks when
-        // something was owned, which is exactly not the case when the program failed before the first enroll.
-        if (_batchUnavailable)
-        {
-            RevokeAll("multidraw unavailable");
-            _armed = false;
-            _log?.Info("AlloyRenderer: DISARMED (glMultiDrawElementsBaseVertex or glBindBufferBase missing)"
-                     + " -- the Alloy world pass is off for this session and no [alloy] lines will follow");
-            return;
-        }
         bool lost = _was.Available && !FramePump.Available;
         _was.Available = FramePump.Available;
         if (!FramePump.Available) RevokeAll("render device lost");
@@ -534,6 +523,8 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         Counters._ownDissolve = 0; Counters._ownFade = 0; Counters._skipFogTile = Counters._skipFogGob = 0;
         Counters._recWritten = 0; Counters._recStable = 0; Counters._recSettled = 0; ResetPassPeriod();
         RecordUploads.ResetPeriod();
+        VkBindTally.ResetPeriod();
+        _vkc.LooseChanges = 0; _vkc.LooseChangeNote = "";
         Counters._nrmDeclared = Counters._nrmBound = 0;
         Array.Clear(Counters._drawsByClass);
         Counters._clusterOverflow = 0;

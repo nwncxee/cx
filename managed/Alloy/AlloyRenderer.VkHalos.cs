@@ -93,15 +93,15 @@ public sealed unsafe partial class AlloyRenderer
                                   : o.Name == "uFlare" && !img.IsNull ? new ImageBinding(o.Binding, img, s.Samp)
                                   : VkSampled(o, c, 0);
             }
+            VkBindTally.Count(VkBindBy.Effects);
             side.BindSet(0, new BindSet(ubo[..nu], ssbo[..ns], sampled[..nt], default));
             // the group's first element IS the draw's firstInstance: the stage reads it as gl_BaseInstance
             side.Draw(4, run, 0, at);
-            c.Effects = true;
             if (img.IsNull) bare += run;
             groups++;
             at += run;
         }
-        ReadOnlySpan<ColorAttachment> colors = [new(c.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default)];
+        ReadOnlySpan<ColorAttachment> colors = [new(c.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default), VkReactiveAttach(c)];
         VkFlushPass(cl, side, arena0, new RenderPassDesc(colors));
         Halos.VkDrawn(n, groups, bare);
         if (!s.Live)
@@ -146,6 +146,7 @@ public sealed unsafe partial class AlloyRenderer
         Halos.OccConsts push = Halos.OccPush(view, proj, n, Halos.FadeStep(FrameDelta.Delta(FrameDelta.DtFloor)));
         ReadOnlySpan<BufferBinding> ssbo = [new(SsboSlots.Halos, s.Recs), new(SsboSlots.HaloFade, s.Fade)];
         cl.SetPipeline(s.Occ);
+        VkBindTally.Count(VkBindBy.Effects);
         cl.BindSet(0, new BindSet(default, ssbo, [new ImageBinding(0, c.DepthRead)], default));
         cl.PushConstants(0, MemoryMarshal.AsBytes(new ReadOnlySpan<Halos.OccConsts>(in push)));
         cl.Dispatch((n + VkHaloOccGroup - 1) / VkHaloOccGroup);
@@ -177,10 +178,12 @@ public sealed unsafe partial class AlloyRenderer
                 Vs = p.Vs, Fs = p.Fs, Topo = Topology.TriangleStrip, Raster = new RasterState(CullMode.None),
                 Depth = new DepthState(false, false, CompareOp.Always), Label = "vk halos",
             };
-            d.Targets.ColorCount = 1;
+            d.Targets.ColorCount = 2;
             d.Targets.Colors[0] = Format.Rgba16F;
+            d.Targets.Colors[1] = Format.R8;
             d.Targets.Samples = 1;
             d.Blend[0] = new AttachmentBlend(true, BlendFactor.One, BlendFactor.One, BlendFactor.One, BlendFactor.One);
+            d.Blend[1] = ReactiveBlend(p);
             s.Pipe = vk.CreatePipeline(in d);
             if (s.Pipe.IsNull) p = null;
         }
