@@ -10,7 +10,7 @@ namespace CX.Alloy;
 /// no texel is read back from GL. Every method is a no-op unless the mirror has a device.</summary>
 internal static unsafe partial class OwnedTextures
 {
-    private static SamplerDesc VkSampler(in Sampler s) => VkTextures.Sampler(s.Min, s.Mag, s.WrapS, s.WrapT, s.Aniso);
+    private static SamplerDesc VkSampler(in Sampler s) => VkTextures.Sampler(s.Min, s.Mag, s.WrapS, s.WrapT, s.Aniso ? Db.TexRegistry.Aniso : 1f);
 
     /// <summary>An uncompressed cell, tightly packed into RGBA8 (or grey for one channel) and mipped on the device as
     /// GL mips it. A null image goes up zeroed, as GL's storage is.</summary>

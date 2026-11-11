@@ -30,7 +30,7 @@ internal static unsafe partial class GuiPassVk
         uint name = (uint)tex;
         byte[]? px = NullGl.TakeTexture(name, out int w, out int h, out int min, out int mag, out int ws, out int wt);
         if (px == null) return Missing(e, tex, $"holds no 2D image Vulkan can take ({w}x{h})", log);
-        SamplerDesc sd = VkTextures.Sampler(min, mag, ws, wt, aniso: false) with { Mip = MipMode.None };
+        SamplerDesc sd = VkTextures.Sampler(min, mag, ws, wt, aniso: 1f) with { Mip = MipMode.None };
         ImageId img = VkTextures.Create(vk, name, Format.Rgba8, w, h, 1, false, sd, $"engine tex {name}");
         if (img.IsNull || !vk.Upload(img, 0, 0, px)) return Missing(e, tex, "was refused its Vulkan image (logged above)", log);
         if (e.Copied++ == 0)

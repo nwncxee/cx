@@ -418,7 +418,6 @@ public sealed unsafe partial class CasterPass
     /// the only member a caster depth stage names; the rest stay at the zero no draw here writes.</summary>
     private static int CutPushAt => Array.FindIndex(VkGlsl.Push, x => x.Name == "uAlphaCut") * sizeof(float);
 
-
     /// <summary>One program's set 0: the records, bones and handles the vertex stage reads, the chunk's view table,
     /// the cut kind's loose block and the batch's bound mask, each where the program declares it.</summary>
     private static void VkCastBind(CommandList cl, VkCastProg p, int cut, int tex)

@@ -56,9 +56,6 @@ internal static unsafe partial class CasterGatherVk
         check.Expect(!ok || cnt[0] == 2 && cnt[1] == 1,
             $"the static half admits casters 0 and 2 in batch 0 and caster 3 in batch 1 -- 1 is off axis, 5 past the "
           + $"extent, 4 a mover (got {cnt[0]}, {cnt[1]})");
-        check.Expect(!ok || cnt[0] + cnt[1] == 3,
-            $"the bake culls against the generation standing when it records: the decoy under the fixture's puts "
-          + $"every sphere off the light axis, so a dispatch on the older slot admits nothing (got {cnt[0]}, {cnt[1]})");
         check.Expect(!ok || cmd[0].InstanceCount == 1u && cmd[3].Count == src[3].IndexCount
                      && cmd[3].FirstIndex == src[3].FirstIndex && cmd[3].BaseVertex == src[3].BaseVertex
                      && cmd[3].BaseInstance == 3u,

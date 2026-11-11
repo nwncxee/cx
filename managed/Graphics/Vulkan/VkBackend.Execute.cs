@@ -93,6 +93,9 @@ internal sealed unsafe partial class VkBackend
         _inPass = _rendering = false;
         _flipH = 0;
         _raster = null;
+        // the timing latch is THIS list's: an async lane left on the last graphics begin's would read a clock
+        // per op in an untimed frame, and bank them against it
+        if (lane) _timing = TimeFrame;
         // the bindless upkeep, the uploads and the frame's timestamps stay on the graphics queue
         if (!lane)
         {

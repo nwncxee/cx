@@ -72,12 +72,14 @@ public sealed unsafe class SceneWalkService : IExtenderService
             if (missing.Length > 0)
             { s.BucketsCadence = false; log.Info($"SceneWalk: alloy.skipbuckets=2 refused -- unresolved:{missing}"); }
         }
+        // the owner first: a hook can fire the moment it installs, and a handler reading the old one walks
+        // last session's state
+        _s = s;
         s.Bsp = hooks.InstallManageSceneBSP(&OnBsp);
         s.Buckets = hooks.InstallAddPartsToDrawBuckets(&OnBuckets);
         if (s.Bsp == null || s.Buckets == null)
             log.Info("SceneWalk: REFUSED -- " + (s.Bsp == null ? "ManageSceneBSP " : "") + (s.Buckets == null ? "AddPartsToDrawBuckets " : "")
                      + "did not hook; the engine's scene walk runs beside Alloy's and alloy.skipbuckets does nothing");
-        _s = s;
         log.Info($"SceneWalk: alloy.skipbuckets={Alloy.Renderer.SkipBuckets.Boot}" +
                  (s.SkipBsp ? " (default): ManageSceneBSP and AddPartsToDrawBuckets both stand down on an Alloy world frame" : "") +
                  (s.SkipBuckets && !s.SkipBsp ? ": EXPERIMENT -- the world scene's AddPartsToDrawBuckets is SKIPPED while Alloy draws (expect no gob parts)" : "") +
