@@ -3,8 +3,9 @@ using CX.Framework;
 
 namespace CX.Ui;
 
-/// <summary>What the game's own panels cover (approved-spec, E1, E3, E4, E5). Oracle: the letters of
-/// <see cref="GuiFrameSelfCheck.Letters"/>, written by hand there, in the order each example states here.</summary>
+/// <summary>What the game's own panels cover (approved-spec, E1, E3, E4, E5). Oracle: the order each example states,
+/// written here by hand as which letter of the frame must come under which. Plates and chat bubbles share one
+/// window, so E1 and E3 are one check here; only the real client tells a bubble from a plate.</summary>
 internal static class WorldLayerApprovedExamples
 {
     private static bool Under(string frame, char below, char above)
@@ -21,12 +22,11 @@ internal static class WorldLayerApprovedExamples
         // Given the Examine window is open over a creature on screen
         // When that creature's nameplate shows
         // Then the Examine window covers the nameplate
-        check.Expect(Under(f, 'p', 'E'), $"E1 the Examine window draws after the plates' window: {f}");
-
+        //
         // Given the Examine window is open over a creature on screen
         // When that creature speaks and its chat bubble shows
         // Then the Examine window covers the chat bubble
-        check.Expect(Under(f, 'p', 'E'), $"E3 a chat bubble draws in the plates' window, under the Examine window: {f}");
+        check.Expect(Under(f, 'p', 'E'), $"E1, E3 the Examine window draws after the plates' and bubbles' window: {f}");
 
         // Given a creature stands behind the game's own quickbar on screen
         // When that creature's nameplate shows
