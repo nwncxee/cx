@@ -210,8 +210,8 @@ entry can carry. `ShaderSource.SelfCheck` refuses a longer name.
 
 ### The silhouette look
 
-A creature the player character hears but does not see draws as a silhouette: stock, a solid dark grey shape. A
-server restyles it by shipping `cx_silhouette.shd`. The file is one function. It is handed the surface and
+A player who switches *Silhouettes for creatures out of sight* on (it is off by default) sees a creature their
+character hears but does not see as a silhouette: stock, a solid dark grey shape. A server restyles it by shipping `cx_silhouette.shd`. The file is one function. It is handed the surface and
 answers the look of a **whole** silhouette:
 
 ```glsl

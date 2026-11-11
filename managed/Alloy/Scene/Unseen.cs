@@ -49,9 +49,9 @@ internal static unsafe partial class Unseen
     internal readonly record struct Dim(float Amount, bool In);
 
     internal static readonly KnobGroup G = KnobGroup.Declare("silhouette", "Graphics", "World",
-        master: "Silhouettes for creatures out of sight",
+        master: "Silhouettes for creatures out of sight", masterDefault: false,
         masterHelp: "A creature your character hears but does not see draws as a solid dark shape, so it reads apart "
-                  + "from one under Invisibility. Off draws them see-through as the stock client does.",
+                  + "from one under Invisibility. Off, the default, draws them see-through as the stock client does.",
         order: 347, title: "Silhouettes");
 
     /// <summary>The feature's switch, <c>silhouette.enabled</c>.</summary>

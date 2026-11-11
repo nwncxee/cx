@@ -28,16 +28,18 @@ internal static class UnseenFixture
         ObjectSlots.Shift(body, shell, shell, Vector3.One, alpha, false, true, 0);
     }
 
-    /// <summary>Run <paramref name="body"/> over <paramref name="objects"/> fresh scene objects, with no silhouette
-    /// left behind. A fixture that could not be made fails the check rather than passing it empty.</summary>
+    /// <summary>Run <paramref name="body"/> over <paramref name="objects"/> fresh scene objects with silhouettes
+    /// switched on, with none left behind and the switch put back. A fixture that could not be made fails the check rather than passing it empty.</summary>
     internal static bool Run(ExtenderLog log, string name, int objects, Action<Checker, DbId[]> body)
     {
         var check = new Checker(log, name);
         Func<string, bool> was = ObjectFns.ResourcePresent;
         long unreadable = ObjectFns.UnreadableModels;
         var o = new DbId[objects];
+        bool on = Unseen.Enabled.V;
         try
         {
+            Unseen.Enabled.Set(true);
             ObjectFns.ResourcePresent = n => n == "cx_present_unreadable";
             for (int i = 0; i < o.Length; i++)
                 o[i] = Facade.Object(ObjectFns.CreateForCheck("cx_present_unreadable"), SeamSlot.Unnamed);
@@ -48,6 +50,7 @@ internal static class UnseenFixture
         {
             Unseen.Reset();
             Unseen.Undress();
+            Unseen.Enabled.Set(on);
             for (int i = o.Length - 1; i >= 0; i--) if (!o[i].IsNull) ObjectSlots.DestroyRecord(o[i]);
             ObjectFns.ResourcePresent = was;
             ObjectFns.UnreadableModels = unreadable;
@@ -135,8 +138,8 @@ internal static class UnseenSelfCheck
             bool off = Plain(body) && Drawn(body) == 0.5f;
             Unseen.Enabled.Set(true);
             Unseen.Frame([heard], Whole);
-            check.Expect(Unseen.Enabled.Default && off && !Plain(body) && Drawn(body) == 1f,
-                         $"silhouettes are on by default; switched off the creature draws see-through ({off}), and switched back on it is a silhouette again");
+            check.Expect(!Unseen.Enabled.Default && off && !Plain(body) && Drawn(body) == 1f,
+                         $"silhouettes are off by default; switched off the creature draws see-through ({off}), and switched on it is a silhouette");
         }
         finally { Unseen.Enabled.Set(had); }
 

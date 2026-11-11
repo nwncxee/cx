@@ -796,7 +796,7 @@ empty unless the device refused the effect, then "Depth of field is off for this
 | vfog.wind | Drift speed | S | 0–8 m/s step 0.1 · 1.5 | A | L | Shape | How fast the patches drift, along the area's wind. |
 | vfog.top | Fog bank height | S | 2–100 m step 1 · 15 | A | L | Shape | How far above the camera the fog reaches before it thins away: the sky shows above it, and tall things rise out of it. |
 | vfog.temporal / lightshadows | — | S, T | as declared | C | L | — | the share of past frames the volume keeps, and lamps' shadows in the fog |
-| silhouette.enabled | Silhouettes for creatures out of sight | T | on | U | L | — | A creature your character hears but does not see draws as a solid dark shape, so it reads apart from one under Invisibility. Off draws them see-through as the stock client does. |
+| silhouette.enabled | Silhouettes for creatures out of sight | T | **off** | U | L | — | A creature your character hears but does not see draws as a solid dark shape, so it reads apart from one under Invisibility. Off, the default, draws them see-through as the stock client does. |
 | water.enabled | Water | T | on | **C** | L | — | cfg-only: draw water (the stock water shader, reflecting the finished frame). Off, no water is drawn at all -- there is no stock water pass left behind it. |
 | water.rect | — | T | as declared | C | L | — | |
 
