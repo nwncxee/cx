@@ -17,6 +17,23 @@ public static partial class UiHost
         public void FireMouse(int button, int sdlMods) => FiredMouse = button;
     }
 
+    /// <summary>Run <paramref name="body"/> against an empty registry, then put back the session's windows, focus
+    /// and z counters: a self-check's fixture windows meet none of the session's, and none of theirs draws.</summary>
+    internal static void Alone(Action body)
+    {
+        var saved = new List<Window>(_windows);
+        Window? focused = Focused;
+        int z = _zCounter, back = _backZ;
+        _windows.Clear();
+        try { body(); }
+        finally
+        {
+            _windows.Clear(); _windows.AddRange(saved);
+            Focused = focused;
+            _zCounter = z; _backZ = back;
+        }
+    }
+
     /// <summary>Layer order against hand-written literals: the draw roll-call per layer (a string of the letters
     /// each fixture window appends), and the order input and the hit-test visit overlapping windows, which must
     /// put an above-NUI window first even when a below-NUI one was focused last.</summary>
