@@ -105,6 +105,7 @@ internal static partial class GpuGolden
         RainRingSelfCheck(vk, check, log);
         AoMapApprovedSelfCheck(vk, check, log);
         UnseenSilhouetteApprovedSelfCheck(vk, check, log);
+        UnseenFadeApprovedSelfCheck(vk, check, log);
         vk.PresentDeviceCheck(check, log);
         vk.PresentHoldCheck(check, log);
         vk.UploadApprovedExamples(check);
