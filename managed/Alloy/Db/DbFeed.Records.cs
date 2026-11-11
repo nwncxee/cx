@@ -418,6 +418,7 @@ public static unsafe partial class DbFeed
         SceneDb.ObjSphere[o] = default;
         SceneDb.ObjTint[o] = Vector4.One;
         SceneDb.ObjEmissive[o] = Vector3.Zero;
+        SceneDb.ObjUnseen[o] = default;
         SceneDb.ObjVisible[o] = true;
         // The attach VARIANT is the same kind of tenancy: a recycled slot that kept a translate attach would
         // hand the next tenant's SetPositionOffset a yes the engine would have answered no to.

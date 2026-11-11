@@ -208,6 +208,56 @@ entry can carry. `ShaderSource.SelfCheck` refuses a longer name.
   are the engine's own global shader constants; `CxTargetStrength()` and `CxTargetApply()` are what the
   stages call.
 
+### The silhouette look
+
+A player who switches *Silhouettes for creatures out of sight* on (it is off by default) sees a creature their
+character hears but does not see as a silhouette: stock, a solid dark grey shape. A server restyles it by shipping `cx_silhouette.shd`. The file is one function. It is handed the surface and
+answers the look of a **whole** silhouette:
+
+```glsl
+struct CxSilhouetteSurface
+{
+    vec3 lit;      // the colour the creature would draw with, linear, its lighting on it
+    vec3 albedo;   // the surface's own colour, linear, with no light on it
+    vec3 normal;   // the way the surface faces, world space, unit length
+    vec3 view;     // from the surface toward the camera, world space, unit length
+    vec3 world;    // where the surface is
+    float amount;  // how far into the silhouette, 0 to 1
+    float time;    // seconds, wrapping every hour
+};
+struct CxSilhouetteLook { vec3 rgb; float own; };
+
+CxSilhouetteLook CxSilhouetteShade(CxSilhouetteSurface s);
+```
+
+- `rgb` is the colour, linear. `own` is the share of the creature's own reflections and deferred light that
+  still lands on it: 0 is a flat shape, 1 leaves it fully lit.
+- CX does the half-second fade itself, from the creature's own look to the one you answer. `amount` is there
+  to shape the look along the way, and a look that ignores it still fades.
+- The function reads **nothing but the surface it is handed**: no uniforms, no samplers, no stage globals.
+  Both structs are declared for you in `cx_silhouettein`. Do not declare them again.
+- Two optional lines say what CX must know before it draws. `#pragma cx_silhouette opacity <0..100>` sets how
+  solid a whole silhouette is, 100 when absent. `#pragma cx_silhouette glow` keeps the creature's glowing
+  parts, such as a flame or an eye glow, which a silhouette otherwise does not draw.
+- The player's switch wins: with *Silhouettes for creatures out of sight* off, the creature draws see-through
+  as the stock client has it, whatever the file says.
+
+A dark shape with a bright rim, half see-through, that pulses once a second:
+
+```glsl
+#pragma cx_silhouette opacity 50
+CxSilhouetteLook CxSilhouetteShade(CxSilhouetteSurface s)
+{
+    float edge = 1.0 - max(dot(s.normal, s.view), 0.0);
+    float beat = 0.75 + 0.25 * sin(s.time * 6.2831853);
+    return CxSilhouetteLook(vec3(0.1, 0.4, 1.0) * edge * edge * beat, 0.0);
+}
+```
+
+CX compiles the file on its own before the lit stage sees it. A file that does not compile, or carries a
+`cx_silhouette` line it cannot read, is refused whole: silhouettes keep the stock look, and `cx.log` says
+`Unseen: cx_silhouette.shd is refused` with the compiler's error, numbered from your file's first line.
+
 ## Content shaders
 
 The stages above are Alloy's own. A **content pair** is yours: the `customShaderVS` and `customShaderFS` a

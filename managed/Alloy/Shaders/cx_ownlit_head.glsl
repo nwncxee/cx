@@ -100,6 +100,7 @@ bool CxDecalOn(float z, float d)
 }
 #include "cx_oitout.glsl"
 #include "cx_slotbits.glsl"
+#include "cx_silhouettemix.glsl"
 /// the depth encode's own rounding, nothing more: #119 makes a prepassed fragment's depth EQUAL
 const float CX_AO_DEPTH_EPS = 1e-5;
 /// The half-res upsample's depth tolerance, in fragment depth SLOPES: a neighbour more than this

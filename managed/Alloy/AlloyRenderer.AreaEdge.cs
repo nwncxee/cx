@@ -18,6 +18,7 @@ public sealed unsafe partial class AlloyRenderer
         InvalidateRecords(RecordWhole.AreaEdge);   // ...and the per-slot draw-arg range cache (_cIdx/_cOff/_cBase)
         FrameDiffAreaEdge();               // the diff's pass count is per AREA, not per session
         CreatureParityAreaEdge();          // ...and so is the creature dump's
+        Unseen.Reset();                    // the perception list is the new area's
         DbBlackProbeAreaEdge();            // ...and so is the black probe's budget
         LightmapBake.EndAreaEdge();
         _log?.Info($"AlloyRenderer: [areaedge] {why} -- every persistent record unstamped. "

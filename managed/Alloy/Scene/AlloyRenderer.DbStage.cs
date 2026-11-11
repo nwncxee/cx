@@ -275,7 +275,7 @@ public sealed unsafe partial class AlloyRenderer
         f.Model = SceneDb.PartWorld[part];
         f.Dissolve = dis ? 1f : 0f;
         Vector4 tint = SceneDb.ObjTint[o];
-        f.Alpha = SceneDb.PartAlpha[part] * SceneDb.PartFade[part] * GhostAlpha(i, cls, tint.W);
+        f.Alpha = SceneDb.PartAlpha[part] * SceneDb.PartFade[part] * GhostAlpha(i, cls, Unseen.Alpha(o, tint.W, lit));
         f.Lit = lit;
         if (lit)
         {
@@ -284,7 +284,7 @@ public sealed unsafe partial class AlloyRenderer
             f.DifR = dif.X * tint.X; f.DifG = dif.Y * tint.Y; f.DifB = dif.Z * tint.Z;
             Vector3 emi = SceneDb.PartSelfIllum[part] + SceneDb.ObjEmissive[o];
             f.EmiR = emi.X; f.EmiG = emi.Y; f.EmiB = emi.Z;
-            f.Slots = cls == (int)AlloyClass.Blended && DbUntextured(i) ? slots | NoShadowBit : slots;
+            f.Slots = Unseen.Slots(o, cls == (int)AlloyClass.Blended && DbUntextured(i) ? slots | NoShadowBit : slots);
         }
         int feat = (int)_oFeat[i * 4];
         f.FeatX = ShaderFeatures.WithPose(feat, _oBone[i] >= 0);

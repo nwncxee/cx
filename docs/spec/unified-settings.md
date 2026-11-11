@@ -739,8 +739,8 @@ empty unless the device refused the effect, then "Depth of field is off for this
 | dof.focus | Focus type | D | Player Character / Camera Pitch / Dynamic / Mouse · Camera Pitch | U | L | — | What the camera focuses on. Camera Pitch looks farther away the lower the camera sits. Dynamic reads the distance ahead of the camera. Mouse focuses on what is under the mouse. |
 | dof.neverblur | Never blur the player | T | on | U | L | — | Keeps your character inside the sharp band, wherever the focus is. |
 
-**World** — groups `grass` (340), `weather` (342), `fog` (344), `vfog` (345, *Volumetric fog*). `water` (346) declares a
-ChatOnly master and two diagnostics, so it has no submenu.
+**World** — groups `grass` (340), `weather` (342), `fog` (344), `vfog` (345, *Volumetric fog*), `silhouette` (347,
+*Silhouettes*). `water` (346) declares a ChatOnly master and two diagnostics, so it has no submenu.
 
 | key | label | kind | range · default | tier | eff | section | help |
 |---|---|---|---|---|---|---|---|
@@ -775,7 +775,7 @@ ChatOnly master and two diagnostics, so it has no submenu.
 | weather.flake / bright / opacity / rainspeed / snowspeed / windlean / snowangle / backscatter / soft / count / viz / waterroof / coversoft / coverrange / shelcache / arrive / splash / edgebreak / edgetaps / runoff / shorerim / snowalbedo / snowslope / snowpile / snowpilewidth / snowvary / snowdepth / snowsteps / snowbump / snowsparkle / snowwrap / snowsky / puddle / puddleedge / impactrange / map / mapres / mapcadence / basin / puddledepth / filmrough / filmlights / wetdark / rainrows / snowrows / snowskip / trackfill | — | T, S, X | as declared | C | L | — | the fall's look and speed, the cover map, the shelter edge, the snow relief, the wetness map and its puddles, the footprint refill time, and the `weathertypes.2da` row lists (`count`, `splash`, `edgetaps`, `snowsteps`, `mapres`, `mapcadence`, `filmlights` ladder on `quality.weather`) |
 | fog.enabled | Fog | T | on | U | L | — | Fog that takes the sky's colour, glows toward the sun and thins with height. Off, every dial below reads 0 and the area author's own flat fog colour draws, as the stock game shows it. |
 | fog.sky | Fog takes the sky colour | S | 0–1 step 0.05 · 0.75 | U | L | Colour | How far the fog colour moves from the area's flat colour toward the sky. 0 is the stock look. |
-| fog.sun | Sun glow in fog | S | 0–2 step 0.05 · 0.35 | U | L | Colour | Fog brightens toward the sun. |
+| fog.sun | Sun glow in fog | S | 0–2 step 0.05 · 0.35 | A | L | Colour | Fog brightens toward the sun. |
 | fog.sunexp | Sun glow tightness | S | 1–64 · 8 | A | L | Colour | Big = tight glow, small = half-sky wash. |
 | fog.skyband | Horizon band | S | 0–1 step 0.05 · 0.15 | A | L | Colour | How far above the horizon the sky dome is fogged. |
 | fog.height | Height falloff | S | 0–1 step 0.005 · 0 | A | L | Density | Fog thins with height above the floor; 0 = off. |
@@ -796,6 +796,7 @@ ChatOnly master and two diagnostics, so it has no submenu.
 | vfog.wind | Drift speed | S | 0–8 m/s step 0.1 · 1.5 | A | L | Shape | How fast the patches drift, along the area's wind. |
 | vfog.top | Fog bank height | S | 2–100 m step 1 · 15 | A | L | Shape | How far above the camera the fog reaches before it thins away: the sky shows above it, and tall things rise out of it. |
 | vfog.temporal / lightshadows | — | S, T | as declared | C | L | — | the share of past frames the volume keeps, and lamps' shadows in the fog |
+| silhouette.enabled | Silhouettes for creatures out of sight | T | **off** | U | L | — | A creature your character hears but does not see draws as a solid dark shape, so it reads apart from one under Invisibility. Off, the default, draws them see-through as the stock client does. |
 | water.enabled | Water | T | on | **C** | L | — | cfg-only: draw water (the stock water shader, reflecting the finished frame). Off, no water is drawn at all -- there is no stock water pass left behind it. |
 | water.rect | — | T | as declared | C | L | — | |
 

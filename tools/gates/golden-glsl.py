@@ -54,7 +54,10 @@ def shader(line):
     return 0 if "return w >= 128;" in code else len(RECORD.findall(code))
 
 
-for f in sorted(glob.glob("managed/Alloy/Golden/*.cs")):
+# ...and a golden that lives beside the feature it proves: any file that extends GpuGolden
+ELSEWHERE = [f for f in glob.glob("managed/Alloy/**/*.cs", recursive=True)
+             if "/Golden/" not in f and "partial class GpuGolden" in open(f, encoding="utf-8").read()]
+for f in sorted(glob.glob("managed/Alloy/Golden/*.cs") + ELSEWHERE):
     census(f, golden)
 for f in sorted(glob.glob(f"{SHADERS}/*.glsl")):
     census(f, shader)

@@ -502,6 +502,10 @@ offset	CNWCObject	fadeTarget	0xa9	0xa9	# ObjFadeTarget
 offset	CNWCObject	fadeExpire	0xac	0xac	# ObjFadeExpire
 offset	CNWCObject	fadeHoldMs	0xa4	0xa4	# ObjFadeHoldMs
 offset	CNWCObject	fadeAlpha	0xb0	0xb0	# ObjFadeAlpha
+offset	CNWCCreature	perception	0x410	0x3f0	# CreaturePerception
+offset	CNWCCreature	perceptionCount	0x418	0x3f8	# CreaturePerceptionCount
+offset	CNWVisibilityNode	oid	0x0	0x0	# VisNodeOid
+offset	CNWVisibilityNode	marks	0x4	0x4	# VisNodeMarks
 offset	CNWCObject	overrideMode	0x124	0x124	# ObjOverrideMode
 offset	CNWCObject	overrideText	0x128	0x128	# ObjOverrideText
 offset	CNWCObject	overrideLen	0x130	0x130	# ObjOverrideLen

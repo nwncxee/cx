@@ -552,8 +552,8 @@ public sealed unsafe partial class AlloyRenderer
         // flipped it back -- two record rewrites a fold, enough to push the frame into a whole-table upload.
         f.Dissolve = fresh ? 0f : r.Dissolve;
         Vector4 tint = SceneDb.ObjTint[o];
-        f.Alpha = SceneDb.PartAlpha[part] * SceneDb.PartFade[part] * tint.W;
         f.Lit = _oLit[i];
+        f.Alpha = SceneDb.PartAlpha[part] * SceneDb.PartFade[part] * Unseen.Alpha(o, tint.W, f.Lit);
         if (f.Lit)
         {
             Vector4 amb = DrawRecipe.Ambient(recipe), dif = DrawRecipe.Diffuse(recipe);
@@ -561,7 +561,7 @@ public sealed unsafe partial class AlloyRenderer
             f.DifR = dif.X * tint.X; f.DifG = dif.Y * tint.Y; f.DifB = dif.Z * tint.Z;
             Vector3 emi = SceneDb.PartSelfIllum[part] + SceneDb.ObjEmissive[o];
             f.EmiR = emi.X; f.EmiG = emi.Y; f.EmiB = emi.Z;
-            f.Slots = _oSlots[i];
+            f.Slots = Unseen.Slots(o, _oSlots[i]);
         }
         f.FeatX = ShaderFeatures.WithPose((int)_oFeat[i * 4], _oBone[i] >= 0);
         f.FeatY = _oBone[i] >= 0 ? _oBone[i] : _oFeat[i * 4 + 1];

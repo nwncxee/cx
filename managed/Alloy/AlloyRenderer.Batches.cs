@@ -53,7 +53,7 @@ public sealed unsafe partial class AlloyRenderer
                 // #537: a faded occluder is a translucent part like any other, so it takes the blended run too.
                 // ...and the object's own fade (CNWCObject::FadeObject through SetColorShifting): a creature or
                 // placeable the server adds or drops in perception range fades over 2 s, as vanilla's does
-                float objAlpha = DbObjAlpha(_oDbPart[i]);
+                float objAlpha = DbObjAlpha(i);
                 if (objAlpha <= 0f) continue;
                 float alpha = PartAlphaCached(i, tri) * fade * (1f - OccludeVerdict(i)) * objAlpha;
                 bool dis = alpha >= 1f && Dissolves(i, tri, ref _stageCounters[0]);
@@ -343,9 +343,8 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary><see cref="BlendRankOf"/> off slot <paramref name="i"/>'s columns.</summary>
     private static ulong BlendRank(int i, bool dis, bool free)
     {
-        int part = _oDbPart[i];
         DbId root = RunRoot(i);
-        int gob = OitPass.Dedupes && SceneDb.Objects.Valid(root) && OitGrouped(DbObjAlpha(part), false, _oWash[i]) ? root.Index + 1 : 0;
+        int gob = OitPass.Dedupes && SceneDb.Objects.Valid(root) && OitGrouped(DbObjAlpha(i), false, _oWash[i]) ? root.Index + 1 : 0;
         return BlendRankOf(_oDecal[i] != 0, free, SlotSitsOitOut(i), gob, dis, _orderRank[i]);
     }
 
@@ -385,9 +384,13 @@ public sealed unsafe partial class AlloyRenderer
     /// other scene is skipped, which is what keeps one view from drawing another's objects.</summary>
     internal static DbId _dbPassScene;
 
-    /// <summary>The object-wide alpha multiplier, which the engine reaches by chasing the gob's fade owner.
-    /// One column load: the tint's w.</summary>
-    private static float DbObjAlpha(int part) => SceneDb.ObjTint[SceneDb.PartObj[part].Index].W;
+    /// <summary>The object-wide alpha multiplier slot <paramref name="i"/> draws with: the gob's own, which the engine
+    /// reaches by chasing its fade owner, as a silhouette takes it.</summary>
+    private static float DbObjAlpha(int i)
+    {
+        int o = SceneDb.PartObj[_oDbPart[i]].Index;
+        return Unseen.Alpha(o, SceneDb.ObjTint[o].W, _oLit[i]);
+    }
 
     /// <summary>The part's own alpha, off the scene DB's column: the part's <c>+0xa0</c>, which only an MDL
     /// alpha controller writes.</summary>
@@ -397,7 +400,7 @@ public sealed unsafe partial class AlloyRenderer
     /// the tile it stands on, and the instance's two multiplies. Every term read live, none cached at
     /// capture: a gob can fade a whole creature into the transparent run for a single frame and out again.</summary>
     private static float LiveAlpha(int i, IntPtr tri)
-        => SceneDb.PartAlpha[_oDbPart[i]] * SceneDb.PartFade[_oDbPart[i]] * DbObjAlpha(_oDbPart[i]);
+        => SceneDb.PartAlpha[_oDbPart[i]] * SceneDb.PartFade[_oDbPart[i]] * DbObjAlpha(i);
 
     /// <summary>The blended sort key: a part sorts by its RUN ROOT's distance, so every part of one creature
     /// carries the same key and the stable sort lands them contiguous. A part whose root is gone (a rider
@@ -962,7 +965,7 @@ public sealed unsafe partial class AlloyRenderer
         // wash's polygon offset, in any class
         row.Blend = (_oWash[i] << 16) | (AlloyClasses.Blends(cls) ? (_oSrc[i] << 8) | _oDst[i] : 0);
         // The OIT object id is one uniform per batch, so it is a key term and a tag on the batch.
-        row.GobKey = OitPass.Dedupes && cls == (int)AlloyClass.Blended && OitGrouped(DbObjAlpha(_oDbPart[i]), _oDecal[i] != 0, _oWash[i])
+        row.GobKey = OitPass.Dedupes && cls == (int)AlloyClass.Blended && OitGrouped(DbObjAlpha(i), _oDecal[i] != 0, _oWash[i])
                    ? RunKey(i) : IntPtr.Zero;
         row.Decal = cls == (int)AlloyClass.Blended && _oDecal[i] != 0;
         // "has an instance behind it", which in DB mode is "is not tileset geometry".
@@ -1014,7 +1017,7 @@ public sealed unsafe partial class AlloyRenderer
             int feat = ShaderFeatures.WithPose((int)_oFeat[i * 4], _oBone[i] >= 0);
             int blend = (_oWash[i] << 16) | (AlloyClasses.Blends(_passCls[k]) ? (_oSrc[i] << 8) | _oDst[i] : 0);
             IntPtr gobKey = OitPass.Dedupes && _passCls[k] == (int)AlloyClass.Blended
-                            && OitGrouped(DbObjAlpha(_oDbPart[i]), _oDecal[i] != 0, _oWash[i]) ? RunKey(i) : IntPtr.Zero;
+                            && OitGrouped(DbObjAlpha(i), _oDecal[i] != 0, _oWash[i]) ? RunKey(i) : IntPtr.Zero;
             bool posed = _oBone[i] >= 0, dangly = !posed && DanglyPrevNow(i);
             bool recMoved = _recMovedAt[i] == _frameSeq;
             bool moved = posed ? recMoved || _poseMovedAt[i] == _frameSeq : dangly || recMoved && _oMx[i];

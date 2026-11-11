@@ -242,6 +242,7 @@ public sealed unsafe partial class AlloyRenderer
         bool postOk = PostChain.Begin(viewport, engClear);
         FrameZones.Add(FrameZones.Zone.Post, tPostBegin);
         if (!postOk) { DbNoDraw("PostChain.Begin refused"); return false; }
+        Unseen.Poll();
         long tPump = FrameZones.Now;
         Step("the arena pumps");
         // #287's scale, hoisted ahead of the staging walk: the automatic-LOD pick reads it there, and the
