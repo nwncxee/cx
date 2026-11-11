@@ -435,6 +435,8 @@ internal static unsafe partial class FogVolume
         VolumetricFog.Enabled.V = false;
         check.Expect(SceneFog.SkyBand == 0f && !SceneFog.OriginPlayer, "off: both are the fog group's again");
         Fog.Enabled.V = fogWas; Fog.Origin.V = originWas; VolumetricFog.Enabled.V = enWas;
+        FarZoomApprovedExamples(check);
+        FarZoomRegressions(check);
         log.Info(check.Ok ? "FogVolume.SelfCheck: passed" : "FogVolume.SelfCheck: FAILED");
     }
 
