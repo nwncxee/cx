@@ -32,6 +32,9 @@ public sealed unsafe partial class AlloyRenderer
         public int View = -1, Proj = -1, Eye = -1, Cut = -1, Add = -1, Lit = -1, Emis = -1, Viz = -1, Soft = -1;
         public int SunMedia = -1, LocalMedia = -1, Cubes = -1;
         public long NoTex;
+        /// <summary>The first texture names that drew on the stand-in, each said once.</summary>
+        public readonly uint[] NoTexSaid = new uint[8];
+        public int NoTexSaidN;
     }
 
     private static VkPartState _vkPart = new();
@@ -144,6 +147,16 @@ public sealed unsafe partial class AlloyRenderer
         return VkArena(p.Block);
     }
 
+    /// <summary>Say, once per texture and for the first few, that a group's texture has no Vulkan copy: its sprites
+    /// draw on the white stand-in, as flat quads.</summary>
+    private static void VkPartNoTex(VkPartState s, uint tex)
+    {
+        if (s.NoTexSaidN >= s.NoTexSaid.Length || Array.IndexOf(s.NoTexSaid, tex, 0, s.NoTexSaidN) >= 0) return;
+        s.NoTexSaid[s.NoTexSaidN++] = tex;
+        _log?.Always($"AlloyRenderer: particle texture {tex} has NO Vulkan copy -- its sprites draw on the white stand-in, as flat "
+                   + $"untextured quads ({s.NoTex} such bind(s) so far)");
+    }
+
     /// <summary>The pass's bind set: the loose and pass blocks, the record and order buffers, the group's texture (the
     /// white stand-in, counted, for one Vulkan has no copy of), the depth copy, and the stand-ins for the rest.</summary>
     private static void VkPartBind(CommandList side, VkPartState s, VkColourState c, int loose, int pass, uint tex, bool soft)
@@ -171,7 +184,7 @@ public sealed unsafe partial class AlloyRenderer
                     break;
                 case VkBindKind.Sampled when o.Name == "uTex":
                     ImageId img = tex != 0 ? VkTextures.Image((int)tex) : default;
-                    if (img.IsNull) { s.NoTex++; img = VkTextures.Image(OwnedTextures.WhiteTid()); }
+                    if (img.IsNull) { s.NoTex++; VkPartNoTex(s, tex); img = VkTextures.Image(OwnedTextures.WhiteTid()); }
                     sampled[nt++] = new ImageBinding(o.Binding, img.IsNull ? c.Tex2D : img, s.Samp);
                     break;
                 case VkBindKind.Sampled when o.Name == "uSceneDepth" && soft:
