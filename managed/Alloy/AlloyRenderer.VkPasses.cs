@@ -186,6 +186,9 @@ public sealed unsafe partial class AlloyRenderer
         VkSsrRun(vk, cl, vp, view, proj, viewport, near, far, lightingOn && perspective, log);
         cl.EndLabel();
 
+        // the fog over bare sky before the first pass that writes no depth: laid later it would cover what they drew there
+        PostStack.SkyFogVk(vk, cl, s.Hdr, s.Depth, w, h, _skyN > 0 || _capturing, log);
+
         cl.BeginLabel("blended"u8);
         bool oit = VkOitArm(vk, w, h, log);
         side.Reset();
