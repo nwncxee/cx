@@ -62,24 +62,14 @@ public sealed unsafe partial class AlloyRenderer
         public int StageA = -1, StageB = -1;
         public StageResources.VkBind[] StageBinds = [];
         public FrameLoc StageFrame;
-        /// <summary>The frame arena offset this program's loose block was last staged at (-1: none), and the state
-        /// it was staged under. A bind whose key matches reuses the slice instead of refilling the block.</summary>
+        /// <summary>The frame arena offset this program's loose block was last staged at (-1: none), and the frame
+        /// and arena generation that staging belongs to. A refill equal to those bytes reuses the slice.</summary>
         public int LooseAt = -1;
-        public VkLooseKey LooseKey;
+        public int LooseFrame = -1, LooseGen = -1;
     }
 
-    /// <summary>Everything a colour program's loose block follows that can change inside a frame: the view, the
-    /// capture mode, the range latches the lit stage branches on, the mirror plane, the cube count, the highlight
-    /// twin's colour and whether a native stage's overlay has run. A new frame always refills, and what the key
-    /// misses the audit names (<see cref="VkLooseAuditEvery"/>).</summary>
-    private readonly record struct VkLooseKey(int Frame, int ArenaGen, Matrix4x4 Vp, int X, int Y, int W, int H,
-                                              float Near, float Far, int Viz, bool Oit, bool LightRec, bool Capturing,
-                                              bool Planar, float MirrorZ, int Cubes, Vector3 TwinColour, bool Overlay);
-
-    /// <summary>One frame in this many, a bind that would reuse its loose block refills it anyway and compares.
-    /// Power of two.</summary>
-    private const int VkLooseAuditEvery = 64;
-    private const int VkLooseMissLines = 8;
+    /// <summary>Changes of a loose block inside one frame named in the period line, per device.</summary>
+    private const int VkLooseChangeNames = 1;
 
     /// <summary>The colour bracket's resources on one device, replaced whole with the device.</summary>
     private sealed class VkColourState
@@ -161,8 +151,10 @@ public sealed unsafe partial class AlloyRenderer
         public int OitOut;
         /// <summary>The shadow terms a lit bind was handed have been said once.</summary>
         public bool ShadowSaid;
-        /// <summary>Loose-block reuse audits that found stale bytes, this device; the first few are logged.</summary>
-        public int LooseMisses;
+        /// <summary>Binds whose refilled loose block differed from the one already staged this frame, this device,
+        /// and the first one named: its program, the byte that differed and the member holding it.</summary>
+        public int LooseChanges;
+        public string LooseChangeNote = "";
         /// <summary>A CPU multi-draw's index-buffer byte offsets as element indices, per call.</summary>
         public int[] Firsts = new int[4096];
     }
@@ -416,9 +408,9 @@ public sealed unsafe partial class AlloyRenderer
         return p;
     }
 
-    /// <summary>One program's bind: its loose block staged into the frame's arena -- reused where the program was
-    /// already bound under the same state this frame -- then the pass block, then the bind set. False (logged) when
-    /// the arena is full.</summary>
+    /// <summary>One program's bind: its loose block refilled, staged into the frame's arena -- or, byte for byte what
+    /// the program's own slice already holds this frame, that slice again -- then the pass block, then the bind set.
+    /// False (logged) when the arena is full.</summary>
     private static bool VkBindProgram(CommandList cl, VkProg p, in Matrix4x4 vp, int* viewport, float near, float far,
                                       BufferId slots, int tex)
     {
@@ -427,40 +419,54 @@ public sealed unsafe partial class AlloyRenderer
         bool lit = p.Lit;
         // the water stage is not the lit table's, but it takes the pass block's sun, ambient and fog as the lit stage does
         bool passed = lit || p.Id == VkPrograms.Id.Water;
-        var key = new VkLooseKey(_frameSeq, s.ArenaGen, vp, viewport[0], viewport[1], viewport[2], viewport[3], near, far,
-                                 viz, s.Oit, s.LightRec, _capturing, _planar, _mirrorZ,
-                                 CasterPass.CubesFresh ? CasterPass.CubeCount : 0, _vkHl.TwinColour,
-                                 !StageResources.VkOverlay.IsNull);
-        bool held = p.LooseAt >= 0 && key == p.LooseKey;
-        int loose;
-        if (held && (_frameSeq & (VkLooseAuditEvery - 1)) != 0)
-        {
-            VkBindTally.CountReused();
-            loose = p.LooseAt;
-            // the block is the view's, so the pass block must still be this view's even when nothing refills
-            if (passed) StagePass(viewport, near, far);
-        }
-        else
-        {
-            VkBindTally.CountStaged();
-            int was = held ? p.LooseAt : -1;
-            VkFillLoose(p, in vp, viewport, near, far, viz, lit);
-            loose = VkArena(p.Block);
-            p.LooseAt = loose;
-            p.LooseKey = key;
-            if (was >= 0 && loose >= 0 && !p.Block.AsSpan().SequenceEqual(s.ArenaBytes.AsSpan(was, p.Block.Length)))
-            {
-                VkBindTally.CountMissed();
-                if (s.LooseMisses++ < VkLooseMissLines)
-                    _log?.Always($"AlloyRenderer: the Vulkan {p.Label} program's loose block MISS: an input changed "
-                               + "inside the frame that the reuse key does not hold -- the refill stands");
-            }
-        }
+        // Every bind refills: the fill reads a free-running clock, the engine's own constant tables and whatever the
+        // bake, the weather and the sky have published since the last bind, and no cheap key holds all of that. The
+        // bytes themselves decide whether the slice already in the arena is this bind's.
+        VkFillLoose(p, in vp, viewport, near, far, viz, lit);
+        int loose = VkLooseStage(p, s);
         int pass = passed ? VkArenaPass() : -1;
         if (loose < 0 || (passed && pass < 0) || (p.ReadsEngine && VkEngine() < 0)) return false;
         VkBindSet(cl, p, s, loose, pass, slots, tex, by: VkBindBy.Colour);
         return true;
     }
+
+    /// <summary>The just-filled block of <paramref name="p"/> in the frame's arena: its own slice again when the fill
+    /// landed on the same bytes, else a fresh one. Its offset, or -1 (said by the arena) when the arena is full.</summary>
+    private static int VkLooseStage(VkProg p, VkColourState s)
+    {
+        bool mine = p.LooseAt >= 0 && p.LooseFrame == _frameSeq && p.LooseGen == s.ArenaGen;
+        if (mine && p.Block.AsSpan().SequenceEqual(s.ArenaBytes.AsSpan(p.LooseAt, p.Block.Length)))
+        {
+            VkBindTally.CountReused();
+            return p.LooseAt;
+        }
+        VkBindTally.CountStaged();
+        if (mine) VkLooseChanged(p, s);
+        int at = VkArena(p.Block);
+        p.LooseAt = at;
+        p.LooseFrame = _frameSeq;
+        p.LooseGen = s.ArenaGen;
+        return at;
+    }
+
+    /// <summary>Count a block that came out different inside one frame and, for the first few, name the program, the
+    /// byte that differed and the member it falls in -- the term that moves within a frame, for the period line.</summary>
+    private static void VkLooseChanged(VkProg p, VkColourState s)
+    {
+        if (s.LooseChanges++ >= VkLooseChangeNames) return;
+        ReadOnlySpan<byte> now = p.Block, was = s.ArenaBytes.AsSpan(p.LooseAt, p.Block.Length);
+        int at = 0;
+        while (at < now.Length && now[at] == was[at]) at++;
+        string member = "past its members";
+        foreach (LooseBlock.Member m in p.Members)
+            if (at >= m.Offset && at < m.Offset + m.Bytes) { member = m.Name; break; }
+        s.LooseChangeNote = $"{p.Label} {member} at byte {at}";
+    }
+
+    /// <summary>The period line's clause for the blocks that changed inside a frame: how many, and the first named.</summary>
+    private static string VkLooseNote()
+        => _vkc.LooseChanges == 0 ? "no loose block changed inside a frame"
+           : $"{_vkc.LooseChanges} loose blocks changed inside a frame (first: {_vkc.LooseChangeNote})";
 
     /// <summary>Program <paramref name="p"/>'s loose block refilled from this bind's state -- its terms in the order
     /// the issue loop writes them. Hot: one clear, one capture bracket and the program's own setters.</summary>
@@ -593,7 +599,7 @@ public sealed unsafe partial class AlloyRenderer
     }
 
     /// <summary>Rewind the frame's uniform arena, and with it every memo of an offset in it: the pass block, the
-    /// engine block and each program's loose block, which the generation in <see cref="VkLooseKey"/> retires.</summary>
+    /// engine block and each program's loose block, which the generation on <see cref="VkProg.LooseGen"/> retires.</summary>
     private static void VkArenaRewind()
     {
         VkColourState s = _vkc;

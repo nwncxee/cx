@@ -36,14 +36,13 @@ internal static class VkBindTally
 
     private static readonly long[] _by = new long[Classes];
     private static readonly string[] Names = ["colour", "effects", "casters", "gui", "compute", "post"];
-    /// <summary>The colour path's loose blocks staged, reused and found stale by the audit.</summary>
-    private static readonly long[] _loose = new long[3];
-    private const int Staged = 0, Reused = 1, Missed = 2;
+    /// <summary>The colour path's loose blocks staged, and the refills that came out as the slice already staged.</summary>
+    private static readonly long[] _loose = new long[2];
+    private const int Staged = 0, Reused = 1;
 
     internal static void Count(VkBindBy by) => _by[(int)by]++;
     internal static void CountStaged() => _loose[Staged]++;
     internal static void CountReused() => _loose[Reused]++;
-    internal static void CountMissed() => _loose[Missed]++;
 
     /// <summary>The [alloy] line's bind clause: binds per frame by class, then the colour path's loose-block
     /// staging. Cold, once a period.</summary>
@@ -55,9 +54,6 @@ internal static class VkBindTally
         var sb = new StringBuilder($"set binds {all / f:F0}/frame (");
         for (int i = 0; i < Classes; i++) sb.Append(i == 0 ? "" : " ").Append($"{Names[i]} {_by[i] / f:F0}");
         sb.Append($"), colour loose blocks {_loose[Staged] / f:F0} staged, {_loose[Reused] / f:F0} reused");
-        // A miss is an input the reuse key does not hold: the bind would have drawn the previous fill's bytes
-        // until the next frame. Printed whatever it reads, so a zero is a statement and not an absence.
-        sb.Append($", {_loose[Missed]} audit misses");
         return sb.ToString();
     }
 
@@ -76,14 +72,14 @@ internal static class VkBindTally
         for (int i = 0; i < 8; i++) Count(VkBindBy.Colour);
         Count(VkBindBy.Gui); Count(VkBindBy.Gui);
         Count(VkBindBy.Compute); Count(VkBindBy.Compute);
-        CountStaged(); CountStaged(); CountReused(); CountReused(); CountMissed();
+        CountStaged(); CountStaged(); CountReused(); CountReused();
         string note = Note(2);
         check.Expect(note.Contains("set binds 6/frame (colour 4 effects 0 casters 0 gui 1 compute 1 post 0)"),
           $"twelve binds over two frames split four colour and one each gui and compute per frame: {note}");
-        check.Expect(note.Contains("colour loose blocks 1 staged, 1 reused, 1 audit misses"),
-          $"the loose-block clause carries the two stagings, the reuse and the miss: {note}");
+        check.Expect(note.Contains("colour loose blocks 1 staged, 1 reused"),
+          $"the loose-block clause carries the two stagings and the two reuses, per frame: {note}");
         ResetPeriod();
-        check.Expect(Note(1).Contains("set binds 0/frame") && Note(1).Contains("0 audit misses"),
+        check.Expect(Note(1).Contains("set binds 0/frame") && Note(1).Contains("0 staged, 0 reused"),
           $"a reset starts the next period from zero: {Note(1)}");
         Array.Copy(was, _by, Classes);
         Array.Copy(wasLoose, _loose, _loose.Length);
