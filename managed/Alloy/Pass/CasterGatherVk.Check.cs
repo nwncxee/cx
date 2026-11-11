@@ -180,7 +180,11 @@ internal static unsafe partial class CasterGatherVk
     private static bool Stage(VkBackend vk, CommandList cl, CasterSrcRec[] src, Sphere[] cull, Sphere[] cast, int pubN = -1)
     {
         ReadOnlySpan<Sphere> pub = cull.AsSpan(0, pubN < 0 ? cull.Length : pubN);
-        if (!CullPassVk.PublishSpheres(vk, cl, Decoy(cull.Length)) || !CullPassVk.PublishSpheres(vk, cl, pub)) return false;
+        if (!CullPassVk.PublishSpheres(vk, cl, Decoy(cull.Length))) return false;
+        // a SHORT generation lands on a slot whose tail still holds the decoy's off-axis spheres, so a dispatch
+        // that read past the generation's own count would cull what the exemption admits
+        if (pubN >= 0 && !CullPassVk.PublishSpheres(vk, cl, Decoy(cull.Length))) return false;
+        if (!CullPassVk.PublishSpheres(vk, cl, pub)) return false;
         fixed (Sphere* g = cast) RecordSpheres(vk, cl, g, cull.Length);
         _s.SrcDirty = true;
         bool ok;
