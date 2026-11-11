@@ -74,12 +74,15 @@ internal static partial class GpuGolden
 {
     private static void UnseenFadeApprovedSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
     {
-        PipelineId pipe = vk.CreateCompute(Version + "layout(local_size_x = 1) in;\n" + ShaderSource.Get("cx_silhouette.glsl")
+        PipelineId pipe = vk.CreateCompute(Version + "layout(local_size_x = 1) in;\n" + Unseen.LookText(null)
             + CaseBlocks(4, 3) + """
             void main()
             {
                 int i = int(gl_WorkGroupID.x) * CX_GOLD_IN, o = int(gl_WorkGroupID.x) * CX_GOLD_OUT;
-                vec3 r = CxSilhouette(vec3(uIn[i], uIn[i + 1], uIn[i + 2]), int(uIn[i + 3]));
+                vec3 lit = vec3(uIn[i], uIn[i + 1], uIn[i + 2]);
+                float own;
+                vec3 r = CxSilhouetteApply(CxSilhouetteSurface(lit, lit, vec3(0.0, 0.0, 1.0), vec3(0.0, 0.0, 1.0), vec3(0.0),
+                                                               CxSilhouetteAmount(int(uIn[i + 3])), 0.0), own);
                 uOut[o] = r.x; uOut[o + 1] = r.y; uOut[o + 2] = r.z;
             }
             """, "golden silhouette fade");
