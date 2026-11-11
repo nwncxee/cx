@@ -16,6 +16,9 @@ internal static class UnseenSilhouetteApprovedExamples
     /// <summary>The game object id the checks' creature goes by.</summary>
     private const uint Oid = 1234;
 
+    /// <summary>Seconds between the checks' frames: long enough for any fade to have finished.</summary>
+    private const float Whole = 10f;
+
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "UnseenSilhouetteApprovedExamples.SelfCheck");
@@ -41,7 +44,7 @@ internal static class UnseenSilhouetteApprovedExamples
             // When I look at it
             // Then it draws as a solid shape of itself and the wall does not show through it
             GameAlpha(0.5f);
-            Unseen.Frame([new Unseen.Sight(Oid, Unseen.Heard, body)]);
+            Unseen.Frame([new Unseen.Sight(Oid, Unseen.Heard, body)], Whole);
             check.Expect(Drawn(body) == 1f, $"E1 a heard-but-unseen creature draws solid, drew at {Drawn(body)}");
 
             // Given a heard-but-unseen creature with a sword, a shield, a cloak and a helmet
@@ -61,13 +64,13 @@ internal static class UnseenSilhouetteApprovedExamples
             // Given a heard-but-unseen creature drawn as a silhouette
             // When my character stops hearing it
             // Then the silhouette fades away smoothly, as a see-through creature does today, with no pop
-            Unseen.Frame([]);
+            Unseen.Frame([], Whole);
             bool held = Unseen.Of(body.Index) && Drawn(body) == 1f;
             GameAlpha(0.25f);
-            Unseen.Frame([]);
+            Unseen.Frame([], Whole);
             bool half = Unseen.Of(body.Index) && Drawn(body) == 0.5f;
             GameAlpha(0f);
-            Unseen.Frame([]);
+            Unseen.Frame([], Whole);
             check.Expect(held && half && Drawn(body) == 0f,
                          $"E7 a silhouette no longer heard stays one while the game fades it: held {held}, half way {half}, gone {Drawn(body)}");
 
@@ -75,10 +78,10 @@ internal static class UnseenSilhouetteApprovedExamples
             // When it walks into my character's sight
             // Then it draws with its own colours and lighting
             GameAlpha(0.5f);
-            Unseen.Frame([new Unseen.Sight(Oid, Unseen.Heard, body)]);
+            Unseen.Frame([new Unseen.Sight(Oid, Unseen.Heard, body)], Whole);
             bool before = Unseen.Of(sword.Index);
             GameAlpha(1f);
-            Unseen.Frame([new Unseen.Sight(Oid, Unseen.Heard | Unseen.Seen, body)]);
+            Unseen.Frame([new Unseen.Sight(Oid, Unseen.Heard | Unseen.Seen, body)], Whole);
             check.Expect(before && !Unseen.Of(body.Index) && !Unseen.Of(sword.Index) && Drawn(body) == 1f
                          && (Unseen.Slots(sword.Index, 0) & Unseen.SlotBit) == 0,
                          $"E3 a silhouette that comes into sight is a creature again: silhouette before {before}");
@@ -113,9 +116,9 @@ internal static partial class GpuGolden
         // red armour under a torch as a silhouette, the same armour seen, and a silhouette's blade with an illumination map
         float[] cases =
         [
-            0.9f, 0.05f, 0.04f, Unseen.SlotBit,
+            0.9f, 0.05f, 0.04f, Unseen.SlotMask(1f),
             0.9f, 0.05f, 0.04f, 0f,
-            6f, 3f, 0.5f, Unseen.SlotBit | 16,
+            6f, 3f, 0.5f, Unseen.SlotMask(1f) | 16,
         ];
         float[]? got = pipe.IsNull ? null : RunCases(vk, log, pipe, 3, cases, 9, "golden silhouette");
         vk.Destroy(pipe);
