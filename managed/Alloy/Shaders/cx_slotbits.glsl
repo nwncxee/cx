@@ -11,7 +11,7 @@ const int CX_SLOT_NOSHADOW = 256;
 // library is included ahead of this block.
 const int CX_SLOT_PAL_LAST = CX_SLOT_PAL0 << 3;
 // bits 13..20: how far into its silhouette the record is, 255 the whole way. CX_SLOT_SILHOUETTE, the field's lowest
-// bit, is declared in cx_silhouette.glsl, which a golden compiles on its own. The next free bit is 21.
+// bit, is declared in cx_silhouettein.glsl, which a golden compiles on its own. The next free bit is 21.
 // #121: bit 5 of the same slot mask -- the material declares an env map (Material::HasEnvMap, i.e.
 // mat+0x40). NO texture is bound for it: the probe replaces what it held. What survives is the
 // engine's own "this is shiny" flag on 2002 content, which drives the synthesis below.

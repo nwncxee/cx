@@ -416,6 +416,7 @@ internal static unsafe class FacadeSelfCheck
         UnseenSelfCheck.Run(log);
         UnseenFadeApprovedExamples.SelfCheck(log);
         UnseenLimitApprovedExamples.SelfCheck(log);
+        UnseenServerLookApprovedExamples.SelfCheck(log);
 
         DbId id = SceneDb.Objects.Alloc();
         check.Expect(!id.IsNull, "the objects table would not hand out a record");

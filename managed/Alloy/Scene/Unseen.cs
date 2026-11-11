@@ -22,7 +22,7 @@ internal sealed class UnseenState
 
 /// <summary>Creatures the player character hears but does not see. The game draws them half see-through, exactly as
 /// it draws one under Invisibility; Alloy draws them as a solid flat silhouette so the two read apart.</summary>
-internal static unsafe class Unseen
+internal static unsafe partial class Unseen
 {
     /// <summary>The perception marks of <c>CNWVisibilityNode</c>'s flag byte, as <c>CNWCObject::GetFinalFadeAlpha</c>
     /// tests them: bit 0 seen, bit 1 heard, bit 4 invisible.</summary>
@@ -80,16 +80,18 @@ internal static unsafe class Unseen
     /// <summary>How far into its silhouette this object is, 0 to 1.</summary>
     internal static float Amount(int obj) => DimOf(obj).Amount;
 
-    /// <summary>The object alpha a part of <paramref name="obj"/> draws with, from the game's. Heading in, a silhouette
-    /// is solid at <see cref="EngineAlpha"/> and fades under it; heading out it eases back to the game's alpha. Its
-    /// unlit parts add light of their own, so they dim away as it darkens.</summary>
+    /// <summary>The object alpha a part of <paramref name="obj"/> draws with, from the game's. A whole silhouette is as
+    /// solid as its look asks at <see cref="EngineAlpha"/> and fades under it; heading out it eases back to the game's
+    /// alpha. Its unlit parts add light of their own, so they dim away as it darkens unless the look keeps them.</summary>
     internal static float Alpha(int obj, float engineAlpha, bool lit)
     {
         Dim d = DimOf(obj);
         if (d.Amount <= 0f) return engineAlpha;
-        float solid = MathF.Min(1f, engineAlpha / EngineAlpha);
-        float body = d.In ? solid : engineAlpha + (solid - engineAlpha) * d.Amount;
-        return lit ? body : body * (1f - d.Amount);
+        Look look = _look.Look;
+        float solid = MathF.Min(1f, engineAlpha / EngineAlpha), from = d.In ? solid : engineAlpha;
+        float body = from * (1f - d.Amount) + solid * look.Opacity * d.Amount;
+        if (lit) return body;
+        return look.Glow ? from * (1f - d.Amount) + solid * d.Amount : body * (1f - d.Amount);
     }
 
     /// <summary>The slot-mask bits that carry a silhouette amount.</summary>

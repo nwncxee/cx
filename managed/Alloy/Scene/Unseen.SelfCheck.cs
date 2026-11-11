@@ -47,6 +47,7 @@ internal static class UnseenFixture
         finally
         {
             Unseen.Reset();
+            Unseen.Undress();
             for (int i = o.Length - 1; i >= 0; i--) if (!o[i].IsNull) ObjectSlots.DestroyRecord(o[i]);
             ObjectFns.ResourcePresent = was;
             ObjectFns.UnreadableModels = unreadable;
@@ -139,8 +140,35 @@ internal static class UnseenSelfCheck
         }
         finally { Unseen.Enabled.Set(had); }
 
+        if (Array.TrueForAll(CX.Graphics.VulkanToolchain.Libraries, CX.Graphics.VulkanToolchain.Load))
+        {
+            try
+            {
+                bool worn = Unseen.Wear("#pragma cx_silhouette opacity 20\n" + UnseenServerLookApprovedExamples.Blue, log);
+                Unseen.Frame([heard], Whole);
+                float on = Drawn(body);
+                Unseen.Enabled.Set(false);
+                Unseen.Frame([heard], Whole);
+                check.Expect(worn && on == 0.2f && Plain(body) && Drawn(body) == 0.5f,
+                             $"a player who switched silhouettes off sees the stock see-through creature under a server's look too: worn {worn}, on {on}, off {Drawn(body)}");
+            }
+            finally { Unseen.Enabled.Set(had); Unseen.Undress(); }
+        }
+        else check.Skip("the staged shaderc did not load");
+
         Unseen.Frame([heard], Whole);
         DbFeed.InitObject(body.Index);
         check.Expect(SceneDb.ObjUnseen[body.Index].Amount == 0f, "a recycled object record starts unmarked");
     });
+}
+
+/// <summary>The stock look on the device, with no server file: a plain regression test. Oracle: the grey written by hand.</summary>
+internal static partial class GpuGolden
+{
+    private static void UnseenStockLookSelfCheck(CX.Graphics.Rhi.VkBackend vk, Checker check, ExtenderLog log)
+    {
+        float[]? stock = LookCases(vk, log, null, [0.9f, 0.05f, 0.04f, 0.6f, 0.03f, 0.03f, 0f, 0f, 1f, 0f, 0f, 1f, 1f, 0f], "golden silhouette look stock");
+        check.Expect(stock != null && stock[0] == Grey && stock[1] == Grey && stock[2] == Grey && stock[3] == 0f,
+                     "a module with no look of its own draws the stock dark grey and keeps none of the creature's light");
+    }
 }

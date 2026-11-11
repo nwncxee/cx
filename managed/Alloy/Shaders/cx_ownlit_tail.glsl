@@ -84,8 +84,8 @@
     if ((slots & CX_SLOT_ILLUM) != 0)
         lit += CxLinear(textureGrad(uIllumTex, uv, tapDx, tapDy).rgb) * (uMaterial.x > 0.5 && d.ext2.x >= 0.0 ? d.ext2.x : 1.0);
     // ordering: the reflection weights below feed the screen march and the G-buffer, so they scale with the same amount
-    lit = CxSilhouette(lit, slots);
-    float ownLook = 1.0 - CxSilhouetteAmount(slots);
+    float ownLook;
+    lit = CxSilhouetteApply(CxSilhouetteSurface(lit, albedo, N, V, vWorld, CxSilhouetteAmount(slots), CxClock() * 0.001), ownLook);
     reflW *= ownLook; reflFilm *= ownLook;
     // #132: everything from here down stays LINEAR -- the screen and the probe want the same values
     // now, and PostChain's resolve does the frame's one encode. The probe never wanted anything else

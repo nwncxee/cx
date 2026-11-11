@@ -81,7 +81,10 @@ internal static class ShaderSource
     /// are expanded (and themselves overridable). Returns <paramref name="src"/> itself when nothing was
     /// swapped. ponytail: one resman ask per bracket, not per resref -- cache if build time ever shows it.</summary>
     internal static string Content(string src, ExtenderLog? log)
-        => HasLibs(src) ? Content(src, r => ShaderResource.Override(r, log), 0) : src;
+        => HasLibs(src) ? Content(src, r => r == Unseen.LookRef ? Unseen.LookFile(log) : ShaderResource.Override(r, log), 0) : src;
+
+    /// <summary><see cref="Content(string, ExtenderLog?)"/> with the resource chain stood in by <paramref name="lookup"/>.</summary>
+    internal static string Content(string src, Func<string, string?> lookup) => Content(src, lookup, 0);
 
     private static string Content(string src, Func<string, string?> lookup, int depth)
     {
