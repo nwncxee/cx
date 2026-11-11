@@ -119,7 +119,6 @@ public sealed unsafe class ObjectFns : ISeamProvider
         SceneDb.ObjVisible[i] = true;
         SceneDb.ObjTint[i] = Vector4.One;
         SceneDb.ObjEmissive[i] = Vector3.Zero;
-        SceneDb.ObjUnseen[i] = default;
         SceneDb.ObjSeamPrevPos[i] = new Vector3(SceneDb.NoPrevPos);
         SceneDb.ObjSeamLod[i] = 0;
         SceneDb.ObjSeamLodDist1[i] = lodNear;
