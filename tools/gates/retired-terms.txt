@@ -287,3 +287,5 @@ alloy\.vrs(contrast)?\b|\bcx_vrs_cs\b|\bVkRate(State|Push)?\b|\bRateTexel\b|\bSh
 # the copy's own sampler. The four effect passes write their coverage into the mask as they draw now
 # (cx_reactive.glsl), so there is no copy to diff and no stage to override.
 \bcx_reactive_f\b|\bCxReactiveMask\b|\bReactiveFs\b|\buCopy\b|\bPostCopy\b	CX-530
+# The anisotropic filtering level moved beside the anti-aliasing rows, so its key is post.aniso.
+alloy\.aniso\b	CX-530

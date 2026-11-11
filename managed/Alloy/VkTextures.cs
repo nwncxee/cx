@@ -220,8 +220,8 @@ internal static class VkTextures
             "LINEAR_MIPMAP_LINEAR 0x2703 / LINEAR 0x2601 / CLAMP_TO_EDGE 0x812F on S / REPEAT 0x2901 on T read as trilinear, clamped on S only");
         check.Expect(Sampler(0x2700, 0x2600, 0x2901, 0x2901, 1f).Mip == MipMode.Nearest && Sampler(0x2600, 0x2600, 0x2901, 0x2901, 1f).Mip == MipMode.None,
             "NEAREST_MIPMAP_NEAREST 0x2700 picks the nearest mip; plain NEAREST 0x2600 reads the base level only");
-        check.Expect(Renderer.Aniso.Default == 16 && string.Join(' ', Renderer.Aniso.Values) == "1 2 4 8 16",
-            $"alloy.aniso offers 1, 2, 4, 8 and 16 and defaults to 16x, so today's image is unchanged (offers: {string.Join(' ', Renderer.Aniso.Values)}, default {Renderer.Aniso.Default}x)");
+        check.Expect(Post.Aniso.Default == 16 && string.Join(' ', Post.Aniso.Values) == "1 2 4 8 16",
+            $"post.aniso offers 1, 2, 4, 8 and 16 and defaults to 16x, so today's image is unchanged (offers: {string.Join(' ', Post.Aniso.Values)}, default {Post.Aniso.Default}x)");
         check.Expect(Math.Abs(Sampler(0x2703, 0x2601, 0x2901, 0x2901, aniso: 4f).Aniso - 4f) < 1e-6f
                   && Math.Abs(s.Aniso - 1f) < 1e-6f,
             "the sampler asks for the level its caller named -- four samples for 4, and one where the caller takes no anisotropy");

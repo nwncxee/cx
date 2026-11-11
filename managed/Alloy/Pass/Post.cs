@@ -13,6 +13,9 @@ internal static class Post
     internal static readonly Knob<string> Aa;
     internal static readonly Knob<bool> Taau, HalfRes, Stack, FbPost, ClearViz, SkyRaw;
     internal static readonly Knob<int> Smaa, Tonemap, Viz;
+    /// <summary>Anisotropic samples a linear mipmapped texture's sampler asks for; clamped to the device's
+    /// ceiling at sampler creation. Samplers are minted with the texture, so this is read as <c>Boot</c>.</summary>
+    internal static readonly Knob<int> Aniso;
     /// <summary><see cref="Aa"/>'s values: the anti-aliaser that draws. TAA is none of them: it draws only where FSR cannot.</summary>
     internal const string AaFsr = "fsr", AaSmaa = "smaa", AaOff = "off";
 
@@ -36,6 +39,11 @@ internal static class Post
         Smaa = G.Dropdown("smaa", "SMAA quality", new[] { 1, 2, 3 }, 2, new[] { "medium", "high", "ultra" },
                           help: "How far SMAA searches along an edge. Higher finds longer edges and costs more.");
         Smaa.ShowIf = static () => Aa.V == AaSmaa;
+        Aniso = G.Dropdown("aniso", "Anisotropic filtering", new[] { 1, 2, 4, 8, 16 }, 16,
+                           new[] { "off", "2x", "4x", "8x", "16x" }, effect: Effect.Restart,
+                           help: "How sharp a textured floor or wall stays where it slants away from the camera. Higher is "
+                               + "sharper into the distance and costs GPU time in every world pass; off is the blurriest and "
+                               + "the cheapest. Takes effect at the next launch.");
         G.Section("Exposure");
         Exposure = G.Slider("exposure", "Exposure", 0.25f, 4f, 0.05f, 1f,
                             help: "Overall brightness before tone mapping. 1 is neutral.");
