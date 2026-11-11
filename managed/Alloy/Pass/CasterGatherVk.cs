@@ -27,11 +27,9 @@ internal static unsafe partial class CasterGatherVk
         public bool Failed;
         public BufferId Ubo, Src, DynSrc, ViewTbl, Cast;
         public long SrcCap, DynSrcCap, ViewCap, CastCap;
-        /// <summary>The slot count this frame's bake names, which the colour cull's published generation has to
-        /// cover: a shorter one is a generation from another list, not this world's bounds.</summary>
-        public int NeedSlots;
-        /// <summary>The stand-down for want of bounds has been said once this session.</summary>
-        public bool NoBoundsLogged;
+        /// <summary>Bakes that sat out for want of any published bounds generation, and the count the last
+        /// line said.</summary>
+        public long NoBounds, NoBoundsSaid;
         /// <summary>Command/count pairs rotated per view, <see cref="CasterGather.Rotation"/>'s argument.</summary>
         public readonly BufferId[] Cmd = new BufferId[Rotation], Cnt = new BufferId[Rotation],
                                    LyCmd = new BufferId[Rotation], LyCnt = new BufferId[Rotation];
@@ -114,24 +112,30 @@ internal static unsafe partial class CasterGatherVk
     {
         if (slots <= 0) return;
         var s = _s;
-        s.NeedSlots = slots;
         long bytes = (long)slots * sizeof(Sphere);
         Grow(vk, ref s.Cast, ref s.CastCap, bytes, BufferUse.Storage, "gather caster bounds");
         if (s.Cast.IsNull) return;
         cl.UpdateBuffer(s.Cast, 0, Native.Records(cast, slots));
     }
 
-    /// <summary>A published colour-cull generation covers every slot this frame's bake names. False = there are no
-    /// bounds to cull against, which is the session's first frame and nothing else.</summary>
-    internal static bool BoundsStanding => !CullPassVk.PublishedSpheres.IsNull && CullPassVk.PublishedSphereSlots >= _s.NeedSlots;
+    /// <summary>There is a published colour-cull generation to bind. A generation SHORTER than this frame's
+    /// slot count still stands: the dispatches take its length and leave a slot above it exempt from the cull,
+    /// so a frame whose ownership table grew bakes rather than sitting out.</summary>
+    internal static bool BoundsStanding => !CullPassVk.PublishedSpheres.IsNull;
 
-    /// <summary>Say the want of bounds once, the first time a bake stands down for it.</summary>
-    internal static bool NoteNoBounds()
+    /// <summary>Count a bake that sat out for want of any published bounds generation, and say so at the first
+    /// one and then once per <see cref="NoBoundsEvery"/>: the n-th, so a run of them cannot read as one.
+    /// 0 = say nothing this frame.</summary>
+    internal static long NoteNoBounds()
     {
-        if (_s.NoBoundsLogged) return false;
-        _s.NoBoundsLogged = true;
-        return true;
+        long n = ++_s.NoBounds;
+        if (n != 1 && n - _s.NoBoundsSaid < NoBoundsEvery) return 0;
+        _s.NoBoundsSaid = n;
+        return n;
     }
+
+    /// <summary>Frames between two lines about the want of bounds -- ten seconds of a 60 Hz session.</summary>
+    private const int NoBoundsEvery = 600;
 
     /// <summary>Publish one frame's staging into <paramref name="cl"/>:
     /// the source buffer is persistent and a frame whose caller reports no changed bytes sends nothing.</summary>
@@ -195,8 +199,8 @@ internal static unsafe partial class CasterGatherVk
         bool dyn = dynSrc && DynamicReady;
         int drawN = dyn ? s.DynDrawN : s.DrawN;
         if (dyn) CasterGather.DynDispatches++;
-        CasterGather.View(ref s.Block, drawN, s.Groups, focus, dir, reach, along, point, lodR1, lodR2, set, receiver,
-                          CasterGather.Mode != 0 ? 1 : 0);
+        CasterGather.View(ref s.Block, drawN, s.Groups, CullPassVk.PublishedSphereSlots, focus, dir, reach, along,
+                          point, lodR1, lodR2, set, receiver, CasterGather.Mode != 0 ? 1 : 0);
         cl.ZeroBuffer(s.Cnt[s.At], 0, CountBytes(s.Groups));
         Block(cl);
         cl.SetPipeline(s.Prog);
@@ -237,7 +241,8 @@ internal static unsafe partial class CasterGatherVk
         }
         if (growCmd) s.LyCmdCap = cmds;
         if (growCnt) s.LyCntCap = s.Groups;
-        CasterGather.Layer(ref s.Block, srcN, viewN, s.Groups, cull >= 0 ? cull : CasterGather.Mode != 0 ? 1 : 0);
+        CasterGather.Layer(ref s.Block, srcN, viewN, s.Groups, CullPassVk.PublishedSphereSlots,
+                           cull >= 0 ? cull : CasterGather.Mode != 0 ? 1 : 0);
         cl.ZeroBuffer(s.LyCnt[s.LyAt], 0, CountBytes(s.Groups));
         Block(cl);
         cl.SetPipeline(s.LayerProg);

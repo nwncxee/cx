@@ -83,6 +83,8 @@ internal static unsafe partial class CasterGatherVk
         check.Expect(!ok || cnt[CasterGather.TriWord(FixtureGroups, 1)] == 4u,
             $"...and its four triangles tally at level 1 (got {cnt[CasterGather.TriWord(FixtureGroups, 1)]})");
 
+        ok &= ShortGeneration(vk, check, src, cast, cnt, cmd);
+
         ok &= Layered(vk, check, src, cull, cast, cnt, cmd);
         log.Info(check.Ok ? "CasterGatherVk.DeviceCheck: passed" : "CasterGatherVk.DeviceCheck: FAILED -- see above");
         return check.Ok;
@@ -91,20 +93,45 @@ internal static unsafe partial class CasterGatherVk
     /// <summary>One per-view fixture submit: the list staged, one dispatch run with <paramref name="cullOn"/>
     /// overriding the live dial, and its counts and commands read back.</summary>
     private static bool Fixture(VkBackend vk, Checker check, CasterSrcRec[] src, Sphere[] cull, Sphere[] cast,
-                                int set, int cullOn, float lodR1, float lodR2, uint[] cnt, DrawCmdRec[] cmd)
+                                int set, int cullOn, float lodR1, float lodR2, uint[] cnt, DrawCmdRec[] cmd,
+                                int pubN = -1)
     {
         CommandList cl = _s.Cmds!;
         cl.Reset();
-        if (!Stage(vk, cl, src, cull, cast)) { check.Expect(false, "the fixture's list stages"); return false; }
+        if (!Stage(vk, cl, src, cull, cast, pubN)) { check.Expect(false, "the fixture's list stages"); return false; }
         _s.At = (_s.At + 1) % Rotation;
-        CasterGather.View(ref _s.Block, FixtureDraws, FixtureGroups, Vector3.Zero, new Vector3(0f, 0f, -1f),
-                          FixtureReach, FixtureAlong, false, lodR1, lodR2, set, false, cullOn);
+        CasterGather.View(ref _s.Block, FixtureDraws, FixtureGroups, CullPassVk.PublishedSphereSlots, Vector3.Zero,
+                          new Vector3(0f, 0f, -1f), FixtureReach, FixtureAlong, false, lodR1, lodR2, set, false, cullOn);
         cl.ZeroBuffer(_s.Cnt[_s.At], 0, CountBytes(FixtureGroups));
         Block(cl);
         cl.SetPipeline(_s.Prog);
         Bind(cl, _s.Src, _s.Cmd[_s.At], _s.Cnt[_s.At], default);
         cl.Dispatch((FixtureDraws + GroupSize - 1) / GroupSize);
         return Read(vk, check, _s.Cnt[_s.At], _s.Cmd[_s.At], cnt, cmd, FixtureDraws);
+    }
+
+    /// <summary>The bake over a generation SHORTER than the slots it names: a frame whose ownership table grew
+    /// with no colour build publishing. Oracle: these spheres put batch 1 off the light axis, so the whole
+    /// generation admits nothing there, while over three slots batch 1 falls back to its on-axis geometric
+    /// caster spheres and caster 3 bakes -- a stand-down admits nothing either way.</summary>
+    private static bool ShortGeneration(VkBackend vk, Checker check, CasterSrcRec[] src, Sphere[] cast,
+                                        uint[] cnt, DrawCmdRec[] cmd)
+    {
+        const int PubSlots = 3;
+        var cull = new Sphere[FixtureDraws];
+        for (int n = 0; n < FixtureDraws; n++)
+            cull[n] = new Sphere { Center = new Vector3(n == 1 || n >= PubSlots ? 500f : 0f, 0f, -10f), Radius = 1f };
+
+        bool ok = Fixture(vk, check, src, cull, cast, CasterGather.SetStatic, 1, 0f, 0f, cnt, cmd);
+        check.Expect(!ok || cnt[0] == 2 && cnt[1] == 0,
+            $"over the whole generation batch 1's casters are off the light axis and none is admitted "
+          + $"(got {cnt[0]}, {cnt[1]})");
+
+        ok &= Fixture(vk, check, src, cull, cast, CasterGather.SetStatic, 1, 0f, 0f, cnt, cmd, PubSlots);
+        check.Expect(!ok || cnt[0] == 2 && cnt[1] == 1 && cmd[3].BaseInstance == 3u,
+            $"over a three-slot generation the bake still runs, culls slots 0..2 against it, and admits caster 3 "
+          + $"on its geometric caster sphere (got {cnt[0]}, {cnt[1]})");
+        return ok;
     }
 
     /// <summary>The layered dispatch over two copies of the same view: the batch regions scale by the view count
@@ -152,10 +179,11 @@ internal static unsafe partial class CasterGatherVk
 
     /// <summary>The fixture's bounds and source into <paramref name="cl"/>, sized for it: a <see cref="Decoy"/>
     /// generation first and the fixture's own over it, since what a bake binds is the generation standing when it
-    /// records.</summary>
-    private static bool Stage(VkBackend vk, CommandList cl, CasterSrcRec[] src, Sphere[] cull, Sphere[] cast)
+    /// records. <paramref name="pubN"/> publishes a generation SHORTER than the slots the bake names.</summary>
+    private static bool Stage(VkBackend vk, CommandList cl, CasterSrcRec[] src, Sphere[] cull, Sphere[] cast, int pubN = -1)
     {
-        if (!CullPassVk.PublishSpheres(vk, cl, Decoy(cull.Length)) || !CullPassVk.PublishSpheres(vk, cl, cull)) return false;
+        ReadOnlySpan<Sphere> pub = cull.AsSpan(0, pubN < 0 ? cull.Length : pubN);
+        if (!CullPassVk.PublishSpheres(vk, cl, Decoy(cull.Length)) || !CullPassVk.PublishSpheres(vk, cl, pub)) return false;
         fixed (Sphere* g = cast) RecordSpheres(vk, cl, g, cull.Length);
         _s.SrcDirty = true;
         bool ok;

@@ -20,7 +20,7 @@ internal struct GatherBlock
     public Vector3 Dir;
     public float Along;
     public float LodR1, LodR2;
-    public int DrawN, ViewN, Point, Cull, Set, Rx, Groups;
+    public int DrawN, ViewN, Point, Cull, Set, Rx, Groups, SphN;
 
     /// <summary>The GLSL against this struct. A member moved in either file stages every term after it into its
     /// neighbour -- a wrong cull plane or another view's detail thresholds, with nothing in the log.</summary>
@@ -36,6 +36,7 @@ internal struct GatherBlock
             ("uViewN", Std140.At(ref b, ref b.ViewN)), ("uPoint", Std140.At(ref b, ref b.Point)),
             ("uCull", Std140.At(ref b, ref b.Cull)), ("uSet", Std140.At(ref b, ref b.Set)),
             ("uRx", Std140.At(ref b, ref b.Rx)), ("uGroups", Std140.At(ref b, ref b.Groups)),
+            ("uSphN", Std140.At(ref b, ref b.SphN)),
         ]);
     }
 }
@@ -131,9 +132,10 @@ internal static unsafe class CasterGather
 
     /// <summary>One per-view dispatch's block, the ONE place those terms are staged -- both backends fill it here,
     /// so neither can hand the cull a term the other does not.</summary>
-    internal static void View(ref GatherBlock b, int drawN, int groups, Vector3 focus, Vector3 dir, float reach,
+    internal static void View(ref GatherBlock b, int drawN, int groups, int sphN, Vector3 focus, Vector3 dir, float reach,
                               float along, bool point, float lodR1, float lodR2, int set, bool receiver, int cull)
     {
+        b.SphN = sphN;
         Planes.CopyTo(b.Planes);
         b.Focus = focus; b.Dir = dir; b.Reach = reach; b.Along = along;
         b.LodR1 = lodR1; b.LodR2 = lodR2;
@@ -143,8 +145,9 @@ internal static unsafe class CasterGather
     }
 
     /// <summary>...and the layered dispatch's, whose per-view terms come out of the view table instead.</summary>
-    internal static void Layer(ref GatherBlock b, int drawN, int viewN, int groups, int cull)
+    internal static void Layer(ref GatherBlock b, int drawN, int viewN, int groups, int sphN, int cull)
     {
+        b.SphN = sphN;
         Planes.CopyTo(b.Planes);
         b.Focus = default; b.Dir = default; b.Reach = 0f; b.Along = 0f;
         b.LodR1 = 0f; b.LodR2 = 0f;
@@ -232,7 +235,8 @@ internal static unsafe class CasterGather
             if (uSet == 1 && uSrc[b + 6u] != 0u) return;
             if (uSet == 2 && uSrc[b + 6u] == 0u) return;
             int slot = int(uSrc[b + 3u]);
-            vec4 s = uSph[slot];
+            // a slot above the bound generation's own count has no colour-cull bound in it: exempt, not zero
+            vec4 s = slot < uSphN ? uSph[slot] : vec4(0.0, 0.0, 0.0, 1e30);
             // a bound the colour cull exempts (posed skin, dangly, displacing) takes the caster's geometric
             // sphere, pose slack included; only a slot with neither stays never reach-culled
             if (s.w >= 1e29) { vec4 g = uCast[slot]; if (g.w > 0.0 && g.w < 1e29) s = g; }
@@ -304,7 +308,7 @@ internal static unsafe class CasterGather
             if (set == 1 && uSrc[b + 6u] != 0u) return;
             if (set == 2 && uSrc[b + 6u] == 0u) return;
             int slot = int(uSrc[b + 3u]);
-            vec4 s = uSph[slot];
+            vec4 s = slot < uSphN ? uSph[slot] : vec4(0.0, 0.0, 0.0, 1e30);
             if (s.w >= 1e29) { vec4 g = uCast[slot]; if (g.w > 0.0 && g.w < 1e29) s = g; }
             if (uCull != 0 && s.w < 1e29)
             {
@@ -360,6 +364,7 @@ internal static unsafe class CasterGather
            && LayerCs.Contains("offAxis = dot(perp, perp) > (reach + r) * (reach + r);")
            && LayerCs.Contains($"binding = {CullPass.BindSphere})") && LayerCs.Contains("CxCullSphere")
            && LayerCs.Contains($"binding = {BindCast})") && LayerCs.Contains("if (s.w >= 1e29) { vec4 g = uCast[slot];")
+           && LayerCs.Contains("vec4 s = slot < uSphN ? uSph[slot] : vec4(0.0, 0.0, 0.0, 1e30);")
            && LayerCs.Contains("if (uCull != 0 && s.w < 1e29)")
            && LayerCs.Contains($"uint b = i * {SrcUints}u;")
            && LayerCs.Contains("if (set == 1 && uSrc[b + 6u] != 0u) return;")
@@ -405,6 +410,9 @@ internal static unsafe class CasterGather
            // #303: the shared bounds, at the colour cull's own binding, with its own exemption value.
            && GatherCs.Contains($"binding = {CullPass.BindSphere})") && GatherCs.Contains("CxCullSphere")
            && GatherCs.Contains($"binding = {BindCast})") && GatherCs.Contains("if (s.w >= 1e29) { vec4 g = uCast[slot];")
+           // CX-530 review: a slot the bound generation does not reach is exempt, never a zero-radius bound
+           // at the origin, which would cull every caster the generation is short of
+           && GatherCs.Contains("vec4 s = slot < uSphN ? uSph[slot] : vec4(0.0, 0.0, 0.0, 1e30);")
            && GatherCs.Contains("if (uCull != 0 && s.w < 1e29)")
            && GatherCs.Contains("uCmd[q + 4u] = uint(slot);")
            // #488: same receiver cull, flagged per dispatch

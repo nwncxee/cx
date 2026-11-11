@@ -143,9 +143,10 @@ public sealed unsafe partial class CasterPass
         if (!CasterGatherVk.Ensure(vk, log)) { s.Failed = true; return false; }
         // the bounds FIRST: sizing them here keeps every dispatch below naming a live id
         AlloyRenderer.VkRecordCasterBounds(vk, s.Cmds);
-        if (!CasterGatherVk.BoundsStanding && CasterGatherVk.NoteNoBounds())
-            log.Always("CasterGatherVk: no colour build has published cull bounds for this list yet -- this frame's "
-                     + "bake sits out and the next one has them");
+        long n = CasterGatherVk.BoundsStanding ? 0L : CasterGatherVk.NoteNoBounds();
+        if (n > 0)
+            log.Always($"CasterGatherVk: no colour build has published cull bounds yet -- this frame's bake sits out "
+                     + $"and the next one with a published generation has them ({n} such frames this session)");
         return true;
     }
 
