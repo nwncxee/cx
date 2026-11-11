@@ -451,7 +451,7 @@ public static partial class SceneDb
     /// <summary>Gob colour folds: diffuse multiplier (rgb) + alpha (w), emissive add.</summary>
     public static readonly Vector4[] ObjTint = new Vector4[MaxObjects];
     public static readonly Vector3[] ObjEmissive = new Vector3[MaxObjects];
-    /// <summary>How far a creature is into the silhouette of one heard but not seen, on its own record only; <see cref="Unseen.Of"/> answers for its pieces and riders.</summary>
+    /// <summary>How far a creature is into the silhouette of one heard but not seen, on its own record only; <see cref="Unseen.Amount"/> answers for its pieces and riders.</summary>
     internal static readonly Unseen.Dim[] ObjUnseen = new Unseen.Dim[MaxObjects];
     public static readonly bool[] ObjVisible = new bool[MaxObjects];
     /// <summary>The native block the game layer holds for this object (its <c>CAurObject*</c>), 0 until the seam mints one.</summary>

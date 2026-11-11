@@ -307,7 +307,7 @@ the cleanup that earned it. Adding a rule means adding its gate in the same chan
   `cx_lightfrag.glsl`, which a GPU golden runs on the device; a second copy compiles fine and answers to nothing.
   `ALLOWED` in `face-normal.py` names that file and the content stand-in `cx_content_f.glsl`, which the GUI twin
   builds without the light library and so cannot reach the function, and `FLIP_CALLERS` names the lit mains.
-- `golden-glsl.sh`: a golden under `managed/Alloy/Golden/` declaring a `CX_*` constant a shipped shader declares (splice it
+- `golden-glsl.sh`: a golden under `managed/Alloy/Golden/`, or in any file under `managed/Alloy/` that extends `GpuGolden`, declaring a `CX_*` constant a shipped shader declares (splice it
   with `GpuGolden.Declaration`), indexing `uIn`/`uOut` with a literal stride (use `CX_GOLD_IN`/`CX_GOLD_OUT`), or a shader
   comparing a light record's `w` with 128 (ask `CxLightIsStatic`) counts against `golden-glsl.baseline`, which may only shrink.
 

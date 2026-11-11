@@ -35,16 +35,9 @@ internal static unsafe class Unseen
     /// <summary>Seconds a creature takes to darken into its silhouette, or to brighten back out of it.</summary>
     internal const float FadeSeconds = 0.5f;
 
-    /// <summary>Where the silhouette amount sits in the record's slot mask, above the palette bits: eight bits,
-    /// 255 a whole silhouette. <c>CX_SLOT_SILHOUETTE</c> is its lowest bit.</summary>
-    internal const int SlotShift = 13, SlotLevels = 255, SlotBit = 1 << SlotShift;
-
     /// <summary>Silhouettes held at once. ponytail: past it the rest draw see-through as the game has them, logged once;
     /// a perception list this long is the cue for a table keyed by object.</summary>
     internal const int MaxMarks = 256;
-
-    /// <summary>The longest step one poll takes, so a hitch does not finish a fade unseen.</summary>
-    private const float MaxStep = 0.1f;
 
     /// <summary>One perception entry: the game object it names, its marks, and the creature's scene object.</summary>
     internal readonly record struct Sight(uint Oid, byte Marks, DbId Root);
@@ -66,7 +59,7 @@ internal static unsafe class Unseen
     }
 
     /// <summary>Do these perception marks make a silhouette?</summary>
-    internal static bool Silhouetted(byte marks) => (marks & (Seen | Invisible)) == 0 && (marks & Heard) != 0;
+    private static bool Silhouetted(byte marks) => (marks & (Seen | Invisible)) == 0 && (marks & Heard) != 0;
 
     /// <summary>The silhouette <paramref name="obj"/> is part of. A creature's pieces and everything riding it answer as it does.</summary>
     private static Dim DimOf(int obj)
@@ -74,9 +67,6 @@ internal static unsafe class Unseen
         DbId root = SceneDb.ObjRunRoot[obj];
         return SceneDb.ObjUnseen[SceneDb.Objects.Valid(root) ? root.Index : obj];
     }
-
-    /// <summary>Is this object part of a silhouette, however far in?</summary>
-    internal static bool Of(int obj) => DimOf(obj).Amount > 0f;
 
     /// <summary>How far into its silhouette this object is, 0 to 1.</summary>
     internal static float Amount(int obj) => DimOf(obj).Amount;
@@ -94,7 +84,7 @@ internal static unsafe class Unseen
     }
 
     /// <summary>The slot-mask bits that carry a silhouette amount.</summary>
-    internal static int SlotMask(float amount) => (int)MathF.Round(Math.Clamp(amount, 0f, 1f) * SlotLevels) << SlotShift;
+    internal static int SlotMask(float amount) => (int)MathF.Round(Math.Clamp(amount, 0f, 1f) * AlloyRenderer.SilhouetteLevels) << AlloyRenderer.SilhouetteShift;
 
     /// <summary>The slot mask a lit part of <paramref name="obj"/> carries.</summary>
     internal static int Slots(int obj, int slots) => slots | SlotMask(DimOf(obj).Amount);
@@ -139,7 +129,7 @@ internal static unsafe class Unseen
         }
         s.Count = kept;
 
-        s.KnownCount = Math.Min(sights.Length, s.Known.Length);
+        s.KnownCount = sights.Length;
         for (int k = 0; k < s.KnownCount; k++) s.Known[k] = sights[k].Oid;
     }
 
@@ -181,7 +171,7 @@ internal static unsafe class Unseen
             }
         }
         long now = Stopwatch.GetTimestamp();
-        float seconds = _s.PolledAt == 0 ? 0f : (float)Math.Min((now - _s.PolledAt) / (double)Stopwatch.Frequency, MaxStep);
+        float seconds = _s.PolledAt == 0 ? 0f : (float)((now - _s.PolledAt) / (double)Stopwatch.Frequency);
         _s.PolledAt = now;
         Frame(sights[..n], seconds);
     }

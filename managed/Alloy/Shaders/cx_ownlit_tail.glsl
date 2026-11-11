@@ -83,7 +83,7 @@
     // bloom can see it; undeclared (-1) and the engine model take it at 1.
     if ((slots & CX_SLOT_ILLUM) != 0)
         lit += CxLinear(textureGrad(uIllumTex, uv, tapDx, tapDy).rgb) * (uMaterial.x > 0.5 && d.ext2.x >= 0.0 ? d.ext2.x : 1.0);
-    // a silhouette is its one colour: by its amount, no light, map or highlight of the surface's own survives, and nothing reflects in it
+    // ordering: the reflection weights below feed the screen march and the G-buffer, so they scale with the same amount
     lit = CxSilhouette(lit, slots);
     float ownLook = 1.0 - CxSilhouetteAmount(slots);
     reflW *= ownLook; reflFilm *= ownLook;
@@ -164,7 +164,6 @@
         // L: the baked term's whole contribution -- its diffuse rode `point` into Wd, its lobe rode
         // `pointSpec` into P. The twin left `lm` undebited, so this is exactly what the debt scales back.
         g.lmShare = g.diffT * lm + g.specT * gLmSpec;
-        // ...and no deferred light lands on a silhouette either
         g.specT *= ownLook; g.diffT *= ownLook; g.ambT *= ownLook; g.lmShare *= ownLook;
         g.surfFade = cxSurfFade;
         g.water = cxWxStand;
