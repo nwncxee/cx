@@ -448,7 +448,7 @@ internal static unsafe partial class PostStack
         }
         if (!drew && !s.SkyFogSaid)
             log.Always("PostStack: the bare-sky fog is OFF -- its program or its pipeline was refused (logged above). The resolve "
-                     + "fogs bare sky after the effects, so an effect in front of open fog is hidden and thin far objects draw brighter under FSR");
+                     + "fogs bare sky after the effects, so an effect in front of open fog is hidden");
         s.SkyFogSaid |= !drew;
         return s.SkyFogged = drew;
     }

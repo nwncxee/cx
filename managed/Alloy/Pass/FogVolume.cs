@@ -239,7 +239,6 @@ internal static unsafe partial class FogVolume
     internal static void WriteLight(in Terms t, in LightLocs l, int* viewport, float near, float far)
     {
         AlloyRenderer.BindPass(l.Cubes, viewport, near, far);
-        Matrix4x4 prevVp = t.PrevVp;
         PushGrid(in l.Grid, in t);
         LooseBlock.Set(l.Height, t.Height.X, t.Height.Y);
         LooseBlock.Set(l.Noise, t.Noise.X, t.Noise.Y);
@@ -249,7 +248,7 @@ internal static unsafe partial class FogVolume
         LooseBlock.Set(l.Local, t.Local.X, t.Local.Y, t.Local.Z);
         LooseBlock.Set(l.Phase, t.Phase);
         LooseBlock.Set(l.Jitter, t.Jit.X, t.Jit.Y, t.Jit.Z);
-        LooseBlock.Set(l.PrevVp, prevVp);
+        LooseBlock.Set(l.PrevVp, t.PrevVp);
         LooseBlock.Set(l.PrevZ, t.PrevZ.X, t.PrevZ.Y, t.PrevZ.Z, t.PrevZ.W);
         LooseBlock.Set(l.Rain, t.Rain, t.Veil ? 0f : 1f);
         // the precipitation pass's own map and layer: outside it, and with none baked, the shader reads open sky
@@ -298,10 +297,9 @@ internal static unsafe partial class FogVolume
     /// <summary>The grid and medium uniforms, into whichever pass is bound.</summary>
     private static void PushGrid(in GridLocs g, in Terms t)
     {
-        Matrix4x4 invVp = t.InvVp;
         LooseBlock.Set(g.Size, t.W, t.H, t.D);
         LooseBlock.Set(g.Z, t.Near, t.Far, t.LogZ);
-        LooseBlock.Set(g.InvVp, new ReadOnlySpan<float>((float*)&invVp, 16));
+        LooseBlock.Set(g.InvVp, t.InvVp);
         LooseBlock.Set(g.Eye, t.Eye.X, t.Eye.Y, t.Eye.Z);
         LooseBlock.Set(g.Fwd, t.Fwd.X, t.Fwd.Y, t.Fwd.Z);
         LooseBlock.Set(g.Med, t.M.Haze, t.M.Wall, t.M.Start, t.M.End);
