@@ -123,10 +123,14 @@ internal static unsafe class SceneFog
     /// plain ramp that distance IS <c>FogEnd</c>, measured the way the fog is; the height falloff breaks that,
     /// so the cut is placed for geometry <see cref="CullZ"/> above the layer floor and higher is traded off.</summary>
     internal static float OpaqueDistance()
+        => OpaqueDistance(FrameInputs.FogOn, FrameInputs.FogStart, FrameInputs.FogEnd, EyeToPlayer(AlloyRenderer.EyePos));
+
+    /// <summary>How far a camera at <paramref name="eye"/> stands from the player; negative where the fog is not
+    /// measured from the player, which is also what a view with no player passes.</summary>
+    internal static float EyeToPlayer(Vector3 eye)
     {
         Vector3 origin = Origin(out bool radial);
-        return OpaqueDistance(FrameInputs.FogOn, FrameInputs.FogStart, FrameInputs.FogEnd,
-                              radial ? Vector3.Distance(AlloyRenderer.EyePos, origin) : -1f);
+        return radial ? Vector3.Distance(eye, origin) : -1f;
     }
 
     private static float OpaqueDistance(bool on, float start, float end, float eyeToPlayer)
