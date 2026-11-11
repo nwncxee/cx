@@ -122,11 +122,16 @@ internal static unsafe class SceneFog
     /// throw geometry away at (<see cref="CullPass.FogCull"/>); infinity stands the fog cull down. With the
     /// plain ramp that distance IS <c>FogEnd</c>, measured the way the fog is; the height falloff breaks that,
     /// so the cut is placed for geometry <see cref="CullZ"/> above the layer floor and higher is traded off.</summary>
-    internal static float OpaqueDistance() => OpaqueDistance(FrameInputs.FogOn, FrameInputs.FogStart, FrameInputs.FogEnd);
-
-    private static float OpaqueDistance(bool on, float start, float end)
+    internal static float OpaqueDistance()
     {
-        if (FogVolume.On) return FogVolume.OpaqueDistance(on, start, end, VolumetricFog.Haze.V);
+        Vector3 origin = Origin(out bool radial);
+        return OpaqueDistance(FrameInputs.FogOn, FrameInputs.FogStart, FrameInputs.FogEnd,
+                              radial ? Vector3.Distance(AlloyRenderer.EyePos, origin) : -1f);
+    }
+
+    private static float OpaqueDistance(bool on, float start, float end, float eyeToPlayer)
+    {
+        if (FogVolume.On) return FogVolume.OpaqueDistance(on, start, end, VolumetricFog.Haze.V, eyeToPlayer);
         if (!on || end <= 0f) return float.PositiveInfinity;
         if (HeightK <= 0f) return end;
         float span = end - start;
@@ -141,7 +146,7 @@ internal static unsafe class SceneFog
     internal static float FarForFog(float far, bool on, float start, float end, float eyeToPlayer)
     {
         if (!OriginPlayer || eyeToPlayer < 0f) return far;
-        float opaque = OpaqueDistance(on, start, end);
+        float opaque = OpaqueDistance(on, start, end, eyeToPlayer);
         return float.IsInfinity(opaque) ? far : MathF.Max(far, opaque + eyeToPlayer);
     }
 
