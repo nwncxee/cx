@@ -66,6 +66,7 @@ public sealed unsafe partial class AlloyRenderer
         var push = new VkRatePush { Contrast = Renderer.VrsContrast.V, Tile = s.Dev!.ShadingRateTexel };
         cl.ReadImages([scene]);
         cl.SetPipeline(s.Prog);
+        VkBindTally.Count(VkBindBy.Compute);
         cl.BindSet(0, new BindSet(default, default, [new ImageBinding(0, scene)], [new ImageBinding(0, s.Image)]));
         cl.PushConstants(0, MemoryMarshal.AsBytes(new ReadOnlySpan<VkRatePush>(in push)));
         cl.Dispatch(s.Tx, s.Ty);

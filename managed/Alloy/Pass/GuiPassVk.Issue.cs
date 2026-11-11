@@ -309,6 +309,7 @@ internal static unsafe partial class GuiPassVk
         side.SetRasterState(default);
         ReadOnlySpan<BufferBinding> ubo = [new(UboSlots.Loose, s.Loose, loose, s.Solve.Block.Length)];
         ReadOnlySpan<ImageBinding> tex2 = [new(0, v.Black, s.Linear), new(1, v.White, s.Linear)];
+        VkBindTally.Count(VkBindBy.Gui);
         side.BindSet(0, new BindSet(ubo, default, tex2, default));
         side.Draw(3);
         b = new Bound();

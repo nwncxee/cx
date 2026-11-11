@@ -280,6 +280,7 @@ public sealed unsafe partial class AlloyRenderer
             }
         }
         cl.SetPipeline(st.Pipe);
+        VkBindTally.Count(VkBindBy.Effects);
         cl.BindSet(0, new BindSet(ubo[..nu], default, sampled[..nt], images[..ni]));
         cl.Dispatch(gx, gy);
         ReadOnlySpan<ImageId> done = [target];

@@ -59,7 +59,24 @@ public sealed unsafe partial class AlloyRenderer
         public int StageA = -1, StageB = -1;
         public StageResources.VkBind[] StageBinds = [];
         public FrameLoc StageFrame;
+        /// <summary>The frame arena offset this program's loose block was last staged at (-1: none), and the state
+        /// it was staged under. A bind whose key matches reuses the slice instead of refilling the block.</summary>
+        public int LooseAt = -1;
+        public VkLooseKey LooseKey;
     }
+
+    /// <summary>Everything a colour program's loose block follows that can change inside a frame: the view, the
+    /// capture mode, the range latches the lit stage branches on, the mirror plane, the cube count, the highlight
+    /// twin's colour and whether a native stage's overlay has run. A new frame always refills, and what the key
+    /// misses the audit names (<see cref="VkLooseAuditEvery"/>).</summary>
+    private readonly record struct VkLooseKey(int Frame, Matrix4x4 Vp, int X, int Y, int W, int H, float Near, float Far,
+                                              int Viz, bool Oit, bool LightRec, bool Capturing, bool Planar,
+                                              float MirrorZ, int Cubes, Vector3 TwinColour, bool Overlay);
+
+    /// <summary>One frame in this many, a bind that would reuse its loose block refills it anyway and compares.
+    /// Power of two.</summary>
+    private const int VkLooseAuditEvery = 64;
+    private const int VkLooseMissLines = 8;
 
     /// <summary>The colour bracket's resources on one device, replaced whole with the device.</summary>
     private sealed class VkColourState
@@ -137,6 +154,8 @@ public sealed unsafe partial class AlloyRenderer
         public int OitOut;
         /// <summary>The shadow terms a lit bind was handed have been said once.</summary>
         public bool ShadowSaid;
+        /// <summary>Loose-block reuse audits that found stale bytes, this device; the first few are logged.</summary>
+        public int LooseMisses;
         /// <summary>A CPU multi-draw's index-buffer byte offsets as element indices, per call.</summary>
         public int[] Firsts = new int[4096];
     }
@@ -385,15 +404,58 @@ public sealed unsafe partial class AlloyRenderer
         return p;
     }
 
-    /// <summary>Capture one program's bind into its loose block -- its terms in the order the issue loop writes
-    /// them -- then the pass block, both appended to the arena, then the bind set. False (logged) when the arena is full.</summary>
+    /// <summary>One program's bind: its loose block staged into the frame's arena -- reused where the program was
+    /// already bound under the same state this frame -- then the pass block, then the bind set. False (logged) when
+    /// the arena is full.</summary>
     private static bool VkBindProgram(CommandList cl, VkProg p, in Matrix4x4 vp, int* viewport, float near, float far,
                                       BufferId slots, int tex)
     {
         VkColourState s = _vkc;
-        Array.Clear(p.Block);
         int viz = _capturing ? 0 : _lightViz;
         bool lit = p.Lit;
+        // the water stage is not the lit table's, but it takes the pass block's sun, ambient and fog as the lit stage does
+        bool passed = lit || p.Id == VkPrograms.Id.Water;
+        var key = new VkLooseKey(_frameSeq, vp, viewport[0], viewport[1], viewport[2], viewport[3], near, far,
+                                 viz, s.Oit, s.LightRec, _capturing, _planar, _mirrorZ,
+                                 CasterPass.CubesFresh ? CasterPass.CubeCount : 0, _vkHl.TwinColour,
+                                 !StageResources.VkOverlay.IsNull);
+        bool held = p.LooseAt >= 0 && key == p.LooseKey;
+        int loose;
+        if (held && (_frameSeq & (VkLooseAuditEvery - 1)) != 0)
+        {
+            VkBindTally.CountReused();
+            loose = p.LooseAt;
+            // the block is the view's, so the pass block must still be this view's even when nothing refills
+            if (passed) StagePass(viewport, near, far);
+        }
+        else
+        {
+            VkBindTally.CountStaged();
+            int was = held ? p.LooseAt : -1;
+            VkFillLoose(p, in vp, viewport, near, far, viz, lit);
+            loose = VkArena(p.Block);
+            p.LooseAt = loose;
+            p.LooseKey = key;
+            if (was >= 0 && loose >= 0 && !p.Block.AsSpan().SequenceEqual(s.ArenaBytes.AsSpan(was, p.Block.Length)))
+            {
+                VkBindTally.CountMissed();
+                if (s.LooseMisses++ < VkLooseMissLines)
+                    _log?.Always($"AlloyRenderer: the Vulkan {p.Label} program's loose block MISS: an input changed "
+                               + "inside the frame that the reuse key does not hold -- the refill stands");
+            }
+        }
+        int pass = passed ? VkArenaPass() : -1;
+        if (loose < 0 || (passed && pass < 0) || (p.ReadsEngine && VkEngine() < 0)) return false;
+        VkBindSet(cl, p, s, loose, pass, slots, tex, by: VkBindBy.Colour);
+        return true;
+    }
+
+    /// <summary>Program <paramref name="p"/>'s loose block refilled from this bind's state -- its terms in the order
+    /// the issue loop writes them. Hot: one clear, one capture bracket and the program's own setters.</summary>
+    private static void VkFillLoose(VkProg p, in Matrix4x4 vp, int* viewport, float near, float far, int viz, bool lit)
+    {
+        VkColourState s = _vkc;
+        Array.Clear(p.Block);
         LooseBlock.Capture(p.Members, p.Block);
         try
         {
@@ -438,13 +500,6 @@ public sealed unsafe partial class AlloyRenderer
         // the terms whose resources are not on Vulkan yet read as absent: no cube, no lightmap, no sky map, no weather,
         // no fog volume -- every one gates on the value it is zeroed to
         VkShadowSay(p);
-        int loose = VkArena(p.Block);
-        // the water stage is not the lit table's, but it reads the pass block's sun, ambient and fog as the lit stage does
-        bool passed = lit || p.Id == VkPrograms.Id.Water;
-        int pass = passed ? VkArenaPass() : -1;
-        if (loose < 0 || (passed && pass < 0) || (p.ReadsEngine && VkEngine() < 0)) return false;
-        VkBindSet(cl, p, s, loose, pass, slots, tex);
-        return true;
     }
 
     /// <summary>This frame's <c>CxEngine</c> block in the arena, staged at the first program that reads it, its noise
@@ -569,8 +624,9 @@ public sealed unsafe partial class AlloyRenderer
     /// <paramref name="storage"/> and <paramref name="sampledOwn"/> are the caller's buffers and images by binding.</summary>
     private static void VkBindSet(CommandList cl, VkProg p, VkColourState s, int loose, int pass, BufferId slots, int tex,
                                   ReadOnlySpan<int> extra = default, ReadOnlySpan<BufferBinding> storage = default,
-                                  ReadOnlySpan<ImageBinding> sampledOwn = default)
+                                  ReadOnlySpan<ImageBinding> sampledOwn = default, VkBindBy by = VkBindBy.Effects)
     {
+        VkBindTally.Count(by);
         Span<BufferBinding> ubo = stackalloc BufferBinding[12];
         Span<BufferBinding> ssbo = stackalloc BufferBinding[16];
         Span<ImageBinding> sampled = stackalloc ImageBinding[48];

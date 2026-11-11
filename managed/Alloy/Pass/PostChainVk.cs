@@ -330,6 +330,7 @@ internal static unsafe class PostChainVk
     {
         ReadOnlySpan<ImageBinding> sampled = [new(0, src, s.Linear)];
         ReadOnlySpan<ImageBinding> storage = [new(0, dst)];
+        VkBindTally.Count(VkBindBy.Post);
         cl.BindSet(0, new BindSet(default, default, sampled, storage));
         cl.PushConstants(0, System.Runtime.InteropServices.MemoryMarshal.AsBytes(new ReadOnlySpan<BloomPush>(in p)));
         cl.Dispatch((w + s.BloomGroup - 1) / s.BloomGroup, (h + s.BloomGroup - 1) / s.BloomGroup);
@@ -371,6 +372,7 @@ internal static unsafe class PostChainVk
         cl.SetPipeline(pipe);
         cl.SetViewport(vp.X, vp.Y, vp.W, vp.H);
         ReadOnlySpan<BufferBinding> sto = t.Storage.Buffer.IsNull ? default : [t.Storage];
+        VkBindTally.Count(VkBindBy.Post);
         cl.BindSet(0, new BindSet(ubo[..nu], sto, img[..n], sti[..ns]));
         cl.Draw(3);
         cl.EndRenderPass();

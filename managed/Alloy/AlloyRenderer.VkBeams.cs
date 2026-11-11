@@ -65,6 +65,7 @@ public sealed unsafe partial class AlloyRenderer
             int at = VkArena(p.Block);
             if (at < 0) return false;
             ReadOnlySpan<BufferBinding> ubo = [new(UboSlots.Loose, c.Arena, at, p.Block.Length)];
+            VkBindTally.Count(VkBindBy.Effects);
             side.BindSet(0, new BindSet(ubo, default, default, default));
             side.DrawIndexed(count, 1, (int)(off / sizeof(ushort)), baseVertex);
             drawn++;

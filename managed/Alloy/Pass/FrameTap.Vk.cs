@@ -82,6 +82,7 @@ internal static unsafe partial class FrameTap
         CommandList cl = s.Cmds!;
         cl.Reset();
         cl.SetPipeline(s.Copy);
+        VkBindTally.Count(VkBindBy.Effects);
         cl.BindSet(0, new BindSet(default, [new BufferBinding(SsboSlots.ReadbackOut, s.Out)], [new ImageBinding(0, img)], default));
         cl.Dispatch((w + ReadbackGroup - 1) / ReadbackGroup, (h + ReadbackGroup - 1) / ReadbackGroup);
         return vk.Submit(cl) && vk.ReadBack(s.Out, MemoryMarshal.AsBytes(words.AsSpan())) ? words : null;

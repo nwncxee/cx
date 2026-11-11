@@ -108,6 +108,7 @@ public sealed unsafe partial class AlloyRenderer
                 img[ni++] = new ImageBinding(o.Binding, o.Name == "uCopy" ? s.Copy : c.Hdr, c.Linear);
         }
         side.SetPipeline(s.Pipe);
+        VkBindTally.Count(VkBindBy.Post);
         side.BindSet(0, new BindSet(ubo[..nu], default, img[..ni], default));
         side.Draw(3);
     }

@@ -211,6 +211,15 @@ public sealed unsafe partial class AlloyRenderer
     /// reaches the GPU when a pass copies it into the frame arena.</summary>
     internal static void BindPass(int locCubes, int* viewport, float near, float far)
     {
+        StagePass(viewport, near, far);
+        // a Vulkan pass reads the staged block and binds its own shadow maps
+        LooseBlock.Set(locCubes, CasterPass.CubesFresh ? CasterPass.CubeCount : 0);
+    }
+
+    /// <summary>The pass block for this view alone, staged or reused. No loose member is written, so a bind that
+    /// reuses its own loose block can keep the pass block current for the view without opening a capture.</summary>
+    internal static void StagePass(int* viewport, float near, float far)
+    {
         PassBinds++;
         PassStageState ps = _ps;
         var key = new PassKey(_frameSeq, viewport[0], viewport[1], viewport[2], viewport[3], near, far, _lodScale,
@@ -226,8 +235,6 @@ public sealed unsafe partial class AlloyRenderer
         }
         else if ((_frameSeq & (PassAuditEvery - 1)) == 0) AuditPass(viewport, near, far);
         if (ps.Borrowed) PassBindsBorrowed++;
-        // a Vulkan pass reads the staged block and binds its own shadow maps
-        LooseBlock.Set(locCubes, CasterPass.CubesFresh ? CasterPass.CubeCount : 0);
     }
 
     /// <summary>The whole block, from this pass's state. False when it draws through another view's cluster table.</summary>

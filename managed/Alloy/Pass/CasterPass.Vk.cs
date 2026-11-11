@@ -454,6 +454,7 @@ public sealed unsafe partial class CasterPass
                     break;
             }
         }
+        VkBindTally.Count(VkBindBy.Casters);
         cl.BindSet(0, new BindSet(ubo[..nu], ssbo[..ns], sampled[..nt], default));
     }
 

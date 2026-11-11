@@ -93,6 +93,7 @@ public sealed unsafe partial class AlloyRenderer
                                   : o.Name == "uFlare" && !img.IsNull ? new ImageBinding(o.Binding, img, s.Samp)
                                   : VkSampled(o, c, 0);
             }
+            VkBindTally.Count(VkBindBy.Effects);
             side.BindSet(0, new BindSet(ubo[..nu], ssbo[..ns], sampled[..nt], default));
             // the group's first element IS the draw's firstInstance: the stage reads it as gl_BaseInstance
             side.Draw(4, run, 0, at);
@@ -146,6 +147,7 @@ public sealed unsafe partial class AlloyRenderer
         Halos.OccConsts push = Halos.OccPush(view, proj, n, Halos.FadeStep(FrameDelta.Delta(FrameDelta.DtFloor)));
         ReadOnlySpan<BufferBinding> ssbo = [new(SsboSlots.Halos, s.Recs), new(SsboSlots.HaloFade, s.Fade)];
         cl.SetPipeline(s.Occ);
+        VkBindTally.Count(VkBindBy.Effects);
         cl.BindSet(0, new BindSet(default, ssbo, [new ImageBinding(0, c.DepthRead)], default));
         cl.PushConstants(0, MemoryMarshal.AsBytes(new ReadOnlySpan<Halos.OccConsts>(in push)));
         cl.Dispatch((n + VkHaloOccGroup - 1) / VkHaloOccGroup);

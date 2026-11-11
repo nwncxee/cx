@@ -328,6 +328,7 @@ internal static class CullPassVk
             new(CullPass.BindRej, s.Rej),
         ];
         cl.SetPipeline(s.Prog);
+        VkBindTally.Count(VkBindBy.Compute);
         cl.BindSet(0, new BindSet(ubo, storage, pyr, default));
         cl.Dispatch(groups1D);
         // the rank reads keys every invocation of the cull wrote: the backend's barrier after a dispatch orders it.
@@ -339,6 +340,7 @@ internal static class CullPassVk
             new(CullPass.BindKey, s.Key),
         ];
         cl.SetPipeline(s.ProgSort);
+        VkBindTally.Count(VkBindBy.Compute);
         cl.BindSet(0, new BindSet(ubo, sortStorage, default, default));
         cl.Dispatch(groups1D);
     }
@@ -370,6 +372,7 @@ internal static class CullPassVk
             ReadOnlySpan<ImageBinding> sampled = i == 0 ? [new(0, src)] : default;
             ReadOnlySpan<ImageBinding> images = i == 0 ? [new(0, s.Pyr, default, 0)] : [new(0, s.Pyr, default, i), new(1, s.Pyr, default, i - 1)];
             cl.SetPipeline(i == 0 ? s.ProgHiZFirst : s.ProgHiZ);
+            VkBindTally.Count(VkBindBy.Compute);
             cl.BindSet(0, new BindSet(default, default, sampled, images));
             cl.Dispatch((lw + HiZGroup - 1) / HiZGroup, (lh + HiZGroup - 1) / HiZGroup);
         }

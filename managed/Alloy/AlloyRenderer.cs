@@ -332,6 +332,8 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         // NOT in the chain above: those two guard what reaches the screen, and this one guards a debug dump.
         // A regression in the canonicaliser should cost /alloy framedump, not drop every user back to vanilla.
         FrameDump.SelfCheck(log);
+        // Nor this: the bind tally is a census on the period line, so a wrong count costs a number and no pixel.
+        VkBindTally.SelfCheck(log);
         // Nor this: a knob's shipped default moves the look a player starts from, and they can set it back.
         WrapDefaultApprovedExamples.SelfCheck(log);
         // #128: same rule. A wrong gob offset draws a creature at the wrong alpha and a leaky refused-gob set
@@ -521,6 +523,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         Counters._ownDissolve = 0; Counters._ownFade = 0; Counters._skipFogTile = Counters._skipFogGob = 0;
         Counters._recWritten = 0; Counters._recStable = 0; Counters._recSettled = 0; ResetPassPeriod();
         RecordUploads.ResetPeriod();
+        VkBindTally.ResetPeriod();
         Counters._nrmDeclared = Counters._nrmBound = 0;
         Array.Clear(Counters._drawsByClass);
         Counters._clusterOverflow = 0;

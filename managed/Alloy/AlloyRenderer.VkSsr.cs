@@ -208,6 +208,7 @@ public sealed unsafe partial class AlloyRenderer
         cl.BeginRenderPass(new RenderPassDesc(colors));
         cl.SetPipeline(pipe);
         cl.SetViewport(0, 0, w, h);
+        VkBindTally.Count(VkBindBy.Post);
         cl.BindSet(0, new BindSet(ubo[..nu], default, img[..n], default));
         cl.Draw(3);
         cl.EndRenderPass();

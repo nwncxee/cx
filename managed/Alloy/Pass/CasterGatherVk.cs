@@ -269,6 +269,7 @@ internal static unsafe partial class CasterGatherVk
                 new(CasterGather.BindSrc, src), new(CullPass.BindSphere, CullPassVk.PublishedSpheres),
                 new(CasterGather.BindCast, s.Cast), new(CasterGather.BindCmd, cmd), new(CasterGather.BindCount, cnt),
             ];
+            VkBindTally.Count(VkBindBy.Casters);
             cl.BindSet(0, new BindSet(ubo, plain, default, default));
             return;
         }
@@ -278,6 +279,7 @@ internal static unsafe partial class CasterGatherVk
             new(CasterGather.BindCast, s.Cast), new(CasterGather.BindCmd, cmd), new(CasterGather.BindCount, cnt),
             new(CasterGather.BindView, views),
         ];
+        VkBindTally.Count(VkBindBy.Casters);
         cl.BindSet(0, new BindSet(ubo, layered, default, default));
     }
 
