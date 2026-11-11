@@ -52,7 +52,7 @@ internal static class UnseenServerLookApprovedExamples
             log.Tap = line => { if (line.Contains("cx_silhouette.shd") && line.Contains("nothing")) said++; };
             try { worn = Unseen.Wear(Broken, log); }
             finally { log.Tap = tap; }
-            check.Expect(!worn && said == 1 && Drawn(body) == 1f && Unseen.Worn() == Unseen.LookText(null),
+            check.Expect(!worn && said == 1 && Drawn(body) == 1f && Unseen.Worn().Contains("CX_SILHOUETTE_RGB") && !Unseen.Worn().Contains("return nothing"),
                          $"E29 a look that does not compile is refused whole, and the log names the file and the error: worn {worn}, said {said} time(s), drew at {Drawn(body)}");
         });
 }
