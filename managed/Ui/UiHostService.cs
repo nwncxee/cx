@@ -21,6 +21,7 @@ public sealed unsafe class UiHostService : IExtenderService
         FrameRegistry.Global.Register(FramePhase.PostPresent, 70, PaletteShare.Tick, "Palettes.scan", log);
         Capabilities.Register("palette", 1, static () => true);
         UiHost.SelfCheck(log);   // arbiter + draw roll-call proof (off-device)
+        WorldLayerApprovedExamples.SelfCheck(log);   // plates and damage numbers under the game's panels (off-device)
         GuiFrameSelfCheck.SelfCheck(log);   // the frame's 2D order, CX windows against the game's panels (off-device)
         FrameZones.SelfCheck(log);   // frame-split instrument (off-device)
         ScrollColumn.SelfCheck(log);    // scroll column: offset, thumb, wheel, zero-alloc draw (off-device)
