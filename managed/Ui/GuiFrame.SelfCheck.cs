@@ -7,7 +7,7 @@ using CX.Services.Nameplate;
 namespace CX.Ui;
 
 /// <summary>One frame's 2D order as a string of letters, bottom to top, and the parts of it that already held
-/// before plates moved under the game's panels (plain regression tests, not approved-spec).</summary>
+/// before plates moved under the game's panels: plain regression tests, the examples E2 and E6 among them.</summary>
 internal static class GuiFrameSelfCheck
 {
     /// <summary>Appends a letter per thing drawn: Q then E for the game's quickbar and its Examine window, the
@@ -41,7 +41,13 @@ internal static class GuiFrameSelfCheck
     {
         var check = new Checker(log, "GuiFrame.SelfCheck");
         string f = Letters();
+        // Given the Examine window is open and a creature stands beside it on screen
+        // When that creature's nameplate shows
+        // Then the whole nameplate is visible
         check.Expect(f.Split('p').Length == 2, $"E2 a plate nothing covers is drawn, once: {f}");
+        // Given the Examine window is open and the CX chat box overlaps it
+        // When the frame draws
+        // Then the CX chat box covers the Examine window, as it does today
         check.Expect(f.IndexOf('c', StringComparison.Ordinal) > f.IndexOf('E', StringComparison.Ordinal),
             $"E6 the CX chat box draws over the Examine window: {f}");
         check.Expect(f.IndexOf('N', StringComparison.Ordinal) > f.IndexOf('p', StringComparison.Ordinal),

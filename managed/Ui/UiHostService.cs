@@ -257,7 +257,7 @@ public sealed unsafe class UiHostService : IExtenderService
         long tEdge = FrameZones.Now, ui0 = FrameZones.Ticks(FrameZones.Zone.Ui);
         for (UiLayer layer = from; layer <= to; layer++)
         {
-            Record(layer, layer == from && from != UiLayer.AboveNui);
+            Record(layer, layer == from);
             TextRig.Replay(_layers[(int)layer]);
         }
         HandBack();
