@@ -24,6 +24,8 @@ internal sealed unsafe partial class VkBackend
         byte[] seed = [];
         try { if (File.Exists(_pipeCachePath)) seed = File.ReadAllBytes(_pipeCachePath); }
         catch (IOException) { } catch (UnauthorizedAccessException) { }
+        // after the read, never before it: the file this driver answers for outlives any sweep
+        ShaderCache.Retire(ShaderCache.Dir, Path.GetFileName(_pipeCachePath), _log);
         VkPipelineCache cache;
         fixed (byte* p = seed)
         {

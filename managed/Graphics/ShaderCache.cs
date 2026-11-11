@@ -12,18 +12,14 @@ internal static partial class ShaderCache
     /// edit orphans the previous set.</summary>
     private static readonly TimeSpan Stale = TimeSpan.FromDays(30);
 
-    /// <summary>A pipeline cache blob goes sooner than a module: it is a hundred megabytes where a module is
-    /// kilobytes, and any session that brings the device up rewrites the blob it read, so a blob left unwritten
-    /// this long belongs to a driver identity that no longer answers on this machine.</summary>
+    /// <summary>How long a superseded pipeline cache blob is left alone before <see cref="Retire"/> takes it: a
+    /// machine that alternates two drivers for one GPU writes each blob within the window, so both survive.
+    /// Age never decides the blob belonging to the driver running now -- <see cref="Superseded"/> does.</summary>
     private static readonly TimeSpan StalePipelines = TimeSpan.FromDays(7);
 
     /// <summary>What every Vulkan pipeline cache blob's name starts with; the rest of it is the driver identity
     /// the blob's own header carries, and the only identity a driver reads its data back under.</summary>
     internal const string PipelinePrefix = "vk-pipelines-";
-
-    /// <summary>Whether the sweep deletes <paramref name="leaf"/>, last written <paramref name="age"/> ago.</summary>
-    internal static bool Sweeps(string leaf, TimeSpan age)
-        => age > (leaf.StartsWith(PipelinePrefix, StringComparison.Ordinal) ? StalePipelines : Stale);
 
     private static string? _dir;
 
@@ -42,25 +38,57 @@ internal static partial class ShaderCache
                 foreach (string f in Directory.EnumerateFiles(dir))
                 {
                     var about = new FileInfo(f);
-                    string leaf = about.Name;
-                    if (!Sweeps(leaf, DateTime.UtcNow - about.LastWriteTimeUtc)) continue;
+                    if (DateTime.UtcNow - about.LastWriteTimeUtc <= Stale) continue;
                     long bytes = about.Length;
                     try { File.Delete(f); }
                     catch (Exception e) when (e is IOException or UnauthorizedAccessException)
                     {
-                        log?.Always($"ShaderCache: {leaf} is stale and was NOT deleted -- {e.Message}");
+                        log?.Always($"ShaderCache: {about.Name} is stale and was NOT deleted -- {e.Message}");
                         continue;
                     }
                     gone++;
                     freed += bytes;
-                    if (leaf.StartsWith(PipelinePrefix, StringComparison.Ordinal))
-                        log?.Always($"ShaderCache: dropped the pipeline cache {leaf} ({bytes / (1024 * 1024)} MB), "
-                                  + "unwritten since before the window -- a session on that driver rebuilds its pipelines");
                 }
         }
         catch (IOException e) { log?.Always($"ShaderCache: {dir} could NOT be swept -- {e.Message}"); }
         catch (UnauthorizedAccessException e) { log?.Always($"ShaderCache: {dir} could NOT be swept -- {e.Message}"); }
         if (gone > 0) log?.Info($"ShaderCache: swept {gone} stale file(s), {freed / 1024} KiB");
         return dir;
+    }
+
+    /// <summary>Whether <paramref name="leaf"/> is a blob for this GPU under a driver identity it no longer
+    /// reports, which vkCreatePipelineCache would ignore as initial data and no driver here can read again.
+    /// <paramref name="mine"/>, the leaf the driver running now reads, is never superseded at any age; another
+    /// GPU's is left to the age sweep, and one written inside the window stays, so two live ICDs both keep theirs.</summary>
+    internal static bool Superseded(string leaf, string mine, TimeSpan age)
+    {
+        if (!mine.StartsWith(PipelinePrefix, StringComparison.Ordinal) || leaf == mine || age <= StalePipelines)
+            return false;
+        int gpu = mine.LastIndexOf('-') + 1;   // the name is vk-pipelines-<vendor>-<device>-<cache uuid>.bin
+        return gpu > 0 && leaf.StartsWith(mine[..gpu], StringComparison.Ordinal);
+    }
+
+    /// <summary>Delete the blobs in <paramref name="dir"/> that <see cref="Superseded"/> answers for beside
+    /// <paramref name="mine"/>, each one named with the megabytes it frees: a retired driver build's pipelines
+    /// are a hundred megabytes nothing on this machine will ever read again. Loud when one refuses to go.</summary>
+    internal static void Retire(string dir, string mine, ExtenderLog? log)
+    {
+        try
+        {
+            if (!Directory.Exists(dir)) return;
+            foreach (string f in Directory.EnumerateFiles(dir, PipelinePrefix + "*"))
+            {
+                var about = new FileInfo(f);
+                if (!Superseded(about.Name, mine, DateTime.UtcNow - about.LastWriteTimeUtc)) continue;
+                long bytes = about.Length;
+                try { File.Delete(f); }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                { log?.Always($"ShaderCache: the retired pipeline cache {about.Name} was NOT deleted -- {e.Message}"); continue; }
+                log?.Always($"ShaderCache: dropped {about.Name} ({bytes / (1024 * 1024)} MB) -- this GPU under a driver "
+                          + "identity it no longer reports, so no driver here could read it again");
+            }
+        }
+        catch (IOException e) { log?.Always($"ShaderCache: the retired pipeline caches in {dir} were NOT swept -- {e.Message}"); }
+        catch (UnauthorizedAccessException e) { log?.Always($"ShaderCache: the retired pipeline caches in {dir} were NOT swept -- {e.Message}"); }
     }
 }
