@@ -153,6 +153,16 @@ internal static class UnseenSelfCheck
                              $"a player who switched silhouettes off sees the stock see-through creature under a server's look too: worn {worn}, on {on}, off {Drawn(body)}");
             }
             finally { Unseen.Enabled.Set(had); Unseen.Undress(); }
+
+            const string blue = UnseenServerLookApprovedExamples.Blue;
+            check.Expect(!Unseen.Wear("#pragma cx_silhouette opacity 150\n" + blue, log) && !Unseen.Wear("#pragma cx_silhouette sparkle\n" + blue, log)
+                         && !Unseen.Wear("#pragma cx_silhouette glow 1\n" + blue, log) && Unseen.Worn() == Unseen.LookText(null),
+                         "a look with a declaration line CX cannot read is refused whole");
+            bool plain = Unseen.Wear(blue, log);
+            string lit = VkPrograms.LitPair(log).Fs;
+            Unseen.Undress();
+            check.Expect(plain && lit.Contains("vec3(0.0, 0.02, 0.3)") && !VkPrograms.LitPair(log).Fs.Contains("vec3(0.0, 0.02, 0.3)"),
+                         "the lit stage carries the look that is worn, and the stock one once it is taken off");
         }
         else check.Skip("the staged shaderc did not load");
 
@@ -167,8 +177,19 @@ internal static partial class GpuGolden
 {
     private static void UnseenStockLookSelfCheck(CX.Graphics.Rhi.VkBackend vk, Checker check, ExtenderLog log)
     {
-        float[]? stock = LookCases(vk, log, null, [0.9f, 0.05f, 0.04f, 0.6f, 0.03f, 0.03f, 0f, 0f, 1f, 0f, 0f, 1f, 1f, 0f], "golden silhouette look stock");
+        float[] cases =
+        [
+            0.9f, 0.05f, 0.04f, 0.6f, 0.03f, 0.03f, 0f, 0f, 1f, 0f, 0f, 1f, 1f, 0f,
+            0.9f, 0.05f, 0.04f, 0.6f, 0.03f, 0.03f, 0f, 0f, 1f, 0f, 0f, 1f, 0.5f, 0f,
+            0.9f, 0.05f, 0.04f, 0.6f, 0.03f, 0.03f, 0f, 0f, 1f, 0f, 0f, 1f, 0f, 0f,
+        ];
+        float[]? stock = LookCases(vk, log, null, cases, "golden silhouette look stock");
         check.Expect(stock != null && stock[0] == Grey && stock[1] == Grey && stock[2] == Grey && stock[3] == 0f,
                      "a module with no look of its own draws the stock dark grey and keeps none of the creature's light");
+        check.Expect(stock != null && stock[7] == 0.5f && stock[8] == 0.9f && stock[11] == 1f,
+                     "half way into its silhouette a creature keeps half its own light, and all of it and its own colour before the fade starts");
+        float[]? greedy = LookCases(vk, log, "CxSilhouetteLook CxSilhouetteShade(CxSilhouetteSurface s) { return CxSilhouetteLook(s.lit, 5.0); }\n",
+                                    cases, "golden silhouette look greedy");
+        check.Expect(greedy != null && greedy[3] == 1f, "a look cannot ask for more than all of the creature's own light");
     }
 }
