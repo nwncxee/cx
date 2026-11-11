@@ -43,7 +43,7 @@ internal static class UnseenSilhouetteApprovedExamples
 
             // Given a heard-but-unseen creature holding a flaming sword with glowing eyes
             // When I look at it
-            // Then the blade and the eyes are the same dark grey as the rest, and do not glow
+            // Then the blade and the head are the same dark grey as the rest, and the flame and the eye glow are not drawn
             check.Expect(Unseen.Alpha(sword.Index, 0.5f, lit: false) == 0f,
                          "E8 a silhouette's glowing part, which adds its own light, is not drawn");
 
@@ -116,7 +116,7 @@ internal static partial class GpuGolden
 
         // Given a heard-but-unseen creature holding a flaming sword with glowing eyes
         // When I look at it
-        // Then the blade and the eyes are the same dark grey as the rest, and do not glow
+        // Then the blade and the head are the same dark grey as the rest, and the flame and the eye glow are not drawn
         check.Expect(got[6] == got[0] && got[7] == got[0] && got[8] == got[0],
                      FormattableString.Invariant($"E8: a silhouette's glowing blade is the body's grey ({got[6]:F4}, {got[7]:F4}, {got[8]:F4})"));
     }
