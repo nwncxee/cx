@@ -105,14 +105,14 @@ internal static unsafe partial class FogVolume
     /// <summary>The medium for an area's fog: <paramref name="haze"/> of the opacity spread evenly out to the fog end,
     /// the rest a ramp from start to end, so a ray out from the player keeps <see cref="EndTransmittance"/> at the end.
     /// With no area fog the haze alone spans <paramref name="far"/> (at least <see cref="AirFloor"/>).
-    /// Both distances stretch by <see cref="Zoom"/> of <paramref name="eyeToPlayer"/>.</summary>
+    /// Every distance stretches by <see cref="Zoom"/> of <paramref name="eyeToPlayer"/>.</summary>
     internal static Medium MediumFor(bool on, float start, float end, float far, float haze, float eyeToPlayer)
     {
         float zoom = Zoom(eyeToPlayer);
         start *= zoom; end *= zoom;
         float tau = -MathF.Log(EndTransmittance);
         float h = Math.Clamp(haze, 0f, MaxHaze);
-        if (!on || end <= 0f) return new Medium(h * tau / MathF.Max(far, AirFloor), 0f, 0f, 1f);
+        if (!on || end <= 0f) return new Medium(h * tau / (MathF.Max(far, AirFloor) * zoom), 0f, 0f, 1f);
         float e = MathF.Max(end, MinRamp), s = Math.Clamp(start, 0f, e - MinRamp);
         return new Medium(h * tau / e, 2f * (1f - h) * tau / (e - s), s, e);
     }
