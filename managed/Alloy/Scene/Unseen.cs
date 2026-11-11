@@ -48,6 +48,15 @@ internal static unsafe class Unseen
     /// <summary>An object's silhouette: how far in it is, 0 to 1, and whether it is heading in.</summary>
     internal readonly record struct Dim(float Amount, bool In);
 
+    internal static readonly KnobGroup G = KnobGroup.Declare("silhouette", "Graphics", "World",
+        master: "Silhouettes for creatures out of sight",
+        masterHelp: "A creature your character hears but does not see draws as a solid dark shape, so it reads apart "
+                  + "from one under Invisibility. Off draws them see-through as the stock client does.",
+        order: 347, title: "Silhouettes");
+
+    /// <summary>The feature's switch, <c>silhouette.enabled</c>.</summary>
+    internal static readonly Knob<bool> Enabled = G.Master!;
+
     private static UnseenState _s = new();
 
     /// <summary>Forget every silhouette: an area change or a stand-down.</summary>
@@ -93,7 +102,7 @@ internal static unsafe class Unseen
     /// into a silhouette, which out, and how far each has got. Switched off, every silhouette is forgotten.</summary>
     internal static void Frame(ReadOnlySpan<Sight> sights, float seconds)
     {
-        if (!Renderer.Silhouette.V)
+        if (!Enabled.V)
         {
             if (_s.Count > 0) Reset();
             return;

@@ -24,7 +24,7 @@ internal static class Fog
         G.Section("Colour");
         Sky = G.Slider("sky", "Fog takes the sky colour", 0f, 1f, 0.05f, 0.75f,
                        help: "How far the fog colour moves from the area's flat colour toward the sky. 0 is the stock look.");
-        Sun = G.Slider("sun", "Sun glow in fog", 0f, 2f, 0.05f, 0.35f, help: "Fog brightens toward the sun.");
+        Sun = G.Slider("sun", "Sun glow in fog", 0f, 2f, 0.05f, 0.35f, tier: Tier.Advanced, help: "Fog brightens toward the sun.");
         SunExp = G.Slider("sunexp", "Sun glow tightness", 1f, 64f, 1f, 8f, tier: Tier.Advanced,
                           help: "Big = tight glow, small = half-sky wash.");
         SkyBand = G.Slider("skyband", "Horizon band", 0f, 1f, 0.05f, 0.15f, tier: Tier.Advanced,
