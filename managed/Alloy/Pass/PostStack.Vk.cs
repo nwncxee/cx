@@ -37,8 +37,10 @@ internal static unsafe partial class PostStack
         /// <summary>The exposure last written into <see cref="FsrExposure"/>; NaN before the first.</summary>
         public float FsrExposureSet = float.NaN;
         public bool HistValid, Up;
-        /// <summary>The last FSR dispatch started its history over, and took a colour whose bare sky was already fogged.</summary>
-        public bool FsrReset, FsrFogged;
+        /// <summary>The last FSR dispatch started its history over.</summary>
+        public bool FsrReset;
+        /// <summary>This frame's bare sky already carries the volumetric fog, laid ahead of the blended passes.</summary>
+        public bool SkyFogged;
         /// <summary>The bare-sky fog laid before FSR: its program and its loose terms.</summary>
         public GuiVkProg? SkyFog;
         public bool SkyFogTried, SkyFogSaid;
@@ -158,8 +160,8 @@ internal static unsafe partial class PostStack
         if (!AlloyRenderer.VkWeatherLate(vk, cl, over ? wx : hdr, over, wide ? dw : viewport[2], wide ? dh : viewport[3], near, far, log))
             return false;
         ImageId vel = taa || fsr ? s.Vel : default;
-        PostChainVk.SkyInput sky = fsr ? FsrSkyVk(vk, cl, depth, s.Vel, depthW, depthH, dw, dh, s.FsrReset, log) with { Fogged = s.FsrFogged }
-                                       : new PostChainVk.SkyInput(depth);
+        PostChainVk.SkyInput sky = (fsr ? FsrSkyVk(vk, cl, depth, s.Vel, depthW, depthH, dw, dh, s.FsrReset, log)
+                                        : new PostChainVk.SkyInput(depth)) with { Fogged = s.SkyFogged };
         if (live == 0)
         {
             if (fsr) MotionVectors.RollHistory();
@@ -373,7 +375,6 @@ internal static unsafe partial class PostStack
         Fsr.Note(rw, rh, dw, dh, log);
         cl.BeginLabel("fsr"u8);
         s.FsrReset = Fsr.TakeReset();
-        s.FsrFogged = FsrSkyFogVk(vk, cl, hdr, depth, rw, rh, log);
         cl.Upscale(Fsr.Command(hdr, depth, s.Vel, s.FsrExposure, s.FsrOut, rw, rh, PostChain.JitterX, PostChain.JitterY,
                                Fsr.FrameMs(), near, far, fovY, s.FsrReset, AlloyRenderer.VkReactiveMask));
         cl.EndLabel();
@@ -416,13 +417,15 @@ internal static unsafe partial class PostStack
     }
 
     /// <summary>The volumetric fog laid over <paramref name="hdr"/>'s bare-sky texels at <paramref name="rw"/> x <paramref name="rh"/>,
-    /// before FSR, where no dome drew and the volume is built: by this frame's exact depth, so FSR's history carries the fog
-    /// and the resolve fogs nothing again. False when it laid none (a refusal logged once).</summary>
-    internal static bool FsrSkyFogVk(VkBackend vk, CommandList cl, ImageId hdr, ImageId depth, int rw, int rh, ExtenderLog log)
+    /// ahead of every pass that writes no depth, where no <paramref name="dome"/> drew and the volume is built: an effect
+    /// in front of open fog draws over it, FSR's history carries it, and the resolve fogs nothing again. False when it
+    /// laid none (a refusal logged once), which the frame's resolve reads to fog bare sky itself.</summary>
+    internal static bool SkyFogVk(VkBackend vk, CommandList cl, ImageId hdr, ImageId depth, int rw, int rh, bool dome, ExtenderLog log)
     {
-        if (AlloyRenderer.SkyInvVp != default || !FogVolume.Built) return false;
         if (_vk.Dev != vk) _vk = new StackVkState { Dev = vk };
         StackVkState s = _vk;
+        s.SkyFogged = false;
+        if (dome || !FogVolume.Built) return false;
         if (!s.SkyFogTried)
         {
             s.SkyFogTried = true;
@@ -434,7 +437,7 @@ internal static unsafe partial class PostStack
         bool drew = false;
         if (s.SkyFog != null)
         {
-            cl.BeginLabel("fsr bare-sky fog"u8);
+            cl.BeginLabel("bare-sky fog"u8);
             PostChainVk.Open(s.SkyFog);
             LooseBlock.Set(s.FJitter, new Vector2(PostChain.JitterX * 0.5f, PostChain.JitterY * 0.5f));
             FogVolume.Upload(s.FVFog, s.FVFogVp, capture: false);
@@ -444,10 +447,10 @@ internal static unsafe partial class PostStack
             cl.EndLabel();
         }
         if (!drew && !s.SkyFogSaid)
-            log.Always("PostStack: the FSR bare-sky fog is OFF -- its program or its pipeline was refused (logged above). The resolve "
-                     + "fogs bare sky on FSR's colour, so thin far objects in the fog draw brighter under FSR");
+            log.Always("PostStack: the bare-sky fog is OFF -- its program or its pipeline was refused (logged above). The resolve "
+                     + "fogs bare sky after the effects, so an effect in front of open fog is hidden");
         s.SkyFogSaid |= !drew;
-        return drew;
+        return s.SkyFogged = drew;
     }
 
     /// <summary>The coverage pair at <paramref name="w"/> x <paramref name="h"/>, made anew with no history when the size

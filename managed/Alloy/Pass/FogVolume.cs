@@ -22,8 +22,11 @@ internal static unsafe partial class FogVolume
     private const float MinRamp = 0.5f;
     /// <summary>In an area with no fog of its own, the haze spends its share over the view's far distance, or this if longer.</summary>
     private const float AirFloor = 150f;
-    /// <summary>The volume's near distance, metres: the grid's first slice starts here.</summary>
+    /// <summary>The volume's near distance inside the camera limit, metres: the grid's first slice starts here.</summary>
     private const float Near = 1f;
+    /// <summary>The engine's default camera limit, metres from the player: out to here the fog keeps the area's distances,
+    /// and past it the fog stretches whatever limit a server sets, since the area's fog was drawn for this one.</summary>
+    private const float ZoomLimit = 25f;
     /// <summary>Invocations per group along x and y, matching both stages' <c>local_size</c>.</summary>
     private const int Group = 8;
     /// <summary>Seconds over which the sun's share of the air eases in at dawn and out at dusk.</summary>
@@ -69,6 +72,8 @@ internal static unsafe partial class FogVolume
         public bool Built;
         public Matrix4x4 Vp;
         public float InvLog;
+        /// <summary>The near distance of the last grid built: this frame's readers' and the next build's history's.</summary>
+        public float NearZ = Near;
     }
 
     /// <summary>What outlives a context: the log, the day/night easing, the drift, the counters.</summary>
@@ -99,22 +104,30 @@ internal static unsafe partial class FogVolume
 
     /// <summary>The medium for an area's fog: <paramref name="haze"/> of the opacity spread evenly out to the fog end,
     /// the rest a ramp from start to end, so a ray out from the player keeps <see cref="EndTransmittance"/> at the end.
-    /// With no area fog the haze alone spans <paramref name="far"/> (at least <see cref="AirFloor"/>).</summary>
-    internal static Medium MediumFor(bool on, float start, float end, float far, float haze)
+    /// With no area fog the haze alone spans <paramref name="far"/> (at least <see cref="AirFloor"/>).
+    /// Every distance stretches by <see cref="Zoom"/> of <paramref name="eyeToPlayer"/>.</summary>
+    internal static Medium MediumFor(bool on, float start, float end, float far, float haze, float eyeToPlayer)
     {
+        float zoom = Zoom(eyeToPlayer);
+        start *= zoom; end *= zoom;
         float tau = -MathF.Log(EndTransmittance);
         float h = Math.Clamp(haze, 0f, MaxHaze);
-        if (!on || end <= 0f) return new Medium(h * tau / MathF.Max(far, AirFloor), 0f, 0f, 1f);
+        if (!on || end <= 0f) return new Medium(h * tau / (MathF.Max(far, AirFloor) * zoom), 0f, 0f, 1f);
         float e = MathF.Max(end, MinRamp), s = Math.Clamp(start, 0f, e - MinRamp);
         return new Medium(h * tau / e, 2f * (1f - h) * tau / (e - s), s, e);
     }
 
+    /// <summary>How far the fog's lengths stretch for a camera <paramref name="eyeToPlayer"/> metres from the player
+    /// (negative: no player): 1 inside <see cref="ZoomLimit"/>, then in proportion, so a camera zoomed out past the
+    /// limit never looks through the wall at the player and frames the same fog it framed at the limit.</summary>
+    private static float Zoom(float eyeToPlayer) => MathF.Max(1f, eyeToPlayer / ZoomLimit);
+
     /// <summary>The distance from the player past which the fog hides everything below the eye: where the wall alone
     /// spends the whole opacity, since the haze thins with height and the bank is whole below the eye. Infinity with
     /// no area fog.</summary>
-    internal static float OpaqueDistance(bool on, float start, float end, float haze)
+    internal static float OpaqueDistance(bool on, float start, float end, float haze, float eyeToPlayer)
     {
-        Medium m = MediumFor(on, start, end, 0f, haze);
+        Medium m = MediumFor(on, start, end, 0f, haze, eyeToPlayer);
         if (m.Wall <= 0f) return float.PositiveInfinity;
         float tau = -MathF.Log(EndTransmittance);
         return m.End + (tau - m.Wall * (m.End - m.Start) * 0.5f) / m.Wall;
@@ -144,11 +157,20 @@ internal static unsafe partial class FogVolume
 
     private static float Lin(float v) => MathF.Pow(MathF.Max(v, 0f), AlloyLights.SrgbGamma);
 
+    /// <summary>The froxel grid's depth range for a view whose far plane is <paramref name="far"/>: its slices are
+    /// spaced evenly in log(view depth) from Near to Far, and LogZ is log(Far / Near). The near distance stretches by
+    /// <see cref="Zoom"/> as the fog does, so the slices fall across the wall as they do at the camera limit.</summary>
+    private static (float Near, float Far, float LogZ) Grid(float far, float eyeToPlayer)
+    {
+        float near = Near * Zoom(eyeToPlayer), f = MathF.Max(far, near * 2f);
+        return (near, f, MathF.Log(f / near));
+    }
+
     /// <summary>One build's terms, decided on the CPU and pushed identically by both renderers' dispatches.</summary>
     internal struct Terms
     {
         public int W, H, D;
-        public float LogZ, Far;
+        public float LogZ, Near, Far;
         public Matrix4x4 InvVp;
         public Vector3 Eye, Fwd, Origin, Ambient, Jit, Drift, Local;
         public Medium M;
@@ -182,12 +204,12 @@ internal static unsafe partial class FogVolume
         t.InvVp = invVp;
         t.Eye = camToWorld.Translation;
         t.Fwd = -Vector3.Normalize(new Vector3(view.M13, view.M23, view.M33));
-        t.Far = MathF.Max(far, Near * 2f);
-        t.LogZ = MathF.Log(t.Far / Near);
         t.Origin = SceneFog.Origin(out _);
+        float toPlayer = t.Veil ? -1f : SceneFog.EyeToPlayer(t.Eye);
+        (t.Near, t.Far, t.LogZ) = Grid(far, toPlayer);
         // a veil build holds neither haze nor fog wall: the area's own ramp still draws, under the veil
-        t.M = t.Veil ? MediumFor(false, 0f, 0f, t.Far, 0f)
-                     : MediumFor(FrameInputs.FogOn, FrameInputs.FogStart, FrameInputs.FogEnd, t.Far, VolumetricFog.Haze.V);
+        t.M = t.Veil ? MediumFor(false, 0f, 0f, t.Far, 0f, -1f)
+                     : MediumFor(FrameInputs.FogOn, FrameInputs.FogStart, FrameInputs.FogEnd, t.Far, VolumetricFog.Haze.V, toPlayer);
         bool outdoors = !FrameInputs.Interior && !FrameInputs.Blind;
         bool haveSky = SceneFog.TrySky(out Vector3 sky) && outdoors;
         t.Ambient = Ambient(FrameInputs.FogOn, FrameInputs.FogColor, haveSky, sky,
@@ -209,7 +231,7 @@ internal static unsafe partial class FogVolume
         t.Local = new Vector3(lightingOn && !t.Veil ? VolumetricFog.Lights.V : 0f, VolumetricFog.LightShadows.V ? 1f : 0f, VolumetricFog.Reach.V);
         t.Phase = VolumetricFog.Aniso.V;
         t.PrevVp = _b.PrevVp;
-        t.PrevZ = new Vector4(Near, _b.PrevInvLog, VolumetricFog.Temporal.V, _b.History && temporal ? 1f : 0f);
+        t.PrevZ = new Vector4(_b.NearZ, _b.PrevInvLog, VolumetricFog.Temporal.V, _b.History && temporal ? 1f : 0f);
         return true;
     }
 
@@ -217,8 +239,7 @@ internal static unsafe partial class FogVolume
     internal static void WriteLight(in Terms t, in LightLocs l, int* viewport, float near, float far)
     {
         AlloyRenderer.BindPass(l.Cubes, viewport, near, far);
-        Matrix4x4 inv = t.InvVp, prevVp = t.PrevVp;
-        PushGrid(in l.Grid, t.W, t.H, t.D, t.LogZ, t.Far, &inv, t.Eye, t.Fwd, t.M, t.Origin);
+        PushGrid(in l.Grid, in t);
         LooseBlock.Set(l.Height, t.Height.X, t.Height.Y);
         LooseBlock.Set(l.Noise, t.Noise.X, t.Noise.Y);
         LooseBlock.Set(l.Drift, t.Drift.X, t.Drift.Y, t.Drift.Z);
@@ -227,7 +248,7 @@ internal static unsafe partial class FogVolume
         LooseBlock.Set(l.Local, t.Local.X, t.Local.Y, t.Local.Z);
         LooseBlock.Set(l.Phase, t.Phase);
         LooseBlock.Set(l.Jitter, t.Jit.X, t.Jit.Y, t.Jit.Z);
-        LooseBlock.Set(l.PrevVp, prevVp);
+        LooseBlock.Set(l.PrevVp, t.PrevVp);
         LooseBlock.Set(l.PrevZ, t.PrevZ.X, t.PrevZ.Y, t.PrevZ.Z, t.PrevZ.W);
         LooseBlock.Set(l.Rain, t.Rain, t.Veil ? 0f : 1f);
         // the precipitation pass's own map and layer: outside it, and with none baked, the shader reads open sky
@@ -237,16 +258,12 @@ internal static unsafe partial class FogVolume
     }
 
     /// <summary>The integration pass's terms, into the open loose block.</summary>
-    internal static void WriteSum(in Terms t, in GridLocs g)
-    {
-        Matrix4x4 inv = t.InvVp;
-        PushGrid(in g, t.W, t.H, t.D, t.LogZ, t.Far, &inv, t.Eye, t.Fwd, t.M, t.Origin);
-    }
+    internal static void WriteSum(in Terms t, in GridLocs g) => PushGrid(in g, in t);
 
     /// <summary>A built volume: the readers' camera and slice mapping, and next frame's history.</summary>
     internal static void Finish(in Terms t, in Matrix4x4 vpClean)
     {
-        _b.Vp = vpClean; _b.InvLog = 1f / t.LogZ; _b.D = t.D; _b.Built = true; _b.Veil = t.Veil;
+        _b.Vp = vpClean; _b.InvLog = 1f / t.LogZ; _b.NearZ = t.Near; _b.D = t.D; _b.Built = true; _b.Veil = t.Veil;
         _b.PrevVp = vpClean; _b.PrevInvLog = _b.InvLog; _b.History = true;
         _b.CurA = !_b.CurA; _b.Frame++;
         _s.Runs++;
@@ -278,16 +295,15 @@ internal static unsafe partial class FogVolume
     internal const int VkGroup = Group;
 
     /// <summary>The grid and medium uniforms, into whichever pass is bound.</summary>
-    private static void PushGrid(in GridLocs g, int w, int h, int d, float logZ, float far, Matrix4x4* invVp, Vector3 eye,
-                                 Vector3 fwd, Medium m, Vector3 origin)
+    private static void PushGrid(in GridLocs g, in Terms t)
     {
-        LooseBlock.Set(g.Size, w, h, d);
-        LooseBlock.Set(g.Z, Near, far, logZ);
-        LooseBlock.Set(g.InvVp, new ReadOnlySpan<float>((float*)invVp, 16));
-        LooseBlock.Set(g.Eye, eye.X, eye.Y, eye.Z);
-        LooseBlock.Set(g.Fwd, fwd.X, fwd.Y, fwd.Z);
-        LooseBlock.Set(g.Med, m.Haze, m.Wall, m.Start, m.End);
-        LooseBlock.Set(g.Origin, origin.X, origin.Y, origin.Z);
+        LooseBlock.Set(g.Size, t.W, t.H, t.D);
+        LooseBlock.Set(g.Z, t.Near, t.Far, t.LogZ);
+        LooseBlock.Set(g.InvVp, t.InvVp);
+        LooseBlock.Set(g.Eye, t.Eye.X, t.Eye.Y, t.Eye.Z);
+        LooseBlock.Set(g.Fwd, t.Fwd.X, t.Fwd.Y, t.Fwd.Z);
+        LooseBlock.Set(g.Med, t.M.Haze, t.M.Wall, t.M.Start, t.M.End);
+        LooseBlock.Set(g.Origin, t.Origin.X, t.Origin.Y, t.Origin.Z);
         LooseBlock.Set(g.Top, VolumetricFog.Top.V);
     }
 
@@ -323,7 +339,7 @@ internal static unsafe partial class FogVolume
     internal static void Upload(int vfog, int vfogVp, bool capture)
     {
         bool on = _b.Built && !capture;
-        LooseBlock.Set(vfog, on ? (_b.Veil ? VeilMode : WholeMode) : 0f, _b.D, Near, _b.InvLog);
+        LooseBlock.Set(vfog, on ? (_b.Veil ? VeilMode : WholeMode) : 0f, _b.D, _b.NearZ, _b.InvLog);
         if (on) LooseBlock.Set(vfogVp, _b.Vp);
     }
 
@@ -357,24 +373,24 @@ internal static unsafe partial class FogVolume
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
-        Medium m = MediumFor(true, 15f, 60f, 0f, 0.12f);
+        Medium m = MediumFor(true, 15f, 60f, 0f, 0.12f, -1f);
         check.Expect(MathF.Abs(m.Haze * 60f - 0.552620f) < 1e-4f, "the haze takes its share of ln 100 over the fog's end distance");
         check.Expect(MathF.Abs(MathF.Exp(-RadialDepth(m, 60f)) - 0.01f) < 2e-4f, "a ray out from the player keeps 1% at the area's fog end");
         // the toolset default: fog amount 0 puts the start 1.01 m short of the clip
-        Medium thin = MediumFor(true, 43.99f, 45f, 0f, 0.12f);
+        Medium thin = MediumFor(true, 43.99f, 45f, 0f, 0.12f, -1f);
         check.Expect(float.IsFinite(thin.Wall) && MathF.Abs(MathF.Exp(-RadialDepth(thin, 45f)) - 0.01f) < 2e-4f, "...and so does a ramp a metre thin");
-        Medium bad = MediumFor(true, 50f, 45f, 0f, 0.12f);
+        Medium bad = MediumFor(true, 50f, 45f, 0f, 0.12f, -1f);
         check.Expect(bad.Start < bad.End && float.IsFinite(bad.Wall), "a start past the end still leaves a ramp to cross");
-        Medium air = MediumFor(false, 0f, 0f, 300f, 0.12f);
+        Medium air = MediumFor(false, 0f, 0f, 300f, 0.12f, -1f);
         check.Expect(air.Wall == 0f && MathF.Abs(air.Haze - 0.00184207f) < 1e-7f, "no area fog: the haze alone, spread over the far distance");
-        check.Expect(MathF.Abs(MediumFor(false, 0f, 0f, 20f, 0.12f).Haze - 0.00368413f) < 1e-7f, "...but never over less than 150 m");
-        check.Expect(MediumFor(true, 15f, 60f, 0f, 1f).Wall > 0f, "the haze never takes the whole budget: the wall always stands");
+        check.Expect(MathF.Abs(MediumFor(false, 0f, 0f, 20f, 0.12f, -1f).Haze - 0.00368413f) < 1e-7f, "...but never over less than 150 m");
+        check.Expect(MediumFor(true, 15f, 60f, 0f, 1f, -1f).Wall > 0f, "the haze never takes the whole budget: the wall always stands");
 
-        float opaque = OpaqueDistance(true, 15f, 60f, 0.12f);
+        float opaque = OpaqueDistance(true, 15f, 60f, 0.12f, -1f);
         // the wall ALONE spends ln 100 at e + h * tau / wall = 60 + 0.552620 / 0.180113
         check.Expect(MathF.Abs(opaque - 63.068f) < 0.01f, $"the opaque distance is where the wall alone keeps 1% ({opaque:F3})");
         check.Expect(MathF.Abs(MathF.Exp(-WallDepth(m, opaque)) - 0.01f) < 2e-4f, "...which the wall's own ramp, integrated, agrees with");
-        check.Expect(float.IsPositiveInfinity(OpaqueDistance(false, 15f, 60f, 0.12f)), "no area fog, no opaque distance");
+        check.Expect(float.IsPositiveInfinity(OpaqueDistance(false, 15f, 60f, 0.12f, -1f)), "no area fog, no opaque distance");
 
         Vector3 red = new(1f, 0f, 0f), half = new(0.5f);
         Vector3 a0 = Ambient(true, half, true, red, new Vector3(0.3f), 0f);
@@ -424,6 +440,8 @@ internal static unsafe partial class FogVolume
         VolumetricFog.Enabled.V = false;
         check.Expect(SceneFog.SkyBand == 0f && !SceneFog.OriginPlayer, "off: both are the fog group's again");
         Fog.Enabled.V = fogWas; Fog.Origin.V = originWas; VolumetricFog.Enabled.V = enWas;
+        FarZoomApprovedExamples(check);
+        FarZoomRegressions(check);
         log.Info(check.Ok ? "FogVolume.SelfCheck: passed" : "FogVolume.SelfCheck: FAILED");
     }
 
@@ -451,7 +469,7 @@ internal static unsafe partial class FogVolume
                  ? $"OFF -- the fog group draws the fog; the {gw}x{gh}x{gd} froxels carry the far rain veil alone"
                  : "OFF -- the fog group draws the fog";
         Medium m = _s.Last;
-        float opaque = OpaqueDistance(FrameInputs.FogOn, FrameInputs.FogStart, FrameInputs.FogEnd, VolumetricFog.Haze.V);
+        float opaque = SceneFog.OpaqueDistance();
         return $"{gw}x{gh}x{gd}  haze {m.Haze:F4}/m  wall {m.Wall:F3}/m over {m.Start:F0}..{m.End:F0} m, bank top {VolumetricFog.Top.V:F0} m  "
              + $"[opaque {(float.IsInfinity(opaque) ? "--" : opaque.ToString("F0"))} m]  "
              + $"ambient {_s.LastAmbient.X:F2},{_s.LastAmbient.Y:F2},{_s.LastAmbient.Z:F2}  "

@@ -1,5 +1,6 @@
 #version 460 core
-// The volumetric fog over a bare-sky render texel, laid before FSR so the fog rides FSR's own history: the blend
+// The volumetric fog over a bare-sky render texel, laid before the passes that write no depth, so an effect draws over
+// it and the fog rides FSR's own history: the blend
 // multiplies the texel by the share of the far light the fog keeps (alpha) and adds the light it scatters in (colour).
 in vec2 vUV;
 out vec4 frag;

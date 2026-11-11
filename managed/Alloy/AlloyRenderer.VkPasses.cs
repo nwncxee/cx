@@ -186,6 +186,9 @@ public sealed unsafe partial class AlloyRenderer
         VkSsrRun(vk, cl, vp, view, proj, viewport, near, far, lightingOn && perspective, log);
         cl.EndLabel();
 
+        // the fog over bare sky before the first pass that writes no depth: laid later it would cover what they drew there
+        PostStack.SkyFogVk(vk, cl, s.Hdr, s.Depth, w, h, SkyDomeDrew || _capturing, log);
+
         cl.BeginLabel("blended"u8);
         bool oit = VkOitArm(vk, w, h, log);
         side.Reset();
@@ -267,7 +270,7 @@ public sealed unsafe partial class AlloyRenderer
         cl.EndLabel();
 
         // the resolve grades a far pixel by its world ray, off the camera the dome drew through
-        if (!_capturing && (_skyN == 0 || !Matrix4x4.Invert(vp, out SkyInvVp))) SkyInvVp = default;
+        if (!_capturing && (!SkyDomeDrew || !Matrix4x4.Invert(vp, out SkyInvVp))) SkyInvVp = default;
         Matrix4x4 vpJ = vp, vpC = vpClean, pj = proj, vw = view;
         ToonStage.SetProj(&pj);
         FbPostStage.SetCamera(&vw, &pj);

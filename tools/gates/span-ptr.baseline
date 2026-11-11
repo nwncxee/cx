@@ -14,7 +14,6 @@
 1 managed/Alloy/MovieFrame.cs
 3 managed/Alloy/NwSyncReader.cs
 2 managed/Alloy/OwnedTextures.Vk.cs
-1 managed/Alloy/Pass/FogVolume.cs
 1 managed/Alloy/Pass/StageEnv.cs
 5 managed/Alloy/RasterReader.Forced.cs
 13 managed/Alloy/RasterReader.cs

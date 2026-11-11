@@ -521,6 +521,8 @@ public sealed unsafe partial class AlloyRenderer
     internal const int MaxEngTex = 4;
     private static readonly SkyTexUnits[] _skTex = new SkyTexUnits[MaxSkyDraws];
     private static int _skyFirst, _skyN;
+    /// <summary>A sky dome is staged for this view: where none is, a far pixel is bare and the fog covers it.</summary>
+    private static bool SkyDomeDrew => _skyN > 0;
     /// <summary>How many records the GPU side of the per-draw record and texture-handle blocks currently
     /// holds. A capacity growth reallocates both, which is why it forces a wholesale re-send.</summary>
     internal static int _recCapGpu;

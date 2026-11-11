@@ -136,7 +136,7 @@ internal static partial class GpuGolden
                 }
                 var cl = new CommandList("golden sky", 1 << 14, log);
                 PostChainVk.BeginFrame();
-                bool fogged = PostStack.FsrSkyFogVk(vk, cl, color, depth, SkyRw, SkyRh, log);
+                bool fogged = PostStack.SkyFogVk(vk, cl, color, depth, SkyRw, SkyRh, dome, log);
                 cl.Upscale(Fsr.Command(color, depth, vel, default, up, SkyRw, SkyRh, jx, jy, 16.6f, 0.1f, 100f, 1f, n == 0));
                 PostChainVk.SkyInput cover = PostStack.FsrSkyVk(vk, cl, depth, vel, SkyRw, SkyRh, SkyDw, SkyDh, n == 0, log) with { Fogged = fogged };
                 if (!PostChainVk.Record(vk, cl, up, cover, into, false, full, full, default, log) || !vk.Submit(cl)) return null;
