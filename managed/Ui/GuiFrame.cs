@@ -14,10 +14,11 @@ internal interface IGuiFrameSink
 /// <summary>The frame's 2D order, bottom to top, said once: whoever draws a frame's GUI walks it through here.</summary>
 internal static class GuiFrame
 {
-    /// <summary>The game's panels, CX's windows under NUI, NUI, then the windows over it.
-    /// <paramref name="windows"/> false leaves CX's windows out: a flush of panels alone.</summary>
+    /// <summary>CX's world-anchored windows, the game's panels, CX's windows under NUI, NUI, then the windows over
+    /// it. <paramref name="windows"/> false leaves CX's windows out: a flush of panels alone.</summary>
     internal static bool Draw<T>(in T sink, bool windows) where T : struct, IGuiFrameSink
-        => sink.Panels()
+        => (!windows || sink.Windows(UiLayer.UnderGui))
+           && sink.Panels()
            && (!windows || sink.Windows(UiLayer.BelowNui))
            && sink.Nui()
            && (!windows || sink.Windows(UiLayer.AboveNui));

@@ -155,7 +155,7 @@ internal static unsafe partial class GuiPassVk
             CommandList cl = s.Cmds!;
             cl.Reset();
             Uploads(cl, log);
-            ok = CX.Ui.GuiFrame.Draw(new FlushSink(vk, cl, from, mid, to, log), windows) && Submit(vk, cl, log);
+            ok = FrameClear(vk, cl) && CX.Ui.GuiFrame.Draw(new FlushSink(vk, cl, from, mid, to, log), windows) && Submit(vk, cl, log);
         }
         finally { s.Busy = false; }
         if (ok && !s.Live)

@@ -65,11 +65,11 @@ public sealed unsafe class CombatTextService : IExtenderService
         _log?.Info($"CombatTextService: peak face {(_peakPx > 0f ? $"{face} @ {_peakPx}px" : "unavailable, drawing from the UI face")}");
     }
 
-    /// <summary>The window damage numbers and combat text draw in. It never hit-tests: this is world-anchored text,
+    /// <summary>The window damage numbers and combat text draw in, under the game's panels. It never hit-tests: this is world-anchored text,
     /// and a UI rect here would take the contextual cursor and swallow world clicks.</summary>
     internal static Window NewWindow()
     {
-        var w = new Window(0, 0, 0, 0) { Focusable = false, DrawContent = Draw };
+        var w = new Window(0, 0, 0, 0) { Focusable = false, Layer = UiLayer.UnderGui, DrawContent = Draw };
         UiHost.SendToBack(w);
         return w;
     }

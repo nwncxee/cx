@@ -107,7 +107,7 @@ internal static unsafe class GuiPass
         ReplayWindowsVk();
     }
 
-    /// <summary>A Vulkan flush that could not draw: CX's windows still go over the screen on their own, both layers.</summary>
+    /// <summary>A Vulkan flush that could not draw: CX's windows still go over the screen on their own, every layer.</summary>
     private static void ReplayWindowsVk() { if (_log != null) GuiPassVk.ReplayLayersNow(_log); }
 
     /// <summary>Issue every layer captured since the last flush, then forget them. A flush that cannot run drops what

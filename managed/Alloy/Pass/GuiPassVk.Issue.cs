@@ -73,6 +73,23 @@ internal static unsafe partial class GuiPassVk
         return false;
     }
 
+    /// <summary>The engine's swallowed frame clear when this flush owes it, in its own clear colour and unscissored,
+    /// ahead of everything the flush draws. False = there is no screen or depth to draw into, and the flush refuses.</summary>
+    private static bool FrameClear(VkBackend vk, CommandList cl)
+    {
+        GuiVkState s = _s;
+        ImageId screen = s.Into.IsNull ? vk.Screen() : s.Into;
+        if (screen.IsNull || s.Depth.IsNull) return false;
+        if (!s.ClearOwed) return true;
+        s.ClearOwed = false;
+        float[] c = ScreenOwner.ClearRgba;
+        var pass = new Pass();
+        var b = new Bound();
+        Open(cl, ref pass, ref b, screen, s.Depth, s.W, s.H, true, true, s.Black ? Zero : new Vector4(c[0], c[1], c[2], c[3]));
+        Close(cl, ref pass);
+        return true;
+    }
+
     /// <summary>Layers <paramref name="from"/>..<paramref name="to"/> recorded into <paramref name="cl"/>, in capture
     /// order: one render pass per run of layers sharing a target, split again where a layer clears the depth. The
     /// model-view solve draws its run twice into scratch images and resolves. False = the flush refuses.</summary>
@@ -84,15 +101,6 @@ internal static unsafe partial class GuiPassVk
         var pass = new Pass();
         var b = new Bound();
         bool gamma = !PostChain.GammaOff();
-        if (s.ClearOwed)
-        {
-            // the engine's swallowed frame clear, in its own clear colour and unscissored, as GL's FrameClear does it
-            s.ClearOwed = false;
-            float[] c = ScreenOwner.ClearRgba;
-            Vector4 clear = s.Black ? Zero : new Vector4(c[0], c[1], c[2], c[3]);
-            Open(cl, ref pass, ref b, screen, s.Depth, s.W, s.H, true, true, clear);
-            Close(cl, ref pass);
-        }
         // No target yet, which 0 does NOT mean here: 0 is the screen, so the first layer must open its pass. GL
         // binds the base framebuffer before the loop instead, which is why its own latch starts at 0.
         uint curTarget = uint.MaxValue;

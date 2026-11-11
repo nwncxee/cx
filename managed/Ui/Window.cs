@@ -6,6 +6,8 @@ namespace CX.Ui;
 /// <summary>Which side of NUI a window draws on, with Alloy on and off alike.</summary>
 public enum UiLayer
 {
+    /// <summary>Under the vanilla GUI panels: what is anchored to the world, such as a nameplate or a damage number.</summary>
+    UnderGui,
     /// <summary>Over the vanilla GUI panels and under every NUI window. The default.</summary>
     BelowNui,
     /// <summary>Over every NUI window: a hover card, or an image that follows the pointer.</summary>
@@ -29,16 +31,16 @@ public sealed class Window
     /// Compared within a layer only: <see cref="Order"/> is the whole-screen order.</summary>
     public int Z { get; internal set; }
 
-    /// <summary>Which side of NUI this window draws on. Set before the first frame; the window then keeps its
-    /// <see cref="Z"/> order inside that layer, and an above-NUI window is above every below-NUI one for draw,
-    /// hit-test and input alike.</summary>
+    /// <summary>Which side of the vanilla GUI and of NUI this window draws on. Set before the first frame; the window
+    /// then keeps its <see cref="Z"/> order inside that layer, and a higher layer is above every lower one for
+    /// draw, hit-test and input alike.</summary>
     public UiLayer Layer = UiLayer.BelowNui;
 
-    /// <summary>Added to <see cref="Z"/> for an above-NUI window. Far past any z the counter reaches.</summary>
-    private const int AboveBias = 1 << 28;
+    /// <summary>The distance in <see cref="Order"/> between one layer and the next. Far past any z the counter reaches.</summary>
+    private const int LayerBias = 1 << 28;
 
     /// <summary>The order across layers: draw ascending, hit-test and input descending.</summary>
-    internal int Order => Layer == UiLayer.AboveNui ? Z + AboveBias : Z;
+    internal int Order => Z + ((int)Layer - (int)UiLayer.BelowNui) * LayerBias;
 
     /// <summary>Capability flags. A non-focusable window is skipped by focus hit-testing but still drives the
     /// cursor; draggable/resizable expose the move/resize cursor zones.

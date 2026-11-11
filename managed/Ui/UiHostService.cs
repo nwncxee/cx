@@ -209,7 +209,7 @@ public sealed unsafe class UiHostService : IExtenderService
         // When Alloy renders, the 2D UI is drawn BY its frame, after the view list: that frame runs at PrePresent --
         // after this point -- and would otherwise overwrite everything drawn here, which is what made CX's chat
         // vanish the moment the world started drawing.
-        if (_nkSlot == null && !CX.Alloy.Renderer.On) DrawWindows();   // both layers, above NUI
+        if (_nkSlot == null && !CX.Alloy.Renderer.On) DrawWindows();   // every layer, above NUI
         FrameRegistry.Global.Run(FramePhase.PrePresent);
         // Must be the LAST thing before the present -- after the window roll-call and after every PrePresent
         // participant. With Alloy rendering, only when something drew in this context this frame.
@@ -227,15 +227,15 @@ public sealed unsafe class UiHostService : IExtenderService
     [UnmanagedCallersOnly]
     private static void OnNkRender(float aa)
     {
-        if (CX.Alloy.Renderer.On) { (*_nkSlot)(aa); return; }   // Alloy's frame draws both layers around its own NUI flush
-        DrawWindows(UiLayer.BelowNui);
+        if (CX.Alloy.Renderer.On) { (*_nkSlot)(aa); return; }   // Alloy's frame draws every layer at its own place
+        DrawWindows(UiLayer.UnderGui, UiLayer.BelowNui);
         (*_nkSlot)(aa);
-        DrawWindows(UiLayer.AboveNui);
+        DrawWindows(UiLayer.AboveNui, UiLayer.AboveNui);
     }
 
     /// <summary>Each layer's recorded windows, by <see cref="UiLayer"/>: what Alloy's GUI pass replays on either
     /// side of NUI's layers, or the engine-context draw below replays at once.</summary>
-    private static readonly UiDrawList[] _layers = { new(), new() };
+    private static readonly UiDrawList[] _layers = { new(), new(), new() };
 
     /// <summary>Layer <paramref name="layer"/>'s windows as last recorded.</summary>
     internal static UiDrawList Windows(UiLayer layer) => _layers[(int)layer];
@@ -245,20 +245,21 @@ public sealed unsafe class UiHostService : IExtenderService
     internal static void RecordWindowsForDbFrame()
     {
         long tEdge = FrameZones.Now, ui0 = FrameZones.Ticks(FrameZones.Zone.Ui);
-        Record(UiLayer.BelowNui, true);
-        Record(UiLayer.AboveNui, false);
+        foreach (UiLayer layer in UiHost.Layers) Record(layer, layer == UiLayer.UnderGui);
         FrameZones.Add(FrameZones.Zone.UiEdge, tEdge, FrameZones.Ticks(FrameZones.Zone.Ui) - ui0);
     }
 
-    /// <summary>The engine-context draw with Alloy off: record one layer (null = both), replay it at once, then hand
-    /// the GL state back -- our raw GL desyncs GLRender's shadow cache and what renders next is NUI.</summary>
-    private static void DrawWindows(UiLayer? layer = null)
+    /// <summary>The engine-context draw with Alloy off: record layers <paramref name="from"/> to <paramref name="to"/>,
+    /// replaying each at once, then hand the GL state back -- our raw GL desyncs GLRender's shadow cache and what
+    /// renders next is NUI. The engine has drawn its panels by now, so here an under-GUI window is over them.</summary>
+    private static void DrawWindows(UiLayer from = UiLayer.UnderGui, UiLayer to = UiLayer.AboveNui)
     {
         long tEdge = FrameZones.Now, ui0 = FrameZones.Ticks(FrameZones.Zone.Ui);
-        UiLayer first = layer ?? UiLayer.BelowNui;
-        Record(first, true);
-        TextRig.Replay(_layers[(int)first]);
-        if (layer == null) { Record(UiLayer.AboveNui, false); TextRig.Replay(_layers[(int)UiLayer.AboveNui]); }
+        for (UiLayer layer = from; layer <= to; layer++)
+        {
+            Record(layer, layer == from && from != UiLayer.AboveNui);
+            TextRig.Replay(_layers[(int)layer]);
+        }
         HandBack();
         FrameZones.Add(FrameZones.Zone.UiEdge, tEdge, FrameZones.Ticks(FrameZones.Zone.Ui) - ui0);
     }
