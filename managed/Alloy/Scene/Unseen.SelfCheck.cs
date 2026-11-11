@@ -120,6 +120,21 @@ internal static class UnseenSelfCheck
         check.Expect(Unseen.Amount(body.Index) == 1f && Drawn(body) == 0.5f,
                      $"a creature that arrives out of sight fades up as a silhouette, never through its own colours: {Unseen.Amount(body.Index)}");
 
+        bool had = Renderer.Silhouette.V;
+        try
+        {
+            GameAlpha(body, 0.5f);
+            Unseen.Frame([heard], Whole);
+            Renderer.Silhouette.Set(false);
+            Unseen.Frame([heard], Whole);
+            bool off = Plain(body) && Drawn(body) == 0.5f;
+            Renderer.Silhouette.Set(true);
+            Unseen.Frame([heard], Whole);
+            check.Expect(Renderer.Silhouette.Default && off && !Plain(body) && Drawn(body) == 1f,
+                         $"silhouettes are on by default; switched off the creature draws see-through ({off}), and switched back on it is a silhouette again");
+        }
+        finally { Renderer.Silhouette.Set(had); }
+
         Unseen.Frame([heard], Whole);
         DbFeed.InitObject(body.Index);
         check.Expect(SceneDb.ObjUnseen[body.Index].Amount == 0f, "a recycled object record starts unmarked");

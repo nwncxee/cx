@@ -90,9 +90,14 @@ internal static unsafe class Unseen
     internal static int Slots(int obj, int slots) => slots | SlotMask(DimOf(obj).Amount);
 
     /// <summary>This frame's perception entries, <paramref name="seconds"/> after the last: which creatures are heading
-    /// into a silhouette, which out, and how far each has got.</summary>
+    /// into a silhouette, which out, and how far each has got. Switched off, every silhouette is forgotten.</summary>
     internal static void Frame(ReadOnlySpan<Sight> sights, float seconds)
     {
+        if (!Renderer.Silhouette.V)
+        {
+            if (_s.Count > 0) Reset();
+            return;
+        }
         UnseenState s = _s;
         foreach (Sight seen in sights)
         {
@@ -129,7 +134,7 @@ internal static unsafe class Unseen
         }
         s.Count = kept;
 
-        s.KnownCount = sights.Length;
+        s.KnownCount = Math.Min(sights.Length, s.Known.Length);
         for (int k = 0; k < s.KnownCount; k++) s.Known[k] = sights[k].Oid;
     }
 

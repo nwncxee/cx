@@ -48,6 +48,8 @@ internal static class Renderer
     /// <summary>Content stages' native versions (<c>cx_&lt;stage&gt;</c>) and the images and passes they declare.</summary>
     internal static readonly Knob<bool> Native;
     internal static readonly Knob<bool> TexPreview;
+    /// <summary>Draw a creature the player character hears but does not see as a silhouette (<see cref="Unseen"/>).</summary>
+    internal static readonly Knob<bool> Silhouette;
     internal static readonly Knob<bool> Bcn, Hdr, OwnedTex, TexSingle, DdsRead, HandleDrop,
                                         Spirv, VanillaBridge, HostFs, OwnSkin, DumpShaders, GpuDebug, EngineZones,
                                         Gui, Movie;
@@ -126,6 +128,8 @@ internal static class Renderer
                          help: "A creature an effect such as Invisibility makes see-through draws as this many layers of "
                              + "itself, so its shape still shows. 1 is the effect's own transparency. A fully invisible "
                              + "creature stays invisible.");
+        Silhouette = G.Toggle("silhouette", "Silhouettes for creatures out of sight", true, Tier.Advanced, Effect.Live,
+                              help: "A creature your character hears but does not see draws as a solid dark shape, so it reads apart from one under Invisibility. Off draws them see-through as the stock client does.");
         TexPreview =G.Toggle("texpreview", "Low-resolution texture previews", true, Tier.Advanced, Effect.Live,
                               help: "While an area streams in, every texture first shows a small blurred version of itself, then sharpens when the full one lands. Off: a texture shows white until it has fully loaded.");
 
