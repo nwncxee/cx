@@ -39,7 +39,7 @@ internal static unsafe partial class Unseen
     {
         _look = new UnseenLookState { Asked = true };
         if (file == null) return true;
-        string why = "";
+        string why;
         // its declaration lines first, then the file compiled on its own: a look the lit stage cannot compile costs the whole lit world
         if (Declared(file, out why) is { } look
             && VulkanToolchain.Compile(VkGlsl.Version + "layout(local_size_x = 1) in;\n" + LookText("#line 1\n" + file) + Probe, LookRef + ".shd", ShaderKind.ComputeShader, out why) != null)
@@ -52,10 +52,9 @@ internal static unsafe partial class Unseen
         return false;
     }
 
-    /// <summary>The line that opens a look's declaration, and the stage a look is compiled in on its own: it hands the
-    /// look a surface and reads back everything the lit stage reads.</summary>
-    private const string Pragma = "cx_silhouette",
-        Probe = "void main() { float own; vec3 c = CxSilhouetteApply(CxSilhouetteSurface(vec3(1.0), vec3(1.0), vec3(0.0, 0.0, 1.0), vec3(0.0, 0.0, 1.0), vec3(0.0), 0.5, 0.0), own); }\n";
+    /// <summary>The stage a look is compiled in on its own: it hands the look a surface and reads back everything the
+    /// lit stage reads.</summary>
+    private const string Probe = "void main() { float own; vec3 c = CxSilhouetteApply(CxSilhouetteSurface(vec3(1.0), vec3(1.0), vec3(0.0, 0.0, 1.0), vec3(0.0, 0.0, 1.0), vec3(0.0), 0.5, 0.0), own); }\n";
 
     /// <summary>What <paramref name="file"/>'s <c>#pragma cx_silhouette</c> lines declare, or null with
     /// <paramref name="why"/> for a line that is not <c>opacity &lt;0..100&gt;</c> or <c>glow</c>.</summary>
@@ -66,7 +65,7 @@ internal static unsafe partial class Unseen
         foreach (string line in file.Split('\n'))
         {
             string[] t = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-            if (t.Length < 2 || t[0] != "#pragma" || t[1] != Pragma) continue;
+            if (t.Length < 2 || t[0] != "#pragma" || t[1] != LookRef) continue;
             if (t.Length == 4 && t[2] == "opacity" && int.TryParse(t[3], out int percent) && percent is >= 0 and <= 100)
                 look = look with { Opacity = percent / 100f };
             else if (t.Length == 3 && t[2] == "glow")

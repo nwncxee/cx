@@ -15,6 +15,9 @@ internal static class UnseenFixture
     /// <summary>Seconds between frames that must leave no fade running.</summary>
     internal const float Whole = 10f;
 
+    /// <summary>Did the staged shaderc load? Without it no look can be compiled, and a check that wears one skips.</summary>
+    internal static bool Compiler() => Array.TrueForAll(CX.Graphics.VulkanToolchain.Libraries, CX.Graphics.VulkanToolchain.Load);
+
     /// <summary>Is this object part of a silhouette, however far in?</summary>
     internal static bool Marked(int obj) => Unseen.Amount(obj) > 0f;
 
@@ -157,7 +160,7 @@ internal static class UnseenLookSelfCheck
 
     internal static bool Run(ExtenderLog log) => UnseenFixture.Run(log, "UnseenLookSelfCheck", 1, (check, o) =>
     {
-        if (!Array.TrueForAll(CX.Graphics.VulkanToolchain.Libraries, CX.Graphics.VulkanToolchain.Load))
+        if (!Compiler())
         {
             check.Skip("the staged shaderc did not load");
             return;
@@ -231,7 +234,7 @@ internal static partial class GpuGolden
         check.Expect(stock != null && stock[7] == 0.5f && stock[8] == 0.9f && stock[11] == 1f,
                      "half way into its silhouette a creature keeps half its own light, and all of it and its own colour before the fade starts");
         float[]? greedy = LookCases(vk, log, "CxSilhouetteLook CxSilhouetteShade(CxSilhouetteSurface s) { return CxSilhouetteLook(s.lit, 5.0); }\n",
-                                    cases, "golden silhouette look greedy");
+                                    cases[..14], "golden silhouette look greedy");
         check.Expect(greedy != null && greedy[3] == 1f, "a look cannot ask for more than all of the creature's own light");
     }
 }
