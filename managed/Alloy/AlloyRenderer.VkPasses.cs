@@ -44,9 +44,7 @@ public sealed unsafe partial class AlloyRenderer
         if (!VkEnsure(vk, w, h, log)) return false;
         VkPrewarm(vk, log);
         VkColourState s = _vkc;
-        s.ArenaUsed = 0;
-        s.PassAt = -1;
-        s.EngineAt = -1;
+        VkArenaRewind();
         s.Drawn = s.Skipped = 0;
         s.Snapshot.BeginFrame();
         cl.BeginLabel("uploads"u8);

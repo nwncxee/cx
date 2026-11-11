@@ -72,9 +72,9 @@ public sealed unsafe partial class AlloyRenderer
     /// capture mode, the range latches the lit stage branches on, the mirror plane, the cube count, the highlight
     /// twin's colour and whether a native stage's overlay has run. A new frame always refills, and what the key
     /// misses the audit names (<see cref="VkLooseAuditEvery"/>).</summary>
-    private readonly record struct VkLooseKey(int Frame, Matrix4x4 Vp, int X, int Y, int W, int H, float Near, float Far,
-                                              int Viz, bool Oit, bool LightRec, bool Capturing, bool Planar,
-                                              float MirrorZ, int Cubes, Vector3 TwinColour, bool Overlay);
+    private readonly record struct VkLooseKey(int Frame, int ArenaGen, Matrix4x4 Vp, int X, int Y, int W, int H,
+                                              float Near, float Far, int Viz, bool Oit, bool LightRec, bool Capturing,
+                                              bool Planar, float MirrorZ, int Cubes, Vector3 TwinColour, bool Overlay);
 
     /// <summary>One frame in this many, a bind that would reuse its loose block refills it anyway and compares.
     /// Power of two.</summary>
@@ -138,6 +138,9 @@ public sealed unsafe partial class AlloyRenderer
         public long PassStamp;
         public float PassMips;
         public int ArenaUsed;
+        /// <summary>How many times the arena has been rewound. Every memo of an arena OFFSET carries it, so a
+        /// rewind cannot leave a program reusing a slice another pass has since written over.</summary>
+        public int ArenaGen;
         public ImageId Tex2D, TexU2D, Tex2DArray, Tex3D, TexCube, TexCubeArray, Depth2DArray, DepthCubeArray, DecalLayer, DecalSurf;
         public SamplerId Linear, Shadow;
         /// <summary>The blocker search's sampler: no compare and NEAREST, so a raw view reads one stored depth
@@ -424,7 +427,7 @@ public sealed unsafe partial class AlloyRenderer
         bool lit = p.Lit;
         // the water stage is not the lit table's, but it takes the pass block's sun, ambient and fog as the lit stage does
         bool passed = lit || p.Id == VkPrograms.Id.Water;
-        var key = new VkLooseKey(_frameSeq, vp, viewport[0], viewport[1], viewport[2], viewport[3], near, far,
+        var key = new VkLooseKey(_frameSeq, s.ArenaGen, vp, viewport[0], viewport[1], viewport[2], viewport[3], near, far,
                                  viz, s.Oit, s.LightRec, _capturing, _planar, _mirrorZ,
                                  CasterPass.CubesFresh ? CasterPass.CubeCount : 0, _vkHl.TwinColour,
                                  !StageResources.VkOverlay.IsNull);
@@ -587,6 +590,17 @@ public sealed unsafe partial class AlloyRenderer
     {
         if (p.Names.TryGetValue(name, out int i))
             p.Block.AsSpan(p.Members[i].Offset, Math.Min(p.Members[i].Bytes, p.Block.Length - p.Members[i].Offset)).Clear();
+    }
+
+    /// <summary>Rewind the frame's uniform arena, and with it every memo of an offset in it: the pass block, the
+    /// engine block and each program's loose block, which the generation in <see cref="VkLooseKey"/> retires.</summary>
+    private static void VkArenaRewind()
+    {
+        VkColourState s = _vkc;
+        s.ArenaUsed = 0;
+        s.PassAt = -1;
+        s.EngineAt = -1;
+        s.ArenaGen++;
     }
 
     /// <summary>Append <paramref name="bytes"/> to the frame's arena at the device's alignment; its offset, or -1 (logged) when full.</summary>
