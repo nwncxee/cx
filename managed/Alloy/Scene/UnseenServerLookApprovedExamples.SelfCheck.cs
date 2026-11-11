@@ -23,8 +23,7 @@ internal static class UnseenServerLookApprovedExamples
     internal static bool SelfCheck(ExtenderLog log)
         => Run(log, "UnseenServerLookApprovedExamples.SelfCheck", 2, (check, o) =>
         {
-            foreach (string leaf in VulkanToolchain.Libraries)
-                if (!VulkanToolchain.Load(leaf)) { check.Skip("the staged shaderc did not load"); return; }
+            if (!Compiler()) { check.Skip("the staged shaderc did not load"); return; }
             DbId body = o[0], sword = o[1];
             SceneDb.SetAttachTo(sword.Index, body);
             GameAlpha(body, 0.5f);
