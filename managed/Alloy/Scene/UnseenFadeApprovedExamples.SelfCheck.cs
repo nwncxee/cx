@@ -5,6 +5,7 @@ using CX.Alloy.Seam;
 using CX.Framework;
 using CX.Graphics.Rhi;
 using CX.Rhi;
+using static CX.Alloy.UnseenFixture;
 
 namespace CX.Alloy;
 
@@ -15,26 +16,12 @@ internal static class UnseenFadeApprovedExamples
     /// <summary>The game object id the checks' creature goes by.</summary>
     private const uint Oid = 2468;
 
-    /// <summary>Seconds between frames that must leave no fade running.</summary>
-    private const float Whole = 10f;
-
     internal static bool SelfCheck(ExtenderLog log)
-    {
-        var check = new Checker(log, "UnseenFadeApprovedExamples.SelfCheck");
-        Func<string, bool> was = ObjectFns.ResourcePresent;
-        long unreadable = ObjectFns.UnreadableModels;
-        var o = new DbId[2];
-        try
+        => Run(log, "UnseenFadeApprovedExamples.SelfCheck", 2, (check, o) =>
         {
-            ObjectFns.ResourcePresent = n => n == "cx_present_unreadable";
-            for (int i = 0; i < o.Length; i++)
-                o[i] = Facade.Object(ObjectFns.CreateForCheck("cx_present_unreadable"), SeamSlot.Unnamed);
             DbId body = o[0], sword = o[1];
-            check.Expect(!body.IsNull && !sword.IsNull, "the check's two objects could not be made");
-            if (!check.Ok) return false;
             SceneDb.SetAttachTo(sword.Index, body);
-            nint shell = Facade.ObjectShell(body);
-            void GameAlpha(float a) => ObjectSlots.Shift(body, shell, shell, Vector3.One, a, false, true, 0);
+            void GameAlpha(float a) => UnseenFixture.GameAlpha(body, a);
             float Glow() => Unseen.Alpha(sword.Index, SceneDb.ObjTint[sword.Index].W, lit: false);
             Unseen.Sight seen = new(Oid, Unseen.Heard | Unseen.Seen, body), heard = new(Oid, Unseen.Heard, body);
             GameAlpha(1f);
@@ -64,7 +51,7 @@ internal static class UnseenFadeApprovedExamples
             Unseen.Frame([seen], 0.25f);
             float back = Unseen.Amount(body.Index), glowBack = Glow();
             Unseen.Frame([seen], 0.25f);
-            check.Expect(back == 0.5f && !Unseen.Of(body.Index) && (Unseen.Slots(sword.Index, 0) & Unseen.SlotMask(1f)) == 0,
+            check.Expect(back == 0.5f && !Marked(body.Index) && (Unseen.Slots(sword.Index, 0) & Unseen.SlotMask(1f)) == 0,
                          $"E13 a silhouette brightens evenly over half a second: {back} at a quarter of a second, then a creature again");
             check.Expect(glowHalf == 0.5f && glowGone == 0f && glowBack == 0.5f && Glow() == 1f,
                          $"E16 a glowing part dims with the fade and returns with it: {glowHalf} half way in, {glowGone} at the silhouette, {glowBack} half way back, {Glow()} seen");
@@ -78,21 +65,11 @@ internal static class UnseenFadeApprovedExamples
             Unseen.Frame([seen], 0.125f);
             check.Expect(Unseen.Amount(body.Index) == 0.25f,
                          $"E15 a fade turned around half way carries on from there: {Unseen.Amount(body.Index)} an eighth of a second later");
-        }
-        finally
-        {
-            Unseen.Reset();
-            for (int i = o.Length - 1; i >= 0; i--) if (!o[i].IsNull) ObjectSlots.DestroyRecord(o[i]);
-            ObjectFns.ResourcePresent = was;
-            ObjectFns.UnreadableModels = unreadable;
-        }
-        if (check.Ok) log.Info("UnseenFadeApprovedExamples.SelfCheck: passed");
-        return check.Ok;
-    }
+        });
 }
 
-/// <summary>The fade's colour on the device (approved-spec, E12). Oracle: the two ends the same stage paints, the
-/// armour's own red and the whole silhouette's grey, whose mid-point is what half way must show.</summary>
+/// <summary>The fade's colour on the device (approved-spec, E12). Oracle: the two ends written here by hand, the
+/// armour's own red and the silhouette's grey, whose mid-point is what half way must show.</summary>
 internal static partial class GpuGolden
 {
     private static void UnseenFadeApprovedSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
@@ -121,8 +98,8 @@ internal static partial class GpuGolden
         // Given a creature in my character's sight
         // When it steps out of sight and is still heard
         // Then over half a second its colours darken evenly into the silhouette
-        bool Mid(float at, float own, float grey) => MathF.Abs(at - (own + grey) * 0.5f) <= MathF.Abs(own - grey) / Unseen.SlotLevels;
-        check.Expect(got[3] < 0.1f && Mid(got[0], 0.9f, got[3]) && Mid(got[1], 0.05f, got[4]) && Mid(got[2], 0.04f, got[5]),
+        bool Mid(float at, float own) => MathF.Abs(at - (own + Grey) * 0.5f) <= MathF.Abs(own - Grey) / AlloyRenderer.SilhouetteLevels;
+        check.Expect(got[3] == Grey && got[4] == Grey && got[5] == Grey && Mid(got[0], 0.9f) && Mid(got[1], 0.05f) && Mid(got[2], 0.04f),
                      FormattableString.Invariant($"E12: half way in, red armour is half way to the silhouette's grey ({got[0]:F4}, {got[1]:F4}, {got[2]:F4})"));
     }
 }
