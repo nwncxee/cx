@@ -604,18 +604,21 @@ internal static class ShaderContract
                   // #153: the bindless rewrite must produce a complete swap on the embedded lit stage --
                   // extension + handle block in, every bound-sampler declaration out -- and must leave
                   // foreign text (no known decls) untouched rather than half-rewritten.
-                  && BindlessFs(OwnedLitFsHead + MaterialLib).Contains("CxTexH")
-                  && BindlessFs(OwnedLitFsHead + MaterialLib).Contains("GL_ARB_bindless_texture")
-                  && !BindlessFs(OwnedLitFsHead + MaterialLib).Contains("uniform sampler2D uTex;")
-                  && !BindlessFs(OwnedLitFsHead + MaterialLib).Contains("uniform sampler2D uAoTex;")
-                  && BindlessFs("void main() { }") == "void main() { }"
+                  && BindlessFs(OwnedLitVs, OwnedLitFsHead + MaterialLib).Contains("CxTexH")
+                  && BindlessFs(OwnedLitVs, OwnedLitFsHead + MaterialLib).Contains("GL_ARB_bindless_texture")
+                  && !BindlessFs(OwnedLitVs, OwnedLitFsHead + MaterialLib).Contains("uniform sampler2D uTex;")
+                  && !BindlessFs(OwnedLitVs, OwnedLitFsHead + MaterialLib).Contains("uniform sampler2D uAoTex;")
+                  && BindlessFs(OwnedVs, "void main() { }") == "void main() { }"
                   // ...and the same swap on the embedded UNLIT stage, whose vertex half forwards the record
                   // index for it. Without the varying the rewrite must leave the bound declaration standing:
                   // that is what tells the issue loop to keep binding the diffuse (VkProg.TexBound).
-                  && BindlessFs(OwnedFs).Contains("CxTexH")
-                  && !BindlessFs(OwnedFs).Contains("uniform sampler2D uTex;")
+                  && BindlessFs(OwnedVs, OwnedFs).Contains("CxTexH")
+                  && !BindlessFs(OwnedVs, OwnedFs).Contains("uniform sampler2D uTex;")
                   && OwnedVs.Contains("flat out int vDraw;") && OwnedFs.Contains("flat in int vDraw;")
-                  && BindlessFs(OwnedFs.Replace("flat in int vDraw;", "")).Contains("uniform sampler2D uTex;")
+                  && BindlessFs(OwnedVs, OwnedFs.Replace("flat in int vDraw;", "")).Contains("uniform sampler2D uTex;")
+                  // ...and the pair is read on BOTH sides: a hak vertex override that drops the varying
+                  // leaves the embedded fragment on its bound declaration too (CX-530 review)
+                  && BindlessFs(OwnedVs.Replace("flat out int vDraw;", ""), OwnedFs).Contains("uniform sampler2D uTex;")
                   && LinearSafe(FrameSnapshot.Fs) && LinearSafe(GrassField.EmbeddedFs)
                   // #161: the record guard reaches every stage that declares the record, and the embedded
                   // text passes it, for the same reason as above: a guard its own defaults trip rebuilds

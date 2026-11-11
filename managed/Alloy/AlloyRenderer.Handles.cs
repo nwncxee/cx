@@ -121,9 +121,9 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>Rewrite a fragment stage's bound samplers into per-draw bindless handles. The stage already
     /// receives <c>vDraw</c> (the record index) for its material colours; the same index now selects its
-    /// textures, which lets one multidraw span every texture in a class. Pure text: where the declarations
-    /// are not found the output is the input, with no handle block.</summary>
-    internal static string BindlessFs(string fs)
+    /// textures, which lets one multidraw span every texture in a class. The decision reads the PAIR --
+    /// <paramref name="vs"/> has to write the varying -- and a missing declaration hands back the input.</summary>
+    internal static string BindlessFs(string vs, string fs)
     {
         string[] names = { "uTex", "uFlowTex", "uNrmTex", "uSpecTex", "uRoughTex", "uHeightTex", "uIllumTex", "uAoTex" };
         int[] slot = { 0, 6, 1, 2, 3, 4, 5, 7 };
@@ -136,7 +136,9 @@ public sealed unsafe partial class AlloyRenderer
         foreach (string nm in names)
             outFs = System.Text.RegularExpressions.Regex.Replace(outFs, $@"uniform sampler2D {nm};[^\n]*\n", "");
         if (outFs == fs) return fs;   // nothing replaced -- foreign text, leave it alone
-        if (!outFs.Contains("flat in int vDraw;")) return fs;   // no record index to sample by
+        // no record index to sample by: the fragment has to read the varying AND the vertex half that won the
+        // override has to write it, or the handle row comes out of whatever vDraw happens to hold
+        if (!outFs.Contains("flat in int vDraw;") || !vs.Contains("flat out int vDraw;")) return fs;
         // GLSL: #extension must precede every non-preprocessor token, so the whole block goes immediately
         // after #version. The #defines are preprocessor (position-free) and only reference vDraw at their
         // EXPANSION sites, which sit far below its declaration; the SSBO decl merely has to precede use.
