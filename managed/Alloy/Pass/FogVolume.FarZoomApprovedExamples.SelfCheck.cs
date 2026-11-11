@@ -8,6 +8,9 @@ namespace CX.Alloy;
 /// 25 m out, 80 / 25 = 3.2, and 64 slices spaced evenly in log depth put 64 ln(85/40) / ln 85 = 10.86 across the fade.</summary>
 internal static unsafe partial class FogVolume
 {
+    /// <summary>The depth slices of Medium detail, written here by hand: the count E5's fade is measured in.</summary>
+    private const int MediumSlices = 64;
+
     private static void FarZoomApprovedExamples(Checker check)
     {
         bool volWas = VolumetricFog.Enabled.V;
@@ -52,6 +55,6 @@ internal static unsafe partial class FogVolume
     {
         Medium m = MediumFor(true, 15f, 60f, 0f, 0f, c);
         (float near, float far, _) = Grid(SceneFog.FarForFog(45f, true, 15f, 60f, c), c);
-        return 64f * MathF.Log((c + m.End) / (c + m.Start)) / MathF.Log(far / near);
+        return MediumSlices * MathF.Log((c + m.End) / (c + m.Start)) / MathF.Log(far / near);
     }
 }
