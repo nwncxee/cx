@@ -65,7 +65,13 @@ internal sealed unsafe partial class VkBackend
         string path = _pipeCachePath;
         ExtenderLog log = _log;
         if (wait) { if (!WriteCacheFile(data, path, log)) _pipeCacheDirty = true; return; }
-        var t = new Thread(() => { if (!WriteCacheFile(data, path, log)) _pipeCacheDirty = true; })
+        var t = new Thread(() =>
+        {
+            // the worker inherits the frame thread's affinity, which may be pinned: cleared HERE, on the worker,
+            // so the wait: true path cannot unpin the caller for the rest of the session
+            Affinity.ClearThis();
+            if (!WriteCacheFile(data, path, log)) _pipeCacheDirty = true;
+        })
         { IsBackground = true, Name = "cx-pipecache", Priority = ThreadPriority.BelowNormal };
         _pipeCacheWriter = t;
         t.Start();
@@ -75,7 +81,6 @@ internal sealed unsafe partial class VkBackend
     /// file is never the one a later session seeds the driver from. False, loudly, when it did not land.</summary>
     private static bool WriteCacheFile(byte[] blob, string path, ExtenderLog log)
     {
-        Affinity.ClearThis();   // created by the (possibly pinned) frame thread; the write must not share its core
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
