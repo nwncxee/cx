@@ -22,8 +22,10 @@ internal static unsafe partial class FogVolume
     private const float MinRamp = 0.5f;
     /// <summary>In an area with no fog of its own, the haze spends its share over the view's far distance, or this if longer.</summary>
     private const float AirFloor = 150f;
-    /// <summary>The volume's near distance, metres: the grid's first slice starts here.</summary>
+    /// <summary>The volume's near distance inside the camera limit, metres: the grid's first slice starts here.</summary>
     private const float Near = 1f;
+    /// <summary>The engine's own camera limit, metres from the player: out to here the fog keeps the area's distances.</summary>
+    private const float ZoomLimit = 25f;
     /// <summary>Invocations per group along x and y, matching both stages' <c>local_size</c>.</summary>
     private const int Group = 8;
     /// <summary>Seconds over which the sun's share of the air eases in at dawn and out at dusk.</summary>
@@ -102,15 +104,22 @@ internal static unsafe partial class FogVolume
     /// <summary>The medium for an area's fog: <paramref name="haze"/> of the opacity spread evenly out to the fog end,
     /// the rest a ramp from start to end, so a ray out from the player keeps <see cref="EndTransmittance"/> at the end.
     /// With no area fog the haze alone spans <paramref name="far"/> (at least <see cref="AirFloor"/>).
-    /// <paramref name="eyeToPlayer"/> is the camera's distance from the player, negative with no player.</summary>
+    /// Both distances stretch by <see cref="Zoom"/> of <paramref name="eyeToPlayer"/>.</summary>
     internal static Medium MediumFor(bool on, float start, float end, float far, float haze, float eyeToPlayer)
     {
+        float zoom = Zoom(eyeToPlayer);
+        start *= zoom; end *= zoom;
         float tau = -MathF.Log(EndTransmittance);
         float h = Math.Clamp(haze, 0f, MaxHaze);
         if (!on || end <= 0f) return new Medium(h * tau / MathF.Max(far, AirFloor), 0f, 0f, 1f);
         float e = MathF.Max(end, MinRamp), s = Math.Clamp(start, 0f, e - MinRamp);
         return new Medium(h * tau / e, 2f * (1f - h) * tau / (e - s), s, e);
     }
+
+    /// <summary>How far the fog's lengths stretch for a camera <paramref name="eyeToPlayer"/> metres from the player
+    /// (negative: no player): 1 inside <see cref="ZoomLimit"/>, then in proportion, so a camera zoomed out past the
+    /// limit never looks through the wall at the player and frames the same fog it framed at the limit.</summary>
+    internal static float Zoom(float eyeToPlayer) => MathF.Max(1f, eyeToPlayer / ZoomLimit);
 
     /// <summary>The distance from the player past which the fog hides everything below the eye: where the wall alone
     /// spends the whole opacity, since the haze thins with height and the bank is whole below the eye. Infinity with
@@ -148,11 +157,12 @@ internal static unsafe partial class FogVolume
     private static float Lin(float v) => MathF.Pow(MathF.Max(v, 0f), AlloyLights.SrgbGamma);
 
     /// <summary>The froxel grid's depth range for a view whose far plane is <paramref name="far"/>: its slices are
-    /// spaced evenly in log(view depth) from Near to Far, and LogZ is log(Far / Near).</summary>
+    /// spaced evenly in log(view depth) from Near to Far, and LogZ is log(Far / Near). The near distance stretches by
+    /// <see cref="Zoom"/> as the fog does, so the slices fall across the wall as they do at the camera limit.</summary>
     internal static (float Near, float Far, float LogZ) Grid(float far, float eyeToPlayer)
     {
-        float f = MathF.Max(far, Near * 2f);
-        return (Near, f, MathF.Log(f / Near));
+        float near = Near * Zoom(eyeToPlayer), f = MathF.Max(far, near * 2f);
+        return (near, f, MathF.Log(f / near));
     }
 
     /// <summary>One build's terms, decided on the CPU and pushed identically by both renderers' dispatches.</summary>
