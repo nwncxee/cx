@@ -30,8 +30,8 @@ internal static unsafe partial class GuiPassVk
 
     private const int KindCount = (int)UiDrawKind.IconPlt + 1;
 
-    /// <summary>The vertex buffer <see cref="ReplayNow"/>'s list takes, past the two layers'.</summary>
-    private const int NowList = 2;
+    /// <summary>The vertex buffer <see cref="ReplayNow"/>'s list takes, past the three layers'.</summary>
+    private const int NowList = (int)UiLayer.AboveNui + 1;
 
     /// <summary>A list drawn outside the GUI flush -- the loading screen's lines, the compile notice -- recorded over the
     /// screen and submitted at once, as GL's immediate replay draws it. False (said once) when the device is not on
@@ -39,11 +39,14 @@ internal static unsafe partial class GuiPassVk
     internal static bool ReplayNow(UiDrawList l, ExtenderLog log)
         => TakeNow(log, out VkBackend? vk, out CommandList? cl) && Windows(vk!, cl!, l, NowList, log) && vk!.Submit(cl!);
 
-    /// <summary>Both layers of CX's recorded windows over the screen at once: a frame whose GUI flush could not
+    /// <summary>Every layer of CX's recorded windows over the screen at once: a frame whose GUI flush could not
     /// draw still shows them, as GL replays them in the engine's context.</summary>
     internal static bool ReplayLayersNow(ExtenderLog log)
-        => TakeNow(log, out VkBackend? vk, out CommandList? cl)
-           && Windows(vk!, cl!, CX.Ui.UiLayer.BelowNui, log) && Windows(vk!, cl!, CX.Ui.UiLayer.AboveNui, log) && vk!.Submit(cl!);
+    {
+        if (!TakeNow(log, out VkBackend? vk, out CommandList? cl)) return false;
+        foreach (UiLayer layer in UiHost.Layers) if (!Windows(vk!, cl!, layer, log)) return false;
+        return vk!.Submit(cl!);
+    }
 
     /// <summary>The immediate list, reset, outside any flush; false (said once) when the Vulkan GUI cannot take a draw now.</summary>
     private static bool TakeNow(ExtenderLog log, out VkBackend? vk, out CommandList? cl)

@@ -155,11 +155,7 @@ internal static unsafe partial class GuiPassVk
             CommandList cl = s.Cmds!;
             cl.Reset();
             Uploads(cl, log);
-            ok = Record(vk, cl, from, mid, log)
-                 && (!windows || Windows(vk, cl, CX.Ui.UiLayer.BelowNui, log))
-                 && Record(vk, cl, mid, to, log)
-                 && (!windows || Windows(vk, cl, CX.Ui.UiLayer.AboveNui, log))
-                 && Submit(vk, cl, log);
+            ok = FrameClear(vk, cl) && CX.Ui.GuiFrame.Draw(new FlushSink(vk, cl, from, mid, to, log), windows) && Submit(vk, cl, log);
         }
         finally { s.Busy = false; }
         if (ok && !s.Live)
@@ -169,6 +165,14 @@ internal static unsafe partial class GuiPassVk
                      + $"({GuiCapture.LayerN} scene(s), {GuiCapture.DrawN} draw(s) this flush)");
         }
         return ok;
+    }
+
+    /// <summary>One flush's steps on the device: the panels are layers <c>from..mid</c>, NUI is <c>mid..to</c>.</summary>
+    private readonly struct FlushSink(VkBackend vk, CommandList cl, int from, int mid, int to, ExtenderLog log) : CX.Ui.IGuiFrameSink
+    {
+        public bool Windows(CX.Ui.UiLayer layer) => GuiPassVk.Windows(vk, cl, layer, log);
+        public bool Panels() => Record(vk, cl, from, mid, log);
+        public bool Nui() => Record(vk, cl, mid, to, log);
     }
 
     /// <summary>A held flush the present never queued is a dropped one, counted like a refused submit.</summary>

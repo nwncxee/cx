@@ -350,13 +350,14 @@ public static partial class UiHost
         for (int i = 0; i < _chords.Count; i++) _chords[i].FireMouse(button, sdlMods);
     }
 
-    /// <summary>The per-frame draw roll-call over both layers, below NUI then above. The two sites that run it
-    /// in one go are the present-time fallback and the render-thread frame; the NUI-aware sites call
-    /// <see cref="DrawFrame(UiLayer)"/> on either side of NUI's flush.</summary>
+    /// <summary>Every layer, bottom to top.</summary>
+    internal static readonly UiLayer[] Layers = [UiLayer.UnderGui, UiLayer.BelowNui, UiLayer.AboveNui];
+
+    /// <summary>The per-frame draw roll-call over every layer, bottom to top, for a site that cannot draw between
+    /// the vanilla GUI and NUI; one that can calls <see cref="DrawFrame(UiLayer)"/> at each layer's place.</summary>
     public static void DrawFrame()
     {
-        DrawFrame(UiLayer.BelowNui);
-        DrawFrame(UiLayer.AboveNui);
+        foreach (UiLayer layer in Layers) DrawFrame(layer);
     }
 
     /// <summary>One layer's roll-call: every window's <see cref="Window.DrawContent"/> on that layer in ascending z, so the

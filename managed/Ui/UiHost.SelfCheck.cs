@@ -17,9 +17,26 @@ public static partial class UiHost
         public void FireMouse(int button, int sdlMods) => FiredMouse = button;
     }
 
+    /// <summary>Run <paramref name="body"/> against an empty registry, then put back the session's windows, focus
+    /// and z counters: a self-check's fixture windows meet none of the session's, and none of theirs draws.</summary>
+    internal static void Alone(Action body)
+    {
+        var saved = new List<Window>(_windows);
+        Window? focused = Focused;
+        int z = _zCounter, back = _backZ;
+        _windows.Clear();
+        try { body(); }
+        finally
+        {
+            _windows.Clear(); _windows.AddRange(saved);
+            Focused = focused;
+            _zCounter = z; _backZ = back;
+        }
+    }
+
     /// <summary>Layer order against hand-written literals: the draw roll-call per layer (a string of the letters
     /// each fixture window appends), and the order input and the hit-test visit overlapping windows, which must
-    /// put an above-NUI window first even when a below-NUI one was focused last.</summary>
+    /// put an above-NUI window first even when a below-NUI one was focused last, and an under-GUI one last.</summary>
     private static void LayerCheck(Checker check, List<Window> created)
     {
         bool upConsumes = false;
@@ -49,7 +66,16 @@ public static partial class UiHost
         check.Expect(DispatchMouseButton(true, 1, 10, 10, captureOnly: true), "an above window under the pointer takes the press ahead of the NUI yield");
         check.Expect(asked.ToString() == "U", "...and no other window is asked");
         check.Expect(!DispatchMouseButton(true, 1, 80, 80, captureOnly: true), "an above window not under the pointer leaves the press to NUI");
-        foreach (Window w in new[] { a, up, c }) { Unregister(w); created.Remove(w); }
+
+        var g = new Window(0, 0, 100, 100) { Layer = UiLayer.UnderGui, DrawContent = () => drawn.Append('g'), OnMouseButton = (_, _, _, _) => { asked.Append('g'); return false; } };
+        created.Add(g);
+        SendToBack(a);
+        drawn.Clear(); DrawFrame();
+        check.Expect(drawn.ToString() == "gacoU", "a full roll-call starts under the GUI, even with a below-NUI window sent to the back");
+        asked.Clear(); upConsumes = false;
+        DispatchMouseButton(true, 1, 10, 10);
+        check.Expect(asked.ToString() == "Uag", "input visits an under-GUI window last");
+        foreach (Window w in new[] { a, up, c, g }) { Unregister(w); created.Remove(w); }
     }
 
     /// <summary>Off-device proof of the arbiter: layout/z-order, focus, hit-test/cursor pick, and

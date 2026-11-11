@@ -102,18 +102,26 @@ public sealed unsafe class NameplateService : IExtenderService
         _chatHooked = _origChat != null;
         if (!_chatHooked) log.Info("NameplateService: channel styling disabled (chat handler unhooked)");
 
-        // No HitTestOverride: a plate must never answer UiHost.HitTest -- see OnPlateClick.
-        _plates = new Window(0, 0, 0, 0)
-        {
-            Focusable = false,
-            DrawContent = static () => { long t = FrameZones.Now; Draw(); FrameZones.Add(FrameZones.Zone.Plates, t); },
-            OnMouseButton = OnPlateClick,
-        };
-        UiHost.SendToBack(_plates);   // plates paint UNDER the chat box and the dialog panel
+        _plates = NewWindow();
 
         NameplateKnobs.G.Status = Status;
         _armed = true;
         log.Info("NameplateService: armed (vanilla bubbles suppressed via text-bubble mode 0 while nameplate.enabled)");
+    }
+
+    /// <summary>The one window every plate and chat bubble draws in, under the game's panels and every CX window.
+    /// It has no hit-test override: a plate must never answer <see cref="UiHost.HitTest"/> (<see cref="OnPlateClick"/>).</summary>
+    internal static Window NewWindow()
+    {
+        var w = new Window(0, 0, 0, 0)
+        {
+            Focusable = false,
+            Layer = UiLayer.UnderGui,
+            DrawContent = static () => { long t = FrameZones.Now; Draw(); FrameZones.Add(FrameZones.Zone.Plates, t); },
+            OnMouseButton = OnPlateClick,
+        };
+        UiHost.SendToBack(w);
+        return w;
     }
 
     // ---- hooks -------------------------------------------------------------------------------

@@ -65,6 +65,15 @@ public sealed unsafe class CombatTextService : IExtenderService
         _log?.Info($"CombatTextService: peak face {(_peakPx > 0f ? $"{face} @ {_peakPx}px" : "unavailable, drawing from the UI face")}");
     }
 
+    /// <summary>The window damage numbers and combat text draw in, under the game's panels. It never hit-tests: this is world-anchored text,
+    /// and a UI rect here would take the contextual cursor and swallow world clicks.</summary>
+    internal static Window NewWindow()
+    {
+        var w = new Window(0, 0, 0, 0) { Focusable = false, Layer = UiLayer.UnderGui, DrawContent = Draw };
+        UiHost.SendToBack(w);
+        return w;
+    }
+
     public void Initialize(ExtenderLog log, HookService hooks)
     {
         _log = log;
@@ -84,10 +93,7 @@ public sealed unsafe class CombatTextService : IExtenderService
             return;
         }
 
-        // Never hit-tests: this is world-anchored text over the 3D scene, and a UI rect here would take the
-        // contextual cursor and swallow world clicks (see the nameplate feature's HitTestOverride trap).
-        _window = new Window(0, 0, 0, 0) { Focusable = false, DrawContent = Draw };
-        UiHost.SendToBack(_window);
+        _window = NewWindow();
 
         CombatTextKnobs.G.Status = Status;
         TextRig.FontChanged += RequestPeakFace;
