@@ -83,9 +83,10 @@
     // bloom can see it; undeclared (-1) and the engine model take it at 1.
     if ((slots & CX_SLOT_ILLUM) != 0)
         lit += CxLinear(textureGrad(uIllumTex, uv, tapDx, tapDy).rgb) * (uMaterial.x > 0.5 && d.ext2.x >= 0.0 ? d.ext2.x : 1.0);
-    // a silhouette is its one colour: no light, map or highlight of the surface's own survives, and nothing reflects in it
+    // a silhouette is its one colour: by its amount, no light, map or highlight of the surface's own survives, and nothing reflects in it
     lit = CxSilhouette(lit, slots);
-    if (CxSilhouetted(slots)) { reflW = vec3(0.0); reflFilm = vec3(0.0); }
+    float ownLook = 1.0 - CxSilhouetteAmount(slots);
+    reflW *= ownLook; reflFilm *= ownLook;
     // #132: everything from here down stays LINEAR -- the screen and the probe want the same values
     // now, and PostChain's resolve does the frame's one encode. The probe never wanted anything else
     // (#121: glGenerateMipmap filters what is STORED, and filtering display-space values darkens
@@ -164,7 +165,7 @@
         // `pointSpec` into P. The twin left `lm` undebited, so this is exactly what the debt scales back.
         g.lmShare = g.diffT * lm + g.specT * gLmSpec;
         // ...and no deferred light lands on a silhouette either
-        if (CxSilhouetted(slots)) { g.specT = 0.0; g.diffT = vec3(0.0); g.ambT = vec3(0.0); g.lmShare = vec3(0.0); }
+        g.specT *= ownLook; g.diffT *= ownLook; g.ambT *= ownLook; g.lmShare *= ownLook;
         g.surfFade = cxSurfFade;
         g.water = cxWxStand;
         CxGbufWrite(g);

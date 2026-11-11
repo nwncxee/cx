@@ -121,10 +121,11 @@ internal static unsafe class Unseen
                 s.Spilled = true;
                 break;
             }
-            s.Marks[s.Count++] = new Mark(seen.Oid, seen.Root, 0f);
+            // a creature the last list did not name is arriving: it fades up as a silhouette, never through its own colours
+            s.Marks[s.Count++] = new Mark(seen.Oid, seen.Root, Array.IndexOf(s.Known, seen.Oid, 0, s.KnownCount) < 0 ? 1f : 0f);
         }
 
-        float step = 1f;
+        float step = seconds / FadeSeconds;
         int kept = 0;
         for (int k = 0; k < s.Count; k++)
         {
