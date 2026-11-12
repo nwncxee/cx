@@ -142,6 +142,37 @@ internal static class PlateOptionsApprovedExamples
         s = Name("Clarity Solforge [Wide-Eyed Machinist]", false);
         check.Expect(s == "Clarity Solforge [Wide-Eyed Machinist]", $"E16 with the setting off the name is left alone: {s}");
 
+        Knob<bool> bar = NameplateKnobs.HealthBar;
+        Knob<float> width = NameplateKnobs.BarWidth;
+        bool barWas = bar.V;
+        float widthWas = width.V;
+        int barRow = -1, widthRow = -1, row = 0;
+        foreach (Knob k in NameplateKnobs.G.Knobs)
+        {
+            if (k == bar) barRow = row;
+            if (k == width) widthRow = row;
+            row++;
+        }
+        width.V = 100f;
+
+        // Given the Nameplates settings are open and Health bar is off
+        // When I switch Health bar on
+        // Then a Health bar width row shows directly below Health bar, with the everyday settings and not under Advanced
+        bar.V = false;
+        bool shownOff = width.ShowIf == null || width.ShowIf();
+        bar.V = true;
+        bool shownOn = width.ShowIf == null || width.ShowIf();
+        check.Expect(!shownOff && shownOn && widthRow == barRow + 1 && width.Tier == Tier.User,
+                     $"E17 the width row shows under Health bar once it is on: shown off {shownOff}, on {shownOn}, rows {barRow} and {widthRow}, tier {width.Tier}");
+
+        // Given the Nameplates settings are open and Health bar is on
+        // When I switch Health bar off
+        // Then the Health bar width row is gone, and the width it was set to is kept for the next time
+        bar.V = false;
+        bool shownAfter = width.ShowIf == null || width.ShowIf();
+        check.Expect(!shownAfter && width.V == 100f, $"E18 the width row is gone with Health bar off and its value kept: shown {shownAfter}, width {width.V}");
+        bar.V = barWas; width.V = widthWas;
+
         if (check.Ok) log.Info("PlateOptionsApprovedExamples.SelfCheck: passed");
     }
 }
