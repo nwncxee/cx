@@ -26,6 +26,8 @@ internal sealed class ItemMenuModel
 {
     /// <summary>The key that opens the menu; the rest are rows.</summary>
     internal const string OpenKey = "open";
+    /// <summary>The open value that places the menu at the pointer rather than at a pixel.</summary>
+    internal const string PointerValue = "pointer";
     /// <summary>What a row key starts with: the rest is its order.</summary>
     internal const string RowPrefix = "row.";
     /// <summary>The most rows one menu may carry; a server past it is refused.</summary>
@@ -40,6 +42,12 @@ internal sealed class ItemMenuModel
     /// <summary>Where it opens, in the client's own pixels.</summary>
     public int X { get; private set; }
     public int Y { get; private set; }
+    /// <summary>True when the server said <c>open=pointer</c>: it knows the element pressed, not the pixel, so the menu
+    /// opens where the pointer is.</summary>
+    public bool AtPointer { get; private set; }
+
+    /// <summary>Where the menu opens: the pointer's pixel when it opened at the pointer, otherwise the server's point.</summary>
+    public (int X, int Y) At(int pointerX, int pointerY) => AtPointer ? (pointerX, pointerY) : (X, Y);
     /// <summary>Bumps on every change, so a draw that showed one menu can tell the next one apart.</summary>
     public int Gen { get; private set; }
     public int RowCount => _rows.Count;
@@ -59,12 +67,17 @@ internal sealed class ItemMenuModel
         if (key.Equals(OpenKey, StringComparison.OrdinalIgnoreCase))
         {
             if (value.Length == 0) { Close(); return null; }
+            if (value.Trim().Equals(PointerValue, StringComparison.OrdinalIgnoreCase))
+            {
+                AtPointer = true; Open = true; Gen++;
+                return null;
+            }
             string[] parts = value.Split(';');
             if (parts.Length < 2
                 || !int.TryParse(parts[0], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out int x)
                 || !int.TryParse(parts[1], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out int y))
-                return "open takes <x>;<y> in pixels";
-            X = x; Y = y; Open = true; Gen++;
+                return $"open takes <x>;<y> in pixels, or {PointerValue}";
+            X = x; Y = y; AtPointer = false; Open = true; Gen++;
             return null;
         }
         if (!key.StartsWith(RowPrefix, StringComparison.OrdinalIgnoreCase)
@@ -91,10 +104,14 @@ internal sealed class ItemMenuModel
     {
         bool had = Open || _rows.Count != 0;
         Open = false;
+        AtPointer = false;
         _rows.Clear();
         if (had) Gen++;
     }
 
     /// <summary>The <c>/policy</c> line.</summary>
-    public string Report() => Open ? $"menu: open at {X},{Y} with {RowCount} row(s)" : $"menu: closed, {RowCount} row(s) held";
+    public string Report() =>
+        !Open ? $"menu: closed, {RowCount} row(s) held"
+        : AtPointer ? $"menu: open at the pointer with {RowCount} row(s)"
+        : $"menu: open at {X},{Y} with {RowCount} row(s)";
 }

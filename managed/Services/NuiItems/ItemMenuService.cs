@@ -24,6 +24,16 @@ internal static class ItemMenuService
         public CascadeStyle Style;
         public ExtenderLog? Log;
         public int ShownGen = -1;
+        /// <summary>The pointer's last pixel, where a menu the server opened at the pointer appears.</summary>
+        public int PointerX, PointerY;
+    }
+
+    /// <summary>Every pointer move, from the input pump: a server that knows only the element pressed opens the menu
+    /// here.</summary>
+    internal static void OnPointer(int x, int y)
+    {
+        _s.PointerX = x;
+        _s.PointerY = y;
     }
 
     private static readonly MenuState _s = new();
@@ -81,8 +91,9 @@ internal static class ItemMenuService
         var items = new CascadeItem[rows.Length];
         for (int i = 0; i < rows.Length; i++)
             items[i] = new CascadeItem(rows[i].Label, rows[i].Icon, disabled: !rows[i].Enabled, tag: rows[i].Id);
-        Menu.OpenAt(items, m.X, m.Y, atlas, TextRig.ViewportW, TextRig.ViewportH);
-        _log?.Info($"[itemmenu] open at {m.X},{m.Y} with {rows.Length} row(s)");
+        (int x, int y) = m.At(_s.PointerX, _s.PointerY);
+        Menu.OpenAt(items, x, y, atlas, TextRig.ViewportW, TextRig.ViewportH);
+        _log?.Info($"[itemmenu] open at {x},{y} with {rows.Length} row(s)");
     }
 
     private static bool OnMouseButton(bool down, int button, int x, int y)

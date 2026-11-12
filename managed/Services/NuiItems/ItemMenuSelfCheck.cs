@@ -15,6 +15,7 @@ internal static class ItemMenuSelfCheck
         Order(check);
         Refusals(check);
         Closes(check);
+        AtThePointer(check);
         log.Info(check.Ok ? "ItemMenuSelfCheck: passed" : "ItemMenuSelfCheck: FAILED");
     }
 
@@ -74,5 +75,23 @@ internal static class ItemMenuSelfCheck
         check.Expect(m.Report().Contains("closed"), "a closed menu says so");
         m.Set("open", "5;5");
         check.Expect(m.Report().Contains("open at 5,5"), "an open one says where it is");
+    }
+
+    /// <summary>Oracle: the word pointer typed here, which a server sends because it knows the element pressed and not the
+    /// pixel; and the points typed beside it.</summary>
+    private static void AtThePointer(Checker check)
+    {
+        var m = new ItemMenuModel();
+        check.Expect(m.Set("open", "pointer") == null && m.Open && m.AtPointer, "open=pointer opens the menu where the pointer is");
+        check.Expect(m.Report().Contains("at the pointer"), "the /policy line says it opened at the pointer");
+        check.Expect(m.At(300, 200) == (300, 200), "open at the pointer, the menu takes the pointer's pixel");
+        int gen = m.Gen;
+        check.Expect(m.Set("open", "40;50") == null && !m.AtPointer && m.X == 40 && m.Y == 50 && m.Gen != gen,
+            "a point sent after it opens the menu at that point instead");
+        check.Expect(m.At(300, 200) == (40, 50), "open at a point, the menu ignores the pointer");
+        m.Set("open", "Pointer");
+        check.Expect(m.AtPointer, "the word is read whatever its case");
+        m.Close();
+        check.Expect(!m.AtPointer && !m.Open, "a close forgets the pointer too");
     }
 }

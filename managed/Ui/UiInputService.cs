@@ -175,6 +175,7 @@ public sealed unsafe class UiInputService : IExtenderService
                 {
                     int mx = ((SdlEvent*)ev)->X, my = ((SdlEvent*)ev)->Y;
                     CX.Services.NuiItems.ItemDragService.OnMotion(mx, my);   // a held press turns into a drag once the pointer travels
+                    CX.Services.NuiItems.ItemMenuService.OnPointer(mx, my);   // a menu.open=pointer opens here
                     if (UiHost.HoverToFocus) UiHost.HoverFocusAt(mx, my);
                     if (UiHost.DispatchMouseMotion(mx, my))
                     {

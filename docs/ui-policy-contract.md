@@ -219,6 +219,7 @@ A client advertising `cx_cap_menu` draws the rows you send instead of opening a 
 | line | meaning |
 |---|---|
 | `menu.open=<x>;<y>` | open the menu at that point in client pixels; an empty value closes it |
+| `menu.open=pointer` | open the menu where the player's pointer is. A server knows which element was pressed but not the pixel, so this is the form to send after a right press on an element |
 | `menu.row.<n>=<id>;<label>;<icon>;<enabled>` | one row, drawn in the order of `<n>`. `<id>` comes back on a pick, `<icon>` is a texture resref and may be empty, and `<enabled>` `0` greys the row. An empty value releases that row |
 
 Send the rows first, then `menu.open`. A label is cut at 64 characters, an icon name past 16 is dropped, and a menu
