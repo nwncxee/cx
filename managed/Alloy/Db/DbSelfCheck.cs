@@ -1039,6 +1039,7 @@ internal static class DbSelfCheck
         check.Expect(TwoSidedFor("bothvol", "twosided 1\nvolumetric 1\n", "", true), "twosided with volumetric draws both faces");
         check.Expect(TwoSidedFor("latevol", "twosided 1\nvolumetric 1\nsample_framebuffer 1\n", "", false), "a volumetric material routed late by sample_framebuffer culls back faces");
         check.Expect(TwoSidedFor("addvol", "twosided 1\nvolumetric 1\n", "additive", false), "a volumetric material routed additive culls back faces");
+        check.Expect(TwoSidedFor("watervol", "twosided 1\nvolumetric 1\n", "water", false), "a volumetric material in the water class culls back faces");
         check.Expect(TwoSidedFor("addtwo", "twosided 1\n", "additive", true), "twosided without volumetric draws both faces in the additive class too");
 
         Reset();
@@ -1054,10 +1055,17 @@ internal static class DbSelfCheck
         DrawRecipe.MaterialLanded();
         ok &= DrawRecipe.Reclassify() > 0;
         ok &= r >= 0 && (DrawRecipe.Flags(r) & RecipeFlag.TwoSided) != 0;
+        check.Expect(ok, "a twosided .mtr that lands after its recipe was interned turns culling off");
+        // ...and a re-read that files the material on the late route takes culling back
+        MtrDef.Forget();
+        MtrDef.Bytes = n => n == "cx_sc_face_late"
+            ? Encoding.ASCII.GetBytes("twosided 1\nvolumetric 1\nsample_framebuffer 1\n") : null;
+        DrawRecipe.MaterialLanded();
+        bool cleared = DrawRecipe.Reclassify() > 0 && r >= 0 && (DrawRecipe.Flags(r) & RecipeFlag.TwoSided) == 0;
+        check.Expect(cleared, "a re-read .mtr that no longer draws back faces turns culling back on");
         DrawRecipe.Forget(model);
         DrawRecipe.Pump();
         DrawRecipe.Pump();
-        check.Expect(ok, "a twosided .mtr that lands after its recipe was interned turns culling off");
     }
 
     /// <summary>Intern a one-quad model whose mesh names a <c>.mtr</c> holding <paramref name="text"/>, and ask
