@@ -61,6 +61,10 @@ public sealed unsafe class NuiService : IExtenderService
         NuiHitTest.SelfCheck(log);
         NuiJsonRead.SelfCheck(log);
         CxTranslate.SelfCheck(log);
+        Services.NuiItems.NuiItemStockRegressions.Run(log);
+        Services.NuiItems.NuiItemMenuApprovedExamples.Run(log);
+        Services.NuiItems.NuiItemDragApprovedExamples.Run(log);
+        Services.NuiItems.NuiItemTargetHeldApprovedExamples.Run(log);
         NuiItemIcons.Init(log, hooks);
         NuiModelView.Init(log, hooks);
         NuiScrollbars.Init(log, hooks);
