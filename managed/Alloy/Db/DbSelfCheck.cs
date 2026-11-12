@@ -1073,6 +1073,8 @@ internal static class DbSelfCheck
         mesh.RenderHint = renderHint;
         var model = Model(name, new[] { -1, 0 }, new[] { NodeKind.Dummy, NodeKind.TriMesh },
                           new MeshDef?[] { null, mesh });
+        // the render hint is read only off a node that carries a parsed node's content flags
+        model.Nodes[1].ContentFlags = MdlBinary.FlagsOf(NodeKind.TriMesh);
         int r = DrawRecipe.Intern(model, 1, plan: false);
         bool ok = r >= 0 && ((DrawRecipe.Flags(r) & RecipeFlag.TwoSided) != 0) == expect;
         DrawRecipe.Forget(model);

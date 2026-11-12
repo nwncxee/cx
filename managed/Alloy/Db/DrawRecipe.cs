@@ -125,6 +125,9 @@ internal static partial class DrawRecipe
         /// <summary>Each recipe's parsed <c>.mtr</c>, or null: what a content pair's row is filled from
         /// (<see cref="ContentRows"/>). Shared and immutable, so the column holds the reference.</summary>
         public readonly MtrDef?[] Mtr = new MtrDef?[Max];
+        /// <summary>Each recipe's material face terms (<see cref="FacesOf"/>), kept so <see cref="TxiWords"/> can
+        /// settle the culling against the class and blend a late <c>.txi</c> or <c>.mtr</c> moves.</summary>
+        public readonly byte[] Faces = new byte[Max];
 
         public SlotState() { System.Array.Fill(ContentRow, -1); }
         public int RetiredInUse, DoubleRetire;
@@ -522,6 +525,7 @@ internal static partial class DrawRecipe
             {
                 MtrDef? late = MtrDef.Of(mesh);
                 _coverage[r] = late is { AlphaMode: 2 };
+                _own.Faces[r] = FacesOf(late);
                 _content[r] = GuiContent.Key(late);
                 _declWater[r] = DeclaredWater(mesh);
             }
@@ -539,6 +543,22 @@ internal static partial class DrawRecipe
         return moved;
     }
 
+    /// <summary>The <c>.mtr</c> face terms: <c>twosided</c>, <c>volumetric</c>, and any <c>sample_framebuffer</c>.</summary>
+    private const byte FaceTwoSided = 1, FaceVolumetric = 2, FaceSamplesFb = 4;
+
+    /// <summary>The face terms a parsed <c>.mtr</c> states; none for a mesh with no material.</summary>
+    private static byte FacesOf(MtrDef? mtr) => mtr == null ? (byte)0 : (byte)(
+        (mtr.TwoSided ? FaceTwoSided : 0) | (mtr.Volumetric ? FaceVolumetric : 0)
+        | (mtr.SampleFramebuffer != 0 ? FaceSamplesFb : 0));
+
+    /// <summary>Does the engine draw this part's back faces (<c>Scene::AddPartsToDrawBuckets</c> @0x4751d0)? A
+    /// <c>twosided</c> material, unless it is also volumetric; a volumetric one is drawn back faces then front, but
+    /// only off the blended route, not when additive, water or <c>sample_framebuffer</c> files it first.</summary>
+    private static bool DrawsBackFaces(byte faces, bool additive, AlloyClass cls)
+        => (faces & FaceVolumetric) == 0
+            ? (faces & FaceTwoSided) != 0
+            : (faces & FaceSamplesFb) == 0 && !additive && cls != AlloyClass.Water;
+
     /// <summary>The diffuse <c>.txi</c>'s material words over the model's own (<c>Material::ParseField</c> @0x5c5850):
     /// <c>blending additive</c> is the (SRC_ALPHA, ONE) pair and so the additive class -- no depth write, no shadow --
     /// and <c>decal 1</c> is the fullbright flag. Known once the diffuse's acquire offered it, so <see cref="Fill"/>
@@ -555,6 +575,9 @@ internal static partial class DrawRecipe
         else _flags[r] &= ~RecipeFlag.HintBlended;
         if (AlloyClasses.Covers(_cls[r], _coverage[r])) _flags[r] |= RecipeFlag.Coverage;
         else _flags[r] &= ~RecipeFlag.Coverage;
+        // ponytail: volumetric's back-then-front is drawn as cull-off, exact under weighted OIT; alloy.oit 0 needs a front-culled draw first
+        if (DrawsBackFaces(_own.Faces[r], additive, (AlloyClass)_cls[r])) _flags[r] |= RecipeFlag.TwoSided;
+        else _flags[r] &= ~RecipeFlag.TwoSided;
     }
 
     private static int _classSerial = -1;
@@ -606,6 +629,7 @@ internal static partial class DrawRecipe
         // Material::GetTexture @0x5c5810: the .mtr's texture wins wherever it states one.
         MtrDef? mtr = MtrDef.Of(mesh);
         _coverage[r] = mtr is { AlphaMode: 2 };
+        _own.Faces[r] = FacesOf(mtr);
         // TransparencyHint is the engine's child-order sort key and never a blend (MdlNode::ReorderChildren
         // @0x558120 is its one reader); a flat sheet still keeps it, through RecipeFlag.HintBlended.
         bool hinted = mesh.TransparencyHint > 0;
@@ -812,7 +836,7 @@ internal enum RecipeFlag : ushort
     None = 0,
     /// <summary>The engine would draw this part LIT (it is not lightmapped into its own vertices).</summary>
     Lit = 1 << 0,
-    /// <summary>The material's <c>twosided</c>: draws with face culling off.</summary>
+    /// <summary>The part draws its back faces too, with face culling off (<see cref="DrawRecipe.DrawsBackFaces"/>).</summary>
     TwoSided = 1 << 2,
     /// <summary>The mesh is a sheet (<see cref="DrawRecipe.IsSheet"/>): drawn see-through, it is a wash laid over
     /// another surface, and takes a polygon offset so it cannot z-fight what it lies on.</summary>

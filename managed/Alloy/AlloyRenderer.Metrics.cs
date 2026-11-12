@@ -54,9 +54,8 @@ public sealed unsafe partial class AlloyRenderer
                    $"{(float)Counters._drawsByClass[(int)AlloyClass.Additive] / Counters._frames:F0} additive" +
                    ") " +
                    $"({(Counters._batches == 0 ? 0f : (float)Counters._draws / Counters._batches):F1} draws/batch), " +
-                   // #292: the face-culling term's own cost. A two-sided count of 0 with a live scene means
-                   // no shipped material here says `twosided`, which is a finding about the content, not a
-                   // broken read; cuts above zero is what the term actually charged in batches.
+                   // the face-culling term's own cost: two-sided draws are .mtr twosided/volumetric parts,
+                   // cuts what the term charged in batches
                    $"({(float)Counters._twoSidedDraws / Counters._frames:F0} two-sided draws/frame, " +
                    $"{(float)Counters._cullCuts / Counters._frames:F1} batch cuts/frame on culling; " +
                    // #327: the opaque cut census by term. A term that dominates here is the next sort digit.
