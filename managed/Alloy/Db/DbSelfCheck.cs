@@ -61,6 +61,7 @@ internal static class DbSelfCheck
             check.Expect(TexReplace(), "Gob::ReplaceTexture: a part already showing the texture asked for is refreshed to the model's own first, so the SAME pair issued twice swaps again");
             check.Expect(PltMtrDiffuse(), "a replace matches the slot's effective name: the .mtr's texture when the file supplies one, else the mesh bitmap or the graft model -- so a creature's PLT replace leaves an authored diffuse alone");
             check.Expect(LateCoverage(), "a .mtr that lands after a recipe was interned re-seeds the coverage mode, which no texture serial would move");
+            MaterialFaces(check);
             check.Expect(HintDecal(), "a transparencyhint makes a flat face-up sheet on a static object a ground decal, and leaves every recipe a cutout");
             check.Expect(ContentPairRecipe(), "a material naming a content pair does not take a content id, its row and the unposed sentinel, or one naming a single half takes an id");
             check.Expect(AbsentMaterialNeverWaits(), "a material the layer answered ABSENT is final, so the part is never put on the late-.mtr wait list and the landing edge has nothing to do for it");
@@ -1026,6 +1027,70 @@ internal static class DbSelfCheck
         DrawRecipe.Pump();
         DrawRecipe.Pump();
         return ok;
+    }
+
+    /// <summary>Which materials draw with face culling off, per <c>Scene::AddPartsToDrawBuckets</c> @0x4751d0. Oracle:
+    /// hand-written <c>.mtr</c> texts, each beside the culling the engine's sub-list choice gives it, written out.</summary>
+    private static void MaterialFaces(Checker check)
+    {
+        check.Expect(TwoSidedFor("plain", "bitmap fc_tex\n", "", false), "a material that says neither keyword culls back faces");
+        check.Expect(TwoSidedFor("twosided", "twosided 1\n", "", true), "twosided draws both faces");
+        check.Expect(TwoSidedFor("volumetric", "transparency 1\nvolumetric 1\n", "", true), "volumetric alone draws both faces: back then front");
+        check.Expect(TwoSidedFor("bothvol", "twosided 1\nvolumetric 1\n", "", true), "twosided with volumetric draws both faces");
+        check.Expect(TwoSidedFor("latevol", "twosided 1\nvolumetric 1\nsample_framebuffer 1\n", "", false), "a volumetric material routed late by sample_framebuffer culls back faces");
+        check.Expect(TwoSidedFor("addvol", "twosided 1\nvolumetric 1\n", "additive", false), "a volumetric material routed additive culls back faces");
+        check.Expect(TwoSidedFor("watervol", "twosided 1\nvolumetric 1\n", "water", false), "a volumetric material in the water class culls back faces");
+        check.Expect(TwoSidedFor("addtwo", "twosided 1\n", "additive", true), "twosided without volumetric draws both faces in the additive class too");
+
+        (ModelDef model, int r) = InternFace("late", null, "");
+        bool ok = r >= 0 && (DrawRecipe.Flags(r) & RecipeFlag.TwoSided) == 0;
+        MtrDef.Bytes = n => n == "cx_sc_face_late" ? Encoding.ASCII.GetBytes("twosided 1\n") : null;
+        DrawRecipe.MaterialLanded();
+        ok &= DrawRecipe.Reclassify() > 0 && (DrawRecipe.Flags(r) & RecipeFlag.TwoSided) != 0;
+        check.Expect(ok, "a twosided .mtr that lands after its recipe was interned turns culling off");
+        MtrDef.Forget();
+        MtrDef.Bytes = n => n == "cx_sc_face_late"
+            ? Encoding.ASCII.GetBytes("twosided 1\nvolumetric 1\nsample_framebuffer 1\n") : null;
+        DrawRecipe.MaterialLanded();
+        bool cleared = r >= 0 && DrawRecipe.Reclassify() > 0 && (DrawRecipe.Flags(r) & RecipeFlag.TwoSided) == 0;
+        check.Expect(cleared, "a re-read .mtr that no longer draws back faces turns culling back on");
+        ForgetFixture(model);
+    }
+
+    /// <summary>Does a one-quad model whose mesh names a <c>.mtr</c> holding <paramref name="text"/> draw both faces,
+    /// as <paramref name="expect"/> says?</summary>
+    private static bool TwoSidedFor(string tag, string text, string renderHint, bool expect)
+    {
+        (ModelDef model, int r) = InternFace(tag, text, renderHint);
+        bool ok = r >= 0 && ((DrawRecipe.Flags(r) & RecipeFlag.TwoSided) != 0) == expect;
+        ForgetFixture(model);
+        return ok;
+    }
+
+    /// <summary>Intern a one-quad model whose mesh names the <c>.mtr</c> <c>cx_sc_face_</c><paramref name="tag"/>,
+    /// readable as <paramref name="text"/>, or not yet read when that is null.</summary>
+    private static (ModelDef, int) InternFace(string tag, string? text, string renderHint)
+    {
+        Reset();
+        MtrDef.Forget();
+        string name = "cx_sc_face_" + tag;
+        MtrDef.Bytes = n => n == name && text != null ? Encoding.ASCII.GetBytes(text) : null;
+        MeshDef mesh = Quad("fc_tex");
+        mesh.MaterialName = name;
+        mesh.RenderHint = renderHint;
+        var model = Model(name, new[] { -1, 0 }, new[] { NodeKind.Dummy, NodeKind.TriMesh },
+                          new MeshDef?[] { null, mesh });
+        // the render hint is read only off a node that carries a parsed node's content flags
+        model.Nodes[1].ContentFlags = MdlBinary.FlagsOf(NodeKind.TriMesh);
+        return (model, DrawRecipe.Intern(model, 1, plan: false));
+    }
+
+    /// <summary>Drop a fixture model's recipes and let their slots cool out.</summary>
+    private static void ForgetFixture(ModelDef model)
+    {
+        DrawRecipe.Forget(model);
+        DrawRecipe.Pump();
+        DrawRecipe.Pump();
     }
 
     /// <summary>A part built while its mesh's <c>.mtr</c> was unreadable: its material columns are the mesh's
