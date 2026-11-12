@@ -42,18 +42,40 @@ else
   fail "email: sign.sh failed when asked for the e-mail -- $(tail -3 "$c/out")"
 fi
 
-# Without osslsigncode, sign.sh stops naming it before it touches the draft.
+# PATH with the gh and ssign stubs and every directory of $PATH except those holding osslsigncode, so the
+# case's own nix stub in $1 decides where osslsigncode comes from.
+no_ossl_path() {
+  local dir=$1 d
+  for s in gh ssign; do ln -sf "$tmp/stubs/$s" "$dir/$s"; done
+  printf '%s' "$dir"
+  IFS=: read -ra dirs <<< "$PATH"
+  for d in "${dirs[@]}"; do [ -x "$d/osslsigncode" ] || printf ':%s' "$d"; done
+}
+
+# Without osslsigncode, and with a nix that cannot build it, sign.sh stops naming it before it touches the draft.
 c=$(plant no-ossl "SIGNED-LEAF:$certum")
-mkdir -p "$tmp/no-ossl" && for s in gh ssign; do ln -sf "$tmp/stubs/$s" "$tmp/no-ossl/$s"; done
-bare=$tmp/no-ossl
-IFS=: read -ra dirs <<< "$PATH"
-for d in "${dirs[@]}"; do [ -x "$d/osslsigncode" ] || bare+=":$d"; done
-if env CASE="$c" PATH="$bare" RELEASE_SIGN_KEY="$tmp/release-key" CERTUM_EMAIL=dev@example.com \
+mkdir -p "$c/bin" && printf '#!/usr/bin/env bash\necho "nix: build failed" >&2\nexit 1\n' > "$c/bin/nix" && chmod +x "$c/bin/nix"
+if env CASE="$c" PATH="$(no_ossl_path "$c/bin")" RELEASE_SIGN_KEY="$tmp/release-key" CERTUM_EMAIL=dev@example.com \
   bash "$c/tree/tools/release/sign.sh" "$tag" < /dev/null > "$c/out" 2>&1; then
   fail "no-ossl: sign.sh succeeded with no osslsigncode"
 fi
 grep -q osslsigncode "$c/out" || fail "no-ossl: the error does not name osslsigncode -- $(tail -2 "$c/out")"
 [ ! -f "$c/uploaded" ] && [ ! -f "$c/published" ] || fail "no-ossl: sign.sh touched the draft"
+
+# Without osslsigncode on PATH, sign.sh builds the flake's own and signs with it.
+c=$(plant nix-ossl "SIGNED-LEAF:$certum")
+mkdir -p "$c/bin" "$c/store/bin" && cp "$tmp/stubs/osslsigncode" "$c/store/bin/"
+cat > "$c/bin/nix" << NIX
+#!/usr/bin/env bash
+case "\$*" in *"build --no-link --print-out-paths $c/tree#osslsigncode") echo "$c/store" ;; *) exit 1 ;; esac
+NIX
+chmod +x "$c/bin/nix"
+if env CASE="$c" PATH="$(no_ossl_path "$c/bin")" RELEASE_SIGN_KEY="$tmp/release-key" CERTUM_EMAIL=dev@example.com \
+  bash "$c/tree/tools/release/sign.sh" "$tag" < /dev/null > "$c/out" 2>&1; then
+  [ -f "$c/published" ] || fail "nix-ossl: the draft was not published"
+else
+  fail "nix-ossl: sign.sh failed with osslsigncode from nix -- $(tail -3 "$c/out")"
+fi
 
 [ $rc -eq 0 ] && echo ">> sign.sh regression tests pass"
 exit $rc
