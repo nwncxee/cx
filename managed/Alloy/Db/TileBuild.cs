@@ -378,6 +378,7 @@ public static partial class TileBuild
         // orient quarter turns. Recorded on the object because the recipe is shared across orientations.
         SceneDb.ObjTexRotate[obj.Index] = (byte)(orient & 3);
         Walkmesh(scene, def, pos, q, place);
+        SceneDb.TileBlank[t] = BlankTile(def);
         Hold(def);
         Census(plan, SceneDb.ObjPartCount[obj.Index] == 0, add: true);
 

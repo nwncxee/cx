@@ -37,8 +37,8 @@ uniform vec2 uVfRain;       // (share of one whole rain the far veil carries, 1 
 uniform sampler2DArrayShadow uCover;   // the sun array; the rain cover map is layer uVfCoverLayer
 uniform mat4 uVfCoverVp;    // world -> the cover view's clip space; zero matrix = no map this frame
 uniform float uVfCoverLayer;
-uniform int uVfHidden[32];  // the fog of war: bit x of row y is set where tile (x, y) of the area is unexplored
-uniform ivec2 uVfTiles;     // the area's grid, tiles; zero = no tile is unexplored
+uniform int uVfHidden[32];  // bit x of row y is set where tile (x, y) of the area is dark: unexplored, or solid filler
+uniform ivec3 uVfTiles;     // the area's grid, tiles (zero = nothing is dark); z: 1 = the air past its edge is dark
 
 // A second, backward lobe and its share: a camera looking down on a lit scene sees back-scattered light, which a
 // forward lobe alone leaves almost black.
@@ -95,23 +95,24 @@ float CxVfOpen(vec3 world)
     return texture(uCover, vec4(n.xy, uVfCoverLayer, n.z - CX_VF_COVER_BIAS));
 }
 
-/// 1 = tile `c` is explored. A cell past the area's edge is the edge tile's: no air stands lit beyond a hidden one.
+/// 1 = tile `c` is lit. A cell past the area's edge is its border ring's: lit, or dark where nothing stands there.
 float CxVfSeenCell(ivec2 c)
 {
-    c = clamp(c, ivec2(0), uVfTiles - 1);
+    if (any(lessThan(c, ivec2(0))) || any(greaterThanEqual(c, uVfTiles.xy))) return float(1 - uVfTiles.z);
     return 1.0 - float((uVfHidden[c.y] >> c.x) & 1);
 }
 
-/// The share of the air at `world` the player may see lit: 1 over explored tiles, 0 over unexplored ones, blended
-/// between tile centres. The engine fogs an unexplored tile toward black, and the air over it is no brighter.
+/// The share of the air at `world` that is lit: 1 over a lit tile and out to its edge, falling to 0 by the centre of
+/// a dark one beside it. The engine draws a dark tile black, and the air over it is no brighter.
 float CxVfSeen(vec3 world)
 {
     if (uVfTiles.x <= 0) return 1.0;
     vec2 p = world.xy / CX_VF_TILE - 0.5;
     vec2 b = floor(p), f = p - b;
     ivec2 i = ivec2(b);
-    return mix(mix(CxVfSeenCell(i), CxVfSeenCell(i + ivec2(1, 0)), f.x),
-               mix(CxVfSeenCell(i + ivec2(0, 1)), CxVfSeenCell(i + ivec2(1, 1)), f.x), f.y);
+    float lit = mix(mix(CxVfSeenCell(i), CxVfSeenCell(i + ivec2(1, 0)), f.x),
+                    mix(CxVfSeenCell(i + ivec2(0, 1)), CxVfSeenCell(i + ivec2(1, 1)), f.x), f.y);
+    return min(2.0 * lit, 1.0);
 }
 
 /// Every clustered point light's light at `world`. A lamp is a SOURCE: the lit stage's curve sharpened toward an

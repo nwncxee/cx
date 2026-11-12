@@ -777,6 +777,8 @@ public static partial class SceneDb
     public static readonly bool[] TileIsBorder = new bool[MaxTiles];
     /// <summary>Fog of war: set while the area calls the tile unexplored (<c>AuroraSetTileFoggedByWar</c>).</summary>
     public static readonly bool[] TileFogged = new bool[MaxTiles];
+    /// <summary>The tile is solid filler (<c>TileBuild.Blank</c>): its walkmesh is nothing but solid faces.</summary>
+    public static readonly bool[] TileBlank = new bool[MaxTiles];
     /// <summary>The two per-tile ramps <c>TileFadeRamp</c> drives, and the camera-fade hysteresis accumulator.</summary>
     public static readonly float[] TileFade = new float[MaxTiles], TileFadeAcc = new float[MaxTiles], TileReveal = new float[MaxTiles];
     /// <summary>The tile's lights in <see cref="Lights"/>: <see cref="TileLightStride"/> slots per tile,
