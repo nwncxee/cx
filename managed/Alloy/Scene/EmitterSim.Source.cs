@@ -195,9 +195,6 @@ internal static unsafe partial class EmitterSim
         Matrix4x4 w = SceneDb.PartWorld[part];
         e.WorldPos = new Vector3(w.M41, w.M42, w.M43);
         e.WorldRot = RotationOf(in w);
-        e.ViewRadius = ViewRadiusOf(e.Gravity, e.Life, e.Velocity, e.RandVel,
-                                    e.SizeStartX, e.SizeEndX, e.SizeStartY, e.SizeEndY,
-                                    Ch1(rest, b, ChSizeMid), Ch1(rest, b, ChSizeMidY));
 
         e.HasOwner = true;
         e.OwnerPos = SceneDb.ObjWorld[o].Translation;
@@ -210,6 +207,7 @@ internal static unsafe partial class EmitterSim
         // stream writes fade x reveal per part), so a tile being unloaded takes its flames with it.
         e.Faded = SceneDb.PartFade[part] < 1f;
         TargetOf(part, o, ref e);
+        e.ViewRadius = RadiusOf(part, o, d, rest, b, e.WorldPos);
 
         e.M.Pos = e.WorldPos;
         e.M.Orient = e.WorldRot;
@@ -224,26 +222,32 @@ internal static unsafe partial class EmitterSim
 
     private static void TargetOf(int part, int o, ref Emitter e)
     {
-        e.HasTarget = false;
+        e.HasTarget = TargetObj(part, o, out DbId t);
+        if (!e.HasTarget) return;
+        Matrix4x4 tw = SceneDb.ObjWorld[t.Index];
+        e.TargetPos = tw.Translation;
+        e.TargetRot = RotationOf(in tw);
+        DbTargets++;
+    }
+
+    /// <summary>The object <see cref="TargetOf"/> aims at: the first live reference among the emitter part's children.</summary>
+    private static bool TargetObj(int part, int o, out DbId t)
+    {
         int end = SceneDb.ObjPartFirst[o] + SceneDb.ObjPartCount[o];
         for (int c = part + 1; c < end && SceneDb.PartParent[c] >= part; c++)
         {
             if (SceneDb.PartParent[c] != part || SceneDb.PartKindOf[c] != PartKind.Reference) continue;
-            DbId t = SceneDb.PartRefObj[c];
-            if (!SceneDb.Objects.Valid(t)) continue;
-            Matrix4x4 tw = SceneDb.ObjWorld[t.Index];
-            e.TargetPos = tw.Translation;
-            e.TargetRot = RotationOf(in tw);
-            e.HasTarget = true;
-            DbTargets++;
-            return;
+            t = SceneDb.PartRefObj[c];
+            if (SceneDb.Objects.Valid(t)) return true;
         }
+        t = default;
+        return false;
     }
 
     /// <summary><b>Just enough of the fill to answer the cull</b> -- the emitter's world position, its view
     /// radius and the update mode the dump budget keys on: ten channel reads against the full fill's thirty-odd.
     /// The verdict is bit identical to the full fill's, same columns through the same
-    /// <see cref="ViewRadiusOf"/>. False for the same two reasons <see cref="FillDb"/> is.</summary>
+    /// <see cref="RadiusOf"/>. False for the same two reasons <see cref="FillDb"/> is.</summary>
     internal static bool CullDb(int part, out Vector3 pos, out float radius, out int mode)
     {
         pos = default; radius = 0f; mode = ModeSingle;
@@ -257,25 +261,66 @@ internal static unsafe partial class EmitterSim
         int b = DbEmitterChannels.BlockOf(part);
         Matrix4x4 w = SceneDb.PartWorld[part];
         pos = new Vector3(w.M41, w.M42, w.M43);
-        radius = ViewRadiusOf(Ch1(rest, b, ChMass), Ch1(rest, b, ChLifeExp), Ch1(rest, b, ChVelocity),
-                              Ch1(rest, b, ChRandVel), Ch1(rest, b, ChSizeStart), Ch1(rest, b, ChSizeEnd),
-                              Ch1(rest, b, ChSizeStartY), Ch1(rest, b, ChSizeEndY),
-                              Ch1(rest, b, ChSizeMid), Ch1(rest, b, ChSizeMidY));
+        radius = RadiusOf(part, SceneDb.PartObj[part].Index, d, rest, b, pos);
         mode = ModeOf(d.Update);
         return true;
     }
 
-    /// <summary><c>PartEmitter::CalculateRadius</c> @0x4ac350, in its non-p2p arm: the distance a particle can
-    /// travel over its lifetime under its launch speed and gravity, plus the half-diagonal of the largest quad
-    /// the emitter can reach. TWO of the engine's terms are dropped -- the live-particle extension and a vector
-    /// at <c>PartEmitter+0x200</c> -- and both can only make the radius LARGER, so this cull is tighter.</summary>
-    private static float ViewRadiusOf(float mass, float life, float vel, float randVel,
-                                      float sizeStartX, float sizeEndX, float sizeStartY, float sizeEndY,
-                                      float sizeMid, float sizeMidY)
+    /// <summary>The radius <c>PartEmitter::CalculateRadius</c> @0x4ac350 gives emitter <paramref name="part"/> of object
+    /// <paramref name="o"/> at <paramref name="pos"/>, from the same columns the fill and the cull both read.</summary>
+    private static float RadiusOf(int part, int o, EmitterDef d, Vector4[] rest, int b, Vector3 pos)
+    {
+        ModelDef? owner = SceneDb.ObjModel[o];
+        bool effect = owner != null && (owner.Classification & ClassEffect) != 0;
+        bool aimed = TargetObj(part, o, out DbId t);
+        float wind = ((int)d.Flags & FWind) != 0 ? AlloyWind.Base.Length() : 0f;
+        float ballistic = ViewRadiusOf(Ch1(rest, b, ChMass), Ch1(rest, b, ChLifeExp), Ch1(rest, b, ChVelocity),
+                                       Ch1(rest, b, ChRandVel), wind, Ch1(rest, b, ChSizeStart), Ch1(rest, b, ChSizeEnd),
+                                       Ch1(rest, b, ChSizeStartY), Ch1(rest, b, ChSizeEndY),
+                                       Ch1(rest, b, ChSizeMid), Ch1(rest, b, ChSizeMidY));
+        return RadiusArm(effect, aimed, aimed ? Vector3.Distance(pos, SceneDb.ObjWorld[t.Index].Translation) : 0f,
+                         ballistic, ChunkReach(part, pos));
+    }
+
+    /// <summary>The model <c>classification</c> bit an <c>effect</c>/<c>effects</c> model sets (<c>Model+0x8e</c> bit 0).</summary>
+    private const byte ClassEffect = 1;
+
+    /// <summary>The radius <c>CalculateRadius</c> gives an emitter whose owning object's model is classified as an effect.</summary>
+    internal const float EffectRadius = 1000f;
+
+    /// <summary><c>CalculateRadius</c>'s three arms: an effect model's fixed <see cref="EffectRadius"/>, else the distance
+    /// to the p2p target, else the ballistic reach widened to cover every live chunk object.</summary>
+    internal static float RadiusArm(bool effect, bool aimed, float targetDist, float ballistic, float chunkReach)
+        => effect ? EffectRadius : aimed ? targetDist : MathF.Max(ballistic, chunkReach);
+
+    /// <summary>The furthest a live chunk object of part <paramref name="part"/>'s slot reaches from <paramref name="pos"/>:
+    /// its distance plus its cull sphere's radius. Zero for an emitter that throws no chunks.</summary>
+    private static float ChunkReach(int part, Vector3 pos)
+    {
+        int at = (uint)part < (uint)_slotOfPart.Length ? _slotOfPart[part] - 1 : -1;
+        if (at < 0 || at >= _tabN || _tab[at].Part != part || !_tab[at].Chunk) return 0f;
+        ref Slot slot = ref _tab[at];
+        float reach = 0f;
+        for (int i = 0; i < slot.Live; i++)
+        {
+            int r = RecIndex(_ptrs[slot.Base + i]);
+            if ((uint)r >= (uint)_chunkObj.Length || !SceneDb.Objects.Valid(_chunkObj[r])) continue;
+            Vector4 sphere = SceneDb.ObjSphere[_chunkObj[r].Index];
+            reach = MathF.Max(reach, Vector3.Distance(pos, new Vector3(sphere.X, sphere.Y, sphere.Z)) + sphere.W);
+        }
+        return reach;
+    }
+
+    /// <summary><c>CalculateRadius</c>'s ballistic arm: the distance a particle travels over its lifetime under gravity
+    /// and its launch speed plus the area's base wind speed when the emitter takes wind, plus the half-diagonal of the
+    /// largest quad the emitter can reach.</summary>
+    internal static float ViewRadiusOf(float mass, float life, float vel, float randVel, float wind,
+                                       float sizeStartX, float sizeEndX, float sizeStartY, float sizeEndY,
+                                       float sizeMid, float sizeMidY)
     {
         float accel = MathF.Abs(mass * Gravity);
         float l = MathF.Max(life, 0f);
-        float travel = accel * 0.5f * l * l + (vel + randVel) * l;
+        float travel = accel * 0.5f * l * l + (vel + randVel + wind) * l;
         float hx = MathF.Max(sizeMid, MathF.Max(sizeEndX, sizeStartX)) * 0.5f;
         float hy = MathF.Max(sizeMidY, MathF.Max(sizeEndY, sizeStartY)) * 0.5f;
         if (hy <= 0f) hy = hx;
