@@ -117,7 +117,7 @@ internal static class StrideWarp
         if (paced)
         {
             float engine = Stride.EngineRate(s, leadRun);
-            if (engine > 1e-4f) s.RateNext = Pace(speed / lead.Speed).Rate / engine;
+            if (engine > 1e-4f) s.RateNext = RateShare(speed / lead.Speed, engine);
         }
         float phase = leadRun.Time / lead.Length;
         if (!ReferenceEquals(leadAnim, s.PlantClip))
@@ -257,6 +257,13 @@ internal static class StrideWarp
 
     private static float Wrap(float p) => p - MathF.Floor(p);
 
+    /// <summary>The share of the engine's rate a walk plays at when its clip covers the ground at <paramref name="k"/>
+    /// times the body's speed. Never under <see cref="HeldBack"/>: a body held near still by a wall keeps stepping.</summary>
+    internal static float RateShare(float k, float engine) => MathF.Max(Pace(k).Rate / engine, HeldBack);
+
+    /// <summary>The least share of the engine's rate a paced walk plays at.</summary>
+    private const float HeldBack = 0.5f;
+
     /// <summary>The playback rate and stride length a clip whose feet cover the ground at <paramref name="k"/> times
     /// the body's speed plays at: the square root of it each, as a walker speeds up by both cadence and stride.</summary>
     internal static (float Rate, float Stride) Pace(float k)
@@ -334,8 +341,8 @@ internal static class StrideWarp
     }
 
     /// <summary>The pace split, the reach, the plant, the phase seeds, the landing time and the drop's easing against hand-worked values, and a walk run through speed
-    /// ramps between half and twice its clip's pace. Oracles: the square-root split and the leg triangle worked by
-    /// hand, and the physical rule that a stance foot does not move on the ground and no foot jumps between frames.</summary>
+    /// ramps between half and twice its clip's pace. Oracles: the square-root split, its 0.7 stride floor and the leg
+    /// triangle worked by hand, and the physical rule that a stance foot does not move on the ground and no foot jumps between frames.</summary>
     internal static bool SelfCheck()
     {
         (float r1, float s1) = Pace(1f);
@@ -369,7 +376,10 @@ internal static class StrideWarp
                      && MathF.Abs(Start(true, 0.5f, 0.999f) - 0.56f) < 1e-5f && MathF.Abs(Start(false, 0.5f, 0.999f) - 0.059f) < 1e-4f;
         // 0.2 of a 1.2 s loop at rate 1.5 is 0.16 s, wrapping past the loop's end
         bool ahead = MathF.Abs(SecondsTo(0.9f, 0.1f, 1.2f, 1.5f) - 0.16f) < 1e-5f && MathF.Abs(SecondsTo(0.2f, 0.5f, 1f, 1f) - 0.3f) < 1e-5f;
-        return paces && reach && landed && dragged && swings && seeds && ahead && Settles() && Walks();
+        // a crawl of 0.02 splits to 0.02 / 0.7 = 0.029 of the clip's rate, under the 0.5 floor; 0.36 / 0.7 = 0.514 is over it
+        bool held = RateShare(0.02f, 1f) == 0.5f && MathF.Abs(RateShare(0.02f, 1.4f) - 0.5f) < 1e-6f
+                    && MathF.Abs(RateShare(0.36f, 1f) - 0.514286f) < 1e-4f && MathF.Abs(RateShare(1f, 1f) - 1f) < 1e-5f;
+        return paces && held && reach && landed && dragged && swings && seeds && ahead && Settles() && Walks();
     }
 
     /// <summary>A long stride's need, 0.1 at each double support and 0 between, twice a 1 s cycle for 4 s at 60 fps: the
