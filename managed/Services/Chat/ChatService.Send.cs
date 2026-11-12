@@ -189,6 +189,7 @@ public sealed unsafe partial class ChatService
         }
         // Route: find or create a pinned tab, switch to it, set channel to Tell, open input.
         var decision = TellRouter.Route(mode, _layout.Windows, _layout.FocusedIndex, name);
+        _log?.Info($"[chat] tell start: pid={playerId} mode={mode} -> {decision.Action} w={decision.WindowIndex}");
         switch (decision.Action)
         {
             case TellRoute.Exists:

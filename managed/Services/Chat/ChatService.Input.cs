@@ -233,6 +233,7 @@ public sealed unsafe partial class ChatService
                     _layout!.FocusedIndex = winIndex;
                     StartTellTo(name, h.PlayerId);
                 }
+                else _log?.Info($"[chat] portrait click: pid=0x{h.PlayerId:x} names no player (roster {_playerResolver?.OnlineNames().Count ?? -1})");
                 return true;
             }
         }
