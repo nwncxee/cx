@@ -338,6 +338,7 @@ internal static unsafe partial class PostStack
         AlloyRenderer.VkMoverMotion(vk, cl, s.Vel, w, h, vp, prev, log);
         AlloyRenderer.VkGrassMotion(vk, cl, s.Vel, w, h, vp, prev);
         AlloyRenderer.VkWeatherMotion(vk, cl, s.Vel, w, h, vp, prev, log);
+        AlloyRenderer.VkParticleMotion(vk, cl, s.Vel, w, h, prev, log);
         cl.EndLabel();
         return true;
     }

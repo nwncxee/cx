@@ -97,6 +97,7 @@ public static class ServiceHost
         CX.Alloy.ShaderBinary.SelfCheck(log);   // a content SPIR-V .shd is validated, and GLSL text is never read as one
         CX.Alloy.VkPrograms.SelfCheck(log);   // the batch pass's programs translate and compile for Vulkan
         CX.Alloy.AlloyRenderer.VkDeferredSelfCheck(log);   // ...and the deferred path's three compute stages, on bindings the host binds
+        CX.Alloy.AlloyRenderer.VkParticlesSelfCheck(log);   // the particle pass binds the light rig and each texture's sampler, and its velocity arm reprojects
         CX.Rhi.RhiSelfCheck.Run(log);   // handles, the command arena's round trip and growth, format traits
         CX.Alloy.AlloyRenderer.VkDecalSelfCheck(log);   // the Vulkan decal layer's targets, blends and clear against GL's
         CX.Alloy.AlloyRenderer.VkWaterSelfCheck(log);   // the Vulkan water class's snapshot pair and its filtered reads

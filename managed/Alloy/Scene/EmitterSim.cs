@@ -260,8 +260,8 @@ internal static unsafe partial class EmitterSim
                 DumpSkipped(de.Part, de.Obj, scene);
                 continue;
             }
-            // CX-188: the CULL first, the full snapshot after. An out-of-view emitter is not stepped -- it
-            // `continue`s below, and did before this change -- so filling it was pure waste on the whole
+            // CX-188: the CULL first, the full snapshot after. An out-of-view emitter is not stepped, as vanilla's is
+            // not: Scene::DoEmitterBucket @0x476f00 animates only what the BSP walk filed past PartOutside -- so filling it was pure waste on the whole
             // off-screen population: thirty-odd channel reads, the p2p target walk and an engine scale call
             // per emitter per frame. The cull wants the world position and the view radius, which is ten
             // channel reads, and CullDb derives both exactly as FillDb does.
@@ -321,7 +321,9 @@ internal static unsafe partial class EmitterSim
                 continue;
             }
             // The pass declines an emitter whose texture is not drawable, so "live" is only said once it is.
-            CensusE(in e, TexNameOf(ref slot) != 0 ? "live" : "no-texture");
+            bool drawable = TexNameOf(ref slot) != 0;
+            CensusE(in e, drawable ? "live" : "no-texture");
+            if (!drawable) NoteNoTexture(ref slot);
 
             slot.Dist = (eye - e.OwnerPos).LengthSquared();
             if (_orderN < MaxEmitters) _order[_orderN++] = s;

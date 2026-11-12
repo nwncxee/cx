@@ -80,4 +80,6 @@ internal static unsafe partial class Particles
     internal static bool SoftOn => Soft.V;
     internal static bool ShadowsOn => Shadows.V;
     internal static int VizMode => Viz.V;
+    /// <summary><c>particles.sampler</c>: every particle texture through the pass's own un-mipmapped clamp sampler.</summary>
+    internal static bool OwnedSampler => Sampler.Boot;
 }

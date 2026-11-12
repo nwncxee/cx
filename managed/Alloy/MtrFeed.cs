@@ -114,7 +114,7 @@ internal static unsafe class MtrFeed
         }
     }
 
-    /// <summary>GAME thread: read every material <paramref name="model"/>'s meshes draw with that the cache
+    /// <summary>GAME thread: read every material <paramref name="model"/>'s meshes and emitters draw with that the cache
     /// does not know yet, so the part tree built next resolves them instead of drawing the bitmap as a
     /// texture. Cold: object creation, one read per new name per module.</summary>
     internal static void Warm(ModelDef model)
@@ -122,8 +122,7 @@ internal static unsafe class MtrFeed
         if (!_armed) return;
         foreach (NodeDef n in model.Nodes)
         {
-            if (n.Mesh == null) continue;
-            string name = MaterialOf(n.Mesh);
+            string name = n.Mesh != null ? MaterialOf(n.Mesh) : n.Emitter?.Texture ?? "";
             if (name.Length == 0) continue;
             bool known;
             lock (Gate) known = _bytes.ContainsKey(name);

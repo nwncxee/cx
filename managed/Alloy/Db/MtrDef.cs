@@ -93,11 +93,10 @@ public sealed class MtrDef
     /// <summary>Could <paramref name="mesh"/> still gain a material a resolve has not seen? True only while
     /// the layer has not answered for its name -- an answered "no such file" is final, so a part built against
     /// one has nothing to wait for.</summary>
-    public static bool Pending(MeshDef mesh)
-    {
-        string name = NameOf(mesh);
-        return name.Length > 0 && _provider.Answered is { } ask && !ask(name);
-    }
+    public static bool Pending(MeshDef mesh) => Pending(NameOf(mesh));
+
+    /// <summary>Could material <paramref name="name"/> still arrive? True only while the layer has not answered for it.</summary>
+    public static bool Pending(string name) => name.Length > 0 && _provider.Answered is { } ask && !ask(name);
 
     /// <summary>Forget every parsed material (the self-check, and a content reload).</summary>
     public static void Forget() { lock (_cache) _cache.Clear(); }

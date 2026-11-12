@@ -31,6 +31,16 @@ public sealed unsafe partial class AlloyRenderer
         public CommandList? Side;
         public int View = -1, Proj = -1, Eye = -1, Cut = -1, Add = -1, Lit = -1, Emis = -1, Viz = -1, Soft = -1;
         public int SunMedia = -1, LocalMedia = -1, Cubes = -1;
+        /// <summary>The velocity arm: the same stages with the motion define, re-issuing this frame's groups.</summary>
+        public VkProg? Motion;
+        public PipelineId MotionPipe;
+        public CommandList? MotionSide;
+        public bool MotionTried, MotionLive;
+        public int MView = -1, MProj = -1, MEye = -1, MAdd = -1, MPrevVp = -1, MJitter = -1, MSize = -1;
+        /// <summary>The frame the pass last drew in, its group count, and the camera it drew with.</summary>
+        public int DrewSeq = -1, DrewGroups;
+        public Matrix4x4 DrewView, DrewProj;
+        public Vector3 DrewEye;
         public long NoTex;
         /// <summary>The first texture names that drew on the stand-in, each said once.</summary>
         public readonly uint[] NoTexSaid = new uint[8];
@@ -99,13 +109,14 @@ public sealed unsafe partial class AlloyRenderer
             int loose = VkPartBlock(s, &v, &p, eye, g, groupLit, soft, viewport, near, far);
             int pass = groupLit ? VkArenaPass() : -1;
             if (loose < 0 || (groupLit && pass < 0)) return false;
-            VkPartBind(side, s, c, loose, pass, g.Tex, soft);
+            VkPartBind(side, s, s.Prog!, c, loose, pass, g.Tex, soft);
             side.Draw(g.Parts * 6, 1, g.Start * 6, 0);
             punched |= VkPartDepth(cls).Write;
         }
         ReadOnlySpan<ColorAttachment> colors = [new(c.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default), VkReactiveAttach(c)];
         VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear)),
                     writesDepth: punched);
+        s.DrewSeq = FrameSeq; s.DrewGroups = groups; s.DrewView = v; s.DrewProj = p; s.DrewEye = eye;
         if (!s.Live)
         {
             s.Live = true;
@@ -159,9 +170,8 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>The pass's bind set: the loose and pass blocks, the record and order buffers, the group's texture (the
     /// white stand-in, counted, for one Vulkan has no copy of), the depth copy, and the stand-ins for the rest.</summary>
-    private static void VkPartBind(CommandList side, VkPartState s, VkColourState c, int loose, int pass, uint tex, bool soft)
+    private static void VkPartBind(CommandList side, VkPartState s, VkProg p, VkColourState c, int loose, int pass, uint tex, bool soft)
     {
-        VkProg p = s.Prog!;
         Span<BufferBinding> ubo = stackalloc BufferBinding[12];
         Span<BufferBinding> ssbo = stackalloc BufferBinding[16];
         Span<ImageBinding> sampled = stackalloc ImageBinding[48];
@@ -177,15 +187,14 @@ public sealed unsafe partial class AlloyRenderer
                               : new BufferBinding(o.Binding, c.ZeroUbo);
                     break;
                 case VkBindKind.StorageBlock:
-                    ssbo[ns++] = new BufferBinding(o.Binding, o.Binding switch
-                    {
-                        Particles.BindRecs => s.Recs, Particles.BindIdx => s.Idx, _ => c.ZeroSsbo,
-                    });
+                    ssbo[ns++] = new BufferBinding(o.Binding, VkPartStorage(o.Binding, _capturing, s.Recs, s.Idx, VkDeferredLights(),
+                                                                            VkClusterCounts, VkClusterIdx, VkMovers) ?? c.ZeroSsbo);
                     break;
                 case VkBindKind.Sampled when o.Name == "uTex":
                     ImageId img = tex != 0 ? VkTextures.Image((int)tex) : default;
+                    SamplerId own = img.IsNull ? default : VkTextures.SamplerId((int)tex);
                     if (img.IsNull) { s.NoTex++; VkPartNoTex(s, tex); img = VkTextures.Image(OwnedTextures.WhiteTid()); }
-                    sampled[nt++] = new ImageBinding(o.Binding, img.IsNull ? c.Tex2D : img, s.Samp);
+                    sampled[nt++] = new ImageBinding(o.Binding, img.IsNull ? c.Tex2D : img, VkPartSampler(Particles.OwnedSampler, s.Samp, own));
                     break;
                 case VkBindKind.Sampled when o.Name == "uSceneDepth" && soft:
                     sampled[nt++] = new ImageBinding(o.Binding, c.DepthRead);
@@ -199,6 +208,27 @@ public sealed unsafe partial class AlloyRenderer
         side.BindSet(0, new BindSet(ubo[..nu], ssbo[..ns], sampled[..nt], default));
     }
 
+    /// <summary>The particle stages as the colour pass draws them, translated for Vulkan.</summary>
+    internal static VkProgramText VkPartText()
+        => WorldDepth.Translate(ShaderResource.Tokens(ShaderSource.Get("cx_part_v.glsl")),
+                                ShaderResource.Tokens(ShaderSource.Get("cx_part_f.glsl")), VkPrograms.Units);
+
+    /// <summary>The buffer the particle stages read at storage <paramref name="binding"/>: the records, the draw order, and
+    /// the frame's light table and froxel lists the lit vertex stage walks; null leaves the stand-in.</summary>
+    internal static BufferId? VkPartStorage(uint binding, bool capturing, BufferId recs, BufferId idx, BufferId lights,
+                                            BufferId counts, BufferId clIdx, BufferId movers)
+        => binding switch
+        {
+            Particles.BindRecs => recs,
+            Particles.BindIdx => idx,
+            _ => VkLitTable(binding, capturing, lights, counts, clIdx, movers),
+        };
+
+    /// <summary>The sampler a group's texture is read through: its own (its levels and its wrap), or the pass's
+    /// un-mipmapped clamp one under <c>particles.sampler</c> or for a texture that has none (the stand-in).</summary>
+    internal static SamplerId VkPartSampler(bool owned, SamplerId pass, SamplerId texture)
+        => owned || texture.IsNull ? pass : texture;
+
     /// <summary>The program, its three pipelines and the un-mipmapped clamp sampler, made once per device. A refusal is
     /// said once and the pass sits the session out (GL's own refusal stands it down the same way).</summary>
     private static bool VkPartEnsure(VkBackend vk, VkPartState s, ExtenderLog log)
@@ -207,9 +237,7 @@ public sealed unsafe partial class AlloyRenderer
         s.Tried = true;
         s.Side = new CommandList("vulkan particles", PartArenaBytes, log);
         s.Samp = vk.CreateSampler(new SamplerDesc(Filter.Linear, Filter.Linear, MipMode.None, Wrap.Clamp));
-        VkProgramText t = WorldDepth.Translate(ShaderResource.Tokens(ShaderSource.Get("cx_part_v.glsl")),
-                                               ShaderResource.Tokens(ShaderSource.Get("cx_part_f.glsl")), VkPrograms.Units);
-        VkProg? p = VkBuild(vk, t, "particles", false, log);
+        VkProg? p = VkBuild(vk, VkPartText(), "particles", false, log);
         if (p != null)
             LooseBlock.Resolve(p.Names, () =>
             {

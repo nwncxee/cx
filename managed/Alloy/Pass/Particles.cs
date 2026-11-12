@@ -115,10 +115,11 @@ internal static unsafe partial class Particles
         /// that spawned after the last capture and has therefore never been built -- keeps its vanilla
         /// draw.</summary>
         public int IssuedGen;
-        /// <summary>The material's <c>fEmissive</c>, read ONCE when the slot is allocated. The walk is
-        /// a string compare over up to 64 records across two lists, which is cold work -- doing it in the
-        /// per-frame resolve would put it on the hot path for every emitter on screen, every frame.</summary>
+        /// <summary>The emitter material's <c>fEmissive</c>, read when the slot is allocated and again on a later
+        /// capture only while that material has not been answered for (<see cref="EmissiveSettled"/>).</summary>
         public float Emissive;
+        /// <summary>The material behind <see cref="Emissive"/> was read or is known absent: nothing left to wait for.</summary>
+        public bool EmissiveSettled;
         /// <summary>This emitter's slice of the persistent record buffer, in RECORDS. Stable across
         /// frames -- that is what makes the upload a delta rather than a rebuild -- and reassigned only when
         /// the emitter needs more room than it holds.</summary>
@@ -298,12 +299,11 @@ internal static unsafe partial class Particles
             // a new emitter would hand it a slice the allocator has already handed to someone else -- two
             // emitters writing one block, with the hash layer making the wrong one sticky.
             _tab[s].RecBase = 0; _tab[s].RecCap = 0; _tab[s].Hash = 0;
-            // CX-120: a DB emitter has no Material, so no .mtr parameter list to walk. fEmissive stays 1.0
-            // there -- named on the period line rather than silently assumed (see Census).
-            _tab[s].Emissive = part >= 0 ? 1f : ReadEmissive(new PartEmitter(em).Material);
+            _tab[s].EmissiveSettled = false;
             _captured++;
         }
         ref Emit e = ref _tab[s];
+        if (!e.EmissiveSettled) e.Emissive = EmissiveOfPart(part, out e.EmissiveSettled);
         e.Ptr = em;
         e.Part = part;
         e.DbTex = dbTex;
@@ -833,31 +833,28 @@ internal static unsafe partial class Particles
         return h;
     }
 
-    /// <summary>This material's <c>fEmissive</c>, or 1.0. Cold -- once per emitter per table slot. Both
-    /// lists, shared first then instance: the .mtr's declared values are parsed onto the SHARED material's
-    /// list while the instance list is merely sized to match, so reading the instance alone answers 1.0 for
-    /// every effect this parameter exists for. ponytail: a DECLINED emitter draws without it.</summary>
-    private static float ReadEmissive(CX.Engine.Material mat)
+    /// <summary>The <c>fEmissive</c> of part <paramref name="part"/>'s emitter: <c>PartEmitter::Initialize</c> @0x4aaaa0 loads
+    /// the emitter's material through <c>Material::LoadTextures</c> @0x4c76d0, which names the <c>.mtr</c> after the
+    /// emitter's texture. <paramref name="settled"/> is false while that material may still be read.</summary>
+    internal static float EmissiveOfPart(int part, out bool settled)
     {
-        if (mat.IsNull) return 1f;
-        float v = 1f;
-        SharedMaterial shared = mat.Shared;
-        if (!shared.IsNull) Scan(shared.Params, shared.ParamCount, ref v);
-        Scan(mat.Params, mat.ParamCount, ref v);
-        return v <= 0f ? 1f : MathF.Min(v, MaxEmissive);
+        Mdl.ModelDef? m = (uint)part < (uint)SceneDb.PartModel.Length ? SceneDb.PartModel[part] : null;
+        int n = (uint)part < (uint)SceneDb.PartNode.Length ? SceneDb.PartNode[part] : -1;
+        string name = m != null && (uint)n < (uint)m.Nodes.Length ? m.Nodes[n].Emitter?.Texture ?? "" : "";
+        MtrDef? mtr = MtrDef.Resolve(name);
+        settled = mtr != null || !MtrDef.Pending(name);
+        return EmissiveOf(mtr);
     }
 
-    private static void Scan(IntPtr list, int count, ref float v)
+    /// <summary><paramref name="mtr"/>'s float <c>fEmissive</c> (the last one stated wins), or 1.0 when it states none,
+    /// none above zero, or there is no material; capped at <see cref="MaxEmissive"/>.</summary>
+    internal static float EmissiveOf(MtrDef? mtr)
     {
-        if (list == IntPtr.Zero || count <= 0 || count > MaxParams) return;
-        var first = new MaterialParameter(list);
-        for (int k = 0; k < count; k++)
-        {
-            MaterialParameter mp = first[k];
-            if (mp.Type != 0) continue;                          // 1 = int-valued; this one is a float
-            if (mp.Comps < 1) continue;
-            if (AlloyRenderer.NameIs((byte*)mp.Ptr, EmissiveParam)) v = mp.Value;
-        }
+        float v = 1f;
+        if (mtr != null)
+            foreach ((string name, float[] values, bool isInt) in mtr.Parameters)
+                if (!isInt && values.Length > 0 && name.Equals(EmissiveParam, StringComparison.OrdinalIgnoreCase)) v = values[0];
+        return v <= 0f ? 1f : MathF.Min(v, MaxEmissive);
     }
 
     private static float Sat(float x) => x < 0f ? 0f : x > 1f ? 1f : x;
