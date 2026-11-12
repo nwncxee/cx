@@ -203,9 +203,8 @@ public static partial class PlateLayout
         if (band && bandW > textW) textW = bandW;
         if (extraW > textW) textW = extraW;
         if (textW < 0f) textW = 0f;
-        if (!bar) barW = 0f;
-        else if (!(barW > 0f)) barW = textW;
-        else if (barW > textW) textW = barW;
+        barW = bar ? (barW > 0f ? barW : textW) : 0f;
+        if (barW > textW) textW = barW;
 
         float preH = lineH * preLines, postH = lineH * postLines;
         float nameH = lineH * nameLines;
@@ -350,7 +349,7 @@ public static partial class PlateLayout
     }
 
     /// <summary>A name longer than this many chars is long enough for <see cref="BreakTitles"/> to break.</summary>
-    public const int TitleMinChars = 24;
+    private const int TitleMinChars = 24;
 
     /// <summary>Put each bracketed part of a long name on its own line: the space in front of an opening
     /// <c>( [ {</c> becomes an LF. One char for one, so a per-char colour array still lines up. COLD, and an
@@ -366,14 +365,6 @@ public static partial class PlateLayout
             buf[i] = '\n';
         }
         return buf == null ? s : new string(buf);
-    }
-
-    /// <summary>A stripped name as its plate draws it: <see cref="BreakName(string, uint[], out uint[])"/>'s
-    /// author breaks, then <see cref="BreakTitles"/> when <paramref name="titles"/>. COLD.</summary>
-    public static string PlateName(string s, uint[]? colours, bool titles, out uint[]? outColours)
-    {
-        string n = BreakName(s, colours, out outColours);
-        return titles ? BreakTitles(n) : n;
     }
 
     /// <summary>The packed RGB that means "no colour tag covered this char" -- white, i.e. take whatever colour

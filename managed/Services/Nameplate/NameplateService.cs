@@ -333,6 +333,7 @@ public sealed unsafe class NameplateService : IExtenderService
         BandWords.Refresh();
 
         int queue = NameplateKnobs.Queue.V; float animMs = NameplateKnobs.Anim.V;
+        _table.Retitle(NameplateKnobs.Titles.V);
         _table.Drain(queue, animMs);   // BEFORE every early return below: the hook ring is fixed-size
 
         _hitCount[_hitCur ^ 1] = 0;
@@ -1157,7 +1158,7 @@ public sealed unsafe class NameplateService : IExtenderService
     private static bool _plateGrab;
 
     /// <summary>A plate name as one line again, for the chat entry: the name carries the LFs
-    /// <c>PlateLayout.BreakName</c> put there, and an embedded newline in a <c>/tell</c> prefill is a bug.
+    /// <c>PlateTable.SetName</c> put there, and an embedded newline in a <c>/tell</c> prefill is a bug.
     /// Cold (a click), so the copy costs nothing that matters; a break-free name is returned as-is.</summary>
     private static string Flatten(string name) => name.IndexOf('\n') < 0 ? name : name.Replace('\n', ' ');
 

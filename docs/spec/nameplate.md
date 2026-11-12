@@ -249,7 +249,8 @@ Deliberate divergences from vanilla, to be stated in the commit message:
 - plate **names wrap** at the max text width, and author breaks are honoured (a real
   LF/CR/CRLF, the literal `\n`, or a run of 3+ spaces). Vanilla draws a name on one line
   at any length, which is why builders pad names with spaces to fake a wrap. With `nameplate.titles` on, a
-  name of more than 24 characters also breaks at the space in front of each opening `(`, `[` or `{`.
+  name of more than 24 characters in all also breaks at the space in front of each opening `(`, `[` or `{`, on its plate and in the
+  speaker header over its bubble.
 
 ## Extras (requirement 3) — build exactly these, no more
 

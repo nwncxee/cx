@@ -30,7 +30,13 @@ internal static class PlateOptionsApprovedExamples
     private static PlateMetrics Plate(float nameW, bool bar, float barW)
         => PlateLayout.Measure(nameW, 1, 0f, false, false, bar, LineH, 1f, 0, 0, 0f, barW);
 
-    private static string Name(string name, bool titles) => PlateLayout.PlateName(name, null, titles, out _);
+    /// <summary>The name as a table entry holds it for drawing, set the way a sighting sets it.</summary>
+    private static string Name(string name, bool titles)
+    {
+        var e = new PlateTable.Entry();
+        PlateTable.SetName(e, PlateLayout.BreakName(name), null, titles);
+        return e.Name;
+    }
 
     internal static void SelfCheck(ExtenderLog log)
     {
@@ -39,9 +45,10 @@ internal static class PlateOptionsApprovedExamples
         // Given two creatures standing so close that their nameplates overlap, and Keep names apart is off
         // When both nameplates show
         // Then each nameplate sits directly over its own creature, one drawn over the other
-        bool apartDefault = NameplateKnobs.Apart.Default;
-        Stack(apartDefault, false, false, 2, out float a, out float b);
-        check.Expect(!apartDefault && a == 100f && b == 105f, $"E1 by default both nameplates stay over their creatures: {a}, {b}");
+        check.Expect(!NameplateKnobs.Apart.Default && NameplateKnobs.BarWidth.Default == 0f && NameplateKnobs.Titles.Default,
+                     "the settings ship as the examples name their defaults: apart off, bar width 0, titles on");
+        Stack(false, false, false, 2, out float a, out float b);
+        check.Expect(a == 100f && b == 105f, $"E1 with the setting off both nameplates stay over their creatures: {a}, {b}");
 
         // Given two creatures standing so close that their nameplates overlap, and Keep names apart is on
         // When both nameplates show
@@ -77,8 +84,8 @@ internal static class PlateOptionsApprovedExamples
         // Given Health bar is on and Health bar width is 0, a creature named Bo and a creature named Clarity Solforge the Machinist
         // When both nameplates show
         // Then each health bar is as wide as its own name, so the longer name has the longer bar
-        PlateMetrics bo0 = Plate(BoW, true, NameplateKnobs.BarWidth.Default), lng0 = Plate(LongW, true, NameplateKnobs.BarWidth.Default);
-        check.Expect(bo0.BarW == 20f && lng0.BarW == 180f, $"E7 at the default each bar is as wide as its name: {bo0.BarW}, {lng0.BarW}");
+        PlateMetrics bo0 = Plate(BoW, true, 0f), lng0 = Plate(LongW, true, 0f);
+        check.Expect(bo0.BarW == 20f && lng0.BarW == 180f, $"E7 at 0 each bar is as wide as its name: {bo0.BarW}, {lng0.BarW}");
 
         // Given Health bar is on and Health bar width is 100 px, and a creature named Bo
         // When its nameplate shows
@@ -95,14 +102,14 @@ internal static class PlateOptionsApprovedExamples
         // Given Health bar is off and Health bar width is 100 px, and a creature named Bo
         // When its nameplate shows
         // Then no health bar shows, and the nameplate is the size it is with Health bar width at 0
-        PlateMetrics off = Plate(BoW, false, 100f);
-        check.Expect(off.BarW == 0f && off.W == 28f && off.H == 24f, $"E10 with Health bar off the width changes nothing: bar {off.BarW}, box {off.W} x {off.H}");
+        PlateMetrics off = Plate(BoW, false, 100f), off0 = Plate(BoW, false, 0f);
+        check.Expect(off.BarW == 0f && off.W == 28f && off.H == 24f && off0.W == off.W && off0.H == off.H,
+                     $"E10 with Health bar off the width changes nothing: bar {off.BarW}, box {off.W} x {off.H} against {off0.W} x {off0.H}");
 
         // Given a creature named Clarity Solforge [Wide-Eyed Machinist]
         // When its nameplate shows
         // Then the name is two lines: Clarity Solforge, and under it [Wide-Eyed Machinist]
-        bool titlesDefault = NameplateKnobs.Titles.Default;
-        string s = Name("Clarity Solforge [Wide-Eyed Machinist]", titlesDefault);
+        string s = Name("Clarity Solforge [Wide-Eyed Machinist]", true);
         check.Expect(s == "Clarity Solforge\n[Wide-Eyed Machinist]", $"E11 the bracketed title takes its own line: {s}");
 
         // Given a creature named Clarity Solforge (Wide-Eyed Machinist)

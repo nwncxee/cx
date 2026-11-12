@@ -20,12 +20,9 @@ public static partial class PlateLayout
         check.Expect(BreakTitles("Clarity Solforge[Wide-Eyed Machinist]") == "Clarity Solforge[Wide-Eyed Machinist]", "a bracket with no space in front does not break");
         check.Expect(BreakTitles("[AFK] Clarity Solforge the Machinist") == "[AFK] Clarity Solforge the Machinist", "a bracket that opens the name does not break");
         check.Expect(BreakTitles("Clarity Solforge the Machinist [") == "Clarity Solforge the Machinist\n[", "a bracket that ends the name still breaks");
-        uint[] titleCols = new uint[38];
-        titleCols[17] = 0xff0000u;  // not-an-offset: a colour
-        string brokenName = PlateName("Clarity Solforge [Wide-Eyed Machinist]", titleCols, true, out uint[]? brokenCols);
-        check.Expect(brokenName[16] == '\n' && brokenCols != null && brokenCols.Length == brokenName.Length && brokenCols[17] == 0xff0000u,  // not-an-offset: a colour
-                     "the title's colour stays on the title after the break");
-        check.Expect(PlateName("Clarity   Solforge [Wide-Eyed Machinist]", null, true, out _) == "Clarity\nSolforge\n[Wide-Eyed Machinist]",
+        string brokenName = BreakTitles("Clarity Solforge [Wide-Eyed Machinist]");
+        check.Expect(brokenName.Length == 38 && brokenName[16] == '\n', "the break takes the space's place, so per-char colours still line up");
+        check.Expect(BreakTitles(BreakName("Clarity   Solforge [Wide-Eyed Machinist]")) == "Clarity\nSolforge\n[Wide-Eyed Machinist]",
                      "an author's break and a title break both hold");
         check.Expect(TakesPart(true, true, true) == false, "a fading box takes no part, bubble or not");
         check.Expect(TakesPart(false, false, true) && TakesPart(false, true, false), "a plate kept apart and any bubble take part");

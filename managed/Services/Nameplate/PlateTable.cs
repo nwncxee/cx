@@ -108,10 +108,13 @@ public sealed partial class PlateTable
         public byte Reaction;
 
         // ---- cold-resolved, once per sighting ----
-        /// <summary>The plate name, already through <see cref="PlateLayout.BreakName"/>: LF is the only
-        /// break, and <see cref="NameStart"/>/<see cref="NameLen"/> index its lines. Set through
+        /// <summary>The plate name as drawn, through <see cref="PlateLayout.BreakName"/> and any title break: LF
+        /// is the only break, and <see cref="NameStart"/>/<see cref="NameLen"/> index its lines. Set through
         /// <see cref="SetName"/> so the spans can never disagree with the string.</summary>
         public string Name = "";
+        /// <summary><see cref="Name"/> before its title breaks, char for char, kept so <see cref="Retitle"/>
+        /// can redo them.</summary>
+        public string Plain = "";
         /// <summary>Spans of <see cref="Name"/>'s lines, so the frame measures and emits each one without a
         /// substring; capped at <see cref="MaxWrapped"/>. These are the WRAPPED lines once
         /// <see cref="EnsureNameWrap"/> has run: a wrap-introduced break is a span boundary and nothing else, so
@@ -304,15 +307,17 @@ public sealed partial class PlateTable
         // COLD, and the only place a name acquires either its colours or its line breaks. Strip first: the
         // break rules count spaces, and a `<cRGB>` tag's raw bytes can BE spaces.
         n = PlateLayout.StripColours(n, out uint[]? cols);
-        return PlateLayout.PlateName(n, cols, NameplateKnobs.Titles.V, out colours);
+        return PlateLayout.BreakName(n, cols, out colours);
     }
 
     /// <summary>Set an entry's name and re-index its lines together. The one writer of <see cref="Entry.Name"/>:
     /// a slot that kept the previous tenant's spans would draw this one's name in that one's shape. The spans
     /// written here are the author's breaks alone, and <see cref="EnsureNameWrap"/> replaces them on the first
-    /// measure. A re-set of the SAME name is a no-op, so a re-entered hook rewraps and allocates nothing.</summary>
-    internal static void SetName(Entry e, string name, uint[]? colours = null)
+    /// measure, <paramref name="titles"/> adds <see cref="PlateLayout.BreakTitles"/>'. A re-set of the SAME name is a no-op.</summary>
+    internal static void SetName(Entry e, string name, uint[]? colours = null, bool titles = false)
     {
+        e.Plain = name;
+        if (titles) name = PlateLayout.BreakTitles(name);
         if (string.Equals(e.Name, name, StringComparison.Ordinal)) { e.NameColours = colours; return; }
         e.Name = name;
         e.NameColours = colours;
@@ -361,6 +366,19 @@ public sealed partial class PlateTable
         p.Channel = channel;
         p.PostedMs = nowMs;
         Bank(in p);
+    }
+
+    /// <summary>Whether names break at their titles (<c>nameplate.titles</c>), as <see cref="Retitle"/> last heard.</summary>
+    private bool _titles;
+
+    /// <summary>Take <c>nameplate.titles</c> for every name set from here on, and on a change redo the names
+    /// already held, so the setting is live for a plate on screen. Render thread; a no-change call costs a compare.</summary>
+    public void Retitle(bool titles)
+    {
+        if (titles == _titles) return;
+        _titles = titles;
+        for (int i = 0; i < MaxEntries; i++)
+            if (_entries[i].Used) SetName(_entries[i], _entries[i].Plain, _entries[i].NameColours, titles);
     }
 
     /// <summary>Drop everything. The module-unload edge: every id names a dead world. The cold-resolved
@@ -426,7 +444,7 @@ public sealed partial class PlateTable
         if (e == null) return;
         e.Type = p.Type;
         e.Reaction = p.Reaction;
-        if (p.Name != null) SetName(e, p.Name, p.NameColours);
+        if (p.Name != null) SetName(e, p.Name, p.NameColours, _titles);
         if (p.Portrait != null && p.Portrait.Length != 0) e.PortraitResref = p.Portrait;
         if (p.IsPlate || p.Runs == null) return;
 
@@ -630,7 +648,7 @@ public sealed partial class PlateTable
 
     /// <summary>COLD-on-change: (re)wrap the entry's NAME to <paramref name="pixelW"/> on top of the author's own
     /// breaks, with <see cref="EnsureWrap"/>'s key discipline. The wrap honours the LF breaks
-    /// <see cref="PlateLayout.BreakName"/> put in and only ever ADDS more, written as spans over the unchanged
+    /// <see cref="SetName"/> put in and only ever ADDS more, written as spans over the unchanged
     /// string. It speaks RUNE indices while the spans hold CHAR ones. <paramref name="pixelW"/> &lt;= 0: no wrap.</summary>
     public static void EnsureNameWrap(Entry e, Func<Rune, float> advanceOf, float pixelW, int epoch)
     {
