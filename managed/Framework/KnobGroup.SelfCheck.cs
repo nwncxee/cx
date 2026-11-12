@@ -6,7 +6,8 @@ namespace CX.Framework;
 
 public sealed partial class KnobGroup
 {
-    /// <summary>User rows one submenu may hold, every group in it counted: past this it is a wall of dials.</summary>
+    /// <summary>User rows one submenu may hold, every group in it counted: past this it is a wall of dials. A
+    /// <see cref="Knob.ShowIf"/> row is its switch's detail, shown only while that asks for it, and is not counted.</summary>
     internal const int MaxUserRows = 14;
     /// <summary>Words that mark a row as a developer's (an engine-path comparison, a debug aid): such a knob is ChatOnly.</summary>
     internal static readonly string[] DevWords = { "A/B", "debug", "diagnostic", "bisect" };
@@ -138,7 +139,7 @@ public sealed partial class KnobGroup
             foreach (Knob k in lg._knobs)
             {
                 if (k.Tier != Tier.User && k.Tier != Tier.Advanced) continue;
-                if (k.Tier == Tier.User && k.Kind != KnobKind.Link)
+                if (k.Tier == Tier.User && k.Kind != KnobKind.Link && k.ShowIf == null)
                     userRows[lg.Category + " » " + lg.Submenu] = userRows.GetValueOrDefault(lg.Category + " » " + lg.Submenu) + 1;
                 foreach (string word in DevWords)
                     check.Expect(k.Label.IndexOf(word, StringComparison.OrdinalIgnoreCase) < 0 && k.Help.IndexOf(word, StringComparison.OrdinalIgnoreCase) < 0,

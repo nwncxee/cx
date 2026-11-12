@@ -331,6 +331,21 @@ public sealed partial class PlateTable
         check.Expect(RawName(IntPtr.Zero, NameplateNative.TypeItem, 1, engineName) == "engine name",
                      "an item still asks the engine for its name");
 
+        // nameplate.titles is live: a name already held is redone when the setting flips, and back again.
+        var titled = new PlateTable();
+        titled.Retitle(true);
+        titled.Apply(new Pending { Id = 31, Type = NameplateNative.TypeCreature, IsPlate = true,
+                                   Name = "Clarity Solforge [Wide-Eyed Machinist]" }, 2);
+        Entry te = titled.Entries[0];
+        check.Expect(te.Used && te.Name == "Clarity Solforge\n[Wide-Eyed Machinist]" && te.NameLineCount == 2,
+                     "a name set while titles is on breaks at its title");
+        titled.Retitle(false);
+        check.Expect(te.Name == "Clarity Solforge [Wide-Eyed Machinist]" && te.NameLineCount == 1,
+                     "switching titles off puts a held name back on one line");
+        titled.Retitle(true);
+        check.Expect(te.Name == "Clarity Solforge\n[Wide-Eyed Machinist]" && te.NameLineCount == 2,
+                     "and switching it on again breaks it again");
+
         log.Info(check.Ok ? "PlateTable.SelfCheck: passed" : "PlateTable.SelfCheck: FAILED");
     }
 }

@@ -185,13 +185,13 @@ public static partial class PlateLayout
                                        bool bar, float lineH, float scale) =>
         Measure(nameW, nameLines, bandW, portrait, band, bar, lineH, scale, 0, 0, 0f);
 
-    /// <summary>As above with the <c>ObjectTextBubbleOverride</c> bands folded in: <paramref name="preLines"/>
-    /// override lines above the name, <paramref name="postLines"/> below the band and bar, and
-    /// <paramref name="extraW"/> the widest override line PLUS the spliced line the override extends (the caller
-    /// adds the band or name width to the splice). <paramref name="nameLines"/> is 0 only in replace mode.</summary>
+    /// <summary>As above with the <c>ObjectTextBubbleOverride</c> bands folded in: <paramref name="preLines"/> above the
+    /// name, <paramref name="postLines"/> below band and bar, <paramref name="extraW"/> the widest override line PLUS the
+    /// line it extends. <paramref name="nameLines"/> is 0 only in replace mode. <paramref name="barW"/> is the bar's
+    /// scaled width, 0 = the column's: a wider bar widens the column, a narrower one is centred in it.</summary>
     public static PlateMetrics Measure(float nameW, int nameLines, float bandW, bool portrait, bool band,
                                        bool bar, float lineH, float scale,
-                                       int preLines, int postLines, float extraW)
+                                       int preLines, int postLines, float extraW, float barW = 0f)
     {
         float pad = PadPx * scale, gap = GapPx * scale, barH = BarHPx * scale, pgap = PortraitGapPx * scale;
         if (preLines < 0) preLines = 0;
@@ -203,6 +203,8 @@ public static partial class PlateLayout
         if (band && bandW > textW) textW = bandW;
         if (extraW > textW) textW = extraW;
         if (textW < 0f) textW = 0f;
+        barW = bar ? (barW > 0f ? barW : textW) : 0f;
+        if (barW > textW) textW = barW;
 
         float preH = lineH * preLines, postH = lineH * postLines;
         float nameH = lineH * nameLines;
@@ -229,7 +231,7 @@ public static partial class PlateLayout
             pad, PortraitTop(pad, contentH, portraitSize), portraitSize,
             colX, nameY,
             colX, bandY,
-            colX, barY, bar ? textW : 0f, bar ? barH : 0f, textW,
+            LineX(colX, textW, barW), barY, barW, bar ? barH : 0f, textW,
             pad, postY);
     }
 
@@ -344,6 +346,25 @@ public static partial class PlateLayout
         }
         outColours = cols?.ToArray();
         return sb.ToString();
+    }
+
+    /// <summary>A name longer than this many chars is long enough for <see cref="BreakTitles"/> to break.</summary>
+    private const int TitleMinChars = 24;
+
+    /// <summary>Put each bracketed part of a long name on its own line: the space in front of an opening
+    /// <c>( [ {</c> becomes an LF. One char for one, so a per-char colour array still lines up. COLD, and an
+    /// unchanged name allocates nothing.</summary>
+    public static string BreakTitles(string s)
+    {
+        if (s.Length <= TitleMinChars) return s;
+        char[]? buf = null;
+        for (int i = 0; i + 1 < s.Length; i++)
+        {
+            if (s[i] != ' ' || s[i + 1] is not ('(' or '[' or '{')) continue;
+            buf ??= s.ToCharArray();
+            buf[i] = '\n';
+        }
+        return buf == null ? s : new string(buf);
     }
 
     /// <summary>The packed RGB that means "no colour tag covered this char" -- white, i.e. take whatever colour
@@ -566,6 +587,18 @@ public static partial class PlateLayout
             if (y[i] > maxY) y[i] = maxY;
             if (y[i] < 0f) y[i] = 0f;
         }
+    }
+
+    /// <summary>Whether a box takes part in <see cref="Separate"/>: never while it fades out, a chat bubble
+    /// always, and a plate only when <paramref name="apart"/> -- otherwise it stays over its creature.</summary>
+    public static bool TakesPart(bool fadingOut, bool bubble, bool apart) => !fadingOut && (bubble || apart);
+
+    /// <summary>Where plate <paramref name="span"/>'s portraits end in the frame's portrait queue, reading on from
+    /// <paramref name="from"/>. Portraits are queued in plate order, so each plate's are one run.</summary>
+    public static int PortraitEnd(int[] plateOf, int count, int from, int span)
+    {
+        while (from < count && plateOf[from] <= span) from++;
+        return from;
     }
 
     /// <summary>Fill <paramref name="order"/> with the included box indices, newest <paramref name="postedMs"/>

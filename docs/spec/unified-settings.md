@@ -422,6 +422,9 @@ closing is the window category's *Close this window* (two presses; Main has no r
 | nameplate.portraits | Portrait | T | on | U | L | Nameplates | A portrait beside the name. |
 | nameplate.healthband | Health colour | T | on | U | L | Nameplates | The name is tinted by the creature's health, as in the stock game. |
 | nameplate.healthbar | Health bar | T | off | U | L | Nameplates | A thin bar under the name. Exact for you and your party; others by injury level. Not in the stock game. |
+| nameplate.barwidth | Health bar width | S | 0–200 px step 10 · 0 | U | L | Nameplates | Every health bar is this wide. 0 makes each as wide as its name. Shows only while Health bar is on. |
+| nameplate.apart | Keep names apart | T | off | U | L | Nameplates | Nameplates that would overlap move apart and stack. Off, each stays over its creature and they overlap, as in the stock game. |
+| nameplate.titles | Titles on their own line | T | on | A | L | Nameplates | A long name's part in brackets, like [Wide-Eyed Machinist], goes on a line of its own. |
 | nameplate.whiletalking | Show while talking | T | off | U | L | Nameplates | Hovering or Tab still shows the nameplate of someone talking, under their bubble. The stock game hides it until they finish. |
 | nameplate.speaker | Speaker | D | Name and portrait / Name only / Portrait only / Neither (stock) · Name and portrait | U | L | Chat bubbles | Who is talking: their name above the bubble, their portrait beside it. A nameplate shown under the bubble takes over what it already shows. |
 | nameplate.queue | Messages kept | D | 1 / 2 / 3 / 4 · 2 | U | L | Chat bubbles | How many recent things someone said stack in their bubble. The stock game keeps 1. |

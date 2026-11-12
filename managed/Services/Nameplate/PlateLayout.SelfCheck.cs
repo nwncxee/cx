@@ -13,6 +13,27 @@ public static partial class PlateLayout
         var check = new Checker(log);
         static bool Near(float a, float b) => System.Math.Abs(a - b) < 1e-4f;
 
+        // ---- BreakTitles: the length limit, which spaces break, and the colours that ride along ----
+        check.Expect(BreakTitles("Abcdefghij Klmnopqr [AFK]") == "Abcdefghij Klmnopqr\n[AFK]", "a 25-char name breaks at its bracket");
+        check.Expect(BreakTitles("Abcdefghij Klmnopq [AFK]") == "Abcdefghij Klmnopq [AFK]", "a 24-char name does not");
+        check.Expect(BreakTitles("Clarity Solforge {Wide-Eyed Machinist}") == "Clarity Solforge\n{Wide-Eyed Machinist}", "a brace breaks too");
+        check.Expect(BreakTitles("Clarity Solforge[Wide-Eyed Machinist]") == "Clarity Solforge[Wide-Eyed Machinist]", "a bracket with no space in front does not break");
+        check.Expect(BreakTitles("[AFK] Clarity Solforge the Machinist") == "[AFK] Clarity Solforge the Machinist", "a bracket that opens the name does not break");
+        check.Expect(BreakTitles("Clarity Solforge the Machinist [") == "Clarity Solforge the Machinist\n[", "a bracket that ends the name still breaks");
+        string brokenName = BreakTitles("Clarity Solforge [Wide-Eyed Machinist]");
+        check.Expect(brokenName.Length == 38 && brokenName[16] == '\n', "the break takes the space's place, so per-char colours still line up");
+        check.Expect(BreakTitles(BreakName("Clarity   Solforge [Wide-Eyed Machinist]")) == "Clarity\nSolforge\n[Wide-Eyed Machinist]",
+                     "an author's break and a title break both hold");
+        check.Expect(TakesPart(true, true, true) == false, "a fading box takes no part, bubble or not");
+        check.Expect(TakesPart(false, false, true) && TakesPart(false, true, false), "a plate kept apart and any bubble take part");
+        int[] plateOf = { 0, 2, 2, 3 };
+        int end0 = PortraitEnd(plateOf, 4, 0, 0), end1 = PortraitEnd(plateOf, 4, end0, 1),
+            end2 = PortraitEnd(plateOf, 4, end1, 2), end3 = PortraitEnd(plateOf, 3, end2, 3);
+        check.Expect(end0 == 1 && end1 == 1 && end2 == 3 && end3 == 3,
+                     $"each plate draws its own portraits and no other's, up to the queued count: {end0}, {end1}, {end2}, {end3}");
+        PlateMetrics fixedBar = Measure(20f, 1, 0f, true, false, true, 16f, 1f, 0, 0, 0f, 100f);
+        check.Expect(Near(fixedBar.W, fixedBar.BarX + 100f + 4f), "a fixed bar wider than the name sets the box's right edge, portrait or not");
+
         // ---- Place: centred, above, and clamped into the viewport at every corner ----
         Place(640f, 400f, 100f, 40f, 1280f, 800f, out float px, out float py);
         check.Expect(Near(px, 590f), "place centres on the anchor");
