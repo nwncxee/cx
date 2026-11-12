@@ -13,6 +13,25 @@ public static partial class PlateLayout
         var check = new Checker(log);
         static bool Near(float a, float b) => System.Math.Abs(a - b) < 1e-4f;
 
+        // ---- BreakTitles: the length limit, which spaces break, and the colours that ride along ----
+        check.Expect(BreakTitles("Abcdefghij Klmnopqr [AFK]") == "Abcdefghij Klmnopqr\n[AFK]", "a 25-char name breaks at its bracket");
+        check.Expect(BreakTitles("Abcdefghij Klmnopq [AFK]") == "Abcdefghij Klmnopq [AFK]", "a 24-char name does not");
+        check.Expect(BreakTitles("Clarity Solforge {Wide-Eyed Machinist}") == "Clarity Solforge\n{Wide-Eyed Machinist}", "a brace breaks too");
+        check.Expect(BreakTitles("Clarity Solforge[Wide-Eyed Machinist]") == "Clarity Solforge[Wide-Eyed Machinist]", "a bracket with no space in front does not break");
+        check.Expect(BreakTitles("[AFK] Clarity Solforge the Machinist") == "[AFK] Clarity Solforge the Machinist", "a bracket that opens the name does not break");
+        check.Expect(BreakTitles("Clarity Solforge the Machinist [") == "Clarity Solforge the Machinist\n[", "a bracket that ends the name still breaks");
+        uint[] titleCols = new uint[38];
+        titleCols[17] = 0xff0000u;  // not-an-offset: a colour
+        string brokenName = PlateName("Clarity Solforge [Wide-Eyed Machinist]", titleCols, true, out uint[]? brokenCols);
+        check.Expect(brokenName[16] == '\n' && brokenCols != null && brokenCols.Length == brokenName.Length && brokenCols[17] == 0xff0000u,  // not-an-offset: a colour
+                     "the title's colour stays on the title after the break");
+        check.Expect(PlateName("Clarity   Solforge [Wide-Eyed Machinist]", null, true, out _) == "Clarity\nSolforge\n[Wide-Eyed Machinist]",
+                     "an author's break and a title break both hold");
+        check.Expect(TakesPart(true, true, true) == false, "a fading box takes no part, bubble or not");
+        check.Expect(TakesPart(false, false, true) && TakesPart(false, true, false), "a plate kept apart and any bubble take part");
+        PlateMetrics fixedBar = Measure(20f, 1, 0f, true, false, true, 16f, 1f, 0, 0, 0f, 100f);
+        check.Expect(Near(fixedBar.W, fixedBar.BarX + 100f + 4f), "a fixed bar wider than the name sets the box's right edge, portrait or not");
+
         // ---- Place: centred, above, and clamped into the viewport at every corner ----
         Place(640f, 400f, 100f, 40f, 1280f, 800f, out float px, out float py);
         check.Expect(Near(px, 590f), "place centres on the anchor");

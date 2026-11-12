@@ -243,10 +243,13 @@ Deliberate divergences from vanilla, to be stated in the commit message:
   a box in its FADE-OUT takes no part (it neither pushes nor is pushed, and fades where it stands, so
   sweeping the cursor over a crowd leaves no trail of dying plates shoving the live one), and the boxes
   that do take part stack by SEND TIME -- newest nearest its speaker, older riding above, so a
-  back-and-forth reads chronologically. A plate has no send time and sorts as "now";
+  back-and-forth reads chronologically. A plate has no send time and sorts as "now". A plate takes part
+  only with `nameplate.apart` on: off, the default, plates stay over their creatures and overlap, and only
+  chat bubbles push chat bubbles;
 - plate **names wrap** at the max text width, and author breaks are honoured (a real
   LF/CR/CRLF, the literal `\n`, or a run of 3+ spaces). Vanilla draws a name on one line
-  at any length, which is why builders pad names with spaces to fake a wrap.
+  at any length, which is why builders pad names with spaces to fake a wrap. With `nameplate.titles` on, a
+  name of more than 24 characters also breaks at the space in front of each opening `(`, `[` or `{`.
 
 ## Extras (requirement 3) — build exactly these, no more
 
@@ -259,7 +262,9 @@ Deliberate divergences from vanilla, to be stated in the commit message:
   Reuse the chat's existing entry/tell path; do not invent a second one. **Off by default**, and the plate
   window publishes **no `HitTestOverride`**: a plate must never take the cursor from the engine's contextual
   pointer, nor take a click the game world would have had.
-- **Health bar** — optional thin bar under the name, coloured by band. Off by default. The fill is the
+- **Health bar** — optional thin bar under the name, coloured by band. Off by default.
+  `nameplate.barwidth` gives every bar one width, centred on the text column, which widens to hold it;
+  0, the default, makes the bar as wide as the column. The fill is the
   creature's EXACT HP (`(current + temporary) / max`, `CNWCCreatureStats +0x88/+0x86/+0x8a`) where the
   server sent it -- the player's own creature and party members only (update flag `0x400`, RE §4.5) -- and
   only while it lands in the band the server last sent, which is how HP left stale by a creature leaving

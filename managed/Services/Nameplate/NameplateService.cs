@@ -71,6 +71,7 @@ public sealed unsafe class NameplateService : IExtenderService
         NameplateNative.UseLog(log);
         // Every pure piece self-checks BEFORE any stand-down return -- run-demo's only gate.
         PlateLayout.SelfCheck(log);
+        PlateOptionsApprovedExamples.SelfCheck(log);
         NameplateNative.SelfCheck(log);
         PlateTable.SelfCheck(log);
         UiCategory.Declare();   // the UI groups declare in panel order whether or not the hooks arm
@@ -354,6 +355,7 @@ public sealed unsafe class NameplateService : IExtenderService
         bool portraits = NameplateKnobs.Portraits.V;
         bool background = NameplateKnobs.Background.V;
         bool stackPlate = NameplateKnobs.WhileTalking.V;
+        bool apart = NameplateKnobs.Apart.V;
 
         // Pass 1: measure and place every box at its anchor. The slide residual is NOT folded in yet -- it is
         // applied after separation, so a box easing into place cannot perturb the overlap tests.
@@ -392,7 +394,7 @@ public sealed unsafe class NameplateService : IExtenderService
             _boxW[i] = w; _boxH[i] = h;
             _boxKey[i] = e.SortKey;
             _boxId[i] = e.Id;
-            _boxIn[i] = !e.FadingOut;
+            _boxIn[i] = PlateLayout.TakesPart(e.FadingOut, e.ShowBubble, apart);
             // The bubble's own fade is now PER LINE (PlateTable.ExpireLines), applied inside EmitBubble; all the
             // box alpha still owes it is the "no line left to draw" cut.
             _boxA[i] = e.DistanceFade * e.Alpha * (e.ShowBubble && e.TopLine < 0 ? 0f : 1f);
@@ -402,12 +404,12 @@ public sealed unsafe class NameplateService : IExtenderService
         PlateLayout.Separate(_boxX, _boxY, _boxW, _boxH, _boxOrder, sepCount, SeparationGapPx * scale, vpH);
 
         // Absorb whatever the push changed by into the slide residual, then draw at placed + push + residual.
-        // A box that took no part keeps the push it last had, so it fades where it stands rather than sliding
-        // back down to its bare anchor as the stack it belonged to dissolves around it.
+        // A FADING box keeps the push it last had, so it fades where it stands rather than sliding back down to
+        // its bare anchor as the stack it belonged to dissolves around it. A plate that stopped stacking eases back.
         for (int i = 0; i < count; i++)
         {
             PlateTable.Entry e = _table.Visible[i];
-            if (_boxIn[i]) PlateLayout.AbsorbPush(ref e.YOff, ref e.LastPush, _boxY[i] - _boxBaseY[i]);
+            if (!e.FadingOut) PlateLayout.AbsorbPush(ref e.YOff, ref e.LastPush, _boxY[i] - _boxBaseY[i]);
             _boxY[i] = _boxBaseY[i] + e.LastPush + e.YOff;
             if (vpH <= 0f) continue;
             float maxY = vpH - _boxH[i];
@@ -573,6 +575,9 @@ public sealed unsafe class NameplateService : IExtenderService
     /// <summary>The max width a plate name column and a bubble box share -- one knob, <c>nameplate.width</c>.</summary>
     private static float TextMaxW(float scale) => NameplateKnobs.Width.V * scale;
 
+    /// <summary>The health bar's width from <c>nameplate.barwidth</c>, scaled as the text width is; 0 = the column's.</summary>
+    private static float BarW(float scale) => NameplateKnobs.BarWidth.V * scale;
+
     private static void MeasurePlate(PlateTable.Entry e, GlyphAtlas atlas, float scale, float lineH,
                                      bool portraits, out float w, out float h)
     {
@@ -584,7 +589,7 @@ public sealed unsafe class NameplateService : IExtenderService
         PlateMetrics m = PlateLayout.Measure(ov.ShowName ? nameW : 0f, ov.ShowName ? nameLines : 0,
                                              bandW, portrait, ov.ShowBand,
                                              NameplateKnobs.HealthBar.V && e.Damage >= 0, lineH, scale,
-                                             ov.PreLines, ov.PostLines, ov.ExtraW);
+                                             ov.PreLines, ov.PostLines, ov.ExtraW, BarW(scale));
         w = m.W; h = m.H;
     }
 
@@ -904,7 +909,7 @@ public sealed unsafe class NameplateService : IExtenderService
         band = ov.ShowBand;
         if (!ov.ShowName) nameLines = 0;
         PlateMetrics m = PlateLayout.Measure(ov.ShowName ? nameW : 0f, nameLines, bandW, portrait, band, bar,
-                                             lineH, scale, ov.PreLines, ov.PostLines, ov.ExtraW);
+                                             lineH, scale, ov.PreLines, ov.PostLines, ov.ExtraW, BarW(scale));
 
         if (background) EmitRect(ref n, su, sv, x, y, x + m.W, y + m.H, PlateBg.r, PlateBg.g, PlateBg.b, PlateBg.a * a);
 

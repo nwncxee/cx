@@ -304,7 +304,7 @@ public sealed partial class PlateTable
         // COLD, and the only place a name acquires either its colours or its line breaks. Strip first: the
         // break rules count spaces, and a `<cRGB>` tag's raw bytes can BE spaces.
         n = PlateLayout.StripColours(n, out uint[]? cols);
-        return PlateLayout.BreakName(n, cols, out colours);
+        return PlateLayout.PlateName(n, cols, NameplateKnobs.Titles.V, out colours);
     }
 
     /// <summary>Set an entry's name and re-index its lines together. The one writer of <see cref="Entry.Name"/>:
