@@ -22,7 +22,7 @@ internal static unsafe partial class FogVolume
         // Given an interior area with volumetric fog on, where I have not explored two of its six tiles
         // When the fog volume is built
         // Then the air over exactly those two tiles is marked unexplored, and scatters no light
-        (int w, int h) = Unexplored(scene, rows);
+        (int w, int h) = DarkTiles(scene, rows);
         check.Expect(rows[0] == 4 && rows[1] == 2, $"E1 the unexplored tiles (2, 0) and (1, 1) are the mask's bits ({rows[0]}, {rows[1]})");
         check.Expect(w == 3 && h == 2, $"E1 the mask spans the area's own 3 x 2 tiles, not its border ring ({w} x {h})");
         int others = 0;
@@ -33,13 +33,13 @@ internal static unsafe partial class FogVolume
         // When I explore both tiles
         // Then no air is masked: the fog is drawn as it is in an area with no fog of war
         for (int i = 0; i < n; i++) SceneDb.TileFogged[made[i].Index] = SceneDb.TileIsBorder[made[i].Index];
-        (w, h) = Unexplored(scene, rows);
+        (w, h) = DarkTiles(scene, rows);
         check.Expect(w == 0 && h == 0 && rows[0] == 0 && rows[1] == 0, $"E2 an explored area masks nothing ({w} x {h})");
 
         // Given no world scene
         // Then nothing is masked either
         SceneDb.TileFogged[made[0].Index] = true;
-        (w, h) = Unexplored(default, rows);
+        (w, h) = DarkTiles(default, rows);
         check.Expect(w == 0 && rows[0] == 0, "E3 no world scene masks nothing");
         for (int i = 0; i < n; i++) { SceneDb.TileFogged[made[i].Index] = false; SceneDb.Tiles.Free(made[i]); }
 
