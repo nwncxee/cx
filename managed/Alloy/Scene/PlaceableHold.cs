@@ -33,6 +33,9 @@ internal static unsafe class PlaceableHold
     private const int MaxObjects = 1 << 16;
     /// <summary><see cref="EngineLayout.ObjVisible"/>'s values: landed out, landed in, and fading out
     /// (<c>FadeObject</c> also writes 2, fading in).</summary>
+    /// <summary>The highlight channel Tab and a mouseover light. <c>CNWCArea::HiliteAreaObjects</c> skips an object
+    /// at fade state 0 when it clears as well as when it lights, so a held placeable would keep it for good.</summary>
+    private const byte PointerChannel = 2;
     private const byte FadedOut = 0, FadedIn = 1, FadingOut = 3;
 
     /// <summary>Held server object ids, which <c>CGameObjectArray::AddInternalObject</c> allocates
@@ -54,6 +57,17 @@ internal static unsafe class PlaceableHold
     /// <summary>A placeable delete arrived since the last scan: the only frames a new range cull can appear on.</summary>
     private static bool _deleteSeen;
     private static PlaceableUpdateDeleteFn _origDelete;
+
+    /// <summary>What the self-check's stand-in <c>UnHilite</c> was asked to clear, one bit per channel.</summary>
+    private sealed class CheckState { public int Cleared; }
+    private static CheckState _check = new();
+
+    [UnmanagedCallersOnly]
+    private static int FakeUnHilite(IntPtr self, byte channel)
+    {
+        _check.Cleared |= 1 << channel;
+        return 1;
+    }
 
     /// <summary>Is this gob (a seam shell carries the gob's external words) a held placeable's? Its alpha is the
     /// vanilla fade's 0 and the frame draws 1. Once per fade step: one count test while nothing is held.</summary>
@@ -192,11 +206,13 @@ internal static unsafe class PlaceableHold
 
     /// <summary>Clear the expiry before the fade lands (landing with it set detaches the gob), and land the fade
     /// on the next AI step: alpha 0, state 0. <c>Scene::HitCheckGob</c> skips a gob at alpha 0 and
-    /// <c>CNWCArea::HiliteAreaObjects</c> an object at fade state 0, so it is unpickable now, not in 2 s.</summary>
+    /// <c>CNWCArea::HiliteAreaObjects</c> an object at fade state 0, so it is unpickable now, not in 2 s -- and the
+    /// highlight it holds goes with it, since nothing could take it off afterwards.</summary>
     private static void Hold(CNWCObject obj)
     {
         obj.FadeExpire = 0;
         obj.FadeAlpha = 0f;
+        obj.UnHilite(PointerChannel);
     }
 
     /// <summary>The object behind <paramref name="id"/>, or null; <paramref name="type"/> 0 takes any type.</summary>
@@ -262,6 +278,15 @@ internal static unsafe class PlaceableHold
         _n = 0;
         check.Expect(!Held((IntPtr)gob), "nothing is held while the table is empty");
         _n = saved;
+
+        IntPtr* vtbl = stackalloc IntPtr[EngineLayout.ObjUnHiliteSlot / sizeof(IntPtr) + 1];
+        vtbl[EngineLayout.ObjUnHiliteSlot / sizeof(IntPtr)] = (IntPtr)(delegate* unmanaged<IntPtr, byte, int>)&FakeUnHilite;
+        *(IntPtr*)obj = (IntPtr)vtbl;
+        ov.FadeExpire = 1;
+        _check = new();
+        Hold(ov);
+        check.Expect(ov.FadeExpire == 0 && _check.Cleared == 1 << PointerChannel,
+                     $"holding a placeable clears the Tab and mouseover highlight it can no longer lose: channels {_check.Cleared:b}");
         _checked = check.Ok;
         log.Info(check.Ok ? "PlaceableHold.SelfCheck: passed"
                           : "PlaceableHold.SelfCheck: FAILED -- out-of-range placeables fade as vanilla does");
