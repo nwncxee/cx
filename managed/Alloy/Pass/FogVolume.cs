@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Numerics;
+using CX.Alloy.Db;
 using CX.Framework;
 using CX.Graphics;
 using CX.Graphics.Rhi;
@@ -51,7 +52,7 @@ internal static unsafe partial class FogVolume
     {
         internal GridLocs Grid;
         internal int Height, Noise, Drift, Ambient, Sun, Local, Phase, Jitter, PrevVp, PrevZ, Cubes;
-        internal int Rain, CoverVp, CoverLayer;
+        internal int Rain, CoverVp, CoverLayer, Hidden, Tiles;
     }
 
     /// <summary>Locations of the grid and medium uniforms both passes declare (<c>cx_vfogmed.glsl</c>).</summary>
@@ -87,6 +88,8 @@ internal static unsafe partial class FogVolume
         public int Runs;
         public Medium Last;
         public Vector3 LastAmbient;
+        /// <summary>The world's dark tiles, as <see cref="DarkTiles"/> fills them each build.</summary>
+        public readonly int[] Hidden = new int[MaskEdge];
         public Vector4 LastSun;
     }
 
@@ -182,6 +185,10 @@ internal static unsafe partial class FogVolume
         public float Rain;
         /// <summary>This build is the veil alone: no haze, no fog wall, no lamp gather.</summary>
         public bool Veil;
+        /// <summary>The area's tile grid, tiles; zero when no tile is dark.</summary>
+        public int TilesW, TilesH;
+        /// <summary>The air past the grid's edge is dark too.</summary>
+        public bool OutsideDark;
     }
 
     /// <summary>This frame's terms for the main view, the drift and the dawn stepped, carrying <paramref name="rain"/>
@@ -205,6 +212,9 @@ internal static unsafe partial class FogVolume
         t.Eye = camToWorld.Translation;
         t.Fwd = -Vector3.Normalize(new Vector3(view.M13, view.M23, view.M33));
         t.Origin = SceneFog.Origin(out _);
+        (t.TilesW, t.TilesH) = DarkTiles(DbScene.World(), _s.Hidden);
+        t.OutsideDark = OutsideDark(DbScene.World(), FrameInputs.Interior, out int gridW, out int gridH);
+        if (t.OutsideDark) (t.TilesW, t.TilesH) = (gridW, gridH);
         float toPlayer = t.Veil ? -1f : SceneFog.EyeToPlayer(t.Eye);
         (t.Near, t.Far, t.LogZ) = Grid(far, toPlayer);
         // a veil build holds neither haze nor fog wall: the area's own ramp still draws, under the veil
@@ -255,6 +265,8 @@ internal static unsafe partial class FogVolume
         bool cover = t.Rain > 0f && Weather.Cover.V && CasterPass.CoverFresh;
         LooseBlock.Set(l.CoverVp, cover ? CasterPass.CoverVp : default);
         LooseBlock.Set(l.CoverLayer, (float)CasterPass.CoverLayer);
+        LooseBlock.SetEach(l.Hidden, _s.Hidden);
+        LooseBlock.Set(l.Tiles, t.TilesW, t.TilesH, t.OutsideDark ? 1 : 0);
     }
 
     /// <summary>The integration pass's terms, into the open loose block.</summary>
@@ -286,6 +298,7 @@ internal static unsafe partial class FogVolume
         Local = LooseBlock.Loc("uVfLocal"), Phase = LooseBlock.Loc("uVfPhase"), Jitter = LooseBlock.Loc("uVfJitter"),
         PrevVp = LooseBlock.Loc("uVfPrevVp"), PrevZ = LooseBlock.Loc("uVfPrevZ"), Cubes = LooseBlock.Loc("uLocalCubes"),
         Rain = LooseBlock.Loc("uVfRain"), CoverVp = LooseBlock.Loc("uVfCoverVp"), CoverLayer = LooseBlock.Loc("uVfCoverLayer"),
+        Hidden = LooseBlock.Loc("uVfHidden"), Tiles = LooseBlock.Loc("uVfTiles"),
     };
 
     /// <inheritdoc cref="LightLocsOf"/>
@@ -442,6 +455,8 @@ internal static unsafe partial class FogVolume
         Fog.Enabled.V = fogWas; Fog.Origin.V = originWas; VolumetricFog.Enabled.V = enWas;
         FarZoomApprovedExamples(check);
         FarZoomRegressions(check);
+        FogOfWarApprovedExamples(check);
+        BlankTileRegressions(check);
         log.Info(check.Ok ? "FogVolume.SelfCheck: passed" : "FogVolume.SelfCheck: FAILED");
     }
 

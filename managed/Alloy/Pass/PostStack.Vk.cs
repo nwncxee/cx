@@ -425,7 +425,7 @@ internal static unsafe partial class PostStack
         if (_vk.Dev != vk) _vk = new StackVkState { Dev = vk };
         StackVkState s = _vk;
         s.SkyFogged = false;
-        if (dome || !FogVolume.Built) return false;
+        if (dome || !FogVolume.Built || !PostChainVk.Ensure(vk, log)) return false;
         if (!s.SkyFogTried)
         {
             s.SkyFogTried = true;

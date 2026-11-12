@@ -37,6 +37,8 @@ uniform vec2 uVfRain;       // (share of one whole rain the far veil carries, 1 
 uniform sampler2DArrayShadow uCover;   // the sun array; the rain cover map is layer uVfCoverLayer
 uniform mat4 uVfCoverVp;    // world -> the cover view's clip space; zero matrix = no map this frame
 uniform float uVfCoverLayer;
+uniform int uVfHidden[32];  // bit x of row y is set where tile (x, y) of the area is dark: unexplored, or solid filler
+uniform ivec3 uVfTiles;     // the area's grid, tiles (zero = nothing is dark); z: 1 = the air past its edge is dark
 
 // A second, backward lobe and its share: a camera looking down on a lit scene sees back-scattered light, which a
 // forward lobe alone leaves almost black.
@@ -49,6 +51,8 @@ const float CX_VF_CORE = 1.0;
 const float CX_VF_PIVOT = 0.5;
 // The cover map's depth bias, as the precipitation pass's own cover test takes it.
 const float CX_VF_COVER_BIAS = 0.002;
+// A tile's edge, metres.
+const float CX_VF_TILE = 10.0;
 
 /// Henyey-Greenstein, scaled so the isotropic medium (g = 0) is 1 everywhere: its mean over the sphere is 1.
 float CxVfHg(float c, float g)
@@ -89,6 +93,26 @@ float CxVfOpen(vec3 world)
     vec3 n = c.xyz / c.w * 0.5 + 0.5;
     if (any(lessThan(n.xy, vec2(0.0))) || any(greaterThan(n.xy, vec2(1.0)))) return 1.0;
     return texture(uCover, vec4(n.xy, uVfCoverLayer, n.z - CX_VF_COVER_BIAS));
+}
+
+/// 1 = tile `c` is lit. A cell past the area's edge is its border ring's: lit, or dark where nothing stands there.
+float CxVfSeenCell(ivec2 c)
+{
+    if (any(lessThan(c, ivec2(0))) || any(greaterThanEqual(c, uVfTiles.xy))) return float(1 - uVfTiles.z);
+    return 1.0 - float((uVfHidden[c.y] >> c.x) & 1);
+}
+
+/// The share of the air at `world` that is lit: 1 over a lit tile and out to its edge, falling to 0 by the centre of
+/// a dark one beside it. The engine draws a dark tile black, and the air over it is no brighter.
+float CxVfSeen(vec3 world)
+{
+    if (uVfTiles.x <= 0) return 1.0;
+    vec2 p = world.xy / CX_VF_TILE - 0.5;
+    vec2 b = floor(p), f = p - b;
+    ivec2 i = ivec2(b);
+    float lit = mix(mix(CxVfSeenCell(i), CxVfSeenCell(i + ivec2(1, 0)), f.x),
+                    mix(CxVfSeenCell(i + ivec2(0, 1)), CxVfSeenCell(i + ivec2(1, 1)), f.x), f.y);
+    return min(2.0 * lit, 1.0);
 }
 
 /// Every clustered point light's light at `world`. A lamp is a SOURCE: the lit stage's curve sharpened toward an
@@ -147,7 +171,7 @@ void main()
     float open = uVfRain.x > 0.0 ? CxVfOpen(world) : 1.0;
     // rain thins across the bank's top as the wall does, so a ray climbing to the sky leaves the veil behind
     float rain = uVfRain.x * CxVfBank(world);
-    vec4 v = vec4(CxVfLight(world, V, depth), CxVfDensity(world, dist, open, rain, uVfRain.y));
+    vec4 v = vec4(CxVfLight(world, V, depth) * CxVfSeen(world), CxVfDensity(world, dist, open, rain, uVfRain.y));
     if (uVfPrevZ.w > 0.0)
     {
         // the froxel's CENTRE, where last frame's grid stored its own average of this froxel

@@ -54,6 +54,8 @@ public static partial class TileBuild
         /// <summary>The model's <c>aabb</c> nodes: the walkmesh vanilla's floor cast hits
         /// (<c>SceneBSPAddPart</c> stores it at the BSP leaf's +0x90).</summary>
         public int AabbNodes;
+        /// <summary>Whether a placement of this model is blank (<see cref="TileBuild.Blank"/>); null until asked.</summary>
+        public bool? Blank;
     }
 
     /// <summary>One light node of a tile model, resolved to model space with its rest controller values.</summary>
