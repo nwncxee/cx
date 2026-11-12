@@ -345,17 +345,21 @@ public static unsafe partial class DbAnim
         if (target.IsNull) { _behavior[o] = 0; return true; }
         var b = new CAurBehaviorCameraFollow((IntPtr)beh);
 
-        float yaw = b.Yaw + b.YawVel * dt + b.YawImpulse;
+        float step = BehaviorSolvers.Step(dt);
+        if (step < dt && (b.ZoomVel != 0f || b.YawVel != 0f || b.PitchVel != 0f))
+            _log?.Info($"DbAnim: camera follow integrated a {dt:0.###} s frame as {step:0.###} s (zoom {b.ZoomVel:0.##}, "
+                     + $"yaw {b.YawVel:0.##}, pitch {b.PitchVel:0.##}/s at dist {b.Dist:0.#}) -- a hitch is not a second of input");
+        float yaw = b.Yaw + b.YawVel * step + b.YawImpulse;
         b.YawVel = 0f; b.YawImpulse = 0f;
         if (b.YawClamp != 0f) yaw = BehaviorMath.Clamp(yaw, b.YawMin[0], b.YawMin[1]);
         b.Yaw = yaw;
 
-        float pitch = b.Pitch + b.PitchVel * dt + b.PitchImpulse;
+        float pitch = b.Pitch + b.PitchVel * step + b.PitchImpulse;
         b.PitchVel = 0f; b.PitchImpulse = 0f;
         if (b.PitchClamp != 0f) pitch = BehaviorMath.Clamp(pitch, b.PitchMin[0], b.PitchMin[1]);
         b.Pitch = pitch;
 
-        float dist = BehaviorSolvers.Zoom(b.Dist, b.ZoomVel, dt);
+        float dist = BehaviorSolvers.Zoom(b.Dist, b.ZoomVel, step);
         b.ZoomVel = 0f;
         if (b.DistClamp != 0f) dist = BehaviorMath.Clamp(dist, b.DistMin[0], b.DistMin[1]);
         b.Dist = dist;
