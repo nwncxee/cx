@@ -18,9 +18,18 @@ internal static unsafe class Stride
 
     /// <summary>What the module did this period: bodies paced, attachment runs put on their body's clock, and
     /// attachment runs left on their own because their clip runs another length.</summary>
-    internal sealed class StrideState { public int Strided, Synced, Unlocked; }
+    private sealed class StrideState { public int Strided, Synced, Unlocked; }
 
-    internal static StrideState Counts = new();
+    private static readonly StrideState _s = new();
+
+    /// <summary>This period's counts, per frame over <paramref name="frames"/>, for the pose line; resets them.</summary>
+    internal static (float Strided, float Synced, float Unlocked) Period(int frames)
+    {
+        float f = frames;
+        (float, float, float) r = (_s.Strided / f, _s.Synced / f, _s.Unlocked / f);
+        _s.Strided = _s.Synced = _s.Unlocked = 0;
+        return r;
+    }
 
     /// <summary>Seconds within which an attachment's clip and its body's run the same length.</summary>
     private const float SameLength = 1e-3f;
@@ -33,7 +42,7 @@ internal static unsafe class Stride
     {
         float f = Of(s);
         Scale(ref s, gob, f);
-        if (f != 1f) Counts.Strided++;
+        if (f != 1f) _s.Strided++;
     }
 
     /// <summary>The multiplier a body with slot <paramref name="s"/> plays its runs at this frame: the one
@@ -93,13 +102,14 @@ internal static unsafe class Stride
             }
             r.Rate = rate * f;
             if (!phase) continue;
+            if (MathF.Abs(r.Length - br.Length) > SameLength) _s.Unlocked++;
             r.Time = LockedTime(r.Time, r.Length, br.Time, br.Length, lead * r.Rate, (r.Flags & Looping) != 0);
             if (((r.Flags ^ br.Flags) & FadingOut) == 0)
             {
                 r.Blend = br.Blend;
                 r.BlendTime = br.BlendTime;
             }
-            Counts.Synced++;
+            _s.Synced++;
         }
     }
 
@@ -108,12 +118,19 @@ internal static unsafe class Stride
     /// another length keeps its own time: on the body's clock it would loop at the body's end, not its own.</summary>
     internal static float LockedTime(float own, float ownLength, float body, float bodyLength, float lead, bool looping)
     {
-        if (MathF.Abs(ownLength - bodyLength) > SameLength) { Counts.Unlocked++; return own; }
+        if (MathF.Abs(ownLength - bodyLength) > SameLength) return own;
         float t = body - lead;
-        // only a LOOPING run wraps: a one-shot the body started this frame reads time ~0, the lead takes it
-        // below 0, and wrapping showed the cloak the END of a turn while the body began it
+        // a one-shot started this frame reads ~0 and must not wrap to its end
         return t < 0f && bodyLength > 0f && looping ? t + bodyLength : MathF.Max(t, 0f);
     }
+
+    /// <summary>The attachment clock against hand-worked times: a clip of another length keeps its own, one of the body's
+    /// length takes the body's less the lead, and only a loop wraps below zero (0.05 - 0.1 + 1.2 = 1.15).</summary>
+    internal static bool SelfCheck()
+        => LockedTime(1.7f, 2.4f, 0.1f, 1.2f, 0f, true) == 1.7f && LockedTime(0.2f, 2.4f, 2.3f, 1.2f, 0f, true) == 0.2f
+        && MathF.Abs(LockedTime(0.5f, 1.2f, 0.9f, 1.2f, 0.1f, true) - 0.8f) < 1e-5f
+        && MathF.Abs(LockedTime(0.5f, 1.2f, 0.05f, 1.2f, 0.1f, true) - 1.15f) < 1e-5f
+        && LockedTime(0.5f, 1.2f, 0.05f, 1.2f, 0.1f, false) == 0f;
 
     /// <summary>AnimRun flag bit: the run is fading out.</summary>
     private const uint FadingOut = 0x1;  // not-an-offset: a flag bit

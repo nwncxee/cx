@@ -862,12 +862,12 @@ public sealed unsafe class PoseService : IExtenderService
     {
         if (!_armed || frames <= 0) return "";
         float f = frames;
+        (float strided, float synced, float unlocked) = Stride.Period(frames);
         string s = FormattableString.Invariant(
-            $"pose {System.Diagnostics.Stopwatch.GetElapsedTime(0, _ticks).TotalMilliseconds / f:F2} ms/f, {_gobs / f:F1} gobs/f, {FootPlacement.Rays / f:F1} rays/f, hits {FootPlacement.Tile / f:F1} tile + {FootPlacement.Placeable / f:F1} placeable/f, refused {_gated / f:F1} gated + {_noSlot / f:F1} no slot/f, {FootPlacement.Stairs / f:F1} on stairs/f, {Stride.Counts.Strided / f:F1} strided, {StrideWarp.Period(frames)}, {Stride.Counts.Synced / f:F1} attachment runs synced ({Stride.Counts.Unlocked / f:F1} on their own clock, another length) + {_followed / f:F1} attachments posed/f, {UpperBody.Looked / f:F1} looking/f, {Follow.Trailed / f:F1} trailing/f, {UpperBody.Aimed / f:F1} aiming/f, {Mass.Loaded / f:F1} pelvis loaded/f, {UpperBody.Hits} flinches, {Footfall.Steps} footsteps on contact, {_turned / f:F1} turned into a diagonal/f + {Diagonal.Swapped} diagonal names swapped, {Transition.Blends} movement changes blended, {Settle.Steps} settle steps");
+            $"pose {System.Diagnostics.Stopwatch.GetElapsedTime(0, _ticks).TotalMilliseconds / f:F2} ms/f, {_gobs / f:F1} gobs/f, {FootPlacement.Rays / f:F1} rays/f, hits {FootPlacement.Tile / f:F1} tile + {FootPlacement.Placeable / f:F1} placeable/f, refused {_gated / f:F1} gated + {_noSlot / f:F1} no slot/f, {FootPlacement.Stairs / f:F1} on stairs/f, {strided:F1} strided, {StrideWarp.Period(frames)}, {synced:F1} attachment runs synced ({unlocked:F1}/f on their own clock, another length) + {_followed / f:F1} attachments posed/f, {UpperBody.Looked / f:F1} looking/f, {Follow.Trailed / f:F1} trailing/f, {UpperBody.Aimed / f:F1} aiming/f, {Mass.Loaded / f:F1} pelvis loaded/f, {UpperBody.Hits} flinches, {Footfall.Steps} footsteps on contact, {_turned / f:F1} turned into a diagonal/f + {Diagonal.Swapped} diagonal names swapped, {Transition.Blends} movement changes blended, {Settle.Steps} settle steps");
         _gobs = _gated = _noSlot = _followed = _turned = Diagonal.Swapped = Transition.Blends = Mass.Loaded = Follow.Trailed = Settle.Steps = 0;
         _ticks = 0;
         FootPlacement.Rays = FootPlacement.Tile = FootPlacement.Placeable = FootPlacement.Stairs = 0;
-        Stride.Counts = new();
         UpperBody.Looked = UpperBody.Aimed = UpperBody.Hits = Footfall.Steps = 0;
         return s;
     }
@@ -972,18 +972,9 @@ public sealed unsafe class PoseService : IExtenderService
         check.Expect(SampleCheck(), "clip sampler: a thigh keyed from rest to a quarter turn puts its ankle, half way, where the leg worked by hand puts it, and an unkeyed leg stays at rest");
         check.Expect(GaitClip.SelfCheck(), "gait analysis: a synthetic walk reads its 1.5 units/s stance speed, its travel direction, 60 % contact per foot a half cycle apart and its swing progress; a crawl and a swim are refused as not upright, a float as off the ground and a stand as no stride");
         check.Expect(Settle.SelfCheck(), "stops and turns through the feet: the settle step's arc leaves the ground and lands back on it, a run caught mid-stride steps both feet at once onto their stance spots and holds them there through the fade, the weighted foot does not move through the crossfade and only the other one lifts, a foot left a foot's width from its stance spot takes a second step and one left nearer does not; a standing turn steps round foot by foot, the turning side first, and ends on the stance");
-        check.Expect(StrideWarp.SelfCheck(), "stride warp: the pace splits as the square root between rate and stride and the rate takes what the stride cannot; a long stride drops the pelvis just enough to reach; a planted foot holds, drags only past its hold and eases its offset out over the swing; a walk driven from half to twice its pace never slides a planted foot nor jumps a drawn one");
-        check.Expect(StrideWarp.RateShare(0.02f, 1f) >= 0.5f && StrideWarp.RateShare(0f, 1f) >= 0.5f
-                     && MathF.Abs(StrideWarp.RateShare(0.36f, 1f) - 0.514286f) < 1e-4f && MathF.Abs(StrideWarp.RateShare(1f, 1f) - 1f) < 1e-5f
-                     && MathF.Abs(StrideWarp.RateShare(0.02f, 1.4f) - 0.5f) < 1e-5f,
-                     "a body held to a crawl against a wall still plays its walk at half the engine's rate or more, while a slow walk and its own pace keep their split");
-        check.Expect(Stride.LockedTime(1.7f, 2.4f, 0.1f, 1.2f, 0f, true) == 1.7f && Stride.LockedTime(0.2f, 2.4f, 2.3f, 1.2f, 0f, true) == 0.2f,
-                     "an attachment whose clip runs another length than its body's keeps its own clock, so it never loops at the body's end");
-        check.Expect(MathF.Abs(Stride.LockedTime(0.5f, 1.2f, 0.9f, 1.2f, 0.1f, true) - 0.8f) < 1e-5f
-                     && MathF.Abs(Stride.LockedTime(0.5f, 1.2f, 0.05f, 1.2f, 0.1f, true) - 1.15f) < 1e-5f
-                     && Stride.LockedTime(0.5f, 1.2f, 0.05f, 1.2f, 0.1f, false) == 0f,
-                     "an attachment whose clip runs its body's length takes the body's time less the lead, wrapping only a loop");
-        check.Expect(Footfall.SelfCheck(),"a footstep plays once per planted foot, a double within a sprint's gap merged");
+        check.Expect(StrideWarp.SelfCheck(), "stride warp: the pace splits as the square root between rate and stride and the rate takes what the stride cannot, never under half the engine's rate, so a body held to a crawl by a wall keeps stepping; a long stride drops the pelvis just enough to reach; a planted foot holds, drags only past its hold and eases its offset out over the swing; a walk driven from half to twice its pace never slides a planted foot nor jumps a drawn one");
+        check.Expect(Stride.SelfCheck(), "an attachment whose clip runs another length than its body's keeps its own clock, so it never loops at the body's end; one of the body's length takes the body's time less the lead, wrapping only a loop");
+        check.Expect(Footfall.SelfCheck(), "a footstep plays once per planted foot, a double within a sprint's gap merged");
         check.Expect(Gait.SelfCheck(), "gait: the acceleration is positive up the ramp, zero in cruise and negative through the ease");
         fixed (byte* a = "pelvis_g\0"u8, b = "Lbicep_g\0"u8, c = "rforearm_g\0"u8, d = "lhand_g\0"u8, e = "lhand\0"u8, g = "Lshoulder_g\0"u8)
             check.Expect(BoneIndex(a, st) == 9 && BoneIndex(b, st) == 13 && BoneIndex(c, st) == 11 && BoneIndex(d, st) == 15
