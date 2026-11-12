@@ -456,13 +456,15 @@ public sealed unsafe class NameplateService : IExtenderService
         }
 
         float hidden = NameplateKnobs.BehindWalls.V / 100f;
-        for (int k = 0, from = 0; k < _spans.N; from = _spans.End[k++])
+        for (int k = 0, from = 0, p = 0; k < _spans.N; from = _spans.End[k++])
         {
             Anchor(_spans.Entry[k], hidden);
             int end = _spans.End[k];
             if (end > from) TextRig.DrawBatch(_verts.AsSpan(from, end - from), (end - from) / VertexBatch.Floats);
+            int pEnd = PlateLayout.PortraitEnd(_spans.PortraitOf, pn, p, k);
+            if (pEnd > p) DrawPortraits(p, pEnd);
+            p = pEnd;
         }
-        if (pn > 0) DrawPortraits(pn, hidden);
         TextRig.Unanchor();
         Publish(hitN);
     }
@@ -1130,18 +1132,18 @@ public sealed unsafe class NameplateService : IExtenderService
 
     // ---- portraits ---------------------------------------------------------------------------
 
-    /// <summary>Second pass: one quad per plate over its portrait texture, read through the texture's own filter.
-    /// A texture id of 0 means the engine has not uploaded it yet: skip that plate this frame.</summary>
-    private static void DrawPortraits(int count, float hidden)
+    /// <summary>One plate's queued portraits, drawn right after its own box and text so a plate drawn later covers
+    /// them: one quad each over the portrait texture, read through the texture's own filter. The caller has anchored
+    /// the plate. A texture id of 0 means the engine has not uploaded it yet: skip it this frame.</summary>
+    private static void DrawPortraits(int from, int to)
     {
-        if (count <= 0 || !AurTex.Ready) return;
+        if (!AurTex.Ready) return;
         QuadVerts v = default;
-        for (int i = 0; i < count; i++)
+        for (int i = from; i < to; i++)
         {
             int o = i * 5;
             int tid = TextRig.ResolveTid(_portraitRef[i]);
             if (tid == 0) continue;
-            Anchor(_spans.Entry[_spans.PortraitOf[i]], hidden);
             TextRig.FillQuad(ref v,
                              new CX.Services.Chat.Core.Model.PortraitQuad(
                                  _portraitRect[o], _portraitRect[o + 1], _portraitRect[o + 2], _portraitRect[o + 3],

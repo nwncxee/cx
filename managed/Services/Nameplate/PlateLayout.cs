@@ -593,6 +593,14 @@ public static partial class PlateLayout
     /// always, and a plate only when <paramref name="apart"/> -- otherwise it stays over its creature.</summary>
     public static bool TakesPart(bool fadingOut, bool bubble, bool apart) => !fadingOut && (bubble || apart);
 
+    /// <summary>Where plate <paramref name="span"/>'s portraits end in the frame's portrait queue, reading on from
+    /// <paramref name="from"/>. Portraits are queued in plate order, so each plate's are one run.</summary>
+    public static int PortraitEnd(int[] plateOf, int count, int from, int span)
+    {
+        while (from < count && plateOf[from] <= span) from++;
+        return from;
+    }
+
     /// <summary>Fill <paramref name="order"/> with the included box indices, newest <paramref name="postedMs"/>
     /// first, so <see cref="Separate"/> stacks a conversation chronologically. Ties break on the ascending unique
     /// object <paramref name="ids"/>, so the sequence is a total order and cannot flicker. Hot, no allocation.</summary>

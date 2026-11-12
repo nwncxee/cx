@@ -26,6 +26,11 @@ public static partial class PlateLayout
                      "an author's break and a title break both hold");
         check.Expect(TakesPart(true, true, true) == false, "a fading box takes no part, bubble or not");
         check.Expect(TakesPart(false, false, true) && TakesPart(false, true, false), "a plate kept apart and any bubble take part");
+        int[] plateOf = { 0, 2, 2, 3 };
+        int end0 = PortraitEnd(plateOf, 4, 0, 0), end1 = PortraitEnd(plateOf, 4, end0, 1),
+            end2 = PortraitEnd(plateOf, 4, end1, 2), end3 = PortraitEnd(plateOf, 3, end2, 3);
+        check.Expect(end0 == 1 && end1 == 1 && end2 == 3 && end3 == 3,
+                     $"each plate draws its own portraits and no other's, up to the queued count: {end0}, {end1}, {end2}, {end3}");
         PlateMetrics fixedBar = Measure(20f, 1, 0f, true, false, true, 16f, 1f, 0, 0, 0f, 100f);
         check.Expect(Near(fixedBar.W, fixedBar.BarX + 100f + 4f), "a fixed bar wider than the name sets the box's right edge, portrait or not");
 
