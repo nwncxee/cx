@@ -90,6 +90,8 @@ as device properties (`GetPlayerDeviceProperty`, names lowercase):
 | `cx_cap_modelview` | `9`: `@model:<key>` NUI images, cards and the held image draw a live model (see [Model views](#model-views)), live only while Alloy draws and the knobs `nui.enabled` and `nui.modelview` are on, so a client with Alloy off never advertises it. Older values are listed below |
 | `cx_cap_heldimage` | `3`: the `held.image` policy key shows an image under the pointer (`nui.enabled`, `nui.heldimage`), with `held.opacity`, `held.dx` and `held.dy`, and takes `@model:<key>`. `2` held a `@model:` name and drew nothing. `1` drew it at a fixed 0.9 opacity, centred on the pointer |
 | `cx_cap_heldpick` | `2`: the `held.pick.<id>` and `held.confirm` keys show a pick at once (needs the NUI element hit test as well), with `held.pickopacity`. `1` showed a pick at a fixed 0.55 opacity |
+| `cx_cap_menu` | `1`: the client draws the rows of `menu.open` and `menu.row.<n>` at the point you name and answers with `menu;<row id>` (see [Item menu](#item-menu)). Live while `nui.enabled` is on |
+| `cx_cap_drag` | `1`: the client drags the elements declared in `drag.<id>` lines and answers a release with `drop;<pressed id>;<id under the pointer>` (see [Drag and drop](#drag-and-drop)). Needs the NUI element hit test, and the knobs `nui.enabled` and `nui.drag` |
 
 A property is sent only while the capability is live: its hooks resolved and its knob (`nui.enabled`,
 `nui.itemicons`, `nui.cards`) is on. **Absent or `0` means the client does not draw it**; send the vanilla version (a plain
@@ -194,7 +196,7 @@ A server a long way off answers a pick late. Declare what a pick shows and CX sh
 | `held.confirm=<ms>` | how long to wait for the answer, 50-10000, default 1000 |
 | `held.size=<px>` | the held image's size for each inventory cell its art fills, 8-128 at UI scale 1, default 32 |
 | `held.cursor=<id>` | the engine cursor (`cursors.2da` `CursorID`) shown while something is held, or `none` to leave the cursor alone, default 25 (`Use`). The stock `Use` art is the same as the default arrow, so name another id, such as 7 (`Attack`), for a change the player sees. The engine takes ids 0 to 293 and ignores a larger one, so a larger value is listed in `/policy` and the default shows |
-| `held.grace=<ms>` | how long a hold outlives a NUI that draws nothing, 0-60000, `0` never drops it, default 500 |
+| `held.grace=<ms>` | how long an unanswered pick outlives a NUI that draws nothing, 0-60000, `0` never drops it, default 500. A hold the server sent itself is not dropped by it: that one lasts until another `held.image` line or the window it began over is gone |
 | `held.opacity=<0-1>` | how opaque a confirmed hold is, clamped to 0-1, default 0.9 |
 | `held.pickopacity=<0-1>` | how opaque a pick still waiting for the server is, clamped to 0-1, default 0.55 |
 | `held.dx=<px>`, `held.dy=<px>` | where the image sits against the pointer: px right and down of dead centre at UI scale 1, clamped to -256..256, default 0 |
@@ -209,6 +211,48 @@ The pick shows as a pending hold: dimmer than a confirmed one, with the same cur
 - No `held.image` line within `held.confirm` ms drops it. Only a line for `held.image` itself answers; a change to any other key does not.
 
 A client without `cx_cap_heldpick` ignores the `held.pick` keys, so keep sending `held.image` as before.
+
+## Item menu
+
+A client advertising `cx_cap_menu` draws the rows you send instead of opening a NUI menu of its own:
+
+| line | meaning |
+|---|---|
+| `menu.open=<x>;<y>` | open the menu at that point in client pixels; an empty value closes it |
+| `menu.row.<n>=<id>;<label>;<icon>;<enabled>` | one row, drawn in the order of `<n>`. `<id>` comes back on a pick, `<icon>` is a texture resref and may be empty, and `<enabled>` `0` greys the row. An empty value releases that row |
+
+Send the rows first, then `menu.open`. A label is cut at 64 characters, an icon name past 16 is dropped, and a menu
+carries at most 64 rows; a row with no id or no label is refused and listed in `/policy`. `menu.*=` closes the menu and
+releases every row at once, which is also what a new session does.
+
+The player's answer comes back as a [UiEvent](#wire):
+
+- `menu;<row id>` -- that row was picked. The menu closes itself; send the next one when you are ready.
+- `menu;` -- the menu was closed with no pick (Escape, or a click away). Nothing moved.
+
+A client that does not advertise `cx_cap_menu` ignores these keys, so open your own NUI menu for it.
+
+## Drag and drop
+
+A client advertising `cx_cap_drag` carries an item between the elements you declared draggable:
+
+| line | meaning |
+|---|---|
+| `drag.<id>=1` | the element whose JSON `id` is `<id>` may be dragged; an empty value releases it |
+| `drag.<prefix>*=1` | the same for every element whose `id` starts with `<prefix>`; the longest prefix wins, and an exact `<id>` beats a prefix |
+
+`drag.*=` releases every declaration. The image that follows the pointer is the held image, so declare
+`held.pick.<id>` for the same elements; nothing is drawn without it.
+
+The gesture comes back as one [UiEvent](#wire) on release:
+
+- `drop;<pressed id>;<id under the pointer>` -- run the pick and the place your click handler already makes, with the
+  same checks a click gets.
+- Nothing at all -- a press and release in place is still the click the stock client sent you, a release over no
+  element is a cancel, and so is Escape while carrying. A gesture the player abandons leaves the window as it was.
+
+A client that does not advertise `cx_cap_drag` sends no `drop`, so keep your click-to-pick, click-to-place entry: it is
+what the drop calls anyway.
 
 ### Value forms
 

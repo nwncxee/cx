@@ -1,0 +1,78 @@
+using CX.Framework;
+
+namespace CX.Services.NuiItems;
+
+/// <summary>
+/// The server's item menu as policy lines: where it opens, which rows it carries and in what order, what it refuses, and
+/// what a close leaves behind. Oracle: the lines, labels, ids and points typed in by hand.
+/// </summary>
+internal static class ItemMenuSelfCheck
+{
+    public static void Run(ExtenderLog log)
+    {
+        var check = new Checker(log, "ItemMenuSelfCheck");
+        Rows(check);
+        Order(check);
+        Refusals(check);
+        Closes(check);
+        log.Info(check.Ok ? "ItemMenuSelfCheck: passed" : "ItemMenuSelfCheck: FAILED");
+    }
+
+    /// <summary>Oracle: the three lines typed here and the fields they spell.</summary>
+    private static void Rows(Checker check)
+    {
+        var m = new ItemMenuModel();
+        check.Expect(!m.Open && m.RowCount == 0 && m.Rows().Length == 0, "a menu nobody opened offers nothing");
+        check.Expect(m.Set("open", "120;64") == null && m.Open && m.X == 120 && m.Y == 64, "open names the point in pixels");
+        check.Expect(m.Set("row.1", "use;Use;iit_potion;1") == null && m.RowCount == 1, "a row is taken");
+        ItemMenuRow r = m.Rows()[0];
+        check.Expect(r.Id == "use" && r.Label == "Use" && r.Icon == "iit_potion" && r.Enabled, "the row keeps the id, label, icon and enabled flag the server sent");
+        check.Expect(m.Set("row.2", "bandolier;Add to bandolier;;0") == null && !m.Rows()[1].Enabled && m.Rows()[1].Icon.Length == 0,
+            "a row with no icon and a 0 flag is a greyed row with no icon");
+    }
+
+    /// <summary>Oracle: rows declared out of order here, read back in the order of their numbers.</summary>
+    private static void Order(Checker check)
+    {
+        var m = new ItemMenuModel();
+        m.Set("open", "0;0");
+        m.Set("row.3", "c;Third;;1");
+        m.Set("row.1", "a;First;;1");
+        m.Set("row.2", "b;Second;;1");
+        ItemMenuRow[] rows = m.Rows();
+        check.Expect(rows.Length == 3 && rows[0].Id == "a" && rows[1].Id == "b" && rows[2].Id == "c", "the rows draw in the order the server numbered them");
+        int gen = m.Gen;
+        m.Set("row.2", "");
+        check.Expect(m.RowCount == 2 && m.Rows()[1].Id == "c" && m.Gen != gen, "a released row leaves the others in order, and the draw is told to rebuild");
+    }
+
+    /// <summary>Oracle: the malformed lines typed here, each with the reason it earns.</summary>
+    private static void Refusals(Checker check)
+    {
+        var m = new ItemMenuModel();
+        check.Expect(m.Set("open", "nope") != null && !m.Open, "an open that names no point is refused and opens nothing");
+        check.Expect(m.Set("row.x", "a;A;;1") != null, "a row key that is not a number is refused");
+        check.Expect(m.Set("rows.1", "a;A;;1") != null, "an unknown key is refused");
+        m.Set("open", "10;10");
+        check.Expect(m.Set("row.1", "a") != null && m.RowCount == 0, "a row without a label is refused");
+        check.Expect(m.Set("row.1", ";A;;1") != null && m.RowCount == 0, "a row without an id is refused: a pick could name nothing");
+        for (int i = 0; i < ItemMenuModel.MaxRows; i++) m.Set("row." + i, $"r{i};Row {i};;1");
+        check.Expect(m.RowCount == ItemMenuModel.MaxRows && m.Set("row.999", "x;X;;1") != null, "the row cap holds, and the row past it is refused");
+        check.Expect(m.Set("row.0", "r0;Changed;;1") == null, "a row already held can still change under the cap");
+    }
+
+    /// <summary>Oracle: the state after a close, written out: no rows, not open, and a report that says so.</summary>
+    private static void Closes(Checker check)
+    {
+        var m = new ItemMenuModel();
+        m.Set("open", "5;5");
+        m.Set("row.1", "use;Use;;1");
+        int gen = m.Gen;
+        m.Close();
+        check.Expect(!m.Open && m.RowCount == 0 && m.Gen != gen, "a close puts the menu away and holds no row");
+        check.Expect(m.Report().Contains("menu"), "the /policy line names the menu");
+        check.Expect(m.Report().Contains("closed"), "a closed menu says so");
+        m.Set("open", "5;5");
+        check.Expect(m.Report().Contains("open at 5,5"), "an open one says where it is");
+    }
+}

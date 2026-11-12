@@ -136,6 +136,14 @@ public sealed unsafe class HeldImageService : IExtenderService
         if (image != null) s.PickReq = image;
     }
 
+    /// <summary>The gesture that showed a pick was abandoned: put the image down now instead of at the end of its confirm window.
+    /// A hold the server itself sent is left alone -- only the server ends that one.</summary>
+    internal static void CancelPick()
+    {
+        HeldState s = _s;
+        if (s.Model.Pending && s.Model.Release()) Changed(s);
+    }
+
     /// <summary>A hold started, changed or ended: free the old minted item and make the new one outside any draw batch.</summary>
     private static void Changed(HeldState s)
     {
