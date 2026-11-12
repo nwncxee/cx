@@ -27,6 +27,9 @@ internal static unsafe partial class BehaviorSolvers
         Expect(Near(Zoom(8f, 2f, 1f), 4f), "zoom velocity 2 for one second halves the distance");
         Expect(Near(Zoom(8f, -2f, 1f), 16f), "a negative zoom velocity doubles it");
         Expect(Near(Zoom(8f, 2f, 0.5f), 8f * MathF.Pow(2f, -0.5f)), "the curve is continuous in dt");
+        Expect(Step(1f / 60f) == 1f / 60f && Step(0.1f) == 0.1f, "a frame at 10 fps or better integrates its whole dt");
+        Expect(Near(Zoom(9.8f, -7.5f, Step(1.1f)), 9.8f * MathF.Pow(2f, 0.375f), 1e-3f),
+               "one zoom-out pass across a 1.1 s load frame moves the camera by a 0.1 s step, not out to 168");
 
         Expect(Lag(1f, 0f) == 0f, "dt 0 moves nothing");
         Expect(Near(Lag(1f, 1f), 0.5f), "rate 1 closes half the gap in one second");

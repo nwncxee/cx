@@ -20,6 +20,13 @@ internal static unsafe partial class BehaviorSolvers
     internal static float Zoom(float dist, float zoomVel, float dt) =>
         dist * (float)Math.Pow(2.0, -zoomVel * dt * 0.5f);
 
+    /// <summary>The longest step the camera's velocity terms integrate. A rate is input for one frame, so a load
+    /// hitch (a second or more) must not multiply it: one zoom pass over 1.1 s throws the camera to its clamp.</summary>
+    internal const float MaxStep = 0.1f;
+
+    /// <summary><paramref name="dt"/> capped at <see cref="MaxStep"/>, for the yaw, pitch and zoom integrators.</summary>
+    internal static float Step(float dt) => MathF.Min(dt, MaxStep);
+
     /// <summary>The lag factor the camera solve uses for BOTH the focus lerp and the orientation slerp:
     /// <c>1 - 0.5^(dt * rate)</c>, i.e. "close half the remaining gap every <c>1/rate</c> seconds", which is
     /// frame-rate independent by construction.</summary>
