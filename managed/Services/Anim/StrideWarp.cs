@@ -117,7 +117,7 @@ internal static class StrideWarp
         if (paced)
         {
             float engine = Stride.EngineRate(s, leadRun);
-            if (engine > 1e-4f) s.RateNext = Pace(speed / lead.Speed).Rate / engine;
+            if (engine > 1e-4f) s.RateNext = RateShare(speed / lead.Speed, engine);
         }
         float phase = leadRun.Time / lead.Length;
         if (!ReferenceEquals(leadAnim, s.PlantClip))
@@ -259,6 +259,13 @@ internal static class StrideWarp
 
     /// <summary>The playback rate and stride length a clip whose feet cover the ground at <paramref name="k"/> times
     /// the body's speed plays at: the square root of it each, as a walker speeds up by both cadence and stride.</summary>
+    /// <summary>The share of the engine's rate a walk plays at when its clip covers the ground at <paramref name="k"/>
+    /// times the body's speed. Never under <see cref="HeldBack"/>: a body held near still by a wall keeps stepping.</summary>
+    internal static float RateShare(float k, float engine) => MathF.Max(Pace(k).Rate / engine, HeldBack);
+
+    /// <summary>The least share of the engine's rate a paced walk plays at.</summary>
+    private const float HeldBack = 0.5f;
+
     internal static (float Rate, float Stride) Pace(float k)
     {
         if (!(k > 0f)) return (1f, 1f);

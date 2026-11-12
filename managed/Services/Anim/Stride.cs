@@ -16,7 +16,14 @@ internal static unsafe class Stride
     /// <summary>Runs whose rate is tracked: the walk, its overlay, and the ones fading out.</summary>
     internal const int TrackedRuns = 4;
 
-    internal static int Strided, Synced;
+    /// <summary>What the module did this period: bodies paced, attachment runs put on their body's clock, and
+    /// attachment runs left on their own because their clip runs another length.</summary>
+    internal sealed class StrideState { public int Strided, Synced, Unlocked; }
+
+    internal static StrideState Counts = new();
+
+    /// <summary>Seconds within which an attachment's clip and its body's run the same length.</summary>
+    private const float SameLength = 1e-3f;
 
     /// <summary>Before the engine animates: every run gets the engine's rate times the gob's stride factor
     /// (1 when not locomoting or the knob is off, which puts the engine's own value back). The rate is NOT restored
@@ -26,7 +33,7 @@ internal static unsafe class Stride
     {
         float f = Of(s);
         Scale(ref s, gob, f);
-        if (f != 1f) Strided++;
+        if (f != 1f) Counts.Strided++;
     }
 
     /// <summary>The multiplier a body with slot <paramref name="s"/> plays its runs at this frame: the one
@@ -86,17 +93,26 @@ internal static unsafe class Stride
             }
             r.Rate = rate * f;
             if (!phase) continue;
-            float t = br.Time - lead * r.Rate, len = br.Length;
-            // only a LOOPING run wraps: a one-shot the body started this frame reads time ~0, the lead takes it
-            // below 0, and wrapping showed the cloak the END of a turn while the body began it
-            r.Time = t < 0f && len > 0f && (r.Flags & Looping) != 0 ? t + len : MathF.Max(t, 0f);
+            r.Time = LockedTime(r.Time, r.Length, br.Time, br.Length, lead * r.Rate, (r.Flags & Looping) != 0);
             if (((r.Flags ^ br.Flags) & FadingOut) == 0)
             {
                 r.Blend = br.Blend;
                 r.BlendTime = br.BlendTime;
             }
-            Synced++;
+            Counts.Synced++;
         }
+    }
+
+    /// <summary>The time an attachment's run (at <paramref name="own"/> of <paramref name="ownLength"/>) takes from its
+    /// body's run of the same name, <paramref name="lead"/> seconds of the body's step taken back off it. A clip of
+    /// another length keeps its own time: on the body's clock it would loop at the body's end, not its own.</summary>
+    internal static float LockedTime(float own, float ownLength, float body, float bodyLength, float lead, bool looping)
+    {
+        if (MathF.Abs(ownLength - bodyLength) > SameLength) { Counts.Unlocked++; return own; }
+        float t = body - lead;
+        // only a LOOPING run wraps: a one-shot the body started this frame reads time ~0, the lead takes it
+        // below 0, and wrapping showed the cloak the END of a turn while the body began it
+        return t < 0f && bodyLength > 0f && looping ? t + bodyLength : MathF.Max(t, 0f);
     }
 
     /// <summary>AnimRun flag bit: the run is fading out.</summary>

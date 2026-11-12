@@ -225,7 +225,6 @@
 2 managed/Services/Anim/PoseRig.cs
 17 managed/Services/Anim/PoseService.cs
 1 managed/Services/Anim/Settle.cs
-2 managed/Services/Anim/Stride.cs
 1 managed/Services/Anim/Transition.cs
 6 managed/Services/Anim/UpperBody.cs
 9 managed/Services/Camera/ActionFeedback.cs
