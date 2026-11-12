@@ -177,10 +177,8 @@ public sealed unsafe partial class AlloyRenderer
                               : new BufferBinding(o.Binding, c.ZeroUbo);
                     break;
                 case VkBindKind.StorageBlock:
-                    ssbo[ns++] = new BufferBinding(o.Binding, o.Binding switch
-                    {
-                        Particles.BindRecs => s.Recs, Particles.BindIdx => s.Idx, _ => c.ZeroSsbo,
-                    });
+                    ssbo[ns++] = new BufferBinding(o.Binding, VkPartStorage(o.Binding, _capturing, s.Recs, s.Idx, VkDeferredLights(),
+                                                                            VkClusterCounts, VkClusterIdx, VkMovers) ?? c.ZeroSsbo);
                     break;
                 case VkBindKind.Sampled when o.Name == "uTex":
                     ImageId img = tex != 0 ? VkTextures.Image((int)tex) : default;
@@ -199,6 +197,22 @@ public sealed unsafe partial class AlloyRenderer
         side.BindSet(0, new BindSet(ubo[..nu], ssbo[..ns], sampled[..nt], default));
     }
 
+    /// <summary>The particle stages as the colour pass draws them, translated for Vulkan.</summary>
+    internal static VkProgramText VkPartText()
+        => WorldDepth.Translate(ShaderResource.Tokens(ShaderSource.Get("cx_part_v.glsl")),
+                                ShaderResource.Tokens(ShaderSource.Get("cx_part_f.glsl")), VkPrograms.Units);
+
+    /// <summary>The buffer the particle stages read at storage <paramref name="binding"/>: the records, the draw order, and
+    /// the frame's light table and froxel lists the lit vertex stage walks; null leaves the stand-in.</summary>
+    internal static BufferId? VkPartStorage(uint binding, bool capturing, BufferId recs, BufferId idx, BufferId lights,
+                                            BufferId counts, BufferId clIdx, BufferId movers)
+        => binding switch
+        {
+            Particles.BindRecs => recs,
+            Particles.BindIdx => idx,
+            _ => VkLitTable(binding, capturing, lights, counts, clIdx, movers),
+        };
+
     /// <summary>The program, its three pipelines and the un-mipmapped clamp sampler, made once per device. A refusal is
     /// said once and the pass sits the session out (GL's own refusal stands it down the same way).</summary>
     private static bool VkPartEnsure(VkBackend vk, VkPartState s, ExtenderLog log)
@@ -207,9 +221,7 @@ public sealed unsafe partial class AlloyRenderer
         s.Tried = true;
         s.Side = new CommandList("vulkan particles", PartArenaBytes, log);
         s.Samp = vk.CreateSampler(new SamplerDesc(Filter.Linear, Filter.Linear, MipMode.None, Wrap.Clamp));
-        VkProgramText t = WorldDepth.Translate(ShaderResource.Tokens(ShaderSource.Get("cx_part_v.glsl")),
-                                               ShaderResource.Tokens(ShaderSource.Get("cx_part_f.glsl")), VkPrograms.Units);
-        VkProg? p = VkBuild(vk, t, "particles", false, log);
+        VkProg? p = VkBuild(vk, VkPartText(), "particles", false, log);
         if (p != null)
             LooseBlock.Resolve(p.Names, () =>
             {
