@@ -56,8 +56,9 @@ internal static class NameplateKnobs
         HealthBand = G.Toggle("healthband", "Health colour", true, help: "The name is tinted by the creature's health, as in the stock game.");
         HealthBar = G.Toggle("healthbar", "Health bar", false,
                              help: "A thin bar under the name. Exact for you and your party; others by injury level. Not in the stock game.");
-        BarWidth = G.Slider("barwidth", "Health bar width", 0f, 200f, 10f, 0f, "px", Tier.Advanced,
+        BarWidth = G.Slider("barwidth", "Health bar width", 0f, 200f, 10f, 0f, "px",
                             help: "Every health bar is this wide. 0 makes each as wide as its name.");
+        BarWidth.ShowIf = static () => HealthBar.V;
         Apart = G.Toggle("apart", "Keep names apart", false,
                          help: "Nameplates that would overlap move apart and stack. Off, each stays over its creature and they overlap, as in the stock game.");
         Titles = G.Toggle("titles", "Titles on their own line", true, Tier.Advanced,
