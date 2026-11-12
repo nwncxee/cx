@@ -13,7 +13,7 @@
 # First time: ssh-keygen -t ed25519 -f ~/.ssh/cx-release -C cx-releases
 #             echo "cx-releases $(cat ~/.ssh/cx-release.pub)" > packaging/allowed_signers   (and commit it)
 #             cargo install ssign --version 0.1.8 --locked
-# Needs osslsigncode on PATH (nix shell nixpkgs#osslsigncode).
+# Uses osslsigncode from PATH, or builds the one flake.lock pins (needs nix).
 set -euo pipefail
 tag="${1:?usage: tools/release/sign.sh vX.Y.Z}"
 repo=nwncxee/cx
@@ -21,8 +21,12 @@ ssign_version=0.1.8
 # SHA-256 of the Certum code signing certificate's DER. It renews every year: put the new one here and
 # in sign_harness.sh's certum.
 cert_sha256=6c1137379e841cac08898b423b1e8805aaff6f95ff5927a29b2678a4a8a99aa6
-command -v osslsigncode > /dev/null || { echo "osslsigncode is not on PATH (see the header of this script)" >&2; exit 1; }
 root=$(cd "$(dirname "$0")/../.." && pwd)
+if ! command -v osslsigncode > /dev/null; then
+  ossl=$(nix --extra-experimental-features 'nix-command flakes' build --no-link --print-out-paths "$root#osslsigncode") ||
+    { echo "osslsigncode is not on PATH, and nix could not build it from $root's flake" >&2; exit 1; }
+  PATH="$ossl/bin:$PATH"
+fi
 key=$(python3 "$root/tools/paths.py" RELEASE_SIGN_KEY)
 signers="$root/packaging/allowed_signers"
 [[ -f "$key" ]] || { echo "no release key at $key (see the header of this script)" >&2; exit 1; }

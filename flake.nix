@@ -84,6 +84,8 @@
         pkgs.file
         pkgs.sqlite
         pkgs.zstd
+        # tools/release/sign.sh checks version.dll's Authenticode signature.
+        pkgs.osslsigncode
       ];
 
       # CX-320: the Vulkan side of the toolchain, dev shells only -- none of it reaches cx-linux-x64/ or the
@@ -158,7 +160,11 @@
     in
     assert pinned;
     {
-      packages.${system} = { inherit openal winsdk; };
+      packages.${system} = {
+        inherit openal winsdk;
+        # tools/release/sign.sh builds this when osslsigncode is not on PATH, so it runs outside nix develop.
+        inherit (pkgs) osslsigncode;
+      };
 
       devShells.${system} = {
         gates = pkgs.mkShellNoCC { packages = gatesPackages; };
