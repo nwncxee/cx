@@ -154,6 +154,10 @@ public static unsafe partial class DbAnim
     /// engine called it. It writes the object's placement into the facade shell by interior address, so the
     /// columns are re-read from the shell afterwards.</summary>
     private const int DispSayMax = 3;
+
+    /// <summary>A frame this long with camera input pending gets a log line: a hitch, not a steady low frame rate,
+    /// which <see cref="BehaviorSolvers.MaxStep"/> also caps but every frame.</summary>
+    private const float HitchLog = 0.5f;
     private static readonly byte[] _dispSaid = new byte[SceneDb.MaxObjects];
 
     private static bool Dispatch(nint beh, DbId obj, float dt)
@@ -331,10 +335,10 @@ public static unsafe partial class DbAnim
         return true;
     }
 
-    /// <summary><c>CAurBehaviorCameraFollow::Control</c> @0x4a2290 -- the chase camera: integrate yaw, pitch and
-    /// distance from their velocity + impulse pairs (each consumed), clamp each against its own optional range,
-    /// lag the focus toward the target, slerp the orientation with the SAME lag factor, and put the camera one
-    /// distance along <c>q * +Z</c> from the focus.</summary>
+    /// <summary><c>CAurBehaviorCameraFollow::Control</c> @0x4a2290 -- the chase camera: integrate yaw, pitch and distance
+    /// from their velocity (over at most <see cref="BehaviorSolvers.MaxStep"/>, uncapped in the engine) + impulse pairs,
+    /// clamp each to its optional range, lag the focus toward the target, slerp the orientation with the SAME lag
+    /// factor, and put the camera one distance along <c>q * +Z</c> from the focus.</summary>
     private static bool CameraFollow(nint beh, DbId obj, float dt, int depth)
     {
         int r = Base(beh, obj, dt, depth);
@@ -346,7 +350,7 @@ public static unsafe partial class DbAnim
         var b = new CAurBehaviorCameraFollow((IntPtr)beh);
 
         float step = BehaviorSolvers.Step(dt);
-        if (step < dt && (b.ZoomVel != 0f || b.YawVel != 0f || b.PitchVel != 0f))
+        if (dt > HitchLog && (b.ZoomVel != 0f || b.YawVel != 0f || b.PitchVel != 0f))
             _log?.Info($"DbAnim: camera follow integrated a {dt:0.###} s frame as {step:0.###} s (zoom {b.ZoomVel:0.##}, "
                      + $"yaw {b.YawVel:0.##}, pitch {b.PitchVel:0.##}/s at dist {b.Dist:0.#}) -- a hitch is not a second of input");
         float yaw = b.Yaw + b.YawVel * step + b.YawImpulse;
