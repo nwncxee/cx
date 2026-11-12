@@ -125,9 +125,9 @@ internal static partial class DrawRecipe
         /// <summary>Each recipe's parsed <c>.mtr</c>, or null: what a content pair's row is filled from
         /// (<see cref="ContentRows"/>). Shared and immutable, so the column holds the reference.</summary>
         public readonly MtrDef?[] Mtr = new MtrDef?[Max];
-        /// <summary>Each recipe's material face terms (<see cref="FacesOf"/>), kept so <see cref="TxiWords"/> can
-        /// settle the culling against the class and blend a late <c>.txi</c> or <c>.mtr</c> moves.</summary>
-        public readonly byte[] Faces = new byte[Max];
+        /// <summary>Each recipe's material face terms (<see cref="FacesOf"/>). Its own column because a late
+        /// <c>.mtr</c> moves these terms but not <see cref="Mtr"/>, which the content row was built from.</summary>
+        public readonly byte[] FaceTerms = new byte[Max];
 
         public SlotState() { System.Array.Fill(ContentRow, -1); }
         public int RetiredInUse, DoubleRetire;
@@ -237,6 +237,7 @@ internal static partial class DrawRecipe
         _range[r] = -1;
         if (_own.ContentRow[r] >= 0) { ContentTable.Free(_own.ContentRow[r], r); _own.ContentRow[r] = -1; }
         _own.Mtr[r] = null;
+        _own.FaceTerms[r] = 0;
         for (int s = 0; s < TexSlots; s++)
         {
             int o = r * TexSlots + s;
@@ -525,7 +526,7 @@ internal static partial class DrawRecipe
             {
                 MtrDef? late = MtrDef.Of(mesh);
                 _coverage[r] = late is { AlphaMode: 2 };
-                _own.Faces[r] = FacesOf(late);
+                _own.FaceTerms[r] = FacesOf(late);
                 _content[r] = GuiContent.Key(late);
                 _declWater[r] = DeclaredWater(mesh);
             }
@@ -576,7 +577,7 @@ internal static partial class DrawRecipe
         if (AlloyClasses.Covers(_cls[r], _coverage[r])) _flags[r] |= RecipeFlag.Coverage;
         else _flags[r] &= ~RecipeFlag.Coverage;
         // ponytail: volumetric's back-then-front is drawn as cull-off, exact under weighted OIT; alloy.oit 0 needs a front-culled draw first
-        if (DrawsBackFaces(_own.Faces[r], additive, (AlloyClass)_cls[r])) _flags[r] |= RecipeFlag.TwoSided;
+        if (DrawsBackFaces(_own.FaceTerms[r], additive, (AlloyClass)_cls[r])) _flags[r] |= RecipeFlag.TwoSided;
         else _flags[r] &= ~RecipeFlag.TwoSided;
     }
 
@@ -629,7 +630,7 @@ internal static partial class DrawRecipe
         // Material::GetTexture @0x5c5810: the .mtr's texture wins wherever it states one.
         MtrDef? mtr = MtrDef.Of(mesh);
         _coverage[r] = mtr is { AlphaMode: 2 };
-        _own.Faces[r] = FacesOf(mtr);
+        _own.FaceTerms[r] = FacesOf(mtr);
         // TransparencyHint is the engine's child-order sort key and never a blend (MdlNode::ReorderChildren
         // @0x558120 is its one reader); a flat sheet still keeps it, through RecipeFlag.HintBlended.
         bool hinted = mesh.TransparencyHint > 0;
