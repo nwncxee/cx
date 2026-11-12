@@ -31,5 +31,6 @@ public enum TsSource { Local, Game }
 /// angle, Radial centre -> edge, Conic mirrored around the angle.</summary>
 public enum BgMode { Solid, Linear, Radial, Conic }
 
-/// <summary>A clickable portrait rect in screen pixels, carrying the line's PlayerId for tell targeting.</summary>
-public readonly record struct PortraitHit(float X, float Y, float W, float H, uint PlayerId);
+/// <summary>A clickable portrait rect in screen pixels, carrying its line's speaker name and PlayerId for tell
+/// targeting (<see cref="TellTarget.OfLine"/>).</summary>
+public readonly record struct PortraitHit(float X, float Y, float W, float H, uint PlayerId, string Speaker);

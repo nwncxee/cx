@@ -30,6 +30,16 @@ public static class TellTarget
             : tab.PinnedName.Length > 0 ? tab.PinnedName : null;
     }
 
+    /// <summary>Who a click on a chat line's portrait tells: the speaker the line named when it arrived, under
+    /// the id that name has on the roster now (null while offline). A line's own id is its speaker's connection
+    /// at arrival and names nobody, or somebody else, after a relog; only a line that carries no name falls back to it.</summary>
+    public static (string? Name, uint? PlayerId) OfLine(string speaker, uint linePlayerId, IPlayerResolver? roster)
+    {
+        if (speaker.Length > 0) return (speaker, roster?.Resolve(speaker));
+        string? name = roster?.NameOf(linePlayerId);
+        return (name, name != null ? linePlayerId : null);
+    }
+
     /// <summary>Outbound tells awaiting their server echo, oldest first: (canonical recipient, text).</summary>
     private static readonly ConcurrentQueue<(string Name, string Text)> _pending = new();
     private const int MaxPending = 8;
@@ -59,7 +69,8 @@ public static class TellTarget
         return "";
     }
 
-    /// <summary>Off-device proof of the three AC cases + edge cases.</summary>
+    /// <summary>Off-device proof of the three AC cases + edge cases. Oracle: hand-written names and ids
+    /// against a fake roster.</summary>
     public static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
@@ -119,6 +130,17 @@ public static class TellTarget
         check.Expect(ResolveName(pinned, "Bob", roster) == "Bob", "ResolveName typed beats pin");
         check.Expect(ResolveName(offline, null, roster) == "Eve", "ResolveName offline still returns name");
         check.Expect(ResolveName(unpinned, null, roster) == null, "ResolveName unpinned no target");
+
+        // A portrait click after the speaker relogged: Alice spoke as 42, came back as 57, and Bob took 42.
+        var relog = new FakeRoster();
+        relog.Players["Alice"] = 57u;
+        relog.Players["Bob"] = 42u;
+        check.Expect(OfLine("Alice", 42u, relog) == ("Alice", 57u), "a line's speaker is told under the id she has now");
+        relog.Players.Remove("Alice");
+        check.Expect(OfLine("Alice", 42u, relog) == ("Alice", null), "an offline speaker keeps her name and has no id");
+        check.Expect(OfLine("", 42u, relog) == ("Bob", 42u), "a line with no name falls back to its id");
+        check.Expect(OfLine("", 7u, relog) == (null, null), "a line with no name and a dead id names nobody");
+        check.Expect(OfLine("Alice", 42u, null) == ("Alice", null), "no roster still names the speaker");
 
         log.Info(check.Ok ? "TellTarget.SelfCheck: passed" : "TellTarget.SelfCheck: FAILED");
     }

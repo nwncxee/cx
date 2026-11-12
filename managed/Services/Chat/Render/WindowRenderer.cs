@@ -330,7 +330,7 @@ public static partial class WindowRenderer
                            fc.r, fc.g, fc.b, fc.a);
                     portraits.Add(new PortraitQuad(px, py, portraitW, portraitH, all[li].PortraitResref, all[li].Timestamp));
                     hits.Add(new PortraitHit(px - PortraitFrameW, py - PortraitFrameW,
-                        portraitW + 2 * PortraitFrameW, portraitH + 2 * PortraitFrameW, all[li].PlayerId));
+                        portraitW + 2 * PortraitFrameW, portraitH + 2 * PortraitFrameW, all[li].PlayerId, all[li].SenderName));
                 }
                 if (b.VertexCount > spanStart) spans.Add(new LineSpanVerts(spanStart, b.VertexCount, all[li].Timestamp));
             }

@@ -8,7 +8,7 @@ public interface IPlayerResolver
     uint? Resolve(string name);
 
     /// <summary>PlayerId → CHARACTER name (never the account name), or null when the id is stale / unknown.
-    /// The one name space every Tell pin lives in; portrait click-to-tell and incoming-tell routing both use it.</summary>
+    /// The one name space every Tell pin lives in; a line's speaker name and incoming-tell routing both use it.</summary>
     string? NameOf(uint playerId) => null;
 
     /// <summary>The local player's ingest-space playerId, or null off-module / pre-load. Used to
