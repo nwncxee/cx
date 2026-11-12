@@ -11,6 +11,8 @@ namespace CX.Services.Chat.Core;
 public sealed class ChatLine
 {
     public uint Channel { get; }
+    /// <summary>The speaker's character name, read off the roster as the line arrived; "" for a line with no
+    /// portrait or a speaker the roster did not hold. It outlives <see cref="PlayerId"/>, which a relog replaces.</summary>
     public string SenderName { get; }
     public uint PlayerId { get; }
     public string PortraitResref { get; }

@@ -216,8 +216,8 @@ public sealed unsafe partial class ChatService
         return cd;
     }
 
-    /// <summary>Portrait click → tell flow: resolve the portrait's PlayerId to a player name, then
-    /// prefill <c>/t "Name" </c> into the chat input (same as vanilla's PrepChatPromptForTellToPlayer).
+    /// <summary>Portrait click → tell flow: the line's speaker (<see cref="TellTarget.OfLine"/>) gets the Tell
+    /// entry path, a pinned tab or the <c>/t "Name" </c> prefill.
     /// Returns true if the click landed on a portrait and was consumed.</summary>
     private static bool TryPortraitClick(ChatWindow win, int winIndex, int x, int y)
     {
@@ -227,12 +227,13 @@ public sealed unsafe partial class ChatService
             var h = ph[i];
             if (x >= h.X && x < h.X + h.W && y >= h.Y && y < h.Y + h.H)
             {
-                string? name = _playerResolver?.NameOf(h.PlayerId);
+                (string? name, uint? pid) = TellTarget.OfLine(h.Speaker, h.PlayerId, _playerResolver);
                 if (name != null)
                 {
                     _layout!.FocusedIndex = winIndex;
-                    StartTellTo(name, h.PlayerId);
+                    StartTellTo(name, pid);
                 }
+                else _log?.Info($"[chat] portrait click: pid=0x{h.PlayerId:x} names no player (roster {_playerResolver?.OnlineNames().Count ?? -1})");
                 return true;
             }
         }

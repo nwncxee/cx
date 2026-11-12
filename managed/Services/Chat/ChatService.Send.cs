@@ -74,7 +74,7 @@ public sealed unsafe partial class ChatService
             if (intern.IsNull) return list;
             IntPtr listBase = intern.Players;
             int count = intern.PlayerCount;
-            if (listBase == IntPtr.Zero || count <= 0 || count > 64) return list;
+            if (listBase == IntPtr.Zero || count <= 0 || count > PlayerIdentity.MaxPlayers) return list;
             var players = new ReadOnlySpan<IntPtr>((void*)listBase, count);
             for (int i = 0; i < count; i++)
             {
@@ -189,6 +189,7 @@ public sealed unsafe partial class ChatService
         }
         // Route: find or create a pinned tab, switch to it, set channel to Tell, open input.
         var decision = TellRouter.Route(mode, _layout.Windows, _layout.FocusedIndex, name);
+        _log?.Info($"[chat] tell start: pid={playerId} mode={mode} -> {decision.Action} w={decision.WindowIndex}");
         switch (decision.Action)
         {
             case TellRoute.Exists:

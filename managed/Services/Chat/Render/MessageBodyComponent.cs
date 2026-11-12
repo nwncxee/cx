@@ -5,8 +5,8 @@ using CX.Services.Chat.Core;
 namespace CX.Services.Chat.Render;
 
 /// <summary>The message text itself, each colour run in its parsed RGB.</summary>
-// ponytail: SenderName is the next text component -- it is "" for now (the tap doesn't carry
-// it). Portrait is not a text component: it's a texture, emitted as a PortraitQuad in the gutter.
+// ponytail: SenderName is the next text component -- the line holds it, nothing draws it yet.
+// Portrait is not a text component: it's a texture, emitted as a PortraitQuad in the gutter.
 public sealed class MessageBodyComponent : ILineComponent
 {
     public uint Bit => ChatToggle.MessageBody;

@@ -10,7 +10,9 @@ namespace CX.Framework;
 /// address call heap-allocates a CExoString, so never per frame. Empty parts when not in a game.</summary>
 public static unsafe class PlayerIdentity
 {
-    private const int MaxNameLen = 128, MaxPlayers = 256;
+    private const int MaxNameLen = 128;
+    /// <summary>The most roster entries a walk trusts; a count past it is not a roster.</summary>
+    internal const int MaxPlayers = 256;
     private static readonly IntPtr _appMgr = Native.Sym(SymbolMap.AppManager);
     /// <summary>Present iff the client exports <see cref="SymbolMap.GetServerNetworkAddress"/>; the by-value call
     /// itself has no pointer to null-check, the generator hides the per-OS sret order behind it.</summary>
