@@ -236,6 +236,7 @@ internal static unsafe partial class Particles
         TintCheck(check);
 
         log.Info(check.Ok ? "Particles.SelfCheck: passed" : "Particles.SelfCheck: FAILED");
+        EmissiveSelfCheck(log);
     }
 
     /// <summary>The emitter tint over a synthetic light rig. Oracle: RGB literals worked out by hand from the
