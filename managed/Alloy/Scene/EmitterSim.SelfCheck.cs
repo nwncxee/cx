@@ -294,6 +294,7 @@ internal static unsafe partial class EmitterSim
         BothSources(check);
         ParamCacheSelfCheck(check);
         RadiusSelfCheck(log);
+        NoTextureSelfCheck(log);
 
         Reset();
         log.Info(check.Ok ? "EmitterSim.SelfCheck: passed" : "EmitterSim.SelfCheck: FAILED");

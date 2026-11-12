@@ -321,7 +321,9 @@ internal static unsafe partial class EmitterSim
                 continue;
             }
             // The pass declines an emitter whose texture is not drawable, so "live" is only said once it is.
-            CensusE(in e, TexNameOf(ref slot) != 0 ? "live" : "no-texture");
+            bool drawable = TexNameOf(ref slot) != 0;
+            CensusE(in e, drawable ? "live" : "no-texture");
+            if (!drawable) NoteNoTexture(ref slot);
 
             slot.Dist = (eye - e.OwnerPos).LengthSquared();
             if (_orderN < MaxEmitters) _order[_orderN++] = s;
