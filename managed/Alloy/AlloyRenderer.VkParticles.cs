@@ -31,6 +31,16 @@ public sealed unsafe partial class AlloyRenderer
         public CommandList? Side;
         public int View = -1, Proj = -1, Eye = -1, Cut = -1, Add = -1, Lit = -1, Emis = -1, Viz = -1, Soft = -1;
         public int SunMedia = -1, LocalMedia = -1, Cubes = -1;
+        /// <summary>The velocity arm: the same stages with the motion define, re-issuing this frame's groups.</summary>
+        public VkProg? Motion;
+        public PipelineId MotionPipe;
+        public CommandList? MotionSide;
+        public bool MotionTried, MotionLive;
+        public int MView = -1, MProj = -1, MEye = -1, MAdd = -1, MPrevVp = -1, MJitter = -1, MSize = -1;
+        /// <summary>The frame the pass last drew in, its group count, and the camera it drew with.</summary>
+        public int DrewSeq = -1, DrewGroups;
+        public Matrix4x4 DrewView, DrewProj;
+        public Vector3 DrewEye;
         public long NoTex;
         /// <summary>The first texture names that drew on the stand-in, each said once.</summary>
         public readonly uint[] NoTexSaid = new uint[8];
@@ -99,13 +109,14 @@ public sealed unsafe partial class AlloyRenderer
             int loose = VkPartBlock(s, &v, &p, eye, g, groupLit, soft, viewport, near, far);
             int pass = groupLit ? VkArenaPass() : -1;
             if (loose < 0 || (groupLit && pass < 0)) return false;
-            VkPartBind(side, s, c, loose, pass, g.Tex, soft);
+            VkPartBind(side, s, s.Prog!, c, loose, pass, g.Tex, soft);
             side.Draw(g.Parts * 6, 1, g.Start * 6, 0);
             punched |= VkPartDepth(cls).Write;
         }
         ReadOnlySpan<ColorAttachment> colors = [new(c.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default), VkReactiveAttach(c)];
         VkFlushPass(cl, side, arena0, new RenderPassDesc(colors, new DepthAttachment(c.Depth, 0, 0, LoadOp.Load, StoreOp.Store, WorldDepth.Clear)),
                     writesDepth: punched);
+        s.DrewSeq = FrameSeq; s.DrewGroups = groups; s.DrewView = v; s.DrewProj = p; s.DrewEye = eye;
         if (!s.Live)
         {
             s.Live = true;
@@ -159,9 +170,8 @@ public sealed unsafe partial class AlloyRenderer
 
     /// <summary>The pass's bind set: the loose and pass blocks, the record and order buffers, the group's texture (the
     /// white stand-in, counted, for one Vulkan has no copy of), the depth copy, and the stand-ins for the rest.</summary>
-    private static void VkPartBind(CommandList side, VkPartState s, VkColourState c, int loose, int pass, uint tex, bool soft)
+    private static void VkPartBind(CommandList side, VkPartState s, VkProg p, VkColourState c, int loose, int pass, uint tex, bool soft)
     {
-        VkProg p = s.Prog!;
         Span<BufferBinding> ubo = stackalloc BufferBinding[12];
         Span<BufferBinding> ssbo = stackalloc BufferBinding[16];
         Span<ImageBinding> sampled = stackalloc ImageBinding[48];
