@@ -182,8 +182,9 @@ public sealed unsafe partial class AlloyRenderer
                     break;
                 case VkBindKind.Sampled when o.Name == "uTex":
                     ImageId img = tex != 0 ? VkTextures.Image((int)tex) : default;
+                    SamplerId own = img.IsNull ? default : VkTextures.SamplerId((int)tex);
                     if (img.IsNull) { s.NoTex++; VkPartNoTex(s, tex); img = VkTextures.Image(OwnedTextures.WhiteTid()); }
-                    sampled[nt++] = new ImageBinding(o.Binding, img.IsNull ? c.Tex2D : img, s.Samp);
+                    sampled[nt++] = new ImageBinding(o.Binding, img.IsNull ? c.Tex2D : img, VkPartSampler(Particles.OwnedSampler, s.Samp, own));
                     break;
                 case VkBindKind.Sampled when o.Name == "uSceneDepth" && soft:
                     sampled[nt++] = new ImageBinding(o.Binding, c.DepthRead);
@@ -212,6 +213,11 @@ public sealed unsafe partial class AlloyRenderer
             Particles.BindIdx => idx,
             _ => VkLitTable(binding, capturing, lights, counts, clIdx, movers),
         };
+
+    /// <summary>The sampler a group's texture is read through: its own (its levels and its wrap), or the pass's
+    /// un-mipmapped clamp one under <c>particles.sampler</c> or for a texture that has none (the stand-in).</summary>
+    internal static SamplerId VkPartSampler(bool owned, SamplerId pass, SamplerId texture)
+        => owned || texture.IsNull ? pass : texture;
 
     /// <summary>The program, its three pipelines and the un-mipmapped clamp sampler, made once per device. A refusal is
     /// said once and the pass sits the session out (GL's own refusal stands it down the same way).</summary>

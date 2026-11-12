@@ -7,8 +7,8 @@ namespace CX.Alloy;
 
 public sealed unsafe partial class AlloyRenderer
 {
-    /// <summary>Off-device: the particle pass's storage binds. Oracles: the storage blocks the translated particle stages
-    /// declare (the embedded GLSL, a second artifact) and hand-made buffer ids.</summary>
+    /// <summary>Off-device: the particle pass's storage binds and texture sampler. Oracles: the storage blocks the
+    /// translated particle stages declare (the embedded GLSL, a second artifact) and hand-made buffer and sampler ids.</summary>
     internal static void VkParticlesSelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "AlloyRenderer.VkParticlesSelfCheck");
@@ -31,6 +31,12 @@ public sealed unsafe partial class AlloyRenderer
             "storage 8, 9 and 10 carry the frame's lights, froxel counts and froxel indices");
         check.Expect(VkPartStorage(8, true, recs, idx, lights, counts, clIdx, movers) == null,
             "a capture's view is not the one binned, so its lit particles keep the stand-in");
+
+        SamplerId pass = new(7), own = new(8);
+        check.Expect(VkPartSampler(false, pass, own) == own,
+            "a particle texture is read through its own sampler, so its mip levels and wrap mode reach the draw");
+        check.Expect(VkPartSampler(true, pass, own) == pass, "particles.sampler on reads every one through the pass's clamp sampler");
+        check.Expect(VkPartSampler(false, pass, default) == pass, "the stand-in, which has no sampler of its own, takes the pass's");
 
         log.Info(check.Ok ? "AlloyRenderer.VkParticlesSelfCheck: passed" : "AlloyRenderer.VkParticlesSelfCheck: FAILED");
     }
