@@ -196,7 +196,7 @@ internal static class ItemMenuService
         Close();
         ItemMenuPolicy.Menu.Close();
         _s.ShownGen = ItemMenuPolicy.Menu.Gen;
-        ServerPolicy.Emit(MenuAction);
+        ServerPolicy.Emit(MenuAction, "");
         _log?.Info("[itemmenu] closed with no pick");
     }
 }

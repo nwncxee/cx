@@ -38,7 +38,12 @@ internal static class NuiItemDragRegressions
         check.Expect(!m.Update(1, true, null, 10, true, 61_000) && m.Active, "DD7 a minute of carrying with no NUI drawn does not drop it");
         check.Expect(!m.Update(2, true, "", 10, true, 61_100) && m.Active, "DD7 a policy line that names no held image does not drop it");
         check.Expect(m.Release() && !m.Active && !m.Carried, "DD7 the release puts it down");
-        check.Expect(m.Stale(1, true), "DD7 once put down, the server's own held image is read again, even with no new line");
+
+        var quiet = new HeldImageModel();
+        quiet.Update(1, true, "", 10, true, 500);
+        quiet.Carry("iit_dagger");
+        quiet.Release();
+        check.Expect(quiet.Stale(1, true), "DD7 once put down, the server's own held image is read again, even with no new line");
 
         var off = new HeldImageModel();
         off.Carry("iit_dagger");
