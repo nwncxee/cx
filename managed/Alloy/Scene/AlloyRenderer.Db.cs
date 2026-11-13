@@ -569,10 +569,11 @@ public sealed unsafe partial class AlloyRenderer
         if (fresh) DbWriteStable(ref r, i);
         // #302's mover level, stamped HERE as well as in StageDbPart: this fold write consumes the move, so the
         // stage that runs after it in the same frame sees the model already in place and would never stamp it.
-        bool casterMoved = Moved(in r.Model, in f.Model, CasterStep);
+        var (casterMoved, moverMoved) = MoveLevels(in r.Model, in f.Model);
         bool moved = WritePerFrame(ref r, in f, roll: true, fresh: fresh);
         if (fresh || moved) MarkRecordDirty(i);
         if (casterMoved || fresh) _recMovedAt[i] = _frameSeq;
+        if (moverMoved || fresh) _mvMovedAt[i] = _frameSeq;
         _gate[i].RecGen = _recEpoch; _gate[i].RecEnroll = _gate[i].EnrollGen; _gate[i].RecFrame = _frameSeq;
         DbWriteSphere(i, in f);
         return true;

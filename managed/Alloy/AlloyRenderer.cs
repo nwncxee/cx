@@ -327,7 +327,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         // #571: the stock-settings reader forges a std::string for the engine; a header packed wrong is a
         // crash on the first world frame, not a misrender, so it joins the gating chain.
         StockConfig.Attach(log);
-        if (!CutCensusSelfCheck(log) || !CasterBoundSelfCheck(log) || !SortSelfCheck(log) || !OitOrderSelfCheck(log) || !BatchMergeSelfCheck(log) || !CullSortSelfCheck(log) || !SplitSelfCheck(log) || !MtrParams.SelfCheck(log) || !Db.MapGateApprovedExamples.SelfCheck(log) || !PeriodLineSelfCheck(log) || !PassBlockSelfCheck(log) || !PassBlockEdgesSelfCheck(log) || !LooseStagingSelfCheck(log) || !ChaseSelfCheck(log) || !KeyholeBoxSelfCheck(log) || !SphereRectSelfCheck(log)
+        if (!CutCensusSelfCheck(log) || !CasterBoundSelfCheck(log) || !SortSelfCheck(log) || !OitOrderSelfCheck(log) || !BatchMergeSelfCheck(log) || !CullSortSelfCheck(log) || !SplitSelfCheck(log) || !MotionSelfCheck(log) || !MtrParams.SelfCheck(log) || !Db.MapGateApprovedExamples.SelfCheck(log) || !PeriodLineSelfCheck(log) || !PassBlockSelfCheck(log) || !PassBlockEdgesSelfCheck(log) || !LooseStagingSelfCheck(log) || !ChaseSelfCheck(log) || !KeyholeBoxSelfCheck(log) || !SphereRectSelfCheck(log)
             || !AreaGrid.SelfCheck(log)
             || !DbSelfChecks(log)
             || !ShaderContract.SelfCheck(log)

@@ -3,6 +3,7 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using CX.Framework;
 using CX.Graphics;
+using CX.Rhi;
 
 namespace CX.Alloy;
 
@@ -59,6 +60,70 @@ public sealed unsafe partial class AlloyRenderer
     public static void CameraCut()
     {
         MotionVectors.Revoke(); TaaStage.Reset(); Fsr.Revoke(); VkSsrRevoke(); SsaoPassVk.Revoke();
+    }
+
+    /// <summary>Did a skin's pose change since last frame? Bit for bit: a held pose re-solves to the same matrices.</summary>
+    private static bool PaletteMoved(in BonePalette now, in BonePalette prev) => false;
+
+    /// <summary>The two motion levels of one model change: the shadow re-bake's coarse step and the velocity
+    /// sweep's fine one.</summary>
+    private static (bool Caster, bool Mover) MoveLevels(in Matrix4x4 was, in Matrix4x4 now)
+    {
+        bool caster = Moved(in was, in now, CasterStep);
+        return (caster, caster);
+    }
+
+    /// <summary>Is slot <paramref name="i"/> a mover this frame: its model moved at the sweep's step, a posed skin's
+    /// palette changed, or a dangly part was solved.</summary>
+    private static bool SlotMoverNow(int i, bool posed, bool dangly)
+    {
+        bool mv = _mvMovedAt[i] == _frameSeq;
+        return posed ? mv || PoseMovedNow(_oBone[i]) : dangly || mv && _oMx[i];
+    }
+
+    /// <summary>Did the palette at bone base <paramref name="bone"/> change between the two staged frames?</summary>
+    private static bool PoseMovedNow(int bone)
+    {
+        int s = bone / BoneCount;
+        if (bone < 0 || s >= _boneSlots || s >= _boneStage.Length || s >= _bonePrevStage.Length) return false;
+        return PaletteMoved(in _boneStage.Span[s], in _bonePrevStage.Span[s]);
+    }
+
+    /// <summary>Does a moved draw of class <paramref name="cls"/> join the velocity sweep?</summary>
+    private static bool MoverClass(int cls, int feat) => cls == (int)AlloyClass.Opaque && !ShaderFeatures.OutOfPrepass(feat);
+
+    /// <summary>The sweep's depth test for a mover of class <paramref name="cls"/>.</summary>
+    private static CompareOp MoverDepth(int cls) => WorldDepth.NearerOrEqual;
+
+    /// <summary>Oracle: hand-built palettes and matrices with the steps written out as literals, and the
+    /// class table's own members.</summary>
+    private static bool MotionSelfCheck(ExtenderLog log)
+    {
+        var check = new Checker(log, "AlloyRenderer.MotionSelfCheck");
+        BonePalette a = default, b = default;
+        Span<Matrix4x4> pa = a, pb = b;
+        for (int k = 0; k < pa.Length; k++) { pa[k] = Matrix4x4.Identity; pb[k] = Matrix4x4.Identity; }
+        check.Expect(!PaletteMoved(in a, in b), "a held pose is not a mover");
+        pb[17].M42 = 0.002f;
+        check.Expect(PaletteMoved(in a, in b), "one bone breathing 2 mm makes the skin a mover");
+
+        Matrix4x4 at = Matrix4x4.CreateTranslation(10f, 20f, 0f);
+        var (c0, m0) = MoveLevels(in at, Matrix4x4.CreateTranslation(10.00005f, 20f, 0f));
+        check.Expect(!c0 && !m0, "a 0,05 mm drift is neither a caster nor a mover");
+        var (c1, m1) = MoveLevels(in at, Matrix4x4.CreateTranslation(10.005f, 20f, 0f));
+        check.Expect(!c1 && m1, "a 5 mm step moves the velocity but does not re-bake the shadow");
+        var (c2, m2) = MoveLevels(in at, Matrix4x4.CreateTranslation(10.02f, 20f, 0f));
+        check.Expect(c2 && m2, "a 2 cm step is both");
+        Matrix4x4 turned = Matrix4x4.CreateRotationZ(0.003f) * at;
+        var (c3, m3) = MoveLevels(in at, in turned);
+        check.Expect(!c3 && m3, "a 0,17 degree turn moves the velocity but does not re-bake the shadow");
+
+        check.Expect(MoverClass((int)AlloyClass.Opaque, 0), "an opaque part joins the sweep");
+        check.Expect(MoverClass((int)AlloyClass.Cutout, 0), "a cutout part joins the sweep");
+        check.Expect(!MoverClass((int)AlloyClass.Blended, 0), "a blended part writes no depth and stays out");
+        check.Expect(MoverDepth((int)AlloyClass.Cutout) == CompareOp.Equal, "a cutout mover tests EQUAL, so its holes keep the camera field");
+        check.Expect(MoverDepth((int)AlloyClass.Opaque) == CompareOp.GreaterEqual, "an opaque mover keeps the nearer-or-equal test");
+        return check.Ok;
     }
 
     private static void NoteMoverDraw(int n, bool skinned, bool dangly)

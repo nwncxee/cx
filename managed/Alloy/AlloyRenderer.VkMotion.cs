@@ -54,6 +54,7 @@ public sealed unsafe partial class AlloyRenderer
         int arena0 = c.ArenaUsed;
         VkPassStart(side, w, h);
         int fmt = -1, dangly = -1, drawn = 0;
+        CompareOp? test = null;
         var push = new VkBatchPush { AlphaCut = -1f };
         for (int k = 0; k < n; k++)
         {
@@ -67,9 +68,15 @@ public sealed unsafe partial class AlloyRenderer
             {
                 fmt = f;
                 side.SetPipeline(pipe);
-                side.SetDepthState(new DepthState(true, false, WorldDepth.NearerOrEqual));
                 side.SetRasterState(new RasterState(CullMode.None));
                 side.BindVertexBuffer(MeshArena.VkVbo((MeshArena.Fmt)f));
+                test = null;
+            }
+            CompareOp want0 = MoverDepth(_oCls[i]);
+            if (want0 != test)
+            {
+                test = want0;
+                side.SetDepthState(new DepthState(true, false, want0));
             }
             int want = DanglyPrevNow(i) ? i : -1;
             if (want != dangly || drawn == 0)

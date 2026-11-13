@@ -534,9 +534,9 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>Last frame's palette, slot for slot beside <see cref="_boneStage"/> (the two swap
     /// once a frame), for the mover sweep's previous clip position. Streamed only when a skinned mover draws.</summary>
     internal static NativeBuffer<BonePalette> _bonePrevStage;
-    /// <summary>The frame a posed record's palette last differed from the one before it -- the
-    /// skinned twin of <c>_recMovedAt</c>, read by the mover pick.</summary>
-    private static readonly int[] _poseMovedAt = new int[MaxOwned];
+    /// <summary>The frame this slot's model last moved at the velocity sweep's step -- the mover pick's
+    /// twin of <c>_recMovedAt</c>, which moves at the shadow's coarser one.</summary>
+    private static readonly int[] _mvMovedAt = new int[MaxOwned];
     private static int _poseRollSeq = -1;
     /// <summary><c>ownskin</c> not 0. False refuses the skinmesh class at enrollment, which means every
     /// cloak, robe and tail is NOT DRAWN -- not drawn by the engine either.</summary>

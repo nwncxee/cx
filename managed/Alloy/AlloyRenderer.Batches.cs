@@ -875,7 +875,7 @@ public sealed unsafe partial class AlloyRenderer
             // stage redraws it with both. CX-26: a posed skinmesh is one too when its palette changed, and the
             // stage skins it with both palettes. Opaque only: a displaced mesh moves under a matrix that does
             // not, and a cutout mover would paint its own velocity over its holes.
-            if (row.Moved && cls == (int)AlloyClass.Opaque && !ShaderFeatures.OutOfPrepass(feat))
+            if (row.Moved && MoverClass(cls, feat))
                 NoteMoverDraw(n, row.Posed, row.Dangly);
             // #287: and the same draw as the cull's source record -- the batch is the one the cut just
             // opened or extended, and its output base is where its compacted run starts.
@@ -976,9 +976,9 @@ public sealed unsafe partial class AlloyRenderer
         row.Lvl = RowLevel(i);
         // #392: a matrix mover this frame -- its record's prev lags its model by one frame, and the velocity
         // stage redraws it with both. CX-26: a posed skinmesh is one too when its palette changed.
-        bool posed = _oBone[i] >= 0, dangly = !posed && DanglyPrevNow(i), recMoved = _recMovedAt[i] == _frameSeq;
+        bool posed = _oBone[i] >= 0, dangly = !posed && DanglyPrevNow(i);
         row.Posed = posed; row.Dangly = dangly;
-        row.Moved = posed ? recMoved || _poseMovedAt[i] == _frameSeq : dangly || recMoved && _oMx[i];
+        row.Moved = SlotMoverNow(i, posed, dangly);
     }
 
     /// <summary>The mesh LOD level a row draws at this frame, off the cull's own sphere and the pass's eye.</summary>
@@ -1019,8 +1019,7 @@ public sealed unsafe partial class AlloyRenderer
             IntPtr gobKey = OitPass.Dedupes && _passCls[k] == (int)AlloyClass.Blended
                             && OitGrouped(DbObjAlpha(i), _oDecal[i] != 0, _oWash[i]) ? RunKey(i) : IntPtr.Zero;
             bool posed = _oBone[i] >= 0, dangly = !posed && DanglyPrevNow(i);
-            bool recMoved = _recMovedAt[i] == _frameSeq;
-            bool moved = posed ? recMoved || _poseMovedAt[i] == _frameSeq : dangly || recMoved && _oMx[i];
+            bool moved = SlotMoverNow(i, posed, dangly);
             // The LOD level is the one field the row DERIVES rather than copies, and it derives it on a worker
             // from two pass-wide statics -- so it is the field this audit exists for: a wrong level picks the
             // wrong MeshLod.Range, sets the wrong LodVaoBit and cuts the batch in the wrong place.
