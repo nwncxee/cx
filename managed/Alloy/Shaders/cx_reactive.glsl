@@ -1,4 +1,4 @@
-// The reactive mask, written where the effect is: the beam, particle, halo and weather passes each report the
+// The reactive mask, written where the effect is: the OIT resolve, beam, particle, halo and weather passes report the
 // share of the pixel they took into a second R8 attachment, which accumulates over them. AMD's guidance is to
 // draw a ghosting object into the reactive mask at a value close to 1 (FidelityFX SDK 1.1.4,
 // ffx_fsr3upscaler.h), and the share an effect covers is what "close to 1" means for an effect that is all of
@@ -14,6 +14,13 @@ layout(location = 1) out float fragReact;
 float CxReactive(float share)
 {
     return min(max(share, 0.0) * 4.0, 0.9);
+}
+
+/// How reactive a pixel blended geometry covers at `alpha` is: its alpha, capped at 0.9, as AMD's FSR 3.1
+/// guidance asks for alpha-blended objects. No boost: a pane a quarter opaque keeps most of its history.
+float CxReactiveAlpha(float alpha)
+{
+    return clamp(alpha, 0.0, 0.9);
 }
 
 /// The share of a pixel a draw of `rgb` at `alpha` takes. An additive draw leaves the background whole under

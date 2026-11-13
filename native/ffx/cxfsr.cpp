@@ -184,8 +184,8 @@ int cxfsr_dispatch(CxFsr* f, const CxFsrDispatch* d)
     x.motionVectors = Wrap(d->motion, L"cx velocity");
     x.exposure = Wrap(d->exposure, L"cx exposure");
     // The reactive mask the accumulate reads unconditionally -- no permutation of CXFSR_FLAGS switches it on, so
-    // tools/ffx/ffx_shaders.py compiles nothing new for it. transparencyAndComposition stays empty: CX marks what
-    // the beam, particle, halo and weather passes changed, which is this input's own job.
+    // tools/ffx/ffx_shaders.py compiles nothing new for it. transparencyAndComposition stays empty: CX marks the
+    // blended class's coverage and what the beam, particle, halo and weather passes changed, which is this input's job.
     x.reactive = Wrap(d->reactive, L"cx reactive");
     x.output = Wrap(d->output, L"cx upscaled");
     x.dilatedDepth = f->backend.iface.fpGetResource(&f->backend.iface, f->shared[0]);

@@ -189,6 +189,10 @@ public sealed unsafe partial class AlloyRenderer
         // the fog over bare sky before the first pass that writes no depth: laid later it would cover what they drew there
         PostStack.SkyFogVk(vk, cl, s.Hdr, s.Depth, w, h, SkyDomeDrew || _capturing, log);
 
+        // the passes the reactive mask covers, the blended class's first, add their own coverage, so it starts at zero
+        cl.BeginLabel("reactive clear"u8);
+        VkReactiveBegin(cl, s, log);
+        cl.EndLabel();
         cl.BeginLabel("blended"u8);
         bool oit = VkOitArm(vk, w, h, log);
         side.Reset();
@@ -248,10 +252,6 @@ public sealed unsafe partial class AlloyRenderer
             cl.EndLabel();
         }
 
-        // the four passes the reactive mask covers write their own coverage into it as they draw, so it starts at zero
-        cl.BeginLabel("reactive clear"u8);
-        VkReactiveBegin(cl, s, log);
-        cl.EndLabel();
         cl.BeginLabel("beams"u8);
         if (!VkBeamPass(vk, cl, s, view, proj, viewport, log)) return false;
         cl.EndLabel();
