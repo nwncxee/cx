@@ -181,14 +181,12 @@ internal static unsafe partial class TexLoad
         Span<IntPtr> tables = stackalloc IntPtr[FormatOrder.Length];
         Span<IntPtr> entries = stackalloc IntPtr[FormatOrder.Length];
         Span<int> kinds = stackalloc int[FormatOrder.Length];
-        IntPtr resman = ResLocate.ResMan;
-        if (resman == IntPtr.Zero) return 0;
+        if (ResLocate.ResMan == IntPtr.Zero) return 0;
+        ResRef rr = ResRef.Of(name);
         for (int f = 0; f < FormatOrder.Length; f++)
         {
             kinds[f] = 0;
-            fixed (IntPtr* tp = tables.Slice(f, 1))
-            fixed (IntPtr* ep = entries.Slice(f, 1))
-                if (EngineFn.ResManGetKeyEntry(resman, name, FormatOrder[f], tp, ep, 0) == 0) continue;
+            if (!ResLocate.Find(&rr, FormatOrder[f], out tables[f], out entries[f])) continue;
             kinds[f] = new CExoKeyTable(tables[f]).Kind;
         }
         int won = Pick(kinds);
@@ -210,13 +208,11 @@ internal static unsafe partial class TexLoad
     /// <summary>[diag] What each format probe found: the container kind per restype, 0 for absent.</summary>
     private static string Race(byte* name)
     {
-        IntPtr resman = ResLocate.ResMan;
+        ResRef rr = ResRef.Of(name);
         var sb = new StringBuilder();
         for (int f = 0; f < FormatOrder.Length; f++)
         {
-            IntPtr table, entry;
-            int kind = resman != IntPtr.Zero && EngineFn.ResManGetKeyEntry(resman, name, FormatOrder[f], &table, &entry, 0) != 0
-                ? new CExoKeyTable(table).Kind : 0;
+            int kind = ResLocate.Find(&rr, FormatOrder[f], out IntPtr table, out _) ? new CExoKeyTable(table).Kind : 0;
             sb.Append($"{(f > 0 ? ", " : "")}0x{FormatOrder[f]:x} kind {kind}");
         }
         return sb.ToString();

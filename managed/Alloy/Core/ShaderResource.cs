@@ -68,8 +68,8 @@ internal static unsafe class ShaderResource
         IntPtr resMan = *(IntPtr*)_resManSym;
         if (resMan == IntPtr.Zero) return null;
 
-        byte* rr = stackalloc byte[ResRefBytes];
-        for (int i = 0; i < ResRefBytes; i++) rr[i] = i < resref.Length ? (byte)resref[i] : (byte)0;
+        ResRef name = ResRef.Of(resref);
+        ResRef* rr = &name;
         if (EngineFn.ResManExists(resMan, rr, type, null) == 0) return null;   // size out-param is null-checked there
 
         IntPtr res = EngineFn.ResManGetResObject(resMan, rr, type);

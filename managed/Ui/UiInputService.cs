@@ -19,6 +19,7 @@ public sealed unsafe class UiInputService : IExtenderService
 
     // ---- SDL_Event layout (verified against WinMessageHandler; same offsets the old capture used) ----
     private const uint SdlKeyDown = 0x300, SdlKeyUp = 0x301, SdlTextInput = 0x303;  // not-an-offset: SDL key/event code
+    private const uint SdlWindowEvent = 0x200;  // not-an-offset: SDL key/event code
     private const uint SdlMouseMotion = 0x400, SdlMouseDown = 0x401, SdlMouseUp = 0x402, SdlMouseWheel = 0x403;  // not-an-offset: SDL key/event code
 
     // NUI keyboard-focus probe: ctx->active (0x6730) is the focused window; win->edit.active (0x18c) is nonzero
@@ -145,6 +146,9 @@ public sealed unsafe class UiInputService : IExtenderService
         {
             switch (*(uint*)ev)
             {
+                case SdlWindowEvent:
+                    if (WindowNotes.Of(((SdlEvent*)ev)->WindowKind) is { } note) _log?.Always($"window: {note}");
+                    break;
                 case SdlKeyDown:
                     // A carried item is what Escape abandons: the gesture eats the key so it cannot also open
                     // the engine's menu behind the drop the player just called off.

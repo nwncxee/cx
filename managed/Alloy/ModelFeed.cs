@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 using CX.Alloy.Mdl;
+using CX.Engine;
 using CX.Framework;
 using static CX.Alloy.TexLoadRead;
 
@@ -29,9 +30,6 @@ internal static unsafe class ModelFeed
         name = resref;
         return MdlResType;
     }
-    /// <summary>A resref is at most 16 characters.</summary>
-    private const int ResRefChars = 16;
-
     private static ExtenderLog? _log;
     private static Source? _source;
     private static long _resident, _nwsyncOff, _refused, _bytes, _ascii, _moved;
@@ -66,8 +64,8 @@ internal static unsafe class ModelFeed
         /// on the main thread before the parsed model is filed, so a resref aliased or a key table rebuilt
         /// mid-read costs a counted miss and not stale bytes under the right name.</summary>
         public uint R0, R1, R2, R3;
-        /// <summary>The resref as a NUL-terminated byte buffer, for the re-prove.</summary>
-        public byte[] Name8 = Array.Empty<byte>();
+        /// <summary>The resref in the engine's 17-byte shape, for the re-prove.</summary>
+        public ResRef Ref;
     }
 
     private sealed class Source : IModelSource
@@ -77,11 +75,8 @@ internal static unsafe class ModelFeed
         {
             ushort type = TypeOf(resref, out resref);
             why = null;
-            byte* name = stackalloc byte[ResRefChars + 1];
-            int n = 0;
-            for (; n < ResRefChars && n < resref.Length; n++) name[n] = (byte)resref[n];
-            name[n] = 0;
-            if (!ResLocate.Find(name, type, out IntPtr table, out IntPtr entry))
+            ResRef name = ResRef.Of(resref);
+            if (!ResLocate.Find(&name, type, out IntPtr table, out IntPtr entry))
             { why = "no key-table entry"; return null; }
             uint* resId = stackalloc uint[ResLocate.ResIdWords];
             if (!ResLocate.Locate(table, entry, resId, out TexLocation loc, out string? w, out ResLocate.Source src))
@@ -95,10 +90,7 @@ internal static unsafe class ModelFeed
                 else { _refused++; why = w ?? "cannot locate"; }
                 return null;
             }
-            var t = new Token { Name = resref, Type = type, Loc = loc, R0 = resId[0], R1 = resId[1], R2 = resId[2], R3 = resId[3] };
-            t.Name8 = new byte[n + 1];
-            for (int i = 0; i < n; i++) t.Name8[i] = name[i];
-            return t;
+            return new Token { Name = resref, Ref = name, Type = type, Loc = loc, R0 = resId[0], R1 = resId[1], R2 = resId[2], R3 = resId[3] };
         }
 
         /// <summary>Game thread, at the publish: ask the engine's lookup again and compare the <c>RESID</c>.
@@ -107,8 +99,8 @@ internal static unsafe class ModelFeed
         public bool StillValid(object token, out string? why)
         {
             var t = (Token)token;
-            fixed (byte* nm = t.Name8)
-                if (ResLocate.StillAt(nm, t.Type, t.R0, t.R1, t.R2, t.R3)) { why = null; return true; }
+            ResRef name = t.Ref;
+            if (ResLocate.StillAt(&name, t.Type, t.R0, t.R1, t.R2, t.R3)) { why = null; return true; }
             _moved++;
             why = "the resource lookup no longer lands on the RESID it was read from";
             return false;
@@ -186,11 +178,8 @@ internal static unsafe class ModelFeed
     {
         if (!ResLocate.Ready && !ResLocate.Attach(out _)) return true;
         ushort type = TypeOf(resref, out string name);
-        byte* nm = stackalloc byte[ResRefChars + 1];
-        int n = 0;
-        for (; n < ResRefChars && n < name.Length; n++) nm[n] = (byte)name[n];
-        nm[n] = 0;
-        return ResLocate.Find(nm, type, out _, out _);
+        ResRef nm = ResRef.Of(name);
+        return ResLocate.Find(&nm, type, out _, out _);
     }
 
     /// <summary>The one source, created on the GAME thread behind the same gate <see cref="Attach"/> uses --

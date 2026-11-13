@@ -26,8 +26,6 @@ internal static unsafe partial class Weather
     private const byte GroupPlayer = 0x11, GroupSmall = 0x12, GroupLarge = 0x10;   // not-an-offset: CExoSound priority group ids
     /// <summary>A CExoString: <c>{char* buf; uint len; uint cap}</c>. not-an-offset: a caller-owned value's size.</summary>
     private const int ExoSize = 16;
-    /// <summary>A CResRef is sixteen chars, not terminated when full. not-an-offset: its size.</summary>
-    private const int ResRefSize = 16;
 
     internal static Knob<bool> WetSteps = null!, SnowFootsteps = null!;
 
@@ -119,8 +117,7 @@ internal static unsafe partial class Weather
         int row = c.FootstepType;
         if (row == -1 && (app < 0 || EngineFn.C2DAGetINTEntry(t.Appearance, app, _colType, &row) == 0)) return false;
         if (c.SoftStep == 1) row = 3;
-        byte* res = stackalloc byte[ResRefSize];
-        if (!Cell(t.FootstepSounds, row, (kind == StepKind.Snow ? _colSnow : _colPud)[Random.Shared.Next(3)], res)) return false;
+        if (!Cell(t.FootstepSounds, row, (kind == StepKind.Snow ? _colSnow : _colPud)[Random.Shared.Next(3)], out ResRef res)) return false;
         byte group = GroupPlayer;
         if (creature != PlayerIdentity.Creature())
         {
@@ -128,31 +125,31 @@ internal static unsafe partial class Weather
             if (app >= 0) EngineFn.C2DAGetINTEntry(t.Appearance, app, _colSize, &size);
             group = (uint)(size - 1) < 3 ? GroupSmall : GroupLarge;
         }
-        EngineFn.SoundPlay3DOneShot(sound, res, VectorArg.Of(&at), 0f, group, 0, 0);
+        EngineFn.SoundPlay3DOneShot(sound, &res, VectorArg.Of(&at), 0f, group, 0, 0);
         if (kind == StepKind.Snow) _stepCounts.Snow++; else _stepCounts.Wet++;
         return true;
     }
 
     /// <summary>A footstepsounds.2da cell as a CResRef in <paramref name="res"/>; false when it is empty.</summary>
-    private static bool Cell(IntPtr twoda, int row, IntPtr column, byte* res)
+    private static bool Cell(IntPtr twoda, int row, IntPtr column, out ResRef res)
     {
+        res = default;
         if (twoda == IntPtr.Zero) return false;
         byte* exo = stackalloc byte[ExoSize];
         NativeMemory.Clear(exo, (nuint)ExoSize);   // the engine frees a non-null buffer first
         bool ok = false;
         if (EngineFn.C2DAGetCExoStringEntry(twoda, row, column, (IntPtr)exo) != 0)
-            ok = CellResRef(*(byte**)exo, res);
+            ok = CellResRef(*(byte**)exo, out res);
         EngineFn.ExoStringDtor((IntPtr)exo);
         return ok;
     }
 
     /// <summary>A cell's text as a lower-case CResRef in <paramref name="res"/>; false when it names no sound, 2DA's
     /// <c>****</c> included.</summary>
-    private static bool CellResRef(byte* s, byte* res)
+    private static bool CellResRef(byte* s, out ResRef res)
     {
-        int n = 0;
-        for (; s != null && n < ResRefSize && s[n] != 0; n++) res[n] = (byte)char.ToLowerInvariant((char)s[n]);
-        for (int i = n; i < ResRefSize; i++) res[i] = 0;
+        res = ResRef.Of(s, lower: true);
+        int n = res.Length;
         return n > 0 && !(n == 4 && res[0] == '*' && res[1] == '*' && res[2] == '*' && res[3] == '*');
     }
 
@@ -255,11 +252,13 @@ internal static unsafe partial class Weather
         // Given a creature the game has no snow footstep sound for
         // When it walks through lying snow
         // Then it makes whatever sound it makes on that ground without the snow
-        byte* res = stackalloc byte[ResRefSize];
         const string Hard = "fs_x0snw_hard1";
         fixed (byte* empty = "****\0"u8, none = "\0"u8, hard = "FS_x0snw_hard1\0"u8)
-            check.Expect(!CellResRef(empty, res) && !CellResRef(none, res) && !CellResRef(null, res) && CellResRef(hard, res)
-              && Encoding.ASCII.GetString(res, Hard.Length) == Hard, "an empty footstep cell plays nothing, so the engine's step goes ahead");
+        {
+            bool heard = CellResRef(hard, out ResRef res);
+            check.Expect(!CellResRef(empty, out _) && !CellResRef(none, out _) && !CellResRef(null, out _) && heard
+              && Encoding.ASCII.GetString((byte*)&res, Hard.Length) == Hard, "an empty footstep cell plays nothing, so the engine's step goes ahead");
+        }
 
         // Given lying snow in an area with a stream, a carpet and a tile built as snow
         // When my character walks on each

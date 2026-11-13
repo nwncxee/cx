@@ -72,8 +72,16 @@ internal static unsafe class ResLocate
     }
 
     /// <summary>The engine's own lookup for <paramref name="name"/> at <paramref name="resType"/>: true with the
-    /// table and entry it lands on. Pure -- <c>logMissing: false</c> makes <c>GetKeyEntry</c> side-effect free.</summary>
+    /// table and entry it lands on. Pure -- <c>logMissing: false</c> makes <c>GetKeyEntry</c> side-effect free.
+    /// The name is copied into a <see cref="ResRef"/> first, so a buffer of any length is safe to pass.</summary>
     internal static bool Find(byte* name, ushort resType, out IntPtr table, out IntPtr entry)
+    {
+        ResRef rr = ResRef.Of(name);
+        return Find(&rr, resType, out table, out entry);
+    }
+
+    /// <summary><see cref="Find(byte*, ushort, out IntPtr, out IntPtr)"/> for a name already in the engine's shape.</summary>
+    internal static bool Find(ResRef* name, ushort resType, out IntPtr table, out IntPtr entry)
     {
         table = entry = IntPtr.Zero;
         IntPtr resman = ResMan;
@@ -87,6 +95,13 @@ internal static unsafe class ResLocate
     /// <paramref name="resId"/> was taken from: what turns a hash collision into a miss rather than the wrong
     /// resource, and a runtime resref alias into a miss rather than stale bytes.</summary>
     internal static bool StillAt(byte* name, ushort resType, uint r0, uint r1, uint r2, uint r3)
+    {
+        ResRef rr = ResRef.Of(name);
+        return StillAt(&rr, resType, r0, r1, r2, r3);
+    }
+
+    /// <summary><see cref="StillAt(byte*, ushort, uint, uint, uint, uint)"/> for a name already in the engine's shape.</summary>
+    internal static bool StillAt(ResRef* name, ushort resType, uint r0, uint r1, uint r2, uint r3)
     {
         if (!Find(name, resType, out _, out IntPtr entry)) return false;
         Span<uint> id = new CKeyTableEntry(entry).ResId;
