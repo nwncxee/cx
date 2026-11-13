@@ -146,6 +146,14 @@ internal static class ItemMenuSelfCheck
         m.Set("row.2", "drop;Drop;;1;1");
         ItemMenuRow[] rows = m.Rows();
         check.Expect(!rows[0].RuleAbove && rows[1].RuleAbove, "a row whose fifth field is 1 starts a group, with a rule above it; one without it does not");
+        m.Set("look", "#261C14;#3B2D20;#615032;#C7B9A0;#33261A;#5A4630;#615032");
+        CX.Ui.CascadeStyle drawn = ItemMenuService.Look(0, m.Look);
+        check.Expect(drawn.Rows && drawn.Bg.a == 0f && drawn.Frame.a == 0f, "under the server's look each row is a list row of its own, on no body or frame");
+        check.Expect(drawn.RowFill == CX.Ui.CascadeStyle.Rgba(0x261C14FFu) && drawn.RowStripe == CX.Ui.CascadeStyle.Rgba(0x615032FFu)
+                     && drawn.Hover == CX.Ui.CascadeStyle.Rgba(0x33261AFFu) && drawn.TextRgb == 0xC7B9A0u,
+            "the rows draw in the server's fill, stripe, hover and text colours");
+        check.Expect(!ItemMenuService.Look(0, new ItemMenuLook()).Rows, "with no look from the server the menu keeps the NUI skin's plain list");
+        m.Set("look", "#11223380;;;;;;");
         m.Close();
         check.Expect(m.Look.Fill == 0x11223380u && m.Look.RowHeight == 28f, "a closed menu keeps its look for the next one");
         check.Expect(m.Set("look", "") == null && m.Set("rowheight", "") == null && m.Look.Fill == null && m.Look.RowHeight == 0,

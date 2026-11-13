@@ -68,7 +68,7 @@ internal static class ItemMenuService
     }
 
     /// <summary>Per frame: open, re-open or close the cascade to match what the server declared, then draw it as the server's
-    /// own NUI menu looks: NUI's text size, the NUI skin's colours, no frame art and no fade.</summary>
+    /// own NUI menu looks: the NUI skin's font, the server's colours and row height, no frame art and no fade.</summary>
     private static void Draw()
     {
         ItemMenuModel m = ItemMenuPolicy.Menu;
@@ -82,7 +82,7 @@ internal static class ItemMenuService
         if (!On) { Dismiss(); return; }
         VertexBatch b = _s.Batch ??= new VertexBatch(atlas.SolidU, atlas.SolidV);
         b.Reset(atlas.SolidU, atlas.SolidV);
-        _s.Style = Look(Environment.TickCount64);
+        _s.Style = Look(Environment.TickCount64, m.Look);
         Menu.Draw(b, atlas, atlas.Ascent, in _s.Style);
         TextRig.DrawBatch(b.AsSpan(), b.VertexCount);
         foreach (IconQuad q in Menu.Icons)
@@ -98,25 +98,50 @@ internal static class ItemMenuService
         NowMs = nowMs,
     };
 
+    /// <summary>
+    /// The menu's look under the server's own: each row a list row of the server's colours, with no body or frame of its own,
+    /// since the server's menu is a column of rows on nothing; a colour the server left empty keeps the NUI skin's.
+    /// </summary>
+    internal static CascadeStyle Look(long nowMs, ItemMenuLook look)
+    {
+        CascadeStyle st = Look(nowMs);
+        if (look.Fill == null && look.Edge == null && look.Stripe == null && look.Text == null
+            && look.HoverFill == null && look.HoverEdge == null && look.Rule == null)
+            return st;
+        st.Rows = true;
+        st.Bg = st.Frame = (0f, 0f, 0f, 0f);
+        st.RowFill = CascadeStyle.Rgba(look.Fill ?? Theme.NuiRgba(Role.ListBg));
+        st.RowEdge = CascadeStyle.Rgba(look.Edge ?? Theme.NuiRgba(Role.Tx2));
+        st.RowStripe = CascadeStyle.Rgba(look.Stripe ?? look.Edge ?? Theme.NuiRgba(Role.Tx2));
+        st.Hover = CascadeStyle.Rgba(look.HoverFill ?? Theme.NuiRgba(Role.Selected));
+        st.HoverEdge = CascadeStyle.Rgba(look.HoverEdge ?? look.Edge ?? Theme.NuiRgba(Role.Tx2));
+        st.Rule = CascadeStyle.Rgba(look.Rule ?? look.Edge ?? Theme.NuiRgba(Role.Tx2));
+        st.StripePx = MathF.Round(StripeUnits * Metrics.GameUiScale);
+        if (look.Text is uint text) st.TextRgb = text >> 8;
+        return st;
+    }
+
+    /// <summary>The stripe down a NUI list row's left edge, in NUI units.</summary>
+    private const float StripeUnits = 3f;
+
     /// <summary>The menu draws no frame art: the server's NUI menu has none.</summary>
     internal static bool DrawsArt => false;
 
-    /// <summary>The stock <c>nui_skin.tml</c>'s body text, <c>fnt_maintext</c>, in px at UI scale 1.</summary>
-    private const float NuiTextPx = 17f;
-
-    /// <summary>The menu's face: NUI's body text size at the game's UI scale, so its rows stand as tall as the NUI menu's.
-    /// The UI face stands in until that one is baked.</summary>
+    /// <summary>The menu's face: the NUI skin's default font at its own size and the game's UI scale, as the server's NUI menu
+    /// draws its labels. The UI face stands in when the skin's font could not be read, and until it is baked.</summary>
     private static GlyphAtlas? Face()
     {
-        float px = MathF.Round(NuiTextPx * Metrics.GameUiScale);
-        return TextRig.BakedFace(px) ?? (_s.FaceAsked == px ? TextRig.Atlas : Ask(px));
+        float skinPx = NuiSkinFontLoad.Ensure(_log);
+        if (skinPx <= 0f) return TextRig.Atlas;
+        float px = MathF.Round(skinPx * Metrics.GameUiScale);
+        return TextRig.BakedFace(NuiSkinFontLoad.FaceName, px) ?? (_s.FaceAsked == px ? TextRig.Atlas : Ask(px));
     }
 
     /// <summary>Bakes the face once per size: the first open at a new UI scale waits for it, and every later frame finds it baked.</summary>
     private static GlyphAtlas? Ask(float px)
     {
         _s.FaceAsked = px;
-        return TextRig.Face(px) ?? TextRig.Atlas;
+        return TextRig.Face(NuiSkinFontLoad.FaceName, px) ?? TextRig.Atlas;
     }
 
     /// <summary>True while the menu is on screen.</summary>
@@ -131,12 +156,13 @@ internal static class ItemMenuService
         ItemMenuRow[] rows = m.Rows();
         var items = new CascadeItem[rows.Length];
         for (int i = 0; i < rows.Length; i++)
-            items[i] = new CascadeItem(rows[i].Label, rows[i].Icon, disabled: !rows[i].Enabled, tag: rows[i].Id);
+            items[i] = new CascadeItem(rows[i].Label, rows[i].Icon, disabled: !rows[i].Enabled, tag: rows[i].Id) { RuleAbove = rows[i].RuleAbove };
         if (m.Gen != _s.OpenGen)
         {
             _s.OpenGen = m.Gen;
             (_s.OpenX, _s.OpenY) = m.At(_s.PointerX, _s.PointerY);
         }
+        Menu.FixedItemH = MathF.Round(m.Look.RowHeight * Metrics.GameUiScale);
         Menu.OpenAt(items, _s.OpenX, _s.OpenY, atlas, viewportW, viewportH);
         Modal(true);
         _log?.Info($"[itemmenu] open at {_s.OpenX},{_s.OpenY} with {rows.Length} row(s)");

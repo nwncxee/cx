@@ -39,6 +39,10 @@ internal sealed class ItemMenuModel
     internal const string OpenKey = "open";
     /// <summary>The open value that places the menu at the pointer rather than at a pixel.</summary>
     internal const string PointerValue = "pointer";
+    /// <summary>The keys for the server's look: seven colours, and the row height in NUI units.</summary>
+    internal const string LookKey = "look", RowHeightKey = "rowheight";
+    /// <summary>The tallest row height taken, in NUI units: past it a typo, not a menu.</summary>
+    internal const float MaxRowHeight = 128f;
     /// <summary>What a row key starts with: the rest is its order.</summary>
     internal const string RowPrefix = "row.";
     /// <summary>The most rows one menu may carry; a server past it is refused.</summary>
@@ -94,9 +98,11 @@ internal sealed class ItemMenuModel
             X = x; Y = y; AtPointer = false; Open = true; Gen++;
             return null;
         }
+        if (key.Equals(LookKey, StringComparison.OrdinalIgnoreCase)) return SetLook(value);
+        if (key.Equals(RowHeightKey, StringComparison.OrdinalIgnoreCase)) return SetRowHeight(value);
         if (!key.StartsWith(RowPrefix, StringComparison.OrdinalIgnoreCase)
             || !int.TryParse(key.AsSpan(RowPrefix.Length), NumberStyles.None, CultureInfo.InvariantCulture, out int order))
-            return $"the keys are {OpenKey} and {RowPrefix}<n>";
+            return $"the keys are {OpenKey}, {LookKey}, {RowHeightKey} and {RowPrefix}<n>";
         if (value.Length == 0)
         {
             if (_rows.Remove(order)) Gen++;
@@ -108,9 +114,57 @@ internal sealed class ItemMenuModel
         string label = f[1].Length > MaxLabel ? f[1][..MaxLabel] : f[1];
         string icon = f.Length > 2 && f[2].Length <= MaxIcon ? f[2] : "";
         bool enabled = f.Length <= 3 || f[3] != "0";
-        _rows[order] = new ItemMenuRow(order, f[0], label, icon, enabled);
+        bool ruleAbove = f.Length > 4 && f[4] == "1";
+        _rows[order] = new ItemMenuRow(order, f[0], label, icon, enabled, ruleAbove);
         Gen++;
         return null;
+    }
+
+    /// <summary><c>look=&lt;fill&gt;;&lt;edge&gt;;&lt;stripe&gt;;&lt;text&gt;;&lt;hover fill&gt;;&lt;hover edge&gt;;&lt;rule&gt;</c>, each
+    /// <c>#RRGGBB</c> or <c>#RRGGBBAA</c> or empty for the NUI skin's. Taken whole or refused whole; empty gives it all back.</summary>
+    private string? SetLook(string value)
+    {
+        if (value.Length == 0)
+        {
+            Look.Fill = Look.Edge = Look.Stripe = Look.Text = Look.HoverFill = Look.HoverEdge = Look.Rule = null;
+            Gen++;
+            return null;
+        }
+        string[] f = value.Split(';');
+        if (f.Length != 7) return "look takes seven colours: fill;edge;stripe;text;hover fill;hover edge;rule";
+        var parsed = new uint?[7];
+        for (int i = 0; i < 7; i++)
+        {
+            if (f[i].Length == 0) continue;
+            if (!TryColour(f[i], out uint c)) return $"'{f[i]}' is not #RRGGBB or #RRGGBBAA";
+            parsed[i] = c;
+        }
+        Look.Fill = parsed[0]; Look.Edge = parsed[1]; Look.Stripe = parsed[2]; Look.Text = parsed[3];
+        Look.HoverFill = parsed[4]; Look.HoverEdge = parsed[5]; Look.Rule = parsed[6];
+        Gen++;
+        return null;
+    }
+
+    /// <summary><c>rowheight=&lt;units&gt;</c>, the row height in NUI units at UI scale 1; empty follows the text again.</summary>
+    private string? SetRowHeight(string value)
+    {
+        if (value.Length == 0) { Look.RowHeight = 0f; Gen++; return null; }
+        if (!float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float h) || !(h > 0f) || h > MaxRowHeight)
+            return $"rowheight takes a number of NUI units above 0, at most {MaxRowHeight}";
+        Look.RowHeight = h;
+        Gen++;
+        return null;
+    }
+
+    /// <summary><c>#RRGGBB</c> (opaque) or <c>#RRGGBBAA</c> as <c>rrggbbaa</c>.</summary>
+    internal static bool TryColour(string s, out uint rgba)
+    {
+        rgba = 0;
+        if (s.Length is not (7 or 9) || s[0] != '#'
+            || !uint.TryParse(s.AsSpan(1), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out uint v))
+            return false;
+        rgba = s.Length == 7 ? (v << 8) | 0xFF : v;
+        return true;
     }
 
     /// <summary>Everything the server declared is gone: the menu is closed and holds no row.</summary>

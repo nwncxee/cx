@@ -249,6 +249,14 @@ public static class FontRegistry
         _boot = _entries[DefaultName];
     }
 
+    /// <summary>Declares <paramref name="name"/> from bytes the caller read, such as a font the game's own resources hold.
+    /// Replaces an earlier declaration of the name.</summary>
+    public static void Declare(string name, byte[] bytes, string source)
+    {
+        lock (_entries) _entries[name] = new Entry { Name = name, Source = source, Bytes = bytes };
+        _log?.Info($"FontRegistry: {name} = {source} ({bytes.Length} bytes)");
+    }
+
     /// <summary>Bytes for <paramref name="name"/>, or the default's when unknown or refused. Null only when the
     /// embedded default itself is missing from the image.</summary>
     public static byte[]? Bytes(string name)

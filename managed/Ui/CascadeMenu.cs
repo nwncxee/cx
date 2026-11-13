@@ -15,6 +15,8 @@ public struct CascadeItem
     public IntPtr IconHandle;
     public bool Disabled;
     public bool HasChildren;
+    /// <summary>The row starts a group: under a <see cref="CascadeStyle.Rows"/> look, a rule is drawn along its top.</summary>
+    public bool RuleAbove;
     public string Count;
     public object? Tag;
 
@@ -65,6 +67,12 @@ public struct CascadeStyle
     public float Alpha;
     public int AnimMs;
     public long NowMs;
+    /// <summary>Each row drawn as a list row of its own: <see cref="RowFill"/> with a <see cref="StripePx"/> stripe of
+    /// <see cref="RowStripe"/> down its left and a <see cref="RowEdge"/> outline; a hovered one takes <see cref="Hover"/>
+    /// and <see cref="HoverEdge"/>, and a group's first row a <see cref="Rule"/> along its top.</summary>
+    public bool Rows;
+    public (float r, float g, float b, float a) RowFill, RowEdge, RowStripe, HoverEdge, Rule;
+    public float StripePx;
 
     /// <summary>A knob swatch (RRGGBBAA) as the fill tuple.</summary>
     public static (float r, float g, float b, float a) Rgba(uint c)
@@ -185,6 +193,8 @@ public sealed partial class CascadeMenu
     public bool Open => Depth > 0;
     /// <summary>Row height, set at <see cref="OpenAt"/>: the face's line height plus <see cref="Pad"/> each side.</summary>
     public float ItemH { get; private set; }
+    /// <summary>A row height the owner sets, in px; 0 sizes rows to the face.</summary>
+    public float FixedItemH;
     public CascadeLevel Level(int i) => _lv[i];
     /// <summary>Icon squares fully inside their level band as of the last <see cref="Draw"/>.</summary>
     public ReadOnlySpan<IconQuad> Icons => new(_icons, 0, _iconN);
@@ -193,7 +203,7 @@ public sealed partial class CascadeMenu
     public void OpenAt(CascadeItem[] items, float x, float y, GlyphAtlas atlas, float viewportW, float viewportH)
     {
         _atlas = atlas; _vpW = viewportW; _vpH = viewportH;
-        ItemH = atlas.LineHeight + 2f * Pad;
+        ItemH = FixedItemH > 0f ? FixedItemH : atlas.LineHeight + 2f * Pad;
         long opened = Depth > 0 ? _lv[0].OpenedMs : -1;   // a re-layout of an open root does not re-animate
         Depth = 0;
         Place(_lv[0], Layout(_lv[0], items), x, y, -1);
@@ -484,6 +494,19 @@ public sealed partial class CascadeMenu
         return CascadeAction.None;
     }
 
+    /// <summary>One row under a <see cref="CascadeStyle.Rows"/> look: its fill, stripe and outline, the hover's fill and
+    /// outline over them when <paramref name="lit"/>, and a group's rule along the top, inset by <paramref name="pad"/>.</summary>
+    private void DrawRow(VertexBatch b, in CascadeStyle st, in CascadeItem it, float x0, float top, float x1, bool lit, float pad, float alpha)
+    {
+        float y1 = top + ItemH, stripe = st.StripePx;
+        var fill = lit ? st.Hover : st.RowFill;
+        var edge = lit ? st.HoverEdge : st.RowEdge;
+        b.Rect(x0 + stripe, top, x1, y1, fill.r, fill.g, fill.b, fill.a * alpha);
+        b.Rect(x0, top, x0 + stripe, y1, st.RowStripe.r, st.RowStripe.g, st.RowStripe.b, st.RowStripe.a * alpha);
+        Outline(b, x0, top, x1, y1, edge, alpha);
+        if (it.RuleAbove) b.Rect(x0 + pad, top, x1 - pad, top + 1f, st.Rule.r, st.Rule.g, st.Rule.b, st.Rule.a * alpha);
+    }
+
     /// <summary>A 1 px frame just inside the rect, as four strips: a filled rect under the bg would tint a
     /// translucent bg with the frame colour.</summary>
     private static void Outline(VertexBatch b, float x0, float y0, float x1, float y1, (float r, float g, float b, float a) c, float alpha)
@@ -539,7 +562,8 @@ public sealed partial class CascadeMenu
                 float top = lv.List.ToScreen(r * ItemH) + oy;
                 if (top + ItemH <= y0 || top >= y1) continue;
                 ref CascadeItem it = ref lv.Items[r];
-                if (r == owning) b.Rect(x0, top, fillR, top + ItemH, active.r, active.g, active.b, active.a * alpha);
+                if (st.Rows) DrawRow(b, in st, in it, x0, top, fillR, r == owning || r == lv.Hover, pad, alpha);
+                else if (r == owning) b.Rect(x0, top, fillR, top + ItemH, active.r, active.g, active.b, active.a * alpha);
                 else if (r == lv.Hover) b.Rect(x0, top, fillR, top + ItemH, active.r, active.g, active.b, active.a * 0.55f * alpha);
                 float a = (it.Disabled ? DisabledAlpha : 1f) * st.TextAlpha * alpha;
                 if (RowDrag && i == _pressLevel && r == _pressRow) a *= DragSourceAlpha;
