@@ -70,7 +70,7 @@ public sealed unsafe partial class AlloyRenderer
     }
 
     /// <summary>The resolve into the scene colour (weighted mean under ONE_MINUS_SRC_ALPHA / SRC_ALPHA, or unblended)
-    /// and into the reactive mask, with the blended class's coverage; the viz view leaves the mask alone.</summary>
+    /// and into the reactive mask, with the blended class's coverage (zero from the viz view).</summary>
     private static PipelineId VkOitPipe(VkBackend vk, GuiVkProg p, bool blend)
     {
         var d = new PipelineDesc { Vs = p.Vs, Fs = p.Fs, Label = blend ? "vk oit resolve" : "vk oit resolve viz" };
@@ -81,7 +81,7 @@ public sealed unsafe partial class AlloyRenderer
         if (blend)
             d.Blend[0] = new AttachmentBlend(true, BlendFactor.OneMinusSrcAlpha, BlendFactor.SrcAlpha,
                                              BlendFactor.OneMinusSrcAlpha, BlendFactor.SrcAlpha);
-        d.Blend[1] = blend ? ReactiveOver : new AttachmentBlend(Masked: ColorMask.All);
+        d.Blend[1] = ReactiveBlend(OitPass.OitResolveFs.Contains("fragReact", StringComparison.Ordinal));
         return vk.CreatePipeline(in d);
     }
 
