@@ -24,6 +24,10 @@ public struct CascadeItem
     { Label = label; Icon = icon; Disabled = disabled; HasChildren = hasChildren; Count = count; Tag = tag; }
 }
 
+/// <summary>A list row's geometry, in px: the stripe down its left, where its icon starts (<see cref="Lead"/>), how far the
+/// icon stands in from the row's top and bottom, the gap before the label, and the room left after the longest label.</summary>
+public readonly record struct CascadeRowLayout(float Stripe, float Lead, float IconInset, float Gap, float Trail);
+
 public enum CascadeActionKind { None, Activate, RequestChildren, Context, CloseAll, Drop }
 
 /// <summary>What an input did: nothing; a leaf picked (on the release of an undragged left press); a submenu row
@@ -195,6 +199,8 @@ public sealed partial class CascadeMenu
     public float ItemH { get; private set; }
     /// <summary>A row height the owner sets, in px; 0 sizes rows to the face.</summary>
     public float FixedItemH;
+    /// <summary>A list row's geometry the owner sets, in px; null lays rows out from the face.</summary>
+    public CascadeRowLayout? Row;
     public CascadeLevel Level(int i) => _lv[i];
     /// <summary>Icon squares fully inside their level band as of the last <see cref="Draw"/>.</summary>
     public ReadOnlySpan<IconQuad> Icons => new(_icons, 0, _iconN);

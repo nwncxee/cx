@@ -26,6 +26,8 @@ internal sealed class ItemMenuLook
     public uint? Fill, Edge, Stripe, Text, HoverFill, HoverEdge, Rule;
     /// <summary>The row height in NUI units at UI scale 1; 0 when the server named none.</summary>
     public float RowHeight;
+    /// <summary>The row's geometry in NUI units at UI scale 1; null when the server named none.</summary>
+    public CX.Ui.CascadeRowLayout? Layout;
 }
 
 /// <summary>

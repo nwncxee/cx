@@ -19,6 +19,7 @@ internal static class ItemMenuSelfCheck
         AboveNui(check);
         NuiLook(check);
         ServerLook(check);
+        ServerLayout(check);
         log.Info(check.Ok ? "ItemMenuSelfCheck: passed" : "ItemMenuSelfCheck: FAILED");
     }
 
@@ -158,6 +159,31 @@ internal static class ItemMenuSelfCheck
         check.Expect(m.Look.Fill == 0x11223380u && m.Look.RowHeight == 28f, "a closed menu keeps its look for the next one");
         check.Expect(m.Set("look", "") == null && m.Set("rowheight", "") == null && m.Look.Fill == null && m.Look.RowHeight == 0,
             "empty values give the look back to the NUI skin");
+    }
+
+    /// <summary>The server's row layout: where a list row puts its icon and label, and how much room it leaves after the
+    /// label, so the menu is as wide as the server's own. Oracle: the line typed here, and a stand-in font of 6 px glyphs.</summary>
+    private static void ServerLayout(Checker check)
+    {
+        var m = new ItemMenuModel();
+        check.Expect(m.Set("layout", "3;15;4;8;28") == null && m.Look.Layout is { } l
+                     && l.Stripe == 3f && l.Lead == 15f && l.IconInset == 4f && l.Gap == 8f && l.Trail == 28f,
+            "a layout of five NUI-unit numbers is taken: stripe, lead, icon inset, label gap, trail");
+        check.Expect(m.Set("layout", "3;15;4;8") != null && m.Set("layout", "3;15;-4;8;28") != null && m.Look.Layout?.Lead == 15f,
+            "a layout short of a number, or with a negative one, is refused and the last one stands");
+        check.Expect(m.Set("layout", "") == null && m.Look.Layout == null, "an empty layout gives the row back to the font's own");
+
+        var atlas = new CX.Ui.GlyphAtlas { LineHeight = 20, Ascent = 15 };
+        for (char ch = 'a'; ch <= 'z'; ch++) atlas.SetTestGlyph(ch, 6f);
+        var menu = new CX.Ui.CascadeMenu { FixedItemH = 28f, Row = new CX.Ui.CascadeRowLayout(3f, 15f, 4f, 8f, 28f) };
+        menu.OpenAt(new[] { new CX.Ui.CascadeItem("use", "ir_x") }, 100f, 100f, atlas, 1920f, 1080f);
+        var look = new ItemMenuLook { Fill = 0x261C14FFu };
+        CX.Ui.CascadeStyle st = ItemMenuService.Look(0, look);
+        menu.Draw(new CX.Ui.VertexBatch(0f, 0f), atlas, atlas.Ascent, in st);
+        var icons = menu.Icons;
+        check.Expect(icons.Length == 1 && icons[0].X == 115f && icons[0].Y == 104f && icons[0].Size == 20f,
+            $"the icon sits past the stripe and inset, inset from the row's top and bottom ({(icons.Length == 0 ? "none" : $"{icons[0].X},{icons[0].Y} {icons[0].Size}")})");
+        check.Expect(menu.Level(0).W == 15f + 20f + 8f + 18f + 28f, $"the menu is as wide as lead, icon, gap, label and trail ({menu.Level(0).W})");
     }
 
     /// <summary>Oracle: the word pointer typed here, which a server sends because it knows the element pressed and not the
