@@ -1,4 +1,5 @@
 using CX.Framework;
+using CX.Services.Nui;
 
 namespace CX.Services.NuiItems;
 
@@ -16,13 +17,17 @@ internal static class NuiItemMenuApprovedExamples
     /// <summary>The policy prefix the server's menu arrives under.</summary>
     private const string MenuPrefix = "menu.";
 
-    public static void Run(ExtenderLog log)
+    public static void Run(ExtenderLog log) => Passes(log);
+
+    /// <summary>Runs the suite and logs its result; true when it passed.</summary>
+    internal static bool Passes(ExtenderLog log)
     {
         var check = new Checker(log, "NuiItemMenuApprovedExamples.SelfCheck");
         Capability(check);
         Rows(check);
         Closes(check);
         log.Info(check.Ok ? "NuiItemMenuApprovedExamples.SelfCheck: passed" : "NuiItemMenuApprovedExamples.SelfCheck: FAILED");
+        return check.Ok;
     }
 
     // Given a healing potion in my pack in the hub's Inventory tab
@@ -33,7 +38,10 @@ internal static class NuiItemMenuApprovedExamples
     // so the login set carries the capability at version 1. Oracle: the name and the version typed above.
     private static void Capability(Checker check)
     {
+        bool nuiWas = NuiKnobs.Enabled.V;
+        NuiKnobs.Enabled.Set(true);
         var sent = Capabilities.Collect("0.7.0");
+        NuiKnobs.Enabled.Set(nuiWas);
         bool menu = false;
         foreach (var (name, value) in sent)
             if (name == MenuCapability && value == MenuVersion) menu = true;

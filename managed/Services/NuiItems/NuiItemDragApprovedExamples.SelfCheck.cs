@@ -17,7 +17,10 @@ internal static class NuiItemDragApprovedExamples
     /// <summary>The player's own switch for the drag, in the settings tree.</summary>
     private const string DragKnob = "nui.drag";
 
-    public static void Run(ExtenderLog log)
+    public static void Run(ExtenderLog log) => Passes(log);
+
+    /// <summary>Runs the suite and logs its result; true when it passed.</summary>
+    internal static bool Passes(ExtenderLog log)
     {
         var check = new Checker(log, "NuiItemDragApprovedExamples.SelfCheck");
         Capability(check);
@@ -25,6 +28,7 @@ internal static class NuiItemDragApprovedExamples
         Gesture(check);
         Knob(check);
         log.Info(check.Ok ? "NuiItemDragApprovedExamples.SelfCheck: passed" : "NuiItemDragApprovedExamples.SelfCheck: FAILED");
+        return check.Ok;
     }
 
     // Given a dagger in the first cell of my pack and the last cell of the page empty
@@ -99,12 +103,13 @@ internal static class NuiItemDragApprovedExamples
     private static void Knob(Checker check)
     {
         check.Expect(KnobGroup.Find(DragKnob) != null, $"DD12 the settings tree declares {DragKnob}, the switch the capability stands behind");
-        bool was = NuiKnobs.Drag.V;
+        bool was = NuiKnobs.Drag.V, nuiWas = NuiKnobs.Enabled.V;
         NuiKnobs.Enabled.Set(true);
         NuiKnobs.Drag.Set(false);
         check.Expect(!ItemDragService.Live(armed: true), "DD12 the drag knob off withdraws the capability, so a press stays a click");
         NuiKnobs.Drag.Set(true);
         check.Expect(ItemDragService.Live(armed: true), "DD12 ...and turning it back on offers the drag again");
         NuiKnobs.Drag.Set(was);
+        NuiKnobs.Enabled.Set(nuiWas);
     }
 }
