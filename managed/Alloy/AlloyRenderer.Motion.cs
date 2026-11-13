@@ -120,6 +120,20 @@ public sealed unsafe partial class AlloyRenderer
         var (c3, m3) = MoveLevels(in at, in turned);
         check.Expect(!c3 && m3, "a 0,17 degree turn moves the velocity but does not re-bake the shadow");
 
+        check.Expect(EnsureBoneSlots(1), "the bone stage holds one slot");
+        if (_boneStage.Length > 0 && _bonePrevStage.Length > 0)
+        {
+            int i = MaxOwned - 1, keepBone = _oBone[i], keepSlots = _boneSlots, keepMv = _mvMovedAt[i];
+            BonePalette keepNow = _boneStage.Span[0], keepPrev = _bonePrevStage.Span[0];
+            _oBone[i] = 0; _boneSlots = 1; _mvMovedAt[i] = _frameSeq - 1;
+            _boneStage.Span[0] = a; _bonePrevStage.Span[0] = b;
+            check.Expect(SlotMoverNow(i, posed: true, dangly: false), "a standing skin whose staged pose changed is a mover");
+            _bonePrevStage.Span[0] = a;
+            check.Expect(!SlotMoverNow(i, posed: true, dangly: false), "a standing skin holding its pose is not");
+            _oBone[i] = keepBone; _boneSlots = keepSlots; _mvMovedAt[i] = keepMv;
+            _boneStage.Span[0] = keepNow; _bonePrevStage.Span[0] = keepPrev;
+        }
+
         check.Expect(MoverClass((int)AlloyClass.Opaque, 0), "an opaque part joins the sweep");
         check.Expect(MoverClass((int)AlloyClass.Cutout, 0), "a cutout part joins the sweep");
         check.Expect(!MoverClass((int)AlloyClass.Blended, 0), "a blended part writes no depth and stays out");
