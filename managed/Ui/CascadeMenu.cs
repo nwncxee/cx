@@ -201,6 +201,10 @@ public sealed partial class CascadeMenu
     public float FixedItemH;
     /// <summary>A list row's geometry the owner sets, in px; null lays rows out from the face.</summary>
     public CascadeRowLayout? Row;
+    /// <summary>Labels drawn with every glyph on a whole pixel, as a NUI skin's <c>pixel_snap</c> draws them.</summary>
+    public bool SnapText;
+    /// <summary>Extra px between a label's glyphs, as a NUI skin's <c>spacing_h</c> puts them.</summary>
+    public float TextSpacing;
     public CascadeLevel Level(int i) => _lv[i];
     /// <summary>Icon squares fully inside their level band as of the last <see cref="Draw"/>.</summary>
     public ReadOnlySpan<IconQuad> Icons => new(_icons, 0, _iconN);

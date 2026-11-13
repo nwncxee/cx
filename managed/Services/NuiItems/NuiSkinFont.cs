@@ -32,4 +32,11 @@ internal static class NuiSkinFont
         }
         return resref.Length > 0 && px > 0f;
     }
+
+    /// <summary>How the default font's text is laid down: its <c>spacing_h</c> in px and its <c>pixel_snap</c>.</summary>
+    internal static bool Text(string skin, out float spacing, out bool snap)
+    {
+        spacing = 0f; snap = false;
+        return false;
+    }
 }

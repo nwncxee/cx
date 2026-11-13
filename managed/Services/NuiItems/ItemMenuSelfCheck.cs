@@ -1,3 +1,4 @@
+using System;
 using CX.Framework;
 
 namespace CX.Services.NuiItems;
@@ -184,6 +185,24 @@ internal static class ItemMenuSelfCheck
         check.Expect(icons.Length == 1 && icons[0].X == 115f && icons[0].Y == 104f && icons[0].Size == 20f,
             $"the icon sits past the stripe and inset, inset from the row's top and bottom ({(icons.Length == 0 ? "none" : $"{icons[0].X},{icons[0].Y} {icons[0].Size}")})");
         check.Expect(menu.Level(0).W == 15f + 20f + 8f + 18f + 28f, $"the menu is as wide as lead, icon, gap, label and trail ({menu.Level(0).W})");
+
+        // A 21 px line in a 28 px row puts the baseline half a pixel off, and 6.4 px advances put every glyph between pixels.
+        var odd = new CX.Ui.GlyphAtlas { LineHeight = 21, Ascent = 16 };
+        foreach (char ch in "use") odd.SetTestGlyph(ch, 6.4f, 5, 9);
+        var snapped = new CX.Ui.CascadeMenu
+        {
+            FixedItemH = 28f, Row = new CX.Ui.CascadeRowLayout(3f, 15f, 4f, 8f, 28f), SnapText = true, TextSpacing = 0.5f,
+        };
+        snapped.OpenAt(new[] { new CX.Ui.CascadeItem("use") }, 100f, 100f, odd, 1920f, 1080f);
+        var batch = new CX.Ui.VertexBatch(0f, 0f);
+        snapped.Draw(batch, odd, odd.Ascent, in st);
+        ReadOnlySpan<float> v = batch.AsSpan();
+        bool whole = v.Length > 0;
+        for (int i = 0; i < v.Length; i += CX.Ui.VertexBatch.Floats)
+            whole &= v[i] == MathF.Round(v[i]) && v[i + 1] == MathF.Round(v[i + 1]);
+        check.Expect(whole, "with the skin's pixel snap every glyph is drawn on whole pixels, as NUI draws it, so the label is sharp");
+        check.Expect(MathF.Abs(snapped.Level(0).W - (15f + 3f * (6.4f + 0.5f) + 28f)) < 0.01f,
+            $"the skin's spacing goes between the glyphs, and the menu is as wide as that ({snapped.Level(0).W})");
     }
 
     /// <summary>Oracle: the word pointer typed here, which a server sends because it knows the element pressed and not the

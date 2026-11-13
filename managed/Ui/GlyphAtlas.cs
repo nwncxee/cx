@@ -56,4 +56,9 @@ public sealed class GlyphAtlas
     /// <summary>Test-only: register a glyph advance for a codepoint so off-device self-checks can exercise
     /// measurement/alignment without a native font bake.</summary>
     internal void SetTestGlyph(int cp, float advance) => Store(cp, new Glyph { Advance = advance });
+
+    /// <summary>Test-only: a glyph with a box, so a draw emits its quad: <paramref name="w"/> by <paramref name="h"/> px,
+    /// standing on the baseline.</summary>
+    internal void SetTestGlyph(int cp, float advance, int w, int h) =>
+        Store(cp, new Glyph { Advance = advance, W = w, H = h, YOff = -h, U1 = 1f, V1 = 1f });
 }
