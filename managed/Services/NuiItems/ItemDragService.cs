@@ -65,6 +65,10 @@ internal static class ItemDragService
     /// <summary>Escape, or anything else that abandons the gesture.</summary>
     internal static void OnCancel() => Act(Model.Cancel());
 
+    /// <summary>The image a drag from <paramref name="pressedId"/> carries: its <c>held.pick.</c> image when the server declared
+    /// one, else <paramref name="drawn"/>, the image the element drew when it was pressed.</summary>
+    internal static string CarryImage(string pressedId, string drawn) => "";
+
     /// <summary>True while an item is being carried, so a caller can leave the gesture alone.</summary>
     internal static bool Dragging => Model.Dragging;
 

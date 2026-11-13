@@ -83,8 +83,13 @@ internal static class ItemMenuService
             if (q.Resref.Length != 0) TextRig.DrawIcon(q.Resref, q.X, q.Y, q.Size, q.Size, q.Alpha);
     }
 
+    /// <summary>True while the menu is on screen.</summary>
+    internal static bool IsOpen => Menu.Open;
+
+    private static void Sync(ItemMenuModel m, GlyphAtlas atlas) => Show(m, atlas, TextRig.ViewportW, TextRig.ViewportH);
+
     /// <summary>Show what the server declared: its rows at its point, or nothing at all.</summary>
-    private static void Sync(ItemMenuModel m, GlyphAtlas atlas)
+    internal static void Show(ItemMenuModel m, GlyphAtlas atlas, int viewportW, int viewportH)
     {
         if (!m.Open || m.RowCount == 0) { Menu.Close(); return; }
         ItemMenuRow[] rows = m.Rows();
@@ -92,7 +97,7 @@ internal static class ItemMenuService
         for (int i = 0; i < rows.Length; i++)
             items[i] = new CascadeItem(rows[i].Label, rows[i].Icon, disabled: !rows[i].Enabled, tag: rows[i].Id);
         (int x, int y) = m.At(_s.PointerX, _s.PointerY);
-        Menu.OpenAt(items, x, y, atlas, TextRig.ViewportW, TextRig.ViewportH);
+        Menu.OpenAt(items, x, y, atlas, viewportW, viewportH);
         _log?.Info($"[itemmenu] open at {x},{y} with {rows.Length} row(s)");
     }
 

@@ -91,6 +91,12 @@ internal sealed class HeldImageModel
         return changed;
     }
 
+    /// <summary>True while a gesture the client owns, a drag, carries the image.</summary>
+    public bool Carried { get; private set; }
+
+    /// <summary>A drag started: carry <paramref name="image"/>. True when what is held changed.</summary>
+    public bool Carry(string image) => false;
+
     /// <summary>The window the hold came from is gone: drop it now. True when something was held.</summary>
     public bool Release()
     {

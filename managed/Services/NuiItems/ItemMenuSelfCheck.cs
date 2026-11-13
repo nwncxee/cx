@@ -16,6 +16,7 @@ internal static class ItemMenuSelfCheck
         Refusals(check);
         Closes(check);
         AtThePointer(check);
+        AboveNui(check);
         log.Info(check.Ok ? "ItemMenuSelfCheck: passed" : "ItemMenuSelfCheck: FAILED");
     }
 
@@ -75,6 +76,28 @@ internal static class ItemMenuSelfCheck
         check.Expect(m.Report().Contains("closed"), "a closed menu says so");
         m.Set("open", "5;5");
         check.Expect(m.Report().Contains("open at 5,5"), "an open one says where it is");
+    }
+
+    /// <summary>The menu opens over the NUI window it was asked from, so a press anywhere reaches it before NUI does: off the menu
+    /// it closes with <c>menu;</c>. Oracle: the points, the row and the wire text typed here, and a stand-in font of hand-picked metrics.</summary>
+    private static void AboveNui(Checker check)
+    {
+        var atlas = new CX.Ui.GlyphAtlas { LineHeight = 20, Ascent = 15 };
+        var m = new ItemMenuModel();
+        m.Set("row.1", "use;Use;;1");
+        m.Set("open", "200;200");
+        ItemMenuService.Show(m, atlas, 1920, 1080);
+        check.Expect(ItemMenuService.IsOpen, "the declared menu opens");
+        check.Expect(CX.Ui.UiHost.HitTest(205, 205)?.Layer == CX.Ui.UiLayer.AboveNui, "the menu draws above every NUI window, so the inventory cannot cover it");
+
+        var sent = new System.Collections.Generic.List<string>();
+        var was = ServerPolicy.Send;
+        ServerPolicy.Send = (minor, ascii) => sent.Add(ascii);
+        bool taken = CX.Ui.UiHost.DispatchMouseButton(true, 1, 1500, 900, captureOnly: true);
+        ServerPolicy.Send = was;
+        check.Expect(taken, "a press off the menu is taken ahead of the NUI window under it");
+        check.Expect(!ItemMenuService.IsOpen && sent.Count == 1 && sent[0] == "menu;", $"...and closes the menu with menu; ({(sent.Count == 0 ? "nothing sent" : sent[0])})");
+        ItemMenuService.Show(new ItemMenuModel(), atlas, 1920, 1080);
     }
 
     /// <summary>Oracle: the word pointer typed here, which a server sends because it knows the element pressed and not the
