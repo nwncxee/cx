@@ -225,10 +225,12 @@ skin's colours:
 | `menu.open=<x>;<y>` | open the menu at that point in client pixels; an empty value closes it |
 | `menu.open=pointer` | open the menu where the player's pointer is. A server knows which element was pressed but not the pixel, so this is the form to send after a right press on an element |
 | `menu.row.<n>=<id>;<label>;<icon>;<enabled>[;<rule>]` | one row, drawn in the order of `<n>`. `<id>` comes back on a pick, `<icon>` is a texture resref and may be empty, and `<enabled>` `0` greys the row. `<rule>` `1` starts a group: a rule is drawn along the row's top. An empty value releases that row |
-| `menu.look=<fill>;<edge>;<stripe>;<text>;<hover fill>;<hover edge>;<rule>` | the rows' colours, each `#RRGGBB` or `#RRGGBBAA`, or empty for the stock skin's. Each row is drawn as a list row of its own: the fill, a stripe 3 units wide down its left, a 1 px edge; the hovered row takes the hover fill and edge. There is no body or frame behind the rows. An empty value gives the stock look back |
+| `menu.look=<fill>;<edge>;<stripe>;<text>;<hover fill>;<hover edge>;<rule>` | the rows' colours, each `#RRGGBB` or `#RRGGBBAA`, or empty for the stock skin's. Each row is drawn as a list row of its own: the fill, a stripe down its left (`menu.layout` sets its width, 3 units without it), a 1 px edge; the hovered row takes the hover fill and edge. There is no body or frame behind the rows. An empty value gives the stock look back |
 | `menu.rowheight=<units>` | the row height in NUI units at UI scale 1, above 0 and at most 128; empty follows the font |
+| `menu.layout=<stripe>;<lead>;<icon inset>;<label gap>;<trail>` | the row's geometry in NUI units at UI scale 1, each 0 to 128: the stripe's width, where the icon starts, how far it stands in from the row's top and bottom, the gap before the label, and the room after the longest label. Empty lays rows out from the font |
 
-`menu.look` and `menu.rowheight` outlast a closed menu, so send them once per session or with every open.
+`menu.look`, `menu.rowheight` and `menu.layout` outlast a closed menu, so send them once per session or with every
+open. A group's rule is drawn along its first row's top, with no gap of its own.
 
 Send the rows first, then `menu.open`. A label is cut at 64 characters, an icon name past 16 is dropped, and a menu
 carries at most 64 rows; a row with no id or no label is refused and listed in `/policy`. `menu.*=` closes the menu and

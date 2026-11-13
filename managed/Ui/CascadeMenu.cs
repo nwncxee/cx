@@ -279,13 +279,15 @@ public sealed partial class CascadeMenu
         for (int i = 0; i < items.Length; i++)
         {
             ref CascadeItem it = ref items[i];
-            float rw = iconCol + Pad + UiText.Measure(atlas, it.Label ?? "") + Pad;
+            float rw = Row is { } row
+                ? row.Lead + (lv.HasIcons ? ItemH - 2f * row.IconInset + row.Gap : 0f) + UiText.Measure(atlas, it.Label ?? "") + row.Trail
+                : iconCol + Pad + UiText.Measure(atlas, it.Label ?? "") + Pad;
             if (!string.IsNullOrEmpty(it.Count)) rw += UiText.Measure(atlas, it.Count) + Pad;
             if (it.HasChildren) rw += markW + Pad;
             if (rw > w) w = rw;
         }
         if (items.Length > MaxVisible) w += Theme.IsNative ? NativeChrome.BarWidth(Metrics.Scale) : ScrollColumn.BarW;
-        if (w < MinWRows * ItemH) w = MinWRows * ItemH;
+        if (Row == null && w < MinWRows * ItemH) w = MinWRows * ItemH;
         return w > MaxW ? MaxW : w;
     }
 
@@ -504,7 +506,7 @@ public sealed partial class CascadeMenu
     /// outline over them when <paramref name="lit"/>, and a group's rule along the top, inset by <paramref name="pad"/>.</summary>
     private void DrawRow(VertexBatch b, in CascadeStyle st, in CascadeItem it, float x0, float top, float x1, bool lit, float pad, float alpha)
     {
-        float y1 = top + ItemH, stripe = st.StripePx;
+        float y1 = top + ItemH, stripe = Row?.Stripe ?? st.StripePx;
         var fill = lit ? st.Hover : st.RowFill;
         var edge = lit ? st.HoverEdge : st.RowEdge;
         b.Rect(x0 + stripe, top, x1, y1, fill.r, fill.g, fill.b, fill.a * alpha);
@@ -574,11 +576,13 @@ public sealed partial class CascadeMenu
                 float a = (it.Disabled ? DisabledAlpha : 1f) * st.TextAlpha * alpha;
                 if (RowDrag && i == _pressLevel && r == _pressRow) a *= DragSourceAlpha;
                 // Icons draw unclipped in the owner's pass, so only a square wholly inside the band is reported.
+                float iconX = Row is { } rl ? x0 + rl.Lead : x0 + inset, iconY = Row is { } rt ? rt.IconInset : inset;
+                float iconSize = ItemH - 2f * iconY;
                 if (iconCol > 0f && HasIcon(in it) && top >= y0 && top + ItemH <= y1 && _iconN < _icons.Length)
-                    _icons[_iconN++] = new IconQuad(it.Icon, x0 + inset, top + inset, ItemH - 2f * inset, a, it.IconHandle);
+                    _icons[_iconN++] = new IconQuad(it.Icon, iconX, top + iconY, iconSize, a, it.IconHandle);
                 float baseline = top + baseDrop + vpad, right = textClip;
                 if (it.HasChildren && hasMark) { right -= markW; b.Glyph(mg, right, baseline, tr, tg, tb, a); right -= pad; }
-                float labelX = x0 + iconCol + pad;
+                float labelX = Row is { } lr ? x0 + lr.Lead + (iconCol > 0f ? iconSize + lr.Gap : 0f) : x0 + iconCol + pad;
                 if (!string.IsNullOrEmpty(it.Count))
                 {
                     float cw = UiText.Measure(atlas, it.Count);

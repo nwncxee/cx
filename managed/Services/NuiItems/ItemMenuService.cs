@@ -162,7 +162,11 @@ internal static class ItemMenuService
             _s.OpenGen = m.Gen;
             (_s.OpenX, _s.OpenY) = m.At(_s.PointerX, _s.PointerY);
         }
-        Menu.FixedItemH = MathF.Round(m.Look.RowHeight * Metrics.GameUiScale);
+        float s = Metrics.GameUiScale;
+        Menu.FixedItemH = MathF.Round(m.Look.RowHeight * s);
+        Menu.Row = m.Look.Layout is { } l
+            ? new CascadeRowLayout(MathF.Round(l.Stripe * s), MathF.Round(l.Lead * s), MathF.Round(l.IconInset * s), MathF.Round(l.Gap * s), MathF.Round(l.Trail * s))
+            : null;
         Menu.OpenAt(items, _s.OpenX, _s.OpenY, atlas, viewportW, viewportH);
         Modal(true);
         _log?.Info($"[itemmenu] open at {_s.OpenX},{_s.OpenY} with {rows.Length} row(s)");

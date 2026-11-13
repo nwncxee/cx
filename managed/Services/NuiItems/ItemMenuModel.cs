@@ -42,7 +42,7 @@ internal sealed class ItemMenuModel
     /// <summary>The open value that places the menu at the pointer rather than at a pixel.</summary>
     internal const string PointerValue = "pointer";
     /// <summary>The keys for the server's look: seven colours, and the row height in NUI units.</summary>
-    internal const string LookKey = "look", RowHeightKey = "rowheight";
+    internal const string LookKey = "look", RowHeightKey = "rowheight", LayoutKey = "layout";
     /// <summary>The tallest row height taken, in NUI units: past it a typo, not a menu.</summary>
     internal const float MaxRowHeight = 128f;
     /// <summary>What a row key starts with: the rest is its order.</summary>
@@ -102,9 +102,10 @@ internal sealed class ItemMenuModel
         }
         if (key.Equals(LookKey, StringComparison.OrdinalIgnoreCase)) return SetLook(value);
         if (key.Equals(RowHeightKey, StringComparison.OrdinalIgnoreCase)) return SetRowHeight(value);
+        if (key.Equals(LayoutKey, StringComparison.OrdinalIgnoreCase)) return SetLayout(value);
         if (!key.StartsWith(RowPrefix, StringComparison.OrdinalIgnoreCase)
             || !int.TryParse(key.AsSpan(RowPrefix.Length), NumberStyles.None, CultureInfo.InvariantCulture, out int order))
-            return $"the keys are {OpenKey}, {LookKey}, {RowHeightKey} and {RowPrefix}<n>";
+            return $"the keys are {OpenKey}, {LookKey}, {RowHeightKey}, {LayoutKey} and {RowPrefix}<n>";
         if (value.Length == 0)
         {
             if (_rows.Remove(order)) Gen++;
@@ -154,6 +155,22 @@ internal sealed class ItemMenuModel
         if (!float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float h) || !(h > 0f) || h > MaxRowHeight)
             return $"rowheight takes a number of NUI units above 0, at most {MaxRowHeight}";
         Look.RowHeight = h;
+        Gen++;
+        return null;
+    }
+
+    /// <summary><c>layout=&lt;stripe&gt;;&lt;lead&gt;;&lt;icon inset&gt;;&lt;label gap&gt;;&lt;trail&gt;</c> in NUI units at UI scale 1,
+    /// each 0 to <see cref="MaxRowHeight"/>; empty lays rows out from the font again.</summary>
+    private string? SetLayout(string value)
+    {
+        if (value.Length == 0) { Look.Layout = null; Gen++; return null; }
+        string[] f = value.Split(';');
+        if (f.Length != 5) return "layout takes five NUI-unit numbers: stripe;lead;icon inset;label gap;trail";
+        Span<float> n = stackalloc float[5];
+        for (int i = 0; i < 5; i++)
+            if (!float.TryParse(f[i], NumberStyles.Float, CultureInfo.InvariantCulture, out n[i]) || !(n[i] >= 0f) || n[i] > MaxRowHeight)
+                return $"'{f[i]}' is not a number of NUI units from 0 to {MaxRowHeight}";
+        Look.Layout = new CX.Ui.CascadeRowLayout(n[0], n[1], n[2], n[3], n[4]);
         Gen++;
         return null;
     }
