@@ -17,6 +17,7 @@ internal static class ItemMenuSelfCheck
         Closes(check);
         AtThePointer(check);
         AboveNui(check);
+        NuiLook(check);
         log.Info(check.Ok ? "ItemMenuSelfCheck: passed" : "ItemMenuSelfCheck: FAILED");
     }
 
@@ -98,6 +99,31 @@ internal static class ItemMenuSelfCheck
         check.Expect(taken, "a press off the menu is taken ahead of the NUI window under it");
         check.Expect(!ItemMenuService.IsOpen && sent.Count == 1 && sent[0] == "menu;", $"...and closes the menu with menu; ({(sent.Count == 0 ? "nothing sent" : sent[0])})");
         ItemMenuService.Show(new ItemMenuModel(), atlas, 1920, 1080);
+    }
+
+    /// <summary>The menu stands in for the server's NUI Item menu, so it wears the stock NUI skin whatever look the extender's
+    /// own windows take: no frame art, no fade. Oracle: the colours of the stock <c>nui_skin.tml</c>, typed here by hand.</summary>
+    private static void NuiLook(Checker check)
+    {
+        string was = CX.Ui.UiKnobs.Look.V;
+        CX.Ui.UiKnobs.Look.Set(CX.Ui.Theme.LookFlat);
+        CX.Ui.Theme.Apply();
+        check.Expect(!CX.Ui.Theme.IsNative, "precondition: the extender's own windows take the flat look");
+        CX.Ui.CascadeStyle look = ItemMenuService.Look(0);
+        bool art = ItemMenuService.DrawsArt;
+        CX.Ui.UiKnobs.Look.Set(was);
+        CX.Ui.Theme.Apply();
+        check.Expect(look.Bg == (0f, 0f, 0f, 1f), $"the menu's ground is NUI's black ({look.Bg})");
+        check.Expect(look.TextRgb == 0xf8f8f8, $"its text is NUI's #F8F8F8 ({look.TextRgb:x6})");
+        check.Expect(look.Hover == (0x1f / 255f, 0x42 / 255f, 0x61 / 255f, 1f), $"a hovered row is NUI's selection blue ({look.Hover})");
+        check.Expect(look.Frame == (0xc8 / 255f, 0xc8 / 255f, 0xc8 / 255f, 1f), $"its edge is NUI's #C8C8C8 ({look.Frame})");
+        check.Expect(look.AnimMs == 0 && look.Alpha == 1f, "it opens at once and fully opaque, as a NUI window does");
+        check.Expect(!art, "it draws no frame art");
+        CX.Ui.UiKnobs.Look.Set(CX.Ui.Theme.LookNative);
+        CX.Ui.Theme.Apply();
+        check.Expect(!ItemMenuService.DrawsArt, "...not even when the extender's own windows take the game's art");
+        CX.Ui.UiKnobs.Look.Set(was);
+        CX.Ui.Theme.Apply();
     }
 
     /// <summary>Oracle: the word pointer typed here, which a server sends because it knows the element pressed and not the

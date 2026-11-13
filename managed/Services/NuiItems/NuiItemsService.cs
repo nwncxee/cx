@@ -19,6 +19,7 @@ public sealed class NuiItemsService : IExtenderService
         NuiItemMenuApprovedExamples.Run(log);
         NuiItemDragApprovedExamples.Run(log);
         NuiItemDragRegressions.Run(log);
+        NuiItemDragPickRegressions.Run(log);
         NuiItemTargetHeldApprovedExamples.Run(log);
     }
 }

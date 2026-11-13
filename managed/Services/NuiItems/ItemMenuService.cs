@@ -84,11 +84,8 @@ internal static class ItemMenuService
         VertexBatch b = _s.Batch ??= new VertexBatch(atlas.SolidU, atlas.SolidV);
         b.Reset(atlas.SolidU, atlas.SolidV);
         b.Outline = RadialKnobs.Font.HaloPx;
-        _s.Style = CascadeStyle.Current;
-        _s.Style.Alpha = RadialKnobs.Opacity.V;
-        _s.Style.AnimMs = RadialKnobs.Anim.V ? RadialKnobs.AnimMs.V : 0;
-        _s.Style.NowMs = Environment.TickCount64;
-        Skin? skin = Theme.IsNative && _s.Skin.Arm(_log, "") ? _s.Skin : null;
+        _s.Style = Look(Environment.TickCount64);
+        Skin? skin = DrawsArt && _s.Skin.Arm(_log, "") ? _s.Skin : null;
         skin?.Begin();
         Menu.Draw(b, atlas, atlas.Ascent, in _s.Style, skin);
         skin?.Flush();
@@ -96,6 +93,19 @@ internal static class ItemMenuService
         foreach (IconQuad q in Menu.Icons)
             if (q.Resref.Length != 0) TextRig.DrawIcon(q.Resref, q.X, q.Y, q.Size, q.Size, q.Alpha);
     }
+
+    /// <summary>The menu's colours, opacity and animation at <paramref name="nowMs"/>.</summary>
+    internal static CascadeStyle Look(long nowMs)
+    {
+        CascadeStyle look = CascadeStyle.Current;
+        look.Alpha = RadialKnobs.Opacity.V;
+        look.AnimMs = RadialKnobs.Anim.V ? RadialKnobs.AnimMs.V : 0;
+        look.NowMs = nowMs;
+        return look;
+    }
+
+    /// <summary>True when the menu draws the game's frame art.</summary>
+    internal static bool DrawsArt => Theme.IsNative;
 
     /// <summary>True while the menu is on screen.</summary>
     internal static bool IsOpen => Menu.Open;

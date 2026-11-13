@@ -114,6 +114,9 @@ public static class Theme
     public static uint Rgb(Role r) => _s.Rgb[(int)r];
     /// <summary>The current colour for <paramref name="r"/> as <c>rrggbbaa</c>.</summary>
     public static uint Rgba(Role r, byte a = 0xff) => (_s.Rgb[(int)r] << 8) | a;
+    /// <summary>The stock NUI skin's colour for <paramref name="r"/> as <c>rrggbbaa</c>, whatever look is chosen: for what draws
+    /// in place of a server's NUI window and must look like one.</summary>
+    public static uint NuiRgba(Role r, byte a = 0xff) => (NativeRgb[(int)r] << 8) | a;
 
     /// <summary>Re-resolve from the two knobs; their change hook.</summary>
     internal static void Apply()

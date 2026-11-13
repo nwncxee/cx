@@ -135,6 +135,9 @@ public sealed unsafe class HeldImageService : IExtenderService
         }
     }
 
+    /// <summary>The image a press on element <paramref name="id"/> shows at once, or null.</summary>
+    internal static string? PickOnPress(string id, Func<string, bool>? dragOwns) => HeldPicks.Find(id);
+
     /// <summary>
     /// A left press landed on NUI (called from the input hook). When the element under the pointer declared a <c>held.pick</c>, the next
     /// frame shows its image as a pending hold. Reads the last published hit, which is the element the pointer was on a frame ago.
