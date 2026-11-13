@@ -105,7 +105,7 @@ internal static unsafe class TriggerHighlight
         PostChainVk.Open(s.Prog);
         LooseBlock.Set(s.Count, _count);
         LooseBlock.Set(s.InvVp, inv);
-        LooseBlock.Set(s.Unjitter, [PostChain.JitterX * 0.5f, PostChain.JitterY * 0.5f]);
+        LooseBlock.Set(s.Unjitter, PostChain.JitterUv);
         int at = PostChainVk.Close(cl, s.Prog);
         PostChainVk.Draw(cl, s.Prog, PostChainVk.FormatOf(screen), PostChainVk.Blend.Over, screen, LoadOp.Load,
                          new Rect(display[0], display[1], display[2], display[3]), at,

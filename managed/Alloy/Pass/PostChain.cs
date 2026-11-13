@@ -152,6 +152,8 @@ internal static unsafe class PostChain
     /// <summary>This pass's projection jitter in NDC, as <see cref="Jitter"/> handed it out (0 with TAA off);
     /// the accumulator reads it to place the current frame's samples on the display grid.</summary>
     internal static float JitterX, JitterY;
+    /// <summary>The jitter as a uv offset: a target drawn under it holds the clean image at uv plus this.</summary>
+    internal static Vector2 JitterUv => new(JitterX * 0.5f, JitterY * 0.5f);
     /// <summary>TAA's jitter sequence length -- Halton(2,3), eight points, then it repeats.</summary>
     internal const int JitterCount = 8;
     /// <summary>The jitter sequence length this frame takes at a <paramref name="displayW"/>-wide display.</summary>

@@ -440,7 +440,7 @@ internal static unsafe partial class PostStack
         {
             cl.BeginLabel("bare-sky fog"u8);
             PostChainVk.Open(s.SkyFog);
-            LooseBlock.Set(s.FJitter, new Vector2(PostChain.JitterX * 0.5f, PostChain.JitterY * 0.5f));
+            LooseBlock.Set(s.FJitter, PostChain.JitterUv);
             FogVolume.Upload(s.FVFog, s.FVFogVp, capture: false);
             int at = PostChainVk.Close(cl, s.SkyFog);
             drew = PostChainVk.Draw(cl, s.SkyFog, Format.Rgba16F, PostChainVk.Blend.Fog, hdr, LoadOp.Load, new Rect(0, 0, rw, rh), at,

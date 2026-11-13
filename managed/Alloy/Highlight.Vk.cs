@@ -109,8 +109,8 @@ internal static unsafe partial class Highlight
         return (s.Draw[k], s.Grp[k], new Vector3(s.Cols[r * 3], s.Cols[r * 3 + 1], s.Cols[r * 3 + 2]), s.Cut[k]);
     }
 
-    /// <summary>The composite's terms: fill opacity, outline radius in pixels, and the mask's bias toward the viewer.</summary>
-    internal const float VkFill = FillAlpha, VkRadius = OutlinePx, VkBiasFactor = MaskOffsetFactor, VkBiasUnits = MaskOffsetUnits;
+    /// <summary>The composite's terms: fill opacity, and the mask's bias toward the viewer.</summary>
+    internal const float VkFill = FillAlpha, VkBiasFactor = MaskOffsetFactor, VkBiasUnits = MaskOffsetUnits;
 
     /// <summary>The share of last frame's resolved mask each frame keeps: about twenty frames to settle a jittered edge.</summary>
     internal const float VkHistoryKeep = 0.9f;
@@ -118,7 +118,7 @@ internal static unsafe partial class Highlight
     /// <summary>The outline radius in texels of a mask <paramref name="maskW"/> wide, drawn on a screen
     /// <paramref name="displayW"/> wide, so the outline is <see cref="OutlinePx"/> screen pixels at any render scale.</summary>
     internal static float OutlineTexels(int maskW, int displayW)
-        => maskW > 0 && displayW > 0 ? OutlinePx * maskW / displayW : OutlinePx;
+        => OutlinePx * maskW / displayW;
 
     /// <summary>Oracle: render scales written as literal sizes, and the outline width they must come to.</summary>
     internal static bool SelfCheck(ExtenderLog log)
@@ -126,7 +126,6 @@ internal static unsafe partial class Highlight
         var check = new Checker(log, "Highlight.SelfCheck");
         check.Expect(OutlineTexels(2560, 2560) == 5f, "at full scale the outline is 5 mask texels");
         check.Expect(OutlineTexels(1280, 2560) == 2.5f, "at half scale it is 2,5 mask texels, still 5 screen pixels");
-        check.Expect(OutlineTexels(0, 0) == 5f, "a mask with no size falls back to 5 texels");
         return check.Ok;
     }
 }
