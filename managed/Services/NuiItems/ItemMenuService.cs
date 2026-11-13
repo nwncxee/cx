@@ -1,14 +1,13 @@
 using System;
 using CX.Framework;
 using CX.Services.Nui;
-using CX.Services.Radial;
 using CX.Ui;
 
 namespace CX.Services.NuiItems;
 
 /// <summary>
 /// The extender's item menu: the rows a server declares (<see cref="ItemMenuPolicy"/>) drawn as the radial
-/// replacement's <see cref="CascadeMenu"/>, in its look and above every NUI window, at the point the server names. A pick is sent back as
+/// replacement's <see cref="CascadeMenu"/>, in the stock NUI skin's colours and above every NUI window, at the point the server names. A pick is sent back as
 /// <c>menu;&lt;row id&gt;</c>, and a close -- Escape, or a click off the menu -- as <c>menu;</c> with no row.
 /// </summary>
 internal static class ItemMenuService
@@ -23,8 +22,6 @@ internal static class ItemMenuService
         public Window? Window;
         public VertexBatch? Batch;
         public CascadeStyle Style;
-        /// <summary>The radial menu's art for the native look.</summary>
-        public readonly Skin Skin = NativeChrome.NewSkin();
         /// <summary>The face the menu was laid out in; a face that bakes later lays it out again where it stands.</summary>
         public GlyphAtlas? Atlas;
         public ExtenderLog? Log;
@@ -68,12 +65,12 @@ internal static class ItemMenuService
         NuiKnobs.Enabled.Changed += Capabilities.Refresh;
     }
 
-    /// <summary>Per frame: open, re-open or close the cascade to match what the server declared, then draw it in the radial
-    /// menu's font, opacity, animation and, under the native theme, its art.</summary>
+    /// <summary>Per frame: open, re-open or close the cascade to match what the server declared, then draw it as the server's
+    /// own NUI menu looks: the UI font, the NUI skin's colours, no frame art and no fade.</summary>
     private static void Draw()
     {
         ItemMenuModel m = ItemMenuPolicy.Menu;
-        if (RadialKnobs.Font.Face(TextRig.Atlas) is not GlyphAtlas atlas) return;
+        if (TextRig.Atlas is not GlyphAtlas atlas) return;
         if (m.Gen != _s.ShownGen || !ReferenceEquals(atlas, _s.Atlas))
         {
             _s.ShownGen = m.Gen;
@@ -83,29 +80,24 @@ internal static class ItemMenuService
         if (!On) { Dismiss(); return; }
         VertexBatch b = _s.Batch ??= new VertexBatch(atlas.SolidU, atlas.SolidV);
         b.Reset(atlas.SolidU, atlas.SolidV);
-        b.Outline = RadialKnobs.Font.HaloPx;
         _s.Style = Look(Environment.TickCount64);
-        Skin? skin = DrawsArt && _s.Skin.Arm(_log, "") ? _s.Skin : null;
-        skin?.Begin();
-        Menu.Draw(b, atlas, atlas.Ascent, in _s.Style, skin);
-        skin?.Flush();
+        Menu.Draw(b, atlas, atlas.Ascent, in _s.Style);
         TextRig.DrawBatch(b.AsSpan(), b.VertexCount);
         foreach (IconQuad q in Menu.Icons)
             if (q.Resref.Length != 0) TextRig.DrawIcon(q.Resref, q.X, q.Y, q.Size, q.Size, q.Alpha);
     }
 
-    /// <summary>The menu's colours, opacity and animation at <paramref name="nowMs"/>.</summary>
-    internal static CascadeStyle Look(long nowMs)
+    /// <summary>The menu's look at <paramref name="nowMs"/>: it stands in for the server's NUI Item menu, so it takes the stock NUI
+    /// skin's colours whatever look the extender's own windows take, opens at once and is fully opaque.</summary>
+    internal static CascadeStyle Look(long nowMs) => new()
     {
-        CascadeStyle look = CascadeStyle.Current;
-        look.Alpha = RadialKnobs.Opacity.V;
-        look.AnimMs = RadialKnobs.Anim.V ? RadialKnobs.AnimMs.V : 0;
-        look.NowMs = nowMs;
-        return look;
-    }
+        Bg = CascadeStyle.Rgba(Theme.NuiRgba(Role.ListBg)), Frame = CascadeStyle.Rgba(Theme.NuiRgba(Role.Tx2)),
+        Hover = CascadeStyle.Rgba(Theme.NuiRgba(Role.Selected)), TextRgb = Theme.NuiRgba(Role.Tx) >> 8, TextAlpha = 1f, Alpha = 1f,
+        NowMs = nowMs,
+    };
 
-    /// <summary>True when the menu draws the game's frame art.</summary>
-    internal static bool DrawsArt => Theme.IsNative;
+    /// <summary>The menu draws no frame art: the server's NUI menu has none.</summary>
+    internal static bool DrawsArt => false;
 
     /// <summary>True while the menu is on screen.</summary>
     internal static bool IsOpen => Menu.Open;

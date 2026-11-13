@@ -215,7 +215,7 @@ A client without `cx_cap_heldpick` ignores the `held.pick` keys, so keep sending
 ## Item menu
 
 A client advertising `cx_cap_menu` draws the rows you send instead of opening a NUI menu of its own. It draws them
-above every NUI window, in the look of its radial menu:
+above every NUI window, in the stock NUI skin's colours, so it looks like the NUI menu it replaces:
 
 | line | meaning |
 |---|---|
@@ -244,8 +244,10 @@ A client advertising `cx_cap_drag` carries an item between the elements you decl
 | `drag.<prefix>*=1` | the same for every element whose `id` starts with `<prefix>`; the longest prefix wins, and an exact `<id>` beats a prefix |
 
 `drag.*=` releases every declaration. Once the pointer moves, the image the pressed element drew follows it, above every
-NUI window, until the release or an Escape. Declare `held.pick.<id>` for the element to carry another image instead.
-The image follows the `held.` look keys, at `held.opacity`, and no `held.confirm` or `held.grace` ends it.
+NUI window, until the release or an Escape. Declare `held.pick.<id>` for the element to carry another image instead,
+such as `@item:<hex>` when the element draws an item over a plate. The image follows the `held.` look keys, at
+`held.opacity`, and no `held.confirm` or `held.grace` ends it. A press on a draggable element shows its `held.pick`
+image only once the drag moves, so a plain click there shows nothing.
 
 The gesture comes back as one [UiEvent](#wire) on release:
 

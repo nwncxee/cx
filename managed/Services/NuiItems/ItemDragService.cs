@@ -42,6 +42,7 @@ internal static class ItemDragService
     {
         _s.Log = log;
         ItemDragPolicy.Init();
+        HeldImageService.DragOwns(static id => On && ItemDragPolicy.Draggable(id));
         Capabilities.Register("drag", 1, static () => Live(NuiHitTest.Armed));
         NuiKnobs.Enabled.Changed += Capabilities.Refresh;
         NuiKnobs.Drag.Changed += Capabilities.Refresh;

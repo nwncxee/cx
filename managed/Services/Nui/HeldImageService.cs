@@ -50,6 +50,8 @@ public sealed unsafe class HeldImageService : IExtenderService
         /// <summary>A drag's image to carry, and a drag that ended, both from the input thread for the next frame.</summary>
         public volatile string? CarryReq;
         public volatile bool PutDownReq;
+        /// <summary>Which elements a running drag owns: their pick waits for the drag to travel.</summary>
+        public Func<string, bool>? DragOwns;
         public ExtenderLog? Log;
     }
 
@@ -135,8 +137,13 @@ public sealed unsafe class HeldImageService : IExtenderService
         }
     }
 
-    /// <summary>The image a press on element <paramref name="id"/> shows at once, or null.</summary>
-    internal static string? PickOnPress(string id, Func<string, bool>? dragOwns) => HeldPicks.Find(id);
+    /// <summary>The image a press on element <paramref name="id"/> shows at once, or null. An element a running drag owns
+    /// (<paramref name="dragOwns"/>) shows its image only once the drag travels, so a click on it stays a plain click.</summary>
+    internal static string? PickOnPress(string id, Func<string, bool>? dragOwns)
+        => dragOwns != null && dragOwns(id) ? null : HeldPicks.Find(id);
+
+    /// <summary>The drag's say over which elements it owns, set once it starts.</summary>
+    internal static void DragOwns(Func<string, bool> owns) => _s.DragOwns = owns;
 
     /// <summary>
     /// A left press landed on NUI (called from the input hook). When the element under the pointer declared a <c>held.pick</c>, the next
@@ -149,7 +156,8 @@ public sealed unsafe class HeldImageService : IExtenderService
         if (!NuiHitTest.TryGet(out NuiHit hit)) return;
         Span<char> id = stackalloc char[NuiHit.TokenCap];
         int n = System.Text.Encoding.UTF8.GetChars(hit.Token(), id);
-        string? image = HeldPicks.Find(id[..n]);
+        if (n == 0) return;
+        string? image = PickOnPress(new string(id[..n]), s.DragOwns);
         if (image != null) s.PickReq = image;
     }
 
