@@ -354,6 +354,7 @@ copy.
 | nui.thumb | Shortest scrollbar handle | S | 0 … 4 × its width, step 0.5 · 2 | A | L | — | A long list's scrollbar handle never gets shorter than this. 0 = stock. |
 | nui.cards | Rich cards on NUI elements | T | on | U | L | — | A server can declare a card for a NUI element, such as an item's details, and it shows beside the element while the pointer rests on it. Off, the server's plain tooltip is all you get. |
 | nui.heldimage | Show what the server says you are holding | T | on | U | L | — | When a server's NUI window says you picked something up, its image follows the pointer until you place it. Off, nothing follows the pointer. |
+| nui.drag | Drag items in server windows | T | on | A | L | — | Hold the mouse button on an item in a server's window and drop it where you want it. Off, a press is a click: you click the item, then click where it goes. |
 | nui.modelview | Live models in NUI windows | T | on | A | L | — | A server's NUI window can show a character as a live, animated model, as the character screen does. Off, those images stay empty. |
 | nui.cxjson | Settings inside a server's windows | T | on | A | L | — | A server's NUI window can carry CX settings in its own JSON: a card, a live model, a themed frame. Off, those members are ignored and the window is the stock one. |
 | nui.hitdebug | Log the NUI element under the pointer | T | off | A | L | — | Writes a line to cx.log each time the pointer moves onto another element of a NUI window: its id, list row and rectangle. For people building windows. |

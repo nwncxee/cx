@@ -1,3 +1,4 @@
+using System;
 using System.Text;
 
 namespace CX.Ui;
@@ -26,6 +27,34 @@ public static class UiText
             else penX += atlas.AdvanceOf(ru);
         }
         return penX;
+    }
+
+    /// <summary>
+    /// As <see cref="Draw(VertexBatch, GlyphAtlas, string, float, float, uint, float, float)"/>, laid down the way a NUI skin
+    /// lays its text: <paramref name="spacing"/> extra px after each glyph, and with <paramref name="snap"/> every glyph and
+    /// the baseline on a whole pixel, so a bitmap glyph is sampled texel for pixel and stays sharp.
+    /// </summary>
+    public static float Draw(VertexBatch b, GlyphAtlas atlas, string s, float startX, float baseline, uint rgb, float clipX,
+                             float alpha, bool snap, float spacing)
+    {
+        float r = ((rgb >> 16) & 0xFF) / 255f, g = ((rgb >> 8) & 0xFF) / 255f, bl = (rgb & 0xFF) / 255f;
+        float penX = startX, y = snap ? MathF.Round(baseline) : baseline;
+        foreach (Rune ru in s.EnumerateRunes())
+        {
+            if (penX >= clipX) break;
+            if (atlas.TryGet(ru.Value, out Glyph gl)) { b.Glyph(gl, snap ? MathF.Round(penX) : penX, y, r, g, bl, alpha); penX += gl.Advance; }
+            else penX += atlas.AdvanceOf(ru);
+            penX += spacing;
+        }
+        return penX;
+    }
+
+    /// <summary>Advance width of a string with <paramref name="spacing"/> extra px after each glyph (no draw).</summary>
+    public static float Measure(GlyphAtlas atlas, string s, float spacing)
+    {
+        float w = 0f;
+        foreach (Rune ru in s.EnumerateRunes()) w += atlas.AdvanceOf(ru) + spacing;
+        return w;
     }
 
     /// <summary>The first UTF-16 index of the longest tail of <paramref name="s"/> that fits in <paramref name="width"/>
