@@ -31,6 +31,8 @@ internal static unsafe class NuiModelTarget
     internal const int MaxRow = 65535;
     /// <summary>The bytes of an engine <c>CExoString</c> (a pointer and two counts), the caller-owned value a 2DA cell is written into.</summary>
     private const int ExoSize = 16;   // not-an-offset: sizeof(CExoString)
+    /// <summary>The 2DA of base items, as the engine's own cache names it (no extension).</summary>
+    private const string BaseItemsTable = "baseitems";
     /// <summary>The model slot an item's one model sits in, the one the engine fetches a worn item's model from.</summary>
     internal const byte ModelSlot = 1;   // not-an-offset: CNWCItem model slot
 
@@ -124,9 +126,32 @@ internal static unsafe class NuiModelTarget
     }
 
     /// <summary>A cell of <c>appearance.2da</c> as text, or null when the row, the column or the tables are not there.</summary>
-    internal static string? AppearanceCell(int row, string column)
+    internal static string? AppearanceCell(int row, string column) => Cell(Tables() is { } t ? t.Appearance : IntPtr.Zero, row, column);
+
+    /// <summary>A cell of <c>baseitems.2da</c> as text, or null when the row, the column or the tables are not there.</summary>
+    internal static string? BaseItemCell(int row, string column) => Cell(TableByName(BaseItemsTable), row, column);
+
+    /// <summary>The engine's own cached 2DA by name, or zero when its tables are not reachable or there is no such table.
+    /// The name goes in as the <c>CExoString</c> the engine takes by value, which the Win64 callee destroys itself.</summary>
+    private static IntPtr TableByName(string name)
     {
-        IntPtr table = Tables() is { } t ? t.Appearance : IntPtr.Zero;
+        if (Tables() is not { } tables || EngineFn.TwoDimGetCached2DA == null || EngineFn.ExoStringInit == null || EngineFn.ExoStringDtor == null)
+            return IntPtr.Zero;
+        ExoStringRec text = default;
+        Span<byte> bytes = stackalloc byte[name.Length + 1];
+        AsciiZ(name, bytes);
+        fixed (byte* n = bytes) EngineFn.ExoStringInit((IntPtr)(&text), n, uint.MaxValue);
+        IntPtr table = EngineFn.TwoDimGetCached2DA(tables.Ptr, (IntPtr)(&text), 0);
+#if WINDOWS
+        text = default;   // the Win64 callee destroyed its by-value CExoString
+#endif
+        EngineFn.ExoStringDtor((IntPtr)(&text));
+        return table;
+    }
+
+    /// <summary>A cell of <paramref name="table"/> as text, or null when the row, the column or the table are not there.</summary>
+    private static string? Cell(IntPtr table, int row, string column)
+    {
         if (table == IntPtr.Zero || EngineFn.ExoStringInit == null || EngineFn.C2DAGetCExoStringEntry == null) return null;
         byte* col = stackalloc byte[ExoSize];
         byte* cell = stackalloc byte[ExoSize];

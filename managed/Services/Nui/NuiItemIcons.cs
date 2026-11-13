@@ -152,7 +152,12 @@ internal static unsafe partial class NuiItemIcons
         {
             IntPtr item = RadialIcons.Item((IntPtr)(oid | ImageNames.ServerIdBit));
             IntPtr icon = item == IntPtr.Zero ? IntPtr.Zero : new CNWCItem(item).GuiIcon;
-            if (icon != IntPtr.Zero) return FromIcon(item, icon, $"item {oid:x}", out type);
+            if (icon != IntPtr.Zero)
+            {
+                if (FromIcon(item, icon, $"item {oid:x}", out type, out string failed)) return true;
+                Log($"{failed} -- the NUI image shows the engine's error sprite");
+                return false;
+            }
             Log(item == IntPtr.Zero
                 ? $"@item:{oid:x} is not an item this client knows -- the NUI image is left empty"
                 : $"item {oid:x} has no inventory icon yet -- the NUI image is left empty");
@@ -165,21 +170,15 @@ internal static unsafe partial class NuiItemIcons
         }
         Look look;
         if (!ParseLook(s, &look)) return false;
-        if (!LookRowsKnown(&look, out string why))
-        {
-            Log($"@look: {why} -- the NUI image shows the engine's error sprite");
-            return false;
-        }
+        if (!LookRowsKnown(&look, out string why)) return LookStandIn(look.BaseItem, $"@look: {why}", out type);
         IntPtr minted = Mint(&look);
-        if (minted == IntPtr.Zero)
-        {
-            Log($"@look: base item {look.BaseItem} made no item -- the NUI image shows the engine's error sprite");
-            return false;
-        }
+        if (minted == IntPtr.Zero) return LookStandIn(look.BaseItem, $"@look: base item {look.BaseItem} made no item", out type);
         try
         {
             IntPtr icon = new CNWCItem(minted).GuiIcon;
-            return icon != IntPtr.Zero && FromIcon(minted, icon, $"@look: base item {look.BaseItem}", out type);
+            if (icon == IntPtr.Zero) return LookStandIn(look.BaseItem, $"@look: base item {look.BaseItem} has no inventory icon", out type);
+            return FromIcon(minted, icon, $"@look: base item {look.BaseItem}", out type, out string failed)
+                   || LookStandIn(look.BaseItem, failed, out type);
         }
         finally
         {
@@ -187,11 +186,43 @@ internal static unsafe partial class NuiItemIcons
         }
     }
 
+    /// <summary>What a <c>@look:</c> whose own icon CX could not compose loads instead: the base item's <c>DefaultIcon</c>
+    /// row, the stand-in a client with no NUI icons of its own is sent for the same item. False when that row names none,
+    /// and then the engine's error sprite shows. <paramref name="why"/> is logged either way.</summary>
+    private static bool LookStandIn(uint baseItem, string why, out ushort type)
+    {
+        type = ResAny;
+        if (!StandIn(NuiModelTarget.BaseItemCell((int)baseItem, DefaultIconColumn), out string resref))
+        {
+            Log($"{why} -- the NUI image shows the engine's error sprite");
+            return false;
+        }
+        Log($"{why} -- the NUI image shows base item {baseItem}'s own '{resref}' icon instead");
+        SetRef(resref);
+        return true;
+    }
+
+    /// <summary>The <c>baseitems.2da</c> column naming the icon the engine falls back to for a base item.</summary>
+    private const string DefaultIconColumn = "DefaultIcon";
+
+    /// <summary>The stand-in icon a <c>DefaultIcon</c> cell names, lowercase: a resref of up to 16 letters, digits and
+    /// underscores. False, with <paramref name="resref"/> empty, for a blank or unreadable cell and for text that is no
+    /// resref.</summary>
+    internal static bool StandIn(string? cell, out string resref)
+    {
+        resref = (cell ?? "").Trim().ToLowerInvariant();
+        if (NuiModelTarget.ValidResRef(resref)) return true;
+        resref = "";
+        return false;
+    }
+
     /// <summary>The composite of <paramref name="icon"/> cut to its art's own frame (the icon of <paramref name="item"/>, whose
-    /// base item gives the cells when the frame is unknown), or a plain icon's own resref when its art fills the sheet.</summary>
-    private static bool FromIcon(IntPtr item, IntPtr icon, string what, out ushort type)
+    /// base item gives the cells when the frame is unknown), or a plain icon's own resref when its art fills the sheet.
+    /// False leaves the cause in <paramref name="failed"/> for the caller to log with what it does about it.</summary>
+    private static bool FromIcon(IntPtr item, IntPtr icon, string what, out ushort type, out string failed)
     {
         type = ResTypes.Tga;
+        failed = "";
         Cells(item, out int cw, out int ch);
         float fw = RadialIcons.ContentFrac(cw), fh = RadialIcons.ContentFrac(ch);
         IconFrames.Frame f = IconFrames.Of(icon);
@@ -205,7 +236,7 @@ internal static unsafe partial class NuiItemIcons
         }
         if (!Composite(icon, kind))
         {
-            Log($"{what}'s {kind} icon has no layer the engine can read uncompressed -- the NUI image shows the engine's error sprite");
+            failed = $"{what}'s {kind} icon has no layer the engine can read uncompressed";
             return false;
         }
         Emit(Math.Max(1, (int)MathF.Round(_w * fw)), Math.Max(1, (int)MathF.Round(_h * fh)));
@@ -717,7 +748,8 @@ internal static unsafe partial class NuiItemIcons
 
     /// <summary>Off-device: the parser, the palette choice and lookup, the blend and the emitted TGA's header, crop and byte order, and that
     /// the base64 round-trips. Palette oracle: hand-written RGBA bytes in the engine's layout, a row of 256 entries and a scheme entry of
-    /// slot * 256 + colour, with a stale buffer grown only to its highest set slot. The two hooks and the icon walk are live-unverified here.</summary>
+    /// slot * 256 + colour, with a stale buffer grown only to its highest set slot. Stand-in oracle: <c>DefaultIcon</c> cells written out of
+    /// the shipped <c>baseitems.2da</c> (armour, cloak). The two hooks and the icon walk are live-unverified here.</summary>
     internal static void SelfCheck(ExtenderLog log)
     {
         SelfCheckDevTga(log);
@@ -744,6 +776,13 @@ internal static unsafe partial class NuiItemIcons
         PutLook(armor + "f"); check.Expect(!ParseLook(l, &look), "@look: a trailing half byte is refused");
         PutLook("@look:0010"); check.Expect(!ParseLook(l, &look), "@look: a truncated string is refused");
         PutLook("@item:0010"); check.Expect(!ParseLook(l, &look), "@look: another prefix is not ours");
+
+        check.Expect(StandIn("iit_chest", out string stand) && stand == "iit_chest", "an icon CX cannot compose stands in with the base item's own DefaultIcon");
+        check.Expect(StandIn("ICloak_M_001", out stand) && stand == "icloak_m_001", "a cell is read as a resref, lower case");
+        check.Expect(StandIn(" iit_chest ", out stand) && stand == "iit_chest", "a padded cell names the same icon");
+        check.Expect(!StandIn(null, out stand) && stand.Length == 0, "an unreadable row names no stand-in");
+        check.Expect(!StandIn("", out stand) && !StandIn("****", out stand), "a blank cell names no stand-in");
+        check.Expect(!StandIn("iit_chest_far_too_long", out stand) && !StandIn("iit chest", out stand), "text that is no resref names no stand-in");
 
         const int MetalRow = 3 * 256 + 5, MasterRows = 7 * 256, StaleRows = 2 * 256;
         byte[] master = new byte[MasterRows * 256 * 4];
