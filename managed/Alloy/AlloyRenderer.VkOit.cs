@@ -69,16 +69,19 @@ public sealed unsafe partial class AlloyRenderer
         return !o.Accum.IsNull && !o.Reveal.IsNull;
     }
 
-    /// <summary>The resolve into the scene colour: weighted mean under ONE_MINUS_SRC_ALPHA / SRC_ALPHA, or unblended.</summary>
+    /// <summary>The resolve into the scene colour (weighted mean under ONE_MINUS_SRC_ALPHA / SRC_ALPHA, or unblended)
+    /// and into the reactive mask, with the blended class's coverage; the viz view leaves the mask alone.</summary>
     private static PipelineId VkOitPipe(VkBackend vk, GuiVkProg p, bool blend)
     {
         var d = new PipelineDesc { Vs = p.Vs, Fs = p.Fs, Label = blend ? "vk oit resolve" : "vk oit resolve viz" };
-        d.Targets.ColorCount = 1;
+        d.Targets.ColorCount = 2;
         d.Targets.Colors[0] = Format.Rgba16F;
+        d.Targets.Colors[1] = Format.R8;
         d.Targets.Samples = 1;
         if (blend)
             d.Blend[0] = new AttachmentBlend(true, BlendFactor.OneMinusSrcAlpha, BlendFactor.SrcAlpha,
                                              BlendFactor.OneMinusSrcAlpha, BlendFactor.SrcAlpha);
+        d.Blend[1] = blend ? ReactiveOver : new AttachmentBlend(Masked: ColorMask.All);
         return vk.CreatePipeline(in d);
     }
 
@@ -126,7 +129,7 @@ public sealed unsafe partial class AlloyRenderer
         side.Draw(3);
         ReadOnlySpan<ImageId> read = [o.Accum, o.Reveal];
         cl.ReadImages(read);
-        ReadOnlySpan<ColorAttachment> colour = [new(s.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default)];
+        ReadOnlySpan<ColorAttachment> colour = [new(s.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default), VkReactiveAttach(s)];
         VkFlushPass(cl, side, arena0, new RenderPassDesc(colour));
         if (!o.Live)
         {
