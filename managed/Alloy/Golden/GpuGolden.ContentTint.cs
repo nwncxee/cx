@@ -9,10 +9,10 @@ namespace CX.Alloy;
 
 internal static partial class GpuGolden
 {
-    /// <summary>One run of a fixture stage: the dye and its palette alpha, the slot's shine and roughness, and the
-    /// reflectivity Alloy hands the stage.</summary>
+    /// <summary>One run of a fixture stage: the dye and its palette alpha, the slot's shine and roughness, the
+    /// reflectivity Alloy hands the stage, and 1 where the material is the modern model's.</summary>
     [StructLayout(LayoutKind.Sequential)]
-    private readonly record struct TintCase(Vector4 Dye, Vector2 Slot, float SeedEnv, float Pad = 0f);
+    private readonly record struct TintCase(Vector4 Dye, Vector2 Slot, float SeedEnv, float Modern = 0f);
 
     /// <summary>What the stage left: the material, the specular colour, the surface colour and the reflectivity.</summary>
     [StructLayout(LayoutKind.Sequential)]
@@ -77,7 +77,7 @@ internal static partial class GpuGolden
             + "void main()\n{\n    int i = int(gl_WorkGroupID.x) * CX_GOLD_IN, o = int(gl_WorkGroupID.x) * CX_GOLD_OUT;\n"
             + "    cxGoldDye = vec4(uIn[i], uIn[i + 1], uIn[i + 2], uIn[i + 3]);\n    cxGoldSlot = vec4(uIn[i + 4], uIn[i + 5], 0.0, 0.0);\n"
             + "    vDraw = 0; uDraw[0].rot = vec4(1.0); uDraw[0].pbr = vec4(0.0); uDraw[0].spc = vec4(0.0);\n"
-            + "    CxHostTexel = vec4(1.0); CxHostUV = vec2(0.0); CxHostMat = vec4(0.0, 0.0, uIn[i + 6], 0.0);\n"
+            + "    CxHostTexel = vec4(1.0); CxHostUV = vec2(0.0); CxHostMat = vec4(0.0, 0.0, uIn[i + 6], uIn[i + 7]);\n"
             + "    FragmentColor = vec4(1.0); vFragmentNormal = vec3(0.0, 0.0, 1.0);\n"
             + FormattableString.Invariant($"    fSpecularity = {TintSeedPbr.X}; fRoughness = {TintSeedPbr.Y}; fMetallicness = {TintSeedPbr.Z};\n")
             + FormattableString.Invariant($"    SpecularColor = vec3({TintSeedSpec.X}, {TintSeedSpec.Y}, {TintSeedSpec.Z});\n")
@@ -97,7 +97,8 @@ internal static partial class GpuGolden
     private static bool TintNear(Vector3 a, Vector3 b) => Vector3.Distance(a, b) <= 2e-4f;
 
     /// <summary>E5 of the tint examples, which held before the shine rebuild, so it carries no approved-spec mark: a stage
-    /// that neither sets its reflectivity nor asks for a rebuild. Oracle: the material and reflectivity seeded by hand.</summary>
+    /// that neither sets its reflectivity nor asks for a rebuild, and a rebuild asked of a modern material. Oracle: the
+    /// material and reflectivity seeded by hand.</summary>
     private static void ContentTintSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
     {
         // Given a part whose material shader never sets its reflectivity and never asks for its shine to be rebuilt
@@ -113,5 +114,9 @@ internal static partial class GpuGolden
                      FormattableString.Invariant($"a stage that asks for no rebuild keeps its own colour, not {a.Albedo}"));
         check.Expect(MathF.Abs(a.Env - 0.3f) <= 2e-4f,
                      FormattableString.Invariant($"a stage that never sets its reflectivity keeps the 0.3 it was handed, not {a.Env:F4}"));
+        TintAnswer[]? modern = ContentTintRun(vk, check, log, "cx_fixtint", [new(new Vector4(0.4f, 0.05f, 0.05f, 0.5f), Vector2.Zero, 0f, 1f)]);
+        if (modern == null) return;
+        check.Expect(TintNear(modern[0].Pbr, TintSeedPbr) && TintNear(modern[0].Spec, TintSeedSpec),
+                     FormattableString.Invariant($"a rebuild leaves a modern material as declared, not {modern[0].Pbr} {modern[0].Spec}"));
     }
 }
