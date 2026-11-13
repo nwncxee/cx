@@ -44,9 +44,16 @@ public sealed unsafe class HeldImageService : IExtenderService
         public long SeenDrawn;
         public readonly long Born = Environment.TickCount64;
         public int Notices, LookEpoch = -1, CursorId = DefaultCursorId;
+        /// <summary>The hold's item drew nothing, and the log says why once.</summary>
+        public bool MissTold;
         public float SizePx = DefaultSizePx, Opacity = DefaultOpacity, PickOpacity = DefaultPickOpacity, Dx, Dy;
         /// <summary>A pick the input thread saw, for the next frame to show.</summary>
         public volatile string? PickReq;
+        /// <summary>A drag's image to carry, and a drag that ended, both from the input thread for the next frame.</summary>
+        public volatile string? CarryReq;
+        public volatile bool PutDownReq;
+        /// <summary>Which elements a running drag owns: their pick waits for the drag to travel.</summary>
+        public Func<string, bool>? DragOwns;
         public ExtenderLog? Log;
     }
 
@@ -96,6 +103,17 @@ public sealed unsafe class HeldImageService : IExtenderService
             int confirm = ServerPolicy.Int(ConfirmKey, ConfirmDefaultMs, ConfirmMinMs, ConfirmMaxMs);
             if (on && s.Model.Pick(pick, now, confirm, ServerPolicy.Stamp(Key), activity.Drawn)) Changed(s);
         }
+        string? carry = s.CarryReq;
+        if (carry != null)
+        {
+            s.CarryReq = null;
+            if (on && s.Model.Carry(carry)) Changed(s);
+        }
+        if (s.PutDownReq)
+        {
+            s.PutDownReq = false;
+            if (s.Model.Carried && s.Model.Release()) Changed(s);
+        }
         s.Cursor = s.Model.Active;
         if (!s.Model.Active) return;
 
@@ -110,16 +128,31 @@ public sealed unsafe class HeldImageService : IExtenderService
                 TextRig.DrawIcon(s.Model.Name, mx - px / 2, my - px / 2, px, px, alpha);
                 break;
             case HeldKind.Item:
-                DrawItem(RadialIcons.Item((IntPtr)(s.Model.Oid | ImageNames.ServerIdBit)), mx, my, px, alpha);
+                IntPtr item = RadialIcons.Item((IntPtr)(s.Model.Oid | ImageNames.ServerIdBit));
+                if (!DrawItem(item, mx, my, px, alpha) && !s.MissTold)
+                {
+                    s.MissTold = true;
+                    Notice(s, item == IntPtr.Zero
+                        ? $"@item:{s.Model.Oid:x} is not an item this client knows -- nothing follows the pointer"
+                        : $"item {s.Model.Oid:x} has no inventory icon yet -- nothing follows the pointer");
+                }
                 break;
             case HeldKind.Look:
-                DrawItem(s.Minted, mx, my, px, alpha);
+                _ = DrawItem(s.Minted, mx, my, px, alpha);
                 break;
             case HeldKind.Model:
                 DrawModel(s.Model.ModelKey, mx, my, px, alpha);
                 break;
         }
     }
+
+    /// <summary>The image a press on element <paramref name="id"/> shows at once, or null. An element a running drag owns
+    /// (<paramref name="dragOwns"/>) shows its image only once the drag travels, so a click on it stays a plain click.</summary>
+    internal static string? PickOnPress(string id, Func<string, bool>? dragOwns)
+        => dragOwns != null && dragOwns(id) ? null : HeldPicks.Find(id);
+
+    /// <summary>The drag's say over which elements it owns, set once it starts.</summary>
+    internal static void DragOwns(Func<string, bool> owns) => _s.DragOwns = owns;
 
     /// <summary>
     /// A left press landed on NUI (called from the input hook). When the element under the pointer declared a <c>held.pick</c>, the next
@@ -132,13 +165,36 @@ public sealed unsafe class HeldImageService : IExtenderService
         if (!NuiHitTest.TryGet(out NuiHit hit)) return;
         Span<char> id = stackalloc char[NuiHit.TokenCap];
         int n = System.Text.Encoding.UTF8.GetChars(hit.Token(), id);
-        string? image = HeldPicks.Find(id[..n]);
+        if (n == 0) return;
+        string? image = PickOnPress(new string(id[..n]), s.DragOwns);
         if (image != null) s.PickReq = image;
+    }
+
+    /// <summary>A drag started (called from the input hook): from the next frame, <paramref name="image"/> follows the pointer at full
+    /// strength until <see cref="PutDown"/>, whatever the confirm window or the policy says meanwhile.</summary>
+    internal static void Carry(string image)
+    {
+        if (_s.Ready) _s.CarryReq = image;
+    }
+
+    /// <summary>The drag ended, in a drop or a cancel: the next frame puts its image down.</summary>
+    internal static void PutDown()
+    {
+        if (_s.Ready) _s.PutDownReq = true;
+    }
+
+    /// <summary>The gesture that showed a pick was abandoned: put the image down now instead of at the end of its confirm window.
+    /// A hold the server itself sent is left alone -- only the server ends that one.</summary>
+    internal static void CancelPick()
+    {
+        HeldState s = _s;
+        if (s.Model.Pending && s.Model.Release()) Changed(s);
     }
 
     /// <summary>A hold started, changed or ended: free the old minted item and make the new one outside any draw batch.</summary>
     private static void Changed(HeldState s)
     {
+        s.MissTold = false;
         if (s.Minted != IntPtr.Zero) { NuiItemIcons.Destroy(s.Minted); s.Minted = IntPtr.Zero; }
         HeldImageModel m = s.Model;
         if (m.Active) NuiHitTest.WatchTopWindow(); else NuiHitTest.StopWatching();
@@ -197,14 +253,15 @@ public sealed unsafe class HeldImageService : IExtenderService
 
     /// <summary>The item's icon centred on the pointer, as many cells as its art's own frame fills, or its base item's cells
     /// when the frame is unknown.</summary>
-    private static void DrawItem(IntPtr item, int mx, int my, float px, float alpha)
+    private static bool DrawItem(IntPtr item, int mx, int my, float px, float alpha)
     {
-        if (item == IntPtr.Zero) return;
+        if (item == IntPtr.Zero) return false;
         IntPtr icon = new CNWCItem(item).GuiIcon;
-        if (icon == IntPtr.Zero) return;
+        if (icon == IntPtr.Zero) return false;
         NuiItemIcons.Cells(item, out int cw, out int ch);
         IconFrames.Size(icon, px, cw, ch, out float w, out float h);
         RadialIcons.DrawGuiIcon(icon, mx - w / 2, my - h / 2, w, h, alpha, cw, ch);
+        return true;
     }
 
     /// <summary>The live harness has no server: <c>nui.heldprobe</c> sends this client the line, once, at the first NUI draw 50 s after boot.</summary>

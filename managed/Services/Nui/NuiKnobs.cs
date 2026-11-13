@@ -9,7 +9,7 @@ namespace CX.Services.Nui;
 internal static class NuiKnobs
 {
     internal static readonly KnobGroup G;
-    internal static readonly Knob<bool> Enabled, Cull, ItemIcons, ModelView, Smooth, AutoHide, HoverBars, Solve, SolveCheck, Explain, HitDebug, Cards, HeldImage, CxJson;
+    internal static readonly Knob<bool> Enabled, Cull, ItemIcons, ModelView, Smooth, AutoHide, HoverBars, Solve, SolveCheck, Explain, HitDebug, Cards, HeldImage, Drag, CxJson;
     internal static readonly Knob<string> CardFile, CardLateFile, CardForce, HeldProbe;
     internal static readonly Knob<int> CardLateSec;
     internal static readonly Knob<float> Thumb;
@@ -57,6 +57,8 @@ internal static class NuiKnobs
             help: "A server's NUI window can show a character as a live, animated model, as the character screen does. Off, those images stay empty.");
         HeldImage = G.Toggle("heldimage", "Show what the server says you are holding", true,
             help: "When a server's NUI window says you picked something up, its image follows the pointer until you place it. Off, nothing follows the pointer.");
+        Drag = G.Toggle("drag", "Drag items in server windows", true, Tier.Advanced,
+            help: "Hold the mouse button on an item in a server's window and drop it where you want it. Off, a press is a click: you click the item, then click where it goes.");
         CxJson = G.Toggle("cxjson", "Settings inside a server's windows", true, Tier.Advanced,
             help: "A server's NUI window can carry CX settings in its own JSON: a card, a live model, a themed frame. Off, those members are ignored and the window is the stock one.");
         HeldProbe = G.Text("heldprobe", "heldprobe", "", Tier.ChatOnly, Effect.Restart,

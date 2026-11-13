@@ -146,6 +146,13 @@ public sealed unsafe class UiInputService : IExtenderService
             switch (*(uint*)ev)
             {
                 case SdlKeyDown:
+                    // A carried item is what Escape abandons: the gesture eats the key so it cannot also open
+                    // the engine's menu behind the drop the player just called off.
+                    if (((SdlEvent*)ev)->SymU == SdlEscape && CX.Services.NuiItems.ItemDragService.Dragging)
+                    {
+                        CX.Services.NuiItems.ItemDragService.OnCancel();
+                        return 0;
+                    }
                     // Swallow a modal window's key HERE, before CExoInput::AddEvent queues the scancode keybind
                     // (it runs pre-HandleWMKeyDown with no modifier check). Only when no full owner is typing
                     // (an owner suppresses keybinds via the keyboard-mode gate). Keyups still pass -> no stuck key.
@@ -167,6 +174,8 @@ public sealed unsafe class UiInputService : IExtenderService
                 case SdlMouseMotion:
                 {
                     int mx = ((SdlEvent*)ev)->X, my = ((SdlEvent*)ev)->Y;
+                    CX.Services.NuiItems.ItemDragService.OnMotion(mx, my);   // a held press turns into a drag once the pointer travels
+                    CX.Services.NuiItems.ItemMenuService.OnPointer(mx, my);   // a menu.open=pointer opens here
                     if (UiHost.HoverToFocus) UiHost.HoverFocusAt(mx, my);
                     if (UiHost.DispatchMouseMotion(mx, my))
                     {
@@ -191,7 +200,7 @@ public sealed unsafe class UiInputService : IExtenderService
                     // NUI (or a vanilla GUI object: radial menu, tooltip, panel) draws over us -> it gets the
                     // press. Blur first: this is a click elsewhere, and FocusAt (skipped here) is what would
                     // otherwise have released our windows' focus.
-                    if (NuiHovered() && btn == SdlButtonLeft) { CX.Services.Nui.HeldImageService.OnPress(); CX.Services.Nui.NuiModelView.OnPress(); }
+                    if (NuiHovered() && btn == SdlButtonLeft) { CX.Services.Nui.HeldImageService.OnPress(); CX.Services.NuiItems.ItemDragService.OnPress(mx, my); CX.Services.Nui.NuiModelView.OnPress(); }
                     if (NuiHovered() || (gui != IntPtr.Zero && !ours)) { UiHost.Blur(); break; }
                     if (!UiHost.HoverToFocus) UiHost.FocusAt(mx, my);   // click-to-focus (default)
                     if (UiHost.DispatchMouseButton(true, btn, mx, my)) return 0;
@@ -201,7 +210,7 @@ public sealed unsafe class UiInputService : IExtenderService
                 case SdlMouseUp:
                 {
                     CX.Alloy.Db.EditSelect.MouseUp();
-                    if (((SdlEvent*)ev)->Button == SdlButtonLeft) CX.Services.Nui.NuiModelView.OnRelease();
+                    if (((SdlEvent*)ev)->Button == SdlButtonLeft) { CX.Services.Nui.NuiModelView.OnRelease(); CX.Services.NuiItems.ItemDragService.OnRelease(); }
                     byte btn = ((SdlEvent*)ev)->Button;
                     int mx = ((SdlEvent*)ev)->X, my = ((SdlEvent*)ev)->Y;
                     if (UiHost.DispatchMouseButton(false, btn, mx, my)) return 0;
@@ -280,6 +289,7 @@ public sealed unsafe class UiInputService : IExtenderService
 
     /// <summary>Interactivity masks <c>CGuiMan::HandleLMouseDown</c> / <c>HandleMouseWheel</c> pass to the hit check.</summary>
     private const byte SdlButtonLeft = 1;  // not-an-offset: SDL_BUTTON_LEFT
+    private const uint SdlEscape = 0x1B;   // not-an-offset: SDL key code
     private const int GuiPressMask = 1, GuiWheelMask = 8;
 
     /// <summary>Would the ENGINE's GUI take a press right now -- a NUI window under the pointer or a vanilla GUI

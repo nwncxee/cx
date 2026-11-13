@@ -15,12 +15,18 @@ public struct CascadeItem
     public IntPtr IconHandle;
     public bool Disabled;
     public bool HasChildren;
+    /// <summary>The row starts a group: under a <see cref="CascadeStyle.Rows"/> look, a rule is drawn along its top.</summary>
+    public bool RuleAbove;
     public string Count;
     public object? Tag;
 
     public CascadeItem(string label, string icon = "", bool disabled = false, bool hasChildren = false, string count = "", object? tag = null)
     { Label = label; Icon = icon; Disabled = disabled; HasChildren = hasChildren; Count = count; Tag = tag; }
 }
+
+/// <summary>A list row's geometry, in px: the stripe down its left, where its icon starts (<see cref="Lead"/>), how far the
+/// icon stands in from the row's top and bottom, the gap before the label, and the room left after the longest label.</summary>
+public readonly record struct CascadeRowLayout(float Stripe, float Lead, float IconInset, float Gap, float Trail);
 
 public enum CascadeActionKind { None, Activate, RequestChildren, Context, CloseAll, Drop }
 
@@ -65,6 +71,12 @@ public struct CascadeStyle
     public float Alpha;
     public int AnimMs;
     public long NowMs;
+    /// <summary>Each row drawn as a list row of its own: <see cref="RowFill"/> with a <see cref="StripePx"/> stripe of
+    /// <see cref="RowStripe"/> down its left and a <see cref="RowEdge"/> outline; a hovered one takes <see cref="Hover"/>
+    /// and <see cref="HoverEdge"/>, and a group's first row a <see cref="Rule"/> along its top.</summary>
+    public bool Rows;
+    public (float r, float g, float b, float a) RowFill, RowEdge, RowStripe, HoverEdge, Rule;
+    public float StripePx;
 
     /// <summary>A knob swatch (RRGGBBAA) as the fill tuple.</summary>
     public static (float r, float g, float b, float a) Rgba(uint c)
@@ -185,6 +197,14 @@ public sealed partial class CascadeMenu
     public bool Open => Depth > 0;
     /// <summary>Row height, set at <see cref="OpenAt"/>: the face's line height plus <see cref="Pad"/> each side.</summary>
     public float ItemH { get; private set; }
+    /// <summary>A row height the owner sets, in px; 0 sizes rows to the face.</summary>
+    public float FixedItemH;
+    /// <summary>A list row's geometry the owner sets, in px; null lays rows out from the face.</summary>
+    public CascadeRowLayout? Row;
+    /// <summary>Labels drawn with every glyph on a whole pixel, as a NUI skin's <c>pixel_snap</c> draws them.</summary>
+    public bool SnapText;
+    /// <summary>Extra px between a label's glyphs, as a NUI skin's <c>spacing_h</c> puts them.</summary>
+    public float TextSpacing;
     public CascadeLevel Level(int i) => _lv[i];
     /// <summary>Icon squares fully inside their level band as of the last <see cref="Draw"/>.</summary>
     public ReadOnlySpan<IconQuad> Icons => new(_icons, 0, _iconN);
@@ -193,7 +213,7 @@ public sealed partial class CascadeMenu
     public void OpenAt(CascadeItem[] items, float x, float y, GlyphAtlas atlas, float viewportW, float viewportH)
     {
         _atlas = atlas; _vpW = viewportW; _vpH = viewportH;
-        ItemH = atlas.LineHeight + 2f * Pad;
+        ItemH = FixedItemH > 0f ? FixedItemH : atlas.LineHeight + 2f * Pad;
         long opened = Depth > 0 ? _lv[0].OpenedMs : -1;   // a re-layout of an open root does not re-animate
         Depth = 0;
         Place(_lv[0], Layout(_lv[0], items), x, y, -1);
@@ -263,13 +283,16 @@ public sealed partial class CascadeMenu
         for (int i = 0; i < items.Length; i++)
         {
             ref CascadeItem it = ref items[i];
-            float rw = iconCol + Pad + UiText.Measure(atlas, it.Label ?? "") + Pad;
+            float rw = Row is { } row
+                ? row.Lead + (lv.HasIcons ? ItemH - 2f * row.IconInset + row.Gap : 0f) + UiText.Measure(atlas, it.Label ?? "", TextSpacing) + row.Trail
+                : iconCol + Pad + UiText.Measure(atlas, it.Label ?? "") + Pad;
             if (!string.IsNullOrEmpty(it.Count)) rw += UiText.Measure(atlas, it.Count) + Pad;
             if (it.HasChildren) rw += markW + Pad;
             if (rw > w) w = rw;
         }
         if (items.Length > MaxVisible) w += Theme.IsNative ? NativeChrome.BarWidth(Metrics.Scale) : ScrollColumn.BarW;
-        if (w < MinWRows * ItemH) w = MinWRows * ItemH;
+        if (Row == null && w < MinWRows * ItemH) w = MinWRows * ItemH;
+        if (Row != null) w = MathF.Ceiling(w);
         return w > MaxW ? MaxW : w;
     }
 
@@ -484,6 +507,19 @@ public sealed partial class CascadeMenu
         return CascadeAction.None;
     }
 
+    /// <summary>One row under a <see cref="CascadeStyle.Rows"/> look: its fill, stripe and outline, the hover's fill and
+    /// outline over them when <paramref name="lit"/>, and a group's rule along the top, inset by <paramref name="pad"/>.</summary>
+    private void DrawRow(VertexBatch b, in CascadeStyle st, in CascadeItem it, float x0, float top, float x1, bool lit, float pad, float alpha)
+    {
+        float y1 = top + ItemH, stripe = Row?.Stripe ?? st.StripePx;
+        var fill = lit ? st.Hover : st.RowFill;
+        var edge = lit ? st.HoverEdge : st.RowEdge;
+        b.Rect(x0 + stripe, top, x1, y1, fill.r, fill.g, fill.b, fill.a * alpha);
+        b.Rect(x0, top, x0 + stripe, y1, st.RowStripe.r, st.RowStripe.g, st.RowStripe.b, st.RowStripe.a * alpha);
+        Outline(b, x0, top, x1, y1, edge, alpha);
+        if (it.RuleAbove) b.Rect(x0 + pad, top, x1 - pad, top + 1f, st.Rule.r, st.Rule.g, st.Rule.b, st.Rule.a * alpha);
+    }
+
     /// <summary>A 1 px frame just inside the rect, as four strips: a filled rect under the bg would tint a
     /// translucent bg with the frame colour.</summary>
     private static void Outline(VertexBatch b, float x0, float y0, float x1, float y1, (float r, float g, float b, float a) c, float alpha)
@@ -539,16 +575,19 @@ public sealed partial class CascadeMenu
                 float top = lv.List.ToScreen(r * ItemH) + oy;
                 if (top + ItemH <= y0 || top >= y1) continue;
                 ref CascadeItem it = ref lv.Items[r];
-                if (r == owning) b.Rect(x0, top, fillR, top + ItemH, active.r, active.g, active.b, active.a * alpha);
+                if (st.Rows) DrawRow(b, in st, in it, x0, top, fillR, r == owning || r == lv.Hover, pad, alpha);
+                else if (r == owning) b.Rect(x0, top, fillR, top + ItemH, active.r, active.g, active.b, active.a * alpha);
                 else if (r == lv.Hover) b.Rect(x0, top, fillR, top + ItemH, active.r, active.g, active.b, active.a * 0.55f * alpha);
                 float a = (it.Disabled ? DisabledAlpha : 1f) * st.TextAlpha * alpha;
                 if (RowDrag && i == _pressLevel && r == _pressRow) a *= DragSourceAlpha;
                 // Icons draw unclipped in the owner's pass, so only a square wholly inside the band is reported.
+                float iconX = Row is { } rl ? x0 + rl.Lead : x0 + inset, iconY = Row is { } rt ? rt.IconInset : inset;
+                float iconSize = ItemH - 2f * iconY;
                 if (iconCol > 0f && HasIcon(in it) && top >= y0 && top + ItemH <= y1 && _iconN < _icons.Length)
-                    _icons[_iconN++] = new IconQuad(it.Icon, x0 + inset, top + inset, ItemH - 2f * inset, a, it.IconHandle);
+                    _icons[_iconN++] = new IconQuad(it.Icon, iconX, top + iconY, iconSize, a, it.IconHandle);
                 float baseline = top + baseDrop + vpad, right = textClip;
                 if (it.HasChildren && hasMark) { right -= markW; b.Glyph(mg, right, baseline, tr, tg, tb, a); right -= pad; }
-                float labelX = x0 + iconCol + pad;
+                float labelX = Row is { } lr ? x0 + lr.Lead + (iconCol > 0f ? iconSize + lr.Gap : 0f) : x0 + iconCol + pad;
                 if (!string.IsNullOrEmpty(it.Count))
                 {
                     float cw = UiText.Measure(atlas, it.Count);
@@ -559,7 +598,11 @@ public sealed partial class CascadeMenu
                         right -= pad;
                     }
                 }
-                if (it.Label != null) UiText.Draw(b, atlas, it.Label, labelX, baseline, textRgb, right, a);
+                if (it.Label != null)
+                {
+                    if (SnapText || TextSpacing != 0f) UiText.Draw(b, atlas, it.Label, labelX, baseline, textRgb, right, a, SnapText, TextSpacing);
+                    else UiText.Draw(b, atlas, it.Label, labelX, baseline, textRgb, right, a);
+                }
             }
             if (RowDrag && i == DropLevel)
             {

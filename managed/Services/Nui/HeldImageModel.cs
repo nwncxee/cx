@@ -21,13 +21,14 @@ internal enum HeldKind
 }
 
 /// <summary>
-/// The show, hide and clear rules for the held image, with no engine in them. A value shows its image, an empty one
-/// hides it, and a hold clears itself once NUI has drawn no widget for <see cref="GraceMs"/> or the window it began over is
-/// gone (<see cref="Release"/>). A <see cref="Pick"/> shows pending until a <c>held.image</c> line answers or <c>held.confirm</c> ms pass.
+/// The show, hide and clear rules for the held image, with no engine in them. A value shows its image and an empty one hides it;
+/// a hold the server sent lasts until it sends another or the window it began over is gone (<see cref="Release"/>). A
+/// <see cref="Pick"/> shows pending until a <c>held.image</c> line answers, <c>held.confirm</c> ms pass, or NUI draws nothing
+/// under it for <see cref="GraceMs"/>: only a pick nobody answered is dropped by a quiet NUI.
 /// </summary>
 internal sealed class HeldImageModel
 {
-    /// <summary>How long NUI may draw nothing before the hold is dropped; 0 never drops it. The server's <c>held.grace</c>.</summary>
+    /// <summary>How long NUI may draw nothing under an unanswered pick before it is dropped; 0 never drops it. The server's <c>held.grace</c>.</summary>
     internal int GraceMs = DefaultGraceMs;
     internal const int DefaultGraceMs = 500;
     private const int ResrefMax = 16;
@@ -57,6 +58,12 @@ internal sealed class HeldImageModel
     /// </summary>
     public bool Update(int epoch, bool enabled, string? value, long drawn, bool counting, long nowMs, int stamp = 0)
     {
+        if (Carried)
+        {
+            if (enabled) return false;
+            Release();
+            return true;
+        }
         if (value != null)
         {
             _epoch = epoch;
@@ -69,9 +76,10 @@ internal sealed class HeldImageModel
             return changed;
         }
         if (Pending && nowMs - _pickAt >= _confirmMs) { Pending = false; Set(""); return true; }
-        if (!Active || !counting || Pending) return false;
+        if (!Active || !counting) return false;
         if (drawn != _drawn) { _drawn = drawn; _drawnAt = nowMs; return false; }
-        if (GraceMs <= 0 || nowMs - _drawnAt < GraceMs) return false;
+        if (!Pending || GraceMs <= 0 || nowMs - _drawnAt < GraceMs) return false;
+        Pending = false;
         Set("");
         return true;
     }
@@ -83,16 +91,31 @@ internal sealed class HeldImageModel
     public bool Pick(string image, long nowMs, int confirmMs, int stamp, long drawn)
     {
         bool changed = Set(image);
+        Carried = false;
         Pending = Active;
         _pickAt = nowMs; _confirmMs = confirmMs; _pickStamp = stamp;
         _drawn = drawn; _drawnAt = nowMs;
         return changed;
     }
 
-    /// <summary>The window the hold came from is gone: drop it now. True when something was held.</summary>
+    /// <summary>True while a gesture the client owns, a drag, carries the image: only <see cref="Release"/> ends it.</summary>
+    public bool Carried { get; private set; }
+
+    /// <summary>A drag started: carry <paramref name="image"/> at full strength until <see cref="Release"/>. True when what is held changed.</summary>
+    public bool Carry(string image)
+    {
+        bool changed = Set(image);
+        Pending = false;
+        Carried = Active;
+        return changed;
+    }
+
+    /// <summary>The window the hold came from is gone, or the drag that carried it ended: drop it now. True when something was held.</summary>
     public bool Release()
     {
         bool was = Active;
+        if (Carried) _epoch = -1;
+        Carried = false;
         Pending = false;
         Set("");
         return was;
@@ -140,11 +163,14 @@ internal sealed class HeldImageModel
         check.Expect(!m.Stale(1, true) && m.Stale(2, true) && m.Stale(1, false), "an epoch or knob move makes it stale");
         check.Expect(!m.Update(1, true, null, 11, true, 1400) && m.Active, "NUI still drawing keeps the hold");
         check.Expect(!m.Update(1, true, null, 11, true, 1899) && m.Active, "a quiet NUI is forgiven inside the grace");
-        check.Expect(m.Update(1, true, null, 11, true, 1900) && !m.Active, "a quiet NUI past the grace drops the hold");
+        check.Expect(!m.Update(1, true, null, 11, true, 61_400) && m.Active, "a hold the server sent outlives a minute of quiet NUI: only its own line or a gone window ends it");
+        var pick = new HeldImageModel();
+        pick.Pick("iit_belt", 1000, 60_000, 0, 10);
+        check.Expect(!pick.Update(1, true, null, 10, true, 1499) && pick.Active, "an unanswered pick is forgiven inside the grace");
+        check.Expect(pick.Update(1, true, null, 10, true, 1500) && !pick.Active && !pick.Pending, "a quiet NUI past the grace drops an unanswered pick, well inside its confirm window");
         var keep = new HeldImageModel { GraceMs = 0 };
-        keep.Update(1, true, "iit_belt", 10, true, 1000);
-        keep.Update(1, true, null, 11, true, 1400);
-        check.Expect(!keep.Update(1, true, null, 11, true, 61_400) && keep.Active, "grace 0 keeps a hold through a minute of quiet NUI");
+        keep.Pick("iit_belt", 1000, 600_000, 0, 10);
+        check.Expect(!keep.Update(1, true, null, 10, true, 61_400) && keep.Active, "grace 0 keeps a pick through a minute of quiet NUI, to the end of its own window");
 
         m.Update(2, true, "iit_belt", 11, true, 2000);
         check.Expect(m.Active, "the same value sent again shows again after a drop");
