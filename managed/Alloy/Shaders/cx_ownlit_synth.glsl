@@ -406,6 +406,7 @@ void main()
         fSpecularity = pbr.x; fRoughness = pbr.y; fMetallicness = pbr.z;
         SpecularColor = sc;
     }
+    CxHostMat = vec4(specTexel, roughTexel, envLevel, physical ? 1.0 : 0.0);
     // 30 = the hosted body BYPASSED: the plain lit path for every hosted material, the A/B for
     //      "the look is wrong" vs "the handoff is wrong".
     if (uViz != 30 && CxHostSurface(feat))
@@ -414,6 +415,8 @@ void main()
         N = normalize(vFragmentNormal);
         pbr = vec3(fSpecularity, fRoughness, fMetallicness);
 #ifdef CX_CONTENT_PROGRAM
+        // the reflectivity is the stage's to set, as its colour is: the legacy reflection follows what it left
+        envLevel = fEnvMapLevel;
         // CX-303: a content stage's alpha IS its coverage -- a stage that cuts on another map hands that map back --
         // and it made its own cut; what is left is the OIT pass's zero-coverage drop
         coverage = FragmentColor.a;
