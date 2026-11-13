@@ -265,8 +265,18 @@ void ApplyFog(inout vec4 c) { }
 #ifndef CX_CON_HAS_SetupViewToSurfaceNormal
 void SetupViewToSurfaceNormal() { }
 #endif
+// inc_material's rebuild of the generated material, for a stage that changes its reflectivity or its colour after the
+// setup call: Alloy's synthesis again, over the reflectivity the stage left and the albedo it passes. A material that
+// declares the modern vocabulary keeps what it declared.
 #ifndef CX_CON_HAS_SetupSpecularity
-void SetupSpecularity(vec3 c) { }
+void SetupSpecularity(vec3 c)
+{
+    if (CxHostMat.w > 0.5) return;
+    vec4 declared = uDraw[vDraw].pbr;
+    vec3 pbr = CxSynthPbr(declared.xyz, int(declared.w), fEnvMapLevel, CxHostMat.x, CxHostMat.y);
+    fSpecularity = pbr.x; fRoughness = pbr.y; fMetallicness = pbr.z;
+    SpecularColor = CxSpecColor(uDraw[vDraw].spc, c, pbr.z, int(declared.w));
+}
 #endif
 #ifndef CX_CON_HAS_SetupOcclusion
 void SetupOcclusion() { }
