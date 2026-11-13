@@ -47,6 +47,9 @@ public sealed unsafe class HeldImageService : IExtenderService
         public float SizePx = DefaultSizePx, Opacity = DefaultOpacity, PickOpacity = DefaultPickOpacity, Dx, Dy;
         /// <summary>A pick the input thread saw, for the next frame to show.</summary>
         public volatile string? PickReq;
+        /// <summary>A drag's image to carry, and a drag that ended, both from the input thread for the next frame.</summary>
+        public volatile string? CarryReq;
+        public volatile bool PutDownReq;
         public ExtenderLog? Log;
     }
 
@@ -96,6 +99,17 @@ public sealed unsafe class HeldImageService : IExtenderService
             int confirm = ServerPolicy.Int(ConfirmKey, ConfirmDefaultMs, ConfirmMinMs, ConfirmMaxMs);
             if (on && s.Model.Pick(pick, now, confirm, ServerPolicy.Stamp(Key), activity.Drawn)) Changed(s);
         }
+        string? carry = s.CarryReq;
+        if (carry != null)
+        {
+            s.CarryReq = null;
+            if (on && s.Model.Carry(carry)) Changed(s);
+        }
+        if (s.PutDownReq)
+        {
+            s.PutDownReq = false;
+            if (s.Model.Carried && s.Model.Release()) Changed(s);
+        }
         s.Cursor = s.Model.Active;
         if (!s.Model.Active) return;
 
@@ -134,6 +148,19 @@ public sealed unsafe class HeldImageService : IExtenderService
         int n = System.Text.Encoding.UTF8.GetChars(hit.Token(), id);
         string? image = HeldPicks.Find(id[..n]);
         if (image != null) s.PickReq = image;
+    }
+
+    /// <summary>A drag started (called from the input hook): from the next frame, <paramref name="image"/> follows the pointer at full
+    /// strength until <see cref="PutDown"/>, whatever the confirm window or the policy says meanwhile.</summary>
+    internal static void Carry(string image)
+    {
+        if (_s.Ready) _s.CarryReq = image;
+    }
+
+    /// <summary>The drag ended, in a drop or a cancel: the next frame puts its image down.</summary>
+    internal static void PutDown()
+    {
+        if (_s.Ready) _s.PutDownReq = true;
     }
 
     /// <summary>The gesture that showed a pick was abandoned: put the image down now instead of at the end of its confirm window.

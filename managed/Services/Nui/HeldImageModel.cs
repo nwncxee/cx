@@ -58,6 +58,12 @@ internal sealed class HeldImageModel
     /// </summary>
     public bool Update(int epoch, bool enabled, string? value, long drawn, bool counting, long nowMs, int stamp = 0)
     {
+        if (Carried)
+        {
+            if (enabled) return false;
+            Release();
+            return true;
+        }
         if (value != null)
         {
             _epoch = epoch;
@@ -85,22 +91,31 @@ internal sealed class HeldImageModel
     public bool Pick(string image, long nowMs, int confirmMs, int stamp, long drawn)
     {
         bool changed = Set(image);
+        Carried = false;
         Pending = Active;
         _pickAt = nowMs; _confirmMs = confirmMs; _pickStamp = stamp;
         _drawn = drawn; _drawnAt = nowMs;
         return changed;
     }
 
-    /// <summary>True while a gesture the client owns, a drag, carries the image.</summary>
+    /// <summary>True while a gesture the client owns, a drag, carries the image: only <see cref="Release"/> ends it.</summary>
     public bool Carried { get; private set; }
 
-    /// <summary>A drag started: carry <paramref name="image"/>. True when what is held changed.</summary>
-    public bool Carry(string image) => false;
+    /// <summary>A drag started: carry <paramref name="image"/> at full strength until <see cref="Release"/>. True when what is held changed.</summary>
+    public bool Carry(string image)
+    {
+        bool changed = Set(image);
+        Pending = false;
+        Carried = Active;
+        return changed;
+    }
 
-    /// <summary>The window the hold came from is gone: drop it now. True when something was held.</summary>
+    /// <summary>The window the hold came from is gone, or the drag that carried it ended: drop it now. True when something was held.</summary>
     public bool Release()
     {
         bool was = Active;
+        if (Carried) _epoch = -1;
+        Carried = false;
         Pending = false;
         Set("");
         return was;

@@ -19,6 +19,8 @@ internal static class ItemDragService
     internal sealed class DragState
     {
         public readonly ItemDragModel Model = new();
+        /// <summary>The image the pressed element drew, which the drag carries once it travels.</summary>
+        public string Image = "";
         public ExtenderLog? Log;
     }
 
@@ -49,25 +51,29 @@ internal static class ItemDragService
     internal static void OnPress(int x, int y)
     {
         if (!On) return;
-        string id = ElementUnderPointer();
-        if (id.Length != 0 && ItemDragPolicy.Draggable(id)) Model.Press(id, x, y);
+        string id = ElementUnderPointer(out string drawn);
+        if (id.Length == 0 || !ItemDragPolicy.Draggable(id)) return;
+        Model.Press(id, x, y);
+        _s.Image = CarryImage(id, drawn);
     }
 
     /// <summary>The pointer moved while a press is held.</summary>
     internal static void OnMotion(int x, int y)
     {
-        if (Model.Armed && Model.Motion(x, y)) _log?.Info($"[drag] carrying {Model.Pressed}");
+        if (!Model.Armed || !Model.Motion(x, y)) return;
+        _log?.Info($"[drag] carrying {Model.Pressed} as {_s.Image}");
+        if (_s.Image.Length != 0) HeldImageService.Carry(_s.Image);
     }
 
     /// <summary>The left button came up. A drag that travelled is a drop; a press that stayed put is the click the engine took.</summary>
-    internal static void OnRelease() => Act(Model.Release(ElementUnderPointer()));
+    internal static void OnRelease() => Act(Model.Release(ElementUnderPointer(out _)));
 
     /// <summary>Escape, or anything else that abandons the gesture.</summary>
     internal static void OnCancel() => Act(Model.Cancel());
 
     /// <summary>The image a drag from <paramref name="pressedId"/> carries: its <c>held.pick.</c> image when the server declared
     /// one, else <paramref name="drawn"/>, the image the element drew when it was pressed.</summary>
-    internal static string CarryImage(string pressedId, string drawn) => "";
+    internal static string CarryImage(string pressedId, string drawn) => HeldPicks.Find(pressedId) ?? drawn;
 
     /// <summary>True while an item is being carried, so a caller can leave the gesture alone.</summary>
     internal static bool Dragging => Model.Dragging;
@@ -79,20 +85,26 @@ internal static class ItemDragService
             case DragOutcomeKind.Drop:
                 _log?.Info($"[drag] drop {outcome.Pressed} -> {outcome.Over}");
                 ServerPolicy.Emit(DropAction, outcome.Pressed, outcome.Over);
+                HeldImageService.PutDown();
                 break;
             case DragOutcomeKind.Cancel:
                 _log?.Info($"[drag] cancelled on {outcome.Pressed}");
                 HeldImageService.CancelPick();
+                HeldImageService.PutDown();
                 break;
         }
     }
 
-    /// <summary>The id of the element the pointer was last published over, empty when over none. Allocation-free until the id is one.</summary>
-    private static string ElementUnderPointer()
+    /// <summary>The id of the element the pointer was last published over, empty when over none, and the image it drew.
+    /// Allocation-free until the id is one.</summary>
+    private static string ElementUnderPointer(out string drawn)
     {
+        drawn = "";
         if (!NuiHitTest.TryGet(out NuiHit hit)) return "";
         Span<char> id = stackalloc char[NuiHit.TokenCap];
         int n = Encoding.UTF8.GetChars(hit.Token(), id);
-        return n == 0 ? "" : new string(id[..n]);
+        if (n == 0) return "";
+        drawn = Encoding.UTF8.GetString(hit.Image());
+        return new string(id[..n]);
     }
 }
