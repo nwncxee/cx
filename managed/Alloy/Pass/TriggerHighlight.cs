@@ -72,25 +72,25 @@ internal static unsafe class TriggerHighlight
         public VkBackend? Dev;
         public GuiVkProg? Prog;
         public BufferId Buf;
-        public int Count = -1, InvVp = -1;
+        public int Count = -1, InvVp = -1, Unjitter = -1;
         public bool Tried, Live;
     }
 
     private static TrigVkState _vk = new();
 
-    /// <summary>The pass on Vulkan, over the screen after the post stack, as GL draws it after its stack: the same
-    /// stage, the outline buffer updated in the command list, the frame's depth sampled.</summary>
-    internal static void DrawVk(VkBackend vk, CommandList cl, ImageId screen, ImageId depth, in Matrix4x4 vp, int* display,
+    /// <summary>The pass on Vulkan, over the screen after the post stack: the frame's jittered depth read back at the
+    /// unjittered pixel and placed through the unjittered <paramref name="vpClean"/>, so a decal edge stays put.</summary>
+    internal static void DrawVk(VkBackend vk, CommandList cl, ImageId screen, ImageId depth, in Matrix4x4 vpClean, int* display,
                                 ExtenderLog log)
     {
         TrigVkState s = _vk;
         if (s.Dev != vk) _vk = s = new TrigVkState { Dev = vk };
-        if (_count == 0 || depth.IsNull || !Matrix4x4.Invert(vp, out Matrix4x4 inv)) return;
+        if (_count == 0 || depth.IsNull || !Matrix4x4.Invert(vpClean, out Matrix4x4 inv)) return;
         if (!s.Tried)
         {
             s.Tried = true;
             s.Prog = PostChainVk.Program(vk, PostChain.FullscreenVs, ShaderSource.Get("cx_hilitetrig_f.glsl"), "trigger highlight",
-                                         q => { s.Count = q.Loc("uTrigCount"); s.InvVp = q.Loc("uInvVP"); }, log);
+                                         q => { s.Count = q.Loc("uTrigCount"); s.InvVp = q.Loc("uInvVP"); s.Unjitter = q.Loc("uUnjitter"); }, log);
             s.Buf = vk.CreateBuffer(new BufferDesc(Vec4s * sizeof(Vector4), BufferUse.Storage, MemoryKind.Upload, "vk trigger outlines"));
             if (s.Prog == null || s.Buf.IsNull)
             {
@@ -105,6 +105,7 @@ internal static unsafe class TriggerHighlight
         PostChainVk.Open(s.Prog);
         LooseBlock.Set(s.Count, _count);
         LooseBlock.Set(s.InvVp, inv);
+        LooseBlock.Set(s.Unjitter, [PostChain.JitterX * 0.5f, PostChain.JitterY * 0.5f]);
         int at = PostChainVk.Close(cl, s.Prog);
         PostChainVk.Draw(cl, s.Prog, PostChainVk.FormatOf(screen), PostChainVk.Blend.Over, screen, LoadOp.Load,
                          new Rect(display[0], display[1], display[2], display[3]), at,

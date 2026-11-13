@@ -276,9 +276,9 @@ public sealed unsafe partial class AlloyRenderer
         FbPostStage.SetCamera(&vw, &pj);
         cl.BeginLabel("post"u8);
         if (!PostStack.RecordVk(vk, cl, s.Hdr, s.Depth, &vpJ, &vpC, viewport, display, near, far, proj.M34 != 0f ? 2f * MathF.Atan(1f / proj.M22) : 0f, log)) return false;
-        VkHighlightComposite(cl, screen, display, log);
+        VkHighlightComposite(cl, screen, s.Depth, vpClean, display, log);
         if (!VkGlowPass(vk, cl, s, screen, view, proj, display, log)) return false;
-        TriggerHighlight.DrawVk(vk, cl, screen, s.Depth, vp, display, log);
+        TriggerHighlight.DrawVk(vk, cl, screen, s.Depth, vpClean, display, log);
         cl.EndLabel();
         // the probe last: this frame's lit stages read the cube as it stood, and its faces reuse the frame's side list
         cl.BeginLabel("probe"u8);

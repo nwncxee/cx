@@ -117,7 +117,8 @@ internal static unsafe partial class Highlight
 
     /// <summary>The outline radius in texels of a mask <paramref name="maskW"/> wide, drawn on a screen
     /// <paramref name="displayW"/> wide, so the outline is <see cref="OutlinePx"/> screen pixels at any render scale.</summary>
-    internal static float OutlineTexels(int maskW, int displayW) => OutlinePx;
+    internal static float OutlineTexels(int maskW, int displayW)
+        => maskW > 0 && displayW > 0 ? OutlinePx * maskW / displayW : OutlinePx;
 
     /// <summary>Oracle: render scales written as literal sizes, and the outline width they must come to.</summary>
     internal static bool SelfCheck(ExtenderLog log)

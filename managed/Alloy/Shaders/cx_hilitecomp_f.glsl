@@ -2,16 +2,12 @@
 in vec2 vUV;
 uniform sampler2D uMask;
 uniform float uFill;    // fill opacity
-uniform float uRadius;  // outline thickness, px
-uniform vec2 uUnjitter; // #389: the mask's camera jitter in uv, read back out (0 with TAA off)
+uniform float uRadius;  // outline thickness, mask texels
 out vec4 frag;
 void main()
 {
     vec2 ts = 1.0 / vec2(textureSize(uMask, 0));
-    // The mask was drawn with the frame's JITTERED camera so its depth test holds; the overlay lands in
-    // the accumulated (unjittered) frame, so the mask is sampled half a jitter back -- bilinear, so a
-    // sub-pixel shift is a soft edge rather than a snap.
-    vec2 uv = vUV + uUnjitter;
+    vec2 uv = vUV;   // the resolved mask is unjittered already
     vec4 m = texture(uMask, uv);
     vec3 accC = vec3(0.0);
     float accA = 0.0;

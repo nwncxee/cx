@@ -16,7 +16,7 @@ out vec4 frag;
 /// One pixel's resolved coverage: last frame's, held inside this frame's neighbourhood [lo, hi], weighted keep.
 vec4 CxHlResolve(vec4 hist, vec4 cur, vec4 lo, vec4 hi, float keep)
 {
-    return cur;
+    return mix(cur, clamp(hist, lo, hi), keep);
 }
 
 void main()
