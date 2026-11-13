@@ -26,6 +26,8 @@ internal static class ItemMenuService
         public GlyphAtlas? Atlas;
         public ExtenderLog? Log;
         public int ShownGen = -1, OpenGen = -1, OpenX, OpenY;
+        /// <summary>The face size last baked for the menu.</summary>
+        public float FaceAsked;
         /// <summary>The pointer's last pixel, where a menu the server opened at the pointer appears.</summary>
         public int PointerX, PointerY;
     }
@@ -66,11 +68,11 @@ internal static class ItemMenuService
     }
 
     /// <summary>Per frame: open, re-open or close the cascade to match what the server declared, then draw it as the server's
-    /// own NUI menu looks: the UI font, the NUI skin's colours, no frame art and no fade.</summary>
+    /// own NUI menu looks: NUI's text size, the NUI skin's colours, no frame art and no fade.</summary>
     private static void Draw()
     {
         ItemMenuModel m = ItemMenuPolicy.Menu;
-        if (TextRig.Atlas is not GlyphAtlas atlas) return;
+        if (Face() is not GlyphAtlas atlas) return;
         if (m.Gen != _s.ShownGen || !ReferenceEquals(atlas, _s.Atlas))
         {
             _s.ShownGen = m.Gen;
@@ -98,6 +100,24 @@ internal static class ItemMenuService
 
     /// <summary>The menu draws no frame art: the server's NUI menu has none.</summary>
     internal static bool DrawsArt => false;
+
+    /// <summary>The stock <c>nui_skin.tml</c>'s body text, <c>fnt_maintext</c>, in px at UI scale 1.</summary>
+    private const float NuiTextPx = 17f;
+
+    /// <summary>The menu's face: NUI's body text size at the game's UI scale, so its rows stand as tall as the NUI menu's.
+    /// The UI face stands in until that one is baked.</summary>
+    private static GlyphAtlas? Face()
+    {
+        float px = MathF.Round(NuiTextPx * Metrics.GameUiScale);
+        return TextRig.BakedFace(px) ?? (_s.FaceAsked == px ? TextRig.Atlas : Ask(px));
+    }
+
+    /// <summary>Bakes the face once per size: the first open at a new UI scale waits for it, and every later frame finds it baked.</summary>
+    private static GlyphAtlas? Ask(float px)
+    {
+        _s.FaceAsked = px;
+        return TextRig.Face(px) ?? TextRig.Atlas;
+    }
 
     /// <summary>True while the menu is on screen.</summary>
     internal static bool IsOpen => Menu.Open;

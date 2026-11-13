@@ -249,12 +249,14 @@ such as `@item:<hex>` when the element draws an item over a plate. The image fol
 `held.opacity`, and no `held.confirm` or `held.grace` ends it. A press on a draggable element shows its `held.pick`
 image only once the drag moves, so a plain click there shows nothing.
 
-The gesture comes back as one [UiEvent](#wire) on release:
+The press that starts a drag still reaches your window as the stock client's click, so it may already have picked the
+item. The gesture comes back as one [UiEvent](#wire) at its end:
 
 - `drop;<pressed id>;<id under the pointer>` -- run the pick and the place your click handler already makes, with the
   same checks a click gets.
-- Nothing at all -- a press and release in place is still the click the stock client sent you, a release over no
-  element is a cancel, and so is Escape while carrying. A gesture the player abandons leaves the window as it was.
+- `drop;<pressed id>;` -- the player abandoned the drag: a release over no element, or Escape while carrying. Put
+  down any pick the press made, so the window is as it was before the press.
+- Nothing at all -- a press and release in place is the click the stock client sent you.
 
 A client that does not advertise `cx_cap_drag` sends no `drop`, so keep your click-to-pick, click-to-place entry: it is
 what the drop calls anyway.

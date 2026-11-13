@@ -79,7 +79,9 @@ internal static class ItemDragService
     /// <summary>True while an item is being carried, so a caller can leave the gesture alone.</summary>
     internal static bool Dragging => Model.Dragging;
 
-    private static void Act(DragOutcome outcome)
+    /// <summary>What a finished gesture does. A cancel is a drop on nothing: the press reached the server as a click, which
+    /// may have picked the item, and the server puts that pick down.</summary>
+    internal static void Act(DragOutcome outcome)
     {
         switch (outcome.Kind)
         {
@@ -90,6 +92,7 @@ internal static class ItemDragService
                 break;
             case DragOutcomeKind.Cancel:
                 _log?.Info($"[drag] cancelled on {outcome.Pressed}");
+                ServerPolicy.Emit(DropAction, outcome.Pressed, "");
                 HeldImageService.CancelPick();
                 HeldImageService.PutDown();
                 break;

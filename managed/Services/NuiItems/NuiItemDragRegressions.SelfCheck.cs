@@ -14,6 +14,7 @@ internal static class NuiItemDragRegressions
         var check = new Checker(log, "NuiItemDragRegressions.SelfCheck");
         CarriedImage(check);
         CarryLasts(check);
+        CancelPutsBack(check);
         log.Info(check.Ok ? "NuiItemDragRegressions.SelfCheck: passed" : "NuiItemDragRegressions.SelfCheck: FAILED");
     }
 
@@ -25,6 +26,19 @@ internal static class NuiItemDragRegressions
         HeldPicks.Set("cell_*", "@item:7f001234");
         check.Expect(ItemDragService.CarryImage("cell_1", "iit_dagger") == "@item:7f001234", "DD7 a held.pick line for the cell wins over the drawn image");
         HeldPicks.Reset();
+    }
+
+    /// <summary>The press that starts a drag reaches the server as a click, which picks the item; an abandoned drag tells the
+    /// server so it puts the pick down (DD9, DD10). Oracle: the wire text typed here by hand.</summary>
+    private static void CancelPutsBack(Checker check)
+    {
+        var sent = new System.Collections.Generic.List<string>();
+        var was = ServerPolicy.Send;
+        ServerPolicy.Send = (minor, ascii) => sent.Add($"{minor:x2}:{ascii}");
+        ItemDragService.Act(DragOutcome.Cancel("cell_1"));
+        ItemDragService.Act(DragOutcome.Click("cell_1"));
+        ServerPolicy.Send = was;
+        check.Expect(sent.Count == 1 && sent[0] == "48:drop;cell_1;", $"DD10 an abandoned drag is a drop on nothing, so the server puts its pick down ({string.Join(" | ", sent)})");
     }
 
     /// <summary>No confirm window, quiet NUI or policy line ends a carry; only the release does.</summary>
