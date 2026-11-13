@@ -64,6 +64,10 @@ float CxPltScheme(int draw, int layer)
     return (int(uGui[cxGuiRec + 13].x) & 32) != 0 && layer >= 0 && layer < 10 ? GuiPltRow(cxGuiRec, layer) / CX_PLT_HEIGHT : 0.0;
 }
 
+// A GUI part shades without a specular lobe, so a stage's rebuild of one has nothing to do.
+#define CX_CON_HAS_SetupSpecularity
+void SetupSpecularity(vec3 c) { }
+
 //$GUI-CONTENT-REGION
 
 // A GUI scene never alpha-tests (Scene::RenderOnlyGobs), so the stock setup's cut has nothing to do.
@@ -86,6 +90,7 @@ void main()
     uDraw[0].feat = vec4(float(CX_FEAT_CONTENT0), -1.0, float(uGuiRow), 0.0);
     CxHostTexel = vec4(ApplyColorSpace(t.rgb), t.a);
     CxHostUV = vUv;
+    CxHostMat = vec4(0.0, 0.0, envLevel, 0.0);
     FragmentColor = vec4(1.0);
     vFragmentNormal = vNrm;
     vSurfaceNormal = vNrm;

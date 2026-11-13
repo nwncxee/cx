@@ -571,7 +571,7 @@ def stock_shaped(text, fragment):
 def fragment_wrapper(r):
     w = ("void CxContentBody()\n{\n    cxConUV = CxHostUV;\n    cxConRow = CxContentRow(vDraw);\n"
          + ("    CxConFillLights();\n" if r.reads_lights else "")
-         + "    fEnvMapLevel = 0.0;\n    fOcclusion = 1.0;\n"
+         + "    fEnvMapLevel = CxHostMat.z;\n    fOcclusion = 1.0;\n"
          + f"    {PRE_FN}();\n    fSpecularity = MATERIAL_SPECULARITY_VALUE;\n"
          + "    fRoughness = MATERIAL_ROUGHNESS_VALUE;\n    fMetallicness = MATERIAL_METALLICNESS_VALUE;\n"
          + "    SpecularColor = MATERIAL_SPECULAR_COLOR_VALUE;\n}\n")

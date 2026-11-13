@@ -180,7 +180,7 @@ internal static partial class ContentStage
           .Append("    cxConUV = CxHostUV;\n")
           .Append("    cxConRow = CxContentRow(vDraw);\n");
         if (r.ReadsLights) sb.Append("    CxConFillLights();\n");
-        sb.Append("    fEnvMapLevel = 0.0;\n")
+        sb.Append("    fEnvMapLevel = CxHostMat.z;\n")
           .Append("    fOcclusion = 1.0;\n")
           .Append("    ").Append(PreFn).Append("();\n")
           .Append("    fSpecularity = MATERIAL_SPECULARITY_VALUE;\n")

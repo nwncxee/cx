@@ -27,6 +27,9 @@ vec4 CxHostTexel;
 // reads as vTexCoords, and the coverage cut's derivatives (du1, du2) and measure (map extent, mip scale).
 vec2 CxHostUV;
 vec4 CxHostDu;
+// ...and what a content stage's SetupSpecularity rebuilds the material from: the specular and roughness texels, the
+// reflectivity Alloy read off the diffuse alpha, and 1 in w where the material is the modern model's.
+vec4 CxHostMat;
 // ...and the material terms as inc_material's generated globals: filled from Alloy's synthesis
 // before a hosted body runs, read back after it (see the MATERIAL_*_VALUE macros above).
 float fRoughness, fSpecularity, fMetallicness;
