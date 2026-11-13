@@ -664,6 +664,7 @@ def programs(g):
         "ssr history": (g["cx_fullscreen_v"], g["cx_ssrhist_f"]),
         "post stack taa": (g["cx_post_vs"], g["cx_taa_fs"]),
         "highlight composite": (g["cx_fullscreen_v"], g["cx_hilitecomp_f"]),
+        "highlight resolve": (g["cx_fullscreen_v"], g["cx_hiliteres_f"]),
         "owned water": (g["cx_water_vs"], g["cx_water_fs"]),
         "instanced grass": (g["cx_grass_vs"], g["cx_grass_fs"]),
         "grass depth prepass": (define(g["cx_grass_vs"], "CX_GRASS_UNLIT 1"), g["cx_grassdepth_f"]),

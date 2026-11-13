@@ -16,15 +16,22 @@ namespace CX.Alloy;
 /// </summary>
 public sealed unsafe partial class AlloyRenderer
 {
-    /// <summary>The mask target and both programs on one device.</summary>
+    /// <summary>The mask target, its two history images and the mask, resolve and composite programs on one device.</summary>
     private sealed class VkHlState
     {
         public VkBackend? Dev;
         public VkProg? Mask;
-        public GuiVkProg? Comp;
-        public int Color = -1, Fill = -1, Radius = -1, Unjitter = -1;
+        public GuiVkProg? Comp, Resolve;
+        public int Color = -1, Fill = -1, Radius = -1;
+        public int RUnjitter = -1, RInvVp = -1, RPrevVp = -1, RKeep = -1;
         public bool Tried, Live;
         public ImageId Target;
+        /// <summary>The resolved mask, two frames' worth: <see cref="Cur"/> is this frame's, the other last frame's.</summary>
+        public ImageId Hist0, Hist1;
+        public int Cur;
+        /// <summary>Last frame's resolve ran, so its history and <see cref="PrevVp"/> are this frame's to reproject.</summary>
+        public bool HadHist;
+        public Matrix4x4 PrevVp;
         public int W, H;
         public CommandList? Side;
         /// <summary>This frame's mask holds at least one draw, so the composite runs.</summary>
@@ -116,25 +123,50 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>Can a part of content pair <paramref name="feat"/>, whose depth is its own, draw into the mask?</summary>
     internal static bool VkMaskTwinReady(int feat) => VkContent(feat, ContentVariant.Depth) != null;
 
-    /// <summary>The fill and outline over the screen, after the post stack, when this frame's mask drew.</summary>
-    internal static void VkHighlightComposite(CommandList cl, ImageId screen, int* display, ExtenderLog log)
+    /// <summary>The mask resolved over frames, then the fill and outline over the screen, after the post stack,
+    /// when this frame's mask drew. A frame with no mask drops the history, so the next highlight starts clean.</summary>
+    internal static void VkHighlightComposite(CommandList cl, ImageId screen, ImageId depth, in Matrix4x4 vpClean, int* display,
+                                              ExtenderLog log)
     {
         VkHlState s = _vkHl;
-        if (!s.Drawn || s.Comp == null) return;
-        PostChainVk.Open(s.Comp);
+        if (!s.Drawn) { s.HadHist = false; return; }
+        ImageId hist = VkHighlightResolve(cl, s, depth, in vpClean, log);
+        if (hist.IsNull) return;
+        GuiVkProg comp = s.Comp!;
+        PostChainVk.Open(comp);
         LooseBlock.Set(s.Fill, Highlight.VkFill);
-        LooseBlock.Set(s.Radius, Highlight.VkRadius);
-        // NDC offset j is uv offset j/2; the mask holds clean + j, so clean reads at uv + j/2
-        LooseBlock.Set(s.Unjitter, [PostChain.JitterX * 0.5f, PostChain.JitterY * 0.5f]);
-        int at = PostChainVk.Close(cl, s.Comp);
-        PostChainVk.Draw(cl, s.Comp, PostChainVk.FormatOf(screen), PostChainVk.Blend.Over, screen, LoadOp.Load,
-                         new Rect(display[0], display[1], display[2], display[3]), at, new PostChainVk.Inputs(default, Mask: s.Target), log);
+        LooseBlock.Set(s.Radius, Highlight.OutlineTexels(s.W, display[2]));
+        int at = PostChainVk.Close(cl, comp);
+        PostChainVk.Draw(cl, comp, PostChainVk.FormatOf(screen), PostChainVk.Blend.Over, screen, LoadOp.Load,
+                         new Rect(display[0], display[1], display[2], display[3]), at, new PostChainVk.Inputs(default, Mask: hist), log);
         if (!s.Live)
         {
             s.Live = true;
             log.Always("AlloyRenderer: the Vulkan outline highlight is LIVE -- the mask against the frame's depth, then the fill "
                      + "and dilated outline over the screen (a root with no masked draw takes the vanilla glow)");
         }
+    }
+
+    /// <summary>This frame's mask into the history it keeps, unjittered: last frame's resolve reprojected through the
+    /// camera and clamped to this frame's neighbourhood. The resolved image, or none when the pass was refused.</summary>
+    private static ImageId VkHighlightResolve(CommandList cl, VkHlState s, ImageId depth, in Matrix4x4 vpClean, ExtenderLog log)
+    {
+        GuiVkProg p = s.Resolve!;
+        ImageId into = s.Cur == 0 ? s.Hist0 : s.Hist1, last = s.Cur == 0 ? s.Hist1 : s.Hist0;
+        if (!Matrix4x4.Invert(vpClean, out Matrix4x4 inv)) { s.HadHist = false; return default; }
+        PostChainVk.Open(p);
+        LooseBlock.Set(s.RUnjitter, PostChain.JitterUv);
+        LooseBlock.Set(s.RInvVp, inv);
+        LooseBlock.Set(s.RPrevVp, s.HadHist ? s.PrevVp : vpClean);
+        LooseBlock.Set(s.RKeep, s.HadHist ? Highlight.VkHistoryKeep : 0f);
+        int at = PostChainVk.Close(cl, p);
+        bool drew = PostChainVk.Draw(cl, p, Format.Rgba8, PostChainVk.Blend.None, into, LoadOp.DontCare, new Rect(0, 0, s.W, s.H), at,
+                                     new PostChainVk.Inputs(default, Depth: depth, Hist: last, HistLinear: true, Mask: s.Target), log);
+        s.HadHist = drew;
+        s.PrevVp = vpClean;
+        if (!drew) return default;
+        s.Cur ^= 1;
+        return into;
     }
 
     /// <summary>The highlight's state on <paramref name="vk"/>, replaced whole when the device is another.</summary>
@@ -145,20 +177,25 @@ public sealed unsafe partial class AlloyRenderer
         return s;
     }
 
-    /// <summary>Both programs and the RGBA8 mask at the render size, made once per device and resized with the view.</summary>
+    /// <summary>The programs, the RGBA8 mask and its two history images at the render size, made once per device and
+    /// resized with the view; a resize drops the history.</summary>
     private static bool VkHlEnsure(VkBackend vk, VkHlState s, int w, int h, ExtenderLog log)
     {
         if (!VkHlPrograms(vk, s, log)) return false;
         if (!s.Target.IsNull && s.W == w && s.H == h) return true;
         vk.Destroy(s.Target);
-        s.Target = vk.CreateImage(new ImageDesc(ImageKind.Tex2D, Format.Rgba8, w, h, 1, 1, 1, 1,
-                                                ImageUse.Sampled | ImageUse.ColorTarget, "vk highlight mask"));
+        vk.Destroy(s.Hist0);
+        vk.Destroy(s.Hist1);
+        s.Target = PostChainVk.Target(vk, w, h, Format.Rgba8, "vk highlight mask");
+        s.Hist0 = PostChainVk.Target(vk, w, h, Format.Rgba8, "vk highlight history a");
+        s.Hist1 = PostChainVk.Target(vk, w, h, Format.Rgba8, "vk highlight history b");
         s.W = w; s.H = h;
-        return !s.Target.IsNull;
+        s.HadHist = false;
+        return !s.Target.IsNull && !s.Hist0.IsNull && !s.Hist1.IsNull;
     }
 
-    /// <summary>The mask and composite programs, made once per device, by the loading hold's prewarm or the first
-    /// highlight; false when either refused (logged once), which leaves every highlight to the vanilla glow.</summary>
+    /// <summary>The mask, resolve and composite programs, made once per device, by the loading hold's prewarm or the first
+    /// highlight; false when any refused (logged once), which leaves every highlight to the vanilla glow.</summary>
     private static bool VkHlPrograms(VkBackend vk, VkHlState s, ExtenderLog log)
     {
         if (!s.Tried)
@@ -169,12 +206,16 @@ public sealed unsafe partial class AlloyRenderer
             if (s.Mask != null) LooseBlock.Resolve(s.Mask.Names, () => s.Color = LooseBlock.Loc("uColor"));
             s.Comp = PostChainVk.Program(vk, PostChain.FullscreenVs, Highlight.HighlightCompFs, "highlight composite", q =>
             {
-                s.Fill = q.Loc("uFill"); s.Radius = q.Loc("uRadius"); s.Unjitter = q.Loc("uUnjitter");
+                s.Fill = q.Loc("uFill"); s.Radius = q.Loc("uRadius");
             }, log);
-            if (s.Mask == null || s.Comp == null)
+            s.Resolve = PostChainVk.Program(vk, PostChain.FullscreenVs, Highlight.HighlightResolveFs, "highlight resolve", q =>
+            {
+                s.RUnjitter = q.Loc("uUnjitter"); s.RInvVp = q.Loc("uInvVP"); s.RPrevVp = q.Loc("uPrevVP"); s.RKeep = q.Loc("uKeep");
+            }, log);
+            if (s.Mask == null || s.Comp == null || s.Resolve == null)
             {
                 s.Mask = null;
-                log.Always("AlloyRenderer: the Vulkan highlight mask or composite was REFUSED (logged above) -- every "
+                log.Always("AlloyRenderer: the Vulkan highlight mask, resolve or composite was REFUSED (logged above) -- every "
                          + "highlight takes the vanilla glow on Vulkan this session");
             }
         }

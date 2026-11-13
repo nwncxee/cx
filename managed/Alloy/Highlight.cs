@@ -223,4 +223,7 @@ internal static unsafe partial class Highlight
     /// the coverage lands OUTSIDE it, coloured by the taps' own coverage-weighted rgb. Coverage through
     /// smoothstep is what makes the outline read as one thick soft stroke rather than an aliased wireframe.</summary>
     internal static string HighlightCompFs => ShaderSource.Get("cx_hilitecomp_f.glsl");
+
+    /// <summary>The mask resolved over frames, so the jitter that moves a single frame's edge averages out.</summary>
+    internal static string HighlightResolveFs => ShaderSource.Get("cx_hiliteres_f.glsl");
 }

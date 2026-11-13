@@ -12,13 +12,14 @@ layout(std430, binding = 8) readonly buffer CxTrigBuf { vec4 uTrig[]; };
 // uTrig[CX_TRIG_MAX + k]        = (r, g, b, alpha)
 // uTrig[2 * CX_TRIG_MAX + p]    = (x, y, -, -)
 uniform int uTrigCount;
-uniform mat4 uInvVP;
+uniform mat4 uInvVP;       // the unjittered camera, inverted
+uniform vec2 uUnjitter;    // the depth's camera jitter in uv, read back out
 uniform sampler2D uTrigDepth;
 out vec4 frag;
 
 void main()
 {
-    float d = texture(uTrigDepth, vUV).r;
+    float d = texture(uTrigDepth, vUV + uUnjitter).r;
     if (d <= 0.0) discard;                        // the sky sits at exactly 0.0: nothing to decal
     vec4 h = uInvVP * vec4(vUV * 2.0 - 1.0, d, 1.0);
     if (abs(h.w) < 1e-6) discard;
