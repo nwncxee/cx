@@ -284,7 +284,11 @@ the engine's link does. `cx_content_v.glsl` is the full map and `cx_constd_v.gls
 **The fragment half** runs as a **surface modifier**. Alloy has done the stock setup by the time your `main()`
 starts: `FragmentColor` holds the texel in working space, `vFragmentNormal` the shading normal, and
 `fSpecularity`, `fRoughness`, `fMetallicness`, `SpecularColor` the synthesised material. Whatever you write to
-those, Alloy then lights, deferred or forward. Where the engine would light it, at your `ApplyStandardShader()`:
+those, Alloy then lights, deferred or forward. `fEnvMapLevel` holds the reflectivity Alloy read off the diffuse
+alpha, and what you leave in it drives the legacy reflection. `SPECULAR_LIGHT` and `FRAGMENT_NORMAL` are derived
+from your defines as `inc_common` derives them, and `SetupSpecularity(albedo)` rebuilds the four material terms
+from your `fEnvMapLevel` and that albedo, as `inc_material`'s does. A stage that binds a placeholder diffuse and
+works out its own colour calls it after it has both. Where the engine would light it, at your `ApplyStandardShader()`:
 
 - the statements before the call are the surface body;
 - the statements after it run on the **lit** colour, in display space, as the engine hands it back (a local

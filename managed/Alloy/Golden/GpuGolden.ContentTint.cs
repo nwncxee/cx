@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using CX.Framework;
 using CX.Graphics.Rhi;
@@ -17,6 +18,9 @@ internal static partial class GpuGolden
     /// <summary>What the stage left: the material, the specular colour, the surface colour and the reflectivity.</summary>
     [StructLayout(LayoutKind.Sequential)]
     private readonly record struct TintAnswer(Vector3 Pbr, Vector3 Spec, Vector3 Albedo, float Env);
+
+    /// <summary>Floats in a <see cref="TintCase"/> and in a <see cref="TintAnswer"/>: the golden's two strides.</summary>
+    private static readonly int TintIn = Unsafe.SizeOf<TintCase>() / sizeof(float), TintOut = Unsafe.SizeOf<TintAnswer>() / sizeof(float);
 
     /// <summary>The material Alloy hands every tint case's stage before it runs, unlike any a rebuild gives.</summary>
     private static readonly Vector3 TintSeedPbr = new(0.5f, 0.3f, 0.7f), TintSeedSpec = new(0.2f, 0.3f, 0.4f);
@@ -72,7 +76,7 @@ internal static partial class GpuGolden
         check.Expect(r.Refused == null, $"{resref} was refused: {r.Refused}");
         if (r.Refused != null) return null;
         string label = "golden content tint " + resref;
-        PipelineId pipe = vk.CreateCompute(Version + "layout(local_size_x = 1) in;\n" + CaseBlocks(8, 10)
+        PipelineId pipe = vk.CreateCompute(Version + "layout(local_size_x = 1) in;\n" + CaseBlocks(TintIn, TintOut)
             + feat[featAt..(feat.IndexOf('\n', featAt) + 1)] + r.Host
             + "void main()\n{\n    int i = int(gl_WorkGroupID.x) * CX_GOLD_IN, o = int(gl_WorkGroupID.x) * CX_GOLD_OUT;\n"
             + "    cxGoldDye = vec4(uIn[i], uIn[i + 1], uIn[i + 2], uIn[i + 3]);\n    cxGoldSlot = vec4(uIn[i + 4], uIn[i + 5], 0.0, 0.0);\n"
@@ -87,7 +91,7 @@ internal static partial class GpuGolden
             + "    uOut[o + 6] = FragmentColor.r; uOut[o + 7] = FragmentColor.g; uOut[o + 8] = FragmentColor.b;\n"
             + "    uOut[o + 9] = fEnvMapLevel;\n}\n", label);
         float[]? got = pipe.IsNull ? null
-                     : RunCases(vk, log, pipe, cases.Length, MemoryMarshal.Cast<TintCase, float>(cases), cases.Length * 10, label);
+                     : RunCases(vk, log, pipe, cases.Length, MemoryMarshal.Cast<TintCase, float>(cases), cases.Length * TintOut, label);
         vk.Destroy(pipe);
         check.Expect(got != null, $"the content tint golden's {resref} stage was refused (logged above)");
         return got == null ? null : MemoryMarshal.Cast<float, TintAnswer>(got).ToArray();
@@ -96,9 +100,12 @@ internal static partial class GpuGolden
     /// <summary>Are <paramref name="a"/> and <paramref name="b"/> one value, to the tint goldens' tolerance?</summary>
     private static bool TintNear(Vector3 a, Vector3 b) => Vector3.Distance(a, b) <= 2e-4f;
 
-    /// <summary>E5 of the tint examples, which held before the shine rebuild, so it carries no approved-spec mark: a stage
-    /// that neither sets its reflectivity nor asks for a rebuild, and a rebuild asked of a modern material. Oracle: the
-    /// material and reflectivity seeded by hand.</summary>
+    /// <summary>The same test for one term.</summary>
+    private static bool TintNear(float a, float b) => MathF.Abs(a - b) <= 2e-4f;
+
+    /// <summary>The tint golden's regression checks, neither an approved example: a stage that neither sets its
+    /// reflectivity nor asks for a rebuild, and a rebuild asked of a modern material. Oracle: the material and
+    /// reflectivity seeded by hand.</summary>
     private static void ContentTintSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
     {
         // Given a part whose material shader never sets its reflectivity and never asks for its shine to be rebuilt
@@ -112,7 +119,7 @@ internal static partial class GpuGolden
                      FormattableString.Invariant($"a stage that asks for no rebuild keeps the material it was handed, not {a.Pbr} {a.Spec}"));
         check.Expect(TintNear(a.Albedo, new Vector3(0.5f, 0.25f, 1f)),
                      FormattableString.Invariant($"a stage that asks for no rebuild keeps its own colour, not {a.Albedo}"));
-        check.Expect(MathF.Abs(a.Env - 0.3f) <= 2e-4f,
+        check.Expect(TintNear(a.Env, 0.3f),
                      FormattableString.Invariant($"a stage that never sets its reflectivity keeps the 0.3 it was handed, not {a.Env:F4}"));
         TintAnswer[]? modern = ContentTintRun(vk, check, log, "cx_fixtint", [new(new Vector4(0.4f, 0.05f, 0.05f, 0.5f), Vector2.Zero, 0f, 1f)]);
         if (modern == null) return;

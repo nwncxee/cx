@@ -90,10 +90,9 @@ internal static partial class ContentStage
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
-        string? Chain(string n) => Fixture.TryGetValue(n, out string? t) ? t : null;
-        Result vs = Translate("cx_fixvs", false, Chain, AlloyRenderer.ContentEnvVs, "", AlloyRenderer.OwnedLitVs, 8193, 37);
+        Result vs = Translate("cx_fixvs", false, FixtureText, AlloyRenderer.ContentEnvVs, "", AlloyRenderer.OwnedLitVs, 8193, 37);
         check.Expect(vs.Refused == null, $"the vertex fixture was refused: {vs.Refused}");
-        Result r = Translate("cx_fixture", true, Chain, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37, vs);
+        Result r = Translate("cx_fixture", true, FixtureText, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37, vs);
         check.Expect(r.Refused == null, $"the fixture was refused: {r.Refused}");
         if (r.Refused != null || vs.Refused != null) { log.Info("ContentStage.SelfCheck: FAILED"); return false; }
         check.Expect(vs.Params.SequenceEqual(new Param[] { new("fSway", ParamKind.Float, 0), new("fScale", ParamKind.Float, 1) }),
@@ -127,11 +126,11 @@ internal static partial class ContentStage
                      "a function the stage defines is not guarded against the environment's, or its include did not resolve");
         check.Expect(r.Host.Contains("#define CX_CONTENT_PROGRAM 1") && r.Host.Contains("cxConRow = CxContentRow(vDraw);"),
                      "the region does not mark its program a content one, or does not resolve the row its lanes read");
-        Result miss = Translate("cx_fixture", true, n => n == "cx_fixinc" ? null : Chain(n), AlloyRenderer.ContentEnvFs,
+        Result miss = Translate("cx_fixture", true, n => n == "cx_fixinc" ? null : FixtureText(n), AlloyRenderer.ContentEnvFs,
                                 AlloyRenderer.VanillaEnvDefs, "", 8193, 37);
         check.Expect(miss.Refused != null && miss.Refused.Contains("cx_fixinc"),
                      "an include the chain cannot answer does not refuse the stage, as it fails it in the engine");
-        Result post = Translate("cx_fixpost", true, Chain, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37);
+        Result post = Translate("cx_fixpost", true, FixtureText, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37);
         check.Expect(post.Refused == null && post.Post && !post.Cuts && post.NoKeyhole && post.ReadsLights,
                      "the post fixture does not edit the lit colour, cuts, keeps its keyhole, or reads no light arrays");
         check.Expect(post.Host.Contains("float cxHoist_glow;") && post.Host.Contains("cxHoist_glow = 0.5;")
@@ -157,7 +156,7 @@ internal static partial class ContentStage
         check.Expect(!Issue.SplitsSolid(wash: 0, twin: true, decal: false, Issue.AuroraSrcAlpha, Issue.AuroraOne), "an additive part splits");
         check.Expect(!Issue.SplitsSolid(AlloyRenderer.WashWhole, twin: true, decal: false, Issue.AuroraSrcAlpha, Issue.AuroraOneMinusSrcAlpha), "a whole wash splits");
         check.Expect(Issue.SplitsSolid(AlloyRenderer.WashSplit, twin: false, decal: false, Issue.AuroraSrcAlpha, Issue.AuroraOneMinusSrcAlpha), "a split wash stops splitting");
-        Result Plain(string n) => Translate(n, true, Chain, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37);
+        Result Plain(string n) => Translate(n, true, FixtureText, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37);
         Result global = Plain("cx_fixsetsglobal");
         check.Expect(global.Refused == null && global.ForwardOnly, "a post body writing a global beside its alpha gets a twin");
         Result helper = Plain("cx_fixcallshelper");
@@ -179,38 +178,37 @@ internal static partial class ContentStage
                      "a pre-apply cut lands in the body the depth and caster twins run, not the post half");
         check.Expect(cutPre.Refused == null && cutPre.AlphaPost && !cutPre.ForwardOnly,
                      $"a pre-apply cut routes as '{cutPre.RouteNote}'");
-        Result envStage = Translate("cx_fixenv", true, Chain, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37);
+        Result envStage = Translate("cx_fixenv", true, FixtureText, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37);
         check.Expect(envStage.Refused == null && envStage.Host.Contains("#define CX_CONTENT_ENVMAP 1")
                      && !r.Host.Contains("CX_CONTENT_ENVMAP"),
                      "a stage's own ENVIRONMENT_MAP 1 does not make its diffuse alpha an env level, or one without it does");
-        // E4 of the tint examples, which held before the shine rebuild, so it carries no approved-spec mark:
         // Given an area with characters dyed by a shader that rebuilds its own shine
         // When the shader's pair line is written to cx.log
         // Then the line does not say forward only
-        Result tint = Translate("cx_fixtint", true, Chain, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37);
+        Result tint = Translate("cx_fixtint", true, FixtureText, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37);
         check.Expect(tint.Refused == null && ContentPrograms.GetsDeferredTwin(tint, VkPrograms.LitPair(log).Item2)
                      && !tint.RouteNote.Contains("forward only"),
                      $"a stage that rebuilds its shine and sets its alpha after the lighting call routes as '{tint.RouteNote}' ({tint.Refused})");
-        Result whole = Translate("cx_fixwhole", true, Chain, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37);
+        Result whole = Translate("cx_fixwhole", true, FixtureText, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37);
         check.Expect(whole.Refused == null && whole.Post && !whole.Cuts
                      && whole.Host.Contains("void CxContentMain()\n{\n}") && whole.Notes.Any(n => n.Contains("lights itself")),
                      "a stage that never calls ApplyStandardShader is not all post body, or is not noted");
-        Result mine = Translate("cx_fixown", true, Chain, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs,
+        Result mine = Translate("cx_fixown", true, FixtureText, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs,
                                 "vec3 ApplyColorSpace(vec3 c) { return c; }\n", 8193, 37);
         check.Expect(mine.Refused == null && mine.Host.Contains("vec3 CxConOwn_ApplyColorSpace(vec3 c) { return c * c; }")
                      && mine.Host.Contains("vec4(CxConOwn_ApplyColorSpace(vec3(0.5)), 1.0)")
                      && !mine.Host.Contains("vec3 ApplyColorSpace(vec3 c) { return c * c; }"),
                      "a function the stage defines over one the program already has is not renamed, with its calls");
-        Result wide = Translate("cx_fixwide", true, Chain, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37);
+        Result wide = Translate("cx_fixwide", true, FixtureText, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37);
         check.Expect(wide.Refused == null && wide.Params.Length == 1024 && wide.Params[79] == new Param("p79", ParamKind.Float, 79)
                      && wide.Notes.Any(n => n.Contains("declares more than 1024") && n.Contains("p1024")),
                      $"a 1025-uniform pair does not keep 1024 lanes and name the one held at its default: {wide.Refused ?? wide.Params.Length.ToString()}");
-        Result multi = Translate("cx_fixmulti", true, Chain, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37);
+        Result multi = Translate("cx_fixmulti", true, FixtureText, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37);
         check.Expect(multi.Refused == null
                      && multi.Params.SequenceEqual(new Param[] { new("rgbP0", ParamKind.Float, 0), new("rgbP1", ParamKind.Float, 1) }),
                      $"two uniforms on one line do not both take a lane: {multi.Refused}");
-        Result engv = Translate("cx_fixengv", false, Chain, AlloyRenderer.ContentEnvVs, "", AlloyRenderer.OwnedLitVs, 8193, 37);
-        Result eng = Translate("cx_fixeng", true, Chain, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37,
+        Result engv = Translate("cx_fixengv", false, FixtureText, AlloyRenderer.ContentEnvVs, "", AlloyRenderer.OwnedLitVs, 8193, 37);
+        Result eng = Translate("cx_fixeng", true, FixtureText, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37,
                                engv.Refused == null ? engv : null);
         check.Expect(engv.Refused == null && eng.Refused == null,
                      $"an engine-named fixture was refused: {engv.Refused ?? eng.Refused}");

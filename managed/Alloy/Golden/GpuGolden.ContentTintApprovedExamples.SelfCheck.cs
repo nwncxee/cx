@@ -13,7 +13,6 @@ internal static partial class GpuGolden
 {
     private static void ContentTintApprovedSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
     {
-        // dark red hair at palette alpha 230 of 255, black cloth at 254, mid grey with a slot's shine 0.6 and roughness 0.35
         TintAnswer[]? got = ContentTintRun(vk, check, log, "cx_fixtint",
         [
             new(new Vector4(0.4f, 0.05f, 0.05f, 230f / 255f), Vector2.Zero, 0f),
@@ -29,7 +28,7 @@ internal static partial class GpuGolden
         // When they stand by a lamp with Alloy on
         // Then the hair shines like metal and its highlight is dark red, as in the stock client
         check.Expect(TintNear(hair.Pbr, new Vector3(0.777255f, 0.445833f, 1f)) && TintNear(hair.Spec, red)
-                     && MathF.Abs(hair.Env - 0.098039f) <= 2e-4f,
+                     && TintNear(hair.Env, 0.098039f),
                      FormattableString.Invariant($"E1: dyed hair is the metal (0.7773, 0.4458, 1) with a dark red highlight, not {hair.Pbr} {hair.Spec} env {hair.Env:F4}"));
 
         // Given a character wearing cloth dyed black by a shader that rebuilds its own shine
@@ -47,7 +46,7 @@ internal static partial class GpuGolden
         // Given an RGB part with a slot whose shine and roughness are set (rgbS and rgbR)
         // When it is drawn with Alloy on
         // Then the slot shows that shine and roughness, as in the stock client
-        check.Expect(MathF.Abs(slot.Pbr.X - 0.6f) <= 2e-4f && MathF.Abs(slot.Pbr.Y - 0.35f) <= 2e-4f,
+        check.Expect(TintNear(slot.Pbr.X, 0.6f) && TintNear(slot.Pbr.Y, 0.35f),
                      FormattableString.Invariant($"E6: a slot's shine 0.6 and roughness 0.35 reach the material, not {slot.Pbr}"));
     }
 }
