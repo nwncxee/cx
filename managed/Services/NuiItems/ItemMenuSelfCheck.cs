@@ -201,8 +201,8 @@ internal static class ItemMenuSelfCheck
         for (int i = 0; i < v.Length; i += CX.Ui.VertexBatch.Floats)
             whole &= v[i] == MathF.Round(v[i]) && v[i + 1] == MathF.Round(v[i + 1]);
         check.Expect(whole, "with the skin's pixel snap every glyph is drawn on whole pixels, as NUI draws it, so the label is sharp");
-        check.Expect(MathF.Abs(snapped.Level(0).W - (15f + 3f * (6.4f + 0.5f) + 28f)) < 0.01f,
-            $"the skin's spacing goes between the glyphs, and the menu is as wide as that ({snapped.Level(0).W})");
+        check.Expect(snapped.Level(0).W == MathF.Ceiling(15f + 3f * (6.4f + 0.5f) + 28f),
+            $"the skin's spacing goes between the glyphs, and the menu is as wide as that, rounded up to a whole pixel as NUI's is ({snapped.Level(0).W})");
     }
 
     /// <summary>Oracle: the word pointer typed here, which a server sends because it knows the element pressed and not the

@@ -21,11 +21,17 @@ internal static unsafe class NuiSkinFontLoad
     private sealed class LoadState
     {
         public bool Tried;
-        public float Px;
+        public float Px, Spacing;
+        public bool Snap;
     }
 
     private static readonly LoadState _s = new();
     private static readonly Handles _handles = new();
+
+    /// <summary>The skin's default font's extra px between glyphs at UI scale 1, once <see cref="Ensure"/> has read it.</summary>
+    internal static float Spacing => _s.Spacing;
+    /// <summary>Whether the skin draws its default font on whole pixels, once <see cref="Ensure"/> has read it.</summary>
+    internal static bool Snap => _s.Snap;
 
     /// <summary>The skin's default font size in px at UI scale 1, with the font declared under <see cref="FaceName"/>; 0 when
     /// either could not be read, which <paramref name="log"/> says once.</summary>
@@ -38,7 +44,9 @@ internal static unsafe class NuiSkinFontLoad
             log?.Always($"NuiSkinFont: the NUI skin could not be read ({why}) -- the item menu keeps the UI font");
             return 0f;
         }
-        if (!NuiSkinFont.Parse(System.Text.Encoding.UTF8.GetString(skin!), out string resref, out float px))
+        string text = System.Text.Encoding.UTF8.GetString(skin!);
+        NuiSkinFont.Text(text, out _s.Spacing, out _s.Snap);
+        if (!NuiSkinFont.Parse(text, out string resref, out float px))
         {
             log?.Always("NuiSkinFont: the NUI skin names no default font with a size -- the item menu keeps the UI font");
             return 0f;

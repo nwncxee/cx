@@ -216,7 +216,7 @@ A client without `cx_cap_heldpick` ignores the `held.pick` keys, so keep sending
 
 A client advertising `cx_cap_menu` draws the rows you send instead of opening a NUI menu of its own. It draws them
 above every NUI window, with its labels in the NUI skin's default font (the first `[[fonts]]` entry of the
-`nui_skin.tml` the client loaded, yours over NWSync included) at that font's size and the game's UI scale. Send
+`nui_skin.tml` the client loaded, yours over NWSync included) at that font's size and the game's UI scale, with its `spacing_h` between glyphs and, under `pixel_snap`, every glyph on a whole pixel. Send
 `menu.look` and `menu.rowheight` so it looks like the NUI menu it replaces; without them it is a plain list in the stock
 skin's colours:
 

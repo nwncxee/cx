@@ -164,6 +164,8 @@ internal static class ItemMenuService
         }
         float s = Metrics.GameUiScale;
         Menu.FixedItemH = MathF.Round(m.Look.RowHeight * s);
+        Menu.SnapText = NuiSkinFontLoad.Snap;
+        Menu.TextSpacing = NuiSkinFontLoad.Spacing * s;
         Menu.Row = m.Look.Layout is { } l
             ? new CascadeRowLayout(MathF.Round(l.Stripe * s), MathF.Round(l.Lead * s), MathF.Round(l.IconInset * s), MathF.Round(l.Gap * s), MathF.Round(l.Trail * s))
             : null;

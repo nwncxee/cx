@@ -284,7 +284,7 @@ public sealed partial class CascadeMenu
         {
             ref CascadeItem it = ref items[i];
             float rw = Row is { } row
-                ? row.Lead + (lv.HasIcons ? ItemH - 2f * row.IconInset + row.Gap : 0f) + UiText.Measure(atlas, it.Label ?? "") + row.Trail
+                ? row.Lead + (lv.HasIcons ? ItemH - 2f * row.IconInset + row.Gap : 0f) + UiText.Measure(atlas, it.Label ?? "", TextSpacing) + row.Trail
                 : iconCol + Pad + UiText.Measure(atlas, it.Label ?? "") + Pad;
             if (!string.IsNullOrEmpty(it.Count)) rw += UiText.Measure(atlas, it.Count) + Pad;
             if (it.HasChildren) rw += markW + Pad;
@@ -292,6 +292,7 @@ public sealed partial class CascadeMenu
         }
         if (items.Length > MaxVisible) w += Theme.IsNative ? NativeChrome.BarWidth(Metrics.Scale) : ScrollColumn.BarW;
         if (Row == null && w < MinWRows * ItemH) w = MinWRows * ItemH;
+        if (Row != null) w = MathF.Ceiling(w);
         return w > MaxW ? MaxW : w;
     }
 
@@ -597,7 +598,11 @@ public sealed partial class CascadeMenu
                         right -= pad;
                     }
                 }
-                if (it.Label != null) UiText.Draw(b, atlas, it.Label, labelX, baseline, textRgb, right, a);
+                if (it.Label != null)
+                {
+                    if (SnapText || TextSpacing != 0f) UiText.Draw(b, atlas, it.Label, labelX, baseline, textRgb, right, a, SnapText, TextSpacing);
+                    else UiText.Draw(b, atlas, it.Label, labelX, baseline, textRgb, right, a);
+                }
             }
             if (RowDrag && i == DropLevel)
             {
