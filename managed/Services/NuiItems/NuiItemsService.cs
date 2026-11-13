@@ -21,6 +21,7 @@ public sealed class NuiItemsService : IExtenderService
         NuiItemDragRegressions.Run(log);
         NuiItemDragPickRegressions.Run(log);
         NuiItemKnobRegressions.Run(log);
+        NuiSkinFontSelfCheck.Run(log);
         NuiItemTargetHeldApprovedExamples.Run(log);
     }
 }

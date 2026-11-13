@@ -10,11 +10,22 @@ internal readonly struct ItemMenuRow
     public readonly int Order;
     public readonly string Id, Label, Icon;
     public readonly bool Enabled;
+    /// <summary>The row starts a group: a rule is drawn above it.</summary>
+    public readonly bool RuleAbove;
 
-    public ItemMenuRow(int order, string id, string label, string icon, bool enabled)
+    public ItemMenuRow(int order, string id, string label, string icon, bool enabled, bool ruleAbove = false)
     {
-        Order = order; Id = id; Label = label; Icon = icon; Enabled = enabled;
+        Order = order; Id = id; Label = label; Icon = icon; Enabled = enabled; RuleAbove = ruleAbove;
     }
+}
+
+/// <summary>The server's look for its menu, so the extender's draws as the server's own NUI menu does. Each colour is
+/// <c>rrggbbaa</c>, null where the NUI skin's stands; a row height of 0 follows the text.</summary>
+internal sealed class ItemMenuLook
+{
+    public uint? Fill, Edge, Stripe, Text, HoverFill, HoverEdge, Rule;
+    /// <summary>The row height in NUI units at UI scale 1; 0 when the server named none.</summary>
+    public float RowHeight;
 }
 
 /// <summary>
@@ -36,6 +47,9 @@ internal sealed class ItemMenuModel
     internal const int MaxLabel = 64, MaxIcon = 16;
 
     private readonly Dictionary<int, ItemMenuRow> _rows = new();
+
+    /// <summary>The server's look; it outlives a close, so the next menu draws the same.</summary>
+    public ItemMenuLook Look { get; } = new();
 
     /// <summary>True while the server says the menu is open.</summary>
     public bool Open { get; private set; }

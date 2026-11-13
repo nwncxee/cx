@@ -18,6 +18,7 @@ internal static class ItemMenuSelfCheck
         AtThePointer(check);
         AboveNui(check);
         NuiLook(check);
+        ServerLook(check);
         log.Info(check.Ok ? "ItemMenuSelfCheck: passed" : "ItemMenuSelfCheck: FAILED");
     }
 
@@ -124,6 +125,31 @@ internal static class ItemMenuSelfCheck
         check.Expect(!ItemMenuService.DrawsArt, "...not even when the extender's own windows take the game's art");
         CX.Ui.UiKnobs.Look.Set(was);
         CX.Ui.Theme.Apply();
+    }
+
+    /// <summary>The server's own NUI menu is the look to match, so the server sends it: its row colours, its row height,
+    /// and which rows start a group. Oracle: the lines and colours typed here by hand.</summary>
+    private static void ServerLook(Checker check)
+    {
+        var m = new ItemMenuModel();
+        check.Expect(m.Look.Fill == null && m.Look.RowHeight == 0, "a menu nobody styled draws in the NUI skin's colours, its rows as tall as its text");
+        check.Expect(m.Set("look", "#261C14;#3B2D20;#615032;#C7B9A0;#33261A;#5A4630;#615032") == null, "a look of seven colours is taken");
+        check.Expect(m.Look.Fill == 0x261C14FFu && m.Look.Edge == 0x3B2D20FFu && m.Look.Stripe == 0x615032FFu && m.Look.Text == 0xC7B9A0FFu
+                     && m.Look.HoverFill == 0x33261AFFu && m.Look.HoverEdge == 0x5A4630FFu && m.Look.Rule == 0x615032FFu,
+            "each colour lands where the line names it, opaque when no alpha is given");
+        check.Expect(m.Set("look", "#11223380;;;;;;") == null && m.Look.Fill == 0x11223380u && m.Look.Edge == null,
+            "an alpha is kept, and an empty field leaves that part to the NUI skin");
+        check.Expect(m.Set("look", "red;;;;;;") != null && m.Look.Fill == 0x11223380u, "a colour that is no #RRGGBB is refused, and the look stays as it was");
+        check.Expect(m.Set("rowheight", "28") == null && m.Look.RowHeight == 28f, "the row height is taken in NUI units");
+        check.Expect(m.Set("rowheight", "0") != null && m.Set("rowheight", "x") != null && m.Look.RowHeight == 28f, "a row height that is no positive number is refused");
+        m.Set("row.1", "use;Use;;1");
+        m.Set("row.2", "drop;Drop;;1;1");
+        ItemMenuRow[] rows = m.Rows();
+        check.Expect(!rows[0].RuleAbove && rows[1].RuleAbove, "a row whose fifth field is 1 starts a group, with a rule above it; one without it does not");
+        m.Close();
+        check.Expect(m.Look.Fill == 0x11223380u && m.Look.RowHeight == 28f, "a closed menu keeps its look for the next one");
+        check.Expect(m.Set("look", "") == null && m.Set("rowheight", "") == null && m.Look.Fill == null && m.Look.RowHeight == 0,
+            "empty values give the look back to the NUI skin");
     }
 
     /// <summary>Oracle: the word pointer typed here, which a server sends because it knows the element pressed and not the
