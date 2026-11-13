@@ -44,6 +44,8 @@ public sealed unsafe class HeldImageService : IExtenderService
         public long SeenDrawn;
         public readonly long Born = Environment.TickCount64;
         public int Notices, LookEpoch = -1, CursorId = DefaultCursorId;
+        /// <summary>The hold's item drew nothing, and the log says why once.</summary>
+        public bool MissTold;
         public float SizePx = DefaultSizePx, Opacity = DefaultOpacity, PickOpacity = DefaultPickOpacity, Dx, Dy;
         /// <summary>A pick the input thread saw, for the next frame to show.</summary>
         public volatile string? PickReq;
@@ -126,10 +128,17 @@ public sealed unsafe class HeldImageService : IExtenderService
                 TextRig.DrawIcon(s.Model.Name, mx - px / 2, my - px / 2, px, px, alpha);
                 break;
             case HeldKind.Item:
-                DrawItem(RadialIcons.Item((IntPtr)(s.Model.Oid | ImageNames.ServerIdBit)), mx, my, px, alpha);
+                IntPtr item = RadialIcons.Item((IntPtr)(s.Model.Oid | ImageNames.ServerIdBit));
+                if (!DrawItem(item, mx, my, px, alpha) && !s.MissTold)
+                {
+                    s.MissTold = true;
+                    Notice(s, item == IntPtr.Zero
+                        ? $"@item:{s.Model.Oid:x} is not an item this client knows -- nothing follows the pointer"
+                        : $"item {s.Model.Oid:x} has no inventory icon yet -- nothing follows the pointer");
+                }
                 break;
             case HeldKind.Look:
-                DrawItem(s.Minted, mx, my, px, alpha);
+                _ = DrawItem(s.Minted, mx, my, px, alpha);
                 break;
             case HeldKind.Model:
                 DrawModel(s.Model.ModelKey, mx, my, px, alpha);
@@ -185,6 +194,7 @@ public sealed unsafe class HeldImageService : IExtenderService
     /// <summary>A hold started, changed or ended: free the old minted item and make the new one outside any draw batch.</summary>
     private static void Changed(HeldState s)
     {
+        s.MissTold = false;
         if (s.Minted != IntPtr.Zero) { NuiItemIcons.Destroy(s.Minted); s.Minted = IntPtr.Zero; }
         HeldImageModel m = s.Model;
         if (m.Active) NuiHitTest.WatchTopWindow(); else NuiHitTest.StopWatching();
@@ -243,14 +253,15 @@ public sealed unsafe class HeldImageService : IExtenderService
 
     /// <summary>The item's icon centred on the pointer, as many cells as its art's own frame fills, or its base item's cells
     /// when the frame is unknown.</summary>
-    private static void DrawItem(IntPtr item, int mx, int my, float px, float alpha)
+    private static bool DrawItem(IntPtr item, int mx, int my, float px, float alpha)
     {
-        if (item == IntPtr.Zero) return;
+        if (item == IntPtr.Zero) return false;
         IntPtr icon = new CNWCItem(item).GuiIcon;
-        if (icon == IntPtr.Zero) return;
+        if (icon == IntPtr.Zero) return false;
         NuiItemIcons.Cells(item, out int cw, out int ch);
         IconFrames.Size(icon, px, cw, ch, out float w, out float h);
         RadialIcons.DrawGuiIcon(icon, mx - w / 2, my - h / 2, w, h, alpha, cw, ch);
+        return true;
     }
 
     /// <summary>The live harness has no server: <c>nui.heldprobe</c> sends this client the line, once, at the first NUI draw 50 s after boot.</summary>
