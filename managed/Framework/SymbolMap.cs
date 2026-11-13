@@ -828,7 +828,7 @@ internal static unsafe class SymbolMap
     /// <summary><c>CExoSound::Play3DOneShotSound(CResRef const&amp;, Vector, float, uchar group, uint delayMs, uchar
     /// volume)</c> @0x574e00 (exported on Windows) -- a positional one-shot, how <c>PlayFootstep</c> plays a step. The
     /// float is added to z (<c>addss xmm1, xmm2</c> before the tail call); volume 0 = the source's default.</summary>
-    [Fn("void(IntPtr sound, byte* resref, VectorArg pos, float lift, byte group, uint delay, byte volume)")]
+    [Fn("void(IntPtr sound, ResRef* resref, VectorArg pos, float lift, byte group, uint delay, byte volume)")]
     public const string SoundPlay3DOneShot = "_ZN9CExoSound18Play3DOneShotSoundERK7CResRef6Vectorfhjh";
     /// <summary><c>g_pExoSound</c> @0x18b96b8, the <c>CExoSound*</c> <c>PlayFootstep</c> plays through.</summary>
     public const string ExoSound = "g_pExoSound";
@@ -1564,11 +1564,11 @@ internal static unsafe class SymbolMap
     //   -> read CRes+0x20 (data) / CRes+0x30 (size) -> Release + ReleaseResObject.
     // SetResObject seeds the object refcount at 1, so both paths release exactly once.
     public const string ExoResMan          = "g_pExoResMan";
-    [Fn("int(IntPtr resman, byte* resref, ushort type, uint* id)")]
+    [Fn("int(IntPtr resman, ResRef* resref, ushort type, uint* id)")]
     public const string ResManExists       = "_ZN10CExoResMan6ExistsERK7CResReftPj";
-    [Fn("IntPtr(IntPtr resman, byte* resref, ushort type)")]
+    [Fn("IntPtr(IntPtr resman, ResRef* resref, ushort type)")]
     public const string ResManGetResObject = "_ZN10CExoResMan12GetResObjectERK7CResReft";
-    [Fn("void(IntPtr resman, byte* resref, ushort type, IntPtr res)")]
+    [Fn("void(IntPtr resman, ResRef* resref, ushort type, IntPtr res)")]
     public const string ResManSetResObject = "_ZN10CExoResMan12SetResObjectERK7CResReftP4CRes";
     [Fn("long(IntPtr resman, IntPtr res)")]
     public const string ResManDemand       = "_ZN10CExoResMan6DemandEP4CRes";
@@ -1576,7 +1576,7 @@ internal static unsafe class SymbolMap
     /// applies the server's <c>GetOverride</c> alias itself (so the RAW resref goes in), walks the priority-sorted
     /// tables skipping any mid-rebuild, and hands back the winning table and key entry; <c>logMissing: false</c> makes
     /// it side-effect free. Out-params, so no <c>sret</c> -- unlike <c>GetResID</c>, which must not be called directly.</summary>
-    [Fn("int(IntPtr resman, byte* resref, ushort type, IntPtr* table, IntPtr* entry, byte logMissing)")]
+    [Fn("int(IntPtr resman, ResRef* resref, ushort type, IntPtr* table, IntPtr* entry, byte logMissing)")]
     public const string ResManGetKeyEntry  = "_ZN10CExoResMan11GetKeyEntryERK7CResReftPP12CExoKeyTablePP14CKeyTableEntryb";
     /// <summary>Every resref of one restype across every key table, highest priority first, as a heap
     /// <c>CExoStringList*</c> the caller frees (<see cref="ExoStringListDtor"/> then <see cref="OperatorDelete"/>). No I/O,
