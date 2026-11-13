@@ -303,8 +303,7 @@ public sealed unsafe partial class AlloyRenderer
         // #302, as the engine path: the mover level wants GEOMETRY motion compared before the write consumes it,
         // not "the record was re-sent" -- alpha, ambient and reveal rewrites charged as movers re-bake shadows.
         var (casterMoved, moverMoved) = MoveLevels(in r.Model, in f.Model);
-        bool modelMoved = casterMoved || Moved(in r.Model, in f.Model, MoveStep);
-        int why = RecWhy(in r, in f, modelMoved) | (stale ? 1 << RecWhyStale : 0) | (revealMoved ? 1 << RecWhyReveal : 0);
+        int why = RecWhy(in r, in f, moverMoved) | (stale ? 1 << RecWhyStale : 0) | (revealMoved ? 1 << RecWhyReveal : 0);
         bool rec = WritePerFrame(ref r, in f, roll: _gate[i].RecFrame != _frameSeq, fresh: stale);
         rec |= stale | revealMoved;
         if (rec)
@@ -315,7 +314,7 @@ public sealed unsafe partial class AlloyRenderer
             MarkRecordDirty(i, ref c);
             if (casterMoved || stale) _recMovedAt[i] = _frameSeq;
             if (moverMoved || stale) _mvMovedAt[i] = _frameSeq;
-            System.Threading.Interlocked.Increment(ref modelMoved ? ref _dbRecModel : ref _dbRecOther);
+            System.Threading.Interlocked.Increment(ref moverMoved ? ref _dbRecModel : ref _dbRecOther);
             NoteRecWhy(why, part, in r, in f);
         }
         else c.RecStable++;

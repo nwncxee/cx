@@ -871,13 +871,8 @@ public sealed unsafe partial class AlloyRenderer
             // #242: the record this draw reads lives at the OWNERSHIP slot and outlives the frame; the draw
             // order does not, so the draw carries the slot rather than the record.
             _dSlot[n] = i;
-            // #392: a matrix mover this frame -- its record's prev lags its model by one frame, and the velocity
-            // stage redraws it with both. A posed skinmesh is one too when its palette changed, and the stage
-            // skins it with both palettes. A cutout, or a content pair cutting its own coverage, joins tested EQUAL,
-            // so its holes keep the camera field; a pair with its own vertex half stays out, its mesh placed apart from the matrix.
-            if (row.Moved && MoverClass(cls, feat))
+            if (row.Moved && MoverJoins(cls, ShaderFeatures.OutOfPrepass(feat), ContentPrograms.MayMove(feat)))
                 NoteMoverDraw(n, row.Posed, row.Dangly, MoverDepthOf(cls, ContentPrograms.Cuts(feat)));
-            TallyMover(row.Moved, row.Posed, cls, feat);
             // #287: and the same draw as the cull's source record -- the batch is the one the cut just
             // opened or extended, and its output base is where its compacted run starts.
             CullPass.Pack(ref _dSrc[n], idxCount, _dOff[n], _dBase[n], i, groups - 1, _gStart[groups - 1]);
@@ -975,8 +970,6 @@ public sealed unsafe partial class AlloyRenderer
         // Automatic mesh LOD: the screen radius of the sphere the cull already needs. The RANGE lookup stays on
         // the main thread (a dictionary and a shared counter); only the level is arithmetic.
         row.Lvl = RowLevel(i);
-        // #392: a matrix mover this frame -- its record's prev lags its model by one frame, and the velocity
-        // stage redraws it with both; a posed skinmesh is one too when its palette changed.
         bool posed = _oBone[i] >= 0, dangly = !posed && DanglyPrevNow(i);
         row.Posed = posed; row.Dangly = dangly;
         row.Moved = SlotMoverNow(i, posed, dangly);

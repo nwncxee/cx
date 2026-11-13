@@ -59,7 +59,7 @@ public sealed unsafe partial class AlloyRenderer
         var push = new VkBatchPush { AlphaCut = -1f };
         for (int k = 0; k < n; k++)
         {
-            int d = _mvDraw[k], i = _dSlot[d];
+            int d = _mvDraw[k].Draw, i = _dSlot[d];
             if (!DbSlot(i)) continue;
             int f = DbVaoKey(i);
             if ((uint)f >= MeshArena.Formats || MeshArena.VkVbo((MeshArena.Fmt)f).IsNull) continue;
@@ -73,11 +73,10 @@ public sealed unsafe partial class AlloyRenderer
                 side.BindVertexBuffer(MeshArena.VkVbo((MeshArena.Fmt)f));
                 test = null;
             }
-            CompareOp want0 = _mvTest[k];
-            if (want0 != test)
+            if (_mvDraw[k].Test != test)
             {
-                test = want0;
-                side.SetDepthState(new DepthState(true, false, want0));
+                test = _mvDraw[k].Test;
+                side.SetDepthState(new DepthState(true, false, _mvDraw[k].Test));
             }
             int want = DanglyPrevNow(i) ? i : -1;
             if (want != dangly || drawn == 0)

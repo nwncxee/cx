@@ -13,20 +13,18 @@ namespace CX.Alloy;
 /// palettes, a dangly its pre-solve positions. Blended classes stay camera-only.</summary>
 public sealed unsafe partial class AlloyRenderer
 {
-    /// <summary>Draw indices of this pass's movers, serial-appended by the staging walk. Sized to every draw:
-    /// a crowd moves thousands of parts a frame, and a cap would hand the ones past it camera-only vectors --
-    /// exactly the ghosting this pass exists to remove.</summary>
-    private static readonly int[] _mvDraw = new int[MaxOwned];
-    /// <summary>Each mover's depth test, beside <see cref="_mvDraw"/>.</summary>
-    private static readonly CompareOp[] _mvTest = new CompareOp[MaxOwned];
+    /// <summary>This pass's movers, serial-appended by the staging walk. Sized to every draw: a crowd moves
+    /// thousands of parts a frame, and a cap would hand the ones past it camera-only vectors -- exactly the
+    /// ghosting this pass exists to remove.</summary>
+    private static readonly MoverDraw[] _mvDraw = new MoverDraw[MaxOwned];
     private static int _mvN, _mvDrawn;
     /// <summary>DB-mode record rewrites since the last period line: with the model moving (past the record's
     /// 0,1 mm step) and without (alpha, lighting, reveal, prev catch-up). Bumped by the stage workers.</summary>
     private static long _dbRecModel, _dbRecOther;
     private static bool _mvSkinned, _mvDangly;
-    /// <summary>What the staging walk decided for each draw that may move, counted per period by <see cref="MoverTally"/>.</summary>
-    private enum MoverTally { PosedPicked, PosedHeld, MovedBlended, MovedContent, ExtraPose, Count }
-    private static readonly long[] _mvTally = new long[(int)MoverTally.Count];
+
+    /// <summary>One mover: the draw the sweep redraws, and the depth test it redraws under.</summary>
+    private struct MoverDraw { internal int Draw; internal CompareOp Test; }
 
     /// <summary>Dangly positions from before this frame's solve, part-local xyz, appended per owned part by
     /// <see cref="NoteDanglyPrev"/> and reset by the first append of a new frame. Native and growing for
@@ -91,29 +89,13 @@ public sealed unsafe partial class AlloyRenderer
     private static bool PoseMovedNow(int bone)
     {
         int s = bone / BoneCount;
-        if (bone < 0 || s >= _boneSlots || s >= _boneStage.Length || s >= _bonePrevStage.Length) return false;
-        return PaletteMoved(in _boneStage.Span[s], in _bonePrevStage.Span[s]);
+        return s < _boneSlots && PaletteMoved(in _boneStage.Span[s], in _bonePrevStage.Span[s]);
     }
-
-    /// <summary>Does a moved draw of class <paramref name="cls"/> join the velocity sweep?</summary>
-    private static bool MoverClass(int cls, int feat)
-        => MoverJoins(cls, ShaderFeatures.OutOfPrepass(feat), ContentPrograms.MayMove(feat));
 
     /// <summary>Does a moved draw join the sweep: it writes depth, and no content vertex half of its own
     /// (<paramref name="ownVertex"/>) places it where the sweep's stock skinning would not.</summary>
     private static bool MoverJoins(int cls, bool ownDepth, bool ownVertex)
         => (cls == (int)AlloyClass.Opaque || cls == (int)AlloyClass.Cutout) && !(ownDepth && ownVertex);
-
-    /// <summary>Count draw <paramref name="cls"/>'s mover verdict: a posed part picked or holding its pose, or a moved
-    /// part the class rule keeps out. Serial, from the staging walk.</summary>
-    private static void TallyMover(bool moved, bool posed, int cls, int feat)
-    {
-        MoverTally t = moved && MoverClass(cls, feat) ? MoverTally.PosedPicked
-                     : !moved ? MoverTally.PosedHeld
-                     : cls == (int)AlloyClass.Blended ? MoverTally.MovedBlended
-                     : MoverTally.MovedContent;
-        if (posed || t >= MoverTally.MovedBlended) _mvTally[(int)t]++;
-    }
 
     /// <summary>The sweep's depth test for a mover of class <paramref name="cls"/> whose content pair may cut its own
     /// coverage (<paramref name="ownCoverage"/>): EQUAL for anything with holes, so they keep the camera field.</summary>
@@ -143,7 +125,7 @@ public sealed unsafe partial class AlloyRenderer
         var (c3, m3) = MoveLevels(in at, in turned);
         check.Expect(!c3 && m3, "a 0,17 degree turn moves the velocity but does not re-bake the shadow");
 
-        check.Expect(EnsureBoneSlots(1), "the bone stage holds one slot");
+        check.Expect(EnsureBoneSlots(1) && _boneStage.Length > 0 && _bonePrevStage.Length > 0, "the bone stage holds one slot");
         if (_boneStage.Length > 0 && _bonePrevStage.Length > 0)
         {
             int i = MaxOwned - 1, keepBone = _oBone[i], keepSlots = _boneSlots, keepMv = _mvMovedAt[i];
@@ -173,8 +155,7 @@ public sealed unsafe partial class AlloyRenderer
 
     private static void NoteMoverDraw(int n, bool skinned, bool dangly, CompareOp test)
     {
-        _mvTest[_mvN] = test;
-        _mvDraw[_mvN++] = n;
+        _mvDraw[_mvN++] = new MoverDraw { Draw = n, Test = test };
         _mvSkinned |= skinned;
         _mvDangly |= dangly;
     }
@@ -186,19 +167,14 @@ public sealed unsafe partial class AlloyRenderer
         long rm = System.Threading.Interlocked.Exchange(ref _dbRecModel, 0), ro = System.Threading.Interlocked.Exchange(ref _dbRecOther, 0);
         float f = MathF.Max(frames, 1);
         string db = rm + ro == 0 ? "" : $", db records rewritten {rm / f:F1}/frame moved + {ro / f:F1}/frame other" + RecWhyStats(frames);
-        Span<long> t = _mvTally;
-        string why = $", mover verdicts/frame: posed picked {t[(int)MoverTally.PosedPicked] / f:F1}, posed held {t[(int)MoverTally.PosedHeld] / f:F1}, "
-                   + $"moved but blended {t[(int)MoverTally.MovedBlended] / f:F1}, moved but content {t[(int)MoverTally.MovedContent] / f:F1}, "
-                   + $"extra poses {t[(int)MoverTally.ExtraPose] / f:F2}";
-        t.Clear();
-        return (d == 0 ? "" : $", {d / f:F1} mover draws/frame") + why + db;
+        return (d == 0 ? "" : $", {d / f:F1} mover draws/frame") + db;
     }
 
     /// <summary>Context loss: the frame's queued movers describe a world that is gone.</summary>
     private static void MotionContextLost() { _mvN = 0; _mvSkinned = false; _mvDangly = false; }
 
     /// <summary>The mover vertex stage. <c>gl_Position</c> is the prepass's exact <see cref="ClipExpr"/> text
-    /// under <c>invariant</c>, so LEQUAL against the depth the mover already wrote passes on every fragment;
+    /// under <c>invariant</c>, so the depth test against what the mover already wrote passes where it drew;
     /// the previous clip position rides through the record's <c>prev</c> and last frame's view-projection, and
     /// for a posed skinmesh through last frame's palette at <see cref="BindBonesPrev"/>.</summary>
     internal static string MotionVs => ShaderSource.Get("cx_motion_v.glsl");
