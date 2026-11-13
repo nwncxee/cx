@@ -87,7 +87,9 @@ An effort can take both: a look-up first, then the change.
 6. **Lint** with `wiki_lint` on each namespace you wrote in, never on `""`
    (the whole wiki's answer overflows a tool result). Fix every broken link and
    orphan in a hand-written article you created or edited. A broken link in a
-   generated page is a data fix: name it in the PR body or its ticket.
+   generated page is a data fix: name it in the PR body or its ticket. Fix
+   every path rule breach (W1–W7) in those namespaces, then run
+   `wiki_list_namespace` on `""` and move every root stray (W1) to its home.
 
 Done when every item from step 1 is described by an article in the namespace
 that owns it, `wiki_lint` shows no broken link or orphan in those articles,
@@ -95,19 +97,47 @@ and the PR body lists them by title.
 
 ## Where an article lives
 
-This table is law: an article goes in the namespace whose row holds it, and a
-repository's agent guide points here rather than restating it. A title is short,
-two to five words, with no repository name, path or ticket key.
+The wiki article For Staff :: Standards :: Wiki Organization is the law for
+where an article goes and what shape it takes; read it before any
+`wiki_create`, `wiki_move` or title change. Its rules are numbered W1 to W19,
+and a finding names its number. This table summarizes it, and a repository's
+agent guide points here rather than restating it. A title is short, two to
+five words, with no repository name, path or ticket key.
+
+- **Path rules (W1–W7) are fixed on sight, without asking**, in any namespace
+  you list, not only in what you wrote: a root stray (W1), a path over four
+  parts (W2), a title with two `::` (W3), a namespace under four standalone
+  pages (W4), a namespace that is one master page (W5), a missing or stray
+  index article (W6), a title that repeats its path (W7). A fix only a person
+  can make (create or delete a namespace) goes in the report as an ask.
+- **File by first match (W8).** The first yes in that page's ordered
+  questions is the home. Two homes fitting means the page lacks a tie-break:
+  add it there, then file.
+- **Page rules (W10, W11, W13–W19) are fixed on touch, never swept.** A page
+  you edit holds one Diátaxis kind (tutorial, how-to guide, reference,
+  explanation) and sits under that kind's heading in its namespace's index
+  article (W10, W11). A how-to title starts with a verb (W13). Link a term at
+  its first mention, with the target's title as the link text (W14). The page
+  ends with a Related heading of two to four links (W15).
+- **A move or rename breaks links (W12).** `wiki_move` leaves no redirect.
+  Before it, `wiki_search` the old path; after it, edit every linking article
+  to the new `url`, and `wiki_lint` both namespaces. A master page's subpages
+  stay behind when it moves: move each one after it. A `Parent :: Child` page
+  moved into a namespace named Parent doubles its path until its title drops
+  `Parent ::`.
+- **Namespaces are made by a person**, who sets the read permission before
+  anything moves in. Ask for one when W3 or a growing shelf of standalone
+  pages calls for it.
 
 | Namespace | Holds |
 |---|---|
 | Documentation | Technical documentation of the server and its content: services, plugins, hooks, console commands, data formats. Public on purpose. |
 | For Staff | Hidden, visible to staff (developers and dungeon masters): operations by role, staff tooling, work in progress, spoilers and DM notes. Infrastructure decisions, runbooks and deploy notes stay in sow-platform (ADR-0136). Credentials and secrets never go on the wiki at all. |
-| For Staff / Decisions | A namespace: every project decision is an article in it, titled by its topic, listed on the index article of its area of concern. The citation (`sow-platform ADR-0074`) opens the body in bold, so a search for it finds the page. A new decision starts here. |
+| For Staff / Decisions | A namespace: every project decision is an article in it, titled by its topic, listed under its area's section of the Decisions index article. The citation (`sow-platform ADR-0074`) opens the body in bold, so a search for it finds the page. A new decision starts here. Before you write or change a decision page, `wiki_read` the namespace's index article, Decisions: it holds the page format and when an old page is amended, superseded or retired. A new page that replaces an old one in full names the old citation in its Consequences, and the old page is then tombstoned (tier 3). |
 | Guides | Walkthroughs that help a player do something. |
 | Systems | Player-facing mechanics that no generated page covers. |
 | Lore | The setting's prose. |
-| Credits | Attribution, one article per category: Code, Tools, Art, Audio, Fonts, Infrastructure, Contributors, Special Thanks, and Assets split by kind under its own subpages. Every third-party asset, model, script, library or pack the change brings in gets a row in the matching article's table. Add a row, and create no article for a single source. |
+| Credits | A namespace of attribution, one page per category: Code, Tools, Art, Audio, Fonts, Infrastructure, Contributors, Special Thanks, and Assets split by kind under its own subpages. Every third-party asset, model, script, library or pack the change brings in gets a row in the matching article's table. Add a row, and create no article for a single source. |
 | Frequently Asked Questions | One article. Add a question once players ask it repeatedly. |
 
 Root articles: Main Page, Community Charter, Setting Overview, The Team, and
