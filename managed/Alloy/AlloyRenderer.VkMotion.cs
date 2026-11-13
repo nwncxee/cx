@@ -73,7 +73,7 @@ public sealed unsafe partial class AlloyRenderer
                 side.BindVertexBuffer(MeshArena.VkVbo((MeshArena.Fmt)f));
                 test = null;
             }
-            CompareOp want0 = MoverDepth(_oCls[i]);
+            CompareOp want0 = _mvTest[k];
             if (want0 != test)
             {
                 test = want0;

@@ -873,10 +873,10 @@ public sealed unsafe partial class AlloyRenderer
             _dSlot[n] = i;
             // #392: a matrix mover this frame -- its record's prev lags its model by one frame, and the velocity
             // stage redraws it with both. A posed skinmesh is one too when its palette changed, and the stage
-            // skins it with both palettes. A cutout joins tested EQUAL, so its holes keep the camera field; a
-            // content pair stays out, its displaced mesh moving under a matrix that does not.
+            // skins it with both palettes. A cutout, or a content pair cutting its own coverage, joins tested EQUAL,
+            // so its holes keep the camera field; a pair with its own vertex half stays out, its mesh placed apart from the matrix.
             if (row.Moved && MoverClass(cls, feat))
-                NoteMoverDraw(n, row.Posed, row.Dangly);
+                NoteMoverDraw(n, row.Posed, row.Dangly, MoverDepthOf(cls, ContentPrograms.Cuts(feat)));
             TallyMover(row.Moved, row.Posed, cls, feat);
             // #287: and the same draw as the cull's source record -- the batch is the one the cut just
             // opened or extended, and its output base is where its compacted run starts.

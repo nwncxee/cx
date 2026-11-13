@@ -17,6 +17,8 @@ public sealed unsafe partial class AlloyRenderer
     /// a crowd moves thousands of parts a frame, and a cap would hand the ones past it camera-only vectors --
     /// exactly the ghosting this pass exists to remove.</summary>
     private static readonly int[] _mvDraw = new int[MaxOwned];
+    /// <summary>Each mover's depth test, beside <see cref="_mvDraw"/>.</summary>
+    private static readonly CompareOp[] _mvTest = new CompareOp[MaxOwned];
     private static int _mvN, _mvDrawn;
     /// <summary>DB-mode record rewrites since the last period line: with the model moving (past the record's
     /// 0,1 mm step) and without (alpha, lighting, reveal, prev catch-up). Bumped by the stage workers.</summary>
@@ -100,7 +102,7 @@ public sealed unsafe partial class AlloyRenderer
     /// <summary>Does a moved draw join the sweep: it writes depth, and no content vertex half of its own
     /// (<paramref name="ownVertex"/>) places it where the sweep's stock skinning would not.</summary>
     private static bool MoverJoins(int cls, bool ownDepth, bool ownVertex)
-        => (cls == (int)AlloyClass.Opaque || cls == (int)AlloyClass.Cutout) && !ownDepth;
+        => (cls == (int)AlloyClass.Opaque || cls == (int)AlloyClass.Cutout) && !(ownDepth && ownVertex);
 
     /// <summary>Count draw <paramref name="cls"/>'s mover verdict: a posed part picked or holding its pose, or a moved
     /// part the class rule keeps out. Serial, from the staging walk.</summary>
@@ -113,13 +115,10 @@ public sealed unsafe partial class AlloyRenderer
         if (posed || t >= MoverTally.MovedBlended) _mvTally[(int)t]++;
     }
 
-    /// <summary>The sweep's depth test for a mover of class <paramref name="cls"/>.</summary>
-    private static CompareOp MoverDepth(int cls) => MoverDepthOf(cls, false);
-
     /// <summary>The sweep's depth test for a mover of class <paramref name="cls"/> whose content pair may cut its own
     /// coverage (<paramref name="ownCoverage"/>): EQUAL for anything with holes, so they keep the camera field.</summary>
     private static CompareOp MoverDepthOf(int cls, bool ownCoverage)
-        => cls == (int)AlloyClass.Cutout ? CompareOp.Equal : WorldDepth.NearerOrEqual;
+        => cls == (int)AlloyClass.Cutout || ownCoverage ? CompareOp.Equal : WorldDepth.NearerOrEqual;
 
     /// <summary>Oracle: hand-built palettes and matrices with the steps written out as literals, and the
     /// class table's own members.</summary>
@@ -172,8 +171,9 @@ public sealed unsafe partial class AlloyRenderer
         return check.Ok;
     }
 
-    private static void NoteMoverDraw(int n, bool skinned, bool dangly)
+    private static void NoteMoverDraw(int n, bool skinned, bool dangly, CompareOp test)
     {
+        _mvTest[_mvN] = test;
         _mvDraw[_mvN++] = n;
         _mvSkinned |= skinned;
         _mvDangly |= dangly;
