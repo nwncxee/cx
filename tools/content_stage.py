@@ -742,6 +742,20 @@ FIXTURE = {
     "cx_fixmulti": ('#include "inc_standard"\nuniform float rgbP0; uniform float rgbP1;\nvoid main()\n{\n'
                     "    FragmentColor = vec4(1.0);\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n"
                     "    gl_FragColor = vec4(FragmentColor.rgb * (rgbP0 + rgbP1), 1.0);\n}\n"),
+    "cx_fixtint": ('#define SHADER_TYPE 2\n#define LIGHTING 1\n#define ENVIRONMENT_MAP 1\n#include "inc_standard"\n'
+                   "uniform vec4 vDye;\nuniform vec4 vSlot;\nvoid main()\n{\n    FragmentColor = vec4(1.0);\n"
+                   "    SetupStandardShaderInputs();\n    fEnvMapLevel = 1.0 - vDye.a;\n    vec3 c = ApplyColorSpace(vDye.rgb);\n"
+                   "#if ENVIRONMENT_MAP == 1 && SPECULAR_LIGHT != 1\n"
+                   "    c = mix(c, SampleEnvironmentMapCube(vFragmentNormal, 0.0), fEnvMapLevel);\n#endif\n"
+                   "    FragmentColor = vec4(c, 1.0);\n"
+                   "#if LIGHTING == 1 && (FRAGMENT_LIGHTING == 1 || NORMAL_MAP == 1) && SPECULAR_LIGHT == 1\n"
+                   "    SetupSpecularity(FragmentColor.rgb * materialFrontDiffuse.rgb);\n"
+                   "    if (vSlot.x > 0.0) MATERIAL_SPECULARITY_VALUE = vSlot.x;\n"
+                   "    if (vSlot.y > 0.0) MATERIAL_ROUGHNESS_VALUE = vSlot.y;\n#endif\n"
+                   "    ApplyStandardShader();\n    gl_FragColor = vec4(FragmentColor.rgb, materialFrontDiffuse.a);\n}\n"),
+    "cx_fixplain": ('#define SHADER_TYPE 2\n#define LIGHTING 1\n#define NO_TEXTURE 1\n#include "inc_standard"\n'
+                    "uniform vec4 vDye;\nvoid main()\n{\n    FragmentColor = vec4(1.0);\n    SetupStandardShaderInputs();\n"
+                    "    FragmentColor.rgb *= vDye.rgb;\n    ApplyStandardShader();\n    gl_FragColor = FragmentColor;\n}\n"),
 }
 STOCK_VS = ('// header\n#define SHADER_TYPE 1\n#define NORMAL_MAP 1\n#include "inc_standard"\n'
             "void main ()\n{\n    ApplyStandardShader();\n}\n")
@@ -823,6 +837,12 @@ def selfcheck(env_fs, env_vs, defs, vanfs, std_fs, std_vs, lit_vs):
     multi = translate("cx_fixmulti", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
     if multi.refused or multi.params != [("rgbP0", "Float", 0), ("rgbP1", "Float", 1)]:
         bad.append(f"two uniforms on one line do not both take a lane: {multi.refused or multi.params}")
+    tint = translate("cx_fixtint", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
+    if tint.refused or not tint.alpha_post or tint.params != [("vDye", "Vec4", 0), ("vSlot", "Vec4", 1)]:
+        bad.append(f"a stage that rebuilds its shine and sets its alpha after the lighting call: {tint.refused or tint.params}")
+    plain = translate("cx_fixplain", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
+    if plain.refused or plain.post:
+        bad.append(f"the plain fixture: {plain.refused or 'has a post body'}")
     wide = translate("cx_fixwide", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
     if wide.refused or len(wide.params) != 1024 or wide.params[79] != ("p79", "Float", 79) \
        or not any("declares more than 1024" in n and "p1024" in n for n in wide.notes):

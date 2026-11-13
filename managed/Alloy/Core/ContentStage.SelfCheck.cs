@@ -65,7 +65,24 @@ internal static partial class ContentStage
         ["cx_fixmulti"] = "#include \"inc_standard\"\nuniform float rgbP0; uniform float rgbP1;\nvoid main()\n{\n"
                         + "    FragmentColor = vec4(1.0);\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n"
                         + "    gl_FragColor = vec4(FragmentColor.rgb * (rgbP0 + rgbP1), 1.0);\n}\n",
+        ["cx_fixtint"] = "#define SHADER_TYPE 2\n#define LIGHTING 1\n#define ENVIRONMENT_MAP 1\n#include \"inc_standard\"\n"
+                       + "uniform vec4 vDye;\nuniform vec4 vSlot;\nvoid main()\n{\n    FragmentColor = vec4(1.0);\n"
+                       + "    SetupStandardShaderInputs();\n    fEnvMapLevel = 1.0 - vDye.a;\n    vec3 c = ApplyColorSpace(vDye.rgb);\n"
+                       + "#if ENVIRONMENT_MAP == 1 && SPECULAR_LIGHT != 1\n"
+                       + "    c = mix(c, SampleEnvironmentMapCube(vFragmentNormal, 0.0), fEnvMapLevel);\n#endif\n"
+                       + "    FragmentColor = vec4(c, 1.0);\n"
+                       + "#if LIGHTING == 1 && (FRAGMENT_LIGHTING == 1 || NORMAL_MAP == 1) && SPECULAR_LIGHT == 1\n"
+                       + "    SetupSpecularity(FragmentColor.rgb * materialFrontDiffuse.rgb);\n"
+                       + "    if (vSlot.x > 0.0) MATERIAL_SPECULARITY_VALUE = vSlot.x;\n"
+                       + "    if (vSlot.y > 0.0) MATERIAL_ROUGHNESS_VALUE = vSlot.y;\n#endif\n"
+                       + "    ApplyStandardShader();\n    gl_FragColor = vec4(FragmentColor.rgb, materialFrontDiffuse.a);\n}\n",
+        ["cx_fixplain"] = "#define SHADER_TYPE 2\n#define LIGHTING 1\n#define NO_TEXTURE 1\n#include \"inc_standard\"\n"
+                        + "uniform vec4 vDye;\nvoid main()\n{\n    FragmentColor = vec4(1.0);\n    SetupStandardShaderInputs();\n"
+                        + "    FragmentColor.rgb *= vDye.rgb;\n    ApplyStandardShader();\n    gl_FragColor = FragmentColor;\n}\n",
     };
+
+    /// <summary>A fixture stage's text by resref, for a golden that runs one on the device; null for any other name.</summary>
+    internal static string? FixtureText(string resref) => Fixture.GetValueOrDefault(resref);
 
     /// <summary>Off-device. Oracle: the fixtures' own text and the facts written out by hand -- which uniform takes which
     /// lane across the pair, which varying crosses it, what a declaration the environment supplies or no upload fits
@@ -166,6 +183,14 @@ internal static partial class ContentStage
         check.Expect(envStage.Refused == null && envStage.Host.Contains("#define CX_CONTENT_ENVMAP 1")
                      && !r.Host.Contains("CX_CONTENT_ENVMAP"),
                      "a stage's own ENVIRONMENT_MAP 1 does not make its diffuse alpha an env level, or one without it does");
+        // E4 of the tint examples, which held before the shine rebuild, so it carries no approved-spec mark:
+        // Given an area with characters dyed by a shader that rebuilds its own shine
+        // When the shader's pair line is written to cx.log
+        // Then the line does not say forward only
+        Result tint = Translate("cx_fixtint", true, Chain, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37);
+        check.Expect(tint.Refused == null && ContentPrograms.GetsDeferredTwin(tint, VkPrograms.LitPair(log).Item2)
+                     && !tint.RouteNote.Contains("forward only"),
+                     $"a stage that rebuilds its shine and sets its alpha after the lighting call routes as '{tint.RouteNote}' ({tint.Refused})");
         Result whole = Translate("cx_fixwhole", true, Chain, AlloyRenderer.ContentEnvFs, AlloyRenderer.VanillaEnvDefs, "", 8193, 37);
         check.Expect(whole.Refused == null && whole.Post && !whole.Cuts
                      && whole.Host.Contains("void CxContentMain()\n{\n}") && whole.Notes.Any(n => n.Contains("lights itself")),
