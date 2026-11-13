@@ -22,6 +22,9 @@ public sealed unsafe partial class AlloyRenderer
     /// 0,1 mm step) and without (alpha, lighting, reveal, prev catch-up). Bumped by the stage workers.</summary>
     private static long _dbRecModel, _dbRecOther;
     private static bool _mvSkinned, _mvDangly;
+    /// <summary>What the staging walk decided for each draw that may move, counted per period by <see cref="MoverTally"/>.</summary>
+    private enum MoverTally { PosedPicked, PosedHeld, MovedBlended, MovedContent, ExtraPose, Count }
+    private static readonly long[] _mvTally = new long[(int)MoverTally.Count];
 
     /// <summary>Dangly positions from before this frame's solve, part-local xyz, appended per owned part by
     /// <see cref="NoteDanglyPrev"/> and reset by the first append of a new frame. Native and growing for
@@ -94,6 +97,17 @@ public sealed unsafe partial class AlloyRenderer
     private static bool MoverClass(int cls, int feat)
         => (cls == (int)AlloyClass.Opaque || cls == (int)AlloyClass.Cutout) && !ShaderFeatures.OutOfPrepass(feat);
 
+    /// <summary>Count draw <paramref name="cls"/>'s mover verdict: a posed part picked or holding its pose, or a moved
+    /// part the class rule keeps out. Serial, from the staging walk.</summary>
+    private static void TallyMover(bool moved, bool posed, int cls, int feat)
+    {
+        MoverTally t = moved && MoverClass(cls, feat) ? MoverTally.PosedPicked
+                     : !moved ? MoverTally.PosedHeld
+                     : cls == (int)AlloyClass.Blended ? MoverTally.MovedBlended
+                     : MoverTally.MovedContent;
+        if (posed || t >= MoverTally.MovedBlended) _mvTally[(int)t]++;
+    }
+
     /// <summary>The sweep's depth test for a mover of class <paramref name="cls"/>.</summary>
     private static CompareOp MoverDepth(int cls) => cls == (int)AlloyClass.Cutout ? CompareOp.Equal : WorldDepth.NearerOrEqual;
 
@@ -156,7 +170,12 @@ public sealed unsafe partial class AlloyRenderer
         long rm = System.Threading.Interlocked.Exchange(ref _dbRecModel, 0), ro = System.Threading.Interlocked.Exchange(ref _dbRecOther, 0);
         float f = MathF.Max(frames, 1);
         string db = rm + ro == 0 ? "" : $", db records rewritten {rm / f:F1}/frame moved + {ro / f:F1}/frame other" + RecWhyStats(frames);
-        return (d == 0 ? "" : $", {d / f:F1} mover draws/frame") + db;
+        Span<long> t = _mvTally;
+        string why = $", mover verdicts/frame: posed picked {t[(int)MoverTally.PosedPicked] / f:F1}, posed held {t[(int)MoverTally.PosedHeld] / f:F1}, "
+                   + $"moved but blended {t[(int)MoverTally.MovedBlended] / f:F1}, moved but content {t[(int)MoverTally.MovedContent] / f:F1}, "
+                   + $"extra poses {t[(int)MoverTally.ExtraPose] / f:F2}";
+        t.Clear();
+        return (d == 0 ? "" : $", {d / f:F1} mover draws/frame") + why + db;
     }
 
     /// <summary>Context loss: the frame's queued movers describe a world that is gone.</summary>

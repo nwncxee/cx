@@ -877,6 +877,7 @@ public sealed unsafe partial class AlloyRenderer
             // content pair stays out, its displaced mesh moving under a matrix that does not.
             if (row.Moved && MoverClass(cls, feat))
                 NoteMoverDraw(n, row.Posed, row.Dangly);
+            TallyMover(row.Moved, row.Posed, cls, feat);
             // #287: and the same draw as the cull's source record -- the batch is the one the cut just
             // opened or extended, and its output base is where its compacted run starts.
             CullPass.Pack(ref _dSrc[n], idxCount, _dOff[n], _dBase[n], i, groups - 1, _gStart[groups - 1]);

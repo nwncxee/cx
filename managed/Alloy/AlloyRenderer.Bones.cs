@@ -67,6 +67,7 @@ public sealed unsafe partial class AlloyRenderer
         // animation state and must not make it its own history.
         bool roll = _poseRollSeq != _frameSeq;
         if (roll) { _poseRollSeq = _frameSeq; (_boneStage, _bonePrevStage) = (_bonePrevStage, _boneStage); }
+        else _mvTally[(int)MoverTally.ExtraPose]++;
         // CX-120 seam-anim: a DB palette is solved on the game thread, before this swap, so it lives in the
         // DB stage and is copied into whichever buffer THIS frame uploads -- here, the one moment both
         // buffers mean what their names say (Scene/AlloyRenderer.DbBones.cs).
