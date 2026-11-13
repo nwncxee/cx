@@ -16,6 +16,13 @@ float CxReactive(float share)
     return min(max(share, 0.0) * 4.0, 0.9);
 }
 
+/// How reactive a pixel blended geometry covers at `alpha` is: its alpha, capped at 0.9, as AMD's FSR 3.1
+/// guidance asks for alpha-blended objects. No boost: a pane a quarter opaque keeps most of its history.
+float CxReactiveAlpha(float alpha)
+{
+    return 0.0;
+}
+
 /// The share of a pixel a draw of `rgb` at `alpha` takes. An additive draw leaves the background whole under
 /// it, so its share is what it ADDS; an alpha-over draw's share is its alpha. Same rule the velocity sweep
 /// uses to decide whose vector a pixel keeps.
