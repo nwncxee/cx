@@ -30,6 +30,8 @@ internal static class ItemMenuService
         public float FaceAsked;
         /// <summary>The pointer's last pixel, where a menu the server opened at the pointer appears.</summary>
         public int PointerX, PointerY;
+        /// <summary>True between a press the menu took and its release.</summary>
+        public bool Pressed;
     }
 
     /// <summary>Every pointer move, from the input pump: a server that knows only the element pressed opens the menu
@@ -179,6 +181,7 @@ internal static class ItemMenuService
     {
         Menu.Close();
         _s.OpenGen = -1;
+        _s.Pressed = false;
         Modal(false);
     }
 
@@ -195,9 +198,13 @@ internal static class ItemMenuService
         if (down)
         {
             if (!Menu.Contains(x, y)) { Dismiss(); return true; }
+            _s.Pressed = true;
             Act(Menu.MouseDown(x, y, button));
             return true;
         }
+        // The release of the press that opened the menu is NUI's: taken here, NUI holds the button down and drops the next press.
+        if (!_s.Pressed) return false;
+        _s.Pressed = false;
         Act(Menu.MouseUp());
         return true;
     }
