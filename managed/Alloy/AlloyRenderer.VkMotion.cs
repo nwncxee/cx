@@ -10,8 +10,9 @@ using CX.Rhi;
 namespace CX.Alloy;
 
 /// <summary>
-/// The mover sweep on Vulkan: every record whose model moved this frame drawn again into the velocity target after the
-/// camera field, LEQUAL against the frame's depth, with its current and previous clip positions -- a posed skin
+/// The mover sweep on Vulkan: every record whose model or pose moved this frame drawn again into the velocity target after the
+/// camera field, against the frame's depth (an opaque one nearer-or-equal, a cutout EQUAL so its holes keep the
+/// camera field), with its current and previous clip positions -- a posed skin
 /// through both frames' palettes, a dangly part through its pre-solve positions -- as GL's sweep draws them.
 /// </summary>
 public sealed unsafe partial class AlloyRenderer
@@ -54,10 +55,11 @@ public sealed unsafe partial class AlloyRenderer
         int arena0 = c.ArenaUsed;
         VkPassStart(side, w, h);
         int fmt = -1, dangly = -1, drawn = 0;
+        CompareOp? test = null;
         var push = new VkBatchPush { AlphaCut = -1f };
         for (int k = 0; k < n; k++)
         {
-            int d = _mvDraw[k], i = _dSlot[d];
+            int d = _mvDraw[k].Draw, i = _dSlot[d];
             if (!DbSlot(i)) continue;
             int f = DbVaoKey(i);
             if ((uint)f >= MeshArena.Formats || MeshArena.VkVbo((MeshArena.Fmt)f).IsNull) continue;
@@ -67,9 +69,14 @@ public sealed unsafe partial class AlloyRenderer
             {
                 fmt = f;
                 side.SetPipeline(pipe);
-                side.SetDepthState(new DepthState(true, false, WorldDepth.NearerOrEqual));
                 side.SetRasterState(new RasterState(CullMode.None));
                 side.BindVertexBuffer(MeshArena.VkVbo((MeshArena.Fmt)f));
+                test = null;
+            }
+            if (_mvDraw[k].Test != test)
+            {
+                test = _mvDraw[k].Test;
+                side.SetDepthState(new DepthState(true, false, _mvDraw[k].Test));
             }
             int want = DanglyPrevNow(i) ? i : -1;
             if (want != dangly || drawn == 0)
