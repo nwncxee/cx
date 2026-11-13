@@ -10,8 +10,9 @@ using CX.Rhi;
 namespace CX.Alloy;
 
 /// <summary>
-/// The mover sweep on Vulkan: every record whose model moved this frame drawn again into the velocity target after the
-/// camera field, LEQUAL against the frame's depth, with its current and previous clip positions -- a posed skin
+/// The mover sweep on Vulkan: every record whose model or pose moved this frame drawn again into the velocity target after the
+/// camera field, against the frame's depth (an opaque one nearer-or-equal, a cutout EQUAL so its holes keep the
+/// camera field), with its current and previous clip positions -- a posed skin
 /// through both frames' palettes, a dangly part through its pre-solve positions -- as GL's sweep draws them.
 /// </summary>
 public sealed unsafe partial class AlloyRenderer

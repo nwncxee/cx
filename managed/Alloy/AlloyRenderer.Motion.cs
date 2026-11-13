@@ -7,10 +7,10 @@ using CX.Rhi;
 
 namespace CX.Alloy;
 
-/// <summary>Object motion vectors for matrix movers. After <see cref="MotionVectors"/> has painted the camera
-/// field, every opaque record whose model matrix changed THIS frame is drawn once more into the velocity target,
-/// LEQUAL against the depth it already wrote, with the difference of its current and previous clip positions;
-/// a posed skinmesh uses both frames' palettes, a dangly its pre-solve positions. Blended classes stay camera-only.</summary>
+/// <summary>Object motion vectors for movers. After <see cref="MotionVectors"/> has painted the camera field, every
+/// opaque or cutout record whose model or pose changed THIS frame is drawn once more into the velocity target against
+/// the depth it already wrote, with its current and previous clip positions; a posed skinmesh uses both frames'
+/// palettes, a dangly its pre-solve positions. Blended classes stay camera-only.</summary>
 public sealed unsafe partial class AlloyRenderer
 {
     /// <summary>Draw indices of this pass's movers, serial-appended by the staging walk. Sized to every draw:
@@ -63,15 +63,16 @@ public sealed unsafe partial class AlloyRenderer
     }
 
     /// <summary>Did a skin's pose change since last frame? Bit for bit: a held pose re-solves to the same matrices.</summary>
-    private static bool PaletteMoved(in BonePalette now, in BonePalette prev) => false;
+    private static bool PaletteMoved(in BonePalette now, in BonePalette prev)
+    {
+        ReadOnlySpan<Matrix4x4> a = now, b = prev;
+        return !MemoryMarshal.AsBytes(a).SequenceEqual(MemoryMarshal.AsBytes(b));
+    }
 
     /// <summary>The two motion levels of one model change: the shadow re-bake's coarse step and the velocity
     /// sweep's fine one.</summary>
     private static (bool Caster, bool Mover) MoveLevels(in Matrix4x4 was, in Matrix4x4 now)
-    {
-        bool caster = Moved(in was, in now, CasterStep);
-        return (caster, caster);
-    }
+        => (Moved(in was, in now, CasterStep), Moved(in was, in now, MoveStep));
 
     /// <summary>Is slot <paramref name="i"/> a mover this frame: its model moved at the sweep's step, a posed skin's
     /// palette changed, or a dangly part was solved.</summary>
@@ -90,10 +91,11 @@ public sealed unsafe partial class AlloyRenderer
     }
 
     /// <summary>Does a moved draw of class <paramref name="cls"/> join the velocity sweep?</summary>
-    private static bool MoverClass(int cls, int feat) => cls == (int)AlloyClass.Opaque && !ShaderFeatures.OutOfPrepass(feat);
+    private static bool MoverClass(int cls, int feat)
+        => (cls == (int)AlloyClass.Opaque || cls == (int)AlloyClass.Cutout) && !ShaderFeatures.OutOfPrepass(feat);
 
     /// <summary>The sweep's depth test for a mover of class <paramref name="cls"/>.</summary>
-    private static CompareOp MoverDepth(int cls) => WorldDepth.NearerOrEqual;
+    private static CompareOp MoverDepth(int cls) => cls == (int)AlloyClass.Cutout ? CompareOp.Equal : WorldDepth.NearerOrEqual;
 
     /// <summary>Oracle: hand-built palettes and matrices with the steps written out as literals, and the
     /// class table's own members.</summary>

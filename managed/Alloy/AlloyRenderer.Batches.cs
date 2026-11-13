@@ -872,9 +872,9 @@ public sealed unsafe partial class AlloyRenderer
             // order does not, so the draw carries the slot rather than the record.
             _dSlot[n] = i;
             // #392: a matrix mover this frame -- its record's prev lags its model by one frame, and the velocity
-            // stage redraws it with both. CX-26: a posed skinmesh is one too when its palette changed, and the
-            // stage skins it with both palettes. Opaque only: a displaced mesh moves under a matrix that does
-            // not, and a cutout mover would paint its own velocity over its holes.
+            // stage redraws it with both. A posed skinmesh is one too when its palette changed, and the stage
+            // skins it with both palettes. A cutout joins tested EQUAL, so its holes keep the camera field; a
+            // content pair stays out, its displaced mesh moving under a matrix that does not.
             if (row.Moved && MoverClass(cls, feat))
                 NoteMoverDraw(n, row.Posed, row.Dangly);
             // #287: and the same draw as the cull's source record -- the batch is the one the cut just
@@ -975,7 +975,7 @@ public sealed unsafe partial class AlloyRenderer
         // the main thread (a dictionary and a shared counter); only the level is arithmetic.
         row.Lvl = RowLevel(i);
         // #392: a matrix mover this frame -- its record's prev lags its model by one frame, and the velocity
-        // stage redraws it with both. CX-26: a posed skinmesh is one too when its palette changed.
+        // stage redraws it with both; a posed skinmesh is one too when its palette changed.
         bool posed = _oBone[i] >= 0, dangly = !posed && DanglyPrevNow(i);
         row.Posed = posed; row.Dangly = dangly;
         row.Moved = SlotMoverNow(i, posed, dangly);
