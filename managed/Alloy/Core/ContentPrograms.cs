@@ -282,7 +282,7 @@ internal static unsafe class ContentPrograms
         }
         s.P = p;
         s.Epoch++;
-        // a recipe's coverage term reads SetsAlpha, known only now
+        // a recipe's class reads SetsAlpha, known only now
         if (s.SetsAlpha) Db.DrawRecipe.MaterialLanded();
         Say(s, what, built);
     }

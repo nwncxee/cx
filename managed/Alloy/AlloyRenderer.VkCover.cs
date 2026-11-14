@@ -9,7 +9,7 @@ namespace CX.Alloy;
 
 /// <summary>
 /// The alpha-to-coverage layer (<see cref="PassId.CoverageOwned"/>) on Vulkan: <see cref="CoverageLayer"/>'s run --
-/// every sample seeded from the lit frame and its depth, the coverage tail (<see cref="AlloyClasses.AsksCoverage"/>) drawn forward with coverage
+/// every sample seeded from the lit frame and its depth, the <c>NWN_ALPHA_MODE 2</c> tail drawn forward with coverage
 /// from its alpha, its partly covered pixels into the reactive mask, then the box-resolved colour and the half-covered
 /// depth written back -- scissored to the tail's rect.
 /// </summary>

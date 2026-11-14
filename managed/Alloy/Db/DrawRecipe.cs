@@ -191,9 +191,12 @@ internal static partial class DrawRecipe
     /// recipe every frame and resolving a <c>.mtr</c> there would be a dictionary lookup per recipe per
     /// frame.</summary>
     private static readonly bool[] _declWater = new bool[Max];
-    /// <summary>The material asks for the coverage layer (<see cref="AsksCoverage"/>) -- draw this part through
-    /// alpha-to-coverage (<see cref="RecipeFlag.Coverage"/>) instead of blending it. Kept per recipe for <see cref="Reclassify"/>.</summary>
+    /// <summary>The material's <c>NWN_ALPHA_MODE 2</c> -- draw this part through alpha-to-coverage
+    /// (<see cref="RecipeFlag.Coverage"/>) instead of blending it. Kept per recipe for <see cref="Reclassify"/>.</summary>
     private static readonly bool[] _coverage = new bool[Max];
+    /// <summary>The material declares <c>transparency</c> and its own fragment stage sets the fragment's alpha after
+    /// its lighting call (<see cref="StageBlends"/>): the engine blends that alpha, so the part is blended.</summary>
+    private static readonly bool[] _stageBlend = new bool[Max];
     /// <summary>The material's content-program key (<see cref="GuiContent.Key"/>; 0 = none), which a GUI part draws
     /// through. Re-read with the other late material terms.</summary>
     private static readonly int[] _content = new int[Max];
@@ -487,12 +490,12 @@ internal static partial class DrawRecipe
         // whatever class the material lands in, and its depth twin makes the same one in the prepass.
         return AlloyClasses.Of(water: water, additive: additive, opaque: opaque,
                                declaredTransparent: declared,
-                               alphaBelowOne: false, coverage: _coverage[r]);
+                               alphaBelowOne: false, coverage: _coverage[r], stageBlends: _stageBlend[r]);
     }
 
-    /// <summary><see cref="AlloyClasses.AsksCoverage"/> of a parsed <c>.mtr</c> and the content pair it runs under.</summary>
-    private static bool AsksCoverage(MtrDef? mtr, int feat)
-        => mtr != null && AlloyClasses.AsksCoverage(mtr.AlphaMode, mtr.Transparency, ContentPrograms.SetsAlpha(feat));
+    /// <summary>Does this material blend an alpha its own stage writes? The <c>.mtr</c> declares <c>transparency</c>,
+    /// which <c>Material::GetIsOpaque</c> @0x5c6190 reads first, and its content pair sets the alpha after lighting.</summary>
+    private static bool StageBlends(MtrDef? mtr, int feat) => mtr is { Transparency: true } && ContentPrograms.SetsAlpha(feat);
 
     /// <summary>Is this material DECLARED water, i.e. water by a term the MODEL carries? The <c>.mtr</c>'s
     /// <c>sample_framebuffer 2</c> is the engine's second route into draw bucket 6 (the first is the
@@ -530,7 +533,8 @@ internal static partial class DrawRecipe
             if (material)
             {
                 MtrDef? late = MtrDef.Of(mesh);
-                _coverage[r] = AsksCoverage(late, _feat[r]);
+                _coverage[r] = late is { AlphaMode: 2 };
+                _stageBlend[r] = StageBlends(late, _feat[r]);
                 _own.FaceTerms[r] = FacesOf(late);
                 _content[r] = GuiContent.Key(late);
                 _declWater[r] = DeclaredWater(mesh);
@@ -636,7 +640,8 @@ internal static partial class DrawRecipe
         MtrDef? mtr = MtrDef.Of(mesh);
         // any pair the material names runs translated, unless both its halves add nothing to stock
         int feat = ContentPrograms.Register(mtr);
-        _coverage[r] = AsksCoverage(mtr, feat);
+        _coverage[r] = mtr is { AlphaMode: 2 };
+        _stageBlend[r] = StageBlends(mtr, feat);
         _own.FaceTerms[r] = FacesOf(mtr);
         // TransparencyHint is the engine's child-order sort key and never a blend (MdlNode::ReorderChildren
         // @0x558120 is its one reader); a flat sheet still keeps it, through RecipeFlag.HintBlended.
@@ -861,7 +866,7 @@ internal enum RecipeFlag : ushort
     Fades = 1 << 9,
     /// <summary>The mesh's texture rotates (<c>rotatetexture</c>).</summary>
     RotateTexture = 1 << 10,
-    /// <summary>A cutout whose material asks for alpha-to-coverage (<see cref="AlloyClasses.AsksCoverage"/>).</summary>
+    /// <summary>A cutout whose material asks for alpha-to-coverage (<c>NWN_ALPHA_MODE 2</c>).</summary>
     Coverage = 1 << 11,
     /// <summary>Every normal leans less than 45 degrees off +Z (<see cref="DrawRecipe.FacesUp"/>): a ground decal
     /// can be one of these.</summary>

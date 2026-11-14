@@ -119,7 +119,7 @@ internal static class Renderer
                        changed: AlloyRenderer.InvalidateRecords)
                .Ladder(Quality.Detail, 2f, 1.5f, 1f, 0.5f);
         A2c = G.Dropdown("a2c", "Alpha-to-coverage samples", new[] { 0, 2, 4, 8 }, 4, new[] { "off", "2x", "4x", "8x" }, tier: Tier.Advanced,
-                         help: "Materials that ask for alpha-to-coverage, or blend an alpha their own shader writes (often hair), get soft, layered edges from this many "
+                         help: "Materials that ask for alpha-to-coverage (often hair) get soft, layered edges from this many "
                              + "samples per pixel. Off draws them with the hard cutout edge every other leaf has.");
         A2cMask = G.Toggle("a2cmask", "a2cmask", false, Tier.ChatOnly);
         Ghost = G.Slider("ghost", "See-through creature thickness", 1f, 3f, 0.1f, 1.2f, "×", Tier.Advanced,

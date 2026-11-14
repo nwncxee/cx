@@ -265,7 +265,6 @@ public sealed unsafe partial class AlloyRenderer
         f = default;
         if (_oTri[slot] == IntPtr.Zero || _oCls[slot] > (byte)AlloyClass.Blended) return false;
         f.Blended = _oCls[slot] == (byte)AlloyClass.Blended;
-        if (f.Blended && _oBone[slot] >= 0) return false;   // posed: no mask stage, see SetCastOk
         f.Slot = slot;
         // CX-120: the DENSE caster VAO id (see DbVaoBase), not _oVao -- a DB slot has no VDO slot, and its
         // arena section is what the bake must group and bind by. Every engine table this value still indexes
@@ -276,6 +275,7 @@ public sealed unsafe partial class AlloyRenderer
         // both caster twins, because one list stages for the single views and the layered ones alike
         f.Content = ContentPrograms.OwnDepth(feat) && ContentPrograms.CastProgram(feat, false) != 0
                     && ContentPrograms.CastProgram(feat, true) != 0 ? feat : 0;
+        if (f.Blended && _oBone[slot] >= 0 && f.Content == 0) return false;   // posed: no mask stage, see SetCastOk
         f.Skinned = _oBone[slot] >= 0;
         // CX-227: a part whose coverage source the depth stage can also sample; one whose cannot keeps the
         // engine cut rather than casting a 0.01 silhouette off a texture it does not read. Under the POSE
