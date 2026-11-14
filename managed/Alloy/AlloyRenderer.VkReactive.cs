@@ -5,10 +5,10 @@ using CX.Rhi;
 namespace CX.Alloy;
 
 /// <summary>
-/// The reactive mask, written where the effect is: under OIT, the resolve writes the blended class's coverage
-/// (<c>CxReactiveAlpha</c>), then the beam, particle, halo and weather passes add the share of the pixel each took
-/// (<c>CxReactive</c>). FSR 3.1 takes it as its reactive input and the TAA resolve floors the current frame's share
-/// with it, so a blended part's or an effect's history does not drag along the ground's velocity.
+/// The reactive mask, written where the effect is: the coverage layer's partly covered pixels, the blended class's
+/// coverage from the OIT resolve (<c>CxReactiveAlpha</c>), then the share of the pixel the beam, particle, halo and
+/// weather passes each took (<c>CxReactive</c>). FSR 3.1 takes it as its reactive input and the TAA resolve floors the
+/// current frame's share with it, so such a pixel's history does not drag along the ground's velocity.
 /// </summary>
 public sealed unsafe partial class AlloyRenderer
 {
@@ -38,7 +38,7 @@ public sealed unsafe partial class AlloyRenderer
         cl.ClearImage(c.React);
         if (c.ReactLive) return;
         c.ReactLive = true;
-        log.Always($"AlloyRenderer: the Vulkan reactive mask is LIVE at {c.W}x{c.H} -- the blended class's coverage and the "
+        log.Always($"AlloyRenderer: the Vulkan reactive mask is LIVE at {c.W}x{c.H} -- the coverage layer's partial pixels, the blended class's coverage and the "
                  + "share of each pixel the beam, particle, halo and weather passes took, fed to FSR 3.1 and to the TAA resolve");
     }
 }

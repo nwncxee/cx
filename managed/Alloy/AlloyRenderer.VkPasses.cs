@@ -173,6 +173,10 @@ public sealed unsafe partial class AlloyRenderer
         cl.BeginLabel("deferred lights"u8);
         VkDeferred(vk, cl, vp, view, proj, viewport, near, far, indirect ? CullPassVk.Slots(CullPassVk.PhaseColour) : s.Slots, log);
         cl.EndLabel();
+        // the passes the reactive mask covers, the coverage layer's first, add their own coverage, so it starts at zero
+        cl.BeginLabel("reactive clear"u8);
+        VkReactiveBegin(cl, s, log);
+        cl.EndLabel();
         // the coverage layer at the graph's own place: seeded from the frame the deferred walk just lit
         cl.BeginLabel("coverage"u8);
         if (cover && !VkCoverPass(cl, s, vp, viewport, near, far, indirect, log)) return false;
@@ -189,10 +193,6 @@ public sealed unsafe partial class AlloyRenderer
         // the fog over bare sky before the first pass that writes no depth: laid later it would cover what they drew there
         PostStack.SkyFogVk(vk, cl, s.Hdr, s.Depth, w, h, SkyDomeDrew || _capturing, log);
 
-        // the passes the reactive mask covers, the blended class's first, add their own coverage, so it starts at zero
-        cl.BeginLabel("reactive clear"u8);
-        VkReactiveBegin(cl, s, log);
-        cl.EndLabel();
         cl.BeginLabel("blended"u8);
         bool oit = VkOitArm(vk, w, h, log);
         side.Reset();

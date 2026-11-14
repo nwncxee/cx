@@ -31,6 +31,8 @@ internal static class CoverageLayer
     internal static string ResolveFs => ShaderSource.Get("cx_a2cres_f.glsl");
     internal static string SeedFs => ShaderSource.Get("cx_a2cseed_f.glsl");
     internal static string DepthFs => ShaderSource.Get("cx_a2cdepth_f.glsl");
+    /// <summary>The layer's partly covered pixels into the reactive mask, for the temporal resolves.</summary>
+    internal static string ReactFs => ShaderSource.Get("cx_a2creact_f.glsl");
 
     /// <summary>One run, for the period line: its sample count, the pixels it covered and the frame it covered them in.</summary>
     internal static void CountVk(int samples, long pixels, long frameArea)
