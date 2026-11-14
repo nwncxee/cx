@@ -86,8 +86,7 @@ An effort can take both: a look-up first, then the change.
 5. **Verify** with `wiki_read`: each body holds the change.
 6. **Lint** with `wiki_lint` on each namespace you wrote in, never on `""`
    (the whole wiki's answer overflows a tool result). Fix every broken link and
-   orphan in a hand-written article you created or edited. A broken link in a
-   generated page is a data fix: name it in the PR body or its ticket. Fix
+   orphan in an article you created or edited. Fix
    every path rule breach (W1–W7) in those namespaces, then run
    `wiki_list_namespace` on `""` and move every root stray (W1) to its home.
 
@@ -135,7 +134,7 @@ five words, with no repository name, path or ticket key.
 | For Staff | Hidden, visible to staff (developers and dungeon masters): operations by role, staff tooling, work in progress, spoilers and DM notes. Infrastructure decisions, runbooks and deploy notes stay in sow-platform (ADR-0136). Credentials and secrets never go on the wiki at all. |
 | For Staff / Decisions | A namespace: every project decision is an article in it, titled by its topic, listed under its area's section of the Decisions index article. The citation (`sow-platform ADR-0074`) opens the body in bold, so a search for it finds the page. A new decision starts here. Before you write or change a decision page, `wiki_read` the namespace's index article, Decisions: it holds the page format and when an old page is amended, superseded or retired. A new page that replaces an old one in full names the old citation in its Consequences, and the old page is then tombstoned (tier 3). |
 | Guides | Walkthroughs that help a player do something. |
-| Systems | Player-facing mechanics that no generated page covers. |
+| Systems | Player-facing mechanics, with the class, race, feat, skill, spell and item type articles in their own child namespaces. |
 | Lore | The setting's prose. |
 | Credits | A namespace of attribution, one page per category: Code, Tools, Art, Audio, Fonts, Infrastructure, Contributors, Special Thanks, and Assets split by kind under its own subpages. Every third-party asset, model, script, library or pack the change brings in gets a row in the matching article's table. Add a row, and create no article for a single source. |
 | Frequently Asked Questions | One article. Add a question once players ask it repeatedly. |
@@ -145,23 +144,12 @@ Gameplay Changes. Gameplay Changes summarises how the server differs from
 vanilla Neverwinter Nights, so a change to a core rule updates its entry
 there too. The others change only when the member asks.
 
-## Generated namespaces
+## Rule pages are written by hand
 
-The topdata deployer writes the pages in **Classes**, **Races**, **Feats**,
-**Skills**, **Spells** and **Items/Item Types** from the game data; Deities
-joins them when its generator ships. The deployer owns their page set:
-
-- Create no article in a generated namespace. A page missing there means a
-  missing data row, so change the data. Put hand-written mechanics in
-  Systems and link to the generated page.
-- A generated body starts with `<!-- sow-topdata-wiki:page=... -->`. That
-  marker, wherever it appears, is the test for a generated page.
-- The text between `sow-topdata-wiki:managed:start` and `managed:end` is
-  regenerated on every deploy: change the topdata source that renders it.
-- Edit only inside the two `sow-topdata-wiki:manual:start` / `manual:end`
-  regions: **Overview** at the top and **Bottom** after the generated text.
-  Every marker comment stays exactly as read.
-- **Wiki Status** is generated with no manual region. Leave it alone.
+No generator writes to the wiki (GAME-2700). The class, race, feat, skill,
+spell and item type articles under Systems are written by hand, and the
+effort that changes a rule updates its article. An article may state a value
+its table holds; server code still reads it from the table (ADR-0009).
 
 ## Writing rules
 
