@@ -4,12 +4,20 @@ using CX.Framework;
 
 namespace CX.Alloy.Db;
 
-/// <summary>Approved examples E1, E2, E5 and E7: dangly cloth whose animation moves its parent follows that
-/// parent as the stock client draws it. Oracle: the stock solve run beside the part, and the rest mesh.</summary>
+/// <summary>Approved examples E1, E2, E5, E7 and E8: dangly cloth whose animation moves its parent follows it
+/// as the stock client draws it. Oracle: the stock solve run beside the part, the rest mesh, the last frame.</summary>
 public static unsafe partial class DbAnim
 {
     /// <summary>How far, in model units, a drawn shape may stray from the stock solve's and still be its.</summary>
     private const float PoseSame = 1e-4f;
+
+    /// <summary>A flap hangs closed within five centimetres of its rest shape: the stock solve's own wobble,
+    /// against the metre a flap parted by twenty degrees stands off it.</summary>
+    private const float PoseClosed = 0.05f;
+
+    /// <summary>The share of the sway a flap's shape on its door may change by in the frame it changes hands. A
+    /// flap reseeded at rest would change by all of it.</summary>
+    private const float PoseCarry = 0.1f;
 
     static partial void DanglyPoseApprovedExamples(Checker check)
     {
@@ -41,7 +49,7 @@ public static unsafe partial class DbAnim
             PoseAt(s, Quaternion.Identity, Quaternion.Identity, Vector3.Zero);
             for (int f = 0; f < PoseFrames; f++) PoseFrame(s, windy: false);
             float gap = PoseGap(s.Drawn, s.Mesh.Positions);
-            check.Expect(gap < 0.005f, $"E2 a closed curtain's flaps hang back at rest, {gap:0.0000} off it");
+            check.Expect(gap < PoseClosed, $"E2 a closed curtain's flaps hang back at rest, {gap:0.0000} off it");
         });
 
         // Given a flag on a pole
@@ -64,6 +72,24 @@ public static unsafe partial class DbAnim
             }
             check.Expect(worst <= PoseSame,
                          $"E5 a falling flag's cloth stays on its pole as on the stock client, strayed {worst:0.0000}");
+        });
+
+        // Given a closed curtain door whose flaps sway in a breeze
+        // When it starts to open
+        // Then the flaps carry on from where they hung, with no jump
+        PoseRun(check, "E8", false, false, s =>
+        {
+            var before = new Vector3[s.Drawn.Length];
+            for (int f = 0; f < PoseFrames; f++) PoseFrame(s, windy: true);
+            float swayed = PoseGap(s.Drawn, s.Mesh.Positions);
+            check.Expect(swayed > 0.005f, $"E8 the breeze sways the closed curtain {swayed:0.0000} off its rest");
+            s.Drawn.CopyTo(before, 0);
+            PoseAt(s, PoseOpen(2f), Quaternion.Identity, Vector3.Zero);
+            PoseFrame(s, windy: true);
+            float jump = PoseGap(s.Drawn, before);
+            check.Expect(jump <= PoseCarry * swayed,
+                         $"E8 the flaps carry on from where they hung as the door starts to open: their shape on "
+                       + $"the door changed {jump:0.0000}, against {swayed:0.0000} of sway");
         });
 
         // Given a kelp placeable whose idle animation sways its stem, such as plc_kelp11
