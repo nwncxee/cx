@@ -34,7 +34,8 @@ void main()
     float sheen = pow(clamp(dot(N, normalize(uAreaDir + V)), 0.0, 1.0), 40.0) * uLook.y * vRoot;
     // self-occlusion inside the clump: the root sits in its neighbours' shade
     float ao = mix(1.0 - uRootAo, 1.0, sqrt(vRoot));
-    vec3 lit = albedo * ((uAreaAmbient * vMatAmb * CxSkyView(vWorld, CX_SKY_UP) + point * vMatDif) * ao
+    float skyView = CxSkyView(vWorld, CX_SKY_UP);
+    vec3 lit = albedo * ((uAreaAmbient * vMatAmb * skyView + point * vMatDif) * ao
                         + (sun * ao + uAreaDiffuse * sh * back) * vMatDif)
              + uAreaDiffuse * sh * sheen;
     // CX-51: a blade reflects as the ground around it does -- the probe, under the split-sum
@@ -48,7 +49,8 @@ void main()
         vec2 gAb = CxEnvBrdf(max(dot(Nv, V), 1e-3), sqrt(gRough));
         float gW = min((CX_DIELECTRIC_F0 * gAb.x + gAb.y) * uProbeGain, 1.0);
         vec3 gEnv = CxProbeFetch(uProbe, vWorld, R, sqrt(gRough) * (uProbeMips - 1.0));
-        lit += gEnv * (gW * ao);
+        float gShade = CxReflShade(uAreaAmbient * skyView + sun, uAreaAmbient + uAreaDiffuse);
+        lit += gEnv * (gW * gShade * ao);
     }
     CxReflNone();   // the trace leaves a blade alone: the record under it is the ground it covers
     vec3 col = CxFog(lit, vWorld, vDepth);

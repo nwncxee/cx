@@ -22,6 +22,23 @@ vec2 CxEnvBrdf(float NoV, float perceptual)
     return vec2(-1.04, 1.04) * a004 + r.zw;
 }
 
+/// The share of the probe reflection a surface keeps: the luminance of the area light `arriving` at it over
+/// what reaches a surface in the `open`, as inc_lighting.shd:543-582's environment term is a share of the light
+/// at the fragment. The probe is captured in the open, so without it a shaded surface reflects a sunlit one.
+float CxReflShade(vec3 arriving, vec3 open)
+{
+    const vec3 luma = vec3(0.2126, 0.7152, 0.0722);
+    float all = dot(open, luma);
+    return all > 1e-5 ? clamp(dot(arriving, luma) / all, 0.0, 1.0) : 1.0;
+}
+
+/// The view angle the reflection's Fresnel takes: the mapped normal's, never under the face's own. A texel
+/// whose mapped normal turns from the eye would otherwise reflect at full strength, one bright pixel at a time.
+float CxReflNoV(float NoV, float faceNoV)
+{
+    return max(NoV, faceNoV);
+}
+
 /// How far the trace's GGX draw leans toward the lobe's centre (0 = the whole lobe): the tail rays a rough surface
 /// would spend on grazing directions mostly miss, and the resolve's cone blur stands in for them.
 const float CX_SSR_BIAS = 0.7;
