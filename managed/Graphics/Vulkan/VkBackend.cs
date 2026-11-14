@@ -367,8 +367,9 @@ internal sealed unsafe partial class VkBackend : IDevice
     internal bool Offers(ReadOnlySpan<byte> name) => HasExt(_vki, _phys, name);
 
     /// <summary>The device, or null -- logged -- when the probe refuses or a creation step fails. <paramref name="meshShaders"/>
-    /// false opens it as a device without <c>VK_EXT_mesh_shader</c> would be.</summary>
-    public static VkBackend? TryCreate(ExtenderLog log, bool meshShaders = true)
+    /// false opens it as a device without <c>VK_EXT_mesh_shader</c> would be; <paramref name="oneQueue"/> opens no
+    /// async or transfer queue, so every submit rides the graphics one.</summary>
+    public static VkBackend? TryCreate(ExtenderLog log, bool meshShaders = true, bool oneQueue = false)
     {
         if (Refusal(log) is string why) { log.Always($"VkBackend: REFUSED -- {why}"); return null; }
         if (Open(log, out VkInstance inst, out VkPhysicalDevice phys, out uint family, out VkPhysicalDeviceFeatures feats) is string late)
@@ -377,7 +378,7 @@ internal sealed unsafe partial class VkBackend : IDevice
             log.Always($"VkBackend: REFUSED in Alloy's context -- {late}");
             return null;
         }
-        try { return new VkBackend(log, inst, phys, family, feats, meshShaders); }
+        try { return new VkBackend(log, inst, phys, family, feats, meshShaders, oneQueue); }
         catch (InvalidOperationException e)
         {
             log.Always($"VkBackend: REFUSED -- {e.Message}");
@@ -385,7 +386,7 @@ internal sealed unsafe partial class VkBackend : IDevice
         }
     }
 
-    private VkBackend(ExtenderLog log, VkInstance inst, VkPhysicalDevice phys, uint family, VkPhysicalDeviceFeatures has, bool meshShaders)
+    private VkBackend(ExtenderLog log, VkInstance inst, VkPhysicalDevice phys, uint family, VkPhysicalDeviceFeatures has, bool meshShaders, bool oneQueue)
     {
         _log = log;
         _thread = Environment.CurrentManagedThreadId;
@@ -398,7 +399,9 @@ internal sealed unsafe partial class VkBackend : IDevice
 
         float prio = 1f;
         VkQueueFamilyProperties[] families = Families(_vki, phys);
-        int asyncFamily = AsyncFamily(families), transferFamily = TransferFamily(families);
+        int asyncFamily = oneQueue ? -1 : AsyncFamily(families), transferFamily = oneQueue ? -1 : TransferFamily(families);
+        log.Always(oneQueue ? "VkBackend: [queues] alloy.onequeue=1 -- every submit rides the graphics queue, no async or transfer queue"
+                            : $"VkBackend: [queues] graphics family {family}, async family {asyncFamily}, transfer family {transferFamily} (-1 = none, its work rides the graphics queue)");
         VkDeviceQueueCreateInfo* qci = stackalloc VkDeviceQueueCreateInfo[3];
         uint queues = 0;
         qci[queues++] = new VkDeviceQueueCreateInfo { queueFamilyIndex = family, queueCount = 1, pQueuePriorities = &prio };

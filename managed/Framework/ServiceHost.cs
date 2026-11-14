@@ -80,6 +80,7 @@ public static class ServiceHost
         CX.Alloy.Db.FogNoteEdges.SelfCheck(log);   // each thing the line says, at the line's precision
         CX.Graphics.VulkanToolchain.SelfCheck(log);   // the staged shaderc and the machine's loader, off-device only
         CX.Graphics.Rhi.VkBackend.SelfCheck(log);   // the pilot's stages compile for Vulkan with GL's bindings shifted apart
+        CX.Graphics.Rhi.VkBackend.StallSelfCheck(log);   // a stalled queue's log line names what its oldest submit waits on
         CX.Graphics.Rhi.VkBackend.TransferSelfCheck(log);   // the copy-only queue family a device's table offers
         CX.Graphics.Rhi.VkBackend.CapsSelfCheck(log);   // a limit the driver reports unbounded never reads negative
         CX.Graphics.Rhi.VkBackend.SwapSelfCheck(log);   // which chain the surface's extent leaves standing
