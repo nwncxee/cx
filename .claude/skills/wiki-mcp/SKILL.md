@@ -24,7 +24,7 @@ browser login on the forum; the member picks a tier on the consent page.
 
 | Tier | Allows | Pick it when |
 |---|---|---|
-| 1 Read | search, list, read, history, revision | checking what the wiki says |
+| 1 Read | search, list, read, links, history, revision | checking what the wiki says |
 | 2 Read and write | also create, edit, revert | the effort updates documentation (the usual case) |
 | 3 Read, write, tombstone and move | also tombstone, restore, move | the effort retires or relocates articles |
 
@@ -143,10 +143,15 @@ five words, with no repository name, path or ticket key.
   its first mention, with the target's title as the link text (W14). The page
   ends with a Related heading of two to four links (W15), each about this
   page's subject or the reader's next step, never a sibling copied from a
-  template.
+  template. Before you write or change it, `wiki_links` the page and pick
+  from its links and backlinks. A page with neither gets a link from its
+  namespace's index article or a page about its subject.
 - **A move or rename breaks links (W12).** The old address redirects readers,
   but every link still names it. Before it, `wiki_search` the old path; after it, edit every linking article
-  to the new `url`, and `wiki_lint` both namespaces. A master page carries its
+  to the new `url`, and `wiki_lint` both namespaces. A tombstone breaks
+  links the same way: `wiki_links` the page first and edit each backlink.
+  Reorganising a namespace, `wiki_links` it (`namespace:`) before and after
+  to see every link between its pages. A master page carries its
   subpages when it moves. A `Parent :: Child` page
   moved into a namespace named Parent doubles its path until its title drops
   `Parent ::`.
