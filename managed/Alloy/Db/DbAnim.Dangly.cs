@@ -44,7 +44,8 @@ public static unsafe partial class DbAnim
         internal readonly bool[] Held = new bool[SceneDb.MaxParts];
         /// <summary>Per held part: seconds its animation has held the rest pose.</summary>
         internal readonly float[] RestFor = new float[SceneDb.MaxParts];
-        /// <summary>Per part just handed to the stock solve: what of the rig's shape lies past the stock clamp.</summary>
+        /// <summary>Per part handed to the stock solve: what of the rig's shape lies past the stock clamp, kept for
+        /// the part's next switch.</summary>
         internal readonly DanglyFade?[] Fade = new DanglyFade?[SceneDb.MaxParts];
         internal int NoSkinRange, NoBoneRange;
         internal bool SaidNoSkinRange, SaidNoBoneRange;
@@ -68,7 +69,7 @@ public static unsafe partial class DbAnim
     private sealed class DanglyFade
     {
         internal readonly Vector3[] Excess;
-        internal float Left = HandOverFade;
+        internal float Left;
         internal DanglyFade(int verts) => Excess = new Vector3[verts];
     }
 
@@ -134,6 +135,7 @@ public static unsafe partial class DbAnim
         return false;
     }
 
+    /// <summary>Every vertex of <paramref name="cur"/> hangs within <see cref="PoseSettle"/> of its rest.</summary>
     private static bool DanglyNearRest(ReadOnlySpan<Vector3> cur, ReadOnlySpan<Vector3> rest)
     {
         int n = Math.Min(cur.Length, rest.Length);
@@ -146,7 +148,7 @@ public static unsafe partial class DbAnim
     /// rigged path down -- no rig at all, stock motion, the kind's own knob off, no skinning path, or an
     /// animation holding the part off its rest pose. A Static node has no moving vertex, so it is drawn at rest.</summary>
     private static DanglyPath ChooseDangly(DanglyClass cls, bool hasRig, bool auto, bool kindOn, bool skinning,
-                                           bool posed)
+                                           bool posed = false)
     {
         if (!hasRig) return DanglyPath.Vanilla;
         if (cls == DanglyClass.Static) return DanglyPath.Rest;
@@ -254,15 +256,13 @@ public static unsafe partial class DbAnim
     private static void DanglyStock(int part, DanglyDef dn, MeshDef mesh, DanglyRig? rig, float dt, bool windy)
     {
         int n = Math.Min(mesh.Positions.Length, dn.Constraints.Length);
-        if (n <= 0) { DanglyDropRig(part); return; }
-        Span<Vector3> dst = DynTake(part, mesh.Positions);
+        Span<Vector3> dst = n > 0 ? DynTake(part, mesh.Positions) : default;
         if (dst.IsEmpty) { DanglyDropRig(part); return; }
         VanillaDanglyState? st = _dangly.Stock[part];
         if (st == null || st.Cur.Length != mesh.Positions.Length)
         {
             _dangly.Stock[part] = st = new VanillaDanglyState(mesh.Positions.Length);
-            _dangly.Fade[part] = null;
-            if (rig != null && DanglyHandOver(part, rig, mesh, dn, st))
+            if (rig != null && DanglyHandOver(part, rig, mesh, dn, n, st))
             {
                 st.Cur.AsSpan(0, n).CopyTo(dst);
                 DanglyFadeOut(part, dst[..n], 0f);
@@ -292,7 +292,8 @@ public static unsafe partial class DbAnim
 
     /// <summary>Seed a fresh stock state with the shape the rig drew last frame and the pose it drew it at, so
     /// the cloth carries on from where it hung. False when the part held no rigged shape to hand over.</summary>
-    private static bool DanglyHandOver(int part, DanglyRig rig, MeshDef mesh, DanglyDef dn, VanillaDanglyState st)
+    private static bool DanglyHandOver(int part, DanglyRig rig, MeshDef mesh, DanglyDef dn, int n,
+                                       VanillaDanglyState st)
     {
         int at = SceneDb.PartBoneBase[part];
         DanglyJointsState? js = _dangly.Joints[part];
@@ -300,29 +301,23 @@ public static unsafe partial class DbAnim
         if (at < 0 || js == null || !js.Seeded || skin == null) return false;
         Span<Matrix4x4> bones = AlloyRenderer.DbBoneCell(at, rig.BoneCount);
         Vector3[] rest = mesh.Positions;
-        int n = Math.Min(Math.Min(rest.Length, st.Cur.Length), Math.Min(skin.Weights.Length, skin.Bones.Length));
+        n = Math.Min(n, Math.Min(skin.Weights.Length, skin.Bones.Length));
         if (bones.IsEmpty || n <= 0) return false;
-        var fade = new DanglyFade(n);
+        DanglyFade? fade = _dangly.Fade[part];
+        if (fade == null || fade.Excess.Length < n) _dangly.Fade[part] = fade = new DanglyFade(n);
+        fade.Left = HandOverFade;
         for (int i = 0; i < n; i++)
         {
-            Vector4 w = skin.Weights[i];
-            uint slots = skin.Bones[i];
-            Vector3 p = Vector3.Zero;
-            for (int k = 0; k < 4; k++)
-            {
-                float f = k switch { 0 => w.X, 1 => w.Y, 2 => w.Z, _ => w.W };
-                int b = (int)((slots >> (8 * k)) & 0xFF);
-                if (f > 0f && b < bones.Length) p += Vector3.Transform(rest[i], bones[b]) * f;
-            }
-            float c = i < dn.Constraints.Length ? dn.Constraints[i] : 0f;
-            float cap = c > 0f ? MathF.Max(dn.Displacement * (1f - c / VanillaDangly.ConstraintMax), 0f) : 0f;
+            Vector3 p = skin.Skin(i, rest[i], bones);
+            float c = dn.Constraints[i];
+            float cap = c > 0f ? MathF.Max(VanillaDangly.Cap(dn.Displacement, c), 0f) : 0f;
             Vector3 r = rest[i];
             Vector3 seat = r + Vector3.Clamp(p - r, new Vector3(-cap), new Vector3(cap));
             st.Cur[i] = st.Prev[i] = seat;
             st.Vel[i] = default;
             fade.Excess[i] = p - seat;
         }
-        _dangly.Fade[part] = fade;
+        fade.Excess.AsSpan(n).Clear();
         st.PrevPos = js.PrevPos;
         st.PrevRot = js.PrevRot;
         st.Acc = 0f;
@@ -335,7 +330,7 @@ public static unsafe partial class DbAnim
     private static float DanglyFadeOut(int part, Span<Vector3> dst, float dt)
     {
         DanglyFade? f = _dangly.Fade[part];
-        if (f == null) return 0f;
+        if (f == null || !(f.Left > 0f)) return 0f;
         float before = f.Left / HandOverFade;
         if (float.IsFinite(dt) && dt > 0f) f.Left -= dt;
         float k = MathF.Max(f.Left, 0f) / HandOverFade, far = 0f;
@@ -345,7 +340,6 @@ public static unsafe partial class DbAnim
             dst[i] += f.Excess[i] * k;
             far = MathF.Max(far, f.Excess[i].Length());
         }
-        if (f.Left <= 0f) _dangly.Fade[part] = null;
         return far * (before - k);
     }
 

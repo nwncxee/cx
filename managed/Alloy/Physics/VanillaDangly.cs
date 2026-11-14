@@ -127,7 +127,7 @@ public static class VanillaDangly
             v += (r - p) * (c * spring) - v * damp;
             s.Vel[i] = v;
             p += v * StepDt;
-            float cap = displacement * (1f - c / ConstraintMax);
+            float cap = Cap(displacement, c);
             p += wind20 * cap;
 
             Vector3 off = p - r;
@@ -138,6 +138,10 @@ public static class VanillaDangly
                                            Axis(r.Z, p.Z, off.Z, cap));
         }
     }
+
+    /// <summary>How far, per axis, the stock solve lets a vertex of constraint <paramref name="c"/> stray from
+    /// its rest position.</summary>
+    internal static float Cap(float displacement, float c) => displacement * (1f - c / ConstraintMax);
 
     /// <summary>One axis of the stock excursion clamp, its comparisons in the engine's order: a NaN offset
     /// fails the first test and lands on the upper bound, exactly as the engine's does.</summary>

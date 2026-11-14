@@ -240,6 +240,21 @@ public sealed class SkinDef
     /// node); true is the compiled binary's BONE MAP (one entry per model NODE, holding that node's slot, or
     /// -1). Length cannot tell them apart once the bind arrays are absent, as they are on stock cloaks.</summary>
     public bool BoneNodesAreMap;
+
+    /// <summary>Vertex <paramref name="v"/> of <paramref name="rest"/> moved by <paramref name="bones"/>: each of
+    /// its four slots, one byte of <see cref="Bones"/>, weighted. A slot past the bones given is skipped.</summary>
+    public Vector3 Skin(int v, Vector3 rest, ReadOnlySpan<Matrix4x4> bones)
+    {
+        Vector4 w = Weights[v];
+        uint slots = Bones[v];
+        Vector3 p = Vector3.Zero;
+        for (int k = 0; k < 4; k++)
+        {
+            int b = (int)((slots >> (8 * k)) & 0xFF);
+            if (w[k] > 0f && b < bones.Length) p += Vector3.Transform(rest, bones[b]) * w[k];
+        }
+        return p;
+    }
     /// <summary>Slot -> the bone NAME the file stated, in the ASCII <c>weights</c> block's spelling; empty for
     /// a compiled binary, which carries no names. The name outlives <see cref="BoneNodes"/> because a grafted
     /// piece's bones live in the skeleton it is grafted onto, which its own file knows nothing about.</summary>

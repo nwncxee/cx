@@ -6,20 +6,22 @@ using CX.Framework;
 
 namespace CX.Alloy.Db;
 
-/// <summary>A dangly part whose animation holds its parent off the rest pose: the fixtures, the drawn-shape
-/// reader, and the regression checks for the cases that already held before the posed rule existed. Oracle:
-/// the fixture's own rest positions and the stock solve run beside the part from its first frame.</summary>
+/// <summary>A dangly part whose animation holds its parent off the rest pose: the door fixture, the drawn-shape
+/// reader, and the checks that a closed curtain, a placed flag and a worn cloak keep the CX motion.</summary>
 public static unsafe partial class DbAnim
 {
     /// <summary>Frames a check runs at 60 Hz: two seconds, long enough for any solve to settle.</summary>
     private const int PoseFrames = 120;
+    /// <summary>One 60 Hz frame, seconds.</summary>
     private const float PoseDt = 1f / 60f;
 
     /// <summary>The approved examples over this fixture, in a file of their own.</summary>
     static partial void DanglyPoseApprovedExamples(Checker check);
 
+    /// <summary>The pose suite: the approved examples, then the checks nobody had to approve.</summary>
     private static void DanglyPoseChecks(Checker check)
     {
+        PoseSkinLiteral(check);
         DanglyPoseApprovedExamples(check);
         PoseHandsBack(check);
         PoseDropsStraight(check);
@@ -29,17 +31,19 @@ public static unsafe partial class DbAnim
         PoseWornUnchanged(check);
     }
 
-    /// <summary>One seated object of the pose fixture: its three parts, the flap's rig and mesh, and the stock
-    /// solve that runs beside it as the oracle.</summary>
+    /// <summary>One seated door: its object and first part (the root; the hinge and the flap follow), the
+    /// flap's rig and mesh, and the stock solve that runs beside it as the oracle.</summary>
     private sealed class PoseSubject
     {
         internal DbId Obj;
-        internal int Root, Hinge, Flap;
+        internal int Root;
+        internal int Hinge => Root + 1;
+        internal int Flap => Root + 2;
         internal DanglyRig Rig = null!;
         internal MeshDef Mesh = null!;
         internal DanglyDef Def = null!;
         internal VanillaDanglyState Stock = null!;
-        internal readonly Vector3[] Drawn = Array.Empty<Vector3>(), Oracle = Array.Empty<Vector3>();
+        internal readonly Vector3[] Drawn, Oracle;
         internal PoseSubject(int verts) { Drawn = new Vector3[verts]; Oracle = new Vector3[verts]; }
     }
 
@@ -93,52 +97,6 @@ public static unsafe partial class DbAnim
         return m;
     }
 
-    /// <summary>Seat the pose fixture as one object of three parts; <paramref name="creature"/> flags the
-    /// object as a creature, which is what a worn part rides on.</summary>
-    private static PoseSubject? PoseSeat(bool vegetation, bool creature)
-    {
-        ModelDef m = PoseModel(vegetation);
-        NodeDef flap = m.Nodes[2];
-        if (flap.Rig == null) return null;
-        DbId obj = SceneDb.Objects.Alloc();
-        if (!SceneDb.Parts.AllocRange(3, out int first)) { SceneDb.Objects.Free(obj); return null; }
-        int o = obj.Index;
-        SceneDb.ObjModel[o] = m;
-        SceneDb.ObjPos[o] = Vector3.Zero;
-        SceneDb.ObjRot[o] = Quaternion.Identity;
-        SceneDb.ObjScale[o] = 1f;
-        SceneDb.ObjVisible[o] = true;
-        SceneDb.ObjFlags[o] = creature ? ObjFlag.Creature : ObjFlag.None;
-        SceneDb.ObjPartFirst[o] = first;
-        SceneDb.ObjPartCount[o] = 3;
-        for (int k = 0; k < 3; k++)
-        {
-            int p = first + k;
-            NodeDef n = m.Nodes[k];
-            SceneDb.PartObj[p] = obj;
-            SceneDb.PartModel[p] = m;
-            SceneDb.PartMeshDef[p] = n.Mesh;
-            SceneDb.PartNode[p] = k;
-            SceneDb.PartParent[p] = k == 0 ? -1 : p - 1;
-            SceneDb.PartPos[p] = n.Position;
-            SceneDb.PartRot[p] = n.Orientation;
-            SceneDb.PartScale[p] = 1f;
-            SceneDb.PartEnabled[p] = true;
-            SceneDb.PartMerged[p] = false;
-            SceneDb.PartAlpha[p] = 1f;
-            SceneDb.PartBoneBase[p] = -1;
-            SceneDb.PartKindOf[p] = PartTree.Kind(n.Kind);
-            SceneDb.PartMesh[p] = n.Mesh != null ? MeshArena.Acquire(n.Mesh, n.Rig!.Skin) : -1;
-        }
-        var s = new PoseSubject(flap.Mesh!.Positions.Length)
-        {
-            Obj = obj, Root = first, Hinge = first + 1, Flap = first + 2, Rig = flap.Rig, Mesh = flap.Mesh,
-            Def = flap.Dangly!, Stock = new VanillaDanglyState(flap.Mesh.Positions.Length),
-        };
-        PoseAt(s, Quaternion.Identity, Quaternion.Identity, Vector3.Zero);
-        return s;
-    }
-
     /// <summary>Pose the object: <paramref name="hinge"/> is the animation's turn of the hinge off its rest,
     /// <paramref name="whole"/> and <paramref name="at"/> turn and place the whole object.</summary>
     private static void PoseAt(PoseSubject s, Quaternion hinge, Quaternion whole, Vector3 at)
@@ -154,8 +112,8 @@ public static unsafe partial class DbAnim
     }
 
     /// <summary>One frame: the dispatch moves the flap, the oracle stock solve moves beside it, and both shapes
-    /// are read back in the flap's own frame.</summary>
-    private static void PoseFrame(PoseSubject s, bool windy)
+    /// are read back in the flap's own frame. Returns how far the drawn shape strays from the oracle's.</summary>
+    private static float PoseFrame(PoseSubject s, bool windy)
     {
         DanglyPart(s.Flap, PoseDt, windy);
         PoseRead(s);
@@ -163,6 +121,7 @@ public static unsafe partial class DbAnim
         VanillaDangly.Run(s.Mesh.Positions, s.Def.Constraints, s.Def.Displacement, s.Def.Tightness, s.Def.Period,
                           s.Stock, new Vector3(w.M41, w.M42, w.M43), RotOf(in w), Vector3.Zero, PoseDt,
                           s.Oracle);
+        return PoseGap(s.Drawn, s.Oracle);
     }
 
     /// <summary>The flap as drawn, in its own frame: its private vertex buffer on the stock path, its bones
@@ -175,19 +134,7 @@ public static unsafe partial class DbAnim
         SkinDef? skin = s.Rig.Skin;
         if (at < 0 || skin == null) { rest.CopyTo(s.Drawn, 0); return; }
         Span<Matrix4x4> bones = AlloyRenderer.DbBoneCell(at, s.Rig.BoneCount);
-        for (int i = 0; i < rest.Length; i++)
-        {
-            Vector4 wt = skin.Weights[i];
-            uint slots = skin.Bones[i];
-            Vector3 p = Vector3.Zero;
-            for (int k = 0; k < 4; k++)
-            {
-                float f = k switch { 0 => wt.X, 1 => wt.Y, 2 => wt.Z, _ => wt.W };
-                int b = (int)((slots >> (8 * k)) & 0xFF);
-                if (f > 0f && b < bones.Length) p += Vector3.Transform(rest[i], bones[b]) * f;
-            }
-            s.Drawn[i] = p;
-        }
+        for (int i = 0; i < rest.Length; i++) s.Drawn[i] = skin.Skin(i, rest[i], bones);
     }
 
     /// <summary>The largest distance between two shapes of one mesh.</summary>
@@ -198,70 +145,79 @@ public static unsafe partial class DbAnim
         return m;
     }
 
-    /// <summary>The knobs the pose checks read, held at their declared defaults for the run so the user's own
-    /// cx.cfg cannot steer them, then put back.</summary>
-    private sealed class PoseKnobs
+    /// <summary>The flap is on the CX motion this frame: a bone range and no private vertex range.</summary>
+    private static bool PoseRigged(PoseSubject s) => SceneDb.PartBoneBase[s.Flap] >= 0 && DynRange(s.Flap) < 0;
+
+    /// <summary>Two seconds of frames; true when the flap was on the CX motion in every one.</summary>
+    private static bool PoseRiggedFor(PoseSubject s, bool windy)
     {
-        private readonly Knob[] _knobs =
+        bool rigged = true;
+        for (int f = 0; f < PoseFrames; f++)
+        {
+            PoseFrame(s, windy);
+            rigged &= PoseRigged(s);
+        }
+        return rigged;
+    }
+
+    /// <summary>Run <paramref name="body"/> over a freshly seated door, with the dangly knobs at their declared
+    /// defaults so the user's own cx.cfg cannot steer it, then put the knobs back and drop the door.</summary>
+    private static void PoseRun(Checker check, string what, bool vegetation, bool creature,
+                                Action<PoseSubject> body)
+    {
+        ModelDef m = PoseModel(vegetation);
+        NodeDef flap = m.Nodes[2];
+        int first = -1;
+        DbId obj = default;
+        if (flap.Rig != null) obj = SeatDangly(m, creature ? ObjFlag.Creature : ObjFlag.None, out first);
+        if (obj.IsNull) { check.Expect(false, $"{what}: the pose fixture seats and rigs its flap"); return; }
+        var s = new PoseSubject(flap.Mesh!.Positions.Length)
+        {
+            Obj = obj, Root = first, Rig = flap.Rig!, Mesh = flap.Mesh, Def = flap.Dangly!,
+            Stock = new VanillaDanglyState(flap.Mesh.Positions.Length),
+        };
+        Knob[] knobs =
         {
             Dangly.Motion, Dangly.Sway, Dangly.Swing, Dangly.Jiggle, Dangly.Collide, Dangly.Tilt, Dangly.Breeze,
             Dangly.WindGain, Dangly.Cage, Dangly.Strand, Dangly.Still,
         };
-        private readonly string[] _had;
-        private readonly bool _interior = FrameInputs.Interior, _skinning;
-
-        internal PoseKnobs()
+        var had = new string[knobs.Length];
+        for (int k = 0; k < knobs.Length; k++) { had[k] = knobs[k].FormatStored(); knobs[k].Reset(); }
+        Dangly.Collide.Set(false);
+        bool interior = FrameInputs.Interior, skinning = AlloyRenderer.SelfCheckSkinning(true);
+        FrameInputs.Interior = false;
+        try
         {
-            _had = new string[_knobs.Length];
-            for (int k = 0; k < _knobs.Length; k++) { _had[k] = _knobs[k].Format(); _knobs[k].Reset(); }
-            Dangly.Collide.Set(false);
-            FrameInputs.Interior = false;
-            _skinning = AlloyRenderer.SelfCheckSkinning(true);
+            PoseAt(s, Quaternion.Identity, Quaternion.Identity, Vector3.Zero);
+            body(s);
         }
-
-        internal void Restore()
+        finally
         {
-            for (int k = 0; k < _knobs.Length; k++) _knobs[k].Parse(_had[k]);
-            FrameInputs.Interior = _interior;
-            AlloyRenderer.SelfCheckSkinning(_skinning);
+            for (int k = 0; k < knobs.Length; k++) knobs[k].Parse(had[k]);
+            FrameInputs.Interior = interior;
+            AlloyRenderer.SelfCheckSkinning(skinning);
+            DanglyForget(obj);
+            DropDangly(obj, first, m.Nodes.Length);
         }
-    }
-
-    private static void PoseDrop(PoseSubject s)
-    {
-        DanglyForget(s.Obj);
-        for (int p = s.Root; p <= s.Flap; p++)
-        {
-            int range = SceneDb.PartMesh[p];
-            if (range >= 0) MeshArena.Release(range);
-            SceneDb.PartMesh[p] = -1;
-            SceneDb.PartModel[p] = null;
-            SceneDb.PartMeshDef[p] = null;
-            DrawRecipe.Assign(p, -1);
-        }
-        SceneDb.ObjFlags[s.Obj.Index] = ObjFlag.None;
-        SceneDb.Parts.FreeRange(s.Root, 3);
-        SceneDb.Objects.Free(s.Obj);
-    }
-
-    /// <summary>Run <paramref name="body"/> over a freshly seated fixture with the knobs at their defaults,
-    /// and drop both afterwards whatever it does.</summary>
-    private static void PoseRun(Checker check, string what, bool vegetation, bool creature,
-                                Action<PoseSubject> body)
-    {
-        PoseSubject? s = PoseSeat(vegetation, creature);
-        if (s == null) { check.Expect(false, $"{what}: the pose fixture seats and rigs its flap"); return; }
-        var knobs = new PoseKnobs();
-        try { body(s); }
-        finally { knobs.Restore(); PoseDrop(s); }
     }
 
     /// <summary>The turn an opening curtain's hinge takes, about the door's width axis.</summary>
     private static Quaternion PoseOpen(float degrees)
         => Quaternion.CreateFromAxisAngle(Vector3.UnitX, degrees * MathF.PI / 180f);
 
-    /// <summary>Tested unasked: a curtain that has closed and stopped moving goes back to the CX motion, and a
-    /// loop that only crosses the rest pose does not.</summary>
+    /// <summary>Oracle: one vertex worked by hand. A quarter of it rides a bone that lifts by (1, 2, 3) and the
+    /// rest stays on the identity, so (1, 0, 0) lands on (1.25, 0.5, 0.75); slot bytes read low byte first.</summary>
+    private static void PoseSkinLiteral(Checker check)
+    {
+        var skin = new SkinDef { Weights = new[] { new Vector4(0.25f, 0.75f, 0f, 0f) }, Bones = new uint[] { 1u } };
+        ReadOnlySpan<Matrix4x4> bones = stackalloc[] { Matrix4x4.Identity, Matrix4x4.CreateTranslation(1f, 2f, 3f) };
+        Vector3 p = skin.Skin(0, new Vector3(1f, 0f, 0f), bones);
+        check.Expect((p - new Vector3(1.25f, 0.5f, 0.75f)).Length() < 1e-6f,
+                     $"a vertex a quarter on a lifted bone lands a quarter of the lift away, at {p}");
+    }
+
+    /// <summary>Tested unasked: a curtain that has closed and stopped moving goes back to the CX motion without
+    /// a jump. Oracle: the hand-stated centimetre bound against the frame before it changes hands.</summary>
     private static void PoseHandsBack(Checker check)
         => PoseRun(check, "hand-back", false, false, s =>
         {
@@ -279,13 +235,12 @@ public static unsafe partial class DbAnim
                 PoseFrame(s, windy: false);
                 if (SceneDb.PartBoneBase[s.Flap] >= 0) jump = PoseGap(s.Drawn, before);
             }
-            check.Expect(jump >= 0f && DynRange(s.Flap) < 0,
-                         "a closed curtain whose flaps have stopped moves the CX way again");
+            check.Expect(jump >= 0f && PoseRigged(s), "a closed curtain whose flaps have stopped moves the CX way again");
             check.Expect(jump <= 0.01f, $"...and its flaps do not jump as they change hands: moved {jump:0.0000}");
         });
 
-    /// <summary>Tested unasked: a pole an animation drops straight down, without turning it, carries its cloth
-    /// as the stock solve does.</summary>
+    /// <summary>Tested unasked: a pole an animation drops straight down, without turning it, carries its cloth.
+    /// Oracle: the stock solve run beside it.</summary>
     private static void PoseDropsStraight(Checker check)
         => PoseRun(check, "drop", false, false, s =>
         {
@@ -295,13 +250,13 @@ public static unsafe partial class DbAnim
             {
                 SceneDb.PartPos[s.Hinge] = new Vector3(0f, 0f, 3f - 0.1f * f);
                 PoseAt(s, Quaternion.Identity, Quaternion.Identity, Vector3.Zero);
-                PoseFrame(s, windy: false);
-                worst = MathF.Max(worst, PoseGap(s.Drawn, s.Oracle));
+                worst = MathF.Max(worst, PoseFrame(s, windy: false));
             }
-            check.Expect(worst <= 1e-4f, $"a dropping pole's cloth moves as the stock solve's does, strayed {worst:0.0000}");
+            check.Expect(worst <= PoseSame, $"a dropping pole's cloth moves as the stock solve's does, strayed {worst:0.0000}");
         });
 
-    /// <summary>Tested unasked: a part index handed to a new tenant does not inherit the old tenant's hold.</summary>
+    /// <summary>Tested unasked: a part index handed to a new tenant does not inherit the old tenant's hold.
+    /// Oracle: the one-path invariant, a bone range and no vertex range on the first frame at rest.</summary>
     private static void PoseRecycleForgets(Checker check)
         => PoseRun(check, "recycle", false, false, s =>
         {
@@ -311,51 +266,37 @@ public static unsafe partial class DbAnim
             DanglyPartRecycled(s.Flap);
             PoseAt(s, Quaternion.Identity, Quaternion.Identity, Vector3.Zero);
             PoseFrame(s, windy: false);
-            check.Expect(SceneDb.PartBoneBase[s.Flap] >= 0 && DynRange(s.Flap) < 0,
-                         "a re-tenanted part at rest moves the CX way from its first frame");
+            check.Expect(PoseRigged(s), "a re-tenanted part at rest moves the CX way from its first frame");
         });
 
-    // E3, a regression check: a curtain nobody opens never meets the posed rule.
+    /// <summary>E3, a regression check: a curtain nobody opens keeps the CX motion. Oracle: the one-path
+    /// invariant every frame, and the rest mesh, which a breeze must move it off.</summary>
     private static void PoseClosedCurtainUnchanged(Checker check)
         => PoseRun(check, "E3", false, false, s =>
         {
-            bool rigged = true;
-            for (int f = 0; f < PoseFrames; f++)
-            {
-                PoseFrame(s, windy: true);
-                rigged &= SceneDb.PartBoneBase[s.Flap] >= 0 && DynRange(s.Flap) < 0;
-            }
-            check.Expect(rigged, "E3 a closed curtain in a breeze moves the CX way every frame");
+            check.Expect(PoseRiggedFor(s, windy: true), "E3 a closed curtain in a breeze moves the CX way every frame");
             check.Expect(PoseGap(s.Drawn, s.Mesh.Positions) > 0f, "E3 ...and the breeze does move it");
         });
 
-    // E4, a regression check: a standing flag whose whole object is turned and placed is not posed.
+    /// <summary>E4, a regression check: a standing flag whose whole object is turned and placed keeps the CX
+    /// motion. Oracle: the one-path invariant every frame.</summary>
     private static void PoseStandingFlagUnchanged(Checker check)
         => PoseRun(check, "E4", false, false, s =>
         {
             PoseAt(s, Quaternion.Identity, Quaternion.CreateFromAxisAngle(Vector3.UnitZ, 1.1f),
                    new Vector3(40f, 12f, 0f));
-            bool rigged = true;
-            for (int f = 0; f < PoseFrames; f++)
-            {
-                PoseFrame(s, windy: true);
-                rigged &= SceneDb.PartBoneBase[s.Flap] >= 0 && DynRange(s.Flap) < 0;
-            }
-            check.Expect(rigged, "E4 a flag whose whole object is turned and moved still waves the CX way");
+            check.Expect(PoseRiggedFor(s, windy: true),
+                         "E4 a flag whose whole object is turned and moved still waves the CX way");
         });
 
-    // E6, a regression check: a part a creature carries keeps the CX way whatever its animation does.
+    /// <summary>E6, a regression check: a part a creature carries keeps the CX motion whatever its animation
+    /// does. Oracle: the one-path invariant every frame.</summary>
     private static void PoseWornUnchanged(Checker check)
         => PoseRun(check, "E6", false, true, s =>
         {
             for (int f = 0; f < 30; f++) PoseFrame(s, windy: false);
             PoseAt(s, PoseOpen(60f), Quaternion.Identity, Vector3.Zero);
-            bool rigged = true;
-            for (int f = 0; f < PoseFrames; f++)
-            {
-                PoseFrame(s, windy: false);
-                rigged &= SceneDb.PartBoneBase[s.Flap] >= 0 && DynRange(s.Flap) < 0;
-            }
-            check.Expect(rigged, "E6 a cloak on a creature that sits or falls moves the CX way every frame");
+            check.Expect(PoseRiggedFor(s, windy: false),
+                         "E6 a cloak on a creature that sits or falls moves the CX way every frame");
         });
 }

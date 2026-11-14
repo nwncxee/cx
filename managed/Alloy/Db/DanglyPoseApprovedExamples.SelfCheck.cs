@@ -5,7 +5,8 @@ using CX.Framework;
 namespace CX.Alloy.Db;
 
 /// <summary>Approved examples E1, E2, E5, E7 and E8: dangly cloth whose animation moves its parent follows it
-/// as the stock client draws it. Oracle: the stock solve run beside the part, the rest mesh, the last frame.</summary>
+/// as the stock client draws it. Oracle: the stock solve run beside the part, the rest mesh, the last frame.
+/// They prove the routing to the stock solve, which <c>VanillaDanglyCheck</c> pins to the engine.</summary>
 public static unsafe partial class DbAnim
 {
     /// <summary>How far, in model units, a drawn shape may stray from the stock solve's and still be its.</summary>
@@ -29,11 +30,7 @@ public static unsafe partial class DbAnim
             for (int f = 0; f < 30; f++) PoseFrame(s, windy: false);
             PoseAt(s, PoseOpen(20f), Quaternion.Identity, Vector3.Zero);
             float worst = 0f;
-            for (int f = 0; f < PoseFrames; f++)
-            {
-                PoseFrame(s, windy: false);
-                worst = MathF.Max(worst, PoseGap(s.Drawn, s.Oracle));
-            }
+            for (int f = 0; f < PoseFrames; f++) worst = MathF.Max(worst, PoseFrame(s, windy: false));
             check.Expect(worst <= PoseSame,
                          $"E1 an open curtain's flaps stay parted as on the stock client, strayed {worst:0.0000}");
         });
@@ -62,14 +59,9 @@ public static unsafe partial class DbAnim
             for (int f = 1; f <= 30; f++)
             {
                 PoseAt(s, PoseOpen(3f * f), Quaternion.Identity, Vector3.Zero);
-                PoseFrame(s, windy: false);
-                worst = MathF.Max(worst, PoseGap(s.Drawn, s.Oracle));
+                worst = MathF.Max(worst, PoseFrame(s, windy: false));
             }
-            for (int f = 0; f < PoseFrames; f++)
-            {
-                PoseFrame(s, windy: false);
-                worst = MathF.Max(worst, PoseGap(s.Drawn, s.Oracle));
-            }
+            for (int f = 0; f < PoseFrames; f++) worst = MathF.Max(worst, PoseFrame(s, windy: false));
             check.Expect(worst <= PoseSame,
                          $"E5 a falling flag's cloth stays on its pole as on the stock client, strayed {worst:0.0000}");
         });
@@ -100,9 +92,8 @@ public static unsafe partial class DbAnim
             float worst = 0f;
             for (int f = 0; f < PoseFrames; f++)
             {
-                PoseAt(s, PoseOpen(12f * MathF.Sin(f * PoseDt * 2f)), Quaternion.Identity, Vector3.Zero);
-                PoseFrame(s, windy: false);
-                if (f > 0) worst = MathF.Max(worst, PoseGap(s.Drawn, s.Oracle));
+                PoseAt(s, PoseOpen(12f * MathF.Cos(f * PoseDt * 2f)), Quaternion.Identity, Vector3.Zero);
+                worst = MathF.Max(worst, PoseFrame(s, windy: false));
             }
             check.Expect(worst <= PoseSame,
                          $"E7 a swaying kelp's fronds move as on the stock client, strayed {worst:0.0000}");

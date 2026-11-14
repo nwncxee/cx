@@ -78,6 +78,13 @@ graded against.
 once) runs `VanillaDangly`. Static parts are drawn at rest and cost nothing, and with `dangly.enabled` off
 every dangly part is drawn at rest.
 
+A part whose animation holds its node, or a node above it, off the rest pose also runs `VanillaDangly`.
+Off the rest pose means turned more than a degree or moved more than a centimetre. The object's root
+node does not count, and neither does a part a creature wears. This is what keeps a curtain door's flaps
+parted while it stands open. The part goes back to its own class once the pose has held its rest for
+half a second and every vertex hangs within 5 mm of its rest position. At the switch, the stock solve
+starts from the rig's last shape, and whatever lies past the stock clamp fades out over a quarter second.
+
 ## 4a. Drawing a rigged part
 
 Every rigged motion is drawn as a skinned part: the rig's `SkinDef` gives the node's mesh the skinned

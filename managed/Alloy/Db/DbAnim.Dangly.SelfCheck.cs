@@ -31,25 +31,25 @@ public static unsafe partial class DbAnim
     /// and a rigless node, a stood-down kind, stock motion or no skinning path runs the stock solve.</summary>
     private static void DanglyChoiceTable(Checker check)
     {
-        check.Expect(ChooseDangly(DanglyClass.Sway, true, true, true, true, false) == DanglyPath.Rigged,
+        check.Expect(ChooseDangly(DanglyClass.Sway, true, true, true, true) == DanglyPath.Rigged,
                      "a Sway node with its knob on, auto motion and skinning runs the joint solver");
-        check.Expect(ChooseDangly(DanglyClass.Jiggle, true, true, true, true, false) == DanglyPath.Rigged,
+        check.Expect(ChooseDangly(DanglyClass.Jiggle, true, true, true, true) == DanglyPath.Rigged,
                      "...and so does a Jiggle node");
-        check.Expect(ChooseDangly(DanglyClass.Swing, true, true, true, true, false) == DanglyPath.Rigged,
+        check.Expect(ChooseDangly(DanglyClass.Swing, true, true, true, true) == DanglyPath.Rigged,
                      "...and a Swing node");
-        check.Expect(ChooseDangly(DanglyClass.Static, true, true, true, true, false) == DanglyPath.Rest,
+        check.Expect(ChooseDangly(DanglyClass.Static, true, true, true, true) == DanglyPath.Rest,
                      "a Static node has no moving vertex: it is drawn at rest and costs nothing");
-        check.Expect(ChooseDangly(DanglyClass.Static, true, false, true, true, false) == DanglyPath.Rest,
+        check.Expect(ChooseDangly(DanglyClass.Static, true, false, true, true) == DanglyPath.Rest,
                      "...under stock motion too, which would settle it at rest anyway");
-        check.Expect(ChooseDangly(DanglyClass.Sway, false, true, true, true, false) == DanglyPath.Vanilla,
+        check.Expect(ChooseDangly(DanglyClass.Sway, false, true, true, true) == DanglyPath.Vanilla,
                      "a node the rig builder declined runs the stock solve");
-        check.Expect(ChooseDangly(DanglyClass.Static, false, true, true, true, false) == DanglyPath.Vanilla,
+        check.Expect(ChooseDangly(DanglyClass.Static, false, true, true, true) == DanglyPath.Vanilla,
                      "...including one with no rig to call Static");
-        check.Expect(ChooseDangly(DanglyClass.Swing, true, false, true, true, false) == DanglyPath.Vanilla,
+        check.Expect(ChooseDangly(DanglyClass.Swing, true, false, true, true) == DanglyPath.Vanilla,
                      "dangly.motion = Vanilla runs every rigged part the stock way");
-        check.Expect(ChooseDangly(DanglyClass.Swing, true, true, false, true, false) == DanglyPath.Vanilla,
+        check.Expect(ChooseDangly(DanglyClass.Swing, true, true, false, true) == DanglyPath.Vanilla,
                      "a kind whose knob is off runs the stock way");
-        check.Expect(ChooseDangly(DanglyClass.Jiggle, true, true, true, false, false) == DanglyPath.Vanilla,
+        check.Expect(ChooseDangly(DanglyClass.Jiggle, true, true, true, false) == DanglyPath.Vanilla,
                      "renderer.ownskin off leaves no palette, so a rigged part runs the stock way");
         check.Expect(ChooseDangly(DanglyClass.Swing, true, true, true, true, true) == DanglyPath.Vanilla,
                      "a rigged part its animation holds off the rest pose runs the stock way");
@@ -230,7 +230,7 @@ public static unsafe partial class DbAnim
         DanglyForget(obj);
         check.Expect(SceneDb.PartBoneBase[part] == -1 && DynRange(part) < 0 && _danglyBones.Cell[part] == 0,
                      "forgetting the object leaves neither a bone range nor a vertex range behind");
-        DropDangly(obj, part);
+        DropDangly(obj, part, 1);
     }
 
     /// <summary>A one-node model whose only node is a four-vertex dangly card with a hand-built rig: two
@@ -281,49 +281,63 @@ public static unsafe partial class DbAnim
 
     /// <summary>One object holding one dangly part, with its shared SKINNED arena range already taken, which
     /// is what <see cref="PartTree.Write"/> does for a rigged node on the live path.</summary>
-    private static DbId DanglySubject(out int part)
+    private static DbId DanglySubject(out int part) => SeatDangly(DanglyCard(), ObjFlag.None, out part);
+
+    /// <summary>Seat <paramref name="m"/> as one object, one part per node from <paramref name="first"/> on, each
+    /// at its rest pose; a node with a mesh takes its shared arena range, skinned by its rig when it has one.</summary>
+    private static DbId SeatDangly(ModelDef m, ObjFlag flags, out int first)
     {
-        part = -1;
-        ModelDef m = DanglyCard();
-        NodeDef n = m.Nodes[0];
+        int count = m.Nodes.Length;
         DbId obj = SceneDb.Objects.Alloc();
-        if (!SceneDb.Parts.AllocRange(1, out int first)) { SceneDb.Objects.Free(obj); return default; }
+        if (!SceneDb.Parts.AllocRange(count, out first)) { SceneDb.Objects.Free(obj); first = -1; return default; }
         int o = obj.Index;
         SceneDb.ObjModel[o] = m;
         SceneDb.ObjPos[o] = Vector3.Zero;
         SceneDb.ObjRot[o] = Quaternion.Identity;
         SceneDb.ObjScale[o] = 1f;
         SceneDb.ObjVisible[o] = true;
+        SceneDb.ObjFlags[o] = flags;
         SceneDb.ObjPartFirst[o] = first;
-        SceneDb.ObjPartCount[o] = 1;
-        part = first;
-        SceneDb.PartObj[part] = obj;
-        SceneDb.PartModel[part] = m;
-        SceneDb.PartMeshDef[part] = n.Mesh;
-        SceneDb.PartNode[part] = 0;
-        SceneDb.PartParent[part] = -1;
-        SceneDb.PartPos[part] = Vector3.Zero;
-        SceneDb.PartRot[part] = Quaternion.Identity;
-        SceneDb.PartScale[part] = 1f;
-        SceneDb.PartEnabled[part] = true;
-        SceneDb.PartMerged[part] = false;
-        SceneDb.PartAlpha[part] = 1f;
-        SceneDb.PartBoneBase[part] = -1;
-        SceneDb.PartKindOf[part] = PartTree.Kind(NodeKind.Dangly);
-        SceneDb.PartWorld[part] = Matrix4x4.Identity;
-        SceneDb.PartMesh[part] = MeshArena.Acquire(n.Mesh!, n.Rig!.Skin);
+        SceneDb.ObjPartCount[o] = count;
+        for (int k = 0; k < count; k++)
+        {
+            int p = first + k;
+            NodeDef n = m.Nodes[k];
+            SceneDb.PartObj[p] = obj;
+            SceneDb.PartModel[p] = m;
+            SceneDb.PartMeshDef[p] = n.Mesh;
+            SceneDb.PartNode[p] = k;
+            SceneDb.PartParent[p] = n.Parent < 0 ? -1 : first + n.Parent;
+            SceneDb.PartPos[p] = n.Position;
+            SceneDb.PartRot[p] = n.Orientation;
+            SceneDb.PartScale[p] = 1f;
+            SceneDb.PartEnabled[p] = true;
+            SceneDb.PartMerged[p] = false;
+            SceneDb.PartAlpha[p] = 1f;
+            SceneDb.PartBoneBase[p] = -1;
+            SceneDb.PartKindOf[p] = PartTree.Kind(n.Kind);
+            SceneDb.PartWorld[p] = Matrix4x4.Identity;
+            SceneDb.PartMesh[p] = n.Mesh != null ? MeshArena.Acquire(n.Mesh, n.Rig?.Skin) : -1;
+        }
         return obj;
     }
 
-    private static void DropDangly(DbId obj, int part)
+    /// <summary>Free what <see cref="SeatDangly"/> seated: the object, its <paramref name="count"/> parts from
+    /// <paramref name="first"/> on, their arena ranges and recipes, and any dangly state left on them.</summary>
+    private static void DropDangly(DbId obj, int first, int count)
     {
-        int range = SceneDb.PartMesh[part];
-        if (range >= 0) MeshArena.Release(range);
-        SceneDb.PartMesh[part] = -1;
-        SceneDb.PartModel[part] = null;
-        SceneDb.PartMeshDef[part] = null;
-        DrawRecipe.Assign(part, -1);
-        SceneDb.Parts.FreeRange(part, 1);
+        for (int p = first; p < first + count; p++)
+        {
+            int range = SceneDb.PartMesh[p];
+            if (range >= 0) MeshArena.Release(range);
+            SceneDb.PartMesh[p] = -1;
+            SceneDb.PartModel[p] = null;
+            SceneDb.PartMeshDef[p] = null;
+            DrawRecipe.Assign(p, -1);
+            DanglyPartRecycled(p);
+        }
+        SceneDb.ObjFlags[obj.Index] = ObjFlag.None;
+        SceneDb.Parts.FreeRange(first, count);
         SceneDb.Objects.Free(obj);
     }
 

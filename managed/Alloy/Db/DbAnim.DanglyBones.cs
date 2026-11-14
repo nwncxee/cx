@@ -150,7 +150,6 @@ public static unsafe partial class DbAnim
         DanglyDropStock(p);
         _dangly.Held[p] = false;
         _dangly.RestFor[p] = 0f;
-        _dangly.Fade[p] = null;
     }
 
     /// <summary>Drop one part's rigged state, if it has any. Guarded, because the dispatch asks every frame
@@ -169,6 +168,7 @@ public static unsafe partial class DbAnim
     /// private recipe that draws it.</summary>
     private static void DanglyDropStock(int part)
     {
+        if (_dangly.Fade[part] is { } f) f.Left = 0f;
         if (_dyn[part].Length == 0 && _dangly.Stock[part] == null) return;
         DynDrop(part);
         _dangly.Stock[part] = null;
