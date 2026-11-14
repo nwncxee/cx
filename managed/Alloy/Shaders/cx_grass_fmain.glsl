@@ -54,7 +54,8 @@ void main()
     // vanilla's grass (vsgrass.shd's LIGHT_FORCE_INDIRECTIONAL 1) takes NO N.L at all: every light adds
     // LightColor * attenuation (inc_lighting.shd:295-298) over PI, with no specular. The blades here are
     // Alloy's own and keep a directional sun; the ambient carries no NdotL, as stock's does
-    vec3 ambient = uAreaAmbient * uMatAmbient * CxSkyView(vWorld, CX_SKY_UP);
+    float skyView = CxSkyView(vWorld, CX_SKY_UP);
+    vec3 ambient = uAreaAmbient * uMatAmbient * skyView;
     // #478: no screen-space AO on a blade. Blades are not in the depth SsaoPass reads, so the pixel's
     // occlusion is whatever stands behind the blade, and it read as the scene showing through the
     // field; the ground tint is what grounds a blade now. A root ramp on everything.
@@ -78,7 +79,8 @@ void main()
         vec2 gAb = CxEnvBrdf(max(dot(Nv, V), 1e-3), sqrt(gRough));
         float gW = min((CX_DIELECTRIC_F0 * gAb.x + gAb.y) * uProbeGain, 1.0);
         vec3 gEnv = CxProbeFetch(uProbe, vWorld, R, sqrt(gRough) * (uProbeMips - 1.0));
-        lit += gEnv * (gW * mix(1.0 - uRootAo, 1.0, vRoot));
+        float gShade = CxReflShade(uAreaAmbient * skyView + uAreaDiffuse * ndl * sh, uAreaAmbient + uAreaDiffuse);
+        lit += gEnv * (gW * gShade * mix(1.0 - uRootAo, 1.0, vRoot));
     }
     // vanilla grass runs fsgrass, which is the stock lit shader with KEYHOLING 1 and FOG 1 -- so the
     // camera dissolve and the scene fog both apply, and dropping them would fill a low camera shot

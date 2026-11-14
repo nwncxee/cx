@@ -14,6 +14,8 @@
     vec3 reflFilm = vec3(0.0);
     // the share of the reflection that is lit legacy env content, not the probe: the screen march leaves it alone
     float envMix = 0.0;
+    // the probe's share alone takes it: the legacy env share is already the light arriving here
+    float reflShade = 1.0;
 #ifdef CX_DEFERRED
     // CX-188: the legacy env pattern, 0 wherever that branch does not run -- the rest of d(env)/d(diffuse)
     // (envMix, the grey level, reflW) is already in scope at the G-buffer write below
@@ -22,10 +24,12 @@
     if (uCapture != 1)
     {
         vec3 R = reflect(-V, N);
-        vec2 reflAb = CxEnvBrdf(NoV, sqrt(rough)) * vec2(1.0, cxFresnel);
+        float reflNoV = CxReflNoV(NoV, dot(Ng, V));
+        reflShade = CxReflShade(uAreaAmbient * skyView + sun, uAreaAmbient + uAreaDiffuse);
+        vec2 reflAb = CxEnvBrdf(reflNoV, sqrt(rough)) * vec2(1.0, cxFresnel);
         // a classic material rises as inc_lighting.shd:2849's fEnvironmentSpecularity does, damped by sqrt(roughness)
         vec3 reflF = cxModern > 0.5 ? cxF0 * reflAb.x + reflAb.y
-                                    : specColor * mix(mix(spec, 1.0, CxFresnel(NoV) * cxFresnel), spec, sqrt(rough));
+                                    : specColor * mix(mix(spec, 1.0, CxFresnel(reflNoV) * cxFresnel), spec, sqrt(rough));
         reflW = min(reflF * msc * CxSpecOcclusion(NoV, occl, rough) * coatT * uProbeGain, vec3(1.0));
         if (uProbeMips > 0.0)
         {
@@ -35,22 +39,25 @@
             // breastplate shines however dark the area probe is. The probe, normalised by its own mean,
             // is the pattern -- its LUMINANCE only: the stock env maps are grey, so the tint is the light's,
             // and the sky's blue carried into the pattern drew silver armour blue.
+            float pat = 1.0;
             if (!physical && envLevel > 0.0)
             {
                 vec3 mean = CxProbeFetch(uProbe, vWorld, R, uProbeMips - 1.0);
                 float m = dot(mean, vec3(0.2126, 0.7152, 0.0722));
-                float pat = m > 1e-5 ? min(dot(env, vec3(0.2126, 0.7152, 0.0722)) / m, CX_ENV_PAT_MAX) : 1.0;
+                pat = m > 1e-5 ? min(dot(env, vec3(0.2126, 0.7152, 0.0722)) / m, CX_ENV_PAT_MAX) : 1.0;
                 envMix = min(envLevel * CX_ENV_SPEC_SCALE, 1.0);
-                env = mix(env, (ambient + diffuse) * pat * CX_ENV_GREY_LIN, envMix);
-#ifdef CX_DEFERRED
-                gEnvPat = pat;
-#endif
             }
+            // a matte lobe resolves no image of the probe: its share is the local light too, with no pattern to carry
+            envMix = max(envMix, CxReflLocal(rough));
+            env = mix(env * reflShade, (ambient + diffuse) * pat * CX_ENV_GREY_LIN, envMix);
+#ifdef CX_DEFERRED
+            gEnvPat = pat;
+#endif
             specLight += env * reflW;
         }
         if (wxFilm > 0.0 && cxCoat > 0.0)
         {
-            vec2 fab = CxEnvBrdf(NoV, sqrt(cxCoatRough));
+            vec2 fab = CxEnvBrdf(reflNoV, sqrt(cxCoatRough));
             reflFilm = vec3(min(cxCoat * (CX_DIELECTRIC_F0 * fab.x + fab.y)
                                 * CxSpecOcclusion(NoV, occl, cxCoatRough) * uProbeGain, 1.0));
         }
@@ -120,7 +127,7 @@
     // the display overlays never reach the swapped-in reflection. Exact = Ssr refogging, if a foggy puddle shows it.
     // R4: where the water film dominates, the record carries the FILM's roughness and the film's weight --
     // the screen march must trace the mirror the film is, not the matte bed the base roughness describes.
-    CxReflOut(N, mix(rough, cxCoatRough, wxFilm), max(reflW * (1.0 - envMix), reflFilm) * (kh * (1.0 - CxFogFactor(vWorld, vDepth))));
+    CxReflOut(N, mix(rough, cxCoatRough, wxFilm), max(reflW * ((1.0 - envMix) * reflShade), reflFilm) * (kh * (1.0 - CxFogFactor(vWorld, vDepth))));
 #ifdef CX_DEFERRED
     // CX-188 (ADR 0029): the record the deferred compute pass lights from, written on the uCapture == 0 path
     // alone (the capture and the mirror returned above). It goes LAST because the transfer weights carry the

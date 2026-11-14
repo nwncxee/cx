@@ -164,7 +164,8 @@
     // steps off the surface on the side being shaded, not through it.
     // the walk's ambient-class lights join the area ambient before the material and the occlusion, as stock's
     // AmbientLight does (inc_lighting.shd:402-405, :512, :600); the floor, the shape and the sky are the area's
-    vec3 ambient = (uAreaAmbient * ambShape * CxSkyView(vWorld, Ng) + cxAmbWalk) * matAmbient * occl;
+    float skyView = CxSkyView(vWorld, Ng);
+    vec3 ambient = (uAreaAmbient * ambShape * skyView + cxAmbWalk) * matAmbient * occl;
     // 34 = the ambient term alone inside `total` (the (1-spec) share of the ambient): the one term a material's
     //      AO map and the height map can move.
     if (uViz == 34) { frag = vec4(ambient * (1.0 - spec), 1.0); return; }

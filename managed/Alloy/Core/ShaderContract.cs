@@ -455,7 +455,7 @@ internal static class ShaderContract
                   // under -- R4 widened it to the stronger of the base weight and the water film's, at the
                   // roughness the film's own lobe has where it dominates (both collapse to the base dry), less the
                   // lit legacy env share, which is not the probe and has no screen to swap in
-                  && OwnedLitFsMain.Contains("CxReflOut(N, mix(rough, cxCoatRough, wxFilm), max(reflW * (1.0 - envMix), reflFilm)")
+                  && OwnedLitFsMain.Contains("CxReflOut(N, mix(rough, cxCoatRough, wxFilm), max(reflW * ((1.0 - envMix) * reflShade), reflFilm)")
                   // #124/#132: the dissolve and the fog, and the order they apply in. Both are LINEAR now --
                   // #124 welded the engine's keyhole-then-encode-then-fog order and #132 unwelded it, so the
                   // whole tail is one linear expression and the encode is the resolve's. Swap the two and

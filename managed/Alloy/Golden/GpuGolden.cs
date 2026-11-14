@@ -91,6 +91,7 @@ internal static partial class GpuGolden
         NearTierSelfCheck(vk, check, log);
         ShadingParitySelfCheck(vk, check, log);
         FaceNormalApprovedSelfCheck(vk, check, log);
+        ReflShadeSelfCheck(vk, check, log);
         AmbientClassApprovedSelfCheck(vk, check, log);
         SofteningApprovedSelfCheck(vk, check, log);
         TranslucenceApprovedSelfCheck(vk, check, log);
