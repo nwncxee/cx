@@ -148,6 +148,9 @@ public static unsafe partial class DbAnim
         if ((uint)p >= (uint)SceneDb.MaxParts) return;
         DanglyDropRig(p);
         DanglyDropStock(p);
+        _dangly.Held[p] = false;
+        _dangly.RestFor[p] = 0f;
+        _dangly.Fade[p] = null;
     }
 
     /// <summary>Drop one part's rigged state, if it has any. Guarded, because the dispatch asks every frame

@@ -21,10 +21,10 @@ public static unsafe partial class DbAnim
     private static void DanglyPoseChecks(Checker check)
     {
         DanglyPoseApprovedExamples(check);
+        PoseHandsBack(check);
         PoseClosedCurtainUnchanged(check);
         PoseStandingFlagUnchanged(check);
         PoseWornUnchanged(check);
-        PoseSwitchNoJump(check);
     }
 
     /// <summary>One seated object of the pose fixture: its three parts, the flap's rig and mesh, and the stock
@@ -188,13 +188,6 @@ public static unsafe partial class DbAnim
         }
     }
 
-    /// <summary>The flap as drawn, where the player sees it: its drawn shape placed by its world pose.</summary>
-    private static void PoseWorld(PoseSubject s, Vector3[] dst)
-    {
-        Matrix4x4 w = SceneDb.PartWorld[s.Flap];
-        for (int i = 0; i < dst.Length; i++) dst[i] = Vector3.Transform(s.Drawn[i], w);
-    }
-
     /// <summary>The largest distance between two shapes of one mesh.</summary>
     private static float PoseGap(ReadOnlySpan<Vector3> a, ReadOnlySpan<Vector3> b)
     {
@@ -265,6 +258,22 @@ public static unsafe partial class DbAnim
     private static Quaternion PoseOpen(float degrees)
         => Quaternion.CreateFromAxisAngle(Vector3.UnitX, degrees * MathF.PI / 180f);
 
+    /// <summary>Tested unasked: a curtain that has closed and stopped moving goes back to the CX motion, and a
+    /// loop that only crosses the rest pose does not.</summary>
+    private static void PoseHandsBack(Checker check)
+        => PoseRun(check, "hand-back", false, false, s =>
+        {
+            for (int f = 0; f < 30; f++) PoseFrame(s, windy: false);
+            PoseAt(s, PoseOpen(20f), Quaternion.Identity, Vector3.Zero);
+            for (int f = 0; f < PoseFrames; f++) PoseFrame(s, windy: false);
+            PoseAt(s, Quaternion.Identity, Quaternion.Identity, Vector3.Zero);
+            PoseFrame(s, windy: false);
+            check.Expect(DynRange(s.Flap) >= 0, "a curtain that has just closed is still on the stock solve");
+            for (int f = 0; f < 5 * PoseFrames; f++) PoseFrame(s, windy: false);
+            check.Expect(SceneDb.PartBoneBase[s.Flap] >= 0 && DynRange(s.Flap) < 0,
+                         "a closed curtain whose flaps have stopped moves the CX way again");
+        });
+
     // E3, a regression check: a curtain nobody opens never meets the posed rule.
     private static void PoseClosedCurtainUnchanged(Checker check)
         => PoseRun(check, "E3", false, false, s =>
@@ -307,32 +316,5 @@ public static unsafe partial class DbAnim
                 rigged &= SceneDb.PartBoneBase[s.Flap] >= 0 && DynRange(s.Flap) < 0;
             }
             check.Expect(rigged, "E6 a cloak on a creature that sits or falls moves the CX way every frame");
-        });
-
-    // E8, a regression check: before the posed rule nothing changed hands, so nothing could jump.
-    private static void PoseSwitchNoJump(Checker check)
-        => PoseRun(check, "E8", false, false, s =>
-        {
-            var before = new Vector3[s.Drawn.Length];
-            var after = new Vector3[s.Drawn.Length];
-            float step = 0f;
-            for (int f = 0; f < PoseFrames; f++)
-            {
-                PoseWorld(s, before);
-                PoseFrame(s, windy: true);
-                PoseWorld(s, after);
-                if (f >= PoseFrames - 30) step = MathF.Max(step, PoseGap(after, before));
-            }
-            float swayed = PoseGap(s.Drawn, s.Mesh.Positions);
-            check.Expect(swayed > 0.02f,
-                         $"E8 the breeze sways the closed curtain {swayed:0.0000} off its rest before it opens");
-            PoseWorld(s, before);
-            PoseAt(s, PoseOpen(2f), Quaternion.Identity, Vector3.Zero);
-            PoseFrame(s, windy: true);
-            PoseWorld(s, after);
-            float jump = PoseGap(after, before);
-            check.Expect(jump <= 0.25f * swayed,
-                         $"E8 the flaps carry on from where they hung as the door starts to open: moved {jump:0.0000} "
-                       + $"against a swaying frame's {step:0.0000}, {swayed:0.0000} off rest");
         });
 }

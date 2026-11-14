@@ -31,26 +31,30 @@ public static unsafe partial class DbAnim
     /// and a rigless node, a stood-down kind, stock motion or no skinning path runs the stock solve.</summary>
     private static void DanglyChoiceTable(Checker check)
     {
-        check.Expect(ChooseDangly(DanglyClass.Sway, true, true, true, true) == DanglyPath.Rigged,
+        check.Expect(ChooseDangly(DanglyClass.Sway, true, true, true, true, false) == DanglyPath.Rigged,
                      "a Sway node with its knob on, auto motion and skinning runs the joint solver");
-        check.Expect(ChooseDangly(DanglyClass.Jiggle, true, true, true, true) == DanglyPath.Rigged,
+        check.Expect(ChooseDangly(DanglyClass.Jiggle, true, true, true, true, false) == DanglyPath.Rigged,
                      "...and so does a Jiggle node");
-        check.Expect(ChooseDangly(DanglyClass.Swing, true, true, true, true) == DanglyPath.Rigged,
+        check.Expect(ChooseDangly(DanglyClass.Swing, true, true, true, true, false) == DanglyPath.Rigged,
                      "...and a Swing node");
-        check.Expect(ChooseDangly(DanglyClass.Static, true, true, true, true) == DanglyPath.Rest,
+        check.Expect(ChooseDangly(DanglyClass.Static, true, true, true, true, false) == DanglyPath.Rest,
                      "a Static node has no moving vertex: it is drawn at rest and costs nothing");
-        check.Expect(ChooseDangly(DanglyClass.Static, true, false, true, true) == DanglyPath.Rest,
+        check.Expect(ChooseDangly(DanglyClass.Static, true, false, true, true, false) == DanglyPath.Rest,
                      "...under stock motion too, which would settle it at rest anyway");
-        check.Expect(ChooseDangly(DanglyClass.Sway, false, true, true, true) == DanglyPath.Vanilla,
+        check.Expect(ChooseDangly(DanglyClass.Sway, false, true, true, true, false) == DanglyPath.Vanilla,
                      "a node the rig builder declined runs the stock solve");
-        check.Expect(ChooseDangly(DanglyClass.Static, false, true, true, true) == DanglyPath.Vanilla,
+        check.Expect(ChooseDangly(DanglyClass.Static, false, true, true, true, false) == DanglyPath.Vanilla,
                      "...including one with no rig to call Static");
-        check.Expect(ChooseDangly(DanglyClass.Swing, true, false, true, true) == DanglyPath.Vanilla,
+        check.Expect(ChooseDangly(DanglyClass.Swing, true, false, true, true, false) == DanglyPath.Vanilla,
                      "dangly.motion = Vanilla runs every rigged part the stock way");
-        check.Expect(ChooseDangly(DanglyClass.Swing, true, true, false, true) == DanglyPath.Vanilla,
+        check.Expect(ChooseDangly(DanglyClass.Swing, true, true, false, true, false) == DanglyPath.Vanilla,
                      "a kind whose knob is off runs the stock way");
-        check.Expect(ChooseDangly(DanglyClass.Jiggle, true, true, true, false) == DanglyPath.Vanilla,
+        check.Expect(ChooseDangly(DanglyClass.Jiggle, true, true, true, false, false) == DanglyPath.Vanilla,
                      "renderer.ownskin off leaves no palette, so a rigged part runs the stock way");
+        check.Expect(ChooseDangly(DanglyClass.Swing, true, true, true, true, true) == DanglyPath.Vanilla,
+                     "a rigged part its animation holds off the rest pose runs the stock way");
+        check.Expect(ChooseDangly(DanglyClass.Static, true, true, true, true, true) == DanglyPath.Rest,
+                     "...but a Static node posed so still draws at rest, which follows its node");
     }
 
     // ================= the bone-range packing =================
