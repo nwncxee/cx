@@ -158,6 +158,7 @@ internal sealed unsafe partial class VkBackend
         if (!lane && !committed) CommitUploads();
 
         bool waits = !lane && _scr.Touched;
+        _stall.Name = name;
         VkResult sent = lane ? AsyncSubmit(_cmd)
                       : QueueSubmit(_cmd, waits ? Acquired : default, swap >= 0 ? _swap.Ready[swap] : default, besideAsked: beside);
         if (lane && sent == VkResult.Success) _asyncRec = _recording;

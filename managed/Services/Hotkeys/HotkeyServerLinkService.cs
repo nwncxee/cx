@@ -38,11 +38,15 @@ public sealed unsafe class HotkeyServerLinkService : IExtenderService
     // (decomp-verified: HandleServerToPlayerMessage gates on data[0]=='P', reads major/minor at
     // [1]/[2]). So we match past the 'P' marker, not from data[0].
     private const byte FrameMarker = (byte)'P';
+    /// <summary>The engine's portal message and its one sub-command: the server sends this client on to another server.</summary>
+    private const byte PortalMajor = 0x2a, PortalActivate = 1;   // not-an-offset: message opcodes
 
     [UnmanagedCallersOnly]
     private static uint OnInbound(IntPtr self, byte* data, uint size)
     {
         ClientApi.LiveMessage = self;   // the live CNWCMessage; cache for outbound sends (g_pAppManager segfaults here)
+        if (size >= 3 && data[0] == FrameMarker && data[1] == PortalMajor && data[2] == PortalActivate)
+            _log?.Always("server: portal activated -- the server sends this client on to another server");
 
         if (size >= 3 && data[0] == FrameMarker && data[1] == HotkeyProtocol.ArmSetMajor)  // 0x36: our device major
         {

@@ -73,6 +73,7 @@ internal sealed unsafe partial class VkBackend
         VkResult r = _vkd.vkWaitSemaphores(&wi, WaitTimeoutNs);
         _waitTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
         Refresh(sem, ref completed);
+        if (r == VkResult.Timeout) SayStall(sem, value);
         return r;
     }
 
@@ -147,6 +148,8 @@ internal sealed unsafe partial class VkBackend
             signalSemaphoreInfoCount = n, pSignalSemaphoreInfos = sig,
         };
         VkResult r = _vkd.vkQueueSubmit2(_queue, 1, &si, default);
+        if (r == VkResult.Success)
+            NoteSubmit(new SubmitNote(counted ? _submits + 1 : 0, _submits, wait.IsNotNull, join ? _unjoined : 0, shipped ? _shippedJoin : 0, _stall.Name));
         if (r == VkResult.Success && shipped) _shippedJoin = 0;
         if (r != VkResult.Success || !counted) return r;
         _submits++;
@@ -169,7 +172,7 @@ internal sealed unsafe partial class VkBackend
             signalSemaphoreInfoCount = 1, pSignalSemaphoreInfos = &sig,
         };
         VkResult r = _vkd.vkQueueSubmit2(a.Queue, 1, &si, default);
-        if (r == VkResult.Success) _unjoined = ++a.Submits;
+        if (r == VkResult.Success) { _unjoined = ++a.Submits; _stall.AsyncWaits = _submits; }
         return r;
     }
 
@@ -190,6 +193,7 @@ internal sealed unsafe partial class VkBackend
     private VkResult SubmitAndIdle(VkCommandBuffer cb, out bool queued)
     {
         SubmitHeld();
+        _stall.Name = "idle-waited";
         VkResult r = QueueSubmit(cb, default, default, counted: false);
         queued = r == VkResult.Success;
         if (!queued) return r;
@@ -233,6 +237,7 @@ internal sealed unsafe partial class VkBackend
         if (!_scr.Pending) return;
         _scr.Pending = false;
         _scr.WaitedBy[_scr.Slot] = long.MaxValue;
+        _stall.Name = "unused acquire";
         if (QueueSubmit(default, Acquired, default, counted: false) != VkResult.Success) Fault("the unused acquire could not be waited out");
     }
 }

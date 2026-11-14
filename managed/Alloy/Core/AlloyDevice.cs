@@ -26,7 +26,7 @@ internal static class AlloyDevice
         var s = _s;
         if (Renderer.OnVulkan && s.Vk == null && !s.VkRefused)
         {
-            s.VkRefused = (s.Vk = VkBackend.TryCreate(log)) == null;
+            s.VkRefused = (s.Vk = VkBackend.TryCreate(log, oneQueue: Renderer.OneQueue.Boot)) == null;
             if (s.Vk != null && !SsboSlots.CheckDevice(s.Vk.Caps, log)) { s.Vk.Dispose(); s.Vk = null; s.VkRefused = true; }
             // the seam's image copies and the translation counters against fixtures, before the first pass records one
             s.Vk?.CopyDeviceCheck(log);

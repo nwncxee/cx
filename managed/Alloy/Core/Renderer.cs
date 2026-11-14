@@ -50,7 +50,7 @@ internal static class Renderer
     internal static readonly Knob<bool> TexPreview;
     internal static readonly Knob<bool> Bcn, Hdr, OwnedTex, TexSingle, DdsRead, HandleDrop,
                                         Spirv, VanillaBridge, HostFs, OwnSkin, DumpShaders, GpuDebug, EngineZones,
-                                        Gui, Movie;
+                                        Gui, Movie, OneQueue;
     internal static readonly Knob<int> Border, Oit, TexCache, BcnDrip, TexDelete, MaxElements, RasterRead,
                                        ClusterCap, SkipBuckets, FrameDiff, ParityDump, StaleAudit;
     internal static readonly Knob<bool> Light, Prepass, Retest, HlDiag, Poll, PrepassKey, PrepassFeat, IdTarget,
@@ -149,6 +149,7 @@ internal static class Renderer
         DrawHooks = G.Dropdown("drawhooks", "drawhooks", new[] { DrawFunnelService.DrawModeBatch, DrawFunnelService.DrawModeStats },
                                DrawFunnelService.DrawModeBatch, tier: Tier.ChatOnly, effect: Effect.Restart);
         OwnedTex = G.Toggle("ownedtex", "ownedtex", true, Tier.ChatOnly, Effect.Restart);
+        OneQueue = G.Toggle("onequeue", "onequeue", false, Tier.ChatOnly, Effect.Restart);
         // CX-117: compare Alloy's whole PLT chain (file decode + master palette + scheme rows + resolve)
         // against the engine's own CPU composite, once per PLT texture at its first build. Cold, and
         // off by default: it reads every PLT file a second time.

@@ -90,6 +90,7 @@ internal sealed unsafe partial class VkBackend
             r = AcquireNext(c.Acquire[slot], out idx);
         }
         _acquireTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+        if (r == VkResult.Timeout) SayStall(default, 0);
         if (r != VkResult.Success && r != VkResult.SuboptimalKHR) { Fault($"Present: vkAcquireNextImageKHR returned {r}"); return -1; }
         c.Slot = slot;
         c.Pending = true;
