@@ -1,6 +1,6 @@
 ---
 name: wiki-mcp
-description: 'Query and keep the Westgate wiki, the agents'' knowledge base, through the `westgate-wiki` MCP server. Use first whenever you need to know how a system, mechanic, command, service or data format works, before you read repo docs or grep for it. Use whenever a change is one a player, developer or operator could notice (a mechanic, command, system, setup step, data format, third-party asset), whether or not an article covers it yet, to update, create or retire the article in the same effort.'
+description: 'Query and keep the Westgate wiki, the agents'' knowledge base, through the `westgate-wiki` MCP server. Use first whenever you need to know how a system, mechanic, command, service or data format works, before you read repo docs or grep for it. Use whenever a change is one a player, developer or operator could notice (a mechanic, command, system, setup step, data format, third-party asset), whether or not an article covers it yet, to update, create or retire the article in the same effort. Use too whenever a wiki page, index or lint result looks disorganized, hard to navigate or off the Wiki Organization law: agents maintain the wiki and fix it on sight.'
 ---
 
 # Westgate wiki through MCP
@@ -37,7 +37,30 @@ Ask for the lowest tier the task needs. A call above the tier comes back as a
 - **Change**: the effort changes something a reader could notice. Run
   [Workflow](#workflow).
 
-An effort can take both: a look-up first, then the change.
+An effort can take both: a look-up first, then the change. Every branch
+also runs [Maintain](#maintain): you are the wiki's maintainer, not a visitor.
+
+## Maintain
+
+Agents own the wiki's organization and ergonomics in full. No person audits
+it after you, so what you pass and leave broken stays broken.
+
+1. **Fix what you read.** On every page and index a look-up or a change reads,
+   fix each breach of the Wiki Organization law you see: a dead link, a page
+   missing from its index or under the wrong kind heading (W11), a card off
+   the W20 shape, a summary or first sentence that is false or missing (W17),
+   no Related heading (W15), a page in the wrong home (W8). Done when each
+   page you read meets the law, or its fix is a person's and is in your report.
+2. **Lint where you were.** `wiki_lint` each namespace you read or wrote in,
+   never `""`. Fix every row in the pages that namespace holds. Done when it
+   shows no row you could fix.
+3. **Kill a returning row.** A lint row the law does not count as a breach,
+   or one that comes back after a fix, means the check (the wiki plugin, in
+   `sow-nodebb`) or the law is wrong. Fix whichever is wrong in the same
+   effort: a pull request for the check, a `wiki_replace` for the law. Done
+   when the next lint of that namespace shows only new work.
+4. **Report** in one line per namespace: what you fixed, and each ask only a
+   person can answer (delete a namespace, change the Main Page).
 
 ## Look up
 
@@ -98,7 +121,7 @@ and the PR body lists them by title.
 
 The wiki article For Staff :: Standards :: Wiki Organization is the law for
 where an article goes and what shape it takes; read it before any
-`wiki_create`, `wiki_move` or title change. Its rules are numbered W1 to W19,
+`wiki_create`, `wiki_move` or title change. Its rules are numbered W1 to W20,
 and a finding names its number. This table summarizes it, and a repository's
 agent guide points here rather than restating it. A title is short, two to
 five words, with no repository name, path or ticket key.
@@ -112,21 +135,25 @@ five words, with no repository name, path or ticket key.
 - **File by first match (W8).** The first yes in that page's ordered
   questions is the home. Two homes fitting means the page lacks a tie-break:
   add it there, then file.
-- **Page rules (W10, W11, W13–W19) are fixed on touch, never swept.** A page
-  you edit holds one Diátaxis kind (tutorial, how-to guide, reference,
+- **Page rules (W10, W11, W13–W20) are fixed on every page you read or
+  edit**, and on the index you reached it from. A page holds one Diátaxis kind (tutorial, how-to guide, reference,
   explanation) and sits under that kind's heading in its namespace's index
-  article (W10, W11). A how-to title starts with a verb (W13). Link a term at
+  article (W10, W11); a topic heading may sit one level below a kind heading,
+  and a subpage gets its own card (W20). A how-to title starts with a verb (W13). Link a term at
   its first mention, with the target's title as the link text (W14). The page
-  ends with a Related heading of two to four links (W15).
-- **A move or rename breaks links (W12).** `wiki_move` leaves no redirect.
-  Before it, `wiki_search` the old path; after it, edit every linking article
-  to the new `url`, and `wiki_lint` both namespaces. A master page's subpages
-  stay behind when it moves: move each one after it. A `Parent :: Child` page
+  ends with a Related heading of two to four links (W15), each about this
+  page's subject or the reader's next step, never a sibling copied from a
+  template.
+- **A move or rename breaks links (W12).** The old address redirects readers,
+  but every link still names it. Before it, `wiki_search` the old path; after it, edit every linking article
+  to the new `url`, and `wiki_lint` both namespaces. A master page carries its
+  subpages when it moves. A `Parent :: Child` page
   moved into a namespace named Parent doubles its path until its title drops
   `Parent ::`.
-- **Namespaces are made by a person**, who sets the read permission before
-  anything moves in. Ask for one when W3 or a growing shelf of standalone
-  pages calls for it.
+- **A wiki manager makes a namespace**, with `wiki_create_namespace` when
+  you are connected as one, and sets its read permission before anything
+  moves in: a new namespace under For Staff is public until then. Deleting
+  one takes a person: ask for it.
 
 | Namespace | Holds |
 |---|---|
