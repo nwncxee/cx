@@ -22,6 +22,8 @@ public static unsafe partial class DbAnim
     {
         DanglyPoseApprovedExamples(check);
         PoseHandsBack(check);
+        PoseDropsStraight(check);
+        PoseRecycleForgets(check);
         PoseClosedCurtainUnchanged(check);
         PoseStandingFlagUnchanged(check);
         PoseWornUnchanged(check);
@@ -269,9 +271,48 @@ public static unsafe partial class DbAnim
             PoseAt(s, Quaternion.Identity, Quaternion.Identity, Vector3.Zero);
             PoseFrame(s, windy: false);
             check.Expect(DynRange(s.Flap) >= 0, "a curtain that has just closed is still on the stock solve");
-            for (int f = 0; f < 5 * PoseFrames; f++) PoseFrame(s, windy: false);
-            check.Expect(SceneDb.PartBoneBase[s.Flap] >= 0 && DynRange(s.Flap) < 0,
+            var before = new Vector3[s.Drawn.Length];
+            float jump = -1f;
+            for (int f = 0; f < 5 * PoseFrames && jump < 0f; f++)
+            {
+                s.Drawn.CopyTo(before, 0);
+                PoseFrame(s, windy: false);
+                if (SceneDb.PartBoneBase[s.Flap] >= 0) jump = PoseGap(s.Drawn, before);
+            }
+            check.Expect(jump >= 0f && DynRange(s.Flap) < 0,
                          "a closed curtain whose flaps have stopped moves the CX way again");
+            check.Expect(jump <= 0.01f, $"...and its flaps do not jump as they change hands: moved {jump:0.0000}");
+        });
+
+    /// <summary>Tested unasked: a pole an animation drops straight down, without turning it, carries its cloth
+    /// as the stock solve does.</summary>
+    private static void PoseDropsStraight(Checker check)
+        => PoseRun(check, "drop", false, false, s =>
+        {
+            for (int f = 0; f < 30; f++) PoseFrame(s, windy: false);
+            float worst = 0f;
+            for (int f = 1; f <= 30; f++)
+            {
+                SceneDb.PartPos[s.Hinge] = new Vector3(0f, 0f, 3f - 0.1f * f);
+                PoseAt(s, Quaternion.Identity, Quaternion.Identity, Vector3.Zero);
+                PoseFrame(s, windy: false);
+                worst = MathF.Max(worst, PoseGap(s.Drawn, s.Oracle));
+            }
+            check.Expect(worst <= 1e-4f, $"a dropping pole's cloth moves as the stock solve's does, strayed {worst:0.0000}");
+        });
+
+    /// <summary>Tested unasked: a part index handed to a new tenant does not inherit the old tenant's hold.</summary>
+    private static void PoseRecycleForgets(Checker check)
+        => PoseRun(check, "recycle", false, false, s =>
+        {
+            PoseFrame(s, windy: false);
+            PoseAt(s, PoseOpen(20f), Quaternion.Identity, Vector3.Zero);
+            for (int f = 0; f < 10; f++) PoseFrame(s, windy: false);
+            DanglyPartRecycled(s.Flap);
+            PoseAt(s, Quaternion.Identity, Quaternion.Identity, Vector3.Zero);
+            PoseFrame(s, windy: false);
+            check.Expect(SceneDb.PartBoneBase[s.Flap] >= 0 && DynRange(s.Flap) < 0,
+                         "a re-tenanted part at rest moves the CX way from its first frame");
         });
 
     // E3, a regression check: a curtain nobody opens never meets the posed rule.
