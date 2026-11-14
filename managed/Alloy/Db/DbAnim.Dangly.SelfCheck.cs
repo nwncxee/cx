@@ -22,6 +22,7 @@ public static unsafe partial class DbAnim
         DanglySwitch(check);
         DanglyRecycle(check);
         DanglyWallGather(check);
+        DanglyPoseChecks(check);
     }
 
     // ================= the motion table =================
