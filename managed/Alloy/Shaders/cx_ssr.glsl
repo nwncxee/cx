@@ -39,6 +39,16 @@ float CxReflNoV(float NoV, float faceNoV)
     return max(NoV, faceNoV);
 }
 
+/// The alpha a lobe still shows the probe's image at, and the alpha past which it shows none.
+const vec2 CX_REFL_IMAGE = vec2(0.1, 0.35);
+/// The share of a reflection that is the light arriving at the surface, not the probe's image: a matte lobe
+/// resolves no image, so it reflects its own light in its own tint, as inc_lighting.shd:543-582 does.
+/// A mirror takes none.
+float CxReflLocal(float rough)
+{
+    return smoothstep(CX_REFL_IMAGE.x, CX_REFL_IMAGE.y, rough);
+}
+
 /// How far the trace's GGX draw leans toward the lobe's centre (0 = the whole lobe): the tail rays a rough surface
 /// would spend on grazing directions mostly miss, and the resolve's cone blur stands in for them.
 const float CX_SSR_BIAS = 0.7;

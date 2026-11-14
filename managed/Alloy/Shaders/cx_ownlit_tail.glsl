@@ -39,18 +39,20 @@
             // breastplate shines however dark the area probe is. The probe, normalised by its own mean,
             // is the pattern -- its LUMINANCE only: the stock env maps are grey, so the tint is the light's,
             // and the sky's blue carried into the pattern drew silver armour blue.
+            float pat = 1.0;
             if (!physical && envLevel > 0.0)
             {
                 vec3 mean = CxProbeFetch(uProbe, vWorld, R, uProbeMips - 1.0);
                 float m = dot(mean, vec3(0.2126, 0.7152, 0.0722));
-                float pat = m > 1e-5 ? min(dot(env, vec3(0.2126, 0.7152, 0.0722)) / m, CX_ENV_PAT_MAX) : 1.0;
+                pat = m > 1e-5 ? min(dot(env, vec3(0.2126, 0.7152, 0.0722)) / m, CX_ENV_PAT_MAX) : 1.0;
                 envMix = min(envLevel * CX_ENV_SPEC_SCALE, 1.0);
-                env = mix(env * reflShade, (ambient + diffuse) * pat * CX_ENV_GREY_LIN, envMix);
-#ifdef CX_DEFERRED
-                gEnvPat = pat;
-#endif
             }
-            else env *= reflShade;
+            // a matte lobe resolves no image of the probe: its share is the local light too, with no pattern to carry
+            envMix = max(envMix, CxReflLocal(rough));
+            env = mix(env * reflShade, (ambient + diffuse) * pat * CX_ENV_GREY_LIN, envMix);
+#ifdef CX_DEFERRED
+            gEnvPat = pat;
+#endif
             specLight += env * reflW;
         }
         if (wxFilm > 0.0 && cxCoat > 0.0)
