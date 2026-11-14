@@ -21,6 +21,7 @@ internal static class ItemMenuSelfCheck
         NuiLook(check);
         ServerLook(check);
         ServerLayout(check);
+        OpeningRelease(check);
         log.Info(check.Ok ? "ItemMenuSelfCheck: passed" : "ItemMenuSelfCheck: FAILED");
     }
 
@@ -101,6 +102,29 @@ internal static class ItemMenuSelfCheck
         ServerPolicy.Send = was;
         check.Expect(taken, "a press off the menu is taken ahead of the NUI window under it");
         check.Expect(!ItemMenuService.IsOpen && sent.Count == 1 && sent[0] == "menu;", $"...and closes the menu with menu; ({(sent.Count == 0 ? "nothing sent" : sent[0])})");
+        ItemMenuService.Show(new ItemMenuModel(), atlas, 1920, 1080);
+    }
+
+    /// <summary>A right press opens the menu, and its release must still reach NUI, or NUI holds the button down and drops the
+    /// next right press, so every other right click opened nothing. A press the menu takes keeps its release. Oracle: the
+    /// press and release typed here.</summary>
+    private static void OpeningRelease(Checker check)
+    {
+        var atlas = new CX.Ui.GlyphAtlas { LineHeight = 20, Ascent = 15 };
+        var m = new ItemMenuModel();
+        m.Set("row.1", "use;Use;;1");
+        m.Set("open", "200;200");
+        ItemMenuService.Show(m, atlas, 1920, 1080);
+        bool openingUp = CX.Ui.UiHost.DispatchMouseButton(false, 3, 205, 205, captureOnly: true);
+        check.Expect(!openingUp, "the release of the press that opened the menu goes on to NUI");
+        bool down = CX.Ui.UiHost.DispatchMouseButton(true, 1, 1500, 900, captureOnly: true);
+        bool up = CX.Ui.UiHost.DispatchMouseButton(false, 1, 1500, 900, captureOnly: true);
+        check.Expect(down && !up, "a press away closes the menu, and with no menu its release goes on to NUI");
+        ItemMenuService.Show(m, atlas, 1920, 1080);
+        CX.Ui.UiHost.DispatchMouseButton(false, 3, 205, 205, captureOnly: true);
+        bool inDown = CX.Ui.UiHost.DispatchMouseButton(true, 3, 205, 205, captureOnly: true);
+        bool inUp = CX.Ui.UiHost.DispatchMouseButton(false, 3, 205, 205, captureOnly: true);
+        check.Expect(inDown && inUp, "a press the menu took keeps its release");
         ItemMenuService.Show(new ItemMenuModel(), atlas, 1920, 1080);
     }
 
