@@ -10,7 +10,8 @@ namespace CX.Alloy;
 /// <summary>
 /// The alpha-to-coverage layer (<see cref="PassId.CoverageOwned"/>) on Vulkan: <see cref="CoverageLayer"/>'s run --
 /// every sample seeded from the lit frame and its depth, the <c>NWN_ALPHA_MODE 2</c> tail drawn forward with coverage
-/// from its alpha, then the box-resolved colour and the half-covered depth written back -- scissored to the tail's rect.
+/// from its alpha, its partly covered pixels into the reactive mask, then the box-resolved colour and the half-covered
+/// depth written back -- scissored to the tail's rect.
 /// </summary>
 public sealed unsafe partial class AlloyRenderer
 {
@@ -20,8 +21,8 @@ public sealed unsafe partial class AlloyRenderer
         public VkBackend? Dev;
         public ImageId Col, Dep;
         public int W, H, Samples, Idling;
-        public GuiVkProg? Seed, Resolve, DepthBack;
-        public PipelineId SeedPipe, ResolvePipe, DepthPipe;
+        public GuiVkProg? Seed, Resolve, DepthBack, React;
+        public PipelineId SeedPipe, ResolvePipe, DepthPipe, ReactPipe;
         public int USamples = -1;
         public bool Tried, Live;
         /// <summary>This frame's run: armed, and its viewport-space rectangle.</summary>
@@ -77,6 +78,16 @@ public sealed unsafe partial class AlloyRenderer
         if (!VkIssue(side, ref b, _gA2cStart, _gOpaqueEnd, cover, vp, viewport, near, far, indirect)) return false;
         ReadOnlySpan<ColorAttachment> ms = [new(c.Col, 0, 0, LoadOp.DontCare, StoreOp.Store, default)];
         VkFlushPass(cl, side, arena0, new RenderPassDesc(ms, new DepthAttachment(c.Dep, 0, 0, LoadOp.DontCare, StoreOp.Store, WorldDepth.Clear)));
+
+        // while the frame's depth is still the background's: the write-back below replaces it
+        side.Reset();
+        arena0 = s.ArenaUsed;
+        side.SetViewport(0, 0, w, h);
+        side.SetScissor(c.Rx, c.Ry, c.Rw, c.Rh);
+        if (!VkCoverDraw(side, s, c.React!, c.ReactPipe, c.Dep, s.Depth, 0)) return false;
+        cl.ReadImages([c.Dep, s.Depth]);
+        ReadOnlySpan<ColorAttachment> mask = [new(s.Hdr, 0, 0, LoadOp.Load, StoreOp.Store, default), VkReactiveAttach(s)];
+        VkFlushPass(cl, side, arena0, new RenderPassDesc(mask));
 
         side.Reset();
         arena0 = s.ArenaUsed;
@@ -135,15 +146,17 @@ public sealed unsafe partial class AlloyRenderer
             c.Seed = PostChainVk.Program(vk, PostChain.FullscreenVs, CoverageLayer.SeedFs, "a2c seed", _ => { }, log);
             c.Resolve = PostChainVk.Program(vk, PostChain.FullscreenVs, CoverageLayer.ResolveFs, "a2c resolve", _ => { }, log);
             c.DepthBack = PostChainVk.Program(vk, PostChain.FullscreenVs, CoverageLayer.DepthFs, "a2c depth", q => c.USamples = q.Loc("uSamples"), log);
-            if (c.Seed != null && c.Resolve != null && c.DepthBack != null)
+            c.React = PostChainVk.Program(vk, PostChain.FullscreenVs, CoverageLayer.ReactFs, "a2c reactive", _ => { }, log);
+            if (c.Seed != null && c.Resolve != null && c.DepthBack != null && c.React != null)
             {
+                c.ReactPipe = VkCoverReactPipe(vk, c.React);
                 c.ResolvePipe = VkCoverPipe(vk, c.Resolve, 1, new DepthState(), ColorMask.None, "vk a2c resolve");
                 c.DepthPipe = VkCoverPipe(vk, c.DepthBack, 1, new DepthState(true, true, WorldDepth.Nearer), ColorMask.All, "vk a2c depth");
             }
-            if (c.ResolvePipe.IsNull || c.DepthPipe.IsNull)
+            if (c.ResolvePipe.IsNull || c.DepthPipe.IsNull || c.ReactPipe.IsNull)
             {
                 c.Seed = null;
-                log.Always("AlloyRenderer: the Vulkan coverage layer's programs were REFUSED (logged above) -- NWN_ALPHA_MODE 2 "
+                log.Always("AlloyRenderer: the Vulkan coverage layer's programs were REFUSED (logged above) -- coverage "
                          + "parts draw as cutouts on Vulkan this session");
             }
         }
@@ -153,7 +166,7 @@ public sealed unsafe partial class AlloyRenderer
         if (samples > vk.Caps.MaxSamples)
         {
             c.Seed = null;
-            log.Always($"AlloyRenderer: the Vulkan device has no multisampled targets (max {vk.Caps.MaxSamples}) -- NWN_ALPHA_MODE 2 "
+            log.Always($"AlloyRenderer: the Vulkan device has no multisampled targets (max {vk.Caps.MaxSamples}) -- coverage "
                      + "parts draw as cutouts on Vulkan this session");
             return false;
         }
@@ -169,7 +182,7 @@ public sealed unsafe partial class AlloyRenderer
             VkCoverRelease(vk, c);
             c.Seed = null;
             log.Always($"AlloyRenderer: the Vulkan coverage layer's {samples}x {w}x{h} pair was REFUSED (logged above) -- "
-                     + "NWN_ALPHA_MODE 2 parts draw as cutouts on Vulkan this session");
+                     + "coverage parts draw as cutouts on Vulkan this session");
             return false;
         }
         c.W = w; c.H = h; c.Samples = samples;
@@ -187,6 +200,20 @@ public sealed unsafe partial class AlloyRenderer
         d.Targets.Depth = Format.D32F;
         d.Targets.Samples = samples;
         d.Blend[0] = new AttachmentBlend(Masked: masked);
+        return vk.CreatePipeline(in d);
+    }
+
+    /// <summary>The mask draw's pipeline: the scene colour attached and left alone, the layer's partial share
+    /// blended into the reactive mask beside it.</summary>
+    private static PipelineId VkCoverReactPipe(VkBackend vk, GuiVkProg p)
+    {
+        var d = new PipelineDesc { Vs = p.Vs, Fs = p.Fs, Raster = new RasterState(CullMode.None), Label = "vk a2c reactive" };
+        d.Targets.ColorCount = 2;
+        d.Targets.Colors[0] = Format.Rgba16F;
+        d.Targets.Colors[1] = Format.R8;
+        d.Targets.Samples = 1;
+        d.Blend[0] = new AttachmentBlend(Masked: ColorMask.All);
+        d.Blend[1] = ReactiveBlend(true);
         return vk.CreatePipeline(in d);
     }
 

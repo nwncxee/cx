@@ -40,11 +40,13 @@ internal static class AlloyClasses
     /// declared <c>NWN_ALPHA_MODE 2</c>, which beats both opacity terms because such a shader may read its
     /// coverage from a map other than texture0. Water first, the engine's own precedence.</summary>
     internal static AlloyClass Of(bool water, bool additive, bool opaque, bool declaredTransparent,
-                                  bool alphaBelowOne, bool coverage)
+                                  bool alphaBelowOne, bool coverage, bool stageBlends = false)
         => water ? AlloyClass.Water
          : additive ? AlloyClass.Additive
          // ...so filing it opaque takes it out of the layer's range and INTO the diffuse-only prepass.
          : coverage ? AlloyClass.Cutout
+         // the engine reads the keyword before the diffuse, and here the alpha it blends is the stage's own
+         : stageBlends ? AlloyClass.Blended
          : opaque ? AlloyClass.Opaque
          : declaredTransparent || alphaBelowOne ? AlloyClass.Blended
          : AlloyClass.Cutout;
@@ -83,8 +85,9 @@ internal static class AlloyClasses
         // Each row names only the terms it sets; the rest are false. Six adjacent bools spelled positionally
         // swap silently, and a swapped pair here would read as the classifier agreeing with the table.
         static AlloyClass Row(bool water = false, bool additive = false, bool opaque = false,
-                              bool declaredTransparent = false, bool alphaBelowOne = false, bool coverage = false)
-            => Of(water, additive, opaque, declaredTransparent, alphaBelowOne, coverage);
+                              bool declaredTransparent = false, bool alphaBelowOne = false, bool coverage = false,
+                              bool stageBlends = false)
+            => Of(water, additive, opaque, declaredTransparent, alphaBelowOne, coverage, stageBlends);
 
         check.Expect(Row(water: true, additive: true, opaque: true, declaredTransparent: true,
                          alphaBelowOne: true, coverage: true) == AlloyClass.Water, "water beats every other term");
@@ -111,6 +114,14 @@ internal static class AlloyClasses
         check.Expect(!Covers((int)AlloyClass.Water, true) && !Covers((int)AlloyClass.Additive, true)
           && !Covers((int)AlloyClass.Blended, true),
           "only the cutout class draws through the layer");
+
+        // A stage that blends its own alpha, expected classes written out by hand: vanilla reads the keyword before the
+        // diffuse, so an opaque or palette diffuse does not make the part opaque, and only the explicit terms beat it.
+        check.Expect(Row(stageBlends: true) == AlloyClass.Blended, "a declared transparency on a stage that writes its alpha blends");
+        check.Expect(Row(opaque: true, stageBlends: true) == AlloyClass.Blended, "and blends over an OPAQUE diffuse: the alpha is the stage's, not the texture's");
+        check.Expect(Row(stageBlends: true, coverage: true) == AlloyClass.Cutout, "mode 2 beats it: the author asked for the layer by name");
+        check.Expect(Row(water: true, stageBlends: true) == AlloyClass.Water && Row(additive: true, stageBlends: true) == AlloyClass.Additive,
+          "and so do water and additive");
 
         check.Expect(!Blends((int)AlloyClass.Opaque), "plain opaque does not blend");
         check.Expect(!Blends((int)AlloyClass.Cutout), "#357: nor does a cutout -- it writes depth, so it must be opaque");

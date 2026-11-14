@@ -92,15 +92,17 @@ public sealed unsafe partial class AlloyRenderer
         return s < _boneSlots && PaletteMoved(in _boneStage.Span[s], in _bonePrevStage.Span[s]);
     }
 
-    /// <summary>Does a moved draw join the sweep: it writes depth, and no content vertex half of its own
-    /// (<paramref name="ownVertex"/>) places it where the sweep's stock skinning would not.</summary>
-    private static bool MoverJoins(int cls, bool ownDepth, bool ownVertex)
-        => (cls == (int)AlloyClass.Opaque || cls == (int)AlloyClass.Cutout) && !(ownDepth && ownVertex);
+    /// <summary>Does a moved draw join the sweep: it writes depth -- a blended one only as a content pair's plain blend
+    /// (<paramref name="hosted"/>) -- and no content vertex half of its own (<paramref name="ownVertex"/>) places it
+    /// where the sweep's stock skinning would not.</summary>
+    private static bool MoverJoins(int cls, bool ownDepth, bool ownVertex, bool hosted = false)
+        => (cls == (int)AlloyClass.Opaque || cls == (int)AlloyClass.Cutout || cls == (int)AlloyClass.Blended && hosted)
+           && !(ownDepth && ownVertex);
 
     /// <summary>The sweep's depth test for a mover of class <paramref name="cls"/> whose content pair may cut its own
     /// coverage (<paramref name="ownCoverage"/>): EQUAL for anything with holes, so they keep the camera field.</summary>
     private static CompareOp MoverDepthOf(int cls, bool ownCoverage)
-        => cls == (int)AlloyClass.Cutout || ownCoverage ? CompareOp.Equal : WorldDepth.NearerOrEqual;
+        => cls != (int)AlloyClass.Opaque || ownCoverage ? CompareOp.Equal : WorldDepth.NearerOrEqual;
 
     /// <summary>Oracle: hand-built palettes and matrices with the steps written out as literals, and the
     /// class table's own members.</summary>
@@ -142,6 +144,9 @@ public sealed unsafe partial class AlloyRenderer
         check.Expect(MoverJoins((int)AlloyClass.Opaque, ownDepth: false, ownVertex: false), "an opaque part joins the sweep");
         check.Expect(MoverJoins((int)AlloyClass.Cutout, ownDepth: false, ownVertex: false), "a cutout part joins the sweep");
         check.Expect(!MoverJoins((int)AlloyClass.Blended, ownDepth: false, ownVertex: false), "a blended part writes no depth and stays out");
+        check.Expect(MoverJoins((int)AlloyClass.Blended, ownDepth: true, ownVertex: false, hosted: true),
+                     "a content pair's plain blend writes depth and joins the sweep");
+        check.Expect(MoverDepthOf((int)AlloyClass.Blended, ownCoverage: false) == CompareOp.Equal, "a blended mover tests EQUAL");
         check.Expect(MoverJoins((int)AlloyClass.Opaque, ownDepth: true, ownVertex: false),
                      "a content pair with the stock vertex half joins the sweep, as hair that cuts its own strands");
         check.Expect(!MoverJoins((int)AlloyClass.Opaque, ownDepth: true, ownVertex: true),

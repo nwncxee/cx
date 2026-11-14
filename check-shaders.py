@@ -626,6 +626,7 @@ def programs(g):
         "coverage layer seed": (g["cx_fullscreen_v"], g["cx_a2cseed_f"]),
         "coverage layer depth": (g["cx_fullscreen_v"], g["cx_a2cdepth_f"]),
         "coverage layer resolve": (g["cx_fullscreen_v"], g["cx_a2cres_f"]),
+        "coverage layer reactive": (g["cx_fullscreen_v"], g["cx_a2creact_f"]),
         "post bloom downsample": (g["cx_post_vs"], g["cx_bloomdn_fs"]),
         "post bloom upsample": (g["cx_post_vs"], g["cx_bloomup_fs"]),
         "post bloom (compute)": (g["cx_bloom_cs"],),

@@ -871,7 +871,7 @@ public sealed unsafe partial class AlloyRenderer
             // #242: the record this draw reads lives at the OWNERSHIP slot and outlives the frame; the draw
             // order does not, so the draw carries the slot rather than the record.
             _dSlot[n] = i;
-            if (row.Moved && MoverJoins(cls, ShaderFeatures.OutOfPrepass(feat), ContentPrograms.MayMove(feat)))
+            if (row.Moved && MoverJoins(cls, ShaderFeatures.OutOfPrepass(feat), ContentPrograms.MayMove(feat), Issue.HostedBody(lit, feat)))
                 NoteMoverDraw(n, row.Posed, row.Dangly, MoverDepthOf(cls, ContentPrograms.Cuts(feat)));
             // #287: and the same draw as the cull's source record -- the batch is the one the cut just
             // opened or extended, and its output base is where its compacted run starts.

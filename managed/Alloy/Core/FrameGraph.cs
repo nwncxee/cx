@@ -51,7 +51,7 @@ internal enum PassId
     /// After both writers and BEFORE grass, whose root blend copies the lit frame under each blade.</summary>
     DeferredLights,
     /// <summary>The alpha-to-coverage layer (<see cref="CoverageLayer"/>) -- the cutout run's
-    /// <c>NWN_ALPHA_MODE 2</c> tail, drawn forward into a multisampled copy of the lit frame and resolved
+    /// coverage tail, drawn forward into a multisampled copy of the lit frame and resolved
     /// back. After the deferred lights so the background its uncovered samples hold is final, and BEFORE
     /// grass and every pass that tests the depth it writes back.</summary>
     CoverageOwned,

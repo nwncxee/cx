@@ -44,7 +44,7 @@ internal static unsafe class ContentPrograms
         /// <summary>Both halves add nothing to their stock counterparts: the pair IS the plain lit path, and no program
         /// is built for it.</summary>
         public bool Plain;
-        public bool Cuts, Moves, ReadsPlt, ForwardOnly, NoKeyhole;
+        public bool Cuts, Moves, ReadsPlt, ForwardOnly, NoKeyhole, SetsAlpha;
         /// <summary>Is the vertex half known to add nothing to stock -- off the feed's text at registration, then the
         /// chain's at the build? A pair not known so may move its vertices, so its parts never frustum-cull.</summary>
         public bool VsStock;
@@ -219,6 +219,10 @@ internal static unsafe class ContentPrograms
     /// stock setup does not cut on)? Only once it runs: before that its parts take Alloy's cut like any other.</summary>
     internal static bool Cuts(int feat) => Of(feat) is { P.Fwd: not 0, Cuts: true };
 
+    /// <summary>Does this pair's fragment half set the fragment's alpha after its lighting call, as a stage that means
+    /// the engine to blend it does? Only once it runs, as <see cref="Cuts"/>; the build's edge re-asks the recipes.</summary>
+    internal static bool SetsAlpha(int feat) => Of(feat) is { P.Fwd: not 0, SetsAlpha: true };
+
 
     /// <summary>May this pair move its vertices -- a vertex half not known to be stock? Asked when a record's cull sphere
     /// is written, which may be before the pair builds: such a part is never frustum-culled, as a posed skin is not.</summary>
@@ -278,6 +282,8 @@ internal static unsafe class ContentPrograms
         }
         s.P = p;
         s.Epoch++;
+        // a recipe's class reads SetsAlpha, known only now
+        if (s.SetsAlpha) Db.DrawRecipe.MaterialLanded();
         Say(s, what, built);
     }
 
@@ -331,6 +337,7 @@ internal static unsafe class ContentPrograms
         if (refused != null) return false;
         s.Moves = !vsStock;
         s.Cuts = f?.Cuts ?? false;
+        s.SetsAlpha = f?.AlphaPost ?? false;
         s.ReadsPlt = (f?.ReadsPlt ?? false) || (v?.ReadsPlt ?? false);
         s.ForwardOnly = f?.ForwardOnly ?? false;
         s.NoKeyhole = f?.NoKeyhole ?? false;
