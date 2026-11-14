@@ -2,7 +2,7 @@ namespace CX.Alloy;
 
 /// <summary>
 /// What both halves of the alpha-to-coverage layer share -- the cutout parts whose material asks for coverage
-/// instead of a hard cut (<c>parameter int NWN_ALPHA_MODE 2</c> on any <c>.mtr</c>): the gate, the discard, the
+/// instead of a hard cut (<see cref="AlloyClasses.AsksCoverage"/>): the gate, the discard, the
 /// three full-screen stages and the period line's clause. The pass itself is <c>AlloyRenderer.VkCover</c>.
 /// </summary>
 internal static class CoverageLayer

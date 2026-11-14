@@ -128,6 +128,10 @@ writes depth, so it sorts correctly against everything else and needs no blendin
 `transparency 1` on the same material is fine: vanilla still draws it that way. Alloy draws a
 coverage material as an ordinary cutout when `alloy.a2c` is off.
 
+A material needs no `NWN_ALPHA_MODE` line when it declares `transparency 1` and its own fragment shader
+writes the fragment's alpha after `ApplyStandardShader()`. Vanilla blends that alpha, so Alloy draws the
+material through the same layer, with the shader's alpha as the coverage and the shader's own `discard` kept.
+
 Cards stacked at the same alpha land on the same samples, so the back one disappears. If your model
 does that, `alloy.a2cmask 1` gives every triangle its own sample pattern. Use it for testing; it is
 not a player setting.

@@ -49,6 +49,12 @@ internal static class AlloyClasses
          : declaredTransparent || alphaBelowOne ? AlloyClass.Blended
          : AlloyClass.Cutout;
 
+    /// <summary>Does this material ask for the coverage layer? A declared <c>NWN_ALPHA_MODE 2</c>, or a declared
+    /// <c>transparency</c> on a material whose own fragment stage sets the fragment's alpha after its lighting call:
+    /// the engine blends that alpha (<c>Material::GetIsOpaque</c> @0x5c6190 reads the keyword first), no cutout keeps it.</summary>
+    internal static bool AsksCoverage(int alphaMode, bool declaredTransparent, bool stageSetsAlpha)
+        => alphaMode == 2 || (declaredTransparent && stageSetsAlpha);
+
     /// <summary>Does this part draw through <see cref="CoverageLayer"/>? A declared coverage material, and
     /// only in the cutout class: water and additive keep their own passes, where the alpha is not coverage
     /// at all. The one answer the layer's batch range, the prepass exclusion and the caster all read.</summary>
@@ -111,6 +117,14 @@ internal static class AlloyClasses
         check.Expect(!Covers((int)AlloyClass.Water, true) && !Covers((int)AlloyClass.Additive, true)
           && !Covers((int)AlloyClass.Blended, true),
           "only the cutout class draws through the layer");
+
+        // Who asks for the layer, written out by hand: mode 2 alone, or the keyword AND a stage that writes the alpha.
+        check.Expect(AsksCoverage(2, false, false) && AsksCoverage(2, true, true), "mode 2 asks for the layer whatever else is declared");
+        check.Expect(AsksCoverage(0, true, true),
+          "a declared transparency on a stage that sets its own alpha asks for the layer: the engine blends that alpha");
+        check.Expect(!AsksCoverage(0, true, false), "a declared transparency on a stage that leaves the alpha alone stays a cutout");
+        check.Expect(!AsksCoverage(0, false, true), "a stage that sets its alpha on a material declaring nothing stays a cutout");
+        check.Expect(!AsksCoverage(0, false, false) && !AsksCoverage(1, false, false), "and a material that declares nothing asks for nothing");
 
         check.Expect(!Blends((int)AlloyClass.Opaque), "plain opaque does not blend");
         check.Expect(!Blends((int)AlloyClass.Cutout), "#357: nor does a cutout -- it writes depth, so it must be opaque");

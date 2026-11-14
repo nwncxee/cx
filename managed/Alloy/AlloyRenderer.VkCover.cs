@@ -9,7 +9,7 @@ namespace CX.Alloy;
 
 /// <summary>
 /// The alpha-to-coverage layer (<see cref="PassId.CoverageOwned"/>) on Vulkan: <see cref="CoverageLayer"/>'s run --
-/// every sample seeded from the lit frame and its depth, the <c>NWN_ALPHA_MODE 2</c> tail drawn forward with coverage
+/// every sample seeded from the lit frame and its depth, the coverage tail (<see cref="AlloyClasses.AsksCoverage"/>) drawn forward with coverage
 /// from its alpha, then the box-resolved colour and the half-covered depth written back -- scissored to the tail's rect.
 /// </summary>
 public sealed unsafe partial class AlloyRenderer
@@ -143,7 +143,7 @@ public sealed unsafe partial class AlloyRenderer
             if (c.ResolvePipe.IsNull || c.DepthPipe.IsNull)
             {
                 c.Seed = null;
-                log.Always("AlloyRenderer: the Vulkan coverage layer's programs were REFUSED (logged above) -- NWN_ALPHA_MODE 2 "
+                log.Always("AlloyRenderer: the Vulkan coverage layer's programs were REFUSED (logged above) -- coverage "
                          + "parts draw as cutouts on Vulkan this session");
             }
         }
@@ -153,7 +153,7 @@ public sealed unsafe partial class AlloyRenderer
         if (samples > vk.Caps.MaxSamples)
         {
             c.Seed = null;
-            log.Always($"AlloyRenderer: the Vulkan device has no multisampled targets (max {vk.Caps.MaxSamples}) -- NWN_ALPHA_MODE 2 "
+            log.Always($"AlloyRenderer: the Vulkan device has no multisampled targets (max {vk.Caps.MaxSamples}) -- coverage "
                      + "parts draw as cutouts on Vulkan this session");
             return false;
         }
@@ -169,7 +169,7 @@ public sealed unsafe partial class AlloyRenderer
             VkCoverRelease(vk, c);
             c.Seed = null;
             log.Always($"AlloyRenderer: the Vulkan coverage layer's {samples}x {w}x{h} pair was REFUSED (logged above) -- "
-                     + "NWN_ALPHA_MODE 2 parts draw as cutouts on Vulkan this session");
+                     + "coverage parts draw as cutouts on Vulkan this session");
             return false;
         }
         c.W = w; c.H = h; c.Samples = samples;

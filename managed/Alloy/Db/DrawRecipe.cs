@@ -191,8 +191,8 @@ internal static partial class DrawRecipe
     /// recipe every frame and resolving a <c>.mtr</c> there would be a dictionary lookup per recipe per
     /// frame.</summary>
     private static readonly bool[] _declWater = new bool[Max];
-    /// <summary>The material's <c>NWN_ALPHA_MODE 2</c> -- draw this part through alpha-to-coverage
-    /// (<see cref="RecipeFlag.Coverage"/>) instead of blending it. Kept per recipe for <see cref="Reclassify"/>.</summary>
+    /// <summary>The material asks for the coverage layer (<see cref="AsksCoverage"/>) -- draw this part through
+    /// alpha-to-coverage (<see cref="RecipeFlag.Coverage"/>) instead of blending it. Kept per recipe for <see cref="Reclassify"/>.</summary>
     private static readonly bool[] _coverage = new bool[Max];
     /// <summary>The material's content-program key (<see cref="GuiContent.Key"/>; 0 = none), which a GUI part draws
     /// through. Re-read with the other late material terms.</summary>
@@ -490,6 +490,10 @@ internal static partial class DrawRecipe
                                alphaBelowOne: false, coverage: _coverage[r]);
     }
 
+    /// <summary><see cref="AlloyClasses.AsksCoverage"/> of a parsed <c>.mtr</c> and the content pair it runs under.</summary>
+    private static bool AsksCoverage(MtrDef? mtr, int feat)
+        => mtr != null && AlloyClasses.AsksCoverage(mtr.AlphaMode, mtr.Transparency, ContentPrograms.SetsAlpha(feat));
+
     /// <summary>Is this material DECLARED water, i.e. water by a term the MODEL carries? The <c>.mtr</c>'s
     /// <c>sample_framebuffer 2</c> is the engine's second route into draw bucket 6 (the first is the
     /// diffuse's <c>.txi</c>, read in <see cref="ClassOf"/>), and <c>AlloyCensus.IsWater</c> reads exactly
@@ -510,10 +514,11 @@ internal static partial class DrawRecipe
         // Every input is a landed texture's answer, a landed .mtr or the bumpy-water global; a frame where
         // none moved has nothing to re-ask (this walked all recipes with string compares, twice a frame).
         int serial = System.Threading.Volatile.Read(ref TexRegistry.CoverageSerial);
-        bool material = _own.MtrSerial != _own.MtrSeen;
+        int landed = System.Threading.Volatile.Read(ref _own.MtrSerial);
+        bool material = landed != _own.MtrSeen;
         if (serial == _classSerial && PartTable.BumpyWaterOn == _classWater && !material) return 0;
         _classSerial = serial; _classWater = PartTable.BumpyWaterOn;
-        _own.MtrSeen = _own.MtrSerial;
+        _own.MtrSeen = landed;
         int moved = 0;
         for (int r = 0; r < _n; r++)
         {
@@ -525,7 +530,7 @@ internal static partial class DrawRecipe
             if (material)
             {
                 MtrDef? late = MtrDef.Of(mesh);
-                _coverage[r] = late is { AlphaMode: 2 };
+                _coverage[r] = AsksCoverage(late, _feat[r]);
                 _own.FaceTerms[r] = FacesOf(late);
                 _content[r] = GuiContent.Key(late);
                 _declWater[r] = DeclaredWater(mesh);
@@ -586,7 +591,7 @@ internal static partial class DrawRecipe
 
     /// <summary>The resource layer read a <c>.mtr</c> that was not cached before, so the next
     /// <see cref="Reclassify"/> re-asks the material's own terms. Called from the feed that read it.</summary>
-    internal static void MaterialLanded() => _own.MtrSerial++;
+    internal static void MaterialLanded() => System.Threading.Interlocked.Increment(ref _own.MtrSerial);
 
     /// <summary>The same edge for the PART columns, consumed: true once however many materials landed, so
     /// <see cref="PartTree.ReseedMaterials"/> walks at most once a frame and not at all on a quiet one.</summary>
@@ -629,7 +634,9 @@ internal static partial class DrawRecipe
         _declWater[r] = DeclaredWater(mesh);
         // Material::GetTexture @0x5c5810: the .mtr's texture wins wherever it states one.
         MtrDef? mtr = MtrDef.Of(mesh);
-        _coverage[r] = mtr is { AlphaMode: 2 };
+        // any pair the material names runs translated, unless both its halves add nothing to stock
+        int feat = ContentPrograms.Register(mtr);
+        _coverage[r] = AsksCoverage(mtr, feat);
         _own.FaceTerms[r] = FacesOf(mtr);
         // TransparencyHint is the engine's child-order sort key and never a blend (MdlNode::ReorderChildren
         // @0x558120 is its one reader); a flat sheet still keeps it, through RecipeFlag.HintBlended.
@@ -668,8 +675,6 @@ internal static partial class DrawRecipe
         if (IsSheet(mesh)) f |= RecipeFlag.Wash;
         _flags[r] = f;
         _prim[r] = 0;
-        // CX-303: any pair the material names runs translated, unless both its halves add nothing to stock
-        int feat = ContentPrograms.Register(mtr);
         _feat[r] = feat;
         // CX-317: the prewarm's edge -- interning runs on the feed's workers, so the bump is atomic
         if (ShaderFeatures.IsContent(feat)) System.Threading.Interlocked.Increment(ref _own.ContentSerial);
@@ -856,7 +861,7 @@ internal enum RecipeFlag : ushort
     Fades = 1 << 9,
     /// <summary>The mesh's texture rotates (<c>rotatetexture</c>).</summary>
     RotateTexture = 1 << 10,
-    /// <summary>A cutout whose material asks for alpha-to-coverage (<c>NWN_ALPHA_MODE 2</c>).</summary>
+    /// <summary>A cutout whose material asks for alpha-to-coverage (<see cref="AlloyClasses.AsksCoverage"/>).</summary>
     Coverage = 1 << 11,
     /// <summary>Every normal leans less than 45 degrees off +Z (<see cref="DrawRecipe.FacesUp"/>): a ground decal
     /// can be one of these.</summary>
