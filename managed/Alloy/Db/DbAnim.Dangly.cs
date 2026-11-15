@@ -60,6 +60,9 @@ public static unsafe partial class DbAnim
         /// <summary>Per worn strand, its wearer's body, refilled every frame; and the period's counters.</summary>
         internal readonly DanglyBody?[] Bodies = new DanglyBody?[SceneDb.MaxParts];
         internal int StrandParts, Capsules, CapsulesDropped;
+        /// <summary>The air clock a self-check holds, seconds, so its breeze blows the same way every run; NaN
+        /// reads the wall clock.</summary>
+        internal float PinnedClock = float.NaN;
     }
 
     private static DanglyState _dangly = new();
@@ -377,11 +380,12 @@ public static unsafe partial class DbAnim
         return float.IsFinite(p.X) && float.IsFinite(p.Y) && float.IsFinite(p.Z) ? p : Vector3.Zero;
     }
 
-    /// <summary>The air clock: wall seconds, wrapped at an hour as the shaders' clock is. Not a sum of animate
-    /// dt -- <see cref="Animate"/> runs once per SCENE, several a frame, and a sum turned the breeze that many
-    /// times too fast for the spring to follow.</summary>
+    /// <summary>The air clock: wall seconds wrapped at an hour as the shaders' clock is, or a self-check's pinned
+    /// clock while it runs. Not a sum of animate dt -- <see cref="Animate"/> runs once per SCENE, several a frame,
+    /// and a sum turned the breeze that many times too fast for the spring to follow.</summary>
     private static float DanglyClock()
-        => (float)(System.Diagnostics.Stopwatch.GetTimestamp() % (System.Diagnostics.Stopwatch.Frequency * 3600L)
+        => !float.IsNaN(_dangly.PinnedClock) ? _dangly.PinnedClock
+         : (float)(System.Diagnostics.Stopwatch.GetTimestamp() % (System.Diagnostics.Stopwatch.Frequency * 3600L)
                    / (double)System.Diagnostics.Stopwatch.Frequency);
 
     /// <summary>End of the scene walk: nothing is queued (the dispatch is inline, on the part walk, as the
