@@ -79,7 +79,32 @@ internal static partial class ContentStage
         ["cx_fixplain"] = "#define SHADER_TYPE 2\n#define LIGHTING 1\n#define NO_TEXTURE 1\n#include \"inc_standard\"\n"
                         + "uniform vec4 vDye;\nvoid main()\n{\n    FragmentColor = vec4(1.0);\n    SetupStandardShaderInputs();\n"
                         + "    FragmentColor.rgb *= vDye.rgb;\n    ApplyStandardShader();\n    gl_FragColor = FragmentColor;\n}\n",
+        // an RGB-slot part's glow: its own self-illumination under CX_ALLOY ahead of the call, the stock add after it
+        ["cx_fixselfillum"] = "#define SHADER_TYPE 2\n#define LIGHTING 1\n#include \"inc_standard\"\nuniform vec4 slotM;\nvoid main()\n{\n"
+                            + "    FragmentColor = vec4(1.0);\n    SetupStandardShaderInputs();\n"
+                            + "    vec3 display = RevertColorSpace(FragmentColor.rgb);\n    FragmentColor.rgb = ApplyColorSpace(display);\n"
+                            + "#ifdef CX_ALLOY\n    if (slotM.w > 0.0)\n        cxSelfIllum = ApplyColorSpace(display * slotM.w);\n#endif\n"
+                            + "    ApplyStandardShader();\n    FragmentColor.a = 1.0;\n    if (slotM.z > 0.0)\n        FragmentColor.a = 1.0 - slotM.z;\n"
+                            + "#ifndef CX_ALLOY\n    FragmentColor.rgb += display * max(slotM.w, 0.0);\n#endif\n"
+                            + "    gl_FragColor = FragmentColor;\n}\n",
+        ["cx_fixglowpost"] = "#include \"inc_standard\"\nuniform vec4 slotM;\nvoid main()\n{\n    FragmentColor = vec4(1.0);\n"
+                           + "    SetupStandardShaderInputs();\n    vec3 display = RevertColorSpace(FragmentColor.rgb);\n    ApplyStandardShader();\n"
+                           + "    FragmentColor.a = 1.0;\n    FragmentColor.rgb += display * max(slotM.w, 0.0);\n    gl_FragColor = FragmentColor;\n}\n",
+        ["cx_fixglowelse"] = "#define LIGHTING 1\n#include \"inc_standard\"\nuniform vec4 slotM;\nvoid main()\n{\n    FragmentColor = vec4(1.0);\n"
+                           + "    SetupStandardShaderInputs();\n    vec3 display = RevertColorSpace(FragmentColor.rgb);\n"
+                           + "#if LIGHTING == 1\n#if defined(CX_ALLOY)\n    cxSelfIllum = ApplyColorSpace(display * max(slotM.w, 0.0));\n#else\n"
+                           + "    display *= 0.5;\n#endif\n#endif\n    ApplyStandardShader();\n"
+                           + "#if !defined(CX_ALLOY)\n#if LIGHTING == 1\n    FragmentColor.rgb += display * max(slotM.w, 0.0);\n#endif\n"
+                           + "#elif LIGHTING == 1\n    FragmentColor.a = 1.0;\n#endif\n"
+                           + "#ifdef CX_ALLOY\n    FragmentColor.a = clamp(FragmentColor.a, 0.0, 1.0);\n#else\n    FragmentColor.rgb *= 2.0;\n#endif\n"
+                           + "    gl_FragColor = FragmentColor;\n}\n",
     };
+
+    /// <summary>CX_ALLOY conditionals nested in a dead branch, an <c>#else</c>, an <c>#elif</c> that opens a plain
+    /// conditional, and the lines that survive them, hand-written (<c>tools/content_stage.py</c> holds the same).</summary>
+    private const string AlloyNest = "a\n#ifndef CX_ALLOY\n#ifdef CX_ALLOY\nb\n#else\nc\n#endif\n#if X\nd\n#endif\n#else\ne\n"
+                                   + "#ifndef CX_ALLOY\nf\n#elif Y\ng\n#else\nh\n#endif\n#endif\ni";
+    private const string AlloyNestKept = "a\n\n\n\n\n\n\n\n\n\n\ne\n\n\n#if Y\ng\n#else\nh\n#endif\n\ni";
 
     /// <summary>A fixture stage's text by resref, for a golden that runs one on the device; null for any other name.</summary>
     internal static string? FixtureText(string resref) => Fixture.GetValueOrDefault(resref);
@@ -221,6 +246,30 @@ internal static partial class ContentStage
         check.Expect(eng.Host.Contains("windPointSourcesRadius[i]") && eng.Host.Contains("m_proj[3][3]")
                      && engv.Host.Contains("m_proj * vec4(vPosView, 1.0)"),
                      "the engine-named reads do not stand as the stage wrote them");
+        Result glow = Plain("cx_fixselfillum");
+        check.Expect(glow.Refused == null && glow.Post && glow.AlphaPost && !glow.ForwardOnly && glow.SelfIllum
+                     && !glow.RouteNote.Contains("forward only"),
+                     $"a glow guarded off the lit colour routes as '{glow.RouteNote}' ({glow.Refused})");
+        check.Expect(glow.Host.Contains("#define CX_CONTENT_SELFILLUM 1") && glow.Host.Contains("    cxSelfIllum = vec3(0.0);\n    fEnvMapLevel")
+                     && glow.Host.Contains("cxSelfIllum = ApplyColorSpace(display * slotM.w);")
+                     && !glow.Host.Contains("+= display") && !glow.Host.Contains("cxHoist_display"),
+                     "the CX branch's term is not set ahead of the lights and zeroed first, or the stock glow after the call survived");
+        Result unguarded = Plain("cx_fixglowpost");
+        check.Expect(unguarded.Refused == null && unguarded.ForwardOnly && !unguarded.SelfIllum
+                     && !unguarded.Host.Contains("CX_CONTENT_SELFILLUM") && !unguarded.Host.Contains("cxSelfIllum = vec3(0.0);"),
+                     "an unguarded glow after the call gets a twin, or a stage that never names the term gets it");
+        Result other = Plain("cx_fixglowelse");
+        check.Expect(other.Refused == null && other.AlphaPost && !other.ForwardOnly && other.SelfIllum
+                     && !other.Host.Contains("display *= 0.5;") && !other.Host.Contains("FragmentColor.rgb *= 2.0;")
+                     && !other.Host.Contains("+= display")
+                     && other.Host.Contains("#if LIGHTING == 1\n    FragmentColor.a = 1.0;")
+                     && other.Host.Contains("FragmentColor.a = clamp(FragmentColor.a, 0.0, 1.0);"),
+                     $"#else, #elif and nested CX_ALLOY branches: '{other.RouteNote}' ({other.Refused})");
+        check.Expect(AlloyBranch(AlloyNest) == AlloyNestKept,
+                     "CX_ALLOY conditionals nested in a dead branch, with an #else and an #elif, settle to the wrong lines");
+        check.Expect(AlloyBranch("#if defined(CX_ALLOY) && FOO\nx\n#endif\n") == "#if defined(CX_ALLOY) && FOO\nx\n#endif\n"
+                     && AlloyBranch("#ifdef CX_ALLOY\nx\n") == "#ifdef CX_ALLOY\nx\n",
+                     "a conditional not on CX_ALLOY alone, or an unclosed one, is rewritten");
         check.Expect(StockShaped(Stock.Vs, false) && StockShaped(Stock.Fs, true) && !StockShaped(Fixture["cx_fixvs"], false)
                      && !StockShaped(Stock.Fs.Replace("#include \"inc_standard\"", "#include \"my_inc\""), true)
                      && !StockShaped(Stock.Fs.Replace("ApplyStandardShader();", "ApplyStandardShader();\n    FragmentColor.r = 1.0;"), true),

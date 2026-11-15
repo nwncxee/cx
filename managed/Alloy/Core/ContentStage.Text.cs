@@ -41,6 +41,54 @@ internal static partial class ContentStage
         return sb.ToString();
     }
 
+    /// <summary><paramref name="text"/> with every conditional on <c>CX_ALLOY</c> alone settled the way the fragment
+    /// environment defines it: the CX branch kept, the other branch and the directives blanked, line count kept. Any
+    /// other conditional stays, and so does the text whole when the conditionals do not balance.</summary>
+    internal static string AlloyBranch(string text)
+    {
+        if (!text.Contains("CX_ALLOY", StringComparison.Ordinal)) return text;
+        string[] lines = text.Split('\n');
+        var stack = new List<Cond>();
+        for (int i = 0; i < lines.Length; i++)
+        {
+            bool active = stack.Count == 0 || stack[^1].On;
+            Match d = CondLine.Match(lines[i]);
+            if (!d.Success) { if (!active) lines[i] = ""; continue; }
+            string word = d.Groups[1].Value, rest = d.Groups[2].Value;
+            if (word is "if" or "ifdef" or "ifndef")
+            {
+                Match m = AlloyIf.Match(rest);
+                bool? on = word == "if" ? (m.Success ? m.Groups[1].Length == 0 : (bool?)null)
+                         : AlloyName.IsMatch(rest) ? word == "ifdef" : (bool?)null;
+                stack.Add(on is { } cx ? new Cond(true, active, active && cx, cx) : new Cond(false, active, active, false));
+                if (on != null || !active) lines[i] = "";
+                continue;
+            }
+            if (stack.Count == 0) return text;
+            Cond c = stack[^1];
+            if (word == "endif") stack.RemoveAt(stack.Count - 1);
+            else if (c.Ours && word == "else") stack[^1] = c with { On = c.Parent && !c.Taken, Taken = true };
+            else if (c.Ours && c.Taken) stack[^1] = c with { On = false };
+            else if (c.Ours)
+            {
+                // the CX branch was skipped: this #elif opens a plain conditional of its own
+                stack[^1] = new Cond(false, c.Parent, c.Parent, false);
+                if (c.Parent) { lines[i] = ElifWord.Replace(lines[i], "#${s}if", 1); continue; }
+            }
+            if (c.Ours || !c.Parent) lines[i] = "";
+        }
+        return stack.Count == 0 ? string.Join('\n', lines) : text;
+    }
+
+    /// <summary>One open conditional in <see cref="AlloyBranch"/>: is it on <c>CX_ALLOY</c>, is the text around it
+    /// emitted, is its current branch, and has a branch of it been chosen.</summary>
+    private readonly record struct Cond(bool Ours, bool Parent, bool On, bool Taken);
+
+    private static readonly Regex CondLine = new(@"^\s*#\s*(if|ifdef|ifndef|elif|else|endif)\b(.*)$", RegexOptions.Compiled);
+    private static readonly Regex AlloyName = new(@"^\s+CX_ALLOY\s*(?://.*|/\*.*)?$", RegexOptions.Compiled);
+    private static readonly Regex ElifWord = new(@"#(?<s>\s*)elif\b", RegexOptions.Compiled);
+    private static readonly Regex AlloyIf = new(@"^\s+(!\s*)?defined\s*(?:\(\s*CX_ALLOY\s*\)|\s+CX_ALLOY)\s*(?://.*|/\*.*)?$", RegexOptions.Compiled);
+
     /// <summary>Every name the region already has a meaning for: the macros of the environments (less the helpers'
     /// guards) and the globals they declare. A stage's own declaration of one is dropped, because it would redeclare
     /// what the environment maps it to.</summary>

@@ -90,6 +90,10 @@
     // bloom can see it; undeclared (-1) and the engine model take it at 1.
     if ((slots & CX_SLOT_ILLUM) != 0)
         lit += CxLinear(textureGrad(uIllumTex, uv, tapDx, tapDy).rgb) * (uMaterial.x > 0.5 && d.ext2.x >= 0.0 ? d.ext2.x : 1.0);
+#ifdef CX_CONTENT_SELFILLUM
+    // a content stage's own self-illumination (cx_content_f), linear, where the map's lands
+    lit += cxSelfIllum;
+#endif
     // ordering: the reflection weights below feed the screen march and the G-buffer, so they scale with the same amount
     float ownLook;
     lit = CxSilhouetteApply(CxSilhouetteSurface(lit, albedo, N, V, vWorld, CxSilhouetteAmount(slots), CxClock() * 0.001), ownLook);

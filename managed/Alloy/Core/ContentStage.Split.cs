@@ -96,16 +96,19 @@ internal static partial class ContentStage
     }
 
     /// <summary>Does a post body touch nothing but the alpha? It may write <c>FragmentColor = vec4(FragmentColor.rgb, x)</c>
-    /// or <c>FragmentColor.a</c>, its own locals, and discard; a call it could not be sure of, or any other write, says no.</summary>
+    /// or <c>FragmentColor.a</c>, its own locals, discard, and hand the colour on unchanged (<c>gl_FragColor = FragmentColor</c>);
+    /// a call it could not be sure of, or any other write, says no.</summary>
     private static bool AlphaOnly(string post)
     {
-        string held = FragmentAlpha.Replace(KeepsRgb.Replace(post, "cxHeld = vec4("), "cxHeld");
+        string held = FragmentAlpha.Replace(KeepsRgb.Replace(HandOff.Replace(post, ""), "cxHeld = vec4("), "cxHeld");
         if (Regex.IsMatch(held, @"\bFragmentColor\b")) return false;
         var locals = new HashSet<string>(LocalNames.Matches(held).Select(m => m.Groups[1].Value)) { "cxHeld" };
         return AssignTarget.Matches(held).All(m => locals.Contains(m.Groups[1].Value))
             && CallName.Matches(held).All(m => PureCalls.Contains(m.Groups[1].Value));
     }
 
+    /// <summary>The hand-off to <c>gl_FragColor</c>, which the rename has made the colour assigned to itself.</summary>
+    private static readonly Regex HandOff = new(@"\bFragmentColor\s*=\s*FragmentColor\s*;", RegexOptions.Compiled);
     private static readonly Regex KeepsRgb = new(@"\bFragmentColor\s*=\s*vec4\s*\(\s*FragmentColor\s*\.\s*rgb\s*,", RegexOptions.Compiled);
     private static readonly Regex FragmentAlpha = new(@"\bFragmentColor\s*\.\s*a\b", RegexOptions.Compiled);
     private static readonly Regex LocalNames = new(@"\b(?:float|int|uint|bool|vec[234]|mat[234])\s+([A-Za-z_]\w*)", RegexOptions.Compiled);

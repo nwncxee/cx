@@ -227,6 +227,9 @@ void CxConFillLights()
 vec2 cxConUV;
 float fEnvMapLevel;
 float fOcclusion;
+// CX's own, no stock name: LINEAR light a stage sets under #ifdef CX_ALLOY ahead of its ApplyStandardShader(). The
+// host zeroes it first, and the lit stage adds it where the self-illumination map lands, forward, deferred and GUI.
+vec3 cxSelfIllum;
 
 // ---- helpers the macros above use
 int CxConBound(int bit) { return (int(uDraw[vDraw].pbr.w) & bit) != 0 ? 1 : 0; }

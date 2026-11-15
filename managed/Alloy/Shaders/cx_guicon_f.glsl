@@ -127,6 +127,9 @@ void main()
     bool own = vec3(fSpecularity, fRoughness, fMetallicness) != pbr || SpecularColor != specColour;
     vec4 c = own && (flags & 4) != 0 ? GuiSpecShade(r, flags, FragmentColor.rgb, vFragmentNormal)
                                      : GuiShade(r, flags, FragmentColor.rgb, 1.0, envLevel, vFragmentNormal);
+#ifdef CX_CONTENT_SELFILLUM
+    c.rgb += cxSelfIllum;
+#endif
     float part = c.a;
     c.a = FragmentColor.a;
 #ifdef CX_CONTENT_POST

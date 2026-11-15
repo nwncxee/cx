@@ -297,9 +297,12 @@ works out its own colour calls it after it has both. Where the engine would ligh
   result is drawn as it leaves it.
 
 A pair whose statements after the call change the colour, or one that reads the engine's per-light arrays, draws forward only:
-the deferred path has no lit colour to give it. Statements that only set the alpha and discard on it do not count, so such
-a pair stays deferred. The alpha you leave in `FragmentColor` (or `gl_FragColor`) is
-the part's coverage. `#define KEYHOLING 0` keeps the part from dissolving, as it does in the engine.
+the deferred path has no lit colour to give it. Statements that only set the alpha and discard on it do not count, and
+neither does the hand-off `gl_FragColor = FragmentColor;`, so such a pair stays deferred. These facts are read off the
+branch Alloy compiles: a conditional on `CX_ALLOY` alone (`#ifdef`, `#ifndef`, `#if defined(CX_ALLOY)`,
+`#if !defined(CX_ALLOY)`, with their `#else`, `#elif` and nesting) counts only its CX side, so an edit after the call
+under `#ifndef CX_ALLOY` keeps the deferred twin. Any other conditional counts both ways. The alpha you leave in
+`FragmentColor` (or `gl_FragColor`) is the part's coverage. `#define KEYHOLING 0` keeps the part from dissolving, as it does in the engine.
 
 **Its own depth.** A pair whose vertex half runs, or whose fragment half makes its own coverage (a discard, a
 written alpha, `ENVIRONMENT_MAP 1` or `NO_TEXTURE 1`), places or cuts its own depth. Its parts go through the
@@ -327,6 +330,26 @@ Alloy's values:
 - `inc_scriptable`'s block, set by name from the engine's own constants;
 - the stock helpers (`ApplyColorSpace`, `ColorToBrightness`, `AlphaDiscard`, `SetupTSB`, the noise and hash
   functions and so on).
+
+**Self-illumination.** A fragment half also has `vec3 cxSelfIllum`, a CX name the stock client does not declare, so
+write it under `#ifdef CX_ALLOY`. It is **linear** light: zero when your `main()` starts, and what you leave in it
+when `ApplyStandardShader()` is called is added to the lit colour where the self-illumination map's is, after the
+lights and before the dissolve and the fog, forward, deferred and on a GUI part alike. A glow the stock stage adds
+after the call in display space moves ahead of it, with the stock add kept for the stock client:
+
+```glsl
+#ifdef CX_ALLOY
+    cxSelfIllum = ApplyColorSpace(display * glow);
+#endif
+    ApplyStandardShader();
+#ifndef CX_ALLOY
+    FragmentColor.rgb += display * glow;
+#endif
+```
+
+A write after the call comes too late to be added, and is itself an edit after the call. A stage that never names
+`cxSelfIllum` compiles as if it did not exist, so an override of `cx_content_f.shd` that predates it still builds
+those stages.
 
 "View space" is world space with the eye at the origin, so `normalize(vPosView)` is the view direction and
 `m_view_inv * vPosView` is the world position, as they are in the engine. The full map is `cx_content_f.glsl`,
