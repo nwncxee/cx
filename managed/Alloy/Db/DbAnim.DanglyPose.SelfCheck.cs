@@ -14,6 +14,9 @@ public static unsafe partial class DbAnim
     private const int PoseFrames = 120;
     /// <summary>One 60 Hz frame, seconds.</summary>
     private const float PoseDt = 1f / 60f;
+    /// <summary>The air clock a fixture starts on, seconds: the wind-free breeze then blows along +Y, through the
+    /// strip's face, rather than in its plane where a flat strip barely moves.</summary>
+    private const float PoseClock = MathF.PI / 2f / BreezeTurn;
 
     /// <summary>The approved examples over this fixture, in a file of their own.</summary>
     static partial void DanglyPoseApprovedExamples(Checker check);
@@ -116,6 +119,7 @@ public static unsafe partial class DbAnim
     private static float PoseFrame(PoseSubject s, bool windy)
     {
         DanglyPart(s.Flap, PoseDt, windy);
+        _dangly.PinnedClock += PoseDt;
         PoseRead(s);
         Matrix4x4 w = SceneDb.PartWorld[s.Flap];
         VanillaDangly.Run(s.Mesh.Positions, s.Def.Constraints, s.Def.Displacement, s.Def.Tightness, s.Def.Period,
@@ -161,7 +165,8 @@ public static unsafe partial class DbAnim
     }
 
     /// <summary>Run <paramref name="body"/> over a freshly seated door, with the dangly knobs at their declared
-    /// defaults so the user's own cx.cfg cannot steer it, then put the knobs back and drop the door.</summary>
+    /// defaults and the air clock pinned so neither the user's cx.cfg nor the hour can steer it, then put both
+    /// back and drop the door.</summary>
     private static void PoseRun(Checker check, string what, bool vegetation, bool creature,
                                 Action<PoseSubject> body)
     {
@@ -186,6 +191,7 @@ public static unsafe partial class DbAnim
         Dangly.Collide.Set(false);
         bool interior = FrameInputs.Interior, skinning = AlloyRenderer.SelfCheckSkinning(true);
         FrameInputs.Interior = false;
+        _dangly.PinnedClock = PoseClock;
         try
         {
             PoseAt(s, Quaternion.Identity, Quaternion.Identity, Vector3.Zero);
@@ -195,6 +201,7 @@ public static unsafe partial class DbAnim
         {
             for (int k = 0; k < knobs.Length; k++) knobs[k].Parse(had[k]);
             FrameInputs.Interior = interior;
+            _dangly.PinnedClock = float.NaN;
             AlloyRenderer.SelfCheckSkinning(skinning);
             DanglyForget(obj);
             DropDangly(obj, first, m.Nodes.Length);
