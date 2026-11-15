@@ -58,14 +58,14 @@ internal static partial class GpuGolden
     /// the device refused the stage.</summary>
     private static TintAnswer[]? ContentTintRun(VkBackend vk, Checker check, ExtenderLog log, string resref, ReadOnlySpan<TintCase> cases)
     {
-        string head = ShaderSource.Get("cx_ownlit_head.glsl"), mat = ShaderSource.Get("cx_material.glsl");
+        string mat = ShaderSource.Get("cx_matsynth.glsl");
         string env = ShaderSource.Get("cx_content_f.glsl");
         const string Open = "#ifndef CX_CON_HAS_SetupSpecularity\n";
         int from = env.IndexOf(Open, StringComparison.Ordinal);
         int to = from < 0 ? -1 : env.IndexOf("#endif\n", from, StringComparison.Ordinal);
         string synth = Function(mat, "vec3 CxSynthPbr("), spec = Function(mat, "vec3 CxSpecColor(");
-        string consts = Declaration(ShaderSource.Get("cx_slotbits.glsl"), "CX_SLOT_NORMAL") + Declaration(head, "CX_SPEC_MIN")
-                      + Declaration(head, "CX_METAL_GAIN_MAP") + Declaration(head, "CX_MID_GREY") + Declaration(head, "CX_ENV_SPEC_MAX");
+        string consts = Declaration(ShaderSource.Get("cx_slotbits.glsl"), "CX_SLOT_NORMAL") + Declaration(mat, "CX_SPEC_MIN")
+                      + Declaration(mat, "CX_METAL_GAIN_MAP") + Declaration(mat, "CX_MID_GREY") + Declaration(mat, "CX_ENV_SPEC_MAX");
         string feat = ShaderSource.Get("cx_featdecl.glsl");
         int featAt = feat.IndexOf("#define CX_FEAT_CONTENT0", StringComparison.Ordinal);
         bool found = to > from && synth.Length > 0 && spec.Length > 0 && featAt >= 0;

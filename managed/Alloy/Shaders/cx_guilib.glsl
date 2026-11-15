@@ -77,6 +77,30 @@ vec4 GuiTexel(int r, int flags, out float envLevel)
     return t;
 }
 
+// The light a lit draw's surface takes, ambient plus diffuse and still linear, and its one directional light: a
+// server's (the record's direction and colour lanes), else the engine's fixed key, whose directional share is 0.75.
+vec3 GuiLight(int r, int flags, vec3 un, bool nrm, out vec3 keyDir, out vec3 keyCol)
+{
+    if ((flags & 128) != 0)
+    {
+        keyDir = normalize(uGui[r + 9].xyz);
+        keyCol = uGui[r + 11].rgb;
+        float k = nrm ? max(dot(un, keyDir), 0.0) : 1.0;
+        return uGui[r + 10].rgb + keyCol * k;
+    }
+    keyDir = normalize(vec3(0.35, 0.5, 0.8));
+    keyCol = vec3(0.75);
+    float k = nrm ? max(dot(un, keyDir), 0.0) : 1.0;
+    return GuiLin(uGui[r + 10].rgb) * 0.3 + GuiLin(uGui[r + 11].rgb) * (0.25 + 0.75 * k);
+}
+
+// A lit surface colour off its light: the server's light adds the emissive after the albedo, the fixed key under it.
+vec3 GuiLitColour(int r, int flags, vec3 albedo, vec3 lit)
+{
+    vec3 emi = GuiLin(uGui[r + 12].rgb);
+    return (flags & 128) != 0 ? albedo * lit + emi : albedo * (lit + emi);
+}
+
 // A linear surface colour under the draw's light or its globalColor, still linear.
 vec4 GuiShade(int r, int flags, vec3 albedo, float alpha, float envLevel, vec3 n)
 {
@@ -84,20 +108,10 @@ vec4 GuiShade(int r, int flags, vec3 albedo, float alpha, float envLevel, vec3 n
     {
         bool nrm = dot(n, n) > 1e-8;
         vec3 un = nrm ? normalize(n) : vec3(0.0, 0.0, 1.0);
-        vec3 lit, emi = GuiLin(uGui[r + 12].rgb);
-        if ((flags & 128) != 0)
-        {
-            float k = nrm ? max(dot(un, normalize(uGui[r + 9].xyz)), 0.0) : 1.0;
-            lit = uGui[r + 10].rgb + uGui[r + 11].rgb * k;
-        }
-        else
-        {
-            float k = nrm ? max(dot(un, normalize(vec3(0.35, 0.5, 0.8))), 0.0) : 1.0;
-            lit = GuiLin(uGui[r + 10].rgb) * 0.3 + GuiLin(uGui[r + 11].rgb) * (0.25 + 0.75 * k);
-        }
+        vec3 keyDir, keyCol;
+        vec3 lit = GuiLight(r, flags, un, nrm, keyDir, keyCol);
         if ((flags & 768) == 768) albedo = mix(albedo, GuiEnvTexel(un), envLevel);
-        vec3 shaded = (flags & 128) != 0 ? albedo * lit + emi : albedo * (lit + emi);
-        return vec4(shaded, alpha * uGui[r + 11].a);
+        return vec4(GuiLitColour(r, flags, albedo, lit), alpha * uGui[r + 11].a);
     }
     vec4 g = uGui[r + 9];
     vec4 vc = (flags & 2) != 0 ? vec4(GuiLin(vColor.rgb), vColor.a) : vec4(1.0);

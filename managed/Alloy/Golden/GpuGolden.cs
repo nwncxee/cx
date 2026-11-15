@@ -62,6 +62,7 @@ internal static partial class GpuGolden
         ContentClipSelfCheck(vk, check, log);
         ContentLanesSelfCheck(vk, check, log);
         GuiTwinSelfCheck(vk, check, log);
+        GuiTwinSpecSelfCheck(vk, check, log);
         FsrSelfCheck(vk, check, log);
         FsrResolveApprovedSelfCheck(vk, check, log);
         FsrSkyRegressionSelfCheck(vk, check, log);

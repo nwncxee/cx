@@ -53,6 +53,10 @@ uint CxCluster(float depth) { return 0u; }
 uint CxClusterWalk(uint cluster) { return 0u; }
 int CxLightSlot(int w) { return -1; }
 vec3 CxLinear(vec3 c) { return pow(max(c, vec3(0.0)), vec3($SRGB$)); }
+// The engine's lobe: a GUI program never uploads light.brdf, so it reads the engine's own forms.
+const vec4 uMaterial = vec4(0.0);
+#include "cx_matsynth.glsl"
+#include "cx_lobe.glsl"
 
 #include "cx_vanenv_f.glsl"
 
@@ -64,14 +68,28 @@ float CxPltScheme(int draw, int layer)
     return (int(uGui[cxGuiRec + 13].x) & 32) != 0 && layer >= 0 && layer < 10 ? GuiPltRow(cxGuiRec, layer) / CX_PLT_HEIGHT : 0.0;
 }
 
-// A GUI part shades without a specular lobe, so a stage's rebuild of one has nothing to do.
-#define CX_CON_HAS_SetupSpecularity
-void SetupSpecularity(vec3 c) { }
-
 //$GUI-CONTENT-REGION
 
 // A GUI scene never alpha-tests (Scene::RenderOnlyGobs), so the stock setup's cut has nothing to do.
 bool CxCoverCut(float coverage, float alpha) { return false; }
+
+// A lit part whose stage gave it a material of its own, as inc_lighting.shd's ComputeLighting shades one under
+// SPECULAR_LIGHT: the diffuse share 1 - fEnvironmentSpecularity, the environment as specular light scaled by that
+// specularity, and the directional light's lobe, all under the material's specular colour.
+vec4 GuiSpecShade(int r, int flags, vec3 albedo, vec3 n)
+{
+    bool nrm = dot(n, n) > 1e-8;
+    vec3 un = nrm ? normalize(n) : vec3(0.0, 0.0, 1.0);
+    vec3 L, keyCol;
+    vec3 lit = GuiLight(r, flags, un, nrm, L, keyCol);
+    vec3 V = -normalize(vPos);
+    float NoV = max(dot(un, V), 0.0);
+    float rough = max(fRoughness, CX_ALPHA_MIN);
+    float envSpec = mix(mix(fSpecularity, 1.0, CxFresnel(NoV) * cxFresnel), fSpecularity, sqrt(rough));
+    vec3 specLight = lit * ((flags & 768) == 768 ? GuiEnvTexel(un) : CX_ENV_GREY_LIN) * envSpec;
+    if (nrm) specLight += keyCol * (max(dot(un, L), 0.0) * CxSpecLobe(un, V, L, rough, fSpecularity) * CxSpecBase(NoV, rough));
+    return vec4(GuiLitColour(r, flags, albedo, lit * (1.0 - envSpec)) + SpecularColor * specLight, uGui[r + 11].a);
+}
 
 void main()
 {
@@ -84,21 +102,31 @@ void main()
     uPixel = vec4(vec2(1.0) / max(uGuiScreen, vec2(1.0)), uGuiScreen.x / max(uGuiScreen.y, 1.0), 0.0);
     uDraw[0].model = mat4(1.0);
     uDraw[0].rot = vec4(1.0, 0.0, 0.0, 1.0);
-    uDraw[0].amb = uDraw[0].dif = uDraw[0].spc = vec4(1.0);
+    uDraw[0].amb = uDraw[0].dif = vec4(1.0);
+    uDraw[0].spc = vec4(0.0);
     uDraw[0].emi = vec4(0.0);
     uDraw[0].pbr = vec4(0.0, 0.0, 0.0, float(uGuiSlots));
     uDraw[0].feat = vec4(float(CX_FEAT_CONTENT0), -1.0, float(uGuiRow), 0.0);
     CxHostTexel = vec4(ApplyColorSpace(t.rgb), t.a);
     CxHostUV = vUv;
-    CxHostMat = vec4(0.0, 0.0, envLevel, 0.0);
+    float specTexel = (uGuiSlots & CX_SLOT_SPEC) != 0 ? texture(uSpecTex, vUv).r : 0.0;
+    float roughTexel = (uGuiSlots & CX_SLOT_ROUGH) != 0 ? texture(uRoughTex, vUv).r : 0.0;
+    vec3 pbr = CxSynthPbr(uDraw[0].pbr.xyz, uGuiSlots, envLevel, specTexel, roughTexel);
+    vec3 specColour = CxSpecColor(uDraw[0].spc, CxHostTexel.rgb, pbr.z, uGuiSlots);
+    CxHostMat = vec4(specTexel, roughTexel, envLevel, 0.0);
     FragmentColor = vec4(1.0);
     vFragmentNormal = vNrm;
     vSurfaceNormal = vNrm;
     vViewToSurface_n = normalize(vPos);
-    fSpecularity = 0.0; fRoughness = 1.0; fMetallicness = 0.0;
-    SpecularColor = vec3(0.0);
+    fSpecularity = pbr.x; fRoughness = pbr.y; fMetallicness = pbr.z;
+    SpecularColor = specColour;
+    cxFresnel = CxBareMaterial(uDraw[0].pbr.xyz, uGuiSlots) ? 0.0 : 1.0;
     CxHostSurface(CX_FEAT_CONTENT0);
-    vec4 c = GuiShade(r, flags, FragmentColor.rgb, 1.0, envLevel, vFragmentNormal);
+    envLevel = fEnvMapLevel;
+    // the GUI's own shading stays the part's until its stage rebuilds or edits the material it was handed
+    bool own = vec3(fSpecularity, fRoughness, fMetallicness) != pbr || SpecularColor != specColour;
+    vec4 c = own && (flags & 4) != 0 ? GuiSpecShade(r, flags, FragmentColor.rgb, vFragmentNormal)
+                                     : GuiShade(r, flags, FragmentColor.rgb, 1.0, envLevel, vFragmentNormal);
     float part = c.a;
     c.a = FragmentColor.a;
 #ifdef CX_CONTENT_POST
