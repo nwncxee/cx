@@ -363,8 +363,9 @@ rules:
 - A pair that samples only `texUnit0` compiles as the engine compiles it, fed `m_mvp`, `m_mv`, `m_texture`, `globalColor`,
   `screenParams` and `texUnit0`. A load screen runs this way.
 - A pair with a stock vertex half that samples any later unit runs its fragment half inside the GUI's own program. It
-  reads the same parameters, object values and `texUnit1`..`texUnit10` as in an area, and lights by the GUI's light. It
-  has no fog, keyhole, area light or probe, and a stage's own light loop finds no lights. `texUnitNoise` samples the
+  reads the same parameters, object values and `texUnit1`..`texUnit10` as in an area, and lights by the GUI's light.
+  When it sets its own material or calls `SetupSpecularity`, it also gets stock's specular highlight from that light
+  and its reflection weighted by its shine; one that does neither shades as a stock GUI part does. It has no fog, keyhole, area light or probe, and a stage's own light loop finds no lights. `texUnitNoise` samples the
   diffuse there.
 - A pair that samples past `texUnit0` with its own vertex half draws its baked texture. `GuiContent` says so in the log.
 
