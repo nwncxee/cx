@@ -28,9 +28,14 @@ internal static class ChatExamplesKit
         return atlas;
     }
 
-    /// <summary>A plain one-tab window that can send on every channel.</summary>
+    /// <summary>A plain one-tab window that sends on DM: its channel button and tab label are capitals, which the kit
+    /// atlas has no glyphs for, so every letter a frame draws is a typed or message letter.</summary>
     internal static ChatWindow Window(float x, float y, float w = 400f, float h = 300f)
-        => new(x, y, w, h, new[] { new Tab("All", 0xffffffff) });
+    {
+        var win = new ChatWindow(x, y, w, h, new[] { new Tab("DM", 0x400) });
+        win.ClampSendChannel();
+        return win;
+    }
 
     /// <summary>The window's frame, with the typing bar open on <paramref name="text"/> when <paramref name="typing"/>.</summary>
     internal static RenderFrame Build(ChatWindow win, GlyphAtlas atlas, bool typing, string text = "", int caret = -1,
@@ -83,9 +88,8 @@ internal static class ChatExamplesKit
         return q.Glyph && i >= 0 && i < 26 ? (char)('a' + i) : '\0';
     }
 
-    /// <summary>The typed line's letters: letter glyphs right of the channel button.</summary>
-    internal static List<Quad> Typed(RenderFrame f, ChatWindow win)
-        => Quads(f).FindAll(q => Letter(q) != '\0' && q.X0 >= win.X + ChatWindow.DropdownW);
+    /// <summary>The typed line's letters: every letter glyph the frame draws (no message is in the store).</summary>
+    internal static List<Quad> Typed(RenderFrame f, ChatWindow win) => Quads(f).FindAll(q => Letter(q) != '\0');
 
     /// <summary>The caret: the 2 px wide fill right of the channel button.</summary>
     internal static Quad? Caret(RenderFrame f, ChatWindow win)

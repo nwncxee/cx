@@ -90,6 +90,7 @@ public sealed partial class ChatWindow
         win.SendChannel = Channel.Talk; win.InputOnTop = true;
         float syT = win.StripTop;
         check.Expect(System.Math.Abs(syT - (win.Y + TabBarH)) < 0.001f, "above-mode strip sits under the tab bar");
+        check.Expect(System.Math.Abs(win.ChannelItemTop(0) - (win.Y + TabBarH + FooterH)) < 0.001f, "above: the list opens under the strip, not over it");
         check.Expect(win.MouseDown(win.X + 5, syT + 5), "above: dropdown button consumes");
         check.Expect(win.ChannelListOpen, "above: dropdown opens");
         float item2YT = win.ChannelItemTop(2) + 2;             // Whisper, stacked downward

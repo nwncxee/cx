@@ -90,7 +90,7 @@ partial class ChatService
         {
             var win = Window(0, 0);
             var store = new ChatStore();
-            store.Append(new ChatLine(1u, "", 0, "", new[] { new ColorRun("pq", 1, 1, 1) }, System.DateTime.UtcNow, "pq"));
+            store.Append(new ChatLine(0x400u, "", 0, "", new[] { new ColorRun("pq", 1, 1, 1) }, System.DateTime.UtcNow, "pq"));
             win.Toggles &= ~(ChatToggle.Timestamp | ChatToggle.Portrait);
             var f = Build(win, atlas, true, "abc", store: store);
             var msg = Quads(f).FindAll(q => Letter(q) is 'p' or 'q');
