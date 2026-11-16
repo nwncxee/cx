@@ -109,9 +109,10 @@ internal static class ClickThroughApprovedExamples
             var s = new SettingsWindow();
             var face = PanelFace();
             s.OpenAt(main, 1280, 800, 20f, face, face, 0, layout.Windows);
+            PickWindow(s, main, 1);
             var row = s.Rows.Find(r => r.Act == SetAct.ClickThroughOf && r.Key == "1");
-            check.Expect(row != null, "E21 Main's gear lists window 2's Click-through");
-            if (row != null) PressRow(s, main, row);
+            check.Expect(row != null, "E21 Main's gear reaches window 2's Click-through through its window list");
+            if (row != null) PressRow(s, win, row);
             s.Reset();
             check.Expect(!win.ClickThrough && layout.WindowAt(700, 650) == 1, "E21 unticked, the pointer over it is over the window again");
             check.Expect(TabBar(Build(win, atlas, false, hover: true), 500, 500, 400), "E21 unticked, hovering shows its tab bar");

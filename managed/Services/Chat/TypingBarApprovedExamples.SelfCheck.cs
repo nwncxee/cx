@@ -6,7 +6,7 @@ using static CX.Services.Chat.ChatExamplesKit;
 
 namespace CX.Services.Chat;
 
-/// <summary>The typing bar's approved examples (E1-E3, E6-E9). Oracle: rects and positions worked by hand from the
+/// <summary>The typing bar's approved examples (E1-E3, E6-E9, E26, E28). Oracle: rects and positions worked by hand from the
 /// kit's 40 px letters, a 28 px bar and tab bar, and 400 x 300 windows with no outline, whose line holds 296 px
 /// (7.4 letters) from x 98. The 13-letter line is 520 px, so at its end it is scrolled 224 px and h|i sits 96 px in.</summary>
 internal static class TypingBarApprovedExamples
@@ -102,19 +102,40 @@ internal static class TypingBarApprovedExamples
             check.Expect(above, $"E8 the newest message draws above the typing bar ({msg.Count} letters)");
         }
 
-        // Given Input on top is ticked for a chat window
+        // Given Input on top is ticked for a chat window whose tab bar shows
         // When the player presses Enter to chat
         // Then the typing bar lies inside the window, just under its tab bar
         {
             var win = Window(0, 500);
             win.InputOnTop = true;
-            win.AutoHideFrame = true;
+            win.AutoHideFrame = true; win.AutoHideHeader = false;
             var f = Build(win, atlas, true, "abc");
             const float Top = 500f + 28f;
             bool under = Caret(f, win) is Quad c && c.Y0 >= Top && c.Y1 <= Top + BarH;
             foreach (var q in Typed(f)) under &= q.Y0 >= Top && q.Y1 <= Top + BarH;
             check.Expect(under, "E9 the bar's letters and caret sit in the row under the tab bar");
             check.Expect(Bounds(f).Y0 >= 500f, "E9 nothing of the bar draws above the window");
+        }
+
+        // Given Input on top and Auto-hide header are ticked for a chat window, the pointer away from it
+        // When the player presses Enter to chat
+        // Then the typing bar sits in the tab bar's place, along the window's top edge
+        {
+            var win = Window(0, 500);
+            win.InputOnTop = true; win.AutoHideHeader = true; win.AutoHideFrame = true;
+            var f = Build(win, atlas, true, "abc");
+            check.Expect(!TabBar(f, 0, 500, 400) && InBand(f, win, 500f), "E26 the bar sits in the hidden tab bar's place, along the top edge");
+        }
+
+        // Given the tab bar showing over the typing bar of a window with Input on top and Auto-hide header ticked
+        // When the player moves the pointer away from the window
+        // Then the tab bar hides and the typing bar moves back up to the window's top edge
+        {
+            var win = Window(0, 500);
+            win.InputOnTop = true; win.AutoHideHeader = true; win.AutoHideFrame = true;
+            Build(win, atlas, true, "abc", hover: true);
+            var back = Build(win, atlas, true, "abc");
+            check.Expect(!TabBar(back, 0, 500, 400) && InBand(back, win, 500f), "E28 leaving hides the tab bar and the bar moves back to the top edge");
         }
 
         if (check.Ok) log.Info("TypingBarApprovedExamples.SelfCheck: passed");
