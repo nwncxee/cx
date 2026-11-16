@@ -110,7 +110,7 @@ internal static class ClickThroughApprovedExamples
             var face = PanelFace();
             s.OpenAt(main, 1280, 800, 20f, face, face, 0, layout.Windows);
             PickWindow(s, main, 1);
-            var row = s.Rows.Find(r => r.Act == SetAct.ClickThroughOf && r.Key == "1");
+            var row = s.Rows.Find(r => r.Act == SetAct.ClickThrough);
             check.Expect(row != null, "E21 Main's gear reaches window 2's Click-through through its window list");
             if (row != null) PressRow(s, win, row);
             s.Reset();

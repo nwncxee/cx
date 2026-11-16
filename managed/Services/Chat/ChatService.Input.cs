@@ -70,10 +70,8 @@ public sealed unsafe partial class ChatService
             if (_settings.Open)
             {
                 bool cs = _settings.MouseDown(x, y, fwin);
-                if (_settings.WindowPicked >= 0)
+                if (FollowPick(_layout, _settings))
                 {
-                    _layout.FocusedIndex = _settings.WindowPicked;
-                    _settings.WindowPicked = -1;
                     fwin = _layout.Focused;
                     if (IsTyping) CloseChat(false);
                 }
@@ -120,9 +118,8 @@ public sealed unsafe partial class ChatService
             if (EditPress(fwin, x, y)) return true;
             // Check focused first: it owns the strip and a channel list that can stack past its frame.
             if (DownOnWindow(_layout.FocusedIndex, x, y)) return true;
-            int hit = _layout.WindowAt(x, y);
-            if (hit < 0 || hit == _layout.FocusedIndex) return false;
-            _layout.FocusedIndex = hit;
+            int hit = FocusAt(_layout, x, y);
+            if (hit < 0) return false;
             if (!DownOnWindow(hit, x, y)) Rebuild();
             return true;
         }
@@ -159,6 +156,26 @@ public sealed unsafe partial class ChatService
             if (cu) { SaveConfig(); Rebuild(); return true; }
         }
         return false;
+    }
+
+    /// <summary>A press over a window other than the focused one focuses it; its index, or -1 when the press is over
+    /// the focused window or none.</summary>
+    internal static int FocusAt(ChatLayout layout, float x, float y)
+    {
+        int hit = layout.WindowAt(x, y);
+        if (hit < 0 || hit == layout.FocusedIndex) return -1;
+        layout.FocusedIndex = hit;
+        return hit;
+    }
+
+    /// <summary>The settings panel's window list switched windows: focus the picked one, so every later press edits
+    /// it. True when it did.</summary>
+    internal static bool FollowPick(ChatLayout layout, SettingsWindow settings)
+    {
+        if (settings.WindowPicked < 0) return false;
+        layout.FocusedIndex = settings.WindowPicked;
+        settings.WindowPicked = -1;
+        return true;
     }
 
     /// <summary>A press in the typing window's edit text (<c>chat.mouse</c>): place the caret (Shift extends the

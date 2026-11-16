@@ -6,8 +6,8 @@ using static CX.Services.Chat.ChatExamplesKit;
 
 namespace CX.Services.Chat;
 
-/// <summary>Approved examples of where typing goes and of click-through windows that already held before either
-/// changed (E12, E17, E22-E25, E33), kept as regressions, and a window's gear holding no other window's click-through
+/// <summary>Approved examples E12, E17, E22-E25 and E33 of where typing goes, click-through windows and the
+/// window list, kept as regressions, a tab drop refused by a click-through window, and a window's gear holding no other window's click-through
 /// (the window list reaches those). Oracle: window rects and channel bits written by hand.</summary>
 internal static class ChatWindowRegressions
 {
@@ -25,8 +25,8 @@ internal static class ChatWindowRegressions
             layout.FocusedIndex = layout.TypingWindow();
             check.Expect(layout.FocusedIndex == 0, "E12 the bar is open in Main first");
             float tabX = 500f + second.TabW * 1.5f, tabY = 2f;
-            int hit = layout.WindowAt(tabX, tabY);
-            if (hit >= 0 && layout.Windows[hit].MouseDown(tabX, tabY)) layout.FocusedIndex = hit;
+            int hit = ChatService.FocusAt(layout, tabX, tabY);
+            if (hit >= 0) layout.Windows[hit].MouseDown(tabX, tabY);
             second.MouseUp(tabX, tabY);
             check.Expect(layout.Focused == second && second.SendChannel == Channel.Party,
                          $"E12 a click on the Party tab of a second window moves typing there on Party (window {layout.FocusedIndex}, {second.SendChannel})");
@@ -55,7 +55,7 @@ internal static class ChatWindowRegressions
             layout.AddWindow(Window(500, 0));
             var s = new SettingsWindow();
             s.OpenAt(main, 1280, 800, 20f, PanelFace(), PanelFace(), 0, layout.Windows);
-            check.Expect(s.Rows.Find(r => r.Act == SetAct.ClickThroughOf && r.Key == "0") == null,
+            check.Expect(s.Rows.Find(r => r.Act == SetAct.ClickThrough) == null,
                          "E22 Main's gear offers no Click-through for Main");
             s.Reset();
         }
@@ -92,7 +92,7 @@ internal static class ChatWindowRegressions
             layout.AddWindow(Window(500, 400));
             var s = new SettingsWindow();
             s.OpenAt(second, 1280, 800, 20f, PanelFace(), PanelFace(), 1, layout.Windows);
-            check.Expect(s.Rows.FindAll(r => r.Act == SetAct.ClickThroughOf).TrueForAll(r => r.Key == "1"),
+            check.Expect(s.Rows.FindAll(r => r.Act == SetAct.ClickThrough).Count == 1,
                          "a second window's gear holds only its own Click-through, not the other windows'");
             s.Reset();
         }
@@ -116,6 +116,13 @@ internal static class ChatWindowRegressions
             s.OpenAt(main, 1280, 800, 20f, PanelFace(), PanelFace(), 0, new[] { main });
             check.Expect(s.Panel.HeaderChoices.Length == 0, "E33 a lone Main has no window list");
             s.Reset();
+        }
+
+        {
+            var win = Window(500, 0);
+            int ordinary = win.TabBarDropIndex(510, 10);
+            win.ClickThrough = true;
+            check.Expect(ordinary == 0 && win.TabBarDropIndex(510, 10) == -1, "a tab dropped on a click-through window's hidden tab bar does not land there");
         }
 
         if (check.Ok) log.Info("ChatWindowRegressions.SelfCheck: passed");

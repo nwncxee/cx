@@ -5,8 +5,7 @@ using static CX.Services.Chat.ChatExamplesKit;
 
 namespace CX.Services.Chat;
 
-/// <summary>Approved examples of the typing bar that already held before the bar moved inside the window (E4, E5,
-/// E10, E27, E29), kept as regressions. Oracle: positions worked by hand from the kit's 40 px letters and a 400 px window, whose
+/// <summary>Approved examples E4, E5, E10, E27 and E29 of the typing bar, kept as regressions. Oracle: positions worked by hand from the kit's 40 px letters and a 400 px window, whose
 /// line starts at x 98 (the 92 px channel button plus 6 px of padding, at scale 1).</summary>
 internal static class TypingBarRegressions
 {

@@ -6,7 +6,7 @@ using static CX.Services.Chat.ChatExamplesKit;
 namespace CX.Services.Chat;
 
 /// <summary>The settings panel's window list: approved examples E30-E32 and E34. Oracle: the window names and the windows each
-/// panel edits, written by hand; a pick is the shell's focus move, which every later press then edits.</summary>
+/// panel edits, written by hand; a pick goes through the shell's own focus move, which every later press then edits.</summary>
 internal static class WindowPickerApprovedExamples
 {
     internal static void SelfCheck(ExtenderLog log)
@@ -45,7 +45,7 @@ internal static class WindowPickerApprovedExamples
             var s = new SettingsWindow();
             s.OpenAt(main, 1280, 800, 20f, face, face, 0, layout.Windows);
             PickWindow(s, main, 1);
-            var row = s.Rows.Find(r => r.Act == SetAct.ClickThroughOf);
+            var row = s.Rows.Find(r => r.Act == SetAct.ClickThrough);
             if (row != null) PressRow(s, second, row);
             s.Reset();
             check.Expect(row != null && !second.ClickThrough && layout.WindowAt(700, 650) == 1, "E31 unticked from Main's list, Window 2 takes the pointer again");
@@ -64,7 +64,7 @@ internal static class WindowPickerApprovedExamples
             var s = new SettingsWindow();
             s.OpenAt(main, 1280, 800, 20f, face, face, 0, layout.Windows);
             PickWindow(s, main, 1);
-            layout.FocusedIndex = s.WindowPicked;
+            ChatService.FollowPick(layout, s);
             var lockRow = s.Rows.Find(r => r.Act == SetAct.LockWin);
             if (lockRow != null) PressRow(s, layout.Focused, lockRow);
             s.Reset();
@@ -89,10 +89,4 @@ internal static class WindowPickerApprovedExamples
 
         if (check.Ok) log.Info("WindowPickerApprovedExamples.SelfCheck: passed");
     }
-}
-
-partial class ChatService
-{
-    /// <summary>Runs <see cref="WindowPickerApprovedExamples"/> from the chat self-check list.</summary>
-    static partial void WindowPickerExamples(ExtenderLog log) => WindowPickerApprovedExamples.SelfCheck(log);
 }

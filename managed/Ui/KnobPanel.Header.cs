@@ -35,8 +35,11 @@ public sealed partial class KnobPanel
     /// <summary>A labelled dropdown in the header, left of the header button; empty = none. A pick runs
     /// <see cref="HeaderChoicePicked"/> with its index after setting <see cref="HeaderChoice"/>.</summary>
     public string[] HeaderChoices = System.Array.Empty<string>();
+    /// <summary>The word drawn left of the header dropdown's box.</summary>
     public string HeaderChoiceLabel = "";
+    /// <summary>The header dropdown's shown entry.</summary>
     public int HeaderChoice;
+    /// <summary>Runs after a pick in the header dropdown, with the picked index.</summary>
     public System.Action<int>? HeaderChoicePicked;
     /// <summary>The open list's tag while it is the header dropdown's, so a pick is told from a row's.</summary>
     private static readonly object HeaderChoiceTag = new();
@@ -72,10 +75,10 @@ public sealed partial class KnobPanel
         HeaderButtonRect(out float hx0, out float hx1, out float hy0, out float hy1);
         if (!Art(skin, NativeChrome.Button, hx0, hy0, hx1, hy1))
         {
-            Fill(b, hx0, hy0, hx1, hy1, PanelChrome.NavOn);
-            Outline(b, hx0, hy0, hx1, hy1, PanelChrome.Frame2);
+            Fill(b, hx0, hy0, hx1, hy1, NavOn);
+            Outline(b, hx0, hy0, hx1, hy1, Frame2);
         }
-        UiText.Draw(b, body, HeaderAction, hx0 + 0.9f * Em, hbase, PanelChrome.Tx, hx1 - 0.4f * Em);
+        UiText.Draw(b, body, HeaderAction, hx0 + 0.9f * Em, hbase, Tx, hx1 - 0.4f * Em);
         return hx0 - 0.6f * Em;
     }
 
@@ -85,10 +88,10 @@ public sealed partial class KnobPanel
         if (HeaderChoices.Length == 0) return titleClip;
         HeaderChoiceRect(out float x0, out float x1, out float y0, out float y1);
         string cur = (uint)HeaderChoice < (uint)HeaderChoices.Length ? HeaderChoices[HeaderChoice] : "";
-        Dropdown.DrawBox(b, body, x0, y0, x1, y1, hbase, cur, PanelChrome.C(PanelChrome.Input), PanelChrome.Tx);
-        Outline(b, x0, y0, x1, y1, Drop.Open && ReferenceEquals(Drop.Tag, HeaderChoiceTag) ? PanelChrome.Accent2 : PanelChrome.Frame2);
+        Dropdown.DrawBox(b, body, x0, y0, x1, y1, hbase, cur, C(Input), Tx);
+        Outline(b, x0, y0, x1, y1, Drop.Open && ReferenceEquals(Drop.Tag, HeaderChoiceTag) ? Accent2 : Frame2);
         float lx = x0 - 0.4f * Em - UiText.Measure(body, HeaderChoiceLabel);
-        UiText.Draw(b, body, HeaderChoiceLabel, lx, hbase, PanelChrome.Tx2, x0);
+        UiText.Draw(b, body, HeaderChoiceLabel, lx, hbase, Tx2, x0);
         return lx - 0.6f * Em;
     }
 
@@ -119,6 +122,6 @@ public sealed partial class KnobPanel
     {
         if (Modal) return;
         string g = Collapsed ? ExpandGlyph : CollapseGlyph;
-        UiText.Draw(b, body, g, closeX0 - CloseW + (CloseW - UiText.Measure(body, g)) * 0.5f, hbase, PanelChrome.Grip, closeX0);
+        UiText.Draw(b, body, g, closeX0 - CloseW + (CloseW - UiText.Measure(body, g)) * 0.5f, hbase, Grip, closeX0);
     }
 }

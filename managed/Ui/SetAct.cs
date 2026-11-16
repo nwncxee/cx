@@ -8,5 +8,5 @@ public enum SetAct
     None, ToggleBit, InputTop, AutoHideHdr, AutoHideFrame, LockWin, TellsHere, AnimOn, SliderHold, SliderFade, SliderTau, SliderFont, Typeface, OutlineOn,
     CycleFmt, CycleSrc, CycleAlign, CycleTellOpen, CycleBgMode, SliderBgAngle, SliderBgStart, SliderBgEnd,
     TabRemove, TabLabel, TabChannel, CloseWindow,
-    CopyFrom, ClickThroughOf,
+    CopyFrom, ClickThrough,
 }

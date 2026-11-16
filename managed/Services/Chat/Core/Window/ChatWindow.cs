@@ -480,6 +480,7 @@ public sealed partial class ChatWindow
     /// index (0..<see cref="Tabs"/>.Count) if the pointer is over the tab bar, or -1 if outside.</summary>
     public int TabBarDropIndex(float mx, float my)
     {
+        if (ClickThrough) return -1;
         if (my < Y || my > Y + TabBarH || mx < X || mx >= X + W - ButtonsW) return -1;
         int n = _tabs.Length;
         float tw = TabWFor(n);
@@ -494,7 +495,7 @@ public sealed partial class ChatWindow
     /// <summary>True while the scrollbar thumb is being dragged (the shell resets the fade clock as it moves).</summary>
     public bool ScrollDragging => _grab == Grab.Scroll;
 
-    public bool Contains(float mx, float my) => mx >= X && mx <= X + W && my >= Y && my <= Y + H;
+    private bool Contains(float mx, float my) => mx >= X && mx <= X + W && my >= Y && my <= Y + H;
 
     /// <summary>True when a press, wheel or hover at the point belongs to this window rather than the game.</summary>
     public bool TakesPointer(float mx, float my) => !ClickThrough && Contains(mx, my);
@@ -505,7 +506,6 @@ public sealed partial class ChatWindow
         if (ClickThrough) return false;
         if (Contains(mx, my)) return true;
         if (!FooterVisible) return false;
-        if (mx >= X && mx < X + W && my >= StripTop && my < StripTop + FooterH) return true;
         if (ChannelListOpen)
         {
             int rows = 0;

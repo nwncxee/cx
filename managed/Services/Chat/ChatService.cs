@@ -33,9 +33,6 @@ public sealed unsafe partial class ChatService : IExtenderService
     /// and HotkeyInputService observes the vanilla chat-focus hooks instead. The one pivot both services read.</summary>
     public static bool Enabled => ChatKnobs.Enabled.Boot;
 
-    /// <summary>The settings panel's window list examples, kept in their own approved-examples file.</summary>
-    static partial void WindowPickerExamples(ExtenderLog log);
-
     public void Initialize(ExtenderLog log, HookService hooks)
     {
         _log = log;
@@ -66,7 +63,7 @@ public sealed unsafe partial class ChatService : IExtenderService
         TypingBarApprovedExamples.SelfCheck(log);
         InputWindowApprovedExamples.SelfCheck(log);
         ClickThroughApprovedExamples.SelfCheck(log);
-        WindowPickerExamples(log);
+        WindowPickerApprovedExamples.SelfCheck(log);
         string[] names = FontRegistry.Names;   // "default" first: the window's own entry stands in for it
         var faces = new string[names.Length];
         faces[0] = SettingsWindow.FollowUi;

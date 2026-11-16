@@ -88,9 +88,6 @@ public sealed partial class SettingsWindow
     public bool Open => Panel.Open;
     public List<Row> Rows => Panel.Rows;
 
-    /// <summary>Number of chat windows (snapshot), used to show "Copy from Window N" rows (the panel is modal, so the
-    /// count can't change while it's open).</summary>
-    public int WindowCount => _windows.Length;
     /// <summary>Index of the window this panel is editing (0 = Main). Set by the shell on open.</summary>
     public int WindowIndex;
 
@@ -158,9 +155,8 @@ public sealed partial class SettingsWindow
         AddToggle(rows, SetAct.TellsHere, "Tells here", win.TellsHere, 0,
                   "Tells land in this window. Only one window can hold this.");
         if (win.Closeable)
-            rows.Add(new Row { Ctl = KnobKind.Toggle, Act = SetAct.ClickThroughOf, Text = "Click-through", On = win.ClickThrough,
-                               Key = WindowIndex.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                               HelpText = "Clicks and the mouse wheel go through this window to the game, and pointing at it shows nothing. To give it back, open another window's gear and pick this one in its Window list." });
+            AddToggle(rows, SetAct.ClickThrough, "Click-through", win.ClickThrough, 0,
+                      "Clicks and the mouse wheel go through this window to the game, and pointing at it shows nothing. To give it back, open another window's gear and pick this one in its Window list.");
         // A pending pick shows at once: the shell sets the knob only after the press returns.
         AddDropdown(rows, SetAct.CycleTellOpen, "Tell auto-open", TellOpenNames, TellOpenPicked >= 0 ? TellOpenPicked : ChatKnobs.TellOpen.V,
                     "Where a tell from someone new lands: nowhere special, a new tab, or its own window.");
@@ -208,11 +204,11 @@ public sealed partial class SettingsWindow
         }
 
         // Copy from another window (hidden when only one window exists).
-        if (WindowCount > 1) AddSection(rows, "Other windows");
-        for (int wi = 0; wi < WindowCount; wi++)
+        if (_windows.Length > 1) AddSection(rows, "Other windows");
+        for (int wi = 0; wi < _windows.Length; wi++)
         {
             if (wi == WindowIndex) continue;
-            rows.Add(new Row { Ctl = KnobKind.Button, Act = SetAct.CopyFrom, Text = $"Copy from Window {wi + 1}",
+            rows.Add(new Row { Ctl = KnobKind.Button, Act = SetAct.CopyFrom, Text = "Copy from " + WindowName(wi, _windows.Length),
                                Key = wi.ToString(System.Globalization.CultureInfo.InvariantCulture) });
         }
 
@@ -276,7 +272,7 @@ public sealed partial class SettingsWindow
 
     /// <summary>Open the panel centred in a <paramref name="vpW"/>×<paramref name="vpH"/> viewport on the faces the
     /// shell baked at <paramref name="em"/> (null faces lay out on estimates and draw nothing). Opens on the
-    /// window category. <paramref name="winIndex"/> and <paramref name="winCount"/> drive the "Copy from" rows.</summary>
+    /// window category. <paramref name="windows"/> drives the "Copy from" rows and the header's window list.</summary>
     public void OpenAt(ChatWindow win, float vpW, float vpH, float em = KnobPanel.FacePx,
                        GlyphAtlas? body = null, GlyphAtlas? small = null, int winIndex = 0, ChatWindow[]? windows = null)
     {
@@ -301,7 +297,6 @@ public sealed partial class SettingsWindow
     /// <summary>The header's window list picked <paramref name="i"/>: the panel now edits that window, from its window page.</summary>
     private void OnWindowPicked(int i)
     {
-        if ((uint)i >= (uint)_windows.Length) return;
         _win = _windows[i];
         WindowIndex = i; WindowPicked = i; CloseArmed = false;
         ShowWindow(i);
@@ -385,12 +380,7 @@ public sealed partial class SettingsWindow
             case SetAct.CopyFrom:
                 CopyRequested = ParseIndex(row.Key);
                 break;
-            case SetAct.ClickThroughOf:
-            {
-                int wi = ParseIndex(row.Key);
-                if (wi > 0 && wi < _windows.Length) _windows[wi].ClickThrough = !_windows[wi].ClickThrough;
-                break;
-            }
+            case SetAct.ClickThrough: win.ClickThrough = !win.ClickThrough; break;
         }
     }
 

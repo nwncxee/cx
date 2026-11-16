@@ -51,11 +51,11 @@ public static partial class WindowRenderer
     private const float Inset = 3f;
 
     /// <summary>How opaque each chat surface draws: the window and its outline let the world through, the
-    /// header band and input bar less so, the accent and selection plates least.</summary>
+    /// header band and typing bar less so, the accent and selection plates least.</summary>
     internal const byte BgA = 0xbd, HeaderA = 0xd9, AccentA = 0xf2, InputA = 0xe6, SelA = 0xb3;  // not-an-offset: alphas
 
     /// <summary>The chat chrome by meaning, each role at the alpha its surface draws: the window background and
-    /// the second colour a gradient runs to, the header band, the accent, the input bar, the selection, the
+    /// the second colour a gradient runs to, the header band, the accent, the typing bar, the selection, the
     /// outline, the label text.</summary>
     internal static uint Bg => Theme.Rgba(Role.PanelBg, BgA);
     internal static uint Bg2 => Theme.Rgba(Role.NavOn, BgA);
@@ -150,10 +150,9 @@ public static partial class WindowRenderer
         // each tab is a NUI button -- so a hovered tab snaps to its hot art instead of easing a wash in.
         bool hasUnread = false;
         for (int i = 0; i < tabs.Count; i++) if (tabs[i].Unread && tabs[i].Ephemeral) { hasUnread = true; break; }
-        bool ghost = win.ClickThrough;   // click-through: the pointer and an unread tab reveal nothing
-        if (ghost) showGrip = false;
+        if (win.ClickThrough) showGrip = false;
         bool inside = showGrip || settings.Open || hasUnread;
-        bool showHeader = !ghost && (!win.AutoHideHeader || inside), showFrame = !ghost && (!win.AutoHideFrame || inside);
+        bool showHeader = !win.ClickThrough && (!win.AutoHideHeader || inside), showFrame = !win.ClickThrough && (!win.AutoHideFrame || inside);
         win.HeaderShown = showHeader;
         float fa = p.Frame.a;
         if (sk != null)

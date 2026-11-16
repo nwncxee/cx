@@ -291,3 +291,5 @@ alloy\.vrs(contrast)?\b|\bcx_vrs_cs\b|\bVkRate(State|Push)?\b|\bRateTexel\b|\bSh
 alloy\.aniso\b	CX-530
 # The chat typing bar is one row that scrolls sideways, so there are no wrapped rows for the arrows to move between.
 chat\.rows\b	CX-544
+# The chat line the player types in is the typing bar (GLOSSARY: input strip); 'input bar' was a third name for it.
+\binput bar\b	CX-544
