@@ -44,7 +44,7 @@ public sealed unsafe class HotkeyServerLinkService : IExtenderService
     [UnmanagedCallersOnly]
     private static uint OnInbound(IntPtr self, byte* data, uint size)
     {
-        ClientApi.LiveMessage = self;   // the live CNWCMessage; cache for outbound sends (g_pAppManager segfaults here)
+        ClientApi.LiveMessage = self;   // the live CNWCMessage; every outbound send goes through it
         if (size >= 3 && data[0] == FrameMarker && data[1] == PortalMajor && data[2] == PortalActivate)
             _log?.Always("server: portal activated -- the server sends this client on to another server");
 
