@@ -117,7 +117,7 @@ public sealed unsafe partial class ChatService
             for (int i = _layout.Count - 1; i >= 0; i--)
             {
                 if (i == _layout.FocusedIndex) continue;
-                if (_layout.Windows[i].Contains(x, y))
+                if (_layout.Windows[i].TakesPointer(x, y))
                 {
                     _layout.FocusedIndex = i;
                     if (DownOnWindow(i, x, y)) return true;
@@ -201,7 +201,7 @@ public sealed unsafe partial class ChatService
             GlyphAtlas? body = TextRig.Face(_panelPx) ?? TextRig.Atlas;   // cold: a miss bakes, on the input thread
             _settings.Panel.Title = _layout.Count > 1 ? $"Chat window {index + 1}" : "Chat window";
             _settings.OpenAt(win, TextRig.ViewportW, TextRig.ViewportH, _panelPx, body, TextRig.Face(_panelSmallPx) ?? body,
-                             winIndex: index, winCount: _layout.Count);
+                             winIndex: index, winCount: _layout.Count, windows: _layout.Windows);
             Rebuild(); return true;
         }
         // Portrait click: intercept before ChatWindow.MouseDown (which would consume it as a body no-op).
@@ -297,9 +297,9 @@ public sealed unsafe partial class ChatService
         for (int i = 0; i < wins.Length; i++) if (wins[i].TabDragActive) { tabDrag = true; break; }
         _anyTabDrag = tabDrag;
         bool fiDrag = (uint)fi < (uint)wins.Length && wins[fi].Dragging && !wins[fi].TabDragActive;
-        if ((uint)fi < (uint)wins.Length && (wins[fi].Contains(x, y) || fiDrag)) newHover = fi;
+        if ((uint)fi < (uint)wins.Length && (wins[fi].TakesPointer(x, y) || fiDrag)) newHover = fi;
         else for (int i = wins.Length - 1; i >= 0; i--)
-            if (wins[i].Contains(x, y) || (wins[i].Dragging && !wins[i].TabDragActive)) { newHover = i; break; }
+            if (wins[i].TakesPointer(x, y) || (wins[i].Dragging && !wins[i].TabDragActive)) { newHover = i; break; }
         // Portrait hover: hit-test the topmost window's portrait rects for a highlight.
         int oldPortraitHover = -1;
         int newPortraitHover = -1;
@@ -349,12 +349,9 @@ public sealed unsafe partial class ChatService
         if (_settings.Open) { _settings.MouseWheel(dy); return true; }   // the panel / its open list scrolls; it draws itself
         // Find the topmost window under the pointer (focused draws last = checked first).
         ChatWindow[] wins = _layout.Windows;
-        ChatWindow? hit = null; int hitIdx = -1;
-        int fi = _layout.FocusedIndex;
-        if ((uint)fi < (uint)wins.Length && wins[fi].Contains(_lastMx, _lastMy)) { hit = wins[fi]; hitIdx = fi; }
-        else for (int i = wins.Length - 1; i >= 0; i--)
-            if (wins[i].Contains(_lastMx, _lastMy)) { hit = wins[i]; hitIdx = i; break; }
-        if (hit == null) return false;
+        int hitIdx = _layout.WindowAt(_lastMx, _lastMy);
+        if ((uint)hitIdx >= (uint)wins.Length) return false;
+        ChatWindow hit = wins[hitIdx];
         GlyphAtlas? atlas = TextRig.Atlas;
         if (atlas == null) return true;
         float before = hit.Active.ScrollPx;

@@ -112,13 +112,13 @@ public static partial class WindowRenderer
     /// clears the body's bottom scissor edge instead of being clipped flush against it.</summary>
     public const float BottomPad = 4f;
 
-    /// <summary>Assemble a chatbox frame. <paramref name="atlas"/> is the face the body text draws in (the
-    /// window's own); <paramref name="chrome"/> the UI face the tab bar, buttons, input strip and channel list
-    /// draw in (sized by <see cref="Metrics.Scale"/>, which follows the UI face) -- null = the body face.
-    /// <paramref name="showFooter"/> draws the edit line; <paramref name="showGrip"/> the corner resize grip.</summary>
+    /// <summary>Assemble a chatbox frame. <paramref name="atlas"/> is the body face (the window's own); <paramref name="chrome"/>
+    /// the UI face the tab bar, buttons, input strip and channel list draw in -- null = the body face.
+    /// <paramref name="showFooter"/> draws the edit line; <paramref name="showGrip"/> the corner resize grip;
+    /// <paramref name="counter"/> overrides <c>chat.counter</c>.</summary>
     public static RenderFrame Build(ChatWindow win, SettingsWindow settings, ChatStore store, GlyphAtlas atlas,
                                     bool showFooter, string editText, int caret, bool showGrip,
-                                    (int start, int end)? selection = null, GlyphAtlas? chrome = null)
+                                    (int start, int end)? selection = null, GlyphAtlas? chrome = null, bool? counter = null)
     {
         var p = ResolvePalette();
         List<SkinCmd>? sk = ChatSkin.Native ? new List<SkinCmd>() : null;
@@ -374,7 +374,7 @@ public static partial class WindowRenderer
         // Pop-out input strip: below the frame, a channel dropdown at its left + a word-wrapped edit
         // line that grows the strip DOWNWARD one FooterH per wrapped row (so long input never clips).
         if (showFooter)
-            EmitInputStrip(b, chrome, win, editText, caret, selection, p, sk);
+            EmitInputStrip(b, chrome, win, editText, caret, selection, p, sk, counter ?? ChatKnobs.Counter.V);
 
         // Resize grip: three nested parallel diagonal lines in the bottom-right corner (the classic
         // "gripper"), shown while the pointer is over the window.
@@ -592,13 +592,13 @@ public static partial class WindowRenderer
     /// Geometry comes from <see cref="InputStripLayout"/>, so the caret drawn here and the one a click computes
     /// are the same. Caret and selection are mapped from UTF-16 indices into wrapped rune rows.</summary>
     private static void EmitInputStrip(VertexBatch b, GlyphAtlas atlas, ChatWindow win, string editText,
-                                       int caret, (int start, int end)? selection, Pal p, List<SkinCmd>? sk)
+                                       int caret, (int start, int end)? selection, Pal p, List<SkinCmd>? sk, bool counter)
     {
         float fh = ChatWindow.FooterH, ins = Inset * Metrics.Scale;
         float baseDrop = (fh - atlas.LineHeight) * 0.5f + atlas.Ascent;
 
         List<Rune> runes = _runesScratch ??= new List<Rune>();
-        InputStripLayout.Layout(win, atlas, editText, runes,
+        InputStripLayout.Layout(win, atlas, editText, runes, counter,
                                 out List<TextWrapper.LineSpan> wraps, out float startX, out _);
         int rows = wraps.Count;
         win.FooterRows = rows;   // set BEFORE reading StripTop: in above-mode StripTop depends on FooterHeight
@@ -649,7 +649,7 @@ public static partial class WindowRenderer
             }
         }
 
-        if (ChatKnobs.Counter.V)
+        if (counter)
         {
             bool near = editText.Length >= InputStripLayout.CounterWarn;
             string txt = near ? $"{editText.Length}/{EditBuffer.MaxLength}" : editText.Length.ToString();

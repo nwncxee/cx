@@ -33,6 +33,11 @@ public sealed unsafe partial class ChatService : IExtenderService
     /// and HotkeyInputService observes the vanilla chat-focus hooks instead. The one pivot both services read.</summary>
     public static bool Enabled => ChatKnobs.Enabled.Boot;
 
+    /// <summary>The approved examples of the typing bar, where Enter opens it, and click-through windows.</summary>
+    static partial void TypingBarApprovedExamples(ExtenderLog log);
+    static partial void InputWindowApprovedExamples(ExtenderLog log);
+    static partial void ClickThroughApprovedExamples(ExtenderLog log);
+
     public void Initialize(ExtenderLog log, HookService hooks)
     {
         _log = log;
@@ -58,6 +63,9 @@ public sealed unsafe partial class ChatService : IExtenderService
         NameCompleter.SelfCheck(log);  // Tab name completion
         HistoryFile.SelfCheck(log);    // saved sent-line history escaping
         SpeechNotify.SelfCheck(log);   // which lines raise a desktop notification
+        TypingBarApprovedExamples(log);
+        InputWindowApprovedExamples(log);
+        ClickThroughApprovedExamples(log);
         string[] names = FontRegistry.Names;   // "default" first: the window's own entry stands in for it
         var faces = new string[names.Length];
         faces[0] = SettingsWindow.FollowUi;

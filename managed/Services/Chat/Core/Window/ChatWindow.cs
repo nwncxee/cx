@@ -142,6 +142,8 @@ public sealed partial class ChatWindow
     public bool Locked;
     /// <summary>When true, incoming Tell auto-opens route here instead of the focused window.</summary>
     public bool TellsHere;
+    /// <summary>The pointer goes through this window to the game, and hovering it reveals nothing. Never on Main.</summary>
+    public bool ClickThrough;
 
     /// <summary>Pass-1 wrap cache: block heights + content height, keyed on (width, content, settings).
     /// Volatile swap so concurrent builds see a consistent snapshot.</summary>
@@ -495,6 +497,9 @@ public sealed partial class ChatWindow
 
     public bool Contains(float mx, float my) => mx >= X && mx <= X + W && my >= Y && my <= Y + H;
 
+    /// <summary>True when a press, wheel or hover at the point belongs to this window rather than the game.</summary>
+    public bool TakesPointer(float mx, float my) => Contains(mx, my);
+
     /// <summary>Full UI hit-test: frame + input strip + open channel dropdown.</summary>
     public bool HitTestFull(float mx, float my)
     {
@@ -590,7 +595,7 @@ public sealed partial class ChatWindow
             { _pressConsumed = true; return true; }                // click in the input strip: consume, no-op
         }
 
-        if (!Contains(mx, my)) { _pressConsumed = false; return false; }
+        if (!TakesPointer(mx, my)) { _pressConsumed = false; return false; }
         _pressConsumed = true;
         // Scrollbar track stops one ResizeGrip above the bottom (see SbTrackH), so thumb and grip no longer
         // share the bottom-right corner -- both stay grabbable regardless of test order.

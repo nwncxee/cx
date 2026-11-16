@@ -53,6 +53,28 @@ public sealed class ChatLayout
         get { ChatWindow[] w = _windows; int i = _focusedIndex; return w[(uint)i < (uint)w.Length ? i : 0]; }
     }
 
+    /// <summary>Index of the window Enter opens the typing bar in, or -1 when no window can send: the focused
+    /// window when it can, else Main.</summary>
+    public int TypingWindow()
+    {
+        ChatWindow[] w = _windows;
+        int fi = _focusedIndex;
+        if ((uint)fi < (uint)w.Length && w[fi].HasSendable) return fi;
+        return w[0].HasSendable ? 0 : -1;
+    }
+
+    /// <summary>Index of the topmost window that takes the pointer at the point, or -1: the focused window (drawn
+    /// last) first, then the rest in reverse draw order.</summary>
+    public int WindowAt(float x, float y)
+    {
+        ChatWindow[] w = _windows;
+        int fi = _focusedIndex;
+        if ((uint)fi < (uint)w.Length && w[fi].TakesPointer(x, y)) return fi;
+        for (int i = w.Length - 1; i >= 0; i--)
+            if (i != fi && w[i].TakesPointer(x, y)) return i;
+        return -1;
+    }
+
     /// <summary>Append a window and return it, or null when the <see cref="MaxWindows"/> cap is reached.
     /// Atomic array swap; <see cref="FocusedIndex"/> is unaffected.</summary>
     public ChatWindow? AddWindow(ChatWindow w)

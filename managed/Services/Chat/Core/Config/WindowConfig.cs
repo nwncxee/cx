@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using CX.Ui;
 
 namespace CX.Services.Chat.Core;
 
@@ -31,4 +33,49 @@ public sealed class WindowConfig
 
     /// <summary>Persisted tabs: (label, channel mask as hex, pinned player name, kept). Empty = use the hardcoded defaults.</summary>
     public readonly List<(string Label, uint Mask, string Pin, bool Kept)> Tabs = new();
+
+    /// <summary>The window's persisted fields, tabs aside: the caller adds the tabs it keeps.</summary>
+    public static WindowConfig Capture(ChatWindow win)
+    {
+        var wc = new WindowConfig { X = win.X, Y = win.Y, W = win.W, H = win.H };
+        wc.Toggles = win.Toggles; wc.InputOnTop = win.InputOnTop;
+        wc.SendChannel = (int)win.SendChannel;
+        wc.AnimEnabled = win.AnimEnabled; wc.HoldSec = win.HoldSec;
+        wc.FadeSec = win.FadeSec; wc.TauMs = win.TauMs;
+        wc.Outline = win.Outline;
+        wc.FontPx = win.FontPx; wc.Typeface = win.Typeface;
+        wc.TimeFormat = (int)win.TimeFormat; wc.TimeSource = (int)win.TimeSource;
+        wc.Align = (int)win.Align;
+        wc.BgMode = (int)win.BgMode; wc.BgAngle = win.BgAngle; wc.BgStart = win.BgStart; wc.BgEnd = win.BgEnd;
+        wc.AutoHideHeader = win.AutoHideHeader; wc.AutoHideFrame = win.AutoHideFrame;
+        wc.Locked = win.Locked;
+        wc.TellsHere = win.TellsHere;
+        return wc;
+    }
+
+    /// <summary>Put the persisted look and behaviour back on <paramref name="win"/>; a null field leaves its default.</summary>
+    public void ApplyTo(ChatWindow win)
+    {
+        win.Toggles = Toggles;
+        win.InputOnTop = InputOnTop;
+        if (SendChannel >= 0 && SendChannel <= 5) win.SendChannel = (Channel)SendChannel;
+        if (AnimEnabled is bool ae) win.AnimEnabled = ae;
+        if (HoldSec is float hs) win.HoldSec = hs;
+        if (FadeSec is float fs) win.FadeSec = fs;
+        if (TauMs is float tm) win.TauMs = tm;
+        if (Outline is int ol) win.Outline = ol;
+        if (FontPx is int fp && fp >= TextRig.MinFontPx && fp <= TextRig.MaxFontPx) win.FontPx = fp;
+        if (Typeface is { Length: > 0 } tfn) win.Typeface = tfn;
+        if (TimeFormat is int tf) win.TimeFormat = (TsFormat)tf;
+        if (TimeSource is int ts) win.TimeSource = (TsSource)ts;
+        if (Align is int al && al >= 0 && al <= 3) win.Align = (TextAlign)al;
+        if (BgMode is int bgm && bgm >= 0 && bgm <= 3) win.BgMode = (BgMode)bgm;
+        if (BgAngle is float ba) win.BgAngle = Math.Clamp(ba, 0f, 360f);
+        if (BgStart is float bs) win.BgStart = Math.Clamp(bs, 0f, 1f);
+        if (BgEnd is float be) win.BgEnd = Math.Clamp(be, 0f, 1f);
+        if (AutoHideHeader is bool ahh) win.AutoHideHeader = ahh;
+        if (AutoHideFrame is bool ahf) win.AutoHideFrame = ahf;
+        if (Locked is bool lk) win.Locked = lk;
+        if (TellsHere is bool th) win.TellsHere = th;
+    }
 }

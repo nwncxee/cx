@@ -25,6 +25,8 @@ public sealed partial class SettingsWindow
     // window per call; a null window means "no model" and the callbacks no-op (the shell's focused window can be
     // gone by the time a key commits an edit).
     private ChatWindow? _win;
+    /// <summary>Every chat window, in layout order, as the shell passed it on open.</summary>
+    private ChatWindow[] _windows = System.Array.Empty<ChatWindow>();
 
     /// <summary>Tab index per category entry: -1 for <see cref="WindowCategory"/> and <see cref="AddTabCategory"/>.</summary>
     private int[] _catTab = System.Array.Empty<int>();
@@ -261,9 +263,11 @@ public sealed partial class SettingsWindow
     /// shell baked at <paramref name="em"/> (null faces lay out on estimates and draw nothing). Opens on the
     /// window category. <paramref name="winIndex"/> and <paramref name="winCount"/> drive the "Copy from" rows.</summary>
     public void OpenAt(ChatWindow win, float vpW, float vpH, float em = KnobPanel.FacePx,
-                       GlyphAtlas? body = null, GlyphAtlas? small = null, int winIndex = 0, int winCount = 1)
+                       GlyphAtlas? body = null, GlyphAtlas? small = null, int winIndex = 0, int winCount = 1,
+                       ChatWindow[]? windows = null)
     {
         _win = win;
+        _windows = windows ?? System.Array.Empty<ChatWindow>();
         WindowIndex = winIndex; WindowCount = winCount;
         Panel.Category = 0; Panel.Cats.Reset(); Panel.List.Reset();
         Panel.OpenAt(vpW, vpH, em, body, small);   // lays out through Source
