@@ -71,9 +71,9 @@ public sealed partial class ChatWindow
         check.Expect(!win.ThumbRect(out _, out _), "no thumb when content fits");
         win.ContentH = 0f; win.ViewH = 0f; win.Active.ScrollPx = 0f;   // leave state clean
 
-        // channel dropdown: strip lives below the frame, only while typing.
+        // channel dropdown: the strip is the frame's bottom row, only while typing.
         win.FooterVisible = true;
-        float sy = win.StripTop;                                  // top of the pop-out strip
+        float sy = win.StripTop;                                  // top of the strip
         check.Expect(win.MouseDown(win.X + 5, sy + 5), "click dropdown button consumes");
         check.Expect(win.ChannelListOpen, "dropdown opens");
         // list stacks upward: item 2 (Whisper) sits at StripTop - 3*FooterH .. -2*FooterH
@@ -85,11 +85,11 @@ public sealed partial class ChatWindow
         win.MouseDown(win.X + win.W - 5, win.Y + win.H - 5); check.Expect(!win.ChannelListOpen, "click-off dismisses");
         check.Expect(win.SendChannel == Channel.Whisper, "channel unchanged on dismiss");
 
-        // Input-on-top: the strip sits just above the frame; the button is at StripTop, the list stacks
-        // DOWNWARD from the frame top over the body (the opposite of below-mode).
-        win.SendChannel = Channel.Talk; win.InputOnTop = true; win.FooterRows = 1;
+        // Input-on-top: the strip is the row under the tab bar; the button is at StripTop, the list stacks
+        // DOWNWARD from under the strip over the body (the opposite of below-mode).
+        win.SendChannel = Channel.Talk; win.InputOnTop = true;
         float syT = win.StripTop;
-        check.Expect(System.Math.Abs(syT - (win.Y - FooterH)) < 0.001f, "above-mode strip sits one row above the frame");
+        check.Expect(System.Math.Abs(syT - (win.Y + TabBarH)) < 0.001f, "above-mode strip sits under the tab bar");
         check.Expect(win.MouseDown(win.X + 5, syT + 5), "above: dropdown button consumes");
         check.Expect(win.ChannelListOpen, "above: dropdown opens");
         float item2YT = win.ChannelItemTop(2) + 2;             // Whisper, stacked downward

@@ -390,7 +390,6 @@ scrollbar, which the text width reserves and the thumb hit-test shares.
 | chat.counter | Show a character count | T | off | A | L | Typing | A running count of the characters in the line, at the right end of the input bar. A line holds up to 4000. |
 | chat.delword | Delete whole words with Ctrl | T | on | A | L | Editing | Ctrl+Backspace deletes the word before the cursor, Ctrl+Delete the word after it. |
 | chat.undo | Undo and redo | T | on | A | L | Editing | Ctrl+Z takes back the last change to the line, Ctrl+Y (or Ctrl+Shift+Z) puts it back. |
-| chat.rows | Arrow keys move through a long message | T | on | A | L | Editing | Up and Down move the cursor between a wrapped line's rows; they reach the history only from the first or last row. |
 | chat.histsearch | Search history by what you typed | T | on | A | L | History | With text in the line, Up recalls only earlier lines that start with it. |
 | chat.emotecol / speechcol / ooccol | Emote / Speech / OOC colour | Sw | e0b872ff / f2f2e6ff / 8c96a0ff | A | L | Markup colours | alpha ignored (text draws opaque) |
 | `chat.w<N>.*` (rect, toggles, inputtop, sendch, anim, hold, fade, tau, outline, font, typeface, tsfmt, tssrc, align, bgmode, bgangle, bgstart, bgend, autohide, autohideframe, locked, tellshere, t<M>.*) | — | per-window state (`KnobBag "w"`) | | H | | — | edited on the window; a submenu reset leaves it alone. A per-window colour key from an older file is counted, logged once and dropped |

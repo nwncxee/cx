@@ -13,7 +13,7 @@ internal static class ChatKnobs
     internal static readonly Knob<int> TellOpen;
     internal static readonly Knob<bool> Notify;
     internal static readonly Knob<bool> Pairs, Complete, Markup, Counter;
-    internal static readonly Knob<bool> DelWord, Undo, Mouse, Rows, Drafts;
+    internal static readonly Knob<bool> DelWord, Undo, Mouse, Drafts;
     internal static readonly Knob<bool> HistSearch, HistSave;
     internal static readonly Knob<uint> EmoteCol, SpeechCol, OocCol;
     internal static readonly KnobBag Windows;
@@ -49,8 +49,6 @@ internal static class ChatKnobs
                         help: "Ctrl+Z takes back the last change to the line, Ctrl+Y (or Ctrl+Shift+Z) puts it back.");
         Mouse = G.Toggle("mouse", "Place the cursor with the mouse", true,
                          help: "Click in the input bar to move the cursor, drag to select, double-click to select a word, triple-click for the whole line. Shift+click extends the selection.");
-        Rows = G.Toggle("rows", "Arrow keys move through a long message", true, Tier.Advanced,
-                        help: "When the line wraps, Up and Down move the cursor between its rows. They reach the sent-line history only from the first or last row.");
         Drafts = G.Toggle("drafts", "Keep unsent lines", true,
                           help: "Escape closes the input without losing what you typed; it is back the next time you open chat. Each tab keeps its own unsent line, so you can answer a tell and come back to a half-written post.");
 

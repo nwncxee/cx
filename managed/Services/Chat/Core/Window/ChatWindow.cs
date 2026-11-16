@@ -167,15 +167,13 @@ public sealed partial class ChatWindow
     /// exist (render + hit-test) while it's true.</summary>
     public bool FooterVisible;
 
-    /// <summary>Put the input strip above the window instead of below it (settings window). Flips
-    /// <see cref="StripTop"/> and the channel-list stack direction; the renderer + hit-tests follow.</summary>
+    /// <summary>Put the input strip at the top of the window, under the tab bar, instead of along its bottom edge.
+    /// Flips <see cref="StripTop"/> and the channel-list stack direction; the renderer + hit-tests follow.</summary>
     public bool InputOnTop;
 
-    /// <summary>Wrapped input-line count (>=1). The renderer measures the word-wrap and sets this so the
-    /// strip (which grows downward one <see cref="FooterH"/> per row) hit-tests at its true height.</summary>
-    public int FooterRows = 1;
-    /// <summary>Full height of the pop-out input strip, grown by word-wrap.</summary>
-    public float FooterHeight => FooterH * (FooterRows < 1 ? 1 : FooterRows);
+    /// <summary>How far (px) the typed line is scrolled left inside the strip, so the caret stays in sight. Written by
+    /// <see cref="Render.InputStripLayout.Follow"/> as the strip draws; every hit-test reads the same value.</summary>
+    public float InputScroll;
 
     /// <summary>Render-component toggle bitset (see the render pipeline). Default: timestamp + body + portrait.</summary>
     public uint Toggles = ChatToggle.Timestamp | ChatToggle.MessageBody | ChatToggle.Portrait;
@@ -348,17 +346,15 @@ public sealed partial class ChatWindow
         return mx >= X + W - ScrollbarW && mx <= X + W && my >= top && my <= top + h;
     }
 
-    /// <summary>Top y of the input strip. Below the frame by default; above it (top grows up as the
-    /// input wraps) when <see cref="InputOnTop"/>. Only live while <see cref="FooterVisible"/>.</summary>
-    public float StripTop => InputOnTop ? Y - FooterHeight : Y + H;
+    /// <summary>Top y of the one-row input strip, inside the frame: along its bottom edge, or under the tab bar when
+    /// <see cref="InputOnTop"/>. Only live while <see cref="FooterVisible"/>.</summary>
+    public float StripTop => InputOnTop ? Y + TabBarH : Y + H - FooterH;
     /// <summary>The dropdown button (closed state) on the strip's top row (where the renderer draws it).</summary>
     public bool OverDropdownButton(float mx, float my)
         => mx >= X && mx < X + DropdownW && my >= StripTop && my < StripTop + FooterH;
-    /// <summary>Top y of channel-list item <paramref name="i"/>. The list stacks over the body (away from the
-    /// world): up from the strip's top when the strip is below the frame, down from the frame top when above.
-    /// ponytail: in above-mode with a multi-row (wrapped) input the list anchors to the frame, not the button
-    /// row; the button sits at the strip top. Fine for the common single-row input; revisit if multi-row lands.</summary>
-    public float ChannelItemTop(int i) => InputOnTop ? Y + FooterH * i : StripTop - FooterH * (i + 1);
+    /// <summary>Top y of channel-list item <paramref name="i"/>. The list stacks over the body, away from the window
+    /// edge the strip sits on: up from the strip along the bottom, down from it under the tab bar.</summary>
+    public float ChannelItemTop(int i) => InputOnTop ? StripTop + FooterH * (i + 1) : StripTop - FooterH * (i + 1);
     /// <summary>Channel-list item under the pointer while open: returns the <see cref="SendChannels"/>
     /// index of the hit channel, or -1. Only selectable rows are hit-testable (Tell hidden when other
     /// channels exist); the row counter runs over visible entries so the geometry matches the renderer.</summary>
@@ -505,7 +501,7 @@ public sealed partial class ChatWindow
     {
         if (Contains(mx, my)) return true;
         if (!FooterVisible) return false;
-        if (mx >= X && mx < X + W && my >= StripTop && my < StripTop + FooterHeight) return true;
+        if (mx >= X && mx < X + W && my >= StripTop && my < StripTop + FooterH) return true;
         if (ChannelListOpen)
         {
             int rows = 0;
@@ -579,7 +575,7 @@ public sealed partial class ChatWindow
         // The gear icon (opens the settings window) is claimed by the shell before this runs -- see
         // ChatService.OnMouseButton. ChatWindow owns no options state now.
 
-        // Pop-out strip + channel dropdown (below the frame, so outside Contains) -- only while typing.
+        // Input strip + channel dropdown (the list can stack past the frame) -- only while typing.
         if (FooterVisible)
         {
             if (ChannelListOpen)
@@ -591,7 +587,7 @@ public sealed partial class ChatWindow
                 return true;
             }
             if (OverDropdownButton(mx, my)) { ChannelListOpen = true; _pressConsumed = true; return true; }
-            if (mx >= X && mx < X + W && my >= StripTop && my < StripTop + FooterHeight)
+            if (mx >= X && mx < X + W && my >= StripTop && my < StripTop + FooterH)
             { _pressConsumed = true; return true; }                // click in the input strip: consume, no-op
         }
 
@@ -727,13 +723,16 @@ public sealed partial class ChatWindow
         Active.ScrollPx = o < 0f ? 0f : o;
     }
 
-    /// <summary>Body rectangle: everything between the tab bar and the frame's bottom. The input strip pops out
-    /// <em>below</em> the frame, so the body keeps its full height whether or not it shows.
-    /// When <paramref name="headerVisible"/> is false the body expands upward into the header band.</summary>
+    /// <summary>Body rectangle: everything between the tab bar and the frame's bottom, less the input strip's row
+    /// while it shows. When <paramref name="headerVisible"/> is false the body expands upward into the header band.</summary>
     public void BodyRect(out float bx, out float by, out float bw, out float bh, bool headerVisible = true)
     {
         float top = headerVisible ? TabBarH : 0f;
         bx = X; by = Y + top; bw = W; bh = H - top;
+        if (!FooterVisible) return;
+        if (!InputOnTop) { bh -= FooterH; return; }
+        float below = StripTop + FooterH;
+        bh -= below - by; by = below;
     }
 
     /// <summary>Copy all per-window settings (look, not identity) from <paramref name="src"/>. Tabs and rect

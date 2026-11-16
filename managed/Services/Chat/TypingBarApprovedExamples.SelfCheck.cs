@@ -76,12 +76,12 @@ partial class ChatService
         // When the player presses Up
         // Then the earlier sent line comes back into the bar
         {
-            var win = Window(0, 0);
             var edit = new EditBuffer();
-            edit.LoadHistory(new[] { "earlier" });
+            const string Earlier = "abcd efgh ijkl mnop sent";   // starts with the typed line, so chat.histsearch keeps it
+            edit.LoadHistory(new[] { Earlier });
             edit.Load("abcd efgh ijkl mnop");
-            ArrowKey(edit, win, atlas, -1, false);
-            check.Expect(edit.Text == "earlier", $"E7 Up on a long line brings back the earlier line, got \"{edit.Text}\"");
+            ArrowKey(edit, -1);
+            check.Expect(edit.Text == Earlier, $"E7 Up on a long line brings back the earlier line, got \"{edit.Text}\"");
         }
 
         // Given the newest message sits at the bottom of a chat window

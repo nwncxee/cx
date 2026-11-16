@@ -371,8 +371,8 @@ public static partial class WindowRenderer
             }
         }
 
-        // Pop-out input strip: below the frame, a channel dropdown at its left + a word-wrapped edit
-        // line that grows the strip DOWNWARD one FooterH per wrapped row (so long input never clips).
+        // Input strip: the frame's bottom row (or the row under the tab bar), a channel dropdown at its left + the
+        // edit line, which scrolls sideways rather than leaving the window.
         if (showFooter)
             EmitInputStrip(b, chrome, win, editText, caret, selection, p, sk, counter ?? ChatKnobs.Counter.V);
 
@@ -587,10 +587,9 @@ public static partial class WindowRenderer
         }
     }
 
-    /// <summary>The word-wrapped input strip below the frame: a channel chip (top row) + the edit text
-    /// wrapped to the strip width, the strip growing downward one <see cref="ChatWindow.FooterH"/> per row.
-    /// Geometry comes from <see cref="InputStripLayout"/>, so the caret drawn here and the one a click computes
-    /// are the same. Caret and selection are mapped from UTF-16 indices into wrapped rune rows.</summary>
+    /// <summary>The one-row input strip inside the frame: a channel chip at its left + the edit text, scrolled
+    /// sideways so the caret stays in sight and clipped to the edit area. Geometry comes from
+    /// <see cref="InputStripLayout"/>, so the caret drawn here and the one a click computes are the same.</summary>
     private static void EmitInputStrip(VertexBatch b, GlyphAtlas atlas, ChatWindow win, string editText,
                                        int caret, (int start, int end)? selection, Pal p, List<SkinCmd>? sk, bool counter)
     {
@@ -598,64 +597,52 @@ public static partial class WindowRenderer
         float baseDrop = (fh - atlas.LineHeight) * 0.5f + atlas.Ascent;
 
         List<Rune> runes = _runesScratch ??= new List<Rune>();
-        InputStripLayout.Layout(win, atlas, editText, runes, counter,
-                                out List<TextWrapper.LineSpan> wraps, out float startX, out _);
-        int rows = wraps.Count;
-        win.FooterRows = rows;   // set BEFORE reading StripTop: in above-mode StripTop depends on FooterHeight
+        InputStripLayout.Layout(win, atlas, editText, runes, counter, out float startX, out float editW);
+        int caretR = InputStripLayout.RuneIndex(runes, caret);
+        float penX = startX - InputStripLayout.Follow(win, atlas, runes, caretR, editW);
         float fy = win.StripTop;
 
-        // Strip background over all rows, framed like the window; the channel chip on the top row only.
+        // Strip background, framed like the window; the channel chip at its left.
         // Native: the engine's edit-box art for the strip, a NUI button for the chip.
         float cx0 = win.X + ins, cx1 = win.X + ChatWindow.DropdownW - ins;
         if (sk != null)
         {
-            sk.Add(new SkinCmd(NativeChrome.Edit, win.X, fy, win.X + win.W, fy + fh * rows, Tint(InputA)));
+            sk.Add(new SkinCmd(NativeChrome.Edit, win.X, fy, win.X + win.W, fy + fh, Tint(InputA)));
             sk.Add(new SkinCmd(NativeChrome.Button, cx0, fy + ins, cx1, fy + fh - ins, ArtWhite));
         }
         else
         {
-            b.Rect(win.X, fy, win.X + win.W, fy + fh * rows, p.Footer.r, p.Footer.g, p.Footer.b, p.Footer.a);
-            Outline(b, win.X, fy, win.X + win.W, fy + fh * rows, p.FrameRgb, p.Footer.a);
+            b.Rect(win.X, fy, win.X + win.W, fy + fh, p.Footer.r, p.Footer.g, p.Footer.b, p.Footer.a);
+            Outline(b, win.X, fy, win.X + win.W, fy + fh, p.FrameRgb, p.Footer.a);
             Fill(b, cx0, fy + ins, cx1, fy + fh - ins, NavOn);
             Outline(b, cx0, fy + ins, cx1, fy + fh - ins, Frame2);
         }
         UiText.Draw(b, atlas, win.SendChannel.ToString(), cx0 + ChatWindow.Pad, fy + baseDrop, Hi, cx1 - ChatWindow.Pad - UiText.Measure(atlas, "▾"));
         UiText.Draw(b, atlas, "▾", cx1 - ChatWindow.Pad * 0.5f - UiText.Measure(atlas, "▾"), fy + baseDrop, Tx2, cx1);
 
-        int caretR = InputStripLayout.RuneIndex(runes, caret);
         (int selA, int selB) = selection is (int a, int c)
             ? (InputStripLayout.RuneIndex(runes, a), InputStripLayout.RuneIndex(runes, c)) : (-1, -1);
         List<uint>? cols = ChatKnobs.Markup.V && runes.Count > 0 ? MarkupColors(editText, runes) : null;
+        var line = new TextWrapper.LineSpan(0, runes.Count);
 
-        for (int w = 0; w < rows; w++)
+        b.ClipX(startX, startX + editW);
+        if (selA >= 0 && selB > selA)
         {
-            TextWrapper.LineSpan span = wraps[w];
-            float ry = fy + fh * w;
-            // Selection highlight for this row's slice of [selA,selB) -- drawn first, behind the glyphs.
-            if (selA >= 0 && selB > span.Start && selA < span.End)
-            {
-                int rs = System.Math.Max(selA, span.Start), re = System.Math.Min(selB, span.End);
-                float x0 = RowAlign.Measure(atlas, runes, span.Start, rs, startX);
-                float x1 = RowAlign.Measure(atlas, runes, span.Start, re, startX);
-                b.Rect(x0, ry + ins, x1, ry + fh - ins, p.SelBg.r, p.SelBg.g, p.SelBg.b, p.SelBg.a);
-            }
-            if (cols != null) EmitRow(b, atlas, runes, cols, span, startX, ry + baseDrop);
-            else EmitRunes(b, atlas, runes, span, startX, ry + baseDrop, EditRgb);
-
-            if (InputStripLayout.CaretOnRow(wraps, w, caretR))
-            {
-                float cx = RowAlign.Measure(atlas, runes, span.Start, caretR, startX);
-                b.Rect(cx, ry + ins + 1f, cx + 2f, ry + fh - ins - 1f, p.TabActive.r, p.TabActive.g, p.TabActive.b, 1f);
-            }
+            float x0 = RowAlign.Measure(atlas, runes, 0, selA, penX), x1 = RowAlign.Measure(atlas, runes, 0, selB, penX);
+            b.Rect(x0, fy + ins, x1, fy + fh - ins, p.SelBg.r, p.SelBg.g, p.SelBg.b, p.SelBg.a);
         }
+        if (cols != null) EmitRow(b, atlas, runes, cols, line, penX, fy + baseDrop);
+        else EmitRunes(b, atlas, runes, line, penX, fy + baseDrop, EditRgb);
+        b.ClearClip();
+        float cx = RowAlign.Measure(atlas, runes, 0, caretR, penX);
+        b.Rect(cx, fy + ins + 1f, cx + 2f, fy + fh - ins - 1f, p.TabActive.r, p.TabActive.g, p.TabActive.b, 1f);
 
         if (counter)
         {
             bool near = editText.Length >= InputStripLayout.CounterWarn;
             string txt = near ? $"{editText.Length}/{EditBuffer.MaxLength}" : editText.Length.ToString();
             float right = win.X + win.W - ChatWindow.Pad;
-            UiText.Draw(b, atlas, txt, right - UiText.Measure(atlas, txt),
-                        fy + fh * (rows - 1) + baseDrop, near ? Warn : Tx2, right);
+            UiText.Draw(b, atlas, txt, right - UiText.Measure(atlas, txt), fy + baseDrop, near ? Warn : Tx2, right);
         }
     }
 

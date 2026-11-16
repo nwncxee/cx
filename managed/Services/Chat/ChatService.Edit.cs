@@ -347,20 +347,18 @@ public sealed unsafe partial class ChatService
             case KeyRight:     if (ctrl) Edit.MoveWordRight(shift); else Edit.MoveRight(shift); break;
             case KeyHome:      Edit.Home(shift); break;
             case KeyEnd:       Edit.End(shift); break;
-            case KeyUp:        if (_layout != null && TextRig.Atlas is GlyphAtlas ua) ArrowKey(Edit, _layout.Focused, ua, -1, shift); else Edit.HistoryPrev(ChatKnobs.HistSearch.V); break;
-            case KeyDown:      if (_layout != null && TextRig.Atlas is GlyphAtlas da) ArrowKey(Edit, _layout.Focused, da, 1, shift); else Edit.HistoryNext(); break;
+            case KeyUp:        ArrowKey(Edit, -1); break;
+            case KeyDown:      ArrowKey(Edit, 1); break;
             case KeyTab:       if (ChatKnobs.Complete.V) Complete(shift); break;
         }
         Rebuild();   // caret move / edit / history recall all change the footer
     }
 
-    /// <summary>Up (<paramref name="dir"/> -1) or Down on the line in <paramref name="edit"/>, typed in
-    /// <paramref name="win"/>: moves between a wrapped line's rows (<c>chat.rows</c>), else walks the sent history.</summary>
-    internal static void ArrowKey(EditBuffer edit, ChatWindow win, GlyphAtlas atlas, int dir, bool shift)
+    /// <summary>Up (<paramref name="dir"/> -1) or Down on the line in <paramref name="edit"/>: the line is one row,
+    /// so the arrows always walk the sent history.</summary>
+    internal static void ArrowKey(EditBuffer edit, int dir)
     {
-        int to = ChatKnobs.Rows.V ? InputStripLayout.VerticalMove(win, atlas, edit.Text, edit.Cursor, dir) : -1;
-        if (to >= 0) edit.SetCaret(to, shift);
-        else if (dir < 0) edit.HistoryPrev(ChatKnobs.HistSearch.V);
+        if (dir < 0) edit.HistoryPrev(ChatKnobs.HistSearch.V);
         else edit.HistoryNext();
     }
 
