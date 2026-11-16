@@ -576,7 +576,6 @@ public sealed partial class ChatWindow
         // The gear icon (opens the settings window) is claimed by the shell before this runs -- see
         // ChatService.OnMouseButton. ChatWindow owns no options state now.
 
-        if (ClickThrough) { _pressConsumed = false; return false; }
         // Input strip + channel dropdown (the list can stack past the frame) -- only while typing.
         if (FooterVisible)
         {

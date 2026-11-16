@@ -195,15 +195,15 @@ public sealed partial class SettingsWindow
                       "The second holds from here; at or before Start makes a hard edge.");
         }
 
-        // Copy from another window (hidden when only one window exists); Main also holds every other window's
-        // click-through, the one place a window that ignores the pointer can be given back.
+        // Copy from another window (hidden when only one window exists), and every other window's click-through:
+        // a window that ignores the pointer can only be given back from another window's gear.
         if (WindowCount > 1) AddSection(rows, "Other windows");
         for (int wi = 0; wi < WindowCount; wi++)
         {
             if (wi == WindowIndex) continue;
             string key = wi.ToString(System.Globalization.CultureInfo.InvariantCulture);
             rows.Add(new Row { Ctl = KnobKind.Button, Act = SetAct.CopyFrom, Text = $"Copy from Window {wi + 1}", Key = key });
-            if (WindowIndex == 0 && wi > 0 && wi < _windows.Length)
+            if (wi > 0 && wi < _windows.Length)
                 rows.Add(new Row { Ctl = KnobKind.Toggle, Act = SetAct.ClickThroughOf, Text = $"Window {wi + 1} click-through",
                                    On = _windows[wi].ClickThrough, Key = key });
         }

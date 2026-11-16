@@ -22,7 +22,7 @@ partial class ChatService
             var layout = new ChatLayout(Window(0, 0));
             var win = layout.AddWindow(Window(500, 500))!;
             win.ClickThrough = true;
-            win.AutoHideFrame = false;
+            win.AutoHideHeader = false; win.AutoHideFrame = false;   // the worst case: both would show without the pointer
             var bare = Window(500, 500);
             bare.AutoHideHeader = true; bare.AutoHideFrame = true;
             check.Expect(layout.WindowAt(700, 650) != 1, "E14 the pointer over a click-through window is not over that window");

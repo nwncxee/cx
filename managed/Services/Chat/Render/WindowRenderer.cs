@@ -152,7 +152,7 @@ public static partial class WindowRenderer
         for (int i = 0; i < tabs.Count; i++) if (tabs[i].Unread && tabs[i].Ephemeral) { hasUnread = true; break; }
         bool ghost = win.ClickThrough;   // click-through: the pointer and an unread tab reveal nothing
         if (ghost) showGrip = false;
-        bool inside = !ghost && (showGrip || settings.Open || hasUnread);
+        bool inside = showGrip || settings.Open || hasUnread;
         bool showHeader = !ghost && (!win.AutoHideHeader || inside), showFrame = !ghost && (!win.AutoHideFrame || inside);
         float fa = p.Frame.a;
         if (sk != null)
@@ -390,7 +390,7 @@ public static partial class WindowRenderer
         }
 
         // Tab-bar [⚙] at the right edge, shown on hover (or settings open).
-        if (!ghost && (showGrip || settings.Open))
+        if (showGrip || settings.Open)
         {
             float gearLeft = win.X + win.W - ChatWindow.GearW;
             float gx = gearLeft + (ChatWindow.GearW - UiText.Measure(chrome, "⚙")) * 0.5f;
