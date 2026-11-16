@@ -114,6 +114,8 @@ internal static class ItemMenuSelfCheck
         var m = new ItemMenuModel();
         m.Set("row.1", "use;Use;;1");
         m.Set("open", "200;200");
+        var was = ServerPolicy.Send;
+        ServerPolicy.Send = static (_, _) => { };
         ItemMenuService.Show(m, atlas, 1920, 1080);
         bool openingUp = CX.Ui.UiHost.DispatchMouseButton(false, 3, 205, 205, captureOnly: true);
         check.Expect(!openingUp, "the release of the press that opened the menu goes on to NUI");
@@ -126,6 +128,7 @@ internal static class ItemMenuSelfCheck
         bool inUp = CX.Ui.UiHost.DispatchMouseButton(false, 3, 205, 205, captureOnly: true);
         check.Expect(inDown && inUp, "a press the menu took keeps its release");
         ItemMenuService.Show(new ItemMenuModel(), atlas, 1920, 1080);
+        ServerPolicy.Send = was;
     }
 
     /// <summary>The menu stands in for the server's NUI Item menu, so it wears the stock NUI skin whatever look the extender's
