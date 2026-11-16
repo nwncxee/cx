@@ -150,8 +150,10 @@ public static partial class WindowRenderer
         // each tab is a NUI button -- so a hovered tab snaps to its hot art instead of easing a wash in.
         bool hasUnread = false;
         for (int i = 0; i < tabs.Count; i++) if (tabs[i].Unread && tabs[i].Ephemeral) { hasUnread = true; break; }
-        bool inside = showGrip || settings.Open || hasUnread;
-        bool showHeader = !win.AutoHideHeader || inside, showFrame = !win.AutoHideFrame || inside;
+        bool ghost = win.ClickThrough;   // click-through: the pointer and an unread tab reveal nothing
+        if (ghost) showGrip = false;
+        bool inside = !ghost && (showGrip || settings.Open || hasUnread);
+        bool showHeader = !ghost && (!win.AutoHideHeader || inside), showFrame = !ghost && (!win.AutoHideFrame || inside);
         float fa = p.Frame.a;
         if (sk != null)
         {
@@ -388,7 +390,7 @@ public static partial class WindowRenderer
         }
 
         // Tab-bar [⚙] at the right edge, shown on hover (or settings open).
-        if (showGrip || settings.Open)
+        if (!ghost && (showGrip || settings.Open))
         {
             float gearLeft = win.X + win.W - ChatWindow.GearW;
             float gx = gearLeft + (ChatWindow.GearW - UiText.Measure(chrome, "⚙")) * 0.5f;

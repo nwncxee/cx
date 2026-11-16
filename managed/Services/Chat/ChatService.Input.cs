@@ -107,7 +107,7 @@ public sealed unsafe partial class ChatService
                         if (wins[i] != fwin) wins[i].TellsHere = false;
                 }
                 DirtyAll(); SyncFieldKeyboard();
-                if (IsTyping && !fwin.HasSendable) CloseChat(false);
+                if (IsTyping && (!fwin.HasSendable || fwin.ClickThrough)) CloseChat(false);
                 Rebuild(); return cs;
             }
             if (EditPress(fwin, x, y)) return true;
@@ -192,6 +192,7 @@ public sealed unsafe partial class ChatService
     private static bool DownOnWindow(int index, int x, int y)
     {
         ChatWindow win = _layout!.Windows[index];
+        if (win.ClickThrough) return false;
         if (win.OverGear(x, y))
         {
             _layout.FocusedIndex = index;

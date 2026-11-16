@@ -137,7 +137,7 @@ public sealed partial class SettingsWindow
     {
         AddSection(rows, "Window");
         AddToggle(rows, SetAct.InputTop, "Input on top", win.InputOnTop, 0,
-                  "The input line pops out above the window instead of below it.");
+                  "The typing bar sits at the top of the window, under the tabs, instead of along its bottom edge.");
         AddToggle(rows, SetAct.AutoHideHdr, "Auto-hide header", win.AutoHideHeader, 0,
                   "The tab bar hides until the pointer is over the window.");
         AddToggle(rows, SetAct.AutoHideFrame, "Auto-hide outline", win.AutoHideFrame, 0,
@@ -146,6 +146,9 @@ public sealed partial class SettingsWindow
                   "No moving, resizing or tab dragging on this window.");
         AddToggle(rows, SetAct.TellsHere, "Tells here", win.TellsHere, 0,
                   "Tells land in this window. Only one window can hold this.");
+        if (win.Closeable)
+            AddToggle(rows, SetAct.ClickThrough, "Click-through", win.ClickThrough, 0,
+                      "Clicks and the mouse wheel go through this window to the game, and pointing at it shows nothing. Untick it again from the Main window's gear.");
         // A pending pick shows at once: the shell sets the knob only after the press returns.
         AddDropdown(rows, SetAct.CycleTellOpen, "Tell auto-open", TellOpenNames, TellOpenPicked >= 0 ? TellOpenPicked : ChatKnobs.TellOpen.V,
                     "Where a tell from someone new lands: nowhere special, a new tab, or its own window.");
@@ -192,13 +195,17 @@ public sealed partial class SettingsWindow
                       "The second holds from here; at or before Start makes a hard edge.");
         }
 
-        // Copy from another window (hidden when only one window exists).
+        // Copy from another window (hidden when only one window exists); Main also holds every other window's
+        // click-through, the one place a window that ignores the pointer can be given back.
         if (WindowCount > 1) AddSection(rows, "Other windows");
         for (int wi = 0; wi < WindowCount; wi++)
         {
             if (wi == WindowIndex) continue;
-            rows.Add(new Row { Ctl = KnobKind.Button, Act = SetAct.CopyFrom, Text = $"Copy from Window {wi + 1}",
-                               Key = wi.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+            string key = wi.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            rows.Add(new Row { Ctl = KnobKind.Button, Act = SetAct.CopyFrom, Text = $"Copy from Window {wi + 1}", Key = key });
+            if (WindowIndex == 0 && wi > 0 && wi < _windows.Length)
+                rows.Add(new Row { Ctl = KnobKind.Toggle, Act = SetAct.ClickThroughOf, Text = $"Window {wi + 1} click-through",
+                                   On = _windows[wi].ClickThrough, Key = key });
         }
 
         // Closing lives here, not on the tab bar; Main is undeletable, so it gets no row.
@@ -349,6 +356,13 @@ public sealed partial class SettingsWindow
             case SetAct.CopyFrom:
                 CopyRequested = ParseIndex(row.Key);
                 break;
+            case SetAct.ClickThrough: win.ClickThrough = !win.ClickThrough; break;
+            case SetAct.ClickThroughOf:
+            {
+                int wi = ParseIndex(row.Key);
+                if (wi > 0 && wi < _windows.Length) _windows[wi].ClickThrough = !_windows[wi].ClickThrough;
+                break;
+            }
         }
     }
 

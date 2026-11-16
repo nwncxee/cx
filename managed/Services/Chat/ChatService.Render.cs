@@ -328,7 +328,7 @@ public sealed unsafe partial class ChatService
 
     private static RenderFrame BuildOneWindow(ChatWindow win, bool focused, GlyphAtlas atlas, int winIndex)
     {
-        bool footer = focused && IsTyping && win.HasSendable;
+        bool footer = focused && IsTyping && win.HasSendable && !win.ClickThrough;
         win.FooterVisible = footer;
         bool grip = (winIndex == _hoverIndex) || win.Dragging || _anyTabDrag;
         var frame = WindowRenderer.Build(win, focused ? _settings : _closedSettings, _store, WindowAtlas(win, atlas),

@@ -85,9 +85,10 @@ partial class ChatService
                 var win = Window(500, 0);
                 win.ClickThrough = clickThrough;
                 var saved = new ChatConfig();
+                saved.Windows.Add(WindowConfig.Capture(Window(0, 0)));   // Main
                 saved.Windows.Add(WindowConfig.Capture(win));
                 var again = Window(500, 0);
-                ChatConfig.From(saved.Pairs()).Windows[0].ApplyTo(again);
+                ChatConfig.From(saved.Pairs()).Windows[1].ApplyTo(again);
                 return again.ClickThrough;
             }
             check.Expect(Restarted(true), "E20 a click-through window is click-through after a restart");

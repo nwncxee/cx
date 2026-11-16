@@ -494,11 +494,12 @@ public sealed partial class ChatWindow
     public bool Contains(float mx, float my) => mx >= X && mx <= X + W && my >= Y && my <= Y + H;
 
     /// <summary>True when a press, wheel or hover at the point belongs to this window rather than the game.</summary>
-    public bool TakesPointer(float mx, float my) => Contains(mx, my);
+    public bool TakesPointer(float mx, float my) => !ClickThrough && Contains(mx, my);
 
     /// <summary>Full UI hit-test: frame + input strip + open channel dropdown.</summary>
     public bool HitTestFull(float mx, float my)
     {
+        if (ClickThrough) return false;
         if (Contains(mx, my)) return true;
         if (!FooterVisible) return false;
         if (mx >= X && mx < X + W && my >= StripTop && my < StripTop + FooterH) return true;
@@ -575,6 +576,7 @@ public sealed partial class ChatWindow
         // The gear icon (opens the settings window) is claimed by the shell before this runs -- see
         // ChatService.OnMouseButton. ChatWindow owns no options state now.
 
+        if (ClickThrough) { _pressConsumed = false; return false; }
         // Input strip + channel dropdown (the list can stack past the frame) -- only while typing.
         if (FooterVisible)
         {

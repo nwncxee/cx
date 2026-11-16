@@ -30,6 +30,8 @@ public sealed class WindowConfig
     public bool? AutoHideHeader;
     public bool? Locked;
     public bool? TellsHere;
+    /// <summary>The pointer goes through the window; never set on Main (window 0).</summary>
+    public bool ClickThrough;
 
     /// <summary>Persisted tabs: (label, channel mask as hex, pinned player name, kept). Empty = use the hardcoded defaults.</summary>
     public readonly List<(string Label, uint Mask, string Pin, bool Kept)> Tabs = new();
@@ -50,6 +52,7 @@ public sealed class WindowConfig
         wc.AutoHideHeader = win.AutoHideHeader; wc.AutoHideFrame = win.AutoHideFrame;
         wc.Locked = win.Locked;
         wc.TellsHere = win.TellsHere;
+        wc.ClickThrough = win.ClickThrough;
         return wc;
     }
 
@@ -77,5 +80,6 @@ public sealed class WindowConfig
         if (AutoHideFrame is bool ahf) win.AutoHideFrame = ahf;
         if (Locked is bool lk) win.Locked = lk;
         if (TellsHere is bool th) win.TellsHere = th;
+        win.ClickThrough = ClickThrough;
     }
 }
