@@ -1664,18 +1664,17 @@ internal static unsafe class SymbolMap
     [Fn("float(IntPtr userData, float height, byte* text, int len)")]
     public const string NkFontTextWidth = "nk_font_text_width";
     /// <summary><c>nk_draw_list_add_text(list, font, rect, text, len, height, fg)</c> (Linux @0xde3aa0, Windows rva 0xa7de20):
-    /// <c>nk_convert</c>'s text case, the one place a queued text command becomes glyphs, under either renderer. No
-    /// <c>[Fn]</c>: the rect is by value, two SSE eightbytes on SysV and a hidden pointer on Win64, which a struct
-    /// parameter gives both.</summary>
+    /// <c>nk_convert</c>'s text case, the one place a queued text command becomes glyphs, under either renderer.</summary>
+    [Fn("void(IntPtr list, IntPtr font, NkRect rect, byte* text, int len, float height, uint fg)")]
     public const string NkDrawListAddText = "nk_draw_list_add_text";
     /// <summary><c>nk_flags nk_edit_buffer(ctx, flags, edit, filter)</c> (Linux @0xdfb350, Windows rva 0xa817d0): one edit
     /// field's whole frame, its layout and its text commands, under every <c>nk_edit_string</c>.</summary>
     [Fn("uint(IntPtr ctx, uint flags, IntPtr edit, IntPtr filter)")]
     public const string NkEditBuffer = "nk_edit_buffer";
-    /// <summary>The NUI <c>text</c> widget's draw (static: Linux lva 0x8b2e20, the <c>std::function</c> invoker
-    /// <c>(any_data, Widget**, nk_context**)</c>; Windows rva 0x9584c0, the lambda's own body <c>(captures, Widget*,
-    /// nk_context*)</c>): wraps the widget's text and draws each line with <c>nk_text</c>/<c>nk_text_colored</c>.</summary>
-    [Fn("void(IntPtr self, IntPtr widget, IntPtr ctx)")]
+    /// <summary>The NUI <c>text</c> widget's draw (static: Linux lva 0x8b2e20, the invoker <c>(any_data, Widget**, nk_context**)</c>;
+    /// Windows rva 0x9584c0, the lambda <c>(captures, Widget*, nk_context*)</c>): wraps the text and draws each line. Its
+    /// arguments mean different things per OS, so a hook only passes them on, and nothing calls it.</summary>
+    [Fn("void(IntPtr arg0, IntPtr arg1, IntPtr arg2)")]
     public const string NuiTextWidgetDraw = "Nui::Layout::Widgets::text::draw";
     /// <summary><c>shared_ptr&lt;DataBlock&gt; CExoResMan::Get(CResRef const&amp;, ushort)</c> @0x53e620 (Windows rva 0x18f920):
     /// a resource's raw bytes, null when the key table has no entry. A member returning by value, so the hidden slot

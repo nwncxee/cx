@@ -28,6 +28,15 @@ public struct NkColor
     public byte R, G, B, A;
 }
 
+/// <summary>nuklear's <c>nk_rect</c> as it passes one by value: two SSE eightbytes on SysV, a hidden pointer on Win64,
+/// which a struct parameter gives both.</summary>
+[StructLayout(LayoutKind.Sequential)]
+public struct NkRect
+{
+    /// <summary>Origin and size.</summary>
+    public float X, Y, W, H;
+}
+
 /// <summary>Nuklear's command queue: commands are reached by the offsets the queue itself stores.</summary>
 public readonly unsafe struct NkQueue
 {

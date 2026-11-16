@@ -171,7 +171,7 @@ it is written. An unfinished cleanup is a `<rule>.baseline` ratchet (`tools/gate
 shrink, and a row naming a file that is no longer in the tree fails -- an allowance nothing can spend hides
 the cleanup that earned it. Adding a rule means adding its gate in the same change, and one line here:
 
-- `comments.sh`: a `///` block over 4 text lines, or a `///` line citing a ticket (`#n`, `CX-n`, `!n`), under `managed/` or in `native/`'s own sources, fails. No baseline.
+- `comments.sh`: a `///` block over 4 text lines, a `///` line citing a ticket (`#n`, `CX-n`, `!n`, `issue n`, `ticket n`), or one marking a ceiling `shortcut:` where the word is `ponytail:`, under `managed/` or in `native/`'s own sources, fails. No baseline.
 - `doc-stack.sh`: a `///` block holding two `<summary>` elements under `managed/` (a doc left behind when its declaration
   moved or went away) counts against `doc-stack.baseline`, which may only shrink; `python3 tools/gates/doc-stack.py -v` lists each.
 - `file-size.sh`: a `.cs` file under `managed/` over 1,500 lines fails -- past the cap, split by

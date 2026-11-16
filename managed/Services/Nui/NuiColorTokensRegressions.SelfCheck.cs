@@ -1,5 +1,4 @@
 using System;
-using System.Runtime.InteropServices;
 using System.Text;
 using CX.Framework;
 
@@ -9,8 +8,7 @@ namespace CX.Services.Nui;
 /// past the native stack, and a draw with more tokens than pieces. Oracle: the texts, piece counts and colours typed here.</summary>
 internal static unsafe class NuiColorTokensRegressions
 {
-    /// <summary>The label's own colour as an nk_color word.</summary>
-    private const uint Own = 0xFFC8C8C8; // not-an-offset: an nk_color
+    private const uint Own = NuiColorTokensApprovedExamples.Own;
 
     public static void Run(ExtenderLog log)
     {
@@ -40,8 +38,8 @@ internal static unsafe class NuiColorTokensRegressions
         for (int k = 0; k < 70; k++) many.Append("<c\u0001\u0001\u0001>y</c>");
         byte[] manyBytes = Encoding.UTF8.GetBytes(many.ToString());
         n = NuiColorText.Plan(manyBytes, Own, Font, pieces);
-        check.Expect(n == NuiColorText.MaxPieces, $"a draw with 70 tokened runs fills every piece, got {n}");
-        if (n == NuiColorText.MaxPieces)
+        check.Expect(n == 64, $"a draw with 70 tokened runs fills all 64 pieces, got {n}");
+        if (n == 64)
         {
             var last = pieces[n - 1];
             check.Expect(last.Start + last.Length == manyBytes.Length, "the last piece runs to the end of the text, so none of it is lost");
@@ -78,11 +76,15 @@ internal static unsafe class NuiColorTokensRegressions
         NuiColorText.EndFrame();
         check.Expect(NuiColorText.PlanAt(150, red, Own, Font, pieces) == 1, "the next frame forgets the edit field's stretch");
         NuiColorText.EndFrame();
+
+        for (ulong k = 0; k < 1025; k++) NuiColorText.Mark(k * 10, k * 10 + 5, edit: false);
+        check.Expect(NuiColorText.PlanAt(10235, red, Own, Font, pieces) == -1,
+            "past a full frame's last stretch text draws as the stock client draws it, since an edit field there went unmarked");
+        check.Expect(NuiColorText.PlanAt(10225, red, Own, Font, pieces) == 1, "text before a full frame's last stretch is still coloured");
+        NuiColorText.EndFrame();
+        check.Expect(NuiColorText.PlanAt(10235, red, Own, Font, pieces) == 1, "the next frame starts with room again");
+        NuiColorText.EndFrame();
     }
 
-    /// <summary>The stand-in font: ten pixels per byte.</summary>
-    private static TextMeasure Font => new(IntPtr.Zero, 12f, &TenPerByte);
-
-    [UnmanagedCallersOnly]
-    private static float TenPerByte(IntPtr userData, float height, byte* text, int length) => length * 10f;
+    private static TextMeasure Font => NuiColorTokensApprovedExamples.Font;
 }

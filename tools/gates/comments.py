@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """CX-194 census: per .cs file under managed/ and C/C++ file under native/, the doc-comment blocks over MAX_LINES
 text lines (bare <summary>/</summary> lines don't count) plus the `///` lines that
-cite a ticket. Prints "<count> <file>" for tools/gates/ratchet.sh; `-v` lists each offending line instead."""
+cite a ticket or mark a ceiling shortcut: where the repo's word is ponytail:. Prints "<count> <file>" for tools/gates/ratchet.sh; `-v` lists each offending line instead."""
 import os, re, sys
 
 MAX_LINES = 4
 TAG_ONLY = re.compile(r'^///\s*</?(summary|remarks|para)>\s*$')
-TICKET = re.compile(r'(?<![\w&])#\d+\b|\bCX-\d+\b|(?<![\w!=])!\d+\b')
+TICKET = re.compile(r'(?<![\w&])#\d+\b|\bCX-\d+\b|(?<![\w!=])!\d+\b|(?i:\b(?:issue|ticket)\s+\d+\b)')
+MARKER = re.compile(r'\bshortcut:')
 
 verbose = '-v' in sys.argv
 SOURCES = (('managed', ('.cs',)), ('native', ('.c', '.cpp', '.h')))
@@ -25,6 +26,8 @@ for top, exts in SOURCES:
                     block.append(n)
                 if TICKET.search(s):
                     hits.append(f'{path}:{n}: ticket reference in a doc comment')
+                if MARKER.search(s):
+                    hits.append(f'{path}:{n}: a ceiling is marked ponytail:, not shortcut:')
                 continue
             if len(block) > MAX_LINES:
                 hits.append(f'{path}:{block[0]}: doc comment is {len(block)} lines (max {MAX_LINES})')

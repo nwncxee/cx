@@ -276,6 +276,7 @@ global using unsafe NkDrawScrollbarFn = delegate* unmanaged<nint, uint, nint, ni
 global using unsafe AurGetLayeredRasterWrapperFn = delegate* unmanaged<byte*, int*, int*, int*, byte*>;
 global using unsafe NkLoadImgFn = delegate* unmanaged<nint, byte*, ushort, nint>;
 global using unsafe NkFontTextWidthFn = delegate* unmanaged<nint, float, byte*, int, float>;
+global using unsafe NkDrawListAddTextFn = delegate* unmanaged<nint, nint, CX.Engine.NkRect, byte*, int, float, uint, void>;
 global using unsafe NkEditBufferFn = delegate* unmanaged<nint, uint, nint, nint, uint>;
 global using unsafe NuiTextWidgetDrawFn = delegate* unmanaged<nint, nint, nint, void>;
 global using unsafe DataBlockFromBase64Fn = delegate* unmanaged<nint, nint, nint>;
@@ -5056,6 +5057,10 @@ public static unsafe class EngineFn
     private static bool _NkFontTextWidthDone;
     /// <inheritdoc cref="SymbolMap.NkFontTextWidth"/>
     public static NkFontTextWidthFn NkFontTextWidth => (NkFontTextWidthFn)(_NkFontTextWidthDone ? _NkFontTextWidth : Resolve(ref _NkFontTextWidth, ref _NkFontTextWidthDone, SymbolMap.NkFontTextWidth));
+    private static IntPtr _NkDrawListAddText;
+    private static bool _NkDrawListAddTextDone;
+    /// <inheritdoc cref="SymbolMap.NkDrawListAddText"/>
+    public static NkDrawListAddTextFn NkDrawListAddText => (NkDrawListAddTextFn)(_NkDrawListAddTextDone ? _NkDrawListAddText : Resolve(ref _NkDrawListAddText, ref _NkDrawListAddTextDone, SymbolMap.NkDrawListAddText));
     private static IntPtr _NkEditBuffer;
     private static bool _NkEditBufferDone;
     /// <inheritdoc cref="SymbolMap.NkEditBuffer"/>
@@ -7444,6 +7449,12 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.NkFontTextWidth"/>; returns the slot holding the next layer, or null.</summary>
     public static NkFontTextWidthFn* ChainNkFontTextWidth(this HookService h, NkFontTextWidthFn handler, int priority) =>
         (NkFontTextWidthFn*)h.Chain(SymbolMap.NkFontTextWidth, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.NkDrawListAddText"/>; returns the original, or null.</summary>
+    public static NkDrawListAddTextFn InstallNkDrawListAddText(this HookService h, NkDrawListAddTextFn handler) =>
+        (NkDrawListAddTextFn)h.Install(SymbolMap.NkDrawListAddText, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.NkDrawListAddText"/>; returns the slot holding the next layer, or null.</summary>
+    public static NkDrawListAddTextFn* ChainNkDrawListAddText(this HookService h, NkDrawListAddTextFn handler, int priority) =>
+        (NkDrawListAddTextFn*)h.Chain(SymbolMap.NkDrawListAddText, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.NkEditBuffer"/>; returns the original, or null.</summary>
     public static NkEditBufferFn InstallNkEditBuffer(this HookService h, NkEditBufferFn handler) =>
         (NkEditBufferFn)h.Install(SymbolMap.NkEditBuffer, (IntPtr)handler);

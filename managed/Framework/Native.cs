@@ -132,6 +132,12 @@ public static unsafe class Native
         return buf == null || len == 0 || len > MaxExoLen ? "" : Encoding.Latin1.GetString(buf, (int)len);
     }
 
+    /// <summary>The codepoint a codepage byte stands for, through the engine's own
+    /// <c>Encoding::SingleCharToUTF8(c, 0)</c> so the client's locale and a module's <c>encoding.2da</c>
+    /// override both apply. Without the export the byte is its own codepoint (Latin-1).</summary>
+    public static int Codepoint(byte b)
+        => EngineFn.EncodingSingleCharToUtf8 == null ? b : EngineFn.EncodingSingleCharToUtf8(b, 0);
+
     /// <summary>Engine text read byte-per-char (<see cref="ReadExo"/>) as Unicode for DISPLAY: each 0x80..0xff char
     /// through <c>Encoding::SingleCharToUTF8(c, 0)</c> -- the same map vanilla's TTF atlas draws with (client
     /// codepage). Run it after colour parsing (tag bytes are raw); keep the byte-space string for anything sent back.</summary>

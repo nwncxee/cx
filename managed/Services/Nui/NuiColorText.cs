@@ -1,5 +1,8 @@
 using System;
+using System.Text;
 using CX.Engine;
+using CX.Framework;
+using CX.Services.Chat.Core;
 
 namespace CX.Services.Nui;
 
@@ -9,11 +12,11 @@ internal readonly record struct ColorPiece(int Start, int Length, float X, uint 
 
 /// <summary>A font's width of a byte run, as nuklear's <c>nk_text_width_f</c> asks it: the font's userdata, its
 /// height, the UTF-8 bytes and their count.</summary>
-internal readonly unsafe struct TextMeasure(IntPtr userData, float height, delegate* unmanaged<IntPtr, float, byte*, int, float> width)
+internal readonly unsafe struct TextMeasure(IntPtr userData, float height, NkFontTextWidthFn width)
 {
     public readonly IntPtr UserData = userData;
     public readonly float Height = height;
-    public readonly delegate* unmanaged<IntPtr, float, byte*, int, float> Width = width;
+    public readonly NkFontTextWidthFn Width = width;
 }
 
 /// <summary>NWN's inline colour tokens in NUI text, laid out the way the client's own text code reads them:
@@ -23,28 +26,31 @@ internal static unsafe class NuiColorText
     /// <summary>Pieces one draw can split into; a draw with more keeps its later tokens as text.</summary>
     internal const int MaxPieces = 64;
 
-    /// <summary>Colours the native text code nests before its ring wraps; deeper opens are ignored here.</summary>
-    private const int MaxDepth = 16;
-
-    /// <summary>Edit fields and text blocks one frame can mark. shortcut: past this, later ones draw as plain text
-    /// (an edit field's tokens colour, a block's colour stops at its line ends); raise it if a window needs more.</summary>
+    /// <summary>Edit fields and text blocks one frame can mark. ponytail: past this the frame's later text draws as
+    /// the stock client draws it, tokens and all; raise it if a window ever needs more.</summary>
     internal const int MaxStretches = 1024;
+
+    /// <summary>The alpha byte of an <c>nk_color</c>: a token's colour keeps the element's own.</summary>
+    private const uint Alpha = 0xFF000000u; // not-an-offset: a colour mask
 
     /// <summary>A stretch of nuklear's command memory one edit field or one text block pushed this frame.</summary>
     internal readonly record struct Stretch(ulong From, ulong To, bool Edit);
 
-    /// <summary>The colour stack a text block carries from line to line, and whether an edit field is drawing.</summary>
+    /// <summary>One frame's layout state: the colour stack a text block carries from line to line, whether an edit
+    /// field is drawing, the stretches the frame marked, and the codepage map read this frame.</summary>
     internal sealed class ColorTextState
     {
-        public readonly uint[] Stack = new uint[MaxDepth];
+        public readonly uint[] Stack = new uint[ColorRunParser.MaxDepth];
         public int Depth;
         public bool InBlock;
         public int Edit;
-        /// <summary>The codepage byte for each codepoint 0x80..0xff map to, filled on first use.</summary>
+        /// <summary>The codepoint each codepage byte 0x80..0xff stands for, read on the frame's first token that needs it.</summary>
         public readonly int[] Codepoints = new int[128];
         public bool Mapped;
         public readonly Stretch[] Stretches = new Stretch[MaxStretches];
         public int StretchCount;
+        /// <summary>True once the frame marked more stretches than it holds.</summary>
+        public bool Full;
         /// <summary>The stretch the last laid-out command sat in, -1 for none.</summary>
         public int LastStretch = -1;
     }
@@ -62,47 +68,42 @@ internal static unsafe class NuiColorText
         if (!s.InBlock) s.Depth = 0;
         if (utf8.IndexOf((byte)'<') < 0 && s.Depth == 0) return -1;
 
-        int depthIn = s.Depth, n = 0, runStart = 0, i = 0;
+        int depthIn = s.Depth, n = 0, i = 0, len;
         bool tokens = false;
         float x = 0f;
         uint color = s.Depth > 0 ? s.Stack[s.Depth - 1] : fg;
-        while (i < utf8.Length && n < into.Length - 1)
+        while (n < into.Length - 1 && (len = NextToken(utf8, i, out int at, out uint rgb, out bool open)) > 0)
         {
-            int len = Token(utf8[i..], fg, out uint next, out bool open);
-            if (len == 0) { i++; continue; }
             tokens = true;
-            if (i > runStart)
+            if (at > i)
             {
-                into[n++] = new ColorPiece(runStart, i - runStart, x, color);
-                x += Measure(utf8[runStart..i], measure);
+                into[n++] = new ColorPiece(i, at - i, x, color);
+                x += Measure(utf8[i..at], measure);
             }
-            if (open) { if (s.Depth < MaxDepth) s.Stack[s.Depth++] = next; }
+            if (open) { if (s.Depth < s.Stack.Length) s.Stack[s.Depth++] = rgb | (fg & Alpha); }
             else if (s.Depth > 0) s.Depth--;
             color = s.Depth > 0 ? s.Stack[s.Depth - 1] : fg;
-            i += len;
-            runStart = i;
+            i = at + len;
         }
         if (!tokens && depthIn == 0) return -1;
-        if (runStart < utf8.Length && n < into.Length)
-            into[n++] = new ColorPiece(runStart, utf8.Length - runStart, x, color);
+        if (i < utf8.Length) into[n++] = new ColorPiece(i, utf8.Length - i, x, color);
         return n;
     }
 
-    /// <summary>The width of the text a draw of <paramref name="utf8"/> shows.</summary>
+    /// <summary>The width of the text a draw of <paramref name="utf8"/> shows. A token the span cuts off takes no room
+    /// either, since nuklear's clamp measures each glyph prefix.</summary>
     internal static float Width(ReadOnlySpan<byte> utf8, TextMeasure measure)
     {
         if (!On || utf8.IndexOf((byte)'<') < 0) return Measure(utf8, measure);
         float w = 0f;
-        int runStart = 0, i = 0;
-        while (i < utf8.Length)
+        int i = 0, len;
+        while ((len = NextToken(utf8, i, out int at, out _, out _)) > 0)
         {
-            int len = Token(utf8[i..], 0, out _, out _);
-            if (len == 0) { i++; continue; }
-            if (i > runStart) w += Measure(utf8[runStart..i], measure);
-            i += len;
-            runStart = i;
+            if (at > i) w += Measure(utf8[i..at], measure);
+            i = at + len;
         }
-        if (runStart < utf8.Length) w += Measure(utf8[runStart..], measure);
+        int end = utf8.Length - CutToken(utf8[i..]);
+        if (end > i) w += Measure(utf8[i..end], measure);
         return w;
     }
 
@@ -114,20 +115,23 @@ internal static unsafe class NuiColorText
 
     /// <summary>Notes that an edit field (<paramref name="edit"/>) or a text block pushed the commands between buffer
     /// offsets <paramref name="from"/> and <paramref name="to"/>. Commands are pushed in rising offsets, so the
-    /// stretches stay sorted.</summary>
+    /// stretches stay sorted; an overlapping one is refused.</summary>
     internal static void Mark(ulong from, ulong to, bool edit)
     {
         var s = State;
-        if (to <= from || s.StretchCount >= MaxStretches) return;
+        if (to <= from) return;
+        if (s.StretchCount >= MaxStretches) { s.Full = true; return; }
         if (s.StretchCount > 0 && from < s.Stretches[s.StretchCount - 1].To) return;
         s.Stretches[s.StretchCount++] = new Stretch(from, to, edit);
     }
 
     /// <summary><see cref="Plan"/> for the queued text command at buffer offset <paramref name="at"/>: an edit field's
-    /// text goes ahead as typed, and the lines of one text block carry their colour from one to the next.</summary>
+    /// text goes ahead as typed, the lines of one text block carry their colour from one to the next, and past a
+    /// full frame's last stretch text goes ahead unchanged.</summary>
     internal static int PlanAt(ulong at, ReadOnlySpan<byte> utf8, uint fg, TextMeasure measure, Span<ColorPiece> into)
     {
         var s = State;
+        if (s.Full && at >= s.Stretches[MaxStretches - 1].To) return -1;
         int k = Find(at);
         if (k >= 0 && s.Stretches[k].Edit) return -1;
         if (k < 0) EndBlock();
@@ -136,12 +140,14 @@ internal static unsafe class NuiColorText
         return Plan(utf8, fg, measure, into);
     }
 
-    /// <summary>The frame's commands are spent: forget its stretches.</summary>
+    /// <summary>The frame's commands are spent: forget its stretches, and read the codepage afresh next frame.</summary>
     internal static void EndFrame()
     {
         var s = State;
         s.StretchCount = 0;
+        s.Full = false;
         s.LastStretch = -1;
+        s.Mapped = false;
         EndBlock();
     }
 
@@ -171,70 +177,80 @@ internal static unsafe class NuiColorText
         fixed (byte* p = run) return measure.Width(measure.UserData, measure.Height, p, run.Length);
     }
 
-    /// <summary>The length of the token <paramref name="t"/> starts with, 0 for none. An open token is <c>&lt;c</c>,
-    /// three non-zero codepage bytes and <c>&gt;</c>, and gives its colour at <paramref name="fg"/>'s alpha; a close
-    /// token is <c>&lt;/c</c> and the one character after it, as the native reader takes four bytes.</summary>
-    private static int Token(ReadOnlySpan<byte> t, uint fg, out uint color, out bool open)
+    /// <summary>The length of the first token in <paramref name="t"/> at or after <paramref name="from"/>, 0 for none;
+    /// <paramref name="at"/> is where it starts. Not <see cref="ColorRunParser"/>: that reads Latin-1 strings and
+    /// allocates, and this reads the UTF-8 nuklear draws, on the frame.</summary>
+    private static int NextToken(ReadOnlySpan<byte> t, int from, out int at, out uint rgb, out bool open)
     {
-        color = 0;
+        for (at = from; at < t.Length; at++)
+        {
+            int lt = t[at..].IndexOf((byte)'<');
+            if (lt < 0) break;
+            at += lt;
+            int len = Token(t[at..], out rgb, out open);
+            if (len > 0) return len;
+        }
+        at = t.Length;
+        rgb = 0;
+        open = false;
+        return 0;
+    }
+
+    /// <summary>The length of the token <paramref name="t"/> starts with, 0 for none. An open token is <c>&lt;c</c>,
+    /// three non-zero codepage bytes and <c>&gt;</c>, giving <paramref name="rgb"/>; a close token is <c>&lt;/c</c> and
+    /// the one character after it, as the native reader takes four bytes.</summary>
+    private static int Token(ReadOnlySpan<byte> t, out uint rgb, out bool open)
+    {
+        rgb = 0;
         open = false;
         if (t.Length < 3 || t[0] != (byte)'<') return 0;
         if (t[1] == (byte)'/')
         {
             if (t[2] != (byte)'c') return 0;
-            return t.Length == 3 ? 3 : 3 + CharLength(t[3..]);
+            if (t.Length == 3) return 3;
+            Rune.DecodeFromUtf8(t[3..], out _, out int tail);
+            return 3 + tail;
         }
         if (t[1] != (byte)'c') return 0;
         int at = 2;
-        uint rgb = 0;
         for (int k = 0; k < 3; k++)
         {
-            if (at >= t.Length) return 0;
-            int len = CharLength(t[at..]);
-            int b = CodepageByte(t.Slice(at, len));
+            if (at >= t.Length || Rune.DecodeFromUtf8(t[at..], out Rune r, out int len) != System.Buffers.OperationStatus.Done) return 0;
+            int b = CodepageByte(r.Value);
             if (b <= 0) return 0;
             rgb |= (uint)b << (8 * k);
             at += len;
         }
         if (at >= t.Length || t[at] != (byte)'>') return 0;
-        color = rgb | (fg & 0xFF000000u); // not-an-offset: the alpha byte of an nk_color
         open = true;
         return at + 1;
     }
 
-    /// <summary>The byte count of the UTF-8 character <paramref name="t"/> starts with; a stray byte counts as one.</summary>
-    private static int CharLength(ReadOnlySpan<byte> t)
+    /// <summary>The bytes at the end of <paramref name="t"/> that begin a token it cuts off: <c>&lt;c</c> and at most three
+    /// characters, or <c>&lt;/</c>. A lone <c>&lt;</c> stays text.</summary>
+    private static int CutToken(ReadOnlySpan<byte> t)
     {
-        byte b = t[0];
-        int len = b < 0xC0 ? 1 : b < 0xE0 ? 2 : b < 0xF0 ? 3 : 4;
-        return Math.Min(len, t.Length);
+        int lt = t.LastIndexOf((byte)'<');
+        if (lt < 0 || t.Length - lt < 2) return 0;
+        var rest = t[(lt + 2)..];
+        if (t[lt + 1] == (byte)'/') return rest.IsEmpty ? t.Length - lt : 0;
+        if (t[lt + 1] != (byte)'c' || rest.IndexOf((byte)'>') >= 0) return 0;
+        int chars = 0;
+        foreach (byte b in rest) if ((b & 0xC0) != 0x80) chars++;
+        return chars <= 3 ? t.Length - lt : 0;
     }
 
-    /// <summary>The codepage byte the engine turned into the UTF-8 character <paramref name="c"/>, or -1.</summary>
-    private static int CodepageByte(ReadOnlySpan<byte> c)
+    /// <summary>The codepage byte the engine turned into codepoint <paramref name="cp"/>, or -1.</summary>
+    private static int CodepageByte(int cp)
     {
-        int cp = c.Length switch
-        {
-            1 => c[0] < 0x80 ? c[0] : -1,
-            2 => ((c[0] & 0x1F) << 6) | (c[1] & 0x3F),
-            3 => ((c[0] & 0x0F) << 12) | ((c[1] & 0x3F) << 6) | (c[2] & 0x3F),
-            _ => -1,
-        };
         if (cp < 0x80) return cp;
         var s = State;
-        var fn = EngineFn.EncodingSingleCharToUtf8;
-        if (fn == null) return cp <= 0xFF ? cp : -1;
-        for (int pass = 0; pass < 2; pass++)
+        if (!s.Mapped)
         {
-            if (!s.Mapped)
-            {
-                for (int b = 0; b < 128; b++) s.Codepoints[b] = fn((byte)(b + 0x80), 0);
-                s.Mapped = true;
-            }
-            int at = Array.IndexOf(s.Codepoints, cp);
-            if (at >= 0 && fn((byte)(at + 0x80), 0) == cp) return at + 0x80;
-            s.Mapped = false;
+            for (int b = 0; b < s.Codepoints.Length; b++) s.Codepoints[b] = Native.Codepoint((byte)(b + 0x80));
+            s.Mapped = true;
         }
-        return -1;
+        int at = Array.IndexOf(s.Codepoints, cp);
+        return at < 0 ? -1 : at + 0x80;
     }
 }

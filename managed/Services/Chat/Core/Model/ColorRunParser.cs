@@ -13,7 +13,7 @@ public static class ColorRunParser
 {
     /// <summary>Aurora nests colors this deep. ponytail: deeper opens are ignored (push+color skipped
     /// together so pops stay paired); lift by growing the stack if a real line ever exceeds it.</summary>
-    private const int MaxDepth = 16;
+    internal const int MaxDepth = 16;
 
     private const float DefaultR = 1f, DefaultG = 1f, DefaultB = 1f;
 

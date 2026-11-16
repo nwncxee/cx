@@ -6,14 +6,13 @@ using CX.Framework;
 
 namespace CX.Services.Nui;
 
-/// <summary>
-/// NWN colour tokens in NUI text (approved examples E1 to E14 on GitHub issue 272). Oracle: each label's text, its pieces,
-/// their colours as nk_color words and their x, typed by hand here; the font is a stand-in ten pixels wide per byte.
-/// </summary>
+/// <summary>NWN colour tokens in NUI text, approved examples E1 to E14; E10 and E14 are the game's to show, so they are
+/// hand checks. Oracle: each label's text, its pieces, their colours as nk_color words and their x, typed by hand here;
+/// the font is a stand-in ten pixels wide per byte.</summary>
 internal static unsafe class NuiColorTokensApprovedExamples
 {
     /// <summary>The label's own colour, (200, 200, 200, 255) as an nk_color word.</summary>
-    private const uint Own = 0xFFC8C8C8; // not-an-offset: an nk_color
+    internal const uint Own = 0xFFC8C8C8; // not-an-offset: an nk_color
     /// <summary>(254, 212, 1) at the label's alpha.</summary>
     private const uint Gold = 0xFF01D4FE; // not-an-offset: an nk_color
     /// <summary>(254, 1, 1) at the label's alpha.</summary>
@@ -23,10 +22,7 @@ internal static unsafe class NuiColorTokensApprovedExamples
     /// <summary>(111, 111, 108), the letters o, o and l, at the label's alpha.</summary>
     private const uint Cool = 0xFF6C6F6F; // not-an-offset: an nk_color
 
-    public static void Run(ExtenderLog log) => Passes(log);
-
-    /// <summary>Runs the suite and logs its result; true when it passed.</summary>
-    internal static bool Passes(ExtenderLog log)
+    public static void Run(ExtenderLog log)
     {
         var check = new Checker(log, "NuiColorTokensApprovedExamples.SelfCheck");
         bool nui = NuiKnobs.Enabled.V, on = NuiKnobs.ColorTokens.V;
@@ -47,7 +43,6 @@ internal static unsafe class NuiColorTokensApprovedExamples
         NuiKnobs.ColorTokens.Set(on);
         NuiKnobs.Enabled.Set(nui);
         log.Info(check.Ok ? "NuiColorTokensApprovedExamples.SelfCheck: passed" : "NuiColorTokensApprovedExamples.SelfCheck: FAILED");
-        return check.Ok;
     }
 
     // Given a server's NUI window with a label reading: Gold: [gold token]1500[close] gp
@@ -89,12 +84,11 @@ internal static unsafe class NuiColorTokensApprovedExamples
     private static void StrayClose(Checker check) =>
         Expect(check, "E6", "Text</c> more", "Text|Own|0  more|Own|40");
 
+    /// <summary>nuklear centres a label on the width its font reports, then draws from the left edge it worked out.
+    /// Oracle: Title is five bytes, 50 px in the stand-in font, and its first piece starts at that edge.</summary>
     // Given two centred labels of the same width, one reading [red]Title[close] and one reading Title
     // When the window opens
     // Then both words sit at the same place
-    //
-    // nuklear centres a label on the width its font reports, then draws from the left edge it worked out. Oracle: Title is
-    // five bytes, 50 px in the stand-in font, and its first piece starts at that edge.
     private static void NoRoom(Checker check)
     {
         float w = NuiColorText.Width(Utf8(Tok(254, 1, 1) + "Title</c>"), Font);
@@ -102,12 +96,12 @@ internal static unsafe class NuiColorTokensApprovedExamples
         Expect(check, "E7", Tok(254, 1, 1) + "Title</c>", "Title|Red|0");
     }
 
+    /// <summary>The box breaks a line where the width its font reports for the text so far passes the box's width, so
+    /// every prefix that ends on a word must measure what the same words measure without tokens. Oracle: ten pixels
+    /// per shown byte.</summary>
     // Given a NUI text box whose long paragraph holds several colour tokens, and a second box of the same size holding the same paragraph without them
     // When the window opens
     // Then both boxes break their lines after the same words
-    //
-    // The box breaks a line where the width its font reports for the text so far passes the box's width, so every prefix
-    // that ends on a word must measure what the same words measure without tokens. Oracle: ten pixels per shown byte.
     private static void WrapsAlike(Checker check)
     {
         string tokened = "The " + Tok(254, 1, 1) + "red</c> fox and the " + Tok(1, 254, 1) + "green " + Tok(254, 212, 1) + "gold</c> hound</c> ran";
@@ -121,6 +115,18 @@ internal static unsafe class NuiColorTokensApprovedExamples
             float w = NuiColorText.Width(bytes.AsSpan(0, Encoding.UTF8.GetByteCount(tokened[..at])), Font);
             check.Expect(w == shown * 10f, $"E8 the text up to '{word}' measures {w} px, where the same words alone measure {shown * 10} px");
         }
+        PartToken(check, "The <c", 40f);
+        PartToken(check, "The <c" + (char)254, 40f);
+        PartToken(check, "The <c" + (char)254 + (char)1 + (char)1, 40f);
+        PartToken(check, "The " + Tok(254, 1, 1) + "red</", 70f);
+    }
+
+    /// <summary>nuklear's clamp measures each glyph prefix too, so a prefix that stops inside a token measures only its
+    /// shown text. Oracle: <paramref name="want"/>, ten pixels per shown byte, typed by the caller.</summary>
+    private static void PartToken(Checker check, string prefix, float want)
+    {
+        float w = NuiColorText.Width(Utf8(prefix), Font);
+        check.Expect(w == want, $"E8 a prefix stopping inside a token, [{prefix}], measures {w} px, where its shown text measures {want} px");
     }
 
     // Given a NUI text box whose red span is long enough to wrap onto the next line
@@ -140,11 +146,11 @@ internal static unsafe class NuiColorTokensApprovedExamples
         Expect(check, "E9 the next label", "after", null);
     }
 
+    /// <summary>Oracle: the field's text measures all of its thirteen bytes, as typed; the same text in a label
+    /// measures Hi alone.</summary>
     // Given a NUI text edit field the server filled with: [red]Hi[close]
     // When the player clicks into it and moves the cursor
     // Then the field shows its text the way the stock client does, so every character the player edits is one they can see
-    //
-    // Oracle: the field's text measures all of its thirteen bytes, as typed; the same text in a label measures Hi alone.
     private static void EditField(Checker check)
     {
         string text = Tok(254, 1, 1) + "Hi</c>";
@@ -182,8 +188,6 @@ internal static unsafe class NuiColorTokensApprovedExamples
         Expect(check, "E13 positive control", "Plain " + Tok(254, 1, 1) + "words", "Plain |Own|0 words|Red|60");
     }
 
-    // E10 and E14 are the game's to show: each NUI element kind, and each renderer, is a check in the hand-over list.
-
     /// <summary>Lays <paramref name="text"/> out and compares it with <paramref name="want"/>: pieces as
     /// <c>text|colour|x</c> separated by one space, or null for the draw going ahead unchanged.</summary>
     private static void Expect(Checker check, string example, string text, string? want)
@@ -216,7 +220,7 @@ internal static unsafe class NuiColorTokensApprovedExamples
     private static int IndexAfter(string s, string word, int from) => s.IndexOf(word, from, StringComparison.Ordinal) + word.Length;
 
     /// <summary>The stand-in font: ten pixels per byte.</summary>
-    private static TextMeasure Font => new(IntPtr.Zero, 12f, &TenPerByte);
+    internal static TextMeasure Font => new(IntPtr.Zero, 12f, &TenPerByte);
 
     [UnmanagedCallersOnly]
     private static float TenPerByte(IntPtr userData, float height, byte* text, int length) => length * 10f;
