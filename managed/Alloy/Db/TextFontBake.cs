@@ -147,7 +147,7 @@ public static unsafe class TextFontBake
             NativeMemory.Clear((void*)range, (nuint)sizeof(StbPackRange));
 
             int* cp = (int*)cps;
-            for (int i = 0; i < glyphs; i++) cp[i] = Codepoint((byte)i);
+            for (int i = 0; i < glyphs; i++) cp[i] = Native.Codepoint((byte)i);
 
             var r = (StbPackRange*)range;
             r->FontSize = px;
@@ -232,13 +232,6 @@ public static unsafe class TextFontBake
         EngineFn.StbttGetFontVMetrics(info, &asc, null, null);
         return (int)(EngineFn.StbttScaleForPixelHeight(info, px) * asc + 0.5f);
     }
-
-    /// <summary>The codepoint a codepage byte stands for, through the engine's own
-    /// <c>Encoding::SingleCharToUTF8(c, 0)</c> so the client's locale and a module's <c>encoding.2da</c>
-    /// override both apply. Without the export the byte is its own codepoint (Latin-1), which is what the
-    /// engine's default locale does below 0x80 and for 0xa0..0xff.</summary>
-    private static int Codepoint(byte b)
-        => EngineFn.EncodingSingleCharToUtf8 == null ? b : EngineFn.EncodingSingleCharToUtf8(b, 0);
 
     // ---- bitmap fonts ----
 

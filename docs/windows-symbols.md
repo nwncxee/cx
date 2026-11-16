@@ -363,8 +363,24 @@ rect by pointer, so one signature serves both ABIs.
 | `nk_do_scrollbarv` | `0xdf6100` | `0xa65d10` | `nk_panel_end`'s callee whose float result is stored through `panel+0x20`; its only other caller is `nk_do_edit` |
 | `nk_do_scrollbarh` | `0xdf65c0` | `0xa65700` | the same, stored through `panel+0x18` |
 
-`nk_do_scrollbarv/h` take the track `nk_rect` by value: in xmm0/xmm1 on Linux, through a pointer in r8 on Windows. So
-`NuiScrollbarHide` declares one handler per ABI and no `[Fn]` row.
+`nk_do_scrollbarv/h` take the track `nk_rect` by value: in xmm0/xmm1 on Linux, through a pointer in r8 on Windows.
+`NuiScrollbarHide` declares one handler per ABI; an `NkRect` parameter, as `NkDrawListAddText` takes, fits both.
+
+## NUI colour tokens -- nuklear text on build `0x68e408bc`
+
+These were read off nwmain.exe's disassembly (capstone over the `.pdata` function bounds `tools/update/binfmt.py`
+reads), not a Ghidra decompilation; confirm them there when the Windows project is at hand. MSVC inlined `nk_draw_text` into `nk_widget_text` (`0xa75460`), so a
+push-time hook would miss most text on Windows; `nk_convert`'s text case is the funnel both binaries share.
+
+| function | Linux | Windows rva | how |
+|---|---|---|---|
+| `nk_font_text_width` | lva `0xde3fe0` | `0xa6ba50` | the width pointer `nk_font_atlas_bake` (`0xa82f20`, `nk_sdl_refresh_config`'s callee) stores into every baked font, beside the query at `0xa6b9a0`; no other reference |
+| `nk_draw_list_add_text` | nm `0xde3aa0` | `0xa7de20` | `nk_convert`'s case 0x10: font from `cmd+0x10`, the rect, text at `cmd+0x30`, length `+0x2c`, height `+0x28`, fg `+0x1c` |
+| `nk_edit_buffer` | nm `0xdfb350` | `0xa817d0` | `nk_edit_string`'s one callee that reads `ctx+0x6738`, calls `nk_widget` and `nk_do_edit`, and defaults a null filter to `nk_filter_default` |
+| NUI `text` widget draw | lva `0x8b2e20` | `0x9584c0` | the lambda the `_Func_impl` at vftable `0xe6e490` slot 2 tail-jumps to; the one NUI caller of both `nk_text` and `nk_text_colored` |
+
+`nk_user_font` reads the same on both: userdata `+0x0`, height `+0x8`, width `+0x10`. The text widget's draw takes
+`(any_data, Widget**, nk_context**)` on Linux and `(captures, Widget*, nk_context*)` on Windows; the hook only passes them on.
 
 ## NUI layout solve -- kiwi by name on build `0x68e408bc`
 

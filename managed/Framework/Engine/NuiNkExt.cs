@@ -15,6 +15,9 @@ public readonly unsafe partial struct NkContext
 {
     /// <summary>The command at nuklear's buffer offset <paramref name="off"/> in the context's own memory.</summary>
     public NkCommand CommandAt(ulong off) => new(MemPtr + (nint)off);
+
+    /// <summary>The buffer offset of <paramref name="p"/>, a byte inside one of the context's queued commands.</summary>
+    public ulong OffsetOf(byte* p) => (ulong)(p - (byte*)MemPtr);
 }
 
 /// <summary>One nuklear <c>nk_color</c>: four bytes, alpha last.</summary>
@@ -23,6 +26,15 @@ public struct NkColor
 {
     /// <summary>Channels.</summary>
     public byte R, G, B, A;
+}
+
+/// <summary>nuklear's <c>nk_rect</c> as it passes one by value: two SSE eightbytes on SysV, a hidden pointer on Win64,
+/// which a struct parameter gives both.</summary>
+[StructLayout(LayoutKind.Sequential)]
+public struct NkRect
+{
+    /// <summary>Origin and size.</summary>
+    public float X, Y, W, H;
 }
 
 /// <summary>Nuklear's command queue: commands are reached by the offsets the queue itself stores.</summary>

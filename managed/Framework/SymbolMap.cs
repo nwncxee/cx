@@ -535,7 +535,7 @@ internal static unsafe class SymbolMap
     /// converts and clears through it.</summary>
     public const string Nuklear    = "g_pNuklear";
     // ---- nuklear's flush, drawn by Alloy. All three take pointers and ints only, so ONE declaration
-    //      fits both ABIs -- a by-value nk_rect would need one per ABI, and none is on this path.
+    //      fits both ABIs; a by-value nk_rect is an NkRect parameter, which fits both too.
     //      docs/windows-symbols.md records where every address was read.
     /// <summary><c>nk_sdl_refresh_config()</c> @0xe066a0 (Windows rva 0xa70d90) -- the skin/font reload edge.
     /// Early-outs on a clear dirty byte at <c>g_pNuklearConfig</c>, so calling it every frame is free.</summary>
@@ -1624,7 +1624,8 @@ internal static unsafe class SymbolMap
     /// build's <c>lva</c> line (<see cref="ClientBuilds.Lva"/>), as an <c>At()</c> symbol is from its <c>rva</c>
     /// line on Windows. The constant is the function's source name, a key, never looked up as an export.</summary>
     internal static readonly HashSet<string> LinuxAnchored = new() { NkScrollbarBehavior, NkDrawScrollbar, NkDoScrollbarV, NkDoScrollbarH,
-                                                                     NkCmds, NkTexNull, NuiArrayIndex, NkLayoutWidgetSpace, NuiEventPush };
+                                                                     NkCmds, NkTexNull, NuiArrayIndex, NkLayoutWidgetSpace, NuiEventPush,
+                                                                     NkFontTextWidth, NuiTextWidgetDraw };
     /// <summary>nuklear's <c>nk_scrollbar_behavior</c> (static: Linux lva 0xdf5ba0, Windows rva 0xa6f320) -- the one
     /// function that turns input into a scrollbar's new offset: the thumb drag (and the one <c>nk_input</c> write,
     /// <c>clicked_pos</c>), the page clicks, the wheel, the scroll keys. Called only by <c>nk_do_scrollbarv/h</c>,
@@ -1657,6 +1658,24 @@ internal static unsafe class SymbolMap
     /// straight to <see cref="ExoResManGet"/>. Returns the slot, as the ABI has it in rax.</summary>
     [Fn("IntPtr(IntPtr ret, byte* resref, ushort type)")]
     public const string NkLoadImg = "_Z10nk_loadimgPKct";
+    /// <summary>nuklear's <c>nk_font_text_width</c> (static: Linux lva 0xde3fe0, Windows rva 0xa6ba50), the width every baked
+    /// atlas font reports: <c>nk_font_atlas_bake</c> stores it as each font's <c>handle.width</c>. Alignment, clamping
+    /// and wrapping all measure through it.</summary>
+    [Fn("float(IntPtr userData, float height, byte* text, int len)")]
+    public const string NkFontTextWidth = "nk_font_text_width";
+    /// <summary><c>nk_draw_list_add_text(list, font, rect, text, len, height, fg)</c> (Linux @0xde3aa0, Windows rva 0xa7de20):
+    /// <c>nk_convert</c>'s text case, the one place a queued text command becomes glyphs, under either renderer.</summary>
+    [Fn("void(IntPtr list, IntPtr font, NkRect rect, byte* text, int len, float height, uint fg)")]
+    public const string NkDrawListAddText = "nk_draw_list_add_text";
+    /// <summary><c>nk_flags nk_edit_buffer(ctx, flags, edit, filter)</c> (Linux @0xdfb350, Windows rva 0xa817d0): one edit
+    /// field's whole frame, its layout and its text commands, under every <c>nk_edit_string</c>.</summary>
+    [Fn("uint(IntPtr ctx, uint flags, IntPtr edit, IntPtr filter)")]
+    public const string NkEditBuffer = "nk_edit_buffer";
+    /// <summary>The NUI <c>text</c> widget's draw (static: Linux lva 0x8b2e20, the invoker <c>(any_data, Widget**, nk_context**)</c>;
+    /// Windows rva 0x9584c0, the lambda <c>(captures, Widget*, nk_context*)</c>): wraps the text and draws each line. Its
+    /// arguments mean different things per OS, so a hook only passes them on, and nothing calls it.</summary>
+    [Fn("void(IntPtr arg0, IntPtr arg1, IntPtr arg2)")]
+    public const string NuiTextWidgetDraw = "Nui::Layout::Widgets::text::draw";
     /// <summary><c>shared_ptr&lt;DataBlock&gt; CExoResMan::Get(CResRef const&amp;, ushort)</c> @0x53e620 (Windows rva 0x18f920):
     /// a resource's raw bytes, null when the key table has no entry. A member returning by value, so the hidden slot
     /// sits (ret, this, ...) on Itanium and (this, ret, ...) on Win64; no <c>[Fn]</c>, because no one signature
@@ -3085,6 +3104,10 @@ internal static unsafe class SymbolMap
         [NkDrawScrollbar] = At(),       // their other private callee: style items 0/0x50/0xa0 by state bit
         [NkDoScrollbarV] = At(),        // nk_panel_end's callee whose result is stored through panel+0x20 (offset_y)
         [NkDoScrollbarH] = At(),        // ... and through panel+0x18 (offset_x)
+        [NkFontTextWidth] = At(),     // the width pointer nk_font_atlas_bake (0xa82f20) stores into every baked font
+        [NkDrawListAddText] = At(),   // nk_convert's case 0x10: font, rect, cmd+0x30 text, length, height, fg
+        [NkEditBuffer] = At(),        // nk_edit_string's one callee that reads ctx->current and calls nk_widget and nk_do_edit
+        [NuiTextWidgetDraw] = At(),   // the lambda _Func_impl vftable 0xe6e490 slot 2 tail-jumps to; the one NUI caller of nk_text and nk_text_colored
         [NkLoadImg] = At(),   // the only function citing "nk_image: failed to load texture '%s' with ANY..." (docs/windows-symbols.md)
         [ExoResManGet] = Nm("?Get@CExoResMan@@QEAA?AV?$shared_ptr@VDataBlock@@@std@@AEBVCResRef@@G@Z"),
         [DataBlockFromBase64] = Nm("?FromBase64@DataBlock@@SA?AV?$shared_ptr@VDataBlock@@@std@@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@3@@Z"),

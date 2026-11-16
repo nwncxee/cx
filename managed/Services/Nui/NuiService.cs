@@ -58,6 +58,8 @@ public sealed unsafe class NuiService : IExtenderService
         NuiSolver.SelfCheck(log);
         NuiScrollbarHide.SelfCheck(log);
         NuiLayoutErrors.SelfCheck(log);
+        NuiColorTokensApprovedExamples.Run(log);
+        NuiColorTokensRegressions.Run(log);
         NuiHitTest.SelfCheck(log);
         NuiJsonRead.SelfCheck(log);
         CxTranslate.SelfCheck(log);
@@ -67,6 +69,7 @@ public sealed unsafe class NuiService : IExtenderService
         NuiScrollbarHide.Init(log, hooks);
         NuiSolver.Init(log, hooks);
         NuiLayoutErrors.Init(log, hooks);
+        NuiColorHooks.Init(log, hooks);
         CxWindows.Init(log, hooks);
         NuiHitTest.Init(log, hooks);
         if (!EngineLayout.Require(log, "NuiService", "Nui::Layout::Layoutable")) return;
