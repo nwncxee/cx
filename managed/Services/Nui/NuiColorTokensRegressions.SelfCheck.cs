@@ -63,11 +63,11 @@ internal static unsafe class NuiColorTokensRegressions
         NuiColorText.EndFrame();
         NuiColorText.Mark(100, 200, edit: true);
         NuiColorText.Mark(300, 400, edit: false);
-        NuiColorText.Mark(50, 60, edit: true);
+        NuiColorText.Mark(350, 450, edit: true);
         check.Expect(NuiColorText.PlanAt(150, red, Own, Font, pieces) == -1, "a command inside the edit field's stretch draws as typed");
         check.Expect(NuiColorText.PlanAt(100, red, Own, Font, pieces) == -1, "a command at the edit field's first byte draws as typed");
         check.Expect(NuiColorText.PlanAt(200, red, Own, Font, pieces) == 1, "a command at the edit field's end is past it, and coloured");
-        check.Expect(NuiColorText.PlanAt(55, red, Own, Font, pieces) == 1, "a stretch marked below one already held is refused, so its command is coloured");
+        check.Expect(NuiColorText.PlanAt(420, red, Own, Font, pieces) == 1, "a stretch overlapping one already held is refused, so its command is coloured");
         check.Expect(NuiColorText.PlanAt(250, red, Own, Font, pieces) == 1 && pieces[0].Color == 0xFF0101FEu, // not-an-offset: an nk_color
             "a command between the stretches is coloured");
         check.Expect(NuiColorText.PlanAt(260, plain, Own, Font, pieces) == -1, "an unclosed colour outside any block stops at its own command");
