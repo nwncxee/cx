@@ -1,0 +1,1 @@
+sleep:5000;shot:@SHOTS@/a-open.png;move:540,463;sleep:2500;shot:@SHOTS@/b-tooltip.png
