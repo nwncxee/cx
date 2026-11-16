@@ -106,7 +106,7 @@ public static partial class UiHost
     public static void Blur() => SetFocused(null);
 
     /// <summary>Topmost window (any) whose live UI covers the point, or null. Drives the cursor -- overlays
-    /// count. Uses <see cref="Window.Hit"/> so a window's chrome outside its rect (popped-out strip, dropdown)
+    /// count. Uses <see cref="Window.Hit"/> so a window's chrome outside its rect (an open dropdown)
     /// still registers. Zero-alloc, like every per-frame read here: plain loops, no LINQ, no sorting.</summary>
     public static Window? HitTest(float px, float py)
     {

@@ -371,7 +371,7 @@ resref string is `"@item:" + ObjectToString(oItem)` draws that item's own invent
 header: "Window animation, background shape and tabs are on each window's own gear." The chrome
 colours are not chat's: every chat window reads the shared look (`ui.look` / `ui.palette`), so its
 background is `PanelBg`, a gradient runs to `NavOn`, the header band is `HeaderBg`, the accent
-`Accent`, the input bar `Input`, the selection `Selected` and the outline `Border`, each at the
+`Accent`, the typing bar `Input`, the selection `Selected` and the outline `Border`, each at the
 alpha that surface draws. Under `ui.look=native` the window wears NUI's own art instead — the
 nine-sliced frame, a button per tab, the edit box under the input line, and the engine's 18 px
 scrollbar, which the text width reserves and the thumb hit-test shares.
@@ -383,17 +383,16 @@ scrollbar, which the text width reserves and the thumb hit-test shares.
 | chat.notify | Desktop notification when a player speaks | T | **off** | U | L | — | While the game window is in the background, a line another player's character says to you (talk, whisper, shout, party, tell, or a DM speaking) shows as a desktop notification. Server messages, combat and feedback never do. |
 | chat.complete | Complete names with Tab | T | on | U | L | Typing | Tab finishes the name you started typing: the people and creatures around you, nearest first, then everyone online. Press Tab again for the next match, Shift+Tab for the one before. |
 | chat.markup | Colour emotes, speech and OOC | T | **off** | U | L | Typing | While you type, `*emotes*`, "speech" and ((out of character)) text take their own colours, so a missing closing `*` shows before you send. |
-| chat.mouse | Place the cursor with the mouse | T | on | U | L | Editing | Click in the input bar to move the cursor, drag to select, double-click to select a word, triple-click for the whole line. Shift+click extends the selection. |
+| chat.mouse | Place the cursor with the mouse | T | on | U | L | Editing | Click in the typing bar to move the cursor, drag to select, double-click to select a word, triple-click for the whole line. Shift+click extends the selection. |
 | chat.drafts | Keep unsent lines | T | on | U | L | Editing | Escape closes the input without losing what you typed; it is back the next time you open chat. Each tab keeps its own unsent line. |
 | chat.histsave | Remember sent lines between sessions | T | on | U | L | History | Lines you sent stay in the Up-arrow history after a restart, in `cx-chat-history.txt` beside `cx.cfg`; turning this off deletes the file. |
 | chat.pairs | Close brackets and quotes | T | on | A | L | Typing | `(` `[` `"` or `*` adds the closing mark; typing it again steps over it; with text selected the mark wraps it. |
-| chat.counter | Show a character count | T | off | A | L | Typing | A running count of the characters in the line, at the right end of the input bar. A line holds up to 4000. |
+| chat.counter | Show a character count | T | off | A | L | Typing | A running count of the characters in the line, at the right end of the typing bar. A line holds up to 4000. |
 | chat.delword | Delete whole words with Ctrl | T | on | A | L | Editing | Ctrl+Backspace deletes the word before the cursor, Ctrl+Delete the word after it. |
 | chat.undo | Undo and redo | T | on | A | L | Editing | Ctrl+Z takes back the last change to the line, Ctrl+Y (or Ctrl+Shift+Z) puts it back. |
-| chat.rows | Arrow keys move through a long message | T | on | A | L | Editing | Up and Down move the cursor between a wrapped line's rows; they reach the history only from the first or last row. |
 | chat.histsearch | Search history by what you typed | T | on | A | L | History | With text in the line, Up recalls only earlier lines that start with it. |
 | chat.emotecol / speechcol / ooccol | Emote / Speech / OOC colour | Sw | e0b872ff / f2f2e6ff / 8c96a0ff | A | L | Markup colours | alpha ignored (text draws opaque) |
-| `chat.w<N>.*` (rect, toggles, inputtop, sendch, anim, hold, fade, tau, outline, font, typeface, tsfmt, tssrc, align, bgmode, bgangle, bgstart, bgend, autohide, autohideframe, locked, tellshere, t<M>.*) | — | per-window state (`KnobBag "w"`) | | H | | — | edited on the window; a submenu reset leaves it alone. A per-window colour key from an older file is counted, logged once and dropped |
+| `chat.w<N>.*` (rect, toggles, inputtop, sendch, anim, hold, fade, tau, outline, font, typeface, tsfmt, tssrc, align, bgmode, bgangle, bgstart, bgend, autohide, autohideframe, locked, tellshere, clickthrough, t<M>.*) | — | per-window state (`KnobBag "w"`) | | H | | — | edited on the window; a submenu reset leaves it alone. A per-window colour key from an older file is counted, logged once and dropped |
 | snippets.enabled | Expand chat shortcuts | T | on | U | L | — | Type a shortcut, then a space (or Enter), and it turns into its text. Ctrl+Z right after takes it back. |
 | snippets.list | Shortcuts | L | empty, hint `;bow *bows deeply*` | U | L | — | Each entry is the word to type, a space, then what it becomes. Enter adds the next one; clear an entry or press × to remove it. |
 
@@ -412,7 +411,10 @@ the font rows are the window's own (`w<N>.font` / `w<N>.typeface`, absent = foll
 sheet. Its *Background* section holds only the fill's shape — `bgmode`, and for a gradient the
 direction and the two stops — since the colours it fills with come from the shared look.
 The tab bar keeps only the gear: a new window is the panel header's *Copy this window*,
-closing is the window category's *Close this window* (two presses; Main has no row).
+closing is the window category's *Close this window* (two presses; Main has no row). With more
+than one window the header also holds a *Window* list, left of *Copy this window*, that switches the
+panel (and the focus) to another window -- the one way back to a window set *Click-through*, which
+takes no pointer. *Click-through* (`w<N>.clickthrough`) is a row of every window but Main.
 
 **Names & combat text** — groups `nameplate` (220, *Nameplates*), `combattext` (222, *Combat text*).
 

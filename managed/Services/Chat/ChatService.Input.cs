@@ -45,7 +45,7 @@ public sealed unsafe partial class ChatService
 
     /// <summary>The framework Window mouse-button delegate: pointer press/release, true when it lands on any chat
     /// window so the WM shell consumes it instead of the 3D world. The focused window is checked first (it owns
-    /// the popped-out strip/dropdown outside its frame rect), then the rest in reverse draw order. A press that
+    /// the typing strip and a channel list that can stack past its frame), then the rest in reverse draw order. A press that
     /// moves typing to another tab or window swaps the unsent lines (<c>chat.drafts</c>).</summary>
     public static bool OnMouseButton(bool down, int button, int x, int y)
     {
@@ -70,6 +70,11 @@ public sealed unsafe partial class ChatService
             if (_settings.Open)
             {
                 bool cs = _settings.MouseDown(x, y, fwin);
+                if (FollowPick(_layout, _settings))
+                {
+                    fwin = _layout.Focused;
+                    if (IsTyping) CloseChat(false);
+                }
                 if (_settings.CopyWindowRequested)
                 {
                     _settings.CopyWindowRequested = false;
@@ -107,25 +112,16 @@ public sealed unsafe partial class ChatService
                         if (wins[i] != fwin) wins[i].TellsHere = false;
                 }
                 DirtyAll(); SyncFieldKeyboard();
-                if (IsTyping && !fwin.HasSendable) CloseChat(false);
+                if (IsTyping && (!fwin.HasSendable || fwin.ClickThrough)) CloseChat(false);
                 Rebuild(); return cs;
             }
             if (EditPress(fwin, x, y)) return true;
-            // Check focused first (owns the strip/dropdown that extends outside the frame).
+            // Check focused first: it owns the strip and a channel list that can stack past its frame.
             if (DownOnWindow(_layout.FocusedIndex, x, y)) return true;
-            // Then check other windows in reverse draw order (last drawn = topmost).
-            for (int i = _layout.Count - 1; i >= 0; i--)
-            {
-                if (i == _layout.FocusedIndex) continue;
-                if (_layout.Windows[i].Contains(x, y))
-                {
-                    _layout.FocusedIndex = i;
-                    if (DownOnWindow(i, x, y)) return true;
-                    Rebuild();
-                    return true;
-                }
-            }
-            return false;
+            int hit = FocusAt(_layout, x, y);
+            if (hit < 0) return false;
+            if (!DownOnWindow(hit, x, y)) Rebuild();
+            return true;
         }
         // Up: an edit-text press, then settings, then tab-drag cross-window drop, then generic grabs.
         if (_editPress) { _editPress = _editDrag = false; return true; }
@@ -162,6 +158,26 @@ public sealed unsafe partial class ChatService
         return false;
     }
 
+    /// <summary>A press over a window other than the focused one focuses it; its index, or -1 when the press is over
+    /// the focused window or none.</summary>
+    internal static int FocusAt(ChatLayout layout, float x, float y)
+    {
+        int hit = layout.WindowAt(x, y);
+        if (hit < 0 || hit == layout.FocusedIndex) return -1;
+        layout.FocusedIndex = hit;
+        return hit;
+    }
+
+    /// <summary>The settings panel's window list switched windows: focus the picked one, so every later press edits
+    /// it. True when it did.</summary>
+    internal static bool FollowPick(ChatLayout layout, SettingsWindow settings)
+    {
+        if (settings.WindowPicked < 0) return false;
+        layout.FocusedIndex = settings.WindowPicked;
+        settings.WindowPicked = -1;
+        return true;
+    }
+
     /// <summary>A press in the typing window's edit text (<c>chat.mouse</c>): place the caret (Shift extends the
     /// selection) and follow the pointer until release; a double press selects the word, a triple the line.</summary>
     private static bool EditPress(ChatWindow win, int x, int y)
@@ -177,10 +193,10 @@ public sealed unsafe partial class ChatService
         if (_clicks == 1)
         {
             bool shift = EngineFn.SdlGetModState != null && (EngineFn.SdlGetModState() & KmodShift) != 0;
-            Edit.SetCaret(InputStripLayout.HitTest(win, atlas, text, x, y), shift);
+            Edit.SetCaret(InputStripLayout.HitTest(win, atlas, text, x), shift);
             _editDrag = true;
         }
-        else if (_clicks == 2) Edit.SelectWordAt(InputStripLayout.HitTest(win, atlas, text, x, y, charUnder: true));
+        else if (_clicks == 2) Edit.SelectWordAt(InputStripLayout.HitTest(win, atlas, text, x, charUnder: true));
         else Edit.SelectAll();
         _editPress = true;
         _completer.Reset();
@@ -192,6 +208,7 @@ public sealed unsafe partial class ChatService
     private static bool DownOnWindow(int index, int x, int y)
     {
         ChatWindow win = _layout!.Windows[index];
+        if (win.ClickThrough) return false;
         if (win.OverGear(x, y))
         {
             _layout.FocusedIndex = index;
@@ -199,9 +216,8 @@ public sealed unsafe partial class ChatService
             float scale = Metrics.GameUiScale < 1f ? 1f : Metrics.GameUiScale;
             _panelPx = MathF.Round(KnobPanel.FacePx * scale); _panelSmallPx = MathF.Round(KnobPanel.SmallPx * scale);
             GlyphAtlas? body = TextRig.Face(_panelPx) ?? TextRig.Atlas;   // cold: a miss bakes, on the input thread
-            _settings.Panel.Title = _layout.Count > 1 ? $"Chat window {index + 1}" : "Chat window";
             _settings.OpenAt(win, TextRig.ViewportW, TextRig.ViewportH, _panelPx, body, TextRig.Face(_panelSmallPx) ?? body,
-                             winIndex: index, winCount: _layout.Count);
+                             winIndex: index, windows: _layout.Windows);
             Rebuild(); return true;
         }
         // Portrait click: intercept before ChatWindow.MouseDown (which would consume it as a body no-op).
@@ -270,7 +286,7 @@ public sealed unsafe partial class ChatService
         if (_layout == null || !GameGate.InGame) return false;
         if (_editDrag && IsTyping && TextRig.Atlas is GlyphAtlas ea)
         {
-            Edit.SetCaret(InputStripLayout.HitTest(_layout.Focused, ea, Edit.Text, x, y), true);
+            Edit.SetCaret(InputStripLayout.HitTest(_layout.Focused, ea, Edit.Text, x), true);
             Rebuild();
             return true;
         }
@@ -297,9 +313,9 @@ public sealed unsafe partial class ChatService
         for (int i = 0; i < wins.Length; i++) if (wins[i].TabDragActive) { tabDrag = true; break; }
         _anyTabDrag = tabDrag;
         bool fiDrag = (uint)fi < (uint)wins.Length && wins[fi].Dragging && !wins[fi].TabDragActive;
-        if ((uint)fi < (uint)wins.Length && (wins[fi].Contains(x, y) || fiDrag)) newHover = fi;
+        if ((uint)fi < (uint)wins.Length && (wins[fi].TakesPointer(x, y) || fiDrag)) newHover = fi;
         else for (int i = wins.Length - 1; i >= 0; i--)
-            if (wins[i].Contains(x, y) || (wins[i].Dragging && !wins[i].TabDragActive)) { newHover = i; break; }
+            if (wins[i].TakesPointer(x, y) || (wins[i].Dragging && !wins[i].TabDragActive)) { newHover = i; break; }
         // Portrait hover: hit-test the topmost window's portrait rects for a highlight.
         int oldPortraitHover = -1;
         int newPortraitHover = -1;
@@ -347,24 +363,29 @@ public sealed unsafe partial class ChatService
     {
         if (_layout == null || !GameGate.InGame) return false;
         if (_settings.Open) { _settings.MouseWheel(dy); return true; }   // the panel / its open list scrolls; it draws itself
-        // Find the topmost window under the pointer (focused draws last = checked first).
-        ChatWindow[] wins = _layout.Windows;
-        ChatWindow? hit = null; int hitIdx = -1;
-        int fi = _layout.FocusedIndex;
-        if ((uint)fi < (uint)wins.Length && wins[fi].Contains(_lastMx, _lastMy)) { hit = wins[fi]; hitIdx = fi; }
-        else for (int i = wins.Length - 1; i >= 0; i--)
-            if (wins[i].Contains(_lastMx, _lastMy)) { hit = wins[i]; hitIdx = i; break; }
-        if (hit == null) return false;
         GlyphAtlas? atlas = TextRig.Atlas;
-        if (atlas == null) return true;
-        float before = hit.Active.ScrollPx;
-        hit.ScrollByPx(dy * WheelLines * WindowAtlas(hit, atlas).LineHeight);
-        hit.Dirty = true;
+        int hitIdx = Wheel(_layout, _lastMx, _lastMy, dy, w => atlas == null ? 0f : WindowAtlas(w, atlas).LineHeight, out float applied);
+        if (hitIdx < 0) return false;
         Rebuild();
-        float applied = hit.Active.ScrollPx - before;
-        hit.LastScroll = System.DateTime.UtcNow;
         if (applied != 0f && hitIdx == _layout.FocusedIndex) ChatAnim.AddResidual(-applied);
         return true;
+    }
+
+    /// <summary>Scroll the topmost window that takes the pointer at (<paramref name="x"/>, <paramref name="y"/>) by
+    /// <paramref name="dy"/> notches of its own line height, resetting its fade clock; its index, or -1 when the
+    /// wheel belongs to the game. <paramref name="applied"/> is the px it moved.</summary>
+    internal static int Wheel(ChatLayout layout, float x, float y, int dy, Func<ChatWindow, float> lineH, out float applied)
+    {
+        applied = 0f;
+        int i = layout.WindowAt(x, y);
+        if (i < 0) return -1;
+        ChatWindow hit = layout.Windows[i];
+        float before = hit.Active.ScrollPx;
+        hit.ScrollByPx(dy * WheelLines * lineH(hit));
+        hit.Dirty = true;
+        hit.LastScroll = DateTime.UtcNow;
+        applied = hit.Active.ScrollPx - before;
+        return i;
     }
 
     /// <summary>True when (<paramref name="x"/>, <paramref name="y"/>) is over any chat UI element:

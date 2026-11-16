@@ -18,6 +18,7 @@ public sealed class VertexBatch
     private readonly List<float> _halo = new(), _body = new();
     private float _su, _sv;   // solid (white) texel centre -- rects sample this for flat colour
     private float _clipY0 = float.NegativeInfinity, _clipY1 = float.PositiveInfinity;
+    private float _clipX0 = float.NegativeInfinity, _clipX1 = float.PositiveInfinity;
 
     public VertexBatch(float solidU, float solidV) { _su = solidU; _sv = solidV; }
 
@@ -35,7 +36,13 @@ public sealed class VertexBatch
     /// at the band edges with their texcoords re-interpolated, so a scroll column's partially visible top and
     /// bottom rows end exactly at its box. <see cref="GradientRect"/> and <see cref="GlyphItalic"/> ignore it.</summary>
     public void ClipY(float y0, float y1) { _clipY0 = y0; _clipY1 = y1; }
-    public void ClearClip() { _clipY0 = float.NegativeInfinity; _clipY1 = float.PositiveInfinity; }
+    /// <summary>Horizontal clip band, cut the same way as <see cref="ClipY"/>: a scrolled line ends exactly at its box.</summary>
+    public void ClipX(float x0, float x1) { _clipX0 = x0; _clipX1 = x1; }
+    public void ClearClip()
+    {
+        _clipY0 = _clipX0 = float.NegativeInfinity;
+        _clipY1 = _clipX1 = float.PositiveInfinity;
+    }
     /// <summary>Vertices so far. Like every read, it closes an open outlined run first.</summary>
     public int VertexCount { get { Flush(); return _v.Count / Floats; } }
     public float[] ToArray() { Flush(); return _v.ToArray(); }
@@ -161,6 +168,12 @@ public sealed class VertexBatch
             if (y1 <= _clipY0 || y0 >= _clipY1) return;
             if (y0 < _clipY0) { v0 += (v1 - v0) * (_clipY0 - y0) / (y1 - y0); y0 = _clipY0; }
             if (y1 > _clipY1) { v1 -= (v1 - v0) * (y1 - _clipY1) / (y1 - y0); y1 = _clipY1; }
+        }
+        if (x1 > x0)
+        {
+            if (x1 <= _clipX0 || x0 >= _clipX1) return;
+            if (x0 < _clipX0) { u0 += (u1 - u0) * (_clipX0 - x0) / (x1 - x0); x0 = _clipX0; }
+            if (x1 > _clipX1) { u1 -= (u1 - u0) * (x1 - _clipX1) / (x1 - x0); x1 = _clipX1; }
         }
         V(to, x0, y0, u0, v0, r, g, b, a); V(to, x1, y0, u1, v0, r, g, b, a); V(to, x1, y1, u1, v1, r, g, b, a);
         V(to, x0, y0, u0, v0, r, g, b, a); V(to, x1, y1, u1, v1, r, g, b, a); V(to, x0, y1, u0, v1, r, g, b, a);

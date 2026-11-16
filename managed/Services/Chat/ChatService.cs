@@ -44,7 +44,7 @@ public sealed unsafe partial class ChatService : IExtenderService
         TellRouter.SelfCheck(log);     // tell auto-open routing proof (off-device)
         WindowRenderer.SelfCheck(log); // portrait-gutter emission proof (off-device)
         InputMarkup.SelfCheck(log);      // emote/speech/OOC classification of the line being typed (off-device)
-        InputStripLayout.SelfCheck(log); // the input strip's one geometry: hit-test, rows, counter reserve (off-device)
+        InputStripLayout.SelfCheck(log); // the input strip's one geometry: hit-test, sideways scroll, counter reserve (off-device)
         RowAlign.SelfCheck(log);       // shared row alignment/justify primitive proof (off-device)
         TextWrapper.SelfCheck(log);    // pixel-width word wrap, hard break, one advance per rune (off-device)
         ChatAnim.SelfCheck(log);       // fade/slide/scroll math proof (off-device)
@@ -58,6 +58,12 @@ public sealed unsafe partial class ChatService : IExtenderService
         NameCompleter.SelfCheck(log);  // Tab name completion
         HistoryFile.SelfCheck(log);    // saved sent-line history escaping
         SpeechNotify.SelfCheck(log);   // which lines raise a desktop notification
+        TypingBarRegressions.SelfCheck(log);
+        ChatWindowRegressions.SelfCheck(log);
+        TypingBarApprovedExamples.SelfCheck(log);
+        InputWindowApprovedExamples.SelfCheck(log);
+        ClickThroughApprovedExamples.SelfCheck(log);
+        WindowPickerApprovedExamples.SelfCheck(log);
         string[] names = FontRegistry.Names;   // "default" first: the window's own entry stands in for it
         var faces = new string[names.Length];
         faces[0] = SettingsWindow.FollowUi;

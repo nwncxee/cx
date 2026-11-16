@@ -855,9 +855,10 @@ public sealed partial class KnobPanel
         if (!Open) return false;
         if (Drop.Open)
         {
-            Row? dr = Drop.Tag as Row;
+            object? tag = Drop.Tag;
             Drop.MouseDown(mx, my, out int picked);
-            if (picked >= 0 && dr != null) PickChoice(dr, picked);
+            if (picked >= 0 && tag is Row dr) PickChoice(dr, picked);
+            else if (picked >= 0 && ReferenceEquals(tag, HeaderChoiceTag)) { HeaderChoice = picked; HeaderChoicePicked?.Invoke(picked); }
             _pressed = true;
             return true;
         }
@@ -874,6 +875,7 @@ public sealed partial class KnobPanel
         if (OverClose(mx, my)) { Close(); return true; }
         if (OverCollapse(mx, my)) { ToggleCollapse(); return true; }
         if (OverHeaderButton(mx, my)) { HeaderActionPressed?.Invoke(); return true; }
+        if (OverHeaderChoice(mx, my)) { OpenHeaderChoice(); return true; }
         if (my < Y + HeaderH) { _moving = true; _mgx = mx - X; _mgy = my - Y; return true; }
         if (Cats.MouseDown(mx, my) || SubCol.MouseDown(mx, my) || List.MouseDown(mx, my)) return true;
         int c = NavAt(Cats, Categories.Length, mx, my);
@@ -1297,18 +1299,7 @@ public sealed partial class KnobPanel
         if (!Art(skin, NativeChrome.Close, closeX0, y + (HeaderH - CloseW) * 0.5f, closeX1, y + (HeaderH + CloseW) * 0.5f))
             UiText.Draw(b, body, "×", closeX0 + (CloseW - UiText.Measure(body, "×")) * 0.5f, hbase, Grip, closeX1);
         DrawCollapse(b, body, closeX0, hbase);
-        float titleClip1 = closeX0 - CollapseSpan - 0.6f * em;
-        if (HeaderAction.Length > 0)
-        {
-            HeaderButtonRect(out float hx0, out float hx1, out float hy0, out float hy1);
-            if (!Art(skin, NativeChrome.Button, hx0, hy0, hx1, hy1))
-            {
-                Fill(b, hx0, hy0, hx1, hy1, NavOn);
-                Outline(b, hx0, hy0, hx1, hy1, Frame2);
-            }
-            UiText.Draw(b, body, HeaderAction, hx0 + 0.9f * em, hbase, Tx, hx1 - 0.4f * em);
-            titleClip1 = hx0 - 0.6f * em;
-        }
+        float titleClip1 = DrawHeaderChoice(b, body, hbase, DrawHeaderButton(b, body, skin, hbase, closeX0 - CollapseSpan - 0.6f * em));
         UiText.Draw(b, body, Title, x + Pad, hbase, Tx, titleClip1);
         if (Collapsed) return;
 

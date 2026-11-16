@@ -25,6 +25,17 @@ public sealed partial class SettingsWindow
     // window per call; a null window means "no model" and the callbacks no-op (the shell's focused window can be
     // gone by the time a key commits an edit).
     private ChatWindow? _win;
+    /// <summary>Every chat window, in layout order, as the shell passed it on open; the header's window list picks
+    /// among them, the way a click-through window that ignores the pointer is reached.</summary>
+    private ChatWindow[] _windows = System.Array.Empty<ChatWindow>();
+
+    /// <summary>The window the header's list just switched the panel to, or -1. The shell reads + clears it and
+    /// focuses that window, so every later press edits it.</summary>
+    public int WindowPicked = -1;
+
+    /// <summary>A window's name in the panel's title and its window list.</summary>
+    public static string WindowName(int i, int count)
+        => count <= 1 ? "Chat window" : i == 0 ? "Main" : "Window " + (i + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
 
     /// <summary>Tab index per category entry: -1 for <see cref="WindowCategory"/> and <see cref="AddTabCategory"/>.</summary>
     private int[] _catTab = System.Array.Empty<int>();
@@ -58,6 +69,8 @@ public sealed partial class SettingsWindow
             Title = "Chat window",
             HeaderAction = "Copy this window",
             HeaderActionPressed = () => CopyWindowRequested = true,
+            HeaderChoiceLabel = "Window",
+            HeaderChoicePicked = OnWindowPicked,
             WFrac = 0.52f, HFrac = 0.66f, CatFrac = 0.30f, SubFrac = 0f,
             Modal = true,
             Source = () => { if (_win != null) Layout(_win); },
@@ -75,9 +88,6 @@ public sealed partial class SettingsWindow
     public bool Open => Panel.Open;
     public List<Row> Rows => Panel.Rows;
 
-    /// <summary>Number of chat windows (snapshot), used to show "Copy from Window N" rows. Set by the shell
-    /// before <see cref="Layout"/> (the panel is modal, so window count can't change while it's open).</summary>
-    public int WindowCount;
     /// <summary>Index of the window this panel is editing (0 = Main). Set by the shell on open.</summary>
     public int WindowIndex;
 
@@ -135,7 +145,7 @@ public sealed partial class SettingsWindow
     {
         AddSection(rows, "Window");
         AddToggle(rows, SetAct.InputTop, "Input on top", win.InputOnTop, 0,
-                  "The input line pops out above the window instead of below it.");
+                  "The typing bar sits at the top of the window, under the tabs, instead of along its bottom edge.");
         AddToggle(rows, SetAct.AutoHideHdr, "Auto-hide header", win.AutoHideHeader, 0,
                   "The tab bar hides until the pointer is over the window.");
         AddToggle(rows, SetAct.AutoHideFrame, "Auto-hide outline", win.AutoHideFrame, 0,
@@ -144,6 +154,9 @@ public sealed partial class SettingsWindow
                   "No moving, resizing or tab dragging on this window.");
         AddToggle(rows, SetAct.TellsHere, "Tells here", win.TellsHere, 0,
                   "Tells land in this window. Only one window can hold this.");
+        if (win.Closeable)
+            AddToggle(rows, SetAct.ClickThrough, "Click-through", win.ClickThrough, 0,
+                      "The window becomes non-interactable. Warning: after this is toggled, the only way to reach this window's settings is to choose the dropdown at the top.");
         // A pending pick shows at once: the shell sets the knob only after the press returns.
         AddDropdown(rows, SetAct.CycleTellOpen, "Tell auto-open", TellOpenNames, TellOpenPicked >= 0 ? TellOpenPicked : ChatKnobs.TellOpen.V,
                     "Where a tell from someone new lands: nowhere special, a new tab, or its own window.");
@@ -191,11 +204,11 @@ public sealed partial class SettingsWindow
         }
 
         // Copy from another window (hidden when only one window exists).
-        if (WindowCount > 1) AddSection(rows, "Other windows");
-        for (int wi = 0; wi < WindowCount; wi++)
+        if (_windows.Length > 1) AddSection(rows, "Other windows");
+        for (int wi = 0; wi < _windows.Length; wi++)
         {
             if (wi == WindowIndex) continue;
-            rows.Add(new Row { Ctl = KnobKind.Button, Act = SetAct.CopyFrom, Text = $"Copy from Window {wi + 1}",
+            rows.Add(new Row { Ctl = KnobKind.Button, Act = SetAct.CopyFrom, Text = "Copy from " + WindowName(wi, _windows.Length),
                                Key = wi.ToString(System.Globalization.CultureInfo.InvariantCulture) });
         }
 
@@ -259,14 +272,36 @@ public sealed partial class SettingsWindow
 
     /// <summary>Open the panel centred in a <paramref name="vpW"/>×<paramref name="vpH"/> viewport on the faces the
     /// shell baked at <paramref name="em"/> (null faces lay out on estimates and draw nothing). Opens on the
-    /// window category. <paramref name="winIndex"/> and <paramref name="winCount"/> drive the "Copy from" rows.</summary>
+    /// window category. <paramref name="windows"/> drives the "Copy from" rows and the header's window list.</summary>
     public void OpenAt(ChatWindow win, float vpW, float vpH, float em = KnobPanel.FacePx,
-                       GlyphAtlas? body = null, GlyphAtlas? small = null, int winIndex = 0, int winCount = 1)
+                       GlyphAtlas? body = null, GlyphAtlas? small = null, int winIndex = 0, ChatWindow[]? windows = null)
     {
         _win = win;
-        WindowIndex = winIndex; WindowCount = winCount;
+        _windows = windows ?? new[] { win };
+        WindowIndex = winIndex;
+        ShowWindow(winIndex);
         Panel.Category = 0; Panel.Cats.Reset(); Panel.List.Reset();
         Panel.OpenAt(vpW, vpH, em, body, small);   // lays out through Source
+    }
+
+    /// <summary>Point the header at window <paramref name="i"/>: its title, and the window list (none for a lone window).</summary>
+    private void ShowWindow(int i)
+    {
+        Panel.Title = WindowName(i, _windows.Length);
+        var names = new string[_windows.Length > 1 ? _windows.Length : 0];
+        for (int k = 0; k < names.Length; k++) names[k] = WindowName(k, _windows.Length);
+        Panel.HeaderChoices = names;
+        Panel.HeaderChoice = i;
+    }
+
+    /// <summary>The header's window list picked <paramref name="i"/>: the panel now edits that window, from its window page.</summary>
+    private void OnWindowPicked(int i)
+    {
+        _win = _windows[i];
+        WindowIndex = i; WindowPicked = i; CloseArmed = false;
+        ShowWindow(i);
+        Panel.Category = 0; Panel.Cats.Reset(); Panel.List.Reset();
+        Layout(_win);
     }
 
     /// <summary>Swap in fresh faces (the sheet re-baked while open: same px, so the layout stands; the next
@@ -345,6 +380,7 @@ public sealed partial class SettingsWindow
             case SetAct.CopyFrom:
                 CopyRequested = ParseIndex(row.Key);
                 break;
+            case SetAct.ClickThrough: win.ClickThrough = !win.ClickThrough; break;
         }
     }
 
@@ -421,7 +457,7 @@ public sealed partial class SettingsWindow
     public bool MouseWheel(int dy) => Panel.MouseWheel(dy);
 
     /// <summary>Force-close at a session boundary, clearing any half-owned press, drag, or field edit.</summary>
-    public void Reset() { Panel.Close(); TellsHereChanged = false; FontChanged = false; CopyWindowRequested = false; CloseWindowRequested = false; CloseArmed = false; }
+    public void Reset() { Panel.Close(); WindowPicked = -1; TellsHereChanged = false; FontChanged = false; CopyWindowRequested = false; CloseWindowRequested = false; CloseArmed = false; }
 
     private static float Clamp01(float v) => v < 0f ? 0f : v > 1f ? 1f : v;
 }

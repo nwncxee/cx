@@ -145,14 +145,14 @@ public sealed unsafe partial class ChatService
     private static void Open(bool draft = true)
     {
         if (_layout == null || !GameGate.InGame) return;
-        ChatWindow target = _layout.Focused;
-        if (!target.HasSendable)
+        int ti = _layout.TypingWindow();
+        if (ti < 0) return;
+        if (ti != _layout.FocusedIndex)
         {
-            target = _layout.Main;
-            _layout.FocusedIndex = 0;
+            _layout.FocusedIndex = ti;
             if (_settings.Open) _settings.Reset();
         }
-        if (!target.HasSendable) return;
+        ChatWindow target = _layout.Focused;
         if (!UiInputService.AppFocused || Hidden(target))
         {
             _log?.Info($"[chat] open refused: focused={UiInputService.AppFocused} nuiOver={Hidden(target)}");
@@ -347,22 +347,19 @@ public sealed unsafe partial class ChatService
             case KeyRight:     if (ctrl) Edit.MoveWordRight(shift); else Edit.MoveRight(shift); break;
             case KeyHome:      Edit.Home(shift); break;
             case KeyEnd:       Edit.End(shift); break;
-            case KeyUp:        if (!RowMove(-1, shift)) Edit.HistoryPrev(ChatKnobs.HistSearch.V); break;
-            case KeyDown:      if (!RowMove(1, shift)) Edit.HistoryNext(); break;
+            case KeyUp:        ArrowKey(Edit, -1); break;
+            case KeyDown:      ArrowKey(Edit, 1); break;
             case KeyTab:       if (ChatKnobs.Complete.V) Complete(shift); break;
         }
         Rebuild();   // caret move / edit / history recall all change the footer
     }
 
-    /// <summary>Up / Down inside a wrapped line (<c>chat.rows</c>): true when the caret moved to the row above
-    /// (<paramref name="dir"/> -1) or below; false on the first / last row, where the arrows walk history.</summary>
-    private static bool RowMove(int dir, bool shift)
+    /// <summary>Up (<paramref name="dir"/> -1) or Down on the line in <paramref name="edit"/>: the line is one row,
+    /// so the arrows always walk the sent history.</summary>
+    internal static void ArrowKey(EditBuffer edit, int dir)
     {
-        if (!ChatKnobs.Rows.V || _layout == null || TextRig.Atlas is not GlyphAtlas atlas) return false;
-        int to = InputStripLayout.VerticalMove(_layout.Focused, atlas, Edit.Text, Edit.Cursor, dir);
-        if (to < 0) return false;
-        Edit.SetCaret(to, shift);
-        return true;
+        if (dir < 0) edit.HistoryPrev(ChatKnobs.HistSearch.V);
+        else edit.HistoryNext();
     }
 
     private static void Copy()

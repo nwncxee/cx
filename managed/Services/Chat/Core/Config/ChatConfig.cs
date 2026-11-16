@@ -69,6 +69,7 @@ public sealed class ChatConfig
             if (w.AutoHideFrame is bool ahf) Put(p + "autohideframe", ahf ? "1" : "0");
             if (w.Locked is bool lk) Put(p + "locked", lk ? "1" : "0");
             if (w.TellsHere is bool th) Put(p + "tellshere", th ? "1" : "0");
+            if (w.ClickThrough) Put(p + "clickthrough", "1");
             for (int ti = 0; ti < w.Tabs.Count; ti++)
             {
                 var (label, mask, pin, kept) = w.Tabs[ti];
@@ -154,6 +155,7 @@ public sealed class ChatConfig
             case "autohideframe": w.AutoHideFrame = val != "0"; break;
             case "locked": w.Locked = val != "0"; break;
             case "tellshere": w.TellsHere = val != "0"; break;
+            case "clickthrough": w.ClickThrough = wi > 0 && val != "0"; break;
         }
     }
 
@@ -200,6 +202,8 @@ public sealed class ChatConfig
         check.Expect(bw0.AutoHideHeader == false, "per-window autohide round-trips");
         check.Expect(bw0.Locked == true, "per-window locked round-trips");
         check.Expect(bw0.TellsHere == true, "per-window tellshere round-trips");
+        check.Expect(From(new[] { new KeyValuePair<string, string>("w0.clickthrough", "1"), new KeyValuePair<string, string>("w1.clickthrough", "1") })
+                     is { } ct && !ct.Windows[0].ClickThrough && ct.Windows[1].ClickThrough, "a hand-edited click-through on Main is refused, window 2 keeps it");
         check.Expect(bw0.Tabs.Count == 2, "two tabs round-trip");
         check.Expect(bw0.Tabs[0].Label == "All channels" && bw0.Tabs[0].Mask == 0xffffffff && bw0.Tabs[0].Pin == "" && !bw0.Tabs[0].Kept, "tab 0 round-trips (label with space, no pin, not kept)");
         check.Expect(bw0.Tabs[1].Label == "mask=test" && bw0.Tabs[1].Mask == 0x00000002 && bw0.Tabs[1].Pin == "Alice" && bw0.Tabs[1].Kept, "tab 1 round-trips (label with =, pin, kept)");

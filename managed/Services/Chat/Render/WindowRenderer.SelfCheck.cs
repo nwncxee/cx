@@ -26,7 +26,7 @@ public static partial class WindowRenderer
         check.Expect(((slate[(int)Role.NavOn] << 8) | BgA) == 0x192040bdu, "...a gradient's second colour to 0x192040bd");
         check.Expect(((slate[(int)Role.HeaderBg] << 8) | HeaderA) == 0x1a1f29d9u, "...the header band to 0x1a1f29d9");
         check.Expect(((slate[(int)Role.Accent] << 8) | AccentA) == 0x335785f2u, "...the accent to 0x335785f2");
-        check.Expect(((slate[(int)Role.Input] << 8) | InputA) == 0x050508e6u, "...the input bar to 0x050508e6");
+        check.Expect(((slate[(int)Role.Input] << 8) | InputA) == 0x050508e6u, "...the typing bar to 0x050508e6");
         check.Expect(((slate[(int)Role.Selected] << 8) | SelA) == 0x38669eb3u, "...the selection to 0x38669eb3");
         check.Expect((slate[(int)Role.Tx] << 8 | 0xff) == 0xd8dee9ffu, "...the label text to 0xd8dee9ff, opaque");
 

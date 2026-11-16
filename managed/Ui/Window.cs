@@ -76,8 +76,8 @@ public sealed class Window
     public Action<IntPtr>? OnText;                           // SDL_TEXTINPUT payload
 
     /// <summary>Overrides the rect hit-test for cursor pick + click routing: true when the point is over this
-    /// window's live UI (a service whose chrome extends outside its rect -- a popped-out input strip, an open
-    /// dropdown -- supplies this). Null falls back to <see cref="Contains"/>. Zero-alloc: read on the render
+    /// window's live UI (a service whose chrome extends outside its rect -- an open dropdown or
+    /// channel list -- supplies this). Null falls back to <see cref="Contains"/>. Zero-alloc: read on the render
     /// thread by the cursor pick and on the input thread by focus routing.</summary>
     public Func<float, float, bool>? HitTestOverride;
 

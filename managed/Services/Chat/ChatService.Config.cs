@@ -95,27 +95,7 @@ public sealed unsafe partial class ChatService
             }
             if (wc.W >= ChatWindow.MinW && wc.H >= ChatWindow.MinH)
             { win.X = wc.X; win.Y = wc.Y; win.W = wc.W; win.H = wc.H; }
-            win.Toggles = wc.Toggles;
-            win.InputOnTop = wc.InputOnTop;
-            if (wc.SendChannel >= 0 && wc.SendChannel <= 5) win.SendChannel = (Channel)wc.SendChannel;
-            if (wc.AnimEnabled is bool ae) win.AnimEnabled = ae;
-            if (wc.HoldSec is float hs) win.HoldSec = hs;
-            if (wc.FadeSec is float fs) win.FadeSec = fs;
-            if (wc.TauMs is float tm) win.TauMs = tm;
-            if (wc.Outline is int ol) win.Outline = ol;
-            if (wc.FontPx is int fp && fp >= TextRig.MinFontPx && fp <= TextRig.MaxFontPx) win.FontPx = fp;
-            if (wc.Typeface is { Length: > 0 } tfn) win.Typeface = tfn;
-            if (wc.TimeFormat is int tf) win.TimeFormat = (TsFormat)tf;
-            if (wc.TimeSource is int ts) win.TimeSource = (TsSource)ts;
-            if (wc.Align is int al && al >= 0 && al <= 3) win.Align = (TextAlign)al;
-            if (wc.BgMode is int bgm && bgm >= 0 && bgm <= 3) win.BgMode = (BgMode)bgm;
-            if (wc.BgAngle is float ba) win.BgAngle = Math.Clamp(ba, 0f, 360f);
-            if (wc.BgStart is float bs) win.BgStart = Math.Clamp(bs, 0f, 1f);
-            if (wc.BgEnd is float be) win.BgEnd = Math.Clamp(be, 0f, 1f);
-            if (wc.AutoHideHeader is bool ahh) win.AutoHideHeader = ahh;
-            if (wc.AutoHideFrame is bool ahf) win.AutoHideFrame = ahf;
-            if (wc.Locked is bool lk) win.Locked = lk;
-            if (wc.TellsHere is bool th) win.TellsHere = th;
+            wc.ApplyTo(win);
             if (wc.Tabs.Count > 0)
             {
                 var tabs = new Tab[wc.Tabs.Count];
@@ -148,20 +128,7 @@ public sealed unsafe partial class ChatService
                 for (int j = 0; j < tabs.Count; j++) if (!tabs[j].Ephemeral) { allEph = false; break; }
                 if (allEph) continue;
             }
-            var wc = new WindowConfig();
-            wc.X = win.X; wc.Y = win.Y; wc.W = win.W; wc.H = win.H;
-            wc.Toggles = win.Toggles; wc.InputOnTop = win.InputOnTop;
-            wc.SendChannel = (int)win.SendChannel;
-            wc.AnimEnabled = win.AnimEnabled; wc.HoldSec = win.HoldSec;
-            wc.FadeSec = win.FadeSec; wc.TauMs = win.TauMs;
-            wc.Outline = win.Outline;
-            wc.FontPx = win.FontPx; wc.Typeface = win.Typeface;
-            wc.TimeFormat = (int)win.TimeFormat; wc.TimeSource = (int)win.TimeSource;
-            wc.Align = (int)win.Align;
-            wc.BgMode = (int)win.BgMode; wc.BgAngle = win.BgAngle; wc.BgStart = win.BgStart; wc.BgEnd = win.BgEnd;
-            wc.AutoHideHeader = win.AutoHideHeader; wc.AutoHideFrame = win.AutoHideFrame;
-            wc.Locked = win.Locked;
-            wc.TellsHere = win.TellsHere;
+            var wc = WindowConfig.Capture(win);
             for (int j = 0; j < win.Tabs.Count; j++)
             {
                 if (win.Tabs[j].Ephemeral) continue; // AC4: unkept tabs excluded

@@ -13,7 +13,7 @@ internal static class ChatKnobs
     internal static readonly Knob<int> TellOpen;
     internal static readonly Knob<bool> Notify;
     internal static readonly Knob<bool> Pairs, Complete, Markup, Counter;
-    internal static readonly Knob<bool> DelWord, Undo, Mouse, Rows, Drafts;
+    internal static readonly Knob<bool> DelWord, Undo, Mouse, Drafts;
     internal static readonly Knob<bool> HistSearch, HistSave;
     internal static readonly Knob<uint> EmoteCol, SpeechCol, OocCol;
     internal static readonly KnobBag Windows;
@@ -40,7 +40,7 @@ internal static class ChatKnobs
         Markup = G.Toggle("markup", "Colour emotes, speech and OOC", false,
                           help: "While you type, *emotes*, \"speech\" and ((out of character)) text take their own colours, so a missing closing * shows before you send.");
         Counter = G.Toggle("counter", "Show a character count", false, Tier.Advanced,
-                           help: "A running count of the characters in the line, at the right end of the input bar. A line holds up to 4000.");
+                           help: "A running count of the characters in the line, at the right end of the typing bar. A line holds up to 4000.");
 
         G.Section("Editing");
         DelWord = G.Toggle("delword", "Delete whole words with Ctrl", true, Tier.Advanced,
@@ -48,9 +48,7 @@ internal static class ChatKnobs
         Undo = G.Toggle("undo", "Undo and redo", true, Tier.Advanced,
                         help: "Ctrl+Z takes back the last change to the line, Ctrl+Y (or Ctrl+Shift+Z) puts it back.");
         Mouse = G.Toggle("mouse", "Place the cursor with the mouse", true,
-                         help: "Click in the input bar to move the cursor, drag to select, double-click to select a word, triple-click for the whole line. Shift+click extends the selection.");
-        Rows = G.Toggle("rows", "Arrow keys move through a long message", true, Tier.Advanced,
-                        help: "When the line wraps, Up and Down move the cursor between its rows. They reach the sent-line history only from the first or last row.");
+                         help: "Click in the typing bar to move the cursor, drag to select, double-click to select a word, triple-click for the whole line. Shift+click extends the selection.");
         Drafts = G.Toggle("drafts", "Keep unsent lines", true,
                           help: "Escape closes the input without losing what you typed; it is back the next time you open chat. Each tab keeps its own unsent line, so you can answer a tell and come back to a half-written post.");
 
