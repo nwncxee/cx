@@ -373,8 +373,6 @@ public static partial class WindowRenderer
             }
         }
 
-        // Input strip: the frame's bottom row (or the row under the tab bar), a channel dropdown at its left + the
-        // edit line, which scrolls sideways rather than leaving the window.
         if (showFooter)
             EmitInputStrip(b, chrome, win, editText, caret, selection, p, sk, counter ?? ChatKnobs.Counter.V);
 
@@ -441,6 +439,7 @@ public static partial class WindowRenderer
             BodyStart = bodyStart, BodyEnd = bodyEnd, Bx = bx, By = by, Bw = bw, Bh = bh,
             Scrolled = active.ScrollPx != 0f,
             LastScroll = win.LastScroll,
+            AnimEnabled = win.AnimEnabled, HoldSec = win.HoldSec, FadeSec = win.FadeSec, TauMs = win.TauMs,
             BlinkStart = blinkStart, BlinkEnd = blinkEnd,
             HoverStart = hoverStart, HoverEnd = hoverEnd, HoverSince = win.HoverSince,
             LeftStart = leftStart, LeftEnd = leftEnd, LeftSince = win.LeftSince,

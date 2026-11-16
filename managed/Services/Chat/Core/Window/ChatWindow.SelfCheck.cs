@@ -87,16 +87,17 @@ public sealed partial class ChatWindow
 
         // Input-on-top: the strip is the row under the tab bar; the button is at StripTop, the list stacks
         // DOWNWARD from under the strip over the body (the opposite of below-mode).
-        win.SendChannel = Channel.Talk; win.InputOnTop = true;
+        float yWas = win.Y;
+        win.SendChannel = Channel.Talk; win.InputOnTop = true; win.Y = 100f;
         float syT = win.StripTop;
-        check.Expect(System.Math.Abs(syT - (win.Y + TabBarH)) < 0.001f, "above-mode strip sits under the tab bar");
-        check.Expect(System.Math.Abs(win.ChannelItemTop(0) - (win.Y + TabBarH + FooterH)) < 0.001f, "above: the list opens under the strip, not over it");
+        check.Expect(System.Math.Abs(syT - 128f) < 0.001f, "above-mode strip sits under the 28 px tab bar of the window at y 100");
+        check.Expect(System.Math.Abs(win.ChannelItemTop(0) - 156f) < 0.001f, "above: the list opens under the 28 px strip, not over it");
         check.Expect(win.MouseDown(win.X + 5, syT + 5), "above: dropdown button consumes");
         check.Expect(win.ChannelListOpen, "above: dropdown opens");
         float item2YT = win.ChannelItemTop(2) + 2;             // Whisper, stacked downward
         check.Expect(win.MouseDown(win.X + 5, item2YT), "above: list item consumes");
         check.Expect(!win.ChannelListOpen && win.SendChannel == Channel.Whisper, "above: item selected + list closed");
-        win.InputOnTop = false;
+        win.InputOnTop = false; win.Y = yWas;
         win.FooterVisible = false;
         win.ActiveTab = 0;
 

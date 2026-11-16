@@ -36,8 +36,8 @@ public sealed unsafe partial class ChatService
         // Register the framework Window whose content IS the whole chatbox. UiHostService drives
         // DrawContent once per frame in z-order; the framework input layer (UiInputService) routes captured
         // input through the window's delegates. The chatbox owns many sub-windows internally (ChatLayout), so it
-        // stays one framework Window with a hit-test override (its UI extends outside any single rect -- popped-out
-        // strips, dropdowns) and self-manages focus; WantsKeyboard is driven via KeyboardMode -> RequestKeyboard.
+        // stays one framework Window with a hit-test override (its UI extends outside any single rect -- channel
+        // lists) and self-manages focus; WantsKeyboard is driven via KeyboardMode -> RequestKeyboard.
         _uiWindow = new Window(0, 0, 0, 0)
         {
             Focusable = false,
@@ -335,10 +335,6 @@ public sealed unsafe partial class ChatService
             footer, footer ? Edit.Text : "", footer ? Edit.Cursor : 0, grip,
             footer ? Edit.Selection : null, chrome: atlas);
         frame.ApplyResidual = focused && win.AnimEnabled;
-        frame.AnimEnabled = win.AnimEnabled;
-        frame.HoldSec = win.HoldSec;
-        frame.FadeSec = win.FadeSec;
-        frame.TauMs = win.TauMs;
         return frame;
     }
 

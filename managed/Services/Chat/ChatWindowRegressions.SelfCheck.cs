@@ -3,12 +3,12 @@ using CX.Services.Chat.Core;
 using CX.Services.Chat.Core.Model;
 using CX.Ui;
 using static CX.Services.Chat.ChatExamplesKit;
-using Row = CX.Ui.KnobPanel.Row;
 
 namespace CX.Services.Chat;
 
 /// <summary>Approved examples of where typing goes and of click-through windows that already held before either
-/// changed (E12, E17, E22, E23, E24), kept as regressions. Oracle: window rects and channel bits written by hand.</summary>
+/// changed (E12, E17, E22, E23, E24), kept as regressions, and the decision that only Main's gear lists the other
+/// windows' click-through. Oracle: window rects and channel bits written by hand.</summary>
 internal static class ChatWindowRegressions
 {
     internal static void SelfCheck(ExtenderLog log)
@@ -22,6 +22,8 @@ internal static class ChatWindowRegressions
         {
             var layout = new ChatLayout(Window(0, 0));
             var second = layout.AddWindow(new ChatWindow(500, 0, 400, 300, new[] { new Tab("Talk", 0x001), new Tab("Party", 0x040) }))!;
+            layout.FocusedIndex = layout.TypingWindow();
+            check.Expect(layout.FocusedIndex == 0, "E12 the bar is open in Main first");
             float tabX = 500f + second.TabW * 1.5f, tabY = 2f;
             int hit = layout.WindowAt(tabX, tabY);
             if (hit >= 0 && layout.Windows[hit].MouseDown(tabX, tabY)) layout.FocusedIndex = hit;
@@ -41,8 +43,7 @@ internal static class ChatWindowRegressions
             var f = Build(win, atlas, false, store: store);
             check.Expect(Quads(f).FindAll(q => Letter(q) is 'p' or 'q').Count == 2 && f.BodyEnd > f.BodyStart,
                          "E17 a click-through window still draws its new message in the fading body");
-            float now = ChatAnim.FadeAlpha(System.DateTime.UtcNow, System.DateTime.UtcNow.AddSeconds(-6), System.DateTime.MinValue, true, win.HoldSec, win.FadeSec);
-            check.Expect(System.MathF.Abs(now - 0.5f) < 0.01f, "E17 six seconds on, a 5 s hold and 2 s fade leave it half faded");
+            check.Expect(f.HoldSec == 5.0 && f.FadeSec == 2.0 && f.AnimEnabled, "E17 the frame fades on the window's own 5 s hold and 2 s fade");
         }
 
         // Given the player opens the Main window's gear
@@ -53,8 +54,8 @@ internal static class ChatWindowRegressions
             var layout = new ChatLayout(main);
             layout.AddWindow(Window(500, 0));
             var s = new SettingsWindow();
-            s.OpenAt(main, 1280, 800, 20f, PanelFace(), PanelFace(), 0, 2, layout.Windows);
-            check.Expect(s.Rows.Find(r => r.Act == SetAct.ClickThrough || (r.Act == SetAct.ClickThroughOf && r.Key == "0")) == null,
+            s.OpenAt(main, 1280, 800, 20f, PanelFace(), PanelFace(), 0, layout.Windows);
+            check.Expect(s.Rows.Find(r => r.Act == SetAct.ClickThroughOf && r.Key == "0") == null,
                          "E22 Main's gear offers no Click-through for Main");
             s.Reset();
         }
@@ -67,7 +68,11 @@ internal static class ChatWindowRegressions
             var win = layout.AddWindow(Window(500, 0))!;
             win.AutoHideHeader = true;
             check.Expect(layout.WindowAt(700, 150) == 1, "E23 the pointer over an ordinary window is over that window");
-            check.Expect(Build(win, atlas, false, hover: true).Count > Build(win, atlas, false).Count, "E23 hovering draws its tab bar");
+            check.Expect(TabBar(Build(win, atlas, false, hover: true), 500, 0, 400), "E23 hovering draws its tab bar");
+            win.ContentH = 2000f; win.ViewH = 270f;
+            System.DateTime before = win.LastScroll;
+            check.Expect(ChatService.Wheel(layout, 700, 150, 1, _ => 20f, out float moved) == 1 && moved == 60f && win.LastScroll > before,
+                         "the wheel over an ordinary window scrolls it 3 lines of 20 px and resets its fade clock");
         }
 
         // Given a click-through chat window
@@ -81,24 +86,17 @@ internal static class ChatWindowRegressions
             check.Expect(!copy.ClickThrough && copy.TakesPointer(100, 100), "E24 a copy of a click-through window takes the pointer");
         }
 
+        {
+            var layout = new ChatLayout(Window(0, 0));
+            var second = layout.AddWindow(Window(500, 0))!;
+            layout.AddWindow(Window(500, 400));
+            var s = new SettingsWindow();
+            s.OpenAt(second, 1280, 800, 20f, PanelFace(), PanelFace(), 1, layout.Windows);
+            check.Expect(s.Rows.FindAll(r => r.Act == SetAct.ClickThroughOf).TrueForAll(r => r.Key == "1"),
+                         "a second window's gear holds only its own Click-through, not the other windows'");
+            s.Reset();
+        }
+
         if (check.Ok) log.Info("ChatWindowRegressions.SelfCheck: passed");
-    }
-
-    /// <summary>A panel face with every printable glyph, so the settings rows lay out.</summary>
-    internal static GlyphAtlas PanelFace()
-    {
-        var a = new GlyphAtlas { LineHeight = 24, Ascent = 19, SpaceAdvance = 6f };
-        for (int cp = 0x20; cp < 0x180; cp++) a.SetTestGlyph(cp, cp == ' ' ? 6f : 11f);
-        a.SetTestGlyph(0x25BE, 11f);
-        return a;
-    }
-
-    /// <summary>Press a settings row the way a player clicks it: scrolled into the list, then on its label.</summary>
-    internal static void PressRow(SettingsWindow s, ChatWindow w, Row r)
-    {
-        s.Panel.List.Offset = r.Top - 0.4f * s.Panel.Em;
-        s.Panel.List.Clamp();
-        s.MouseDown(s.Panel.List.X + 5, s.Panel.RowTop(r) + 2, w);
-        s.MouseUp();
     }
 }

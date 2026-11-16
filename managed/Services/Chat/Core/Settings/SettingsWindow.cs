@@ -25,7 +25,8 @@ public sealed partial class SettingsWindow
     // window per call; a null window means "no model" and the callbacks no-op (the shell's focused window can be
     // gone by the time a key commits an edit).
     private ChatWindow? _win;
-    /// <summary>Every chat window, in layout order, as the shell passed it on open.</summary>
+    /// <summary>Every chat window, in layout order, as the shell passed it on open. Main's panel lists the others'
+    /// click-through: a window that ignores the pointer can only be given back from there.</summary>
     private ChatWindow[] _windows = System.Array.Empty<ChatWindow>();
 
     /// <summary>Tab index per category entry: -1 for <see cref="WindowCategory"/> and <see cref="AddTabCategory"/>.</summary>
@@ -77,9 +78,9 @@ public sealed partial class SettingsWindow
     public bool Open => Panel.Open;
     public List<Row> Rows => Panel.Rows;
 
-    /// <summary>Number of chat windows (snapshot), used to show "Copy from Window N" rows. Set by the shell
-    /// before <see cref="Layout"/> (the panel is modal, so window count can't change while it's open).</summary>
-    public int WindowCount;
+    /// <summary>Number of chat windows (snapshot), used to show "Copy from Window N" rows (the panel is modal, so the
+    /// count can't change while it's open).</summary>
+    public int WindowCount => _windows.Length;
     /// <summary>Index of the window this panel is editing (0 = Main). Set by the shell on open.</summary>
     public int WindowIndex;
 
@@ -147,8 +148,9 @@ public sealed partial class SettingsWindow
         AddToggle(rows, SetAct.TellsHere, "Tells here", win.TellsHere, 0,
                   "Tells land in this window. Only one window can hold this.");
         if (win.Closeable)
-            AddToggle(rows, SetAct.ClickThrough, "Click-through", win.ClickThrough, 0,
-                      "Clicks and the mouse wheel go through this window to the game, and pointing at it shows nothing. Untick it again from the Main window's gear.");
+            rows.Add(new Row { Ctl = KnobKind.Toggle, Act = SetAct.ClickThroughOf, Text = "Click-through", On = win.ClickThrough,
+                               Key = WindowIndex.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                               HelpText = "Clicks and the mouse wheel go through this window to the game, and pointing at it shows nothing. Untick it again from the Main window's gear." });
         // A pending pick shows at once: the shell sets the knob only after the press returns.
         AddDropdown(rows, SetAct.CycleTellOpen, "Tell auto-open", TellOpenNames, TellOpenPicked >= 0 ? TellOpenPicked : ChatKnobs.TellOpen.V,
                     "Where a tell from someone new lands: nowhere special, a new tab, or its own window.");
@@ -195,15 +197,14 @@ public sealed partial class SettingsWindow
                       "The second holds from here; at or before Start makes a hard edge.");
         }
 
-        // Copy from another window (hidden when only one window exists), and every other window's click-through:
-        // a window that ignores the pointer can only be given back from another window's gear.
+        // Copy from another window (hidden when only one window exists); on Main, each other window's click-through.
         if (WindowCount > 1) AddSection(rows, "Other windows");
         for (int wi = 0; wi < WindowCount; wi++)
         {
             if (wi == WindowIndex) continue;
             string key = wi.ToString(System.Globalization.CultureInfo.InvariantCulture);
             rows.Add(new Row { Ctl = KnobKind.Button, Act = SetAct.CopyFrom, Text = $"Copy from Window {wi + 1}", Key = key });
-            if (wi > 0 && wi < _windows.Length)
+            if (WindowIndex == 0 && wi > 0)
                 rows.Add(new Row { Ctl = KnobKind.Toggle, Act = SetAct.ClickThroughOf, Text = $"Window {wi + 1} click-through",
                                    On = _windows[wi].ClickThrough, Key = key });
         }
@@ -270,12 +271,11 @@ public sealed partial class SettingsWindow
     /// shell baked at <paramref name="em"/> (null faces lay out on estimates and draw nothing). Opens on the
     /// window category. <paramref name="winIndex"/> and <paramref name="winCount"/> drive the "Copy from" rows.</summary>
     public void OpenAt(ChatWindow win, float vpW, float vpH, float em = KnobPanel.FacePx,
-                       GlyphAtlas? body = null, GlyphAtlas? small = null, int winIndex = 0, int winCount = 1,
-                       ChatWindow[]? windows = null)
+                       GlyphAtlas? body = null, GlyphAtlas? small = null, int winIndex = 0, ChatWindow[]? windows = null)
     {
         _win = win;
-        _windows = windows ?? System.Array.Empty<ChatWindow>();
-        WindowIndex = winIndex; WindowCount = winCount;
+        _windows = windows ?? new[] { win };
+        WindowIndex = winIndex;
         Panel.Category = 0; Panel.Cats.Reset(); Panel.List.Reset();
         Panel.OpenAt(vpW, vpH, em, body, small);   // lays out through Source
     }
@@ -356,7 +356,6 @@ public sealed partial class SettingsWindow
             case SetAct.CopyFrom:
                 CopyRequested = ParseIndex(row.Key);
                 break;
-            case SetAct.ClickThrough: win.ClickThrough = !win.ClickThrough; break;
             case SetAct.ClickThroughOf:
             {
                 int wi = ParseIndex(row.Key);

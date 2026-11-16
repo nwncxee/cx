@@ -24,11 +24,16 @@ detail, no decisions (those live in the Plane tracker and `docs/adr/`). Terms cr
 - **ChatWindow** — a movable/resizable chat window: a `rect`, an ordered **list** of
   tabs, an active tab, and a **lock**. Several can exist at once (a small cap); every
   draw/input path takes a window, so the set is a list + a loop.
-- **Main window** — the first window (index 0). Undeletable, always has ≥1 tab, and is
-  the fallback keyboard owner when no other window is focused.
+- **Main window** — the first window (index 0). Undeletable, always has ≥1 tab, never
+  **click-through**, and where the chat-open key opens the **input strip** whenever its tab can send.
 - **Focused window** — the one window that owns the keyboard and shows the input strip
-  + send dropdown. Clicking a window focuses it; the chat-open key focuses the
-  last-focused window (the **Main window** if none).
+  + send dropdown. Clicking a window focuses it; the chat-open key focuses the **Main window**
+  (the last-focused window only when Main's tab can't send and that window is not click-through).
+- **Input strip** — the one-row line the player types in, inside the focused window along its
+  bottom edge (under the tab bar with *Input on top*); it scrolls sideways rather than wrap.
+  Players call it the **typing bar**.
+- **Click-through** — a per-window setting: presses, the wheel and hover pass through the window
+  to the game and reveal nothing on it. Set on the window's own gear, cleared from Main's.
 - **Tab** — a *receive* view inside a window: a `label`, a channel-mask **filter**, an
   optional **player pin**, and a scroll offset. A window always has ≥1 tab; tabs can be
   added, removed, reordered, and dragged between windows.

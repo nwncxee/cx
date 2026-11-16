@@ -62,7 +62,7 @@ public static class InputStripLayout
     /// <summary>Pointer → UTF-16 index: the nearest caret boundary, or with <paramref name="charUnder"/> the index
     /// of the char the pointer is over (what double-click word selection needs), on the line as scrolled by
     /// <see cref="ChatWindow.InputScroll"/>; x outside the line clamps to its ends. Pass the UI face atlas.</summary>
-    public static int HitTest(ChatWindow win, GlyphAtlas atlas, string text, float x, float y, bool charUnder = false)
+    public static int HitTest(ChatWindow win, GlyphAtlas atlas, string text, float x, bool charUnder = false)
         => HitTest(win, atlas, text, x, ChatKnobs.Counter.V, charUnder);
 
     /// <summary>The knob-free form, so a self-check's geometry does not shift with the player's counter setting.</summary>
@@ -100,13 +100,8 @@ public static class InputStripLayout
     /// <see cref="ChatWindow.InputScroll"/>.</summary>
     internal static float Follow(ChatWindow win, GlyphAtlas atlas, List<Rune> runes, int caretR, float editW)
     {
-        float caretX = 0f, textW = 0f;
-        for (int k = 0; k < runes.Count; k++)
-        {
-            if (k == caretR) caretX = textW;
-            textW += Advance(atlas, runes[k]);
-        }
-        if (caretR >= runes.Count) caretX = textW;
+        float textW = RowAlign.Measure(atlas, runes, 0, runes.Count, 0f);
+        float caretX = RowAlign.Measure(atlas, runes, 0, System.Math.Min(caretR, runes.Count), 0f);
         float s = win.InputScroll;
         if (caretX - s > editW) s = caretX - editW;
         if (caretX < s) s = caretX;

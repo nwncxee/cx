@@ -5,10 +5,11 @@ using static CX.Services.Chat.ChatExamplesKit;
 namespace CX.Services.Chat;
 
 /// <summary>Where Enter opens the typing bar: approved examples E11 and E13. Oracle: Main is window 0 by the
-/// layout's own contract; the windows and their channel masks are written by hand.</summary>
-partial class ChatService
+/// layout's own contract; the windows and their channel masks are written by hand. A sent line leaves the focus where
+/// the bar was, so E13's state after the send is the second window focused.</summary>
+internal static class InputWindowApprovedExamples
 {
-    static partial void InputWindowApprovedExamples(ExtenderLog log)
+    internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "InputWindowApprovedExamples.SelfCheck");
 

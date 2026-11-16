@@ -21,7 +21,11 @@ public sealed partial class SettingsWindow
         for (int cp = 0x20; cp < 0x180; cp++) { body.SetTestGlyph(cp, cp == ' ' ? 6f : 11f); small.SetTestGlyph(cp, cp == ' ' ? 5f : 8f); }
         body.SetTestGlyph(0x25BE, 11f); small.SetTestGlyph(0x25BE, 8f);
         void Open(SettingsWindow sw, ChatWindow w, int winIndex = 0, int winCount = 1)
-        { sw.OpenAt(w, 1280, 800, 20f, body, small, winIndex, winCount); sw.MouseUp(); }
+        {
+            var all = new ChatWindow[winCount];
+            for (int i = 0; i < winCount; i++) all[i] = i == winIndex ? w : new ChatWindow(0, 0, 400, 300, new[] { new Tab("All", 0xffffffff) });
+            sw.OpenAt(w, 1280, 800, 20f, body, small, winIndex, all); sw.MouseUp();
+        }
         Row Find(SettingsWindow sw, SetAct act, string key = "") => sw.Rows.Find(r => r.Act == act && (key.Length == 0 || r.Key == key))!;
         // The window rows overflow the column: scroll a row into the box before pressing it (offset-correct hits).
         void Reveal(SettingsWindow sw, Row r) { sw.Panel.List.Offset = r.Top - 0.4f * sw.Panel.Em; sw.Panel.List.Clamp(); }

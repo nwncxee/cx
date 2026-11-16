@@ -1,16 +1,16 @@
 using CX.Framework;
 using CX.Services.Chat.Core;
-using CX.Services.Chat.Render;
 using CX.Ui;
 using static CX.Services.Chat.ChatExamplesKit;
 
 namespace CX.Services.Chat;
 
-/// <summary>Click-through windows: approved examples E14-E16 and E18-E21. Oracle: window rects written by hand, and
-/// an ordinary window with every auto-hide on as the look of a window that reveals nothing.</summary>
-partial class ChatService
+/// <summary>Click-through windows: approved examples E14-E16 and E18-E21. Oracle: window rects written by hand, a click
+/// and wheel at 700,650 inside the 500,500-900,800 window, and its tab bar as the full-width 28 px band at its top. E14
+/// draws the worst case, Auto-hide header and outline both off; E20 saves Main as window 0, as the shell does.</summary>
+internal static class ClickThroughApprovedExamples
 {
-    static partial void ClickThroughApprovedExamples(ExtenderLog log)
+    internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "ClickThroughApprovedExamples.SelfCheck");
         var atlas = Atlas();
@@ -22,12 +22,14 @@ partial class ChatService
             var layout = new ChatLayout(Window(0, 0));
             var win = layout.AddWindow(Window(500, 500))!;
             win.ClickThrough = true;
-            win.AutoHideHeader = false; win.AutoHideFrame = false;   // the worst case: both would show without the pointer
-            var bare = Window(500, 500);
-            bare.AutoHideHeader = true; bare.AutoHideFrame = true;
+            win.AutoHideHeader = false; win.AutoHideFrame = false;
+            win.ContentH = 2000f; win.ViewH = 270f;
+            System.DateTime faded = win.LastScroll;
             check.Expect(layout.WindowAt(700, 650) != 1, "E14 the pointer over a click-through window is not over that window");
-            check.Expect(Build(win, atlas, false, hover: true).Count == Build(bare, atlas, false).Count,
-                         "E14 hovering draws no tab bar, outline, gear, grip or scrollbar");
+            check.Expect(BackgroundOnly(Build(win, atlas, false, hover: true), 500, 500, 400, 300),
+                         "E14 hovering draws only the background: no tab bar, outline, gear, grip or scrollbar");
+            ChatService.Wheel(layout, 700, 650, 1, _ => 20f, out _);
+            check.Expect(win.LastScroll == faded, "E14 nothing over it resets its fade clock, so faded messages stay faded");
         }
 
         // Given a creature standing behind a click-through chat window
@@ -51,18 +53,19 @@ partial class ChatService
             var win = layout.AddWindow(Window(500, 500))!;
             win.ClickThrough = true;
             win.ContentH = 2000f; win.ViewH = 270f;
-            check.Expect(layout.WindowAt(700, 650) == -1, "E16 the wheel over a click-through window reaches no chat window");
+            int hit = ChatService.Wheel(layout, 700, 650, 1, _ => 20f, out float moved);
+            check.Expect(hit == -1, "E16 the wheel over a click-through window belongs to the game");
+            check.Expect(moved == 0f && win.Active.ScrollPx == 0f, "E16 the window's messages do not move");
         }
 
         // Given a click-through chat window with a tell tab that is not showing
         // When a tell arrives on that tab
         // Then the window's tab bar stays hidden
         {
-            var win = new ChatWindow(500, 500, 400, 300, new[] { new Tab("All", 0xffffffff), new Tab("Ana", 0x002) { PinnedName = "Ana" } })
+            var win = new ChatWindow(500, 500, 400, 300, new[] { new Tab("DM", 0x400), new Tab("ANA", 0x002) { PinnedName = "Ana" } })
                       { ClickThrough = true };
-            int quiet = Build(win, atlas, false).Count;
             win.Tabs[1].Unread = true;
-            check.Expect(Build(win, atlas, false).Count == quiet, "E18 an unread tell tab leaves the tab bar hidden");
+            check.Expect(!TabBar(Build(win, atlas, false), 500, 500, 400), "E18 an unread tell tab leaves the tab bar hidden");
         }
 
         // Given a window that can send on Talk, clicked last and then set to click-through
@@ -85,7 +88,7 @@ partial class ChatService
                 var win = Window(500, 0);
                 win.ClickThrough = clickThrough;
                 var saved = new ChatConfig();
-                saved.Windows.Add(WindowConfig.Capture(Window(0, 0)));   // Main
+                saved.Windows.Add(WindowConfig.Capture(Window(0, 0)));
                 saved.Windows.Add(WindowConfig.Capture(win));
                 var again = Window(500, 0);
                 ChatConfig.From(saved.Pairs()).Windows[1].ApplyTo(again);
@@ -104,14 +107,14 @@ partial class ChatService
             var win = layout.AddWindow(Window(500, 500))!;
             win.ClickThrough = true;
             var s = new SettingsWindow();
-            var face = ChatWindowRegressions.PanelFace();
-            s.OpenAt(main, 1280, 800, 20f, face, face, 0, 2, layout.Windows);
+            var face = PanelFace();
+            s.OpenAt(main, 1280, 800, 20f, face, face, 0, layout.Windows);
             var row = s.Rows.Find(r => r.Act == SetAct.ClickThroughOf && r.Key == "1");
             check.Expect(row != null, "E21 Main's gear lists window 2's Click-through");
-            if (row != null) ChatWindowRegressions.PressRow(s, main, row);
+            if (row != null) PressRow(s, main, row);
             s.Reset();
             check.Expect(!win.ClickThrough && layout.WindowAt(700, 650) == 1, "E21 unticked, the pointer over it is over the window again");
-            check.Expect(Build(win, atlas, false, hover: true).Count > Build(win, atlas, false).Count, "E21 unticked, hovering shows its tab bar");
+            check.Expect(TabBar(Build(win, atlas, false, hover: true), 500, 500, 400), "E21 unticked, hovering shows its tab bar");
             check.Expect(win.MouseDown(700, 650), "E21 unticked, a click lands on the window");
             win.MouseUp(700, 650);
         }
