@@ -111,7 +111,7 @@ public sealed unsafe partial class ChatService
                 Rebuild(); return cs;
             }
             if (EditPress(fwin, x, y)) return true;
-            // Check focused first (owns the strip/dropdown that extends outside the frame).
+            // Check focused first: it owns the strip and a channel list that can stack past its frame.
             if (DownOnWindow(_layout.FocusedIndex, x, y)) return true;
             int hit = _layout.WindowAt(x, y);
             if (hit < 0 || hit == _layout.FocusedIndex) return false;
