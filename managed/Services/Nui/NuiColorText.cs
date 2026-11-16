@@ -14,9 +14,11 @@ internal readonly record struct ColorPiece(int Start, int Length, float X, uint 
 /// height, the UTF-8 bytes and their count.</summary>
 internal readonly unsafe struct TextMeasure(IntPtr userData, float height, NkFontTextWidthFn width)
 {
-    public readonly IntPtr UserData = userData;
-    public readonly float Height = height;
-    public readonly NkFontTextWidthFn Width = width;
+    /// <summary>The width of <paramref name="run"/> in this font.</summary>
+    public float Of(ReadOnlySpan<byte> run)
+    {
+        fixed (byte* p = run) return width(userData, height, p, run.Length);
+    }
 }
 
 /// <summary>NWN's inline colour tokens in NUI text, laid out the way the client's own text code reads them:
@@ -78,7 +80,7 @@ internal static unsafe class NuiColorText
             if (at > i)
             {
                 into[n++] = new ColorPiece(i, at - i, x, color);
-                x += Measure(utf8[i..at], measure);
+                x += measure.Of(utf8[i..at]);
             }
             if (open) { if (s.Depth < s.Stack.Length) s.Stack[s.Depth++] = rgb | (fg & Alpha); }
             else if (s.Depth > 0) s.Depth--;
@@ -94,16 +96,16 @@ internal static unsafe class NuiColorText
     /// either, since nuklear's clamp measures each glyph prefix.</summary>
     internal static float Width(ReadOnlySpan<byte> utf8, TextMeasure measure)
     {
-        if (!On || utf8.IndexOf((byte)'<') < 0) return Measure(utf8, measure);
+        if (!On || utf8.IndexOf((byte)'<') < 0) return measure.Of(utf8);
         float w = 0f;
         int i = 0, len;
         while ((len = NextToken(utf8, i, out int at, out _, out _)) > 0)
         {
-            if (at > i) w += Measure(utf8[i..at], measure);
+            if (at > i) w += measure.Of(utf8[i..at]);
             i = at + len;
         }
         int end = utf8.Length - CutToken(utf8[i..]);
-        if (end > i) w += Measure(utf8[i..end], measure);
+        if (end > i) w += measure.Of(utf8[i..end]);
         return w;
     }
 
@@ -170,12 +172,7 @@ internal static unsafe class NuiColorText
     internal static void EnterEdit() => State.Edit++;
 
     /// <inheritdoc cref="EnterEdit"/>
-    internal static void LeaveEdit() { if (State.Edit > 0) State.Edit--; }
-
-    private static float Measure(ReadOnlySpan<byte> run, TextMeasure measure)
-    {
-        fixed (byte* p = run) return measure.Width(measure.UserData, measure.Height, p, run.Length);
-    }
+    internal static void LeaveEdit() => State.Edit--;
 
     /// <summary>The length of the first token in <paramref name="t"/> at or after <paramref name="from"/>, 0 for none;
     /// <paramref name="at"/> is where it starts. Not <see cref="ColorRunParser"/>: that reads Latin-1 strings and

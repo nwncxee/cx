@@ -363,13 +363,13 @@ rect by pointer, so one signature serves both ABIs.
 | `nk_do_scrollbarv` | `0xdf6100` | `0xa65d10` | `nk_panel_end`'s callee whose float result is stored through `panel+0x20`; its only other caller is `nk_do_edit` |
 | `nk_do_scrollbarh` | `0xdf65c0` | `0xa65700` | the same, stored through `panel+0x18` |
 
-`nk_do_scrollbarv/h` take the track `nk_rect` by value: in xmm0/xmm1 on Linux, through a pointer in r8 on Windows. So
-`NuiScrollbarHide` declares one handler per ABI and no `[Fn]` row.
+`nk_do_scrollbarv/h` take the track `nk_rect` by value: in xmm0/xmm1 on Linux, through a pointer in r8 on Windows.
+`NuiScrollbarHide` declares one handler per ABI; an `NkRect` parameter, as `NkDrawListAddText` takes, fits both.
 
 ## NUI colour tokens -- nuklear text on build `0x68e408bc`
 
-nwmain.exe has no Ghidra project on this machine, so these were read off its disassembly (capstone over the `.pdata`
-function bounds `tools/update/binfmt.py` reads). MSVC inlined `nk_draw_text` into `nk_widget_text` (`0xa75460`), so a
+These were read off nwmain.exe's disassembly (capstone over the `.pdata` function bounds `tools/update/binfmt.py`
+reads), not a Ghidra decompilation; confirm them there when the Windows project is at hand. MSVC inlined `nk_draw_text` into `nk_widget_text` (`0xa75460`), so a
 push-time hook would miss most text on Windows; `nk_convert`'s text case is the funnel both binaries share.
 
 | function | Linux | Windows rva | how |

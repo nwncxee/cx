@@ -136,21 +136,24 @@ public static unsafe class Native
     /// <c>Encoding::SingleCharToUTF8(c, 0)</c> so the client's locale and a module's <c>encoding.2da</c>
     /// override both apply. Without the export the byte is its own codepoint (Latin-1).</summary>
     public static int Codepoint(byte b)
-        => EngineFn.EncodingSingleCharToUtf8 == null ? b : EngineFn.EncodingSingleCharToUtf8(b, 0);
+    {
+#pragma warning disable RS0030 // Native.Codepoint is the one codepage map
+        var fn = EngineFn.EncodingSingleCharToUtf8;
+#pragma warning restore RS0030
+        return fn == null ? b : fn(b, 0);
+    }
 
     /// <summary>Engine text read byte-per-char (<see cref="ReadExo"/>) as Unicode for DISPLAY: each 0x80..0xff char
     /// through <c>Encoding::SingleCharToUTF8(c, 0)</c> -- the same map vanilla's TTF atlas draws with (client
     /// codepage). Run it after colour parsing (tag bytes are raw); keep the byte-space string for anything sent back.</summary>
     public static string EngineText(string s)
     {
-        var fn = EngineFn.EncodingSingleCharToUtf8;
-        if (fn == null) return s;
         int i = 0;
         while (i < s.Length && (s[i] < 0x80 || s[i] > 0xff)) i++;
         if (i == s.Length) return s;
         char[] r = s.ToCharArray();
         for (; i < r.Length; i++)
-            if (r[i] is >= (char)0x80 and <= (char)0xff) r[i] = (char)fn((byte)r[i], 0);
+            if (r[i] is >= (char)0x80 and <= (char)0xff) r[i] = (char)Codepoint((byte)r[i]);
         return new string(r);
     }
 

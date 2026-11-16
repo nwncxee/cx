@@ -16,7 +16,7 @@ internal static unsafe class NuiColorTokensApprovedExamples
     /// <summary>(254, 212, 1) at the label's alpha.</summary>
     private const uint Gold = 0xFF01D4FE; // not-an-offset: an nk_color
     /// <summary>(254, 1, 1) at the label's alpha.</summary>
-    private const uint Red = 0xFF0101FE; // not-an-offset: an nk_color
+    internal const uint Red = 0xFF0101FE; // not-an-offset: an nk_color
     /// <summary>(1, 254, 1) at the label's alpha.</summary>
     private const uint Green = 0xFF01FE01; // not-an-offset: an nk_color
     /// <summary>(111, 111, 108), the letters o, o and l, at the label's alpha.</summary>
@@ -116,8 +116,8 @@ internal static unsafe class NuiColorTokensApprovedExamples
             check.Expect(w == shown * 10f, $"E8 the text up to '{word}' measures {w} px, where the same words alone measure {shown * 10} px");
         }
         PartToken(check, "The <c", 40f);
-        PartToken(check, "The <c" + (char)254, 40f);
-        PartToken(check, "The <c" + (char)254 + (char)1 + (char)1, 40f);
+        PartToken(check, "The <c" + (char)Native.Codepoint(254), 40f);
+        PartToken(check, "The <c" + (char)Native.Codepoint(254) + (char)1 + (char)1, 40f);
         PartToken(check, "The " + Tok(254, 1, 1) + "red</", 70f);
     }
 
@@ -212,8 +212,10 @@ internal static unsafe class NuiColorTokensApprovedExamples
         Own => "Own", Gold => "Gold", Red => "Red", Green => "Green", Cool => "Cool", _ => $"0x{c:X8}"
     };
 
-    /// <summary>An open token as a script writes it, three codepage bytes, carried as the UTF-8 NUI text reaches nuklear in.</summary>
-    private static string Tok(int r, int g, int b) => "<c" + (char)r + (char)g + (char)b + ">";
+    /// <summary>An open token as a script writes it, three codepage bytes, each carried as the character the engine's
+    /// codepage map turns it into, as NUI text reaches nuklear.</summary>
+    internal static string Tok(int r, int g, int b)
+        => "<c" + (char)Native.Codepoint((byte)r) + (char)Native.Codepoint((byte)g) + (char)Native.Codepoint((byte)b) + ">";
 
     private static byte[] Utf8(string s) => Encoding.UTF8.GetBytes(s);
 

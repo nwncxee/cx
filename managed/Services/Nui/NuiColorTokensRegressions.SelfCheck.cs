@@ -4,11 +4,15 @@ using CX.Framework;
 
 namespace CX.Services.Nui;
 
-/// <summary>Edges of NUI colour tokens no approved example names: a token missing its closing bracket, colours nested
-/// past the native stack, and a draw with more tokens than pieces. Oracle: the texts, piece counts and colours typed here.</summary>
+/// <summary>Edges of NUI colour tokens no approved example names: malformed and cut-off tokens, nesting past the native
+/// stack, more tokens than pieces, and the edit-field and text-block stretches of a frame, full ones included. Oracle:
+/// the texts, piece counts and colours typed here.</summary>
 internal static unsafe class NuiColorTokensRegressions
 {
     private const uint Own = NuiColorTokensApprovedExamples.Own;
+    private const uint Red = NuiColorTokensApprovedExamples.Red;
+    /// <summary>(16, 16, 16), the 16th nested open, at the label's alpha.</summary>
+    private const uint Sixteenth = 0xFF101010; // not-an-offset: an nk_color
 
     public static void Run(ExtenderLog log)
     {
@@ -34,7 +38,7 @@ internal static unsafe class NuiColorTokensRegressions
         int n = NuiColorText.Plan(deepBytes, Own, Font, pieces);
         check.Expect(n == 17, $"17 nested opens lay out as 17 pieces, got {n}");
         if (n == 17)
-            check.Expect(pieces[16].Color == 0xFF101010u, // not-an-offset: an nk_color
+            check.Expect(pieces[16].Color == Sixteenth,
                 $"the 17th open, past the 16 the native stack holds, keeps the 16th colour: got 0x{pieces[16].Color:X8}");
 
         var many = new StringBuilder();
@@ -59,7 +63,7 @@ internal static unsafe class NuiColorTokensRegressions
     /// command in the edit field draws as typed, the block's lines carry their colour, and the next frame forgets both.</summary>
     private static void Stretches(Checker check, Span<ColorPiece> pieces)
     {
-        byte[] red = Encoding.UTF8.GetBytes("<c\u00fe\u0001\u0001>Hi");
+        byte[] red = Encoding.UTF8.GetBytes(NuiColorTokensApprovedExamples.Tok(254, 1, 1) + "Hi");
         byte[] plain = Encoding.UTF8.GetBytes("more");
         NuiColorText.EndFrame();
         NuiColorText.Mark(100, 200, edit: true);
@@ -69,12 +73,12 @@ internal static unsafe class NuiColorTokensRegressions
         check.Expect(NuiColorText.PlanAt(100, red, Own, Font, pieces) == -1, "a command at the edit field's first byte draws as typed");
         check.Expect(NuiColorText.PlanAt(200, red, Own, Font, pieces) == 1, "a command at the edit field's end is past it, and coloured");
         check.Expect(NuiColorText.PlanAt(420, red, Own, Font, pieces) == 1, "a stretch overlapping one already held is refused, so its command is coloured");
-        check.Expect(NuiColorText.PlanAt(250, red, Own, Font, pieces) == 1 && pieces[0].Color == 0xFF0101FEu, // not-an-offset: an nk_color
+        check.Expect(NuiColorText.PlanAt(250, red, Own, Font, pieces) == 1 && pieces[0].Color == Red,
             "a command between the stretches is coloured");
         check.Expect(NuiColorText.PlanAt(260, plain, Own, Font, pieces) == -1, "an unclosed colour outside any block stops at its own command");
         NuiColorText.PlanAt(310, red, Own, Font, pieces);
         int n = NuiColorText.PlanAt(350, plain, Own, Font, pieces);
-        check.Expect(n == 1 && pieces[0].Color == 0xFF0101FEu, "the next line of the same block carries the open colour"); // not-an-offset: an nk_color
+        check.Expect(n == 1 && pieces[0].Color == Red, "the next line of the same block carries the open colour");
         check.Expect(NuiColorText.PlanAt(450, plain, Own, Font, pieces) == -1, "a command after the block does not carry its colour");
         NuiColorText.EndFrame();
         check.Expect(NuiColorText.PlanAt(150, red, Own, Font, pieces) == 1, "the next frame forgets the edit field's stretch");

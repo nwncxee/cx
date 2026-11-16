@@ -28,9 +28,10 @@ internal static unsafe class NuiColorHooks
     internal static void Init(ExtenderLog log, HookService hooks)
     {
         if (!SymbolMap.Require(log, "NuiColorText", SymbolMap.NkFontTextWidth, SymbolMap.NkDrawListAddText,
-                SymbolMap.NkEditBuffer, SymbolMap.NuiTextWidgetDraw, SymbolMap.NkClear, SymbolMap.Nuklear))
+                SymbolMap.NkEditBuffer, SymbolMap.NuiTextWidgetDraw, SymbolMap.NkClear, SymbolMap.Nuklear)
+            || !EngineLayout.Require(log, "NuiColorText", "NkContext", "NkUserFont"))
         {
-            Fail(log, "a nuklear text function did not resolve");
+            Fail(log, "a nuklear text function or field did not resolve");
             return;
         }
         H.CtxSlot = (IntPtr*)Native.Sym(SymbolMap.Nuklear);
@@ -50,6 +51,9 @@ internal static unsafe class NuiColorHooks
         Notice.Show(log, "Colour tokens in NUI text are off: " + why);
     }
 
+    /// <summary>The client's one nuklear context; its slot resolved before any hook went in.</summary>
+    private static NkContext Ctx => new(*H.CtxSlot);
+
     /// <summary>The font's own width, through the trampoline when the font is the baked atlas's, so measuring a piece
     /// never comes back through <see cref="OnWidth"/>.</summary>
     private static TextMeasure Measure(IntPtr font)
@@ -68,11 +72,9 @@ internal static unsafe class NuiColorHooks
     [UnmanagedCallersOnly]
     private static void OnAddText(IntPtr list, IntPtr font, NkRect r, byte* text, int len, float height, uint fg)
     {
-        var ctx = new NkContext(H.CtxSlot == null ? IntPtr.Zero : *H.CtxSlot);
         var bytes = Native.Bytes((IntPtr)text, len);
         Span<ColorPiece> pieces = stackalloc ColorPiece[NuiColorText.MaxPieces];
-        int n = !H.Live || text == null || len <= 0 || font == IntPtr.Zero || ctx.IsNull ? -1
-            : NuiColorText.PlanAt(ctx.OffsetOf(text), bytes, fg, Measure(font), pieces);
+        int n = !H.Live || bytes.IsEmpty ? -1 : NuiColorText.PlanAt(Ctx.OffsetOf(text), bytes, fg, Measure(font), pieces);
         if (n < 0)
         {
             H.AddText(list, font, r, text, len, height, fg);
@@ -90,21 +92,20 @@ internal static unsafe class NuiColorHooks
     private static uint OnEdit(IntPtr ctx, uint flags, IntPtr edit, IntPtr filter)
     {
         var c = new NkContext(ctx);
-        ulong from = c.IsNull ? 0 : c.MemAllocated;
+        ulong from = c.MemAllocated;
         NuiColorText.EnterEdit();
         uint r = H.Edit(ctx, flags, edit, filter);
         NuiColorText.LeaveEdit();
-        if (!c.IsNull) NuiColorText.Mark(from, c.MemAllocated, edit: true);
+        NuiColorText.Mark(from, c.MemAllocated, edit: true);
         return r;
     }
 
     [UnmanagedCallersOnly]
     private static void OnBlock(IntPtr arg0, IntPtr arg1, IntPtr arg2)
     {
-        var c = new NkContext(H.CtxSlot == null ? IntPtr.Zero : *H.CtxSlot);
-        ulong from = c.IsNull ? 0 : c.MemAllocated;
+        ulong from = Ctx.MemAllocated;
         H.Block(arg0, arg1, arg2);
-        if (!c.IsNull) NuiColorText.Mark(from, c.MemAllocated, edit: false);
+        NuiColorText.Mark(from, Ctx.MemAllocated, edit: false);
     }
 
     [UnmanagedCallersOnly]

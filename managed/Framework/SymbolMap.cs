@@ -535,7 +535,7 @@ internal static unsafe class SymbolMap
     /// converts and clears through it.</summary>
     public const string Nuklear    = "g_pNuklear";
     // ---- nuklear's flush, drawn by Alloy. All three take pointers and ints only, so ONE declaration
-    //      fits both ABIs -- a by-value nk_rect would need one per ABI, and none is on this path.
+    //      fits both ABIs; a by-value nk_rect is an NkRect parameter, which fits both too.
     //      docs/windows-symbols.md records where every address was read.
     /// <summary><c>nk_sdl_refresh_config()</c> @0xe066a0 (Windows rva 0xa70d90) -- the skin/font reload edge.
     /// Early-outs on a clear dirty byte at <c>g_pNuklearConfig</c>, so calling it every frame is free.</summary>
