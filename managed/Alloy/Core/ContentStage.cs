@@ -60,6 +60,9 @@ internal static partial class ContentStage
         public bool ForwardOnly => Post && !AlphaPost || ReadsLights;
         /// <summary>What the pair's log line says about its route.</summary>
         public string RouteNote => (!Post ? "" : AlphaPost ? ", sets its alpha after the lighting call" : ", edits on the lit colour (forward only)") + (ReadsLights ? ", lights itself (forward only)" : "");
+        /// <summary>Does the fragment half name <see cref="ContentStage.SelfIllumName"/>? Only then does its program zero and add it,
+        /// so an environment override that predates the term still compiles every stage that never sets it.</summary>
+        public bool SelfIllum;
         /// <summary>Does the fragment half switch keyholing off (<c>#define KEYHOLING 0</c>)? Its parts never dissolve.</summary>
         public bool NoKeyhole;
         /// <summary>The varyings a vertex half declares of its own, by name: the fragment half reads them as written.</summary>
@@ -85,6 +88,13 @@ internal static partial class ContentStage
     /// <summary>The engine's 16-character resref field, which its include scanner caps the name at.</summary>
     private const int ResRefChars = 16;
 
+    /// <summary>The content environment's self-illumination term: linear light a stage sets ahead of its
+    /// <c>ApplyStandardShader()</c>, zeroed before the stage runs and added where the illumination map's is.</summary>
+    internal const string SelfIllumName = "cxSelfIllum";
+
+    /// <summary>A stage that names <see cref="SelfIllumName"/>: its program adds the term (<c>CX_CONTENT_SELFILLUM</c>).</summary>
+    private static readonly Regex SelfIllumUse = new(@"\b" + SelfIllumName + @"\b", RegexOptions.Compiled);
+
     /// <summary>The names a fragment half's <c>main</c> is split into, and a vertex half's renamed to.</summary>
     private const string PreFn = "CxContentMain", PostFn = "CxContentPost", VertexFn = "CxContentVertexMain";
 
@@ -103,17 +113,21 @@ internal static partial class ContentStage
         string? text = Resolve(stage, chain, standard, new List<string> { resref.ToLowerInvariant() }, 0, ref count, out string? missing);
         if (text == null) { r.Refused = missing; return r; }
         text = VanillaShader.GlDepth(Directive.Replace(text, ""));
+        string[] cx = DefinedCx(env + "\n" + vanillaDefs);
+        if (fragment) text = AlloyBranch(text, cx);
         if (!MainFn.IsMatch(text)) { r.Refused = $"{resref}.shd has no void main() to run"; return r; }
-        // the stage's OWN text, the stand-in left out: what its facts are read off
+        // the stage's OWN text, the stand-in left out and its CX_ALLOY branch taken: what its facts are read off
         count = 0;
         string flat = Comments.Replace(Resolve(stage, chain, "", new List<string> { resref.ToLowerInvariant() },
                                                0, ref count, out _) ?? text, " ");
+        if (fragment) flat = AlloyBranch(flat, cx);
         r.ReadsPlt = Regex.IsMatch(flat, @"\bPLTscheme\b");
         r.ReadsLights = fragment && LightArrays.IsMatch(flat);
         if (fragment)
         {
             r.Cuts = Regex.IsMatch(flat, @"\bdiscard\b|\bAlphaDiscard\s*\(") || WritesAlpha(flat) || OwnCoverage.IsMatch(flat);
             r.NoKeyhole = Keyholing(flat) == 0;
+            r.SelfIllum = SelfIllumUse.IsMatch(flat);
         }
 
         var supplied = Supplied(env, vanillaDefs, ahead);
@@ -163,6 +177,7 @@ internal static partial class ContentStage
             if (r.Post) sb.Append("#define CX_CONTENT_POST 1\n");
             if (r.AlphaPost) sb.Append("#define CX_CONTENT_ALPHA_POST 1\n");
             if (EnvStage.IsMatch(flat)) sb.Append("#define CX_CONTENT_ENVMAP 1\n");
+            if (r.SelfIllum) sb.Append("#define CX_CONTENT_SELFILLUM 1\n");
             sb.Append("bool CxHostSurface(int feat)\n{\n")
               .Append("    if (feat < CX_FEAT_CONTENT0) return false;\n")
               .Append("    CxContentBody();\n")
@@ -180,6 +195,7 @@ internal static partial class ContentStage
           .Append("    cxConUV = CxHostUV;\n")
           .Append("    cxConRow = CxContentRow(vDraw);\n");
         if (r.ReadsLights) sb.Append("    CxConFillLights();\n");
+        if (r.SelfIllum) sb.Append("    ").Append(SelfIllumName).Append(" = vec3(0.0);\n");
         sb.Append("    fEnvMapLevel = CxHostMat.z;\n")
           .Append("    fOcclusion = 1.0;\n")
           .Append("    ").Append(PreFn).Append("();\n")

@@ -41,6 +41,66 @@ internal static partial class ContentStage
         return sb.ToString();
     }
 
+    /// <summary><paramref name="text"/> with every conditional on one of <paramref name="defined"/> (all of
+    /// <see cref="CxNames"/> when null) alone settled as defined: the CX branch kept, the other branch and the directives
+    /// blanked, line count kept. Any other conditional stays, and so does the text whole when they do not balance.</summary>
+    internal static string AlloyBranch(string text, string[]? defined = null)
+    {
+        defined ??= CxNames;
+        if (!Array.Exists(defined, n => text.Contains(n, StringComparison.Ordinal))) return text;
+        string[] lines = text.Split('\n');
+        var stack = new List<Cond>();
+        for (int i = 0; i < lines.Length; i++)
+        {
+            bool active = stack.Count == 0 || stack[^1].On;
+            Match d = CondLine.Match(lines[i]);
+            if (!d.Success) { if (!active) lines[i] = ""; continue; }
+            string word = d.Groups[1].Value, rest = d.Groups[2].Value;
+            if (word is "if" or "ifdef" or "ifndef")
+            {
+                Match m = AlloyIf.Match(rest);
+                Match nm = AlloyName.Match(rest);
+                bool? on = word == "if" ? (m.Success && Array.IndexOf(defined, m.Groups["n"].Value) >= 0 ? m.Groups[1].Length == 0 : (bool?)null)
+                         : nm.Success && Array.IndexOf(defined, nm.Groups["n"].Value) >= 0 ? word == "ifdef" : (bool?)null;
+                stack.Add(on is { } cx ? new Cond(true, active, active && cx, cx) : new Cond(false, active, active, false));
+                if (on != null || !active) lines[i] = "";
+                continue;
+            }
+            if (stack.Count == 0) return text;
+            Cond c = stack[^1];
+            if (word == "endif") stack.RemoveAt(stack.Count - 1);
+            else if (c.Ours && word == "else") stack[^1] = c with { On = c.Parent && !c.Taken, Taken = true };
+            else if (c.Ours && c.Taken) stack[^1] = c with { On = false };
+            else if (c.Ours)
+            {
+                // the CX branch was skipped: this #elif opens a plain conditional of its own
+                stack[^1] = new Cond(false, c.Parent, c.Parent, false);
+                if (c.Parent) { lines[i] = ElifWord.Replace(lines[i], "#${s}if", 1); continue; }
+            }
+            if (c.Ours || !c.Parent) lines[i] = "";
+        }
+        return stack.Count == 0 ? string.Join('\n', lines) : text;
+    }
+
+    /// <summary>One open conditional in <see cref="AlloyBranch"/>: is it on <c>CX_ALLOY</c>, is the text around it
+    /// emitted, is its current branch, and has a branch of it been chosen.</summary>
+    private readonly record struct Cond(bool Ours, bool Parent, bool On, bool Taken);
+
+    private static readonly Regex CondLine = new(@"^\s*#\s*(if|ifdef|ifndef|elif|else|endif)\b(.*)$", RegexOptions.Compiled);
+    /// <summary>The names the fragment environment defines for content to test: <c>CX_ALLOY</c> (cx_vanenv_defs) and each
+    /// capability macro of cx_content_f, such as <c>CX_SELFILLUM</c> beside <c>cxSelfIllum</c>.</summary>
+    private static readonly string[] CxNames = ["CX_ALLOY", "CX_SELFILLUM"];
+    private static readonly string CxNameAlt = "(?<n>" + string.Join('|', CxNames) + ")";
+
+    /// <summary>The <see cref="CxNames"/> that <paramref name="defs"/> (an environment's text) <c>#define</c>s: what a
+    /// stage translated against it may have settled. An environment override that predates a name leaves it to GLSL.</summary>
+    internal static string[] DefinedCx(string defs)
+        => Array.FindAll(CxNames, n => Regex.IsMatch(defs, @"(?m)^[ \t]*#[ \t]*define[ \t]+" + n + @"\b"));
+    private static readonly Regex AlloyName = new(@"^\s+" + CxNameAlt + @"\s*(?://.*|/\*.*)?$", RegexOptions.Compiled);
+    private static readonly Regex ElifWord = new(@"#(?<s>\s*)elif\b", RegexOptions.Compiled);
+    private static readonly Regex AlloyIf = new(@"^\s+(!\s*)?defined\s*(?:\(\s*" + CxNameAlt + @"\s*\)|\s+" + CxNameAlt + @")\s*(?://.*|/\*.*)?$",
+                                               RegexOptions.Compiled);
+
     /// <summary>Every name the region already has a meaning for: the macros of the environments (less the helpers'
     /// guards) and the globals they declare. A stage's own declaration of one is dropped, because it would redeclare
     /// what the environment maps it to.</summary>

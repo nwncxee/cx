@@ -12,19 +12,23 @@ namespace CX.Alloy;
 internal static unsafe partial class GpuGolden
 {
     /// <summary>A hand-written stage of the shape a dye shader has: a palette pick off a row of its atlas on
-    /// <c>texUnit8</c>, the baked texel without one, and a glow edit after <c>ApplyStandardShader</c>.</summary>
+    /// <c>texUnit8</c>, the baked texel without one, a glow edit after <c>ApplyStandardShader</c>, and a self-illumination
+    /// term set ahead of it under <c>CX_SELFILLUM</c>.</summary>
     private const string GuiTwinStage =
         "#define SHADER_TYPE 2\n#define LIGHTING 1\n#include \"inc_standard\"\n"
-      + "uniform float pick; uniform float glow;\nuniform lowp int texture8Bound;\nuniform sampler2D texUnit8;\n"
+      + "uniform float pick; uniform float glow; uniform float illum;\nuniform lowp int texture8Bound;\nuniform sampler2D texUnit8;\n"
       + "void main()\n{\n    FragmentColor = vec4(1.0);\n    SetupStandardShaderInputs();\n"
       + "    vec3 display = RevertColorSpace(FragmentColor.rgb);\n"
       + "    if (pick >= 0.0) display = texture8Bound != 0 ? texelFetch(texUnit8, ivec2(0, int(pick)), 0).rgb : vec3(1.0, 0.0, 1.0);\n"
-      + "    FragmentColor.rgb = ApplyColorSpace(display);\n    ApplyStandardShader();\n    FragmentColor.a = 1.0;\n"
+      + "    FragmentColor.rgb = ApplyColorSpace(display);\n"
+      + "#ifdef CX_SELFILLUM\n    cxSelfIllum = vec3(0.0, max(illum, 0.0), 0.0);\n#endif\n"
+      + "    ApplyStandardShader();\n    FragmentColor.a = 1.0;\n"
       + "    FragmentColor.rgb += display * max(glow, 0.0);\n    gl_FragColor = FragmentColor;\n}\n";
 
     /// <summary>One case: the object's values (null = its row is gone), the slot mask, and the colour worked out by
     /// hand from the three textures below.</summary>
-    private readonly record struct GuiTwinCase(string What, string? Pick, string? Glow, int Slots, byte R, byte G, byte B, bool Due = false);
+    private readonly record struct GuiTwinCase(string What, string? Pick, string? Glow, int Slots, byte R, byte G, byte B, bool Due = false,
+                                               string? Illum = null);
 
     /// <summary>Content draws through the whole GUI flush into an image: the stage translated into the GUI's program, its
     /// row off the live table and its maps bound by unit. Oracle: three hand-written textures and the colours above.</summary>
@@ -38,14 +42,17 @@ internal static unsafe partial class GpuGolden
             new("a pick of -1 keeps the baked texel", "-1", null, palBit, 200, 0, 0),
             new("a part with no row reads its uniform's GLSL default, 0: atlas row 0", null, null, palBit, 9, 9, 9),
             new("the edit after ApplyStandardShader runs on the shaded colour", "1", "1", palBit, 0, 128, 0),
+            // linear 0.171744 over the atlas row's (64/255)^2.2 = 0.047776 is (128/255)^2.2
+            new("a self-illumination term lands on the shaded colour, in linear", "1", null, palBit, 0, 128, 0, Illum: "0.171744"),
             new("the slot mask reaches texture8Bound", "1", null, 0, 255, 0, 255),
             // a real recipe slot with no material behind it: its due fill states nothing, so pick falls to its default, 0
             new("a row due a fill is filled by the flush, with no world frame to do it", "1", null, palBit, 9, 9, 9, Due: true),
         ];
         const int Side = 4;
         // the opposite of the stage's own declaration order: the twin reads the lanes the rows were laid out with
-        ContentStage.Param[] lanes = [new("glow", ContentStage.ParamKind.Float, 0), new("pick", ContentStage.ParamKind.Float, 1)];
-        MtrDef mtr = MtrDef.Parse(System.Text.Encoding.ASCII.GetBytes("parameter float pick -1\nparameter float glow -1\n"), "golden_twin");
+        ContentStage.Param[] lanes = [new("glow", ContentStage.ParamKind.Float, 0), new("pick", ContentStage.ParamKind.Float, 1),
+                                      new("illum", ContentStage.ParamKind.Float, 2)];
+        MtrDef mtr = MtrDef.Parse(System.Text.Encoding.ASCII.GetBytes("parameter float pick -1\nparameter float glow -1\nparameter float illum -1\n"), "golden_twin");
         var chain = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["golden_twin_f"] = GuiTwinStage };
         GuiContent.VkPair? pair = GuiContent.VkTwin(vk, "vslit", "golden_twin_f", lanes, n => chain.GetValueOrDefault(n), log);
         check.Expect(pair != null, "the GUI twin of a dye stage was refused (logged above)");
@@ -72,6 +79,7 @@ internal static unsafe partial class GpuGolden
                 rows[i] = ContentTable.Alloc(GuiTwinOwner(in c, i));
                 var overs = new List<Seam.MaterialParams.ContentOverride> { new("", "pick", c.Pick) };
                 if (c.Glow != null) overs.Add(new("", "glow", c.Glow));
+                if (c.Illum != null) overs.Add(new("", "illum", c.Illum));
                 ContentTable.FillRow(rows[i], mtr, lanes, overs);
             }
             GuiCapture.BeginRawLayer(i * Side, 0, Side, Side, i * Side, 0, Side, Side);
