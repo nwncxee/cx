@@ -131,6 +131,12 @@ public static unsafe partial class EngineLayout
     public static readonly int NkCmdPolygonFilledColor = Field<CX.Engine.NkColor>("NkCommandPolygonFilled", "color");
     /// <summary><c>NkCommandPolyline</c>: its colour.</summary>
     public static readonly int NkCmdPolylineColor = Field<CX.Engine.NkColor>("NkCommandPolyline", "color");
+    /// <summary><c>nk_user_font</c>: the userdata its width function is handed, its height, and that width function.</summary>
+    public static readonly int NkFontUserData = Field<IntPtr>("NkUserFont", "userData");
+    /// <inheritdoc cref="NkFontUserData"/>
+    public static readonly int NkFontHeight = Field<float>("NkUserFont", "height");
+    /// <inheritdoc cref="NkFontUserData"/>
+    public static readonly int NkFontWidth = Field<IntPtr>("NkUserFont", "width");
     /// <summary><c>NkCommandText</c>: its colours.</summary>
     public static readonly int NkCmdTextBackground = Field<CX.Engine.NkColor>("NkCommandText", "background");
     /// <summary><c>NkCommandImage</c>: its colour.</summary>

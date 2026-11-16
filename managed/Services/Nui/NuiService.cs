@@ -69,6 +69,7 @@ public sealed unsafe class NuiService : IExtenderService
         NuiScrollbarHide.Init(log, hooks);
         NuiSolver.Init(log, hooks);
         NuiLayoutErrors.Init(log, hooks);
+        NuiColorHooks.Init(log, hooks);
         CxWindows.Init(log, hooks);
         NuiHitTest.Init(log, hooks);
         if (!EngineLayout.Require(log, "NuiService", "Nui::Layout::Layoutable")) return;

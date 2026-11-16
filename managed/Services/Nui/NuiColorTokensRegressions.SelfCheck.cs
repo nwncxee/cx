@@ -20,6 +20,9 @@ internal static unsafe class NuiColorTokensRegressions
         NuiKnobs.ColorTokens.Set(true);
         Span<ColorPiece> pieces = stackalloc ColorPiece[NuiColorText.MaxPieces];
 
+        byte[] zero = Encoding.UTF8.GetBytes("<c\u0000ab>z");
+        check.Expect(NuiColorText.Plan(zero, Own, Font, pieces) == -1, "a <c whose colour holds a zero byte is drawn as text, as the native reader refuses it");
+
         byte[] open = Encoding.UTF8.GetBytes("<cab x and <cabcd");
         check.Expect(NuiColorText.Plan(open, Own, Font, pieces) == -1, "a <c with no > after its three bytes is drawn as text");
         check.Expect(NuiColorText.Width(open, Font) == open.Length * 10f, "a <c with no > after its three bytes measures as text");
@@ -44,9 +47,33 @@ internal static unsafe class NuiColorTokensRegressions
             check.Expect(last.Start + last.Length == manyBytes.Length, "the last piece runs to the end of the text, so none of it is lost");
         }
 
+        Stretches(check, pieces);
+
         NuiKnobs.ColorTokens.Set(on);
         NuiKnobs.Enabled.Set(nui);
         log.Info(check.Ok ? "NuiColorTokensRegressions.SelfCheck: passed" : "NuiColorTokensRegressions.SelfCheck: FAILED");
+    }
+
+    /// <summary>A frame's queued commands, by buffer offset: an edit field at 100..200 and a text block at 300..400. A
+    /// command in the edit field draws as typed, the block's lines carry their colour, and the next frame forgets both.</summary>
+    private static void Stretches(Checker check, Span<ColorPiece> pieces)
+    {
+        byte[] red = Encoding.UTF8.GetBytes("<c\u00fe\u0001\u0001>Hi");
+        byte[] plain = Encoding.UTF8.GetBytes("more");
+        NuiColorText.EndFrame();
+        NuiColorText.Mark(100, 200, edit: true);
+        NuiColorText.Mark(300, 400, edit: false);
+        check.Expect(NuiColorText.PlanAt(150, red, Own, Font, pieces) == -1, "a command inside the edit field's stretch draws as typed");
+        check.Expect(NuiColorText.PlanAt(250, red, Own, Font, pieces) == 1 && pieces[0].Color == 0xFF0101FEu, // not-an-offset: an nk_color
+            "a command between the stretches is coloured");
+        check.Expect(NuiColorText.PlanAt(260, plain, Own, Font, pieces) == -1, "an unclosed colour outside any block stops at its own command");
+        NuiColorText.PlanAt(310, red, Own, Font, pieces);
+        int n = NuiColorText.PlanAt(350, plain, Own, Font, pieces);
+        check.Expect(n == 1 && pieces[0].Color == 0xFF0101FEu, "the next line of the same block carries the open colour"); // not-an-offset: an nk_color
+        check.Expect(NuiColorText.PlanAt(450, plain, Own, Font, pieces) == -1, "a command after the block does not carry its colour");
+        NuiColorText.EndFrame();
+        check.Expect(NuiColorText.PlanAt(150, red, Own, Font, pieces) == 1, "the next frame forgets the edit field's stretch");
+        NuiColorText.EndFrame();
     }
 
     /// <summary>The stand-in font: ten pixels per byte.</summary>

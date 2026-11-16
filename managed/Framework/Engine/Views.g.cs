@@ -275,6 +275,9 @@ global using unsafe NkScrollbarBehaviorFn = delegate* unmanaged<nint, nint, int,
 global using unsafe NkDrawScrollbarFn = delegate* unmanaged<nint, uint, nint, nint, nint, void>;
 global using unsafe AurGetLayeredRasterWrapperFn = delegate* unmanaged<byte*, int*, int*, int*, byte*>;
 global using unsafe NkLoadImgFn = delegate* unmanaged<nint, byte*, ushort, nint>;
+global using unsafe NkFontTextWidthFn = delegate* unmanaged<nint, float, byte*, int, float>;
+global using unsafe NkEditBufferFn = delegate* unmanaged<nint, uint, nint, nint, uint>;
+global using unsafe NuiTextWidgetDrawFn = delegate* unmanaged<nint, nint, nint, void>;
 global using unsafe DataBlockFromBase64Fn = delegate* unmanaged<nint, nint, nint>;
 global using unsafe NwcCreateItemFn = delegate* unmanaged<nint, uint, ushort*, byte*, byte*, sbyte, byte, nint, nint>;
 global using unsafe NwcCreatureCtorFn = delegate* unmanaged<nint, nint>;
@@ -3267,6 +3270,21 @@ public readonly unsafe partial struct NkStyleScrollbar(IntPtr ptr)
     public bool IsNull => Ptr == IntPtr.Zero;
 }
 
+/// <summary>Typed view of an engine <c>NkUserFont*</c>.</summary>
+public readonly unsafe partial struct NkUserFont(IntPtr ptr)
+{
+    /// <summary>The engine object.</summary>
+    public readonly IntPtr Ptr = ptr;
+    /// <summary>No object.</summary>
+    public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.NkFontHeight"/>
+    public ref float Height => ref *(float*)(Ptr + EngineLayout.NkFontHeight);
+    /// <inheritdoc cref="EngineLayout.NkFontUserData"/>
+    public ref IntPtr UserData => ref *(IntPtr*)(Ptr + EngineLayout.NkFontUserData);
+    /// <inheritdoc cref="EngineLayout.NkFontWidth"/>
+    public ref IntPtr Width => ref *(IntPtr*)(Ptr + EngineLayout.NkFontWidth);
+}
+
 /// <summary>Typed view of an engine <c>NkWindow*</c>.</summary>
 public readonly unsafe partial struct NkWindow(IntPtr ptr)
 {
@@ -5034,6 +5052,18 @@ public static unsafe class EngineFn
     private static bool _NkLoadImgDone;
     /// <inheritdoc cref="SymbolMap.NkLoadImg"/>
     public static NkLoadImgFn NkLoadImg => (NkLoadImgFn)(_NkLoadImgDone ? _NkLoadImg : Resolve(ref _NkLoadImg, ref _NkLoadImgDone, SymbolMap.NkLoadImg));
+    private static IntPtr _NkFontTextWidth;
+    private static bool _NkFontTextWidthDone;
+    /// <inheritdoc cref="SymbolMap.NkFontTextWidth"/>
+    public static NkFontTextWidthFn NkFontTextWidth => (NkFontTextWidthFn)(_NkFontTextWidthDone ? _NkFontTextWidth : Resolve(ref _NkFontTextWidth, ref _NkFontTextWidthDone, SymbolMap.NkFontTextWidth));
+    private static IntPtr _NkEditBuffer;
+    private static bool _NkEditBufferDone;
+    /// <inheritdoc cref="SymbolMap.NkEditBuffer"/>
+    public static NkEditBufferFn NkEditBuffer => (NkEditBufferFn)(_NkEditBufferDone ? _NkEditBuffer : Resolve(ref _NkEditBuffer, ref _NkEditBufferDone, SymbolMap.NkEditBuffer));
+    private static IntPtr _NuiTextWidgetDraw;
+    private static bool _NuiTextWidgetDrawDone;
+    /// <inheritdoc cref="SymbolMap.NuiTextWidgetDraw"/>
+    public static NuiTextWidgetDrawFn NuiTextWidgetDraw => (NuiTextWidgetDrawFn)(_NuiTextWidgetDrawDone ? _NuiTextWidgetDraw : Resolve(ref _NuiTextWidgetDraw, ref _NuiTextWidgetDrawDone, SymbolMap.NuiTextWidgetDraw));
     private static IntPtr _DataBlockFromBase64;
     private static bool _DataBlockFromBase64Done;
     /// <inheritdoc cref="SymbolMap.DataBlockFromBase64"/>
@@ -7408,6 +7438,24 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.NkLoadImg"/>; returns the slot holding the next layer, or null.</summary>
     public static NkLoadImgFn* ChainNkLoadImg(this HookService h, NkLoadImgFn handler, int priority) =>
         (NkLoadImgFn*)h.Chain(SymbolMap.NkLoadImg, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.NkFontTextWidth"/>; returns the original, or null.</summary>
+    public static NkFontTextWidthFn InstallNkFontTextWidth(this HookService h, NkFontTextWidthFn handler) =>
+        (NkFontTextWidthFn)h.Install(SymbolMap.NkFontTextWidth, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.NkFontTextWidth"/>; returns the slot holding the next layer, or null.</summary>
+    public static NkFontTextWidthFn* ChainNkFontTextWidth(this HookService h, NkFontTextWidthFn handler, int priority) =>
+        (NkFontTextWidthFn*)h.Chain(SymbolMap.NkFontTextWidth, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.NkEditBuffer"/>; returns the original, or null.</summary>
+    public static NkEditBufferFn InstallNkEditBuffer(this HookService h, NkEditBufferFn handler) =>
+        (NkEditBufferFn)h.Install(SymbolMap.NkEditBuffer, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.NkEditBuffer"/>; returns the slot holding the next layer, or null.</summary>
+    public static NkEditBufferFn* ChainNkEditBuffer(this HookService h, NkEditBufferFn handler, int priority) =>
+        (NkEditBufferFn*)h.Chain(SymbolMap.NkEditBuffer, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.NuiTextWidgetDraw"/>; returns the original, or null.</summary>
+    public static NuiTextWidgetDrawFn InstallNuiTextWidgetDraw(this HookService h, NuiTextWidgetDrawFn handler) =>
+        (NuiTextWidgetDrawFn)h.Install(SymbolMap.NuiTextWidgetDraw, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.NuiTextWidgetDraw"/>; returns the slot holding the next layer, or null.</summary>
+    public static NuiTextWidgetDrawFn* ChainNuiTextWidgetDraw(this HookService h, NuiTextWidgetDrawFn handler, int priority) =>
+        (NuiTextWidgetDrawFn*)h.Chain(SymbolMap.NuiTextWidgetDraw, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.DataBlockFromBase64"/>; returns the original, or null.</summary>
     public static DataBlockFromBase64Fn InstallDataBlockFromBase64(this HookService h, DataBlockFromBase64Fn handler) =>
         (DataBlockFromBase64Fn)h.Install(SymbolMap.DataBlockFromBase64, (IntPtr)handler);

@@ -26,6 +26,13 @@ internal static unsafe class NuiColorText
     /// <summary>Colours the native text code nests before its ring wraps; deeper opens are ignored here.</summary>
     private const int MaxDepth = 16;
 
+    /// <summary>Edit fields and text blocks one frame can mark. shortcut: past this, later ones draw as plain text
+    /// (an edit field's tokens colour, a block's colour stops at its line ends); raise it if a window needs more.</summary>
+    internal const int MaxStretches = 1024;
+
+    /// <summary>A stretch of nuklear's command memory one edit field or one text block pushed this frame.</summary>
+    internal readonly record struct Stretch(ulong From, ulong To, bool Edit);
+
     /// <summary>The colour stack a text block carries from line to line, and whether an edit field is drawing.</summary>
     internal sealed class ColorTextState
     {
@@ -36,6 +43,10 @@ internal static unsafe class NuiColorText
         /// <summary>The codepage byte for each codepoint 0x80..0xff map to, filled on first use.</summary>
         public readonly int[] Codepoints = new int[128];
         public bool Mapped;
+        public readonly Stretch[] Stretches = new Stretch[MaxStretches];
+        public int StretchCount;
+        /// <summary>The stretch the last laid-out command sat in, -1 for none.</summary>
+        public int LastStretch = -1;
     }
 
     internal static ColorTextState State = new();
@@ -99,7 +110,55 @@ internal static unsafe class NuiColorText
     internal static void BeginBlock() { State.InBlock = true; State.Depth = 0; }
 
     /// <inheritdoc cref="BeginBlock"/>
-    internal static void EndBlock() { State.InBlock = false; State.Depth = 0; }
+    internal static void EndBlock() => State.InBlock = false;
+
+    /// <summary>Notes that an edit field (<paramref name="edit"/>) or a text block pushed the commands between buffer
+    /// offsets <paramref name="from"/> and <paramref name="to"/>. Commands are pushed in rising offsets, so the
+    /// stretches stay sorted.</summary>
+    internal static void Mark(ulong from, ulong to, bool edit)
+    {
+        var s = State;
+        if (to <= from || s.StretchCount >= MaxStretches) return;
+        if (s.StretchCount > 0 && from < s.Stretches[s.StretchCount - 1].To) return;
+        s.Stretches[s.StretchCount++] = new Stretch(from, to, edit);
+    }
+
+    /// <summary><see cref="Plan"/> for the queued text command at buffer offset <paramref name="at"/>: an edit field's
+    /// text goes ahead as typed, and the lines of one text block carry their colour from one to the next.</summary>
+    internal static int PlanAt(ulong at, ReadOnlySpan<byte> utf8, uint fg, TextMeasure measure, Span<ColorPiece> into)
+    {
+        var s = State;
+        int k = Find(at);
+        if (k >= 0 && s.Stretches[k].Edit) return -1;
+        if (k < 0) EndBlock();
+        else if (k != s.LastStretch || !s.InBlock) BeginBlock();
+        s.LastStretch = k;
+        return Plan(utf8, fg, measure, into);
+    }
+
+    /// <summary>The frame's commands are spent: forget its stretches.</summary>
+    internal static void EndFrame()
+    {
+        var s = State;
+        s.StretchCount = 0;
+        s.LastStretch = -1;
+        EndBlock();
+    }
+
+    private static int Find(ulong at)
+    {
+        var s = State;
+        int lo = 0, hi = s.StretchCount - 1;
+        while (lo <= hi)
+        {
+            int mid = (lo + hi) >> 1;
+            var r = s.Stretches[mid];
+            if (at < r.From) hi = mid - 1;
+            else if (at >= r.To) lo = mid + 1;
+            else return mid;
+        }
+        return -1;
+    }
 
     /// <summary>An edit field draws between these two: its text shows and measures as typed.</summary>
     internal static void EnterEdit() => State.Edit++;

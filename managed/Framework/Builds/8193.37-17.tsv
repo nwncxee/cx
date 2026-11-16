@@ -942,6 +942,10 @@ rva	nk_convert	0xa7c340	# NkConvert
 rva	nk_clear	0xa77df0	# NkClear
 rva	nk_sdl.ogl.cmds	0x14299d8	# NkCmds (DATA)
 rva	nk_sdl.ogl.tex_null	0x1429a50	# NkTexNull (DATA)
+rva	nk_font_text_width	0xa6ba50	# NkFontTextWidth
+rva	nk_draw_list_add_text	0xa7de20	# NkDrawListAddText
+rva	nk_edit_buffer	0xa817d0	# NkEditBuffer
+rva	Nui::Layout::Widgets::text::draw	0x9584c0	# NuiTextWidgetDraw
 
 # lva	static function	linux nm address	# SymbolMap.LinuxAnchored constant
 lva	nk_scrollbar_behavior	0xdf5ba0	# NkScrollbarBehavior
@@ -953,6 +957,8 @@ lva	nk_sdl.ogl.tex_null	0x1a12aa0	# NkTexNull (DATA)
 lva	Nui::JSON::DynamicBinding::s_array_index	0x18ab050	# NuiArrayIndex (DATA)
 lva	nk_layout_widget_space	0xdd8340	# NkLayoutWidgetSpace
 lva	Nui::JSON::PushEvent	0x86f680	# NuiEventPush
+lva	nk_font_text_width	0xde3fe0	# NkFontTextWidth
+lva	Nui::Layout::Widgets::text::draw	0x8b2e20	# NuiTextWidgetDraw
 
 # ---- CX-109/110 ----
 offset	Camera	scene	0x90	0x90	# CameraScene
@@ -1123,5 +1129,8 @@ offset	NkCommandPolygon	color	0x10	0x10	# NkCmdPolygonColor
 offset	NkCommandPolygonFilled	color	0x10	0x10	# NkCmdPolygonFilledColor
 offset	NkCommandPolyline	color	0x10	0x10	# NkCmdPolylineColor
 offset	NkCommandText	background	0x18	0x18	# NkCmdTextBackground
+offset	NkUserFont	userData	0x0	0x0	# NkFontUserData
+offset	NkUserFont	height	0x8	0x8	# NkFontHeight
+offset	NkUserFont	width	0x10	0x10	# NkFontWidth
 offset	NkCommandImage	color	0x30	0x30	# NkCmdImageColor
 offset	CallBack	seamName	0x0	0x0	# SeamCallBackName

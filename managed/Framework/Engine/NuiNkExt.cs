@@ -15,6 +15,9 @@ public readonly unsafe partial struct NkContext
 {
     /// <summary>The command at nuklear's buffer offset <paramref name="off"/> in the context's own memory.</summary>
     public NkCommand CommandAt(ulong off) => new(MemPtr + (nint)off);
+
+    /// <summary>The buffer offset of <paramref name="p"/>, a byte inside one of the context's queued commands.</summary>
+    public ulong OffsetOf(byte* p) => (ulong)(p - (byte*)MemPtr);
 }
 
 /// <summary>One nuklear <c>nk_color</c>: four bytes, alpha last.</summary>
