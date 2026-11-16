@@ -7,8 +7,8 @@ using static CX.Services.Chat.ChatExamplesKit;
 namespace CX.Services.Chat;
 
 /// <summary>Approved examples of where typing goes and of click-through windows that already held before either
-/// changed (E12, E17, E22-E25), kept as regressions, and the decision that only Main's gear lists the other
-/// windows' click-through. Oracle: window rects and channel bits written by hand.</summary>
+/// changed (E12, E17, E22-E25), kept as regressions, and a window's gear holding no other window's click-through
+/// (the window list reaches those). Oracle: window rects and channel bits written by hand.</summary>
 internal static class ChatWindowRegressions
 {
     internal static void SelfCheck(ExtenderLog log)

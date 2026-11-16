@@ -89,6 +89,15 @@ internal static class ChatExamplesKit
     /// <summary>The typed line's letters: every letter glyph the frame draws (no message is in the store).</summary>
     internal static List<Quad> Typed(RenderFrame f) => Quads(f).FindAll(q => Letter(q) != '\0');
 
+    /// <summary>True when the frame's typed letters and caret all sit in the 28 px typing bar whose top is <paramref name="top"/>.</summary>
+    internal static bool InBand(RenderFrame f, ChatWindow win, float top)
+    {
+        var typed = Typed(f);
+        bool ok = typed.Count > 0 && Caret(f, win) is Quad c && c.Y0 >= top && c.Y1 <= top + 28f;
+        foreach (var q in typed) ok &= q.Y0 >= top && q.Y1 <= top + 28f;
+        return ok;
+    }
+
     /// <summary>True when the frame draws a full-width bar along the window's top 28 px: its tab bar, at scale 1.</summary>
     internal static bool TabBar(RenderFrame f, float x, float y, float w)
         => Quads(f).Exists(q => !q.Glyph && q.X0 == x && q.X1 == x + w && q.Y0 == y && q.Y1 == y + 28f);
@@ -105,6 +114,22 @@ internal static class ChatExamplesKit
         for (int cp = 0x20; cp < 0x180; cp++) a.SetTestGlyph(cp, cp == ' ' ? 6f : 11f);
         a.SetTestGlyph(0x25BE, 11f);
         return a;
+    }
+
+    /// <summary>Open the panel header's window list the way a player clicks it.</summary>
+    internal static void OpenWindowList(SettingsWindow s, ChatWindow w)
+    {
+        s.Panel.HeaderChoiceRect(out float x0, out float x1, out float y0, out float y1);
+        s.MouseDown((x0 + x1) / 2f, (y0 + y1) / 2f, w);
+        s.MouseUp();
+    }
+
+    /// <summary>Pick entry <paramref name="i"/> of the panel's window list: open it, then click the entry.</summary>
+    internal static void PickWindow(SettingsWindow s, ChatWindow w, int i)
+    {
+        OpenWindowList(s, w);
+        s.MouseDown(s.Panel.Drop.X + 5f, s.Panel.Drop.ItemTop(i) + 2f, w);
+        s.MouseUp();
     }
 
     /// <summary>Press a settings row the way a player clicks it: scrolled into the list, then on its label.</summary>

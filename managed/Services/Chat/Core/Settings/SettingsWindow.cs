@@ -29,6 +29,10 @@ public sealed partial class SettingsWindow
     /// click-through: a window that ignores the pointer can only be given back from there.</summary>
     private ChatWindow[] _windows = System.Array.Empty<ChatWindow>();
 
+    /// <summary>The window the header's list just switched the panel to, or -1. The shell reads + clears it and
+    /// focuses that window, so every later press edits it.</summary>
+    public int WindowPicked = -1;
+
     /// <summary>Tab index per category entry: -1 for <see cref="WindowCategory"/> and <see cref="AddTabCategory"/>.</summary>
     private int[] _catTab = System.Array.Empty<int>();
 
