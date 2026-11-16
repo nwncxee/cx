@@ -6,9 +6,18 @@
 set -e
 cd "$(dirname "$0")"
 GAME="${NWN_WIN:-$(dirname "$(python3 tools/paths.py NWN_WIN_EXE)")}"
-PROTON="${PROTON:-$HOME/.steam/root/steamapps/common/Proton - Experimental/proton}"
+STEAM_PROTON="$HOME/.steam/root/steamapps/common/Proton - Experimental/proton"
+if [ -z "$PROTON" ]; then
+  if [ -f "$STEAM_PROTON" ]; then PROTON="$STEAM_PROTON"; else PROTON="$PROTON_GE"; fi
+fi
 [ -f "$GAME/nwmain.exe" ] || { echo "!! no nwmain.exe under $GAME (set NWN_WIN)" >&2; exit 1; }
-[ -f "$PROTON" ] || { echo "!! no proton at $PROTON (set PROTON)" >&2; exit 1; }
+[ -n "$PROTON" ] && [ -f "$PROTON" ] || { echo "!! no Proton: install Proton Experimental in Steam, run in nix develop .#win, or set PROTON" >&2; exit 1; }
+# Proton's Wine binaries expect an FHS system, which NixOS gives them only through steam-run (programs.steam).
+FHS=""
+if [ -f /etc/NIXOS ]; then
+  command -v steam-run >/dev/null || { echo "!! NixOS needs steam-run on PATH (programs.steam.enable)" >&2; exit 1; }
+  FHS=steam-run
+fi
 # Build first, always. This script COPIES the DLLs, so without it a run silently tests whatever
 # build-win.sh last produced -- and since ./build.sh does not touch the Windows leg, "edit, build, run
 # proton" tested a stale DLL and cost a whole diagnosis. ~20s when nothing changed; CX_NO_BUILD=1 to
@@ -31,4 +40,4 @@ else echo ">> no saves at $SAVES -- the same-save compare needs one (NWN_SAVES o
 rm -f "$DOCS/cx.log" "$DOCS"/cx.[0-9].log
 # Wine prefers its builtin version.dll; n,b makes the proxy beside nwmain.exe win.
 cd "$GAME" && STEAM_COMPAT_DATA_PATH="$PFX" STEAM_COMPAT_CLIENT_INSTALL_PATH="$HOME/.steam/root" \
-  WINEDLLOVERRIDES="version=n,b" exec "$PROTON" run "$GAME/nwmain.exe" "$@"
+  WINEDLLOVERRIDES="version=n,b" exec $FHS "$PROTON" run "$GAME/nwmain.exe" "$@"

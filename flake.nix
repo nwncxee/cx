@@ -183,6 +183,8 @@
         win = pkgs.mkShell (
           devShell
           // {
+            # run-proton.sh's Proton when Steam has none installed; on NixOS it runs under the system's steam-run.
+            PROTON_GE = "${pkgs.proton-ge-bin.steamcompattool}/proton";
             SDK = "${winsdk}/Windows Kits/10";
             SDKVER = winSdkVersion;
             MSVC = "${winsdk}/VC/Tools/MSVC/${winMsvcVersion}";
