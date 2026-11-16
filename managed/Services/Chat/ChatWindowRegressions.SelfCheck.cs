@@ -7,7 +7,7 @@ using static CX.Services.Chat.ChatExamplesKit;
 namespace CX.Services.Chat;
 
 /// <summary>Approved examples of where typing goes and of click-through windows that already held before either
-/// changed (E12, E17, E22, E23, E24), kept as regressions, and the decision that only Main's gear lists the other
+/// changed (E12, E17, E22-E25), kept as regressions, and the decision that only Main's gear lists the other
 /// windows' click-through. Oracle: window rects and channel bits written by hand.</summary>
 internal static class ChatWindowRegressions
 {
@@ -95,6 +95,16 @@ internal static class ChatWindowRegressions
             check.Expect(s.Rows.FindAll(r => r.Act == SetAct.ClickThroughOf).TrueForAll(r => r.Key == "1"),
                          "a second window's gear holds only its own Click-through, not the other windows'");
             s.Reset();
+        }
+
+        // Given Main's only tab shows Combat and a second window clicked last can send on Talk
+        // When the player presses Enter
+        // Then the typing bar opens in the second window
+        {
+            var layout = new ChatLayout(new ChatWindow(0, 0, 400, 300, new[] { new Tab("COMBAT", 0x080) }));
+            layout.AddWindow(new ChatWindow(500, 0, 400, 300, new[] { new Tab("TALK", 0x001) }));
+            layout.FocusedIndex = 1;
+            check.Expect(layout.TypingWindow() == 1, $"E25 Main unable to send: Enter opens in the second window (got {layout.TypingWindow()})");
         }
 
         if (check.Ok) log.Info("ChatWindowRegressions.SelfCheck: passed");
