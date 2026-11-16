@@ -58,6 +58,8 @@ public sealed unsafe class NuiService : IExtenderService
         NuiSolver.SelfCheck(log);
         NuiScrollbarHide.SelfCheck(log);
         NuiLayoutErrors.SelfCheck(log);
+        NuiColorTokensApprovedExamples.Run(log);
+        NuiColorTokensRegressions.Run(log);
         NuiHitTest.SelfCheck(log);
         NuiJsonRead.SelfCheck(log);
         CxTranslate.SelfCheck(log);

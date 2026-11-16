@@ -132,6 +132,11 @@ internal static unsafe class NuiColorTokensApprovedExamples
         Expect(check, "E9 first line", "Once " + Tok(254, 1, 1) + "upon a", "Once |Own|0 upon a|Red|50");
         Expect(check, "E9 second line", "time</c> there", "time|Red|0  there|Own|40");
         NuiColorText.EndBlock();
+        NuiColorText.BeginBlock();
+        Expect(check, "E9 first of three lines", Tok(254, 1, 1) + "a very", "a very|Red|0");
+        Expect(check, "E9 a middle line with no token", "long red", "long red|Red|0");
+        Expect(check, "E9 last line", "span</c> ends", "span|Red|0  ends|Own|40");
+        NuiColorText.EndBlock();
         Expect(check, "E9 the next label", "after", null);
     }
 
