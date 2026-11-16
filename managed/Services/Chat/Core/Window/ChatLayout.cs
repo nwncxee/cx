@@ -53,14 +53,14 @@ public sealed class ChatLayout
         get { ChatWindow[] w = _windows; int i = _focusedIndex; return w[(uint)i < (uint)w.Length ? i : 0]; }
     }
 
-    /// <summary>Index of the window Enter opens the typing bar in, or -1 when no window can send: the focused
-    /// window when it can, else Main.</summary>
+    /// <summary>Index of the window Enter opens the typing bar in, or -1 when none can send: Main, or -- when
+    /// Main's tab can't send -- the focused window, unless it is click-through.</summary>
     public int TypingWindow()
     {
         ChatWindow[] w = _windows;
+        if (w[0].HasSendable) return 0;
         int fi = _focusedIndex;
-        if ((uint)fi < (uint)w.Length && w[fi].HasSendable) return fi;
-        return w[0].HasSendable ? 0 : -1;
+        return (uint)fi < (uint)w.Length && w[fi].HasSendable && !w[fi].ClickThrough ? fi : -1;
     }
 
     /// <summary>Index of the topmost window that takes the pointer at the point, or -1: the focused window (drawn
@@ -190,6 +190,17 @@ public sealed class ChatLayout
         check.Expect(!layout.TransferTab(0, 0, 1, 0), "transfer to locked window refused");
         check.Expect(tm.Tabs.Count == 2, "source unchanged after locked refusal");
         tw.Locked = false;
+
+        // Enter's window when Main's tab can't send: the focused window, never a click-through one, else none.
+        while (layout.CloseWindow(1)) { }
+        layout.Main.SetTabs(new[] { new Tab("Combat", 0x080) });
+        var talker = layout.AddWindow(new ChatWindow(50, 50, 400, 300, new[] { new Tab("Talk", 0x001) }))!;
+        layout.FocusedIndex = 1;
+        check.Expect(layout.TypingWindow() == 1, "Main unable to send: Enter opens in the focused window that can");
+        talker.ClickThrough = true;
+        check.Expect(layout.TypingWindow() == -1, "...but never in a click-through one");
+        layout.FocusedIndex = 0;
+        check.Expect(layout.TypingWindow() == -1, "...and nowhere when the focused window can't send either");
 
         log.Info(check.Ok ? "ChatLayout.SelfCheck: passed" : "ChatLayout.SelfCheck: FAILED");
     }
