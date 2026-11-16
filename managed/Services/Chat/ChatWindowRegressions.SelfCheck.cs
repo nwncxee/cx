@@ -7,7 +7,7 @@ using static CX.Services.Chat.ChatExamplesKit;
 namespace CX.Services.Chat;
 
 /// <summary>Approved examples of where typing goes and of click-through windows that already held before either
-/// changed (E12, E17, E22-E25), kept as regressions, and a window's gear holding no other window's click-through
+/// changed (E12, E17, E22-E25, E33), kept as regressions, and a window's gear holding no other window's click-through
 /// (the window list reaches those). Oracle: window rects and channel bits written by hand.</summary>
 internal static class ChatWindowRegressions
 {
@@ -105,6 +105,17 @@ internal static class ChatWindowRegressions
             layout.AddWindow(new ChatWindow(500, 0, 400, 300, new[] { new Tab("TALK", 0x001) }));
             layout.FocusedIndex = 1;
             check.Expect(layout.TypingWindow() == 1, $"E25 Main unable to send: Enter opens in the second window (got {layout.TypingWindow()})");
+        }
+
+        // Given Main is the only chat window
+        // When the player opens Main's gear
+        // Then the panel shows no window list
+        {
+            var main = Window(0, 0);
+            var s = new SettingsWindow();
+            s.OpenAt(main, 1280, 800, 20f, PanelFace(), PanelFace(), 0, new[] { main });
+            check.Expect(s.Panel.HeaderChoices.Length == 0, "E33 a lone Main has no window list");
+            s.Reset();
         }
 
         if (check.Ok) log.Info("ChatWindowRegressions.SelfCheck: passed");
