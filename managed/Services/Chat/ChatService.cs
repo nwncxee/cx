@@ -63,6 +63,8 @@ public sealed unsafe partial class ChatService : IExtenderService
         NameCompleter.SelfCheck(log);  // Tab name completion
         HistoryFile.SelfCheck(log);    // saved sent-line history escaping
         SpeechNotify.SelfCheck(log);   // which lines raise a desktop notification
+        TypingBarRegressions.SelfCheck(log);
+        ChatWindowRegressions.SelfCheck(log);
         TypingBarApprovedExamples(log);
         InputWindowApprovedExamples(log);
         ClickThroughApprovedExamples(log);
