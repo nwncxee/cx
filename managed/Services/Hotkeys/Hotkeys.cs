@@ -59,7 +59,7 @@ internal static class Hotkeys
     }
 
     /// <summary>The OpenUi packet the Options-panel button used to send. Guarded: with no session there is no live
-    /// message object and the g_pAppManager fallback faults on this build.</summary>
+    /// message object to send it through.</summary>
     private static unsafe void OpenServerUi()
     {
         if (!GameGate.InModule) return;

@@ -96,7 +96,7 @@ internal static unsafe class HotkeyConsent
     /// <summary>
     /// Is the GUI manager up? g_pGuiMan is the exact global CGuiModalPanel::Activate uses, so non-null
     /// == safe to attach a modal. We only READ its value (never deref as an object), so a wrong
-    /// resolution can't fault -- unlike the g_pAppManager path, which segfaults on this build.
+    /// resolution can't fault.
     /// </summary>
     private static bool GuiReady() => *(IntPtr*)_guiManSym != IntPtr.Zero;
 

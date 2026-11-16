@@ -18,7 +18,6 @@ internal static class HotkeyProtocol
     {
         CX.Framework.SymbolMap.HandleServerToPlayerMessage, CX.Framework.SymbolMap.HandleServerToPlayerLogin,
         CX.Framework.SymbolMap.SendPlayerToServerMessage, CX.Framework.SymbolMap.SendDeviceAdvertiseProperty,
-        CX.Framework.SymbolMap.GetNWCMessage, CX.Framework.SymbolMap.AppManager,
         CX.Framework.SymbolMap.OkCancelCtor, CX.Framework.SymbolMap.OkCancelActivate,
         CX.Framework.SymbolMap.GuiMan, CX.Framework.SymbolMap.OperatorNew,
         CX.Framework.SymbolMap.HandleWMKeyDown, CX.Framework.SymbolMap.WinMessageHandler,

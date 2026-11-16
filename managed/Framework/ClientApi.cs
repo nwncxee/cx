@@ -9,12 +9,8 @@ namespace CX.Framework;
 /// </summary>
 public static unsafe class ClientApi
 {
-    private static readonly IntPtr AppMgr = Native.Sym(SymbolMap.AppManager);
-    /// <summary>
-    /// A live CNWCMessage* captured from a hook that is handed one (inbound `self` / login `this`).
-    /// Preferred over resolving GetNWCMessage(*g_pAppManager) -- exactly the engine's own object, no
-    /// symbol/offset guesswork. The g_pAppManager path (which segfaulted on this build) is fallback only.
-    /// </summary>
+    /// <summary>The live CNWCMessage* captured from a hook that is handed one (inbound `self`, login `this`):
+    /// the engine's own object. Zero until the first server message, so nothing sends before a connection.</summary>
     public static IntPtr LiveMessage;
 
     /// <summary>A live CClientExoApp* captured from the focus hooks (their `this`). A process-lifetime
@@ -22,13 +18,9 @@ public static unsafe class ClientApi
     /// g_pAppManager global.</summary>
     public static IntPtr LiveExoApp;
 
-    public static IntPtr Message()
-    {
-        if (LiveMessage != IntPtr.Zero) return LiveMessage;
-        if (AppMgr == IntPtr.Zero || EngineFn.GetNWCMessage == null) return IntPtr.Zero;
-        IntPtr app = *(IntPtr*)AppMgr;
-        return app == IntPtr.Zero ? IntPtr.Zero : new CClientExoApp(app).GetNWCMessage();
-    }
+    /// <summary>The message object every send goes through, or zero before the first server message. Never walked from
+    /// <c>g_pAppManager</c>: at boot on Windows that chain can name an app the main thread has not finished building.</summary>
+    public static IntPtr Message() => LiveMessage;
 
     public static void Send(byte major, byte minor, byte* payload, uint len)
     {
