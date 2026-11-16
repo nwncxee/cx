@@ -411,7 +411,10 @@ the font rows are the window's own (`w<N>.font` / `w<N>.typeface`, absent = foll
 sheet. Its *Background* section holds only the fill's shape — `bgmode`, and for a gradient the
 direction and the two stops — since the colours it fills with come from the shared look.
 The tab bar keeps only the gear: a new window is the panel header's *Copy this window*,
-closing is the window category's *Close this window* (two presses; Main has no row).
+closing is the window category's *Close this window* (two presses; Main has no row). With more
+than one window the header also holds a *Window* list, left of *Copy this window*, that switches the
+panel (and the focus) to another window -- the one way back to a window set *Click-through*, which
+takes no pointer. *Click-through* (`w<N>.clickthrough`) is a row of every window but Main.
 
 **Names & combat text** — groups `nameplate` (220, *Nameplates*), `combattext` (222, *Combat text*).
 

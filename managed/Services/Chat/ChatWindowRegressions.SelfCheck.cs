@@ -68,7 +68,7 @@ internal static class ChatWindowRegressions
             var win = layout.AddWindow(Window(500, 0))!;
             win.AutoHideHeader = true;
             check.Expect(layout.WindowAt(700, 150) == 1, "E23 the pointer over an ordinary window is over that window");
-            check.Expect(TabBar(Build(win, atlas, false, hover: true), 500, 0, 400), "E23 hovering draws its tab bar");
+            check.Expect(TabBar(Build(win, atlas, false, hover: true), 500, 0), "E23 hovering draws its tab bar");
             win.ContentH = 2000f; win.ViewH = 270f;
             System.DateTime before = win.LastScroll;
             check.Expect(ChatService.Wheel(layout, 700, 150, 1, _ => 20f, out float moved) == 1 && moved == 60f && win.LastScroll > before,

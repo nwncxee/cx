@@ -70,6 +70,13 @@ public sealed unsafe partial class ChatService
             if (_settings.Open)
             {
                 bool cs = _settings.MouseDown(x, y, fwin);
+                if (_settings.WindowPicked >= 0)
+                {
+                    _layout.FocusedIndex = _settings.WindowPicked;
+                    _settings.WindowPicked = -1;
+                    fwin = _layout.Focused;
+                    if (IsTyping) CloseChat(false);
+                }
                 if (_settings.CopyWindowRequested)
                 {
                     _settings.CopyWindowRequested = false;
@@ -192,7 +199,6 @@ public sealed unsafe partial class ChatService
             float scale = Metrics.GameUiScale < 1f ? 1f : Metrics.GameUiScale;
             _panelPx = MathF.Round(KnobPanel.FacePx * scale); _panelSmallPx = MathF.Round(KnobPanel.SmallPx * scale);
             GlyphAtlas? body = TextRig.Face(_panelPx) ?? TextRig.Atlas;   // cold: a miss bakes, on the input thread
-            _settings.Panel.Title = _layout.Count > 1 ? $"Chat window {index + 1}" : "Chat window";
             _settings.OpenAt(win, TextRig.ViewportW, TextRig.ViewportH, _panelPx, body, TextRig.Face(_panelSmallPx) ?? body,
                              winIndex: index, windows: _layout.Windows);
             Rebuild(); return true;

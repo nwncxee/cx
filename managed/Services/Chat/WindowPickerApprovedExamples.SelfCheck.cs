@@ -49,7 +49,7 @@ internal static class WindowPickerApprovedExamples
             if (row != null) PressRow(s, second, row);
             s.Reset();
             check.Expect(row != null && !second.ClickThrough && layout.WindowAt(700, 650) == 1, "E31 unticked from Main's list, Window 2 takes the pointer again");
-            check.Expect(TabBar(Build(second, Atlas(), false, hover: true), 500, 500, 400), "E31 pointing at it shows its tab bar");
+            check.Expect(TabBar(Build(second, Atlas(), false, hover: true), 500, 500), "E31 pointing at it shows its tab bar");
             check.Expect(second.MouseDown(700, 650), "E31 a click on it lands on the window");
             second.MouseUp(700, 650);
         }

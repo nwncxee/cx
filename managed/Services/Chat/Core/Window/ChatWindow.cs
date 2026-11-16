@@ -346,9 +346,12 @@ public sealed partial class ChatWindow
         return mx >= X + W - ScrollbarW && mx <= X + W && my >= top && my <= top + h;
     }
 
-    /// <summary>Top y of the one-row input strip, inside the frame: along its bottom edge, or under the tab bar when
-    /// <see cref="InputOnTop"/>. Only live while <see cref="FooterVisible"/>.</summary>
-    public float StripTop => InputOnTop ? Y + TabBarH : Y + H - FooterH;
+    /// <summary>Whether the tab bar drew in the last build: an Input-on-top strip takes its place while it hides.</summary>
+    public bool HeaderShown = true;
+
+    /// <summary>Top y of the one-row input strip, inside the frame: along its bottom edge, or with
+    /// <see cref="InputOnTop"/> under the tab bar -- in its place while it hides. Only live while <see cref="FooterVisible"/>.</summary>
+    public float StripTop => InputOnTop ? Y + (HeaderShown ? TabBarH : 0f) : Y + H - FooterH;
     /// <summary>The dropdown button (closed state) on the strip's top row (where the renderer draws it).</summary>
     public bool OverDropdownButton(float mx, float my)
         => mx >= X && mx < X + DropdownW && my >= StripTop && my < StripTop + FooterH;

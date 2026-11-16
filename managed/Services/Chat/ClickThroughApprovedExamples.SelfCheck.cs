@@ -65,7 +65,7 @@ internal static class ClickThroughApprovedExamples
             var win = new ChatWindow(500, 500, 400, 300, new[] { new Tab("DM", 0x400), new Tab("ANA", 0x002) { PinnedName = "Ana" } })
                       { ClickThrough = true };
             win.Tabs[1].Unread = true;
-            check.Expect(!TabBar(Build(win, atlas, false), 500, 500, 400), "E18 an unread tell tab leaves the tab bar hidden");
+            check.Expect(!TabBar(Build(win, atlas, false), 500, 500), "E18 an unread tell tab leaves the tab bar hidden");
         }
 
         // Given a window that can send on Talk, clicked last and then set to click-through
@@ -115,7 +115,7 @@ internal static class ClickThroughApprovedExamples
             if (row != null) PressRow(s, win, row);
             s.Reset();
             check.Expect(!win.ClickThrough && layout.WindowAt(700, 650) == 1, "E21 unticked, the pointer over it is over the window again");
-            check.Expect(TabBar(Build(win, atlas, false, hover: true), 500, 500, 400), "E21 unticked, hovering shows its tab bar");
+            check.Expect(TabBar(Build(win, atlas, false, hover: true), 500, 500), "E21 unticked, hovering shows its tab bar");
             check.Expect(win.MouseDown(700, 650), "E21 unticked, a click lands on the window");
             win.MouseUp(700, 650);
         }

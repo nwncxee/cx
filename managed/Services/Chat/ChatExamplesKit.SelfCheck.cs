@@ -98,9 +98,10 @@ internal static class ChatExamplesKit
         return ok;
     }
 
-    /// <summary>True when the frame draws a full-width bar along the window's top 28 px: its tab bar, at scale 1.</summary>
-    internal static bool TabBar(RenderFrame f, float x, float y, float w)
-        => Quads(f).Exists(q => !q.Glyph && q.X0 == x && q.X1 == x + w && q.Y0 == y && q.Y1 == y + 28f);
+    /// <summary>True when the frame draws its tab bar: the active tab's 120 x 27 plate at the window's top-left (one or
+    /// two tabs, scale 1). The typing bar in the tab bar's place is full-width, so it never reads as one.</summary>
+    internal static bool TabBar(RenderFrame f, float x, float y)
+        => Quads(f).Exists(q => !q.Glyph && q.X0 == x && q.X1 == x + 120f && q.Y0 == y && q.Y1 == y + 27f);
 
     /// <summary>True when every quad the frame draws is the window's own background over the whole rect: no tab bar,
     /// outline, shadow, gear, grip, scrollbar or text.</summary>

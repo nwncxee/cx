@@ -154,6 +154,7 @@ public static partial class WindowRenderer
         if (ghost) showGrip = false;
         bool inside = showGrip || settings.Open || hasUnread;
         bool showHeader = !ghost && (!win.AutoHideHeader || inside), showFrame = !ghost && (!win.AutoHideFrame || inside);
+        win.HeaderShown = showHeader;
         float fa = p.Frame.a;
         if (sk != null)
         {

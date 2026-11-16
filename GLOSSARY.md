@@ -30,10 +30,14 @@ detail, no decisions (those live in the Plane tracker and `docs/adr/`). Terms cr
   + send dropdown. Clicking a window focuses it; the chat-open key focuses the **Main window**
   (the last-focused window only when Main's tab can't send and that window is not click-through).
 - **Input strip** — the one-row line the player types in, inside the focused window along its
-  bottom edge (under the tab bar with *Input on top*); it scrolls sideways rather than wrap.
+  bottom edge (with *Input on top*, under the tab bar, or in its place while it hides); it scrolls
+  sideways rather than wrap.
   Players call it the **typing bar**.
 - **Click-through** — a per-window setting: presses, the wheel and hover pass through the window
-  to the game and reveal nothing on it. Set on the window's own gear, cleared from Main's.
+  to the game and reveal nothing on it. Set on the window's own gear; cleared by picking the window
+  in another window's settings through its **window list**.
+- **Window list** — the dropdown in a chat window's settings header that switches the panel (and
+  the focus) to another chat window; shown only when there is more than one.
 - **Tab** — a *receive* view inside a window: a `label`, a channel-mask **filter**, an
   optional **player pin**, and a scroll offset. A window always has ≥1 tab; tabs can be
   added, removed, reordered, and dragged between windows.

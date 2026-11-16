@@ -67,7 +67,7 @@ internal static class TypingBarRegressions
             win.InputOnTop = true; win.AutoHideHeader = true; win.AutoHideFrame = true;
             Build(win, atlas, true, "abc");
             var f = Build(win, atlas, true, "abc", hover: true);
-            check.Expect(TabBar(f, 0, 500, 400) && InBand(f, win, 528f), "E27 hovering shows the tab bar and the bar moves just under it");
+            check.Expect(TabBar(f, 0, 500) && InBand(f, win, 528f), "E27 hovering shows the tab bar and the bar moves just under it");
         }
 
         // Given the typing bar has just moved down under the tab bar

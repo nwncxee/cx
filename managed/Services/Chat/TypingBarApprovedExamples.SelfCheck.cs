@@ -124,7 +124,7 @@ internal static class TypingBarApprovedExamples
             var win = Window(0, 500);
             win.InputOnTop = true; win.AutoHideHeader = true; win.AutoHideFrame = true;
             var f = Build(win, atlas, true, "abc");
-            check.Expect(!TabBar(f, 0, 500, 400) && InBand(f, win, 500f), "E26 the bar sits in the hidden tab bar's place, along the top edge");
+            check.Expect(!TabBar(f, 0, 500) && InBand(f, win, 500f), "E26 the bar sits in the hidden tab bar's place, along the top edge");
         }
 
         // Given the tab bar showing over the typing bar of a window with Input on top and Auto-hide header ticked
@@ -135,7 +135,7 @@ internal static class TypingBarApprovedExamples
             win.InputOnTop = true; win.AutoHideHeader = true; win.AutoHideFrame = true;
             Build(win, atlas, true, "abc", hover: true);
             var back = Build(win, atlas, true, "abc");
-            check.Expect(!TabBar(back, 0, 500, 400) && InBand(back, win, 500f), "E28 leaving hides the tab bar and the bar moves back to the top edge");
+            check.Expect(!TabBar(back, 0, 500) && InBand(back, win, 500f), "E28 leaving hides the tab bar and the bar moves back to the top edge");
         }
 
         if (check.Ok) log.Info("TypingBarApprovedExamples.SelfCheck: passed");
