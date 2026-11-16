@@ -6,7 +6,7 @@ using static CX.Services.Chat.ChatExamplesKit;
 
 namespace CX.Services.Chat;
 
-/// <summary>Approved examples E12, E17, E22-E25 and E33 of where typing goes, click-through windows and the
+/// <summary>Approved examples E12, E17, E22-E25, E33, E35 and E36 of where typing goes, click-through windows and the
 /// window list, kept as regressions, a tab drop refused by a click-through window, and a window's gear holding no other window's click-through
 /// (the window list reaches those). Oracle: window rects and channel bits written by hand.</summary>
 internal static class ChatWindowRegressions
@@ -123,6 +123,41 @@ internal static class ChatWindowRegressions
             int ordinary = win.TabBarDropIndex(510, 10);
             win.ClickThrough = true;
             check.Expect(ordinary == 0 && win.TabBarDropIndex(510, 10) == -1, "a tab dropped on a click-through window's hidden tab bar does not land there");
+        }
+
+        // Given the typing bar open in Main and Main's settings panel open
+        // When the player picks Window 2 in the window list
+        // Then the typing bar closes and the next setting the player changes goes to Window 2
+        {
+            var main = Window(0, 0);
+            var layout = new ChatLayout(main);
+            var second = layout.AddWindow(Window(500, 0))!;
+            var s = new SettingsWindow();
+            s.OpenAt(main, 1280, 800, 20f, PanelFace(), PanelFace(), 0, layout.Windows);
+            PickWindow(s, main, 1);
+            bool followed = ChatService.FollowPick(layout, s);
+            var lockRow = s.Rows.Find(r => r.Act == SetAct.LockWin);
+            if (lockRow != null) PressRow(s, layout.Focused, lockRow);
+            s.Reset();
+            check.Expect(followed && layout.Focused == second && second.Locked && !main.Locked,
+                         "E35 a pick focuses Window 2 and the next setting goes to it (the bar closing is the shell's, on the hand check)");
+        }
+
+        // Given two chat windows
+        // When the player opens Main's gear
+        // Then there is no Window 2 click-through row; Window 2's Click-through is only on Window 2's own page
+        {
+            var main = Window(0, 0);
+            var layout = new ChatLayout(main);
+            var second = layout.AddWindow(Window(500, 0))!;
+            var s = new SettingsWindow();
+            s.OpenAt(main, 1280, 800, 20f, PanelFace(), PanelFace(), 0, layout.Windows);
+            bool onMain = s.Rows.Exists(r => r.Act == SetAct.ClickThrough);
+            s.Reset();
+            s.OpenAt(second, 1280, 800, 20f, PanelFace(), PanelFace(), 1, layout.Windows);
+            bool onOwn = s.Rows.Exists(r => r.Act == SetAct.ClickThrough);
+            s.Reset();
+            check.Expect(!onMain && onOwn, "E36 Main's gear has no click-through row; Window 2's own page has it");
         }
 
         if (check.Ok) log.Info("ChatWindowRegressions.SelfCheck: passed");

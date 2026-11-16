@@ -156,7 +156,7 @@ public sealed partial class SettingsWindow
                   "Tells land in this window. Only one window can hold this.");
         if (win.Closeable)
             AddToggle(rows, SetAct.ClickThrough, "Click-through", win.ClickThrough, 0,
-                      "Clicks and the mouse wheel go through this window to the game, and pointing at it shows nothing. To give it back, open another window's gear and pick this one in its Window list.");
+                      "The window becomes non-interactable. Warning: after this is toggled, the only way to reach this window's settings is to choose the dropdown at the top.");
         // A pending pick shows at once: the shell sets the knob only after the press returns.
         AddDropdown(rows, SetAct.CycleTellOpen, "Tell auto-open", TellOpenNames, TellOpenPicked >= 0 ? TellOpenPicked : ChatKnobs.TellOpen.V,
                     "Where a tell from someone new lands: nowhere special, a new tab, or its own window.");
