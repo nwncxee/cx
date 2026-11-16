@@ -264,6 +264,12 @@ internal static partial class ContentStage
         check.Expect(unguarded.Refused == null && unguarded.ForwardOnly && !unguarded.SelfIllum
                      && !unguarded.Host.Contains("CX_CONTENT_SELFILLUM") && !unguarded.Host.Contains("    cxSelfIllum = vec3(0.0);\n    fEnvMapLevel"),
                      "an unguarded glow after the call gets a twin, or a stage that never names the term gets it");
+        const string SelfIllumDefine = "#define CX_SELFILLUM 1\n";
+        string staleEnv = AlloyRenderer.ContentEnvFs.Replace(SelfIllumDefine, "");
+        Result stale = Translate("cx_fixselfillum", true, FixtureText, staleEnv, AlloyRenderer.VanillaEnvDefs, "", 8193, 37);
+        check.Expect(staleEnv.Length < AlloyRenderer.ContentEnvFs.Length && stale.Refused == null && stale.ForwardOnly
+                     && stale.Host.Contains("#ifndef CX_SELFILLUM"),
+                     "under an environment override with no CX_SELFILLUM, a stage guarded on it loses its stock branch or gets a twin");
         Result unknown = Plain("cx_fixglowunknown");
         check.Expect(unknown.Refused == null && unknown.ForwardOnly && !unknown.SelfIllum && unknown.Host.Contains("#ifndef CX_FUTURECAP")
                      && unknown.Host.Contains("#ifdef CX_FUTURECAP"),

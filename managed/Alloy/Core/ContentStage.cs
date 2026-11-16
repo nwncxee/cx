@@ -113,13 +113,14 @@ internal static partial class ContentStage
         string? text = Resolve(stage, chain, standard, new List<string> { resref.ToLowerInvariant() }, 0, ref count, out string? missing);
         if (text == null) { r.Refused = missing; return r; }
         text = VanillaShader.GlDepth(Directive.Replace(text, ""));
-        if (fragment) text = AlloyBranch(text);
+        string[] cx = DefinedCx(env + "\n" + vanillaDefs);
+        if (fragment) text = AlloyBranch(text, cx);
         if (!MainFn.IsMatch(text)) { r.Refused = $"{resref}.shd has no void main() to run"; return r; }
         // the stage's OWN text, the stand-in left out and its CX_ALLOY branch taken: what its facts are read off
         count = 0;
         string flat = Comments.Replace(Resolve(stage, chain, "", new List<string> { resref.ToLowerInvariant() },
                                                0, ref count, out _) ?? text, " ");
-        if (fragment) flat = AlloyBranch(flat);
+        if (fragment) flat = AlloyBranch(flat, cx);
         r.ReadsPlt = Regex.IsMatch(flat, @"\bPLTscheme\b");
         r.ReadsLights = fragment && LightArrays.IsMatch(flat);
         if (fragment)

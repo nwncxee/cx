@@ -351,7 +351,8 @@ after the call in display space moves ahead of it, with the stock add kept for t
 
 A write after the call comes too late to be added, and is itself an edit after the call. A stage that never names
 `cxSelfIllum` compiles as if it did not exist, so an override of `cx_content_f.shd` that predates it still builds
-those stages.
+those stages, and a stage guarded on `CX_SELFILLUM` takes its stock branch under it: Alloy settles a capability only
+when the environment in use defines it.
 
 "View space" is world space with the eye at the origin, so `normalize(vPosView)` is the view direction and
 `m_view_inv * vPosView` is the world position, as they are in the engine. The full map is `cx_content_f.glsl`,

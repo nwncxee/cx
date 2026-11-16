@@ -208,18 +208,23 @@ def resolve(text, chain, std_text, stack, depth, count, optional=False):
 COND_LINE = re.compile(r"^\s*#\s*(if|ifdef|ifndef|elif|else|endif)\b(.*)$")
 # Mirrors ContentStage.CxNames: CX_ALLOY and each capability macro the fragment environment defines.
 CX_NAMES = ("CX_ALLOY", "CX_SELFILLUM")
-CX_NAME_ALT = "(?:" + "|".join(CX_NAMES) + ")"
+CX_NAME_ALT = "(" + "|".join(CX_NAMES) + ")"
 ALLOY_NAME = re.compile(r"^\s+" + CX_NAME_ALT + r"\s*(?://.*|/\*.*)?$")
 ALLOY_IF = re.compile(r"^\s+(!\s*)?defined\s*(?:\(\s*" + CX_NAME_ALT + r"\s*\)|\s+" + CX_NAME_ALT + r")\s*(?://.*|/\*.*)?$")
+
+
+def defined_cx(defs):
+    """Mirrors ContentStage.DefinedCx: the CX_NAMES an environment's text #defines."""
+    return tuple(n for n in CX_NAMES if re.search(r"(?m)^[ \t]*#[ \t]*define[ \t]+" + n + r"\b", defs))
 ELIF_WORD = re.compile(r"#(\s*)elif\b")
 SELF_ILLUM = "cxSelfIllum"
 SELF_ILLUM_USE = re.compile(r"\b" + SELF_ILLUM + r"\b")
 
 
-def alloy_branch(text):
+def alloy_branch(text, defined=CX_NAMES):
     """The CX branch of every conditional on one CX_NAMES name alone kept, the rest and the directives blanked, line count kept;
     any other conditional stays, and an unbalanced text stays whole."""
-    if not any(n in text for n in CX_NAMES):
+    if not any(n in text for n in defined):
         return text
     lines = text.split("\n")
     stack = []   # [ours, parent, on, taken]
@@ -234,9 +239,10 @@ def alloy_branch(text):
         if word in ("if", "ifdef", "ifndef"):
             if word == "if":
                 m = ALLOY_IF.match(rest)
-                on = (not m.group(1)) if m else None
+                on = (not m.group(1)) if m and (m.group(2) or m.group(3)) in defined else None
             else:
-                on = (word == "ifdef") if ALLOY_NAME.match(rest) else None
+                nm = ALLOY_NAME.match(rest)
+                on = (word == "ifdef") if nm and nm.group(1) in defined else None
             stack.append([True, active, active and on, on] if on is not None else [False, active, active, False])
             if on is not None or not active:
                 lines[i] = ""
@@ -679,15 +685,16 @@ def translate(resref, fragment, chain, env, vanilla_defs, vanilla_env_fs, std_te
         r.refused = missing
         return r
     text = DIRECTIVE.sub("", text)
+    cx = defined_cx(env + "\n" + vanilla_defs)
     if fragment:
-        text = alloy_branch(text)
+        text = alloy_branch(text, cx)
     if not MAIN_FN.search(text):
         r.refused = f"{resref}.shd has no void main() to run"
         return r
     own_text, _ = resolve(stage, chain, "", [resref.lower()], 0, [0])
     flat = COMMENTS.sub(" ", own_text or text)
     if fragment:
-        flat = alloy_branch(flat)
+        flat = alloy_branch(flat, cx)
     r.reads_plt = bool(re.search(r"\bPLTscheme\b", flat))
     r.reads_lights = fragment and bool(LIGHT_ARRAYS.search(flat))
     if fragment:
@@ -978,6 +985,10 @@ def selfcheck(env_fs, env_vs, defs, vanfs, std_fs, std_vs, lit_vs):
     if unguarded.refused or not unguarded.forward_only() or unguarded.self_illum or "CX_CONTENT_SELFILLUM" in unguarded.host \
        or "    cxSelfIllum = vec3(0.0);\n    fEnvMapLevel" in unguarded.host:
         bad.append("an unguarded glow after the call is not forward only, or a stage that never names the term gets it")
+    stale_env = env_fs.replace("#define CX_SELFILLUM 1\n", "")
+    stale = translate("cx_fixselfillum", True, FIXTURE.get, stale_env, defs, vanfs, std_fs, "")
+    if len(stale_env) >= len(env_fs) or stale.refused or not stale.forward_only() or "#ifndef CX_SELFILLUM" not in stale.host:
+        bad.append("under an environment override with no CX_SELFILLUM, a stage guarded on it loses its stock branch or gets a twin")
     unknown = translate("cx_fixglowunknown", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
     if unknown.refused or not unknown.forward_only() or unknown.self_illum or "#ifndef CX_FUTURECAP" not in unknown.host \
        or "#ifdef CX_FUTURECAP" not in unknown.host:

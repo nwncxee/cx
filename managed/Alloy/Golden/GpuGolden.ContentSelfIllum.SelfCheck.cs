@@ -28,10 +28,13 @@ internal static partial class GpuGolden
     {
         string env = ShaderSource.Get("cx_content_f.glsl");
         string decl = Declaration(env, "vec3 " + ContentStage.SelfIllumName);
+        const string Capability = "#define CX_SELFILLUM 1\n";
+        if (env.Contains(Capability, StringComparison.Ordinal)) decl += Capability;
         string feat = ShaderSource.Get("cx_featdecl.glsl");
         int featAt = feat.IndexOf("#define CX_FEAT_CONTENT0", StringComparison.Ordinal);
-        check.Expect(decl.Length > 0 && featAt >= 0, "the content environment lost its self-illumination term, or the feature list its content id");
-        if (decl.Length == 0 || featAt < 0) return;
+        bool hasTerm = decl.Length > Capability.Length && decl.EndsWith(Capability, StringComparison.Ordinal);
+        check.Expect(hasTerm && featAt >= 0, "the content environment lost its self-illumination term, or the feature list its content id");
+        if (!hasTerm || featAt < 0) return;
         ContentStage.Result r = ContentStage.Translate("cx_fixselfillum", true, ContentStage.FixtureText, TintEnv + decl, "", "", 8193, 37);
         check.Expect(r.Refused == null && r.SelfIllum, $"cx_fixselfillum was refused or names no term: {r.Refused}");
         if (r.Refused != null) return;
