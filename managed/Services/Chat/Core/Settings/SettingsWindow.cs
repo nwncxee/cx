@@ -301,7 +301,7 @@ public sealed partial class SettingsWindow
     /// <summary>The header's window list picked <paramref name="i"/>: the panel now edits that window, from its window page.</summary>
     private void OnWindowPicked(int i)
     {
-        if ((uint)i >= (uint)_windows.Length || i == WindowIndex) return;
+        if ((uint)i >= (uint)_windows.Length) return;
         _win = _windows[i];
         WindowIndex = i; WindowPicked = i; CloseArmed = false;
         ShowWindow(i);
