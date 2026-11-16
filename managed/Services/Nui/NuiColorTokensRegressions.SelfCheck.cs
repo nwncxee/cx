@@ -25,6 +25,9 @@ internal static unsafe class NuiColorTokensRegressions
         check.Expect(NuiColorText.Plan(open, Own, Font, pieces) == -1, "a <c with no > after its three bytes is drawn as text");
         check.Expect(NuiColorText.Width(open, Font) == open.Length * 10f, "a <c with no > after its three bytes measures as text");
 
+        check.Expect(NuiColorText.Width(Encoding.UTF8.GetBytes("a <c>"), Font) == 50f, "a text ending in <c> with no colour between measures all of it");
+        check.Expect(NuiColorText.Width(Encoding.UTF8.GetBytes("when x <"), Font) == 80f, "a text ending in a lone < measures all of it");
+
         var deep = new StringBuilder();
         for (int k = 1; k <= 17; k++) deep.Append("<c").Append((char)k).Append((char)k).Append((char)k).Append('>').Append('x');
         byte[] deepBytes = Encoding.UTF8.GetBytes(deep.ToString());
