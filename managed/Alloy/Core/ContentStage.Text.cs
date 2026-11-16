@@ -41,12 +41,12 @@ internal static partial class ContentStage
         return sb.ToString();
     }
 
-    /// <summary><paramref name="text"/> with every conditional on <c>CX_ALLOY</c> alone settled the way the fragment
-    /// environment defines it: the CX branch kept, the other branch and the directives blanked, line count kept. Any
-    /// other conditional stays, and so does the text whole when the conditionals do not balance.</summary>
+    /// <summary><paramref name="text"/> with every conditional on one of <see cref="CxNames"/> alone settled the way the
+    /// fragment environment defines it: the CX branch kept, the other branch and the directives blanked, line count kept.
+    /// Any other conditional stays, and so does the text whole when the conditionals do not balance.</summary>
     internal static string AlloyBranch(string text)
     {
-        if (!text.Contains("CX_ALLOY", StringComparison.Ordinal)) return text;
+        if (!Array.Exists(CxNames, n => text.Contains(n, StringComparison.Ordinal))) return text;
         string[] lines = text.Split('\n');
         var stack = new List<Cond>();
         for (int i = 0; i < lines.Length; i++)
@@ -85,9 +85,14 @@ internal static partial class ContentStage
     private readonly record struct Cond(bool Ours, bool Parent, bool On, bool Taken);
 
     private static readonly Regex CondLine = new(@"^\s*#\s*(if|ifdef|ifndef|elif|else|endif)\b(.*)$", RegexOptions.Compiled);
-    private static readonly Regex AlloyName = new(@"^\s+CX_ALLOY\s*(?://.*|/\*.*)?$", RegexOptions.Compiled);
+    /// <summary>The names the fragment environment defines for content to test: <c>CX_ALLOY</c> (cx_vanenv_defs) and each
+    /// capability macro of cx_content_f, such as <c>CX_SELFILLUM</c> beside <c>cxSelfIllum</c>.</summary>
+    private static readonly string[] CxNames = ["CX_ALLOY", "CX_SELFILLUM"];
+    private static readonly string CxNameAlt = "(?:" + string.Join('|', CxNames) + ")";
+    private static readonly Regex AlloyName = new(@"^\s+" + CxNameAlt + @"\s*(?://.*|/\*.*)?$", RegexOptions.Compiled);
     private static readonly Regex ElifWord = new(@"#(?<s>\s*)elif\b", RegexOptions.Compiled);
-    private static readonly Regex AlloyIf = new(@"^\s+(!\s*)?defined\s*(?:\(\s*CX_ALLOY\s*\)|\s+CX_ALLOY)\s*(?://.*|/\*.*)?$", RegexOptions.Compiled);
+    private static readonly Regex AlloyIf = new(@"^\s+(!\s*)?defined\s*(?:\(\s*" + CxNameAlt + @"\s*\)|\s+" + CxNameAlt + @")\s*(?://.*|/\*.*)?$",
+                                               RegexOptions.Compiled);
 
     /// <summary>Every name the region already has a meaning for: the macros of the environments (less the helpers'
     /// guards) and the globals they declare. A stage's own declaration of one is dropped, because it would redeclare

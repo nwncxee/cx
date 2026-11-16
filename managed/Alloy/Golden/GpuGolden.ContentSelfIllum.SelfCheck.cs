@@ -27,7 +27,7 @@ internal static partial class GpuGolden
     private static void ContentSelfIllumSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
     {
         string env = ShaderSource.Get("cx_content_f.glsl");
-        string decl = Declaration(env, "vec3 " + ContentStage.SelfIllumName + ";");
+        string decl = Declaration(env, "vec3 " + ContentStage.SelfIllumName);
         string feat = ShaderSource.Get("cx_featdecl.glsl");
         int featAt = feat.IndexOf("#define CX_FEAT_CONTENT0", StringComparison.Ordinal);
         check.Expect(decl.Length > 0 && featAt >= 0, "the content environment lost its self-illumination term, or the feature list its content id");

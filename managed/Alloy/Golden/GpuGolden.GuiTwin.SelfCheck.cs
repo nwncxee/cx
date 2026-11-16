@@ -13,7 +13,7 @@ internal static unsafe partial class GpuGolden
 {
     /// <summary>A hand-written stage of the shape a dye shader has: a palette pick off a row of its atlas on
     /// <c>texUnit8</c>, the baked texel without one, a glow edit after <c>ApplyStandardShader</c>, and a self-illumination
-    /// term set ahead of it under <c>CX_ALLOY</c>.</summary>
+    /// term set ahead of it under <c>CX_SELFILLUM</c>.</summary>
     private const string GuiTwinStage =
         "#define SHADER_TYPE 2\n#define LIGHTING 1\n#include \"inc_standard\"\n"
       + "uniform float pick; uniform float glow; uniform float illum;\nuniform lowp int texture8Bound;\nuniform sampler2D texUnit8;\n"
@@ -21,7 +21,7 @@ internal static unsafe partial class GpuGolden
       + "    vec3 display = RevertColorSpace(FragmentColor.rgb);\n"
       + "    if (pick >= 0.0) display = texture8Bound != 0 ? texelFetch(texUnit8, ivec2(0, int(pick)), 0).rgb : vec3(1.0, 0.0, 1.0);\n"
       + "    FragmentColor.rgb = ApplyColorSpace(display);\n"
-      + "#ifdef CX_ALLOY\n    cxSelfIllum = vec3(0.0, max(illum, 0.0), 0.0);\n#endif\n"
+      + "#ifdef CX_SELFILLUM\n    cxSelfIllum = vec3(0.0, max(illum, 0.0), 0.0);\n#endif\n"
       + "    ApplyStandardShader();\n    FragmentColor.a = 1.0;\n"
       + "    FragmentColor.rgb += display * max(glow, 0.0);\n    gl_FragColor = FragmentColor;\n}\n";
 

@@ -79,17 +79,23 @@ internal static partial class ContentStage
         ["cx_fixplain"] = "#define SHADER_TYPE 2\n#define LIGHTING 1\n#define NO_TEXTURE 1\n#include \"inc_standard\"\n"
                         + "uniform vec4 vDye;\nvoid main()\n{\n    FragmentColor = vec4(1.0);\n    SetupStandardShaderInputs();\n"
                         + "    FragmentColor.rgb *= vDye.rgb;\n    ApplyStandardShader();\n    gl_FragColor = FragmentColor;\n}\n",
-        // an RGB-slot part's glow: its own self-illumination under CX_ALLOY ahead of the call, the stock add after it
+        // an RGB-slot part's glow: its own self-illumination under CX_SELFILLUM ahead of the call, the stock add after it
         ["cx_fixselfillum"] = "#define SHADER_TYPE 2\n#define LIGHTING 1\n#include \"inc_standard\"\nuniform vec4 slotM;\nvoid main()\n{\n"
                             + "    FragmentColor = vec4(1.0);\n    SetupStandardShaderInputs();\n"
                             + "    vec3 display = RevertColorSpace(FragmentColor.rgb);\n    FragmentColor.rgb = ApplyColorSpace(display);\n"
-                            + "#ifdef CX_ALLOY\n    if (slotM.w > 0.0)\n        cxSelfIllum = ApplyColorSpace(display * slotM.w);\n#endif\n"
+                            + "#ifdef CX_SELFILLUM\n    if (slotM.w > 0.0)\n        cxSelfIllum = ApplyColorSpace(display * slotM.w);\n#endif\n"
                             + "    ApplyStandardShader();\n    FragmentColor.a = 1.0;\n    if (slotM.z > 0.0)\n        FragmentColor.a = 1.0 - slotM.z;\n"
-                            + "#ifndef CX_ALLOY\n    FragmentColor.rgb += display * max(slotM.w, 0.0);\n#endif\n"
+                            + "#ifndef CX_SELFILLUM\n    FragmentColor.rgb += display * max(slotM.w, 0.0);\n#endif\n"
                             + "    gl_FragColor = FragmentColor;\n}\n",
         ["cx_fixglowpost"] = "#include \"inc_standard\"\nuniform vec4 slotM;\nvoid main()\n{\n    FragmentColor = vec4(1.0);\n"
                            + "    SetupStandardShaderInputs();\n    vec3 display = RevertColorSpace(FragmentColor.rgb);\n    ApplyStandardShader();\n"
                            + "    FragmentColor.a = 1.0;\n    FragmentColor.rgb += display * max(slotM.w, 0.0);\n    gl_FragColor = FragmentColor;\n}\n",
+        // a glow guarded on a capability this build does not define: both branches count, as an older build counts CX_SELFILLUM
+        ["cx_fixglowunknown"] = "#include \"inc_standard\"\nuniform vec4 slotM;\nvoid main()\n{\n    FragmentColor = vec4(1.0);\n"
+                              + "    SetupStandardShaderInputs();\n    vec3 display = RevertColorSpace(FragmentColor.rgb);\n"
+                              + "#ifdef CX_FUTURECAP\n    cxFutureTerm = display;\n#endif\n    ApplyStandardShader();\n"
+                              + "#ifndef CX_FUTURECAP\n    FragmentColor.rgb += display * max(slotM.w, 0.0);\n#endif\n"
+                              + "    gl_FragColor = FragmentColor;\n}\n",
         ["cx_fixglowelse"] = "#define LIGHTING 1\n#include \"inc_standard\"\nuniform vec4 slotM;\nvoid main()\n{\n    FragmentColor = vec4(1.0);\n"
                            + "    SetupStandardShaderInputs();\n    vec3 display = RevertColorSpace(FragmentColor.rgb);\n"
                            + "#if LIGHTING == 1\n#if defined(CX_ALLOY)\n    cxSelfIllum = ApplyColorSpace(display * max(slotM.w, 0.0));\n#else\n"
@@ -256,8 +262,12 @@ internal static partial class ContentStage
                      "the CX branch's term is not set ahead of the lights and zeroed first, or the stock glow after the call survived");
         Result unguarded = Plain("cx_fixglowpost");
         check.Expect(unguarded.Refused == null && unguarded.ForwardOnly && !unguarded.SelfIllum
-                     && !unguarded.Host.Contains("CX_CONTENT_SELFILLUM") && !unguarded.Host.Contains("cxSelfIllum = vec3(0.0);"),
+                     && !unguarded.Host.Contains("CX_CONTENT_SELFILLUM") && !unguarded.Host.Contains("    cxSelfIllum = vec3(0.0);\n    fEnvMapLevel"),
                      "an unguarded glow after the call gets a twin, or a stage that never names the term gets it");
+        Result unknown = Plain("cx_fixglowunknown");
+        check.Expect(unknown.Refused == null && unknown.ForwardOnly && !unknown.SelfIllum && unknown.Host.Contains("#ifndef CX_FUTURECAP")
+                     && unknown.Host.Contains("#ifdef CX_FUTURECAP"),
+                     "a glow guarded on a capability this build does not define loses a branch or gets a twin");
         Result other = Plain("cx_fixglowelse");
         check.Expect(other.Refused == null && other.AlphaPost && !other.ForwardOnly && other.SelfIllum
                      && !other.Host.Contains("display *= 0.5;") && !other.Host.Contains("FragmentColor.rgb *= 2.0;")

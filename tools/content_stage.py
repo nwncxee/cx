@@ -204,19 +204,22 @@ def resolve(text, chain, std_text, stack, depth, count, optional=False):
     return "\n".join(out) + "\n", None
 
 
-# Mirrors ContentStage.AlloyBranch: a conditional on CX_ALLOY alone settled the way the fragment environment defines it.
+# Mirrors ContentStage.AlloyBranch: a conditional on one CX_NAMES name alone settled the way the fragment environment defines it.
 COND_LINE = re.compile(r"^\s*#\s*(if|ifdef|ifndef|elif|else|endif)\b(.*)$")
-ALLOY_NAME = re.compile(r"^\s+CX_ALLOY\s*(?://.*|/\*.*)?$")
-ALLOY_IF = re.compile(r"^\s+(!\s*)?defined\s*(?:\(\s*CX_ALLOY\s*\)|\s+CX_ALLOY)\s*(?://.*|/\*.*)?$")
+# Mirrors ContentStage.CxNames: CX_ALLOY and each capability macro the fragment environment defines.
+CX_NAMES = ("CX_ALLOY", "CX_SELFILLUM")
+CX_NAME_ALT = "(?:" + "|".join(CX_NAMES) + ")"
+ALLOY_NAME = re.compile(r"^\s+" + CX_NAME_ALT + r"\s*(?://.*|/\*.*)?$")
+ALLOY_IF = re.compile(r"^\s+(!\s*)?defined\s*(?:\(\s*" + CX_NAME_ALT + r"\s*\)|\s+" + CX_NAME_ALT + r")\s*(?://.*|/\*.*)?$")
 ELIF_WORD = re.compile(r"#(\s*)elif\b")
 SELF_ILLUM = "cxSelfIllum"
 SELF_ILLUM_USE = re.compile(r"\b" + SELF_ILLUM + r"\b")
 
 
 def alloy_branch(text):
-    """The CX branch of every CX_ALLOY-only conditional kept, the rest and the directives blanked, line count kept;
+    """The CX branch of every conditional on one CX_NAMES name alone kept, the rest and the directives blanked, line count kept;
     any other conditional stays, and an unbalanced text stays whole."""
-    if "CX_ALLOY" not in text:
+    if not any(n in text for n in CX_NAMES):
         return text
     lines = text.split("\n")
     stack = []   # [ours, parent, on, taken]
@@ -513,7 +516,7 @@ def statements(b, frm, to):
 
 
 def edits_after(b, frm, to):
-    tail = re.sub(r"\bFragmentColor\s*=\s*FragmentColor\s*;", "", b[frm:to])
+    tail = HAND_OFF.sub("", b[frm:to])
     tail = re.sub(r"^[ \t]*#[^\n]*", "", tail, flags=re.M)
     return len(tail.strip(" \t\r\n;{}")) > 0
 
@@ -522,9 +525,13 @@ PURE_CALLS = {"if", "float", "int", "bool", "vec2", "vec3", "vec4", "mat3", "mat
               "dot", "mix", "step", "smoothstep", "abs", "pow", "sqrt", "exp", "length", "normalize", "floor", "fract", "sin", "cos"}
 
 
+# Mirrors ContentStage.HandOff: the hand-off to gl_FragColor, which the rename makes the colour assigned to itself.
+HAND_OFF = re.compile(r"\bFragmentColor\s*=\s*FragmentColor\s*;")
+
+
 def alpha_only(post):
     """Mirrors ContentStage.AlphaOnly."""
-    held = re.sub(r"\bFragmentColor\s*=\s*FragmentColor\s*;", "", post)
+    held = HAND_OFF.sub("", post)
     held = re.sub(r"\bFragmentColor\s*=\s*vec4\s*\(\s*FragmentColor\s*\.\s*rgb\s*,", "cxHeld = vec4(", held)
     held = re.sub(r"\bFragmentColor\s*\.\s*a\b", "cxHeld", held)
     if re.search(r"\bFragmentColor\b", held):
@@ -819,17 +826,23 @@ FIXTURE = {
     "cx_fixplain": ('#define SHADER_TYPE 2\n#define LIGHTING 1\n#define NO_TEXTURE 1\n#include "inc_standard"\n'
                     "uniform vec4 vDye;\nvoid main()\n{\n    FragmentColor = vec4(1.0);\n    SetupStandardShaderInputs();\n"
                     "    FragmentColor.rgb *= vDye.rgb;\n    ApplyStandardShader();\n    gl_FragColor = FragmentColor;\n}\n"),
-    # an RGB-slot part's glow: its own self-illumination under CX_ALLOY ahead of the call, the stock add after it
+    # an RGB-slot part's glow: its own self-illumination under CX_SELFILLUM ahead of the call, the stock add after it
     "cx_fixselfillum": ('#define SHADER_TYPE 2\n#define LIGHTING 1\n#include "inc_standard"\nuniform vec4 slotM;\nvoid main()\n{\n'
                         "    FragmentColor = vec4(1.0);\n    SetupStandardShaderInputs();\n"
                         "    vec3 display = RevertColorSpace(FragmentColor.rgb);\n    FragmentColor.rgb = ApplyColorSpace(display);\n"
-                        "#ifdef CX_ALLOY\n    if (slotM.w > 0.0)\n        cxSelfIllum = ApplyColorSpace(display * slotM.w);\n#endif\n"
+                        "#ifdef CX_SELFILLUM\n    if (slotM.w > 0.0)\n        cxSelfIllum = ApplyColorSpace(display * slotM.w);\n#endif\n"
                         "    ApplyStandardShader();\n    FragmentColor.a = 1.0;\n    if (slotM.z > 0.0)\n        FragmentColor.a = 1.0 - slotM.z;\n"
-                        "#ifndef CX_ALLOY\n    FragmentColor.rgb += display * max(slotM.w, 0.0);\n#endif\n"
+                        "#ifndef CX_SELFILLUM\n    FragmentColor.rgb += display * max(slotM.w, 0.0);\n#endif\n"
                         "    gl_FragColor = FragmentColor;\n}\n"),
     "cx_fixglowpost": ('#include "inc_standard"\nuniform vec4 slotM;\nvoid main()\n{\n    FragmentColor = vec4(1.0);\n'
                        "    SetupStandardShaderInputs();\n    vec3 display = RevertColorSpace(FragmentColor.rgb);\n    ApplyStandardShader();\n"
                        "    FragmentColor.a = 1.0;\n    FragmentColor.rgb += display * max(slotM.w, 0.0);\n    gl_FragColor = FragmentColor;\n}\n"),
+    # a glow guarded on a capability this build does not define: both branches count, as an older build counts CX_SELFILLUM
+    "cx_fixglowunknown": ('#include "inc_standard"\nuniform vec4 slotM;\nvoid main()\n{\n    FragmentColor = vec4(1.0);\n'
+                          "    SetupStandardShaderInputs();\n    vec3 display = RevertColorSpace(FragmentColor.rgb);\n"
+                          "#ifdef CX_FUTURECAP\n    cxFutureTerm = display;\n#endif\n    ApplyStandardShader();\n"
+                          "#ifndef CX_FUTURECAP\n    FragmentColor.rgb += display * max(slotM.w, 0.0);\n#endif\n"
+                          "    gl_FragColor = FragmentColor;\n}\n"),
     "cx_fixglowelse": ('#define LIGHTING 1\n#include "inc_standard"\nuniform vec4 slotM;\nvoid main()\n{\n    FragmentColor = vec4(1.0);\n'
                        "    SetupStandardShaderInputs();\n    vec3 display = RevertColorSpace(FragmentColor.rgb);\n"
                        "#if LIGHTING == 1\n#if defined(CX_ALLOY)\n    cxSelfIllum = ApplyColorSpace(display * max(slotM.w, 0.0));\n#else\n"
@@ -963,8 +976,12 @@ def selfcheck(env_fs, env_vs, defs, vanfs, std_fs, std_vs, lit_vs):
         bad.append(f"a glow under CX_ALLOY ahead of the call, its stock add guarded out after it: {glow.refused or 'not deferred with its term'}")
     unguarded = translate("cx_fixglowpost", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
     if unguarded.refused or not unguarded.forward_only() or unguarded.self_illum or "CX_CONTENT_SELFILLUM" in unguarded.host \
-       or "cxSelfIllum = vec3(0.0);" in unguarded.host:
+       or "    cxSelfIllum = vec3(0.0);\n    fEnvMapLevel" in unguarded.host:
         bad.append("an unguarded glow after the call is not forward only, or a stage that never names the term gets it")
+    unknown = translate("cx_fixglowunknown", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
+    if unknown.refused or not unknown.forward_only() or unknown.self_illum or "#ifndef CX_FUTURECAP" not in unknown.host \
+       or "#ifdef CX_FUTURECAP" not in unknown.host:
+        bad.append("a glow guarded on a capability this build does not define loses a branch or gets a twin")
     other = translate("cx_fixglowelse", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
     if other.refused or not other.alpha_post or other.forward_only() or not other.self_illum \
        or "display *= 0.5;" in other.host or "FragmentColor.rgb *= 2.0;" in other.host or "+= display" in other.host \

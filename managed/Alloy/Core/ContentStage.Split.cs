@@ -90,7 +90,7 @@ internal static partial class ContentStage
     /// <c>gl_FragColor</c> (which the rename has made <c>FragmentColor = FragmentColor;</c>) and close its blocks?</summary>
     private static bool EditsAfter(string blank, int from, int to)
     {
-        string tail = Regex.Replace(blank[from..to], @"\bFragmentColor\s*=\s*FragmentColor\s*;", "");
+        string tail = HandOff.Replace(blank[from..to], "");
         tail = Regex.Replace(tail, @"(?m)^[ \t]*#[^\n]*", "");
         return tail.Trim(' ', '\t', '\r', '\n', ';', '{', '}').Length > 0;
     }

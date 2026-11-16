@@ -299,9 +299,10 @@ works out its own colour calls it after it has both. Where the engine would ligh
 A pair whose statements after the call change the colour, or one that reads the engine's per-light arrays, draws forward only:
 the deferred path has no lit colour to give it. Statements that only set the alpha and discard on it do not count, and
 neither does the hand-off `gl_FragColor = FragmentColor;`, so such a pair stays deferred. These facts are read off the
-branch Alloy compiles: a conditional on `CX_ALLOY` alone (`#ifdef`, `#ifndef`, `#if defined(CX_ALLOY)`,
-`#if !defined(CX_ALLOY)`, with their `#else`, `#elif` and nesting) counts only its CX side, so an edit after the call
-under `#ifndef CX_ALLOY` keeps the deferred twin. Any other conditional counts both ways. The alpha you leave in
+branch Alloy compiles: a conditional on `CX_ALLOY` or a capability macro such as `CX_SELFILLUM` alone (`#ifdef`,
+`#ifndef`, `#if defined(...)`, `#if !defined(...)`, with their `#else`, `#elif` and nesting) counts only its CX side,
+so an edit after the call under `#ifndef CX_ALLOY` keeps the deferred twin. Any other conditional counts both ways,
+which is how an older build reads a capability it does not have. The alpha you leave in
 `FragmentColor` (or `gl_FragColor`) is the part's coverage. `#define KEYHOLING 0` keeps the part from dissolving, as it does in the engine.
 
 **Its own depth.** A pair whose vertex half runs, or whose fragment half makes its own coverage (a discard, a
@@ -331,18 +332,19 @@ Alloy's values:
 - the stock helpers (`ApplyColorSpace`, `ColorToBrightness`, `AlphaDiscard`, `SetupTSB`, the noise and hash
   functions and so on).
 
-**Self-illumination.** A fragment half also has `vec3 cxSelfIllum`, a CX name the stock client does not declare, so
-write it under `#ifdef CX_ALLOY`. It is **linear** light: zero when your `main()` starts, and what you leave in it
+**Self-illumination.** A fragment half also has `vec3 cxSelfIllum`, a CX name the stock client does not declare.
+Write it under `#ifdef CX_SELFILLUM`, the macro defined beside it, not `CX_ALLOY`: a build that predates the term
+defines `CX_ALLOY` and would fail to compile the write, while under `CX_SELFILLUM` it compiles the stock branch. It is **linear** light: zero when your `main()` starts, and what you leave in it
 when `ApplyStandardShader()` is called is added to the lit colour where the self-illumination map's is, after the
 lights and before the dissolve and the fog, forward, deferred and on a GUI part alike. A glow the stock stage adds
 after the call in display space moves ahead of it, with the stock add kept for the stock client:
 
 ```glsl
-#ifdef CX_ALLOY
+#ifdef CX_SELFILLUM
     cxSelfIllum = ApplyColorSpace(display * glow);
 #endif
     ApplyStandardShader();
-#ifndef CX_ALLOY
+#ifndef CX_SELFILLUM
     FragmentColor.rgb += display * glow;
 #endif
 ```
