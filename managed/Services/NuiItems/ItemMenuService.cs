@@ -146,6 +146,9 @@ internal static class ItemMenuService
         return TextRig.Face(NuiSkinFontLoad.FaceName, px) ?? TextRig.Atlas;
     }
 
+    /// <summary>The window the menu draws and takes input in, for a self-check that runs it against no other window.</summary>
+    internal static Window? MenuWindow => _s.Window;
+
     /// <summary>True while the menu is on screen.</summary>
     internal static bool IsOpen => Menu.Open;
 
