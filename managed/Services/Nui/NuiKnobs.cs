@@ -9,7 +9,7 @@ namespace CX.Services.Nui;
 internal static class NuiKnobs
 {
     internal static readonly KnobGroup G;
-    internal static readonly Knob<bool> Enabled, Cull, ItemIcons, ModelView, Smooth, AutoHide, HoverBars, Solve, SolveCheck, Explain, HitDebug, Cards, HeldImage, Drag, CxJson;
+    internal static readonly Knob<bool> Enabled, Cull, ItemIcons, ModelView, Smooth, AutoHide, HoverBars, Solve, SolveCheck, Explain, HitDebug, Cards, HeldImage, Drag, CxJson, ColorTokens;
     internal static readonly Knob<string> CardFile, CardLateFile, CardForce, HeldProbe;
     internal static readonly Knob<int> CardLateSec;
     internal static readonly Knob<float> Thumb;
@@ -51,6 +51,8 @@ internal static class NuiKnobs
             help: "A long list's scrollbar handle never gets shorter than this, so it cannot shrink out of sight. 0 = stock.");
         PolicyProbe = G.Text("policyprobe", "policyprobe", "", Tier.ChatOnly,
             help: "Debug: window render properties as key=value;key=value (a window's id, then the property), read under whatever a server sends. For trying the keys without a server.");
+        ColorTokens = G.Toggle("colortokens", "Color tokens in NUI text", true,
+            help: "A server's NUI text shows its colour tokens as colour, the way the game's own windows do. Off, the tokens show as the stock client shows them.");
         ItemIcons = G.Toggle("itemicons", "Item icons in NUI windows", true,
             help: "A server's NUI window can show an item's own icon in its real colours, as the inventory does. Off, those images show the stock error sprite.");
         ModelView = G.Toggle("modelview", "Live models in NUI windows", true, Tier.Advanced,
