@@ -369,11 +369,7 @@ public sealed unsafe partial class QuickbarService
             l.SlotRect(i, out float x0, out float y0, out float x1, out float y1);
             float alpha = q.Disabled || (_cx.SlotDrag && l.ButtonOf(i, _cx.Held) == _cx.SlotFrom) ? GhostAlpha : 1f, inset = 2f * s;
             if (q.Type == QuickbarNative.TypeItem) DrawItem(q.Item, x0 + inset, y0 + inset, x1 - inset, y1 - inset, alpha);
-            else
-            {
-                TextRig.DrawIcon(q.Icon, x0 + inset, y0 + inset, x1 - x0 - 2f * inset, y1 - y0 - 2f * inset, alpha);
-                TextRig.DrawIcon(q.Overlay, x0 + inset, y0 + inset, x1 - x0 - 2f * inset, y1 - y0 - 2f * inset, alpha);
-            }
+            else TextRig.DrawIcon(q.Icon, x0 + inset, y0 + inset, x1 - x0 - 2f * inset, y1 - y0 - 2f * inset, alpha);
         }
         TextRig.DrawBatch(over.AsSpan(), over.VertexCount);
         DrawEngineDrag(mx, my);
@@ -443,11 +439,7 @@ public sealed unsafe partial class QuickbarService
         QuickSlot q = QuickbarNative.Read(QuickbarNative.Panel(), _cx.SlotFrom);
         float half = QuickbarLayout.CellPx * _cx.Layout.S / 2f;
         if (q.Type == QuickbarNative.TypeItem) DrawItem(q.Item, mx - half, my - half, mx + half, my + half, 1f);
-        else
-        {
-            TextRig.DrawIcon(q.Icon, mx - half, my - half, 2f * half, 2f * half, 1f);
-            TextRig.DrawIcon(q.Overlay, mx - half, my - half, 2f * half, 2f * half, 1f);
-        }
+        else TextRig.DrawIcon(q.Icon, mx - half, my - half, 2f * half, 2f * half, 1f);
     }
 
     /// <summary>The engine's dragged icon again, over the bar: the engine draws it in its GUI scene, under every CX window.

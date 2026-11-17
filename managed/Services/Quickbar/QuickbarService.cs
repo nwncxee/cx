@@ -48,6 +48,7 @@ public sealed unsafe partial class QuickbarService : IExtenderService
         _log = log;
         UiCategory.Declare();   // the UI groups declare in panel order whether or not the hook arms
         QuickbarLayout.SelfCheck(log);
+        QuickbarNative.SelfCheck(log);
         // Stand down as a UNIT: every knob here ends in one of these three symbols, so a build
         // that resolves none of them would offer rows whose every control silently does nothing.
         // Not OS-gated -- gated on the symbols, so the Windows anchors landing is all it takes to switch on.

@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using System.Text;
 using CX.Engine;
 using CX.Framework;
 using CX.Ui;
@@ -7,21 +8,19 @@ using CX.Ui;
 namespace CX.Services.Quickbar;
 
 /// <summary>What one engine quick button shows, read for the CX bar each frame.</summary>
-internal readonly record struct QuickSlot(byte Type, uint Item, bool Disabled, int Outline, string Icon, string Overlay, string Count);
+internal readonly record struct QuickSlot(byte Type, uint Item, bool Disabled, int Outline, string Icon, string Count);
 
 /// <summary>
 /// The engine side of the CX quickbar. The engine's <c>CPanelQuickBar</c> stays alive off-screen and keeps doing all of
-/// the work -- the server sync, counts, ghosting, every action -- while CX draws its 36 buttons. Two hooks copy what a
-/// button keeps only as Aurora models (the icon's resref, the count text); the GUI hit-test answers a CX slot with its
-/// engine button, so a click, a right-click menu or a drop there is the engine's own; its tooltip text is CX's to show.
+/// the work -- the server sync, counts, ghosting, every action -- while CX draws its 36 buttons, each read off its button:
+/// the icon's resref and the count label's text. The GUI hit-test answers a CX slot with its engine button, so a click, a
+/// right-click menu or a drop there is the engine's own; its tooltip text is CX's to show.
 /// </summary>
-internal static unsafe class QuickbarNative
+internal static unsafe partial class QuickbarNative
 {
-    /// <summary>The trampolines and the per-button copies, one lifetime: the session.</summary>
+    /// <summary>The trampolines and each button's icon and count as last decoded, one lifetime: the session.</summary>
     private sealed class QuickbarNativeState
     {
-        public QuickButtonSetIconFn SetIcon;
-        public QuickButtonSetCountTextFn SetCount;
         public QuickbarClickButtonFn Click;
         public GuiObjectHitCheckFn* Hit;
         public GuiManShowTooltipTextFn* Show;
@@ -30,8 +29,9 @@ internal static unsafe class QuickbarNative
         /// <summary>Every setter a slot swap calls resolved; off, the bar works and its buttons stay put.</summary>
         public bool SwapReady;
         public string Caught = "";
-        public readonly string[] Icon = new string[Buttons], Overlay = new string[Buttons], Count = new string[Buttons];
-        public QuickbarNativeState() { Array.Fill(Icon, ""); Array.Fill(Overlay, ""); Array.Fill(Count, ""); }
+        /// <summary>The count label's text as its lines spell it (<see cref="CountRaw"/>) and as the bar shows it.</summary>
+        public readonly string[] Icon = new string[Buttons], CountRaw = new string[Buttons], Count = new string[Buttons];
+        public QuickbarNativeState() { Array.Fill(Icon, ""); Array.Fill(CountRaw, ""); Array.Fill(Count, ""); }
     }
 
     private static QuickbarNativeState _s = new();
@@ -53,10 +53,10 @@ internal static unsafe class QuickbarNative
     /// <summary>Outside alloy.hitcheck's tooltip probe (0): a bubble swallowed here never shows, so the probe has nothing to track.</summary>
     private const int ShowPriority = 10;
 
-    /// <summary>Arm the five hooks; false (and a logged reason) leaves the stock bar the only one.</summary>
+    /// <summary>Arm the three hooks; false (and a logged reason) leaves the stock bar the only one.</summary>
     public static bool Attach(ExtenderLog log, HookService hooks)
     {
-        if (!SymbolMap.Require(log, "CX quickbar", SymbolMap.QuickButtonSetIcon, SymbolMap.QuickButtonSetCountText, SymbolMap.QuickbarClickButton,
+        if (!SymbolMap.Require(log, "CX quickbar", SymbolMap.QuickbarClickButton,
                                SymbolMap.QuickButtonHandleLeftButton, SymbolMap.GuiObjectHitCheck, SymbolMap.GuiMan,
                                SymbolMap.GuiManShowTooltipText)) return false;
         if (!EngineLayout.Require(log, "CX quickbar", "CGuiQuickButton", "CGuiButton", "CGuiObject", "CGuiIcon", "CPanelQuickBar", "CGuiInGame", "CGuiDragSource", "CGuiMan")) return false;
@@ -66,33 +66,15 @@ internal static unsafe class QuickbarNative
             SymbolMap.QuickbarSetModeToggle, SymbolMap.QuickbarSetQuickChat, SymbolMap.QuickbarSetCancelPoly, SymbolMap.QuickbarSetFamiliar,
             SymbolMap.QuickbarSetExamine, SymbolMap.QuickbarSetBarter, SymbolMap.QuickbarSetRollDie, SymbolMap.QuickbarSetAssociate,
             SymbolMap.QuickButtonSetSpell, SymbolMap.QuickButtonSetSla);
-        _s.SetIcon = hooks.InstallQuickButtonSetIcon(&OnSetIcon);
-        _s.SetCount = hooks.InstallQuickButtonSetCountText(&OnSetCount);
         _s.Click = hooks.InstallQuickbarClickButton(&OnClick);
         _s.Hit = hooks.ChainGuiObjectHitCheck(&OnHit, HitPriority);
         _s.Show = hooks.ChainGuiManShowTooltipText(&OnShowTip, ShowPriority);
-        if (_s.SetIcon != null && _s.SetCount != null && _s.Click != null && _s.Hit != null && _s.Show != null) return true;
+        if (_s.Click != null && _s.Hit != null && _s.Show != null) return true;
         log.Always("QuickbarService: the CX quickbar stands down -- a hook was refused (see the hook: lines above)");
         return false;
     }
 
     // ---- the hooks ----
-
-    [UnmanagedCallersOnly]
-    private static void OnSetIcon(IntPtr button, IntPtr icon, IntPtr overlay)
-    {
-        int b = Index(button);
-        if (b >= 0) { _s.Icon[b] = ResRef(icon); _s.Overlay[b] = ResRef(overlay); }
-        _s.SetIcon(button, icon, overlay);
-    }
-
-    [UnmanagedCallersOnly]
-    private static void OnSetCount(IntPtr button, IntPtr text)
-    {
-        int b = Index(button);
-        if (b >= 0) _s.Count[b] = Native.EngineText(Native.ReadExo(text));   // before the forward: the Win64 callee destroys its copy
-        _s.SetCount(button, text);
-    }
 
     /// <summary>The game's own quickbar keys stand down while the CX bar shows: its bindings replace them.</summary>
     [UnmanagedCallersOnly]
@@ -187,7 +169,8 @@ internal static unsafe class QuickbarNative
         return off < 0 || off % stride != 0 || off / stride >= Buttons ? -1 : (int)(off / stride);
     }
 
-    /// <summary>Button <paramref name="b"/> of <paramref name="panel"/> as it stands. Render thread; allocates nothing.</summary>
+    /// <summary>Button <paramref name="b"/> of <paramref name="panel"/> as it stands. The game thread, inside the present; allocates
+    /// only when the button's icon or count changed since the last read.</summary>
     public static QuickSlot Read(IntPtr panel, int b)
     {
         IntPtr p = Button(panel, b);
@@ -195,7 +178,48 @@ internal static unsafe class QuickbarNative
         var qb = new CGuiQuickButton(p);
         IntPtr anim = new CGuiButton(p).NormalAnim;
         int outline = anim == IntPtr.Zero ? OutlineNone : NameIs(anim, AnimEquip) ? OutlineEquip : NameIs(anim, AnimMode) ? OutlineMode : OutlineNone;
-        return new QuickSlot(qb.Type, qb.ItemOid, (new CGuiObject(p).Flags & FlagDisabled) != 0, outline, _s.Icon[b], _s.Overlay[b], _s.Count[b]);
+        return new QuickSlot(qb.Type, qb.ItemOid, (new CGuiObject(p).Flags & FlagDisabled) != 0, outline, Icon(qb, b), Count(qb, b));
+    }
+
+    /// <summary>Button <paramref name="b"/>'s icon name, lower-case: the string last decoded while the button's own resref still
+    /// spells it, a new one only when the resref changed.</summary>
+    private static string Icon(CGuiQuickButton qb, int b)
+    {
+        ReadOnlySpan<byte> raw = qb.Icon;
+        int n = raw.IndexOf((byte)0);
+        if (n >= 0) raw = raw[..n];
+        if (Ascii.EqualsIgnoreCase(raw, _s.Icon[b])) return _s.Icon[b];
+        Span<char> name = stackalloc char[ResRef.Chars];
+        Ascii.ToLower(raw, name, out int w);
+        return _s.Icon[b] = new string(name[..w]);
+    }
+
+    /// <summary>The most lines and bytes a line of a count label is read to: a count is a number or a mark, a command label a few words.</summary>
+    private const int CountLines = 4, CountLineBytes = 256;
+
+    /// <summary>Button <paramref name="b"/>'s count as its label shows it, "" with no label (an empty count frees it): the string
+    /// last decoded while the label's lines still spell it, a new one only when they changed.</summary>
+    private static string Count(CGuiQuickButton qb, int b)
+    {
+        CAurString label = qb.CountLabel;
+        if (label.IsNull) return "";
+        string last = _s.CountRaw[b];
+        int lines = Math.Min(label.GetTextLineCount(), CountLines), at = 0;
+        bool same = true;
+        for (int k = 0; same && k < lines; k++)
+        {
+            byte* p = (byte*)label.GetTextLine(k);
+            for (int j = 0; same && p != null && j < CountLineBytes && p[j] != 0; j++) same = at < last.Length && last[at++] == p[j];
+        }
+        if (same && at == last.Length) return _s.Count[b];
+        var sb = new StringBuilder();
+        for (int k = 0; k < lines; k++)
+        {
+            byte* p = (byte*)label.GetTextLine(k);
+            for (int j = 0; p != null && j < CountLineBytes && p[j] != 0; j++) sb.Append((char)p[j]);
+        }
+        _s.CountRaw[b] = sb.ToString();
+        return _s.Count[b] = Native.EngineText(_s.CountRaw[b]);
     }
 
     private static bool NameIs(IntPtr s, ReadOnlySpan<byte> z)
@@ -203,14 +227,6 @@ internal static unsafe class QuickbarNative
         var name = new ReadOnlySpan<byte>((void*)s, z.Length);
         for (int i = 0; i < z.Length; i++) if (name[i] != z[i]) return false;
         return true;
-    }
-
-    private static string ResRef(IntPtr icon)
-    {
-        if (icon == IntPtr.Zero) return "";
-        ReadOnlySpan<byte> name = new CGuiIcon(icon).Resref;
-        int n = name.IndexOf((byte)0);
-        return System.Text.Encoding.ASCII.GetString(n < 0 ? name : name[..n]).ToLowerInvariant();
     }
 
     /// <summary>Press button <paramref name="b"/> as its key would: the stock key's own gates first -- no player creature,

@@ -583,6 +583,8 @@ offset	CGuiQuickButton	itemOid2	0x110	0xf0	# QuickButtonItem2
 offset	CGuiQuickButton	param	0x138	0x118	# QuickButtonParam
 offset	CGuiQuickButton	spell	0x130	0x110	# QuickButtonSpell
 offset	CGuiQuickButton	target	0x108	0xe8	# QuickButtonTarget
+offset	CGuiQuickButton	icon	0x13c	0x11c	# QuickButtonIcon
+offset	CGuiQuickButton	countLabel	0x158	0x138	# QuickButtonCountLabel
 offset	CPanelQuickBar	sendGate	0x72a0	0x6518	# QuickbarSendGate
 offset	CGuiObject	flags	0x8	0x8	# GuiObjectFlags
 offset	CGuiButton	normalAnim	0xe0	0xc0	# ButtonNormalAnim
@@ -877,8 +879,6 @@ rva	_ZN11CNWCMessage35SendPlayerToServerBarterStartBarterEjj	0x7ba3f0	# SendBart
 rva	_ZN11CNWCMessage31SendPlayerToServerInput_UseItemEjhhj6Vector	0x7c0610	# SendInputUseItem
 rva	_ZN11CNWCMessage35SendPlayerToServerGold_TransferGoldEj6Vectoriihh	0x7bdc70	# SendGoldTransfer
 rva	_ZN15CGuiQuickButton13SetButtonItemEjii	0x867760	# QuickButtonSetItem
-rva	_ZN15CGuiQuickButton7SetIconEP8CGuiIconS1_	0x86baa0	# QuickButtonSetIcon
-rva	_ZN15CGuiQuickButton12SetCountTextE10CExoString	0x86b710	# QuickButtonSetCountText
 rva	_ZN14CPanelQuickBar11ClickButtonEh	0x85c3b0	# QuickbarClickButton
 rva	_ZN14CPanelQuickBar24SendButtonUpdateToServerEP15CGuiQuickButton	0x8602a0	# QuickbarSendButton
 rva	_ZN14CPanelQuickBar15SetButton_EmptyEh	0x86b180	# QuickbarSetEmpty
