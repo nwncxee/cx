@@ -259,10 +259,9 @@ public static partial class TileBuild
         return n;
     }
 
-    /// <summary>Hand the tile's two ramps to the draw, and KEEP THEM APART. The camera-occlusion fade is an
-    /// ALPHA -- the engine multiplies <c>TileData+0x70</c> into the part's own -- so it goes to
-    /// <see cref="SceneDb.PartFade"/>. The fog-of-war reveal is FOG: under <c>TileData+0xc8 &lt; 1</c> the
-    /// engine scales the fog colour by <c>reveal^2</c>, so it goes to <see cref="SceneDb.PartReveal"/>.</summary>
+    /// <summary>Hand the tile's two ramps to the draw, apart. The camera-occlusion fade is an ALPHA on the
+    /// <c>tilefade 1</c> parts alone (<c>RenderDrawBucket</c> fades only its fade bucket); floors and walls stay
+    /// solid. The fog-of-war reveal is FOG (<c>reveal^2</c> on the fog colour) and reaches every part.</summary>
     private static void Publish(int t)
     {
         float fade = SceneDb.TileFade[t], reveal = SceneDb.TileReveal[t];
@@ -277,7 +276,8 @@ public static partial class TileBuild
         {
             int p = first + k;
             bool moved = false;
-            if (SceneDb.PartFade[p] != fade) { SceneDb.PartFade[p] = fade; moved = true; }
+            float partFade = SceneDb.PartMtl[p].TileFade == TileFadeFades ? fade : 1f;
+            if (SceneDb.PartFade[p] != partFade) { SceneDb.PartFade[p] = partFade; moved = true; }
             if (SceneDb.PartReveal[p] != reveal) { SceneDb.PartReveal[p] = reveal; moved = true; }
             if (moved) SceneDb.TouchPart(p, Dirty.Material);
         }
