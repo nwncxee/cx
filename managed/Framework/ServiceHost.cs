@@ -47,13 +47,13 @@ public static class ServiceHost
         KnobGroup.Log = log;   // ADR 0025: a knob binds from the dictionary Load just filled, on first touch
         var hooks = new HookService(log);   // after Load: it reads hookdebug
 
-        // OrderBy(Name): Assembly.GetTypes() order is not stable across builds/runtimes,
-        // so sort for deterministic init order. Replace with an explicit list if a real
-        // init-time dependency ever appears.
+        // OrderBy(Name): Assembly.GetTypes() order is not stable across builds/runtimes, so sort for deterministic
+        // init order. The seam goes first: whether it installed is part of Renderer.On, which the rest arm on.
         var all = Assembly.GetExecutingAssembly().GetTypes()
             .Where(t => typeof(IExtenderService).IsAssignableFrom(t)
                         && t is { IsAbstract: false, IsInterface: false })
-            .OrderBy(t => t.Name)
+            .OrderBy(t => t != typeof(CX.Alloy.Seam.SeamService))
+            .ThenBy(t => t.Name)
             .Select(t => (IExtenderService)Activator.CreateInstance(t)!)
             .ToList();
 

@@ -16,8 +16,8 @@ namespace CX.Alloy.Seam;
 /// read once at boot); a seam that cannot install stands Alloy down (<see cref="AlloyGate"/>).</summary>
 public sealed unsafe class SeamService : IExtenderService
 {
-    /// <summary>True for the session when the seam is installed; never changes after <see cref="Initialize"/>.
-    /// False with Alloy requested is a stand-down (<see cref="AlloyGate"/>).</summary>
+    /// <summary>True for the session when the seam is installed; never changes after <see cref="Initialize"/>, which
+    /// the host runs before any other service. False with Alloy requested stands Alloy down whole (<see cref="Renderer.On"/>).</summary>
     public static bool Db { get; private set; }
 
     private static ExtenderLog? _log;
@@ -28,9 +28,9 @@ public sealed unsafe class SeamService : IExtenderService
     {
         _log = log;
         Facade.Log = log;
-        if (!Renderer.On)
+        if (!Renderer.Requested)
         {
-            log.Info("seam: alloy.enabled=0 -- vanilla, no seam installed");
+            log.Info("seam: alloy.enabled=0, or Vulkan cannot start -- vanilla, no seam installed");
             return;
         }
         if (!FacadeSelfCheck.Run(log))
