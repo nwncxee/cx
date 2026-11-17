@@ -866,6 +866,10 @@ rva	ZSTD_createDCtx	0x9e8350	# ZstdCreateDCtx (CX-54: the zero-arg DCtx factory 
 rva	ZSTD_decompressDCtx	0x9e9670	# ZstdDecompressDCtx (CX-54: the 5-arg decompressor in the same body)
 # the CX inventory screen: RVAs read out of the Windows bodies (CX-146 §10).
 rva	_ZN15CPanelInventory19SetInventoryVisibleEiij	0x857cd0	# InvSetInventoryVisible
+rva	_ZN15CPanelInventory13ToggleDisplayEv	0x858050	# InvToggleDisplay
+rva	_ZN10CGuiInGame15HandleInvButtonEv	0x6f8310	# InvHandleInvButton
+rva	_ZN10CGuiInGame19CloseGUIsForLevelupEv	0x6f6ea0	# InvCloseForLevelup
+rva	_ZN11CNWCMessage39SendPlayerToServerInput_PossessFamiliarEv	0x7bff40	# SendPossessFamiliar
 rva	_ZN15CPanelInventory16SetCharacterDataEj	0x856fa0	# InvSetCharacterData
 rva	_Z18GameCameraHitCheckiiP6VectorP8CHitInfo	0x6d7f50	# GameCameraHitCheck
 rva	_Z16GetGameobjectHitR8CHitInfoPP10CNWCObject	0x6ed4e0	# GetGameobjectHit

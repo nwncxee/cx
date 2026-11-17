@@ -309,8 +309,8 @@ public static unsafe partial class EngineLayout
     /// <c>CPanelInventory::SetCharacterData</c> (Linux nm @0x68d810 <c>creature+0x1d8</c>, Windows rva 0x856fa0
     /// <c>creature+0x1b8</c>) as the <c>%d</c> of TLK 0x1907.</summary>
     public static readonly int CreatureGold = Field<uint>("CNWCCreature", "gold");
-    /// <summary>CNWCCreature: non-zero on an associate (henchman, familiar, summon, companion), whose master's id is
-    /// <see cref="CreatureMasterId"/>. <c>CGuiInvbox::HandleDropAsSource</c> (Linux @0x690990 <c>+0x294</c> / <c>+0x290</c>,
+    /// <summary>CNWCCreature: the associate type, 0 on none and 3 on a familiar (the stock inventory key's test), whose
+    /// master's id is <see cref="CreatureMasterId"/>. <c>CGuiInvbox::HandleDropAsSource</c> (Linux @0x690990 <c>+0x294</c> / <c>+0x290</c>,
     /// Windows rva 0x8813d0 <c>+0x274</c> / <c>+0x270</c>) lets a potion dropped on the player's own associate be used on it.</summary>
     public static readonly int CreatureIsAssociate = Field<int>("CNWCCreature", "isAssociate");
     /// <inheritdoc cref="CreatureIsAssociate"/>

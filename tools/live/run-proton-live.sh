@@ -22,7 +22,8 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 # shellcheck source=tools/live/isolate.sh
 . "$ROOT/tools/live/isolate.sh"
 NWN_DIR="${NWN_DIR:-$(python3 "$ROOT/tools/paths.py" NWN_DIR)}"
-PROTON="${PROTON:-$HOME/.steam/root/steamapps/common/Proton - Experimental/proton}"
+# shellcheck source=tools/live/proton.sh
+. "$ROOT/tools/live/proton.sh"
 MODULE="The Dark Ranger's Treasure"
 WIDTH=1280; HEIGHT=720; SECONDS_TO_RUN=60; MENU=0; REUSE=0; NUI=0; KEYS=""; KEYS_AT=60; SHOWCASE=""
 OUT="$ROOT/.scratch/live/proton"
@@ -50,7 +51,7 @@ SHOW_DIR="$ROOT/tools/live/showcase"; SHOW_SRC="$SHOW_DIR/$SHOWCASE.nss"
 [ -z "$SHOWCASE" ] || [ -f "$SHOW_SRC" ] || { echo "run-proton-live: no showcase '$SHOWCASE' (needs $SHOW_SRC)" >&2; exit 2; }
 command -v gamescope >/dev/null || { echo "run-proton-live: gamescope not installed" >&2; exit 2; }
 [ -f "$NWN_DIR/bin/win32/nwmain.exe" ] || { echo "run-proton-live: no nwmain.exe under $NWN_DIR/bin/win32" >&2; exit 2; }
-[ -f "$PROTON" ] || { echo "run-proton-live: no proton at $PROTON (set PROTON)" >&2; exit 2; }
+proton_pick || exit 2
 [ -f "$ROOT/cx-windows-x64/version.dll" ] || { echo "run-proton-live: build-win.sh first" >&2; exit 2; }
 
 # The machine-wide live lock: one client on this box at a time, Linux or Windows.
@@ -118,7 +119,7 @@ ARGS=(-userdirectory 'C:\cxuser')
     # Wine prefers its builtin version.dll; n,b makes the proxy beside nwmain.exe win. No wine audio driver loads.
     export WINEDLLOVERRIDES="version=n,b;winepulse.drv=d;winealsa.drv=d;wineoss.drv=d"
     exec gamescope --backend headless -W "$WIDTH" -H "$HEIGHT" -w "$WIDTH" -h "$HEIGHT" -- \
-        "$PROTON" run "$GAME/bin/win32/nwmain.exe" ${ARGS+"${ARGS[@]}"}
+        ${FHS+"${FHS[@]}"} "$PROTON" run "$GAME/bin/win32/nwmain.exe" ${ARGS+"${ARGS[@]}"}
 ) > "$GS_LOG" 2>&1 &
 GS_PID=$!
 

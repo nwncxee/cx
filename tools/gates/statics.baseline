@@ -259,7 +259,7 @@
 1 managed/Services/Hotkeys/Hotkeys.cs
 2 managed/Services/Hotkeys/HotkeyServerLinkService.cs
 4 managed/Services/Hotkeys/HotkeyStore.cs
-20 managed/Services/Inventory/InventoryNative.cs
+17 managed/Services/Inventory/InventoryNative.cs
 23 managed/Services/Inventory/InventoryService.cs
 4 managed/Services/Inventory/InventoryService.Gold.cs
 1 managed/Services/Inventory/InventoryWindow.cs
