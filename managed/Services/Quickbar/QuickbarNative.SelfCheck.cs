@@ -36,6 +36,9 @@ internal static unsafe partial class QuickbarNative
         check.Expect(Read(panel, b).Icon == "is_magmisl", $"a spell button that no hook saw shows its spell's icon ({Read(panel, b).Icon})");
         check.Expect(ReferenceEquals(Read(panel, b).Icon, Read(panel, b).Icon), "an unchanged button reads the same string each frame, not a new one");
 
+        Put(qb, "is_darknes");
+        check.Expect(Read(panel, b).Icon == "is_darknes", $"another spell whose name is just as long shows its own icon ({Read(panel, b).Icon})");
+
         qb.Type = 7;
         Put(qb, "IR_ATTACK");
         check.Expect(Read(panel, b).Icon == "ir_attack", $"the same button set to Attack shows Attack's icon, lower-cased ({Read(panel, b).Icon})");
