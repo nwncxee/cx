@@ -2246,9 +2246,9 @@ internal static unsafe class SymbolMap
     /// <c>notifyServer</c> tail, <see cref="SendGuiInvStatus"/>, or the server stops pushing repository updates.</summary>
     [Fn("void(CPanelInventory this, int show, int notifyServer, uint oid)")]
     public const string InvSetInventoryVisible = "_ZN15CPanelInventory19SetInventoryVisibleEiij";
-    /// <summary><c>CPanelInventory::ToggleDisplay()</c> @0x68e8e0 (Windows rva 0x858050) -- the inventory key: hides a shown
-    /// panel, else refuses a possessed familiar or shows it. Windows inlines <see cref="InvSetInventoryVisible"/> into it,
-    /// so the key never reaches that hook there.</summary>
+    /// <summary><c>CPanelInventory::ToggleDisplay()</c> @0x68e8e0 (Windows rva 0x858050) -- the inventory toggle the key, store
+    /// setup, level-up and possessing a familiar call: hides a shown panel, else refuses a possessed familiar or shows it.
+    /// Windows inlines <see cref="InvSetInventoryVisible"/> into it, so none of them reaches that hook there.</summary>
     [Fn("void(CPanelInventory this)")]
     public const string InvToggleDisplay = "_ZN15CPanelInventory13ToggleDisplayEv";
     /// <summary><c>CGuiInGame::HandleInvButton()</c> @0x66fea0 (Windows rva 0x6f8310) -- the inventory key, from
@@ -2264,7 +2264,7 @@ internal static unsafe class SymbolMap
     /// 0x13 -- toggles a shown inventory panel shut before it sends.</summary>
     [Fn("void(IntPtr msg)")]
     public const string SendPossessFamiliar = "_ZN11CNWCMessage39SendPlayerToServerInput_PossessFamiliarEv";
-    /// <summary><c>CNWRules::GetRulesetIntEntry(ulong key, int fallback)</c> @0x10b02e0 -- a ruleset.2da entry by the
+    /// <summary><c>CNWRules::GetRulesetIntEntry(ulong key, int fallback)</c> @0x11b02e0 -- a ruleset.2da entry by the
     /// FNV-1a-64 hash of its name, or <c>fallback</c>.</summary>
     [Fn("int(CNWRules this, ulong key, int fallback)")]
     public const string RulesetIntEntry = "_ZN8CNWRules18GetRulesetIntEntryEmi";

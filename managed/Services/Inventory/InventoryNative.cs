@@ -15,7 +15,7 @@ internal enum WorldKind { None, Ground, Object }
 internal readonly record struct WorldHit(WorldKind Kind, uint Oid, int Type, System.Numerics.Vector3 Point);
 
 /// <summary>
-/// The inventory window's engine side: the <c>SetInventoryVisible</c> funnel and <c>ToggleDisplay</c> key hooks, the backpack set learned from
+/// The inventory window's engine side: the <c>SetInventoryVisible</c> funnel, the key, toggle, level-up and possess hooks, the backpack set learned from
 /// <c>CGuiMultiPageMultiInvbox::AddItem</c>, the per-frame copy of items / equip slots / gold / weight into the
 /// <see cref="InventoryModel"/>, the vanilla panel's own labels (filled by <c>SetCharacterData</c>, side-effect free on
 /// the player's own panel), and the stock senders. Nothing is held across a frame: every object is re-resolved by id.
@@ -23,8 +23,8 @@ internal readonly record struct WorldHit(WorldKind Kind, uint Oid, int Type, Sys
 internal static unsafe class InventoryNative
 {
     private static ExtenderLog? _log;
-    /// <summary>The engine functions the hooks replace, installed once at attach and never reset, and whether the
-    /// inventory key is being handled, which tells its <c>ToggleDisplay</c> from the stock show calls.</summary>
+    /// <summary>The engine functions the hooks replace, installed once at attach and never reset, and whether the key or a
+    /// level-up is being handled, which tells their <c>ToggleDisplay</c> calls from a store's show.</summary>
     private sealed class HookState
     {
         public InvSetInventoryVisibleFn VisibleOrig;
@@ -34,7 +34,7 @@ internal static unsafe class InventoryNative
         public SendPossessFamiliarFn PossessOrig;
         public InvboxAddItemFn* AddSlot;
         public InvContainerPagenumFn PagenumOrig;
-        public bool KeyDown;
+        public bool KeyDown, LevelingUp;
     }
 
     private static readonly HookState _hooks = new();
@@ -92,7 +92,7 @@ internal static unsafe class InventoryNative
         _hooks.PagenumOrig = hooks.InstallInvContainerPagenum(&OnContainerPagenum);
         _ready = _hooks.VisibleOrig != null && _hooks.ToggleOrig != null && _hooks.KeyOrig != null && _hooks.LevelupOrig != null
               && _hooks.PossessOrig != null && _hooks.AddSlot != null && _hooks.PagenumOrig != null;
-        if (!_ready) log.Info("InventoryService: SetInventoryVisible, ToggleDisplay, HandleInvButton, CloseGUIsForLevelup, PossessFamiliar, AddItem or SetContainerPagenumVisible did not hook");
+        if (!_ready) log.Info("InventoryService: a hook did not install");
         return _ready;
     }
 
@@ -124,14 +124,15 @@ internal static unsafe class InventoryNative
     }
 
     /// <summary>A show of the player's own hidden panel reaches the CX window, as the Linux body's show call does, since
-    /// Windows inlines that call: the key toggles it, store setup opens it. A shown panel, or a possessed familiar the
-    /// ruleset refuses, keeps the stock toggle.</summary>
+    /// Windows inlines that call: the key toggles it, store setup opens it, a level-up (which closed it) leaves it shut.
+    /// A shown panel, or a possessed familiar the ruleset refuses, keeps the stock toggle.</summary>
     [UnmanagedCallersOnly]
     private static void OnToggleDisplay(IntPtr panel)
     {
         if (InventoryService.Ours(panel, 1, InventoryModel.Invalid) && !new CGuiPanel(panel).Shown && !FamiliarRefused())
         {
-            if (ExtenderLog.Enabled) _log?.Info(_hooks.KeyDown ? "[inv] key toggles the CX window" : "[inv] stock show call opens the CX window");
+            if (_hooks.LevelingUp) return;
+            if (ExtenderLog.Enabled) _log?.Info(_hooks.KeyDown ? "[inv] key toggles the CX window" : "[inv] stock show call reaches the CX window");
             InventoryService.OnSetVisible(show: true, notify: _hooks.KeyDown);
             return;
         }
@@ -142,18 +143,25 @@ internal static unsafe class InventoryNative
     [UnmanagedCallersOnly]
     private static void OnCloseForLevelup(IntPtr gui)
     {
-        if (ExtenderLog.Enabled) _log?.Info("[inv] level-up begins");
-        InventoryService.OnSetVisible(show: false, notify: true);
+        CloseFor("[inv] level-up begins");
+        _hooks.LevelingUp = true;
         _hooks.LevelupOrig(gui);
+        _hooks.LevelingUp = false;
     }
 
     /// <summary>Possessing a familiar shuts the CX window first, as it shuts a shown stock panel.</summary>
     [UnmanagedCallersOnly]
     private static void OnPossessFamiliar(IntPtr msg)
     {
-        if (ExtenderLog.Enabled) _log?.Info("[inv] possessing a familiar");
-        InventoryService.OnSetVisible(show: false, notify: true);
+        CloseFor("[inv] possessing a familiar");
         _hooks.PossessOrig(msg);
+    }
+
+    /// <summary>Shut the CX window, telling the server, as a stock caller shuts a shown stock panel.</summary>
+    private static void CloseFor(string why)
+    {
+        if (ExtenderLog.Enabled) _log?.Info(why);
+        InventoryService.OnSetVisible(show: false, notify: true);
     }
 
     /// <summary><c>ALL_ASSOCIATES_CAN_INTERACT</c>'s ruleset key, the FNV-1a-64 hash of its name, which the stock key reads.</summary>

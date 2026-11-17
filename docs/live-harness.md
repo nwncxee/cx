@@ -287,7 +287,7 @@ IK2. `inventory_key_regression.sh` is the Linux client, and it also needs both p
 `inventory_store_*.sh` run the showcase `invstore`, which opens a stock general store on the player 25 s after login,
 with no backdrop. `inventory_store_approved_examples.sh` presses the key at 15 s first, and the CX window must stay
 open through the store (IK3). `inventory_store_regression.sh` presses nothing, and the store must open the CX window
-and not the stock panel (IK4). Both share `inventory_run` in `inventory_key_run.sh`.
+and not the stock panel (IK4). Both run through `inventory_store_run` in `inventory_key_run.sh`, and both need the store's call to reach the hook (its `[inv] stock show call` line).
 
 ## Deferred walk A/B (`tools/live/deferred_walk_*.sh`)
 

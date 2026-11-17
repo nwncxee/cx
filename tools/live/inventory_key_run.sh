@@ -5,6 +5,8 @@
 # which the harness's quit makes, is left out), INV_STOCK (the stock panel was shown for
 # the player) and INV_LOG. inventory_key_run RUNNER DEFAULT_OUT [--out DIR] presses the inventory key twice and adds
 # INV_OPENED and INV_CLOSED (the first press left it open; the second closed it, so the sequence is exactly OC).
+# inventory_store_run OUT KEYS runs the showcase invstore (a stock store opened 25 s after login) on the Linux client
+# and adds INV_STORE (the store's show call reached the CX window's hook).
 # Each returns 2 when the run could not be made.
 # shellcheck disable=SC2034 # the INV_ results are read by the scripts that source this
 inventory_run() {
@@ -37,5 +39,16 @@ inventory_key_run() {
     INV_OPENED=0 INV_CLOSED=0
     case "$INV_SEQ" in O|OC) INV_OPENED=1 ;; esac
     [ "$INV_SEQ" = OC ] && INV_CLOSED=1
+    return 0
+}
+
+inventory_store_run() {
+    local out="$1" keys="$2" root
+    root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    inventory_run "$root/tools/live/run-live.sh" "$out" "$keys" --showcase invstore || return $?
+    grep -q '^CXSHOW: store open ' "$out/showcase-markers.txt" 2>/dev/null \
+        || { echo "the store never opened (see $out/showcase-markers.txt)"; return 2; }
+    INV_STORE=0
+    grep -aq "\[inv\] stock show call reaches the CX window" "$INV_LOG" && INV_STORE=1
     return 0
 }
