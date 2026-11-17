@@ -37,7 +37,8 @@ tools/live/run-live.sh --nui
 ```
 
 `tools/live/run-proton-live.sh` and `run-proton.sh` pick Proton the same way (`tools/live/proton.sh`): `PROTON` when set,
-else Steam's Proton Experimental, else GE-Proton from the `.#win` shell. On NixOS they run it under `steam-run`
+else Steam's Proton Experimental, else the GE-Proton the flake pins (the `.#win` shell's, or fetched with
+`nix build` outside it). On NixOS they run it under `steam-run`
 (`programs.steam`). Under GE-Proton in the headless harness, the client exits before CX loads: a run there writes no
 `cx.log`, so a Windows live check needs Proton Experimental installed in Steam.
 
