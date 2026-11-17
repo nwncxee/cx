@@ -24,6 +24,84 @@ internal static partial class GpuGolden
         DofConversationExample(vk, check, log);
         DofSettingsExample(vk, check, log);
         DofNeverBlurExample(vk, check, log);
+        DofLowCameraExample(vk, check, log);
+        DofAmountNearExample(vk, check, log);
+        DofAmountFarExample(vk, check, log);
+        DofNoBandsExample(vk, check, log);
+    }
+
+    /// <summary>Oracle: along a line parallel to the edge the fixture does not change, so the blurred values along it should
+    /// not either; bands from a coarse mip move them by 0.146.</summary>
+    private static void DofNoBandsExample(VkBackend vk, Checker check, ExtenderLog log)
+    {
+        // Given depth of field is on
+        // When a blurred edge stands against a bright sky
+        // Then the blur is one smooth ramp, with no bands along the edge
+        // a shallow slant, so a stair runs many pixels along the edge before it steps
+        static bool Bright(int x, int y) => y * 8 < x + 3000;
+        DofPx[]? o = DofRun(vk, log, static (x, y) => (Bright(x, y) ? 1f : 0f, 0f, 0f), static (x, y) => 45f, DofCamera(5f, 0f), new DofSet(Focus: Dof.FocusPlayer, NeverBlur: false));
+        check.Expect(o != null, "No bands: the slanted edge frame ran");
+        if (o == null) return;
+        float stair = 0f;
+        for (int d = -6; d <= 6; d += 3)
+        {
+            float lo = 2f, hi = -1f;
+            // x + 3000 a multiple of 16: the edge crosses each sampled column at the same fraction of a pixel and of a half-size one
+            for (int x = 400; x < 800; x += 16)
+            {
+                float v = DofAt(o, x, (x + 3000) / 8 + d);
+                lo = MathF.Min(lo, v); hi = MathF.Max(hi, v);
+            }
+            stair = MathF.Max(stair, hi - lo);
+        }
+        check.Expect(stair < 0.08f, $"No bands: along the blurred edge the ramp holds its height (it moves by {stair:F3})");
+    }
+
+    /// <summary>Oracle: <c>inc_postpr_dof</c> by hand, 5 m back and 10 degrees up: the pitch rule focuses at its 45 m limit,
+    /// never blurring the player keeps the band from 5 m, and depth stops at 45 m, so stock leaves 30 m and 100 m one pixel wide.</summary>
+    private static void DofLowCameraExample(VkBackend vk, Checker check, ExtenderLog log)
+    {
+        // Given depth of field is on at its default settings and the camera sits low behind the character
+        // When buildings stand far behind the character
+        // Then they blur no wider than the stock client's depth of field blurs the same view
+        foreach (float metres in (ReadOnlySpan<float>)[30f, 100f])
+        {
+            float z = metres;
+            DofPx[]? o = DofRun(vk, log, DofLamp, (x, y) => z, DepthOfField.Behind(5f, 10f), new DofSet(Amount: 1f));
+            check.Expect(o != null, $"Low camera: the {metres} m frame ran");
+            if (o == null) continue;
+            int reach = DofReach(o, DofLampAt, DofLampAt);
+            check.Expect(reach == 0, $"Low camera: a building {metres} m away stays as sharp as stock keeps it (reached {reach} pixels)");
+        }
+    }
+
+    /// <summary>Oracle: the same frame at Amount 1, and stock's confusion, which grows with Amount until it reaches 1.</summary>
+    private static void DofAmountNearExample(VkBackend vk, Checker check, ExtenderLog log)
+    {
+        // Given depth of field Amount is raised from 1 to 5
+        // When a building stands a few metres past the sharp band
+        // Then it blurs more than it did at Amount 1
+        DofPx[]? one = DofRun(vk, log, DofLamp, static (x, y) => 12f, DepthOfField.Behind(8f, 70f), new DofSet(Amount: 1f));
+        DofPx[]? five = DofRun(vk, log, DofLamp, static (x, y) => 12f, DepthOfField.Behind(8f, 70f), new DofSet(Amount: 5f));
+        check.Expect(one != null && five != null, "Amount near the band: the frames ran");
+        if (one == null || five == null) return;
+        int a = DofReach(one, DofLampAt, DofLampAt), b = DofReach(five, DofLampAt, DofLampAt);
+        check.Expect(b > a, $"Amount near the band: Amount 5 blurs a building just past the band more than 1 ({b} pixels, {a})");
+    }
+
+    /// <summary>Oracle: the same frame at Amount 1, and stock's confusion, which stops at 1 whatever the Amount.</summary>
+    private static void DofAmountFarExample(VkBackend vk, Checker check, ExtenderLog log)
+    {
+        // Given depth of field Amount is raised from 1 to 5
+        // When buildings stand far behind the character
+        // Then they blur no wider than they did at Amount 1
+        DofPx[]? one = DofRun(vk, log, DofLamp, static (x, y) => 45f, DepthOfField.Behind(8f, 70f), new DofSet(Amount: 1f));
+        DofPx[]? five = DofRun(vk, log, DofLamp, static (x, y) => 45f, DepthOfField.Behind(8f, 70f), new DofSet(Amount: 5f));
+        check.Expect(one != null && five != null, "Amount far away: the frames ran");
+        if (one == null || five == null) return;
+        int a = DofReach(one, DofLampAt, DofLampAt), b = DofReach(five, DofLampAt, DofLampAt);
+        check.Expect(a > 0, $"Amount far away: Amount 1 blurs the far buildings (reached {a} pixels)");
+        check.Expect(b <= a, $"Amount far away: Amount 5 blurs them no wider than 1 ({b} pixels, {a})");
     }
 
     private static void DofSharpExample(VkBackend vk, Checker check, ExtenderLog log)
@@ -183,8 +261,9 @@ internal static partial class GpuGolden
                     if (DofAt(o, x, y) > 0.1f) n++;
             return n;
         }
-        DofPx[]? weak = DofRun(vk, log, Lamp, static (x, y) => 45f, DofCamera(15f, 0f), new DofSet(Focus: Dof.FocusPlayer, NeverBlur: false, Amount: 2f));
-        DofPx[]? strong = DofRun(vk, log, Lamp, static (x, y) => 45f, DofCamera(15f, 0f), new DofSet(Focus: Dof.FocusPlayer, NeverBlur: false));
+        // 2.5 m past a band ending at 15.5 m, where neither Amount reaches the widest blur
+        DofPx[]? weak = DofRun(vk, log, Lamp, static (x, y) => 18f, DofCamera(15f, 0f), new DofSet(Focus: Dof.FocusPlayer, NeverBlur: false, Amount: 2f));
+        DofPx[]? strong = DofRun(vk, log, Lamp, static (x, y) => 18f, DofCamera(15f, 0f), new DofSet(Focus: Dof.FocusPlayer, NeverBlur: false));
         check.Expect(weak != null && strong != null, "Settings work: the amount frames ran");
         if (weak != null && strong != null)
             check.Expect(Spread(strong) > Spread(weak) * 3 / 2, $"Settings work: Amount 5 spreads a lamp further than 2 ({Spread(strong)} pixels, {Spread(weak)})");

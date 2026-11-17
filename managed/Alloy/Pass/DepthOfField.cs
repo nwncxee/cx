@@ -25,8 +25,13 @@ internal static unsafe partial class DepthOfField
     private const float MinDistance = 5f, MaxDistance = 45f;
     /// <summary>The stock shader's offsets of the focus at a horizontal view, a vertical view, and past a read depth, in metres.</summary>
     private const float HorizontalOffset = 2.5f, VerticalOffset = -1f, ReadOffset = -1f;
+    /// <summary>The stock shader's <c>fDOFWidth</c> at its 1080 lines, and how far out its hexagon's outer taps sit in that width.</summary>
+    private const float StockWidth = 5f, StockLines = 1080f, StockOuterTap = 0.866f;
     /// <summary>The blur's radius at the stock shader's confusion of 1, in half-size pixels per pixel of frame height.</summary>
-    private const float BlurFraction = 0.0002f;
+    private const float BlurFraction = 0.5f * StockOuterTap * StockWidth / StockLines;
+    /// <summary>The blur's limit as a fraction of the frame's height, which AMD halves for its half-size pixels: the stock
+    /// shader's cap of confusion at 1, so a higher Amount reaches the widest blur sooner and never passes it.</summary>
+    internal const float CocLimitFactor = 2f * BlurFraction;
     /// <summary>How long the focus takes to cover about two thirds of a move, in seconds.</summary>
     private const float EaseSeconds = 0.25f;
     /// <summary>The three points the Dynamic focus reads, one per request, as (U, L, R).</summary>
@@ -204,6 +209,15 @@ internal static unsafe partial class DepthOfField
         return new Scene(rt.CamDist, rt.CamPitch, rt.DialogCamera != 0, rt.InCutscene != 0, d.AheadU, d.AheadU, d.AheadL, d.AheadR);
     }
 
+    /// <summary>A camera <paramref name="dist"/> metres behind a character at the origin, <paramref name="upDeg"/> degrees above
+    /// the horizon, its pitch as the engine's camera reports it; nothing read under the mouse or ahead.</summary>
+    internal static Scene Behind(float dist, float upDeg)
+    {
+        float up = float.DegreesToRadians(upDeg);
+        var eye = new System.Numerics.Vector3(-dist * MathF.Cos(up), 0f, dist * MathF.Sin(up));
+        return new Scene(dist, Db.DbKeyhole.PitchOf(eye, System.Numerics.Vector3.Zero), false, false, 0f, 0f, 0f, 0f);
+    }
+
     /// <summary>Destroys what the pass made on <paramref name="vk"/>, and forgets it.</summary>
     internal static void Drop(VkBackend vk)
     {
@@ -225,7 +239,8 @@ internal static unsafe partial class DepthOfField
     }
 
     /// <summary>The focus rules no approved example names. Oracle: <c>inc_postpr_dof</c> worked by hand at a camera 8 m away and
-    /// pitched 70 degrees, where the view's offset makes that 10.007 m and the pitch rule 29.09 m, with a dead zone of 3 m.</summary>
+    /// pitched 70 degrees, where the view's offset makes that 10.007 m and the pitch rule 29.09 m, with a dead zone of 3 m; and
+    /// the spec row's "Camera Pitch looks farther away the lower the camera sits".</summary>
     private static void FocusRulesSelfCheck(Checker check)
     {
         (bool never, int focus, float dead) = (Dof.NeverBlur.V, Dof.Focus.V, Dof.DeadZone.V);
@@ -244,6 +259,9 @@ internal static unsafe partial class DepthOfField
             Rule("Dynamic", Dof.FocusDynamic, in cam, 17.5f, 20.5f);
             Rule("A horizontal camera's focus stops at the far limit", Dof.FocusPitch, cam with { PitchDeg = 90f }, 43.5f, 45f);
             Rule("A cutscene takes the pitch rule and keeps the character", Dof.FocusMouse, cam with { Cutscene = true }, 6.5f, 30.59f);
+            Dof.Focus.V = Dof.FocusPitch;
+            float low = Focus(Behind(8f, 10f)).Far, high = Focus(Behind(8f, 70f)).Far;
+            check.Expect(low > high, $"Camera Pitch looks farther away the lower the camera sits ({low:F2} m at 10 degrees up, {high:F2} m at 70)");
         }
         finally { Dof.NeverBlur.V = never; Dof.Focus.V = focus; Dof.DeadZone.V = dead; }
     }

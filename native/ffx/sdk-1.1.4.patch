@@ -17,6 +17,10 @@ AMD FidelityFX SDK 1.1.4 as CX builds FSR 3.1 and FidelityFX DoF: `patch -p1` in
 11. ffx_dof_blur.h: the per-pixel jitter on the kernel is gone. It shows as grain with no temporal pass after it.
 12. ffx_dof_callbacks_glsl.h: the kernel reads the colour mips filtered where the circle is smooth. Point-sampled, a blur
     wider than the kernel's rings shows stairs along every edge. Filtered across a silhouette, a sharp colour leaks.
+13. ffx_dof_blur.h: merged rings read the full-detail colour, not a coarser mip. From the mip, a small even blur shows
+    bands eight pixels tall along every edge.
+14. ffx_dof_composite.h: the far field keeps its colour, with no median. The median took a small bright lamp for noise
+    and dimmed its blur.
 1 to 4 follow the fixes JonathanOrr/xplane-fsr3 found (MIT; its notice is in LICENSES.txt).
 
 --- a/sdk/include/FidelityFX/gpu/fsr3upscaler/ffx_fsr3upscaler_callbacks_glsl.h
@@ -438,6 +442,15 @@ AMD FidelityFX SDK 1.1.4 as CX builds FSR 3.1 and FidelityFX DoF: `patch -p1` in
  
 --- a/sdk/include/FidelityFX/gpu/dof/ffx_dof_blur.h
 +++ b/sdk/include/FidelityFX/gpu/dof/ffx_dof_blur.h
+@@ -194,7 +194,7 @@
+ FfxDofSample FfxDofFetchSample(FfxDofInputState ins, inout SampleStreamState streamState, FfxUInt32 mipBias)
+ {
+ 	FfxFloat32x2 samplePos = FfxDofAdvanceSampleStream(streamState);
+-	FfxUInt32 mipLevel = ins.mipLevel + mipBias;
++	FfxUInt32 mipLevel = ins.mipLevel;
+ 	FfxFloat32x4 texval = FfxDofSampleInput(samplePos, mipLevel);
+ 	FfxDofSample result;
+ 	result.coc = texval.a;
 @@ -557,32 +557,6 @@
  	ins.tileCoc = tileRad;
  
@@ -471,3 +484,25 @@ AMD FidelityFX SDK 1.1.4 as CX builds FSR 3.1 and FidelityFX DoF: `patch -p1` in
  	ins.pxCoord = texcoord;
  
  	FfxFloat32 centerCoc = FfxDofLoadInput(id).a;
+--- a/sdk/include/FidelityFX/gpu/dof/ffx_dof_composite.h
++++ b/sdk/include/FidelityFX/gpu/dof/ffx_dof_composite.h
+@@ -250,18 +250,8 @@
+ 
+ FfxHalfOpt4 FfxDofFilterFF(FfxUInt32 baseIdx)
+ {
+-	// get the median of the surrounding 3x3 area of luma values
+-	FfxHalfOpt med_luma = FfxMed9(
+-		FfxDofGetLDSFarLuma(baseIdx, 0, 0), FfxDofGetLDSFarLuma(baseIdx, 1, 0), FfxDofGetLDSFarLuma(baseIdx, 2, 0),
+-		FfxDofGetLDSFarLuma(baseIdx, 0, 1), FfxDofGetLDSFarLuma(baseIdx, 1, 1), FfxDofGetLDSFarLuma(baseIdx, 2, 1),
+-		FfxDofGetLDSFarLuma(baseIdx, 0, 2), FfxDofGetLDSFarLuma(baseIdx, 1, 2), FfxDofGetLDSFarLuma(baseIdx, 2, 2));
+-
+ 	FfxUInt32 idx = baseIdx + FFX_DOF_COMBINE_ROW_PITCH + 1;
+-	FfxHalfOpt3 col = FfxDofGetIntermediateFarColor(idx).rgb;
+-	FfxHalfOpt lumaFactor = clamp(med_luma / FfxDofGetLDSFarLuma(idx, 0, 0), FfxHalfOpt(0), FfxHalfOpt(2));
+-	// corner fix: if color pixel is on a corner (has 5 black pixels as neighbor), don't reduce color.
+-	if (med_luma == FfxHalfOpt(0)) lumaFactor = FfxHalfOpt(1);
+-	return FfxHalfOpt4(col * lumaFactor, FfxDofGetIntermediateFarAlpha(idx));
++	return FfxHalfOpt4(FfxDofGetIntermediateFarColor(idx).rgb, FfxDofGetIntermediateFarAlpha(idx));
+ }
+ 
+ FfxHalfOpt4 FfxDofFilterNF(FfxUInt32 baseIdx)
