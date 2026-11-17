@@ -335,6 +335,12 @@ public static unsafe partial class EngineLayout
     public static readonly int QuickButtonParam = Field<int>("CGuiQuickButton", "param");
     public static readonly int QuickButtonSpell = Field<long>("CGuiQuickButton", "spell");
     public static readonly int QuickButtonTarget = Field<uint>("CGuiQuickButton", "target");
+    /// <summary>CGuiQuickButton: the <c>CResRef</c> its icon is built from, which every non-item setter writes before it builds
+    /// the icon (<c>SetButtonSpellMenuID</c> Linux nm 0x6aac50, Windows rva 0x868e70) and <c>ClearSlot</c> (nm 0x6aa740, rva 0x85c240) empties.</summary>
+    public static readonly int QuickButtonIcon = Field<byte>("CGuiQuickButton", "icon", count: 16);
+    /// <summary>CGuiQuickButton: the count label, a <c>CAurString*</c> that <c>SetCountText</c> (nm 0x6a8b00, rva 0x86b710)
+    /// makes for a non-empty count and frees to null for an empty one.</summary>
+    public static readonly int QuickButtonCountLabel = Field<CX.Engine.CAurString>("CGuiQuickButton", "countLabel");
     /// <summary>CPanelQuickBar's send gate: <c>SendButtonUpdateToServer</c> returns at 0 (the server's own set zeroes it around its writes).</summary>
     public static readonly int QuickbarSendGate = Field<int>("CPanelQuickBar", "sendGate");
     /// <summary>CGuiObject flags; bit 0 = disabled, which <c>CGuiButton::HandleLMouseDown</c> refuses on (<c>+8</c>, both builds).</summary>

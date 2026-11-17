@@ -583,6 +583,8 @@ offset	CGuiQuickButton	itemOid2	0x110	0xf0	# QuickButtonItem2
 offset	CGuiQuickButton	param	0x138	0x118	# QuickButtonParam
 offset	CGuiQuickButton	spell	0x130	0x110	# QuickButtonSpell
 offset	CGuiQuickButton	target	0x108	0xe8	# QuickButtonTarget
+offset	CGuiQuickButton	icon	0x13c	0x11c	# QuickButtonIcon
+offset	CGuiQuickButton	countLabel	0x158	0x138	# QuickButtonCountLabel
 offset	CPanelQuickBar	sendGate	0x72a0	0x6518	# QuickbarSendGate
 offset	CGuiObject	flags	0x8	0x8	# GuiObjectFlags
 offset	CGuiButton	normalAnim	0xe0	0xc0	# ButtonNormalAnim

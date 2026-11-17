@@ -1617,10 +1617,14 @@ public readonly unsafe partial struct CGuiQuickButton(IntPtr ptr)
     public readonly IntPtr Ptr = ptr;
     /// <summary>No object.</summary>
     public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="EngineLayout.QuickButtonCountLabel"/>
+    public ref CAurString CountLabel => ref *(CAurString*)(Ptr + EngineLayout.QuickButtonCountLabel);
     /// <inheritdoc cref="EngineLayout.QuickButtonTipSlot"/>
     public void HandleTriggerTooltip() => ((delegate* unmanaged<IntPtr, void>)HandleTriggerTooltipFn)(Ptr);
     /// <inheritdoc cref="EngineLayout.QuickButtonTipSlot"/>
     public IntPtr HandleTriggerTooltipFn => *(IntPtr*)(*(IntPtr*)Ptr + EngineLayout.QuickButtonTipSlot);
+    /// <inheritdoc cref="EngineLayout.QuickButtonIcon"/>
+    public Span<byte> Icon { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.QuickButtonIcon), 16); }
     /// <inheritdoc cref="EngineLayout.QuickButtonItem"/>
     public ref uint ItemOid => ref *(uint*)(Ptr + EngineLayout.QuickButtonItem);
     /// <inheritdoc cref="EngineLayout.QuickButtonItem2"/>

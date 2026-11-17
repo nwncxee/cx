@@ -15,7 +15,7 @@ internal readonly record struct QuickSlot(byte Type, uint Item, bool Disabled, i
 /// button keeps only as Aurora models (the icon's resref, the count text); the GUI hit-test answers a CX slot with its
 /// engine button, so a click, a right-click menu or a drop there is the engine's own; its tooltip text is CX's to show.
 /// </summary>
-internal static unsafe class QuickbarNative
+internal static unsafe partial class QuickbarNative
 {
     /// <summary>The trampolines and the per-button copies, one lifetime: the session.</summary>
     private sealed class QuickbarNativeState
