@@ -7,13 +7,9 @@
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 . "$ROOT/tools/live/inventory_key_run.sh"
-OUT="${2:-$ROOT/.scratch/inventory-key-linux}"
-[ "${1:-}" = "--out" ] || [ $# -eq 0 ] || { echo "inventory-key: unknown argument $1" >&2; exit 2; }
-mkdir -p "$(dirname "$OUT")"
-inventory_key_run "$ROOT/tools/live/run-live.sh" "$OUT" || exit $?
-log="$(find "$OUT" -name cx.log -print -quit)"
+inventory_key_run "$ROOT/tools/live/run-live.sh" "$ROOT/.scratch/inventory-key-linux" "$@" || exit $?
 fail=0
-keys="$(grep -ac "\[inv\] key " "$log")"
-if [ "$keys" -ge 2 ]; then echo "PASS both presses reached the ToggleDisplay hook"; else echo "FAIL $keys of 2 presses reached the ToggleDisplay hook ($log)"; fail=1; fi
-if [ "$INV_OPENED" = 1 ] && [ "$INV_CLOSED" = 1 ]; then echo "PASS the key opened and closed the CX window"; else echo "FAIL the window went ${INV_SEQ:-nowhere}, not one open then one close ($OUT)"; fail=1; fi
+keys="$(grep -ac "\[inv\] key " "$INV_LOG")"
+if [ "$keys" -ge 2 ]; then echo "PASS both presses reached the ToggleDisplay hook"; else echo "FAIL $keys of 2 presses reached the ToggleDisplay hook ($INV_LOG)"; fail=1; fi
+if [ "$INV_CLOSED" = 1 ] && [ "$INV_STOCK" = 0 ]; then echo "PASS the key opened and closed the CX window"; else echo "FAIL the window went ${INV_SEQ:-nowhere}, stock panel shown: $INV_STOCK ($INV_LOG)"; fail=1; fi
 exit $fail

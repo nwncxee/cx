@@ -56,3 +56,5 @@ M:CX.Engine.Material.Slot(System.Int32);The raw slot table has no bound; read a 
 M:CX.Engine.SharedMaterial.Slot(System.Int32);The raw slot table has no bound; read a texture slot through Material.TextureAt
 P:CX.Engine.CExoMoviePlayerInternal.Texture;The movie frame comes from the decode through MovieFrame.Upload; the engine's movie texture is not sampled
 P:CX.Engine.EngineFn.EncodingSingleCharToUtf8;Map a codepage byte through Native.Codepoint
+P:CX.Engine.CGuiPanel.State;Ask CGuiPanel.Shown whether a panel is on screen
+P:CX.Engine.CNWCCreature.IsAssociate;Ask CNWCCreature.IsAnyAssociate or IsFamiliar

@@ -1,4 +1,4 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 # The Windows hook-sanity loop (#48): run bin/win32/nwmain.exe under Proton with the cross-built DLLs
 # dropped beside it, in a throwaway prefix under build/. Proves loading, symbol resolution and hooks
 # on the real nwmain.exe; NOT a release gate -- that is a native Windows tester. Never touches Steam's
@@ -6,18 +6,10 @@
 set -e
 cd "$(dirname "$0")"
 GAME="${NWN_WIN:-$(dirname "$(python3 tools/paths.py NWN_WIN_EXE)")}"
-STEAM_PROTON="$HOME/.steam/root/steamapps/common/Proton - Experimental/proton"
-if [ -z "$PROTON" ]; then
-  if [ -f "$STEAM_PROTON" ]; then PROTON="$STEAM_PROTON"; else PROTON="$PROTON_GE"; fi
-fi
 [ -f "$GAME/nwmain.exe" ] || { echo "!! no nwmain.exe under $GAME (set NWN_WIN)" >&2; exit 1; }
-[ -n "$PROTON" ] && [ -f "$PROTON" ] || { echo "!! no Proton: install Proton Experimental in Steam, run in nix develop .#win, or set PROTON" >&2; exit 1; }
-# Proton's Wine binaries expect an FHS system, which NixOS gives them only through steam-run (programs.steam).
-FHS=""
-if [ -f /etc/NIXOS ]; then
-  command -v steam-run >/dev/null || { echo "!! NixOS needs steam-run on PATH (programs.steam.enable)" >&2; exit 1; }
-  FHS=steam-run
-fi
+# shellcheck source=tools/live/proton.sh
+. tools/live/proton.sh
+proton_pick || exit 1
 # Build first, always. This script COPIES the DLLs, so without it a run silently tests whatever
 # build-win.sh last produced -- and since ./build.sh does not touch the Windows leg, "edit, build, run
 # proton" tested a stale DLL and cost a whole diagnosis. ~20s when nothing changed; CX_NO_BUILD=1 to
@@ -42,8 +34,8 @@ rm -f "$DOCS/cx.log" "$DOCS"/cx.[0-9].log
 # 0x7ffffffff000, and wine-preloader reserves everything from 0x7ffffe000000 to 0x7fffffff0000: 60 KB
 # for argv + env. The .#win shell's ~50 KB environment plus steam-run's goes past that and the preloader
 # segfaults before Wine logs anything (Proton exits 245). `setarch <arch>` resets the personality.
-ASLR=""
-command -v setarch >/dev/null && ASLR="setarch $(uname -m)"
+unset ASLR
+command -v setarch >/dev/null && ASLR=(setarch "$(uname -m)")
 # Wine prefers its builtin version.dll; n,b makes the proxy beside nwmain.exe win.
 cd "$GAME" && STEAM_COMPAT_DATA_PATH="$PFX" STEAM_COMPAT_CLIENT_INSTALL_PATH="$HOME/.steam/root" \
-  WINEDLLOVERRIDES="version=n,b" exec $ASLR $FHS "$PROTON" run "$GAME/nwmain.exe" "$@"
+  WINEDLLOVERRIDES="version=n,b" exec ${ASLR+"${ASLR[@]}"} ${FHS+"${FHS[@]}"} "$PROTON" run "$GAME/nwmain.exe" "$@"

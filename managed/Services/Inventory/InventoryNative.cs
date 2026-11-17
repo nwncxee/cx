@@ -15,7 +15,7 @@ internal enum WorldKind { None, Ground, Object }
 internal readonly record struct WorldHit(WorldKind Kind, uint Oid, int Type, System.Numerics.Vector3 Point);
 
 /// <summary>
-/// The inventory window's engine side: the <c>SetInventoryVisible</c> hook, the backpack set learned from
+/// The inventory window's engine side: the <c>SetInventoryVisible</c> funnel and <c>ToggleDisplay</c> key hooks, the backpack set learned from
 /// <c>CGuiMultiPageMultiInvbox::AddItem</c>, the per-frame copy of items / equip slots / gold / weight into the
 /// <see cref="InventoryModel"/>, the vanilla panel's own labels (filled by <c>SetCharacterData</c>, side-effect free on
 /// the player's own panel), and the stock senders. Nothing is held across a frame: every object is re-resolved by id.
@@ -33,11 +33,6 @@ internal static unsafe class InventoryNative
     }
 
     private static readonly HookState _hooks = new();
-    /// <summary><c>CGuiPanel</c> state of a panel on screen, the value the stock key tests.</summary>
-    private const uint PanelShown = 1;
-    /// <summary><c>ASSOCIATE_TYPE_FAMILIAR</c>: the stock key refuses the inventory to a possessed familiar unless the
-    /// module's ruleset allows it.</summary>
-    private const int AssociateFamiliar = 3;
     private static bool _ready, _seenFull, _modelFull;
     /// <summary>Backpack ids remembered at most: a hostile or broken stream cannot grow the set without bound.</summary>
     private const int MaxSeen = InventoryModel.MaxItems * 4;
@@ -73,7 +68,7 @@ internal static unsafe class InventoryNative
         SymbolMap.InvSetContainerGuiVisible, SymbolMap.InvContainerPageUp, SymbolMap.InvContainerPageDown, SymbolMap.InvContainerPagenum,
     };
 
-    /// <summary>Resolve, then install the funnel hook, the repository chain and the container page-count hook. False =
+    /// <summary>Resolve, then install the funnel hook, the key hook, the repository chain and the container page-count hook. False =
     /// every piece stands down together: a half-live inventory is not a state this ships in.</summary>
     public static bool Attach(ExtenderLog log, HookService hooks)
     {
@@ -81,7 +76,7 @@ internal static unsafe class InventoryNative
         if (!SymbolMap.Require(log, "InventoryService", Needed)) return false;
         if (!EngineLayout.Require(log, "InventoryService", "CPanelInventory", "CPanelInvEquip", "CGuiLabel", "CNWCItem",
                                   "CNWCCreature", "CNWBaseItem", "CNWRules", "CGameObject", "CNWCObject", "CGuiMan", "CHitInfo", "CPanelQuickBar", "CGuiInGame",
-                                  "CGuiContainer")) return false;
+                                  "CGuiContainer", "CGuiPanel")) return false;
         _hooks.VisibleOrig = hooks.InstallInvSetInventoryVisible(&OnSetInventoryVisible);
         _hooks.ToggleOrig = hooks.InstallInvToggleDisplay(&OnToggleDisplay);
         _hooks.AddSlot = hooks.ChainInvboxAddItem(&OnAddItem, 50);
@@ -101,7 +96,11 @@ internal static unsafe class InventoryNative
             InventoryService.OnSetVisible(show != 0, notify != 0);
             return;
         }
-        if (show != 0) InventoryService.Yield();
+        if (show != 0)
+        {
+            if (ExtenderLog.Enabled) _log?.Info($"[inv] stock panel shown (0x{oid:x})");
+            InventoryService.Yield();
+        }
         _hooks.VisibleOrig(panel, show, notify, oid);
     }
 
@@ -111,7 +110,7 @@ internal static unsafe class InventoryNative
     [UnmanagedCallersOnly]
     private static void OnToggleDisplay(IntPtr panel)
     {
-        if (InventoryService.Ours(panel, 1, InventoryModel.Invalid) && new CGuiPanel(panel).State != PanelShown && !PossessingFamiliar())
+        if (InventoryService.Ours(panel, 1, InventoryModel.Invalid) && !new CGuiPanel(panel).Shown && !PossessingFamiliar())
         {
             if (ExtenderLog.Enabled) _log?.Info("[inv] key toggles the CX window");
             InventoryService.OnSetVisible(show: true, notify: true);
@@ -120,10 +119,11 @@ internal static unsafe class InventoryNative
         _hooks.ToggleOrig(panel);
     }
 
+    /// <summary>The player controls a possessed familiar, the case the stock key refuses unless the ruleset allows it.</summary>
     private static bool PossessingFamiliar()
     {
         IntPtr cre = Creature(PlayerId());
-        return cre != IntPtr.Zero && new CNWCCreature(cre).IsAssociate == AssociateFamiliar;
+        return cre != IntPtr.Zero && new CNWCCreature(cre).IsFamiliar;
     }
 
     /// <summary>Make the hidden stock panel the player's, as its own open does (<c>SetInventoryVisible</c> stores the shown
@@ -637,7 +637,7 @@ internal static unsafe class InventoryNative
         if (w.Kind != WorldKind.Object || w.Type != HitCreature) return null;
         uint pid = PlayerId();
         IntPtr cre = Creature(w.Oid);
-        bool mine = w.Oid == pid || (cre != IntPtr.Zero && new CNWCCreature(cre).IsAssociate != 0 && new CNWCCreature(cre).MasterId == pid);
+        bool mine = w.Oid == pid || (cre != IntPtr.Zero && new CNWCCreature(cre).IsAnyAssociate && new CNWCCreature(cre).MasterId == pid);
         IntPtr app = App();
         IntPtr it = app == IntPtr.Zero ? IntPtr.Zero : Item(app, oid);
         int b = it == IntPtr.Zero ? -1 : new CNWCItem(it).BaseItem;

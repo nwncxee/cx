@@ -422,12 +422,8 @@ public sealed unsafe class UiHostService : IExtenderService
     private static IntPtr ShownOptionsPanel(CGuiInGame gui)
     {
         IntPtr pnl = gui.IsNull ? IntPtr.Zero : gui.OptionsPanel;
-        return pnl != IntPtr.Zero && new CGuiPanel(pnl).State == GuiPanelShown ? pnl : IntPtr.Zero;
+        return pnl != IntPtr.Zero && new CGuiPanel(pnl).Shown ? pnl : IntPtr.Zero;
     }
-
-    /// <summary>The <c>CGuiPanel</c> state word of a panel that is active and not hidden: the engine's own test in
-    /// <c>Hide</c>, <c>UnHide</c> and <c>Activate</c> (bit 1 active, bits 2/4 hidden).</summary>
-    private const uint GuiPanelShown = 1;
 
     /// <summary>Effective glyph px the atlas is baked at: <c>ui.font × GUI scale</c>, or 0 before the first apply.</summary>
     private static float _appliedPx;

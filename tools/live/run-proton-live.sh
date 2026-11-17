@@ -22,13 +22,8 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 # shellcheck source=tools/live/isolate.sh
 . "$ROOT/tools/live/isolate.sh"
 NWN_DIR="${NWN_DIR:-$(python3 "$ROOT/tools/paths.py" NWN_DIR)}"
-STEAM_PROTON="$HOME/.steam/root/steamapps/common/Proton - Experimental/proton"
-if [ -z "${PROTON:-}" ]; then
-    if [ -f "$STEAM_PROTON" ]; then PROTON="$STEAM_PROTON"; else PROTON="${PROTON_GE:-$STEAM_PROTON}"; fi
-fi
-# Proton's Wine binaries expect an FHS system, which NixOS gives them only through steam-run (programs.steam).
-FHS=()
-[ -f /etc/NIXOS ] && FHS=(steam-run)
+# shellcheck source=tools/live/proton.sh
+. "$ROOT/tools/live/proton.sh"
 MODULE="The Dark Ranger's Treasure"
 WIDTH=1280; HEIGHT=720; SECONDS_TO_RUN=60; MENU=0; REUSE=0; NUI=0; KEYS=""; KEYS_AT=60; SHOWCASE=""
 OUT="$ROOT/.scratch/live/proton"
@@ -56,8 +51,7 @@ SHOW_DIR="$ROOT/tools/live/showcase"; SHOW_SRC="$SHOW_DIR/$SHOWCASE.nss"
 [ -z "$SHOWCASE" ] || [ -f "$SHOW_SRC" ] || { echo "run-proton-live: no showcase '$SHOWCASE' (needs $SHOW_SRC)" >&2; exit 2; }
 command -v gamescope >/dev/null || { echo "run-proton-live: gamescope not installed" >&2; exit 2; }
 [ -f "$NWN_DIR/bin/win32/nwmain.exe" ] || { echo "run-proton-live: no nwmain.exe under $NWN_DIR/bin/win32" >&2; exit 2; }
-[ -f "$PROTON" ] || { echo "run-proton-live: no proton at $PROTON (install Proton Experimental, run in nix develop .#win, or set PROTON)" >&2; exit 2; }
-[ ${#FHS[@]} -eq 0 ] || command -v steam-run >/dev/null || { echo "run-proton-live: NixOS needs steam-run on PATH (programs.steam.enable)" >&2; exit 2; }
+proton_pick || exit 2
 [ -f "$ROOT/cx-windows-x64/version.dll" ] || { echo "run-proton-live: build-win.sh first" >&2; exit 2; }
 
 # The machine-wide live lock: one client on this box at a time, Linux or Windows.

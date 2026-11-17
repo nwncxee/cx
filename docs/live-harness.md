@@ -36,6 +36,11 @@ export NIX_LD_LIBRARY_PATH="$(nix build --no-link --print-out-paths nixpkgs#libg
 tools/live/run-live.sh --nui
 ```
 
+`tools/live/run-proton-live.sh` and `run-proton.sh` pick Proton the same way (`tools/live/proton.sh`): `PROTON` when set,
+else Steam's Proton Experimental, else GE-Proton from the `.#win` shell. On NixOS they run it under `steam-run`
+(`programs.steam`). Under GE-Proton in the headless harness, the client exits before CX loads: a run there writes no
+`cx.log`, so a Windows live check needs Proton Experimental installed in Steam.
+
 `tools/live/run-proton-live.sh` also needs freetype, libX11 and libXext on the same path, because Proton's wine loads them
 through nix-ld. Without freetype, wine stops with "cannot find FreeType". Without libXext, the client never presents a frame.
 
@@ -270,6 +275,14 @@ under the hold, and with `particles.enabled=false` no particle pipeline is built
 `tools/live/hold_length_regression.sh --before LOG [--before LOG ...] [--rounds N]` checks that the median hold
 over N docks runs (3 by default) lifts no later than the median of the `LOG`s, docks runs' `cx.log` on the build
 before. The hold varies by seconds from run to run, so give it more than one of each.
+
+## Inventory key (`tools/live/inventory_key_*.sh`)
+
+Both run the client with `inventory.enabled=1` in the harness's own area, press the inventory key twice and read
+`cx.log`. Each press must open the CX window and then close it, once each, with no `[inv] stock panel shown` line.
+`inventory_key_approved_examples.sh` is the Windows client under `run-proton-live.sh`, the approved examples IK1 and
+IK2. `inventory_key_regression.sh` is the Linux client, and it also needs both presses to log `[inv] key`, the
+`ToggleDisplay` hook both OSes take. Each takes `--out DIR`.
 
 ## Deferred walk A/B (`tools/live/deferred_walk_*.sh`)
 
