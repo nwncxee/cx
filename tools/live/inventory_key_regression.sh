@@ -15,5 +15,5 @@ log="$(find "$OUT" -name cx.log -print -quit)"
 fail=0
 keys="$(grep -ac "\[inv\] key " "$log")"
 if [ "$keys" -ge 2 ]; then echo "PASS both presses reached the ToggleDisplay hook"; else echo "FAIL $keys of 2 presses reached the ToggleDisplay hook ($log)"; fail=1; fi
-if [ "$INV_OPENED" = 1 ] && [ "$INV_CLOSED" = 1 ]; then echo "PASS the key opened and closed the CX window"; else echo "FAIL opened=$INV_OPENED closed=$INV_CLOSED ($OUT)"; fail=1; fi
+if [ "$INV_OPENED" = 1 ] && [ "$INV_CLOSED" = 1 ]; then echo "PASS the key opened and closed the CX window"; else echo "FAIL the window went ${INV_SEQ:-nowhere}, not one open then one close ($OUT)"; fail=1; fi
 exit $fail
