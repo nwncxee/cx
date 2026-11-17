@@ -73,8 +73,11 @@ internal static partial class DbInputs
         PartDestroyed(pe);
         check.Expect(EmitterCount == 0, "...and so does a destroyed emitter");
         // A chunk emitter with no spawner registered refuses LOUDLY rather than spawning nothing quietly.
+        Func<DbId, string, Matrix4x4, DbId>? spawner = ChunkSpawn;
+        ChunkSpawn = null;
         int before = ChunkSpawnsRefused;
-        SpawnChunk(default, "cx_chunk", Matrix4x4.Identity);
+        try { SpawnChunk(default, "cx_chunk", Matrix4x4.Identity); }
+        finally { ChunkSpawn = spawner; }
         check.Expect(ChunkSpawnsRefused == before + 1, "a chunk spawn with no spawner is a counted refusal");
 
         SceneDb.Parts.Free(hl); SceneDb.Parts.Free(he); SceneDb.Parts.Free(hm);

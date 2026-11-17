@@ -83,7 +83,8 @@ public static unsafe class PartShell
         if (Table == 0 || !SceneDb.Objects.Valid(obj)) return 0;
         for (nint p = SceneDb.ObjSeamPartShells[obj.Index]; p != 0; p = Headroom<Head>.Header(p)->Next)
             if (Headroom<Head>.Header(p)->Part == part) return p;
-        void* block = NativeMemory.AlignedAlloc((nuint)(Headroom<Head>.Size + sizeof(nint)), 16);
+        void* block = TakeSpare();
+        if (block == null) block = NativeMemory.AlignedAlloc(BlockBytes, BlockAlign);
         if (block == null) { Facade.Log?.Always("seam: no memory for a Part shell -- GetPart refused"); return 0; }
         nint shell = Headroom<Head>.PayloadOf(block);
         Head* h = (Head*)block;
@@ -129,20 +130,20 @@ public static unsafe class PartShell
             _alive--;
             // Held blocks stay readable for GetWorld forever, so the link must not name a block that gets freed.
             if (hold) { h->Next = 0; SeamShell.NoteHeld("part shells", ++_held.Count); p = next; continue; }
-            h->Next = _quarantine;
-            _quarantine = p;
-            _quarantined++;
+            h->Next = _pool.Quarantine;
+            _pool.Quarantine = p;
+            _pool.Quarantined++;
             p = next;
         }
         Drain();
     }
 
-    /// <summary>Free the quarantined part shells whose window has passed. Called at every retire and from
-    /// the frame tick, so the list cannot grow without bound while shells keep dying.</summary>
+    /// <summary>Move the quarantined part shells whose window has passed to the spare list. Called at every
+    /// retire and from the frame tick, so the quarantine cannot grow without bound while shells keep dying.</summary>
     internal static void Drain()
     {
         nint keep = 0;
-        nint p = _quarantine;
+        nint p = _pool.Quarantine;
         while (p != 0)
         {
             Head* h = Headroom<Head>.Header(p);
@@ -150,20 +151,43 @@ public static unsafe class PartShell
             if (SeamShell.FrameNo - h->RetiredAt >= SeamShell.QuarantineFrames)
             {
                 h->Magic = 0;
-                NativeMemory.AlignedFree(h);
-                _quarantined--;
+                h->Next = _pool.Spare;
+                _pool.Spare = p;
+                _pool.Spares++;
+                _pool.Quarantined--;
             }
             else { h->Next = keep; keep = p; }
             p = next;
         }
-        _quarantine = keep;
+        _pool.Quarantine = keep;
     }
 
-    private static nint _quarantine;
-    private static long _quarantined;
+    /// <summary>One shell's block: its header and the vptr word, on the boundary the header is laid out for.</summary>
+    internal static nuint BlockBytes => (nuint)(Headroom<Head>.Size + sizeof(nint));
+    internal const nuint BlockAlign = 16;
+
+    /// <summary>The block of the shell that left the quarantine last, or null when none is spare.</summary>
+    private static void* TakeSpare()
+    {
+        nint p = _pool.Spare;
+        if (p == 0) return null;
+        Head* h = Headroom<Head>.Header(p);
+        _pool.Spare = h->Next;
+        _pool.Spares--;
+        return h;
+    }
+
+    /// <summary>The quarantine, and the spares past it that <see cref="For"/> mints from before the heap, so reuse
+    /// never waits on the platform allocator's order and a held shell, never on the list, is never handed out.
+    /// ponytail: the spares stay at the session's high-water mark; a cap that frees past it would bound them.</summary>
+    internal sealed class PoolState { internal nint Quarantine, Spare; internal long Quarantined, Spares; }
+    private static readonly PoolState _pool = new();
+
+    /// <summary>Retired part shells past their quarantine, waiting to be minted again.</summary>
+    public static long Spares => _pool.Spares;
 
     /// <summary>Part shells held past their object's death, waiting out the quarantine.</summary>
-    public static long Quarantined => _quarantined;
+    public static long Quarantined => _pool.Quarantined;
 
     /// <summary>The GUI part shells <see cref="Held"/> counts.</summary>
     internal sealed class HeldState { internal long Count; }

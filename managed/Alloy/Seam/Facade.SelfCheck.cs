@@ -669,7 +669,7 @@ internal static unsafe class FacadeSelfCheck
 
     /// <summary>A part shell whose object was ever in a GUI scene, or never in any, is held at the object's death,
     /// so the part allocator cannot hand its address out again. Oracle: hand-written expectations -- the held and
-    /// quarantined counts, and no held address coming back from a churn that does reuse the world parts'.
+    /// quarantined counts, the freed world parts' addresses as the next two minted, and no held address after.
     /// A world camera's row names its shell's interior, so its part is quarantined too.</summary>
     private static void PartHold(Checker check)
     {
@@ -729,15 +729,18 @@ internal static unsafe class FacadeSelfCheck
                 "a held part shell must not resolve to a record");
 
             for (int f = 0; f < SeamShell.QuarantineFrames; f++) SeamShell.Frame();
-            check.Expect(PartShell.Quarantined == quarantined, "the world part must be freed past its quarantine");
-            bool gotHeld = false, gotWorld = false;
+            check.Expect(PartShell.Quarantined == quarantined, "the world part must leave its quarantine for the spare list");
+            void* other = NativeMemory.AlignedAlloc(PartShell.BlockBytes, PartShell.BlockAlign);
+            nint first = PartShell.For(churn, 0), second = PartShell.For(churn, 1);
+            NativeMemory.AlignedFree(other);
+            check.Expect((first == wpart && second == cpart) || (first == cpart && second == wpart),
+                "the two freed world parts' addresses are the next two shells minted, whatever the heap's reuse order");
+            bool gotHeld = false;
             for (int k = 0; k < 256; k++)
             {
                 nint p = PartShell.For(churn, k);
                 gotHeld |= p == before || p == after || p == unjoined;
-                gotWorld |= p == wpart || p == cpart;
             }
-            check.Expect(gotWorld, "the freed world part's address must come back, or this check proves nothing");
             check.Expect(!gotHeld, "a held GUI or never-joined part shell was handed out again");
             PartShell.FreeAll(churn);
             for (int f = 0; f < SeamShell.QuarantineFrames; f++) SeamShell.Frame();

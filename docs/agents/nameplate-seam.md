@@ -107,8 +107,8 @@ public sealed unsafe class NameplateService : IExtenderService
 }
 ```
 
-Discovery is automatic — `ServiceHost` reflects over every `IExtenderService`, **sorted by name**, and
-calls `Initialize` on each; `HookService.Commit()` then installs all hooks at once.
+Discovery is automatic — `ServiceHost` reflects over every `IExtenderService`, constructs each **by name**, and
+calls `Initialize` by `InitOrder` (the seam first), then name; `HookService.Commit()` then installs all hooks at once.
 
 ### The per-frame draw — the skeleton
 

@@ -45,23 +45,28 @@ decision. `Incapable` does not — before the first Alloy frame it means "not ye
 render device comes up at the first present, pipelines build on first use), and the cost of asking again is
 one branch on a frame that is rendering vanilla anyway. It freezes the moment it stops being true.
 
-**The Vulkan verdict is asked before any of this.** `Renderer.On` is `alloy.enabled`'s Boot value AND
+**The Vulkan verdict is asked before any of this.** `Renderer.Requested` is `alloy.enabled`'s Boot value AND
 `VulkanUp()`, which asks `VkBackend.Refusal` once per session: no Vulkan loader, a loader or device below
 1.3, a loader without `VK_KHR_surface` and the platform's window-surface extension, no device listed, no
 graphics+compute queue, or the staged shaderc/VMA libraries not loading from the install folder. A refusal
 is said once and stands Alloy down for the whole session, and it reaches this table as entry 1 — an opt-out
 rather than a device verdict, because nothing the player does mid-session can change it (ADR 0033).
 
+**So is the seam's.** `Renderer.On` is `Requested` AND, on a real client, the scene seam not having stood down
+(`SeamService.StoodDown`). The seam initializes before every other service, so a seam that refuses leaves Alloy
+off whole: nothing arms, `NullGl` keeps the engine's GL context, and the engine draws the session. It reaches
+this table as entry 1a.
+
 | # | Refusal | Verdict |
 | --- | --- | --- |
-| 1 | `alloy.enabled=0` in `cx.cfg`, **or Vulkan cannot start** — one term, because `Renderer.On` folds the session's Vulkan verdict into the request | Choice |
+| 1 | `alloy.enabled=0` in `cx.cfg`, **or Vulkan cannot start** — one term, because `Renderer.Requested` folds the session's Vulkan verdict into the request | Choice |
+| 1a | the scene seam did not install (the facade self-check or an object/scene factory failed). Alloy draws only the CX scene database, so the whole session is vanilla, and every term below would name a symptom of it | Incapable |
 | 2 | `alloy.drawhooks` not `batch` in `cx.cfg` | Choice |
 | 3 | `alloy.hdr=0` in `cx.cfg` — the Alloy stages have no display-space variant | Choice |
 | 4 | an `EngineLayout` offset row Alloy reads has no resolution for this platform (#456, `docs/engine-layout.md`) — the only capability term answerable cold, because it is a fact about the binary; asked ahead of everything that needs a warm client | Incapable |
 | 5 | `AlloyRenderer` never armed (hooks did not install) — **after** every opt-out above, because each of them returns from `Initialize` before `_armed` is set, so asking this first reports the mechanism instead of the request | Idle |
 | 5a | the `RenderSinglePass` shim never armed (an engine symbol or draw funnel did not resolve) — same placement, one layer down; since #458 there is no Alloy-inside-the-engine's-frame mode to fall back to | Idle |
 | 5b | a self-check that gates arming failed — since CX-89 that includes `DoorFade.SelfCheck`: the shim stops calling `Scene::FadeDoors`, so a wrong fade would freeze `Gob+0x10c` and `Gob::HitCheck` would refuse the click. Standing the path down hands the fade back to the engine | Idle |
-| 5c | the scene seam did not install (`SeamService.Db` false: the facade self-check or an object/scene factory failed). Alloy draws only the CX scene database, so there is nothing to draw without it | Incapable |
 | 6 | no module loaded — **narrowed by CX-95**: it now means only "there is no world frame". The GUI scenes, the menus included, are Alloy's on their own verdict (`GuiPass.Capturing`: Alloy on for the session, the GUI pass armed and not failed, `alloy.gui` on), and so are the screen clears and the present (`ScreenOwner.Owned`) | Idle |
 | 7 | the render device did not come up (`FramePump.Available`), which `cx.log`'s Vulkan verdict says the reason for. `Available` is set at the first present and never cleared, so this can only answer in the frames before it. The capability question proper is entry 1's | Incapable |
 | 8 | the HDR target latched a stand-down (`PostChain.Failed`) | Incapable |

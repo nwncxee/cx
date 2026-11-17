@@ -47,14 +47,13 @@ public static class ServiceHost
         KnobGroup.Log = log;   // ADR 0025: a knob binds from the dictionary Load just filled, on first touch
         var hooks = new HookService(log);   // after Load: it reads hookdebug
 
-        // OrderBy(Name): Assembly.GetTypes() order is not stable across builds/runtimes,
-        // so sort for deterministic init order. Replace with an explicit list if a real
-        // init-time dependency ever appears.
+        // Constructed by name (GetTypes() order is unstable, and construction declares knobs), initialized by InitOrder.
         var all = Assembly.GetExecutingAssembly().GetTypes()
             .Where(t => typeof(IExtenderService).IsAssignableFrom(t)
                         && t is { IsAbstract: false, IsInterface: false })
             .OrderBy(t => t.Name)
             .Select(t => (IExtenderService)Activator.CreateInstance(t)!)
+            .OrderBy(s => s.InitOrder)
             .ToList();
 
         // nothing is filtered here any more. Alloy was the last Linux-only namespace and it came off

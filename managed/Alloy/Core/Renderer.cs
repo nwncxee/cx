@@ -13,13 +13,31 @@ internal static class Renderer
 {
     internal static readonly KnobGroup G;
     internal static readonly Knob<bool> Enabled;
-    /// <summary>Is Alloy drawing this session? Then it draws the CX scene database (ADR 0028): the seam is installed
-    /// and no engine <c>Scene</c>/<c>Gob</c>/<c>Part</c> exists. Off is vanilla. <c>alloy.enabled</c>'s Boot value,
-    /// frozen for the session. Alloy is Vulkan's: a refused Vulkan probe stands it down and the game runs vanilla.</summary>
-    internal static bool On => Enabled.Boot && VulkanUp();
+    /// <summary>Is Alloy drawing this session? Then it draws the CX scene database (ADR 0028) and no engine
+    /// <c>Scene</c>/<c>Gob</c>/<c>Part</c> exists. Off is vanilla, whole: a refused Vulkan probe or a seam that stood
+    /// down. The seam initializes before every other service, so they all read its verdict.</summary>
+    internal static bool On => Compose(Requested, OnDevice, seamRefused: CX.Alloy.Seam.SeamService.StoodDown);
 
-    /// <summary>The session's Vulkan verdict, taken once at the first <see cref="On"/>: -1 untaken, 0 refused, 1 up.</summary>
-    private sealed class BootState { public int VkUp = -1; }
+    /// <summary>Did the player ask for Alloy, and can Vulkan start? What the seam asks before it installs.</summary>
+    internal static bool Requested => Enabled.Boot && VulkanUp();
+
+    /// <summary>A real client, not the self-check host: off-device the seam never installs, and the suites run.</summary>
+    private static bool OnDevice
+    {
+        get
+        {
+            if (_boot.Device < 0) _boot.Device = CX.Framework.Native.Sym(SymbolMap.AppManager) != IntPtr.Zero ? 1 : 0;
+            return _boot.Device == 1;
+        }
+    }
+
+    /// <summary>Alloy is on when it was requested and, in a client, the seam did not stand down.</summary>
+    internal static bool Compose(bool requested, bool onDevice, bool seamRefused)
+        => requested && !(seamRefused && onDevice);
+
+    /// <summary>The session's Vulkan verdict, taken once at the first <see cref="Requested"/>: -1 untaken, 0 refused, 1 up;
+    /// and whether this is a real client, the same way.</summary>
+    private sealed class BootState { public int VkUp = -1, Device = -1; }
 
     private static readonly BootState _boot = new();
 
@@ -29,7 +47,7 @@ internal static class Renderer
         if (_boot.VkUp >= 0) return _boot.VkUp == 1;
         if (KnobGroup.Log is not ExtenderLog log) return true;
         // off-device (the self-check host): no client renders, so there is no Vulkan verdict to take and the suites run
-        if (CX.Framework.Native.Sym(SymbolMap.AppManager) == IntPtr.Zero) { _boot.VkUp = 1; return true; }
+        if (!OnDevice) { _boot.VkUp = 1; return true; }
         string? why = CX.Graphics.Rhi.VkBackend.Refusal(log);
         _boot.VkUp = why == null ? 1 : 0;
         if (why != null)

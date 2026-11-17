@@ -13,12 +13,23 @@ namespace CX.Alloy.Seam;
 /// <summary>The one installer of the Aurora seam: the game layer's <c>NewCAurObject</c> / <c>NewCAurScene</c> /
 /// <c>NewCAurCamera</c> / <c>NewCAurString</c> answer with CX facades, and no engine <c>Scene</c>, <c>Gob</c>
 /// or <c>Part</c> is created for the session (ADR 0028). Installed whenever Alloy is (<c>alloy.enabled</c>,
-/// read once at boot); a seam that cannot install stands Alloy down (<see cref="AlloyGate"/>).</summary>
+/// read once at boot); a seam that cannot install turns <see cref="Renderer.On"/> off, and the session runs vanilla.</summary>
 public sealed unsafe class SeamService : IExtenderService
 {
-    /// <summary>True for the session when the seam is installed; never changes after <see cref="Initialize"/>.
-    /// False with Alloy requested is a stand-down (<see cref="AlloyGate"/>).</summary>
-    public static bool Db { get; private set; }
+    /// <summary>The seam's session verdict.</summary>
+    private sealed class SeamBootState
+    {
+        /// <summary>Alloy was requested and the seam stood down. Set on each refusal path, never while installing.</summary>
+        internal bool StoodDown;
+    }
+    private static readonly SeamBootState _boot = new();
+
+    /// <summary>Alloy was requested and the seam stood down, so the seam's own boot still reads Alloy as on;
+    /// <see cref="Renderer.On"/> reads it.</summary>
+    public static bool StoodDown => _boot.StoodDown;
+
+    /// <summary>First: whether the seam installs is part of <see cref="Renderer.On"/>, which every other service arms on.</summary>
+    public int InitOrder => -1;
 
     private static ExtenderLog? _log;
 
@@ -28,9 +39,9 @@ public sealed unsafe class SeamService : IExtenderService
     {
         _log = log;
         Facade.Log = log;
-        if (!Renderer.On)
+        if (!Renderer.Requested)
         {
-            log.Info("seam: alloy.enabled=0 -- vanilla, no seam installed");
+            log.Info("seam: alloy.enabled=0, or Vulkan cannot start -- vanilla, no seam installed");
             return;
         }
         if (!FacadeSelfCheck.Run(log))
@@ -38,6 +49,7 @@ public sealed unsafe class SeamService : IExtenderService
             log.Always("seam: the facade self-check FAILED -- the seam will not install and Alloy stands down. The shell layout, "
                      + "the per-OS slot order or the quarantine is wrong on this build, and a seam built on a "
                      + "wrong layout corrupts the game's memory rather than refusing.");
+            _boot.StoodDown = true;
             return;
         }
 
@@ -113,11 +125,12 @@ public sealed unsafe class SeamService : IExtenderService
                      + "the engine renders. The object and scene factories have to be installed together: the game "
                      + "hands a CX object to whatever scene it was given, and an engine scene would dereference it.");
             foreach (string refusal in reg.Refusals) log.Always("seam: " + refusal);
+            _boot.StoodDown = true;
             return;
         }
 
         int missing = Facade.Build(reg, log);
-        if (missing < 0) return;
+        if (missing < 0) { _boot.StoodDown = true; return; }
         foreach (Action a in reg.AfterBuild)
         {
             try { a(); }
@@ -144,7 +157,6 @@ public sealed unsafe class SeamService : IExtenderService
         FrameRegistry.Global.Register(FramePhase.PostPresent, 40, Frame, "seam.quarantine", log);
         _log = log;
         FrameRegistry.Global.Register(FramePhase.PostPresent, 41, Period, "seam.period", log);
-        Db = true;
     }
 
     /// <summary>The engine factory a symbol is, for the stand-down line: the mangled name is not something a
@@ -170,7 +182,7 @@ public sealed unsafe class SeamService : IExtenderService
         Highlight.AuditClaims();
         _log?.Info($"[seam] objects={SceneDb.Objects.Live} parts={SceneDb.Parts.Live} scenes={SceneDb.Scenes.Live} "
                  + $"cameras={SceneDb.Cameras.Live} | {Facade.Stats()} | parts-shells={PartShell.Alive} "
-                 + $"(quarantined {PartShell.Quarantined}, gui-held {PartShell.Held}) | callbacks={CallbackList.Alive}"
+                 + $"(quarantined {PartShell.Quarantined}, spare {PartShell.Spares}, gui-held {PartShell.Held}) | callbacks={CallbackList.Alive}"
                  + $" | {ObjectFns.Stats()} | {ObjectSlots.TreeStats()} | tile-gobs={SceneSlots.TileShells}"
                  + $" | {Highlight.Stats()}{Refused()}");
     }

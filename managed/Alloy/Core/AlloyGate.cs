@@ -27,18 +27,25 @@ internal static class AlloyGate
 {
     private static AlloyStand _stand = AlloyStand.Idle;
     private static string _why = "the first frame has not been latched yet";
-    /// <summary>The config half, read once at <see cref="Arm"/>. Separate state from the capability half by
-    /// ADR 0010, so "I asked for vanilla" never reads as "this machine cannot".</summary>
-    private static bool _optedOut;
     /// <summary>The frozen verdict, once the capability half has answered.</summary>
     private static AlloyStand _decided = AlloyStand.Idle;
     private static bool _frozen;
     private static string _decidedWhy = "";
     /// <summary>A failure taken after the decision froze on Alloy. Reported, never acted on.</summary>
     private static string _failed = "";
-    /// <summary>Does every engine offset Alloy reads carry a resolution for the platform we booted on?
-    /// Asked once at <see cref="Arm"/> -- the answer is a property of the build, not of the frame.</summary>
-    private static bool _layoutOk = true;
+    /// <summary>The terms answered once at <see cref="Arm"/>, properties of the config, the build and the boot.</summary>
+    private sealed class BootTermsState
+    {
+        /// <summary>The config half. Kept apart from the capability terms by ADR 0010, so "I asked for vanilla"
+        /// never reads as "this machine cannot".</summary>
+        internal bool OptedOut;
+        /// <summary>Does every engine offset Alloy reads carry a resolution for the platform we booted on?</summary>
+        internal bool LayoutOk = true;
+        /// <summary>Did the scene seam install, when Alloy was requested? It decides before any other service, and
+        /// Alloy draws the scene database and nothing else, so without it there is no world to draw.</summary>
+        internal bool SeamUp = true;
+    }
+    private static readonly BootTermsState _terms = new();
     private static ExtenderLog? _log;
 
     /// <summary>This term says there is no WORLD frame, nothing more. The GUI scenes are Alloy's on
@@ -55,7 +62,7 @@ internal static class AlloyGate
     internal static string Reason => _why;
 
     /// <summary>Did the config ask for the engine renderer? The override half of ADR 0010's split.</summary>
-    internal static bool OptedOut => _optedOut;
+    internal static bool OptedOut => _terms.OptedOut;
 
     /// <summary>Has the device been ruled out? False alone means nothing about what is rendering; pair it
     /// with <see cref="Stand"/>.</summary>
@@ -86,8 +93,11 @@ internal static class AlloyGate
     /// <see cref="AlloyStand.Incapable"/> answer does not freeze: cold it means "not yet" as often as "never".</summary>
     private static AlloyStand Evaluate(out string why)
     {
-        if (_optedOut)
+        if (_terms.OptedOut)
         { why = "alloy.enabled=0 in cx.cfg, or Vulkan cannot start -- the engine renders"; return AlloyStand.Choice; }
+        // A seam stand-down leaves every Alloy service unarmed, so each term below would name a symptom.
+        if (!_terms.SeamUp)
+        { why = "the scene seam did not install (its facade self-check or a factory failed)"; return AlloyStand.Incapable; }
         if (!DrawFunnelService.Armed)
         { why = "alloy.drawhooks is not batch in cx.cfg, so nothing is enrolled to draw"; return AlloyStand.Choice; }
         if (!PostChain.Configured)
@@ -95,7 +105,7 @@ internal static class AlloyGate
         // #456: the first capability term, and the only one answerable cold -- it is a fact about the binary,
         // so it is asked ahead of everything that needs a warm client. Incapable rather than Choice: the
         // player asked for nothing here.
-        if (!_layoutOk)
+        if (!_terms.LayoutOk)
         { why = "an engine offset Alloy reads has no resolution for this platform (docs/engine-layout.md)";
           return AlloyStand.Incapable; }
         // ...and only now. EVERY opt-out above returns from Initialize before _armed is set, so asking
@@ -107,9 +117,6 @@ internal static class AlloyGate
         // ownframe=0 mode, deleted as unusable -- so a shim that could not arm stands the whole path down.
         if (!RspShim.Armed)
         { why = "the RenderSinglePass shim never armed (an engine symbol or draw funnel did not resolve)"; return AlloyStand.Idle; }
-        // Alloy draws the scene database and nothing else: no seam, no world to draw (SeamService says why).
-        if (!CX.Alloy.Seam.SeamService.Db)
-        { why = "the scene seam did not install (its facade self-check or a factory failed)"; return AlloyStand.Incapable; }
         // ...and ahead of it for the OTHER reason: the capability terms below are only answerable on a warm
         // client. The render device reports itself up from a present inside a world frame, so asking them at
         // the main menu answers "the device did not come up" every single boot -- which is what the pre-#263
@@ -170,10 +177,11 @@ internal static class AlloyGate
         // would be a second copy of the table that drifts. The consequence, said out loud because the next
         // person to hit it will not be an Alloy dev: a future Unresolved row ANYWHERE, a 2D class included,
         // stands Alloy down on Windows. Sound only because CLAUDE.md makes Unresolved a transient state.
-        _layoutOk = EngineLayout.Require(log, "Alloy");
+        _terms.LayoutOk = EngineLayout.Require(log, "Alloy");
         // Restart knob: Boot, not V -- the verdict is frozen for the session whatever the panel says later.
-        _optedOut = !Renderer.On;
-        log.Info(_optedOut
+        _terms.OptedOut = !Renderer.Requested;
+        _terms.SeamUp = Renderer.On || _terms.OptedOut;
+        log.Info(_terms.OptedOut
             ? "[alloygate] Alloy is off (alloy.enabled=0, or Vulkan cannot start) -- the engine renders everything "
               + "this session"
             : "[alloygate] Alloy requested (alloy.enabled=0 in cx.cfg and restart for the engine renderer)");
@@ -182,15 +190,17 @@ internal static class AlloyGate
     }
 
     /// <summary>Off-device: the decision freezes once and a post-decision failure does not move it. That last
-    /// property is the whole point of the ticket, and nothing on a live client can demonstrate it cheaply.</summary>
+    /// property is the point, and nothing on a live client can demonstrate it cheaply. A seam stand-down leaves
+    /// Alloy off whole and reads Incapable. Oracle: hand-written verdicts.</summary>
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
 
         (bool optedOut, bool frozen, AlloyStand decided, string decidedWhy, string failed, AlloyStand stand,
-         string why, bool layoutOk) saved =
-            (_optedOut, _frozen, _decided, _decidedWhy, _failed, _stand, _why, _layoutOk);
-        _layoutOk = true;   // #456: the check drives Evaluate, and a real stand-down here is not its subject
+         string why, bool layoutOk, bool seamUp) saved =
+            (_terms.OptedOut, _frozen, _decided, _decidedWhy, _failed, _stand, _why, _terms.LayoutOk, _terms.SeamUp);
+        _terms.LayoutOk = true;   // #456: the check drives Evaluate, and a real stand-down here is not its subject
+        _terms.SeamUp = true;   // ...nor is a seam stand-down
         // Fail() speaks to the chatbox as well as the log, and the sink is independent of _log: without
         // this the check would put a fabricated failure notice on screen the moment service init order
         // happens to put a sink in place first.
@@ -198,11 +208,11 @@ internal static class AlloyGate
         Action<string>? sink = Notice.Sink; Notice.Sink = null;
         try
         {
-            _optedOut = true; _frozen = false; _decided = AlloyStand.Idle; _decidedWhy = ""; _failed = "";
+            _terms.OptedOut = true; _frozen = false; _decided = AlloyStand.Idle; _decidedWhy = ""; _failed = "";
             OnFrameStart();
             check.Expect(!Alloy && Stand == AlloyStand.Choice, "the config opt-out is a Choice, not a device verdict");
             check.Expect(Capable, "...and it says nothing about the device");
-            _optedOut = false;
+            _terms.OptedOut = false;
             OnFrameStart();
             check.Expect(Stand == AlloyStand.Choice, "the decision is frozen: clearing the config does not un-decide it");
 
@@ -217,6 +227,21 @@ internal static class AlloyGate
             check.Expect(!Freezes(AlloyStand.Idle) && !Freezes(AlloyStand.Incapable),
               "an Idle or Incapable verdict does not freeze the decision");
 
+            check.Expect(!Renderer.Compose(requested: true, onDevice: true, seamRefused: true),
+              "a client whose seam stood down is not an Alloy session: the engine keeps its GL and draws");
+            check.Expect(Renderer.Compose(requested: true, onDevice: true, seamRefused: false),
+              "a client whose seam installed, or is installing, is an Alloy session");
+            check.Expect(Renderer.Compose(requested: true, onDevice: false, seamRefused: true),
+              "the self-check host, where the seam always stands down, still runs the Alloy suites");
+            check.Expect(!Renderer.Compose(requested: false, onDevice: true, seamRefused: false),
+              "alloy.enabled=0 or a refused Vulkan is vanilla whatever the seam did");
+
+            _terms.OptedOut = false; _frozen = false; _terms.SeamUp = false;
+            OnFrameStart();
+            check.Expect(Stand == AlloyStand.Incapable && Reason.Contains("seam", StringComparison.Ordinal),
+              "a seam stand-down is Incapable and names the seam, not a Choice the player never made");
+            _terms.SeamUp = true; _frozen = false;
+
             _frozen = true; _decided = AlloyStand.Alloy; _decidedWhy = ""; _stand = AlloyStand.Alloy;
             Fail("first"); Fail("second");
             check.Expect(CapabilityReason == "first", "the first failure reason wins and later ones are ignored");
@@ -226,7 +251,7 @@ internal static class AlloyGate
         }
         finally
         {
-            (_optedOut, _frozen, _decided, _decidedWhy, _failed, _stand, _why, _layoutOk) = saved;
+            (_terms.OptedOut, _frozen, _decided, _decidedWhy, _failed, _stand, _why, _terms.LayoutOk, _terms.SeamUp) = saved;
             _log = quiet; Notice.Sink = sink;
         }
 
