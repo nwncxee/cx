@@ -2246,6 +2246,11 @@ internal static unsafe class SymbolMap
     /// <c>notifyServer</c> tail, <see cref="SendGuiInvStatus"/>, or the server stops pushing repository updates.</summary>
     [Fn("void(CPanelInventory this, int show, int notifyServer, uint oid)")]
     public const string InvSetInventoryVisible = "_ZN15CPanelInventory19SetInventoryVisibleEiij";
+    /// <summary><c>CPanelInventory::ToggleDisplay()</c> @0x68e8e0 (Windows rva 0x858050) -- the inventory key: hides a shown
+    /// panel, else refuses a possessed familiar or shows it. Windows inlines <see cref="InvSetInventoryVisible"/> into it,
+    /// so the key never reaches that hook there.</summary>
+    [Fn("void(CPanelInventory this)")]
+    public const string InvToggleDisplay = "_ZN15CPanelInventory13ToggleDisplayEv";
     /// <summary><c>CPanelInventory::SetCharacterData(uint oid)</c> @0x68d810 (Windows rva 0x856fa0) -- fills the five
     /// labels (name, gold, weight, max weight, AC) from the creature. Safe on a HIDDEN panel: it reads no visibility
     /// field, registers no popup, sends nothing and allocates no widget. Pass ONLY the player's own id -- a FOREIGN
@@ -3271,6 +3276,7 @@ internal static unsafe class SymbolMap
         //     GetEquipSlot, and each sender was confirmed by its (major, minor) immediate at rva 0x7c25c0.
         //     Only CNWBaseItemArray is shared engine and therefore a name export.
         [InvSetInventoryVisible] = At(),   // container flag +0x2f64, shown oid +0x2f68 (Linux +0x319c / +0x31a0)
+        [InvToggleDisplay]       = At(),   // HandleInvButton's tail jump at rva 0x6f838f; panel state +0xb0, no call to 0x857cd0
         [InvSetCharacterData]    = At(),   // gold creature+0x1b8, weight +0x28c; label m_pString at label+0x90
         [GetInventoryPanel]      = At(),
         [GameCameraHitCheck]     = At(),   // body read: GetModuleCamera, info+0x20 = 1, camera vtbl +0x60

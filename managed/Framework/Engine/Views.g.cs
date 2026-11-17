@@ -373,6 +373,7 @@ global using unsafe StreamGetVolumeFn = delegate* unmanaged<nint, byte>;
 global using unsafe StreamSetLoopingFn = delegate* unmanaged<nint, int, void>;
 global using unsafe SoundShutDownFn = delegate* unmanaged<nint, void>;
 global using unsafe InvSetInventoryVisibleFn = delegate* unmanaged<nint, int, int, uint, void>;
+global using unsafe InvToggleDisplayFn = delegate* unmanaged<nint, void>;
 global using unsafe InvSetCharacterDataFn = delegate* unmanaged<nint, uint, void>;
 global using unsafe GameCameraHitCheckFn = delegate* unmanaged<int, int, nint, nint, void>;
 global using unsafe GetGameobjectHitFn = delegate* unmanaged<nint, nint*, int>;
@@ -2405,6 +2406,8 @@ public readonly unsafe partial struct CPanelInventory(IntPtr ptr)
     public void InvSetContainerGuiVisible(int show, int notifyServer, int isItem, uint graphicOid) => EngineFn.InvSetContainerGuiVisible(Ptr, show, notifyServer, isItem, graphicOid);
     /// <inheritdoc cref="SymbolMap.InvSetInventoryVisible"/>
     public void InvSetInventoryVisible(int show, int notifyServer, uint oid) => EngineFn.InvSetInventoryVisible(Ptr, show, notifyServer, oid);
+    /// <inheritdoc cref="SymbolMap.InvToggleDisplay"/>
+    public void InvToggleDisplay() => EngineFn.InvToggleDisplay(Ptr);
     /// <inheritdoc cref="EngineLayout.InvMaxWeightLabel"/>
     public CGuiLabel MaxWeightLabel => new(Ptr + EngineLayout.InvMaxWeightLabel);
     /// <inheritdoc cref="EngineLayout.InvShownOid"/>
@@ -5472,6 +5475,10 @@ public static unsafe class EngineFn
     private static bool _InvSetInventoryVisibleDone;
     /// <inheritdoc cref="SymbolMap.InvSetInventoryVisible"/>
     public static InvSetInventoryVisibleFn InvSetInventoryVisible => (InvSetInventoryVisibleFn)(_InvSetInventoryVisibleDone ? _InvSetInventoryVisible : Resolve(ref _InvSetInventoryVisible, ref _InvSetInventoryVisibleDone, SymbolMap.InvSetInventoryVisible));
+    private static IntPtr _InvToggleDisplay;
+    private static bool _InvToggleDisplayDone;
+    /// <inheritdoc cref="SymbolMap.InvToggleDisplay"/>
+    public static InvToggleDisplayFn InvToggleDisplay => (InvToggleDisplayFn)(_InvToggleDisplayDone ? _InvToggleDisplay : Resolve(ref _InvToggleDisplay, ref _InvToggleDisplayDone, SymbolMap.InvToggleDisplay));
     private static IntPtr _InvSetCharacterData;
     private static bool _InvSetCharacterDataDone;
     /// <inheritdoc cref="SymbolMap.InvSetCharacterData"/>
@@ -8031,6 +8038,12 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.InvSetInventoryVisible"/>; returns the slot holding the next layer, or null.</summary>
     public static InvSetInventoryVisibleFn* ChainInvSetInventoryVisible(this HookService h, InvSetInventoryVisibleFn handler, int priority) =>
         (InvSetInventoryVisibleFn*)h.Chain(SymbolMap.InvSetInventoryVisible, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.InvToggleDisplay"/>; returns the original, or null.</summary>
+    public static InvToggleDisplayFn InstallInvToggleDisplay(this HookService h, InvToggleDisplayFn handler) =>
+        (InvToggleDisplayFn)h.Install(SymbolMap.InvToggleDisplay, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.InvToggleDisplay"/>; returns the slot holding the next layer, or null.</summary>
+    public static InvToggleDisplayFn* ChainInvToggleDisplay(this HookService h, InvToggleDisplayFn handler, int priority) =>
+        (InvToggleDisplayFn*)h.Chain(SymbolMap.InvToggleDisplay, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.InvSetCharacterData"/>; returns the original, or null.</summary>
     public static InvSetCharacterDataFn InstallInvSetCharacterData(this HookService h, InvSetCharacterDataFn handler) =>
         (InvSetCharacterDataFn)h.Install(SymbolMap.InvSetCharacterData, (IntPtr)handler);
