@@ -95,6 +95,9 @@ internal static class AlloyGate
     {
         if (_optedOut)
         { why = "alloy.enabled=0 in cx.cfg, or Vulkan cannot start -- the engine renders"; return AlloyStand.Choice; }
+        // A seam stand-down leaves every Alloy service unarmed, so each term below would name a symptom.
+        if (!_terms.SeamUp)
+        { why = "the scene seam did not install (its facade self-check or a factory failed)"; return AlloyStand.Incapable; }
         if (!DrawFunnelService.Armed)
         { why = "alloy.drawhooks is not batch in cx.cfg, so nothing is enrolled to draw"; return AlloyStand.Choice; }
         if (!PostChain.Configured)
@@ -105,10 +108,6 @@ internal static class AlloyGate
         if (!_terms.LayoutOk)
         { why = "an engine offset Alloy reads has no resolution for this platform (docs/engine-layout.md)";
           return AlloyStand.Incapable; }
-        // Ahead of the armed terms: a seam that did not install leaves Alloy off whole, so nothing below ever arms,
-        // and "never armed" would name the mechanism instead of the cause.
-        if (!_terms.SeamUp)
-        { why = "the scene seam did not install (its facade self-check or a factory failed)"; return AlloyStand.Incapable; }
         // ...and only now. EVERY opt-out above returns from Initialize before _armed is set, so asking
         // "never armed" ahead of them reports the mechanism instead of the request -- which is the ADR 0010
         // misdirection this chain exists to prevent.
@@ -191,8 +190,8 @@ internal static class AlloyGate
     }
 
     /// <summary>Off-device: the decision freezes once and a post-decision failure does not move it. That last
-    /// property is the whole point of the ticket, and nothing on a live client can demonstrate it cheaply. A seam that
-    /// did not install leaves Alloy off whole. Oracle: hand-written verdicts.</summary>
+    /// property is the point, and nothing on a live client can demonstrate it cheaply. A seam stand-down leaves
+    /// Alloy off whole and reads Incapable. Oracle: hand-written verdicts.</summary>
     internal static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
@@ -228,14 +227,20 @@ internal static class AlloyGate
             check.Expect(!Freezes(AlloyStand.Idle) && !Freezes(AlloyStand.Incapable),
               "an Idle or Incapable verdict does not freeze the decision");
 
-            check.Expect(!Renderer.Compose(requested: true, onDevice: true, seamInstalled: false),
-              "a client whose seam did not install is not an Alloy session: the engine keeps its GL and draws");
-            check.Expect(Renderer.Compose(requested: true, onDevice: true, seamInstalled: true),
-              "a client with the seam installed is an Alloy session");
-            check.Expect(Renderer.Compose(requested: true, onDevice: false, seamInstalled: false),
-              "the self-check host, where the seam never installs, still runs the Alloy suites");
-            check.Expect(!Renderer.Compose(requested: false, onDevice: true, seamInstalled: true),
+            check.Expect(!Renderer.Compose(requested: true, onDevice: true, seamRefused: true),
+              "a client whose seam stood down is not an Alloy session: the engine keeps its GL and draws");
+            check.Expect(Renderer.Compose(requested: true, onDevice: true, seamRefused: false),
+              "a client whose seam installed, or is installing, is an Alloy session");
+            check.Expect(Renderer.Compose(requested: true, onDevice: false, seamRefused: true),
+              "the self-check host, where the seam always stands down, still runs the Alloy suites");
+            check.Expect(!Renderer.Compose(requested: false, onDevice: true, seamRefused: false),
               "alloy.enabled=0 or a refused Vulkan is vanilla whatever the seam did");
+
+            _optedOut = false; _frozen = false; _terms.SeamUp = false;
+            OnFrameStart();
+            check.Expect(Stand == AlloyStand.Incapable && Reason.Contains("seam", StringComparison.Ordinal),
+              "a seam stand-down is Incapable and names the seam, not a Choice the player never made");
+            _terms.SeamUp = true; _frozen = false;
 
             _frozen = true; _decided = AlloyStand.Alloy; _decidedWhy = ""; _stand = AlloyStand.Alloy;
             Fail("first"); Fail("second");

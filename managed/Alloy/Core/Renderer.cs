@@ -13,10 +13,10 @@ internal static class Renderer
 {
     internal static readonly KnobGroup G;
     internal static readonly Knob<bool> Enabled;
-    /// <summary>Is Alloy drawing this session? Then it draws the CX scene database (ADR 0028): the seam is installed
-    /// and no engine <c>Scene</c>/<c>Gob</c>/<c>Part</c> exists. Off is vanilla, whole: a refused Vulkan probe or a
-    /// seam that did not install stands it down. Frozen once the seam has decided, which it does before any other service.</summary>
-    internal static bool On => Compose(Requested, OnDevice, CX.Alloy.Seam.SeamService.Db);
+    /// <summary>Is Alloy drawing this session? Then it draws the CX scene database (ADR 0028) and no engine
+    /// <c>Scene</c>/<c>Gob</c>/<c>Part</c> exists. Off is vanilla, whole: a refused Vulkan probe or a seam that stood
+    /// down. The seam initializes before every other service, so they all read its verdict.</summary>
+    internal static bool On => Compose(Requested, OnDevice, seamRefused: CX.Alloy.Seam.SeamService.StoodDown);
 
     /// <summary>Did the player ask for Alloy, and can Vulkan start? What the seam asks before it installs.</summary>
     internal static bool Requested => Enabled.Boot && VulkanUp();
@@ -31,11 +31,11 @@ internal static class Renderer
         }
     }
 
-    /// <summary>Alloy is on when it was requested and, in a client, the seam installed.</summary>
-    internal static bool Compose(bool requested, bool onDevice, bool seamInstalled)
-        => requested && (seamInstalled || !onDevice);
+    /// <summary>Alloy is on when it was requested and, in a client, the seam did not stand down.</summary>
+    internal static bool Compose(bool requested, bool onDevice, bool seamRefused)
+        => requested && !(seamRefused && onDevice);
 
-    /// <summary>The session's Vulkan verdict, taken once at the first <see cref="On"/>: -1 untaken, 0 refused, 1 up;
+    /// <summary>The session's Vulkan verdict, taken once at the first <see cref="Requested"/>: -1 untaken, 0 refused, 1 up;
     /// and whether this is a real client, the same way.</summary>
     private sealed class BootState { public int VkUp = -1, Device = -1; }
 

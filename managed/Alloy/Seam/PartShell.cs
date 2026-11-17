@@ -153,6 +153,7 @@ public static unsafe class PartShell
                 h->Magic = 0;
                 h->Next = _pool.Spare;
                 _pool.Spare = p;
+                _pool.Spares++;
                 _pool.Quarantined--;
             }
             else { h->Next = keep; keep = p; }
@@ -172,14 +173,18 @@ public static unsafe class PartShell
         if (p == 0) return null;
         Head* h = Headroom<Head>.Header(p);
         _pool.Spare = h->Next;
+        _pool.Spares--;
         return h;
     }
 
-    /// <summary>The retired part shells: the quarantine, and the spares past it that <see cref="For"/> mints
-    /// from before the heap. The spares are this class's own, so a freed shell's reuse never waits on the
-    /// platform allocator's order, and a held shell, which never reaches the list, can never be handed out.</summary>
-    internal sealed class PoolState { internal nint Quarantine, Spare; internal long Quarantined; }
+    /// <summary>The quarantine, and the spares past it that <see cref="For"/> mints from before the heap, so reuse
+    /// never waits on the platform allocator's order and a held shell, never on the list, is never handed out.
+    /// ponytail: the spares stay at the session's high-water mark; a cap that frees past it would bound them.</summary>
+    internal sealed class PoolState { internal nint Quarantine, Spare; internal long Quarantined, Spares; }
     private static readonly PoolState _pool = new();
+
+    /// <summary>Retired part shells past their quarantine, waiting to be minted again.</summary>
+    public static long Spares => _pool.Spares;
 
     /// <summary>Part shells held past their object's death, waiting out the quarantine.</summary>
     public static long Quarantined => _pool.Quarantined;

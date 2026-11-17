@@ -47,14 +47,14 @@ public static class ServiceHost
         KnobGroup.Log = log;   // ADR 0025: a knob binds from the dictionary Load just filled, on first touch
         var hooks = new HookService(log);   // after Load: it reads hookdebug
 
-        // OrderBy(Name): Assembly.GetTypes() order is not stable across builds/runtimes, so sort for deterministic
-        // init order. The seam goes first: whether it installed is part of Renderer.On, which the rest arm on.
+        // Assembly.GetTypes() order is not stable across builds/runtimes, so the init order is the services' own
+        // declared InitOrder, then the type name.
         var all = Assembly.GetExecutingAssembly().GetTypes()
             .Where(t => typeof(IExtenderService).IsAssignableFrom(t)
                         && t is { IsAbstract: false, IsInterface: false })
-            .OrderBy(t => t != typeof(CX.Alloy.Seam.SeamService))
-            .ThenBy(t => t.Name)
             .Select(t => (IExtenderService)Activator.CreateInstance(t)!)
+            .OrderBy(s => s.InitOrder)
+            .ThenBy(s => s.GetType().Name, StringComparer.Ordinal)
             .ToList();
 
         // nothing is filtered here any more. Alloy was the last Linux-only namespace and it came off

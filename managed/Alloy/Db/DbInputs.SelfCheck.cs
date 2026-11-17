@@ -76,8 +76,8 @@ internal static partial class DbInputs
         Func<DbId, string, Matrix4x4, DbId>? spawner = ChunkSpawn;
         ChunkSpawn = null;
         int before = ChunkSpawnsRefused;
-        SpawnChunk(default, "cx_chunk", Matrix4x4.Identity);
-        ChunkSpawn = spawner;
+        try { SpawnChunk(default, "cx_chunk", Matrix4x4.Identity); }
+        finally { ChunkSpawn = spawner; }
         check.Expect(ChunkSpawnsRefused == before + 1, "a chunk spawn with no spawner is a counted refusal");
 
         SceneDb.Parts.Free(hl); SceneDb.Parts.Free(he); SceneDb.Parts.Free(hm);

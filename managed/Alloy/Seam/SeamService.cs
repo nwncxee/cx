@@ -16,9 +16,15 @@ namespace CX.Alloy.Seam;
 /// read once at boot); a seam that cannot install stands Alloy down (<see cref="AlloyGate"/>).</summary>
 public sealed unsafe class SeamService : IExtenderService
 {
-    /// <summary>True for the session when the seam is installed; never changes after <see cref="Initialize"/>, which
-    /// the host runs before any other service. False with Alloy requested stands Alloy down whole (<see cref="Renderer.On"/>).</summary>
+    /// <summary>True for the session when the seam is installed; never changes after <see cref="Initialize"/>.</summary>
     public static bool Db { get; private set; }
+
+    /// <summary>Alloy was requested and the seam stood down. Set on each refusal path, never while installing, so the
+    /// seam's own boot still reads Alloy as on; <see cref="Renderer.On"/> reads it.</summary>
+    public static bool StoodDown { get; private set; }
+
+    /// <summary>First: whether the seam installs is part of <see cref="Renderer.On"/>, which every other service arms on.</summary>
+    public int InitOrder => -1;
 
     private static ExtenderLog? _log;
 
@@ -38,6 +44,7 @@ public sealed unsafe class SeamService : IExtenderService
             log.Always("seam: the facade self-check FAILED -- the seam will not install and Alloy stands down. The shell layout, "
                      + "the per-OS slot order or the quarantine is wrong on this build, and a seam built on a "
                      + "wrong layout corrupts the game's memory rather than refusing.");
+            StoodDown = true;
             return;
         }
 
@@ -113,11 +120,12 @@ public sealed unsafe class SeamService : IExtenderService
                      + "the engine renders. The object and scene factories have to be installed together: the game "
                      + "hands a CX object to whatever scene it was given, and an engine scene would dereference it.");
             foreach (string refusal in reg.Refusals) log.Always("seam: " + refusal);
+            StoodDown = true;
             return;
         }
 
         int missing = Facade.Build(reg, log);
-        if (missing < 0) return;
+        if (missing < 0) { StoodDown = true; return; }
         foreach (Action a in reg.AfterBuild)
         {
             try { a(); }
@@ -170,7 +178,7 @@ public sealed unsafe class SeamService : IExtenderService
         Highlight.AuditClaims();
         _log?.Info($"[seam] objects={SceneDb.Objects.Live} parts={SceneDb.Parts.Live} scenes={SceneDb.Scenes.Live} "
                  + $"cameras={SceneDb.Cameras.Live} | {Facade.Stats()} | parts-shells={PartShell.Alive} "
-                 + $"(quarantined {PartShell.Quarantined}, gui-held {PartShell.Held}) | callbacks={CallbackList.Alive}"
+                 + $"(quarantined {PartShell.Quarantined}, spare {PartShell.Spares}, gui-held {PartShell.Held}) | callbacks={CallbackList.Alive}"
                  + $" | {ObjectFns.Stats()} | {ObjectSlots.TreeStats()} | tile-gobs={SceneSlots.TileShells}"
                  + $" | {Highlight.Stats()}{Refused()}");
     }

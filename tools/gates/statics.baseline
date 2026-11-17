@@ -196,7 +196,7 @@
 2 managed/Alloy/Seam/ObjectSlots.cs
 1 managed/Alloy/Seam/ObjectSlots.Xform.cs
 1 managed/Alloy/Seam/PaletteFns.cs
-5 managed/Alloy/Seam/PartShell.cs
+3 managed/Alloy/Seam/PartShell.cs
 2 managed/Alloy/Seam/SceneProvider.cs
 8 managed/Alloy/Seam/SceneSlots.cs
 8 managed/Alloy/Seam/SeamBridge.cs

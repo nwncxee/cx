@@ -93,7 +93,7 @@ Load path (the "hard work", you never touch it):
     LD_PRELOAD libcx.so  (native/bootstrap.c: constructor fires on load)
       -> dlopen cx_managed.so  (C# NativeAOT shared lib)
       -> CxInit()  ->  ServiceHost.Run()
-                           - discover every IExtenderService (reflection, sorted by name)
+                           - discover every IExtenderService (reflection, sorted by InitOrder then name; the seam is first)
                            - construct each + Initialize(log, hooks)
                            - HookService.Commit() installs all hooks at once
 
