@@ -91,6 +91,9 @@ public static partial class ModelCache
     private static long _hits, _misses, _parsed, _waitTicks, _evicted, _absent, _cycles, _missingSupers,
                         _overRelease, _timeouts, _nosource, _prefetched, _prefetchHits, _renamed, _stale,
                         _staleSource, _loaderDropped, _offerHits;
+    /// <summary>Models a worker refused that the source's game-thread <see cref="IModelSource.Recover"/> read instead.</summary>
+    private sealed class RecoveryState { public long Count; }
+    private static RecoveryState _recovery = new();
 
     // ---- lifecycle ----
 
@@ -373,6 +376,16 @@ public static partial class ModelCache
             _staleSource++;
             Say("stale-source", $"ModelCache: {j.Name}: parsed against a source that has since been replaced -- dropped");
             return;
+        }
+        if (j.Def == null && _source != null)
+        {
+            j.Def = _source.Recover(j.Token, out string? second);
+            if (j.Def != null)
+            {
+                _recovery.Count++;
+                Say("recovered", $"ModelCache: {j.Name}: the worker's read failed ({j.Why ?? "no model"}) -- read through the engine instead");
+            }
+            else if (second != null) j.Why = $"{j.Why ?? "no model"}; {second}";
         }
         if (j.Def == null)
         {
@@ -758,6 +771,7 @@ public static partial class ModelCache
     internal static long StaleSources => _staleSource;
     internal static long LoaderDropped => _loaderDropped;
     internal static long Resynced => _resynced;
+    internal static long Recovered => _recovery.Count;
     /// <summary>Log a named refusal, each CAUSE up to <see cref="LogCapPerCause"/> times: a quiet hole is never
     /// the answer, a flood is not either, and one shared budget let the chattiest cause hide the rest.
     /// <para><paramref name="cause"/> is a FIXED string per call site, never the reason text: a reason that
@@ -781,6 +795,7 @@ public static partial class ModelCache
         if (_prefetched + _offerHits != 0) s += $" offers {_prefetched + _offerHits} (parsed {_prefetched}, already cached {_offerHits}, waited-on {_prefetchHits})";
         if (_loaderDropped != 0) s += $" unasked {_loaderDropped}";
         if (_absent != 0) s += $" absent {_absent}";
+        if (_recovery.Count != 0) s += $" recovered {_recovery.Count}";
         if (_renamed != 0) s += $" namediffer {_renamed}";
         if (_stale != 0) s += $" stale {_stale}";
         if (_staleSource != 0) s += $" stalesource {_staleSource}";
@@ -832,6 +847,7 @@ public static partial class ModelCache
         _hits = _misses = _parsed = _waitTicks = _evicted = _absent = _cycles = _missingSupers = 0;
         _overRelease = _timeouts = _nosource = _prefetched = _prefetchHits = _renamed = _stale = _offerHits = 0;
         _staleSource = _loaderDropped = _misplaced = _resynced = 0;
+        _recovery = new();
         RestoreResolveCounters(0, 0);
         _said.Clear();
         _drip = 0;

@@ -1597,6 +1597,11 @@ internal static unsafe class SymbolMap
     /// buffer is the CALLER's to free (<see cref="ExoStringDtor"/>).</summary>
     [Fn("sret(CExoAliasList this, IntPtr name, ushort resType)")]
     public const string AliasResolveFileName = "_ZNK13CExoAliasList15ResolveFileNameERK10CExoStringt";
+    /// <summary>The directory an alias name (<c>"NWSYNC"</c>) maps to: an <c>[Alias]</c> entry in <c>nwn.ini</c> when it
+    /// sets one, the engine's default otherwise. A <c>const CExoString&amp;</c> BORROWED from the list (no sret);
+    /// <paramref name="len"/> 0 means the whole name.</summary>
+    [Fn("IntPtr(CExoAliasList this, IntPtr name, int len)")]
+    public const string AliasGetPath = "_ZNK13CExoAliasList12GetAliasPathERK10CExoStringi";
     /// <summary>Two of the twelve decoder slots <c>CAuroraInterface::CAuroraInterface()</c> @0x1124ac0 stores at boot
     /// -- DATA symbols holding function pointers, swapped by a store, not a hook. The getter is <c>uchar*(const char*
     /// name, int* container, int* w, int* h, int* channels, int* level0Size, float* alphaMean)</c> and returns level 0
@@ -1983,11 +1988,6 @@ internal static unsafe class SymbolMap
     /// hidden buffer is ordered per OS by the <c>sret</c> declaration.</summary>
     [Fn("sret(CNWTileData this)")]
     public const string TileDataGetModelResRef = "_ZN11CNWTileData14GetModelResRefEv";
-    /// <summary><c>CNWTile::SetID(int)</c> @0x632550 -- a one-store setter (<c>tile+0x14 = id</c>), and the tile
-    /// read-ahead's anchor: <c>CNWCArea::LoadArea</c> calls it with the tile id it has just read off the message, once
-    /// per record, before that record's model load. Four callers in all, none hot.</summary>
-    [Fn("void(IntPtr tile, int id)")]
-    public const string NwTileSetID = "_ZN7CNWTile5SetIDEi";
 
     // ---- the radial menu seam. The whole
     //      CRadialMenu surface is name-exported on Windows; the client roots are identified by vtable compare
@@ -2951,7 +2951,6 @@ internal static unsafe class SymbolMap
         [FindAnimScale] = Nm("?FindAnimScale@@YAMPEAVModel@@PEAVAnimation@@@Z"),
         [TileSetGetTileData] = Nm("?GetTileData@CNWTileSet@@QEAAPEAVCNWTileData@@H@Z"),
         [TileDataGetModelResRef] = Nm("?GetModelResRef@CNWTileData@@QEAA?AVCResRef@@XZ"),
-        [NwTileSetID] = Nm("?SetID@CNWTile@@QEAAXH@Z"),
         [AurResGetData] = Nm("?AurResGetData@@YAPEADH@Z"),
         // the model load funnel. All four name-exported; the MSVC names carry the return types
         // (Model*, MaxTree*, Gob*) Itanium drops, and GetResource's `SA` says it is static -- no `this`.
@@ -3180,6 +3179,7 @@ internal static unsafe class SymbolMap
         [ExoStringListGet] = Nm("?GetString@CExoStringList@@QEAAPEAVCExoString@@H@Z"),
         [ExoStringListDtor] = Nm("??1CExoStringList@@QEAA@XZ"),
         [AliasResolveFileName] = Nm("?ResolveFileName@CExoAliasList@@QEBA?AVCExoString@@AEBV2@G@Z"),
+        [AliasGetPath] = Nm("?GetAliasPath@CExoAliasList@@QEBAAEBVCExoString@@AEBV2@H@Z"),
         [ResManGetResObject] = Nm("?GetResObject@CExoResMan@@QEAAPEAVCRes@@AEBVCResRef@@G@Z"),
         [ResManRelease] = Nm("?Release@CExoResMan@@QEAAHPEAVCRes@@@Z"),
         [ResManReleaseObj] = Nm("?ReleaseResObject@CExoResMan@@QEAAHPEAVCRes@@_N@Z"),

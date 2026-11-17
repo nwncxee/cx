@@ -149,7 +149,11 @@ internal static unsafe class PaletteShare
         return kind is CX.Alloy.TexLoadRead.KindErf or CX.Alloy.TexLoadRead.KindNwSync;
     }
 
-    private static string? OverrideDir() => Native.UserDirectory() is string u ? Path.Combine(u, "override") : null;
+    /// <summary>The loose-file folder the engine reads: its <c>OVERRIDE</c> alias (which <c>nwn.ini</c> may move), else
+    /// the default under the user directory.</summary>
+    private static string? OverrideDir() =>
+        CX.Alloy.ResLocate.AliasPath("OVERRIDE") is { Length: > 0 } a ? a
+        : Native.UserDirectory() is string u ? Path.Combine(u, "override") : null;
 
     private static void SetCustom(uint[] rgb)
     {

@@ -11,11 +11,11 @@ namespace CX.Alloy;
 /// <summary>The tile models of an area load, read ahead out of the area message itself -- the area's own tiles,
 /// not every model its tileset declares. The peek does NOT anchor at <c>CNWTileSetManager::GetTileSet</c>: a
 /// VARIABLE grass block sits between that call and the first tile, so the cursor there names no tile record. It
-/// anchors on the loop's own first <c>CNWTile::SetID</c>, whose id is the oracle the shape is proved against.</summary>
+/// anchors on the loop's own first <c>CNWTileSet::GetTileData</c>, whose id is the oracle the shape is proved against.</summary>
 internal static unsafe partial class ModelLoad
 {
     private static ExtenderLog? _tileLog;
-    private static NwTileSetIDFn _origTileSetId;
+    private static TileSetGetTileDataFn _origTileGetData;
     private static bool _tileArmed;
 
     /// <summary>The three <c>ReadINT</c>s that open a tile record: id, orientation, height.</summary>
@@ -29,7 +29,7 @@ internal static unsafe partial class ModelLoad
 
     /// <summary>The tileset <c>LoadArea</c> is about to index, and the area it is loading: together they say a
     /// tile block is coming and how many records it has. Cleared when the block ends, so the same
-    /// <c>SetID</c> from <c>CNWCArea::SetTile</c> @0x708e60 mid-game peeks nothing.</summary>
+    /// <c>GetTileData</c> from <c>CNWCArea::SetTile</c> @0x708e60 mid-game peeks nothing.</summary>
     private static IntPtr _tileSet, _tileArea;
     /// <summary>The ids read ahead, in loop order. Grown once per area at most; the walk is the only writer.</summary>
     private static int[] _tileIds = new int[1024];
@@ -43,24 +43,25 @@ internal static unsafe partial class ModelLoad
     internal static int TileOffers;
 
     /// <summary>The hook install. Refuses loudly and installs nothing when the symbol or an offset is missing:
-    /// the engine then reads every tile model on the main thread, as it does without CX.</summary>
+    /// the engine then reads every tile model on the main thread, as it does without CX. Not <c>CNWTile::SetID</c>,
+    /// the store just before it: on Windows that is four bytes, too short for funchook's jump.</summary>
     internal static void InstallTiles(ExtenderLog log, HookService hooks)
     {
         _tileLog = log;
         SelfCheckTiles(log);
         SelfCheckAreaKey(log);
-        if (!SymbolMap.Require(log, "ModelLoad.Tiles", SymbolMap.NwTileSetID)
+        if (!SymbolMap.Require(log, "ModelLoad.Tiles", SymbolMap.TileSetGetTileData)
             || !EngineLayout.Require(log, "ModelLoad.Tiles", "CNWMessage", "CNWCArea", "CNWTileSet"))
             return;
-        _origTileSetId = hooks.InstallNwTileSetID(&OnTileSetId);
-        if (_origTileSetId == null)
+        _origTileGetData = hooks.InstallTileSetGetTileData(&OnTileGetData);
+        if (_origTileGetData == null)
         {
-            log.Always("ModelLoad.Tiles: REFUSED -- CNWTile::SetID did not hook; the engine reads every tile "
+            log.Always("ModelLoad.Tiles: REFUSED -- CNWTileSet::GetTileData did not hook; the engine reads every tile "
                        + "model on the main thread");
             return;
         }
         _tileArmed = true;
-        log.Info("ModelLoad.Tiles: watching LoadArea's tile loop -- the first tile's SetID reads the rest of the "
+        log.Info("ModelLoad.Tiles: watching LoadArea's tile loop -- the first tile's GetTileData reads the rest of the "
                  + "grid out of the message and offers their models in the order the loop will use them");
     }
 
@@ -71,6 +72,14 @@ internal static unsafe partial class ModelLoad
         ResetTiles();
         _tileArea = area;
         _tileBlockOff = false;
+    }
+
+    /// <summary><c>LoadArea</c> returned: a tileset asked for outside it (the module load asks for its areas'
+    /// tilesets and reads their data) is not a tile block.</summary>
+    internal static void CloseTileWindow()
+    {
+        ResetTiles();
+        _tileArea = IntPtr.Zero;
     }
 
     /// <summary>The block is over (or was never ours): nothing more is peeked until the next
@@ -84,13 +93,14 @@ internal static unsafe partial class ModelLoad
         _tileKinds.Clear();
     }
 
-    /// <summary>One tile id, mid-<c>LoadArea</c>. Cold -- once per tile, a few hundred times per area -- and
-    /// the read-ahead runs on the first of them only.</summary>
+    /// <summary>One tile id, mid-<c>LoadArea</c>: the loop asks the tileset it is loading for each record's data,
+    /// right after reading the record's three ints. Cold -- once per tile -- and the read-ahead runs on the first.</summary>
     [UnmanagedCallersOnly]
-    private static void OnTileSetId(IntPtr tile, int id)
+    private static IntPtr OnTileGetData(IntPtr tileSet, int id)
     {
-        if (_tileArmed && _armed && _tileSet != IntPtr.Zero && !_tileBlockOff) TrackTile(id);
-        _origTileSetId(tile, id);
+        if (_tileArmed && _armed && _tileArea != IntPtr.Zero && tileSet == _tileSet && _tileSet != IntPtr.Zero
+            && !_tileBlockOff) TrackTile(id);
+        return _origTileGetData(tileSet, id);
     }
 
     /// <summary>Peek the grid on the first tile, then hold the engine to what was peeked.</summary>
@@ -182,7 +192,8 @@ internal static unsafe partial class ModelLoad
     private static void OfferTileModel(int id, byte* resref)
     {
         if (!_tileKinds.Add(id)) return;
-        IntPtr td = new CNWTileSet(_tileSet).TileSetGetTileData(id);
+        // the trampoline, not the hooked entry: the read-ahead's own lookups are not records of the loop
+        IntPtr td = _origTileGetData != null ? _origTileGetData(_tileSet, id) : new CNWTileSet(_tileSet).TileSetGetTileData(id);
         if (td == IntPtr.Zero) return;
         new CNWTileData(td).TileDataGetModelResRef(resref);
         resref[ResRefChars] = 0;   // a CResRef's 17th byte is its buffered LENGTH, not a terminator

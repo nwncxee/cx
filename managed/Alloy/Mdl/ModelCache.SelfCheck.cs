@@ -17,6 +17,10 @@ public static partial class ModelCache
         internal readonly HashSet<string> Hidden = new(StringComparer.OrdinalIgnoreCase);
         /// <summary>Names <see cref="StillValid"/> vetoes at the publish.</summary>
         internal readonly HashSet<string> Moved = new(StringComparer.OrdinalIgnoreCase);
+        /// <summary>Names <see cref="Parse"/> refuses, as a worker that cannot reach the bytes does.</summary>
+        internal readonly HashSet<string> Unreadable = new(StringComparer.OrdinalIgnoreCase);
+        /// <summary>What <see cref="Recover"/> hands back for a refused name, standing in for the engine's own read.</summary>
+        internal readonly Dictionary<string, ModelDef> Recoverable = new(StringComparer.OrdinalIgnoreCase);
         internal int Parses;
 
         public object? Locate(string resref, out string? why)
@@ -30,7 +34,15 @@ public static partial class ModelCache
         {
             why = null;
             Parses++;
+            if (Unreadable.Contains((string)token)) { why = "the fixture cannot reach the bytes"; return null; }
             return Models[(string)token];
+        }
+
+        public ModelDef? Recover(object token, out string? why)
+        {
+            bool have = Recoverable.TryGetValue((string)token, out ModelDef? m);
+            why = have ? null : "the fixture has no second path";
+            return m;
         }
 
         public bool StillValid(object token, out string? why)
@@ -265,6 +277,19 @@ public static partial class ModelCache
                      "a resource that moved under the read was filed anyway");
         fx.Moved.Clear();
         check.Expect(Acquire("moved") != null, "the model stayed refused after the move was over");
+
+        // ---- a worker's refusal gets one game-thread recovery before it counts as absent ----
+        fx.Models["unread"] = Fix("unread", "", 1f, []);
+        fx.Unreadable.Add("unread");
+        long absentBefore = _absent;
+        check.Expect(Acquire("unread") == null && _absent == absentBefore + 1 && Recovered == 0,
+                     "a refusal with no second path was filed, or not counted absent");
+        ModelDef viaEngine = Fix("unread", "", 1f, []);
+        fx.Recoverable["unread"] = viaEngine;
+        ModelDef? recovered = Acquire("unread");
+        check.Expect(ReferenceEquals(recovered, viaEngine) && Recovered == 1 && _absent == absentBefore + 1,
+                     "the recovered model was not filed, or the recovery was not counted");
+        if (recovered != null) Release(recovered);
 
         // ---- a parse in flight across a source change is dropped, not filed ----
         Clear(); ResetCounters();

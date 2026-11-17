@@ -268,6 +268,7 @@ global using unsafe ResManGetResOfTypeFn = delegate* unmanaged<nint, ushort, int
 global using unsafe ExoStringListCountFn = delegate* unmanaged<nint, int>;
 global using unsafe ExoStringListGetFn = delegate* unmanaged<nint, int, nint>;
 global using unsafe ExoStringListDtorFn = delegate* unmanaged<nint, void>;
+global using unsafe AliasGetPathFn = delegate* unmanaged<nint, nint, int, nint>;
 global using unsafe AurGetImageWrapperFn = delegate* unmanaged<nint, int*, int*, int*, int*, int*, int*, float*, int, nint>;
 global using unsafe TgaServicedFn = delegate* unmanaged<nint, int>;
 global using unsafe ImageDecodeFn = delegate* unmanaged<byte*, int, int, byte*, int, int*, int, nint>;
@@ -332,7 +333,6 @@ global using unsafe FindAnimationFn = delegate* unmanaged<nint, byte*, nint>;
 global using unsafe FindAnimScaleFn = delegate* unmanaged<nint, nint, float>;
 global using unsafe BinaryFindModelFn = delegate* unmanaged<byte*, nint>;
 global using unsafe TileSetGetTileDataFn = delegate* unmanaged<nint, int, nint>;
-global using unsafe NwTileSetIDFn = delegate* unmanaged<nint, int, void>;
 global using unsafe RadialActivateInternalFn = delegate* unmanaged<nint, void>;
 global using unsafe RadialCreateSubMenuFn = delegate* unmanaged<nint, int, int>;
 global using unsafe RadialRecursiveAutoDeleteFn = delegate* unmanaged<nint, int>;
@@ -1102,6 +1102,8 @@ public readonly unsafe partial struct CExoAliasList(IntPtr ptr)
     public readonly IntPtr Ptr = ptr;
     /// <summary>No object.</summary>
     public bool IsNull => Ptr == IntPtr.Zero;
+    /// <inheritdoc cref="SymbolMap.AliasGetPath"/>
+    public IntPtr AliasGetPath(IntPtr name, int len) => EngineFn.AliasGetPath(Ptr, name, len);
     /// <inheritdoc cref="SymbolMap.AliasResolveFileName"/>
     public void AliasResolveFileName(void* ret, IntPtr name, ushort resType) => EngineFn.AliasResolveFileName(ret, Ptr, name, resType);
 }
@@ -5038,6 +5040,10 @@ public static unsafe class EngineFn
         if (OperatingSystem.IsWindows()) ((delegate* unmanaged<IntPtr, IntPtr, IntPtr, ushort, void>)fn)(self, (IntPtr)ret, name, resType);
         else ((delegate* unmanaged<IntPtr, IntPtr, IntPtr, ushort, void>)fn)((IntPtr)ret, self, name, resType);
     }
+    private static IntPtr _AliasGetPath;
+    private static bool _AliasGetPathDone;
+    /// <inheritdoc cref="SymbolMap.AliasGetPath"/>
+    public static AliasGetPathFn AliasGetPath => (AliasGetPathFn)(_AliasGetPathDone ? _AliasGetPath : Resolve(ref _AliasGetPath, ref _AliasGetPathDone, SymbolMap.AliasGetPath));
     private static IntPtr _AurGetImageWrapper;
     private static bool _AurGetImageWrapperDone;
     /// <inheritdoc cref="SymbolMap.AurGetImageWrapper"/>
@@ -5321,10 +5327,6 @@ public static unsafe class EngineFn
         if (OperatingSystem.IsWindows()) ((delegate* unmanaged<IntPtr, IntPtr, void>)fn)(self, (IntPtr)ret);
         else ((delegate* unmanaged<IntPtr, IntPtr, void>)fn)((IntPtr)ret, self);
     }
-    private static IntPtr _NwTileSetID;
-    private static bool _NwTileSetIDDone;
-    /// <inheritdoc cref="SymbolMap.NwTileSetID"/>
-    public static NwTileSetIDFn NwTileSetID => (NwTileSetIDFn)(_NwTileSetIDDone ? _NwTileSetID : Resolve(ref _NwTileSetID, ref _NwTileSetIDDone, SymbolMap.NwTileSetID));
     private static IntPtr _RadialActivateInternal;
     private static bool _RadialActivateInternalDone;
     /// <inheritdoc cref="SymbolMap.RadialActivateInternal"/>
@@ -7434,6 +7436,12 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.ExoStringListDtor"/>; returns the slot holding the next layer, or null.</summary>
     public static ExoStringListDtorFn* ChainExoStringListDtor(this HookService h, ExoStringListDtorFn handler, int priority) =>
         (ExoStringListDtorFn*)h.Chain(SymbolMap.ExoStringListDtor, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.AliasGetPath"/>; returns the original, or null.</summary>
+    public static AliasGetPathFn InstallAliasGetPath(this HookService h, AliasGetPathFn handler) =>
+        (AliasGetPathFn)h.Install(SymbolMap.AliasGetPath, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.AliasGetPath"/>; returns the slot holding the next layer, or null.</summary>
+    public static AliasGetPathFn* ChainAliasGetPath(this HookService h, AliasGetPathFn handler, int priority) =>
+        (AliasGetPathFn*)h.Chain(SymbolMap.AliasGetPath, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.AurGetImageWrapper"/>; returns the original, or null.</summary>
     public static AurGetImageWrapperFn InstallAurGetImageWrapper(this HookService h, AurGetImageWrapperFn handler) =>
         (AurGetImageWrapperFn)h.Install(SymbolMap.AurGetImageWrapper, (IntPtr)handler);
@@ -7818,12 +7826,6 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.TileSetGetTileData"/>; returns the slot holding the next layer, or null.</summary>
     public static TileSetGetTileDataFn* ChainTileSetGetTileData(this HookService h, TileSetGetTileDataFn handler, int priority) =>
         (TileSetGetTileDataFn*)h.Chain(SymbolMap.TileSetGetTileData, (IntPtr)handler, priority);
-    /// <summary>Hooks <see cref="SymbolMap.NwTileSetID"/>; returns the original, or null.</summary>
-    public static NwTileSetIDFn InstallNwTileSetID(this HookService h, NwTileSetIDFn handler) =>
-        (NwTileSetIDFn)h.Install(SymbolMap.NwTileSetID, (IntPtr)handler);
-    /// <summary>Chains onto <see cref="SymbolMap.NwTileSetID"/>; returns the slot holding the next layer, or null.</summary>
-    public static NwTileSetIDFn* ChainNwTileSetID(this HookService h, NwTileSetIDFn handler, int priority) =>
-        (NwTileSetIDFn*)h.Chain(SymbolMap.NwTileSetID, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.RadialActivateInternal"/>; returns the original, or null.</summary>
     public static RadialActivateInternalFn InstallRadialActivateInternal(this HookService h, RadialActivateInternalFn handler) =>
         (RadialActivateInternalFn)h.Install(SymbolMap.RadialActivateInternal, (IntPtr)handler);
