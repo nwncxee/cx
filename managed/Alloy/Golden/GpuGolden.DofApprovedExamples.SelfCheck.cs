@@ -27,6 +27,34 @@ internal static partial class GpuGolden
         DofLowCameraExample(vk, check, log);
         DofAmountNearExample(vk, check, log);
         DofAmountFarExample(vk, check, log);
+        DofNoBandsExample(vk, check, log);
+    }
+
+    /// <summary>Oracle: along a line parallel to the edge the fixture does not change, so the blurred values along it should
+    /// not either; bands from a coarse mip move them by 0.146.</summary>
+    private static void DofNoBandsExample(VkBackend vk, Checker check, ExtenderLog log)
+    {
+        // Given depth of field is on
+        // When a blurred edge stands against a bright sky
+        // Then the blur is one smooth ramp, with no bands along the edge
+        // a shallow slant, so a stair runs many pixels along the edge before it steps
+        static bool Bright(int x, int y) => y * 8 < x + 3000;
+        DofPx[]? o = DofRun(vk, log, static (x, y) => (Bright(x, y) ? 1f : 0f, 0f, 0f), static (x, y) => 45f, DofCamera(5f, 0f), new DofSet(Focus: Dof.FocusPlayer, NeverBlur: false));
+        check.Expect(o != null, "No bands: the slanted edge frame ran");
+        if (o == null) return;
+        float stair = 0f;
+        for (int d = -6; d <= 6; d += 3)
+        {
+            float lo = 2f, hi = -1f;
+            // x + 3000 a multiple of 16: the edge crosses each sampled column at the same fraction of a pixel and of a half-size one
+            for (int x = 400; x < 800; x += 16)
+            {
+                float v = DofAt(o, x, (x + 3000) / 8 + d);
+                lo = MathF.Min(lo, v); hi = MathF.Max(hi, v);
+            }
+            stair = MathF.Max(stair, hi - lo);
+        }
+        check.Expect(stair < 0.08f, $"No bands: along the blurred edge the ramp holds its height (it moves by {stair:F3})");
     }
 
     /// <summary>Oracle: <c>inc_postpr_dof</c> by hand, 5 m back and 10 degrees up: the pitch rule focuses at its 45 m limit,
