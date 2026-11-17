@@ -183,9 +183,9 @@ internal static partial class GpuGolden
         check.Expect(leak < 0.1f, $"dof: the head's red stays out of the dark far field around it (got {leak:F4})");
     }
 
-    /// <summary>A regression on what the real client showed: a slanted edge blurred past the kernel's rings stays one smooth
-    /// ramp, with no stairs from a coarse mip. Oracle: along a line parallel to the edge the fixture does not change, so the
-    /// values along it should not either.</summary>
+    /// <summary>A regression on what the real client showed: a slanted edge at the widest blur stays one smooth ramp, with no
+    /// stairs from a coarse mip. Oracle: along a line parallel to the edge the fixture does not change, so the values along
+    /// it should not either.</summary>
     private static void DofStairsSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
     {
         // a shallow slant, so a stair runs many pixels along the edge before it steps
@@ -197,7 +197,8 @@ internal static partial class GpuGolden
         for (int d = -6; d <= 6; d += 3)
         {
             float lo = 2f, hi = -1f;
-            for (int x = 400; x < 800; x++)
+            // x + 3000 a multiple of 16: the edge crosses each sampled column at the same fraction of a pixel and of a half-size one
+            for (int x = 400; x < 800; x += 16)
             {
                 float v = DofAt(o, x, (x + 3000) / 8 + d);
                 lo = MathF.Min(lo, v); hi = MathF.Max(hi, v);

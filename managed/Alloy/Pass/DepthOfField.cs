@@ -25,8 +25,13 @@ internal static unsafe partial class DepthOfField
     private const float MinDistance = 5f, MaxDistance = 45f;
     /// <summary>The stock shader's offsets of the focus at a horizontal view, a vertical view, and past a read depth, in metres.</summary>
     private const float HorizontalOffset = 2.5f, VerticalOffset = -1f, ReadOffset = -1f;
+    /// <summary>The stock shader's <c>fDOFWidth</c> at its 1080 lines, and how far out its hexagon's outer taps sit in that width.</summary>
+    private const float StockWidth = 5f, StockLines = 1080f, StockOuterTap = 0.866f;
     /// <summary>The blur's radius at the stock shader's confusion of 1, in half-size pixels per pixel of frame height.</summary>
-    private const float BlurFraction = 0.0002f;
+    private const float BlurFraction = 0.5f * StockOuterTap * StockWidth / StockLines;
+    /// <summary>The blur's limit as a fraction of the frame's height, which AMD halves for its half-size pixels: the stock
+    /// shader's cap of confusion at 1, so a higher Amount reaches the widest blur sooner and never passes it.</summary>
+    internal const float CocLimitFactor = 2f * BlurFraction;
     /// <summary>How long the focus takes to cover about two thirds of a move, in seconds.</summary>
     private const float EaseSeconds = 0.25f;
     /// <summary>The three points the Dynamic focus reads, one per request, as (U, L, R).</summary>

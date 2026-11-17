@@ -22,8 +22,6 @@ internal sealed unsafe partial class VkBackend
 
     /// <summary>The kernel's rings; past them the blur reads a coarser mip. About 130 samples at each half-size pixel it touches.</summary>
     private const uint DofRings = 6;
-    /// <summary>The blur's limit as a fraction of the frame's height; AMD halves it for its half-size pixels.</summary>
-    private const float DofCocLimitFactor = 0.016f;
 
     /// <summary>The device's DoF context and the size it was made for; a refusal holds for the device's life.</summary>
     private sealed class DofContextState
@@ -73,7 +71,7 @@ internal sealed unsafe partial class VkBackend
         else if (DofDeviceRefusal() is string no) return d.Refused = no;
         FsrDevice dev = FfxDevice();
         nint ctx;
-        int e = cxdof_create(&dev, (uint)w, (uint)h, DofRings, DofCocLimitFactor, &ctx);
+        int e = cxdof_create(&dev, (uint)w, (uint)h, DofRings, CX.Alloy.DepthOfField.CocLimitFactor, &ctx);
         if (e != 0) return d.Refused = $"creating its context returned FfxErrorCode {e}";
         (d.Ctx, d.W, d.H) = (ctx, w, h);
         _log.Always($"VkBackend: depth of field ready at {w}x{h}");

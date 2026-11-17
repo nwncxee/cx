@@ -186,19 +186,18 @@ internal static unsafe class DbKeyhole
         rt.PlayerPos = player;
         rt.CamPos = eye;
         rt.CamFocus = player;
-        System.Numerics.Vector3 d = eye - player;
-        float dist = d.Length();
-        rt.CamDist = dist;
+        rt.CamDist = (eye - player).Length();
         rt.CamPitch = PitchOf(eye, player);
         _rtWrites++;
     }
 
-    /// <summary>The camera's pitch in degrees for an eye at <paramref name="eye"/> looking at <paramref name="player"/>.</summary>
+    /// <summary>The camera's pitch in degrees for an eye at <paramref name="eye"/> looking at <paramref name="player"/>, as the
+    /// engine's <c>cameraPitch</c> counts it: 0 looks straight down, 90 is level.</summary>
     internal static float PitchOf(Vector3 eye, Vector3 player)
     {
-        System.Numerics.Vector3 d = eye - player;
-        float dist = d.Length(), flat = MathF.Sqrt(d.X * d.X + d.Y * d.Y);
-        return dist > 1e-4f ? MathF.Abs(MathF.Atan2(d.Z, flat)) * (180f / MathF.PI) : 90f;
+        Vector3 d = eye - player;
+        float flat = MathF.Sqrt(d.X * d.X + d.Y * d.Y);
+        return d.Length() > 1e-4f ? MathF.Atan2(flat, d.Z) * (180f / MathF.PI) : 0f;
     }
 
     private static long _armed, _off, _cut, _rtWrites, _skipped, _sweeps;

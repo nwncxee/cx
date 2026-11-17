@@ -241,8 +241,9 @@ internal static partial class GpuGolden
                     if (DofAt(o, x, y) > 0.1f) n++;
             return n;
         }
-        DofPx[]? weak = DofRun(vk, log, Lamp, static (x, y) => 45f, DofCamera(15f, 0f), new DofSet(Focus: Dof.FocusPlayer, NeverBlur: false, Amount: 2f));
-        DofPx[]? strong = DofRun(vk, log, Lamp, static (x, y) => 45f, DofCamera(15f, 0f), new DofSet(Focus: Dof.FocusPlayer, NeverBlur: false));
+        // 2.5 m past a band ending at 15.5 m, where neither Amount reaches the widest blur
+        DofPx[]? weak = DofRun(vk, log, Lamp, static (x, y) => 18f, DofCamera(15f, 0f), new DofSet(Focus: Dof.FocusPlayer, NeverBlur: false, Amount: 2f));
+        DofPx[]? strong = DofRun(vk, log, Lamp, static (x, y) => 18f, DofCamera(15f, 0f), new DofSet(Focus: Dof.FocusPlayer, NeverBlur: false));
         check.Expect(weak != null && strong != null, "Settings work: the amount frames ran");
         if (weak != null && strong != null)
             check.Expect(Spread(strong) > Spread(weak) * 3 / 2, $"Settings work: Amount 5 spreads a lamp further than 2 ({Spread(strong)} pixels, {Spread(weak)})");
