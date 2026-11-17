@@ -729,7 +729,7 @@ internal static unsafe class FacadeSelfCheck
                 "a held part shell must not resolve to a record");
 
             for (int f = 0; f < SeamShell.QuarantineFrames; f++) SeamShell.Frame();
-            check.Expect(PartShell.Quarantined == quarantined, "the world part must be freed past its quarantine");
+            check.Expect(PartShell.Quarantined == quarantined, "the world part must leave its quarantine for the spare list");
             void* other = NativeMemory.AlignedAlloc(PartShell.BlockBytes, PartShell.BlockAlign);
             nint first = PartShell.For(churn, 0), second = PartShell.For(churn, 1);
             NativeMemory.AlignedFree(other);

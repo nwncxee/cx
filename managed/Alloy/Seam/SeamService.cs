@@ -13,15 +13,20 @@ namespace CX.Alloy.Seam;
 /// <summary>The one installer of the Aurora seam: the game layer's <c>NewCAurObject</c> / <c>NewCAurScene</c> /
 /// <c>NewCAurCamera</c> / <c>NewCAurString</c> answer with CX facades, and no engine <c>Scene</c>, <c>Gob</c>
 /// or <c>Part</c> is created for the session (ADR 0028). Installed whenever Alloy is (<c>alloy.enabled</c>,
-/// read once at boot); a seam that cannot install stands Alloy down (<see cref="AlloyGate"/>).</summary>
+/// read once at boot); a seam that cannot install turns <see cref="Renderer.On"/> off, and the session runs vanilla.</summary>
 public sealed unsafe class SeamService : IExtenderService
 {
-    /// <summary>True for the session when the seam is installed; never changes after <see cref="Initialize"/>.</summary>
-    public static bool Db { get; private set; }
+    /// <summary>The seam's session verdict.</summary>
+    private sealed class SeamBootState
+    {
+        /// <summary>Alloy was requested and the seam stood down. Set on each refusal path, never while installing.</summary>
+        internal bool StoodDown;
+    }
+    private static readonly SeamBootState _boot = new();
 
-    /// <summary>Alloy was requested and the seam stood down. Set on each refusal path, never while installing, so the
-    /// seam's own boot still reads Alloy as on; <see cref="Renderer.On"/> reads it.</summary>
-    public static bool StoodDown { get; private set; }
+    /// <summary>Alloy was requested and the seam stood down, so the seam's own boot still reads Alloy as on;
+    /// <see cref="Renderer.On"/> reads it.</summary>
+    public static bool StoodDown => _boot.StoodDown;
 
     /// <summary>First: whether the seam installs is part of <see cref="Renderer.On"/>, which every other service arms on.</summary>
     public int InitOrder => -1;
@@ -44,7 +49,7 @@ public sealed unsafe class SeamService : IExtenderService
             log.Always("seam: the facade self-check FAILED -- the seam will not install and Alloy stands down. The shell layout, "
                      + "the per-OS slot order or the quarantine is wrong on this build, and a seam built on a "
                      + "wrong layout corrupts the game's memory rather than refusing.");
-            StoodDown = true;
+            _boot.StoodDown = true;
             return;
         }
 
@@ -120,12 +125,12 @@ public sealed unsafe class SeamService : IExtenderService
                      + "the engine renders. The object and scene factories have to be installed together: the game "
                      + "hands a CX object to whatever scene it was given, and an engine scene would dereference it.");
             foreach (string refusal in reg.Refusals) log.Always("seam: " + refusal);
-            StoodDown = true;
+            _boot.StoodDown = true;
             return;
         }
 
         int missing = Facade.Build(reg, log);
-        if (missing < 0) { StoodDown = true; return; }
+        if (missing < 0) { _boot.StoodDown = true; return; }
         foreach (Action a in reg.AfterBuild)
         {
             try { a(); }
@@ -152,7 +157,6 @@ public sealed unsafe class SeamService : IExtenderService
         FrameRegistry.Global.Register(FramePhase.PostPresent, 40, Frame, "seam.quarantine", log);
         _log = log;
         FrameRegistry.Global.Register(FramePhase.PostPresent, 41, Period, "seam.period", log);
-        Db = true;
     }
 
     /// <summary>The engine factory a symbol is, for the stand-down line: the mangled name is not something a

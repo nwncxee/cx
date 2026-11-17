@@ -256,7 +256,7 @@ public sealed unsafe partial class AlloyRenderer : IExtenderService
         // session the engine is going to render is not a wasted hook, it is a broken world. Restart-only
         // (ADR 0018's amendment to ADR 0010) is exactly what buys the two worlds never being warm at once.
         if (AlloyGate.OptedOut)
-        { log.Info("AlloyRenderer: stood down (alloy.enabled=0) -- the engine owns every resource this session"); return; }
+        { log.Info("AlloyRenderer: stood down (alloy.enabled=0, or Vulkan cannot start) -- the engine owns every resource this session"); return; }
         if (!Renderer.On)
         { log.Info("AlloyRenderer: stood down (the scene seam did not install) -- the engine owns every resource this session"); return; }
         // CX-120: ahead of every stand-down below, because the feed's own refusals have to have a log to be loud

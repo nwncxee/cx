@@ -198,8 +198,9 @@ the cleanup that earned it. Adding a rule means adding its gate in the same chan
 - `engine-views.sh`: outside `Framework/`, `ptr +/- EngineLayout.X` fails when row X has a view member; a
   `not-an-offset:` marker on a line that dereferences `ptr + 0x...` fails.
 - `statics.sh`: a file under `managed/Alloy` or `managed/Services` with more non-readonly `static` fields
-  than `statics.baseline` allows fails. Free: `static readonly`, `const`, static methods/properties, and a
-  lifetime owner -- a plain field whose type is a `...State` class declared under `managed/`.
+  than `statics.baseline` allows fails; a static auto-property with a `set` or `init` accessor counts as one. Free:
+  `static readonly`, `const`, static methods and computed properties, and a lifetime owner -- a plain field whose
+  type is a `...State` class declared under `managed/`.
 - `gl-confined.sh`: a file named in CX0003's `Allowed` that is not in the tree fails. The RULE -- GL only in
   the files that keep it -- is CX0003 (`tools/analyzers/EngineGl.cs`), which the compiler checks because it can
   tell a constant from an entry point and an `Init` guard from a call; this gate does the one thing the compiler

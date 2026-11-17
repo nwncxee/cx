@@ -3,7 +3,8 @@
 `static` fields that are not a lifetime owner. Prints "<count> <file>" for tools/gates/ratchet.sh;
 `-v` lists each field instead.
 
-Not counted: `static readonly`, `const`, static methods / properties / events / constructors, and a
+Counted too: a static auto-property with a `set` or `init` accessor, whose hidden backing field is one.
+Not counted: `static readonly`, `const`, static methods / computed properties / events / constructors, and a
 **lifetime owner** -- a plain (non-array, non-generic) field whose type name ends in `State` and names a
 class or record declared under managed/. One owner per lifetime is the shape the renderer wants: a reset
 replaces the object, so nothing has to remember the fields."""
@@ -17,6 +18,9 @@ MODIFIERS = frozenset((
 NOT_A_FIELD = frozenset(('class', 'struct', 'record', 'interface', 'enum', 'delegate', 'event'))
 OWNER_TYPE = re.compile(r'^[A-Za-z_][\w.]*State\??$')
 DECLARATOR = re.compile(r'\s*[A-Za-z_]\w*\s*[=,;]')
+ACCESS = r'(?:(?:public|private|protected|internal)\s+)*'
+AUTO_SETTER = re.compile(r'\{\s*' + ACCESS + r'get\s*;\s*' + ACCESS + r'(?:set|init)\s*;\s*\}'
+                         + r'|\{\s*' + ACCESS + r'(?:set|init)\s*;\s*' + ACCESS + r'get\s*;\s*\}')
 
 
 def blank(src):
@@ -188,6 +192,9 @@ def fields(path, owners):
         if 'readonly' in words or 'const' in words:
             continue
         end = m.end() + len(tail)
+        if end < len(code) and code[end] == '{' and AUTO_SETTER.match(code, end):
+            hits.append((code.count('\n', 0, m.start()) + 1, ' '.join(words), 1))
+            continue                         # an auto-property with a setter: a loose static behind a name
         if end >= len(code) or code[end] == '(' or code[end] == '{' or code.startswith('=>', end):
             continue                         # method, constructor, property
         if len(words) >= 2 and OWNER_TYPE.match(words[-2]) and words[-2].rstrip('?').split('.')[-1] in owners:

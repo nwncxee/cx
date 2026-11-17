@@ -89,7 +89,7 @@ public static partial class UiHost
         var chords = new List<IChordConsumer>();
 
         // Hermetic isolation: the arbiter is a live static singleton and other services Initialize first
-        // (discovery is sorted by name). Snapshot and clear the registry so the self-test neither sees nor
+        // (discovery initializes by InitOrder, then name). Snapshot and clear the registry so the self-test neither sees nor
         // mutates production windows, then restore in finally.
         var savedWindows = new List<Window>(_windows);
         var savedChords = new List<IChordConsumer>(_chords);
