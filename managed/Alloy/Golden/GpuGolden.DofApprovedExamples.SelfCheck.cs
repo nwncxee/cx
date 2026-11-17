@@ -29,54 +29,46 @@ internal static partial class GpuGolden
         DofAmountFarExample(vk, check, log);
     }
 
-    private const int DofLampAt = DofSide / 2;
-
-    /// <summary>A one-texel lamp at the frame's middle.</summary>
-    private static (float, float, float) DofLamp(int x, int y) => (x == DofLampAt && y == DofLampAt ? 64f : 0f, 0f, 0f);
-
-    /// <summary>A camera <paramref name="dist"/> metres behind the character at <paramref name="upDeg"/> degrees above the
-    /// horizon, its pitch taken as the engine's camera reports it.</summary>
-    private static DepthOfField.Scene DofBehind(float dist, float upDeg)
-    {
-        float up = upDeg * MathF.PI / 180f;
-        var eye = new System.Numerics.Vector3(-dist * MathF.Cos(up), 0f, dist * MathF.Sin(up));
-        return DofCamera(dist, Db.DbKeyhole.PitchOf(eye, System.Numerics.Vector3.Zero));
-    }
-
+    /// <summary>Oracle: <c>inc_postpr_dof</c> by hand, 5 m back and 10 degrees up: the pitch rule focuses at its 45 m limit,
+    /// never blurring the player keeps the band from 5 m, and depth stops at 45 m, so stock leaves 30 m and 100 m one pixel wide.</summary>
     private static void DofLowCameraExample(VkBackend vk, Checker check, ExtenderLog log)
     {
         // Given depth of field is on at its default settings and the camera sits low behind the character
         // When buildings stand far behind the character
         // Then they blur no wider than the stock client's depth of field blurs the same view
-        // Oracle: inc_postpr_dof by hand, 5 m back and 10 degrees up: the pitch rule focuses at its 45 m limit and never blurring
-        // the player keeps the band from 5 m, so stock leaves a building at 30 m one pixel wide.
-        DofPx[]? o = DofRun(vk, log, DofLamp, static (x, y) => 30f, DofBehind(5f, 10f), new DofSet(Amount: 1f));
-        check.Expect(o != null, "Low camera: the frame ran");
-        if (o == null) return;
-        int reach = DofReach(o, DofLampAt, DofLampAt);
-        check.Expect(reach == 0, $"Low camera: a building 30 m away stays as sharp as stock keeps it (reached {reach} pixels)");
+        foreach (float metres in (ReadOnlySpan<float>)[30f, 100f])
+        {
+            float z = metres;
+            DofPx[]? o = DofRun(vk, log, DofLamp, (x, y) => z, DepthOfField.Behind(5f, 10f), new DofSet(Amount: 1f));
+            check.Expect(o != null, $"Low camera: the {metres} m frame ran");
+            if (o == null) continue;
+            int reach = DofReach(o, DofLampAt, DofLampAt);
+            check.Expect(reach == 0, $"Low camera: a building {metres} m away stays as sharp as stock keeps it (reached {reach} pixels)");
+        }
     }
 
+    /// <summary>Oracle: the same frame at Amount 1, and stock's confusion, which grows with Amount until it reaches 1.</summary>
     private static void DofAmountNearExample(VkBackend vk, Checker check, ExtenderLog log)
     {
         // Given depth of field Amount is raised from 1 to 5
         // When a building stands a few metres past the sharp band
         // Then it blurs more than it did at Amount 1
-        DofPx[]? one = DofRun(vk, log, DofLamp, static (x, y) => 12f, DofBehind(8f, 70f), new DofSet(Amount: 1f));
-        DofPx[]? five = DofRun(vk, log, DofLamp, static (x, y) => 12f, DofBehind(8f, 70f), new DofSet(Amount: 5f));
+        DofPx[]? one = DofRun(vk, log, DofLamp, static (x, y) => 12f, DepthOfField.Behind(8f, 70f), new DofSet(Amount: 1f));
+        DofPx[]? five = DofRun(vk, log, DofLamp, static (x, y) => 12f, DepthOfField.Behind(8f, 70f), new DofSet(Amount: 5f));
         check.Expect(one != null && five != null, "Amount near the band: the frames ran");
         if (one == null || five == null) return;
         int a = DofReach(one, DofLampAt, DofLampAt), b = DofReach(five, DofLampAt, DofLampAt);
         check.Expect(b > a, $"Amount near the band: Amount 5 blurs a building just past the band more than 1 ({b} pixels, {a})");
     }
 
+    /// <summary>Oracle: the same frame at Amount 1, and stock's confusion, which stops at 1 whatever the Amount.</summary>
     private static void DofAmountFarExample(VkBackend vk, Checker check, ExtenderLog log)
     {
         // Given depth of field Amount is raised from 1 to 5
         // When buildings stand far behind the character
         // Then they blur no wider than they did at Amount 1
-        DofPx[]? one = DofRun(vk, log, DofLamp, static (x, y) => 45f, DofBehind(8f, 70f), new DofSet(Amount: 1f));
-        DofPx[]? five = DofRun(vk, log, DofLamp, static (x, y) => 45f, DofBehind(8f, 70f), new DofSet(Amount: 5f));
+        DofPx[]? one = DofRun(vk, log, DofLamp, static (x, y) => 45f, DepthOfField.Behind(8f, 70f), new DofSet(Amount: 1f));
+        DofPx[]? five = DofRun(vk, log, DofLamp, static (x, y) => 45f, DepthOfField.Behind(8f, 70f), new DofSet(Amount: 5f));
         check.Expect(one != null && five != null, "Amount far away: the frames ran");
         if (one == null || five == null) return;
         int a = DofReach(one, DofLampAt, DofLampAt), b = DofReach(five, DofLampAt, DofLampAt);

@@ -196,8 +196,16 @@ internal static unsafe class DbKeyhole
     internal static float PitchOf(Vector3 eye, Vector3 player)
     {
         Vector3 d = eye - player;
-        float flat = MathF.Sqrt(d.X * d.X + d.Y * d.Y);
-        return d.Length() > 1e-4f ? MathF.Atan2(flat, d.Z) * (180f / MathF.PI) : 0f;
+        return float.RadiansToDegrees(MathF.Atan2(MathF.Sqrt(d.X * d.X + d.Y * d.Y), d.Z));
+    }
+
+    /// <summary>The pitch's convention. Oracle: the engine's <c>cameraPitch</c>, which the renderer takes from the camera
+    /// orientation's pitch, and the stock <c>inc_postpr_dof</c>, which pushes its focus out most at 90: 0 is straight down.</summary>
+    private static void PitchSelfCheck(Checker check)
+    {
+        check.Expect(MathF.Abs(PitchOf(new Vector3(0f, 0f, 5f), Vector3.Zero)) < 0.01f, "pitch: a camera straight above the player reads 0");
+        check.Expect(MathF.Abs(PitchOf(new Vector3(5f, 0f, 0f), Vector3.Zero) - 90f) < 0.01f, "pitch: a level camera reads 90");
+        check.Expect(MathF.Abs(PitchOf(new Vector3(0f, -3f, 3f), Vector3.Zero) - 45f) < 0.01f, "pitch: a camera 45 degrees up reads 45");
     }
 
     private static long _armed, _off, _cut, _rtWrites, _skipped, _sweeps;
@@ -211,6 +219,7 @@ internal static unsafe class DbKeyhole
     internal static bool SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "DbKeyhole.SelfCheck");
+        PitchSelfCheck(check);
         // Save and restore the live key: this runs inside a session whose next pass must not inherit it.
         var was = (_lastCam, _lastOn, _lastCut, _lastP0, _lastP1, _lastP2, _lastP3,
                    _lastSet, _lastBox, _lastLod, _lastN);

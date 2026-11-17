@@ -90,6 +90,11 @@ internal static partial class GpuGolden
         }
     }
 
+    private const int DofLampAt = DofSide / 2;
+
+    /// <summary>A one-texel lamp at the frame's middle.</summary>
+    private static (float, float, float) DofLamp(int x, int y) => (x == DofLampAt && y == DofLampAt ? 64f : 0f, 0f, 0f);
+
     /// <summary>How many pixels of the frame a one-texel lamp at (<paramref name="x0"/>, <paramref name="y0"/>) spreads past
     /// 0.05: 0 is a lamp left sharp.</summary>
     private static int DofReach(DofPx[] o, int x0, int y0)
@@ -157,11 +162,10 @@ internal static partial class GpuGolden
     /// where stock's taps reach 3 pixels by hand, and the one pixel of faint tail the half-size blur adds that a person judged right.</summary>
     private static void DofStrengthSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
     {
-        const int lampX = 512, lampY = 512;
-        DofPx[]? o = DofRun(vk, log, static (x, y) => (x == lampX && y == lampY ? 64f : 0f, 0f, 0f), static (x, y) => 45f, DofCamera(8f, 70f), new DofSet(Amount: 1f));
+        DofPx[]? o = DofRun(vk, log, DofLamp, static (x, y) => 45f, DofCamera(8f, 70f), new DofSet(Amount: 1f));
         check.Expect(o != null, "dof: the Amount 1 frame ran");
         if (o == null) return;
-        int reach = DofReach(o, lampX, lampY);
+        int reach = DofReach(o, DofLampAt, DofLampAt);
         check.Expect(reach <= 4, $"dof: at Amount 1 a far lamp reaches at most 4 pixels (reached {reach})");
     }
 

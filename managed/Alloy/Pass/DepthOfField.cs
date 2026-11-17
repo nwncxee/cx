@@ -209,6 +209,15 @@ internal static unsafe partial class DepthOfField
         return new Scene(rt.CamDist, rt.CamPitch, rt.DialogCamera != 0, rt.InCutscene != 0, d.AheadU, d.AheadU, d.AheadL, d.AheadR);
     }
 
+    /// <summary>A camera <paramref name="dist"/> metres behind a character at the origin, <paramref name="upDeg"/> degrees above
+    /// the horizon, its pitch as the engine's camera reports it; nothing read under the mouse or ahead.</summary>
+    internal static Scene Behind(float dist, float upDeg)
+    {
+        float up = float.DegreesToRadians(upDeg);
+        var eye = new System.Numerics.Vector3(-dist * MathF.Cos(up), 0f, dist * MathF.Sin(up));
+        return new Scene(dist, Db.DbKeyhole.PitchOf(eye, System.Numerics.Vector3.Zero), false, false, 0f, 0f, 0f, 0f);
+    }
+
     /// <summary>Destroys what the pass made on <paramref name="vk"/>, and forgets it.</summary>
     internal static void Drop(VkBackend vk)
     {
@@ -230,7 +239,8 @@ internal static unsafe partial class DepthOfField
     }
 
     /// <summary>The focus rules no approved example names. Oracle: <c>inc_postpr_dof</c> worked by hand at a camera 8 m away and
-    /// pitched 70 degrees, where the view's offset makes that 10.007 m and the pitch rule 29.09 m, with a dead zone of 3 m.</summary>
+    /// pitched 70 degrees, where the view's offset makes that 10.007 m and the pitch rule 29.09 m, with a dead zone of 3 m; and
+    /// the spec row's "Camera Pitch looks farther away the lower the camera sits".</summary>
     private static void FocusRulesSelfCheck(Checker check)
     {
         (bool never, int focus, float dead) = (Dof.NeverBlur.V, Dof.Focus.V, Dof.DeadZone.V);
@@ -250,13 +260,7 @@ internal static unsafe partial class DepthOfField
             Rule("A horizontal camera's focus stops at the far limit", Dof.FocusPitch, cam with { PitchDeg = 90f }, 43.5f, 45f);
             Rule("A cutscene takes the pitch rule and keeps the character", Dof.FocusMouse, cam with { Cutscene = true }, 6.5f, 30.59f);
             Dof.Focus.V = Dof.FocusPitch;
-            static float FarAt(float upDeg)
-            {
-                float up = upDeg * MathF.PI / 180f;
-                var eye = new System.Numerics.Vector3(-8f * MathF.Cos(up), 0f, 8f * MathF.Sin(up));
-                return Focus(new Scene(8f, Db.DbKeyhole.PitchOf(eye, System.Numerics.Vector3.Zero), false, false, 0f, 0f, 0f, 0f)).Far;
-            }
-            float low = FarAt(10f), high = FarAt(70f);
+            float low = Focus(Behind(8f, 10f)).Far, high = Focus(Behind(8f, 70f)).Far;
             check.Expect(low > high, $"Camera Pitch looks farther away the lower the camera sits ({low:F2} m at 10 degrees up, {high:F2} m at 70)");
         }
         finally { Dof.NeverBlur.V = never; Dof.Focus.V = focus; Dof.DeadZone.V = dead; }

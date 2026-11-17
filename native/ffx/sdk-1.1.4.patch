@@ -442,33 +442,15 @@ AMD FidelityFX SDK 1.1.4 as CX builds FSR 3.1 and FidelityFX DoF: `patch -p1` in
  
 --- a/sdk/include/FidelityFX/gpu/dof/ffx_dof_blur.h
 +++ b/sdk/include/FidelityFX/gpu/dof/ffx_dof_blur.h
-@@ -375,7 +375,7 @@
- 		FfxUInt32 weight = merge * merge;
- 		SampleStreamState streamState;
- 		FfxUInt32 ringSamples = FfxDofInitSampleStream(streamState, ins, rif, merge) / merge;
--		FfxUInt32 mipBias = 2 * FfxUInt32(log2(merge));
-+		FfxUInt32 mipBias = 0;
- 		FfxFloat32 sampleDist = ins.tileCoc * ffxReciprocal(ins.nRings) * (FfxFloat32(ins.nRings) - rif);
- 		FfxHalfOpt rangeThresh = FfxHalfOpt(max(0, sampleDist - ins.ringGap - 0.5));
- 
-@@ -422,7 +422,7 @@
- 		FfxUInt32 weight = merge * merge;
- 		SampleStreamState streamState;
- 		FfxUInt32 ringSamples = FfxDofInitSampleStream(streamState, ins, rif, merge) / merge;
--		FfxUInt32 mipBias = 2 * FfxUInt32(log2(merge));
-+		FfxUInt32 mipBias = 0;
- 		FfxFloat32 sampleDist = ins.tileCoc * ffxReciprocal(ins.nRings) * (FfxFloat32(ins.nRings) - rif);
- 		FfxHalfOpt rangeThresh = FfxHalfOpt(max(0, sampleDist - ins.ringGap));
- 
-@@ -471,7 +471,7 @@
- 		FfxUInt32 weight = merge * merge;
- 		SampleStreamState streamState;
- 		FfxUInt32 ringSamples = FfxDofInitSampleStream(streamState, ins, rif, merge) / merge;
--		FfxUInt32 mipBias = 2 * FfxUInt32(log2(merge));
-+		FfxUInt32 mipBias = 0;
- 
- 		FfxHalfOpt3 colorAcc = FfxHalfOpt3(0, 0, 0);
- 		// partially unrolled loop (x12, then x4)
+@@ -194,7 +194,7 @@
+ FfxDofSample FfxDofFetchSample(FfxDofInputState ins, inout SampleStreamState streamState, FfxUInt32 mipBias)
+ {
+ 	FfxFloat32x2 samplePos = FfxDofAdvanceSampleStream(streamState);
+-	FfxUInt32 mipLevel = ins.mipLevel + mipBias;
++	FfxUInt32 mipLevel = ins.mipLevel;
+ 	FfxFloat32x4 texval = FfxDofSampleInput(samplePos, mipLevel);
+ 	FfxDofSample result;
+ 	result.coc = texval.a;
 @@ -557,32 +557,6 @@
  	ins.tileCoc = tileRad;
  
