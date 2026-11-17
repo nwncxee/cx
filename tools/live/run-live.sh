@@ -51,6 +51,7 @@ OUT=""
 KEYS=""
 KEEP=0
 CFG_LINES=()
+MOVE_ALIASES=()
 CHAR="${LIVE_CHAR:-fighter}"
 LADDER_MODULE="cxladder"
 LADDER=0
@@ -92,6 +93,11 @@ while [ $# -gt 0 ]; do
         # so the haks are there at once and the client's own writes never reach the original.
         # The run is graded as --menu is: keys start at the first present, and the script drives the login.
         --connect)       CONNECT="$2"; MENU=1; shift 2 ;;
+        # Move the user directory's folder for an nwn.ini [Alias] (NWSYNC, OVERRIDE, ...) to $OUT/moved/ and point
+        # the alias there, as a player who keeps it off the default drive does. Repeatable.
+        --move-alias)    MOVE_ALIASES+=("$2"); shift 2 ;;
+        # Run this staged runtime instead of the one beside the script: an older build, as the control for a fix.
+        --stage)         STAGE_DIR="$2"; shift 2 ;;
         # The stock client, no CX loaded: for checking that what a server sends a CX client is harmless to one without it.
         # It waits on the module script's own enter marker in the engine log and grades no CX log line.
         --stock)         STOCK=1; shift ;;
@@ -136,7 +142,7 @@ if [ "$LADDER" = 1 ] && [ "$SECONDS_IN" -lt 60 ]; then
     SECONDS_IN=60
 fi
 
-STAGE="$ROOT/cx-linux-x64"
+STAGE="${STAGE_DIR:-$ROOT/cx-linux-x64}"
 GAME_BIN="$NWN_DIR/bin/linux-x86/nwmain-linux"
 [ -f "$STAGE/libcx.so" ]   || { echo "run-live: no build staged -- run ./build.sh in $ROOT" >&2; exit 2; }
 [ -f "$STAGE/cx-launch" ]  || { echo "run-live: $STAGE/cx-launch missing" >&2; exit 2; }
@@ -196,6 +202,18 @@ if [ -n "$CONNECT" ]; then
             || { echo "run-live: --connect needs a reflink copy of $d (a copy-on-write filesystem)" >&2; exit 2; }
     done
 fi
+for name in "${MOVE_ALIASES[@]}"; do
+    lower=$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')
+    moved="$OUT/moved/$lower"
+    mkdir -p "$OUT/moved"
+    rm -rf "${moved:?}"
+    if [ -d "$USER_DIR/$lower" ]; then mv "$USER_DIR/$lower" "$moved"; else mkdir -p "$moved"; fi
+    touch "$USER_DIR/nwn.ini"
+    grep -q '^\[Alias\]' "$USER_DIR/nwn.ini" || printf '[Alias]\n' >> "$USER_DIR/nwn.ini"
+    sed -i "/^$name=/d" "$USER_DIR/nwn.ini"
+    sed -i "/^\[Alias\]/a $name=$moved" "$USER_DIR/nwn.ini"
+    echo "run-live: alias      $name=$moved"
+done
 rm -f "$USER_DIR/localvault/"*.bic
 # A joined server picks its own character; a lone local one would be submitted to it unasked.
 [ -z "$CONNECT" ] && cp -f "$PREGEN" "$USER_DIR/localvault/"

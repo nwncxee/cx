@@ -13,6 +13,9 @@ runs the framework in a stub host with no GPU and no engine, cannot tell you.
 
 Options: `--module NAME` `--seconds N` `--cfg 'key=value'` (repeatable) `--out DIR` `--keys SCRIPT`
 `--char NAME` `--width W` `--height H` `--boot-timeout N` `--min-lit N` `--keep` `--ladder`.
+`--move-alias NAME` (repeatable) moves the run's folder for that `nwn.ini` alias (`NWSYNC`, `OVERRIDE`) to `$OUT/moved/` and points
+the alias there, as a player who keeps it off the default drive does. `--stage DIR` runs another staged `cx-linux-x64/`, such as an
+older build as the control for a fix.
 `--stock` runs the client without CX, to check that what a server sends a CX client does no harm to one without it. It needs
 OpenAL on the nix-ld path (`nixpkgs#openal.out`), which `cx-launch` otherwise brings, and grades no CX log line.
 `--connect HOST:PORT` joins a running server instead of hosting a module. It needs a copy-on-write filesystem: the run gets
