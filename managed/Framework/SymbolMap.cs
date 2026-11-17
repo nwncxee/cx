@@ -2304,10 +2304,6 @@ internal static unsafe class SymbolMap
     /// <c>SendButtonUpdateToServer</c> itself.</summary>
     [Fn("void(IntPtr button, uint item, int prop, int force)")]
     public const string QuickButtonSetItem = "_ZN15CGuiQuickButton13SetButtonItemEjii";
-    /// <summary><c>CGuiQuickButton::SetIcon(CGuiIcon* icon, CGuiIcon* overlay)</c> @0x6a8cc0 (Windows rva 0x86baa0): every
-    /// setter hands the button its icon here; the button keeps only the model built from it. Overlay may be null.</summary>
-    [Fn("void(IntPtr button, IntPtr icon, IntPtr overlay)")]
-    public const string QuickButtonSetIcon = "_ZN15CGuiQuickButton7SetIconEP8CGuiIconS1_";
     /// <summary><c>CGuiQuickButton::SetCountText(CExoString)</c> @0x6a8b00 (Windows rva 0x86b710): the uses, stack and
     /// command-label text, by value (a pointer to the caller's copy; the Win64 callee destroys it). Empty clears it.</summary>
     [Fn("void(IntPtr button, IntPtr text)")]
@@ -3314,7 +3310,6 @@ internal static unsafe class SymbolMap
         [SendInputUseItem]       = At(),   // 6 / 9; the Vector by pointer
         [SendGoldTransfer]       = At(),   // 8 / 1, minor 0x0a / 0x16; the Vector by pointer
         [QuickButtonSetItem]     = At(),   // body read: CGuiQuickButton drop handler (vtbl +0xe8) calls it with 0xff00ff, 0
-        [QuickButtonSetIcon]     = At(),   // SetButtonItem's icon call; body frees +0x130 and attaches both icon models
         [QuickButtonSetCountText] = At(),  // UpdateButtonCountText's "*" call with &local copy
         [QuickbarClickButton]    = At(),   // strings "ClickButton" + "nButton < CPANELQUICKBAR_SLOTS_NUM_VISIBLE"
         [QuickbarSendButton] = At(),   // cmp [rcx+0x6518],0 gate, slot*0x2c8 scan; the server handler's jump table gives the setters

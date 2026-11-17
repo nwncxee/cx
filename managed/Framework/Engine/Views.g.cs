@@ -385,7 +385,6 @@ global using unsafe SendBarterStartFn = delegate* unmanaged<nint, uint, uint, vo
 global using unsafe SendInputUseItemFn = delegate* unmanaged<nint, uint, byte, byte, uint, CX.Engine.VectorArg, void>;
 global using unsafe SendGoldTransferFn = delegate* unmanaged<nint, uint, CX.Engine.VectorArg, int, int, byte, byte, void>;
 global using unsafe QuickButtonSetItemFn = delegate* unmanaged<nint, uint, int, int, void>;
-global using unsafe QuickButtonSetIconFn = delegate* unmanaged<nint, nint, nint, void>;
 global using unsafe QuickButtonSetCountTextFn = delegate* unmanaged<nint, nint, void>;
 global using unsafe QuickbarClickButtonFn = delegate* unmanaged<nint, byte, void>;
 global using unsafe QuickbarSendButtonFn = delegate* unmanaged<nint, nint, void>;
@@ -5539,10 +5538,6 @@ public static unsafe class EngineFn
     private static bool _QuickButtonSetItemDone;
     /// <inheritdoc cref="SymbolMap.QuickButtonSetItem"/>
     public static QuickButtonSetItemFn QuickButtonSetItem => (QuickButtonSetItemFn)(_QuickButtonSetItemDone ? _QuickButtonSetItem : Resolve(ref _QuickButtonSetItem, ref _QuickButtonSetItemDone, SymbolMap.QuickButtonSetItem));
-    private static IntPtr _QuickButtonSetIcon;
-    private static bool _QuickButtonSetIconDone;
-    /// <inheritdoc cref="SymbolMap.QuickButtonSetIcon"/>
-    public static QuickButtonSetIconFn QuickButtonSetIcon => (QuickButtonSetIconFn)(_QuickButtonSetIconDone ? _QuickButtonSetIcon : Resolve(ref _QuickButtonSetIcon, ref _QuickButtonSetIconDone, SymbolMap.QuickButtonSetIcon));
     private static IntPtr _QuickButtonSetCountText;
     private static bool _QuickButtonSetCountTextDone;
     /// <inheritdoc cref="SymbolMap.QuickButtonSetCountText"/>
@@ -8142,12 +8137,6 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.QuickButtonSetItem"/>; returns the slot holding the next layer, or null.</summary>
     public static QuickButtonSetItemFn* ChainQuickButtonSetItem(this HookService h, QuickButtonSetItemFn handler, int priority) =>
         (QuickButtonSetItemFn*)h.Chain(SymbolMap.QuickButtonSetItem, (IntPtr)handler, priority);
-    /// <summary>Hooks <see cref="SymbolMap.QuickButtonSetIcon"/>; returns the original, or null.</summary>
-    public static QuickButtonSetIconFn InstallQuickButtonSetIcon(this HookService h, QuickButtonSetIconFn handler) =>
-        (QuickButtonSetIconFn)h.Install(SymbolMap.QuickButtonSetIcon, (IntPtr)handler);
-    /// <summary>Chains onto <see cref="SymbolMap.QuickButtonSetIcon"/>; returns the slot holding the next layer, or null.</summary>
-    public static QuickButtonSetIconFn* ChainQuickButtonSetIcon(this HookService h, QuickButtonSetIconFn handler, int priority) =>
-        (QuickButtonSetIconFn*)h.Chain(SymbolMap.QuickButtonSetIcon, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.QuickButtonSetCountText"/>; returns the original, or null.</summary>
     public static QuickButtonSetCountTextFn InstallQuickButtonSetCountText(this HookService h, QuickButtonSetCountTextFn handler) =>
         (QuickButtonSetCountTextFn)h.Install(SymbolMap.QuickButtonSetCountText, (IntPtr)handler);
