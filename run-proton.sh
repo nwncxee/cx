@@ -7,6 +7,11 @@ set -e
 cd "$(dirname "$0")"
 GAME="${NWN_WIN:-$(dirname "$(python3 tools/paths.py NWN_WIN_EXE)")}"
 [ -f "$GAME/nwmain.exe" ] || { echo "!! no nwmain.exe under $GAME (set NWN_WIN)" >&2; exit 1; }
+# The build needs the Windows SDK; with none configured, rerun inside the .#win shell, which pins one.
+if [ -z "$CX_NO_BUILD" ] && [ -z "${SDK:-}" ] && ! python3 tools/paths.py SDK >/dev/null 2>&1 \
+  && [ -z "${IN_NIX_SHELL:-}" ] && command -v nix >/dev/null; then
+  exec nix develop .#win -c "$0" "$@"
+fi
 # shellcheck source=tools/live/proton.sh
 . tools/live/proton.sh
 proton_pick || exit 1
