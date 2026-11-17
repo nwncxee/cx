@@ -38,6 +38,12 @@ if [ -d "$SAVES" ]; then   # `[ ] &&` here would be a false command under set -e
   for d in "$DOCS" "$DOCS.0"; do mkdir -p "$d/saves"; cp -Ru "$SAVES/." "$d/saves/"; done
 else echo ">> no saves at $SAVES -- the same-save compare needs one (NWN_SAVES overrides)" >&2; fi
 rm -f "$DOCS/cx.log" "$DOCS"/cx.[0-9].log
+# `nix develop` runs its command with ASLR off (personality ADDR_NO_RANDOMIZE), so the stack starts at
+# 0x7ffffffff000, and wine-preloader reserves everything from 0x7ffffe000000 to 0x7fffffff0000: 60 KB
+# for argv + env. The .#win shell's ~50 KB environment plus steam-run's goes past that and the preloader
+# segfaults before Wine logs anything (Proton exits 245). `setarch <arch>` resets the personality.
+ASLR=""
+command -v setarch >/dev/null && ASLR="setarch $(uname -m)"
 # Wine prefers its builtin version.dll; n,b makes the proxy beside nwmain.exe win.
 cd "$GAME" && STEAM_COMPAT_DATA_PATH="$PFX" STEAM_COMPAT_CLIENT_INSTALL_PATH="$HOME/.steam/root" \
-  WINEDLLOVERRIDES="version=n,b" exec $FHS "$PROTON" run "$GAME/nwmain.exe" "$@"
+  WINEDLLOVERRIDES="version=n,b" exec $ASLR $FHS "$PROTON" run "$GAME/nwmain.exe" "$@"
