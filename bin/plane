@@ -1858,9 +1858,12 @@ def main(argv=None):
     p.add_argument("reference")
     p.add_argument("blocker", nargs="+")
 
-    p = sub.add_parser("parent", help="make a work item a child of another", parents=[raw])
+    p = sub.add_parser(
+        "parent", help="make a work item a child of another, or --clear its parent", parents=[raw]
+    )
     p.add_argument("reference")
-    p.add_argument("parent")
+    p.add_argument("parent", nargs="?")
+    p.add_argument("--clear", action="store_true", help="remove the work item's parent")
 
     p = sub.add_parser(
         "attach", help="upload a file onto a work item, replacing one of the same name",
@@ -2134,7 +2137,13 @@ def main(argv=None):
         return 0
 
     if args.command == "parent":
+        if args.clear == bool(args.parent):
+            raise PlaneError("parent takes a parent reference or --clear, not both or neither")
         project_id, item, reference = _resolve(client, args.reference)
+        if args.clear:
+            cleared = client.set_parent(project_id, item["id"], None)
+            _report(args, cleared, summary("unparented", reference, item))
+            return 0
         _, parent, parent_reference = _resolve(client, args.parent)
         moved = client.set_parent(project_id, item["id"], parent["id"])
         under = f"under {parent_reference}"
