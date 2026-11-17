@@ -19,4 +19,8 @@ public interface IModelSource
     /// the engine feed re-runs the lookup and compares the <c>RESID</c>, so a resref aliased mid-read costs a
     /// counted miss rather than the wrong model filed under the right name.</summary>
     bool StillValid(object token, out string? why) { why = null; return true; }
+
+    /// <summary>Game thread, after <see cref="Parse"/> refused: one more read of <paramref name="token"/> by a path
+    /// only this thread may take, or null with <paramref name="why"/> set. The default has no second path.</summary>
+    ModelDef? Recover(object token, out string? why) { why = null; return null; }
 }

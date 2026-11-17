@@ -229,6 +229,7 @@ internal static unsafe class TexStream
         _t.DemOther = CX.Services.Perf.EngineZonesService.DemandOtherTicks - other0;
         _t.DemCalls = CX.Services.Perf.EngineZonesService.DemandCalls - calls0;
         ModelLoad.OnLoadAreaEnd(area, ok != 0);   // every peek has run, so the area key is foldable
+        ModelLoad.CloseTileWindow();
         if (ok == 0) { _t.Failed = true; Report("LoadArea failed"); }
         return ok;
     }

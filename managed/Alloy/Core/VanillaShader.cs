@@ -240,31 +240,17 @@ internal static unsafe class VanillaShader
     /// <summary>The engine's own text for a stock <c>.shd</c>, read through the engine's own entry points.
     /// Not <see cref="ShaderResource.Override"/>: that makes a bare <c>CRes</c> where none exists, and the
     /// engine reads a <c>.shd</c> back as a typed <c>CResSHD</c>, storing a back-pointer 8 bytes before the
-    /// data -- a bare one kills the client. ponytail: the <c>Resources</c> trio must run back to back.</summary>
+    /// data -- a bare one kills the client.</summary>
     private static string? EngineText(string resref, ExtenderLog? log)
     {
-        AurResGetFn get = EngineFn.AurResGet;
-        AurResGetDataFn data = EngineFn.AurResGetData;
-        AurResFreeFn free = EngineFn.AurResFree;
-        if (get == null || data == null || free == null)
+        if (EngineFn.AurResGet == null || EngineFn.AurResGetData == null || EngineFn.AurResFree == null)
         {
             log?.Info("VanillaShader: AurResGet/AurResGetData/AurResFree unresolved -- no text to splice");
             return null;
         }
-        byte* name = stackalloc byte[ShaderResource.ResRefBytes + 1];
         if (resref.Length > ShaderResource.ResRefBytes) return null;
-        for (int i = 0; i < resref.Length; i++) name[i] = (byte)resref[i];
-        name[resref.Length] = 0;
-        byte* ext = stackalloc byte[5];
-        ext[0] = (byte)'.'; ext[1] = (byte)'s'; ext[2] = (byte)'h'; ext[3] = (byte)'d'; ext[4] = 0;
-
-        int size = 0;
-        IntPtr handle = get(name, ext, &size, 1);
-        if (handle == IntPtr.Zero || size <= 0) return null;
-        byte* bytes = data(size);
-        string? text = bytes != null ? Encoding.UTF8.GetString(bytes, size) : null;
-        free(handle);
-        return text;
+        byte[]? bytes = CX.Alloy.ResLocate.EngineRead(resref, ".shd");
+        return bytes == null ? null : Encoding.UTF8.GetString(bytes);
     }
 
     /// <summary>The resource chain's text for <paramref name="resref"/><c>.shd</c>, or null -- also when the bridge is

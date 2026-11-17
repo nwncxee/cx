@@ -9,16 +9,18 @@ using CX.Framework;
 namespace CX.Alloy;
 
 /// <summary>
-/// The NWSync store (<c>&lt;userdir&gt;/nwsync</c>), read by Alloy on its own thread. A manifest resource is the
+/// The NWSync store (the engine's <c>NWSYNC</c> alias), read by Alloy on its own thread. A manifest resource is the
 /// one container kind whose <c>RESID</c> carries no location -- the engine re-queries by
 /// <c>(manifestSha1, resref, restype)</c> -- so there is nothing for a worker to seek to, and this class replays
 /// that two-step query itself. Every miss is counted and the caller then reads the resource the ordinary way.
 /// </summary>
 internal static unsafe class NwSyncReader
 {
-    /// <summary>What the engine calls the directory, relative to the client's user directory. Built by
-    /// <c>platform.cpp</c>'s <c>"%s/nwsyncmeta.sqlite3"</c> / <c>"%s/nwsyncdata_%u.sqlite3"</c>; the live install
-    /// carries exactly those two names.</summary>
+    /// <summary>The alias the engine roots the store at: <c>"%s/nwsyncmeta.sqlite3"</c> / <c>"%s/nwsyncdata_%u.sqlite3"</c>
+    /// over its path. <c>nwn.ini</c>'s <c>[Alias]</c> may move it anywhere; <see cref="DirName"/> under the user
+    /// directory is only the default the engine itself falls back to.</summary>
+    private const string AliasName = "NWSYNC";
+    /// <summary>The default store directory's name under the user directory, when no alias answers.</summary>
     private const string DirName = "nwsync";
     private const string MetaFile = "nwsyncmeta.sqlite3";
     private const string ShardGlob = "nwsyncdata_*.sqlite3";
@@ -179,7 +181,7 @@ internal static unsafe class NwSyncReader
 
     /// <summary>A manifest became a search source. MAIN THREAD.</summary>
     /// <param name="manifestHex">40 lowercase hex digits, as the key table names it.</param>
-    /// <param name="dirOverride">The store directory; null means the client's own <c>&lt;userdir&gt;/nwsync</c>.
+    /// <param name="dirOverride">The store directory; null means the engine's own <c>NWSYNC</c> alias.
     /// Only the self-check passes one.</param>
     internal static void Open(string? manifestHex, string? dirOverride = null)
     {
@@ -212,9 +214,12 @@ internal static unsafe class NwSyncReader
         _opens++;
     }
 
-    /// <summary>The store directory beside the client's own <c>nwn.ini</c>, or null before the engine has one.</summary>
+    /// <summary>The store directory the engine itself opens: its <c>NWSYNC</c> alias, else the default under the
+    /// user directory, else null before the engine has one. MAIN THREAD.</summary>
     private static string? Store()
     {
+        string? alias = ResLocate.AliasPath(AliasName);
+        if (!string.IsNullOrEmpty(alias)) return alias;
         string? user = Native.UserDirectory();
         return user == null ? null : Path.Combine(user, DirName);
     }

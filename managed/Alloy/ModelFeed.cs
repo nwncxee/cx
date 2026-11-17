@@ -33,6 +33,12 @@ internal static unsafe class ModelFeed
     private static ExtenderLog? _log;
     private static Source? _source;
     private static long _resident, _nwsyncOff, _refused, _bytes, _ascii, _moved;
+    /// <summary>The engine-read fallback's tally: models it served, and models the engine could not find either.</summary>
+    private sealed class RecoveryState { public long Reads, Misses; }
+    private static RecoveryState _recovery = new();
+    /// <summary>The extension the engine's own read (<see cref="ResLocate.EngineRead"/>) takes for a model. A
+    /// walkmesh has none: <c>CAuroraInterface::GetResource</c> serves models, materials, shaders, textures and TXI.</summary>
+    private const string MdlExt = ".mdl";
 
     /// <summary>Install the feed if the engine lookup can answer at all. A client where it cannot keeps the
     /// cache with NO source, which refuses every parse loudly rather than inventing one.</summary>
@@ -66,6 +72,9 @@ internal static unsafe class ModelFeed
         public uint R0, R1, R2, R3;
         /// <summary>The resref in the engine's 17-byte shape, for the re-prove.</summary>
         public ResRef Ref;
+        /// <summary>No worker can read it (an NWSync entry with the reader down): the parse refuses at once and
+        /// <see cref="Source.Recover"/> reads it through the engine.</summary>
+        public bool EngineOnly;
     }
 
     private sealed class Source : IModelSource
@@ -86,7 +95,14 @@ internal static unsafe class ModelFeed
                     _resident++;
                     why = "the engine holds this resource resident; a worker cannot read it";
                 }
-                else if (src == ResLocate.Source.NwSync) { _nwsyncOff++; why = w ?? "NWSync reader unavailable"; }
+                else if (src == ResLocate.Source.NwSync)
+                {
+                    _nwsyncOff++;
+                    why = w ?? "NWSync reader unavailable";
+                    if (type == MdlResType)
+                        return new Token { Name = resref, Ref = name, Type = type, Loc = loc, EngineOnly = true,
+                                           R0 = resId[0], R1 = resId[1], R2 = resId[2], R3 = resId[3] };
+                }
                 else { _refused++; why = w ?? "cannot locate"; }
                 return null;
             }
@@ -113,6 +129,7 @@ internal static unsafe class ModelFeed
             why = null;
             var t = (Token)token;
             ReadOnlySpan<byte> raw;
+            if (t.EngineOnly) { why = "the NWSync reader is down"; return null; }
             if (t.Loc.Kind == KindNwSync)
             {
                 Span<byte> nm = stackalloc byte[t.Loc.Path.Length];
@@ -124,6 +141,18 @@ internal static unsafe class ModelFeed
             }
             if (!(_handles ??= new Handles()).Read(t.Loc, out raw, out why)) return null;
             return Build(t, raw, out why);
+        }
+
+        /// <summary>Game thread: the engine's own model read, for a model the worker could not read -- an NWSync
+        /// store CX cannot open, or a row its reader does not find. Walkmeshes stay refused.</summary>
+        public ModelDef? Recover(object token, out string? why)
+        {
+            var t = (Token)token;
+            if (t.Type != MdlResType) { why = "a walkmesh has no engine read to fall back on"; return null; }
+            byte[]? bytes = ResLocate.EngineRead(t.Name, MdlExt);
+            if (bytes == null) { _recovery.Misses++; why = "the engine's own read found nothing either"; return null; }
+            _recovery.Reads++;
+            return Build(t, bytes, out why);
         }
 
         private ModelDef? Build(Token t, ReadOnlySpan<byte> raw, out string? why)
@@ -156,6 +185,8 @@ internal static unsafe class ModelFeed
         if (_nwsyncOff != 0) s += $", {_nwsyncOff} nwsync-off";
         if (_refused != 0) s += $", {_refused} unlocatable";
         if (_moved != 0) s += $", {_moved} moved under the read";
+        RecoveryState r = _recovery;
+        if (r.Reads + r.Misses != 0) s += $", {r.Reads} read through the engine ({r.Misses} missed there too)";
         return s;
     }
 

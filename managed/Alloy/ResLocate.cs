@@ -225,6 +225,54 @@ internal static unsafe class ResLocate
         return Resolve((IntPtr)(&shell), resType);
     }
 
+    /// <summary>The bytes of <paramref name="resref"/><paramref name="ext"/> (<c>".mdl"</c>, <c>".shd"</c>) as the engine
+    /// itself reads them -- <c>AurResGet</c>, so the resource manager builds its own typed <c>CRes</c> -- or null. MAIN
+    /// THREAD. ponytail: the <c>Resources</c> trio must run back to back, with no engine call between.</summary>
+    internal static byte[]? EngineRead(string resref, string ext)
+    {
+        AurResGetFn get = EngineFn.AurResGet;
+        AurResGetDataFn data = EngineFn.AurResGetData;
+        AurResFreeFn free = EngineFn.AurResFree;
+        if (get == null || data == null || free == null || resref.Length is 0 or > ResRefChars || ext.Length > 7) return null;
+        Span<byte> nameBuf = stackalloc byte[ResRefChars + 1];
+        Span<byte> extBuf = stackalloc byte[8];
+        nameBuf[System.Text.Encoding.ASCII.GetBytes(resref, nameBuf)] = 0;
+        extBuf[System.Text.Encoding.ASCII.GetBytes(ext, extBuf)] = 0;
+        fixed (byte* name = nameBuf)
+        fixed (byte* x = extBuf)
+        {
+            int size = 0;
+            IntPtr handle = get(name, x, &size, 1);
+            if (handle == IntPtr.Zero || size <= 0) return null;
+            byte* bytes = data(size);
+            byte[]? copy = null;
+            if (bytes != null) { copy = new byte[size]; Marshal.Copy((IntPtr)bytes, copy, 0, size); }
+            free(handle);
+            return copy;
+        }
+    }
+
+    /// <summary>The path the engine's alias <paramref name="aliasName"/> (no colon) maps to, as its own
+    /// <c>GetAliasPath</c> answers it -- <c>nwn.ini</c>'s <c>[Alias]</c> included -- or null. MAIN THREAD.</summary>
+    internal static string? AliasPath(string aliasName)
+    {
+        if (!Attach(out _) || EngineFn.AliasGetPath == null || aliasName.Length is 0 or > ResRefChars) return null;
+        IntPtr exoBase = *(IntPtr*)_exoBaseSym;
+        if (exoBase == IntPtr.Zero) return null;   // pre-main: the engine has no CExoBase yet
+        IntPtr aliases = new CExoBase(exoBase).AliasList.Ptr;
+        if (aliases == IntPtr.Zero) return null;
+        Span<byte> name = stackalloc byte[ResRefChars + 1];
+        int n = System.Text.Encoding.ASCII.GetBytes(aliasName, name);
+        name[n] = 0;
+        fixed (byte* buf = name)
+        {
+            // A CExoString is {char* buf; int len; int cap}; GetAliasPath only reads it, so a forged shell serves.
+            ExoStringRec shell = new() { Buf = buf, Len = (uint)n };
+            var path = (ExoStringRec*)new CExoAliasList(aliases).AliasGetPath((IntPtr)(&shell), 0);
+            return path == null || path->Buf == null || path->Len == 0 ? null : path->Text;
+        }
+    }
+
     /// <summary>One <c>CExoAliasList::ResolveFileName</c>: an alias name plus a restype to an absolute
     /// filename. The <c>CExoString</c> it returns is the CALLER's, so its buffer is freed here.</summary>
     private static string? Resolve(IntPtr nameString, ushort resType)
