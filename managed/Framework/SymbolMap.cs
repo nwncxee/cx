@@ -2251,6 +2251,23 @@ internal static unsafe class SymbolMap
     /// so the key never reaches that hook there.</summary>
     [Fn("void(CPanelInventory this)")]
     public const string InvToggleDisplay = "_ZN15CPanelInventory13ToggleDisplayEv";
+    /// <summary><c>CGuiInGame::HandleInvButton()</c> @0x66fea0 (Windows rva 0x6f8310) -- the inventory key, from
+    /// <c>HandleInputEvent</c> alone: a container open sends <c>UseObject</c>, else it calls <see cref="InvToggleDisplay"/>,
+    /// whose other callers (store setup, level-up, possessing a familiar) are not the key.</summary>
+    [Fn("void(CGuiInGame this)")]
+    public const string InvHandleInvButton = "_ZN10CGuiInGame15HandleInvButtonEv";
+    /// <summary><c>CGuiInGame::CloseGUIsForLevelup()</c> @0x672090 (Windows rva 0x6f6ea0) -- from <c>BeginLevelUp</c>: toggles
+    /// each inventory panel registered as a popup (+0xa8, Windows +0xa0) shut, then the spell book.</summary>
+    [Fn("void(CGuiInGame this)")]
+    public const string InvCloseForLevelup = "_ZN10CGuiInGame19CloseGUIsForLevelupEv";
+    /// <summary><c>CNWCMessage::SendPlayerToServerInput_PossessFamiliar()</c> @0x804290 (Windows rva 0x7bff40), major 6 minor
+    /// 0x13 -- toggles a shown inventory panel shut before it sends.</summary>
+    [Fn("void(IntPtr msg)")]
+    public const string SendPossessFamiliar = "_ZN11CNWCMessage39SendPlayerToServerInput_PossessFamiliarEv";
+    /// <summary><c>CNWRules::GetRulesetIntEntry(ulong key, int fallback)</c> @0x10b02e0 -- a ruleset.2da entry by the
+    /// FNV-1a-64 hash of its name, or <c>fallback</c>.</summary>
+    [Fn("int(CNWRules this, ulong key, int fallback)")]
+    public const string RulesetIntEntry = "_ZN8CNWRules18GetRulesetIntEntryEmi";
     /// <summary><c>CPanelInventory::SetCharacterData(uint oid)</c> @0x68d810 (Windows rva 0x856fa0) -- fills the five
     /// labels (name, gold, weight, max weight, AC) from the creature. Safe on a HIDDEN panel: it reads no visibility
     /// field, registers no popup, sends nothing and allocates no widget. Pass ONLY the player's own id -- a FOREIGN
@@ -3277,6 +3294,10 @@ internal static unsafe class SymbolMap
         //     Only CNWBaseItemArray is shared engine and therefore a name export.
         [InvSetInventoryVisible] = At(),   // container flag +0x2f64, shown oid +0x2f68 (Linux +0x319c / +0x31a0)
         [InvToggleDisplay]       = At(),   // HandleInvButton's tail jump at rva 0x6f838f; panel state +0xb0, no call to 0x857cd0
+        [InvHandleInvButton]     = At(),   // body read: panel-disabled check (panel 4), container flag +0x2f64, UseObject 0x7c07c0 or jmp 0x858050
+        [InvCloseForLevelup]     = At(),   // body read: panels +0x48 / +0x50, popup +0xa0, call 0x858050 each, spell book +0x98
+        [SendPossessFamiliar]    = At(),   // body read: GetInventoryPanel, state +0xb0 == 1 then call 0x858050, send 6 / 0x13
+        [RulesetIntEntry]        = Nm("?GetRulesetIntEntry@CNWRules@@QEAAH_KH@Z"),
         [InvSetCharacterData]    = At(),   // gold creature+0x1b8, weight +0x28c; label m_pString at label+0x90
         [GetInventoryPanel]      = At(),
         [GameCameraHitCheck]     = At(),   // body read: GetModuleCamera, info+0x20 = 1, camera vtbl +0x60

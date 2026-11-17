@@ -23,13 +23,18 @@ internal readonly record struct WorldHit(WorldKind Kind, uint Oid, int Type, Sys
 internal static unsafe class InventoryNative
 {
     private static ExtenderLog? _log;
-    /// <summary>The engine functions the four hooks replace; installed once at attach, never reset.</summary>
+    /// <summary>The engine functions the hooks replace, installed once at attach and never reset, and whether the
+    /// inventory key is being handled, which tells its <c>ToggleDisplay</c> from the stock show calls.</summary>
     private sealed class HookState
     {
         public InvSetInventoryVisibleFn VisibleOrig;
         public InvToggleDisplayFn ToggleOrig;
+        public InvHandleInvButtonFn KeyOrig;
+        public InvCloseForLevelupFn LevelupOrig;
+        public SendPossessFamiliarFn PossessOrig;
         public InvboxAddItemFn* AddSlot;
         public InvContainerPagenumFn PagenumOrig;
+        public bool KeyDown;
     }
 
     private static readonly HookState _hooks = new();
@@ -57,7 +62,8 @@ internal static unsafe class InventoryNative
 
     private static readonly string[] Needed =
     {
-        SymbolMap.InvSetInventoryVisible, SymbolMap.InvToggleDisplay, SymbolMap.InvSetCharacterData, SymbolMap.GetInventoryPanel, SymbolMap.InvboxAddItem,
+        SymbolMap.InvSetInventoryVisible, SymbolMap.InvToggleDisplay, SymbolMap.InvHandleInvButton, SymbolMap.InvCloseForLevelup,
+        SymbolMap.SendPossessFamiliar, SymbolMap.RulesetIntEntry, SymbolMap.InvSetCharacterData, SymbolMap.GetInventoryPanel, SymbolMap.InvboxAddItem,
         SymbolMap.GetGameObject, SymbolMap.AppManager, SymbolMap.Rules, SymbolMap.GetBaseItem,
         SymbolMap.SendInvEquip, SymbolMap.SendInvUnequip, SymbolMap.SendInvRepositoryMove, SymbolMap.SendInvDrop,
         SymbolMap.SendGuiInvStatus, SymbolMap.SendGuiInvSelectPanel, SymbolMap.SendInputUseObject, SymbolMap.SendInputMergeItem,
@@ -68,7 +74,7 @@ internal static unsafe class InventoryNative
         SymbolMap.InvSetContainerGuiVisible, SymbolMap.InvContainerPageUp, SymbolMap.InvContainerPageDown, SymbolMap.InvContainerPagenum,
     };
 
-    /// <summary>Resolve, then install the funnel hook, the key hook, the repository chain and the container page-count hook. False =
+    /// <summary>Resolve, then install the funnel hook, the key and toggle hooks, the level-up and possess hooks, the repository chain and the container page-count hook. False =
     /// every piece stands down together: a half-live inventory is not a state this ships in.</summary>
     public static bool Attach(ExtenderLog log, HookService hooks)
     {
@@ -79,10 +85,14 @@ internal static unsafe class InventoryNative
                                   "CGuiContainer", "CGuiPanel")) return false;
         _hooks.VisibleOrig = hooks.InstallInvSetInventoryVisible(&OnSetInventoryVisible);
         _hooks.ToggleOrig = hooks.InstallInvToggleDisplay(&OnToggleDisplay);
+        _hooks.KeyOrig = hooks.InstallInvHandleInvButton(&OnInvButton);
+        _hooks.LevelupOrig = hooks.InstallInvCloseForLevelup(&OnCloseForLevelup);
+        _hooks.PossessOrig = hooks.InstallSendPossessFamiliar(&OnPossessFamiliar);
         _hooks.AddSlot = hooks.ChainInvboxAddItem(&OnAddItem, 50);
         _hooks.PagenumOrig = hooks.InstallInvContainerPagenum(&OnContainerPagenum);
-        _ready = _hooks.VisibleOrig != null && _hooks.ToggleOrig != null && _hooks.AddSlot != null && _hooks.PagenumOrig != null;
-        if (!_ready) log.Info("InventoryService: SetInventoryVisible, ToggleDisplay, AddItem or SetContainerPagenumVisible did not hook");
+        _ready = _hooks.VisibleOrig != null && _hooks.ToggleOrig != null && _hooks.KeyOrig != null && _hooks.LevelupOrig != null
+              && _hooks.PossessOrig != null && _hooks.AddSlot != null && _hooks.PagenumOrig != null;
+        if (!_ready) log.Info("InventoryService: SetInventoryVisible, ToggleDisplay, HandleInvButton, CloseGUIsForLevelup, PossessFamiliar, AddItem or SetContainerPagenumVisible did not hook");
         return _ready;
     }
 
@@ -104,26 +114,58 @@ internal static unsafe class InventoryNative
         _hooks.VisibleOrig(panel, show, notify, oid);
     }
 
-    /// <summary>The inventory key. On the player's own panel, hidden, it reaches the funnel as the Linux body's show call
-    /// does, since Windows inlines that call; a shown panel or a possessed familiar keeps the stock toggle.
-    /// ponytail: a ruleset that lets a familiar open it gets the stock panel on Windows; read that entry to route it here.</summary>
+    /// <summary>The inventory key: its <c>ToggleDisplay</c> toggles the CX window, where every other caller's shows it.</summary>
+    [UnmanagedCallersOnly]
+    private static void OnInvButton(IntPtr gui)
+    {
+        _hooks.KeyDown = true;
+        _hooks.KeyOrig(gui);
+        _hooks.KeyDown = false;
+    }
+
+    /// <summary>A show of the player's own hidden panel reaches the CX window, as the Linux body's show call does, since
+    /// Windows inlines that call: the key toggles it, store setup opens it. A shown panel, or a possessed familiar the
+    /// ruleset refuses, keeps the stock toggle.</summary>
     [UnmanagedCallersOnly]
     private static void OnToggleDisplay(IntPtr panel)
     {
-        if (InventoryService.Ours(panel, 1, InventoryModel.Invalid) && !new CGuiPanel(panel).Shown && !PossessingFamiliar())
+        if (InventoryService.Ours(panel, 1, InventoryModel.Invalid) && !new CGuiPanel(panel).Shown && !FamiliarRefused())
         {
-            if (ExtenderLog.Enabled) _log?.Info("[inv] key toggles the CX window");
-            InventoryService.OnSetVisible(show: true, notify: true);
+            if (ExtenderLog.Enabled) _log?.Info(_hooks.KeyDown ? "[inv] key toggles the CX window" : "[inv] stock show call opens the CX window");
+            InventoryService.OnSetVisible(show: true, notify: _hooks.KeyDown);
             return;
         }
         _hooks.ToggleOrig(panel);
     }
 
-    /// <summary>The player controls a possessed familiar, the case the stock key refuses unless the ruleset allows it.</summary>
-    private static bool PossessingFamiliar()
+    /// <summary>A level-up shuts the CX window as it shuts a shown stock panel, which the CX window never registers as.</summary>
+    [UnmanagedCallersOnly]
+    private static void OnCloseForLevelup(IntPtr gui)
+    {
+        if (ExtenderLog.Enabled) _log?.Info("[inv] level-up begins");
+        InventoryService.OnSetVisible(show: false, notify: true);
+        _hooks.LevelupOrig(gui);
+    }
+
+    /// <summary>Possessing a familiar shuts the CX window first, as it shuts a shown stock panel.</summary>
+    [UnmanagedCallersOnly]
+    private static void OnPossessFamiliar(IntPtr msg)
+    {
+        if (ExtenderLog.Enabled) _log?.Info("[inv] possessing a familiar");
+        InventoryService.OnSetVisible(show: false, notify: true);
+        _hooks.PossessOrig(msg);
+    }
+
+    /// <summary><c>ALL_ASSOCIATES_CAN_INTERACT</c>'s ruleset key, the FNV-1a-64 hash of its name, which the stock key reads.</summary>
+    private const ulong AllAssociatesCanInteract = 0x65450e9db61e0246; // not-an-offset: a hash of a ruleset entry's name
+
+    /// <summary>The player controls a possessed familiar and the ruleset leaves associates' inventories shut: the stock key's refusal.</summary>
+    private static bool FamiliarRefused()
     {
         IntPtr cre = Creature(PlayerId());
-        return cre != IntPtr.Zero && new CNWCCreature(cre).IsFamiliar;
+        if (cre == IntPtr.Zero || !new CNWCCreature(cre).IsFamiliar) return false;
+        IntPtr rules = Rules();
+        return rules == IntPtr.Zero || new CNWRules(rules).RulesetIntEntry(AllAssociatesCanInteract, 0) == 0;
     }
 
     /// <summary>Make the hidden stock panel the player's, as its own open does (<c>SetInventoryVisible</c> stores the shown
@@ -431,11 +473,15 @@ internal static unsafe class InventoryNative
         new CPanelInventory(panel).InvSetContainerGuiVisible(0, 1, 0, InventoryModel.Invalid);
     }
 
-    private static IntPtr BaseItems()
+    private static IntPtr Rules()
     {
         IntPtr rules = Native.Sym(SymbolMap.Rules);
-        if (rules == IntPtr.Zero) return IntPtr.Zero;
-        IntPtr r = *(IntPtr*)rules;
+        return rules == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)rules;
+    }
+
+    private static IntPtr BaseItems()
+    {
+        IntPtr r = Rules();
         return r == IntPtr.Zero ? IntPtr.Zero : new CNWRules(r).BaseItems;
     }
 

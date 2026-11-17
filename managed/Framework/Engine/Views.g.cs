@@ -374,6 +374,10 @@ global using unsafe StreamSetLoopingFn = delegate* unmanaged<nint, int, void>;
 global using unsafe SoundShutDownFn = delegate* unmanaged<nint, void>;
 global using unsafe InvSetInventoryVisibleFn = delegate* unmanaged<nint, int, int, uint, void>;
 global using unsafe InvToggleDisplayFn = delegate* unmanaged<nint, void>;
+global using unsafe InvHandleInvButtonFn = delegate* unmanaged<nint, void>;
+global using unsafe InvCloseForLevelupFn = delegate* unmanaged<nint, void>;
+global using unsafe SendPossessFamiliarFn = delegate* unmanaged<nint, void>;
+global using unsafe RulesetIntEntryFn = delegate* unmanaged<nint, ulong, int, int>;
 global using unsafe InvSetCharacterDataFn = delegate* unmanaged<nint, uint, void>;
 global using unsafe GameCameraHitCheckFn = delegate* unmanaged<int, int, nint, nint, void>;
 global using unsafe GetGameobjectHitFn = delegate* unmanaged<nint, nint*, int>;
@@ -1439,6 +1443,10 @@ public readonly unsafe partial struct CGuiInGame(IntPtr ptr)
     public void GuiInGameUnToggleOff() => EngineFn.GuiInGameUnToggleOff(Ptr);
     /// <inheritdoc cref="SymbolMap.HideCompass"/>
     public void HideCompass() => EngineFn.HideCompass(Ptr);
+    /// <inheritdoc cref="SymbolMap.InvCloseForLevelup"/>
+    public void InvCloseForLevelup() => EngineFn.InvCloseForLevelup(Ptr);
+    /// <inheritdoc cref="SymbolMap.InvHandleInvButton"/>
+    public void InvHandleInvButton() => EngineFn.InvHandleInvButton(Ptr);
     /// <inheritdoc cref="EngineLayout.InGameGuiOptionsPanel"/>
     public ref IntPtr OptionsPanel => ref *(IntPtr*)(Ptr + EngineLayout.InGameGuiOptionsPanel);
     /// <inheritdoc cref="SymbolMap.PrepChatPromptForTell"/>
@@ -2289,6 +2297,8 @@ public readonly unsafe partial struct CNWRules(IntPtr ptr)
     public bool IsNull => Ptr == IntPtr.Zero;
     /// <inheritdoc cref="EngineLayout.RulesBaseItems"/>
     public ref IntPtr BaseItems => ref *(IntPtr*)(Ptr + EngineLayout.RulesBaseItems);
+    /// <inheritdoc cref="SymbolMap.RulesetIntEntry"/>
+    public int RulesetIntEntry(ulong key, int fallback) => EngineFn.RulesetIntEntry(Ptr, key, fallback);
     /// <inheritdoc cref="EngineLayout.RulesTwoDimArrays"/>
     public ref IntPtr TwoDimArrays => ref *(IntPtr*)(Ptr + EngineLayout.RulesTwoDimArrays);
 }
@@ -5479,6 +5489,22 @@ public static unsafe class EngineFn
     private static bool _InvToggleDisplayDone;
     /// <inheritdoc cref="SymbolMap.InvToggleDisplay"/>
     public static InvToggleDisplayFn InvToggleDisplay => (InvToggleDisplayFn)(_InvToggleDisplayDone ? _InvToggleDisplay : Resolve(ref _InvToggleDisplay, ref _InvToggleDisplayDone, SymbolMap.InvToggleDisplay));
+    private static IntPtr _InvHandleInvButton;
+    private static bool _InvHandleInvButtonDone;
+    /// <inheritdoc cref="SymbolMap.InvHandleInvButton"/>
+    public static InvHandleInvButtonFn InvHandleInvButton => (InvHandleInvButtonFn)(_InvHandleInvButtonDone ? _InvHandleInvButton : Resolve(ref _InvHandleInvButton, ref _InvHandleInvButtonDone, SymbolMap.InvHandleInvButton));
+    private static IntPtr _InvCloseForLevelup;
+    private static bool _InvCloseForLevelupDone;
+    /// <inheritdoc cref="SymbolMap.InvCloseForLevelup"/>
+    public static InvCloseForLevelupFn InvCloseForLevelup => (InvCloseForLevelupFn)(_InvCloseForLevelupDone ? _InvCloseForLevelup : Resolve(ref _InvCloseForLevelup, ref _InvCloseForLevelupDone, SymbolMap.InvCloseForLevelup));
+    private static IntPtr _SendPossessFamiliar;
+    private static bool _SendPossessFamiliarDone;
+    /// <inheritdoc cref="SymbolMap.SendPossessFamiliar"/>
+    public static SendPossessFamiliarFn SendPossessFamiliar => (SendPossessFamiliarFn)(_SendPossessFamiliarDone ? _SendPossessFamiliar : Resolve(ref _SendPossessFamiliar, ref _SendPossessFamiliarDone, SymbolMap.SendPossessFamiliar));
+    private static IntPtr _RulesetIntEntry;
+    private static bool _RulesetIntEntryDone;
+    /// <inheritdoc cref="SymbolMap.RulesetIntEntry"/>
+    public static RulesetIntEntryFn RulesetIntEntry => (RulesetIntEntryFn)(_RulesetIntEntryDone ? _RulesetIntEntry : Resolve(ref _RulesetIntEntry, ref _RulesetIntEntryDone, SymbolMap.RulesetIntEntry));
     private static IntPtr _InvSetCharacterData;
     private static bool _InvSetCharacterDataDone;
     /// <inheritdoc cref="SymbolMap.InvSetCharacterData"/>
@@ -8044,6 +8070,30 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.InvToggleDisplay"/>; returns the slot holding the next layer, or null.</summary>
     public static InvToggleDisplayFn* ChainInvToggleDisplay(this HookService h, InvToggleDisplayFn handler, int priority) =>
         (InvToggleDisplayFn*)h.Chain(SymbolMap.InvToggleDisplay, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.InvHandleInvButton"/>; returns the original, or null.</summary>
+    public static InvHandleInvButtonFn InstallInvHandleInvButton(this HookService h, InvHandleInvButtonFn handler) =>
+        (InvHandleInvButtonFn)h.Install(SymbolMap.InvHandleInvButton, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.InvHandleInvButton"/>; returns the slot holding the next layer, or null.</summary>
+    public static InvHandleInvButtonFn* ChainInvHandleInvButton(this HookService h, InvHandleInvButtonFn handler, int priority) =>
+        (InvHandleInvButtonFn*)h.Chain(SymbolMap.InvHandleInvButton, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.InvCloseForLevelup"/>; returns the original, or null.</summary>
+    public static InvCloseForLevelupFn InstallInvCloseForLevelup(this HookService h, InvCloseForLevelupFn handler) =>
+        (InvCloseForLevelupFn)h.Install(SymbolMap.InvCloseForLevelup, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.InvCloseForLevelup"/>; returns the slot holding the next layer, or null.</summary>
+    public static InvCloseForLevelupFn* ChainInvCloseForLevelup(this HookService h, InvCloseForLevelupFn handler, int priority) =>
+        (InvCloseForLevelupFn*)h.Chain(SymbolMap.InvCloseForLevelup, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.SendPossessFamiliar"/>; returns the original, or null.</summary>
+    public static SendPossessFamiliarFn InstallSendPossessFamiliar(this HookService h, SendPossessFamiliarFn handler) =>
+        (SendPossessFamiliarFn)h.Install(SymbolMap.SendPossessFamiliar, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.SendPossessFamiliar"/>; returns the slot holding the next layer, or null.</summary>
+    public static SendPossessFamiliarFn* ChainSendPossessFamiliar(this HookService h, SendPossessFamiliarFn handler, int priority) =>
+        (SendPossessFamiliarFn*)h.Chain(SymbolMap.SendPossessFamiliar, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.RulesetIntEntry"/>; returns the original, or null.</summary>
+    public static RulesetIntEntryFn InstallRulesetIntEntry(this HookService h, RulesetIntEntryFn handler) =>
+        (RulesetIntEntryFn)h.Install(SymbolMap.RulesetIntEntry, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.RulesetIntEntry"/>; returns the slot holding the next layer, or null.</summary>
+    public static RulesetIntEntryFn* ChainRulesetIntEntry(this HookService h, RulesetIntEntryFn handler, int priority) =>
+        (RulesetIntEntryFn*)h.Chain(SymbolMap.RulesetIntEntry, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.InvSetCharacterData"/>; returns the original, or null.</summary>
     public static InvSetCharacterDataFn InstallInvSetCharacterData(this HookService h, InvSetCharacterDataFn handler) =>
         (InvSetCharacterDataFn)h.Install(SymbolMap.InvSetCharacterData, (IntPtr)handler);
