@@ -284,6 +284,11 @@ Both run the client with `inventory.enabled=1` in the harness's own area, press 
 IK2. `inventory_key_regression.sh` is the Linux client, and it also needs both presses to log `[inv] key`, the
 `ToggleDisplay` hook both OSes take. Each takes `--out DIR`.
 
+`inventory_store_*.sh` run the showcase `invstore`, which opens a stock general store on the player 25 s after login,
+with no backdrop. `inventory_store_approved_examples.sh` presses the key at 15 s first, and the CX window must stay
+open through the store (IK3). `inventory_store_regression.sh` presses nothing, and the store must open the CX window
+and not the stock panel (IK4). Both share `inventory_run` in `inventory_key_run.sh`.
+
 ## Deferred walk A/B (`tools/live/deferred_walk_*.sh`)
 
 The deferred lights walk's live examples, each against main 65203c28. `--base DIR` is a checkout of that commit
