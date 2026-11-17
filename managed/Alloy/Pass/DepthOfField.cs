@@ -244,6 +244,15 @@ internal static unsafe partial class DepthOfField
             Rule("Dynamic", Dof.FocusDynamic, in cam, 17.5f, 20.5f);
             Rule("A horizontal camera's focus stops at the far limit", Dof.FocusPitch, cam with { PitchDeg = 90f }, 43.5f, 45f);
             Rule("A cutscene takes the pitch rule and keeps the character", Dof.FocusMouse, cam with { Cutscene = true }, 6.5f, 30.59f);
+            Dof.Focus.V = Dof.FocusPitch;
+            static float FarAt(float upDeg)
+            {
+                float up = upDeg * MathF.PI / 180f;
+                var eye = new System.Numerics.Vector3(-8f * MathF.Cos(up), 0f, 8f * MathF.Sin(up));
+                return Focus(new Scene(8f, Db.DbKeyhole.PitchOf(eye, System.Numerics.Vector3.Zero), false, false, 0f, 0f, 0f, 0f)).Far;
+            }
+            float low = FarAt(10f), high = FarAt(70f);
+            check.Expect(low > high, $"Camera Pitch looks farther away the lower the camera sits ({low:F2} m at 10 degrees up, {high:F2} m at 70)");
         }
         finally { Dof.NeverBlur.V = never; Dof.Focus.V = focus; Dof.DeadZone.V = dead; }
     }

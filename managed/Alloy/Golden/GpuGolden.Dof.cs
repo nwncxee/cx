@@ -90,6 +90,17 @@ internal static partial class GpuGolden
         }
     }
 
+    /// <summary>How many pixels of the frame a one-texel lamp at (<paramref name="x0"/>, <paramref name="y0"/>) spreads past
+    /// 0.05: 0 is a lamp left sharp.</summary>
+    private static int DofReach(DofPx[] o, int x0, int y0)
+    {
+        int reach = 0;
+        for (int y = y0 - 40; y <= y0 + 40; y++)
+            for (int x = x0 - 40; x <= x0 + 40; x++)
+                if ((x != x0 || y != y0) && DofAt(o, x, y) > 0.05f) reach = Math.Max(reach, Math.Max(Math.Abs(x - x0), Math.Abs(y - y0)));
+        return reach;
+    }
+
     /// <summary>Channel <paramref name="k"/> at a pixel of what <see cref="DofRun"/> returned.</summary>
     private static float DofAt(DofPx[] o, int x, int y, int k = 0)
     {
@@ -150,10 +161,7 @@ internal static partial class GpuGolden
         DofPx[]? o = DofRun(vk, log, static (x, y) => (x == lampX && y == lampY ? 64f : 0f, 0f, 0f), static (x, y) => 45f, DofCamera(8f, 70f), new DofSet(Amount: 1f));
         check.Expect(o != null, "dof: the Amount 1 frame ran");
         if (o == null) return;
-        int reach = 0;
-        for (int y = lampY - 40; y <= lampY + 40; y++)
-            for (int x = lampX - 40; x <= lampX + 40; x++)
-                if (DofAt(o, x, y) > 0.05f) reach = Math.Max(reach, Math.Max(Math.Abs(x - lampX), Math.Abs(y - lampY)));
+        int reach = DofReach(o, lampX, lampY);
         check.Expect(reach <= 3, $"dof: at Amount 1 a far lamp reaches at most 3 pixels (reached {reach})");
     }
 
