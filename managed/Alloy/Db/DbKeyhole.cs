@@ -189,11 +189,16 @@ internal static unsafe class DbKeyhole
         System.Numerics.Vector3 d = eye - player;
         float dist = d.Length();
         rt.CamDist = dist;
-        // Degrees above the horizon, POSITIVE as the camera rises -- what uKeyholeCam.y is measured in
-        // (cx_keyhole.glsl divides (90 - pitch) by 45, so 90 is straight down and 0 is level).
-        float flat = MathF.Sqrt(d.X * d.X + d.Y * d.Y);
-        rt.CamPitch = dist > 1e-4f ? MathF.Abs(MathF.Atan2(d.Z, flat)) * (180f / MathF.PI) : 90f;
+        rt.CamPitch = PitchOf(eye, player);
         _rtWrites++;
+    }
+
+    /// <summary>The camera's pitch in degrees for an eye at <paramref name="eye"/> looking at <paramref name="player"/>.</summary>
+    internal static float PitchOf(Vector3 eye, Vector3 player)
+    {
+        System.Numerics.Vector3 d = eye - player;
+        float dist = d.Length(), flat = MathF.Sqrt(d.X * d.X + d.Y * d.Y);
+        return dist > 1e-4f ? MathF.Abs(MathF.Atan2(d.Z, flat)) * (180f / MathF.PI) : 90f;
     }
 
     private static long _armed, _off, _cut, _rtWrites, _skipped, _sweeps;
