@@ -434,7 +434,8 @@ echo "run-live: client pid $CLIENT_PID"
 # holds it -- the area edge itself.
 AREA_MARK='LightmapBake: hold released|LightmapBake: AreaLoaded send passed through'
 AREA_MARK_NOHOLD='\[areaedge\] AreaLoaded send|PartTable: AreaLoaded send'
-# Alloy off runs no shadow bake and no part table, so neither mark exists: the session gate seeing a module is the edge left.
+# Alloy off (alloy.enabled=0, or a seam stand-down: both log "AlloyRenderer: stood down") runs no shadow bake and no part
+# table, so neither mark exists: the session gate seeing a module is the edge left.
 AREA_MARK_ENGINE='\[uigate\] win=0x[1-9a-f][0-9a-f]* .*inModule=True'
 FRAME_MARK='first frame presented -- hook is LIVE'
 if [ "$STOCK" = 1 ]; then
@@ -461,7 +462,7 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
         break
     fi
     if [ "$MENU" = 0 ] && { log_has -E "$AREA_MARK" \
-       || { log_has '\[alloygate\] alloy.enabled=0 -- the engine renders' && log_has -E "$AREA_MARK_ENGINE"; } \
+       || { log_has 'AlloyRenderer: stood down' && log_has -E "$AREA_MARK_ENGINE"; } \
        || { log_has 'the AreaLoaded send did not resolve' && log_has -E "$AREA_MARK_NOHOLD"; }; }; then
         reached=1
         area_epoch=$(date +%s.%N)
