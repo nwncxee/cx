@@ -92,7 +92,8 @@ internal static partial class Legs
         hr = hl = false;
         tr = tl = 0f;
         if (!Placing(f)) return;
-        FloorSample r = f.FloorR.First, l = f.FloorL.First;
+        float tol = FootFloor.Agree * f.Scale;
+        FloorSample r = f.FloorR.Combine(tol), l = f.FloorL.Combine(tol);
         hr = r.Hit; tr = r.Off;
         hl = l.Hit; tl = l.Off;
         // a foot with no floor in range borrows the other foot's: "none" is not "at the walkmesh"

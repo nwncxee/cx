@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 
@@ -54,6 +55,31 @@ internal struct FootFloor
 
     /// <summary>The first sample under the foot; none in range when there is none.</summary>
     public readonly FloorSample First => Count > 0 ? Under[0] : default;
+
+    /// <summary>World units (times scale) two samples may differ and still be one floor: more than a ramp rises across a
+    /// sole, less than a step.</summary>
+    public const float Agree = 0.06f;
+
+    /// <summary>The floor the whole sole stands on: the hit sample that most others agree with (within <paramref name="tol"/>),
+    /// the higher on a tie, so a lone sample in a crack or on a sliver is outvoted and a half-on-a-step sole takes the step.
+    /// Samples with no hit do not vote; with none, the first sample (no floor).</summary>
+    public readonly FloorSample Combine(float tol)
+    {
+        int best = -1, most = 0;
+        for (int i = 0; i < Count; i++)
+        {
+            if (!Under[i].Hit) continue;
+            int support = 0;
+            for (int j = 0; j < Count; j++)
+                if (Under[j].Hit && MathF.Abs(Under[j].Off - Under[i].Off) <= tol) support++;
+            if (support > most || (support == most && Under[i].Off > Under[best].Off)) { best = i; most = support; }
+        }
+        return best < 0 ? First : Under[best];
+    }
+
+    /// <summary>Two samples are not one floor: exactly one has a hit, or both do and differ by more than <paramref name="tol"/>.</summary>
+    public static bool Disagree(FloorSample a, FloorSample b, float tol)
+        => a.Hit != b.Hit || (a.Hit && MathF.Abs(a.Off - b.Off) > tol);
 }
 
 /// <summary>The walk clips on the body this frame, digested: the blended stride and the lead clip's timing at its

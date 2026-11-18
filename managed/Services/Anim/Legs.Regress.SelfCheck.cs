@@ -22,6 +22,7 @@ internal static class LegsRegress
         E3(check);
         E5(check);
         E8(check);
+        FootFloorCheck.Run(log);
         log.Info(check.Ok ? "Legs.Regress.SelfCheck: passed" : "Legs.Regress.SelfCheck: FAILED");
     }
 
