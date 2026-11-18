@@ -4,6 +4,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Threading;
 using CX.Framework;
+using CX.Graphics;
 
 namespace CX.Alloy;
 
@@ -298,18 +299,29 @@ internal sealed class BakeCache
     }
 
     /// <summary>Null on any refusal or I/O fault: a throw here would strand every probe of the batch in Probing.</summary>
-    private byte[]? LoadUnion(string file, out Union u, out Entry[]? table)
+    private byte[]? LoadUnion(string file, out Union u, out Entry[]? table) => ReadBlobFile(file, out u, out table, _log);
+
+    /// <summary>The union and table of the page blob at <paramref name="file"/>, or null (said on
+    /// <paramref name="log"/>) when it is absent, refused or unreadable. Never throws.</summary>
+    internal static byte[]? ReadBlobFile(string file, out Union u, out Entry[]? table, ExtenderLog? log)
     {
         u = default; table = null;
         try
         {
-            if (!System.IO.File.Exists(file)) return null;
-            using var fs = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16, FileOptions.SequentialScan);
-            byte[]? union = Deserialize(fs, out u, out table, out string? why);
-            if (union == null) _log?.Info($"LightmapBake: blob {Path.GetFileName(file)} refused ({why}) -- its page re-bakes");
+            if (CacheFile.Read(file) is not { } blob) return null;
+            byte[]? union = Deserialize(new MemoryStream(blob, writable: false), out u, out table, out string? why);
+            if (union == null) log?.Info($"LightmapBake: blob {Path.GetFileName(file)} refused ({why}) -- its page re-bakes");
             return union;
         }
-        catch (Exception e) { _log?.Info($"LightmapBake: blob {Path.GetFileName(file)} unreadable ({e.Message}) -- its page re-bakes"); return null; }
+        catch (Exception e) { log?.Info($"LightmapBake: blob {Path.GetFileName(file)} unreadable ({e.Message}) -- its page re-bakes"); return null; }
+    }
+
+    /// <summary>Write one page blob to <paramref name="file"/>; false when it did not land.</summary>
+    internal static bool WriteBlobFile(string file, int page, int x0, int y0, int uw, int uh, Entry[] table, byte[] union)
+    {
+        var ms = new MemoryStream();
+        SerializeTo(ms, page, x0, y0, uw, uh, table, union);
+        return CacheFile.Write(file, ms.GetBuffer().AsSpan(0, (int)ms.Length));
     }
 
     /// <summary>One blob per page bake, named by the wall clock (the index orders by mtime anyway); its rects
@@ -319,8 +331,7 @@ internal sealed class BakeCache
         string dir = MeshChart.LedgerDir();
         Directory.CreateDirectory(dir);
         string file = Path.Combine(dir, j.File!);
-        using (var fs = new FileStream(file, FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16))
-            SerializeTo(fs, j.Page, j.X0, j.Y0, j.Uw, j.Uh, j.Table!, j.Data!);
+        if (!WriteBlobFile(file, j.Page, j.X0, j.Y0, j.Uw, j.Uh, j.Table!, j.Data!)) return;
         Index(file, j.Table!);
         if (++_writes % PruneEvery == 0) MeshChart.Prune(dir, (long)Lightmap.Disk.V << 20);
     }

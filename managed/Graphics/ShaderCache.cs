@@ -25,7 +25,7 @@ internal static partial class ShaderCache
 
     /// <inheritdoc cref="ShaderCache"/>
     internal static string Dir =>
-        _dir ??= Sweep(Path.Combine(Native.UserDirectory() ?? Native.DefaultUserDirectory(), "cx-shaders"));
+        _dir ??= Sweep(Path.Combine(UserFolders.Cache, "cx-shaders"));
 
     private static string Sweep(string dir)
     {

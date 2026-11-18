@@ -53,8 +53,7 @@ public static unsafe partial class VulkanToolchain
         FreshCompiles++;
         byte[]? spirv = CompileFresh(source, name, kind, out error);
         if (spirv != null)
-            try { Directory.CreateDirectory(ShaderCache.Dir); File.WriteAllBytes(cached, spirv); }
-            catch (IOException) { } catch (UnauthorizedAccessException) { }
+            CacheFile.Write(cached, spirv);
         return spirv;
     }
 
@@ -75,8 +74,7 @@ public static unsafe partial class VulkanToolchain
     {
         try
         {
-            if (!File.Exists(path)) return null;
-            byte[] b = File.ReadAllBytes(path);
+            if (CacheFile.Read(path) is not { } b) return null;
             if (b.Length < 20 || b.Length % 4 != 0 || BitConverter.ToUInt32(b, 0) != SpirvMagic) { File.Delete(path); return null; }
             File.SetLastWriteTimeUtc(path, DateTime.UtcNow);
             return b;

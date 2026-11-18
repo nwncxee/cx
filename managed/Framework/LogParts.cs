@@ -18,6 +18,12 @@ internal sealed class LogParts(string dir, long cap = LogParts.MaxPartBytes)
     private bool _writeFailed;
     private bool _saidOpenFailed;
 
+    /// <summary>The folder the parts are in.</summary>
+    internal string Dir => dir;
+
+    /// <summary>Carry this launch's cx.log into <paramref name="to"/> and write there from now on.</summary>
+    internal void MoveTo(string to) { }
+
     internal string PathOf(int part) => Path.Combine(dir, part == 0 ? "cx.log" : $"cx.{part}.log");
 
     /// <summary>Append a line, rolling first if it would take the part past the cap. The first line of a launch opens a

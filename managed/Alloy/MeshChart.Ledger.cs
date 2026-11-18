@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using CX.Framework;
+using CX.Graphics;
 
 namespace CX.Alloy;
 
@@ -20,7 +21,7 @@ internal static partial class MeshChart
     /// <summary>The byte tally and the prune are shared by every <c>cx-chart</c> worker.</summary>
     private static readonly object _diskGate = new();
 
-    internal static string LedgerDir() => Path.Combine(Native.UserDirectory() ?? Native.DefaultUserDirectory(), "cx-charts");
+    internal static string LedgerDir() => Path.Combine(UserFolders.Cache, "cx-charts");
     private static string LedgerFile(ulong key) => Path.Combine(LedgerDir(), $"{key:x16}.bin");
 
     /// <summary>Serialize a charted job. Pure, so the self-check proves the round trip with no disk.</summary>
@@ -78,8 +79,8 @@ internal static partial class MeshChart
         string f = LedgerFile(j.Content);
         try
         {
-            if (!File.Exists(f)) return false;
-            string? why = Deserialize(File.ReadAllBytes(f), j);
+            if (CacheFile.Read(f) is not { } blob) return false;
+            string? why = Deserialize(blob, j);
             if (why == null) { File.SetLastWriteTimeUtc(f, DateTime.UtcNow); return true; }
             j.Stale = true;   // counted in Pump: the tallies are the render thread's
             File.Delete(f);
@@ -96,7 +97,7 @@ internal static partial class MeshChart
             string dir = LedgerDir();
             Directory.CreateDirectory(dir);
             byte[] blob = Serialize(j);
-            File.WriteAllBytes(LedgerFile(j.Content), blob);
+            if (!CacheFile.Write(LedgerFile(j.Content), blob)) return;
             lock (_diskGate)
             {
                 if (_diskBytes < 0) _diskBytes = Tally(dir);

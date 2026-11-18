@@ -319,6 +319,32 @@ public static unsafe class Native
         return s;
     }
 
+    /// <summary>The path the engine's alias <paramref name="aliasName"/> (no colon) maps to, as its own
+    /// <c>GetAliasPath</c> answers it -- <c>nwn.ini</c>'s <c>[Alias]</c> included -- or null before the engine has
+    /// loaded its aliases, on an unknown build, or for an unknown alias. MAIN THREAD.</summary>
+    public static string? AliasPath(string aliasName)
+    {
+        if (_exoBaseSym == IntPtr.Zero || EngineFn.AliasGetPath == null || !EngineLayout.KeyOk || aliasName.Length is 0 or > AliasChars)
+            return null;
+        IntPtr exoBase = *(IntPtr*)_exoBaseSym;
+        if (exoBase == IntPtr.Zero) return null;   // pre-main: the engine has no CExoBase yet
+        IntPtr aliases = new CExoBase(exoBase).AliasList.Ptr;
+        if (aliases == IntPtr.Zero) return null;
+        Span<byte> name = stackalloc byte[AliasChars + 1];
+        int n = Encoding.ASCII.GetBytes(aliasName, name);
+        name[n] = 0;
+        fixed (byte* buf = name)
+        {
+            // A CExoString is {char* buf; int len; int cap}; GetAliasPath only reads it, so a forged shell serves.
+            ExoStringRec shell = new() { Buf = buf, Len = (uint)n };
+            var path = (ExoStringRec*)new CExoAliasList(aliases).AliasGetPath((IntPtr)(&shell), 0);
+            return path == null || path->Buf == null || path->Len == 0 ? null : path->Text;
+        }
+    }
+
+    /// <summary>The longest alias name <see cref="AliasPath"/> takes: a resref's length, which every engine alias fits.</summary>
+    private const int AliasChars = 16;
+
     /// <summary>
     /// Absolute path for a CX config file in the client's user directory (next to nwn.ini/settings.tml).
     /// Falls back to <see cref="DefaultUserDirectory"/> when the engine dir is unresolvable -- pre-main, or

@@ -21,9 +21,7 @@ internal sealed unsafe partial class VkBackend
         fixed (byte* u = props.pipelineCacheUUID)
             _pipeCachePath = Path.Combine(ShaderCache.Dir,
                 $"vk-pipelines-{props.vendorID:x}-{props.deviceID:x}-{Convert.ToHexString(new ReadOnlySpan<byte>(u, 16))}.bin");
-        byte[] seed = [];
-        try { if (File.Exists(_pipeCachePath)) seed = File.ReadAllBytes(_pipeCachePath); }
-        catch (IOException) { } catch (UnauthorizedAccessException) { }
+        byte[] seed = PipelineSeed(_pipeCachePath);
         // after the read, never before it: the file this driver answers for outlives any sweep
         ShaderCache.Retire(ShaderCache.Dir, Path.GetFileName(_pipeCachePath), _log);
         VkPipelineCache cache;
@@ -41,6 +39,9 @@ internal sealed unsafe partial class VkBackend
         if (_vkd.vkCreatePipelineCache(&empty, null, &cache) == VkResult.Success) _pipeCache = cache;
         _log.Info($"VkBackend: the driver refused the saved pipeline cache -- starting empty");
     }
+
+    /// <summary>The bytes a saved pipeline cache at <paramref name="path"/> seeds the driver with; empty when there are none.</summary>
+    internal static byte[] PipelineSeed(string path) => CacheFile.Read(path) ?? [];
 
     /// <summary>The worker holding the last blob handed off, while it holds it: the blob is a hundred megabytes and the
     /// file write is not the frame's work. One write is in flight at a time; a save that finds it busy leaves the dirty
@@ -79,7 +80,7 @@ internal sealed unsafe partial class VkBackend
 
     /// <summary>Put <paramref name="blob"/> at <paramref name="path"/> through a temporary beside it, so a half-written
     /// file is never the one a later session seeds the driver from. False, loudly, when it did not land.</summary>
-    private static bool WriteCacheFile(byte[] blob, string path, ExtenderLog log)
+    internal static bool WriteCacheFile(byte[] blob, string path, ExtenderLog log)
     {
         try
         {
