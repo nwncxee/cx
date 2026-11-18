@@ -327,12 +327,14 @@ public sealed unsafe partial class RadialService : IExtenderService
         return true;
     }
 
-    /// <summary>Every key is consumed while open (arrows never reach the camera, Esc never reaches the engine menu).</summary>
+    /// <summary>While open the menu keeps Enter and Escape (Esc never reaches the engine menu), and every key while a name
+    /// is typed; every other key goes on to the game, so the player can walk with the menu open.</summary>
     private static bool OnKey(uint sdlKey, int mods)
     {
         if (!_menu.Open) return false;
         if (!RadialKnobs.Enabled.V) { Close(CloseOff); return true; }
         if (_naming != null) { NameKey(sdlKey, mods); return true; }
+        if (!CascadeMenu.Takes(sdlKey)) return false;
         if (_ctx.Open) { CtxAct(_ctx.Key(sdlKey)); return true; }
         Act(_menu.Key(sdlKey), CloseEsc);
         return true;

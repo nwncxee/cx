@@ -179,7 +179,7 @@ internal static class ItemMenuService
         _log?.Info($"[itemmenu] open at {_s.OpenX},{_s.OpenY} with {rows.Length} row(s)");
     }
 
-    /// <summary>The menu goes; the window stops taking every press and key.</summary>
+    /// <summary>The menu goes; the window stops taking every press and its keys.</summary>
     private static void Close()
     {
         Menu.Close();
@@ -188,8 +188,8 @@ internal static class ItemMenuService
         Modal(false);
     }
 
-    /// <summary>While the menu is open its window takes every press and key ahead of NUI and the game, so a click away and
-    /// Escape close it rather than reach the window under it.</summary>
+    /// <summary>While the menu is open its window takes every press, and its own keys, ahead of NUI and the game, so a click
+    /// away and Escape close it rather than reach the window under it.</summary>
     private static void Modal(bool open)
     {
         if (_s.Window != null) _s.Window.SuppressChords = open;
@@ -226,10 +226,11 @@ internal static class ItemMenuService
         return true;
     }
 
-    /// <summary>Every key is eaten while the menu is open, so Escape closes it instead of reaching the engine's own menu.</summary>
+    /// <summary>While the menu is open it keeps Enter and Escape, so Escape closes it instead of reaching the engine's own
+    /// menu; every other key goes on to the game.</summary>
     private static bool OnKey(uint sdlKey, int mods)
     {
-        if (!Menu.Open) return false;
+        if (!Menu.Open || !CascadeMenu.Takes(sdlKey)) return false;
         CascadeAction a = Menu.Key(sdlKey);
         if (a.Kind == CascadeActionKind.CloseAll) { Dismiss(); return true; }
         Act(a);

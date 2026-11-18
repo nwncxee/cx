@@ -54,7 +54,7 @@ public sealed unsafe partial class RadialService
                 "a hoisted row reads its pin's path through the tag");
             _menu.Level(0).Hover = 2;
             check.Expect(OnKey(0x0D, 0) && _menu.Open, "Enter on an unvalidated hoist is refused: the menu stays, nothing invoked");
-            check.Expect(OnMouseMotion(110, 101) && OnMouseWheel(1) && OnKey(0x40000051, 0) && _menu.Open, "motion, wheel and keys are consumed while open");
+            check.Expect(OnMouseMotion(110, 101) && OnMouseWheel(1) && !OnKey(0x40000051, 0) && _menu.Open, "motion and wheel are consumed while open; an arrow goes on to the game");
             check.Expect(OnMouseButton(false, 3, 110, 101) && _menu.Open && !_pressOwned, "the opening right-up is swallowed, menu stays");
 
             // Click-away: the press closes AND is consumed; its release is consumed by the ledger, the next is not.
