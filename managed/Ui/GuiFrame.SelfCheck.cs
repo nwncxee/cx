@@ -57,9 +57,6 @@ internal static class GuiFrameSelfCheck
         check.Expect(f.IndexOf('c', StringComparison.Ordinal) > f.IndexOf('p', StringComparison.Ordinal),
             $"the CX chat box covers a plate: {f}");
         check.Expect(f.Contains("Nu", StringComparison.Ordinal), $"a hover card draws right over NUI: {f}");
-        // Given a CX window over NUI and a NUI window open
-        // When the pointer is over them
-        // Then the cursor draws over both -- last
         check.Expect(f.EndsWith('M') && f.IndexOf('M', StringComparison.Ordinal) > f.IndexOf('u', StringComparison.Ordinal)
                      && f.IndexOf('M', StringComparison.Ordinal) > f.IndexOf('N', StringComparison.Ordinal),
             $"the cursor draws over a CX window above NUI and over NUI, last: {f}");

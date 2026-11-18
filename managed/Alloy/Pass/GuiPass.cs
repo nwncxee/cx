@@ -60,7 +60,7 @@ internal static unsafe class GuiPass
         (*_nkSlot)(aa);
     }
 
-    /// <summary>The overlay views drawn after NUI, and the one-time program build.</summary>
+    /// <summary>At the present: pump a font atlas that is due, and reset the frame's colour-clear latch.</summary>
     private static void OnPresent()
     {
         // Cold: a font's atlas lands on the frames after it is first named, as a Vulkan image.

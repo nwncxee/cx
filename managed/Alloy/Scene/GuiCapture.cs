@@ -398,24 +398,33 @@ internal static unsafe class GuiCapture
 
     /// <summary>Order a frame's layers as the engine draws them: the views' panels, NUI (<c>[0, nui)</c>, recorded first
     /// at <c>nk_sdl_render</c>), then the views' overlay layers, order kept within each run. Returns the panels' count;
-    /// <paramref name="front"/> is where the overlays start. An overlay's depth clear passes to the panel after it.</summary>
+    /// <paramref name="front"/> is where the overlays start. An overlay's depth clear moves to the panel after it;
+    /// an overlay no panel follows keeps its own.</summary>
     internal static int Partition(Span<Layer> layers, int nui, Span<Layer> scratch, out int front)
     {
         int n = layers.Length, k = 0;
         nui = Math.Clamp(nui, 0, n);
         bool owed = false;
+        int lastPanel = -1;
         for (int i = nui; i < n; i++)
         {
             if (layers[i].Overlay) { owed |= layers[i].Clear; continue; }
             scratch[k] = layers[i];
             scratch[k++].Clear |= owed;
             owed = false;
+            lastPanel = i;
         }
         int panels = k;
         layers[..nui].CopyTo(scratch[k..]);
         k += nui;
         front = k;
-        for (int i = nui; i < n; i++) if (layers[i].Overlay) scratch[k++] = layers[i];
+        for (int i = nui; i < n; i++)
+        {
+            if (!layers[i].Overlay) continue;
+            scratch[k] = layers[i];
+            if (i < lastPanel) scratch[k].Clear = false;
+            k++;
+        }
         scratch[..n].CopyTo(layers);
         return panels;
     }
@@ -486,8 +495,13 @@ internal static unsafe class GuiCapture
         l[1] = new Layer { First = 'p' };
         l[2] = new Layer { First = 'q' };
         Partition(l[..3], 0, scratch, out int front2);
-        check.Expect(l[0].First == 'p' && l[0].Clear && !l[1].Clear && l[2].First == 'O' && front2 == 2,
+        check.Expect(l[0].First == 'p' && l[0].Clear && !l[1].Clear && l[2].First == 'O' && !l[2].Clear && front2 == 2,
             "an overlay that opened the GUI run hands its depth clear to the panel after it, and to no other");
+        l[0] = new Layer { First = 'p' };
+        l[1] = new Layer { First = 'M', Overlay = true, Clear = true };
+        Partition(l[..2], 0, scratch, out _);
+        check.Expect(l[1].First == 'M' && l[1].Clear && !l[0].Clear,
+            "an overlay no panel follows keeps its own depth clear");
         Partition(l[..0], 0, scratch, out int front3);
         check.Expect(front3 == 0, "an empty frame partitions to nothing");
     }
