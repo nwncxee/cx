@@ -345,7 +345,7 @@ the cleanup that earned it. Adding a rule means adding its gate in the same chan
   and says so on its own line -- what is forbidden is the silent absence, where
   "never looked" and "decided" are the same missing key.
 - **Every bug report is checked on Windows too.** Diagnosing a user report means reading the Windows
-  path as well (`nwn-win.rep`, the `_win` symbols, the build file's Windows column): `nwmain.exe` has
+  path as well (`nwmain.exe` in the Ghidra project, the `_win` symbols, the build file's Windows column): `nwmain.exe` has
   called a different function, inlined the one CX hooks or taken the other `sret` order, and a feature that
   worked on Linux did nothing there. The findings say what Windows does, or say `unverified` with what was tried.
 - **A pass holds the one program field it draws with and no diagnostic-only one.** `/alloy bench` steps knobs,
@@ -378,7 +378,7 @@ Two tools, two jobs:
 
 The client is already imported and analyzed:
 
-- Projects: `$GHIDRA_PROJECT/nwn-linux.rep` (`nwmain-linux`) and `nwn-win.rep` (`nwmain.exe`)
+- Project: `$GHIDRA_PROJECT/nwn-linux.rep`, one project holding `nwmain-linux`, `nwmain.exe` and `nwserver-linux`
 - GUI: `ghidra`. Headless: `tools/ghidra/headless.sh <program> <Script.java> [args]` -- read-only, picks the
   project from the program, queues on a lock; the scripts in `tools/ghidra/` say their args on line 2
   (`DecompOne.java out.c Name @addr` decompiles named functions).
