@@ -190,12 +190,18 @@ live_sweep "$RUN_TAG"
 [ -f "$DOCS/logs/nwclientLog1.txt" ] && cp "$DOCS/logs/nwclientLog1.txt" "$OUT/nwclientLog1.txt"
 shots=$(find "$SHOTS" -name '*.png' -size +1k 2>/dev/null | wc -l)
 echo "run-proton-live: shots  $shots in $SHOTS"
+verdict=0
+# Given Windows and no LOGS alias
+# When the player reaches the main menu
+# Then cx.log is in Documents\Neverwinter Nights\logs
+# The run launches with -userdirectory, so this holds the logs folder of the directory it was given; Documents itself,
+# the default with no -userdirectory, is a check on a real Windows install.
 if [ -f "$OUT/cx.log" ]; then
     echo "run-proton-live: cx.log $(wc -l < "$OUT/cx.log") line(s) -- $OUT/cx.log"
 else
-    echo "run-proton-live: NO cx.log -- the extender never wrote one (see $GS_LOG)"
+    echo "run-proton-live: NO cx.log in $DOCS/logs -- the extender never wrote one there (see $GS_LOG)"
+    verdict=1
 fi
-verdict=0
 case "$audio_clients" in
     "") echo "run-proton-live: sound  not reached" ;;
     unchecked) echo "run-proton-live: sound  unchecked (no pw-dump or jq)" ;;

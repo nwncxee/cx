@@ -316,10 +316,14 @@ internal sealed class BakeCache
     }
 
     /// <summary>Write one page blob to <paramref name="file"/>; false when it did not land.</summary>
-    internal static bool WriteBlobFile(string file, int page, int x0, int y0, int uw, int uh, Entry[] table, byte[] union)
+    internal static bool WriteBlobFile(string file, int page, int x0, int y0, int uw, int uh, Entry[] table, byte[] union) =>
+        WriteSerialized(file, s => SerializeTo(s, page, x0, y0, uw, uh, table, union));
+
+    /// <summary>What <paramref name="fill"/> writes, put at <paramref name="file"/> through <see cref="CacheFile"/>.</summary>
+    private static bool WriteSerialized(string file, Action<Stream> fill)
     {
         var ms = new MemoryStream();
-        SerializeTo(ms, page, x0, y0, uw, uh, table, union);
+        fill(ms);
         return CacheFile.Write(file, ms.GetBuffer().AsSpan(0, (int)ms.Length));
     }
 
@@ -394,10 +398,11 @@ internal sealed class BakeCache
         try
         {
             string dir = MeshChart.LedgerDir();
-            var ms = new MemoryStream();
-            plan.SerializeTo(ms);
-            if (!CacheFile.Write(Path.Combine(dir, $"{plan.Key:x16}{AreaExt}"), ms.GetBuffer().AsSpan(0, (int)ms.Length)))
-                throw new IOException("the write did not land");
+            if (!WriteSerialized(Path.Combine(dir, $"{plan.Key:x16}{AreaExt}"), plan.SerializeTo))
+            {
+                _log?.Info($"LightmapBake: the area bake cache for {plan.Key:x16} could not be written");
+                return;
+            }
             DateTime now = DateTime.UtcNow;
             for (int i = 0; i < plan.Unions.Length; i++)
             {

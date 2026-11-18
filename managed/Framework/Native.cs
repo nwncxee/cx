@@ -328,12 +328,12 @@ public static unsafe class Native
     /// loaded its aliases, on an unknown build, or for an unknown alias. MAIN THREAD.</summary>
     public static string? AliasPath(string aliasName)
     {
-        if (EngineFn.AliasGetPath == null || aliasName.Length is 0 or > AliasChars) return null;
+        if (EngineFn.AliasGetPath == null || aliasName.Length is 0 or > ResRef.Chars) return null;
         IntPtr exoBase = ExoBase();
         if (exoBase == IntPtr.Zero) return null;
         IntPtr aliases = new CExoBase(exoBase).AliasList.Ptr;
         if (aliases == IntPtr.Zero) return null;
-        Span<byte> name = stackalloc byte[AliasChars + 1];
+        Span<byte> name = stackalloc byte[ResRef.Bytes];
         int n = Encoding.ASCII.GetBytes(aliasName, name);
         name[n] = 0;
         fixed (byte* buf = name)
@@ -344,9 +344,6 @@ public static unsafe class Native
             return path == null || path->Buf == null || path->Len == 0 ? null : path->Text;
         }
     }
-
-    /// <summary>The longest alias name <see cref="AliasPath"/> takes: a resref's length, which every engine alias fits.</summary>
-    private const int AliasChars = 16;
 
     /// <summary>
     /// Absolute path for a CX file in the client's user directory (next to nwn.ini/settings.tml): a setting, or a folder

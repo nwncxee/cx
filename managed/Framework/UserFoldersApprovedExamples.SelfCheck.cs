@@ -123,8 +123,7 @@ internal static class UserFoldersApprovedExamples
             ud = Fresh("Neverwinter Nights"); moved = Fresh("NWNLogs");
             var parts = new LogParts(Path.Combine(ud, "logs"));
             parts.Write("launch line");
-            UserFolders.Settle(Aliases(ud, ("LOGS", moved)), ud, Path.Combine(ud, "logs"), log);
-            parts.MoveTo(UserFolders.Logs);
+            UserFolders.Settle(Aliases(ud, ("LOGS", moved)), ud, Path.Combine(ud, "logs"), log, parts.MoveTo);
             parts.Write("menu line");
             parts.Close();
             check.Expect(Read(Path.Combine(moved, "cx.log")) == "launch line\nmenu line\n", $"E5 cx.log in the moved LOGS holds the whole launch: {Read(Path.Combine(moved, "cx.log"))}");

@@ -6,9 +6,9 @@ using Vortice.ShaderCompiler;
 
 namespace CX.Graphics;
 
-/// <summary>Regression tests for approved examples E17 and E21, which held before cache files carried a check: a clean
-/// cache says nothing, and a module written by the previous release is rebuilt once. Oracle: a fresh compile's bytes and
-/// the toolchain's count of fresh compiles.</summary>
+/// <summary>Regression tests for approved examples E17 and E21: a clean cache says nothing, and a module with no cache
+/// header is compiled again once and read on the next launch. Oracle: a fresh compile's bytes and the toolchain's count
+/// of fresh compiles.</summary>
 internal static class CacheFileRegression
 {
     internal static bool SelfCheck(ExtenderLog log)

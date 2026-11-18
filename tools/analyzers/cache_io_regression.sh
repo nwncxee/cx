@@ -39,6 +39,10 @@ internal static class Leak
     internal static void ReadHandle(string p) { using var h = File.OpenHandle(p, FileMode.Open, FileAccess.Read); }
     internal static string Text(string p) => File.ReadAllText(p);
     internal static Stream OpenNoAccess(string p) => File.Open(p, FileMode.Open);
+    internal static Stream Info(string p) => new FileInfo(p).OpenWrite();
+    internal static void InfoMove(string a, string b) => new FileInfo(a).MoveTo(b);
+    internal static void Replaced(string a, string b) => File.Replace(a, b, null);
+    internal static Stream InfoRead(string p) => new FileInfo(p).Open(FileMode.Open, FileAccess.Read);
 }
 EOF
 cat > "$tmp/managed/Graphics/CacheFile.cs" <<'EOF'
@@ -78,6 +82,10 @@ clean Leak.cs 12 "a FileStream opened to read"
 clean Leak.cs 13 "OpenHandle opened to read"
 clean Leak.cs 14 "ReadAllText"
 expect_line Leak.cs 15 "File.Open with no FileAccess, which opens read-write"
+expect_line Leak.cs 16 "FileInfo.OpenWrite"
+expect_line Leak.cs 17 "FileInfo.MoveTo"
+expect_line Leak.cs 18 "File.Replace"
+clean Leak.cs 19 "FileInfo.Open to read"
 clean CacheFile.cs "" "CacheFile itself"
 clean Leak.SelfCheck.cs "" "a self-check"
 clean Fonts.cs "" "a file outside Alloy and Graphics"

@@ -71,7 +71,7 @@ internal static class CacheFile
 
     /// <summary>Whether <paramref name="head"/> opens with this format's magic and format number.</summary>
     private static bool Ours(ReadOnlySpan<byte> head) =>
-        head.Length >= IdBytes && BinaryPrimitives.ReadUInt32LittleEndian(head) == Magic && BinaryPrimitives.ReadUInt32LittleEndian(head[4..]) == Format;
+        BinaryPrimitives.ReadUInt32LittleEndian(head) == Magic && BinaryPrimitives.ReadUInt32LittleEndian(head[4..]) == Format;
 
     /// <summary>Whether <paramref name="s"/> opens with this format's header; on true it stands at the payload. For a
     /// reader that wants the start of a payload without the whole file (the bake index).</summary>

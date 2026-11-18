@@ -3,8 +3,8 @@ using CX.Services.Hotkeys;
 
 namespace CX.Framework;
 
-/// <summary>Regression tests for approved examples E11 and E12, which held before CX's caches and logs moved: settings
-/// and the modders' shader dump stay beside nwn.ini whatever the aliases say. Oracle: the folder names written here.</summary>
+/// <summary>Regression tests for approved examples E11 and E12: settings and the modders' shader dump stay beside
+/// nwn.ini whatever the aliases say. Oracle: the folder names written here.</summary>
 internal static class UserFoldersRegression
 {
     internal static bool SelfCheck(ExtenderLog log)

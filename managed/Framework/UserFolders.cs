@@ -41,22 +41,27 @@ internal static class UserFolders
     {
         if (_st.Logs != null) return true;
         string? user = Native.UserDirectory();
-        if (user == null || !Settle(Native.AliasPath, user, Logs, log)) return false;
-        ExtenderLog.MoveTo(Logs);
+        if (user == null || !Settle(Native.AliasPath, user, Logs, log, ExtenderLog.MoveTo))
+        {
+            log.Info($"UserFolders: the game's folders are not readable yet{(user == null ? " (no user directory)" : " (no LOGS alias)")}; logs stay in {Logs}, caches in {Cache}");
+            return false;
+        }
         log.Info($"UserFolders: logs in {Logs}, caches in {Cache}");
         return true;
     }
 
     /// <summary>Settle the folders from <paramref name="alias"/> (the engine's alias list, which always answers LOGS
-    /// once loaded) for the user directory <paramref name="userDir"/>, carrying funchook.log over from
-    /// <paramref name="fromLogs"/> and starting the removal of the folders an older CX left.</summary>
-    internal static bool Settle(Func<string, string?> alias, string userDir, string fromLogs, ExtenderLog log)
+    /// once loaded) for the user directory <paramref name="userDir"/>: carry funchook.log over from
+    /// <paramref name="fromLogs"/>, hand the logs folder to <paramref name="follow"/> (the log that moves there), and
+    /// start the removal of the folders an older CX left.</summary>
+    internal static bool Settle(Func<string, string?> alias, string userDir, string fromLogs, ExtenderLog log, Action<string>? follow = null)
     {
         string? logs = Folder(alias("LOGS"));
         if (logs == null) return false;
         string cache = Folder(alias("CACHE")) ?? Path.Combine(userDir, CacheName);
         Carry("funchook.log", fromLogs, logs, log);
         _st = new UserFoldersState { Logs = logs, Cache = Path.Combine(cache, Own), Removal = RemoveRetired(userDir, log) };
+        follow?.Invoke(logs);
         return true;
     }
 

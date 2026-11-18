@@ -31,14 +31,16 @@ public sealed class CacheIo : DiagnosticAnalyzer
     private static readonly string[] FileCalls =
     {
         "ReadAllBytes", "ReadAllBytesAsync", "WriteAllBytes", "WriteAllBytesAsync", "AppendAllBytes", "AppendAllBytesAsync",
-        "Create", "OpenWrite", "Copy", "Move",
+        "Create", "OpenWrite", "Copy", "Move", "Replace",
     };
+
+    /// <summary>FileInfo's members that put a file in place or open one to write, whatever their arguments.</summary>
+    private static readonly string[] InfoCalls = { "Create", "OpenWrite", "CopyTo", "MoveTo", "Replace", "AppendText", "CreateText" };
 
     /// <summary>File's members that open a file as their FileAccess argument says: a write unless it is Read.</summary>
     private static readonly string[] Openers = { "Open", "OpenHandle" };
 
-    /// <summary>FileAccess.Read, as the enum numbers it.</summary>
-    private const int AccessRead = 1;
+
 
     private static readonly DiagnosticDescriptor Rule = new(
         Id,
@@ -69,8 +71,13 @@ public sealed class CacheIo : DiagnosticAnalyzer
         IMethodSymbol m = op.TargetMethod;
         string? type = m.ContainingType?.ToDisplayString();
         if (type == "System.IO.RandomAccess" && m.Name.StartsWith("Write")) Report(c, op.Syntax);
-        if (type != "System.IO.File") return;
-        if (FileCalls.Contains(m.Name) || (Openers.Contains(m.Name) && Writes(op.Arguments))) Report(c, op.Syntax);
+        bool writes = type switch
+        {
+            "System.IO.File" => FileCalls.Contains(m.Name) || (Openers.Contains(m.Name) && Writes(op.Arguments)),
+            "System.IO.FileInfo" => InfoCalls.Contains(m.Name) || (m.Name == "Open" && Writes(op.Arguments)),
+            _ => false,
+        };
+        if (writes) Report(c, op.Syntax);
     }
 
     /// <summary>A FileStream opened to write.</summary>
@@ -86,7 +93,7 @@ public sealed class CacheIo : DiagnosticAnalyzer
     {
         foreach (IArgumentOperation a in args)
             if (a.Parameter?.Type.ToDisplayString() == "System.IO.FileAccess")
-                return !(a.Value.ConstantValue.Value is int access && access == AccessRead);
+                return !(a.Value.ConstantValue.Value is int access && access == (int)System.IO.FileAccess.Read);
         return true;
     }
 
