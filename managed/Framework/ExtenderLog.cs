@@ -121,8 +121,9 @@ public sealed class ExtenderLog
         public string ToStringAndClear() => _on ? _h.ToStringAndClear() : "";
     }
 
-    /// <summary>Off-device: a disabled log must not evaluate its holes, an enabled one must; the queue must reach
-    /// the file; and an <see cref="AlwaysNow"/> line is in the file before it returns. Oracle: the file's own bytes.</summary>
+    /// <summary>Off-device: a disabled log must not evaluate its holes, an enabled one must, a tapped one hears with
+    /// the gate closed; the queue reaches the file; an <see cref="AlwaysNow"/> line is in it before it returns.
+    /// Oracle: the file's own bytes and the literals written here.</summary>
     public static void SelfCheck(ExtenderLog log)
     {
         int evaluated = 0;
@@ -135,12 +136,19 @@ public sealed class ExtenderLog
         log.Info($"ExtenderLog.SelfCheck: hole {Hole()}");
         ok &= evaluated == 1;
         Flush();
+        var heard = new List<string>();
+        var ear = new ExtenderLog { Tap = heard.Add };
+        Enabled = false;
+        ear.Info("plain");
+        ear.Info($"hole {Hole()}");
+        bool tapped = heard.Count == 2 && heard[0] == "plain" && heard[1] == "hole 2";
         Enabled = saved;
         string mark = $"ExtenderLog.SelfCheck: on disk before return {Environment.TickCount64}";
         log.AlwaysNow(mark);
         bool now = TailHas(mark);
-        log.Info(ok && now ? "ExtenderLog.SelfCheck: passed"
+        log.Info(ok && now && tapped ? "ExtenderLog.SelfCheck: passed"
                  : !ok ? "ExtenderLog.SelfCheck: FAILED -- the disabled log evaluated its holes"
+                 : !tapped ? $"ExtenderLog.SelfCheck: FAILED -- a tapped log with the gate closed heard [{string.Join("|", heard)}]"
                  : "ExtenderLog.SelfCheck: FAILED -- an AlwaysNow line was not in the file when the call returned");
     }
 
