@@ -5,7 +5,7 @@ using CX.Framework;
 namespace CX.Services.Inventory;
 
 /// <summary>Proof that a worn item names its slot. Oracle: a hand-built item at the layout row's offset, every byte
-/// set to 0xff (none) by the fixture, and slot masks written as literals (0x40 the cloak, 0x2000 the arrows slot).</summary>
+/// set to 0xff (none) by the fixture, and slot masks written as literals (0x40 the cloak, 0x2000 the bolts slot).</summary>
 internal static unsafe class WornSlotCheck
 {
     /// <summary>Bytes past the slot field the fixture watches for a stray write.</summary>
@@ -25,9 +25,6 @@ internal static unsafe class WornSlotCheck
     {
         var item = new CNWCItem((IntPtr)obj);
 
-        // Given a backpack the server took off and put back on the cloak slot
-        // When the creature wears it in that slot
-        // Then the backpack names the cloak slot, so a later unequip finds and empties it
         WornSlot.Stamp((IntPtr)obj, 0x40);
         check.Expect(item.EquipSlot == 0x40, $"an item worn in the cloak slot names it (0x{item.EquipSlot:x})");
 
