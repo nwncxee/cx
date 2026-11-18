@@ -1,6 +1,8 @@
 # Tickets: Plane
 
-Tickets are Plane work items in project `CX`, named `CX-<n>`. Code, pull requests, releases and player bug reports stay on GitHub (`nwncxee/cx`). Client and renderer work is filed in `CX`.
+Tickets are Plane work items in project `CX`, named `CX-<n>`. Plane is the internal tracker, and every ticket an agent files goes there. Code, pull requests and releases stay on GitHub (`nwncxee/cx`).
+
+Users reach us in two places: GitHub Issues on `nwncxee/cx`, and the bug reports channel on Discord. Neither is a tracker for our own work. When a user report needs work, file a `CX` ticket for it that links the GitHub issue or quotes the Discord report, and answer the user where they asked. An agent reads GitHub Issues with `gh issue view <n> --comments`. It can't read Discord, so a Discord report reaches an agent pasted into the conversation.
 
 `bin/plane` is the Plane CLI. It needs Python 3 and your own `PLANE_API_KEY`, set in the environment or in the env file the CLI reads (`bin/plane --help`). Create the key in Plane under your profile's API tokens. `bin/plane whoami` confirms it. Fix a bug in the CLI at its source and copy the fixed file over this one by hand.
 
@@ -39,21 +41,54 @@ Numbering restarted at `CX-1` on 2026-09-22. A `CX-<n>` or `#<n>` in a commit, A
 
 - **Star chart**: a work item labelled `starchart:chart`.
 - **Ticket**: a direct child of the chart through Plane's parent field, labelled `starchart:<kind>` unless it is a star. Keep tickets one level deep, because a frontier query reads children only. A ticket has one parent, and a chart and its tickets share one project.
-- **Blocking**: Write the order as a `Waits on: <KEY> (<why>)` line in the later ticket's body: `loose-ends` and the waiting list read it. Plane's `blocked_by` relation is the exception, because its public API can add one but never remove one, so removing is a person's job in the interface. Write one only when the work calls code or needs an answer the blocker produces, and end the command with `# hard: <what of the blocker's work it needs>`. The `plane-block-guard` hook refuses a block without it.
+- **Blocking**: Write the order as a `Waits on: <KEY> (<why>)` line in the later ticket's body: `make-it-so`'s SETTLE.md and the waiting list read it. Plane's `blocked_by` relation is the exception, because its public API can add one but never remove one, so removing is a person's job in the interface. Write one only when the work calls code or needs an answer the blocker produces, and will need it until the blocker closes. A dependency that may reverse or be met partway is a `Waits on:` line. A real block ends the command with `# hard: <what of the blocker's work it needs>`. The `plane-block-guard` hook refuses a block without it.
 - **Frontier**: the chart's open, unassigned children with no open blocker.
+- **List charts ready to warp**: the open work items labelled both `starchart:chart` and `starchart:afk`.
 - **Chart**: `bin/plane draw CX-<chart>` draws it from its tickets and shows the drawing under the chart's Chart heading.
 - **Claim**: assign the work item to yourself before any other write.
 
 ## Waiting work
 
-A waiting ticket is assigned to the user and can't go on until the thing its `Waits on:` line names is done. `loose-ends` parks one, and `gamma-shift` works through them.
+A waiting ticket can't go on until the thing its `Waits on:` line names is done. It waits on you when that line names you: your decision, answer or merge. Every agent acts as your account, so the assignee can't tell your move from an agent's. `make-it-so`'s SETTLE.md parks one, and `gamma-shift` works through them.
 
+- **List waiting tickets**: the open work items whose body has a `Waits on:` line.
 - **List tickets waiting on you**: `bin/plane waiting CX`.
+- **Move a ticket to <state>**: `bin/plane state CX-12 "<state>"`, such as `Todo` for not-started or `In Progress` for started.
+- **List items created or changed since <time>**: `bin/plane since CX <time>`, one line per item, newest first, marked `new` or `edited`. `<time>` is a bare date or ISO 8601 with an offset. Show at most five, then a count of the rest.
+- **List items closed since <time>**: `bin/plane since CX <time> --closed`. Give the count.
 - **Park a ticket**: assign it to the user, move it to the not-started state, and add a `Waits on: <who or what>` line to the body.
-- **Claim a waiting ticket**: move it to In Progress, before any other write.
+- **Claim a waiting ticket**: move it to In Progress and delete its `Waits on:` line, before any other write.
 
 ## Ticket drift
 
 Ticket drift: on
 
 Change `on` to `off` to stop the `ticket-drift` check in this repo.
+
+## Pull request bodies
+
+PR template: on
+
+Change `on` to `off` to stop `pr-guard` refusing a pull request body that lacks `ship-it`'s Status, Summary, Proof and Risk sections in this repo.
+
+PR drafts: on
+
+Change `on` to `off` to stop `draft-guard` refusing a pull request opened ready for review, or marked ready before `make-it-so` starts, in this repo.
+
+## Pull request claims
+
+Claim voice: Borg
+
+Change `Borg` to `plain` to have `assimilate` claim another person's pull request in this repo without its Borg line.
+
+## Review cause
+
+Review cause: on
+
+Change `on` to `off` to stop `review` adding a Cause section for a branch that claims a fix in this repo.
+
+## Familiar
+
+Familiar: on
+
+Change `on` to `off` to stop `familiar` watching sessions in this repo.

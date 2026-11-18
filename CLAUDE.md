@@ -22,7 +22,7 @@ user-visible, not renamed (#530).
 
 - Tickets: Plane, project `CX`, through `bin/plane`. See `docs/agents/issue-tracker.md`.
 - Domain: single-context, one `GLOSSARY.md` and one `docs/adr/` at the root. See `docs/agents/domain.md`.
-- Testing: `TESTING_STANDARDS.md`.
+- Testing: `TESTING_STANDARDS.md`. See `docs/agents/testing.md`.
 
 ## Build & run
 
