@@ -29,24 +29,24 @@ internal static class Mass
 
     internal static int Loaded;
 
-    /// <summary>The dip (world units, negative is down) to add to the root's height this frame. With the knob off,
-    /// <paramref name="gated"/> (nothing keeps the feet down then) or on a snap it is 0 and the spring starts over.</summary>
-    internal static float Step(ref PoseService.Slot s, float rise, float scale, bool gated, bool snap, float dt)
+    /// <summary>The dip (world units, negative is down) to add to the root's height this frame. With the knob off
+    /// (<paramref name="on"/>), <paramref name="gated"/> (nothing keeps the feet down then) or on a snap it is 0 and the spring starts over.</summary>
+    internal static float Step(ref LegState s, float cue, float rise, float scale, bool on, bool gated, bool snap, float dt)
     {
-        if (!AnimKnobs.Mass.V || gated || snap || !(dt > 0f)) { s.Dip = s.DipV = s.Climb = s.ClimbA = 0f; return 0f; }
-        float dip = Advance(ref s, rise, scale, dt);
+        if (!on || gated || snap || !(dt > 0f)) { s.Dip = s.DipV = s.Climb = s.ClimbA = 0f; return 0f; }
+        float dip = Advance(ref s, cue, rise, scale, dt);
         if (dip < -LoadedDip) Loaded++;
         return dip;
     }
 
     /// <summary>Advances the pelvis spring for <paramref name="rise"/> world units climbed this frame, on the forward
-    /// acceleration <see cref="Weight"/> hands it; the dip (world units, negative is down).</summary>
-    internal static float Advance(ref PoseService.Slot s, float rise, float scale, float dt)
+    /// acceleration <paramref name="cue"/> <see cref="Weight"/> hands it; the dip (world units, negative is down).</summary>
+    internal static float Advance(ref LegState s, float cue, float rise, float scale, float dt)
     {
         float a = MathF.Min(1f, dt / ClimbTime), climb = s.Climb + (rise / dt - s.Climb) * a;
         s.ClimbA += ((climb - s.Climb) / dt - s.ClimbA) * a;
         s.Climb = climb;
-        Settle(ref s.Dip, ref s.DipV, -scale * Load(s.Cue, s.ClimbA), DipHz, DipZeta, dt);
+        Settle(ref s.Dip, ref s.DipV, -scale * Load(cue, s.ClimbA), DipHz, DipZeta, dt);
         return s.Dip;
     }
 
@@ -85,7 +85,7 @@ internal static class Mass
             float t = i * dt, speed = t >= 0.2f && t < 3.2f ? 2f : 0f;
             PoseService.Motion(ref s, new Vector3(0f, speed * dt, 0f), Vector3.UnitY, false, dt);
             Weight.Step(ref s, false, dt);
-            float dip = Advance(ref s, 0f, 1f, dt);
+            float dip = Advance(ref s.Leg, s.Cue, 0f, 1f, dt);
             if (t < 1f) start = MathF.Min(start, dip);
             else if (t >= 2f && t < 3.2f) steady = MathF.Max(steady, MathF.Abs(dip));
             else if (t >= 3.2f)
@@ -97,11 +97,11 @@ internal static class Mass
         }
         bool walk = start < -0.01f && steady < 0.001f && stop < -0.01f && lift <= 0.12f * -stop && rest < 0.001f;
 
-        PoseService.Slot d = default;
+        LegState d = default;
         float descent = 0f, land = 0f;
         for (int i = 0; i < 180; i++)
         {
-            float t = i * dt, dip = Advance(ref d, t < 1.5f ? -dt : 0f, 1f, dt);
+            float t = i * dt, dip = Advance(ref d, 0f, t < 1.5f ? -dt : 0f, 1f, dt);
             if (t >= 1f && t < 1.5f) descent = MathF.Max(descent, MathF.Abs(dip));
             else if (t >= 1.5f) land = MathF.Min(land, dip);
         }

@@ -37,7 +37,7 @@ internal static class Weight
         for (int i = 0; i < 120; i++)
         {
             Step(ref c, i == 0, Dt);
-            cruiseDip = MathF.Max(cruiseDip, MathF.Abs(Mass.Advance(ref c, 0f, 1f, Dt)));
+            cruiseDip = MathF.Max(cruiseDip, MathF.Abs(Mass.Advance(ref c.Leg, c.Cue, 0f, 1f, Dt)));
             Follow.Advance(ref c, Vector3.Zero, new Vector3(0f, c.Cue, 0f), true, i == 0, Dt);
             cruiseSwing = MathF.Max(cruiseSwing, c.ArmR.Length());
         }
@@ -74,7 +74,7 @@ internal static class Weight
         for (int i = 0; i < frames; i++)
         {
             Step(ref s, false, dt);
-            worst = MathF.Min(worst, Mass.Advance(ref s, 0f, 1f, dt));
+            worst = MathF.Min(worst, Mass.Advance(ref s.Leg, s.Cue, 0f, 1f, dt));
         }
         return worst;
     }

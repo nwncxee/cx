@@ -102,20 +102,24 @@ internal static unsafe class Diagonal
         Smooth(ref turn, ref v, target, dt, TurnTime);
     }
 
-    /// <summary>This frame's hip turn for a body playing <paramref name="anim"/>, facing <paramref name="fwdH"/> /
-    /// <paramref name="right"/>; true when there is one to write (<see cref="Write"/>). With <c>anim.pivot</c> the
-    /// change of facing since the last <paramref name="tracked"/> frame, less what a moving body walks round
-    /// (<see cref="Walked"/>), is left on the hips (<see cref="Lag"/>).</summary>
-    internal static bool Step(ref PoseService.Slot s, int anim, Vector3 fwdH, Vector3 right, bool snap, bool tracked, float dt)
+    /// <summary>The <c>GetAnimationName</c> hook is in: a diagonal's name can be swapped for the straight cycle's.</summary>
+    internal static bool Hooked => _name != null;
+
+    /// <summary>This frame's hip turn for a body playing <see cref="LegFrame.Anim"/> with the facing's horizontal axes
+    /// <see cref="LegFrame.FwdH"/> / <see cref="LegFrame.Right"/>; true when there is one to write (<see cref="Write"/>). With
+    /// <c>anim.pivot</c> the facing's change since a tracked frame, less what a moving body walks round, stays on the hips.</summary>
+    internal static bool Step(ref LegState s, in LegFrame f)
     {
-        float target = AnimKnobs.Diagonal.V && _name != null && s.Hips
-            ? Target(anim, s.Swapped, s.Vel.X * fwdH.X + s.Vel.Y * fwdH.Y, s.Vel.X * right.X + s.Vel.Y * right.Y) : 0f;
+        Vector3 fwdH = f.FwdH, right = f.Right;
+        int anim = f.Anim;
+        float target = f.Knobs.Diagonal && f.Hips
+            ? Target(anim, f.Swapped, f.Vel.X * fwdH.X + f.Vel.Y * fwdH.Y, f.Vel.X * right.X + f.Vel.Y * right.Y) : 0f;
         float heading = MathF.Atan2(fwdH.Y, fwdH.X);
-        float step = tracked && !snap ? MathF.IEEERemainder(heading - s.Heading, 2f * MathF.PI) : 0f;
+        float step = f.Tracked && !f.Snap ? MathF.IEEERemainder(heading - s.Heading, 2f * MathF.PI) : 0f;
         bool moving = PoseService.IsLocomotion(anim);
-        if (AnimKnobs.Pivot.V && s.Hips && step != 0f && Transition.Movement(anim)) s.Turn = Lag(s.Turn, step - Walked(step, moving, dt));
+        if (f.Knobs.Pivot && f.Hips && step != 0f && Transition.Movement(anim)) s.Turn = Lag(s.Turn, step - Walked(step, moving, f.Dt));
         s.Heading = heading;
-        Ease(ref s.Turn, ref s.TurnV, target, snap, dt);
+        Ease(ref s.Turn, ref s.TurnV, target, f.Snap, f.Dt);
         return MathF.Abs(s.Turn) > MinTurn;
     }
 
