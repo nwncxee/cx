@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Text;
 using CX.Engine;
 using CX.Framework;
@@ -18,7 +19,7 @@ public sealed unsafe partial class DialogService
         // Given the conversation window shows only End Dialog
         // When the player presses Escape
         // Then the server receives nothing and the window fades out
-        List<string> sent = Heard(log, () => { Node(42, 7, Array.Empty<string>(), 0); HandleKey(EscapeKey, 0); }, out bool fading);
+        List<string> sent = Heard(() => { Node(42, 7, Array.Empty<string>(), 0); HandleKey(EscapeKey, 0); }, out bool fading);
         check.Expect(sent.Count == 0 && fading, $"E3 Escape on End Dialog sends nothing and fades: sent [{string.Join(" | ", sent)}] fading={fading}");
 
         // Given the player picked a reply and the next node has not arrived
@@ -26,7 +27,7 @@ public sealed unsafe partial class DialogService
         // Then the server receives nothing more and the window fades out
         Node(42, 7, new[] { "Yes.", "No." }, 0);
         Select(0);
-        sent = Heard(log, () => HandleKey(EscapeKey, 0), out fading);
+        sent = Heard(() => HandleKey(EscapeKey, 0), out fading);
         check.Expect(sent.Count == 0 && fading, $"E4 Escape after a pick sends nothing more and fades: sent [{string.Join(" | ", sent)}] fading={fading}");
 
         // Given Escape has just closed the conversation window
@@ -35,17 +36,18 @@ public sealed unsafe partial class DialogService
         Node(42, 7, new[] { "Yes.", "No." }, 0);
         HandleKey(EscapeKey, 0);
         bool consumed = true;
-        sent = Heard(log, () => consumed = HandleKey(EscapeKey, 0), out _);
+        sent = Heard(() => consumed = HandleKey(EscapeKey, 0), out _);
         check.Expect(sent.Count == 0 && !consumed, $"E6 a second Escape sends nothing and goes back to the game: sent [{string.Join(" | ", sent)}] consumed={consumed}");
 
         // Given the CX conversation window is switched off and the stock panel shows the conversation
         // When the player presses Escape
         // Then CX sends nothing, and the stock panel ends the conversation as it always has
-        Close();
-        _engineOwns = true;
+        Node(42, 7, new[] { "Yes.", "No." }, 0);
+        ShowDialogEntryFn entry = &OnShowEntry;
+        entry(IntPtr.Zero, IntPtr.Zero, 43, 1);   // no in-game GUI: the stock panel takes the node
         consumed = true;
-        sent = Heard(log, () => consumed = HandleKey(EscapeKey, 0), out _);
-        check.Expect(sent.Count == 0 && !consumed, $"E7 the stock panel's conversation keeps its own Escape: sent [{string.Join(" | ", sent)}] consumed={consumed}");
+        sent = Heard(() => consumed = HandleKey(EscapeKey, 0), out _);
+        check.Expect(_engineOwns && sent.Count == 0 && !consumed, $"E7 the stock panel's conversation keeps its own Escape: sent [{string.Join(" | ", sent)}] consumed={consumed}");
 
         _engineOwns = false;
         Close();
@@ -61,37 +63,39 @@ public sealed unsafe partial class DialogService
         _dialogId = dialogId;
         _visible = true;
         int n = replies.Length;
-        var recs = new ExoStringRec[Math.Max(n, 1)];
-        var idx = new uint[Math.Max(n, 1)];
-        var bytes = new byte[n][];
-        for (int i = 0; i < n; i++) { bytes[i] = Encoding.UTF8.GetBytes(replies[i] + "\0"); idx[i] = (uint)(i + 1) * 10; }
-        var pins = new System.Runtime.InteropServices.GCHandle[n];
+        var recs = new ExoStringRec[n];
+        var idx = new uint[n];
+        var pins = new GCHandle[n];
         try
         {
             for (int i = 0; i < n; i++)
             {
-                pins[i] = System.Runtime.InteropServices.GCHandle.Alloc(bytes[i], System.Runtime.InteropServices.GCHandleType.Pinned);
+                byte[] text = Encoding.UTF8.GetBytes(replies[i]);
+                pins[i] = GCHandle.Alloc(text, GCHandleType.Pinned);
                 recs[i].Buf = (byte*)pins[i].AddrOfPinnedObject();
-                recs[i].Len = (uint)(bytes[i].Length - 1);
+                recs[i].Len = (uint)text.Length;
+                idx[i] = (uint)(i + 1) * 10;
             }
             fixed (ExoStringRec* rp = recs)
             fixed (uint* ip = idx)
             {
-                delegate* unmanaged<IntPtr, int, IntPtr, IntPtr, int, uint, int, long> show = &OnShowReplies;
+                ShowDialogRepliesFn show = &OnShowReplies;
                 show(IntPtr.Zero, n, (IntPtr)rp, (IntPtr)ip, 0, pageId, continueFlag);
             }
         }
-        finally { for (int i = 0; i < n; i++) if (pins[i].IsAllocated) pins[i].Free(); }
+        finally { foreach (GCHandle pin in pins) if (pin.IsAllocated) pin.Free(); }
     }
 
-    /// <summary>The reply lines <paramref name="act"/> logs, and whether the window is fading out after it.</summary>
-    private static List<string> Heard(ExtenderLog log, Action act, out bool fading)
+    /// <summary>The reply lines <paramref name="act"/> logs, heard on an ear of the check's own, and whether the
+    /// window is fading out after it.</summary>
+    private static List<string> Heard(Action act, out bool fading)
     {
         var heard = new List<string>();
-        Action<string>? tap = log.Tap;
-        log.Tap = line => { if (line.Contains("reply dlg=")) heard.Add(line); };
+        var ear = new ExtenderLog { Tap = line => { if (line.Contains("reply dlg=")) heard.Add(line); } };
+        ExtenderLog? was = _log;
+        _log = ear;
         try { act(); }
-        finally { log.Tap = tap; }
+        finally { _log = was; }
         fading = !_visible && _winAlphaTarget == 0f;
         return heard;
     }

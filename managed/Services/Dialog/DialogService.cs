@@ -446,7 +446,7 @@ public sealed unsafe partial class DialogService : IExtenderService
     public static bool HandleKey(uint sdlKey, int mods)
     {
         if (!_visible) return false;
-        if (sdlKey == EscapeKey) { if (_open) SendEscape(); SoftClose(); return true; }   // the await-node gap closes, sending nothing
+        if (sdlKey == EscapeKey) { if (_open) SendEscape(); SoftClose(); return true; }
         if ((mods & KmodCtrl) != 0 && sdlKey == 0x63) { Copy(); return true; }   // Ctrl+C: selection, else whole node text
         if (!_open) return true;                                  // await-node gap: swallow digits (no selection yet)
         if (sdlKey == 0x30) { Select(9); return true; }
@@ -642,21 +642,20 @@ public sealed unsafe partial class DialogService : IExtenderService
     /// sends nothing, as the server has already ended the conversation.</summary>
     private static void SendEscape()
     {
-        Reply[] replies = _replies;
-        if (_node == NodeKind.EndDialog) return;
-        if (_node == NodeKind.Continue && replies.Length > 0) SendReply(_dialogId, replies[0].ServerIndex, 0, _pageId);
-        else SendReply(_dialogId, AbortReply, 1, _pageId);
+        if (_node == NodeKind.Continue) SendReply(_dialogId, _replies[0].ServerIndex, 0, _pageId);
+        else if (_node == NodeKind.Replies) SendReply(_dialogId, AbortReply, 1, _pageId);
     }
 
     /// <summary>Send a reply on the live <c>CNWCMessage</c> as <c>this</c> (major 0x14 / minor 0x03); refuses
     /// when the sender symbol or the message object is missing.</summary>
     private static void SendReply(uint dialogId, uint replyIndex, byte isAbort, uint pageId)
     {
-        if (EngineFn.SendDialogReply == null) { _log?.Info($"[dialog] reply dlg={dialogId} idx={replyIndex} abort={isAbort} page={pageId}: sender unresolved; not sending"); return; }
+        string reply = $"reply dlg={dialogId} idx={replyIndex} abort={isAbort} page={pageId}";
+        if (EngineFn.SendDialogReply == null) { _log?.Info($"[dialog] {reply}: sender unresolved; not sending"); return; }
         IntPtr msg = ClientApi.Message();
-        if (msg == IntPtr.Zero) { _log?.Info($"[dialog] reply dlg={dialogId} idx={replyIndex} abort={isAbort} page={pageId}: no live CNWCMessage; not sending"); return; }
+        if (msg == IntPtr.Zero) { _log?.Info($"[dialog] {reply}: no live CNWCMessage; not sending"); return; }
         EngineFn.SendDialogReply(msg, dialogId, replyIndex, isAbort, pageId);
-        _log?.Info($"[dialog] sent reply dlg={dialogId} idx={replyIndex} abort={isAbort} page={pageId}");
+        _log?.Info($"[dialog] sent {reply}");
     }
 
     /// <summary>Soft close: release input (clicks fall through) and fade the whole window out. Draw retires the
@@ -1259,7 +1258,4 @@ public sealed unsafe partial class DialogService : IExtenderService
         EscapeSelfCheck(log);
         EscapeApprovedExamples(log);
     }
-
-    /// <summary>Escape's approved examples, in <c>DialogApprovedExamples.cs</c>.</summary>
-    static partial void EscapeApprovedExamples(ExtenderLog log);
 }
