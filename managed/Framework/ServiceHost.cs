@@ -92,6 +92,7 @@ public static class ServiceHost
         UserFoldersRegression.SelfCheck(log);   // ...while settings and the shader dump stay beside nwn.ini
         CX.Graphics.CacheFilesApprovedExamples.SelfCheck(log);   // a damaged cache file never changes what is drawn
         CX.Graphics.CacheFileRegression.SelfCheck(log);   // ...a clean one says nothing, an older release's is rebuilt once
+        CX.Graphics.CacheFileEdges.SelfCheck(log);   // ...a zeroed one is named, and the report waits for the damage to stop
         CX.Graphics.Rhi.VkBackend.SwapShapeEdgesSelfCheck(log);   // ...and the swap state read into the shape that test takes
         CX.Alloy.DepthSnapshot.SelfCheck(log);   // one scene-depth copy a frame: a reader past no depth write reuses the one standing
         CX.Alloy.AlloyRenderer.FlushPassSelfCheck(log);   // ...and the flush that stales it: which passes do, and which say they write no depth
