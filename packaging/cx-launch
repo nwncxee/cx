@@ -47,7 +47,7 @@ export CX_MANAGED="$LINK/cx_managed.so"
 # NVIDIA's shared GL shader cache (~/.cache/nvidia/GLCache) is ONE 1 GiB budget across every GL app and every
 # driver version the box has run, and a full one stores nothing new: measured 2026-09-29 at 1026 MiB, the same
 # program linked cold (12 s) in back-to-back runs. A private path is what Steam gives each game; without it a
-# cx-shaders/ program binary still pays the driver's first-draw finish (3.8 s on the probe shader, 15 ms warm).
+# CX shader cache program binary still pays the driver's first-draw finish (3.8 s on the probe shader, 15 ms warm).
 # Steam's own per-game path, when it set one, wins.
 export __GL_SHADER_DISK_CACHE_PATH="${__GL_SHADER_DISK_CACHE_PATH:-${XDG_CACHE_HOME:-$HOME/.cache}/cx}"
 mkdir -p "$__GL_SHADER_DISK_CACHE_PATH" 2>/dev/null || true

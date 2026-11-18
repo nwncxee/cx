@@ -69,8 +69,8 @@ internal static partial class DepthOfField
         {
             check.Expect(!Wanted, "A device that refuses: the frame draws with no blur");
             ExtenderLog.Flush();
-            string path = Path.Combine(HostEnv.Home, "cx.log");
-            if (!OperatingSystem.IsLinux() || !File.Exists(path)) { check.Skip("the cx.log half: no cx.log under $HOME to read"); return; }
+            string path = Path.Combine(ExtenderLog.Dir, "cx.log");
+            if (!File.Exists(path)) { check.Skip("the cx.log half: no cx.log in this launch's logs folder to read"); return; }
             int said = 0;
             foreach (string line in File.ReadLines(path)) if (line.Contains(why, StringComparison.Ordinal)) said++;
             check.Expect(said == 1, $"A device that refuses: cx.log says why once (said {said} times)");

@@ -16,14 +16,15 @@ fi
 # smoke-tests the previous edit. ~20s when nothing changed; CX_NO_BUILD=1 to run what is staged.
 [ -n "$CX_NO_BUILD" ] || ./build.sh
 [ -f "$B/libcx.so" ] || { echo "run ./build.sh first"; exit 1; }
-# ExtenderLog writes to $HOME/cx.log, which is where a real SESSION's log lives too -- a headless run
-# here would push the last game session's log along its parts. Give the demo its own HOME so the two can
-# never collide, and its own XDG_DATA_HOME: the
-# settings file sits in the client's user directory under it, and a player's cx.cfg moves the defaults
-# the SelfCheck suites assert.
+# ExtenderLog writes to the logs folder of the client's user directory, which is where a real SESSION's log
+# lives too -- a headless run there would push the last game session's log along its parts. Give the demo its
+# own HOME and XDG_DATA_HOME so the two can never collide: the settings file and the logs folder sit in the
+# client's user directory under it, and a player's cx.cfg moves the defaults the SelfCheck suites assert.
 DEMOHOME="${TMPDIR:-/tmp}/cx-demo"
 mkdir -p "$DEMOHOME"
-LOG="$DEMOHOME/cx.log"
+# The logs folder of the user directory under a demo home: no engine reads nwn.ini here, so no alias moves it.
+logs_of() { printf '%s' "$1/.local/share/Neverwinter Nights/logs"; }
+LOG="$(logs_of "$DEMOHOME")/cx.log"
 
 # #457: rot stands the WHOLE extender down, before discovery, keyed on the host's .note.gnu.build-id.
 # /usr/bin/env is by definition a wrong build, so a demo that ran in it would prove the refusal and nothing
@@ -78,12 +79,13 @@ rm -rf "$ROTHOME"; mkdir -p "$ROTHOME"
 cp "$(readlink -f "$(command -v sh)")" "$ROTHOME/nwmain-rot"
 HOME="$ROTHOME" XDG_DATA_HOME="$ROTHOME/.local/share" CX_MANAGED="$B/cx_managed.so" LD_LIBRARY_PATH="$B" LD_PRELOAD="$B/libcx.so" "$ROTHOME/nwmain-rot" -c true >/dev/null
 echo
-echo ">> rot case ($ROTHOME/cx.log):"
-grep 'host:' "$ROTHOME/cx.log" || true
-if ! grep -q 'standing down WHOLE' "$ROTHOME/cx.log"; then
+ROTLOG="$(logs_of "$ROTHOME")/cx.log"
+echo ">> rot case ($ROTLOG):"
+grep 'host:' "$ROTLOG" || true
+if ! grep -q 'standing down WHOLE' "$ROTLOG"; then
   echo ">> FAIL: rot gate did not stand the extender down in a foreign host"; exit 1
 fi
-if ! grep -q '0 service(s) discovered, 0 hook(s) installed' "$ROTHOME/cx.log"; then
+if ! grep -q '0 service(s) discovered, 0 hook(s) installed' "$ROTLOG"; then
   echo ">> FAIL: the rot line did not report zero services and zero hooks"; exit 1
 fi
 echo ">> rot: extender stood down whole, nothing discovered."
@@ -94,11 +96,13 @@ echo ">> rot: extender stood down whole, nothing discovered."
 OFFHOME="${TMPDIR:-/tmp}/cx-demo-logs-off"
 rm -rf "$OFFHOME"; mkdir -p "$OFFHOME/.local/share/Neverwinter Nights"
 echo "general.logs=0" > "$OFFHOME/.local/share/Neverwinter Nights/cx.cfg"
-echo "the last launch" > "$OFFHOME/cx.log"
+OFFLOGS="$(logs_of "$OFFHOME")"
+mkdir -p "$OFFLOGS"
+echo "the last launch" > "$OFFLOGS/cx.log"
 HOME="$OFFHOME" XDG_DATA_HOME="$OFFHOME/.local/share" CX_MANAGED="$B/cx_managed.so" LD_LIBRARY_PATH="$B" LD_PRELOAD="$B/libcx.so" "$STUB" >/dev/null
 echo
-if [ "$(cat "$OFFHOME/cx.1.log" 2>/dev/null)" != "the last launch" ] || grep -q 'the last launch' "$OFFHOME/cx.log" || [ ! -s "$OFFHOME/cx.log" ]; then
-  echo ">> FAIL: with logs off, a launch did not rotate cx.log into cx.1.log ($OFFHOME)"; exit 1
+if [ "$(cat "$OFFLOGS/cx.1.log" 2>/dev/null)" != "the last launch" ] || grep -q 'the last launch' "$OFFLOGS/cx.log" || [ ! -s "$OFFLOGS/cx.log" ]; then
+  echo ">> FAIL: with logs off, a launch did not rotate cx.log into cx.1.log ($OFFLOGS)"; exit 1
 fi
 echo ">> logs off: the launch rotated cx.log."
 

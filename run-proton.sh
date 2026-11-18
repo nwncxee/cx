@@ -2,7 +2,7 @@
 # The Windows hook-sanity loop (#48): run bin/win32/nwmain.exe under Proton with the cross-built DLLs
 # dropped beside it, in a throwaway prefix under build/. Proves loading, symbol resolution and hooks
 # on the real nwmain.exe; NOT a release gate -- that is a native Windows tester. Never touches Steam's
-# Proton setting or the depot. Log: build/proton-pfx/pfx/drive_c/users/steamuser/Documents/Neverwinter Nights/cx.log
+# Proton setting or the depot. Log: build/proton-pfx/pfx/drive_c/users/steamuser/Documents/Neverwinter Nights/logs/cx.log
 set -e
 cd "$(dirname "$0")"
 GAME="${NWN_WIN:-$(dirname "$(python3 tools/paths.py NWN_WIN_EXE)")}"
@@ -34,7 +34,7 @@ SAVES="${NWN_SAVES:-$HOME/.local/share/Neverwinter Nights/saves}"
 if [ -d "$SAVES" ]; then   # `[ ] &&` here would be a false command under set -e when there are no saves
   for d in "$DOCS" "$DOCS.0"; do mkdir -p "$d/saves"; cp -Ru "$SAVES/." "$d/saves/"; done
 else echo ">> no saves at $SAVES -- the same-save compare needs one (NWN_SAVES overrides)" >&2; fi
-rm -f "$DOCS/cx.log" "$DOCS"/cx.[0-9].log
+rm -f "$DOCS/logs/cx.log" "$DOCS"/logs/cx.[0-9].log
 # `nix develop` runs its command with ASLR off (personality ADDR_NO_RANDOMIZE), so the stack starts at
 # 0x7ffffffff000, and wine-preloader reserves everything from 0x7ffffe000000 to 0x7fffffff0000: 60 KB
 # for argv + env. The .#win shell's ~50 KB environment plus steam-run's goes past that and the preloader

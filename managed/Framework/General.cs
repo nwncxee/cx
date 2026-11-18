@@ -38,8 +38,8 @@ public static class General
             help: "Lets /grass, /shadow and the other CX commands work in chat. Off, they go to the server like any "
                 + "other text — some servers use the same names. /settings always works.");
         Logs = G.Toggle("logs", "Write cx.log for bug reports", LogsDefault, Tier.Advanced,
-            help: "Writes what CX is doing to cx.log (beside cx.cfg on Windows, in your home folder on Linux) from now on; restart to capture the launch "
-                + "lines too. Attach cx.log and cx.1.log to a bug report.",
+            help: "Writes what CX is doing to cx.log, in the game's logs folder (beside nwn.ini, or wherever nwn.ini's [Alias] moves LOGS), "
+                + "from now on; restart to capture the launch lines too. Attach cx.log and cx.1.log to a bug report.",
             changed: () => ExtenderLog.Enabled = Logs!.V);
         HookDebug = G.Toggle("hookdebug", "hookdebug", false, Tier.ChatOnly, Effect.Restart);
         FrameTimes = G.Toggle("frametimes", "frametimes", false, Tier.ChatOnly,

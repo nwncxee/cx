@@ -116,7 +116,7 @@ CX writes `cx.log` by default. If you turned it off (Settings, General, *Write c
 general.logs=1
 ```
 
-Play until the problem happens again, then open an [issue](https://github.com/nwncxee/cx/issues) with `cx.log` and `cx.1.log` (next to `cx.cfg` on Windows, in your home folder on Linux) and what you were doing right before things went wrong. If you restarted the game after the problem, it is in `cx.1.log`.
+Play until the problem happens again, then open an [issue](https://github.com/nwncxee/cx/issues) with `cx.log` and `cx.1.log` from the game's `logs` folder (next to `nwn.ini`, or wherever `[Alias]` in `nwn.ini` moves `LOGS`) and what you were doing right before things went wrong. If you restarted the game after the problem, it is in `cx.1.log`.
 
 ## Build from source
 

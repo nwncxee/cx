@@ -10,7 +10,7 @@ internal static partial class FrameTap
     internal static bool Armed;
     private static string _seq = "";
     private static ExtenderLog? _log;
-    internal static string Dir => Native.ConfigPath("cx_snap");
+    internal static string Dir => Path.Combine(UserFolders.Logs, "cx_snap");
 
     internal static void Install(ExtenderLog log) => _log = log;
 

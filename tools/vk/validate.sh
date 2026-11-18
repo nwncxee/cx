@@ -136,7 +136,7 @@ run_pass() {
   demo_rc=$?
   echo ">>   run-demo exit $demo_rc, output $dir/demo.log"
 
-  demo_cx=$dir/tmp/cx-demo/cx.log
+  demo_cx="$dir/tmp/cx-demo/.local/share/Neverwinter Nights/logs/cx.log"
   goldens=$(grep -c 'GpuGolden' "$demo_cx" 2>/dev/null); goldens=${goldens:-0}
   skipped=$(grep -c 'GpuGolden.*SKIPPED' "$demo_cx" 2>/dev/null); skipped=${skipped:-0}
   echo ">>   $goldens GpuGolden lines, $skipped SKIPPED"

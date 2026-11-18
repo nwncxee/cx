@@ -5,7 +5,7 @@ using CX.Framework;
 namespace CX.Graphics;
 
 /// <summary>The on-disk folder Vulkan's compiled SPIR-V modules and its pipeline cache live in,
-/// <c>cx-shaders/</c> beside cx.cfg, swept of stale entries at first use.</summary>
+/// <c>shaders/</c> in CX's cache folder, swept of stale entries at first use.</summary>
 internal static partial class ShaderCache
 {
     /// <summary>Entries unused this long are swept at the session's first lookup: every CX release or shader
@@ -21,11 +21,19 @@ internal static partial class ShaderCache
     /// the blob's own header carries, and the only identity a driver reads its data back under.</summary>
     internal const string PipelinePrefix = "vk-pipelines-";
 
-    private static string? _dir;
+    /// <summary>The folder last swept; a folder the session moves to is swept once on its first use.</summary>
+    private static string? _swept;
 
     /// <inheritdoc cref="ShaderCache"/>
-    internal static string Dir =>
-        _dir ??= Sweep(Path.Combine(UserFolders.Cache, "cx-shaders"));
+    internal static string Dir
+    {
+        get
+        {
+            string dir = Path.Combine(UserFolders.Cache, "shaders");
+            if (_swept != dir) _swept = Sweep(dir);
+            return dir;
+        }
+    }
 
     private static string Sweep(string dir)
     {

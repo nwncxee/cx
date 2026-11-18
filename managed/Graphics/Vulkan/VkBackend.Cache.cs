@@ -14,7 +14,7 @@ internal sealed unsafe partial class VkBackend
     private volatile bool _pipeCacheDirty;
     private string _pipeCachePath = "";
 
-    /// <summary>Open the pipeline cache from <c>cx-shaders/</c>, under a name carrying the driver's own cache identity
+    /// <summary>Open the pipeline cache from CX's shader cache folder, under a name carrying the driver's own cache identity
     /// so another GPU or driver never hands this one its data. An unreadable or refused file starts it empty.</summary>
     private void OpenPipelineCache(in VkPhysicalDeviceProperties props)
     {
@@ -82,18 +82,8 @@ internal sealed unsafe partial class VkBackend
     /// file is never the one a later session seeds the driver from. False, loudly, when it did not land.</summary>
     internal static bool WriteCacheFile(byte[] blob, string path, ExtenderLog log)
     {
-        try
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            string tmp = path + ".tmp";
-            File.WriteAllBytes(tmp, blob);
-            File.Move(tmp, path, overwrite: true);
-            return true;
-        }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException)
-        {
-            log.Always($"VkBackend: the pipeline cache was NOT saved to {path} -- {e.Message}; the next session rebuilds its pipelines");
-            return false;
-        }
+        if (CacheFile.Write(path, blob)) return true;
+        log.Always($"VkBackend: the pipeline cache was NOT saved to {path}; the next session rebuilds its pipelines");
+        return false;
     }
 }

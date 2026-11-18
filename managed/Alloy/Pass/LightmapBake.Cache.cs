@@ -8,7 +8,7 @@ using CX.Graphics;
 
 namespace CX.Alloy;
 
-/// <summary>The bake cache: one blob per page bake under <c>cx-charts/</c> -- the bake's union readback
+/// <summary>The bake cache: one blob per page bake under <c>charts/</c> in CX's cache folder -- the bake's union readback
 /// deflated behind a table of the rects it holds (A and B as their compressed blocks, C raw) -- with an
 /// in-memory index over every blob's table, so adoption uploads straight out of the union, no allocation. Per-rect files were the
 /// load: thousands of opens behind an 18k-file sweep took ten seconds on a cold box.</summary>
@@ -183,6 +183,7 @@ internal sealed class BakeCache
         try
         {
             using var fs = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16, FileOptions.SequentialScan);
+            if (!CacheFile.Framed(fs)) return null;
             var r = new BinaryReader(fs);
             if (r.ReadUInt32() != Magic || r.ReadInt32() != Version) return null;
             r.ReadInt32(); r.ReadInt32(); r.ReadInt32(); r.ReadInt32(); r.ReadInt32();   // page, x0, y0, uw, uh
@@ -349,10 +350,10 @@ internal sealed class BakeCache
         try
         {
             if (!File.Exists(file)) why = "first visit";
+            else if (CacheFile.Read(file) is not { } bytes) why = "damaged or from an older release";
             else
             {
-                using (var fs = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16, FileOptions.SequentialScan))
-                    plan = LightmapAreaPlan.Deserialize(fs, out why);
+                plan = LightmapAreaPlan.Deserialize(new MemoryStream(bytes, writable: false), out why);
                 if (plan != null && plan.Key != key) { plan = null; why = "key"; }
                 if (plan != null) plan = Inflate(dir, plan, ref why);
             }
@@ -397,8 +398,10 @@ internal sealed class BakeCache
         {
             string dir = MeshChart.LedgerDir();
             Directory.CreateDirectory(dir);
-            using (var fs = new FileStream(Path.Combine(dir, $"{plan.Key:x16}{AreaExt}"), FileMode.Create, FileAccess.Write, FileShare.None, 1 << 16))
-                plan.SerializeTo(fs);
+            var ms = new MemoryStream();
+            plan.SerializeTo(ms);
+            if (!CacheFile.Write(Path.Combine(dir, $"{plan.Key:x16}{AreaExt}"), ms.GetBuffer().AsSpan(0, (int)ms.Length)))
+                throw new IOException("the write did not land");
             DateTime now = DateTime.UtcNow;
             for (int i = 0; i < plan.Unions.Length; i++)
             {

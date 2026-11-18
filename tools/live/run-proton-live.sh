@@ -87,12 +87,12 @@ cp "$ROOT/cx-windows-x64"/*.dll "$GAME/bin/win32/" 2>/dev/null
 # ---- the throwaway prefix, and the cx.cfg inside it -----------------------------------------------
 PFX="$OUT/pfx"; mkdir -p "$PFX"
 # -userdirectory, which CX now honours pre-main too (Native.LaunchUserDirectory). Without that the
-# engine moved and cx.cfg/cx.log did not, and the Documents tree cannot be seeded instead: the engine
+# engine moved and cx.cfg and the logs folder did not, and the Documents tree cannot be seeded instead: the engine
 # takes the first instance suffix that does NOT exist, so pre-creating "Neverwinter Nights" to drop a cfg
 # in simply pushes it to ".0", then ".1", and the knobs are never read.
 DOCS="$PFX/pfx/drive_c/cxuser"
 mkdir -p "$DOCS"
-rm -f "$DOCS/cx.log" "$DOCS"/cx.[0-9].log
+rm -f "$DOCS/logs/cx.log" "$DOCS"/logs/cx.[0-9].log
 if [ "$NUI" = 1 ]; then
     mkdir -p "$DOCS/modules"
     NWN_DIR="$NWN_DIR" "$ROOT/tools/live/ladder/build-ladder.sh" "$DOCS/modules" "$MODULE" ${SHOWCASE:+"$SHOW_SRC"} \
@@ -184,8 +184,8 @@ sleep 1
 survivors=$(live_survivors "$RUN_TAG" | tr '\n' ',' | sed 's/,$//')
 live_sweep "$RUN_TAG"
 
-# The Windows cx.log lives in the prefix, beside the Windows nwn.ini.
-"$ROOT/tools/live/session-log.sh" "$DOCS" "$OUT"
+# The Windows cx.log lives in the prefix, in the logs folder beside the Windows nwn.ini.
+"$ROOT/tools/live/session-log.sh" "$DOCS/logs" "$OUT"
 # The hosted module's own marks (CXNUI:, CXSHOW:, CXLADDER:) are in the client log.
 [ -f "$DOCS/logs/nwclientLog1.txt" ] && cp "$DOCS/logs/nwclientLog1.txt" "$OUT/nwclientLog1.txt"
 shots=$(find "$SHOTS" -name '*.png' -size +1k 2>/dev/null | wc -l)

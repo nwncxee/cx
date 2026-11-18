@@ -83,7 +83,7 @@ which matters because CX resolves `cx.cfg` two different ways: boot settings thr
 `Native.DefaultUserDirectory` (the XDG path, before the engine exists) and everything after through
 the engine's own resolved user directory. Pointing both at the same throwaway directory is what makes
 the two agree -- see the `run-demo-reads-real-cfg` lesson, where only one of them was isolated and the
-headless run silently bound the user's real knob values. `cx.log` follows `$HOME`. The copied files are
+headless run silently bound the user's real knob values. `cx.log` follows the user directory's `logs/` (or `--move-alias LOGS`). The copied files are
 `cdkey.ini`, `nwnplayer.ini`, `settings.tml` and `nwn.ini`; `nwn.ini` is nothing but absolute `Alias`
 paths, so every one of them is rewritten to the throwaway directory, which is what keeps the engine's
 `saves/`, `cache/`, `logs/` and `crashreport/` inside `$OUT`.

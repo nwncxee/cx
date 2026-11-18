@@ -651,7 +651,7 @@ def main():
     ap.add_argument("--raw", action="store_true", help="also save each frame's linear HDR as .npy")
     ap.add_argument("--nolabel", action="store_true", help="leave the scene/stage/time label off the PNGs")
     ap.add_argument("--uniforms", metavar="SNAP", help="replay a /alloy snap's uniforms: the set's path prefix, "
-                    "e.g. <user dir>/cx_snap/190545 (pair it with that view's --size)")
+                    "e.g. <user dir>/logs/cx_snap/190545 (pair it with that view's --size)")
     ap.add_argument("--dump", action="append", default=[], help="also save this declared image (npy + png slices)")
     ap.add_argument("-o", "--out", default="sky.png")
     a = ap.parse_args()

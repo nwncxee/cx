@@ -167,14 +167,16 @@ RUN_TAG="run-live:$$:$OUT"
 
 FAKE_HOME="$OUT/home"
 USER_DIR="$FAKE_HOME/.local/share/Neverwinter Nights"
-CX_LOG="$FAKE_HOME/cx.log"
+# CX writes cx.log into the game's LOGS folder: the user directory's logs/, or where --move-alias LOGS puts it.
+LOG_DIR="$USER_DIR/logs"
+CX_LOG="$LOG_DIR/cx.log"
 export XTOOL_LOG="$CX_LOG"
 ENGINE_OUT="$OUT/engine-stdout.log"
 GS_LOG="$OUT/gamescope.log"
 SHOTS="$OUT/shots"
 mkdir -p "$USER_DIR/localvault" "$FAKE_HOME/.cache" "$FAKE_HOME/.config" "$SHOTS"
 # A reused --out must not join its last session's log into this one's verdict.
-rm -f "$CX_LOG" "$FAKE_HOME"/cx.[0-9].log
+rm -f "$CX_LOG" "$LOG_DIR"/cx.[0-9].log
 
 # ---- the throwaway user directory -------------------------------------------------------------
 # nwn.ini is nothing but absolute Alias paths, so it is copied with every one of them rewritten --
@@ -213,6 +215,7 @@ for name in "${MOVE_ALIASES[@]}"; do
     sed -i "/^$name=/d" "$USER_DIR/nwn.ini"
     sed -i "/^\[Alias\]/a $name=$moved" "$USER_DIR/nwn.ini"
     echo "run-live: alias      $name=$moved"
+    if [ "$name" = LOGS ]; then LOG_DIR="$moved"; CX_LOG="$LOG_DIR/cx.log"; export XTOOL_LOG="$CX_LOG"; fi
 done
 rm -f "$USER_DIR/localvault/"*.bic
 # A joined server picks its own character; a lone local one would be submitted to it unasked.
@@ -443,7 +446,7 @@ if [ "$STOCK" = 1 ]; then
     AREA_MARK='CX(SHOW|NUI|LADDER): enter '
 fi
 # A long session rolls cx.log, so a mark may already sit in an older part.
-log_has() { grep -q "$@" "$CX_LOG" "$FAKE_HOME"/cx.[0-9].log 2>/dev/null; }
+log_has() { grep -q "$@" "$CX_LOG" "$LOG_DIR"/cx.[0-9].log 2>/dev/null; }
 reached=0
 area_epoch=""
 peak_rss=0
@@ -634,7 +637,7 @@ live_sweep "$RUN_TAG"
 if [ "$STOCK" = 1 ]; then
     cp -f "$CX_LOG" "$OUT/cx.log" 2>/dev/null
 else
-    "$ROOT/tools/live/session-log.sh" "$FAKE_HOME" "$OUT"
+    "$ROOT/tools/live/session-log.sh" "$LOG_DIR" "$OUT"
 fi
 grep -v '^\[cx\]' "$GS_LOG" > "$ENGINE_OUT" 2>/dev/null
 # nwclientLog1.txt is where the hosted module's own WriteTimestampedLogEntry lands in a +TestNewModule
