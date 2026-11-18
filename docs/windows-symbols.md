@@ -584,7 +584,7 @@ the function it was read from. `tools/update/` now does the first pass
 (`docs/update-day.md`): it re-anchors every RVA it can prove and hands the rest over
 as `# TODO` lines, and those are what the method below is for. The Ghidra scripts used (`~/ghidra_scripts`: TracyFn
 = tracy string -> srcloc struct -> function, Qwords = MSVC vtable dump, GrepDecomp =
-regex over a decompiled name range) run headless over `nwmain.exe` in the `nwn-win` project, the
+regex over a decompiled name range) run headless over `nwmain.exe` in that same project, the
 way `tools/ghidra/headless.sh` runs the scripts in `tools/ghidra/`; the method is:
 
 1. Confirm the two binaries are the same build (`build.txt`), update the build lock.
