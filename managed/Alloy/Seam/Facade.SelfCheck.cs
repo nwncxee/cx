@@ -96,22 +96,48 @@ internal static unsafe class FacadeSelfCheck
         }
     }
 
+    /// <summary>A check's resource lookup: only <see cref="Present"/> is there, so every <see cref="Mint"/> is a record
+    /// with no model. Disposing it puts the game's lookup and the unreadable-model count back.</summary>
+    private readonly struct UnreadableModelScope : IDisposable
+    {
+        internal const string Present = "cx_present_unreadable";
+        private readonly Func<string, bool> _lookup;
+        private readonly long _unreadable;
+
+        private UnreadableModelScope(Func<string, bool> lookup, long unreadable) { _lookup = lookup; _unreadable = unreadable; }
+
+        internal static UnreadableModelScope Enter()
+        {
+            var scope = new UnreadableModelScope(ObjectFns.ResourcePresent, ObjectFns.UnreadableModels);
+            ObjectFns.ResourcePresent = n => n == Present;
+            return scope;
+        }
+
+        /// <summary>A fresh record for a model that cannot be read; its shell is <see cref="Facade.ObjectShell"/>'s.</summary>
+        internal static DbId Mint() => Facade.Object(ObjectFns.CreateForCheck(Present), SeamSlot.Unnamed);
+
+        public void Dispose()
+        {
+            ObjectFns.ResourcePresent = _lookup;
+            ObjectFns.UnreadableModels = _unreadable;
+        }
+    }
+
     /// <summary>What <c>NewCAurObject</c> answers when the model does not load, which is two different answers.
     /// A model the resource lookup does not know is a NULL, as the engine's own factory answers it. A model
     /// whose resource IS there and CX could not read mints a record with NO model instead: <c>CGuiObject::SetModel</c>
     /// @0x586520 falls back to <c>GUI_empty</c> and dereferences it at +0x45 unchecked, so a NULL there faults.</summary>
     private static void Factory(Checker check)
     {
-        Func<string, bool> was = ObjectFns.ResourcePresent;
+        using var models = UnreadableModelScope.Enter();
         long unreadable = ObjectFns.UnreadableModels, missing = ObjectFns.MissingModels;
         try
         {
-            ObjectFns.ResourcePresent = n => n == "cx_present_unreadable";
             check.Expect(ObjectFns.CreateForCheck("cx_absent_model") == 0,
                 "a model the resource lookup does not know must still be a NULL, the way the engine answers it");
 
             long objects = SceneDb.Objects.Live;
-            nint shell = ObjectFns.CreateForCheck("cx_present_unreadable");
+            nint shell = ObjectFns.CreateForCheck(UnreadableModelScope.Present);
             check.Expect(shell != 0,
                 "a model whose resource is present and unreadable must mint an object, not the NULL the engine's "
                 + "GUI path dereferences");
@@ -122,19 +148,17 @@ internal static unsafe class FacadeSelfCheck
                 "an object minted for an unreadable model must hold no model and no parts");
             check.Expect(ObjectFns.UnreadableModels == unreadable + 1 && ObjectFns.Stats().Contains("unreadable-model="),
                 "the unreadable-model refusal must be counted on the period line");
-            DbId child = Facade.Object(ObjectFns.CreateForCheck("cx_present_unreadable"), SeamSlot.Unnamed);
+            DbId child = UnreadableModelScope.Mint();
             check.Expect(!child.IsNull, "the owned child was not minted");
             check.Expect(SceneDb.PieceLink(id, child), "the owned child would not link onto the record");
             ObjectSlots.DestroyRecord(id);
             check.Expect(SceneDb.Objects.Live == objects && !SceneDb.Objects.Valid(child),
                 "the minted record and the child it owns were not both released");
         }
-        // The counter goes back: a session's line must start at zero, or this check is the first thing the
-        // next crash report sees on it.
+        // The counters go back (the scope restores the unreadable one): a session's line must start at zero, or
+        // this check is the first thing the next crash report sees on it.
         finally
         {
-            ObjectFns.ResourcePresent = was;
-            ObjectFns.UnreadableModels = unreadable;
             ObjectFns.MissingModels = missing;
         }
     }
@@ -144,19 +168,17 @@ internal static unsafe class FacadeSelfCheck
     /// missing ability labels and the tabs that leaked into each other.</summary>
     private static void Riders(Checker check)
     {
-        Func<string, bool> was = ObjectFns.ResourcePresent;
-        long unreadable = ObjectFns.UnreadableModels;
+        using var models = UnreadableModelScope.Enter();
         const int N = 40;
         var kids = new DbId[N];
         DbId page = default, sc = default;
         try
         {
-            ObjectFns.ResourcePresent = n => n == "cx_present_unreadable";
-            nint ps = ObjectFns.CreateForCheck("cx_present_unreadable");
-            page = Facade.Object(ps, SeamSlot.Unnamed);
+            page = UnreadableModelScope.Mint();
+            nint ps = Facade.ObjectShell(page);
             for (int i = 0; i < N; i++)
             {
-                kids[i] = Facade.Object(ObjectFns.CreateForCheck("cx_present_unreadable"), SeamSlot.Unnamed);
+                kids[i] = UnreadableModelScope.Mint();
                 SceneDb.SetAttachTo(kids[i].Index, page);
             }
             SceneDb.SetAttachTo(kids[3].Index, default);
@@ -184,8 +206,92 @@ internal static unsafe class FacadeSelfCheck
             for (int i = 0; i < N; i++) if (!kids[i].IsNull) ObjectSlots.DestroyRecord(kids[i]);
             if (!page.IsNull) ObjectSlots.DestroyRecord(page);
             if (!sc.IsNull) DbScene.Destroy(sc);
-            ObjectFns.ResourcePresent = was;
-            ObjectFns.UnreadableModels = unreadable;
+        }
+    }
+
+    /// <summary>What an <c>UpdateScenes</c> listener on a page records: the rider it watches, the rider's scene when
+    /// the listener ran, and how many times it ran. With <see cref="Kill"/> set, the listener destroys that record.</summary>
+    private struct SceneEventProbe { public int Rider; public uint Seen; public int Calls; public DbId Kill; }
+
+    [UnmanagedCallersOnly]
+    private static void RecordRiderScene(nint self, nint name, nint data)
+    {
+        var probe = (SceneEventProbe*)data;
+        probe->Seen = SceneDb.ObjScene[probe->Rider].Value;
+        probe->Calls++;
+        if (!probe->Kill.IsNull) ObjectSlots.DestroyRecord(probe->Kill);
+    }
+
+    /// <summary>A page leaving its scene fires <c>UpdateScenes</c>, which the game's own listeners hear before the seam
+    /// carries the riders; a camera's riders are carried too, and a page its listener destroyed carries nothing.
+    /// Oracle: <c>Gob::SetScene</c> @0x43e020 writes the page's scene, then fires the event its listeners carry.</summary>
+    private static void SceneEventOrder(Checker check)
+    {
+        using var models = UnreadableModelScope.Enter();
+        DbId page = default, rider = default, panel = default, view = default, cam = default;
+        nint ps = 0, cb = 0, camShell = 0;
+        try
+        {
+            page = UnreadableModelScope.Mint();
+            rider = UnreadableModelScope.Mint();
+            ps = Facade.ObjectShell(page);
+            nint rs = Facade.ObjectShell(rider);
+            SceneDb.SetAttachTo(rider.Index, page);
+            panel = DbScene.Create("sceneGUI_cx_evorder_panel");
+            view = DbScene.Create("sceneGUI_cx_evorder_view");
+            ObjectSlots.JoinScene(page, ps, panel, 0);
+            ObjectSlots.JoinScene(rider, rs, view, 0);
+            fixed (byte* n = "UpdateScenes\0"u8)
+            {
+                var probe = new SceneEventProbe { Rider = rider.Index };
+                cb = CallbackList.Add(ps, (nint)(delegate* unmanaged<nint, nint, nint, void>)&RecordRiderScene, (nint)n, 0);
+                DbScene.Leave(panel, page);
+                Facade.SetSceneWord(ps, 0);
+                ObjectSlots.FireEvent(ps, (nint)n, (nint)(&probe));
+                check.Expect(probe.Calls == 1, $"the page's UpdateScenes listener runs once ({probe.Calls})");
+                check.Expect(probe.Seen == view.Value,
+                    "the game's UpdateScenes listener sees the rider still in its own scene: a cross-scene attach keeps that scene there");
+                check.Expect(SceneDb.ObjScene[rider.Index].IsNull, "the seam still carries a plain rider out with its page");
+
+                // A listener that destroys its page: the seam carries nothing for the dead record afterwards.
+                ObjectSlots.JoinScene(page, ps, panel, 0);
+                ObjectSlots.JoinScene(rider, rs, view, 0);
+                DbScene.Leave(panel, page);
+                Facade.SetSceneWord(ps, 0);
+                var killer = new SceneEventProbe { Rider = rider.Index, Kill = page };
+                ObjectSlots.FireEvent(ps, (nint)n, (nint)(&killer));
+                check.Expect(killer.Calls == 1 && !SceneDb.Objects.Valid(page), "the listener destroyed its page");
+                check.Expect(SceneDb.ObjScene[rider.Index].Value == view.Value,
+                    "nothing is carried for a page its own listener destroyed");
+                page = default;
+                cb = 0;
+
+                // A camera's CAurObject is its +8 sub-object, and the seam carries a camera's riders all the same.
+                DbId camObj = FacadeParts.NewCameraObject("cx_evorder_cam");
+                cam = DbCamera.Create(camObj);
+                camShell = cam.IsNull ? 0 : Facade.Mint(FacadeKind.Camera, cam);
+                if (camShell == 0) { check.Expect(false, "no camera for the camera rider check"); return; }
+                SceneDb.CamFacade[cam.Index] = camShell;
+                nint gob = new CX.Engine.Camera(camShell).GobSub;
+                SceneDb.ObjFacade[camObj.Index] = gob;
+                SceneDb.SetAttachTo(rider.Index, camObj);
+                ObjectSlots.JoinScene(camObj, gob, panel, 0);
+                check.Expect(SceneDb.ObjScene[rider.Index].Value == panel.Value, "a camera's rider joins the camera's scene");
+                DbScene.Leave(panel, camObj);
+                Facade.SetSceneWord(gob, 0);
+                ObjectSlots.FireEvent(gob, (nint)n, 0);
+                check.Expect(SceneDb.ObjScene[rider.Index].IsNull, "UpdateScenes on a camera carries its rider out with it");
+            }
+        }
+        finally
+        {
+            if (cb != 0) CallbackList.Remove(ps, cb);
+            if (!rider.IsNull) ObjectSlots.DestroyRecord(rider);
+            if (!page.IsNull) ObjectSlots.DestroyRecord(page);
+            if (camShell != 0) Facade.Retire(camShell);
+            if (!cam.IsNull) DbCamera.Destroy(cam);
+            if (!panel.IsNull) DbScene.Destroy(panel);
+            if (!view.IsNull) DbScene.Destroy(view);
         }
     }
 
@@ -194,14 +300,11 @@ internal static unsafe class FacadeSelfCheck
     /// no attach behaviour. Oracle: the literal alpha handed in, against the untouched 1.</summary>
     private static void Shifts(Checker check)
     {
-        Func<string, bool> was = ObjectFns.ResourcePresent;
-        long unreadable = ObjectFns.UnreadableModels;
+        using var models = UnreadableModelScope.Enter();
         var o = new DbId[7];
         try
         {
-            ObjectFns.ResourcePresent = n => n == "cx_present_unreadable";
-            for (int i = 0; i < o.Length; i++)
-                o[i] = Facade.Object(ObjectFns.CreateForCheck("cx_present_unreadable"), SeamSlot.Unnamed);
+            for (int i = 0; i < o.Length; i++) o[i] = UnreadableModelScope.Mint();
             DbId body = o[0], graft = o[1], head = o[2], fx = o[3], quiet = o[4], loose = o[5], late = o[6];
             foreach (DbId g in new[] { graft, late })
             {
@@ -236,8 +339,6 @@ internal static unsafe class FacadeSelfCheck
         finally
         {
             for (int i = o.Length - 1; i >= 0; i--) if (!o[i].IsNull) ObjectSlots.DestroyRecord(o[i]);
-            ObjectFns.ResourcePresent = was;
-            ObjectFns.UnreadableModels = unreadable;
         }
     }
 
@@ -245,14 +346,11 @@ internal static unsafe class FacadeSelfCheck
     /// a rider's rider follows it, and a detached piece is its own again. Oracle: the handles the check made.</summary>
     private static void RunRoots(Checker check)
     {
-        Func<string, bool> was = ObjectFns.ResourcePresent;
-        long unreadable = ObjectFns.UnreadableModels;
+        using var models = UnreadableModelScope.Enter();
         var o = new DbId[4];
         try
         {
-            ObjectFns.ResourcePresent = n => n == "cx_present_unreadable";
-            for (int i = 0; i < o.Length; i++)
-                o[i] = Facade.Object(ObjectFns.CreateForCheck("cx_present_unreadable"), SeamSlot.Unnamed);
+            for (int i = 0; i < o.Length; i++) o[i] = UnreadableModelScope.Mint();
             DbId body = o[0], head = o[1], fx = o[2], sword = o[3];
             check.Expect(SceneDb.ObjRunRoot[body.Index] == body, "a fresh object is its own run root");
             SceneDb.SetAttachTo(fx.Index, head);
@@ -269,8 +367,6 @@ internal static unsafe class FacadeSelfCheck
         finally
         {
             for (int i = o.Length - 1; i >= 0; i--) if (!o[i].IsNull) ObjectSlots.DestroyRecord(o[i]);
-            ObjectFns.ResourcePresent = was;
-            ObjectFns.UnreadableModels = unreadable;
         }
     }
 
@@ -410,6 +506,7 @@ internal static unsafe class FacadeSelfCheck
         Facade.InSelfCheck = true;
         Factory(check);
         Riders(check);
+        SceneEventOrder(check);
         Shifts(check);
         RunRoots(check);
         UnseenSilhouetteApprovedExamples.SelfCheck(log);

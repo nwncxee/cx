@@ -34,20 +34,18 @@ public sealed unsafe partial class ObjectSlots
     [UnmanagedCallersOnly]
     private static void DoEvent(nint self, nint name, nint data) => FireEvent(self, name, data);
 
+    /// <summary>Raise <paramref name="name"/> on the object's callbacks. <c>UpdateScenes</c> reaches the game's own
+    /// listeners first, as <c>Gob::SetScene</c> @0x43e020 fires them; the seam then carries the riders no listener
+    /// moved, unless a listener destroyed the object.</summary>
     internal static void FireEvent(nint self, nint name, nint data)
     {
         nint shell = Facade.GobBlock(self);
         if (shell == 0) { Facade.Object(self, 84); return; }
-        // The engine's Gob::SetScene @0x43e020 is NOT hooked -- it works on a facade, writes +0x88 itself and
-        // then fires this event, which is where the attachment behaviours propagated the new scene down. The
-        // behaviours do not exist here, so the propagation lives in this slot, keyed on the same event name.
-        if (name != 0 && CallbackList.NameIs(name, "UpdateScenes"))
-        {
-            DbId id = Facade.Object(self, 84);
-            if (!id.IsNull)
-                PropagateScene(id, shell, SceneDb.ObjScene[id.Index], Facade.SceneWord(shell));
-        }
+        DbId id = name != 0 && CallbackList.NameIs(name, "UpdateScenes") ? Facade.Object(self, 84) : default;
+        // Listeners first: a cross-scene attach keeps its rider's scene from the +0x88 the carry would zero.
         CallbackList.Dispatch(self, shell, name, data);
+        if (!id.IsNull && Facade.ObjectShell(id) == shell)
+            PropagateScene(id, shell, SceneDb.ObjScene[id.Index], Facade.SceneWord(shell));
     }
 }
 
