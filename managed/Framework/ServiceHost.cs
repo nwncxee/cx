@@ -65,8 +65,8 @@ public static class ServiceHost
         AurTex.SelfCheck(log);
         Native.Attach(log);
         Native.SelfCheck(log);   // the std::string readback behind the outbound codepage transcode
-        NativeApprovedExamples.SelfCheck(log);   // engine text up to 10 MiB reads whole; past it, cut and logged once
-        NativeCapEdges.SelfCheck(log);   // a NUL-terminated text past the cap, and a re-attached log hearing the next cut
+        NativeApprovedExamples.SelfCheck(log);
+        NativeCapEdges.SelfCheck(log);
         NativeBufferCheck.SelfCheck(log);   // a native pool's span comes from its allocation, not from a caller's count
         CX.Engine.MessageBytesCheck.SelfCheck(log);   // ...and a message's from its own length row
         CX.Engine.ResRefCheck.SelfCheck(log);   // a resref handed to the engine spans the 17 bytes it copies

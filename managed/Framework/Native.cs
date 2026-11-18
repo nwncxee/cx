@@ -96,34 +96,34 @@ public static unsafe class Native
     }
 
     /// <summary>Longest engine string <see cref="ReadExo"/> and <see cref="Chars"/> return, 10 MiB: past any text a
-    /// player reads, short of what a wild length would make them allocate or walk. Longer text is cut to it.</summary>
+    /// player reads, and a bound on what a wild length makes them allocate. Longer text is cut to it.</summary>
     private const int MaxExoLen = 10 * 1024 * 1024;
 
-    /// <summary>Where a reader's lines go: the host's log, attached once at boot.</summary>
-    private static ExtenderLog? _log;
+    /// <summary>Where the readers' lines go, and whether the cut line has been spent: replaced whole by
+    /// <see cref="Attach"/>.</summary>
+    private sealed class NativeLogState
+    {
+        public ExtenderLog? Log;
+        public int CutLogged;
+    }
 
-    /// <summary>1 once a cut has been logged since the last <see cref="Attach"/>: one line per session, not per read.</summary>
-    private static int _cutLogged;
+    private static NativeLogState _logState = new();
 
     /// <summary>Send this class's lines to <paramref name="log"/> and arm the cut line again. From the host at boot,
     /// and from a self-check that listens.</summary>
-    internal static void Attach(ExtenderLog log)
-    {
-        _log = log;
-        _cutLogged = 0;
-    }
+    internal static void Attach(ExtenderLog log) => _logState = new NativeLogState { Log = log };
 
-    /// <summary>The once-per-session line that an engine string was cut to <see cref="MaxExoLen"/>.</summary>
+    /// <summary>The once-per-attach line that an engine string was cut to <see cref="MaxExoLen"/>.</summary>
     private static void LogCut(string what)
     {
-        if (Interlocked.Exchange(ref _cutLogged, 1) == 0)
-            _log?.Info($"native: {what} was cut to {MaxExoLen} bytes; later cuts are not logged");
+        var s = _logState;
+        if (Interlocked.Exchange(ref s.CutLogged, 1) == 0)
+            s.Log?.Info($"native: {what} was cut to {MaxExoLen} bytes; later cuts are not logged");
     }
 
-    /// <summary>A NUL-terminated engine string as the codepage bytes a reader works in -- the distance to the
-    /// NUL measured here rather than by each caller, a null pointer read as empty, and the walk stopped at
-    /// <see cref="MaxExoLen"/>, where it is logged as a cut. No transcode: the engine's text is a single-byte
-    /// codepage and the span is read, not stored.</summary>
+    /// <summary>A NUL-terminated engine string as the codepage bytes a reader works in -- the distance to the NUL
+    /// measured here, a null pointer read as empty, the walk stopped and logged as a cut at <see cref="MaxExoLen"/>.
+    /// Trusts the engine's NUL: an unterminated pointer can fault before the cap. Read, not stored.</summary>
     public static ReadOnlySpan<byte> Chars(byte* text)
     {
         if (text == null) return default;

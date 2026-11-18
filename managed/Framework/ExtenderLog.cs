@@ -26,13 +26,13 @@ public sealed class ExtenderLog
     private static readonly object _fileLock = new();
     private static Thread? _writer;
 
-    /// <summary>A self-check's ear: an instance with a tap sends its lines here instead of to the file, so a
-    /// check gives its own instance one and no other line is diverted.</summary>
+    /// <summary>A self-check's ear: an instance with a tap sends its lines here instead of to the file, gate or
+    /// no gate, so a check gives its own instance one and no other line is diverted.</summary>
     internal Action<string>? Tap;
 
     public void Info(string message)
     {
-        if (!Enabled) return;
+        if (!Enabled && Tap == null) return;
         Always(message);
     }
 
@@ -59,9 +59,9 @@ public sealed class ExtenderLog
     }
 
     /// <summary>The interpolated-string overload the compiler prefers for <c>$"..."</c> arguments.</summary>
-    public void Info([InterpolatedStringHandlerArgument] ref Line line)
+    public void Info([InterpolatedStringHandlerArgument("")] ref Line line)
     {
-        if (!Enabled) return;
+        if (!Enabled && Tap == null) return;
         Info(line.ToStringAndClear());
     }
 
@@ -97,16 +97,16 @@ public sealed class ExtenderLog
         for (int i = 0; i < 200 && !_queue.IsEmpty; i++) BlockingWait.Sleep(1, "self-checks only, never a frame hook");
     }
 
-    /// <summary>Interpolation handler: when <see cref="Enabled"/> is false, <c>shouldAppend</c> tells the
-    /// compiler to skip every hole, so the expressions inside <c>$"..."</c> never run.</summary>
+    /// <summary>Interpolation handler: when <see cref="Enabled"/> is false and the log has no <see cref="Tap"/>,
+    /// <c>shouldAppend</c> tells the compiler to skip every hole, so the expressions inside <c>$"..."</c> never run.</summary>
     [InterpolatedStringHandler]
     public ref struct Line
     {
         private DefaultInterpolatedStringHandler _h;
         private readonly bool _on;
-        public Line(int literalLength, int formattedCount, out bool shouldAppend)
+        public Line(int literalLength, int formattedCount, ExtenderLog log, out bool shouldAppend)
         {
-            _on = Enabled;
+            _on = Enabled || log.Tap != null;
             shouldAppend = _on;
             if (_on) _h = new DefaultInterpolatedStringHandler(literalLength, formattedCount);
         }
