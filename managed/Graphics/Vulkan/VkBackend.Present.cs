@@ -174,6 +174,9 @@ internal sealed unsafe partial class VkBackend
         return false;
     }
 
+    /// <summary>Does a swapchain create that returned <paramref name="r"/> refuse the window for the session?</summary>
+    internal static bool CreateRefusalHolds(VkResult r) => true;
+
     /// <summary>What a live chain was made for, as the one test over it reads: whether there is one, whether the
     /// window went stale under it, whether the surface dictated its extent, and the mode and size it holds.</summary>
     internal readonly record struct ChainShape(bool Live, bool Stale, bool Dictated, VkPresentModeKHR Mode, int W, int H);

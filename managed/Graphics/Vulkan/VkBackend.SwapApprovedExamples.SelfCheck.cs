@@ -7,7 +7,7 @@ internal sealed unsafe partial class VkBackend
 {
     /// <summary>Approved-spec: which chain the surface's extent leaves standing, and the extent a new one takes.
     /// Oracles: two hand-written capability tables -- one dictating 2544x1378, one leaving its extent open between
-    /// 640x480 and 1600x900 -- with the frame sizes and present modes written out beside them.</summary>
+    /// 640x480 and 1600x900 -- with the frame sizes, present modes and create results written out beside them.</summary>
     internal static void SwapSelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
@@ -71,6 +71,20 @@ internal sealed unsafe partial class VkBackend
             "E6: the frame's own size and mode is never a remake, dictated or not");
         check.Expect(!ChainFits(held with { Live = false }, VkPresentModeKHR.Fifo, 2544, 1378),
             "...and with no chain there is one to make, whatever the surface dictates");
+
+        // Given the window coming back from a minimise, the old chain's window not yet let go of
+        // When vkCreateSwapchainKHR returns VK_ERROR_NATIVE_WINDOW_IN_USE_KHR, VK_ERROR_SURFACE_LOST_KHR or VK_ERROR_OUT_OF_DATE_KHR
+        // Then the refusal does not hold: a later frame makes the chain again, and Alloy stays up
+        check.Expect(!CreateRefusalHolds(VkResult.ErrorNativeWindowInUseKHR),
+            "E7: a window still held by the chain before it is a wait, not the end of Vulkan's present");
+        check.Expect(!CreateRefusalHolds(VkResult.ErrorSurfaceLostKHR) && !CreateRefusalHolds(VkResult.ErrorOutOfDateKHR),
+            "...and so are a lost surface and a window that moved under the create");
+
+        // Given a device that cannot make the chain at all
+        // When vkCreateSwapchainKHR returns VK_ERROR_OUT_OF_HOST_MEMORY or VK_ERROR_INITIALIZATION_FAILED
+        // Then the refusal holds for the session
+        check.Expect(CreateRefusalHolds(VkResult.ErrorOutOfHostMemory) && CreateRefusalHolds(VkResult.ErrorInitializationFailed),
+            "E8: a device that cannot make a chain is refused once, not asked again every frame");
         log.Info(check.Ok ? "VkBackend.SwapSelfCheck: passed" : "VkBackend.SwapSelfCheck: FAILED");
     }
 }
