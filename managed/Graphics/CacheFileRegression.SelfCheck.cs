@@ -43,7 +43,9 @@ internal static class CacheFileRegression
             if (good != null && file != null)
             {
                 File.WriteAllBytes(file, good);
+                int before21 = VulkanToolchain.FreshCompiles;
                 byte[]? got = Compile(s21);
+                check.Expect(VulkanToolchain.FreshCompiles == before21 + 1, "E21 a module the previous release wrote is compiled again, not served as it lies");
                 int fresh = VulkanToolchain.FreshCompiles;
                 byte[]? next = Compile(s21);
                 check.Expect(got != null && got.AsSpan().SequenceEqual(good), "E21 a module the previous release wrote gives the module a fresh compile gives");

@@ -27,7 +27,10 @@ internal static class CacheFile
     /// <summary>Bumped with the header's layout.</summary>
     private const uint Format = 1;
     /// <summary>Magic, format, payload length, payload hash.</summary>
-    internal const int HeaderBytes = 24;
+    private const int HeaderBytes = 24;
+
+    /// <summary>What a file on disk is to this release.</summary>
+    private enum Verdict { Whole, Older, Damaged }
 
     /// <summary>Opens a file for writing in place of the disk; null is the disk.</summary>
     internal static Func<string, Stream>? Sink { set => _st.Sink = value; }
@@ -37,16 +40,12 @@ internal static class CacheFile
     internal static byte[]? Read(string path)
     {
         byte[] file;
-        try
-        {
-            if (!File.Exists(path)) return null;
-            file = File.ReadAllBytes(path);
-        }
+        try { file = File.ReadAllBytes(path); }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return null; }
-        string? why = Check(file);
-        if (why == null) return file[HeaderBytes..];
+        Verdict v = Check(file);
+        if (v == Verdict.Whole) return file[HeaderBytes..];
         try { File.Delete(path); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
-        if (why != "older")
+        if (v == Verdict.Damaged)
         {
             var st = _st;
             lock (st.Damaged) { st.Damaged.Add(Path.GetFileName(path)); st.LastDamage = System.Diagnostics.Stopwatch.GetTimestamp(); }
@@ -54,26 +53,28 @@ internal static class CacheFile
         return null;
     }
 
-    /// <summary>Null when <paramref name="file"/> is a whole cache file; "older" when it is no file of this format,
-    /// "damaged" when it was one and its payload no longer matches.</summary>
-    private static string? Check(ReadOnlySpan<byte> file)
+    /// <summary>A file of this format whose length and hash still match its payload is whole. Zeros where the header
+    /// should be (a placeholder a sync tool never filled) or this format's header over the wrong payload is damaged;
+    /// anything else was written by an older release.</summary>
+    private static Verdict Check(ReadOnlySpan<byte> file)
     {
-        if (file.Length < HeaderBytes) return file.IndexOfAnyExcept((byte)0) < 0 ? "damaged" : "older";
-        uint magic = BinaryPrimitives.ReadUInt32LittleEndian(file);
-        if (magic == 0) return "damaged";
-        if (magic != Magic || BinaryPrimitives.ReadUInt32LittleEndian(file[4..]) != Format) return "older";
-        ulong length = BinaryPrimitives.ReadUInt64LittleEndian(file[8..]);
-        if (length != (ulong)(file.Length - HeaderBytes)) return "damaged";
-        return BinaryPrimitives.ReadUInt64LittleEndian(file[16..]) == MdlParser.ContentHash(file[HeaderBytes..]) ? null : "damaged";
+        ReadOnlySpan<byte> head = file[..Math.Min(file.Length, 8)];
+        if (head.IndexOfAnyExcept((byte)0) < 0) return Verdict.Damaged;
+        if (!Ours(head)) return head.Length >= 4 && BinaryPrimitives.ReadUInt32LittleEndian(head) == Magic ? Verdict.Damaged : Verdict.Older;
+        if (file.Length < HeaderBytes || BinaryPrimitives.ReadUInt64LittleEndian(file[8..]) != (ulong)(file.Length - HeaderBytes)) return Verdict.Damaged;
+        return BinaryPrimitives.ReadUInt64LittleEndian(file[16..]) == MdlParser.ContentHash(file[HeaderBytes..]) ? Verdict.Whole : Verdict.Damaged;
     }
+
+    /// <summary>Whether <paramref name="head"/> opens with this format's magic and format number.</summary>
+    private static bool Ours(ReadOnlySpan<byte> head) =>
+        head.Length >= 8 && BinaryPrimitives.ReadUInt32LittleEndian(head) == Magic && BinaryPrimitives.ReadUInt32LittleEndian(head[4..]) == Format;
 
     /// <summary>Whether <paramref name="s"/> opens with this format's header; on true it stands at the payload. For a
     /// reader that wants the start of a payload without the whole file (the bake index).</summary>
     internal static bool Framed(Stream s)
     {
         Span<byte> head = stackalloc byte[HeaderBytes];
-        return s.Read(head) == HeaderBytes && BinaryPrimitives.ReadUInt32LittleEndian(head) == Magic
-               && BinaryPrimitives.ReadUInt32LittleEndian(head[4..]) == Format;
+        return s.Read(head) == HeaderBytes && Ours(head);
     }
 
     /// <summary>Put <paramref name="payload"/> at <paramref name="path"/> through a temporary beside it; false when it
@@ -108,13 +109,15 @@ internal static class CacheFile
     internal static string? Report()
     {
         var st = _st;
-        lock (st.Damaged)
-        {
-            if (st.Damaged.Count == 0) return null;
-            string line = $"CacheFile: {st.Damaged.Count} damaged cache file(s) thrown away and rebuilt: {string.Join(", ", st.Damaged)}";
-            st.Damaged.Clear();
-            return line;
-        }
+        lock (st.Damaged) return st.Damaged.Count == 0 ? null : Said(st);
+    }
+
+    /// <summary>The line naming every damaged file in <paramref name="st"/>'s tally, which it empties. Under its lock.</summary>
+    private static string Said(CacheFileState st)
+    {
+        string line = $"CacheFile: {st.Damaged.Count} damaged cache file(s) thrown away and rebuilt: {string.Join(", ", st.Damaged)}";
+        st.Damaged.Clear();
+        return line;
     }
 
     /// <summary>How long the tally waits for more damage before it reports: an area's reads land over many frames,
@@ -126,9 +129,7 @@ internal static class CacheFile
     internal static string? ReportSettled(long now)
     {
         var st = _st;
-        lock (st.Damaged)
-            if (st.Damaged.Count == 0 || now - st.LastDamage < Quiet) return null;
-        return Report();
+        lock (st.Damaged) return st.Damaged.Count == 0 || now - st.LastDamage < Quiet ? null : Said(st);
     }
 
     /// <summary>Forget the seam and the tally.</summary>

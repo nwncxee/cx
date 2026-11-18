@@ -71,6 +71,9 @@ fi
 echo ">> $(grep -c 'SelfCheck' "$LOG") SelfCheck lines, none failed, $(grep -c 'SelfCheck.*SKIPPED' "$LOG") SKIPPED."
 grep -E 'SelfCheck.*SKIPPED' "$LOG" | sed 's/^/>>   /' || true
 
+# Given a game build CX does not support
+# When the player starts the game
+# Then cx.log, in the logs folder beside nwn.ini, says why CX stood down
 # The other half of #457: the refusal itself, run for real rather than asserted in a unit. A copy of sh IS
 # the rot case -- a host the offsets were never measured against -- so the gate must discover nothing.
 # (sh, not env: a multi-call coreutils dispatches on argv[0] and refuses the name nwmain-rot; #633 needs it.)

@@ -65,7 +65,7 @@ internal static class CacheFilesApprovedExamples
         if (Native.Sym(SymbolMap.AppManager) != IntPtr.Zero) return check.Skip("on-device: the check damages cache files and a game session has its real ones");
         bool shaderc = true;
         foreach (string leaf in VulkanToolchain.Libraries) shaderc &= VulkanToolchain.Load(leaf);
-        if (!shaderc) check.Skip("the staged shaderc did not load: the shader cache examples are not run");
+        check.Expect(shaderc, "the staged shaderc loads, so the shader cache examples run");
         string root = Path.Combine(Path.GetTempPath(), $"cx-cachefiles-{Environment.ProcessId}");
         string ud = Path.Combine(root, "Neverwinter Nights");
         Directory.CreateDirectory(ud);
@@ -165,7 +165,7 @@ internal static class CacheFilesApprovedExamples
                     if (f != null) { byte[] b = File.ReadAllBytes(f); b[b.Length / 2] ^= 0x5a; File.WriteAllBytes(f, b); }
                 Compile(sa); Compile(sb); MeshChart.Chart(MeshChart.Cube(4));
                 string? line = CacheFile.Report();
-                check.Expect(line != null && line.Contains('3') && new[] { fa, fb, fc }.All(f => f != null && line.Contains(Path.GetFileName(f))),
+                check.Expect(line != null && line.StartsWith("CacheFile: 3 damaged", StringComparison.Ordinal) && new[] { fa, fb, fc }.All(f => f != null && line.Contains(Path.GetFileName(f))),
                     $"E16 one line counts three damaged files and names each: {line}");
                 check.Expect(CacheFile.Report() == null, "E16 the line is said once");
 

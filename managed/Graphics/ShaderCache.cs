@@ -21,8 +21,10 @@ internal static partial class ShaderCache
     /// the blob's own header carries, and the only identity a driver reads its data back under.</summary>
     internal const string PipelinePrefix = "vk-pipelines-";
 
-    /// <summary>The folder last swept; a folder the session moves to is swept once on its first use.</summary>
-    private static string? _swept;
+    /// <summary>The folder last swept: a folder the session moves to is swept once, on its first use from any thread.</summary>
+    private sealed class ShaderCacheState { internal string? Swept; }
+
+    private static readonly ShaderCacheState _st = new();
 
     /// <inheritdoc cref="ShaderCache"/>
     internal static string Dir
@@ -30,7 +32,7 @@ internal static partial class ShaderCache
         get
         {
             string dir = Path.Combine(UserFolders.Cache, "shaders");
-            if (_swept != dir) _swept = Sweep(dir);
+            if (System.Threading.Interlocked.Exchange(ref _st.Swept, dir) != dir) Sweep(dir);
             return dir;
         }
     }

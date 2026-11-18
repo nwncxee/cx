@@ -25,10 +25,12 @@ internal static class UserFolders
 
     /// <summary>The folder cx.log, funchook.log and the diagnostic dumps go in: the game's LOGS, or before the game has
     /// read nwn.ini, the logs folder of the default user directory.</summary>
+#pragma warning disable RS0030 // the pre-main logs folder: before the engine names its own, this is the one CX can know
     internal static string Logs => _st.Logs ?? Path.Combine(Native.DefaultUserDirectory(), LogsName);
+#pragma warning restore RS0030
 
     /// <summary>The folder CX's caches go in: <c>cx</c> inside the game's CACHE.</summary>
-    internal static string Cache => _st.Cache ?? Path.Combine(Native.UserDirectory() ?? Native.DefaultUserDirectory(), CacheName, Own);
+    internal static string Cache => _st.Cache ?? Native.ConfigPath(Path.Combine(CacheName, Own));
 
     /// <summary>The removal of the cache folders an older CX left beside nwn.ini, while it runs.</summary>
     internal static Thread? Removal => _st.Removal;
@@ -40,8 +42,7 @@ internal static class UserFolders
         if (_st.Logs != null) return true;
         string? user = Native.UserDirectory();
         if (user == null || !Settle(Native.AliasPath, user, Logs, log)) return false;
-        if (!Same(ExtenderLog.Dir, Logs)) ExtenderLog.MoveTo(Logs);
-        HookService.FollowLogs(Logs);
+        ExtenderLog.MoveTo(Logs);
         log.Info($"UserFolders: logs in {Logs}, caches in {Cache}");
         return true;
     }
@@ -64,13 +65,13 @@ internal static class UserFolders
 
     private static string? Folder(string? path) => string.IsNullOrEmpty(path) ? null : Path.TrimEndingDirectorySeparator(path);
 
-    private static bool Same(string a, string b) =>
-        string.Equals(Path.GetFullPath(a).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
-                      Path.GetFullPath(b).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+    /// <summary>Whether two paths name one folder, as the OS compares them.</summary>
+    internal static bool Same(string a, string b) =>
+        string.Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(a)), Path.TrimEndingDirectorySeparator(Path.GetFullPath(b)),
                       OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
 
-    /// <summary>Copy <paramref name="name"/> from <paramref name="from"/> into <paramref name="to"/> and delete the
-    /// original when it lets go: funchook may still hold it open.</summary>
+    /// <summary>Copy <paramref name="name"/> from <paramref name="from"/> into <paramref name="to"/>. The original stays:
+    /// funchook keeps its trace open for the session and writes its teardown there.</summary>
     private static void Carry(string name, string from, string to, ExtenderLog log)
     {
         string src = Path.Combine(from, name);
@@ -79,7 +80,6 @@ internal static class UserFolders
         {
             Directory.CreateDirectory(to);
             File.Copy(src, Path.Combine(to, name), overwrite: true);
-            try { File.Delete(src); } catch (IOException) { } catch (UnauthorizedAccessException) { }
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {

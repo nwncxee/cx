@@ -22,10 +22,10 @@ internal sealed class LogParts(string dir, long cap = LogParts.MaxPartBytes)
     internal string Dir => dir;
 
     /// <summary>Carry this launch's cx.log into <paramref name="to"/>, as a fresh part there behind that folder's own
-    /// rotation, and write there from now on. A move that cannot open the new folder stays where it was.</summary>
+    /// rotation, and write there from now on. A move that cannot open the new folder goes on in the old file.</summary>
     internal void MoveTo(string to)
     {
-        if (_writeFailed || string.Equals(Path.GetFullPath(to), Path.GetFullPath(dir), StringComparison.Ordinal)) return;
+        if (_writeFailed || UserFolders.Same(to, dir)) return;
         string from = PathOf(0), was = dir;
         bool open = _file != null;
         Close();
@@ -33,21 +33,24 @@ internal sealed class LogParts(string dir, long cap = LogParts.MaxPartBytes)
         if (!open) return;
         try
         {
-            byte[] launch;
-            using (var f = new FileStream(from, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+            using var launch = new FileStream(from, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            if (!Open())
             {
-                launch = new byte[f.Length];
-                f.ReadExactly(launch);
+                dir = was;
+                _file = new StreamWriter(new FileStream(from, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete),
+                                         new UTF8Encoding(false)) { NewLine = "\n" };
+                _written = launch.Length;
+                return;
             }
-            if (!Open()) { dir = was; return; }
             _file!.Flush();
-            _file.BaseStream.Write(launch);
+            launch.CopyTo(_file.BaseStream);
             _written = launch.Length;
+            launch.Dispose();
             File.Delete(from);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            Console.Error.WriteLine($"[cx] {from}: could not move to {to}, the rest of the log goes there without it: {e.Message}");
+            Console.Error.WriteLine($"[cx] {from}: could not move to {to}, the rest of the log goes on without it: {e.Message}");
         }
     }
 

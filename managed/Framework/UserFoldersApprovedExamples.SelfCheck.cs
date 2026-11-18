@@ -25,6 +25,12 @@ internal static class UserFoldersApprovedExamples
     internal static string[] Files(string dir) =>
         Directory.Exists(dir) ? Directory.GetFiles(dir, "*", SearchOption.AllDirectories) : [];
 
+    /// <summary>The user directory a launch with no <c>-userdirectory</c> uses, from the host's own layout: Documents on
+    /// Windows, the XDG data home elsewhere (which run-demo.sh pins under its throwaway home).</summary>
+    internal static string StockUserDir() => OperatingSystem.IsWindows()
+        ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Neverwinter Nights")
+        : Path.Combine(HostEnv.DataHome, "Neverwinter Nights");
+
     internal static string? Read(string path)
     {
         if (!File.Exists(path)) return null;
@@ -38,6 +44,7 @@ internal static class UserFoldersApprovedExamples
         if (Native.Sym(SymbolMap.AppManager) != IntPtr.Zero) return check.Skip("on-device: the check settles the folders to its own and a game session has its real ones");
         bool shaderc = true;
         foreach (string leaf in VulkanToolchain.Libraries) shaderc &= VulkanToolchain.Load(leaf);
+        check.Expect(shaderc, "the staged shaderc loads, so the shader cache halves of E1-E3 run");
         string root = Path.Combine(Path.GetTempPath(), $"cx-userfolders-{Environment.ProcessId}");
         int case_ = 0;
         string Fresh(string name)
@@ -105,8 +112,8 @@ internal static class UserFoldersApprovedExamples
             UserFolders.Settle(Aliases(ud), ud, Path.Combine(ud, "logs"), new ExtenderLog { Tap = heard.Add });
             UserFolders.Removal?.Join(TimeSpan.FromSeconds(30));
             check.Expect(!Directory.Exists(Path.Combine(ud, "cx-shaders")) && !Directory.Exists(Path.Combine(ud, "cx-charts")),
-                "E4 the old cx-shaders and cx-charts folders are gone");
-            int said = heard.Count(l => l.Contains("cx-shaders") && l.Contains("cx-charts"));
+                "E4 the older CX's cx-shaders and cx-charts folders are gone");
+            int said = heard.Count(l => l.Contains("cx-shaders") && l.Contains("cx-charts") && l.Contains("older CX"));
             check.Expect(said == 1, $"E4 cx.log says so once, not {said} times: {string.Join(" | ", heard)}");
             UserFolders.Reset();
 
@@ -129,14 +136,14 @@ internal static class UserFoldersApprovedExamples
             // When the player starts the game and reaches the main menu
             // Then cx.log is in the logs folder beside nwn.ini, on Linux as on Windows
             // And no new cx.log appears in Documents\Neverwinter Nights itself or in the Linux home folder
-            string defaultLogs = Path.Combine(Native.DefaultUserDirectory(), "logs");
+            string defaultLogs = Path.Combine(StockUserDir(), "logs");
             check.Expect(ExtenderLog.Dir == defaultLogs, $"E6 this launch's cx.log is in {defaultLogs}, not {ExtenderLog.Dir}");
             ud = Fresh("Neverwinter Nights");
             UserFolders.Settle(Aliases(ud), ud, Path.Combine(ud, "logs"), log);
             check.Expect(UserFolders.Logs == Path.Combine(ud, "logs"), $"E6 with no LOGS alias the logs folder is beside nwn.ini, not {UserFolders.Logs}");
             UserFolders.Reset();
             DateTime started = System.Diagnostics.Process.GetCurrentProcess().StartTime.ToUniversalTime();
-            foreach (string dir in new[] { Native.DefaultUserDirectory(), HostEnv.Home })
+            foreach (string dir in new[] { StockUserDir(), HostEnv.Home })
             {
                 string stray = Path.Combine(dir, "cx.log");
                 check.Expect(!File.Exists(stray) || File.GetLastWriteTimeUtc(stray) < started, $"E6 this launch wrote no {stray}");

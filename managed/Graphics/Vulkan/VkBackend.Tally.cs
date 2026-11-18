@@ -114,7 +114,7 @@ internal sealed unsafe partial class VkBackend
         }
     }
 
-    /// <summary>The window after the last lift's two lines to the log, and the window shut: when it has run its length,
+    /// <summary>The window after the last lift's lines to the log (pipelines, features, shader compiles), and the window shut: when it has run its length,
     /// or when the next hold begins first, before that hold's counts start again.</summary>
     private void CloseWindow(TallyState t)
     {
@@ -124,6 +124,8 @@ internal sealed unsafe partial class VkBackend
                   + $"; {t.OthersAfterLift} other pipeline{(t.OthersAfterLift == 1 ? "" : "s")}"
                   + (t.Others.Count > 0 ? $", the first {string.Join("; ", t.Others)}" : ""));
         _log.Always($"VkBackend: {FeatureLine}");
+        int fresh = VulkanToolchain.FreshCompiles;
+        _log.Always($"VkBackend: [vkshader] {fresh} shader stage{(fresh == 1 ? "" : "s")} compiled since launch; every other one was read from the shader cache");
         t.LiftedAt = 0;
     }
 

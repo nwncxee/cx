@@ -95,7 +95,6 @@ internal static partial class MeshChart
         try
         {
             string dir = LedgerDir();
-            Directory.CreateDirectory(dir);
             byte[] blob = Serialize(j);
             if (!CacheFile.Write(LedgerFile(j.Content), blob)) return;
             lock (_diskGate)

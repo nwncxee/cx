@@ -236,7 +236,7 @@ internal sealed class BakeCache
         }
         foreach (var (file, jobs) in _byFile)
         {
-            byte[]? union = LoadUnion(_files[file], out Union u, out _);
+            byte[]? union = ReadBlobFile(_files[file], out Union u, out _, _log);
             if (union == null) Forget(file); else Interlocked.Increment(ref Inflates);
             for (int k = 0; k < jobs.Count; k++)
             {
@@ -299,11 +299,9 @@ internal sealed class BakeCache
         catch (Exception) { why = "truncation"; return null; }
     }
 
-    /// <summary>Null on any refusal or I/O fault: a throw here would strand every probe of the batch in Probing.</summary>
-    private byte[]? LoadUnion(string file, out Union u, out Entry[]? table) => ReadBlobFile(file, out u, out table, _log);
-
     /// <summary>The union and table of the page blob at <paramref name="file"/>, or null (said on
-    /// <paramref name="log"/>) when it is absent, refused or unreadable. Never throws.</summary>
+    /// <paramref name="log"/>) when it is absent, refused or unreadable. Never throws: a throw would strand every probe
+    /// of the batch in Probing.</summary>
     internal static byte[]? ReadBlobFile(string file, out Union u, out Entry[]? table, ExtenderLog? log)
     {
         u = default; table = null;
@@ -330,7 +328,6 @@ internal sealed class BakeCache
     private void WriteBlob(Job j)
     {
         string dir = MeshChart.LedgerDir();
-        Directory.CreateDirectory(dir);
         string file = Path.Combine(dir, j.File!);
         if (!WriteBlobFile(file, j.Page, j.X0, j.Y0, j.Uw, j.Uh, j.Table!, j.Data!)) return;
         Index(file, j.Table!);
@@ -381,7 +378,7 @@ internal sealed class BakeCache
         for (int i = 0; i < plan.Unions.Length; i++)
         {
             ref Union want = ref plan.Unions[i];
-            byte[]? bytes = LoadUnion(Path.Combine(dir, want.File), out Union got, out Entry[]? table);
+            byte[]? bytes = ReadBlobFile(Path.Combine(dir, want.File), out Union got, out Entry[]? table, _log);
             if (bytes == null || table == null) { why = $"page blob {want.File} is gone or refused"; return null; }
             if (got.Page != want.Page || got.X0 != want.X0 || got.Y0 != want.Y0 || got.W != want.W || got.H != want.H)
             { why = $"page blob {want.File} sits at page {got.Page} ({got.X0},{got.Y0}) {got.W}x{got.H}, the plan says page {want.Page} ({want.X0},{want.Y0}) {want.W}x{want.H}"; return null; }
@@ -397,7 +394,6 @@ internal sealed class BakeCache
         try
         {
             string dir = MeshChart.LedgerDir();
-            Directory.CreateDirectory(dir);
             var ms = new MemoryStream();
             plan.SerializeTo(ms);
             if (!CacheFile.Write(Path.Combine(dir, $"{plan.Key:x16}{AreaExt}"), ms.GetBuffer().AsSpan(0, (int)ms.Length)))

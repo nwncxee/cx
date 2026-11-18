@@ -27,14 +27,14 @@ public sealed class HookService : IDisposable
     {
         _log = log;
         // funchook's own trace beside the log (a hook that faults at first call); this first touch of General declares the group.
-        if (General.HookDebug.Boot) FollowLogs(UserFolders.Logs);
+        FollowLogs(UserFolders.Logs);
         _fh = funchook_create();
         SelfCheck(log);
     }
 
     /// <summary>Point funchook's trace at funchook.log in <paramref name="logs"/>, beside cx.log, when
-    /// <c>general.hookdebug</c> asked for it.</summary>
-    internal static void FollowLogs(string logs)
+    /// <c>general.hookdebug</c> asked for it. Funchook opens it once per hook set, so this is set before the first.</summary>
+    private static void FollowLogs(string logs)
     {
         if (!General.HookDebug.Boot) return;
         try { Directory.CreateDirectory(logs); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return; }
