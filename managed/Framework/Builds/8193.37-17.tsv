@@ -591,6 +591,7 @@ offset	CGuiButton	normalAnim	0xe0	0xc0	# ButtonNormalAnim
 offset	CNWCCreature	carriedWeight	0x2ac	0x28c	# CreatureCarriedWeight
 offset	CNWCItem	baseItem	0x40	0x40	# ItemBaseItem
 offset	CNWCItem	ghost	0x260	0x240	# ItemGhost
+offset	CNWCItem	equipSlot	0x26c	0x24c	# ItemEquipSlot
 offset	CNWCItem	repoX	0x274	0x254	# ItemRepoX
 offset	CNWCItem	repoY	0x275	0x255	# ItemRepoY
 offset	CNWCItem	possessor	0x284	0x264	# ItemPossessor
