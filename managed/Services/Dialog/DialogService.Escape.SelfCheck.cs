@@ -8,9 +8,6 @@ namespace CX.Services.Dialog;
 
 public sealed unsafe partial class DialogService
 {
-    /// <summary>The SDL keycode Escape arrives as.</summary>
-    private const uint EscapeKey = 0x1B;   // not-an-offset: SDL key/event code
-
     /// <summary>Escape where it already sends nothing: End Dialog, the gap after a pick, a second press and the
     /// stock panel's conversation. Oracle: the reply lines the log tap hears, against hand-written literals.</summary>
     private static void EscapeSelfCheck(ExtenderLog log)

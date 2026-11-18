@@ -28,7 +28,14 @@ public sealed unsafe partial class DialogService : IExtenderService
     // ---- captured content (written cold in the hooks, read cold in Rebuild) ----
     private static volatile bool _open;                 // input-modal: keys/clicks captured while true
     private static uint _dialogId, _pageId;
-    private static bool _isEndDialog;
+    private static NodeKind _node;
+
+    /// <summary>What the node up asks of Escape: an abort, its first reply (the server's continue flag), or a plain
+    /// close (End Dialog, which has no reply to send).</summary>
+    private enum NodeKind { Replies, Continue, EndDialog }
+
+    /// <summary>The reply index the stock panel sends with the abort byte when Escape leaves a conversation.</summary>
+    private const uint AbortReply = 0xFFFFFFFF;  // not-an-offset: a reply index
     private static string _npcText = "";
     private static string _speakerName = "";            // creature/object name for the title band ("" = none)
     private static string _portraitResref = "";
@@ -176,7 +183,7 @@ public sealed unsafe partial class DialogService : IExtenderService
             _portraitResref = ResolvePortrait(speakerId);   // same thread ShowDialogEntry ran on -> safe
             _speakerName = Native.EngineText(Native.ObjectName(speakerId));   // message thread, as the hook ran on
             _replies = System.Array.Empty<Reply>();
-            _isEndDialog = false;
+            _node = NodeKind.Replies;
             _hover = -1;
             _sel.Clear();                                    // new node -> drop any selection into stale text
             _scroll = 0f;                                    // new node -> top
@@ -214,7 +221,7 @@ public sealed unsafe partial class DialogService : IExtenderService
                 idx[i] = ip != null ? ip[i] : 0xffffffff;
             }
             _replies = MakeReplies(texts, idx, numOldReplies);
-            _isEndDialog = n == 0;
+            _node = n == 0 ? NodeKind.EndDialog : continueFlag == 1 ? NodeKind.Continue : NodeKind.Replies;
             _pageId = pageId;
             _hover = -1;
             _open = true;
@@ -430,13 +437,16 @@ public sealed unsafe partial class DialogService : IExtenderService
     /// <summary>SDL_Keymod LCTRL | RCTRL (matches HotkeyInputService), for the Ctrl+C copy chord.</summary>
     private const int KmodCtrl = 0x00C0;  // not-an-offset: SDL key/event code
 
+    /// <summary>The SDL keycode Escape arrives as.</summary>
+    private const uint EscapeKey = 0x1B;   // not-an-offset: SDL key/event code
+
     /// <summary>Keyboard while a dialog is open: 1-9 pick that reply row, 0 picks row 10 (vanilla mapping),
-    /// ESC closes locally (vanilla parity: no wire send), Ctrl+C copies the selected/whole npc text. Returns
+    /// Escape sends the stock panel's escape reply and closes, Ctrl+C copies the selected/whole npc text. Returns
     /// true when consumed. Called before the gameplay-hotkey path.</summary>
     public static bool HandleKey(uint sdlKey, int mods)
     {
         if (!_visible) return false;
-        if (sdlKey == 0x1B) { SoftClose(); return true; }         // ESC always dismisses (even a wedged await-node gap)
+        if (sdlKey == EscapeKey) { if (_open) SendEscape(); SoftClose(); return true; }   // the await-node gap closes, sending nothing
         if ((mods & KmodCtrl) != 0 && sdlKey == 0x63) { Copy(); return true; }   // Ctrl+C: selection, else whole node text
         if (!_open) return true;                                  // await-node gap: swallow digits (no selection yet)
         if (sdlKey == 0x30) { Select(9); return true; }
@@ -599,7 +609,7 @@ public sealed unsafe partial class DialogService : IExtenderService
         if ((uint)displayIndex >= (uint)replies.Length) return;
         Reply r = replies[displayIndex];
         if (!r.Selectable) return;
-        if (_isEndDialog) { SoftClose(); return; }        // End Dialog: ends the conversation -> window fades out
+        if (_node == NodeKind.EndDialog) { SoftClose(); return; }        // End Dialog: ends the conversation -> window fades out
         SendReply(_dialogId, r.ServerIndex, 0, _pageId);
         // Mid-conversation pick: the window stays; only the current content fades out (input released) while we
         // wait for the next node, which cross-fades its content in. The window fade is reserved for open/close.
@@ -628,15 +638,25 @@ public sealed unsafe partial class DialogService : IExtenderService
         SelectableText.Copy(text);   // framework clipboard capability; no-op on empty / unresolved symbol
     }
 
+    /// <summary>The stock panel's Escape: the node's first reply on a continue node, else the abort reply; End Dialog
+    /// sends nothing, as the server has already ended the conversation.</summary>
+    private static void SendEscape()
+    {
+        Reply[] replies = _replies;
+        if (_node == NodeKind.EndDialog) return;
+        if (_node == NodeKind.Continue && replies.Length > 0) SendReply(_dialogId, replies[0].ServerIndex, 0, _pageId);
+        else SendReply(_dialogId, AbortReply, 1, _pageId);
+    }
+
     /// <summary>Send a reply on the live <c>CNWCMessage</c> as <c>this</c> (major 0x14 / minor 0x03); refuses
     /// when the sender symbol or the message object is missing.</summary>
     private static void SendReply(uint dialogId, uint replyIndex, byte isAbort, uint pageId)
     {
-        if (EngineFn.SendDialogReply == null) { _log?.Info("[dialog] reply sender unresolved; not sending"); return; }
+        if (EngineFn.SendDialogReply == null) { _log?.Info($"[dialog] reply dlg={dialogId} idx={replyIndex} abort={isAbort} page={pageId}: sender unresolved; not sending"); return; }
         IntPtr msg = ClientApi.Message();
-        if (msg == IntPtr.Zero) { _log?.Info("[dialog] no live CNWCMessage; cannot send reply"); return; }
+        if (msg == IntPtr.Zero) { _log?.Info($"[dialog] reply dlg={dialogId} idx={replyIndex} abort={isAbort} page={pageId}: no live CNWCMessage; not sending"); return; }
         EngineFn.SendDialogReply(msg, dialogId, replyIndex, isAbort, pageId);
-        _log?.Info($"[dialog] sent reply idx={replyIndex} abort={isAbort} page={pageId}");
+        _log?.Info($"[dialog] sent reply dlg={dialogId} idx={replyIndex} abort={isAbort} page={pageId}");
     }
 
     /// <summary>Soft close: release input (clicks fall through) and fade the whole window out. Draw retires the
@@ -646,7 +666,7 @@ public sealed unsafe partial class DialogService : IExtenderService
     {
         _open = false;
         _visible = false;
-        _isEndDialog = false;
+        _node = NodeKind.Replies;
         _winAlphaTarget = 0f;
         _hover = -1;
         _sel.Clear();
@@ -659,7 +679,7 @@ public sealed unsafe partial class DialogService : IExtenderService
     {
         _open = false;
         _visible = false;
-        _isEndDialog = false;
+        _node = NodeKind.Replies;
         _replies = System.Array.Empty<Reply>();
         _npcText = ""; _speakerName = ""; _portraitResref = "";
         _hover = -1; _scroll = 0f; _sel.Clear();
@@ -736,7 +756,7 @@ public sealed unsafe partial class DialogService : IExtenderService
             // Window fully faded out: retire. (!_open guards a concurrent OnShowEntry republishing the frame.)
             _frame = null;
             _replies = System.Array.Empty<Reply>(); _npcText = ""; _speakerName = ""; _portraitResref = "";
-            _isEndDialog = false; _visible = false;
+            _node = NodeKind.Replies; _visible = false;
             return;
         }
         if (_windowAlpha <= 0.001f) return;
