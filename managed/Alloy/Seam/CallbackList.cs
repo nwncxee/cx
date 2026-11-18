@@ -34,16 +34,17 @@ public sealed unsafe partial class ObjectSlots
     [UnmanagedCallersOnly]
     private static void DoEvent(nint self, nint name, nint data) => FireEvent(self, name, data);
 
+    /// <summary>Raise <paramref name="name"/> on the object's callbacks. <c>UpdateScenes</c> reaches the game's own
+    /// listeners first, as <c>Gob::SetScene</c> @0x43e020 fires them; the seam then carries the riders no listener
+    /// moved, unless a listener destroyed the object.</summary>
     internal static void FireEvent(nint self, nint name, nint data)
     {
         nint shell = Facade.GobBlock(self);
         if (shell == 0) { Facade.Object(self, 84); return; }
-        bool scenes = name != 0 && CallbackList.NameIs(name, "UpdateScenes");
-        DbId id = scenes ? Facade.Object(self, 84) : default;
-        // Listeners before the seam's carry, as Gob::SetScene @0x43e020 fires them: a cross-scene attach keeps its rider's scene (+0x70) from a +0x88 the carry would already have zeroed.
+        DbId id = name != 0 && CallbackList.NameIs(name, "UpdateScenes") ? Facade.Object(self, 84) : default;
+        // Listeners first: a cross-scene attach keeps its rider's scene from the +0x88 the carry would zero.
         CallbackList.Dispatch(self, shell, name, data);
-        if (!id.IsNull && SeamShell.Known(shell, out byte state, out DbId now) && state == SeamShell.StateLive
-            && now.Value == id.Value)
+        if (!id.IsNull && Facade.ObjectShell(id) == shell)
             PropagateScene(id, shell, SceneDb.ObjScene[id.Index], Facade.SceneWord(shell));
     }
 }
