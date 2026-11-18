@@ -17,6 +17,8 @@ public sealed class NuiItemsService : IExtenderService
         ItemDragSelfCheck.Run(log);
         NuiItemStockRegressions.Run(log);
         NuiItemMenuApprovedExamples.Run(log);
+        CX.Services.Radial.ItemMenuKeysApprovedExamples.Run(log);
+        CX.Services.Radial.ItemMenuKeysRegressions.Run(log);
         NuiItemDragApprovedExamples.Run(log);
         NuiItemDragRegressions.Run(log);
         NuiItemDragPickRegressions.Run(log);

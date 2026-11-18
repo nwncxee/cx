@@ -110,6 +110,8 @@ public sealed unsafe partial class RadialService : IExtenderService
         RadialPins.SelfCheck(log);
         SelfActions.SelfCheck(log);
         SelfCheck(log);
+        KeysApprovedExamples(log);
+        KeysRegressions(log);
 
         if (!SymbolMap.Require(log, "RadialService", RequiredSymbols)) return;
         if (!EngineLayout.Require(log, "RadialService", "CRadialMenu", "CGuiCallback", "CClientSpellMenu", "CGuiCreatureMenu", "CGuiIcon", "CGuiTextBubble", "StringGob", "CGuiMan")) return;
