@@ -16,7 +16,15 @@ internal static unsafe class GuiCapture
     /// its run of draws, and the depth treatment <c>Camera::RenderScene</c> @0x4a7920 gives the view: every GUI view
     /// shares ONE depth buffer, cleared (<c>Clear(2)</c>, depth+stencil, unscissored) only at the first GUI view after a
     /// non-GUI one, and split by depth RANGE -- the five overlay scenes in [0, 0.02], every other panel in [0.021, 0.1].</summary>
-    internal struct Layer { public int X, Y, W, H, SX, SY, SW, SH, First, Count; public float Near, Far; public bool Clear; public uint Target; }
+    internal struct Layer
+    {
+        public int X, Y, W, H, SX, SY, SW, SH, First, Count;
+        public float Near, Far;
+        public bool Clear;
+        /// <summary>One of the two scenes the engine draws after NUI (<see cref="AlloyCamera.AfterNui"/>).</summary>
+        public bool Overlay;
+        public uint Target;
+    }
 
     /// <summary>One draw in a layer. <see cref="Format"/> is the stream format the flush builds a VAO for
     /// (<see cref="Stream"/> true); <see cref="Offset"/> is an element BYTE offset when <see cref="Indexed"/>,
@@ -194,7 +202,7 @@ internal static unsafe class GuiCapture
         if (LayerN >= MaxLayers) { Overflow("layers"); return false; }
         ref Layer l = ref Layers[LayerN++];
         l.X = x; l.Y = y; l.W = w; l.H = h; l.SX = sx; l.SY = sy; l.SW = sw; l.SH = sh;
-        l.First = DrawN; l.Count = 0; l.Near = 0f; l.Far = 1f; l.Clear = false; l.Target = 0;
+        l.First = DrawN; l.Count = 0; l.Near = 0f; l.Far = 1f; l.Clear = false; l.Overlay = false; l.Target = 0;
         return true;
     }
 
@@ -206,12 +214,12 @@ internal static unsafe class GuiCapture
     /// <c>RenderOnlyGobs</c> layer without the engine. The depth range and clear are the caller's, which asked
     /// <see cref="DepthOf"/>; so is the RECT, off the snapshot, because no engine camera writes this view's
     /// rect into <c>GLRender::m_viewport</c>, and a zero-width layer is skipped by <see cref="GuiPass"/>.</summary>
-    internal static bool BeginDbLayer(int x, int y, int w, int h, float near, float far, bool clear)
+    internal static bool BeginDbLayer(int x, int y, int w, int h, float near, float far, bool clear, bool overlay)
     {
         if (LayerN >= MaxLayers) { Overflow("layers"); return false; }
         ref Layer l = ref Layers[LayerN++];
         l.X = l.SX = x; l.Y = l.SY = y; l.W = l.SW = w; l.H = l.SH = h;
-        l.First = DrawN; l.Count = 0; l.Near = near; l.Far = far; l.Clear = clear; l.Target = 0;
+        l.First = DrawN; l.Count = 0; l.Near = near; l.Far = far; l.Clear = clear; l.Overlay = overlay; l.Target = 0;
         return true;
     }
 
@@ -383,17 +391,42 @@ internal static unsafe class GuiCapture
             _log?.Always($"GuiCapture: a frame's GUI ran past the {what} staging ceiling -- the rest of it is NOT DRAWN (raise the cap)");
     }
 
-    private static readonly Layer[] _lead = new Layer[MaxLayers];
+    private static readonly Layer[] _order = new Layer[MaxLayers];
 
-    /// <summary>Move layers <c>[from, LayerN)</c> ahead of <c>[0, from)</c>, order kept within each run. DB mode
-    /// records the panels at the frame boundary, after NUI was recorded at <c>nk_sdl_render</c>; the engine's
-    /// order is panels, then NUI.</summary>
-    internal static void Lead(int from)
+    /// <summary><see cref="Partition(Span{Layer}, int, Span{Layer}, out int)"/> over this frame's list. Hot; allocates nothing.</summary>
+    internal static int Partition(int nui, out int front) => Partition(Layers.AsSpan(0, LayerN), nui, _order, out front);
+
+    /// <summary>Order a frame's layers as the engine draws them: the views' panels, NUI (<c>[0, nui)</c>, recorded first
+    /// at <c>nk_sdl_render</c>), then the views' overlay layers, order kept within each run. Returns the panels' count;
+    /// <paramref name="front"/> is where the overlays start. An overlay's depth clear moves to the panel after it;
+    /// an overlay no panel follows keeps its own.</summary>
+    internal static int Partition(Span<Layer> layers, int nui, Span<Layer> scratch, out int front)
     {
-        if (from <= 0 || from >= LayerN) return;
-        Array.Copy(Layers, 0, _lead, 0, from);
-        Array.Copy(Layers, from, Layers, 0, LayerN - from);
-        Array.Copy(_lead, 0, Layers, LayerN - from, from);
+        int n = layers.Length, k = 0;
+        nui = Math.Clamp(nui, 0, n);
+        bool owed = false;
+        int lastPanel = -1;
+        for (int i = nui; i < n; i++)
+        {
+            if (layers[i].Overlay) { owed |= layers[i].Clear; continue; }
+            scratch[k] = layers[i];
+            scratch[k++].Clear |= owed;
+            owed = false;
+            lastPanel = i;
+        }
+        int panels = k;
+        layers[..nui].CopyTo(scratch[k..]);
+        k += nui;
+        front = k;
+        for (int i = nui; i < n; i++)
+        {
+            if (!layers[i].Overlay) continue;
+            scratch[k] = layers[i];
+            if (i < lastPanel) scratch[k].Clear = false;
+            k++;
+        }
+        scratch[..n].CopyTo(layers);
+        return panels;
     }
 
     /// <summary>Consumed by a flush: the next scene starts a fresh list.</summary>
@@ -439,10 +472,38 @@ internal static unsafe class GuiCapture
         check.Expect(!c4 && n4 == 0f && f4 == 1f && !latch, "a non-GUI view takes the full range and drops the latch");
         Put("sceneGUI_minimap"); DepthOf(a, ref latch, out _, out _, out bool c5);
         check.Expect(c5, "...so the next GUI view clears again");
+        CheckPartition(check);
         var rec = new GuiRec();
         check.Expect(sizeof(GuiRec) == 256 && (byte*)&rec.Flags - (byte*)&rec == 208 && (byte*)&rec.PltRows - (byte*)&rec == 224,
             "the GUI record is sixteen vec4: flags at float 52, the PLT rows at float 56");
         log.Info(check.Ok ? "GuiCapture.SelfCheck: passed" : "GuiCapture.SelfCheck: FAILED");
+    }
+
+    /// <summary>A frame's list as captured: two NUI layers, then the views -- a panel, the overlay, a panel, the cursor.
+    /// Oracle: the draw order the engine's <c>CGuiMan::UpdateAndRender</c> keeps, written here by hand as layer ids.</summary>
+    private static void CheckPartition(Checker check)
+    {
+        Span<Layer> l = stackalloc Layer[6], scratch = stackalloc Layer[6];
+        ReadOnlySpan<char> captured = "nNpOqM";
+        for (int i = 0; i < l.Length; i++) l[i] = new Layer { First = captured[i], Overlay = captured[i] is 'O' or 'M' };
+        int panels = Partition(l, 2, scratch, out int front);
+        Span<char> got = stackalloc char[6];
+        for (int i = 0; i < l.Length; i++) got[i] = (char)l[i].First;
+        check.Expect(got.SequenceEqual("pqnNOM") && panels == 2 && front == 4,
+            $"the panels lead NUI and the overlay then the cursor follow it: {got.ToString()}, panels {panels}, front {front}");
+        l[0] = new Layer { First = 'O', Overlay = true, Clear = true };
+        l[1] = new Layer { First = 'p' };
+        l[2] = new Layer { First = 'q' };
+        Partition(l[..3], 0, scratch, out int front2);
+        check.Expect(l[0].First == 'p' && l[0].Clear && !l[1].Clear && l[2].First == 'O' && !l[2].Clear && front2 == 2,
+            "an overlay that opened the GUI run hands its depth clear to the panel after it, and to no other");
+        l[0] = new Layer { First = 'p' };
+        l[1] = new Layer { First = 'M', Overlay = true, Clear = true };
+        Partition(l[..2], 0, scratch, out _);
+        check.Expect(l[1].First == 'M' && l[1].Clear && !l[0].Clear,
+            "an overlay no panel follows keeps its own depth clear");
+        Partition(l[..0], 0, scratch, out int front3);
+        check.Expect(front3 == 0, "an empty frame partitions to nothing");
     }
 }
 

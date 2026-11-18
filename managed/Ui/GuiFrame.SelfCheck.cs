@@ -11,12 +11,14 @@ namespace CX.Ui;
 internal static class GuiFrameSelfCheck
 {
     /// <summary>Appends a letter per thing drawn: Q then E for the game's quickbar and its Examine window, the
-    /// order the engine lists those panels in, N for NUI, and whatever each CX window on a layer appends.</summary>
+    /// order the engine lists those panels in, N for NUI, O then M for the game's overlay and its cursor, and
+    /// whatever each CX window on a layer appends.</summary>
     private readonly struct LetterSink(StringBuilder drawn) : IGuiFrameSink
     {
         public bool Windows(UiLayer layer) { UiHost.DrawFrame(layer); return true; }
         public bool Panels() { drawn.Append("QE"); return true; }
         public bool Nui() { drawn.Append('N'); return true; }
+        public bool Overlays() { drawn.Append("OM"); return true; }
     }
 
     /// <summary>A frame with the two world-anchored windows the services make (p = nameplates and chat bubbles,
@@ -54,7 +56,12 @@ internal static class GuiFrameSelfCheck
             $"a NUI window covers a plate: {f}");
         check.Expect(f.IndexOf('c', StringComparison.Ordinal) > f.IndexOf('p', StringComparison.Ordinal),
             $"the CX chat box covers a plate: {f}");
-        check.Expect(f.EndsWith("Nu", StringComparison.Ordinal), $"a hover card draws over NUI, last: {f}");
+        check.Expect(f.Contains("Nu", StringComparison.Ordinal), $"a hover card draws right over NUI: {f}");
+        check.Expect(f.EndsWith('M') && f.IndexOf('M', StringComparison.Ordinal) > f.IndexOf('u', StringComparison.Ordinal)
+                     && f.IndexOf('M', StringComparison.Ordinal) > f.IndexOf('N', StringComparison.Ordinal),
+            $"the cursor draws over a CX window above NUI and over NUI, last: {f}");
+        check.Expect(f.IndexOf('O', StringComparison.Ordinal) > f.IndexOf('u', StringComparison.Ordinal),
+            $"the game's overlay scene draws over the CX windows above NUI, as the engine draws it after NUI: {f}");
         if (check.Ok) log.Info("GuiFrame.SelfCheck: passed");
     }
 }
