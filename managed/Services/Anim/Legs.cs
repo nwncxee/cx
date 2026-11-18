@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using CX.Framework;
 
 namespace CX.Services.Anim;
 
@@ -9,8 +10,18 @@ namespace CX.Services.Anim;
 /// the stride warp and settle (<see cref="StrideWarp"/>, <see cref="Settle"/>), then the floors (<see cref="FootPlacement"/>)
 /// and the pelvis (<see cref="Mass"/>). <b>Hot</b>, no allocation.
 /// </summary>
-internal static class Legs
+internal static partial class Legs
 {
+    static partial void ApprovedExamples(ExtenderLog log);
+    static partial void Regressions(ExtenderLog log);
+
+    /// <summary>Runs the leg examples the build carries: the approved ones, then the regressions.</summary>
+    internal static void Examples(ExtenderLog log)
+    {
+        ApprovedExamples(log);
+        Regressions(log);
+    }
+
     /// <summary>A whole frame at once: every phase in order, for a frame whose ankles are the turned ones and whose
     /// floors are already sampled.</summary>
     internal static void Step(ref LegState s, in LegFrame f, out LegPose p)
