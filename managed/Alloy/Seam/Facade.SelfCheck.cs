@@ -189,6 +189,65 @@ internal static unsafe class FacadeSelfCheck
         }
     }
 
+    /// <summary>What an <c>UpdateScenes</c> listener on a page records: the rider it watches, the rider's scene when
+    /// the listener ran, and how many times it ran.</summary>
+    private struct SceneEventProbe { public int Rider; public uint Seen; public int Calls; }
+
+    [UnmanagedCallersOnly]
+    private static void RecordRiderScene(nint self, nint name, nint data)
+    {
+        var probe = (SceneEventProbe*)data;
+        probe->Seen = SceneDb.ObjScene[probe->Rider].Value;
+        probe->Calls++;
+    }
+
+    /// <summary>A page leaving its scene fires <c>UpdateScenes</c>, and the game's own listeners hear it before the
+    /// seam carries the riders. Oracle: <c>Gob::SetScene</c> @0x43e020 writes the page's scene and fires the event,
+    /// and the listeners ARE the propagation, so the first to see a rider sees it where it was.</summary>
+    private static void SceneEventOrder(Checker check)
+    {
+        Func<string, bool> was = ObjectFns.ResourcePresent;
+        long unreadable = ObjectFns.UnreadableModels;
+        DbId page = default, rider = default, panel = default, view = default;
+        nint ps = 0, cb = 0;
+        try
+        {
+            ObjectFns.ResourcePresent = n => n == "cx_present_unreadable";
+            ps = ObjectFns.CreateForCheck("cx_present_unreadable");
+            page = Facade.Object(ps, SeamSlot.Unnamed);
+            nint rs = ObjectFns.CreateForCheck("cx_present_unreadable");
+            rider = Facade.Object(rs, SeamSlot.Unnamed);
+            SceneDb.SetAttachTo(rider.Index, page);
+            panel = DbScene.Create("sceneGUI_cx_evorder_panel");
+            view = DbScene.Create("sceneGUI_cx_evorder_view");
+            ObjectSlots.JoinScene(page, ps, panel, 0);
+            ObjectSlots.JoinScene(rider, rs, view, 0);
+            var probe = new SceneEventProbe { Rider = rider.Index };
+            ReadOnlySpan<byte> evName = "UpdateScenes\0"u8;
+            fixed (byte* n = evName)
+            {
+                cb = CallbackList.Add(ps, (nint)(delegate* unmanaged<nint, nint, nint, void>)&RecordRiderScene, (nint)n, 0);
+                DbScene.Leave(panel, page);
+                Facade.SetSceneWord(ps, 0);
+                ObjectSlots.FireEvent(ps, (nint)n, (nint)(&probe));
+            }
+            check.Expect(probe.Calls == 1, $"the page's UpdateScenes listener runs once ({probe.Calls})");
+            check.Expect(probe.Seen == view.Value,
+                "the game's UpdateScenes listener sees the rider still in its own scene: a cross-scene attach keeps that scene there");
+            check.Expect(SceneDb.ObjScene[rider.Index].IsNull, "the seam still carries a plain rider out with its page");
+        }
+        finally
+        {
+            if (cb != 0) CallbackList.Remove(ps, cb);
+            if (!rider.IsNull) ObjectSlots.DestroyRecord(rider);
+            if (!page.IsNull) ObjectSlots.DestroyRecord(page);
+            if (!panel.IsNull) DbScene.Destroy(panel);
+            if (!view.IsNull) DbScene.Destroy(view);
+            ObjectFns.ResourcePresent = was;
+            ObjectFns.UnreadableModels = unreadable;
+        }
+    }
+
     /// <summary>An invisible creature: <c>CNWCAnimBase::SetAlpha</c>'s colour shift reaches every grafted body
     /// piece always, and the seam riders (head, weapon, effect) when propagated, unless a rider opted out or has
     /// no attach behaviour. Oracle: the literal alpha handed in, against the untouched 1.</summary>
@@ -410,6 +469,7 @@ internal static unsafe class FacadeSelfCheck
         Facade.InSelfCheck = true;
         Factory(check);
         Riders(check);
+        SceneEventOrder(check);
         Shifts(check);
         RunRoots(check);
         UnseenSilhouetteApprovedExamples.SelfCheck(log);

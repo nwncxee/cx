@@ -38,16 +38,13 @@ public sealed unsafe partial class ObjectSlots
     {
         nint shell = Facade.GobBlock(self);
         if (shell == 0) { Facade.Object(self, 84); return; }
-        // The engine's Gob::SetScene @0x43e020 is NOT hooked -- it works on a facade, writes +0x88 itself and
-        // then fires this event, which is where the attachment behaviours propagated the new scene down. The
-        // behaviours do not exist here, so the propagation lives in this slot, keyed on the same event name.
-        if (name != 0 && CallbackList.NameIs(name, "UpdateScenes"))
-        {
-            DbId id = Facade.Object(self, 84);
-            if (!id.IsNull)
-                PropagateScene(id, shell, SceneDb.ObjScene[id.Index], Facade.SceneWord(shell));
-        }
+        bool scenes = name != 0 && CallbackList.NameIs(name, "UpdateScenes");
+        DbId id = scenes ? Facade.Object(self, 84) : default;
+        // Listeners before the seam's carry, as Gob::SetScene @0x43e020 fires them: a cross-scene attach keeps its rider's scene (+0x70) from a +0x88 the carry would already have zeroed.
         CallbackList.Dispatch(self, shell, name, data);
+        if (!id.IsNull && SeamShell.Known(shell, out byte state, out DbId now) && state == SeamShell.StateLive
+            && now.Value == id.Value)
+            PropagateScene(id, shell, SceneDb.ObjScene[id.Index], Facade.SceneWord(shell));
     }
 }
 
