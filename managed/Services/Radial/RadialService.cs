@@ -117,17 +117,7 @@ public sealed unsafe partial class RadialService : IExtenderService
         if (!SelfActions.Init(log)) log.Info("RadialService: self pins unavailable (SelfActions unit unresolved); rows grey, Show everywhere not offered");
         _guiMan = Native.Sym(SymbolMap.GuiMan);
 
-        _window = new Window(0, 0, 0, 0)
-        {
-            Focusable = false,
-            CapturesPointer = true,
-            DrawContent = Draw,
-            OnMouseButton = OnMouseButton,
-            OnMouseMotion = OnMouseMotion,
-            OnMouseWheel = OnMouseWheel,
-            OnKey = OnKey,
-            HitTestOverride = (px, py) => (_menu.Open && _menu.Contains(px, py)) || (_ctx.Open && _ctx.Contains(px, py)),
-        };
+        _window = NewWindow();
         FrameRegistry.Global.Register(FramePhase.PostPresent, ServicePriority, Service, "Radial.service", log);
 
         _orig = hooks.InstallRadialActivateInternal(&OnActivateInternal);
@@ -135,6 +125,19 @@ public sealed unsafe partial class RadialService : IExtenderService
         log.Info($"RadialService: ActivateInternal hooked (radial.enabled={(RadialKnobs.Enabled.V ? "on" : "off")}, cascade window registered); " +
                  $"StartLoadBar chained={(_loadBarSlot != null ? "yes" : "no")}");
     }
+
+    /// <summary>The cascade's window, registered with the UI host on creation; the self-checks build one of their own.</summary>
+    private static Window NewWindow() => new(0, 0, 0, 0)
+    {
+        Focusable = false,
+        CapturesPointer = true,
+        DrawContent = Draw,
+        OnMouseButton = OnMouseButton,
+        OnMouseMotion = OnMouseMotion,
+        OnMouseWheel = OnMouseWheel,
+        OnKey = OnKey,
+        HitTestOverride = (px, py) => (_menu.Open && _menu.Contains(px, py)) || (_ctx.Open && _ctx.Contains(px, py)),
+    };
 
     // ---- hooks (cold: the main thread, once per right-click) ------------------------------------
 
