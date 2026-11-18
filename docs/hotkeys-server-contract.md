@@ -35,6 +35,10 @@ holds a secret the client gave it, so one server can never inherit another's con
 - On **every later login**, the server presents that token back (**PresentToken**)
   **before** ArmSet. The client looks it up: recognised -> restore that server's
   consented keys silently; unrecognised/absent -> the armed set stays **empty**.
+- A token is exactly **32 lowercase hex characters**. One that is not is treated as
+  absent. The client never adopts a token it did not mint: after an unrecognised one,
+  the next consent mints a fresh token and GrantToken hands it over, and the server
+  replaces what it held.
 - A malicious server that was never granted a token can present none, so the client's
   armed set stays empty and every key its ArmSet asks for becomes a fresh consent
   prompt. Replaying another server's key list gains it nothing -- it lacks that

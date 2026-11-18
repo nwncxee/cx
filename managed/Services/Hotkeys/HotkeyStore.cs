@@ -46,33 +46,12 @@ public static class HotkeyStore
     public static void Load(ExtenderLog log)
     {
         _sections.Clear();
-        int legacy = 0;
+        int legacy = 0, malformed = 0;
         try
         {
             string readPath = ConfigFile.ReadPath("cx-hotkeys.cfg", log);
             if (File.Exists(readPath))
-            {
-                HashSet<int>? cur = null;   // null until the first [token=] header
-                foreach (string raw in File.ReadAllLines(readPath))
-                {
-                    string line = raw;
-                    int hash = line.IndexOf('#');
-                    if (hash >= 0) line = line[..hash];
-                    line = line.Trim();
-                    if (line.Length == 0) continue;
-
-                    if (line.StartsWith("[token=") && line.EndsWith("]"))
-                    {
-                        string tok = line[7..^1].Trim().ToLowerInvariant();
-                        cur = tok.Length > 0 ? (_sections[tok] = new HashSet<int>()) : null;
-                    }
-                    else if (int.TryParse(line, out int vk))
-                    {
-                        if (cur != null) cur.Add(vk);
-                        else legacy++;   // a bare keycode before any token section == old global format
-                    }
-                }
-            }
+                legacy = Parse(File.ReadAllLines(readPath), _sections, out malformed);
         }
         catch (Exception e) { log.Info($"HotkeyStore: load failed: {e.Message}"); }
 
@@ -84,8 +63,57 @@ public static class HotkeyStore
         if (legacy > 0)
             log.Info($"HotkeyStore: dropped {legacy} legacy global armed key(s) -- consent is now per-server; " +
                      "reconnect to each server to re-consent (they re-push their key set on login)");
+        if (malformed > 0)
+            log.Always($"HotkeyStore: dropped {malformed} section(s) whose token is not one this client mints");
         log.Info($"HotkeyStore: {_sections.Count} server section(s) loaded from {Path}; none active until a token is presented");
     }
+
+    /// <summary>
+    /// Read the cfg's lines into <paramref name="into"/>. A section whose header is not a token
+    /// <see cref="IsToken"/> accepts is dropped with its keys. Returns the bare keycodes before any header.
+    /// </summary>
+    private static int Parse(IEnumerable<string> lines, Dictionary<string, HashSet<int>> into, out int malformed)
+    {
+        int legacy = 0;
+        malformed = 0;
+        HashSet<int>? cur = null;   // null until the first valid [token=] header, and under a refused one
+        bool inSection = false;
+        foreach (string raw in lines)
+        {
+            string line = raw;
+            int hash = line.IndexOf('#');
+            if (hash >= 0) line = line[..hash];
+            line = line.Trim();
+            if (line.Length == 0) continue;
+
+            if (line.StartsWith("[token=") && line.EndsWith("]"))
+            {
+                string tok = line[7..^1].Trim().ToLowerInvariant();
+                inSection = true;
+                if (IsToken(tok)) cur = into[tok] = new HashSet<int>();
+                else { cur = null; malformed++; }
+            }
+            else if (int.TryParse(line, out int vk))
+            {
+                if (cur != null) cur.Add(vk);
+                else if (!inSection) legacy++;   // a bare keycode before any token section == old global format
+            }
+        }
+        return legacy;
+    }
+
+    /// <summary>True for exactly what <see cref="Mint"/> makes: 32 lowercase hex characters. Anything
+    /// else is never looked up, adopted or written.</summary>
+    public static bool IsToken(string tok)
+    {
+        if (tok.Length != TokenLength) return false;
+        foreach (char ch in tok)
+            if (!((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f'))) return false;
+        return true;
+    }
+
+    /// <summary>A token's length in hex characters: 128 bits.</summary>
+    private const int TokenLength = 32;
 
     /// <summary>A new login: forget the previous server's consent. Armed goes empty (fail-closed) until a recognised token is presented.</summary>
     public static void BeginSession()
@@ -97,27 +125,29 @@ public static class HotkeyStore
 
     /// <summary>
     /// The server presented `tokenHex` (proof of prior consent). If recognised, restore that server's
-    /// consented keys; otherwise the token becomes the active one to consent UNDER (so a later Grant is
-    /// stored against the server's own token) but arms nothing yet. Returns true if already known.
+    /// consented keys; otherwise arm nothing and keep no token, so a later Grant mints a fresh one: the
+    /// client never adopts a string the server chose. Returns true if already known.
     /// </summary>
     public static bool Activate(string tokenHex, ExtenderLog log)
     {
         EnsureLoaded(log);
         string tok = tokenHex.Trim().ToLowerInvariant();
-        _activeToken = tok;
-        bool known = _sections.TryGetValue(tok, out HashSet<int>? keys);
-        Consented = known ? new HashSet<int>(keys!) : new HashSet<int>();
+        bool known = IsToken(tok) && _sections.ContainsKey(tok);
+        _activeToken = known ? tok : null;
+        Consented = known ? new HashSet<int>(_sections[tok]) : new HashSet<int>();
         Armed = new HashSet<int>(Consented);
         log.Info(known
             ? $"HotkeyStore: token recognised -- restored {Consented.Count} consented key(s)"
-            : "HotkeyStore: token not recognised -- armed set empty, awaiting fresh consent");
+            : IsToken(tok)
+                ? "HotkeyStore: token not recognised -- armed set empty, awaiting fresh consent"
+                : "HotkeyStore: presented token is malformed -- ignored, armed set empty");
         return known;
     }
 
     /// <summary>
     /// Add player-consented keys to the ACTIVE server's set and persist. Only called after an explicit
-    /// OK in the consent modal. If the server presented no token this session, mint one so the consent
-    /// has a receipt to hand back. Returns the active token (the caller sends it to the server).
+    /// OK in the consent modal. With no recognised token this session, mint one so the consent has a
+    /// receipt to hand back. Returns the active token (the caller sends it to the server).
     /// </summary>
     public static string Grant(HashSet<int> keys, ExtenderLog log)
     {
@@ -186,24 +216,40 @@ public static class HotkeyStore
     private static string Mint() => Guid.NewGuid().ToString("N");
 
     /// <summary>
-    /// One runnable check on the leak-critical invariant: a token the client never granted must restore
-    /// NOTHING (so a malicious server presenting a random token can't arm keys), and the default posture
-    /// is empty. Run once at startup; ends fail-closed.
+    /// The leak-critical invariants: an ungranted or malformed token restores nothing and is never adopted,
+    /// a cfg header that is not a minted token is dropped, minted tokens are well-formed and unpredictable.
+    /// Oracles: hand-written tokens and cfg text below.
     /// </summary>
     public static void SelfCheck(ExtenderLog log)
     {
-        string ghost = new string('f', 32);                       // a token no server was ever granted
-        bool unknownEmpty = !Activate(ghost, log) && Armed.Count == 0 && Consented.Count == 0;
-        BeginSession();                                           // reset to the real startup posture
-        bool freshEmpty = Armed.Count == 0 && Consented.Count == 0 && _activeToken == null;
-        // 32 lowercase hex characters, and never the same twice: a token a server could predict is a token
-        // it could present without ever having been granted one.
+        var check = new Checker(log);
+        string ghost = new string('f', TokenLength);
+        check.Expect(!Activate(ghost, log) && Armed.Count == 0 && Consented.Count == 0,
+                     "an ungranted token restored keys");
+        check.Expect(_activeToken == null, "an ungranted token was adopted as the storage key");
+
+        check.Expect(!Activate("x]\n102\n[token=y", log) && _activeToken == null && Armed.Count == 0,
+                     "a token carrying a newline was adopted");
+        check.Expect(!IsToken("0123456789abcdef0123456789abcde") && !IsToken("0123456789abcdef0123456789abcdeg")
+                     && !IsToken("0123456789ABCDEF0123456789ABCDEF") && IsToken("0123456789abcdef0123456789abcdef"),
+                     "the token shape accepts the wrong strings");
+
+        var parsed = new Dictionary<string, HashSet<int>>();
+        int legacy = Parse(new[]
+        {
+            "[token=x]", "102",
+            "[token=0123456789abcdef0123456789abcdef]", "1073741882",
+            "[token=y]", "103",
+        }, parsed, out int malformed);
+        check.Expect(parsed.Count == 1 && parsed.TryGetValue("0123456789abcdef0123456789abcdef", out var only)
+                     && only.Count == 1 && only.Contains(1073741882), "a malformed cfg section was read as consent");
+        check.Expect(malformed == 2 && legacy == 0, $"malformed={malformed} legacy={legacy}, expected 2 and 0");
+
+        BeginSession();
+        check.Expect(Armed.Count == 0 && Consented.Count == 0 && _activeToken == null, "a fresh session is not empty");
         string t1 = Mint(), t2 = Mint();
-        bool tokenOk = t1.Length == 32 && t2.Length == 32 && t1 != t2;
-        foreach (char ch in t1) tokenOk &= (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f');
-        log.Info(unknownEmpty && freshEmpty && tokenOk
-            ? "HotkeyStore: fail-closed self-check passed"
-            : "HotkeyStore: FAIL-CLOSED SELF-CHECK FAILED -- consent default is unsafe");
+        check.Expect(IsToken(t1) && IsToken(t2) && t1 != t2, "a minted token is malformed or repeated");
+        if (check.Ok) log.Info("HotkeyStore.SelfCheck passed: consent fails closed");
     }
 
     public static void Save(ExtenderLog log)
@@ -222,6 +268,7 @@ public static class HotkeyStore
             };
             foreach (var (tok, keys) in _sections)
             {
+                if (!IsToken(tok)) continue;
                 lines.Add("");
                 lines.Add($"[token={tok}]");
                 foreach (int code in keys) lines.Add(code.ToString());

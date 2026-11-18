@@ -43,10 +43,10 @@ public sealed unsafe class HotkeyInputService : IExtenderService
     {
         _log = log;
         Hotkeys.Init(log);   // declares the group (and applies hotkeys.keydiag) whether or not the unit arms below
-        if (!SymbolMap.Require(log, "HotkeyInputService", HotkeyProtocol.RequiredSymbols)) return;
         // No HotkeyStore.Load here: our loader runs pre-main, so the engine user dir (where the cfg lives)
         // isn't resolvable yet. The store lazy-loads on the first login-path call. SelfCheck is in-memory.
-        HotkeyStore.SelfCheck(_log!);   // fail-closed default is security-critical; verify at startup
+        HotkeyStore.SelfCheck(log);   // before the symbol gate, so the stub host runs it too
+        if (!SymbolMap.Require(log, "HotkeyInputService", HotkeyProtocol.RequiredSymbols)) return;
 
         // the framework input layer owns raw capture. Hotkeys are a chord consumer at tier 2 -- fired only
         // when no window consumed the key and the chord gate is clear (the arbiter's job). No raw hooks here.

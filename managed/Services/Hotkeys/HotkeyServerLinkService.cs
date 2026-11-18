@@ -25,9 +25,9 @@ public sealed unsafe class HotkeyServerLinkService : IExtenderService
     public void Initialize(ExtenderLog log, HookService hooks)
     {
         _log = log;
+        SelfCheck(log);   // before the symbol gate, so the stub host runs it too
         if (!SymbolMap.Require(log, "HotkeyServerLinkService", HotkeyProtocol.RequiredSymbols)) return;
         HotkeyConsent.Init(_log!);
-        SelfCheck();   // the fail-closed consent policy is security-critical; verify it at startup
         ServerPolicy.Log = log;
         ServerPolicy.Send = (minor, ascii) => ClientApi.SendAscii(ServerPolicy.DeviceMajor, minor, ascii);
         CommandRegistry.Global.Register("/policy", "list what the server's UI policy holds", _ => ServerPolicy.Report());
@@ -138,30 +138,28 @@ public sealed unsafe class HotkeyServerLinkService : IExtenderService
     }
 
     /// <summary>
-    /// One runnable check on the security-critical bits: additions never sneak through, the cap
-    /// rejects wholesale, and a pure add never reports a removal. Logs loudly if broken.
+    /// The consent policy's fail-closed bits: additions never sneak through, the cap rejects wholesale,
+    /// and a pure add never reports a removal. Oracles: the hand-written sets below.
     /// </summary>
-    private static void SelfCheck()
+    private static void SelfCheck(ExtenderLog log)
     {
+        var check = new Checker(log, "ServerLink.SelfCheck");
         var consented = new HashSet<int> { 1, 2, 3 };
 
-        // pure addition: 4 needs consent, the rest capture as before
         var (r1, cap1, add1) = Plan(consented, new HashSet<int> { 1, 2, 3, 4 }, MaxArmed);
-        bool ok = !r1 && cap1.SetEquals(new HashSet<int> { 1, 2, 3 }) && add1.SetEquals(new HashSet<int> { 4 });
+        check.Expect(!r1 && cap1.SetEquals(new HashSet<int> { 1, 2, 3 }) && add1.SetEquals(new HashSet<int> { 4 }),
+                     "a pure addition captured or asked for the wrong keys");
 
-        // removal + addition: 3 stops being captured, 9 needs consent
         var (r2, cap2, add2) = Plan(consented, new HashSet<int> { 1, 2, 9 }, MaxArmed);
-        ok &= !r2 && cap2.SetEquals(new HashSet<int> { 1, 2 }) && add2.SetEquals(new HashSet<int> { 9 });
+        check.Expect(!r2 && cap2.SetEquals(new HashSet<int> { 1, 2 }) && add2.SetEquals(new HashSet<int> { 9 }),
+                     "a removal plus addition captured or asked for the wrong keys");
 
-        // a character with no bindings captures nothing and asks for nothing -- consent survives
         var (r4, cap4, add4) = Plan(consented, new HashSet<int>(), MaxArmed);
-        ok &= !r4 && cap4.Count == 0 && add4.Count == 0;
+        check.Expect(!r4 && cap4.Count == 0 && add4.Count == 0, "an empty proposal captured or asked for keys");
 
-        // over cap: reject wholesale, arm nothing
         var (r3, _, add3) = Plan(consented, new HashSet<int> { 1, 2, 3, 4, 5 }, 4);
-        ok &= r3 && add3.Count == 0;
+        check.Expect(r3 && add3.Count == 0, "an over-cap proposal was not refused wholesale");
 
-        _log?.Info(ok ? "ServerLink: consent policy self-check passed"
-                      : "ServerLink: CONSENT POLICY SELF-CHECK FAILED -- arming logic is unsafe");
+        if (check.Ok) log.Info("ServerLink.SelfCheck passed: consent policy fails closed");
     }
 }
