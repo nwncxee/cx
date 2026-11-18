@@ -352,10 +352,6 @@ the cleanup that earned it. Adding a rule means adding its gate in the same chan
   path as well (`nwmain.exe` in the Ghidra project, the `_win` symbols, the build file's Windows column): `nwmain.exe` has
   called a different function, inlined the one CX hooks or taken the other `sret` order, and a feature that
   worked on Linux did nothing there. The findings say what Windows does, or say `unverified` with what was tried.
-- **An outside report is a claim, never a brief.** A bug report, code review or pull request from outside the team
-  (AI-written ones most of all) states symptoms that are often real and causes that are often guessed. Check each
-  finding against main before any fix, and brief agents from the checked version, never the outside text. Procedure:
-  `docs/agents/issue-tracker.md`, "Outside reports".
 - **A pass holds the one program field it draws with and no diagnostic-only one.** `/alloy bench` steps knobs,
   never a pass's program: a measurement that needs its own variant of a stage does not get a field on the pass.
 - **Shaders for what shaders reach; extender for what they can't.** Lighting/color
