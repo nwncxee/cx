@@ -3,10 +3,9 @@ using CX.Ui;
 
 namespace CX.Services.Radial;
 
-/// <summary>The <c>radial</c> group (ADR 0025): the master that hands right-click menus to CX's dropdown, off by
-/// default until the CRadialMenu layout has been probed live -- the row sits on every right-click, and a wrong offset
-/// there is a crash, not a glitch. The look rows are read per frame by the draw (swatches are RRGGBBAA;
-/// <see cref="Opacity"/> multiplies every alpha); <see cref="Layout"/> is the layout bag <see cref="RadialPins"/> owns.</summary>
+/// <summary>The <c>radial</c> group (ADR 0025): the master, on by default, that hands right-click menus to CX's dropdown.
+/// The look rows are read per frame by the draw (swatches are RRGGBBAA; <see cref="Opacity"/> multiplies every alpha);
+/// <see cref="Layout"/> is the layout bag <see cref="RadialPins"/> owns.</summary>
 internal static class RadialKnobs
 {
     internal const string ModeCascade = "cascade", ModeDrill = "drill";
