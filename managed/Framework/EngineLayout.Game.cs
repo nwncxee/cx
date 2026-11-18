@@ -364,6 +364,10 @@ public static unsafe partial class EngineLayout
     /// <c>HandleServerToPlayerUpdate_GuiRepository</c> clears it on every confirmation (Linux nm @0x79e320
     /// <c>item+0x260</c>, Windows rva 0x7b4620 <c>item+0x240</c>).</summary>
     public static readonly int ItemGhost = Field<int>("CNWCItem", "ghost");
+    /// <summary>CNWCItem: the equip slot (a slot mask) the item is worn in, -1 when none. <c>Update_GuiInventory</c>'s
+    /// <c>'A'</c> sets it and an unequip finds the worn slot through it (Linux nm @0x79dd90 <c>item+0x26c</c>, Windows rva
+    /// 0x7b3f30 <c>item+0x24c</c>, each followed by a -1 store to the next field).</summary>
+    public static readonly int ItemEquipSlot = Field<uint>("CNWCItem", "equipSlot");
     /// <summary>CNWCItem: the CONFIRMED backpack cell, two bytes. <c>y</c> is <b>global</b>
     /// (<c>page * rows + localY</c>), which is why one item's y can exceed the grid's 6 rows. Written by the
     /// <c>'A'</c> and <c>'M'</c> cases of <c>Update_GuiRepository</c> and read back by its remove step, on both

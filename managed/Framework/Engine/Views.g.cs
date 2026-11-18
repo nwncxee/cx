@@ -2067,6 +2067,8 @@ public readonly unsafe partial struct CNWCItem(IntPtr ptr)
     public Span<byte> Colors { [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)] get => new((void*)(Ptr + EngineLayout.ItemColors), 6); }
     /// <inheritdoc cref="EngineLayout.ItemDeleteSlot"/>
     public IntPtr DeleteFn => *(IntPtr*)(*(IntPtr*)Ptr + EngineLayout.ItemDeleteSlot);
+    /// <inheritdoc cref="EngineLayout.ItemEquipSlot"/>
+    public ref uint EquipSlot => ref *(uint*)(Ptr + EngineLayout.ItemEquipSlot);
     /// <inheritdoc cref="EngineLayout.ItemGender"/>
     public ref byte Gender => ref *(byte*)(Ptr + EngineLayout.ItemGender);
     /// <inheritdoc cref="EngineLayout.ItemGhost"/>
