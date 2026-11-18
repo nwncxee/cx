@@ -63,13 +63,22 @@ internal static class TexSeam
                            + "Nothing else about the texture changes");
             }
         }
-        var v = new SamplerApply { TexName = texName, Clamp = clamp, Nearest = nearest, Mipmap = mipmap };
-        _txiApplied += PartSlots.ForEach(obj, -1, grafts: false, ref v);
-        return v.Hits > 0 ? 1 : 0;   // the engine's own answer: it found textures, not that a field took
+        int hits = ApplySampler(obj, texName, clamp, nearest, mipmap, out int took);
+        _txiApplied += took;
+        return hits > 0 ? 1 : 0;   // the engine's own answer: it found textures, not that a field took
     }
 
-    /// <summary>One slot's sampler state, from the <c>.txi</c>. <see cref="Hits"/> counts the textures the
-    /// name matched, which is what the engine answers on; the return counts the ones that took.</summary>
+    /// <summary>Put sampler state on every texture of <paramref name="obj"/> named <paramref name="texName"/> (any,
+    /// when empty). Returns the textures the name matched; <paramref name="took"/> is how many changed.</summary>
+    internal static int ApplySampler(DbId obj, string? texName, bool? clamp, bool? nearest, bool? mipmap, out int took)
+    {
+        var v = new SamplerApply { TexName = texName, Clamp = clamp, Nearest = nearest, Mipmap = mipmap };
+        took = PartSlots.ForEach(obj, -1, grafts: false, ref v);
+        return v.Hits;
+    }
+
+    /// <summary>One slot's sampler state, from the <c>.txi</c>. A replaced slot answers to the model's own name, which
+    /// <c>Material::ReplaceTexture</c> @0x4c7b90 keeps on the texture it swaps the image into, never to the swap's.</summary>
     private struct SamplerApply : IPartSlots
     {
         internal string? TexName;
@@ -80,8 +89,9 @@ internal static class TexSeam
         {
             TexId id = SceneDb.PartTex(p, slot);
             if (id.IsNull) return 0;
-            if (!string.IsNullOrEmpty(TexName)
-                && !string.Equals(TexRegistry.ResrefOf(id), TexName, StringComparison.OrdinalIgnoreCase)) return 0;
+            if (!string.IsNullOrEmpty(TexName) && !ObjectTex.Answers(p, slot, TexName)
+                && (SceneDb.PartTexId[p * PartSlots.Slots + slot] != 0
+                    || !string.Equals(TexRegistry.ResrefOf(id), TexName, StringComparison.OrdinalIgnoreCase))) return 0;
             Hits++;
             if (!TexRegistry.RequestSampler(id, Clamp, Nearest, Mipmap)) return 0;
             SceneDb.TouchPart(p, Dirty.Texture);
@@ -252,6 +262,25 @@ internal static class TexSeam
         Expect(SceneDb.PartTexId[p * 4] == 0,
             "RESTORE did not round-trip the part's texture id back to the model's own");
         Expect(ObjectTex.Restore(obj) == 0, "a second restore found something to undo");
+
+        // ...a .txi aimed at a replaced slot finds it by the model's name, as the map's tile icons are clamped
+        // through "gui_replace01" after their image is swapped in (CPanelAreaMap::LoadIcons).
+        var mesh = new MeshDef();
+        mesh.Textures[0] = "cx_sc_replace01";
+        var model = new ModelDef { Name = "cx_sc_icon", Nodes = new NodeDef[1] };
+        model.Nodes[0] = new NodeDef { Index = 0, Parent = -1, Mesh = mesh };
+        ModelDef? svModel = SceneDb.PartModel[p];
+        int svNode = SceneDb.PartNode[p];
+        SceneDb.PartModel[p] = model;
+        SceneDb.PartNode[p] = 0;
+        Expect(ObjectTex.Replace(obj, "cx_sc_replace01", "cx_sc_tile") == 1, "a replace by the mesh's name missed");
+        Expect(ApplySampler(obj, "cx_sc_replace01", true, null, false, out _) == 1,
+            "a .txi named by the model's texture did not reach the slot replaced under that name");
+        Expect(ApplySampler(obj, "cx_sc_tile", true, null, false, out _) == 0,
+            "a .txi named by the swapped-in image matched: the engine's texture keeps the model's name");
+        Expect(ObjectTex.Restore(obj) == 1, "the restore after the named replace did not report a hit");
+        SceneDb.PartModel[p] = svModel;
+        SceneDb.PartNode[p] = svNode;
 
         // ...a replace carrying rows pins them on the part it swapped, and they win over the object's.
         Span<int> partRows = stackalloc int[SceneDb.PltLayers];

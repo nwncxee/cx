@@ -197,6 +197,10 @@ internal static class ObjectTex
         return Named(p, slot, from) ? Match.Takes : Match.No;
     }
 
+    /// <summary>Does slot <paramref name="slot"/> of part <paramref name="p"/> carry the name <paramref name="name"/>, as
+    /// a replace aimed at it would find it? The name stays the model's through a replace.</summary>
+    internal static bool Answers(int p, int slot, string name) => Matches(p, slot, name) == Match.Takes;
+
     /// <summary>What <see cref="Matches"/> decided, so the caller need not re-ask the same three predicates.
     /// <see cref="MtrKept"/> is the one worth a line: the part WOULD have taken the replace on its bitmap or
     /// graft model, and the <c>.mtr</c>'s own texture stood it down.</summary>
