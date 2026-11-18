@@ -78,6 +78,7 @@ public static class ServiceHost
         ExtenderLog.SelfCheck(log);   // the disabled log evaluates nothing, the enabled one reaches the file
         LogPartsApprovedExamples.SelfCheck(log);   // launch rotation, rolling and the part cap
         LogPartsEdges.SelfCheck(log);   // an over-long line, and a move that fails
+        LogPartsMoveEdges.SelfCheck(log);   // a log move whose new folder cannot be made goes on in the old file
         CX.Alloy.Db.FogNoteApprovedExamples.SelfCheck(log);   // the fog line writes when the fog moves, not when a float does
         CX.Alloy.Db.FogNoteEdges.SelfCheck(log);   // each thing the line says, at the line's precision
         CX.Graphics.VulkanToolchain.SelfCheck(log);   // the staged shaderc and the machine's loader, off-device only
