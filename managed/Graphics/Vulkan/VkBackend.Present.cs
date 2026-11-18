@@ -25,8 +25,11 @@ internal sealed unsafe partial class VkBackend
         public bool SaidScaled;
         /// <summary>The window changed under the chain (out of date or suboptimal): remade at the next present.</summary>
         public bool Stale, Refused;
-        /// <summary>The window has no area (minimised): there is no chain and nothing to show until it has one.</summary>
+        /// <summary>The window has no area (minimised): nothing to show until it has one. The chain before it stays,
+        /// retired, so the next one is made over it and the window passes from one to the other.</summary>
         public bool Empty;
+        /// <summary>Frames the window has refused a chain for a reason a later frame may not repeat; 0 when it took one.</summary>
+        public int Waits;
         public long Presents;
     }
 
@@ -96,8 +99,8 @@ internal sealed unsafe partial class VkBackend
         if (idx < 0)
         {
             if (!_images.TryGet(_spare.Value, out VkImg src)) return Fault("Present: the spare screen died before its blit");
-            if (!EnsureSwapchain(Mode(_scr.Interval), src.Desc.W, src.Desc.H, log)) return _swap.Empty && !_swap.Refused;
-            if ((idx = Acquire()) < 0) return false;
+            if (!EnsureSwapchain(Mode(_scr.Interval), src.Desc.W, src.Desc.H, log)) return Withheld;
+            if ((idx = Acquire()) < 0) return Withheld;
         }
         bool sent = _held.Slot != null ? SubmitHeld(idx) : SubmitBlit(idx, log);
         if (!sent) return false;
@@ -156,7 +159,8 @@ internal sealed unsafe partial class VkBackend
     };
 
     /// <summary>The surface on first ask, and a swapchain for <paramref name="mode"/> at the frame's size, remade
-    /// when the window went stale or the mode or size changed. A refusal is said once and holds for the session.</summary>
+    /// when the window went stale or the mode or size changed. A refusal that holds is said once and holds for the
+    /// session; one that may pass is said once and asked again every frame until the window takes a chain.</summary>
     private bool EnsureSwapchain(VkPresentModeKHR mode, int w, int h, ExtenderLog log)
     {
         SwapState s = _swap;
@@ -166,16 +170,33 @@ internal sealed unsafe partial class VkBackend
             if (s.W != w || s.H != h) SayScaled(w, h, log);
             return true;
         }
+        VkResult r = VkResult.ErrorUnknown;
         string? why = s.Surface.IsNull ? MakeSurface() : null;
-        why ??= MakeSwapchain(mode, w, h, log);
-        if (why == null) return s.Chain.IsNotNull;
+        why ??= MakeSwapchain(mode, w, h, log, out r);
+        if (why == null)
+        {
+            if (s.Waits > 0 && !s.Empty) log.Always($"VkBackend: the window took a swapchain again after {s.Waits} frame(s) -- Vulkan presents the frame");
+            if (!s.Empty) s.Waits = 0;
+            return !s.Empty;
+        }
+        if (!CreateRefusalHolds(r))
+        {
+            if (r == VkResult.ErrorSurfaceLostKHR) DropSwapchain();
+            if (s.Waits++ == 0) log.Always($"VkBackend: the window refused a swapchain for now -- {why}; every frame asks again, and the window keeps its last frame until one is made");
+            return false;
+        }
         s.Refused = true;
         log.Always($"VkBackend: the game window cannot take Vulkan's present -- {why}");
         return false;
     }
 
+    /// <summary>The frame is shown nowhere and that is no refusal: the window is minimised, or waits out a refusal a
+    /// later frame may not repeat.</summary>
+    private bool Withheld => !_swap.Refused && (_swap.Empty || _swap.Waits > 0);
+
     /// <summary>Does a swapchain create that returned <paramref name="r"/> refuse the window for the session?</summary>
-    internal static bool CreateRefusalHolds(VkResult r) => true;
+    internal static bool CreateRefusalHolds(VkResult r)
+        => r is not (VkResult.ErrorNativeWindowInUseKHR or VkResult.ErrorSurfaceLostKHR or VkResult.ErrorOutOfDateKHR);
 
     /// <summary>What a live chain was made for, as the one test over it reads: whether there is one, whether the
     /// window went stale under it, whether the surface dictated its extent, and the mode and size it holds.</summary>
@@ -242,13 +263,14 @@ internal sealed unsafe partial class VkBackend
 
     /// <summary>A swapchain for <paramref name="want"/> at the surface's size (the frame's, where the surface
     /// leaves it open), replacing the old one; null when made, else why not. Cold: a resize or a mode change.</summary>
-    private string? MakeSwapchain(VkPresentModeKHR want, int w, int h, ExtenderLog log)
+    private string? MakeSwapchain(VkPresentModeKHR want, int w, int h, ExtenderLog log, out VkResult r)
     {
         SwapState s = _swap;
         _vkd.vkDeviceWaitIdle();
         VkSurfaceCapabilitiesKHR caps;
-        if (_vki.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(_phys, s.Surface, &caps) != VkResult.Success)
-            return "the surface's capabilities did not read";
+        if ((r = _vki.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(_phys, s.Surface, &caps)) != VkResult.Success)
+            return $"the surface's capabilities did not read ({r})";
+        r = VkResult.ErrorUnknown;
         if (SurfaceRefusal(caps.supportedUsageFlags) is string no) return no;
         VkSurfaceFormatKHR fmt = PickFormat();
         if (fmt.format == VkFormat.Undefined) return "the surface offers no 8-bit UNORM format";
@@ -258,7 +280,7 @@ internal sealed unsafe partial class VkBackend
         s.Dictated = dictated;
         s.SaidScaled = false;
         s.Empty = ext.width == 0 || ext.height == 0;
-        if (s.Empty) { DropChain(); return null; }
+        if (s.Empty) { s.Stale = true; return null; }
         uint count = Math.Max(caps.minImageCount + 1, SwapImages);
         if (caps.maxImageCount != 0 && count > caps.maxImageCount) count = caps.maxImageCount;
         VkSwapchainKHR old = s.Chain;
@@ -272,7 +294,7 @@ internal sealed unsafe partial class VkBackend
             presentMode = mode, clipped = true, oldSwapchain = old,
         };
         VkSwapchainKHR chain;
-        VkResult r = _vkd.vkCreateSwapchainKHR(&ci, null, &chain);
+        r = _vkd.vkCreateSwapchainKHR(&ci, null, &chain);
         DropChain();
         if (r != VkResult.Success) return $"vkCreateSwapchainKHR returned {r}";
         uint n = 0;
