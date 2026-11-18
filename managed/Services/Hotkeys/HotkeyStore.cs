@@ -218,18 +218,22 @@ public static class HotkeyStore
     /// <summary>
     /// The leak-critical invariants: an ungranted or malformed token restores nothing and is never adopted,
     /// a cfg header that is not a minted token is dropped, minted tokens are well-formed and unpredictable.
-    /// Oracles: hand-written tokens and cfg text below.
+    /// Oracles: hand-written tokens and cfg text below. Its probe logins log to a tap, never to cx.log.
     /// </summary>
     public static void SelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
+        var heard = new List<string>();
+        var ear = new ExtenderLog { Tap = heard.Add };
         string ghost = new string('f', TokenLength);
-        check.Expect(!Activate(ghost, log) && Armed.Count == 0 && Consented.Count == 0,
+        check.Expect(!Activate(ghost, ear) && Armed.Count == 0 && Consented.Count == 0,
                      "an ungranted token restored keys");
         check.Expect(_activeToken == null, "an ungranted token was adopted as the storage key");
 
-        check.Expect(!Activate("x]\n102\n[token=y", log) && _activeToken == null && Armed.Count == 0,
+        check.Expect(!Activate("x]\n102\n[token=y", ear) && _activeToken == null && Armed.Count == 0,
                      "a token carrying a newline was adopted");
+        check.Expect(heard.Count == 2 && heard[0].Contains("not recognised") && heard[1].Contains("malformed"),
+                     $"the probe logins said {string.Join(" | ", heard)}; expected not-recognised then malformed");
         check.Expect(!IsToken("0123456789abcdef0123456789abcde") && !IsToken("0123456789abcdef0123456789abcdeg")
                      && !IsToken("0123456789ABCDEF0123456789ABCDEF") && IsToken("0123456789abcdef0123456789abcdef"),
                      "the token shape accepts the wrong strings");
