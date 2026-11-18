@@ -11,5 +11,6 @@ internal static class WornSlot
     /// which empties a slot, records nothing.</summary>
     public static void Stamp(IntPtr item, uint slot)
     {
+        if (item != IntPtr.Zero) new CNWCItem(item).EquipSlot = slot;
     }
 }

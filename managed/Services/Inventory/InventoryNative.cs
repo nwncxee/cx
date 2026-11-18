@@ -34,6 +34,7 @@ internal static unsafe class InventoryNative
         public SendPossessFamiliarFn PossessOrig;
         public InvboxAddItemFn* AddSlot;
         public InvContainerPagenumFn PagenumOrig;
+        public NwcCreatureEquipFn* EquipSlot;
         public bool KeyDown, LevelingUp;
     }
 
@@ -72,9 +73,10 @@ internal static unsafe class InventoryNative
         SymbolMap.SendBarterStart, SymbolMap.SendInputUseItem, SymbolMap.SendGoldTransfer,
         SymbolMap.QuickButtonSetItem, SymbolMap.ItemPlayDropSound,
         SymbolMap.InvSetContainerGuiVisible, SymbolMap.InvContainerPageUp, SymbolMap.InvContainerPageDown, SymbolMap.InvContainerPagenum,
+        SymbolMap.NwcCreatureEquip,
     };
 
-    /// <summary>Resolve, then install the funnel hook, the key and toggle hooks, the level-up and possess hooks, the repository chain and the container page-count hook. False =
+    /// <summary>Resolve, then install the funnel hook, the key and toggle hooks, the level-up and possess hooks, the repository and slot-fill chains and the container page-count hook. False =
     /// every piece stands down together: a half-live inventory is not a state this ships in.</summary>
     public static bool Attach(ExtenderLog log, HookService hooks)
     {
@@ -90,13 +92,22 @@ internal static unsafe class InventoryNative
         _hooks.PossessOrig = hooks.InstallSendPossessFamiliar(&OnPossessFamiliar);
         _hooks.AddSlot = hooks.ChainInvboxAddItem(&OnAddItem, 50);
         _hooks.PagenumOrig = hooks.InstallInvContainerPagenum(&OnContainerPagenum);
+        _hooks.EquipSlot = hooks.ChainNwcCreatureEquip(&OnEquipToSlot, 50);
         _ready = _hooks.VisibleOrig != null && _hooks.ToggleOrig != null && _hooks.KeyOrig != null && _hooks.LevelupOrig != null
-              && _hooks.PossessOrig != null && _hooks.AddSlot != null && _hooks.PagenumOrig != null;
+              && _hooks.PossessOrig != null && _hooks.AddSlot != null && _hooks.PagenumOrig != null && _hooks.EquipSlot != null;
         if (!_ready) log.Info("InventoryService: a hook did not install");
         return _ready;
     }
 
     // ---- hooks ----
+
+    /// <summary>Every slot fill, the server's equip result among them: the item learns its slot before the engine wears it.</summary>
+    [UnmanagedCallersOnly]
+    private static void OnEquipToSlot(IntPtr creature, uint slot, IntPtr item)
+    {
+        WornSlot.Stamp(item, slot);
+        (*_hooks.EquipSlot)(creature, slot, item);
+    }
 
     [UnmanagedCallersOnly]
     private static void OnSetInventoryVisible(IntPtr panel, int show, int notify, uint oid)
