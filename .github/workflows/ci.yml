@@ -49,6 +49,7 @@ jobs:
             .github/workflows/ci.yml
             'tools/engine/*'
             'tools/analyzers/*'
+            'tools/anim/*'
             'tools/gates/*'
             tools/build-openal.sh
             tools/approved-examples.sh

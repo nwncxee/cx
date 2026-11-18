@@ -29,6 +29,8 @@ internal static class AnimKnobs
     internal static readonly Gated<bool> Mass;
     internal static readonly Gated<bool> Aim;
     internal static readonly Gated<float> Hit;
+    /// <summary><c>anim.record</c>: writes each body's leg-solve inputs to a recording file for the offline replay.</summary>
+    internal static readonly Knob<bool> Record;
 
     static AnimKnobs()
     {
@@ -78,6 +80,9 @@ internal static class AnimKnobs
             help: "During an attack the upper body bends toward the target's height: a bow shot at a creature on a ledge or a swing at a giant tilts up, a strike at a rat tilts down."), false);
         Hit = new(G.Slider("hitreact", "Hit reactions", 0f, 200f, 10f, 100f, "%", tier: Tier.ChatOnly,
             help: "A landed hit knocks the upper body away from the blow, harder for more damage and for a critical hit, on top of the engine's own flinch. 0 turns it off."), 0f);
+        G.Section("Developer");
+        Record = G.Toggle("record", "Record leg frames", false, tier: Tier.ChatOnly,
+            help: "Writes what the leg solve is given, each frame of each character, to a cx-legs file in the logs folder, for a developer to replay offline and grade. Off by default; switching it off closes the file.");
         G.Status = PoseService.Report;
     }
 

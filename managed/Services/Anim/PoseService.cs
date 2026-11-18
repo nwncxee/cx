@@ -691,6 +691,7 @@ public sealed unsafe class PoseService : IExtenderService
         FootPlacement.Cast(ref s, scene, gob, ref f, p);
         f.Weight = weight; f.Cue = s.Cue; f.Rise = moved.Z;
         Legs.Place(ref s.Leg, f, ref p);
+        LegRecorder.Frame(gob, f);
         Footfall.Step(ref s, creature, snap, dt);
         UpperBody.Step(ref s, creature, rootW, rootW.Z - adjPos.Z, scale, s.Speed, gated, snap, dt);
         UpperBody.Rotations(s, gated, out Vector2 torsoRot, out Vector2 neckRot);
