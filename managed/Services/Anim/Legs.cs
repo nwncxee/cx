@@ -48,8 +48,7 @@ internal static partial class Legs
     /// and where a swinging one lands. The adapter casts the floors at those points.</summary>
     internal static void Stride(ref LegState s, in LegFrame f, ref LegPose p)
     {
-        StrideWarp.Step(ref s, f, ref p, out Vector3 warpR, out Vector3 warpL, out float drop);
-        p.Drop = drop;
+        StrideWarp.Step(ref s, f, ref p, out Vector3 warpR, out Vector3 warpL);
         // the engine drops the walk on a stop and the warp lets go of it: the settle takes the feet over where they were drawn
         if (s.SettleLoco && !f.Loco) { warpR = s.WarpR; warpL = s.WarpL; }
         s.WarpR = warpR; s.WarpL = warpL;
@@ -63,20 +62,27 @@ internal static partial class Legs
     }
 
     /// <summary>The floors and the pelvis: each foot's eased floor offset and tilt, the pelvis offset under the lower
-    /// foot with the dip and the drop, and each ankle's delta for the leg IK.</summary>
+    /// foot with the dip and the drop, and each ankle's delta for the leg IK, never past the leg's reach.</summary>
     internal static void Place(ref LegState s, in LegFrame f, ref LegPose p)
     {
         FootPlacement.Ease(ref s, f, p, out FootPlacement.Feet feet);
-        float body = MathF.Min(feet.OffR, feet.OffL) + Mass.Step(ref s, f.Cue, f.Rise, f.Scale, f.Knobs.Mass, f.Gated, f.Snap, f.Dt) - p.Drop;
+        float floor = MathF.Min(feet.OffR, feet.OffL);
+        p.Drop = Pelvis(ref s, f, p, feet.OffR - floor, feet.OffL - floor, out float reachR, out float reachL);
+        StrideWarp.Dropped(p.Drop);
+        float body = floor + Mass.Step(ref s, f.Cue, f.Rise, f.Scale, f.Knobs.Mass, f.Gated, f.Snap, f.Dt) - p.Drop;
         p.Body = body;
         p.TiltR = feet.TiltR;
         p.TiltL = feet.TiltL;
         p.Ik = !f.Gated && (MathF.Abs(feet.OffR - body) + MathF.Abs(feet.OffL - body) > FootPlacement.MinLift
                             || !feet.TiltR.IsIdentity || !feet.TiltL.IsIdentity
-                            || p.WarpR.LengthSquared() + p.WarpL.LengthSquared() > FootPlacement.MinLift * FootPlacement.MinLift);
+                            || p.WarpR.LengthSquared() + p.WarpL.LengthSquared() > FootPlacement.MinLift * FootPlacement.MinLift
+                            || MathF.Abs(p.YawR) + MathF.Abs(p.YawL) > FootPlacement.MinLift);
         float cap = f.Knobs.Lift * f.Scale;
         p.DeltaR = p.WarpR + new Vector3(0f, 0f, MathF.Min(feet.OffR - body, cap));
         p.DeltaL = p.WarpL + new Vector3(0f, 0f, MathF.Min(feet.OffL - body, cap));
+        // a held foot stays where it is held: its hold is let go before the pelvis cannot reach it
+        if (s.FootingR.Stage == Footing.Swing) p.DeltaR = Reachable(p.DeltaR, f.RAnkle - f.RThigh, reachR);
+        if (Airborne(s.FootingL)) p.DeltaL = Reachable(p.DeltaL, f.LAnkle - f.LThigh, reachL);
     }
 
     /// <summary>Foot placement runs this frame: <c>anim.footik</c> on and the animation not gated.</summary>

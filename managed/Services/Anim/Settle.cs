@@ -247,12 +247,21 @@ internal static unsafe class Settle
     {
         Pose(ref s, rAnkle, lAnkle, rStance, lStance, fade, scale, 0f, out dr, out dl);
         s.SettleTurn = false;
-        s.AnchorR.Off = new Vector2(dr.X, dr.Y);
-        s.AnchorL.Off = new Vector2(dl.X, dl.Y);
+        Handed(ref s.FootingR, dr);
+        Handed(ref s.FootingL, dl);
         s.Planting = true;
         s.SettleStage = None;
         s.SettleT = 0f;
         s.SettleOff = s.SettleOffV = s.SettleOffO = s.SettleOffOV = Vector2.Zero;
+    }
+
+    /// <summary>A foot handed to the stride warp drawn <paramref name="off"/> off the animation: a hold lands it there, and
+    /// a swing eases it out from the next frame's progress.</summary>
+    private static void Handed(ref Footing f, Vector3 off)
+    {
+        f = default;
+        f.Off = f.Off0 = off;
+        f.U0 = float.NaN;
     }
 
     /// <summary>The offset from the animated ankle at which a stepping foot is drawn, <paramref name="u"/> of the

@@ -672,6 +672,8 @@ public sealed unsafe class PoseService : IExtenderService
 
         World(bones.RFoot, out f.RAnkle, out _);
         World(bones.LFoot, out f.LAnkle, out _);
+        World(bones.RThigh, out f.RThigh, out _);
+        World(bones.LThigh, out f.LThigh, out _);
         Quaternion toModel = Quaternion.Conjugate(p.Legs);
         Vector3 mr = Vector3.Transform(f.RAnkle - adjPos, toModel) / scale, ml = Vector3.Transform(f.LAnkle - adjPos, toModel) / scale;
         // the engine's own speed, not the drawn step: exact where the whole-millisecond clock leaves the measured one
@@ -707,8 +709,8 @@ public sealed unsafe class PoseService : IExtenderService
         PoseRig.SetPos(root, rootL + Vector3.Transform(new Vector3(0f, 0f, p.Body / scale), toModel));
         if (p.Ik)
         {
-            Leg(bones.RThigh, bones.RShin, bones.RFoot, p.DeltaR, p.LegFwd, p.TiltR);
-            Leg(bones.LThigh, bones.LShin, bones.LFoot, p.DeltaL, p.LegFwd, p.TiltL);
+            Leg(bones.RThigh, bones.RShin, bones.RFoot, p.DeltaR, p.LegFwd, p.TiltR, p.YawR);
+            Leg(bones.LThigh, bones.LShin, bones.LFoot, p.DeltaL, p.LegFwd, p.TiltL, p.YawL);
         }
         if (look) UpperBody.ShareLook(bones, s.Look.X, s.Look.Y);
         if (upper) UpperBody.Write(bones.Torso, bones.Neck, fwdH, right, torsoRot, neckRot);
@@ -808,12 +810,13 @@ public sealed unsafe class PoseService : IExtenderService
     }
 
     /// <summary>Moves one ankle by <paramref name="delta"/> world units: two-bone IK in world space, written back as
-    /// locals. The foot keeps its animated world orientation, turned by <paramref name="tilt"/> about the ankle.
-    /// A chain whose parents are not thigh-&gt;shin-&gt;foot is left alone.</summary>
-    private static void Leg(IntPtr thigh, IntPtr shin, IntPtr foot, Vector3 delta, Vector3 fwd, Quaternion tilt)
+    /// locals. The foot keeps its animated world orientation, turned <paramref name="yaw"/> radians about the world
+    /// vertical and then by <paramref name="tilt"/>. A chain whose parents are not thigh-&gt;shin-&gt;foot is left alone.</summary>
+    private static void Leg(IntPtr thigh, IntPtr shin, IntPtr foot, Vector3 delta, Vector3 fwd, Quaternion tilt, float yaw = 0f)
     {
         bool moves = delta.LengthSquared() >= FootPlacement.MinLift * FootPlacement.MinLift;
-        if (!moves && tilt.IsIdentity) return;
+        bool turns = MathF.Abs(yaw) >= FootPlacement.MinLift;
+        if (!moves && !turns && tilt.IsIdentity) return;
         IntPtr hip = PoseRig.Parent(thigh);
         if (hip == IntPtr.Zero || PoseRig.Parent(shin) != thigh || PoseRig.Parent(foot) != shin) return;
         World(shin, out Vector3 k, out Quaternion qs);
@@ -830,6 +833,7 @@ public sealed unsafe class PoseService : IExtenderService
                 SetLocal(shin, Quaternion.Conjugate(qt2) * qs);
             }
         }
+        if (turns) tilt *= Quaternion.CreateFromAxisAngle(Vector3.UnitZ, yaw);
         SetLocal(foot, Quaternion.Conjugate(qs) * tilt * qf);
     }
 
@@ -949,7 +953,8 @@ public sealed unsafe class PoseService : IExtenderService
         check.Expect(SampleCheck(), "clip sampler: a thigh keyed from rest to a quarter turn puts its ankle, half way, where the leg worked by hand puts it, and an unkeyed leg stays at rest");
         check.Expect(GaitClip.SelfCheck(), "gait analysis: a synthetic walk reads its 1.5 units/s stance speed, its travel direction, 60 % contact per foot a half cycle apart and its swing progress; a crawl and a swim are refused as not upright, a float as off the ground and a stand as no stride");
         check.Expect(Settle.SelfCheck(), "stops and turns through the feet: the settle step's arc leaves the ground and lands back on it, a run caught mid-stride steps both feet at once onto their stance spots and holds them there through the fade, the weighted foot does not move through the crossfade and only the other one lifts, a foot left a foot's width from its stance spot takes a second step and one left nearer does not; a standing turn steps round foot by foot, the turning side first, and ends on the stance");
-        check.Expect(StrideWarp.SelfCheck(), "stride warp: the pace splits as the square root between rate and stride and the rate takes what the stride cannot, never under half the engine's rate, so a body held to a crawl by a wall keeps stepping; a long stride drops the pelvis just enough to reach; a planted foot holds, drags only past its hold and eases its offset out over the swing; a walk driven from half to twice its pace never slides a planted foot nor jumps a drawn one");
+        check.Expect(StrideWarp.SelfCheck(), "stride warp: the pace splits as the square root between rate and stride and the rate takes what the stride cannot, never under half the engine's rate, so a body held to a crawl by a wall keeps stepping; a walk driven from half to twice its pace never slides a planted foot nor jumps a drawn one, and a foot on the ground moves only lifted");
+        check.Expect(Legs.FootCheck(), "foot hold: a landed foot keeps its world point and heading; past its hold, its twist or the leg's reach it is let go and steps, lifted, onto the animation; a swing eases its lift-off offset out before it lands");
         check.Expect(Stride.SelfCheck(), "an attachment whose clip runs another length than its body's keeps its own clock, so it never loops at the body's end; one of the body's length takes the body's time less the lead, wrapping only a loop");
         check.Expect(Footfall.SelfCheck(), "a footstep plays once per planted foot, a double within a sprint's gap merged");
         check.Expect(Gait.SelfCheck(), "gait: the acceleration is positive up the ramp, zero in cruise and negative through the ease");
@@ -961,6 +966,7 @@ public sealed unsafe class PoseService : IExtenderService
         check.Expect(Mass.SelfCheck(), "mass: a start, a stop and the bottom of a drop dip the pelvis and it settles back a little past neutral; steady walking and a steady descent carry no dip; the chest's lean overshoots a step by under a fifth");
         check.Expect(Diagonal.SelfCheck(), "diagonals: the sideways diagonal plays the straight walk or run, turned so it faces the travel; walking back diagonally leads with its back; the hips come round within a quarter second, without overshoot, and a swapped diagonal is no movement change");
         check.Expect(Legs.SelfCheck(), "leg core: a walk stepped at its own pace on flat ground draws every ankle where it is animated and leaves the pelvis where it is: no correction");
+        check.Expect(Legs.PelvisCheck(), "pelvis: a leg reaches a target past its stretch by the drop the leg triangle gives, never past its cap; a long stride's drop comes and goes each step, back up before the next and gone once the stride is");
         Legs.Examples(log);
         check.Expect(Diagonal.LagCheck(), "heading changes: the hips keep their world heading as the facing turns, never past the twist cap, and come round without overshoot; a steady bend trails by a bounded lag");
         check.Expect(PathTurnCheck(), "a walker whose FACING swings round at a waypoint while its travel goes straight on reads no path turn and leans by nothing; a steady curve reads its own rate");

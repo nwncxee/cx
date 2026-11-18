@@ -133,7 +133,7 @@ internal struct LegFrame
     /// whether the body has hips to turn.</summary>
     public int Anim;
     public bool Swapped, Hips;
-    /// <summary>The animated ankles (world, after the hip turn is written), and the thighs, read when a walk is present.</summary>
+    /// <summary>The animated ankles and thighs (world, after the hip turn is written).</summary>
     public Vector3 RAnkle, LAnkle, RThigh, LThigh;
     public LegWalk Walk;
     /// <summary>Seconds the idle still blends in, and where it sets each foot (world) when the settle sampled it.</summary>
@@ -159,7 +159,7 @@ internal struct LegPose
     public bool Touchdown, Unvoiced, Landing;
     public StrideWarp.Ahead AheadR, AheadL;
     /// <summary>Each ankle's stride warp and settle offset (world), the point it is drawn at (where its floor is
-    /// cast), and the pelvis drop the longer stride needs.</summary>
+    /// cast), and the pelvis drop both legs need to reach their targets.</summary>
     public Vector3 WarpR, WarpL, FootR, FootL;
     public float Drop;
     /// <summary>The pelvis offset (world units, up), each ankle's world target delta from its animated point with
@@ -168,9 +168,9 @@ internal struct LegPose
     public Vector3 DeltaR, DeltaL;
     public Quaternion TiltR, TiltL;
     public bool Ik;
-    /// <summary>The pelvis's horizontal offset (world units) and each foot's turn about the vertical off its animated
-    /// direction (radians, positive = left). No stage sets them yet: the pelvis only moves up and down and a foot keeps
-    /// the animation's direction.</summary>
+    /// <summary>The pelvis's horizontal offset (world units; no stage sets it, the pelvis moves only up and down), and
+    /// each foot's turn about the vertical off its animated direction (radians, positive = left), which keeps a held
+    /// foot's world heading.</summary>
     public Vector2 Shift;
     public float YawR, YawL;
 }
@@ -182,11 +182,11 @@ internal struct LegState
     /// <summary><see cref="Diagonal"/>: the hips' turn off the facing (radians, positive = left), its spring velocity,
     /// and the facing's yaw it was last measured against.</summary>
     public float Turn, TurnV, Heading;
-    /// <summary><see cref="StrideWarp"/>: each foot's plant, and whether the walk has been blended in to plant them.</summary>
-    public StrideWarp.Anchor AnchorR, AnchorL;
+    /// <summary>Each foot's hold, step or swing (<see cref="Legs.Hold"/>), and whether the walk has been blended in to plant them.</summary>
+    public Footing FootingR, FootingL;
     public bool Planting;
-    /// <summary><see cref="StrideWarp"/>: the pelvis drop held at the stride's deepest need, and its easing spring.</summary>
-    public float DropHold, Drop, DropV;
+    /// <summary>The pelvis drop (world units, down) and its easing spring, and the leg's length last read off a walk.</summary>
+    public float Drop, DropV, LegLen;
     /// <summary><see cref="Settle"/>: locomoting last frame, the stepping foot, a turn and not a stop, still turning, stepping
     /// at once, the leftovers folded; the stage, its clock, the step's lift and length; the step's start and the weighted
     /// foot's held world point; each foot's leftover easing out.</summary>
