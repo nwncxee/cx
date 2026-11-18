@@ -294,4 +294,4 @@ chat\.rows\b	CX-544
 # The chat line the player types in is the typing bar (GLOSSARY: input strip); 'input bar' was a third name for it.
 \binput bar\b	CX-544
 # CX's caches moved into the game's CACHE folder: the old folder names survive only where the older CX's folders are removed.
-cx-(shaders|charts)	CX-553	older CX|beside nwn\.ini|Path\.Combine\(ud, "cx-|\["cx-shaders", "cx-charts"\]
+cx-(shaders|charts)	CX-553	older CX|no cx-(shaders|charts)|Path\.Combine\(ud, "cx-|\["cx-shaders", "cx-charts"\]

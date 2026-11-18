@@ -37,8 +37,7 @@ internal sealed class LogParts(string dir, long cap = LogParts.MaxPartBytes)
             if (!Open())
             {
                 dir = was;
-                _file = new StreamWriter(new FileStream(from, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete),
-                                         new UTF8Encoding(false)) { NewLine = "\n" };
+                _file = Writer(from, FileMode.Append);
                 _written = launch.Length;
                 return;
             }
@@ -109,8 +108,7 @@ internal sealed class LogParts(string dir, long cap = LogParts.MaxPartBytes)
             Directory.CreateDirectory(dir);
             if (File.Exists(PathOf(0))) Shift();
             // CreateNew: a second client that got here first keeps its file to itself; this one retries on the next line.
-            _file = new StreamWriter(new FileStream(PathOf(0), FileMode.CreateNew, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete),
-                                     new UTF8Encoding(false)) { NewLine = "\n" };
+            _file = Writer(PathOf(0), FileMode.CreateNew);
             return true;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
@@ -120,6 +118,11 @@ internal sealed class LogParts(string dir, long cap = LogParts.MaxPartBytes)
             return false;
         }
     }
+
+    /// <summary>A part opened to write: UTF-8 with no mark, one newline per line, shared so a reader and a rotation can work
+    /// beside it.</summary>
+    private static StreamWriter Writer(string path, FileMode mode) =>
+        new(new FileStream(path, mode, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete), new UTF8Encoding(false)) { NewLine = "\n" };
 
     /// <summary>Free the cx.log name. Only the parts below the first free number move, so a retry after a failed move
     /// pushes nothing further along and deletes nothing more.</summary>

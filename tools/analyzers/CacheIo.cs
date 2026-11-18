@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
@@ -25,8 +26,19 @@ public sealed class CacheIo : DiagnosticAnalyzer
         "/managed/Alloy/Pass/FrameTap.Vk.cs",
     };
 
-    /// <summary>File's members that read a binary file whole or open one to write. Text (a dump, a log) is no cache.</summary>
-    private static readonly string[] FileCalls = { "ReadAllBytes", "WriteAllBytes", "Create", "OpenWrite" };
+    /// <summary>File's members that read a binary file whole, put one in place, or open one to write, whatever their
+    /// arguments. Text (a dump, a log) is no cache.</summary>
+    private static readonly string[] FileCalls =
+    {
+        "ReadAllBytes", "ReadAllBytesAsync", "WriteAllBytes", "WriteAllBytesAsync", "AppendAllBytes", "AppendAllBytesAsync",
+        "Create", "OpenWrite", "Copy", "Move",
+    };
+
+    /// <summary>File's members that open a file as their FileAccess argument says: a write unless it is Read.</summary>
+    private static readonly string[] Openers = { "Open", "OpenHandle" };
+
+    /// <summary>FileAccess.Read, as the enum numbers it.</summary>
+    private const int AccessRead = 1;
 
     private static readonly DiagnosticDescriptor Rule = new(
         Id,
@@ -53,29 +65,35 @@ public sealed class CacheIo : DiagnosticAnalyzer
 
     private static void OnCall(OperationAnalysisContext c)
     {
-        IMethodSymbol m = ((IInvocationOperation)c.Operation).TargetMethod;
-        if (m.ContainingType?.ToDisplayString() != "System.IO.File") return;
-        foreach (string name in FileCalls) if (m.Name == name) { Report(c, c.Operation.Syntax); return; }
+        var op = (IInvocationOperation)c.Operation;
+        IMethodSymbol m = op.TargetMethod;
+        string? type = m.ContainingType?.ToDisplayString();
+        if (type == "System.IO.RandomAccess" && m.Name.StartsWith("Write")) Report(c, op.Syntax);
+        if (type != "System.IO.File") return;
+        if (FileCalls.Contains(m.Name) || (Openers.Contains(m.Name) && Writes(op.Arguments))) Report(c, op.Syntax);
     }
 
-    /// <summary>A FileStream opened to write: any FileAccess argument but Read.</summary>
+    /// <summary>A FileStream opened to write.</summary>
     private static void OnNew(OperationAnalysisContext c)
     {
         var op = (IObjectCreationOperation)c.Operation;
-        if (op.Type?.ToDisplayString() != "System.IO.FileStream") return;
-        foreach (IArgumentOperation a in op.Arguments)
-            if (a.Parameter?.Type.ToDisplayString() == "System.IO.FileAccess"
-                && !(a.Value.ConstantValue.HasValue && a.Value.ConstantValue.Value is int access && access == 1))
-            { Report(c, op.Syntax); return; }
+        if (op.Type?.ToDisplayString() == "System.IO.FileStream" && Writes(op.Arguments)) Report(c, op.Syntax);
+    }
+
+    /// <summary>Whether an argument list may open a file to write: any FileAccess but the constant Read, and no FileAccess
+    /// at all, which .NET opens read-write.</summary>
+    private static bool Writes(ImmutableArray<IArgumentOperation> args)
+    {
+        foreach (IArgumentOperation a in args)
+            if (a.Parameter?.Type.ToDisplayString() == "System.IO.FileAccess")
+                return !(a.Value.ConstantValue.Value is int access && access == AccessRead);
+        return true;
     }
 
     private static void Report(OperationAnalysisContext c, SyntaxNode node)
     {
         string path = node.SyntaxTree.FilePath.Replace('\\', '/');
-        bool inScope = false;
-        foreach (string s in Scope) inScope |= path.Contains(s);
-        if (!inScope || path.Contains("SelfCheck") || path.Contains("ApprovedExamples")) return;
-        foreach (string a in Allowed) if (path.Contains(a)) return;
+        if (!Scope.Any(path.Contains) || path.Contains("SelfCheck") || path.Contains("ApprovedExamples") || Allowed.Any(path.Contains)) return;
         c.ReportDiagnostic(Diagnostic.Create(Rule, node.GetLocation(), node.ToString()));
     }
 }

@@ -18,3 +18,5 @@ dotnet_diagnostic.CX0006.severity = error
 dotnet_diagnostic.CX0007.severity = error
 # A regex that reads a GLSL sampler or image declaration outside VkGlsl and the rewriting sites.
 dotnet_diagnostic.CX0008.severity = error
+# A cache file read whole or written outside CacheFile, under managed/Alloy or managed/Graphics.
+dotnet_diagnostic.CX0009.severity = error

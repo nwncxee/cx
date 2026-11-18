@@ -6,8 +6,8 @@ using CX.Framework;
 namespace CX.Graphics;
 
 /// <summary>Edges of the damaged-cache report: a zeroed file (a sync placeholder never filled) and one cut inside its
-/// header are named as damaged, and the per-frame report waits for the damage to stop before it speaks. Oracle: the
-/// literals written here and the clock.</summary>
+/// header are named as damaged, one of another format is not, and the per-frame report waits for the damage to stop
+/// before it speaks. Oracle: the literals and hand-written header bytes here, and the clock.</summary>
 internal static class CacheFileEdges
 {
     internal static bool SelfCheck(ExtenderLog log)
@@ -27,6 +27,11 @@ internal static class CacheFileEdges
             File.WriteAllBytes(stub, [(byte)'C', (byte)'X', (byte)'C', (byte)'F', 1, 0]);
             check.Expect(CacheFile.Read(stub) == null && CacheFile.Report()?.Contains("stub.bin", StringComparison.Ordinal) == true,
                 "a cache file cut inside its own header is named as damaged, not taken for an older release's");
+
+            string later = Path.Combine(dir, "later.bin");
+            File.WriteAllBytes(later, [(byte)'C', (byte)'X', (byte)'C', (byte)'F', 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4]);
+            check.Expect(CacheFile.Read(later) == null && CacheFile.Report() == null,
+                "a cache file of another format is a miss and is not named as damaged");
 
             string cut = Path.Combine(dir, "cut.bin");
             check.Expect(CacheFile.Write(cut, new byte[32]), "a payload is written");

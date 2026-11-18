@@ -11,6 +11,7 @@ internal static class UserFoldersRegression
     {
         var check = new Checker(log, "UserFoldersRegression.SelfCheck");
         if (Native.Sym(SymbolMap.AppManager) != IntPtr.Zero) return check.Skip("on-device: the check settles the folders to its own and a game session has its real ones");
+        if (OperatingSystem.IsWindows()) return check.Skip("the stub host's throwaway home is Linux's; Windows is checked live");
         string beside = UserFoldersApprovedExamples.StockUserDir();
         string root = Path.Combine(Path.GetTempPath(), $"cx-userfolders-still-{Environment.ProcessId}");
         try

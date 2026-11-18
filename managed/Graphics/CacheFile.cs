@@ -29,6 +29,9 @@ internal static class CacheFile
     /// <summary>Magic, format, payload length, payload hash.</summary>
     private const int HeaderBytes = 24;
 
+    /// <summary>Magic and format: the part of the header that says which release wrote the file.</summary>
+    private const int IdBytes = 8;
+
     /// <summary>What a file on disk is to this release.</summary>
     private enum Verdict { Whole, Older, Damaged }
 
@@ -54,20 +57,21 @@ internal static class CacheFile
     }
 
     /// <summary>A file of this format whose length and hash still match its payload is whole. Zeros where the header
-    /// should be (a placeholder a sync tool never filled) or this format's header over the wrong payload is damaged;
-    /// anything else was written by an older release.</summary>
+    /// should be (a placeholder a sync tool never filled), a file cut inside its magic and format, or this format's header
+    /// over the wrong payload is damaged; anything else was written by another release.</summary>
     private static Verdict Check(ReadOnlySpan<byte> file)
     {
-        ReadOnlySpan<byte> head = file[..Math.Min(file.Length, 8)];
+        ReadOnlySpan<byte> head = file[..Math.Min(file.Length, IdBytes)];
         if (head.IndexOfAnyExcept((byte)0) < 0) return Verdict.Damaged;
-        if (!Ours(head)) return head.Length >= 4 && BinaryPrimitives.ReadUInt32LittleEndian(head) == Magic ? Verdict.Damaged : Verdict.Older;
+        if (head.Length < IdBytes) return head.Length >= 4 && BinaryPrimitives.ReadUInt32LittleEndian(head) == Magic ? Verdict.Damaged : Verdict.Older;
+        if (!Ours(head)) return Verdict.Older;
         if (file.Length < HeaderBytes || BinaryPrimitives.ReadUInt64LittleEndian(file[8..]) != (ulong)(file.Length - HeaderBytes)) return Verdict.Damaged;
         return BinaryPrimitives.ReadUInt64LittleEndian(file[16..]) == MdlParser.ContentHash(file[HeaderBytes..]) ? Verdict.Whole : Verdict.Damaged;
     }
 
     /// <summary>Whether <paramref name="head"/> opens with this format's magic and format number.</summary>
     private static bool Ours(ReadOnlySpan<byte> head) =>
-        head.Length >= 8 && BinaryPrimitives.ReadUInt32LittleEndian(head) == Magic && BinaryPrimitives.ReadUInt32LittleEndian(head[4..]) == Format;
+        head.Length >= IdBytes && BinaryPrimitives.ReadUInt32LittleEndian(head) == Magic && BinaryPrimitives.ReadUInt32LittleEndian(head[4..]) == Format;
 
     /// <summary>Whether <paramref name="s"/> opens with this format's header; on true it stands at the payload. For a
     /// reader that wants the start of a payload without the whole file (the bake index).</summary>
@@ -106,30 +110,25 @@ internal static class CacheFile
     }
 
     /// <summary>The cx.log line naming the damaged files thrown away since the last report, or null when there were none.</summary>
-    internal static string? Report()
-    {
-        var st = _st;
-        lock (st.Damaged) return st.Damaged.Count == 0 ? null : Said(st);
-    }
-
-    /// <summary>The line naming every damaged file in <paramref name="st"/>'s tally, which it empties. Under its lock.</summary>
-    private static string Said(CacheFileState st)
-    {
-        string line = $"CacheFile: {st.Damaged.Count} damaged cache file(s) thrown away and rebuilt: {string.Join(", ", st.Damaged)}";
-        st.Damaged.Clear();
-        return line;
-    }
+    internal static string? Report() => ReportSettled(long.MaxValue);
 
     /// <summary>How long the tally waits for more damage before it reports: an area's reads land over many frames,
     /// and one line names them all.</summary>
     private static readonly long Quiet = System.Diagnostics.Stopwatch.Frequency * 2;
 
-    /// <summary><see cref="Report"/>, once no damaged file has turned up for <see cref="Quiet"/>; null before then.
-    /// Called every frame, so it allocates nothing while there is nothing to say.</summary>
+    /// <summary>The line naming the damaged files thrown away since the last report, once none has turned up for
+    /// <see cref="Quiet"/>; null before then or when there were none. Called every frame, so it allocates nothing while
+    /// there is nothing to say.</summary>
     internal static string? ReportSettled(long now)
     {
         var st = _st;
-        lock (st.Damaged) return st.Damaged.Count == 0 || now - st.LastDamage < Quiet ? null : Said(st);
+        lock (st.Damaged)
+        {
+            if (st.Damaged.Count == 0 || now - st.LastDamage < Quiet) return null;
+            string line = $"CacheFile: {st.Damaged.Count} damaged cache file(s) thrown away and rebuilt: {string.Join(", ", st.Damaged)}";
+            st.Damaged.Clear();
+            return line;
+        }
     }
 
     /// <summary>Forget the seam and the tally.</summary>

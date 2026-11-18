@@ -1,7 +1,7 @@
 namespace CX.Framework;
 
 /// <summary>Where CX's own files live: caches in the game's CACHE folder, logs and diagnostic dumps in its LOGS folder,
-/// each where nwn.ini's [Alias] puts it. Settings stay beside nwn.ini (<see cref="Native.ConfigPath"/>).</summary>
+/// each where nwn.ini's [Alias] puts it. Settings stay beside nwn.ini.</summary>
 internal static class UserFolders
 {
     /// <summary>The folders this session settled on; replaced whole by <see cref="Reset"/>.</summary>

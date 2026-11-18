@@ -37,7 +37,7 @@ internal static partial class ShaderCache
         }
     }
 
-    private static string Sweep(string dir)
+    private static void Sweep(string dir)
     {
         ExtenderLog? log = KnobGroup.Log;
         int gone = 0;
@@ -63,7 +63,6 @@ internal static partial class ShaderCache
         catch (IOException e) { log?.Always($"ShaderCache: {dir} could NOT be swept -- {e.Message}"); }
         catch (UnauthorizedAccessException e) { log?.Always($"ShaderCache: {dir} could NOT be swept -- {e.Message}"); }
         if (gone > 0) log?.Info($"ShaderCache: swept {gone} stale file(s), {freed / 1024} KiB");
-        return dir;
     }
 
     /// <summary>Whether <paramref name="leaf"/> is a blob for this GPU under a driver identity it no longer

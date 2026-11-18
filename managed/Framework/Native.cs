@@ -349,7 +349,8 @@ public static unsafe class Native
     private const int AliasChars = 16;
 
     /// <summary>
-    /// Absolute path for a CX config file in the client's user directory (next to nwn.ini/settings.tml).
+    /// Absolute path for a CX file in the client's user directory (next to nwn.ini/settings.tml): a setting, or a folder
+    /// whose default the game keeps there.
     /// Falls back to <see cref="DefaultUserDirectory"/> when the engine dir is unresolvable -- pre-main, or
     /// headless under run-demo.
     /// </summary>

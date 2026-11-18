@@ -25,11 +25,9 @@ internal static class UserFoldersApprovedExamples
     internal static string[] Files(string dir) =>
         Directory.Exists(dir) ? Directory.GetFiles(dir, "*", SearchOption.AllDirectories) : [];
 
-    /// <summary>The user directory a launch with no <c>-userdirectory</c> uses, from the host's own layout: Documents on
-    /// Windows, the XDG data home elsewhere (which run-demo.sh pins under its throwaway home).</summary>
-    internal static string StockUserDir() => OperatingSystem.IsWindows()
-        ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Neverwinter Nights")
-        : Path.Combine(HostEnv.DataHome, "Neverwinter Nights");
+    /// <summary>The user directory of the throwaway home run-demo.sh launches the stub host in: it sets HOME and
+    /// XDG_DATA_HOME to <c>$HOME/.local/share</c>, so the layout is spelled here by hand, as <c>logs_of</c> spells it.</summary>
+    internal static string StockUserDir() => Path.Combine(HostEnv.Home, ".local", "share", "Neverwinter Nights");
 
     internal static string? Read(string path)
     {
@@ -42,6 +40,7 @@ internal static class UserFoldersApprovedExamples
     {
         var check = new Checker(log, "UserFoldersApprovedExamples.SelfCheck");
         if (Native.Sym(SymbolMap.AppManager) != IntPtr.Zero) return check.Skip("on-device: the check settles the folders to its own and a game session has its real ones");
+        if (OperatingSystem.IsWindows()) return check.Skip("the stub host's throwaway home is Linux's; Windows is checked live");
         bool shaderc = true;
         foreach (string leaf in VulkanToolchain.Libraries) shaderc &= VulkanToolchain.Load(leaf);
         check.Expect(shaderc, "the staged shaderc loads, so the shader cache halves of E1-E3 run");
