@@ -19,7 +19,7 @@ namespace CX.Services.Dialog;
 /// text/replies the message layer hands them, and draw an owned overlay in ChatService's SwapBuffers pass. The
 /// message layer runs unmodified (voice-over, camera, speaker tracking stay); layout is cold, the draw hot.
 /// </summary>
-public sealed unsafe class DialogService : IExtenderService
+public sealed unsafe partial class DialogService : IExtenderService
 {
     private static ExtenderLog? _log;
 
@@ -1236,5 +1236,10 @@ public sealed unsafe class DialogService : IExtenderService
         }
 
         log.Info(check.Ok ? "DialogService.SelfCheck: passed" : "DialogService.SelfCheck: FAILED");
+        EscapeSelfCheck(log);
+        EscapeApprovedExamples(log);
     }
+
+    /// <summary>Escape's approved examples, in <c>DialogApprovedExamples.cs</c>.</summary>
+    static partial void EscapeApprovedExamples(ExtenderLog log);
 }
