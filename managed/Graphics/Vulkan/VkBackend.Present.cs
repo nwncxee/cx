@@ -179,7 +179,7 @@ internal sealed unsafe partial class VkBackend
             if (!s.Empty) s.Waits = 0;
             return !s.Empty;
         }
-        if (!CreateRefusalHolds(r))
+        if (!CreateRefusalHolds(r, s.Waits))
         {
             if (r == VkResult.ErrorSurfaceLostKHR) DropSwapchain();
             if (s.Waits++ == 0) log.Always($"VkBackend: the window refused a swapchain for now -- {why}; every frame asks again, and the window keeps its last frame until one is made");
@@ -194,8 +194,9 @@ internal sealed unsafe partial class VkBackend
     /// later frame may not repeat.</summary>
     private bool Withheld => !_swap.Refused && (_swap.Empty || _swap.Waits > 0);
 
-    /// <summary>Does a swapchain create that returned <paramref name="r"/> refuse the window for the session?</summary>
-    internal static bool CreateRefusalHolds(VkResult r)
+    /// <summary>Does a swapchain create that returned <paramref name="r"/>, after <paramref name="waits"/> frames of
+    /// refusals that may pass, refuse the window for the session?</summary>
+    internal static bool CreateRefusalHolds(VkResult r, int waits)
         => r is not (VkResult.ErrorNativeWindowInUseKHR or VkResult.ErrorSurfaceLostKHR or VkResult.ErrorOutOfDateKHR);
 
     /// <summary>What a live chain was made for, as the one test over it reads: whether there is one, whether the
