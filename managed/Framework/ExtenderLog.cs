@@ -9,7 +9,7 @@ namespace CX.Framework;
 /// microseconds before a crash can be lost -- unless <see cref="Synchronous"/> or <see cref="AlwaysNow"/> wrote it.</summary>
 public sealed class ExtenderLog
 {
-    private static readonly LogParts _parts = new(OperatingSystem.IsWindows() ? Native.DefaultUserDirectory() : HostEnv.Home);
+    private static readonly LogParts _parts = new(UserFolders.Logs);
 
     /// <summary>The one gate every line passes: open by default, closed by <c>general.logs=0</c> once
     /// <see cref="Settings.Load"/> has read cx.cfg, and <c>General.Logs</c> flips it live. Off means off at the CALL
@@ -88,6 +88,16 @@ public sealed class ExtenderLog
             }
             _parts.Flush();
         }
+    }
+
+    /// <summary>The folder cx.log is written to now.</summary>
+    internal static string Dir { get { lock (_fileLock) return _parts.Dir; } }
+
+    /// <summary>Carry cx.log, with every line this launch wrote so far, into <paramref name="dir"/> and go on there.</summary>
+    internal static void MoveTo(string dir)
+    {
+        WriteQueued();
+        lock (_fileLock) _parts.MoveTo(dir);
     }
 
     /// <summary>Block until everything queued so far is on disk. Off-device only (the self-checks).</summary>

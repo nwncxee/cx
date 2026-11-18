@@ -78,7 +78,7 @@ public static unsafe partial class VulkanToolchain
     }
 
     /// <summary>The module cache under a corrupt entry and a good one. Oracle: SPIR-V's magic word -- a word the corrupt
-    /// entry does not start with -- and the bytes written into the cache by hand.</summary>
+    /// entry does not start with -- and the bytes planted in the cache through its own write.</summary>
     private static void CheckCache(Checker check)
     {
         string src = ProbeSource + $"// cache probe {Environment.ProcessId}\n";
@@ -91,7 +91,7 @@ public static unsafe partial class VulkanToolchain
             check.Expect(fresh != null && BitConverter.ToUInt32(fresh, 0) == SpirvMagic,
                 $"a cached entry that is not a module is refused and the stage compiled ({e})");
             byte[] planted = [.. BitConverter.GetBytes(SpirvMagic), .. new byte[20]];
-            System.IO.File.WriteAllBytes(path, planted);
+            check.Expect(CacheFile.Write(path, planted), "the planted module is written through the cache's own write");
             byte[]? hit = Compile(src, "cx_vk_cache.comp", ShaderKind.ComputeShader, out _);
             check.Expect(hit != null && hit.AsSpan().SequenceEqual(planted), "a cached module is served as written, without a compile");
         }

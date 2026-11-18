@@ -68,8 +68,8 @@ internal static partial class Fsr
             check.Expect(panel.Contains("FSR", StringComparison.Ordinal) && panel.Contains(why, StringComparison.Ordinal),
                 $"E6: the settings panel says FSR is off for the session, and why (got \"{panel}\")");
             ExtenderLog.Flush();
-            string path = Path.Combine(HostEnv.Home, "cx.log");
-            if (!OperatingSystem.IsLinux() || !File.Exists(path)) { check.Skip("E6's cx.log half: no cx.log under $HOME to read"); return; }
+            string path = Path.Combine(ExtenderLog.Dir, "cx.log");
+            if (!File.Exists(path)) { check.Skip("E6's cx.log half: no cx.log in this launch's logs folder to read"); return; }
             int said = 0;
             foreach (string line in File.ReadLines(path)) if (line.Contains(why, StringComparison.Ordinal)) said++;
             check.Expect(said == 1, $"E6: cx.log says why once (said {said} times)");

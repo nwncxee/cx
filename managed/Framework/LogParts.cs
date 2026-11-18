@@ -18,6 +18,41 @@ internal sealed class LogParts(string dir, long cap = LogParts.MaxPartBytes)
     private bool _writeFailed;
     private bool _saidOpenFailed;
 
+    /// <summary>The folder the parts are in.</summary>
+    internal string Dir => dir;
+
+    /// <summary>Carry this launch's cx.log into <paramref name="to"/>, as a fresh part there behind that folder's own
+    /// rotation, and write there from now on. A move that cannot open the new folder goes on in the old file.</summary>
+    internal void MoveTo(string to)
+    {
+        if (_writeFailed || UserFolders.Same(to, dir)) return;
+        string from = PathOf(0), was = dir;
+        bool open = _file != null;
+        Close();
+        dir = to;
+        if (!open) return;
+        try
+        {
+            using var launch = new FileStream(from, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            if (!Open())
+            {
+                dir = was;
+                _file = Writer(from, FileMode.Append);
+                _written = launch.Length;
+                return;
+            }
+            _file!.Flush();
+            launch.CopyTo(_file.BaseStream);
+            _written = launch.Length;
+            launch.Dispose();
+            File.Delete(from);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine($"[cx] {from}: could not move to {to}, the rest of the log goes on without it: {e.Message}");
+        }
+    }
+
     internal string PathOf(int part) => Path.Combine(dir, part == 0 ? "cx.log" : $"cx.{part}.log");
 
     /// <summary>Append a line, rolling first if it would take the part past the cap. The first line of a launch opens a
@@ -70,10 +105,10 @@ internal sealed class LogParts(string dir, long cap = LogParts.MaxPartBytes)
     {
         try
         {
+            Directory.CreateDirectory(dir);
             if (File.Exists(PathOf(0))) Shift();
             // CreateNew: a second client that got here first keeps its file to itself; this one retries on the next line.
-            _file = new StreamWriter(new FileStream(PathOf(0), FileMode.CreateNew, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete),
-                                     new UTF8Encoding(false)) { NewLine = "\n" };
+            _file = Writer(PathOf(0), FileMode.CreateNew);
             return true;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
@@ -83,6 +118,11 @@ internal sealed class LogParts(string dir, long cap = LogParts.MaxPartBytes)
             return false;
         }
     }
+
+    /// <summary>A part opened to write: UTF-8 with no mark, one newline per line, shared so a reader and a rotation can work
+    /// beside it.</summary>
+    private static StreamWriter Writer(string path, FileMode mode) =>
+        new(new FileStream(path, mode, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete), new UTF8Encoding(false)) { NewLine = "\n" };
 
     /// <summary>Free the cx.log name. Only the parts below the first free number move, so a retry after a failed move
     /// pushes nothing further along and deletes nothing more.</summary>

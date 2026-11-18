@@ -69,6 +69,12 @@ rule and the gates.
   the general global ones `Opaques` does not answer for. A self-check pinning a line of CX's OWN embedded stage
   text with `Contains` is a different act and is not refused: there the oracle is the text this repo ships, so the
   shapes a content override may use never arise, and a rename that breaks the bind breaks the pin with it.
+- **A cache file is read and written through `CacheFile` (CX0009).** It checks each file's length and hash on read and
+  writes through a temporary name, so a damaged or half-written file is a miss, never geometry. Under
+  `managed/Alloy/` and `managed/Graphics/`, a binary file read whole and any file opened to write (`File` and
+  `FileInfo` writes, a `FileStream` or `File.Open` with no `FileAccess.Read`, `RandomAccess.Write`) are refused
+  outside `CacheFile` and the frame snapshot CX0009's `Allowed` names; self-checks are exempt. CX's own folders
+  come from `UserFolders`, and `Native.DefaultUserDirectory` is banned outside the two that need the pre-main answer.
 - **A render target's alias lane is an `AliasLanes` member.** Two targets share one allocation when their
   `Alias` strings are equal, so a lane is declared once, in frame order, and never spelled at the call site;
   `tools/gates/alias-lanes.sh` refuses a literal, the goldens excepted.

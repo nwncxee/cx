@@ -37,9 +37,9 @@ UNINSTALL
   from bin/linux-x86.
 
 REPORTING A PROBLEM
-  CX writes a log, ~/cx.log, by default. If you turned it off, turn
+  CX writes a log, cx.log, by default. If you turned it off, turn
   "Write cx.log for bug reports" back on under Settings, General.
 
   Play again, then open an issue at https://github.com/nwncxee/cx/issues
-  with ~/cx.log and ~/cx.1.log and what you did right before things went wrong.
-  If you restarted the game after the problem, it is in ~/cx.1.log.
+  with cx.log and cx.1.log from ~/.local/share/Neverwinter Nights/logs/ and what you did right before things went wrong.
+  If you restarted the game after the problem, it is in cx.1.log.

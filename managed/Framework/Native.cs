@@ -300,6 +300,11 @@ public static unsafe class Native
     private static readonly IntPtr _exoBaseSym = Sym(SymbolMap.ExoBase);
     private static string? _userDir;
 
+    /// <summary>The live <c>CExoBase*</c> (g_pExoBase's value), or zero pre-main, headless, or on a build whose layout
+    /// rows CX does not know.</summary>
+    private static IntPtr ExoBase() =>
+        _exoBaseSym == IntPtr.Zero || !EngineLayout.KeyOk ? IntPtr.Zero : *(IntPtr*)_exoBaseSym;
+
     /// <summary>
     /// The client's own resolved user directory -- whatever <c>SetUpUserDirectory</c> produced, so it honours
     /// <c>-userdirectory</c>, per-OS rules and the <c>.N</c> instance suffix for free. Read live from
@@ -309,9 +314,8 @@ public static unsafe class Native
     public static string? UserDirectory()
     {
         if (_userDir != null) return _userDir;
-        if (_exoBaseSym == IntPtr.Zero) return null;
-        IntPtr exoBase = *(IntPtr*)_exoBaseSym;             // g_pExoBase's value: the CExoBase*
-        if (exoBase == IntPtr.Zero || !EngineLayout.KeyOk) return null;   // pre-main, or an unknown build's rows are 0
+        IntPtr exoBase = ExoBase();
+        if (exoBase == IntPtr.Zero) return null;
         byte* p = (byte*)new CExoBase(exoBase).UserDir;
         string s = p == null ? "" : Marshal.PtrToStringUTF8((IntPtr)p) ?? "";
         if (s.Length == 0) return null;
@@ -319,13 +323,38 @@ public static unsafe class Native
         return s;
     }
 
+    /// <summary>The path the engine's alias <paramref name="aliasName"/> (no colon) maps to, as its own
+    /// <c>GetAliasPath</c> answers it -- <c>nwn.ini</c>'s <c>[Alias]</c> included -- or null before the engine has
+    /// loaded its aliases, on an unknown build, or for an unknown alias. MAIN THREAD.</summary>
+    public static string? AliasPath(string aliasName)
+    {
+        if (EngineFn.AliasGetPath == null || aliasName.Length is 0 or > ResRef.Chars) return null;
+        IntPtr exoBase = ExoBase();
+        if (exoBase == IntPtr.Zero) return null;
+        IntPtr aliases = new CExoBase(exoBase).AliasList.Ptr;
+        if (aliases == IntPtr.Zero) return null;
+        Span<byte> name = stackalloc byte[ResRef.Bytes];
+        int n = Encoding.ASCII.GetBytes(aliasName, name);
+        name[n] = 0;
+        fixed (byte* buf = name)
+        {
+            // A CExoString is {char* buf; int len; int cap}; GetAliasPath only reads it, so a forged shell serves.
+            ExoStringRec shell = new() { Buf = buf, Len = (uint)n };
+            var path = (ExoStringRec*)new CExoAliasList(aliases).AliasGetPath((IntPtr)(&shell), 0);
+            return path == null || path->Buf == null || path->Len == 0 ? null : path->Text;
+        }
+    }
+
     /// <summary>
-    /// Absolute path for a CX config file in the client's user directory (next to nwn.ini/settings.tml).
+    /// Absolute path for a CX file in the client's user directory (next to nwn.ini/settings.tml): a setting, or a folder
+    /// whose default the game keeps there.
     /// Falls back to <see cref="DefaultUserDirectory"/> when the engine dir is unresolvable -- pre-main, or
     /// headless under run-demo.
     /// </summary>
     public static string ConfigPath(string fileName) =>
+#pragma warning disable RS0030 // a settings file before the engine names its user directory reads the default one
         System.IO.Path.Combine(UserDirectory() ?? DefaultUserDirectory(), fileName);
+#pragma warning restore RS0030
 
     /// <summary>
     /// Where the client would put its user directory with no <c>-userdirectory</c> override: SDL's pref path,

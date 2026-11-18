@@ -53,8 +53,7 @@ public static unsafe partial class VulkanToolchain
         FreshCompiles++;
         byte[]? spirv = CompileFresh(source, name, kind, out error);
         if (spirv != null)
-            try { Directory.CreateDirectory(ShaderCache.Dir); File.WriteAllBytes(cached, spirv); }
-            catch (IOException) { } catch (UnauthorizedAccessException) { }
+            CacheFile.Write(cached, spirv);
         return spirv;
     }
 
@@ -70,14 +69,12 @@ public static unsafe partial class VulkanToolchain
         => CX.Alloy.Mdl.MdlParser.ContentHash(System.Runtime.InteropServices.MemoryMarshal.AsBytes(source.AsSpan()))
            ^ ((ulong)kind + 1) * 0x9E3779B97F4A7C15UL ^ CacheVersion;   // not-an-offset: golden-ratio hash multiplier
 
-    /// <summary>A cached module, touched so the sweep keeps it; null when there is none or it is not a module.</summary>
+    /// <summary>A cached module, touched so the sweep keeps it; null when there is none, or CacheFile refused the file.</summary>
     private static byte[]? Cached(string path)
     {
         try
         {
-            if (!File.Exists(path)) return null;
-            byte[] b = File.ReadAllBytes(path);
-            if (b.Length < 20 || b.Length % 4 != 0 || BitConverter.ToUInt32(b, 0) != SpirvMagic) { File.Delete(path); return null; }
+            if (CacheFile.Read(path) is not { } b) return null;
             File.SetLastWriteTimeUtc(path, DateTime.UtcNow);
             return b;
         }

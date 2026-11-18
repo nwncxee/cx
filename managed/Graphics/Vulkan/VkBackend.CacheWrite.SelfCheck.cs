@@ -19,15 +19,15 @@ internal sealed unsafe partial class VkBackend
             var blob = new byte[4096];
             for (int i = 0; i < blob.Length; i++) blob[i] = (byte)(i * 7 + 3);
             check.Expect(WriteCacheFile(blob, path, log), "a writable path refused the pipeline cache blob");
-            byte[] back = File.Exists(path) ? File.ReadAllBytes(path) : [];
+            byte[] back = PipelineSeed(path);
             check.Expect(back.Length == blob.Length && back.AsSpan().SequenceEqual(blob),
                 $"the file does not hold the blob the save handed over ({back.Length} of {blob.Length} bytes)");
-            check.Expect(!File.Exists(path + ".tmp"), "the temporary the write moved from is still beside the file");
+            check.Expect(Directory.GetFiles(dir, "*.tmp").Length == 0, "the temporary the write moved from is still beside the file");
 
             var second = new byte[17];
             for (int i = 0; i < second.Length; i++) second[i] = (byte)(255 - i);
             check.Expect(WriteCacheFile(second, path, log), "a second save over an existing cache file was refused");
-            byte[] after = File.ReadAllBytes(path);
+            byte[] after = PipelineSeed(path);
             check.Expect(after.Length == second.Length && after.AsSpan().SequenceEqual(second),
                 $"a second save left the earlier blob in place ({after.Length} bytes)");
 

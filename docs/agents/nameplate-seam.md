@@ -1061,7 +1061,7 @@ Call it from `Initialize`, **before** any stand-down return, so a headless run s
 NWN_BIN=/path/to/bin/linux-x86/nwmain-linux ./cx-linux-x64/cx-launch
 ```
 
-The log is `$HOME/cx.log`. Strings to grep:
+The log is `cx.log` in the game's `logs` folder (`<user dir>/logs/`, or wherever `LOGS` points). Strings to grep:
 
 | grep | means |
 |---|---|

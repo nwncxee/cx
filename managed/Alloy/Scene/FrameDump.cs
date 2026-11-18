@@ -49,7 +49,7 @@ internal static unsafe class FrameDump
     private static readonly List<Row> _rows = new();
     private static bool _capturing;
 
-    internal static string Dir => Native.ConfigPath("cx_frame_dump");
+    internal static string Dir => Path.Combine(UserFolders.Logs, "cx_frame_dump");
 
     /// <summary>Open the capture for one <c>BuildBatches</c>. False = not armed, and the hot loop's row call
     /// stays a predicted-not-taken branch.</summary>

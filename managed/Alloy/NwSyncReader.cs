@@ -218,7 +218,7 @@ internal static unsafe class NwSyncReader
     /// user directory, else null before the engine has one. MAIN THREAD.</summary>
     private static string? Store()
     {
-        string? alias = ResLocate.AliasPath(AliasName);
+        string? alias = Native.AliasPath(AliasName);
         if (!string.IsNullOrEmpty(alias)) return alias;
         string? user = Native.UserDirectory();
         return user == null ? null : Path.Combine(user, DirName);

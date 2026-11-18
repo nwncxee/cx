@@ -303,6 +303,10 @@ the cleanup that earned it. Adding a rule means adding its gate in the same chan
   every declaration or read the general global ones. A `Contains` pin on CX's own embedded stage text is not a
   read of a declaration and is not refused (`CODING_STANDARDS.md` says why). This gate refuses a permission that
   outlived its file; the list is read out of `SamplerRegex.cs`, never restated.
+- `cache-io-confined.sh`: a file named in CX0009's `Allowed` that is not in the tree fails. The RULE -- a file under
+  `managed/Alloy/` or `managed/Graphics/` read whole or written goes through `CacheFile`, which checks each cache file's
+  header on read and writes through a temporary name -- is CX0009 (`tools/analyzers/CacheIo.cs`); self-checks are exempt,
+  and the frame snapshot, a diagnostic and not a cache, is allowed. The list is read out of `CacheIo.cs`, never restated.
 - `content-fixtures.sh`: a `cx_fix*` stage the C# self-checks translate that `tools/content_stage.py`'s `FIXTURE` lacks, or the reverse, fails: the two translations answer to one set of stages.
 - `face-normal.sh`: a `.glsl` under `managed/Alloy/Shaders/` that flips a back face's normal inline
   (`gl_FrontFacing ? n : -n`, its negated spelling, or the sign a caller multiplies by) fails, and so does a lit

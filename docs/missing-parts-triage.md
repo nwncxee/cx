@@ -71,7 +71,7 @@ did not is the diagnosis. Capped at 32 gobs and 16 parts each.
 ## The incident protocol (~30 s)
 
 1. **Do not move.** Note which creature and which part.
-2. `/alloy framedump` -- writes `cx_frame_dump/frame.txt` (in the user directory beside `cx.cfg`): one
+2. `/alloy framedump` -- writes `cx_frame_dump/frame.txt` (in the game's `logs` folder, beside `cx.log`): one
    `D` row per draw Alloy SUBMITTED this frame, texture names on the row. A body part's texture is its
    PLT name (`pmh0_forel001` = human male left forearm, `..._shinl..`, `..._head..`); a bench is its
    diffuse.
@@ -81,7 +81,7 @@ did not is the diagnosis. Capped at 32 gobs and 16 parts each.
 4. Leave `poll` on. The next `[alloy]` period line carries
    `POLL AUDIT misses (must be 0): matrix N keyhole N fade N box N alpha N` -- the cache that disagreed
    with a live read is the one that lost the part. Does the bug recur at all with `poll` on?
-5. `/alloy poll 0` when done. Keep `~/cx.log`, any `~/cx.<n>.log` from the same session, and `frame.txt`.
+5. `/alloy poll 0` when done. Keep `cx.log`, any `cx.<n>.log` from the same session, and `frame.txt`, all in the game's `logs` folder.
 
 The bench plaza is the higher-rate repro: stand beside them with `poll 1` on from the start and see
 whether they still vanish.

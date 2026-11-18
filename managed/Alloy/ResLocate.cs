@@ -252,27 +252,6 @@ internal static unsafe class ResLocate
         }
     }
 
-    /// <summary>The path the engine's alias <paramref name="aliasName"/> (no colon) maps to, as its own
-    /// <c>GetAliasPath</c> answers it -- <c>nwn.ini</c>'s <c>[Alias]</c> included -- or null. MAIN THREAD.</summary>
-    internal static string? AliasPath(string aliasName)
-    {
-        if (!Attach(out _) || EngineFn.AliasGetPath == null || aliasName.Length is 0 or > ResRefChars) return null;
-        IntPtr exoBase = *(IntPtr*)_exoBaseSym;
-        if (exoBase == IntPtr.Zero) return null;   // pre-main: the engine has no CExoBase yet
-        IntPtr aliases = new CExoBase(exoBase).AliasList.Ptr;
-        if (aliases == IntPtr.Zero) return null;
-        Span<byte> name = stackalloc byte[ResRefChars + 1];
-        int n = System.Text.Encoding.ASCII.GetBytes(aliasName, name);
-        name[n] = 0;
-        fixed (byte* buf = name)
-        {
-            // A CExoString is {char* buf; int len; int cap}; GetAliasPath only reads it, so a forged shell serves.
-            ExoStringRec shell = new() { Buf = buf, Len = (uint)n };
-            var path = (ExoStringRec*)new CExoAliasList(aliases).AliasGetPath((IntPtr)(&shell), 0);
-            return path == null || path->Buf == null || path->Len == 0 ? null : path->Text;
-        }
-    }
-
     /// <summary>One <c>CExoAliasList::ResolveFileName</c>: an alias name plus a restype to an absolute
     /// filename. The <c>CExoString</c> it returns is the CALLER's, so its buffer is freed here.</summary>
     private static string? Resolve(IntPtr nameString, ushort resType)

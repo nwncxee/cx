@@ -5,7 +5,7 @@ using CX.Framework;
 namespace CX.Graphics;
 
 /// <summary>The on-disk folder Vulkan's compiled SPIR-V modules and its pipeline cache live in,
-/// <c>cx-shaders/</c> beside cx.cfg, swept of stale entries at first use.</summary>
+/// <c>shaders/</c> in CX's cache folder, swept of stale entries at first use.</summary>
 internal static partial class ShaderCache
 {
     /// <summary>Entries unused this long are swept at the session's first lookup: every CX release or shader
@@ -21,13 +21,23 @@ internal static partial class ShaderCache
     /// the blob's own header carries, and the only identity a driver reads its data back under.</summary>
     internal const string PipelinePrefix = "vk-pipelines-";
 
-    private static string? _dir;
+    /// <summary>The folder last swept: a folder the session moves to is swept once, on its first use from any thread.</summary>
+    private sealed class ShaderCacheState { internal string? Swept; }
+
+    private static readonly ShaderCacheState _st = new();
 
     /// <inheritdoc cref="ShaderCache"/>
-    internal static string Dir =>
-        _dir ??= Sweep(Path.Combine(Native.UserDirectory() ?? Native.DefaultUserDirectory(), "cx-shaders"));
+    internal static string Dir
+    {
+        get
+        {
+            string dir = Path.Combine(UserFolders.Cache, "shaders");
+            if (System.Threading.Interlocked.Exchange(ref _st.Swept, dir) != dir) Sweep(dir);
+            return dir;
+        }
+    }
 
-    private static string Sweep(string dir)
+    private static void Sweep(string dir)
     {
         ExtenderLog? log = KnobGroup.Log;
         int gone = 0;
@@ -53,7 +63,6 @@ internal static partial class ShaderCache
         catch (IOException e) { log?.Always($"ShaderCache: {dir} could NOT be swept -- {e.Message}"); }
         catch (UnauthorizedAccessException e) { log?.Always($"ShaderCache: {dir} could NOT be swept -- {e.Message}"); }
         if (gone > 0) log?.Info($"ShaderCache: swept {gone} stale file(s), {freed / 1024} KiB");
-        return dir;
     }
 
     /// <summary>Whether <paramref name="leaf"/> is a blob for this GPU under a driver identity it no longer

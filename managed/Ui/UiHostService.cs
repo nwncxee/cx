@@ -199,11 +199,13 @@ public sealed unsafe class UiHostService : IExtenderService
         {
             _announced = true;
             _log?.Info("UiHostService: first frame presented -- hook is LIVE");
+            if (_log != null) UserFolders.Settle(_log);
             CX.Services.CrashReport.Expose();
             int pin = General.Pin.Boot;
             if (pin >= 0) _log?.Info($"UiHostService: main thread pin={pin} -> {(Affinity.PinThis(pin) ? "pinned" : "REFUSED")} (was on cpu {Affinity.CurrentCpu})");
         }
         ResizeTick(window);
+        if (CX.Graphics.CacheFile.ReportSettled(System.Diagnostics.Stopwatch.GetTimestamp()) is { } damaged) _log?.Always(damaged);
         CX.Graphics.SdlWindow.Note(window);
         FrameRegistry.Global.Run(FramePhase.Start);
         // When Alloy renders, the 2D UI is drawn BY its frame, after the view list: that frame runs at PrePresent --

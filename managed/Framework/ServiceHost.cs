@@ -78,6 +78,7 @@ public static class ServiceHost
         ExtenderLog.SelfCheck(log);   // the disabled log evaluates nothing, the enabled one reaches the file
         LogPartsApprovedExamples.SelfCheck(log);   // launch rotation, rolling and the part cap
         LogPartsEdges.SelfCheck(log);   // an over-long line, and a move that fails
+        LogPartsMoveEdges.SelfCheck(log);   // a log move whose new folder cannot be made goes on in the old file
         CX.Alloy.Db.FogNoteApprovedExamples.SelfCheck(log);   // the fog line writes when the fog moves, not when a float does
         CX.Alloy.Db.FogNoteEdges.SelfCheck(log);   // each thing the line says, at the line's precision
         CX.Graphics.VulkanToolchain.SelfCheck(log);   // the staged shaderc and the machine's loader, off-device only
@@ -88,6 +89,11 @@ public static class ServiceHost
         CX.Graphics.Rhi.VkBackend.SwapSelfCheck(log);   // which chain the surface's extent leaves standing
         CX.Graphics.Rhi.VkBackend.CacheWriteSelfCheck(log);   // the pipeline-cache blob a worker writes lands whole, and a refused path is loud
         CX.Graphics.ShaderCache.SelfCheck(log);   // ...and which blob the folder retires beside the one this driver reads
+        UserFoldersApprovedExamples.SelfCheck(log);   // CX's caches, logs and dumps follow the game's own folders
+        UserFoldersRegression.SelfCheck(log);   // ...while settings and the shader dump stay beside nwn.ini
+        CX.Graphics.CacheFilesApprovedExamples.SelfCheck(log);   // a damaged cache file never changes what is drawn
+        CX.Graphics.CacheFileRegression.SelfCheck(log);   // ...a clean one says nothing, an older release's is rebuilt once
+        CX.Graphics.CacheFileEdges.SelfCheck(log);   // ...a zeroed one is named, and the report waits for the damage to stop
         CX.Graphics.Rhi.VkBackend.SwapShapeEdgesSelfCheck(log);   // ...and the swap state read into the shape that test takes
         CX.Alloy.DepthSnapshot.SelfCheck(log);   // one scene-depth copy a frame: a reader past no depth write reuses the one standing
         CX.Alloy.AlloyRenderer.FlushPassSelfCheck(log);   // ...and the flush that stales it: which passes do, and which say they write no depth

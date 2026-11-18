@@ -26,11 +26,20 @@ public sealed class HookService : IDisposable
     public HookService(ExtenderLog log)
     {
         _log = log;
-        // funchook's own trace beside the log (a hook that faults at first call); this first touch of General declares the group.
-        if (General.HookDebug.Boot)
-            funchook_set_debug_file(Path.Combine(Native.DefaultUserDirectory(), "funchook.log"));
+        FollowLogs();
         _fh = funchook_create();
         SelfCheck(log);
+    }
+
+    /// <summary>Point funchook's trace (a hook that faults at first call) at funchook.log in the pre-main logs folder, when
+    /// <c>general.hookdebug</c> asked for it; this first touch of General declares the group. Funchook holds the file
+    /// open all session, so a moved LOGS gets a copy when the folders settle.</summary>
+    private static void FollowLogs()
+    {
+        string logs = UserFolders.Logs;
+        if (!General.HookDebug.Boot) return;
+        try { Directory.CreateDirectory(logs); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return; }
+        funchook_set_debug_file(Path.Combine(logs, "funchook.log"));
     }
 
     private readonly Dictionary<IntPtr, string> _prepared = new();

@@ -56,7 +56,7 @@ There is also a headless trigger for offline work: put `alloy.dumpshaders=1` in
 2. Edit `cx_shader_dump/<resref>.shd`.
 3. Place it where your client's resource chain will find it — an `override/` directory
    for local play, a hak for a module you control.
-4. Restart the client and read `~/cx.log`. An override that loaded says so:
+4. Restart the client and read `cx.log` in the game's `logs` folder. An override that loaded says so:
    `shader override: <resref>.shd from resman (N bytes)`.
 
 ### Sizing tokens
@@ -565,7 +565,7 @@ from the whole-stage environment `cx_stageenv`, one upload for both.
 - `/alloy` prints the passes' GPU time as `native passes …`, and the `native stages:` clause of the `[alloy]`
   period line names each stage, how many passes ran this period, how many frames ran with no history (`cxFresh`
   1; a steady view has none) and how much image memory it holds.
-- `/alloy snap` writes the frame's finished scene colour into `cx_snap/` as one `<set>_vkscene.pfm` (float
+- `/alloy snap` writes the frame's finished scene colour into `cx_snap/` in the game's `logs` folder as one `<set>_vkscene.pfm` (float
   RGB, rows bottom-up; `tools/snap/snap_stats.py` reads it), and every live stage's images, level 0, beside it as
   `<set>_native_<image>.cxi`: a `CXI <w> <h> <d>` line, then float RGBA, rows bottom-up. `cx.log` gets a
   `[snap]` line per pass and per program a host draws, with what its frame uniforms, samplers and images hold at
