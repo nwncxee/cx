@@ -62,12 +62,12 @@ internal static partial class Legs
     }
 
     /// <summary>The floors and the pelvis: each foot's eased floor offset and tilt, the pelvis offset under the lower
-    /// foot with the dip and the drop, and each ankle's delta for the leg IK, never past the leg's reach.</summary>
+    /// foot with the dip and the drop, and each ankle's delta for the leg IK.</summary>
     internal static void Place(ref LegState s, in LegFrame f, ref LegPose p)
     {
         FootPlacement.Ease(ref s, f, p, out FootPlacement.Feet feet);
         float floor = MathF.Min(feet.OffR, feet.OffL);
-        p.Drop = Pelvis(ref s, f, p, feet.OffR - floor, feet.OffL - floor, out float reachR, out float reachL);
+        p.Drop = Pelvis(ref s, f, p, feet.OffR - floor, feet.OffL - floor);
         StrideWarp.Dropped(p.Drop);
         float body = floor + Mass.Step(ref s, f.Cue, f.Rise, f.Scale, f.Knobs.Mass, f.Gated, f.Snap, f.Dt) - p.Drop;
         p.Body = body;
@@ -80,9 +80,6 @@ internal static partial class Legs
         float cap = f.Knobs.Lift * f.Scale;
         p.DeltaR = p.WarpR + new Vector3(0f, 0f, MathF.Min(feet.OffR - body, cap));
         p.DeltaL = p.WarpL + new Vector3(0f, 0f, MathF.Min(feet.OffL - body, cap));
-        // a held foot stays where it is held: its hold is let go before the pelvis cannot reach it
-        if (s.FootingR.Stage == Footing.Swing) p.DeltaR = Reachable(p.DeltaR, f.RAnkle - f.RThigh, reachR);
-        if (Airborne(s.FootingL)) p.DeltaL = Reachable(p.DeltaL, f.LAnkle - f.LThigh, reachL);
     }
 
     /// <summary>Foot placement runs this frame: <c>anim.footik</c> on and the animation not gated.</summary>

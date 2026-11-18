@@ -17,17 +17,14 @@ internal static partial class Legs
     private const float DropTime = 0.06f;
 
     /// <summary>The pelvis drop this frame (world units, down), from where each leg's target sits off its hip joint with
-    /// the pelvis at the lower floor: <paramref name="upR"/>, <paramref name="upL"/> are each foot's floor over that.
-    /// <paramref name="reachR"/>, <paramref name="reachL"/>: how long each leg may be drawn (0: no bound).</summary>
-    private static float Pelvis(ref LegState s, in LegFrame f, in LegPose p, float upR, float upL, out float reachR, out float reachL)
+    /// the pelvis at the lower floor: <paramref name="upR"/>, <paramref name="upL"/> are each foot's floor over that.</summary>
+    private static float Pelvis(ref LegState s, in LegFrame f, in LegPose p, float upR, float upL)
     {
-        reachR = reachL = 0f;
         if (f.Gated || f.Snap || !(f.Dt > 0f)) { s.Drop = s.DropV = 0f; return 0f; }
         if (f.Walk.Present) s.LegLen = f.Walk.LegLength * f.Scale;
         Vector3 animR = f.RAnkle - f.RThigh, animL = f.LAnkle - f.LThigh;
         float lenR = Stretch(f, p, true), lenL = Stretch(f, p, false), leg = MathF.Max(s.LegLen, MathF.Max(lenR, lenL)), cap = MaxDrop * leg;
-        reachR = MathF.Max(Reach * leg, lenR);
-        reachL = MathF.Max(Reach * leg, lenL);
+        float reachR = MathF.Max(Reach * leg, lenR), reachL = MathF.Max(Reach * leg, lenL);
         float needR = Need(animR + p.WarpR + new Vector3(0f, 0f, upR), reachR, cap);
         float needL = Need(animL + p.WarpL + new Vector3(0f, 0f, upL), reachL, cap);
         Smooth(ref s.Drop, ref s.DropV, MathF.Max(needR, needL), f.Dt, DropTime);
@@ -44,16 +41,6 @@ internal static partial class Legs
         return MathF.Max(now, Vector3.Distance(right ? f.Walk.LandR : f.Walk.LandL, hip) * f.Scale);
     }
 
-    /// <summary>Ankle delta <paramref name="delta"/> on a leg whose animated ankle sits <paramref name="leg"/> off its hip
-    /// joint (world, the pelvis's offset carrying both), pulled in toward the hip to <paramref name="reach"/> when past it:
-    /// the pelvis eases toward its drop, and a frame it lags is not a frame the leg is drawn stretched.</summary>
-    private static Vector3 Reachable(Vector3 delta, Vector3 leg, float reach)
-    {
-        Vector3 d = leg + delta;
-        float len = d.Length();
-        return reach > 0f && len > reach ? d * (reach / len) - leg : delta;
-    }
-
     /// <summary>The drop that lets a leg reach <paramref name="d"/> (target less hip joint, world) at
     /// <paramref name="reach"/> long, capped at <paramref name="cap"/>; under <see cref="FootPlacement.MinLift"/> is none.</summary>
     internal static float Need(Vector3 d, float reach, float cap)
@@ -65,9 +52,9 @@ internal static partial class Legs
     }
 
     /// <summary>The need worked by hand for a 0.9 leg whose hip joint is 0.77 over its ankle (none 0.3 ahead, 0.054368
-    /// at 0.5, the 0.108 cap past reach), and the drop over a 0.5 s cycle needing 0.054368 for its first 0.1 s: no frame
-    /// takes a quarter of that need at once, it reaches 0.04, it is back under 2 mm before the next, and 0.5 s after the
-    /// need ends it is gone. Oracle: the leg triangle by hand and the hand-written need.</summary>
+    /// at 0.5, the 0.108 cap past reach), and the drop while each leg in turn needs 0.054368 for 0.1 s of every 0.5 s: no
+    /// frame takes a quarter of it at once, either leg's need takes it past 0.04, it is back under 2 mm before the next,
+    /// and 0.5 s after the needs end it is gone. Oracle: the leg triangle by hand and the hand-written need.</summary>
     internal static bool PelvisCheck()
     {
         Vector3 down = new(0f, 0f, -0.77f);
@@ -88,16 +75,23 @@ internal static partial class Legs
         LegPose p = default;
         p.Legs = Quaternion.Identity;
         float prev = 0f, step = 0f, deep = 0f, high = 1f, after = 1f;
-        for (int n = 0; n < 180; n++)
+        float deepR = 0f, deepL = 0f;
+        for (int n = 0; n < 240; n++)
         {
-            float t = n * Dt;
-            p.WarpR = t < 2f && t % 0.5f < 0.1f ? new Vector3(0f, 0.5f, 0f) : Vector3.Zero;
-            float d = Pelvis(ref s, f, p, 0f, 0f, out _, out _);
+            float t = n * Dt, c = t % 1f;
+            p.WarpR = t < 3f && c < 0.1f ? new Vector3(0f, 0.5f, 0f) : Vector3.Zero;
+            p.WarpL = t < 3f && c >= 0.5f && c < 0.6f ? new Vector3(0f, 0.5f, 0f) : Vector3.Zero;
+            float d = Pelvis(ref s, f, p, 0f, 0f);
             step = MathF.Max(step, MathF.Abs(d - prev));
             prev = d;
-            if (t >= 1.5f && t < 2f) { deep = MathF.Max(deep, d); if (t % 0.5f > 0.45f) high = MathF.Min(high, d); }
-            if (t >= 2.5f - 1e-4f) after = d;
+            if (t >= 2f && t < 3f)
+            {
+                if (c < 0.5f) deepR = MathF.Max(deepR, d); else deepL = MathF.Max(deepL, d);
+                if (c % 0.5f > 0.45f) high = MathF.Min(high, d);
+            }
+            if (t >= 3.5f - 1e-4f) after = d;
         }
+        deep = MathF.Min(deepR, deepL);
         return need && step < 0.25f * 0.054368f && deep > 0.04f && high < 0.002f && after == 0f;
     }
 }

@@ -974,7 +974,7 @@ public sealed unsafe class PoseService : IExtenderService
         check.Expect(Weight.SelfCheck(), "weight cues: a cruise on a path loads nothing; the engine's ramp and a drive's ease each dip the pelvis by the rate's worth of load and pitch the lean into the travel and none out of it; a drive at full speed carries no cue at all, a body off any path falls back to the measured acceleration, and no cue passes the running stop's");
         string[] stockNodes = ["root", "rthigh_g", "rshin_g", "rfoot_g", "lthigh_g", "lshin_g", "lfoot_g"];
         string[] ownNodes = ["root", "Bip_R_Thigh", "Bip_R_Calf", "Bip_R_Foot", "Bip_L_Thigh", "Bip_L_Calf", "Bip_L_Foot"];
-        check.Expect(DbRigCheck(stockNodes, st, out bool legs) && legs, "DB rig: the bones are found by node name in a SceneDb part range, a lifted ankle's IK reads its own writes back through the world chain, and the restore puts the animation's values back -- root height and every bone");
+        check.Expect(DbRigCheck(stockNodes, st, out bool legs) && legs, "DB rig: the bones are found by node name in a SceneDb part range, a lifted ankle's IK reads its own writes back through the world chain, a foot turned about the vertical turns where it stands, and the restore puts the animation's values back -- root height and every bone");
         check.Expect(RigMapCheck(out byte[][] mapped), "rig map: a supermodel's row names the limbs, a blank cell names no bone, the appearance names the head, and a chain with no row keeps the stock names");
         check.Expect(DbRigCheck(ownNodes, mapped, out legs) && legs && DbRigCheck(ownNodes, st, out bool unmapped) && !unmapped,
                      "rig map: a skeleton with its own bone names gets foot IK when the map names its legs, and none on the stock names alone");
@@ -1065,8 +1065,9 @@ public sealed unsafe class PoseService : IExtenderService
     }
 
     /// <summary>The layer over a synthetic SceneDb leg pair (root, then thigh -> shin -> foot each side, named
-    /// <paramref name="names"/>) found by <paramref name="rig"/>: what DB mode's step drives. <paramref name="legs"/>
-    /// says the rig found all six; with fewer there is nothing to drive, and it passes. Leaves the table as it found it.</summary>
+    /// <paramref name="names"/>) found by <paramref name="rig"/>: what DB mode's step drives, a foot turned 0.5 rad about the
+    /// world vertical where it stands. <paramref name="legs"/> says the rig found all six; with fewer there is nothing to
+    /// drive, and it passes. Leaves the table as it found it.</summary>
     private static bool DbRigCheck(string[] names, byte[][] rig, out bool legs)
     {
         legs = false;
@@ -1097,6 +1098,11 @@ public sealed unsafe class PoseService : IExtenderService
             PoseRig.World(b.RFoot, out Vector3 foot1, out _);
             ok &= PoseRig.TakeWrote() && MathF.Abs(foot1.Z - foot0.Z - 0.15f) < 2e-3f
                   && Quaternion.Dot(PoseRig.Local(b.RShin), shin0) < 0.9999f;
+            PoseRig.World(b.LFoot, out Vector3 left0, out Quaternion turn0);
+            Leg(b.LThigh, b.LShin, b.LFoot, Vector3.Zero, Vector3.UnitY, Quaternion.Identity, 0.5f);
+            PoseRig.World(b.LFoot, out Vector3 left1, out Quaternion turn1);
+            ok &= Vector3.Distance(left0, left1) < 1e-4f
+                  && MathF.Abs(Quaternion.Dot(turn1, Quaternion.CreateFromAxisAngle(Vector3.UnitZ, 0.5f) * turn0)) > 0.9999f;
             Restore(ref s, b);
             PoseRig.World(b.RFoot, out Vector3 foot2, out _);
             ok &= Vector3.Distance(foot2, foot0) < 1e-4f && PoseRig.Pos(root) == Vector3.Zero

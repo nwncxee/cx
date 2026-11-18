@@ -141,15 +141,6 @@ internal static partial class Legs
     /// <summary>World units per second (times scale) under which a body has no line of travel to aim a landing at.</summary>
     private const float MinTravel = 0.1f;
 
-    /// <summary>The foot is off the ground and travelling: swinging, or through the middle of a step, not rising or setting
-    /// down where it stands.</summary>
-    private static bool Airborne(in Footing f)
-    {
-        if (f.Stage == Footing.Swing) return true;
-        float s = f.T / StepTime;
-        return f.Stage == Footing.Stepping && s > StepLead && s < 1f - StepLead;
-    }
-
     /// <summary>The foot leaves the ground <paramref name="u"/> through its swing: what it is drawn off the animation by
     /// now eases out from here.</summary>
     internal static void Lift(ref Footing f, float u)
@@ -185,10 +176,10 @@ internal static partial class Legs
 
     private static float Wrap(float a) => MathF.IEEERemainder(a, 2f * MathF.PI);
 
-    /// <summary>A foot against hand-worked 0.1 s frames: it lands where drawn, turns back by a 0.3 rad turn of the legs,
-    /// past a 0.1 hold steps half way and 0.04 up at mid-step and lands on the animation, is let go past 0.8 rad, and 0.5
-    /// off a hip 0.77 up (0.054368 of drop) but not 0.4; a swing keeps half its lift-off offset half way to
-    /// <see cref="SwingEnd"/> and none from there. Oracle: the hand-worked steps, the ease and the leg triangle.</summary>
+    /// <summary>A foot on hand-worked 0.1 s frames: lands where drawn, turns back by the legs' 0.3 rad, past a 0.1 hold steps
+    /// half way and 0.04 up at mid-step onto the animation, is let go past 0.8 rad and 0.5 off a hip 0.77 up (0.0544 drop),
+    /// not 0.43 (0.0102); a swing keeps half its offset and is aimed half of a quarter turn half way to <see cref="SwingEnd"/>,
+    /// all from there; a turn alone is written. Oracle: the hand-worked steps, the ease and the leg triangle.</summary>
     internal static bool FootCheck()
     {
         var r = new HoldLimits { Hip = new Vector3(0f, 0f, 0.85f), Reach = 0.873f, Cap = 0.108f, Sink = 0.018f, Hold = 0.1f, Lift = 0.04f };
@@ -215,7 +206,7 @@ internal static partial class Legs
             Hold(ref g, true, 1f, new Vector3(0f, hipY, 0.08f), 0f, w, 0.1f, out _, out _, out bool second);
             return !first && second;
         }
-        bool stretch = Reaches(0.1f) && !Reaches(0f);
+        bool stretch = Reaches(0.1f) && !Reaches(0.03f);
 
         Footing h = default;
         h.Aired = true;
@@ -227,6 +218,25 @@ internal static partial class Legs
         Vector3 land = Hold(ref h, true, 1f, new Vector3(0.6f, 0f, 0f), 0f, r, 0.1f, out _, out down, out _);
         bool swings = MathF.Abs(lift.X + 0.05f) < 1e-6f && MathF.Abs(mid.X + 0.025f) < 1e-6f && end == Vector3.Zero
                       && land == Vector3.Zero && down && h.At == new Vector2(0.6f, 0f);
-        return lands && holds && steps && stepped && twists && stretch && swings;
+        Footing a = default;
+        Lift(ref a, 0f);
+        Vector3 at = new(0f, 1f, 0f);
+        Vector2 across = new(-1f, 0f);
+        float half = Aim(ref a, at, Vector3.Zero, across, Vector3.UnitY, 0.425f, 1f).X;
+        float whole = Aim(ref a, at, Vector3.Zero, across, Vector3.UnitY, 0.85f, 1f).X;
+        bool aims = MathF.Abs(half + MathF.Sin(0.25f * MathF.PI)) < 1e-4f && MathF.Abs(whole + 1f) < 1e-4f;
+
+        LegState ls = default;
+        LegFrame lf = default;
+        lf.Dt = 0.1f;
+        lf.Scale = 1f;
+        lf.RThigh = lf.LThigh = new Vector3(0f, 0f, 0.85f);
+        lf.RAnkle = lf.LAnkle = new Vector3(0f, 0f, 0.08f);
+        LegPose lp = default;
+        lp.Legs = Quaternion.Identity;
+        lp.TiltR = lp.TiltL = Quaternion.Identity;
+        lp.YawR = 0.3f;
+        Place(ref ls, lf, ref lp);
+        return lands && holds && steps && stepped && twists && stretch && swings && aims && lp.Ik;
     }
 }
