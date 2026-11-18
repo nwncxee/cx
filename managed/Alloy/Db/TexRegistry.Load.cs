@@ -46,6 +46,9 @@ internal static unsafe partial class TexRegistry
         public bool Chained;
         /// <summary>This texture cuts a surface: <see cref="TexRegistry.Acquire"/> says so.</summary>
         public bool Cuts;
+        /// <summary>The <c>.txi</c> says <c>data 1</c> (<see cref="ParseTxi"/>): its bytes go up as the file holds them,
+        /// with no coverage scan and no rebuilt chain.</summary>
+        public bool DataTexture;
         public int W, H, Levels, Channels;
         /// <summary>The GL internal format and the (format, type) pair of an uncompressed upload.</summary>
         public uint GlFmt;
@@ -369,10 +372,14 @@ internal static unsafe partial class TexRegistry
             j.Compressed = false; j.GenMips = true;
             j.Bytes = r.Bytes;
             ReadOnlySpan<byte> sheet = new(px, r.Bytes);
-            j.Cov = TexCoverageOf.OfRaster(sheet, r.W, r.H, r.Px);
-            j.CovWhy = TexCoverageOf.Why($"TGA, {r.Px} channel(s)", j.Cov);
+            if (j.DataTexture) DataVerdict(j, "TGA");
+            else
+            {
+                j.Cov = TexCoverageOf.OfRaster(sheet, r.W, r.H, r.Px);
+                j.CovWhy = TexCoverageOf.Why($"TGA, {r.Px} channel(s)", j.Cov);
+            }
             j.MeanOk = TexScan.MeanOfRaster(px, r.W, r.H, r.Px, out j.Mean);
-            if (j.Cuts && !j.EnvMap && r.Px == 4 && j.GridX * j.GridY <= 1 && MipChain.RasterNative(sheet, r.W, r.H, out long chainBytes) is var built && built != null)
+            if (j.Cuts && !j.EnvMap && !j.DataTexture && r.Px == 4 && j.GridX * j.GridY <= 1 && MipChain.RasterNative(sheet, r.W, r.H, out long chainBytes) is var built && built != null)
             {
                 NativeMemory.Free(px);
                 j.Data = px = built; j.Chained = true; j.Bytes = chainBytes;
@@ -390,15 +397,26 @@ internal static unsafe partial class TexRegistry
         j.Data = chain; j.W = info.W; j.H = info.H; j.Levels = info.Present;
         j.Channels = info.Channels; j.GlFmt = fmt; j.Compressed = true; j.GenMips = false;
         j.Bytes = info.ChainBytes;
-        byte[] sc = _covScratch ?? Array.Empty<byte>();
         Span<byte> stored = new(chain, checked((int)info.ChainBytes));
-        j.Cov = TexCoverageOf.OfBcn(stored[..DdsReader.LevelSize(info.W, info.H, info.Channels)],
-                                    info.W, info.H, info.Format, ref sc);
-        j.CovWhy = TexCoverageOf.Why($"DDS {info.Format}, {info.Channels} channel(s)", j.Cov);
-        _covScratch = sc;
+        if (j.DataTexture) DataVerdict(j, $"DDS {info.Format}");
+        else
+        {
+            byte[] sc = _covScratch ?? Array.Empty<byte>();
+            j.Cov = TexCoverageOf.OfBcn(stored[..DdsReader.LevelSize(info.W, info.H, info.Channels)],
+                                        info.W, info.H, info.Format, ref sc);
+            j.CovWhy = TexCoverageOf.Why($"DDS {info.Format}, {info.Channels} channel(s)", j.Cov);
+            _covScratch = sc;
+        }
         if (info.Format is DdsReader.Fmt.Bc1 or DdsReader.Fmt.Bc3)
             j.MeanOk = TexScan.MeanOfDxt(chain, info.W, info.H, info.Format == DdsReader.Fmt.Bc3, out j.Mean);
-        if (j.Cuts && !j.EnvMap) MipChain.Dds(stored, info.W, info.H, info.Present, info.Format);
+        if (j.Cuts && !j.EnvMap && !j.DataTexture) MipChain.Dds(stored, info.W, info.H, info.Present, info.Format);
+    }
+
+    /// <summary>A data texture's coverage, answered without a scan: its alpha holds values, so nothing in it cuts.</summary>
+    private static void DataVerdict(Job j, string container)
+    {
+        j.Cov = TexCoverage.Opaque;
+        j.CovWhy = $"{container} marked data by its .txi -> Opaque, unscanned (its bytes go up as stored)";
     }
 
     /// <summary>The fast pass's preview: the DDS's own mips from the first one at or under <see cref="PreviewSide"/>

@@ -46,11 +46,11 @@ internal static unsafe partial class TexRegistry
 
     /// <summary>The <c>.txi</c> words this file owns, parsed line by line as <c>CAurTextureBasic::ParseField</c>
     /// @0x5881e0 and <c>Material::ParseField</c> @0x5c5850 do: the first word is the key, so a <c>#</c> line is nothing. <c>fps</c>
-    /// is the cycle controller's own field and reaches it only once a <c>proceduretype cycle</c> line has created it,
-    /// and a later <c>proceduretype</c> of another kind replaces it.</summary>
-    internal static void ParseTxi(string? txi, out byte blend, out bool decal, out int numX, out int numY, out bool cycle, out float fps)
+    /// reaches the cycle only once a <c>proceduretype cycle</c> line has created it, and a later <c>proceduretype</c> replaces
+    /// it. <c>data 1</c> is the extender's own word, which the engine skips: the texture holds values, not colour.</summary>
+    internal static void ParseTxi(string? txi, out byte blend, out bool decal, out int numX, out int numY, out bool cycle, out float fps, out bool data)
     {
-        blend = 0; decal = false; numX = 1; numY = 1; cycle = false; fps = 1f;
+        blend = 0; decal = false; numX = 1; numY = 1; cycle = false; fps = 1f; data = false;
         if (txi == null) return;
         foreach (string raw in txi.Split('\n'))
         {
@@ -63,6 +63,7 @@ internal static unsafe partial class TexRegistry
             if (key.Equals("blending", StringComparison.OrdinalIgnoreCase))
                 blend = val.SequenceEqual("additive") ? TxiBlendAdditive : (byte)0;   // the value compare is byte-exact, unlike the key's
             else if (key.Equals("decal", StringComparison.OrdinalIgnoreCase)) decal = int.TryParse(val, out int d) && d != 0;
+            else if (key.Equals("data", StringComparison.OrdinalIgnoreCase)) data = int.TryParse(val, out int d) && d != 0;
             else if (key.Equals("numx", StringComparison.OrdinalIgnoreCase)) { if (int.TryParse(val, out int n)) numX = n; }
             else if (key.Equals("numy", StringComparison.OrdinalIgnoreCase)) { if (int.TryParse(val, out int n)) numY = n; }
             else if (key.Equals("proceduretype", StringComparison.OrdinalIgnoreCase))
@@ -76,7 +77,7 @@ internal static unsafe partial class TexRegistry
     /// <summary>GAME thread, at the offer: file the material words on the slot and hand the grid to the job.</summary>
     private static void TxiMaterial(int i, string? txi, Job j)
     {
-        ParseTxi(txi, out byte blend, out bool decal, out j.GridX, out j.GridY, out j.Cycle, out j.Fps);
+        ParseTxi(txi, out byte blend, out bool decal, out j.GridX, out j.GridY, out j.Cycle, out j.Fps, out j.DataTexture);
         ParseArturo(txi, out j.Arturo);
         lock (_lock)
         {
@@ -172,17 +173,22 @@ internal static unsafe partial class TexRegistry
     }
 
     /// <summary>Off-device: the <c>.txi</c> words read as the engine reads them -- a commented line is nothing, <c>fps</c>
-    /// before <c>proceduretype cycle</c> is lost, a stock flame grid reads whole.</summary>
+    /// before <c>proceduretype cycle</c> is lost, a stock flame grid reads whole, only <c>data 1</c> marks data. Oracle:
+    /// hand-written <c>.txi</c> text.</summary>
     internal static bool TxiSelfCheck(Checker check)
     {
         ParseTxi("proceduretype cycle\r\nnumx 4\r\nnumy 4\r\nfps 32\r\nblending additive\r\ndecal 1\r\n",
-                 out byte b, out bool d, out int nx, out int ny, out bool cy, out float fps);
+                 out byte b, out bool d, out int nx, out int ny, out bool cy, out float fps, out _);
         check.Expect(b == TxiBlendAdditive && d && nx == 4 && ny == 4 && cy && fps == 32f, "fxpa_flame02.txi reads as a 4x4 additive decal cycling at 32");
         ParseTxi("fps 12\nproceduretype cycle\nnumy 8\n# blending additive\nblending default\n",
-                 out b, out d, out nx, out ny, out cy, out fps);
+                 out b, out d, out nx, out ny, out cy, out fps, out _);
         check.Expect(b == 0 && !d && nx == 1 && ny == 8 && cy && fps == 1f, "a # line and an fps before the controller exists are nothing");
-        ParseTxi("proceduretype cycle\nfps 8\nproceduretype arturo\n", out _, out _, out _, out _, out cy, out _);
+        ParseTxi("proceduretype cycle\nfps 8\nproceduretype arturo\n", out _, out _, out _, out _, out cy, out _, out _);
         check.Expect(!cy, "a later proceduretype replaces the cycle");
+        ParseTxi("mipmap 0\nDATA 1\n", out _, out _, out _, out _, out _, out _, out bool data);
+        check.Expect(data, "a data 1 line marks the texture as data, whatever the key's case");
+        ParseTxi("data 0\n# data 1\n", out _, out _, out _, out _, out _, out _, out data);
+        check.Expect(!data, "data 0 and a # line leave the texture colour");
         return check.Ok;
     }
 }
