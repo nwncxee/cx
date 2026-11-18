@@ -12,7 +12,6 @@
 1 managed/Alloy/Pass/StageResources.SelfCheck.cs
 1 managed/Alloy/Scene/AlloyRenderer.Casters.cs
 1 managed/Alloy/Scene/PlaceableHold.cs
-1 managed/Framework/Native.cs
 1 managed/Graphics/Vulkan/VkBackend.Images.cs
 1 managed/Services/Chat/Core/Window/ChatWindow.cs
 1 managed/Services/Nameplate/NameplateNative.cs

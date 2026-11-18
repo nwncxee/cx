@@ -95,28 +95,47 @@ public static unsafe class Native
         return ((IntPtr)q, (uint)*(ulong*)(s + 8), q == s + 0x10 ? IntPtr.Zero : (IntPtr)q);
     }
 
-    /// <summary>Longest engine string <see cref="ReadExo"/> and <see cref="Chars"/> trust; a length past this is
-    /// a stale or foreign pointer.</summary>
-    private const uint MaxExoLen = 4096;
+    /// <summary>Longest engine string <see cref="ReadExo"/> and <see cref="Chars"/> return, 10 MiB: past any text a
+    /// player reads, and a bound on what a wild length makes them allocate. Longer text is cut to it.</summary>
+    private const int MaxExoLen = 10 * 1024 * 1024;
 
-    /// <summary>A NUL-terminated engine string as the codepage bytes a reader works in -- the distance to the
-    /// NUL measured here rather than by each caller, a null pointer read as empty, and the walk stopped at
-    /// <see cref="MaxExoLen"/> so a stale or foreign pointer costs a truncated span and not a walk off the
-    /// mapping. No transcode: the engine's text is a single-byte codepage and the span is read, not stored.</summary>
+    /// <summary>Where the readers' lines go, and whether the cut line has been spent: replaced whole by
+    /// <see cref="Attach"/>.</summary>
+    private sealed class NativeLogState
+    {
+        public ExtenderLog? Log;
+        public int CutLogged;
+    }
+
+    private static NativeLogState _logState = new();
+
+    /// <summary>Send this class's lines to <paramref name="log"/> and arm the cut line again. From the host at boot,
+    /// and from a self-check that listens.</summary>
+    internal static void Attach(ExtenderLog log) => _logState = new NativeLogState { Log = log };
+
+    /// <summary>The once-per-attach line that an engine string was cut to <see cref="MaxExoLen"/>.</summary>
+    private static void LogCut(string what)
+    {
+        var s = _logState;
+        if (Interlocked.Exchange(ref s.CutLogged, 1) == 0)
+            s.Log?.Info($"native: {what} was cut to {MaxExoLen} bytes; later cuts are not logged");
+    }
+
+    /// <summary>A NUL-terminated engine string as the codepage bytes a reader works in -- the distance to the NUL
+    /// measured here, a null pointer read as empty, the walk stopped and logged as a cut at <see cref="MaxExoLen"/>.
+    /// Trusts the engine's NUL: an unterminated pointer can fault before the cap. Read, not stored.</summary>
     public static ReadOnlySpan<byte> Chars(byte* text)
     {
         if (text == null) return default;
         int n = 0;
         while (n < MaxExoLen && text[n] != 0) n++;
+        if (n == MaxExoLen) LogCut("an engine text with no NUL in its first 10 MiB");
         return new ReadOnlySpan<byte>(text, n);
     }
 
     /// <inheritdoc cref="Chars(byte*)"/>
     public static ReadOnlySpan<byte> Chars(nint text) => Chars((byte*)text);
 
-    /// <summary>Decode a <c>CExoString</c> {char* buf@0; uint len@8} to a string: Latin1 keeps colour bytes intact.
-    /// Copies out immediately, never holds the engine char*. Allocates, so COLD paths only. A Win64 by-value arg
-    /// must be read BEFORE forwarding -- the callee destroys it.</summary>
     /// <summary>A fixed-width engine char field (a CResRef, a GFF label) as text: Latin1, up to its first NUL.</summary>
     public static string FixedText(ReadOnlySpan<byte> field)
     {
@@ -124,12 +143,17 @@ public static unsafe class Native
         return Encoding.Latin1.GetString(n < 0 ? field : field[..n]);
     }
 
+    /// <summary>Decode a <c>CExoString</c> {char* buf@0; uint len@8} to a string: Latin1 keeps colour bytes intact,
+    /// past <see cref="MaxExoLen"/> cut and logged. Copies out at once, never holds the engine char*. Allocates, so
+    /// COLD paths only. A Win64 by-value arg must be read BEFORE forwarding -- the callee destroys it.</summary>
     public static string ReadExo(IntPtr exo)
     {
         if (exo == IntPtr.Zero) return "";
         byte* buf = *(byte**)exo;
         uint len = *(uint*)(exo + 8);
-        return buf == null || len == 0 || len > MaxExoLen ? "" : Encoding.Latin1.GetString(buf, (int)len);
+        if (buf == null || len == 0) return "";
+        if (len > MaxExoLen) { LogCut($"an engine string of {len} bytes"); len = MaxExoLen; }
+        return Encoding.Latin1.GetString(buf, (int)len);
     }
 
     /// <summary>The codepoint a codepage byte stands for, through the engine's own
@@ -223,8 +247,7 @@ public static unsafe class Native
         byte* text = stackalloc byte[3]; text[0] = (byte)'a'; text[1] = 0xC7; text[2] = (byte)'z';
         *(byte**)s = text; *(uint*)(s + 8) = 3;
         check.Expect(ReadExo((IntPtr)s) == "a\u00C7z", "exo latin1 byte-for-byte");
-        *(uint*)(s + 8) = MaxExoLen + 1;
-        check.Expect(ReadExo((IntPtr)s) == "" && ReadExo(IntPtr.Zero) == "", "exo over-cap and null read empty");
+        check.Expect(ReadExo(IntPtr.Zero) == "", "exo null reads empty");
         if (OperatingSystem.IsWindows())
         {
             s[0] = (byte)'a'; s[1] = (byte)'b'; *(ulong*)(s + 0x10) = 2; *(ulong*)(s + 0x18) = 15;
