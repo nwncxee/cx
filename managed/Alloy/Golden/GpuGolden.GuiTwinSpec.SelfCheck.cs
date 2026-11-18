@@ -94,7 +94,7 @@ internal static unsafe partial class GpuGolden
             con = default;
             con.Row = rows[i];
         }
-        bool flushed = GuiPassVk.FlushOn(vk, 0, GuiCapture.LayerN, GuiCapture.LayerN, false, log, target, clearBlack: true);
+        bool flushed = GuiPassVk.FlushOn(vk, 0, GuiCapture.LayerN, GuiCapture.LayerN, GuiCapture.LayerN, false, log, target, clearBlack: true);
         check.Expect(flushed, "the GUI flush holding the lit twin's draws was refused (logged above)");
         byte[]? px = flushed ? PostRead(vk, log, target, w, Side, 4, rb) : null;
         if (px != null)

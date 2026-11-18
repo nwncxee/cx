@@ -304,13 +304,18 @@ internal static unsafe class AlloyCamera
     {
         bool gui = fovy == 0f || (sceneName != null && Prefix(sceneName, "sceneGUI"u8));
         if (!gui) { near = 0f; far = 1f; return; }
-        bool front = sceneName != null
-                  && (Prefix(sceneName, "sceneGUI_MouseOverlay"u8) || Prefix(sceneName, "sceneGUI_Overlay"u8)
-                   || Prefix(sceneName, "sceneGUI_pnl_vidopts"u8) || Prefix(sceneName, "sceneGUI_PNL_CONNECTSTAT"u8)
-                   || Prefix(sceneName, "sceneGUI_PNL_UTIL_OK"u8));
+        bool front = AfterNui(sceneName)
+                  || (sceneName != null
+                      && (Prefix(sceneName, "sceneGUI_pnl_vidopts"u8) || Prefix(sceneName, "sceneGUI_PNL_CONNECTSTAT"u8)
+                          || Prefix(sceneName, "sceneGUI_PNL_UTIL_OK"u8)));
         near = front ? GuiFrontNear : GuiBackNear;
         far = front ? GuiFrontFar : GuiBackFar;
     }
+
+    /// <summary>One of the two scenes <c>CGuiMan::UpdateAndRender</c> draws after NUI: <c>sceneGUI_Overlay</c>, then the
+    /// cursor's <c>sceneGUI_MouseOverlay</c>. Two of the five front-depth names, compared as <see cref="DepthRange"/> does.</summary>
+    internal static bool AfterNui(byte* sceneName)
+        => sceneName != null && (Prefix(sceneName, "sceneGUI_MouseOverlay"u8) || Prefix(sceneName, "sceneGUI_Overlay"u8));
 
     private static bool Prefix(byte* s, ReadOnlySpan<byte> want)
     {

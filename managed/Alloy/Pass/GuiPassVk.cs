@@ -115,16 +115,16 @@ internal static unsafe partial class GuiPassVk
          + (_s.NoTexture == 0 ? "" : $", {_s.NoTexture} on the stand-in texture") + EngineStats();
 
     /// <summary>The flush: layers <paramref name="from"/>..<paramref name="mid"/>, CX's below-NUI windows, layers
-    /// <paramref name="mid"/>..<paramref name="to"/>, the above-NUI windows, in one submit (the present's, for the screen). <paramref name="into"/> is
-    /// null for the screen Vulkan presents; <paramref name="clearBlack"/> clears it first, which is the A/B's.</summary>
-    internal static bool Flush(int from, int mid, int to, bool windows, ExtenderLog log, ImageId into = default, bool clearBlack = false)
+    /// <paramref name="mid"/>..<paramref name="front"/>, the above-NUI windows, then layers <paramref name="front"/>..<paramref name="to"/>,
+    /// in one submit (the present's, for the screen). <paramref name="into"/> null = the screen; <paramref name="clearBlack"/> clears it first.</summary>
+    internal static bool Flush(int from, int mid, int front, int to, bool windows, ExtenderLog log, ImageId into = default, bool clearBlack = false)
     {
         if (AlloyDevice.Vulkan(log) is not VkBackend vk) return false;
-        return FlushOn(vk, from, mid, to, windows, log, into, clearBlack);
+        return FlushOn(vk, from, mid, front, to, windows, log, into, clearBlack);
     }
 
     /// <summary><see cref="Flush"/> on the device given.</summary>
-    internal static bool FlushOn(VkBackend vk, int from, int mid, int to, bool windows, ExtenderLog log, ImageId into = default, bool clearBlack = false)
+    internal static bool FlushOn(VkBackend vk, int from, int mid, int front, int to, bool windows, ExtenderLog log, ImageId into = default, bool clearBlack = false)
     {
         if (!vk.OnOwnThread)
         {
@@ -155,7 +155,7 @@ internal static unsafe partial class GuiPassVk
             CommandList cl = s.Cmds!;
             cl.Reset();
             Uploads(cl, log);
-            ok = FrameClear(vk, cl) && CX.Ui.GuiFrame.Draw(new FlushSink(vk, cl, from, mid, to, log), windows) && Submit(vk, cl, log);
+            ok = FrameClear(vk, cl) && CX.Ui.GuiFrame.Draw(new FlushSink(vk, cl, from, mid, front, to, log), windows) && Submit(vk, cl, log);
         }
         finally { s.Busy = false; }
         if (ok && !s.Live)
@@ -167,12 +167,14 @@ internal static unsafe partial class GuiPassVk
         return ok;
     }
 
-    /// <summary>One flush's steps on the device: the panels are layers <c>from..mid</c>, NUI is <c>mid..to</c>.</summary>
-    private readonly struct FlushSink(VkBackend vk, CommandList cl, int from, int mid, int to, ExtenderLog log) : CX.Ui.IGuiFrameSink
+    /// <summary>One flush's steps on the device: the panels are layers <c>from..mid</c>, NUI is <c>mid..front</c> and
+    /// the overlay scenes <c>front..to</c>.</summary>
+    private readonly struct FlushSink(VkBackend vk, CommandList cl, int from, int mid, int front, int to, ExtenderLog log) : CX.Ui.IGuiFrameSink
     {
         public bool Windows(CX.Ui.UiLayer layer) => GuiPassVk.Windows(vk, cl, layer, log);
         public bool Panels() => Record(vk, cl, from, mid, log);
-        public bool Nui() => Record(vk, cl, mid, to, log);
+        public bool Nui() => Record(vk, cl, mid, front, log);
+        public bool Overlays() => Record(vk, cl, front, to, log);
     }
 
     /// <summary>A held flush the present never queued is a dropped one, counted like a refused submit.</summary>

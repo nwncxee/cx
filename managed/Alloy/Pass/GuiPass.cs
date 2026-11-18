@@ -14,8 +14,8 @@ namespace CX.Alloy;
 /// </summary>
 internal static unsafe class GuiPass
 {
-    /// <summary>Ahead of <c>UiHostService</c>'s window roll-call (20) on the <c>nk_sdl_render</c> chain: the panels sit
-    /// under the CX windows and NUI, as they do in the engine's order.</summary>
+    /// <summary>Ahead of <c>UiHostService</c>'s window roll-call (20) on the <c>nk_sdl_render</c> chain: whatever was
+    /// captured before NUI is flushed under the CX windows and NUI.</summary>
     private const int NkPriority = 40;
     /// <summary>The GUI program's vertex-colour location (<c>cx_gui_v.glsl</c>); nothing else in Alloy binds it.</summary>
     internal const uint LocColor = 3;
@@ -95,11 +95,13 @@ internal static unsafe class GuiPass
     }
 
     /// <summary>The frame's closing flush: the first <paramref name="panels"/> listed layers, CX's below-NUI windows,
-    /// the rest (NUI), then the above-NUI windows. A flush that cannot draw still puts the windows over the screen.</summary>
-    internal static void FlushWithWindows(int panels)
+    /// NUI up to <paramref name="front"/>, the above-NUI windows, then the overlay scenes from <paramref name="front"/> on.
+    /// A flush that cannot draw still puts the windows over the screen.</summary>
+    internal static void FlushWithWindows(int panels, int front)
     {
         int n = GuiCapture.LayerN;
-        bool drawn = !_failed && Draw(0, Math.Clamp(panels, 0, n), n, true);
+        int mid = Math.Clamp(panels, 0, n);
+        bool drawn = !_failed && Draw(0, mid, Math.Clamp(front, mid, n), n, true);
         UiScene.Spent();
         GuiCapture.Reset();
         if (drawn) return;
@@ -115,7 +117,7 @@ internal static unsafe class GuiPass
     private static void Flush()
     {
         if (GuiCapture.LayerN == 0) return;
-        if (_failed || !Draw(0, GuiCapture.LayerN, GuiCapture.LayerN, false)) Dropped();
+        if (_failed || !Draw(0, GuiCapture.LayerN, GuiCapture.LayerN, GuiCapture.LayerN, false)) Dropped();
         GuiCapture.Reset();
     }
 
@@ -136,21 +138,22 @@ internal static unsafe class GuiPass
     }
 
     /// <summary>Layers <paramref name="from"/>..<paramref name="mid"/>, then (with <paramref name="windows"/>) CX's below-NUI
-    /// windows, layers <paramref name="mid"/>..<paramref name="to"/>, and the above-NUI windows: one Vulkan flush.</summary>
-    private static bool Draw(int from, int mid, int to, bool windows)
+    /// windows, layers <paramref name="mid"/>..<paramref name="front"/>, the above-NUI windows, and layers
+    /// <paramref name="front"/>..<paramref name="to"/>: one Vulkan flush.</summary>
+    private static bool Draw(int from, int mid, int front, int to, bool windows)
     {
         int w = *_screenW, h = *_screenH;
         if (PresentTarget.Width != w || PresentTarget.Height != h) PresentTarget.Ensure(w, h);
         if (!PresentTarget.Composed) { if (FramePump.WorkDue) FramePump.RunDeferred(); Db.MeshArena.Pump(); }
-        return VulkanFlush(from, mid, to, windows);
+        return VulkanFlush(from, mid, front, to, windows);
     }
 
     /// <summary>The flush on Vulkan: <see cref="GuiPassVk"/> records and submits it, with no GL.</summary>
-    private static bool VulkanFlush(int from, int mid, int to, bool windows)
+    private static bool VulkanFlush(int from, int mid, int front, int to, bool windows)
     {
         // every flush, the world frame's included: the model views' texture work is Vulkan's here and needs no bracket
         CX.Services.Nui.NuiModelView.Pump();
-        bool ok = _log != null && GuiPassVk.Flush(from, mid, to, windows, _log);
+        bool ok = _log != null && GuiPassVk.Flush(from, mid, front, to, windows, _log);
         PresentTarget.HandBack();
         if (!ok) return false;
         _flushes++;

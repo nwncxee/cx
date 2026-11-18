@@ -203,7 +203,7 @@ public static class FrameZones
         /// <summary>Nested in <see cref="Seam"/> -- <c>DbGui.Draw</c> summed over the frame's GUI panel
         /// views (the member walk, the streaming prescan and the quad issue).</summary>
         DbGuiDraw,
-        /// <summary>Nested in <see cref="Seam"/> -- <c>GuiCapture.Lead</c> + <c>GuiPass.FlushWithWindows</c>:
+        /// <summary>Nested in <see cref="Seam"/> -- <c>GuiCapture.Partition</c> + <c>GuiPass.FlushWithWindows</c>:
         /// issuing the frame's captured GUI layers and CX's recorded windows after the last view.</summary>
         GuiFlush,
         /// <summary>Nested in <see cref="Alloy"/> (NOT subtracted) -- <c>DbKeyhole.Write</c>, the

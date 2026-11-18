@@ -96,7 +96,7 @@ internal static unsafe partial class GpuGolden
             con.Maps[7] = (int)atlas;
             con.Maps[8] = (int)decoy;
         }
-        bool flushed = GuiPassVk.FlushOn(vk, 0, GuiCapture.LayerN, GuiCapture.LayerN, false, log, target, clearBlack: true);
+        bool flushed = GuiPassVk.FlushOn(vk, 0, GuiCapture.LayerN, GuiCapture.LayerN, GuiCapture.LayerN, false, log, target, clearBlack: true);
         check.Expect(flushed, "the GUI flush holding the twin's draws was refused (logged above)");
         byte[]? px = flushed ? PostRead(vk, log, target, w, Side, 4, rb) : null;
         if (px != null)
@@ -104,7 +104,7 @@ internal static unsafe partial class GpuGolden
                 GuiTwinTexel(check, px, w, Side, i, cases[i]);
         // the panel's case: the doll stays on screen, its values change, and the next flush shows them
         ContentTable.FillRow(rows[0], mtr, lanes, [new("", "pick", "2")]);
-        bool again = GuiPassVk.FlushOn(vk, 0, GuiCapture.LayerN, GuiCapture.LayerN, false, log, target, clearBlack: true);
+        bool again = GuiPassVk.FlushOn(vk, 0, GuiCapture.LayerN, GuiCapture.LayerN, GuiCapture.LayerN, false, log, target, clearBlack: true);
         px = again ? PostRead(vk, log, target, w, Side, 4, rb) : null;
         check.Expect(px != null, "the second flush was refused (logged above)");
         if (px != null) GuiTwinTexel(check, px, w, Side, 0, new("values changed since the last flush reach the next one", "2", null, palBit, 0, 0, 64));

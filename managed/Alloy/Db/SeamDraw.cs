@@ -93,7 +93,7 @@ internal static class SeamDraw
     }
 
     /// <summary>The views of a frame, no GUI flush. Returns how many layers NUI had already recorded: they sit ahead
-    /// of the panels the views just captured, and <see cref="GuiCapture.Lead"/> needs the count.</summary>
+    /// of the panels the views just captured, and <see cref="GuiCapture.Partition(int, out int)"/> needs the count.</summary>
     private static int DrawViews(RenderSnapshot.Frame f)
     {
         // Once: whether the world view leads the list or trails it decides nothing here any more (the GUI
@@ -125,14 +125,14 @@ internal static class SeamDraw
     }
 
     /// <summary>Issue the frame's 2D layers after the view list, in the engine's order with Alloy on as off: the
-    /// panels, the below-NUI windows, NUI, then the above-NUI windows, all in one GUI bracket. GuiPass's own flush
-    /// sites run before this boundary, so a panel captured here would be issued a frame late. Hot; allocates nothing.</summary>
+    /// panels, the below-NUI windows, NUI, the above-NUI windows, then the overlay scenes with the cursor last, in one
+    /// GUI bracket. GuiPass's own flush sites run before this boundary, so a panel captured here would be issued a
+    /// frame late. Hot; allocates nothing.</summary>
     private static void FlushGui(int nui)
     {
         long tFlush = FrameZones.Now;
-        int panels = GuiCapture.LayerN - nui;
-        GuiCapture.Lead(nui);
-        GuiPass.FlushWithWindows(panels);
+        int panels = GuiCapture.Partition(nui, out int front);
+        GuiPass.FlushWithWindows(panels, front);
         FrameZones.Add(FrameZones.Zone.GuiFlush, tFlush);
     }
 
