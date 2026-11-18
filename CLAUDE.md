@@ -344,6 +344,10 @@ the cleanup that earned it. Adding a rule means adding its gate in the same chan
   as `this` (#456). `tools/abi/check-win-symbols.py` finds these; `build-win.sh` runs it. Deliberately Linux-only work is allowed
   and says so on its own line -- what is forbidden is the silent absence, where
   "never looked" and "decided" are the same missing key.
+- **Every bug report is checked on Windows too.** Diagnosing a user report means reading the Windows
+  path as well (`nwn-win.rep`, the `_win` symbols, the build file's Windows column): `nwmain.exe` has
+  called a different function, inlined the one CX hooks or taken the other `sret` order, and a feature that
+  worked on Linux did nothing there. The findings say what Windows does, or say `unverified` with what was tried.
 - **A pass holds the one program field it draws with and no diagnostic-only one.** `/alloy bench` steps knobs,
   never a pass's program: a measurement that needs its own variant of a stage does not get a field on the pass.
 - **Shaders for what shaders reach; extender for what they can't.** Lighting/color
