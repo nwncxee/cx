@@ -7,7 +7,7 @@ internal sealed unsafe partial class VkBackend
 {
     /// <summary>Approved-spec: which chain the surface's extent leaves standing, and the extent a new one takes.
     /// Oracles: two hand-written capability tables -- one dictating 2544x1378, one leaving its extent open between
-    /// 640x480 and 1600x900 -- with the frame sizes and present modes written out beside them.</summary>
+    /// 640x480 and 1600x900 -- with the frame sizes, present modes and create results written out beside them.</summary>
     internal static void SwapSelfCheck(ExtenderLog log)
     {
         var check = new Checker(log);
@@ -71,6 +71,28 @@ internal sealed unsafe partial class VkBackend
             "E6: the frame's own size and mode is never a remake, dictated or not");
         check.Expect(!ChainFits(held with { Live = false }, VkPresentModeKHR.Fifo, 2544, 1378),
             "...and with no chain there is one to make, whatever the surface dictates");
+
+        // Given the window coming back from a minimise, the old chain's window not yet let go of
+        // When vkCreateSwapchainKHR returns VK_ERROR_NATIVE_WINDOW_IN_USE_KHR, VK_ERROR_SURFACE_LOST_KHR or VK_ERROR_OUT_OF_DATE_KHR
+        // Then the refusal does not hold: a later frame makes the chain again, and Alloy stays up
+        check.Expect(!CreateRefusalHolds(VkResult.ErrorNativeWindowInUseKHR, 0),
+            "E7: a window still held by the chain before it is a wait, not the end of Vulkan's present");
+        check.Expect(!CreateRefusalHolds(VkResult.ErrorSurfaceLostKHR, 0) && !CreateRefusalHolds(VkResult.ErrorOutOfDateKHR, 0),
+            "...and so are a lost surface and, defensively, an out-of-date window, which the spec does not list for a create");
+
+        // Given a device that cannot make the chain at all
+        // When vkCreateSwapchainKHR returns VK_ERROR_OUT_OF_HOST_MEMORY or VK_ERROR_INITIALIZATION_FAILED
+        // Then the refusal holds for the session
+        check.Expect(CreateRefusalHolds(VkResult.ErrorOutOfHostMemory, 0) && CreateRefusalHolds(VkResult.ErrorInitializationFailed, 0),
+            "E8: a device that cannot make a chain is refused once, not asked again every frame");
+
+        // Given the window has refused a chain for 600 frames running, each time for a reason that may pass
+        // When the next create returns VK_ERROR_NATIVE_WINDOW_IN_USE_KHR again
+        // Then the refusal holds, so Alloy stands down with its notice rather than leaving a frozen picture unexplained
+        check.Expect(CreateRefusalHolds(VkResult.ErrorNativeWindowInUseKHR, 600),
+            "E9: a wait that has run 600 frames is a refusal");
+        check.Expect(!CreateRefusalHolds(VkResult.ErrorNativeWindowInUseKHR, 599),
+            "...and one frame short of it is still a wait");
         log.Info(check.Ok ? "VkBackend.SwapSelfCheck: passed" : "VkBackend.SwapSelfCheck: FAILED");
     }
 }

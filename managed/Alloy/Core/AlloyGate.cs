@@ -79,7 +79,7 @@ internal static class AlloyGate
     {
         if (_failed.Length != 0) return;
         _failed = why;
-        _log?.Info($"[alloygate] HARD FAILURE -- {why}");
+        _log?.Always($"[alloygate] HARD FAILURE -- {why}");
         Notice.Show(_log, $"Alloy renderer failed: {why}. Set {Renderer.Enabled.Key}=0 in cx.cfg and restart to "
                         + "play on the engine renderer.");
     }
