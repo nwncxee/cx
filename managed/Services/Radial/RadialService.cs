@@ -110,6 +110,8 @@ public sealed unsafe partial class RadialService : IExtenderService
         RadialPins.SelfCheck(log);
         SelfActions.SelfCheck(log);
         SelfCheck(log);
+        KeysApprovedExamples(log);
+        KeysRegressions(log);
 
         if (!SymbolMap.Require(log, "RadialService", RequiredSymbols)) return;
         if (!EngineLayout.Require(log, "RadialService", "CRadialMenu", "CGuiCallback", "CClientSpellMenu", "CGuiCreatureMenu", "CGuiIcon", "CGuiTextBubble", "StringGob", "CGuiMan")) return;
@@ -117,17 +119,7 @@ public sealed unsafe partial class RadialService : IExtenderService
         if (!SelfActions.Init(log)) log.Info("RadialService: self pins unavailable (SelfActions unit unresolved); rows grey, Show everywhere not offered");
         _guiMan = Native.Sym(SymbolMap.GuiMan);
 
-        _window = new Window(0, 0, 0, 0)
-        {
-            Focusable = false,
-            CapturesPointer = true,
-            DrawContent = Draw,
-            OnMouseButton = OnMouseButton,
-            OnMouseMotion = OnMouseMotion,
-            OnMouseWheel = OnMouseWheel,
-            OnKey = OnKey,
-            HitTestOverride = (px, py) => (_menu.Open && _menu.Contains(px, py)) || (_ctx.Open && _ctx.Contains(px, py)),
-        };
+        _window = NewWindow();
         FrameRegistry.Global.Register(FramePhase.PostPresent, ServicePriority, Service, "Radial.service", log);
 
         _orig = hooks.InstallRadialActivateInternal(&OnActivateInternal);
@@ -135,6 +127,19 @@ public sealed unsafe partial class RadialService : IExtenderService
         log.Info($"RadialService: ActivateInternal hooked (radial.enabled={(RadialKnobs.Enabled.V ? "on" : "off")}, cascade window registered); " +
                  $"StartLoadBar chained={(_loadBarSlot != null ? "yes" : "no")}");
     }
+
+    /// <summary>The cascade's window, registered with the UI host on creation; the self-checks build one of their own.</summary>
+    private static Window NewWindow() => new(0, 0, 0, 0)
+    {
+        Focusable = false,
+        CapturesPointer = true,
+        DrawContent = Draw,
+        OnMouseButton = OnMouseButton,
+        OnMouseMotion = OnMouseMotion,
+        OnMouseWheel = OnMouseWheel,
+        OnKey = OnKey,
+        HitTestOverride = (px, py) => (_menu.Open && _menu.Contains(px, py)) || (_ctx.Open && _ctx.Contains(px, py)),
+    };
 
     // ---- hooks (cold: the main thread, once per right-click) ------------------------------------
 
@@ -322,12 +327,14 @@ public sealed unsafe partial class RadialService : IExtenderService
         return true;
     }
 
-    /// <summary>Every key is consumed while open (arrows never reach the camera, Esc never reaches the engine menu).</summary>
+    /// <summary>While open the menu keeps Enter and Escape (Esc never reaches the engine menu), and every key while a name
+    /// is typed; every other key goes on to the game, so the player can walk with the menu open.</summary>
     private static bool OnKey(uint sdlKey, int mods)
     {
         if (!_menu.Open) return false;
         if (!RadialKnobs.Enabled.V) { Close(CloseOff); return true; }
         if (_naming != null) { NameKey(sdlKey, mods); return true; }
+        if (!CascadeMenu.Takes(sdlKey)) return false;
         if (_ctx.Open) { CtxAct(_ctx.Key(sdlKey)); return true; }
         Act(_menu.Key(sdlKey), CloseEsc);
         return true;

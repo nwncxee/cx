@@ -464,6 +464,10 @@ public sealed partial class CascadeMenu
         return opens ? CascadeAction.RequestChildren(l, row) : CascadeAction.None;
     }
 
+    /// <summary>True for the keys a menu keeps while it is open: Enter, keypad Enter and Escape. Every other key is the
+    /// game's, as it is with the game's own radial menu open.</summary>
+    public static bool Takes(uint sdlKey) => sdlKey is KeyReturn or KeyKpEnter or KeyEscape;
+
     /// <summary>Keys act on the deepest level: Up/Down move the hover (wrapping, scrolled into view);
     /// Right/Enter open a submenu row or activate a leaf; Left closes one level; Esc closes one level, or the
     /// menu at the root (CloseAll). While a row drags, Esc cancels the drag and every other key is inert.</summary>
