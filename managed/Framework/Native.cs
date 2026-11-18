@@ -99,6 +99,12 @@ public static unsafe class Native
     /// a stale or foreign pointer.</summary>
     private const uint MaxExoLen = 4096;
 
+    /// <summary>Where a reader's lines go: the host's log, attached once at boot.</summary>
+    private static ExtenderLog? _log;
+
+    /// <summary>Send this class's lines to <paramref name="log"/>. Once, from the host, before any service reads.</summary>
+    internal static void Attach(ExtenderLog log) => _log = log;
+
     /// <summary>A NUL-terminated engine string as the codepage bytes a reader works in -- the distance to the
     /// NUL measured here rather than by each caller, a null pointer read as empty, and the walk stopped at
     /// <see cref="MaxExoLen"/> so a stale or foreign pointer costs a truncated span and not a walk off the

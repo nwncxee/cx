@@ -63,6 +63,7 @@ public static class ServiceHost
         // dependency in this host so far -- four services call it and none of them owns it.
         AurTex.Attach(log);
         AurTex.SelfCheck(log);
+        Native.Attach(log);
         Native.SelfCheck(log);   // the std::string readback behind the outbound codepage transcode
         NativeBufferCheck.SelfCheck(log);   // a native pool's span comes from its allocation, not from a caller's count
         CX.Engine.MessageBytesCheck.SelfCheck(log);   // ...and a message's from its own length row
