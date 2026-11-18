@@ -101,11 +101,12 @@ internal static unsafe class InventoryNative
 
     // ---- hooks ----
 
-    /// <summary>Every slot fill, the server's equip result among them: the item learns its slot before the engine wears it.</summary>
+    /// <summary>Every slot fill, the server's equip result among them: with the CX inventory on, the item learns its slot
+    /// before the engine wears it. Off, the engine runs as stock.</summary>
     [UnmanagedCallersOnly]
     private static void OnEquipToSlot(IntPtr creature, uint slot, IntPtr item)
     {
-        WornSlot.Stamp(item, slot);
+        if (InventoryKnobs.Enabled.V) WornSlot.Stamp(item, slot);
         (*_hooks.EquipSlot)(creature, slot, item);
     }
 
