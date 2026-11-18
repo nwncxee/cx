@@ -37,10 +37,8 @@ UNINSTALL
   from bin/linux-x86.
 
 REPORTING A PROBLEM
-  CX is silent by default. To get a log, create a file named cx.cfg next to
-  nwn.ini (usually ~/.local/share/Neverwinter Nights/) holding one line:
-
-     general.logs=1
+  CX writes a log, ~/cx.log, by default. If you turned it off, turn
+  "Write cx.log for bug reports" back on under Settings, General.
 
   Play again, then open an issue at https://github.com/nwncxee/cx/issues
   with ~/cx.log and ~/cx.1.log and what you did right before things went wrong.

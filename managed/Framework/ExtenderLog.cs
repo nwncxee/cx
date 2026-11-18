@@ -11,7 +11,7 @@ public sealed class ExtenderLog
 {
     private static readonly LogParts _parts = new(OperatingSystem.IsWindows() ? Native.DefaultUserDirectory() : HostEnv.Home);
 
-    /// <summary>The one gate every line passes: <c>general.logs=1</c> keeps it open, the default closes it once
+    /// <summary>The one gate every line passes: open by default, closed by <c>general.logs=0</c> once
     /// <see cref="Settings.Load"/> has read cx.cfg, and <c>General.Logs</c> flips it live. Off means off at the CALL
     /// SITE too -- an interpolated argument goes through <see cref="Line"/>, whose holes the compiler never
     /// evaluates when this is false, so a census behind a closed gate is never walked at all.</summary>
@@ -36,8 +36,8 @@ public sealed class ExtenderLog
         Always(message);
     }
 
-    /// <summary>A boot line that bypasses the <c>logs</c> gate: a feature standing down is the line a stock
-    /// install's bug report needs, and a stock install has the gate closed.</summary>
+    /// <summary>A boot line that bypasses the <c>logs</c> gate: a feature standing down is the line a bug report
+    /// needs, even from a player who turned the log off.</summary>
     public void Always(string message)
     {
         if (Tap != null) { Tap(message); return; }

@@ -110,7 +110,7 @@ Signatures: the signer is `Open Source Developer Michał Piasecki`, issued by Ce
 
 ## Reporting a problem
 
-CX writes no log by default. To get one, create `cx.cfg` next to `nwn.ini` (Windows: `Documents\Neverwinter Nights\`, Linux: `~/.local/share/Neverwinter Nights/`) with this line:
+CX writes `cx.log` by default. If you turned it off (Settings, General, *Write cx.log for bug reports*), turn it back on, or put this line in `cx.cfg` next to `nwn.ini` (Windows: `Documents\Neverwinter Nights\`, Linux: `~/.local/share/Neverwinter Nights/`):
 
 ```
 general.logs=1

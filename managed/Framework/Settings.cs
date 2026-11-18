@@ -43,11 +43,15 @@ public static class Settings
         if (!File.Exists(_path) && Native.Sym(SymbolMap.AppManager) != IntPtr.Zero) KnobFile.ArmFirstRun();
         // Off-device (run-demo: no engine symbols resolve) the log stays open -- it is the self-check gate.
         // general.logs is General.Logs's key, read here before any knob exists (spec §2): the launch lines.
-        bool logs = Raw("general.logs") is string raw && KnobCodec<bool>.Parse!(raw) is (true, true)
-                    || Native.Sym(SymbolMap.AppManager) == IntPtr.Zero;
+        bool logs = LogsAtBoot(Raw("general.logs"), Native.Sym(SymbolMap.AppManager) != IntPtr.Zero);
         if (!logs) log?.Info($"settings: general.logs=0 -- silent from here; set general.logs=1 in {_path} (or /general logs 1) for diagnostics");
         ExtenderLog.Enabled = logs;
     }
+
+    /// <summary>Whether cx.log is open for the launch lines: the stored <c>general.logs</c>, or its declared default
+    /// when the key is absent or unreadable; always open off-device, where the log is the self-check gate.</summary>
+    internal static bool LogsAtBoot(string? raw, bool onDevice)
+        => !onDevice || (raw is string r && KnobCodec<bool>.Parse!(r) is (true, bool v) ? v : General.LogsDefault);
 
     /// <summary>The value as loaded, or null when unset. The knob registry's bind: a <see cref="Knob{T}"/>
     /// parses this itself.</summary>
@@ -81,6 +85,11 @@ public static class Settings
             "a prefixed read keeps the value's case and folds the key");
         _values.Remove("cx-selfcheck-pfx.Mixed");
         check.Expect(Raw("cx-selfcheck-pfx.Mixed") == null, "the check leaves no probe behind");
+
+        check.Expect(LogsAtBoot(null, onDevice: true), "a cx.cfg with no general.logs key writes cx.log, as the panel shows");
+        check.Expect(LogsAtBoot("1", onDevice: true), "general.logs=1 writes cx.log");
+        check.Expect(!LogsAtBoot("0", onDevice: true), "general.logs=0 keeps cx.log silent");
+        check.Expect(LogsAtBoot("0", onDevice: false), "off-device the log stays open whatever cx.cfg says");
 
         log.Info(check.Ok ? "Settings.SelfCheck: passed" : "Settings.SelfCheck: FAILED");
     }
