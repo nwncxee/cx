@@ -137,6 +137,8 @@ internal static partial class Legs
     {
         FootPlacement.Ease(ref s, f, p, out FootPlacement.Feet feet);
         float floor = Ground(ref s, f, p, feet.OffR, feet.OffL);
+        float cap = f.Knobs.Lift * f.Scale;
+        Spread(floor, cap, ref feet.OffR, ref feet.OffL);
         p.Drop = Pelvis(ref s, f, p, feet.OffR - floor, feet.OffL - floor);
         StrideWarp.Dropped(p.Drop);
         float body = floor + Mass.Step(ref s, f.Cue, f.Rise, f.Scale, f.Knobs.Mass, f.Gated, f.Snap, f.Dt) - p.Drop;
@@ -147,9 +149,18 @@ internal static partial class Legs
                             || !feet.TiltR.IsIdentity || !feet.TiltL.IsIdentity
                             || p.WarpR.LengthSquared() + p.WarpL.LengthSquared() > FootPlacement.MinLift * FootPlacement.MinLift
                             || MathF.Abs(p.YawR) + MathF.Abs(p.YawL) > FootPlacement.MinLift);
-        float cap = f.Knobs.Lift * f.Scale;
         p.DeltaR = p.WarpR + new Vector3(0f, 0f, MathF.Min(feet.OffR - body, cap));
         p.DeltaL = p.WarpL + new Vector3(0f, 0f, MathF.Min(feet.OffL - body, cap));
+    }
+
+    /// <summary>Keeps the feet's floors within <paramref name="lift"/> of each other about the pelvis <paramref name="floor"/>:
+    /// one is at most half of it under, the other the rest over. A slope too steep for the stride leaves a foot off its
+    /// floor rather than one leg stretched out of reach and the other folded up.</summary>
+    internal static void Spread(float floor, float lift, ref float offR, ref float offL)
+    {
+        float down = 0.5f * lift, up = lift - Math.Clamp(floor - MathF.Min(offR, offL), 0f, down);
+        offR = floor + Math.Clamp(offR - floor, -down, up);
+        offL = floor + Math.Clamp(offL - floor, -down, up);
     }
 
     /// <summary>Foot placement runs this frame: <c>anim.footik</c> on and the animation not gated.</summary>
