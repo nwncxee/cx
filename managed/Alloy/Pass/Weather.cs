@@ -143,19 +143,23 @@ internal static unsafe partial class Weather
     private static bool Silence(Kind k) => !_off && Enabled.V && k != Kind.None && AlloyGate.Capable;
 
     /// <summary>The area edge. The module keeps one area object and loads every area into it, so the edge is
-    /// the load itself, never a new pointer; the new area's own weather edge runs inside the load.</summary>
+    /// the load itself, never a new pointer; the new area's own weather edge runs inside the load, and the
+    /// arrival clock starts once the load returns, however long it took.</summary>
     [UnmanagedCallersOnly]
     private static int OnLoadArea(IntPtr area, IntPtr camera, IntPtr loadscreen)
     {
         _area = area; Type = 0; Density = 0f; CurrentKind = Kind.None;
         ResetSurface();
-        return _loadSlot != null ? (*_loadSlot)(area, camera, loadscreen) : 0;
+        int ok = _loadSlot != null ? (*_loadSlot)(area, camera, loadscreen) : 0;
+        _enterTicks = Stopwatch.GetTimestamp();
+        return ok;
     }
 
     [UnmanagedCallersOnly]
     private static int OnSetWeather(IntPtr area, byte type, float density)
     {
         if (_origSet == null) return 0;
+        if (_loadSlot == null) _area = area;
         if (type != 0) Type = type;
         else if (density <= 0f) Type = 0;
         float d = Math.Clamp(density, 0f, 100f) / 100f;
