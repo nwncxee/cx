@@ -36,7 +36,7 @@ public sealed unsafe class PoseService : IExtenderService
     /// twice the smoothing the speed does or the lean pitch shivers.</summary>
     private const float AccelTime = 0.3f;
     /// <summary>World units/s of travel under which the path has no heading to turn (standing, turning on the spot).</summary>
-    private const float MinTravel = 0.3f;
+    internal const float MinTravel = 0.3f;
 
     /// <summary>Animations whose name starts with one of these (NUL-separated) get no correction: sitting,
     /// lying, knockdown and getting up, death, kneeling emotes, mounting, flying in/out and the module-defined
@@ -780,7 +780,7 @@ public sealed unsafe class PoseService : IExtenderService
             Motion(ref s, new Vector3(0f, 4f * dt, 0f), new Vector3(-MathF.Sin(yaw), MathF.Cos(yaw), 0f), i == 0, dt);
             worst = MathF.Max(worst, MathF.Abs(s.PathRate));
         }
-        bool straight = worst < 0.05f && MathF.Abs(UpperBody.LeanTarget(s.Speed, s.PathRate, 0f, 0f, true).Y) < 0.01f;
+        bool straight = worst < 0.05f && MathF.Abs(UpperBody.LeanTarget(s.Speed, s.PathRate, 0f, 0f, true, UpperBody.Ahead).Y) < 0.01f;
         Slot c = default;
         for (int i = 0; i < 180; i++)
         {
@@ -933,7 +933,7 @@ public sealed unsafe class PoseService : IExtenderService
         Vector3 turned = Vector3.Transform(Vector3.UnitY, UpperBody.Turn(Vector3.UnitZ, Vector3.UnitX, 0.3f, 0.2f));
         check.Expect(turned.X < -0.2f && turned.Z > 0.1f,
                      "look share: a positive yaw turns the chest left (as the head's own yaw reads), a positive pitch raises it");
-        Vector2 left = UpperBody.LeanTarget(4f, 1f, 0f, 0f, true), speedUp = UpperBody.LeanTarget(2f, 0f, 3f, 0f, true);
+        Vector2 left = UpperBody.LeanTarget(4f, 1f, 0f, 0f, true, UpperBody.Ahead), speedUp = UpperBody.LeanTarget(2f, 0f, 3f, 0f, true, UpperBody.Ahead);
         Vector3 topL = Vector3.Transform(Vector3.UnitZ, Tip(Vector3.UnitX, Vector3.UnitY, left.X, left.Y));
         Vector3 topA = Vector3.Transform(Vector3.UnitZ, Tip(Vector3.UnitX, Vector3.UnitY, speedUp.X, speedUp.Y));
         check.Expect(topL.X < -0.05f && topA.Y > 0.03f, "lean: a left turn tips the top left, speeding up tips it forward");
