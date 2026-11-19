@@ -937,6 +937,7 @@ public sealed unsafe class PoseService : IExtenderService
         Vector3 topL = Vector3.Transform(Vector3.UnitZ, Tip(Vector3.UnitX, Vector3.UnitY, left.X, left.Y));
         Vector3 topA = Vector3.Transform(Vector3.UnitZ, Tip(Vector3.UnitX, Vector3.UnitY, speedUp.X, speedUp.Y));
         check.Expect(topL.X < -0.05f && topA.Y > 0.03f, "lean: a left turn tips the top left, speeding up tips it forward");
+        UpperBodyLeanCheck.Run(log);
         Vector3 chest = Vector3.Transform(Vector3.UnitY, Tip(Vector3.UnitX, Vector3.UnitY, 20f * MathF.PI / 180f, 0f));
         check.Expect(chest.Z > 0.3f, "aim: a positive pitch (target above) raises the chest's forward");
         Vector2 hx = Vector2.Zero, hv = UpperBody.Launch(-Vector3.UnitY, Vector3.UnitY, Vector3.UnitX, 0.14f);
