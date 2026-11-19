@@ -217,6 +217,7 @@ internal static unsafe class FacadeSelfCheck
     private static void RecordRiderScene(nint self, nint name, nint data)
     {
         var probe = (SceneEventProbe*)data;
+        if (probe == null) return;
         probe->Seen = SceneDb.ObjScene[probe->Rider].Value;
         probe->Calls++;
         if (!probe->Kill.IsNull) ObjectSlots.DestroyRecord(probe->Kill);
@@ -391,6 +392,38 @@ internal static unsafe class FacadeSelfCheck
             if (!grand.IsNull) ObjectSlots.DestroyRecord(grand);
             if (!rider.IsNull) ObjectSlots.DestroyRecord(rider);
             if (!page.IsNull) ObjectSlots.DestroyRecord(page);
+            if (!panel.IsNull) DbScene.Destroy(panel);
+        }
+    }
+
+    /// <summary>A tree attached to a parent already in a scene joins it in the engine's order. Oracle: the literal
+    /// order p, r, b, b1, a, a1 -- <c>Gob::AttachToObject</c> @0x43e0e0 ends in <c>Gob::SetScene</c> @0x53e020,
+    /// which appends, then fires UpdateScenes newest first, each rider carrying its own riders in its turn.</summary>
+    private static void InheritOrder(Checker check)
+    {
+        using var models = UnreadableModelScope.Enter();
+        var ids = new DbId[6];
+        DbId panel = default;
+        try
+        {
+            for (int k = 0; k < ids.Length; k++) ids[k] = UnreadableModelScope.Mint();
+            DbId p = ids[0], r = ids[1], a = ids[2], a1 = ids[3], b = ids[4], b1 = ids[5];
+            panel = DbScene.Create("sceneGUI_cx_inherit");
+            ObjectSlots.JoinScene(p, Facade.ObjectShell(p), panel, 0);
+            ObjectSlots.AttachAt(a, Facade.ObjectShell(a), r, -1, 0);
+            ObjectSlots.AttachAt(a1, Facade.ObjectShell(a1), a, -1, 0);
+            ObjectSlots.AttachAt(b, Facade.ObjectShell(b), r, -1, 0);
+            ObjectSlots.AttachAt(b1, Facade.ObjectShell(b1), b, -1, 0);
+            ObjectSlots.AttachAt(r, Facade.ObjectShell(r), p, -1, 0);
+            DbList m = DbScene.Members(panel);
+            DbId[] want = [p, r, b, b1, a, a1];
+            bool same = m.Count == want.Length;
+            for (int k = 0; same && k < want.Length; k++) same = m[k] == want[k];
+            check.Expect(same, "a tree attached to an in-scene parent joins newest rider first, each with its own riders");
+        }
+        finally
+        {
+            for (int k = ids.Length - 1; k >= 0; k--) if (!ids[k].IsNull) ObjectSlots.DestroyRecord(ids[k]);
             if (!panel.IsNull) DbScene.Destroy(panel);
         }
     }
@@ -608,6 +641,7 @@ internal static unsafe class FacadeSelfCheck
         Riders(check);
         SceneEventOrder(check);
         SceneEventInterleave(check);
+        InheritOrder(check);
         Shifts(check);
         RunRoots(check);
         UnseenSilhouetteApprovedExamples.SelfCheck(log);
