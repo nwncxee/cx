@@ -7,6 +7,7 @@ Xwayland server gamescope nests for the client:
     xtool.py shot  :N out.png        one screenshot of the client window (root as a fallback)
     xtool.py keys  :N "<script>"     XTEST input, ';'-separated steps:
                                        key:<keysym> | hold:<keysym>:<ms> | type:<text> | sleep:<ms>
+                                       keydown:<keysym> | keyup:<keysym> (a HELD key, so two can be down at once)
                                        waitlog:<regex>:<timeout ms> (block until a line of $XTOOL_LOG after the last match matches; a timeout ends
                                                      the script with exit 1, so no later step acts on a state that never came)
                                        click:<x>,<y> | move:<x>,<y> (pointer only, for hover)
@@ -172,6 +173,10 @@ def cmd_keys(dpy, script):
             time.sleep(int(ms or 300) / 1000.0)
             xtest.fake_input(dpy, X.KeyRelease, code)
             dpy.sync()
+        elif kind in ("keydown", "keyup"):
+            # Press and release as SEPARATE steps, so two keys can be held at once (a diagonal run).
+            code = dpy.keysym_to_keycode(XK.string_to_keysym(arg))
+            xtest.fake_input(dpy, X.KeyPress if kind == "keydown" else X.KeyRelease, code)
         elif kind == "click":
             x, y = (int(v) for v in arg.split(","))
             xtest.fake_input(dpy, X.MotionNotify, x=x, y=y)
