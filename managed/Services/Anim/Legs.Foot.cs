@@ -13,9 +13,9 @@ internal struct Footing
     public byte Stage;
     /// <summary>In the air last frame, so a hold now is a landing.</summary>
     public bool Aired;
-    /// <summary>The hold (world XY) and the world heading it keeps (radians); where a step sets the foot down; the offset
-    /// off the warped animation the hold was taken at (an aimed landing's).</summary>
-    public Vector2 At, To, Landed;
+    /// <summary>The hold (world XY) and the world heading it keeps (radians); where a step sets the foot down once it starts
+    /// to; the offset off the warped animation the hold was taken at (an aimed landing's); the warped point last frame.</summary>
+    public Vector2 At, To, Landed, Was;
     public float Heading;
     /// <summary>Drawn this frame off the warped animation: the offset (world) and the turn about the vertical (radians,
     /// positive = left).</summary>
@@ -28,8 +28,10 @@ internal struct Footing
     /// past <see cref="Legs.SwingEnd"/>, too late in its swing to be aimed.</summary>
     public float Aimed, AimU;
     public bool Late;
-    /// <summary>Seconds into a step.</summary>
-    public float T;
+    /// <summary>Seconds into a step, the farthest it may draw the foot off the warped animation, and whether where it sets
+    /// down is fixed.</summary>
+    public float T, Most;
+    public bool Set;
 }
 
 /// <summary>What one foot's hold may cost before it is let go: the hip joint it hangs from (world), the length the leg
@@ -45,7 +47,9 @@ internal struct HoldLimits
 /// keeping it would stretch the leg, twist the ankle or pull the foot too far off the animation.</summary>
 internal static partial class Legs
 {
-    /// <summary>The share of a leg's length a hold may sit off the warped animation before it is let go.</summary>
+    /// <summary>The share of a leg's length a hold may sit off the warped animation, or drift from where it landed, before it
+    /// is let go: no foot is drawn further off than this, save one a settle handed over further off,
+    /// kept no further than that until its next step or swing eases it onto the animation.</summary>
     internal const float HoldShare = 0.12f;
     /// <summary>Radians a held foot may be turned off the animation's direction before it is let go: about what an ankle
     /// and a hip turn a planted foot by.</summary>
@@ -68,13 +72,15 @@ internal static partial class Legs
 
     /// <summary>One frame of a foot at warped world point <paramref name="p"/> whose legs head <paramref name="heading"/>
     /// (world yaw), on the ground (<paramref name="on"/>) or <paramref name="u"/> through its swing: the offset it is drawn
-    /// at; <paramref name="yaw"/> its turn; <paramref name="down"/> it landed this frame out of the clip's swing (a let-go
-    /// hold's step is no footfall); <paramref name="let"/> its hold was let go.</summary>
+    /// at, never further across than the hold's limit; <paramref name="yaw"/> its turn; <paramref name="down"/> it landed
+    /// out of the clip's swing (a step is no footfall); <paramref name="let"/> its hold was let go.</summary>
     internal static Vector3 Hold(ref Footing f, bool on, float u, Vector3 p, float heading, in HoldLimits r, float dt,
                                  out float yaw, out bool down, out bool let)
     {
         down = let = false;
         Vector2 q = new(p.X, p.Y);
+        Vector2 moved = f.Stage == Footing.Fresh ? Vector2.Zero : q - f.Was;
+        f.Was = q;
         bool aired = f.Aired;
         f.Aired = !on;
         if (!on && f.Stage != Footing.Swing) Lift(ref f, u);
@@ -115,21 +121,28 @@ internal static partial class Legs
             }
             let = true;
             f.Stage = Footing.Stepping;
-            f.To = q;
+            f.Most = MathF.Max(r.Hold, f.Landed.Length());
+            f.Set = false;
             f.T = 0f;
         }
         f.T += dt;
         float s = f.T / StepTime, h = Ease(Math.Clamp((s - StepLead) / (1f - 2f * StepLead), 0f, 1f));
-        Vector2 at = Vector2.Lerp(f.At, f.To, h);
-        f.Off = new Vector3(at - q, r.Lift * MathF.Sin(MathF.PI * MathF.Min(s, 1f)));
+        // it sets down where the animation will be when it lands, so it neither trails the body nor slides on the floor
+        if (h >= 1f && !f.Set)
+        {
+            f.To = q + (dt > 0f ? moved * (MathF.Max(1f - s, 0f) * StepTime / dt) : Vector2.Zero);
+            f.Set = true;
+        }
+        Vector2 off = Bound(Vector2.Lerp(f.At, f.Set ? f.To : q, h) - q, f.Most);
+        f.Off = new Vector3(off, r.Lift * MathF.Sin(MathF.PI * MathF.Min(s, 1f)));
         f.Yaw = Wrap(f.Heading - heading) * (1f - h);
         if (s >= 1f)
         {
             f.Stage = Footing.Held;
-            f.At = f.To;
+            f.At = q + off;
             f.Landed = Vector2.Zero;
             f.Heading = heading;
-            f.Off = new Vector3(f.To - q, 0f);
+            f.Off = new Vector3(off, 0f);
             f.Yaw = 0f;
         }
         yaw = f.Yaw;
@@ -169,12 +182,15 @@ internal static partial class Legs
         f.Late = u >= SwingEnd;
     }
 
-    /// <summary>A hold that costs more than <paramref name="r"/> allows: drifted too far off the warped animation at
-    /// <paramref name="p"/> since it was taken, turned past <see cref="YawCap"/>, or needing the pelvis lower than the animation does by
-    /// more than its sink.</summary>
+    /// <summary>A hold that costs more than <paramref name="r"/> allows: further off the warped animation at <paramref name="p"/>
+    /// than its limit (or than where it was taken, if a settle handed it over further), drifted past the limit since, turned
+    /// past <see cref="YawCap"/>, or needing the pelvis lower than the animation does by more than its sink.</summary>
     private static bool Breaks(in Footing f, Vector3 p, in HoldLimits r)
     {
-        if ((new Vector2(f.Off.X, f.Off.Y) - f.Landed).LengthSquared() > r.Hold * r.Hold || MathF.Abs(f.Yaw) > YawCap) return true;
+        Vector2 off = new(f.Off.X, f.Off.Y);
+        float most = MathF.Max(r.Hold, f.Landed.Length());
+        if (off.LengthSquared() > most * most || (off - f.Landed).LengthSquared() > r.Hold * r.Hold || MathF.Abs(f.Yaw) > YawCap)
+            return true;
         float held = Need(new Vector3(f.At.X, f.At.Y, p.Z) - r.Hip, r.Reach, r.Cap), anim = Need(p - r.Hip, r.Reach, r.Cap);
         return held > anim + r.Sink;
     }
@@ -189,6 +205,13 @@ internal static partial class Legs
     }
 
     private static float Ease(float w) => w * w * (3f - 2f * w);
+
+    /// <summary><paramref name="v"/> no longer than <paramref name="most"/>.</summary>
+    private static Vector2 Bound(Vector2 v, float most)
+    {
+        float l = v.Length();
+        return l > most && l > 0f ? v * (most / l) : v;
+    }
 
     private static float Wrap(float a) => MathF.IEEERemainder(a, 2f * MathF.PI);
 
