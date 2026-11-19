@@ -93,7 +93,7 @@ internal static class LegRecorder
     /// <summary>Opens a recording in <paramref name="folder"/>'s folder and returns its state; the old state, marked
     /// <see cref="RecorderState.Failed"/> and logged once, when the folder cannot be written. The file is named by the UTC second, with a
     /// suffix when that name is taken.</summary>
-    private static RecorderState Start(RecorderState old, Func<string> folder, long now)
+    internal static RecorderState Start(RecorderState old, Func<string> folder, long now, Func<string, Stream>? open = null)
     {
         var st = new RecorderState(old.Log, old.Total);
         try
@@ -105,7 +105,7 @@ internal static class LegRecorder
             {
                 string path = n == 0 ? stem + ".cxlegs" : $"{stem}-{n}.cxlegs";
                 if (File.Exists(path)) continue;
-                Begin(new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read), st, now);
+                Begin((open ?? Create)(path), st, now);
                 st.Path = path;
                 old.Log?.Info($"LegRecorder: recording to {path}");
                 return st;
@@ -119,6 +119,8 @@ internal static class LegRecorder
             return old;
         }
     }
+
+    private static Stream Create(string path) => new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
 
     /// <summary>Starts a recording into <paramref name="to"/>: the header, and the buffer.</summary>
     internal static void Begin(Stream to, RecorderState st, long now = 0)

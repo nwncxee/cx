@@ -19,10 +19,11 @@ public sealed class LegReplaySelfCheck : IExtenderService
         var check = new Checker(log);
         check.Expect(NotRecording(), "with recording not switched on, a run of frames asks for no folder, writes no recording file and buffers nothing");
         check.Expect(TicksAndTotals(), "recording: a tick with the knob off writes what is buffered and closes the file, a tick on an old buffer writes it, a second recording is a new file and the total runs across both");
+        check.Expect(HeaderRefused(), "recording: a stream that takes no header is closed, its file removed and the refusal latched");
         check.Expect(Refusals(), "recording: a folder that cannot be made is asked once, not on every frame, and switching off clears it; a failing write stops the recording without throwing");
         check.Expect(RecordsAndReads(), "a recording made through the recorder reads back as the frames put in, grouped by body, and a file of another frame layout is refused");
-        check.Expect(Graded(), "grades: a leg raised 0.25 is 0.25 shorter and a pelvis move alone shortens nothing; a foot in contact that moves 1 in half a second slides at 2; 0.1 rad of hip turn in half a second is 11.459 deg/s; a teleport and a foot in the air count for neither");
-        check.Expect(Replayed(), "replay: the fixture's walk grades 0 on all three and its step case grades 0.1/0.77 of the leg, 0.5 units/s and no turn, the same on a second replay");
+        check.Expect(Graded(), "grades: a leg raised 0.25 is 0.25 shorter and a pelvis move alone shortens nothing; a foot in contact that moves 1 in half a second slides at 2; 0.1 rad of hip turn in half a second is 11.459 deg/s; a teleport, the frame after one and a foot in the air count for neither");
+        check.Expect(Replayed(), "replay: the fixture's walk, and the same walk entered mid-stride by a tracked body, grade 0 on all three and its step case grades 0.1/0.77 of the leg, 0.5 units/s and no turn, the same on a second replay");
         log.Info(check.Ok ? "LegReplay.SelfCheck: passed" : "LegReplay.SelfCheck: FAILED");
     }
 
@@ -107,6 +108,31 @@ public sealed class LegReplaySelfCheck : IExtenderService
         return latched && cleared && retried && wr.Out == null && wr.Failed && wr.Written == 0;
     }
 
+    /// <summary>A recording whose header cannot be written leaves no handle open and no file behind, and latches the refusal as a
+    /// failed open does. Oracle: the disposed flag, the file's absence and the latch.</summary>
+    private static bool HeaderRefused()
+    {
+        string dir = Scratch("header");
+        Directory.CreateDirectory(dir);
+        NoHeader? made = null;
+        var st = LegRecorder.Start(new LegRecorder.RecorderState(), () => dir, 0, p => made = new NoHeader(p));
+        return made is { Closed: true } && Directory.GetFiles(dir).Length == 0 && st.Failed && st.Out == null;
+    }
+
+    /// <summary>A file that refuses every write, and says when it was closed.</summary>
+    private sealed class NoHeader(string path) : FileStream(path, FileMode.CreateNew, FileAccess.Write)
+    {
+        internal bool Closed;
+
+        public override void Write(ReadOnlySpan<byte> buffer) => throw new IOException("no room for a header");
+
+        protected override void Dispose(bool disposing)
+        {
+            Closed = true;
+            base.Dispose(disposing);
+        }
+    }
+
     /// <summary>A stream that takes its header and then refuses every write.</summary>
     private sealed class Broken : MemoryStream
     {
@@ -166,10 +192,13 @@ public sealed class LegReplaySelfCheck : IExtenderService
         bool turn = Near(LegGrade.Grade([a, c], [p0, p1]).HipTurn, 11.459156f, 1e-3f);
         c.Snap = true;
         bool teleport = LegGrade.Grade([a, c], [p0, p1]) == default;
+        a.Snap = true;
+        c.Snap = false;
+        bool first = LegGrade.Grade([a, c], [p0, p1]) == default;
         c.Snap = false;
         c.Walk.ContactR = false;
         bool air = LegGrade.Grade([a, c], [p0, p1]).Slide == 0f;
-        return knee && slide && turn && teleport && air;
+        return knee && slide && turn && teleport && first && air;
     }
 
     private static bool Replayed()
@@ -179,11 +208,12 @@ public sealed class LegReplaySelfCheck : IExtenderService
         byte[] file = ms.ToArray();
         var one = LegReplay.Grade(file, out _);
         var two = LegReplay.Grade(file, out _);
-        if (one is not { Count: 2 } || two is not { Count: 2 }) return false;
-        LegGrades walk = one[0].Grades, step = one[1].Grades;
+        if (one is not { Count: 3 } || two is not { Count: 3 }) return false;
+        LegGrades walk = one[0].Grades, step = one[1].Grades, mid = one[2].Grades;
         return one[0].Frames == LegReplayFixture.WalkFrames && one[1].Frames == LegReplayFixture.StepFrames
                && walk.KneeBend < 1e-4f && walk.Slide < 1e-3f && walk.HipTurn < 1e-2f
                && Near(step.KneeBend, 0.1f / 0.77f, 1e-4f) && Near(step.Slide, 0.5f, 1e-3f) && step.HipTurn < 1e-2f
-               && walk == two[0].Grades && step == two[1].Grades;
+               && mid.KneeBend < 1e-4f && mid.Slide < 1e-3f && mid.HipTurn < 1e-2f
+               && walk == two[0].Grades && step == two[1].Grades && mid == two[2].Grades;
     }
 }

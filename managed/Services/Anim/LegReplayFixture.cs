@@ -6,7 +6,8 @@ namespace CX.Services.Anim;
 
 /// <summary>A small recording whose grades are known by construction, written through the recorder. Body 1: the synthetic walk
 /// (<see cref="GaitClip.SyntheticFoot"/>) at its own pace on flat floors, every grade 0. Body 2: a floor step of 0.1 under one
-/// foot, thigh 0.77 over the ankle, the ankle in contact sliding 0.5 units/s: a leg 0.1 / 0.77 shorter, slide 0.5, no turn.</summary>
+/// foot, thigh 0.77 over the ankle, the ankle in contact sliding 0.5 units/s: a leg 0.1 / 0.77 shorter, slide 0.5, no turn.
+/// Body 3: the walk entered mid-stride by an already tracked body, every grade 0.</summary>
 internal static class LegReplayFixture
 {
     internal const float Dt = 1f / 60f;
@@ -14,7 +15,9 @@ internal static class LegReplayFixture
     /// <summary>The step body 2's left floor stands above its right, the thigh's height over the ankle, the ankle's slide.</summary>
     internal const float Step = 0.1f, ThighUp = 0.77f, Slide = 0.5f;
     /// <summary>Frames of the walk and of the step.</summary>
-    internal const int WalkFrames = 240, StepFrames = 120;
+    internal const int WalkFrames = 240, StepFrames = 120, MidFrames = 120;
+    /// <summary>Where in the walk body 3's recording starts, in frames.</summary>
+    private const int MidStart = 37;
 
     /// <summary>Writes the recording to <paramref name="to"/>, the two bodies' frames interleaved.</summary>
     internal static void Write(Stream to)
@@ -25,6 +28,7 @@ internal static class LegReplayFixture
         {
             LegRecorder.Add(st, 1, Walk(n), 0);
             if (n < StepFrames) LegRecorder.Add(st, 2, OnStep(n), 0);
+            if (n < MidFrames) LegRecorder.Add(st, 3, MidWalk(n), 0);
         }
         LegRecorder.Stop(st);
     }
@@ -67,6 +71,18 @@ internal static class LegReplayFixture
             LandR = new Vector3(0.1f, 0.45f, WalkFloor), LandL = new Vector3(-0.1f, 0.45f, WalkFloor),
             ContactR = Stance(phase), ContactL = Stance(phase + 0.5f), SwingR = Swing(phase), SwingL = Swing(phase + 0.5f),
         };
+        return f;
+    }
+
+    /// <summary>The walk entered mid-stride by a recording switched on mid-session: the body already tracked (<c>Tracked</c>, no
+    /// <c>Snap</c>), facing a world heading other than 0, <c>anim.pivot</c> on and a locomotion anim. Nothing turns the hips.</summary>
+    internal static LegFrame MidWalk(int n)
+    {
+        LegFrame f = Walk(n + MidStart);
+        f.Tracked = true;
+        f.Snap = false;
+        f.Knobs.Pivot = true;
+        f.Anim = 2;
         return f;
     }
 
