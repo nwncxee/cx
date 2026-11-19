@@ -82,12 +82,11 @@ internal static class StrideWarp
             GaitClip? c = GaitClips.For(anim, bones, r.PosScale, paced);
             float w = Math.Clamp(r.Blend, 0f, 1f);
             if (c is not { Walk: true } || !(w > 0f)) continue;
-            float rate = r.Rate;
             weight += w;
-            strides += w * (paced && rate > 1e-4f ? Math.Clamp(speed / c.Speed / rate, WarpMin, WarpMax) : 1f);
+            strides += w * Ratio(paced, speed, c.Speed, r.Rate);
             dir += w * c.Dir;
             if (w > top) { top = w; lead = c; leadAnim = anim; leadRun = r; }
-            if (c.Cyclic && r.Blend < 1f && r.Id != s.Seeded && r.Time <= Fresh * c.Length) { fresh = c; freshRun = r; }
+            if (c.Cyclic && r.Blend < 1f && r.Id != s.Seeded && Begun(r.Time, r.Rate, c.Length)) { fresh = c; freshRun = r; }
             else if (w > otherW) { otherW = w; other = c; otherRun = r; }
         }
         if (lead == null || weight < 1e-3f) { Forget(ref s); return; }
@@ -128,6 +127,23 @@ internal static class StrideWarp
         s.Seeded = 0L;
     }
 
+    /// <summary>The stride ratio of one walk run playing at <paramref name="rate"/> (backwards when negative) while the body
+    /// covers <paramref name="speed"/> against its clip's <paramref name="clipSpeed"/>: 1 when not paced.</summary>
+    internal static float Ratio(bool paced, float speed, float clipSpeed, float rate)
+    {
+        float played = MathF.Abs(rate);
+        return paced && played > 1e-4f ? Math.Clamp(speed / clipSpeed / played, WarpMin, WarpMax) : 1f;
+    }
+
+    /// <summary>A run at <paramref name="time"/> seconds of a clip <paramref name="length"/> long has only just begun at the
+    /// <paramref name="rate"/> it plays: within <see cref="Fresh"/> of its start, or of its end when played backwards.</summary>
+    internal static bool Begun(float time, float rate, float length)
+        => rate < 0f ? time >= (1f - Fresh) * length : time <= Fresh * length;
+
+    /// <summary>The swing progress a foot <paramref name="on"/> the ground or <paramref name="u"/> through its swing as the clip
+    /// reads it forwards has as the walk is played: the other way round when <paramref name="back"/>; 1 on the ground.</summary>
+    internal static float Played(bool on, float u, bool back) => on || !back ? u : 1f - u;
+
     /// <summary>The warp and plant offsets of <see cref="Step"/>.</summary>
     private static void Warps(ref LegState s, in LegFrame f, ref LegPose p, bool off, out Vector3 dR, out Vector3 dL)
     {
@@ -140,13 +156,18 @@ internal static class StrideWarp
         float weight = k.Weight;
         float stride = k.Strides / weight;
         weight = MathF.Min(weight, 1f);
+        // a walk played backwards carries the body against its clip's travel, and lifts each foot where the clip lands it
+        bool back = k.Rate < -1e-4f;
         Vector3 dir = k.Dir.LengthSquared() > 1e-8f ? Vector3.Normalize(k.Dir) : k.LeadDir;
-        if (f.Paced && k.EngineRate > 1e-4f) p.RateNext = RateShare(speed / k.Speed, k.EngineRate);
+        if (back) dir = -dir;
+        float uR = Played(k.ContactR, k.SwingR, back), uL = Played(k.ContactL, k.SwingL, back);
+        float engine = MathF.Abs(k.EngineRate);
+        if (f.Paced && engine > 1e-4f) p.RateNext = RateShare(speed / k.Speed, engine);
         float phase = k.Phase;
         if (k.Changed)
         {
-            Rebase(ref s.FootingR, k.SwingR);
-            Rebase(ref s.FootingL, k.SwingL);
+            Rebase(ref s.FootingR, uR);
+            Rebase(ref s.FootingL, uL);
             // a contact the new clip starts in is no landing
             s.FootingR.Aired = s.FootingL.Aired = false;
         }
@@ -169,17 +190,18 @@ internal static class StrideWarp
             Vector3 line = Vector3.Transform(dir, legs);
             // a foot setting down this frame is aimed too: its hold is taken where it lands. The holds and aims are where the
             // foot is drawn, so the walk's weight scales only the warp under them, once
-            if (s.FootingR.Stage == Footing.Swing) dR += Legs.Aim(ref s.FootingR, ra + dR, origin, f.Vel, line, k.SwingR, scale);
-            if (s.FootingL.Stage == Footing.Swing) dL += Legs.Aim(ref s.FootingL, la + dL, origin, f.Vel, line, k.SwingL, scale);
+            if (s.FootingR.Stage == Footing.Swing) dR += Legs.Aim(ref s.FootingR, ra + dR, origin, f.Vel, line, uR, scale);
+            if (s.FootingL.Stage == Footing.Swing) dL += Legs.Aim(ref s.FootingL, la + dL, origin, f.Vel, line, uL, scale);
             HoldLimits r = Limits(rt, Legs.Stretch(f, p, true), leg, scale), l = Limits(lt, Legs.Stretch(f, p, false), leg, scale);
-            dR += Plant(ref s.FootingR, k.ContactR, k.SwingR, ra + dR, heading, r, timed, f.Dt, out float yawR, out downR);
-            dL += Plant(ref s.FootingL, k.ContactL, k.SwingL, la + dL, heading, l, timed, f.Dt, out float yawL, out downL);
+            dR += Plant(ref s.FootingR, k.ContactR, uR, ra + dR, heading, r, timed, f.Dt, out float yawR, out downR);
+            dL += Plant(ref s.FootingL, k.ContactL, uL, la + dL, heading, l, timed, f.Dt, out float yawL, out downL);
             p.YawR = yawR;
             p.YawL = yawL;
         }
 
         p.Unvoiced = !k.Authored;
         p.Touchdown = downR || downL;
+        // ponytail: a walk played backwards predicts no landing; upgrade: LegWalk carries each foot's lift-off phase and pose
         p.Landing = f.Paced && k.Cyclic && k.Rate > 1e-4f;
         if (p.Landing)
         {
@@ -259,8 +281,8 @@ internal static class StrideWarp
     private const float JustAfter = 0.06f;
 
     /// <summary>Starts a walk fading in (<paramref name="run"/>) in step: out of another walk, at the same point of the
-    /// stride (<see cref="Matched"/>); from standing, with the foot already in front planted (<see cref="Start"/>), so the
-    /// first step falls to the back one. <paramref name="mr"/>, <paramref name="ml"/>: the ankles now, model frame.</summary>
+    /// stride (<see cref="Matched"/>); from standing, with the foot already in front planted (<see cref="Start"/>, or
+    /// <see cref="StartBack"/> played backwards), so the first step falls to the back one. <paramref name="mr"/>, <paramref name="ml"/>: the ankles now, model frame.</summary>
     private static void Seed(ref long seeded, GaitClip clip, RunRef run, GaitClip? from, RunRef fromRun, Vector3 mr, Vector3 ml)
     {
         seeded = run.Id;
@@ -270,6 +292,12 @@ internal static class StrideWarp
             if (!(from.DownR >= 0f) || !(clip.DownR >= 0f) || !(from.Length > 0f)) return;
             p = Matched(fromRun.Time / from.Length, from.DownR, clip.DownR);
             _s.Matched++;
+        }
+        else if (run.Rate < 0f)
+        {
+            if (!(clip.UpR >= 0f) || !(clip.UpL >= 0f)) return;
+            p = StartBack((mr.X - ml.X) * clip.Dir.X + (mr.Y - ml.Y) * clip.Dir.Y <= 0f, clip.UpR, clip.UpL);
+            _s.Started++;
         }
         else
         {
@@ -286,6 +314,10 @@ internal static class StrideWarp
 
     /// <summary>The phase a walk started from standing begins at: just past the landing of the foot in front.</summary>
     internal static float Start(bool rightInFront, float downR, float downL) => Wrap((rightInFront ? downR : downL) + JustAfter);
+
+    /// <summary>The phase a walk played backwards from standing begins at: just short of the lift-off of the foot in front
+    /// along its travel, which is where that foot lands as the clip plays backwards.</summary>
+    internal static float StartBack(bool rightInFront, float upR, float upL) => Wrap((rightInFront ? upR : upL) - JustAfter);
 
     private static float Wrap(float p) => p - MathF.Floor(p);
 

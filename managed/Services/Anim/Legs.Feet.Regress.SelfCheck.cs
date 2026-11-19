@@ -14,6 +14,7 @@ internal static class LegsFeetRegress
         LetGoFollows(check);
         BoundedRuns(check);
         Backward(check);
+        BackwardParts(check);
     }
 
     /// <summary>The farthest a foot of the synthetic 0.9 leg may be drawn off its warped animation, world units: 0.12 of
@@ -77,6 +78,28 @@ internal static class LegsFeetRegress
     }
 
     private static float Flat(Vector3 v) => new Vector2(v.X, v.Y).Length();
+
+    /// <summary>The pieces of a walk played backwards against hand-worked values: the stride ratio from the rate's size, a
+    /// reversed run fresh near its clip's end, a backwards start just short of the front foot's lift-off, swing progress
+    /// counted the other way, and the synthetic walk's lift-offs (right at 0.6, left at 0.1). Oracle: hand arithmetic and
+    /// the synthetic walk's construction.</summary>
+    private static void BackwardParts(Checker check)
+    {
+        bool ratio = MathF.Abs(StrideWarp.Ratio(true, 2f, 1.1f, -1.4f) - 1.298701f) < 1e-4f
+                     && MathF.Abs(StrideWarp.Ratio(true, 2f, 1.1f, 1.4f) - 1.298701f) < 1e-4f
+                     && StrideWarp.Ratio(false, 2f, 1.1f, -1.4f) == 1f && StrideWarp.Ratio(true, 2f, 1.1f, 0f) == 1f;
+        bool begun = StrideWarp.Begun(0.99f, -1.4f, 1f) && !StrideWarp.Begun(0.5f, -1f, 1f) && StrideWarp.Begun(0.05f, 1f, 1f)
+                     && !StrideWarp.Begun(0.05f, -1f, 1f);
+        bool start = MathF.Abs(StrideWarp.StartBack(true, 0.6f, 0.1f) - 0.54f) < 1e-5f
+                     && MathF.Abs(StrideWarp.StartBack(false, 0.6f, 0.1f) - 0.04f) < 1e-5f;
+        bool played = StrideWarp.Played(true, 1f, true) == 1f && StrideWarp.Played(false, 0.25f, true) == 0.75f
+                      && StrideWarp.Played(false, 0.25f, false) == 0.25f;
+        GaitClip walk = GaitClip.Synthetic(LegRig.HipZ, LegRig.Floor, LegRig.Speed, LegRig.SwingLift);
+        const float Edge = 3f / GaitClip.Samples;
+        bool ups = MathF.Abs(walk.UpR - 0.6f) < Edge && MathF.Abs(walk.UpL - 0.1f) < Edge;
+        check.Expect(ratio && begun && start && played && ups,
+                     $"feet: the pieces of a backwards walk: stride ratio {ratio}, fresh at the end {begun}, start {start}, swing progress {played}, lift-offs {walk.UpR:0.000} / {walk.UpL:0.000}");
+    }
 
     /// <summary>The synthetic walk played at the engine's rate -1.4, backing off at 1.4 times its pace: the next frame plays
     /// at 1/sqrt(1.4) of the engine's rate, a stance foot stays put, a swing keeps its side (no aim), a foot lifted 0.05 off

@@ -98,10 +98,10 @@ internal static unsafe class Diagonal
     /// body's legs go round with directly: up to <see cref="WalkTurn"/> while it is <paramref name="moving"/>, none standing.</summary>
     internal static float Walked(float step, bool moving, float dt) => moving ? Math.Clamp(step, -WalkTurn * dt, WalkTurn * dt) : 0f;
 
-    /// <summary>Seconds of one step of the gait being played (half its cycle at the rate it plays), or
-    /// <see cref="FallbackStep"/> with no walk present.</summary>
+    /// <summary>Seconds of one step of the gait being played (half its cycle at the speed it plays, forwards or backwards),
+    /// or <see cref="FallbackStep"/> with no walk present.</summary>
     internal static float StepTime(in LegWalk w) =>
-        w.Present && w.Rate > 0f && w.Length > 0f ? Math.Clamp(w.Length / (2f * w.Rate), MinStep, MaxStep) : FallbackStep;
+        w.Present && w.Rate != 0f && w.Length > 0f ? Math.Clamp(w.Length / (2f * MathF.Abs(w.Rate)), MinStep, MaxStep) : FallbackStep;
 
     /// <summary>One frame of the turn's critically damped spring toward <paramref name="target"/>, coming round over
     /// one <paramref name="stepTime"/> from rest with no overshoot; a <paramref name="snap"/> (teleport, first sight)
