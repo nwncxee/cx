@@ -146,7 +146,8 @@ internal static unsafe partial class Weather
     [UnmanagedCallersOnly]
     private static int OnLoadArea(IntPtr area, IntPtr camera, IntPtr loadscreen)
     {
-        _area = area;
+        _area = area; Type = 0; Density = 0f; CurrentKind = Kind.None;
+        ResetSurface();
         return _loadSlot != null ? (*_loadSlot)(area, camera, loadscreen) : 0;
     }
 
