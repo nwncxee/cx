@@ -146,6 +146,8 @@ STAGE="${STAGE_DIR:-$ROOT/cx-linux-x64}"
 GAME_BIN="$NWN_DIR/bin/linux-x86/nwmain-linux"
 [ -f "$STAGE/libcx.so" ]   || { echo "run-live: no build staged -- run ./build.sh in $ROOT" >&2; exit 2; }
 [ -f "$STAGE/cx-launch" ]  || { echo "run-live: $STAGE/cx-launch missing" >&2; exit 2; }
+. "$ROOT/tools/live/harness-lib.sh"
+[ "$STOCK" = 1 ] || stale=$(stage_stale "$STAGE" "$ROOT") || { echo "$stale" >&2; exit 2; }
 [ -f "$GAME_BIN" ]         || { echo "run-live: client not found: $GAME_BIN (set NWN_DIR)" >&2; exit 2; }
 command -v gamescope >/dev/null || { echo "run-live: gamescope not installed" >&2; exit 2; }
 
@@ -753,6 +755,7 @@ fi
     echo "screenshots     $shots in $SHOTS"
     echo "world lit       ${world_lit:-?}% of the settled frame's centre (floor ${MIN_LIT}%), luma spread ${world_spread:-?}"
     echo "crash reports   $crashes"
+    shutdown_crash_line "$crashes" "$(find "$CRASH_DIR" -name '*.nwcrash.txt' 2>/dev/null | wc -l)" "$CRASH_DIR"
     echo "sound server    $([ "$audio_clients" = unchecked ] && echo 'unchecked (no pw-dump or jq)' || echo "${audio_clients:-not reached}")"
     echo "leftovers       ${survivors:-none}"
     if [ "$LADDER" = 1 ]; then
