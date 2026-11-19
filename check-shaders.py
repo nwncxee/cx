@@ -291,7 +291,9 @@ def main_text(stock, done, g, env, read):
     text = "\n".join(expand(stock, done, g, read=read, standard=WHOLE_STANDARD))
     if not MAIN_FN.search(text):
         return None
-    text = FRAG_OUT.sub("CxVanOut", MAIN_FN.sub("void CxVanMain()", text, 1))
+    text = MAIN_FN.sub("void CxVanMain()", text, 1)
+    text = FRAG_OUT.sub("CxVanOut", text) if DECLARES_MAIN_OUT.search(env) \
+        else FRAG_OUT.sub("FragmentColor", content_stage.unshadow(text))
     names = sorted(set(OWN_DEFINE.findall(env)))
     if names:
         text = re.sub(r"(?m)^[ \t]*uniform\b[^;=\n]*\b(?:" + "|".join(names) + r")[ \t]*(?:=[^;\n]*)?;[^\n]*\n?", "", text)
@@ -302,6 +304,8 @@ def main_text(stock, done, g, env, read):
 MAIN_FN = re.compile(r"\bvoid\s+main\s*\(\s*(?:void)?\s*\)")
 # Mirrors VanillaShader.FragOut: the outputs a whole stage writes, which the splice points at CxVanOut.
 FRAG_OUT = re.compile(r"\bgl_FragColor\b|\bgl_FragData\s*\[\s*0\s*\]")
+# Mirrors VanillaShader.DeclaresMainOut: an override written before the wrapper had its own output keeps the working colour.
+DECLARES_MAIN_OUT = re.compile(r"(?m)^\s*vec4\s+CxVanOut\s*;")
 # Mirrors VanillaShader.StubFn: a function DEFINITION in a stub, anchored on its opening brace.
 STUB_FN = re.compile(r"^\s*(?:\w+\s+)+(\w+)\s*\([^)]*\)\s*\{", re.M)
 OWN_DEFINE = re.compile(r"^[ \t]*#[ \t]*define[ \t]+(\w+)", re.M)

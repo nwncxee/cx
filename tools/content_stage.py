@@ -492,7 +492,9 @@ def matching(b, open_at):
 
 
 SHADOW_NAME = "cxOwnFragmentColor"
-SHADOW_DECL = re.compile(r"\b(?:[biu]?vec[234]|float|int|uint|bool|mat[234])\s+FragmentColor\b(?=\s*[=;,)\[])")
+SHADOW_TYPES = r"(?:[biu]?vec[234]|float|int|uint|bool|mat[234])"
+SHADOW_DECL = re.compile(r"(?:\b" + SHADOW_TYPES + r"\s+|,\s*)FragmentColor\b(?=\s*[=;,)\[])")
+DECL_STATEMENT = re.compile(r"^\s*(?:(?:const|highp|mediump|lowp)\s+)*" + SHADOW_TYPES + r"\s+\w")
 
 
 def unshadow(text):
@@ -501,15 +503,28 @@ def unshadow(text):
     b = blank(text)
     if b.count("{") != b.count("}"):
         return text
-    scopes = [(m.start(), end) for m in SHADOW_DECL.finditer(b) if (end := shadow_scope(b, m.start())) is not None]
+    scopes = [(m.start(), end) for m in SHADOW_DECL.finditer(b)
+              if (b[m.start()] != "," or in_declaration(b, m.start())) and (end := shadow_scope(b, m.start())) is not None]
     if not scopes:
         return text
     out, cursor = [], 0
-    for u in re.finditer(r"\bFragmentColor\b", b):
+    for u in re.finditer(r"(?<!\.)\bFragmentColor\b", b):
         if any(f <= u.start() <= t for f, t in scopes):
             out.append(text[cursor:u.start()] + SHADOW_NAME)
             cursor = u.end()
     return "".join(out) + text[cursor:]
+
+
+def in_declaration(b, comma):
+    """Mirrors ContentStage.InDeclaration: the comma separates two names of one declaration, not two arguments."""
+    start = max(b.rfind(";", 0, comma), b.rfind("{", 0, comma), b.rfind("}", 0, comma)) + 1
+    head = b[start:comma]
+    return bool(DECL_STATEMENT.match(head)) and head.count("(") == head.count(")")
+
+
+def struct_body(b, open_at):
+    """Mirrors ContentStage.StructBody: the brace opens a struct's members, not a block."""
+    return bool(re.search(r"\bstruct\s+\w+\s*$", b[:open_at]))
 
 
 def shadow_scope(b, at):
@@ -532,7 +547,7 @@ def shadow_scope(b, at):
                 stack.append(i)
             elif c == "}" and stack:
                 stack.pop()
-        return matching(b, stack[-1])
+        return None if struct_body(b, stack[-1]) else matching(b, stack[-1])
     if paren <= 0:
         return None
     close, depth = at, paren

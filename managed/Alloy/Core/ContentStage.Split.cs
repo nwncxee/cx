@@ -144,11 +144,20 @@ internal static partial class ContentStage
     /// <summary>The name a stage's own local or parameter <c>FragmentColor</c> takes, so it no longer hides the global.</summary>
     internal const string ShadowName = "cxOwnFragmentColor";
 
-    /// <summary>A declaration of <c>FragmentColor</c> as a local or a parameter: a GLSL type, then the name, then what may follow it.</summary>
-    private static readonly Regex ShadowDecl = new(@"\b(?:[biu]?vec[234]|float|int|uint|bool|mat[234])\s+FragmentColor\b(?=\s*[=;,)\[])",
+    /// <summary>The GLSL types a <c>FragmentColor</c> of the stage's own is declared with.</summary>
+    private const string ShadowTypes = @"(?:[biu]?vec[234]|float|int|uint|bool|mat[234])";
+
+    /// <summary>A declaration of <c>FragmentColor</c> as a local or a parameter: after its type, or after a comma in a
+    /// declaration (<see cref="DeclStatement"/> says which commas are), then what may follow the name.</summary>
+    private static readonly Regex ShadowDecl = new(@"(?:\b" + ShadowTypes + @"\s+|,\s*)FragmentColor\b(?=\s*[=;,)\[])",
                                                    RegexOptions.Compiled);
 
-    private static readonly Regex FragmentColorUse = new(@"\bFragmentColor\b", RegexOptions.Compiled);
+    /// <summary>A statement that opens with a type, its qualifiers before it: a declaration.</summary>
+    private static readonly Regex DeclStatement = new(@"^\s*(?:(?:const|highp|mediump|lowp)\s+)*" + ShadowTypes + @"\s+\w",
+                                                      RegexOptions.Compiled);
+
+    /// <summary>A use of the name, not a member of the same name (<c>l.FragmentColor</c>).</summary>
+    private static readonly Regex FragmentColorUse = new(@"(?<!\.)\bFragmentColor\b", RegexOptions.Compiled);
 
     /// <summary><paramref name="text"/> with every local or parameter it names <c>FragmentColor</c> renamed <see cref="ShadowName"/>
     /// through its scope, so the rename of <c>gl_FragColor</c> onto the global cannot land on the stage's own variable. Text whose
@@ -159,7 +168,8 @@ internal static partial class ContentStage
         if (blank.Count(c => c == '{') != blank.Count(c => c == '}')) return text;
         var scopes = new List<(int From, int To)>();
         foreach (Match m in ShadowDecl.Matches(blank))
-            if (ShadowScope(blank, m.Index) is int end) scopes.Add((m.Index, end));
+            if ((blank[m.Index] != ',' || InDeclaration(blank, m.Index)) && ShadowScope(blank, m.Index) is int end)
+                scopes.Add((m.Index, end));
         if (scopes.Count == 0) return text;
         var sb = new StringBuilder(text.Length + 32 * scopes.Count);
         int cursor = 0;
@@ -186,7 +196,7 @@ internal static partial class ContentStage
             else if (open.Count == 0 && c == '(') paren++;
             else if (open.Count == 0 && c == ')') paren--;
         }
-        if (open.Count > 0) return Matching(blank, open.Peek());
+        if (open.Count > 0) return StructBody(blank, open.Peek()) ? null : Matching(blank, open.Peek());
         if (paren <= 0) return null;
         int close = at;
         for (int depth = paren; close < blank.Length && depth > 0; close++)
@@ -195,6 +205,18 @@ internal static partial class ContentStage
         while (body < blank.Length && char.IsWhiteSpace(blank[body])) body++;
         return body < blank.Length && blank[body] == '{' ? Matching(blank, body) : null;
     }
+
+    /// <summary>Is the comma at <paramref name="comma"/> between two names of one declaration, not two arguments of a call?</summary>
+    private static bool InDeclaration(string blank, int comma)
+    {
+        int start = blank.LastIndexOfAny([';', '{', '}'], comma) + 1;
+        string head = blank[start..comma];
+        return DeclStatement.IsMatch(head) && head.Count(c => c == '(') == head.Count(c => c == ')');
+    }
+
+    /// <summary>Does the brace at <paramref name="open"/> open a struct's members rather than a block?</summary>
+    private static bool StructBody(string blank, int open)
+        => Regex.IsMatch(blank[..open], @"\bstruct\s+\w+\s*$");
 
     /// <summary>The brace closing the one at <paramref name="open"/>, or -1.</summary>
     private static int Matching(string blank, int open)

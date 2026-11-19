@@ -47,6 +47,10 @@ internal static unsafe class VanillaShader
     /// only the enclosing stage declares, so a content local or parameter named <c>FragmentColor</c> cannot take the write.</summary>
     internal const string MainOut = "CxVanOut";
 
+    /// <summary>The enclosing stage declares <see cref="MainOut"/>; an override written before it did not, and its region's
+    /// output stays the working colour.</summary>
+    private static readonly Regex DeclaresMainOut = new(@"(?m)^\s*vec4\s+" + MainOut + @"\s*;", RegexOptions.Compiled);
+
     /// <summary>The fragment outputs a whole stage writes, as the engine's GLSL spells them.</summary>
     private static readonly Regex FragOut = new(@"\bgl_FragColor\b|\bgl_FragData\s*\[\s*0\s*\]", RegexOptions.Compiled);
 
@@ -234,7 +238,8 @@ internal static unsafe class VanillaShader
             return null;
         }
         text = MainFn.Replace(text, "void " + MainEntry + "()", 1);
-        text = FragOut.Replace(text, MainOut);
+        text = DeclaresMainOut.IsMatch(env) ? FragOut.Replace(text, MainOut)
+                                            : FragOut.Replace(CX.Alloy.ContentStage.Unshadow(text), "FragmentColor");
         text = StripFor(env).Replace(text, "");
         var own = OwnDefine.Matches(stock).Select(m => m.Groups[1].Value).Distinct().ToList();
         var sb = new StringBuilder(text.Length + 512);
