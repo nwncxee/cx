@@ -17,6 +17,30 @@ internal static class LegsSlope
         Stand(check);
         OffSlope(check);
         LedgeDown(check);
+        Steep(check);
+    }
+
+    // Given a character running up or down a slope too steep for its stride, 45 degrees
+    // When it runs
+    // Then its feet are never set further apart in height than the highest knee lift
+    /// <summary>The synthetic run on grades of 1 up and down, at 1 and 1.5 times its pace, 2 s to 5 s: the two ankles' height
+    /// deltas, less their stride warps, differ by at most the rig's lift of 0.25. Oracle: the hand-set knob.</summary>
+    private static void Steep(Checker check)
+    {
+        foreach (float k in stackalloc[] { 1f, 1.5f })
+            foreach (float grade in stackalloc[] { 1f, -1f })
+            {
+                var r = new SlopeRig(Terrain.Slope(grade));
+                float worst = 0f;
+                while (r.Time < 5f)
+                {
+                    r.Run(k);
+                    if (r.Time < 2f) continue;
+                    worst = MathF.Max(worst, MathF.Abs(r.P.DeltaR.Z - r.P.WarpR.Z - (r.P.DeltaL.Z - r.P.WarpL.Z)));
+                }
+                check.Expect(worst < 0.251f,
+                             $"slope: a run at {k:0.0}x pace on grade {grade:0.0} sets its feet no further apart in height than the lift: {worst:0.0000} (bound 0.25)");
+            }
     }
 
     /// <summary>World units the pelvis may rise and fall over a steady run on a slope, peak to peak: at the run's own pace,
