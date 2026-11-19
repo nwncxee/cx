@@ -26,17 +26,18 @@ expect "the refusal names the rebuild" "$(grep -c "staged build ${old:0:8} is ol
 git -C "$t" rev-parse HEAD > "$t/cx-linux-x64/BUILT_FROM"
 echo c > "$t/tools/live/run-live.sh"; { git -C "$t" rev-parse HEAD; echo dirty; } > "$t/cx-linux-x64/BUILT_FROM"
 stage_stale "$t/cx-linux-x64" "$t" >/dev/null; expect "a stage built from uncommitted edits runs" "$?" 0
-sleep 1.1; git -C "$t" checkout -q tools/live/run-live.sh
+touch -d "-1 min" "$t/cx-linux-x64/BUILT_FROM"; git -C "$t" checkout -q tools/live/run-live.sh
 stage_stale "$t/cx-linux-x64" "$t" >/dev/null; expect "edits reverted after a dirty build are refused" "$?" 1
-git -C "$t" rev-parse HEAD > "$t/cx-linux-x64/BUILT_FROM"; sleep 1.1; echo n > "$t/tools/live/new.sh"
+git -C "$t" rev-parse HEAD > "$t/cx-linux-x64/BUILT_FROM"; touch -d "-1 min" "$t/cx-linux-x64/BUILT_FROM"; echo n > "$t/tools/live/new.sh"
 msg=$(stage_stale "$t/cx-linux-x64" "$t"); expect "a new untracked harness file is refused" "$?" 1
 expect "the refusal names the uncommitted file" "$(grep -c 'tools/live/new.sh' <<<"$msg")" 1
 rm "$t/tools/live/new.sh" "$t/cx-linux-x64/BUILT_FROM"
 stage_stale "$t/cx-linux-x64" "$t" >/dev/null; expect "an unstamped stage is refused" "$?" 1
 
-# The real script, not only its helper: a stage stamped before tools/live last changed stops at exit 2.
-first=$(git -C "$ROOT" rev-list --max-parents=0 HEAD | tail -1)
-mkdir -p "$t/stage" && touch "$t/stage/libcx.so" "$t/stage/cx-launch" && echo "$first" > "$t/stage/BUILT_FROM"
+# The real script, not only its helper: a stage stamped with a commit this checkout lacks stops at exit 2,
+# however shallow the checkout.
+mkdir -p "$t/stage" && touch "$t/stage/libcx.so" "$t/stage/cx-launch"
+echo 0000000000000000000000000000000000000000 > "$t/stage/BUILT_FROM"
 err=$(STAGE_DIR="$t/stage" timeout 30 bash "$ROOT/tools/live/run-live.sh" 2>&1 >/dev/null); rc=$?
 expect "run-live.sh refuses a stale stage with exit 2" "$rc" 2
 expect "run-live.sh names the rebuild" "$(grep -c 'run ./build.sh' <<<"$err")" 1
