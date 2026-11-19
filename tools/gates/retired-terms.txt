@@ -295,3 +295,5 @@ chat\.rows\b	CX-544
 \binput bar\b	CX-544
 # CX's caches moved into the game's CACHE folder: the old folder names survive only where the older CX's folders are removed.
 cx-(shaders|charts)	CX-553	older CX|no cx-(shaders|charts)|Path\.Combine\(ud, "cx-|\["cx-shaders", "cx-charts"\]
+# The leg solve now holds a landing, drops the pelvis only as far as the legs need and turns the hips over one step of the gait (CX-561); the lightmap bake's own DropHold() is another thing.
+\bDropHold\b|\bDropFall\b|\bStrideWarp\.(Anchor|Settled|Drop)\b|\bAnchor[RL]\b|plant frames dragged|\bDiagonal\.TurnTime\b|\bFootPlacement\.Compute\b|come round within a quarter second	CX-561	DropHold\(\)|\(DropHold\)

@@ -20,9 +20,13 @@ internal static unsafe class Diagonal
     private const ushort WalkFl = 0x54, WalkFr = 0x55, RunFl = 0x56, RunFr = 0x57; // not-an-offset: anim ids
     /// <summary>Radians the body turns: the engine's diagonal is exactly 45° off the facing, both ways.</summary>
     private const float Quarter = MathF.PI / 4f;
-    /// <summary>Seconds the turn eases over (SmoothCD time): nine tenths of it inside a quarter second, within the one stance
-    /// it pivots over. A slower turn spans two stances and drags both feet round with the hips.</summary>
-    private const float TurnTime = 0.1f;
+    /// <summary>The turn's spring time as a share of one step (SmoothCD time, so its settling is about three times it):
+    /// a 90° switch is under half round a quarter step in and within 2° of the new heading by the step's end.</summary>
+    private const float TurnShare = 1f / 3f;
+    /// <summary>Seconds of one step when no walk clip is playing: half a typical walk or run cycle.</summary>
+    private const float FallbackStep = 0.5f;
+    /// <summary>Bounds on a step's seconds, so a stalled or runaway clip rate cannot freeze or whip the turn.</summary>
+    private const float MinStep = 0.15f, MaxStep = 1.2f;
     /// <summary>Share of the hips' turn the chest takes: enough that the waist does not read as a hinge.</summary>
     private const float UpperShare = 0.2f;
     /// <summary>World units per second of backward travel below which a walk-back's sideways share is noise.</summary>
@@ -94,28 +98,38 @@ internal static unsafe class Diagonal
     /// body's legs go round with directly: up to <see cref="WalkTurn"/> while it is <paramref name="moving"/>, none standing.</summary>
     internal static float Walked(float step, bool moving, float dt) => moving ? Math.Clamp(step, -WalkTurn * dt, WalkTurn * dt) : 0f;
 
-    /// <summary>One frame of the turn's spring toward <paramref name="target"/>; a <paramref name="snap"/> (teleport,
-    /// first sight) lands on it.</summary>
-    internal static void Ease(ref float turn, ref float v, float target, bool snap, float dt)
+    /// <summary>Seconds of one step of the gait being played (half its cycle at the speed it plays, forwards or backwards),
+    /// or <see cref="FallbackStep"/> with no walk present.</summary>
+    internal static float StepTime(in LegWalk w) =>
+        w.Present && w.Rate != 0f && w.Length > 0f ? Math.Clamp(w.Length / (2f * MathF.Abs(w.Rate)), MinStep, MaxStep) : FallbackStep;
+
+    /// <summary>One frame of the turn's critically damped spring toward <paramref name="target"/>, coming round over
+    /// one <paramref name="stepTime"/> from rest with no overshoot; a <paramref name="snap"/> (teleport, first sight)
+    /// lands on it.</summary>
+    internal static void Ease(ref float turn, ref float v, float target, bool snap, float dt, float stepTime)
     {
         if (snap) { turn = target; v = 0f; return; }
-        Smooth(ref turn, ref v, target, dt, TurnTime);
+        Smooth(ref turn, ref v, target, dt, TurnShare * stepTime);
     }
 
-    /// <summary>This frame's hip turn for a body playing <paramref name="anim"/>, facing <paramref name="fwdH"/> /
-    /// <paramref name="right"/>; true when there is one to write (<see cref="Write"/>). With <c>anim.pivot</c> the
-    /// change of facing since the last <paramref name="tracked"/> frame, less what a moving body walks round
-    /// (<see cref="Walked"/>), is left on the hips (<see cref="Lag"/>).</summary>
-    internal static bool Step(ref PoseService.Slot s, int anim, Vector3 fwdH, Vector3 right, bool snap, bool tracked, float dt)
+    /// <summary>The <c>GetAnimationName</c> hook is in: a diagonal's name can be swapped for the straight cycle's.</summary>
+    internal static bool Hooked => _name != null;
+
+    /// <summary>This frame's hip turn for a body playing <see cref="LegFrame.Anim"/> with the facing's horizontal axes
+    /// <see cref="LegFrame.FwdH"/> / <see cref="LegFrame.Right"/>; true when there is one to write (<see cref="Write"/>). With
+    /// <c>anim.pivot</c> the facing's change since a tracked frame, less what a moving body walks round, stays on the hips.</summary>
+    internal static bool Step(ref LegState s, in LegFrame f)
     {
-        float target = AnimKnobs.Diagonal.V && _name != null && s.Hips
-            ? Target(anim, s.Swapped, s.Vel.X * fwdH.X + s.Vel.Y * fwdH.Y, s.Vel.X * right.X + s.Vel.Y * right.Y) : 0f;
+        Vector3 fwdH = f.FwdH, right = f.Right;
+        int anim = f.Anim;
+        float target = f.Knobs.Diagonal && f.Hips
+            ? Target(anim, f.Swapped, f.Vel.X * fwdH.X + f.Vel.Y * fwdH.Y, f.Vel.X * right.X + f.Vel.Y * right.Y) : 0f;
         float heading = MathF.Atan2(fwdH.Y, fwdH.X);
-        float step = tracked && !snap ? MathF.IEEERemainder(heading - s.Heading, 2f * MathF.PI) : 0f;
+        float step = f.Tracked && !f.Snap ? MathF.IEEERemainder(heading - s.Heading, 2f * MathF.PI) : 0f;
         bool moving = PoseService.IsLocomotion(anim);
-        if (AnimKnobs.Pivot.V && s.Hips && step != 0f && Transition.Movement(anim)) s.Turn = Lag(s.Turn, step - Walked(step, moving, dt));
+        if (f.Knobs.Pivot && f.Hips && step != 0f && Transition.Movement(anim)) s.Turn = Lag(s.Turn, step - Walked(step, moving, f.Dt));
         s.Heading = heading;
-        Ease(ref s.Turn, ref s.TurnV, target, snap, dt);
+        Ease(ref s.Turn, ref s.TurnV, target, f.Snap, f.Dt, s.TurnStep > 0f ? s.TurnStep : FallbackStep);
         return MathF.Abs(s.Turn) > MinTurn;
     }
 
@@ -155,29 +169,46 @@ internal static unsafe class Diagonal
                      && Target(Walk, true, 1.4f, -1.4f) == 0f && Target(sideL, true, 0f, -1.6f) == 0f && Target(0, true, 0f, 0f) == 0f
                      && Target(WalkFl, false, walk, -walk) == 0f && Target(RunFr, false, walk, walk) == 0f;
 
-        float x = 0f, v = 0f, t = Quarter, first = 0f, peak = 0f, stance = 0f;
+        float x = 0f, v = 0f, t = Quarter, first = 0f, peak = 0f, quarterStep = 0f, step = 0f;
         bool monotonic = true;
         for (int i = 0; i < 60; i++)
         {
             float before = x;
-            Ease(ref x, ref v, t, false, 1f / 60f);
+            Ease(ref x, ref v, t, false, 1f / 60f, FallbackStep);
             if (i == 0) first = x;
-            if (i == 14) stance = x;
+            if (i == 7) quarterStep = x;
+            if (i == 29) step = x;
             if (x < before) monotonic = false;
             peak = MathF.Max(peak, x);
         }
-        float held = 0f, hv = 0f;
-        Ease(ref held, ref hv, t, true, 1f / 60f);
-        bool eases = first > 0f && first < 0.25f * t && stance >= 0.9f * t && monotonic && peak <= t + 1e-4f
-                     && t - x < MathF.PI / 180f && held == t;
+        float held = 0f, hv = 3f;
+        Ease(ref held, ref hv, t, true, 1f / 60f, FallbackStep);
+        // closed form 1 - (1 + w s) e^(-w s), w = 6 / 0.5 s: 47.5% at 8 frames, 98.3% at 30
+        bool eases = first > 0f && first < 0.05f * t && quarterStep > 0.4f * t && quarterStep < 0.5f * t
+                     && step > 0.97f * t && monotonic && peak <= t + 1e-4f
+                     && t - x < MathF.PI / 180f && held == t && hv == 0f;
         bool played = Played(WalkFl, true) == Walk && Played(RunFr, true) == Run && Played(WalkFl, false) == WalkFl
                       && Played(WalkBack, true) == WalkBack && Played(sideL, true) == sideL;
-        return swap && faces && backs && still && eases && played;
+        LegWalk w = new() { Present = true, Length = 1f, Rate = 2f };
+        LegWalk slow = new() { Present = true, Length = 1f, Rate = 0.01f }, fast = new() { Present = true, Length = 1f, Rate = 50f };
+        bool stepped = StepTime(w) == 0.25f && StepTime(default) == 0.5f && StepTime(w with { Present = false }) == 0.5f
+                       && StepTime(w with { Rate = 0f }) == 0.5f && StepTime(slow) == 1.2f && StepTime(fast) == 0.15f;
+        // a run playing at twice its rate steps in 0.25 s: Step, kept that step time, reaches 0.97 of the diagonal in 15 frames, which the 0.5 s fallback (80%) does not
+        LegFrame f = new()
+        {
+            Anim = RunFl, Swapped = true, Hips = true, Dt = 1f / 60f, FwdH = Vector3.UnitY, Right = Vector3.UnitX,
+            Vel = new Vector2(-1f, 1f), Knobs = new LegKnobs { Diagonal = true }, Walk = w,
+        };
+        LegState st = default;
+        st.TurnStep = StepTime(w);
+        for (int i = 0; i < 15; i++) Step(ref st, f);
+        bool wired = st.Turn > 0.97f * Quarter && st.Turn <= Quarter;
+        return swap && faces && backs && still && eases && stepped && wired && played;
     }
 
     /// <summary>A heading change: the hips keep their world heading as the facing turns, across the ±180° seam and never
-    /// past <see cref="MaxTwist"/>, then come round inside a quarter second without overshoot; a steady bend trails by
-    /// its rate times <see cref="TurnTime"/>, not a growing lag. A moving
+    /// past <see cref="MaxTwist"/>, then come round over one step without overshoot; a steady bend trails by
+    /// its rate times the spring time (a third of a step), not a growing lag. A moving
     /// body walks a bend with its legs and pivots only the part of a snap it cannot walk.</summary>
     internal static bool LagCheck()
     {
@@ -186,24 +217,24 @@ internal static unsafe class Diagonal
                      && MathF.Abs(Lag(0f, MathF.PI)) == MaxTwist && Lag(Quarter, -step) == MaxTwist
                      && MathF.Abs(Lag(Quarter, step) - (Quarter - step)) < 1e-5f;
 
-        float x = Lag(0f, step), v = 0f, stance = 0f;
+        float x = Lag(0f, step), v = 0f, step30 = 0f;
         bool monotonic = true;
         for (int i = 0; i < 60; i++)
         {
             float before = x;
-            Ease(ref x, ref v, 0f, false, dt);
-            if (i == 14) stance = x;
+            Ease(ref x, ref v, 0f, false, dt, FallbackStep);
+            if (i == 29) step30 = x;
             if (x < before || x > 1e-4f) monotonic = false;
         }
-        bool settles = monotonic && MathF.Abs(stance) <= 0.1f * step && MathF.Abs(x) < MathF.PI / 180f;
+        bool settles = monotonic && MathF.Abs(step30) <= 0.03f * step && MathF.Abs(x) < MathF.PI / 180f;
 
         float rate = 1.5f, b = 0f, bv = 0f;
         for (int i = 0; i < 120; i++)
         {
             b = Lag(b, rate * dt);
-            Ease(ref b, ref bv, 0f, false, dt);
+            Ease(ref b, ref bv, 0f, false, dt, FallbackStep);
         }
-        bool bends = MathF.Abs(b + rate * TurnTime) < 0.3f * rate * TurnTime;
+        bool bends = MathF.Abs(b + 0.25f) < 0.075f;
 
         // walking a 1.5 rad/s bend leaves nothing on the hips; a 120° snap as a drive sets off leaves all but one
         // frame's walkable turn, which the twist cap then holds to its limit; standing leaves every step
@@ -212,7 +243,7 @@ internal static unsafe class Diagonal
         {
             float st = rate * dt;
             w = Lag(w, st - Walked(st, true, dt));
-            Ease(ref w, ref wv, 0f, false, dt);
+            Ease(ref w, ref wv, 0f, false, dt, FallbackStep);
         }
         float snapTurn = 120f * deg;
         bool walks = MathF.Abs(w) < 1e-5f && Lag(0f, snapTurn - Walked(snapTurn, true, dt)) == -MaxTwist

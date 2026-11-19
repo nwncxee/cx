@@ -37,7 +37,7 @@ internal static class Weight
         for (int i = 0; i < 120; i++)
         {
             Step(ref c, i == 0, Dt);
-            cruiseDip = MathF.Max(cruiseDip, MathF.Abs(Mass.Advance(ref c, 0f, 1f, Dt)));
+            cruiseDip = MathF.Max(cruiseDip, MathF.Abs(Mass.Advance(ref c.Leg, c.Cue, 0f, 1f, Dt)));
             Follow.Advance(ref c, Vector3.Zero, new Vector3(0f, c.Cue, 0f), true, i == 0, Dt);
             cruiseSwing = MathF.Max(cruiseSwing, c.ArmR.Length());
         }
@@ -45,8 +45,8 @@ internal static class Weight
 
         float ramp = Held(GaitMode.ClientPath, WalkRate, 54, Dt), ease = Held(GaitMode.Driving, -WalkRate, 57, Dt);
         if (!(ramp < -0.012f && ramp > -0.020f && ease < -0.012f && ease > -0.020f)) return false;
-        if (!(UpperBody.LeanTarget(WalkRate, 0f, WalkRate, 0f, true).X < 0f
-              && UpperBody.LeanTarget(WalkRate, 0f, -WalkRate, 0f, true).X == 0f)) return false;
+        if (!(UpperBody.LeanTarget(WalkRate, 0f, WalkRate, 0f, true, UpperBody.Ahead).X < 0f
+              && UpperBody.LeanTarget(WalkRate, 0f, -WalkRate, 0f, true, UpperBody.Ahead).X == 0f)) return false;
 
         PoseService.Slot d = default;
         d.Gait = GaitMode.Driving;
@@ -74,7 +74,7 @@ internal static class Weight
         for (int i = 0; i < frames; i++)
         {
             Step(ref s, false, dt);
-            worst = MathF.Min(worst, Mass.Advance(ref s, 0f, 1f, dt));
+            worst = MathF.Min(worst, Mass.Advance(ref s.Leg, s.Cue, 0f, 1f, dt));
         }
         return worst;
     }

@@ -41,6 +41,9 @@ internal sealed class GaitClip
     /// (model frame and units).</summary>
     public float DownR = -1f, DownL = -1f;
     public Vector3 LandR, LandL;
+    /// <summary>The phase each foot lifts off at (the first sample in the air after one on the ground; -1 for none): where
+    /// it lands when the clip plays backwards.</summary>
+    public float UpR = -1f, UpL = -1f;
     /// <summary>The clip carries its own footstep events, which the engine plays: no footstep is made up for it.</summary>
     public bool Authored;
 
@@ -108,6 +111,9 @@ internal sealed class GaitClip
         int dr = Down(c.ContactR, c.Cyclic), dl = Down(c.ContactL, c.Cyclic);
         if (dr >= 0) { c.DownR = (float)dr / Samples; c.LandR = r[dr]; }
         if (dl >= 0) { c.DownL = (float)dl / Samples; c.LandL = l[dl]; }
+        int ur = Up(c.ContactR, c.Cyclic), ul = Up(c.ContactL, c.Cyclic);
+        if (ur >= 0) c.UpR = (float)ur / Samples;
+        if (ul >= 0) c.UpL = (float)ul / Samples;
         c.Verdict = GaitVerdict.Walk;
         return c;
     }
@@ -187,6 +193,14 @@ internal sealed class GaitClip
     {
         for (int i = cyclic ? 0 : 1; i < Samples; i++)
             if (on[i] && !on[(i + Samples - 1) % Samples]) return i;
+        return -1;
+    }
+
+    /// <summary>The first sample a foot is in the air after a sample on the ground (wrapping on a loop); -1 for none.</summary>
+    private static int Up(bool[] on, bool cyclic)
+    {
+        for (int i = cyclic ? 0 : 1; i < Samples; i++)
+            if (!on[i] && on[(i + Samples - 1) % Samples]) return i;
         return -1;
     }
 
