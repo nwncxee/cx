@@ -2,8 +2,9 @@ using System.Runtime.InteropServices;
 
 namespace CX.Engine;
 
-/// <summary>The words of the display block a text edit caches: scroll position, visible lines and budget,
-/// the box, and the font height. The edit reads and writes them in place.</summary>
+/// <summary>The display block <c>StringGob+0x528</c>: scroll, box, pixel-scroll mode, hit margin and font height, read
+/// and written in place by the game. One layout on both builds: on Windows <c>SetText</c> @rva 0x1fd690 reads +0x28,
+/// <c>EnablePixelScrolling</c> @0x1401e92a0 stores the +0x20 byte and <c>StringGob::HitCheck</c> @0x140048620 reads +0x24.</summary>
 [StructLayout(LayoutKind.Explicit)]
 public struct TextDisplayInfo
 {
@@ -28,6 +29,6 @@ public struct TextDisplayInfo
     /// <summary>How far the text's hit quad reaches past the box on each side horizontally; only the hit
     /// test reads it. The chat window sets it so a click on a line's portrait, left of the text, lands.</summary>
     [FieldOffset(0x24)] public float HitMargin;
-    /// <summary>Font height in layout units.</summary>
+    /// <summary>Font height in design pixels.</summary>
     [FieldOffset(0x28)] public float FontHeight;
 }

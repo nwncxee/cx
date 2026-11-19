@@ -213,6 +213,7 @@ public static unsafe partial class HitTestCheck
     {
         bool ok = true;
         const int rx = 400, ry = 560, rw = 80, rh = 24;
+        const int ExitCx = 400, ExitCy = 440;   // not-an-offset: the Exit quad's centre in its own frame, in panel pixels
         const float k = 0.01f;   // not-an-offset: the fixture's world units per panel pixel
         DbId row = TextObjects.Create(w.Scene, 1);
         if (row.IsNull) return Fail(log, "the text record for the list-row pick could not be made");
@@ -259,7 +260,7 @@ public static unsafe partial class HitTestCheck
         if (doc == null) ok = Fail(log, "the list row has no document to hang a line model on");
         else
         {
-            float ax = (rx + rw / 2 - 400) * k - SceneDb.ObjPos[ri].X, ay = (ry - 440) * k - SceneDb.ObjPos[ri].Y;
+            float ax = (rx + rw / 2 - ExitCx) * k - SceneDb.ObjPos[ri].X, ay = (ry - ExitCy) * k - SceneDb.ObjPos[ri].Y;
             doc.PublishedQuads = new QuadList { Attached = [(rider, ax, ay)], AttachedCount = 1 };
             DbId PickAt(int px)
             {
@@ -276,9 +277,7 @@ public static unsafe partial class HitTestCheck
             if (PickAt(rx + rw * 3 / 4) == rider)
                 ok = Fail(log, "a line model answered a pick outside its row's quad -- the engine never casts there");
 
-            // A chat line's portrait sits LEFT of its text, and the engine reaches it only because the chat window
-            // writes a hit margin through the display block, which widens the quad on both sides.
-            float lx = (rx - rw / 2 - 20 - 400) * k - SceneDb.ObjPos[ri].X;
+            float lx = (rx - rw / 2 - 20 - ExitCx) * k - SceneDb.ObjPos[ri].X;
             doc.PublishedQuads = new QuadList { Attached = [(rider, lx, ay)], AttachedCount = 1 };
             const int portrait = rx - rw / 2 - 30;
             if (PickAt(portrait) == rider)
@@ -287,11 +286,11 @@ public static unsafe partial class HitTestCheck
             TextSlots.SyncDisplayInfo(row);
             HitBounds.Refresh(ri);
             if (PickAt(portrait) != rider)
-                ok = Fail(log, "a pick on a chat line's portrait, inside the hit margin the game wrote through the "
-                             + "display block, did not answer the portrait");
+                ok = Fail(log, "a pick on a chat line's portrait, left of its text but inside the hit margin the chat "
+                             + "window writes through the display block, did not answer the portrait");
             if (PickAt(rx - rw / 2 - 50) == rider)
                 ok = Fail(log, "a line model answered a pick past the hit margin -- the quad must be hit first");
-            float rxm = (rx + rw / 2 + 20 - 400) * k - SceneDb.ObjPos[ri].X;
+            float rxm = (rx + rw / 2 + 20 - ExitCx) * k - SceneDb.ObjPos[ri].X;
             doc.PublishedQuads = new QuadList { Attached = [(rider, rxm, ay)], AttachedCount = 1 };
             if (PickAt(rx + rw / 2 + 30) != rider)
                 ok = Fail(log, "a pick right of the text, inside the hit margin, did not answer the line model there "

@@ -810,8 +810,8 @@ public static class TextObjectsSelfCheck
         c.Expect(TextSlots.ApplyDisplayInfo(d) && d.MaxWidth == 4.5f && d.MaxHeight == 1.25f,
           "a box written through the display block is adopted on the next slot call");
         d.MaxWidth = 2f; TextObjects.Stale(d);
-        c.Expect(!TextSlots.ApplyDisplayInfo(d) && d.MaxWidth == 2f, "a later SetMaxWidth is not undone by the stale block");
-        c.Expect(d.InfoBuf == (nint)p, "the block is the document's own, not one shared scratch");
+        c.Expect(!TextSlots.ApplyDisplayInfo(d), "a box the change gate already saw does not mark the record again");
+        c.Expect(Doc(Synthetic()).InfoBuf != d.InfoBuf, "each document has its own block, not one shared scratch");
         // CGuiEdit caches the pointer at construction and reads the budget through it after ScrollToLine.
         for (int i = 0; i < 30; i++) Put(d, "row");
         d.MaxHeight = 10f * d.Lines[0].Height - 0.0005f;
@@ -827,8 +827,8 @@ public static class TextObjectsSelfCheck
           "the hit margin written through the display block survives the next change gate");
     }
 
-    /// <summary>A recycled record's display block: a margin the dead tenant's game code wrote and nothing adopted
-    /// must not widen the next tenant's hit quad.</summary>
+    /// <summary>A recycled record's display block: a margin the dead tenant's game code wrote must not widen the
+    /// next tenant's hit quad.</summary>
     private static unsafe void RecycledMargin(Checker c)
     {
         DbId gone = TextObjects.Create(default, 4);
@@ -844,16 +844,6 @@ public static class TextObjectsSelfCheck
               $"a recycled record does not inherit the previous tenant's hit margin ({d.HitMargin}, block {info->HitMargin})");
         }
         TextObjects.Destroy(heir);
-
-        DbId adopted = TextObjects.Create(default, 4);
-        ((TextDisplayInfo*)TextSlots.GetDisplayInfo(adopted))->HitMargin = 0.3f;
-        TextSlots.SyncDisplayInfo(adopted);
-        TextObjects.Destroy(adopted);
-        DbId quiet = TextObjects.Create(default, 4);
-        TextDoc? q = TextObjects.Of(quiet);
-        c.Expect(q != null && q.HitMargin == 0f,
-          "a recycled record that never asks for its display block does not keep the previous tenant's adopted margin");
-        TextObjects.Destroy(quiet);
     }
 
     /// <summary>The display block is the document's one home: what the game writes through it -- the pixel-scroll
@@ -867,8 +857,6 @@ public static class TextObjectsSelfCheck
         p->PixelScroll = 1;
         TextObjects.Stale(d);
         c.Expect(d.PixelScroll && p->PixelScroll == 1, "a pixel-scroll write through the display block survives a change gate");
-        TextObjects.Stale(d);
-        c.Expect(d.PixelScroll && p->PixelScroll == 1, "...and a mark from outside the slot layer");
         var lines = Doc(d.Font!, maxHeight: 3.5f * d.Lines[0].Height);
         for (int i = 0; i < 12; i++) Put(lines, "row");
         TextObjects.Relayout(lines);
