@@ -228,7 +228,7 @@ public static unsafe partial class DbAnim
     }
 
     /// <summary>The models riding a panel text's visible lines, stepped by zero as <c>StringGob::Render</c>
-    /// @0x4933a0 steps each before drawing it. They are in no scene, so the walk never reaches them, and a
+    /// @0x5933a0 steps each before drawing it. They are in no scene, so the walk never reaches them, and a
     /// chat portrait's hover highlight is an animation only this step applies.</summary>
     private static void StepLineModels(DbList members)
     {
