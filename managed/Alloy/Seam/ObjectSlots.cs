@@ -505,6 +505,8 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
         if (!SceneDb.Objects.Valid(pid)) return;
         if (!SeamShell.Known(data, out byte cs, out DbId cid) || cs != SeamShell.StateLive) return;
         if (!SceneDb.Objects.Valid(cid) || SceneDb.ObjAttachTo[cid.Index].Value != pid.Value) return;
+        // A gob has one behaviour, and only its listener carries it: one the game installed answers instead.
+        if (new Gob(data).Behavior != 0) return;
         if (Move(pid, cid, data, SceneDb.ObjScene[pid.Index], Facade.SceneWord(pshell), out _, out _))
             FireEvent(data, name, 0);
     }
