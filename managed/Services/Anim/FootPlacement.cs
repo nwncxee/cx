@@ -18,6 +18,8 @@ internal static unsafe class FootPlacement
     private const int MaxCasts = 3;
     /// <summary>Seconds the offset springs take to settle (critically damped).</summary>
     private const float SmoothTime = 0.12f;
+    /// <summary>Seconds a swinging foot's offset spring takes: quick enough to be down on a falling slope as it lands.</summary>
+    private const float SwingTime = 0.05f;
     /// <summary>Ankle moves below this are no move: the IK is skipped.</summary>
     internal const float MinLift = 1e-4f;
     /// <summary>World units (times the gob's scale) from a foothold to the cast that measures its slope: about
@@ -108,7 +110,10 @@ internal static unsafe class FootPlacement
         }
         else
         {
-            Smooth(ref s.OffR, ref s.VelR, tr, dt, SmoothTime); Smooth(ref s.OffL, ref s.VelL, tl, dt, SmoothTime);
+            // the offsets ease in the world: the reference height's own rise this frame is no move of a foot's floor
+            if (Legs.Placing(f)) { s.OffR -= f.Rise; s.OffL -= f.Rise; }
+            Smooth(ref s.OffR, ref s.VelR, tr, dt, p.AheadR.Swing ? SwingTime : SmoothTime);
+            Smooth(ref s.OffL, ref s.VelL, tl, dt, p.AheadL.Swing ? SwingTime : SmoothTime);
             Smooth(ref s.FR, ref s.VFR, tfr, dt, SmoothTime); Smooth(ref s.SR, ref s.VSR, tsr, dt, SmoothTime);
             Smooth(ref s.FL, ref s.VFL, tfl, dt, SmoothTime); Smooth(ref s.SL, ref s.VSL, tsl, dt, SmoothTime);
             Smooth(ref s.W, ref s.VW, weight, dt, FadeTime);

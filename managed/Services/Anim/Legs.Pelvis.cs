@@ -16,13 +16,36 @@ internal static partial class Legs
     /// back up between a long stride's double supports, slow enough that one frame's need is no jolt.</summary>
     private const float DropTime = 0.06f;
 
+    /// <summary>Seconds the pelvis floor eases over with no walk planting the feet: a step up or down while standing.</summary>
+    private const float StandFloorTime = 0.06f;
+
+    /// <summary>The floor the pelvis rides this frame: the lower foot's, and while a walk lands its feet the lower of
+    /// those on the ground, eased over one step so a slope's stance-by-stance sawtooth is no bob.</summary>
+    private static float Ground(ref LegState s, in LegFrame f, in LegPose p, float offR, float offL)
+    {
+        float low = MathF.Min(offR, offL);
+        if (f.Snap || f.Gated) { s.Floor = low; s.FloorV = 0f; return low; }
+        if (!(f.Dt > 0f)) return s.Floor;
+        float target = low, time = StandFloorTime;
+        if (p.Landing)
+        {
+            bool r = !p.AheadR.Swing, l = !p.AheadL.Swing;
+            target = r && l ? low : r ? offR : l ? offL : s.Floor;
+            time = s.TurnStep;
+        }
+        Smooth(ref s.Floor, ref s.FloorV, target, f.Dt, time);
+        return s.Floor;
+    }
+
     /// <summary>The pelvis drop this frame (world units, down), from where each leg's target sits off its hip joint with
-    /// the pelvis at the lower floor: <paramref name="upR"/>, <paramref name="upL"/> are each foot's floor over that.</summary>
+    /// the pelvis on its floor (<see cref="Ground"/>): <paramref name="upR"/>, <paramref name="upL"/> are each foot's floor over that.</summary>
     private static float Pelvis(ref LegState s, in LegFrame f, in LegPose p, float upR, float upL)
     {
         if (f.Gated || f.Snap) { s.Drop = s.DropV = 0f; return 0f; }
         if (!(f.Dt > 0f)) return s.Drop > FootPlacement.MinLift ? s.Drop : 0f;
         if (f.Walk.Present) s.LegLen = f.Walk.LegLength * f.Scale;
+        // while a walk lands its feet, a planted foot below the floor the pelvis rides comes up short rather than bob the pelvis
+        if (p.Landing) { upR = MathF.Max(upR, 0f); upL = MathF.Max(upL, 0f); }
         Vector3 animR = f.RAnkle - f.RThigh, animL = f.LAnkle - f.LThigh;
         float lenR = Stretch(f, p, true), lenL = Stretch(f, p, false), leg = MathF.Max(s.LegLen, MathF.Max(lenR, lenL)), cap = MaxDrop * leg;
         float reachR = MathF.Max(Reach * leg, lenR), reachL = MathF.Max(Reach * leg, lenL);

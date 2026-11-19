@@ -187,6 +187,8 @@ internal struct LegState
     public bool Planting;
     /// <summary>The pelvis drop (world units, down) and its easing spring, and the leg's length last read off a walk.</summary>
     public float Drop, DropV, LegLen;
+    /// <summary>The floor the pelvis rides (world units off the reference height) and its easing spring.</summary>
+    public float Floor, FloorV;
     /// <summary>Seconds of one step of the walk last frame, which the hip turn comes round over this frame (0: none seen).</summary>
     public float TurnStep;
     /// <summary>Each foot's offset with nothing left to hold it (handed over in the air, or a walk gone with no stop), easing
