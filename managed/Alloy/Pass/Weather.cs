@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.InteropServices;
@@ -192,7 +193,8 @@ internal static unsafe partial class Weather
         _track = new TrackTexel[TrackSize * TrackSize];
         Print(_track, at, h, 10f, 0.01f, at, ref lo, ref hi);
         check.Expect(TrackAt(_track, at + h * ToeAt, 10f, 0.01f) > 0.5f, "the pressed print shows before the area load");
-        load(one, IntPtr.Zero, IntPtr.Zero);
+        int got = load(one, IntPtr.Zero, IntPtr.Zero);
+        check.Expect(got == 7, $"the area load reaches the next layer and returns its answer ({got})");
         check.Expect(_snow == 0f && _wet == 0f && _puddle == 0f && TrackAt(_track, at + h * ToeAt, 10f, 0.01f) == 0f,
           $"loading the next area into the same area object leaves no snow, soak or print (snow {_snow:F2}, wet {_wet:F2})");
         weather(one, 0, 100f);
@@ -211,6 +213,23 @@ internal static unsafe partial class Weather
             check.Expect(_snow == 1f && _wet == 0f,
               $"a snowy area loaded after another arrives settled, {(slow ? "after a minute-long load" : "after a quick load")} (snow {_snow:F2})");
         }
+        IntPtr two = (IntPtr)0x2000;   // not-an-offset: a second stand-in area pointer
+        load(two, IntPtr.Zero, IntPtr.Zero);
+        check.Expect(_area == two, "the area load names the area a live master flip re-issues to");
+        bool mapArrive = _mapArrive; int mapTicks = _mapTicksDone; var none = new Dictionary<string, int>();
+        next = &StubLoad;
+        load(one, IntPtr.Zero, IntPtr.Zero); weather(one, 1, 100f); WriteIntegrateVk(none, 0.1f, false);
+        check.Expect(_mapArrive, "the wetness map waits for the arrival decision before it soaks in one step");
+        _surfTick = new SurfaceTickState(); _surfTicks = Stopwatch.GetTimestamp() - Stopwatch.Frequency / 10; TickSurface(1);
+        WriteIntegrateVk(none, 0.1f, false);
+        check.Expect(!_mapArrive, "rain already falling at arrival soaks the wetness map in one step");
+        load(one, IntPtr.Zero, IntPtr.Zero); weather(one, 0, 0f); _enterTicks -= Stopwatch.Frequency * 60; weather(one, 1, 100f);
+        _surfTick = new SurfaceTickState(); _surfTicks = Stopwatch.GetTimestamp() - Stopwatch.Frequency / 10; TickSurface(1);
+        check.Expect(!_mapArrive, "rain that starts a minute after arrival does not soak the wetness map in one step");
+        load(one, IntPtr.Zero, IntPtr.Zero); weather(one, 2, 100f);
+        _surfTick = new SurfaceTickState(); _surfTicks = Stopwatch.GetTimestamp() - Stopwatch.Frequency / 10; TickSurface(1);
+        check.Expect(!_mapArrive, "arriving in snow spends the arrival, so later rain does not soak the wetness map in one step");
+        _mapArrive = mapArrive; _mapTicksDone = mapTicks;
         _loadSlot = null; _area = IntPtr.Zero; weather(one, 0, 0f);
         check.Expect(_area == one, "with no area-load chain, the weather still names its area, so a live master flip finds it");
         Enabled.V = en; Arrive.V = arrive; _surfTick = tick; _surfTicks = 0;
@@ -218,13 +237,13 @@ internal static unsafe partial class Weather
         _area = area; Type = type; Density = dens; CurrentKind = kind; _wet = _snow = _puddle = 0f; _enterTicks = 0;
     }
 
-    [UnmanagedCallersOnly] private static int StubLoad(IntPtr area, IntPtr camera, IntPtr loadscreen) => 1;
+    [UnmanagedCallersOnly] private static int StubLoad(IntPtr area, IntPtr camera, IntPtr loadscreen) => 7;
     /// <summary>A load that takes a minute: the arrival clock the reset started is a minute old when it returns.</summary>
     [UnmanagedCallersOnly]
     private static int StubSlowLoad(IntPtr area, IntPtr camera, IntPtr loadscreen)
     {
         _enterTicks -= Stopwatch.Frequency * 60;
-        return 1;
+        return 7;
     }
     [UnmanagedCallersOnly] private static int StubSet(IntPtr area, byte type, float density) => 1;
 
