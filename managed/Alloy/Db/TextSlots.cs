@@ -129,6 +129,7 @@ public static partial class TextSlots
     public static void Destruct(DbId id)
     {
         DestructBody(id);
+        Seam.ObjectSlots.UnlinkText(id);
         Seam.ObjectSlots.FreeShellLists(Seam.Facade.ObjectShell(id));
         TextObjects.Destroy(id);
     }
