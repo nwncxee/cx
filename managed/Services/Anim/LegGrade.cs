@@ -14,7 +14,7 @@ internal static class LegGrade
 {
     /// <summary>The grades of <paramref name="poses"/>[i] answering <paramref name="frames"/>[i] for one body, in time order. A leg
     /// counts only where the frame carries a walk (its thighs are read then); a pair of frames counts for slide and turn only
-    /// when the later is no teleport and has a positive step. Where the IK writes nothing the foot is the animated ankle.</summary>
+    /// when neither is a teleport or a first frame (a snap) and the later has a positive step. Where the IK writes nothing the foot is the animated ankle.</summary>
     internal static LegGrades Grade(ReadOnlySpan<LegFrame> frames, ReadOnlySpan<LegPose> poses)
     {
         int n = Math.Min(frames.Length, poses.Length);
@@ -28,8 +28,9 @@ internal static class LegGrade
                 bend = MathF.Max(bend, Bend(f.RThigh, f.RAnkle, p, p.DeltaR));
                 bend = MathF.Max(bend, Bend(f.LThigh, f.LAnkle, p, p.DeltaL));
             }
-            if (i == 0 || f.Snap || !(f.Dt > 0f)) continue;
+            if (i == 0) continue;
             ref readonly LegFrame q = ref frames[i - 1];
+            if (f.Snap || q.Snap || !(f.Dt > 0f)) continue;
             ref readonly LegPose pq = ref poses[i - 1];
             turn = MathF.Max(turn, MathF.Abs(p.Turn - pq.Turn) / f.Dt * (180f / MathF.PI));
             if (f.Walk.ContactR && q.Walk.ContactR) slide = MathF.Max(slide, Speed(Foot(f.RAnkle, p, p.DeltaR), Foot(q.RAnkle, pq, pq.DeltaR), f.Dt));

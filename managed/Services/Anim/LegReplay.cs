@@ -9,7 +9,8 @@ namespace CX.Services.Anim;
 /// same numbers every time, because <see cref="Legs.Step"/> over a fresh <see cref="LegState"/> is all there is.</summary>
 internal static class LegReplay
 {
-    /// <summary>Each body of the recording with its grades, in the order the bodies first appear; null with
+    /// <summary>Each body of the recording with its grades, its first frame replayed as a start from nothing (the state really does
+    /// start empty there, and a body already tracked when the recording began would read its whole heading as one frame's turn), in the order the bodies first appear; null with
     /// <paramref name="refused"/> when the bytes are no recording this build reads.</summary>
     internal static List<(int Body, int Frames, LegGrades Grades)>? Grade(ReadOnlySpan<byte> file, out string refused)
     {
@@ -21,6 +22,7 @@ internal static class LegReplay
             var poses = new LegPose[frames.Count];
             LegState state = default;
             var all = frames.ToArray();
+            all[0].Snap = true;
             for (int i = 0; i < all.Length; i++) Legs.Step(ref state, all[i], out poses[i]);
             graded.Add((body, all.Length, LegGrade.Grade(all, poses)));
         }

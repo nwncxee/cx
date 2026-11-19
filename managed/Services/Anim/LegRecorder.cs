@@ -64,6 +64,12 @@ internal static class LegRecorder
         _st = Frame(_st, true, LogsFolder, gob, f, System.Diagnostics.Stopwatch.GetTimestamp());
     }
 
+    /// <summary>The client is quitting (<see cref="CX.Services.ClientExit"/>): writes what is buffered and closes the file.</summary>
+    internal static void Quit()
+    {
+        if (_st.Out != null) Stop(_st);
+    }
+
     /// <summary>The once-a-frame edge: with the knob off, writes what is buffered and closes the file and forgets a refusal; with it
     /// on, writes a buffer that has waited <see cref="FlushTicks"/>.</summary>
     internal static void Tick() => Tick(_st, AnimKnobs.Record.V, System.Diagnostics.Stopwatch.GetTimestamp());
@@ -105,7 +111,14 @@ internal static class LegRecorder
             {
                 string path = n == 0 ? stem + ".cxlegs" : $"{stem}-{n}.cxlegs";
                 if (File.Exists(path)) continue;
-                Begin((open ?? Create)(path), st, now);
+                Stream file = (open ?? Create)(path);
+                try { Begin(file, st, now); }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                {
+                    file.Dispose();
+                    Remove(path);
+                    throw;
+                }
                 st.Path = path;
                 old.Log?.Info($"LegRecorder: recording to {path}");
                 return st;
@@ -118,6 +131,13 @@ internal static class LegRecorder
             old.Failed = true;
             return old;
         }
+    }
+
+    /// <summary>Deletes the empty file of a recording that never began; a failure to is not worth a second refusal.</summary>
+    private static void Remove(string path)
+    {
+        try { File.Delete(path); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
     }
 
     private static Stream Create(string path) => new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
