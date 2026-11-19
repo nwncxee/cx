@@ -503,8 +503,16 @@ def unshadow(text):
     b = blank(text)
     if b.count("{") != b.count("}"):
         return text
-    scopes = [(m.start(), end) for m in SHADOW_DECL.finditer(b)
-              if (b[m.start()] != "," or in_declaration(b, m.start())) and (end := shadow_scope(b, m.start())) is not None]
+    scopes = []
+    for m in SHADOW_DECL.finditer(b):
+        if b[m.start()] == "," and not in_declaration(b, m.start()):
+            continue
+        found = shadow_scope(b, m.start())
+        if found is None:
+            continue
+        end, param = found
+        name = m.end() - len("FragmentColor")
+        scopes += [(name, name), (name if param else declarator_end(b, name), end)]
     if not scopes:
         return text
     out, cursor = [], 0
@@ -527,6 +535,20 @@ def struct_body(b, open_at):
     return bool(re.search(r"\bstruct\s+\w+\s*$", b[:open_at]))
 
 
+def declarator_end(b, name):
+    """Mirrors ContentStage.DeclaratorEnd: the comma or semicolon ending the declarator, where the local comes into scope."""
+    depth = 0
+    for i in range(name, len(b)):
+        c = b[i]
+        if c in "([":
+            depth += 1
+        elif c in ")]":
+            depth -= 1
+        elif depth == 0 and c in ",;":
+            return i
+    return len(b)
+
+
 def shadow_scope(b, at):
     """Mirrors ContentStage.ShadowScope: the brace closing the declaration's block, or its function's body for a
     parameter; None for a global or a prototype's parameter."""
@@ -547,7 +569,7 @@ def shadow_scope(b, at):
                 stack.append(i)
             elif c == "}" and stack:
                 stack.pop()
-        return None if struct_body(b, stack[-1]) else matching(b, stack[-1])
+        return None if struct_body(b, stack[-1]) else (matching(b, stack[-1]), False)
     if paren <= 0:
         return None
     close, depth = at, paren
@@ -557,7 +579,7 @@ def shadow_scope(b, at):
     body = close
     while body < len(b) and b[body].isspace():
         body += 1
-    return matching(b, body) if body < len(b) and b[body] == "{" else None
+    return (matching(b, body), True) if body < len(b) and b[body] == "{" else None
 
 
 def skip(b, s, e):

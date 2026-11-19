@@ -168,8 +168,13 @@ internal static partial class ContentStage
         if (blank.Count(c => c == '{') != blank.Count(c => c == '}')) return text;
         var scopes = new List<(int From, int To)>();
         foreach (Match m in ShadowDecl.Matches(blank))
-            if ((blank[m.Index] != ',' || InDeclaration(blank, m.Index)) && ShadowScope(blank, m.Index) is int end)
-                scopes.Add((m.Index, end));
+        {
+            if (blank[m.Index] == ',' && !InDeclaration(blank, m.Index)) continue;
+            if (ShadowScope(blank, m.Index) is not (int end, bool param)) continue;
+            int name = m.Index + m.Length - Shadowed.Length;
+            scopes.Add((name, name));
+            scopes.Add((param ? name : DeclaratorEnd(blank, name), end));
+        }
         if (scopes.Count == 0) return text;
         var sb = new StringBuilder(text.Length + 32 * scopes.Count);
         int cursor = 0;
@@ -182,9 +187,27 @@ internal static partial class ContentStage
         return sb.Append(text, cursor, text.Length - cursor).ToString();
     }
 
+    /// <summary>The name <see cref="Unshadow"/> renames where the stage declares it itself.</summary>
+    private const string Shadowed = "FragmentColor";
+
+    /// <summary>Where a local declared at <paramref name="name"/> comes into scope: the comma or semicolon ending its
+    /// declarator, so its own initialiser still reads the global.</summary>
+    private static int DeclaratorEnd(string blank, int name)
+    {
+        int depth = 0;
+        for (int i = name; i < blank.Length; i++)
+        {
+            char c = blank[i];
+            if (c is '(' or '[') depth++;
+            else if (c is ')' or ']') depth--;
+            else if (depth == 0 && c is ',' or ';') return i;
+        }
+        return blank.Length;
+    }
+
     /// <summary>Where the variable declared at <paramref name="at"/> goes out of scope: the brace closing the block it is
-    /// declared in, or for a parameter the one closing its function's body. Null for a global or a prototype's parameter.</summary>
-    private static int? ShadowScope(string blank, int at)
+    /// declared in, or for a parameter (<c>Param</c>) the one closing its function's body. Null for a global or a prototype's parameter.</summary>
+    private static (int End, bool Param)? ShadowScope(string blank, int at)
     {
         var open = new Stack<int>();
         int paren = 0;
@@ -196,14 +219,14 @@ internal static partial class ContentStage
             else if (open.Count == 0 && c == '(') paren++;
             else if (open.Count == 0 && c == ')') paren--;
         }
-        if (open.Count > 0) return StructBody(blank, open.Peek()) ? null : Matching(blank, open.Peek());
+        if (open.Count > 0) return StructBody(blank, open.Peek()) ? null : (Matching(blank, open.Peek()), false);
         if (paren <= 0) return null;
         int close = at;
         for (int depth = paren; close < blank.Length && depth > 0; close++)
             depth += blank[close] == '(' ? 1 : blank[close] == ')' ? -1 : 0;
         int body = close;
         while (body < blank.Length && char.IsWhiteSpace(blank[body])) body++;
-        return body < blank.Length && blank[body] == '{' ? Matching(blank, body) : null;
+        return body < blank.Length && blank[body] == '{' ? (Matching(blank, body), true) : null;
     }
 
     /// <summary>Is the comma at <paramref name="comma"/> between two names of one declaration, not two arguments of a call?</summary>
