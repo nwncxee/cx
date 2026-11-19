@@ -301,7 +301,7 @@ internal static unsafe class FacadeSelfCheck
     private static void SceneEventInterleave(Checker check)
     {
         using var models = UnreadableModelScope.Enter();
-        DbId page = default, rider = default, panel = default;
+        DbId page = default, rider = default, grand = default, panel = default;
         nint ps = 0, older = 0, newer = 0;
         try
         {
@@ -334,6 +334,34 @@ internal static unsafe class FacadeSelfCheck
                 check.Expect(new Gob(ps).CallbackArray.Count == listed + 1, "a detach takes its rider's listener off the parent");
                 ObjectSlots.AttachAt(rider, rs, page, -1, 0);
 
+                // Another event leaves the rider where it is; only UpdateScenes moves it.
+                ObjectSlots.JoinScene(page, ps, panel, 0);
+                ObjectSlots.JoinScene(rider, rs, default, 0);
+                fixed (byte* other = "Animate\0"u8) ObjectSlots.FireEvent(ps, (nint)other, 0);
+                check.Expect(SceneDb.ObjScene[rider.Index].IsNull, "an event other than UpdateScenes carries no rider");
+
+                // The rider's own riders go in its turn, ahead of the parent's older listener.
+                grand = UnreadableModelScope.Mint();
+                ObjectSlots.AttachAt(grand, Facade.ObjectShell(grand), rider, -1, 0);
+                ObjectSlots.JoinScene(rider, rs, panel, 0);
+                before = new SceneEventProbe { Rider = grand.Index };
+                DbScene.Leave(panel, page);
+                Facade.SetSceneWord(ps, 0);
+                ObjectSlots.FireEvent(ps, (nint)n, 0);
+                check.Expect(before.Seen == 0, "a rider's own rider is carried in that rider's turn, depth first");
+
+                // A rider re-filed without a detach is no longer the page's to carry through that listener.
+                ObjectSlots.JoinScene(page, ps, panel, 0);
+                ObjectSlots.JoinScene(rider, rs, panel, 0);
+                SceneDb.SetAttachTo(rider.Index, default);
+                before = new SceneEventProbe { Rider = rider.Index };
+                DbScene.Leave(panel, page);
+                Facade.SetSceneWord(ps, 0);
+                ObjectSlots.FireEvent(ps, (nint)n, 0);
+                check.Expect(before.Seen == panel.Value, "a listener left behind by a re-filed rider carries nothing");
+                SceneDb.SetAttachTo(rider.Index, page);
+                ObjectSlots.Detach(grand);
+
                 // A rider the game gave a behaviour of its own follows that behaviour's listener, not the seam's.
                 void* beh = NativeMemory.AllocZeroed(0x100);   // not-an-offset: a stand-in behaviour block, Kind Unknown
                 try
@@ -360,6 +388,7 @@ internal static unsafe class FacadeSelfCheck
         {
             if (older != 0) CallbackList.Remove(ps, older);
             if (newer != 0) CallbackList.Remove(ps, newer);
+            if (!grand.IsNull) ObjectSlots.DestroyRecord(grand);
             if (!rider.IsNull) ObjectSlots.DestroyRecord(rider);
             if (!page.IsNull) ObjectSlots.DestroyRecord(page);
             if (!panel.IsNull) DbScene.Destroy(panel);
