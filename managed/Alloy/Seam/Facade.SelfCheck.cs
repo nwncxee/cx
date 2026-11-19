@@ -295,6 +295,106 @@ internal static unsafe class FacadeSelfCheck
         }
     }
 
+    /// <summary>A rider attached between two game listeners is carried between them, newest first; detached or
+    /// destroyed, it leaves nothing on its parent's list. Oracle: <c>CAurBehaviorAttach</c> @0x5a2d50 registers
+    /// <c>UpdateScenesAttach</c> @0x59fc70 on the parent at attach, and <c>Gob::DoEvent</c> walks newest first.</summary>
+    private static void SceneEventInterleave(Checker check)
+    {
+        using var models = UnreadableModelScope.Enter();
+        DbId page = default, rider = default, grand = default, panel = default;
+        nint ps = 0, older = 0, newer = 0;
+        try
+        {
+            page = UnreadableModelScope.Mint();
+            rider = UnreadableModelScope.Mint();
+            ps = Facade.ObjectShell(page);
+            nint rs = Facade.ObjectShell(rider);
+            panel = DbScene.Create("sceneGUI_cx_evmix_panel");
+            ObjectSlots.JoinScene(page, ps, panel, 0);
+            var before = new SceneEventProbe { Rider = rider.Index };
+            var after = new SceneEventProbe { Rider = rider.Index };
+            var fn = (nint)(delegate* unmanaged<nint, nint, nint, void>)&RecordRiderScene;
+            fixed (byte* n = "UpdateScenes\0"u8)
+            {
+                older = CallbackList.Add(ps, fn, (nint)n, (nint)(&before));
+                int listed = new Gob(ps).CallbackArray.Count;
+                ObjectSlots.AttachAt(rider, rs, page, -1, 0);
+                check.Expect(new Gob(ps).CallbackArray.Count == listed + 1, "a seam attach registers its rider's listener on the parent");
+                newer = CallbackList.Add(ps, fn, (nint)n, (nint)(&after));
+                check.Expect(SceneDb.ObjScene[rider.Index].Value == panel.Value, "the rider inherits its page's scene");
+                DbScene.Leave(panel, page);
+                Facade.SetSceneWord(ps, 0);
+                ObjectSlots.FireEvent(ps, (nint)n, 0);
+                check.Expect(after.Calls == 1 && after.Seen == panel.Value,
+                    "the listener registered after the attach fires before the rider is carried");
+                check.Expect(before.Calls == 1 && before.Seen == 0,
+                    "the listener registered before the attach fires after the rider is carried");
+
+                ObjectSlots.Detach(rider);
+                check.Expect(new Gob(ps).CallbackArray.Count == listed + 1, "a detach takes its rider's listener off the parent");
+                ObjectSlots.AttachAt(rider, rs, page, -1, 0);
+
+                // Another event leaves the rider where it is; only UpdateScenes moves it.
+                ObjectSlots.JoinScene(page, ps, panel, 0);
+                ObjectSlots.JoinScene(rider, rs, default, 0);
+                fixed (byte* other = "Animate\0"u8) ObjectSlots.FireEvent(ps, (nint)other, 0);
+                check.Expect(SceneDb.ObjScene[rider.Index].IsNull, "an event other than UpdateScenes carries no rider");
+
+                // The rider's own riders go in its turn, ahead of the parent's older listener.
+                grand = UnreadableModelScope.Mint();
+                ObjectSlots.AttachAt(grand, Facade.ObjectShell(grand), rider, -1, 0);
+                ObjectSlots.JoinScene(rider, rs, panel, 0);
+                before = new SceneEventProbe { Rider = grand.Index };
+                DbScene.Leave(panel, page);
+                Facade.SetSceneWord(ps, 0);
+                ObjectSlots.FireEvent(ps, (nint)n, 0);
+                check.Expect(before.Seen == 0, "a rider's own rider is carried in that rider's turn, depth first");
+
+                // A rider re-filed without a detach is no longer the page's to carry through that listener.
+                ObjectSlots.JoinScene(page, ps, panel, 0);
+                ObjectSlots.JoinScene(rider, rs, panel, 0);
+                SceneDb.SetAttachTo(rider.Index, default);
+                before = new SceneEventProbe { Rider = rider.Index };
+                DbScene.Leave(panel, page);
+                Facade.SetSceneWord(ps, 0);
+                ObjectSlots.FireEvent(ps, (nint)n, 0);
+                check.Expect(before.Seen == panel.Value, "a listener left behind by a re-filed rider carries nothing");
+                SceneDb.SetAttachTo(rider.Index, page);
+                ObjectSlots.Detach(grand);
+
+                // A rider the game gave a behaviour of its own follows that behaviour's listener, not the seam's.
+                void* beh = NativeMemory.AllocZeroed(0x100);   // not-an-offset: a stand-in behaviour block, Kind Unknown
+                try
+                {
+                    ObjectSlots.JoinScene(page, ps, panel, 0);
+                    new Gob(rs).Behavior = (nint)beh;
+                    before = new SceneEventProbe { Rider = rider.Index };
+                    after = new SceneEventProbe { Rider = rider.Index };
+                    DbScene.Leave(panel, page);
+                    Facade.SetSceneWord(ps, 0);
+                    ObjectSlots.FireEvent(ps, (nint)n, 0);
+                    check.Expect(before.Seen == panel.Value && after.Seen == panel.Value,
+                        "a rider with a game behaviour is not carried by the seam's listener ahead of the game's");
+                    check.Expect(SceneDb.ObjScene[rider.Index].IsNull, "...and is still carried out with its page afterwards");
+                }
+                finally { new Gob(rs).Behavior = 0; NativeMemory.Free(beh); }
+
+                ObjectSlots.DestroyRecord(rider);
+                rider = default;
+                check.Expect(new Gob(ps).CallbackArray.Count == listed + 1, "a destroyed rider takes its listener off the parent");
+            }
+        }
+        finally
+        {
+            if (older != 0) CallbackList.Remove(ps, older);
+            if (newer != 0) CallbackList.Remove(ps, newer);
+            if (!grand.IsNull) ObjectSlots.DestroyRecord(grand);
+            if (!rider.IsNull) ObjectSlots.DestroyRecord(rider);
+            if (!page.IsNull) ObjectSlots.DestroyRecord(page);
+            if (!panel.IsNull) DbScene.Destroy(panel);
+        }
+    }
+
     /// <summary>An invisible creature: <c>CNWCAnimBase::SetAlpha</c>'s colour shift reaches every grafted body
     /// piece always, and the seam riders (head, weapon, effect) when propagated, unless a rider opted out or has
     /// no attach behaviour. Oracle: the literal alpha handed in, against the untouched 1.</summary>
@@ -507,6 +607,7 @@ internal static unsafe class FacadeSelfCheck
         Factory(check);
         Riders(check);
         SceneEventOrder(check);
+        SceneEventInterleave(check);
         Shifts(check);
         RunRoots(check);
         UnseenSilhouetteApprovedExamples.SelfCheck(log);
