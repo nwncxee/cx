@@ -13,6 +13,7 @@ internal static class LegsFeetRegress
     {
         LetGoFollows(check);
         BoundedRuns(check);
+        AimedLetGo(check);
         Backward(check);
         BackwardParts(check);
     }
@@ -51,15 +52,41 @@ internal static class LegsFeetRegress
     }
 
     /// <summary>The synthetic run 6 s on the rig, the pace ramping from the clip's own to 1.6 times it over 2 s and held,
-    /// travelling straight ahead, along a hip-turned forward diagonal and straight sideways to its legs: no foot is drawn
-    /// further off its warped animation than <see cref="Bound"/>. Oracle: the hand-worked bound.</summary>
+    /// straight ahead and along a hip-turned forward diagonal (whose swings are not aimed): no foot is drawn further off its
+    /// warped animation than <see cref="Bound"/>. Oracle: the hand-worked bound.</summary>
     private static void BoundedRuns(Checker check)
     {
         float d = MathF.Sqrt(0.5f);
-        float ahead = Worst(4, false, new Vector2(0f, 1f)), diagonal = Worst(0x56, true, new Vector2(-d, d)), // not-an-offset: anim id
-              side = Worst(0x4f, false, new Vector2(1f, 0f)); // not-an-offset: anim id
-        check.Expect(ahead <= Bound + Eps && diagonal <= Bound + Eps && side <= Bound + Eps,
-                     $"feet: a ramping run keeps its feet within {Bound} of the animation: {ahead:0.0000} ahead, {diagonal:0.0000} diagonal, {side:0.0000} sideways");
+        float ahead = Worst(4, false, new Vector2(0f, 1f)), diagonal = Worst(0x56, true, new Vector2(-d, d)); // not-an-offset: anim id
+        check.Expect(ahead <= Bound + Eps && diagonal <= Bound + Eps,
+                     $"feet: a ramping run keeps its feet within {Bound} of the animation: {ahead:0.0000} ahead, {diagonal:0.0000} diagonal");
+    }
+
+    /// <summary>The synthetic run 4 s on the rig straight sideways to its legs, so each swing is aimed far off the animation and
+    /// let go as it lands: on the frame after, still rising, the foot is drawn where it landed (within a millimetre), not
+    /// pulled toward the animation in a frame. Oracle: a step rises before it moves.</summary>
+    private static void AimedLetGo(Checker check)
+    {
+        var r = new LegRig();
+        int lets = 0;
+        float worst = 0f;
+        bool watch = false;
+        Vector2 landed = default;
+        while (r.Time < 4f)
+        {
+            byte was = r.S.FootingR.Stage;
+            r.Run(1f, 0x4f, false, new Vector2(LegRig.Speed, 0f)); // not-an-offset: anim id
+            Vector3 drawn = r.Drawn(true);
+            if (watch) { worst = MathF.Max(worst, Vector2.Distance(new Vector2(drawn.X, drawn.Y), landed)); watch = false; }
+            if (was == Footing.Swing && r.S.FootingR.Stage == Footing.Stepping)
+            {
+                lets++;
+                watch = true;
+                landed = new Vector2(drawn.X, drawn.Y);
+            }
+        }
+        check.Expect(lets >= 2 && worst < 1e-3f,
+                     $"feet: a foot let go as it lands sets off from where it landed: {lets} let go, moved {worst:0.0000} the frame after");
     }
 
     /// <summary>The farthest either foot is drawn off its warped animation over a ramped run along <paramref name="way"/>

@@ -190,11 +190,11 @@ internal static class StrideWarp
             Vector3 line = Vector3.Transform(dir, legs);
             // a foot setting down this frame is aimed too: its hold is taken where it lands. The holds and aims are where the
             // foot is drawn, so the walk's weight scales only the warp under them, once
-            if (s.FootingR.Stage == Footing.Swing) dR += Legs.Aim(ref s.FootingR, ra + dR, origin, f.Vel, line, uR, scale);
-            if (s.FootingL.Stage == Footing.Swing) dL += Legs.Aim(ref s.FootingL, la + dL, origin, f.Vel, line, uL, scale);
+            Vector3 aimR = s.FootingR.Stage == Footing.Swing ? Legs.Aim(ref s.FootingR, ra + dR, origin, f.Vel, line, uR, scale) : default;
+            Vector3 aimL = s.FootingL.Stage == Footing.Swing ? Legs.Aim(ref s.FootingL, la + dL, origin, f.Vel, line, uL, scale) : default;
             HoldLimits r = Limits(rt, Legs.Stretch(f, p, true), leg, scale), l = Limits(lt, Legs.Stretch(f, p, false), leg, scale);
-            dR += Plant(ref s.FootingR, k.ContactR, uR, ra + dR, heading, r, timed, f.Dt, out float yawR, out downR);
-            dL += Plant(ref s.FootingL, k.ContactL, uL, la + dL, heading, l, timed, f.Dt, out float yawL, out downL);
+            dR += Plant(ref s.FootingR, k.ContactR, uR, ra + dR, aimR, heading, r, timed, f.Dt, out float yawR, out downR);
+            dL += Plant(ref s.FootingL, k.ContactL, uL, la + dL, aimL, heading, l, timed, f.Dt, out float yawL, out downL);
             p.YawR = yawR;
             p.YawL = yawL;
         }
@@ -214,16 +214,16 @@ internal static class StrideWarp
     }
 
     /// <summary>One foot's plant (<see cref="Legs.Hold"/>) at its warped world position <paramref name="p"/>, on the ground
-    /// (<paramref name="on"/>) or <paramref name="u"/> through its swing (held as it is when not <paramref name="timed"/>),
-    /// counted into the period; <paramref name="down"/>: it was set down this frame.</summary>
-    private static Vector3 Plant(ref Footing f, bool on, float u, Vector3 p, float heading, in HoldLimits r, bool timed, float dt,
-                                 out float yaw, out bool down)
+    /// (<paramref name="on"/>) or <paramref name="u"/> through its swing aimed by <paramref name="aim"/> (held as it is when not
+    /// <paramref name="timed"/>), counted into the period; <paramref name="down"/>: it was set down this frame.</summary>
+    private static Vector3 Plant(ref Footing f, bool on, float u, Vector3 p, Vector3 aim, float heading, in HoldLimits r, bool timed,
+                                 float dt, out float yaw, out bool down)
     {
         down = false;
         yaw = f.Yaw;
-        if (!timed) return f.Off;
+        if (!timed) return f.Off + aim;
         bool was = f.Stage != Footing.Swing;
-        Vector3 off = Legs.Hold(ref f, on, u, p, heading, r, dt, out yaw, out down, out bool let);
+        Vector3 off = Legs.Hold(ref f, on, u, p, heading, r, dt, out yaw, out down, out bool let, aim);
         if (on) _s.Planted++;
         if (let) _s.Released++;
         if (was && !on) _s.Leftover = MathF.Max(_s.Leftover, f.Off0.Length());
