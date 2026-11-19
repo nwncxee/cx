@@ -92,6 +92,7 @@ public static class TextObjectsSelfCheck
         SlotTable(check);
         SortArray(check);
         DisplayBlock(check);
+        RecycledMargin(check);
         LineModel(check);
         Reviewed(check);
 
@@ -823,6 +824,25 @@ public static class TextObjectsSelfCheck
         TextObjects.Stale(d);
         c.Expect(((TextDisplayInfo*)p)->HitMargin == 0.3f,
           "the hit margin written through the display block survives the next change gate");
+    }
+
+    /// <summary>A recycled record's display block: a margin the dead tenant's game code wrote and nothing adopted
+    /// must not widen the next tenant's hit quad.</summary>
+    private static unsafe void RecycledMargin(Checker c)
+    {
+        DbId gone = TextObjects.Create(default, 4);
+        ((TextDisplayInfo*)TextSlots.GetDisplayInfo(gone))->HitMargin = 0.3f;
+        TextObjects.Destroy(gone);
+        DbId heir = TextObjects.Create(default, 4);
+        TextDoc? d = TextObjects.Of(heir);
+        c.Expect(heir.Index == gone.Index && d != null, "the fixture recycles the dead record's index");
+        if (d != null)
+        {
+            var info = (TextDisplayInfo*)TextSlots.GetDisplayInfo(heir);
+            c.Expect(d.HitMargin == 0f && info->HitMargin == 0f,
+              $"a recycled record does not inherit the previous tenant's hit margin ({d.HitMargin}, block {info->HitMargin})");
+        }
+        TextObjects.Destroy(heir);
     }
 
     /// <summary>Slot 7's model rides its line into the published quad list at that line's pen -- the list

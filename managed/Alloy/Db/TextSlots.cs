@@ -413,6 +413,8 @@ public static partial class TextSlots
     public static unsafe nint DisplayInfo(TextDoc d)
     {
         if (d.InfoBuf == 0) d.InfoBuf = (nint)NativeMemory.AllocZeroed(DisplayInfoSize);
+        else if (!d.InfoOut) NativeMemory.Clear((void*)d.InfoBuf, (nuint)DisplayInfoSize);
+        if (!d.InfoOut) d.InfoMargin = 0f;
         d.InfoOut = true;
         FillDisplayInfo(d);
         return d.InfoBuf;
