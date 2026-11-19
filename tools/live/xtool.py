@@ -244,14 +244,14 @@ def cursor_line(dpy, tag):
     return f"cursor {tag}: {c.width}x{c.height} hot={c.xhot},{c.yhot} opaque={opaque} crc={digest:08x}"
 
 
-def tap(dpy, keysym_name, shift=False):
+def tap(dpy, keysym_name):
     ks = XK.string_to_keysym(keysym_name)
     if ks == 0 and len(keysym_name) == 1:
         ks = ord(keysym_name)
     code = dpy.keysym_to_keycode(ks)
     if code == 0:
         raise SystemExit(f"xtool keys: no keycode for {keysym_name!r}")
-    tap_code(dpy, code, shift)
+    tap_code(dpy, code)
 
 
 def tap_code(dpy, code, shift=False):
