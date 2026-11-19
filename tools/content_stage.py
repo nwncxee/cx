@@ -553,9 +553,9 @@ def shadow_scope(b, at):
     """Mirrors ContentStage.ShadowScope: the brace closing the declaration's block, or its function's body for a
     parameter; None for a global or a prototype's parameter."""
     opens, paren = [], 0
-    for c in b[:at]:
+    for i, c in enumerate(b[:at]):
         if c == "{":
-            opens.append(None)
+            opens.append(i)
         elif c == "}" and opens:
             opens.pop()
         elif not opens and c == "(":
@@ -563,13 +563,7 @@ def shadow_scope(b, at):
         elif not opens and c == ")":
             paren -= 1
     if opens:
-        stack = []
-        for i, c in enumerate(b[:at]):
-            if c == "{":
-                stack.append(i)
-            elif c == "}" and stack:
-                stack.pop()
-        return None if struct_body(b, stack[-1]) else (matching(b, stack[-1]), False)
+        return None if struct_body(b, opens[-1]) else (matching(b, opens[-1]), False)
     if paren <= 0:
         return None
     close, depth = at, paren

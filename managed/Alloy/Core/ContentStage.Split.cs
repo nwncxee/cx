@@ -144,12 +144,15 @@ internal static partial class ContentStage
     /// <summary>The name a stage's own local or parameter <c>FragmentColor</c> takes, so it no longer hides the global.</summary>
     internal const string ShadowName = "cxOwnFragmentColor";
 
+    /// <summary>The name <see cref="Unshadow"/> renames where the stage declares it itself.</summary>
+    private const string Shadowed = "FragmentColor";
+
     /// <summary>The GLSL types a <c>FragmentColor</c> of the stage's own is declared with.</summary>
     private const string ShadowTypes = @"(?:[biu]?vec[234]|float|int|uint|bool|mat[234])";
 
     /// <summary>A declaration of <c>FragmentColor</c> as a local or a parameter: after its type, or after a comma in a
     /// declaration (<see cref="DeclStatement"/> says which commas are), then what may follow the name.</summary>
-    private static readonly Regex ShadowDecl = new(@"(?:\b" + ShadowTypes + @"\s+|,\s*)FragmentColor\b(?=\s*[=;,)\[])",
+    private static readonly Regex ShadowDecl = new(@"(?:\b" + ShadowTypes + @"\s+|,\s*)" + Shadowed + @"\b(?=\s*[=;,)\[])",
                                                    RegexOptions.Compiled);
 
     /// <summary>A statement that opens with a type, its qualifiers before it: a declaration.</summary>
@@ -157,7 +160,7 @@ internal static partial class ContentStage
                                                       RegexOptions.Compiled);
 
     /// <summary>A use of the name, not a member of the same name (<c>l.FragmentColor</c>).</summary>
-    private static readonly Regex FragmentColorUse = new(@"(?<!\.)\bFragmentColor\b", RegexOptions.Compiled);
+    private static readonly Regex FragmentColorUse = new(@"(?<!\.)\b" + Shadowed + @"\b", RegexOptions.Compiled);
 
     /// <summary><paramref name="text"/> with every local or parameter it names <c>FragmentColor</c> renamed <see cref="ShadowName"/>
     /// through its scope, so the rename of <c>gl_FragColor</c> onto the global cannot land on the stage's own variable. Text whose
@@ -186,9 +189,6 @@ internal static partial class ContentStage
         }
         return sb.Append(text, cursor, text.Length - cursor).ToString();
     }
-
-    /// <summary>The name <see cref="Unshadow"/> renames where the stage declares it itself.</summary>
-    private const string Shadowed = "FragmentColor";
 
     /// <summary>Where a local declared at <paramref name="name"/> comes into scope: the comma or semicolon ending its
     /// declarator, so its own initialiser still reads the global.</summary>

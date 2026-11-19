@@ -51,20 +51,10 @@ internal static partial class GpuGolden
             string? body = VanillaShader.MainText(text, "cx_goldmain", log, "golden hosted main", new List<string>(), wrapper[..region]);
             check.Expect(body != null, $"hosted main, {name}: the splice found a main() to run");
             if (body == null) continue;
-            PipelineId pipe = vk.CreateCompute(Version + "layout(local_size_x = 1) in;\n" + CaseBlocks(1, 4) + globals + body + stage + """
-                void main()
-                {
-                    vec4 o = CxStage(vec4(0.0, 0.0, 0.0, 1.0));
-                    for (int k = 0; k < CX_GOLD_OUT; k++) uOut[k] = o[k];
-                }
-                """, "golden hosted main");
-            float[]? got = pipe.IsNull ? null : RunCases(vk, log, pipe, 1, [0f], 4, "golden hosted main");
-            vk.Destroy(pipe);
+            float[]? got = HostedRun(vk, log, globals + body + stage, "golden hosted main");
             check.Expect(got != null, $"hosted main, {name}: the stage was refused (logged above)");
             if (got == null) continue;
-            bool same = MathF.Abs(got[0] - HostedWant[0]) < 1e-6f && MathF.Abs(got[1] - HostedWant[1]) < 1e-6f
-                     && MathF.Abs(got[2] - HostedWant[2]) < 1e-6f;
-            check.Expect(same, FormattableString.Invariant(
+            check.Expect(HostedSame(got), FormattableString.Invariant(
                 $"hosted main, {name}: the stage hands on ({got[0]:F3}, {got[1]:F3}, {got[2]:F3}), not the (0.25, 0.5, 0.75) the main wrote"));
         }
 
@@ -73,18 +63,25 @@ internal static partial class GpuGolden
         // Then the stage builds and hands on (0.25, 0.5, 0.75)
         (string localName, string localMain) = HostedMains[2];
         string? old = VanillaShader.MainText(localMain, "cx_goldmain", log, "golden hosted main", new List<string>(), HostedOldWrapper);
-        PipelineId oldPipe = old == null ? default : vk.CreateCompute(Version + "layout(local_size_x = 1) in;\n" + CaseBlocks(1, 4)
-            + "vec4 FragmentColor;\n" + old + HostedOldStage + """
-                void main()
-                {
-                    vec4 o = CxStage(vec4(0.0, 0.0, 0.0, 1.0));
-                    for (int k = 0; k < CX_GOLD_OUT; k++) uOut[k] = o[k];
-                }
-                """, "golden hosted main old wrapper");
-        float[]? oldGot = oldPipe.IsNull ? null : RunCases(vk, log, oldPipe, 1, [0f], 4, "golden hosted main old wrapper");
-        vk.Destroy(oldPipe);
-        check.Expect(oldGot != null && MathF.Abs(oldGot[0] - HostedWant[0]) < 1e-6f && MathF.Abs(oldGot[1] - HostedWant[1]) < 1e-6f
-                     && MathF.Abs(oldGot[2] - HostedWant[2]) < 1e-6f,
+        float[]? oldGot = old == null ? null : HostedRun(vk, log, "vec4 FragmentColor;\n" + old + HostedOldStage, "golden hosted main old wrapper");
+        check.Expect(oldGot != null && HostedSame(oldGot),
                      $"hosted main, {localName}, in a wrapper override with no output of its own: the stage was refused or lost the colour");
     }
+
+    /// <summary>A hosted <paramref name="program"/>'s <c>CxStage</c> run on black on the device; null when refused.</summary>
+    private static float[]? HostedRun(VkBackend vk, ExtenderLog log, string program, string what)
+    {
+        PipelineId pipe = vk.CreateCompute(Version + "layout(local_size_x = 1) in;\n" + CaseBlocks(1, 4) + program + """
+            void main()
+            {
+                vec4 o = CxStage(vec4(0.0, 0.0, 0.0, 1.0));
+                for (int k = 0; k < CX_GOLD_OUT; k++) uOut[k] = o[k];
+            }
+            """, what);
+        float[]? got = pipe.IsNull ? null : RunCases(vk, log, pipe, 1, [0f], 4, what);
+        vk.Destroy(pipe);
+        return got;
+    }
+
+    private static bool HostedSame(float[] got) => Near(got[0], HostedWant[0]) && Near(got[1], HostedWant[1]) && Near(got[2], HostedWant[2]);
 }
