@@ -36,6 +36,7 @@ internal static class LegsRegress
         AimWeighted(check);
         StopLifted(check);
         NoFloor(check);
+        LegsSlope.Run(check);
         FootFloorCheck.Run(log);
         log.Info(check.Ok ? "Legs.Regress.SelfCheck: passed" : "Legs.Regress.SelfCheck: FAILED");
     }
