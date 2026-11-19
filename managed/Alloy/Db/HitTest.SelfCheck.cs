@@ -291,6 +291,11 @@ public static unsafe partial class HitTestCheck
                              + "display block, did not answer the portrait");
             if (PickAt(rx - rw / 2 - 50) == rider)
                 ok = Fail(log, "a line model answered a pick past the hit margin -- the quad must be hit first");
+            float rxm = (rx + rw / 2 + 20 - 400) * k - SceneDb.ObjPos[ri].X;
+            doc.PublishedQuads = new QuadList { Attached = [(rider, rxm, ay)], AttachedCount = 1 };
+            if (PickAt(rx + rw / 2 + 30) != rider)
+                ok = Fail(log, "a pick right of the text, inside the hit margin, did not answer the line model there "
+                             + "-- the margin widens the quad on both sides");
             doc.ResetQuads();
         }
 

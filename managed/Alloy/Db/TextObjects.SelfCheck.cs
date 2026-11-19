@@ -843,6 +843,16 @@ public static class TextObjectsSelfCheck
               $"a recycled record does not inherit the previous tenant's hit margin ({d.HitMargin}, block {info->HitMargin})");
         }
         TextObjects.Destroy(heir);
+
+        DbId adopted = TextObjects.Create(default, 4);
+        ((TextDisplayInfo*)TextSlots.GetDisplayInfo(adopted))->HitMargin = 0.3f;
+        TextSlots.SyncDisplayInfo(adopted);
+        TextObjects.Destroy(adopted);
+        DbId quiet = TextObjects.Create(default, 4);
+        TextDoc? q = TextObjects.Of(quiet);
+        c.Expect(q != null && q.HitMargin == 0f,
+          "a recycled record that never asks for its display block does not keep the previous tenant's adopted margin");
+        TextObjects.Destroy(quiet);
     }
 
     /// <summary>Slot 7's model rides its line into the published quad list at that line's pen -- the list
