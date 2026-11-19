@@ -30,6 +30,11 @@ internal static partial class GpuGolden
     /// <summary>The shipped wrapper's own globals, one <c>vec4</c> per line: what the hosted text writes into.</summary>
     private static readonly Regex WrapperGlobal = new(@"(?m)^vec4 \w+;$");
 
+    /// <summary>A server's own override of the post wrapper written before the wrapper had its own output: its globals,
+    /// its region marker and the stage function it hands the working colour back from, by hand.</summary>
+    private const string HostedOldWrapper = "vec4 FragmentColor;\n// $VANILLA-MAIN fsfbpostpr\n";
+    private const string HostedOldStage = "vec4 CxStage(vec4 c)\n{\n    CxVanMain();\n    return vec4(FragmentColor.rgb, c.a);\n}\n";
+
     private static void HostedMainApprovedSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
     {
         string wrapper = ShaderSource.Get("cx_fbpost_f.glsl");
@@ -62,5 +67,24 @@ internal static partial class GpuGolden
             check.Expect(same, FormattableString.Invariant(
                 $"hosted main, {name}: the stage hands on ({got[0]:F3}, {got[1]:F3}, {got[2]:F3}), not the (0.25, 0.5, 0.75) the main wrote"));
         }
+
+        // Given a server's override of the post wrapper that declares only the working colour, as every wrapper did before its own output
+        // When the post stack runs a main declaring its own local FragmentColor inside it
+        // Then the stage builds and hands on (0.25, 0.5, 0.75)
+        (string localName, string localMain) = HostedMains[2];
+        string? old = VanillaShader.MainText(localMain, "cx_goldmain", log, "golden hosted main", new List<string>(), HostedOldWrapper);
+        PipelineId oldPipe = old == null ? default : vk.CreateCompute(Version + "layout(local_size_x = 1) in;\n" + CaseBlocks(1, 4)
+            + "vec4 FragmentColor;\n" + old + HostedOldStage + """
+                void main()
+                {
+                    vec4 o = CxStage(vec4(0.0, 0.0, 0.0, 1.0));
+                    for (int k = 0; k < CX_GOLD_OUT; k++) uOut[k] = o[k];
+                }
+                """, "golden hosted main old wrapper");
+        float[]? oldGot = oldPipe.IsNull ? null : RunCases(vk, log, oldPipe, 1, [0f], 4, "golden hosted main old wrapper");
+        vk.Destroy(oldPipe);
+        check.Expect(oldGot != null && MathF.Abs(oldGot[0] - HostedWant[0]) < 1e-6f && MathF.Abs(oldGot[1] - HostedWant[1]) < 1e-6f
+                     && MathF.Abs(oldGot[2] - HostedWant[2]) < 1e-6f,
+                     $"hosted main, {localName}, in a wrapper override with no output of its own: the stage was refused or lost the colour");
     }
 }

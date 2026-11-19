@@ -855,6 +855,8 @@ FIXTURE = {
     "cx_fixshadowlocal": "#include \"inc_standard\"\nvoid main()\n{\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n    vec4 FragmentColor = vec4(0.25, 0.5, 0.75, 1.0);\n    gl_FragColor = FragmentColor;\n}\n",
     "cx_fixshadowparam": "#include \"inc_standard\"\nvoid Hand(vec4 FragmentColor)\n{\n    gl_FragColor = FragmentColor;\n}\nvoid main()\n{\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n    Hand(vec4(0.25, 0.5, 0.75, 1.0));\n}\n",
     "cx_fixshadowblock": "#include \"inc_standard\"\nuniform int iTint;\nvoid main()\n{\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n    if (iTint == 1)\n    {\n        vec4 FragmentColor = vec4(0.25, 0.5, 0.75, 1.0);\n        gl_FragColor = FragmentColor;\n        return;\n    }\n    gl_FragColor = FragmentColor;\n}\n",
+    "cx_fixshadowstruct": "#include \"inc_standard\"\nstruct Layer { vec4 FragmentColor; float w; };\nvoid main()\n{\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n    Layer l;\n    l.FragmentColor = FragmentColor;\n    l.w = 1.0;\n    gl_FragColor = l.FragmentColor * l.w;\n}\n",
+    "cx_fixshadowmulti": "#include \"inc_standard\"\nvoid main()\n{\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n    vec4 tint = vec4(1.0), FragmentColor = vec4(0.25, 0.5, 0.75, 1.0);\n    gl_FragColor = FragmentColor * tint;\n}\n",
     # The engine-named set declared the way stock content declares it: inc_uniforms' whole block, inc_sunm's lone
     # scalar, fswater's wind loop, vs_beamvol's inline m_proj.
     "cx_fixeng": ('#define SHADER_TYPE 2\n#include "inc_standard"\nconst int MAX_WINDS = 128;\n'
@@ -1073,6 +1075,14 @@ def selfcheck(env_fs, env_vs, defs, vanfs, std_fs, std_vs, lit_vs):
     if block.refused or f"        FragmentColor = {SHADOW_NAME};" not in block.host \
        or "    }\n    FragmentColor = FragmentColor;" not in block.host:
         bad.append(f"a branch's own FragmentColor is not kept to its branch: {block.refused}")
+    member = translate("cx_fixshadowstruct", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
+    if member.refused or "struct Layer { vec4 FragmentColor; float w; };" not in member.host \
+       or "FragmentColor = l.FragmentColor * l.w;" not in member.host:
+        bad.append(f"a struct member named FragmentColor is renamed or its hand-off lost: {member.refused}")
+    multi = translate("cx_fixshadowmulti", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
+    if multi.refused or f"vec4 tint = vec4(1.0), {SHADOW_NAME} = vec4(0.25, 0.5, 0.75, 1.0);" not in multi.host \
+       or f"FragmentColor = {SHADOW_NAME} * tint;" not in multi.host:
+        bad.append(f"a FragmentColor declared second in a declaration does not reach the part: {multi.refused}")
     unbalanced = "void main()\n{\n    vec4 FragmentColor = vec4(1.0);\n    gl_FragColor = FragmentColor;\n"
     if unshadow(unbalanced) != unbalanced:
         bad.append("a stage whose braces do not balance is rewritten")

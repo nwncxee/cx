@@ -21,6 +21,8 @@ internal static class ContentStageApprovedExamples
         ["cx_fixshadowlocal"] = "#include \"inc_standard\"\nvoid main()\n{\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n    vec4 FragmentColor = vec4(0.25, 0.5, 0.75, 1.0);\n    gl_FragColor = FragmentColor;\n}\n",
         ["cx_fixshadowparam"] = "#include \"inc_standard\"\nvoid Hand(vec4 FragmentColor)\n{\n    gl_FragColor = FragmentColor;\n}\nvoid main()\n{\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n    Hand(vec4(0.25, 0.5, 0.75, 1.0));\n}\n",
         ["cx_fixshadowblock"] = "#include \"inc_standard\"\nuniform int iTint;\nvoid main()\n{\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n    if (iTint == 1)\n    {\n        vec4 FragmentColor = vec4(0.25, 0.5, 0.75, 1.0);\n        gl_FragColor = FragmentColor;\n        return;\n    }\n    gl_FragColor = FragmentColor;\n}\n",
+        ["cx_fixshadowstruct"] = "#include \"inc_standard\"\nstruct Layer { vec4 FragmentColor; float w; };\nvoid main()\n{\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n    Layer l;\n    l.FragmentColor = FragmentColor;\n    l.w = 1.0;\n    gl_FragColor = l.FragmentColor * l.w;\n}\n",
+        ["cx_fixshadowmulti"] = "#include \"inc_standard\"\nvoid main()\n{\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n    vec4 tint = vec4(1.0), FragmentColor = vec4(0.25, 0.5, 0.75, 1.0);\n    gl_FragColor = FragmentColor * tint;\n}\n",
     };
 
     internal static bool SelfCheck(ExtenderLog log)
@@ -74,9 +76,25 @@ internal static class ContentStageApprovedExamples
                      && block.Host.Contains("    }\n    FragmentColor = FragmentColor;"),
                      $"E7: a branch's own FragmentColor is not kept to its branch ({block.Refused})");
 
+        // Given a material that keeps a struct with a member named FragmentColor and hands that member to gl_FragColor
+        // When the shader is translated
+        // Then the member keeps its name, and the part draws the colour the member holds
+        ContentStage.Result member = Translate("cx_fixshadowstruct");
+        check.Expect(member.Refused == null && member.Host.Contains("struct Layer { vec4 FragmentColor; float w; };")
+                     && member.Host.Contains("FragmentColor = l.FragmentColor * l.w;"),
+                     $"E9: a struct member named FragmentColor is renamed or its hand-off lost ({member.Refused})");
+
+        // Given a material that declares FragmentColor as the second of two locals in one declaration
+        // When the shader is translated
+        // Then the colour it hands over reaches the part
+        ContentStage.Result multi = Translate("cx_fixshadowmulti");
+        check.Expect(multi.Refused == null && multi.Host.Contains("vec4 tint = vec4(1.0), " + ContentStage.ShadowName + " = vec4(0.25, 0.5, 0.75, 1.0);")
+                     && multi.Host.Contains("FragmentColor = " + ContentStage.ShadowName + " * tint;"),
+                     $"E10: a FragmentColor declared second in a declaration does not reach the part ({multi.Refused})");
+
         // Given a stage whose braces do not balance
-        // When its locals are renamed
-        // Then its text comes back unchanged
+        // When it is translated
+        // Then the stage reaches the translation as the server wrote it
         const string unbalanced = "void main()\n{\n    vec4 FragmentColor = vec4(1.0);\n    gl_FragColor = FragmentColor;\n";
         check.Expect(ContentStage.Unshadow(unbalanced) == unbalanced, "E8: a stage whose braces do not balance is rewritten");
 
