@@ -93,6 +93,7 @@ public static class TextObjectsSelfCheck
         SortArray(check);
         DisplayBlock(check);
         RecycledMargin(check);
+        BlockHome(check);
         LineModel(check);
         Reviewed(check);
 
@@ -808,7 +809,7 @@ public static class TextObjectsSelfCheck
         ((TextDisplayInfo*)p)->Width = 4.5f; ((TextDisplayInfo*)p)->Height = 1.25f;
         c.Expect(TextSlots.ApplyDisplayInfo(d) && d.MaxWidth == 4.5f && d.MaxHeight == 1.25f,
           "a box written through the display block is adopted on the next slot call");
-        d.MaxWidth = 2f;
+        d.MaxWidth = 2f; TextObjects.Stale(d);
         c.Expect(!TextSlots.ApplyDisplayInfo(d) && d.MaxWidth == 2f, "a later SetMaxWidth is not undone by the stale block");
         c.Expect(TextSlots.DisplayInfo(d) == (nint)p, "the block is the document's own, not one shared scratch");
         // CGuiEdit caches the pointer at construction and reads the budget through it after ScrollToLine.
@@ -853,6 +854,36 @@ public static class TextObjectsSelfCheck
         c.Expect(q != null && q.HitMargin == 0f,
           "a recycled record that never asks for its display block does not keep the previous tenant's adopted margin");
         TextObjects.Destroy(quiet);
+    }
+
+    /// <summary>The display block is the document's one home: what the game writes through it -- the pixel-scroll
+    /// byte <c>CGuiEditScroll::EnablePixelScrolling</c> stores on a chat log, a label's box -- is the document's
+    /// write, so no change gate and no CX-side mark between the write and the next slot call drops it.</summary>
+    private static unsafe void BlockHome(Checker c)
+    {
+        var d = Doc(Synthetic());
+        for (int i = 0; i < 12; i++) Put(d, "row");
+        var p = (TextDisplayInfo*)TextSlots.DisplayInfo(d);
+        p->PixelScroll = 1;
+        TextObjects.Stale(d);
+        c.Expect(d.PixelScroll && p->PixelScroll == 1, "a pixel-scroll write through the display block survives a change gate");
+        TextObjects.MarkText(d.Owner, d);
+        c.Expect(d.PixelScroll && p->PixelScroll == 1, "...and a mark from outside the slot layer");
+        var lines = Doc(d.Font!, maxHeight: 3.5f * d.Lines[0].Height);
+        for (int i = 0; i < 12; i++) Put(lines, "row");
+        TextObjects.Relayout(lines);
+        d.MaxHeight = lines.MaxHeight;
+        TextObjects.Relayout(d);
+        c.Expect(d.VisibleLines == lines.VisibleLines + 1,
+          $"the layout keeps the overshooting line the pixel-scroll mode the game switched on keeps ({d.VisibleLines} vs {lines.VisibleLines})");
+
+        p->Width = 4.5f; p->Height = 1.25f;
+        TextObjects.Stale(d);
+        c.Expect(d.MaxWidth == 4.5f && d.MaxHeight == 1.25f && p->Width == 4.5f && p->Height == 1.25f,
+          $"a box written through the display block survives a change gate before the next slot call ({d.MaxWidth} x {d.MaxHeight})");
+        c.Expect(d.QuadsStale && !TextSlots.ApplyDisplayInfo(d), "...and that gate marked the record, so the slot call has nothing left to mark");
+        p->HitMargin = 0.3f;
+        c.Expect(TextSlots.ApplyDisplayInfo(d) && d.HitMargin == 0.3f, "a margin no gate has seen yet marks the record on the next slot call");
     }
 
     /// <summary>Slot 7's model rides its line into the published quad list at that line's pen -- the list

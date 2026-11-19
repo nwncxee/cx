@@ -401,8 +401,8 @@ public static partial class TextSlots
 
     /// <summary>Slot 24. The engine hands out a pointer INTO the object (<c>this+0x528</c>) and the game reads
     /// the block through it up to <c>+0x28</c> -- <c>CGuiTextBubble::SetText</c> @0x688790 divides by the line
-    /// height at <c>StringGob+0x550</c> -- and also WRITES the box through it
-    /// (<see cref="TextDoc.InfoBuf"/>), so the block is the document's own. Returns it, or 0 for no document.</summary>
+    /// height at <c>StringGob+0x550</c> -- and writes it in place, so it is the document's own block
+    /// (<see cref="TextDoc.InfoBuf"/>). Returns it, or 0 for no document.</summary>
     public static nint GetDisplayInfo(DbId id)
     {
         TextDoc? d = TextObjects.Of(id);
@@ -410,38 +410,15 @@ public static partial class TextSlots
     }
 
     /// <inheritdoc cref="GetDisplayInfo(DbId)"/>
-    public static unsafe nint DisplayInfo(TextDoc d)
+    public static nint DisplayInfo(TextDoc d)
     {
-        if (d.InfoBuf == 0) d.InfoBuf = (nint)NativeMemory.AllocZeroed(DisplayInfoSize);
-        else if (!d.InfoOut) NativeMemory.Clear((void*)d.InfoBuf, (nuint)DisplayInfoSize);
-        d.InfoOut = true;
-        FillDisplayInfo(d);
+        if (d.Font != null) d.FontHeight = d.Font.FontHeight / TextObjects.UnitPerPixel;
         return d.InfoBuf;
     }
 
-    /// <summary>Rewrite the handed-out block from the document. The engine's block IS the object's fields:
-    /// <c>CGuiEdit::CGuiEdit</c> @0x692460 caches the pointer once and <c>CGuiEditScroll::UpdateScroll</c>
-    /// @0x691690 reads the scroll budget through it right after a <c>ScrollToLine</c>, so a snapshot is a dead
-    /// scroll range (a minimum-length thumb). Run from every change gate.</summary>
-    internal static unsafe void FillDisplayInfo(TextDoc d)
-    {
-        if (!d.InfoOut) return;
-        byte* p = (byte*)d.InfoBuf;
-        var info = (TextDisplayInfo*)p;
-        // The margin has no setter: a game write not yet adopted must outlive this rewrite.
-        if (info->HitMargin != d.InfoMargin) d.HitMargin = info->HitMargin;
-        NativeMemory.Clear(p, (nuint)DisplayInfoSize);
-        info->TopLine = d.TopLine; info->VisibleLines = d.VisibleLines; info->ScrollBudget = d.ScrollBudget;
-        info->Width = d.InfoW = d.MaxWidth; info->Height = d.InfoH = d.MaxHeight;
-        info->TotalHeight = d.TotalHeight; info->VisibleHeight = d.VisibleHeight;
-        info->SubLineScroll = d.SubLineScroll; info->PixelScroll = d.PixelScroll ? 1 : 0;
-        info->HitMargin = d.InfoMargin = d.HitMargin;
-        if (d.Font != null) info->FontHeight = d.Font.FontHeight / TextObjects.UnitPerPixel;
-    }
-
-    /// <summary>Adopt a box the game wrote through the handed-out display block since the last slot call, the
-    /// engine's <c>+0x534</c>/<c>+0x538</c> as a field store: no layout, the next one uses it. Runs at the head
-    /// of every slot entry, as <see cref="SyncItemOrder"/> does.</summary>
+    /// <summary>Mark a record whose box or hit margin the game wrote through the display block since the last
+    /// change gate: the write is already the document's (no layout, the next one uses it), but the quads and the
+    /// hit bounds cached on it are not. Runs at the head of every slot entry, as <see cref="SyncItemOrder"/> does.</summary>
     public static void SyncDisplayInfo(DbId id)
     {
         TextDoc? d = TextObjects.Of(id);
@@ -449,19 +426,9 @@ public static partial class TextSlots
     }
 
     /// <inheritdoc cref="SyncDisplayInfo(DbId)"/>
-    /// <returns>Whether the box changed.</returns>
-    public static unsafe bool ApplyDisplayInfo(TextDoc d)
-    {
-        if (!d.InfoOut) return false;
-        byte* p = (byte*)d.InfoBuf;
-        float w = ((TextDisplayInfo*)p)->Width, h = ((TextDisplayInfo*)p)->Height;
-        float m = ((TextDisplayInfo*)p)->HitMargin;
-        if (w == d.InfoW && h == d.InfoH && m == d.InfoMargin) return false;
-        if (w != d.InfoW) d.MaxWidth = d.InfoW = w;
-        if (h != d.InfoH) d.MaxHeight = d.InfoH = h;
-        if (m != d.InfoMargin) d.HitMargin = d.InfoMargin = m;
-        return true;
-    }
+    /// <returns>Whether the box or the margin differs from what the last change gate saw.</returns>
+    public static bool ApplyDisplayInfo(TextDoc d)
+        => d.MaxWidth != d.SeenW || d.MaxHeight != d.SeenH || d.HitMargin != d.SeenMargin;
 
     /// <summary><c>StringGob+0x528</c> .. <c>+0x554</c>: the display block through the line height.</summary>
     public const int DisplayInfoSize = 0x2c;  // not-an-offset: the block size through +0x28, the same on both builds (Windows SetText @rva 0x1fd690 divides by [info+0x28] too)

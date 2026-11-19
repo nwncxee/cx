@@ -23,8 +23,8 @@ public struct TextDisplayInfo
     [FieldOffset(0x18)] public float VisibleHeight;
     /// <summary>Scroll within a line.</summary>
     [FieldOffset(0x1c)] public float SubLineScroll;
-    /// <summary>Non-zero when scrolling is per pixel.</summary>
-    [FieldOffset(0x20)] public int PixelScroll;
+    /// <summary>Non-zero when scrolling is per pixel. One byte: the engine stores and tests only <c>+0x20</c>.</summary>
+    [FieldOffset(0x20)] public byte PixelScroll;
     /// <summary>How far the text's hit quad reaches past the box on each side horizontally; only the hit
     /// test reads it. The chat window sets it so a click on a line's portrait, left of the text, lands.</summary>
     [FieldOffset(0x24)] public float HitMargin;
