@@ -5,7 +5,7 @@ using CX.Framework;
 
 namespace CX.Services.Anim;
 
-/// <summary>Runs the leg recorder's and the replay's self-checks at boot. Oracles: hand-worked literals (a leg of length 1
+/// <summary>Runs the leg recorder's and the replay's self-checks at boot and gives the recorder its once-a-frame tick. Oracles: hand-worked literals (a leg of length 1
 /// raised 0.25 is 0.25 shorter; 0.1 rad in half a second is 11.459 deg/s) and the fixture's construction
 /// (<see cref="LegReplayFixture"/>), never the grader's own arithmetic.</summary>
 public sealed class LegReplaySelfCheck : IExtenderService
@@ -13,6 +13,9 @@ public sealed class LegReplaySelfCheck : IExtenderService
     public void Initialize(ExtenderLog log, HookService hooks)
     {
         _ = AnimKnobs.G;
+        LegRecorder.Attach(log);
+        if (!FrameRegistry.Global.Register(FramePhase.PostPresent, 90, LegRecorder.Tick, "LegRecorder.tick", log))
+            log.Info("LegRecorder: no frame tick -- a recording closes only when a corrected body next arrives");
         var check = new Checker(log);
         check.Expect(NotRecording(), "with recording not switched on, a run of frames asks for no folder, writes no recording file and buffers nothing");
         check.Expect(TicksAndTotals(), "recording: a tick with the knob off writes what is buffered and closes the file, a tick on an old buffer writes it, a second recording is a new file and the total runs across both");

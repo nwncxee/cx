@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
@@ -13,12 +14,9 @@ internal struct LegRec
     public LegFrame Frame;
 }
 
-/// <summary>
-/// The leg-recording file: a 16-byte header (the magic <c>CXLG</c>, the format version, the byte size of a
-/// <see cref="LegRec"/> and of a <see cref="LegFrame"/>) and then <see cref="LegRec"/> records end to end, each a
-/// raw dump of the struct on the machine that wrote it. A file whose sizes are not this build's was made by another
-/// layout of the frame, and the reader refuses it rather than misread it. Little-endian, as every host CX runs on.
-/// </summary>
+/// <summary>The leg-recording file: a 16-byte header (the magic <c>CXLG</c>, the version, the byte sizes of a <see cref="LegRec"/> and
+/// a <see cref="LegFrame"/>, little-endian) and <see cref="LegRec"/> records end to end, each a raw dump of the struct. Only the
+/// header is checked: a layout of another size is refused, a damaged record is read as the bytes say.</summary>
 internal static class LegRecording
 {
     /// <summary>The format version: moves when the header or the record's meaning changes (not its size, which the header carries).</summary>
@@ -32,9 +30,9 @@ internal static class LegRecording
     {
         Span<byte> h = stackalloc byte[HeaderSize];
         Magic.CopyTo(h);
-        BitConverter.TryWriteBytes(h[4..], Version);
-        BitConverter.TryWriteBytes(h[8..], Unsafe.SizeOf<LegRec>());
-        BitConverter.TryWriteBytes(h[12..], Unsafe.SizeOf<LegFrame>());
+        BinaryPrimitives.WriteInt32LittleEndian(h[4..], Version);
+        BinaryPrimitives.WriteInt32LittleEndian(h[8..], Unsafe.SizeOf<LegRec>());
+        BinaryPrimitives.WriteInt32LittleEndian(h[12..], Unsafe.SizeOf<LegFrame>());
         to.Write(h);
     }
 
@@ -46,7 +44,8 @@ internal static class LegRecording
         refused = "";
         int recSize = Unsafe.SizeOf<LegRec>();
         if (file.Length < HeaderSize || !file[..4].SequenceEqual(Magic)) { refused = "not a leg recording"; return null; }
-        int version = BitConverter.ToInt32(file[4..]), rec = BitConverter.ToInt32(file[8..]), frame = BitConverter.ToInt32(file[12..]);
+        int version = BinaryPrimitives.ReadInt32LittleEndian(file[4..]), rec = BinaryPrimitives.ReadInt32LittleEndian(file[8..]),
+            frame = BinaryPrimitives.ReadInt32LittleEndian(file[12..]);
         if (version != Version) { refused = $"format version {version}, this build reads {Version}"; return null; }
         if (rec != recSize || frame != Unsafe.SizeOf<LegFrame>())
         {
@@ -57,10 +56,17 @@ internal static class LegRecording
         var at = new Dictionary<int, int>();
         for (int off = HeaderSize; off + recSize <= file.Length; off += recSize)
         {
-            LegRec r = MemoryMarshal.Read<LegRec>(file[off..]);
+            LegRec r = Load<LegRec>(file[off..]);
             if (!at.TryGetValue(r.Body, out int i)) { at[r.Body] = i = bodies.Count; bodies.Add((r.Body, new List<LegFrame>())); }
             bodies[i].Frames.Add(r.Frame);
         }
         return bodies;
     }
+
+    /// <summary>The bytes of <paramref name="items"/>; unmanaged, so a reference field added to the record is a compile error here
+    /// rather than an exception in the frame hook.</summary>
+    internal static ReadOnlySpan<byte> Bytes<T>(ReadOnlySpan<T> items) where T : unmanaged => MemoryMarshal.AsBytes(items);
+
+    /// <summary>The <typeparamref name="T"/> dumped at the start of <paramref name="from"/>.</summary>
+    internal static T Load<T>(ReadOnlySpan<byte> from) where T : unmanaged => MemoryMarshal.Read<T>(from);
 }

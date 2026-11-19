@@ -964,7 +964,7 @@ public sealed unsafe class PoseService : IExtenderService
                          "the hips and arms match by their _g bone names only");
         check.Expect(Transition.SelfCheck(), "movement changes: the old movement carries on and crossfades into the new one, continuous where it starts, a reversal slows through zero instead of flipping");
         check.Expect(Mass.SelfCheck(), "mass: a start, a stop and the bottom of a drop dip the pelvis and it settles back a little past neutral; steady walking and a steady descent carry no dip; the chest's lean overshoots a step by under a fifth");
-        check.Expect(Diagonal.SelfCheck(), "diagonals: the sideways diagonal plays the straight walk or run, turned so it faces the travel; walking back diagonally leads with its back; the hips come round within a quarter second, without overshoot, and a swapped diagonal is no movement change");
+        check.Expect(Diagonal.SelfCheck(), "diagonals: the sideways diagonal plays the straight walk or run, turned so it faces the travel; walking back diagonally leads with its back; the hips come round over one step of the gait, without overshoot, and a swapped diagonal is no movement change");
         check.Expect(Legs.SelfCheck(), "leg core: a walk stepped at its own pace on flat ground draws every ankle where it is animated and leaves the pelvis where it is: no correction");
         check.Expect(Legs.PelvisCheck(), "pelvis: a leg reaches a target past its stretch by the drop the leg triangle gives, never past its cap; a long stride's drop comes and goes each step, back up before the next and gone once the stride is");
         Legs.Examples(log);

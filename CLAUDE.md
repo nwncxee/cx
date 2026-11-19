@@ -223,7 +223,9 @@ the cleanup that earned it. Adding a rule means adding its gate in the same chan
 - `selfcheck.sh`: inside a `*SelfCheck*` or `*ApprovedExamples*` file or a `SelfCheck` method, an `Expect` that cannot fail fails --
   a compile-time-constant condition, a `const` compared to its own kind of literal (over `==` `!=` `<` `>`
   `<=` `>=`, the const named bare or as `Type.CONST` from any file), or the same text on both sides of a
-  comparison -- and so does a hand-written `SKIPPED` log line. The const-against-literal shape's standing
+  comparison -- and so does a hand-written `SKIPPED` log line, and an `if (...) return true;` among the statements of a `bool`
+  method in a `*SelfCheck*` file that an `Expect` there reads (the check passes unasserted whenever the condition holds;
+  `tools/selfcheck_gate_regression.sh` plants it). The const-against-literal shape's standing
   instances are `selfcheck.baseline`, which may only shrink; every other shape fails outright.
 
   The independent-oracle rule and the rest of the testing rules live in `TESTING_STANDARDS.md`.

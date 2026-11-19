@@ -49,6 +49,11 @@
     <PackageReference Include="Vortice.VulkanMemoryAllocator" Version="1.8.0" />
   </ItemGroup>
 
+  <!-- The leg replay console (tools/anim) reads the engine-free leg core and the recording format as internals. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="replay" />
+  </ItemGroup>
+
   <!-- Keep our own assembly whole: the service host discovers services by
        reflection, so their constructors must survive trimming. Trimming a tiny
        extender saves nothing; rooting it removes all reflection/AOT fragility. -->
