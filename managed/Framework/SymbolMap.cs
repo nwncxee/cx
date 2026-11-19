@@ -360,6 +360,8 @@ internal static unsafe class SymbolMap
     public const string HiliteNeutral = "g_vCreatureNeutralHighlight";
     public const string HilitePlaceable = "g_vPlaceableHighlight";
     public const string HiliteDoor = "g_vDoorHighlight";
+    /// <summary>The box-pick margin (a Vector), <c>g_HitCheckBoxExpansion</c> @0x19da638; Windows exports it by name.</summary>
+    public const string HitCheckBoxExpansion = "g_HitCheckBoxExpansion";
     /// <summary><c>CExoMoviePlayerInternal::ShowFrame(int frameW, int frameH, int texW, int texH)</c> @0x1165e30 --
     /// the movie's whole DRAW and nothing else: a colour clear plus one letterboxed textured quad. Its one caller
     /// <c>UpdateMovie</c> @0x1168210 has already decoded the frame and uploaded it into the player's own GL texture
@@ -3096,6 +3098,7 @@ internal static unsafe class SymbolMap
         [PartGetIsOpaque] = Nm("?GetIsOpaque@PartTriMesh@@QEAA_NXZ"),
         [PartGetWorld] = Nm("?GetWorld@Part@@UEAAXAEAVVector@@AEAVQuaternion@@@Z"),
         [PltOnGpu] = Nm("?g_bGeneratePLTOnGPU@@3HA"),
+        [HitCheckBoxExpansion] = Nm("?g_HitCheckBoxExpansion@@3VVector@@A"),
         [PrimTypeTranslationTable] = At(),   // the {0,1,3,4,5,6,2} run in .rdata; RenderVertexData leas it three times
         [ProjectionAlpha] = Nm("?projectionalpha@@3MA"),
         [QuickbarReposition] = At(),
