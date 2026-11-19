@@ -369,14 +369,14 @@ public sealed unsafe class StringSlots : ISeamProvider
     }
 
     /// <summary>Slot 24 returns a <c>CAurStringDisplayInfo*</c> the caller reads and writes in place: the
-    /// document's own block (<see cref="TextSlots.GetDisplayInfo"/>), or a zeroed scratch one with no record.</summary>
+    /// document's own block (<see cref="TextSlots.GetDisplayInfo"/>), or a scratch one in the ctor state with no record.</summary>
     [UnmanagedCallersOnly]
     private static nint GetDisplayInfo(nint self)
     {
         DbId id = Id(self, 24);
         nint p = id.IsNull ? 0 : TextSlots.GetDisplayInfo(id);
         if (p != 0) return p;
-        if (_noInfo == 0) _noInfo = (nint)NativeMemory.AllocZeroed(TextSlots.DisplayInfoSize);
+        if (_noInfo == 0) _noInfo = TextObjects.NewBlock();
         return _noInfo;
     }
 

@@ -38,6 +38,7 @@ public static unsafe partial class DbAnim
             Scaled(check);
             Carried(check);
             Refilled(check);
+            LineModelStep(check);
             Still(check);
             Census(check);
             ViewGate(check, log);
