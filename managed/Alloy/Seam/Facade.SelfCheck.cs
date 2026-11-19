@@ -333,6 +333,24 @@ internal static unsafe class FacadeSelfCheck
                 ObjectSlots.Detach(rider);
                 check.Expect(new Gob(ps).CallbackArray.Count == listed + 1, "a detach takes its rider's listener off the parent");
                 ObjectSlots.AttachAt(rider, rs, page, -1, 0);
+
+                // A rider the game gave a behaviour of its own follows that behaviour's listener, not the seam's.
+                void* beh = NativeMemory.AllocZeroed(0x100);   // not-an-offset: a stand-in behaviour block, Kind Unknown
+                try
+                {
+                    ObjectSlots.JoinScene(page, ps, panel, 0);
+                    new Gob(rs).Behavior = (nint)beh;
+                    before = new SceneEventProbe { Rider = rider.Index };
+                    after = new SceneEventProbe { Rider = rider.Index };
+                    DbScene.Leave(panel, page);
+                    Facade.SetSceneWord(ps, 0);
+                    ObjectSlots.FireEvent(ps, (nint)n, 0);
+                    check.Expect(before.Seen == panel.Value && after.Seen == panel.Value,
+                        "a rider with a game behaviour is not carried by the seam's listener ahead of the game's");
+                    check.Expect(SceneDb.ObjScene[rider.Index].IsNull, "...and is still carried out with its page afterwards");
+                }
+                finally { new Gob(rs).Behavior = 0; NativeMemory.Free(beh); }
+
                 ObjectSlots.DestroyRecord(rider);
                 rider = default;
                 check.Expect(new Gob(ps).CallbackArray.Count == listed + 1, "a destroyed rider takes its listener off the parent");

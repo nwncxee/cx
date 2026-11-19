@@ -234,6 +234,8 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
         SceneDb.ObjSeamLodModel2[i] = null;
         SceneDb.ObjSeamModelName[i] = null;
         SceneDb.ObjScene[i] = default;
+        DbId parent = SceneDb.ObjAttachTo[i];
+        if (SceneDb.Objects.Valid(parent)) Unlisten(Facade.ObjectShell(parent), Facade.ObjectShell(id));
         SceneDb.SetAttachTo(i, default);
         SceneDb.ObjSeamFlags[i] = 0;
     }
@@ -445,28 +447,66 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
     /// is not walked again, which is also what ends a cycle.</summary>
     private static void Carry(DbId id, DbId c, nint child, DbId sc, nint sceneShell)
     {
-        if (c.IsNull || child == 0 || c.Value == id.Value) return;
-        DbId target = sc;
-        nint targetShell = sceneShell;
+        if (Move(id, c, child, sc, sceneShell, out DbId target, out nint targetShell))
+            Push(c, child, target, targetShell);
+    }
+
+    /// <summary>The move half of <see cref="Carry"/>: true when <paramref name="c"/> changed scene, with the
+    /// scene it went to.</summary>
+    private static bool Move(DbId id, DbId c, nint child, DbId sc, nint sceneShell, out DbId target, out nint targetShell)
+    {
+        target = sc;
+        targetShell = sceneShell;
+        if (c.IsNull || child == 0 || c.Value == id.Value) return false;
         // CAurBehaviorCrossSceneAttach::SetScene() @0x58b560: a control the game moved to another scene
         // (CGuiViewport::TakeModel puts the server list in its viewport's) returns THERE when its parent
         // gets a scene -- unless its +0x80 latch is set ("Dislodge", "StopSceneChanges"), when it stays put.
         nint cbeh = SceneDb.ObjFacade[c.Index] == 0 ? 0 : new Gob(SceneDb.ObjFacade[c.Index]).Behavior;
         bool cross = cbeh != 0 && DbAnim.IsCrossSceneAttach(cbeh);
-        if (cross && new CAurBehaviorCrossSceneAttach(cbeh).Latch != 0) return;
+        if (cross && new CAurBehaviorCrossSceneAttach(cbeh).Latch != 0) return false;
         if (!sc.IsNull && cross)
         {
             DbId kept = SceneDb.ObjCrossScene[c.Index];
             if (SceneDb.Scenes.Valid(kept)) { target = kept; targetShell = SceneDb.SceneFacade[kept.Index]; }
         }
         DbId was = SceneDb.ObjScene[c.Index];
-        if (was.Value == target.Value) return;
+        if (was.Value == target.Value) return false;
         if (!was.IsNull) DbScene.Leave(was, c);
         if (!target.IsNull) { DbScene.Join(target, c); Flag(c, SeamFlag.EverAttached, true); }
         else SceneDb.ObjScene[c.Index] = default;
         Facade.SetSceneWord(child, targetShell);
         SceneDb.Touch(c, Dirty.Tree);
-        Push(c, child, target, targetShell);
+        return true;
+    }
+
+    /// <summary>Put <paramref name="child"/>'s attach listener on <paramref name="parent"/>'s callback list, where
+    /// <c>CAurBehaviorAttach</c> @0x5a2d50 registers <c>UpdateScenesAttach</c> @0x59fc70 under "*" -- so a scene
+    /// change carries the rider in its own turn among the game's listeners, which a GUI scene draws in.</summary>
+    private static void Listen(nint parent, nint child)
+    {
+        if (parent == 0 || child == 0) return;
+        fixed (byte* star = "*\0"u8)
+            CallbackList.Add(parent, (nint)(delegate* unmanaged<nint, nint, nint, void>)&UpdateScenesAttach, (nint)star, child);
+    }
+
+    /// <summary>Take <paramref name="child"/>'s attach listener off <paramref name="parent"/>'s list, as the attach
+    /// behaviour's destructor deregisters it.</summary>
+    private static void Unlisten(nint parent, nint child) =>
+        CallbackList.RemoveListener(parent, (nint)(delegate* unmanaged<nint, nint, nint, void>)&UpdateScenesAttach, child);
+
+    /// <summary><c>UpdateScenesAttach</c> @0x59fc70 for a seam rider: on <c>UpdateScenes</c> the rider follows its
+    /// parent (<c>Gob::SetScene</c>), which fires the rider's own <c>UpdateScenes</c> and so carries its subtree first.</summary>
+    [UnmanagedCallersOnly]
+    private static void UpdateScenesAttach(nint self, nint name, nint data)
+    {
+        if (name == 0 || data == 0 || !CallbackList.NameIs(name, "UpdateScenes")) return;
+        nint pshell = Facade.GobBlock(self);
+        DbId pid = pshell == 0 ? default : Facade.Object(self, 84);
+        if (!SceneDb.Objects.Valid(pid)) return;
+        if (!SeamShell.Known(data, out byte cs, out DbId cid) || cs != SeamShell.StateLive) return;
+        if (!SceneDb.Objects.Valid(cid) || SceneDb.ObjAttachTo[cid.Index].Value != pid.Value) return;
+        if (Move(pid, cid, data, SceneDb.ObjScene[pid.Index], Facade.SceneWord(pshell), out _, out _))
+            FireEvent(data, name, 0);
     }
 
     /// <summary><c>Gob::AttachToObject(CAurObject*, char const*, int)</c> @0x43e0e0: ride
@@ -496,6 +536,7 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
         SceneDb.ObjAttachMode[id.Index] = mode;
         AddAttachment(Facade.ObjectShell(parent), shell);
         InheritScene(id, shell, parent);
+        if (mode != SceneDb.AttachNone) Listen(Facade.ObjectShell(parent), shell);
         if (part >= 0)
         {
             Matrix4x4 w = DbAnim.PartWorld(part);
@@ -564,12 +605,13 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
     internal static void UnlinkText(DbId id) => Detach(id);
 
     /// <inheritdoc cref="UnlinkText"/>
-    internal static void LinkText(DbId id, DbId parent)
+    internal static void LinkText(DbId id, DbId parent, bool listen)
     {
         nint shell = Facade.ObjectShell(id);
         if (shell == 0 || !SceneDb.Objects.Valid(parent)) return;
         AddAttachment(Facade.ObjectShell(parent), shell);
         InheritScene(id, shell, parent);
+        if (listen) Listen(Facade.ObjectShell(parent), shell);
     }
 
     /// <summary>Clear the attachment columns -- what <c>AttachToObject(NULL, "", 0)</c> does, and the first
@@ -578,7 +620,10 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
     {
         DbId was = SceneDb.ObjAttachTo[id.Index];
         if (SceneDb.Objects.Valid(was))
+        {
             RemoveAttachment(Facade.ObjectShell(was), Facade.ObjectShell(id));
+            Unlisten(Facade.ObjectShell(was), Facade.ObjectShell(id));
+        }
         SceneDb.SetAttachTo(id.Index, default);
         SceneDb.SetAttachPart(id.Index, -1);
         SceneDb.ObjAttachMode[id.Index] = 0;
