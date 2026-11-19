@@ -23,6 +23,9 @@ internal static class ContentStageApprovedExamples
         ["cx_fixshadowblock"] = "#include \"inc_standard\"\nuniform int iTint;\nvoid main()\n{\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n    if (iTint == 1)\n    {\n        vec4 FragmentColor = vec4(0.25, 0.5, 0.75, 1.0);\n        gl_FragColor = FragmentColor;\n        return;\n    }\n    gl_FragColor = FragmentColor;\n}\n",
         ["cx_fixshadowstruct"] = "#include \"inc_standard\"\nstruct Layer { vec4 FragmentColor; float w; };\nvoid main()\n{\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n    Layer l;\n    l.FragmentColor = FragmentColor;\n    l.w = 1.0;\n    gl_FragColor = l.FragmentColor * l.w;\n}\n",
         ["cx_fixshadowmulti"] = "#include \"inc_standard\"\nvoid main()\n{\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n    vec4 tint = vec4(1.0), FragmentColor = vec4(0.25, 0.5, 0.75, 1.0);\n    gl_FragColor = FragmentColor * tint;\n}\n",
+        ["cx_fixshadowinit"] = "#include \"inc_standard\"\nvoid main()\n{\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n    vec4 FragmentColor = FragmentColor * vec4(1.1, 1.0, 0.9, 1.0);\n    gl_FragColor = FragmentColor;\n}\n",
+        ["cx_fixshadowcall"] = "#include \"inc_standard\"\nvoid main()\n{\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n    vec4 c = mix(vec4(0.0), FragmentColor, 0.5);\n    gl_FragColor = c;\n}\n",
+        ["cx_fixshadowmember"] = "#include \"inc_standard\"\nstruct Layer { vec4 FragmentColor; };\nvoid main()\n{\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n    Layer l;\n    l.FragmentColor = vec4(0.25, 0.5, 0.75, 1.0);\n    vec4 FragmentColor = l.FragmentColor;\n    gl_FragColor = FragmentColor;\n}\n",
     };
 
     internal static bool SelfCheck(ExtenderLog log)
@@ -92,10 +95,34 @@ internal static class ContentStageApprovedExamples
                      && multi.Host.Contains("FragmentColor = " + ContentStage.ShadowName + " * tint;"),
                      $"E10: a FragmentColor declared second in a declaration does not reach the part ({multi.Refused})");
 
+        // Given a material that tints the stock colour into its own local FragmentColor
+        // When the shader is translated
+        // Then the tint reads the stock colour, and the tinted colour reaches the part
+        ContentStage.Result init = Translate("cx_fixshadowinit");
+        check.Expect(init.Refused == null && init.Host.Contains("vec4 " + ContentStage.ShadowName + " = FragmentColor * vec4(1.1, 1.0, 0.9, 1.0);")
+                     && init.Host.Contains("FragmentColor = " + ContentStage.ShadowName + ";"),
+                     $"E11: a local FragmentColor's initialiser does not read the stock colour ({init.Refused})");
+
+        // Given a material that passes the stock FragmentColor to a call after another argument
+        // When the shader is translated
+        // Then the call still reads the stock colour
+        ContentStage.Result call = Translate("cx_fixshadowcall");
+        check.Expect(call.Refused == null && call.Host.Contains("vec4 c = mix(vec4(0.0), FragmentColor, 0.5);")
+                     && !call.Host.Contains(ContentStage.ShadowName),
+                     $"E12: a call's FragmentColor argument is taken for a declaration ({call.Refused})");
+
+        // Given a material that reads a struct member named FragmentColor into its own local FragmentColor
+        // When the shader is translated
+        // Then the member keeps its name, and the colour it held reaches the part
+        ContentStage.Result inScope = Translate("cx_fixshadowmember");
+        check.Expect(inScope.Refused == null && inScope.Host.Contains("vec4 " + ContentStage.ShadowName + " = l.FragmentColor;")
+                     && inScope.Host.Contains("FragmentColor = " + ContentStage.ShadowName + ";"),
+                     $"E13: a member read beside a local FragmentColor is renamed ({inScope.Refused})");
+
         // Given a stage whose braces do not balance
         // When it is translated
         // Then the stage reaches the translation as the server wrote it
-        const string unbalanced = "void main()\n{\n    vec4 FragmentColor = vec4(1.0);\n    gl_FragColor = FragmentColor;\n";
+        const string unbalanced = "void main()\n{\n    vec4 FragmentColor = vec4(1.0);\n    gl_FragColor = FragmentColor;\n}\n}\n";
         check.Expect(ContentStage.Unshadow(unbalanced) == unbalanced, "E8: a stage whose braces do not balance is rewritten");
 
         log.Info(check.Ok ? "ContentStageApprovedExamples.SelfCheck: passed" : "ContentStageApprovedExamples.SelfCheck: FAILED");

@@ -872,6 +872,9 @@ FIXTURE = {
     "cx_fixshadowblock": "#include \"inc_standard\"\nuniform int iTint;\nvoid main()\n{\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n    if (iTint == 1)\n    {\n        vec4 FragmentColor = vec4(0.25, 0.5, 0.75, 1.0);\n        gl_FragColor = FragmentColor;\n        return;\n    }\n    gl_FragColor = FragmentColor;\n}\n",
     "cx_fixshadowstruct": "#include \"inc_standard\"\nstruct Layer { vec4 FragmentColor; float w; };\nvoid main()\n{\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n    Layer l;\n    l.FragmentColor = FragmentColor;\n    l.w = 1.0;\n    gl_FragColor = l.FragmentColor * l.w;\n}\n",
     "cx_fixshadowmulti": "#include \"inc_standard\"\nvoid main()\n{\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n    vec4 tint = vec4(1.0), FragmentColor = vec4(0.25, 0.5, 0.75, 1.0);\n    gl_FragColor = FragmentColor * tint;\n}\n",
+    "cx_fixshadowinit": "#include \"inc_standard\"\nvoid main()\n{\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n    vec4 FragmentColor = FragmentColor * vec4(1.1, 1.0, 0.9, 1.0);\n    gl_FragColor = FragmentColor;\n}\n",
+    "cx_fixshadowcall": "#include \"inc_standard\"\nvoid main()\n{\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n    vec4 c = mix(vec4(0.0), FragmentColor, 0.5);\n    gl_FragColor = c;\n}\n",
+    "cx_fixshadowmember": "#include \"inc_standard\"\nstruct Layer { vec4 FragmentColor; };\nvoid main()\n{\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n    Layer l;\n    l.FragmentColor = vec4(0.25, 0.5, 0.75, 1.0);\n    vec4 FragmentColor = l.FragmentColor;\n    gl_FragColor = FragmentColor;\n}\n",
     # The engine-named set declared the way stock content declares it: inc_uniforms' whole block, inc_sunm's lone
     # scalar, fswater's wind loop, vs_beamvol's inline m_proj.
     "cx_fixeng": ('#define SHADER_TYPE 2\n#include "inc_standard"\nconst int MAX_WINDS = 128;\n'
@@ -1098,7 +1101,18 @@ def selfcheck(env_fs, env_vs, defs, vanfs, std_fs, std_vs, lit_vs):
     if multi.refused or f"vec4 tint = vec4(1.0), {SHADOW_NAME} = vec4(0.25, 0.5, 0.75, 1.0);" not in multi.host \
        or f"FragmentColor = {SHADOW_NAME} * tint;" not in multi.host:
         bad.append(f"a FragmentColor declared second in a declaration does not reach the part: {multi.refused}")
-    unbalanced = "void main()\n{\n    vec4 FragmentColor = vec4(1.0);\n    gl_FragColor = FragmentColor;\n"
+    init = translate("cx_fixshadowinit", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
+    if init.refused or f"vec4 {SHADOW_NAME} = FragmentColor * vec4(1.1, 1.0, 0.9, 1.0);" not in init.host \
+       or f"FragmentColor = {SHADOW_NAME};" not in init.host:
+        bad.append(f"a local FragmentColor's initialiser does not read the stock colour: {init.refused}")
+    call = translate("cx_fixshadowcall", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
+    if call.refused or "vec4 c = mix(vec4(0.0), FragmentColor, 0.5);" not in call.host or SHADOW_NAME in call.host:
+        bad.append(f"a call's FragmentColor argument is taken for a declaration: {call.refused}")
+    in_scope = translate("cx_fixshadowmember", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
+    if in_scope.refused or f"vec4 {SHADOW_NAME} = l.FragmentColor;" not in in_scope.host \
+       or f"FragmentColor = {SHADOW_NAME};" not in in_scope.host:
+        bad.append(f"a member read beside a local FragmentColor is renamed: {in_scope.refused}")
+    unbalanced = "void main()\n{\n    vec4 FragmentColor = vec4(1.0);\n    gl_FragColor = FragmentColor;\n}\n}\n"
     if unshadow(unbalanced) != unbalanced:
         bad.append("a stage whose braces do not balance is rewritten")
     return bad
