@@ -428,6 +428,43 @@ internal static unsafe class FacadeSelfCheck
         }
     }
 
+    /// <summary>A text rider deleted while attached, and one of two riders detached, each take only their own
+    /// listener off the parent. Oracle: the parent's callback count before the attaches, and the survivor's shell.</summary>
+    private static void TextRiderDeath(Checker check)
+    {
+        using var models = UnreadableModelScope.Enter();
+        DbId page = default, other = default, text = default;
+        nint ts = 0;
+        try
+        {
+            page = UnreadableModelScope.Mint();
+            other = UnreadableModelScope.Mint();
+            nint ps = Facade.ObjectShell(page), os = Facade.ObjectShell(other);
+            int listed = new Gob(ps).CallbackArray.Count;
+            text = TextObjects.Create(default, 1);
+            ts = text.IsNull ? 0 : Facade.Mint(FacadeKind.String, text);
+            ObjectSlots.UnlinkText(text);
+            TextSlots.AttachToObject(text, page, -1, 0);
+            ObjectSlots.LinkText(text, page, true);
+            ObjectSlots.AttachAt(other, os, page, -1, 0);
+            check.Expect(new Gob(ps).CallbackArray.Count == listed + 2, "a text rider and an object rider each listen on the page");
+            ObjectSlots.Detach(other);
+            ExoArray list = new Gob(ps).CallbackArray;
+            check.Expect(list.Count == listed + 1 && new CallBack(list[list.Count - 1]).SeamData == ts,
+                "detaching one rider leaves the other rider's listener on the page");
+            TextSlots.Destruct(text);
+            Facade.Retire(ts);
+            text = default;
+            check.Expect(new Gob(ps).CallbackArray.Count == listed, "a text rider deleted while attached takes its listener off the page");
+        }
+        finally
+        {
+            if (!text.IsNull) { TextSlots.Destruct(text); if (ts != 0) Facade.Retire(ts); }
+            if (!other.IsNull) ObjectSlots.DestroyRecord(other);
+            if (!page.IsNull) ObjectSlots.DestroyRecord(page);
+        }
+    }
+
     /// <summary>An invisible creature: <c>CNWCAnimBase::SetAlpha</c>'s colour shift reaches every grafted body
     /// piece always, and the seam riders (head, weapon, effect) when propagated, unless a rider opted out or has
     /// no attach behaviour. Oracle: the literal alpha handed in, against the untouched 1.</summary>
@@ -642,6 +679,7 @@ internal static unsafe class FacadeSelfCheck
         SceneEventOrder(check);
         SceneEventInterleave(check);
         InheritOrder(check);
+        TextRiderDeath(check);
         Shifts(check);
         RunRoots(check);
         UnseenSilhouetteApprovedExamples.SelfCheck(log);
