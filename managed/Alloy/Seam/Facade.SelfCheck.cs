@@ -297,8 +297,8 @@ internal static unsafe class FacadeSelfCheck
     }
 
     /// <summary>A rider attached between two game listeners is carried between them, newest first; detached or
-    /// destroyed, it leaves nothing on its parent's list. Oracle: <c>CAurBehaviorAttach</c> @0x5a2d50 registers
-    /// <c>UpdateScenesAttach</c> @0x59fc70 on the parent at attach, and <c>Gob::DoEvent</c> walks newest first.</summary>
+    /// destroyed, it leaves nothing on its parent's list. Oracle: <c>CAurBehaviorAttach</c> @0x4a2d50 registers
+    /// <c>UpdateScenesAttach</c> @0x49fc70 on the parent at attach, and <c>Gob::DoEvent</c> walks newest first.</summary>
     private static void SceneEventInterleave(Checker check)
     {
         using var models = UnreadableModelScope.Enter();
@@ -335,13 +335,11 @@ internal static unsafe class FacadeSelfCheck
                 check.Expect(new Gob(ps).CallbackArray.Count == listed + 1, "a detach takes its rider's listener off the parent");
                 ObjectSlots.AttachAt(rider, rs, page, -1, 0);
 
-                // Another event leaves the rider where it is; only UpdateScenes moves it.
                 ObjectSlots.JoinScene(page, ps, panel, 0);
                 ObjectSlots.JoinScene(rider, rs, default, 0);
                 fixed (byte* other = "Animate\0"u8) ObjectSlots.FireEvent(ps, (nint)other, 0);
                 check.Expect(SceneDb.ObjScene[rider.Index].IsNull, "an event other than UpdateScenes carries no rider");
 
-                // The rider's own riders go in its turn, ahead of the parent's older listener.
                 grand = UnreadableModelScope.Mint();
                 ObjectSlots.AttachAt(grand, Facade.ObjectShell(grand), rider, -1, 0);
                 ObjectSlots.JoinScene(rider, rs, panel, 0);
@@ -351,7 +349,6 @@ internal static unsafe class FacadeSelfCheck
                 ObjectSlots.FireEvent(ps, (nint)n, 0);
                 check.Expect(before.Seen == 0, "a rider's own rider is carried in that rider's turn, depth first");
 
-                // A rider re-filed without a detach is no longer the page's to carry through that listener.
                 ObjectSlots.JoinScene(page, ps, panel, 0);
                 ObjectSlots.JoinScene(rider, rs, panel, 0);
                 SceneDb.SetAttachTo(rider.Index, default);
@@ -363,7 +360,6 @@ internal static unsafe class FacadeSelfCheck
                 SceneDb.SetAttachTo(rider.Index, page);
                 ObjectSlots.Detach(grand);
 
-                // A rider the game gave a behaviour of its own follows that behaviour's listener, not the seam's.
                 void* beh = NativeMemory.AllocZeroed(0x100);   // not-an-offset: a stand-in behaviour block, Kind Unknown
                 try
                 {
@@ -397,7 +393,7 @@ internal static unsafe class FacadeSelfCheck
     }
 
     /// <summary>A tree attached to a parent already in a scene joins it in the engine's order. Oracle: the literal
-    /// order p, r, b, b1, a, a1 -- <c>Gob::AttachToObject</c> @0x43e0e0 ends in <c>Gob::SetScene</c> @0x53e020,
+    /// order p, r, b, b1, a, a1 -- <c>Gob::AttachToObject</c> @0x43e0e0 ends in <c>Gob::SetScene</c> @0x43e020,
     /// which appends, then fires UpdateScenes newest first, each rider carrying its own riders in its turn.</summary>
     private static void InheritOrder(Checker check)
     {
@@ -444,8 +440,12 @@ internal static unsafe class FacadeSelfCheck
             text = TextObjects.Create(default, 1);
             ts = text.IsNull ? 0 : Facade.Mint(FacadeKind.String, text);
             ObjectSlots.Detach(text);
+            TextSlots.AttachToObject(text, page, -1, 5);
+            ObjectSlots.LinkText(text, page);
+            check.Expect(new Gob(ps).CallbackArray.Count == listed, "a text attached with mode 5, which installs no behaviour, listens on nothing");
+            ObjectSlots.Detach(text);
             TextSlots.AttachToObject(text, page, -1, 0);
-            ObjectSlots.LinkText(text, page, 0);
+            ObjectSlots.LinkText(text, page);
             ObjectSlots.AttachAt(other, os, page, -1, 0);
             check.Expect(new Gob(ps).CallbackArray.Count == listed + 2, "a text rider and an object rider each listen on the page");
             ObjectSlots.Detach(other);

@@ -144,7 +144,7 @@ public static partial class TextSlots
         if (!SceneDb.Objects.Valid(id)) return 0;
         SceneDb.SetAttachTo(id.Index, to);
         SceneDb.SetAttachPart(id.Index, part);
-        SceneDb.ObjAttachMode[id.Index] = (byte)((uint)mode <= 4 ? mode : SceneDb.AttachNone);
+        SceneDb.ObjAttachMode[id.Index] = Seam.ObjectSlots.Mode(mode);
         SceneDb.TextOffsetBehavior[id.Index] = 0;
         SceneDb.TextPosOffset[id.Index] = default;
         SceneDb.Touch(id, Dirty.Xform);

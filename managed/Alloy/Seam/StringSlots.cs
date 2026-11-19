@@ -186,7 +186,7 @@ public sealed unsafe class StringSlots : ISeamProvider
         if (!target.IsNull && part < 0 && !string.IsNullOrEmpty(name)) { UnresolvedAttach++; return 0; }
         ObjectSlots.Detach(id);
         nint r = TextSlots.AttachToObject(id, target, part, mode);
-        ObjectSlots.LinkText(id, target, mode);
+        ObjectSlots.LinkText(id, target);
         return r;
     }
 
@@ -199,7 +199,7 @@ public sealed unsafe class StringSlots : ISeamProvider
         int idx = PartShell.Resolve(part, out _, out int p) ? p : -1;
         ObjectSlots.Detach(id);
         nint r = TextSlots.AttachToPart(id, target, idx, mode);
-        ObjectSlots.LinkText(id, target, mode);
+        ObjectSlots.LinkText(id, target);
         return r;
     }
 
@@ -211,7 +211,7 @@ public sealed unsafe class StringSlots : ISeamProvider
         DbId target = to == 0 ? default : Facade.Object(to, SeamVtables.Logical(T, 4));
         ObjectSlots.Detach(id);
         int r = TextSlots.AttachCornersToObjects(id, target, Marshal.PtrToStringUTF8(a) ?? "", Marshal.PtrToStringUTF8(b) ?? "");
-        ObjectSlots.LinkText(id, target, 0);
+        ObjectSlots.LinkText(id, target);
         return r;
     }
 
