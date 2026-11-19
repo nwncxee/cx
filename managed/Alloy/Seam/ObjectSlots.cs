@@ -351,10 +351,11 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
         return 1;
     }
 
-    /// <summary>Move <paramref name="id"/> into <paramref name="sc"/> (leave, join, mirror +0x88), then raise
-    /// <c>UpdateScenes</c> on it when the scene changed: the game's listeners and each rider's run here, newest
-    /// first, and may destroy the object. <c>DbScene.Join</c> makes it a MEMBER; <c>ObjScene</c> alone does not.</summary>
-    internal static void JoinScene(DbId id, nint shell, DbId sc, nint sceneShell)
+    /// <summary>Move <paramref name="id"/> into <paramref name="sc"/> (leave, join, mirror +0x88) and carry its
+    /// riders. With <paramref name="raise"/>, a scene change raises <c>UpdateScenes</c> instead, as
+    /// <c>Gob::SetScene</c> does: the listeners run newest first and may destroy the object.
+    /// <c>DbScene.Join</c> makes it a MEMBER; <c>ObjScene</c> alone does not.</summary>
+    internal static void JoinScene(DbId id, nint shell, DbId sc, nint sceneShell, bool raise = false)
     {
         if (TileBuild.RefuseMove(id, sc, "JoinScene"))
         {
@@ -365,8 +366,7 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
         }
         DbId was = SceneDb.ObjScene[id.Index];
         Rehome(id, shell, was, sc, sceneShell);
-        // Gob::SetScene @0x43e020 ends in UpdateScenes: riders join in its listener order, as the event path's do.
-        if (shell != 0 && was.Value != sc.Value) FireEvent(shell, EventNames.UpdateScenes, 0);
+        if (raise && shell != 0 && was.Value != sc.Value) FireEvent(shell, EventNames.UpdateScenes, 0);
         else PropagateScene(id, shell, sc, sceneShell);
     }
 
@@ -545,7 +545,7 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
     {
         nint ps = Facade.ObjectShell(parent);
         JoinScene(id, shell, SceneDb.Objects.Valid(parent) ? SceneDb.ObjScene[parent.Index] : default,
-                  ps == 0 ? 0 : Facade.SceneWord(ps));
+                  ps == 0 ? 0 : Facade.SceneWord(ps), raise: true);
     }
 
     /// <summary>The engine's <c>Gob::AddAttachment</c> @0x5424a0, which only ever ran from a
