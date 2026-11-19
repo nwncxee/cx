@@ -291,7 +291,7 @@ def main_text(stock, done, g, env, read):
     text = "\n".join(expand(stock, done, g, read=read, standard=WHOLE_STANDARD))
     if not MAIN_FN.search(text):
         return None
-    text = re.sub(r"\bgl_FragColor\b", "FragmentColor", MAIN_FN.sub("void CxVanMain()", text, 1))
+    text = FRAG_OUT.sub("CxVanOut", MAIN_FN.sub("void CxVanMain()", text, 1))
     names = sorted(set(OWN_DEFINE.findall(env)))
     if names:
         text = re.sub(r"(?m)^[ \t]*uniform\b[^;=\n]*\b(?:" + "|".join(names) + r")[ \t]*(?:=[^;\n]*)?;[^\n]*\n?", "", text)
@@ -300,6 +300,8 @@ def main_text(stock, done, g, env, read):
 
 
 MAIN_FN = re.compile(r"\bvoid\s+main\s*\(\s*(?:void)?\s*\)")
+# Mirrors VanillaShader.FragOut: the outputs a whole stage writes, which the splice points at CxVanOut.
+FRAG_OUT = re.compile(r"\bgl_FragColor\b|\bgl_FragData\s*\[\s*0\s*\]")
 # Mirrors VanillaShader.StubFn: a function DEFINITION in a stub, anchored on its opening brace.
 STUB_FN = re.compile(r"^\s*(?:\w+\s+)+(\w+)\s*\([^)]*\)\s*\{", re.M)
 OWN_DEFINE = re.compile(r"^[ \t]*#[ \t]*define[ \t]+(\w+)", re.M)

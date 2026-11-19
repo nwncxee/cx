@@ -81,15 +81,19 @@ float sqr(float a) { return a * a; }
 float ColorToLuma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 float ColorToLuma(vec4 c) { return ColorToLuma(c.rgb); }
 
+// The chain's working colour, which its includes write; and its OUTPUT, which the splice points gl_FragColor at --
+// a separate global, so a chain whose main declares its own FragmentColor still reaches the screen.
 vec4 FragmentColor;
+vec4 CxVanOut;
 
 // $VANILLA-SKIP inc_lighting inc_fog inc_shadow
 // $VANILLA-MAIN fsfbpostpr
-void CxVanMain() { FragmentColor = texture(uSrc, vUV); }
+void CxVanMain() { CxVanOut = texture(uSrc, vUV); }
 // $VANILLA-END
 
 vec4 CxStage(vec4 c)
 {
+    CxVanOut = c;
     CxVanMain();
-    return vec4(FragmentColor.rgb, c.a);
+    return vec4(CxVanOut.rgb, c.a);
 }

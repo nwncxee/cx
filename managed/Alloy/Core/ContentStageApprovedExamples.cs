@@ -18,6 +18,9 @@ internal static class ContentStageApprovedExamples
                            + "    SetupStandardShaderInputs();\n    ApplyStandardShader();\n"
                            + "    gl_FragColor = vec4(FragmentColor.rgb, texture2D(texUnit3, vTexCoords.xy).r);\n"
                            + "    if (gl_FragColor.a < fCut)\n    {\n        discard;\n    }\n}\n",
+        ["cx_fixshadowlocal"] = "#include \"inc_standard\"\nvoid main()\n{\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n    vec4 FragmentColor = vec4(0.25, 0.5, 0.75, 1.0);\n    gl_FragColor = FragmentColor;\n}\n",
+        ["cx_fixshadowparam"] = "#include \"inc_standard\"\nvoid Hand(vec4 FragmentColor)\n{\n    gl_FragColor = FragmentColor;\n}\nvoid main()\n{\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n    Hand(vec4(0.25, 0.5, 0.75, 1.0));\n}\n",
+        ["cx_fixshadowblock"] = "#include \"inc_standard\"\nuniform int iTint;\nvoid main()\n{\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n    if (iTint == 1)\n    {\n        vec4 FragmentColor = vec4(0.25, 0.5, 0.75, 1.0);\n        gl_FragColor = FragmentColor;\n        return;\n    }\n    gl_FragColor = FragmentColor;\n}\n",
     };
 
     internal static bool SelfCheck(ExtenderLog log)
@@ -46,6 +49,36 @@ internal static class ContentStageApprovedExamples
         // Then the middle is lit by the deferred pass and only the edge blends
         check.Expect(Issue.SplitsSolid(wash: 0, twin: true, decal: false, Issue.AuroraSrcAlpha, Issue.AuroraOneMinusSrcAlpha),
                      "E4: a transparent part on a pair with a twin does not split");
+
+        // Given a material whose fragment shader declares its own local FragmentColor and hands it to gl_FragColor
+        // When the shader is translated
+        // Then the colour it hands over reaches the part, and is not the local assigned to itself
+        ContentStage.Result local = Translate("cx_fixshadowlocal");
+        check.Expect(local.Refused == null && local.Host.Contains("vec4 " + ContentStage.ShadowName + " = vec4(0.25, 0.5, 0.75, 1.0);")
+                     && local.Host.Contains("FragmentColor = " + ContentStage.ShadowName + ";") && !local.Host.Contains("FragmentColor = FragmentColor;"),
+                     $"E5: a local FragmentColor's hand-off does not reach the part ({local.Refused})");
+
+        // Given a material whose helper takes a parameter named FragmentColor and hands it to gl_FragColor
+        // When the shader is translated
+        // Then the parameter's colour reaches the part
+        ContentStage.Result param = Translate("cx_fixshadowparam");
+        check.Expect(param.Refused == null && param.Host.Contains("void Hand(vec4 " + ContentStage.ShadowName + ")")
+                     && param.Host.Contains("FragmentColor = " + ContentStage.ShadowName + ";"),
+                     $"E6: a parameter FragmentColor's hand-off does not reach the part ({param.Refused})");
+
+        // Given a material that declares FragmentColor inside one branch and hands over the stock colour after it
+        // When the shader is translated
+        // Then the branch hands over its own colour, and the line after the branch still hands over the stock one
+        ContentStage.Result block = Translate("cx_fixshadowblock");
+        check.Expect(block.Refused == null && block.Host.Contains("        FragmentColor = " + ContentStage.ShadowName + ";")
+                     && block.Host.Contains("    }\n    FragmentColor = FragmentColor;"),
+                     $"E7: a branch's own FragmentColor is not kept to its branch ({block.Refused})");
+
+        // Given a stage whose braces do not balance
+        // When its locals are renamed
+        // Then its text comes back unchanged
+        const string unbalanced = "void main()\n{\n    vec4 FragmentColor = vec4(1.0);\n    gl_FragColor = FragmentColor;\n";
+        check.Expect(ContentStage.Unshadow(unbalanced) == unbalanced, "E8: a stage whose braces do not balance is rewritten");
 
         log.Info(check.Ok ? "ContentStageApprovedExamples.SelfCheck: passed" : "ContentStageApprovedExamples.SelfCheck: FAILED");
         return check.Ok;

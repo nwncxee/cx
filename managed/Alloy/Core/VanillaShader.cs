@@ -43,6 +43,13 @@ internal static unsafe class VanillaShader
     /// one <c>main</c> to stand in for.</summary>
     internal const string MainEntry = "CxVanMain";
 
+    /// <summary>The output a <see cref="Main"/> region's <c>gl_FragColor</c> and <c>gl_FragData[0]</c> become: a global
+    /// only the enclosing stage declares, so a content local or parameter named <c>FragmentColor</c> cannot take the write.</summary>
+    internal const string MainOut = "CxVanOut";
+
+    /// <summary>The fragment outputs a whole stage writes, as the engine's GLSL spells them.</summary>
+    private static readonly Regex FragOut = new(@"\bgl_FragColor\b|\bgl_FragData\s*\[\s*0\s*\]", RegexOptions.Compiled);
+
     /// <summary>The CONTENT marker. The region names a content pair's fragment half, then its vertex half, which Alloy
     /// runs through <see cref="ContentStage"/>'s translation in a program of the pair's own (<see cref="ContentPrograms"/>);
     /// its stub is the dispatcher that hosts nothing. Spliced here, not beside, so the stage's includes share this
@@ -214,7 +221,7 @@ internal static unsafe class VanillaShader
     }
 
     /// <summary>A content fragment stage rewritten to run WHOLE as a function of an Alloy stage -- the
-    /// <see cref="Main"/> marker's body: the includes resolved, <c>main</c> renamed, <c>gl_FragColor</c> redirected.
+    /// <see cref="Main"/> marker's body: the includes resolved, <c>main</c> renamed, its output redirected to <see cref="MainOut"/>.
     /// <paramref name="env"/> is the enclosing stage's text AHEAD of the region, so the declaration strip
     /// drops what THAT stage supplies as a macro; nothing is re-issued afterwards.</summary>
     internal static string? MainText(string stock, string resref, ExtenderLog? log, string what,
@@ -227,7 +234,7 @@ internal static unsafe class VanillaShader
             return null;
         }
         text = MainFn.Replace(text, "void " + MainEntry + "()", 1);
-        text = Regex.Replace(text, @"\bgl_FragColor\b", "FragmentColor");
+        text = FragOut.Replace(text, MainOut);
         text = StripFor(env).Replace(text, "");
         var own = OwnDefine.Matches(stock).Select(m => m.Groups[1].Value).Distinct().ToList();
         var sb = new StringBuilder(text.Length + 512);

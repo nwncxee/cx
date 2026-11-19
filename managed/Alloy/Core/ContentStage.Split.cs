@@ -141,6 +141,61 @@ internal static partial class ContentStage
         return new string(c);
     }
 
+    /// <summary>The name a stage's own local or parameter <c>FragmentColor</c> takes, so it no longer hides the global.</summary>
+    internal const string ShadowName = "cxOwnFragmentColor";
+
+    /// <summary>A declaration of <c>FragmentColor</c> as a local or a parameter: a GLSL type, then the name, then what may follow it.</summary>
+    private static readonly Regex ShadowDecl = new(@"\b(?:[biu]?vec[234]|float|int|uint|bool|mat[234])\s+FragmentColor\b(?=\s*[=;,)\[])",
+                                                   RegexOptions.Compiled);
+
+    private static readonly Regex FragmentColorUse = new(@"\bFragmentColor\b", RegexOptions.Compiled);
+
+    /// <summary><paramref name="text"/> with every local or parameter it names <c>FragmentColor</c> renamed <see cref="ShadowName"/>
+    /// through its scope, so the rename of <c>gl_FragColor</c> onto the global cannot land on the stage's own variable. Text whose
+    /// braces do not balance is returned unchanged.</summary>
+    internal static string Unshadow(string text)
+    {
+        string blank = Blank(text);
+        if (blank.Count(c => c == '{') != blank.Count(c => c == '}')) return text;
+        var scopes = new List<(int From, int To)>();
+        foreach (Match m in ShadowDecl.Matches(blank))
+            if (ShadowScope(blank, m.Index) is int end) scopes.Add((m.Index, end));
+        if (scopes.Count == 0) return text;
+        var sb = new StringBuilder(text.Length + 32 * scopes.Count);
+        int cursor = 0;
+        foreach (Match u in FragmentColorUse.Matches(blank))
+        {
+            if (!scopes.Exists(s => u.Index >= s.From && u.Index <= s.To)) continue;
+            sb.Append(text, cursor, u.Index - cursor).Append(ShadowName);
+            cursor = u.Index + u.Length;
+        }
+        return sb.Append(text, cursor, text.Length - cursor).ToString();
+    }
+
+    /// <summary>Where the variable declared at <paramref name="at"/> goes out of scope: the brace closing the block it is
+    /// declared in, or for a parameter the one closing its function's body. Null for a global or a prototype's parameter.</summary>
+    private static int? ShadowScope(string blank, int at)
+    {
+        var open = new Stack<int>();
+        int paren = 0;
+        for (int i = 0; i < at; i++)
+        {
+            char c = blank[i];
+            if (c == '{') open.Push(i);
+            else if (c == '}' && open.Count > 0) open.Pop();
+            else if (open.Count == 0 && c == '(') paren++;
+            else if (open.Count == 0 && c == ')') paren--;
+        }
+        if (open.Count > 0) return Matching(blank, open.Peek());
+        if (paren <= 0) return null;
+        int close = at;
+        for (int depth = paren; close < blank.Length && depth > 0; close++)
+            depth += blank[close] == '(' ? 1 : blank[close] == ')' ? -1 : 0;
+        int body = close;
+        while (body < blank.Length && char.IsWhiteSpace(blank[body])) body++;
+        return body < blank.Length && blank[body] == '{' ? Matching(blank, body) : null;
+    }
+
     /// <summary>The brace closing the one at <paramref name="open"/>, or -1.</summary>
     private static int Matching(string blank, int open)
     {

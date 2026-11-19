@@ -491,6 +491,60 @@ def matching(b, open_at):
     return -1
 
 
+SHADOW_NAME = "cxOwnFragmentColor"
+SHADOW_DECL = re.compile(r"\b(?:[biu]?vec[234]|float|int|uint|bool|mat[234])\s+FragmentColor\b(?=\s*[=;,)\[])")
+
+
+def unshadow(text):
+    """Mirrors ContentStage.Unshadow: a local or parameter named FragmentColor renamed through its scope, so the
+    gl_FragColor rename cannot land on it; text whose braces do not balance comes back unchanged."""
+    b = blank(text)
+    if b.count("{") != b.count("}"):
+        return text
+    scopes = [(m.start(), end) for m in SHADOW_DECL.finditer(b) if (end := shadow_scope(b, m.start())) is not None]
+    if not scopes:
+        return text
+    out, cursor = [], 0
+    for u in re.finditer(r"\bFragmentColor\b", b):
+        if any(f <= u.start() <= t for f, t in scopes):
+            out.append(text[cursor:u.start()] + SHADOW_NAME)
+            cursor = u.end()
+    return "".join(out) + text[cursor:]
+
+
+def shadow_scope(b, at):
+    """Mirrors ContentStage.ShadowScope: the brace closing the declaration's block, or its function's body for a
+    parameter; None for a global or a prototype's parameter."""
+    opens, paren = [], 0
+    for c in b[:at]:
+        if c == "{":
+            opens.append(None)
+        elif c == "}" and opens:
+            opens.pop()
+        elif not opens and c == "(":
+            paren += 1
+        elif not opens and c == ")":
+            paren -= 1
+    if opens:
+        stack = []
+        for i, c in enumerate(b[:at]):
+            if c == "{":
+                stack.append(i)
+            elif c == "}" and stack:
+                stack.pop()
+        return matching(b, stack[-1])
+    if paren <= 0:
+        return None
+    close, depth = at, paren
+    while close < len(b) and depth > 0:
+        depth += 1 if b[close] == "(" else -1 if b[close] == ")" else 0
+        close += 1
+    body = close
+    while body < len(b) and b[body].isspace():
+        body += 1
+    return matching(b, body) if body < len(b) and b[body] == "{" else None
+
+
 def skip(b, s, e):
     while s < e:
         while s < e and b[s].isspace():
@@ -711,7 +765,7 @@ def translate(resref, fragment, chain, env, vanilla_defs, vanilla_env_fs, std_te
                 undef.append(o)
     text = MAIN_FN.sub(f"void {PRE_FN if fragment else VERTEX_FN}()", text)
     if fragment:
-        text = re.sub(r"\bgl_FragColor\b", "FragmentColor", text)
+        text = re.sub(r"\bgl_FragColor\b", "FragmentColor", unshadow(text))
     text = PLT_DECL.sub("", text)
     text = indexed(text, PLT_OPEN, "CxPltScheme(vDraw, " if fragment else "CxPltScheme(cxConDraw, ")
     text = BONES_DECL.sub("", text)
@@ -798,6 +852,9 @@ FIXTURE = {
     "cx_fixnocall": ('#include "inc_standard"\nvoid main()\n{\n    FragmentColor = vec4(1.0);\n    SetupStandardShaderInputs();\n'
                      "    gl_FragColor = vec4(FragmentColor.rgb, 0.5);\n}\n"),
     "cx_fixwhole": "void main()\n{\n    gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);\n}\n",
+    "cx_fixshadowlocal": "#include \"inc_standard\"\nvoid main()\n{\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n    vec4 FragmentColor = vec4(0.25, 0.5, 0.75, 1.0);\n    gl_FragColor = FragmentColor;\n}\n",
+    "cx_fixshadowparam": "#include \"inc_standard\"\nvoid Hand(vec4 FragmentColor)\n{\n    gl_FragColor = FragmentColor;\n}\nvoid main()\n{\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n    Hand(vec4(0.25, 0.5, 0.75, 1.0));\n}\n",
+    "cx_fixshadowblock": "#include \"inc_standard\"\nuniform int iTint;\nvoid main()\n{\n    SetupStandardShaderInputs();\n    ApplyStandardShader();\n    if (iTint == 1)\n    {\n        vec4 FragmentColor = vec4(0.25, 0.5, 0.75, 1.0);\n        gl_FragColor = FragmentColor;\n        return;\n    }\n    gl_FragColor = FragmentColor;\n}\n",
     # The engine-named set declared the way stock content declares it: inc_uniforms' whole block, inc_sunm's lone
     # scalar, fswater's wind loop, vs_beamvol's inline m_proj.
     "cx_fixeng": ('#define SHADER_TYPE 2\n#include "inc_standard"\nconst int MAX_WINDS = 128;\n'
@@ -1005,4 +1062,18 @@ def selfcheck(env_fs, env_vs, defs, vanfs, std_fs, std_vs, lit_vs):
        or stock_shaped(STOCK_FS.replace('#include "inc_standard"', '#include "my_inc"'), True) \
        or stock_shaped(STOCK_FS.replace("ApplyStandardShader();", "ApplyStandardShader();\n    FragmentColor.r = 1.0;"), True):
         bad.append("stock shape is misread")
+    local = translate("cx_fixshadowlocal", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
+    if local.refused or f"vec4 {SHADOW_NAME} = vec4(0.25, 0.5, 0.75, 1.0);" not in local.host \
+       or f"FragmentColor = {SHADOW_NAME};" not in local.host or "FragmentColor = FragmentColor;" in local.host:
+        bad.append(f"a local FragmentColor's hand-off does not reach the part: {local.refused}")
+    param = translate("cx_fixshadowparam", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
+    if param.refused or f"void Hand(vec4 {SHADOW_NAME})" not in param.host or f"FragmentColor = {SHADOW_NAME};" not in param.host:
+        bad.append(f"a parameter FragmentColor's hand-off does not reach the part: {param.refused}")
+    block = translate("cx_fixshadowblock", True, FIXTURE.get, env_fs, defs, vanfs, std_fs, "")
+    if block.refused or f"        FragmentColor = {SHADOW_NAME};" not in block.host \
+       or "    }\n    FragmentColor = FragmentColor;" not in block.host:
+        bad.append(f"a branch's own FragmentColor is not kept to its branch: {block.refused}")
+    unbalanced = "void main()\n{\n    vec4 FragmentColor = vec4(1.0);\n    gl_FragColor = FragmentColor;\n"
+    if unshadow(unbalanced) != unbalanced:
+        bad.append("a stage whose braces do not balance is rewritten")
     return bad

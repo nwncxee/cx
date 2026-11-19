@@ -136,7 +136,7 @@ internal static partial class ContentStage
             foreach (string o in vertex.Outputs)
                 if (supplied.Remove(o)) undef.Add(o);
         text = MainFn.Replace(text, $"void {(fragment ? PreFn : VertexFn)}()");
-        if (fragment) text = Regex.Replace(text, @"\bgl_FragColor\b", "FragmentColor");
+        if (fragment) text = Regex.Replace(Unshadow(text), @"\bgl_FragColor\b", "FragmentColor");
         text = VanillaShader.PltSchemeDecl.Replace(text, "");
         text = Indexed(text, PltSchemeOpen, fragment ? "CxPltScheme(vDraw, " : "CxPltScheme(cxConDraw, ");
         text = BonesDecl.Replace(text, "");
