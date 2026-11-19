@@ -455,10 +455,13 @@ public static class HitTest
     private static bool TestObject(in HitQuery q, bool statics, int o, ref Vector3 to, ref HitResult r,
                                    ref int hit)
     {
-        if (!SphereHit(q.From, to, SceneDb.HitObjSphereC[o], SceneDb.HitObjSphereR[o])) return false;
+        // A box pick widens each part box by the margin along the part's own axes, so the rejects widen by its
+        // length: the most that margin can reach along any world axis.
+        float m = q.BoxOnly ? q.BoxExpand.Length() : 0f;
+        if (!SphereHit(q.From, to, SceneDb.HitObjSphereC[o], SceneDb.HitObjSphereR[o] + m)) return false;
         Vector3 lo = SceneDb.HitObjBMin[o], hi = SceneDb.HitObjBMax[o];
         if (lo.X > hi.X) return false;
-        if (!BoxHit(q.From, to, lo, hi)) return false;
+        if (!BoxHit(q.From, to, lo - new Vector3(m), hi + new Vector3(m))) return false;
 
         // A text gob's hit test is its OWN, not its parts': StringGob::HitCheck @0x492920 polyhits the quad, and
         // only on a quad hit casts on into the models riding its visible lines. A GUI list row has no parts at

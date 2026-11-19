@@ -110,6 +110,9 @@ internal static unsafe class SeamHit
     /// <summary>The engine's box-pick margin as it stands this frame; zero where the global is not resolved.</summary>
     private static Vector3 EngineBoxExpand() => BoxExpansion == 0 ? default : *(Vector3*)BoxExpansion;
 
+    /// <summary>The engine's box-pick margin as it stands, for the pick diagnostic.</summary>
+    internal static Vector3 BoxMargin => EngineBoxExpand();
+
     [ThreadStatic] private static int _depth;
     /// <summary>One ignore bitset a nesting depth, a bit a record index.</summary>
     private static readonly ulong[][] _ignore = Pool();
