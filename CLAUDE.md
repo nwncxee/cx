@@ -20,7 +20,8 @@ user-visible, not renamed (#530).
 
 ## Agent skills
 
-- Tickets: Plane, project `CX`, through `bin/plane`. See `docs/agents/issue-tracker.md`.
+- Tickets: internal work in Plane, project `CX`, through `bin/plane`; user reports arrive on GitHub Issues and Discord. See `docs/agents/issue-tracker.md`.
+- Documentation: the repo's GitHub wiki. See `docs/agents/domain.md`.
 - Domain: single-context, one `GLOSSARY.md` and one `docs/adr/` at the root. See `docs/agents/domain.md`.
 - Testing: `TESTING_STANDARDS.md`. See `docs/agents/testing.md`.
 
