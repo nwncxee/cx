@@ -104,8 +104,8 @@ internal static class LegsRegress
     }
 
     /// <summary>The synthetic run round a 1 rad/s curve stopped while a held foot is turned: no frame turns either foot by
-    /// over 0.05 rad, and a second on both are back on the animation's direction. Oracle: a foot does not spin in a frame;
-    /// a stood body's feet face its animation.</summary>
+    /// over 0.05 rad, a second on both face the animation, and walking on again 0.1 s into the stop turns neither by over
+    /// 0.05 rad. Oracle: a foot does not spin in a frame; a stood body's feet face its animation.</summary>
     private static void StopYaw(Checker check)
     {
         var r = new LegRig();
@@ -120,8 +120,16 @@ internal static class LegsRegress
             prevR = r.P.YawR; prevL = r.P.YawL;
         }
         float left = MathF.Max(MathF.Abs(r.P.YawR), MathF.Abs(r.P.YawL));
-        check.Expect(held > 0.2f && jump < 0.05f && left < 0.01f,
-                     $"regress: a stop eases a held foot's turn out: held {held:0.000} rad, largest step {jump:0.000}, {left:0.000} left a second on");
+
+        var g = new LegRig();
+        while (g.Time < 2.5f) g.Run(1f, yawRate: 1f);
+        Vector3 gr = g.AnimR, gl = g.AnimL, hr = g.ThighR, hl = g.ThighL;
+        for (int n = 0; n < 6; n++) g.Stand(gr, gl, hr, hl, LegRig.Flat(0f), LegRig.Flat(0f), stance: true);
+        float before = g.P.YawR, beforeL = g.P.YawL;
+        g.Run(1f, yawRate: 1f);
+        float resume = MathF.Max(MathF.Abs(g.P.YawR - before), MathF.Abs(g.P.YawL - beforeL));
+        check.Expect(held > 0.2f && jump < 0.05f && left < 0.01f && resume < 0.05f,
+                     $"regress: a stop eases a held foot's turn out: held {held:0.000} rad, largest step {jump:0.000}, {left:0.000} left a second on, {resume:0.000} jump on walking again");
     }
 
     /// <summary>The synthetic run at 1.6 times its rate playing the forward-right diagonal, stepped the adapter's way (the turn
@@ -150,14 +158,23 @@ internal static class LegsRegress
     }
 
     /// <summary>The synthetic run met for the first time travelling sideways to its legs, one foot planted and one half
-    /// way through its swing: neither foot is drawn off the animation that frame. Oracle: a foot met anew has no aim or
-    /// hold to carry yet; the analytic walk at its own pace needs no correction.</summary>
+    /// way through its swing: neither foot is drawn off the animation that frame; met with a foot nine tenths through its
+    /// swing, past where a swing is aimed, it lands unaimed. Oracle: a foot met anew has no aim or hold to carry yet, and
+    /// none to start that late; the analytic walk at its own pace needs no correction.</summary>
     private static void FreshFeet(Checker check)
     {
         var w = new Walker { T = 0.3f };
         w.Run(new Vector2(1.5f, 0f));
         float off = MathF.Max(w.P.WarpR.Length(), w.P.WarpL.Length());
-        check.Expect(off < 1e-3f, $"regress: feet met anew start on the animation: drawn {off:0.0000} off it");
+        var late = new Walker { T = 0.45f };
+        float lateOff = 0f;
+        for (int n = 0; n < 4; n++)
+        {
+            late.Run(new Vector2(1.5f, 0f));
+            lateOff = MathF.Max(lateOff, late.P.WarpL.Length());
+        }
+        check.Expect(off < 1e-3f && lateOff < 1e-3f,
+                     $"regress: feet met anew start on the animation: drawn {off:0.0000} off it, {lateOff:0.0000} met late in a swing");
     }
 
     /// <summary>Two walks of the synthetic run travelling sideways to its legs (so the swing is aimed), the second told its

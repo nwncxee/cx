@@ -58,6 +58,7 @@ internal static partial class Legs
         }
         s.WarpR = warpR; s.WarpL = warpL;
         Vector3 rStance = f.HasStance ? f.StanceR : f.RAnkle + warpR, lStance = f.HasStance ? f.StanceL : f.LAnkle + warpL;
+        bool settling = s.SettleStage != Settle.None;
         Settle.Feet(ref s, f.Knobs.Stride && !f.Gated && !fresh, f.Loco, f.RAnkle + warpR, f.LAnkle + warpL,
                     rStance, lStance, f.Fade, f.Standing, f.YawRate, f.Scale, f.Dt, out Vector3 setR, out Vector3 setL);
         PoseMath.Smooth(ref s.LiftR, ref s.LiftVR, 0f, f.Dt, LiftTime);
@@ -66,6 +67,8 @@ internal static partial class Legs
         warpL += setL + new Vector3(0f, 0f, s.LiftL);
         p.WarpR = warpR; p.WarpL = warpL;
         p.FootR = f.RAnkle + warpR; p.FootL = f.LAnkle + warpL;
+        // a settle handed to the walk this frame: its feet keep the turn they were handed
+        if (settling && s.SettleStage == Settle.None && s.Planting) { p.YawR = s.FootingR.Yaw; p.YawL = s.FootingL.Yaw; }
         CarryYaw(ref s, ref p, f.Dt);
         s.TurnStep = Diagonal.StepTime(f.Walk);
     }
