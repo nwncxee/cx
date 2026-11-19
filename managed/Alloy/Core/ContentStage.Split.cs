@@ -155,6 +155,10 @@ internal static partial class ContentStage
     private static readonly Regex ShadowDecl = new(@"(?:\b" + ShadowTypes + @"\s+|,\s*)" + Shadowed + @"\b(?=\s*[=;,)\[])",
                                                    RegexOptions.Compiled);
 
+    /// <summary><paramref name="text"/>'s fragment output written to the global working colour, <c>FragmentColor</c>: its own
+    /// local or parameter of that name renamed first (<see cref="Unshadow"/>), so the output cannot land on it.</summary>
+    internal static string ToWorkingColour(string text) => VanillaShader.FragOut.Replace(Unshadow(text), Shadowed);
+
     /// <summary>A statement that opens with a type, its qualifiers before it: a declaration.</summary>
     private static readonly Regex DeclStatement = new(@"^\s*(?:(?:const|highp|mediump|lowp)\s+)*" + ShadowTypes + @"\s+\w",
                                                       RegexOptions.Compiled);

@@ -30,15 +30,16 @@ internal static partial class GpuGolden
     /// <summary>The shipped wrapper's own globals, one <c>vec4</c> per line: what the hosted text writes into.</summary>
     private static readonly Regex WrapperGlobal = new(@"(?m)^vec4 \w+;$");
 
-    /// <summary>A server's own override of the post wrapper written before the wrapper had its own output: its globals,
+    /// <summary>A server's own override of the post wrapper that declares no output of its own: its globals,
     /// its region marker and the stage function it hands the working colour back from, by hand.</summary>
-    private const string HostedOldWrapper = "vec4 FragmentColor;\n// $VANILLA-MAIN fsfbpostpr\n";
+    private const string HostedOldGlobals = "vec4 FragmentColor;\n";
+    private const string HostedOldWrapper = HostedOldGlobals + VanillaShader.Main + "fsfbpostpr\n";
     private const string HostedOldStage = "vec4 CxStage(vec4 c)\n{\n    CxVanMain();\n    return vec4(FragmentColor.rgb, c.a);\n}\n";
 
     private static void HostedMainApprovedSelfCheck(VkBackend vk, Checker check, ExtenderLog log)
     {
         string wrapper = ShaderSource.Get("cx_fbpost_f.glsl");
-        int region = wrapper.IndexOf("// $VANILLA-MAIN ", StringComparison.Ordinal);
+        int region = wrapper.IndexOf(VanillaShader.Main, StringComparison.Ordinal);
         string stage = Function(wrapper, "vec4 CxStage(");
         check.Expect(region > 0 && stage.Length > 0, "cx_fbpost_f carries the whole-stage region and CxStage");
         if (region <= 0 || stage.Length == 0) return;
@@ -63,7 +64,7 @@ internal static partial class GpuGolden
         // Then the stage builds and hands on (0.25, 0.5, 0.75)
         (string localName, string localMain) = HostedMains[2];
         string? old = VanillaShader.MainText(localMain, "cx_goldmain", log, "golden hosted main", new List<string>(), HostedOldWrapper);
-        float[]? oldGot = old == null ? null : HostedRun(vk, log, "vec4 FragmentColor;\n" + old + HostedOldStage, "golden hosted main old wrapper");
+        float[]? oldGot = old == null ? null : HostedRun(vk, log, HostedOldGlobals + old + HostedOldStage, "golden hosted main old wrapper");
         check.Expect(oldGot != null && HostedSame(oldGot),
                      $"hosted main, {localName}, in a wrapper override with no output of its own: the stage was refused or lost the colour");
     }

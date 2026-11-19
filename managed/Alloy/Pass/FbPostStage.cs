@@ -65,7 +65,6 @@ internal static unsafe class FbPostStage
 
     /// <summary>The engine's post program: the stage the wrapper's region hosts, and the marker that names it.</summary>
     internal const string ChainStage = "fsfbpostpr";
-    private const string Region = "// $VANILLA-MAIN ";
 
     /// <summary>The wrapper text a build compiles: the region retargeted at the chain's native stage (<c>cx_fsfbpostpr</c>)
     /// and built with <c>CX_NATIVE</c> where one is declared and live, else <paramref name="fs"/> as it is. Cold.</summary>
@@ -77,7 +76,7 @@ internal static unsafe class FbPostStage
         int id = StageResources.Declare(native, log);
         if (!StageResources.Live(id)) return fs;
         _gl.Native = id;
-        return ShaderStages.WithDefine(fs.Replace(Region + ChainStage + "\n", Region + native + "\n", StringComparison.Ordinal),
+        return ShaderStages.WithDefine(fs.Replace(VanillaShader.Main + ChainStage + "\n", VanillaShader.Main + native + "\n", StringComparison.Ordinal),
                                        StageResources.NativeDefine);
     }
 

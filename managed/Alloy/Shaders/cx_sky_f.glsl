@@ -27,10 +27,9 @@ uniform mat4 uViewInv;           // the camera's world matrix: column 3 is the e
 #include "cx_stageenv.glsl"
 
 // The stock working colour, and the texel inc_standard's setup call multiplies into it -- sampled by the
-// wrapper before the stage's body runs, in DISPLAY space, which is where the stage expects to find it. The stage's
-// OUTPUT is CxVanOut, which the splice points gl_FragColor at, so a main declaring its own FragmentColor still draws.
+// wrapper before the stage's body runs, in DISPLAY space, which is where the stage expects to find it.
 vec4 FragmentColor;
-vec4 CxVanOut;
+vec4 CxVanOut;   // the stage's output: the splice points gl_FragColor here, so a stage's own FragmentColor cannot take it
 vec4 CxWholeTexel;
 
 // $VANILLA-MAIN $SKYFS$

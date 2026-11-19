@@ -36,7 +36,7 @@ internal static unsafe class VanillaShader
     /// stage ENTIRE: its <c>main()</c> is renamed <see cref="MainEntry"/> and the enclosing Alloy
     /// stage's own <c>main</c> calls it. For a part whose look IS its fragment shader, like the sky. Its
     /// <c>inc_standard</c> stand-in differs: a whole stage owes its own texel multiply and colour revert.</summary>
-    private const string Main = "// $VANILLA-MAIN ";
+    internal const string Main = "// $VANILLA-MAIN ";
 
     /// <summary>The name a <see cref="Main"/> region's <c>main()</c> is renamed to, and the one the enclosing
     /// stage calls. Fixed rather than per-resref because a stage hosts exactly one whole content stage -- it has
@@ -47,12 +47,12 @@ internal static unsafe class VanillaShader
     /// only the enclosing stage declares, so a content local or parameter named <c>FragmentColor</c> cannot take the write.</summary>
     internal const string MainOut = "CxVanOut";
 
-    /// <summary>The enclosing stage declares <see cref="MainOut"/>; an override written before it did not, and its region's
-    /// output stays the working colour.</summary>
+    /// <summary>The enclosing stage declares <see cref="MainOut"/>; a wrapper override that does not gets its region's
+    /// output written to the working colour.</summary>
     private static readonly Regex DeclaresMainOut = new(@"(?m)^\s*vec4\s+" + MainOut + @"\s*;", RegexOptions.Compiled);
 
     /// <summary>The fragment outputs a whole stage writes, as the engine's GLSL spells them.</summary>
-    private static readonly Regex FragOut = new(@"\bgl_FragColor\b|\bgl_FragData\s*\[\s*0\s*\]", RegexOptions.Compiled);
+    internal static readonly Regex FragOut = new(@"\bgl_FragColor\b|\bgl_FragData\s*\[\s*0\s*\]", RegexOptions.Compiled);
 
     /// <summary>The CONTENT marker. The region names a content pair's fragment half, then its vertex half, which Alloy
     /// runs through <see cref="ContentStage"/>'s translation in a program of the pair's own (<see cref="ContentPrograms"/>);
@@ -239,7 +239,7 @@ internal static unsafe class VanillaShader
         }
         text = MainFn.Replace(text, "void " + MainEntry + "()", 1);
         text = DeclaresMainOut.IsMatch(env) ? FragOut.Replace(text, MainOut)
-                                            : FragOut.Replace(CX.Alloy.ContentStage.Unshadow(text), "FragmentColor");
+                                            : CX.Alloy.ContentStage.ToWorkingColour(text);
         text = StripFor(env).Replace(text, "");
         var own = OwnDefine.Matches(stock).Select(m => m.Groups[1].Value).Distinct().ToList();
         var sb = new StringBuilder(text.Length + 512);

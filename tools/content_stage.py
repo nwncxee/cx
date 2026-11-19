@@ -492,9 +492,18 @@ def matching(b, open_at):
 
 
 SHADOW_NAME = "cxOwnFragmentColor"
+SHADOWED = "FragmentColor"
+# Mirrors VanillaShader.FragOut: the fragment outputs the engine's GLSL writes.
+FRAG_OUT = re.compile(r"\bgl_FragColor\b|\bgl_FragData\s*\[\s*0\s*\]")
 SHADOW_TYPES = r"(?:[biu]?vec[234]|float|int|uint|bool|mat[234])"
-SHADOW_DECL = re.compile(r"(?:\b" + SHADOW_TYPES + r"\s+|,\s*)FragmentColor\b(?=\s*[=;,)\[])")
+SHADOW_DECL = re.compile(r"(?:\b" + SHADOW_TYPES + r"\s+|,\s*)" + SHADOWED + r"\b(?=\s*[=;,)\[])")
 DECL_STATEMENT = re.compile(r"^\s*(?:(?:const|highp|mediump|lowp)\s+)*" + SHADOW_TYPES + r"\s+\w")
+
+
+def to_working_colour(text):
+    """Mirrors ContentStage.ToWorkingColour: the fragment output written to the global FragmentColor, the stage's own
+    local or parameter of that name renamed first."""
+    return FRAG_OUT.sub(SHADOWED, unshadow(text))
 
 
 def unshadow(text):
@@ -511,12 +520,12 @@ def unshadow(text):
         if found is None:
             continue
         end, param = found
-        name = m.end() - len("FragmentColor")
+        name = m.end() - len(SHADOWED)
         scopes += [(name, name), (name if param else declarator_end(b, name), end)]
     if not scopes:
         return text
     out, cursor = [], 0
-    for u in re.finditer(r"(?<!\.)\bFragmentColor\b", b):
+    for u in re.finditer(r"(?<!\.)\b" + SHADOWED + r"\b", b):
         if any(f <= u.start() <= t for f, t in scopes):
             out.append(text[cursor:u.start()] + SHADOW_NAME)
             cursor = u.end()
@@ -796,7 +805,7 @@ def translate(resref, fragment, chain, env, vanilla_defs, vanilla_env_fs, std_te
                 undef.append(o)
     text = MAIN_FN.sub(f"void {PRE_FN if fragment else VERTEX_FN}()", text)
     if fragment:
-        text = re.sub(r"\bgl_FragColor\b", "FragmentColor", unshadow(text))
+        text = to_working_colour(text)
     text = PLT_DECL.sub("", text)
     text = indexed(text, PLT_OPEN, "CxPltScheme(vDraw, " if fragment else "CxPltScheme(cxConDraw, ")
     text = BONES_DECL.sub("", text)
