@@ -14,7 +14,9 @@ public sealed class LegReplaySelfCheck : IExtenderService
     {
         _ = AnimKnobs.G;
         var check = new Checker(log);
-        check.Expect(NotRecording(), "with recording not switched on, a run of frames writes no recording file and buffers nothing");
+        check.Expect(NotRecording(), "with recording not switched on, a run of frames asks for no folder, writes no recording file and buffers nothing");
+        check.Expect(TicksAndTotals(), "recording: a tick with the knob off writes what is buffered and closes the file, a tick on an old buffer writes it, a second recording is a new file and the total runs across both");
+        check.Expect(Refusals(), "recording: a folder that cannot be made is asked once, not on every frame, and switching off clears it; a failing write stops the recording without throwing");
         check.Expect(RecordsAndReads(), "a recording made through the recorder reads back as the frames put in, grouped by body, and a file of another frame layout is refused");
         check.Expect(Graded(), "grades: a leg raised 0.25 is 0.25 shorter and a pelvis move alone shortens nothing; a foot in contact that moves 1 in half a second slides at 2; 0.1 rad of hip turn in half a second is 11.459 deg/s; a teleport and a foot in the air count for neither");
         check.Expect(Replayed(), "replay: the fixture's walk grades 0 on all three and its step case grades 0.1/0.77 of the leg, 0.5 units/s and no turn, the same on a second replay");
@@ -23,22 +25,95 @@ public sealed class LegReplaySelfCheck : IExtenderService
 
     private static bool Near(float a, float b, float eps) => MathF.Abs(a - b) <= eps;
 
-    /// <summary>The recording files in the logs folder.</summary>
-    private static int Files()
+    /// <summary>A scratch folder under the temp path, emptied.</summary>
+    private static string Scratch(string name)
     {
-        string logs = UserFolders.Logs;
-        return Directory.Exists(logs) ? Directory.GetFiles(logs, "cx-legs-*.cxlegs").Length : 0;
+        string dir = Path.Combine(Path.GetTempPath(), $"cx-legrec-{name}-{Environment.ProcessId}");
+        if (Directory.Exists(dir)) Directory.Delete(dir, true);
+        return dir;
     }
 
-    /// <summary>The behaviour already held when recording existed only as a plan: with <c>anim.record</c> at its default, frames
-    /// are not kept.</summary>
+    /// <summary>With recording off, a run of frames asks for no folder, opens no file and keeps no frame. Oracle: the hand-written
+    /// expectation that nothing is made, and a folder that must not exist afterwards. The knob is not read: the core takes it as
+    /// an argument, so a cx.cfg that switches recording on cannot make this pass unchecked.</summary>
     private static bool NotRecording()
     {
-        if (AnimKnobs.Record.V) return true;
-        int before = Files(), written = LegRecorder.FramesWritten;
+        string dir = Scratch("off");
+        int asked = 0;
+        Func<string> folder = () => { asked++; return dir; };
+        var st = new LegRecorder.RecorderState();
         LegFrame f = LegReplayFixture.Walk(0);
-        for (int n = 0; n < 2 * LegRecorder.BufferFrames; n++) LegRecorder.Frame((IntPtr)1, f);
-        return Files() == before && LegRecorder.FramesWritten == written;
+        for (int n = 0; n < 2 * LegRecorder.BufferFrames; n++) st = LegRecorder.Frame(st, false, folder, (IntPtr)1, f, n);
+        return asked == 0 && st.Out == null && st.Written == 0 && st.Count == 0 && !Directory.Exists(dir);
+    }
+
+    /// <summary>Recording on writes a file; switching it off (a tick with the knob off, with no frame arriving) writes what is
+    /// buffered and closes it; a tick on an old buffer writes it while recording goes on; a second recording is a new file and
+    /// state and the total runs across both. Oracle: the frame counts put in, read back from the files.</summary>
+    private static bool TicksAndTotals()
+    {
+        string dir = Scratch("tick");
+        Func<string> folder = () => dir;
+        LegFrame f = LegReplayFixture.Walk(0);
+        var st = new LegRecorder.RecorderState();
+        var first = st;
+        for (int n = 0; n < 10; n++) st = LegRecorder.Frame(st, true, folder, (IntPtr)1, f, n);
+        bool opened = st.Out != null && st.Written == 0 && !ReferenceEquals(st, first);
+        LegRecorder.Tick(st, true, 11);
+        bool young = st.Written == 0;
+        LegRecorder.Tick(st, true, LegRecorder.FlushTicks + 11);
+        bool aged = st.Written == 10 && st.Out != null;
+        for (int n = 0; n < 3; n++) st = LegRecorder.Frame(st, true, folder, (IntPtr)1, f, LegRecorder.FlushTicks + 12);
+        LegRecorder.Tick(st, false, LegRecorder.FlushTicks + 13);
+        bool closed = st.Out == null && st.Written == 13 && !st.Failed;
+        var again = st;
+        for (int n = 0; n < 4; n++) st = LegRecorder.Frame(st, true, folder, (IntPtr)2, f, 0);
+        LegRecorder.Tick(st, false, 1);
+        string[] files = Directory.GetFiles(dir, "cx-legs-*.cxlegs");
+        bool total = st.Total == 17 && !ReferenceEquals(st, again) && files.Length == 2;
+        int read = 0;
+        foreach (string file in files)
+            if (LegRecording.Read(File.ReadAllBytes(file), out _) is { Count: 1 } one) read += one[0].Frames.Count;
+        return opened && young && aged && closed && total && read == 17;
+    }
+
+    /// <summary>A folder that cannot be made is asked once per switching-on, not once per body per frame, and switching off clears
+    /// the refusal; a stream that fails on write stops the recording without throwing. Oracle: the count of asks (1, then 2) and the
+    /// state the failure leaves.</summary>
+    private static bool Refusals()
+    {
+        string blocker = Scratch("block");
+        File.WriteAllText(blocker, "a file where a folder is wanted");
+        int asked = 0;
+        Func<string> folder = () => { asked++; return Path.Combine(blocker, "logs"); };
+        LegFrame f = LegReplayFixture.Walk(0);
+        var st = new LegRecorder.RecorderState();
+        for (int n = 0; n < 100; n++) st = LegRecorder.Frame(st, true, folder, (IntPtr)(n % 3 + 1), f, n);
+        bool latched = asked == 1 && st.Failed && st.Out == null;
+        LegRecorder.Tick(st, false, 200);
+        bool cleared = !st.Failed;
+        st = LegRecorder.Frame(st, true, folder, (IntPtr)1, f, 201);
+        bool retried = asked == 2 && st.Failed;
+        File.Delete(blocker);
+
+        var broken = new Broken();
+        var wr = new LegRecorder.RecorderState();
+        LegRecorder.Begin(broken, wr);
+        broken.Armed = true;
+        for (int n = 0; n < LegRecorder.BufferFrames; n++) LegRecorder.Add(wr, (IntPtr)1, f, n);
+        return latched && cleared && retried && wr.Out == null && wr.Failed && wr.Written == 0;
+    }
+
+    /// <summary>A stream that takes its header and then refuses every write.</summary>
+    private sealed class Broken : MemoryStream
+    {
+        internal bool Armed;
+
+        public override void Write(ReadOnlySpan<byte> buffer)
+        {
+            if (Armed) throw new IOException("disk full");
+            base.Write(buffer);
+        }
     }
 
     private static bool RecordsAndReads()
