@@ -435,12 +435,7 @@ public static class TextObjects
     /// <summary>Something that moves glyphs changed: the quads are stale and the record is dirty, once. Every
     /// mutator here goes through it, so a caller that is not a vtable slot cannot leave <c>Dirty.Text</c> unset.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void Stale(TextDoc d)
-    {
-        d.QuadsStale = true;
-        d.SeenW = d.MaxWidth; d.SeenH = d.MaxHeight; d.SeenMargin = d.HitMargin;
-        SceneDb.Touch(d.Owner, Dirty.Text);
-    }
+    internal static void Stale(TextDoc d) => MarkText(d.Owner, d);
 
     /// <summary>The slot-layer spelling of <see cref="Stale"/>, for a record whose handle the caller already has.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
