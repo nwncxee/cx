@@ -23,10 +23,26 @@ stage_stale "$t/cx-linux-x64" "$t" >/dev/null; expect "a docs-only change since 
 echo b > "$t/tools/live/run-live.sh"; git -C "$t" commit -qam harness
 msg=$(stage_stale "$t/cx-linux-x64" "$t"); expect "a harness change since the stage is refused" "$?" 1
 expect "the refusal names the rebuild" "$(grep -c "staged build ${old:0:8} is older than tools/live or the runtime sources" <<<"$msg")$(grep -c 'run ./build.sh' <<<"$msg")" 11
-rm "$t/cx-linux-x64/BUILT_FROM"
+git -C "$t" rev-parse HEAD > "$t/cx-linux-x64/BUILT_FROM"
+echo c > "$t/tools/live/run-live.sh"; { git -C "$t" rev-parse HEAD; echo dirty; } > "$t/cx-linux-x64/BUILT_FROM"
+stage_stale "$t/cx-linux-x64" "$t" >/dev/null; expect "a stage built from uncommitted edits runs" "$?" 0
+sleep 1.1; git -C "$t" checkout -q tools/live/run-live.sh
+stage_stale "$t/cx-linux-x64" "$t" >/dev/null; expect "edits reverted after a dirty build are refused" "$?" 1
+git -C "$t" rev-parse HEAD > "$t/cx-linux-x64/BUILT_FROM"; sleep 1.1; echo n > "$t/tools/live/new.sh"
+msg=$(stage_stale "$t/cx-linux-x64" "$t"); expect "a new untracked harness file is refused" "$?" 1
+expect "the refusal names the uncommitted file" "$(grep -c 'tools/live/new.sh' <<<"$msg")" 1
+rm "$t/tools/live/new.sh" "$t/cx-linux-x64/BUILT_FROM"
 stage_stale "$t/cx-linux-x64" "$t" >/dev/null; expect "an unstamped stage is refused" "$?" 1
 
+# The real script, not only its helper: a stage stamped before tools/live last changed stops at exit 2.
+first=$(git -C "$ROOT" rev-list --max-parents=0 HEAD | tail -1)
+mkdir -p "$t/stage" && touch "$t/stage/libcx.so" "$t/stage/cx-launch" && echo "$first" > "$t/stage/BUILT_FROM"
+err=$(STAGE_DIR="$t/stage" timeout 30 bash "$ROOT/tools/live/run-live.sh" 2>&1 >/dev/null); rc=$?
+expect "run-live.sh refuses a stale stage with exit 2" "$rc" 2
+expect "run-live.sh names the rebuild" "$(grep -c 'run ./build.sh' <<<"$err")" 1
+
 expect "no shutdown crash, no line" "$(shutdown_crash_line 0 0 /c)" ""
-expect "a shutdown crash is named, ungraded" "$(shutdown_crash_line 0 1 /c)" "shutdown crash  1 written after grading, not graded (/c)"
-expect "only the new ones count" "$(shutdown_crash_line 2 3 /c)" "shutdown crash  1 written after grading, not graded (/c)"
+expect "a shutdown crash is named, ungraded" "$(shutdown_crash_line 0 1 /c)" "shutdown crash  1 written after grading, not graded"
+expect "only the new ones count" "$(shutdown_crash_line 2 3 /c)" "shutdown crash  1 written after grading, not graded"
+expect "a count that is not a number prints no line" "$(shutdown_crash_line '' 3 /c 2>&1)" ""
 exit $fail
