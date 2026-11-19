@@ -49,7 +49,7 @@ internal static unsafe partial class Weather
                                     || CurrentKind == Kind.None || Density <= 0f
         ? 0f : Math.Clamp(Density * DensityScale.V * (CurrentKind == Kind.Snow ? 0.5f : 1f), 0f, 1f);
 
-    /// <summary>The area the state belongs to; a SetWeather from another area resets it.</summary>
+    /// <summary>The area object the state belongs to, as of the last area load.</summary>
     private static IntPtr _area;
     private static int _sets;
     /// <summary>The density the log last printed, so the ramp logs per 10% step rather than per tick.</summary>
