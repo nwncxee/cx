@@ -22,8 +22,9 @@ OpenAL on the nix-ld path (`nixpkgs#openal.out`), which `cx-launch` otherwise br
 reflink copies of your `nwsync`, `hak`, `tlk` and `override`, and your originals stay untouched. It logs in with the copied `cdkey.ini`,
 under the player name `CX Harness` when `settings.tml` has none. It is graded as `--menu` is, so `--keys` drives the login, and it refuses `--stock`.
 A `--keys` step `waitlog:<regex>:<timeout ms>` blocks until a `cx.log` line after the last match matches, so a login with uneven timing waits on the client rather than a guess; a timeout stops the script. `perf-save.sh --connect HOST:PORT --login SCRIPT` measures on a server.
+In a `--connect` run the start camera differs per login, so a fixed `scroll:` can land inside the character or do nothing. Frame a shot with several `hold:Left:700` turns and zoom notches, one shot each. Never send `key:Escape` to close chat: with chat already closed it opens the Options panel over every later shot.
 Exit code 0 is PASS, 1 is FAIL, 2 is a setup problem (no build staged, no client, a client already
-running). It works from any worktree: it runs the `cx-linux-x64/` staged next to it, so build first.
+running, a stage built before `tools/live` or the runtime sources changed). It works from any worktree: it runs the `cx-linux-x64/` staged next to it, so build first.
 
 ## NixOS outside the Steam runtime
 
@@ -107,7 +108,7 @@ sequence walks the whole path and the clicks that land on nothing cost a few idl
 path fails the harness escalates `WM_DELETE_WINDOW` -> `SIGTERM` -> `SIGKILL`; the summary names
 whichever ended the process. The engine only catches SIGSEGV, SIGABRT and SIGFPE
 (`CrashReporter_Linux`), so a SIGKILL cannot be confused with a crash -- and crashes are counted
-*before* shutdown starts, for the same reason.
+*before* shutdown starts, for the same reason. A report the engine writes during shutdown gets its own `shutdown crash` line in the summary, not graded: read that line, never the raw `crashreport/` folder, as the verdict.
 
 ## What a PASS means
 

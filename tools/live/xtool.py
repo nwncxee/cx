@@ -33,6 +33,9 @@ from Xlib import X, display, XK
 from Xlib.ext import xtest
 from Xlib.protocol import event
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from keymap import char_key  # noqa: E402
+
 
 def client_window(dpy):
     """The biggest viewable child of the root -- the client's window, not gamescope's own helpers."""
@@ -222,7 +225,8 @@ def cmd_keys(dpy, script):
             print(cursor_line(dpy, arg), flush=True)
         elif kind == "type":
             for ch in arg:
-                tap(dpy, char_keysym(ch), shift=ch.isupper())
+                code, shift = char_key(ch, dpy.keysym_to_keycodes)
+                tap_code(dpy, code, shift)
                 time.sleep(0.03)
         else:
             raise SystemExit(f"xtool keys: unknown step {step!r}")
@@ -240,27 +244,17 @@ def cursor_line(dpy, tag):
     return f"cursor {tag}: {c.width}x{c.height} hot={c.xhot},{c.yhot} opaque={opaque} crc={digest:08x}"
 
 
-SHIFTED = {"/": "slash", "?": ("slash", True), " ": "space", ".": "period", ",": "comma",
-           "-": "minus", "_": ("minus", True), "=": "equal", "+": ("plus", False),
-           ":": ("colon", False), "'": "apostrophe", '"': ("quotedbl", False)}
-
-
-def char_keysym(ch):
-    if ch in SHIFTED:
-        v = SHIFTED[ch]
-        return v[0] if isinstance(v, tuple) else v
-    if ch.isalnum():
-        return ch.lower() if ch.isalpha() else ch
-    return XK.keysym_to_string(ord(ch)) or ch
-
-
-def tap(dpy, keysym_name, shift=False):
+def tap(dpy, keysym_name):
     ks = XK.string_to_keysym(keysym_name)
     if ks == 0 and len(keysym_name) == 1:
         ks = ord(keysym_name)
     code = dpy.keysym_to_keycode(ks)
     if code == 0:
         raise SystemExit(f"xtool keys: no keycode for {keysym_name!r}")
+    tap_code(dpy, code)
+
+
+def tap_code(dpy, code, shift=False):
     shift_code = dpy.keysym_to_keycode(XK.string_to_keysym("Shift_L"))
     if shift:
         xtest.fake_input(dpy, X.KeyPress, shift_code)
