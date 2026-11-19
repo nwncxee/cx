@@ -280,6 +280,7 @@ internal static unsafe partial class Weather
         SplashSelfCheck(check);
         TrackSelfCheck(check);
         SnowStepApprovedExamples(check);
+        AreaEdgeSelfCheck(check);
         StepSelfCheck(check);
         float d = Density; Kind k = CurrentKind; bool en = Enabled.V;
         // the rates are the player's cx.cfg (weather.accum=5 reads 20x faster): pin the declared ones

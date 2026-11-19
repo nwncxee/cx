@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 using System.Runtime.InteropServices;
 using CX.Engine;
 using CX.Framework;
@@ -27,8 +28,10 @@ internal static unsafe partial class Weather
 
     private static ExtenderLog? _log;
     private static AreaSetWeatherFn _origSet;
-    private static AreaStartWeatherFn _origStart;
-    private static AreaStopWeatherFn _origStop;
+    /// <summary>The next layer of the <c>CNWCArea::LoadArea</c> chain: the area edge.</summary>
+    private static AreaLoadAreaFn* _loadSlot;
+    /// <summary>The order Weather reads the area load in among the other chains on it; it only forwards.</summary>
+    private const int LoadAreaPriority = 30;
     private static readonly IntPtr _appMgr = Native.Sym(SymbolMap.AppManager);
     private static bool _off;
     /// <summary>Row -> kind, 32 rows: weathertypes.2da has 3 stock rows; content adds more (11 measured).</summary>
@@ -125,8 +128,8 @@ internal static unsafe partial class Weather
         { _off = true; return; }
         _origSet = hooks.InstallAreaSetWeather(&OnSetWeather);
         if (_origSet == null) { _off = true; log.Info("Weather: SetWeather did not hook -- weather stays vanilla"); return; }
-        _origStart = hooks.InstallAreaStartWeather(&OnStartWeather);
-        _origStop = hooks.InstallAreaStopWeather(&OnStopWeather);
+        _loadSlot = hooks.ChainAreaLoadArea(&OnLoadArea, LoadAreaPriority);
+        if (_loadSlot == null) log.Always("Weather: CNWCArea::LoadArea did not chain -- the last area's snow, soak and prints follow the player into the next area until they melt");
         if (SymbolMap.Require(log, "Weather", SymbolMap.TileSetGet))
             _tileSetSlot = hooks.ChainTileSetGet(&OnGetTileSet, TileSetPriority);
         InstallDraw(log);
@@ -138,20 +141,19 @@ internal static unsafe partial class Weather
     /// (fog, a dry storm, an unknown row, a device Alloy ruled out) keeps its stock emitter, so nothing is lost.</summary>
     private static bool Silence(Kind k) => !_off && Enabled.V && k != Kind.None && AlloyGate.Capable;
 
-    /// <summary>LoadArea fires one of the two edges for every area, so a new <c>this</c> here is the area
-    /// transition: the old area's weather and its soak go with it.</summary>
-    private static void Enter(IntPtr area)
+    /// <summary>The area edge. The module keeps one area object and loads every area into it, so the edge is
+    /// the load itself, never a new pointer; the new area's own weather edge runs inside the load.</summary>
+    [UnmanagedCallersOnly]
+    private static int OnLoadArea(IntPtr area, IntPtr camera, IntPtr loadscreen)
     {
-        if (area == _area) return;
-        _area = area; Type = 0; Density = 0f; CurrentKind = Kind.None;
-        ResetSurface();
+        _area = area;
+        return _loadSlot != null ? (*_loadSlot)(area, camera, loadscreen) : 0;
     }
 
     [UnmanagedCallersOnly]
     private static int OnSetWeather(IntPtr area, byte type, float density)
     {
         if (_origSet == null) return 0;
-        Enter(area);
         if (type != 0) Type = type;
         else if (density <= 0f) Type = 0;
         float d = Math.Clamp(density, 0f, 100f) / 100f;
@@ -167,21 +169,37 @@ internal static unsafe partial class Weather
         return _origSet(area, type, Silence(k) ? 0f : density);
     }
 
-    [UnmanagedCallersOnly]
-    private static void OnStartWeather(IntPtr area, byte type)
+    /// <summary>A walk from a snowy area into a clear one, on the one area object the module reloads: the load
+    /// leaves no snow, soak or print behind, and the clear area's stop ramp, which passes row 0 at full density,
+    /// grows none. Oracle: hand-written zeros and the kind None.</summary>
+    private static void AreaEdgeSelfCheck(Checker check)
     {
-        Enter(area);
-        _log?.Info($"Weather: START row {type} ({KindOf(type)}) -- ramping up over 6 s");
-        if (_origStart != null) _origStart(area, type);
+        IntPtr area = _area; byte type = Type; float dens = Density; Kind kind = CurrentKind;
+        AreaLoadAreaFn* slot = _loadSlot; AreaSetWeatherFn set = _origSet; TrackTexel[]? track = _track;
+        AreaLoadAreaFn next = &StubLoad;
+        _loadSlot = &next; _origSet = &StubSet;
+        AreaLoadAreaFn load = &OnLoadArea; AreaSetWeatherFn weather = &OnSetWeather;
+        IntPtr one = (IntPtr)0x1000;   // not-an-offset: a stand-in area pointer the stubs never read through
+        Vector2 at = new(5.03f, 7.01f), h = Vector2.UnitX;
+        int lo = int.MaxValue, hi = int.MinValue;
+        _area = one; weather(one, 2, 100f); _snow = 0.8f; _wet = 0.2f; _puddle = 0f;
+        _track = new TrackTexel[TrackSize * TrackSize];
+        Print(_track, at, h, 10f, 0.01f, at, ref lo, ref hi);
+        load(one, IntPtr.Zero, IntPtr.Zero);
+        check.Expect(_snow == 0f && _wet == 0f && _puddle == 0f && TrackAt(_track, at + h * ToeAt, 10f, 0.01f) == 0f,
+          $"loading the next area into the same area object leaves no snow, soak or print (snow {_snow:F2}, wet {_wet:F2})");
+        weather(one, 0, 100f);
+        check.Expect(CurrentKind == Kind.None && Type == 0, $"the clear area's stop ramp is no weather, not the last area's snow ({CurrentKind}, row {Type})");
+        weather(one, 1, 100f); _wet = 0.9f; _puddle = 0.6f;
+        load(one, IntPtr.Zero, IntPtr.Zero);
+        weather(one, 0, 100f);
+        check.Expect(_wet == 0f && _puddle == 0f && CurrentKind == Kind.None, $"a rainy area's soak and puddles stay behind it too (wet {_wet:F2}, puddle {_puddle:F2})");
+        _loadSlot = slot; _origSet = set; _track = track;
+        _area = area; Type = type; Density = dens; CurrentKind = kind; _wet = _snow = _puddle = 0f; _enterTicks = 0;
     }
 
-    [UnmanagedCallersOnly]
-    private static void OnStopWeather(IntPtr area, byte unused)
-    {
-        Enter(area);
-        _log?.Info($"Weather: STOP requested -- ramping down over 6 s");
-        if (_origStop != null) _origStop(area, unused);
-    }
+    [UnmanagedCallersOnly] private static int StubLoad(IntPtr area, IntPtr camera, IntPtr loadscreen) => 1;
+    [UnmanagedCallersOnly] private static int StubSet(IntPtr area, byte type, float density) => 1;
 
     /// <summary>A live master flip re-issues the engine's own SetWeather to the current area with the captured
     /// state, so off brings the stock emitter back mid-storm and on takes it away, in the same area.</summary>
