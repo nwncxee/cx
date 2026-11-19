@@ -20,7 +20,8 @@ internal static partial class Legs
     /// the pelvis at the lower floor: <paramref name="upR"/>, <paramref name="upL"/> are each foot's floor over that.</summary>
     private static float Pelvis(ref LegState s, in LegFrame f, in LegPose p, float upR, float upL)
     {
-        if (f.Gated || f.Snap || !(f.Dt > 0f)) { s.Drop = s.DropV = 0f; return 0f; }
+        if (f.Gated || f.Snap) { s.Drop = s.DropV = 0f; return 0f; }
+        if (!(f.Dt > 0f)) return s.Drop > FootPlacement.MinLift ? s.Drop : 0f;
         if (f.Walk.Present) s.LegLen = f.Walk.LegLength * f.Scale;
         Vector3 animR = f.RAnkle - f.RThigh, animL = f.LAnkle - f.LThigh;
         float lenR = Stretch(f, p, true), lenL = Stretch(f, p, false), leg = MathF.Max(s.LegLen, MathF.Max(lenR, lenL)), cap = MaxDrop * leg;

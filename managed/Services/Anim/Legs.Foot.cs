@@ -7,8 +7,9 @@ namespace CX.Services.Anim;
 /// hold it could not keep, or swinging, its offset and turn off the animation easing out to nothing by touchdown.</summary>
 internal struct Footing
 {
-    /// <summary>Stages: in the air, held on the ground, stepping off a hold it let go.</summary>
-    public const byte Swing = 0, Held = 1, Stepping = 2;
+    /// <summary>Stages: not yet seen (taken up where it is drawn, on the ground or in the air), in the air, held on the
+    /// ground, stepping off a hold it let go.</summary>
+    public const byte Fresh = 0, Swing = 1, Held = 2, Stepping = 3;
     public byte Stage;
     /// <summary>In the air last frame, so a hold now is a landing.</summary>
     public bool Aired;
@@ -19,11 +20,13 @@ internal struct Footing
     /// positive = left).</summary>
     public Vector3 Off;
     public float Yaw;
-    /// <summary>The offset and turn a swing eases out from, and its progress then (NaN: the next frame's).</summary>
+    /// <summary>The offset and turn a swing eases out from, and its progress then.</summary>
     public Vector3 Off0;
     public float Yaw0, U0;
-    /// <summary>The turn a swing is aimed by onto the line of travel (radians) and the progress it was last aimed at.</summary>
+    /// <summary>The turn a swing is aimed by onto the line of travel (radians) and the progress it was last aimed at; met
+    /// past <see cref="Legs.SwingEnd"/>, too late in its swing to be aimed.</summary>
     public float Aimed, AimU;
+    public bool Late;
     /// <summary>Seconds into a step.</summary>
     public float T;
 }
@@ -57,11 +60,15 @@ internal static partial class Legs
     internal const float AimCap = 1.6f;
     /// <summary>The swing's progress by which the offset a foot lifted off with is gone, so it lands on the animation.</summary>
     internal const float SwingEnd = 0.85f;
+    /// <summary>Seconds a foot's turn off the animation eases out over once nothing holds it (a stop, a settle).</summary>
+    internal const float YawEase = 0.3f;
+    /// <summary>Seconds a foot handed to a stop's settle in the air takes to come down.</summary>
+    internal const float LiftTime = 0.15f;
 
     /// <summary>One frame of a foot at warped world point <paramref name="p"/> whose legs head <paramref name="heading"/>
     /// (world yaw), on the ground (<paramref name="on"/>) or <paramref name="u"/> through its swing: the offset it is drawn
-    /// at; <paramref name="yaw"/> its turn; <paramref name="down"/> it was set down this frame; <paramref name="let"/> its
-    /// hold was let go.</summary>
+    /// at; <paramref name="yaw"/> its turn; <paramref name="down"/> it landed this frame out of the clip's swing (a let-go
+    /// hold's step is no footfall); <paramref name="let"/> its hold was let go.</summary>
     internal static Vector3 Hold(ref Footing f, bool on, float u, Vector3 p, float heading, in HoldLimits r, float dt,
                                  out float yaw, out bool down, out bool let)
     {
@@ -70,6 +77,12 @@ internal static partial class Legs
         bool aired = f.Aired;
         f.Aired = !on;
         if (!on && f.Stage != Footing.Swing) Lift(ref f, u);
+        if (on && f.Stage == Footing.Fresh)
+        {
+            f.Stage = Footing.Held;
+            f.At = q + new Vector2(f.Off.X, f.Off.Y);
+            f.Heading = heading + f.Yaw;
+        }
         if (f.Stage == Footing.Swing)
         {
             if (on)
@@ -81,7 +94,6 @@ internal static partial class Legs
             }
             else
             {
-                if (float.IsNaN(f.U0)) f.U0 = u;
                 float rest = Remaining(u, f.U0);
                 f.Off = f.Off0 * rest;
                 f.Yaw = f.Yaw0 * rest;
@@ -115,7 +127,6 @@ internal static partial class Legs
             f.Heading = heading;
             f.Off = new Vector3(f.To - q, 0f);
             f.Yaw = 0f;
-            down = true;
         }
         yaw = f.Yaw;
         return f.Off;
@@ -124,14 +135,14 @@ internal static partial class Legs
     /// <summary>The offset turning a swinging foot at <paramref name="p"/> about the body's <paramref name="origin"/> from
     /// the legs' line <paramref name="legs"/> (world) onto the line of travel <paramref name="vel"/> (at most
     /// <see cref="AimCap"/>): the turn closes over what is left of the swing, so it is whole from <see cref="SwingEnd"/>
-    /// and a change of travel mid-swing is taken up over the rest of it, not at once.</summary>
+    /// and a change of travel mid-swing is taken up over the rest of it, not at once; one met past it is not aimed.</summary>
     internal static Vector3 Aim(ref Footing f, Vector3 p, Vector3 origin, Vector2 vel, Vector3 legs, float u, float scale)
     {
         float turn = 0f;
         if (vel.LengthSquared() >= MinTravel * MinTravel * scale * scale && legs.X * legs.X + legs.Y * legs.Y >= 1e-8f)
             turn = Math.Clamp(Wrap(MathF.Atan2(vel.Y, vel.X) - MathF.Atan2(legs.Y, legs.X)), -AimCap, AimCap);
         float left = SwingEnd - f.AimU;
-        f.Aimed += (turn - f.Aimed) * (left > 1e-4f ? Math.Clamp((u - f.AimU) / left, 0f, 1f) : 1f);
+        f.Aimed += (turn - f.Aimed) * (left > 1e-4f ? Math.Clamp((u - f.AimU) / left, 0f, 1f) : f.Late ? 0f : 1f);
         f.AimU = MathF.Max(f.AimU, u);
         float c = MathF.Cos(f.Aimed), sn = MathF.Sin(f.Aimed);
         Vector2 r = new(p.X - origin.X, p.Y - origin.Y);
@@ -151,6 +162,7 @@ internal static partial class Legs
         f.U0 = u;
         f.Aimed = 0f;
         f.AimU = u;
+        f.Late = u >= SwingEnd;
     }
 
     /// <summary>A hold that costs more than <paramref name="r"/> allows: too far off the warped animation at
@@ -176,14 +188,18 @@ internal static partial class Legs
 
     private static float Wrap(float a) => MathF.IEEERemainder(a, 2f * MathF.PI);
 
-    /// <summary>A foot on hand-worked 0.1 s frames: lands where drawn, turns back by the legs' 0.3 rad, past a 0.1 hold steps
-    /// half way and 0.04 up at mid-step onto the animation, is let go past 0.8 rad and 0.5 off a hip 0.77 up (0.0544 drop),
-    /// not 0.43 (0.0102); a swing keeps half its offset and is aimed half of a quarter turn half way to <see cref="SwingEnd"/>,
-    /// all from there; a turn alone is written. Oracle: the hand-worked steps, the ease and the leg triangle.</summary>
+    /// <summary>A foot on hand-worked 0.1 s frames: met on the ground it is held with no footfall; out of a swing it lands where
+    /// drawn, turns back by the legs' 0.3 rad, past a 0.1 hold steps half way, 0.04 up, onto the animation (no footfall), is let
+    /// go past 0.8 rad and 0.5 off a hip 0.77 up but not 0.43; a swing keeps half its offset and aim half way to
+    /// <see cref="SwingEnd"/>, none and all from there; a turn alone is written. Oracle: hand-worked steps and leg triangle.</summary>
     internal static bool FootCheck()
     {
         var r = new HoldLimits { Hip = new Vector3(0f, 0f, 0.85f), Reach = 0.873f, Cap = 0.108f, Sink = 0.018f, Hold = 0.1f, Lift = 0.04f };
         Footing f = default;
+        Vector3 met = Hold(ref f, true, 1f, Vector3.Zero, 0f, r, 0.1f, out _, out bool seen, out _);
+        bool fresh = !seen && met == Vector3.Zero && f.Stage == Footing.Held;
+        f = default;
+        f.Stage = Footing.Swing;
         f.Aired = true;
         Vector3 o = Hold(ref f, true, 1f, new Vector3(0f, 0f, 0.08f), 0f, r, 0.1f, out float yaw, out bool down, out bool let);
         bool lands = down && !let && o == Vector3.Zero && yaw == 0f && f.Stage == Footing.Held;
@@ -192,7 +208,7 @@ internal static partial class Legs
         o = Hold(ref f, true, 1f, new Vector3(0.12f, 0f, 0.08f), 0.3f, r, 0.1f, out yaw, out _, out let);
         bool steps = let && MathF.Abs(o.X + 0.06f) < 1e-5f && MathF.Abs(o.Z - 0.04f) < 1e-5f && MathF.Abs(yaw + 0.15f) < 1e-5f;
         o = Hold(ref f, true, 1f, new Vector3(0.12f, 0f, 0.08f), 0.3f, r, 0.1f, out yaw, out down, out let);
-        bool stepped = down && !let && o.Length() < 1e-6f && yaw == 0f && f.At == new Vector2(0.12f, 0f);
+        bool stepped = !down && !let && o.Length() < 1e-6f && yaw == 0f && f.At == new Vector2(0.12f, 0f);
         Hold(ref f, true, 1f, new Vector3(0.12f, 0f, 0.08f), -0.51f, r, 0f, out yaw, out _, out let);
         bool twists = let && MathF.Abs(yaw - 0.81f) < 1e-5f;
 
@@ -209,6 +225,7 @@ internal static partial class Legs
         bool stretch = Reaches(0.1f) && !Reaches(0.03f);
 
         Footing h = default;
+        h.Stage = Footing.Swing;
         h.Aired = true;
         Hold(ref h, true, 1f, Vector3.Zero, 0f, r, 0.1f, out _, out _, out _);
         Hold(ref h, true, 1f, new Vector3(0.05f, 0f, 0f), 0f, r, 0.1f, out _, out _, out _);
@@ -237,6 +254,6 @@ internal static partial class Legs
         lp.TiltR = lp.TiltL = Quaternion.Identity;
         lp.YawR = 0.3f;
         Place(ref ls, lf, ref lp);
-        return lands && holds && steps && stepped && twists && stretch && swings && aims && lp.Ik;
+        return fresh && lands && holds && steps && stepped && twists && stretch && swings && aims && lp.Ik;
     }
 }

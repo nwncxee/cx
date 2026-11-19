@@ -4,12 +4,6 @@ using CX.Framework;
 
 namespace CX.Services.Anim;
 
-/// <summary>Hands the pose self-check's approved-examples slot to <see cref="LegsApprovedExamples"/>.</summary>
-internal static partial class Legs
-{
-    static partial void ApprovedExamples(ExtenderLog log) => LegsApprovedExamples.Run(log);
-}
-
 /// <summary>The leg solve's approved examples, each driven through <see cref="Legs"/> with synthetic frames built from
 /// the analytic synthetic walk (<see cref="GaitClip.SyntheticFoot"/>). Oracles: that walk's construction, hand-worked
 /// geometry, and the frame with the corrections absent (the animated pose).</summary>
@@ -67,9 +61,9 @@ internal static class LegsApprovedExamples
         float stop = r.Time;
         while (r.Time < stop + 0.5f) r.Stand(animR, animL, thighR, thighL, LegRig.Flat(0f), LegRig.Flat(0f), stance: true);
         float bendR = r.Shortened(true), bendL = r.Shortened(false);
-        check.Expect(MathF.Abs(r.P.Body) < LegRig.Still && r.P.Shift.Length() < LegRig.Still
+        check.Expect(MathF.Abs(r.P.Body) < LegRig.Still
                      && MathF.Abs(bendR) < LegRig.Still && MathF.Abs(bendL) < LegRig.Still,
-                     $"E2 half a second after a stop the legs are straight as animated: pelvis {r.P.Body:0.0000} up, {r.P.Shift.Length():0.0000} aside, legs shortened {bendR:0.0000} right and {bendL:0.0000} left");
+                     $"E2 half a second after a stop the legs are straight as animated: pelvis {r.P.Body:0.0000} up, legs shortened {bendR:0.0000} right and {bendL:0.0000} left");
     }
 
     // Given a character standing on a flat floor with one foot over a crack narrower than the foot
@@ -374,8 +368,8 @@ internal sealed class LegRig
     /// <summary>The foot is on the ground this frame, by the synthetic walk's construction.</summary>
     public bool Contact(bool right) => right ? _contactR : _contactL;
 
-    /// <summary>The pelvis offset this frame (world): the horizontal shift and the height.</summary>
-    public Vector3 Offset => new(P.Shift.X, P.Shift.Y, P.Body);
+    /// <summary>The pelvis offset this frame (world): its height.</summary>
+    public Vector3 Offset => new(0f, 0f, P.Body);
 
     /// <summary>Where the ankle is drawn (world): the animated ankle carried by the pelvis, then moved by its delta --
     /// the adapter writes the root before the leg IK.</summary>
@@ -391,7 +385,7 @@ internal sealed class LegRig
 
     /// <summary>The frame with the corrections absent: the pelvis, every ankle and foot direction as animated, no turn.</summary>
     public bool AsOff(float eps)
-        => MathF.Abs(P.Body) < eps && P.Shift.Length() < eps && P.DeltaR.Length() < eps && P.DeltaL.Length() < eps
+        => MathF.Abs(P.Body) < eps && P.DeltaR.Length() < eps && P.DeltaL.Length() < eps
            && MathF.Abs(P.YawR) < eps && MathF.Abs(P.YawL) < eps && MathF.Abs(P.Turn) < eps && !P.Ik;
 
     /// <summary>The longest hip-to-ankle reach the synthetic walk draws over its cycle, sampled finely.</summary>

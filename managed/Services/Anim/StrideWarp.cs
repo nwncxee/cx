@@ -168,8 +168,8 @@ internal static class StrideWarp
             float heading = MathF.Atan2(p.LegFwdH.Y, p.LegFwdH.X);
             Vector3 line = Vector3.Transform(dir, legs);
             // a foot setting down this frame is aimed too: its hold is taken where it lands
-            if (s.FootingR.Stage == Footing.Swing) dR += Legs.Aim(ref s.FootingR, ra + dR, origin, f.Vel, line, k.SwingR, scale);
-            if (s.FootingL.Stage == Footing.Swing) dL += Legs.Aim(ref s.FootingL, la + dL, origin, f.Vel, line, k.SwingL, scale);
+            if (s.FootingR.Stage == Footing.Swing) dR += weight * Legs.Aim(ref s.FootingR, ra + dR, origin, f.Vel, line, k.SwingR, scale);
+            if (s.FootingL.Stage == Footing.Swing) dL += weight * Legs.Aim(ref s.FootingL, la + dL, origin, f.Vel, line, k.SwingL, scale);
             HoldLimits r = Limits(rt, Legs.Stretch(f, p, true), leg, scale), l = Limits(lt, Legs.Stretch(f, p, false), leg, scale);
             dR += weight * Plant(ref s.FootingR, k.ContactR, k.SwingR, ra + dR, heading, r, timed, f.Dt, out float yawR, out downR);
             dL += weight * Plant(ref s.FootingL, k.ContactL, k.SwingL, la + dL, heading, l, timed, f.Dt, out float yawL, out downL);
@@ -316,10 +316,14 @@ internal static class StrideWarp
         return a + w * new Vector3(reach.X, reach.Y, lift);
     }
 
-    /// <summary>A swing's progress measured against a different clip from here on: the offset left eases out from now.</summary>
+    /// <summary>A swing's progress measured against a different clip from here on: the offset left eases out from now, and
+    /// the aim it has keeps closing from now.</summary>
     internal static void Rebase(ref Footing f, float u)
     {
-        if (f.Stage == Footing.Swing) Legs.Lift(ref f, u);
+        if (f.Stage != Footing.Swing) return;
+        f.Off0 = f.Off;
+        f.Yaw0 = f.Yaw;
+        f.U0 = f.AimU = u;
     }
 
     /// <summary>The pace split, the phase seeds and the landing time against hand-worked values, and a walk run through speed

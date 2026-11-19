@@ -144,7 +144,7 @@ internal static unsafe class FootPlacement
 
     /// <summary>World units (times scale) a foot must move, or the reference height change, before its floor
     /// is cast again; and the seconds a cached floor is trusted at most. A character standing still casts
-    /// nothing, where every foot used to cast every frame.</summary>
+    /// nothing.</summary>
     private const float Recast = 0.03f, RecastHeight = 0.02f, RecastAge = 0.5f;
 
     /// <summary>One foot's cached floor: where it was cast from, the floors' world heights (NaN = none in range),

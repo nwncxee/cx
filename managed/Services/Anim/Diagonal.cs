@@ -129,7 +129,7 @@ internal static unsafe class Diagonal
         bool moving = PoseService.IsLocomotion(anim);
         if (f.Knobs.Pivot && f.Hips && step != 0f && Transition.Movement(anim)) s.Turn = Lag(s.Turn, step - Walked(step, moving, f.Dt));
         s.Heading = heading;
-        Ease(ref s.Turn, ref s.TurnV, target, f.Snap, f.Dt, StepTime(f.Walk));
+        Ease(ref s.Turn, ref s.TurnV, target, f.Snap, f.Dt, s.TurnStep > 0f ? s.TurnStep : FallbackStep);
         return MathF.Abs(s.Turn) > MinTurn;
     }
 
@@ -193,13 +193,14 @@ internal static unsafe class Diagonal
         LegWalk slow = new() { Present = true, Length = 1f, Rate = 0.01f }, fast = new() { Present = true, Length = 1f, Rate = 50f };
         bool stepped = StepTime(w) == 0.25f && StepTime(default) == 0.5f && StepTime(w with { Present = false }) == 0.5f
                        && StepTime(w with { Rate = 0f }) == 0.5f && StepTime(slow) == 1.2f && StepTime(fast) == 0.15f;
-        // a run playing at twice its rate steps in 0.25 s: Step reaches 0.97 of the diagonal in 15 frames, which the 0.5 s fallback (80%) does not
+        // a run playing at twice its rate steps in 0.25 s: Step, kept that step time, reaches 0.97 of the diagonal in 15 frames, which the 0.5 s fallback (80%) does not
         LegFrame f = new()
         {
             Anim = RunFl, Swapped = true, Hips = true, Dt = 1f / 60f, FwdH = Vector3.UnitY, Right = Vector3.UnitX,
             Vel = new Vector2(-1f, 1f), Knobs = new LegKnobs { Diagonal = true }, Walk = w,
         };
         LegState st = default;
+        st.TurnStep = StepTime(w);
         for (int i = 0; i < 15; i++) Step(ref st, f);
         bool wired = st.Turn > 0.97f * Quarter && st.Turn <= Quarter;
         return swap && faces && backs && still && eases && stepped && wired && played;

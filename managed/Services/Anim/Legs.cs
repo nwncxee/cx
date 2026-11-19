@@ -12,14 +12,11 @@ namespace CX.Services.Anim;
 /// </summary>
 internal static partial class Legs
 {
-    static partial void ApprovedExamples(ExtenderLog log);
-    static partial void Regressions(ExtenderLog log);
-
     /// <summary>Runs the leg examples the build carries: the approved ones, then the regressions.</summary>
     internal static void Examples(ExtenderLog log)
     {
-        ApprovedExamples(log);
-        Regressions(log);
+        LegsApprovedExamples.Run(log);
+        LegsRegress.Run(log);
     }
 
     /// <summary>A whole frame at once: every phase in order, for a frame whose ankles are the turned ones and whose
@@ -48,17 +45,56 @@ internal static partial class Legs
     /// and where a swinging one lands. The adapter casts the floors at those points.</summary>
     internal static void Stride(ref LegState s, in LegFrame f, ref LegPose p)
     {
+        bool fresh = f.Snap || !f.Tracked;
+        if (fresh) Forget(ref s, f.Loco);
         StrideWarp.Step(ref s, f, ref p, out Vector3 warpR, out Vector3 warpL);
-        // the engine drops the walk on a stop and the warp lets go of it: the settle takes the feet over where they were drawn
-        if (s.SettleLoco && !f.Loco) { warpR = s.WarpR; warpL = s.WarpL; }
+        // the engine drops the walk on a stop and the warp lets go of it: the settle takes the feet over where they were
+        // drawn, and a foot handed over in the air comes down over frames rather than with the settle's flat hold
+        if (s.SettleLoco && !f.Loco)
+        {
+            warpR = s.WarpR; warpL = s.WarpL;
+            s.LiftR = warpR.Z; s.LiftL = warpL.Z;
+            warpR.Z = warpL.Z = 0f;
+        }
         s.WarpR = warpR; s.WarpL = warpL;
         Vector3 rStance = f.HasStance ? f.StanceR : f.RAnkle + warpR, lStance = f.HasStance ? f.StanceL : f.LAnkle + warpL;
-        Settle.Feet(ref s, f.Knobs.Stride && !f.Gated && !f.Snap && f.Dt > 0f, f.Loco, f.RAnkle + warpR, f.LAnkle + warpL,
+        Settle.Feet(ref s, f.Knobs.Stride && !f.Gated && !fresh, f.Loco, f.RAnkle + warpR, f.LAnkle + warpL,
                     rStance, lStance, f.Fade, f.Standing, f.YawRate, f.Scale, f.Dt, out Vector3 setR, out Vector3 setL);
-        warpR += setR;
-        warpL += setL;
+        PoseMath.Smooth(ref s.LiftR, ref s.LiftVR, 0f, f.Dt, LiftTime);
+        PoseMath.Smooth(ref s.LiftL, ref s.LiftVL, 0f, f.Dt, LiftTime);
+        warpR += setR + new Vector3(0f, 0f, s.LiftR);
+        warpL += setL + new Vector3(0f, 0f, s.LiftL);
         p.WarpR = warpR; p.WarpL = warpL;
         p.FootR = f.RAnkle + warpR; p.FootL = f.LAnkle + warpL;
+        CarryYaw(ref s, ref p, f.Dt);
+        s.TurnStep = Diagonal.StepTime(f.Walk);
+    }
+
+    /// <summary>Lets go of everything the legs hold in the world: the holds, a settle and what it was handed, a foot's
+    /// leftover lift and turn. A body teleported, or unseen long enough that its last frame is no guide, starts afresh.</summary>
+    private static void Forget(ref LegState s, bool loco)
+    {
+        Settle.Stop(ref s);
+        s.SettleLoco = loco;
+        s.FootingR = s.FootingL = default;
+        s.WarpR = s.WarpL = Vector3.Zero;
+        s.LiftR = s.LiftL = s.LiftVR = s.LiftVL = 0f;
+        s.YawR = s.YawL = s.YawVR = s.YawVL = 0f;
+    }
+
+    /// <summary>Each foot's turn off the animation: the holds' while the walk plants them, else the last one eased out over
+    /// <see cref="YawEase"/>, so a stop or a settle never turns a held foot back in a frame.</summary>
+    private static void CarryYaw(ref LegState s, ref LegPose p, float dt)
+    {
+        if (s.Planting)
+        {
+            s.YawR = p.YawR; s.YawL = p.YawL;
+            s.YawVR = s.YawVL = 0f;
+            return;
+        }
+        PoseMath.Smooth(ref s.YawR, ref s.YawVR, 0f, dt, YawEase);
+        PoseMath.Smooth(ref s.YawL, ref s.YawVL, 0f, dt, YawEase);
+        p.YawR = s.YawR; p.YawL = s.YawL;
     }
 
     /// <summary>The floors and the pelvis: each foot's eased floor offset and tilt, the pelvis offset under the lower
@@ -97,8 +133,8 @@ internal static partial class Legs
         if (!Placing(f)) return;
         float tol = FootFloor.Agree * f.Scale;
         FloorSample r = f.FloorR.Combine(tol), l = f.FloorL.Combine(tol);
-        hr = r.Hit; tr = r.Off;
-        hl = l.Hit; tl = l.Off;
+        hr = r.Hit; tr = hr ? r.Off : 0f;
+        hl = l.Hit; tl = hl ? l.Off : 0f;
         // a foot with no floor in range borrows the other foot's: "none" is not "at the walkmesh"
         if (!hr && hl) tr = tl; else if (hr && !hl) tl = tr;
         if (p.AheadR.Swing && f.FloorR.Land.Hit) tr = FootPlacement.SwingTarget(tr, f.FloorR.Land.Off, p.AheadR.U);
@@ -134,6 +170,7 @@ internal static partial class Legs
             Vector3 origin = new(0f, WalkSpeed * t, 0f);
             LegFrame f = default;
             f.Dt = Dt;
+            f.Tracked = n > 0;
             f.Knobs = new LegKnobs { Stride = true, FootIk = true, MaxSlope = 0.5f, Lift = 0.25f, Mass = true };
             f.Origin = origin;
             f.Facing = Quaternion.Identity;

@@ -247,21 +247,30 @@ internal static unsafe class Settle
     {
         Pose(ref s, rAnkle, lAnkle, rStance, lStance, fade, scale, 0f, out dr, out dl);
         s.SettleTurn = false;
-        Handed(ref s.FootingR, dr);
-        Handed(ref s.FootingL, dl);
+        Handed(ref s.FootingR, dr, s.YawR);
+        Handed(ref s.FootingL, dl, s.YawL);
         s.Planting = true;
         s.SettleStage = None;
         s.SettleT = 0f;
         s.SettleOff = s.SettleOffV = s.SettleOffO = s.SettleOffOV = Vector2.Zero;
     }
 
-    /// <summary>A foot handed to the stride warp drawn <paramref name="off"/> off the animation: a hold lands it there, and
-    /// a swing eases it out from the next frame's progress.</summary>
-    private static void Handed(ref Footing f, Vector3 off)
+    /// <summary>A foot handed to the stride warp drawn <paramref name="off"/> off the animation and turned <paramref name="yaw"/>
+    /// off its direction: taken up where it is, a hold landing it there and a swing easing both out from its progress then.</summary>
+    private static void Handed(ref Footing f, Vector3 off, float yaw)
     {
         f = default;
-        f.Off = f.Off0 = off;
-        f.U0 = float.NaN;
+        f.Off = off;
+        f.Yaw = yaw;
+    }
+
+    /// <summary>Stands the settle down with nothing handed on: a teleport or a body unseen too long has no feet to carry.</summary>
+    internal static void Stop(ref LegState s)
+    {
+        s.SettleStage = None;
+        s.SettleTurn = false;
+        s.SettleT = 0f;
+        s.SettleOff = s.SettleOffV = s.SettleOffO = s.SettleOffOV = Vector2.Zero;
     }
 
     /// <summary>The offset from the animated ankle at which a stepping foot is drawn, <paramref name="u"/> of the

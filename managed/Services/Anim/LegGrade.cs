@@ -38,8 +38,8 @@ internal static class LegGrade
         return new LegGrades(bend, slide, turn);
     }
 
-    /// <summary>The pelvis's offset: the horizontal shift and the drop or rise.</summary>
-    private static Vector3 Pelvis(in LegPose p) => new(p.Shift.X, p.Shift.Y, p.Body);
+    /// <summary>The pelvis's offset: the drop or rise.</summary>
+    private static Vector3 Pelvis(in LegPose p) => new(0f, 0f, p.Body);
 
     /// <summary>Where a foot is drawn: the animated ankle carried by the pelvis, and moved by its IK delta when the IK writes.</summary>
     private static Vector3 Foot(Vector3 ankle, in LegPose p, Vector3 delta) => ankle + Pelvis(p) + (p.Ik ? delta : Vector3.Zero);

@@ -168,10 +168,8 @@ internal struct LegPose
     public Vector3 DeltaR, DeltaL;
     public Quaternion TiltR, TiltL;
     public bool Ik;
-    /// <summary>The pelvis's horizontal offset (world units; no stage sets it, the pelvis moves only up and down), and
-    /// each foot's turn about the vertical off its animated direction (radians, positive = left), which keeps a held
-    /// foot's world heading.</summary>
-    public Vector2 Shift;
+    /// <summary>Each foot's turn about the vertical off its animated direction (radians, positive = left), which keeps a
+    /// held foot's world heading.</summary>
     public float YawR, YawL;
 }
 
@@ -187,6 +185,12 @@ internal struct LegState
     public bool Planting;
     /// <summary>The pelvis drop (world units, down) and its easing spring, and the leg's length last read off a walk.</summary>
     public float Drop, DropV, LegLen;
+    /// <summary>Seconds of one step of the walk last frame, which the hip turn comes round over this frame (0: none seen).</summary>
+    public float TurnStep;
+    /// <summary>Each foot's height handed to a stop's settle in the air, and its easing spring.</summary>
+    public float LiftR, LiftL, LiftVR, LiftVL;
+    /// <summary>Each foot's turn off the animation as last drawn (radians), and its easing spring once nothing holds it.</summary>
+    public float YawR, YawL, YawVR, YawVL;
     /// <summary><see cref="Settle"/>: locomoting last frame, the stepping foot, a turn and not a stop, still turning, stepping
     /// at once, the leftovers folded; the stage, its clock, the step's lift and length; the step's start and the weighted
     /// foot's held world point; each foot's leftover easing out.</summary>
