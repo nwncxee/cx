@@ -138,7 +138,7 @@ internal static unsafe partial class Weather
         bool rain = CurrentKind == Kind.Rain && Density > 0f;
         float soak = rain ? Density / MathF.Max(AccumSec.V, 1e-3f) : 0f;
         float dry = 1f / MathF.Max(DrySec.V, 1e-3f);
-        float mode = clear ? -1f : _mapArrive && rain && Arrive.V ? 1f : 0f;
+        float mode = clear ? -1f : _mapArrive && _enterTicks == 0 && rain && Arrive.V ? 1f : 0f;
         if (mode > 0f) _mapArrive = false;
         LooseBlock.Set(Member(n, "uStep"), [dt, soak, dry, mode]);
         LooseBlock.Set(Member(n, "uFill"), [PuddleThreshold.V, 1f / MathF.Max(AccumSec.V, 1e-3f), 0.5f / MathF.Max(DrySec.V, 1e-3f), 0f]);

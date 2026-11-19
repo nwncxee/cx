@@ -171,8 +171,8 @@ internal static class RenderPasses
         r.Register(new PassLifecycle
         {
             Name = "weather",
-            // No Revoke: the area's soak, map and prints reset on the engine's own per-area SetWeather/StartWeather
-            // call (Weather.Enter), and the shelter cache goes with the caster cover bake it was baked from.
+            // No Revoke: the area's soak, map and prints reset on the engine's own area load (Weather.OnLoadArea),
+            // and the shelter cache goes with the caster cover bake it was baked from.
             Install = Weather.Install,
             SelfCheck = Weather.SelfCheck,
             ContextLost = Weather.ContextLost,
