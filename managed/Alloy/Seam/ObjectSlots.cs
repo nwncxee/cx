@@ -372,7 +372,9 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
         else SceneDb.ObjScene[id.Index] = default;
         if (shell != 0) Facade.SetSceneWord(shell, sceneShell);
         SceneDb.Touch(id, Dirty.Tree);
-        PropagateScene(id, shell, sc, sceneShell);
+        // Gob::SetScene @0x53e020 ends in UpdateScenes: riders join in its listener order, as the event path's do.
+        if (shell != 0 && was.Value != sc.Value) FireEvent(shell, EventNames.UpdateScenes, 0);
+        else PropagateScene(id, shell, sc, sceneShell);
     }
 
     /// <summary>Carry a scene change down the attachment tree. The engine did it through the <c>"UpdateScenes"</c>
