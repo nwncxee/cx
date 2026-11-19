@@ -488,7 +488,7 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
     /// part <paramref name="part"/>. Shared by <c>Gob::AttachToObject</c> and the reference re-point, which
     /// is the engine's own sharing -- both reach <c>CAurBehaviorAttach</c>'s constructor @0x4a2d50, which places
     /// the rider on the part, orientation included: the only rotation a no-orientation attach takes from it.</summary>
-    private static void AttachAt(DbId id, nint shell, DbId parent, int part, byte mode)
+    internal static void AttachAt(DbId id, nint shell, DbId parent, int part, byte mode)
     {
         Detach(id);
         SceneDb.SetAttachTo(id.Index, parent);
@@ -574,7 +574,7 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
 
     /// <summary>Clear the attachment columns -- what <c>AttachToObject(NULL, "", 0)</c> does, and the first
     /// half of what <c>RemoveAuroraObject</c> @0x58b210 does to let an object go.</summary>
-    private static void Detach(DbId id)
+    internal static void Detach(DbId id)
     {
         DbId was = SceneDb.ObjAttachTo[id.Index];
         if (SceneDb.Objects.Valid(was))
