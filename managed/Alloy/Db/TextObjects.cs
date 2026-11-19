@@ -182,6 +182,9 @@ public sealed class TextDoc
     /// <summary><c>+0x544</c>: scroll inside the top line; <c>+0x548</c>: pixel-scroll mode.</summary>
     public float SubLineScroll;
     public bool PixelScroll;
+    /// <summary><c>+0x54c</c>: how far the hit quad reaches past the box on each side horizontally. Only
+    /// <c>StringGob::HitCheck</c> reads it, and only the game writes it, through the display block.</summary>
+    public float HitMargin;
 
     /// <summary>Slot 50's handed-out item array: native storage, one entry per line, holding the line's
     /// 1-based index as a sentinel rather than a pointer. The engine's two sort routines permute this array
@@ -193,10 +196,10 @@ public sealed class TextDoc
     /// <summary>Slot 24's handed-out display block (<c>StringGob+0x528</c>): native, one per document, because the
     /// game WRITES through it -- <c>CGuiLabel::LoadGffData</c> @0x68a4c0 sets the box at <c>+0xc</c>/<c>+0x10</c>
     /// and calls nothing. <see cref="TextSlots.SyncDisplayInfo"/> adopts a write on the next slot call;
-    /// <c>InfoW</c>/<c>InfoH</c> are what the block held last, so a later <c>SetMaxWidth</c> is not undone.</summary>
+    /// <c>InfoW</c>/<c>InfoH</c>/<c>InfoMargin</c> are what the block held last, so a later <c>SetMaxWidth</c> is not undone.</summary>
     internal nint InfoBuf;
     internal bool InfoOut;
-    internal float InfoW, InfoH;
+    internal float InfoW, InfoH, InfoMargin;
 
     public TextCaret Caret;
     public bool CaretVisible;
@@ -377,6 +380,7 @@ public static class TextObjects
         d.TotalHeight = d.VisibleHeight = 0f;
         d.TopLine = d.VisibleLines = d.ScrollBudget = 0;
         d.SubLineScroll = 0f; d.PixelScroll = false;
+        d.HitMargin = 0f;
         d.Caret = default; d.Caret.Glyph = (byte)'_';
         d.CaretVisible = false;
         d.CaretR = 0.5f; d.CaretG = 1f; d.CaretB = 1f;

@@ -275,6 +275,22 @@ public static unsafe partial class HitTestCheck
                 ok = Fail(log, "a pick on a row with a line model, off the model, did not answer the row");
             if (PickAt(rx + rw * 3 / 4) == rider)
                 ok = Fail(log, "a line model answered a pick outside its row's quad -- the engine never casts there");
+
+            // A chat line's portrait sits LEFT of its text, and the engine reaches it only because the chat window
+            // writes a hit margin through the display block, which widens the quad on both sides.
+            float lx = (rx - rw / 2 - 20 - 400) * k - SceneDb.ObjPos[ri].X;
+            doc.PublishedQuads = new QuadList { Attached = [(rider, lx, ay)], AttachedCount = 1 };
+            const int portrait = rx - rw / 2 - 30;
+            if (PickAt(portrait) == rider)
+                ok = Fail(log, "a line model left of a quad with no hit margin answered a pick -- the engine never casts there");
+            ((TextDisplayInfo*)TextSlots.DisplayInfo(doc))->HitMargin = 0.4f;
+            TextSlots.SyncDisplayInfo(row);
+            HitBounds.Refresh(ri);
+            if (PickAt(portrait) != rider)
+                ok = Fail(log, "a pick on a chat line's portrait, inside the hit margin the game wrote through the "
+                             + "display block, did not answer the portrait");
+            if (PickAt(rx - rw / 2 - 50) == rider)
+                ok = Fail(log, "a line model answered a pick past the hit margin -- the quad must be hit first");
             doc.ResetQuads();
         }
 

@@ -61,18 +61,18 @@ public static class HitBounds
         HitGrid.File(o);
     }
 
-    /// <summary>The quad <c>StringGob::HitCheck</c> @0x492920 tests, in the gob's own frame, or false for an
-    /// object that is not a text gob with a box set. <c>+0x54c</c> is 0 on both builds, so the quad is
-    /// <c>[0,MaxWidth] x [-MaxHeight,0]</c> -- the box the game SET, not the measured text. A width of 0 or a
-    /// height at or below <c>-5e-06</c> is the engine's "no box" sentinel and is refused rather than filed.</summary>
+    /// <summary>The quad <c>StringGob::HitCheck</c> @0x492920 tests, in the gob's own frame, or false for an object
+    /// that is not a text gob with a box set: <c>[-HitMargin,MaxWidth+HitMargin] x [-MaxHeight,0]</c>, the box the
+    /// game SET widened by <c>+0x54c</c>, not the measured text. A width of 0 or a height at or below
+    /// <c>-5e-06</c> is the engine's "no box" sentinel and is refused rather than filed.</summary>
     internal static bool TextQuad(int o, out Vector3 lo, out Vector3 hi)
     {
         lo = default; hi = default;
         if (SceneDb.ObjKindOf[o] != ObjKind.Text) return false;
         TextDoc? d = TextObjects.Of(SceneDb.Objects.IdAt(o));
         if (d == null || !(d.MaxWidth > 0f) || d.MaxHeight <= -5e-06f) return false;
-        lo = new Vector3(0f, -d.MaxHeight, 0f);
-        hi = new Vector3(d.MaxWidth, 0f, 0f);
+        lo = new Vector3(-d.HitMargin, -d.MaxHeight, 0f);
+        hi = new Vector3(d.MaxWidth + d.HitMargin, 0f, 0f);
         return true;
     }
 

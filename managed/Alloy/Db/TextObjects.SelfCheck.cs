@@ -818,6 +818,11 @@ public static class TextObjectsSelfCheck
         TextObjects.Stale(d);
         c.Expect(((TextDisplayInfo*)p)->ScrollBudget == d.ScrollBudget && d.ScrollBudget > 0 && ((TextDisplayInfo*)p)->TopLine == d.TopLine,
           $"the cached block follows the scroll (budget {((TextDisplayInfo*)p)->ScrollBudget} vs {d.ScrollBudget}), so the thumb is not the minimum");
+        // CGuiInGameChatWindow's constructor writes the hit margin and calls on; the next change gate must not wipe it.
+        ((TextDisplayInfo*)p)->HitMargin = 0.3f;
+        TextObjects.Stale(d);
+        c.Expect(((TextDisplayInfo*)p)->HitMargin == 0.3f,
+          "the hit margin written through the display block survives the next change gate");
     }
 
     /// <summary>Slot 7's model rides its line into the published quad list at that line's pen -- the list

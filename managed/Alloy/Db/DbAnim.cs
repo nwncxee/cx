@@ -178,6 +178,7 @@ public static unsafe partial class DbAnim
                 if (k >= members.Count) continue;
                 StepObject(members[k], dt, 0);
             }
+        if (members != null && !SceneDb.SceneIsWorld[si]) StepLineModels(members);
         RateEnd();
         DanglyDrain();
         LodChoose(si);
@@ -224,6 +225,22 @@ public static unsafe partial class DbAnim
         HitFeed.Fold();
         FrameZones.Add(FrameZones.Zone.HitFold, tHit);
         FrameZones.Add(FrameZones.Zone.Settle, t, FrameZones.Ticks(FrameZones.Zone.HitFold) - hit0);
+    }
+
+    /// <summary>The models riding a panel text's visible lines, stepped by zero as <c>StringGob::Render</c>
+    /// @0x4933a0 steps each before drawing it. They are in no scene, so the walk never reaches them, and a
+    /// chat portrait's hover highlight is an animation only this step applies.</summary>
+    private static void StepLineModels(DbList members)
+    {
+        for (int k = 0; k < members.Count; k++)
+        {
+            DbId t = members[k];
+            if (!SceneDb.Objects.Valid(t) || SceneDb.ObjKindOf[t.Index] != ObjKind.Text || !SceneDb.ObjVisible[t.Index])
+                continue;
+            QuadList? lines = TextObjects.Of(t)?.PublishedQuads;
+            if (lines == null) continue;
+            for (int j = 0; j < lines.AttachedCount; j++) StepObject(lines.Attached[j].Model, 0f, 0);
+        }
     }
 
     /// <summary>One object advanced outside any scene walk (<c>CAurObject::AnimateExternal</c> @0x53a560).
