@@ -29,16 +29,18 @@ uniform mat4 uViewInv;           // the camera's world matrix: column 3 is the e
 // The stock working colour, and the texel inc_standard's setup call multiplies into it -- sampled by the
 // wrapper before the stage's body runs, in DISPLAY space, which is where the stage expects to find it.
 vec4 FragmentColor;
+vec4 CxVanOut;   // the stage's output: the splice points gl_FragColor here, so a stage's own FragmentColor cannot take it
 vec4 CxWholeTexel;
 
 // $VANILLA-MAIN $SKYFS$
-void CxVanMain() { FragmentColor = vec4(0.0, 0.0, 0.0, 1.0); }
+void CxVanMain() { CxVanOut = vec4(0.0, 0.0, 0.0, 1.0); }
 // $VANILLA-END
 
 void main()
 {
     CxWholeTexel = texture(uTex, vUV, uLodBias);
     FragmentColor = vec4(0.0, 0.0, 0.0, 1.0);
+    CxVanOut = FragmentColor;
     CxVanMain();
     // The stage hands back DISPLAY space (its own RevertColorSpace tail, and every layer after it is
     // display-space arithmetic); the Alloy frame is LINEAR, so the one encode comes off here. That is what
@@ -48,11 +50,11 @@ void main()
 #ifdef CX_NATIVE
     // A native stage hands back LINEAR HDR (a sun that blooms), so neither the clamp nor the encode applies;
     // NaN and half-float overflow are still kept out of the frame and the probe cube.
-    vec4 c = mix(vec4(clamp(FragmentColor.rgb, 0.0, 60000.0), clamp(FragmentColor.a, 0.0, 1.0)), vec4(0.0),
-                 isnan(FragmentColor));
+    vec4 c = mix(vec4(clamp(CxVanOut.rgb, 0.0, 60000.0), clamp(CxVanOut.a, 0.0, 1.0)), vec4(0.0),
+                 isnan(CxVanOut));
     vec3 rgb = c.rgb;
 #else
-    vec4 c = mix(clamp(FragmentColor, 0.0, 1.0), vec4(0.0), isnan(FragmentColor));
+    vec4 c = mix(clamp(CxVanOut, 0.0, 1.0), vec4(0.0), isnan(CxVanOut));
     vec3 rgb = pow(c.rgb, vec3($SRGB$));
 #endif
     if (uSkyFog > 0.0) rgb = CxFogSky(rgb, vWorld, uSkyFog);

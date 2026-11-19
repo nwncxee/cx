@@ -128,7 +128,7 @@ internal static class EnvProbe
             _settle = new();
 
             string sky = ShaderSource.Get("cx_sky_f.glsl");
-            check.Expect(sky.Contains("mix(clamp(FragmentColor, 0.0, 1.0), vec4(0.0), isnan(FragmentColor))")
+            check.Expect(sky.Contains("mix(clamp(" + VanillaShader.MainOut + ", 0.0, 1.0), vec4(0.0), isnan(" + VanillaShader.MainOut + "))")
                          && sky.Contains("CxOitOut(vec4(rgb, c.a))"),
                          "a hosted sky stage is clamped as the engine's UNORM target clamps it, NaN to 0");
         }
