@@ -443,9 +443,9 @@ internal static unsafe class FacadeSelfCheck
             int listed = new Gob(ps).CallbackArray.Count;
             text = TextObjects.Create(default, 1);
             ts = text.IsNull ? 0 : Facade.Mint(FacadeKind.String, text);
-            ObjectSlots.UnlinkText(text);
+            ObjectSlots.Detach(text);
             TextSlots.AttachToObject(text, page, -1, 0);
-            ObjectSlots.LinkText(text, page, true);
+            ObjectSlots.LinkText(text, page, 0);
             ObjectSlots.AttachAt(other, os, page, -1, 0);
             check.Expect(new Gob(ps).CallbackArray.Count == listed + 2, "a text rider and an object rider each listen on the page");
             ObjectSlots.Detach(other);

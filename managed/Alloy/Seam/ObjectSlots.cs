@@ -367,11 +367,7 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
             return;
         }
         DbId was = SceneDb.ObjScene[id.Index];
-        if (!was.IsNull && was.Value != sc.Value) DbScene.Leave(was, id);
-        if (!sc.IsNull) { DbScene.Join(sc, id); Flag(id, SeamFlag.EverAttached, true); }
-        else SceneDb.ObjScene[id.Index] = default;
-        if (shell != 0) Facade.SetSceneWord(shell, sceneShell);
-        SceneDb.Touch(id, Dirty.Tree);
+        Rehome(id, shell, was, sc, sceneShell);
         // Gob::SetScene @0x53e020 ends in UpdateScenes: riders join in its listener order, as the event path's do.
         if (shell != 0 && was.Value != sc.Value) FireEvent(shell, EventNames.UpdateScenes, 0);
         else PropagateScene(id, shell, sc, sceneShell);
@@ -400,7 +396,8 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
                 if (SceneDb.RiderParent(k - 1).Value == pid.Value && SceneDb.Objects.LiveAt(k - 1))
                 {
                     DbId c = SceneDb.Objects.IdAt(k - 1);
-                    Carry(pid, c, Facade.ObjectShell(c), psc, pss);
+                    nint cs = Facade.ObjectShell(c);
+                    if (Move(pid, c, cs, psc, pss, out DbId t, out nint ts)) Push(c, cs, t, ts);
                 }
             // The shell list too, for a rider some engine path filed there without the seam's attach.
             ExoArray attached = new Gob(pshell).AttachArray;
@@ -408,7 +405,9 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
             for (int i = 0; i < n && attached.Data != 0; i++)
             {
                 nint child = attached[i];
-                if (child != 0) Carry(pid, Facade.Object(child, 19), child, psc, pss);
+                if (child == 0) continue;
+                DbId c = Facade.Object(child, 19);
+                if (Move(pid, c, child, psc, pss, out DbId t, out nint ts)) Push(c, child, t, ts);
             }
             // The APPEND chain as well. Gob::Append's children ride a part rather than the attach list (CX makes
             // each a child object, where the engine grew one part range), so they are not in GobAttachList. A
@@ -416,17 +415,11 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
             // only then places it -- so without this every body part stayed in scene 0 and never drew.
             foreach (DbId a in SceneDb.Pieces(pid))
             {
-                if (SceneDb.ObjScene[a.Index].Value != psc.Value)
-                {
-                    DbId was = SceneDb.ObjScene[a.Index];
-                    if (!was.IsNull) DbScene.Leave(was, a);
-                    if (!psc.IsNull) { DbScene.Join(psc, a); Flag(a, SeamFlag.EverAttached, true); }
-                    else SceneDb.ObjScene[a.Index] = default;
-                    nint ashell = Facade.ObjectShell(a);
-                    if (ashell != 0) Facade.SetSceneWord(ashell, pss);
-                    SceneDb.Touch(a, Dirty.Tree);
-                    Push(a, ashell, psc, pss);
-                }
+                DbId was = SceneDb.ObjScene[a.Index];
+                if (was.Value == psc.Value) continue;
+                nint ashell = Facade.ObjectShell(a);
+                Rehome(a, ashell, was, psc, pss);
+                Push(a, ashell, psc, pss);
             }
         }
     }
@@ -444,17 +437,9 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
         _carry[_carryTop++] = new Carried { Id = id, Shell = shell, Scene = sc, SceneShell = sceneShell };
     }
 
-    /// <summary>One rider of <see cref="PropagateScene"/>: move <paramref name="c"/> to the scene its parent got
-    /// (or the one a cross-scene attach remembers) and queue it to carry on down. A rider already in its target
-    /// is not walked again, which is also what ends a cycle.</summary>
-    private static void Carry(DbId id, DbId c, nint child, DbId sc, nint sceneShell)
-    {
-        if (Move(id, c, child, sc, sceneShell, out DbId target, out nint targetShell))
-            Push(c, child, target, targetShell);
-    }
-
-    /// <summary>The move half of <see cref="Carry"/>: true when <paramref name="c"/> changed scene, with the
-    /// scene it went to.</summary>
+    /// <summary>Move rider <paramref name="c"/> to the scene its parent got (or the one a cross-scene attach
+    /// remembers): true when it changed scene, with the scene it went to. A rider already in its target is not
+    /// walked again, which is also what ends a cycle.</summary>
     private static bool Move(DbId id, DbId c, nint child, DbId sc, nint sceneShell, out DbId target, out nint targetShell)
     {
         target = sc;
@@ -473,12 +458,19 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
         }
         DbId was = SceneDb.ObjScene[c.Index];
         if (was.Value == target.Value) return false;
-        if (!was.IsNull) DbScene.Leave(was, c);
-        if (!target.IsNull) { DbScene.Join(target, c); Flag(c, SeamFlag.EverAttached, true); }
-        else SceneDb.ObjScene[c.Index] = default;
-        Facade.SetSceneWord(child, targetShell);
-        SceneDb.Touch(c, Dirty.Tree);
+        Rehome(c, child, was, target, targetShell);
         return true;
+    }
+
+    /// <summary>Leave <paramref name="was"/>, join <paramref name="to"/> (or no scene), and mirror it at the
+    /// shell's +0x88: what every scene change of one object writes.</summary>
+    private static void Rehome(DbId id, nint shell, DbId was, DbId to, nint toShell)
+    {
+        if (!was.IsNull && was.Value != to.Value) DbScene.Leave(was, id);
+        if (!to.IsNull) { DbScene.Join(to, id); Flag(id, SeamFlag.EverAttached, true); }
+        else SceneDb.ObjScene[id.Index] = default;
+        if (shell != 0) Facade.SetSceneWord(shell, toShell);
+        SceneDb.Touch(id, Dirty.Tree);
     }
 
     /// <summary>Put <paramref name="child"/>'s attach listener on <paramref name="parent"/>'s callback list, where
@@ -603,19 +595,15 @@ public sealed unsafe partial class ObjectSlots : ISeamProvider
     }
 
     /// <summary>The object half of a <c>CAurString</c> attach (that interface's slots 2 and 3, which
-    /// <see cref="TextSlots"/> answers for the record): unlink the text from its old parent's attach list and,
-    /// once the text record has taken its columns, link it into the new parent's list and inherit the parent's
-    /// scene, as the last line of <c>Gob::AttachToObject</c> does for any gob.</summary>
-    internal static void UnlinkText(DbId id) => Detach(id);
-
-    /// <inheritdoc cref="UnlinkText"/>
-    internal static void LinkText(DbId id, DbId parent, bool listen)
+    /// <see cref="TextSlots"/> answers for the record), after <see cref="Detach"/>: link the text into the new
+    /// parent's list and inherit its scene, as the last line of <c>Gob::AttachToObject</c> does for any gob.</summary>
+    internal static void LinkText(DbId id, DbId parent, int flags)
     {
         nint shell = Facade.ObjectShell(id);
         if (shell == 0 || !SceneDb.Objects.Valid(parent)) return;
         AddAttachment(Facade.ObjectShell(parent), shell);
         InheritScene(id, shell, parent);
-        if (listen) Listen(Facade.ObjectShell(parent), shell);
+        if (Mode(flags) != SceneDb.AttachNone) Listen(Facade.ObjectShell(parent), shell);
     }
 
     /// <summary>Clear the attachment columns -- what <c>AttachToObject(NULL, "", 0)</c> does, and the first
