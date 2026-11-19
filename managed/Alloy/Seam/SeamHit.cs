@@ -40,7 +40,7 @@ internal static unsafe class SeamHit
             // Records created since the last fold are not in the index yet, and the engine casts MID-LOAD
             // (see HitFeed.Sync). Outermost cast only: a re-entrant one is inside the same frame's data.
             if (depth == 0) HitFeed.Sync();
-            HitQuery q = Query(scene, from, to, info, _ignore[depth]);
+            HitQuery q = Query(scene, from, to, info, _ignore[depth], EngineBoxExpand());
             bool hit;
             HitResult r;
             try { hit = HitTest.Cast(in q, out r); }
@@ -57,14 +57,15 @@ internal static unsafe class SeamHit
     /// <summary>The query a slot's <c>CHitInfo</c> describes: the caller's surface mask, box-only bit,
     /// statics-only gate and ignore list, all of which the real client fills (it replaces the mask with
     /// <c>CClientExoApp::GetHitCheckMaterialMask</c>'s value and ignores the followed creature). A null record
-    /// is a plain pick.</summary>
-    private static HitQuery Query(DbId scene, Vector3 from, Vector3 to, nint info, ulong[] ignore)
+    /// is a plain pick. <paramref name="boxExpand"/> is the engine's box-pick margin.</summary>
+    internal static HitQuery Query(DbId scene, Vector3 from, Vector3 to, nint info, ulong[] ignore, Vector3 boxExpand)
     {
         HitQuery q = HitQuery.Pick(scene, from, to);
         if (info == 0) return q;
         var h = new CHitInfo(info);
         q.SurfaceMask = (ulong)h.SurfaceMask;
         q.BoxOnly = h.BoxOnly != 0;
+        q.BoxExpand = boxExpand;
         // CHitInfo+0x00 non-zero is the engine's "statics only": Scene::HitCheck runs the BSP pass and stops.
         q.Objects = h.Mode == 0;
         int n = h.IgnoreCount;
@@ -102,6 +103,13 @@ internal static unsafe class SeamHit
 
     /// <summary>Nested casts one thread may have in flight. Two is the engine's deepest shape; four is slack.</summary>
     private const int MaxDepth = 4;
+    /// <summary><c>g_HitCheckBoxExpansion</c>, the margin <c>CClientExoAppInternal::UpdateCamera</c> @0x63fbb0 sets
+    /// each frame from the camera distance and <c>PartTriMesh::HitCheckGeom</c> @0x438570 adds to every box pick.</summary>
+    private static readonly nint BoxExpansion = Native.Sym(SymbolMap.HitCheckBoxExpansion);
+
+    /// <summary>The engine's box-pick margin as it stands this frame; zero where the global is not resolved.</summary>
+    private static Vector3 EngineBoxExpand() => BoxExpansion == 0 ? default : *(Vector3*)BoxExpansion;
+
     [ThreadStatic] private static int _depth;
     /// <summary>One ignore bitset a nesting depth, a bit a record index.</summary>
     private static readonly ulong[][] _ignore = Pool();

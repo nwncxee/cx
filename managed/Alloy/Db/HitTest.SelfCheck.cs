@@ -677,6 +677,20 @@ public static unsafe partial class HitTestCheck
                          + "(it must be added after the scale, not before)");
         q.BoxExpand = default;
 
+        // A mouse pick reaches the cast through the seam, which must carry the engine's margin onto a box pick:
+        // without it a small or sunk object loses the click area the stock client gives it.
+        byte* rec = stackalloc byte[EngineLayout.SizeOfHitInfo];
+        for (int i = 0; i < EngineLayout.SizeOfHitInfo; i++) rec[i] = 0;
+        var hi = new CHitInfo((nint)rec);
+        hi.SafeIndex = -1;
+        hi.BoxOnly = 1;
+        var seam = CX.Alloy.Seam.SeamHit.Query(world.Scene, new Vector3(120, 0, 0.5f), new Vector3(180, 0, 0.5f),
+                                               (nint)rec, new ulong[(SceneDb.MaxObjects + 63) / 64], new Vector3(0.5f));
+        if (!HitTest.Cast(seam, out r)) ok = Fail(log, "a box pick through the seam missed");
+        else if (MathF.Abs((bare - r.Point.X) - wantMove) > 0.02f)
+            ok = Fail(log, $"a box pick through the seam moved the hit by {bare - r.Point.X:F3}m, want {wantMove:F3} "
+                         + "(the engine's g_HitCheckBoxExpansion margin)");
+
         // The walkmesh part: box-only must NOT apply to it. The engine's PartAABB::HitCheckGeom does not read
         // CHitInfo+0x20, and if CX let it, a pick whose camera stands inside the tile's walkmesh box would
         // collapse onto the camera and click-to-move would stop working -- so the box pick must land on the
