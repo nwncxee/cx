@@ -13,8 +13,9 @@ internal struct Footing
     public byte Stage;
     /// <summary>In the air last frame, so a hold now is a landing.</summary>
     public bool Aired;
-    /// <summary>The hold (world XY) and the world heading it keeps (radians); where a step sets the foot down.</summary>
-    public Vector2 At, To;
+    /// <summary>The hold (world XY) and the world heading it keeps (radians); where a step sets the foot down; the offset
+    /// off the warped animation the hold was taken at (an aimed landing's).</summary>
+    public Vector2 At, To, Landed;
     public float Heading;
     /// <summary>Drawn this frame off the warped animation: the offset (world) and the turn about the vertical (radians,
     /// positive = left).</summary>
@@ -62,8 +63,8 @@ internal static partial class Legs
     internal const float SwingEnd = 0.85f;
     /// <summary>Seconds a foot's turn off the animation eases out over once nothing holds it (a stop, a settle).</summary>
     internal const float YawEase = 0.3f;
-    /// <summary>Seconds a foot handed to a stop's settle in the air takes to come down.</summary>
-    internal const float LiftTime = 0.15f;
+    /// <summary>Seconds a foot's leftover offset takes to ease out: one handed over in the air, or left by a walk gone.</summary>
+    internal const float LeftTime = 0.15f;
 
     /// <summary>One frame of a foot at warped world point <paramref name="p"/> whose legs head <paramref name="heading"/>
     /// (world yaw), on the ground (<paramref name="on"/>) or <paramref name="u"/> through its swing: the offset it is drawn
@@ -80,7 +81,8 @@ internal static partial class Legs
         if (on && f.Stage == Footing.Fresh)
         {
             f.Stage = Footing.Held;
-            f.At = q + new Vector2(f.Off.X, f.Off.Y);
+            f.Landed = new Vector2(f.Off.X, f.Off.Y);
+            f.At = q + f.Landed;
             f.Heading = heading + f.Yaw;
         }
         if (f.Stage == Footing.Swing)
@@ -88,7 +90,8 @@ internal static partial class Legs
             if (on)
             {
                 f.Stage = Footing.Held;
-                f.At = q + new Vector2(f.Off.X, f.Off.Y);
+                f.Landed = new Vector2(f.Off.X, f.Off.Y);
+                f.At = q + f.Landed;
                 f.Heading = heading + f.Yaw;
                 down = aired;
             }
@@ -124,6 +127,7 @@ internal static partial class Legs
         {
             f.Stage = Footing.Held;
             f.At = f.To;
+            f.Landed = Vector2.Zero;
             f.Heading = heading;
             f.Off = new Vector3(f.To - q, 0f);
             f.Yaw = 0f;
@@ -165,12 +169,12 @@ internal static partial class Legs
         f.Late = u >= SwingEnd;
     }
 
-    /// <summary>A hold that costs more than <paramref name="r"/> allows: too far off the warped animation at
-    /// <paramref name="p"/>, turned past <see cref="YawCap"/>, or needing the pelvis lower than the animation does by
+    /// <summary>A hold that costs more than <paramref name="r"/> allows: drifted too far off the warped animation at
+    /// <paramref name="p"/> since it was taken, turned past <see cref="YawCap"/>, or needing the pelvis lower than the animation does by
     /// more than its sink.</summary>
     private static bool Breaks(in Footing f, Vector3 p, in HoldLimits r)
     {
-        if (new Vector2(f.Off.X, f.Off.Y).LengthSquared() > r.Hold * r.Hold || MathF.Abs(f.Yaw) > YawCap) return true;
+        if ((new Vector2(f.Off.X, f.Off.Y) - f.Landed).LengthSquared() > r.Hold * r.Hold || MathF.Abs(f.Yaw) > YawCap) return true;
         float held = Need(new Vector3(f.At.X, f.At.Y, p.Z) - r.Hip, r.Reach, r.Cap), anim = Need(p - r.Hip, r.Reach, r.Cap);
         return held > anim + r.Sink;
     }

@@ -247,8 +247,12 @@ internal static unsafe class Settle
     {
         Pose(ref s, rAnkle, lAnkle, rStance, lStance, fade, scale, 0f, out dr, out dl);
         s.SettleTurn = false;
-        Handed(ref s.FootingR, dr, s.YawR);
-        Handed(ref s.FootingL, dl, s.YawL);
+        Handed(ref s.FootingR, new Vector3(dr.X, dr.Y, 0f), s.YawR);
+        Handed(ref s.FootingL, new Vector3(dl.X, dl.Y, 0f), s.YawL);
+        // a foot handed over mid-step is in the air: it comes down over frames, not with the hold it lands into
+        s.LeftR.Z += dr.Z;
+        s.LeftL.Z += dl.Z;
+        dr.Z = dl.Z = 0f;
         s.Planting = true;
         s.SettleStage = None;
         s.SettleT = 0f;

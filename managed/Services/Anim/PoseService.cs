@@ -656,6 +656,7 @@ public sealed unsafe class PoseService : IExtenderService
         s.Hips = bones.Pelvis != IntPtr.Zero;
         LegFrame f = default;
         f.Dt = dt; f.Snap = snap; f.Gated = gated; f.Tracked = tracked; f.Scale = scale;
+        f.Since = since / (float)System.Diagnostics.Stopwatch.Frequency;
         f.Knobs = Knobs();
         f.Origin = adjPos; f.Facing = adj; f.FwdH = fwdH; f.Right = right;
         f.Anim = anim; f.Swapped = s.Swapped; f.Hips = s.Hips; f.Vel = s.Vel;

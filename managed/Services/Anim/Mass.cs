@@ -30,10 +30,11 @@ internal static class Mass
     internal static int Loaded;
 
     /// <summary>The dip (world units, negative is down) to add to the root's height this frame. With the knob off
-    /// (<paramref name="on"/>), <paramref name="gated"/> (nothing keeps the feet down then) or on a snap it is 0 and the spring starts over.</summary>
+    /// (<paramref name="on"/>), <paramref name="gated"/> (nothing keeps the feet down then) or on a snap it is 0 and the spring starts over; a frame of no time (a pause) holds it.</summary>
     internal static float Step(ref LegState s, float cue, float rise, float scale, bool on, bool gated, bool snap, float dt)
     {
-        if (!on || gated || snap || !(dt > 0f)) { s.Dip = s.DipV = s.Climb = s.ClimbA = 0f; return 0f; }
+        if (!on || gated || snap) { s.Dip = s.DipV = s.Climb = s.ClimbA = 0f; return 0f; }
+        if (!(dt > 0f)) return s.Dip;
         float dip = Advance(ref s, cue, rise, scale, dt);
         if (dip < -LoadedDip) Loaded++;
         return dip;

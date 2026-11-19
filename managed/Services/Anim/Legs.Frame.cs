@@ -116,6 +116,8 @@ internal struct LegFrame
     /// corrected recently enough that last frame's heading counts.</summary>
     public float Dt;
     public bool Snap, Gated, Tracked;
+    /// <summary>Seconds of wall time since this body's leg solve last ran (0: not known).</summary>
+    public float Since;
     public LegKnobs Knobs;
     /// <summary>The body's rendered origin (world), its rotation (the gob frame, unturned), that rotation's horizontal
     /// forward and right, and its scale.</summary>
@@ -187,8 +189,13 @@ internal struct LegState
     public float Drop, DropV, LegLen;
     /// <summary>Seconds of one step of the walk last frame, which the hip turn comes round over this frame (0: none seen).</summary>
     public float TurnStep;
-    /// <summary>Each foot's height handed to a stop's settle in the air, and its easing spring.</summary>
-    public float LiftR, LiftL, LiftVR, LiftVL;
+    /// <summary>Each foot's offset with nothing left to hold it (handed over in the air, or a walk gone with no stop), easing
+    /// out, and its spring.</summary>
+    public Vector3 LeftR, LeftL, LeftVR, LeftVL;
+    /// <summary>Whether a frame has been solved, and where the body stood and headed (world, radians) then.</summary>
+    public bool Seen;
+    public Vector3 SeenAt;
+    public float SeenHeading;
     /// <summary>Each foot's turn off the animation as last drawn (radians), and its easing spring once nothing holds it.</summary>
     public float YawR, YawL, YawVR, YawVL;
     /// <summary><see cref="Settle"/>: locomoting last frame, the stepping foot, a turn and not a stop, still turning, stepping

@@ -163,18 +163,19 @@ internal static class StrideWarp
         s.Planting |= weight >= Blended;
         if (s.Planting)
         {
-            // a one-shot past its end times nothing: its plants keep their offsets, which fade with the run's weight
+            // a one-shot past its end times nothing: its plants keep their offsets
             bool timed = k.Cyclic || phase < 1f;
             float heading = MathF.Atan2(p.LegFwdH.Y, p.LegFwdH.X);
             Vector3 line = Vector3.Transform(dir, legs);
-            // a foot setting down this frame is aimed too: its hold is taken where it lands
-            if (s.FootingR.Stage == Footing.Swing) dR += weight * Legs.Aim(ref s.FootingR, ra + dR, origin, f.Vel, line, k.SwingR, scale);
-            if (s.FootingL.Stage == Footing.Swing) dL += weight * Legs.Aim(ref s.FootingL, la + dL, origin, f.Vel, line, k.SwingL, scale);
+            // a foot setting down this frame is aimed too: its hold is taken where it lands. The holds and aims are where the
+            // foot is drawn, so the walk's weight scales only the warp under them, once
+            if (s.FootingR.Stage == Footing.Swing) dR += Legs.Aim(ref s.FootingR, ra + dR, origin, f.Vel, line, k.SwingR, scale);
+            if (s.FootingL.Stage == Footing.Swing) dL += Legs.Aim(ref s.FootingL, la + dL, origin, f.Vel, line, k.SwingL, scale);
             HoldLimits r = Limits(rt, Legs.Stretch(f, p, true), leg, scale), l = Limits(lt, Legs.Stretch(f, p, false), leg, scale);
-            dR += weight * Plant(ref s.FootingR, k.ContactR, k.SwingR, ra + dR, heading, r, timed, f.Dt, out float yawR, out downR);
-            dL += weight * Plant(ref s.FootingL, k.ContactL, k.SwingL, la + dL, heading, l, timed, f.Dt, out float yawL, out downL);
-            p.YawR = weight * yawR;
-            p.YawL = weight * yawL;
+            dR += Plant(ref s.FootingR, k.ContactR, k.SwingR, ra + dR, heading, r, timed, f.Dt, out float yawR, out downR);
+            dL += Plant(ref s.FootingL, k.ContactL, k.SwingL, la + dL, heading, l, timed, f.Dt, out float yawL, out downL);
+            p.YawR = yawR;
+            p.YawL = yawL;
         }
 
         p.Unvoiced = !k.Authored;
@@ -317,13 +318,14 @@ internal static class StrideWarp
     }
 
     /// <summary>A swing's progress measured against a different clip from here on: the offset left eases out from now, and
-    /// the aim it has keeps closing from now.</summary>
+    /// the aim it has keeps closing from now, or stays as it is when the new clip reads the swing past the aimed part.</summary>
     internal static void Rebase(ref Footing f, float u)
     {
         if (f.Stage != Footing.Swing) return;
         f.Off0 = f.Off;
         f.Yaw0 = f.Yaw;
         f.U0 = f.AimU = u;
+        f.Late = u >= Legs.SwingEnd;
     }
 
     /// <summary>The pace split, the phase seeds and the landing time against hand-worked values, and a walk run through speed

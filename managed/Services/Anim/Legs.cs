@@ -45,26 +45,34 @@ internal static partial class Legs
     /// and where a swinging one lands. The adapter casts the floors at those points.</summary>
     internal static void Stride(ref LegState s, in LegFrame f, ref LegPose p)
     {
-        bool fresh = f.Snap || !f.Tracked;
+        float heading = MathF.Atan2(f.FwdH.Y, f.FwdH.X);
+        bool fresh = f.Snap || s.Seen && Gap(f.Since - f.Dt, Flat(f.Origin - s.SeenAt).Length(),
+                                             MathF.IEEERemainder(heading - s.SeenHeading, 2f * MathF.PI), f.Scale);
+        s.Seen = true;
+        s.SeenAt = f.Origin;
+        s.SeenHeading = heading;
         if (fresh) Forget(ref s, f.Loco);
+        bool planted = s.Planting, stop = s.SettleLoco && !f.Loco;
         StrideWarp.Step(ref s, f, ref p, out Vector3 warpR, out Vector3 warpL);
         // the engine drops the walk on a stop and the warp lets go of it: the settle takes the feet over where they were
         // drawn, and a foot handed over in the air comes down over frames rather than with the settle's flat hold
-        if (s.SettleLoco && !f.Loco)
+        if (stop)
         {
             warpR = s.WarpR; warpL = s.WarpL;
-            s.LiftR = warpR.Z; s.LiftL = warpL.Z;
+            s.LeftR.Z += warpR.Z; s.LeftL.Z += warpL.Z;
             warpR.Z = warpL.Z = 0f;
         }
+        // a walk gone with no stop to take its feet over (a clip that is no walk): what it drew them by eases out
+        else if (planted && !s.Planting && !fresh) { s.LeftR += s.WarpR; s.LeftL += s.WarpL; }
         s.WarpR = warpR; s.WarpL = warpL;
         Vector3 rStance = f.HasStance ? f.StanceR : f.RAnkle + warpR, lStance = f.HasStance ? f.StanceL : f.LAnkle + warpL;
         bool settling = s.SettleStage != Settle.None;
         Settle.Feet(ref s, f.Knobs.Stride && !f.Gated && !fresh, f.Loco, f.RAnkle + warpR, f.LAnkle + warpL,
                     rStance, lStance, f.Fade, f.Standing, f.YawRate, f.Scale, f.Dt, out Vector3 setR, out Vector3 setL);
-        PoseMath.Smooth(ref s.LiftR, ref s.LiftVR, 0f, f.Dt, LiftTime);
-        PoseMath.Smooth(ref s.LiftL, ref s.LiftVL, 0f, f.Dt, LiftTime);
-        warpR += setR + new Vector3(0f, 0f, s.LiftR);
-        warpL += setL + new Vector3(0f, 0f, s.LiftL);
+        EaseOut(ref s.LeftR, ref s.LeftVR, f.Dt);
+        EaseOut(ref s.LeftL, ref s.LeftVL, f.Dt);
+        warpR += setR + s.LeftR;
+        warpL += setL + s.LeftL;
         p.WarpR = warpR; p.WarpL = warpL;
         p.FootR = f.RAnkle + warpR; p.FootL = f.LAnkle + warpL;
         // a settle handed to the walk this frame: its feet keep the turn they were handed
@@ -73,17 +81,40 @@ internal static partial class Legs
         s.TurnStep = Diagonal.StepTime(f.Walk);
     }
 
-    /// <summary>Lets go of everything the legs hold in the world: the holds, a settle and what it was handed, a foot's
-    /// leftover lift and turn. A body teleported, or unseen long enough that its last frame is no guide, starts afresh.</summary>
+    /// <summary>Lets go of everything the legs hold in the world: the holds and the planting, a settle and what it was handed,
+    /// a foot's leftover offset and turn. A body teleported, or moved while no solve saw it (<see cref="Gap"/>), starts afresh.</summary>
     private static void Forget(ref LegState s, bool loco)
     {
         Settle.Stop(ref s);
         s.SettleLoco = loco;
         s.FootingR = s.FootingL = default;
         s.WarpR = s.WarpL = Vector3.Zero;
-        s.LiftR = s.LiftL = s.LiftVR = s.LiftVL = 0f;
+        s.LeftR = s.LeftL = s.LeftVR = s.LeftVL = Vector3.Zero;
+        s.Planting = false;
         s.YawR = s.YawL = s.YawVR = s.YawVL = 0f;
     }
+
+    /// <summary>A foot's leftover offset eased to nothing over <see cref="LeftTime"/>.</summary>
+    private static void EaseOut(ref Vector3 x, ref Vector3 v, float dt)
+    {
+        PoseMath.Smooth(ref x.X, ref v.X, 0f, dt, LeftTime);
+        PoseMath.Smooth(ref x.Y, ref v.Y, 0f, dt, LeftTime);
+        PoseMath.Smooth(ref x.Z, ref v.Z, 0f, dt, LeftTime);
+    }
+
+    /// <summary>Seconds of wall time past what a frame's own time covers after which the solve may have missed the body.</summary>
+    internal const float GapTime = 0.25f;
+    /// <summary>World units (times scale) and radians a body must have moved or turned over such a gap for its holds to be stale.</summary>
+    internal const float GapMove = 0.05f, GapTurn = 0.1f;
+
+    /// <summary>The legs' holds are stale: <paramref name="unseen"/> seconds of wall time went by that this frame's own time
+    /// does not cover (no solve ran: out of view, too far), and over them the body moved <paramref name="moved"/> or turned
+    /// <paramref name="turned"/>. A hitch or a body stepped at a lower rate is covered by its frame's time; one that stood
+    /// still keeps its holds.</summary>
+    internal static bool Gap(float unseen, float moved, float turned, float scale)
+        => unseen > GapTime && (moved > GapMove * scale || MathF.Abs(turned) > GapTurn);
+
+    private static Vector3 Flat(Vector3 v) => new(v.X, v.Y, 0f);
 
     /// <summary>Each foot's turn off the animation: the holds' while the walk plants them, else the last one eased out over
     /// <see cref="YawEase"/>, so a stop or a settle never turns a held foot back in a frame.</summary>

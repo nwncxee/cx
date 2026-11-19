@@ -16,7 +16,16 @@ internal static class LegsRegress
         E3(check);
         E5(check);
         E8(check);
+        GapRule(check);
         Gap(check);
+        Hitch(check);
+        ResumeFade(check);
+        RebaseLate(check);
+        AimLanding(check);
+        GapFadeIn(check);
+        StopGoStop(check);
+        MassPaused(check);
+        WalkLost(check);
         StopYaw(check);
         PhaseOrder(check);
         FreshFeet(check);
@@ -98,9 +107,199 @@ internal static class LegsRegress
         var w = new Walker();
         while (w.T < 1f) w.Run();
         w.Skip(0.6f);
-        w.Run(tracked: false);
+        w.Run(tracked: false, since: 0.6f + Walker.Dt);
         float off = MathF.Max(w.P.WarpR.Length(), w.P.WarpL.Length());
         check.Expect(off < 0.01f, $"regress: a body seen again after a gap starts its feet on the animation: drawn {off:0.0000} off it");
+    }
+
+    /// <summary>The gap rule on hand-worked frames (wall seconds since the last solve, the frame's own seconds, how far the
+    /// body moved): 60 fps steady; a 150 ms hitch whose frame time covers it, and one whose frame time does not; a body
+    /// stepped every 2nd pass at 15, 20 and 30 fps; one stepped every 4th at 60 fps; 8 fps; 0.6 s unseen walking, standing
+    /// and turning. Only the 0.6 s walk and turn are gaps. Oracle: the hand-worked table.</summary>
+    private static void GapRule(Checker check)
+    {
+        const float F = 1f / 60f;
+        bool steady = !Legs.Gap(F - F, 0.025f, 0f, 1f);
+        bool hitch = !Legs.Gap(0.15f - 0.15f, 0.225f, 0f, 1f) && !Legs.Gap(0.15f - F, 0.025f, 0f, 1f);
+        bool mid = !Legs.Gap(2f / 15f - 2f / 15f, 0.2f, 0f, 1f) && !Legs.Gap(0.1f - 0.1f, 0.15f, 0f, 1f)
+                   && !Legs.Gap(2f / 30f - 2f / 30f, 0.1f, 0f, 1f);
+        bool far = !Legs.Gap(4f * F - 4f * F, 0.1f, 0f, 1f) && !Legs.Gap(0.125f - 0.125f, 0.19f, 0f, 1f);
+        bool unseen = Legs.Gap(0.6f + F - F, 0.9f, 0f, 1f) && !Legs.Gap(0.6f + F - F, 0f, 0f, 1f) && Legs.Gap(0.6f, 0f, 0.5f, 1f);
+        check.Expect(steady && hitch && mid && far && unseen,
+                     $"regress: the gap rule: steady {steady}, hitches {hitch}, stepped bands {mid}, far band and 8 fps {far}, unseen {unseen}");
+    }
+
+    /// <summary>Two walks of the synthetic run travelling sideways to its legs (so swings are aimed and holds carry
+    /// offsets), one given a frame 0.15 s of wall time after its last (a hitch, the frame's own time one frame, not tracked)
+    /// mid-walk, and again mid-settle after a stop handing a foot over 0.3 off its stance spot: each draws its feet and turns
+    /// as the walk with no hitch does, within a tenth of a millimetre. Oracle: the same walk with no hitch.</summary>
+    private static void Hitch(Checker check)
+    {
+        var a = new Walker();
+        var b = new Walker();
+        Vector2 side = new(1.5f, 0f);
+        while (a.T < 1.3f) { a.Run(side); b.Run(side); }
+        a.Run(side, tracked: false, since: 0.15f);
+        b.Run(side);
+        float hold = Apart(a.P, b.P);
+        a.S.WarpL = b.S.WarpL = new Vector3(0f, 0.3f, 0f);
+        for (int n = 0; n < 6; n++) { a.Stand(); b.Stand(); }
+        bool settling = a.S.SettleStage != Settle.None;
+        a.Stand(tracked: false, since: 0.15f);
+        b.Stand();
+        float settle = Apart(a.P, b.P);
+        check.Expect(settling && hold < 1e-4f && settle < 1e-4f,
+                     $"regress: a 150 ms hitch keeps the holds and the settle: {hold:0.00000} apart mid-hold, {settle:0.00000} mid-settle");
+    }
+
+    private static float Apart(in LegPose a, in LegPose b)
+        => MathF.Max(MathF.Max(Vector3.Distance(a.WarpR, b.WarpR), Vector3.Distance(a.WarpL, b.WarpL)),
+                     MathF.Max(MathF.Abs(a.YawR - b.YawR), MathF.Abs(a.YawL - b.YawL)));
+
+    /// <summary>The synthetic run stopped with its right foot held 0.1 aside and turned 0.3 rad and its left 0.3 off its stance
+    /// spot, walking on again while the left's settle step is in the air, the walk fading in from 0.2 to full over ten
+    /// frames: no frame moves either drawn foot by over 5 mm more than its animation moves, nor turns either by over 0.05 rad.
+    /// Oracle: a foot does not jump or spin in a frame.</summary>
+    private static void ResumeFade(Checker check)
+    {
+        var w = new Walker();
+        while (w.T < 1f) w.Run();
+        w.S.WarpR = new Vector3(0.1f, 0f, 0f);
+        w.S.WarpL = new Vector3(0f, 0.3f, 0f);
+        w.S.YawR = 0.3f;
+        w.S.Planting = false;
+        float air = 0f;
+        for (int n = 0; n < 60 && air < 0.01f; n++) { w.Stand(); air = w.P.WarpL.Z; }
+        Vector3 ar = w.StandR, al = w.StandL, dr = ar + w.P.WarpR, dl = al + w.P.WarpL;
+        float yr = w.P.YawR, yl = w.P.YawL, jump = 0f, spin = 0f;
+        for (int n = 0; n < 12; n++)
+        {
+            w.RunAt(MathF.Min(1f, 0.2f + 0.08f * n));
+            Vector3 nr = w.StandR + w.P.WarpR, nl = w.StandL + w.P.WarpL;
+            jump = MathF.Max(jump, MathF.Max(Vector3.Distance(nr, dr) - Vector3.Distance(w.StandR, ar),
+                                             Vector3.Distance(nl, dl) - Vector3.Distance(w.StandL, al)));
+            spin = MathF.Max(spin, MathF.Max(MathF.Abs(w.P.YawR - yr), MathF.Abs(w.P.YawL - yl)));
+            ar = w.StandR; al = w.StandL; dr = nr; dl = nl; yr = w.P.YawR; yl = w.P.YawL;
+        }
+        check.Expect(air >= 0.01f && jump < 0.005f && spin < 0.05f,
+                     $"regress: walking on mid-settle under a fading-in walk keeps the feet: settle step {air:0.0000} up, largest jump {jump:0.0000}, largest turn {spin:0.000} a frame");
+    }
+
+    /// <summary>A walk of the synthetic run travelling sideways to its legs (so its swings are aimed), told its clip changed
+    /// while its left foot is half way through a swing, the new clip reading that swing nine tenths done: the left foot
+    /// moves by under a centimetre that frame. Oracle: a foot does not jump in a frame.</summary>
+    private static void RebaseLate(Checker check)
+    {
+        var w = new Walker();
+        Vector2 side = new(1.5f, 0f);
+        while (w.T < 1.25f) w.Run(side);
+        Vector3 anim = w.StandL, before = anim + w.P.WarpL;
+        LegFrame f = w.Next(side, changed: true);
+        f.Walk.SwingL = 0.9f;
+        Legs.Step(ref w.S, f, out w.P);
+        float aim = w.P.WarpL.Length();
+        float jump = Vector3.Distance(f.LAnkle + w.P.WarpL, before) - Vector3.Distance(f.LAnkle, anim);
+        check.Expect(aim > 0.02f && jump < 0.01f,
+                     $"regress: a clip change past the aimed part of a swing keeps the aim it has: moved {jump:0.0000} a frame with an aim of {aim:0.0000}");
+    }
+
+    /// <summary>Walks of the synthetic run travelling 30° off their legs' line (so swings are aimed), one blended in at full
+    /// weight and one at half: on each landing frame and the frame after, the half-weight walk's feet move by no more than
+    /// the full one's, within a millimetre. Oracle: the same walk at full weight; the weight scales a stride warp that is none at the clip's stride.</summary>
+    private static void AimLanding(Checker check)
+    {
+        float full = LandingJump(1f, out int landings), half = LandingJump(0.5f, out _);
+        check.Expect(landings >= 3 && half < full + 0.001f,
+                     $"regress: a half-weight walk lands its aimed feet as a full one does: largest {half:0.0000} past the animation against {full:0.0000} at full weight over {landings} landings");
+    }
+
+    /// <summary>The largest amount a landing foot moves past its animation on the frame it lands and the next, the walk at
+    /// <paramref name="weight"/>.</summary>
+    private static float LandingJump(float weight, out int landings)
+    {
+        var w = new Walker();
+        Vector2 off = 1.5f * new Vector2(0.5f, MathF.Sqrt(0.75f));
+        while (w.T < 1.5f) w.Run(off);
+        Vector3 ar = w.StandR, al = w.StandL, dr = ar + w.P.WarpR, dl = al + w.P.WarpL;
+        float jump = 0f;
+        landings = 0;
+        int sinceR = 9, sinceL = 9;
+        while (w.T < 3.5f)
+        {
+            bool wasR = Walker.On(w.T), wasL = Walker.On(w.T + 0.5f);
+            w.RunAt(weight, off);
+            Vector3 nr = w.StandR + w.P.WarpR, nl = w.StandL + w.P.WarpL;
+            sinceR = !wasR && Walker.On(w.T) ? 0 : sinceR + 1;
+            sinceL = !wasL && Walker.On(w.T + 0.5f) ? 0 : sinceL + 1;
+            if (sinceR == 0) landings++;
+            if (sinceL == 0) landings++;
+            if (sinceR <= 1) jump = MathF.Max(jump, Vector3.Distance(nr, dr) - Vector3.Distance(w.StandR, ar));
+            if (sinceL <= 1) jump = MathF.Max(jump, Vector3.Distance(nl, dl) - Vector3.Distance(w.StandL, al));
+            ar = w.StandR; al = w.StandL; dr = nr; dl = nl;
+        }
+        return jump;
+    }
+
+    /// <summary>A walk of the synthetic run seen again after a real gap while it is blended in at half weight: it does not
+    /// hold its feet under the partial blend. Oracle: plants start only once a walk is blended in.</summary>
+    private static void GapFadeIn(Checker check)
+    {
+        var w = new Walker();
+        while (w.T < 1f) w.Run();
+        w.Skip(0.6f);
+        w.RunAt(0.5f, tracked: false, since: 0.6f + Walker.Dt);
+        for (int n = 0; n < 10; n++) w.RunAt(0.5f);
+        check.Expect(!w.S.Planting, "regress: after a gap a half-blended walk does not hold its feet");
+    }
+
+    /// <summary>A stop handing over a foot 3 cm up, a walk resumed two frames on and stopped again two frames after: the
+    /// right foot's drawn height moves by under 3 mm a frame throughout. Oracle: a foot does not drop in a frame.</summary>
+    private static void StopGoStop(Checker check)
+    {
+        var w = new Walker();
+        while (w.T < 1f) w.Run();
+        w.S.WarpR = new Vector3(0f, 0f, 0.03f);
+        w.S.WarpL = new Vector3(0f, 0.3f, 0f);
+        float prev = 0.03f, jump = 0f;
+        for (int n = 0; n < 16; n++)
+        {
+            if (n is 2 or 3) w.Run(); else w.Stand();
+            jump = MathF.Max(jump, MathF.Abs(w.P.WarpR.Z - prev));
+            prev = w.P.WarpR.Z;
+        }
+        check.Expect(jump < 0.003f, $"regress: stop, go, stop again keeps a lifted foot's descent: largest drop {jump:0.0000} a frame");
+    }
+
+    /// <summary>A walk of the synthetic run travelling 30° off its legs' line (so its feet are held off the animation),
+    /// whose walk clip goes while it still moves (a clip that is no walk, no stop to take the feet): over the next ten frames
+    /// neither foot's offset off its animation changes by over 5 mm a frame. Oracle: a foot does not jump in a frame.</summary>
+    private static void WalkLost(Checker check)
+    {
+        var w = new Walker();
+        Vector2 off = 1.5f * new Vector2(0.5f, MathF.Sqrt(0.75f));
+        while (w.T < 1.3f) w.Run(off);
+        float held = MathF.Max(w.P.WarpR.Length(), w.P.WarpL.Length());
+        Vector3 pr = w.P.WarpR, pl = w.P.WarpL;
+        float jump = 0f;
+        for (int n = 0; n < 10; n++)
+        {
+            LegFrame f = w.Next(off);
+            f.Walk = default;
+            Legs.Step(ref w.S, f, out w.P);
+            jump = MathF.Max(jump, MathF.Max(Vector3.Distance(w.P.WarpR, pr), Vector3.Distance(w.P.WarpL, pl)));
+            pr = w.P.WarpR; pl = w.P.WarpL;
+        }
+        check.Expect(held > 0.02f && jump < 0.005f,
+                     $"regress: a walk gone with no stop lets its feet go over frames: held {held:0.0000} off, largest change {jump:0.0000} a frame");
+    }
+
+    /// <summary>A pelvis dipped 3 cm given a frame of no time: the dip is where it was. Oracle: a paused frame changes nothing.</summary>
+    private static void MassPaused(Checker check)
+    {
+        LegState s = default;
+        s.Dip = -0.03f;
+        float dip = Mass.Step(ref s, 0f, 0f, 1f, true, false, false, 0f);
+        check.Expect(MathF.Abs(dip + 0.03f) < 1e-6f, $"regress: a paused frame holds the pelvis dip: {dip:0.0000}");
     }
 
     /// <summary>The synthetic run round a 1 rad/s curve stopped while a held foot is turned: no frame turns either foot by
@@ -268,8 +467,9 @@ internal static class LegsRegress
                      $"regress: a let-go step makes no footfall: {touchdowns} touchdowns for {landings} landings");
     }
 
-    /// <summary>One walk of the synthetic run travelling sideways to its legs, the left foot aimed mid-swing, given its
-    /// next frame at full walk weight and at half: at half every offset is half. Oracle: a correction fades with the walk's weight.</summary>
+    /// <summary>One walk of the synthetic run at its own stride travelling sideways to its legs, the left foot aimed mid-swing,
+    /// given its next frame at full walk weight and at half: the aim and the holds are where the foot is drawn, so both are
+    /// the same. Oracle: the walk's weight scales the stride warp only, which is none at the clip's own stride.</summary>
     private static void AimWeighted(Checker check)
     {
         var w = new Walker();
@@ -281,9 +481,9 @@ internal static class LegsRegress
         LegState sa = s, sb = s;
         Legs.Step(ref sa, full, out LegPose pa);
         Legs.Step(ref sb, half, out LegPose pb);
-        float miss = Vector3.Distance(pb.WarpL, 0.5f * pa.WarpL);
+        float miss = Vector3.Distance(pb.WarpL, pa.WarpL);
         check.Expect(pa.WarpL.Length() > 0.01f && miss < 1e-4f,
-                     $"regress: a swing's aim fades with the walk: at half weight {miss:0.00000} off half of {pa.WarpL.Length():0.0000}");
+                     $"regress: a swing's aim is drawn the same at any walk weight: at half weight {miss:0.00000} off {pa.WarpL.Length():0.0000}");
     }
 
     /// <summary>The synthetic run stopped while its right foot is drawn 3 cm up (a let-go hold's step) on its stance spot
@@ -338,13 +538,14 @@ internal static class LegsRegress
         }
 
         /// <summary>The next running frame, travelling <paramref name="vel"/> (world; along the legs by default).</summary>
-        public LegFrame Next(Vector2? vel = null, int anim = 4, bool swapped = false, bool tracked = true, bool changed = false)
+        public LegFrame Next(Vector2? vel = null, int anim = 4, bool swapped = false, bool tracked = true, bool changed = false,
+                             float since = Dt)
         {
             T += Dt;
             Vector2 v = vel ?? new Vector2(0f, LegRig.Speed * Rate);
             Origin += new Vector3(0f, LegRig.Speed * Rate * Dt, 0f);
             float q = T * Rate - MathF.Floor(T * Rate);
-            LegFrame f = Base(tracked && !_first, false, Dt);
+            LegFrame f = Base(tracked && !_first, false, Dt, since);
             f.Vel = v;
             f.Ground = v.Length();
             f.Anim = anim;
@@ -368,14 +569,21 @@ internal static class LegsRegress
         }
 
         /// <summary>One running frame through <see cref="Legs.Step"/>.</summary>
-        public void Run(Vector2? vel = null, bool tracked = true, bool changed = false)
-            => Legs.Step(ref S, Next(vel, tracked: tracked, changed: changed), out P);
+        public void Run(Vector2? vel = null, bool tracked = true, bool changed = false, float since = Dt)
+            => Legs.Step(ref S, Next(vel, tracked: tracked, changed: changed, since: since), out P);
+
+        /// <summary>One running frame with the walk blended in at <paramref name="weight"/>.</summary>
+        public void RunAt(float weight, Vector2? vel = null, bool tracked = true, float since = Dt)
+        {
+            LegFrame f = Next(vel, tracked: tracked, since: since);
+            f.Walk.Weight = f.Walk.Strides = weight;
+            Legs.Step(ref S, f, out P);
+        }
 
         /// <summary>One standing frame on the run's last ankles, its idle's stance spots those ankles.</summary>
-        public void Stand(bool snap = false, float dt = Dt)
+        public void Stand(bool snap = false, float dt = Dt, bool tracked = true, float since = Dt)
         {
-            T += dt;
-            LegFrame f = Base(!snap, snap, dt);
+            LegFrame f = Base(tracked && !snap, snap, dt, since);
             f.Standing = true;
             f.RAnkle = StandR + (Origin - _standAt);
             f.LAnkle = StandL + (Origin - _standAt);
@@ -387,10 +595,11 @@ internal static class LegsRegress
 
         private Vector3 _standAt;
 
-        private LegFrame Base(bool tracked, bool snap, float dt)
+        private LegFrame Base(bool tracked, bool snap, float dt, float since)
         {
             LegFrame f = default;
             f.Dt = dt;
+            f.Since = since;
             f.Tracked = tracked;
             f.Snap = snap;
             f.Knobs = new LegKnobs { Stride = true, FootIk = true, MaxSlope = 0.5f, Lift = 0.25f, Mass = true, Diagonal = true, Pivot = true };
@@ -409,6 +618,9 @@ internal static class LegsRegress
         }
 
         private static bool Stance(float phase) => phase - MathF.Floor(phase) < LegRig.Stance;
+
+        /// <summary>A foot whose cycle is at <paramref name="phase"/> is on the ground (rate 1).</summary>
+        internal static bool On(float phase) => Stance(phase);
 
         private static float Swing(float phase)
         {
