@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using CX.Engine;
@@ -186,6 +187,7 @@ internal static unsafe partial class Weather
         _area = one; weather(one, 2, 100f); _snow = 0.8f; _wet = 0.2f; _puddle = 0f;
         _track = new TrackTexel[TrackSize * TrackSize];
         Print(_track, at, h, 10f, 0.01f, at, ref lo, ref hi);
+        check.Expect(TrackAt(_track, at + h * ToeAt, 10f, 0.01f) > 0.5f, "the pressed print shows before the area load");
         load(one, IntPtr.Zero, IntPtr.Zero);
         check.Expect(_snow == 0f && _wet == 0f && _puddle == 0f && TrackAt(_track, at + h * ToeAt, 10f, 0.01f) == 0f,
           $"loading the next area into the same area object leaves no snow, soak or print (snow {_snow:F2}, wet {_wet:F2})");
@@ -195,11 +197,31 @@ internal static unsafe partial class Weather
         load(one, IntPtr.Zero, IntPtr.Zero);
         weather(one, 0, 100f);
         check.Expect(_wet == 0f && _puddle == 0f && CurrentKind == Kind.None, $"a rainy area's soak and puddles stay behind it too (wet {_wet:F2}, puddle {_puddle:F2})");
+        bool en = Enabled.V, arrive = Arrive.V; SurfaceTickState tick = _surfTick;
+        Enabled.V = true; Arrive.V = true;
+        foreach (bool slow in new[] { false, true })
+        {
+            next = slow ? &StubSlowLoad : &StubLoad; _snow = 0.4f; _surfTick = new SurfaceTickState();
+            load(one, IntPtr.Zero, IntPtr.Zero); weather(one, 2, 5f);
+            _surfTicks = Stopwatch.GetTimestamp() - Stopwatch.Frequency / 10; TickSurface(1);
+            check.Expect(_snow == 1f && _wet == 0f,
+              $"a snowy area loaded after another arrives settled, {(slow ? "after a minute-long load" : "after a quick load")} (snow {_snow:F2})");
+        }
+        _loadSlot = null; _area = IntPtr.Zero; weather(one, 0, 0f);
+        check.Expect(_area == one, "with no area-load chain, the weather still names its area, so a live master flip finds it");
+        Enabled.V = en; Arrive.V = arrive; _surfTick = tick; _surfTicks = 0;
         _loadSlot = slot; _origSet = set; _track = track;
         _area = area; Type = type; Density = dens; CurrentKind = kind; _wet = _snow = _puddle = 0f; _enterTicks = 0;
     }
 
     [UnmanagedCallersOnly] private static int StubLoad(IntPtr area, IntPtr camera, IntPtr loadscreen) => 1;
+    /// <summary>A load that takes a minute: the arrival clock the reset started is a minute old when it returns.</summary>
+    [UnmanagedCallersOnly]
+    private static int StubSlowLoad(IntPtr area, IntPtr camera, IntPtr loadscreen)
+    {
+        _enterTicks -= Stopwatch.Frequency * 60;
+        return 1;
+    }
     [UnmanagedCallersOnly] private static int StubSet(IntPtr area, byte type, float density) => 1;
 
     /// <summary>A live master flip re-issues the engine's own SetWeather to the current area with the captured
