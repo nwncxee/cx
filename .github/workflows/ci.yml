@@ -58,6 +58,8 @@ jobs:
             tools/live/keymap.py
             tools/live/keymap_test.py
             tools/live/harness-lib.sh
+            tools/live/xtool.py
+            tools/live/run-live.sh
             tools/vk/report.py
             tools/vk/mutants.sh
             tools/vk/mutate.py

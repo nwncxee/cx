@@ -2,9 +2,11 @@
 
 
 def char_keysym(ch):
-    """The X keysym of a character: Latin-1 keysyms are the code point, the rest sit at 0x01000000 + it."""
+    """The X keysym of a printable character: Latin-1's is the code point, the rest sit at 0x01000000 + it."""
     o = ord(ch)
-    return o if 0x20 <= o <= 0xFF else 0x01000000 + o
+    if not ch.isprintable():
+        raise SystemExit(f"xtool keys: type: takes printable text, not {ch!r}; use a key: step")
+    return o if o <= 0xFF else 0x01000000 + o
 
 
 def char_key(ch, keycodes):

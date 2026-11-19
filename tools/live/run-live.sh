@@ -755,7 +755,7 @@ fi
     echo "screenshots     $shots in $SHOTS"
     echo "world lit       ${world_lit:-?}% of the settled frame's centre (floor ${MIN_LIT}%), luma spread ${world_spread:-?}"
     echo "crash reports   $crashes"
-    shutdown_crash_line "$crashes" "$(find "$CRASH_DIR" -name '*.nwcrash.txt' 2>/dev/null | wc -l)" "$CRASH_DIR"
+    shutdown_crash_line "$crashes" "$(find "$CRASH_DIR" -name '*.nwcrash.txt' 2>/dev/null | wc -l)"
     echo "sound server    $([ "$audio_clients" = unchecked ] && echo 'unchecked (no pw-dump or jq)' || echo "${audio_clients:-not reached}")"
     echo "leftovers       ${survivors:-none}"
     if [ "$LADDER" = 1 ]; then
