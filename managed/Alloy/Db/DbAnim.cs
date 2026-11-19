@@ -234,10 +234,7 @@ public static unsafe partial class DbAnim
     {
         for (int k = 0; k < members.Count; k++)
         {
-            DbId t = members[k];
-            if (!SceneDb.Objects.Valid(t) || SceneDb.ObjKindOf[t.Index] != ObjKind.Text || !SceneDb.ObjVisible[t.Index])
-                continue;
-            QuadList? lines = TextObjects.Of(t)?.PublishedQuads;
+            QuadList? lines = SceneDb.ObjVisible[members[k].Index] ? TextObjects.Of(members[k])?.PublishedQuads : null;
             if (lines == null) continue;
             for (int j = 0; j < lines.AttachedCount; j++) StepObject(lines.Attached[j].Model, 0f, 0);
         }

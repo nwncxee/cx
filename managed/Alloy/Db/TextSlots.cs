@@ -119,7 +119,7 @@ public static partial class TextSlots
         d.SelAnchor = -1;
         SceneDb.TextOffsetBehavior[id.Index] = 0;
         SceneDb.TextPosOffset[id.Index] = default;
-        TextObjects.MarkText(id, d);
+        TextObjects.Stale(d);
     }
 
     /// <summary>Slot 1, <c>StringGob::~StringGob</c> @0x494c70 -- the DELETING destructor: the body above, then
@@ -170,7 +170,7 @@ public static partial class TextSlots
         int anchor = SceneDb.Objects.Valid(to) ? CX.Alloy.Seam.ObjectSlots.PartByName(to, corner1) : -1;
         AttachToObject(id, to, anchor >= 0 ? anchor : 0, 0);
         if (d.Font != null) TextObjects.Relayout(d);
-        TextObjects.MarkText(id, d);
+        TextObjects.Stale(d);
         return 1;
     }
 
@@ -261,7 +261,7 @@ public static partial class TextSlots
         TextDoc? d = TextObjects.Of(id);
         if (d == null || (uint)line >= (uint)d.LineCount) return;
         d.Lines[line].Model = model;
-        TextObjects.MarkText(id, d);
+        TextObjects.Stale(d);
     }
 
     /// <summary>Slot 8.</summary>
@@ -289,9 +289,9 @@ public static partial class TextSlots
         TextDoc? d = TextObjects.Of(id);
         if (d == null) return -1;
         TextFont? f = TextFontBake.Resolve(name);
-        if (f == null) { TextObjects.SetFont(d, null); TextObjects.MarkText(id, d); return -1; }
+        if (f == null) { TextObjects.SetFont(d, null); TextObjects.Stale(d); return -1; }
         TextObjects.SetFont(d, f);
-        TextObjects.MarkText(id, d);
+        TextObjects.Stale(d);
         return TextFonts.IndexOf(f);
     }
 
@@ -304,7 +304,7 @@ public static partial class TextSlots
         TextFont? f = TextFonts.Password(name, mask);
         if (f == null) return -1;
         TextObjects.SetFont(d, f);
-        TextObjects.MarkText(id, d);
+        TextObjects.Stale(d);
         return TextFonts.IndexOf(f);
     }
 
@@ -321,10 +321,10 @@ public static partial class TextSlots
     /// <c>RefreshDisplay</c>. CX marks the quads stale anyway, because alignment moves glyphs and a stale list is
     /// not a layout.</summary>
     public static void SetAlignment(DbId id, float h)
-    { TextDoc? d = TextObjects.Of(id); if (d == null) return; d.AlignH = h; TextObjects.MarkText(id, d); }
+    { TextDoc? d = TextObjects.Of(id); if (d == null) return; d.AlignH = h; TextObjects.Stale(d); }
 
     public static void SetAlignmentVertical(DbId id, float v)
-    { TextDoc? d = TextObjects.Of(id); if (d == null) return; d.AlignV = v; TextObjects.MarkText(id, d); }
+    { TextDoc? d = TextObjects.Of(id); if (d == null) return; d.AlignV = v; TextObjects.Stale(d); }
 
     /// <summary>Slot 16 = <c>SetIndexedColor(0, …)</c>.</summary>
     public static void SetColorDefault(DbId id, float r, float g, float b, float a) => SetIndexedColor(id, 0, r, g, b, a);
@@ -339,7 +339,7 @@ public static partial class TextSlots
         TextDoc? d = TextObjects.Of(id);
         if (d == null) return;
         TextObjects.SetIndexedColour(d, index, r, g, b, a);
-        TextObjects.MarkText(id, d);
+        TextObjects.Stale(d);
     }
 
     /// <summary>Slot 36.</summary>
@@ -352,7 +352,7 @@ public static partial class TextSlots
         TextDoc? d = TextObjects.Of(id);
         if (d == null) return 0;
         int r = TextObjects.ScrollToLine(d, line);
-        TextObjects.MarkText(id, d);
+        TextObjects.Stale(d);
         return r;
     }
 
@@ -361,7 +361,7 @@ public static partial class TextSlots
         TextDoc? d = TextObjects.Of(id);
         if (d == null) return -1;
         int r = TextObjects.ScrollToPixel(d, px);
-        TextObjects.MarkText(id, d);
+        TextObjects.Stale(d);
         return r;
     }
 
@@ -387,7 +387,7 @@ public static partial class TextSlots
         TextDoc? d = TextObjects.Of(id);
         if (d == null || (uint)line >= (uint)d.LineCount) return;
         d.Lines[line].Height = px * TextObjects.UnitPerPixel;   // a bare store: the engine recomputes nothing
-        TextObjects.MarkText(id, d);
+        TextObjects.Stale(d);
     }
 
     /// <summary>Slot 23 = <c>RecalcDisplayData</c>: the one explicit relayout the game layer has.</summary>
@@ -396,7 +396,7 @@ public static partial class TextSlots
         TextDoc? d = TextObjects.Of(id);
         if (d == null) return;
         TextObjects.Relayout(d);
-        TextObjects.MarkText(id, d);
+        TextObjects.Stale(d);
     }
 
     /// <summary>Slot 24. The engine hands out a pointer INTO the object (<c>this+0x528</c>) and the game reads
@@ -406,14 +406,7 @@ public static partial class TextSlots
     public static nint GetDisplayInfo(DbId id)
     {
         TextDoc? d = TextObjects.Of(id);
-        return d == null ? 0 : DisplayInfo(d);
-    }
-
-    /// <inheritdoc cref="GetDisplayInfo(DbId)"/>
-    public static nint DisplayInfo(TextDoc d)
-    {
-        if (d.Font != null) d.FontHeight = d.Font.FontHeight / TextObjects.UnitPerPixel;
-        return d.InfoBuf;
+        return d == null ? 0 : d.InfoBuf;
     }
 
     /// <summary>Mark a record whose box or hit margin the game wrote through the display block since the last
@@ -422,7 +415,7 @@ public static partial class TextSlots
     public static void SyncDisplayInfo(DbId id)
     {
         TextDoc? d = TextObjects.Of(id);
-        if (d != null && ApplyDisplayInfo(d)) TextObjects.MarkText(id, d);
+        if (d != null && ApplyDisplayInfo(d)) TextObjects.Stale(d);
     }
 
     /// <inheritdoc cref="SyncDisplayInfo(DbId)"/>
@@ -430,16 +423,13 @@ public static partial class TextSlots
     public static bool ApplyDisplayInfo(TextDoc d)
         => d.MaxWidth != d.SeenW || d.MaxHeight != d.SeenH || d.HitMargin != d.SeenMargin;
 
-    /// <summary><c>StringGob+0x528</c> .. <c>+0x554</c>: the display block through the line height.</summary>
-    public const int DisplayInfoSize = 0x2c;  // not-an-offset: the block size through +0x28, the same on both builds (Windows SetText @rva 0x1fd690 divides by [info+0x28] too)
-
     /// <summary>Slots 25/26: pure setters, as in the engine. The quads go stale because the width decides the
     /// wrap and the alignment, but NO layout runs until the caller asks for one.</summary>
     public static void SetMaxWidth(DbId id, float w)
-    { TextDoc? d = TextObjects.Of(id); if (d == null) return; d.MaxWidth = w; TextObjects.MarkText(id, d); }
+    { TextDoc? d = TextObjects.Of(id); if (d == null) return; d.MaxWidth = w; TextObjects.Stale(d); }
 
     public static void SetMaxHeight(DbId id, float h)
-    { TextDoc? d = TextObjects.Of(id); if (d == null) return; d.MaxHeight = h; TextObjects.MarkText(id, d); }
+    { TextDoc? d = TextObjects.Of(id); if (d == null) return; d.MaxHeight = h; TextObjects.Stale(d); }
 
     // ---- 27..30, 37..40: the text ----
 
@@ -448,7 +438,7 @@ public static partial class TextSlots
         TextDoc? d = TextObjects.Of(id);
         if (d == null) return false;
         bool r = TextObjects.SetText(d, text);
-        TextObjects.MarkText(id, d);
+        TextObjects.Stale(d);
         return r;
     }
 
@@ -457,7 +447,7 @@ public static partial class TextSlots
         TextDoc? d = TextObjects.Of(id);
         if (d == null) return false;
         bool r = TextObjects.AddText(d, text);
-        TextObjects.MarkText(id, d);
+        TextObjects.Stale(d);
         return r;
     }
 
@@ -466,7 +456,7 @@ public static partial class TextSlots
         TextDoc? d = TextObjects.Of(id);
         if (d == null) return 0;
         bool r = TextObjects.AddLine(d, text);
-        TextObjects.MarkText(id, d);
+        TextObjects.Stale(d);
         return r ? 1 : 0;
     }
 
@@ -475,7 +465,7 @@ public static partial class TextSlots
         TextDoc? d = TextObjects.Of(id);
         if (d == null) return;
         TextObjects.InsertLine(d, text, at);
-        TextObjects.MarkText(id, d);
+        TextObjects.Stale(d);
     }
 
     public static void DeleteLine(DbId id, int at)
@@ -483,7 +473,7 @@ public static partial class TextSlots
         TextDoc? d = TextObjects.Of(id);
         if (d == null) return;
         TextObjects.DeleteLine(d, at);
-        TextObjects.MarkText(id, d);
+        TextObjects.Stale(d);
     }
 
     public static void SetLine(DbId id, int at, ReadOnlySpan<byte> text)
@@ -491,7 +481,7 @@ public static partial class TextSlots
         TextDoc? d = TextObjects.Of(id);
         if (d == null) return;
         TextObjects.SetLine(d, at, text);
-        TextObjects.MarkText(id, d);
+        TextObjects.Stale(d);
     }
 
     /// <summary>Slot 29. The engine returns the line's own buffer; the facade hands back the shell-owned copy it
@@ -530,7 +520,7 @@ public static partial class TextSlots
         TextDoc? d = TextObjects.Of(id);
         if (d == null || (uint)line >= (uint)d.LineCount) return;
         d.Lines[line].Colour = (short)colour;
-        TextObjects.MarkText(id, d);
+        TextObjects.Stale(d);
     }
 
     /// <summary>Slot 33: a pure setter in the engine, and the wrap it changes only takes effect on the next edit
@@ -568,7 +558,7 @@ public static partial class TextSlots
         }
         TextObjects.ShowAsManyLines(d);
         SetCaretColumnPos(id, text.Length + GetCaretColumnPos(id));
-        TextObjects.MarkText(id, d);
+        TextObjects.Stale(d);
         return true;
     }
 
@@ -591,7 +581,7 @@ public static partial class TextSlots
             TextObjects.UnWrapLines(d, d.Caret.Line);
         }
         SetCaretColumnPos(id, GetCaretColumnPos(id));
-        TextObjects.MarkText(id, d);
+        TextObjects.Stale(d);
         return true;
     }
 
@@ -616,7 +606,7 @@ public static partial class TextSlots
             d.Caret.Line = line;
             d.Caret.Column = 0;
             d.Caret.X = 0f;
-            TextObjects.MarkText(id, d);
+            TextObjects.Stale(d);
             return true;
         }
         int was = d.Caret.Line;
@@ -630,7 +620,7 @@ public static partial class TextSlots
         int top = d.TopLine;
         if (line < top) d.TopLine = line;
         else if (top + d.VisibleLines <= line) d.TopLine = line - d.VisibleLines + 1;
-        TextObjects.MarkText(id, d);
+        TextObjects.Stale(d);
         return true;
     }
 
@@ -667,7 +657,7 @@ public static partial class TextSlots
         }
         else d.Caret.Column = column;
         TextObjects.UpdateCaret(d, d.Caret.Line, 1e6f, true);
-        TextObjects.MarkText(id, d);
+        TextObjects.Stale(d);
         return true;
     }
 
@@ -714,18 +704,18 @@ public static partial class TextSlots
             d.Caret.Line = line;
             d.Caret.Column = -1;
             TextObjects.UpdateCaret(d, line, 1e6f, false);
-            TextObjects.MarkText(id, d);
+            TextObjects.Stale(d);
             return 0;
         }
         d.Caret.Line = line;
         d.Caret.Column = -1;
         TextObjects.UpdateCaret(d, line, local.X - (d.MaxWidth - d.Lines[line].Width) * d.AlignH, false);
-        TextObjects.MarkText(id, d);
+        TextObjects.Stale(d);
         return 1;
     }
 
     public static void SetCaretVisible(DbId id, bool on)
-    { TextDoc? d = TextObjects.Of(id); if (d == null) return; d.CaretVisible = on; TextObjects.MarkText(id, d); }
+    { TextDoc? d = TextObjects.Of(id); if (d == null) return; d.CaretVisible = on; TextObjects.Stale(d); }
 
     // ---- 49, 50 ----
 
@@ -769,7 +759,7 @@ public static partial class TextSlots
     {
         TextDoc? d = TextObjects.Of(id);
         if (d == null || d.ItemCount == 0) return;
-        if (ApplyItemOrder(d)) TextObjects.MarkText(id, d);
+        if (ApplyItemOrder(d)) TextObjects.Stale(d);
     }
 
     /// <inheritdoc cref="SyncItemOrder(DbId)"/>

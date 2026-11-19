@@ -376,7 +376,7 @@ public sealed unsafe class StringSlots : ISeamProvider
         DbId id = Id(self, 24);
         nint p = id.IsNull ? 0 : TextSlots.GetDisplayInfo(id);
         if (p != 0) return p;
-        if (_noInfo == 0) _noInfo = (nint)NativeMemory.AllocZeroed(TextSlots.DisplayInfoSize);
+        if (_noInfo == 0) _noInfo = (nint)NativeMemory.AllocZeroed((nuint)sizeof(CX.Engine.TextDisplayInfo));
         return _noInfo;
     }
 

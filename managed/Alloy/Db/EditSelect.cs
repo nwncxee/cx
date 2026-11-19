@@ -188,18 +188,18 @@ internal static unsafe class EditSelect
     private static void Anchor(DbId id, TextDoc d, int at)
     {
         d.SelAnchor = at;
-        TextObjects.MarkText(id, d);
+        TextObjects.Stale(d);
     }
 
     /// <summary>Remove <c>[from, to)</c> as that many backspaces from <c>to</c>, through the focused object's handler.</summary>
     private static void Delete(DbId id, TextDoc d, int from, int to)
     {
         d.SelAnchor = -1;
-        if (to <= from) { TextObjects.MarkText(id, d); return; }
+        if (to <= from) { TextObjects.Stale(d); return; }
         SetCaret(id, d, to);
         nint gm = GuiMan();
         for (int i = from; i < to; i++) EngineFn.GuiManHandleKeyPress(gm, EngineBackspace);
-        TextObjects.MarkText(id, d);
+        TextObjects.Stale(d);
     }
 
     private static void SetCaret(DbId id, TextDoc d, int pos)

@@ -283,7 +283,7 @@ public static unsafe partial class HitTestCheck
             const int portrait = rx - rw / 2 - 30;
             if (PickAt(portrait) == rider)
                 ok = Fail(log, "a line model left of a quad with no hit margin answered a pick -- the engine never casts there");
-            ((TextDisplayInfo*)TextSlots.DisplayInfo(doc))->HitMargin = 0.4f;
+            ((TextDisplayInfo*)doc.InfoBuf)->HitMargin = 0.4f;
             TextSlots.SyncDisplayInfo(row);
             HitBounds.Refresh(ri);
             if (PickAt(portrait) != rider)
