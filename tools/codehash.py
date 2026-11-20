@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Prints the code fingerprint of a checkout: what build.sh would compile and stage, less what cannot change it.
 
-Usage: codehash.py [checkout]     (default: the checkout this script lives in)
+Usage: codehash.py [--tree] [checkout]     (default: the checkout this script lives in)
+       --tree: the exact tree's fingerprint instead, every file whole, for build.sh's record of what its checks passed on
 
-Every tracked or untracked file the repo's .gitignore files do not ignore counts except Markdown outside third_party/
-(whose notices packaging/licenses.sh ships), a submodule counts by its checked-out commit, and a .cs file counts
-with its comments removed and its blank lines dropped. Everything inside a C# string literal counts, a `//` line
+Every tracked or untracked file the repo's .gitignore files do not ignore counts, and so does every file under
+managed/ but its bin/ and obj/, which MSBuild compiles whatever a .gitignore says. Markdown is left out, except under
+third_party/ (whose notices packaging/licenses.sh ships). A submodule counts by its checked-out commit, and a .cs
+file counts with its comments removed and its blank lines dropped. Everything inside a C# string literal counts, a `//` line
 held in a raw string being shader text rather than a comment, so this lexes C# instead of matching lines. A .glsl
 file counts whole. build.sh stamps the fingerprint into cx-linux-x64/BUILT_FROM and keeps a staged build whose
 fingerprint matches; tools/where.sh reads it to call that build CURRENT. Linux-only, like build.sh.
@@ -150,13 +152,21 @@ def files(root):
     # The repo's .gitignore files only: a private exclude (.git/info/exclude, a global one) does not stop MSBuild.
     listed = subprocess.run(['git', '-C', root, 'ls-files', '-z', '--cached', '--others', '--exclude-per-directory=.gitignore'],
                             check=True, capture_output=True).stdout.split(b'\0')
-    return sorted({p.decode() for p in listed if p})
+    found = {p.decode() for p in listed if p}
+    # MSBuild compiles every file under managed/ but its own bin/ and obj/, whatever a .gitignore says of it.
+    managed = os.path.join(root, 'managed')
+    for top, dirs, names in os.walk(managed):
+        if top == managed:
+            dirs[:] = [d for d in dirs if d not in ('bin', 'obj')]
+        found.update(os.path.relpath(os.path.join(top, n), root) for n in names)
+    return sorted(found)
 
 
-def fingerprint(root):
+def fingerprint(root, raw=False):
+    """The code fingerprint, or with ``raw`` the exact tree's: every file whole, Markdown and comments included."""
     h = hashlib.sha256()
     for path in files(root):
-        if path.endswith('.md') and not path.startswith('third_party/'):
+        if not raw and path.endswith('.md') and not path.startswith('third_party/'):
             continue
         full = os.path.join(root, path)
         if os.path.islink(full):
@@ -169,18 +179,21 @@ def fingerprint(root):
         else:
             with open(full, 'rb') as f:
                 data = f.read()
-            if path.endswith('.cs'):
+            if not raw and path.endswith('.cs'):
                 data = strip_cs(data.decode('utf-8', 'surrogateescape')).encode('utf-8', 'surrogateescape')
         h.update(path.encode() + b'\0' + hashlib.sha256(data).digest())
     return h.hexdigest()
 
 
 def main(argv):
-    if len(argv) > 2:
+    args = argv[1:]
+    raw = '--tree' in args
+    args = [a for a in args if a != '--tree']
+    if len(args) > 1:
         print(__doc__, file=sys.stderr)
         return 2
-    root = argv[1] if len(argv) == 2 else os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
-    print(fingerprint(os.path.realpath(root)))
+    root = args[0] if args else os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
+    print(fingerprint(os.path.realpath(root), raw))
     return 0
 
 

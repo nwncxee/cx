@@ -37,7 +37,7 @@ internal static class Thing
 CS
   printf '// the stage\nvoid main() { gl_FragColor = vec4(1.0); }\n' > "$d/managed/Shaders/cx_thing.glsl"
   printf '# Notes\n\nSome notes.\n' > "$d/NOTES.md"
-  printf 'cx-linux-x64/\n' > "$d/.gitignore"
+  printf 'cx-linux-x64/\nbuild/\n' > "$d/.gitignore"
   mkdir -p "$d/third_party/lib" && printf '# Notice\n\nCopyright the authors.\n' > "$d/third_party/lib/NOTICE.md"
   (cd "$d" && git init -q && git add -A && git -c user.email=t@t -c user.name=t commit -qm A) || exit 1
   : > "$d/cx-linux-x64/libcx.so"; : > "$d/cx-linux-x64/cx_managed.so"
@@ -102,6 +102,7 @@ d=$(fixture e3-verbatim); commit_b "$d" 's|b // c|b // d|' managed/Thing.cs; reb
 d=$(fixture e3-braces); commit_b "$d" 's|{{x}} // y|{{x}} // z|' managed/Thing.cs; rebuilds "$d" "E3 text after an escaped brace"
 d=$(fixture e3-glue); commit_b "$d" 's|-/\*\*/-x|--x|' managed/Thing.cs; rebuilds "$d" "E3 a comment that kept two tokens apart"
 d=$(fixture e3-excluded); echo managed/Local.cs >> "$d/.git/info/exclude"; printf 'namespace CX;\n' > "$d/managed/Local.cs"; rebuilds "$d" "E3 a new file git's private excludes hide"
+d=$(fixture e3-ignored); mkdir -p "$d/managed/Alloy/build"; printf 'namespace CX;\n' > "$d/managed/Alloy/build/Planted.cs"; rebuilds "$d" "E3 a new file under managed/ that .gitignore hides, which MSBuild compiles"
 d=$(fixture e3-new); printf 'namespace CX;\n' > "$d/managed/New.cs"; rebuilds "$d" "E3 a new file, uncommitted"
 
 # Regression, not an approved example: a staged folder missing a library is not kept, and an untouched tree is CURRENT.

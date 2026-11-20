@@ -125,9 +125,16 @@ python3 tools/engine/views.py
 # --no-gates: the release build, whose tagged tree already passed ci / gates on its pull request.
 # The rules' own approved examples plant trees and, for the compiler rules, compile them, which needs the SDK the gates
 # job does not carry; the build that has it runs them.
+# They run once per exact tree: ./run-demo.sh starts with a ./build.sh of its own, and the tree it passed on is recorded.
 if [ "$1" != --no-gates ]; then
-  bash tools/gates/run.sh
-  bash tools/approved-examples.sh
+  TREE=$(python3 tools/codehash.py --tree)
+  if [ "$(cat build/CHECKED 2>/dev/null)" = "$TREE" ]; then
+    echo ">> the gates and approved examples already passed on this exact tree"
+  else
+    bash tools/gates/run.sh
+    bash tools/approved-examples.sh
+    echo "$TREE" > build/CHECKED
+  fi
 fi
 
 # A tree whose code is the staged build's -- only comments in .cs files or Markdown moved -- keeps that build,
@@ -140,7 +147,8 @@ echo ">> building managed lib (C# NativeAOT -> cx_managed.so)..."
 CX_VERSION=$(git describe --tags --always 2>/dev/null || echo dev)
 # Quiet on success, but NEVER swallow a failure: discarding stderr here once hid a compile error behind a
 # stale staged .so, and run-demo.sh happily booted the old build.
-if ! dotnet publish managed/cx_managed.csproj -c Release -o build \
+# No build server: VBCSCompiler outlives the compile and holds its memory while ILC runs, which puts a build over 2G.
+if ! dotnet publish managed/cx_managed.csproj -c Release -o build --disable-build-servers -p:UseSharedCompilation=false \
      -p:InformationalVersion="$CX_VERSION" > build-managed.log 2>&1; then
   echo ">> managed build FAILED:"; grep -E "error|rror" build-managed.log | head -20; exit 1
 fi
