@@ -178,6 +178,33 @@ internal sealed partial class InventoryWindow
             acts.Clear();
             w.MouseButton(true, 3, Cx(0), Cy(0), 0);
             check.Expect(acts.Count == 1 && acts[0] == new InvAction(InvActKind.Radial, 101, X: (int)Cx(0), Y: (int)Cy(0)), "a right-click opens the item radial at the click");
+            now += Stopwatch.Frequency;
+
+            // the engine's target cursor up (a spell, power or item waiting for its target): the window answers it like the
+            // stock panel's cells, and leaves the cursor's own cancels to the engine
+            w.Targeting = static () => true;
+            acts.Clear();
+            check.Expect(w.MouseButton(true, 1, Cx(2), Cy(0), 0) && acts.Count == 1 && acts[0] == new InvAction(InvActKind.Target, 102),
+                         "targeting: a click on a backpack item fires the cursor at it");
+            w.MouseButton(false, 1, Cx(2), Cy(0), 0);
+            w.MouseButton(true, 1, Cx(2), Cy(0), 0); w.MouseMove(Cx(6), Cy(0)); w.MouseButton(false, 1, Cx(6), Cy(0), 0);
+            check.Expect(!w.Dragging && acts.Count == 2 && acts[1].Kind == InvActKind.Target, "targeting: a press is never a drag, a second click never a double-click use");
+            acts.Clear();
+            w.MouseButton(true, 1, SlotX("head"), SlotY("head"), 0); w.MouseButton(false, 1, SlotX("head"), SlotY("head"), 0);
+            check.Expect(acts.Count == 1 && acts[0] == new InvAction(InvActKind.Target, 104), "targeting: a click on a worn item fires the cursor at it");
+            acts.Clear();
+            check.Expect(w.MouseButton(true, 1, Cx(1), Cy(5), 0) && acts.Count == 0, "targeting: a click on an empty cell is the window's and fires nothing");
+            w.MouseButton(false, 1, Cx(1), Cy(5), 0);
+            w.MouseButton(true, 2, Cx(0), Cy(0), 0); w.MouseButton(false, 2, Cx(0), Cy(0), 0);
+            check.Expect(acts.Count == 0, "targeting: only the left button fires the cursor");
+            check.Expect(!w.MouseButton(true, 3, Cx(0), Cy(0), 0) && !w.MouseButton(false, 3, Cx(0), Cy(0), 0) && acts.Count == 0,
+                         "targeting: a right-click passes to the engine, which cancels the cursor, and opens no radial");
+            check.Expect(!w.Key(0x1B) && acts.Count == 0 && w.Open, "targeting: Esc passes to the engine, which cancels the cursor; the window stays open");   // not-an-offset: SDLK_ESCAPE
+            w.SearchFocused = true;
+            check.Expect(w.Key(0x1B) && !w.SearchFocused && w.Open, "targeting: Esc in the focused search box only leaves the box");   // not-an-offset: SDLK_ESCAPE
+            w.Targeting = static () => false;
+            check.Expect(w.MouseButton(true, 3, Cx(0), Cy(0), 0) && acts.Count == 1 && acts[0].Kind == InvActKind.Radial, "no cursor up: a right-click opens the radial again");
+            check.Expect(w.MouseButton(false, 3, Cx(0), Cy(0), 0), "no cursor up: the right release is the window's again");
             acts.Clear();
             w.MouseButton(true, 1, Cx(0), Cy(0), 0x40); w.MouseButton(false, 1, Cx(0), Cy(0), 0);   // not-an-offset: KMOD_LCTRL
             check.Expect(acts.Count == 1 && acts[0] == new InvAction(InvActKind.Equip, 101, 0x10), "ctrl-click equips to the first empty slot that takes it");   // not-an-offset: slot mask

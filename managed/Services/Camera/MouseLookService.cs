@@ -84,6 +84,7 @@ public sealed unsafe class MouseLookService : IExtenderService
                 : "MouseLook: action camera hooks WalkPlayerToPoint + FeedbackHitCheck{Hostile,NonHostile}");
         }
         AimAssist.Init(log, hooks);
+        TargetFire.Init(log, hooks);
         ActionFeedback.Init(log, hooks);
 
         _next = hooks.ChainWinMessageHandler(&OnWinMessage, 100);
@@ -247,14 +248,13 @@ public sealed unsafe class MouseLookService : IExtenderService
 
     [UnmanagedCallersOnly]
     private static int OnPickHostile(IntPtr app, IntPtr* obj, IntPtr point, int* p3, int p4)
-        => TabTargetService.OverridePick(obj, point, out int v) ? v : HidePlayer(_pickHostileOrig(app, obj, point, p3, p4), obj);
+        => TargetFire.OverridePick(obj, point, out int v) ? v : HidePlayer(_pickHostileOrig(app, obj, point, p3, p4), obj);
 
     [UnmanagedCallersOnly]
     private static int OnPickNonHostile(IntPtr app, IntPtr* obj, IntPtr point, int* p3, int p4)
-        => TabTargetService.OverridePick(obj, point, out int v) ? v : HidePlayer(_pickNonHostileOrig(app, obj, point, p3, p4), obj);
+        => TargetFire.OverridePick(obj, point, out int v) ? v : HidePlayer(_pickNonHostileOrig(app, obj, point, p3, p4), obj);
 
-    /// <summary>Both world picks are hooked (so <see cref="TabTargetService"/>'s fire-at-the-lock substitution
-    /// has a seam to stand on).</summary>
+    /// <summary>Both world picks are hooked (so <see cref="TargetFire"/>'s substitution has a seam to stand on).</summary>
     internal static bool PicksHooked => _pickHostileOrig != null && _pickNonHostileOrig != null;
 
     /// <summary>Under the action camera the crosshair sits on the player half the time: a pick that landed on the

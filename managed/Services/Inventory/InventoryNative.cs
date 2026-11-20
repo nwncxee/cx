@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using CX.Engine;
 using CX.Framework;
+using CX.Services.Camera;
 using CX.Services.Radial;
 
 namespace CX.Services.Inventory;
@@ -308,6 +309,16 @@ internal static unsafe class InventoryNative
         IntPtr go = EngineFn.GetGameObject(app, id);
         if (go == IntPtr.Zero || new CGameObject(go).Type != TypeItem) return IntPtr.Zero;
         return new CGameObject(go).AsNWCItem();
+    }
+
+    /// <summary>Resolve the engine's live target cursor at item <paramref name="oid"/>, as a click on the stock panel's cell
+    /// would: the mode's own allowed types and validation decide, so a spell that cannot take an item stays up.</summary>
+    public static void FireTarget(uint oid)
+    {
+        IntPtr app = App(), mode = TargetFire.Live();
+        if (app == IntPtr.Zero || mode == IntPtr.Zero || Item(app, oid) == IntPtr.Zero) return;
+        CNWCObject obj = new CGameObject(EngineFn.GetGameObject(app, oid)).AsNWCObject();
+        if (!obj.IsNull) TargetFire.Fire(mode, obj.Ptr);
     }
 
     public static int Mods() => EngineFn.SdlGetModState != null ? EngineFn.SdlGetModState() : 0;

@@ -9,7 +9,7 @@ namespace CX.Services.Inventory;
 
 /// <summary>What the player asked the inventory to do; the service turns each into an engine send (or a
 /// <see cref="ServerPolicy"/> route).</summary>
-internal enum InvActKind { Equip, Unequip, Move, Merge, Split, Drop, Use, Radial, Close, Refused, Gold, Take, Put, CloseLoot }
+internal enum InvActKind { Equip, Unequip, Move, Merge, Split, Drop, Use, Radial, Close, Refused, Gold, Take, Put, CloseLoot, Target }
 
 /// <summary>One request out of the window. <see cref="Mask"/> is an equip-slot bitmask (a Drop's source slot, 0 from the
 /// backpack), <see cref="X"/>/<see cref="Y"/> a backpack cell (global row; a Put's is a container cell, a Take's
@@ -63,6 +63,9 @@ internal sealed partial class InventoryWindow
     public readonly InventoryModel Model = new();
     /// <summary>Where requests go (the service; the self-check's recorder).</summary>
     public Action<InvAction>? Act;
+    /// <summary>Whether the engine's target cursor is up (a spell, power or item waiting for its target). The service asks the
+    /// engine; the self-check sets its own.</summary>
+    public Func<bool> Targeting = static () => false;
     /// <summary>An item's display name, cold (tooltip, search). The service asks the engine.</summary>
     public Func<uint, string>? NameOf;
     /// <summary>A strref's TLK text, cold (the layout's words). The self-check supplies its own.</summary>
@@ -110,7 +113,7 @@ internal sealed partial class InventoryWindow
     private readonly Box[] _slots = new Box[InventoryModel.Slots.Length];
 
     // ---- interaction ----
-    private bool _press, _drag, _moving, _scrolling, _dragFromLoot;
+    private bool _press, _drag, _moving, _scrolling, _dragFromLoot, _passedRight;
     private float _pressX, _pressY, _moveDx, _moveDy;
     private uint _dragOid;
     private int _dragFromSlot = -1, _dragW = 1, _dragH = 1, _grabCx, _grabCy;
@@ -322,6 +325,16 @@ internal sealed partial class InventoryWindow
         if (h.Kind != InvHitKind.Search) SearchFocused = false;
         uint oid = ItemUnder(h);
 
+        if (Targeting())
+        {
+            if (button == ButtonRight) { _passedRight = true; return false; }
+            if (button == ButtonLeft && oid != InventoryModel.Invalid)
+            {
+                Act?.Invoke(new InvAction(InvActKind.Target, oid));
+                return true;
+            }
+        }
+
         if (button == ButtonRight)
         {
             if (oid != InventoryModel.Invalid) Act?.Invoke(new InvAction(InvActKind.Radial, oid, X: (int)px, Y: (int)py));
@@ -427,6 +440,7 @@ internal sealed partial class InventoryWindow
     public bool Key(uint key, int mods = 0)
     {
         if (!Open) return false;
+        if (key == KeyEscape && Targeting() && !SearchFocused) return false;
         if (key == KeyEscape)
         {
             if (_drag || _press) { _drag = _press = false; return true; }
@@ -454,6 +468,7 @@ internal sealed partial class InventoryWindow
 
     private bool Release(int button, float px, float py)
     {
+        if (button == ButtonRight && _passedRight) { _passedRight = false; return false; }
         if (button != ButtonLeft) return Contains(px, py);
         if (_moving) { _moving = false; return true; }
         if (_scrolling) { _scrolling = false; return true; }

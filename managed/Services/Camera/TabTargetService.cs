@@ -21,8 +21,6 @@ public sealed unsafe class TabTargetService : IExtenderService
     private static bool _ready;
     private static WinMessageHandlerFn* _next;
     private static PerformDefaultActionOnObjectFn _defaultActionOrig;
-    /// <summary>Chain slot on the GUI hit-test, above the CX quickbar's proxy: a fire at the lock sees no GUI at all.</summary>
-    private static GuiObjectHitCheckFn* _guiHit;
     private static IntPtr _colEnemy, _colFriend, _colNeutral, _colPlaceable, _colDoor;
 
     /// <summary>Between the mouse-look layer (100) and the framework input layer (0).</summary>
@@ -37,8 +35,6 @@ public sealed unsafe class TabTargetService : IExtenderService
     private const int Glow = 1;
     /// <summary>Attitude byte: 1 friend, 0 neutral, else hostile.</summary>
     private const byte AttitudeNeutral = 0, AttitudeFriend = 1;
-    /// <summary>The world pick's "an object" verdict (PerformLButtonDownAction's <c>== 2</c> branch).</summary>
-    private const int PickObject = 2;
 
     // ---- the lock ----
     private static uint _lock;
@@ -51,8 +47,6 @@ public sealed unsafe class TabTargetService : IExtenderService
     private static readonly TabTargetCore.Candidate[] _live = new TabTargetCore.Candidate[TabTargetCore.MaxCandidates];
 
     // ---- the fire ----
-    /// <summary>The CNWCObject* the pick hooks answer while a lock fire is in flight; Zero otherwise.</summary>
-    private static IntPtr _fireAt;
     /// <summary>A Preview mode waiting for its release: the CActionTarget and the scancode whose key-up fires it
     /// (0 = none pending on a key).</summary>
     private static IntPtr _pending;
@@ -83,21 +77,20 @@ public sealed unsafe class TabTargetService : IExtenderService
                                SymbolMap.SdlGetModState, SymbolMap.GetGameObject, SymbolMap.GetModule, SymbolMap.AppManager,
                                SymbolMap.HiliteEnemy, SymbolMap.HiliteFriend, SymbolMap.HiliteNeutral,
                                SymbolMap.HilitePlaceable, SymbolMap.HiliteDoor)) return;
-        if (!AimAssist.Ready || !MouseLookService.PicksHooked)
+        if (!TargetFire.Ready)
         { log.Info("TabTarget: standing down (the action camera's target-mode or pick hooks are not up)"); return; }
 
         _colEnemy = Native.Sym(SymbolMap.HiliteEnemy); _colFriend = Native.Sym(SymbolMap.HiliteFriend);
         _colNeutral = Native.Sym(SymbolMap.HiliteNeutral); _colPlaceable = Native.Sym(SymbolMap.HilitePlaceable);
         _colDoor = Native.Sym(SymbolMap.HiliteDoor);
         _defaultActionOrig = hooks.InstallPerformDefaultActionOnObject(&OnDefaultAction);
-        _guiHit = hooks.ChainGuiObjectHitCheck(&OnGuiHitCheck, ChainPriority);
         _next = hooks.ChainWinMessageHandler(&OnWinMessage, ChainPriority);
-        if (_defaultActionOrig == null || _guiHit == null || _next == null)
+        if (_defaultActionOrig == null || _next == null)
         { log.Info("TabTarget: standing down (a hook install was refused)"); return; }
         KeysChanged();
         FrameRegistry.Global.Register(FramePhase.PostPresent, 61, Tick, "TabTarget", log);
         _ready = true;
-        log.Info($"TabTarget: ready ({(TabTarget.Enabled.V ? "on" : "off")}); hooks PerformDefaultActionOnObject + GuiObjectHitCheck, chained on WinMessageHandler");
+        log.Info($"TabTarget: ready ({(TabTarget.Enabled.V ? "on" : "off")}); hooks PerformDefaultActionOnObject, chained on WinMessageHandler");
     }
 
     private static bool On => _ready && TabTarget.Enabled.V && GameGate.InGame;
@@ -327,7 +320,7 @@ public sealed unsafe class TabTargetService : IExtenderService
     [UnmanagedCallersOnly]
     private static int OnDefaultAction(IntPtr self, IntPtr obj)
     {
-        if (!On || obj == IntPtr.Zero || _fireAt != IntPtr.Zero) return _defaultActionOrig(self, obj);
+        if (!On || obj == IntPtr.Zero || TargetFire.InFlight) return _defaultActionOrig(self, obj);
         IntPtr app = CameraService.App();
         CClientExoAppInternal intern = app != IntPtr.Zero ? new CClientExoApp(app).Internal : default;
         var target = new CNWCObject(obj);
@@ -398,35 +391,15 @@ public sealed unsafe class TabTargetService : IExtenderService
         }
     }
 
-    /// <summary>Substitute the pick for the duration of one <c>HandleLMouseDown</c>. Nothing touches
-    /// <paramref name="self"/> after the call.</summary>
+    /// <summary>Resolve the mode at the lock, as a click on it would; at the cursor when the lock is gone.</summary>
     private static void FireAtLock(IntPtr self)
     {
         IntPtr app = CameraService.App();
         CNWCObject obj = app != IntPtr.Zero ? Resolve(app, Lock, out _) : default;
         if (obj.IsNull) { _cursorFires++; AimAssist.Resolve(self); return; }
-        _fireAt = obj.Ptr; _lockFires++;
-        try { AimAssist.Resolve(self); }
-        finally { _fireAt = IntPtr.Zero; }
+        _lockFires++;
+        TargetFire.Fire(self, obj.Ptr);
     }
-
-    /// <summary>The pick hooks' first question: is a lock fire in flight? Then the pick IS the lock -- the
-    /// object, its position, verdict "object". The <c>int*</c> flag is left alone: HandleLMouseDown passes null
-    /// and PerformLButtonDownAction reads it on the ground verdict only.</summary>
-    internal static bool OverridePick(IntPtr* obj, IntPtr point, out int verdict)
-    {
-        IntPtr at = _fireAt;
-        verdict = 0;
-        if (at == IntPtr.Zero) return false;
-        if (obj != null) *obj = at;
-        if (point != IntPtr.Zero) { Vector3 w = new CNWCObject(at).Position; float* p = (float*)point; p[0] = w.X; p[1] = w.Y; p[2] = w.Z; }
-        verdict = PickObject;
-        return true;
-    }
-
-    [UnmanagedCallersOnly]
-    private static IntPtr OnGuiHitCheck(IntPtr self, int x, int y, int fresh, int mask)
-        => _fireAt != IntPtr.Zero ? IntPtr.Zero : (*_guiHit)(self, x, y, fresh, mask);
 
     // ---- knobs ----
 
