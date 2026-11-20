@@ -106,15 +106,11 @@ bash tools/ffx/prepare.sh python3 glslang
 if [ ! -f build/libcxfsr.a ] || [ native/ffx/cxfsr.cpp -nt build/libcxfsr.a ] || [ native/ffx/compat.h -nt build/libcxfsr.a ] \
    || [ build/ffx/shaders/.stamp -nt build/libcxfsr.a ]; then
   echo ">> building FSR 3.1 (libcxfsr.a)..."
-  F=build/ffx/sdk
+  . tools/ffx/cxxflags.sh
   mkdir -p build/ffx/obj && rm -f build/ffx/obj/*.o
   pids=()
   for src in $(sed "s|^|$F/src/|" tools/ffx/sources.txt) native/ffx/cxfsr.cpp; do
-    # a 4-byte wchar_t outgrows the SDK's default context size; FFX_GCC drops its dllexport
-    c++ -std=c++17 -O2 -fPIC -fvisibility=hidden -fno-exceptions -fno-rtti -w -DNDEBUG -include native/ffx/compat.h -DFFX_GCC \
-      '-DFFX_SDK_DEFAULT_CONTEXT_SIZE=(1024 * 256)' -DFFX_FSR3UPSCALER -DFFX_DOF -Ibuild/deps/Vulkan-Headers-vulkan-sdk-1.4.363.0/include \
-      -I$F/include -I$F/include/FidelityFX/host -I$F/src/shared -I$F/src/backends/shared -I$F/src/components -Ibuild/ffx/shaders \
-      -c "$src" -o "build/ffx/obj/$(basename "$src" .cpp).o" & pids+=($!)
+    c++ "${FFX_CXXFLAGS[@]}" -fvisibility=hidden -c "$src" -o "build/ffx/obj/$(basename "$src" .cpp).o" & pids+=($!)
   done
   for p in "${pids[@]}"; do wait "$p" || { echo "!! FSR 3.1 failed to compile (above)" >&2; exit 1; }; done
   rm -f build/libcxfsr.a && ar rcs build/libcxfsr.a build/ffx/obj/*.o
@@ -129,16 +125,30 @@ python3 tools/engine/views.py
 # --no-gates: the release build, whose tagged tree already passed ci / gates on its pull request.
 # The rules' own approved examples plant trees and, for the compiler rules, compile them, which needs the SDK the gates
 # job does not carry; the build that has it runs them.
+# They run once per exact tree: ./run-demo.sh starts with a ./build.sh of its own, and the tree it passed on is recorded.
 if [ "$1" != --no-gates ]; then
-  bash tools/gates/run.sh
-  bash tools/approved-examples.sh
+  TREE=$(python3 tools/codehash.py --tree)
+  if [ "$(cat build/CHECKED 2>/dev/null)" = "$TREE" ]; then
+    echo ">> the gates and approved examples already passed on this exact tree"
+  else
+    bash tools/gates/run.sh
+    bash tools/approved-examples.sh
+    echo "$TREE" > build/CHECKED
+  fi
 fi
+
+# A tree whose code is the staged build's -- only comments in .cs files or Markdown moved -- keeps that build,
+# after the gates and the approved examples (some read comments: tools/vk/mutants.sh anchors on whole lines). Taken
+# before the publish, so an edit made while it runs is not stamped as built.
+CODE=$(python3 tools/codehash.py)
+bash tools/keep-staged.sh "$CODE" && exit 0
 
 echo ">> building managed lib (C# NativeAOT -> cx_managed.so)..."
 CX_VERSION=$(git describe --tags --always 2>/dev/null || echo dev)
 # Quiet on success, but NEVER swallow a failure: discarding stderr here once hid a compile error behind a
 # stale staged .so, and run-demo.sh happily booted the old build.
-if ! dotnet publish managed/cx_managed.csproj -c Release -o build \
+# No build server: VBCSCompiler outlives the compile and holds its memory while ILC runs.
+if ! dotnet publish managed/cx_managed.csproj -c Release -o build --disable-build-servers -p:UseSharedCompilation=false \
      -p:InformationalVersion="$CX_VERSION" > build-managed.log 2>&1; then
   echo ">> managed build FAILED:"; grep -E "error|rror" build-managed.log | head -20; exit 1
 fi
@@ -171,6 +181,6 @@ chmod +x "$OUT/cx-launch"
 
 python3 -c "import shutil; shutil.make_archive('$OUT', 'zip', '$OUT')"
 # Written after the zip, so it ships in nothing: tools/where.sh reads it to say which commit the folder runs.
-{ git rev-parse HEAD; [ -n "$(git status --porcelain --untracked-files=no --ignore-submodules=all)" ] && echo dirty; } > "$OUT/BUILT_FROM" 2>/dev/null || true
+{ git rev-parse HEAD; [ -n "$(git status --porcelain --untracked-files=no --ignore-submodules=all)" ] && echo dirty; echo "code $CODE"; } > "$OUT/BUILT_FROM" 2>/dev/null || true
 echo ">> artifacts ($OUT/, $OUT.zip):"
 ls -1 "$OUT"

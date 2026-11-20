@@ -24,18 +24,23 @@ public sealed class LegReplaySelfCheck : IExtenderService
         check.Expect(RecordsAndReads(), "a recording made through the recorder reads back as the frames put in, grouped by body, and a file of another frame layout is refused");
         check.Expect(Graded(), "grades: a leg raised 0.25 is 0.25 shorter and a pelvis move alone shortens nothing; a foot in contact that moves 1 in half a second slides at 2; 0.1 rad of hip turn in half a second is 11.459 deg/s; a teleport, the frame after one and a foot in the air count for neither");
         check.Expect(Replayed(), "replay: the fixture's walk, and the same walk entered mid-stride by a tracked body, grade 0 on all three and its step case grades 0.1/0.77 of the leg, 0.5 units/s and no turn, the same on a second replay");
+        foreach (string name in ScratchNames) Scratch(name);
         log.Info(check.Ok ? "LegReplay.SelfCheck: passed" : "LegReplay.SelfCheck: FAILED");
     }
 
     private static bool Near(float a, float b, float eps) => MathF.Abs(a - b) <= eps;
 
-    /// <summary>A scratch folder under the temp path, emptied.</summary>
+    /// <summary>A scratch path under the temp path, with whatever folder or file a run left there removed.</summary>
     private static string Scratch(string name)
     {
         string dir = Path.Combine(Path.GetTempPath(), $"cx-legrec-{name}-{Environment.ProcessId}");
         if (Directory.Exists(dir)) Directory.Delete(dir, true);
+        if (File.Exists(dir)) File.Delete(dir);
         return dir;
     }
+
+    /// <summary>The scratch names the checks below use, removed once they ran, so a boot leaves nothing in the temp path.</summary>
+    private static readonly string[] ScratchNames = ["off", "tick", "block", "header"];
 
     /// <summary>With recording off, a run of frames asks for no folder, opens no file and keeps no frame. Oracle: the hand-written
     /// expectation that nothing is made, and a folder that must not exist afterwards. The knob is not read: the core takes it as
