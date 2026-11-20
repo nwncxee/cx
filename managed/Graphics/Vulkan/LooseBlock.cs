@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using CX.Framework;
+using CX.Rhi;
 
 namespace CX.Graphics.Rhi;
 
@@ -188,7 +189,7 @@ internal static unsafe class LooseBlock
         if (s.Block == null || (uint)loc >= (uint)s.Members.Length) { if (s.Block != null && loc >= 0) s.Dropped++; return default; }
         Member m = s.Members[loc];
         int off = m.Offset + elem * m.Stride;
-        if (elem > 0 && m.Stride == 0 || off + bytes > m.Offset + Math.Max(m.Bytes, bytes) || off + bytes > s.Block.Length) { s.Dropped++; return default; }
+        if (elem > 0 && m.Stride == 0 || !Bounds.Inside(off - m.Offset, bytes, Math.Max(m.Bytes, bytes)) || !Bounds.Inside(off, bytes, s.Block.Length)) { s.Dropped++; return default; }
         return s.Block.AsSpan(off, bytes);
     }
 

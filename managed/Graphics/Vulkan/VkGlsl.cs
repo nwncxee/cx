@@ -120,7 +120,7 @@ internal static partial class VkGlsl
         if (members.Length > 0 && tail.Bytes != members.Length * PushWord)
             return $"the push tail's {members.Length} members are {members.Length * PushWord} bytes, the struct staging them {tail.Bytes}";
         int bytes = PushTailAt + members.Length * PushWord;
-        return bytes <= CX.Rhi.PushConstants.Bytes ? null
+        return CX.Rhi.Bounds.Inside(PushTailAt, members.Length * PushWord, CX.Rhi.PushConstants.Bytes) ? null
              : $"the push block would be {bytes} bytes, past the {CX.Rhi.PushConstants.Bytes} the pipeline layout declares";
     }
 

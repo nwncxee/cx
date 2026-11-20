@@ -391,7 +391,7 @@ internal sealed unsafe partial class VkBackend
     internal bool Upload(BufferId b, long offset, ReadOnlySpan<byte> bytes)
     {
         if (!OnThread("Upload") || !_buffers.TryGet(b.Value, out VkBuf buf)) return Fault("Upload: stale buffer");
-        if (offset < 0 || offset + bytes.Length > buf.Desc.Bytes) return Fault($"Upload of {bytes.Length} bytes at {offset} into {buf.Desc.Label}'s {buf.Desc.Bytes}");
+        if (!Bounds.Inside(offset, bytes.Length, buf.Desc.Bytes)) return Fault($"Upload of {bytes.Length} bytes at {offset} into {buf.Desc.Label}'s {buf.Desc.Bytes}");
         if (bytes.IsEmpty) return true;
         for (int sent = 0; sent < bytes.Length;)
         {
@@ -431,7 +431,7 @@ internal sealed unsafe partial class VkBackend
         src = default; at = 0;
         ulong len = (ulong)bytes.Length;
         UploadBlock? b = _upload.Blocks.Count > 0 ? _upload.Blocks[^1] : null;
-        if (b == null || b.Used + len > b.Size)
+        if (b == null || !Bounds.Inside(b.Used, len, b.Size))
         {
             b = Open(len);
             if (b == null) return false;
@@ -466,7 +466,7 @@ internal sealed unsafe partial class VkBackend
     private UploadBlock? Make(ulong len)
     {
         ulong size = Math.Max(len, UploadBlockBytes);
-        if (Staging.Bytes + size > StagingBudget) return null;
+        if (!Bounds.Inside(Staging.Bytes, size, StagingBudget)) return null;
         var b = new UploadBlock { Size = size };
         bool made = b.Own
                   ? HostBuffer(size, VkBufferUsageFlags.TransferSrc, VmaAllocationCreateFlags.HostAccessSequentialWrite, out b.Buffer, out b.Alloc)

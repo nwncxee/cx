@@ -18,7 +18,7 @@ cat > "$tmp/fixture.csproj" <<EOF
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="$repo/tools/analyzers/cx_analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
-    <Compile Include="$repo/managed/Rhi/CommandList.cs;$repo/managed/Rhi/Pipeline.cs;$repo/managed/Rhi/Descriptors.cs;$repo/managed/Rhi/Handles.cs;$repo/managed/Rhi/Device.cs;$repo/managed/Rhi/PipeFeatures.cs" />
+    <Compile Include="$repo/managed/Rhi/CommandList.cs;$repo/managed/Rhi/Bounds.cs;$repo/managed/Rhi/Pipeline.cs;$repo/managed/Rhi/Descriptors.cs;$repo/managed/Rhi/Handles.cs;$repo/managed/Rhi/Device.cs;$repo/managed/Rhi/PipeFeatures.cs" />
   </ItemGroup>
 </Project>
 EOF

@@ -63,12 +63,7 @@ internal static unsafe partial class GuiPassVk
 
     private static bool Grow(VkBackend vk, ref BufferId id, ref long cap, long bytes, BufferUse use, string label, ExtenderLog log)
     {
-        if (!id.IsNull && bytes <= cap) return true;
-        vk.Destroy(id);
-        cap = Math.Max(bytes, cap * 2);
-        id = vk.CreateBuffer(new BufferDesc(cap, use, MemoryKind.Device, label));
-        if (!id.IsNull) return true;
-        cap = 0;
+        if (HeldBuffer.Doubled(vk, ref id, ref cap, bytes, use, MemoryKind.Device, label)) return true;
         log.Always($"GuiPassVk: {label} at {bytes} bytes was REFUSED (logged above) -- this frame's GUI is NOT DRAWN");
         return false;
     }

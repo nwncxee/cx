@@ -27,8 +27,7 @@ internal static class CullPassVk
         /// <summary>This frame's lists were recorded: the passes draw from them rather than from the staged order.</summary>
         public bool Ran;
         public BufferId Ubo, Src, Key, Rej;
-        public long SrcCap;
-        public int CmdCap, CntCap;
+        public long SrcCap, KeyCap, RejCap;
         /// <summary>The bounds table as a two-generation ring: a build publishes into <see cref="SphAt"/> and the
         /// shadow bake, recorded ahead of the next build, reads the slot as it stands then -- the generation the
         /// previous build published, which is the bound the GL bake reads too. <see cref="SphSlots"/> is each slot's
@@ -43,6 +42,8 @@ internal static class CullPassVk
         /// <summary>Indexed by <see cref="Prepass"/>, <see cref="Colour"/>, <see cref="Retest"/> and
         /// <see cref="Mirror"/>, whose set is allocated only once <see cref="MirrorAsked"/>.</summary>
         public readonly BufferId[] Cmd = new BufferId[Phases], Slot = new BufferId[Phases], Cnt = new BufferId[Phases];
+        /// <summary>Each set buffer's own bytes: a set born after the others is sized and grown on its own.</summary>
+        public readonly long[] CmdCap = new long[Phases], SlotCap = new long[Phases], CntCap = new long[Phases];
         /// <summary>A mirror phase has asked to be recorded: a session with no planar reflection never buys its
         /// output set, and the first mirror frame falls back to the staged list.</summary>
         public bool MirrorAsked;
@@ -276,22 +277,19 @@ internal static class CullPassVk
     {
         var s = _s;
         ReadOnlySpan<byte> srcBytes = MemoryMarshal.AsBytes(src.AsSpan(0, drawN));
-        bool growCmd = drawN > s.CmdCap, growCnt = groups > s.CntCap;
-        Grow(vk, ref s.Src, ref s.SrcCap, srcBytes.Length, "cull source");
+        HeldBuffer.Grow(vk, ref s.Src, ref s.SrcCap, srcBytes.Length, BufferUse.Storage, MemoryKind.Upload, "cull source");
         const BufferUse Out = BufferUse.Storage | BufferUse.Indirect | BufferUse.CopySrc;
         int phases = s.MirrorAsked ? Phases : Mirror;
         for (int p = 0; p < phases; p++)
         {
-            Make(vk, cl, ref s.Cmd[p], growCmd, (long)drawN * CullPass.CmdUints * sizeof(uint), Out, "cull commands");
-            Make(vk, cl, ref s.Slot[p], growCmd, (long)drawN * sizeof(uint), Out, "cull slots");
-            Make(vk, cl, ref s.Cnt[p], growCnt, (long)groups * sizeof(uint), Out, "cull counts");
+            HeldBuffer.Zeroed(vk, cl, ref s.Cmd[p], ref s.CmdCap[p], (long)drawN * CullPass.CmdUints * sizeof(uint), Out, "cull commands");
+            HeldBuffer.Zeroed(vk, cl, ref s.Slot[p], ref s.SlotCap[p], (long)drawN * sizeof(uint), Out, "cull slots");
+            HeldBuffer.Zeroed(vk, cl, ref s.Cnt[p], ref s.CntCap[p], (long)groups * sizeof(uint), Out, "cull counts");
         }
-        Make(vk, cl, ref s.Key, growCmd, (long)drawN * sizeof(float), BufferUse.Storage, "cull sort keys");
-        Make(vk, cl, ref s.Rej, growCmd, (long)drawN * sizeof(uint), BufferUse.Storage, "cull hi-Z verdicts");
+        HeldBuffer.Zeroed(vk, cl, ref s.Key, ref s.KeyCap, (long)drawN * sizeof(float), BufferUse.Storage, "cull sort keys");
+        HeldBuffer.Zeroed(vk, cl, ref s.Rej, ref s.RejCap, (long)drawN * sizeof(uint), BufferUse.Storage, "cull hi-Z verdicts");
         if (s.Src.IsNull || s.Key.IsNull || s.Rej.IsNull) return false;
         for (int p = 0; p < phases; p++) if (s.Cmd[p].IsNull || s.Slot[p].IsNull || s.Cnt[p].IsNull) return false;
-        if (growCmd) s.CmdCap = drawN;
-        if (growCnt) s.CntCap = groups;
         cl.UpdateBuffer(s.Src, 0, srcBytes);
         return true;
     }
@@ -394,26 +392,6 @@ internal static class CullPassVk
         return !s.Pyr.IsNull;
     }
 
-    /// <summary>Hold <paramref name="id"/> at <paramref name="bytes"/>, remade when <paramref name="grow"/> asks and
-    /// zeroed when new: an indirect command or count read out of uninitialised memory can hang the GPU.</summary>
-    private static void Make(VkBackend vk, CommandList cl, ref BufferId id, bool grow, long bytes, BufferUse use, string label)
-    {
-        if (!id.IsNull && !grow) return;
-        vk.Destroy(id);
-        id = vk.CreateBuffer(new BufferDesc(Math.Max(bytes, 4), use, MemoryKind.Device, label));
-        if (!id.IsNull) cl.ZeroBuffer(id);
-    }
-
-    /// <summary>An upload storage buffer at least <paramref name="bytes"/> long, remade larger when it is not.</summary>
-    private static void Grow(VkBackend vk, ref BufferId id, ref long cap, long bytes, string label)
-    {
-        if (!id.IsNull && bytes <= cap) return;
-        vk.Destroy(id);
-        cap = Math.Max(bytes, 4);
-        id = vk.CreateBuffer(new BufferDesc(cap, BufferUse.Storage, MemoryKind.Upload, label));
-        if (id.IsNull) cap = 0;
-    }
-
     /// <summary>The cull on this device over a fixed ten-draw list, read back and held against <see cref="CullPass"/>'s
     /// parity fixture. Oracle: the hand-counted survivors, slots and order that fixture asserts, written out again here.</summary>
     private static bool DeviceCheck(VkBackend vk, ExtenderLog log)
@@ -510,7 +488,7 @@ internal static class CullPassVk
     private static bool MirrorPhase(VkBackend vk, Checker check, CullSrcRec[] src, Sphere[] sph, ref CullBlock b)
     {
         bool asked = _s.MirrorAsked;
-        try { return MirrorRuns(vk, check, src, sph, ref b); }
+        try { return MirrorBornSmall(vk, check, src, sph, ref b) && MirrorRuns(vk, check, src, sph, ref b); }
         finally
         {
             // The live state is the session's: a fixture that left the ask latched would buy every session a
@@ -519,6 +497,36 @@ internal static class CullPassVk
             vk.Destroy(_s.Cmd[Mirror]); vk.Destroy(_s.Slot[Mirror]); vk.Destroy(_s.Cnt[Mirror]);
             _s.Cmd[Mirror] = default; _s.Slot[Mirror] = default; _s.Cnt[Mirror] = default;
         }
+    }
+
+    /// <summary>The fixture's short list: its first four draws, in two batches.</summary>
+    private const int ShortDraws = 4, ShortGroups = 2;
+
+    /// <summary>A mirror first asked on a frame with fewer draws and batches than an earlier frame had, then a frame
+    /// back at the full list. Oracle: hand-worked -- the mirror set holds all ten commands and three counts, and with no
+    /// clip plane and the frame's own view it keeps what the colour set keeps, 2, 3, 3.</summary>
+    private static bool MirrorBornSmall(VkBackend vk, Checker check, CullSrcRec[] src, Sphere[] sph, ref CullBlock b)
+    {
+        CommandList cl = _s.Cmds!;
+        cl.Reset();
+        _s.MirrorAsked = true;
+        bool born = Upload(vk, cl, ShortGroups, ShortDraws, src) && vk.Submit(cl);
+        check.Expect(born && !_s.Cmd[Mirror].IsNull, "a mirror that asks on a shorter list has its set from that upload on");
+        if (!born) return false;
+        const int Groups = 3;
+        var col = new uint[Groups];
+        var mir = new uint[Groups];
+        CullBlock m = b;
+        if (!MirrorRun(vk, check, src, sph, ref b, ref m, col, mir)) return false;
+        check.Expect(mir[0] == 2 && mir[1] == 3 && mir[2] == 3,
+            $"back on the full list the mirror set counts all three batches: 2, 3, 3 (got {mir[0]}, {mir[1]}, {mir[2]})");
+        var cmd = new DrawCmdRec[src.Length];
+        bool whole = vk.ReadBack(_s.Cmd[Mirror], MemoryMarshal.AsBytes(cmd.AsSpan()));
+        check.Expect(whole, $"the mirror set holds a command for each of the {src.Length} draws an indirect draw reads");
+        var slot = new uint[src.Length];
+        bool slots = vk.ReadBack(_s.Slot[Mirror], MemoryMarshal.AsBytes(slot.AsSpan()));
+        check.Expect(slots, $"the mirror set holds a slot for each of the {src.Length} draws a mirror draw reads");
+        return whole && slots;
     }
 
     /// <inheritdoc cref="MirrorPhase"/>
