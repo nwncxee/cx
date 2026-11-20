@@ -158,7 +158,6 @@ internal static unsafe partial class LightmapBake
         {
             if (_drift.Met.Length < _stN) _drift.Met = new bool[_stPosR.Length];
             Array.Clear(_drift.Met, 0, _stN);
-            _drift.MetN = 0;
             return;
         }
         // open, every walk is the whole set again: the lights the engine re-sets after the edge must not leave
@@ -200,27 +199,14 @@ internal static unsafe partial class LightmapBake
         // light stays dynamic until the arena ranges are charted, which is what keeps the tiles lit
         // meanwhile. Self-retiring: the first chart offered ends it.
         if (!Produces) { CensusDynamic++; return false; }
-        // in the closed set and still static = static; anything else after the close is dynamic, whatever it is:
-        // a light that appears after load moved, and a set light that moved or stopped holding still leaves the
-        // set, which Gone re-closes without it at the walk's end
-        if (_seen.TryGetValue(key, out int at) && (isStatic || !_closed))
-        {
-            // two lights stacked on one place and reach share a key: only a light's own entry is compared with it, and
-            // a set light that moved onto another's key from further than Near has left its own place
-            if (_closed && _seenPtr.TryGetValue(id, out int own))
-            {
-                if (own != at && !Near(_stPosR[own], pos, adjR)) { CensusDynamic++; return false; }
-                Met(own); Drifted(id, own, pos, adjR, color);
-            }
-            CensusStatic++; setIndex = SetIndexOf(id, pos, adjR); return true;
-        }
+        if (!_closed && _seen.ContainsKey(key)) { CensusStatic++; setIndex = SetIndexOf(id, pos, adjR); return true; }
         if (_closed)
         {
-            // the same record a hair off its close-time place (a bobbing lantern, a reach re-adjusted by the
-            // simulation) is still the light the bake holds; a far move is a scripted move
-            if (isStatic && _seenPtr.TryGetValue(id, out at) && Near(_stPosR[at], pos, adjR))
+            // a set light within Near of its own entry (a bobbing lantern, a reach re-adjusted by the simulation) is
+            // still the light the bake holds; one with no entry of its own (stacked on a set light's key) was never
+            // baked, and a light that moved or stopped holding still leaves the set, which Gone re-closes without it
+            if (isStatic && _seenPtr.TryGetValue(id, out int at) && Near(_stPosR[at], pos, adjR))
             {
-                Met(at);
                 Drifted(id, at, pos, adjR, color);
                 CensusStatic++; setIndex = SetIndexOf(id, pos, adjR); return true;
             }
@@ -243,6 +229,7 @@ internal static unsafe partial class LightmapBake
     /// reopens the set: the next walk closes on what the light is now, and the rects it touched re-bake.</summary>
     private static void Drifted(IntPtr id, int at, Vector3 pos, float adjR, Vector3 color)
     {
+        _drift.Met[at] = true;
         Vector4 was = _stPosR[at];
         // at the close-time place: the 1 u a static light may bob must not flap the set across a 4 u bin edge
         if (SetTerm(new Vector4(was.X, was.Y, was.Z, adjR), color) == SetTerm(was, _stCol[at]) || !Reclose()) return;
@@ -254,37 +241,20 @@ internal static unsafe partial class LightmapBake
     /// switched off, hidden or blacked out, and its baked copy must not stay on the floor. Called at a closed walk's end.</summary>
     private static void Gone()
     {
-        if (!Produces || _drift.MetN >= _stN || !_reopen && !Reclose()) return;
-        int named = 0;
-        for (int i = 0; i < _stN && named < MaxGoneNamed; i++)
+        if (!Produces || Array.IndexOf(_drift.Met, false, 0, _stN) < 0 || !_reopen && !Reclose()) return;
+        int gone = 0;
+        foreach (var (id, i) in _seenPtr)
         {
-            if (_drift.Met[i]) continue;
-            named++;
+            if (_drift.Met[i] || gone++ >= MaxGoneNamed) continue;
             Vector4 p = _stPosR[i]; Vector3 c = _stCol[i];
-            _log?.Info($"LightmapBake: static light db light {IdOf(i):x} left the set after the close (moved, animated, off, hidden or black) -- "
+            _log?.Info($"LightmapBake: static light db light {id:x} left the set after the close (moved, animated, off, hidden or black) -- "
                      + $"at ({p.X:F1},{p.Y:F1},{p.Z:F1}) r {p.W:F1}, colour ({c.X:F3},{c.Y:F3},{c.Z:F3}); the set re-closes without it");
         }
-        if (_stN - _drift.MetN > named) _log?.Info($"LightmapBake: ...and {_stN - _drift.MetN - named} more static lights left the set");
-    }
-
-    /// <summary>The closed walk met set entry <paramref name="i"/>; <see cref="Gone"/> counts the entries met, not the
-    /// lights, since a light stacked on another's key has no entry of its own.</summary>
-    private static void Met(int i)
-    {
-        if (_drift.Met[i]) return;
-        _drift.Met[i] = true;
-        _drift.MetN++;
+        if (gone > MaxGoneNamed) _log?.Info($"LightmapBake: ...and {gone - MaxGoneNamed} more static lights left the set");
     }
 
     /// <summary>Lights one re-close names by <see cref="Gone"/>; the rest are counted.</summary>
     private const int MaxGoneNamed = 8;
-
-    /// <summary>The database light behind set entry <paramref name="i"/>. Cold: only a re-close's log line asks.</summary>
-    private static IntPtr IdOf(int i)
-    {
-        foreach (var kv in _seenPtr) if (kv.Value == i) return kv.Key;
-        return IntPtr.Zero;
-    }
 
     /// <summary>Reopens the set for a re-close, once per walk, unless the area has spent <see cref="MaxDriftCloses"/>;
     /// then it says so once and the set stays as it stands.</summary>
@@ -307,7 +277,7 @@ internal static unsafe partial class LightmapBake
 
     /// <summary>The area's drift re-closes so far, whether the cap has been said, and which set entries the closed
     /// walk has met; replaced at an area edge.</summary>
-    private sealed class DriftState { public int Closes; public bool Said; public bool[] Met = new bool[256]; public int MetN; }
+    private sealed class DriftState { public int Closes; public bool Said; public bool[] Met = new bool[256]; }
     private static DriftState _drift = new();
 
     /// <summary>Within 1 u and 10% of reach of the set entry: the drift a static light is allowed after the close.</summary>

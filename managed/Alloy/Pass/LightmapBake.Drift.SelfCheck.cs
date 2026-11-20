@@ -61,6 +61,7 @@ internal static unsafe partial class LightmapBake
         Area();
         for (int q = 0; q < 4; q++) { BeginWalkDb(1, 0); RecordDb(lamp, at, Reach, white, false, true, out _); RecordDb(lamp2, at, Reach, dim, false, true, out _); EndWalk(); }
         check.Expect(_drift.Closes == 0, $"two stacked set lights of two colours, neither changed, spent {_drift.Closes} re-closes");
+        check.Expect(!RecordDb(lamp2, at, Reach, dim, false, true, out _), "...and the one with no entry of its own, never baked, is lit live");
 
         // a lamp nudged half a unit onto its neighbour's exact place and reach is still itself, in its own colour
         var beside = at + new Vector3(0.5f, 0f, 0f);
