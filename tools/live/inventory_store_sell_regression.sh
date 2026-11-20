@@ -14,9 +14,10 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 . "$ROOT/tools/live/inventory_key_run.sh"
 out="$ROOT/.scratch/inventory-store-sell"
 [ "${1:-}" = --out ] && out="${2:?--out needs a folder}"
-# The harness's 1280x720 with the window centred: the bottom-left backpack cell, then a path out to the store's grid.
-drag="move:476,540;sleep:400;down:476,540;sleep:200;move:486,530;sleep:200;move:500,450;sleep:200;move:420,450;sleep:200"
-drag="$drag;move:300,350;sleep:200;move:180,250;sleep:600;up:180,250"
+# The harness's 1280x720 with the window centred: the bottom-left backpack cell, then a path out to the store grid's last
+# row, below the CX chat window (which covers the store's upper rows and is no store box).
+drag="move:476,540;sleep:400;down:476,540;sleep:200;move:486,530;sleep:200;move:470,470;sleep:200;move:420,430;sleep:200"
+drag="$drag;move:300,400;sleep:200;move:180,385;sleep:600;up:180,385"
 inventory_store_run "$out" "sleep:15000;key:i;sleep:13000;$drag;sleep:3000;shot:$out/after.png" || exit $?
 gold="$(grep -aoE '\[inv\] worn/stat change gold=[0-9]+' "$INV_LOG" | grep -oE '[0-9]+$')"
 first="$(echo "$gold" | head -1)" last="$(echo "$gold" | tail -1)"
