@@ -124,6 +124,7 @@ internal static unsafe partial class Weather
         {
             bool fresh = (float)(now - _enterTicks) / Stopwatch.Frequency < ArriveWindowSec;
             _enterTicks = 0;
+            _mapArrive = fresh && Arrive.V && rain;
             if (fresh && Arrive.V) { _wet = rain ? 1f : 0f; _snow = snow ? 1f : 0f; _puddle = rain && PuddleThreshold.V < 1f ? 1f : 0f; }
         }
         _wet = Math.Clamp(_wet + (rain ? Density / AccumSec.V : -1f / DrySec.V) * dt, 0f, 1f);
@@ -280,6 +281,7 @@ internal static unsafe partial class Weather
         SplashSelfCheck(check);
         TrackSelfCheck(check);
         SnowStepApprovedExamples(check);
+        AreaEdgeSelfCheck(check);
         StepSelfCheck(check);
         float d = Density; Kind k = CurrentKind; bool en = Enabled.V;
         // the rates are the player's cx.cfg (weather.accum=5 reads 20x faster): pin the declared ones

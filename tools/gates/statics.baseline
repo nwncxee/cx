@@ -151,7 +151,7 @@
 5 managed/Alloy/Pass/ToonStage.cs
 4 managed/Alloy/Pass/TriggerHighlight.cs
 4 managed/Alloy/Pass/Weather.Cover.cs
-14 managed/Alloy/Pass/Weather.cs
+13 managed/Alloy/Pass/Weather.cs
 22 managed/Alloy/Pass/Weather.Draw.cs
 4 managed/Alloy/Pass/Weather.Esm.cs
 16 managed/Alloy/Pass/Weather.Map.cs

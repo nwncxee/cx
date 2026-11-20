@@ -1097,7 +1097,7 @@ internal static unsafe class SymbolMap
     //      weathertypes.2da "Model" when density > 0 -- so forwarding density 0 IS the vanilla-emitter silence.
     //      CNWCArea::Update ramps it: (target, (fade-left)/fade*100) up, (current, left/fade*100) down, then
     //      (target, target ? 100 : 0) once at the end. StartWeather/StopWeather @0x704de0/@0x704e20 only set the
-    //      target byte (+0x2f1) and the 6000ms ramp (+0x2ec) and cue the rain sound; hooked for the edge log.
+    //      target byte (+0x2f1) and the 6000ms ramp (+0x2ec) and cue the rain sound; not hooked: Windows inlines them into LoadArea, which is the area edge.
     /// <summary>CNWCArea::SetWeather(unsigned char type, float density). ABI: <c>(CNWCArea*, uchar, float)</c>
     /// -- Linux <c>rdi, esi, xmm0</c>; Win64 <c>rcx, dl, xmm2</c>. Returns int (1 = applied).</summary>
     [Fn("int(CNWCArea this, byte kind, float density)")]
