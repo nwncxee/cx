@@ -194,26 +194,22 @@ internal static unsafe partial class LightmapBake
         // light stays dynamic until the arena ranges are charted, which is what keeps the tiles lit
         // meanwhile. Self-retiring: the first chart offered ends it.
         if (!Produces) { CensusDynamic++; return false; }
-        // in the closed set = static; anything else after the close is dynamic, whatever it is: a light that
-        // appears after load moved
-        if (_seen.TryGetValue(key, out int at))
+        // in the closed set and still static = static; anything else after the close is dynamic, whatever it is:
+        // a light that appears after load moved, and a set light that moved or stopped holding still leaves the
+        // set, which Gone re-closes without it at the walk's end
+        if (_seen.TryGetValue(key, out int at) && (isStatic || !_closed))
         {
-            if (_closed && isStatic) Drifted(id, at, pos, adjR, color);
+            if (_closed) Drifted(id, at, pos, adjR, color);
             CensusStatic++; setIndex = SetIndexOf(id, pos, adjR); return true;
         }
         if (_closed)
         {
             // the same record a hair off its close-time place (a bobbing lantern, a reach re-adjusted by the
             // simulation) is still the light the bake holds; a far move is a scripted move
-            if (_seenPtr.TryGetValue(id, out at))
+            if (isStatic && _seenPtr.TryGetValue(id, out at) && Near(_stPosR[at], pos, adjR))
             {
-                if (Near(_stPosR[at], pos, adjR))
-                {
-                    if (isStatic) Drifted(id, at, pos, adjR, color);
-                    CensusStatic++; setIndex = SetIndexOf(id, pos, adjR); return true;
-                }
-                // a light of the set that moved is lit live from here on, and its baked copy must not stay behind
-                Drifted(id, at, pos, adjR, color, moved: true);
+                Drifted(id, at, pos, adjR, color);
+                CensusStatic++; setIndex = SetIndexOf(id, pos, adjR); return true;
             }
             CensusDynamic++;
             return false;
@@ -230,24 +226,39 @@ internal static unsafe partial class LightmapBake
         return true;
     }
 
-    /// <summary>A set light that no longer hashes as its entry (recoloured, or its animation blended in after the
-    /// close) or that <paramref name="moved"/> off it reopens the set: the next walk closes on what the light is
-    /// now and the rects it touches re-bake. Capped per area: a light that never stops changing keeps the set.</summary>
-    private static void Drifted(IntPtr id, int at, Vector3 pos, float adjR, Vector3 color, bool moved = false)
+    /// <summary>A set light that no longer hashes as its entry (recoloured, or its reach re-adjusted after the close)
+    /// reopens the set: the next walk closes on what the light is now, and the rects it touched re-bake.</summary>
+    private static void Drifted(IntPtr id, int at, Vector3 pos, float adjR, Vector3 color)
     {
         Vector4 was = _stPosR[at];
         // at the close-time place: the 1 u a static light may bob must not flap the set across a 4 u bin edge
-        if (_reopen || !moved && SetTerm(new Vector4(was.X, was.Y, was.Z, adjR), color) == SetTerm(was, _stCol[at])) return;
+        if (SetTerm(new Vector4(was.X, was.Y, was.Z, adjR), color) == SetTerm(was, _stCol[at]) || !Reclose()) return;
+        Vector3 c = _stCol[at];
+        _log?.Info($"LightmapBake: static light db light {id:x} changed after the close -- r {was.W:F1} -> {adjR:F1}, colour ({c.X:F3},{c.Y:F3},{c.Z:F3}) -> ({color.X:F3},{color.Y:F3},{color.Z:F3}); the set re-closes and the rects it touched re-bake");
+    }
+
+    /// <summary>A closed walk that met fewer set lights than the set holds: one moved, stopped holding still, or was
+    /// switched off, hidden or blacked out, and its baked copy must not stay on the floor. Called at a closed walk's end.</summary>
+    private static void Gone()
+    {
+        if (!Produces || CensusStatic >= _stN || !Reclose()) return;
+        _log?.Info($"LightmapBake: {_stN - CensusStatic} of the set's {_stN} static lights left it after the close (moved, animated, off, hidden or black) -- the set re-closes without them");
+    }
+
+    /// <summary>Reopens the set for a re-close, once per walk, unless the area has spent <see cref="MaxDriftCloses"/>;
+    /// then it says so once and the set stays as it stands.</summary>
+    private static bool Reclose()
+    {
+        if (_reopen) return false;
         if (_drift.Closes >= MaxDriftCloses)
         {
-            if (!_drift.Said) _log?.Always($"LightmapBake: a static light keeps changing after the close (db light {id:x}) -- {MaxDriftCloses} re-closes this area already, the set stays as it stands");
+            if (!_drift.Said) _log?.Always($"LightmapBake: the static lights keep changing after the close -- {MaxDriftCloses} re-closes this area already, the set stays as it stands");
             _drift.Said = true;
-            return;
+            return false;
         }
         _drift.Closes++;
         _reopen = true;
-        Vector3 c = _stCol[at];
-        _log?.Info($"LightmapBake: static light db light {id:x} changed after the close -- r {was.W:F1} -> {adjR:F1}, colour ({c.X:F3},{c.Y:F3},{c.Z:F3}) -> ({color.X:F3},{color.Y:F3},{color.Z:F3}); the set re-closes and the rects it touches re-bake");
+        return true;
     }
 
     /// <summary>Re-closes an area's drift allows before the set is left as it stands.</summary>
@@ -262,10 +273,10 @@ internal static unsafe partial class LightmapBake
         => (pos - new Vector3(was.X, was.Y, was.Z)).LengthSquared() < 1f && MathF.Abs(adjR - was.W) < 0.1f * was.W;
 
     /// <summary>The walk's tail: close the set on the first settled walk after <c>LoadArea</c>'s non-zero
-    /// return, and every instance re-keys against it once. Closed, nothing here runs.</summary>
+    /// return, and every instance re-keys against it once. Closed, it only checks the walk met every set light.</summary>
     internal static void EndWalk()
     {
-        if (_closed) return;
+        if (_closed) { Gone(); return; }
         if (_clsArea == IntPtr.Zero) return;
         // the area's own message has not finished spawning it (or it failed): there is nothing to close over
         if (!_loadArmed) return;

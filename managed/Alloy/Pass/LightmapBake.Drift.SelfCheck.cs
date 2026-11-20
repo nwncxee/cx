@@ -9,8 +9,8 @@ namespace CX.Alloy;
 internal static unsafe partial class LightmapBake
 {
     /// <summary>The close-then-change cases: a recolour or a move re-closes the set on the light as it is now, a
-    /// light still blending or a hair off does not, one that starts moving leaves the set, and a light that never
-    /// stops changing re-closes a bounded number of times.</summary>
+    /// light a hair off does not, one no longer static or gone from the walk leaves the set, and a light that
+    /// never stops changing re-closes a bounded number of times.</summary>
     internal static bool DriftSelfCheck(ExtenderLog log)
     {
         var check = new Checker(log, "LightmapBake.DriftSelfCheck");
@@ -32,11 +32,32 @@ internal static unsafe partial class LightmapBake
                      $"a static light recoloured after the close is baked in its new colour, not the close's ({_setCol[0]})");
         check.Expect(SetHash != closedOn && _rekeyPending, "...under a new set hash, so every rect it touches re-keys and re-bakes");
 
-        // a light still blending to its colour is held as the close saw it, until it settles
+        // a set light a looping colour track starts driving in place is no longer static: lit live, not baked white
         Area(); Walk(lamp, at, Reach, white, true);
-        Walk(lamp, at, Reach, dim, false); Walk(lamp, at, Reach, dim, false);
-        check.Expect(_setCol[0] == white && RecordDb(lamp, at, Reach, dim, false, false, out _),
-                     "a light still blending stays the set's, as the close saw it -- no re-close per frame of a blend");
+        Walk(lamp, at, Reach, white, false); Walk(lamp, at, Reach, white, false);
+        check.Expect(_setN == 0 && !RecordDb(lamp, at, Reach, white, false, false, out _),
+                     $"a set light no longer static where it stands is still baked as the close saw it ({_setN} set lights)");
+        int keyedCloses = _drift.Closes;
+        Walk(lamp, at, Reach, white, false); Walk(lamp, at, Reach, dim, false);
+        check.Expect(_drift.Closes == keyedCloses, "...and once out of the set its colour track re-closes nothing");
+
+        // ...and so is one a hair off its close-time place, matched by identity rather than key
+        Area(); Walk(lamp, at, Reach, white, true);
+        Walk(lamp, at, Reach + 1f, white, false); Walk(lamp, at, Reach + 1f, white, false);
+        check.Expect(_setN == 0, $"a set light a hair off its place and no longer static is still baked ({_setN} set lights)");
+
+        // two set lights recoloured in one walk spend one re-close, not two
+        var lamp2 = (IntPtr)0x558;
+        var at2 = at + new Vector3(30f, 0f, 0f);
+        Area(); Walk2(white, white);
+        Walk2(dim, dim);
+        check.Expect(_drift.Closes == 1, $"two lights recoloured in one walk spent {_drift.Closes} re-closes, not 1");
+
+        // a set light switched off, hidden or blacked out never reaches the record: its baked copy goes all the same
+        Area(); Walk(lamp, at, Reach, white, true);
+        ulong lit = SetHash;
+        Empty(); Empty();
+        check.Expect(_setN == 0 && SetHash != lit, $"a set light gone from the walk is still baked ({_setN} set lights)");
 
         // the same light a hair off is the same light
         Area(); Walk(lamp, at, Reach, white, true);
@@ -98,13 +119,25 @@ internal static unsafe partial class LightmapBake
             // the area already under the walk: an area CHANGE would repack, and a repack forgets every rect
             _clsArea = 1; _edgePending = false; _areaChanged = false; _loadArmed = true; SetHash = 0; _setN = 0;
             _drift = new(); Reopen();
+            if (_rectN == 0) _rectN = 1;   // a case that re-closed on no light repacked, and a repack forgets every rect
         }
 
-        static void Walk(IntPtr id, Vector3 pos, float r, Vector3 c, bool settled)
+        void Walk2(Vector3 c1, Vector3 c2)
         {
             BeginWalkDb(1, 0);
             _rekeyPending = false;
-            RecordDb(id, pos, r, c, false, settled, out _);
+            RecordDb(lamp, at, Reach, c1, false, true, out _);
+            RecordDb(lamp2, at2, Reach, c2, false, true, out _);
+            EndWalk();
+        }
+
+        static void Empty() { BeginWalkDb(1, 0); _rekeyPending = false; EndWalk(); }
+
+        static void Walk(IntPtr id, Vector3 pos, float r, Vector3 c, bool isStatic)
+        {
+            BeginWalkDb(1, 0);
+            _rekeyPending = false;
+            RecordDb(id, pos, r, c, false, isStatic, out _);
             EndWalk();
         }
     }
