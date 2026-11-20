@@ -37,6 +37,8 @@ internal static unsafe partial class TexRegistry
     {
         public int Slot;
         public uint Gen;
+        public uint Revision;
+        public TexId Id => TexId.Make(Slot, Gen);
         public string Resref = "";
         public TexKind Kind;
         public TexLocation Loc;
@@ -97,9 +99,9 @@ internal static unsafe partial class TexRegistry
     private static bool TxiNamesEnvMap(string? txi)
         => txi != null && txi.Contains("envmaptexture", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>What the bracket publishes back to the game thread: the slot it uploaded for, the generation
+    /// <summary>What the bracket publishes back to the game thread: the slot it uploaded for, the image revision
     /// it uploaded against, and either a name and handle or the reason there is none, and whether asking again may fix it.</summary>
-    private readonly record struct Landed(int Slot, uint Gen, uint Name, ulong Handle, long Bytes,
+    private readonly record struct Landed(TexId Id, uint Revision, uint Name, ulong Handle, long Bytes,
                                          TexCoverage Cov, bool BumpyShiny, bool EnvMap, string? Why,
                                          bool Preview = false, string? CovWhy = null, bool Retry = false);
 
@@ -151,7 +153,7 @@ internal static unsafe partial class TexRegistry
     {
         string resref = _resref[i] ?? "";
         Job j = Rent();
-        j.Slot = i; j.Gen = _gen[i] & 0xFFF; j.Resref = resref; j.Kind = _kind[i];
+        j.Slot = i; j.Gen = _gen[i]; j.Revision = _imageRevision[i]; j.Resref = resref; j.Kind = _kind[i];
         j.Data = null; j.Chained = false; j.Cuts = _cuts[i]; j.Why = null; j.W = j.H = j.Levels = 0; j.Bytes = 0; j.Channels = 0; j.Fast = fast; j.Tail = false;
         // The .txi is its own resource, and the only one the engine reads: CAurTextureBasic::Init @0x588940
         // and Material::Init @0x5c5b90 both take it from AurResGet(name, ".txi"), which reaches the resman's
@@ -193,7 +195,9 @@ internal static unsafe partial class TexRegistry
         {
             bool clamp = _clamp[i], nearest = _nearest[i], mip = _mipmap[i];
             TxiSamplerWords(txi, ref clamp, ref nearest, ref mip);
-            _clamp[i] = clamp; _nearest[i] = nearest; _mipmap[i] = mip;
+            if ((_samplerOverrides[i] & SamplerOverrides.Clamp) == 0) _clamp[i] = clamp;
+            if ((_samplerOverrides[i] & SamplerOverrides.Nearest) == 0) _nearest[i] = nearest;
+            if ((_samplerOverrides[i] & SamplerOverrides.Mipmap) == 0) _mipmap[i] = mip;
         }
     }
 
@@ -270,6 +274,7 @@ internal static unsafe partial class TexRegistry
 
     private static void Recycle(Job j)
     {
+        j.Revision = 0;
         if (j.Data != null)
         {
             if (j.Tail) NativeMemory.Free(j.Data);
@@ -560,64 +565,93 @@ internal static unsafe partial class TexRegistry
         while (true)
         {
             int i;
+            uint name;
+            bool clamp, nearest, mip;
             lock (_lock)
             {
                 if (_samplerQ.Count == 0) break;
                 i = _samplerQ.Dequeue();
                 if (!_samplerWish[i] || _state[i] == TexState.Free) continue;
-                if (_name[i] == 0) continue;       // not uploaded yet; Upload reads _clamp/_nearest/_mipmap itself
+                name = _name[i];
+                if (name == 0) continue;       // not uploaded yet; Upload reads _clamp/_nearest/_mipmap itself
+                clamp = _clamp[i]; nearest = _nearest[i]; mip = _mipmap[i];
                 _samplerWish[i] = false;
             }
-            uint name;
-            bool clamp, nearest, mip;
-            lock (_lock) { name = _name[i]; clamp = _clamp[i]; nearest = _nearest[i]; mip = _mipmap[i]; }
-            if (name == 0) continue;
             uint target = VkTextures.NewName();
             if (target == 0)
             {
                 if (LoudOnce("clone")) _log?.Always($"TexRegistry: the sampler change on \"{_resref[i]}\" could not copy the texture -- it keeps the state it was minted with");
                 continue;
             }
-            ulong fresh;
-            lock (_lock)
-            {
-                DropHandle(i);
-                if (target != name) { _graveyard.Enqueue(name); _name[i] = target; }
-            }
-            if (target != name) VkTextures.Clone(name, target, VkSampler(clamp, nearest, mip));
-            fresh = MintHandle(target, _resref[i] ?? "");
-            lock (_lock) { _handle[i] = fresh; _samplerDone++; TableSerial++; if (fresh != 0) _mints++; }
+            VkTextures.Clone(name, target, VkSampler(clamp, nearest, mip));
+            ulong fresh = MintHandle(target, _resref[i] ?? "");
+            lock (_lock) if (!PublishClone(i, name, target, fresh)) continue;
             lock (_gate) _reminted.Enqueue(i);
         }
+    }
+
+    /// <summary>Moves slot <paramref name="i"/> from <paramref name="name"/> to its sampler copy, unless a reset or
+    /// the last release reached the slot while the copy was made: then the copy is freed. Caller holds <see cref="_lock"/>.</summary>
+    private static bool PublishClone(int i, uint name, uint target, ulong fresh)
+    {
+        if (_name[i] != name || _refs[i] == 0) { DropValue(fresh); _graveyard.Enqueue(target); return false; }
+        DropHandle(i);
+        _graveyard.Enqueue(name);
+        _name[i] = target; _handle[i] = fresh;
+        _samplerDone++; TableSerial++; if (fresh != 0) _mints++;
+        return true;
     }
 
     /// <summary>The anisotropy every linear mipmapped texture gets: the player's <c>post.aniso</c> level, bound at
     /// launch because a sampler is minted with its texture. Sampler creation clamps it to the device's ceiling.</summary>
     internal static int Aniso => Post.Aniso.Boot;
 
+    /// <summary>Is this the image the slot still wants: the same tenant, and no reset since the job read it? A
+    /// <see cref="TexId"/> outlives several images when a server's texture override changes its file. Caller holds <see cref="_lock"/>.</summary>
+    private static bool CurrentImage(TexId id, uint revision)
+        => Valid(id) && _imageRevision[id.Index] == revision;
+
     /// <summary>One finished job, uploaded and published, at the frame's own point.</summary>
     private static void Finish(Job j)
     {
         int i = j.Slot;
         if ((uint)i >= MaxSlots) return;
-        // Stale: the slot was evicted (or re-used) while the worker held the job, so this upload has no
-        // subject. The generation is the whole test -- no address, no identity probe.
-        bool stale;
-        lock (_lock) stale = (_gen[i] & 0xFFF) != j.Gen || _state[i] == TexState.Free;
-        if (stale) return;
-        if (j.Why != null) { Publish(new Landed(i, j.Gen, 0, 0, 0, TexCoverage.Unknown, false, false, j.Why)); return; }
+        TexId id = j.Id;
+        lock (_lock) if (!CurrentImage(id, j.Revision)) return;
+        if (j.Why != null) { Publish(new Landed(id, j.Revision, 0, 0, 0, TexCoverage.Unknown, false, false, j.Why)); return; }
         uint name = Upload(j, out string? why);
-        if (name == 0) { Publish(new Landed(i, j.Gen, 0, 0, 0, TexCoverage.Unknown, false, false, why ?? "the driver refused the upload", Retry: true)); return; }
-        if (!j.Tail) lock (_lock) if ((_gen[i] & 0xFFF) == j.Gen) { _mean[i] = j.Mean; _meanOk[i] = j.MeanOk; }
+        if (name == 0) { Publish(new Landed(id, j.Revision, 0, 0, 0, TexCoverage.Unknown, false, false, why ?? "the driver refused the upload", Retry: true)); return; }
+        if (!j.Tail) lock (_lock) if (CurrentImage(id, j.Revision)) { _mean[i] = j.Mean; _meanOk[i] = j.MeanOk; }
         FileCycle(j);
         FileArturo(j);
         ulong handle = MintHandle(name, j.Resref);
         if (FramePump.Debug)
             _log?.Always($"TexRegistry: [gpudebug] minted \"{j.Resref}\" tex {name} fmt 0x{j.GlFmt:x} {j.W}x{j.H} levels {j.Levels} handle 0x{handle:x}");
-        Publish(new Landed(i, j.Gen, name, handle, j.Bytes, j.Cov, j.BumpyShiny, j.EnvMap, null, j.Tail, j.CovWhy));
+        Publish(new Landed(id, j.Revision, name, handle, j.Bytes, j.Cov, j.BumpyShiny, j.EnvMap, null, j.Tail, j.CovWhy));
     }
 
     private static void Publish(in Landed l) { lock (_gate) _landed.Enqueue(l); }
+
+    /// <summary>One upload's result filed on the game thread; a result for an image the slot no longer wants
+    /// frees what it made instead.</summary>
+    private static void FileArrival(in Landed l)
+    {
+        TexId id = l.Id;
+        if ((uint)id.Index >= MaxSlots) return;
+        lock (_lock)
+        {
+            if (!CurrentImage(id, l.Revision))
+            {
+                DropValue(l.Handle);
+                if (l.Name != 0) _graveyard.Enqueue(l.Name);
+                return;
+            }
+            _pend[id.Index] = PendNone;
+        }
+        if (l.Why != null) Fail(id.Index, l.Why, l.Retry);
+        else if (l.Preview) { LandPreview(id, l.Name, l.Handle, l.Cov); Enqueue(id.Index); }
+        else Land(id, l.Name, l.Bytes, l.Handle, l.Cov, l.BumpyShiny, l.EnvMap, l.CovWhy);
+    }
 
     // ---- the game thread's half ----
 
@@ -626,6 +660,7 @@ internal static unsafe partial class TexRegistry
     /// manager, so it belongs on this thread and nowhere else.</summary>
     internal static void Tick()
     {
+        ApplyResets();
         // The seven palettes, read where a resource read belongs: needed the first time a PLT record draws.
         // PltVerify loads them itself when Alloy is off, which is why this does not force it.
         if (Renderer.On && !PltPalettes.Loaded) PltPalettes.LoadDefaults();
@@ -639,19 +674,7 @@ internal static unsafe partial class TexRegistry
         {
             Landed l;
             lock (_gate) { if (_landed.Count == 0) break; l = _landed.Dequeue(); }
-            if ((uint)l.Slot >= MaxSlots) continue;
-            bool stale;
-            lock (_lock) stale = (_gen[l.Slot] & 0xFFF) != l.Gen || _state[l.Slot] == TexState.Free;
-            if (stale)
-            {
-                // The slot went while the upload was in flight: the name is ours and nothing references it.
-                if (l.Name != 0) lock (_lock) _graveyard.Enqueue(l.Name);
-                continue;
-            }
-            _pend[l.Slot] = PendNone;
-            if (l.Why != null) Fail(l.Slot, l.Why, l.Retry);
-            else if (l.Preview) { LandPreview(TexId.Make(l.Slot, l.Gen), l.Name, l.Handle, l.Cov); Enqueue(l.Slot); }
-            else Land(TexId.Make(l.Slot, l.Gen), l.Name, l.Bytes, l.Handle, l.Cov, l.BumpyShiny, l.EnvMap, l.CovWhy);
+            FileArrival(l);
         }
         while (true)
         {
@@ -770,13 +793,15 @@ internal static unsafe partial class TexRegistry
         string name; TexKind kind;
         lock (_lock)
         {
-            _state[i] = TexState.Failed;
             _retryAt[i] = retry ? Environment.TickCount64 + RetryMs : 0;
             _pend[i] = PendNone;
             TableSerial++;
             _failed++;
             name = _resref[i] ?? "?"; kind = _kind[i];
             MarkDependents(i);
+            // Released while it loaded: Failed must not stay linked on the idle list an acquire would not unlink.
+            if (_state[i] == TexState.Idle) Retire(i);
+            else _state[i] = TexState.Failed;
         }
         if (LoudOnce($"tex:{name}"))
             _log?.Always($"TexRegistry: \"{name}\" ({kind}) did not load -- {why}. "

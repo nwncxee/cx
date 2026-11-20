@@ -44,9 +44,29 @@ internal static unsafe class TexStream
     /// <summary>Streaming is on: every hook took.</summary>
     internal static bool On => _armed;
 
+    /// <summary>The engine's <c>AurResetTexture</c>, run ahead of the registry's reload.</summary>
+    private sealed class ResetHookState { internal AurResetTextureFn Orig; }
+    private static readonly ResetHookState _reset = new();
+
+    /// <summary><c>AurResetTexture</c>: a server set or cleared a texture override, so the name resolves to
+    /// another file. The engine resets its own copy first; the registry reloads the name at its next tick.</summary>
+    [UnmanagedCallersOnly]
+    private static void OnResetTexture(byte* name)
+    {
+        string? source = Renderer.On && name != null
+            ? Marshal.PtrToStringUTF8((IntPtr)name, ResRef.Of(name).Length) : null;
+        _reset.Orig(name);
+        if (string.IsNullOrEmpty(source)) return;
+        Db.TexRegistry.QueueReset(source);
+        _log?.Info($"TexStream: AurResetTexture(\"{source}\") -- the registry reloads it");
+    }
+
     internal static void Install(ExtenderLog log, HookService hooks)
     {
         _log = log;
+        _reset.Orig = hooks.InstallAurResetTexture(&OnResetTexture);
+        if (_reset.Orig == null)
+            log.Always("TexStream: AurResetTexture unresolved -- a server's texture override keeps the image Alloy loaded before it");
         _queue = new EngineList(Native.Sym(SymbolMap.RefreshTextures));
         if (_queue.IsNull) { log.Always("TexStream: REFUSED -- RefreshTextures unresolved; the engine drains its texture queue whole and no [load] line is written"); return; }
         _origDrain = hooks.InstallAurTextureBuildAndStoreAll(&OnDrain);

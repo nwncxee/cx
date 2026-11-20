@@ -785,6 +785,10 @@ internal static unsafe class SymbolMap
     /// <c>AurTextureMakeCurrent</c>, <c>RefreshAll</c> and <c>AurResetTexture</c>.</summary>
     [Fn("void()")]
     public const string AurTextureBuildAndStoreAll = "_Z26AurTextureBuildAndStoreAllv";
+    /// <summary><c>AurResetTexture(char const*)</c> @0x48fa90 (Windows: exported by name) -- called by
+    /// <c>CNWCMessage::HandleServerToPlayerResman</c> after a server sets or clears a texture override.</summary>
+    [Fn("void(byte* name)")]
+    public const string AurResetTexture = "_Z15AurResetTexturePKc";
     /// <summary><c>AurTextureRefreshAll()</c> @0x48f050 (Windows: exported by name) -- <c>AurInitFont</c>, then
     /// <c>CAurTextureBasic::Reset</c> over every entry of <c>m_OrderedTextureList</c> whose <c>+0xeb</c> is clear
     /// (GL names deleted, image freed), then <see cref="AurTextureBuildAndStoreAll"/>. The engine runs it itself
@@ -2965,6 +2969,7 @@ internal static unsafe class SymbolMap
         [AurTextureBindInUnit] = Nm("?BindInUnit@CAurTexture@@UEAAXIH@Z"),
         [AurTextureBuildAndStoreTexture] = Nm("?BuildAndStoreTexture@CAurTextureBasic@@QEAAXXZ"),
         [AurTextureBuildAndStoreAll] = Nm("?AurTextureBuildAndStoreAll@@YAXXZ"),
+        [AurResetTexture] = Nm("?AurResetTexture@@YAXPEBD@Z"),
         [AurTextureRefreshAll] = Nm("?AurTextureRefreshAll@@YAXXZ"),
         [RefreshTextures] = Nm("?RefreshTextures@@3V?$List@PEAVCAurTextureBasic@@@@A"),
         [MaterialInitializeTextures] = Nm("?InitializeTextures@Material@@QEAAXPEBD000@Z"),

@@ -425,6 +425,9 @@ internal static unsafe partial class TexRegistry
         Expect(dj.Compressed && dj.Levels == 1, $"a one-level DDS was given {dj.Levels} level(s) -- the padding is sampled");
         DdsReader.FreePrepared(dj.Data);
 
+        ok &= RuntimeOverrideCheck(log);
+        ok &= SamplerOverrideCheck(log);
+
         // a handle to an evicted slot resolves to nothing: the whole reason no holder needs a death notice
         Retire(a.Index);
         Expect(!Valid(a) && !Valid(b) && !TryResident(a, out _, out _),
@@ -458,4 +461,96 @@ internal static unsafe partial class TexRegistry
     /// <summary>A slot made without the resource manager: the REAL allocator, with the offer dropped. A hand
     /// copy of <see cref="Acquire"/> is a check of a second implementation (review r1 finding 19).</summary>
     private static TexId Insert(string resref, TexKind kind) => Alloc(resref, kind, 0, out _);
+
+    /// <summary>A server's texture override reloads the slots that name it in place, and a reload read before the
+    /// override never lands on the replacement.</summary>
+    private static bool RuntimeOverrideCheck(ExtenderLog log)
+    {
+        var check = new Checker(log, "TexRegistry.RuntimeOverride.SelfCheck");
+        const string source = "cx_reset_floor";
+        TexId floor = Insert(source, TexKind.Auto);
+        TexId idleCell = Alloc(source, TexKind.Auto, 1, out _);
+        TexId alias = Insert("cx_reset_other", TexKind.Plain);
+        Land(floor, 10, 64, cov: TexCoverage.Opaque);
+        Land(idleCell, 11, 64);
+        Land(alias, 12, 64);
+        Release(idleCell);
+        var waiting = _waiting.ToArray();
+        long resident = _residentBytes, idle = _idleBytes;
+        uint oldRevision = _imageRevision[floor.Index];
+        var late = new Landed(floor, oldRevision, 40, 41, 64, TexCoverage.Opaque, false, false, null);
+        QueueReset("CX_RESET_FLOOR");
+        QueueReset(source);
+        ApplyResets();
+        check.Expect(Valid(floor) && !TryDrawable(floor, out _, out _) && Coverage(floor) == TexCoverage.Unknown,
+                     "a live floor still draws its old image, or its material lost its TexId");
+        check.Expect(!Valid(idleCell) && _idleBytes == idle - 64 && _residentBytes == resident - 64,
+                     "the idle atlas cell or its bytes survived the source reset");
+        check.Expect(TryResident(alias, out uint other, out _) && other == 12,
+                     "a different source lost its image in the same reset");
+        check.Expect(_waiting.Count == waiting.Length + 1, "repeated resets queued more than one reload");
+        FileArrival(late);
+        FileArrival(late with { Why = "obsolete failure", Name = 0, Handle = 0 });
+        check.Expect(StateOf(floor) == TexState.Loading && !TryDrawable(floor, out _, out _)
+                     && _graveyard.Contains(40) && _dyingHandles.Contains(41),
+                     "a stale upload or failure took over the slot, or its GPU allocation leaked");
+        FileArrival(late with { Revision = _imageRevision[floor.Index], Name = 20, Handle = 0, Cov = TexCoverage.Cutout });
+        check.Expect(TryResident(floor, out uint replacement, out _) && replacement == 20
+                     && Coverage(floor) == TexCoverage.Cutout, "the original TexId did not draw the replacement");
+        QueueReset(source);
+        ApplyResets();
+        Release(floor);
+        FileArrival(late with { Revision = _imageRevision[floor.Index], Why = "missing replacement", Name = 0, Handle = 0 });
+        check.Expect(!Valid(floor) && _idleHead != floor.Index && _idleTail != floor.Index,
+                     "a failed reload left an unreferenced texture in the idle list");
+        _waiting.Clear();
+        foreach (int slot in waiting) _waiting.Enqueue(slot);
+        if (Valid(floor)) Retire(floor.Index);
+        Retire(alias.Index);
+        if (Valid(idleCell)) Retire(idleCell.Index);
+        log.Info(check.Ok ? "TexRegistry.RuntimeOverride.SelfCheck: passed" : "TexRegistry.RuntimeOverride.SelfCheck: FAILED");
+        return check.Ok;
+    }
+
+    /// <summary>An object's sampler request outlives the texture's own <c>.txi</c> read again at a reload, and a
+    /// sampler copy that a reset or the last release overtook is freed rather than drawn.</summary>
+    private static bool SamplerOverrideCheck(ExtenderLog log)
+    {
+        var check = new Checker(log, "TexRegistry.SamplerOverride.SelfCheck");
+        const string source = "cx_reset_sampler";
+        var queued = _samplerQ.ToArray();
+        var waiting = _waiting.ToArray();
+        TexId t = Insert(source, TexKind.Auto);
+        int i = t.Index;
+        Land(t, 50, 64);
+        RequestSampler(t, true, null, null);
+        TxiSampler(i, "clamp 0\nmipmap 0\n");
+        check.Expect(_clamp[i] && !_mipmap[i], $"the .txi overwrote the requested clamp, or lost its own mipmap word (clamp {_clamp[i]}, mipmap {_mipmap[i]})");
+        QueueReset(source);
+        ApplyResets();
+        check.Expect(_clamp[i] && _mipmap[i], $"a reset dropped the requested clamp, or kept the old .txi's mipmap (clamp {_clamp[i]}, mipmap {_mipmap[i]})");
+
+        Land(t, 51, 64);
+        bool took = PublishClone(i, 51, 52, 53);
+        check.Expect(took && _name[i] == 52 && _handle[i] == 53 && _graveyard.Contains(51),
+                     "a sampler copy of a live slot did not replace its image, or the old image leaked");
+        QueueReset(source);
+        ApplyResets();
+        bool late = PublishClone(i, 52, 54, 55);
+        check.Expect(!late && _name[i] == 0 && _graveyard.Contains(54) && _dyingHandles.Contains(55),
+                     "a sampler copy finished after a reset took over the reloading slot, or its copy leaked");
+        Land(t, 56, 64);
+        Release(t);
+        bool idle = PublishClone(i, 56, 57, 58);
+        check.Expect(!idle && _name[i] == 56 && _graveyard.Contains(57) && _dyingHandles.Contains(58),
+                     "a sampler copy of an idle slot was drawn, or its copy leaked");
+
+        if (Valid(t)) Retire(i);
+        _samplerQ.Clear();
+        foreach (int q in queued) _samplerQ.Enqueue(q);
+        _waiting.Clear();
+        foreach (int w in waiting) _waiting.Enqueue(w);
+        log.Info(check.Ok ? "TexRegistry.SamplerOverride.SelfCheck: passed" : "TexRegistry.SamplerOverride.SelfCheck: FAILED");
+        return check.Ok;
+    }
 }
