@@ -27,8 +27,7 @@ internal static class CullPassVk
         /// <summary>This frame's lists were recorded: the passes draw from them rather than from the staged order.</summary>
         public bool Ran;
         public BufferId Ubo, Src, Key, Rej;
-        public long SrcCap;
-        public int CmdCap, CntCap;
+        public long SrcCap, KeyCap, RejCap;
         /// <summary>The bounds table as a two-generation ring: a build publishes into <see cref="SphAt"/> and the
         /// shadow bake, recorded ahead of the next build, reads the slot as it stands then -- the generation the
         /// previous build published, which is the bound the GL bake reads too. <see cref="SphSlots"/> is each slot's
@@ -43,6 +42,8 @@ internal static class CullPassVk
         /// <summary>Indexed by <see cref="Prepass"/>, <see cref="Colour"/>, <see cref="Retest"/> and
         /// <see cref="Mirror"/>, whose set is allocated only once <see cref="MirrorAsked"/>.</summary>
         public readonly BufferId[] Cmd = new BufferId[Phases], Slot = new BufferId[Phases], Cnt = new BufferId[Phases];
+        /// <summary>Each set buffer's own bytes: a set born after the others is sized and grown on its own.</summary>
+        public readonly long[] CmdCap = new long[Phases], SlotCap = new long[Phases], CntCap = new long[Phases];
         /// <summary>A mirror phase has asked to be recorded: a session with no planar reflection never buys its
         /// output set, and the first mirror frame falls back to the staged list.</summary>
         public bool MirrorAsked;
@@ -276,22 +277,19 @@ internal static class CullPassVk
     {
         var s = _s;
         ReadOnlySpan<byte> srcBytes = MemoryMarshal.AsBytes(src.AsSpan(0, drawN));
-        bool growCmd = drawN > s.CmdCap, growCnt = groups > s.CntCap;
         Grow(vk, ref s.Src, ref s.SrcCap, srcBytes.Length, "cull source");
         const BufferUse Out = BufferUse.Storage | BufferUse.Indirect | BufferUse.CopySrc;
         int phases = s.MirrorAsked ? Phases : Mirror;
         for (int p = 0; p < phases; p++)
         {
-            Make(vk, cl, ref s.Cmd[p], growCmd, (long)drawN * CullPass.CmdUints * sizeof(uint), Out, "cull commands");
-            Make(vk, cl, ref s.Slot[p], growCmd, (long)drawN * sizeof(uint), Out, "cull slots");
-            Make(vk, cl, ref s.Cnt[p], growCnt, (long)groups * sizeof(uint), Out, "cull counts");
+            Make(vk, cl, ref s.Cmd[p], ref s.CmdCap[p], (long)drawN * CullPass.CmdUints * sizeof(uint), Out, "cull commands");
+            Make(vk, cl, ref s.Slot[p], ref s.SlotCap[p], (long)drawN * sizeof(uint), Out, "cull slots");
+            Make(vk, cl, ref s.Cnt[p], ref s.CntCap[p], (long)groups * sizeof(uint), Out, "cull counts");
         }
-        Make(vk, cl, ref s.Key, growCmd, (long)drawN * sizeof(float), BufferUse.Storage, "cull sort keys");
-        Make(vk, cl, ref s.Rej, growCmd, (long)drawN * sizeof(uint), BufferUse.Storage, "cull hi-Z verdicts");
+        Make(vk, cl, ref s.Key, ref s.KeyCap, (long)drawN * sizeof(float), BufferUse.Storage, "cull sort keys");
+        Make(vk, cl, ref s.Rej, ref s.RejCap, (long)drawN * sizeof(uint), BufferUse.Storage, "cull hi-Z verdicts");
         if (s.Src.IsNull || s.Key.IsNull || s.Rej.IsNull) return false;
         for (int p = 0; p < phases; p++) if (s.Cmd[p].IsNull || s.Slot[p].IsNull || s.Cnt[p].IsNull) return false;
-        if (growCmd) s.CmdCap = drawN;
-        if (growCnt) s.CntCap = groups;
         cl.UpdateBuffer(s.Src, 0, srcBytes);
         return true;
     }
@@ -394,13 +392,15 @@ internal static class CullPassVk
         return !s.Pyr.IsNull;
     }
 
-    /// <summary>Hold <paramref name="id"/> at <paramref name="bytes"/>, remade when <paramref name="grow"/> asks and
-    /// zeroed when new: an indirect command or count read out of uninitialised memory can hang the GPU.</summary>
-    private static void Make(VkBackend vk, CommandList cl, ref BufferId id, bool grow, long bytes, BufferUse use, string label)
+    /// <summary>Hold <paramref name="id"/> at least <paramref name="bytes"/> long, <paramref name="cap"/> its own size,
+    /// remade larger when it is not and zeroed when new: an indirect command or count read out of uninitialised
+    /// memory can hang the GPU.</summary>
+    private static void Make(VkBackend vk, CommandList cl, ref BufferId id, ref long cap, long bytes, BufferUse use, string label)
     {
-        if (!id.IsNull && !grow) return;
+        if (!id.IsNull && bytes <= cap) return;
         vk.Destroy(id);
-        id = vk.CreateBuffer(new BufferDesc(Math.Max(bytes, 4), use, MemoryKind.Device, label));
+        cap = Math.Max(bytes, 4);
+        id = vk.CreateBuffer(new BufferDesc(cap, use, MemoryKind.Device, label));
         if (!id.IsNull) cl.ZeroBuffer(id);
     }
 

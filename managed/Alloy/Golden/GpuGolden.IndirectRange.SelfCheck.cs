@@ -39,6 +39,9 @@ internal static partial class GpuGolden
         r = Refusal(c => c.DrawIndexedIndirect(cmds, 20, 5));
         check.Expect(r.Contains(IndirectCmdLabel, StringComparison.Ordinal),
             $"five indexed commands from byte 20 end at 120, past 100, and the refusal names the buffer: \"{r}\"");
+        r = Refusal(c => c.DrawIndexedIndirect(cmds, -20, 1));
+        check.Expect(r.Contains(IndirectCmdLabel, StringComparison.Ordinal),
+            $"a command starting 20 bytes before the buffer is refused, and the refusal names it: \"{r}\"");
         r = Refusal(c => c.DrawIndexedIndirect(cmds, 0, 5, cnt, 4));
         check.Expect(r.Contains(OutsidePass, StringComparison.Ordinal), $"a count at byte 4 of 8 is inside: \"{r}\"");
         r = Refusal(c => c.DrawIndexedIndirect(cmds, 0, 5, cnt, 8));

@@ -429,17 +429,24 @@ internal sealed unsafe partial class VkBackend
 
     private bool Indirect(IndirectCmd c)
     {
-        if (!EnsureRendering()) return false;
         if (!_buffers.TryGet(c.Commands.Value, out VkBuf? cmds)) return Fault("DrawIndexedIndirect: stale command buffer");
+        if (!IndirectFits("DrawIndexedIndirect", cmds, c, IndirectStride)) return false;
+        VkBuf? count = null;
+        if (c.MaxDraws > 0 && !c.Count.IsNull)
+        {
+            if (!_buffers.TryGet(c.Count.Value, out count)) return Fault("DrawIndexedIndirect: stale count buffer");
+            if (c.CountOffset < 0 || c.CountOffset + sizeof(uint) > count.Desc.Bytes)
+                return Fault($"DrawIndexedIndirect: a count at byte {c.CountOffset} is past {count.Desc.Label}'s {count.Desc.Bytes}");
+        }
+        if (!EnsureRendering()) return false;
         Use(cmds, VkPipelineStageFlags2.DrawIndirect, VkAccessFlags2.IndirectCommandRead);
         _drawN++;
         if (c.MaxDraws <= 0) return true;
-        if (c.Count.IsNull)
+        if (count == null)
         {
             _vkd.vkCmdDrawIndexedIndirect(_cmd, cmds.Buffer, (ulong)c.Offset, (uint)c.MaxDraws, IndirectStride);
             return true;
         }
-        if (!_buffers.TryGet(c.Count.Value, out VkBuf? count)) return Fault("DrawIndexedIndirect: stale count buffer");
         Use(count, VkPipelineStageFlags2.DrawIndirect, VkAccessFlags2.IndirectCommandRead);
         _vkd.vkCmdDrawIndexedIndirectCount(_cmd, cmds.Buffer, (ulong)c.Offset, count.Buffer, (ulong)c.CountOffset, (uint)c.MaxDraws, IndirectStride);
         return true;
@@ -447,8 +454,9 @@ internal sealed unsafe partial class VkBackend
 
     private bool IndirectArrays(IndirectCmd c)
     {
-        if (!EnsureRendering()) return false;
         if (!_buffers.TryGet(c.Commands.Value, out VkBuf? cmds)) return Fault("DrawIndirect: stale command buffer");
+        if (!IndirectFits("DrawIndirect", cmds, c, ArraysStride)) return false;
+        if (!EnsureRendering()) return false;
         Use(cmds, VkPipelineStageFlags2.DrawIndirect, VkAccessFlags2.IndirectCommandRead);
         _drawN++;
         if (c.MaxDraws > 0) _vkd.vkCmdDrawIndirect(_cmd, cmds.Buffer, (ulong)c.Offset, (uint)c.MaxDraws, ArraysStride);
@@ -457,6 +465,16 @@ internal sealed unsafe partial class VkBackend
 
     /// <summary>A <c>VkDrawIndirectCommand</c>'s size: four words.</summary>
     private const uint ArraysStride = 16;
+
+    /// <summary>Every command <paramref name="c"/> may read lies inside <paramref name="cmds"/>, or the draw is refused:
+    /// the GPU reads indirect arguments with no bounds check, and a read past the end hangs or resets the device.</summary>
+    private bool IndirectFits(string op, VkBuf cmds, IndirectCmd c, uint stride)
+    {
+        if (c.MaxDraws <= 0) return true;
+        long end = c.Offset + (long)c.MaxDraws * stride;
+        if (c.Offset >= 0 && end <= cmds.Desc.Bytes) return true;
+        return Fault($"{op}: {c.MaxDraws} commands at byte {c.Offset} reach {end}, past {cmds.Desc.Label}'s {cmds.Desc.Bytes}");
+    }
 
     private bool Viewport(Rect v)
     {
