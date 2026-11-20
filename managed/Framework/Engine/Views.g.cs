@@ -418,6 +418,7 @@ global using unsafe SendInvEquipFn = delegate* unmanaged<nint, uint, uint, uint,
 global using unsafe SendInvUnequipFn = delegate* unmanaged<nint, uint, byte, byte, uint, void>;
 global using unsafe SendInvRepositoryMoveFn = delegate* unmanaged<nint, uint, byte, byte, uint, void>;
 global using unsafe SendStoreRequestSellFn = delegate* unmanaged<nint, uint, void>;
+global using unsafe StoreMouseoverInventoryItemFn = delegate* unmanaged<nint, uint, void>;
 global using unsafe SendInvDropFn = delegate* unmanaged<nint, uint, float, float, float, void>;
 global using unsafe SendGuiInvStatusFn = delegate* unmanaged<nint, int, uint, void>;
 global using unsafe SendGuiInvSelectPanelFn = delegate* unmanaged<nint, byte, int, void>;
@@ -5685,6 +5686,10 @@ public static unsafe class EngineFn
     private static bool _SendStoreRequestSellDone;
     /// <inheritdoc cref="SymbolMap.SendStoreRequestSell"/>
     public static SendStoreRequestSellFn SendStoreRequestSell => (SendStoreRequestSellFn)(_SendStoreRequestSellDone ? _SendStoreRequestSell : Resolve(ref _SendStoreRequestSell, ref _SendStoreRequestSellDone, SymbolMap.SendStoreRequestSell));
+    private static IntPtr _StoreMouseoverInventoryItem;
+    private static bool _StoreMouseoverInventoryItemDone;
+    /// <inheritdoc cref="SymbolMap.StoreMouseoverInventoryItem"/>
+    public static StoreMouseoverInventoryItemFn StoreMouseoverInventoryItem => (StoreMouseoverInventoryItemFn)(_StoreMouseoverInventoryItemDone ? _StoreMouseoverInventoryItem : Resolve(ref _StoreMouseoverInventoryItem, ref _StoreMouseoverInventoryItemDone, SymbolMap.StoreMouseoverInventoryItem));
     private static IntPtr _SendInvDrop;
     private static bool _SendInvDropDone;
     /// <inheritdoc cref="SymbolMap.SendInvDrop"/>
@@ -8341,6 +8346,12 @@ public static unsafe class EngineHooks
     /// <summary>Chains onto <see cref="SymbolMap.SendStoreRequestSell"/>; returns the slot holding the next layer, or null.</summary>
     public static SendStoreRequestSellFn* ChainSendStoreRequestSell(this HookService h, SendStoreRequestSellFn handler, int priority) =>
         (SendStoreRequestSellFn*)h.Chain(SymbolMap.SendStoreRequestSell, (IntPtr)handler, priority);
+    /// <summary>Hooks <see cref="SymbolMap.StoreMouseoverInventoryItem"/>; returns the original, or null.</summary>
+    public static StoreMouseoverInventoryItemFn InstallStoreMouseoverInventoryItem(this HookService h, StoreMouseoverInventoryItemFn handler) =>
+        (StoreMouseoverInventoryItemFn)h.Install(SymbolMap.StoreMouseoverInventoryItem, (IntPtr)handler);
+    /// <summary>Chains onto <see cref="SymbolMap.StoreMouseoverInventoryItem"/>; returns the slot holding the next layer, or null.</summary>
+    public static StoreMouseoverInventoryItemFn* ChainStoreMouseoverInventoryItem(this HookService h, StoreMouseoverInventoryItemFn handler, int priority) =>
+        (StoreMouseoverInventoryItemFn*)h.Chain(SymbolMap.StoreMouseoverInventoryItem, (IntPtr)handler, priority);
     /// <summary>Hooks <see cref="SymbolMap.SendInvDrop"/>; returns the original, or null.</summary>
     public static SendInvDropFn InstallSendInvDrop(this HookService h, SendInvDropFn handler) =>
         (SendInvDropFn)h.Install(SymbolMap.SendInvDrop, (IntPtr)handler);

@@ -66,6 +66,9 @@ internal sealed partial class InventoryWindow
     /// <summary>Whether the engine's target cursor is up (a spell, power or item waiting for its target). The service asks the
     /// engine; the self-check sets its own.</summary>
     public Func<bool> Targeting = static () => false;
+    /// <summary>The player's own item under the pointer changed, a backpack or worn one (<see cref="InventoryModel.Invalid"/>
+    /// when none): an open store prices it, as the stock inventory's hover has it do.</summary>
+    public Action<uint>? HoverItem;
     /// <summary>An item's display name, cold (tooltip, search). The service asks the engine.</summary>
     public Func<uint, string>? NameOf;
     /// <summary>A strref's TLK text, cold (the layout's words). The self-check supplies its own.</summary>
@@ -118,7 +121,7 @@ internal sealed partial class InventoryWindow
     private uint _dragOid;
     private int _dragFromSlot = -1, _dragW = 1, _dragH = 1, _grabCx, _grabCy;
     private float _mx = -1f, _my = -1f;
-    private uint _lastClickOid = InventoryModel.Invalid;
+    private uint _lastClickOid = InventoryModel.Invalid, _hovered = InventoryModel.Invalid;
     private long _lastClickAt;
     private readonly Tooltip _tip = new();
     private readonly HashSet<uint> _dim = new();
@@ -134,6 +137,14 @@ internal sealed partial class InventoryWindow
     public void Hide()
     {
         Open = false; _press = _drag = _moving = _scrolling = _lootScrolling = false; SearchFocused = false; _tip.Cut();
+        Hovered(InventoryModel.Invalid);
+    }
+
+    private void Hovered(uint oid)
+    {
+        if (oid == _hovered) return;
+        _hovered = oid;
+        HoverItem?.Invoke(oid);
     }
 
     /// <summary>Recompute every rect: <paramref name="scale"/> = UI scale × the size knob, shrunk so the window fits
@@ -419,7 +430,7 @@ internal sealed partial class InventoryWindow
             if (HitTest(px, py) is { Kind: InvHitKind.Tab } t && t.Index != Page) SetPage(t.Index);
             return Contains(px, py);   // outside, the engine hovers as usual: the quickbar button and world object light up
         }
-        if (!Contains(px, py)) { _tip.Leave(); return false; }
+        if (!Contains(px, py)) { _tip.Leave(); Hovered(InventoryModel.Invalid); return false; }
         HoverTip(px, py);
         return true;
     }
@@ -594,6 +605,7 @@ internal sealed partial class InventoryWindow
     {
         InvHit h = HitTest(px, py);
         uint oid = ItemUnder(h);
+        Hovered(h.Kind is InvHitKind.Cell or InvHitKind.Slot ? oid : InventoryModel.Invalid);
         if (oid != InventoryModel.Invalid)
         {
             if (_tip.Key is uint k && k == oid) return;

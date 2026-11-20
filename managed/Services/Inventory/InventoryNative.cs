@@ -772,6 +772,15 @@ internal static unsafe class InventoryNative
         return obj != IntPtr.Zero && new CGuiObject(obj).GetGuiObjType() == StoreBoxTag;
     }
 
+    /// <summary>The open store's price line for <paramref name="oid"/>, cleared for <see cref="InventoryModel.Invalid"/>, as the
+    /// stock inventory's hover writes it; nothing when no store is open.</summary>
+    public static void PriceInStore(uint oid)
+    {
+        IntPtr slot = Native.Sym(SymbolMap.ActiveStorePanel);
+        IntPtr panel = slot == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)slot;
+        if (panel != IntPtr.Zero && EngineFn.StoreMouseoverInventoryItem != null) EngineFn.StoreMouseoverInventoryItem(panel, oid);
+    }
+
     /// <summary><c>Store_RequestSell</c>, as the stock store box's drop sends it: no confirm.</summary>
     public static void Sell(uint oid)
     {

@@ -172,6 +172,23 @@ internal sealed partial class InventoryWindow
             check.Expect(!SellsOn(acts[0], true), "a worn item released over the store box does not sell");
             check.Expect(!SellsOn(new InvAction(InvActKind.Drop, 201, 0, 5000, 5000, Other: 0x500), true), "nor does a looted one");   // not-an-offset: the container
 
+            // the player's own item under the pointer goes to an open store, once per change, as the stock hover prices it
+            var hovers = new List<uint>();
+            w.HoverItem = hovers.Add;
+            w.MouseMove(Cx(0), Cy(0)); w.MouseMove(Cx(0), Cy(1));
+            w.MouseMove(SlotX("head"), SlotY("head"));
+            w.MouseMove(Cx(1), Cy(5));
+            w.MouseMove(5000f, 5000f); w.MouseMove(5001f, 5000f);
+            check.Expect(hovers.Count == 3 && hovers[0] == 101 && hovers[1] == 104 && hovers[2] == InventoryModel.Invalid,
+                         "hover: the sword once over its three cells, the worn helmet, then nothing over an empty cell; leaving the window says nothing more");
+            w.MouseMove(Cx(2), Cy(0)); hovers.Clear();
+            w.MouseMove(5000f, 5000f);
+            check.Expect(hovers.Count == 1 && hovers[0] == InventoryModel.Invalid, "hover: leaving the window from an item clears it");
+            w.MouseMove(Cx(2), Cy(0)); hovers.Clear();
+            w.Hide();
+            check.Expect(hovers.Count == 1 && hovers[0] == InventoryModel.Invalid, "hover: closing the window clears it");
+            w.Show();
+
             // clicks
             acts.Clear();
             w.MouseButton(true, 1, Cx(0), Cy(0), 0); w.MouseButton(false, 1, Cx(0), Cy(0), 0);
@@ -341,6 +358,10 @@ internal sealed partial class InventoryWindow
             w.Layout(1f, false, true, 4000, 4000);
             w.X = 0f;
 
+            w.MouseMove(Cx(0), Cy(0)); hovers.Clear();
+            w.MouseMove(Lx(0), Ly(0));
+            check.Expect(hovers.Count == 1 && hovers[0] == InventoryModel.Invalid, "hover: a looted item is not the player's to price");
+            w.HoverItem = null;
             acts.Clear();
             w.MouseButton(true, 1, Lx(0), Ly(0), 0); w.MouseMove(Lx(2), Ly(0)); w.MouseMove(Cx(5), Cy(3)); w.MouseButton(false, 1, Cx(5), Cy(3), 0);
             check.Expect(acts.Count == 1 && acts[0] == new InvAction(InvActKind.Take, 201, X: 5, Y: 3, Other: 0x500), "loot dragged to a backpack cell: a Take there");   // not-an-offset: the container

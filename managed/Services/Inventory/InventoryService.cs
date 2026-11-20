@@ -62,6 +62,7 @@ public sealed unsafe partial class InventoryService : IExtenderService
         _inv.Act = OnAction;
         _inv.NameOf = InventoryNative.Name;
         _inv.Targeting = static () => TargetFire.Live() != IntPtr.Zero;
+        _inv.HoverItem = InventoryNative.PriceInStore;
         ServerPolicy.AllowKnobs(InventoryKnobs.G.Name + ".");
         _window = new Window(0, 0, 0, 0)
         {
