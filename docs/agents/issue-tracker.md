@@ -5,9 +5,11 @@ Two kinds of issue, two homes:
 - **Internal: Plane.** Our own work lives in Plane, project `CX`, as work items named `CX-<n>`. Every ticket, star chart and research note an agent files goes there.
 - **External: GitHub Issues and Discord.** Users report problems as GitHub Issues on `nwncxee/cx` or in Discord's `#bug-reports` channel. Neither one tracks our own work, so an agent files nothing there.
 
-When a user report needs work, file a `CX` ticket for it that links the GitHub issue or quotes the Discord report, and answer the user where they asked. An agent reads GitHub Issues with `gh issue view <n> --comments`. It can't read Discord, so a Discord report reaches an agent pasted into the conversation.
+When a user report needs work, file a `CX` ticket for it that links the GitHub issue or quotes the Discord report, and answer the user where they asked. An agent reads GitHub Issues with `gh issue view <n> --comments`. It reads Discord through the CX bot: when the user mentions Discord bug reports, run `bin/discord-reports` (every `#bug-reports` post, open and archived, with its messages; `--since <date>` narrows it) rather than searching Plane. The bot's token is the file `python3 tools/paths.py DISCORD_TOKEN_FILE` names.
 
 Documentation goes to neither: it lives on the GitHub wiki ([domain.md](domain.md)). Code, pull requests and releases stay on GitHub.
+
+Proven by: tools/discord_reports_test.py
 
 ## The Plane CLI
 
