@@ -68,7 +68,7 @@ internal static class RenderPasses
             Name = "lightmap",
             Attach = LightmapBake.Attach,
             Install = LightmapBake.Install,
-            SelfCheck = l => { LightmapBake.SelfCheck(l); LightmapBake.HoldSelfCheck(l); LightmapBake.AreaSelfCheck(l); BakeCache.SelfCheck(l); },
+            SelfCheck = l => { LightmapBake.SelfCheck(l); LightmapBake.HoldSelfCheck(l); LightmapBake.DriftSelfCheck(l); LightmapBake.AreaSelfCheck(l); BakeCache.SelfCheck(l); },
             Revoke = LightmapBake.Revoke,
             ContextLost = LightmapBake.ContextLost,
             Stats = LightmapBake.Stats,

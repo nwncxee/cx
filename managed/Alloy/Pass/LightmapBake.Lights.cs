@@ -152,7 +152,7 @@ internal static unsafe partial class LightmapBake
     internal static void BeginWalkDb(nint areaPtr, int placeableLights)
     {
         CensusStatic = CensusDynamic = CensusUnsettled = 0;
-        if (areaPtr != _clsArea || _edgePending) { _clsArea = areaPtr; _edgePending = false; _areaChanged = true; _regCountSeen = -1; Reopen(); }
+        if (areaPtr != _clsArea || _edgePending) { _clsArea = areaPtr; _edgePending = false; _areaChanged = true; _regCountSeen = -1; _drift = new(); Reopen(); }
         if (_reopen) { _reopen = false; Reopen(); }
         if (_closed) return;
         // open, every walk is the whole set again: the lights the engine re-sets after the edge must not leave
@@ -194,14 +194,27 @@ internal static unsafe partial class LightmapBake
         // light stays dynamic until the arena ranges are charted, which is what keeps the tiles lit
         // meanwhile. Self-retiring: the first chart offered ends it.
         if (!Produces) { CensusDynamic++; return false; }
-        // in the closed set = static, with the colour it was baked under (it is in every touching key);
-        // anything else after the close is dynamic, whatever it is: a light that appears after load moved
-        if (_seen.ContainsKey(key)) { CensusStatic++; setIndex = SetIndexOf(id, pos, adjR); return true; }
+        // in the closed set = static; anything else after the close is dynamic, whatever it is: a light that
+        // appears after load moved
+        if (_seen.TryGetValue(key, out int at))
+        {
+            if (_closed && isStatic) Drifted(id, at, pos, adjR, color);
+            CensusStatic++; setIndex = SetIndexOf(id, pos, adjR); return true;
+        }
         if (_closed)
         {
             // the same record a hair off its close-time place (a bobbing lantern, a reach re-adjusted by the
             // simulation) is still the light the bake holds; a far move is a scripted move
-            if (_seenPtr.TryGetValue(id, out int at) && Near(_stPosR[at], pos, adjR)) { CensusStatic++; setIndex = SetIndexOf(id, pos, adjR); return true; }
+            if (_seenPtr.TryGetValue(id, out at))
+            {
+                if (Near(_stPosR[at], pos, adjR))
+                {
+                    if (isStatic) Drifted(id, at, pos, adjR, color);
+                    CensusStatic++; setIndex = SetIndexOf(id, pos, adjR); return true;
+                }
+                // a light of the set that moved is lit live from here on, and its baked copy must not stay behind
+                Drifted(id, at, pos, adjR, color, moved: true);
+            }
             CensusDynamic++;
             return false;
         }
@@ -216,6 +229,33 @@ internal static unsafe partial class LightmapBake
         _stPosR[_stN] = new Vector4(pos, adjR); _stCol[_stN++] = color;
         return true;
     }
+
+    /// <summary>A set light that no longer hashes as its entry (recoloured, or its animation blended in after the
+    /// close) or that <paramref name="moved"/> off it reopens the set: the next walk closes on what the light is
+    /// now and the rects it touches re-bake. Capped per area: a light that never stops changing keeps the set.</summary>
+    private static void Drifted(IntPtr id, int at, Vector3 pos, float adjR, Vector3 color, bool moved = false)
+    {
+        Vector4 was = _stPosR[at];
+        // at the close-time place: the 1 u a static light may bob must not flap the set across a 4 u bin edge
+        if (_reopen || !moved && SetTerm(new Vector4(was.X, was.Y, was.Z, adjR), color) == SetTerm(was, _stCol[at])) return;
+        if (_drift.Closes >= MaxDriftCloses)
+        {
+            if (!_drift.Said) _log?.Always($"LightmapBake: a static light keeps changing after the close (db light {id:x}) -- {MaxDriftCloses} re-closes this area already, the set stays as it stands");
+            _drift.Said = true;
+            return;
+        }
+        _drift.Closes++;
+        _reopen = true;
+        Vector3 c = _stCol[at];
+        _log?.Info($"LightmapBake: static light db light {id:x} changed after the close -- r {was.W:F1} -> {adjR:F1}, colour ({c.X:F3},{c.Y:F3},{c.Z:F3}) -> ({color.X:F3},{color.Y:F3},{color.Z:F3}); the set re-closes and the rects it touches re-bake");
+    }
+
+    /// <summary>Re-closes an area's drift allows before the set is left as it stands.</summary>
+    private const int MaxDriftCloses = 8;
+
+    /// <summary>The area's drift re-closes so far, and whether the cap has been said; replaced at an area edge.</summary>
+    private sealed class DriftState { public int Closes; public bool Said; }
+    private static DriftState _drift = new();
 
     /// <summary>Within 1 u and 10% of reach of the set entry: the drift a static light is allowed after the close.</summary>
     private static bool Near(Vector4 was, Vector3 pos, float adjR)
@@ -268,15 +308,18 @@ internal static unsafe partial class LightmapBake
         else RekeyAll();
     }
 
-    /// <summary>One light's term of <see cref="SetHash"/>: position and reach in 4 u bins, colour by hue in 0,1 steps.</summary>
+    /// <summary>One light's term of <see cref="SetHash"/>: position and reach in 4 u bins, each colour channel in
+    /// 1/64 steps -- its brightness as well as its hue, since a light dimmed after it was baked is not the baked light.</summary>
     private static ulong SetTerm(Vector4 pr, Vector3 c)
     {
-        float m = MathF.Max(MathF.Max(c.X, c.Y), MathF.Max(c.Z, 1e-3f));
         ulong h = FnvOffset;
         h = Mix(h, Q(pr.X, 4f)); h = Mix(h, Q(pr.Y, 4f)); h = Mix(h, Q(pr.Z, 4f)); h = Mix(h, Q(pr.W, 4f));
-        h = Mix(h, Q(c.X / m, 0.1f)); h = Mix(h, Q(c.Y / m, 0.1f)); h = Mix(h, Q(c.Z / m, 0.1f));
+        h = Mix(h, Q(c.X, ColourStep)); h = Mix(h, Q(c.Y, ColourStep)); h = Mix(h, Q(c.Z, ColourStep));
         return h;
     }
+
+    /// <summary>The colour quantum of <see cref="SetTerm"/>, per channel.</summary>
+    private const float ColourStep = 1f / 64f;
 
     /// <summary>Why a saved set and the live one disagree, light by light: pairs within <see cref="Near"/> whose
     /// terms still differ (a bin edge or a colour), then the lights either side has alone. Cold: once per
