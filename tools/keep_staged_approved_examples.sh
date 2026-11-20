@@ -107,6 +107,8 @@ d=$(fixture e3-new); printf 'namespace CX;\n' > "$d/managed/New.cs"; rebuilds "$
 
 # Regression, not an approved example: a staged folder missing a library is not kept, and an untouched tree is CURRENT.
 d=$(fixture r-nolib); rm "$d/cx-linux-x64/cx_managed.so"; (cd "$d" && bash tools/keep-staged.sh >/dev/null 2>&1) && { echo "!! a staged folder with no cx_managed.so was kept"; rc=1; }
+d=$(fixture r-dirty); sed -i 's|Answer = 42;|Answer = 43;|' "$d/managed/Thing.cs"; { git -C "$d" rev-parse HEAD; echo dirty; echo "code $(python3 "$d/tools/codehash.py" "$d")"; } > "$d/cx-linux-x64/BUILT_FROM"
+case "$(bash "$d/tools/where.sh" "$d")" in *"build     UNCOMMITTED"*) ;; *) echo "!! a build of uncommitted edits is not called UNCOMMITTED"; rc=1 ;; esac
 d=$(fixture r-same); case "$(bash "$d/tools/where.sh" "$d")" in *"build     CURRENT"*) ;; *) echo "!! an untouched tree is not CURRENT"; rc=1 ;; esac
 
 [ $rc = 0 ] || echo "!! keep-staged approved examples: FAILED (above)" >&2

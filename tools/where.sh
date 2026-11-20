@@ -19,7 +19,9 @@ else
   was=$(git log -1 --format='%h' "$from" 2>/dev/null || echo "${from:0:8}")
   # A stamped code fingerprint decides, by the same test build.sh keeps a build by: equal means only comments or
   # Markdown moved since the build.
-  if bash tools/keep-staged.sh >/dev/null; then
+  if bash tools/keep-staged.sh >/dev/null && grep -qx dirty "$out/BUILT_FROM"; then
+    built="UNCOMMITTED -- built from $was plus uncommitted edits, which the tree still holds"
+  elif bash tools/keep-staged.sh >/dev/null; then
     built="CURRENT -- built from $was, same code as ${head:0:8}"
   elif grep -q '^code ' "$out/BUILT_FROM"; then
     built="STALE -- built from $was, and the code changed since; rebuild"

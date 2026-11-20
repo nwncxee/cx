@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tools/selfcheck/mutants.py's approved examples (CX-589, E1 to E3). Heavy -- an IL compile and five boots -- so
+# tools/selfcheck/mutants.py's approved examples (CX-589, E1 to E3). Heavy -- an IL compile and six boots -- so
 # build.sh does not run it; run it by hand inside nix develop, in a checkout whose staged build is CURRENT
 # (tools/where.sh), which E3 reads. Oracle: HexColour.cs's hand-written self-check, which kills the three mutants
 # below that change what it parses and not the fourth, which changes nothing. Exit 0 PASS, 1 FAIL, 2 setup.

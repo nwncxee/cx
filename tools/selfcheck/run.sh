@@ -31,7 +31,8 @@ dotnet_root=$(dirname "$(readlink -f "$(command -v dotnet)")")
 fxr=$(ls -d "$dotnet_root"/host/fxr/*/libhostfxr.so 2>/dev/null | sort -V | tail -1)
 [ -n "$fxr" ] || { echo ">> no libhostfxr.so under $dotnet_root/host/fxr" >&2; exit 2; }
 bin=$out/bin/Release/net10.0/linux-x64
-native=$out/native
+# Shared by every --out, so a mutant run's own build folders do not rebuild funchook and FSR each time.
+native=$repo/build/selfcheck-native
 mkdir -p "$native"
 
 # The libraries the AOT image links in statically (DirectPInvoke) are found by name at run time under a JIT, so each
@@ -51,9 +52,9 @@ shim() {
 # funchook's static build hides every symbol, so it is built shared, once, from the same submodule.
 if [ ! -f "$native/libfunchook.so" ]; then
   [ -d third_party/funchook/distorm/src ] || git submodule update --init --recursive third_party/funchook
-  cmake -S third_party/funchook -B "$out/funchook" -DFUNCHOOK_BUILD_SHARED=ON -DFUNCHOOK_BUILD_STATIC=OFF \
+  cmake -S third_party/funchook -B "$native/funchook-build" -DFUNCHOOK_BUILD_SHARED=ON -DFUNCHOOK_BUILD_STATIC=OFF \
     -DFUNCHOOK_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release >/dev/null \
-    && cmake --build "$out/funchook" -j2 >/dev/null && cp -L "$out/funchook/libfunchook.so" "$native/" \
+    && cmake --build "$native/funchook-build" -j2 >/dev/null && cp -L "$native/funchook-build/libfunchook.so" "$native/" \
     || { echo ">> could not build funchook shared" >&2; exit 2; }
 fi
 shim cxatlas libcxatlas.a
