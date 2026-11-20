@@ -35,6 +35,25 @@ CASES = [
     ("        int n = 3; // limit 4", "3", True),
     ("        return n < 4;", "n < 4", True),
     ("        if (d < 0) return false;", "d < 0", True),
+    ("        int n = -v.Length();", "-v", False),
+    ("        int n = (int)v.Length;", "(int)v", False),
+    ("        int n = v.Length();", "v", True),
+    ("        var y = p ? q : r ? s : t;", "p ? q : r", False),
+    ("        var y = a ?? b ?? c;", "a ?? b", False),
+    ("        bool r = a && c == '(' || d;", "a && c == '('", True),
+    ("        bool r = a && c == '(' || d;", "c == '(' || d", False),
+    ("        int? n = a + b?.Length;", "a + b", False),
+    ("        string s = \"ab\" + \"cd\";", "\"ab\" + \"c", False),
+    ("        x = y * (a + b);", "(a + b)", True),
+    ("        x = y * (a + b);", "a + b", True),
+    ("        x = y * a + b;", "a + b", False),
+]
+# (line of code, a statement mutant's old text, may it be switched)
+STATEMENTS = [
+    ("        if (c) n += 1;", "n += 1;", True),
+    ("        if (c) n += 1; n += 10;", "n += 1; n += 10;", False),
+    ("        string s = \"x; y;\";", "y;", False),
+    ("        return a - b;", "return a - b;", True),
 ]
 fails = 0
 for line, old, want in CASES:
@@ -44,6 +63,14 @@ for line, old, want in CASES:
     if got != want:
         fails += 1
         print(f"FAIL: {old!r} in {line.strip()!r}: switchable says {got}, not {want}")
-print(f">> mutant switch regression: {len(CASES) - fails} of {len(CASES)} cases hold")
+for line, old, want in STATEMENTS:
+    text = "class C {\n    void M() {\n" + line + "\n    }\n}\n"
+    at = text.index(line) + line.index(old)
+    got = mutants.switchable(text, at, old)
+    if got != want:
+        fails += 1
+        print(f"FAIL: statement {old!r} in {line.strip()!r}: switchable says {got}, not {want}")
+total = len(CASES) + len(STATEMENTS)
+print(f">> mutant switch regression: {total - fails} of {total} cases hold")
 sys.exit(1 if fails else 0)
 PY

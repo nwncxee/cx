@@ -4,7 +4,7 @@
 Usage: codehash.py [checkout]     (default: the checkout this script lives in)
        codehash.py --strip <file>  (the text a .cs file is hashed as, for its tests)
 
-Every tracked or untracked, not ignored, file in the working tree counts except Markdown outside third_party/
+Every tracked or untracked file the repo's .gitignore files do not ignore counts except Markdown outside third_party/
 (whose notices packaging/licenses.sh ships), a submodule counts by its checked-out commit, and a .cs file counts
 with its comments removed and its blank lines dropped. Everything inside a C# string literal counts, a `//` line
 held in a raw string being shader text rather than a comment, so this lexes C# instead of matching lines. A .glsl
@@ -80,6 +80,8 @@ def _code(s, i, out, stop=None, spans=None):
             j = n if j < 0 else j + 2
             if spans is not None:
                 spans.append((i, j))
+            if out is not None and 0 < i and j < n and not s[i - 1].isspace() and not s[j].isspace():
+                out.append(' ')  # it kept two tokens apart: -/**/-x is not --x
             i = j
             continue
         if c == "'":
@@ -146,7 +148,8 @@ def strip_cs(text):
 
 
 def files(root):
-    listed = subprocess.run(['git', '-C', root, 'ls-files', '-z', '--cached', '--others', '--exclude-standard'],
+    # The repo's .gitignore files only: a private exclude (.git/info/exclude, a global one) does not stop MSBuild.
+    listed = subprocess.run(['git', '-C', root, 'ls-files', '-z', '--cached', '--others', '--exclude-per-directory=.gitignore'],
                             check=True, capture_output=True).stdout.split(b'\0')
     return sorted({p.decode() for p in listed if p})
 

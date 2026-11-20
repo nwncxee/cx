@@ -29,6 +29,11 @@ internal static class Thing
         """;
     // after the shader
     internal static string Hole(bool b) => $"{(b ? "//" : "/*")} {Answer}";
+    internal const char Hash = '#';
+    internal const string Quoted = @"a""b // c";
+    internal const string Braces = $"{{x}} // y";
+    internal static int Neg(int x) => -/**/-x;
+    internal const int Tail = 1; // tail
 }
 CS
   printf '// the stage\nvoid main() { gl_FragColor = vec4(1.0); }\n' > "$d/managed/Shaders/cx_thing.glsl"
@@ -74,6 +79,7 @@ d=$(fixture e1-line); commit_b "$d" 's|// the answer|// the answer to everything
 d=$(fixture e1-block); commit_b "$d" 's|/\* not 41 \*/|/* not 41, nor 43 */|' managed/Thing.cs; keeps "$d" "E1 block comment"
 d=$(fixture e1-doc); commit_b "$d" 's|/// <summary>A thing.</summary>|/// <summary>A thing.</summary>\n/// <remarks>More.</remarks>|' managed/Thing.cs; keeps "$d" "E1 doc comment"
 d=$(fixture e1-after); commit_b "$d" 's|// after the shader|// after the shader text|' managed/Thing.cs; keeps "$d" "E1 comment after a raw string"
+d=$(fixture e1-tail); commit_b "$d" 's|internal const int Tail = 1; // tail|internal const int Tail = 1;|' managed/Thing.cs; keeps "$d" "E1 a trailing comment deleted"
 d=$(fixture e1-md); commit_b "$d" 's|Some notes.|Other notes.|' NOTES.md; keeps "$d" "E1 Markdown"
 
 # E2
@@ -92,7 +98,16 @@ d=$(fixture e2-hole); commit_b "$d" 's|"/\*")} {Answer}|"/*")} {Answer}!|' manag
 d=$(fixture e3-code); commit_b "$d" 's|Answer = 42;|Answer = 41;|' managed/Thing.cs; rebuilds "$d" "E3 code"
 d=$(fixture e3-glsl); commit_b "$d" 's|vec4(1.0)|vec4(0.5)|' managed/Shaders/cx_thing.glsl; rebuilds "$d" "E3 shader code"
 d=$(fixture e3-notice); commit_b "$d" 's|the authors|its authors|' third_party/lib/NOTICE.md; rebuilds "$d" "E3 a Markdown notice the build ships"
+d=$(fixture e3-char); commit_b "$d" "s|'#'|'\$'|" managed/Thing.cs; rebuilds "$d" "E3 a char literal"
+d=$(fixture e3-verbatim); commit_b "$d" 's|b // c|b // d|' managed/Thing.cs; rebuilds "$d" "E3 text after a verbatim string's doubled quote"
+d=$(fixture e3-braces); commit_b "$d" 's|{{x}} // y|{{x}} // z|' managed/Thing.cs; rebuilds "$d" "E3 text after an escaped brace"
+d=$(fixture e3-glue); commit_b "$d" 's|-/\*\*/-x|--x|' managed/Thing.cs; rebuilds "$d" "E3 a comment that kept two tokens apart"
+d=$(fixture e3-excluded); echo managed/Local.cs >> "$d/.git/info/exclude"; printf 'namespace CX;\n' > "$d/managed/Local.cs"; rebuilds "$d" "E3 a new file git's private excludes hide"
 d=$(fixture e3-new); printf 'namespace CX;\n' > "$d/managed/New.cs"; rebuilds "$d" "E3 a new file, uncommitted"
+
+# Regression, not an approved example: a staged folder missing a library is not kept, and an untouched tree is CURRENT.
+d=$(fixture r-nolib); rm "$d/cx-linux-x64/cx_managed.so"; (cd "$d" && bash tools/keep-staged.sh >/dev/null 2>&1) && { echo "!! a staged folder with no cx_managed.so was kept"; rc=1; }
+d=$(fixture r-same); case "$(bash "$d/tools/where.sh" "$d")" in *"build     CURRENT"*) ;; *) echo "!! an untouched tree is not CURRENT"; rc=1 ;; esac
 
 [ $rc = 0 ] || echo "!! keep-staged approved examples: FAILED (above)" >&2
 [ $rc = 0 ] && echo ">> keep-staged approved examples: E1 to E3 pass"

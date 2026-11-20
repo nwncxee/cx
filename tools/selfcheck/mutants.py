@@ -17,14 +17,17 @@ compile (a declaration, say) is compiled on its own instead, and the report says
 Prints one line per mutant: `killed <name> <the first FAIL line>`, with every other FAIL line under it as
 `also <line>`, or `SURVIVED <name>`. Exit 0 when every mutant was
 killed, 1 when one survived, 2 when the list is refused or the unmutated tree fails. Run it inside nix develop, and
-under cap.sh on a shared machine. Linux-only, like the rest of the developer tooling.
+under cap.sh on a shared machine. A mutant whose boot runs past four times the unmutated one is killed by the
+timeout. Linux-only, like the rest of the developer tooling.
 """
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 import codehash  # noqa: E402 -- tools/ is only on the path once the line above has run
@@ -33,6 +36,7 @@ ROOT = os.path.realpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
 RUN = os.path.join(ROOT, 'tools', 'selfcheck', 'run.sh')
 SWITCH = 'CxMutantSwitch'
 ACTIVE = 'cx-mutant-active'
+COMPILE_TIMEOUT = 1200
 
 
 class Mutant:
@@ -82,7 +86,7 @@ def parse(listing):
     for path, ms in by_file.items():
         text = open(os.path.join(ROOT, path), encoding='utf-8').read()
         for m in ms:
-            m.alone = not m.statement() and not switchable(text, m.at, m.old)
+            m.alone = not switchable(text, m.at, m.old)
         ms.sort(key=lambda m: m.at)
         for a, b in zip(ms, ms[1:]):
             if a.at + len(a.old) > b.at:
@@ -136,15 +140,62 @@ def _loosest_inside(old):
     return worst
 
 
+RIGHT_ASSOC = {'?', ':', '??', '=', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '<<=', '>>=', '>>>=', '??=', '=>'}
+STATEMENT_EDGE = set(';{}):')
+
+
+def _masked(old):
+    """``old`` with every comment and literal in it blanked to x's, so a bracket or operator inside one counts for nothing."""
+    chars = list(old)
+    for a, b in codehash.spans(old):
+        for i in range(a + 1, b - 1):
+            chars[i] = 'x'
+    return ''.join(chars)
+
+
+def _statement_ok(text, at, old):
+    """A statement mutant is switched when it is one whole statement at a statement's start."""
+    m = _masked(old)
+    depth, ends = 0, 0
+    for c in m:
+        depth += c in '([{'
+        depth -= c in ')]}'
+        ends += c == ';' and depth == 0
+    if ends != 1 or depth != 0:
+        return False
+    i = at - 1
+    while i >= 0 and text[i].isspace():
+        i -= 1
+    word = re.search(r'([A-Za-z_]\w*)$', text[:i + 1])
+    return i < 0 or text[i] in STATEMENT_EDGE or bool(word and word.group(1) in ('else', 'do'))
+
+
 def switchable(text, at, old):
-    """True when wrapping ``old``, at ``at`` in ``text``, as ``(on ? (new) : (old))`` leaves the switched-off program
-    what the text is: not inside a comment or literal, and no operator beside it that the brackets would regroup."""
+    """True when the switch around ``old``, at ``at`` in ``text``, leaves the switched-off program what the text is:
+    no edge inside a comment or literal, and no operator beside it that the wrap's brackets would regroup."""
     end = at + len(old)
     if any(a < at < b or a < end < b for a, b in codehash.spans(text)):
         return False
-    inner = _loosest_inside(old)
+    if old.rstrip().endswith(';'):
+        return _statement_ok(text, at, old)
+    inner = _loosest_inside(_masked(old))
+    i = end
+    while i < len(text) and text[i].isspace():
+        i += 1
+    if text[i:i + 1] in ('.', '[', '(') or text[i:i + 2] in ('?.', '?[', '++', '--', '->') or \
+            (text[i:i + 1] == '!' and text[i:i + 2] != '!='):
+        return re.fullmatch(r'@?[A-Za-z_]\w*(\.[A-Za-z_]\w*)*', old.strip()) is not None
     if inner < 0:
         return True
+    j = i
+    while j < len(text) and text[j] in OPCHARS:
+        j += 1
+    right = text[i:j]
+    if not right:
+        if not (i >= len(text) or text[i] in CLOSE_EDGE):
+            return False
+    elif right not in PREC or PREC[right] < inner or (PREC[right] == inner and right in RIGHT_ASSOC):
+        return False
     i = at - 1
     while i >= 0 and text[i].isspace():
         i -= 1
@@ -154,27 +205,12 @@ def switchable(text, at, old):
     left = text[j + 1:i + 1]
     if not left:
         word = re.search(r'([A-Za-z_]\w*)$', text[:i + 1])
-        if not (i < 0 or text[i] in OPEN_EDGE or (word and word.group(1) in EDGE_WORDS)):
-            return False
-    else:
-        k = j
-        while k >= 0 and text[k].isspace():
-            k -= 1
-        unary = k < 0 or text[k] in OPCHARS or text[k] in OPEN_EDGE
-        if unary or left not in PREC or PREC[left] <= inner:
-            return False
-    i = end
-    while i < len(text) and text[i].isspace():
-        i += 1
-    j = i
-    while j < len(text) and text[j] in OPCHARS:
-        j += 1
-    right = text[i:j]
-    if not right:
-        return i >= len(text) or text[i] in CLOSE_EDGE
-    if right.startswith('?.') or right not in PREC:
-        return False
-    return PREC[right] >= inner
+        return i < 0 or text[i] in OPEN_EDGE or bool(word and word.group(1) in EDGE_WORDS)
+    k = j
+    while k >= 0 and text[k].isspace():
+        k -= 1
+    unary = k < 0 or text[k] in OPCHARS or text[k] in OPEN_EDGE
+    return not unary and left in PREC and PREC[left] > inner
 
 
 def wrap(m):
@@ -198,6 +234,7 @@ def overlay(work, mutants, switched):
         dest = os.path.join(work, path)
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         open(dest, 'w', encoding='utf-8').write(text)
+    os.makedirs(os.path.join(work, 'managed'), exist_ok=True)
     active = os.path.join(work, ACTIVE)
     with open(os.path.join(work, 'managed', SWITCH + '.cs'), 'w', encoding='utf-8') as f:
         f.write('namespace CX;\n\n'
@@ -208,15 +245,24 @@ def overlay(work, mutants, switched):
                 '    internal static bool On(int k) => Active == k;\n}\n')
 
 
-def run(work, out, build, k):
-    """Boots the self-checks with mutant k on (0: none), compiling first when asked. Returns (exit, output)."""
+def run(work, out, build, k, timeout):
+    """Boots the self-checks with mutant k on (0: none), compiling first when asked. Returns (exit, output); a run
+    over ``timeout`` seconds is stopped, the whole process group with it, and returns 124."""
     with open(os.path.join(work, ACTIVE), 'w') as f:
         f.write(str(k))
     cmd = [RUN, '--out', out, '--overlay', work] + ([] if build else ['--no-build'])
-    p = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
-    sys.stdout.write(''.join(l + '\n' for l in p.stdout.splitlines() if l.startswith('>> compiling')))
+    p = subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                         start_new_session=True)
+    try:
+        output, _ = p.communicate(timeout=timeout)
+        rc = p.returncode
+    except subprocess.TimeoutExpired:
+        os.killpg(p.pid, signal.SIGKILL)
+        output, _ = p.communicate()
+        rc, output = 124, output + f'\n>> TIMEOUT: the run passed {timeout:.0f}s and was stopped\n'
+    sys.stdout.write(''.join(l + '\n' for l in output.splitlines() if l.startswith('>> compiling')))
     sys.stdout.flush()
-    return p.returncode, p.stdout + p.stderr
+    return rc, output
 
 
 def failed_lines(output, work):
@@ -232,6 +278,9 @@ def verdict(m, rc, output):
         print(f'ERROR    {m.name:<20} the mutated file does not compile', flush=True)
         return False
     fails = [l for l in output.splitlines() if re.search(r'SelfCheck.*FAIL|init threw', l) and not l.startswith('>>')]
+    if rc == 124:
+        print(f'killed   {m.name:<20} by a timeout: the self-checks never finished', flush=True)
+        return True
     if rc == 1:
         line = fails[0] if fails else output.strip().splitlines()[-1]
         print(f'killed   {m.name:<20} {re.sub(r"^.*?\[cx\] ", "", line)}', flush=True)
@@ -264,33 +313,45 @@ def main(argv):
         switched = [m for m in mutants if not m.alone]
         while True:
             overlay(work, switched, True)
-            rc, output = run(work, out, True, 0)
+            began = time.monotonic()
+            rc, output = run(work, out, True, 0, COMPILE_TIMEOUT)
+            compiled = time.monotonic() - began
             if rc != 1 or '>> FAIL: the managed build failed' not in output:
                 break
             broken = failed_lines(output, work)
             lines = {m: (m.path, open(os.path.join(ROOT, m.path), encoding='utf-8').read().count('\n', 0, m.at) + 1)
                      for m in switched}
             alone = [m for m in switched if lines[m] in broken]
+            if not alone:  # an error the compiler puts elsewhere, such as a method that lost its return
+                files = {path for path, _ in broken}
+                alone = [m for m in switched if m.path in files]
             if not alone:
                 print('!! the unmutated tree does not compile:', file=sys.stderr)
                 print(output, file=sys.stderr)
                 return 2
             for m in alone:
                 m.alone = True
-                print(f'>> {m.name}: its switch does not compile, so it is compiled on its own', flush=True)
+                print(f'>> {m.name}: its file does not compile switched, so it is compiled on its own', flush=True)
             switched = [m for m in switched if not m.alone]
         if rc != 0:
             print('!! the unmutated tree fails its self-checks, so no mutant can be judged:', file=sys.stderr)
             print(output, file=sys.stderr)
             return 2
         print(f'>> 1 compile for {len(switched)} switched mutant(s); the unmutated run passes', flush=True)
+        boot = time.monotonic()
+        rc, output = run(work, out, False, 0, COMPILE_TIMEOUT)
+        if rc != 0:
+            print('!! the unmutated tree fails its self-checks on a second boot:', file=sys.stderr)
+            print(output, file=sys.stderr)
+            return 2
+        timeout = max(180.0, 4 * (time.monotonic() - boot))
         survived = 0
         for m in switched:
-            rc, output = run(work, out, False, m.k)
+            rc, output = run(work, out, False, m.k, timeout)
             survived += not verdict(m, rc, output)
         for m in [m for m in mutants if m.alone]:
             overlay(work, [m], False)
-            rc, output = run(work, os.path.join(work, 'alone-' + str(m.k)), True, 0)
+            rc, output = run(work, os.path.join(work, 'alone-' + str(m.k)), True, 0, 2 * compiled + timeout)
             survived += not verdict(m, rc, output)
         return 1 if survived else 0
     finally:
