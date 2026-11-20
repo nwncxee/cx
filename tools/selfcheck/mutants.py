@@ -26,6 +26,9 @@ import subprocess
 import sys
 import tempfile
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+import codehash  # noqa: E402  the C# lexer that finds comments and literals
+
 ROOT = os.path.realpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
 RUN = os.path.join(ROOT, 'tools', 'selfcheck', 'run.sh')
 SWITCH = 'CxMutantSwitch'
@@ -77,11 +80,101 @@ def parse(listing):
         if m.at >= 0:
             by_file.setdefault(m.path, []).append(m)
     for path, ms in by_file.items():
+        text = open(os.path.join(ROOT, path), encoding='utf-8').read()
+        for m in ms:
+            m.alone = not m.statement() and not switchable(text, m.at, m.old)
         ms.sort(key=lambda m: m.at)
         for a, b in zip(ms, ms[1:]):
             if a.at + len(a.old) > b.at:
                 refusals.append(f'{b.name}: its text overlaps {a.name}\'s in {path}')
     return mutants, refusals
+
+
+# C#'s binary operators by precedence, tightest first; a wrap's brackets are safe when the operators beside the old
+# text bind looser than the loosest operator inside it (and a left-associative tie on its right only).
+PREC = {op: p for p, ops in enumerate([
+    ['*', '/', '%'], ['+', '-'], ['<<', '>>', '>>>'], ['<', '>', '<=', '>=', 'is', 'as'], ['==', '!='],
+    ['&'], ['^'], ['|'], ['&&'], ['||'], ['??'], ['?', ':'],
+    ['=', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '<<=', '>>=', '>>>=', '??=', '=>']]) for op in ops}
+LOOSEST = max(PREC.values()) + 1
+OPCHARS = set('+-*/%<>=!&|^?:~')
+OPEN_EDGE = set('([{,;')
+CLOSE_EDGE = set(')]},;')
+EDGE_WORDS = {'return', 'throw', 'in', 'case', 'when', 'else', 'yield'}
+
+
+def _loosest_inside(old):
+    """The precedence rank of the loosest binary operator at the top level of ``old`` (-1: none, an atom)."""
+    depth, worst, i, prev_operand = 0, -1, 0, False
+    while i < len(old):
+        c = old[i]
+        if c in '([{':
+            depth += 1
+        elif c in ')]}':
+            depth -= 1
+        if c in OPCHARS:
+            j = i
+            while j < len(old) and old[j] in OPCHARS:
+                j += 1
+            op = old[i:j]
+            if depth == 0 and prev_operand and op in PREC:
+                worst = max(worst, PREC[op])
+            elif depth == 0 and prev_operand:
+                worst = LOOSEST
+            prev_operand = False
+            i = j
+            continue
+        word = re.match(r'[A-Za-z_]\w*', old[i:])
+        if word and depth == 0 and prev_operand and word.group() in ('is', 'as'):
+            worst = max(worst, PREC['is'])
+            prev_operand = False
+            i += len(word.group())
+            continue
+        if not c.isspace():
+            prev_operand = c not in '([{'
+        i += len(word.group()) if word else 1
+    return worst
+
+
+def switchable(text, at, old):
+    """True when wrapping ``old``, at ``at`` in ``text``, as ``(on ? (new) : (old))`` leaves the switched-off program
+    what the text is: not inside a comment or literal, and no operator beside it that the brackets would regroup."""
+    end = at + len(old)
+    if any(a < at < b or a < end < b for a, b in codehash.spans(text)):
+        return False
+    inner = _loosest_inside(old)
+    if inner < 0:
+        return True
+    i = at - 1
+    while i >= 0 and text[i].isspace():
+        i -= 1
+    j = i
+    while j >= 0 and text[j] in OPCHARS:
+        j -= 1
+    left = text[j + 1:i + 1]
+    if not left:
+        word = re.search(r'([A-Za-z_]\w*)$', text[:i + 1])
+        if not (i < 0 or text[i] in OPEN_EDGE or (word and word.group(1) in EDGE_WORDS)):
+            return False
+    else:
+        k = j
+        while k >= 0 and text[k].isspace():
+            k -= 1
+        unary = k < 0 or text[k] in OPCHARS or text[k] in OPEN_EDGE
+        if unary or left not in PREC or PREC[left] <= inner:
+            return False
+    i = end
+    while i < len(text) and text[i].isspace():
+        i += 1
+    j = i
+    while j < len(text) and text[j] in OPCHARS:
+        j += 1
+    right = text[i:j]
+    if not right:
+        return i >= len(text) or text[i] in CLOSE_EDGE
+    if right.startswith('?.') or right not in PREC:
+        return False
+    return PREC[right] >= inner
 
 
 def wrap(m):
@@ -165,7 +258,10 @@ def main(argv):
     work = tempfile.mkdtemp(prefix='cx-mutants.')
     try:
         out = os.path.join(work, 'build')
-        switched = list(mutants)
+        for m in mutants:
+            if m.alone:
+                print(f'>> {m.name}: a switch would regroup or land in a literal, so it is compiled on its own', flush=True)
+        switched = [m for m in mutants if not m.alone]
         while True:
             overlay(work, switched, True)
             rc, output = run(work, out, True, 0)

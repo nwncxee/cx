@@ -51,8 +51,9 @@ the libraries out from under a running client; a build in another checkout or wo
 its own folder, so the check is `tools/no-loaded-runtime.sh` and not "is a client running".
 Launch the real client:  `NWN_BIN=/path/to/nwmain-linux ./cx-linux-x64/cx-launch`
 (Steam: put `"<abs>/cx-launch" %command%` in the game Launch Options.)
-A tree whose code fingerprint (`tools/codehash.py`: comments lexed out of C#, Markdown left out) matches the staged
-build's keeps it after the gates, and `where.sh` calls it CURRENT, so a comment-only commit does not rebuild.
+A tree whose code fingerprint (`tools/codehash.py`: comments lexed out of C#, Markdown outside `third_party/` left out) matches the staged
+build's keeps it after the gates and approved examples, and `where.sh` calls it CURRENT, so a comment-only commit
+skips the AOT publish.
 Every report of work that sits in a worktree or a branch the user has not checked out ends with the output of
 `tools/where.sh <checkout>`: its absolute path, whether its `cx-linux-x64/` is the build of that commit
 (`build.sh` stamps `BUILT_FROM`), and the exact run command. Rebuild first when it says anything but CURRENT.

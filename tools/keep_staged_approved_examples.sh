@@ -34,6 +34,7 @@ CS
   printf '// the stage\nvoid main() { gl_FragColor = vec4(1.0); }\n' > "$d/managed/Shaders/cx_thing.glsl"
   printf '# Notes\n\nSome notes.\n' > "$d/NOTES.md"
   printf 'cx-linux-x64/\n' > "$d/.gitignore"
+  mkdir -p "$d/third_party/lib" && printf '# Notice\n\nCopyright the authors.\n' > "$d/third_party/lib/NOTICE.md"
   (cd "$d" && git init -q && git add -A && git -c user.email=t@t -c user.name=t commit -qm A) || exit 1
   : > "$d/cx-linux-x64/libcx.so"; : > "$d/cx-linux-x64/cx_managed.so"
   printf '#!/bin/sh\n' > "$d/cx-linux-x64/cx-launch"; chmod +x "$d/cx-linux-x64/cx-launch"
@@ -90,6 +91,7 @@ d=$(fixture e2-hole); commit_b "$d" 's|"/\*")} {Answer}|"/*")} {Answer}!|' manag
 # Then build.sh rebuilds as it does today
 d=$(fixture e3-code); commit_b "$d" 's|Answer = 42;|Answer = 41;|' managed/Thing.cs; rebuilds "$d" "E3 code"
 d=$(fixture e3-glsl); commit_b "$d" 's|vec4(1.0)|vec4(0.5)|' managed/Shaders/cx_thing.glsl; rebuilds "$d" "E3 shader code"
+d=$(fixture e3-notice); commit_b "$d" 's|the authors|its authors|' third_party/lib/NOTICE.md; rebuilds "$d" "E3 a Markdown notice the build ships"
 d=$(fixture e3-new); printf 'namespace CX;\n' > "$d/managed/New.cs"; rebuilds "$d" "E3 a new file, uncommitted"
 
 [ $rc = 0 ] || echo "!! keep-staged approved examples: FAILED (above)" >&2

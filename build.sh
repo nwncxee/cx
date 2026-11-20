@@ -125,13 +125,16 @@ python3 tools/engine/views.py
 # --no-gates: the release build, whose tagged tree already passed ci / gates on its pull request.
 # The rules' own approved examples plant trees and, for the compiler rules, compile them, which needs the SDK the gates
 # job does not carry; the build that has it runs them.
+if [ "$1" != --no-gates ]; then
+  bash tools/gates/run.sh
+  bash tools/approved-examples.sh
+fi
+
 # CX-590: a tree whose code is the staged build's -- only comments in .cs files or Markdown moved -- keeps that build,
-# after the gates (several read comments) and ahead of the approved examples, whose inputs are that same code. Taken
+# after the gates and the approved examples (some read comments: tools/vk/mutants.sh anchors on whole lines). Taken
 # before the publish, so an edit made while it runs is not stamped as built.
-[ "$1" != --no-gates ] && bash tools/gates/run.sh
 CODE=$(python3 tools/codehash.py)
 bash tools/keep-staged.sh "$CODE" && exit 0
-[ "$1" != --no-gates ] && bash tools/approved-examples.sh
 
 echo ">> building managed lib (C# NativeAOT -> cx_managed.so)..."
 CX_VERSION=$(git describe --tags --always 2>/dev/null || echo dev)

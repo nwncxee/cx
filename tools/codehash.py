@@ -4,11 +4,12 @@
 Usage: codehash.py [checkout]     (default: the checkout this script lives in)
        codehash.py --strip <file>  (the text a .cs file is hashed as, for its tests)
 
-Every tracked or untracked, not ignored, file in the working tree counts except Markdown, and a .cs file counts
+Every tracked or untracked, not ignored, file in the working tree counts except Markdown outside third_party/
+(whose notices packaging/licenses.sh ships), a submodule counts by its checked-out commit, and a .cs file counts
 with its comments removed and its blank lines dropped. Everything inside a C# string literal counts, a `//` line
 held in a raw string being shader text rather than a comment, so this lexes C# instead of matching lines. A .glsl
 file counts whole. build.sh stamps the fingerprint into cx-linux-x64/BUILT_FROM and keeps a staged build whose
-fingerprint matches; tools/where.sh reads it to call that build CURRENT.
+fingerprint matches; tools/where.sh reads it to call that build CURRENT. Linux-only, like build.sh.
 """
 import hashlib
 import re
@@ -51,9 +52,10 @@ def _string_end(s, i, quotes, verbatim, dollars):
     return n
 
 
-def _code(s, i, out, stop=None):
+def _code(s, i, out, stop=None, spans=None):
     """Lexes C# code from ``i``, appending what is not a comment to ``out`` (None: discard), and returns
-    (out, index). With ``stop`` it returns at that character at brace depth zero, just past it."""
+    (out, index). With ``stop`` it returns at that character at brace depth zero, just past it. ``spans`` collects
+    the (start, end) of each comment and literal it passes."""
     n = len(s)
     depth = 0
     while i < n:
@@ -68,17 +70,25 @@ def _code(s, i, out, stop=None):
             depth -= 1
         if s.startswith('//', i):
             j = s.find('\n', i)
-            i = n if j < 0 else j
+            j = n if j < 0 else j
+            if spans is not None:
+                spans.append((i, j))
+            i = j
             continue
         if s.startswith('/*', i):
             j = s.find('*/', i + 2)
-            i = n if j < 0 else j + 2
+            j = n if j < 0 else j + 2
+            if spans is not None:
+                spans.append((i, j))
+            i = j
             continue
         if c == "'":
             j = i + 1
             while j < n and s[j] != "'" and s[j] != '\n':
                 j += 2 if s[j] == '\\' else 1
             j = min(j + 1, n)
+            if spans is not None:
+                spans.append((i, j))
             if out is not None:
                 out.append((s[i:j],))
             i = j
@@ -101,6 +111,8 @@ def _code(s, i, out, stop=None):
             if verbatim or quotes == 2:  # a verbatim string is never raw, and "" is the empty string
                 quotes = 1
             end = _string_end(s, j, quotes, verbatim, dollars)
+            if spans is not None:
+                spans.append((i, end))
             if out is not None:
                 out.append((s[i:end],))
             i = end
@@ -109,6 +121,13 @@ def _code(s, i, out, stop=None):
             out.append(c)
         i += 1
     return out, i
+
+
+def spans(text):
+    """The (start, end) of every comment and every string or char literal in C# ``text``."""
+    found = []
+    _code(text, 0, None, spans=found)
+    return found
 
 
 def strip_cs(text):
@@ -135,11 +154,14 @@ def files(root):
 def fingerprint(root):
     h = hashlib.sha256()
     for path in files(root):
-        if path.endswith('.md'):
+        if path.endswith('.md') and not path.startswith('third_party/'):
             continue
         full = os.path.join(root, path)
         if os.path.islink(full):
             data = b'link:' + os.readlink(full).encode()
+        elif os.path.isdir(full):  # a submodule: its commit, which is what its files are
+            head = subprocess.run(['git', '-C', full, 'rev-parse', 'HEAD'], capture_output=True).stdout.strip()
+            data = b'submodule:' + head
         elif not os.path.isfile(full):
             continue  # deleted in the tree: listed by git, read by nothing
         else:

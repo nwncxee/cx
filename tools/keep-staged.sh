@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Exit 0 when cx-linux-x64/ already holds the build of this tree's code, so build.sh can keep it: its BUILT_FROM
 # carries the code fingerprint of the tree it was built from (tools/codehash.py), and only comments in .cs files or
-# Markdown changed since. Exit 1 when it must rebuild. Usage: tools/keep-staged.sh [fingerprint]
+# Markdown changed since. Exit 1 when it must rebuild. Linux-only, like build.sh; the Windows builds never keep one.
+# Usage: tools/keep-staged.sh [fingerprint]
 cd "$(dirname "$0")/.." || exit 1
 out=cx-linux-x64
 code=${1:-$(python3 tools/codehash.py)} || exit 1
