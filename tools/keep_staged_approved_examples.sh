@@ -27,6 +27,7 @@ internal static class Thing
         // a comment the shader keeps
         void main() { }
         """;
+    // after the shader
     internal static string Hole(bool b) => $"{(b ? "//" : "/*")} {Answer}";
 }
 CS
@@ -71,6 +72,7 @@ rebuilds() {
 d=$(fixture e1-line); commit_b "$d" 's|// the answer|// the answer to everything|' managed/Thing.cs; keeps "$d" "E1 line comment"
 d=$(fixture e1-block); commit_b "$d" 's|/\* not 41 \*/|/* not 41, nor 43 */|' managed/Thing.cs; keeps "$d" "E1 block comment"
 d=$(fixture e1-doc); commit_b "$d" 's|/// <summary>A thing.</summary>|/// <summary>A thing.</summary>\n/// <remarks>More.</remarks>|' managed/Thing.cs; keeps "$d" "E1 doc comment"
+d=$(fixture e1-after); commit_b "$d" 's|// after the shader|// after the shader text|' managed/Thing.cs; keeps "$d" "E1 comment after a raw string"
 d=$(fixture e1-md); commit_b "$d" 's|Some notes.|Other notes.|' NOTES.md; keeps "$d" "E1 Markdown"
 
 # E2

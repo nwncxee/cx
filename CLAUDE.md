@@ -29,6 +29,8 @@ user-visible, not renamed (#530).
     nix develop         # flake.nix: the pinned toolchain (.#ci is what CI builds in, .#gates the gate jobs)
     ./build.sh          # needs: .NET 10 SDK, clang 21, gcc 15, ld.lld, zlib, cmake, pkg-config, audio headers, glslang, ssh-keygen
     ./run-demo.sh       # boots the framework in a stub host + proves the rot refusal (no game needed)
+    tools/selfcheck/run.sh  # the same self-checks from an IL compile in a JIT host: ~1 min, fits a 2G cap; adds to
+                            # run-demo.sh, never replaces it. tools/selfcheck/mutants.py: hand mutants, one compile
     ./sym.sh [-m] <pat> # search client symbols; -m = mangled (for Install)
     tools/live/run-live.sh  # boots the REAL client headless into a playable area and grades the session
                             # PASS/FAIL + screenshots; nothing reaches the desktop, nothing of the user's
@@ -49,6 +51,8 @@ the libraries out from under a running client; a build in another checkout or wo
 its own folder, so the check is `tools/no-loaded-runtime.sh` and not "is a client running".
 Launch the real client:  `NWN_BIN=/path/to/nwmain-linux ./cx-linux-x64/cx-launch`
 (Steam: put `"<abs>/cx-launch" %command%` in the game Launch Options.)
+A tree whose code fingerprint (`tools/codehash.py`: comments lexed out of C#, Markdown left out) matches the staged
+build's keeps it after the gates, and `where.sh` calls it CURRENT, so a comment-only commit does not rebuild.
 Every report of work that sits in a worktree or a branch the user has not checked out ends with the output of
 `tools/where.sh <checkout>`: its absolute path, whether its `cx-linux-x64/` is the build of that commit
 (`build.sh` stamps `BUILT_FROM`), and the exact run command. Rebuild first when it says anything but CURRENT.
