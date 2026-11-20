@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using CX.Engine;
 using CX.Framework;
+using CX.Services.Camera;
 using CX.Services.Radial;
 
 namespace CX.Services.Inventory;
@@ -308,6 +309,16 @@ internal static unsafe class InventoryNative
         IntPtr go = EngineFn.GetGameObject(app, id);
         if (go == IntPtr.Zero || new CGameObject(go).Type != TypeItem) return IntPtr.Zero;
         return new CGameObject(go).AsNWCItem();
+    }
+
+    /// <summary>Resolve the engine's live target cursor at item <paramref name="oid"/>, as a click on the stock panel's cell
+    /// would: the mode's own allowed types and validation decide, so a spell that cannot take an item stays up.</summary>
+    public static void FireTarget(uint oid)
+    {
+        IntPtr app = App(), mode = TargetFire.Live();
+        if (app == IntPtr.Zero || mode == IntPtr.Zero || Item(app, oid) == IntPtr.Zero) return;
+        CNWCObject obj = new CGameObject(EngineFn.GetGameObject(app, oid)).AsNWCObject();
+        if (!obj.IsNull) TargetFire.Fire(mode, obj.Ptr);
     }
 
     public static int Mods() => EngineFn.SdlGetModState != null ? EngineFn.SdlGetModState() : 0;
@@ -745,6 +756,37 @@ internal static unsafe class InventoryNative
 
     /// <summary><c>SetButtonItem</c>'s property argument as the stock item drop passes it.</summary>
     private const int QuickItemProp = 0xff00ff;   // not-an-offset: the stock drop's "no property" word
+
+    /// <summary><c>CGuiStoreInvBox::GetGuiObjType</c>'s tag.</summary>
+    private const int StoreBoxTag = 0x53746f72;   // not-an-offset: 'Stor'
+
+    /// <summary>The engine GUI object under screen point (<paramref name="sx"/>, <paramref name="sy"/>) is an open store's
+    /// item box, where the stock drag sells.</summary>
+    public static bool StoreBoxAt(int sx, int sy)
+    {
+        IntPtr gmp = Native.Sym(SymbolMap.GuiMan);
+        IntPtr gm = gmp == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)gmp;
+        if (gm == IntPtr.Zero) return false;
+        var man = new CGuiMan(gm);
+        IntPtr obj = man.GuiObjectHitCheck(sx, man.VpHeight - sy, 1, 1);
+        return obj != IntPtr.Zero && new CGuiObject(obj).GetGuiObjType() == StoreBoxTag;
+    }
+
+    /// <summary>The open store's price line for <paramref name="oid"/>, cleared for <see cref="InventoryModel.Invalid"/>, as the
+    /// stock inventory's hover writes it; nothing when no store is open.</summary>
+    public static void PriceInStore(uint oid)
+    {
+        IntPtr slot = Native.Sym(SymbolMap.ActiveStorePanel);
+        IntPtr panel = slot == IntPtr.Zero ? IntPtr.Zero : *(IntPtr*)slot;
+        if (panel != IntPtr.Zero && EngineFn.StoreMouseoverInventoryItem != null) EngineFn.StoreMouseoverInventoryItem(panel, oid);
+    }
+
+    /// <summary><c>Store_RequestSell</c>, as the stock store box's drop sends it: no confirm.</summary>
+    public static void Sell(uint oid)
+    {
+        IntPtr msg = Msg();
+        if (msg != IntPtr.Zero && EngineFn.SendStoreRequestSell != null) EngineFn.SendStoreRequestSell(msg, oid);
+    }
 
     /// <summary>Send <see cref="DropVerb"/>'s action: <c>Inventory_Drop</c> at the point, <c>Input_UseItem</c> on the player, or
     /// <c>BarterStartBarter</c>.</summary>

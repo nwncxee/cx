@@ -345,6 +345,10 @@ public static unsafe partial class EngineLayout
     public static readonly int QuickbarSendGate = Field<int>("CPanelQuickBar", "sendGate");
     /// <summary>CGuiObject flags; bit 0 = disabled, which <c>CGuiButton::HandleLMouseDown</c> refuses on (<c>+8</c>, both builds).</summary>
     public static readonly int GuiObjectFlags = Field<uint>("CGuiObject", "flags");
+    /// <summary>Virtual slot of <c>CGuiObject::GetGuiObjType()</c>, a four-letter tag (<c>'Stor'</c> the store's item box,
+    /// <c>'AcTg'</c> a target mode). Linux +0x28 (<c>GetCurrentActionTargetObject</c>); Windows +0x20, which the store's
+    /// own drop code calls before its <c>'Stor'</c> tests (rva 0x880e03) and the target mode's lookup before <c>'AcTg'</c>.</summary>
+    public static readonly int GuiObjTypeSlot = Field("CGuiObject", "vtbl.GetGuiObjType", Expect.VtblSlot, sig: "int()");
     /// <summary>CGuiButton -&gt; its normal-state animation name (<c>char*</c>); quick buttons outline with <c>"qbEquip"</c> /
     /// <c>"qbMode"</c>. <c>SetButtonNormalAnimation</c> stores it at Linux <c>+0xe0</c>, Windows rva 0x1e5a00 <c>+0xc0</c>.</summary>
     public static readonly int ButtonNormalAnim = Field<IntPtr>("CGuiButton", "normalAnim");

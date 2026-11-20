@@ -2,6 +2,7 @@ using System;
 using System.Runtime.InteropServices;
 using CX.Engine;
 using CX.Framework;
+using CX.Services.Camera;
 using CX.Services.Radial;
 using CX.Ui;
 
@@ -60,6 +61,8 @@ public sealed unsafe partial class InventoryService : IExtenderService
 
         _inv.Act = OnAction;
         _inv.NameOf = InventoryNative.Name;
+        _inv.Targeting = static () => TargetFire.Live() != IntPtr.Zero;
+        _inv.HoverItem = InventoryNative.PriceInStore;
         ServerPolicy.AllowKnobs(InventoryKnobs.G.Name + ".");
         _window = new Window(0, 0, 0, 0)
         {
@@ -217,6 +220,7 @@ public sealed unsafe partial class InventoryService : IExtenderService
             case InvActKind.Refused: InventoryNative.Feedback(a.Text); return;
             case InvActKind.Gold: OpenGold(); return;
             case InvActKind.Drop: DropInWorld(a); return;
+            case InvActKind.Target: InventoryNative.FireTarget(a.Oid); return;
         }
         string name = a.Kind.ToString().ToLowerInvariant();
         int h = Math.Max(1, _inv.Info(a.Oid).H);

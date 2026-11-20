@@ -2425,6 +2425,17 @@ internal static unsafe class SymbolMap
     /// major 12 minor 9 -- a move inside the backpack or between backpack and container.</summary>
     [Fn("void(IntPtr msg, uint item, byte x, byte globalY, uint target)")]
     public const string SendInvRepositoryMove = "_ZN11CNWCMessage42SendPlayerToServerInventory_RepositoryMoveEjhhj";
+    /// <summary><c>..._Store_RequestSell(uint item)</c> @0x804790 (rva 0x7c3d00), major 7 minor 2 -- what the stock store box
+    /// sends for an inventory item dropped on it (<c>CGuiStoreInvBox::ProcessItemDrop</c>), with no confirm.</summary>
+    [Fn("void(IntPtr msg, uint item)")]
+    public const string SendStoreRequestSell = "_ZN11CNWCMessage35SendPlayerToServerStore_RequestSellEj";
+    /// <summary><c>CPanelStore::s_pActiveStorePanel</c>: the open store's panel, null when none. <c>OnActivate</c> stores
+    /// <c>this</c> and <c>OnDeactivate</c> zeroes it on both builds (Windows rva 0x1428d58, beside the store's own two clears).</summary>
+    public const string ActiveStorePanel = "_ZN11CPanelStore19s_pActiveStorePanelE";
+    /// <summary><c>CPanelStore::HandleMouseoverInventoryItem(uint item)</c> @0x9c5a20 (rva 0x97bc20): the store panel's line
+    /// for an inventory item, its name and sell price (TLK 61619), or blank for an id that is no item.</summary>
+    [Fn("void(IntPtr panel, uint item)")]
+    public const string StoreMouseoverInventoryItem = "_ZN11CPanelStore28HandleMouseoverInventoryItemEj";
     /// <summary><c>..._Drop(uint item, float x, float y, float z)</c> @0x800b20 (rva 0x7c0c90), major 12 minor 3.
     /// The world point for "at my feet" is the player creature's own position,
     /// <see cref="EngineLayout.ObjPosition"/> (<c>new CNWCObject(playerCreature).Position</c>).</summary>
@@ -3342,6 +3353,9 @@ internal static unsafe class SymbolMap
         [SendInvEquip]           = At(),   // 12 / 1
         [SendInvUnequip]         = At(),   // 12 / 7
         [SendInvRepositoryMove]  = At(),   // 12 / 9
+        [SendStoreRequestSell]   = At(),   // 7 / 2: the one 7 / 2 send; sets the item's sell flag (+0x240) first, as Linux (+0x260)
+        [ActiveStorePanel]       = At(),   // OnDeactivate zeroes it, then the store's +0x178 and panel +0x170 (Linux +0x198, +0x190)
+        [StoreMouseoverInventoryItem] = At(), // TLK 61619, the 33-char name cut, markup +0x17c/+0x180, cap +0x18c, label +0x468
         [SendInvDrop]            = At(),   // 12 / 3
         [SendGuiInvStatus]       = At(),   // 13 / 1
         [SendGuiInvSelectPanel]  = At(),   // 13 / 2
