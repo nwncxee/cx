@@ -384,12 +384,12 @@ public sealed unsafe partial class AlloyRenderer
         }
         s.DirtyN = 0; s.DirtyAll = false;
         long slotBytes = Math.Max((long)_drawN * sizeof(int), 4);
-        if (!VkGrow(vk, ref s.Slots, ref s.SlotCap, slotBytes, "vk draw order")) return false;
+        if (!HeldBuffer.Doubled(vk, ref s.Slots, ref s.SlotCap, slotBytes, BufferUse.Storage, MemoryKind.Upload, "vk draw order")) return false;
         if (_drawN > 0) cl.UpdateBuffer(s.Slots, 0, MemoryMarshal.AsBytes(_dSlot.AsSpan(0, _drawN)));
         if (Db.PltColors.Sends != s.PltSends && !Db.PltColors.Sent.IsEmpty)
         {
             ReadOnlySpan<byte> rows = MemoryMarshal.AsBytes(Db.PltColors.Sent);
-            if (!VkGrow(vk, ref s.Plt, ref s.PltCap, rows.Length, "vk plt rows")) return false;
+            if (!HeldBuffer.Doubled(vk, ref s.Plt, ref s.PltCap, rows.Length, BufferUse.Storage, MemoryKind.Upload, "vk plt rows")) return false;
             cl.ZeroBuffer(s.Plt);
             cl.UpdateBuffer(s.Plt, 0, rows);
             s.PltSends = Db.PltColors.Sends;
@@ -404,7 +404,7 @@ public sealed unsafe partial class AlloyRenderer
         }
         if (!VkContentRows(vk, cl)) return false;
         long boneBytes = _skinning ? (long)_boneSlots * BoneFloats * sizeof(float) : 0;
-        if (!VkGrow(vk, ref s.Bones, ref s.BoneCap, Math.Max(boneBytes, 64), "vk bones")) return false;
+        if (!HeldBuffer.Doubled(vk, ref s.Bones, ref s.BoneCap, Math.Max(boneBytes, 64), BufferUse.Storage, MemoryKind.Upload, "vk bones")) return false;
         if (boneBytes > 0) cl.UpdateBuffer(s.Bones, 0, MemoryMarshal.AsBytes(_boneStage.Span[.._boneSlots]));
         return true;
     }
@@ -421,16 +421,6 @@ public sealed unsafe partial class AlloyRenderer
             uint i = v != 0 ? VkTextures.Index((int)v) : 0;
             s.TexHTable[at + k] = i != 0 ? i : k == 0 ? s.WhiteIndex : s.NullIndex;
         }
-    }
-
-    private static bool VkGrow(VkBackend vk, ref BufferId id, ref long cap, long bytes, string label)
-    {
-        if (!id.IsNull && bytes <= cap) return true;
-        vk.Destroy(id);
-        cap = Math.Max(bytes, cap * 2);
-        id = vk.CreateBuffer(new BufferDesc(cap, BufferUse.Storage, MemoryKind.Upload, label));
-        if (id.IsNull) cap = 0;
-        return !id.IsNull;
     }
 
     /// <summary>The depth prepass as <see cref="DepthPrepassPass"/> walks it -- plain, keyhole, then the feature sweep --

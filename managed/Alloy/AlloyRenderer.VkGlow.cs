@@ -53,7 +53,7 @@ public sealed unsafe partial class AlloyRenderer
         }
         ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(GobGlow.Staged());
         int n = bytes.Length / sizeof(GlowRec);
-        if (!VkGrow(vk, ref s.Recs, ref s.RecCap, bytes.Length, "vk highlight glow")) return false;
+        if (!HeldBuffer.Doubled(vk, ref s.Recs, ref s.RecCap, bytes.Length, BufferUse.Storage, MemoryKind.Upload, "vk highlight glow")) return false;
         cl.UpdateBuffer(s.Recs, 0, bytes);
         ReadOnlySpan<ImageId> read = [c.Depth];
         cl.ReadImages(read);

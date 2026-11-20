@@ -19,6 +19,18 @@ internal static class HeldBuffer
         return !id.IsNull;
     }
 
+    /// <summary>Hold <paramref name="id"/> at least <paramref name="bytes"/> long, remade at no less than twice its old
+    /// size, for a stream that creeps up each frame; true while it is held.</summary>
+    internal static bool Doubled(VkBackend vk, ref BufferId id, ref long cap, long bytes, BufferUse use, MemoryKind kind, string label)
+    {
+        if (!id.IsNull && bytes <= cap) return true;
+        vk.Destroy(id);
+        cap = Math.Max(bytes, cap * 2);
+        id = vk.CreateBuffer(new BufferDesc(cap, use, kind, label));
+        if (id.IsNull) cap = 0;
+        return !id.IsNull;
+    }
+
     /// <summary><see cref="Grow"/> on device memory, zeroed when new: an indirect command or count read out of
     /// uninitialised memory can hang the GPU.</summary>
     internal static void Zeroed(VkBackend vk, CommandList cl, ref BufferId id, ref long cap, long bytes, BufferUse use, string label)
