@@ -20,10 +20,10 @@ internal static unsafe partial class TexRegistry
     private static ReadOnlySpan<byte> Level(Job j, long off, int sz) => new ReadOnlySpan<byte>(j.Data, checked((int)(off + sz))).Slice((int)off);
 
     /// <summary><paramref name="j"/>'s texels on the device under owned name <paramref name="dst"/>: the compressed
-    /// chain, the PLT's index chain, or the raw cell mipped on the device.</summary>
-    private static void MirrorJob(uint dst, Job j)
+    /// chain, the PLT's index chain, or the raw cell mipped on the device. Null when they are there; otherwise why not.</summary>
+    private static string? MirrorJob(uint dst, Job j)
     {
-        if (VkTextures.Device(_log) is not VkBackend vk) return;
+        if (VkTextures.Device(_log) is not VkBackend vk) return NoDevice();
         bool plt = j.Kind == TexKind.Plt;
         bool nearest = plt || j.Nearest, mip = plt || j.Mip;
         SamplerDesc s = VkSampler(j.Clamp, nearest, mip);
@@ -31,49 +31,64 @@ internal static unsafe partial class TexRegistry
         if (j.Compressed)
         {
             Format f = VkTextures.Compressed(j.GlFmt);
-            if (f == Format.Unknown) { VkTextures.Refuse($"{label}: GL format 0x{j.GlFmt:x}"); return; }
+            if (f == Format.Unknown) { VkTextures.Refuse($"{label}: GL format 0x{j.GlFmt:x}"); return $"GL format 0x{j.GlFmt:x} has no Vulkan format"; }
             ImageId id = VkTextures.Create(vk, dst, f, j.W, j.H, j.Levels, j.Channels == 1, s, label);
-            if (id.IsNull) return;
+            if (id.IsNull) return Refused(j);
             long off = 0;
             for (int l = 0, w = j.W, h = j.H; l < j.Levels; l++, w = Math.Max(1, w >> 1), h = Math.Max(1, h >> 1))
             {
                 int sz = DdsReader.LevelSize(w, h, j.Channels);
-                if (!vk.Upload(id, l, 0, Level(j, off, sz))) { VkTextures.Forget(dst); return; }
+                if (!vk.Upload(id, l, 0, Level(j, off, sz))) { VkTextures.Forget(dst); return LevelRefused(j, l); }
                 off += sz;
             }
-            return;
+            return null;
         }
         if (plt)
         {
             ImageId id = VkTextures.Create(vk, dst, Format.Rg8, j.W, j.H, j.Levels, false, s, label);
-            if (id.IsNull) return;
+            if (id.IsNull) return Refused(j);
             long off = 0;
             for (int l = 0, w = j.W, h = j.H; l < j.Levels; l++, w = Math.Max(1, w >> 1), h = Math.Max(1, h >> 1))
             {
                 int sz = w * h * PltImage.BytesPerPixel;
-                if (!vk.Upload(id, l, 0, Level(j, off, sz))) { VkTextures.Forget(dst); return; }
+                if (!vk.Upload(id, l, 0, Level(j, off, sz))) { VkTextures.Forget(dst); return LevelRefused(j, l); }
                 off += sz;
             }
-            return;
+            return null;
         }
         if (j.Chained)
         {
             ImageId id = VkTextures.Create(vk, dst, Format.Rgba8, j.W, j.H, j.Levels, false, s, label);
-            if (id.IsNull) return;
+            if (id.IsNull) return Refused(j);
             long off = 0;
             for (int l = 0, w = j.W, h = j.H; l < j.Levels; l++, w = Math.Max(1, w >> 1), h = Math.Max(1, h >> 1))
             {
                 int sz = w * h * 4;
-                if (!vk.Upload(id, l, 0, Level(j, off, sz))) { VkTextures.Forget(dst); return; }
+                if (!vk.Upload(id, l, 0, Level(j, off, sz))) { VkTextures.Forget(dst); return LevelRefused(j, l); }
                 off += sz;
             }
-            return;
+            return null;
         }
         byte[] px = VkTextures.Pack(j.Data, j.FullW > 0 ? j.FullW : j.W, 0, 0, j.W, j.H, j.Channels, nibbles: false, out Format pf);
         int levels = j.GenMips ? j.Levels : 1;
         ImageId raw = VkTextures.Create(vk, dst, pf, j.W, j.H, levels, j.Channels == 1, s, label);
-        if (raw.IsNull) return;
-        if (!vk.Upload(raw, 0, 0, px)) { VkTextures.Forget(dst); return; }
+        if (raw.IsNull) return Refused(j);
+        if (!vk.Upload(raw, 0, 0, px)) { VkTextures.Forget(dst); return LevelRefused(j, 0); }
         if (levels > 1) vk.GenerateMips(raw);
+        return null;
     }
+
+    /// <summary>The reason an upload found no device, written to cx.log once per condition whatever the log setting.</summary>
+    private static string NoDevice()
+    {
+        string absent = VkTextures.Absent(_log);
+        if (LoudOnce($"nodevice:{absent}"))
+            _log?.Always($"TexRegistry: no Vulkan device for textures -- {absent}. A texture that loads meanwhile draws "
+                + "the white stand-in until it is asked for again");
+        return $"no Vulkan device for textures: {absent}";
+    }
+
+    private static string Refused(Job j) => $"Vulkan refused a {j.W}x{j.H} {j.Levels}-level 0x{j.GlFmt:x} image";
+
+    private static string LevelRefused(Job j, int level) => $"Vulkan refused level {level} of a {j.W}x{j.H} 0x{j.GlFmt:x} image";
 }

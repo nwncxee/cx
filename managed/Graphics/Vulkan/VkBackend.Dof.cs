@@ -27,6 +27,7 @@ internal sealed unsafe partial class VkBackend
     private sealed class DofContextState
     {
         public nint Ctx;
+        public readonly SizeSettle Settle = new();
         public int W, H;
         public string? Refused;
         /// <summary>As <see cref="FsrState.Ring"/>: its backend rings its constants and descriptor sets the same way.</summary>
@@ -56,14 +57,15 @@ internal sealed unsafe partial class VkBackend
     }
 
     /// <summary>Is FidelityFX DoF ready on this device for <paramref name="w"/> x <paramref name="h"/> frames? Null when
-    /// it is; otherwise why not. A new size replaces the context, the old one freed once no submit can reach it.</summary>
+    /// it is; otherwise why not. A new size replaces the context once it has held, the old one freed once no submit can reach it.</summary>
     internal string? DofReady(int w, int h)
     {
         DofContextState d = _dof;
         if (d.Refused != null) return d.Refused;
-        if (d.Ctx != 0 && d.W == w && d.H == h) return null;
+        if (d.Ctx != 0 && d.W == w && d.H == h) { d.Settle.Clear(); return null; }
         if (d.Ctx != 0)
         {
+            if (!d.Settle.Held((w, h, 0, 0))) return Settling;
             nint old = d.Ctx;
             Later(() => cxdof_destroy(old));
             d.Ctx = 0;

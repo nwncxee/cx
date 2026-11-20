@@ -39,7 +39,7 @@ internal static partial class GpuGolden
         BufferId rb = vk.CreateBuffer(new BufferDesc(FsrDw * FsrDh * 8, BufferUse.CopyDst | BufferUse.CopySrc, MemoryKind.Device, "golden fsr read"));
         try
         {
-            string? why = vk.FsrReady(FsrRw, FsrRh, FsrDw, FsrDh);
+            string? why = FsrReadyHeld(vk, FsrRw, FsrRh, FsrDw, FsrDh);
             check.Expect(why == null, $"E9: FSR is ready on this GPU ({why})");
             bool made = !color.IsNull && !depth.IsNull && !vel.IsNull && !output.IsNull && !rb.IsNull;
             check.Expect(made, "E9: the golden's images or readback were refused (logged above)");
