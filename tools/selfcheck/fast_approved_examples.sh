@@ -13,6 +13,7 @@ fail() { echo "!! $1"; rc=1; }
 
 case "$(bash tools/where.sh)" in *"build     CURRENT"*) ;; *) echo ">> the staged build is not CURRENT: run ./build.sh first" >&2; exit 2 ;; esac
 command -v dotnet >/dev/null || { echo ">> run this inside nix develop" >&2; exit 2; }
+systemd-run --user --scope -q true 2>/dev/null || { echo ">> no systemd user manager to cap the run under" >&2; exit 2; }
 
 # The cap a deathmatch opponent runs under: a user scope with 2G and no swap, as cap.sh makes one.
 capped() { systemd-run --user --scope -q -p MemoryMax=2G -p MemorySwapMax=0 -- "$@"; }

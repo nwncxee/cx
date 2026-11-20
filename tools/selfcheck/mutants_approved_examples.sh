@@ -69,10 +69,12 @@ case "$(bash tools/where.sh)" in
   *) echo ">> the staged build is not CURRENT: run ./build.sh first" >&2; exit 2 ;;
 esac
 before=$(tree_state)
-setsid python3 tools/selfcheck/mutants.py "$tmp/four.tsv" > "$tmp/e3.out" 2>&1 &
+mkdir -p "$tmp/rt"
+TMPDIR="$tmp/rt" setsid python3 tools/selfcheck/mutants.py "$tmp/four.tsv" > "$tmp/e3.out" 2>&1 &
 runner=$!
-for _ in $(seq 1 600); do grep -q '^>> compiling' "$tmp/e3.out" 2>/dev/null && break; sleep 0.1; done
-sleep 5
+# Killed once its overlay -- the mutated copy -- exists, which is the window a kill must leave the tree untouched in.
+for _ in $(seq 1 600); do ls -d "$tmp"/rt/cx-mutants.*/managed >/dev/null 2>&1 && break; sleep 0.1; done
+ls -d "$tmp"/rt/cx-mutants.*/managed >/dev/null 2>&1 || { echo ">> E3: the runner made no overlay within 60s" >&2; exit 2; }
 kill -9 -- -"$runner" 2>/dev/null; wait "$runner" 2>/dev/null; runner=""
 [ "$(tree_state)" = "$before" ] || fail "E3: a runner killed partway left the tree changed: $(git status --porcelain | head -5)"
 

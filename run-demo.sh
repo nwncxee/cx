@@ -29,19 +29,10 @@ LOG="$(logs_of "$DEMOHOME")/cx.log"
 # #457: rot stands the WHOLE extender down, before discovery, keyed on the host's .note.gnu.build-id.
 # /usr/bin/env is by definition a wrong build, so a demo that ran in it would prove the refusal and nothing
 # else -- and every SelfCheck suite lives inside a service's Initialize. So the demo links a do-nothing host
-# carrying a known build's id and runs in that. The key comes from the build files, never a second copy.
-BID=$(awk -F'\t' '$1 == "linux" { print $2; exit }' managed/Framework/Builds/*.tsv)
-[ -n "$BID" ] || { echo ">> FAIL: no linux key in managed/Framework/Builds/*.tsv"; exit 1; }
+# carrying a known build's id (tools/stub-host.sh) and runs in that.
 # Named nwmain-*: the bootstrap loads into nothing else (the Steam runtime preloads its helpers too).
 STUB="$DEMOHOME/nwmain-demo"
-# CX-55: NwSyncReader resolves sqlite3/zstd out of the GLOBAL scope (dlsym(NULL)), so linking the system copies
-# into the stub is what lets its self-check really build a store and read it from two threads at once. Not every
-# box has the two -devel packages; there the check says SKIPPED, and this says which of the two ran.
-if ! echo 'int main(void){return 0;}' | cc -x c - -o "$STUB" -Wl,--build-id=0x"$BID" \
-       -Wl,--no-as-needed -lsqlite3 -lzstd 2>/dev/null; then
-  echo ">> no libsqlite3/libzstd to link: NwSyncReader.SelfCheck will SKIP (install them to run it)"
-  echo 'int main(void){return 0;}' | cc -x c - -o "$STUB" -Wl,--build-id=0x"$BID"
-fi
+bash tools/stub-host.sh "$STUB" || exit 1
 
 echo ">> launching the demo host with the extender preloaded..."
 HOME="$DEMOHOME" XDG_DATA_HOME="$DEMOHOME/.local/share" CX_MANAGED="$B/cx_managed.so" LD_LIBRARY_PATH="$B" LD_PRELOAD="$B/libcx.so" "$STUB" >/dev/null

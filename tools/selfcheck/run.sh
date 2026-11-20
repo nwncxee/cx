@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs every self-check in about a minute and a half: the managed sources compiled to IL (no NativeAOT publish) and
+# Runs every self-check from the managed sources compiled to IL (no NativeAOT publish),
 # booted in a JIT host that carries a known client build-id, as ./run-demo.sh's stub does. It ends on the verdict
 # run-demo.sh ends on (tools/selfcheck/verdict.sh). An addition to ./run-demo.sh, never a replacement: CI and the
 # shipped image run the AOT build, so a change is proven there before it merges. Linux-only, like the rest of
@@ -85,17 +85,9 @@ if [ "$build" = 1 ]; then
 fi
 [ -f "$bin/cx_managed.dll" ] || { echo ">> no $bin/cx_managed.dll: run without --no-build first" >&2; exit 2; }
 
-# The demo's stub host, hosting the runtime itself: the rot gate reads this executable's build-id, so it carries a
-# known build's, read from the build files like run-demo.sh does. sqlite3 and zstd are linked for NwSyncReader's check.
-BID=$(awk -F'\t' '$1 == "linux" { print $2; exit }' managed/Framework/Builds/*.tsv)
-[ -n "$BID" ] || { echo ">> FAIL: no linux key in managed/Framework/Builds/*.tsv"; exit 2; }
+# The demo's stub host (tools/stub-host.sh), hosting the runtime itself: the rot gate reads this executable's build-id.
 host=$out/nwmain-selfcheck
-if [ ! -f "$host" ] || [ native/selfcheck_host.c -nt "$host" ] || [ "$(cat "$host.bid" 2>/dev/null)" != "$BID" ]; then
-  cc -O1 native/selfcheck_host.c -o "$host" -Wl,--build-id=0x"$BID" -ldl -Wl,--no-as-needed -lsqlite3 -lzstd 2>/dev/null \
-    || cc -O1 native/selfcheck_host.c -o "$host" -Wl,--build-id=0x"$BID" -ldl \
-    || { echo ">> could not build the host" >&2; exit 2; }
-  echo "$BID" > "$host.bid"
-fi
+bash tools/stub-host.sh "$host" native/selfcheck_host.c || exit 2
 
 # Its own HOME, as run-demo.sh gives the demo: a player's cx.cfg would move the defaults the suites assert.
 home=$out/home

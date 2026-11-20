@@ -130,7 +130,7 @@ if [ "$1" != --no-gates ]; then
   bash tools/approved-examples.sh
 fi
 
-# CX-590: a tree whose code is the staged build's -- only comments in .cs files or Markdown moved -- keeps that build,
+# A tree whose code is the staged build's -- only comments in .cs files or Markdown moved -- keeps that build,
 # after the gates and the approved examples (some read comments: tools/vk/mutants.sh anchors on whole lines). Taken
 # before the publish, so an edit made while it runs is not stamped as built.
 CODE=$(python3 tools/codehash.py)

@@ -56,6 +56,8 @@ jobs:
             tools/no-loaded-runtime.sh
             tools/codehash.py
             tools/keep-staged.sh
+            tools/stub-host.sh
+            tools/where.sh
             'tools/selfcheck/*'
             tools/live/session-log.sh
             tools/live/docks_run.sh

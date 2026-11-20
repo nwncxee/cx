@@ -17,9 +17,9 @@ elif [ ! -f "$out/BUILT_FROM" ]; then
 else
   from=$(sed -n 1p "$out/BUILT_FROM")
   stamped=$(sed -n 's/^code //p' "$out/BUILT_FROM")
-  # A stamped code fingerprint decides: equal means only comments or Markdown moved since the build (CX-590).
-  code=""; [ -z "$stamped" ] || code=$(python3 tools/codehash.py "$dir")
-  if [ -n "$stamped" ] && [ "$stamped" = "$code" ]; then
+  # A stamped code fingerprint decides, by the same test build.sh keeps a build by: equal means only comments or
+  # Markdown moved since the build.
+  if [ -n "$stamped" ] && bash tools/keep-staged.sh >/dev/null; then
     if [ "$from" = "$head" ]; then
       built="CURRENT -- built from ${head:0:8}, same code as the tree"
     else

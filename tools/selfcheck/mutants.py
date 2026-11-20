@@ -27,7 +27,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
-import codehash  # noqa: E402  the C# lexer that finds comments and literals
+import codehash  # noqa: E402 -- tools/ is only on the path once the line above has run
 
 ROOT = os.path.realpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
 RUN = os.path.join(ROOT, 'tools', 'selfcheck', 'run.sh')

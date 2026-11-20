@@ -29,7 +29,7 @@ user-visible, not renamed (#530).
     nix develop         # flake.nix: the pinned toolchain (.#ci is what CI builds in, .#gates the gate jobs)
     ./build.sh          # needs: .NET 10 SDK, clang 21, gcc 15, ld.lld, zlib, cmake, pkg-config, audio headers, glslang, ssh-keygen
     ./run-demo.sh       # boots the framework in a stub host + proves the rot refusal (no game needed)
-    tools/selfcheck/run.sh  # the same self-checks from an IL compile in a JIT host: ~1 min, fits a 2G cap; adds to
+    tools/selfcheck/run.sh  # the same self-checks from an IL compile in a JIT host, inside a 2G cap; adds to
                             # run-demo.sh, never replaces it. tools/selfcheck/mutants.py: hand mutants, one compile
     ./sym.sh [-m] <pat> # search client symbols; -m = mangled (for Install)
     tools/live/run-live.sh  # boots the REAL client headless into a playable area and grades the session
