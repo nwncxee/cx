@@ -199,7 +199,7 @@ public sealed unsafe class UiInputService : IExtenderService
                     IntPtr gui = VanillaGuiAt(GuiPressMask);
                     bool ours = MenuWindowAt(mx, my);
                     if (KeyDiag)
-                        _log?.Info($"[keydiag] mouse btn={btn} at ({mx},{my}) owner={UiHost.AnyKeyboardOwner} kbmode={KeyboardModeActive()} gui=0x{gui:x} menuOurs={ours}");
+                        _log?.Info($"[keydiag] mouse btn={btn} at ({mx},{my}) owner={UiHost.AnyKeyboardOwner} kbmode={KeyboardModeActive()} gui=0x{gui:x} ({GuiTag(gui)}) menuOurs={ours}");
                     if (UiHost.DispatchMouseButton(true, btn, mx, my, captureOnly: true)) return 0;   // Window.CapturesPointer: ahead of the GUI yield
                     // NUI (or a vanilla GUI object: radial menu, tooltip, panel) draws over us -> it gets the
                     // press. Blur first: this is a click elsewhere, and FocusAt (skipped here) is what would
@@ -289,6 +289,14 @@ public sealed unsafe class UiInputService : IExtenderService
         }
         IntPtr ctx = *(IntPtr*)_nuklearGlobal;
         return ctx != IntPtr.Zero && _nkAnyHovered(ctx) != 0;
+    }
+
+    /// <summary>A GUI object's <c>GetGuiObjType</c> tag as its four letters (<c>'Stor'</c>, <c>'InvB'</c>), for the diagnostic line.</summary>
+    private static string GuiTag(IntPtr gui)
+    {
+        if (gui == IntPtr.Zero) return "-";
+        int t = new CGuiObject(gui).GetGuiObjType();
+        return new string(new[] { (char)((t >> 24) & 0xff), (char)((t >> 16) & 0xff), (char)((t >> 8) & 0xff), (char)(t & 0xff) });
     }
 
     /// <summary>Interactivity masks <c>CGuiMan::HandleLMouseDown</c> / <c>HandleMouseWheel</c> pass to the hit check.</summary>
