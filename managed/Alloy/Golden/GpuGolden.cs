@@ -35,6 +35,17 @@ internal static partial class GpuGolden
         log.Info(check.Ok ? "GpuGolden.SelfCheck: passed" : "GpuGolden.SelfCheck: FAILED");
     }
 
+    /// <summary>Frames a golden asks FSR for before it gives up on a size settling.</summary>
+    private const int FsrSettleFrames = 64;
+
+    /// <summary><see cref="VkBackend.FsrReady"/> asked frame after frame until a new size has held, as the game's frames ask it.</summary>
+    private static string? FsrReadyHeld(VkBackend vk, int rw, int rh, int dw, int dh)
+    {
+        string? why = vk.FsrReady(rw, rh, dw, dh);
+        for (int f = 0; f < FsrSettleFrames && why == VkBackend.Settling; f++) why = vk.FsrReady(rw, rh, dw, dh);
+        return why;
+    }
+
     /// <summary>Every golden on <paramref name="vk"/>, each cleaning up after itself.</summary>
     private static void Run(VkBackend vk, Checker check, ExtenderLog log)
     {

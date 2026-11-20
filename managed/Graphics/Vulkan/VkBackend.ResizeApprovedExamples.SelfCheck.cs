@@ -17,7 +17,7 @@ internal sealed unsafe partial class VkBackend
     ];
 
     /// <summary>The size the window comes back to and the size it had before it was minimised.</summary>
-    private const int RestoredW = 1280, RestoredH = 720, BeforeW = 1024, BeforeH = 576;
+    private const int RestoredW = 1280, RestoredH = 720, BeforeW = 1600, BeforeH = 900;
 
     /// <summary>Frames the restored size is held for: a second at 30 frames a second.</summary>
     private const int HeldFrames = 30;

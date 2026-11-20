@@ -131,7 +131,7 @@ internal static unsafe partial class DepthOfField
     {
         if (!Wanted) return;
         DofState d = On(vk);
-        if (vk.DofReady(w, h) is string why) { Refuse(why, log); return; }
+        if (vk.DofReady(w, h) is string why) { if (why != VkBackend.Settling) Refuse(why, log); return; }
         if (d.Out.IsNull || d.W != w || d.H != h)
         {
             vk.Destroy(d.Out);

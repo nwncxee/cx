@@ -57,6 +57,15 @@ internal static class VkTextures
         return vk;
     }
 
+    /// <summary>Why <see cref="Device"/> answers null: the first of its conditions that is false, in its order.</summary>
+    internal static string Absent(ExtenderLog? log)
+        => !Renderer.OnVulkan ? "Alloy is not drawing on Vulkan"
+         : log == null ? "the texture mirror has no log yet"
+         : !OwnedTextures.Armed ? "Alloy does not own the textures"
+         : AlloyGate.Failed ? "Alloy's gate failed"
+         : AlloyDevice.Vulkan(log) is null ? "the Vulkan device does not exist"
+         : "the device came back since it was asked for";
+
     /// <summary>A golden's device for the mirror, which it drops again with null: the session's gate never opens there.</summary>
     internal static void DeviceForCheck(VkBackend? vk) => _s = new VkTexState { Dev = vk, Gen = _s.Gen + 1 };
 

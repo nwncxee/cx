@@ -98,10 +98,10 @@ internal static unsafe partial class TexRegistry
         => txi != null && txi.Contains("envmaptexture", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>What the bracket publishes back to the game thread: the slot it uploaded for, the generation
-    /// it uploaded against, and either a name and handle or the reason there is none.</summary>
+    /// it uploaded against, and either a name and handle or the reason there is none, and whether asking again may fix it.</summary>
     private readonly record struct Landed(int Slot, uint Gen, uint Name, ulong Handle, long Bytes,
                                          TexCoverage Cov, bool BumpyShiny, bool EnvMap, string? Why,
-                                         bool Preview = false, string? CovWhy = null);
+                                         bool Preview = false, string? CovWhy = null, bool Retry = false);
 
     private static readonly Queue<Job> _in = new(), _out = new();
     /// <summary>The fast queue: every new load's first pass, ahead of every full one (<see cref="Job.Fast"/>).
@@ -607,7 +607,7 @@ internal static unsafe partial class TexRegistry
         if (stale) return;
         if (j.Why != null) { Publish(new Landed(i, j.Gen, 0, 0, 0, TexCoverage.Unknown, false, false, j.Why)); return; }
         uint name = Upload(j, out string? why);
-        if (name == 0) { Publish(new Landed(i, j.Gen, 0, 0, 0, TexCoverage.Unknown, false, false, why ?? "the driver refused the upload")); return; }
+        if (name == 0) { Publish(new Landed(i, j.Gen, 0, 0, 0, TexCoverage.Unknown, false, false, why ?? "the driver refused the upload", Retry: true)); return; }
         if (!j.Tail) lock (_lock) if ((_gen[i] & 0xFFF) == j.Gen) { _mean[i] = j.Mean; _meanOk[i] = j.MeanOk; }
         FileCycle(j);
         FileArturo(j);
@@ -649,7 +649,7 @@ internal static unsafe partial class TexRegistry
                 continue;
             }
             _pend[l.Slot] = PendNone;
-            if (l.Why != null) Fail(l.Slot, l.Why);
+            if (l.Why != null) Fail(l.Slot, l.Why, l.Retry);
             else if (l.Preview) { LandPreview(TexId.Make(l.Slot, l.Gen), l.Name, l.Handle, l.Cov); Enqueue(l.Slot); }
             else Land(TexId.Make(l.Slot, l.Gen), l.Name, l.Bytes, l.Handle, l.Cov, l.BumpyShiny, l.EnvMap, l.CovWhy);
         }
@@ -671,9 +671,9 @@ internal static unsafe partial class TexRegistry
     {
         why = null;
         uint n = VkTextures.NewName();
-        MirrorJob(n, j);
-        if (VkTextures.Has(n)) return n;
-        why = $"Vulkan refused a {j.W}x{j.H} {j.Levels}-level 0x{j.GlFmt:x} image";
+        why = MirrorJob(n, j);
+        if (why == null && VkTextures.Has(n)) return n;
+        why ??= "the image was made and then gone";
         return 0;
     }
 
@@ -763,13 +763,15 @@ internal static unsafe partial class TexRegistry
     }
 
     /// <summary>The load failed. Loud once per resref, counted after that, and the slot keeps the white
-    /// stand-in as an explicit state -- never a quiet hole. Game thread.</summary>
-    internal static void Fail(int i, string why)
+    /// stand-in as an explicit state -- never a quiet hole. A <paramref name="retry"/> failure (the upload, not the
+    /// file) loads again when asked for after <see cref="RetryMs"/>. Game thread.</summary>
+    internal static void Fail(int i, string why, bool retry = false)
     {
         string name; TexKind kind;
         lock (_lock)
         {
             _state[i] = TexState.Failed;
+            _retryAt[i] = retry ? Environment.TickCount64 + RetryMs : 0;
             _pend[i] = PendNone;
             TableSerial++;
             _failed++;
@@ -778,7 +780,8 @@ internal static unsafe partial class TexRegistry
         }
         if (LoudOnce($"tex:{name}"))
             _log?.Always($"TexRegistry: \"{name}\" ({kind}) did not load -- {why}. "
-                + "For the rest of the session a diffuse slot naming it draws the WHITE STAND-IN, a map slot draws unbound (stock)");
+                + (retry ? "Until it loads when asked for again, a diffuse slot naming it draws the WHITE STAND-IN, a map slot draws unbound (stock)"
+                         : "For the rest of the session a diffuse slot naming it draws the WHITE STAND-IN, a map slot draws unbound (stock)"));
     }
 
     // ---- handles ----

@@ -33,7 +33,7 @@ internal static partial class GpuGolden
         {
             // every refusal leaves got at NaN, which E5 reports as a failure; each says why first, so the
             // log names the step rather than leaving a bare NaN to read
-            if (vk.FsrReady(FsrRw, FsrRh, FsrDw, FsrDh) is string why) { log.Always($"GpuGolden: reactive, FSR is not ready here ({why})"); return; }
+            if (FsrReadyHeld(vk, FsrRw, FsrRh, FsrDw, FsrDh) is string why) { log.Always($"GpuGolden: reactive, FSR is not ready here ({why})"); return; }
             if (color.IsNull || depth.IsNull || vel.IsNull || react.IsNull || output.IsNull || rb.IsNull)
             { log.Always("GpuGolden: reactive, an image or the readback buffer was refused (logged above)"); return; }
             var d = new float[FsrRw * FsrRh];

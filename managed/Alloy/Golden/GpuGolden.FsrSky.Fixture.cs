@@ -104,7 +104,7 @@ internal static partial class GpuGolden
         {
             Post.Aa.V = Post.AaFsr; Post.Scale.V = 0.9f; Post.Bloom.V = 0f; Post.SkyRaw.V = true;
             AlloyRenderer.SkyInvVp = dome ? Matrix4x4.Identity : default;
-            string? why = vk.FsrReady(SkyRw, SkyRh, SkyDw, SkyDh);
+            string? why = FsrReadyHeld(vk, SkyRw, SkyRh, SkyDw, SkyDh);
             bool made = AlloyRenderer.VkFixtureEnsure(vk, SkyDw, SkyDh, log) && !color.IsNull && !depth.IsNull && !vel.IsNull && !up.IsNull && !into.IsNull && !sColor.IsNull
                      && !sDepth.IsNull && !sInto.IsNull && !vol.IsNull && !rb.IsNull;
             check.Expect(why == null && made, $"FSR sky: FSR is ready ({why}) and the golden's images were made (logged above)");
