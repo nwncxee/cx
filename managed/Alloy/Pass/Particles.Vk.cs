@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using CX.Engine;
+using CX.Framework;
 
 namespace CX.Alloy;
 
@@ -11,6 +12,9 @@ internal static unsafe partial class Particles
     {
         public float[] Keys = new float[MinRecs];
         public uint[] Vals = new uint[MinRecs];
+        public NativeBuffer<ParticleRec> Upload;
+        /// <summary>Records <see cref="Upload"/> holds for the frame last staged.</summary>
+        public int Packed;
     }
 
     private static PartVkState _vk = new();
@@ -38,10 +42,11 @@ internal static unsafe partial class Particles
         if (!VkOn || _orderN == 0) return 0;
         int at = Build(view, lightingOn, out eye, out lit, out groups);
         if (at == 0) return 0;
+        PartVkState s = _vk;
+        if (s.Upload.Length < at && !s.Upload.Grow(_idx.Length)) return 0;
         for (int i = 0; i < _drawN; i++)
             for (int j = 0; j < _wrote[i]; j++)
                 _idx[(int)_span[i * 4 + 2] + j] = _span[i * 4] + (uint)j;
-        PartVkState s = _vk;
         for (int gi = 0; gi < groups; gi++)
         {
             int n = _gParts[gi], from = _gStart[gi];
@@ -62,11 +67,25 @@ internal static unsafe partial class Particles
         for (int i = 0; i < _drawN; i++)
             if (_wrote[i] > 0) { _tab[_sSlot[_draw[i]]].IssuedGen = AlloyRenderer.PassGen; _emitters++; }
         _groups += groups;
+        s.Packed = PackVkRecords(_recs.Span, _idx.Span[..at], s.Upload.Span).Length;
         return at;
     }
 
-    /// <summary>Every record block allocated, as the vertex stage indexes them.</summary>
-    internal static ReadOnlySpan<ParticleRec> VkRecords => _recs.Span[.._recTop];
+    /// <summary>This frame's records, packed in draw order, as the vertex stage indexes them.</summary>
+    internal static ReadOnlySpan<ParticleRec> VkRecords => _vk.Upload.Span[.._vk.Packed];
+
+    /// <summary>Gather the sorted records once for both colour and motion. The CPU keeps its persistent
+    /// emitter slots for motion history. On the GPU each draw-list entry indexes its packed position.</summary>
+    private static ReadOnlySpan<ParticleRec> PackVkRecords(ReadOnlySpan<ParticleRec> history,
+                                                          Span<uint> order, Span<ParticleRec> upload)
+    {
+        for (int i = 0; i < order.Length; i++)
+        {
+            upload[i] = history[(int)order[i]];
+            order[i] = (uint)i;
+        }
+        return upload[..order.Length];
+    }
 
     /// <summary>This frame's draw-order list, <paramref name="at"/> entries.</summary>
     internal static ReadOnlySpan<uint> VkIndices(int at) => _idx.Span[..at];
