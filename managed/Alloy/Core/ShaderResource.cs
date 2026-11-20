@@ -19,6 +19,9 @@ internal static unsafe class ShaderResource
 
     private static readonly IntPtr _resManSym = Native.Sym(SymbolMap.ExoResMan);
 
+    /// <summary>True once the engine's resource manager exists: before it, every resource reads as absent.</summary>
+    internal static bool ChainUp => _resManSym != IntPtr.Zero && *(IntPtr*)_resManSym != IntPtr.Zero;
+
     /// <summary>The GLSL a content author supplied for <paramref name="resref"/>, or null when nothing in the
     /// resource chain provides it (the common case). <b>OUR resrefs only</b> -- <c>cx_*</c>: where no
     /// <c>CRes</c> exists this makes a BARE one, and the engine reads a <c>.shd</c> back as a <c>CResSHD</c>,
