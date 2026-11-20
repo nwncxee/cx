@@ -57,6 +57,46 @@ internal static unsafe partial class LightmapBake
         Walk2(dim, dim);
         check.Expect(_drift.Closes == 1, $"two lights recoloured in one walk spent {_drift.Closes} re-closes, not 1");
 
+        // two set lights stacked on one place and reach, in two colours, are each their own entry: nothing re-closes
+        Area();
+        for (int q = 0; q < 4; q++) { BeginWalkDb(1, 0); RecordDb(lamp, at, Reach, white, false, true, out _); RecordDb(lamp2, at, Reach, dim, false, true, out _); EndWalk(); }
+        check.Expect(_drift.Closes == 0, $"two stacked set lights of two colours, neither changed, spent {_drift.Closes} re-closes");
+
+        // a lamp nudged half a unit onto its neighbour's exact place and reach is still itself, in its own colour
+        var beside = at + new Vector3(0.5f, 0f, 0f);
+        Area();
+        for (int q = 0; q < 2; q++) { BeginWalkDb(1, 0); RecordDb(lamp, at, Reach, white, false, true, out _); RecordDb(lamp2, beside, Reach, dim, false, true, out _); EndWalk(); }
+        for (int q = 0; q < 2; q++) { BeginWalkDb(1, 0); RecordDb(lamp, at, Reach, white, false, true, out _); RecordDb(lamp2, at, Reach, dim, false, true, out _); EndWalk(); }
+        check.Expect(_drift.Closes == 0, $"a lamp nudged onto its neighbour's key was compared with the neighbour's colour ({_drift.Closes} re-closes)");
+
+        // ...and one that moved onto it from 30 u away left the set: named, not hidden behind the neighbour's key
+        Area(); Walk2(white, dim); Walk2(white, dim);
+        heard.Clear();
+        for (int q = 0; q < 2; q++) { BeginWalkDb(1, 0); RecordDb(lamp, at, Reach, white, false, true, out _); RecordDb(lamp2, at, Reach, dim, false, true, out _); EndWalk(); }
+        check.Expect(Heard("db light 558 left the set") == 1, "a lamp moved 30 u onto its neighbour's key is still baked where it stood");
+
+        // one lamp recoloured and the other switched off in one walk: one re-close, and the dark one is named
+        Area(); Walk2(white, white); Walk2(white, white);
+        heard.Clear();
+        Walk(lamp, at, Reach, dim, true); Walk(lamp, at, Reach, dim, true);
+        check.Expect(_setN == 1 && _drift.Closes == 1 && Heard("db light 558 left the set") == 1,
+                     $"a lamp switched off in the walk another was recoloured in left the set unnamed ({_setN} set lights, {_drift.Closes} re-closes)");
+
+        // a set that can no longer bake (no rect, no chart offered) has nothing to re-close: every light is live anyway
+        Area(); Walk(lamp, at, Reach, white, true);
+        _rectN = 0;
+        Walk(lamp, at, Reach, white, true); Walk(lamp, at, Reach, white, true);
+        check.Expect(_drift.Closes == 0, $"a set with no page possible re-closed {_drift.Closes} times as its lights went live");
+        _rectN = 1;
+
+        // an area of 300 static lights: a closed walk meets them all, and nine switched off are named, eight and a count
+        Area(); Many(300); Many(300);
+        check.Expect(_setN == 300 && _drift.Closes == 0, $"a closed walk over 300 set lights re-closed {_drift.Closes} times ({_setN} set lights)");
+        heard.Clear();
+        Many(291);
+        check.Expect(Heard("left the set after the close") == 8 && Heard("...and 1 more static lights left the set") == 1,
+                     $"nine lights switched off are not named as eight and a count ({Heard("left the set after the close")} named)");
+
         // a set light switched off, hidden or blacked out never reaches the record: its baked copy goes all the same
         Area(); Walk(lamp, at, Reach, white, true);
         ulong lit = SetHash;
@@ -152,6 +192,13 @@ internal static unsafe partial class LightmapBake
             _rekeyPending = false;
             RecordDb(lamp, at, Reach, c1, false, true, out _);
             RecordDb(lamp2, at2, Reach, c2, false, true, out _);
+            EndWalk();
+        }
+
+        static void Many(int n)
+        {
+            BeginWalkDb(1, 0);
+            for (int i = 0; i < n; i++) RecordDb((IntPtr)(0x1000 + i), new Vector3(10f * i, 0f, 2f), 20f, Vector3.One, false, true, out _);
             EndWalk();
         }
 
