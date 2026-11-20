@@ -277,17 +277,17 @@ internal static class CullPassVk
     {
         var s = _s;
         ReadOnlySpan<byte> srcBytes = MemoryMarshal.AsBytes(src.AsSpan(0, drawN));
-        Grow(vk, ref s.Src, ref s.SrcCap, srcBytes.Length, "cull source");
+        HeldBuffer.Grow(vk, ref s.Src, ref s.SrcCap, srcBytes.Length, BufferUse.Storage, MemoryKind.Upload, "cull source");
         const BufferUse Out = BufferUse.Storage | BufferUse.Indirect | BufferUse.CopySrc;
         int phases = s.MirrorAsked ? Phases : Mirror;
         for (int p = 0; p < phases; p++)
         {
-            Make(vk, cl, ref s.Cmd[p], ref s.CmdCap[p], (long)drawN * CullPass.CmdUints * sizeof(uint), Out, "cull commands");
-            Make(vk, cl, ref s.Slot[p], ref s.SlotCap[p], (long)drawN * sizeof(uint), Out, "cull slots");
-            Make(vk, cl, ref s.Cnt[p], ref s.CntCap[p], (long)groups * sizeof(uint), Out, "cull counts");
+            HeldBuffer.Zeroed(vk, cl, ref s.Cmd[p], ref s.CmdCap[p], (long)drawN * CullPass.CmdUints * sizeof(uint), Out, "cull commands");
+            HeldBuffer.Zeroed(vk, cl, ref s.Slot[p], ref s.SlotCap[p], (long)drawN * sizeof(uint), Out, "cull slots");
+            HeldBuffer.Zeroed(vk, cl, ref s.Cnt[p], ref s.CntCap[p], (long)groups * sizeof(uint), Out, "cull counts");
         }
-        Make(vk, cl, ref s.Key, ref s.KeyCap, (long)drawN * sizeof(float), BufferUse.Storage, "cull sort keys");
-        Make(vk, cl, ref s.Rej, ref s.RejCap, (long)drawN * sizeof(uint), BufferUse.Storage, "cull hi-Z verdicts");
+        HeldBuffer.Zeroed(vk, cl, ref s.Key, ref s.KeyCap, (long)drawN * sizeof(float), BufferUse.Storage, "cull sort keys");
+        HeldBuffer.Zeroed(vk, cl, ref s.Rej, ref s.RejCap, (long)drawN * sizeof(uint), BufferUse.Storage, "cull hi-Z verdicts");
         if (s.Src.IsNull || s.Key.IsNull || s.Rej.IsNull) return false;
         for (int p = 0; p < phases; p++) if (s.Cmd[p].IsNull || s.Slot[p].IsNull || s.Cnt[p].IsNull) return false;
         cl.UpdateBuffer(s.Src, 0, srcBytes);
@@ -390,28 +390,6 @@ internal static class CullPassVk
                                              ImageUse.Sampled | ImageUse.Storage, "cull hi-Z pyramid"));
         s.PyrW = s.Pyr.IsNull ? 0 : w; s.PyrH = s.Pyr.IsNull ? 0 : h; s.PyrLevels = s.Pyr.IsNull ? 0 : levels;
         return !s.Pyr.IsNull;
-    }
-
-    /// <summary>Hold <paramref name="id"/> at least <paramref name="bytes"/> long, <paramref name="cap"/> its own size,
-    /// remade larger when it is not and zeroed when new: an indirect command or count read out of uninitialised
-    /// memory can hang the GPU.</summary>
-    private static void Make(VkBackend vk, CommandList cl, ref BufferId id, ref long cap, long bytes, BufferUse use, string label)
-    {
-        if (!id.IsNull && bytes <= cap) return;
-        vk.Destroy(id);
-        cap = Math.Max(bytes, 4);
-        id = vk.CreateBuffer(new BufferDesc(cap, use, MemoryKind.Device, label));
-        if (!id.IsNull) cl.ZeroBuffer(id);
-    }
-
-    /// <summary>An upload storage buffer at least <paramref name="bytes"/> long, remade larger when it is not.</summary>
-    private static void Grow(VkBackend vk, ref BufferId id, ref long cap, long bytes, string label)
-    {
-        if (!id.IsNull && bytes <= cap) return;
-        vk.Destroy(id);
-        cap = Math.Max(bytes, 4);
-        id = vk.CreateBuffer(new BufferDesc(cap, BufferUse.Storage, MemoryKind.Upload, label));
-        if (id.IsNull) cap = 0;
     }
 
     /// <summary>The cull on this device over a fixed ten-draw list, read back and held against <see cref="CullPass"/>'s

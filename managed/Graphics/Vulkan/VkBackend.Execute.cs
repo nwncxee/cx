@@ -435,8 +435,8 @@ internal sealed unsafe partial class VkBackend
         if (c.MaxDraws > 0 && !c.Count.IsNull)
         {
             if (!_buffers.TryGet(c.Count.Value, out count)) return Fault("DrawIndexedIndirect: stale count buffer");
-            if (c.CountOffset < 0 || c.CountOffset + sizeof(uint) > count.Desc.Bytes)
-                return Fault($"DrawIndexedIndirect: a count at byte {c.CountOffset} is past {count.Desc.Label}'s {count.Desc.Bytes}");
+            if (!InWords(count, c.CountOffset, sizeof(uint)))
+                return Fault($"DrawIndexedIndirect: a count at byte {c.CountOffset} is outside {count.Desc.Label}'s {count.Desc.Bytes}, or not on a word");
         }
         if (!EnsureRendering()) return false;
         Use(cmds, VkPipelineStageFlags2.DrawIndirect, VkAccessFlags2.IndirectCommandRead);
@@ -470,11 +470,14 @@ internal sealed unsafe partial class VkBackend
     /// the GPU reads indirect arguments with no bounds check, and a read past the end hangs or resets the device.</summary>
     private bool IndirectFits(string op, VkBuf cmds, IndirectCmd c, uint stride)
     {
-        if (c.MaxDraws <= 0) return true;
-        long end = c.Offset + (long)c.MaxDraws * stride;
-        if (c.Offset >= 0 && end <= cmds.Desc.Bytes) return true;
-        return Fault($"{op}: {c.MaxDraws} commands at byte {c.Offset} reach {end}, past {cmds.Desc.Label}'s {cmds.Desc.Bytes}");
+        if (c.MaxDraws <= 0 || InWords(cmds, c.Offset, (long)c.MaxDraws * stride)) return true;
+        return Fault($"{op}: {c.MaxDraws} commands at byte {c.Offset} are outside {cmds.Desc.Label}'s {cmds.Desc.Bytes}, or not on a word");
     }
+
+    /// <summary><paramref name="bytes"/> at <paramref name="at"/> lie inside <paramref name="b"/> and start and end on a
+    /// word, tested by subtraction so that no offset, however large, wraps the sum back inside.</summary>
+    private static bool InWords(VkBuf b, long at, long bytes) =>
+        at >= 0 && bytes >= 0 && ((at | bytes) & 3) == 0 && at <= b.Desc.Bytes && bytes <= b.Desc.Bytes - at;
 
     private bool Viewport(Rect v)
     {
@@ -673,7 +676,7 @@ internal sealed unsafe partial class VkBackend
         ReadOnlySpan<byte> bytes = r.Span<byte>(c.Bytes);
         if (_inPass) return Fault("UpdateBuffer inside a render pass");
         if (!_buffers.TryGet(c.Buffer.Value, out VkBuf b)) return Fault("UpdateBuffer: stale buffer");
-        if (c.Offset < 0 || c.Offset + c.Bytes > b.Desc.Bytes || (c.Bytes & 3) != 0 || (c.Offset & 3) != 0)
+        if (!InWords(b, c.Offset, c.Bytes))
             return Fault($"UpdateBuffer of {c.Bytes} bytes at {c.Offset} into {b.Desc.Label}'s {b.Desc.Bytes}, in whole words");
         Use(b, VkPipelineStageFlags2.AllTransfer, VkAccessFlags2.TransferWrite);
         Flush();
@@ -745,7 +748,7 @@ internal sealed unsafe partial class VkBackend
         if (_inPass) return Fault("ZeroBuffer inside a render pass");
         if (!_buffers.TryGet(c.Buffer.Value, out VkBuf b)) return Fault("ZeroBuffer: stale buffer");
         long bytes = c.Bytes == 0 ? b.Desc.Bytes - c.Offset : c.Bytes;
-        if (c.Offset < 0 || bytes < 0 || c.Offset + bytes > b.Desc.Bytes || ((c.Offset | bytes) & 3) != 0)
+        if (!InWords(b, c.Offset, bytes))
             return Fault($"ZeroBuffer: {bytes} bytes at {c.Offset} of {b.Desc.Label}'s {b.Desc.Bytes}, in whole words");
         if (bytes == 0) return true;
         Use(b, VkPipelineStageFlags2.AllTransfer, VkAccessFlags2.TransferWrite);
