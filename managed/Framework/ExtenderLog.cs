@@ -104,7 +104,7 @@ public sealed class ExtenderLog
         log.AlwaysNow(mark);
         bool now = TailHas(mark);
         log.Info(now && tapped ? "ExtenderLog.SelfCheck: passed"
-                 : !tapped ? $"ExtenderLog.SelfCheck: FAILED -- a tapped log with the gate closed heard [{string.Join("|", heard)}]"
+                 : !tapped ? $"ExtenderLog.SelfCheck: FAILED -- a tapped log heard [{string.Join("|", heard)}]"
                  : "ExtenderLog.SelfCheck: FAILED -- an AlwaysNow line was not in the file when the call returned");
     }
 
