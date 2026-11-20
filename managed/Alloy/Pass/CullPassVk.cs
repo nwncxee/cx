@@ -535,8 +535,9 @@ internal static class CullPassVk
         bool born = Upload(vk, cl, ShortGroups, ShortDraws, src) && vk.Submit(cl);
         check.Expect(born && !_s.Cmd[Mirror].IsNull, "a mirror that asks on a shorter list has its set from that upload on");
         if (!born) return false;
-        var col = new uint[3];
-        var mir = new uint[3];
+        const int Groups = 3;
+        var col = new uint[Groups];
+        var mir = new uint[Groups];
         CullBlock m = b;
         if (!MirrorRun(vk, check, src, sph, ref b, ref m, col, mir)) return false;
         check.Expect(mir[0] == 2 && mir[1] == 3 && mir[2] == 3,
@@ -544,7 +545,10 @@ internal static class CullPassVk
         var cmd = new DrawCmdRec[src.Length];
         bool whole = vk.ReadBack(_s.Cmd[Mirror], MemoryMarshal.AsBytes(cmd.AsSpan()));
         check.Expect(whole, $"the mirror set holds a command for each of the {src.Length} draws an indirect draw reads");
-        return whole;
+        var slot = new uint[src.Length];
+        bool slots = vk.ReadBack(_s.Slot[Mirror], MemoryMarshal.AsBytes(slot.AsSpan()));
+        check.Expect(slots, $"the mirror set holds a slot for each of the {src.Length} draws a mirror draw reads");
+        return whole && slots;
     }
 
     /// <inheritdoc cref="MirrorPhase"/>
